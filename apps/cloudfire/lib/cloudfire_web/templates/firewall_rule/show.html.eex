@@ -1,0 +1,28 @@
+<h1>Show Firewall rule</h1>
+
+<ul>
+
+  <li>
+    <strong>Destination:</strong>
+    <%= @firewall_rule.destination %>
+  </li>
+
+  <li>
+    <strong>Port:</strong>
+    <%= @firewall_rule.port %>
+  </li>
+
+  <li>
+    <strong>Protocol:</strong>
+    <%= @firewall_rule.protocol %>
+  </li>
+
+  <li>
+    <strong>Enabled:</strong>
+    <%= @firewall_rule.enabled %>
+  </li>
+
+</ul>
+
+<span><%= link "Edit", to: Routes.firewall_rule_path(@conn, :edit, @firewall_rule) %></span>
+<span><%= link "Back", to: Routes.firewall_rule_path(@conn, :index, @firewall_rule.device) %></span>

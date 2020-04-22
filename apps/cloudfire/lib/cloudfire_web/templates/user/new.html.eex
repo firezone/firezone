@@ -1,0 +1,25 @@
+<h3>Sign Up</h3>
+
+<%= form_for @changeset, Routes.user_path(@conn, :create), fn f -> %>
+  <%= if f.errors do %>
+
+  <% end %>
+
+  <label>
+    Email: <%= text_input f, :email %>
+  </label>
+
+  <br>
+
+  <label>
+    Password: <%= text_input f, :password %>
+  </label>
+
+  <br>
+
+  <label>
+    Password Confirmation: <%= text_input f, :password_confirmation %>
+  </label>
+
+  <%= submit "Submit" %>
+<% end %>
