@@ -32,15 +32,10 @@ jobs:
           elixir-version: 1.10.2
           otp-version: 22.3.2
       - name: Install Dependencies
-        run: |
-          cd cloudfire_umbrella/
-          mix deps.get --only test
+        run: mix deps.get --only test
       - name: Setup Database
         run: |
-          cd cloudfire_umbrella
           mix ecto.create
           mix ecto.migrate
       - name: Run Tests
-        run: |
-          cd cloudfire_umbrella/
-          mix test
+        run: mix test
