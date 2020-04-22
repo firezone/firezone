@@ -1,0 +1,25 @@
+<h1>New Device</h1>
+
+Add the following to your Wireguard configuration file:
+
+<!-- TODO: Actually generate this -->
+<pre>
+<code>
+[Peer]
+PublicKey = S1yT3gj0rLFcz4o7qGAbQqs8aFh7R3nCMF+WU0nlWGs=
+AllowedIPs = 0.0.0.0/0, ::/0
+Endpoint = 104.238.182.24:51820
+</code>
+</pre>
+
+<div>
+  <p>
+    When we receive a connection from your device, we'll prompt you verify it here.
+  </p>
+</div>
+
+<div>
+  Waiting for device connection...
+</div>
+
+<span><%= link "Back", to: Routes.device_path(@conn, :index) %></span>
