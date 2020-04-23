@@ -19,15 +19,15 @@ import Config
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
-config :cloudfire,
-  ecto_repos: [Cloudfire.Repo]
+config :cf_phx,
+  ecto_repos: [CfPhx.Repo]
 
 # Configures the endpoint
-config :cloudfire, CloudfireWeb.Endpoint,
+config :cf_phx, CfPhxWeb.Endpoint,
   url: [host: "localhost"],
   secret_key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5SD",
-  render_errors: [view: CloudfireWeb.ErrorView, accepts: ~w(html json)],
-  pubsub: [name: Cloudfire.PubSub, adapter: Phoenix.PubSub.PG2]
+  render_errors: [view: CfPhxWeb.ErrorView, accepts: ~w(html json)],
+  pubsub: [name: CfPhx.PubSub, adapter: Phoenix.PubSub.PG2]
 
 # Configures Elixir's Logger
 config :logger, :console,
