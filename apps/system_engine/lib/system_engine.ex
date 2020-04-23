@@ -1,6 +1,6 @@
-defmodule FirewallDaemon do
+defmodule SystemEngine do
   @moduledoc """
-  Documentation for FirewallDaemon.
+  Documentation for SystemEngine.
   """
 
   @doc """
@@ -8,7 +8,7 @@ defmodule FirewallDaemon do
 
   ## Examples
 
-      iex> FirewallDaemon.hello()
+      iex> SystemEngine.hello()
       :world
 
   """
