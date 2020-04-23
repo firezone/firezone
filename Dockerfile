@@ -6,8 +6,8 @@ ARG MIX_ENV=prod
 ARG PHOENIX_DIR=./apps/cloudfire
 
 # These are used only for building and won't matter later on
-ENV DATABASE_URL=ecto://dummy:dummy@dummy/dummy
-ENV SECRET_KEY_BASE=dummy
+# ENV DATABASE_URL=ecto://dummy:dummy@dummy/dummy
+# ENV SECRET_KEY_BASE=dummy
 
 # Install dependencies
 RUN apk add npm
@@ -21,7 +21,7 @@ COPY mix.exs ./
 COPY mix.* ./
 
 COPY apps/cf_phx/mix.exs ./apps/cf_phx/
-COPY apps/firewall_daemon/mix.exs ./apps/firewall_daemon/
+COPY apps/system_engine/mix.exs ./apps/system_engine/
 
 RUN mix do deps.get --only $MIX_ENV, deps.compile
 
