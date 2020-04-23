@@ -25,9 +25,6 @@ erl_crash.dump
 # If NPM crashes, it generates a log, let's ignore it too.
 npm-debug.log
 
-# Assets should be served by a CDN, not tracked in version control
-/assets/static
-
 # The directory NPM downloads your dependencies sources to.
 /assets/node_modules/
 
