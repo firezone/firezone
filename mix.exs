@@ -11,7 +11,7 @@ defmodule CloudfireUmbrella.MixProject do
         bundled: [
           applications: [
             cf_phx: :permanent,
-            firewall_daemon: :permanent
+            system_engine: :permanent
           ]
         ]
       ]
