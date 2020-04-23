@@ -1,9 +1,9 @@
-defmodule FirewallDaemon.MixProject do
+defmodule SystemEngine.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :firewall_daemon,
+      app: :system_engine,
       version: "0.1.0",
       build_path: "../../_build",
       config_path: "../../config/config.exs",
@@ -19,7 +19,7 @@ defmodule FirewallDaemon.MixProject do
   def application do
     [
       extra_applications: [:logger],
-      mod: {FirewallDaemon.Application, []}
+      mod: {SystemEngine.Application, []}
     ]
   end
 
