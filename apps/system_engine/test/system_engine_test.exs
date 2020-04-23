@@ -1,8 +1,8 @@
-defmodule FirewallDaemonTest do
+defmodule SystemEngineTest do
   use ExUnit.Case
-  doctest FirewallDaemon
+  doctest SystemEngine
 
   test "greets the world" do
-    assert FirewallDaemon.hello() == :world
+    assert SystemEngine.hello() == :world
   end
 end
