@@ -6,7 +6,15 @@ defmodule CloudfireUmbrella.MixProject do
       apps_path: "apps",
       version: "0.1.0",
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      releases: [
+        bundled: [
+          applications: [
+            cf_phx: :permanent,
+            firewall_daemon: :permanent
+          ]
+        ]
+      ]
     ]
   end
 

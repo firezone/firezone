@@ -1,0 +1,16 @@
+name: Deploy
+
+on:
+  release: created
+
+jobs:
+  build-image:
+    runs-on: ubuntu:18.04
+    steps:
+      - uses: actions/checkout@v2
+      - name: Build Docker Image
+        run: |
+          docker build -t cloudfirellc/cloudfire:latest .
+      - name: Push Docker Image
+        run: |
+          docker push cloudfirellc/cloudfire:latest
