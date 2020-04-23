@@ -1,7 +1,7 @@
 import Config
 
 # Configure your database
-config :cloudfire, Cloudfire.Repo,
+config :cf_phx, CfPhx.Repo,
   username: "cloudfire",
   password: "postgres",
   database: "cloudfire_dev",
@@ -15,7 +15,7 @@ config :cloudfire, Cloudfire.Repo,
 # The watchers configuration can be used to run external
 # watchers to your application. For example, we use it
 # with webpack to recompile .js and .css sources.
-config :cloudfire, CloudfireWeb.Endpoint,
+config :cf_phx, CfPhxWeb.Endpoint,
   http: [port: 4000],
   debug_errors: true,
   code_reloader: true,
@@ -55,13 +55,13 @@ config :cloudfire, CloudfireWeb.Endpoint,
 # different ports.
 
 # Watch static and templates for browser reloading.
-config :cloudfire, CloudfireWeb.Endpoint,
+config :cf_phx, CfPhxWeb.Endpoint,
   live_reload: [
     patterns: [
       ~r"priv/static/.*(js|css|png|jpeg|jpg|gif|svg)$",
       ~r"priv/gettext/.*(po)$",
-      ~r"lib/cloudfire_web/(live|views)/.*(ex)$",
-      ~r"lib/cloudfire_web/templates/.*(eex)$"
+      ~r"lib/cf_phx_web/(live|views)/.*(ex)$",
+      ~r"lib/cf_phx_web/templates/.*(eex)$"
     ]
   ]
 

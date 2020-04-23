@@ -1,0 +1,9 @@
+_build/
+deps/
+.git/
+.gitignore/
+Dockerfile
+Makefile
+README*
+LICENSE
+test/

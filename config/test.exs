@@ -20,11 +20,11 @@ end
 
 # Configure your database
 db_url = System.get_env("DATABASE_URL")
-config :cloudfire, Cloudfire.Repo, DBConfig.config(db_url)
+config :cf_phx, CfPhx.Repo, DBConfig.config(db_url)
 
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
-config :cloudfire, CloudfireWeb.Endpoint,
+config :cf_phx, CfPhxWeb.Endpoint,
   http: [port: 4002],
   server: false
 
