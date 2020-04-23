@@ -10,6 +10,8 @@ defmodule CfPhx.Application do
     children = [
       # Start the Ecto repository
       CfPhx.Repo,
+      # Start the PubSub system
+      {Phoenix.PubSub, name: CfPhx.PubSub},
       # Start the endpoint when the application starts
       CfPhxWeb.Endpoint
       # Starts a worker by calling: CfPhx.Worker.start_link(arg)
