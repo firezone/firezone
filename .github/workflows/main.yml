@@ -50,9 +50,9 @@ jobs:
         with:
           username: $GITHUB_ACTOR
           password: ${{ secrets.GITHUB_TOKEN }}
+          registry: docker.pkg.github.com
           repository: docker.pkg.github.com/cloudfire-llc/cloudfire-ce/cloudfire
-          tag_with_ref: true
-          tag_with_sha: true
+          tag: ${GITHUB_SHA::8}
 
   # 3. Functional Test
   docker-compose-up:
