@@ -48,7 +48,7 @@ jobs:
     steps:
       - uses: docker/build-push-action@v1
         with:
-          username: jamilbk
+          username: $GITHUB_ACTOR
           password: ${{ secrets.GITHUB_TOKEN }}
           repository: docker.pkg.github.com/cloudfire-llc/cloudfire-ce/cloudfire
           tag_with_ref: true
