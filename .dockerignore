@@ -7,3 +7,4 @@ Makefile
 README*
 LICENSE
 test/
+node_modules

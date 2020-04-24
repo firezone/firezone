@@ -2,52 +2,64 @@ FROM elixir:1.10.2-alpine AS builder
 
 MAINTAINER docker@cloudfire.network
 
-ARG MIX_ENV=prod
-ARG PHOENIX_DIR=./apps/cloudfire
+ENV MIX_ENV=prod
+ARG PHOENIX_DIR=./apps/cf_phx
 
 # These are used only for building and won't matter later on
 # ENV DATABASE_URL=ecto://dummy:dummy@dummy/dummy
 # ENV SECRET_KEY_BASE=dummy
 
 # Install dependencies
-RUN apk add npm
+RUN apk add --update build-base npm git
 
 WORKDIR /app
 
-RUN mix do local.hex --force, local.rebar --force
+# Install hex + rebar
+RUN mix local.hex --force
+RUN mix local.rebar --force
 
-COPY config/ .
-COPY mix.exs ./
+COPY config config
 COPY mix.* ./
 
-COPY apps/cf_phx/mix.exs ./apps/cf_phx/
-COPY apps/system_engine/mix.exs ./apps/system_engine/
+COPY $PHOENIX_DIR/mix.* $PHOENIX_DIR/
+COPY apps/system_engine/mix.* ./apps/system_engine/
 
-RUN mix do deps.get --only $MIX_ENV, deps.compile
+RUN mix deps.get
+RUN mix deps.compile
 
-COPY . .
-
+# Build assets
+COPY $PHOENIX_DIR/assets $PHOENIX_DIR/assets
+COPY priv priv
+COPY $PHOENIX_DIR/priv $PHOENIX_DIR/priv
 RUN npm install --prefix $PHOENIX_DIR/assets
 RUN npm run deploy --prefix $PHOENIX_DIR/assets
 RUN mix phx.digest
 
+# Build project
+COPY $PHOENIX_DIR/lib $PHOENIX_DIR/lib
+COPY apps/system_engine/lib ./apps/system_engine/
+RUN mix compile
+
+# Build release
 RUN mix release bundled
 
 # The built application is now contained in _build/
 
-# This is what the builder image is based on
-FROM alpine:3.11
 
-RUN apk add --no-cache \
-    ncurses-dev \
-    openssl-dev
+
+# --------------------------------------------------
+FROM alpine:3.11 AS app
+RUN apk add --update bash openssl
 
 EXPOSE 4000
 ENV PORT=4000 \
-    MIX_ENV=prod \
     SHELL=/bin/bash
 
+RUN mkdir /app
 WORKDIR /app
-COPY --from=builder /app/_build/prod/rel/bundled .
 
-CMD ["bin/bundled", "start"]
+COPY --from=builder /app/_build/prod/rel/bundled .
+RUN chown -R nobody: /app
+USER nobody
+
+ENV HOME=/app
