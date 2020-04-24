@@ -1,8 +1,0 @@
-name: Deploy
-description: "Deploy images"
-
-on:
-  release: created
-
-jobs:
-
