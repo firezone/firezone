@@ -40,8 +40,9 @@ COPY $PHOENIX_DIR/lib $PHOENIX_DIR/lib
 COPY apps/system_engine/lib ./apps/system_engine/
 RUN mix compile
 
-# Build release
-RUN mix release bundled
+# Build releases
+RUN mix release cf_phx
+RUN mix release system_engine
 
 # The built application is now contained in _build/
 

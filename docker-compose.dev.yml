@@ -1,0 +1,5 @@
+services:
+  cf-phx:
+    build: ./
+  system-engine:
+    build: ./

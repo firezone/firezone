@@ -1,0 +1,5 @@
+services:
+  cf-phx:
+    image: ${TEST_IMAGE}
+  system-engine:
+    image: ${TEST_IMAGE}

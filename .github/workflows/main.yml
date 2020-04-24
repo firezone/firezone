@@ -1,0 +1,67 @@
+# Steps:
+# 1. Unit/Integration Tests
+# 2. Build and Push App Image
+# 3. Functional Test
+name: Test
+description: "Unit, Integration, and Functional tests."
+on:
+  - push
+jobs:
+  # 1. Unit/Integration Test
+  unit-integration-test:
+    runs-on: ubuntu-18.04
+    env:
+      MIX_ENV: test
+      POSTGRES_HOST: localhost
+    services:
+      postgres:
+        image: postgres:12
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Run Static Tests
+        uses: actions/setup-elixir@v1
+        with:
+          elixir-version: 1.10.2
+          otp-version: 22.3.2
+      - name: Install Dependencies
+        run: mix deps.get --only test
+      - name: Setup Database
+        run: |
+          mix ecto.create
+          mix ecto.migrate
+      - name: Run Tests
+        run: mix test
+
+  # 2. Build and Push App Image
+  build-app-image:
+    env:
+      TEST_IMAGE: docker.pkg.github.com/CloudFire-LLC/cloudfire-ce/cloudfire:${GITHUB_SHA::8}
+    runs-on: ubuntu:18.04
+    steps:
+      - uses: actions/checkout@v2
+      - name: Build Docker Image
+        run: docker build -t $TEST_IMAGE -f Dockerfile .
+      - name: Push Docker Image
+        run: docker push $TEST_IMAGE
+
+  # 3. Functional Test
+  docker-compose-up:
+    env:
+      TEST_IMAGE: docker.pkg.github.com/CloudFire-LLC/cloudfire-ce/cloudfire:${GITHUB_SHA::8}
+    runs-on: ubuntu:18.04
+    steps:
+      - uses: actions/checkout@v2
+      - name: Functional Test
+        run: |
+          docker-compose up -d -f docker-compose.yml -f docker-compose.test.yml
+          echo 'Tests completed!'
