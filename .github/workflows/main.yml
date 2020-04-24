@@ -46,12 +46,13 @@ jobs:
     needs: unit-integration-test
     runs-on: ubuntu-18.04
     steps:
-      - uses: actions/checkout@v2
-      - name: Build Docker Image
-        # Repository name must be lowercase
-        run: docker build -t docker.pkg.github.com/cloudfire-llc/cloudfire-ce/cloudfire:${GITHUB_SHA::8} -f Dockerfile .
-      - name: Push Docker Image
-        run: docker push docker.pkg.github.com/cloudfire-llc/cloudfire-ce/cloudfire:${GITHUB_SHA::8}
+      - uses: docker/build-push-action@v1
+        with:
+          username: jamilbk
+          password: ${{ secrets.GITHUB_TOKEN }}
+          repository: docker.pkg.github.com/cloudfire-llc/cloudfire-ce/cloudfire
+          tag_with_ref: true
+          tag_with_sha: true
 
   # 3. Functional Test
   docker-compose-up:
