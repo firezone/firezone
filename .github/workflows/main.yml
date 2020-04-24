@@ -46,7 +46,7 @@ jobs:
     needs: unit-integration-test
     env:
       TEST_IMAGE: docker.pkg.github.com/CloudFire-LLC/cloudfire-ce/cloudfire:${GITHUB_SHA::8}
-    runs-on: ubuntu:18.04
+    runs-on: ubuntu-18.04
     steps:
       - uses: actions/checkout@v2
       - name: Build Docker Image
@@ -59,7 +59,7 @@ jobs:
     needs: build-app-image
     env:
       TEST_IMAGE: docker.pkg.github.com/CloudFire-LLC/cloudfire-ce/cloudfire:${GITHUB_SHA::8}
-    runs-on: ubuntu:18.04
+    runs-on: ubuntu-18.04
     steps:
       - uses: actions/checkout@v2
       - name: Functional Test
