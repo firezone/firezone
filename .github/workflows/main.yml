@@ -48,7 +48,8 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Build Docker Image
-        run: docker build -t docker.pkg.github.com/CloudFire-LLC/cloudfire-ce/cloudfire:${GITHUB_SHA::8} -f Dockerfile .
+        # Repository name must be lowercase
+        run: docker build -t docker.pkg.github.com/cloudfire-llc/cloudfire-ce/cloudfire:${GITHUB_SHA::8} -f Dockerfile .
       - name: Push Docker Image
         run: docker push $TEST_IMAGE
 
@@ -56,7 +57,7 @@ jobs:
   docker-compose-up:
     needs: build-app-image
     env:
-      TEST_IMAGE: "docker.pkg.github.com/CloudFire-LLC/cloudfire-ce/cloudfire:${GITHUB_SHA::8}"
+      TEST_IMAGE: "docker.pkg.github.com/cloudfire-llc/cloudfire-ce/cloudfire:${GITHUB_SHA::8}"
     runs-on: ubuntu-18.04
     steps:
       - uses: actions/checkout@v2
