@@ -51,7 +51,7 @@ jobs:
         # Repository name must be lowercase
         run: docker build -t docker.pkg.github.com/cloudfire-llc/cloudfire-ce/cloudfire:${GITHUB_SHA::8} -f Dockerfile .
       - name: Push Docker Image
-        run: docker push $TEST_IMAGE
+        run: docker push docker.pkg.github.com/cloudfire-llc/cloudfire-ce/cloudfire:${GITHUB_SHA::8}
 
   # 3. Functional Test
   docker-compose-up:
