@@ -52,18 +52,17 @@ jobs:
           username: $GITHUB_ACTOR
           password: ${{ secrets.GITHUB_TOKEN }}
           registry: docker.pkg.github.com
-          repository: docker.pkg.github.com/cloudfire-llc/cloudfire-ce/cloudfire
+          repository: cloudfire-llc/cloudfire-ce/cloudfire
           tag: ${GITHUB_SHA::8}
 
   # 3. Functional Test
   docker-compose-up:
     needs: build-app-image
-    env:
-      TEST_IMAGE: "docker.pkg.github.com/cloudfire-llc/cloudfire-ce/cloudfire:${GITHUB_SHA::8}"
     runs-on: ubuntu-18.04
     steps:
       - uses: actions/checkout@v2
       - name: Functional Test
         run: |
-          docker-compose up -d -f docker-compose.yml -f docker-compose.test.yml
+          echo "TEST_IMAGE=docker.pkg.github.com/cloudfire-llc/cloudfire-ce/cloudfire:${GITHUB_SHA::8}" > .env
+          docker-compose -f docker-compose.yml -f docker-compose.test.yml up -d
           echo 'Tests completed!'
