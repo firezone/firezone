@@ -29,7 +29,6 @@ RUN mix deps.compile
 
 # Build assets
 COPY $PHOENIX_DIR/assets $PHOENIX_DIR/assets
-COPY priv priv
 COPY $PHOENIX_DIR/priv $PHOENIX_DIR/priv
 RUN npm install --prefix $PHOENIX_DIR/assets
 RUN npm run deploy --prefix $PHOENIX_DIR/assets
