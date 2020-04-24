@@ -58,7 +58,7 @@ ENV PORT=4000 \
 RUN mkdir /app
 WORKDIR /app
 
-COPY --from=builder /app/_build/prod/rel/bundled .
+COPY --from=builder /app/_build/prod/rel/cf_phx /app/_build/prod/rel/system_engine .
 RUN chown -R nobody: /app
 USER nobody
 
