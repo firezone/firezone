@@ -3,7 +3,6 @@
 # 2. Build and Push App Image
 # 3. Functional Test
 name: Test
-description: "Unit, Integration, and Functional tests."
 on:
   - push
 jobs:
