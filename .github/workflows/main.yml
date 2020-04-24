@@ -46,9 +46,9 @@ jobs:
     needs: unit-integration-test
     runs-on: ubuntu-18.04
     steps:
+      - uses: actions/checkout@v2
       - uses: docker/build-push-action@v1
         with:
-          dockerfile: ./Dockerfile
           username: $GITHUB_ACTOR
           password: ${{ secrets.GITHUB_TOKEN }}
           registry: docker.pkg.github.com
