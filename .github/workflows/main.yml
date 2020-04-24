@@ -48,6 +48,7 @@ jobs:
     steps:
       - uses: docker/build-push-action@v1
         with:
+          dockerfile: ./Dockerfile
           username: $GITHUB_ACTOR
           password: ${{ secrets.GITHUB_TOKEN }}
           registry: docker.pkg.github.com
