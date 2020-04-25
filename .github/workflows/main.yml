@@ -54,8 +54,8 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - run: |
         export IMAGE=docker.pkg.github.com/cloudfire-llc/cloudfire-ce/cloudfire:${GITHUB_SHA::8}
-        docker build -t $IMAGE .
-        docker push $IMAGE
+        docker build -t ${IMAGE} .
+        docker push ${IMAGE}
 
   # 3. Functional Test
   docker-compose-up:
