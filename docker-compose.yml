@@ -1,0 +1,44 @@
+# The base docker-compose
+version: "3.3"
+services:
+  cf-phx:
+    command: /app/bin/cf_phx start
+    image: cloudfirellc/cloudfire:latest
+    environment:
+      DATABASE_URL: ecto://postgres:postgres@db/cloudfire
+
+      # !! WARNING !!
+      # Change this for production systems!
+      # !!!!!!!!!!!!!
+      SECRET_KEY_BASE: vw5YEoG6Pb7mCQEC41DjJXIB6v1/tOxO+3YLN+5k+PILkcFMN54g22KXZr6o65Bn
+    ports:
+      - 4000:4000
+    networks:
+      - cloudfire
+
+  system-engine:
+    command: /app/bin/system_engine start
+    image: cloudfirellc/cloudfire:latest
+    networks:
+      - cloudfire
+
+  db:
+    networks:
+      - cloudfire
+    image: postgres:12
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    environment:
+      # !! WARNING !!
+      # Change this for production systems!
+      # !!!!!!!!!!!!!
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - 5432:5432
+
+
+volumes:
+  pg-data:
+
+networks:
+  cloudfire:

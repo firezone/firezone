@@ -1,0 +1,7 @@
+version: "3.3"
+
+services:
+  cf-phx:
+    build: ./
+  system-engine:
+    build: ./

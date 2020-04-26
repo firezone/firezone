@@ -1,0 +1,76 @@
+# Steps:
+# 1. Unit/Integration Tests
+# 2. Build and Push App Image
+# 3. Functional Test
+name: Test
+on:
+  - push
+jobs:
+  # 1. Unit/Integration Test
+  unit-integration-test:
+    runs-on: ubuntu-18.04
+    env:
+      MIX_ENV: test
+      POSTGRES_HOST: localhost
+    services:
+      postgres:
+        image: postgres:12
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Run Static Tests
+        uses: actions/setup-elixir@v1
+        with:
+          elixir-version: 1.10.2
+          otp-version: 22.3.2
+      - name: Install Dependencies
+        run: mix deps.get --only test
+      - name: Setup Database
+        run: |
+          mix ecto.create
+          mix ecto.migrate
+      - name: Run Tests
+        run: mix test
+
+  # 2. Build and Push App Image
+  build-app-image:
+    needs: unit-integration-test
+    runs-on: ubuntu-18.04
+    steps:
+      - uses: actions/checkout@v2
+      - uses: azure/docker-login@v1
+        with:
+          login-server: docker.pkg.github.com
+          username: $GITHUB_ACTOR
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push
+        run: |
+          export IMAGE="docker.pkg.github.com/cloudfire-llc/cloudfire-ce/cloudfire:${GITHUB_SHA::8}"
+          docker build -t $IMAGE .
+          docker push $IMAGE
+
+  # 3. Functional Test
+  docker-compose-up:
+    needs: build-app-image
+    runs-on: ubuntu-18.04
+    steps:
+      - uses: actions/checkout@v2
+      - uses: azure/docker-login@v1
+        with:
+          login-server: docker.pkg.github.com
+          username: $GITHUB_ACTOR
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Functional Test
+        run: |
+          echo "TEST_IMAGE=docker.pkg.github.com/cloudfire-llc/cloudfire-ce/cloudfire:${GITHUB_SHA::8}" > .env
+          docker-compose -f docker-compose.yml -f docker-compose.test.yml up -d
+          echo 'Tests completed!'

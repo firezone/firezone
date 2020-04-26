@@ -8,11 +8,11 @@ defmodule CloudfireUmbrella.MixProject do
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       releases: [
-        bundled: [
-          applications: [
-            cf_phx: :permanent,
-            system_engine: :permanent
-          ]
+        cf_phx: [
+          applications: [cf_phx: :permanent]
+        ],
+        system_engine: [
+          applications: [system_engine: :permanent]
         ]
       ]
     ]
