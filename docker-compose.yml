@@ -2,7 +2,9 @@
 version: "3.3"
 services:
   cf-phx:
-    command: /app/bin/cf_phx start
+    depends_on:
+      - db
+    command: ["bin/start_cf_phx.sh"]
     image: cloudfirellc/cloudfire:latest
     environment:
       DATABASE_URL: ecto://postgres:postgres@db/cloudfire
@@ -11,14 +13,25 @@ services:
       # Change this for production systems!
       # !!!!!!!!!!!!!
       SECRET_KEY_BASE: vw5YEoG6Pb7mCQEC41DjJXIB6v1/tOxO+3YLN+5k+PILkcFMN54g22KXZr6o65Bn
+      ERL_COOKIE: bSHTSulle4fn4ZgH3CgT6gEEtLiH9leOh1Ykeo4JEEyG31aeDZnDwEWCIhEKM0kF
     ports:
       - 4000:4000
     networks:
       - cloudfire
 
   system-engine:
-    command: /app/bin/system_engine start
+    depends_on:
+       - db
+    command: ["system_engine/bin/system_engine", "start"]
     image: cloudfirellc/cloudfire:latest
+    environment:
+      DATABASE_URL: ecto://postgres:postgres@db/cloudfire
+
+      # !! WARNING !!
+      # Change these for production systems!
+      # !!!!!!!!!!!!!
+      SECRET_KEY_BASE: vw5YEoG6Pb7mCQEC41DjJXIB6v1/tOxO+3YLN+5k+PILkcFMN54g22KXZr6o65Bn
+      ERL_COOKIE: bSHTSulle4fn4ZgH3CgT6gEEtLiH9leOh1Ykeo4JEEyG31aeDZnDwEWCIhEKM0kF
     networks:
       - cloudfire
 
