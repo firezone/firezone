@@ -29,7 +29,6 @@ RUN mix deps.compile
 
 # Build assets
 COPY $PHOENIX_DIR/assets $PHOENIX_DIR/assets
-COPY priv priv
 COPY $PHOENIX_DIR/priv $PHOENIX_DIR/priv
 RUN npm install --prefix $PHOENIX_DIR/assets
 RUN npm run deploy --prefix $PHOENIX_DIR/assets
@@ -40,8 +39,9 @@ COPY $PHOENIX_DIR/lib $PHOENIX_DIR/lib
 COPY apps/system_engine/lib ./apps/system_engine/
 RUN mix compile
 
-# Build release
-RUN mix release bundled
+# Build releases
+RUN mix release cf_phx
+RUN mix release system_engine
 
 # The built application is now contained in _build/
 
@@ -58,7 +58,7 @@ ENV PORT=4000 \
 RUN mkdir /app
 WORKDIR /app
 
-COPY --from=builder /app/_build/prod/rel/bundled .
+COPY --from=builder /app/_build/prod/rel/cf_phx /app/_build/prod/rel/system_engine ./
 RUN chown -R nobody: /app
 USER nobody
 
