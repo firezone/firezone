@@ -9,10 +9,14 @@ defmodule CloudfireUmbrella.MixProject do
       deps: deps(),
       releases: [
         cf_phx: [
-          applications: [cf_phx: :permanent]
+          applications: [cf_phx: :permanent],
+          include_executables_for: [:unix],
+          cookie: System.get_env("ERL_COOKIE")
         ],
         system_engine: [
-          applications: [system_engine: :permanent]
+          applications: [system_engine: :permanent],
+          include_executables_for: [:unix],
+          cookie: System.get_env("ERL_COOKIE")
         ]
       ]
     ]
