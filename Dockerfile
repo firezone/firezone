@@ -18,7 +18,6 @@ WORKDIR /app
 RUN mix local.hex --force
 RUN mix local.rebar --force
 
-COPY config config
 COPY mix.* ./
 
 COPY $PHOENIX_DIR/mix.* $PHOENIX_DIR/
@@ -26,6 +25,8 @@ COPY apps/system_engine/mix.* ./apps/system_engine/
 
 RUN mix deps.get
 RUN mix deps.compile
+
+COPY config config
 
 # Build assets
 COPY $PHOENIX_DIR/assets $PHOENIX_DIR/assets
@@ -36,12 +37,14 @@ RUN mix phx.digest
 
 # Build project
 COPY $PHOENIX_DIR/lib $PHOENIX_DIR/lib
-COPY apps/system_engine/lib ./apps/system_engine/
+COPY apps/system_engine/lib ./apps/system_engine/lib
 RUN mix compile
 
 # Build releases
 RUN mix release cf_phx
 RUN mix release system_engine
+
+COPY bin bin
 
 # The built application is now contained in _build/
 
@@ -58,7 +61,9 @@ ENV PORT=4000 \
 RUN mkdir /app
 WORKDIR /app
 
-COPY --from=builder /app/_build/prod/rel/cf_phx /app/_build/prod/rel/system_engine ./
+COPY --from=builder /app/_build/prod/rel/cf_phx ./cf_phx
+COPY --from=builder /app/_build/prod/rel/system_engine ./system_engine
+COPY --from=builder /app/bin ./bin
 RUN chown -R nobody: /app
 USER nobody
 
