@@ -8,7 +8,7 @@ on:
 jobs:
   # 1. Unit/Integration Test
   unit-integration-test:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-18.04
     env:
       MIX_ENV: test
       POSTGRES_HOST: localhost
@@ -44,7 +44,7 @@ jobs:
   # 2. Build VM image
   build-vm:
     needs: unit-integration-test
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-18.04
     steps:
       - uses: actions/checkout@v2
       - name: Build VM Image
@@ -60,7 +60,7 @@ jobs:
   # 3. Functional Test
   functional-test:
     needs: build-vm
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-18.04
     steps:
       - uses: actions/checkout@v2
       - name: Functional Test
