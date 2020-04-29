@@ -41,36 +41,28 @@ jobs:
       - name: Run Tests
         run: mix test
 
-  # 2. Build and Push App Image
-  build-app-image:
+  # 2. Build VM image
+  build-vm:
     needs: unit-integration-test
     runs-on: ubuntu-18.04
     steps:
       - uses: actions/checkout@v2
-      - uses: azure/docker-login@v1
-        with:
-          login-server: docker.pkg.github.com
-          username: $GITHUB_ACTOR
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and push
+      - name: Build VM Image
+        # uses: operatehappy/packer-github-action
+        # with:
+        #   command: build
+        #   arguments: "-color=false -on-error=abort"
+        #   target: artifacts.pkr.json packer.json
         run: |
-          export IMAGE="docker.pkg.github.com/cloudfire-llc/cloudfire-ce/cloudfire:${GITHUB_SHA::8}"
-          docker build -t $IMAGE .
-          docker push $IMAGE
+          echo `which packer`
+          echo 'Packer?'
 
   # 3. Functional Test
-  docker-compose-up:
-    needs: build-app-image
+  functional-test:
+    needs: build-vm
     runs-on: ubuntu-18.04
     steps:
       - uses: actions/checkout@v2
-      - uses: azure/docker-login@v1
-        with:
-          login-server: docker.pkg.github.com
-          username: $GITHUB_ACTOR
-          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Functional Test
         run: |
-          echo "TEST_IMAGE=docker.pkg.github.com/cloudfire-llc/cloudfire-ce/cloudfire:${GITHUB_SHA::8}" > .env
-          docker-compose -f docker-compose.yml -f docker-compose.test.yml up -d
           echo 'Tests completed!'
