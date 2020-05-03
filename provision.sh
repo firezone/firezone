@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -xe
+set -e
 
 # This file provisions the vagrant vm with needed tools to develop
 # and test a single-host CloudFire instance.
