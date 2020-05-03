@@ -35,3 +35,5 @@ npm-debug.log
 
 # ElixirLS generates an .elixir_ls folder for user settings
 .elixir_ls
+
+/.vagrant
