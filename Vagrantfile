@@ -20,8 +20,9 @@ Vagrant.configure('2') do |config|
   # config.vm.network 'forwarded_port', guest: 5432, host: 5432, protocol: 'tcp'
 
   config.vm.provision 'shell', path: 'provision_deps.sh', privileged: true
-  config.vm.provision 'shell', path: 'provision_runtimes.sh', privileged: false
+  config.vm.provision 'shell', path: 'provision_runtimes.sh', privileged: true
 
   # Copy WireGuard config into place
-  config.vm.provision 'file', source: 'sample_conf/wg-server.conf', destination: '/etc/wireguard/wgdev.conf'
+  config.vm.provision 'file', source: 'sample_conf/wg-server.conf', destination: '/tmp/wgdev.conf'
+  config.vm.provision 'shell', privileged: true, inline: 'mv /tmp/wgdev.conf /etc/wireguard/'
 end

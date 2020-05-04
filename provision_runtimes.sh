@@ -1,20 +1,10 @@
 #!/usr/bin/env bash
 set -e
 
-# Install runtimes as vagrant user
-# Install asdf
-git clone https://github.com/asdf-vm/asdf.git ~/.asdf --branch v0.7.8
-echo '. $HOME/.asdf/asdf.sh' >> ~/.bash_profile
-echo '. $HOME/.asdf/completions/asdf.bash' >> ~/.bash_profile
-source ~/.bash_profile
+# Install Erlang
+wget https://packages.erlang-solutions.com/erlang/debian/pool/esl-erlang_22.3.3-1~ubuntu~bionic_amd64.deb
+dpkg -i esl-erlang_22.3.3-1~ubuntu~bionic_amd64.deb
 
-asdf plugin-add erlang
-asdf install erlang 22.3.3
-asdf global erlang 22.3.3
-
-asdf plugin-add elixir
-asdf install elixir 1.10.3-otp-22
-asdf global elixir 1.10.3-otp-22
-
-# Is it working?
-elixir -e 'IO.puts("Hello World!")'
+# Install Elixir
+wget https://packages.erlang-solutions.com/erlang/debian/pool/elixir_1.10.3-1~ubuntu~bionic_all.deb
+dpkg -i elixir_1.10.3-1~ubuntu~bionic_all.deb
