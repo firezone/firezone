@@ -67,7 +67,7 @@ apt-get install -y --no-install-recommends \
   gnupg
 
 # Install WireGuard
-apt install wireguard wireguard-tools wireguard-dkms
+apt-get install -y --no-install-recommends wireguard wireguard-tools wireguard-dkms
 
 # Install Postgres
 curl https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add -
