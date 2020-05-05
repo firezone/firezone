@@ -1,12 +1,12 @@
 defmodule CfPhxWeb.Endpoint do
-  use Phoenix.Endpoint, otp_app: :cf_phx
+  use Phoenix.Endpoint, otp_app: :cf_http
 
   # The session will be stored in the cookie and signed,
   # this means its contents can be read but not tampered with.
   # Set :encryption_salt if you would also like to encrypt it.
   @session_options [
     store: :cookie,
-    key: "_cf_phx_key",
+    key: "_cf_http_key",
     signing_salt: "Z9eq8iof"
   ]
 
@@ -20,7 +20,7 @@ defmodule CfPhxWeb.Endpoint do
   # when deploying your static files in production.
   plug Plug.Static,
     at: "/",
-    from: :cf_phx,
+    from: :cf_http,
     gzip: false,
     only: ~w(css fonts images js favicon.ico robots.txt)
 
