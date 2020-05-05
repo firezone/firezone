@@ -1,4 +1,8 @@
 defmodule CloudfireUmbrella.MixProject do
+  @moduledoc """
+  Welcome to the CloudFire Elixir Umbrella Project
+  """
+
   use Mix.Project
 
   def project do
