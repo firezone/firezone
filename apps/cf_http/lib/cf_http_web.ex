@@ -30,7 +30,7 @@ defmodule CfPhxWeb do
   def view do
     quote do
       use Phoenix.View,
-        root: "lib/cf_phx_web/templates",
+        root: "lib/cf_http_web/templates",
         namespace: CfPhxWeb
 
       # Import convenience functions from controllers

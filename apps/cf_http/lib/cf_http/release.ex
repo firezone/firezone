@@ -1,5 +1,5 @@
 defmodule CfPhx.Release do
-  @app :cf_phx
+  @app :cf_http
 
   def migrate do
     load_app()
