@@ -20,9 +20,11 @@ defmodule CfHttpWeb.Router do
 
     resources "/user", UserController, singleton: true, only: [:show, :edit, :update, :delete]
     resources "/users", UserController, only: [:new, :create]
+
     resources "/devices", DeviceController, except: [:create] do
       resources "/firewall_rules", FirewallRuleController, only: [:new, :index, :create]
     end
+
     resources "/firewall_rules", FirewallRuleController, only: [:show, :update, :delete, :edit]
   end
 
