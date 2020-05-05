@@ -1,6 +1,6 @@
 defmodule CfHttp.Devices.Device do
   @moduledoc """
-  Handles Device stuff when it comes to the DB
+  Yeah baby moduledoc!
   """
 
   use Ecto.Schema
