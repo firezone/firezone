@@ -13,8 +13,8 @@ defmodule CloudfireUmbrella.MixProject do
           include_executables_for: [:unix],
           cookie: System.get_env("ERL_COOKIE")
         ],
-        system_engine: [
-          applications: [system_engine: :permanent],
+        cf_wall: [
+          applications: [cf_wall: :permanent],
           include_executables_for: [:unix],
           cookie: System.get_env("ERL_COOKIE")
         ]

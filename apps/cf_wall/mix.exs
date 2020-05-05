@@ -1,9 +1,9 @@
-defmodule SystemEngine.MixProject do
+defmodule CfWall.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :system_engine,
+      app: :cf_wall,
       version: "0.1.0",
       build_path: "../../_build",
       config_path: "../../config/config.exs",
@@ -19,7 +19,7 @@ defmodule SystemEngine.MixProject do
   def application do
     [
       extra_applications: [:logger],
-      mod: {SystemEngine.Application, []}
+      mod: {CfWall.Application, []}
     ]
   end
 
