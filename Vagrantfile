@@ -1,28 +1,43 @@
 # -*- mode: ruby -*-
 # vi: set ft=ruby :
 Vagrant.configure('2') do |config|
-  config.vm.box = 'ubuntu/bionic64'
+  config.vm.define "server" do |server|
+    server.vm.box = 'hashicorp/bionic64'
+    server.vm.hostname = 'server'
 
-  config.vm.provider 'virtualbox' do |vb|
-    vb.cpus = 4
-    vb.memory = '2048'
+    # Link to client
+    server.vm.network 'private_network', ip: '172.16.1.2'
+
+    server.vm.network 'forwarded_port', guest: 4000, host: 4000, protocol: 'tcp'
+
+    # Install dependencies
+    server.vm.provision 'shell', path: 'vagrant/provision_deps.sh'
+    server.vm.provision 'shell', path: 'vagrant/provision_runtimes.sh'
+
+    # Copy WireGuard server into place
+    server.vm.provision 'file', source: 'vagrant/sample_conf/wg-server.conf', destination: '/tmp/wg0.conf'
+    server.vm.provision 'shell', inline: 'mv /tmp/wg0.conf /etc/wireguard/'
+
+    server.vm.provision 'shell', privileged: true, inline: <<~SHELL
+      echo 'net.ipv4.ip_forward = 1' >> /etc/sysctl.conf
+      echo 'net.ipv6.conf.all.forwarding = 1' >> /etc/sysctl.conf
+      sysctl -p
+    SHELL
   end
 
-  # WireGuard
-  config.vm.network 'forwarded_port', guest: 51820, host: 51820, protocol: 'udp'
+  config.vm.define "client" do |client|
+    client.vm.box = 'hashicorp/bionic64'
+    client.vm.hostname = 'client'
+  
+    # Link to server
+    client.vm.network 'private_network', ip: '172.16.1.3'
 
-  # App
-  config.vm.network 'forwarded_port', guest: 4000, host: 4000, protocol: 'tcp'
+    # Install dependencies
+    client.vm.provision 'shell', path: 'vagrant/provision_deps.sh'
+    client.vm.provision 'shell', path: 'vagrant/provision_runtimes.sh'
 
-  # Postgres, by default, this listens to 127.0.0.1 within the VM only. If you'd
-  # like to be able to access Postgres from the host, uncomment this line and configure
-  # it to listen to 0.0.0.0 within the VM.
-  # config.vm.network 'forwarded_port', guest: 5432, host: 5432, protocol: 'tcp'
-
-  config.vm.provision 'shell', path: 'provision_deps.sh', privileged: true
-  config.vm.provision 'shell', path: 'provision_runtimes.sh', privileged: true
-
-  # Copy WireGuard config into place
-  config.vm.provision 'file', source: 'sample_conf/wg-server.conf', destination: '/tmp/wgdev.conf'
-  config.vm.provision 'shell', privileged: true, inline: 'mv /tmp/wgdev.conf /etc/wireguard/'
+    # Copy WireGuard client into place
+    client.vm.provision 'file', source: 'vagrant/sample_conf/wg-client.conf', destination: '/tmp/wg0.conf'
+    client.vm.provision 'shell', inline: 'mv /tmp/wg0.conf /etc/wireguard/', privileged: true
+  end
 end

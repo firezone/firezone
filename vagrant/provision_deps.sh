@@ -61,9 +61,9 @@ apt-get install -y --no-install-recommends \
   linux-headers-generic-hwe-18.04-edge \
   git \
   libwxgtk3.0-dev \
-  nftables \
   curl \
   ca-certificates \
+  resolvconf \
   gnupg
 
 # Install WireGuard
