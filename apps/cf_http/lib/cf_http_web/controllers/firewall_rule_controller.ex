@@ -1,11 +1,11 @@
-defmodule CfPhxWeb.FirewallRuleController do
-  use CfPhxWeb, :controller
+defmodule CfHttpWeb.FirewallRuleController do
+  use CfHttpWeb, :controller
 
-  alias CfPhx.FirewallRules
-  alias CfPhx.FirewallRules.FirewallRule
-  alias CfPhx.Devices
+  alias CfHttp.FirewallRules
+  alias CfHttp.FirewallRules.FirewallRule
+  alias CfHttp.Devices
 
-  plug CfPhxWeb.Plugs.Authenticator
+  plug CfHttpWeb.Plugs.Authenticator
 
   def index(conn, %{"device_id" => device_id}) do
     device = Devices.get_device!(device_id)

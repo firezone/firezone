@@ -1,3 +1,3 @@
-defmodule CfPhxWeb.PageViewTest do
-  use CfPhxWeb.ConnCase, async: true
+defmodule CfHttpWeb.PageViewTest do
+  use CfHttpWeb.ConnCase, async: true
 end

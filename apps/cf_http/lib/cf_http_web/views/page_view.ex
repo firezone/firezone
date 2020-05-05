@@ -1,3 +1,3 @@
-defmodule CfPhxWeb.PageView do
-  use CfPhxWeb, :view
+defmodule CfHttpWeb.PageView do
+  use CfHttpWeb, :view
 end

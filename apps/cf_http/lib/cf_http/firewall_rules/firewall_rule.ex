@@ -1,4 +1,4 @@
-defmodule CfPhx.FirewallRules.FirewallRule do
+defmodule CfHttp.FirewallRules.FirewallRule do
   use Ecto.Schema
   import Ecto.Changeset
 
@@ -8,7 +8,7 @@ defmodule CfPhx.FirewallRules.FirewallRule do
     field :port, :string
     field :protocol, :string
 
-    belongs_to :device, CfPhx.Devices.Device
+    belongs_to :device, CfHttp.Devices.Device
 
     timestamps()
   end

@@ -18,12 +18,12 @@ secret_key_base =
     You can generate one by calling: mix phx.gen.secret
     """
 
-config :cf_phx, CfPhx.Repo,
+config :cf_http, CfHttp.Repo,
   # ssl: true,
   url: database_url,
   pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10")
 
-config :cf_phx, CfPhxWeb.Endpoint,
+config :cf_http, CfHttpWeb.Endpoint,
   http: [
     port: String.to_integer(System.get_env("PORT") || "4000"),
     transport_options: [socket_opts: [:inet6]]
@@ -35,7 +35,7 @@ config :cf_phx, CfPhxWeb.Endpoint,
 # If you are doing OTP releases, you need to instruct Phoenix
 # to start each relevant endpoint:
 #
-config :cf_phx, CfPhxWeb.Endpoint, server: true
+config :cf_http, CfHttpWeb.Endpoint, server: true
 #
 # Then you can assemble a release by calling `mix release`.
 # See `mix help release` for more information.

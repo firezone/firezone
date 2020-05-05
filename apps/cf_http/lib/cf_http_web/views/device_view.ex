@@ -1,3 +1,3 @@
-defmodule CfPhxWeb.DeviceView do
-  use CfPhxWeb, :view
+defmodule CfHttpWeb.DeviceView do
+  use CfHttpWeb, :view
 end

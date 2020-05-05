@@ -1,4 +1,4 @@
-defmodule CfPhx.Devices.Device do
+defmodule CfHttp.Devices.Device do
   use Ecto.Schema
   import Ecto.Changeset
 
@@ -8,7 +8,7 @@ defmodule CfPhx.Devices.Device do
     field :verified_at, :utc_datetime
     field :user_id, :id
 
-    has_many :firewall_rules, CfPhx.FirewallRules.FirewallRule
+    has_many :firewall_rules, CfHttp.FirewallRules.FirewallRule
 
     timestamps()
   end

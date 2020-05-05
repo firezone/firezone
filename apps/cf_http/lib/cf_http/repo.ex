@@ -1,4 +1,4 @@
-defmodule CfPhx.Repo do
+defmodule CfHttp.Repo do
   use Ecto.Repo,
     otp_app: :cf_http,
     adapter: Ecto.Adapters.Postgres

@@ -1,4 +1,4 @@
-defmodule CfPhx.Repo.Migrations.CreateFirewallRules do
+defmodule CfHttp.Repo.Migrations.CreateFirewallRules do
   use Ecto.Migration
 
   def change do

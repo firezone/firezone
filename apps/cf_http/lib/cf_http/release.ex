@@ -1,4 +1,4 @@
-defmodule CfPhx.Release do
+defmodule CfHttp.Release do
   @app :cf_http
 
   def migrate do

@@ -1,12 +1,12 @@
-defmodule CfPhx.FirewallRules do
+defmodule CfHttp.FirewallRules do
   @moduledoc """
   The FirewallRules context.
   """
 
   import Ecto.Query, warn: false
-  alias CfPhx.Repo
+  alias CfHttp.Repo
 
-  alias CfPhx.FirewallRules.FirewallRule
+  alias CfHttp.FirewallRules.FirewallRule
 
   @doc """
   Returns the list of firewall_rules.

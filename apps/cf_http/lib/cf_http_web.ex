@@ -1,12 +1,12 @@
-defmodule CfPhxWeb do
+defmodule CfHttpWeb do
   @moduledoc """
   The entrypoint for defining your web interface, such
   as controllers, views, channels and so on.
 
   This can be used in your application as:
 
-      use CfPhxWeb, :controller
-      use CfPhxWeb, :view
+      use CfHttpWeb, :controller
+      use CfHttpWeb, :view
 
   The definitions below will be executed for every view,
   controller, etc, so keep them short and clean, focused
@@ -19,11 +19,11 @@ defmodule CfPhxWeb do
 
   def controller do
     quote do
-      use Phoenix.Controller, namespace: CfPhxWeb
+      use Phoenix.Controller, namespace: CfHttpWeb
 
       import Plug.Conn
-      import CfPhxWeb.Gettext
-      alias CfPhxWeb.Router.Helpers, as: Routes
+      import CfHttpWeb.Gettext
+      alias CfHttpWeb.Router.Helpers, as: Routes
     end
   end
 
@@ -31,7 +31,7 @@ defmodule CfPhxWeb do
     quote do
       use Phoenix.View,
         root: "lib/cf_http_web/templates",
-        namespace: CfPhxWeb
+        namespace: CfHttpWeb
 
       # Import convenience functions from controllers
       import Phoenix.Controller, only: [get_flash: 1, get_flash: 2, view_module: 1]
@@ -39,9 +39,9 @@ defmodule CfPhxWeb do
       # Use all HTML functionality (forms, tags, etc)
       use Phoenix.HTML
 
-      import CfPhxWeb.ErrorHelpers
-      import CfPhxWeb.Gettext
-      alias CfPhxWeb.Router.Helpers, as: Routes
+      import CfHttpWeb.ErrorHelpers
+      import CfHttpWeb.Gettext
+      alias CfHttpWeb.Router.Helpers, as: Routes
     end
   end
 
@@ -56,7 +56,7 @@ defmodule CfPhxWeb do
   def channel do
     quote do
       use Phoenix.Channel
-      import CfPhxWeb.Gettext
+      import CfHttpWeb.Gettext
     end
   end
 
