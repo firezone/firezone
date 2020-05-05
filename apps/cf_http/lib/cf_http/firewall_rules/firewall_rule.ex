@@ -1,4 +1,8 @@
 defmodule CfHttp.FirewallRules.FirewallRule do
+  @moduledoc """
+  Not really sure what to write here. I'll update this later.
+  """
+
   use Ecto.Schema
   import Ecto.Changeset
 

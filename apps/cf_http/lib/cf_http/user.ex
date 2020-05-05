@@ -1,4 +1,8 @@
 defmodule CfHttp.User do
+  @moduledoc """
+  Represents a User I guess
+  """
+
   use Ecto.Schema
   import Ecto.Changeset
 
