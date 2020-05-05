@@ -1,4 +1,4 @@
-defmodule CfPhxWeb.Endpoint do
+defmodule CfHttpWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :cf_http
 
   # The session will be stored in the cookie and signed,
@@ -10,7 +10,7 @@ defmodule CfPhxWeb.Endpoint do
     signing_salt: "Z9eq8iof"
   ]
 
-  socket "/socket", CfPhxWeb.UserSocket,
+  socket "/socket", CfHttpWeb.UserSocket,
     websocket: true,
     longpoll: false
 
@@ -43,5 +43,5 @@ defmodule CfPhxWeb.Endpoint do
   plug Plug.MethodOverride
   plug Plug.Head
   plug Plug.Session, @session_options
-  plug CfPhxWeb.Router
+  plug CfHttpWeb.Router
 end

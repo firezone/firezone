@@ -1,10 +1,10 @@
-defmodule CfPhxWeb.DeviceController do
-  use CfPhxWeb, :controller
+defmodule CfHttpWeb.DeviceController do
+  use CfHttpWeb, :controller
 
-  alias CfPhx.Devices
-  alias CfPhx.Devices.Device
+  alias CfHttp.Devices
+  alias CfHttp.Devices.Device
 
-  plug CfPhxWeb.Plugs.Authenticator
+  plug CfHttpWeb.Plugs.Authenticator
 
   def index(conn, _params) do
     devices = Devices.list_devices()

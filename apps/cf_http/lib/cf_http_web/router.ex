@@ -1,5 +1,5 @@
-defmodule CfPhxWeb.Router do
-  use CfPhxWeb, :router
+defmodule CfHttpWeb.Router do
+  use CfHttpWeb, :router
 
   pipeline :browser do
     plug :accepts, ["html"]
@@ -13,7 +13,7 @@ defmodule CfPhxWeb.Router do
     plug :accepts, ["json"]
   end
 
-  scope "/", CfPhxWeb do
+  scope "/", CfHttpWeb do
     pipe_through :browser
 
     get "/", PageController, :index
@@ -27,7 +27,7 @@ defmodule CfPhxWeb.Router do
   end
 
   # Other scopes may use custom stacks.
-  # scope "/api", CfPhxWeb do
+  # scope "/api", CfHttpWeb do
   #   pipe_through :api
   # end
 end

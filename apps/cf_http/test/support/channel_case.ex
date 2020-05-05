@@ -1,4 +1,4 @@
-defmodule CfPhxWeb.ChannelCase do
+defmodule CfHttpWeb.ChannelCase do
   @moduledoc """
   This module defines the test case to be used by
   channel tests.
@@ -11,7 +11,7 @@ defmodule CfPhxWeb.ChannelCase do
   we enable the SQL sandbox, so changes done to the database
   are reverted at the end of every test. If you are using
   PostgreSQL, you can even run database tests asynchronously
-  by setting `use CfPhxWeb.ChannelCase, async: true`, although
+  by setting `use CfHttpWeb.ChannelCase, async: true`, although
   this option is not recommended for other databases.
   """
 
@@ -23,15 +23,15 @@ defmodule CfPhxWeb.ChannelCase do
       use Phoenix.ChannelTest
 
       # The default endpoint for testing
-      @endpoint CfPhxWeb.Endpoint
+      @endpoint CfHttpWeb.Endpoint
     end
   end
 
   setup tags do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CfPhx.Repo)
+    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CfHttp.Repo)
 
     unless tags[:async] do
-      Ecto.Adapters.SQL.Sandbox.mode(CfPhx.Repo, {:shared, self()})
+      Ecto.Adapters.SQL.Sandbox.mode(CfHttp.Repo, {:shared, self()})
     end
 
     :ok

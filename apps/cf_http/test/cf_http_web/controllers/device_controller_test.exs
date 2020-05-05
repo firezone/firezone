@@ -1,7 +1,7 @@
-defmodule CfPhxWeb.DeviceControllerTest do
-  use CfPhxWeb.ConnCase
+defmodule CfHttpWeb.DeviceControllerTest do
+  use CfHttpWeb.ConnCase
 
-  alias CfPhx.Devices
+  alias CfHttp.Devices
 
   @create_attrs %{name: "some name"}
   @update_attrs %{name: "some updated name"}

@@ -1,12 +1,12 @@
-defmodule CfPhxWeb.UserController do
+defmodule CfHttpWeb.UserController do
   @moduledoc """
   Implements the CRUD for a User
   """
 
-  use CfPhxWeb, :controller
-  alias CfPhx.{Repo, User}
+  use CfHttpWeb, :controller
+  alias CfHttp.{Repo, User}
 
-  plug CfPhxWeb.Plugs.Authenticator when action in [:show, :edit, :update, :delete]
+  plug CfHttpWeb.Plugs.Authenticator when action in [:show, :edit, :update, :delete]
 
   # GET /users/new
   def new(conn, _params) do

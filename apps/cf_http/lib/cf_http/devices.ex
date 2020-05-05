@@ -1,12 +1,12 @@
-defmodule CfPhx.Devices do
+defmodule CfHttp.Devices do
   @moduledoc """
   The Devices context.
   """
 
   import Ecto.Query, warn: false
-  alias CfPhx.Repo
+  alias CfHttp.Repo
 
-  alias CfPhx.Devices.Device
+  alias CfHttp.Devices.Device
 
   @doc """
   Returns the list of devices.

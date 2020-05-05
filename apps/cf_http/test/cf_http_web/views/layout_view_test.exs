@@ -1,5 +1,5 @@
-defmodule CfPhxWeb.LayoutViewTest do
-  use CfPhxWeb.ConnCase, async: true
+defmodule CfHttpWeb.LayoutViewTest do
+  use CfHttpWeb.ConnCase, async: true
 
   # When testing helpers, you may want to import Phoenix.HTML and
   # use functions such as safe_to_string() to convert the helper

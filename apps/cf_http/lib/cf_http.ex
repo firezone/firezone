@@ -1,6 +1,6 @@
-defmodule CfPhx do
+defmodule CfHttp do
   @moduledoc """
-  CfPhx keeps the contexts that define your domain
+  CfHttp keeps the contexts that define your domain
   and business logic.
 
   Contexts are also responsible for managing your data, regardless

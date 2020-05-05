@@ -16,7 +16,7 @@
             <li><a href="<%= Routes.device_path(@conn, :index) %>">Devices</a></li>
           </ul>
         </nav>
-        <a href="<%= CfPhxWeb.Endpoint.url() %>" class="cf-logo">
+        <a href="<%= CfHttpWeb.Endpoint.url() %>" class="cf-logo">
           <img src="<%= Routes.static_path(@conn, "/images/logo.svg") %>" alt="Cloudfire Logo"/>
         </a>
       </section>

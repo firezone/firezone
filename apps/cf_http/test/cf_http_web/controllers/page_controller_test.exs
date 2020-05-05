@@ -1,5 +1,5 @@
-defmodule CfPhxWeb.PageControllerTest do
-  use CfPhxWeb.ConnCase
+defmodule CfHttpWeb.PageControllerTest do
+  use CfHttpWeb.ConnCase
 
   test "GET /", %{conn: conn} do
     conn = get(conn, "/")

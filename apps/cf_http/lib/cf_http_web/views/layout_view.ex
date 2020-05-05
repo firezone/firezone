@@ -1,3 +1,3 @@
-defmodule CfPhxWeb.LayoutView do
-  use CfPhxWeb, :view
+defmodule CfHttpWeb.LayoutView do
+  use CfHttpWeb, :view
 end

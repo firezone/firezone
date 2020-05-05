@@ -1,5 +1,5 @@
-defmodule CfPhxWeb.FirewallRuleControllerTest do
-  use CfPhxWeb.ConnCase
+defmodule CfHttpWeb.FirewallRuleControllerTest do
+  use CfHttpWeb.ConnCase
 
   describe "index" do
   end

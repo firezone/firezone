@@ -1,4 +1,4 @@
-defmodule CfPhx.Repo.Migrations.CreateDevices do
+defmodule CfHttp.Repo.Migrations.CreateDevices do
   use Ecto.Migration
 
   def change do

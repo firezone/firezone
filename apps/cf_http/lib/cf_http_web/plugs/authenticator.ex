@@ -1,10 +1,10 @@
-defmodule CfPhxWeb.Plugs.Authenticator do
+defmodule CfHttpWeb.Plugs.Authenticator do
   @moduledoc """
   Loads the user's session from cookie
   """
 
   import Plug.Conn
-  alias CfPhx.User
+  alias CfHttp.User
 
   def init(default), do: default
 

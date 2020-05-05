@@ -1,3 +1,3 @@
-defmodule CfPhxWeb.FirewallRuleView do
-  use CfPhxWeb, :view
+defmodule CfHttpWeb.FirewallRuleView do
+  use CfHttpWeb, :view
 end

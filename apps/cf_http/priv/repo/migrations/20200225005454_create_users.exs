@@ -1,4 +1,4 @@
-defmodule CfPhx.Repo.Migrations.CreateUsers do
+defmodule CfHttp.Repo.Migrations.CreateUsers do
   use Ecto.Migration
 
   def change do

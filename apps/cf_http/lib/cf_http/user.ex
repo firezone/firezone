@@ -1,4 +1,4 @@
-defmodule CfPhx.User do
+defmodule CfHttp.User do
   use Ecto.Schema
   import Ecto.Changeset
 

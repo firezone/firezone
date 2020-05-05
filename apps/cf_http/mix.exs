@@ -1,4 +1,4 @@
-defmodule CfPhx.MixProject do
+defmodule CfHttp.MixProject do
   use Mix.Project
 
   def project do
@@ -23,7 +23,7 @@ defmodule CfPhx.MixProject do
   # Type `mix help compile.app` for more information.
   def application do
     [
-      mod: {CfPhx.Application, []},
+      mod: {CfHttp.Application, []},
       extra_applications: [:logger, :runtime_tools]
     ]
   end
