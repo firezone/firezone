@@ -74,4 +74,8 @@ You should see output like:
 [#] iptables-restore -n
 ```
 
+**At this point, your tunnel should be established! 🎉**
+
+Use `wg show wg0` to see stats about the tunnel.
+
 ## Testing
