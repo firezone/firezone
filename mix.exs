@@ -8,13 +8,13 @@ defmodule CloudfireUmbrella.MixProject do
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       releases: [
-        cf_phx: [
-          applications: [cf_phx: :permanent],
+        cf_http: [
+          applications: [cf_http: :permanent],
           include_executables_for: [:unix],
           cookie: System.get_env("ERL_COOKIE")
         ],
-        system_engine: [
-          applications: [system_engine: :permanent],
+        cf_wall: [
+          applications: [cf_wall: :permanent],
           include_executables_for: [:unix],
           cookie: System.get_env("ERL_COOKIE")
         ]
