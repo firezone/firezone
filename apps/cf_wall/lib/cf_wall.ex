@@ -1,6 +1,6 @@
-defmodule SystemEngine do
+defmodule CfWall do
   @moduledoc """
-  Documentation for SystemEngine.
+  Documentation for CfWall.
   """
 
   @doc """
@@ -8,7 +8,7 @@ defmodule SystemEngine do
 
   ## Examples
 
-      iex> SystemEngine.hello()
+      iex> CfWall.hello()
       :world
 
   """

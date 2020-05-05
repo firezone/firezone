@@ -1,8 +1,8 @@
-defmodule SystemEngineTest do
+defmodule CfWallTest do
   use ExUnit.Case
-  doctest SystemEngine
+  doctest CfWall
 
   test "greets the world" do
-    assert SystemEngine.hello() == :world
+    assert CfWall.hello() == :world
   end
 end
