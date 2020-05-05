@@ -12,14 +12,12 @@ Read this guide before opening a pull request.
     ```bash
     > vagrant up
     ```
-
   2. Start the WireGuard™ interface on the server:
     ```bash
     > vagrant ssh server
     # ... wait for SSH session to establish, then
     > sudo wg-quick up wg0
     ```
-
     You should see output like:
     ```
     [#] ip link add wg0 type wireguard
@@ -28,7 +26,6 @@ Read this guide before opening a pull request.
     [#] ip link set mtu 1420 up dev wg0
     [#] iptables -A FORWARD -i wg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE; ip6tables -A FORWARD -i wg0 -j ACCEPT; ip6tables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
     ```
-
   3. Start the WireGuard interface on the client:
     ```bash
     > vagrant ssh client
@@ -54,6 +51,5 @@ Read this guide before opening a pull request.
     [#] sysctl -q net.ipv4.conf.all.src_valid_mark=1
     [#] iptables-restore -n
     ```
-
 3. Testing
   TBD
