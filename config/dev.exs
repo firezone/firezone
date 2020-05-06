@@ -2,9 +2,9 @@ import Config
 
 # Configure your database
 config :cf_http, CfHttp.Repo,
-  username: "cloudfire",
+  username: "fireguard",
   password: "postgres",
-  database: "cloudfire_dev",
+  database: "fireguard_dev",
   hostname: "localhost",
   show_sensitive_data_on_connection_error: true,
   pool_size: 10
