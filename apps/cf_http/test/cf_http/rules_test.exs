@@ -1,6 +1,6 @@
-defmodule CfHttp.FirewallRulesTest do
+defmodule CfHttp.RulesTest do
   use CfHttp.DataCase
 
-  describe "firewall_rules" do
+  describe "rules" do
   end
 end

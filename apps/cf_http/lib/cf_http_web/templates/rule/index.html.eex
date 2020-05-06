@@ -1,4 +1,4 @@
-<h1>Listing Firewall rules</h1>
+<h1>Listing Rules</h1>
 
 <table>
   <thead>
@@ -12,21 +12,21 @@
     </tr>
   </thead>
   <tbody>
-<%= for firewall_rule <- @firewall_rules do %>
+<%= for rule <- @rules do %>
     <tr>
-      <td><%= firewall_rule.destination %></td>
-      <td><%= firewall_rule.port %></td>
-      <td><%= firewall_rule.protocol %></td>
-      <td><%= firewall_rule.enabled %></td>
+      <td><%= rule.destination %></td>
+      <td><%= rule.port %></td>
+      <td><%= rule.protocol %></td>
+      <td><%= rule.enabled %></td>
 
       <td>
-        <span><%= link "Show", to: Routes.firewall_rule_path(@conn, :show, firewall_rule) %></span>
-        <span><%= link "Edit", to: Routes.firewall_rule_path(@conn, :edit, firewall_rule) %></span>
-        <span><%= link "Delete", to: Routes.firewall_rule_path(@conn, :delete, firewall_rule), method: :delete, data: [confirm: "Are you sure?"] %></span>
+        <span><%= link "Show", to: Routes.rule_path(@conn, :show, rule) %></span>
+        <span><%= link "Edit", to: Routes.rule_path(@conn, :edit, rule) %></span>
+        <span><%= link "Delete", to: Routes.rule_path(@conn, :delete, rule), method: :delete, data: [confirm: "Are you sure?"] %></span>
       </td>
     </tr>
 <% end %>
   </tbody>
 </table>
 
-<span><%= link "New Firewall rule", to: Routes.firewall_rule_path(@conn, :new, @device) %></span>
+<span><%= link "New Rule", to: Routes.rule_path(@conn, :new, @device) %></span>

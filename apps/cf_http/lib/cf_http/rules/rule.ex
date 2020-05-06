@@ -1,4 +1,4 @@
-defmodule CfHttp.FirewallRules.FirewallRule do
+defmodule CfHttp.Rules.Rule do
   @moduledoc """
   Not really sure what to write here. I'll update this later.
   """
@@ -6,7 +6,7 @@ defmodule CfHttp.FirewallRules.FirewallRule do
   use Ecto.Schema
   import Ecto.Changeset
 
-  schema "firewall_rules" do
+  schema "rules" do
     field :destination, :string
     field :enabled, :boolean, default: false
     field :port, :string
@@ -18,8 +18,8 @@ defmodule CfHttp.FirewallRules.FirewallRule do
   end
 
   @doc false
-  def changeset(firewall_rule, attrs) do
-    firewall_rule
+  def changeset(rule, attrs) do
+    rule
     |> cast(attrs, [:destination, :port, :protocol, :enabled])
     |> validate_required([:destination, :port, :protocol, :enabled])
   end

@@ -1,21 +1,21 @@
-defmodule CfHttpWeb.FirewallRuleControllerTest do
+defmodule CfHttpWeb.RuleControllerTest do
   use CfHttpWeb.ConnCase
 
   describe "index" do
   end
 
-  describe "new firewall_rule" do
+  describe "new rule" do
   end
 
-  describe "create firewall_rule" do
+  describe "create rule" do
   end
 
-  describe "edit firewall_rule" do
+  describe "edit rule" do
   end
 
-  describe "update firewall_rule" do
+  describe "update rule" do
   end
 
-  describe "delete firewall_rule" do
+  describe "delete rule" do
   end
 end
