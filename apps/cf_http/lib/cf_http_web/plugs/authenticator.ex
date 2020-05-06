@@ -9,7 +9,7 @@ defmodule CfHttpWeb.Plugs.Authenticator do
   def init(default), do: default
 
   def call(conn, _default) do
-    user = %User{email: "dev_user@cloudfire.network"}
+    user = %User{email: "dev_user@fireguard.network"}
     assign(conn, :current_user, user)
   end
 end

@@ -4,7 +4,7 @@
     <meta charset="utf-8"/>
     <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>Cloudfire</title>
+    <title>FireGuard</title>
     <link rel="stylesheet" href="<%= Routes.static_path(@conn, "/css/app.css") %>"/>
     <%= csrf_meta_tag() %>
   </head>
@@ -17,7 +17,7 @@
           </ul>
         </nav>
         <a href="<%= CfHttpWeb.Endpoint.url() %>" class="cf-logo">
-          <img src="<%= Routes.static_path(@conn, "/images/logo.svg") %>" alt="Cloudfire Logo"/>
+          <img src="<%= Routes.static_path(@conn, "/images/logo.svg") %>" alt="FireGuard Logo"/>
         </a>
       </section>
     </header>
