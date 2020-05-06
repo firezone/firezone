@@ -27,7 +27,7 @@ config :cf_http, CfHttpWeb.Endpoint,
   url: [host: "localhost"],
   secret_key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5SD",
   render_errors: [view: CfHttpWeb.ErrorView, accepts: ~w(html json)],
-  pubsub_server: [name: CfHttp.PubSub]
+  pubsub_server: CfHttp.PubSub
 
 # Configures Elixir's Logger
 config :logger, :console,
