@@ -10,6 +10,5 @@ defmodule CfHttp.Repo.Migrations.CreateFirewallRules do
 
       timestamps()
     end
-
   end
 end

@@ -1,9 +1,13 @@
 defmodule CfHttpWeb.FirewallRuleController do
+  @moduledoc """
+  Controller logic for FirewallRules
+  """
+
   use CfHttpWeb, :controller
 
+  alias CfHttp.Devices
   alias CfHttp.FirewallRules
   alias CfHttp.FirewallRules.FirewallRule
-  alias CfHttp.Devices
 
   plug CfHttpWeb.Plugs.Authenticator
 
@@ -30,7 +34,7 @@ defmodule CfHttpWeb.FirewallRuleController do
       {:error, %Ecto.Changeset{} = changeset} ->
         render(conn, "new.html", changeset: changeset)
     end
- end
+  end
 
   def show(conn, %{"id" => id}) do
     firewall_rule = FirewallRules.get_firewall_rule!(id)

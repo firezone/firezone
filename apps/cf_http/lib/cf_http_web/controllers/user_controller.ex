@@ -11,6 +11,7 @@ defmodule CfHttpWeb.UserController do
   # GET /users/new
   def new(conn, _params) do
     changeset = User.changeset(%User{})
+
     conn
     |> render("new.html", changeset: changeset)
   end
@@ -25,6 +26,7 @@ defmodule CfHttpWeb.UserController do
         |> assign(:current_user, user)
         |> put_flash(:info, "User created successfully")
         |> redirect(to: Routes.device_path(conn, :index))
+
       {:error, changeset} ->
         conn
         |> put_flash(:error, "Error creating user.")
@@ -35,6 +37,7 @@ defmodule CfHttpWeb.UserController do
   # GET /user/edit
   def edit(conn, _params) do
     changeset = User.changeset(conn.current_user)
+
     conn
     |> render("edit.html", changeset: changeset)
   end
@@ -55,6 +58,7 @@ defmodule CfHttpWeb.UserController do
         |> assign(:current_user, user)
         |> put_flash(:info, "User updated successfully.")
         |> redirect(to: Routes.user_path(conn, :show, conn.current_user))
+
       {:error, changeset} ->
         conn
         |> put_flash(:error, "Error updating user.")
@@ -70,6 +74,7 @@ defmodule CfHttpWeb.UserController do
         |> assign(:current_user, nil)
         |> put_flash(:info, "User deleted successfully.")
         |> redirect(to: Routes.page_path(conn, :index))
+
       {:error, _changeset} ->
         conn
         |> put_flash(:error, "Error deleting User.")
