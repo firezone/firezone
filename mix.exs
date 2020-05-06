@@ -1,4 +1,8 @@
 defmodule CloudfireUmbrella.MixProject do
+  @moduledoc """
+  Welcome to the CloudFire Elixir Umbrella Project
+  """
+
   use Mix.Project
 
   def project do
@@ -28,6 +32,8 @@ defmodule CloudfireUmbrella.MixProject do
   #
   # Run "mix help deps" for examples and options.
   defp deps do
-    []
+    [
+      {:credo, "~> 1.4", only: [:dev, :test], runtime: false}
+    ]
   end
 end

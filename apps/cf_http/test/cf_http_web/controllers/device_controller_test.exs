@@ -58,6 +58,7 @@ defmodule CfHttpWeb.DeviceControllerTest do
     test "deletes chosen device", %{conn: conn, device: device} do
       conn = delete(conn, Routes.device_path(conn, :delete, device))
       assert redirected_to(conn) == Routes.device_path(conn, :index)
+
       assert_error_sent 404, fn ->
         get(conn, Routes.device_path(conn, :show, device))
       end

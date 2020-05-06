@@ -1,4 +1,8 @@
 defmodule CfHttp.Devices.Device do
+  @moduledoc """
+  Manages Device things
+  """
+
   use Ecto.Schema
   import Ecto.Changeset
 

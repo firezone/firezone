@@ -1,4 +1,8 @@
 defmodule CfHttp.Release do
+  @moduledoc """
+  Configures the Mix Release or something
+  """
+
   @app :cf_http
 
   def migrate do

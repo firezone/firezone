@@ -16,6 +16,8 @@ defmodule CfHttp.DataCase do
 
   use ExUnit.CaseTemplate
 
+  alias Ecto.Adapters.SQL.Sandbox
+
   using do
     quote do
       alias CfHttp.Repo
@@ -28,10 +30,10 @@ defmodule CfHttp.DataCase do
   end
 
   setup tags do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CfHttp.Repo)
+    :ok = Sandbox.checkout(CfHttp.Repo)
 
     unless tags[:async] do
-      Ecto.Adapters.SQL.Sandbox.mode(CfHttp.Repo, {:shared, self()})
+      Sandbox.mode(CfHttp.Repo, {:shared, self()})
     end
 
     :ok
