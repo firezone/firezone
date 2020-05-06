@@ -2,7 +2,7 @@
 set -e
 
 # This file provisions the vagrant vm with needed tools to develop
-# and test a single-host CloudFire instance.
+# and test a single-host FireGuard instance.
 
 # Add WireGuard PPA
 add-apt-repository ppa:wireguard/wireguard

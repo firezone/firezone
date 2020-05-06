@@ -1,5 +1,5 @@
-![Test](https://github.com/CloudFire-LLC/cloudfire-ce/workflows/Test/badge.svg)
+![Test](https://github.com/CloudFire-LLC/fireguard/workflows/Test/badge.svg)
 
-# CloudFire
+# FireGuard
 
 Under active development. Check back later.
