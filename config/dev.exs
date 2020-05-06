@@ -26,7 +26,7 @@ config :cf_http, CfHttpWeb.Endpoint,
       "--mode",
       "development",
       "--watch-stdin",
-      cd: Path.expand("../assets", __DIR__)
+      cd: Path.expand("../apps/cf_http/assets", __DIR__)
     ]
   ]
 
@@ -58,10 +58,10 @@ config :cf_http, CfHttpWeb.Endpoint,
 config :cf_http, CfHttpWeb.Endpoint,
   live_reload: [
     patterns: [
-      ~r"priv/static/.*(js|css|png|jpeg|jpg|gif|svg)$",
-      ~r"priv/gettext/.*(po)$",
-      ~r"lib/cf_http_web/(live|views)/.*(ex)$",
-      ~r"lib/cf_http_web/templates/.*(eex)$"
+      ~r"apps/cf_http/priv/static/.*(js|css|png|jpeg|jpg|gif|svg)$",
+      ~r"apps/cf_http/priv/gettext/.*(po)$",
+      ~r"apps/cf_http/lib/cf_http_web/(live|views)/.*(ex)$",
+      ~r"apps/cf_http/lib/cf_http_web/templates/.*(eex)$"
     ]
   ]
 
