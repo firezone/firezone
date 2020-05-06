@@ -1,8 +1,8 @@
-defmodule CfHttp.Repo.Migrations.CreateFirewallRules do
+defmodule CfHttp.Repo.Migrations.CreateRules do
   use Ecto.Migration
 
   def change do
-    create table(:firewall_rules) do
+    create table(:rules) do
       add :destination, :inet
       add :port, :string
       add :protocol, :string
@@ -12,6 +12,6 @@ defmodule CfHttp.Repo.Migrations.CreateFirewallRules do
       timestamps()
     end
 
-    create index(:firewall_rules, [:device_id])
+    create index(:rules, [:device_id])
   end
 end

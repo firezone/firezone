@@ -1,104 +1,104 @@
-defmodule CfHttp.FirewallRules do
+defmodule CfHttp.Rules do
   @moduledoc """
-  The FirewallRules context.
+  The Rules context.
   """
 
   import Ecto.Query, warn: false
   alias CfHttp.Repo
 
-  alias CfHttp.FirewallRules.FirewallRule
+  alias CfHttp.Rules.Rule
 
   @doc """
-  Returns the list of firewall_rules.
+  Returns the list of rules.
 
   ## Examples
 
-      iex> list_firewall_rules()
-      [%FirewallRule{}, ...]
+      iex> list_rules()
+      [%Rule{}, ...]
 
   """
-  def list_firewall_rules do
-    Repo.all(FirewallRule)
+  def list_rules do
+    Repo.all(Rule)
   end
 
   @doc """
-  Gets a single firewall_rule.
+  Gets a single rule.
 
-  Raises `Ecto.NoResultsError` if the Firewall rule does not exist.
+  Raises `Ecto.NoResultsError` if the Rule does not exist.
 
   ## Examples
 
-      iex> get_firewall_rule!(123)
-      %FirewallRule{}
+      iex> get_rule!(123)
+      %Rule{}
 
-      iex> get_firewall_rule!(456)
+      iex> get_rule!(456)
       ** (Ecto.NoResultsError)
 
   """
-  def get_firewall_rule!(id), do: Repo.get!(FirewallRule, id)
+  def get_rule!(id), do: Repo.get!(Rule, id)
 
   @doc """
-  Creates a firewall_rule.
+  Creates a rule.
 
   ## Examples
 
-      iex> create_firewall_rule(%{field: value})
-      {:ok, %FirewallRule{}}
+      iex> create_rule(%{field: value})
+      {:ok, %Rule{}}
 
-      iex> create_firewall_rule(%{field: bad_value})
+      iex> create_rule(%{field: bad_value})
       {:error, %Ecto.Changeset{}}
 
   """
-  def create_firewall_rule(attrs \\ %{}) do
-    %FirewallRule{}
-    |> FirewallRule.changeset(attrs)
+  def create_rule(attrs \\ %{}) do
+    %Rule{}
+    |> Rule.changeset(attrs)
     |> Repo.insert()
   end
 
   @doc """
-  Updates a firewall_rule.
+  Updates a rule.
 
   ## Examples
 
-      iex> update_firewall_rule(firewall_rule, %{field: new_value})
-      {:ok, %FirewallRule{}}
+      iex> update_rule(rule, %{field: new_value})
+      {:ok, %Rule{}}
 
-      iex> update_firewall_rule(firewall_rule, %{field: bad_value})
+      iex> update_rule(rule, %{field: bad_value})
       {:error, %Ecto.Changeset{}}
 
   """
-  def update_firewall_rule(%FirewallRule{} = firewall_rule, attrs) do
-    firewall_rule
-    |> FirewallRule.changeset(attrs)
+  def update_rule(%Rule{} = rule, attrs) do
+    rule
+    |> Rule.changeset(attrs)
     |> Repo.update()
   end
 
   @doc """
-  Deletes a firewall_rule.
+  Deletes a rule.
 
   ## Examples
 
-      iex> delete_firewall_rule(firewall_rule)
-      {:ok, %FirewallRule{}}
+      iex> delete_rule(rule)
+      {:ok, %Rule{}}
 
-      iex> delete_firewall_rule(firewall_rule)
+      iex> delete_rule(rule)
       {:error, %Ecto.Changeset{}}
 
   """
-  def delete_firewall_rule(%FirewallRule{} = firewall_rule) do
-    Repo.delete(firewall_rule)
+  def delete_rule(%Rule{} = rule) do
+    Repo.delete(rule)
   end
 
   @doc """
-  Returns an `%Ecto.Changeset{}` for tracking firewall_rule changes.
+  Returns an `%Ecto.Changeset{}` for tracking rule changes.
 
   ## Examples
 
-      iex> change_firewall_rule(firewall_rule)
-      %Ecto.Changeset{source: %FirewallRule{}}
+      iex> change_rule(rule)
+      %Ecto.Changeset{source: %Rule{}}
 
   """
-  def change_firewall_rule(%FirewallRule{} = firewall_rule) do
-    FirewallRule.changeset(firewall_rule, %{})
+  def change_rule(%Rule{} = rule) do
+    Rule.changeset(rule, %{})
   end
 end

@@ -22,10 +22,10 @@ defmodule CfHttpWeb.Router do
     resources "/users", UserController, only: [:new, :create]
 
     resources "/devices", DeviceController, except: [:create] do
-      resources "/firewall_rules", FirewallRuleController, only: [:new, :index, :create]
+      resources "/rules", RuleController, only: [:new, :index, :create]
     end
 
-    resources "/firewall_rules", FirewallRuleController, only: [:show, :update, :delete, :edit]
+    resources "/rules", RuleController, only: [:show, :update, :delete, :edit]
   end
 
   # Other scopes may use custom stacks.
