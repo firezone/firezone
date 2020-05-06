@@ -3,13 +3,14 @@ import Config
 defmodule DBConfig do
   def config(db_url) when is_nil(db_url) do
     [
-      username: "postgres",
+      username: "fireguard",
       password: "postgres",
-      database: "cloudfire_test",
+      database: "fireguard_test",
       hostname: System.get_env("POSTGRES_HOST", "localhost"),
       pool: Ecto.Adapters.SQL.Sandbox
     ]
   end
+
   def config(db_url) do
     [
       url: db_url,

@@ -1,6 +1,6 @@
-defmodule CloudfireUmbrella.MixProject do
+defmodule FireguardUmbrella.MixProject do
   @moduledoc """
-  Welcome to the CloudFire Elixir Umbrella Project
+  Welcome to the FireGuard Elixir Umbrella Project
   """
 
   use Mix.Project
