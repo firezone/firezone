@@ -6,24 +6,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>FireGuard</title>
     <link rel="stylesheet" href="<%= Routes.static_path(@conn, "/css/app.css") %>"/>
+    <link rel="stylesheet" href="https://unpkg.com/tachyons@4/css/tachyons.min.css">
     <%= csrf_meta_tag() %>
   </head>
   <body>
     <header>
-      <section class="container">
+      <section>
         <nav role="navigation">
           <ul>
             <li><a href="<%= Routes.device_path(@conn, :index) %>">Devices</a></li>
           </ul>
         </nav>
-        <a href="<%= CfHttpWeb.Endpoint.url() %>" class="cf-logo">
-          <img src="<%= Routes.static_path(@conn, "/images/logo.svg") %>" alt="FireGuard Logo"/>
+        <a href="<%= CfHttpWeb.Endpoint.url() %>">
+          FireGuard
         </a>
       </section>
     </header>
-    <main role="main" class="container">
-      <p class="alert alert-info" role="alert"><%= get_flash(@conn, :info) %></p>
-      <p class="alert alert-danger" role="alert"><%= get_flash(@conn, :error) %></p>
+    <main role="main">
+      <p role="alert"><%= get_flash(@conn, :info) %></p>
+      <p role="alert"><%= get_flash(@conn, :error) %></p>
       <%= @inner_content %>
     </main>
     <script type="text/javascript" src="<%= Routes.static_path(@conn, "/js/app.js") %>"></script>
