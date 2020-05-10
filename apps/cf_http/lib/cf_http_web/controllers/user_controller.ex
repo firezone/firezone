@@ -4,7 +4,7 @@ defmodule CfHttpWeb.UserController do
   """
 
   use CfHttpWeb, :controller
-  alias CfHttp.{Repo, User}
+  alias CfHttp.{Repo, Users.User}
 
   plug CfHttpWeb.Plugs.Authenticator when action in [:show, :edit, :update, :delete]
 

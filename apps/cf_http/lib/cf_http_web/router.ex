@@ -16,8 +16,6 @@ defmodule CfHttpWeb.Router do
   scope "/", CfHttpWeb do
     pipe_through :browser
 
-    get "/", PageController, :index
-
     resources "/user", UserController, singleton: true, only: [:show, :edit, :update, :delete]
     resources "/users", UserController, only: [:new, :create]
 

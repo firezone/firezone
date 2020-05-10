@@ -4,7 +4,7 @@ defmodule CfHttpWeb.Plugs.Authenticator do
   """
 
   import Plug.Conn
-  alias CfHttp.User
+  alias CfHttp.Users.User
 
   def init(default), do: default
 
