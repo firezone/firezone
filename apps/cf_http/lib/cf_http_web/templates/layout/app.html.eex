@@ -10,23 +10,15 @@
     <%= csrf_meta_tag() %>
   </head>
   <body>
-    <header>
-      <section>
-        <nav role="navigation">
-          <ul>
-            <li><a href="<%= Routes.device_path(@conn, :index) %>">Devices</a></li>
-          </ul>
-        </nav>
-        <a href="<%= CfHttpWeb.Endpoint.url() %>">
-          FireGuard
-        </a>
-      </section>
+    <header class="w-100 fixed bg-black-90 ph3 pv3 ph4-m ph5-l">
+      <nav class="f6 fw6 ttu tracked fl">
+        <a class="link dim white dib mr3" href="<%= CfHttpWeb.Endpoint.url() %>">FireGuard</a>
+      </nav>
+      <nav class="f6 fw6 ttu tracked fr">
+        <a class="link dim white dib mr3" href="<%= Routes.device_path(@conn, :index) %>">Devices</a>
+      </nav>
     </header>
-    <main role="main">
-      <p role="alert"><%= get_flash(@conn, :info) %></p>
-      <p role="alert"><%= get_flash(@conn, :error) %></p>
-      <%= @inner_content %>
-    </main>
+    <hr>
     <script type="text/javascript" src="<%= Routes.static_path(@conn, "/js/app.js") %>"></script>
   </body>
 </html>
