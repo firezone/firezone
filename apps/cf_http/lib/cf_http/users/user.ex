@@ -1,4 +1,4 @@
-defmodule CfHttp.User do
+defmodule CfHttp.Users.User do
   @moduledoc """
   Represents a User I guess
   """
