@@ -1,0 +1,28 @@
+<h1>Show Rule</h1>
+
+<ul>
+
+  <li>
+    <strong>Destination:</strong>
+    <%= @rule.destination %>
+  </li>
+
+  <li>
+    <strong>Port:</strong>
+    <%= @rule.port %>
+  </li>
+
+  <li>
+    <strong>Protocol:</strong>
+    <%= @rule.protocol %>
+  </li>
+
+  <li>
+    <strong>Enabled:</strong>
+    <%= @rule.enabled %>
+  </li>
+
+</ul>
+
+<span><%= link "Edit", to: Routes.rule_path(@conn, :edit, @rule) %></span>
+<span><%= link "Back", to: Routes.rule_path(@conn, :index, @rule.device) %></span>

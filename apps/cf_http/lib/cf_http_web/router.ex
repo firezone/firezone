@@ -1,4 +1,8 @@
 defmodule CfHttpWeb.Router do
+  @moduledoc """
+  Main Application Router
+  """
+
   use CfHttpWeb, :router
 
   pipeline :browser do
@@ -16,16 +20,18 @@ defmodule CfHttpWeb.Router do
   scope "/", CfHttpWeb do
     pipe_through :browser
 
-    get "/", PageController, :index
-
     resources "/user", UserController, singleton: true, only: [:show, :edit, :update, :delete]
     resources "/users", UserController, only: [:new, :create]
 
     resources "/devices", DeviceController, except: [:create] do
-      resources "/firewall_rules", FirewallRuleController, only: [:new, :index, :create]
+      resources "/rules", RuleController, only: [:new, :index, :create]
     end
 
-    resources "/firewall_rules", FirewallRuleController, only: [:show, :update, :delete, :edit]
+    resources "/rules", RuleController, only: [:show, :update, :delete, :edit]
+
+    resources "/sessions", SessionController, only: [:new, :create, :delete]
+
+    get "/", DeviceController, :index
   end
 
   # Other scopes may use custom stacks.

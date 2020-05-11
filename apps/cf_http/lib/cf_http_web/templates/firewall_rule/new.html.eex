@@ -1,5 +1,0 @@
-<h1>New Firewall rule</h1>
-
-<%= render "form.html", Map.put(assigns, :action, Routes.firewall_rule_path(@conn, :create, @device)) %>
-
-<span><%= link "Back", to: Routes.firewall_rule_path(@conn, :index, @device) %></span>

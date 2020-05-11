@@ -12,7 +12,7 @@ defmodule CfHttp.Devices.Device do
     field :verified_at, :utc_datetime
     field :user_id, :id
 
-    has_many :firewall_rules, CfHttp.FirewallRules.FirewallRule
+    has_many :rules, CfHttp.Rules.Rule
 
     timestamps()
   end

@@ -1,0 +1,5 @@
+<h1>Edit Rule</h1>
+
+<%= render "form.html", Map.put(assigns, :action, Routes.rule_path(@conn, :update, @rule)) %>
+
+<span><%= link "Back", to: Routes.rule_path(@conn, :index, @rule.device) %></span>
