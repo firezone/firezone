@@ -16,7 +16,7 @@ defmodule FgHttpWeb.UserController do
 
   # POST /users
   def create(conn, %{"user" => user_params}) do
-    case Users.create_user(conn, user_params) do
+    case Users.create_user(user_params) do
       {:ok, user} ->
         conn
         |> assign(:current_user, user)

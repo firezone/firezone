@@ -4,7 +4,7 @@ defmodule FgHttpWeb.SessionController do
   """
 
   use FgHttpWeb, :controller
-  alias FgHttp.{Repo, Users.User, Sessions, Sessions.Session}
+  alias FgHttp.{Repo, Users.User, Sessions.Session}
 
   plug :redirect_authenticated when action in [:new]
   plug FgHttpWeb.Plugs.Authenticator when action in [:delete]
