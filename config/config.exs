@@ -19,15 +19,15 @@ import Config
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
-config :cf_http,
-  ecto_repos: [CfHttp.Repo]
+config :fg_http,
+  ecto_repos: [FgHttp.Repo]
 
 # Configures the endpoint
-config :cf_http, CfHttpWeb.Endpoint,
+config :fg_http, FgHttpWeb.Endpoint,
   url: [host: "localhost"],
   secret_key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5SD",
-  render_errors: [view: CfHttpWeb.ErrorView, accepts: ~w(html json)],
-  pubsub_server: CfHttp.PubSub
+  render_errors: [view: FgHttpWeb.ErrorView, accepts: ~w(html json)],
+  pubsub_server: FgHttp.PubSub
 
 # Configures Elixir's Logger
 config :logger, :console,

@@ -21,11 +21,11 @@ end
 
 # Configure your database
 db_url = System.get_env("DATABASE_URL")
-config :cf_http, CfHttp.Repo, DBConfig.config(db_url)
+config :fg_http, FgHttp.Repo, DBConfig.config(db_url)
 
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
-config :cf_http, CfHttpWeb.Endpoint,
+config :fg_http, FgHttpWeb.Endpoint,
   http: [port: 4002],
   server: false
 
