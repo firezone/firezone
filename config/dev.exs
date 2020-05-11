@@ -1,7 +1,7 @@
 import Config
 
 # Configure your database
-config :cf_http, CfHttp.Repo,
+config :fg_http, FgHttp.Repo,
   username: "fireguard",
   password: "postgres",
   database: "fireguard_dev",
@@ -15,7 +15,7 @@ config :cf_http, CfHttp.Repo,
 # The watchers configuration can be used to run external
 # watchers to your application. For example, we use it
 # with webpack to recompile .js and .css sources.
-config :cf_http, CfHttpWeb.Endpoint,
+config :fg_http, FgHttpWeb.Endpoint,
   http: [port: 4000],
   debug_errors: true,
   code_reloader: true,
@@ -26,7 +26,7 @@ config :cf_http, CfHttpWeb.Endpoint,
       "--mode",
       "development",
       "--watch-stdin",
-      cd: Path.expand("../apps/cf_http/assets", __DIR__)
+      cd: Path.expand("../apps/fg_http/assets", __DIR__)
     ]
   ]
 
@@ -55,13 +55,13 @@ config :cf_http, CfHttpWeb.Endpoint,
 # different ports.
 
 # Watch static and templates for browser reloading.
-config :cf_http, CfHttpWeb.Endpoint,
+config :fg_http, FgHttpWeb.Endpoint,
   live_reload: [
     patterns: [
-      ~r"apps/cf_http/priv/static/.*(js|css|png|jpeg|jpg|gif|svg)$",
-      ~r"apps/cf_http/priv/gettext/.*(po)$",
-      ~r"apps/cf_http/lib/cf_http_web/(live|views)/.*(ex)$",
-      ~r"apps/cf_http/lib/cf_http_web/templates/.*(eex)$"
+      ~r"apps/fg_http/priv/static/.*(js|css|png|jpeg|jpg|gif|svg)$",
+      ~r"apps/fg_http/priv/gettext/.*(po)$",
+      ~r"apps/fg_http/lib/fg_http_web/(live|views)/.*(ex)$",
+      ~r"apps/fg_http/lib/fg_http_web/templates/.*(eex)$"
     ]
   ]
 

@@ -12,13 +12,13 @@ defmodule FireguardUmbrella.MixProject do
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       releases: [
-        cf_http: [
-          applications: [cf_http: :permanent],
+        fg_http: [
+          applications: [fg_http: :permanent],
           include_executables_for: [:unix],
           cookie: System.get_env("ERL_COOKIE")
         ],
-        cf_wall: [
-          applications: [cf_wall: :permanent],
+        fg_wall: [
+          applications: [fg_wall: :permanent],
           include_executables_for: [:unix],
           cookie: System.get_env("ERL_COOKIE")
         ]
