@@ -1,4 +1,8 @@
 defmodule CfHttpWeb.Router do
+  @moduledoc """
+  Main Application Router
+  """
+
   use CfHttpWeb, :router
 
   pipeline :browser do
@@ -24,6 +28,10 @@ defmodule CfHttpWeb.Router do
     end
 
     resources "/rules", RuleController, only: [:show, :update, :delete, :edit]
+
+    resources "/sessions", SessionController, only: [:new, :create, :delete]
+
+    get "/", DeviceController, :index
   end
 
   # Other scopes may use custom stacks.

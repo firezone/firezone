@@ -1,8 +1,10 @@
 defmodule CfHttpWeb.DeviceController do
-  use CfHttpWeb, :controller
+  @moduledoc """
+  Implements the CRUD for a Device
+  """
 
-  alias CfHttp.Devices
-  alias CfHttp.Devices.Device
+  use CfHttpWeb, :controller
+  alias CfHttp.{Devices, Devices.Device}
 
   plug CfHttpWeb.Plugs.Authenticator
 

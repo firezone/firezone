@@ -19,6 +19,10 @@
       </nav>
     </header>
     <hr>
+    <main>
+      <%= @inner_content %>
+    </main>
+
     <script type="text/javascript" src="<%= Routes.static_path(@conn, "/js/app.js") %>"></script>
   </body>
 </html>

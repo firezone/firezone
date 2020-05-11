@@ -4,30 +4,26 @@ defmodule CfHttpWeb.UserController do
   """
 
   use CfHttpWeb, :controller
-  alias CfHttp.{Repo, Users.User}
+  alias CfHttp.{Repo, Users, Users.User}
 
   plug CfHttpWeb.Plugs.Authenticator when action in [:show, :edit, :update, :delete]
 
   # GET /users/new
   def new(conn, _params) do
-    changeset = User.changeset(%User{})
-
-    conn
-    |> render("new.html", changeset: changeset)
+    changeset = Users.change_user(%User{})
+    render(conn, "new.html", changeset: changeset)
   end
 
   # POST /users
-  def create(conn, params) do
-    changeset = User.changeset(%User{}, params)
-
-    case Repo.insert(changeset) do
+  def create(conn, %{"user" => user_params}) do
+    case Users.create_user(conn, user_params) do
       {:ok, user} ->
         conn
         |> assign(:current_user, user)
-        |> put_flash(:info, "User created successfully")
+        |> put_flash(:info, "User created successfully.")
         |> redirect(to: Routes.device_path(conn, :index))
 
-      {:error, changeset} ->
+      {:error, %Ecto.Changeset{} = changeset} ->
         conn
         |> put_flash(:error, "Error creating user.")
         |> render("new.html", changeset: changeset)
@@ -36,10 +32,10 @@ defmodule CfHttpWeb.UserController do
 
   # GET /user/edit
   def edit(conn, _params) do
-    changeset = User.changeset(conn.current_user)
+    user = conn.current_user
+    changeset = Users.change_user(user)
 
-    conn
-    |> render("edit.html", changeset: changeset)
+    render(conn, "edit.html", changeset: changeset)
   end
 
   # GET /user
@@ -73,7 +69,7 @@ defmodule CfHttpWeb.UserController do
         conn
         |> assign(:current_user, nil)
         |> put_flash(:info, "User deleted successfully.")
-        |> redirect(to: Routes.page_path(conn, :index))
+        |> redirect(to: "/")
 
       {:error, _changeset} ->
         conn
