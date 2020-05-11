@@ -4,10 +4,7 @@ defmodule CfHttpWeb.RuleController do
   """
 
   use CfHttpWeb, :controller
-
-  alias CfHttp.Devices
-  alias CfHttp.Rules
-  alias CfHttp.Rules.Rule
+  alias CfHttp.{Devices, Rules, Rules.Rule}
 
   plug CfHttpWeb.Plugs.Authenticator
 
@@ -44,6 +41,7 @@ defmodule CfHttpWeb.RuleController do
   def edit(conn, %{"id" => id}) do
     rule = Rules.get_rule!(id)
     changeset = Rules.change_rule(rule)
+
     render(conn, "edit.html", rule: rule, changeset: changeset)
   end
 
