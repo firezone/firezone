@@ -1,0 +1,32 @@
+<h1>Listing Rules</h1>
+
+<table>
+  <thead>
+    <tr>
+      <th>Destination</th>
+      <th>Port</th>
+      <th>Protocol</th>
+      <th>Enabled</th>
+
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+<%= for rule <- @rules do %>
+    <tr>
+      <td><%= rule.destination %></td>
+      <td><%= rule.port %></td>
+      <td><%= rule.protocol %></td>
+      <td><%= rule.enabled %></td>
+
+      <td>
+        <span><%= link "Show", to: Routes.rule_path(@conn, :show, rule) %></span>
+        <span><%= link "Edit", to: Routes.rule_path(@conn, :edit, rule) %></span>
+        <span><%= link "Delete", to: Routes.rule_path(@conn, :delete, rule), method: :delete, data: [confirm: "Are you sure?"] %></span>
+      </td>
+    </tr>
+<% end %>
+  </tbody>
+</table>
+
+<span><%= link "New Rule", to: Routes.rule_path(@conn, :new, @device) %></span>
