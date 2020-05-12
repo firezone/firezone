@@ -20,12 +20,16 @@ import Config
 config :phoenix, :json_library, Jason
 
 config :fg_http,
-  ecto_repos: [FgHttp.Repo]
+  ecto_repos: [FgHttp.Repo],
+  vpn_endpoint: "localhost:51820"
 
 # Configures the endpoint
 config :fg_http, FgHttpWeb.Endpoint,
   url: [host: "localhost"],
   secret_key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5SD",
+  live_view: [
+    signing_salt: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDejX"
+  ],
   render_errors: [view: FgHttpWeb.ErrorView, accepts: ~w(html json)],
   pubsub_server: FgHttp.PubSub
 
