@@ -23,6 +23,7 @@ defmodule FgHttpWeb do
 
       import Plug.Conn
       import FgHttpWeb.Gettext
+      import Phoenix.LiveView.Controller
       alias FgHttpWeb.Router.Helpers, as: Routes
     end
   end
@@ -41,6 +42,7 @@ defmodule FgHttpWeb do
 
       import FgHttpWeb.ErrorHelpers
       import FgHttpWeb.Gettext
+      import Phoenix.LiveView.Helpers
       alias FgHttpWeb.Router.Helpers, as: Routes
     end
   end
@@ -50,6 +52,7 @@ defmodule FgHttpWeb do
       use Phoenix.Router
       import Plug.Conn
       import Phoenix.Controller
+      import Phoenix.LiveView.Router
     end
   end
 

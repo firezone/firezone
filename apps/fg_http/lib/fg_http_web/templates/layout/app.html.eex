@@ -11,18 +11,16 @@
   </head>
   <body>
     <header class="w-100 fixed bg-black-90 ph3 pv3 ph4-m ph5-l">
-      <nav class="f6 fw6 ttu tracked fl">
-        <a class="link dim white dib mr3" href="<%= FgHttpWeb.Endpoint.url() %>">FireGuard</a>
-      </nav>
-      <nav class="f6 fw6 ttu tracked fr">
-        <a class="link dim white dib mr3" href="<%= Routes.device_path(@conn, :index) %>">Devices</a>
-      </nav>
+        <nav class="f6 fw6 ttu tracked fl">
+          <a class="link dim white dib mr3" href="<%= FgHttpWeb.Endpoint.url() %>">FireGuard</a>
+        </nav>
+        <nav class="f6 fw6 ttu tracked fr">
+          <a class="link dim white dib mr3" href="<%= Routes.device_path(@conn, :index) %>">Devices</a>
+        </nav>
     </header>
-    <hr>
-    <main>
+    <main class="mw7 mw9-ns center pa3 pt5 ph5-ns">
       <%= @inner_content %>
     </main>
-
     <script type="text/javascript" src="<%= Routes.static_path(@conn, "/js/app.js") %>"></script>
   </body>
 </html>
