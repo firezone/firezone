@@ -23,6 +23,11 @@ config :fg_http,
   ecto_repos: [FgHttp.Repo],
   vpn_endpoint: "localhost:51820"
 
+config :fg_vpn,
+  # XXX: Generate these on the VPN host
+  privkey: "mFZhBZIQATDzM+Mr671uiryJfSzKQhEA2RYg6JaWiGc=",
+  pubkey: "JId8GN8iPmdQXOLSdcsSkaW4i60e1/rpHB/03rsaKBk="
+
 # Configures the endpoint
 config :fg_http, FgHttpWeb.Endpoint,
   url: [host: "localhost"],
