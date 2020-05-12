@@ -5,7 +5,7 @@
 <div class="cf">
   <div class="fl w-50">
 <pre class="bg-near-white pl4">
-<code id="wg-conf" phx-hook="QrEncode">
+<code id="wg-conf">
 [Peer]
 PublicKey = <%= Application.fetch_env!(:fg_vpn, :pubkey) %>
 AllowedIPs = 0.0.0.0/0, ::/0
@@ -24,4 +24,10 @@ Endpoint = <%= Application.fetch_env!(:fg_http, :vpn_endpoint) %>
 
 <p>
   Waiting for device connection...
+  <span phx-hook="QrEncode">
+    <%= if @device.public_key do %>
+      Connected! Device Public Key: <%= @device.public_key %>
+      <a href="#">Configure your device -></a>
+    <% end %>
+  </span>
 </p>
