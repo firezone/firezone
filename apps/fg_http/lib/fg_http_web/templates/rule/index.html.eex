@@ -29,4 +29,6 @@
   </tbody>
 </table>
 
-<span><%= link "New Rule", to: Routes.rule_path(@conn, :new, @device) %></span>
+<p>
+  <%= link "New Rule", to: Routes.rule_path(@conn, :new, @device) %>
+</p>
