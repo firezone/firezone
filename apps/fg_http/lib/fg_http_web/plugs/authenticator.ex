@@ -9,7 +9,7 @@ defmodule FgHttpWeb.Plugs.Authenticator do
   def init(default), do: default
 
   def call(conn, _default) do
-    user = %User{email: "dev_user@fireguard.network"}
+    user = %User{id: 1, email: "dev_user@fireguard.network"}
     assign(conn, :current_user, user)
   end
 end

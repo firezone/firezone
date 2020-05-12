@@ -22,6 +22,24 @@ defmodule FgHttp.Devices do
   end
 
   @doc """
+  Returns a new device with an initialized configuration.
+
+  ## Examples
+
+      iex> new_device()
+      %Device{
+        "conf" => "new_conf"
+      }
+  """
+  def new_device(attrs \\ %{}) do
+    device = %Device{
+      public_key: "S1yT3gj0rLFcz4o7qGAbQqs8aFh7R3nCMF+WU0nlWGs="
+    }
+    Map.merge(device, attrs)
+  end
+
+
+  @doc """
   Gets a single device.
 
   Raises `Ecto.NoResultsError` if the Device does not exist.
