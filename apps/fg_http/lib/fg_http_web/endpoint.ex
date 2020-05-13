@@ -10,8 +10,7 @@ defmodule FgHttpWeb.Endpoint do
     signing_salt: "Z9eq8iof"
   ]
 
-  socket "/live", Phoenix.LiveView.Socket,
-    websocket: [connect_info: [session: @session_options]]
+  socket "/live", Phoenix.LiveView.Socket, websocket: [connect_info: [session: @session_options]]
 
   socket "/socket", FgHttpWeb.UserSocket,
     websocket: true,
