@@ -1,31 +1,6 @@
 <h1>New Device</h1>
 
-<p>
-  Add the following to your Wireguard configuration file:
-</p>
-
-<!-- TODO: Actually generate this -->
-
-<div class="cf">
-  <div class="fl w-50">
-<pre class="bg-near-white pl4">
-<code id="wg-conf">
 <%= live_render(@conn, FgHttpWeb.NewDeviceLive, session: %{"current_user_id" => 1}) %>
-</code>
-</pre>
-  </div>
-  <div class="fr w-50 pa2">
-    <canvas id="qr-canvas"></canvas>
-  </div>
-</div>
-
-<p>
-  When we receive a connection from your device, we'll prompt you verify it here.
-</p>
-
-<p>
-  Waiting for device connection...
-</p>
 
 <p>
   <%= link "Back", to: Routes.device_path(@conn, :index) %>

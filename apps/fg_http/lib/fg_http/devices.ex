@@ -33,7 +33,6 @@ defmodule FgHttp.Devices do
   """
   def new_device(attrs \\ %{}) do
     device = %Device{
-      public_key: "S1yT3gj0rLFcz4o7qGAbQqs8aFh7R3nCMF+WU0nlWGs="
     }
     Map.merge(device, attrs)
   end
