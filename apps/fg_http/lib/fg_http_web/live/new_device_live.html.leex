@@ -1,0 +1,33 @@
+<p>
+  Add the following to your Wireguard configuration file:
+</p>
+
+<div class="cf">
+  <div class="fl w-50">
+<pre class="bg-near-white pl4">
+<code id="wg-conf">
+[Peer]
+PublicKey = <%= Application.fetch_env!(:fg_vpn, :pubkey) %>
+AllowedIPs = 0.0.0.0/0, ::/0
+Endpoint = <%= Application.fetch_env!(:fg_http, :vpn_endpoint) %>
+</code>
+</pre>
+  </div>
+  <div class="fr w-50 pa2">
+    <canvas id="qr-canvas"></canvas>
+  </div>
+</div>
+
+<p>
+  When we receive a connection from your device, we'll prompt you verify it here.
+</p>
+
+<p>
+  Waiting for device connection...
+  <span phx-hook="QrEncode">
+    <%= if @device.public_key do %>
+      Connected! Device Public Key: <%= @device.public_key %>
+      <a href="#">Configure your device -></a>
+    <% end %>
+  </span>
+</p>
