@@ -19,7 +19,7 @@ defmodule FgHttp.Users.User do
   def changeset(user, attrs \\ %{}) do
     user
     |> cast(attrs, [:email, :confirmed_at, :password_digest, :last_signed_in_at])
-    |> validate_required([:email, :last_signed_in_at])
+    |> validate_required([:email])
     |> unique_constraint(:email)
   end
 end

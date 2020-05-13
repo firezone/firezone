@@ -4,12 +4,13 @@ defmodule FgHttpWeb.Plugs.Authenticator do
   """
 
   import Plug.Conn
-  alias FgHttp.Users.User
+  alias FgHttp.{Users.User, Repo}
+
 
   def init(default), do: default
 
   def call(conn, _default) do
-    user = %User{id: 1, email: "dev_user@fireguard.network"}
+    user = Repo.one(User)
     assign(conn, :current_user, user)
   end
 end
