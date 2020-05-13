@@ -7,11 +7,6 @@
   </li>
 
   <li>
-    <strong>Verified at:</strong>
-    <%= @device.verified_at %>
-  </li>
-
-  <li>
     <strong>Public key:</strong>
     <%= @device.public_key %>
   </li>

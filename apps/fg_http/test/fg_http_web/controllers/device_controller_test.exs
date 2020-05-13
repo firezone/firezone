@@ -2,13 +2,19 @@ defmodule FgHttpWeb.DeviceControllerTest do
   use FgHttpWeb.ConnCase
 
   alias FgHttp.Devices
+  alias FgHttp.Users
 
   @create_attrs %{name: "some name"}
   @update_attrs %{name: "some updated name"}
-  @invalid_attrs %{name: nil}
+  @invalid_attrs %{user_id: nil}
+
+  def fixture(:user) do
+    {:ok, user} = Users.create_user(%{email: "test"})
+    user
+  end
 
   def fixture(:device) do
-    {:ok, device} = Devices.create_device(@create_attrs)
+    {:ok, device} = Devices.create_device(Map.merge(%{user_id: fixture(:user).id}, @create_attrs))
     device
   end
 
@@ -21,6 +27,9 @@ defmodule FgHttpWeb.DeviceControllerTest do
 
   describe "new device" do
     test "renders form", %{conn: conn} do
+      # Mock authentication
+      conn = Plug.Conn.assign(conn, :current_user, fixture(:user))
+
       conn = get(conn, Routes.device_path(conn, :new))
       assert html_response(conn, 200) =~ "New Device"
     end
