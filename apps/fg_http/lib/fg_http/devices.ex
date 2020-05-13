@@ -91,6 +91,19 @@ defmodule FgHttp.Devices do
   end
 
   @doc """
+  Verifies a Device.
+
+  ## Examples
+
+      iex> verify!(device.id)
+      {:ok, %Device{}}
+  """
+  def verify(id) do
+    get_device!(id)
+    |> update_device(%{verified_at: DateTime.utc_now})
+  end
+
+  @doc """
   Deletes a device.
 
   ## Examples

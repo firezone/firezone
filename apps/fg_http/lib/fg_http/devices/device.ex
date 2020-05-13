@@ -20,7 +20,7 @@ defmodule FgHttp.Devices.Device do
   @doc false
   def changeset(device, attrs) do
     device
-    |> cast(attrs, [:name, :public_key])
-    |> validate_required([:name])
+    |> cast(attrs, [:user_id, :verified_at, :name, :public_key])
+    |> validate_required([:user_id])
   end
 end

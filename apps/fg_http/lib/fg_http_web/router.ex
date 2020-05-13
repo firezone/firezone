@@ -23,7 +23,7 @@ defmodule FgHttpWeb.Router do
     resources "/user", UserController, singleton: true, only: [:show, :edit, :update, :delete]
     resources "/users", UserController, only: [:new, :create]
 
-    resources "/devices", DeviceController, except: [:create] do
+    resources "/devices", DeviceController do
       resources "/rules", RuleController, only: [:new, :index, :create]
     end
 
