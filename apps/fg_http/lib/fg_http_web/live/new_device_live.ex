@@ -7,7 +7,6 @@ defmodule FgHttpWeb.NewDeviceLive do
 
   def mount(_params, %{}, socket) do
     user_id = "1"
-    IO.inspect(socket)
     if connected?(socket), do: wait_for_device(socket)
 
     device = %Device{id: "1", user_id: user_id}

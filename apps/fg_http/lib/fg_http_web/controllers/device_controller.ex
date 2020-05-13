@@ -21,18 +21,13 @@ defmodule FgHttpWeb.DeviceController do
   def create(conn, %{"device" => device_params}) do
     create_params = %{
       "user_id" => conn.assigns.current_user.id,
-      "verified_at" => DateTime.utc_now,
       "name" => "Auto"
     }
     all_params = Map.merge(device_params, create_params)
-    IO.puts "Create device with params: "
-    IO.inspect all_params
     case Devices.create_device(all_params) do
       {:ok, device} ->
-        IO.inspect(device)
         redirect(conn, to: Routes.device_path(conn, :show, device))
       {:error, %Ecto.Changeset{} = changeset} ->
-        IO.inspect(changeset)
         render(conn, "new.html", changeset: changeset)
     end
   end
