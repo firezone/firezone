@@ -32,11 +32,9 @@ defmodule FgHttp.Devices do
       }
   """
   def new_device(attrs \\ %{}) do
-    device = %Device{
-    }
+    device = %Device{}
     Map.merge(device, attrs)
   end
-
 
   @doc """
   Gets a single device.

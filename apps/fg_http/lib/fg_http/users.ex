@@ -102,5 +102,3 @@ defmodule FgHttp.Users do
     User.changeset(user, %{})
   end
 end
-
-

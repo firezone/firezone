@@ -4,7 +4,6 @@
   <tbody>
     <tr class="striped--near-white">
       <th class="pv2 ph3 tl f6 fw6 ttu">Name</th>
-      <th class="pv2 ph3 tl f6 fw6 ttu">Verified at</th>
       <th class="pv2 ph3 tl f6 fw6 ttu">Public key</th>
 
       <th></th>
@@ -12,7 +11,6 @@
 <%= for device <- @devices do %>
     <tr class="striped--near-white">
       <td class="pv2 ph3 tl f6 fw6 ttu"><%= device.name %></td>
-      <td class="pv2 ph3 tl f6 fw6 ttu"><%= device.verified_at %></td>
       <td class="pv2 ph3 tl f6 fw6 ttu"><%= device.public_key %></td>
 
       <td>

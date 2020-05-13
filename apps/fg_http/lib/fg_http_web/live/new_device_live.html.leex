@@ -1,5 +1,5 @@
 <p>
-  Add the following to your Wireguard configuration file:
+  Add the following to your WireGuard™ configuration file:
 </p>
 
 <div class="cf">
@@ -18,16 +18,33 @@ Endpoint = <%= Application.fetch_env!(:fg_http, :vpn_endpoint) %>
   </div>
 </div>
 
-<p>
-  When we receive a connection from your device, we'll prompt you verify it here.
-</p>
-
-<p>
-  Waiting for device connection...
-  <span phx-hook="QrEncode">
-    <%= if @device.public_key do %>
-      Connected! Device Public Key: <%= @device.public_key %>
-      <a href="#">Configure your device -></a>
-    <% end %>
-  </span>
-</p>
+<div phx-hook="QrEncode">
+  <%= unless @device.public_key do %>
+    <h4>
+      Waiting for device connection...
+    </h4>
+    <p>
+      When we receive a connection from your device, we'll prompt you verify it here.
+    </p>
+  <% else %>
+    <h4>Connected!</h4>
+    <p>
+      Device Public Key: <%= @device.public_key %>
+    </p>
+    <p>
+      <%# XXX: Use the public key sent by the actual device and not the one here %>
+      <%=
+        link("This looks good, verify and continue. ->",
+        to: Routes.device_path(@socket, :create, "device[public_key]": @device.public_key),
+        method: :post)
+      %>
+    </p>
+    <p>
+      <%=
+        link("<- Something's wrong. Don't add this device and go back.",
+        to: Routes.device_path(@socket, :index),
+        method: :delete)
+      %>
+    </p>
+  <% end %>
+</div>
