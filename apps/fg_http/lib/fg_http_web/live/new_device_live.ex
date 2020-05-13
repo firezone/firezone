@@ -1,9 +1,12 @@
 defmodule FgHttpWeb.NewDeviceLive do
+  @moduledoc """
+  Manages LiveView for New Devices
+  """
+
   use Phoenix.LiveView
   use Phoenix.HTML
-  alias FgHttpWeb.Router.Helpers, as: Routes
-
   alias FgHttp.Devices.Device
+  alias FgHttpWeb.Router.Helpers, as: Routes
 
   def mount(_params, %{}, socket) do
     user_id = "1"
@@ -13,9 +16,8 @@ defmodule FgHttpWeb.NewDeviceLive do
     {:ok, assign(socket, :device, device)}
   end
 
-  defp wait_for_device(socket) do
-    # TODO: pass socket to fg_vpn somehow
-    IO.inspect(socket)
+  defp wait_for_device(_socket) do
+    # XXX: pass socket to fg_vpn somehow
     :timer.send_after(3000, self(), :update)
   end
 

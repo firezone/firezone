@@ -4,8 +4,7 @@ defmodule FgHttpWeb.Plugs.Authenticator do
   """
 
   import Plug.Conn
-  alias FgHttp.{Users.User, Repo}
-
+  alias FgHttp.{Repo, Users.User}
 
   def init(default), do: default
 

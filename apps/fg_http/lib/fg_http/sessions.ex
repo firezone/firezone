@@ -102,4 +102,3 @@ defmodule FgHttp.Sessions do
     Session.changeset(session, %{})
   end
 end
-
