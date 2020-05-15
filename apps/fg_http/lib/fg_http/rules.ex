@@ -18,7 +18,7 @@ defmodule FgHttp.Rules do
 
   """
   def list_rules(device_id) do
-    Repo.all(from r in Rule, where: r.device_id == ^device_id, select: "*")
+    Repo.all(from r in Rule, where: r.device_id == ^device_id)
   end
 
   def list_rules do

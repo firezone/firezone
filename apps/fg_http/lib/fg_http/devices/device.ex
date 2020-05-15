@@ -11,7 +11,7 @@ defmodule FgHttp.Devices.Device do
   schema "devices" do
     field :name, :string
     field :public_key, :string
-    field :last_ip, :map
+    field :last_ip, EctoNetwork.INET
 
     has_many :rules, Rule
     belongs_to :user, User

@@ -3,18 +3,22 @@
 <table class="collapse ba br2 b--black-10 pv2 ph3 mt4">
   <tbody>
     <tr class="striped--near-white">
+      <th class="pv2 ph3 tl f6 fw6 ttu">Action</th>
       <th class="pv2 ph3 tl f6 fw6 ttu">Destination</th>
       <th class="pv2 ph3 tl f6 fw6 ttu">Port</th>
       <th class="pv2 ph3 tl f6 fw6 ttu">Protocol</th>
+      <th class="pv2 ph3 tl f6 fw6 ttu">Priority</th>
       <th class="pv2 ph3 tl f6 fw6 ttu">Enabled</th>
 
       <th></th>
     </tr>
 <%= for rule <- @rules do %>
     <tr class="striped--near-white">
+      <td  class="pv2 ph3 tl f6 fw6 ttu"><%= rule.action %></td>
       <td  class="pv2 ph3 tl f6 fw6 ttu"><%= rule.destination %></td>
       <td  class="pv2 ph3 tl f6 fw6 ttu"><%= rule.port %></td>
       <td  class="pv2 ph3 tl f6 fw6 ttu"><%= rule.protocol %></td>
+      <td  class="pv2 ph3 tl f6 fw6 ttu"><%= rule.priority %></td>
       <td  class="pv2 ph3 tl f6 fw6 ttu"><%= rule.enabled %></td>
 
       <td>

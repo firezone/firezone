@@ -20,15 +20,19 @@ defmodule FgHttpWeb.RuleController do
     render(conn, "new.html", changeset: changeset, device: device)
   end
 
-  def create(conn, %{"rule" => rule_params}) do
-    case Rules.create_rule(rule_params) do
+  def create(conn, %{"device_id" => device_id, "rule" => rule_params}) do
+    # XXX RBAC
+    all_params = Map.merge(rule_params, %{"device_id" => device_id})
+
+    case Rules.create_rule(all_params) do
       {:ok, rule} ->
         conn
         |> put_flash(:info, "Rule created successfully.")
         |> redirect(to: Routes.rule_path(conn, :show, rule))
 
       {:error, %Ecto.Changeset{} = changeset} ->
-        render(conn, "new.html", changeset: changeset)
+        device = Devices.get_device!(device_id)
+        render(conn, "new.html", device: device, changeset: changeset)
     end
   end
 

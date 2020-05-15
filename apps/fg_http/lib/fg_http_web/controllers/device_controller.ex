@@ -9,7 +9,7 @@ defmodule FgHttpWeb.DeviceController do
   plug FgHttpWeb.Plugs.Authenticator
 
   def index(conn, _params) do
-    devices = Devices.list_devices()
+    devices = Devices.list_devices(conn.assigns.current_user.id)
     render(conn, "index.html", devices: devices)
   end
 
