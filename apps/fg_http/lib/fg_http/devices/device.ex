@@ -10,6 +10,7 @@ defmodule FgHttp.Devices.Device do
     field :name, :string
     field :public_key, :string
     field :user_id, :id
+    field :last_ip, :map
 
     has_many :rules, FgHttp.Rules.Rule
 
@@ -19,7 +20,7 @@ defmodule FgHttp.Devices.Device do
   @doc false
   def changeset(device, attrs) do
     device
-    |> cast(attrs, [:user_id, :name, :public_key])
+    |> cast(attrs, [:last_ip, :user_id, :name, :public_key])
     |> validate_required([:user_id])
   end
 end
