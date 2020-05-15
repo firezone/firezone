@@ -3,6 +3,11 @@
 <ul>
 
   <li>
+    <strong>Action:</strong>
+    <%= @rule.action %>
+  </li>
+
+  <li>
     <strong>Destination:</strong>
     <%= @rule.destination %>
   </li>
@@ -18,6 +23,11 @@
   </li>
 
   <li>
+    <strong>Priority</strong>
+    <%= @rule.priority %>
+  </li>
+
+  <li>
     <strong>Enabled:</strong>
     <%= @rule.enabled %>
   </li>
@@ -25,4 +35,4 @@
 </ul>
 
 <span><%= link "Edit", to: Routes.rule_path(@conn, :edit, @rule) %></span>
-<span><%= link "Back", to: Routes.rule_path(@conn, :index, @rule.device) %></span>
+<span><%= link "Back", to: Routes.device_rule_path(@conn, :index, @rule.device_id) %></span>

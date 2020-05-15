@@ -1,5 +1,5 @@
-<h1>New Rule</h1>
+<h1>New Rule for Device <%= @device.name %></h1>
 
-<%= render "form.html", Map.put(assigns, :action, Routes.rule_path(@conn, :create, @device)) %>
+<%= render "form.html", Map.put(assigns, :action, Routes.device_rule_path(@conn, :create, @device)) %>
 
-<span><%= link "Back", to: Routes.rule_path(@conn, :index, @device) %></span>
+<span><%= link "Back", to: Routes.device_rule_path(@conn, :index, @device) %></span>

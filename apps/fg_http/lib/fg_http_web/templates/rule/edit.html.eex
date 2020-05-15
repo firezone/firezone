@@ -2,4 +2,4 @@
 
 <%= render "form.html", Map.put(assigns, :action, Routes.rule_path(@conn, :update, @rule)) %>
 
-<span><%= link "Back", to: Routes.rule_path(@conn, :index, @rule.device) %></span>
+<span><%= link "Back", to: Routes.device_rule_path(@conn, :index, @rule.device_id) %></span>

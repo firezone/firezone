@@ -6,11 +6,16 @@ defmodule FgHttp.Users.User do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias FgHttp.{Devices.Device, Sessions.Session}
+
   schema "users" do
     field :email, :string
     field :confirmed_at, :utc_datetime
     field :last_signed_in_at, :utc_datetime
     field :password_digest, :string
+
+    has_many :devices, Device
+    has_many :sessions, Session
 
     timestamps()
   end
