@@ -6,7 +6,7 @@ defmodule FgHttp.Repo.Migrations.CreateDevices do
       add :name, :string
       add :public_key, :string
       add :last_ip, :inet
-      add :user_id, references(:users, on_delete: :delete_all)
+      add :user_id, references(:users, on_delete: :delete_all), null: false
 
       timestamps()
     end

@@ -9,8 +9,7 @@ defmodule FgHttpWeb.RuleController do
   plug FgHttpWeb.Plugs.Authenticator
 
   def index(conn, %{"device_id" => device_id}) do
-    device = Devices.get_device!(device_id)
-
+    device = Devices.get_device!(device_id, with_rules: true)
     render(conn, "index.html", device: device, rules: device.rules)
   end
 

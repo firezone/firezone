@@ -52,6 +52,14 @@ defmodule FgHttp.Devices do
   """
   def get_device!(id), do: Repo.get!(Device, id)
 
+  def get_device!(id, with_rules: true) do
+    Repo.one(
+      from d in Device,
+        where: d.id == ^id,
+        preload: :rules
+    )
+  end
+
   @doc """
   Creates a device.
 

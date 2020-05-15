@@ -17,6 +17,10 @@ defmodule FgHttp.Rules do
       [%Rule{}, ...]
 
   """
+  def list_rules(device_id) do
+    Repo.all(from r in Rule, where: r.device_id == ^device_id, select: "*")
+  end
+
   def list_rules do
     Repo.all(Rule)
   end
