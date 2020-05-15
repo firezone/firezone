@@ -17,8 +17,10 @@ defmodule FgHttp.Devices do
       [%Device{}, ...]
 
   """
-  def list_devices do
-    Repo.all(Device)
+  def list_devices, do: Repo.all(Device)
+
+  def list_devices(user_id) do
+    Repo.all(from d in Device, where: d.user_id == ^user_id)
   end
 
   @doc """
