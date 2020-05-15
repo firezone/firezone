@@ -7,7 +7,7 @@ defmodule FgHttp.Rules.Rule do
   import Ecto.Changeset
 
   schema "rules" do
-    field :destination, :string
+    field :destination, :map
     field :enabled, :boolean, default: false
     field :port, :string
     field :protocol, :string
@@ -21,6 +21,6 @@ defmodule FgHttp.Rules.Rule do
   def changeset(rule, attrs) do
     rule
     |> cast(attrs, [:destination, :port, :protocol, :enabled])
-    |> validate_required([:destination, :port, :protocol, :enabled])
+    |> validate_required([:destination, :enabled])
   end
 end
