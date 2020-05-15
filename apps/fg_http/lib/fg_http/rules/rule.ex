@@ -6,13 +6,17 @@ defmodule FgHttp.Rules.Rule do
   use Ecto.Schema
   import Ecto.Changeset
 
-  schema "rules" do
-    field :destination, :map
-    field :enabled, :boolean, default: false
-    field :port, :string
-    field :protocol, :string
+  alias FgHttp.{Devices.Device}
 
-    belongs_to :device, FgHttp.Devices.Device
+  schema "rules" do
+    field :destination, EctoNetwork.INET
+    field :action, RuleActionEnum, default: "drop"
+    field :priority, :integer, default: 0
+    field :enabled, :boolean, default: true
+    field :port, :string
+    field :protocol, RuleProtocolEnum, default: "all"
+
+    belongs_to :device, Device
 
     timestamps()
   end
@@ -20,7 +24,7 @@ defmodule FgHttp.Rules.Rule do
   @doc false
   def changeset(rule, attrs) do
     rule
-    |> cast(attrs, [:destination, :port, :protocol, :enabled])
-    |> validate_required([:destination, :enabled])
+    |> cast(attrs, [:device_id, :priority, :action, :destination, :port, :protocol, :enabled])
+    |> validate_required([:device_id, :priority, :action, :destination, :protocol, :enabled])
   end
 end

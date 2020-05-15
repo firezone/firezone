@@ -6,13 +6,15 @@ defmodule FgHttp.Devices.Device do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias FgHttp.{Rules.Rule, Users.User}
+
   schema "devices" do
     field :name, :string
     field :public_key, :string
-    field :user_id, :id
     field :last_ip, :map
 
-    has_many :rules, FgHttp.Rules.Rule
+    has_many :rules, Rule
+    belongs_to :user, User
 
     timestamps()
   end

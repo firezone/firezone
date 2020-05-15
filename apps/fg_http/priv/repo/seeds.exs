@@ -23,9 +23,9 @@ Repo.transaction(fn ->
       user_id: user.id
     })
 
-  {:ok, rule} =
+  {:ok, _rule} =
     FgHttp.Rules.create_rule(%{
-      destination: %Postgrex.INET{address: {0, 0, 0, 0}, netmask: 0},
-      device_id: device.id
+      device_id: device.id,
+      destination: %Postgrex.INET{address: {0, 0, 0, 0}, netmask: 0}
     })
 end)

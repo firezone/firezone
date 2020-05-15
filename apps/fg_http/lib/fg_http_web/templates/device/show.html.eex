@@ -12,5 +12,9 @@
   </li>
 </ul>
 
-<span><%= link "Edit", to: Routes.device_path(@conn, :edit, @device) %></span>
-<span><%= link "Back", to: Routes.device_path(@conn, :index) %></span>
+<p>
+  <%= link "Show Rules for This Device", to: Routes.device_rule_path(@conn, :index, @device) %>
+</p>
+
+<p><%= link "Edit", to: Routes.device_path(@conn, :edit, @device) %></p>
+<p><%= link "Back", to: Routes.device_path(@conn, :index) %></p>
