@@ -20,6 +20,9 @@ defmodule FgHttpWeb.DeviceControllerTest do
 
   describe "index" do
     test "lists all devices", %{conn: conn} do
+      # Mock authentication
+      conn = Plug.Conn.assign(conn, :current_user, fixture(:user))
+
       conn = get(conn, Routes.device_path(conn, :index))
       assert html_response(conn, 200) =~ "Listing Devices"
     end
