@@ -17,8 +17,10 @@ defmodule FgHttp.Devices do
       [%Device{}, ...]
 
   """
-  def list_devices do
-    Repo.all(Device)
+  def list_devices, do: Repo.all(Device)
+
+  def list_devices(user_id) do
+    Repo.all(from d in Device, where: d.user_id == ^user_id)
   end
 
   @doc """
@@ -51,6 +53,14 @@ defmodule FgHttp.Devices do
 
   """
   def get_device!(id), do: Repo.get!(Device, id)
+
+  def get_device!(id, with_rules: true) do
+    Repo.one(
+      from d in Device,
+        where: d.id == ^id,
+        preload: :rules
+    )
+  end
 
   @doc """
   Creates a device.

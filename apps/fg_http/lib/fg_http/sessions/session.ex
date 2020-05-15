@@ -6,8 +6,10 @@ defmodule FgHttp.Sessions.Session do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias FgHttp.{Users.User}
+
   schema "sessions" do
-    field :user_id, :id
+    belongs_to :user, User
 
     timestamps()
   end
