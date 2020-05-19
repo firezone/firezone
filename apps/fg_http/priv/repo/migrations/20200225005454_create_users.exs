@@ -5,8 +5,9 @@ defmodule FgHttp.Repo.Migrations.CreateUsers do
     create table(:users) do
       add :email, :string
       add :confirmed_at, :utc_datetime
-      add :password_digest, :string
+      add :password_hash, :string
       add :last_signed_in_at, :utc_datetime
+      add :reset_sent_at, :utc_datetime
 
       timestamps()
     end
