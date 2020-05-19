@@ -9,7 +9,8 @@ defmodule FgHttpWeb.DeviceControllerTest do
   @invalid_attrs %{user_id: nil}
 
   def fixture(:user) do
-    {:ok, user} = Users.create_user(%{email: "test"})
+    attrs = %{email: "test", password: "foobar", password_confirmation: "foobar"}
+    {:ok, user} = Users.create_user(attrs)
     user
   end
 
