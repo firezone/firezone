@@ -2,6 +2,11 @@ repos:
   # Elixir config
   - repo: local
     hooks:
+      - id: mix-test
+        name: 'elixir: mix test'
+        entry: mix test
+        language: system
+        files: \.ex*$
       - id: mix-format
         name: 'elixir: mix format'
         entry: mix format --check-formatted
