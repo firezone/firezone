@@ -29,10 +29,11 @@ defmodule FgHttp.Users.User do
   @doc false
   def create_changeset(user, attrs \\ %{}) do
     user
-    |> cast(attrs, [:email, :password, :password_confirmation])
+    |> cast(attrs, [:email, :password_hash, :password, :password_confirmation])
     |> validate_required([:email, :password, :password_confirmation])
     |> unique_constraint(:email)
     |> put_password_hash()
+    |> validate_required([:password_hash])
   end
 
   # Only password being updated
@@ -50,6 +51,8 @@ defmodule FgHttp.Users.User do
     |> cast(attrs, [:email, :password, :password_confirmation, :current_password])
     |> verify_current_password(attrs[:current_password])
     |> validate_required([:password, :password_confirmation, :current_password])
+    |> put_password_hash()
+    |> validate_required([:password_hash])
   end
 
   # Only email being updated
@@ -65,7 +68,7 @@ defmodule FgHttp.Users.User do
   end
 
   def authenticate_user(user, password_candidate) do
-    Argon2.check_pass(user.password, password_candidate, hash_key: :password)
+    Argon2.check_pass(user, password_candidate)
   end
 
   defp verify_current_password(user, current_password) do
@@ -79,7 +82,7 @@ defmodule FgHttp.Users.User do
            changes: %{password: password}
          } = changeset
        ) do
-    change(changeset, password: Argon2.hash_pwd_salt(password))
+    change(changeset, password_hash: Argon2.hash_pwd_salt(password))
   end
 
   defp put_password_hash(changeset), do: changeset

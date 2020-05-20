@@ -42,8 +42,7 @@ Endpoint = <%= Application.fetch_env!(:fg_http, :vpn_endpoint) %>
     <p>
       <%=
         link("<- Something's wrong. Don't add this device and go back.",
-        to: Routes.device_path(@socket, :index),
-        method: :delete)
+        to: Routes.device_path(@socket, :index))
       %>
     </p>
   <% end %>
