@@ -6,7 +6,7 @@ repos:
         name: 'elixir: mix test'
         entry: mix test
         language: system
-        files: \.exs?$
+        files: \.exs*$
       - id: mix-format
         name: 'elixir: mix format'
         entry: mix format --check-formatted
