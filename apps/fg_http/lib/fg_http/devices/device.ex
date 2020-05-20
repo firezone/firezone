@@ -23,6 +23,6 @@ defmodule FgHttp.Devices.Device do
   def changeset(device, attrs) do
     device
     |> cast(attrs, [:last_ip, :user_id, :name, :public_key])
-    |> validate_required([:user_id])
+    |> validate_required([:user_id, :name, :public_key])
   end
 end

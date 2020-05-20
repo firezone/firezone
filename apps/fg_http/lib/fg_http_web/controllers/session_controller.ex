@@ -3,11 +3,11 @@ defmodule FgHttpWeb.SessionController do
   Implements the CRUD for a Session
   """
 
+  alias FgHttp.{Sessions, Sessions.Session}
   use FgHttpWeb, :controller
-  alias FgHttp.{Repo, Sessions.Session, Users.User}
 
   plug :redirect_authenticated when action in [:new]
-  plug FgHttpWeb.Plugs.Authenticator when action in [:delete]
+  plug FgHttpWeb.Plugs.SessionLoader when action in [:delete]
 
   # GET /sessions/new
   def new(conn, _params) do
@@ -18,10 +18,8 @@ defmodule FgHttpWeb.SessionController do
 
   # Sign In
   # POST /sessions
-  def create(conn, params) do
-    changeset = Session.changeset(%Session{}, params)
-
-    case Repo.insert(changeset) do
+  def create(conn, %{"session" => session_params}) do
+    case Sessions.create_session(session_params) do
       {:ok, session} ->
         conn
         |> assign(:current_session, session)
@@ -31,29 +29,32 @@ defmodule FgHttpWeb.SessionController do
       {:error, changeset} ->
         conn
         |> put_flash(:error, "Error creating session.")
-        |> render("new.html", changeset: changeset)
+        |> render("new.html", changeset: changeset, user_signed_in?: false)
     end
   end
 
   # Sign Out
   # DELETE /session
   def delete(conn, _params) do
-    case Repo.delete(conn.current_session) do
+    session = conn.assigns.current_session
+
+    case Sessions.delete_session(session) do
       {:ok, _session} ->
         conn
-        |> assign(:current_session, nil)
-        |> put_flash(:info, "Session deleted successfully.")
+        |> clear_session
+        |> put_flash(:info, "Signed out successfully.")
         |> redirect(to: "/")
     end
   end
 
   defp redirect_authenticated(conn, _) do
-    user = %User{id: 1, email: "dev_user@fireguard.network"}
-    session = %Session{user_id: user.id}
-
-    conn
-    |> assign(:current_session, session)
-    |> redirect(to: "/")
-    |> halt()
+    if Map.get(conn.assigns, :user_signed_in?) do
+      conn
+      |> redirect(to: "/")
+      |> halt()
+    else
+      conn
+      |> assign(:user_signed_in?, false)
+    end
   end
 end

@@ -6,7 +6,7 @@ defmodule FgHttpWeb.DeviceController do
   use FgHttpWeb, :controller
   alias FgHttp.{Devices, Devices.Device}
 
-  plug FgHttpWeb.Plugs.Authenticator
+  plug FgHttpWeb.Plugs.SessionLoader
 
   def index(conn, _params) do
     devices = Devices.list_devices(conn.assigns.current_user.id)
@@ -18,13 +18,9 @@ defmodule FgHttpWeb.DeviceController do
     render(conn, "new.html", changeset: changeset)
   end
 
-  def create(conn, %{"device" => device_params}) do
-    create_params = %{
-      "user_id" => conn.assigns.current_user.id,
-      "name" => "Auto"
-    }
-
-    all_params = Map.merge(device_params, create_params)
+  def create(conn, %{"device" => %{"public_key" => _public_key} = device_params}) do
+    our_params = %{user_id: conn.assigns.current_user.id, name: "Default"}
+    all_params = Map.merge(device_params, our_params)
 
     case Devices.create_device(all_params) do
       {:ok, device} ->

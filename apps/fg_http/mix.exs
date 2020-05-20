@@ -43,7 +43,6 @@ defmodule FgHttp.MixProject do
       {:phoenix_ecto, "~> 4.0"},
       {:ecto_sql, "~> 3.1"},
       {:ecto_enum, "~> 1.4.0"},
-      {:ex_machina, "~> 2.4"},
       {:ecto_network, "~> 1.3.0"},
       {:postgrex, ">= 0.0.0"},
       {:phoenix_html, "~> 2.11"},

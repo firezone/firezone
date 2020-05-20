@@ -35,6 +35,10 @@ defmodule FgHttp.Users do
       ** (Ecto.NoResultsError)
 
   """
+  def get_user!(email: email) do
+    Repo.get_by!(User, email: email)
+  end
+
   def get_user!(id), do: Repo.get!(User, id)
 
   @doc """

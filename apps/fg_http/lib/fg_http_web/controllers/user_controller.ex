@@ -6,7 +6,7 @@ defmodule FgHttpWeb.UserController do
   use FgHttpWeb, :controller
   alias FgHttp.{Users, Users.User}
 
-  plug FgHttpWeb.Plugs.Authenticator when action in [:show, :edit, :update, :delete]
+  plug FgHttpWeb.Plugs.SessionLoader when action in [:show, :edit, :update, :delete]
 
   # GET /users/new
   def new(conn, _params) do
