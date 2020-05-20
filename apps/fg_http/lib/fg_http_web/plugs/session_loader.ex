@@ -11,7 +11,7 @@ defmodule FgHttpWeb.Plugs.SessionLoader do
   def init(default), do: default
 
   def call(conn, _default) do
-    case Sessions.load_session("blah session id") do
+    case Sessions.load_session(get_session(conn, :session_id)) do
       {:ok, {session, user}} ->
         conn
         |> assign(:current_session, session)

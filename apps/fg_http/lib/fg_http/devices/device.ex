@@ -11,6 +11,7 @@ defmodule FgHttp.Devices.Device do
   schema "devices" do
     field :name, :string
     field :public_key, :string
+    field :ifname, :string
     field :last_ip, EctoNetwork.INET
 
     has_many :rules, Rule
@@ -22,7 +23,7 @@ defmodule FgHttp.Devices.Device do
   @doc false
   def changeset(device, attrs) do
     device
-    |> cast(attrs, [:last_ip, :user_id, :name, :public_key])
-    |> validate_required([:user_id, :name, :public_key])
+    |> cast(attrs, [:last_ip, :ifname, :user_id, :name, :public_key])
+    |> validate_required([:user_id, :ifname, :name, :public_key])
   end
 end

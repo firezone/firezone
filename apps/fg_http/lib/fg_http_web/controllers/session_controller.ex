@@ -6,7 +6,7 @@ defmodule FgHttpWeb.SessionController do
   alias FgHttp.{Sessions, Sessions.Session}
   use FgHttpWeb, :controller
 
-  plug :redirect_authenticated when action in [:new]
+  plug FgHttpWeb.Plugs.RedirectAuthenticated when action in [:new]
   plug FgHttpWeb.Plugs.SessionLoader when action in [:delete]
 
   # GET /sessions/new
@@ -22,6 +22,9 @@ defmodule FgHttpWeb.SessionController do
     case Sessions.create_session(session_params) do
       {:ok, session} ->
         conn
+        # Prevent session fixation
+        |> clear_session()
+        |> put_session(:session_id, session.id)
         |> assign(:current_session, session)
         |> put_flash(:info, "Session created successfully")
         |> redirect(to: Routes.device_path(conn, :index))
@@ -44,17 +47,6 @@ defmodule FgHttpWeb.SessionController do
         |> clear_session
         |> put_flash(:info, "Signed out successfully.")
         |> redirect(to: "/")
-    end
-  end
-
-  defp redirect_authenticated(conn, _) do
-    if Map.get(conn.assigns, :user_signed_in?) do
-      conn
-      |> redirect(to: "/")
-      |> halt()
-    else
-      conn
-      |> assign(:user_signed_in?, false)
     end
   end
 end

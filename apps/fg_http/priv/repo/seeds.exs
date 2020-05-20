@@ -22,6 +22,7 @@ alias FgHttp.{Devices, Rules, Users}
 {:ok, device} =
   Devices.create_device(%{
     user_id: user.id,
+    ifname: "wg0",
     name: "Factory Device",
     public_key: "factory public key",
     last_ip: %Postgrex.INET{address: {127, 0, 0, 1}}
