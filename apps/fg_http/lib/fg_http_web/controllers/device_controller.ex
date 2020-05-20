@@ -19,7 +19,7 @@ defmodule FgHttpWeb.DeviceController do
   end
 
   def create(conn, %{"device" => %{"public_key" => _public_key} = device_params}) do
-    our_params = %{user_id: conn.assigns.current_user.id, name: "Default"}
+    our_params = %{"user_id" => conn.assigns.current_user.id, "name" => "Default"}
     all_params = Map.merge(device_params, our_params)
 
     case Devices.create_device(all_params) do
