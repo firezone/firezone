@@ -12,6 +12,7 @@ defmodule FgHttp.Users.User do
     field :email, :string
     field :confirmed_at, :utc_datetime
     field :reset_sent_at, :utc_datetime
+    field :reset_token, :string
     field :last_signed_in_at, :utc_datetime
     field :password_hash, :string
 
@@ -59,12 +60,11 @@ defmodule FgHttp.Users.User do
   def update_changeset(user, %{user: %{email: _email}} = attrs) do
     user
     |> cast(attrs, [:email])
+    |> validate_required([:email])
   end
 
-  # Edit user
-  def changeset(user, attrs \\ %{}) do
-    user
-    |> cast(attrs, [:email])
+  def changeset(%__MODULE__{} = _user, _attrs \\ %{}) do
+    change(%__MODULE__{})
   end
 
   def authenticate_user(user, password_candidate) do

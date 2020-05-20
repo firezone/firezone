@@ -4,7 +4,7 @@ defmodule FgHttpWeb.DeviceControllerTest do
   alias FgHttp.Devices
   alias FgHttp.Users
 
-  @create_attrs %{name: "some name"}
+  @create_attrs %{name: "some name", ifname: "wg0", public_key: "foobar"}
   @update_attrs %{name: "some updated name"}
   @invalid_attrs %{user_id: nil}
 
@@ -43,6 +43,11 @@ defmodule FgHttpWeb.DeviceControllerTest do
     setup [:create_device]
 
     test "renders form for editing chosen device", %{conn: conn, device: device} do
+      conn =
+        conn
+        |> Plug.Conn.assign(:current_user, fixture(:user))
+        |> Plug.Conn.assign(:current_session, fixture(:user))
+
       conn = get(conn, Routes.device_path(conn, :edit, device))
       assert html_response(conn, 200) =~ "Edit Device"
     end

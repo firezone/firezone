@@ -39,6 +39,10 @@ defmodule FgHttp.Users do
     Repo.get_by!(User, email: email)
   end
 
+  def get_user!(reset_token: reset_token) do
+    Repo.get_by!(User, reset_token: reset_token)
+  end
+
   def get_user!(id), do: Repo.get!(User, id)
 
   @doc """
