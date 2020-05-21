@@ -1,5 +1,5 @@
 defmodule FgHttpWeb.RuleControllerTest do
-  use FgHttpWeb.ConnCase
+  use FgHttpWeb.ConnCase, async: true
 
   describe "index" do
   end

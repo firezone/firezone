@@ -1,5 +1,11 @@
 <h1>New Device</h1>
 
+<%= if assigns[:changeset] do %>
+  The following errors occurred when creating this Device:
+
+  <%= aggregated_errors(@changeset) %>
+<% end %>
+
 <%= live_render(@conn, FgHttpWeb.NewDeviceLive, session: %{"current_user_id" => @conn.assigns.current_user.id}) %>
 
 <p>
