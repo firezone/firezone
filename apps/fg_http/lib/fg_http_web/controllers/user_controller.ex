@@ -4,9 +4,9 @@ defmodule FgHttpWeb.UserController do
   """
 
   use FgHttpWeb, :controller
-  alias FgHttp.{Repo, Users, Users.User}
+  alias FgHttp.{Users, Users.User}
 
-  plug FgHttpWeb.Plugs.Authenticator when action in [:show, :edit, :update, :delete]
+  plug FgHttpWeb.Plugs.SessionLoader when action in [:show, :edit, :update, :delete]
 
   # GET /users/new
   def new(conn, _params) do
@@ -46,9 +46,7 @@ defmodule FgHttpWeb.UserController do
 
   # PATCH /user
   def update(conn, params) do
-    changeset = User.changeset(conn.current_user, params)
-
-    case Repo.update(changeset) do
+    case Users.update_user(conn.current_user, params) do
       {:ok, user} ->
         conn
         |> assign(:current_user, user)
@@ -64,7 +62,7 @@ defmodule FgHttpWeb.UserController do
 
   # DELETE /user
   def delete(conn, _params) do
-    case Repo.delete(conn.current_user) do
+    case Users.delete_user(conn.current_user) do
       {:ok, _user} ->
         conn
         |> assign(:current_user, nil)

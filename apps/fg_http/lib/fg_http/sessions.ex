@@ -6,7 +6,7 @@ defmodule FgHttp.Sessions do
   import Ecto.Query, warn: false
   alias FgHttp.Repo
 
-  alias FgHttp.Sessions.Session
+  alias FgHttp.{Sessions.Session, Users.User}
 
   @doc """
   Returns the list of sessions.
@@ -51,7 +51,7 @@ defmodule FgHttp.Sessions do
   """
   def create_session(attrs \\ %{}) do
     %Session{}
-    |> Session.changeset(attrs)
+    |> Session.create_changeset(attrs)
     |> Repo.insert()
   end
 
@@ -85,8 +85,30 @@ defmodule FgHttp.Sessions do
       {:error, %Ecto.Changeset{}}
 
   """
-  def delete_session(%Session{} = session) do
+  def delete_session(%Session{} = session, really_delete: true) do
     Repo.delete(session)
+  end
+
+  def delete_session(%Session{} = session) do
+    update_session(session, %{deleted_at: DateTime.utc_now()})
+  end
+
+  def load_session(_session_id) do
+    query =
+      from s in Session,
+        where: is_nil(s.deleted_at),
+        join: u in User,
+        on: s.user_id == u.id,
+        select: {s, u},
+        preload: :user
+
+    case session = Repo.one(query) do
+      nil ->
+        {:error, "Valid session not found"}
+
+      _ ->
+        {:ok, session}
+    end
   end
 
   @doc """

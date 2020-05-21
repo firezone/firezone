@@ -19,6 +19,8 @@ defmodule FgHttpWeb.ConnCase do
 
   alias Ecto.Adapters.SQL.Sandbox
 
+  import FgHttp.Fixtures
+
   using do
     quote do
       # Import conveniences for testing with connections
@@ -31,6 +33,26 @@ defmodule FgHttpWeb.ConnCase do
     end
   end
 
+  def new_conn do
+    Phoenix.ConnTest.build_conn()
+  end
+
+  def authed_conn do
+    user = fixture(:user)
+
+    session =
+      fixture(:session, %{
+        user_id: user.id,
+        user_password: "test",
+        user_email: "test"
+      })
+
+    new_conn()
+    |> Plug.Conn.assign(:current_user, user)
+    |> Plug.Conn.assign(:current_session, session)
+    |> Plug.Conn.assign(:user_signed_in?, true)
+  end
+
   setup tags do
     :ok = Sandbox.checkout(FgHttp.Repo)
 
@@ -38,6 +60,6 @@ defmodule FgHttpWeb.ConnCase do
       Sandbox.mode(FgHttp.Repo, {:shared, self()})
     end
 
-    {:ok, conn: Phoenix.ConnTest.build_conn()}
+    {:ok, unauthed_conn: new_conn(), authed_conn: authed_conn()}
   end
 end

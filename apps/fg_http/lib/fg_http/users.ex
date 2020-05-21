@@ -35,6 +35,14 @@ defmodule FgHttp.Users do
       ** (Ecto.NoResultsError)
 
   """
+  def get_user!(email: email) do
+    Repo.get_by!(User, email: email)
+  end
+
+  def get_user!(reset_token: reset_token) do
+    Repo.get_by!(User, reset_token: reset_token)
+  end
+
   def get_user!(id), do: Repo.get!(User, id)
 
   @doc """
@@ -51,7 +59,7 @@ defmodule FgHttp.Users do
   """
   def create_user(attrs \\ %{}) do
     %User{}
-    |> User.changeset(attrs)
+    |> User.create_changeset(attrs)
     |> Repo.insert()
   end
 
@@ -69,7 +77,7 @@ defmodule FgHttp.Users do
   """
   def update_user(%User{} = user, attrs) do
     user
-    |> User.changeset(attrs)
+    |> User.update_changeset(attrs)
     |> Repo.update()
   end
 
