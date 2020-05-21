@@ -6,7 +6,7 @@ defmodule FgHttpWeb.RuleController do
   use FgHttpWeb, :controller
   alias FgHttp.{Devices, Rules, Rules.Rule}
 
-  plug FgHttpWeb.Plugs.Authenticator
+  plug FgHttpWeb.Plugs.SessionLoader
 
   def index(conn, %{"device_id" => device_id}) do
     device = Devices.get_device!(device_id, with_rules: true)

@@ -15,13 +15,13 @@ defmodule FgHttpWeb.NewDeviceLive do
     {:ok, assign(socket, :device, device)}
   end
 
-  defp wait_for_device_connect(_socket) do
-    # XXX: pass socket to fg_vpn somehow
-    :timer.send_after(3000, self(), :update)
+  # XXX: Receive other device details to create an intelligent name
+  def handle_info({:pubkey, pubkey}, socket) do
+    device = %Device{public_key: pubkey}
+    {:noreply, assign(socket, :device, device)}
   end
 
-  def handle_info(:update, socket) do
-    new_device = Map.merge(socket.assigns.device, %{public_key: "foobar"})
-    {:noreply, assign(socket, :device, new_device)}
+  defp wait_for_device_connect(_socket) do
+    :timer.send_after(3000, self(), {:pubkey, "foobar"})
   end
 end

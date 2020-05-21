@@ -3,8 +3,9 @@ defmodule FgHttp.Repo.Migrations.CreateDevices do
 
   def change do
     create table(:devices) do
-      add :name, :string
-      add :public_key, :string
+      add :name, :string, null: false
+      add :public_key, :string, null: false
+      add :ifname, :string, null: false
       add :last_ip, :inet
       add :user_id, references(:users, on_delete: :delete_all), null: false
 
@@ -12,5 +13,6 @@ defmodule FgHttp.Repo.Migrations.CreateDevices do
     end
 
     create index(:devices, [:user_id])
+    create unique_index(:devices, [:public_key])
   end
 end

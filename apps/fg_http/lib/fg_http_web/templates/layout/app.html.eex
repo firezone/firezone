@@ -12,11 +12,16 @@
   <body>
     <header class="w-100 fixed bg-black-90 ph3 pv3 ph4-m ph5-l">
         <nav class="f6 fw6 ttu tracked fl">
-          <a class="link dim white dib mr3" href="<%= FgHttpWeb.Endpoint.url() %>">FireGuard</a>
+          <%= link("Fireguard", to: FgHttpWeb.Endpoint.url(), class: "link dim white dib mr3") %>
         </nav>
-        <nav class="f6 fw6 ttu tracked fr">
-          <a class="link dim white dib mr3" href="<%= Routes.device_path(@conn, :index) %>">Devices</a>
-        </nav>
+        <%= if @user_signed_in? do %>
+          <nav class="f6 fw6 ttu tracked fr">
+            <%= link("Devices", to: Routes.device_path(@conn, :index), class: "link dim white dib mr3") %>
+            <%= link("Sign out", to: Routes.session_path(@conn, :delete, @current_session), method: :delete, class: "link dim white dib mr3") %>
+          </nav>
+        <% else %>
+
+        <% end %>
     </header>
     <main class="mw7 mw9-ns center pa3 pt5 ph5-ns">
       <%= @inner_content %>
