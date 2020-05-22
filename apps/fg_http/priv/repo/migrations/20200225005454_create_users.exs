@@ -7,8 +7,6 @@ defmodule FgHttp.Repo.Migrations.CreateUsers do
       add :confirmed_at, :utc_datetime
       add :password_hash, :string
       add :last_signed_in_at, :utc_datetime
-      add :reset_sent_at, :utc_datetime
-      add :reset_token, :utc_datetime
 
       timestamps()
     end

@@ -4,35 +4,28 @@ defmodule FgHttpWeb.PasswordResetController do
   """
 
   use FgHttpWeb, :controller
-  alias FgHttp.{Users, Users.User}
+  alias FgHttp.{PasswordResets, PasswordResets.PasswordReset}
 
   plug FgHttpWeb.Plugs.RedirectAuthenticated
 
   def new(conn, _params) do
+    changeset = PasswordReset.changeset(%PasswordReset{}, %{})
+
     conn
-    |> render("new.html", changeset: User.changeset(%User{}))
+    |> render("new.html", changeset: changeset)
   end
 
-  # Don't actually create anything. Instead, update the user with a reset token and send
-  # the password reset email.
-  def create(conn, %{
-        "password_reset" =>
-          %{
-            reset_token: reset_token,
-            password: _password,
-            password_confirmation: _password_confirmation,
-            current_password: _current_password
-          } = user_params
-      }) do
-    user = Users.get_user!(reset_token: reset_token)
-
-    case Users.update_user(user, user_params) do
-      {:ok, _user} ->
+  def create(conn, %{"password_reset" => %{"user_email" => _} = password_reset_params}) do
+    case PasswordResets.create_password_reset(password_reset_params) do
+      {:ok, _password_reset} ->
         conn
-        |> render("success.html")
+        |> clear_session()
+        |> put_flash(:info, "Password reset successfully. Please sign in with your new password.")
+        |> redirect(to: Routes.session_path(conn, :new))
 
       {:error, changeset} ->
         conn
+        |> put_flash(:error, "Error creating password reset.")
         |> render("new.html", changeset: changeset)
     end
   end

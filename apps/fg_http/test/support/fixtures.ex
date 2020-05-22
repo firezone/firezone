@@ -2,12 +2,15 @@ defmodule FgHttp.Fixtures do
   @moduledoc """
   Convenience helpers for inserting records
   """
-  alias FgHttp.{Devices, Repo, Sessions, Users, Users.User}
+  alias FgHttp.{Devices, PasswordResets, Repo, Sessions, Users, Users.User}
 
-  def fixture(:user) do
+  def user(attrs \\ %{}) do
     case Repo.get_by(User, email: "test") do
       nil ->
-        attrs = %{email: "test", password: "test", password_confirmation: "test"}
+        attrs =
+          attrs
+          |> Enum.into(%{email: "test", password: "test", password_confirmation: "test"})
+
         {:ok, user} = Users.create_user(attrs)
         user
 
@@ -16,13 +19,24 @@ defmodule FgHttp.Fixtures do
     end
   end
 
-  def fixture(:device) do
-    attrs = %{public_key: "foobar", ifname: "wg0", name: "factory"}
-    {:ok, device} = Devices.create_device(Map.merge(%{user_id: fixture(:user).id}, attrs))
+  def device(attrs \\ %{}) do
+    attrs =
+      attrs
+      |> Enum.into(%{user_id: user().id})
+      |> Enum.into(%{public_key: "foobar", ifname: "wg0", name: "factory"})
+
+    {:ok, device} = Devices.create_device(attrs)
     device
   end
 
-  def fixture(:session, attrs \\ %{}) do
-    {:ok, _session} = Sessions.create_session(attrs)
+  def session(attrs \\ %{}) do
+    {:ok, session} = Sessions.create_session(attrs)
+    session
+  end
+
+  def password_reset(attrs \\ %{}) do
+    create_attrs = Map.merge(attrs, %{user_email: user().email})
+    {:ok, password_reset} = PasswordResets.create_password_reset(create_attrs)
+    password_reset
   end
 end

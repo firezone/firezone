@@ -19,7 +19,7 @@ defmodule FgHttpWeb.ConnCase do
 
   alias Ecto.Adapters.SQL.Sandbox
 
-  import FgHttp.Fixtures
+  alias FgHttp.Fixtures
 
   using do
     quote do
@@ -38,10 +38,10 @@ defmodule FgHttpWeb.ConnCase do
   end
 
   def authed_conn do
-    user = fixture(:user)
+    user = Fixtures.user()
 
     session =
-      fixture(:session, %{
+      Fixtures.session(%{
         user_id: user.id,
         user_password: "test",
         user_email: "test"

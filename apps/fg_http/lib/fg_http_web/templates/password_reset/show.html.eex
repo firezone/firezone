@@ -1,0 +1,18 @@
+<h1>Show Password reset</h1>
+
+<ul>
+
+  <li>
+    <strong>Reset sent at:</strong>
+    <%= @password_reset.reset_sent_at %>
+  </li>
+
+  <li>
+    <strong>Reset token:</strong>
+    <%= @password_reset.reset_token %>
+  </li>
+
+</ul>
+
+<span><%= link "Edit", to: Routes.password_reset_path(@conn, :edit, @password_reset) %></span>
+<span><%= link "Back", to: Routes.password_reset_path(@conn, :index) %></span>

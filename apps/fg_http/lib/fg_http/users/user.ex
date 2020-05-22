@@ -11,8 +11,6 @@ defmodule FgHttp.Users.User do
   schema "users" do
     field :email, :string
     field :confirmed_at, :utc_datetime
-    field :reset_sent_at, :utc_datetime
-    field :reset_token, :string
     field :last_signed_in_at, :utc_datetime
     field :password_hash, :string
 
