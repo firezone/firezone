@@ -1,0 +1,28 @@
+<h1>Listing Password resets</h1>
+
+<table>
+  <thead>
+    <tr>
+      <th>Reset sent at</th>
+      <th>Reset token</th>
+
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+<%= for password_reset <- @password_resets do %>
+    <tr>
+      <td><%= password_reset.reset_sent_at %></td>
+      <td><%= password_reset.reset_token %></td>
+
+      <td>
+        <span><%= link "Show", to: Routes.password_reset_path(@conn, :show, password_reset) %></span>
+        <span><%= link "Edit", to: Routes.password_reset_path(@conn, :edit, password_reset) %></span>
+        <span><%= link "Delete", to: Routes.password_reset_path(@conn, :delete, password_reset), method: :delete, data: [confirm: "Are you sure?"] %></span>
+      </td>
+    </tr>
+<% end %>
+  </tbody>
+</table>
+
+<span><%= link "New Password reset", to: Routes.password_reset_path(@conn, :new) %></span>

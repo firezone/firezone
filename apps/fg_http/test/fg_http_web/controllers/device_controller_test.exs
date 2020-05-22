@@ -1,7 +1,7 @@
 defmodule FgHttpWeb.DeviceControllerTest do
   use FgHttpWeb.ConnCase, async: true
 
-  import FgHttp.Fixtures
+  alias FgHttp.Fixtures
 
   @create_attrs %{public_key: "foobar"}
   @update_attrs %{name: "some updated name"}
@@ -73,7 +73,7 @@ defmodule FgHttpWeb.DeviceControllerTest do
   end
 
   defp create_device(_) do
-    device = fixture(:device)
+    device = Fixtures.device()
     {:ok, device: device}
   end
 end
