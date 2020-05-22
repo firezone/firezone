@@ -8,7 +8,7 @@ on:
 jobs:
   # 1. Unit/Integration Test
   unit-integration-test:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     env:
       MIX_ENV: test
       POSTGRES_HOST: localhost
@@ -31,8 +31,8 @@ jobs:
       - name: Run Static Tests
         uses: actions/setup-elixir@v1
         with:
-          elixir-version: 1.10.2
-          otp-version: 22.3.2
+          elixir-version: "1.10.3"
+          otp-version: "23.0"
       - name: Install Dependencies
         run: mix deps.get --only test
       - name: Setup Database
@@ -45,7 +45,7 @@ jobs:
   # 2. Build VM image
   build-vm:
     needs: unit-integration-test
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v2
       - name: Build VM Image
@@ -61,7 +61,7 @@ jobs:
   # 3. Functional Test
   functional-test:
     needs: build-vm
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v2
       - name: Functional Test
