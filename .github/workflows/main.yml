@@ -31,8 +31,8 @@ jobs:
       - name: Run Static Tests
         uses: actions/setup-elixir@v1
         with:
-          elixir-version: 1.10.2
-          otp-version: 22.3.2
+          elixir-version: "1.10.3"
+          otp-version: "23.0"
       - name: Install Dependencies
         run: mix deps.get --only test
       - name: Setup Database
