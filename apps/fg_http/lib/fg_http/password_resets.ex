@@ -6,7 +6,7 @@ defmodule FgHttp.PasswordResets do
   import Ecto.Query, warn: false
   alias FgHttp.Repo
 
-  alias FgHttp.PasswordResets.PasswordReset
+  alias FgHttp.Users.PasswordReset
 
   @doc """
   Returns the list of password_resets.
@@ -19,6 +19,15 @@ defmodule FgHttp.PasswordResets do
   """
   def list_password_resets do
     Repo.all(PasswordReset)
+  end
+
+  def load_user_from_valid_token!(token) when is_binary(token) do
+    Repo.get_by!(
+      PasswordReset,
+      reset_token: token,
+      consumed_at: nil,
+      reset_sent_at: DateTime.utc_now() - PasswordReset.token_validity_secs()
+    )
   end
 
   @doc """

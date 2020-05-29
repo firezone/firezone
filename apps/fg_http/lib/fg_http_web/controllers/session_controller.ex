@@ -3,7 +3,7 @@ defmodule FgHttpWeb.SessionController do
   Implements the CRUD for a Session
   """
 
-  alias FgHttp.{Sessions, Sessions.Session}
+  alias FgHttp.{Sessions, Users.Session}
   use FgHttpWeb, :controller
 
   plug FgHttpWeb.Plugs.RedirectAuthenticated when action in [:new]

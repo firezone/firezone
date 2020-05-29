@@ -4,7 +4,7 @@ defmodule FgHttp.PasswordResetsTest do
   alias FgHttp.{Fixtures, PasswordResets}
 
   describe "password_resets" do
-    alias FgHttp.PasswordResets.PasswordReset
+    alias FgHttp.Users.PasswordReset
 
     @valid_attrs %{reset_sent_at: "2010-04-17T14:00:00Z"}
     @update_attrs %{reset_sent_at: "2011-05-18T15:01:01Z"}

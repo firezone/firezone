@@ -12,6 +12,5 @@ defmodule FgHttp.Repo.Migrations.CreateUsers do
     end
 
     create unique_index(:users, [:email])
-    create unique_index(:users, [:reset_token])
   end
 end
