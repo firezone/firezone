@@ -1,4 +1,4 @@
-defmodule FgHttp.PasswordResets.PasswordReset do
+defmodule FgHttp.Users.PasswordReset do
   @moduledoc """
   Schema for PasswordReset
   """
@@ -9,10 +9,13 @@ defmodule FgHttp.PasswordResets.PasswordReset do
   alias FgHttp.{Users, Users.User}
 
   @token_num_bytes 8
+  # 1 day
+  @token_validity_secs 86_400
 
   schema "password_resets" do
     field :reset_sent_at, :utc_datetime
     field :reset_token, :string
+    field :consumed_at, :string
     field :user_email, :string, virtual: true
     belongs_to :user, User
 
@@ -41,6 +44,8 @@ defmodule FgHttp.PasswordResets.PasswordReset do
     |> cast(attrs, [:user_id, :user_email, :reset_sent_at, :reset_token])
     |> validate_required([:reset_token])
   end
+
+  def token_validity_secs, do: @token_validity_secs
 
   defp load_user_from_email(
          %Ecto.Changeset{

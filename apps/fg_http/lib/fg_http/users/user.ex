@@ -6,7 +6,7 @@ defmodule FgHttp.Users.User do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias FgHttp.{Devices.Device, Sessions.Session}
+  alias FgHttp.{Devices.Device, Users.Session}
 
   schema "users" do
     field :email, :string
@@ -35,7 +35,7 @@ defmodule FgHttp.Users.User do
     |> validate_required([:password_hash])
   end
 
-  # Only password being updated
+  # Password updated with user logged in
   def update_changeset(
         user,
         %{
@@ -50,6 +50,23 @@ defmodule FgHttp.Users.User do
     |> cast(attrs, [:email, :password, :password_confirmation, :current_password])
     |> verify_current_password(attrs[:current_password])
     |> validate_required([:password, :password_confirmation, :current_password])
+    |> put_password_hash()
+    |> validate_required([:password_hash])
+  end
+
+  # Password updated from token
+  def update_changeset(
+        user,
+        %{
+          user: %{
+            password: _password,
+            password_confirmation: _password_confirmation
+          }
+        } = attrs
+      ) do
+    user
+    |> cast(attrs, [:email, :password, :password_confirmation])
+    |> validate_required([:password, :password_confirmation])
     |> put_password_hash()
     |> validate_required([:password_hash])
   end

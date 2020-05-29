@@ -1,4 +1,4 @@
-defmodule FgHttp.Sessions.Session do
+defmodule FgHttp.Users.Session do
   @moduledoc """
   Represents a Session
   """

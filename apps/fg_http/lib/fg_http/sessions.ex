@@ -6,7 +6,7 @@ defmodule FgHttp.Sessions do
   import Ecto.Query, warn: false
   alias FgHttp.Repo
 
-  alias FgHttp.{Sessions.Session, Users.User}
+  alias FgHttp.{Users.Session, Users.User}
 
   @doc """
   Returns the list of sessions.
