@@ -9,7 +9,7 @@ defmodule FgHttpWeb.DeviceController do
   plug FgHttpWeb.Plugs.SessionLoader
 
   def index(conn, _params) do
-    devices = Devices.list_devices(conn.assigns.current_user.id)
+    devices = Devices.list_devices(conn.assigns.session.id)
     render(conn, "index.html", devices: devices)
   end
 
@@ -20,7 +20,7 @@ defmodule FgHttpWeb.DeviceController do
 
   def create(conn, %{"device" => %{"public_key" => _public_key} = device_params}) do
     our_params = %{
-      "user_id" => conn.assigns.current_user.id,
+      "user_id" => conn.assigns.session.id,
       "name" => "Default",
       "ifname" => "wg0"
     }

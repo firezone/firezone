@@ -8,47 +8,46 @@ defmodule FgHttp.Users.Session do
 
   alias FgHttp.{Users, Users.User}
 
-  schema "sessions" do
-    field :deleted_at, :utc_datetime
-    belongs_to :user, User
-
-    # VIRTUAL FIELDS
-    field :user_email, :string, virtual: true
-    field :user_password, :string, virtual: true
-
-    timestamps()
-  end
-
-  @doc false
-  def changeset(session, attrs \\ %{}) do
-    session
-    |> cast(attrs, [:deleted_at])
-    |> validate_required([])
+  schema "users" do
+    field :email, :string
+    field :password, :string, virtual: true
+    field :last_signed_in_at, :utc_datetime
   end
 
   def create_changeset(session, attrs \\ %{}) do
     session
-    |> cast(attrs, [:user_email, :user_password])
-    |> validate_required([:user_email, :user_password])
+    |> cast(attrs, [:email, :password])
+    |> validate_required([:email, :password])
     |> authenticate_user()
+    |> set_last_signed_in_at()
   end
+
+  defp set_last_signed_in_at(%Ecto.Changeset{valid?: true} = changeset) do
+    last_signed_in_at = DateTime.truncate(DateTime.utc_now(), :second)
+    change(changeset, last_signed_in_at: last_signed_in_at)
+  end
+
+  defp set_last_signed_in_at(changeset), do: changeset
 
   defp authenticate_user(
          %Ecto.Changeset{
            valid?: true,
-           changes: %{user_email: email, user_password: password}
+           changes: %{email: email, password: password}
          } = changeset
        ) do
     user = Users.get_user!(email: email)
 
     case User.authenticate_user(user, password) do
       {:ok, _} ->
-        change(changeset, user_id: user.id)
+        # Remove the user's password so it doesn't accidentally end up somewhere
+        changeset
+        |> delete_change(:password)
+        |> change(%{id: user.id})
 
       {:error, error_msg} ->
         raise("There was an issue with your password: #{error_msg}")
     end
   end
 
-  defp authenticate_user(changeset), do: changeset
+  defp authenticate_user(changeset), do: delete_change(changeset, :password)
 end
