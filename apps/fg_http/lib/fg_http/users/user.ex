@@ -6,7 +6,7 @@ defmodule FgHttp.Users.User do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias FgHttp.{Devices.Device, Users.Session}
+  alias FgHttp.Devices.Device
 
   schema "users" do
     field :email, :string
@@ -20,7 +20,6 @@ defmodule FgHttp.Users.User do
     field :current_password, :string, virtual: true
 
     has_many :devices, Device, on_delete: :delete_all
-    has_many :sessions, Session, on_delete: :delete_all
 
     timestamps()
   end
@@ -67,6 +66,7 @@ defmodule FgHttp.Users.User do
     user
     |> cast(attrs, [:email, :password, :password_confirmation])
     |> validate_required([:password, :password_confirmation])
+    |> validate_password_equality()
     |> put_password_hash()
     |> validate_required([:password_hash])
   end
@@ -91,14 +91,34 @@ defmodule FgHttp.Users.User do
     user
   end
 
+  defp validate_password_equality(%Ecto.Changeset{valid?: true} = changeset) do
+    password = changeset.changes[:password]
+    password_confirmation = changeset.changes[:password_confirmation]
+
+    if password != password_confirmation do
+      add_error(changeset, :password, "does not match password confirmation.")
+    else
+      changeset
+    end
+  end
+
+  defp validate_password_equality(changeset), do: changeset
+
   defp put_password_hash(
          %Ecto.Changeset{
            valid?: true,
            changes: %{password: password}
          } = changeset
        ) do
-    change(changeset, password_hash: Argon2.hash_pwd_salt(password))
+    changeset
+    |> change(password_hash: Argon2.hash_pwd_salt(password))
+    |> delete_change(:password)
+    |> delete_change(:password_confirmation)
   end
 
-  defp put_password_hash(changeset), do: changeset
+  defp put_password_hash(changeset) do
+    changeset
+    |> delete_change(:password)
+    |> delete_change(:password_confirmation)
+  end
 end

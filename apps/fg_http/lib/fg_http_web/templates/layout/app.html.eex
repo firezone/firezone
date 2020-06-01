@@ -15,9 +15,9 @@
           <%= link("Fireguard", to: FgHttpWeb.Endpoint.url(), class: "link dim white dib mr3") %>
         </nav>
         <nav class="f6 fw6 ttu tracked fr">
-          <%= if @user_signed_in? do %>
+          <%= if assigns[:session] do %>
             <%= link("Devices", to: Routes.device_path(@conn, :index), class: "link dim white dib mr3") %>
-            <%= link("Sign out", to: Routes.session_path(@conn, :delete, @current_session), method: :delete, class: "link dim white dib mr3") %>
+            <%= link("Sign out", to: Routes.session_path(@conn, :delete, @session), method: :delete, class: "link dim white dib mr3") %>
           <% else %>
             <%= link("Sign in", to: Routes.session_path(@conn, :new), class: "link dim white dib mr3") %>
           <% end %>

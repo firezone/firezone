@@ -38,19 +38,10 @@ defmodule FgHttpWeb.ConnCase do
   end
 
   def authed_conn do
-    user = Fixtures.user()
-
-    session =
-      Fixtures.session(%{
-        user_id: user.id,
-        user_password: "test",
-        user_email: "test"
-      })
+    session = Fixtures.session()
 
     new_conn()
-    |> Plug.Conn.assign(:current_user, user)
-    |> Plug.Conn.assign(:current_session, session)
-    |> Plug.Conn.assign(:user_signed_in?, true)
+    |> Plug.Conn.assign(:session, session)
   end
 
   setup tags do

@@ -1,12 +1,12 @@
 defmodule FgHttpWeb.PasswordResetControllerTest do
   use FgHttpWeb.ConnCase, async: true
 
-  @create_attrs %{user_email: "test"}
+  @create_attrs %{email: "test"}
 
   describe "new password_reset" do
     test "renders form", %{unauthed_conn: conn} do
       conn = get(conn, Routes.password_reset_path(conn, :new))
-      assert html_response(conn, 200) =~ "New Password reset"
+      assert html_response(conn, 200) =~ "Reset Password"
     end
   end
 

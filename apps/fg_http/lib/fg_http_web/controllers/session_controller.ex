@@ -3,7 +3,7 @@ defmodule FgHttpWeb.SessionController do
   Implements the CRUD for a Session
   """
 
-  alias FgHttp.{Sessions, Users.Session}
+  alias FgHttp.Sessions
   use FgHttpWeb, :controller
 
   plug FgHttpWeb.Plugs.RedirectAuthenticated when action in [:new]
@@ -11,42 +11,34 @@ defmodule FgHttpWeb.SessionController do
 
   # GET /sessions/new
   def new(conn, _params) do
-    changeset = Session.changeset(%Session{})
-
-    render(conn, "new.html", changeset: changeset)
+    render(conn, "new.html")
   end
 
-  # Sign In
   # POST /sessions
   def create(conn, %{"session" => session_params}) do
     case Sessions.create_session(session_params) do
       {:ok, session} ->
         conn
-        # Prevent session fixation
         |> clear_session()
-        |> put_session(:session_id, session.id)
-        |> assign(:current_session, session)
+        |> put_session(:user_id, session.id)
+        |> assign(:session, session)
         |> put_flash(:info, "Session created successfully")
         |> redirect(to: Routes.device_path(conn, :index))
 
       {:error, changeset} ->
         conn
+        |> clear_session()
+        |> assign(:session, nil)
         |> put_flash(:error, "Error creating session.")
-        |> render("new.html", changeset: changeset, user_signed_in?: false)
+        |> render("new.html", changeset: changeset)
     end
   end
 
-  # Sign Out
   # DELETE /session
   def delete(conn, _params) do
-    session = conn.assigns.current_session
-
-    case Sessions.delete_session(session) do
-      {:ok, _session} ->
-        conn
-        |> clear_session
-        |> put_flash(:info, "Signed out successfully.")
-        |> redirect(to: "/")
-    end
+    conn
+    |> clear_session()
+    |> put_flash(:info, "Signed out successfully.")
+    |> redirect(to: "/")
   end
 end
