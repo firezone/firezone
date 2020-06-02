@@ -9,6 +9,8 @@ config :fg_http, FgHttp.Repo,
   show_sensitive_data_on_connection_error: true,
   pool_size: 10
 
+config :fg_http, FgHttp.Mailer, adapter: Bamboo.LocalAdapter
+
 # For development, we disable any cache and enable
 # debugging and code reloading.
 #
@@ -16,7 +18,7 @@ config :fg_http, FgHttp.Repo,
 # watchers to your application. For example, we use it
 # with webpack to recompile .js and .css sources.
 config :fg_http, FgHttpWeb.Endpoint,
-  http: [port: 4000],
+  http: [host: "localhost", port: 4000],
   debug_errors: true,
   code_reloader: true,
   check_origin: false,
