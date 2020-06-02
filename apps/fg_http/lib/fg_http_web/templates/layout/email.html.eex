@@ -1,8 +1,8 @@
 <html>
   <head>
-    <link rel="stylesheet" href="<%= Routes.static_path(FgHttp.Endpoint, "/css/email.css") %>">
+    <link rel="stylesheet" href="<%= Routes.static_path(FgHttpWeb.Endpoint, "/css/email.css") %>">
   </head>
   <body>
-    <%= render @view_module, @view_template, assigns %>
+    <%= @inner_content %>
   </body>
 </html>

@@ -9,7 +9,7 @@ defmodule FgHttp.Repo.Migrations.CreateDevices do
       add :last_ip, :inet
       add :user_id, references(:users, on_delete: :delete_all), null: false
 
-      timestamps()
+      timestamps(type: :utc_datetime_usec)
     end
 
     create index(:devices, [:user_id])

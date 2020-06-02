@@ -11,7 +11,7 @@ defmodule FgHttp.Users.Session do
   schema "users" do
     field :email, :string
     field :password, :string, virtual: true
-    field :last_signed_in_at, :utc_datetime
+    field :last_signed_in_at, :utc_datetime_usec
   end
 
   def create_changeset(session, attrs \\ %{}) do
@@ -23,7 +23,7 @@ defmodule FgHttp.Users.Session do
   end
 
   defp set_last_signed_in_at(%Ecto.Changeset{valid?: true} = changeset) do
-    last_signed_in_at = DateTime.truncate(DateTime.utc_now(), :second)
+    last_signed_in_at = DateTime.utc_now()
     change(changeset, last_signed_in_at: last_signed_in_at)
   end
 

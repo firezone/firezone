@@ -11,8 +11,8 @@ defmodule FgHttp.Users.User do
 
   schema "users" do
     field :email, :string
-    field :confirmed_at, :utc_datetime
-    field :last_signed_in_at, :utc_datetime
+    field :confirmed_at, :utc_datetime_usec
+    field :last_signed_in_at, :utc_datetime_usec
     field :password_hash, :string
 
     # VIRTUAL FIELDS
@@ -22,7 +22,7 @@ defmodule FgHttp.Users.User do
 
     has_many :devices, Device, on_delete: :delete_all
 
-    timestamps()
+    timestamps(type: :utc_datetime_usec)
   end
 
   @doc false

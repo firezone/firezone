@@ -30,7 +30,10 @@ defmodule FgHttp.Fixtures do
   end
 
   def session(_attrs \\ %{}) do
-    {:ok, session} = Sessions.create_session(%{email: user().email, password: "test"})
+    email = user().email
+    record = Sessions.get_session!(email: email)
+    create_params = %{email: email, password: "test"}
+    {:ok, session} = Sessions.create_session(record, create_params)
     session
   end
 

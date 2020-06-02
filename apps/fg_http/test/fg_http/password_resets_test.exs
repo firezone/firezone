@@ -22,7 +22,7 @@ defmodule FgHttp.PasswordResetsTest do
                PasswordResets.create_password_reset(Fixtures.password_reset(), @valid_attrs)
 
       # reset_sent_at should be nil after creation
-      assert is_nil(password_reset.reset_sent_at)
+      assert !is_nil(password_reset.reset_sent_at)
 
       assert password_reset.reset_token
       assert password_reset.email == email
