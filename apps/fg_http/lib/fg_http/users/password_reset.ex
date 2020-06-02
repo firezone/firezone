@@ -5,6 +5,7 @@ defmodule FgHttp.Users.PasswordReset do
 
   use Ecto.Schema
   import Ecto.Changeset
+  import FgHttp.Users.PasswordHelpers
 
   @token_num_bytes 8
   # 1 day
@@ -12,7 +13,9 @@ defmodule FgHttp.Users.PasswordReset do
 
   schema "users" do
     field :reset_sent_at, :utc_datetime
-    field :reset_consumed_at, :utc_datetime
+    field :password_hash, :string
+    field :password, :string, virtual: true
+    field :password_confirmation, :string, virtual: true
     field :reset_token, :string
     field :email, :string
   end
@@ -20,7 +23,13 @@ defmodule FgHttp.Users.PasswordReset do
   @doc false
   def changeset do
     %__MODULE__{}
-    |> cast(%{}, [:email, :reset_sent_at, :reset_token])
+    |> cast(%{}, [:password, :password_confirmation, :reset_token])
+  end
+
+  @doc false
+  def changeset(%__MODULE__{} = password_reset, attrs \\ %{}) do
+    password_reset
+    |> cast(attrs, [:password, :password_confirmation, :reset_token])
   end
 
   @doc false
@@ -33,6 +42,23 @@ defmodule FgHttp.Users.PasswordReset do
     |> unique_constraint(:reset_token)
   end
 
+  @doc false
+  def update_changeset(%__MODULE__{} = password_reset, attrs) do
+    password_reset
+    |> cast(attrs, [
+      :password_hash,
+      :password,
+      :password_confirmation,
+      :reset_token,
+      :reset_sent_at
+    ])
+    |> validate_required([:password, :password_confirmation])
+    |> validate_password_equality()
+    |> put_password_hash()
+    |> validate_required([:password_hash])
+    |> clear_token_fields()
+  end
+
   def token_validity_secs, do: @token_validity_secs
 
   defp generate_reset_token(%Ecto.Changeset{valid?: true} = changeset) do
@@ -42,4 +68,16 @@ defmodule FgHttp.Users.PasswordReset do
   end
 
   defp generate_reset_token(changeset), do: changeset
+
+  defp clear_token_fields(
+         %Ecto.Changeset{
+           valid?: true
+         } = changeset
+       ) do
+    changeset
+    |> put_change(:reset_token, nil)
+    |> put_change(:reset_sent_at, nil)
+  end
+
+  defp clear_token_fields(changeset), do: changeset
 end
