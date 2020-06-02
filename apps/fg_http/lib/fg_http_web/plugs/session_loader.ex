@@ -32,8 +32,7 @@ defmodule FgHttpWeb.Plugs.SessionLoader do
 
   defp unauthed(conn) do
     conn
-    |> clear_session()
-    |> put_flash(:error, "There was an error loading your session. Please sign in again")
+    |> put_flash(:error, "Please sign in to access that page.")
     |> redirect(to: Routes.session_path(conn, :new))
     |> halt()
   end

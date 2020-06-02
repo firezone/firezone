@@ -12,7 +12,7 @@ defmodule FgHttp.Users.PasswordReset do
   @token_validity_secs 86_400
 
   schema "users" do
-    field :reset_sent_at, :utc_datetime
+    field :reset_sent_at, :utc_datetime_usec
     field :password_hash, :string
     field :password, :string, virtual: true
     field :password_confirmation, :string, virtual: true
@@ -40,6 +40,8 @@ defmodule FgHttp.Users.PasswordReset do
     |> generate_reset_token()
     |> validate_required([:reset_token])
     |> unique_constraint(:reset_token)
+    |> set_reset_sent_at()
+    |> validate_required([:reset_sent_at])
   end
 
   @doc false
@@ -80,4 +82,11 @@ defmodule FgHttp.Users.PasswordReset do
   end
 
   defp clear_token_fields(changeset), do: changeset
+
+  defp set_reset_sent_at(%Ecto.Changeset{valid?: true} = changeset) do
+    changeset
+    |> put_change(:reset_sent_at, DateTime.utc_now())
+  end
+
+  defp set_reset_sent_at(changeset), do: changeset
 end

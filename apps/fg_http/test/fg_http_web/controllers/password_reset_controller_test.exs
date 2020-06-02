@@ -36,13 +36,11 @@ defmodule FgHttpWeb.PasswordResetControllerTest do
   describe "edit password_reset" do
     setup [:create_password_reset]
 
-    test "renders password change form", %{unauthed_conn: conn, password_reset: password_reset} do
-      params = [{:reset_token, password_reset.reset_token}]
-
+    test "renders form", %{unauthed_conn: conn, password_reset: password_reset} do
       conn =
         get(
           conn,
-          Routes.password_reset_path(conn, :edit, password_reset.id, params)
+          Routes.password_reset_path(conn, :edit, password_reset.reset_token)
         )
 
       assert html_response(conn, 200) =~ "Edit Password"

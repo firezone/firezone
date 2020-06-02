@@ -18,7 +18,7 @@ defmodule FgHttp.Rules.Rule do
 
     belongs_to :device, Device
 
-    timestamps()
+    timestamps(type: :utc_datetime_usec)
   end
 
   @doc false

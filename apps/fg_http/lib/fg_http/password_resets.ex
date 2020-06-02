@@ -17,7 +17,7 @@ defmodule FgHttp.PasswordResets do
 
   def get_password_reset!(reset_token: reset_token) do
     validity_secs = -1 * PasswordReset.token_validity_secs()
-    now = DateTime.truncate(DateTime.utc_now(), :second)
+    now = DateTime.utc_now()
 
     query =
       from p in PasswordReset,

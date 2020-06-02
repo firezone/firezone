@@ -14,7 +14,7 @@ defmodule FgHttp.Repo.Migrations.CreateRules do
       add :port, :string
       add :device_id, references(:devices, on_delete: :delete_all), null: false
 
-      timestamps()
+      timestamps(type: :utc_datetime_usec)
     end
 
     create index(:rules, [:device_id])

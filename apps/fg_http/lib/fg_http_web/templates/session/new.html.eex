@@ -20,8 +20,8 @@
       <%= submit "Sign in", class: "b ph3 pv2 input-reset ba b--black bg-transparent grow pointer f6 dib" %>
     </div>
     <div class="lh-copy mt3">
-      <%= link("Sign up", to: Routes.user_path(@conn, :new), class: "f6 link dim black") %>
-      <%= link("Forgot your password?", to: Routes.password_reset_path(@conn, :new), class: "f6 link dim black") %>
+      <%= link("Sign up", to: Routes.user_path(@conn, :new), class: "f6 link dim black fl") %>
+      <%= link("Forgot your password?", to: Routes.password_reset_path(@conn, :new), class: "f6 link dim black fr") %>
     </div>
   <% end) %>
 </main>

@@ -37,8 +37,8 @@ defmodule FgHttp.Sessions do
       {:error, %Ecto.Changeset{}}
 
   """
-  def create_session(%{email: email} = attrs) do
-    get_session!(email: email)
+  def create_session(%Session{} = session, %{} = attrs) do
+    session
     |> Session.create_changeset(attrs)
     |> Repo.update()
   end

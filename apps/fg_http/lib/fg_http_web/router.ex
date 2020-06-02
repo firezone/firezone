@@ -25,7 +25,8 @@ defmodule FgHttpWeb.Router do
   scope "/", FgHttpWeb do
     pipe_through :browser
 
-    resources "/password_resets", PasswordResetController, only: [:edit, :update, :new, :create]
+    resources "/password_resets", PasswordResetController, only: [:update, :new, :create]
+    get "/password_resets/:reset_token", PasswordResetController, :edit
 
     resources "/user", UserController, singleton: true, only: [:show, :edit, :update, :delete]
     resources "/users", UserController, only: [:new, :create]
@@ -38,7 +39,7 @@ defmodule FgHttpWeb.Router do
 
     resources "/sessions", SessionController, only: [:new, :create, :delete]
 
-    get "/", DeviceController, :index
+    get "/", SessionController, :new
   end
 
   # Other scopes may use custom stacks.
