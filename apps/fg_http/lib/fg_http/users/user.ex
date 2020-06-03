@@ -30,6 +30,7 @@ defmodule FgHttp.Users.User do
     user
     |> cast(attrs, [:email, :password_hash, :password, :password_confirmation])
     |> validate_required([:email, :password, :password_confirmation])
+    |> validate_password_equality()
     |> unique_constraint(:email)
     |> put_password_hash()
     |> validate_required([:password_hash])
@@ -39,17 +40,15 @@ defmodule FgHttp.Users.User do
   def update_changeset(
         user,
         %{
-          user: %{
-            password: _password,
-            password_confirmation: _password_confirmation,
-            current_password: _current_password
-          }
+          "password" => _password,
+          "password_confirmation" => _password_confirmation,
+          "current_password" => _current_password
         } = attrs
       ) do
     user
     |> cast(attrs, [:email, :password, :password_confirmation, :current_password])
-    |> verify_current_password(attrs[:current_password])
     |> validate_required([:password, :password_confirmation, :current_password])
+    |> verify_current_password(attrs[:current_password])
     |> validate_password_equality()
     |> put_password_hash()
     |> validate_required([:password_hash])
@@ -59,10 +58,8 @@ defmodule FgHttp.Users.User do
   def update_changeset(
         user,
         %{
-          user: %{
-            password: _password,
-            password_confirmation: _password_confirmation
-          }
+          "password" => _password,
+          "password_confirmation" => _password_confirmation
         } = attrs
       ) do
     user
@@ -74,7 +71,7 @@ defmodule FgHttp.Users.User do
   end
 
   # Only email being updated
-  def update_changeset(user, %{user: %{email: _email}} = attrs) do
+  def update_changeset(user, %{"email" => _email} = attrs) do
     user
     |> cast(attrs, [:email])
     |> validate_required([:email])
