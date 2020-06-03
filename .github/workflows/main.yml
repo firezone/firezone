@@ -12,6 +12,7 @@ jobs:
     env:
       MIX_ENV: test
       POSTGRES_HOST: localhost
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     services:
       postgres:
         image: postgres:12
@@ -39,8 +40,9 @@ jobs:
         run: |
           mix ecto.create
           mix ecto.migrate
-      - name: Run Tests
-        run: mix test
+
+      - name: Run Tests and Upload Coverage Report
+        run: mix coveralls.github
 
   # 2. Build VM image
   build-vm:
