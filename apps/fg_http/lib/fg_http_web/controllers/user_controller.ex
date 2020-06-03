@@ -4,7 +4,7 @@ defmodule FgHttpWeb.UserController do
   """
 
   use FgHttpWeb, :controller
-  alias FgHttp.{Users, Users.Session, Users.User}
+  alias FgHttp.{Sessions, Users, Users.User}
 
   plug FgHttpWeb.Plugs.SessionLoader when action in [:show, :edit, :update, :delete]
 
@@ -18,9 +18,12 @@ defmodule FgHttpWeb.UserController do
   def create(conn, %{"user" => user_params}) do
     case Users.create_user(user_params) do
       {:ok, user} ->
+        # XXX: Cast the user to a session struct to prevent this db call
+        session = Sessions.get_session!(user.id)
+
         conn
         |> put_session(:user_id, user.id)
-        |> assign(:session, %Session{id: user.id, email: user.email})
+        |> assign(:session, session)
         |> put_flash(:info, "User created successfully.")
         |> redirect(to: Routes.device_path(conn, :index))
 
@@ -33,7 +36,8 @@ defmodule FgHttpWeb.UserController do
 
   # GET /user/edit
   def edit(conn, _params) do
-    user = conn.current_user
+    # XXX: Cast the session to a user struct to prevent this db call
+    user = Users.get_user!(conn.assigns.session.id)
     changeset = Users.change_user(user)
 
     render(conn, "edit.html", changeset: changeset)
@@ -41,18 +45,26 @@ defmodule FgHttpWeb.UserController do
 
   # GET /user
   def show(conn, _params) do
+    # XXX: Cast the session to a user struct to prevent this db call
+    user = Users.get_user!(conn.assigns.session.id)
+
     conn
-    |> render("show.html", user: conn.current_user)
+    |> render("show.html", user: user, session: conn.assigns.session)
   end
 
   # PATCH /user
-  def update(conn, params) do
-    case Users.update_user(conn.current_user, params) do
+  def update(conn, %{"user" => user_params}) do
+    user = Users.get_user!(conn.assigns.session.id)
+
+    case Users.update_user(user, user_params) do
       {:ok, user} ->
+        # XXX: Cast the user to a session struct to prevent this db call
+        session = Sessions.get_session!(user.id)
+
         conn
-        |> assign(:current_user, user)
+        |> assign(:session, session)
         |> put_flash(:info, "User updated successfully.")
-        |> redirect(to: Routes.user_path(conn, :show, conn.current_user))
+        |> redirect(to: Routes.user_path(conn, :show))
 
       {:error, changeset} ->
         conn
@@ -63,17 +75,20 @@ defmodule FgHttpWeb.UserController do
 
   # DELETE /user
   def delete(conn, _params) do
-    case Users.delete_user(conn.current_user) do
+    user = Users.get_user!(conn.assigns.session.id)
+
+    case Users.delete_user(user) do
       {:ok, _user} ->
         conn
-        |> assign(:current_user, nil)
+        |> clear_session()
+        |> assign(:session, nil)
         |> put_flash(:info, "User deleted successfully.")
         |> redirect(to: "/")
 
-      {:error, _changeset} ->
+      {:error, changeset} ->
         conn
         |> put_flash(:error, "Error deleting User.")
-        |> redirect(to: Routes.user_path(:show, conn.current_user))
+        |> render("edit.html", changeset: changeset)
     end
   end
 end

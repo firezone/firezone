@@ -1,0 +1,9 @@
+<h3>Your Account</h3>
+
+<dl>
+  <dt>Email</dt>
+  <dd><%= @user.email %></dd>
+
+  <dt>Last signed in at</dt>
+  <dd><%= @session.last_signed_in_at %></dd>
+</dl>
