@@ -1,4 +1,5 @@
 ![Test](https://github.com/CloudFire-LLC/fireguard/workflows/Test/badge.svg)
+[![Coverage Status](https://coveralls.io/repos/github/CloudFire-LLC/fireguard/badge.svg?branch=master)](https://coveralls.io/github/CloudFire-LLC/fireguard?branch=master)
 
 # FireGuard
 
