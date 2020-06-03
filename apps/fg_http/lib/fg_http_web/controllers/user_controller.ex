@@ -4,7 +4,7 @@ defmodule FgHttpWeb.UserController do
   """
 
   use FgHttpWeb, :controller
-  alias FgHttp.{Users, Users.User}
+  alias FgHttp.{Users, Users.Session, Users.User}
 
   plug FgHttpWeb.Plugs.SessionLoader when action in [:show, :edit, :update, :delete]
 
@@ -19,7 +19,8 @@ defmodule FgHttpWeb.UserController do
     case Users.create_user(user_params) do
       {:ok, user} ->
         conn
-        |> assign(:current_user, user)
+        |> put_session(:user_id, user.id)
+        |> assign(:session, %Session{id: user.id, email: user.email})
         |> put_flash(:info, "User created successfully.")
         |> redirect(to: Routes.device_path(conn, :index))
 

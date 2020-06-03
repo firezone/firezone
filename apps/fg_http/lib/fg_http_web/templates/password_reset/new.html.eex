@@ -1,0 +1,19 @@
+<h1>Reset Password</h1>
+
+<%= form_for @changeset, Routes.password_reset_path(@conn, :create), fn f -> %>
+  <%= if @changeset.action do %>
+    <div class="alert alert-danger">
+      <p>Oops, something went wrong! Please check the errors below.</p>
+    </div>
+  <% end %>
+
+  <%= label f, :email %>
+  <%= text_input f, :email %>
+  <%= error_tag f, :email %>
+
+  <div>
+    <%= submit "Submit" %>
+  </div>
+<% end %>
+
+<span><%= link "Back", to: Routes.session_path(@conn, :new) %></span>

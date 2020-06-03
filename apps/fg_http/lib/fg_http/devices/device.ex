@@ -17,7 +17,7 @@ defmodule FgHttp.Devices.Device do
     has_many :rules, Rule
     belongs_to :user, User
 
-    timestamps()
+    timestamps(type: :utc_datetime_usec)
   end
 
   @doc false
