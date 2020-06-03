@@ -1,5 +1,5 @@
 <main class="pa4 black-80">
-  <%= form_for(@changeset, Routes.session_path(@conn, :create), [class: "measure center"], fn f -> %>
+  <%= form_for(@conn, Routes.session_path(@conn, :create), [as: :session, class: "measure center"], fn f -> %>
     <%= if f.errors do %>
       <!-- Errors -->
     <% end %>
@@ -8,11 +8,11 @@
       <legend class="f4 fw6 ph0 mh0">Sign In</legend>
       <div class="mt3">
         <%= label(:session_user, :email, class: "db fw6 lh-copy f6") %>
-        <%= text_input(f, :user_email, class: "pa2 input-reset ba bg-transparent hover-bg-black hover-white w-100") %>
+        <%= text_input(f, :email, class: "pa2 input-reset ba bg-transparent hover-bg-black hover-white w-100") %>
       </div>
       <div class="mv3">
         <%= label(:session_user, :password, class: "db fw6 lh-copy f6") %>
-        <%= password_input(f, :user_password, class: "pa2 input-reset ba bg-transparent hover-bg-black hover-white w-100") %>
+        <%= password_input(f, :password, class: "pa2 input-reset ba bg-transparent hover-bg-black hover-white w-100") %>
       </div>
       <label class="pa0 ma0 lh-copy f6 pointer"><input type="checkbox"> Remember me</label>
     </fieldset>
@@ -20,8 +20,8 @@
       <%= submit "Sign in", class: "b ph3 pv2 input-reset ba b--black bg-transparent grow pointer f6 dib" %>
     </div>
     <div class="lh-copy mt3">
-      <a href="#0" class="f6 link dim black db">Sign up</a>
-      <a href="#0" class="f6 link dim black db">Forgot your password?</a>
+      <%= link("Sign up", to: Routes.user_path(@conn, :new), class: "f6 link dim black fl") %>
+      <%= link("Forgot your password?", to: Routes.password_reset_path(@conn, :new), class: "f6 link dim black fr") %>
     </div>
   <% end) %>
 </main>

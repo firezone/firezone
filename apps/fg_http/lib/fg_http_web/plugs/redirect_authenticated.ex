@@ -9,13 +9,13 @@ defmodule FgHttpWeb.Plugs.RedirectAuthenticated do
   def init(default), do: default
 
   def call(conn, _default) do
-    if get_session(conn, :session_id) do
+    if get_session(conn, :email) do
       conn
       |> redirect(to: "/")
       |> halt()
     else
       conn
-      |> assign(:user_signed_in?, false)
+      |> assign(:session, nil)
     end
   end
 end

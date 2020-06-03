@@ -5,6 +5,11 @@ defmodule FgHttpWeb.Router do
 
   use FgHttpWeb, :router
 
+  # View emails locally in development
+  if Mix.env() == :dev do
+    forward "/sent_emails", Bamboo.SentEmailViewerPlug
+  end
+
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session
@@ -20,6 +25,9 @@ defmodule FgHttpWeb.Router do
   scope "/", FgHttpWeb do
     pipe_through :browser
 
+    resources "/password_resets", PasswordResetController, only: [:update, :new, :create]
+    get "/password_resets/:reset_token", PasswordResetController, :edit
+
     resources "/user", UserController, singleton: true, only: [:show, :edit, :update, :delete]
     resources "/users", UserController, only: [:new, :create]
 
@@ -31,7 +39,7 @@ defmodule FgHttpWeb.Router do
 
     resources "/sessions", SessionController, only: [:new, :create, :delete]
 
-    get "/", DeviceController, :index
+    get "/", SessionController, :new
   end
 
   # Other scopes may use custom stacks.
