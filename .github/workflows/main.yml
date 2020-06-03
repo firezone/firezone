@@ -42,7 +42,7 @@ jobs:
           mix ecto.migrate
 
       - name: Run Tests and Upload Coverage Report
-        run: mix coveralls.github
+        run: mix coveralls.github --umbrella
 
   # 2. Build VM image
   build-vm:
