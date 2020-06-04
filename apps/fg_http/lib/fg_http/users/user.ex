@@ -25,7 +25,6 @@ defmodule FgHttp.Users.User do
     timestamps(type: :utc_datetime_usec)
   end
 
-  @doc false
   def create_changeset(user, attrs \\ %{}) do
     user
     |> cast(attrs, [:email, :password_hash, :password, :password_confirmation])

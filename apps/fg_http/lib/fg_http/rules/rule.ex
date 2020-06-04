@@ -21,7 +21,6 @@ defmodule FgHttp.Rules.Rule do
     timestamps(type: :utc_datetime_usec)
   end
 
-  @doc false
   def changeset(rule, attrs) do
     rule
     |> cast(attrs, [:device_id, :priority, :action, :destination, :port, :protocol, :enabled])

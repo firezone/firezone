@@ -28,8 +28,8 @@ defmodule FgHttpWeb.DeviceController do
     all_params = Map.merge(device_params, our_params)
 
     case Devices.create_device(all_params) do
-      {:ok, device} ->
-        redirect(conn, to: Routes.device_path(conn, :show, device))
+      {:ok, _device} ->
+        redirect(conn, to: Routes.device_path(conn, :index))
 
       {:error, %Ecto.Changeset{} = changeset} ->
         render(conn, "new.html", changeset: changeset)
