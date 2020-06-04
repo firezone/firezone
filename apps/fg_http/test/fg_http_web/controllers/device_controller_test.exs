@@ -23,8 +23,8 @@ defmodule FgHttpWeb.DeviceControllerTest do
 
   describe "create device" do
     test "redirects when data is valid", %{authed_conn: conn} do
-      conn = post(conn, Routes.device_path(conn, :create), device: @create_attrs)
-      assert html_response(conn, 302) =~ "redirected"
+      test_conn = post(conn, Routes.device_path(conn, :create), device: @create_attrs)
+      assert redirected_to(test_conn) == Routes.device_path(test_conn, :index)
     end
 
     test "renders errors when data is invalid", %{authed_conn: conn} do

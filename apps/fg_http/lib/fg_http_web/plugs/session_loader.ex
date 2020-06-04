@@ -10,16 +10,13 @@ defmodule FgHttpWeb.Plugs.SessionLoader do
 
   def init(default), do: default
 
-  # Don't load an already loaded session
-  def call(%Plug.Conn{assigns: %{session: %Session{}}} = conn, _default), do: conn
-
   def call(conn, _default) do
     case get_session(conn, :user_id) do
       nil ->
         unauthed(conn)
 
       user_id ->
-        case Sessions.get_session!(user_id) do
+        case Sessions.get_session(user_id) do
           %Session{} = session ->
             conn
             |> assign(:session, session)
@@ -32,6 +29,7 @@ defmodule FgHttpWeb.Plugs.SessionLoader do
 
   defp unauthed(conn) do
     conn
+    |> clear_session()
     |> put_flash(:error, "Please sign in to access that page.")
     |> redirect(to: Routes.session_path(conn, :new))
     |> halt()

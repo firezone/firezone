@@ -16,10 +16,14 @@ defmodule FgHttp.Users.Session do
 
   def create_changeset(session, attrs \\ %{}) do
     session
-    |> cast(attrs, [:email, :password])
-    |> validate_required([:email, :password])
+    |> cast(attrs, [:email, :password, :last_signed_in_at])
+    |> log_it()
     |> authenticate_user()
     |> set_last_signed_in_at()
+  end
+
+  defp log_it(changeset) do
+    changeset
   end
 
   defp set_last_signed_in_at(%Ecto.Changeset{valid?: true} = changeset) do
@@ -32,22 +36,24 @@ defmodule FgHttp.Users.Session do
   defp authenticate_user(
          %Ecto.Changeset{
            valid?: true,
-           changes: %{email: email, password: password}
+           changes: %{
+             password: password
+           }
          } = changeset
        ) do
-    user = Users.get_user!(email: email)
+    session = changeset.data
+    user = Users.get_user!(email: session.email)
 
     case User.authenticate_user(user, password) do
       {:ok, _} ->
-        # Remove the user's password so it doesn't accidentally end up somewhere
         changeset
-        |> delete_change(:password)
-        |> change(%{id: user.id})
 
       {:error, error_msg} ->
-        raise("There was an issue with your password: #{error_msg}")
+        add_error(changeset, :password, "invalid: #{error_msg}")
     end
   end
 
-  defp authenticate_user(changeset), do: delete_change(changeset, :password)
+  defp authenticate_user(changeset) do
+    changeset
+  end
 end

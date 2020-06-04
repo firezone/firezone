@@ -41,7 +41,7 @@ defmodule FgHttpWeb.ConnCase do
     session = Fixtures.session()
 
     new_conn()
-    |> Plug.Conn.assign(:session, session)
+    |> Plug.Test.init_test_session(%{user_id: session.id})
   end
 
   setup tags do
