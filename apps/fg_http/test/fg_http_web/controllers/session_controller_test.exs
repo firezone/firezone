@@ -6,7 +6,15 @@ defmodule FgHttpWeb.SessionControllerTest do
   @valid_attrs %{email: "test", password: "test"}
   @invalid_attrs %{email: "test", password: "wrong"}
 
-  describe "new" do
+  describe "new when a user is already signed in" do
+    test "redirects to authenticated root", %{authed_conn: conn} do
+      test_conn = get(conn, Routes.session_path(conn, :new))
+
+      assert redirected_to(test_conn) == Routes.device_path(test_conn, :index)
+    end
+  end
+
+  describe "new when a user is not signed in" do
     test "renders sign in form", %{unauthed_conn: conn} do
       test_conn = get(conn, Routes.session_path(conn, :new))
 

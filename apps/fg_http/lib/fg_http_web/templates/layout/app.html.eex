@@ -17,7 +17,7 @@
         <nav class="f6 fw6 ttu tracked fr">
           <%= if assigns[:session] do %>
             <%= link("Devices", to: Routes.device_path(@conn, :index), class: "link dim white dib mr3") %>
-            <%= link("Sign out", to: Routes.session_path(@conn, :delete, @session), method: :delete, class: "link dim white dib mr3") %>
+            <%= link("Sign out", to: Routes.session_path(@conn, :delete), method: :delete, class: "link dim white dib mr3") %>
           <% else %>
             <%= link("Sign in", to: Routes.session_path(@conn, :new), class: "link dim white dib mr3") %>
           <% end %>
