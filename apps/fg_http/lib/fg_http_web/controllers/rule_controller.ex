@@ -28,9 +28,9 @@ defmodule FgHttpWeb.RuleController do
       {:ok, rule} ->
         conn
         |> put_flash(:info, "Rule created successfully.")
-        |> redirect(to: Routes.rule_path(conn, :show, rule))
+        |> redirect(to: Routes.device_rule_path(conn, :index, rule.device_id))
 
-      {:error, %Ecto.Changeset{} = changeset} ->
+      {:error, changeset} ->
         device = Devices.get_device!(device_id)
         render(conn, "new.html", device: device, changeset: changeset)
     end
@@ -55,19 +55,20 @@ defmodule FgHttpWeb.RuleController do
       {:ok, rule} ->
         conn
         |> put_flash(:info, "Rule updated successfully.")
-        |> redirect(to: Routes.rule_path(conn, :show, rule))
+        |> redirect(to: Routes.device_rule_path(conn, :index, rule.device_id))
 
-      {:error, %Ecto.Changeset{} = changeset} ->
+      {:error, changeset} ->
         render(conn, "edit.html", rule: rule, changeset: changeset)
     end
   end
 
   def delete(conn, %{"id" => id}) do
     rule = Rules.get_rule!(id)
+    device_id = rule.device_id
     {:ok, _rule} = Rules.delete_rule(rule)
 
     conn
     |> put_flash(:info, "Rule deleted successfully.")
-    |> redirect(to: Routes.rule_path(conn, :index, rule.device))
+    |> redirect(to: Routes.device_rule_path(conn, :index, device_id))
   end
 end

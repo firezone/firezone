@@ -2,7 +2,7 @@ defmodule FgHttp.Fixtures do
   @moduledoc """
   Convenience helpers for inserting records
   """
-  alias FgHttp.{Devices, PasswordResets, Repo, Sessions, Users, Users.User}
+  alias FgHttp.{Devices, PasswordResets, Repo, Rules, Sessions, Users, Users.User}
 
   def user(attrs \\ %{}) do
     case Repo.get_by(User, email: "test") do
@@ -27,6 +27,16 @@ defmodule FgHttp.Fixtures do
 
     {:ok, device} = Devices.create_device(attrs)
     device
+  end
+
+  def rule(attrs \\ %{}) do
+    attrs =
+      attrs
+      |> Enum.into(%{device_id: device().id})
+      |> Enum.into(%{destination: "0.0.0.0/0"})
+
+    {:ok, rule} = Rules.create_rule(attrs)
+    rule
   end
 
   def session(_attrs \\ %{}) do

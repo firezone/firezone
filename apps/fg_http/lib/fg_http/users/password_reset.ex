@@ -20,19 +20,16 @@ defmodule FgHttp.Users.PasswordReset do
     field :email, :string
   end
 
-  @doc false
   def changeset do
     %__MODULE__{}
     |> cast(%{}, [:password, :password_confirmation, :reset_token])
   end
 
-  @doc false
   def changeset(%__MODULE__{} = password_reset, attrs \\ %{}) do
     password_reset
     |> cast(attrs, [:password, :password_confirmation, :reset_token])
   end
 
-  @doc false
   def create_changeset(%__MODULE__{} = password_reset, attrs) do
     password_reset
     |> cast(attrs, [:email, :reset_sent_at, :reset_token])
@@ -44,7 +41,6 @@ defmodule FgHttp.Users.PasswordReset do
     |> validate_required([:reset_sent_at])
   end
 
-  @doc false
   def update_changeset(%__MODULE__{} = password_reset, attrs) do
     password_reset
     |> cast(attrs, [

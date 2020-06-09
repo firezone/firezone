@@ -16,7 +16,7 @@ defmodule FgHttpWeb.SessionController do
 
   # POST /sessions
   def create(conn, %{"session" => %{"email" => email} = session_params}) do
-    case Sessions.get_session!(email: email) do
+    case Sessions.get_session(email: email) do
       %Session{} = session ->
         case Sessions.create_session(session, session_params) do
           {:ok, session} ->

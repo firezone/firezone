@@ -20,7 +20,6 @@ defmodule FgHttp.Devices.Device do
     timestamps(type: :utc_datetime_usec)
   end
 
-  @doc false
   def changeset(device, attrs) do
     device
     |> cast(attrs, [:last_ip, :ifname, :user_id, :name, :public_key])

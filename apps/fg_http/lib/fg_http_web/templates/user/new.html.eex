@@ -1,8 +1,10 @@
 <h3>Sign Up</h3>
 
-<%= form_for @changeset, Routes.user_path(@conn, :create), fn f -> %>
-  <%= if f.errors do %>
-
+<%= form_for @changeset, Routes.user_path(@conn, :new), fn f -> %>
+  <%= if @changeset.action do %>
+    <div>
+      <p>Oops, something went wrong! Please check the errors below.</p>
+    </div>
   <% end %>
 
   <label>

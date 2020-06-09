@@ -37,7 +37,8 @@ defmodule FgHttpWeb.Router do
 
     resources "/rules", RuleController, only: [:show, :update, :delete, :edit]
 
-    resources "/sessions", SessionController, only: [:new, :create, :delete]
+    resources "/session", SessionController, singleton: true, only: [:delete]
+    resources "/sessions", SessionController, only: [:new, :create]
 
     get "/", SessionController, :new
   end
