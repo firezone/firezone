@@ -7,3 +7,9 @@
   <dt>Last signed in at</dt>
   <dd><%= @session.last_signed_in_at %></dd>
 </dl>
+
+<%= link("Edit", to: Routes.user_path(@conn, :edit)) %>
+
+|
+
+<%= link("Delete your account", to: Routes.user_path(@conn, :delete)) %>

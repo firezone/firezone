@@ -14,9 +14,21 @@ defmodule FgHttpWeb.UserControllerTest do
     password_confirmation: "wrong_password"
   }
   @valid_update_attrs %{
-    "email" => "new-email",
-    "password" => "new_password",
-    "password_confirmation" => "new_password"
+    email: "new-email",
+    password: "new_password",
+    password_confirmation: "new_password"
+  }
+  @valid_update_password_attrs %{
+    email: "fixture",
+    password: "new_password",
+    password_confirmation: "new_password",
+    current_password: "test"
+  }
+  @invalid_update_password_attrs %{
+    email: "fixture",
+    password: "new_password",
+    password_confirmation: "new_password",
+    current_password: "wrong current password"
   }
   @invalid_update_attrs %{
     email: "new-email",
@@ -63,6 +75,20 @@ defmodule FgHttpWeb.UserControllerTest do
     end
   end
 
+  describe "update password" do
+    test "updates password when params are valid", %{authed_conn: conn} do
+      test_conn = put(conn, Routes.user_path(conn, :update), user: @valid_update_password_attrs)
+
+      assert redirected_to(test_conn) == Routes.user_path(test_conn, :show)
+    end
+
+    test "renders errors when params are invalid", %{authed_conn: conn} do
+      test_conn = put(conn, Routes.user_path(conn, :update), user: @invalid_update_password_attrs)
+
+      assert html_response(test_conn, 200) =~ "is invalid: invalid password"
+    end
+  end
+
   describe "update" do
     test "updates user when params are valid", %{authed_conn: conn} do
       test_conn = put(conn, Routes.user_path(conn, :update), user: @valid_update_attrs)
@@ -73,7 +99,7 @@ defmodule FgHttpWeb.UserControllerTest do
     test "renders errors when params are invalid", %{authed_conn: conn} do
       test_conn = put(conn, Routes.user_path(conn, :update), user: @invalid_update_attrs)
 
-      assert html_response(test_conn, 200) =~ "Edit Account"
+      assert html_response(test_conn, 200) =~ "does not match password confirmation"
     end
   end
 
