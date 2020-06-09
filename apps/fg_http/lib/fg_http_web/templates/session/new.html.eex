@@ -9,10 +9,12 @@
       <div class="mt3">
         <%= label(:session_user, :email, class: "db fw6 lh-copy f6") %>
         <%= text_input(f, :email, class: "pa2 input-reset ba bg-transparent hover-bg-black hover-white w-100") %>
+        <%= error_tag f, :email %>
       </div>
       <div class="mv3">
         <%= label(:session_user, :password, class: "db fw6 lh-copy f6") %>
         <%= password_input(f, :password, class: "pa2 input-reset ba bg-transparent hover-bg-black hover-white w-100") %>
+        <%= error_tag f, :password %>
       </div>
       <label class="pa0 ma0 lh-copy f6 pointer"><input type="checkbox"> Remember me</label>
     </fieldset>

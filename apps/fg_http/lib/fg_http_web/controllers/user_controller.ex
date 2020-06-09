@@ -7,6 +7,7 @@ defmodule FgHttpWeb.UserController do
   alias FgHttp.{Sessions, Users, Users.User}
 
   plug FgHttpWeb.Plugs.SessionLoader when action in [:show, :edit, :update, :delete]
+  plug :scrub_params, "user" when action in [:update]
 
   # GET /users/new
   def new(conn, _params) do
