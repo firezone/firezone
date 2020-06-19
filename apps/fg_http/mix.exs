@@ -46,6 +46,7 @@ defmodule FgHttp.MixProject do
     [
       {:phoenix, "~> 1.5.1"},
       {:excoveralls, "~> 0.13", only: :test},
+      {:floki, ">= 0.0.0", only: :test},
       {:argon2_elixir, "~> 2.0"},
       {:phoenix_pubsub, "~> 2.0"},
       {:phoenix_ecto, "~> 4.0"},
