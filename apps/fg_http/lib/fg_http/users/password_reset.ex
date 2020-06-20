@@ -34,6 +34,7 @@ defmodule FgHttp.Users.PasswordReset do
     password_reset
     |> cast(attrs, [:email, :reset_sent_at, :reset_token])
     |> validate_required([:email])
+    |> validate_format(:email, ~r/@/)
     |> generate_reset_token()
     |> validate_required([:reset_token])
     |> unique_constraint(:reset_token)

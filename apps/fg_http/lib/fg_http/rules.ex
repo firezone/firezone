@@ -8,14 +8,6 @@ defmodule FgHttp.Rules do
 
   alias FgHttp.Rules.Rule
 
-  def list_rules(device_id) do
-    Repo.all(from r in Rule, where: r.device_id == ^device_id)
-  end
-
-  def list_rules do
-    Repo.all(Rule)
-  end
-
   def get_rule!(id), do: Repo.get!(Rule, id)
 
   def create_rule(attrs \\ %{}) do

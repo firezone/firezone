@@ -4,6 +4,19 @@ defmodule FgHttpWeb.ErrorHelpers do
   """
 
   use Phoenix.HTML
+  import Ecto.Changeset, only: [traverse_errors: 2]
+
+  def aggregated_errors(changeset) do
+    traverse_errors(changeset, fn {msg, opts} ->
+      Enum.reduce(opts, msg, fn {key, value}, acc ->
+        String.replace(acc, "%{#{key}}", to_string(value))
+      end)
+    end)
+    |> Enum.reduce("", fn {key, value}, acc ->
+      joined_errors = Enum.join(value, "; ")
+      "#{acc}#{key}: #{joined_errors}\n"
+    end)
+  end
 
   @doc """
   Generates tag for inlined form input errors.

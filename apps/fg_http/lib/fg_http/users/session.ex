@@ -52,8 +52,4 @@ defmodule FgHttp.Users.Session do
         add_error(changeset, :password, "invalid: #{error_msg}")
     end
   end
-
-  defp authenticate_user(changeset) do
-    changeset
-  end
 end

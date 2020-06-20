@@ -4,34 +4,42 @@ defmodule FgHttpWeb.UserControllerTest do
   alias FgHttp.Users.Session
 
   @valid_create_attrs %{
-    email: "fixure",
+    email: "valid@test",
     password: "password",
     password_confirmation: "password"
   }
   @invalid_create_attrs %{
-    email: "fixture",
+    email: "test@test",
     password: "password",
     password_confirmation: "wrong_password"
   }
   @valid_update_attrs %{
-    email: "new-email",
+    email: "test@test",
     password: "new_password",
     password_confirmation: "new_password"
   }
+  @valid_email_attrs %{email: "test@test"}
+  @invalid_email_attrs %{email: "invalid"}
+  @empty_update_password_attrs %{
+    email: "",
+    password: "",
+    password_confirmation: "",
+    current_password: ""
+  }
   @valid_update_password_attrs %{
-    email: "fixture",
+    email: "test@test",
     password: "new_password",
     password_confirmation: "new_password",
     current_password: "test"
   }
   @invalid_update_password_attrs %{
-    email: "fixture",
+    email: "test@test",
     password: "new_password",
     password_confirmation: "new_password",
     current_password: "wrong current password"
   }
   @invalid_update_attrs %{
-    email: "new-email",
+    email: "test@test",
     password: "new_password",
     password_confirmation: "wrong_password"
   }
@@ -87,9 +95,25 @@ defmodule FgHttpWeb.UserControllerTest do
 
       assert html_response(test_conn, 200) =~ "is invalid: invalid password"
     end
+
+    test "does nothing when password params are empty", %{authed_conn: conn} do
+      test_conn = put(conn, Routes.user_path(conn, :update), user: @empty_update_password_attrs)
+    end
   end
 
   describe "update" do
+    test "updates email", %{authed_conn: conn} do
+      test_conn = put(conn, Routes.user_path(conn, :update), user: @valid_email_attrs)
+
+      assert redirected_to(test_conn) == Routes.user_path(test_conn, :show)
+    end
+
+    test "renders error when email is invalid", %{authed_conn: conn} do
+      test_conn = put(conn, Routes.user_path(conn, :update), user: @invalid_email_attrs)
+
+      assert html_response(test_conn, 200) =~ "has invalid format"
+    end
+
     test "updates user when params are valid", %{authed_conn: conn} do
       test_conn = put(conn, Routes.user_path(conn, :update), user: @valid_update_attrs)
 
