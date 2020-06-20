@@ -5,13 +5,13 @@ defmodule FgHttp.Fixtures do
   alias FgHttp.{Devices, PasswordResets, Repo, Rules, Sessions, Users, Users.User}
 
   def user(attrs \\ %{}) do
-    case Repo.get_by(User, email: "test") do
+    case Repo.get_by(User, email: "test@test") do
       nil ->
-        attrs =
-          attrs
-          |> Enum.into(%{email: "test", password: "test", password_confirmation: "test"})
+        {:ok, user} =
+          %{email: "test@test", password: "test", password_confirmation: "test"}
+          |> Map.merge(attrs)
+          |> Users.create_user()
 
-        {:ok, user} = Users.create_user(attrs)
         user
 
       %User{} = user ->

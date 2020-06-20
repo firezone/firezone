@@ -3,7 +3,7 @@ defmodule FgHttpWeb.PasswordResetControllerTest do
 
   alias FgHttp.Fixtures
 
-  @valid_create_attrs %{email: "test"}
+  @valid_create_attrs %{email: "test@test"}
   @invalid_create_attrs %{email: "doesnt-exist"}
 
   describe "new password_reset" do

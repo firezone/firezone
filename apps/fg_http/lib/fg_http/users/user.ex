@@ -85,6 +85,11 @@ defmodule FgHttp.Users.User do
     user
     |> cast(attrs, [:email])
     |> validate_required([:email])
+    |> validate_format(:email, ~r/@/)
+  end
+
+  def update_changeset(user, %{} = attrs) do
+    changeset(user, attrs)
   end
 
   def changeset(user, attrs) do

@@ -3,8 +3,8 @@ defmodule FgHttpWeb.SessionControllerTest do
 
   alias FgHttp.{Fixtures, Repo, Users.User}
 
-  @valid_attrs %{email: "test", password: "test"}
-  @invalid_attrs %{email: "test", password: "wrong"}
+  @valid_attrs %{email: "test@test", password: "test"}
+  @invalid_attrs %{email: "test@test", password: "wrong"}
 
   describe "new when a user is already signed in" do
     test "redirects to authenticated root", %{authed_conn: conn} do
