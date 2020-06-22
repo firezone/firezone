@@ -8,10 +8,6 @@ defmodule FgHttp.Users do
 
   alias FgHttp.Users.User
 
-  def list_users do
-    Repo.all(User)
-  end
-
   def get_user!(email: email) do
     Repo.get_by!(User, email: email)
   end
