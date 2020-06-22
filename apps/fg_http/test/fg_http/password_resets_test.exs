@@ -6,8 +6,8 @@ defmodule FgHttp.PasswordResetsTest do
   describe "password_resets" do
     alias FgHttp.Users.PasswordReset
 
-    @valid_attrs %{email: "test"}
-    @invalid_attrs %{email: ""}
+    @valid_attrs %{email: "test@test"}
+    @invalid_attrs %{email: "invalid"}
 
     test "get_password_reset!/1 returns the password_reset with given token" do
       token = Fixtures.password_reset(%{reset_sent_at: DateTime.utc_now()}).reset_token

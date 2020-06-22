@@ -3,8 +3,8 @@ defmodule FgHttpWeb.SessionControllerTest do
 
   alias FgHttp.{Fixtures, Repo, Users.User}
 
-  @valid_attrs %{email: "test", password: "test"}
-  @invalid_attrs %{email: "test", password: "wrong"}
+  @valid_attrs %{email: "test@test", password: "test"}
+  @invalid_attrs %{email: "test@test", password: "wrong"}
 
   describe "new when a user is already signed in" do
     test "redirects to authenticated root", %{authed_conn: conn} do
@@ -15,8 +15,14 @@ defmodule FgHttpWeb.SessionControllerTest do
   end
 
   describe "new when a user is not signed in" do
-    test "renders sign in form", %{unauthed_conn: conn} do
+    test "renders sign in form for new session path", %{unauthed_conn: conn} do
       test_conn = get(conn, Routes.session_path(conn, :new))
+
+      assert html_response(test_conn, 200) =~ "Sign In"
+    end
+
+    test "renders sign in form for root path", %{unauthed_conn: conn} do
+      test_conn = get(conn, "/")
 
       assert html_response(test_conn, 200) =~ "Sign In"
     end

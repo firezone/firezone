@@ -5,7 +5,7 @@
     </div>
   <% end %>
 
-  <fieldset id="edit_account" class="ba b--transparent ph0 mh0">
+  <fieldset id="edit_user" class="ba b--transparent ph0 mh0">
     <legend class="f4 fw6 ph0 mh0">Edit Account</legend>
     <div class="mt3">
       <%= label(f, :email, class: "db fw6 lh-copy f6") %>

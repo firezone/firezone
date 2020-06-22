@@ -6,7 +6,7 @@
   <%= aggregated_errors(@changeset) %>
 <% end %>
 
-<%= live_render(@conn, FgHttpWeb.NewDeviceLive, session: %{"current_user_id" => @session.id}) %>
+<%= live_render(@conn, FgHttpWeb.NewDeviceLive, session: %{"user_id" => @session.id}) %>
 
 <p>
   <%= link "Back", to: Routes.device_path(@conn, :index) %>
