@@ -98,6 +98,8 @@ defmodule FgHttpWeb.UserControllerTest do
 
     test "does nothing when password params are empty", %{authed_conn: conn} do
       test_conn = put(conn, Routes.user_path(conn, :update), user: @empty_update_password_attrs)
+
+      assert redirected_to(test_conn) =~ Routes.user_path(test_conn, :show)
     end
   end
 
