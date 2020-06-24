@@ -36,6 +36,9 @@ npm-debug.log
 # ElixirLS generates an .elixir_ls folder for user settings
 .elixir_ls
 
+# VSCode generates a .vscode folder for workspace settings
+.vscode
+
 /.vagrant
 
 *.log
