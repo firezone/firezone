@@ -18,6 +18,7 @@ defmodule FgHttpWeb.NewDeviceLive do
     end
 
     device = %Device{user_id: user_id}
+
     {:ok, assign(socket, :device, device)}
   end
 
