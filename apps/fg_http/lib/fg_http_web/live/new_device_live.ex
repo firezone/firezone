@@ -17,7 +17,7 @@ defmodule FgHttpWeb.NewDeviceLive do
       :timer.send_after(@mocked_timer, self(), {:pubkey, "foobar"})
     end
 
-    device = %Device{user_id: user_id}
+    device = %Device{user_id: user_id, last_ip: "127.0.0.1"}
 
     {:ok, assign(socket, :device, device)}
   end

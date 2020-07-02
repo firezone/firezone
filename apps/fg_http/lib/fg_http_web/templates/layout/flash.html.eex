@@ -1,0 +1,18 @@
+<%= unless is_nil(get_flash(@conn, :info)) and is_nil(get_flash(@conn, :error)) do %>
+  <section class="section">
+    <div class="container">
+      <div class="notification">
+        <%= if get_flash(@conn, :info) do %>
+          <div class="flash-info">
+            <%= get_flash(@conn, :info) %>
+          </div>
+        <% end %>
+        <%= if get_flash(@conn, :error) do %>
+          <div class="flash-error">
+            <%= get_flash(@conn, :error) %>
+          </div>
+        <% end %>
+      </div>
+    </div>
+  </section>
+<% end %>

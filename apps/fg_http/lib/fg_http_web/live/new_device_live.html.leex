@@ -1,10 +1,10 @@
-<p>
-  Add the following to your WireGuard™ configuration file:
-</p>
+<div class="columns">
+  <div class="column is-6">
+  <h6 class="is-6 title">
+    Add the following to your WireGuard™ configuration file:
+  </h6>
 
-<div class="cf">
-  <div class="fl w-50">
-<pre class="bg-near-white pl4">
+<pre>
 <code id="wg-conf">
 [Peer]
 PublicKey = <%= Application.fetch_env!(:fg_vpn, :pubkey) %>
@@ -13,37 +13,58 @@ Endpoint = <%= Application.fetch_env!(:fg_http, :vpn_endpoint) %>
 </code>
 </pre>
   </div>
-  <div class="fr w-50 pa2">
+  <div class="column is-6">
+    <h6 class="is-6 title">
+      Or scan the QR code with your mobile phone:
+    </h6>
     <canvas id="qr-canvas"></canvas>
   </div>
 </div>
 
-<div phx-hook="QrEncode">
-  <%= unless @device.public_key do %>
-    <h4>
-      Waiting for device connection...
-    </h4>
-    <p>
-      When we receive a connection from your device, we'll prompt you verify it here.
-    </p>
-  <% else %>
-    <h4>Connected!</h4>
-    <p>
-      Device Public Key: <%= @device.public_key %>
-    </p>
-    <p>
+<hr>
+
+<div phx-hook="QrEncode" class="columns">
+  <div class="column is-6">
+    <%= unless @device.public_key do %>
+      <h4 class="subtitle is-4">
+        Waiting for device connection...
+      </h4>
+
+      <progress class="progress is-small" max="100"></progress>
+
+      <h6 class="title is-6">
+        When we receive a connection from your device, we'll prompt you verify it here.
+      </h6>
+
+      <p>
+        <%= link "Back to Devices", to: Routes.device_path(@socket, :index), class: "button" %>
+      </p>
+    <% else %>
+      <h4 class="subtitle is-4">Device connected!</h4>
+
+      <dl class="content">
+        <dt>Device Public Key:</dt>
+        <dd><strong><%= @device.public_key %></strong></dd>
+        <dt>Device IP:</dt>
+        <dd><strong><%= @device.last_ip %></strong></dd>
+      </dl>
+
       <%# XXX: Use the public key sent by the actual device and not the one here %>
-      <%=
-        link("This looks good, verify and continue. ->",
-        to: Routes.device_path(@socket, :create, "device[public_key]": @device.public_key),
-        method: :post)
-      %>
-    </p>
-    <p>
-      <%=
-        link("<- Something's wrong. Don't add this device and go back.",
-        to: Routes.device_path(@socket, :index))
-      %>
-    </p>
-  <% end %>
+      <div class="level">
+        <div class="level-left">
+          <%=
+            link("Cancel and Go Back to Devices", to: Routes.device_path(@socket, :index), class: "button")
+          %>
+        </div>
+        <div class="level-right">
+          <%=
+            link(to: Routes.device_path(@socket, :create, "device[public_key]": @device.public_key),
+                method: :post,
+                class: "button is-success") do %>
+              Verify and Add Device
+          <% end %>
+        </div>
+      </div>
+    <% end %>
+  </div>
 </div>

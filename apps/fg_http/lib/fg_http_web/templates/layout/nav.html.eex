@@ -1,0 +1,28 @@
+<nav class="navbar" role="navigation" aria-label="main navigation">
+  <div class="container">
+    <div class="navbar-brand">
+      <h4 class="title is-4">
+        <%= link("FireGuard", to: FgHttpWeb.Endpoint.url(), class: "navbar-item") %>
+      </h4>
+    </div>
+    <div class="navbar-menu">
+    </div>
+    <div class="navbar-end">
+      <div class="navbar-item">
+        <div class="buttons">
+          <%= if assigns[:session] do %>
+            <span>
+              <%= link("Your Account", to: Routes.user_path(@conn, :show)) %>
+            </span>
+            |
+            <span>
+              <%= link("Sign out", to: Routes.session_path(@conn, :delete), method: :delete) %>
+            </span>
+          <% else %>
+            <%= link("Sign in", to: Routes.session_path(@conn, :new)) %>
+          <% end %>
+        </div>
+      </div>
+    </div>
+  </div>
+</nav>
