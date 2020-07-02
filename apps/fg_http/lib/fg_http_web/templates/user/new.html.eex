@@ -1,36 +1,48 @@
-<h3>Sign Up</h3>
+<div class="columns">
+  <div class="column is-4 is-offset-4">
+    <h3 class="title">Sign Up</h3>
+    <hr>
 
-<%= form_for @changeset, Routes.user_path(@conn, :create), fn f -> %>
-  <%= if @changeset.action do %>
-    <div>
-      <p>Oops, something went wrong! Please check the errors below.</p>
-    </div>
-  <% end %>
+    <%= form_for @changeset, Routes.user_path(@conn, :create), fn f -> %>
+      <%= if @changeset.action do %>
+        <div>
+          <p>Oops, something went wrong! Please check the errors below.</p>
+        </div>
+      <% end %>
 
-  <fieldset id="create_user" class="ba b--transparent ph0 mh0">
-    <legend class="f4 fw6 ph0 mh0">Sign Up</legend>
-    <div class="mt3">
-      <%= label(f, :email, class: "db fw6 lh-copy f6") %>
-      <%= text_input(f, :email, class: "pa2 input-reset ba bg-transparent hover-bg-black hover-white w-100") %>
-      <%= error_tag f, :email %>
-    </div>
-    <div class="mv3">
-      <%= label(f, :password, class: "db fw6 lh-copy f6") %>
-      <%= password_input(f, :password, class: "pa2 input-reset ba bg-transparent hover-bg-black hover-white w-100") %>
-      <%= error_tag f, :password %>
-    </div>
-    <div class="mv3">
-      <%= label(f, :password_confirmation, class: "db fw6 lh-copy f6") %>
-      <%= password_input(f, :password_confirmation, class: "pa2 input-reset ba bg-transparent hover-bg-black hover-white w-100") %>
-      <%= error_tag f, :password_confirmation %>
-    </div>
-    <div class="mv3">
-      <%= label(f, :current_password, class: "db fw6 lh-copy f6") %>
-      <%= password_input(f, :current_password, class: "pa2 input-reset ba bg-transparent hover-bg-black hover-white w-100") %>
-      <%= error_tag f, :current_password %>
-    </div>
-  </fieldset>
-  <div>
-    <%= submit "Sign Up", class: "b ph3 pv2 input-reset ba b--black bg-transparent grow pointer f6 dib" %>
-  </div>
-<% end %>
+      <div class="field">
+        <%= label(f, :email, class: "label") %>
+        <div class="control">
+          <%= text_input(f, :email, class: "input") %>
+        </div>
+        <p class="help">
+          <%= error_tag f, :email %>
+        </p>
+      </div>
+
+      <div class="field">
+        <%= label(f, :password, class: "label") %>
+        <div class="control">
+          <%= password_input(f, :password, class: "input") %>
+        </div>
+        <p class="help">
+          <%= error_tag f, :password %>
+        </p>
+      </div>
+
+      <div class="field">
+        <%= label(f, :password_confirmation, class: "label") %>
+        <div class="control">
+          <%= password_input(f, :password_confirmation, class: "input") %>
+        </div>
+        <p class="help">
+          <%= error_tag f, :password_confirmation %>
+        </p>
+      </div>
+
+      <div class="field">
+        <div class="control">
+          <%= submit "Sign Up", class: "button is-link" %>
+        </div>
+      </div>
+    <% end %>

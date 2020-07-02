@@ -1,25 +1,27 @@
-<h1>Listing Devices</h1>
+<h1 class="title">Listing Devices</h1>
 
-<table class="collapse ba br2 b--black-10 pv2 ph3 mt4">
-  <tbody>
-    <tr class="striped--near-white">
-      <th class="pv2 ph3 tl f6 fw6 ttu">Name</th>
-      <th class="pv2 ph3 tl f6 fw6 ttu">Public key</th>
-
+<table class="table">
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Public key</th>
       <th></th>
     </tr>
-<%= for device <- @devices do %>
-    <tr class="striped--near-white">
-      <td class="pv2 ph3 tl f6 fw6 ttu"><%= device.name %></td>
-      <td class="pv2 ph3 tl f6 fw6 ttu"><%= device.public_key %></td>
-
+  </thead>
+  <tbody>
+  <%= for device <- @devices do %>
+    <tr>
+      <td><%= device.name %></td>
+      <td><%= device.public_key %></td>
       <td>
         <span><%= link "Show", to: Routes.device_path(@conn, :show, device) %></span>
+        |
         <span><%= link "Edit", to: Routes.device_path(@conn, :edit, device) %></span>
+        |
         <span><%= link "Delete", to: Routes.device_path(@conn, :delete, device), method: :delete, data: [confirm: "Are you sure?"] %></span>
       </td>
     </tr>
-<% end %>
+  <% end %>
   </tbody>
 </table>
 

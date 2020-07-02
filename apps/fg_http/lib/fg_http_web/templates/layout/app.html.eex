@@ -6,28 +6,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>FireGuard</title>
     <link rel="stylesheet" href="<%= Routes.static_path(@conn, "/css/app.css") %>"/>
-    <link rel="stylesheet" href="https://unpkg.com/tachyons@4/css/tachyons.min.css">
     <%= csrf_meta_tag() %>
   </head>
   <body>
-    <header class="w-100 fixed bg-black-90 ph3 pv3 ph4-m ph5-l">
-        <nav class="f6 fw6 ttu tracked fl">
-          <%= link("Fireguard", to: FgHttpWeb.Endpoint.url(), class: "link dim white dib mr3") %>
-        </nav>
-        <nav class="f6 fw6 ttu tracked fr">
-          <%= if assigns[:session] do %>
-            <%= link("Your Account", to: Routes.user_path(@conn, :show), class: "link dim white dib mr3") %>
-            <%= link("Devices", to: Routes.device_path(@conn, :index), class: "link dim white dib mr3") %>
-            <%= link("Sign out", to: Routes.session_path(@conn, :delete), method: :delete, class: "link dim white dib mr3") %>
-          <% else %>
-            <%= link("Sign in", to: Routes.session_path(@conn, :new), class: "link dim white dib mr3") %>
-          <% end %>
-        </nav>
-    </header>
-    <main class="mw7 mw9-ns center pa3 pt5 ph5-ns">
-      <%= render_flash(@conn) %>
-      <%= @inner_content %>
-    </main>
+    <%= render "nav.html", assigns %>
+    <%= render "flash.html", assigns %>
+    <section class="section">
+      <div class="container">
+        <%= @inner_content %>
+      </div>
+    </section>
     <script type="text/javascript" src="<%= Routes.static_path(@conn, "/js/app.js") %>"></script>
   </body>
 </html>
