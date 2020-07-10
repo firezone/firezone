@@ -25,6 +25,4 @@
   </tbody>
 </table>
 
-<p>
-  <%= link "New Device", to: Routes.device_path(@conn, :new) %>
-</p>
+<%= link "New Device", to: Routes.device_path(@conn, :new) %>

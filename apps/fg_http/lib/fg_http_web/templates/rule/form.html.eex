@@ -1,41 +1,70 @@
-<%= form_for @changeset, @action, [class: "black-80"], fn f -> %>
-  <%= if @changeset.action do %>
-    <div class="mt4 measure">
-      <p>Oops, something went wrong! Please check the errors below.</p>
-    </div>
-  <% end %>
+<div class="columns">
+  <div class="column is-4">
+    <%= form_for @changeset, @action, [], fn f -> %>
+      <%= if @changeset.action do %>
+        <div>
+          <p>Oops, something went wrong! Please check the errors below.</p>
+        </div>
+      <% end %>
 
-  <div class="mt4 measure">
-    <%= label f, :destination, class: "f6 b db mb2" %>
-    <%= text_input f, :destination, class: "input-reset ba b--black-20 pa2 mb2 db w-100" %>
-    <%= error_tag f, :destination %>
-  </div>
+      <div class="field">
+        <%= label f, :destination, class: "label" %>
+        <div class="control">
+          <%=
+            text_input f,
+            :destination,
+            class: "input",
+            placeholder: "IPv4/6 CIDR range or address"
+          %>
+        </div>
+        <p class="help">
+          <%= error_tag f, :destination %>
+        </p>
+      </div>
 
-  <div class="mt4 measure">
-    <%= label f, :port, class: "f6 b db mb2" %>
-    <%= text_input f, :port, class: "input-reset ba b--black-20 pa2 mb2 db w-100" %>
-    <%= error_tag f, :port %>
-  </div>
+      <div class="field">
+        <%= label f, :port, class: "label" %>
+        <div class="control">
+          <%= text_input f, :port, class: "input", placeholder: "1 - 65535" %>
+        </div>
+        <p class="help">
+          <%= error_tag f, :port %>
+        </p>
+      </div>
 
-  <div class="mt4 measure">
-    <%= label f, :protocol, class: "f6 b db mb2" %>
-    <%= text_input f, :protocol, class: "input-reset ba b--black-20 pa2 mb2 db w-100" %>
-    <%= error_tag f, :protocol %>
-  </div>
+      <div class="field">
+        <%= label f, :protocol, class: "label" %>
+        <div class="select">
+          <%= select f, :protocol, protocol_options_for_select() %>
+        </div>
+        <p class="help">
+          <%= error_tag f, :protocol %>
+        </p>
+      </div>
 
-  <div class="mt4 measure">
-    <%= label f, :priority, class: "f6 b db mb2" %>
-    <%= text_input f, :priority, class: "input-reset ba b--black-20 pa2 mb2 db w-100" %>
-    <%= error_tag f, :priority %>
-  </div>
+      <div class="field">
+        <%= label f, :priority, class: "label" %>
+        <div class="control">
+          <%= text_input f, :priority, class: "input" %>
+        </div>
+        <p class="help">
+          <%= error_tag f, :priority %>
+        </p>
+      </div>
 
-  <div class="mt4 measure">
-    <%= label f, :enabled, class: "f6 b db mb2" %>
-    <%= checkbox f, :enabled %>
-    <%= error_tag f, :enabled %>
-  </div>
+      <div class="field">
+        <label class="checkbox">
+          <%= checkbox f, :enabled, class: "checkbox" %>
+          Enabled
+        </label>
+        <p class="help">
+          <%= error_tag f, :enabled %>
+        </p>
+      </div>
 
-  <div class="mt4 measure">
-    <%= submit "Save" %>
+      <div class="field">
+        <%= submit "Save", class: "button is-primary" %>
+      </div>
+    <% end %>
   </div>
-<% end %>
+</div>

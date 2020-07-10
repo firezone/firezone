@@ -4,8 +4,10 @@
     <hr>
 
     <%= form_for(@conn, Routes.session_path(@conn, :create), [as: :session], fn f -> %>
-      <%= if f.errors do %>
-        <!-- Errors -->
+      <%= if assigns[:changeset] && @changeset.action do %>
+        <div>
+          <p>Oops, something went wrong! Please check the errors below.</p>
+        </div>
       <% end %>
 
       <div class="field">

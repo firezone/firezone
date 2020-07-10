@@ -40,7 +40,8 @@ defmodule FireguardUmbrella.MixProject do
   # Run "mix help deps" for examples and options.
   defp deps do
     [
-      {:excoveralls, "~> 0.13", only: :test}
+      {:excoveralls, "~> 0.13", only: :test},
+      {:mix_test_watch, "~> 1.0", only: :dev, runtime: false}
     ]
   end
 end
