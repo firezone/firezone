@@ -24,14 +24,14 @@ defmodule FgHttpWeb.SessionController do
             |> clear_session()
             |> put_session(:user_id, session.id)
             |> assign(:session, session)
-            |> put_flash(:info, "Session created successfully")
+            |> put_flash(:info, "Signed in successfully.")
             |> redirect(to: Routes.device_path(conn, :index))
 
           {:error, changeset} ->
             conn
             |> clear_session()
             |> assign(:session, nil)
-            |> put_flash(:error, "Error creating session.")
+            |> put_flash(:error, "Error signing in.")
             |> render("new.html", changeset: changeset)
         end
 

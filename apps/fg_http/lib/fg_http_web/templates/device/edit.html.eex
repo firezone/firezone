@@ -1,4 +1,4 @@
-<h1>Edit Device</h1>
+<h3 class="title is-3">Edit Device</h3>
 
 <%= render "form.html", Map.put(assigns, :action, Routes.device_path(@conn, :update, @device)) %>
 
