@@ -5,7 +5,7 @@ defmodule FgHttpWeb.NewDeviceLive do
 
   use Phoenix.LiveView
   use Phoenix.HTML
-  alias FgHttp.Devices.Device
+  alias FgHttp.{Devices.Device, Util.FgCrypto}
   alias FgHttpWeb.Router.Helpers, as: Routes
 
   # Number of seconds before simulating a device connect
@@ -14,7 +14,7 @@ defmodule FgHttpWeb.NewDeviceLive do
   def mount(_params, %{"user_id" => user_id}, socket) do
     if connected?(socket) do
       # Send a mock device connect
-      :timer.send_after(@mocked_timer, self(), {:pubkey, "foobar"})
+      :timer.send_after(@mocked_timer, self(), {:pubkey, FgCrypto.rand_string()})
     end
 
     device = %Device{user_id: user_id, last_ip: "127.0.0.1"}

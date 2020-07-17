@@ -1,15 +1,23 @@
-<h1>Your Account</h1>
+<div class="content">
+  <h3>Your Account</h3>
 
-<dl>
-  <dt>Email</dt>
-  <dd><%= @user.email %></dd>
+  <dl>
+    <dt>
+      <strong>Email</strong>
+    </dt>
+    <dd><%= @user.email %></dd>
 
-  <dt>Last signed in at</dt>
-  <dd><%= @session.last_signed_in_at %></dd>
-</dl>
+    <dt><strong>Last signed in at</strong></dt>
+    <dd><%= @session.last_signed_in_at %></dd>
+  </dl>
 
-<%= link("Edit", to: Routes.user_path(@conn, :edit)) %>
-
-|
-
-<%= link("Delete your account", to: Routes.user_path(@conn, :delete)) %>
+  <div class="level">
+    <%= link("Edit", to: Routes.user_path(@conn, :edit), class: "button is-primary") %>
+    <%= link "Delete your account",
+        to: Routes.user_path(@conn, :delete),
+        method: :delete,
+        data: [confirm: "Are you sure?"],
+        class: "button is-danger"
+      %>
+  </div>
+</div>

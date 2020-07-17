@@ -18,7 +18,9 @@
       </div>
 
       <div class="field">
-        <%= submit "Save", class: "button is-primary" %>
+        <div class="control">
+          <%= submit "Save", class: "button is-primary" %>
+        </div>
       </div>
     <% end %>
   </div>

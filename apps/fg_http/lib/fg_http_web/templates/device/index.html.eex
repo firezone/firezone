@@ -4,7 +4,9 @@
   <thead>
     <tr>
       <th>Name</th>
+      <th>Rules</th>
       <th>Public key</th>
+      <th>Last IP</th>
       <th></th>
     </tr>
   </thead>
@@ -12,7 +14,9 @@
   <%= for device <- @devices do %>
     <tr>
       <td><%= device.name %></td>
+      <td><%= link rules_title(device), to: Routes.device_rule_path(@conn, :index, device) %></td>
       <td><%= device.public_key %></td>
+      <td><%= device.last_ip || "Never connected" %></td>
       <td>
         <span><%= link "Show", to: Routes.device_path(@conn, :show, device) %></span>
         |
@@ -25,4 +29,4 @@
   </tbody>
 </table>
 
-<%= link "New Device", to: Routes.device_path(@conn, :new) %>
+<%= link "New Device", to: Routes.device_path(@conn, :new), class: "button is-primary" %>

@@ -9,7 +9,7 @@ defmodule FgHttpWeb.DeviceController do
   plug FgHttpWeb.Plugs.SessionLoader
 
   def index(conn, _params) do
-    devices = Devices.list_devices(conn.assigns.session.id)
+    devices = Devices.list_devices(conn.assigns.session.id, with_rules: true)
     render(conn, "index.html", devices: devices)
   end
 
