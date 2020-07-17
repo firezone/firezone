@@ -1,20 +1,20 @@
-<h1>Show Device</h1>
+<div class="content">
+  <h3>Show Device</h3>
 
-<ul>
-  <li>
-    <strong>Name:</strong>
-    <%= @device.name %>
-  </li>
+  <dl>
+    <dt>Name:</dt>
+    <dd><%= @device.name %></dd>
 
-  <li>
-    <strong>Public key:</strong>
-    <%= @device.public_key %>
-  </li>
-</ul>
+    <dt>Public key:</dt>
+    <dd><%= @device.public_key %></dd>
+  </dl>
 
-<p>
-  <%= link "Show Rules for This Device", to: Routes.device_rule_path(@conn, :index, @device) %>
-</p>
+  <p>
+    <%= link "Show Rules for This Device", to: Routes.device_rule_path(@conn, :index, @device) %>
+  </p>
 
-<p><%= link "Edit", to: Routes.device_path(@conn, :edit, @device) %></p>
-<p><%= link "Back", to: Routes.device_path(@conn, :index) %></p>
+  <div class="level">
+    <%= link "Back", to: Routes.device_path(@conn, :index), class: "button" %>
+    <%= link "Edit", to: Routes.device_path(@conn, :edit, @device), class: "button is-primary" %>
+  </div>
+</div>

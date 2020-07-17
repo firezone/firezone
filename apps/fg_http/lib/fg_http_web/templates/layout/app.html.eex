@@ -10,8 +10,8 @@
   </head>
   <body>
     <%= render "nav.html", assigns %>
-    <%= render "flash.html", assigns %>
     <section class="section">
+      <%= render "flash.html", assigns %>
       <div class="container">
         <%= @inner_content %>
       </div>

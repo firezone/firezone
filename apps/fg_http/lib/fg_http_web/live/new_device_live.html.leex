@@ -60,7 +60,7 @@ Endpoint = <%= Application.fetch_env!(:fg_http, :vpn_endpoint) %>
           <%=
             link(to: Routes.device_path(@socket, :create, "device[public_key]": @device.public_key),
                 method: :post,
-                class: "button is-success") do %>
+                class: "button is-primary") do %>
               Verify and Add Device
           <% end %>
         </div>

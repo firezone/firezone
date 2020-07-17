@@ -42,7 +42,7 @@
 
       <div class="field">
         <div class="control">
-          <%= submit "Sign Up", class: "button is-link" %>
+          <%= submit "Sign Up", class: "button is-primary" %>
         </div>
       </div>
     <% end %>

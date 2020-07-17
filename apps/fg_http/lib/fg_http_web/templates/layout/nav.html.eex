@@ -6,23 +6,25 @@
       </h4>
     </div>
     <div class="navbar-menu">
+      <%= if assigns[:session] do %>
+        <div class="navbar-start">
+          <%= link "Devices", to: Routes.device_path(@conn, :index), class: "navbar-item" %>
+        </div>
+      <% end %>
     </div>
     <div class="navbar-end">
-      <div class="navbar-item">
-        <div class="buttons">
-          <%= if assigns[:session] do %>
-            <span>
-              <%= link("Your Account", to: Routes.user_path(@conn, :show)) %>
-            </span>
-            |
-            <span>
-              <%= link("Sign out", to: Routes.session_path(@conn, :delete), method: :delete) %>
-            </span>
-          <% else %>
-            <%= link("Sign in", to: Routes.session_path(@conn, :new)) %>
-          <% end %>
+      <%= if assigns[:session] do %>
+        <div class="navbar-item">
+          <%= link("Your Account", to: Routes.user_path(@conn, :show)) %>
         </div>
-      </div>
+        <div class="navbar-item">
+          <%= link("Sign out", to: Routes.session_path(@conn, :delete), method: :delete) %>
+        </div>
+      <% else %>
+        <div class="navbar-item">
+          <%= link("Sign in", to: Routes.session_path(@conn, :new)) %>
+        </div>
+      <% end %>
     </div>
   </div>
 </nav>
