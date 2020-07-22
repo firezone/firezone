@@ -12,6 +12,6 @@ defmodule FgHttpWeb.DeviceView do
   end
 
   defp reverse_concat(word, number) do
-    "#{number}" <> "#{word}"
+    "#{number} " <> "#{word}"
   end
 end
