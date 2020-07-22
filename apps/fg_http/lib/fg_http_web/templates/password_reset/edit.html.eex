@@ -9,13 +9,41 @@
     </div>
   <% end %>
 
-  <%= label f, :password %>
-  <%= text_input f, :password %>
-  <%= error_tag f, :password %>
+  <div class="field is-horizontal">
+    <div class="field-label is-normal">
+      <%= label f, :password %>
+    </div>
+    <div class="field-body">
+      <div class="field">
+        <p class="control">
+          <%= text_input f, :password, placeholder: "Password" %>
+        </p>
+      </div>
+      <div class="field">
+        <p class="control">
+          <%= error_tag f, :password %>
+        </p>
+      </div>
+    </div>
+  </div>
 
-  <%= label f, :password_confirmation %>
-  <%= text_input f, :password_confirmation %>
-  <%= error_tag f, :password_confirmation %>
+  <div class="field is-horizontal">
+    <div class="field-label is-normal">
+      <%= label f, :password_confirmation %>
+    </div>
+    <div class="field-body">
+      <div class="field">
+        <p class="control">
+          <%= text_input f, :password_confirmation, placeholder: "Password Confirmation" %>
+        </p>
+      </div>
+      <div class="field">
+        <p class="control">
+          <%= error_tag f, :password_confirmation %>
+        </p>
+      </div>
+    </div>
+  </div>
 
   <div>
     <%= submit "Submit" %>

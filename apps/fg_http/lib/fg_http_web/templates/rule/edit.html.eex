@@ -1,4 +1,4 @@
-<h1>Edit Rule</h1>
+<h3 class="title is-3">Edit Rule</h3>
 
 <%= render "form.html", Map.put(assigns, :action, Routes.rule_path(@conn, :update, @rule)) %>
 

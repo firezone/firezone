@@ -12,6 +12,14 @@ defmodule FgHttp.Devices do
     Repo.all(from d in Device, where: d.user_id == ^user_id)
   end
 
+  def list_devices(user_id, with_rules: true) do
+    Repo.all(
+      from d in Device,
+        where: d.user_id == ^user_id,
+        preload: :rules
+    )
+  end
+
   def get_device!(id), do: Repo.get!(Device, id)
 
   def get_device!(id, with_rules: true) do

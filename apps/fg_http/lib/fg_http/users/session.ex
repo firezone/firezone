@@ -17,13 +17,8 @@ defmodule FgHttp.Users.Session do
   def create_changeset(session, attrs \\ %{}) do
     session
     |> cast(attrs, [:email, :password, :last_signed_in_at])
-    |> log_it()
     |> authenticate_user()
     |> set_last_signed_in_at()
-  end
-
-  defp log_it(changeset) do
-    changeset
   end
 
   defp set_last_signed_in_at(%Ecto.Changeset{valid?: true} = changeset) do

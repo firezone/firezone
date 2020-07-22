@@ -1,13 +1,11 @@
-<h1>New Device</h1>
+<h3 class="title is-3">New Device</h3>
 
-<%= if assigns[:changeset] do %>
+<%= if @changeset.action do %>
+  <p>
   The following errors occurred when creating this Device:
 
   <%= aggregated_errors(@changeset) %>
+  </p>
 <% end %>
 
 <%= live_render(@conn, FgHttpWeb.NewDeviceLive, session: %{"user_id" => @session.id}) %>
-
-<p>
-  <%= link "Back", to: Routes.device_path(@conn, :index) %>
-</p>

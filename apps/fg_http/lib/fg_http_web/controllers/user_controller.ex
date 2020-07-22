@@ -25,12 +25,12 @@ defmodule FgHttpWeb.UserController do
         conn
         |> put_session(:user_id, user.id)
         |> assign(:session, session)
-        |> put_flash(:info, "User created successfully.")
+        |> put_flash(:info, "Account created successfully.")
         |> redirect(to: Routes.device_path(conn, :index))
 
       {:error, %Ecto.Changeset{} = changeset} ->
         conn
-        |> put_flash(:error, "Error creating user.")
+        |> put_flash(:error, "Error creating account.")
         |> render("new.html", changeset: changeset)
     end
   end
@@ -64,12 +64,12 @@ defmodule FgHttpWeb.UserController do
 
         conn
         |> assign(:session, session)
-        |> put_flash(:info, "User updated successfully.")
+        |> put_flash(:info, "Account updated successfully.")
         |> redirect(to: Routes.user_path(conn, :show))
 
       {:error, changeset} ->
         conn
-        |> put_flash(:error, "Error updating user.")
+        |> put_flash(:error, "Error updating account.")
         |> render("edit.html", changeset: changeset)
     end
   end
@@ -83,12 +83,12 @@ defmodule FgHttpWeb.UserController do
         conn
         |> clear_session()
         |> assign(:session, nil)
-        |> put_flash(:info, "User deleted successfully.")
+        |> put_flash(:info, "Account deleted successfully.")
         |> redirect(to: "/")
 
       {:error, changeset} ->
         conn
-        |> put_flash(:error, "Error deleting User.")
+        |> put_flash(:error, "Error deleting account.")
         |> render("edit.html", changeset: changeset)
     end
   end
