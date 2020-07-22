@@ -43,13 +43,15 @@ defmodule FgHttpWeb.RuleController do
 
   def edit(conn, %{"id" => id}) do
     rule = Rules.get_rule!(id)
+    device = Devices.get_device!(rule.device_id)
     changeset = Rules.change_rule(rule)
 
-    render(conn, "edit.html", rule: rule, changeset: changeset)
+    render(conn, "edit.html", rule: rule, device: device, changeset: changeset)
   end
 
   def update(conn, %{"id" => id, "rule" => rule_params}) do
     rule = Rules.get_rule!(id)
+    device = Devices.get_device!(rule.device_id)
 
     case Rules.update_rule(rule, rule_params) do
       {:ok, rule} ->
@@ -58,7 +60,7 @@ defmodule FgHttpWeb.RuleController do
         |> redirect(to: Routes.device_rule_path(conn, :index, rule.device_id))
 
       {:error, changeset} ->
-        render(conn, "edit.html", rule: rule, changeset: changeset)
+        render(conn, "edit.html", rule: rule, device: device, changeset: changeset)
     end
   end
 

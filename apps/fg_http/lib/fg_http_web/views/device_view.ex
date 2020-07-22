@@ -8,6 +8,10 @@ defmodule FgHttpWeb.DeviceView do
 
     "rule"
     |> Inflex.inflect(num_rules)
-    |> (&("#{num_rules} " <> &1)).()
+    |> reverse_concat(num_rules)
+  end
+
+  defp reverse_concat(word, number) do
+    "#{number}" <> "#{word}"
   end
 end
