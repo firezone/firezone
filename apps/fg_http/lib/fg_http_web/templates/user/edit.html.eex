@@ -1,34 +1,59 @@
-<%= form_for @changeset, Routes.user_path(@conn, :update), fn f -> %>
-  <%= if @changeset.action do %>
-    <div>
-      <p>Oops, something went wrong! Please check the errors below.</p>
-    </div>
-  <% end %>
+<h3 class="title is-3">Edit Account</h3>
 
-  <fieldset id="edit_user" class="ba b--transparent ph0 mh0">
-    <legend class="f4 fw6 ph0 mh0">Edit Account</legend>
-    <div class="mt3">
-      <%= label(f, :email, class: "db fw6 lh-copy f6") %>
-      <%= text_input(f, :email, class: "pa2 input-reset ba bg-transparent hover-bg-black hover-white w-100") %>
-      <%= error_tag f, :email %>
-    </div>
-    <div class="mv3">
-      <%= label(f, :password, class: "db fw6 lh-copy f6") %>
-      <%= password_input(f, :password, class: "pa2 input-reset ba bg-transparent hover-bg-black hover-white w-100") %>
-      <%= error_tag f, :password %>
-    </div>
-    <div class="mv3">
-      <%= label(f, :password_confirmation, class: "db fw6 lh-copy f6") %>
-      <%= password_input(f, :password_confirmation, class: "pa2 input-reset ba bg-transparent hover-bg-black hover-white w-100") %>
-      <%= error_tag f, :password_confirmation %>
-    </div>
-    <div class="mv3">
-      <%= label(f, :current_password, class: "db fw6 lh-copy f6") %>
-      <%= password_input(f, :current_password, class: "pa2 input-reset ba bg-transparent hover-bg-black hover-white w-100") %>
-      <%= error_tag f, :current_password %>
-    </div>
-  </fieldset>
-  <div>
-    <%= submit "Save", class: "b ph3 pv2 input-reset ba b--black bg-transparent grow pointer f6 dib" %>
+<div class="columns">
+  <div class="column is-4">
+    <%= form_for @changeset, Routes.user_path(@conn, :update), fn f -> %>
+      <%= if @changeset.action do %>
+        <div>
+          <p>Oops, something went wrong! Please check the errors below.</p>
+        </div>
+      <% end %>
+
+      <div class="field">
+        <%= label f, :email, class: "label" %>
+
+        <div class="control">
+          <%= text_input f, :email, class: "input" %>
+        </div>
+        <p class="help">
+          <%= error_tag f, :email %>
+        </p>
+      <div>
+
+      <div class="field">
+        <%= label f, :password, class: "label" %>
+        <div class="control">
+          <%= password_input f, :password, class: "input password" %>
+        </div>
+        <p class="help">
+          <%= error_tag f, :password %>
+        </p>
+      </div>
+
+      <div class="field">
+        <%= label f, :password_confirmation, class: "label" %>
+        <div class="control">
+          <%= password_input f, :password_confirmation, class: "input password" %>
+        </div>
+        <p class="help">
+          <%= error_tag f, :password_confirmation %>
+        </p>
+      </div>
+
+      <div class="field">
+        <%= label f, :current_password, class: "label" %>
+        <%= password_input f, :current_password, class: "input password" %>
+
+        <p class="help">
+          <%= error_tag f, :current_password %>
+        </p>
+      </div>
+
+      <div class="field">
+        <div class="control">
+          <%= submit "Save", class: "button is-primary" %>
+        </div>
+      </div>
+    <% end %>
   </div>
-<% end %>
+</div>

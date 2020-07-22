@@ -1,15 +1,27 @@
-<%= form_for @changeset, @action, fn f -> %>
-  <%= if @changeset.action do %>
-    <div>
-      <p>Oops, something went wrong! Please check the errors below.</p>
-    </div>
-  <% end %>
+<div class="columns">
+  <div class="column is-4">
+    <%= form_for @changeset, @action, fn f -> %>
+      <%= if @changeset.action do %>
+        <div>
+          <p>Oops, something went wrong! Please check the errors below.</p>
+        </div>
+      <% end %>
 
-  <%= label f, :name %>
-  <%= text_input f, :name %>
-  <%= error_tag f, :name %>
+      <div class="field">
+        <%= label f, :name, class: "label" %>
+        <div class="control">
+          <%= text_input f, :name, class: "input" %>
+        </div>
+        <p class="help">
+          <%= error_tag f, :name %>
+        </p>
+      </div>
 
-  <div>
-    <%= submit "Save" %>
+      <div class="field">
+        <div class="control">
+          <%= submit "Save", class: "button is-primary" %>
+        </div>
+      </div>
+    <% end %>
   </div>
-<% end %>
+</div>

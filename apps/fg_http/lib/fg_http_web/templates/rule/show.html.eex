@@ -1,38 +1,28 @@
-<h1>Show Rule</h1>
+<div class="content">
+  <h3>Show Rule</h3>
 
-<ul>
+  <dl>
+    <dt>Action:</dt>
+    <dd><%= @rule.action %></dd>
 
-  <li>
-    <strong>Action:</strong>
-    <%= @rule.action %>
-  </li>
+    <dt>Destination:</dt>
+    <dd><%= @rule.destination %></dd>
 
-  <li>
-    <strong>Destination:</strong>
-    <%= @rule.destination %>
-  </li>
+    <dt>Port:</dt>
+    <dd><%= @rule.port %></dd>
 
-  <li>
-    <strong>Port:</strong>
-    <%= @rule.port %>
-  </li>
+    <dt>Protocol:</dt>
+    <dd><%= @rule.protocol %></dd>
 
-  <li>
-    <strong>Protocol:</strong>
-    <%= @rule.protocol %>
-  </li>
+    <dt>Priority</dt>
+    <dd><%= @rule.priority %></dd>
 
-  <li>
-    <strong>Priority</strong>
-    <%= @rule.priority %>
-  </li>
+    <dt>Enabled:</dt>
+    <dd><%= @rule.enabled %></dd>
+  </dl>
 
-  <li>
-    <strong>Enabled:</strong>
-    <%= @rule.enabled %>
-  </li>
-
-</ul>
-
-<span><%= link "Edit", to: Routes.rule_path(@conn, :edit, @rule) %></span>
-<span><%= link "Back", to: Routes.device_rule_path(@conn, :index, @rule.device_id) %></span>
+  <div class="level">
+    <%= link "Edit", to: Routes.rule_path(@conn, :edit, @rule), class: "button is-primary" %>
+    <%= link "Back", to: Routes.device_rule_path(@conn, :index, @rule.device_id), class: "button is-danger" %>
+  </div>
+</div>

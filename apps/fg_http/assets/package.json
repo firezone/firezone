@@ -12,20 +12,24 @@
     "qrcode": "^1.4.4"
   },
   "devDependencies": {
-    "@babel/core": "^7.9.0",
-    "@babel/preset-env": "^7.9.5",
-    "autoprefixer": "^9.8.4",
+    "@babel/core": "^7.10.5",
+    "@babel/preset-env": "^7.10.4",
+    "@fortawesome/fontawesome-free": "^5.14.0",
+    "autoprefixer": "^9.8.5",
     "babel-loader": "^8.1.0",
+    "bulma": "^0.9.0",
     "copy-webpack-plugin": "^5.1.1",
-    "css-loader": "^3.5.2",
+    "css-loader": "^3.6.0",
+    "file-loader": "^6.0.0",
     "mini-css-extract-plugin": "^0.9.0",
     "node-sass": "^4.14.1",
     "optimize-css-assets-webpack-plugin": "^5.0.1",
     "postcss": "^7.0.32",
     "postcss-loader": "^3.0.0",
     "sass-loader": "^8.0.2",
-    "terser-webpack-plugin": "^2.3.5",
+    "terser-webpack-plugin": "^2.3.7",
+    "url-loader": "^4.1.0",
     "webpack": "4.41.5",
-    "webpack-cli": "^3.3.11"
+    "webpack-cli": "^3.3.12"
   }
 }
