@@ -5,7 +5,7 @@ defmodule FgHttpWeb.RuleControllerTest do
 
   @valid_create_attrs %{
     destination: "1.1.1.1",
-    port: "53",
+    port_number: 53,
     protocol: "udp",
     action: "accept"
   }

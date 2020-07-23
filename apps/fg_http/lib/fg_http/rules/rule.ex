@@ -13,7 +13,7 @@ defmodule FgHttp.Rules.Rule do
     field :action, RuleActionEnum, default: "drop"
     field :priority, :integer, default: 0
     field :enabled, :boolean, default: true
-    field :port, :string
+    field :port_number, :integer
     field :protocol, RuleProtocolEnum, default: "all"
 
     belongs_to :device, Device
@@ -23,7 +23,17 @@ defmodule FgHttp.Rules.Rule do
 
   def changeset(rule, attrs) do
     rule
-    |> cast(attrs, [:device_id, :priority, :action, :destination, :port, :protocol, :enabled])
+    |> cast(attrs, [
+      :device_id,
+      :priority,
+      :action,
+      :destination,
+      :port_number,
+      :protocol,
+      :enabled
+    ])
     |> validate_required([:device_id, :priority, :action, :destination, :protocol, :enabled])
+    |> validate_number(:priority, greater_than_or_equal_to: 0, less_than_or_equal_to: 100)
+    |> validate_number(:port_number, greater_than_or_equal_to: 0, less_than_or_equal_to: 65_535)
   end
 end

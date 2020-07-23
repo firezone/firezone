@@ -15,7 +15,7 @@
         <div class="control">
           <%= text_input(f, :email, class: "input") %>
         </div>
-        <p class="help">
+        <p class="help is-danger">
           <%= error_tag f, :email %>
         </p>
       </div>
@@ -25,7 +25,7 @@
         <div class="control">
           <%= password_input(f, :password, class: "input") %>
         </div>
-        <p class="help">
+        <p class="help is-danger">
           <%= error_tag f, :password %>
         </p>
       </div>
