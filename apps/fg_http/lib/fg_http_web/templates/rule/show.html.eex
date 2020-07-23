@@ -2,22 +2,22 @@
   <h3>Show Rule</h3>
 
   <dl>
-    <dt>Action:</dt>
+    <dt><strong>Action:</strong></dt>
     <dd><%= @rule.action %></dd>
 
-    <dt>Destination:</dt>
+    <dt><strong>Destination:</strong></dt>
     <dd><%= @rule.destination %></dd>
 
-    <dt>Port:</dt>
-    <dd><%= @rule.port %></dd>
+    <dt><strong>Port Number:</strong></dt>
+    <dd><%= @rule.port_number %></dd>
 
-    <dt>Protocol:</dt>
+    <dt><strong>Protocol:</strong></dt>
     <dd><%= @rule.protocol %></dd>
 
-    <dt>Priority</dt>
+    <dt><strong>Priority:</strong></dt>
     <dd><%= @rule.priority %></dd>
 
-    <dt>Enabled:</dt>
+    <dt><strong>Enabled:</strong></dt>
     <dd><%= @rule.enabled %></dd>
   </dl>
 

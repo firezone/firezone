@@ -1,59 +1,69 @@
-<h3 class="title is-3">Edit Account</h3>
 
 <div class="columns">
   <div class="column is-4">
-    <%= form_for @changeset, Routes.user_path(@conn, :update), fn f -> %>
-      <%= if @changeset.action do %>
+    <div class="content">
+      <h3>Edit Account</h3>
+
+      <%= form_for @changeset, Routes.user_path(@conn, :update), fn f -> %>
+        <%= if @changeset.action do %>
+          <div>
+            <p>Oops, something went wrong! Please check the errors below.</p>
+          </div>
+        <% end %>
+
+        <div class="field">
+          <%= label f, :email, class: "label" %>
+
+          <div class="control">
+            <%= text_input f, :email, class: "input" %>
+          </div>
+          <p class="help is-danger">
+            <%= error_tag f, :email %>
+          </p>
         <div>
-          <p>Oops, something went wrong! Please check the errors below.</p>
+
+        <div class="field">
+          <%= label f, :password, class: "label" %>
+          <div class="control">
+            <%= password_input f, :password, class: "input password" %>
+          </div>
+          <p class="help is-danger">
+            <%= error_tag f, :password %>
+          </p>
+        </div>
+
+        <div class="field">
+          <%= label f, :password_confirmation, class: "label" %>
+          <div class="control">
+            <%= password_input f, :password_confirmation, class: "input password" %>
+          </div>
+          <p class="help is-danger">
+            <%= error_tag f, :password_confirmation %>
+          </p>
+        </div>
+
+        <div class="field">
+          <%= label f, :current_password, class: "label" %>
+          <%= password_input f, :current_password, class: "input password" %>
+
+          <p class="help is-danger">
+            <%= error_tag f, :current_password %>
+          </p>
+        </div>
+
+        <div class="field">
+          <div class="control">
+            <div class="level">
+              <div class="level-left">
+                <%= link "Back", to: Routes.user_path(@conn, :show), class: "button" %>
+              </div>
+              <div class="level-right">
+                <%= submit "Save", class: "button is-primary" %>
+              </div>
+            </div>
+          </div>
         </div>
       <% end %>
-
-      <div class="field">
-        <%= label f, :email, class: "label" %>
-
-        <div class="control">
-          <%= text_input f, :email, class: "input" %>
-        </div>
-        <p class="help">
-          <%= error_tag f, :email %>
-        </p>
-      <div>
-
-      <div class="field">
-        <%= label f, :password, class: "label" %>
-        <div class="control">
-          <%= password_input f, :password, class: "input password" %>
-        </div>
-        <p class="help">
-          <%= error_tag f, :password %>
-        </p>
-      </div>
-
-      <div class="field">
-        <%= label f, :password_confirmation, class: "label" %>
-        <div class="control">
-          <%= password_input f, :password_confirmation, class: "input password" %>
-        </div>
-        <p class="help">
-          <%= error_tag f, :password_confirmation %>
-        </p>
-      </div>
-
-      <div class="field">
-        <%= label f, :current_password, class: "label" %>
-        <%= password_input f, :current_password, class: "input password" %>
-
-        <p class="help">
-          <%= error_tag f, :current_password %>
-        </p>
-      </div>
-
-      <div class="field">
-        <div class="control">
-          <%= submit "Save", class: "button is-primary" %>
-        </div>
-      </div>
-    <% end %>
+    </div>
   </div>
 </div>

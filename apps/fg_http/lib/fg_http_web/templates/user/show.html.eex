@@ -1,5 +1,5 @@
 <div class="columns">
-  <div class="column is-4 is-offset-4">
+  <div class="column is-4">
     <div class="content">
       <h3>Your Account</h3>
 
@@ -14,7 +14,7 @@
       </dl>
 
       <div class="level">
-        <%= link("Edit", to: Routes.user_path(@conn, :edit), class: "button is-primary") %>
+        <%= link("Change Password", to: Routes.user_path(@conn, :edit), class: "button is-primary") %>
         <%= link "Delete your account",
             to: Routes.user_path(@conn, :delete),
             method: :delete,
