@@ -1,39 +1,40 @@
-<h1 class="title">Listing Rules for Device <%= @device.name %></h1>
+<div class="content">
+  <h3>Listing Rules for Device <%= @device.name %></h3>
 
-<table class="table">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Action</th>
+        <th>Destination</th>
+        <th>Port Number</th>
+        <th>Protocol</th>
+        <th>Priority</th>
+        <th>Enabled</th>
 
-  <thead>
-    <tr>
-      <th>Action</th>
-      <th>Destination</th>
-      <th>Port</th>
-      <th>Protocol</th>
-      <th>Priority</th>
-      <th>Enabled</th>
-
-      <th></th>
-    </tr>
-  </thead>
-<%= for rule <- @rules do %>
-  <tbody>
-    <tr>
-      <td><%= rule.action %></td>
-      <td><%= rule.destination %></td>
-      <td><%= rule.port %></td>
-      <td><%= rule.protocol %></td>
-      <td><%= rule.priority %></td>
-      <td><%= rule.enabled %></td>
-      <td>
-        <span><%= link "Show", to: Routes.rule_path(@conn, :show, rule) %></span>
-        |
-        <span><%= link "Edit", to: Routes.rule_path(@conn, :edit, rule) %></span>
-        |
-        <span><%= link "Delete", to: Routes.rule_path(@conn, :delete, rule), method: :delete, data: [confirm: "Are you sure?"] %></span>
-      </td>
-    </tr>
-<% end %>
-  </tbody>
-</table>
+        <th></th>
+      </tr>
+    </thead>
+  <%= for rule <- @rules do %>
+    <tbody>
+      <tr>
+        <td><%= rule.action %></td>
+        <td><%= rule.destination %></td>
+        <td><%= rule.port_number %></td>
+        <td><%= rule.protocol %></td>
+        <td><%= rule.priority %></td>
+        <td><%= rule.enabled %></td>
+        <td class="has-text-right">
+          <span><%= link "Show", to: Routes.rule_path(@conn, :show, rule) %></span>
+          |
+          <span><%= link "Edit", to: Routes.rule_path(@conn, :edit, rule) %></span>
+          |
+          <span><%= link "Delete", to: Routes.rule_path(@conn, :delete, rule), method: :delete, data: [confirm: "Are you sure?"] %></span>
+        </td>
+      </tr>
+  <% end %>
+    </tbody>
+  </table>
+</div>
 
 <%=
   link "New Rule",

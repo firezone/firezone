@@ -2,10 +2,20 @@
   <div class="column is-4">
     <%= form_for @changeset, @action, [], fn f -> %>
       <%= if @changeset.action do %>
-        <div>
+        <div class="notification is-danger">
           <p>Oops, something went wrong! Please check the errors below.</p>
         </div>
       <% end %>
+
+      <div class="field">
+        <%= label f, :action, class: "label" %>
+        <div class="select">
+          <%= select f, :action, action_options_for_select() %>
+        </div>
+        <p class="help is-danger">
+          <%= error_tag f, :action %>
+        </p>
+      </div>
 
       <div class="field">
         <%= label f, :destination, class: "label" %>
@@ -17,18 +27,18 @@
             placeholder: "IPv4/6 CIDR range or address"
           %>
         </div>
-        <p class="help">
+        <p class="help is-danger">
           <%= error_tag f, :destination %>
         </p>
       </div>
 
       <div class="field">
-        <%= label f, :port, class: "label" %>
+        <%= label f, :port_number, class: "label" %>
         <div class="control">
-          <%= text_input f, :port, class: "input", placeholder: "1 - 65535" %>
+          <%= text_input f, :port_number, class: "input", placeholder: "1 - 65535" %>
         </div>
-        <p class="help">
-          <%= error_tag f, :port %>
+        <p class="help is-danger">
+          <%= error_tag f, :port_number %>
         </p>
       </div>
 
@@ -37,7 +47,7 @@
         <div class="select">
           <%= select f, :protocol, protocol_options_for_select() %>
         </div>
-        <p class="help">
+        <p class="help is-danger">
           <%= error_tag f, :protocol %>
         </p>
       </div>
@@ -47,7 +57,7 @@
         <div class="control">
           <%= text_input f, :priority, class: "input" %>
         </div>
-        <p class="help">
+        <p class="help is-danger">
           <%= error_tag f, :priority %>
         </p>
       </div>
@@ -57,7 +67,7 @@
           <%= checkbox f, :enabled, class: "checkbox" %>
           Enabled
         </label>
-        <p class="help">
+        <p class="help is-danger">
           <%= error_tag f, :enabled %>
         </p>
       </div>
