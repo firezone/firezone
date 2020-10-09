@@ -14,7 +14,7 @@
       </dl>
 
       <div class="level">
-        <%= link("Change Password", to: Routes.user_path(@conn, :edit), class: "button is-primary") %>
+        <%= link("Change Email or Password", to: Routes.user_path(@conn, :edit)) %>
         <%= link "Delete your account",
             to: Routes.user_path(@conn, :delete),
             method: :delete,

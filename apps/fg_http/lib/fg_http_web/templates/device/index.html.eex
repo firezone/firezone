@@ -31,4 +31,4 @@
   </table>
 </div>
 
-<%= link "New Device", to: Routes.device_path(@conn, :new), class: "button is-primary" %>
+<%= link "New Device", to: Routes.device_path(@conn, :new) %>
