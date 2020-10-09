@@ -14,5 +14,6 @@ defmodule FgHttp.Repo.Migrations.CreateDevices do
 
     create index(:devices, [:user_id])
     create unique_index(:devices, [:public_key])
+    create unique_index(:devices, [:name])
   end
 end

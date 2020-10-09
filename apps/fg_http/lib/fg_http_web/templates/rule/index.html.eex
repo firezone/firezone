@@ -9,7 +9,7 @@
         <th>Port Number</th>
         <th>Protocol</th>
         <th>Priority</th>
-        <th>Enabled</th>
+        <th>Status</th>
 
         <th></th>
       </tr>
@@ -19,10 +19,10 @@
       <tr>
         <td><%= rule.action %></td>
         <td><%= rule.destination %></td>
-        <td><%= rule.port_number %></td>
+        <td><%= port_number_helper(rule) %></td>
         <td><%= rule.protocol %></td>
         <td><%= rule.priority %></td>
-        <td><%= rule.enabled %></td>
+        <td><%= status_helper(rule) %></td>
         <td class="has-text-right">
           <span><%= link "Show", to: Routes.rule_path(@conn, :show, rule) %></span>
           |
@@ -36,8 +36,13 @@
   </table>
 </div>
 
-<%=
-  link "New Rule",
-  to: Routes.device_rule_path(@conn, :new, @device),
-  class: "button is-primary"
-%>
+<div class="level">
+  <%=
+    link "Back to Devices",
+    to: Routes.device_path(@conn, :index)
+  %>
+  <%=
+    link "New Rule",
+    to: Routes.device_rule_path(@conn, :new, @device)
+  %>
+</div>

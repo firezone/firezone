@@ -2,10 +2,14 @@
   <h3>Show Device</h3>
 
   <dl>
-    <dt>Name:</dt>
+    <dt>
+      <strong>Name:</strong>
+    </dt>
     <dd><%= @device.name %></dd>
 
-    <dt>Public key:</dt>
+    <dt>
+      <strong>Public key:</strong>
+    </dt>
     <dd><%= @device.public_key %></dd>
   </dl>
 

@@ -7,7 +7,7 @@ defmodule FgHttpWeb.RuleControllerTest do
     destination: "1.1.1.1",
     port_number: 53,
     protocol: "udp",
-    action: "accept"
+    action: "allow"
   }
   @invalid_create_attrs %{
     destination: "problem"
