@@ -55,7 +55,7 @@
           <div class="control">
             <div class="level">
               <div class="level-left">
-                <%= link "Back", to: Routes.user_path(@conn, :show), class: "button" %>
+                <%= link "Back", to: Routes.user_path(@conn, :show) %>
               </div>
               <div class="level-right">
                 <%= submit "Save", class: "button is-primary" %>

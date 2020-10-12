@@ -1,5 +1,5 @@
 <%= unless is_nil(get_flash(@conn, :info)) and is_nil(get_flash(@conn, :error)) do %>
-  <div class="container">
+  <div class="container flash-squeeze">
     <%= if get_flash(@conn, :info) do %>
       <div class="notification is-info">
         <div class="flash-info">
