@@ -1,55 +1,42 @@
-<h1>Edit Password</h1>
+<div class="columns">
+  <div class="column is-4 is-offset-4">
+    <h3 class="title">Reset Password</h3>
+    <hr>
 
-<%= form_for @changeset, Routes.password_reset_path(@conn, :update, @password_reset.id), fn f -> %>
-  <%= hidden_input f, :reset_token %>
+    <%= form_for @changeset, Routes.password_reset_path(@conn, :update, @password_reset.id), fn f -> %>
+      <%= hidden_input f, :reset_token %>
 
-  <%= if @changeset.action do %>
-    <div class="alert alert-danger">
-      <p>Oops, something went wrong! Please check the errors below.</p>
-    </div>
-  <% end %>
+      <%= if @changeset.action do %>
+        <div class="alert alert-danger">
+          <p>Oops, something went wrong! Please check the errors below.</p>
+        </div>
+      <% end %>
 
-  <div class="field is-horizontal">
-    <div class="field-label is-normal">
-      <%= label f, :password %>
-    </div>
-    <div class="field-body">
       <div class="field">
-        <p class="control">
-          <%= text_input f, :password, placeholder: "Password" %>
-        </p>
-      </div>
-      <div class="field">
-        <p class="control">
+        <%= label(f, :password, class: "label") %>
+        <div class="control">
+          <%= password_input(f, :password, class: "input",placeholder: "New Password")%>
+        </div>
+        <p class="help is-danger">
           <%= error_tag f, :password %>
         </p>
       </div>
-    </div>
-  </div>
 
-  <div class="field is-horizontal">
-    <div class="field-label is-normal">
-      <%= label f, :password_confirmation %>
-    </div>
-    <div class="field-body">
       <div class="field">
-        <p class="control">
-          <%= text_input f, :password_confirmation, placeholder: "Password Confirmation" %>
-        </p>
-      </div>
-      <div class="field">
-        <p class="control">
+        <%= label(f, :password_confirmation, class: "label") %>
+        <div class="control">
+          <%= password_input(f, :password_confirmation, class: "input",placeholder: "New Password")%>
+        </div>
+        <p class="help is-danger">
           <%= error_tag f, :password_confirmation %>
         </p>
       </div>
-    </div>
-  </div>
 
-  <div>
-    <%= submit "Submit" %>
+      <div class="field">
+        <div class="control">
+          <%= submit "Submit", class: "button is-primary" %>
+        </div>
+      </div>
+    <% end %>
   </div>
-<% end %>
-
-<span>
-  <%= link "Back", to: Routes.session_path(@conn, :new) %>
-</span>
+</div>

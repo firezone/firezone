@@ -9,7 +9,7 @@ defmodule FgHttpWeb.PasswordResetControllerTest do
   describe "new password_reset" do
     test "renders form", %{unauthed_conn: conn} do
       conn = get(conn, Routes.password_reset_path(conn, :new))
-      assert html_response(conn, 200) =~ "Reset Password"
+      assert html_response(conn, 200) =~ "Request Password Reset Link"
     end
   end
 
@@ -28,7 +28,7 @@ defmodule FgHttpWeb.PasswordResetControllerTest do
           password_reset: @invalid_create_attrs
         )
 
-      assert html_response(conn, 200) =~ "Reset Password"
+      assert html_response(conn, 200) =~ "Request Password Reset Link"
       assert get_flash(conn, :error) == "Email not found."
     end
   end
@@ -43,7 +43,7 @@ defmodule FgHttpWeb.PasswordResetControllerTest do
           Routes.password_reset_path(conn, :edit, password_reset.reset_token)
         )
 
-      assert html_response(conn, 200) =~ "Edit Password"
+      assert html_response(conn, 200) =~ "Reset Password"
     end
   end
 
@@ -107,7 +107,7 @@ defmodule FgHttpWeb.PasswordResetControllerTest do
         )
 
       assert get_flash(conn, :error) == "Error updating password."
-      assert html_response(conn, 200) =~ "Edit Password"
+      assert html_response(conn, 200) =~ "Reset Password"
     end
   end
 

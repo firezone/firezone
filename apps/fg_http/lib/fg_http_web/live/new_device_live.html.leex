@@ -37,7 +37,7 @@ Endpoint = <%= Application.fetch_env!(:fg_http, :vpn_endpoint) %>
       </h6>
 
       <p>
-        <%= link "Back to Devices", to: Routes.device_path(@socket, :index), class: "button" %>
+        <%= link "Back to Devices", to: Routes.device_path(@socket, :index) %>
       </p>
     <% else %>
       <h4 class="subtitle is-4">Device connected!</h4>
@@ -53,7 +53,7 @@ Endpoint = <%= Application.fetch_env!(:fg_http, :vpn_endpoint) %>
       <div class="level">
         <div class="level-left">
           <%=
-            link("Cancel and Go Back to Devices", to: Routes.device_path(@socket, :index), class: "button")
+            link("Cancel and Go Back to Devices", to: Routes.device_path(@socket, :index))
           %>
         </div>
         <div class="level-right">
