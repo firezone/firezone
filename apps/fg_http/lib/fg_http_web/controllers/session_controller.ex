@@ -29,8 +29,6 @@ defmodule FgHttpWeb.SessionController do
 
           {:error, changeset} ->
             conn
-            |> clear_session()
-            |> assign(:session, nil)
             |> put_flash(:error, "Error signing in.")
             |> render("new.html", changeset: changeset)
         end
