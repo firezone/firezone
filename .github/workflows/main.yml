@@ -32,7 +32,7 @@ jobs:
       - name: Run Static Tests
         uses: actions/setup-elixir@v1
         with:
-          elixir-version: "1.11.0"
+          elixir-version: "1.11.1"
           otp-version: "23.1.1"
       - name: Install Dependencies
         run: mix deps.get --only test
