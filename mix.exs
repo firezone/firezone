@@ -28,6 +28,11 @@ defmodule FireguardUmbrella.MixProject do
           applications: [fg_wall: :permanent],
           include_executables_for: [:unix],
           cookie: System.get_env("ERL_COOKIE")
+        ],
+        fg_vpn: [
+          applications: [fg_vpn: :permanent],
+          include_executables_for: [:unix],
+          cookie: System.get_env("ERL_COOKIE")
         ]
       ]
     ]
