@@ -29,13 +29,13 @@ jobs:
 
     steps:
       - uses: actions/checkout@v2
+      - name: Fix SSL
+        run: which openssl
       - name: Run Static Tests
         uses: actions/setup-elixir@v1
         with:
           elixir-version: "1.11"
           otp-version: "23.1"
-      - name: Fix SSL
-        run: apt install openssl
       - name: Install Dependencies
         run: mix deps.get --only test
       - name: Setup Database
