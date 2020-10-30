@@ -5,6 +5,9 @@
 name: Test
 on:
   - push
+defaults:
+  run:
+    shell: bash
 jobs:
   # 1. Unit/Integration Test
   unit-integration-test:
