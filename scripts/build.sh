@@ -18,21 +18,7 @@ apt-get update -q && \
   unzip \
   zlib1g-dev
 
-git clone --depth 1 https://github.com/asdf-vm/asdf.git $HOME/.asdf
-export PATH="${PATH}:/root/.asdf/shims:/root/.asdf/bin"
-bash $HOME/.asdf/asdf.sh
-
-# Install project runtimes
-asdf plugin-add erlang && \
-  asdf plugin-update erlang && \
-  asdf plugin-add elixir && \
-  asdf plugin-update elixir && \
-  asdf plugin-add nodejs && \
-  asdf plugin-update nodejs && \
-  asdf plugin-add python && \
-  asdf plugin-update python
-bash -c '${ASDF_DATA_DIR:=$HOME/.asdf}/plugins/nodejs/bin/import-release-team-keyring'
-asdf install
+bash scripts/install_asdf.sh
 
 # Set build env vars
 export MIX_ENV=prod
