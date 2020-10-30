@@ -18,19 +18,14 @@ defmodule FireguardUmbrella.MixProject do
         "coveralls.html": :test
       ],
       deps: deps(),
+      default_release: :fireguard,
       releases: [
-        fg_http: [
-          applications: [fg_http: :permanent],
-          include_executables_for: [:unix],
-          cookie: System.get_env("ERL_COOKIE")
-        ],
-        fg_wall: [
-          applications: [fg_wall: :permanent],
-          include_executables_for: [:unix],
-          cookie: System.get_env("ERL_COOKIE")
-        ],
-        fg_vpn: [
-          applications: [fg_vpn: :permanent],
+        fireguard: [
+          applications: [
+            fg_http: :permanent,
+            fg_wall: :permanent,
+            fg_vpn: :permanent
+          ],
           include_executables_for: [:unix],
           cookie: System.get_env("ERL_COOKIE")
         ]
