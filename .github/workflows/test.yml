@@ -44,25 +44,9 @@ jobs:
       - name: Run Tests and Upload Coverage Report
         run: mix coveralls.github --umbrella
 
-  # 2. Build VM image
-  build-vm:
-    needs: unit-integration-test
-    runs-on: ubuntu-18.04
-    steps:
-      - uses: actions/checkout@v2
-      - name: Build VM Image
-        # uses: operatehappy/packer-github-action
-        # with:
-        #   command: build
-        #   arguments: "-color=false -on-error=abort"
-        #   target: artifacts.pkr.json packer.json
-        run: |
-          echo `which packer`
-          echo 'Packer?'
-
-  # 3. Functional Test
+  # 2. Functional Test
   functional-test:
-    needs: build-vm
+    needs: unit-integration-test
     runs-on: ubuntu-18.04
     steps:
       - uses: actions/checkout@v2

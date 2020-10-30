@@ -1,0 +1,11 @@
+Package: fireguard
+Version: 0.1.0-1
+Architecture: amd64
+Maintainer: CloudFire, LLC <dpkg@cloudfire.network>
+Depends: wireguard (>= 1.0.20200319-1ubuntu1), postgresql-12 (>= 12.4-0ubuntu0.20.04.1), iptables (>= 1.8.4-3ubuntu2)
+Section: net
+Priority: optional
+Homepage: https://cloudfire.network
+Description: Web UI + Firewall manager for WireGuard™
+ Provides a web-based UI that allows you to configure WireGuard VPN tunnels and
+ set up firewall rules for your devices.

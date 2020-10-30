@@ -13,26 +13,11 @@
           - sudo
           - git
           - curl
-          - wireguard
-          - wireguard-tools
-          - wireguard-dkms
           - gnupg
           - unzip
-- name: Install Postgres
-  hosts: all
-  become: yes
-  tasks:
-    - name: add postgres repo
-      shell: |
-        curl https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add -
-        sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
-    - name: install postgres
-      apt:
-        update_cache: true
-        install_recommends: no
-        autoclean: yes
-        autoremove: yes
-        name: postgresql-13
+          - wireguard
+          - postgresql
+          - iptables
 - name: Configure System
   hosts: all
   become: yes
@@ -50,53 +35,25 @@
         line: 'net.ipv6.conf.all.forwarding = 1'
     - name: apply sysctl
       shell: sysctl -p
-- name: Provision Runtimes
-  hosts: all
-  tasks:
-    - name: install erlang
-      become: yes
-      apt:
-        install_recommends: no
-        autoclean: yes
-        autoremove: yes
-        update_cache: true
-        deb: https://packages.erlang-solutions.com/erlang/debian/pool/esl-erlang_23.1-1~ubuntu~focal_amd64.deb
-    - name: install elixir
-      shell:
-        executable: /bin/bash
-        cmd: |
-          [ ! -d ~/.asdf ] && git clone https://github.com/asdf-vm/asdf.git ~/.asdf --branch v0.8.0
-          ~/.asdf/bin/asdf plugin-add elixir
-          ~/.asdf/bin/asdf install elixir 1.11.1-otp-23
-          ~/.asdf/bin/asdf global elixir 1.11.1-otp-23
-          ~/.asdf/bin/asdf reshim elixir 1.11.1-otp-23
-    - name: asdf to bashrc
-      lineinfile:
-        path: ~/.bashrc
-        line: '. ~/.asdf/asdf.sh'
-    - name: asdf completions to bashrc
-      lineinfile:
-        path: ~/.bashrc
-        line: '. ~/.asdf/completions/asdf.bash'
-- name: Bootstrap DB
-  hosts: all
-  tasks:
-    - name: generate database url
-      lineinfile:
-        create: yes
-        path: /home/vagrant/.fireguard-rc
-        line: "DATABASE_URL=ecto://fireguard:{{ lookup('password', '/tmp/postgres_passwd') }}/fireguard"
-        regexp: "DATABASE_URL"
-    - name: add fireguard user
-      shell: |
-        sudo -i -u postgres psql -c "CREATE ROLE fireguard WITH LOGIN PASSWORD '{{ lookup('password', '/tmp/postgres_passwd') }}';"
-        sudo -i -u postgres psql -c "CREATE DATABASE fireguard;"
-        sudo -i -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE fireguard to fireguard;"
-- name: Bootstrap App
-  hosts: all
-  tasks:
-    - name: generate secret key base
-      lineinfile:
-        path: /home/vagrant/.fireguard-rc
-        line: "SECRET_KEY_BASE={{ lookup('password', '/tmp/secret_key_base chars=hexdigits length=64') }}"
-        regexp: "SECRET_KEY_BASE"
+# - name: Bootstrap DB
+#   hosts: all
+#   tasks:
+#     - name: generate database url
+#       lineinfile:
+#         create: yes
+#         path: /home/vagrant/.fireguard-rc
+#         line: "DATABASE_URL=ecto://fireguard:{{ lookup('password', '/tmp/postgres_passwd') }}/fireguard"
+#         regexp: "DATABASE_URL"
+#     - name: add fireguard user
+#       shell: |
+#         sudo -i -u postgres psql -c "CREATE ROLE fireguard WITH LOGIN PASSWORD '{{ lookup('password', '/tmp/postgres_passwd') }}';"
+#         sudo -i -u postgres psql -c "CREATE DATABASE fireguard;"
+#         sudo -i -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE fireguard to fireguard;"
+# - name: Bootstrap App
+#   hosts: all
+#   tasks:
+#     - name: generate secret key base
+#       lineinfile:
+#         path: /home/vagrant/.fireguard-rc
+#         line: "SECRET_KEY_BASE={{ lookup('password', '/tmp/secret_key_base chars=hexdigits length=64') }}"
+#         regexp: "SECRET_KEY_BASE"
