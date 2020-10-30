@@ -34,6 +34,7 @@ jobs:
       - uses: actions/checkout@v2
       - name: Install Runtimes
         run: bash scripts/install_asdf.sh
+      - run: asdf reshim elixir 1.11.1-otp-23
       - name: Install Dependencies
         run: mix deps.get --only test
       - name: Setup Database
