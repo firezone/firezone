@@ -3,6 +3,9 @@ set -e
 
 git clone --depth 1 https://github.com/asdf-vm/asdf.git $HOME/.asdf
 export PATH="${PATH}:${HOME}/.asdf/shims:${HOME}/.asdf/bin"
+echo '. $HOME/.asdf/asdf.sh' >> $HOME/.bashrc
+echo '. $HOME/.asdf/asdf.sh' >> $HOME/.bash_profile
+
 bash $HOME/.asdf/asdf.sh
 
 # Install project runtimes
