@@ -11,7 +11,7 @@ defaults:
 jobs:
   # 1. Unit/Integration Test
   unit-integration-test:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-18.04
     env:
       MIX_ENV: test
       POSTGRES_HOST: localhost
@@ -32,7 +32,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v2
-      - run: sudo apt-get install libssl1.0.0 libssl-dev
       - name: Install Runtimes
         uses: actions/setup-elixir@v1
         with:
@@ -51,7 +50,7 @@ jobs:
   # 2. Functional Test
   functional-test:
     needs: unit-integration-test
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-18.04
     steps:
       - uses: actions/checkout@v2
       - name: Functional Test
@@ -59,26 +58,25 @@ jobs:
           echo 'Tests completed!'
   build-deb:
     needs: functional-test
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-18.04
     steps:
       - uses: actions/checkout@v2
         with:
           fetch-depth: 0
-      - run: sudo apt-get install libssl1.0.0 libssl-dev
       - name: Install Runtimes
         uses: actions/setup-elixir@v1
         with:
           elixir-version: "1.11.1"
           otp-version: "23.1.1"
       - name: Build packages
-        run: bash scripts/build.sh
+        run: which docker
       - name: upload package
         uses: actions/upload-artifact@v2
         with:
           name: fireguard_deb
           path: fireguard_0.1.0-1_amd64.deb
   publish:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-18.04
     needs: build-deb
     if: github.event_name == 'push' && (contains(github.ref, 'refs/tags/') || github.ref == 'refs/heads/master')
     steps:
