@@ -1,4 +1,4 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
 set -e
 
 export root=`pwd`
@@ -18,7 +18,10 @@ apt-get update -q && \
   unzip \
   zlib1g-dev
 
-bash scripts/install_asdf.sh
+# Only install runtimes if not running in Github action
+if [ -z "${CI+1}" ]; then
+  bash scripts/install_runtimes.sh
+fi
 
 # Set build env vars
 export MIX_ENV=prod
