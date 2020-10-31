@@ -17,4 +17,4 @@ ENV LC_ALL en_US.UTF-8
 
 WORKDIR /app
 COPY . .
-RUN ./pkg/build.sh
+RUN ./scripts/build.sh
