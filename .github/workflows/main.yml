@@ -32,7 +32,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v2
-      - run: apt-get install libssl1.0.0 libssl-dev
+      - run: sudo apt-get install libssl1.0.0 libssl-dev
       - name: Install Runtimes
         uses: actions/setup-elixir@v1
         with:
@@ -64,7 +64,7 @@ jobs:
       - uses: actions/checkout@v2
         with:
           fetch-depth: 0
-      - run: apt-get install libssl1.0.0 libssl-dev
+      - run: sudo apt-get install libssl1.0.0 libssl-dev
       - name: Install Runtimes
         uses: actions/setup-elixir@v1
         with:
