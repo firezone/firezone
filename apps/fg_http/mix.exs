@@ -55,6 +55,7 @@ defmodule FgHttp.MixProject do
       {:ecto_network, "~> 1.3.0"},
       {:inflex, "~> 2.0.0"},
       {:bamboo, "~> 1.5"},
+      {:plug, "~> 1.11.0"},
       {:postgrex, ">= 0.0.0"},
       {:phoenix_html, "~> 2.11"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},

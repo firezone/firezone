@@ -61,29 +61,32 @@ jobs:
     runs-on: ubuntu-18.04
     steps:
       - uses: actions/checkout@v2
-        with:
-          fetch-depth: 0
-      - name: Install Runtimes
-        uses: actions/setup-elixir@v1
-        with:
-          elixir-version: "1.11.1"
-          otp-version: "23.1.1"
+      - name: Get the tag name
+        id: tag_name
+        run: echo ::set-output name=TAG_NAME::${GITHUB_REF/refs\/tags\//}
       - name: Build packages
         run: |
-          short_sha=$(git rev-parse --short HEAD)
-          docker build -t fireguard:$short_sha -f pkg/Dockerfile .
-          cid=$(docker create fireguard:$short_sha)
-          docker cp ${cid}:/build/fireguard_0.1.0-1_amd64.deb .
+          docker build -t fireguard:latest -f pkg/Dockerfile .
+
+          tag_name=${{ steps.tag_name.outputs.TAG_NAME }}
+          if [[ -n "${tag_name}" ]]; then
+            cid=$(docker create fireguard:latest)
+            docker cp ${cid}:/build/pkg/debian.deb ./fireguard_${tag_name}-1_amd64.deb
+          fi
       - name: upload package
+        if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
         uses: actions/upload-artifact@v2
         with:
           name: fireguard_deb
-          path: fireguard_0.1.0-1_amd64.deb
+          path: fireguard_${{ steps.tag_name.outputs.TAG_NAME }}-1_amd64.deb
   publish:
     runs-on: ubuntu-18.04
     needs: build-deb
-    if: github.event_name == 'push' && (contains(github.ref, 'refs/tags/') || github.ref == 'refs/heads/master')
+    if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
     steps:
+      - name: Get the tag name
+        id: tag_name
+        run: echo ::set-output name=TAG_NAME::${GITHUB_REF/refs\/tags\//}
       - name: Download Built Packages
         uses: actions/download-artifact@v2
         with:
@@ -105,6 +108,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./fireguard_0.1.0-1_amd64.deb
-          asset_name: fireguard_0.1.0-1_amd64.deb
+          asset_path: ./fireguard_${{ steps.tag_name.outputs.TAG_NAME }}-1_amd64.deb
+          asset_name: fireguard_${{ steps.tag_name.outputs.TAG_NAME }}-1_amd64.deb
           asset_content_type: application/vnd.debian.binary-package
