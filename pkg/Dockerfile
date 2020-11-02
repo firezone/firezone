@@ -59,4 +59,3 @@ ENV SECRET_KEY_BASE dummy
 RUN ./pkg/debian/opt/fireguard/bin/fireguard eval 'IO.puts "Hello World!"'
 
 RUN cd pkg && dpkg-deb --build debian
-RUN mv pkg/debian.deb fireguard_0.1.0-1_amd64.deb
