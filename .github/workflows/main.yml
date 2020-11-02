@@ -69,7 +69,11 @@ jobs:
           elixir-version: "1.11.1"
           otp-version: "23.1.1"
       - name: Build packages
-        run: which docker
+        run: |
+          short_sha=$(git rev-parse --short HEAD)
+          docker build -t fireguard:$short_sha -f pkg/Dockerfile .
+          cid=$(docker create fireguard:$short_sha)
+          docker cp ${cid}:/build/fireguard_0.1.0-1_amd64.deb .
       - name: upload package
         uses: actions/upload-artifact@v2
         with:
