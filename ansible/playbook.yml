@@ -35,25 +35,10 @@
         line: 'net.ipv6.conf.all.forwarding = 1'
     - name: apply sysctl
       shell: sysctl -p
-# - name: Bootstrap DB
-#   hosts: all
-#   tasks:
-#     - name: generate database url
-#       lineinfile:
-#         create: yes
-#         path: /home/vagrant/.fireguard-rc
-#         line: "DATABASE_URL=ecto://fireguard:{{ lookup('password', '/tmp/postgres_passwd') }}/fireguard"
-#         regexp: "DATABASE_URL"
-#     - name: add fireguard user
-#       shell: |
-#         sudo -i -u postgres psql -c "CREATE ROLE fireguard WITH LOGIN PASSWORD '{{ lookup('password', '/tmp/postgres_passwd') }}';"
-#         sudo -i -u postgres psql -c "CREATE DATABASE fireguard;"
-#         sudo -i -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE fireguard to fireguard;"
-# - name: Bootstrap App
-#   hosts: all
-#   tasks:
-#     - name: generate secret key base
-#       lineinfile:
-#         path: /home/vagrant/.fireguard-rc
-#         line: "SECRET_KEY_BASE={{ lookup('password', '/tmp/secret_key_base chars=hexdigits length=64') }}"
-#         regexp: "SECRET_KEY_BASE"
+- name: Install FireGuard
+  hosts: all
+  become: yes
+  tasks:
+    - name: Install FireGuard deb
+      shell: |
+        wget https://github.com/CloudFire-LLC/fireguard/releases/download/test-building-publishing-0/fireguard_test-building-publishing-0-1_amd64.deb

@@ -5,6 +5,10 @@ defmodule FgHttp.Release do
 
   @app :fg_http
 
+  def gen_secret(length) when length > 31 do
+    IO.puts(:crypto.strong_rand_bytes(length) |> Base.encode64() |> binary_part(0, length))
+  end
+
   def migrate do
     load_app()
 

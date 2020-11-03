@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+
+# FireGuard package post-install script
+
+# 1. Generate secrets
+# 2. Bootstrap DB
+# 3. Generate WireGuard interface and config
+
+touch /opt/fireguard/config.yml
+chown root:root /opt/fireguard/config.yml
+chmod 0600 /opt/fireguard/config.yml
+
+live_reload_signing_salt="$(opt/fireguard/bin/fireguard eval "FgHttp.release.gen_secret(32)")"
+secret_key_base="$(/opt/fireguard/bin/fireguard eval "FgHttp.release.gen_secret(64)")"
+db_user=fireguard
+db_password="$(opt/fireguard/bin/fireguard eval "FgHttp.release.gen_secret(12)")"
+
+sudo -i -u postgres psql -c "CREATE ROLE ${db_user} WITH LOGIN PASSWORD '${db_password}';"
+sudo -i -u postgres psql -c "CREATE DATABASE fireguard;"
+sudo -i -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE fireguard to ${db_user};"
+
+cat <<EOT >> /opt/fireguard/config.yml
+live_reload_signing_salt: ${live_reload_signing_salt}
+secret_key_base: ${secret_key_base}
+db_user: ${db_user}
+db_password: ${db_password}
+EOT
