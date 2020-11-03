@@ -1,0 +1,59 @@
+# Steps:
+# 1. Unit/Integration Tests
+# 2. Build and Push App Image
+# 3. Functional Test
+name: Test
+on:
+  - push
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # 1. Unit/Integration Test
+  unit-integration-test:
+    runs-on: ubuntu-18.04
+    env:
+      MIX_ENV: test
+      POSTGRES_HOST: localhost
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    services:
+      postgres:
+        image: postgres:13
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: fireguard
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Runtimes
+        uses: actions/setup-elixir@v1
+        with:
+          elixir-version: "1.11.1"
+          otp-version: "23.1.1"
+      - name: Install Dependencies
+        run: mix deps.get --only test
+      - name: Setup Database
+        run: |
+          mix ecto.create
+          mix ecto.migrate
+
+      - name: Run Tests and Upload Coverage Report
+        run: mix coveralls.github --umbrella
+
+  # 2. Functional Test
+  functional-test:
+    needs: unit-integration-test
+    runs-on: ubuntu-18.04
+    steps:
+      - uses: actions/checkout@v2
+      - name: Functional Test
+        run: |
+          # Dummy for now
+          echo 'Tests completed!'
