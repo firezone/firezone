@@ -54,6 +54,7 @@ RUN mix release fireguard
 RUN mkdir -p pkg/debian/opt
 RUN mv _build/prod/rel/fireguard pkg/debian/opt/fireguard
 
+# Smoke test built binary
 ENV DATABASE_URL ecto://dummy@localhost/dummy
 ENV SECRET_KEY_BASE dummy
 RUN ./pkg/debian/opt/fireguard/bin/fireguard eval 'IO.puts "Hello World!"'
