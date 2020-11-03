@@ -29,7 +29,6 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-
     steps:
       - uses: actions/checkout@v2
       - name: Install Runtimes
@@ -61,34 +60,37 @@ jobs:
     runs-on: ubuntu-18.04
     steps:
       - uses: actions/checkout@v2
-      - name: Get the tag name
-        id: tag_name
-        run: echo ::set-output name=TAG_NAME::${GITHUB_REF/refs\/tags\//}
       - name: Build packages
         run: |
           docker build -t fireguard:latest -f pkg/Dockerfile .
+      - name: Set the tag name
+        id: tag_name
+        run: |
+          ref=${{ github.ref }}
+          tag_name=${ref#"refs/tags/"}
+          echo "::set-output name=tag_name::${tag_name}"
+      - name: rename package
+        if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
+        run: |
+          # This won't always be the case, but for now it is
+          version=${{ steps.tag_name.outputs.tag_name }}
 
-          tag_name=${{ steps.tag_name.outputs.TAG_NAME }}
-          echo "tag name is $tag_name"
-          if [[ -n "${tag_name}" ]]; then
-            echo "inside conditional"
-            cid=$(docker create fireguard:latest)
-            docker cp ${cid}:/build/pkg/debian.deb ./fireguard_${tag_name}-1_amd64.deb
-          fi
+          cid=$(docker create fireguard:latest)
+          filename=fireguard_${tag_name}-1_amd64.deb
+          echo "Extracting built debian package from container ${cid} to filename ${filename}"
+
+          docker cp ${cid}:/build/pkg/debian.deb ./${filename}
       - name: upload package
         if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
         uses: actions/upload-artifact@v2
         with:
           name: fireguard_deb
-          path: fireguard_${{ steps.tag_name.outputs.TAG_NAME }}-1_amd64.deb
+          path: fireguard_${{ steps.tag_name.outputs.tag_name }}-1_amd64.deb
   publish:
     runs-on: ubuntu-18.04
     needs: build-deb
     if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
     steps:
-      - name: Get the tag name
-        id: tag_name
-        run: echo ::set-output name=TAG_NAME::${GITHUB_REF/refs\/tags\//}
       - name: Download Built Packages
         uses: actions/download-artifact@v2
         with:
@@ -103,6 +105,12 @@ jobs:
           release_name: Release ${{ github.ref }}
           draft: false
           prerelease: false
+      - name: Set the tag name
+        id: tag_name
+        run: |
+          ref=${{ github.ref }}
+          tag_name=${ref#"refs/tags/"}
+          echo "::set-output name=tag_name::${tag_name}"
       - name: Upload Release Asset
         id: upload-release-asset
         uses: actions/upload-release-asset@v1
@@ -110,6 +118,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./fireguard_${{ steps.tag_name.outputs.TAG_NAME }}-1_amd64.deb
-          asset_name: fireguard_${{ steps.tag_name.outputs.TAG_NAME }}-1_amd64.deb
+          asset_path: ./fireguard_${{ steps.tag_name.outputs.tag_name }}-1_amd64.deb
+          asset_name: fireguard_${{ steps.tag_name.outputs.tag_name }}-1_amd64.deb
           asset_content_type: application/vnd.debian.binary-package
