@@ -69,7 +69,9 @@ jobs:
           docker build -t fireguard:latest -f pkg/Dockerfile .
 
           tag_name=${{ steps.tag_name.outputs.TAG_NAME }}
+          echo "tag name is $tag_name"
           if [[ -n "${tag_name}" ]]; then
+            echo "inside conditional"
             cid=$(docker create fireguard:latest)
             docker cp ${cid}:/build/pkg/debian.deb ./fireguard_${tag_name}-1_amd64.deb
           fi
