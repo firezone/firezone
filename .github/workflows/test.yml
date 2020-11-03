@@ -5,6 +5,10 @@
 name: Test
 on:
   - push
+defaults:
+  run:
+    shell: bash
+
 jobs:
   # 1. Unit/Integration Test
   unit-integration-test:
@@ -15,7 +19,7 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     services:
       postgres:
-        image: postgres:12
+        image: postgres:13
         ports:
           - 5432:5432
         env:
@@ -26,13 +30,12 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-
     steps:
       - uses: actions/checkout@v2
-      - name: Run Static Tests
+      - name: Install Runtimes
         uses: actions/setup-elixir@v1
         with:
-          elixir-version: "1.11.0"
+          elixir-version: "1.11.1"
           otp-version: "23.1.1"
       - name: Install Dependencies
         run: mix deps.get --only test
@@ -44,28 +47,13 @@ jobs:
       - name: Run Tests and Upload Coverage Report
         run: mix coveralls.github --umbrella
 
-  # 2. Build VM image
-  build-vm:
-    needs: unit-integration-test
-    runs-on: ubuntu-18.04
-    steps:
-      - uses: actions/checkout@v2
-      - name: Build VM Image
-        # uses: operatehappy/packer-github-action
-        # with:
-        #   command: build
-        #   arguments: "-color=false -on-error=abort"
-        #   target: artifacts.pkr.json packer.json
-        run: |
-          echo `which packer`
-          echo 'Packer?'
-
-  # 3. Functional Test
+  # 2. Functional Test
   functional-test:
-    needs: build-vm
+    needs: unit-integration-test
     runs-on: ubuntu-18.04
     steps:
       - uses: actions/checkout@v2
       - name: Functional Test
         run: |
+          # Dummy for now
           echo 'Tests completed!'

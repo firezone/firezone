@@ -1,0 +1,44 @@
+---
+- name: provision deps
+  hosts: all
+  become: yes
+  tasks:
+    - name: install deps
+      apt:
+        install_recommends: no
+        autoclean: yes
+        autoremove: yes
+        update_cache: true
+        pkg:
+          - sudo
+          - git
+          - curl
+          - gnupg
+          - unzip
+          - wireguard
+          - postgresql
+          - iptables
+- name: Configure System
+  hosts: all
+  become: yes
+  tasks:
+    - name: copy files
+      shell: |
+        cp /vagrant/ansible/sample_conf/wg-server.conf /etc/wireguard/wg0.conf
+    - name: ensure ipv4 forward
+      lineinfile:
+        path: /etc/sysctl.conf
+        line: 'net.ipv4.ip_forward = 1'
+    - name: ensure ipv6 forward
+      lineinfile:
+        path: /etc/sysctl.conf
+        line: 'net.ipv6.conf.all.forwarding = 1'
+    - name: apply sysctl
+      shell: sysctl -p
+- name: Install FireGuard
+  hosts: all
+  become: yes
+  tasks:
+    - name: Install FireGuard deb
+      shell: |
+        wget https://github.com/CloudFire-LLC/fireguard/releases/download/test-building-publishing-0/fireguard_test-building-publishing-0-1_amd64.deb
