@@ -8,7 +8,7 @@ defmodule FireguardUmbrella.MixProject do
   def project do
     [
       apps_path: "apps",
-      version: "0.1.0",
+      version: "0.1.1",
       start_permanent: Mix.env() == :prod,
       test_coverage: [tool: ExCoveralls],
       preferred_cli_env: [
@@ -41,7 +41,8 @@ defmodule FireguardUmbrella.MixProject do
   defp deps do
     [
       {:excoveralls, "~> 0.13", only: :test},
-      {:mix_test_watch, "~> 1.0", only: :dev, runtime: false}
+      {:mix_test_watch, "~> 1.0", only: :dev, runtime: false},
+      {:jason, "~> 1.0"}
     ]
   end
 end

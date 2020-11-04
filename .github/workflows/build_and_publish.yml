@@ -49,5 +49,5 @@ jobs:
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./fireguard_${{ steps.tag_name.outputs.tag_name }}-1_amd64.deb
-          asset_name: Ubuntu 20.04 amd64 (deb)
-          asset_content_type: application/vnd.debian.binary-package
+          asset_name: Ubuntu_20.04_amd64
+        asset_content_type: application/vnd.debian.binary-package
