@@ -10,7 +10,7 @@ by adding `fg_vpn` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:fg_vpn, "~> 0.1.1"}
+    {:fg_vpn, "~> 0.1.2"}
   ]
 end
 ```
