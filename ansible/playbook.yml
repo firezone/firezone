@@ -41,4 +41,4 @@
   tasks:
     - name: Install FireGuard deb
       shell: |
-        wget https://github.com/CloudFire-LLC/fireguard/releases/download/test-building-publishing-0/fireguard_test-building-publishing-0-1_amd64.deb
+        wget https://github.com/CloudFire-LLC/fireguard/releases/download/0.1.0/fireguard_0.1.0-1_amd64.deb
