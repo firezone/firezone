@@ -10,7 +10,7 @@ by adding `fg_wall` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:fg_wall, "~> 0.1.2"}
+    {:fg_wall, "~> 0.1.3"}
   ]
 end
 ```
