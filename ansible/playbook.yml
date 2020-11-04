@@ -22,9 +22,6 @@
   hosts: all
   become: yes
   tasks:
-    - name: copy files
-      shell: |
-        cp /vagrant/ansible/sample_conf/wg-server.conf /etc/wireguard/wg0.conf
     - name: ensure ipv4 forward
       lineinfile:
         path: /etc/sysctl.conf
@@ -42,3 +39,4 @@
     - name: Install FireGuard deb
       shell: |
         wget https://github.com/CloudFire-LLC/fireguard/releases/download/0.1.0/fireguard_0.1.0-1_amd64.deb
+        dpkg -i fireguard_0.1.0-1_amd64.deb
