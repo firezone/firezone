@@ -1,6 +1,6 @@
 [Unit]
 Description=FireGuard
-After=network.target
+After=postgresql.service
 
 [Service]
 Restart=on-failure
