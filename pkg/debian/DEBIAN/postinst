@@ -8,8 +8,10 @@ set -e
 # 3. Generate WireGuard interface and config
 
 # Add fireguard user if not exists
-id fireguard
-if [[ ?$ -ne 0 ]]; then
+if id fireguard &>/dev/null; then
+  echo "fireguard user exists... not creating."
+else
+  echo "creating system user fireguard"
   adduser --system fireguard
 fi
 
