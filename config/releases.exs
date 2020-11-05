@@ -28,10 +28,10 @@ live_view_signing_salt =
     missing.
     """
 
-pool_size = String.to_integer(json_config["pool_size"] || System.get_env("POOL_SIZE") || "10")
+pool_size = json_config["pool_size"] || String.to_integer(System.get_env("POOL_SIZE") || "10")
 
 listen_port =
-  String.to_integer(json_config["listen_port"] || System.get_env("LISTEN_PORT") || "4000")
+  json_config["listen_port"] || String.to_integer(System.get_env("LISTEN_PORT") || "4000")
 
 listen_host = json_config["listen_host"] || System.get_env("LISTEN_HOST") || "localhost"
 
