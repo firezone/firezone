@@ -16,10 +16,10 @@ else
 fi
 
 touch /opt/fireguard/config.yml
-chown fireguard:root /opt/fireguard/config.yml
+chown -R fireguard:root /opt/fireguard
 chmod 0600 /opt/fireguard/config.yml
 
-live_reload_signing_salt="$(openssl rand -base64 24)"
+live_view_signing_salt="$(openssl rand -base64 24)"
 secret_key_base="$(openssl rand -base64 48)"
 db_user=fireguard
 db_password="$(openssl rand -base64 8)"
@@ -30,7 +30,7 @@ sudo -i -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE fireguard to ${db_
 
 cat <<EOT >> /opt/fireguard/config.json
 {
-  "live_reload_signing_salt": "${live_reload_signing_salt}",
+  "live_view_signing_salt": "${live_view_signing_salt}",
   "secret_key_base": "${secret_key_base}",
   "database_url": "ecto://${db_user}:${db_password}@localhost/fireguard",
   "listen_port": 4000,

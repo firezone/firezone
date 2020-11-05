@@ -4,7 +4,7 @@ defmodule FgHttp.MixProject do
   def project do
     [
       app: :fg_http,
-      version: "0.1.6",
+      version: "0.1.7",
       build_path: "../../_build",
       config_path: "../../config/config.exs",
       deps_path: "../../deps",
