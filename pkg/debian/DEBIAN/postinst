@@ -12,11 +12,11 @@ if id fireguard &>/dev/null; then
   echo "fireguard user exists... not creating."
 else
   echo "creating system user fireguard"
-  adduser --system fireguard
+  useradd --system fireguard
 fi
 
 touch /opt/fireguard/config.yml
-chown fireguard:fireguard /opt/fireguard/config.yml
+chown fireguard:root /opt/fireguard/config.yml
 chmod 0600 /opt/fireguard/config.yml
 
 live_reload_signing_salt="$(openssl rand -base64 24)"
