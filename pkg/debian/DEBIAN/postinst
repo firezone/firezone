@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -e
 
 # FireGuard package post-install script
 
@@ -6,22 +7,36 @@
 # 2. Bootstrap DB
 # 3. Generate WireGuard interface and config
 
+# Add fireguard user if not exists
+if id fireguard &>/dev/null; then
+  echo "fireguard user exists... not creating."
+else
+  echo "creating system user fireguard"
+  useradd --system fireguard
+fi
+
 touch /opt/fireguard/config.yml
-chown root:root /opt/fireguard/config.yml
+chown -R fireguard:root /opt/fireguard
 chmod 0600 /opt/fireguard/config.yml
 
-live_reload_signing_salt="$(opt/fireguard/bin/fireguard eval "FgHttp.release.gen_secret(32)")"
-secret_key_base="$(/opt/fireguard/bin/fireguard eval "FgHttp.release.gen_secret(64)")"
+live_view_signing_salt="$(openssl rand -base64 24)"
+secret_key_base="$(openssl rand -base64 48)"
 db_user=fireguard
-db_password="$(opt/fireguard/bin/fireguard eval "FgHttp.release.gen_secret(12)")"
+db_password="$(openssl rand -base64 8)"
 
-sudo -i -u postgres psql -c "CREATE ROLE ${db_user} WITH LOGIN PASSWORD '${db_password}';"
-sudo -i -u postgres psql -c "CREATE DATABASE fireguard;"
-sudo -i -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE fireguard to ${db_user};"
+sudo -i -u postgres psql -c "CREATE ROLE ${db_user} WITH LOGIN PASSWORD '${db_password}';" || true
+sudo -i -u postgres psql -c "CREATE DATABASE fireguard;" || true
+sudo -i -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE fireguard to ${db_user};" || true
 
-cat <<EOT >> /opt/fireguard/config.yml
-live_reload_signing_salt: ${live_reload_signing_salt}
-secret_key_base: ${secret_key_base}
-db_user: ${db_user}
-db_password: ${db_password}
+cat <<EOT >> /opt/fireguard/config.json
+{
+  "live_view_signing_salt": "${live_view_signing_salt}",
+  "secret_key_base": "${secret_key_base}",
+  "database_url": "ecto://${db_user}:${db_password}@localhost/fireguard",
+  "listen_port": 4000,
+  "listen_host": "localhost"
+}
 EOT
+
+systemctl enable fireguard
+systemctl start fireguard

@@ -29,6 +29,7 @@ config :fg_vpn,
   pubkey: "JId8GN8iPmdQXOLSdcsSkaW4i60e1/rpHB/03rsaKBk="
 
 # Configures the endpoint
+# These will be overridden at runtime in production by config/releases.exs
 config :fg_http, FgHttpWeb.Endpoint,
   url: [host: "localhost"],
   secret_key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5SD",
