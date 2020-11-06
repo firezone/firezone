@@ -29,7 +29,15 @@ config :fg_http, FgHttp.Mailer, adapter: Bamboo.TestAdapter
 # you can enable the server option below.
 config :fg_http, FgHttpWeb.Endpoint,
   http: [port: 4002],
+  secret_key_base: "t5hsQU868q6aaI9jsCrso9Qhi7A9Lvy5/NjCnJ8t8f652jtRjcBpYJkm96E8Q5Ko",
+  live_view: [
+    signing_salt: "mgC0uvbIgQM7GT5liNSbzJJhvjFjhb7t"
+  ],
   server: false
+
+config :fg_vpn,
+  privkey: "cAM9MY5NrQ067ZgOkE3NX3h7cMSOBRjj/w4acCuMknk=",
+  pubkey: "DcAqEvFtS0wuvrpvOYi0ncDTcZKpdFq7LKHQcMuAzSw="
 
 # Print only warnings and errors during test
 config :logger, level: :warn
