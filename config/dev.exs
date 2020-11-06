@@ -58,6 +58,10 @@ config :fg_http, FgHttpWeb.Endpoint,
 
 # Watch static and templates for browser reloading.
 config :fg_http, FgHttpWeb.Endpoint,
+  secret_key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5SD",
+  live_view: [
+    signing_salt: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDejX"
+  ],
   live_reload: [
     patterns: [
       ~r"apps/fg_http/priv/static/.*(js|css|png|jpeg|jpg|gif|svg)$",
@@ -66,6 +70,10 @@ config :fg_http, FgHttpWeb.Endpoint,
       ~r"apps/fg_http/lib/fg_http_web/templates/.*(eex)$"
     ]
   ]
+
+config :fg_vpn,
+  privkey: "mFZhBZIQATDzM+Mr671uiryJfSzKQhEA2RYg6JaWiGc=",
+  pubkey: "JId8GN8iPmdQXOLSdcsSkaW4i60e1/rpHB/03rsaKBk="
 
 # Do not include metadata nor timestamps in development logs
 config :logger, :console, format: "[$level] $message\n"

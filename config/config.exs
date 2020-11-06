@@ -2,6 +2,11 @@
 # and **all applications** and their dependencies with the
 # help of the Config module.
 #
+# *Note*:
+# This configuration is generated on compile time. To configure the application during runtime,
+# use releases.exs. These configuration options are overridden by environment-specific
+# configuration files.
+#
 # Note that all applications in your umbrella share the
 # same configuration and dependencies, which is why they
 # all use the same configuration file. If you want different
@@ -20,22 +25,15 @@ import Config
 config :phoenix, :json_library, Jason
 
 config :fg_http,
-  ecto_repos: [FgHttp.Repo],
-  vpn_endpoint: "localhost:51820"
+  ecto_repos: [FgHttp.Repo]
 
-config :fg_vpn,
-  # XXX: Generate these on the VPN host
-  privkey: "mFZhBZIQATDzM+Mr671uiryJfSzKQhEA2RYg6JaWiGc=",
-  pubkey: "JId8GN8iPmdQXOLSdcsSkaW4i60e1/rpHB/03rsaKBk="
+config :fg_http,
+  vpn_endpoint: "localhost:51820"
 
 # Configures the endpoint
 # These will be overridden at runtime in production by config/releases.exs
 config :fg_http, FgHttpWeb.Endpoint,
   url: [host: "localhost"],
-  secret_key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5SD",
-  live_view: [
-    signing_salt: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDejX"
-  ],
   render_errors: [view: FgHttpWeb.ErrorView, accepts: ~w(html json)],
   pubsub_server: FgHttp.PubSub
 
