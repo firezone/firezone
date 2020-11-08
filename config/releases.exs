@@ -35,6 +35,9 @@ listen_port =
 
 listen_host = json_config["listen_host"] || System.get_env("LISTEN_HOST") || "localhost"
 
+config :fg_vpn,
+  pubkey: json_config["pubkey"]
+
 config :fg_http, FgHttp.Repo,
   # ssl: true,
   url: database_url,
