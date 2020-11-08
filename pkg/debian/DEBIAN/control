@@ -2,7 +2,7 @@ Package: fireguard
 Version: 0.1.7-1
 Architecture: amd64
 Maintainer: CloudFire, LLC <dpkg@cloudfire.network>
-Depends: systemd (>= 245.4-4ubuntu3.3), openssl (>= 1.1.1f-1ubuntu2), wireguard (>= 1.0.20200319-1ubuntu1), postgresql-12 (>= 12.4-0ubuntu0.20.04.1), iptables (>= 1.8.4-3ubuntu2)
+Depends: net-tools (>= 1.60+git20180626.aebd88e-1ubuntu1), systemd (>= 245.4-4ubuntu3.3), openssl (>= 1.1.1f-1ubuntu2), wireguard (>= 1.0.20200319-1ubuntu1), postgresql-12 (>= 12.4-0ubuntu0.20.04.1), iptables (>= 1.8.4-3ubuntu2)
 Section: net
 Priority: optional
 Homepage: https://cloudfire.network
