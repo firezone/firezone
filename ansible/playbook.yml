@@ -18,6 +18,7 @@
           - wireguard
           - postgresql
           - iptables
+          - net-tools
 - name: Configure System
   hosts: all
   become: yes
