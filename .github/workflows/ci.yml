@@ -84,9 +84,11 @@ jobs:
         with:
           name: fireguard-deb
       - name: Test Install package
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
-          sudo apt update
-          sudo apt install -y postgresql wireguard iptables net-tools
+          sudo apt-get update
+          sudo apt-get install -y postgresql wireguard iptables net-tools
           sudo dpkg -i fireguard*.deb
 
           # Wait for app to start
