@@ -45,7 +45,7 @@ jobs:
   build:
     needs: unit-integration-test
     runs-on: ubuntu-18.04
-    if: github.ref == 'refs/head/master' || contains(github.ref, 'refs/tags/')
+    if: github.ref == 'refs/heads/master' || contains(github.ref, 'refs/tags/')
     steps:
       - uses: actions/checkout@v2
       - name: Build packages
