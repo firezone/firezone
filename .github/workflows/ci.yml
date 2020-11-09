@@ -85,9 +85,18 @@ jobs:
           name: fireguard-deb
       - name: Test Install package
         run: |
-          apt update
-          apt install -y postgresql wireguard iptables net-tools
-          dpkg -i fireguard*.deb
+          sudo apt update
+          sudo apt install -y postgresql wireguard iptables net-tools
+          sudo dpkg -i fireguard*.deb
+
+          # Wait for app to start
+          sleep 5
+
+          # Ensure it's running
+          echo "FireGuard status:"
+          status=$(sudo systemctl status fireguard)
+          echo $status
+          echo $status | grep "active (running)"
 
   publish:
     needs: build
