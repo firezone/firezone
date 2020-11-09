@@ -89,6 +89,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y postgresql wireguard iptables net-tools
+          sudo systemctl start postgresql
           sudo dpkg -i fireguard*.deb
 
           # Wait for app to start
