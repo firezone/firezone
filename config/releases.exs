@@ -4,39 +4,38 @@
 # remember to add this file to your .gitignore.
 import Config
 
-config_file_path = "/opt/fireguard/config.json"
-json_data = File.read!(config_file_path)
-json_config = Jason.decode!(json_data)
+config_file_path = "/opt/fireguard/config.yaml"
+yaml_config = YamlElixir.read_from_file!(config_file_path)
 
 database_url =
-  System.get_env("DATABASE_URL") || json_config["database_url"] ||
+  System.get_env("DATABASE_URL") || yaml_config["database_url"] ||
     raise """
     config option database_url or environment variable DATABASE_URL is missing.
     For example: ecto://USER:PASS@HOST/DATABASE
     """
 
 secret_key_base =
-  System.get_env("SECRET_KEY_BASE") || json_config["secret_key_base"] ||
+  System.get_env("SECRET_KEY_BASE") || yaml_config["secret_key_base"] ||
     raise """
     config option secret_key_base or environment variable SECRET_KEY_BASE is missing.
     """
 
 live_view_signing_salt =
-  System.get_env("LIVE_VIEW_SIGNING_SALT") || json_config["live_view_signing_salt"] ||
+  System.get_env("LIVE_VIEW_SIGNING_SALT") || yaml_config["live_view_signing_salt"] ||
     raise """
     config option live_view_signing_salt or environment variable LIVE_VIEW_SIGNING_SALT is
     missing.
     """
 
-pool_size = json_config["pool_size"] || String.to_integer(System.get_env("POOL_SIZE") || "10")
+pool_size = yaml_config["pool_size"] || String.to_integer(System.get_env("POOL_SIZE") || "10")
 
 listen_port =
-  json_config["listen_port"] || String.to_integer(System.get_env("LISTEN_PORT") || "4000")
+  yaml_config["listen_port"] || String.to_integer(System.get_env("LISTEN_PORT") || "4000")
 
-listen_host = json_config["listen_host"] || System.get_env("LISTEN_HOST") || "localhost"
+listen_host = yaml_config["listen_host"] || System.get_env("LISTEN_HOST") || "localhost"
 
 config :fg_vpn,
-  pubkey: json_config["pubkey"]
+  pubkey: yaml_config["pubkey"]
 
 config :fg_http, FgHttp.Repo,
   # ssl: true,
