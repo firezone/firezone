@@ -4,38 +4,38 @@
 # remember to add this file to your .gitignore.
 import Config
 
-config_file_path = "/opt/fireguard/config.yaml"
-yaml_config = YamlElixir.read_from_file!(config_file_path)
-
+# Required environment variables
 database_url =
-  System.get_env("DATABASE_URL") || yaml_config["database_url"] ||
+  System.get_env("DATABASE_URL") ||
     raise """
-    config option database_url or environment variable DATABASE_URL is missing.
+    environment variable DATABASE_URL is missing.
     For example: ecto://USER:PASS@HOST/DATABASE
     """
 
 secret_key_base =
-  System.get_env("SECRET_KEY_BASE") || yaml_config["secret_key_base"] ||
+  System.get_env("SECRET_KEY_BASE") ||
     raise """
-    config option secret_key_base or environment variable SECRET_KEY_BASE is missing.
+    environment variable SECRET_KEY_BASE is missing.
     """
 
 live_view_signing_salt =
-  System.get_env("LIVE_VIEW_SIGNING_SALT") || yaml_config["live_view_signing_salt"] ||
+  System.get_env("LIVE_VIEW_SIGNING_SALT") ||
     raise """
-    config option live_view_signing_salt or environment variable LIVE_VIEW_SIGNING_SALT is
-    missing.
+    environment variable LIVE_VIEW_SIGNING_SALT is missing.
     """
 
-pool_size = yaml_config["pool_size"] || String.to_integer(System.get_env("POOL_SIZE") || "10")
+pubkey =
+  System.get_env("PUBKEY") ||
+    raise """
+    environment variable PUBKEY is missing.
+    """
 
-listen_port =
-  yaml_config["listen_port"] || String.to_integer(System.get_env("LISTEN_PORT") || "4000")
+# Optional environment variables
+pool_size = String.to_integer(System.get_env("POOL_SIZE") || "10")
+listen_port = String.to_integer(System.get_env("LISTEN_PORT") || "4000")
+listen_host = System.get_env("LISTEN_HOST") || "localhost"
 
-listen_host = yaml_config["listen_host"] || System.get_env("LISTEN_HOST") || "localhost"
-
-config :fg_vpn,
-  pubkey: yaml_config["pubkey"]
+config :fg_vpn, pubkey: pubkey
 
 config :fg_http, FgHttp.Repo,
   # ssl: true,
