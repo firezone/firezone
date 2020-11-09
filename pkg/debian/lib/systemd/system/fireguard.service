@@ -6,6 +6,7 @@ After=postgresql.service
 Restart=on-failure
 RestartSec=1
 User=fireguard
+EnvironmentFile=/opt/fireguard/config.env
 ExecStart=/opt/fireguard/bin/fireguard start
 
 [Install]
