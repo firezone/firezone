@@ -74,18 +74,19 @@ jobs:
           DEBIAN_FRONTEND: noninteractive
         run: |
           sudo apt-get update
-          sudo apt-get install -y postgresql wireguard iptables net-tools
+          sudo apt-get install -y postgresql wireguard iptables net-tools curl
           sudo systemctl start postgresql
           sudo dpkg -i fireguard*.deb
 
           # Wait for app to start
-          sleep 5
+          sleep 3
 
           # Ensure it's running
-          echo "FireGuard status:"
-          status=$(sudo systemctl status fireguard)
-          echo $status
-          echo $status | grep "active (running)"
+          echo "Checking if FireGuard service status"
+          sudo systemctl status fireguard
+
+          echo "Trying to load homepage..."
+          curl http://localhost:4000
 
   publish:
     needs: build
