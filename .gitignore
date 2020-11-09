@@ -43,3 +43,6 @@ npm-debug.log
 
 *.log
 *.sw?
+
+# Development environment configuration
+.env

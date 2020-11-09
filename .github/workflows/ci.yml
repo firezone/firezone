@@ -81,7 +81,6 @@ jobs:
           # Wait for app to start
           sleep 3
 
-          # Ensure it's active
           echo "Checking FireGuard service status"
           sudo systemctl status fireguard
 
