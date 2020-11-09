@@ -50,23 +50,11 @@ jobs:
       - name: Build packages
         run: |
           docker build -t fireguard:latest -f pkg/Dockerfile .
-      - name: Extract the version
-        id: version
-        run: |
-          ref=${{ github.ref }}
-          tag_name=${ref#"refs/tags/"}
-          sha=${{ github.sha }}
-
-          # Set tag if this is a tag push, otherwise use Github SHA
-          if [[ -z "$tag_name" ]] || [[ "$ref" = "refs/heads/master" ]]; then
-            echo "::set-output name=version::${sha}"
-          else
-          fi
       - name: Rename Built Artifacts
         run: |
           version="${{ steps.version.outputs.version }}"
           cid=$(docker create fireguard:latest)
-          filename="fireguard_${version}-1_amd64.deb"
+          filename="fireguard_${{ github.sha }}-1_amd64.deb"
           echo "Extracting built debian package from container ${cid} to filename ${filename}"
           docker cp ${cid}:/build/pkg/debian.deb ./${filename}
       - uses: actions/upload-artifact@v2
