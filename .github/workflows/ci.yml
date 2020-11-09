@@ -59,7 +59,7 @@ jobs:
           sha=${{ github.sha }}
 
           # Set tag if this is a tag push, otherwise use Github SHA
-          if [[ -z "$tag_name" ]]; then
+          if [[ -z "$tag_name" ]] || [[ "$ref" = "refs/heads/master" ]]; then
             echo "::set-output name=version::${sha}"
           else
             echo "::set-output name=version::${tag_name}"
