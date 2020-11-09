@@ -15,27 +15,47 @@ else
   useradd --system fireguard
 fi
 
-touch /opt/fireguard/config.yml
-chown -R fireguard:root /opt/fireguard
-chmod 0600 /opt/fireguard/config.yml
-
+# Generate app secrets
 live_view_signing_salt="$(openssl rand -base64 24)"
 secret_key_base="$(openssl rand -base64 48)"
 db_user=fireguard
 db_password="$(openssl rand -base64 8)"
 
+# Setup DB
 sudo -i -u postgres psql -c "CREATE ROLE ${db_user} WITH LOGIN PASSWORD '${db_password}';" || true
 sudo -i -u postgres psql -c "CREATE DATABASE fireguard;" || true
 sudo -i -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE fireguard to ${db_user};" || true
 
+# Generate WireGuard priv/pubkeys
+privkey=$(wg genkey)
+pubkey=$(echo ${privkey} | wg pubkey)
+
+# Write FireGuard config file
+touch /opt/fireguard/config.yml
+chown -R fireguard:root /opt/fireguard
+chmod 0600 /opt/fireguard/config.yml
 cat <<EOT >> /opt/fireguard/config.json
 {
   "live_view_signing_salt": "${live_view_signing_salt}",
   "secret_key_base": "${secret_key_base}",
   "database_url": "ecto://${db_user}:${db_password}@localhost/fireguard",
+  "pubkey": "${pubkey}",
   "listen_port": 4000,
   "listen_host": "localhost"
 }
+EOT
+
+# Grab default route interface
+default_int=$(route | grep '^default' | grep -o '[^ ]*$')
+
+# Write WireGuard config file
+cat <<EOT >> /etc/wireguard/wg-fireguard.conf
+[Interface]
+ListenPort = 51820
+PrivateKey = ${privkey}
+PostUp = iptables -A FORWARD -i %i -j ACCEPT; iptables -A FORWARD -o %i -j ACCEPT; iptables -t nat -A POSTROUTING -o ${default_int} -j MASQUERADE
+PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACCEPT; iptables -t nat -D POSTROUTING -o ${default_int} -j MASQUERADE
+
 EOT
 
 systemctl enable fireguard

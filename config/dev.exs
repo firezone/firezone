@@ -72,7 +72,6 @@ config :fg_http, FgHttpWeb.Endpoint,
   ]
 
 config :fg_vpn,
-  privkey: "mFZhBZIQATDzM+Mr671uiryJfSzKQhEA2RYg6JaWiGc=",
   pubkey: "JId8GN8iPmdQXOLSdcsSkaW4i60e1/rpHB/03rsaKBk="
 
 # Do not include metadata nor timestamps in development logs
