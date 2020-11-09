@@ -79,7 +79,7 @@ jobs:
           sudo dpkg -i fireguard*.deb
 
           # Wait for app to start
-          sleep 3
+          sleep 10
 
           echo "Checking FireGuard service status"
           sudo systemctl status fireguard
@@ -88,7 +88,7 @@ jobs:
           sudo systemctl is-active fireguard
 
           echo "Trying to load homepage..."
-          curl http://localhost:4000
+          curl localhost:4000
 
   publish:
     needs: build
