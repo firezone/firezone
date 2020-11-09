@@ -30,8 +30,8 @@ jobs:
       - name: Install Runtimes
         uses: actions/setup-elixir@v1
         with:
-          elixir-version: "1.11.1"
-          otp-version: "23.1.1"
+          elixir-version: "1.11.2"
+          otp-version: "23.1.2"
       - name: Install Dependencies
         run: mix deps.get --only test
       - name: Setup Database
@@ -81,9 +81,12 @@ jobs:
           # Wait for app to start
           sleep 3
 
-          # Ensure it's running
-          echo "Checking if FireGuard service status"
+          # Ensure it's active
+          echo "Checking FireGuard service status"
           sudo systemctl status fireguard
+
+          echo "Checking if FireGuard service is active"
+          sudo systemctl is-active fireguard
 
           echo "Trying to load homepage..."
           curl http://localhost:4000

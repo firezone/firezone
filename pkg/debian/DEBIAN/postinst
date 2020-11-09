@@ -36,11 +36,11 @@ chown -R fireguard:root /opt/fireguard
 chmod 0600 /opt/fireguard/config.yaml
 cat <<EOT >> /opt/fireguard/config.yaml
 ---
-live_view_signing_salt: "${live_view_signing_salt}",
-secret_key_base: "${secret_key_base}",
-database_url: "ecto://${db_user}:${db_password}@localhost/fireguard",
-pubkey: "${pubkey}",
-listen_port: 4000,
+live_view_signing_salt: "${live_view_signing_salt}"
+secret_key_base: "${secret_key_base}"
+database_url: "ecto://${db_user}:${db_password}@localhost/fireguard"
+pubkey: "${pubkey}"
+listen_port: 4000
 listen_host: localhost
 EOT
 

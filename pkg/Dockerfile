@@ -1,5 +1,5 @@
 # This Dockerfile builds release packages
-FROM hexpm/elixir:1.11.1-erlang-23.1.1-ubuntu-focal-20200703 AS build
+FROM hexpm/elixir:1.11.2-erlang-23.1.2-ubuntu-focal-20201008 AS build
 
 # Setup to run build script
 ENV DEBIAN_FRONTEND noninteractive
