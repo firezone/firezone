@@ -42,7 +42,7 @@ defmodule FireguardUmbrella.MixProject do
     [
       {:excoveralls, "~> 0.13", only: :test},
       {:mix_test_watch, "~> 1.0", only: :dev, runtime: false},
-      {:jason, "~> 1.0"}
+      {:yaml_elixir, "~> 2.5.0"}
     ]
   end
 end

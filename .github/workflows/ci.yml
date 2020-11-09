@@ -45,7 +45,6 @@ jobs:
   build:
     needs: unit-integration-test
     runs-on: ubuntu-18.04
-    if: github.ref == 'refs/heads/master' || contains(github.ref, 'refs/tags/')
     steps:
       - uses: actions/checkout@v2
       - name: Build packages
@@ -62,7 +61,6 @@ jobs:
           if [[ -z "$tag_name" ]] || [[ "$ref" = "refs/heads/master" ]]; then
             echo "::set-output name=version::${sha}"
           else
-            echo "::set-output name=version::${tag_name}"
           fi
       - name: Rename Built Artifacts
         run: |
@@ -93,7 +91,7 @@ jobs:
           sudo dpkg -i fireguard*.deb
 
           # Wait for app to start
-          sleep 5
+          sleep 3
 
           # Ensure it's running
           echo "FireGuard status:"
@@ -116,6 +114,9 @@ jobs:
           release_name: Release ${{ github.ref }}
           draft: false
           prerelease: true
+      - uses: actions/download-artifact@v2
+        with:
+          name: fireguard-deb
       - name: Upload Release Asset
         id: upload-release-asset
         uses: actions/upload-release-asset@v1
@@ -123,6 +124,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./fireguard_${{ steps.tag_name.outputs.tag_name }}-1_amd64.deb
+          asset_path: ./fireguard_${{ github.sha }}-1_amd64.deb
           asset_name: fireguard_amd64.deb
           asset_content_type: application/vnd.debian.binary-package
