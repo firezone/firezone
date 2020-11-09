@@ -79,7 +79,7 @@ jobs:
           sudo dpkg -i fireguard*.deb
 
           # Wait for app to start
-          sleep 3
+          sleep 5
 
           # Ensure it's running
           echo "FireGuard status:"
