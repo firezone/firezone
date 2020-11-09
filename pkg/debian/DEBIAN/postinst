@@ -31,18 +31,16 @@ privkey=$(wg genkey)
 pubkey=$(echo ${privkey} | wg pubkey)
 
 # Write FireGuard config file
-touch /opt/fireguard/config.yml
+touch /opt/fireguard/config.env
 chown -R fireguard:root /opt/fireguard
-chmod 0600 /opt/fireguard/config.yml
-cat <<EOT >> /opt/fireguard/config.json
-{
-  "live_view_signing_salt": "${live_view_signing_salt}",
-  "secret_key_base": "${secret_key_base}",
-  "database_url": "ecto://${db_user}:${db_password}@localhost/fireguard",
-  "pubkey": "${pubkey}",
-  "listen_port": 4000,
-  "listen_host": "localhost"
-}
+chmod 0600 /opt/fireguard/config.env
+cat <<EOT >> /opt/fireguard/config.env
+LIVE_VIEW_SIGNING_SALT="${live_view_signing_salt}"
+SECRET_KEY_BASE="${secret_key_base}"
+DATABASE_URL="ecto://${db_user}:${db_password}@localhost/fireguard"
+PUBKEY="${pubkey}"
+LISTEN_PORT=4000
+LISTEN_HOST=localhost
 EOT
 
 # Grab default route interface
