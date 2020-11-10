@@ -30,17 +30,65 @@ sudo -i -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE fireguard to ${db_
 privkey=$(wg genkey)
 pubkey=$(echo ${privkey} | wg pubkey)
 
+# Write FireGuard SSL files
+mkdir -p /opt/fireguard/ssl
+chown -R fireguard:root /opt/fireguard/ssl
+hostname=$(hostname)
+openssl req -new -x509 -sha256 -newkey rsa:2048 -nodes \
+    -keyout /opt/fireguard/ssl/key.pem \
+    -out /opt/fireguard/ssl/cert.pem \
+    -days 365 -subj "/CN=${hostname}"
+chmod 0600 /opt/fireguard/ssl/key.pem
+chmod 0644 /opt/fireguard/ssl/cert.pem
+
 # Write FireGuard config file
 touch /opt/fireguard/config.env
-chown -R fireguard:root /opt/fireguard
 chmod 0600 /opt/fireguard/config.env
+chown -R fireguard:root /opt/fireguard
 cat <<EOT >> /opt/fireguard/config.env
+# This file is loaded into FireGuard's Environment upon launch to configure it.
+
+# This is used to ensure secure communication with the live web views.
+# Re-generate this with "openssl rand -base64 24". All existing web views will
+# need to be refreshed.
 LIVE_VIEW_SIGNING_SALT="${live_view_signing_salt}"
+
+# This is used to secure cookies among other things.
+# You can regenerate this with "openssl rand -base64 48". All existing clients
+# will be signed out.
 SECRET_KEY_BASE="${secret_key_base}"
-DATABASE_URL="ecto://${db_user}:${db_password}@localhost/fireguard"
+
+# The URL to connect to your DB. Assumes the database has been created and this
+# user has privileges to create and modify tables.
+DATABASE_URL="ecto://${db_user}:${db_password}@locRegeneratealhost/fireguard"
+
+# The public key for the WireGuard interface controlled by FireGuard.
+# This should match what's in /etc/wireguard/wg-fireguard.conf.
+# Re-generate this using the "wg" utility, e.g. "wg genkey | wg pubkey"
 PUBKEY="${pubkey}"
-LISTEN_PORT=4000
-LISTEN_HOST=localhost
+
+# The port to listen on. Defaults to 8800.
+LISTEN_PORT=8800
+
+# The address to bind the http server and WireGuard process to.
+# Defaults to "0.0.0.0"
+LISTEN_ADDRESS=0.0.0.0
+
+# SSL certificate file and key path. Self-signed certs are generated for you on
+# install, but it's highly recommended to replace these with valid certs.
+# Free certs can be obtained at https://letsencrypt.org.
+SSL_CERT_FILE=/opt/fireguard/ssl/cert.pem
+SSL_KEY_FILE=/opt/fireguard/ssl/key.pem
+
+# Path to the intermediate certificates file. (usually not required)
+SSL_CA_CERT_FILE=
+
+# Host to use for generating links back to the application, such as in
+# outbound emails. Defaults to "localhost"
+URL_HOST=localhost
+
+# For public-facing sites, it's recommended to leave signups disabled.
+DISABLE_SIGNUP=yes
 EOT
 
 # Grab default route interface
