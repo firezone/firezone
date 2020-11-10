@@ -36,18 +36,18 @@ pubkey =
     """
 
 ssl_cert_file =
-  System.get("SSL_CERT_FILE") ||
+  System.get_env("SSL_CERT_FILE") ||
     raise """
     Environment variable SSL_CERT_FILE is missing. FireGuard requires SSL.
     """
 
 ssl_key_file =
-  System.get("SSL_KEY_FILE") ||
+  System.get_env("SSL_KEY_FILE") ||
     raise """
     Environment variable SSL_KEY_FILE is missing. FireGuard requires SSL.
     """
 
-ssl_ca_cert_file = System.get("SSL_CA_CERT_FILE") || nil
+ssl_ca_cert_file = System.get_env("SSL_CA_CERT_FILE") || nil
 
 # Optional environment variables
 pool_size = String.to_integer(System.get_env("POOL_SIZE") || "10")
@@ -61,18 +61,20 @@ config :fg_http, FgHttp.Repo,
   url: database_url,
   pool_size: pool_size
 
+base_opts = [
+  port: listen_port,
+  transport_options: [socket_opts: [:inet6]],
+  cipher_suite: :strong,
+  otp_app: :fireguard,
+  keyfile: ssl_key_file,
+  certfile: ssl_cert_file
+]
+
+https_opts = if ssl_ca_cert_file, do: base_opts ++ [cacertfile: ssl_ca_cert_file], else: base_opts
+
 config :fg_http, FgHttpWeb.Endpoint,
   # Force SSL for releases
-  force_ssl: [rewrite_on: [:x_forwarded_proto], hsts: true, host: nil],
-  https: [
-    port: listen_port,
-    transport_options: [socket_opts: [:inet6]],
-    cipher_suite: :strong,
-    otp_app: :fireguard,
-    keyfile: ssl_key_file,
-    certfile: ssl_cert_file,
-    cacertfile: ssl_ca_cert_file
-  ],
+  https: https_opts,
   url: [host: url_host, port: listen_port],
   secret_key_base: secret_key_base,
   live_view: [
