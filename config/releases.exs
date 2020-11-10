@@ -8,32 +8,51 @@ import Config
 database_url =
   System.get_env("DATABASE_URL") ||
     raise """
-    environment variable DATABASE_URL is missing.
+    Environment variable DATABASE_URL is missing.
     For example: ecto://USER:PASS@HOST/DATABASE
     """
 
 secret_key_base =
   System.get_env("SECRET_KEY_BASE") ||
     raise """
-    environment variable SECRET_KEY_BASE is missing.
+    Environment variable SECRET_KEY_BASE is missing.
+    Please generate with "openssl rand -base64 48" and add to
+    /opt/fireguard/config.env
     """
 
 live_view_signing_salt =
   System.get_env("LIVE_VIEW_SIGNING_SALT") ||
     raise """
-    environment variable LIVE_VIEW_SIGNING_SALT is missing.
+    Environment variable LIVE_VIEW_SIGNING_SALT is missing.
+    Please generate with "openssl rand -base64 24" and add to
+    /opt/fireguard/config.env
     """
 
 pubkey =
   System.get_env("PUBKEY") ||
     raise """
-    environment variable PUBKEY is missing.
+    Environment variable PUBKEY is missing. Please generate
+    with the "wg" utility.
     """
+
+ssl_cert_file =
+  System.get("SSL_CERT_FILE") ||
+    raise """
+    Environment variable SSL_CERT_FILE is missing. FireGuard requires SSL.
+    """
+
+ssl_key_file =
+  System.get("SSL_KEY_FILE") ||
+    raise """
+    Environment variable SSL_KEY_FILE is missing. FireGuard requires SSL.
+    """
+
+ssl_ca_cert_file = System.get("SSL_CA_CERT_FILE") || nil
 
 # Optional environment variables
 pool_size = String.to_integer(System.get_env("POOL_SIZE") || "10")
-listen_port = String.to_integer(System.get_env("LISTEN_PORT") || "4000")
-listen_host = System.get_env("LISTEN_HOST") || "localhost"
+listen_port = String.to_integer(System.get_env("LISTEN_PORT") || "8800")
+url_host = System.get_env("URL_HOST") || "localhost"
 
 config :fg_vpn, pubkey: pubkey
 
@@ -43,11 +62,18 @@ config :fg_http, FgHttp.Repo,
   pool_size: pool_size
 
 config :fg_http, FgHttpWeb.Endpoint,
-  http: [
+  # Force SSL for releases
+  force_ssl: [rewrite_on: [:x_forwarded_proto], hsts: true, host: nil],
+  https: [
     port: listen_port,
-    transport_options: [socket_opts: [:inet6]]
+    transport_options: [socket_opts: [:inet6]],
+    cipher_suite: :strong,
+    otp_app: :fireguard,
+    keyfile: ssl_key_file,
+    certfile: ssl_cert_file,
+    cacertfile: ssl_ca_cert_file
   ],
-  url: [host: listen_host, port: listen_port],
+  url: [host: url_host, port: listen_port],
   secret_key_base: secret_key_base,
   live_view: [
     signing_salt: live_view_signing_salt
