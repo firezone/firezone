@@ -74,7 +74,8 @@ jobs:
           DEBIAN_FRONTEND: noninteractive
         run: |
           sudo apt-get update
-          sudo apt-get install -y postgresql wireguard iptables net-tools curl
+          sudo apt-get install -y postgresql \
+            wireguard iptables net-tools curl ca-certificates
           sudo systemctl start postgresql
           sudo dpkg -i fireguard*.deb
 
@@ -87,8 +88,11 @@ jobs:
           echo "Checking if FireGuard service is active"
           sudo systemctl is-active fireguard
 
+          echo "Connecting with openssl"
+          openssl s_client -connect localhost:8800 -showcerts -prexit -debug
+
           echo "Trying to load homepage..."
-          curl -k https://localhost:8800
+          curl -i -vvv -k https://localhost:8800
 
   publish:
     needs: build
