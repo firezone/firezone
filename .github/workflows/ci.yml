@@ -90,13 +90,13 @@ jobs:
 
           echo "Checking certs..."
           cat /opt/fireguard/ssl/cert.pem
-          cat /opt/fireguard/ssl/key.pem
+          sudo cat /opt/fireguard/ssl/key.pem
 
           echo "Connecting with openssl"
-          openssl s_client -connect localhost:8800 -showcerts -prexit -debug
+          openssl s_client -connect $(hostname):8800 -showcerts -prexit -debug
 
           echo "Trying to load homepage..."
-          curl -i -vvv -k https://localhost:8800
+          curl -i -vvv -k https://$(hostname):8800
 
   publish:
     needs: build
