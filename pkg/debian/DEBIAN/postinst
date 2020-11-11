@@ -60,7 +60,7 @@ SECRET_KEY_BASE="${secret_key_base}"
 
 # The URL to connect to your DB. Assumes the database has been created and this
 # user has privileges to create and modify tables.
-DATABASE_URL="ecto://${db_user}:${db_password}@${hostname}/fireguard"
+DATABASE_URL="ecto://${db_user}:${db_password}@127.0.0.1/fireguard"
 
 # The public key for the WireGuard interface controlled by FireGuard.
 # This should match what's in /etc/wireguard/wg-fireguard.conf.
