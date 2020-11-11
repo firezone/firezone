@@ -85,6 +85,9 @@ jobs:
           echo "Checking FireGuard service status"
           sudo systemctl status fireguard
 
+          echo "Checking FireGuard logs..."
+          sudo journalctl -u fireguard.service -b
+
           echo "Checking if FireGuard service is active"
           sudo systemctl is-active fireguard
 
