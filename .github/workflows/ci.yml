@@ -88,6 +88,10 @@ jobs:
           echo "Checking if FireGuard service is active"
           sudo systemctl is-active fireguard
 
+          echo "Checking certs..."
+          cat /opt/fireguard/ssl/cert.pem
+          cat /opt/fireguard/ssl/key.pem
+
           echo "Connecting with openssl"
           openssl s_client -connect localhost:8800 -showcerts -prexit -debug
 

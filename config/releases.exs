@@ -47,7 +47,7 @@ ssl_key_file =
     Environment variable SSL_KEY_FILE is missing. FireGuard requires SSL.
     """
 
-ssl_ca_cert_file = System.get_env("SSL_CA_CERT_FILE") || nil
+ssl_ca_cert_file = System.get_env("SSL_CA_CERT_FILE")
 
 # Optional environment variables
 pool_size = String.to_integer(System.get_env("POOL_SIZE") || "10")
