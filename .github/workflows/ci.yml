@@ -95,9 +95,13 @@ jobs:
           cat /opt/fireguard/ssl/cert.pem
           sudo cat /opt/fireguard/ssl/key.pem
 
+          echo "Setting NO_PROXY env var"
           export NO_PROXY=$(hostname)
 
-          echo "Connecting with openssl"
+          echo "Attempting openssl s_client to a known server"
+          openssl s_client -connect google.com:443 -servername google.com -showcerts -prexit -debug
+
+          echo "Connecting to FireGuard with openssl"
           openssl s_client -connect 127.0.0.1:8800 -servername $(hostname) -showcerts -prexit -debug
 
           echo "Trying to load homepage..."
