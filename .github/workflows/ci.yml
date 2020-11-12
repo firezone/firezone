@@ -82,6 +82,9 @@ jobs:
           # Wait for app to start
           sleep 10
 
+          echo "Setting NO_PROXY env var"
+          export NO_PROXY=$(hostname)
+
           echo "Checking FireGuard service status"
           sudo systemctl status fireguard
 
@@ -91,21 +94,17 @@ jobs:
           echo "Checking if FireGuard service is active"
           sudo systemctl is-active fireguard
 
-          echo "Checking certs..."
-          cat /opt/fireguard/ssl/cert.pem
-          sudo cat /opt/fireguard/ssl/key.pem
+          echo "Trying to load homepage..."
+          curl -i -vvv -k https://$(hostname):8800/ || true
 
-          echo "Setting NO_PROXY env var"
-          export NO_PROXY=$(hostname)
+          echo "Checking logs again..."
+          sudo journalctl -u fireguard.service -b
 
           echo "Attempting openssl s_client to a known server"
           openssl s_client -connect google.com:443 -servername google.com -showcerts -prexit -debug
 
           echo "Connecting to FireGuard with openssl"
           openssl s_client -connect 127.0.0.1:8800 -servername $(hostname) -showcerts -prexit -debug
-
-          echo "Trying to load homepage..."
-          curl -i -vvv -k https://$(hostname):8800
 
   publish:
     needs: build
