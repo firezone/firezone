@@ -19,7 +19,10 @@ fi
 live_view_signing_salt="$(openssl rand -base64 24)"
 secret_key_base="$(openssl rand -base64 48)"
 db_user=fireguard
-db_password="$(openssl rand -base64 8)"
+
+# Base64 includes forward slashes which are problematic in the
+# DB_URL connect string, so use hex.
+db_password="$(openssl rand -hex 16)"
 
 # Setup DB
 sudo -i -u postgres psql -c "CREATE ROLE ${db_user} WITH LOGIN PASSWORD '${db_password}';" || true
