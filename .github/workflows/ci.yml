@@ -34,7 +34,9 @@ jobs:
           sudo dpkg -i erlang.deb
           sudo dpkg -i elixir.deb
       - name: Install Dependencies
-        run: mix deps.get --only test
+        run: |
+          mix local.hex --force && mix local.rebar --force
+          mix deps.get --only test
       - name: Setup Database
         run: |
           mix ecto.create
