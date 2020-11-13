@@ -15,10 +15,35 @@
           - curl
           - gnupg
           - unzip
+          - dpkg-dev
           - wireguard
           - postgresql
           - iptables
           - net-tools
+          - automake
+          - autoconf
+          - libssl-dev
+          - libncurses5-dev
+          - zlib1g-dev
+          - locales
+          - build-essential
+          - ca-certificates
+
+    - name: setup nodejs repository
+      shell: curl -sL https://deb.nodesource.com/setup_10.x | bash -
+    - name: install nodejs
+      apt:
+        install_recommends: no
+        autoclean: yes
+        autoremove: yes
+        pkg:
+          - nodejs
+    - name: install erlang
+      apt:
+        deb: https://packages.erlang-solutions.com/erlang/debian/pool/esl-erlang_23.1-1~ubuntu~focal_amd64.deb
+    - name: install elixir
+      apt:
+        deb: https://packages.erlang-solutions.com/erlang/debian/pool/elixir_1.11.2-1~ubuntu~focal_all.deb
 - name: Configure System
   hosts: all
   become: yes
@@ -33,11 +58,19 @@
         line: 'net.ipv6.conf.all.forwarding = 1'
     - name: apply sysctl
       shell: sysctl -p
-- name: Install FireGuard
+- name: Build FireGuard
   hosts: all
-  become: yes
   tasks:
-    - name: Install FireGuard deb
+    - name: Compile Release
+      become: no
+      environment:
+        MIX_ENV: prod
       shell: |
-        wget https://github.com/CloudFire-LLC/fireguard/releases/download/0.1.7/fireguard_amd64.deb
+        cd /vagrant
+        scripts/build_prod_release.sh
+        scripts/build_fireguard_deb.sh
+    - name: Install FireGuard deb
+      become: yes
+      shell: |
+        cd /vagrant
         dpkg -i fireguard_amd64.deb
