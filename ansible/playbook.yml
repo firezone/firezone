@@ -63,11 +63,13 @@
   tasks:
     - name: Compile Release
       become: no
-      environment:
-        MIX_ENV: prod
       shell: |
         cd /vagrant
         scripts/build_prod_release.sh
+    - name: Build Debian Package
+      become: no
+      shell: |
+        cd /vagrant
         scripts/build_fireguard_deb.sh
     - name: Install FireGuard deb
       become: yes

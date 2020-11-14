@@ -10,4 +10,4 @@ npm run --prefix apps/fg_http/assets deploy
 cd apps/fg_http
 mix phx.digest
 cd $od
-mix release fireguard
+mix release --overwrite --force fireguard

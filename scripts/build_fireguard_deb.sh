@@ -2,7 +2,7 @@
 
 od=$(pwd)
 mkdir -p pkg/debian/opt
-mv _build/prod/rel/fireguard pkg/debian/opt/fireguard
+rsync --delete -a _build/prod/rel/fireguard pkg/debian/opt/
 cd pkg
 dpkg-deb --build debian
-mv debian.deb ../fireguard_amd64.deb
+mv -f debian.deb ../fireguard_amd64.deb
