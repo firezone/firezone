@@ -49,6 +49,15 @@ ssl_key_file =
 
 ssl_ca_cert_file = System.get_env("SSL_CA_CERT_FILE")
 
+cacertfile =
+  case ssl_ca_cert_file do
+    "" ->
+      nil
+
+    _ ->
+      ssl_ca_cert_file
+  end
+
 # Optional environment variables
 pool_size = String.to_integer(System.get_env("POOL_SIZE") || "10")
 listen_port = String.to_integer(System.get_env("LISTEN_PORT") || "8800")
@@ -63,7 +72,6 @@ config :fg_http, FgHttp.Repo,
 
 base_opts = [
   port: listen_port,
-  transport_options: [max_connections: :infinity, socket_opts: [:inet6, :inet]],
   otp_app: :fireguard,
   keyfile: ssl_key_file,
   certfile: ssl_cert_file
