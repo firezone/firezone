@@ -40,7 +40,9 @@
     <hr>
 
     <div class="level">
-      <%= link("Sign up", to: Routes.user_path(@conn, :new)) %>
+      <%= unless Application.get_env(:fg_http, :disable_signup) do %>
+        <%= link("Sign up", to: Routes.user_path(@conn, :new)) %>
+      <% end %>
       <%= link("Forgot your password?", to: Routes.password_reset_path(@conn, :new)) %>
     </div>
   </div>

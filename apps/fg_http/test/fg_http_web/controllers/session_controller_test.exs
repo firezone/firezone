@@ -1,5 +1,6 @@
 defmodule FgHttpWeb.SessionControllerTest do
   use FgHttpWeb.ConnCase, async: true
+  import FgHttp.MockHelpers
 
   alias FgHttp.{Fixtures, Repo, Users.User}
 
@@ -14,7 +15,29 @@ defmodule FgHttpWeb.SessionControllerTest do
     end
   end
 
-  describe "new when a user is not signed in" do
+  describe "new when a user is not signed in when signups disabled" do
+    setup do
+      mock_disable_signup()
+    end
+
+    test "omits the Sign up link", %{unauthed_conn: conn} do
+      test_conn = get(conn, Routes.session_path(conn, :new))
+
+      refute html_response(test_conn, 200) =~ "Sign up"
+    end
+  end
+
+  describe "new when a user is not signed in when signups enabled" do
+    setup do
+      mock_enable_signup()
+    end
+
+    test "includes the Sign up link", %{unauthed_conn: conn} do
+      test_conn = get(conn, Routes.session_path(conn, :new))
+
+      assert html_response(test_conn, 200) =~ "Sign up"
+    end
+
     test "renders sign in form for new session path", %{unauthed_conn: conn} do
       test_conn = get(conn, Routes.session_path(conn, :new))
 

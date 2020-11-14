@@ -47,15 +47,16 @@ ssl_key_file =
     Environment variable SSL_KEY_FILE is missing. FireGuard requires SSL.
     """
 
-ssl_ca_cert_file = System.get_env("SSL_CA_CERT_FILE")
+disable_signup =
+  case System.get_env("DISABLE_SIGNUP") do
+    d when d in ["1", "yes"] -> true
+    _ -> false
+  end
 
-cacertfile =
-  case ssl_ca_cert_file do
-    "" ->
-      nil
-
-    _ ->
-      ssl_ca_cert_file
+ssl_ca_cert_file =
+  case System.get_env("SSL_CA_CERT_FILE") do
+    "" -> nil
+    s = _ -> s
   end
 
 # Optional environment variables
@@ -64,6 +65,7 @@ listen_port = String.to_integer(System.get_env("LISTEN_PORT") || "8800")
 url_host = System.get_env("URL_HOST") || "localhost"
 
 config :fg_vpn, pubkey: pubkey
+config :fg_http, disable_signup: disable_signup
 
 config :fg_http, FgHttp.Repo,
   # ssl: true,
