@@ -71,6 +71,8 @@ config :fg_http, FgHttpWeb.Endpoint,
     ]
   ]
 
+config :fg_http, disable_signup: true
+
 config :fg_vpn,
   pubkey: "JId8GN8iPmdQXOLSdcsSkaW4i60e1/rpHB/03rsaKBk="
 
