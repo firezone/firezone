@@ -88,7 +88,10 @@ jobs:
           sudo dpkg -i fireguard*.deb
 
           # Wait for app to start
-          sleep 30
+          sleep 10
+
+          echo "Printing openssl conf"
+          sudo cat /etc/ssl/openssl.cnf
 
           echo "Setting NO_PROXY env var"
           export NO_PROXY=$(hostname)
