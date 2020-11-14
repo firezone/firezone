@@ -84,7 +84,7 @@ SSL_CERT_FILE=/opt/fireguard/ssl/cert.pem
 SSL_KEY_FILE=/opt/fireguard/ssl/key.pem
 
 # Path to the intermediate certificates file. (usually not required)
-SSL_CA_CERT_FILE=
+# SSL_CA_CERT_FILE=
 
 # Host to use for generating links back to the application, such as in
 # outbound emails. Defaults to "localhost".

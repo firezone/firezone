@@ -72,7 +72,7 @@
       become: no
       shell: |
         cd /vagrant
-        scripts/build_fireguard_deb.sh
+        scripts/build_deb.sh
     - name: Install FireGuard deb
       become: yes
       shell: |
