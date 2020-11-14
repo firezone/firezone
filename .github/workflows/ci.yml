@@ -93,6 +93,9 @@ jobs:
           echo "Setting NO_PROXY env var"
           export NO_PROXY=$(hostname)
 
+          echo "Showing env vars..."
+          printenv
+
           echo "Checking FireGuard service status"
           sudo systemctl status fireguard
 
