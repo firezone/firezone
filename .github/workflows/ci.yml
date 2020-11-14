@@ -7,7 +7,7 @@ defaults:
 
 jobs:
   unit-integration-test:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     env:
       MIX_ENV: test
       POSTGRES_HOST: localhost
@@ -28,35 +28,45 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Install Runtimes
-        uses: actions/setup-elixir@v1
-        with:
-          elixir-version: "1.11.2"
-          otp-version: "23.1.2"
+        run: |
+          wget -O erlang.deb https://packages.erlang-solutions.com/erlang/debian/pool/esl-erlang_23.1-1~ubuntu~focal_amd64.deb
+          wget -O elixir.deb https://packages.erlang-solutions.com/erlang/debian/pool/elixir_1.11.2-1~ubuntu~focal_all.deb
+          sudo dpkg -i erlang.deb
+          sudo dpkg -i elixir.deb
       - name: Install Dependencies
-        run: mix deps.get --only test
+        run: |
+          mix local.hex --force && mix local.rebar --force
+          mix deps.get --only test
       - name: Setup Database
         run: |
           mix ecto.create
           mix ecto.migrate
-
       - name: Run Tests and Upload Coverage Report
         run: mix coveralls.github --umbrella
 
   build:
     needs: unit-integration-test
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v2
-      - name: Build packages
+      - name: Install runtimes
         run: |
-          docker build -t fireguard:latest -f pkg/Dockerfile .
+          curl -sL https://deb.nodesource.com/setup_10.x | sudo bash -
+          sudo apt install nodejs
+          wget -O erlang.deb https://packages.erlang-solutions.com/erlang/debian/pool/esl-erlang_23.1-1~ubuntu~focal_amd64.deb
+          wget -O elixir.deb https://packages.erlang-solutions.com/erlang/debian/pool/elixir_1.11.2-1~ubuntu~focal_all.deb
+          sudo dpkg -i erlang.deb
+          sudo dpkg -i elixir.deb
+      - name: Build release
+        env:
+          MIX_ENV: prod
+        run: |
+          scripts/build_release.sh
+          scripts/build_deb.sh
       - name: Rename Built Artifacts
         run: |
-          version="${{ steps.version.outputs.version }}"
-          cid=$(docker create fireguard:latest)
           filename="fireguard_${{ github.sha }}-1_amd64.deb"
-          echo "Extracting built debian package from container ${cid} to filename ${filename}"
-          docker cp ${cid}:/build/pkg/debian.deb ./${filename}
+          cp fireguard_amd64.deb ./${filename}
       - uses: actions/upload-artifact@v2
         with:
           name: fireguard-deb
@@ -74,25 +84,26 @@ jobs:
           DEBIAN_FRONTEND: noninteractive
         run: |
           sudo apt-get update
-          sudo apt-get install -y postgresql wireguard iptables net-tools curl
+          sudo apt-get install -y postgresql \
+            wireguard iptables net-tools curl ca-certificates
           sudo systemctl start postgresql
           sudo dpkg -i fireguard*.deb
 
           # Wait for app to start
           sleep 10
 
-          echo "Checking FireGuard service status"
-          sudo systemctl status fireguard
-
-          echo "Checking if FireGuard service is active"
-          sudo systemctl is-active fireguard
+          echo "Printing service status..."
+          sudo journalctl -u fireguard.service
 
           echo "Trying to load homepage..."
-          curl localhost:4000
+          curl -i -vvv -k https://$(hostname):8800/
+
+          echo "Printing SSL debug info"
+          openssl s_client -connect $(hostname):8800 -servername $(hostname) -showcerts -prexit
 
   publish:
     needs: build
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
     steps:
       - name: Create Release

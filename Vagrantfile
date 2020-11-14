@@ -10,7 +10,7 @@ Vagrant.configure('2') do |config|
   config.vm.hostname = 'fireguard.local'
 
   # Web
-  config.vm.network 'forwarded_port', guest: 4000, host: 4000, protocol: 'tcp'
+  config.vm.network 'forwarded_port', guest: 8800, host: 8800, protocol: 'tcp'
 
   # VPN
   config.vm.network 'forwarded_port', guest: 51820, host: 51820, protocol: 'udp'

@@ -1,4 +1,9 @@
-# This Dockerfile builds release packages
+# This Dockerfile builds release packages.
+# **NOTE**: This is not recommended, as it's possible the deployment
+# production environment will diff from the image environment here,
+# even if the OS and kernel versions match.
+# As such, this script has been deprecated in favor of building the release
+# in the production environment.
 FROM hexpm/elixir:1.11.2-erlang-23.1.2-ubuntu-focal-20201008 AS build
 
 # Setup to run build script
