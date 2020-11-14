@@ -49,3 +49,5 @@ npm-debug.log
 
 # Built debian packages
 *.deb
+
+pkg/debian/opt

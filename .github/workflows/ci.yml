@@ -103,7 +103,7 @@ jobs:
           sudo systemctl is-active fireguard
 
           echo "Trying to load homepage..."
-          curl -i -vvv -k https://localhost:8800/ || true
+          curl -i -vvv -k https://$(hostname):8800/ || true
 
           echo "Checking logs again..."
           sudo journalctl -u fireguard.service -b
@@ -112,7 +112,7 @@ jobs:
           openssl s_client -connect google.com:443 -servername google.com -showcerts -prexit -debug
 
           echo "Connecting to FireGuard with openssl"
-          openssl s_client -connect localhost:8800 -servername $(hostname) -showcerts -prexit -debug
+          openssl s_client -connect $(hostname):8800 -servername $(hostname) -showcerts -prexit -debug
 
   publish:
     needs: build
