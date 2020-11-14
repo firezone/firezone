@@ -1,5 +1,6 @@
 defmodule FgHttpWeb.UserControllerTest do
   use FgHttpWeb.ConnCase, async: true
+  import FgHttp.MockHelpers
 
   alias FgHttp.Users.Session
 
@@ -44,7 +45,26 @@ defmodule FgHttpWeb.UserControllerTest do
     password_confirmation: "wrong_password"
   }
 
-  describe "new" do
+  describe "new when signups disabled" do
+    setup do
+      mock_disable_signup()
+    end
+
+    test "redirects to sign in with error message", %{unauthed_conn: conn} do
+      test_conn = get(conn, Routes.user_path(conn, :new))
+
+      assert redirected_to(test_conn) == Routes.session_path(test_conn, :new)
+
+      assert get_flash(test_conn, :error) ==
+               "Signups are disabled. Contact your administrator for access."
+    end
+  end
+
+  describe "new when signups enabled" do
+    setup do
+      mock_enable_signup()
+    end
+
     test "renders sign up form", %{unauthed_conn: conn} do
       test_conn = get(conn, Routes.user_path(conn, :new))
 
@@ -52,7 +72,26 @@ defmodule FgHttpWeb.UserControllerTest do
     end
   end
 
-  describe "create" do
+  describe "create when signups disabled" do
+    setup do
+      mock_disable_signup()
+    end
+
+    test "redirects to sign in with error message", %{unauthed_conn: conn} do
+      test_conn = post(conn, Routes.user_path(conn, :create), user: @valid_create_attrs)
+
+      assert redirected_to(test_conn) == Routes.session_path(test_conn, :new)
+
+      assert get_flash(test_conn, :error) ==
+               "Signups are disabled. Contact your administrator for access."
+    end
+  end
+
+  describe "create when signups enabled" do
+    setup do
+      mock_enable_signup()
+    end
+
     test "creates user when params are valid", %{unauthed_conn: conn} do
       test_conn = post(conn, Routes.user_path(conn, :create), user: @valid_create_attrs)
 

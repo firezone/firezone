@@ -25,6 +25,8 @@ config :fg_http, FgHttp.Repo, DBConfig.config(db_url)
 
 config :fg_http, FgHttp.Mailer, adapter: Bamboo.TestAdapter
 
+config :fg_http, disable_signup: false
+
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
 config :fg_http, FgHttpWeb.Endpoint,

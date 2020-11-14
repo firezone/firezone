@@ -61,20 +61,24 @@
 - name: Build FireGuard
   hosts: all
   tasks:
+    - name: Copy Project
+      copy:
+        src: /vagrant
+        dest: /home/vagrant/fireguard
     - name: Compile Release
       become: no
       environment:
         MIX_ENV: prod
       shell: |
-        cd /vagrant
+        cd /home/vagrant/fireguard
         scripts/build_release.sh
     - name: Build Debian Package
       become: no
       shell: |
-        cd /vagrant
+        cd /home/vagrant/fireguard
         scripts/build_deb.sh
     - name: Install FireGuard deb
       become: yes
       shell: |
-        cd /vagrant
+        cd /home/vagrant/fireguard
         dpkg -i fireguard_amd64.deb
