@@ -64,7 +64,6 @@ config :fg_http, FgHttp.Repo,
 base_opts = [
   port: listen_port,
   transport_options: [socket_opts: [:inet6]],
-  cipher_suite: :strong,
   otp_app: :fireguard,
   keyfile: ssl_key_file,
   certfile: ssl_cert_file
