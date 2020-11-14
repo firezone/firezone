@@ -6,6 +6,7 @@ defmodule FgHttpWeb.UserController do
   use FgHttpWeb, :controller
   alias FgHttp.{Sessions, Users, Users.User}
 
+  plug FgHttpWeb.Plugs.DisableSignup when action in [:new, :create]
   plug FgHttpWeb.Plugs.SessionLoader when action in [:show, :edit, :update, :delete]
   plug :scrub_params, "user" when action in [:update]
 
