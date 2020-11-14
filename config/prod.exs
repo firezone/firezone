@@ -54,8 +54,7 @@ config :fg_http, FgHttpWeb.Endpoint,
     ],
     secure_renegotiate: true,
     reuse_sessions: true,
-    honor_cipher_order: true,
-    max_connections: :infinity
+    honor_cipher_order: true
   ],
   force_ssl: [rewrite_on: [:x_forwarded_proto], hsts: true, host: nil]
 
