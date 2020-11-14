@@ -58,9 +58,11 @@ jobs:
           sudo dpkg -i erlang.deb
           sudo dpkg -i elixir.deb
       - name: Build release
+        environment:
+          MIX_ENV: prod
         run: |
-          scripts/build_prod_release.sh
-          scripts/build_fireguard_deb.sh
+          scripts/build_release.sh
+          scripts/build_deb.sh
       - name: Rename Built Artifacts
         run: |
           filename="fireguard_${{ github.sha }}-1_amd64.deb"
@@ -90,35 +92,14 @@ jobs:
           # Wait for app to start
           sleep 10
 
-          echo "Printing openssl conf"
-          sudo cat /etc/ssl/openssl.cnf
-
-          echo "Setting NO_PROXY env var"
-          export NO_PROXY=$(hostname)
-
-          echo "Showing env vars..."
-          printenv
-
-          echo "Checking FireGuard service status"
-          sudo systemctl status fireguard
-
-          echo "Checking FireGuard logs..."
-          sudo journalctl -u fireguard.service -b
-
-          echo "Checking if FireGuard service is active"
-          sudo systemctl is-active fireguard
+          echo "Printing service status..."
+          sudo journalctl -u fireguard.service
 
           echo "Trying to load homepage..."
-          curl -i -vvv -k https://$(hostname):8800/ || true
+          curl -i -vvv -k https://$(hostname):8800/
 
-          echo "Checking logs again..."
-          sudo journalctl -u fireguard.service -b
-
-          echo "Attempting openssl s_client to a known server"
-          openssl s_client -connect google.com:443 -servername google.com -showcerts -prexit -debug
-
-          echo "Connecting to FireGuard with openssl"
-          openssl s_client -connect $(hostname):8800 -servername $(hostname) -showcerts -prexit -debug
+          echo "Printing SSL debug info"
+          openssl s_client -connect $(hostname):8800 -servername $(hostname) -showcerts -prexit
 
   publish:
     needs: build
