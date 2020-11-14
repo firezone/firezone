@@ -58,7 +58,7 @@ jobs:
           sudo dpkg -i erlang.deb
           sudo dpkg -i elixir.deb
       - name: Build release
-        environment:
+        env:
           MIX_ENV: prod
         run: |
           scripts/build_release.sh
