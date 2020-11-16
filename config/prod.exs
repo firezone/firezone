@@ -58,6 +58,8 @@ config :fg_http, FgHttpWeb.Endpoint,
   ],
   force_ssl: [rewrite_on: [:x_forwarded_proto], hsts: true, host: nil]
 
+config :fg_vpn, wireguard_conf_path: "/etc/wireguard/wg-fireguard.conf"
+
 # Do not print debug messages in production
 config :logger, level: :info
 
