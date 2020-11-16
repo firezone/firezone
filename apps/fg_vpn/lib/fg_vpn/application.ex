@@ -6,7 +6,10 @@ defmodule FgVpn.Application do
   use Application
 
   def start(_type, _args) do
+    pubkeys = ["hello", "world"]
+
     children = [
+      {FgVpn.Config, pubkeys}
       # Starts a worker by calling: FgVpn.Worker.start_link(arg)
       # {FgVpn.Worker, arg}
     ]

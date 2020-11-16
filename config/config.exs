@@ -27,8 +27,11 @@ config :phoenix, :json_library, Jason
 config :fg_http,
   ecto_repos: [FgHttp.Repo]
 
-config :fg_http,
-  vpn_endpoint: "localhost:51820"
+config :fg_vpn,
+  wireguard_conf_path:
+    config(:fg_http,
+      vpn_endpoint: "localhost:51820"
+    )
 
 # Configures the endpoint
 # These will be overridden at runtime in production by config/releases.exs

@@ -10,6 +10,7 @@
         autoremove: yes
         update_cache: true
         pkg:
+          - rsync
           - sudo
           - git
           - curl
@@ -62,9 +63,8 @@
   hosts: all
   tasks:
     - name: Copy Project
-      copy:
-        src: /vagrant
-        dest: /home/vagrant/fireguard
+      shell: |
+        rsync --delete -avz /vagrant/* /home/vagrant/fireguard/
     - name: Compile Release
       become: no
       environment:
