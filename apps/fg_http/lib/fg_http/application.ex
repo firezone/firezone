@@ -11,7 +11,7 @@ defmodule FgHttp.Application do
       # Start the Ecto repository
       FgHttp.Repo,
       # Start the PubSub system
-      {Phoenix.PubSub, name: FgHttp.PubSub},
+      {Phoenix.PubSub, name: :fg_http_pub_sub},
       # Start the endpoint when the application starts
       FgHttpWeb.Endpoint
       # Starts a worker by calling: FgHttp.Worker.start_link(arg)
