@@ -70,12 +70,17 @@ DATABASE_URL="ecto://${db_user}:${db_password}@127.0.0.1/fireguard"
 # Re-generate this using the "wg" utility, e.g. "wg genkey | wg pubkey"
 PUBKEY="${pubkey}"
 
-# The port to listen on. Defaults to 8800.
-LISTEN_PORT=8800
+# The HTTPS port to listen on. Defaults to 8800.
+HTTPS_LISTEN_PORT=8800
 
-# The address to bind the http server and WireGuard process to.
-# Defaults to "0.0.0.0"
-LISTEN_ADDRESS=0.0.0.0
+# The address to bind the HTTPS server to. Defaults to "0.0.0.0"
+HTTPS_LISTEN_ADDRESS=0.0.0.0
+
+# The WireGuard port to listen on. Defaults to 51820.
+WG_LISTEN_PORT=51820
+
+# The address to bind the WireGuard service to. Defaults to "0.0.0.0"
+WG_LISTEN_ADDRESS=0.0.0.0
 
 # SSL certificate file and key path. Self-signed certs are generated for you on
 # install, but it's highly recommended to replace these with valid certs.
@@ -98,6 +103,9 @@ EOT
 default_int=$(route | grep '^default' | grep -o '[^ ]*$')
 
 # Write WireGuard config file
+# XXX: Figure out whether to write config using postinst script or via Elixir
+# process. Elixir process decouples packaging logic from configuration
+# management a bit more.
 cat <<EOT >> /etc/wireguard/wg-fireguard.conf
 [Interface]
 ListenPort = 51820

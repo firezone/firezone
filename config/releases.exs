@@ -61,7 +61,9 @@ ssl_ca_cert_file =
 
 # Optional environment variables
 pool_size = String.to_integer(System.get_env("POOL_SIZE") || "10")
-listen_port = String.to_integer(System.get_env("LISTEN_PORT") || "8800")
+https_listen_port = String.to_integer(System.get_env("HTTPS_LISTEN_PORT") || "8800")
+wg_listen_port = String.to_integer(System.get_env("WG_LISTEN_PORT" || "51820"))
+wg_listen_address = System.get_env("WG_LISTEN_ADDRESS") || "localhost"
 url_host = System.get_env("URL_HOST") || "localhost"
 
 config :fg_vpn, pubkey: pubkey
@@ -73,7 +75,7 @@ config :fg_http, FgHttp.Repo,
   pool_size: pool_size
 
 base_opts = [
-  port: listen_port,
+  port: https_listen_port,
   transport_options: [max_connections: :infinity, socket_opts: [:inet6]],
   otp_app: :fireguard,
   keyfile: ssl_key_file,
@@ -85,11 +87,14 @@ https_opts = if ssl_ca_cert_file, do: base_opts ++ [cacertfile: ssl_ca_cert_file
 config :fg_http, FgHttpWeb.Endpoint,
   # Force SSL for releases
   https: https_opts,
-  url: [host: url_host, port: listen_port],
+  url: [host: url_host, port: https_listen_port],
   secret_key_base: secret_key_base,
   live_view: [
     signing_salt: live_view_signing_salt
   ]
+
+config :fg_vpn,
+  vpn_endpoint: wg_listen_address <> ":" <> wg_listen_port
 
 # ## Using releases (Elixir v1.9+)
 #
