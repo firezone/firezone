@@ -71,10 +71,18 @@ config :fg_http, FgHttpWeb.Endpoint,
     ]
   ]
 
-config :fg_http, disable_signup: true
-
 config :fg_vpn,
   pubkey: "JId8GN8iPmdQXOLSdcsSkaW4i60e1/rpHB/03rsaKBk="
+
+config :fg_vpn,
+  wireguard_conf_path: Path.expand("~/.wg-fireguard.conf")
+
+config :fg_http,
+  disable_signup:
+    (case System.get_env("DISABLE_SIGNUP") do
+       d when d in ["1", "yes"] -> true
+       _ -> false
+     end)
 
 # Do not include metadata nor timestamps in development logs
 config :logger, :console, format: "[$level] $message\n"

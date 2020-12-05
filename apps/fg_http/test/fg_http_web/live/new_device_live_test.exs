@@ -13,7 +13,7 @@ defmodule FgHttpWeb.NewDeviceLiveTest do
     {:ok, view, html} = live_isolated(conn, FgHttpWeb.NewDeviceLive)
     assert html =~ "When we receive a connection from your device, we&apos;ll prompt"
     assert render(view) =~ "When we receive a connection from your device, we&apos;ll prompt"
-    send(view.pid, {:pubkey, "test pubkey"})
+    send(view.pid, {:device_connected, "test pubkey"})
     assert render(view) =~ "test pubkey"
   end
 end
