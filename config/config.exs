@@ -27,6 +27,11 @@ config :phoenix, :json_library, Jason
 config :fg_http,
   ecto_repos: [FgHttp.Repo]
 
+# This will be changed per-env
+config :fg_vpn,
+  wireguard_conf_path: "/etc/wireguard/wg-fireguard.conf"
+
+# This will be changed per-env by ENV vars
 config :fg_http,
   vpn_endpoint: "localhost:51820"
 
@@ -35,7 +40,7 @@ config :fg_http,
 config :fg_http, FgHttpWeb.Endpoint,
   url: [host: "localhost"],
   render_errors: [view: FgHttpWeb.ErrorView, accepts: ~w(html json)],
-  pubsub_server: FgHttp.PubSub
+  pubsub_server: :fg_http_pub_sub
 
 # Configures Elixir's Logger
 config :logger, :console,

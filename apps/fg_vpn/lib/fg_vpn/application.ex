@@ -7,8 +7,7 @@ defmodule FgVpn.Application do
 
   def start(_type, _args) do
     children = [
-      # Starts a worker by calling: FgVpn.Worker.start_link(arg)
-      # {FgVpn.Worker, arg}
+      FgVpn.Config
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html

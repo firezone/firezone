@@ -25,7 +25,8 @@ config :fg_http, FgHttp.Repo, DBConfig.config(db_url)
 
 config :fg_http, FgHttp.Mailer, adapter: Bamboo.TestAdapter
 
-config :fg_http, disable_signup: false
+config :fg_vpn,
+  wireguard_conf_path: Path.expand("#{__DIR__}/../apps/fg_vpn/test/fixtures/wg-fireguard.conf")
 
 # We don't run a server during test. If one is required,
 # you can enable the server option below.

@@ -13,6 +13,7 @@ defmodule FgHttp.Devices.Device do
     field :public_key, :string
     field :ifname, :string
     field :last_ip, EctoNetwork.INET
+    field :last_seen_at, :utc_datetime_usec
 
     has_many :rules, Rule
     belongs_to :user, User
