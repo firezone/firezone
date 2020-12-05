@@ -62,7 +62,7 @@ ssl_ca_cert_file =
 # Optional environment variables
 pool_size = String.to_integer(System.get_env("POOL_SIZE") || "10")
 https_listen_port = String.to_integer(System.get_env("HTTPS_LISTEN_PORT") || "8800")
-wg_listen_port = String.to_integer(System.get_env("WG_LISTEN_PORT" || "51820"))
+wg_listen_port = System.get_env("WG_LISTEN_PORT" || "51820")
 wg_listen_address = System.get_env("WG_LISTEN_ADDRESS") || "localhost"
 url_host = System.get_env("URL_HOST") || "localhost"
 
