@@ -14,18 +14,9 @@ defmodule FgVpn.Config do
   """
 
   def start_link(_) do
-    privkey = read_privkey()
-    peers = read_peers() || []
-    default_int = CLI.default_interface()
-
-    GenServer.start_link(
-      __MODULE__,
-      %{
-        peers: peers,
-        privkey: privkey,
-        default_int: default_int
-      }
-    )
+    # Load existing config from file then write it so we start with a clean slate.
+    config = read_and_rewrite_config()
+    GenServer.start_link(__MODULE__, config)
   end
 
   @impl true
@@ -81,19 +72,6 @@ defmodule FgVpn.Config do
     |> extract_pubkeys()
   end
 
-  defp read_config_file do
-    path = Application.get_env(:fg_vpn, :wireguard_conf_path)
-
-    case File.read(path) do
-      {:ok, str} ->
-        str
-
-      {:error, reason} ->
-        IO.puts(:stderr, "Could not read config: #{reason}")
-        nil
-    end
-  end
-
   @doc """
   Extracts pubkeys from a configuration file snippet
   """
@@ -131,6 +109,19 @@ defmodule FgVpn.Config do
     """
   end
 
+  defp read_config_file do
+    path = Application.get_env(:fg_vpn, :wireguard_conf_path)
+
+    case File.read(path) do
+      {:ok, str} ->
+        str
+
+      {:error, reason} ->
+        IO.puts(:stderr, "Could not read config: #{reason}")
+        nil
+    end
+  end
+
   defp peers_to_config(config) do
     Enum.map_join(config[:peers], fn pubkey ->
       ~s"""
@@ -141,5 +132,17 @@ defmodule FgVpn.Config do
       # END PEER #{pubkey}
       """
     end)
+  end
+
+  defp read_and_rewrite_config do
+    config = %{
+      default_int: CLI.default_interface(),
+      privkey: read_privkey() || elem(CLI.genkey(), 0),
+      peers: read_peers() || []
+    }
+
+    write!(config)
+
+    config
   end
 end
