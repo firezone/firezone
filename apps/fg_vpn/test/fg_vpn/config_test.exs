@@ -68,7 +68,7 @@ defmodule FgVpn.ConfigTest do
       assert %{
                peers: ["test-pubkey"],
                default_int: _,
-               privkey: nil
+               privkey: _
              } = :sys.get_state(test_pid)
     end
 
@@ -82,7 +82,7 @@ defmodule FgVpn.ConfigTest do
       assert %{
                peers: ["test-pubkey"],
                default_int: _,
-               privkey: nil
+               privkey: _
              } = :sys.get_state(test_pid)
     end
 
@@ -96,7 +96,7 @@ defmodule FgVpn.ConfigTest do
       assert %{
                peers: [],
                default_int: _,
-               privkey: nil
+               privkey: _
              } = :sys.get_state(test_pid)
     end
   end

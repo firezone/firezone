@@ -12,11 +12,11 @@
     "qrcode": "^1.4.4"
   },
   "devDependencies": {
-    "@babel/core": "^7.11.6",
-    "@babel/preset-env": "^7.11.5",
+    "@babel/core": "^7.12.10",
+    "@babel/preset-env": "^7.12.11",
     "@fortawesome/fontawesome-free": "^5.15.1",
     "autoprefixer": "^9.8.6",
-    "babel-loader": "^8.1.0",
+    "babel-loader": "^8.2.2",
     "bulma": "^0.9.1",
     "copy-webpack-plugin": "^5.1.2",
     "css-loader": "^3.6.0",
