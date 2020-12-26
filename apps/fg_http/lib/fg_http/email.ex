@@ -6,7 +6,7 @@ defmodule FgHttp.Email do
   use Bamboo.Phoenix, view: FgHttpWeb.EmailView
   alias FgHttp.Users.PasswordReset
 
-  @from "noreply@#{Application.get_env(:fg_http, FgHttpWeb.Endpoint)[:url][:host]}"
+  @from "noreply@#{Application.compile_env(:fg_http, FgHttpWeb.Endpoint)[:url][:host]}"
 
   defp base_email(to) do
     new_email()

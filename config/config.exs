@@ -29,7 +29,7 @@ config :fg_http,
 
 # This will be changed per-env
 config :fg_vpn,
-  wireguard_conf_path: "/etc/wireguard/wg-fireguard.conf"
+  wireguard_conf_path: "/opt/fireguard/wg-fireguard.conf"
 
 # This will be changed per-env by ENV vars
 config :fg_http,
