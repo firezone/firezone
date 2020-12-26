@@ -41,7 +41,7 @@
           - nodejs
     - name: install erlang
       apt:
-        deb: https://packages.erlang-solutions.com/erlang/debian/pool/esl-erlang_23.1-1~ubuntu~focal_amd64.deb
+        deb: https://packages.erlang-solutions.com/erlang/debian/pool/esl-erlang_23.2-1~ubuntu~focal_amd64.deb
     - name: install elixir
       apt:
         deb: https://packages.erlang-solutions.com/erlang/debian/pool/elixir_1.11.2-1~ubuntu~focal_all.deb
@@ -64,7 +64,7 @@
   tasks:
     - name: Copy Project
       shell: |
-        rsync --delete -avz /vagrant/* /home/vagrant/fireguard/
+        rsync --delete -avz --exclude '_build' --exclude 'deps' /vagrant/* /home/vagrant/fireguard/
     - name: Compile Release
       become: no
       environment:

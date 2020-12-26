@@ -95,6 +95,7 @@ defmodule FgVpn.Config do
   end
 
   defp interface_to_config(config) do
+    # XXX: Use config listen_port here
     ~s"""
     [Interface]
     ListenPort = 51820
