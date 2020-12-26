@@ -54,11 +54,23 @@ config :fg_http, FgHttpWeb.Endpoint,
     ],
     secure_renegotiate: true,
     reuse_sessions: true,
-    honor_cipher_order: true
+    honor_cipher_order: true,
+    port: 8800,
+    transport_options: [max_connections: :infinity, socket_opts: [:inet6]],
+    otp_app: :fireguard,
+    # overridden by release config
+    keyfile: "/opt/fireguard/ssl/key.pem",
+    # overridden by release config
+    certfile: "/opt/fireguard/ssl/cert.pem"
   ],
+  # changed by release config
+  secret_key_base: "dummy",
+  # changed by release config
+  live_view: [signing_salt: "dummy"],
+  server: true,
   force_ssl: [rewrite_on: [:x_forwarded_proto], hsts: true, host: nil]
 
-config :fg_vpn, wireguard_conf_path: "/etc/wireguard/wg-fireguard.conf"
+config :fg_vpn, wireguard_conf_path: "/opt/fireguard/wg-fireguard.conf"
 
 # Do not print debug messages in production
 config :logger, level: :info
