@@ -2,6 +2,8 @@ defmodule FgVpn.ConfigTest do
   use ExUnit.Case, async: true
   alias FgVpn.Config
 
+  @test_privkey "GMqk2P3deotcQqgqJHfLGB1JtU//f1FgX868bfPKSVc="
+
   @empty """
   """
 
@@ -16,8 +18,10 @@ defmodule FgVpn.ConfigTest do
   @privkey """
   [Interface]
   ListenPort = 51820
-  PrivateKey = test-privkey
+  PrivateKey = GMqk2P3deotcQqgqJHfLGB1JtU//f1FgX868bfPKSVc=
   """
+
+  @rendered_privkey "kPCNOTbBoHC/j5daxhMHcZ+PeNr6oaA8qIWcBuFlM0s="
 
   @rendered_config """
   # This file is being managed by the fireguard systemd service. Any changes
@@ -25,7 +29,7 @@ defmodule FgVpn.ConfigTest do
 
   [Interface]
   ListenPort = 51820
-  PrivateKey = rendered-privkey
+  PrivateKey = kPCNOTbBoHC/j5daxhMHcZ+PeNr6oaA8qIWcBuFlM0s=
   PostUp = iptables -A FORWARD -i %i -j ACCEPT; iptables -A FORWARD -o %i -j ACCEPT; iptables -t nat -A POSTROUTING -o noop -j MASQUERADE
   PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACCEPT; iptables -t nat -D POSTROUTING -o noop -j MASQUERADE
 
@@ -59,7 +63,7 @@ defmodule FgVpn.ConfigTest do
       assert %{
                peers: [],
                default_int: _,
-               privkey: "test-privkey"
+               privkey: @test_privkey
              } = :sys.get_state(test_pid)
     end
 
@@ -105,7 +109,7 @@ defmodule FgVpn.ConfigTest do
     test "renders config" do
       assert Config.render(%{
                default_int: "noop",
-               privkey: "rendered-privkey",
+               privkey: @rendered_privkey,
                peers: ["test-pubkey"]
              }) == @rendered_config
     end

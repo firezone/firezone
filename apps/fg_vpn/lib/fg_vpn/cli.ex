@@ -58,6 +58,13 @@ defmodule FgVpn.CLI do
     {privkey, pubkey}
   end
 
+  def pubkey(privkey) when is_nil(privkey), do: nil
+
+  def pubkey(privkey) when is_binary(privkey) do
+    exec("echo #{privkey} | wg pubkey")
+    |> String.trim()
+  end
+
   defp exec(cmd) do
     case System.cmd("bash", ["-c", cmd]) do
       {result, 0} ->

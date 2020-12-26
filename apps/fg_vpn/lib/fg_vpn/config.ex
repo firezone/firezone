@@ -55,6 +55,7 @@ defmodule FgVpn.Config do
   def read_privkey do
     read_config_file()
     |> extract_privkey()
+    |> (&{&1, CLI.pubkey(&1)}).()
   end
 
   defp extract_privkey(config_str) do
@@ -95,10 +96,14 @@ defmodule FgVpn.Config do
   end
 
   defp interface_to_config(config) do
-    # XXX: Use config listen_port here
+    listen_port =
+      Application.get_env(:fg_http, :vpn_endpoint)
+      |> String.split(":")
+      |> List.last()
+
     ~s"""
     [Interface]
-    ListenPort = 51820
+    ListenPort = #{listen_port}
     PrivateKey = #{config[:privkey]}
     PostUp = iptables -A FORWARD -i %i -j ACCEPT; iptables -A FORWARD -o %i -j ACCEPT; iptables -t nat -A POSTROUTING -o #{
       config[:default_int]
@@ -136,13 +141,16 @@ defmodule FgVpn.Config do
   end
 
   defp read_and_rewrite_config do
+    {privkey, pubkey} = read_privkey() || CLI.genkey()
+
     config = %{
       default_int: CLI.default_interface(),
-      privkey: read_privkey() || elem(CLI.genkey(), 0),
+      privkey: privkey,
       peers: read_peers() || []
     }
 
     write!(config)
+    Application.put_env(:fg_vpn, :pubkey, pubkey)
 
     config
   end
