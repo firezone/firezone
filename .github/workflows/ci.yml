@@ -27,7 +27,7 @@ jobs:
           --health-retries 5
     steps:
       - name: Install package dependencies
-        run: sudo apt-get install net-tools wireguard-tools
+        run: sudo apt-get install net-tools wireguard
       - uses: actions/checkout@v2
       - name: Install Runtimes
         run: |
