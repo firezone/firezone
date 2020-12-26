@@ -27,21 +27,18 @@ defmodule FgVpn.CLI do
 
   @default_interface_cmd "route | grep '^default' | grep -o '[^ ]*$'"
 
+  # Outputs the privkey, then pubkey on the next line
+  @genkey_cmd "wg genkey | tee >(wg pubkey)"
+
   @doc """
   Finds default egress interface on a Linux box.
   """
   def default_interface do
     case :os.type() do
       {:unix, :linux} ->
-        case System.cmd("sh", ["-c", @default_interface_cmd]) do
-          {result, 0} ->
-            result
-            |> String.split()
-            |> List.first()
-
-          {_error, _} ->
-            raise "Could not determine default egress interface from `#{@default_interface_cmd}`"
-        end
+        exec(@default_interface_cmd)
+        |> String.split()
+        |> List.first()
 
       {:unix, :darwin} ->
         # XXX: Figure out what it means to have macOS as a host?
@@ -52,6 +49,22 @@ defmodule FgVpn.CLI do
   @doc """
   Calls wg genkey
   """
-  def gen_privkey do
+  def genkey do
+    [privkey, pubkey] =
+      exec(@genkey_cmd)
+      |> String.trim()
+      |> String.split("\n")
+
+    {privkey, pubkey}
+  end
+
+  defp exec(cmd) do
+    case System.cmd("bash", ["-c", cmd]) do
+      {result, 0} ->
+        result
+
+      {error, _} ->
+        raise "Error executing command: #{error}"
+    end
   end
 end

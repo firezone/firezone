@@ -27,7 +27,8 @@ defmodule FireguardUmbrella.MixProject do
             fg_vpn: :permanent
           ],
           include_executables_for: [:unix],
-          cookie: System.get_env("ERL_COOKIE")
+          cookie: System.get_env("ERL_COOKIE"),
+          validate_compile_env: false
         ]
       ]
     ]
