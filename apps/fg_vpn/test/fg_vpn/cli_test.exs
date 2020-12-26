@@ -13,4 +13,10 @@ defmodule FgVpn.CLITest do
     assert is_binary(privkey)
     assert is_binary(pubkey)
   end
+
+  test "pubkey" do
+    {privkey, pubkey} = CLI.genkey()
+
+    assert pubkey == CLI.pubkey(privkey)
+  end
 end
