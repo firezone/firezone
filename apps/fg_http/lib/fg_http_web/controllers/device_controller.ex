@@ -5,7 +5,6 @@ defmodule FgHttpWeb.DeviceController do
 
   use FgHttpWeb, :controller
   alias FgHttp.{Devices, Devices.Device}
-  alias Phoenix.PubSub
 
   plug FgHttpWeb.Plugs.SessionLoader
 
@@ -20,22 +19,17 @@ defmodule FgHttpWeb.DeviceController do
   end
 
   def create(conn, %{"device" => %{"public_key" => _public_key} = device_params}) do
+    # XXX: Get device name from browser
     our_params = %{
       "user_id" => conn.assigns.session.id,
-      "name" => "Default",
-      "ifname" => "wg0"
+      "ifname" => "wg0",
+      "name" => "Device #{DateTime.utc_now() |> DateTime.to_unix(:microsecond)}"
     }
 
     all_params = Map.merge(device_params, our_params)
 
     case Devices.create_device(all_params) do
-      {:ok, device} ->
-        PubSub.broadcast(
-          :fg_http_pub_sub,
-          "config",
-          {:verify_device, device.public_key}
-        )
-
+      {:ok, _device} ->
         redirect(conn, to: Routes.device_path(conn, :index))
 
       {:error, %Ecto.Changeset{} = changeset} ->

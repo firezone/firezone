@@ -59,9 +59,6 @@ wg_listen_port = System.get_env("WG_LISTEN_PORT" || "51820")
 wg_listen_address = System.get_env("WG_LISTEN_ADDRESS") || "localhost"
 url_host = System.get_env("URL_HOST") || "localhost"
 
-# Will be replaced when FgVpn starts up and config is rewritten
-config :fg_vpn, pubkey: nil
-
 config :fg_http, disable_signup: disable_signup
 
 config :fg_http, FgHttp.Repo,

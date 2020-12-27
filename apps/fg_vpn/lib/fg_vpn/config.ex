@@ -26,10 +26,19 @@ defmodule FgVpn.Config do
   end
 
   @impl true
-  def handle_info({:verify_device, pubkey}, config) do
+  def handle_info({:add_device, caller_pid}, config) do
+    {_server_privkey, server_pubkey} = read_privkey()
+    {privkey, pubkey} = CLI.genkey()
     new_peers = [pubkey | config[:peers]]
     new_config = %{config | peers: new_peers}
     write!(new_config)
+
+    PubSub.broadcast(
+      :fg_http_pub_sub,
+      "view",
+      {:peer_added, caller_pid, privkey, pubkey, server_pubkey}
+    )
+
     {:noreply, new_config}
   end
 
@@ -51,6 +60,8 @@ defmodule FgVpn.Config do
 
   @doc """
   Reads PrivateKey from configuration file
+
+  Returns a {privkey, pubkey} tuple
   """
   def read_privkey do
     read_config_file()
@@ -95,15 +106,16 @@ defmodule FgVpn.Config do
     @config_header <> interface_to_config(config) <> peers_to_config(config)
   end
 
-  defp interface_to_config(config) do
-    listen_port =
-      Application.get_env(:fg_http, :vpn_endpoint)
-      |> String.split(":")
-      |> List.last()
+  defp listen_port do
+    Application.get_env(:fg_http, :vpn_endpoint)
+    |> String.split(":")
+    |> List.last()
+  end
 
+  defp interface_to_config(config) do
     ~s"""
     [Interface]
-    ListenPort = #{listen_port}
+    ListenPort = #{listen_port()}
     PrivateKey = #{config[:privkey]}
     PostUp = iptables -A FORWARD -i %i -j ACCEPT; iptables -A FORWARD -o %i -j ACCEPT; iptables -t nat -A POSTROUTING -o #{
       config[:default_int]
@@ -140,8 +152,18 @@ defmodule FgVpn.Config do
     end)
   end
 
+  defp get_server_keys do
+    {privkey, pubkey} = read_privkey()
+
+    if is_nil(privkey) do
+      CLI.genkey()
+    else
+      {privkey, pubkey}
+    end
+  end
+
   defp read_and_rewrite_config do
-    {privkey, pubkey} = read_privkey() || CLI.genkey()
+    {privkey, _pubkey} = get_server_keys()
 
     config = %{
       default_int: CLI.default_interface(),
@@ -150,7 +172,6 @@ defmodule FgVpn.Config do
     }
 
     write!(config)
-    Application.put_env(:fg_vpn, :pubkey, pubkey)
 
     config
   end
