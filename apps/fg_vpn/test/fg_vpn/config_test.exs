@@ -78,13 +78,13 @@ defmodule FgVpn.ConfigTest do
 
     @tag stubbed_config: @empty
     test "writes peers to config when device is verified", %{test_pid: test_pid} do
-      send(test_pid, {:verify_device, "test-pubkey"})
+      send(test_pid, {:add_device, test_pid})
 
       # XXX: Avoid sleeping
       Process.sleep(100)
 
       assert %{
-               peers: ["test-pubkey"],
+               peers: [_],
                default_int: _,
                privkey: _
              } = :sys.get_state(test_pid)

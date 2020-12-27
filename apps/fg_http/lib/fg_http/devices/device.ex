@@ -11,6 +11,8 @@ defmodule FgHttp.Devices.Device do
   schema "devices" do
     field :name, :string
     field :public_key, :string
+    field :server_pubkey, :string, virtual: true
+    field :private_key, :string, virtual: true
     field :ifname, :string
     field :last_ip, EctoNetwork.INET
     field :last_seen_at, :utc_datetime_usec
@@ -25,5 +27,6 @@ defmodule FgHttp.Devices.Device do
     device
     |> cast(attrs, [:last_ip, :ifname, :user_id, :name, :public_key])
     |> validate_required([:user_id, :ifname, :name, :public_key])
+    |> unique_constraint([:name])
   end
 end
