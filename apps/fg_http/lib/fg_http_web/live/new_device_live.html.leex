@@ -1,46 +1,45 @@
-<div class="columns">
-  <div class="column is-6">
-  <h6 class="is-6 title">
-    Add the following to your WireGuard™ configuration file:
-  </h6>
+<%= unless @device.public_key do %>
+  <h4 class="subtitle is-4">
+    Adding new peer to WireGuard server...
+  </h4>
 
-<pre>
-<code id="wg-conf">
-[Peer]
-PublicKey = <%= Application.fetch_env!(:fg_vpn, :pubkey) %>
-AllowedIPs = 0.0.0.0/0, ::/0
-Endpoint = <%= Application.fetch_env!(:fg_http, :vpn_endpoint) %>
-</code>
-</pre>
-  </div>
-  <div class="column is-6">
+  <progress class="progress is-small" max="100"></progress>
+
+  <p>
+    <%= link "Back to Devices", to: Routes.device_path(@socket, :index) %>
+  </p>
+<% else %>
+  <div class="columns">
+    <div class="column is-6">
     <h6 class="is-6 title">
-      Or scan the QR code with your mobile phone:
+      Add the following to your WireGuard™ configuration file:
     </h6>
-    <canvas id="qr-canvas"></canvas>
-  </div>
-</div>
 
-<hr>
+  <pre>
+  <code id="wg-conf">
+  [Interface]
+  PrivateKey = <%= @device.private_key %>
 
-<div phx-hook="QrEncode" class="columns">
-  <div class="column is-6">
-    <%= unless @device.public_key do %>
-      <h4 class="subtitle is-4">
-        Waiting for device connection...
-      </h4>
-
-      <progress class="progress is-small" max="100"></progress>
-
-      <h6 class="title is-6">
-        When we receive a connection from your device, we'll prompt you verify it here.
+  [Peer]
+  PublicKey = <%= @device.server_pubkey %>
+  AllowedIPs = 0.0.0.0/0, ::/0
+  Endpoint = <%= Application.fetch_env!(:fg_http, :vpn_endpoint) %>
+  </code>
+  </pre>
+    </div>
+    <div class="column is-6">
+      <h6 class="is-6 title">
+        Or scan the QR code with your mobile phone:
       </h6>
+      <canvas id="qr-canvas"></canvas>
+    </div>
+  </div>
 
-      <p>
-        <%= link "Back to Devices", to: Routes.device_path(@socket, :index) %>
-      </p>
-    <% else %>
-      <h4 class="subtitle is-4">Device connected!</h4>
+  <hr>
+
+  <div phx-hook="QrEncode" class="columns">
+    <div class="column is-6">
+      <h4 class="subtitle is-4">Device added!</h4>
 
       <dl class="content">
         <dt>Device Public Key:</dt>
@@ -49,7 +48,6 @@ Endpoint = <%= Application.fetch_env!(:fg_http, :vpn_endpoint) %>
         <dd><strong><%= @device.last_ip %></strong></dd>
       </dl>
 
-      <%# XXX: Use the public key sent by the actual device and not the one here %>
       <div class="level">
         <div class="level-left">
           <%=
@@ -65,6 +63,6 @@ Endpoint = <%= Application.fetch_env!(:fg_http, :vpn_endpoint) %>
           <% end %>
         </div>
       </div>
-    <% end %>
+    </div>
   </div>
-</div>
+<% end %>

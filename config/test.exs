@@ -38,9 +38,5 @@ config :fg_http, FgHttpWeb.Endpoint,
   ],
   server: false
 
-config :fg_vpn,
-  privkey: "cAM9MY5NrQ067ZgOkE3NX3h7cMSOBRjj/w4acCuMknk=",
-  pubkey: "DcAqEvFtS0wuvrpvOYi0ncDTcZKpdFq7LKHQcMuAzSw="
-
 # Print only warnings and errors during test
 config :logger, level: :warn
