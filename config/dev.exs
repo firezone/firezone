@@ -72,9 +72,6 @@ config :fg_http, FgHttpWeb.Endpoint,
   ]
 
 config :fg_vpn,
-  pubkey: "JId8GN8iPmdQXOLSdcsSkaW4i60e1/rpHB/03rsaKBk="
-
-config :fg_vpn,
   wireguard_conf_path: Path.expand("~/.wg-fireguard.conf")
 
 config :fg_http,
