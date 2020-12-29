@@ -14,7 +14,13 @@ defmodule FgHttp.Users do
 
   def get_user!(id), do: Repo.get!(User, id)
 
-  def create_user(attrs \\ %{}) do
+  def create_user(attrs) when is_list(attrs) do
+    attrs
+    |> Enum.into(%{})
+    |> create_user()
+  end
+
+  def create_user(attrs) when is_map(attrs) do
     %User{}
     |> User.create_changeset(attrs)
     |> Repo.insert()
