@@ -82,3 +82,11 @@
       shell: |
         cd /home/vagrant/fireguard
         dpkg -i fireguard_amd64.deb
+    - name: Create user
+      become: fireguard
+      shell: |
+        cd /home/vagrant/fireguard
+        scripts/create_user.sh
+      register: create_user
+    - name: Display user credentials
+      debug: msg="{{ create_user.stdout }}"
