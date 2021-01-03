@@ -6,16 +6,18 @@ defmodule FgHttp.Application do
   use Application
 
   def start(_type, _args) do
-    children = case Application.get_env(:fg_http, :minimal) do
-      true ->
-        [FgHttp.Repo]
-      _ ->
-        [
-          FgHttp.Repo,
-          {Phoenix.PubSub, name: :fg_http_pub_sub},
-          FgHttpWeb.Endpoint
-        ]
-    end
+    children =
+      case Application.get_env(:fg_http, :minimal) do
+        true ->
+          [FgHttp.Repo]
+
+        _ ->
+          [
+            FgHttp.Repo,
+            {Phoenix.PubSub, name: :fg_http_pub_sub},
+            FgHttpWeb.Endpoint
+          ]
+      end
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options

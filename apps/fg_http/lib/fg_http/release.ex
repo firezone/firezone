@@ -24,12 +24,12 @@ defmodule FgHttp.Release do
     {:ok, _, _} = Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, :down, to: version))
   end
 
+  # App should be loaded at this point; call with `rpc` not `eval`
   def create_admin_user do
-    start_app()
-
     unless Repo.exists?(User) do
       email = "admin@fireguard.local"
       password = secret(12)
+
       Users.create_user(
         email: email,
         password: password,
@@ -38,12 +38,6 @@ defmodule FgHttp.Release do
 
       log_email_password(email, password)
     end
-  end
-
-  defp start_app do
-    load_app()
-    Application.put_env(@app, :minimal, true)
-    Application.ensure_all_started(@app)
   end
 
   defp secret(length) do
@@ -59,10 +53,11 @@ defmodule FgHttp.Release do
   end
 
   defp log_email_password(email, password) do
-    IO.puts("================================================================================")
+    IO.puts("=================================================================================")
     IO.puts("FireGuard user created! Save this information because it will NOT be shown again.")
+    IO.puts("Use this to log into the Web UI at #{FgHttpWeb.Endpoint.url()}.")
     IO.puts("Email: #{email}")
     IO.puts("Password: #{password}")
-    IO.puts("================================================================================")
+    IO.puts("=================================================================================")
   end
 end
