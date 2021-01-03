@@ -82,26 +82,18 @@
       shell: |
         cd /home/vagrant/fireguard
         dpkg -i fireguard_amd64.deb
-    - name: Migrate DB
-      become: yes
-      become_user: fireguard
-      shell: |
-        env $(cat /opt/fireguard/config.env | grep "^[^#]" | xargs) \
-          /opt/fireguard/bin/fireguard eval "FgHttp.Release.migrate"
-    - name: Create user
-      become: yes
-      become_user: fireguard
-      shell: |
-        env $(cat /opt/fireguard/config.env | grep "^[^#]" | xargs) \
-          /opt/fireguard/bin/fireguard eval "FgHttp.Release.create_admin_user"
-      register: create_user
-    - name: Display user credentials
-      debug: msg="{{ create_user.stdout_lines }}"
-    - name: Enable systemd unit
+    - name: Enable systemd units
       become: yes
       shell: |
         systemctl enable fireguard
-    - name: Start systemd unit
+    - name: Start systemd units
       become: yes
       shell: |
         systemctl start fireguard
+    - name: Capture user credentials
+      become: yes
+      shell: |
+        journalctl -u fireguard
+      register: create_user
+    - name: Display user credentials
+      debug: msg="{{ create_user.stdout_lines }}"
