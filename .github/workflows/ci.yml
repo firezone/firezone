@@ -68,7 +68,7 @@ jobs:
       - name: Rename Built Artifacts
         run: |
           filename="fireguard_${{ github.sha }}-1_amd64.deb"
-          cp fireguard_amd64.deb ./${filename}
+          mv fireguard_amd64.deb ./${filename}
       - uses: actions/upload-artifact@v2
         with:
           name: fireguard-deb
@@ -90,6 +90,9 @@ jobs:
             wireguard iptables net-tools curl ca-certificates
           sudo systemctl start postgresql
           sudo dpkg -i fireguard*.deb
+
+          echo "Enabling service..."
+          sudo systemctl start fireguard
 
           # Wait for app to start
           sleep 10
