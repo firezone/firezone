@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -e
 
 od=$(pwd)
 mkdir -p pkg/debian/opt

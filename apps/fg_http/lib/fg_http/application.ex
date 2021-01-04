@@ -6,17 +6,18 @@ defmodule FgHttp.Application do
   use Application
 
   def start(_type, _args) do
-    # List all child processes to be supervised
-    children = [
-      # Start the Ecto repository
-      FgHttp.Repo,
-      # Start the PubSub system
-      {Phoenix.PubSub, name: :fg_http_pub_sub},
-      # Start the endpoint when the application starts
-      FgHttpWeb.Endpoint
-      # Starts a worker by calling: FgHttp.Worker.start_link(arg)
-      # {FgHttp.Worker, arg},
-    ]
+    children =
+      case Application.get_env(:fg_http, :minimal) do
+        true ->
+          [FgHttp.Repo]
+
+        _ ->
+          [
+            FgHttp.Repo,
+            {Phoenix.PubSub, name: :fg_http_pub_sub},
+            FgHttpWeb.Endpoint
+          ]
+      end
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options

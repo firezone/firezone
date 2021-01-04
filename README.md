@@ -52,13 +52,30 @@ You'll need recent versions of the following tools installed:
 With the above installed, you should be able to navigate into the project root
 and just run:
 
-```
-$ vagrant up
+```bash
+vagrant up
 ```
 
 This will download the VM base box, provision it with dependencies, bootstrap
 the FireGuard DB, launch the FireGuard Services, and print instructions for
 connecting to the Web UI.
+
+## Creating Additional Users
+
+FireGuard creates the first user for you upon installation and prints the
+credentials after `vagrant up` completes in the step above.
+
+You may create additional users with the following command:
+
+```bash
+sudo -u fireguard /opt/fireguard/bin/fireguard rpc 'FgHttp.Users.create_user(
+  email: "USER_EMAIL",
+  password: "USER_PASSWORD",
+  password_confirmation: "USER_PASSWORD"
+)'
+```
+
+This will create a user you can use to log into the Web UI.
 
 ## Contributing
 

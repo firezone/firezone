@@ -94,6 +94,3 @@ URL_HOST=${hostname}
 # For public-facing sites, it's recommended to leave signups disabled.
 DISABLE_SIGNUP=yes
 EOT
-
-systemctl enable fireguard
-systemctl start fireguard

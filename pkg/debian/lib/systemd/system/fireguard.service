@@ -1,5 +1,6 @@
 [Unit]
 Description=FireGuard
+Requires=postgresql.service
 After=postgresql.service
 
 [Service]
@@ -7,7 +8,10 @@ Restart=on-failure
 RestartSec=1
 User=fireguard
 EnvironmentFile=/opt/fireguard/config.env
+ExecStartPre=/opt/fireguard/bin/fireguard eval "FgHttp.Release.migrate"
 ExecStart=/opt/fireguard/bin/fireguard start
+ExecStartPost=sleep 5
+ExecStartPost=/opt/fireguard/bin/fireguard rpc "FgHttp.Release.create_admin_user"
 
 [Install]
 WantedBy=multi-user.target
