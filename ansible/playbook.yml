@@ -82,3 +82,18 @@
       shell: |
         cd /home/vagrant/fireguard
         dpkg -i fireguard_amd64.deb
+    - name: Enable systemd units
+      become: yes
+      shell: |
+        systemctl enable fireguard
+    - name: Start systemd units
+      become: yes
+      shell: |
+        systemctl start fireguard
+    - name: Capture user credentials
+      become: yes
+      shell: |
+        journalctl -u fireguard
+      register: create_user
+    - name: Display user credentials
+      debug: msg="{{ create_user.stdout_lines }}"

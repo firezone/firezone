@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -e
 
 od=$(pwd)
 mix local.hex --force && mix local.rebar --force
