@@ -17,13 +17,13 @@
 
   <pre>
   <code id="wg-conf">
-  [Interface]
-  PrivateKey = <%= @device.private_key %>
+[Interface]
+PrivateKey = <%= @device.private_key %>
 
-  [Peer]
-  PublicKey = <%= @device.server_pubkey %>
-  AllowedIPs = 0.0.0.0/0, ::/0
-  Endpoint = <%= Application.fetch_env!(:fg_http, :vpn_endpoint) %>
+[Peer]
+PublicKey = <%= @device.server_pubkey %>
+AllowedIPs = 0.0.0.0/0, ::/0
+Endpoint = <%= Application.fetch_env!(:fg_http, :vpn_endpoint) %>
   </code>
   </pre>
     </div>
@@ -39,7 +39,7 @@
 
   <div phx-hook="QrEncode" class="columns">
     <div class="column is-6">
-      <h4 class="subtitle is-4">Device added!</h4>
+      <h4 class="subtitle is-4">Device Added!</h4>
 
       <dl class="content">
         <dt>Device Public Key:</dt>
@@ -51,7 +51,7 @@
       <div class="level">
         <div class="level-left">
           <%=
-            link("Cancel and Go Back to Devices", to: Routes.device_path(@socket, :index))
+            link("Go Back to Devices", to: Routes.device_path(@socket, :index))
           %>
         </div>
         <div class="level-right">
