@@ -32,7 +32,7 @@ jobs:
       - name: Install Runtimes
         run: |
           wget -O erlang.deb https://packages.erlang-solutions.com/erlang/debian/pool/esl-erlang_23.2-1~ubuntu~focal_amd64.deb
-          wget -O elixir.deb https://packages.erlang-solutions.com/erlang/debian/pool/elixir_1.11.3-1~ubuntu~focal_all.deb
+          wget -O elixir.deb https://packages.erlang-solutions.com/erlang/debian/pool/elixir_1.11.2-1~ubuntu~focal_all.deb
           sudo dpkg -i erlang.deb
           sudo dpkg -i elixir.deb
       - name: Install Dependencies
@@ -56,7 +56,7 @@ jobs:
           curl -sL https://deb.nodesource.com/setup_14.x | sudo bash -
           sudo apt install nodejs
           wget -O erlang.deb https://packages.erlang-solutions.com/erlang/debian/pool/esl-erlang_23.1-1~ubuntu~focal_amd64.deb
-          wget -O elixir.deb https://packages.erlang-solutions.com/erlang/debian/pool/elixir_1.11.3-1~ubuntu~focal_all.deb
+          wget -O elixir.deb https://packages.erlang-solutions.com/erlang/debian/pool/elixir_1.11.2-1~ubuntu~focal_all.deb
           sudo dpkg -i erlang.deb
           sudo dpkg -i elixir.deb
       - name: Build release
