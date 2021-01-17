@@ -12,8 +12,8 @@ defmodule FgHttpWeb.NewDeviceLive do
   @doc """
   Called when the view mounts. The for a device being added goes like follows:
   1. :add_device is broadcasted
-  2. FgVpn picks this up and creates a new peer, adds to config, broadcasts :peer_added
-  3. :peer_added is handled here which confirms the details to the user
+  2. FgVpn picks this up and creates a new peer, adds to config, broadcasts :peer_generated
+  3. :peer_generated is handled here which confirms the details to the user
   4. User confirms device, clicks create
   # XXX: Add ttl to device creation that removes stale devices
   """
