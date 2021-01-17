@@ -6,12 +6,19 @@ defmodule FgVpn.MixProject do
       app: :fg_vpn,
       version: "0.1.7",
       build_path: "../../_build",
+      compilers: [:rustler] ++ Mix.compilers(),
       config_path: "../../config/config.exs",
       deps_path: "../../deps",
       lockfile: "../../mix.lock",
       elixir: "~> 1.11",
       start_permanent: Mix.env() == :prod,
       test_coverage: [tool: ExCoveralls],
+      rustler_crates: [
+        fgvpn_server: [
+          cargo: {:rustup, "nightly"},
+          mode: :release
+        ]
+      ],
       preferred_cli_env: [
         coveralls: :test,
         "coveralls.detail": :test,
@@ -34,6 +41,7 @@ defmodule FgVpn.MixProject do
   defp deps do
     [
       {:fg_http, in_umbrella: true},
+      {:rustler, "~> 0.22.0-rc.0"},
       {:phoenix_pubsub, "~> 2.0"},
       {:credo, "~> 1.4", only: [:dev, :test], runtime: false},
       {:excoveralls, "~> 0.13", only: :test}
