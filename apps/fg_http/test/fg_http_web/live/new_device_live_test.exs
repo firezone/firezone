@@ -13,9 +13,10 @@ defmodule FgHttpWeb.NewDeviceLiveTest do
     {:ok, view, html} = live_isolated(conn, FgHttpWeb.NewDeviceLive)
     assert html =~ "Adding new peer to WireGuard server..."
     assert render(view) =~ "Adding new peer to WireGuard server..."
-    send(view.pid, {:peer_added, view.pid, "test-privkey", "test-pubkey", "server-pubkey"})
-    assert render(view) =~ "test-pubkey"
-    assert render(view) =~ "server-pubkey"
-    assert render(view) =~ "test-privkey"
+    send(view.pid, {:peer_generated, "test-privkey", "test-pubkey", "server-pubkey"})
+    result = render(view)
+    assert result =~ "test-pubkey"
+    assert result =~ "server-pubkey"
+    assert result =~ "test-privkey"
   end
 end

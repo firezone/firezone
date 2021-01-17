@@ -62,7 +62,7 @@ defmodule FgVpn.Config do
 
   @impl true
   def handle_info({:remove_device, pubkey}, config) do
-    new_peers = List.delete(config[:peers], pubkey)
+    new_peers = MapSet.delete(config[:peers], pubkey)
     new_config = %{config | peers: new_peers}
     write!(new_config)
     {:noreply, new_config}
