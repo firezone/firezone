@@ -15,7 +15,7 @@ defmodule FgVpn.MixProject do
       test_coverage: [tool: ExCoveralls],
       rustler_crates: [
         fgvpn_server: [
-          cargo: {:rustup, "nightly"},
+          cargo: {:rustup, "stable"},
           mode: :release
         ]
       ],
