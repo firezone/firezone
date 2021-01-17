@@ -9,6 +9,7 @@
     <%= link "Back to Devices", to: Routes.device_path(@socket, :index) %>
   </p>
 <% else %>
+  <hr>
   <div class="columns">
     <div class="column is-6">
     <h6 class="is-6 title">
@@ -34,20 +35,16 @@ Endpoint = <%= Application.fetch_env!(:fg_http, :vpn_endpoint) %>
       <canvas id="qr-canvas"></canvas>
     </div>
   </div>
-
+  <div class="columns">
+    <div class="column is-12">
+      <h6 class="is-6 title">
+        Note: Save this information somewhere safe! The private key will not be shown again.
+      </h6>
+    </div>
+  </div>
   <hr>
-
   <div phx-hook="QrEncode" class="columns">
     <div class="column is-6">
-      <h4 class="subtitle is-4">Device Added!</h4>
-
-      <dl class="content">
-        <dt>Device Public Key:</dt>
-        <dd><strong><%= @device.public_key %></strong></dd>
-        <dt>Device IP:</dt>
-        <dd><strong><%= @device.last_ip %></strong></dd>
-      </dl>
-
       <div class="level">
         <div class="level-left">
           <%=

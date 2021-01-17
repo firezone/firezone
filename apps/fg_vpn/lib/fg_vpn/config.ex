@@ -26,18 +26,36 @@ defmodule FgVpn.Config do
   end
 
   @impl true
-  def handle_info({:add_device, caller_pid}, config) do
+  def handle_info({:new_device}, config) do
     {_server_privkey, server_pubkey} = read_privkey()
     {privkey, pubkey} = CLI.genkey()
-    new_peers = [pubkey | config[:peers]]
-    new_config = %{config | peers: new_peers}
-    write!(new_config)
+    uncommitted_peers = MapSet.put(config[:uncommitted_peers], pubkey)
+    new_config = Map.put(config, :uncommitted_peers, uncommitted_peers)
 
     PubSub.broadcast(
       :fg_http_pub_sub,
       "view",
-      {:peer_added, caller_pid, privkey, pubkey, server_pubkey}
+      {:peer_generated, privkey, pubkey, server_pubkey}
     )
+
+    {:noreply, new_config}
+  end
+
+  @impl true
+  def handle_info({:commit_device, pubkey}, config) do
+    new_config =
+      if MapSet.member?(config[:uncommitted_peers], pubkey) do
+        new_peers = MapSet.put(config[:peers], pubkey)
+        new_uncommitted_peers = MapSet.delete(config[:uncommitted_peers], pubkey)
+
+        config
+        |> Map.put(:uncommitted_peers, new_uncommitted_peers)
+        |> Map.put(:peers, new_peers)
+      else
+        config
+      end
+
+    write!(new_config)
 
     {:noreply, new_config}
   end
@@ -96,6 +114,7 @@ defmodule FgVpn.Config do
         ~r/PublicKey = (.*)/
         |> Regex.scan(config_str)
         |> Enum.map(fn match_list -> List.last(match_list) end)
+        |> MapSet.new()
     end
   end
 
@@ -168,7 +187,8 @@ defmodule FgVpn.Config do
     config = %{
       default_int: CLI.default_interface(),
       privkey: privkey,
-      peers: read_peers() || []
+      peers: read_peers() || MapSet.new([]),
+      uncommitted_peers: MapSet.new([])
     }
 
     write!(config)
