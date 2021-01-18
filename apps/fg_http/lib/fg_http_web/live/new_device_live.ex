@@ -12,8 +12,8 @@ defmodule FgHttpWeb.NewDeviceLive do
   @doc """
   Called when the view mounts. The for a device being added goes like follows:
   1. :add_device is broadcasted
-  2. FgVpn picks this up and creates a new peer, adds to config, broadcasts :peer_added
-  3. :peer_added is handled here which confirms the details to the user
+  2. FgVpn picks this up and creates a new peer, adds to config, broadcasts :peer_generated
+  3. :peer_generated is handled here which confirms the details to the user
   4. User confirms device, clicks create
   # XXX: Add ttl to device creation that removes stale devices
   """
@@ -25,7 +25,7 @@ defmodule FgHttpWeb.NewDeviceLive do
     end
 
     # Fire off event to generate private key, psk, and add device to config
-    PubSub.broadcast(:fg_http_pub_sub, "config", {:add_device, self()})
+    PubSub.broadcast(:fg_http_pub_sub, "config", {:new_device})
 
     device = %Device{user_id: user_id}
 
@@ -36,22 +36,17 @@ defmodule FgHttpWeb.NewDeviceLive do
   Handles device added.
   """
   @impl true
-  def handle_info({:peer_added, caller_pid, privkey, pubkey, server_pubkey}, socket) do
-    if caller_pid == self() do
-      device = %{
-        socket.assigns.device
-        | public_key: pubkey,
-          private_key: privkey,
-          server_pubkey: server_pubkey,
-          last_ip: "127.0.0.1",
-          name: "Device #{pubkey}"
-      }
+  def handle_info({:peer_generated, privkey, pubkey, server_pubkey}, socket) do
+    device = %{
+      socket.assigns.device
+      | public_key: pubkey,
+        private_key: privkey,
+        server_pubkey: server_pubkey,
+        last_ip: "127.0.0.1",
+        name: "Device #{pubkey}"
+    }
 
-      # Updates @device in the LiveView and causes re-render if the intended target is this pid
-      {:noreply, assign(socket, :device, device)}
-    else
-      # Noop, let the correct pid handle this broadcast
-      {:noreply, socket}
-    end
+    # Updates @device in the LiveView and causes re-render if the intended target is this pid
+    {:noreply, assign(socket, :device, device)}
   end
 end

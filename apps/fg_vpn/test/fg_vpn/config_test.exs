@@ -61,7 +61,8 @@ defmodule FgVpn.ConfigTest do
     @tag stubbed_config: @privkey
     test "parses PrivateKey from config file", %{test_pid: test_pid} do
       assert %{
-               peers: [],
+               uncommitted_peers: %MapSet{},
+               peers: %MapSet{},
                default_int: _,
                privkey: @test_privkey
              } = :sys.get_state(test_pid)
@@ -70,24 +71,37 @@ defmodule FgVpn.ConfigTest do
     @tag stubbed_config: @single_peer
     test "parses peers from config file", %{test_pid: test_pid} do
       assert %{
-               peers: ["test-pubkey"],
+               uncommitted_peers: %MapSet{},
+               peers: %MapSet{},
                default_int: _,
                privkey: _
              } = :sys.get_state(test_pid)
     end
 
     @tag stubbed_config: @empty
-    test "writes peers to config when device is verified", %{test_pid: test_pid} do
-      send(test_pid, {:add_device, test_pid})
+    test "generates new peer when requested", %{test_pid: test_pid} do
+      send(test_pid, {:new_device})
 
       # XXX: Avoid sleeping
       Process.sleep(100)
 
-      assert %{
-               peers: [_],
-               default_int: _,
-               privkey: _
-             } = :sys.get_state(test_pid)
+      assert [_] = MapSet.to_list(:sys.get_state(test_pid)[:uncommitted_peers])
+      assert [] = MapSet.to_list(:sys.get_state(test_pid)[:peers])
+    end
+
+    @tag stubbed_config: @empty
+    test "writes peers to config when device is verified", %{test_pid: test_pid} do
+      send(test_pid, {:new_device})
+      Process.sleep(100)
+
+      [pubkey | _tail] = MapSet.to_list(:sys.get_state(test_pid)[:uncommitted_peers])
+
+      send(test_pid, {:commit_device, pubkey})
+
+      # XXX: Avoid sleeping
+      Process.sleep(100)
+
+      assert MapSet.to_list(:sys.get_state(test_pid)[:peers]) == [pubkey]
     end
 
     @tag stubbed_config: @single_peer
@@ -97,11 +111,7 @@ defmodule FgVpn.ConfigTest do
       # XXX: Avoid sleeping
       Process.sleep(100)
 
-      assert %{
-               peers: [],
-               default_int: _,
-               privkey: _
-             } = :sys.get_state(test_pid)
+      assert MapSet.to_list(:sys.get_state(test_pid)[:peers]) == []
     end
   end
 
@@ -110,7 +120,8 @@ defmodule FgVpn.ConfigTest do
       assert Config.render(%{
                default_int: "noop",
                privkey: @rendered_privkey,
-               peers: ["test-pubkey"]
+               peers: MapSet.new(["test-pubkey"]),
+               uncommitted_peers: MapSet.new([])
              }) == @rendered_config
     end
   end
