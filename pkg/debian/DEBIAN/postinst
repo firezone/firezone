@@ -12,7 +12,7 @@ if id fireguard &>/dev/null; then
   echo "fireguard user exists... not creating."
 else
   echo "creating system user fireguard"
-  useradd --system fireguard
+  useradd --system -G netdev fireguard
 fi
 
 # Generate app secrets

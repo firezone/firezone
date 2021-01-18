@@ -107,8 +107,11 @@ jobs:
           openssl s_client -connect $(hostname):8800 -servername $(hostname) -showcerts -prexit
 
   publish:
-    needs: build
-    runs-on: ubuntu-20.04
+    needs: functional-test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-16.04, ubuntu-18.04, ubuntu-20.04]
     if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
     steps:
       - name: Create Release
@@ -131,6 +134,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./fireguard_${{ github.sha }}-1_amd64.deb
-          asset_name: fireguard_amd64.deb
+          asset_path: ./fireguard_${{ github.sha }}-1_${{ matrix.os }}_amd64.deb
+          asset_name: fireguard_${{ matrix.os }}_amd64.deb
           asset_content_type: application/vnd.debian.binary-package
