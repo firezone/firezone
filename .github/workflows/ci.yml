@@ -53,7 +53,7 @@ jobs:
       - uses: actions/checkout@v2
       - name: Install runtimes
         run: |
-          curl -sL https://deb.nodesource.com/setup_10.x | sudo bash -
+          curl -sL https://deb.nodesource.com/setup_14.x | sudo bash -
           sudo apt install nodejs
           wget -O erlang.deb https://packages.erlang-solutions.com/erlang/debian/pool/esl-erlang_23.1-1~ubuntu~focal_amd64.deb
           wget -O elixir.deb https://packages.erlang-solutions.com/erlang/debian/pool/elixir_1.11.2-1~ubuntu~focal_all.deb
