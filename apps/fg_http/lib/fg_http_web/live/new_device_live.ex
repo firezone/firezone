@@ -25,7 +25,7 @@ defmodule FgHttpWeb.NewDeviceLive do
     end
 
     # Fire off event to generate private key, psk, and add device to config
-    PubSub.broadcast(:fg_http_pub_sub, "config", {:new_device})
+    PubSub.broadcast(:fg_http_pub_sub, "server", {:new_peer})
 
     device = %Device{user_id: user_id}
 
@@ -36,7 +36,7 @@ defmodule FgHttpWeb.NewDeviceLive do
   Handles device added.
   """
   @impl true
-  def handle_info({:peer_generated, privkey, pubkey, server_pubkey}, socket) do
+  def handle_info({:device_generated, privkey, pubkey, server_pubkey}, socket) do
     device = %{
       socket.assigns.device
       | public_key: pubkey,

@@ -70,7 +70,8 @@ config :fg_http, FgHttpWeb.Endpoint,
   server: true,
   force_ssl: [rewrite_on: [:x_forwarded_proto], hsts: true, host: nil]
 
-config :fg_vpn, wireguard_conf_path: "/opt/fireguard/wg-fireguard.conf"
+config :fg_vpn,
+  cli: FgVpn.CLI.Live
 
 # Do not print debug messages in production
 config :logger, level: :info

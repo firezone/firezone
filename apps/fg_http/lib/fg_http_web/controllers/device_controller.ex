@@ -31,7 +31,11 @@ defmodule FgHttpWeb.DeviceController do
 
     case Devices.create_device(all_params) do
       {:ok, device} ->
-        PubSub.broadcast(:fg_http_pub_sub, "config", {:commit_device, device.public_key})
+        PubSub.broadcast(:fg_http_pub_sub, "server", {
+          :commit_peer,
+          Map.take(device, [:public_key, :allowed_ips, :preshared_key])
+        })
+
         redirect(conn, to: Routes.device_path(conn, :index))
 
       {:error, %Ecto.Changeset{} = changeset} ->
