@@ -71,9 +71,6 @@ config :fg_http, FgHttpWeb.Endpoint,
     ]
   ]
 
-config :fg_vpn,
-  wireguard_conf_path: Path.expand("~/.wg-fireguard.conf")
-
 config :fg_http,
   disable_signup:
     (case System.get_env("DISABLE_SIGNUP") do

@@ -11,6 +11,8 @@ defmodule FgHttp.Devices.Device do
   schema "devices" do
     field :name, :string
     field :public_key, :string
+    field :allowed_ips, :string
+    field :preshared_key, :string
     field :server_pubkey, :string, virtual: true
     field :private_key, :string, virtual: true
     field :ifname, :string

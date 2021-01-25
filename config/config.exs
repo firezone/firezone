@@ -29,11 +29,12 @@ config :fg_http,
 
 # This will be changed per-env
 config :fg_vpn,
-  wireguard_conf_path: "/opt/fireguard/wg-fireguard.conf"
+  private_key: "UAeZoaY95pKZE1Glq28sI2GJDfGGRFtlb4KC6rjY2Gs=",
+  cli: FgVpn.CLI.Sandbox
 
 # This will be changed per-env by ENV vars
 config :fg_http,
-  vpn_endpoint: "localhost:51820"
+  vpn_endpoint: "127.0.0.1:51820"
 
 # Configures the endpoint
 # These will be overridden at runtime in production by config/releases.exs
