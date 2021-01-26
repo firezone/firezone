@@ -59,7 +59,6 @@ jobs:
           curl -sL https://deb.nodesource.com/setup_14.x | sudo bash -
           sudo apt install nodejs
           matrix_os=${{ matrix.os }}
-          echo "MATRIX OS IS ${matrix_os}"
           os_name=$(case $matrix_os in
             ubuntu-20.04)
               echo -n 'ubuntu~focal'
@@ -69,10 +68,8 @@ jobs:
               ;;
           esac)
 
-          echo "os_name is ${os_name}"
-
-          wget -O erlang.deb https://packages.erlang-solutions.com/erlang/debian/pool/esl-erlang_23.1-1~$os_name_amd64.deb
-          wget -O elixir.deb https://packages.erlang-solutions.com/erlang/debian/pool/elixir_1.11.2-1~$os_name_all.deb
+          wget -O erlang.deb https://packages.erlang-solutions.com/erlang/debian/pool/esl-erlang_23.1-1~${os_name}_amd64.deb
+          wget -O elixir.deb https://packages.erlang-solutions.com/erlang/debian/pool/elixir_1.11.2-1~${os_name}_all.deb
           sudo dpkg -i erlang.deb
           sudo dpkg -i elixir.deb
       - name: Build release
