@@ -110,6 +110,8 @@ jobs:
           echo "Enabling service..."
           sudo systemctl start fireguard
 
+          sudo journalctl -xe fireguard
+
           # Wait for app to start
           sleep 10
 
