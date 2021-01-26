@@ -60,14 +60,14 @@ jobs:
           sudo apt install nodejs
           matrix_os=${{ matrix.os }}
           echo "MATRIX OS IS ${matrix_os}"
-          case $matrix_os in
-            ubuntu-18.04)
-              os_name="ubuntu~bionic"
-              ;;
+          os_name=$(case $matrix_os in
             ubuntu-20.04)
-              os_name="ubuntu~focal"
+              echo -n 'ubuntu~focal'
               ;;
-          esac
+            ubuntu-18.04)
+              echo -n 'ubuntu~bionic'
+              ;;
+          esac)
 
           wget -O erlang.deb https://packages.erlang-solutions.com/erlang/debian/pool/esl-erlang_23.1-1~$os_name_amd64.deb
           wget -O elixir.deb https://packages.erlang-solutions.com/erlang/debian/pool/elixir_1.11.2-1~$os_name_all.deb
