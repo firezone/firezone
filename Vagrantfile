@@ -15,8 +15,9 @@ Vagrant.configure('2') do |config|
   # VPN
   config.vm.network 'forwarded_port', guest: 51820, host: 51820, protocol: 'udp'
 
-  config.vm.provision 'ansible' do |ansible|
-    ansible.playbook = 'ansible/playbook.yml'
-    ansible.verbose = true
-  end
+  # Disabling Ansible provisioner for now in favor of a vanilla Ubuntu VM.
+  # config.vm.provision 'ansible' do |ansible|
+  #   ansible.playbook = 'ansible/playbook.yml'
+  #   ansible.verbose = true
+  # end
 end
