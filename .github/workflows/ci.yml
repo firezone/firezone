@@ -59,6 +59,7 @@ jobs:
           curl -sL https://deb.nodesource.com/setup_14.x | sudo bash -
           sudo apt install nodejs
           matrix_os=${{ matrix.os }}
+          echo "MATRIX OS IS ${matrix_os}"
           case $matrix_os in
             ubuntu-18.04)
               os_name="ubuntu~bionic"
