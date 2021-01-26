@@ -7,7 +7,7 @@ defmodule FgVpn.Application do
 
   def start(_type, _args) do
     children = [
-      FgVpn.Config
+      FgVpn.Server
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html

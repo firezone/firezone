@@ -1,128 +1,32 @@
 defmodule FgVpn.ConfigTest do
   use ExUnit.Case, async: true
-  alias FgVpn.Config
+  alias FgVpn.{Config, Peer}
 
-  @test_privkey "GMqk2P3deotcQqgqJHfLGB1JtU//f1FgX868bfPKSVc="
+  @default_config "private-key UAeZoaY95pKZE1Glq28sI2GJDfGGRFtlb4KC6rjY2Gs= listen-port 51820 "
+  @populated_config "private-key UAeZoaY95pKZE1Glq28sI2GJDfGGRFtlb4KC6rjY2Gs= listen-port 1 peer test-pubkey allowed-ips test-allowed-ips preshared-key test-preshared-key"
 
-  @empty """
-  """
+  describe "render" do
+    test "renders default config" do
+      config = %Config{}
 
-  @single_peer """
-  # BEGIN PEER test-pubkey
-  [Peer]
-  PublicKey = test-pubkey
-  AllowedIPs = 0.0.0.0/0, ::/0
-  # END PEER test-pubkey
-  """
-
-  @privkey """
-  [Interface]
-  ListenPort = 51820
-  PrivateKey = GMqk2P3deotcQqgqJHfLGB1JtU//f1FgX868bfPKSVc=
-  """
-
-  @rendered_privkey "kPCNOTbBoHC/j5daxhMHcZ+PeNr6oaA8qIWcBuFlM0s="
-
-  @rendered_config """
-  # This file is being managed by the fireguard systemd service. Any changes
-  # will be overwritten eventually.
-
-  [Interface]
-  ListenPort = 51820
-  PrivateKey = kPCNOTbBoHC/j5daxhMHcZ+PeNr6oaA8qIWcBuFlM0s=
-  PostUp = iptables -A FORWARD -i %i -j ACCEPT; iptables -A FORWARD -o %i -j ACCEPT; iptables -t nat -A POSTROUTING -o noop -j MASQUERADE
-  PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACCEPT; iptables -t nat -D POSTROUTING -o noop -j MASQUERADE
-
-  # BEGIN PEER test-pubkey
-  [Peer]
-  PublicKey = test-pubkey
-  AllowedIPs = 0.0.0.0/0, ::/0
-  # END PEER test-pubkey
-  """
-
-  def write_config(config) do
-    Application.get_env(:fg_vpn, :wireguard_conf_path)
-    |> File.write!(config)
-  end
-
-  describe "state" do
-    setup %{stubbed_config: config} do
-      write_config(config)
-      test_pid = start_supervised!(Config)
-
-      on_exit(fn ->
-        Application.get_env(:fg_vpn, :wireguard_conf_path)
-        |> File.rm!()
-      end)
-
-      %{test_pid: test_pid}
+      assert Config.render(config) == @default_config
     end
 
-    @tag stubbed_config: @privkey
-    test "parses PrivateKey from config file", %{test_pid: test_pid} do
-      assert %{
-               uncommitted_peers: %MapSet{},
-               peers: %MapSet{},
-               default_int: _,
-               privkey: @test_privkey
-             } = :sys.get_state(test_pid)
-    end
+    test "renders populated config" do
+      config = %Config{
+        listen_port: 1,
+        peers:
+          MapSet.new([
+            %Peer{
+              public_key: "test-pubkey",
+              allowed_ips: "test-allowed-ips",
+              preshared_key: "test-preshared-key"
+            }
+          ]),
+        uncommitted_peers: MapSet.new(["uncommitted-pubkey"])
+      }
 
-    @tag stubbed_config: @single_peer
-    test "parses peers from config file", %{test_pid: test_pid} do
-      assert %{
-               uncommitted_peers: %MapSet{},
-               peers: %MapSet{},
-               default_int: _,
-               privkey: _
-             } = :sys.get_state(test_pid)
-    end
-
-    @tag stubbed_config: @empty
-    test "generates new peer when requested", %{test_pid: test_pid} do
-      send(test_pid, {:new_device})
-
-      # XXX: Avoid sleeping
-      Process.sleep(100)
-
-      assert [_] = MapSet.to_list(:sys.get_state(test_pid)[:uncommitted_peers])
-      assert [] = MapSet.to_list(:sys.get_state(test_pid)[:peers])
-    end
-
-    @tag stubbed_config: @empty
-    test "writes peers to config when device is verified", %{test_pid: test_pid} do
-      send(test_pid, {:new_device})
-      Process.sleep(100)
-
-      [pubkey | _tail] = MapSet.to_list(:sys.get_state(test_pid)[:uncommitted_peers])
-
-      send(test_pid, {:commit_device, pubkey})
-
-      # XXX: Avoid sleeping
-      Process.sleep(100)
-
-      assert MapSet.to_list(:sys.get_state(test_pid)[:peers]) == [pubkey]
-    end
-
-    @tag stubbed_config: @single_peer
-    test "removes peers from config when device is removed", %{test_pid: test_pid} do
-      send(test_pid, {:remove_device, "test-pubkey"})
-
-      # XXX: Avoid sleeping
-      Process.sleep(100)
-
-      assert MapSet.to_list(:sys.get_state(test_pid)[:peers]) == []
-    end
-  end
-
-  describe "loading / rendering" do
-    test "renders config" do
-      assert Config.render(%{
-               default_int: "noop",
-               privkey: @rendered_privkey,
-               peers: MapSet.new(["test-pubkey"]),
-               uncommitted_peers: MapSet.new([])
-             }) == @rendered_config
+      assert Config.render(config) == @populated_config
     end
   end
 end

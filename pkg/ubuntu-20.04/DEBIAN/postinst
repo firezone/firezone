@@ -29,9 +29,6 @@ sudo -i -u postgres psql -c "CREATE ROLE ${db_user} WITH LOGIN PASSWORD '${db_pa
 sudo -i -u postgres psql -c "CREATE DATABASE fireguard;" || true
 sudo -i -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE fireguard to ${db_user};" || true
 
-# Generate WireGuard privkey
-privkey=$(wg genkey)
-
 # Write FireGuard SSL files
 mkdir -p /opt/fireguard/ssl
 chown -R fireguard:root /opt/fireguard/ssl
@@ -45,9 +42,7 @@ chmod 0644 /opt/fireguard/ssl/cert.pem
 
 # Write FireGuard config files
 touch /opt/fireguard/config.env
-touch /opt/fireguard/wg-fireguard.conf
 chmod 0600 /opt/fireguard/config.env
-chmod 0660 /opt/fireguard/wg-fireguard.conf
 chown -R fireguard:root /opt/fireguard
 cat <<EOT >> /opt/fireguard/config.env
 # This file is loaded into FireGuard's Environment upon launch to configure it.
@@ -69,14 +64,15 @@ DATABASE_URL="ecto://${db_user}:${db_password}@127.0.0.1/fireguard"
 # The HTTPS port to listen on. Defaults to 8800.
 HTTPS_LISTEN_PORT=8800
 
-# The address to bind the HTTPS server to. Defaults to "0.0.0.0"
-HTTPS_LISTEN_ADDRESS=0.0.0.0
+# The address to bind the HTTPS server to. Defaults to "127.0.0.1"
+HTTPS_LISTEN_ADDRESS=127.0.0.1
 
 # The WireGuard port to listen on. Defaults to 51820.
 WG_LISTEN_PORT=51820
 
-# The address to bind the WireGuard service to. Defaults to "0.0.0.0"
-WG_LISTEN_ADDRESS=0.0.0.0
+# The address for the WireGuard endpoint. Defaults to the address of the
+# default egress interface if not set.
+WG_ENDPOINT_ADDRESS=
 
 # SSL certificate file and key path. Self-signed certs are generated for you on
 # install, but it's highly recommended to replace these with valid certs.
@@ -94,3 +90,6 @@ URL_HOST=${hostname}
 # For public-facing sites, it's recommended to leave signups disabled.
 DISABLE_SIGNUP=yes
 EOT
+
+umask 077
+wg genkey > /opt/fireguard/server.key
