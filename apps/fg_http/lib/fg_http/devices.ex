@@ -4,9 +4,7 @@ defmodule FgHttp.Devices do
   """
 
   import Ecto.Query, warn: false
-  alias FgHttp.Repo
-
-  alias FgHttp.Devices.Device
+  alias FgHttp.{Devices.Device, Repo}
 
   def list_devices(user_id) do
     Repo.all(from d in Device, where: d.user_id == ^user_id)
@@ -48,5 +46,15 @@ defmodule FgHttp.Devices do
 
   def change_device(%Device{} = device) do
     Device.changeset(device, %{})
+  end
+
+  def to_peer_list do
+    for device <- Repo.all(Device) do
+      %{
+        public_key: device.public_key,
+        allowed_ips: device.allowed_ips,
+        preshared_key: device.preshared_key
+      }
+    end
   end
 end

@@ -31,7 +31,7 @@
           - ca-certificates
 
     - name: setup nodejs repository
-      shell: curl -sL https://deb.nodesource.com/setup_10.x | bash -
+      shell: curl -sL https://deb.nodesource.com/setup_14.x | bash -
     - name: install nodejs
       apt:
         install_recommends: no

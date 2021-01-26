@@ -5,6 +5,8 @@ defmodule FgHttp.Repo.Migrations.CreateDevices do
     create table(:devices) do
       add :name, :string, null: false
       add :public_key, :string, null: false
+      add :allowed_ips, :string
+      add :preshared_key, :string
       add :ifname, :string, null: false
       add :last_ip, :inet
       add :user_id, references(:users, on_delete: :delete_all), null: false
