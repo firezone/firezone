@@ -2,8 +2,8 @@
 set -e
 
 od=$(pwd)
-mkdir -p pkg/debian/opt
-rsync --delete -a _build/prod/rel/fireguard pkg/debian/opt/
+mkdir -p pkg/ubuntu-20.04/opt
+rsync --delete -a _build/prod/rel/fireguard pkg/ubuntu-20.04/opt/
 cd pkg
-dpkg-deb --build debian
-mv -f debian.deb ../fireguard_amd64.deb
+dpkg-deb --build ubuntu-20.04
+mv -f ubuntu-20.04.deb ../fireguard_ubuntu-20.04_amd64.deb
