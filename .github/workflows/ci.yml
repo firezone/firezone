@@ -98,6 +98,7 @@ jobs:
         with:
           name: fireguard-deb
       - name: Test Install package
+        continue-on-error: true
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
@@ -110,7 +111,8 @@ jobs:
           echo "Enabling service..."
           sudo systemctl start fireguard
 
-          sudo journalctl -xe fireguard
+          sudo journalctl -xe fireguard.service
+          sudo systemctl status fireguard.service
 
           # Wait for app to start
           sleep 10
