@@ -74,12 +74,13 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-20.04]
+    env:
+      MATRIX_OS: ${{ matrix.os }}
     steps:
       - uses: actions/download-artifact@v2
         with:
           name: fireguard-deb
       - name: Test Install package
-        continue-on-error: true
         env:
           DEBIAN_FRONTEND: noninteractive
         run: .ci/functional_test.sh
