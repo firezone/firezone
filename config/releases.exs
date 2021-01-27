@@ -52,16 +52,15 @@ ssl_ca_cert_file =
     s = _ -> s
   end
 
-def default_egress_address do
+default_egress_address =
   FgVpn.CLI.Live.exec!("ip route get 8.8.8.8 | grep -oP 'src \\K\\S+'")
   |> String.trim()
-end
 
 # Optional environment variables
 pool_size = String.to_integer(System.get_env("POOL_SIZE") || "10")
 https_listen_port = String.to_integer(System.get_env("HTTPS_LISTEN_PORT") || "8800")
 wg_listen_port = System.get_env("WG_LISTEN_PORT" || "51820")
-wg_endpoint_address = System.get_env("WG_ENDPOINT_ADDRESS") || default_egress_address()
+wg_endpoint_address = System.get_env("WG_ENDPOINT_ADDRESS") || default_egress_address
 url_host = System.get_env("URL_HOST") || "localhost"
 
 config :fg_http, disable_signup: disable_signup
