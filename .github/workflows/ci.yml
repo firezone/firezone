@@ -12,6 +12,7 @@ jobs:
       MIX_ENV: test
       POSTGRES_HOST: localhost
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      MATRIX_OS: ubuntu-20.04
     services:
       postgres:
         image: postgres:13
