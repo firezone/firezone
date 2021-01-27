@@ -93,3 +93,4 @@ EOT
 
 umask 077
 wg genkey > /opt/fireguard/server.key
+chown fireguard:root /opt/fireguard/server.key
