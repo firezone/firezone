@@ -4,8 +4,6 @@
 # remember to add this file to your .gitignore.
 import Config
 
-@default_egress_address_cmd "ip route get 8.8.8.8 | grep -oP 'src \\K\\S+'"
-
 # Required environment variables
 database_url =
   System.get_env("DATABASE_URL") ||
@@ -55,7 +53,7 @@ ssl_ca_cert_file =
   end
 
 def default_egress_address do
-  FgVpn.CLI.Live.exec!(@default_egress_address_cmd)
+  FgVpn.CLI.Live.exec!("ip route get 8.8.8.8 | grep -oP 'src \\K\\S+'")
   |> String.trim()
 end
 
