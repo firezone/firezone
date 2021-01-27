@@ -10,13 +10,13 @@ sudo dpkg -i fireguard*.deb
 echo "Enabling service..."
 sudo systemctl start fireguard
 
-sudo journalctl -xe fireguard.service
-sudo systemctl status fireguard.service
-
 # Wait for app to start
 sleep 10
 
-echo "Printing service status..."
+echo "Service status..."
+sudo systemctl status fireguard.service
+
+echo "Printing service logs..."
 sudo journalctl -u fireguard.service
 
 echo "Trying to load homepage..."
