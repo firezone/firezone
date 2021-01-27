@@ -30,11 +30,7 @@ jobs:
         run: sudo apt-get install net-tools wireguard
       - uses: actions/checkout@v2
       - name: Install Runtimes
-        run: |
-          wget -O erlang.deb https://packages.erlang-solutions.com/erlang/debian/pool/esl-erlang_23.2-1~ubuntu~focal_amd64.deb
-          wget -O elixir.deb https://packages.erlang-solutions.com/erlang/debian/pool/elixir_1.11.2-1~ubuntu~focal_all.deb
-          sudo dpkg -i erlang.deb
-          sudo dpkg -i elixir.deb
+        run: .ci/install_runtimes.sh
       - name: Install Dependencies
         run: |
           mix local.hex --force && mix local.rebar --force
@@ -52,36 +48,20 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-20.04]
+    env:
+      MATRIX_OS: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v2
       - name: Install runtimes
-        run: |
-          curl -sL https://deb.nodesource.com/setup_14.x | sudo bash -
-          sudo apt install nodejs
-          matrix_os=${{ matrix.os }}
-          os_name=$(case $matrix_os in
-            ubuntu-20.04)
-              echo -n 'ubuntu~focal'
-              ;;
-            ubuntu-18.04)
-              echo -n 'ubuntu~bionic'
-              ;;
-          esac)
-
-          wget -O erlang.deb https://packages.erlang-solutions.com/erlang/debian/pool/esl-erlang_23.1-1~${os_name}_amd64.deb
-          wget -O elixir.deb https://packages.erlang-solutions.com/erlang/debian/pool/elixir_1.11.2-1~${os_name}_all.deb
-          sudo dpkg -i erlang.deb
-          sudo dpkg -i elixir.deb
+        run: .ci/install_runtimes.sh
       - name: Build release
         env:
           MIX_ENV: prod
-        run: |
-          scripts/build_release.sh
-          scripts/build_deb.sh
+        run: .ci/build_release.sh
+      - name: Build deb
+        run: .ci/build_deb.sh
       - name: Rename Built Artifacts
-        run: |
-          filename="fireguard_${{ github.sha }}-1_amd64.deb"
-          mv fireguard_${{ matrix.os }}_amd64.deb ./${filename}
+        run: .ci/rename_artifacts.sh
       - uses: actions/upload-artifact@v2
         with:
           name: fireguard-deb
@@ -101,30 +81,7 @@ jobs:
         continue-on-error: true
         env:
           DEBIAN_FRONTEND: noninteractive
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y postgresql \
-            wireguard iptables net-tools curl ca-certificates
-          sudo systemctl start postgresql
-          sudo dpkg -i fireguard*.deb
-
-          echo "Enabling service..."
-          sudo systemctl start fireguard
-
-          sudo journalctl -xe fireguard.service
-          sudo systemctl status fireguard.service
-
-          # Wait for app to start
-          sleep 10
-
-          echo "Printing service status..."
-          sudo journalctl -u fireguard.service
-
-          echo "Trying to load homepage..."
-          curl -i -vvv -k https://$(hostname):8800/
-
-          echo "Printing SSL debug info"
-          openssl s_client -connect $(hostname):8800 -servername $(hostname) -showcerts -prexit
+        run: .ci/functional_test.sh
 
   publish:
     needs: functional-test
