@@ -2,7 +2,7 @@
   <div class="container flash-squeeze">
     <%= if get_flash(@conn, :info) do %>
       <div class="notification is-info">
-        <button class="delete"></button>
+        <button title="Dismiss notification" class="delete"></button>
         <div class="flash-info">
           <%= get_flash(@conn, :info) %>
         </div>
