@@ -37,6 +37,7 @@ defmodule FgHttpWeb.Features.SignInTest do
   feature "users can sign in", %{session: session} do
     session
     |> sign_in()
+    |> take_screenshot()
     |> assert_has(@sign_in_flash)
   end
 
@@ -44,6 +45,7 @@ defmodule FgHttpWeb.Features.SignInTest do
     session
     |> sign_in()
     |> click(button("Dismiss notification"))
+    |> take_screenshot()
     |> refute_has(@sign_in_flash)
   end
 
@@ -51,6 +53,7 @@ defmodule FgHttpWeb.Features.SignInTest do
     session
     |> sign_in()
     |> sign_out()
+    |> take_screenshot()
     |> assert_has(@sign_out_flash)
   end
 end
