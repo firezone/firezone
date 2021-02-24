@@ -43,6 +43,7 @@ jobs:
       - name: Run Tests and Upload Coverage Report
         run: mix coveralls.github --umbrella
       - uses: actions/upload-artifact@v2
+        if: ${{ always() }}
         with:
           name: test screenshots
           path: apps/fg_http/screenshots
