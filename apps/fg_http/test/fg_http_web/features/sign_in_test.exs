@@ -6,7 +6,8 @@ defmodule FgHttpWeb.Features.SignInTest do
     only: [
       text_field: 1,
       button: 1,
-      css: 2
+      css: 2,
+      link: 1
     ]
 
   alias FgHttp.Fixtures
@@ -17,7 +18,8 @@ defmodule FgHttpWeb.Features.SignInTest do
 
   setup [:create_user]
 
-  @success_flash css(".notification .flash-info", count: 1, text: "Signed in successfully.")
+  @sign_in_flash css(".notification .flash-info", count: 1, text: "Signed in successfully.")
+  @sign_out_flash css(".notification .flash-info", count: 1, text: "Signed out successfully.")
 
   def sign_in(session) do
     session
@@ -27,16 +29,28 @@ defmodule FgHttpWeb.Features.SignInTest do
     |> click(button("Sign in"))
   end
 
+  def sign_out(session) do
+    session
+    |> click(link("Sign out"))
+  end
+
   feature "users can sign in", %{session: session} do
     session
     |> sign_in()
-    |> assert_has(@success_flash)
+    |> assert_has(@sign_in_flash)
   end
 
   feature "dismisses alert", %{session: session} do
     session
     |> sign_in()
     |> click(button("Dismiss notification"))
-    |> refute_has(@success_flash)
+    |> refute_has(@sign_in_flash)
+  end
+
+  feature "users can sign out", %{session: session} do
+    session
+    |> sign_in()
+    |> sign_out()
+    |> assert_has(@sign_out_flash)
   end
 end
