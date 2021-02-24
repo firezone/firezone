@@ -42,8 +42,10 @@ jobs:
           mix ecto.migrate
       - name: Run Tests and Upload Coverage Report
         run: mix coveralls.github --umbrella
-      - name: actions/upload-artifact@v2
-        path: apps/fg_http/screenshots
+      - uses: actions/upload-artifact@v2
+        with:
+          name: test screenshots
+          path: apps/fg_http/screenshots
 
   build:
     needs: unit-integration-test
