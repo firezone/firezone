@@ -33,7 +33,10 @@ config :fg_http, FgHttpWeb.Endpoint,
   live_view: [
     signing_salt: "mgC0uvbIgQM7GT5liNSbzJJhvjFjhb7t"
   ],
-  server: false
+  server: true
+
+config :fg_http, :sql_sandbox, true
+config :wallaby, otp_app: :fg_http
 
 # Print only warnings and errors during test
 config :logger, level: :warn
