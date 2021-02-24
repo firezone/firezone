@@ -28,7 +28,9 @@ jobs:
           --health-retries 5
     steps:
       - name: Install package dependencies
-        run: sudo apt-get install net-tools wireguard chromium-chromedriver
+        run: sudo apt-get install net-tools wireguard unzip
+      - name: Install Chrome and ChromeDriver
+        run: .ci/install_chrome.sh
       - uses: actions/checkout@v2
       - name: Install Runtimes
         run: .ci/install_runtimes.sh
