@@ -29,9 +29,9 @@ jobs:
     steps:
       - name: Install package dependencies
         run: sudo apt-get install net-tools wireguard unzip
+      - uses: actions/checkout@v2
       - name: Install Chrome and ChromeDriver
         run: .ci/install_chrome.sh
-      - uses: actions/checkout@v2
       - name: Install Runtimes
         run: .ci/install_runtimes.sh
       - name: Install Dependencies
