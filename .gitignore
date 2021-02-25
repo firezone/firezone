@@ -58,3 +58,6 @@ npm-debug.log
 *.deb
 
 pkg/debian/opt
+
+# Test screenshots
+apps/fg_http/screenshots
