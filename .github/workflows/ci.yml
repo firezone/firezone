@@ -27,6 +27,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
+      - run: which chromedriver
       - name: Install package dependencies
         run: sudo apt-get install net-tools wireguard unzip
       - uses: actions/checkout@v2
@@ -38,6 +39,7 @@ jobs:
         run: |
           mix local.hex --force && mix local.rebar --force
           mix deps.get --only test
+          npm install --prefix apps/fg_http/assets
       - name: Setup Database
         run: |
           mix ecto.create
