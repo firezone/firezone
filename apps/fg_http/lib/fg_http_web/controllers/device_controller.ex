@@ -20,7 +20,7 @@ defmodule FgHttpWeb.DeviceController do
   end
 
   def create(conn, %{"device" => %{"public_key" => _public_key} = device_params}) do
-    # XXX: Get device name from browser
+    # XXX: Guess device name from browser
     our_params = %{
       "user_id" => conn.assigns.session.id,
       "ifname" => "wg0",
