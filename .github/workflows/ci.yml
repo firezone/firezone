@@ -27,21 +27,25 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
+      - run: which chromedriver
       - name: Install package dependencies
-        run: sudo apt-get install net-tools wireguard
+        run: sudo apt-get install net-tools wireguard unzip
       - uses: actions/checkout@v2
       - name: Install Runtimes
         run: .ci/install_runtimes.sh
       - name: Install Dependencies
-        run: |
-          mix local.hex --force && mix local.rebar --force
-          mix deps.get --only test
+        run: .ci/install_dependencies.sh
       - name: Setup Database
         run: |
           mix ecto.create
           mix ecto.migrate
       - name: Run Tests and Upload Coverage Report
         run: mix coveralls.github --umbrella
+      - uses: actions/upload-artifact@v2
+        if: ${{ always() }}
+        with:
+          name: test screenshots
+          path: apps/fg_http/screenshots
 
   build:
     needs: unit-integration-test

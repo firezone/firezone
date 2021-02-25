@@ -11,7 +11,7 @@
       <% end %>
 
       <div class="field">
-        <%= label(:session_user, :email, class: "label") %>
+        <%= label(:session, :email, class: "label") %>
         <div class="control">
           <%= text_input(f, :email, class: "input") %>
         </div>
@@ -21,7 +21,7 @@
       </div>
 
       <div class="field">
-        <%= label(:session_user, :password, class: "label") %>
+        <%= label(:session, :password, class: "label") %>
         <div class="control">
           <%= password_input(f, :password, class: "input") %>
         </div>

@@ -17,6 +17,7 @@ module.exports = (env, options) => ({
       // Local JS files to include in the bundle
       './js/app.js',
       './js/live_view.js',
+      './js/event_handlers.js'
     ]).concat(
       glob.sync('./js/hooks/*.js')
     )

@@ -11,7 +11,6 @@ export function qrEncode() {
     height: 156
 
   }, function (error) {
-    if (error) console.error(error)
-    console.log('success!');
+    if (error) alert('QRCode Encode Error: ' + error)
   })
 }
