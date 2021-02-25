@@ -31,15 +31,10 @@ jobs:
       - name: Install package dependencies
         run: sudo apt-get install net-tools wireguard unzip
       - uses: actions/checkout@v2
-      - name: Install ChromeDriver
-        run: .ci/install_chromedriver.sh
       - name: Install Runtimes
         run: .ci/install_runtimes.sh
       - name: Install Dependencies
-        run: |
-          mix local.hex --force && mix local.rebar --force
-          mix deps.get --only test
-          npm install --prefix apps/fg_http/assets
+        run: .ci/install_dependencies.sh
       - name: Setup Database
         run: |
           mix ecto.create
