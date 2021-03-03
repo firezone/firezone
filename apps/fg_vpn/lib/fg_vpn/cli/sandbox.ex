@@ -12,6 +12,7 @@ defmodule FgVpn.CLI.Sandbox do
   def setup, do: @default_returned
   def teardown, do: @default_returned
   def genkey, do: {rand_key(), rand_key()}
+  def genpsk, do: rand_key()
   def pubkey(_privkey), do: rand_key()
   def exec!(_cmd), do: @default_returned
   def set(_conf_str), do: @default_returned

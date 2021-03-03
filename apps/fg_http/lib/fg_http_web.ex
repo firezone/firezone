@@ -44,6 +44,10 @@ defmodule FgHttpWeb do
       import FgHttpWeb.Gettext
       import Phoenix.LiveView.Helpers
       alias FgHttpWeb.Router.Helpers, as: Routes
+
+      def render_common(template, assigns \\ []) do
+        render(FgHttpWeb.CommonView, template, assigns)
+      end
     end
   end
 

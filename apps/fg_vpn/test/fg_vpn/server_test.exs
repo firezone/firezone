@@ -19,20 +19,18 @@ defmodule FgVpn.ServerTest do
 
     @tag stubbed_config: @empty
     test "generates new peer when requested", %{test_pid: test_pid} do
-      send(test_pid, {:new_peer})
+      send(test_pid, {:create_device, self()})
 
-      # XXX: Avoid sleeping
-      Process.sleep(100)
-
+      assert_receive {:device_created, _, _, _, _}
       assert [_peer] = MapSet.to_list(:sys.get_state(test_pid).uncommitted_peers)
       assert [] = MapSet.to_list(:sys.get_state(test_pid).peers)
     end
 
     @tag stubbed_config: @empty
     test "writes peers to config when device is verified", %{test_pid: test_pid} do
-      send(test_pid, {:new_peer})
-      Process.sleep(100)
+      send(test_pid, {:create_device, self()})
 
+      assert_receive {:device_created, _, _, _, _}
       [pubkey | _tail] = MapSet.to_list(:sys.get_state(test_pid).uncommitted_peers)
 
       send(test_pid, {:commit_peer, %{public_key: pubkey}})

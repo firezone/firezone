@@ -11,14 +11,50 @@
       <strong>Public key:</strong>
     </dt>
     <dd><%= @device.public_key %></dd>
+
+    <dt>
+      <strong>Private Key:</strong>
+    </dt>
+    <dd><%= render_common("obfuscated.html", data: @device.private_key) %></dd>
   </dl>
 
   <p>
     <%= link "Show Rules for This Device", to: Routes.device_rule_path(@conn, :index, @device) %>
   </p>
 
+  <hr>
+  <div class="columns">
+    <div class="column is-6">
+    <h6 class="is-6 title">
+      Add the following to your WireGuard™ configuration file:
+    </h6>
+
+  <pre>
+  <code id="wg-conf">
+[Interface]
+PrivateKey = <%= @device.private_key %>
+Address = 172.16.99.1/24
+DNS = 1.1.1.1, 1.0.0.1
+
+[Peer]
+PublicKey = <%= @device.server_public_key %>
+PresharedKey = <%= @device.preshared_key %>
+AllowedIPs = 0.0.0.0/0, ::/0
+Endpoint = <%= Application.fetch_env!(:fg_http, :vpn_endpoint) %>
+  </code>
+  </pre>
+    </div>
+    <div class="column is-6">
+      <h6 class="is-6 title">
+        Or scan the QR code with your mobile phone:
+      </h6>
+      <canvas id="qr-canvas"></canvas>
+    </div>
+  </div>
+  <hr>
+
   <div class="level">
-    <%= link "Back", to: Routes.device_path(@conn, :index), class: "button" %>
+    <%= link "Back to Devices", to: Routes.device_path(@conn, :index), class: "button" %>
     <%= link "Edit", to: Routes.device_path(@conn, :edit, @device), class: "button is-primary" %>
   </div>
 </div>

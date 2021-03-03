@@ -23,7 +23,13 @@ defmodule FgHttp.Fixtures do
     attrs =
       attrs
       |> Enum.into(%{user_id: user().id})
-      |> Enum.into(%{public_key: "foobar", ifname: "wg0", name: "factory"})
+      |> Enum.into(%{
+        public_key: "test-pubkey",
+        name: "factory",
+        private_key: "test-privkey",
+        preshared_key: "test-psk",
+        server_public_key: "test-server-pubkey"
+      })
 
     {:ok, device} = Devices.create_device(attrs)
     device

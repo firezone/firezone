@@ -13,6 +13,8 @@ defmodule FgVpn.CLI.Live do
   # Outputs the privkey, then pubkey on the next line
   @genkey_cmd "wg genkey | tee >(wg pubkey)"
 
+  @genpsk_cmd "wg genpsk"
+
   @iface_name "wg-fireguard"
 
   def setup do
@@ -37,6 +39,11 @@ defmodule FgVpn.CLI.Live do
       |> String.split("\n")
 
     {privkey, pubkey}
+  end
+
+  def genpsk do
+    exec!(@genpsk_cmd)
+    |> String.trim()
   end
 
   def pubkey(privkey) when is_nil(privkey), do: nil

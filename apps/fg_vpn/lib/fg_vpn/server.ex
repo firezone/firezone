@@ -13,34 +13,31 @@ defmodule FgVpn.Server do
   """
 
   alias FgVpn.{Config, Peer}
-  alias Phoenix.PubSub
   use GenServer
   import FgVpn.CLI
+  require Logger
+
+  @process_opts Application.compile_env(:fg_vpn, :server_process_opts)
 
   def start_link(_) do
     cli().setup()
-    GenServer.start_link(__MODULE__, %Config{})
+    GenServer.start_link(__MODULE__, %Config{}, @process_opts)
   end
 
   @impl true
   def init(config) do
-    # Subscribe to PubSub from FgHttp application
-    {PubSub.subscribe(:fg_http_pub_sub, "server"), config}
+    {:ok, config}
   end
 
   @impl true
-  def handle_info({:new_peer}, config) do
+  def handle_info({:create_device, sender}, config) do
     server_pubkey = Config.public_key()
     {privkey, pubkey} = cli().genkey()
+    psk = cli().genpsk()
     uncommitted_peers = MapSet.put(config.uncommitted_peers, pubkey)
     new_config = Map.put(config, :uncommitted_peers, uncommitted_peers)
 
-    PubSub.broadcast(
-      :fg_http_pub_sub,
-      "view",
-      {:device_generated, privkey, pubkey, server_pubkey}
-    )
-
+    send(sender, {:device_created, privkey, pubkey, server_pubkey, psk})
     {:noreply, new_config}
   end
 
