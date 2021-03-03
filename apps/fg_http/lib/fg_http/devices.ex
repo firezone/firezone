@@ -6,6 +6,10 @@ defmodule FgHttp.Devices do
   import Ecto.Query, warn: false
   alias FgHttp.{Devices.Device, Repo}
 
+  def list_devices do
+    Repo.all(Device)
+  end
+
   def list_devices(user_id) do
     Repo.all(from d in Device, where: d.user_id == ^user_id)
   end

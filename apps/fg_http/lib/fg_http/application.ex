@@ -14,7 +14,7 @@ defmodule FgHttp.Application do
         _ ->
           [
             FgHttp.Repo,
-            {Phoenix.PubSub, name: :fg_http_pub_sub},
+            {Phoenix.PubSub, name: FgHttp.PubSub},
             FgHttpWeb.Endpoint
           ]
       end

@@ -4,8 +4,9 @@ defmodule FgHttpWeb.DeviceController do
   """
 
   use FgHttpWeb, :controller
-  alias FgHttp.{Devices, Devices.Device}
-  alias Phoenix.PubSub
+  alias FgHttp.Devices
+  alias FgHttpWeb.ErrorHelpers
+  require Logger
 
   plug FgHttpWeb.Plugs.SessionLoader
 
@@ -14,32 +15,34 @@ defmodule FgHttpWeb.DeviceController do
     render(conn, "index.html", devices: devices)
   end
 
-  def new(conn, _params) do
-    changeset = Devices.change_device(%Device{})
-    render(conn, "new.html", changeset: changeset)
-  end
+  def create(conn, _params) do
+    case event_module().create_device_sync() do
+      {:ok, device_attrs} ->
+        attributes =
+          Map.merge(
+            %{
+              user_id: conn.assigns.session.id,
+              name: "Device #{DateTime.utc_now() |> DateTime.to_unix(:microsecond)}"
+            },
+            device_attrs
+          )
 
-  def create(conn, %{"device" => %{"public_key" => _public_key} = device_params}) do
-    # XXX: Guess device name from browser
-    our_params = %{
-      "user_id" => conn.assigns.session.id,
-      "ifname" => "wg0",
-      "name" => "Device #{DateTime.utc_now() |> DateTime.to_unix(:microsecond)}"
-    }
+        case Devices.create_device(attributes) do
+          {:ok, device} ->
+            redirect(conn, to: Routes.device_path(conn, :show, device))
 
-    all_params = Map.merge(device_params, our_params)
+          {:error, %Ecto.Changeset{} = changeset} ->
+            msg = ErrorHelpers.aggregated_errors(changeset)
 
-    case Devices.create_device(all_params) do
-      {:ok, device} ->
-        PubSub.broadcast(:fg_http_pub_sub, "server", {
-          :commit_peer,
-          Map.take(device, [:public_key, :allowed_ips, :preshared_key])
-        })
+            conn
+            |> put_flash(:error, "Error creating device. #{msg}")
+            |> redirect(to: Routes.device_path(conn, :index))
+        end
 
-        redirect(conn, to: Routes.device_path(conn, :index))
-
-      {:error, %Ecto.Changeset{} = changeset} ->
-        render(conn, "new.html", changeset: changeset)
+      {:error, msg} ->
+        conn
+        |> put_flash(:error, "Error creating device: #{msg}")
+        |> redirect(to: Routes.device_path(conn, :index))
     end
   end
 
@@ -75,5 +78,9 @@ defmodule FgHttpWeb.DeviceController do
     conn
     |> put_flash(:info, "Device deleted successfully.")
     |> redirect(to: Routes.device_path(conn, :index))
+  end
+
+  defp event_module do
+    Application.get_env(:fg_http, :event_helpers_module)
   end
 end

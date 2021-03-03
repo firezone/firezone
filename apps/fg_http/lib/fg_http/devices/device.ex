@@ -13,9 +13,8 @@ defmodule FgHttp.Devices.Device do
     field :public_key, :string
     field :allowed_ips, :string
     field :preshared_key, :string
-    field :server_pubkey, :string, virtual: true
-    field :private_key, :string, virtual: true
-    field :ifname, :string
+    field :server_public_key, :string
+    field :private_key, :string
     field :last_ip, EctoNetwork.INET
     field :last_seen_at, :utc_datetime_usec
 
@@ -27,8 +26,24 @@ defmodule FgHttp.Devices.Device do
 
   def changeset(device, attrs) do
     device
-    |> cast(attrs, [:last_ip, :ifname, :user_id, :name, :public_key])
-    |> validate_required([:user_id, :ifname, :name, :public_key])
-    |> unique_constraint([:name])
+    |> cast(attrs, [
+      :last_ip,
+      :server_public_key,
+      :private_key,
+      :preshared_key,
+      :user_id,
+      :name,
+      :public_key
+    ])
+    |> validate_required([
+      :user_id,
+      :name,
+      :public_key,
+      :server_public_key,
+      :private_key,
+      :preshared_key
+    ])
+    |> unique_constraint([:name, :public_key])
+    |> unique_constraint([:name, :private_key])
   end
 end

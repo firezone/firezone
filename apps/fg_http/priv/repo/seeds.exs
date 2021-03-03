@@ -22,9 +22,11 @@ alias FgHttp.{Devices, Rules, Users}
 {:ok, device} =
   Devices.create_device(%{
     user_id: user.id,
-    ifname: "wg0",
     name: "Factory Device",
-    public_key: "factory public key",
+    public_key: "3Fo+SNnDJ6hi8qzPt3nWLwgjCVwvpjHL35qJeatKwEc=",
+    server_public_key: "QFvMfHTjlJN9cfUiK1w4XmxOomH6KRTCMrVC6z3TWFM=",
+    private_key: "2JSZtpSHM+69Hm7L3BSGIymbq0byw39iWLevKESd1EM=",
+    preshared_key: "hQS+GkbTWfEhueLM8RJ2anjC4RxzdgL4dpTIetHf6GU=",
     last_ip: %Postgrex.INET{address: {127, 0, 0, 1}}
   })
 

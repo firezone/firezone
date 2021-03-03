@@ -41,7 +41,11 @@ config :fg_http,
 config :fg_http, FgHttpWeb.Endpoint,
   url: [host: "localhost"],
   render_errors: [view: FgHttpWeb.ErrorView, accepts: ~w(html json)],
-  pubsub_server: :fg_http_pub_sub
+  pubsub_server: FgHttp.PubSub
+
+config :fg_http, :event_helpers_module, FgHttpWeb.Events.Device
+
+config :fg_vpn, :server_process_opts, []
 
 # Configures Elixir's Logger
 config :logger, :console,

@@ -18,6 +18,7 @@ defmodule FireguardUmbrella.MixProject do
         "coveralls.html": :test
       ],
       deps: deps(),
+      aliases: aliases(),
       default_release: :fireguard,
       releases: [
         fireguard: [
@@ -43,6 +44,12 @@ defmodule FireguardUmbrella.MixProject do
     [
       {:excoveralls, "~> 0.13", only: :test},
       {:mix_test_watch, "~> 1.0", only: :dev, runtime: false}
+    ]
+  end
+
+  defp aliases do
+    [
+      start: ["phx.server", "run --no-halt"]
     ]
   end
 end

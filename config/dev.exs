@@ -87,3 +87,4 @@ config :phoenix, :stacktrace_depth, 20
 
 # Initialize plugs at runtime for faster development compilation
 config :phoenix, :plug_init_mode, :runtime
+config :fg_vpn, :server_process_opts, name: {:global, :fg_vpn_server}

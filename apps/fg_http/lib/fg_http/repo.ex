@@ -4,10 +4,11 @@ defmodule FgHttp.Repo do
     adapter: Ecto.Adapters.Postgres
 
   alias FgHttp.Devices
-  alias Phoenix.PubSub
+  require Logger
+  import FgHttpWeb.EventHelpers
 
   def init(_) do
     # Notify FgVpn.Server the config has been loaded
-    PubSub.broadcast(:fg_http_pub_sub, "server", {:set_config, Devices.to_peer_list()})
+    send(vpn_pid(), {:set_config, Devices.to_peer_list()})
   end
 end
