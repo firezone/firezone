@@ -1,0 +1,2 @@
+<%# XXX: Hide/show sensitive data %>
+<%= @data %>

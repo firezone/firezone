@@ -31,4 +31,7 @@
   </table>
 </div>
 
-<%= link "New Device", to: Routes.device_path(@conn, :new) %>
+<%= link "Add Device",
+    to: Routes.device_path(@conn, :create),
+    method: :post,
+    class: "button is-primary" %>
