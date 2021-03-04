@@ -24,6 +24,8 @@ db_user=fireguard
 # DB_URL connect string, so use hex.
 db_password="$(openssl rand -hex 16)"
 
+db_key="$(openssl rand -base64 32)"
+
 # Setup DB
 sudo -i -u postgres psql -c "CREATE ROLE ${db_user} WITH LOGIN PASSWORD '${db_password}';" || true
 sudo -i -u postgres psql -c "CREATE DATABASE fireguard;" || true
@@ -73,6 +75,9 @@ WG_LISTEN_PORT=51820
 # The address for the WireGuard endpoint. Defaults to the address of the
 # default egress interface if not set.
 WG_ENDPOINT_ADDRESS=
+
+# The Base64-encoded key for encrypted database fields.
+WG_ENCRYPTION_KEY=${db_key}
 
 # SSL certificate file and key path. Self-signed certs are generated for you on
 # install, but it's highly recommended to replace these with valid certs.
