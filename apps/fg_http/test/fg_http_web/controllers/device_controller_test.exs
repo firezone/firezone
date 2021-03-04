@@ -1,15 +1,6 @@
-defmodule FgHttpWeb.DeviceControllerTestHelpers do
-  alias FgHttp.Fixtures
-
-  def create_device(_) do
-    device = Fixtures.device()
-    {:ok, device: device}
-  end
-end
-
 defmodule FgHttpWeb.DeviceControllerUnauthedTest do
   use FgHttpWeb.ConnCase, async: true
-  import FgHttpWeb.DeviceControllerTestHelpers
+  import FgHttp.TestHelpers
 
   @update_attrs %{name: "some updated name"}
 
@@ -57,7 +48,7 @@ end
 
 defmodule FgHttpWeb.DeviceControllerAuthedTest do
   use FgHttpWeb.ConnCase, async: true
-  import FgHttpWeb.DeviceControllerTestHelpers
+  import FgHttp.TestHelpers
 
   @update_attrs %{name: "some updated name"}
   @invalid_attrs %{public_key: nil}
@@ -72,9 +63,12 @@ defmodule FgHttpWeb.DeviceControllerAuthedTest do
   end
 
   describe "index" do
-    test "lists all devices", %{authed_conn: conn} do
+    setup [:create_device]
+
+    test "lists all devices", %{authed_conn: conn, device: device} do
       test_conn = get(conn, Routes.device_path(conn, :index))
       assert html_response(test_conn, 200) =~ "Listing Devices"
+      assert html_response(test_conn, 200) =~ device.name
     end
   end
 
