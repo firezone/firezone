@@ -45,6 +45,7 @@ defmodule FgHttp.MixProject do
   defp deps do
     [
       {:phoenix, "~> 1.5"},
+      {:cloak_ecto, "~> 1.1"},
       {:excoveralls, "~> 0.13", only: :test},
       {:floki, ">= 0.0.0", only: :test},
       {:argon2_elixir, "~> 2.0"},

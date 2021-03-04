@@ -6,8 +6,8 @@ defmodule FgHttp.Repo.Migrations.CreateDevices do
       add :name, :string, null: false
       add :public_key, :string, null: false
       add :allowed_ips, :string
-      add :preshared_key, :string, null: false
-      add :private_key, :string, null: false
+      add :preshared_key, :bytea, null: false
+      add :private_key, :bytea, null: false
       add :server_public_key, :string, null: false
       add :last_ip, :inet
       add :user_id, references(:users, on_delete: :delete_all), null: false

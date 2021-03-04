@@ -12,9 +12,9 @@ defmodule FgHttp.Devices.Device do
     field :name, :string
     field :public_key, :string
     field :allowed_ips, :string
-    field :preshared_key, :string
+    field :preshared_key, FgHttp.Encrypted.Binary
+    field :private_key, FgHttp.Encrypted.Binary
     field :server_public_key, :string
-    field :private_key, :string
     field :last_ip, EctoNetwork.INET
     field :last_seen_at, :utc_datetime_usec
 
