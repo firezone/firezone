@@ -9,11 +9,15 @@ defmodule FgHttp.Application do
     children =
       case Application.get_env(:fg_http, :minimal) do
         true ->
-          [FgHttp.Repo]
+          [
+            FgHttp.Repo,
+            FgHttp.Vault
+          ]
 
         _ ->
           [
             FgHttp.Repo,
+            FgHttp.Vault,
             {Phoenix.PubSub, name: FgHttp.PubSub},
             FgHttpWeb.Endpoint
           ]
