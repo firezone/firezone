@@ -6,11 +6,15 @@ defmodule FgHttp.Devices do
   import Ecto.Query, warn: false
   alias FgHttp.{Devices.Device, Repo}
 
+  def list_devices do
+    Repo.all(Device)
+  end
+
   def list_devices(user_id) do
     Repo.all(from d in Device, where: d.user_id == ^user_id)
   end
 
-  def list_devices(user_id, with_rules: true) do
+  def list_devices(user_id, :with_rules) do
     Repo.all(
       from d in Device,
         where: d.user_id == ^user_id,
@@ -20,7 +24,7 @@ defmodule FgHttp.Devices do
 
   def get_device!(id), do: Repo.get!(Device, id)
 
-  def get_device!(id, with_rules: true) do
+  def get_device!(id, :with_rules) do
     Repo.one(
       from d in Device,
         where: d.id == ^id,

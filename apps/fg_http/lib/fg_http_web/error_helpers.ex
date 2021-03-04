@@ -6,7 +6,7 @@ defmodule FgHttpWeb.ErrorHelpers do
   use Phoenix.HTML
   import Ecto.Changeset, only: [traverse_errors: 2]
 
-  def aggregated_errors(changeset) do
+  def aggregated_errors(%Ecto.Changeset{} = changeset) do
     traverse_errors(changeset, fn {msg, opts} ->
       Enum.reduce(opts, msg, fn {key, value}, acc ->
         String.replace(acc, "%{#{key}}", to_string(value))

@@ -33,8 +33,6 @@ defmodule FgVpn.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:fg_http, in_umbrella: true},
-      {:phoenix_pubsub, "~> 2.0"},
       {:credo, "~> 1.4", only: [:dev, :test], runtime: false},
       {:excoveralls, "~> 0.13", only: :test}
     ]

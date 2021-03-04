@@ -9,7 +9,7 @@ defmodule FgHttpWeb.RuleController do
   plug FgHttpWeb.Plugs.SessionLoader
 
   def index(conn, %{"device_id" => device_id}) do
-    device = Devices.get_device!(device_id, with_rules: true)
+    device = Devices.get_device!(device_id, :with_rules)
     render(conn, "index.html", device: device, rules: device.rules)
   end
 

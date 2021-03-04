@@ -44,27 +44,27 @@ defmodule FgHttp.MixProject do
   # Type `mix help deps` for examples and options.
   defp deps do
     [
-      {:phoenix, "~> 1.5.1"},
+      {:phoenix, "~> 1.5"},
       {:excoveralls, "~> 0.13", only: :test},
       {:floki, ">= 0.0.0", only: :test},
       {:argon2_elixir, "~> 2.0"},
       {:phoenix_pubsub, "~> 2.0"},
       {:phoenix_ecto, "~> 4.0"},
       {:ecto_sql, "~> 3.1"},
-      {:ecto_enum, "~> 1.4.0"},
-      {:ecto_network, "~> 1.3.0"},
-      {:inflex, "~> 2.0.0"},
+      {:ecto_enum, "~> 1.4"},
+      {:ecto_network, "~> 1.3"},
+      {:inflex, "~> 2.0"},
       {:bamboo, "~> 1.5"},
-      {:plug, "~> 1.11.0"},
+      {:plug, "~> 1.11"},
       {:postgrex, ">= 0.0.0"},
       {:phoenix_html, "~> 2.11"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
-      {:phoenix_live_view, "~> 0.13.0"},
+      {:phoenix_live_view, "~> 0.15"},
       {:gettext, "~> 0.11"},
       {:jason, "~> 1.0"},
       {:plug_cowboy, "~> 2.1"},
       {:credo, "~> 1.4", only: [:dev, :test], runtime: false},
-      {:wallaby, "~> 0.28.0", runtime: false, only: :test}
+      {:wallaby, "~> 0.28", runtime: false, only: :test}
     ]
   end
 
@@ -76,6 +76,7 @@ defmodule FgHttp.MixProject do
   # See the documentation for `Mix` for more info on aliases.
   defp aliases do
     [
+      "ecto.seed": "run priv/repo/seeds.exs",
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       test: [
