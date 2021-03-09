@@ -4,6 +4,7 @@ defmodule FgHttp.Release do
   """
 
   alias FgHttp.{Repo, Users, Users.User}
+  require Logger
 
   @app :fg_http
 
@@ -40,6 +41,11 @@ defmodule FgHttp.Release do
     end
   end
 
+  def change_password(email, password) do
+    Users.get_user!(email: email)
+    |> Users.update_user(password: password, password_confirmation: password)
+  end
+
   defp secret(length) do
     :crypto.strong_rand_bytes(length) |> Base.encode64() |> binary_part(0, length)
   end
@@ -53,11 +59,20 @@ defmodule FgHttp.Release do
   end
 
   defp log_email_password(email, password) do
-    IO.puts("=================================================================================")
-    IO.puts("FireGuard user created! Save this information because it will NOT be shown again.")
-    IO.puts("Use this to log into the Web UI at #{FgHttpWeb.Endpoint.url()}.")
-    IO.puts("Email: #{email}")
-    IO.puts("Password: #{password}")
-    IO.puts("=================================================================================")
+    Logger.info(
+      "================================================================================="
+    )
+
+    Logger.info(
+      "FireGuard user created! Save this information because it will NOT be shown again."
+    )
+
+    Logger.info("Use this to log into the Web UI at #{FgHttpWeb.Endpoint.url()}.")
+    Logger.info("Email: #{email}")
+    Logger.info("Password: #{password}")
+
+    Logger.info(
+      "================================================================================="
+    )
   end
 end
