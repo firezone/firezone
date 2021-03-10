@@ -40,6 +40,10 @@ defmodule FgHttp.Users do
     User.changeset(user, %{})
   end
 
+  def single_user? do
+    Repo.one(from u in User, select: count()) == 1
+  end
+
   # For now, assume first User is admin
   def admin do
     User |> first |> Repo.one()

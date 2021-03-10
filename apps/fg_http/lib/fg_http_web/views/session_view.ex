@@ -2,12 +2,12 @@ defmodule FgHttpWeb.SessionView do
   use FgHttpWeb, :view
   alias FgHttp.Users
 
-  # Don't allow user to enter email if signups are disabled.
-  def email_field_opts do
-    if signups_disabled?() do
-      [class: "input", readonly: true, value: Users.admin_email()]
+  # Guess email if signups are disabled and only one user exists
+  def email_field_opts(opts \\ []) when is_list(opts) do
+    if Users.single_user?() and signups_disabled?() do
+      opts ++ [value: Users.admin_email()]
     else
-      [class: "input"]
+      opts
     end
   end
 
