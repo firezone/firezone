@@ -5,40 +5,11 @@
 import Config
 
 # Required environment variables
-database_url =
-  System.get_env("DATABASE_URL") ||
-    raise """
-    Environment variable DATABASE_URL is missing.
-    For example: ecto://USER:PASS@HOST/DATABASE
-    """
-
-secret_key_base =
-  System.get_env("SECRET_KEY_BASE") ||
-    raise """
-    Environment variable SECRET_KEY_BASE is missing.
-    Please generate with "openssl rand -base64 48" and add to
-    /opt/fireguard/config.env
-    """
-
-live_view_signing_salt =
-  System.get_env("LIVE_VIEW_SIGNING_SALT") ||
-    raise """
-    Environment variable LIVE_VIEW_SIGNING_SALT is missing.
-    Please generate with "openssl rand -base64 24" and add to
-    /opt/fireguard/config.env
-    """
-
-ssl_cert_file =
-  System.get_env("SSL_CERT_FILE") ||
-    raise """
-    Environment variable SSL_CERT_FILE is missing. FireGuard requires SSL.
-    """
-
-ssl_key_file =
-  System.get_env("SSL_KEY_FILE") ||
-    raise """
-    Environment variable SSL_KEY_FILE is missing. FireGuard requires SSL.
-    """
+database_url = System.fetch_env!("DATABASE_URL")
+secret_key_base = System.fetch_env!("SECRET_KEY_BASE")
+live_view_signing_salt = System.fetch_env!("LIVE_VIEW_SIGNING_SALT")
+ssl_cert_file = System.fetch_env!("SSL_CERT_FILE")
+ssl_key_file = System.fetch_env!("SSL_KEY_FILE")
 
 disable_signup =
   case System.get_env("DISABLE_SIGNUP") do
@@ -57,11 +28,11 @@ default_egress_address =
   |> String.trim()
 
 # Optional environment variables
-pool_size = String.to_integer(System.get_env("POOL_SIZE") || "10")
-https_listen_port = String.to_integer(System.get_env("HTTPS_LISTEN_PORT") || "8800")
-wg_listen_port = System.get_env("WG_LISTEN_PORT" || "51820")
-wg_endpoint_address = System.get_env("WG_ENDPOINT_ADDRESS") || default_egress_address
-url_host = System.get_env("URL_HOST") || "localhost"
+pool_size = String.to_integer(System.get_env("POOL_SIZE", "10"))
+https_listen_port = String.to_integer(System.get_env("HTTPS_LISTEN_PORT", "8800"))
+wg_listen_port = System.get_env("WG_LISTEN_PORT", "51820")
+wg_endpoint_address = System.get_env("WG_ENDPOINT_ADDRESS", default_egress_address)
+url_host = System.get_env("URL_HOST", "localhost")
 
 config :fg_http,
   disable_signup: disable_signup
