@@ -60,6 +60,9 @@ defmodule FgHttpWeb.SessionControllerTest do
       assert redirected_to(test_conn) == Routes.device_path(test_conn, :index)
       assert get_flash(test_conn, :info) == "Signed in successfully."
       assert get_session(test_conn, :user_id) == user.id
+
+      # Ensure last_signed_in_at is within 3 seconds
+      assert DateTime.diff(DateTime.utc_now(), user.last_signed_in_at) <= 3
     end
 
     test "displays error if credentials are invalid", %{unauthed_conn: conn} do

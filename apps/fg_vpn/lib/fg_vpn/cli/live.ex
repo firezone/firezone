@@ -88,7 +88,10 @@ defmodule FgVpn.CLI.Live do
         result
 
       {error, _} ->
-        raise "Error executing command: #{error}. FireGuard cannot recover from this error."
+        raise """
+        Error executing command #{cmd} with error #{error}.
+        FireGuard cannot recover from this error.
+        """
     end
   end
 

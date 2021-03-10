@@ -23,6 +23,8 @@ You'll need the following software installed to develop for FireGuard:
 - [VirtualBox](virtualbox.org)
 - [asdf VM](asdf-vm.com)
 - A recent version of [PostgreSQL](postgresql.org) server installed and running
+- [dotenv](https://github.com/ohmyzsh/ohmyzsh/tree/master/plugins/dotenv)
+  functionality for your shell
 
 ## Project Setup
 
