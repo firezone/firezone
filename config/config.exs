@@ -34,7 +34,8 @@ config :fg_vpn,
 
 # This will be changed per-env by ENV vars
 config :fg_http,
-  vpn_endpoint: "127.0.0.1:51820"
+  vpn_endpoint: "127.0.0.1:51820",
+  admin_user_email: "fireguard@localhost"
 
 # Configures the endpoint
 # These will be overridden at runtime in production by config/releases.exs
@@ -55,3 +56,26 @@ config :logger, :console,
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{Mix.env()}.exs"
+
+config :fg_http, FgHttp.Vault,
+  ciphers: [
+    default: {
+      Cloak.Ciphers.AES.GCM,
+      # In AES.GCM, it is important to specify 12-byte IV length for
+      # interoperability with other encryption software. See this GitHub
+      # issue for more details:
+      # https://github.com/danielberkompas/cloak/issues/93
+      #
+      # In Cloak 2.0, this will be the default iv length for AES.GCM.
+      tag: "AES.GCM.V1",
+      key: Base.decode64!("XXJ/NGevpvkG9219RYsz21zZWR7CZ//CqA0ARPIBqys="),
+      iv_length: 12
+    }
+  ]
+
+config :fg_http,
+  disable_signup:
+    (case System.get_env("DISABLE_SIGNUP") do
+       d when d in ["1", "yes"] -> true
+       _ -> false
+     end)

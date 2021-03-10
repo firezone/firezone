@@ -71,13 +71,6 @@ config :fg_http, FgHttpWeb.Endpoint,
     ]
   ]
 
-config :fg_http,
-  disable_signup:
-    (case System.get_env("DISABLE_SIGNUP") do
-       d when d in ["1", "yes"] -> true
-       _ -> false
-     end)
-
 # Do not include metadata nor timestamps in development logs
 config :logger, :console, format: "[$level] $message\n"
 
@@ -88,19 +81,3 @@ config :phoenix, :stacktrace_depth, 20
 # Initialize plugs at runtime for faster development compilation
 config :phoenix, :plug_init_mode, :runtime
 config :fg_vpn, :server_process_opts, name: {:global, :fg_vpn_server}
-
-config :fg_http, FgHttp.Vault,
-  ciphers: [
-    default: {
-      Cloak.Ciphers.AES.GCM,
-      # In AES.GCM, it is important to specify 12-byte IV length for
-      # interoperability with other encryption software. See this GitHub
-      # issue for more details:
-      # https://github.com/danielberkompas/cloak/issues/93
-      #
-      # In Cloak 2.0, this will be the default iv length for AES.GCM.
-      tag: "AES.GCM.V1",
-      key: Base.decode64!("XXJ/NGevpvkG9219RYsz21zZWR7CZ//CqA0ARPIBqys="),
-      iv_length: 12
-    }
-  ]
