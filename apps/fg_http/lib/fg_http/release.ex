@@ -28,16 +28,15 @@ defmodule FgHttp.Release do
   # App should be loaded at this point; call with `rpc` not `eval`
   def create_admin_user do
     unless Repo.exists?(User) do
-      email = "admin@fireguard.local"
       password = secret(12)
 
       Users.create_user(
-        email: email,
+        email: email(),
         password: password,
         password_confirmation: password
       )
 
-      log_email_password(email, password)
+      log_email_password(email(), password)
     end
   end
 
@@ -52,6 +51,10 @@ defmodule FgHttp.Release do
 
   defp repos do
     Application.fetch_env!(@app, :ecto_repos)
+  end
+
+  defp email do
+    Application.fetch_env!(@app, :admin_user_email)
   end
 
   defp load_app do

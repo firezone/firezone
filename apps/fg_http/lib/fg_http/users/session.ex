@@ -5,7 +5,6 @@ defmodule FgHttp.Users.Session do
 
   use Ecto.Schema
   import Ecto.Changeset
-
   alias FgHttp.{Users, Users.User}
 
   schema "users" do
