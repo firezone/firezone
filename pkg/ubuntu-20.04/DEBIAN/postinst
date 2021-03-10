@@ -77,7 +77,7 @@ WG_LISTEN_PORT=51820
 WG_ENDPOINT_ADDRESS=
 
 # The Base64-encoded key for encrypted database fields.
-WG_ENCRYPTION_KEY=${db_key}
+DB_ENCRYPTION_KEY=${db_key}
 
 # SSL certificate file and key path. Self-signed certs are generated for you on
 # install, but it's highly recommended to replace these with valid certs.
@@ -90,9 +90,10 @@ SSL_KEY_FILE=/opt/fireguard/ssl/key.pem
 
 # Host to use for generating links back to the application, such as in
 # outbound emails. Defaults to "localhost".
-URL_HOST=${hostname}
+# URL_HOST=${hostname}
 
-# For public-facing sites, it's recommended to leave signups disabled.
+# For security, it's recommended to leave signups disabled and instead create
+# users via the CLI.
 DISABLE_SIGNUP=yes
 EOT
 

@@ -63,7 +63,8 @@ wg_listen_port = System.get_env("WG_LISTEN_PORT" || "51820")
 wg_endpoint_address = System.get_env("WG_ENDPOINT_ADDRESS") || default_egress_address
 url_host = System.get_env("URL_HOST") || "localhost"
 
-config :fg_http, disable_signup: disable_signup
+config :fg_http,
+  disable_signup: disable_signup
 
 config :fg_http, FgHttp.Repo,
   # ssl: true,
@@ -111,7 +112,7 @@ config :fg_http, FgHttp.Vault,
       #
       # In Cloak 2.0, this will be the default iv length for AES.GCM.
       tag: "AES.GCM.V1",
-      key: Base.decode64!(System.fetch_env!("WG_ENCRYPTION_KEY")),
+      key: Base.decode64!(System.fetch_env!("DB_ENCRYPTION_KEY")),
       iv_length: 12
     }
   ]

@@ -39,4 +39,19 @@ defmodule FgHttp.Users do
   def change_user(%User{} = user) do
     User.changeset(user, %{})
   end
+
+  # For now, assume first User is admin
+  def admin do
+    User |> first |> Repo.one()
+  end
+
+  def admin_email do
+    case admin() do
+      %User{} = user ->
+        user.email
+
+      _ ->
+        nil
+    end
+  end
 end
