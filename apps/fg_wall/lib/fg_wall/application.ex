@@ -6,7 +6,9 @@ defmodule FgWall.Application do
   use Application
 
   def start(_type, _args) do
-    children = []
+    children = [
+      FgWall.Server
+    ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options

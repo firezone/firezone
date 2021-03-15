@@ -6,7 +6,7 @@ defmodule FgHttp.Rules do
   import Ecto.Query, warn: false
   alias FgHttp.Repo
 
-  alias FgHttp.Rules.Rule
+  alias FgHttp.{Devices.Device, Rules.Rule}
 
   def get_rule!(id), do: Repo.get!(Rule, id)
 
@@ -28,5 +28,24 @@ defmodule FgHttp.Rules do
 
   def change_rule(%Rule{} = rule) do
     Rule.changeset(rule, %{})
+  end
+
+  def to_iptables do
+    query =
+      from d in Device,
+        join: r in Rule,
+        on: r.device_id == d.id,
+        where: r.enabled == true,
+        # :block enum is indexed 0
+        order_by: r.action,
+        select: {
+          # Need to select both ipv4 and ipv6 since we don't know which the
+          # corresponding rule is.
+          {d.interface_address4, d.interface_address6},
+          r.destination,
+          r.action
+        }
+
+    Repo.all(query)
   end
 end

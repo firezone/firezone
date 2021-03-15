@@ -32,10 +32,10 @@ defmodule FgHttpWeb.Router do
     resources "/users", UserController, only: [:new, :create]
 
     resources "/devices", DeviceController, except: [:new] do
-      resources "/rules", RuleController, only: [:new, :index, :create]
+      resources "/rules", RuleController, only: [:index, :create]
     end
 
-    resources "/rules", RuleController, only: [:show, :update, :delete, :edit]
+    resources "/rules", RuleController, only: [:delete]
 
     resources "/session", SessionController, singleton: true, only: [:delete]
     resources "/sessions", SessionController, only: [:new, :create]

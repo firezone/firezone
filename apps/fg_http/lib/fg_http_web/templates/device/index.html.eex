@@ -7,7 +7,7 @@
         <th>Name</th>
         <th>Rules</th>
         <th>Public key</th>
-        <th>Last IP</th>
+        <th>Remote IP</th>
         <th></th>
       </tr>
     </thead>
@@ -17,7 +17,7 @@
         <td><%= device.name %></td>
         <td><%= link rules_title(device), to: Routes.device_rule_path(@conn, :index, device) %></td>
         <td><%= device.public_key %></td>
-        <td><%= device.last_ip || "Never connected" %></td>
+        <td><%= device.remote_ip || "Never connected" %></td>
         <td class="has-text-right">
           <span><%= link "Show", to: Routes.device_path(@conn, :show, device) %></span>
           |

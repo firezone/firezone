@@ -22,8 +22,7 @@ defmodule FgVpn.ConfigTest do
               allowed_ips: "test-allowed-ips",
               preshared_key: "test-preshared-key"
             }
-          ]),
-        uncommitted_peers: MapSet.new(["uncommitted-pubkey"])
+          ])
       }
 
       assert Config.render(config) == @populated_config

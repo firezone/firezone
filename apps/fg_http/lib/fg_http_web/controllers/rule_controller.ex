@@ -13,19 +13,15 @@ defmodule FgHttpWeb.RuleController do
     render(conn, "index.html", device: device, rules: device.rules)
   end
 
-  def new(conn, %{"device_id" => device_id}) do
-    device = Devices.get_device!(device_id)
-
-    changeset = Rules.change_rule(%Rule{device_id: device_id})
-    render(conn, "new.html", changeset: changeset, device: device)
-  end
-
   def create(conn, %{"device_id" => device_id, "rule" => rule_params}) do
     # XXX RBAC
     all_params = Map.merge(rule_params, %{"device_id" => device_id})
 
     case Rules.create_rule(all_params) do
       {:ok, rule} ->
+        # XXX: Create in after-commit
+        :rule_added = add_rule_to_firewall(rule)
+
         conn
         |> put_flash(:info, "Rule created successfully.")
         |> redirect(to: Routes.device_rule_path(conn, :index, rule.device_id))
@@ -36,41 +32,23 @@ defmodule FgHttpWeb.RuleController do
     end
   end
 
-  def show(conn, %{"id" => id}) do
-    rule = Rules.get_rule!(id)
-    render(conn, "show.html", rule: rule)
-  end
-
-  def edit(conn, %{"id" => id}) do
-    rule = Rules.get_rule!(id)
-    device = Devices.get_device!(rule.device_id)
-    changeset = Rules.change_rule(rule)
-
-    render(conn, "edit.html", rule: rule, device: device, changeset: changeset)
-  end
-
-  def update(conn, %{"id" => id, "rule" => rule_params}) do
-    rule = Rules.get_rule!(id)
-    device = Devices.get_device!(rule.device_id)
-
-    case Rules.update_rule(rule, rule_params) do
-      {:ok, rule} ->
-        conn
-        |> put_flash(:info, "Rule updated successfully.")
-        |> redirect(to: Routes.device_rule_path(conn, :index, rule.device_id))
-
-      {:error, changeset} ->
-        render(conn, "edit.html", rule: rule, device: device, changeset: changeset)
-    end
-  end
-
   def delete(conn, %{"id" => id}) do
     rule = Rules.get_rule!(id)
     device_id = rule.device_id
     {:ok, _rule} = Rules.delete_rule(rule)
 
+    # XXX: Delete in after-commit
+    :rule_deleted = delete_rule_from_firewall(rule)
+
     conn
     |> put_flash(:info, "Rule deleted successfully.")
     |> redirect(to: Routes.device_rule_path(conn, :index, device_id))
+  end
+
+  defp add_rule_to_firewall(rule) do
+    GenServer.call()
+  end
+
+  defp delete_rule_from_firewall(rule) do
   end
 end

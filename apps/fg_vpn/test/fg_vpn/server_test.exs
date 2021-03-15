@@ -26,21 +26,6 @@ defmodule FgVpn.ServerTest do
       assert [] = MapSet.to_list(:sys.get_state(test_pid).peers)
     end
 
-    @tag stubbed_config: @empty
-    test "writes peers to config when device is verified", %{test_pid: test_pid} do
-      send(test_pid, {:create_device, self()})
-
-      assert_receive {:device_created, _, _, _, _}
-      [pubkey | _tail] = MapSet.to_list(:sys.get_state(test_pid).uncommitted_peers)
-
-      send(test_pid, {:commit_peer, %{public_key: pubkey}})
-
-      # XXX: Avoid sleeping
-      Process.sleep(100)
-
-      assert MapSet.to_list(:sys.get_state(test_pid).peers) == [%Peer{public_key: pubkey}]
-    end
-
     @tag stubbed_config: @single_peer
     test "removes peers from config when removed", %{test_pid: test_pid} do
       send(test_pid, {:remove_peer, "test-pubkey"})

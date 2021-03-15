@@ -24,6 +24,7 @@ defmodule FgHttp.Fixtures do
       attrs
       |> Enum.into(%{user_id: user().id})
       |> Enum.into(%{
+        interface_address: "10.0.0.1",
         public_key: "test-pubkey",
         name: "factory",
         private_key: "test-privkey",

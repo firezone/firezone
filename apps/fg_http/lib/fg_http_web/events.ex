@@ -4,25 +4,29 @@ defmodule FgHttpWeb.Events do
   """
 
   import FgHttpWeb.EventHelpers
+  alias FgHttp.Devices
 
-  def create_device_sync do
-    case vpn_pid() do
-      {:ok, pid} ->
-        send(pid, {:create_device, self()})
+  def create_device do
+    GenServer.call(vpn_pid(), {:create_device})
+  end
 
-        receive do
-          {:device_created, privkey, pubkey, server_pubkey, psk} ->
-            {:ok,
-             %{
-               private_key: privkey,
-               public_key: pubkey,
-               server_public_key: server_pubkey,
-               preshared_key: psk
-             }}
-        end
+  def delete_device(device_pubkey) do
+    GenServer.call(vpn_pid(), {:delete_device, device_pubkey})
+  end
 
-      {:error, msg} ->
-        {:error, msg}
-    end
+  def add_rule(rule) do
+    GenServer.call(wall_pid(), {:add_rule, Rule.iptables_spec(rule)})
+  end
+
+  def delete_rule(rule) do
+    GenServer.call(wall_pid(), {:delete_rule, Rule.iptables_spec(rule)})
+  end
+
+  def set_config do
+    GenServer.call(vpn_pid(), {:set_config, Devices.to_peer_list()})
+  end
+
+  def set_rules do
+    GenServer.call(wall_pid(), {:set_rules, Rules.to_iptables()})
   end
 end
