@@ -8,7 +8,7 @@ defmodule FgHttpWeb.MockEvents do
   """
 
   def create_device do
-    {:device_created,
+    {:ok,
      %{
        private_key: "privkey",
        public_key: "pubkey",
@@ -18,14 +18,22 @@ defmodule FgHttpWeb.MockEvents do
   end
 
   def delete_device(pubkey) do
-    {:device_deleted, pubkey}
+    {:ok, pubkey}
   end
 
   def add_rule(_rule) do
-    :rule_added
+    :ok
   end
 
   def delete_rule(_rule) do
-    :rule_deleted
+    :ok
+  end
+
+  def set_config do
+    :ok
+  end
+
+  def set_rules do
+    :ok
   end
 end

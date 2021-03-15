@@ -10,7 +10,8 @@ defmodule FgHttp.Repo.Migrations.CreateDevices do
       add :private_key, :bytea, null: false
       add :server_public_key, :string, null: false
       add :remote_ip, :inet
-      add :interface_address, :inet, null: false
+      add :interface_address4, :inet
+      add :interface_address6, :inet
       add :last_seen_at, :utc_datetime_usec
       add :user_id, references(:users, on_delete: :delete_all), null: false
 

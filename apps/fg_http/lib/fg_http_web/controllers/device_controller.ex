@@ -17,7 +17,7 @@ defmodule FgHttpWeb.DeviceController do
 
   def create(conn, _params) do
     # XXX: Remove device from WireGuard if create isn't successful
-    {:device_created, device_attrs} = event_module().create_device()
+    {:ok, device_attrs} = @events_module.create_device()
 
     attributes =
       Map.merge(%{user_id: conn.assigns.session.id, name: Devices.rand_name()}, device_attrs)
@@ -36,7 +36,7 @@ defmodule FgHttpWeb.DeviceController do
   end
 
   def show(conn, %{"id" => id}) do
-    device = Devices.get_device!(id)
+    device = Devices.get_device!(id, :with_rules)
     render(conn, "show.html", device: device)
   end
 
@@ -65,7 +65,7 @@ defmodule FgHttpWeb.DeviceController do
 
     case Devices.delete_device(device) do
       {:ok, _deleted_device} ->
-        {:device_deleted, _deleted_pubkey} = event_module().delete_device(device.public_key)
+        {:ok, _deleted_pubkey} = @events_module.delete_device(device.public_key)
 
         conn
         |> put_flash(:info, "Device deleted successfully.")
@@ -76,9 +76,5 @@ defmodule FgHttpWeb.DeviceController do
         |> put_flash(:error, "Error deleting device: #{msg}")
         |> redirect(to: Routes.device_path(conn, :index))
     end
-  end
-
-  defp event_module do
-    Application.get_env(:fg_http, :event_helpers_module)
   end
 end

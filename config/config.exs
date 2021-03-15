@@ -28,7 +28,7 @@ config :fg_http,
   ecto_repos: [FgHttp.Repo],
   vpn_endpoint: "127.0.0.1:51820",
   admin_user_email: "fireguard@localhost",
-  event_helpers_module: FgHttpWeb.Events.Device,
+  events_module: FgHttpWeb.Events,
   disable_signup:
     (case System.get_env("DISABLE_SIGNUP") do
        d when d in ["1", "yes"] -> true

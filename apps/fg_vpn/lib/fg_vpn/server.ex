@@ -30,7 +30,7 @@ defmodule FgVpn.Server do
   end
 
   @impl true
-  def handle_call({:create_device}, config) do
+  def handle_call(:create_device, _from, config) do
     server_pubkey = Config.public_key()
     {privkey, pubkey} = cli().genkey()
     psk = cli().genpsk()
@@ -42,20 +42,20 @@ defmodule FgVpn.Server do
         MapSet.put(config.peers, pubkey)
       )
 
-    {:reply, {:device_created, privkey, pubkey, server_pubkey, psk}, new_config}
+    {:reply, {:ok, privkey, pubkey, server_pubkey, psk}, new_config}
   end
 
   @impl true
-  def handle_call({:delete_device, pubkey}, config) do
+  def handle_call({:delete_device, pubkey}, _from, config) do
     new_peers = MapSet.delete(config.peers, %Peer{public_key: pubkey})
     new_config = %{config | peers: new_peers}
     apply(new_config)
 
-    {:reply, {:device_deleted, pubkey}, new_config}
+    {:reply, {:ok, pubkey}, new_config}
   end
 
   @impl true
-  def handle_call({:set_config, new_config}, _config) do
+  def handle_call({:set_config, new_config}, _from, _config) do
     apply(new_config)
     {:reply, :ok, new_config}
   end

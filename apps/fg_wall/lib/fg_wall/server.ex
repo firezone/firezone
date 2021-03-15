@@ -23,18 +23,21 @@ defmodule FgWall.Server do
     {:ok, rules}
   end
 
-  def handle_call({:add_rule, rule_spec}, rules) do
+  @impl true
+  def handle_call({:add_rule, rule_spec}, _from, rules) do
     cli().add_rule(rule_spec)
-    {:reply, :rule_added, rules}
+    {:reply, :ok, rules}
   end
 
-  def handle_call({:delete_rule, rule_spec}, rules) do
+  @impl true
+  def handle_call({:delete_rule, rule_spec}, _from, rules) do
     cli().delete_rule(rule_spec)
-    {:reply, :rule_deleted, rules}
+    {:reply, :ok, rules}
   end
 
-  def handle_call({:set_rules, fg_http_rules}, rules) do
+  @impl true
+  def handle_call({:set_rules, fg_http_rules}, _from, rules) do
     cli().restore(fg_http_rules)
-    {:reply, :rules_set, rules}
+    {:reply, :ok, rules}
   end
 end

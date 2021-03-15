@@ -8,4 +8,9 @@ defmodule FgHttp.TestHelpers do
     device = Fixtures.device()
     {:ok, device: device}
   end
+
+  def create_rule(_) do
+    rule = Fixtures.rule()
+    {:ok, rule: rule}
+  end
 end

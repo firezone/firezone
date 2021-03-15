@@ -115,7 +115,7 @@ defmodule FgHttpWeb.DeviceControllerAuthedTest do
       assert redirected_to(test_conn) == Routes.device_path(conn, :index)
 
       assert_error_sent 404, fn ->
-        get(conn, Routes.device_path(conn, :show, device))
+        get(test_conn, Routes.device_path(test_conn, :show, device))
       end
     end
   end

@@ -16,7 +16,8 @@ defmodule FgHttp.Devices.Device do
     field :private_key, FgHttp.Encrypted.Binary
     field :server_public_key, :string
     field :remote_ip, EctoNetwork.INET
-    field :interface_address, EctoNetwork.INET
+    field :interface_address4, EctoNetwork.INET
+    field :interface_address6, EctoNetwork.INET
     field :last_seen_at, :utc_datetime_usec
 
     has_many :rules, Rule
@@ -29,7 +30,8 @@ defmodule FgHttp.Devices.Device do
     device
     |> cast(attrs, [
       :remote_ip,
-      :interface_address,
+      :interface_address4,
+      :interface_address6,
       :server_public_key,
       :private_key,
       :preshared_key,
@@ -39,7 +41,6 @@ defmodule FgHttp.Devices.Device do
     ])
     |> validate_required([
       :user_id,
-      :interface_address,
       :name,
       :public_key,
       :server_public_key,

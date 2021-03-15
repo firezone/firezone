@@ -32,7 +32,7 @@ defmodule FgHttpWeb.Router do
     resources "/users", UserController, only: [:new, :create]
 
     resources "/devices", DeviceController, except: [:new] do
-      resources "/rules", RuleController, only: [:index, :create]
+      resources "/rules", RuleController, only: [:create]
     end
 
     resources "/rules", RuleController, only: [:delete]
@@ -42,9 +42,4 @@ defmodule FgHttpWeb.Router do
 
     get "/", SessionController, :new
   end
-
-  # Other scopes may use custom stacks.
-  # scope "/api", FgHttpWeb do
-  #   pipe_through :api
-  # end
 end
