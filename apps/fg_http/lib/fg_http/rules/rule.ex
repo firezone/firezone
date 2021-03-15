@@ -5,12 +5,13 @@ defmodule FgHttp.Rules.Rule do
 
   use Ecto.Schema
   import Ecto.Changeset
+  import FgHttp.Util.FgNet
 
   alias FgHttp.{Devices, Devices.Device}
 
   schema "rules" do
     field :destination, EctoNetwork.INET
-    field :action, RuleActionEnum, default: :block
+    field :action, RuleActionEnum, default: "deny"
     field :enabled, :boolean, default: true
 
     belongs_to :device, Device
@@ -33,25 +34,12 @@ defmodule FgHttp.Rules.Rule do
     device = Devices.get_device!(rule.device_id)
 
     source =
-      if ipv4?(rule) do
-        device.interface_address4
-      else
-        device.interface_address6
+      case ip_type(rule.destination) do
+        "IPv4" -> device.interface_address4
+        "IPv6" -> device.interface_address6
+        _ -> nil
       end
 
     {source, rule.destination, rule.action}
-  end
-
-  defp ipv4?(rule) do
-    case parse_ipv4(rule) do
-      {:ok, _} -> true
-      {:error, _} -> false
-    end
-  end
-
-  defp parse_ipv4(rule) do
-    rule.destination
-    |> String.to_charlist()
-    |> :inet.parse_ipv4_address()
   end
 end

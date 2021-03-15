@@ -25,6 +25,8 @@ defmodule FgHttpWeb do
       import FgHttpWeb.Gettext
       import Phoenix.LiveView.Controller
       alias FgHttpWeb.Router.Helpers, as: Routes
+
+      @events_module Application.compile_env(:fg_http, :events_module)
     end
   end
 

@@ -3,7 +3,6 @@ defmodule FgHttp.Repo do
     otp_app: :fg_http,
     adapter: Ecto.Adapters.Postgres
 
-  alias FgHttp.Devices
   require Logger
   import FgHttpWeb.Events
 

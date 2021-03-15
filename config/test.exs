@@ -37,7 +37,7 @@ config :fg_http, FgHttpWeb.Endpoint,
 
 config :fg_http, :sql_sandbox, true
 config :wallaby, otp_app: :fg_http
-config :fg_http, :event_helpers_module, FgHttpWeb.MockEvents
+config :fg_http, :events_module, FgHttpWeb.MockEvents
 
 # Print only warnings and errors during test
 config :logger, level: :warn

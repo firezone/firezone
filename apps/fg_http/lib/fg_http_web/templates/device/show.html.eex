@@ -18,8 +18,9 @@
     <dd><%= render_common("obfuscated.html", data: @device.private_key) %></dd>
   </dl>
 
+  <h3>Rules</h3>
   <p>
-    <%= link "Show Rules for This Device", to: Routes.device_rule_path(@conn, :index, @device) %>
+    <%= @device.rules %>
   </p>
 
   <hr>

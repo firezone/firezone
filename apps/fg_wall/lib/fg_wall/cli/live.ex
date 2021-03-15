@@ -2,7 +2,7 @@ defmodule FgWall.CLI.Live do
   @moduledoc """
   A low-level module for interacting with the iptables CLI.
 
-  Rules operate on the iptables forward chain to block outgoing packets to
+  Rules operate on the iptables forward chain to deny outgoing packets to
   specified IP addresses, ports, and protocols from FireGuard device IPs.
 
   Note that iptables chains and rules are mutually exclusive between IPv4 and IPv6.
@@ -33,7 +33,7 @@ defmodule FgWall.CLI.Live do
   @doc """
   Adds iptables rule.
   """
-  def add_rule({4, s, d, "block"}) do
+  def add_rule({4, s, d, "deny"}) do
     exec!("iptables -A fireguard -s #{s} -d #{d} -j DROP")
   end
 
@@ -41,7 +41,7 @@ defmodule FgWall.CLI.Live do
     exec!("iptables -A fireguard -s #{s} -d #{d} -j ACCEPT")
   end
 
-  def add_rule({6, s, d, "block"}) do
+  def add_rule({6, s, d, "deny"}) do
     exec!("iptables6 -A fireguard -s #{s} -d #{d} -j DROP")
   end
 
@@ -52,7 +52,7 @@ defmodule FgWall.CLI.Live do
   @doc """
   Deletes iptables rule.
   """
-  def delete_rule({4, s, d, "block"}) do
+  def delete_rule({4, s, d, "deny"}) do
     exec!("iptables -D fireguard -s #{s} -d #{d} -j DROP")
   end
 
@@ -60,7 +60,7 @@ defmodule FgWall.CLI.Live do
     exec!("iptables -D fireguard -s #{s} -d #{d} -j ACCEPT")
   end
 
-  def delete_rule({6, s, d, "block"}) do
+  def delete_rule({6, s, d, "deny"}) do
     exec!("iptables6 -D fireguard -s #{s} -d #{d} -j DROP")
   end
 

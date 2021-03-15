@@ -3,7 +3,7 @@ defmodule FgCommon.CLI do
   Handles low-level CLI facilities.
   """
 
-  defp bash(cmd) do
+  def bash(cmd) do
     System.cmd("bash", ["-c", cmd])
   end
 
