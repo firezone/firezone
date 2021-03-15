@@ -1,6 +1,6 @@
 defmodule FgVpn.Config do
   @moduledoc """
-  Functions for managing the FireGuard configuration.
+  Functions for managing the WireGuard configuration.
   """
 
   @default_interface_ip "172.16.59.1"
@@ -9,8 +9,7 @@ defmodule FgVpn.Config do
 
   defstruct interface_ip: @default_interface_ip,
             listen_port: 51_820,
-            peers: MapSet.new([]),
-            uncommitted_peers: MapSet.new([])
+            peers: MapSet.new([])
 
   def render(config) do
     "private-key #{private_key()} listen-port #{config.listen_port} " <>

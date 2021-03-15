@@ -16,32 +16,21 @@ defmodule FgHttpWeb.DeviceController do
   end
 
   def create(conn, _params) do
-    case event_module().create_device_sync() do
-      {:ok, device_attrs} ->
-        attributes =
-          Map.merge(
-            %{
-              user_id: conn.assigns.session.id,
-              name: "Device #{DateTime.utc_now() |> DateTime.to_unix(:microsecond)}"
-            },
-            device_attrs
-          )
+    # XXX: Remove device from WireGuard if create isn't successful
+    {:device_created, device_attrs} = event_module().create_device()
 
-        case Devices.create_device(attributes) do
-          {:ok, device} ->
-            redirect(conn, to: Routes.device_path(conn, :show, device))
+    attributes =
+      Map.merge(%{user_id: conn.assigns.session.id, name: Devices.rand_name()}, device_attrs)
 
-          {:error, %Ecto.Changeset{} = changeset} ->
-            msg = ErrorHelpers.aggregated_errors(changeset)
+    case Devices.create_device(attributes) do
+      {:ok, device} ->
+        redirect(conn, to: Routes.device_path(conn, :show, device))
 
-            conn
-            |> put_flash(:error, "Error creating device. #{msg}")
-            |> redirect(to: Routes.device_path(conn, :index))
-        end
+      {:error, %Ecto.Changeset{} = changeset} ->
+        msg = ErrorHelpers.aggregated_errors(changeset)
 
-      {:error, msg} ->
         conn
-        |> put_flash(:error, "Error creating device: #{msg}")
+        |> put_flash(:error, "Error creating device. #{msg}")
         |> redirect(to: Routes.device_path(conn, :index))
     end
   end
@@ -73,11 +62,20 @@ defmodule FgHttpWeb.DeviceController do
 
   def delete(conn, %{"id" => id}) do
     device = Devices.get_device!(id)
-    {:ok, _device} = Devices.delete_device(device)
 
-    conn
-    |> put_flash(:info, "Device deleted successfully.")
-    |> redirect(to: Routes.device_path(conn, :index))
+    case Devices.delete_device(device) do
+      {:ok, _deleted_device} ->
+        {:device_deleted, _deleted_pubkey} = event_module().delete_device(device.public_key)
+
+        conn
+        |> put_flash(:info, "Device deleted successfully.")
+        |> redirect(to: Routes.device_path(conn, :index))
+
+      {:error, msg} ->
+        conn
+        |> put_flash(:error, "Error deleting device: #{msg}")
+        |> redirect(to: Routes.device_path(conn, :index))
+    end
   end
 
   defp event_module do

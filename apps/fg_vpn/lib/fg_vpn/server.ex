@@ -30,48 +30,34 @@ defmodule FgVpn.Server do
   end
 
   @impl true
-  def handle_info({:create_device, sender}, config) do
+  def handle_call({:create_device}, config) do
     server_pubkey = Config.public_key()
     {privkey, pubkey} = cli().genkey()
     psk = cli().genpsk()
-    uncommitted_peers = MapSet.put(config.uncommitted_peers, pubkey)
-    new_config = Map.put(config, :uncommitted_peers, uncommitted_peers)
 
-    send(sender, {:device_created, privkey, pubkey, server_pubkey, psk})
-    {:noreply, new_config}
-  end
-
-  @impl true
-  def handle_info({:commit_peer, %{} = attrs}, config) do
     new_config =
-      if MapSet.member?(config.uncommitted_peers, attrs[:public_key]) do
-        new_peer = Map.merge(%Peer{}, attrs)
-        new_peers = MapSet.put(config.peers, new_peer)
-        new_uncommitted_peers = MapSet.delete(config.uncommitted_peers, attrs[:public_key])
+      Map.put(
+        config,
+        :peers,
+        MapSet.put(config.peers, pubkey)
+      )
 
-        config
-        |> Map.put(:uncommitted_peers, new_uncommitted_peers)
-        |> Map.put(:peers, new_peers)
-      else
-        config
-      end
-
-    apply(new_config)
-
-    {:noreply, new_config}
+    {:reply, {:device_created, privkey, pubkey, server_pubkey, psk}, new_config}
   end
 
   @impl true
-  def handle_info({:remove_peer, pubkey}, config) do
+  def handle_call({:delete_device, pubkey}, config) do
     new_peers = MapSet.delete(config.peers, %Peer{public_key: pubkey})
     new_config = %{config | peers: new_peers}
     apply(new_config)
-    {:noreply, new_config}
+
+    {:reply, {:device_deleted, pubkey}, new_config}
   end
 
   @impl true
-  def handle_cast({:set_config, new_config}, _config) do
-    {:noreply, new_config}
+  def handle_call({:set_config, new_config}, _config) do
+    apply(new_config)
+    {:reply, :ok, new_config}
   end
 
   @doc """

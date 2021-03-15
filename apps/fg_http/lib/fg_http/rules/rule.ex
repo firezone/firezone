@@ -6,15 +6,12 @@ defmodule FgHttp.Rules.Rule do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias FgHttp.{Devices.Device}
+  alias FgHttp.{Devices, Devices.Device}
 
   schema "rules" do
     field :destination, EctoNetwork.INET
-    field :action, RuleActionEnum, default: "drop"
-    field :priority, :integer, default: 0
+    field :action, RuleActionEnum, default: :block
     field :enabled, :boolean, default: true
-    field :port_number, :integer
-    field :protocol, RuleProtocolEnum, default: "all"
 
     belongs_to :device, Device
 
@@ -25,15 +22,36 @@ defmodule FgHttp.Rules.Rule do
     rule
     |> cast(attrs, [
       :device_id,
-      :priority,
       :action,
       :destination,
-      :port_number,
-      :protocol,
       :enabled
     ])
-    |> validate_required([:device_id, :priority, :action, :destination, :protocol, :enabled])
-    |> validate_number(:priority, greater_than_or_equal_to: 0, less_than_or_equal_to: 100)
-    |> validate_number(:port_number, greater_than_or_equal_to: 0, less_than_or_equal_to: 65_535)
+    |> validate_required([:device_id, :action, :destination, :enabled])
+  end
+
+  def iptables_spec(rule) do
+    device = Devices.get_device!(rule.device_id)
+
+    source =
+      if ipv4?(rule) do
+        device.interface_address4
+      else
+        device.interface_address6
+      end
+
+    {source, rule.destination, rule.action}
+  end
+
+  defp ipv4?(rule) do
+    case parse_ipv4(rule) do
+      {:ok, _} -> true
+      {:error, _} -> false
+    end
+  end
+
+  defp parse_ipv4(rule) do
+    rule.destination
+    |> String.to_charlist()
+    |> :inet.parse_ipv4_address()
   end
 end
