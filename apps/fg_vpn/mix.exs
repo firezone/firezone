@@ -26,7 +26,8 @@ defmodule FgVpn.MixProject do
   def application do
     [
       extra_applications: [:logger],
-      mod: {FgVpn.Application, []}
+      mod: {FgVpn.Application, []},
+      registered: [:fg_vpn_server]
     ]
   end
 

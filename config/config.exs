@@ -29,11 +29,7 @@ config :fg_http,
   vpn_endpoint: "127.0.0.1:51820",
   admin_user_email: "fireguard@localhost",
   events_module: FgHttpWeb.Events,
-  disable_signup:
-    (case System.get_env("DISABLE_SIGNUP") do
-       d when d in ["1", "yes"] -> true
-       _ -> false
-     end)
+  disable_signup: true
 
 config :fg_wall,
   cli: FgWall.CLI.Sandbox,

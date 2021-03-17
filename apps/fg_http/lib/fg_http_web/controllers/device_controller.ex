@@ -4,7 +4,7 @@ defmodule FgHttpWeb.DeviceController do
   """
 
   use FgHttpWeb, :controller
-  alias FgHttp.Devices
+  alias FgHttp.{Devices, Rules}
   alias FgHttpWeb.ErrorHelpers
   require Logger
 
@@ -17,7 +17,14 @@ defmodule FgHttpWeb.DeviceController do
 
   def create(conn, _params) do
     # XXX: Remove device from WireGuard if create isn't successful
-    {:ok, device_attrs} = @events_module.create_device()
+    {:ok, privkey, pubkey, server_pubkey, psk} = @events_module.create_device()
+
+    device_attrs = %{
+      private_key: privkey,
+      public_key: pubkey,
+      server_public_key: server_pubkey,
+      preshared_key: psk
+    }
 
     attributes =
       Map.merge(%{user_id: conn.assigns.session.id, name: Devices.rand_name()}, device_attrs)
@@ -36,28 +43,17 @@ defmodule FgHttpWeb.DeviceController do
   end
 
   def show(conn, %{"id" => id}) do
-    device = Devices.get_device!(id, :with_rules)
-    render(conn, "show.html", device: device)
-  end
-
-  def edit(conn, %{"id" => id}) do
     device = Devices.get_device!(id)
-    changeset = Devices.change_device(device)
-    render(conn, "edit.html", device: device, changeset: changeset)
-  end
+    rule_changeset = Rules.new_rule(%{"device_id" => id})
+    whitelist = Rules.whitelist(device)
+    blacklist = Rules.blacklist(device)
 
-  def update(conn, %{"id" => id, "device" => device_params}) do
-    device = Devices.get_device!(id)
-
-    case Devices.update_device(device, device_params) do
-      {:ok, device} ->
-        conn
-        |> put_flash(:info, "Device updated successfully.")
-        |> redirect(to: Routes.device_path(conn, :show, device))
-
-      {:error, %Ecto.Changeset{} = changeset} ->
-        render(conn, "edit.html", device: device, changeset: changeset)
-    end
+    render(conn, "show.html",
+      device: device,
+      whitelist: whitelist,
+      blacklist: blacklist,
+      rule_changeset: rule_changeset
+    )
   end
 
   def delete(conn, %{"id" => id}) do

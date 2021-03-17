@@ -10,7 +10,7 @@
 # We recommend using the bang functions (`insert!`, `update!`
 # and so on) as they will fail if something goes wrong.
 
-alias FgHttp.{Devices, BlacklistEntries, Users}
+alias FgHttp.{Devices, Rules, Users}
 
 {:ok, user} =
   Users.create_user(%{
@@ -32,7 +32,7 @@ alias FgHttp.{Devices, BlacklistEntries, Users}
   })
 
 {:ok, _rule} =
-  BlacklistEntries.create_entry(%{
+  Rules.create_rule(%{
     device_id: device.id,
     destination: %Postgrex.INET{address: {0, 0, 0, 0}, netmask: 0}
   })

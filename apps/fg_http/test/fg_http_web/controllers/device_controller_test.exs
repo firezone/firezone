@@ -58,7 +58,7 @@ defmodule FgHttpWeb.DeviceControllerAuthedTest do
 
     test "shows the device", %{authed_conn: conn, device: device} do
       test_conn = get(conn, Routes.device_path(conn, :show, device))
-      assert html_response(test_conn, 200) =~ "Show Device"
+      assert html_response(test_conn, 200) =~ device.name
     end
   end
 

@@ -18,7 +18,7 @@ const liveSocket = new LiveSocket(
 )
 
 // uncomment to connect if there are any LiveViews on the page
-// liveSocket.connect()
+liveSocket.connect()
 
 // expose liveSocket on window for web console debug logs and latency simulation:
 // >> liveSocket.enableDebug()
