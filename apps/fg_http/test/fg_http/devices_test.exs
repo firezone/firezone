@@ -1,6 +1,5 @@
 defmodule FgHttp.DevicesTest do
-  use FgHttp.DataCase
-  import FgHttp.TestHelpers
+  use FgHttp.DataCase, async: true
   alias FgHttp.Devices
 
   describe "list_devices/0" do

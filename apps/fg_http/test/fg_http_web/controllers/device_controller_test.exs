@@ -1,8 +1,5 @@
 defmodule FgHttpWeb.DeviceControllerUnauthedTest do
   use FgHttpWeb.ConnCase, async: true
-  import FgHttp.TestHelpers
-
-  @update_attrs %{name: "some updated name"}
 
   describe "index" do
     test "redirects to new session", %{unauthed_conn: conn} do
@@ -11,32 +8,23 @@ defmodule FgHttpWeb.DeviceControllerUnauthedTest do
     end
   end
 
-  describe "create device" do
+  describe "show" do
+    setup [:create_device]
+
+    test "redirects to new session", %{unauthed_conn: conn, device: device} do
+      test_conn = get(conn, Routes.device_path(conn, :show, device))
+      assert redirected_to(test_conn) == Routes.session_path(test_conn, :new)
+    end
+  end
+
+  describe "create" do
     test "redirects to new session", %{unauthed_conn: conn} do
       test_conn = post(conn, Routes.device_path(conn, :create))
       assert redirected_to(test_conn) == Routes.session_path(test_conn, :new)
     end
   end
 
-  describe "edit device" do
-    setup [:create_device]
-
-    test "redirects to new session", %{unauthed_conn: conn, device: device} do
-      test_conn = get(conn, Routes.device_path(conn, :edit, device))
-      assert redirected_to(test_conn) == Routes.session_path(test_conn, :new)
-    end
-  end
-
-  describe "update device" do
-    setup [:create_device]
-
-    test "redirects to new session", %{unauthed_conn: conn, device: device} do
-      test_conn = put(conn, Routes.device_path(conn, :update, device), device: @update_attrs)
-      assert redirected_to(test_conn) == Routes.session_path(test_conn, :new)
-    end
-  end
-
-  describe "delete device" do
+  describe "delete" do
     setup [:create_device]
 
     test "redirects to new session", %{unauthed_conn: conn, device: device} do
@@ -48,10 +36,6 @@ end
 
 defmodule FgHttpWeb.DeviceControllerAuthedTest do
   use FgHttpWeb.ConnCase, async: true
-  import FgHttp.TestHelpers
-
-  @update_attrs %{name: "some updated name"}
-  @invalid_attrs %{public_key: nil}
 
   describe "show" do
     setup [:create_device]
@@ -67,12 +51,12 @@ defmodule FgHttpWeb.DeviceControllerAuthedTest do
 
     test "lists all devices", %{authed_conn: conn, device: device} do
       test_conn = get(conn, Routes.device_path(conn, :index))
-      assert html_response(test_conn, 200) =~ "Listing Devices"
+      assert html_response(test_conn, 200) =~ "<h3 class=\"title\">Devices</h3>"
       assert html_response(test_conn, 200) =~ device.name
     end
   end
 
-  describe "create device" do
+  describe "create" do
     test "redirects when data is valid", %{authed_conn: conn} do
       test_conn = post(conn, Routes.device_path(conn, :create))
       devices = FgHttp.Devices.list_devices()
@@ -81,33 +65,7 @@ defmodule FgHttpWeb.DeviceControllerAuthedTest do
     end
   end
 
-  describe "edit device" do
-    setup [:create_device]
-
-    test "renders form for editing chosen device", %{authed_conn: conn, device: device} do
-      test_conn = get(conn, Routes.device_path(conn, :edit, device))
-      assert html_response(test_conn, 200) =~ "Edit Device"
-    end
-  end
-
-  describe "update device" do
-    setup [:create_device]
-
-    test "redirects when data is valid", %{authed_conn: conn, device: device} do
-      test_conn = put(conn, Routes.device_path(conn, :update, device), device: @update_attrs)
-      assert redirected_to(test_conn) == Routes.device_path(conn, :show, device)
-
-      test_conn = get(conn, Routes.device_path(conn, :show, device))
-      assert html_response(test_conn, 200) =~ "some updated name"
-    end
-
-    test "renders errors when data is invalid", %{authed_conn: conn, device: device} do
-      conn = put(conn, Routes.device_path(conn, :update, device), device: @invalid_attrs)
-      assert html_response(conn, 200) =~ "Edit Device"
-    end
-  end
-
-  describe "delete device" do
+  describe "delete" do
     setup [:create_device]
 
     test "deletes chosen device", %{authed_conn: conn, device: device} do

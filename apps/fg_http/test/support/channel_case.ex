@@ -23,6 +23,7 @@ defmodule FgHttpWeb.ChannelCase do
     quote do
       # Import conveniences for testing with channels
       use Phoenix.ChannelTest
+      import FgHttp.TestHelpers
 
       # The default endpoint for testing
       @endpoint FgHttpWeb.Endpoint

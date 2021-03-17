@@ -26,6 +26,7 @@ defmodule FgHttp.DataCase do
       import Ecto.Changeset
       import Ecto.Query
       import FgHttp.DataCase
+      import FgHttp.TestHelpers
     end
   end
 
