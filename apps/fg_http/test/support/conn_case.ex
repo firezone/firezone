@@ -26,6 +26,8 @@ defmodule FgHttpWeb.ConnCase do
       # Import conveniences for testing with connections
       import Plug.Conn
       import Phoenix.ConnTest
+      import Phoenix.LiveViewTest
+      import FgHttp.TestHelpers
       alias FgHttpWeb.Router.Helpers, as: Routes
 
       # The default endpoint for testing

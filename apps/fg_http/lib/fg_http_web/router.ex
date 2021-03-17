@@ -3,7 +3,6 @@ defmodule FgHttpWeb.Router do
   Main Application Router
   """
 
-  alias FgHttpWeb.{BlacklistLive, DeviceDetailsLive, WhitelistLive}
   use FgHttpWeb, :router
 
   # View emails locally in development
@@ -26,8 +25,7 @@ defmodule FgHttpWeb.Router do
   scope "/", FgHttpWeb do
     pipe_through :browser
     live "/live/device_details", DeviceDetailsLive
-    live "/live/whitelist", WhitelistLive
-    live "/live/blacklist", BlacklistLive
+    live "/live/rules", RulesLive
 
     resources "/password_resets", PasswordResetController, only: [:update, :new, :create]
     get "/password_resets/:reset_token", PasswordResetController, :edit

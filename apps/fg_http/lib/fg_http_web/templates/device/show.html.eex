@@ -1,5 +1,5 @@
 <div class="content">
-  <h3><%= @device.name %></h3>
+<h3 class="title"><%= @device.name %></h3>
 
   <div class="columns">
     <div class="column is-6">

@@ -8,13 +8,7 @@ defmodule FgHttpWeb.MockEvents do
   """
 
   def create_device do
-    {:ok,
-     %{
-       private_key: "privkey",
-       public_key: "pubkey",
-       server_public_key: "server_pubkey",
-       preshared_key: "preshared_key"
-     }}
+    {:ok, "privkey", "pubkey", "server_pubkey", "preshared_key"}
   end
 
   def delete_device(pubkey) do

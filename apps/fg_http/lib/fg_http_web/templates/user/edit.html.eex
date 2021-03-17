@@ -2,7 +2,7 @@
 <div class="columns">
   <div class="column is-4">
     <div class="content">
-      <h3>Edit Account</h3>
+      <h3 class="title">Edit Account</h3>
 
       <%= form_for @changeset, Routes.user_path(@conn, :update), fn f -> %>
         <%= if @changeset.action do %>
