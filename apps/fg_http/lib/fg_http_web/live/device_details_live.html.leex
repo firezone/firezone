@@ -1,0 +1,48 @@
+<h4>Details</h4>
+<dl>
+  <a href="#">Edit</a>
+  <dt>
+    <strong>Name:</strong>
+  </dt>
+  <dd><%= @device.name %></dd>
+
+  <dt>
+    <strong>Public key:</strong>
+  </dt>
+  <dd><%= @device.public_key %></dd>
+
+  <dt>
+    <strong>Private key:</strong>
+  </dt>
+  <dd><%= @device.private_key %></dd>
+
+  <dt>
+    <strong>Preshared key:</strong>
+  </dt>
+  <dd><%= @device.private_key %></dd>
+
+  <dt>
+    <strong>Server Public key:</strong>
+  </dt>
+  <dd><%= @device.server_public_key %></dd>
+
+  <dt>
+    <strong>IPv4 interface address:</strong>
+  </dt>
+  <dd><%= @device.interface_address4 %></dd>
+
+  <dt>
+    <strong>IPv6 interface address:</strong>
+  </dt>
+  <dd><%= @device.interface_address6 %></dd>
+
+  <dt>
+    <strong>Remote IP:</strong>
+  </dt>
+  <dd><%= @device.remote_ip %></dd>
+
+  <dt>
+    <strong>Last seen at:</strong>
+  </dt>
+  <dd><%= @device.last_seen_at %></dd>
+</dl>

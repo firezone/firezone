@@ -1,5 +1,5 @@
 <div class="content">
-  <h3>Listing Devices</h3>
+  <h3>Devices</h3>
 
   <table class="table">
     <thead>
@@ -7,22 +7,18 @@
         <th>Name</th>
         <th>Public key</th>
         <th>Remote IP</th>
-        <th></th>
+        <th>Last seen at</th>
       </tr>
     </thead>
     <tbody>
     <%= for device <- @devices do %>
       <tr>
-        <td><%= device.name %></td>
+        <td>
+          <%= link device.name, to: Routes.device_path(@conn, :show, device) %>
+        </td>
         <td><%= device.public_key %></td>
         <td><%= device.remote_ip || "Never connected" %></td>
-        <td class="has-text-right">
-          <span><%= link "Show", to: Routes.device_path(@conn, :show, device) %></span>
-          |
-          <span><%= link "Edit", to: Routes.device_path(@conn, :edit, device) %></span>
-          |
-          <span><%= link "Delete", to: Routes.device_path(@conn, :delete, device), method: :delete, data: [confirm: "Are you sure?"] %></span>
-        </td>
+        <td><%= device.last_seen_at %></td>
       </tr>
     <% end %>
     </tbody>

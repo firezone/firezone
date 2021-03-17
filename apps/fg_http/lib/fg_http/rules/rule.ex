@@ -12,7 +12,6 @@ defmodule FgHttp.Rules.Rule do
   schema "rules" do
     field :destination, EctoNetwork.INET
     field :action, RuleActionEnum, default: "deny"
-    field :enabled, :boolean, default: true
 
     belongs_to :device, Device
 
@@ -24,10 +23,9 @@ defmodule FgHttp.Rules.Rule do
     |> cast(attrs, [
       :device_id,
       :action,
-      :destination,
-      :enabled
+      :destination
     ])
-    |> validate_required([:device_id, :action, :destination, :enabled])
+    |> validate_required([:device_id, :action, :destination])
   end
 
   def iptables_spec(rule) do

@@ -26,7 +26,8 @@ defmodule FgWall.MixProject do
   def application do
     [
       extra_applications: [:logger],
-      mod: {FgWall.Application, []}
+      mod: {FgWall.Application, []},
+      registered: [:fg_wall_server]
     ]
   end
 

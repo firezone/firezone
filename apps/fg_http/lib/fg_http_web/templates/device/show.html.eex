@@ -1,61 +1,57 @@
 <div class="content">
-  <h3>Show Device</h3>
+  <h3><%= @device.name %></h3>
 
-  <dl>
-    <dt>
-      <strong>Name:</strong>
-    </dt>
-    <dd><%= @device.name %></dd>
-
-    <dt>
-      <strong>Public key:</strong>
-    </dt>
-    <dd><%= @device.public_key %></dd>
-
-    <dt>
-      <strong>Private Key:</strong>
-    </dt>
-    <dd><%= render_common("obfuscated.html", data: @device.private_key) %></dd>
-  </dl>
-
-  <h3>Rules</h3>
-  <p>
-    <%= @device.rules %>
-  </p>
-
-  <hr>
   <div class="columns">
     <div class="column is-6">
-    <h6 class="is-6 title">
-      Add the following to your WireGuard™ configuration file:
-    </h6>
-
-  <pre>
-  <code id="wg-conf">
-[Interface]
-PrivateKey = <%= @device.private_key %>
-Address = 172.16.99.1/24
-DNS = 1.1.1.1, 1.0.0.1
-
-[Peer]
-PublicKey = <%= @device.server_public_key %>
-PresharedKey = <%= @device.preshared_key %>
-AllowedIPs = 0.0.0.0/0, ::/0
-Endpoint = <%= Application.fetch_env!(:fg_http, :vpn_endpoint) %>
-  </code>
-  </pre>
+      <%= live_render(
+          @conn,
+          FgHttpWeb.DeviceDetailsLive,
+          session: %{"device" => @device}) %>
     </div>
     <div class="column is-6">
-      <h6 class="is-6 title">
-        Or scan the QR code with your mobile phone:
-      </h6>
-      <canvas id="qr-canvas"></canvas>
+      <%= render(FgHttpWeb.DeviceView, "_config.html", device: @device) %>
     </div>
   </div>
+
+  <hr>
+
+  <div class="columns">
+    <div class="column is-6">
+      <h4 class="title">Whitelist</h4>
+      <%= live_render(
+          @conn,
+          FgHttpWeb.RulesLive,
+          session: %{
+            "action_value" => "allow",
+            "rules" => @whitelist,
+            "device" => @device,
+            "changeset" => @rule_changeset
+          }) %>
+    </div>
+    <div class="column is-6">
+      <h4 class="title">Blacklist</h4>
+      <%= live_render(
+          @conn,
+          FgHttpWeb.RulesLive,
+          session: %{
+            "action_value" => "deny",
+            "rules" => @blacklist,
+            "device" => @device,
+            "changeset" => @rule_changeset
+          }) %>
+    </div>
+  </div>
+
   <hr>
 
   <div class="level">
     <%= link "Back to Devices", to: Routes.device_path(@conn, :index), class: "button" %>
-    <%= link "Edit", to: Routes.device_path(@conn, :edit, @device), class: "button is-primary" %>
+    <%= link(
+        "Delete this device",
+        to: Routes.device_path(@conn, :delete, @device),
+        method: :delete,
+        class: "button is-danger",
+        data: [confirm: "Are you sure? This will remove all data associated with this device."])
+    %>
   </div>
 </div>

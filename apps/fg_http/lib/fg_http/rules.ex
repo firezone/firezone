@@ -10,9 +10,14 @@ defmodule FgHttp.Rules do
 
   def get_rule!(id), do: Repo.get!(Rule, id)
 
-  def create_rule(attrs \\ %{}) do
+  def new_rule(attrs \\ %{}) do
     %Rule{}
     |> Rule.changeset(attrs)
+  end
+
+  def create_rule(attrs \\ %{}) do
+    attrs
+    |> new_rule()
     |> Repo.insert()
   end
 
@@ -35,7 +40,6 @@ defmodule FgHttp.Rules do
       from d in Device,
         join: r in Rule,
         on: r.device_id == d.id,
-        where: r.enabled == true,
         # "deny" enum is indexed 0
         order_by: r.action,
         select: {
@@ -47,5 +51,30 @@ defmodule FgHttp.Rules do
         }
 
     Repo.all(query)
+  end
+
+  def whitelist(device) when is_map(device), do: whitelist(device.id)
+
+  def whitelist(device_id) when is_binary(device_id) or is_number(device_id) do
+    Repo.all(
+      from r in Rule,
+        where: r.device_id == ^device_id and r.action == "allow"
+    )
+  end
+
+  def blacklist(device) when is_map(device), do: blacklist(device.id)
+
+  def blacklist(device_id) when is_binary(device_id) or is_number(device_id) do
+    Repo.all(
+      from r in Rule,
+        where: r.device_id == ^device_id and r.action == "deny"
+    )
+  end
+
+  def like(%Rule{} = rule) do
+    Repo.all(
+      from r in Rule,
+        where: r.device_id == ^rule.device_id and r.action == ^rule.action
+    )
   end
 end
