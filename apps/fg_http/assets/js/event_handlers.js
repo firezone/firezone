@@ -18,13 +18,4 @@ document.addEventListener('DOMContentLoaded', () => {
       })
     }
   })();
-
-  // Notification Delete
-  (document.querySelectorAll('.notification .delete') || []).forEach(($d) => {
-    const $notification = $d.parentNode
-
-    $d.addEventListener('click', () => {
-      $notification.parentNode.removeChild($notification)
-    })
-  })
 })

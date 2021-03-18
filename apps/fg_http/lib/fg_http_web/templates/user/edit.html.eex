@@ -1,10 +1,9 @@
-
 <div class="columns">
   <div class="column is-4">
     <div class="content">
       <h3 class="title">Edit Account</h3>
 
-      <%= form_for @changeset, Routes.user_path(@conn, :update), fn f -> %>
+      <%= f = form_for @changeset, "#", [phx_submit: :edit_user] %>
         <%= if @changeset.action do %>
           <div>
             <p>Oops, something went wrong! Please check the errors below.</p>
@@ -55,7 +54,7 @@
           <div class="control">
             <div class="level">
               <div class="level-left">
-                <%= link "Back", to: Routes.user_path(@conn, :show) %>
+                <%= link "Back", to: Routes.account_path(@conn, :show) %>
               </div>
               <div class="level-right">
                 <%= submit "Save", class: "button is-primary" %>
@@ -63,7 +62,7 @@
             </div>
           </div>
         </div>
-      <% end %>
+      </form>
     </div>
   </div>
 </div>

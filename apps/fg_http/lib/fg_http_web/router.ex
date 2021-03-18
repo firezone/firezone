@@ -14,6 +14,7 @@ defmodule FgHttpWeb.Router do
     plug :accepts, ["html"]
     plug :fetch_session
     plug :fetch_live_flash
+    plug :put_root_layout, {FgHttpWeb.LayoutView, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
   end
@@ -24,20 +25,18 @@ defmodule FgHttpWeb.Router do
 
   scope "/", FgHttpWeb do
     pipe_through :browser
-    live "/live/device_details", DeviceDetailsLive
-    live "/live/rules", RulesLive
 
-    resources "/password_resets", PasswordResetController, only: [:update, :new, :create]
-    get "/password_resets/:reset_token", PasswordResetController, :edit
+    live "/sign_in", SessionLive.New, :new
+    live "/sign_up", UserLive.New, :new
+    live "/account", AccountLive.Show, :show
 
-    resources "/user", UserController, singleton: true, only: [:show, :edit, :update, :delete]
-    resources "/users", UserController, only: [:new, :create]
+    live "/password_reset", PasswordResetLive.New, :new
+    live "/password_reset/:reset_token", PasswordResetLive.Edit, :edit
 
-    resources "/devices", DeviceController, except: [:new, :update, :edit]
+    live "/", DeviceLive.Index, :index
+    live "/:id", DeviceLive.Show, :show
 
-    resources "/session", SessionController, singleton: true, only: [:delete]
-    resources "/sessions", SessionController, only: [:new, :create]
-
-    get "/", SessionController, :new
+    get "/sign_in/:token", SessionController, :create
+    post "/sign_out", SessionController, :delete
   end
 end

@@ -8,6 +8,45 @@ defmodule FgHttp.Users do
 
   alias FgHttp.Users.User
 
+  # one hour
+  @sign_in_token_validity_secs 3600
+
+  def consume_sign_in_token(token) when is_binary(token) do
+    validity_secs = -1 * @sign_in_token_validity_secs
+    now = DateTime.utc_now()
+
+    update_fn = fn user ->
+      case from(u in User, where: u.id == ^user.id)
+           |> Repo.update_all(set: [sign_in_token: nil, sign_in_token_created_at: nil]) do
+        {1, _result} ->
+          {:ok, user}
+
+        _ ->
+          # Rollback transaction
+          {:error, "Unexpected error attempting to clear sign in token."}
+      end
+    end
+
+    {:ok, result} =
+      Repo.transaction(fn ->
+        case Repo.one(
+               from(u in User,
+                 where:
+                   u.sign_in_token == ^token and
+                     u.sign_in_token_created_at > datetime_add(^now, ^validity_secs, "second")
+               )
+             ) do
+          nil ->
+            {:error, "Token invalid."}
+
+          user ->
+            update_fn.(user)
+        end
+      end)
+
+    result
+  end
+
   def get_user!(email: email) do
     Repo.get_by!(User, email: email)
   end

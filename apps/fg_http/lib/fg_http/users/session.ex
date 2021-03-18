@@ -20,6 +20,11 @@ defmodule FgHttp.Users.Session do
     |> set_last_signed_in_at()
   end
 
+  def changeset(session, attrs) do
+    session
+    |> cast(attrs, [:email, :password, :last_signed_in_at])
+  end
+
   defp set_last_signed_in_at(%Ecto.Changeset{valid?: true} = changeset) do
     last_signed_in_at = DateTime.utc_now()
     change(changeset, last_signed_in_at: last_signed_in_at)
@@ -27,16 +32,10 @@ defmodule FgHttp.Users.Session do
 
   defp set_last_signed_in_at(changeset), do: changeset
 
-  defp authenticate_user(
-         %Ecto.Changeset{
-           valid?: true,
-           changes: %{
-             password: password
-           }
-         } = changeset
-       ) do
-    session = changeset.data
-    user = Users.get_user!(email: session.email)
+  defp authenticate_user(%Ecto.Changeset{valid?: true} = changeset) do
+    email = changeset.data.email
+    password = changeset.changes[:password]
+    user = Users.get_user!(email: email)
 
     case User.authenticate_user(user, password) do
       {:ok, _} ->

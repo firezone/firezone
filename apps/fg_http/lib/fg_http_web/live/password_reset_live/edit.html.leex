@@ -3,7 +3,7 @@
     <h3 class="title">Reset Password</h3>
     <hr>
 
-    <%= form_for @changeset, Routes.password_reset_path(@conn, :update, @password_reset.id), fn f -> %>
+    <%= f = form_for(@changeset, "#", [phx_submit: :change_password]) %>
       <%= hidden_input f, :reset_token %>
 
       <%= if @changeset.action do %>
@@ -15,7 +15,7 @@
       <div class="field">
         <%= label(f, :password, class: "label") %>
         <div class="control">
-          <%= password_input(f, :password, class: "input",placeholder: "New Password")%>
+          <%= password_input(f, :password, class: "input", placeholder: "New Password")%>
         </div>
         <p class="help is-danger">
           <%= error_tag f, :password %>
@@ -25,7 +25,7 @@
       <div class="field">
         <%= label(f, :password_confirmation, class: "label") %>
         <div class="control">
-          <%= password_input(f, :password_confirmation, class: "input",placeholder: "New Password")%>
+          <%= password_input(f, :password_confirmation, class: "input", placeholder: "New Password")%>
         </div>
         <p class="help is-danger">
           <%= error_tag f, :password_confirmation %>
@@ -37,6 +37,6 @@
           <%= submit "Submit", class: "button is-primary" %>
         </div>
       </div>
-    <% end %>
+    </form>
   </div>
 </div>

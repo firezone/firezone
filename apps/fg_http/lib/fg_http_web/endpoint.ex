@@ -14,11 +14,11 @@ defmodule FgHttpWeb.Endpoint do
     plug Phoenix.Ecto.SQL.Sandbox
   end
 
-  socket "/live", Phoenix.LiveView.Socket, websocket: [connect_info: [session: @session_options]]
-
   socket "/socket", FgHttpWeb.UserSocket,
     websocket: true,
     longpoll: false
+
+  socket "/live", Phoenix.LiveView.Socket, websocket: [connect_info: [session: @session_options]]
 
   # Serve at "/" the static files from "priv/static" directory.
   #
@@ -36,6 +36,7 @@ defmodule FgHttpWeb.Endpoint do
     socket "/phoenix/live_reload/socket", Phoenix.LiveReloader.Socket
     plug Phoenix.LiveReloader
     plug Phoenix.CodeReloader
+    plug Phoenix.Ecto.CheckRepoStatus, otp_app: :fg_http
   end
 
   plug Plug.RequestId

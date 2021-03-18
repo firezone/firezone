@@ -3,44 +3,29 @@ defmodule FgHttpWeb.SessionController do
   Implements the CRUD for a Session
   """
 
-  alias FgHttp.{Sessions, Users.Session}
+  alias FgHttp.{Sessions, Users, Users.Session}
   use FgHttpWeb, :controller
 
-  plug FgHttpWeb.Plugs.RedirectAuthenticated when action in [:new]
-  plug FgHttpWeb.Plugs.SessionLoader when action in [:delete]
+  # GET /sign_in/:token
+  def create(conn, %{"token" => token}) do
+    resp = Users.consume_sign_in_token(token)
 
-  # GET /sessions/new
-  def new(conn, _params) do
-    render(conn, "new.html")
-  end
-
-  # POST /sessions
-  def create(conn, %{"session" => %{"email" => email} = session_params}) do
-    case Sessions.get_session(email: email) do
-      %Session{} = session ->
-        case Sessions.create_session(session, session_params) do
-          {:ok, session} ->
-            conn
-            |> clear_session()
-            |> put_session(:user_id, session.id)
-            |> assign(:session, session)
-            |> put_flash(:info, "Signed in successfully.")
-            |> redirect(to: Routes.device_path(conn, :index))
-
-          {:error, changeset} ->
-            conn
-            |> put_flash(:error, "Error signing in.")
-            |> render("new.html", changeset: changeset)
-        end
-
-      nil ->
+    case resp do
+      {:ok, user} ->
         conn
-        |> put_flash(:error, "Email not found.")
-        |> render("new.html")
+        |> clear_session()
+        |> put_session(:user_id, user.id)
+        |> put_flash(:info, "Signed in successfully.")
+        |> redirect(to: Routes.device_path(conn, :index))
+
+      {:error, error_msg} ->
+        conn
+        |> put_flash(:error, error_msg)
+        |> redirect(to: "/")
     end
   end
 
-  # DELETE /session
+  # DELETE /sign_out
   def delete(conn, _params) do
     conn
     |> clear_session()

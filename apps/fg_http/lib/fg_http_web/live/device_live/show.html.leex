@@ -1,0 +1,172 @@
+<%= if @device do %>
+  <div class="content">
+  <h3 class="title"><%= @device.name %></h3>
+
+    <div class="columns">
+      <div class="column is-6">
+        <h4>Details</h4>
+        <dl>
+          <a href="#">Edit</a>
+          <dt>
+            <strong>Name:</strong>
+          </dt>
+          <dd><%= @device.name %></dd>
+
+          <dt>
+            <strong>Public key:</strong>
+          </dt>
+          <dd><%= @device.public_key %></dd>
+
+          <dt>
+            <strong>Private key:</strong>
+          </dt>
+          <dd><%= @device.private_key %></dd>
+
+          <dt>
+            <strong>Preshared key:</strong>
+          </dt>
+          <dd><%= @device.private_key %></dd>
+
+          <dt>
+            <strong>Server Public key:</strong>
+          </dt>
+          <dd><%= @device.server_public_key %></dd>
+
+          <dt>
+            <strong>IPv4 interface address:</strong>
+          </dt>
+          <dd><%= @device.interface_address4 %></dd>
+
+          <dt>
+            <strong>IPv6 interface address:</strong>
+          </dt>
+          <dd><%= @device.interface_address6 %></dd>
+
+          <dt>
+            <strong>Remote IP:</strong>
+          </dt>
+          <dd><%= @device.remote_ip %></dd>
+
+          <dt>
+            <strong>Last seen at:</strong>
+          </dt>
+          <dd><%= @device.last_seen_at %></dd>
+        </dl>
+      </div>
+      <div class="column is-6">
+        <h4 class="title">Config</h4>
+        <h6 class="is-6 title">
+          Add the following to your WireGuard™ configuration file:
+        </h6>
+        <pre>
+          <code id="wg-conf">
+  [Interface]
+  PrivateKey = <%= @device.private_key %>
+  Address = 172.16.99.1/24
+  DNS = 1.1.1.1, 1.0.0.1
+
+  [Peer]
+  PublicKey = <%= @device.server_public_key %>
+  PresharedKey = <%= @device.preshared_key %>
+  AllowedIPs = 0.0.0.0/0, ::/0
+  Endpoint = <%= Application.fetch_env!(:fg_http, :vpn_endpoint) %>
+          </code>
+        </pre>
+        <h6 class="is-6 title">
+          Or scan the QR code with your mobile phone:
+        </h6>
+        <canvas id="qr-canvas"></canvas>
+      </div>
+    </div>
+
+    <hr>
+
+    <div class="columns">
+      <div class="column is-6">
+        <h4 class="title">Whitelist</h4>
+        <%= f = form_for @changeset, "#", [phx_submit: :save] %>
+          <%= hidden_input f, :action, value: "allow" %>
+          <%= hidden_input f, :device_id, value: @device.id %>
+          <div class="field has-addons">
+            <div class="control is-expanded">
+              <%= text_input f,
+                  :destination,
+                  class: "input",
+                  placeholder: "IPv4/6 CIDR range or address" %>
+            </div>
+            <div class="control">
+              <%= submit "Add", class: "button is-primary" %>
+            </div>
+          </div>
+        </form>
+
+        <table class="table">
+          <tbody>
+            <%= for rule <- @whitelist_rules do %>
+              <tr>
+                <td>
+                  <%= rule.destination %>
+                </td>
+                <td>
+                  <a href="#">Delete</a>
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+      <div class="column is-6">
+        <h4 class="title">Blacklist</h4>
+        <%= f = form_for @changeset, "#", [phx_submit: :save] %>
+          <%= hidden_input f, :action, value: "deny" %>
+          <%= hidden_input f, :device_id, value: @device.id %>
+          <div class="field has-addons">
+            <div class="control is-expanded">
+              <%= text_input f,
+                  :destination,
+                  class: "input",
+                  placeholder: "IPv4/6 CIDR range or address" %>
+            </div>
+            <div class="control">
+              <%= submit "Add", class: "button is-primary" %>
+            </div>
+          </div>
+        </form>
+
+        <table class="table">
+          <tbody>
+            <%= for rule <- @blacklist_rules do %>
+              <tr>
+                <td>
+                  <%= rule.destination %>
+                </td>
+                <td>
+                  <a href="#">Delete</a>
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <hr>
+
+    <div class="level">
+      <%= live_redirect("Back to Devices", to: Routes.device_path(@socket, :index), class: "button") %>
+      <button class="button is-danger"
+              phx-click="delete_device"
+              phx-value="<%= @device.id %>"
+              data-confirm="Are you sure? This will remove all data associated with this device.">
+        Delete this device
+      </button>
+    </div>
+  </div>
+<% else %>
+  <div class="content">
+    <p>
+      No device to display.
+      <%= live_redirect("Back to Devices", to: Routes.device_path(@socket, :index)) %>
+    </p>
+  </div>
+<% end %>

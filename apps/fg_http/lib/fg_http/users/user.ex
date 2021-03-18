@@ -14,6 +14,8 @@ defmodule FgHttp.Users.User do
     field :confirmed_at, :utc_datetime_usec
     field :last_signed_in_at, :utc_datetime_usec
     field :password_hash, :string
+    field :sign_in_token, :string
+    field :sign_in_token_created_at, :utc_datetime_usec
 
     # VIRTUAL FIELDS
     field :password, :string, virtual: true
@@ -33,6 +35,18 @@ defmodule FgHttp.Users.User do
     |> unique_constraint(:email)
     |> put_password_hash()
     |> validate_required([:password_hash])
+    # XXX: Send confirmation emails instead of auto-confirming
+    |> set_confirmed_at()
+  end
+
+  # Sign in token
+  def update_changeset(
+        user,
+        %{"sign_in_token" => _token, "sign_in_token_created_at" => _created_at} = attrs
+      ) do
+    user
+    |> cast(attrs, [:sign_in_token, :sign_in_token_created_at])
+    |> validate_required([:sign_in_token, :sign_in_token_created_at])
   end
 
   # Password updated with user logged in
@@ -111,5 +125,10 @@ defmodule FgHttp.Users.User do
         changeset
         |> add_error(:current_password, "is invalid: #{error_msg}")
     end
+  end
+
+  defp set_confirmed_at(changeset) do
+    changeset
+    |> put_change(:confirmed_at, DateTime.utc_now())
   end
 end
