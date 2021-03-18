@@ -61,6 +61,7 @@ defmodule FgHttp.Users.PasswordReset do
   def token_validity_secs, do: @token_validity_secs
 
   defp generate_reset_token(%Ecto.Changeset{valid?: true} = changeset) do
+    # XXX: Use FgCrypto here
     random_bytes = :crypto.strong_rand_bytes(@token_num_bytes)
     random_string = Base.url_encode64(random_bytes)
     put_change(changeset, :reset_token, random_string)

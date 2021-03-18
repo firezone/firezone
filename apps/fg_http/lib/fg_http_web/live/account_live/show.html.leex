@@ -14,13 +14,13 @@
       </dl>
 
       <div class="level">
-        <%= link("Change Email or Password", to: Routes.user_path(@conn, :edit)) %>
-        <%= link "Delete your account",
-            to: Routes.user_path(@conn, :delete),
-            method: :delete,
-            data: [confirm: "Are you sure?"],
-            class: "button is-danger"
-        %>
+        <%= live_redirect("Change Email or Password", to: Routes.account_path(@conn, :show)) %>
+        <button class="button is-danger"
+                phx-click="delete_user"
+                phx-value=<%= @user.id %>
+                data-confirm="Are you sure?">
+          Delete your account
+        </button>
       </div>
     </div>
   </div>

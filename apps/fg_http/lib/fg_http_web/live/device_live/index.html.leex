@@ -14,7 +14,7 @@
     <%= for device <- @devices do %>
       <tr>
         <td>
-          <%= link device.name, to: Routes.device_path(@conn, :show, device) %>
+          <%= live_redirect(device.name, to: Routes.device_path(@socket, :show, device)) %>
         </td>
         <td><%= device.public_key %></td>
         <td><%= device.remote_ip || "Never connected" %></td>
@@ -25,7 +25,7 @@
   </table>
 </div>
 
-<%= link "Add Device",
-    to: Routes.device_path(@conn, :create),
-    method: :post,
-    class: "button is-primary" %>
+<button class="button is-primary"
+        phx-click="create_device">
+  Add Device
+</button>

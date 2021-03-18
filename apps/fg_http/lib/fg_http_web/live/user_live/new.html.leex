@@ -4,7 +4,7 @@
       <h3 class="title">Sign Up</h3>
       <hr>
 
-      <%= form_for @changeset, Routes.user_path(@conn, :create), fn f -> %>
+      <%= f = form_for @changeset, "#", [phx_submit: :create_user] %>
         <%= if @changeset.action do %>
           <div>
             <p>Oops, something went wrong! Please check the errors below.</p>
@@ -46,7 +46,7 @@
             <%= submit "Sign Up", class: "button is-primary" %>
           </div>
         </div>
-      <% end %>
+      </form>
     </div>
   </div>
 </div>

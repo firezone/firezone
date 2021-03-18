@@ -1,21 +1,23 @@
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8"/>
-    <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>FireGuard</title>
-    <link rel="stylesheet" href="<%= Routes.static_path(@conn, "/css/app.css") %>"/>
-    <%= csrf_meta_tag() %>
-  </head>
-  <body>
-    <%= render "nav.html", assigns %>
-    <section class="section">
-      <%= render "flash.html", assigns %>
-      <div class="container">
-        <%= @inner_content %>
+<%= if get_flash(@conn, :info) or get_flash(@conn, :error) do %>
+  <div class="container flash-squeeze">
+    <%= if get_flash(@conn, :info) do %>
+      <div class="notification is-info">
+        <button title="Dismiss notification" class="delete"></button>
+        <div class="flash-info">
+          <%= get_flash(@conn, :info) %>
+        </div>
       </div>
-    </section>
-    <script type="text/javascript" src="<%= Routes.static_path(@conn, "/js/app.js") %>"></script>
-  </body>
-</html>
+    <% end %>
+    <%= if get_flash(@conn, :error) do %>
+      <div class="notification is-danger">
+        <button class="delete"></button>
+        <div class="flash-error">
+          <%= get_flash(@conn, :error) %>
+        </div>
+      </div>
+    <% end %>
+  </div>
+<% end %>
+<div class="container">
+  <%= @inner_content %>
+</div>
