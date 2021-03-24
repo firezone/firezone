@@ -6,11 +6,18 @@ defmodule FgHttpWeb.DeviceLive.Show do
 
   alias FgHttp.{Devices, Rules}
 
+  @impl true
   def mount(params, session, socket) do
     {:ok, assign_defaults(params, session, socket, &load_data/2)}
   end
 
+  @impl true
+  def handle_params(params, _url, socket) do
+    {:noreply, apply_action(socket, socket.assigns.live_action, params)}
+  end
+
   # XXX: LiveComponent
+  @impl true
   def handle_event("add_whitelist_rule", params, socket) do
     # XXX: Authorization
     case Rules.create_rule(params["rule"]) do
@@ -23,6 +30,7 @@ defmodule FgHttpWeb.DeviceLive.Show do
   end
 
   # XXX: LiveComponent
+  @impl true
   def handle_event("add_blacklist_rule", params, socket) do
     # XXX: Authorization
     case Rules.create_rule(params["rule"]) do
@@ -34,6 +42,7 @@ defmodule FgHttpWeb.DeviceLive.Show do
     end
   end
 
+  @impl true
   def handle_event("delete_whitelist_rule", %{"rule_id" => rule_id}, socket) do
     # XXX: Authorization
     rule = Rules.get_rule!(rule_id)
@@ -47,6 +56,7 @@ defmodule FgHttpWeb.DeviceLive.Show do
     end
   end
 
+  @impl true
   def handle_event("delete_blacklist_rule", %{"rule_id" => rule_id}, socket) do
     # XXX: Authorization
     rule = Rules.get_rule!(rule_id)
@@ -60,6 +70,7 @@ defmodule FgHttpWeb.DeviceLive.Show do
     end
   end
 
+  @impl true
   def handle_event("delete_device", %{"device_id" => device_id}, socket) do
     # XXX: Authorization
     device = Devices.get_device!(device_id)
@@ -78,6 +89,14 @@ defmodule FgHttpWeb.DeviceLive.Show do
          socket
          |> put_flash(:error, "Error deleting device: #{msg}")}
     end
+  end
+
+  defp apply_action(socket, :edit, _params) do
+    socket
+  end
+
+  defp apply_action(socket, :show, _params) do
+    socket
   end
 
   defp load_data(%{"id" => id}, socket) do
