@@ -78,7 +78,8 @@ defmodule FgHttp.Users.User do
       ) do
     user
     |> cast(attrs, [:email, :password, :password_confirmation, :current_password])
-    |> validate_required([:password, :password_confirmation, :current_password])
+    |> validate_required([:email, :password, :password_confirmation, :current_password])
+    |> validate_format(:email, ~r/@/)
     |> verify_current_password(user)
     |> validate_password_equality()
     |> put_password_hash()
@@ -122,7 +123,12 @@ defmodule FgHttp.Users.User do
     Argon2.check_pass(user, password_candidate)
   end
 
-  defp verify_current_password(changeset, user) do
+  defp verify_current_password(
+         %Ecto.Changeset{
+           changes: %{current_password: _}
+         } = changeset,
+         user
+       ) do
     case authenticate_user(user, changeset.changes.current_password) do
       {:ok, _user} ->
         changeset
@@ -130,8 +136,13 @@ defmodule FgHttp.Users.User do
 
       {:error, error_msg} ->
         changeset
-        |> add_error(:current_password, "is invalid: #{error_msg}")
+        |> add_error(:current_password, error_msg)
     end
+  end
+
+  # current_password missing, pass changeset along
+  defp verify_current_password(changeset, _user) do
+    changeset
   end
 
   defp set_confirmed_at(changeset) do

@@ -1,5 +1,15 @@
+<%= if @live_action == :edit do %>
+  <%= live_modal(
+        @socket,
+        FgHttpWeb.AccountLive.FormComponent,
+        return_to: Routes.account_show_path(@socket, :show),
+        title: "Edit Account",
+        id: "user-#{@current_user.id}",
+        user: @current_user,
+        action: @live_action) %>
+<% end %>
 <div class="columns">
-  <div class="column is-4">
+  <div class="column is-6">
     <div class="content">
       <h3 class="title">Your Account</h3>
 
@@ -14,13 +24,12 @@
       </dl>
 
       <div class="level">
-        <%= live_redirect("Change Email or Password", to: Routes.account_show_path(@socket, :show)) %>
-        <button class="button is-danger"
-                phx-click="delete_user"
-                phx-value-user_id="<%= @user.id %>"
-                data-confirm="Are you sure?">
-          Delete your account
-        </button>
+        <%= live_patch("Change Email or Password", to: Routes.account_show_path(@socket, :edit)) %>
+
+        <%# This is purposefully a synchronous form in order to easily clear the session %>
+        <%= form_for @changeset, Routes.user_path(@socket, :delete), [method: :delete], fn _f -> %>
+          <%= submit "Delete your account", class: "button is-danger", data: [confirm: "Are you sure?"] %>
+        <% end %>
       </div>
     </div>
   </div>

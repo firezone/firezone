@@ -29,14 +29,19 @@ defmodule FgHttpWeb.Router do
     live "/sign_in", SessionLive.New, :new
     live "/sign_up", UserLive.New, :new
     live "/account", AccountLive.Show, :show
+    live "/account/edit", AccountLive.Show, :edit
 
     live "/password_reset", PasswordResetLive.New, :new
     live "/password_reset/:reset_token", PasswordResetLive.Edit, :edit
 
-    live "/", DeviceLive.Index, :index
-    live "/:id", DeviceLive.Show, :show
+    live "/", RootLive.Index, :index
+
+    live "/devices", DeviceLive.Index, :index
+    live "/devices/:id", DeviceLive.Show, :show
+    live "/devices/:id/edit", DeviceLive.Show, :edit
 
     get "/sign_in/:token", SessionController, :create
     post "/sign_out", SessionController, :delete
+    delete "/user", UserController, :delete
   end
 end

@@ -21,12 +21,13 @@ defmodule FgHttpWeb.SessionController do
       {:error, error_msg} ->
         conn
         |> put_flash(:error, error_msg)
-        |> redirect(to: "/")
+        |> redirect(to: Routes.session_new_path(conn, :new))
     end
   end
 
   # DELETE /sign_out
   def delete(conn, _params) do
+    # XXX: Disconnect all WebSockets.
     conn
     |> clear_session()
     |> put_flash(:info, "Signed out successfully.")

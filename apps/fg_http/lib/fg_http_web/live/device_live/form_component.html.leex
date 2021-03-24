@@ -1,0 +1,23 @@
+<%= f = form_for(@changeset, "#", [phx_target: @myself, phx_submit: "save"]) %>
+  <div class="field">
+    <%= label f, :name, class: "label" %>
+
+    <div class="control">
+      <%= text_input f, :name, class: "input" %>
+    </div>
+    <p class="help is-danger">
+      <%= error_tag f, :name %>
+    </p>
+  <div>
+
+  <div class="field">
+    <div class="control">
+      <div class="level">
+        <div class="level-left"></div>
+        <div class="level-right">
+          <%= submit "Save", phx_disable_with: "Saving...", class: "button is-primary" %>
+        </div>
+      </div>
+    </div>
+  </div>
+</form>

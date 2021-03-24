@@ -1,7 +1,11 @@
 <div class="columns">
   <div class="column is-4 is-offset-4">
-    <h3 class="title">Request Password Reset Link</h3>
+    <h3 class="title">Password Reset</h3>
     <hr>
+
+    <div class="content">
+      <p>Enter your email to request a password reset.</p>
+    </div>
 
     <%= f = form_for(@changeset, "#", [phx_submit: :create_password_reset]) %>
       <%= if @changeset.action do %>
@@ -21,7 +25,7 @@
       </div>
 
       <div class="level">
-        <%= live_redirect("Back", to: Routes.session_path(@socket, :new)) %>
+        <%= live_redirect("Back", to: Routes.session_new_path(@socket, :new)) %>
         <%= submit "Submit", class: "button is-primary" %>
       </div>
     </form>
