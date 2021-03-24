@@ -3,7 +3,7 @@ defmodule FgHttpWeb.SessionController do
   Implements the CRUD for a Session
   """
 
-  alias FgHttp.{Sessions, Users, Users.Session}
+  alias FgHttp.Users
   use FgHttpWeb, :controller
 
   # GET /sign_in/:token
@@ -16,7 +16,7 @@ defmodule FgHttpWeb.SessionController do
         |> clear_session()
         |> put_session(:user_id, user.id)
         |> put_flash(:info, "Signed in successfully.")
-        |> redirect(to: Routes.device_path(conn, :index))
+        |> redirect(to: Routes.device_index_path(conn, :index))
 
       {:error, error_msg} ->
         conn

@@ -58,24 +58,21 @@
         <h6 class="is-6 title">
           Add the following to your WireGuard™ configuration file:
         </h6>
-        <pre>
-          <code id="wg-conf">
-  [Interface]
-  PrivateKey = <%= @device.private_key %>
-  Address = 172.16.99.1/24
-  DNS = 1.1.1.1, 1.0.0.1
+        <pre><code id="wg-conf">
+[Interface]
+PrivateKey = <%= @device.private_key %>
+Address = 172.16.99.1/24
+DNS = 1.1.1.1, 1.0.0.1
 
-  [Peer]
-  PublicKey = <%= @device.server_public_key %>
-  PresharedKey = <%= @device.preshared_key %>
-  AllowedIPs = 0.0.0.0/0, ::/0
-  Endpoint = <%= Application.fetch_env!(:fg_http, :vpn_endpoint) %>
-          </code>
-        </pre>
+[Peer]
+PublicKey = <%= @device.server_public_key %>
+PresharedKey = <%= @device.preshared_key %>
+AllowedIPs = 0.0.0.0/0, ::/0
+Endpoint = <%= Application.fetch_env!(:fg_http, :vpn_endpoint) %></code></pre>
         <h6 class="is-6 title">
           Or scan the QR code with your mobile phone:
         </h6>
-        <canvas id="qr-canvas"></canvas>
+        <canvas id="qr-canvas" phx-hook="QrCode"></canvas>
       </div>
     </div>
 
@@ -84,7 +81,7 @@
     <div class="columns">
       <div class="column is-6">
         <h4 class="title">Whitelist</h4>
-        <%= f = form_for @changeset, "#", [phx_submit: :save] %>
+        <%= f = form_for @rule_changeset, "#", [phx_submit: :add_whitelist_rule] %>
           <%= hidden_input f, :action, value: "allow" %>
           <%= hidden_input f, :device_id, value: @device.id %>
           <div class="field has-addons">
@@ -102,13 +99,15 @@
 
         <table class="table">
           <tbody>
-            <%= for rule <- @whitelist_rules do %>
+            <%= for rule <- @whitelist do %>
               <tr>
                 <td>
                   <%= rule.destination %>
                 </td>
                 <td>
-                  <a href="#">Delete</a>
+                  <a href="#" phx-click="delete_whitelist_rule" phx-value-rule_id="<%= rule.id %>">
+                    Delete
+                  </a>
                 </td>
               </tr>
             <% end %>
@@ -117,7 +116,7 @@
       </div>
       <div class="column is-6">
         <h4 class="title">Blacklist</h4>
-        <%= f = form_for @changeset, "#", [phx_submit: :save] %>
+        <%= f = form_for @rule_changeset, "#", [phx_submit: :add_blacklist_rule] %>
           <%= hidden_input f, :action, value: "deny" %>
           <%= hidden_input f, :device_id, value: @device.id %>
           <div class="field has-addons">
@@ -135,13 +134,15 @@
 
         <table class="table">
           <tbody>
-            <%= for rule <- @blacklist_rules do %>
+            <%= for rule <- @blacklist do %>
               <tr>
                 <td>
                   <%= rule.destination %>
                 </td>
                 <td>
-                  <a href="#">Delete</a>
+                  <a href="#" phx-click="delete_blacklist_rule" phx-value-rule_id="<%= rule.id %>">
+                    Delete
+                  </a>
                 </td>
               </tr>
             <% end %>
@@ -153,10 +154,10 @@
     <hr>
 
     <div class="level">
-      <%= live_redirect("Back to Devices", to: Routes.device_path(@socket, :index), class: "button") %>
+      <%= live_redirect("Back to Devices", to: Routes.device_index_path(@socket, :index), class: "button") %>
       <button class="button is-danger"
               phx-click="delete_device"
-              phx-value="<%= @device.id %>"
+              phx-value-device_id="<%= @device.id %>"
               data-confirm="Are you sure? This will remove all data associated with this device.">
         Delete this device
       </button>
@@ -166,7 +167,7 @@
   <div class="content">
     <p>
       No device to display.
-      <%= live_redirect("Back to Devices", to: Routes.device_path(@socket, :index)) %>
+      <%= live_redirect("Back to Devices", to: Routes.device_index_path(@socket, :index)) %>
     </p>
   </div>
 <% end %>

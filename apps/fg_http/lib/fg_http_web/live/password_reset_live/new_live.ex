@@ -31,7 +31,7 @@ defmodule FgHttpWeb.PasswordResetLive.New do
             {:noreply,
              socket
              |> put_flash(:info, "Check your email for the password reset link.")
-             |> push_redirect(to: Routes.session_path(socket, :new))}
+             |> push_redirect(to: Routes.session_new_path(socket, :new))}
 
           {:error, changeset} ->
             {:noreply,

@@ -4,9 +4,9 @@ defmodule FgHttpWeb.SessionLive.New do
   """
   use FgHttpWeb, :live_view
 
-  alias FgHttp.{Sessions, Users, Util.FgCrypto}
+  alias FgHttp.{Sessions, Users}
 
-  def mount(params, session, socket) do
+  def mount(_params, _session, socket) do
     changeset = Sessions.new_session()
     {:ok, assign(socket, :changeset, changeset)}
   end
@@ -56,13 +56,11 @@ defmodule FgHttpWeb.SessionLive.New do
   end
 
   defp create_sign_in_token(session) do
-    token = FgCrypto.rand_string()
-
-    params = %{"sign_in_token" => token, "sign_in_token_created_at" => DateTime.utc_now()}
+    params = Users.sign_in_params()
 
     case Users.get_user!(session.id) |> Users.update_user(params) do
       {:ok, _count} ->
-        {:ok, token}
+        {:ok, params["sign_in_token"]}
 
       err ->
         err

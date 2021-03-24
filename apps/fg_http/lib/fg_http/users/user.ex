@@ -29,7 +29,14 @@ defmodule FgHttp.Users.User do
 
   def create_changeset(user, attrs \\ %{}) do
     user
-    |> cast(attrs, [:email, :password_hash, :password, :password_confirmation])
+    |> cast(attrs, [
+      :sign_in_token,
+      :sign_in_token_created_at,
+      :email,
+      :password_hash,
+      :password,
+      :password_confirmation
+    ])
     |> validate_required([:email, :password, :password_confirmation])
     |> validate_password_equality()
     |> unique_constraint(:email)

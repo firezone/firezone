@@ -6,7 +6,7 @@ defmodule FgHttp.Users do
   import Ecto.Query, warn: false
   alias FgHttp.Repo
 
-  alias FgHttp.Users.User
+  alias FgHttp.{Users.User, Util.FgCrypto}
 
   # one hour
   @sign_in_token_validity_secs 3600
@@ -65,6 +65,13 @@ defmodule FgHttp.Users do
     |> Repo.insert()
   end
 
+  def sign_in_params do
+    %{
+      "sign_in_token" => FgCrypto.rand_string(),
+      "sign_in_token_created_at" => DateTime.utc_now()
+    }
+  end
+
   def update_user(%User{} = user, attrs) do
     user
     |> User.update_changeset(attrs)
@@ -77,6 +84,10 @@ defmodule FgHttp.Users do
 
   def change_user(%User{} = user) do
     User.changeset(user, %{})
+  end
+
+  def new_user do
+    change_user(%User{})
   end
 
   def single_user? do
