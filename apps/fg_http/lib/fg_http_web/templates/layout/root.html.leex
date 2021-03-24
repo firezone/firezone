@@ -13,28 +13,28 @@
     <nav class="navbar" role="navigation" aria-label="main navigation">
       <div class="container">
         <div class="navbar-brand">
-          <h4 class="title is-4">
+          <h4 class="title is-4 navbar-item">
             FireGuard
           </h4>
         </div>
         <div class="navbar-menu">
-          <%= if assigns[:session] do %>
+          <%= if assigns[:current_user] do %>
             <div class="navbar-start">
-              <%= live_redirect("Devices", to: Routes.device_path(@conn, :index), class: "navbar-item") %>
+              <%= live_redirect("Devices", to: Routes.device_index_path(@conn, :index), class: "navbar-item") %>
             </div>
           <% end %>
         </div>
         <div class="navbar-end">
-          <%= if assigns[:session] do %>
+          <%= if assigns[:current_user] do %>
             <div class="navbar-item">
-              <%= live_redirect("Your Account", to: Routes.account_path(@conn, :show)) %>
+              <%= live_redirect("Your Account", to: Routes.account_show_path(@conn, :show)) %>
             </div>
             <div class="navbar-item">
               <%= link("Sign out", to: Routes.session_path(@conn, :delete), method: :post) %>
             </div>
           <% else %>
             <div class="navbar-item">
-              <%= live_redirect("Sign in", to: Routes.session_path(@conn, :new)) %>
+              <%= live_redirect("Sign in", to: Routes.session_new_path(@conn, :new)) %>
             </div>
           <% end %>
         </div>

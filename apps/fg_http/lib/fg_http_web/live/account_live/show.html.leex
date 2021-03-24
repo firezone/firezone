@@ -10,14 +10,14 @@
         <dd><%= @user.email %></dd>
 
         <dt><strong>Last signed in at</strong></dt>
-        <dd><%= @session.last_signed_in_at %></dd>
+        <dd><%= @user.last_signed_in_at %></dd>
       </dl>
 
       <div class="level">
-        <%= live_redirect("Change Email or Password", to: Routes.account_path(@conn, :show)) %>
+        <%= live_redirect("Change Email or Password", to: Routes.account_show_path(@socket, :show)) %>
         <button class="button is-danger"
                 phx-click="delete_user"
-                phx-value=<%= @user.id %>
+                phx-value-user_id="<%= @user.id %>"
                 data-confirm="Are you sure?">
           Delete your account
         </button>

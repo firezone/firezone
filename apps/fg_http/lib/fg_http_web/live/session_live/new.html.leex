@@ -41,9 +41,9 @@
 
     <div class="level">
       <%= unless Application.get_env(:fg_http, :disable_signup) do %>
-        <%= live_redirect("Sign up", to: Routes.user_path(@socket, :new)) %>
+        <%= live_redirect("Sign up", to: Routes.user_new_path(@socket, :new)) %>
       <% end %>
-      <%= live_redirect("Forgot your password?", to: Routes.password_reset_path(@socket, :new)) %>
+      <%= live_redirect("Forgot your password?", to: Routes.password_reset_new_path(@socket, :new)) %>
     </div>
   </div>
 </div>

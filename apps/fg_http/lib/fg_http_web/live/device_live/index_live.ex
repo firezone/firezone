@@ -4,15 +4,13 @@ defmodule FgHttpWeb.DeviceLive.Index do
   """
   use FgHttpWeb, :live_view
 
-  alias FgHttp.{Devices, Rules}
+  alias FgHttp.Devices
 
-  def mount(params, sess, sock), do: mount_defaults(params, sess, assign_defaults(sock, params))
-
-  defp mount_defaults(_params, %{"current_user" => current_user}, socket) do
-    {:ok, assign(socket, :devices, Devices.list_devices(current_user, :with_roles))}
+  def mount(params, session, socket) do
+    {:ok, assign_defaults(params, session, socket, &load_data/2)}
   end
 
-  def handle_event("create_device", params, socket) do
+  def handle_event("create_device", _params, socket) do
     # XXX: Remove device from WireGuard if create isn't successful
     {:ok, privkey, pubkey, server_pubkey, psk} = @events_module.create_device()
 
@@ -37,12 +35,14 @@ defmodule FgHttpWeb.DeviceLive.Index do
         {:noreply,
          socket
          |> put_flash(:info, "Device added successfully.")
-         |> redirect(to: Routes.device_path(socket, :show, "5"))}
+         |> redirect(to: Routes.device_show_path(socket, :show, device))}
 
-      {:error, changeset} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, "Error creating device.")}
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Error creating device.")}
     end
+  end
+
+  defp load_data(_params, socket) do
+    assign(socket, :devices, Devices.list_devices(socket.assigns.current_user.id))
   end
 end

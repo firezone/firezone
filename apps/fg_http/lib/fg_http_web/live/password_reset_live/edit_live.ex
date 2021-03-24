@@ -4,7 +4,7 @@ defmodule FgHttpWeb.PasswordResetLive.Edit do
   """
   use FgHttpWeb, :live_view
 
-  alias FgHttp.{Email, Mailer, PasswordResets}
+  alias FgHttp.PasswordResets
 
   def mount(%{"reset_token" => reset_token}, _session, socket) do
     changeset =
