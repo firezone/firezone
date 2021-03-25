@@ -1,4 +1,4 @@
-defmodule FgHttp.Repo.Migrations.CreateBlacklistEntries do
+defmodule FgHttp.Repo.Migrations.CreateRules do
   use Ecto.Migration
 
   def change do

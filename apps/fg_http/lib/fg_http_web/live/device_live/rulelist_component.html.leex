@@ -1,0 +1,41 @@
+<div class="column is-6">
+  <h4 class="title"><%= @title %></h4>
+  <%= f = form_for @changeset, "#", [phx_target: @myself, phx_submit: :add_rule] %>
+    <%= hidden_input f, :action, value: @action %>
+    <%= hidden_input f, :device_id, value: @device_id %>
+    <div class="field has-addons">
+      <div class="control is-expanded">
+        <%= text_input f,
+            :destination,
+            class: "input",
+            placeholder: "IPv4/6 CIDR range or address" %>
+      </div>
+      <div class="control">
+        <%= submit "Add", class: "button is-primary" %>
+      </div>
+    </div>
+    <p class="help is-danger">
+      <%= error_tag f, :destination %>
+    </p>
+  </form>
+
+  <table class="table">
+    <tbody>
+      <%= for rule <- @rule_list do %>
+        <tr>
+          <td>
+            <%= rule.destination %>
+          </td>
+          <td>
+            <a href="#"
+               phx-click="delete_rule"
+               phx-value-rule_id="<%= rule.id %>"
+               phx-target="<%= @myself %>">
+              Delete
+            </a>
+          </td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>

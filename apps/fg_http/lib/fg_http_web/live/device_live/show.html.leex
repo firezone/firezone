@@ -97,76 +97,18 @@ Endpoint = <%= Application.fetch_env!(:fg_http, :vpn_endpoint) %></code></pre>
   <hr>
 
   <div class="columns">
-    <div class="column is-6">
-      <h4 class="title">Whitelist</h4>
-      <%= f = form_for @rule_changeset, "#", [phx_submit: :add_whitelist_rule] %>
-        <%= hidden_input f, :action, value: "allow" %>
-        <%= hidden_input f, :device_id, value: @device.id %>
-        <div class="field has-addons">
-          <div class="control is-expanded">
-            <%= text_input f,
-                :destination,
-                class: "input",
-                placeholder: "IPv4/6 CIDR range or address" %>
-          </div>
-          <div class="control">
-            <%= submit "Add", class: "button is-primary" %>
-          </div>
-        </div>
-      </form>
-
-      <table class="table">
-        <tbody>
-          <%= for rule <- @whitelist do %>
-            <tr>
-              <td>
-                <%= rule.destination %>
-              </td>
-              <td>
-                <a href="#" phx-click="delete_whitelist_rule" phx-value-rule_id="<%= rule.id %>">
-                  Delete
-                </a>
-              </td>
-            </tr>
-          <% end %>
-        </tbody>
-      </table>
-    </div>
-    <div class="column is-6">
-      <h4 class="title">Blacklist</h4>
-      <%= f = form_for @rule_changeset, "#", [phx_submit: :add_blacklist_rule] %>
-        <%= hidden_input f, :action, value: "deny" %>
-        <%= hidden_input f, :device_id, value: @device.id %>
-        <div class="field has-addons">
-          <div class="control is-expanded">
-            <%= text_input f,
-                :destination,
-                class: "input",
-                placeholder: "IPv4/6 CIDR range or address" %>
-          </div>
-          <div class="control">
-            <%= submit "Add", class: "button is-primary" %>
-          </div>
-        </div>
-      </form>
-
-      <table class="table">
-        <tbody>
-          <%= for rule <- @blacklist do %>
-            <tr>
-              <td>
-                <%= rule.destination %>
-              </td>
-              <td>
-                <a href="#" phx-click="delete_blacklist_rule" phx-value-rule_id="<%= rule.id %>">
-                  Delete
-                </a>
-              </td>
-            </tr>
-          <% end %>
-        </tbody>
-      </table>
-    </div>
+    <%= live_component(
+        @socket,
+        FgHttpWeb.DeviceLive.RulelistComponent,
+        title: "Allowlist",
+        id: :allowlist,
+        device_id: @device.id) %>
+    <%= live_component(
+        @socket,
+        FgHttpWeb.DeviceLive.RulelistComponent,
+        title: "Denylist",
+        id: :denylist,
+        device_id: @device.id) %>
   </div>
 
   <hr>

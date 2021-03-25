@@ -53,18 +53,18 @@ defmodule FgHttp.Rules do
     Repo.all(query)
   end
 
-  def whitelist(device) when is_map(device), do: whitelist(device.id)
+  def allowlist(device) when is_map(device), do: allowlist(device.id)
 
-  def whitelist(device_id) when is_binary(device_id) or is_number(device_id) do
+  def allowlist(device_id) when is_binary(device_id) or is_number(device_id) do
     Repo.all(
       from r in Rule,
         where: r.device_id == ^device_id and r.action == "allow"
     )
   end
 
-  def blacklist(device) when is_map(device), do: blacklist(device.id)
+  def denylist(device) when is_map(device), do: denylist(device.id)
 
-  def blacklist(device_id) when is_binary(device_id) or is_number(device_id) do
+  def denylist(device_id) when is_binary(device_id) or is_number(device_id) do
     Repo.all(
       from r in Rule,
         where: r.device_id == ^device_id and r.action == "deny"

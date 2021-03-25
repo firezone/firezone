@@ -4,7 +4,7 @@ defmodule FgHttpWeb.DeviceLive.Show do
   """
   use FgHttpWeb, :live_view
 
-  alias FgHttp.{Devices, Rules}
+  alias FgHttp.Devices
 
   @impl true
   def mount(params, session, socket) do
@@ -14,60 +14,6 @@ defmodule FgHttpWeb.DeviceLive.Show do
   @impl true
   def handle_params(params, _url, socket) do
     {:noreply, apply_action(socket, socket.assigns.live_action, params)}
-  end
-
-  # XXX: LiveComponent
-  @impl true
-  def handle_event("add_whitelist_rule", params, socket) do
-    # XXX: Authorization
-    case Rules.create_rule(params["rule"]) do
-      {:ok, rule} ->
-        {:noreply, assign(socket, whitelist: Rules.like(rule))}
-
-      {:error, changeset} ->
-        {:noreply, assign(socket, changeset: changeset)}
-    end
-  end
-
-  # XXX: LiveComponent
-  @impl true
-  def handle_event("add_blacklist_rule", params, socket) do
-    # XXX: Authorization
-    case Rules.create_rule(params["rule"]) do
-      {:ok, rule} ->
-        {:noreply, assign(socket, blacklist: Rules.like(rule))}
-
-      {:error, changeset} ->
-        {:noreply, assign(socket, changeset: changeset)}
-    end
-  end
-
-  @impl true
-  def handle_event("delete_whitelist_rule", %{"rule_id" => rule_id}, socket) do
-    # XXX: Authorization
-    rule = Rules.get_rule!(rule_id)
-
-    case Rules.delete_rule(rule) do
-      {:ok, _rule} ->
-        {:noreply, assign(socket, whitelist: Rules.like(rule))}
-
-      {:error, msg} ->
-        {:noreply, put_flash(socket, :error, "Couldn't delete rule. #{msg}")}
-    end
-  end
-
-  @impl true
-  def handle_event("delete_blacklist_rule", %{"rule_id" => rule_id}, socket) do
-    # XXX: Authorization
-    rule = Rules.get_rule!(rule_id)
-
-    case Rules.delete_rule(rule) do
-      {:ok, _rule} ->
-        {:noreply, assign(socket, blacklist: Rules.like(rule))}
-
-      {:error, msg} ->
-        {:noreply, put_flash(socket, :error, "Couldn't delete rule. #{msg}")}
-    end
   end
 
   @impl true
@@ -103,14 +49,7 @@ defmodule FgHttpWeb.DeviceLive.Show do
     device = Devices.get_device!(id)
 
     if device.user_id == socket.assigns.current_user.id do
-      rule_changeset = Rules.new_rule(%{"device_id" => id})
-
-      assign(socket,
-        device: device,
-        rule_changeset: rule_changeset,
-        whitelist: Rules.whitelist(device),
-        blacklist: Rules.blacklist(device)
-      )
+      assign(socket, device: device)
     else
       not_authorized(socket)
     end
