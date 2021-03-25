@@ -82,3 +82,12 @@ config :phoenix, :stacktrace_depth, 20
 config :phoenix, :plug_init_mode, :runtime
 config :fg_vpn, :server_process_opts, name: {:global, :fg_vpn_server}
 config :fg_wall, :server_process_opts, name: {:global, :fg_wall_server}
+
+config(
+  :fg_http,
+  :disable_signup,
+  case System.get_env("DISABLE_SIGNUP") do
+    d when d in ["1", "yes"] -> true
+    _ -> false
+  end
+)

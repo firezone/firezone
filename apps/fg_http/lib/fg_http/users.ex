@@ -60,15 +60,15 @@ defmodule FgHttp.Users do
   end
 
   def create_user(attrs) when is_map(attrs) do
-    %User{}
+    struct(User, sign_in_keys())
     |> User.create_changeset(attrs)
     |> Repo.insert()
   end
 
-  def sign_in_params do
+  def sign_in_keys do
     %{
-      "sign_in_token" => FgCrypto.rand_string(),
-      "sign_in_token_created_at" => DateTime.utc_now()
+      sign_in_token: FgCrypto.rand_string(),
+      sign_in_token_created_at: DateTime.utc_now()
     }
   end
 

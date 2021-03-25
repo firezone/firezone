@@ -64,8 +64,7 @@ defmodule FgHttp.MixProject do
       {:gettext, "~> 0.11"},
       {:jason, "~> 1.0"},
       {:plug_cowboy, "~> 2.1"},
-      {:credo, "~> 1.4", only: [:dev, :test], runtime: false},
-      {:wallaby, "~> 0.28", runtime: false, only: :test}
+      {:credo, "~> 1.4", only: [:dev, :test], runtime: false}
     ]
   end
 

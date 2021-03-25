@@ -26,6 +26,7 @@ defmodule FgHttp.Rules.Rule do
       :destination
     ])
     |> validate_required([:device_id, :action, :destination])
+    |> unique_constraint([:device_id, :destination, :action])
   end
 
   def iptables_spec(rule) do

@@ -12,15 +12,11 @@ defmodule FgHttpWeb.UserLive.New do
   end
 
   def handle_event("create_user", %{"user" => user_params}, socket) do
-    sign_in_params = Users.sign_in_params()
-    params = Map.merge(user_params, sign_in_params)
-
-    case Users.create_user(params) do
-      {:ok, _user} ->
+    case Users.create_user(user_params) do
+      {:ok, user} ->
         {:noreply,
-         redirect(socket,
-           to: Routes.session_path(socket, :create, sign_in_params["sign_in_token"])
-         )}
+         socket
+         |> redirect(to: Routes.session_path(socket, :create, user.sign_in_token))}
 
       {:error, changeset} ->
         {:noreply,

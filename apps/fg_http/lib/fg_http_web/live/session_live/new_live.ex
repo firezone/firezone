@@ -4,7 +4,7 @@ defmodule FgHttpWeb.SessionLive.New do
   """
   use FgHttpWeb, :live_view
 
-  alias FgHttp.{Sessions, Users}
+  alias FgHttp.{Sessions, Users, Util.FgMap}
 
   def mount(_params, _session, socket) do
     changeset = Sessions.new_session()
@@ -56,7 +56,7 @@ defmodule FgHttpWeb.SessionLive.New do
   end
 
   defp create_sign_in_token(session) do
-    params = Users.sign_in_params()
+    params = sign_in_params()
 
     case Users.get_user!(session.id) |> Users.update_user(params) do
       {:ok, _count} ->
@@ -69,5 +69,9 @@ defmodule FgHttpWeb.SessionLive.New do
 
   defp signups_disabled? do
     Application.fetch_env!(:fg_http, :disable_signup)
+  end
+
+  defp sign_in_params do
+    FgMap.stringify_keys(Users.sign_in_keys())
   end
 end

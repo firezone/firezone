@@ -16,7 +16,7 @@ defmodule FgHttpWeb.SessionController do
         |> clear_session()
         |> put_session(:user_id, user.id)
         |> put_flash(:info, "Signed in successfully.")
-        |> redirect(to: Routes.device_index_path(conn, :index))
+        |> redirect(to: Routes.root_index_path(conn, :index))
 
       {:error, error_msg} ->
         conn
