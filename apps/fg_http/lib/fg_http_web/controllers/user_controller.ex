@@ -6,6 +6,8 @@ defmodule FgHttpWeb.UserController do
   alias FgHttp.Users
   use FgHttpWeb, :controller
 
+  plug :redirect_unauthenticated
+
   def delete(conn, _params) do
     user_id = get_session(conn, :user_id)
     user = Users.get_user!(user_id)
@@ -22,6 +24,19 @@ defmodule FgHttpWeb.UserController do
         conn
         |> put_flash(:error, "Error deleting account: #{msg}")
         |> redirect(to: Routes.root_index_path(conn, :index))
+    end
+  end
+
+  def redirect_unauthenticated(conn, _options) do
+    case get_session(conn, :user_id) do
+      nil ->
+        conn
+        |> put_resp_content_type("text/plain")
+        |> send_resp(403, "Forbidden")
+        |> halt()
+
+      _ ->
+        conn
     end
   end
 end

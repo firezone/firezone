@@ -12,8 +12,8 @@ defmodule FgHttpWeb.DeviceLive.Show do
   end
 
   @impl true
-  def handle_params(params, _url, socket) do
-    {:noreply, apply_action(socket, socket.assigns.live_action, params)}
+  def handle_params(_params, _url, socket) do
+    {:noreply, socket}
   end
 
   @impl true
@@ -35,14 +35,6 @@ defmodule FgHttpWeb.DeviceLive.Show do
          socket
          |> put_flash(:error, "Error deleting device: #{msg}")}
     end
-  end
-
-  defp apply_action(socket, :edit, _params) do
-    socket
-  end
-
-  defp apply_action(socket, :show, _params) do
-    socket
   end
 
   defp load_data(%{"id" => id}, socket) do

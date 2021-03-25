@@ -12,22 +12,15 @@ defmodule FgHttpWeb.AccountLive.Show do
   end
 
   @impl true
-  def handle_params(params, _url, socket) do
-    {:noreply, apply_action(socket, socket.assigns.live_action, params)}
-  end
-
-  defp apply_action(socket, :show, _params) do
-    socket
-  end
-
-  defp apply_action(socket, :edit, _params) do
-    socket
+  def handle_params(_params, _url, socket) do
+    {:noreply, socket}
   end
 
   @impl true
   def handle_event("update_user", %{"user" => user_params}, socket) do
     user = Users.get_user!(socket.assigns.current_user.id)
 
+    # XXX: Clear session, disconnect all websockets
     case Users.update_user(user, user_params) do
       {:ok, _user} ->
         {:noreply,
@@ -44,7 +37,7 @@ defmodule FgHttpWeb.AccountLive.Show do
   end
 
   def handle_event("delete_user", _params, socket) do
-    # XXX: Disconnect all WebSockets.
+    # XXX: Clear session, disconnect all WebSockets.
     case Users.delete_user(socket.assigns.current_user) do
       {:ok, _user} ->
         {:noreply,

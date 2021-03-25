@@ -8,75 +8,74 @@
         device: @device,
         action: @live_action) %>
 <% end %>
-<div class="content">
 <h3 class="title"><%= @device.name %></h3>
 
-  <div class="columns">
-    <div class="column is-6">
-      <div class="content">
-        <div class="level">
-          <div class="level-left">
-            <h4 class="title">Details</h4>
-          </div>
-          <div class="level-right">
-            <%= live_patch("Edit", to: Routes.device_show_path(@socket, :edit, @device)) %>
-          </div>
-        </div>
-
-        <dl>
-          <dt>
-            <strong>Name:</strong>
-          </dt>
-          <dd><%= @device.name %></dd>
-
-          <dt>
-            <strong>Public key:</strong>
-          </dt>
-          <dd><%= @device.public_key %></dd>
-
-          <dt>
-            <strong>Private key:</strong>
-          </dt>
-          <dd><%= @device.private_key %></dd>
-
-          <dt>
-            <strong>Preshared key:</strong>
-          </dt>
-          <dd><%= @device.private_key %></dd>
-
-          <dt>
-            <strong>Server Public key:</strong>
-          </dt>
-          <dd><%= @device.server_public_key %></dd>
-
-          <dt>
-            <strong>IPv4 interface address:</strong>
-          </dt>
-          <dd><%= @device.interface_address4 %></dd>
-
-          <dt>
-            <strong>IPv6 interface address:</strong>
-          </dt>
-          <dd><%= @device.interface_address6 %></dd>
-
-          <dt>
-            <strong>Remote IP:</strong>
-          </dt>
-          <dd><%= @device.remote_ip %></dd>
-
-          <dt>
-            <strong>Last seen at:</strong>
-          </dt>
-          <dd><%= @device.last_seen_at %></dd>
-        </dl>
+<div class="columns">
+  <div class="column is-6">
+    <div class="level">
+      <div class="level-left">
+        <h4 class="is-4 title">Details</h4>
+      </div>
+      <div class="level-right">
+        <%= live_patch("Edit", to: Routes.device_show_path(@socket, :edit, @device)) %>
       </div>
     </div>
-    <div class="column is-6">
-      <h4 class="title">Config</h4>
-      <h6 class="is-6 title">
-        Add the following to your WireGuard™ configuration file:
-      </h6>
-      <pre><code id="wg-conf">
+
+    <div class="content">
+      <dl>
+        <dt>
+          <strong>Name:</strong>
+        </dt>
+        <dd><%= @device.name %></dd>
+
+        <dt>
+          <strong>Public key:</strong>
+        </dt>
+        <dd class="code"><%= @device.public_key %></dd>
+
+        <dt>
+          <strong>Private key:</strong>
+        </dt>
+        <dd class="code"><%= @device.private_key %></dd>
+
+        <dt>
+          <strong>Preshared key:</strong>
+        </dt>
+        <dd class="code"><%= @device.private_key %></dd>
+
+        <dt>
+          <strong>Server Public key:</strong>
+        </dt>
+        <dd class="code"><%= @device.server_public_key %></dd>
+
+        <dt>
+          <strong>IPv4 interface address:</strong>
+        </dt>
+        <dd class="code"><%= @device.interface_address4 %></dd>
+
+        <dt>
+          <strong>IPv6 interface address:</strong>
+        </dt>
+        <dd class="code"><%= @device.interface_address6 %></dd>
+
+        <dt>
+          <strong>Remote IP:</strong>
+        </dt>
+        <dd class="code"><%= @device.remote_ip %></dd>
+
+        <dt>
+          <strong>Last seen at:</strong>
+        </dt>
+        <dd><%= @device.last_seen_at %></dd>
+      </dl>
+    </div>
+  </div>
+  <div class="column is-6">
+    <h4 class="is-4 title">Config</h4>
+    <h6 class="is-6 title">
+      Add the following to your WireGuard™ configuration file:
+    </h6>
+    <pre><code id="wg-conf">
 [Interface]
 PrivateKey = <%= @device.private_key %>
 Address = 172.16.99.1/24
@@ -87,39 +86,41 @@ PublicKey = <%= @device.server_public_key %>
 PresharedKey = <%= @device.preshared_key %>
 AllowedIPs = 0.0.0.0/0, ::/0
 Endpoint = <%= Application.fetch_env!(:fg_http, :vpn_endpoint) %></code></pre>
-      <h6 class="is-6 title">
-        Or scan the QR code with your mobile phone:
-      </h6>
-      <canvas id="qr-canvas" phx-hook="QrCode"></canvas>
-    </div>
+    <h6 class="is-6 title">
+      Or scan the QR code with your mobile phone:
+    </h6>
+    <canvas id="qr-canvas" phx-hook="QrCode"></canvas>
   </div>
+</div>
 
-  <hr>
+<hr>
 
-  <div class="columns">
-    <%= live_component(
-        @socket,
-        FgHttpWeb.DeviceLive.RulelistComponent,
-        title: "Allowlist",
-        id: :allowlist,
-        device_id: @device.id) %>
-    <%= live_component(
-        @socket,
-        FgHttpWeb.DeviceLive.RulelistComponent,
-        title: "Denylist",
-        id: :denylist,
-        device_id: @device.id) %>
-  </div>
+<div class="columns">
+  <%= live_component(
+      @socket,
+      FgHttpWeb.DeviceLive.RuleListComponent,
+      title: "Allowlist",
+      id: :allowlist,
+      current_user: @current_user,
+      device_id: @device.id) %>
+  <%= live_component(
+      @socket,
+      FgHttpWeb.DeviceLive.RuleListComponent,
+      title: "Denylist",
+      id: :denylist,
+      current_user: @current_user,
+      device_id: @device.id) %>
+</div>
 
-  <hr>
+<hr>
 
-  <div class="level">
-    <%= live_redirect("Back to Devices", to: Routes.device_index_path(@socket, :index), class: "button") %>
-    <button class="button is-danger"
-            phx-click="delete_device"
-            phx-value-device_id="<%= @device.id %>"
-            data-confirm="Are you sure? This will remove all data associated with this device.">
-      Delete this device
-    </button>
-  </div>
+<div class="level">
+  <%= live_redirect("Back to Devices", to: Routes.device_index_path(@socket, :index), class: "button") %>
+  <button class="button is-danger"
+          phx-click="delete_device"
+          phx-value-device_id="<%= @device.id %>"
+          data-confirm="Are you sure? This will remove all data associated with this device.">
+    Delete this device
+  </button>
+</div>
 </div>
