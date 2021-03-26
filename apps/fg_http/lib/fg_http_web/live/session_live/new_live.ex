@@ -4,7 +4,8 @@ defmodule FgHttpWeb.SessionLive.New do
   """
   use FgHttpWeb, :live_view
 
-  alias FgHttp.{Sessions, Users, Util.FgMap}
+  alias FgCommon.FgMap
+  alias FgHttp.{Sessions, Users}
 
   def mount(_params, _session, socket) do
     changeset = Sessions.new_session()

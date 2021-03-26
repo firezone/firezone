@@ -3,7 +3,7 @@ defmodule FgHttpWeb.Events do
   Handles interfacing with other processes in the system.
   """
 
-  alias FgHttp.{Devices, Rules, Rules.Rule}
+  alias FgHttp.{Devices, Rules}
 
   def create_device do
     GenServer.call(vpn_pid(), :create_device)
@@ -14,11 +14,11 @@ defmodule FgHttpWeb.Events do
   end
 
   def add_rule(rule) do
-    GenServer.call(wall_pid(), {:add_rule, Rule.iptables_spec(rule)})
+    GenServer.call(wall_pid(), {:add_rule, Rules.iptables_spec(rule)})
   end
 
   def delete_rule(rule) do
-    GenServer.call(wall_pid(), {:delete_rule, Rule.iptables_spec(rule)})
+    GenServer.call(wall_pid(), {:delete_rule, Rules.iptables_spec(rule)})
   end
 
   def set_config do

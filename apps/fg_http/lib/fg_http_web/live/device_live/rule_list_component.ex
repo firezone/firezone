@@ -53,10 +53,10 @@ defmodule FgHttpWeb.DeviceLive.RuleListComponent do
   defp action(id) do
     case id do
       :allowlist ->
-        "allow"
+        :allow
 
       :denylist ->
-        "deny"
+        :deny
     end
   end
 

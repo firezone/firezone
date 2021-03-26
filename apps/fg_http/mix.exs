@@ -44,6 +44,7 @@ defmodule FgHttp.MixProject do
   # Type `mix help deps` for examples and options.
   defp deps do
     [
+      {:fg_common, in_umbrella: true},
       {:phoenix, "~> 1.5"},
       {:cloak_ecto, "~> 1.1"},
       {:excoveralls, "~> 0.13", only: :test},

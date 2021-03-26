@@ -1,3 +1,3 @@
 import EctoEnum
 
-defenum(RuleActionEnum, :action, ["deny", "allow"])
+defenum(RuleActionEnum, :action, [:deny, :allow])

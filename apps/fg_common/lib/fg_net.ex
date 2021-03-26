@@ -1,10 +1,15 @@
-defmodule FgHttp.Util.FgNet do
+defmodule FgCommon.FgNet do
   @moduledoc """
   Network utility functions.
   """
 
   def ip_type(str) when is_binary(str) do
-    charlist = String.to_charlist(str)
+    charlist =
+      str
+      # remove CIDR range if exists
+      |> String.split("/")
+      |> List.first()
+      |> String.to_charlist()
 
     case :inet.parse_ipv4_address(charlist) do
       {:ok, _} ->
@@ -16,12 +21,5 @@ defmodule FgHttp.Util.FgNet do
           {:error, _} -> "unknown"
         end
     end
-  end
-
-  # Remember: a struct is a map
-  def ip_type(inet) when is_map(inet) do
-    inet
-    |> EctoNetwork.INET.decode()
-    |> ip_type()
   end
 end

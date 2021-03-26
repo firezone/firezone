@@ -1,7 +1,7 @@
-defmodule FgHttp.Util.FgMapTest do
+defmodule FgCommon.FgMapTest do
   use ExUnit.Case, async: true
 
-  alias FgHttp.Util.FgMap
+  alias FgCommon.FgMap
 
   describe "compact" do
     test "it compacts the map" do

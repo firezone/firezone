@@ -9,7 +9,7 @@ defmodule FgHttp.PasswordResets do
   alias FgHttp.Users.PasswordReset
 
   def get_password_reset!(email: email) do
-    Repo.get_by(PasswordReset, email: email)
+    Repo.get_by!(PasswordReset, email: email)
   end
 
   def get_password_reset!(reset_token: reset_token) do
@@ -22,7 +22,7 @@ defmodule FgHttp.PasswordResets do
           p.reset_token == ^reset_token and
             p.reset_sent_at > datetime_add(^now, ^validity_secs, "second")
 
-    Repo.one(query)
+    Repo.one!(query)
   end
 
   def create_password_reset(%PasswordReset{} = record, attrs) do

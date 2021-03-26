@@ -5,13 +5,12 @@ defmodule FgHttp.Rules.Rule do
 
   use Ecto.Schema
   import Ecto.Changeset
-  import FgHttp.Util.FgNet
 
-  alias FgHttp.{Devices, Devices.Device}
+  alias FgHttp.{Devices.Device}
 
   schema "rules" do
     field :destination, EctoNetwork.INET
-    field :action, RuleActionEnum, default: "deny"
+    field :action, RuleActionEnum, default: :deny
 
     belongs_to :device, Device
 
@@ -27,18 +26,5 @@ defmodule FgHttp.Rules.Rule do
     ])
     |> validate_required([:device_id, :action, :destination])
     |> unique_constraint([:device_id, :destination, :action])
-  end
-
-  def iptables_spec(rule) do
-    device = Devices.get_device!(rule.device_id)
-
-    source =
-      case ip_type(rule.destination) do
-        "IPv4" -> device.interface_address4
-        "IPv6" -> device.interface_address6
-        _ -> nil
-      end
-
-    {source, rule.destination, rule.action}
   end
 end
