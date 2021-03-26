@@ -7,7 +7,8 @@ defmodule FgHttp.Users.User do
   import Ecto.Changeset
   import FgHttp.Users.PasswordHelpers
 
-  alias FgHttp.{Devices.Device, Util.FgMap}
+  alias FgCommon.FgMap
+  alias FgHttp.Devices.Device
 
   schema "users" do
     field :email, :string
@@ -47,6 +48,8 @@ defmodule FgHttp.Users.User do
   end
 
   # Sign in token
+  # XXX: Map keys must be strings for this approach to work. Refactor to something that is key
+  # type agnostic.
   def update_changeset(
         user,
         %{"sign_in_token" => _token, "sign_in_token_created_at" => _created_at} = attrs

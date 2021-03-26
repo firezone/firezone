@@ -1,7 +1,7 @@
-defmodule FgHttp.Util.FgNetTest do
+defmodule FgCommon.FgNetTest do
   use ExUnit.Case, async: true
 
-  alias FgHttp.Util.FgNet
+  alias FgCommon.FgNet
 
   describe "ip_type" do
     test "it detects IPv4 addresses" do

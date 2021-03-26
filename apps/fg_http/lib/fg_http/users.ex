@@ -6,45 +6,22 @@ defmodule FgHttp.Users do
   import Ecto.Query, warn: false
   alias FgHttp.Repo
 
-  alias FgHttp.{Users.User, Util.FgCrypto}
+  alias FgCommon.FgCrypto
+  alias FgHttp.Users.User
 
   # one hour
   @sign_in_token_validity_secs 3600
 
   def consume_sign_in_token(token) when is_binary(token) do
-    validity_secs = -1 * @sign_in_token_validity_secs
-    now = DateTime.utc_now()
-
-    update_fn = fn user ->
-      case from(u in User, where: u.id == ^user.id)
-           |> Repo.update_all(set: [sign_in_token: nil, sign_in_token_created_at: nil]) do
-        {1, _result} ->
-          {:ok, user}
-
-        _ ->
-          # Rollback transaction
-          {:error, "Unexpected error attempting to clear sign in token."}
-      end
-    end
-
-    {:ok, result} =
+    {:ok, user} =
       Repo.transaction(fn ->
-        case Repo.one(
-               from(u in User,
-                 where:
-                   u.sign_in_token == ^token and
-                     u.sign_in_token_created_at > datetime_add(^now, ^validity_secs, "second")
-               )
-             ) do
-          nil ->
-            {:error, "Token invalid."}
-
-          user ->
-            update_fn.(user)
+        case find_by_token(token) do
+          nil -> {:error, "Token invalid."}
+          u -> token_update_fn(u)
         end
       end)
 
-    result
+    user
   end
 
   def get_user!(email: email) do
@@ -106,6 +83,32 @@ defmodule FgHttp.Users do
 
       _ ->
         nil
+    end
+  end
+
+  defp find_by_token(token) do
+    validity_secs = -1 * @sign_in_token_validity_secs
+    now = DateTime.utc_now()
+
+    Repo.one(
+      from(u in User,
+        where:
+          u.sign_in_token == ^token and
+            u.sign_in_token_created_at > datetime_add(^now, ^validity_secs, "second")
+      )
+    )
+  end
+
+  defp token_update_fn(user) do
+    result =
+      Repo.update_all(
+        from(u in User, where: u.id == ^user.id),
+        set: [sign_in_token: nil, sign_in_token_created_at: nil]
+      )
+
+    case result do
+      {1, _result} -> {:ok, user}
+      _ -> {:error, "Unexpected error attempting to clear sign in token."}
     end
   end
 end

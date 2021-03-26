@@ -4,7 +4,8 @@ defmodule FgHttp.Devices do
   """
 
   import Ecto.Query, warn: false
-  alias FgHttp.{Devices.Device, Repo, Users.User, Util.FgCrypto}
+  alias FgCommon.FgCrypto
+  alias FgHttp.{Devices.Device, Repo, Users.User}
 
   def list_devices do
     Repo.all(Device)

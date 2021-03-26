@@ -1,7 +1,7 @@
-defmodule FgHttp.Util.FgCryptoTest do
+defmodule FgCommon.FgCryptoTest do
   use ExUnit.Case, async: true
 
-  alias FgHttp.Util.FgCrypto
+  alias FgCommon.FgCrypto
 
   describe "rand_string" do
     test "it returns a string of default length" do

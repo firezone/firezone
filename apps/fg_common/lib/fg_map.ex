@@ -1,4 +1,4 @@
-defmodule FgHttp.Util.FgMap do
+defmodule FgCommon.FgMap do
   @moduledoc """
   Utilities for working with Maps
   """
