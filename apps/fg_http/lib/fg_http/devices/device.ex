@@ -29,6 +29,7 @@ defmodule FgHttp.Devices.Device do
   def changeset(device, attrs) do
     device
     |> cast(attrs, [
+      :allowed_ips,
       :remote_ip,
       :interface_address4,
       :interface_address6,
