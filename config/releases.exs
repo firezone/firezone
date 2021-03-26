@@ -24,7 +24,7 @@ ssl_ca_cert_file =
   end
 
 default_egress_address =
-  FgVpn.CLI.Live.exec!("ip route get 8.8.8.8 | grep -oP 'src \\K\\S+'")
+  FgCommon.CLI.exec!("ip route get 8.8.8.8 | grep -oP 'src \\K\\S+'")
   |> String.trim()
 
 # Optional environment variables
