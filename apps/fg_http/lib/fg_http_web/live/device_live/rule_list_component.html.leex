@@ -1,4 +1,4 @@
-<div class="column is-6">
+<div class="column is-half">
   <h4 class="is-4 title"><%= @title %></h4>
   <%= f = form_for @changeset, "#", [phx_target: @myself, phx_submit: :add_rule] %>
     <%= hidden_input f, :action, value: @action %>

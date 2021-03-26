@@ -10,8 +10,8 @@
 <% end %>
 <h3 class="title"><%= @device.name %></h3>
 
-<div class="columns">
-  <div class="column is-6">
+<div class="columns is-centered">
+  <div class="column is-half">
     <div class="level">
       <div class="level-left">
         <h4 class="is-4 title">Details</h4>
@@ -70,12 +70,13 @@
       </dl>
     </div>
   </div>
-  <div class="column is-6">
+  <div class="column is-half">
     <h4 class="is-4 title">Config</h4>
-    <h6 class="is-6 title">
-      Add the following to your WireGuard™ configuration file:
-    </h6>
-    <pre><code id="wg-conf">
+    <div class="content">
+      <h6 class="is-6 title">
+        Add the following to your WireGuard™ configuration file:
+      </h6>
+      <pre><code id="wg-conf">
 [Interface]
 PrivateKey = <%= @device.private_key %>
 Address = 172.16.99.1/24
@@ -86,10 +87,13 @@ PublicKey = <%= @device.server_public_key %>
 PresharedKey = <%= @device.preshared_key %>
 AllowedIPs = 0.0.0.0/0, ::/0
 Endpoint = <%= Application.fetch_env!(:fg_http, :vpn_endpoint) %></code></pre>
-    <h6 class="is-6 title">
-      Or scan the QR code with your mobile phone:
-    </h6>
-    <canvas id="qr-canvas" phx-hook="QrCode"></canvas>
+      <h6 class="is-6 title">
+        Or scan the QR code with your mobile phone:
+      </h6>
+      <div class="has-text-centered">
+        <canvas id="qr-canvas" phx-hook="QrCode"></canvas>
+      </div>
+    </div>
   </div>
 </div>
 

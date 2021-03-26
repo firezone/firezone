@@ -20,7 +20,7 @@ defmodule FgHttpWeb.DeviceLive.RuleListComponent do
 
   @impl true
   def handle_event("add_rule", %{"rule" => rule_params}, socket) do
-    if rule_params["device_id"] == socket.assigns.device_id do
+    if rule_params["device_id"] == "#{socket.assigns.device_id}" do
       case Rules.create_rule(rule_params) do
         {:ok, _rule} ->
           {:noreply, assign(socket, rule_list: rule_list(socket.assigns))}
