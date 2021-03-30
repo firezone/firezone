@@ -8,9 +8,7 @@ defmodule FgHttpWeb.SessionController do
 
   # GET /sign_in/:token
   def create(conn, %{"token" => token}) do
-    resp = Users.consume_sign_in_token(token)
-
-    case resp do
+    case Users.consume_sign_in_token(token) do
       {:ok, user} ->
         conn
         |> clear_session()

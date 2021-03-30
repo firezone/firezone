@@ -33,38 +33,38 @@ defmodule FgWall.CLI.Live do
   @doc """
   Adds iptables rule.
   """
-  def add_rule({4, s, d, "deny"}) do
+  def add_rule({4, s, d, :deny}) do
     exec!("iptables -A fireguard -s #{s} -d #{d} -j DROP")
   end
 
-  def add_rule({4, s, d, "allow"}) do
+  def add_rule({4, s, d, :allow}) do
     exec!("iptables -A fireguard -s #{s} -d #{d} -j ACCEPT")
   end
 
-  def add_rule({6, s, d, "deny"}) do
+  def add_rule({6, s, d, :deny}) do
     exec!("iptables6 -A fireguard -s #{s} -d #{d} -j DROP")
   end
 
-  def add_rule({6, s, d, "allow"}) do
+  def add_rule({6, s, d, :allow}) do
     exec!("iptables6 -A fireguard -s #{s} -d #{d} -j ACCEPT")
   end
 
   @doc """
   Deletes iptables rule.
   """
-  def delete_rule({4, s, d, "deny"}) do
+  def delete_rule({4, s, d, :deny}) do
     exec!("iptables -D fireguard -s #{s} -d #{d} -j DROP")
   end
 
-  def delete_rule({4, s, d, "allow"}) do
+  def delete_rule({4, s, d, :allow}) do
     exec!("iptables -D fireguard -s #{s} -d #{d} -j ACCEPT")
   end
 
-  def delete_rule({6, s, d, "deny"}) do
+  def delete_rule({6, s, d, :deny}) do
     exec!("iptables6 -D fireguard -s #{s} -d #{d} -j DROP")
   end
 
-  def delete_rule({6, s, d, "allow"}) do
+  def delete_rule({6, s, d, :allow}) do
     exec!("iptables6 -D fireguard -s #{s} -d #{d} -j ACCEPT")
   end
 end

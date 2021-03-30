@@ -10,7 +10,7 @@ defmodule FgHttp.Rules.Rule do
 
   schema "rules" do
     field :destination, EctoNetwork.INET
-    field :action, RuleActionEnum, default: :deny
+    field :action, Ecto.Enum, values: [:deny, :allow], default: :deny
 
     belongs_to :device, Device
 

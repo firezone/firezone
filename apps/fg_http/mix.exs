@@ -53,7 +53,6 @@ defmodule FgHttp.MixProject do
       {:phoenix_pubsub, "~> 2.0"},
       {:phoenix_ecto, "~> 4.0"},
       {:ecto_sql, "~> 3.1"},
-      {:ecto_enum, "~> 1.4"},
       {:ecto_network, "~> 1.3"},
       {:inflex, "~> 2.0"},
       {:bamboo, "~> 1.5"},

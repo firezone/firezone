@@ -13,15 +13,10 @@ defmodule FgHttp.Users do
   @sign_in_token_validity_secs 3600
 
   def consume_sign_in_token(token) when is_binary(token) do
-    {:ok, user} =
-      Repo.transaction(fn ->
-        case find_by_token(token) do
-          nil -> {:error, "Token invalid."}
-          u -> token_update_fn(u)
-        end
-      end)
-
-    user
+    case find_token_transaction(token) do
+      {:ok, {:ok, user}} -> {:ok, user}
+      {:ok, {:error, msg}} -> {:error, msg}
+    end
   end
 
   def get_user!(email: email) do
@@ -71,7 +66,7 @@ defmodule FgHttp.Users do
     Repo.one(from u in User, select: count()) == 1
   end
 
-  # For now, assume first User is admin
+  # XXX: For now assume first user is the admin.
   def admin do
     User |> first |> Repo.one()
   end
@@ -97,6 +92,15 @@ defmodule FgHttp.Users do
             u.sign_in_token_created_at > datetime_add(^now, ^validity_secs, "second")
       )
     )
+  end
+
+  defp find_token_transaction(token) do
+    Repo.transaction(fn ->
+      case find_by_token(token) do
+        nil -> {:error, "Token invalid."}
+        user -> token_update_fn(user)
+      end
+    end)
   end
 
   defp token_update_fn(user) do
