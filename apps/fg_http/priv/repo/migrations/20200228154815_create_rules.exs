@@ -1,12 +1,15 @@
 defmodule FgHttp.Repo.Migrations.CreateRules do
   use Ecto.Migration
 
+  @create_query "CREATE TYPE action_enum AS ENUM ('deny', 'allow')"
+  @drop_query "DROP TYPE action_enum"
+
   def change do
-    RuleActionEnum.create_type()
+    execute(@create_query, @drop_query)
 
     create table(:rules) do
       add :destination, :inet, null: false
-      add :action, RuleActionEnum.type(), default: :deny, null: false
+      add :action, :action_enum, default: "deny", null: false
       add :device_id, references(:devices, on_delete: :delete_all), null: false
 
       timestamps(type: :utc_datetime_usec)

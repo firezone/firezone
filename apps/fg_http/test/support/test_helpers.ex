@@ -2,7 +2,7 @@ defmodule FgHttp.TestHelpers do
   @moduledoc """
   Test setup helpers
   """
-  alias FgHttp.{Fixtures, Repo, Users.PasswordReset, Users.User}
+  alias FgHttp.{Fixtures, Repo, Users, Users.PasswordReset, Users.User}
 
   def create_device(_) do
     device = Fixtures.device()
@@ -80,6 +80,27 @@ defmodule FgHttp.TestHelpers do
 
     {:ok, expired_reset_token: expired_reset_token}
   end
+
+  def create_user_with_valid_sign_in_token(_) do
+    {:ok, user: %User{} = Fixtures.user(Users.sign_in_keys())}
+  end
+
+  def create_user_with_expired_sign_in_token(_) do
+    expired = DateTime.add(DateTime.utc_now(), -1 * 86_401)
+    params = %{Users.sign_in_keys() | sign_in_token_created_at: expired}
+    {:ok, user: %User{} = Fixtures.user(params)}
+  end
+
+  def create_users(%{count: count}) do
+    users =
+      Enum.map(1..count, fn i ->
+        Fixtures.user(%{email: "userlist#{i}@test"})
+      end)
+
+    {:ok, users: users}
+  end
+
+  def create_users(_), do: create_users(%{count: 5})
 
   def clear_users(_) do
     {count, _result} = Repo.delete_all(User)

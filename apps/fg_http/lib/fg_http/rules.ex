@@ -76,7 +76,6 @@ defmodule FgHttp.Rules do
       from d in Device,
         join: r in Rule,
         on: r.device_id == d.id,
-        # "deny" enum is indexed 0
         order_by: r.action,
         select: {
           # Need to select both ipv4 and ipv6 since we don't know which the

@@ -40,6 +40,7 @@ defmodule FgHttp.Users.User do
     ])
     |> validate_required([:email, :password, :password_confirmation])
     |> validate_password_equality()
+    |> validate_format(:email, ~r/@/)
     |> unique_constraint(:email)
     |> put_password_hash()
     |> validate_required([:password_hash])
