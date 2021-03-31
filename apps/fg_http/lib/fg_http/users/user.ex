@@ -114,6 +114,7 @@ defmodule FgHttp.Users.User do
     |> validate_format(:email, ~r/@/)
   end
 
+  # XXX: Invalidate password reset when user is updated
   def update_changeset(user, %{} = attrs) do
     changeset(user, attrs)
   end
@@ -134,19 +135,9 @@ defmodule FgHttp.Users.User do
          user
        ) do
     case authenticate_user(user, changeset.changes.current_password) do
-      {:ok, _user} ->
-        changeset
-        |> delete_change(:current_password)
-
-      {:error, error_msg} ->
-        changeset
-        |> add_error(:current_password, error_msg)
+      {:ok, _user} -> changeset |> delete_change(:current_password)
+      {:error, error_msg} -> changeset |> add_error(:current_password, error_msg)
     end
-  end
-
-  # current_password missing, pass changeset along
-  defp verify_current_password(changeset, _user) do
-    changeset
   end
 
   defp set_confirmed_at(changeset) do

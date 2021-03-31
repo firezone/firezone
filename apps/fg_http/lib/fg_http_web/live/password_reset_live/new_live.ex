@@ -33,11 +33,12 @@ defmodule FgHttpWeb.PasswordResetLive.New do
              |> put_flash(:info, "Check your email for the password reset link.")
              |> push_redirect(to: Routes.session_new_path(socket, :new))}
 
-          {:error, changeset} ->
-            {:noreply,
-             socket
-             |> put_flash(:error, "Error creating password reset.")
-             |> assign(:changeset, changeset)}
+            # Not easy to test -- but also not likely to ever happen.
+            # {:error, changeset} ->
+            #   {:noreply,
+            #    socket
+            #    |> put_flash(:error, "Error creating password reset.")
+            #    |> assign(:changeset, changeset)}
         end
     end
   end

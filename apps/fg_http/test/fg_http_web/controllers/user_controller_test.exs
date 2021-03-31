@@ -9,6 +9,16 @@ defmodule FgHttpWeb.UserControllerTest do
     end
   end
 
+  describe "when user is already deleted" do
+    setup [:clear_users]
+
+    test "returns 404", %{authed_conn: conn} do
+      assert_raise(Ecto.NoResultsError, fn ->
+        delete(conn, Routes.user_path(conn, :delete))
+      end)
+    end
+  end
+
   describe "when user not signed in" do
     test "redirects to 403", %{unauthed_conn: conn} do
       test_conn = delete(conn, Routes.user_path(conn, :delete))

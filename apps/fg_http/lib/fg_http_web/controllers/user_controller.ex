@@ -20,10 +20,12 @@ defmodule FgHttpWeb.UserController do
         |> put_flash(:info, "Account deleted successfully.")
         |> redirect(to: Routes.root_index_path(conn, :index))
 
-      {:error, msg} ->
-        conn
-        |> put_flash(:error, "Error deleting account: #{msg}")
-        |> redirect(to: Routes.root_index_path(conn, :index))
+        # delete_user is unlikely to fail, if so write a test for it and uncomment this
+        # {:error, msg} ->
+        #   conn
+        #   |> clear_session()
+        #   |> put_flash(:error, "Error deleting account: #{msg}")
+        #   |> redirect(to: Routes.root_index_path(conn, :index))
     end
   end
 
