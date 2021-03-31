@@ -34,9 +34,7 @@ defmodule FgHttp.Users.PasswordReset do
 
   def create_changeset(%__MODULE__{} = password_reset, attrs) do
     password_reset
-    |> cast(attrs, [:email, :reset_sent_at, :reset_token])
-    |> validate_required([:email])
-    |> validate_format(:email, ~r/@/)
+    |> cast(attrs, [:reset_sent_at, :reset_token])
     |> generate_reset_token()
     |> validate_required([:reset_token])
     |> unique_constraint(:reset_token)
@@ -66,8 +64,6 @@ defmodule FgHttp.Users.PasswordReset do
     put_change(changeset, :reset_token, FgCrypto.rand_token(@token_num_bytes))
   end
 
-  defp generate_reset_token(changeset), do: changeset
-
   defp clear_token_fields(
          %Ecto.Changeset{
            valid?: true
@@ -78,12 +74,8 @@ defmodule FgHttp.Users.PasswordReset do
     |> put_change(:reset_sent_at, nil)
   end
 
-  defp clear_token_fields(changeset), do: changeset
-
   defp set_reset_sent_at(%Ecto.Changeset{valid?: true} = changeset) do
     changeset
     |> put_change(:reset_sent_at, DateTime.utc_now())
   end
-
-  defp set_reset_sent_at(changeset), do: changeset
 end

@@ -1,6 +1,6 @@
 defmodule FgHttp.PasswordResetsTest do
   use FgHttp.DataCase, async: true
-  alias FgHttp.PasswordResets
+  alias FgHttp.{PasswordResets, Users}
 
   describe "get_password_reset!/1 non-expired token" do
     setup [:create_password_reset]
@@ -43,7 +43,7 @@ defmodule FgHttp.PasswordResetsTest do
   describe "create_password_reset/2" do
     setup [:create_user]
 
-    test "creates password_reset", %{user: user} do
+    test "creates password_reset for valid email", %{user: user} do
       attrs = %{email: user.email}
 
       {:ok, password_reset} =
@@ -53,6 +53,24 @@ defmodule FgHttp.PasswordResetsTest do
       assert !is_nil(password_reset.reset_token)
       assert is_binary(password_reset.reset_token)
       assert String.length(password_reset.reset_token) == 12
+    end
+
+    test "doesn't create password_reset when email doesn't exist", %{user: user} do
+      {:ok, new_pwr} =
+        PasswordResets.get_password_reset!(email: user.email)
+        |> PasswordResets.create_password_reset(%{email: "invalid@test"})
+
+      assert new_pwr.email != "invalid@test"
+    end
+
+    test "doesn't create password_reset when user is deleted", %{user: user} do
+      password_reset = PasswordResets.get_password_reset!(email: user.email)
+      user = Users.get_user!(user.id)
+      Users.delete_user(user)
+
+      assert_raise(Ecto.StaleEntryError, fn ->
+        PasswordResets.create_password_reset(password_reset, %{email: user.email})
+      end)
     end
   end
 

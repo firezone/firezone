@@ -91,6 +91,16 @@ defmodule FgHttp.UsersTest do
   describe "update_user/2" do
     setup [:create_user]
 
+    @change_password_valid_params %{
+      "password" => "new_password",
+      "password_confirmation" => "new_password",
+      "current_password" => "test"
+    }
+    @change_password_invalid_params %{
+      "password" => "new_password",
+      "password_confirmation" => "new_password",
+      "current_password" => "invalid"
+    }
     @password_params %{"password" => "new_password", "password_confirmation" => "new_password"}
     @email_params %{"email" => "new_email@test"}
     @email_and_password_params %{
@@ -98,11 +108,45 @@ defmodule FgHttp.UsersTest do
       "password_confirmation" => "new_password",
       "email" => "new_email@test"
     }
+    @no_password_params %{"password_hash" => nil}
+    @empty_password_params %{
+      "password" => nil,
+      "password_confirmation" => nil,
+      "current_password" => nil
+    }
+    @sign_in_token_params %{
+      "sign_in_token" => "foobar",
+      "sign_in_token_created_at" => DateTime.utc_now()
+    }
 
-    test "changes password", %{user: user} do
+    test "changes password when only password is updated", %{user: user} do
       {:ok, new_user} = Users.update_user(user, @password_params)
-
       assert new_user.password_hash != user.password_hash
+    end
+
+    test "changes password when current_password valid", %{user: user} do
+      {:ok, new_user} = Users.update_user(user, @change_password_valid_params)
+      assert new_user.password_hash != user.password_hash
+    end
+
+    test "does not change password when current_password invalid", %{user: user} do
+      {:error, changeset} = Users.update_user(user, @change_password_invalid_params)
+      assert [current_password: _] = changeset.errors
+    end
+
+    test "prevents clearing the password", %{user: user} do
+      {:ok, new_user} = Users.update_user(user, @no_password_params)
+      assert new_user.password_hash == user.password_hash
+    end
+
+    test "nil password params", %{user: user} do
+      {:ok, new_user} = Users.update_user(user, @empty_password_params)
+      assert new_user.password_hash == user.password_hash
+    end
+
+    test "adding a sign in token", %{user: user} do
+      {:ok, new_user} = Users.update_user(user, @sign_in_token_params)
+      assert new_user.sign_in_token == @sign_in_token_params["sign_in_token"]
     end
 
     test "changes email", %{user: user} do
