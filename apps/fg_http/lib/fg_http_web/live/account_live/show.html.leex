@@ -17,17 +17,17 @@
         <dt>
           <strong>Email</strong>
         </dt>
-        <dd><%= @user.email %></dd>
+        <dd><%= @current_user.email %></dd>
 
         <dt><strong>Last signed in at</strong></dt>
-        <dd><%= @user.last_signed_in_at %></dd>
+        <dd><%= @current_user.last_signed_in_at %></dd>
       </dl>
 
       <div class="level">
-        <%= live_patch("Change Email or Password", to: Routes.account_show_path(@socket, :edit)) %>
+        <%= live_patch("Change email or password", to: Routes.account_show_path(@socket, :edit)) %>
 
         <%# This is purposefully a synchronous form in order to easily clear the session %>
-        <%= form_for @changeset, Routes.user_path(@socket, :delete), [method: :delete], fn _f -> %>
+        <%= form_for @changeset, Routes.user_path(@socket, :delete), [id: "delete-account", method: :delete], fn _f -> %>
           <%= submit "Delete your account", class: "button is-danger", data: [confirm: "Are you sure?"] %>
         <% end %>
       </div>
