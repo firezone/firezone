@@ -3,11 +3,19 @@ defmodule FgCommon.FgMapTest do
 
   alias FgCommon.FgMap
 
-  describe "compact" do
-    test "it compacts the map" do
-      data = %{foo: nil, bar: "hello"}
+  describe "compact/1" do
+    @data %{foo: nil, bar: "hello"}
 
-      assert FgMap.compact(data) == %{bar: "hello"}
+    test "removes nil values" do
+      assert FgMap.compact(@data) == %{bar: "hello"}
+    end
+  end
+
+  describe "compact/2" do
+    @data %{foo: "bar", bar: ""}
+
+    test "removes matched values" do
+      assert FgMap.compact(@data, "") == %{foo: "bar"}
     end
   end
 end

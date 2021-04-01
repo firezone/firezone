@@ -7,14 +7,16 @@ defmodule DBConfig do
       password: "postgres",
       database: "fireguard_test",
       hostname: System.get_env("POSTGRES_HOST", "localhost"),
-      pool: Ecto.Adapters.SQL.Sandbox
+      pool: Ecto.Adapters.SQL.Sandbox,
+      pool_size: :erlang.system_info(:logical_processors_available)
     ]
   end
 
   def config(db_url) do
     [
       url: db_url,
-      pool: Ecto.Adapters.SQL.Sandbox
+      pool: Ecto.Adapters.SQL.Sandbox,
+      pool_size: :erlang.system_info(:logical_processors_available)
     ]
   end
 end

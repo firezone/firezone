@@ -38,6 +38,24 @@ defmodule FgHttp.UsersTest do
     test "gets user by id", %{user: user} do
       assert Users.get_user!(user.id).id == user.id
     end
+
+    test "raises Ecto.NoResultsError for missing Users", %{user: _user} do
+      assert_raise(Ecto.NoResultsError, fn ->
+        Users.get_user!(0)
+      end)
+    end
+  end
+
+  describe "get_user/1" do
+    setup [:create_user]
+
+    test "returns user if found", %{user: user} do
+      assert Users.get_user(user.id).id == user.id
+    end
+
+    test "returns nil if not found" do
+      assert nil == Users.get_user(0)
+    end
   end
 
   describe "create_user/1" do
@@ -114,6 +132,12 @@ defmodule FgHttp.UsersTest do
       "password_confirmation" => nil,
       "current_password" => nil
     }
+    @email_empty_password_params %{
+      "email" => "foobar@test",
+      "password" => "",
+      "password_confirmation" => "",
+      "current_password" => ""
+    }
     @sign_in_token_params %{
       "sign_in_token" => "foobar",
       "sign_in_token_created_at" => DateTime.utc_now()
@@ -152,6 +176,14 @@ defmodule FgHttp.UsersTest do
     test "changes email", %{user: user} do
       {:ok, new_user} = Users.update_user(user, @email_params)
       assert new_user.email == "new_email@test"
+    end
+
+    test "handles empty params", %{user: user} do
+      assert {:ok, _new_user} = Users.update_user(user, %{})
+    end
+
+    test "handles nil password", %{user: user} do
+      assert {:ok, _new_user} = Users.update_user(user, @email_empty_password_params)
     end
 
     test "changes email and password", %{user: user} do

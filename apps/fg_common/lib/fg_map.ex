@@ -7,7 +7,11 @@ defmodule FgCommon.FgMap do
   Removes key, value pairs from a Map if the value is nil
   """
   def compact(map) when is_map(map) do
-    for {k, v} <- map, v != nil, into: %{}, do: {k, v}
+    compact(map, nil)
+  end
+
+  def compact(map, match) do
+    for {k, v} <- map, v != match, into: %{}, do: {k, v}
   end
 
   @doc """

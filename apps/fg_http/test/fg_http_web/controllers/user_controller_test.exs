@@ -1,6 +1,8 @@
 defmodule FgHttpWeb.UserControllerTest do
   use FgHttpWeb.ConnCase, async: true
 
+  alias FgHttp.Users
+
   describe "when user signed in" do
     test "deletes the user", %{authed_conn: conn} do
       test_conn = delete(conn, Routes.user_path(conn, :delete))
@@ -10,9 +12,12 @@ defmodule FgHttpWeb.UserControllerTest do
   end
 
   describe "when user is already deleted" do
-    setup [:clear_users]
-
     test "returns 404", %{authed_conn: conn} do
+      conn
+      |> get_session(:user_id)
+      |> Users.get_user!()
+      |> Users.delete_user()
+
       assert_raise(Ecto.NoResultsError, fn ->
         delete(conn, Routes.user_path(conn, :delete))
       end)
