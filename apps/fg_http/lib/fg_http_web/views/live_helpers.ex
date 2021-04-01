@@ -11,8 +11,13 @@ defmodule FgHttpWeb.LiveHelpers do
   Load user into socket assigns and call the callback function if provided.
   """
   def assign_defaults(params, %{"user_id" => user_id}, socket, callback) do
-    socket = assign_new(socket, :current_user, fn -> Users.get_user!(user_id) end)
-    callback.(params, socket)
+    socket = assign_new(socket, :current_user, fn -> Users.get_user(user_id) end)
+
+    if socket.assigns.current_user do
+      callback.(params, socket)
+    else
+      not_authorized(socket)
+    end
   end
 
   def assign_defaults(_params, _session, socket, _decorator) do

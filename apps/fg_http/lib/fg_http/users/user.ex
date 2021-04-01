@@ -74,6 +74,13 @@ defmodule FgHttp.Users.User do
 
   def update_changeset(
         user,
+        %{"password" => "", "password_confirmation" => "", "current_password" => ""} = attrs
+      ) do
+    update_changeset(user, FgMap.compact(attrs, ""))
+  end
+
+  def update_changeset(
+        user,
         %{
           "password" => _password,
           "password_confirmation" => _password_confirmation,

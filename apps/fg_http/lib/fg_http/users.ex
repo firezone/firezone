@@ -25,6 +25,8 @@ defmodule FgHttp.Users do
 
   def get_user!(id), do: Repo.get!(User, id)
 
+  def get_user(id), do: Repo.get(User, id)
+
   def create_user(attrs) when is_list(attrs) do
     attrs
     |> Enum.into(%{})
