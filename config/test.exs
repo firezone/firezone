@@ -9,7 +9,7 @@ defmodule DBConfig do
       hostname: System.get_env("POSTGRES_HOST", "localhost"),
       pool: Ecto.Adapters.SQL.Sandbox,
       pool_size: :erlang.system_info(:logical_processors_available),
-      queue_target: 5000
+      queue_target: 1000
     ]
   end
 
@@ -18,7 +18,7 @@ defmodule DBConfig do
       url: db_url,
       pool: Ecto.Adapters.SQL.Sandbox,
       pool_size: :erlang.system_info(:logical_processors_available),
-      queue_target: 5000
+      queue_target: 1000
     ]
   end
 end
