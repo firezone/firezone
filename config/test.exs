@@ -8,7 +8,8 @@ defmodule DBConfig do
       database: "fireguard_test",
       hostname: System.get_env("POSTGRES_HOST", "localhost"),
       pool: Ecto.Adapters.SQL.Sandbox,
-      pool_size: :erlang.system_info(:logical_processors_available)
+      pool_size: :erlang.system_info(:logical_processors_available),
+      queue_target: 5000
     ]
   end
 
@@ -16,7 +17,8 @@ defmodule DBConfig do
     [
       url: db_url,
       pool: Ecto.Adapters.SQL.Sandbox,
-      pool_size: :erlang.system_info(:logical_processors_available)
+      pool_size: :erlang.system_info(:logical_processors_available),
+      queue_target: 5000
     ]
   end
 end
