@@ -9,6 +9,36 @@ defmodule FgHttp.TestHelpers do
     {:ok, device: device}
   end
 
+  def create_other_user_device(_) do
+    user_id = Fixtures.user(%{email: "other_user@test"}).id
+
+    device =
+      Fixtures.device(%{
+        user_id: user_id,
+        name: "other device",
+        public_key: "other-pubkey",
+        private_key: "other-privkey"
+      })
+
+    {:ok, other_device: device}
+  end
+
+  def create_devices(_) do
+    user_id = Fixtures.user().id
+
+    devices =
+      Enum.map(1..5, fn num ->
+        Fixtures.device(%{
+          name: "device #{num}",
+          public_key: "#{num}",
+          private_key: "#{num}",
+          user_id: user_id
+        })
+      end)
+
+    {:ok, devices: devices}
+  end
+
   def create_user(_) do
     user = Fixtures.user()
     {:ok, user: user}

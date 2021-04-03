@@ -5,7 +5,7 @@ defmodule FgHttp.Fixtures do
   alias FgHttp.{Devices, PasswordResets, Repo, Rules, Sessions, Users, Users.User}
 
   def user(attrs \\ %{}) do
-    case Repo.get_by(User, email: "test@test") do
+    case Repo.get_by(User, email: Map.get(attrs, :email, "test@test")) do
       nil ->
         {:ok, user} =
           %{email: "test@test", password: "test", password_confirmation: "test"}
@@ -52,7 +52,7 @@ defmodule FgHttp.Fixtures do
 
     default_attrs = %{
       device_id: device_id,
-      destination: "0.0.0.0/0"
+      destination: "10.10.10.0/24"
     }
 
     {:ok, rule} = Rules.create_rule(Map.merge(default_attrs, attrs))

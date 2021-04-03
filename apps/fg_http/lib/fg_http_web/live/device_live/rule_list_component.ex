@@ -42,8 +42,9 @@ defmodule FgHttpWeb.DeviceLive.RuleListComponent do
         {:ok, _rule} ->
           {:noreply, assign(socket, rule_list: rule_list(socket.assigns))}
 
-        {:error, msg} ->
-          {:noreply, put_flash(socket, :error, "Couldn't delete rule. #{msg}")}
+          # Unlikely to ever happen
+          # {:error, msg} ->
+          #   {:noreply, put_flash(socket, :error, "Couldn't delete rule. #{msg}")}
       end
     else
       {:noreply, put_flash(socket, :error, "Unauthorized.")}

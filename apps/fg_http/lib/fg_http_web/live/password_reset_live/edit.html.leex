@@ -3,7 +3,7 @@
     <h3 class="title">Reset Password</h3>
     <hr>
 
-    <%= f = form_for(@changeset, "#", [phx_submit: :change_password]) %>
+    <%= f = form_for(@changeset, "#", [id: "reset-password", phx_submit: :change_password]) %>
       <%= hidden_input f, :reset_token %>
 
       <%= if @changeset.action do %>

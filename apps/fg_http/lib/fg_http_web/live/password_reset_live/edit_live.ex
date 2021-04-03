@@ -32,7 +32,7 @@ defmodule FgHttpWeb.PasswordResetLive.Edit do
             {:noreply,
              socket
              |> put_flash(:info, "Password reset successfully. You may now sign in.")
-             |> push_redirect(to: Routes.session_path(socket, :new))}
+             |> push_redirect(to: Routes.session_new_path(socket, :new))}
 
           {:error, changeset} ->
             {:noreply,
