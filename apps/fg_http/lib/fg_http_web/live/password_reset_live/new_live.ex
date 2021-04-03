@@ -16,7 +16,7 @@ defmodule FgHttpWeb.PasswordResetLive.New do
         %{"password_reset" => %{"email" => email}},
         socket
       ) do
-    case PasswordResets.get_password_reset!(email: email) do
+    case PasswordResets.get_password_reset(email: email) do
       nil ->
         {:noreply,
          socket

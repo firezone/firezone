@@ -18,22 +18,26 @@ defmodule FgHttpWeb.DeviceLive.Show do
 
   @impl true
   def handle_event("delete_device", %{"device_id" => device_id}, socket) do
-    # XXX: Authorization
     device = Devices.get_device!(device_id)
 
-    case Devices.delete_device(device) do
-      {:ok, _deleted_device} ->
-        {:ok, _deleted_pubkey} = @events_module.delete_device(device.public_key)
+    if device.user_id == socket.assigns.current_user.id do
+      case Devices.delete_device(device) do
+        {:ok, _deleted_device} ->
+          {:ok, _deleted_pubkey} = @events_module.delete_device(device.public_key)
 
-        {:noreply,
-         socket
-         |> put_flash(:info, "Device deleted successfully.")
-         |> redirect(to: Routes.device_index_path(socket, :index))}
+          {:noreply,
+           socket
+           |> put_flash(:info, "Device deleted successfully.")
+           |> redirect(to: Routes.device_index_path(socket, :index))}
 
-      {:error, msg} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, "Error deleting device: #{msg}")}
+          # Not likely to ever happen
+          # {:error, msg} ->
+          #   {:noreply,
+          #   socket
+          #   |> put_flash(:error, "Error deleting device: #{msg}")}
+      end
+    else
+      {:noreply, not_authorized(socket)}
     end
   end
 

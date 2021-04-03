@@ -7,7 +7,8 @@ defmodule FgHttpWeb.AccountLive.ShowTest do
   describe "when unauthenticated" do
     test "mount redirects to session path", %{unauthed_conn: conn} do
       path = Routes.account_show_path(conn, :show)
-      {:error, {:redirect, %{to: "/sign_in"}}} = live(conn, path)
+      expected_path = Routes.session_new_path(conn, :new)
+      assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
     end
   end
 
@@ -52,6 +53,17 @@ defmodule FgHttpWeb.AccountLive.ShowTest do
         |> render_submit(@invalid_params)
 
       assert test_view =~ "has invalid format"
+    end
+
+    test "closes modal", %{authed_conn: conn} do
+      path = Routes.account_show_path(conn, :edit)
+      {:ok, view, _html} = live(conn, path)
+
+      view
+      |> element("button.delete")
+      |> render_click()
+
+      assert_patched(view, Routes.account_show_path(conn, :show))
     end
   end
 end

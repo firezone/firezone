@@ -1,6 +1,6 @@
 <div class="column is-half">
   <h4 class="is-4 title"><%= @title %></h4>
-  <%= f = form_for @changeset, "#", [phx_target: @myself, phx_submit: :add_rule] %>
+  <%= f = form_for @changeset, "#", [id: "#{@action}-form", phx_target: @myself, phx_submit: :add_rule] %>
     <%= hidden_input f, :action, value: @action %>
     <%= hidden_input f, :device_id, value: @device_id %>
     <div class="field has-addons">

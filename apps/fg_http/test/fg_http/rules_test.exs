@@ -90,7 +90,7 @@ defmodule FgHttp.RulesTest do
   describe "iptables_spec/1 IPv4" do
     setup [:create_rule4]
 
-    @ipv4tables_spec {"10.0.0.1", "0.0.0.0/0", :deny}
+    @ipv4tables_spec {"10.0.0.1", "10.10.10.0/24", :deny}
 
     test "returns IPv4 tuple", %{rule4: rule} do
       assert @ipv4tables_spec = Rules.iptables_spec(rule)

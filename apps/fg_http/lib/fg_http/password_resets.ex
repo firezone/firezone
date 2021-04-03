@@ -8,6 +8,10 @@ defmodule FgHttp.PasswordResets do
 
   alias FgHttp.Users.PasswordReset
 
+  def get_password_reset(email: email) do
+    Repo.get_by(PasswordReset, email: email)
+  end
+
   def get_password_reset!(email: email) do
     Repo.get_by!(PasswordReset, email: email)
   end
