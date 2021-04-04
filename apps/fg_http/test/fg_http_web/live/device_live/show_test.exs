@@ -103,6 +103,24 @@ defmodule FgHttpWeb.DeviceLive.ShowTest do
       assert test_view =~ @destination
     end
 
+    test "validation fails", %{authed_conn: conn, rule: rule} do
+      path = Routes.device_show_path(conn, :show, rule.device_id)
+      {:ok, view, _html} = live(conn, path)
+
+      test_view =
+        view
+        |> form("#allow-form")
+        |> render_submit(%{
+          "rule" => %{
+            "device_id" => "0",
+            "destination" => @destination,
+            "action" => "allow"
+          }
+        })
+
+      refute test_view =~ @destination
+    end
+
     test "removes from allowlist", %{authed_conn: conn, rule: rule} do
       path = Routes.device_show_path(conn, :show, rule.device_id)
       {:ok, view, _html} = live(conn, path)
@@ -138,6 +156,42 @@ defmodule FgHttpWeb.DeviceLive.ShowTest do
       assert test_view =~ @destination
     end
 
+    test "validation fails", %{authed_conn: conn, rule: rule} do
+      path = Routes.device_show_path(conn, :show, rule.device_id)
+      {:ok, view, _html} = live(conn, path)
+
+      test_view =
+        view
+        |> form("#allow-form")
+        |> render_submit(%{
+          "rule" => %{
+            "device_id" => rule.device_id,
+            "destination" => "invalid",
+            "action" => "deny"
+          }
+        })
+
+      refute test_view =~ @destination
+    end
+
+    test "invalid device id", %{authed_conn: conn, rule: rule} do
+      path = Routes.device_show_path(conn, :show, rule.device_id)
+      {:ok, view, _html} = live(conn, path)
+
+      test_view =
+        view
+        |> form("#allow-form")
+        |> render_submit(%{
+          "rule" => %{
+            "device_id" => "0",
+            "destination" => @destination,
+            "action" => "deny"
+          }
+        })
+
+      refute test_view =~ @destination
+    end
+
     test "removes from denylist", %{authed_conn: conn, rule: rule} do
       path = Routes.device_show_path(conn, :show, rule.device_id)
       {:ok, view, _html} = live(conn, path)
@@ -154,6 +208,7 @@ defmodule FgHttpWeb.DeviceLive.ShowTest do
   describe "unauthenticated" do
     setup :create_device
 
+    @tag :unauthed
     test "mount redirects to session path", %{unauthed_conn: conn, device: device} do
       path = Routes.device_show_path(conn, :show, device)
       expected_path = Routes.session_new_path(conn, :new)

@@ -42,8 +42,9 @@ defmodule FgHttpWeb.ConnCase do
   def authed_conn do
     session = Fixtures.session()
 
-    new_conn()
-    |> Plug.Test.init_test_session(%{user_id: session.id})
+    {session.id,
+     new_conn()
+     |> Plug.Test.init_test_session(%{user_id: session.id})}
   end
 
   setup tags do
@@ -53,6 +54,7 @@ defmodule FgHttpWeb.ConnCase do
       Sandbox.mode(FgHttp.Repo, {:shared, self()})
     end
 
-    {:ok, unauthed_conn: new_conn(), authed_conn: authed_conn()}
+    {user_id, authed_conn} = authed_conn()
+    {:ok, user_id: user_id, unauthed_conn: new_conn(), authed_conn: authed_conn}
   end
 end

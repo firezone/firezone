@@ -74,6 +74,8 @@ defmodule FgHttp.Users.PasswordReset do
     |> put_change(:reset_sent_at, nil)
   end
 
+  defp clear_token_fields(changeset), do: changeset
+
   defp set_reset_sent_at(%Ecto.Changeset{valid?: true} = changeset) do
     changeset
     |> put_change(:reset_sent_at, DateTime.utc_now())

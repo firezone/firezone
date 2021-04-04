@@ -4,8 +4,14 @@ defmodule FgHttp.TestHelpers do
   """
   alias FgHttp.{Fixtures, Repo, Users, Users.PasswordReset, Users.User}
 
-  def create_device(_) do
-    device = Fixtures.device()
+  def create_device(tags) do
+    device =
+      if tags[:unauthed] || is_nil(tags[:user_id]) do
+        Fixtures.device()
+      else
+        Fixtures.device(%{user_id: tags[:user_id]})
+      end
+
     {:ok, device: device}
   end
 
@@ -23,8 +29,13 @@ defmodule FgHttp.TestHelpers do
     {:ok, other_device: device}
   end
 
-  def create_devices(_) do
-    user_id = Fixtures.user().id
+  def create_devices(tags) do
+    user_id =
+      if tags[:unathed] do
+        Fixtures.user().id
+      else
+        tags[:user_id]
+      end
 
     devices =
       Enum.map(1..5, fn num ->
@@ -49,36 +60,41 @@ defmodule FgHttp.TestHelpers do
     {:ok, session: session}
   end
 
-  def create_allow_rule(_) do
-    rule = Fixtures.rule(%{action: :allow})
+  def create_allow_rule(tags) do
+    {:ok, device: device} = create_device(tags)
+    rule = Fixtures.rule(%{action: :allow, device_id: device.id})
     {:ok, rule: rule}
   end
 
-  def create_deny_rule(_) do
-    rule = Fixtures.rule(%{action: :deny})
+  def create_deny_rule(tags) do
+    {:ok, device: device} = create_device(tags)
+    rule = Fixtures.rule(%{action: :deny, device_id: device.id})
     {:ok, rule: rule}
   end
 
-  def create_rule(_) do
-    rule = Fixtures.rule()
+  def create_rule(tags) do
+    {:ok, device: device} = create_device(tags)
+    rule = Fixtures.rule(%{device_id: device.id})
     {:ok, rule: rule}
   end
 
-  def create_rule6(_) do
-    rule = Fixtures.rule6()
+  def create_rule6(tags) do
+    {:ok, device: device} = create_device(tags)
+    rule = Fixtures.rule6(%{device_id: device.id})
     {:ok, rule6: rule}
   end
 
-  def create_rule4(_) do
-    rule = Fixtures.rule4()
+  def create_rule4(tags) do
+    {:ok, device: device} = create_device(tags)
+    rule = Fixtures.rule4(%{device_id: device.id})
     {:ok, rule4: rule}
   end
 
   @doc """
   XXX: Mimic a more realistic setup.
   """
-  def create_rules(_) do
-    device = Fixtures.device()
+  def create_rules(tags) do
+    {:ok, device: device} = create_device(tags)
 
     rules =
       1..5

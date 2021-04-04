@@ -4,10 +4,12 @@
       <h3 class="title">Sign Up</h3>
       <hr>
 
-      <%= f = form_for @changeset, "#", [phx_submit: :create_user] %>
+      <%= f = form_for @changeset, "#", [id: "create-user", phx_submit: :create_user] %>
         <%= if @changeset.action do %>
           <div>
-            <p>Oops, something went wrong! Please check the errors below.</p>
+            <p>
+              <%= aggregated_errors(@changeset) %>
+            </p>
           </div>
         <% end %>
 

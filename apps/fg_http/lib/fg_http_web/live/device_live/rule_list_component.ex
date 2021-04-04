@@ -47,6 +47,7 @@ defmodule FgHttpWeb.DeviceLive.RuleListComponent do
           #   {:noreply, put_flash(socket, :error, "Couldn't delete rule. #{msg}")}
       end
     else
+      # XXX: Can this ever happen?
       {:noreply, put_flash(socket, :error, "Unauthorized.")}
     end
   end
