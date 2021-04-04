@@ -19,7 +19,7 @@ defmodule FgHttpWeb.PasswordResetLive.Edit do
         %{"password_reset" => %{"reset_token" => reset_token} = params},
         socket
       ) do
-    case PasswordResets.get_password_reset!(reset_token: reset_token) do
+    case PasswordResets.get_password_reset(reset_token: reset_token) do
       nil ->
         {:noreply,
          socket

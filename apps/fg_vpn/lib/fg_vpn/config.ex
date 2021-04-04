@@ -15,9 +15,7 @@ defmodule FgVpn.Config do
     "private-key #{private_key()} listen-port #{config.listen_port} " <>
       Enum.join(
         for peer <- config.peers do
-          "peer #{peer.public_key} allowed-ips #{peer.allowed_ips} preshared-key #{
-            peer.preshared_key
-          }"
+          "peer #{peer.public_key} allowed-ips #{peer.allowed_ips} preshared-key #{peer.preshared_key}"
         end,
         " "
       )

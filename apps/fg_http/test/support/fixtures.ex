@@ -4,11 +4,14 @@ defmodule FgHttp.Fixtures do
   """
   alias FgHttp.{Devices, PasswordResets, Repo, Rules, Sessions, Users, Users.User}
 
+  # return user specified by email, or generate a new otherwise
   def user(attrs \\ %{}) do
-    case Repo.get_by(User, email: Map.get(attrs, :email, "test@test")) do
+    email = Map.get(attrs, :email, "test-#{counter()}@test")
+
+    case Repo.get_by(User, email: email) do
       nil ->
         {:ok, user} =
-          %{email: "test@test", password: "test", password_confirmation: "test"}
+          %{email: email, password: "test", password_confirmation: "test"}
           |> Map.merge(attrs)
           |> Users.create_user()
 
@@ -77,5 +80,9 @@ defmodule FgHttp.Fixtures do
       |> PasswordResets.create_password_reset(create_attrs)
 
     password_reset
+  end
+
+  defp counter do
+    System.unique_integer([:positive])
   end
 end

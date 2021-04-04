@@ -1,7 +1,7 @@
 defmodule FgHttpWeb.AccountLive.ShowTest do
   use FgHttpWeb.ConnCase, async: true
 
-  alias FgHttp.Users.User
+  alias FgHttp.{Users, Users.User}
   alias FgHttpWeb.AccountLive.FormComponent
 
   describe "when unauthenticated" do
@@ -17,8 +17,10 @@ defmodule FgHttpWeb.AccountLive.ShowTest do
       path = Routes.account_show_path(conn, :show)
       {:ok, _view, html} = live(conn, path)
 
+      user = Users.get_user!(get_session(conn, :user_id))
+
       assert html =~ "<h3 class=\"title\">Your Account</h3>"
-      assert html =~ "test@test"
+      assert html =~ user.email
     end
   end
 
