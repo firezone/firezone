@@ -17,6 +17,8 @@ defmodule FgVpn.CLI.Live do
 
   @iface_name "wg-fireguard"
 
+  import FgCommon.CLI
+
   def setup do
     create_interface()
     setup_iptables()
@@ -82,19 +84,6 @@ defmodule FgVpn.CLI.Live do
     end
   end
 
-  def exec!(cmd) do
-    case bash(cmd) do
-      {result, 0} ->
-        result
-
-      {error, _} ->
-        raise """
-        Error executing command #{cmd} with error #{error}.
-        FireGuard cannot recover from this error.
-        """
-    end
-  end
-
   defp show(subcommand) do
     exec!("wg show #{@iface_name} #{subcommand}")
   end
@@ -118,20 +107,22 @@ defmodule FgVpn.CLI.Live do
     end
   end
 
+  # XXX: Move to FgWall and call via PID?
   defp setup_iptables do
-    exec!(
-      "iptables -A FORWARD -i %i -j ACCEPT; iptables -A FORWARD -o %i -j ACCEPT; iptables -t nat -A POSTROUTING -o #{
-        egress_interface()
-      } -j MASQUERADE"
-    )
+    exec!("\
+      iptables -A FORWARD -i %i -j ACCEPT;\
+      iptables -A FORWARD -o %i -j ACCEPT; \
+      iptables -t nat -A POSTROUTING -o #{egress_interface()} -j MASQUERADE\
+    ")
   end
 
+  # XXX: Move to FgWall and call via PID?
   defp teardown_iptables do
-    exec!(
-      "iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACCEPT; iptables -t nat -D POSTROUTING -o #{
-        egress_interface()
-      } -j MASQUERADE"
-    )
+    exec!("\
+      iptables -D FORWARD -i %i -j ACCEPT;\
+      iptables -D FORWARD -o %i -j ACCEPT;\
+      iptables -t nat -D POSTROUTING -o #{egress_interface()} -j MASQUERADE\
+    ")
   end
 
   defp up_interface do
@@ -140,9 +131,5 @@ defmodule FgVpn.CLI.Live do
 
   defp down_interface do
     exec!("ifconfig #{@iface_name} down")
-  end
-
-  defp bash(cmd) do
-    System.cmd("bash", ["-c", cmd])
   end
 end

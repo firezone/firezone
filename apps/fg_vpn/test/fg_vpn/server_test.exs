@@ -10,7 +10,7 @@ defmodule FgVpn.ServerTest do
     setup %{stubbed_config: config} do
       test_pid = start_supervised!(Server)
 
-      GenServer.cast(test_pid, {:set_config, config})
+      :ok = GenServer.call(test_pid, {:set_config, config})
 
       on_exit(fn -> cli().teardown() end)
 
@@ -19,35 +19,13 @@ defmodule FgVpn.ServerTest do
 
     @tag stubbed_config: @empty
     test "generates new peer when requested", %{test_pid: test_pid} do
-      send(test_pid, {:create_device, self()})
-
-      assert_receive {:device_created, _, _, _, _}
-      assert [_peer] = MapSet.to_list(:sys.get_state(test_pid).uncommitted_peers)
-      assert [] = MapSet.to_list(:sys.get_state(test_pid).peers)
-    end
-
-    @tag stubbed_config: @empty
-    test "writes peers to config when device is verified", %{test_pid: test_pid} do
-      send(test_pid, {:create_device, self()})
-
-      assert_receive {:device_created, _, _, _, _}
-      [pubkey | _tail] = MapSet.to_list(:sys.get_state(test_pid).uncommitted_peers)
-
-      send(test_pid, {:commit_peer, %{public_key: pubkey}})
-
-      # XXX: Avoid sleeping
-      Process.sleep(100)
-
-      assert MapSet.to_list(:sys.get_state(test_pid).peers) == [%Peer{public_key: pubkey}]
+      assert {:ok, _, _, _, _} = GenServer.call(test_pid, :create_device)
+      assert [_peer] = MapSet.to_list(:sys.get_state(test_pid).peers)
     end
 
     @tag stubbed_config: @single_peer
     test "removes peers from config when removed", %{test_pid: test_pid} do
-      send(test_pid, {:remove_peer, "test-pubkey"})
-
-      # XXX: Avoid sleeping
-      Process.sleep(100)
-
+      GenServer.call(test_pid, {:delete_device, "test-pubkey"})
       assert MapSet.to_list(:sys.get_state(test_pid).peers) == []
     end
   end

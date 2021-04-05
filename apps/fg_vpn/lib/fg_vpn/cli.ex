@@ -4,6 +4,6 @@ defmodule FgVpn.CLI do
   """
 
   def cli do
-    Application.get_env(:fg_vpn, :cli)
+    Application.fetch_env!(:fg_vpn, :cli)
   end
 end

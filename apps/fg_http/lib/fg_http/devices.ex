@@ -4,11 +4,14 @@ defmodule FgHttp.Devices do
   """
 
   import Ecto.Query, warn: false
-  alias FgHttp.{Devices.Device, Repo}
+  alias FgCommon.FgCrypto
+  alias FgHttp.{Devices.Device, Repo, Users.User}
 
   def list_devices do
     Repo.all(Device)
   end
+
+  def list_devices(%User{} = user), do: list_devices(user.id)
 
   def list_devices(user_id) do
     Repo.all(from d in Device, where: d.user_id == ^user_id)
@@ -25,7 +28,7 @@ defmodule FgHttp.Devices do
   def get_device!(id), do: Repo.get!(Device, id)
 
   def get_device!(id, :with_rules) do
-    Repo.one(
+    Repo.one!(
       from d in Device,
         where: d.id == ^id,
         preload: :rules
@@ -50,6 +53,10 @@ defmodule FgHttp.Devices do
 
   def change_device(%Device{} = device) do
     Device.changeset(device, %{})
+  end
+
+  def rand_name do
+    "Device " <> FgCrypto.rand_string(8)
   end
 
   def to_peer_list do

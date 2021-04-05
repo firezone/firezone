@@ -1,5 +1,0 @@
-<div class="content">
-  <h3>New Rule for Device <%= @device.name %></h3>
-
-  <%= render "form.html", Map.put(assigns, :action, Routes.device_rule_path(@conn, :create, @device)) %>
-</div>

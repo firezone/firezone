@@ -26,13 +26,15 @@ defmodule FgVpn.MixProject do
   def application do
     [
       extra_applications: [:logger],
-      mod: {FgVpn.Application, []}
+      mod: {FgVpn.Application, []},
+      registered: [:fg_vpn_server]
     ]
   end
 
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
+      {:fg_common, in_umbrella: true},
       {:credo, "~> 1.4", only: [:dev, :test], runtime: false},
       {:excoveralls, "~> 0.13", only: :test}
     ]

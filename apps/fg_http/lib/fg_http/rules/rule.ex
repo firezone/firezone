@@ -10,11 +10,7 @@ defmodule FgHttp.Rules.Rule do
 
   schema "rules" do
     field :destination, EctoNetwork.INET
-    field :action, RuleActionEnum, default: "drop"
-    field :priority, :integer, default: 0
-    field :enabled, :boolean, default: true
-    field :port_number, :integer
-    field :protocol, RuleProtocolEnum, default: "all"
+    field :action, Ecto.Enum, values: [:deny, :allow], default: :deny
 
     belongs_to :device, Device
 
@@ -25,15 +21,10 @@ defmodule FgHttp.Rules.Rule do
     rule
     |> cast(attrs, [
       :device_id,
-      :priority,
       :action,
-      :destination,
-      :port_number,
-      :protocol,
-      :enabled
+      :destination
     ])
-    |> validate_required([:device_id, :priority, :action, :destination, :protocol, :enabled])
-    |> validate_number(:priority, greater_than_or_equal_to: 0, less_than_or_equal_to: 100)
-    |> validate_number(:port_number, greater_than_or_equal_to: 0, less_than_or_equal_to: 65_535)
+    |> validate_required([:device_id, :action, :destination])
+    |> unique_constraint([:device_id, :destination, :action])
   end
 end

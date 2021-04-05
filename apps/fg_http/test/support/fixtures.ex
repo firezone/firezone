@@ -4,11 +4,14 @@ defmodule FgHttp.Fixtures do
   """
   alias FgHttp.{Devices, PasswordResets, Repo, Rules, Sessions, Users, Users.User}
 
+  # return user specified by email, or generate a new otherwise
   def user(attrs \\ %{}) do
-    case Repo.get_by(User, email: "test@test") do
+    email = Map.get(attrs, :email, "test-#{counter()}@test")
+
+    case Repo.get_by(User, email: email) do
       nil ->
         {:ok, user} =
-          %{email: "test@test", password: "test", password_confirmation: "test"}
+          %{email: email, password: "test", password_confirmation: "test"}
           |> Map.merge(attrs)
           |> Users.create_user()
 
@@ -20,28 +23,42 @@ defmodule FgHttp.Fixtures do
   end
 
   def device(attrs \\ %{}) do
-    attrs =
-      attrs
-      |> Enum.into(%{user_id: user().id})
-      |> Enum.into(%{
-        public_key: "test-pubkey",
-        name: "factory",
-        private_key: "test-privkey",
-        preshared_key: "test-psk",
-        server_public_key: "test-server-pubkey"
-      })
+    # don't create a user if user_id is passed
+    user_id = Map.get_lazy(attrs, :user_id, fn -> user().id end)
 
-    {:ok, device} = Devices.create_device(attrs)
+    default_attrs = %{
+      user_id: user_id,
+      interface_address4: "10.0.0.1",
+      interface_address6: "::1",
+      public_key: "test-pubkey",
+      name: "factory",
+      private_key: "test-privkey",
+      preshared_key: "test-psk",
+      server_public_key: "test-server-pubkey"
+    }
+
+    {:ok, device} = Devices.create_device(Map.merge(default_attrs, attrs))
     device
   end
 
-  def rule(attrs \\ %{}) do
-    attrs =
-      attrs
-      |> Enum.into(%{device_id: device().id})
-      |> Enum.into(%{destination: "0.0.0.0/0"})
+  def rule4(attrs \\ %{}) do
+    rule(attrs)
+  end
 
-    {:ok, rule} = Rules.create_rule(attrs)
+  def rule6(attrs \\ %{}) do
+    rule(Map.merge(attrs, %{destination: "::/0"}))
+  end
+
+  def rule(attrs \\ %{}) do
+    # don't create a device if device_id is passed
+    device_id = Map.get_lazy(attrs, :device_id, fn -> device().id end)
+
+    default_attrs = %{
+      device_id: device_id,
+      destination: "10.10.10.0/24"
+    }
+
+    {:ok, rule} = Rules.create_rule(Map.merge(default_attrs, attrs))
     rule
   end
 
@@ -63,5 +80,9 @@ defmodule FgHttp.Fixtures do
       |> PasswordResets.create_password_reset(create_attrs)
 
     password_reset
+  end
+
+  defp counter do
+    System.unique_integer([:positive])
   end
 end

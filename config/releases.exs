@@ -24,11 +24,12 @@ ssl_ca_cert_file =
   end
 
 default_egress_address =
-  FgVpn.CLI.Live.exec!("ip route get 8.8.8.8 | grep -oP 'src \\K\\S+'")
+  FgCommon.CLI.exec!("ip route get 8.8.8.8 | grep -oP 'src \\K\\S+'")
   |> String.trim()
 
 # Optional environment variables
-pool_size = String.to_integer(System.get_env("POOL_SIZE", "10"))
+pool_size = max(:erlang.system_info(:logical_processors_available), 10)
+queue_target = 500
 https_listen_port = String.to_integer(System.get_env("HTTPS_LISTEN_PORT", "8800"))
 wg_listen_port = System.get_env("WG_LISTEN_PORT", "51820")
 wg_endpoint_address = System.get_env("WG_ENDPOINT_ADDRESS", default_egress_address)
@@ -40,7 +41,8 @@ config :fg_http,
 config :fg_http, FgHttp.Repo,
   # ssl: true,
   url: database_url,
-  pool_size: pool_size
+  pool_size: pool_size,
+  queue_target: queue_target
 
 base_opts = [
   port: https_listen_port,

@@ -1,96 +1,44 @@
 defmodule FgHttpWeb.UserController do
   @moduledoc """
-  Implements the CRUD for a User
+  Implements synchronous User requests.
   """
 
+  alias FgHttp.Users
   use FgHttpWeb, :controller
-  alias FgHttp.{Sessions, Users, Users.User}
 
-  plug FgHttpWeb.Plugs.DisableSignup when action in [:new, :create]
-  plug FgHttpWeb.Plugs.SessionLoader when action in [:show, :edit, :update, :delete]
-  plug :scrub_params, "user" when action in [:update]
+  plug :redirect_unauthenticated
 
-  # GET /users/new
-  def new(conn, _params) do
-    changeset = Users.change_user(%User{})
-    render(conn, "new.html", changeset: changeset)
-  end
-
-  # POST /users
-  def create(conn, %{"user" => user_params}) do
-    case Users.create_user(user_params) do
-      {:ok, user} ->
-        # XXX: Cast the user to a session struct to prevent this db call
-        session = Sessions.get_session!(user.id)
-
-        conn
-        |> put_session(:user_id, user.id)
-        |> assign(:session, session)
-        |> put_flash(:info, "Account created successfully.")
-        |> redirect(to: Routes.device_path(conn, :index))
-
-      {:error, %Ecto.Changeset{} = changeset} ->
-        conn
-        |> put_flash(:error, "Error creating account.")
-        |> render("new.html", changeset: changeset)
-    end
-  end
-
-  # GET /user/edit
-  def edit(conn, _params) do
-    # XXX: Cast the session to a user struct to prevent this db call
-    user = Users.get_user!(conn.assigns.session.id)
-    changeset = Users.change_user(user)
-
-    render(conn, "edit.html", changeset: changeset)
-  end
-
-  # GET /user
-  def show(conn, _params) do
-    # XXX: Cast the session to a user struct to prevent this db call
-    user = Users.get_user!(conn.assigns.session.id)
-
-    conn
-    |> render("show.html", user: user, session: conn.assigns.session)
-  end
-
-  # PATCH /user
-  def update(conn, %{"user" => user_params}) do
-    user = Users.get_user!(conn.assigns.session.id)
-
-    case Users.update_user(user, user_params) do
-      {:ok, user} ->
-        # XXX: Cast the user to a session struct to prevent this db call
-        session = Sessions.get_session!(user.id)
-
-        conn
-        |> assign(:session, session)
-        |> put_flash(:info, "Account updated successfully.")
-        |> redirect(to: Routes.user_path(conn, :show))
-
-      {:error, changeset} ->
-        conn
-        |> put_flash(:error, "Error updating account.")
-        |> render("edit.html", changeset: changeset)
-    end
-  end
-
-  # DELETE /user
   def delete(conn, _params) do
-    user = Users.get_user!(conn.assigns.session.id)
+    user_id = get_session(conn, :user_id)
+    user = Users.get_user!(user_id)
 
     case Users.delete_user(user) do
       {:ok, _user} ->
+        # XXX: Disconnect all WebSockets.
         conn
         |> clear_session()
-        |> assign(:session, nil)
         |> put_flash(:info, "Account deleted successfully.")
-        |> redirect(to: "/")
+        |> redirect(to: Routes.root_index_path(conn, :index))
 
-      {:error, changeset} ->
+        # delete_user is unlikely to fail, if so write a test for it and uncomment this
+        # {:error, msg} ->
+        #   conn
+        #   |> clear_session()
+        #   |> put_flash(:error, "Error deleting account: #{msg}")
+        #   |> redirect(to: Routes.root_index_path(conn, :index))
+    end
+  end
+
+  def redirect_unauthenticated(conn, _options) do
+    case get_session(conn, :user_id) do
+      nil ->
         conn
-        |> put_flash(:error, "Error deleting account.")
-        |> render("edit.html", changeset: changeset)
+        |> put_resp_content_type("text/plain")
+        |> send_resp(403, "Forbidden")
+        |> halt()
+
+      _ ->
+        conn
     end
   end
 end

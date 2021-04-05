@@ -1,5 +1,0 @@
-<div class="content">
-  <h3>Edit Rule</h3>
-
-  <%= render "form.html", Map.put(assigns, :action, Routes.rule_path(@conn, :update, @rule)) %>
-</div>
