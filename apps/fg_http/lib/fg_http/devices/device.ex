@@ -15,7 +15,9 @@ defmodule FgHttp.Devices.Device do
     field :preshared_key, FgHttp.Encrypted.Binary
     field :private_key, FgHttp.Encrypted.Binary
     field :server_public_key, :string
-    field :last_ip, EctoNetwork.INET
+    field :remote_ip, EctoNetwork.INET
+    field :interface_address4, EctoNetwork.INET
+    field :interface_address6, EctoNetwork.INET
     field :last_seen_at, :utc_datetime_usec
 
     has_many :rules, Rule
@@ -27,7 +29,10 @@ defmodule FgHttp.Devices.Device do
   def changeset(device, attrs) do
     device
     |> cast(attrs, [
-      :last_ip,
+      :allowed_ips,
+      :remote_ip,
+      :interface_address4,
+      :interface_address6,
       :server_public_key,
       :private_key,
       :preshared_key,
@@ -43,7 +48,9 @@ defmodule FgHttp.Devices.Device do
       :private_key,
       :preshared_key
     ])
-    |> unique_constraint([:name, :public_key])
-    |> unique_constraint([:name, :private_key])
+    |> unique_constraint(:public_key)
+    |> unique_constraint(:private_key)
+    |> unique_constraint(:preshared_key)
+    |> unique_constraint([:user_id, :name])
   end
 end

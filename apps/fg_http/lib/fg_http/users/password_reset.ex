@@ -7,6 +7,8 @@ defmodule FgHttp.Users.PasswordReset do
   import Ecto.Changeset
   import FgHttp.Users.PasswordHelpers
 
+  alias FgCommon.FgCrypto
+
   @token_num_bytes 8
   # 1 day
   @token_validity_secs 86_400
@@ -22,19 +24,17 @@ defmodule FgHttp.Users.PasswordReset do
 
   def changeset do
     %__MODULE__{}
-    |> cast(%{}, [:password, :password_confirmation, :reset_token])
+    |> cast(%{}, [:password, :password_confirmation, :reset_token, :reset_sent_at])
   end
 
   def changeset(%__MODULE__{} = password_reset, attrs \\ %{}) do
     password_reset
-    |> cast(attrs, [:password, :password_confirmation, :reset_token])
+    |> cast(attrs, [:password, :password_confirmation, :reset_token, :reset_sent_at])
   end
 
   def create_changeset(%__MODULE__{} = password_reset, attrs) do
     password_reset
-    |> cast(attrs, [:email, :reset_sent_at, :reset_token])
-    |> validate_required([:email])
-    |> validate_format(:email, ~r/@/)
+    |> cast(attrs, [:reset_sent_at, :reset_token])
     |> generate_reset_token()
     |> validate_required([:reset_token])
     |> unique_constraint(:reset_token)
@@ -61,12 +61,8 @@ defmodule FgHttp.Users.PasswordReset do
   def token_validity_secs, do: @token_validity_secs
 
   defp generate_reset_token(%Ecto.Changeset{valid?: true} = changeset) do
-    random_bytes = :crypto.strong_rand_bytes(@token_num_bytes)
-    random_string = Base.url_encode64(random_bytes)
-    put_change(changeset, :reset_token, random_string)
+    put_change(changeset, :reset_token, FgCrypto.rand_token(@token_num_bytes))
   end
-
-  defp generate_reset_token(changeset), do: changeset
 
   defp clear_token_fields(
          %Ecto.Changeset{
@@ -84,6 +80,4 @@ defmodule FgHttp.Users.PasswordReset do
     changeset
     |> put_change(:reset_sent_at, DateTime.utc_now())
   end
-
-  defp set_reset_sent_at(changeset), do: changeset
 end

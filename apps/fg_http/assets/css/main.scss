@@ -3,3 +3,7 @@
 nav.navbar {
   border-bottom: 1px solid black;
 }
+
+dd.code {
+  @extend .is-family-monospace;
+}

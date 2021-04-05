@@ -1,6 +1,6 @@
 defmodule FgHttp.Release do
   @moduledoc """
-  Configures the Mix Release or something
+  Adds common tasks to the production app because Mix is not available.
   """
 
   alias FgHttp.{Repo, Users, Users.User}
@@ -41,8 +41,14 @@ defmodule FgHttp.Release do
   end
 
   def change_password(email, password) do
-    Users.get_user!(email: email)
-    |> Users.update_user(password: password, password_confirmation: password)
+    params = %{
+      "password" => password,
+      "password_confirmation" => password
+    }
+
+    {:ok, _user} =
+      Users.get_user!(email: email)
+      |> Users.update_user(params)
   end
 
   defp secret(length) do

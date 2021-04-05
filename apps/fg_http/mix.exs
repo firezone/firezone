@@ -44,6 +44,7 @@ defmodule FgHttp.MixProject do
   # Type `mix help deps` for examples and options.
   defp deps do
     [
+      {:fg_common, in_umbrella: true},
       {:phoenix, "~> 1.5"},
       {:cloak_ecto, "~> 1.1"},
       {:excoveralls, "~> 0.13", only: :test},
@@ -52,7 +53,6 @@ defmodule FgHttp.MixProject do
       {:phoenix_pubsub, "~> 2.0"},
       {:phoenix_ecto, "~> 4.0"},
       {:ecto_sql, "~> 3.1"},
-      {:ecto_enum, "~> 1.4"},
       {:ecto_network, "~> 1.3"},
       {:inflex, "~> 2.0"},
       {:bamboo, "~> 1.5"},
@@ -64,8 +64,7 @@ defmodule FgHttp.MixProject do
       {:gettext, "~> 0.11"},
       {:jason, "~> 1.0"},
       {:plug_cowboy, "~> 2.1"},
-      {:credo, "~> 1.4", only: [:dev, :test], runtime: false},
-      {:wallaby, "~> 0.28", runtime: false, only: :test}
+      {:credo, "~> 1.4", only: [:dev, :test], runtime: false}
     ]
   end
 

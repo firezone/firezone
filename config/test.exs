@@ -7,14 +7,18 @@ defmodule DBConfig do
       password: "postgres",
       database: "fireguard_test",
       hostname: System.get_env("POSTGRES_HOST", "localhost"),
-      pool: Ecto.Adapters.SQL.Sandbox
+      pool: Ecto.Adapters.SQL.Sandbox,
+      pool_size: 64,
+      queue_target: 1000
     ]
   end
 
   def config(db_url) do
     [
       url: db_url,
-      pool: Ecto.Adapters.SQL.Sandbox
+      pool: Ecto.Adapters.SQL.Sandbox,
+      pool_size: 64,
+      queue_target: 1000
     ]
   end
 end
@@ -36,8 +40,7 @@ config :fg_http, FgHttpWeb.Endpoint,
   server: true
 
 config :fg_http, :sql_sandbox, true
-config :wallaby, otp_app: :fg_http
-config :fg_http, :event_helpers_module, FgHttpWeb.MockEvents
+config :fg_http, :events_module, FgHttpWeb.MockEvents
 
 # Print only warnings and errors during test
 config :logger, level: :warn

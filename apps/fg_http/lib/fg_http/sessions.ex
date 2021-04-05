@@ -27,6 +27,10 @@ defmodule FgHttp.Sessions do
   def get_session(email: email), do: Repo.get_by(Session, email: email)
   def get_session(id), do: Repo.get(Session, id)
 
+  def new_session do
+    Session.changeset(%Session{}, %{})
+  end
+
   @doc """
   Creates a session.
 

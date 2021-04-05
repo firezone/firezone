@@ -1,0 +1,30 @@
+<div class="content">
+  <h3 class="title">Devices</h3>
+
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Public key</th>
+        <th>Remote IP</th>
+        <th>Last seen at</th>
+      </tr>
+    </thead>
+    <tbody>
+    <%= for device <- @devices do %>
+      <tr>
+        <td>
+          <%= live_redirect(device.name, to: Routes.device_show_path(@socket, :show, device)) %>
+        </td>
+        <td><%= device.public_key %></td>
+        <td><%= device.remote_ip || "Never connected" %></td>
+        <td><%= device.last_seen_at %></td>
+      </tr>
+    <% end %>
+    </tbody>
+  </table>
+</div>
+
+<button class="button is-primary" phx-click="create_device">
+  Add Device
+</button>

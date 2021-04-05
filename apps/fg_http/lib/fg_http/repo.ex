@@ -3,12 +3,14 @@ defmodule FgHttp.Repo do
     otp_app: :fg_http,
     adapter: Ecto.Adapters.Postgres
 
-  alias FgHttp.Devices
   require Logger
-  import FgHttpWeb.EventHelpers
+  import FgHttpWeb.Events
 
   def init(_) do
-    # Notify FgVpn.Server the config has been loaded
-    send(vpn_pid(), {:set_config, Devices.to_peer_list()})
+    # Set firewall rules
+    set_rules()
+
+    # Set WireGuard peer config
+    set_config()
   end
 end

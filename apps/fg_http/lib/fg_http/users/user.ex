@@ -7,13 +7,16 @@ defmodule FgHttp.Users.User do
   import Ecto.Changeset
   import FgHttp.Users.PasswordHelpers
 
-  alias FgHttp.{Devices.Device, Util.FgMap}
+  alias FgCommon.FgMap
+  alias FgHttp.Devices.Device
 
   schema "users" do
     field :email, :string
     field :confirmed_at, :utc_datetime_usec
     field :last_signed_in_at, :utc_datetime_usec
     field :password_hash, :string
+    field :sign_in_token, :string
+    field :sign_in_token_created_at, :utc_datetime_usec
 
     # VIRTUAL FIELDS
     field :password, :string, virtual: true
@@ -27,12 +30,34 @@ defmodule FgHttp.Users.User do
 
   def create_changeset(user, attrs \\ %{}) do
     user
-    |> cast(attrs, [:email, :password_hash, :password, :password_confirmation])
+    |> cast(attrs, [
+      :sign_in_token,
+      :sign_in_token_created_at,
+      :email,
+      :password_hash,
+      :password,
+      :password_confirmation
+    ])
     |> validate_required([:email, :password, :password_confirmation])
     |> validate_password_equality()
+    |> validate_format(:email, ~r/@/)
     |> unique_constraint(:email)
     |> put_password_hash()
     |> validate_required([:password_hash])
+    # XXX: Send confirmation emails instead of auto-confirming
+    |> set_confirmed_at()
+  end
+
+  # Sign in token
+  # XXX: Map keys must be strings for this approach to work. Refactor to something that is key
+  # type agnostic.
+  def update_changeset(
+        user,
+        %{"sign_in_token" => _token, "sign_in_token_created_at" => _created_at} = attrs
+      ) do
+    user
+    |> cast(attrs, [:sign_in_token, :sign_in_token_created_at])
+    |> validate_required([:sign_in_token, :sign_in_token_created_at])
   end
 
   # Password updated with user logged in
@@ -49,6 +74,13 @@ defmodule FgHttp.Users.User do
 
   def update_changeset(
         user,
+        %{"password" => "", "password_confirmation" => "", "current_password" => ""} = attrs
+      ) do
+    update_changeset(user, FgMap.compact(attrs, ""))
+  end
+
+  def update_changeset(
+        user,
         %{
           "password" => _password,
           "password_confirmation" => _password_confirmation,
@@ -57,7 +89,8 @@ defmodule FgHttp.Users.User do
       ) do
     user
     |> cast(attrs, [:email, :password, :password_confirmation, :current_password])
-    |> validate_required([:password, :password_confirmation, :current_password])
+    |> validate_required([:email, :password, :password_confirmation, :current_password])
+    |> validate_format(:email, ~r/@/)
     |> verify_current_password(user)
     |> validate_password_equality()
     |> put_password_hash()
@@ -88,6 +121,7 @@ defmodule FgHttp.Users.User do
     |> validate_format(:email, ~r/@/)
   end
 
+  # XXX: Invalidate password reset when user is updated
   def update_changeset(user, %{} = attrs) do
     changeset(user, attrs)
   end
@@ -101,15 +135,20 @@ defmodule FgHttp.Users.User do
     Argon2.check_pass(user, password_candidate)
   end
 
-  defp verify_current_password(changeset, user) do
+  defp verify_current_password(
+         %Ecto.Changeset{
+           changes: %{current_password: _}
+         } = changeset,
+         user
+       ) do
     case authenticate_user(user, changeset.changes.current_password) do
-      {:ok, _user} ->
-        changeset
-        |> delete_change(:current_password)
-
-      {:error, error_msg} ->
-        changeset
-        |> add_error(:current_password, "is invalid: #{error_msg}")
+      {:ok, _user} -> changeset |> delete_change(:current_password)
+      {:error, error_msg} -> changeset |> add_error(:current_password, error_msg)
     end
+  end
+
+  defp set_confirmed_at(changeset) do
+    changeset
+    |> put_change(:confirmed_at, DateTime.utc_now())
   end
 end

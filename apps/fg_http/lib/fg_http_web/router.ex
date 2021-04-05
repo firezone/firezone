@@ -14,6 +14,7 @@ defmodule FgHttpWeb.Router do
     plug :accepts, ["html"]
     plug :fetch_session
     plug :fetch_live_flash
+    plug :put_root_layout, {FgHttpWeb.LayoutView, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
   end
@@ -25,26 +26,22 @@ defmodule FgHttpWeb.Router do
   scope "/", FgHttpWeb do
     pipe_through :browser
 
-    resources "/password_resets", PasswordResetController, only: [:update, :new, :create]
-    get "/password_resets/:reset_token", PasswordResetController, :edit
+    live "/sign_in", SessionLive.New, :new
+    live "/sign_up", UserLive.New, :new
+    live "/account", AccountLive.Show, :show
+    live "/account/edit", AccountLive.Show, :edit
 
-    resources "/user", UserController, singleton: true, only: [:show, :edit, :update, :delete]
-    resources "/users", UserController, only: [:new, :create]
+    live "/password_reset", PasswordResetLive.New, :new
+    live "/password_reset/:reset_token", PasswordResetLive.Edit, :edit
 
-    resources "/devices", DeviceController, except: [:new] do
-      resources "/rules", RuleController, only: [:new, :index, :create]
-    end
+    live "/", RootLive.Index, :index
 
-    resources "/rules", RuleController, only: [:show, :update, :delete, :edit]
+    live "/devices", DeviceLive.Index, :index
+    live "/devices/:id", DeviceLive.Show, :show
+    live "/devices/:id/edit", DeviceLive.Show, :edit
 
-    resources "/session", SessionController, singleton: true, only: [:delete]
-    resources "/sessions", SessionController, only: [:new, :create]
-
-    get "/", SessionController, :new
+    get "/sign_in/:token", SessionController, :create
+    post "/sign_out", SessionController, :delete
+    delete "/user", UserController, :delete
   end
-
-  # Other scopes may use custom stacks.
-  # scope "/api", FgHttpWeb do
-  #   pipe_through :api
-  # end
 end

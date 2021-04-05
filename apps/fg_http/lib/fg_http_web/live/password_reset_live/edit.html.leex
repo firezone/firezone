@@ -1,0 +1,44 @@
+<div class="columns">
+  <div class="column is-4 is-offset-4">
+    <h3 class="title">Reset Password</h3>
+    <hr>
+
+    <%= f = form_for(@changeset, "#", [id: "reset-password", phx_submit: :change_password]) %>
+      <%= hidden_input f, :reset_token %>
+
+      <%= if @changeset.action do %>
+        <div class="alert alert-danger">
+          <p>
+            <%= aggregated_errors(@changeset) %>
+          </p>
+        </div>
+      <% end %>
+
+      <div class="field">
+        <%= label(f, :password, class: "label") %>
+        <div class="control">
+          <%= password_input(f, :password, class: "input", placeholder: "New Password")%>
+        </div>
+        <p class="help is-danger">
+          <%= error_tag f, :password %>
+        </p>
+      </div>
+
+      <div class="field">
+        <%= label(f, :password_confirmation, class: "label") %>
+        <div class="control">
+          <%= password_input(f, :password_confirmation, class: "input", placeholder: "New Password")%>
+        </div>
+        <p class="help is-danger">
+          <%= error_tag f, :password_confirmation %>
+        </p>
+      </div>
+
+      <div class="field">
+        <div class="control">
+          <%= submit "Submit", class: "button is-primary" %>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
