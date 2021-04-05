@@ -46,6 +46,8 @@ defmodule FgHttp.MixProject do
     [
       {:fg_common, in_umbrella: true},
       {:phoenix, "~> 1.5"},
+      # XXX: Remove this dependency when cloak supports OTP 24. See https://github.com/danielberkompas/cloak/issues/102
+      {:cloak, "~> 1.0", github: "v0idpwn/cloak", override: true},
       {:cloak_ecto, "~> 1.1"},
       {:excoveralls, "~> 0.13", only: :test},
       {:floki, ">= 0.0.0", only: :test},

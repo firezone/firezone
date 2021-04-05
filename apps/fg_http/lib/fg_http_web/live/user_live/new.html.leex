@@ -6,7 +6,7 @@
 
       <%= f = form_for @changeset, "#", [id: "create-user", phx_submit: :create_user] %>
         <%= if @changeset.action do %>
-          <div>
+          <div class="alert alert-danger">
             <p>
               <%= aggregated_errors(@changeset) %>
             </p>

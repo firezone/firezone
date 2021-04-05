@@ -8,6 +8,8 @@ defmodule FgHttp.Rules.Rule do
 
   alias FgHttp.{Devices.Device}
 
+  @rule_dupe_msg "A rule with that IP/CIDR address already exists."
+
   schema "rules" do
     field :destination, EctoNetwork.INET
     field :action, Ecto.Enum, values: [:deny, :allow], default: :deny
@@ -25,6 +27,6 @@ defmodule FgHttp.Rules.Rule do
       :destination
     ])
     |> validate_required([:device_id, :action, :destination])
-    |> unique_constraint([:device_id, :destination, :action])
+    |> unique_constraint([:device_id, :destination, :action], message: @rule_dupe_msg)
   end
 end
