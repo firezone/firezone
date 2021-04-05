@@ -28,7 +28,7 @@ default_egress_address =
   |> String.trim()
 
 # Optional environment variables
-pool_size = :erlang.system_info(:logical_processors_available)
+pool_size = max(:erlang.system_info(:logical_processors_available), 10)
 queue_target = 500
 https_listen_port = String.to_integer(System.get_env("HTTPS_LISTEN_PORT", "8800"))
 wg_listen_port = System.get_env("WG_LISTEN_PORT", "51820")
