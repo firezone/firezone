@@ -1,7 +1,9 @@
 <div class="content">
   <h3 class="title">Devices</h3>
 
-  <table class="table">
+  <hr>
+
+  <table class="table is-striped is-fullwidth">
     <thead>
       <tr>
         <th>Name</th>
@@ -16,8 +18,8 @@
         <td>
           <%= live_redirect(device.name, to: Routes.device_show_path(@socket, :show, device)) %>
         </td>
-        <td><%= device.public_key %></td>
-        <td><%= device.remote_ip || "Never connected" %></td>
+        <td class="code"><%= device.public_key %></td>
+        <td class="code"><%= device.remote_ip || "Never connected" %></td>
         <td><%= device.last_seen_at %></td>
       </tr>
     <% end %>
