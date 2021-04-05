@@ -4,7 +4,7 @@ defmodule FgHttp.Devices do
   """
 
   import Ecto.Query, warn: false
-  alias FgCommon.FgCrypto
+  alias FgCommon.NameGenerator
   alias FgHttp.{Devices.Device, Repo, Users.User}
 
   def list_devices do
@@ -56,7 +56,7 @@ defmodule FgHttp.Devices do
   end
 
   def rand_name do
-    "Device " <> FgCrypto.rand_string(8)
+    NameGenerator.generate()
   end
 
   def to_peer_list do
