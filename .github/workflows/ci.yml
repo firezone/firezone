@@ -27,7 +27,6 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
-      - run: which chromedriver
       - name: Install package dependencies
         run: sudo apt-get install net-tools wireguard unzip
       - uses: actions/checkout@v2
