@@ -1,6 +1,5 @@
 <%= if @live_action == :edit do %>
   <%= live_modal(
-        @socket,
         FgHttpWeb.AccountLive.FormComponent,
         return_to: Routes.account_show_path(@socket, :show),
         title: "Edit Account",
