@@ -24,7 +24,7 @@ defmodule FireguardUmbrella.MixProject do
         fireguard: [
           # Don't seem to be needed for bakeware releases
           # include_executables_for: [:unix],
-          # validate_compile_env: false,
+          validate_compile_env: false,
           applications: [
             fg_http: :permanent,
             fg_wall: :permanent,
