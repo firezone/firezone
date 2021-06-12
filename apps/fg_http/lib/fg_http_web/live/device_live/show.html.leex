@@ -1,6 +1,5 @@
 <%= if @live_action == :edit do %>
   <%= live_modal(
-        @socket,
         FgHttpWeb.DeviceLive.FormComponent,
         return_to: Routes.device_show_path(@socket, :show, @device),
         title: "Edit #{@device.name}",
