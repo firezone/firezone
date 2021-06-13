@@ -55,6 +55,8 @@ jobs:
     env:
       MATRIX_OS: ${{ matrix.os }}
     steps:
+      - name: Install package dependencies
+        run: sudo apt-get install zstd
       - uses: actions/checkout@v2
       - name: Install runtimes
         run: .ci/install_runtimes.sh
