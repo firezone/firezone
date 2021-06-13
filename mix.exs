@@ -22,14 +22,16 @@ defmodule FireguardUmbrella.MixProject do
       default_release: :fireguard,
       releases: [
         fireguard: [
+          # Don't seem to be needed for bakeware releases
+          # include_executables_for: [:unix],
+          validate_compile_env: false,
           applications: [
             fg_http: :permanent,
             fg_wall: :permanent,
             fg_vpn: :permanent
           ],
-          include_executables_for: [:unix],
-          cookie: System.get_env("ERL_COOKIE"),
-          validate_compile_env: false
+          steps: [:assemble, &Bakeware.assemble/1],
+          cookie: System.get_env("ERL_COOKIE")
         ]
       ]
     ]
@@ -42,6 +44,7 @@ defmodule FireguardUmbrella.MixProject do
   # Run "mix help deps" for examples and options.
   defp deps do
     [
+      {:bakeware, "~> 0.2.0", runtime: false},
       {:excoveralls, "~> 0.13", only: :test},
       {:mix_test_watch, "~> 1.0", only: :dev, runtime: false},
       {:dialyxir, "~> 1.0", only: [:dev], runtime: false}
