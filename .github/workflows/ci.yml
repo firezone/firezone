@@ -7,12 +7,12 @@ defaults:
 
 jobs:
   unit-integration-test:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-18.04
     env:
       MIX_ENV: test
       POSTGRES_HOST: localhost
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      MATRIX_OS: ubuntu-20.04
+      MATRIX_OS: ubuntu-18.04
     services:
       postgres:
         image: postgres:13
@@ -46,18 +46,49 @@ jobs:
           name: test screenshots
           path: apps/fg_http/screenshots
 
-  build:
+  build-linux:
     needs: unit-integration-test
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-18.04
+    name: Build on {{ matrix.arch }}
+    env:
+      arch: ${{ matrix.arch }}
+      MIX_ENV: prod
     strategy:
       matrix:
-        os: [ubuntu-20.04]
-    env:
-      MATRIX_OS: ${{ matrix.os }}
+        include:
+          - arch: arm64
+          - arch: amd64
     steps:
       - name: Install package dependencies
         run: sudo apt-get install zstd
+      - name: Install runtimes
+        run: .ci/install_runtimes.sh
       - uses: actions/checkout@v2
+
+      # Arm64 build
+      - uses: uraimo/run-on-arch-action@v2
+        if: ${{ matrix.arch == 'arm64' }}
+        name: Run on arm64
+        with:
+          arch: aarch64
+          distro: ubuntu18.04
+          githubToken: ${{ github.token }}
+          run:
+            - .ci/install_runtimes.sh
+            - .ci/build_release.sh
+
+      # amd64 build
+      - uses:
+
+  build:
+    needs: unit-integration-test
+    runs-on: ubuntu-18.04
+    strategy:
+      matrix:
+        os: [ubuntu-18.04]
+    env:
+      MATRIX_OS: ${{ matrix.os }}
+    steps:
       - name: Install runtimes
         run: .ci/install_runtimes.sh
       - name: Build release
@@ -72,6 +103,7 @@ jobs:
         with:
           name: fireguard-deb
           path: "fireguard*.deb"
+
 
   functional-test:
     needs: build
