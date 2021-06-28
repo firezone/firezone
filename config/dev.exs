@@ -27,7 +27,8 @@ config :cf_http, CfHttpWeb.Endpoint,
       "node_modules/webpack/bin/webpack.js",
       "--mode",
       "development",
-      "--watch-stdin",
+      "--watch",
+      "--watch-options-stdin",
       cd: Path.expand("../apps/cf_http/assets", __DIR__)
     ]
   ]

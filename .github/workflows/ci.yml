@@ -65,7 +65,7 @@ jobs:
         run: .ci/install_runtimes.sh
       - uses: actions/checkout@v2
 
-      # Arm64 build
+      # arm64 build
       - uses: uraimo/run-on-arch-action@v2
         if: ${{ matrix.arch == 'arm64' }}
         name: Run on arm64
@@ -73,84 +73,83 @@ jobs:
           arch: aarch64
           distro: ubuntu18.04
           githubToken: ${{ github.token }}
-          run:
-            - .ci/install_runtimes.sh
-            - .ci/build_release.sh
+          run: .ci/build_release.sh
 
       # amd64 build
-      - uses:
-
-  build:
-    needs: unit-integration-test
-    runs-on: ubuntu-18.04
-    strategy:
-      matrix:
-        os: [ubuntu-18.04]
-    env:
-      MATRIX_OS: ${{ matrix.os }}
-    steps:
-      - name: Install runtimes
-        run: .ci/install_runtimes.sh
-      - name: Build release
-        env:
-          MIX_ENV: prod
+      - if: ${{ matrix.arch == 'amd64' }}
         run: .ci/build_release.sh
-      - name: Build deb
-        run: .ci/build_deb.sh
-      - name: Rename Built Artifacts
-        run: .ci/rename_artifacts.sh
-      - uses: actions/upload-artifact@v2
-        with:
-          name: fireguard-deb
-          path: "fireguard*.deb"
+
+  # build:
+  #   needs: unit-integration-test
+  #   runs-on: ubuntu-18.04
+  #   strategy:
+  #     matrix:
+  #       os: [ubuntu-18.04]
+  #   env:
+  #     MATRIX_OS: ${{ matrix.os }}
+  #   steps:
+  #     - name: Install runtimes
+  #       run: .ci/install_runtimes.sh
+  #     - name: Build release
+  #       env:
+  #           MIX_ENV: prod
+  #       run: .ci/build_release.sh
+  #     - name: Build deb
+  #       run: .ci/build_deb.sh
+  #     - name: Rename Built Artifacts
+  #       run: .ci/rename_artifacts.sh
+  #     - uses: actions/upload-artifact@v2
+  #       with:
+  #         name: fireguard-deb
+  #         path: "fireguard*.deb"
 
 
-  functional-test:
-    needs: build
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-20.04]
-    env:
-      MATRIX_OS: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions/download-artifact@v2
-        with:
-          name: fireguard-deb
-      - name: Test Install package
-        env:
-          DEBIAN_FRONTEND: noninteractive
-        run: .ci/functional_test.sh
-
-  publish:
-    needs: functional-test
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-20.04]
-    if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
-    steps:
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
-          draft: false
-          prerelease: true
-      - uses: actions/download-artifact@v2
-        with:
-          name: fireguard-deb
-      - name: Upload Release Asset
-        id: upload-release-asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./fireguard_${{ github.sha }}-1_${{ matrix.os }}_amd64.deb
-          asset_name: fireguard_${{ matrix.os }}_amd64.deb
-          asset_content_type: application/vnd.debian.binary-package
+  # functional-test:
+  #   needs: build-linux
+  #   runs-on: ${{ matrix.os }}
+  #   strategy:
+  #     matrix:
+  #       os: [ubuntu-20.04]
+  #   env:
+  #     MATRIX_OS: ${{ matrix.os }}
+  #   steps:
+  #     - uses: actions/checkout@v2
+  #     - uses: actions/download-artifact@v2
+  #       with:
+  #         name: fireguard-deb
+  #     - name: Test Install package
+  #       env:
+  #         DEBIAN_FRONTEND: noninteractive
+  #       run: .ci/functional_test.sh
+  #
+  # publish:
+  #   needs: functional-test
+  #   runs-on: ${{ matrix.os }}
+  #   strategy:
+  #     matrix:
+  #       os: [ubuntu-20.04]
+  #   if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
+  #   steps:
+  #     - name: Create Release
+  #       id: create_release
+  #       uses: actions/create-release@v1
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #       with:
+  #         tag_name: ${{ github.ref }}
+  #         release_name: Release ${{ github.ref }}
+  #         draft: false
+  #         prerelease: true
+  #     - uses: actions/download-artifact@v2
+  #       with:
+  #         name: fireguard-deb
+  #     - name: Upload Release Asset
+  #       id: upload-release-asset
+  #       uses: actions/upload-release-asset@v1
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #       with:
+  #         upload_url: ${{ steps.create_release.outputs.upload_url }}
+  #         asset_path: ./fireguard_${{ github.sha }}-1_${{ matrix.os }}_amd64.deb
+  #         asset_name: fireguard_${{ matrix.os }}_amd64.deb
+  #         asset_content_type: application/vnd.debian.binary-package
