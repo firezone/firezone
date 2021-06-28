@@ -24,7 +24,7 @@ ssl_ca_cert_file =
   end
 
 default_egress_address =
-  FgCommon.CLI.exec!("ip route get 8.8.8.8 | grep -oP 'src \\K\\S+'")
+  CfCommon.CLI.exec!("ip route get 8.8.8.8 | grep -oP 'src \\K\\S+'")
   |> String.trim()
 
 # Optional environment variables
@@ -35,10 +35,10 @@ wg_listen_port = System.get_env("WG_LISTEN_PORT", "51820")
 wg_endpoint_address = System.get_env("WG_ENDPOINT_ADDRESS", default_egress_address)
 url_host = System.get_env("URL_HOST", "localhost")
 
-config :fg_http,
+config :cf_http,
   disable_signup: disable_signup
 
-config :fg_http, FgHttp.Repo,
+config :cf_http, CfHttp.Repo,
   # ssl: true,
   url: database_url,
   pool_size: pool_size,
@@ -47,14 +47,14 @@ config :fg_http, FgHttp.Repo,
 base_opts = [
   port: https_listen_port,
   transport_options: [max_connections: :infinity, socket_opts: [:inet6]],
-  otp_app: :fireguard,
+  otp_app: :cloudfire,
   keyfile: ssl_key_file,
   certfile: ssl_cert_file
 ]
 
 https_opts = if ssl_ca_cert_file, do: base_opts ++ [cacertfile: ssl_ca_cert_file], else: base_opts
 
-config :fg_http, FgHttpWeb.Endpoint,
+config :cf_http, CfHttpWeb.Endpoint,
   # Force SSL for releases
   https: https_opts,
   url: [host: url_host, port: https_listen_port],
@@ -63,18 +63,18 @@ config :fg_http, FgHttpWeb.Endpoint,
     signing_salt: live_view_signing_salt
   ]
 
-config :fg_vpn,
+config :cf_vpn,
   vpn_endpoint: wg_endpoint_address <> ":" <> wg_listen_port,
-  private_key: File.read!("/opt/fireguard/server.key") |> String.trim()
+  private_key: File.read!("/opt/cloudfire/server.key") |> String.trim()
 
 # ## Using releases (Elixir v1.9+)
 #
 # If you are doing OTP releases, you need to instruct Phoenix
 # to start each relevant endpoint:
 #
-config :fg_http, FgHttpWeb.Endpoint, server: true
+config :cf_http, CfHttpWeb.Endpoint, server: true
 
-config :fg_http, FgHttp.Vault,
+config :cf_http, CfHttp.Vault,
   ciphers: [
     default: {
       Cloak.Ciphers.AES.GCM,

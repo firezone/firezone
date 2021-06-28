@@ -1,0 +1,6 @@
+{
+  "skip_files": [
+    "lib/cf_vpn/cli/live.ex",
+    "test"
+  ]
+}

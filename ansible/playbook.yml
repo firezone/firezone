@@ -59,41 +59,41 @@
         line: 'net.ipv6.conf.all.forwarding = 1'
     - name: apply sysctl
       shell: sysctl -p
-- name: Build FireGuard
+- name: Build CloudFire
   hosts: all
   tasks:
     - name: Copy Project
       shell: |
-        rsync --delete -avz --exclude '_build' --exclude 'deps' /vagrant/* /home/vagrant/fireguard/
+        rsync --delete -avz --exclude '_build' --exclude 'deps' /vagrant/* /home/vagrant/cloudfire/
     - name: Compile Release
       become: no
       environment:
         MIX_ENV: prod
       shell: |
-        cd /home/vagrant/fireguard
+        cd /home/vagrant/cloudfire
         scripts/build_release.sh
     - name: Build Debian Package
       become: no
       shell: |
-        cd /home/vagrant/fireguard
+        cd /home/vagrant/cloudfire
         scripts/build_deb.sh
-    - name: Install FireGuard deb
+    - name: Install CloudFire deb
       become: yes
       shell: |
-        cd /home/vagrant/fireguard
-        dpkg -i fireguard_amd64.deb
+        cd /home/vagrant/cloudfire
+        dpkg -i cloudfire_amd64.deb
     - name: Enable systemd units
       become: yes
       shell: |
-        systemctl enable fireguard
+        systemctl enable cloudfire
     - name: Start systemd units
       become: yes
       shell: |
-        systemctl start fireguard
+        systemctl start cloudfire
     - name: Capture user credentials
       become: yes
       shell: |
-        journalctl -u fireguard
+        journalctl -u cloudfire
       register: create_user
     - name: Display user credentials
       debug: msg="{{ create_user.stdout_lines }}"
