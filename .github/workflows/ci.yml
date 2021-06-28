@@ -67,7 +67,7 @@ jobs:
       - uses: actions/checkout@v2
 
       # arm64 build
-      - uses: uraimo/run-on-arch-action@v2
+      - uses: uraimo/run-on-arch-action@v2.0.10
         if: ${{ matrix.arch == 'arm64' }}
         name: Run on arm64
         with:
