@@ -62,9 +62,9 @@ jobs:
     steps:
       - name: Install package dependencies
         run: sudo apt-get install zstd
+      - uses: actions/checkout@v2
       - name: Install runtimes
         run: .ci/install_runtimes.sh
-      - uses: actions/checkout@v2
 
       # arm64 build
       - uses: uraimo/run-on-arch-action@v2.0.10
