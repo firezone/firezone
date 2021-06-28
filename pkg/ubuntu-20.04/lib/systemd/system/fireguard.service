@@ -1,5 +1,5 @@
 [Unit]
-Description=FireGuard
+Description=CloudFire
 Requires=postgresql.service
 After=postgresql.service
 
@@ -9,10 +9,10 @@ RestartSec=1
 User=fireguard
 AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW CAP_DAC_READ_SEARCH
 EnvironmentFile=/opt/fireguard/config.env
-ExecStartPre=/opt/fireguard/bin/fireguard eval "FgHttp.Release.migrate"
+ExecStartPre=/opt/fireguard/bin/fireguard eval "CfHttp.Release.migrate"
 ExecStart=/opt/fireguard/bin/fireguard start
 ExecStartPost=sleep 5
-ExecStartPost=/opt/fireguard/bin/fireguard rpc "FgHttp.Release.create_admin_user"
+ExecStartPost=/opt/fireguard/bin/fireguard rpc "CfHttp.Release.create_admin_user"
 
 [Install]
 WantedBy=multi-user.target

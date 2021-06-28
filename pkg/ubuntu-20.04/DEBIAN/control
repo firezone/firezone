@@ -1,4 +1,4 @@
-Package: fireguard
+Package: cloudfire
 Version: 0.1.7-1
 Architecture: amd64
 Maintainer: CloudFire, LLC <dpkg@cloudfire.network>

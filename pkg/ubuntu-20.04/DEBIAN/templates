@@ -1,11 +1,11 @@
-Template: fireguard/config
+Template: cloudfire/config
 Type: note
 Description: config file
-  FireGuard's config file is located at /opt/fireguard/config.yml. Only root
+  CloudFire's config file is located at /opt/cloudfire/config.yml. Only root
   should be able to view and edit this file. Random secrets and passwords have
   been generated and saved for you already.
 
-Template: fireguard/access
+Template: cloudfire/access
 Type: note
 Description: access instructions
-  FireGuard has been installed successfully and is running on port 8443!
+  CloudFire has been installed successfully and is running on port 8443!

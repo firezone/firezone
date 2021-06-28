@@ -24,29 +24,29 @@ import Config
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
-config :fg_http,
-  ecto_repos: [FgHttp.Repo],
+config :cf_http,
+  ecto_repos: [CfHttp.Repo],
   vpn_endpoint: "127.0.0.1:51820",
-  admin_user_email: "fireguard@localhost",
-  events_module: FgHttpWeb.Events,
+  admin_user_email: "cloudfire@localhost",
+  events_module: CfHttpWeb.Events,
   disable_signup: true
 
-config :fg_wall,
-  cli: FgWall.CLI.Sandbox,
+config :cf_wall,
+  cli: CfWall.CLI.Sandbox,
   server_process_opts: []
 
 # This will be changed per-env
-config :fg_vpn,
+config :cf_vpn,
   private_key: "UAeZoaY95pKZE1Glq28sI2GJDfGGRFtlb4KC6rjY2Gs=",
-  cli: FgVpn.CLI.Sandbox,
+  cli: CfVpn.CLI.Sandbox,
   server_process_opts: []
 
 # Configures the endpoint
 # These will be overridden at runtime in production by config/releases.exs
-config :fg_http, FgHttpWeb.Endpoint,
+config :cf_http, CfHttpWeb.Endpoint,
   url: [host: "localhost"],
-  render_errors: [view: FgHttpWeb.ErrorView, accepts: ~w(html json)],
-  pubsub_server: FgHttp.PubSub
+  render_errors: [view: CfHttpWeb.ErrorView, accepts: ~w(html json)],
+  pubsub_server: CfHttp.PubSub
 
 # Configures Elixir's Logger
 config :logger, :console,
@@ -58,7 +58,7 @@ config :logger, :console,
 import_config "#{Mix.env()}.exs"
 
 # Configures the vault
-config :fg_http, FgHttp.Vault,
+config :cf_http, CfHttp.Vault,
   ciphers: [
     default: {
       Cloak.Ciphers.AES.GCM,

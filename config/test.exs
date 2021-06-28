@@ -3,9 +3,9 @@ import Config
 defmodule DBConfig do
   def config(db_url) when is_nil(db_url) do
     [
-      username: "fireguard",
+      username: "cloudfire",
       password: "postgres",
-      database: "fireguard_test",
+      database: "cloudfire_test",
       hostname: System.get_env("POSTGRES_HOST", "localhost"),
       pool: Ecto.Adapters.SQL.Sandbox,
       pool_size: 64,
@@ -25,13 +25,13 @@ end
 
 # Configure your database
 db_url = System.get_env("DATABASE_URL")
-config :fg_http, FgHttp.Repo, DBConfig.config(db_url)
+config :cf_http, CfHttp.Repo, DBConfig.config(db_url)
 
-config :fg_http, FgHttp.Mailer, adapter: Bamboo.TestAdapter
+config :cf_http, CfHttp.Mailer, adapter: Bamboo.TestAdapter
 
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
-config :fg_http, FgHttpWeb.Endpoint,
+config :cf_http, CfHttpWeb.Endpoint,
   http: [port: 4002],
   secret_key_base: "t5hsQU868q6aaI9jsCrso9Qhi7A9Lvy5/NjCnJ8t8f652jtRjcBpYJkm96E8Q5Ko",
   live_view: [
@@ -39,11 +39,11 @@ config :fg_http, FgHttpWeb.Endpoint,
   ],
   server: true
 
-config :fg_http, :sql_sandbox, true
-config :fg_http, :events_module, FgHttpWeb.MockEvents
+config :cf_http, :sql_sandbox, true
+config :cf_http, :events_module, CfHttpWeb.MockEvents
 
 # Print only warnings and errors during test
 config :logger, level: :warn
 
-config :fg_vpn,
+config :cf_vpn,
   execute_iface_cmds: System.get_env("CI") === "true"
