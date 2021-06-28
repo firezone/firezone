@@ -46,7 +46,6 @@ defmodule CfHttp.MixProject do
     [
       {:cf_common, in_umbrella: true},
       {:phoenix, "~> 1.5"},
-      # XXX: Remove this dependency when cloak supports OTP 24. See https://github.com/danielberkompas/cloak/issues/102
       {:cloak, "~> 1.1"},
       {:cloak_ecto, "~> 1.1"},
       {:excoveralls, "~> 0.13", only: :test},
