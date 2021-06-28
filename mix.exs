@@ -1,4 +1,4 @@
-defmodule FireguardUmbrella.MixProject do
+defmodule CloudfireUmbrella.MixProject do
   @moduledoc """
   Welcome to the CloudFire Elixir Umbrella Project
   """
