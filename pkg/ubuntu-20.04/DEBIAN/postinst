@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
 set -e
 
-# FireGuard package post-install script
+# CloudFire package post-install script
 
 # 1. Generate secrets
 # 2. Bootstrap DB
 # 3. Generate WireGuard interface and config
 
-# Add fireguard user if not exists
-if id fireguard &>/dev/null; then
-  echo "fireguard user exists... not creating."
+# Add cloudfire user if not exists
+if id cloudfire &>/dev/null; then
+  echo "cloudfire user exists... not creating."
 else
-  echo "creating system user fireguard"
-  useradd --system fireguard
+  echo "creating system user cloudfire"
+  useradd --system cloudfire
 fi
 
 # Generate app secrets
 live_view_signing_salt="$(openssl rand -base64 24)"
 secret_key_base="$(openssl rand -base64 48)"
-db_user=fireguard
+db_user=cloudfire
 
 # Base64 includes forward slashes which are problematic in the
 # DB_URL connect string, so use hex.
@@ -28,26 +28,26 @@ db_key="$(openssl rand -base64 32)"
 
 # Setup DB
 sudo -i -u postgres psql -c "CREATE ROLE ${db_user} WITH LOGIN PASSWORD '${db_password}';" || true
-sudo -i -u postgres psql -c "CREATE DATABASE fireguard;" || true
-sudo -i -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE fireguard to ${db_user};" || true
+sudo -i -u postgres psql -c "CREATE DATABASE cloudfire;" || true
+sudo -i -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE cloudfire to ${db_user};" || true
 
-# Write FireGuard SSL files
-mkdir -p /opt/fireguard/ssl
-chown -R fireguard:root /opt/fireguard/ssl
+# Write CloudFire SSL files
+mkdir -p /opt/cloudfire/ssl
+chown -R cloudfire:root /opt/cloudfire/ssl
 hostname=$(hostname)
 openssl req -new -x509 -sha256 -newkey rsa:2048 -nodes \
-    -keyout /opt/fireguard/ssl/key.pem \
-    -out /opt/fireguard/ssl/cert.pem \
+    -keyout /opt/cloudfire/ssl/key.pem \
+    -out /opt/cloudfire/ssl/cert.pem \
     -days 365 -subj "/CN=${hostname}"
-chmod 0600 /opt/fireguard/ssl/key.pem
-chmod 0644 /opt/fireguard/ssl/cert.pem
+chmod 0600 /opt/cloudfire/ssl/key.pem
+chmod 0644 /opt/cloudfire/ssl/cert.pem
 
-# Write FireGuard config files
-touch /opt/fireguard/config.env
-chmod 0600 /opt/fireguard/config.env
-chown -R fireguard:root /opt/fireguard
-cat <<EOT >> /opt/fireguard/config.env
-# This file is loaded into FireGuard's Environment upon launch to configure it.
+# Write CloudFire config files
+touch /opt/cloudfire/config.env
+chmod 0600 /opt/cloudfire/config.env
+chown -R cloudfire:root /opt/cloudfire
+cat <<EOT >> /opt/cloudfire/config.env
+# This file is loaded into CloudFire's Environment upon launch to configure it.
 
 # This is used to ensure secure communication with the live web views.
 # Re-generate this with "openssl rand -base64 24". All existing web views will
@@ -61,7 +61,7 @@ SECRET_KEY_BASE="${secret_key_base}"
 
 # The URL to connect to your DB. Assumes the database has been created and this
 # user has privileges to create and modify tables.
-DATABASE_URL="ecto://${db_user}:${db_password}@127.0.0.1/fireguard"
+DATABASE_URL="ecto://${db_user}:${db_password}@127.0.0.1/cloudfire"
 
 # The HTTPS port to listen on. Defaults to 8800.
 HTTPS_LISTEN_PORT=8800
@@ -82,8 +82,8 @@ DB_ENCRYPTION_KEY=${db_key}
 # SSL certificate file and key path. Self-signed certs are generated for you on
 # install, but it's highly recommended to replace these with valid certs.
 # Free certs can be obtained at https://letsencrypt.org.
-SSL_CERT_FILE=/opt/fireguard/ssl/cert.pem
-SSL_KEY_FILE=/opt/fireguard/ssl/key.pem
+SSL_CERT_FILE=/opt/cloudfire/ssl/cert.pem
+SSL_KEY_FILE=/opt/cloudfire/ssl/key.pem
 
 # Path to the intermediate certificates file. (usually not required)
 # SSL_CA_CERT_FILE=
@@ -98,5 +98,5 @@ DISABLE_SIGNUP=yes
 EOT
 
 umask 077
-wg genkey > /opt/fireguard/server.key
-chown fireguard:root /opt/fireguard/server.key
+wg genkey > /opt/cloudfire/server.key
+chown cloudfire:root /opt/cloudfire/server.key

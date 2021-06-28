@@ -41,22 +41,22 @@ RUN mix local.hex --force && \
     mix local.rebar --force
 COPY mix.exs mix.lock ./
 COPY config config
-COPY apps/fg_http/mix.exs ./apps/fg_http/
-COPY apps/fg_wall/mix.exs ./apps/fg_wall/
-COPY apps/fg_vpn/mix.exs ./apps/fg_vpn/
+COPY apps/cf_http/mix.exs ./apps/cf_http/
+COPY apps/cf_wall/mix.exs ./apps/cf_wall/
+COPY apps/cf_vpn/mix.exs ./apps/cf_vpn/
 RUN mix do deps.get, deps.compile
 
-COPY apps/fg_http/assets/package.json apps/fg_http/assets/package-lock.json ./apps/fg_http/assets/
-RUN cd apps/fg_http/assets && npm ci --progress=false --no-audit --loglevel=error
-COPY apps/fg_http/priv apps/fg_http/priv
-COPY apps/fg_http/assets apps/fg_http/assets
-RUN npm run --prefix ./apps/fg_http/assets deploy && \
-    cd apps/fg_http && mix phx.digest
+COPY apps/cf_http/assets/package.json apps/cf_http/assets/package-lock.json ./apps/cf_http/assets/
+RUN cd apps/cf_http/assets && npm ci --progress=false --no-audit --loglevel=error
+COPY apps/cf_http/priv apps/cf_http/priv
+COPY apps/cf_http/assets apps/cf_http/assets
+RUN npm run --prefix ./apps/cf_http/assets deploy && \
+    cd apps/cf_http && mix phx.digest
 
 COPY . .
-RUN mix release fireguard
+RUN mix release cloudfire
 
 RUN mkdir -p pkg/debian/opt
-RUN mv _build/prod/rel/fireguard pkg/debian/opt/fireguard
+RUN mv _build/prod/rel/cloudfire pkg/debian/opt/cloudfire
 
 RUN cd pkg && dpkg-deb --build debian
