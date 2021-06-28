@@ -68,6 +68,8 @@ jobs:
       - uses: uraimo/run-on-arch-action@v2.0.10
         if: ${{ matrix.arch == 'arm64' }}
         name: Run on arm64
+        env:
+          arch: arm64
         with:
           arch: aarch64
           distro: ubuntu18.04
@@ -78,9 +80,9 @@ jobs:
 
       # amd64 build
       - if: ${{ matrix.arch == 'amd64' }}
-        run:
-          - .ci/install_runtimes.sh
-          - .ci/build_release.sh
+        run: .ci/install_runtimes.sh
+      - if: ${{ matrix.arch == 'amd64' }}
+        run: .ci/build_release.sh
 
   # build:
   #   needs: unit-integration-test
