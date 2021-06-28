@@ -1,4 +1,4 @@
-![](./apps/cf_http/assets/static.logo.svg)
+![](./apps/cf_http/assets/static/logo.svg)
 
 ![Test](https://github.com/CloudFire-LLC/cloudfire/workflows/Test/badge.svg)
 [![Coverage Status](https://coveralls.io/repos/github/CloudFire-LLC/cloudfire/badge.svg?branch=master)](https://coveralls.io/github/CloudFire-LLC/cloudfire?branch=master)
