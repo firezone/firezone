@@ -73,13 +73,11 @@ jobs:
           arch: aarch64
           distro: ubuntu18.04
           githubToken: ${{ github.token }}
-          run:
-            - .ci/build_release.sh
+          run: .ci/build_release.sh
 
       # amd64 build
       - if: ${{ matrix.arch == 'amd64' }}
-        run:
-          - .ci/build_release.sh
+        run: .ci/build_release.sh
 
   # build:
   #   needs: unit-integration-test
