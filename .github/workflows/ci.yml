@@ -74,9 +74,8 @@ jobs:
           arch: aarch64
           distro: ubuntu18.04
           githubToken: ${{ github.token }}
-          run:
-            - .ci/install_runtimes.sh
-            - .ci/build_release.sh
+          install: .ci/install_runtimes.sh
+          run: .ci/build_release.sh
 
       # amd64 build
       - if: ${{ matrix.arch == 'amd64' }}
