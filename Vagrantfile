@@ -7,7 +7,7 @@ Vagrant.configure('2') do |config|
   end
 
   config.vm.box = 'ubuntu/focal64'
-  config.vm.hostname = 'fireguard.local'
+  config.vm.hostname = 'cloudfire.local'
 
   # Web
   config.vm.network 'forwarded_port', guest: 8800, host: 8800, protocol: 'tcp'

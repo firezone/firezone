@@ -1,6 +1,6 @@
 defmodule FireguardUmbrella.MixProject do
   @moduledoc """
-  Welcome to the FireGuard Elixir Umbrella Project
+  Welcome to the CloudFire Elixir Umbrella Project
   """
 
   use Mix.Project
@@ -19,16 +19,16 @@ defmodule FireguardUmbrella.MixProject do
       ],
       deps: deps(),
       aliases: aliases(),
-      default_release: :fireguard,
+      default_release: :cloudfire,
       releases: [
-        fireguard: [
+        cloudfire: [
           # Don't seem to be needed for bakeware releases
           # include_executables_for: [:unix],
           validate_compile_env: false,
           applications: [
-            fg_http: :permanent,
-            fg_wall: :permanent,
-            fg_vpn: :permanent
+            cf_http: :permanent,
+            cf_wall: :permanent,
+            cf_vpn: :permanent
           ],
           steps: [:assemble, &Bakeware.assemble/1],
           cookie: System.get_env("ERL_COOKIE")
