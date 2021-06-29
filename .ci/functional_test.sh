@@ -14,7 +14,7 @@ chmod +x cloudfire
 
 file cloudfire
 
-ls -alR ~/.cache/
+mkdir $HOME/.cache
 
 ./cloudfire &
 
