@@ -2,7 +2,7 @@
 set -e
 
 # migrate DB
-fg_http/bin/fg_http eval "CfHttp.Release.migrate"
+cf_http/bin/cf_http eval "CfHttp.Release.migrate"
 
 # start app
-fg_http/bin/fg_http start
+cf_http/bin/cf_http start

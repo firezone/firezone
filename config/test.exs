@@ -3,7 +3,7 @@ import Config
 defmodule DBConfig do
   def config(db_url) when is_nil(db_url) do
     [
-      username: "cloudfire",
+      username: "postgres",
       password: "postgres",
       database: "cloudfire_test",
       hostname: System.get_env("POSTGRES_HOST", "localhost"),

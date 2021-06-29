@@ -13,13 +13,14 @@ jobs:
       POSTGRES_HOST: localhost
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       MATRIX_OS: ubuntu-18.04
+      arch: amd64
     services:
       postgres:
         image: postgres:13
         ports:
           - 5432:5432
         env:
-          POSTGRES_USER: fireguard
+          POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
         options: >-
           --health-cmd pg_isready
@@ -28,12 +29,21 @@ jobs:
           --health-retries 5
     steps:
       - name: Install package dependencies
-        run: sudo apt-get install net-tools wireguard unzip
+        run: sudo apt-get install net-tools wireguard unzip gdebi
       - uses: actions/checkout@v2
       - name: Install Runtimes
-        run: .ci/install_runtimes.sh
+        run: |
+          sudo -E bash -c '.ci/install_runtimes.sh'
       - name: Install Dependencies
         run: .ci/install_dependencies.sh
+      - uses: actions/cache@v2
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-
       - name: Setup Database
         run: |
           mix ecto.create
@@ -44,7 +54,7 @@ jobs:
         if: ${{ always() }}
         with:
           name: test screenshots
-          path: apps/fg_http/screenshots
+          path: apps/cf_http/screenshots
 
   build-linux:
     needs: unit-integration-test
@@ -56,71 +66,70 @@ jobs:
     strategy:
       matrix:
         include:
-          - arch: arm64
           - arch: amd64
+          - arch: arm64
     steps:
-      - name: Install package dependencies
-        run: sudo apt-get install zstd
-      - name: Install runtimes
-        run: .ci/install_runtimes.sh
       - uses: actions/checkout@v2
-
-      # arm64 build
-      - uses: uraimo/run-on-arch-action@v2
-        if: ${{ matrix.arch == 'arm64' }}
-        name: Run on arm64
-        with:
-          arch: aarch64
-          distro: ubuntu18.04
-          githubToken: ${{ github.token }}
-          run: .ci/build_release.sh
 
       # amd64 build
       - if: ${{ matrix.arch == 'amd64' }}
-        run: .ci/build_release.sh
+        run: |
+          sudo apt-get install -q -y zstd gdebi
+          sudo -E bash -c '.ci/install_runtimes.sh'
+          sudo -E bash -c '.ci/build_release.sh'
 
-  # build:
-  #   needs: unit-integration-test
-  #   runs-on: ubuntu-18.04
-  #   strategy:
-  #     matrix:
-  #       os: [ubuntu-18.04]
-  #   env:
-  #     MATRIX_OS: ${{ matrix.os }}
-  #   steps:
-  #     - name: Install runtimes
-  #       run: .ci/install_runtimes.sh
-  #     - name: Build release
-  #       env:
-  #           MIX_ENV: prod
-  #       run: .ci/build_release.sh
-  #     - name: Build deb
-  #       run: .ci/build_deb.sh
-  #     - name: Rename Built Artifacts
-  #       run: .ci/rename_artifacts.sh
-  #     - uses: actions/upload-artifact@v2
-  #       with:
-  #         name: fireguard-deb
-  #         path: "fireguard*.deb"
+      # arm64 build
+      # XXX: This currently takes upwards of 10 minutes or more. Disabling for
+      # now.
+      # - uses: uraimo/run-on-arch-action@v2.0.10
+      #   if: ${{ matrix.arch == 'arm64' }}
+      #   name: Run on arm64
+      #   with:
+      #     arch: aarch64
+      #     install: |
+      #       # No obvious way to load a script file here, so needs inlining :-(
+      #       apt-get update -q -y
+      #       apt-get install -q -y gcc g++ make curl gdebi zstd
+      #
+      #       curl -O https://packages.erlang-solutions.com/erlang/debian/pool/esl-erlang_24.0.2-1~ubuntu~bionic_arm64.deb
+      #       curl -O https://packages.erlang-solutions.com/erlang/debian/pool/elixir_1.12.0-1~ubuntu~bionic_all.deb
+      #       gdebi --non-interactive esl-erlang_24.0.2-1~ubuntu~bionic_arm64.deb
+      #       gdebi --non-interactive elixir_1.12.0-1~ubuntu~bionic_all.deb
+      #
+      #       curl -sL https://deb.nodesource.com/setup_14.x | bash -
+      #       apt-get install -y -q nodejs
+      #     dockerRunArgs: |
+      #       --volume "${PWD}:/app"
+      #     distro: ubuntu18.04
+      #     env: |
+      #       arch: arm64
+      #     githubToken: ${{ github.token }}
+      #     run: |
+      #       cd /app
+      #       bash -c '.ci/build_release.sh'
 
+      - uses: actions/upload-artifact@v2
+        with:
+          name: cloudfire-${{ matrix.arch }}
+          path: _build/prod/rel/bakeware/cloudfire
 
-  # functional-test:
-  #   needs: build-linux
-  #   runs-on: ${{ matrix.os }}
-  #   strategy:
-  #     matrix:
-  #       os: [ubuntu-20.04]
-  #   env:
-  #     MATRIX_OS: ${{ matrix.os }}
-  #   steps:
-  #     - uses: actions/checkout@v2
-  #     - uses: actions/download-artifact@v2
-  #       with:
-  #         name: fireguard-deb
-  #     - name: Test Install package
-  #       env:
-  #         DEBIAN_FRONTEND: noninteractive
-  #       run: .ci/functional_test.sh
+  functional-test:
+    needs: build-linux
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-18.04]
+    env:
+      MATRIX_OS: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/download-artifact@v2
+        with:
+          name: cloudfire-amd64
+      - name: Test Install package
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: .ci/functional_test.sh
   #
   # publish:
   #   needs: functional-test
@@ -142,7 +151,7 @@ jobs:
   #         prerelease: true
   #     - uses: actions/download-artifact@v2
   #       with:
-  #         name: fireguard-deb
+  #         name: cloudfire-deb
   #     - name: Upload Release Asset
   #       id: upload-release-asset
   #       uses: actions/upload-release-asset@v1
@@ -150,6 +159,6 @@ jobs:
   #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   #       with:
   #         upload_url: ${{ steps.create_release.outputs.upload_url }}
-  #         asset_path: ./fireguard_${{ github.sha }}-1_${{ matrix.os }}_amd64.deb
-  #         asset_name: fireguard_${{ matrix.os }}_amd64.deb
+  #         asset_path: ./cloudfire_${{ github.sha }}-1_${{ matrix.os }}_amd64.deb
+  #         asset_name: cloudfire_${{ matrix.os }}_amd64.deb
   #         asset_content_type: application/vnd.debian.binary-package
