@@ -32,7 +32,8 @@ jobs:
         run: sudo apt-get install net-tools wireguard unzip
       - uses: actions/checkout@v2
       - name: Install Runtimes
-        run: .ci/install_runtimes.sh
+        run: |
+          sudo bash -c '.ci/install_runtimes.sh'
       - name: Install Dependencies
         run: .ci/install_dependencies.sh
       - name: Setup Database
@@ -88,8 +89,6 @@ jobs:
           sudo bash -c '.ci/install_runtimes.sh'
           sudo bash -c '.ci/build_release.sh'
 
-      - name: Rename Built Artifacts
-        run: .ci/rename_artifacts.sh
       - uses: actions/upload-artifact@v2
         with:
           name: cloudfire-${{ matrix.arch }}
