@@ -88,48 +88,31 @@ jobs:
           bash -c '.ci/install_runtimes.sh'
           bash -c '.ci/build_release.sh'
 
-  # build:
-  #   needs: unit-integration-test
-  #   runs-on: ubuntu-18.04
-  #   strategy:
-  #     matrix:
-  #       os: [ubuntu-18.04]
-  #   env:
-  #     MATRIX_OS: ${{ matrix.os }}
-  #   steps:
-  #     - name: Install runtimes
-  #       run: .ci/install_runtimes.sh
-  #     - name: Build release
-  #       env:
-  #           MIX_ENV: prod
-  #       run: .ci/build_release.sh
-  #     - name: Build deb
-  #       run: .ci/build_deb.sh
-  #     - name: Rename Built Artifacts
-  #       run: .ci/rename_artifacts.sh
-  #     - uses: actions/upload-artifact@v2
-  #       with:
-  #         name: cloudfire-deb
-  #         path: "cloudfire*.deb"
+      - name: Rename Built Artifacts
+        run: .ci/rename_artifacts.sh
+      - uses: actions/upload-artifact@v2
+        with:
+          name: cloudfire-${{ matrix.arch }}
+          path: "_build/prod/rel/cloudfire/bin/cloudfire"
 
 
-  # functional-test:
-  #   needs: build-linux
-  #   runs-on: ${{ matrix.os }}
-  #   strategy:
-  #     matrix:
-  #       os: [ubuntu-20.04]
-  #   env:
-  #     MATRIX_OS: ${{ matrix.os }}
-  #   steps:
-  #     - uses: actions/checkout@v2
-  #     - uses: actions/download-artifact@v2
-  #       with:
-  #         name: cloudfire-deb
-  #     - name: Test Install package
-  #       env:
-  #         DEBIAN_FRONTEND: noninteractive
-  #       run: .ci/functional_test.sh
+  functional-test:
+    needs: build-linux
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-18.04]
+    env:
+      MATRIX_OS: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/download-artifact@v2
+        with:
+          name: cloudfire-amd64
+      - name: Test Install package
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: .ci/functional_test.sh
   #
   # publish:
   #   needs: functional-test
