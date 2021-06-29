@@ -1,23 +1,20 @@
 #!/usr/bin/env bash
-set -x
+set -xe
 
 sudo apt-get update
 sudo apt-get install -y postgresql \
   wireguard iptables net-tools curl ca-certificates
 sudo systemctl start postgresql
-sudo dpkg -i cloudfire*.deb
 
-echo "Enabling service..."
-sudo systemctl start cloudfire
+echo "Setting capabilities"
+sudo setcap "cap_net_admin+ep" cloudfire
+sudo setcap "cap_net_raw+ep" cloudfire
+sudo setcap "cap_dac_read_search+ep" cloudfire
+
+./cloudfire &
 
 # Wait for app to start
 sleep 10
-
-echo "Service status..."
-sudo systemctl status cloudfire.service
-
-echo "Printing service logs..."
-sudo journalctl -u cloudfire.service
 
 echo "Trying to load homepage..."
 curl -i -vvv -k https://$(hostname):8800/
