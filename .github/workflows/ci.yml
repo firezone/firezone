@@ -70,6 +70,7 @@ jobs:
         with:
           arch: aarch64
           install: |
+            cd /app
             apt-get update -q -y
             apt-get install -q -y curl gdebi zstd
             bash -c '.ci/install_runtimes.sh'
