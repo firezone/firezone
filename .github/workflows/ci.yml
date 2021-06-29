@@ -73,9 +73,11 @@ jobs:
           arch: arm64
         with:
           arch: aarch64
+          install: |
+            apt-get update -q -y
+            apt-get install -q -y curl
           dockerRunArgs: |
             --volume "${PWD}:/app"
-
           distro: ubuntu18.04
           githubToken: ${{ github.token }}
           run: |
