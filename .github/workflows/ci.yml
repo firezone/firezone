@@ -111,7 +111,6 @@ jobs:
           name: cloudfire-${{ matrix.arch }}
           path: "_build/prod/rel/cloudfire/bin/cloudfire"
 
-
   functional-test:
     needs: build-linux
     runs-on: ${{ matrix.os }}
