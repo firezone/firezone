@@ -42,17 +42,8 @@ For now, CloudFire assumes these apps are all running on the same host.
 
 ## Setup
 
-Currently, the only supported method of running CloudFire is locally. MacOS and
-Linux users shouldn't have any problems. Windows will Probably Work™.
+`curl https://github.com/CloudFire-LLC/cloudfire/releases/download/latest/cloudfire-init.sh | sudo bash -E`
 
-You'll need recent versions of the following tools installed:
-
-- ansible
-- vagrant
-- VirtualBox
-
-With the above installed, you should be able to navigate into the project root
-and just run:
 
 ```bash
 vagrant up
