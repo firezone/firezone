@@ -69,8 +69,6 @@ jobs:
       - uses: uraimo/run-on-arch-action@v2.0.10
         if: ${{ matrix.arch == 'arm64' }}
         name: Run on arm64
-        env:
-          arch: arm64
         with:
           arch: aarch64
           install: |
@@ -79,6 +77,8 @@ jobs:
           dockerRunArgs: |
             --volume "${PWD}:/app"
           distro: ubuntu18.04
+          env: |
+            arch: arm64
           githubToken: ${{ github.token }}
           run: |
             cd /app
