@@ -36,6 +36,14 @@ jobs:
           sudo -E bash -c '.ci/install_runtimes.sh'
       - name: Install Dependencies
         run: .ci/install_dependencies.sh
+      - uses: actions/cache@v2
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-
       - name: Setup Database
         run: |
           mix ecto.create
@@ -71,13 +79,11 @@ jobs:
           arch: aarch64
           install: |
             # No obvious way to load a script file here, so needs inlining :-(
-            cd /app
             apt-get update -q -y
             apt-get install -q -y curl gdebi zstd
-            os_name='ubuntu~bionic'
 
-            curl -O https://packages.erlang-solutions.com/erlang/debian/pool/esl-erlang_24.0.2-1~${os_name}_${arch}.deb
-            curl -O https://packages.erlang-solutions.com/erlang/debian/pool/elixir_1.12.0-1~${os_name}_all.deb
+            curl -O https://packages.erlang-solutions.com/erlang/debian/pool/esl-erlang_24.0.2-1~ubuntu~bionic_arm64.deb
+            curl -O https://packages.erlang-solutions.com/erlang/debian/pool/elixir_1.12.0-1~ubuntu~bionic_all.deb
             gdebi --non-interactive *.deb
 
             curl -sL https://deb.nodesource.com/setup_14.x | bash -
