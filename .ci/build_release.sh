@@ -10,4 +10,4 @@ npm run --prefix apps/cf_http/assets deploy
 cd apps/cf_http
 mix phx.digest
 cd $od
-mix release --overwrite --force cloudfire
+mix release --overwrite --force
