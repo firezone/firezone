@@ -71,40 +71,42 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      # arm64 build
-      - uses: uraimo/run-on-arch-action@v2.0.10
-        if: ${{ matrix.arch == 'arm64' }}
-        name: Run on arm64
-        with:
-          arch: aarch64
-          install: |
-            # No obvious way to load a script file here, so needs inlining :-(
-            apt-get update -q -y
-            apt-get install -q -y gcc g++ make curl gdebi zstd
-
-            curl -O https://packages.erlang-solutions.com/erlang/debian/pool/esl-erlang_24.0.2-1~ubuntu~bionic_arm64.deb
-            curl -O https://packages.erlang-solutions.com/erlang/debian/pool/elixir_1.12.0-1~ubuntu~bionic_all.deb
-            gdebi --non-interactive esl-erlang_24.0.2-1~ubuntu~bionic_arm64.deb
-            gdebi --non-interactive elixir_1.12.0-1~ubuntu~bionic_all.deb
-
-            curl -sL https://deb.nodesource.com/setup_14.x | bash -
-            apt-get install -y -q nodejs
-          dockerRunArgs: |
-            --volume "${PWD}:/app"
-          distro: ubuntu18.04
-          env: |
-            arch: arm64
-          githubToken: ${{ github.token }}
-          run: |
-            cd /app
-            bash -c '.ci/build_release.sh'
-
       # amd64 build
       - if: ${{ matrix.arch == 'amd64' }}
         run: |
           sudo apt-get install -q -y zstd gdebi
           sudo -E bash -c '.ci/install_runtimes.sh'
           sudo -E bash -c '.ci/build_release.sh'
+
+      # arm64 build
+      # XXX: This currently takes upwards of 10 minutes or more. Disabling for
+      # now.
+      # - uses: uraimo/run-on-arch-action@v2.0.10
+      #   if: ${{ matrix.arch == 'arm64' }}
+      #   name: Run on arm64
+      #   with:
+      #     arch: aarch64
+      #     install: |
+      #       # No obvious way to load a script file here, so needs inlining :-(
+      #       apt-get update -q -y
+      #       apt-get install -q -y gcc g++ make curl gdebi zstd
+      #
+      #       curl -O https://packages.erlang-solutions.com/erlang/debian/pool/esl-erlang_24.0.2-1~ubuntu~bionic_arm64.deb
+      #       curl -O https://packages.erlang-solutions.com/erlang/debian/pool/elixir_1.12.0-1~ubuntu~bionic_all.deb
+      #       gdebi --non-interactive esl-erlang_24.0.2-1~ubuntu~bionic_arm64.deb
+      #       gdebi --non-interactive elixir_1.12.0-1~ubuntu~bionic_all.deb
+      #
+      #       curl -sL https://deb.nodesource.com/setup_14.x | bash -
+      #       apt-get install -y -q nodejs
+      #     dockerRunArgs: |
+      #       --volume "${PWD}:/app"
+      #     distro: ubuntu18.04
+      #     env: |
+      #       arch: arm64
+      #     githubToken: ${{ github.token }}
+      #     run: |
+      #       cd /app
+      #       bash -c '.ci/build_release.sh'
 
       - uses: actions/upload-artifact@v2
         with:
