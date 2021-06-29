@@ -29,7 +29,7 @@ jobs:
           --health-retries 5
     steps:
       - name: Install package dependencies
-        run: sudo apt-get install net-tools wireguard unzip
+        run: sudo apt-get install net-tools wireguard unzip gdebi
       - uses: actions/checkout@v2
       - name: Install Runtimes
         run: |
@@ -61,8 +61,6 @@ jobs:
           - arch: amd64
           - arch: arm64
     steps:
-      - name: Install package dependencies
-        run: sudo apt-get install zstd
       - uses: actions/checkout@v2
 
       # arm64 build
@@ -73,7 +71,8 @@ jobs:
           arch: aarch64
           install: |
             apt-get update -q -y
-            apt-get install -q -y curl
+            apt-get install -q -y curl gdebi zstd
+            bash -c '.ci/install_runtimes.sh'
           dockerRunArgs: |
             --volume "${PWD}:/app"
           distro: ubuntu18.04
@@ -82,12 +81,12 @@ jobs:
           githubToken: ${{ github.token }}
           run: |
             cd /app
-            bash -c '.ci/install_runtimes.sh'
             bash -c '.ci/build_release.sh'
 
       # amd64 build
       - if: ${{ matrix.arch == 'amd64' }}
         run: |
+          sudo apt-get install -q -y zstd gdebi
           sudo -E bash -c '.ci/install_runtimes.sh'
           sudo -E bash -c '.ci/build_release.sh'
 
