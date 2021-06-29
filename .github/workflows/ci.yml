@@ -33,7 +33,7 @@ jobs:
       - uses: actions/checkout@v2
       - name: Install Runtimes
         run: |
-          sudo bash -c '.ci/install_runtimes.sh'
+          sudo -E bash -c '.ci/install_runtimes.sh'
       - name: Install Dependencies
         run: .ci/install_dependencies.sh
       - name: Setup Database
@@ -86,8 +86,8 @@ jobs:
       # amd64 build
       - if: ${{ matrix.arch == 'amd64' }}
         run: |
-          sudo bash -c '.ci/install_runtimes.sh'
-          sudo bash -c '.ci/build_release.sh'
+          sudo -E bash -c '.ci/install_runtimes.sh'
+          sudo -E bash -c '.ci/build_release.sh'
 
       - uses: actions/upload-artifact@v2
         with:
