@@ -80,7 +80,7 @@ jobs:
           install: |
             # No obvious way to load a script file here, so needs inlining :-(
             apt-get update -q -y
-            apt-get install -q -y curl gdebi zstd
+            apt-get install -q -y gcc g++ make curl gdebi zstd
 
             curl -O https://packages.erlang-solutions.com/erlang/debian/pool/esl-erlang_24.0.2-1~ubuntu~bionic_arm64.deb
             curl -O https://packages.erlang-solutions.com/erlang/debian/pool/elixir_1.12.0-1~ubuntu~bionic_all.deb
@@ -88,7 +88,7 @@ jobs:
             gdebi --non-interactive elixir_1.12.0-1~ubuntu~bionic_all.deb
 
             curl -sL https://deb.nodesource.com/setup_14.x | bash -
-            apt-get install gcc g++ make nodejs
+            apt-get install -y -q nodejs
           dockerRunArgs: |
             --volume "${PWD}:/app"
           distro: ubuntu18.04
