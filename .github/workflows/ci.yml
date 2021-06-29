@@ -85,8 +85,8 @@ jobs:
       # amd64 build
       - if: ${{ matrix.arch == 'amd64' }}
         run: |
-          bash -c '.ci/install_runtimes.sh'
-          bash -c '.ci/build_release.sh'
+          sudo bash -c '.ci/install_runtimes.sh'
+          sudo bash -c '.ci/build_release.sh'
 
       - name: Rename Built Artifacts
         run: .ci/rename_artifacts.sh
