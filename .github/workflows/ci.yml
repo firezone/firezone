@@ -109,7 +109,7 @@ jobs:
       - uses: actions/upload-artifact@v2
         with:
           name: cloudfire-${{ matrix.arch }}
-          path: "_build/prod/rel/cloudfire/bin/cloudfire"
+          path: _build/dev/rel/bakeware/cloudfire
 
   functional-test:
     needs: build-linux
