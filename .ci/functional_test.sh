@@ -10,6 +10,9 @@ echo "Setting capabilities"
 sudo setcap "cap_net_admin+ep" cloudfire
 sudo setcap "cap_net_raw+ep" cloudfire
 sudo setcap "cap_dac_read_search+ep" cloudfire
+chmod +x cloudfire
+
+file cloudfire
 
 ./cloudfire &
 
