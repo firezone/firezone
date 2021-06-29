@@ -14,6 +14,8 @@ chmod +x cloudfire
 
 file cloudfire
 
+ls -alR ~/.cache/
+
 ./cloudfire &
 
 # Wait for app to start
