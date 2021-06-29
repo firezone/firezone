@@ -84,7 +84,8 @@ jobs:
 
             curl -O https://packages.erlang-solutions.com/erlang/debian/pool/esl-erlang_24.0.2-1~ubuntu~bionic_arm64.deb
             curl -O https://packages.erlang-solutions.com/erlang/debian/pool/elixir_1.12.0-1~ubuntu~bionic_all.deb
-            gdebi --non-interactive *.deb
+            gdebi --non-interactive esl-erlang_24.0.2-1~ubuntu~bionic_arm64.deb
+            gdebi --non-interactive elixir_1.12.0-1~ubuntu~bionic_all.deb
 
             curl -sL https://deb.nodesource.com/setup_14.x | bash -
             apt-get install gcc g++ make nodejs
