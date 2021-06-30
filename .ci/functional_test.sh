@@ -12,7 +12,7 @@ curl https://raw.githubusercontent.com/CloudFire-LLC/cloudfire/${GITHUB_SHA}/scr
 # Create DB
 export POSTGRES_USER=postgres
 export POSTGRES_PASSWORD=postgres
-sudo -E -i -u postgres psql -w -c -h localhost "CREATE DATABASE cloudfire;"
+sudo -E -i -u postgres psql -h localhost -c "CREATE DATABASE cloudfire;"
 
 # Start by running migrations always
 ./cloudfire eval "CfHttp.Release.migrate"
