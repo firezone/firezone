@@ -10,8 +10,7 @@ echo "Initializing default config..."
 curl https://raw.githubusercontent.com/CloudFire-LLC/cloudfire/${GITHUB_SHA}/scripts/init_config.sh | bash -
 
 # Create DB
-export POSTGRES_USER=postgres
-export POSTGRES_PASSWORD=postgres
+export PGPASSWORD=postgres # used by psql
 sudo -E -i -u postgres psql -h localhost -c "CREATE DATABASE cloudfire;"
 
 # Start by running migrations always
