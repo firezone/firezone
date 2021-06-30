@@ -10,16 +10,20 @@ echo "Setting capabilities"
 sudo setcap "cap_net_admin+ep" cloudfire
 sudo setcap "cap_net_raw+ep" cloudfire
 sudo setcap "cap_dac_read_search+ep" cloudfire
+mkdir $HOME/.cache
 chmod +x cloudfire
 
-file cloudfire
+# Create DB
+sudo -i -u postgres psql -c "CREATE DATABASE cloudfire;"
 
-mkdir $HOME/.cache
+# Start by running migrations always
+./cloudire eval "CfHttp.Release.migrate"
 
+# Start in the background
 ./cloudfire &
 
 # Wait for app to start
-sleep 10
+sleep 5
 
 echo "Trying to load homepage..."
 curl -i -vvv -k https://$(hostname):8800/

@@ -20,8 +20,8 @@ live_view_signing_salt="$(openssl rand -base64 24)"
 secret_key_base="$(openssl rand -base64 48)"
 db_user=cloudfire
 
-# Base64 includes forward slashes which are problematic in the
-# DB_URL connect string, so use hex.
+# base64 includes forward slashes which are problematic in the
+# db_url connect string, so use hex.
 db_password="$(openssl rand -hex 16)"
 
 db_key="$(openssl rand -base64 32)"
