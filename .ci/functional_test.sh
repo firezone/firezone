@@ -17,7 +17,7 @@ chmod +x cloudfire
 sudo -i -u postgres psql -c "CREATE DATABASE cloudfire;"
 
 # Start by running migrations always
-./cloudire eval "CfHttp.Release.migrate"
+./cloudfire eval "CfHttp.Release.migrate"
 
 # Start in the background
 ./cloudfire &
