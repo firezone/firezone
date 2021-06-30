@@ -5,12 +5,15 @@
 import Config
 alias CfCommon.{CLI, ConfigFile}
 
-config_file =
-  if ConfigFile.exists?() do
-    ConfigFile.load!()
-  else
-    ConfigFile.init!()
-  end
+unless ConfigFile.exists?() do
+  raise(~s"""
+  Config file ~/.cloudfire/config.json not found. Try initializing a default one with:
+
+  curl https://raw.githubusercontent.com/CloudFire-LLC/cloudfire/master/scripts/init_config.sh | bash -
+  """)
+end
+
+config_file = ConfigFile.load!()
 
 # Required environment variables
 database_url = Map.fetch!(config_file, "database_url")
