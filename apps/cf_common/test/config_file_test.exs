@@ -17,12 +17,6 @@ defmodule CfCommon.ConfigFileTest do
     "wg_listen_port" => "51820"
   }
 
-  describe "init!" do
-    test "loads stubbed config" do
-      assert ConfigFile.init!() == @expected_config
-    end
-  end
-
   describe "load!" do
     test "loads stubbed config" do
       assert ConfigFile.load!() == @expected_config
