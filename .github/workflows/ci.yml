@@ -143,6 +143,8 @@ jobs:
       - name: Test Install package
         env:
           DEBIAN_FRONTEND: noninteractive
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
         run: .ci/functional_test.sh
   #
   # publish:
