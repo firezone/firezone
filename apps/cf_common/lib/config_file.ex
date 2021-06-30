@@ -4,38 +4,34 @@ defmodule CfCommon.ConfigFile do
   """
   alias CfCommon.CLI
 
-  @base_path "$HOME/.cloudfire/"
-  @config_path @base_path <> "config.json"
-  @default_config %{
+  @static_config %{
     https_listen_port: "8800",
     https_listen_address: "127.0.0.1",
     wg_listen_port: "51820",
-    database_url: "ecto://postgres:postgres@127.0.0.1/cloudfire",
-    ssl_cert_file: @base_path <> "ssl/cert.pem",
-    ssl_key_file: @base_path <> "ssl/key.pem"
+    database_url: "ecto://postgres:postgres@127.0.0.1/cloudfire"
   }
 
   # Write then load, ensures clean slate
   def init! do
     mkdir!()
 
-    Map.merge(@default_config, generate_config!())
+    Map.merge(default_config(), generate_config!())
     |> write!()
 
     load!()
   end
 
   def load! do
-    %{} = Jason.decode!(file_module().read!(@config_path))
+    %{} = Jason.decode!(file_module().read!(config_path()))
   end
 
   def write!(config) do
-    @config_path
+    config_path()
     |> file_module().write!(Jason.encode!(config), [:write])
   end
 
   def exists? do
-    file_module().exists?(@config_path)
+    file_module().exists?(config_path())
   end
 
   defp generate_config! do
@@ -79,5 +75,23 @@ defmodule CfCommon.ConfigFile do
 
   defp file_module do
     Application.get_env(:cf_common, :config_file_module)
+  end
+
+  defp base_path do
+    System.fetch_env!("HOME") <> "/.cloudfire"
+  end
+
+  defp config_path do
+    base_path() <> "/config.json"
+  end
+
+  defp default_config do
+    Map.merge(
+      @static_config,
+      %{
+        ssl_cert_file: base_path() <> "ssl/cert.pem",
+        ssl_key_file: base_path() <> "ssl/key.pem"
+      }
+    )
   end
 end
