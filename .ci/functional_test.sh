@@ -13,6 +13,9 @@ sudo setcap "cap_dac_read_search+ep" cloudfire
 mkdir $HOME/.cache
 chmod +x cloudfire
 
+echo "Initializing default config..."
+curl https://raw.githubusercontent.com/CloudFire-LLC/cloudfire/${GITHUB_SHA}/scripts/init_config.sh | bash -
+
 # Create DB
 sudo -i -u postgres psql -c "CREATE DATABASE cloudfire;"
 
