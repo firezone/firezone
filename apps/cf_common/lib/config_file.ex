@@ -10,9 +10,9 @@ defmodule CfCommon.ConfigFile do
     https_listen_port: "8800",
     https_listen_address: "127.0.0.1",
     wg_listen_port: "51820",
-    database_url: "ecto://postgres:postgres@localhost/cloudfire",
-    ssl_cert_file: @base_path <> "cert.pem",
-    ssl_key_file: @base_path <> "key.pem"
+    database_url: "ecto://postgres:postgres@127.0.0.1/cloudfire",
+    ssl_cert_file: @base_path <> "ssl/cert.pem",
+    ssl_key_file: @base_path <> "ssl/key.pem"
   }
 
   # Write then load, ensures clean slate
