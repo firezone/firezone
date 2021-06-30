@@ -17,57 +17,67 @@ defmodule CfCommon.ConfigFile do
 
   # Write then load, ensures clean slate
   def init! do
-    Map.merge(@default_config, generate_config())
+    mkdir!()
+
+    Map.merge(@default_config, generate_config!())
     |> write!()
 
     load!()
   end
 
   def load! do
-    %{} = Jason.decode!(File.read!(@config_path))
+    %{} = Jason.decode!(file_module().read!(@config_path))
   end
 
   def write!(config) do
     @config_path
-    |> File.write!(Jason.encode!(config), [:write])
+    |> file_module().write!(Jason.encode!(config), [:write])
   end
 
   def exists? do
-    File.exists?(@config_path)
+    file_module().exists?(@config_path)
   end
 
-  defp generate_config do
+  defp generate_config! do
     %{
-      live_view_signing_salt: live_view_signing_salt(),
-      secret_key_base: secret_key_base(),
-      database_url: database_url(),
-      db_encryption_key: db_encryption_key(),
-      url_host: url_host(),
-      wg_server_key: wg_server_key()
+      live_view_signing_salt: live_view_signing_salt!(),
+      secret_key_base: secret_key_base!(),
+      database_url: database_url!(),
+      db_encryption_key: db_encryption_key!(),
+      url_host: url_host!(),
+      wg_server_key: wg_server_key!()
     }
   end
 
-  defp live_view_signing_salt do
+  defp mkdir! do
+    CLI.exec!("mkdir -p $HOME/.cloudfire")
+  end
+
+  defp live_view_signing_salt! do
     CLI.exec!("openssl rand -base64 24")
   end
 
-  defp secret_key_base do
+  defp secret_key_base! do
     CLI.exec!("openssl rand -base64 48")
   end
 
-  defp db_encryption_key do
+  defp db_encryption_key! do
     CLI.exec!("openssl rand -base64 32")
   end
 
-  defp url_host do
+  defp url_host! do
     CLI.exec!("hostname")
   end
 
-  defp database_url do
+  defp database_url! do
     "ecto://postgres:postgres@127.0.0.1/cloudfire"
   end
 
-  defp wg_server_key do
+  defp wg_server_key! do
     CLI.exec!("wg genkey")
+  end
+
+  defp file_module do
+    Application.get_env(:cf_common, :config_file_module)
   end
 end
