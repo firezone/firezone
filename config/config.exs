@@ -53,10 +53,6 @@ config :logger, :console,
   format: "$time $metadata[$level] $message\n",
   metadata: [:request_id]
 
-# Import environment specific config. This must remain at the bottom
-# of this file so it overrides the configuration defined above.
-import_config "#{Mix.env()}.exs"
-
 # Configures the vault
 config :cf_http, CfHttp.Vault,
   ciphers: [
@@ -73,3 +69,9 @@ config :cf_http, CfHttp.Vault,
       iv_length: 12
     }
   ]
+
+config :cf_common, :config_file_module, File
+
+# Import environment specific config. This must remain at the bottom
+# of this file so it overrides the configuration defined above.
+import_config "#{Mix.env()}.exs"
