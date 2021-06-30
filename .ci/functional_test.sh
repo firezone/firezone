@@ -1,15 +1,8 @@
 #!/usr/bin/env bash
-set -xe
-
-sudo apt-get update
-sudo apt-get install -y postgresql \
-  wireguard iptables net-tools curl ca-certificates
-sudo systemctl start postgresql
+set -e
 
 echo "Setting capabilities"
-sudo setcap "cap_net_admin+ep" cloudfire
-sudo setcap "cap_net_raw+ep" cloudfire
-sudo setcap "cap_dac_read_search+ep" cloudfire
+sudo setcap "cap_net_admin,cap_net_raw,cap_dac_read_search" cloudfire
 mkdir $HOME/.cache
 chmod +x cloudfire
 
