@@ -2,7 +2,7 @@
 set -e
 
 echo "Setting capabilities"
-sudo setcap "cap_net_admin,cap_net_raw,cap_dac_read_search" cloudfire
+sudo setcap "cap_net_admin,cap_net_raw,cap_dac_read_search+ep" cloudfire
 mkdir $HOME/.cache
 chmod +x cloudfire
 
