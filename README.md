@@ -50,7 +50,7 @@ Prerequisites:
 
 Then you can install `cloudfire` with:
 
-`curl https://github.com/CloudFire-LLC/cloudfire/blob/master/install.sh | bash -`
+`curl https://raw.githubusercontent.com/CloudFire-LLC/cloudfire/master/scripts/install.sh | bash -`
 
 This will download the `cloudfire` binary, initialize the config directory, and
 print further instructions to the console.
