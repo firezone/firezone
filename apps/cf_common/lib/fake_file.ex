@@ -7,7 +7,7 @@ defmodule CfCommon.FakeFile do
     "database_url": "ecto://postgres:postgres@127.0.0.1/cloudfire",
     "secret_key_base": "fMjyDw9RpP5+f8klEmeEWnBQKd2H7uKH/PQpOTug6vybretclzaE1k4Y3O2Bw8lX",
     "live_view_signing_salt": "EHcSipS+bFTFYMbFmvVR8lAuwYyfqcTE",
-    "db_key": "8Wgh3dPubt6q4Y1PlYRuG9v50zQE+QTUzh8mJnkw+jc=",
+    "db_encryption_key": "8Wgh3dPubt6q4Y1PlYRuG9v50zQE+QTUzh8mJnkw+jc=",
     "ssl_cert_file": "$HOME/.cloudfire/ssl/cert.pem",
     "ssl_key_file": "$HOME/.cloudfire/ssl/key.pem",
     "url_host": "localhost",
