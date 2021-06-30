@@ -3,7 +3,7 @@
 # although such is generally not recommended and you have to
 # remember to add this file to your .gitignore.
 import Config
-alias CfCommon.ConfigFile
+alias CfCommon.{CLI, ConfigFile}
 
 config_file =
   if ConfigFile.exists?() do
