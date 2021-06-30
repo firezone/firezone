@@ -10,7 +10,7 @@ echo "Initializing default config..."
 curl https://raw.githubusercontent.com/CloudFire-LLC/cloudfire/${GITHUB_SHA}/scripts/init_config.sh | bash -
 
 # Create DB
-sudo -E -i -u postgres psql -c "CREATE DATABASE cloudfire;"
+sudo -E -i psql -c "CREATE DATABASE cloudfire;"
 
 # Start by running migrations always
 ./cloudfire eval "CfHttp.Release.migrate"
