@@ -21,3 +21,5 @@ erl_crash.dump
 
 # Ignore package tarball (built via "mix hex.build").
 cf_vpn-*.tar
+
+/native/cf_vpn/target/

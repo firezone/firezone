@@ -1,0 +1,14 @@
+[package]
+name = "cf_vpn"
+version = "0.1.0"
+authors = []
+
+[lib]
+name = "cf_vpn"
+path = "src/lib.rs"
+crate-type = ["dylib"]
+
+[dependencies]
+rustler = "0.22.0"
+rustler_codegen = "0.22.0"
+lazy_static = "1.0"

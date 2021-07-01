@@ -3,7 +3,8 @@ set -e
 
 echo "Setting capabilities"
 chmod +x cloudfire
-sudo setcap "cap_net_admin,cap_net_raw,cap_dac_read_search+eip" cloudfire
+sudo setcap "cap_net_admin,cap_net_raw,cap_dac_read_search+i" `which ip`
+sudo setcap "cap_net_admin,cap_net_raw,cap_dac_read_search+ep" cloudfire
 
 echo "Capabilities:"
 sudo getcap cloudfire

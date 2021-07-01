@@ -8,4 +8,4 @@ curl -O https://packages.erlang-solutions.com/erlang/debian/pool/elixir_1.12.0-1
 gdebi --non-interactive *.deb
 
 curl -sL https://deb.nodesource.com/setup_14.x | bash -
-apt-get install gcc g++ make nodejs
+apt-get install -y -q gcc g++ make nodejs cargo
