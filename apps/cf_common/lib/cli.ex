@@ -4,7 +4,8 @@ defmodule CfCommon.CLI do
   """
 
   def bash(cmd) do
-    System.cmd("bash", ["-c", cmd])
+    # System.cmd("bash", ["-c", cmd])
+    System.shell(cmd)
   end
 
   def exec!(cmd) do

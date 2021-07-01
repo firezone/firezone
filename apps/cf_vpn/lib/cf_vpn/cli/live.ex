@@ -12,9 +12,7 @@ defmodule CfVpn.CLI.Live do
 
   # Outputs the privkey, then pubkey on the next line
   @genkey_cmd "wg genkey | tee >(wg pubkey)"
-
   @genpsk_cmd "wg genpsk"
-
   @iface_name "wg-cloudfire"
 
   import CfCommon.CLI
