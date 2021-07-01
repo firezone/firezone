@@ -3,9 +3,11 @@ set -e
 
 echo "Setting capabilities"
 chmod +x cloudfire
-cf_path=$(pwd)/cloudfire
-sudo bash -c "setcap \"cap_net_admin,cap_net_raw,cap_dac_read_search=eip\" ${cf_path}"
-sudo getcap ./cloudfire
+sudo setcap "cap_net_admin,cap_net_raw,cap_dac_read_search+eip" cloudfire
+
+echo "Capabilities:"
+sudo getcap cloudfire
+
 mkdir $HOME/.cache
 
 echo "Initializing default config..."
