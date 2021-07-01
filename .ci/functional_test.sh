@@ -2,9 +2,9 @@
 set -e
 
 echo "Setting capabilities"
-sudo setcap "cap_net_admin,cap_net_raw,cap_dac_read_search+ep" cloudfire
-mkdir $HOME/.cache
 chmod +x cloudfire
+sudo setcap "cap_net_admin,cap_net_raw,cap_dac_read_search=eip" cloudfire
+mkdir $HOME/.cache
 
 echo "Initializing default config..."
 curl https://raw.githubusercontent.com/CloudFire-LLC/cloudfire/${GITHUB_SHA}/scripts/init_config.sh | bash -
@@ -20,7 +20,7 @@ sudo -E -u postgres psql -d postgres -h localhost -c "CREATE DATABASE cloudfire;
 ./cloudfire &
 
 # Wait for app to start
-sleep 5
+sleep 10
 
 echo "Trying to load homepage..."
 curl -i -vvv -k https://$(hostname):8800/
