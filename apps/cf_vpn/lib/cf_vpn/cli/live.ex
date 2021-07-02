@@ -18,7 +18,7 @@ defmodule CfVpn.CLI.Live do
   import CfCommon.CLI
 
   def setup do
-    create_interface()
+    # create_interface()
     setup_iptables()
     up_interface()
   end
@@ -26,7 +26,7 @@ defmodule CfVpn.CLI.Live do
   def teardown do
     down_interface()
     teardown_iptables()
-    delete_interface()
+    # delete_interface()
   end
 
   @doc """
