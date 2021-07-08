@@ -47,3 +47,5 @@ config :logger, level: :warn
 
 config :cf_vpn,
   execute_iface_cmds: System.get_env("CI") === "true"
+
+config :cf_common, :config_file_module, CfCommon.FakeFile

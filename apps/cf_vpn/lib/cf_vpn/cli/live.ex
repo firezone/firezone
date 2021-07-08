@@ -12,15 +12,13 @@ defmodule CfVpn.CLI.Live do
 
   # Outputs the privkey, then pubkey on the next line
   @genkey_cmd "wg genkey | tee >(wg pubkey)"
-
   @genpsk_cmd "wg genpsk"
-
   @iface_name "wg-cloudfire"
 
   import CfCommon.CLI
 
   def setup do
-    create_interface()
+    # create_interface()
     setup_iptables()
     up_interface()
   end
@@ -28,7 +26,7 @@ defmodule CfVpn.CLI.Live do
   def teardown do
     down_interface()
     teardown_iptables()
-    delete_interface()
+    # delete_interface()
   end
 
   @doc """
