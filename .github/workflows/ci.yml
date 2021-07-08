@@ -13,10 +13,13 @@ jobs:
       POSTGRES_HOST: localhost
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       MATRIX_OS: ubuntu-18.04
-      arch: amd64
+      MATRIX_ARCH: amd64
+    strategy:
+      matrix:
+        postgres: [9.6, 10, 11, 12, 13]
     services:
       postgres:
-        image: postgres:13
+        image: postgres:${{ matrix.postgres }}
         ports:
           - 5432:5432
         env:
@@ -61,13 +64,14 @@ jobs:
     runs-on: ubuntu-18.04
     name: Build on {{ matrix.arch }}
     env:
-      arch: ${{ matrix.arch }}
+      MATRIX_ARCH: ${{ matrix.arch }}
       MIX_ENV: prod
     strategy:
       matrix:
         include:
           - arch: amd64
-          - arch: arm64
+          # XXX: This currently takes upwards of 10 minutes or more. Disabling for now
+          # - arch: arm64
     steps:
       - uses: actions/checkout@v2
 
@@ -79,47 +83,82 @@ jobs:
           sudo -E bash -c '.ci/build_release.sh'
 
       # arm64 build
-      # XXX: This currently takes upwards of 10 minutes or more. Disabling for
-      # now.
-      # - uses: uraimo/run-on-arch-action@v2.0.10
-      #   if: ${{ matrix.arch == 'arm64' }}
-      #   name: Run on arm64
-      #   with:
-      #     arch: aarch64
-      #     install: |
-      #       # No obvious way to load a script file here, so needs inlining :-(
-      #       apt-get update -q -y
-      #       apt-get install -q -y gcc g++ make curl gdebi zstd
-      #
-      #       curl -O https://packages.erlang-solutions.com/erlang/debian/pool/esl-erlang_24.0.2-1~ubuntu~bionic_arm64.deb
-      #       curl -O https://packages.erlang-solutions.com/erlang/debian/pool/elixir_1.12.0-1~ubuntu~bionic_all.deb
-      #       gdebi --non-interactive esl-erlang_24.0.2-1~ubuntu~bionic_arm64.deb
-      #       gdebi --non-interactive elixir_1.12.0-1~ubuntu~bionic_all.deb
-      #
-      #       curl -sL https://deb.nodesource.com/setup_14.x | bash -
-      #       apt-get install -y -q nodejs
-      #     dockerRunArgs: |
-      #       --volume "${PWD}:/app"
-      #     distro: ubuntu18.04
-      #     env: |
-      #       arch: arm64
-      #     githubToken: ${{ github.token }}
-      #     run: |
-      #       cd /app
-      #       bash -c '.ci/build_release.sh'
+      - uses: uraimo/run-on-arch-action@v2.0.10
+        if: ${{ matrix.arch == 'arm64' }}
+        with:
+          arch: aarch64
+          install: |
+            # No obvious way to load a script file here, so needs inlining :-(
+            apt-get update -q -y
+            apt-get install -q -y gcc g++ make curl gdebi zstd
+
+            curl -O https://packages.erlang-solutions.com/erlang/debian/pool/esl-erlang_24.0.2-1~ubuntu~bionic_arm64.deb
+            curl -O https://packages.erlang-solutions.com/erlang/debian/pool/elixir_1.12.0-1~ubuntu~bionic_all.deb
+            gdebi --non-interactive esl-erlang_24.0.2-1~ubuntu~bionic_arm64.deb
+            gdebi --non-interactive elixir_1.12.0-1~ubuntu~bionic_all.deb
+
+            curl -sL https://deb.nodesource.com/setup_14.x | bash -
+            apt-get install -y -q nodejs
+          dockerRunArgs: |
+            --volume "${PWD}:/app"
+          distro: ubuntu18.04
+          env: |
+            arch: arm64
+          githubToken: ${{ github.token }}
+          run: |
+            cd /app
+            bash -c '.ci/build_release.sh'
 
       - uses: actions/upload-artifact@v2
         with:
           name: cloudfire-${{ matrix.arch }}
           path: _build/prod/rel/bakeware/cloudfire
 
-  functional-test:
+  build-deb:
     needs: build-linux
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-18.04]
+        include:
+          - arch: amd64
+          # - arch: arm64
+        os: [ubuntu-18.04, ubuntu-20.04]
+    services:
+      postgres:
+        image: postgres:13
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/download-artifact@v2
+        with:
+          name: cloudfire-${{ matrix.arch }}
+      - run: .ci/build_deb.sh
+      - uses: actions/upload-artifact@v2
+        with:
+          name: cloudfire_${{ matrix.os }}_${{ matrix.arch }}.deb
+          path: cloudfire_${{ matrix.os }}_${{ matrix.arch }}.deb
+
+  functional-test:
+    needs: build-deb
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+          # - arch: arm64
+        os: [ubuntu-18.04, ubuntu-20.04]
+
     env:
+      MATRIX_ARCH: ${{ matrix.arch }}
       MATRIX_OS: ${{ matrix.os }}
     services:
       postgres:
@@ -138,7 +177,7 @@ jobs:
       - uses: actions/checkout@v2
       - uses: actions/download-artifact@v2
         with:
-          name: cloudfire-amd64
+          name: cloudfire-${{ matrix.os }}_${{ matrix.arch }}.deb
       - run: sudo apt-get install -q -y wireguard
       - name: Test Install package
         env:
