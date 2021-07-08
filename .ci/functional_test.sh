@@ -1,16 +1,9 @@
 #!/usr/bin/env bash
 set -e
 
-echo "Setting capabilities"
 chmod +x cloudfire
-sudo setcap "cap_net_admin,cap_net_raw,cap_dac_read_search+ep" cloudfire
 
-echo "Capabilities:"
-sudo getcap cloudfire
-
-echo "Creating interface"
-sudo ip link add dev wg-cloudfire type wireguard
-
+# Needed because binaries built with Bakeware assume directory exists
 mkdir $HOME/.cache
 
 echo "Initializing default config..."
