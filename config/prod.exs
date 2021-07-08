@@ -13,8 +13,6 @@ config :cf_vpn,
   cli: CfVpn.CLI.Live,
   server_process_opts: [name: {:global, :cf_vpn_server}]
 
-config :cf_vpn, CfVpn, crate: :cf_vpn, mode: :debug
-
 config :cf_wall,
   cli: CfWall.CLI.Live,
   server_process_opts: [name: {:global, :cf_wall_server}]
