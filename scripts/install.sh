@@ -10,17 +10,18 @@ set -e
   # - Edit config to configure your DB access and SSL certs
   # - Add to PATH
   # - How to launch CloudFire
+bin="$HOME/.cloudfire/bin/cloudfire"
 os=`uname`
 if [ ! $os = "Linux" ]; then
   echo "${os} unsupported. Only Linux is supported."
   exit -1
 fi
 
+
 # Exit if already installed
-bin="$HOME/.cloudfire/bin/cloudfire"
 if [ -f $bin ]; then
   echo "${bin} exists. Aborting. If you'd like to upgrade your installation run\
-        cloudfire --upgrade"
+        $bin --upgrade"
   exit 0
 fi
 
@@ -32,8 +33,10 @@ else
 fi
 
 echo 'Downloading the latest release...'
+# XXX: Detect architecture and download appropriate binary
 mkdir -p $HOME/.cloudfire/bin
-curl https://github.com/CloudFire-LLC/cloudfire/releases/download/latest/cloudfire_amd64 > $HOME/.cloudfire/bin/cloudfire
+curl https://github.com/CloudFire-LLC/cloudfire/releases/download/latest/cloudfire_amd64 > $bin
 
-echo 'Setting Linux capabilities on the binary... sudo is required'
-sudo bash -c 'setcap "cap_net_admin,cap_net_raw,cap_dac_read_search" $HOME/.cloudfire/bin/cloudfire'
+# Ambient capabilities handles this
+# echo 'Setting Linux capabilities on the binary... sudo is required'
+# sudo bash -c "setcap 'cap_net_admin,cap_net_raw,cap_dac_read_search' $bin"
