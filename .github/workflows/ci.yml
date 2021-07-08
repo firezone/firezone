@@ -123,19 +123,6 @@ jobs:
           - arch: amd64
           # - arch: arm64
         os: [ubuntu-18.04, ubuntu-20.04]
-    services:
-      postgres:
-        image: postgres:13
-        ports:
-          - 5432:5432
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     steps:
       - uses: actions/checkout@v2
       - uses: actions/download-artifact@v2
