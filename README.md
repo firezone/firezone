@@ -45,22 +45,18 @@ For now, `cloudfire` assumes these apps are all running on the same host.
 Prerequisites:
 
 1. Postgresql Server 9.6 or higher. Access can be configured in
-   `~/.cloudfire/config.json` after installation.
+   `/opt/cloudfire/config.env` after installation.
 2. `wg`, `openssl`, `ip`, and `iptables` must be in your PATH.
 
-Then you can install `cloudfire` with:
-
-`curl https://raw.githubusercontent.com/CloudFire-LLC/cloudfire/master/scripts/install.sh | bash -`
-
-This will download the `cloudfire` binary, initialize the config directory, and
-print further instructions to the console.
+Then you can install `cloudfire` by [downloading the appropriate package
+from the releases page](https://github.com/CloudFire-LLC/cloudfire/releases).
 
 ## Creating additional admin users
 
 You may create additional admin users with the following command:
 
 ```bash
-cloudfire rpc 'CfHttp.Users.create_user(
+/opt/cloudfire/bin/cloudfire rpc 'CfHttp.Users.create_user(
   email: "USER_EMAIL",
   password: "USER_PASSWORD",
   password_confirmation: "USER_PASSWORD"
