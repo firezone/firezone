@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-set -e
+set -xe
+
+pwd
+ls -l
 
 od=$(pwd)
 mkdir -p pkg/${MATRIX_OS}/opt/bin
