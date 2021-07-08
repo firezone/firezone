@@ -123,6 +123,9 @@ jobs:
           - arch: amd64
           # - arch: arm64
         os: [ubuntu-18.04, ubuntu-20.04]
+    env:
+      MATRIX_OS: ${{ matrix.os }}
+      MATRIX_ARCH: ${{ matrix.arch }}
     steps:
       - uses: actions/checkout@v2
       - uses: actions/download-artifact@v2
