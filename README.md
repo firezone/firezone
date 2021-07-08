@@ -12,64 +12,63 @@ You have been warned.
 
 1. [Intro](#intro)
 2. [Architecture](#architecture)
-3. [Setup](#setup)
+3. [Install](#install)
 4. [Usage](#usage)
 5. [Contributing](#contributing)
 
 ## Intro
 
-CloudFire is a host-it-yourself VPN and firewall configurable through a Web UI.
-It aims to be a simple way to setup a VPN and optional firewall for all your
-devices.
+`cloudfire` is an open-source WireGuard™ VPN and firewall manager for Linux
+designed to be easy-to-use, secure, and useful for individuals and small teams.
 
-Use CloudFire to:
+Use `cloudfire` to:
 
-- Set up your own VPN
-- Block, inspect, or capture outgoing traffic from your phone / tablet /
-  computer to any IP(s)
+- Connect remote teams in a secure virtual LAN
+- Set up your own WireGuard™ VPN
+- Block egress traffic to specific IPs and CIDR ranges
+- Configure DNS in one central place for all your devices
 
 ## Architecture
 
-CloudFire is written in the Elixir programming language and composed as an [Umbrella
+`cloudfire` is written in the Elixir programming language and composed as an [Umbrella
 project](https://elixir-lang.org/getting-started/mix-otp/dependencies-and-umbrella-projects.html)
-consisting of three Elixir packages:
+consisting of three independent applications:
 
 - [apps/cf_http](apps/cf_http): The Web Application
 - [apps/cf_wall](apps/cf_wall): Firewall Management Process
 - [apps/cf_vpn](apps/cf_vpn): WireGuard™ Management Process
 
-For now, CloudFire assumes these apps are all running on the same host.
+For now, `cloudfire` assumes these apps are all running on the same host.
 
-## Setup
+## Install
 
-`curl https://github.com/CloudFire-LLC/cloudfire/releases/download/latest/cloudfire-init.sh | sudo bash -E`
+Prerequisites:
 
+1. Postgresql Server 9.6 or higher. Access can be configured in
+   `~/.cloudfire/config.json` after installation.
+2. `wg`, `openssl`, `ip`, and `iptables` must be in your PATH.
+
+Then you can install `cloudfire` with:
+
+`curl https://raw.githubusercontent.com/CloudFire-LLC/cloudfire/master/scripts/install.sh | bash -`
+
+This will download the `cloudfire` binary, initialize the config directory, and
+print further instructions to the console.
+
+## Creating additional admin users
+
+You may create additional admin users with the following command:
 
 ```bash
-vagrant up
-```
-
-This will download the VM base box, provision it with dependencies, bootstrap
-the CloudFire DB, launch the CloudFire Services, and print instructions for
-connecting to the Web UI.
-
-## Creating Additional Users
-
-CloudFire creates the first user for you upon installation and prints the
-credentials after `vagrant up` completes in the step above.
-
-You may create additional users with the following command:
-
-```bash
-sudo -u cloudfire /opt/cloudfire/bin/cloudfire rpc 'CfHttp.Users.create_user(
+cloudfire rpc 'CfHttp.Users.create_user(
   email: "USER_EMAIL",
   password: "USER_PASSWORD",
   password_confirmation: "USER_PASSWORD"
 )'
 ```
 
-This will create a user you can use to log into the Web UI.
-
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+WireGuard™ is a registered trademark of Jason A. Donenfeld.
