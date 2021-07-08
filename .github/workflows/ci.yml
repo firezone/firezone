@@ -139,6 +139,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
+        postgres: [9.6, 10, 11, 12, 13]
         include:
           - arch: amd64
           # - arch: arm64
@@ -149,7 +150,7 @@ jobs:
       MATRIX_OS: ${{ matrix.os }}
     services:
       postgres:
-        image: postgres:13
+        image: postgres:${{ matrix.postgres }}
         ports:
           - 5432:5432
         env:
