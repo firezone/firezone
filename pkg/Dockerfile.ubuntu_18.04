@@ -64,5 +64,4 @@ RUN mix release
 RUN mkdir -p pkg/debian/opt
 RUN mv _build/prod/rel/cloudfire pkg/debian/opt/cloudfire
 
-RUN echo "How about that pkg dir huh: $PKG_DIR"
 RUN cd pkg && dpkg-deb --build $PKG_DIR
