@@ -133,6 +133,8 @@ jobs:
           name: cloudfire-${{ matrix.arch }}
           path: cloudfire-${{ matrix.arch }}
       - run: .ci/build_deb.sh
+      - run: |
+          ls -lR
       - uses: actions/upload-artifact@v2
         with:
           name: cloudfire_${{ matrix.os }}_${{ matrix.arch }}.deb
@@ -150,8 +152,8 @@ jobs:
         os: [ubuntu-18.04, ubuntu-20.04]
 
     env:
-      MATRIX_ARCH: ${{ matrix.arch }}
       MATRIX_OS: ${{ matrix.os }}
+      MATRIX_ARCH: ${{ matrix.arch }}
     services:
       postgres:
         image: postgres:${{ matrix.postgres }}
