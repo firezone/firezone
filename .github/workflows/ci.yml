@@ -180,9 +180,9 @@ jobs:
       - uses: actions/download-artifact@v2
         with:
           name: deb
-          path: cloudfire_${{ matrix.os }}_${{ matrix.arch }}.deb
+          path: ./
       - run: |
-          ls -l cloudfire_${{ matrix.os }}_${{ matrix.arch }}.deb
+          ls -lR cloudfire*
       - run: sudo apt-get install -q -y wireguard
       - name: Test Install package
         env:
