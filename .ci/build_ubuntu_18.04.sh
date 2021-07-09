@@ -17,6 +17,4 @@ docker build \
 
 CID=$(docker create $IMAGE)
 mkdir -p _build
-docker cp $CID:/build/pkg/$PKG_FILE ./_build/
-
-echo "Listing build dir: $(ls _build)"
+docker cp $CID:/build/pkg/$PKG_FILE ./_build/cloudfire_$PKG_FILE
