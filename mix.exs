@@ -22,15 +22,13 @@ defmodule CloudfireUmbrella.MixProject do
       default_release: :cloudfire,
       releases: [
         cloudfire: [
-          # Don't seem to be needed for bakeware releases
-          # include_executables_for: [:unix],
+          include_executables_for: [:unix],
           validate_compile_env: false,
           applications: [
             cf_http: :permanent,
             cf_wall: :permanent,
             cf_vpn: :permanent
           ],
-          steps: [:assemble, &Bakeware.assemble/1],
           cookie: System.get_env("ERL_COOKIE")
         ]
       ]
@@ -44,7 +42,6 @@ defmodule CloudfireUmbrella.MixProject do
   # Run "mix help deps" for examples and options.
   defp deps do
     [
-      {:bakeware, "~> 0.2.0", runtime: false},
       {:excoveralls, "~> 0.13", only: :test},
       {:mix_test_watch, "~> 1.0", only: :dev, runtime: false},
       {:dialyxir, "~> 1.0", only: [:dev], runtime: false}

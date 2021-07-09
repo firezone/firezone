@@ -1,0 +1,11 @@
+Template: cloudfire/config
+Type: note
+Description: config file
+  CloudFire's config file is located at /opt/cloudfire/config.yml. Only root
+  should be able to view and edit this file. Random secrets and passwords have
+  been generated and saved for you already.
+
+Template: cloudfire/access
+Type: note
+Description: access instructions
+  CloudFire has been installed successfully and is running on port 8443!
