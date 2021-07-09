@@ -11,7 +11,7 @@ AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW CAP_DAC_READ_SEARCH
 EnvironmentFile=/opt/cloudfire/config.env
 ExecStartPre=/opt/cloudfire/bin/cloudfire eval "CfHttp.Release.migrate"
 ExecStart=/opt/cloudfire/bin/cloudfire start
-ExecStartPost=/bin/sleep 5
+ExecStartPost=/bin/sleep 8
 ExecStartPost=/opt/cloudfire/bin/cloudfire rpc "CfHttp.Release.create_admin_user"
 
 [Install]
