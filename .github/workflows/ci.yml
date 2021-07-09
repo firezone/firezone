@@ -64,15 +64,25 @@ jobs:
           name: test screenshots
           path: apps/cf_http/screenshots
 
-  build-linux:
+  build:
     needs: unit-integration-test
-    runs-on: ubuntu-18.04
-    name: Build on {{ matrix.arch }}
+    runs-on: ubuntu-20.04
+    name: Build
     env:
       MATRIX_ARCH: ${{ matrix.arch }}
+      MATRIX_OS: ${{ matrix.os }}
       MIX_ENV: prod
     strategy:
       matrix:
+        os:
+          # - amazonlinux_2
+          # - debian_10
+          - ubuntu_18.04
+          - ubuntu_20.04
+          # - redhat_7
+          # - redhat_8
+          # - centos_7
+          # - centos_8
         include:
           - arch: amd64
           # XXX: This currently takes upwards of 10 minutes or more. Disabling for now
@@ -82,10 +92,7 @@ jobs:
 
       # amd64 build
       - if: ${{ matrix.arch == 'amd64' }}
-        run: |
-          sudo apt-get install -q -y zstd gdebi
-          sudo -E bash -c '.ci/install_runtimes.sh'
-          sudo -E bash -c '.ci/build_release.sh'
+        run: .ci/build_${{ matrix.os }}.sh
 
       # arm64 build
       - uses: uraimo/run-on-arch-action@v2.0.10
@@ -116,69 +123,56 @@ jobs:
 
       - uses: actions/upload-artifact@v2
         with:
-          name: cloudfire-${{ matrix.arch }}
-          path: _build/prod/rel/bakeware/cloudfire
-
-  build-deb:
-    needs: build-linux
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        include:
-          - arch: amd64
-          # - arch: arm64
-        os: [ubuntu-18.04, ubuntu-20.04]
-    env:
-      MATRIX_OS: ${{ matrix.os }}
-      MATRIX_ARCH: ${{ matrix.arch }}
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions/download-artifact@v2
-        with:
-          name: cloudfire-${{ matrix.arch }}
-          path: ./cloudfire-${{ matrix.arch }}
-      - run: .ci/build_deb.sh
-      - uses: actions/upload-artifact@v2
-        with:
-          name: cloudfire_${{ matrix.os }}_${{ matrix.arch }}
-          path: cloudfire_${{ matrix.os }}_${{ matrix.arch }}.deb
+          name: cloudfire_${{ matrix.os }}_${{ matrix.arch }}.deb
+          path: _build/cloudfire_${{ matrix.os }}_${{ matrix.arch }}.deb
 
   functional-test:
-    needs: build-deb
-    runs-on: ${{ matrix.os }}
+    needs: build
+    runs-on: ubuntu-20.04
     strategy:
       matrix:
+        os:
+          # - amazonlinux_2
+          # - debian_10
+          - ubuntu_18.04
+          - ubuntu_20.04
+          # - redhat_7
+          # - redhat_8
+          # - centos_7
+          # - centos_8
         include:
           - arch: amd64
           # - arch: arm64
-        os: [ubuntu-18.04, ubuntu-20.04]
-
     env:
       MATRIX_OS: ${{ matrix.os }}
       MATRIX_ARCH: ${{ matrix.arch }}
+      DEBIAN_FRONTEND: noninteractive
     steps:
       - uses: actions/checkout@v2
       - uses: actions/download-artifact@v2
         with:
-          name: cloudfire_${{ matrix.os }}_${{ matrix.arch }}
+          name: cloudfire_${{ matrix.os }}_${{ matrix.arch }}.deb
           path: ./
-      - run: |
-          ls -lR cloudfire*
-      - run: sudo apt-get install -q -y wireguard
       - name: Test Install package
-        env:
-          DEBIAN_FRONTEND: noninteractive
         run: .ci/functional_test.sh
 
-  publish-deb:
+  publish:
     needs: functional-test
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-20.04
     strategy:
       matrix:
+        os:
+          # - amazonlinux_2
+          # - debian_10
+          - ubuntu_18.04
+          - ubuntu_20.04
+          # - redhat_7
+          # - redhat_8
+          # - centos_7
+          # - centos_8
         include:
           - arch: amd64
             # - arch: arm64
-        os: [ubuntu-18.04, ubuntu-20.04]
     if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
     steps:
       - name: Create Release
