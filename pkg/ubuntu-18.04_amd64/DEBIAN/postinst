@@ -28,9 +28,9 @@ db_key="$(openssl rand -base64 32)"
 
 # Setup DB
 # XXX: Remove || true and detect actual failures
-su postgres -c 'psql -c "CREATE ROLE ${db_user} WITH LOGIN PASSWORD '${db_password}';" || true'
-su postgres -c 'psql -c "CREATE DATABASE cloudfire;" || true'
-su postgres -c 'psql -c "GRANT ALL PRIVILEGES ON DATABASE cloudfire to ${db_user};" || true'
+su postgres -c "psql -c 'CREATE ROLE ${db_user} WITH LOGIN PASSWORD ${db_password};' || true"
+su postgres -c "psql -c 'CREATE DATABASE cloudfire;' || true"
+su postgres -c "psql -c 'GRANT ALL PRIVILEGES ON DATABASE cloudfire to ${db_user};' || true"
 
 # Write CloudFire SSL files
 mkdir -p /opt/cloudfire/ssl
