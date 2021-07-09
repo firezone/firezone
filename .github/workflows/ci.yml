@@ -16,10 +16,15 @@ jobs:
       MATRIX_ARCH: amd64
     strategy:
       matrix:
-        postgres: [9.6, 10, 11, 12, 13]
+        postgres:
+          - postgres:9.6
+          - postgres:10
+          - postgres:11
+          - postgres:12
+          - postgres:13
     services:
       postgres:
-        image: postgres:${{ matrix.postgres }}
+        image: ${{ matrix.postgres }}
         ports:
           - 5432:5432
         env:
@@ -143,7 +148,12 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        postgres: [9.6, 10, 11, 12, 13]
+        postgres:
+          - postgres:9.6
+          - postgres:10
+          - postgres:11
+          - postgres:12
+          - postgres:13
         include:
           - arch: amd64
           # - arch: arm64
@@ -154,7 +164,7 @@ jobs:
       MATRIX_ARCH: ${{ matrix.arch }}
     services:
       postgres:
-        image: postgres:${{ matrix.postgres }}
+        image: ${{ matrix.postgres }}
         ports:
           - 5432:5432
         env:
