@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg width="468px" height="100px" viewBox="0 0 468 100" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<svg width="418px" height="102px" viewBox="0 0 418 102" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
     <!-- Generator: Sketch 48.2 (47327) - http://www.bohemiancoding.com/sketch -->
-    <title>Slice</title>
+    <title>Group</title>
     <desc>Created with Sketch.</desc>
     <defs></defs>
     <g id="Page-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
         <g id="Group">
-            <text id="CloudFire" font-family="Copperplate" font-size="64" font-weight="normal" fill="#000000">
-                <tspan x="130" y="81">CloudFire</tspan>
+            <text id="FireZone" font-family="Copperplate" font-size="64" font-weight="normal" fill="#000000">
+                <tspan x="130" y="81">FireZone</tspan>
             </text>
             <g id="logo">
                 <path d="M78,0 C106.929245,20.432184 76.9805386,65.7158066 87.5490618,84 C65.8312154,57.5738976 95.4207963,34.8637635 78,0 Z" id="path6" fill="#CF5C00"></path>

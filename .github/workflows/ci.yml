@@ -13,10 +13,18 @@ jobs:
       POSTGRES_HOST: localhost
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       MATRIX_OS: ubuntu-18.04
-      arch: amd64
+      MATRIX_ARCH: amd64
+    strategy:
+      matrix:
+        postgres:
+          - postgres:9.6
+          - postgres:10
+          - postgres:11
+          - postgres:12
+          - postgres:13
     services:
       postgres:
-        image: postgres:13
+        image: ${{ matrix.postgres }}
         ports:
           - 5432:5432
         env:
@@ -56,123 +64,144 @@ jobs:
           name: test screenshots
           path: apps/cf_http/screenshots
 
-  build-linux:
+  build:
     needs: unit-integration-test
-    runs-on: ubuntu-18.04
-    name: Build on {{ matrix.arch }}
+    runs-on: ubuntu-20.04
+    name: Build
     env:
-      arch: ${{ matrix.arch }}
+      MATRIX_ARCH: ${{ matrix.arch }}
+      MATRIX_OS: ${{ matrix.os }}
       MIX_ENV: prod
     strategy:
       matrix:
+        os:
+          # - amazonlinux_2
+          # - debian_10
+          - ubuntu_18.04
+          - ubuntu_20.04
+          # - redhat_7
+          # - redhat_8
+          # - centos_7
+          # - centos_8
         include:
           - arch: amd64
-          - arch: arm64
+          # XXX: This currently takes upwards of 10 minutes or more. Disabling for now
+          # - arch: arm64
     steps:
       - uses: actions/checkout@v2
+      - uses: satackey/action-docker-layer-caching@v0.0.11
+        continue-on-error: false
+        with:
+          key: docker-cache-${{ matrix.os }}-${{ matrix.arch }}-${{ github.sha }}
+          restore-keys: |
+            docker-cache-${{ matrix.os }}-${{ matrix.arch }}-
 
       # amd64 build
       - if: ${{ matrix.arch == 'amd64' }}
-        run: |
-          sudo apt-get install -q -y zstd gdebi
-          sudo -E bash -c '.ci/install_runtimes.sh'
-          sudo -E bash -c '.ci/build_release.sh'
+        run: .ci/build_${{ matrix.os }}.sh
 
       # arm64 build
-      # XXX: This currently takes upwards of 10 minutes or more. Disabling for
-      # now.
-      # - uses: uraimo/run-on-arch-action@v2.0.10
-      #   if: ${{ matrix.arch == 'arm64' }}
-      #   name: Run on arm64
-      #   with:
-      #     arch: aarch64
-      #     install: |
-      #       # No obvious way to load a script file here, so needs inlining :-(
-      #       apt-get update -q -y
-      #       apt-get install -q -y gcc g++ make curl gdebi zstd
-      #
-      #       curl -O https://packages.erlang-solutions.com/erlang/debian/pool/esl-erlang_24.0.2-1~ubuntu~bionic_arm64.deb
-      #       curl -O https://packages.erlang-solutions.com/erlang/debian/pool/elixir_1.12.0-1~ubuntu~bionic_all.deb
-      #       gdebi --non-interactive esl-erlang_24.0.2-1~ubuntu~bionic_arm64.deb
-      #       gdebi --non-interactive elixir_1.12.0-1~ubuntu~bionic_all.deb
-      #
-      #       curl -sL https://deb.nodesource.com/setup_14.x | bash -
-      #       apt-get install -y -q nodejs
-      #     dockerRunArgs: |
-      #       --volume "${PWD}:/app"
-      #     distro: ubuntu18.04
-      #     env: |
-      #       arch: arm64
-      #     githubToken: ${{ github.token }}
-      #     run: |
-      #       cd /app
-      #       bash -c '.ci/build_release.sh'
+      - uses: uraimo/run-on-arch-action@v2.0.10
+        if: ${{ matrix.arch == 'arm64' }}
+        with:
+          arch: aarch64
+          install: |
+            # No obvious way to load a script file here, so needs inlining :-(
+            apt-get update -q -y
+            apt-get install -q -y gcc g++ make curl gdebi zstd
+
+            curl -O https://packages.erlang-solutions.com/erlang/debian/pool/esl-erlang_24.0.2-1~ubuntu~bionic_arm64.deb
+            curl -O https://packages.erlang-solutions.com/erlang/debian/pool/elixir_1.12.0-1~ubuntu~bionic_all.deb
+            gdebi --non-interactive esl-erlang_24.0.2-1~ubuntu~bionic_arm64.deb
+            gdebi --non-interactive elixir_1.12.0-1~ubuntu~bionic_all.deb
+
+            curl -sL https://deb.nodesource.com/setup_14.x | bash -
+            apt-get install -y -q nodejs
+          dockerRunArgs: |
+            --volume "${PWD}:/app"
+          distro: ubuntu18.04
+          env: |
+            arch: arm64
+          githubToken: ${{ github.token }}
+          run: |
+            cd /app
+            bash -c '.ci/build_release.sh'
 
       - uses: actions/upload-artifact@v2
         with:
-          name: cloudfire-${{ matrix.arch }}
-          path: _build/prod/rel/bakeware/cloudfire
+          name: cloudfire_${{ matrix.os }}_${{ matrix.arch }}.deb
+          path: _build/cloudfire_${{ matrix.os }}_${{ matrix.arch }}.deb
 
   functional-test:
-    needs: build-linux
-    runs-on: ${{ matrix.os }}
+    needs: build
+    runs-on: ubuntu-20.04
     strategy:
       matrix:
-        os: [ubuntu-18.04]
+        os:
+          # - amazonlinux_2
+          # - debian_10
+          - ubuntu_18.04
+          - ubuntu_20.04
+          # - redhat_7
+          # - redhat_8
+          # - centos_7
+          # - centos_8
+        include:
+          - arch: amd64
+          # - arch: arm64
     env:
       MATRIX_OS: ${{ matrix.os }}
-    services:
-      postgres:
-        image: postgres:13
-        ports:
-          - 5432:5432
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+      MATRIX_ARCH: ${{ matrix.arch }}
+      DEBIAN_FRONTEND: noninteractive
     steps:
       - uses: actions/checkout@v2
       - uses: actions/download-artifact@v2
         with:
-          name: cloudfire-amd64
-      - run: sudo apt-get install -q -y wireguard
+          name: cloudfire_${{ matrix.os }}_${{ matrix.arch }}.deb
+          path: ./
       - name: Test Install package
-        env:
-          DEBIAN_FRONTEND: noninteractive
         run: .ci/functional_test.sh
-  #
-  # publish:
-  #   needs: functional-test
-  #   runs-on: ${{ matrix.os }}
-  #   strategy:
-  #     matrix:
-  #       os: [ubuntu-20.04]
-  #   if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
-  #   steps:
-  #     - name: Create Release
-  #       id: create_release
-  #       uses: actions/create-release@v1
-  #       env:
-  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  #       with:
-  #         tag_name: ${{ github.ref }}
-  #         release_name: Release ${{ github.ref }}
-  #         draft: false
-  #         prerelease: true
-  #     - uses: actions/download-artifact@v2
-  #       with:
-  #         name: cloudfire-deb
-  #     - name: Upload Release Asset
-  #       id: upload-release-asset
-  #       uses: actions/upload-release-asset@v1
-  #       env:
-  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  #       with:
-  #         upload_url: ${{ steps.create_release.outputs.upload_url }}
-  #         asset_path: ./cloudfire_${{ github.sha }}-1_${{ matrix.os }}_amd64.deb
-  #         asset_name: cloudfire_${{ matrix.os }}_amd64.deb
-  #         asset_content_type: application/vnd.debian.binary-package
+
+  publish:
+    needs: functional-test
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        os:
+          # - amazonlinux_2
+          # - debian_10
+          - ubuntu_18.04
+          - ubuntu_20.04
+          # - redhat_7
+          # - redhat_8
+          # - centos_7
+          # - centos_8
+        include:
+          - arch: amd64
+            # - arch: arm64
+    if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
+    steps:
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: true
+      - uses: actions/download-artifact@v2
+        with:
+          name: cloudfire_${{ matrix.os }}_${{ matrix.arch }}
+          path: ./
+      - name: Upload Release Asset
+        id: upload-release-asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./cloudfire_${{ matrix.os }}_${{ matrix.arch }}.deb
+          asset_name: ${{ matrix.os }}_${{ matrix.arch }}
+          asset_content_type: application/vnd.debian.binary-package
