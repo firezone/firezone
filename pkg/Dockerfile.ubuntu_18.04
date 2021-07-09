@@ -61,7 +61,7 @@ RUN npm run --prefix ./apps/cf_http/assets deploy && \
 COPY . .
 RUN mix release
 
-RUN mkdir -p pkg/debian/opt
-RUN mv _build/prod/rel/cloudfire pkg/debian/opt/cloudfire
+RUN mkdir -p pkg/$PKG_DIR/opt
+RUN mv _build/prod/rel/cloudfire pkg/$PKG_DIR/opt/cloudfire
 
 RUN cd pkg && dpkg-deb --build $PKG_DIR
