@@ -148,12 +148,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        postgres:
-          - postgres:9.6
-          - postgres:10
-          - postgres:11
-          - postgres:12
-          - postgres:13
         include:
           - arch: amd64
           # - arch: arm64
@@ -162,19 +156,6 @@ jobs:
     env:
       MATRIX_OS: ${{ matrix.os }}
       MATRIX_ARCH: ${{ matrix.arch }}
-    services:
-      postgres:
-        image: ${{ matrix.postgres }}
-        ports:
-          - 5432:5432
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     steps:
       - uses: actions/checkout@v2
       - uses: actions/download-artifact@v2

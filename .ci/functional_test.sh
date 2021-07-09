@@ -7,7 +7,6 @@ sudo apt-get install -y postgresql \
 sudo systemctl start postgresql
 
 file=cloudfire_${MATRIX_OS}_${MATRIX_ARCH}.deb
-file $file
 sudo dpkg -i $file
 
 echo "Enabling service..."
