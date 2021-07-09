@@ -136,12 +136,12 @@ jobs:
       - uses: actions/download-artifact@v2
         with:
           name: cloudfire-${{ matrix.arch }}
-          path: cloudfire-${{ matrix.arch }}
+          path: ./cloudfire-${{ matrix.arch }}
       - run: .ci/build_deb.sh
       - uses: actions/upload-artifact@v2
         with:
           name: cloudfire_${{ matrix.os }}_${{ matrix.arch }}.deb
-          path: cloudfire_${{ matrix.os }}_${{ matrix.arch }}.deb
+          path: ./cloudfire_${{ matrix.os }}_${{ matrix.arch }}.deb
 
   functional-test:
     needs: build-deb
@@ -179,8 +179,8 @@ jobs:
       - uses: actions/checkout@v2
       - uses: actions/download-artifact@v2
         with:
-          path: cloudfire_${{ matrix.os }}_${{ matrix.arch }}.deb
           name: cloudfire_${{ matrix.os }}_${{ matrix.arch }}.deb
+          path: ./cloudfire_${{ matrix.os }}_${{ matrix.arch }}.deb
       - run: sudo apt-get install -q -y wireguard
       - name: Test Install package
         env:
