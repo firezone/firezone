@@ -92,9 +92,9 @@ jobs:
       - uses: satackey/action-docker-layer-caching@v0.0.11
         continue-on-error: false
         with:
-          key: docker-cache-${{ github.sha }}
+          key: docker-cache-${{ matrix.os }}-${{ matrix.arch }}-${{ github.sha }}
           restore-keys: |
-            docker-cache-
+            docker-cache-${{ matrix.os }}-${{ matrix.arch }}-
 
       # amd64 build
       - if: ${{ matrix.arch == 'amd64' }}
