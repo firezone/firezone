@@ -89,6 +89,12 @@ jobs:
           # - arch: arm64
     steps:
       - uses: actions/checkout@v2
+      - uses: satackey/action-docker-layer-caching@v0.0.11
+        continue-on-error: false
+        with:
+          key: docker-cache-${{ github.sha }}
+          restore-keys: |
+            docker-cache-
 
       # amd64 build
       - if: ${{ matrix.arch == 'amd64' }}
