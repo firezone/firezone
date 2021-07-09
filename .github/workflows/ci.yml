@@ -131,6 +131,7 @@ jobs:
       - uses: actions/download-artifact@v2
         with:
           name: cloudfire-${{ matrix.arch }}
+          path: cloudfire-${{ matrix.arch }}
       - run: .ci/build_deb.sh
       - uses: actions/upload-artifact@v2
         with:
@@ -168,6 +169,7 @@ jobs:
       - uses: actions/checkout@v2
       - uses: actions/download-artifact@v2
         with:
+          path: cloudfire-${{ matrix.os }}_${{ matrix.arch }}.deb
           name: cloudfire-${{ matrix.os }}_${{ matrix.arch }}.deb
       - run: sudo apt-get install -q -y wireguard
       - name: Test Install package
