@@ -2,7 +2,7 @@
 set -xe
 
 pwd
-ls -l cloudfire
+ls -lR cloudfire
 
 od=$(pwd)
 mkdir -p pkg/${MATRIX_OS}/opt/bin
