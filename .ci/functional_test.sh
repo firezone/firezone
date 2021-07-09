@@ -5,7 +5,10 @@ sudo apt-get update
 sudo apt-get install -y postgresql \
   wireguard iptables net-tools curl ca-certificates
 sudo systemctl start postgresql
-sudo dpkg -i cloudfire_${MATRIX_OS}_${MATRIX_ARCH}.deb
+
+file=cloudfire_${MATRIX_OS}_${MATRIX_ARCH}.deb
+file $file
+sudo dpkg -i $file
 
 echo "Enabling service..."
 sudo systemctl start cloudfire
