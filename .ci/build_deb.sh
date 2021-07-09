@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 set -xe
 
-ls -lR
-
 od=$(pwd)
 mkdir -p pkg/${MATRIX_OS}/opt/bin
 mv cloudfire-${MATRIX_ARCH} pkg/${MATRIX_OS}/opt/bin/cloudfire
