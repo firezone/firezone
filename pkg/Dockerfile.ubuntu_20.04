@@ -66,4 +66,4 @@ RUN mkdir -p pkg/$PKG_DIR/opt
 RUN mv _build/prod/rel/firezone pkg/$PKG_DIR/opt/firezone
 
 RUN cd pkg && dpkg-deb --build $PKG_DIR
-RUN lintian -i -I pkg/$PKG_DIR.deb
+RUN lintian -i pkg/$PKG_DIR.deb
