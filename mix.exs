@@ -1,6 +1,6 @@
-defmodule CloudfireUmbrella.MixProject do
+defmodule FirezoneUmbrella.MixProject do
   @moduledoc """
-  Welcome to the CloudFire Elixir Umbrella Project
+  Welcome to the FireZone Elixir Umbrella Project
   """
 
   use Mix.Project
@@ -19,15 +19,15 @@ defmodule CloudfireUmbrella.MixProject do
       ],
       deps: deps(),
       aliases: aliases(),
-      default_release: :cloudfire,
+      default_release: :firezone,
       releases: [
-        cloudfire: [
+        firezone: [
           include_executables_for: [:unix],
           validate_compile_env: false,
           applications: [
-            cf_http: :permanent,
-            cf_wall: :permanent,
-            cf_vpn: :permanent
+            fz_http: :permanent,
+            fz_wall: :permanent,
+            fz_vpn: :permanent
           ],
           cookie: System.get_env("ERL_COOKIE")
         ]

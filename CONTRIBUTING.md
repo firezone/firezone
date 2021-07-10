@@ -16,7 +16,7 @@ Read this guide before opening a pull request.
 
 ## Prerequisites
 
-You'll need the following software installed to develop for CloudFire:
+You'll need the following software installed to develop for FireZone:
 
 - [Vagrant](vagrantup.com)
 - [Ansible](ansible.com)
@@ -28,11 +28,11 @@ You'll need the following software installed to develop for CloudFire:
 
 ## Project Setup
 
-1. Ensure Postgres is running with a superuser role of `cloudfire`. E.g.
+1. Ensure Postgres is running with a superuser role of `firezone`. E.g.
   ```
   $ psql -h localhost -d postgres
 
-  > CREATE ROLE cloudfire;
+  > CREATE ROLE firezone;
   ```
 2. Install the language versions defined in `.tool-versions`:
   ```
@@ -42,7 +42,7 @@ You'll need the following software installed to develop for CloudFire:
 3. Resolve dependencies
   ```
   $ mix deps.get
-  $ npm install --prefix apps/cf_http/assets
+  $ npm install --prefix apps/fz_http/assets
   ```
 4. Bootstrap DB
   ```
