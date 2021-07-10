@@ -51,10 +51,10 @@ COPY apps/fz_vpn/mix.exs ./apps/fz_vpn/
 COPY apps/fz_common/mix.exs ./apps/fz_common/
 RUN mix do deps.get, deps.compile
 
-COPY apps/_http/assets/package.json apps/fz_http/assets/package-lock.json ./apps/fz_http/assets/
-RUN cd apps/_http/assets && npm ci --progress=false --no-audit --loglevel=error
-COPY apps/_http/priv apps/fz_http/priv
-COPY apps/_http/assets apps/fz_http/assets
+COPY apps/fz_http/assets/package.json apps/fz_http/assets/package-lock.json ./apps/fz_http/assets/
+RUN cd apps/fz_http/assets && npm ci --progress=false --no-audit --loglevel=error
+COPY apps/fz_http/priv apps/fz_http/priv
+COPY apps/fz_http/assets apps/fz_http/assets
 RUN npm run --prefix ./apps/_http/assets deploy && \
     cd apps/_http && mix phx.digest
 
