@@ -13,6 +13,7 @@ ARG PKG_DIR
 ENV DEBIAN_FRONTEND noninteractive
 RUN apt-get update -q && \
     apt-get install -y --no-install-recommends \
+    lintian \
     gdebi \
     ca-certificates \
     build-essential \
@@ -65,3 +66,4 @@ RUN mkdir -p pkg/$PKG_DIR/opt
 RUN mv _build/prod/rel/firezone pkg/$PKG_DIR/opt/firezone
 
 RUN cd pkg && dpkg-deb --build $PKG_DIR
+RUN lintian -i -I pkg/$PKG_DIR.deb
