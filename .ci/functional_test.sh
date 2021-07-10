@@ -8,16 +8,16 @@ sudo systemctl start postgresql
 sudo dpkg -i *.deb
 
 echo "Enabling service..."
-sudo systemctl start cloudfire
+sudo systemctl start firezone
 
 # Wait for app to start
 sleep 10
 
 echo "Service status..."
-sudo systemctl status cloudfire.service
+sudo systemctl status firezone.service
 
 echo "Printing service logs..."
-sudo journalctl -u cloudfire.service
+sudo journalctl -u firezone.service
 
 echo "Trying to load homepage..."
 curl -i -vvv -k https://$(hostname):8800/
