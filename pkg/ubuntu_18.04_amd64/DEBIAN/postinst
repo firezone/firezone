@@ -1,13 +1,7 @@
 #!/usr/bin/env bash
-set -xe
-
-ls -la /opt/firezone/bin
+set -e
 
 # FireZone package post-install script
-
-# 1. Generate secrets
-# 2. Bootstrap DB
-# 3. Generate WireGuard interface and config
 
 # All created files are 0600 by default
 umask 077
@@ -21,6 +15,8 @@ else
 fi
 
 hostname=$(hostname)
+
+### SET UP DB
 
 # Create role if not exists
 db_user=firezone
@@ -41,29 +37,30 @@ else
   echo "${db_name} exists; not creating"
 fi
 
+# Grant all privileges
 su postgres -c "psql -c \"GRANT ALL PRIVILEGES ON DATABASE firezone to ${db_user};\""
 
-# Setup DB
-# XXX: Remove || true and detect actual failures
+### SET UP SSL
+# XXX: Use Let's Encrypt
 
 # Write FireZone SSL files
 mkdir -p /opt/firezone/ssl
 ssl_key_file=/opt/firezone/ssl/key.pem
 ssl_cert_file=/opt/firezone/ssl/cert.pem
-if [ ! -f $ssl_key_file && ! -f $ssl_cert_file]; then
+if [ -f $ssl_key_file ] && [ -f $ssl_cert_file ]; then
+  echo "ssl files exist; not creating"
+else
   openssl req -new -x509 -sha256 -newkey rsa:2048 -nodes \
       -keyout $ssl_key_file \
       -out $ssl_cert_file \
       -days 365 -subj "/CN=${hostname}"
-else
-  echo "ssl files exist; not creating"
 fi
 
 # Generate app secrets
 live_view_signing_salt="$(openssl rand -base64 24)"
 secret_key_base="$(openssl rand -base64 48)"
 db_key="$(openssl rand -base64 32)"
-wg genkey > /opt/firezone/server.key
+wg_server_key="$(wg genkey)"
 
 # Write FireZone config files
 if [ ! -f /opt/firezone/config.env ]; then
@@ -99,6 +96,9 @@ WG_ENDPOINT_ADDRESS=
 
 # The Base64-encoded key for encrypted database fields.
 DB_ENCRYPTION_KEY=${db_key}
+
+# The Base64-encoded private key for the WireGuard interface
+WG_SERVER_KEY=${wg_server_key}
 
 # SSL certificate file and key path. Self-signed certs are generated for you on
 # install, but it's highly recommended to replace these with valid certs.
