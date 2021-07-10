@@ -3,4 +3,4 @@
 
 ## Reporting a Vulnerability
 
-Please report any security issues to security AT cloudfire.network
+Please report any security issues to security AT firez.one

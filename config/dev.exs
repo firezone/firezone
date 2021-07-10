@@ -1,15 +1,15 @@
 import Config
 
 # Configure your database
-config :cf_http, CfHttp.Repo,
+config :fz_http, FzHttp.Repo,
   username: "postgres",
   password: "postgres",
-  database: "cloudfire_dev",
+  database: "firezone_dev",
   hostname: "localhost",
   show_sensitive_data_on_connection_error: true,
   pool_size: 10
 
-config :cf_http, CfHttp.Mailer, adapter: Bamboo.LocalAdapter
+config :fz_http, FzHttp.Mailer, adapter: Bamboo.LocalAdapter
 
 # For development, we disable any cache and enable
 # debugging and code reloading.
@@ -17,7 +17,7 @@ config :cf_http, CfHttp.Mailer, adapter: Bamboo.LocalAdapter
 # The watchers configuration can be used to run external
 # watchers to your application. For example, we use it
 # with webpack to recompile .js and .css sources.
-config :cf_http, CfHttpWeb.Endpoint,
+config :fz_http, FzHttpWeb.Endpoint,
   http: [port: 4000],
   debug_errors: true,
   code_reloader: true,
@@ -29,7 +29,7 @@ config :cf_http, CfHttpWeb.Endpoint,
       "development",
       "--watch",
       "--watch-options-stdin",
-      cd: Path.expand("../apps/cf_http/assets", __DIR__)
+      cd: Path.expand("../apps/fz_http/assets", __DIR__)
     ]
   ]
 
@@ -58,17 +58,17 @@ config :cf_http, CfHttpWeb.Endpoint,
 # different ports.
 
 # Watch static and templates for browser reloading.
-config :cf_http, CfHttpWeb.Endpoint,
+config :fz_http, FzHttpWeb.Endpoint,
   secret_key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5SD",
   live_view: [
     signing_salt: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDejX"
   ],
   live_reload: [
     patterns: [
-      ~r"apps/cf_http/priv/static/.*(js|css|png|jpeg|jpg|gif|svg)$",
-      ~r"apps/cf_http/priv/gettext/.*(po)$",
-      ~r"apps/cf_http/lib/cf_http_web/(live|views)/.*(ex)$",
-      ~r"apps/cf_http/lib/cf_http_web/templates/.*(eex)$"
+      ~r"apps/fz_http/priv/static/.*(js|css|png|jpeg|jpg|gif|svg)$",
+      ~r"apps/fz_http/priv/gettext/.*(po)$",
+      ~r"apps/fz_http/lib/fz_http_web/(live|views)/.*(ex)$",
+      ~r"apps/fz_http/lib/fz_http_web/templates/.*(eex)$"
     ]
   ]
 
@@ -81,11 +81,11 @@ config :phoenix, :stacktrace_depth, 20
 
 # Initialize plugs at runtime for faster development compilation
 config :phoenix, :plug_init_mode, :runtime
-config :cf_vpn, :server_process_opts, name: {:global, :cf_vpn_server}
-config :cf_wall, :server_process_opts, name: {:global, :cf_wall_server}
+config :fz_vpn, :server_process_opts, name: {:global, :fz_vpn_server}
+config :fz_wall, :server_process_opts, name: {:global, :fz_wall_server}
 
 config(
-  :cf_http,
+  :fz_http,
   :disable_signup,
   case System.get_env("DISABLE_SIGNUP") do
     d when d in ["1", "yes"] -> true

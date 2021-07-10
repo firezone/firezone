@@ -24,29 +24,29 @@ import Config
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
-config :cf_http,
-  ecto_repos: [CfHttp.Repo],
+config :fz_http,
+  ecto_repos: [FzHttp.Repo],
   vpn_endpoint: "127.0.0.1:51820",
-  admin_user_email: "cloudfire@localhost",
-  events_module: CfHttpWeb.Events,
+  admin_user_email: "firezone@localhost",
+  events_module: FzHttpWeb.Events,
   disable_signup: true
 
-config :cf_wall,
-  cli: CfWall.CLI.Sandbox,
+config :fz_wall,
+  cli: FzWall.CLI.Sandbox,
   server_process_opts: []
 
 # This will be changed per-env
-config :cf_vpn,
+config :fz_vpn,
   private_key: "UAeZoaY95pKZE1Glq28sI2GJDfGGRFtlb4KC6rjY2Gs=",
-  cli: CfVpn.CLI.Sandbox,
+  cli: FzVpn.CLI.Sandbox,
   server_process_opts: []
 
 # Configures the endpoint
 # These will be overridden at runtime in production by config/releases.exs
-config :cf_http, CfHttpWeb.Endpoint,
+config :fz_http, FzHttpWeb.Endpoint,
   url: [host: "localhost"],
-  render_errors: [view: CfHttpWeb.ErrorView, accepts: ~w(html json)],
-  pubsub_server: CfHttp.PubSub
+  render_errors: [view: FzHttpWeb.ErrorView, accepts: ~w(html json)],
+  pubsub_server: FzHttp.PubSub
 
 # Configures Elixir's Logger
 config :logger, :console,
@@ -54,7 +54,7 @@ config :logger, :console,
   metadata: [:request_id]
 
 # Configures the vault
-config :cf_http, CfHttp.Vault,
+config :fz_http, FzHttp.Vault,
   ciphers: [
     default: {
       Cloak.Ciphers.AES.GCM,
@@ -69,8 +69,6 @@ config :cf_http, CfHttp.Vault,
       iv_length: 12
     }
   ]
-
-config :cf_common, :config_file_module, File
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.

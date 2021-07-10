@@ -1,8 +1,0 @@
-<html>
-  <head>
-    <link rel="stylesheet" href="<%= Routes.static_path(CfHttpWeb.Endpoint, "/css/email.css") %>">
-  </head>
-  <body>
-    <%= @inner_content %>
-  </body>
-</html>
