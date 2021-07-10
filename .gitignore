@@ -53,4 +53,4 @@ npm-debug.log
 pkg/debian/opt
 
 # Test screenshots
-apps/cf_http/screenshots
+apps/fz_http/screenshots

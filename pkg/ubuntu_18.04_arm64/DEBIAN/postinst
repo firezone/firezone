@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -xe
 
-ls -la /opt/cloudfire/bin
+ls -la /opt/firezone/bin
 
-# CloudFire package post-install script
+# FireZone package post-install script
 
 # 1. Generate secrets
 # 2. Bootstrap DB
@@ -12,18 +12,18 @@ ls -la /opt/cloudfire/bin
 # All created files are 0600 by default
 umask 077
 
-# Add cloudfire user if not exists
-if id cloudfire &>/dev/null; then
-  echo "cloudfire user exists... not creating."
+# Add firezone user if not exists
+if id firezone &>/dev/null; then
+  echo "firezone user exists... not creating."
 else
-  echo "creating system user cloudfire"
-  useradd --system cloudfire
+  echo "creating system user firezone"
+  useradd --system firezone
 fi
 
 # Generate app secrets
 live_view_signing_salt="$(openssl rand -base64 24)"
 secret_key_base="$(openssl rand -base64 48)"
-db_user=cloudfire
+db_user=firezone
 
 # base64 includes forward slashes which are problematic in the
 # db_url connect string, so use hex.
@@ -34,22 +34,22 @@ db_key="$(openssl rand -base64 32)"
 # Setup DB
 # XXX: Remove || true and detect actual failures
 su postgres -c "psql -c \"CREATE ROLE ${db_user} WITH LOGIN PASSWORD '${db_password}';\" || true"
-su postgres -c "psql -c \"CREATE DATABASE cloudfire;\" || true"
-su postgres -c "psql -c \"GRANT ALL PRIVILEGES ON DATABASE cloudfire to ${db_user};\" || true"
+su postgres -c "psql -c \"CREATE DATABASE firezone;\" || true"
+su postgres -c "psql -c \"GRANT ALL PRIVILEGES ON DATABASE firezone to ${db_user};\" || true"
 
-# Write CloudFire SSL files
-mkdir -p /opt/cloudfire/ssl
+# Write FireZone SSL files
+mkdir -p /opt/firezone/ssl
 hostname=$(hostname)
 openssl req -new -x509 -sha256 -newkey rsa:2048 -nodes \
-    -keyout /opt/cloudfire/ssl/key.pem \
-    -out /opt/cloudfire/ssl/cert.pem \
+    -keyout /opt/firezone/ssl/key.pem \
+    -out /opt/firezone/ssl/cert.pem \
     -days 365 -subj "/CN=${hostname}"
 
-wg genkey > /opt/cloudfire/server.key
+wg genkey > /opt/firezone/server.key
 
-# Write CloudFire config files
-cat <<EOT >> /opt/cloudfire/config.env
-# This file is loaded into CloudFire's Environment upon launch to configure it.
+# Write FireZone config files
+cat <<EOT >> /opt/firezone/config.env
+# This file is loaded into FireZone's Environment upon launch to configure it.
 
 # This is used to ensure secure communication with the live web views.
 # Re-generate this with "openssl rand -base64 24". All existing web views will
@@ -63,7 +63,7 @@ SECRET_KEY_BASE="${secret_key_base}"
 
 # The URL to connect to your DB. Assumes the database has been created and this
 # user has privileges to create and modify tables.
-DATABASE_URL="ecto://${db_user}:${db_password}@127.0.0.1/cloudfire"
+DATABASE_URL="ecto://${db_user}:${db_password}@127.0.0.1/firezone"
 
 # The HTTPS port to listen on. Defaults to 8800.
 HTTPS_LISTEN_PORT=8800
@@ -84,8 +84,8 @@ DB_ENCRYPTION_KEY=${db_key}
 # SSL certificate file and key path. Self-signed certs are generated for you on
 # install, but it's highly recommended to replace these with valid certs.
 # Free certs can be obtained at https://letsencrypt.org.
-SSL_CERT_FILE=/opt/cloudfire/ssl/cert.pem
-SSL_KEY_FILE=/opt/cloudfire/ssl/key.pem
+SSL_CERT_FILE=/opt/firezone/ssl/cert.pem
+SSL_KEY_FILE=/opt/firezone/ssl/key.pem
 
 # Path to the intermediate certificates file. (usually not required)
 # SSL_CA_CERT_FILE=
@@ -100,5 +100,5 @@ DISABLE_SIGNUP=yes
 EOT
 
 # Set perms
-chown -R cloudfire:root /opt/cloudfire
-chmod 0644 /opt/cloudfire/ssl/cert.pem
+chown -R firezone:root /opt/firezone
+chmod 0644 /opt/firezone/ssl/cert.pem

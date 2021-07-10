@@ -45,23 +45,23 @@ RUN mix local.hex --force && \
     mix local.rebar --force
 COPY mix.exs mix.lock ./
 COPY config config
-COPY apps/cf_http/mix.exs ./apps/cf_http/
-COPY apps/cf_wall/mix.exs ./apps/cf_wall/
-COPY apps/cf_vpn/mix.exs ./apps/cf_vpn/
-COPY apps/cf_common/mix.exs ./apps/cf_common/
+COPY apps/fz_http/mix.exs ./apps/fz_http/
+COPY apps/fz_wall/mix.exs ./apps/fz_wall/
+COPY apps/fz_vpn/mix.exs ./apps/fz_vpn/
+COPY apps/fz_common/mix.exs ./apps/fz_common/
 RUN mix do deps.get, deps.compile
 
-COPY apps/cf_http/assets/package.json apps/cf_http/assets/package-lock.json ./apps/cf_http/assets/
-RUN cd apps/cf_http/assets && npm ci --progress=false --no-audit --loglevel=error
-COPY apps/cf_http/priv apps/cf_http/priv
-COPY apps/cf_http/assets apps/cf_http/assets
-RUN npm run --prefix ./apps/cf_http/assets deploy && \
-    cd apps/cf_http && mix phx.digest
+COPY apps/_http/assets/package.json apps/fz_http/assets/package-lock.json ./apps/fz_http/assets/
+RUN cd apps/_http/assets && npm ci --progress=false --no-audit --loglevel=error
+COPY apps/_http/priv apps/fz_http/priv
+COPY apps/_http/assets apps/fz_http/assets
+RUN npm run --prefix ./apps/_http/assets deploy && \
+    cd apps/_http && mix phx.digest
 
 COPY . .
 RUN mix release
 
 RUN mkdir -p pkg/$PKG_DIR/opt
-RUN mv _build/prod/rel/cloudfire pkg/$PKG_DIR/opt/cloudfire
+RUN mv _build/prod/rel/firezone pkg/$PKG_DIR/opt/firezone
 
 RUN cd pkg && dpkg-deb --build $PKG_DIR

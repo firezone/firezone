@@ -3,7 +3,7 @@
 # although such is generally not recommended and you have to
 # remember to add this file to your .gitignore.
 import Config
-alias CfCommon.CLI
+alias FzCommon.CLI
 
 # Required environment variables
 database_url = System.fetch_env!("DATABASE_URL")
@@ -36,10 +36,10 @@ wg_listen_port = System.get_env("WG_LISTEN_PORT", "51820")
 wg_endpoint_address = System.get_env("WG_ENDPOINT_ADDRESS", default_egress_address)
 url_host = System.get_env("URL_HOST", "localhost")
 
-config :cf_http,
+config :fz_http,
   disable_signup: disable_signup
 
-config :cf_http, CfHttp.Repo,
+config :fz_http, FzHttp.Repo,
   # ssl: true,
   url: database_url,
   pool_size: pool_size,
@@ -48,14 +48,14 @@ config :cf_http, CfHttp.Repo,
 base_opts = [
   port: https_listen_port,
   transport_options: [max_connections: :infinity, socket_opts: [:inet6]],
-  otp_app: :cloudfire,
+  otp_app: :firezone,
   keyfile: ssl_key_file,
   certfile: ssl_cert_file
 ]
 
 https_opts = if ssl_ca_cert_file, do: base_opts ++ [cacertfile: ssl_ca_cert_file], else: base_opts
 
-config :cf_http, CfHttpWeb.Endpoint,
+config :fz_http, FzHttpWeb.Endpoint,
   # Force SSL for releases
   https: https_opts,
   url: [host: url_host, port: https_listen_port],
@@ -64,18 +64,18 @@ config :cf_http, CfHttpWeb.Endpoint,
     signing_salt: live_view_signing_salt
   ]
 
-config :cf_vpn,
+config :fz_vpn,
   vpn_endpoint: wg_endpoint_address <> ":" <> wg_listen_port,
-  private_key: File.read!("/opt/cloudfire/server.key") |> String.trim()
+  private_key: File.read!("/opt/firezone/server.key") |> String.trim()
 
 # ## Using releases (Elixir v1.9+)
 #
 # If you are doing OTP releases, you need to instruct Phoenix
 # to start each relevant endpoint:
 #
-config :cf_http, CfHttpWeb.Endpoint, server: true
+config :fz_http, FzHttpWeb.Endpoint, server: true
 
-config :cf_http, CfHttp.Vault,
+config :fz_http, FzHttp.Vault,
   ciphers: [
     default: {
       Cloak.Ciphers.AES.GCM,
