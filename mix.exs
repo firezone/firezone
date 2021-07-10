@@ -8,7 +8,7 @@ defmodule FirezoneUmbrella.MixProject do
   def project do
     [
       apps_path: "apps",
-      version: "0.1.7",
+      version: "0.2.0",
       start_permanent: Mix.env() == :prod,
       test_coverage: [tool: ExCoveralls],
       preferred_cli_env: [
