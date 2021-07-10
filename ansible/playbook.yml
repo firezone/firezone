@@ -59,41 +59,41 @@
         line: 'net.ipv6.conf.all.forwarding = 1'
     - name: apply sysctl
       shell: sysctl -p
-- name: Build CloudFire
+- name: Build FireZone
   hosts: all
   tasks:
     - name: Copy Project
       shell: |
-        rsync --delete -avz --exclude '_build' --exclude 'deps' /vagrant/* /home/vagrant/cloudfire/
+        rsync --delete -avz --exclude '_build' --exclude 'deps' /vagrant/* /home/vagrant/firezone/
     - name: Compile Release
       become: no
       environment:
         MIX_ENV: prod
       shell: |
-        cd /home/vagrant/cloudfire
+        cd /home/vagrant/firezone
         scripts/build_release.sh
     - name: Build Debian Package
       become: no
       shell: |
-        cd /home/vagrant/cloudfire
+        cd /home/vagrant/firezone
         scripts/build_deb.sh
-    - name: Install CloudFire deb
+    - name: Install FireZone deb
       become: yes
       shell: |
-        cd /home/vagrant/cloudfire
-        dpkg -i cloudfire_amd64.deb
+        cd /home/vagrant/firezone
+        dpkg -i firezone_amd64.deb
     - name: Enable systemd units
       become: yes
       shell: |
-        systemctl enable cloudfire
+        systemctl enable firezone
     - name: Start systemd units
       become: yes
       shell: |
-        systemctl start cloudfire
+        systemctl start firezone
     - name: Capture user credentials
       become: yes
       shell: |
-        journalctl -u cloudfire
+        journalctl -u firezone
       register: create_user
     - name: Display user credentials
       debug: msg="{{ create_user.stdout_lines }}"

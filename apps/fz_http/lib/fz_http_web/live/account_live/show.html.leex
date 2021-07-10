@@ -1,0 +1,35 @@
+<%= if @live_action == :edit do %>
+  <%= live_modal(
+        FzHttpWeb.AccountLive.FormComponent,
+        return_to: Routes.account_show_path(@socket, :show),
+        title: "Edit Account",
+        id: "user-#{@current_user.id}",
+        user: @current_user,
+        action: @live_action) %>
+<% end %>
+<div class="columns">
+  <div class="column is-6">
+    <div class="content">
+      <h3 class="title">Your Account</h3>
+
+      <dl>
+        <dt>
+          <strong>Email</strong>
+        </dt>
+        <dd><%= @current_user.email %></dd>
+
+        <dt><strong>Last signed in at</strong></dt>
+        <dd><%= @current_user.last_signed_in_at %></dd>
+      </dl>
+
+      <div class="level">
+        <%= live_patch("Change email or password", to: Routes.account_show_path(@socket, :edit)) %>
+
+        <%# This is purposefully a synchronous form in order to easily clear the session %>
+        <%= form_for @changeset, Routes.user_path(@socket, :delete), [id: "delete-account", method: :delete], fn _f -> %>
+          <%= submit "Delete your account", class: "button is-danger", data: [confirm: "Are you sure?"] %>
+        <% end %>
+      </div>
+    </div>
+  </div>
+</div>
