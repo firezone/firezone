@@ -11,6 +11,7 @@ secret_key_base = System.fetch_env!("SECRET_KEY_BASE")
 live_view_signing_salt = System.fetch_env!("LIVE_VIEW_SIGNING_SALT")
 ssl_cert_file = System.fetch_env!("SSL_CERT_FILE")
 ssl_key_file = System.fetch_env!("SSL_KEY_FILE")
+wg_server_key = System.fetch_env!("WG_SERVER_KEY")
 
 disable_signup =
   case System.get_env("DISABLE_SIGNUP") do
@@ -66,7 +67,7 @@ config :fz_http, FzHttpWeb.Endpoint,
 
 config :fz_vpn,
   vpn_endpoint: wg_endpoint_address <> ":" <> wg_listen_port,
-  private_key: File.read!("/opt/firezone/server.key") |> String.trim()
+  private_key: wg_server_key
 
 # ## Using releases (Elixir v1.9+)
 #

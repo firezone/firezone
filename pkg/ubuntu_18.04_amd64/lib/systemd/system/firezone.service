@@ -1,5 +1,5 @@
 [Unit]
-Description=FireZone
+Description=firezone
 Requires=postgresql.service
 After=postgresql.service
 
