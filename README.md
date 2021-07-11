@@ -1,7 +1,7 @@
 ![](./apps/fz_http/assets/static/logo.svg)
 
-![Test](https://github.com/FireZone-LLC/firezone/workflows/Test/badge.svg)
-[![Coverage Status](https://coveralls.io/repos/github/FireZone-LLC/firezone/badge.svg?branch=master)](https://coveralls.io/github/FireZone-LLC/firezone?branch=master)
+![Test](https://github.com/firezone/firezone/workflows/Test/badge.svg)
+[![Coverage Status](https://coveralls.io/repos/github/firezone/firezone/badge.svg?branch=master)](https://coveralls.io/github/FireZone-LLC/firezone?branch=master)
 
 **Warning**: This project is under active development and is not secure at the moment.
 Do not attempt to use this software in any production capacity until this notice is removed.
@@ -45,18 +45,18 @@ For now, `firezone` assumes these apps are all running on the same host.
 Prerequisites:
 
 1. Postgresql Server 9.6 or higher. Access can be configured in
-   `/opt/firezone/config.env` after installation.
+   `/etc/firezone/secret/secrets.env` after installation.
 2. `wg`, `openssl`, `ip`, and `iptables` must be in your PATH.
 
 Then you can install `firezone` by [downloading the appropriate package
-from the releases page](https://github.com/FireZone-LLC/firezone/releases).
+from the releases page](https://github.com/firezone/firezone/releases).
 
 ## Creating additional admin users
 
 You may create additional admin users with the following command:
 
 ```bash
-/opt/firezone/bin/firezone rpc 'FzHttp.Users.create_user(
+> firezone rpc 'FzHttp.Users.create_user(
   email: "USER_EMAIL",
   password: "USER_PASSWORD",
   password_confirmation: "USER_PASSWORD"

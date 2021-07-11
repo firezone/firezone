@@ -9,3 +9,5 @@ apps/fg_vpn/_build
 **/cover
 
 docs
+
+.DS_Store
