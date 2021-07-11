@@ -67,9 +67,9 @@ config :fz_http, FzHttpWeb.Endpoint,
     transport_options: [max_connections: :infinity, socket_opts: [:inet6]],
     otp_app: :firezone,
     # overridden by release config
-    keyfile: "/opt/firezone/ssl/key.pem",
+    keyfile: "/etc/firezone/secret/key.pem",
     # overridden by release config
-    certfile: "/opt/firezone/ssl/cert.pem"
+    certfile: "/etc/firezone/cert.pem"
   ],
   # changed by release config
   secret_key_base: "dummy",
