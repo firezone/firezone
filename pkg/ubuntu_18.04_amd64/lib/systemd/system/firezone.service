@@ -11,6 +11,7 @@ AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW CAP_DAC_READ_SEARCH
 EnvironmentFile=/opt/firezone/config.env
 ExecStartPre=/opt/firezone/bin/firezone eval "FzHttp.Release.migrate"
 ExecStart=/opt/firezone/bin/firezone start
+# XXX: Remove sleeps
 ExecStartPost=/bin/sleep 8
 ExecStartPost=/opt/firezone/bin/firezone rpc "FzHttp.Release.create_admin_user"
 

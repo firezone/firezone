@@ -62,8 +62,10 @@ secret_key_base="$(openssl rand -base64 48)"
 db_key="$(openssl rand -base64 32)"
 wg_server_key="$(wg genkey)"
 
-# Write FireZone config files
-if [ ! -f /opt/firezone/config.env ]; then
+# Write FireZone config file
+if [ -f /opt/firezone/config.env ]; then
+  echo "config file exists; not creating"
+else
 cat <<EOT >> /opt/firezone/config.env
 # This file is loaded into FireZone's Environment upon launch to configure it.
 
@@ -117,8 +119,6 @@ SSL_KEY_FILE=/opt/firezone/ssl/key.pem
 # users via the CLI.
 DISABLE_SIGNUP=yes
 EOT
-else
-  echo "config file exists; not creating"
 fi
 
 # Set perms
