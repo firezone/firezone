@@ -69,7 +69,6 @@ RUN rsync -avz pkg/debian_shared/* pkg/$PKG_DIR/
 
 RUN mkdir -p pkg/$PKG_DIR/etc/firezone
 RUN mkdir -p pkg/$PKG_DIR/usr/bin
-RUN mkdir -p pkg/$PKG_DIR/usr/lib/firezone
 RUN mv _build/prod/rel/firezone pkg/$PKG_DIR/usr/lib/
 RUN cd pkg/$PKG_DIR/usr/bin && ln -s ../lib/firezone/bin/firezone
 RUN ls -lR pkg/$PKG_DIR
