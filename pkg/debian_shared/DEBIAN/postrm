@@ -3,7 +3,7 @@ set -e
 
 # Remove created user
 echo "Removing firezone user"
-userdel -Zrf firezone
+userdel -rf firezone
 
 if [ "$1" = purge ]; then
   echo "Refusing to purge /etc/firezone/secret and drop database. This must be done manually."
