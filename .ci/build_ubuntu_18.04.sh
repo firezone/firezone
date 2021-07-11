@@ -6,12 +6,14 @@ ARCH=${MATRIX_ARCH:-`uname -m`}
 PKG_DIR="${OS}_${ARCH}"
 PKG_FILE="${PKG_DIR}.deb"
 IMAGE="${OS}_${ARCH}:latest"
+BASE_IMAGE="hexpm/elixir:1.12.2-erlang-24.0.3-ubuntu-bionic-20210325"
 
 docker build \
   -t $IMAGE \
-  -f pkg/Dockerfile.$OS \
+  -f pkg/Dockerfile.ubuntu \
   --platform linux/$ARCH \
   --build-arg PKG_DIR=$PKG_DIR \
+  --build-arg BASE_IMAGE=$BASE_IMAGE \
   --progress plain \
   .
 
