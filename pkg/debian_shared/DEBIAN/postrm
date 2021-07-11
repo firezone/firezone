@@ -1,0 +1,6 @@
+#!/bin/bash
+set -e
+
+# Remove created user
+echo "Removing firezone user"
+userdel -Zrf firezone

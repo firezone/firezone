@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 set -e
 
 # FireZone package post-install script
@@ -40,13 +40,14 @@ fi
 # Grant all privileges
 su postgres -c "psql -c \"GRANT ALL PRIVILEGES ON DATABASE firezone to ${db_user};\""
 
-### SET UP SSL
-# XXX: Use Let's Encrypt
+# Set up secrets dir
+mkdir -p /etc/firezone/secret
+chown firezone:root /etc/firezone/secret
+chmod 770 /etc/firezone/secret
 
 # Write FireZone SSL files
-mkdir -p /opt/firezone/ssl
-ssl_key_file=/opt/firezone/ssl/key.pem
-ssl_cert_file=/opt/firezone/ssl/cert.pem
+ssl_key_file=/etc/firezone/secret/key.pem
+ssl_cert_file=/etc/firezone/cert.pem
 if [ -f $ssl_key_file ] && [ -f $ssl_cert_file ]; then
   echo "ssl files exist; not creating"
 else
@@ -63,11 +64,16 @@ db_key="$(openssl rand -base64 32)"
 wg_server_key="$(wg genkey)"
 
 # Write FireZone config file
-if [ -f /opt/firezone/config.env ]; then
+if [ -f /etc/firezone/secret.env ]; then
   echo "config file exists; not creating"
 else
-cat <<EOT >> /opt/firezone/config.env
+
+umask 037
+cat <<EOT >> /etc/firezone/secret/secrets.env
 # This file is loaded into FireZone's Environment upon launch to configure it.
+
+# Warning: changing anything here can result in data loss. Make sure you know
+# what you're doing!
 
 # This is used to ensure secure communication with the live web views.
 # Re-generate this with "openssl rand -base64 24". All existing web views will
@@ -80,47 +86,18 @@ LIVE_VIEW_SIGNING_SALT="${live_view_signing_salt}"
 SECRET_KEY_BASE="${secret_key_base}"
 
 # The URL to connect to your DB. Assumes the database has been created and this
-# user has privileges to create and modify tables.
+# user has privileges to create and modify tables. Must start with ecto://
+# Ex: ecto://user:password@localhost/firezone
 DATABASE_URL="ecto://${db_user}:${db_password}@127.0.0.1/firezone"
-
-# The HTTPS port to listen on. Defaults to 8800.
-HTTPS_LISTEN_PORT=8800
-
-# The address to bind the HTTPS server to. Defaults to "127.0.0.1"
-HTTPS_LISTEN_ADDRESS=127.0.0.1
-
-# The WireGuard port to listen on. Defaults to 51820.
-WG_LISTEN_PORT=51820
-
-# The address for the WireGuard endpoint. Defaults to the address of the
-# default egress interface if not set.
-WG_ENDPOINT_ADDRESS=
 
 # The Base64-encoded key for encrypted database fields.
 DB_ENCRYPTION_KEY=${db_key}
 
 # The Base64-encoded private key for the WireGuard interface
 WG_SERVER_KEY=${wg_server_key}
-
-# SSL certificate file and key path. Self-signed certs are generated for you on
-# install, but it's highly recommended to replace these with valid certs.
-# Free certs can be obtained at https://letsencrypt.org.
-SSL_CERT_FILE=/opt/firezone/ssl/cert.pem
-SSL_KEY_FILE=/opt/firezone/ssl/key.pem
-
-# Path to the intermediate certificates file. (usually not required)
-# SSL_CA_CERT_FILE=
-
-# Host to use for generating links back to the application, such as in
-# outbound emails. Defaults to "localhost".
-# URL_HOST=${hostname}
-
-# For security, it's recommended to leave signups disabled and instead create
-# users via the CLI.
-DISABLE_SIGNUP=yes
 EOT
 fi
 
 # Set perms
-chown -R firezone:root /opt/firezone
-chmod 0644 /opt/firezone/ssl/cert.pem
+chown -R firezone:root /etc/firezone
+chmod 0644 /etc/firezone/cert.pem
