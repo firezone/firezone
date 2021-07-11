@@ -4,7 +4,8 @@
 # even if the OS and kernel versions match.
 # As such, this script has been deprecated in favor of building the release
 # in the production environment.
-FROM hexpm/elixir:1.12.2-erlang-24.0.3-ubuntu-bionic-20210325
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
 
 # Overridden by build script
 ARG PKG_DIR
@@ -14,6 +15,7 @@ ENV DEBIAN_FRONTEND noninteractive
 RUN apt-get update -q && \
     apt-get install -y --no-install-recommends \
     lintian \
+    rsync \
     gdebi \
     ca-certificates \
     build-essential \
@@ -63,11 +65,12 @@ COPY . .
 RUN mix release
 
 # Copy shared files
-RUN rsync -avz pkg/debain_shared/* pkg/$PKG_DIR/
+RUN rsync -avz pkg/debian_shared/* pkg/$PKG_DIR/
 RUN ls -lR pkg/$PKG_DIR
 
 RUN mkdir -p pkg/$PKG_DIR/etc/firezone
 RUN mkdir -p pkg/$PKG_DIR/usr/bin
+RUN mkdir -p pkg/$PKG_DIR/usr/lib/firezone
 RUN mv _build/prod/rel/firezone pkg/$PKG_DIR/usr/lib/firezone
 RUN cd pkg/$PKG_DIR/usr/bin && ln -s ../lib/firezone/bin/firezone
 RUN cd pkg && dpkg-deb --build $PKG_DIR
