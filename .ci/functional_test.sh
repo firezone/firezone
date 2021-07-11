@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -e
+set -x
 
 sudo apt-get update
 sudo apt-get install -y -q postgresql \
@@ -30,7 +30,7 @@ echo "Removing package"
 output=$(sudo apt-get remove --purge firezone)
 
 echo "Checking if config file was removed"
-if [ -e /opt/firezone/config.env ]; then
+if [ -e /etc/firezone/config.env ]; then
   echo "Config removal issue"
   exit 1
 fi
