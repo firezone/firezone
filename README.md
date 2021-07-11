@@ -1,7 +1,7 @@
 ![](./apps/fz_http/assets/static/logo.svg)
 
-![Test](https://github.com/FireZone-LLC/firezone/workflows/Test/badge.svg)
-[![Coverage Status](https://coveralls.io/repos/github/FireZone-LLC/firezone/badge.svg?branch=master)](https://coveralls.io/github/FireZone-LLC/firezone?branch=master)
+![Test](https://github.com/firezone/firezone/workflows/Test/badge.svg)
+[![Coverage Status](https://coveralls.io/repos/github/firezone/firezone/badge.svg?branch=master)](https://coveralls.io/github/FireZone-LLC/firezone?branch=master)
 
 **Warning**: This project is under active development and is not secure at the moment.
 Do not attempt to use this software in any production capacity until this notice is removed.
@@ -49,7 +49,7 @@ Prerequisites:
 2. `wg`, `openssl`, `ip`, and `iptables` must be in your PATH.
 
 Then you can install `firezone` by [downloading the appropriate package
-from the releases page](https://github.com/FireZone-LLC/firezone/releases).
+from the releases page](https://github.com/firezone/firezone/releases).
 
 ## Creating additional admin users
 
