@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -x
+set -e
 
 sudo apt-get update
 sudo apt-get install -y -q postgresql \
@@ -27,16 +27,18 @@ echo "Printing SSL debug info"
 openssl s_client -connect $(hostname):8800 -servername $(hostname) -showcerts -prexit
 
 echo "Removing package"
-sudo apt-get remove firezone
+output=$(sudo apt-get remove --purge firezone)
 
-echo "Checking if directory was removed"
-if [ -d /opt/firezone ]; then
-  echo "Package removal issue"
+echo "Checking if config file was removed"
+if [ -e /opt/firezone/config.env ]; then
+  echo "Config removal issue"
   exit 1
 fi
 
-echo "Checking if database was dropped"
-if $(sudo su postgres -c "psql -lqt | cut -d \| -f 1 | grep -qw firezone"); then
-  echo "Database still exists"
+echo "Checking if instructions were printed on how to remove database and secrets"
+if echo "$output" | grep 'Refusing to purge /etc/firezone/secret and drop database.'; then
+  echo "Instructions printed"
+else
+  echo "Instructions not printed!"
   exit 1
 fi
