@@ -72,5 +72,4 @@ RUN mkdir -p pkg/$PKG_DIR/usr/bin
 RUN mkdir -p pkg/$PKG_DIR/usr/lib/firezone
 RUN rsync -avz _build/prod/rel/firezone/* pkg/$PKG_DIR/usr/lib/firezone/
 RUN cd pkg/$PKG_DIR/usr/bin && ln -s ../lib/firezone/bin/firezone
-RUN ls -lR pkg/$PKG_DIR
 RUN cd pkg && dpkg-deb --build $PKG_DIR
