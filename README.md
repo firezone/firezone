@@ -45,7 +45,7 @@ For now, `firezone` assumes these apps are all running on the same host.
 Prerequisites:
 
 1. Postgresql Server 9.6 or higher. Access can be configured in
-   `/opt/firezone/config.env` after installation.
+   `/etc/firezone/secret/secrets.env` after installation.
 2. `wg`, `openssl`, `ip`, and `iptables` must be in your PATH.
 
 Then you can install `firezone` by [downloading the appropriate package
@@ -56,7 +56,7 @@ from the releases page](https://github.com/firezone/firezone/releases).
 You may create additional admin users with the following command:
 
 ```bash
-/opt/firezone/bin/firezone rpc 'FzHttp.Users.create_user(
+> firezone rpc 'FzHttp.Users.create_user(
   email: "USER_EMAIL",
   password: "USER_PASSWORD",
   password_confirmation: "USER_PASSWORD"
