@@ -90,7 +90,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - uses: satackey/action-docker-layer-caching@v0.0.11
-        continue-on-error: false
+        continue-on-error: true
         with:
           key: docker-cache-${{ matrix.os }}-${{ matrix.arch }}-${{ github.sha }}
           restore-keys: |
