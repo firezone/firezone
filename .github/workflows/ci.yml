@@ -99,7 +99,9 @@ jobs:
 
       # amd64 build
       - if: ${{ matrix.arch == 'amd64' }}
-        run: .ci/build_${{ matrix.os }}.sh
+        run: |
+          tree .
+          .ci/build_${{ matrix.os }}.sh
 
       # arm64 build
       - uses: uraimo/run-on-arch-action@v2.0.10
