@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 set -e
 
-OS="ubuntu_18.04"
+OS="amazonlinux_2"
 ARCH=${MATRIX_ARCH:-`uname -m`}
 PKG_DIR="${OS}_${ARCH}"
-PKG_FILE="${PKG_DIR}.deb"
+PKG_FILE="${PKG_DIR}.rpm"
 IMAGE="${OS}_${ARCH}:latest"
-BASE_IMAGE="hexpm/elixir:1.12.2-erlang-24.0.3-ubuntu-bionic-20210325"
+BASE_IMAGE="amazonlinux:2"
 
 docker build \
   -t $IMAGE \
-  -f pkg/Dockerfile.deb \
+  -f pkg/Dockerfile.rpm \
   --platform linux/$ARCH \
   --build-arg PKG_DIR=$PKG_DIR \
   --build-arg BASE_IMAGE=$BASE_IMAGE \
