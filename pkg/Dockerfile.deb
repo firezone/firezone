@@ -1,0 +1,71 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+# Overridden by build script
+ARG PKG_DIR
+
+# Setup to run build script
+ENV DEBIAN_FRONTEND noninteractive
+RUN apt-get update -q && \
+    apt-get install -y --no-install-recommends \
+    lintian \
+    rsync \
+    gdebi \
+    ca-certificates \
+    build-essential \
+    git \
+    dpkg-dev \
+    libssl-dev \
+    automake \
+    gnupg \
+    curl \
+    autoconf \
+    libncurses5-dev \
+    unzip \
+    zlib1g-dev \
+    locales && \
+    apt-get clean && \
+    rm -rf /tmp/* /var/tmp/*
+RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && \
+    locale-gen
+ENV LANG en_US.UTF-8
+ENV LANGUAGE en_US:en
+ENV LC_ALL en_US.UTF-8
+
+RUN curl -sL https://deb.nodesource.com/setup_14.x | bash -
+RUN apt-get install -y --no-install-recommends nodejs
+
+ENV MIX_ENV prod
+WORKDIR /build
+
+# Dockerfile-friendly build release
+RUN mix local.hex --force && \
+    mix local.rebar --force
+COPY mix.exs mix.lock ./
+COPY config config
+COPY apps/fz_http/mix.exs ./apps/fz_http/
+COPY apps/fz_wall/mix.exs ./apps/fz_wall/
+COPY apps/fz_vpn/mix.exs ./apps/fz_vpn/
+COPY apps/fz_common/mix.exs ./apps/fz_common/
+RUN mix do deps.get, deps.compile
+COPY apps/fz_http/assets/package.json apps/fz_http/assets/package-lock.json ./apps/fz_http/assets/
+RUN cd apps/fz_http/assets && npm ci --progress=false --no-audit --loglevel=error
+COPY apps/fz_http/priv apps/fz_http/priv
+COPY apps/fz_http/assets apps/fz_http/assets
+RUN npm run --prefix ./apps/fz_http/assets deploy && \
+    cd apps/fz_http && mix phx.digest
+COPY . .
+RUN mix release
+
+
+# PACKAGING
+
+# Copy shared files
+RUN rsync -avz pkg/debian_shared/* pkg/$PKG_DIR/
+
+RUN mkdir -p pkg/$PKG_DIR/etc/firezone
+RUN mkdir -p pkg/$PKG_DIR/usr/bin
+RUN mkdir -p pkg/$PKG_DIR/usr/lib/firezone
+RUN rsync -avz _build/prod/rel/firezone/* pkg/$PKG_DIR/usr/lib/firezone/
+RUN cd pkg/$PKG_DIR/usr/bin && ln -s ../lib/firezone/bin/firezone
+RUN cd pkg && dpkg-deb --build $PKG_DIR
