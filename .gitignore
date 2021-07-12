@@ -47,8 +47,9 @@ npm-debug.log
 # Development environment configuration
 .env
 
-# Built debian packages
-*.deb
+# Built packages
+/*.deb
+/*.rpm
 
 pkg/debian/opt
 
