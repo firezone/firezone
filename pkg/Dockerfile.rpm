@@ -16,11 +16,8 @@ ENV MIX_ENV prod
 WORKDIR /build
 COPY .tool-versions .tool-versions
 COPY pkg/asdf.sh asdf.sh
-RUN ./asdf.sh
-
 ENV PATH "/root/.asdf/bin:/root/.asdf/shims:${PATH}"
-RUN echo $PATH
-
+RUN ./asdf.sh
 
 # Dockerfile-friendly build release
 RUN mix local.hex --force && \
