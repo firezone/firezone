@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -e
 
-OS="ubuntu_18.04"
+OS="debian_10"
 ARCH=${MATRIX_ARCH:-`uname -m`}
 PKG_DIR="${OS}_${ARCH}"
 PKG_FILE="${PKG_DIR}.deb"
 IMAGE="${OS}_${ARCH}:latest"
-BASE_IMAGE="hexpm/elixir:1.12.2-erlang-24.0.3-ubuntu-bionic-20210325"
+BASE_IMAGE="hexpm/elixir:1.12.2-erlang-24.0.3-debian-buster-20210326"
 
 docker build \
   -t $IMAGE \

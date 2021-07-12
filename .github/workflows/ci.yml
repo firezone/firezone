@@ -75,14 +75,16 @@ jobs:
     strategy:
       matrix:
         os:
-          # - amazonlinux_2
-          # - debian_10
+          - amazonlinux_2
+          - centos_7
+          - centos_8
+          - debian_10
+          - fedora_32
+          - fedora_33
+          - fedora_34
+          - fedora_35
           - ubuntu_18.04
           - ubuntu_20.04
-          # - redhat_7
-          # - redhat_8
-          # - centos_7
-          # - centos_8
         include:
           - arch: amd64
           # XXX: This currently takes upwards of 10 minutes or more. Disabling for now
@@ -139,13 +141,15 @@ jobs:
       matrix:
         os:
           # - amazonlinux_2
-          # - debian_10
-          - ubuntu_18.04
-          - ubuntu_20.04
-          # - redhat_7
-          # - redhat_8
           # - centos_7
           # - centos_8
+          # - debian_10
+          # - fedora_32
+          # - fedora_33
+          # - fedora_34
+          # - fedora_35
+          # - ubuntu_18.04
+          - ubuntu_20.04
         include:
           - arch: amd64
           # - arch: arm64
@@ -169,7 +173,7 @@ jobs:
       matrix:
         os:
           # - amazonlinux_2
-          # - debian_10
+          - debian_10
           - ubuntu_18.04
           - ubuntu_20.04
           # - redhat_7

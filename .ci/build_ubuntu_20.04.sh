@@ -10,7 +10,7 @@ BASE_IMAGE="hexpm/elixir:1.12.2-erlang-24.0.3-ubuntu-focal-20210325"
 
 docker build \
   -t $IMAGE \
-  -f pkg/Dockerfile.ubuntu \
+  -f pkg/Dockerfile.deb \
   --platform linux/$ARCH \
   --build-arg PKG_DIR=$PKG_DIR \
   --build-arg BASE_IMAGE=$BASE_IMAGE \
