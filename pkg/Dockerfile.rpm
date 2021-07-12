@@ -1,3 +1,4 @@
+ARG PKG_FILE
 ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
 
@@ -10,13 +11,21 @@ RUN yum install -y \
     ncurses-devel \
     curl \
     git \
-    unzip
+    glibc-common \
+    glibc-locale-source \
+    glibc-langpack-en \
+    findutils \
+    unzip \
+    rpmdevtools \
+    rpmlint
+RUN localedef -i en_US -f UTF-8 en_US.UTF-8
 RUN git clone --depth 1 https://github.com/asdf-vm/asdf.git $HOME/.asdf
 ENV MIX_ENV prod
+ENV PATH="/root/.asdf/bin:/root/.asdf/shims:${PATH}"
+
 WORKDIR /build
 COPY .tool-versions .tool-versions
 COPY pkg/asdf.sh asdf.sh
-ENV PATH "/root/.asdf/bin:/root/.asdf/shims:${PATH}"
 RUN ./asdf.sh
 
 # Dockerfile-friendly build release
@@ -37,3 +46,5 @@ RUN npm run --prefix ./apps/fz_http/assets deploy && \
     cd apps/fz_http && mix phx.digest
 COPY . .
 RUN mix release
+
+# Package into rpm
