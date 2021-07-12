@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-OS="redhat_8"
+OS="fedora_35"
 ARCH=${MATRIX_ARCH:-`uname -m`}
 PKG_DIR="${OS}_${ARCH}"
 PKG_FILE="${PKG_DIR}.rpm"
