@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 set -e
 
-docker build \
-  -t ghcr.io/firezone/amazonlinux:2 \
-  -f pkg/Dockerfile.base.rpm \
+docker buildx build \
+  --push \
+  --platform linux/arm64,linux/amd64 \
+  --tag ghcr.io/firezone/amazonlinux:2 \
   --build-arg BASE_IMAGE="amazonlinux:2" \
   --progress plain \
+  -f pkg/Dockerfile.base.rpm \
   .
