@@ -22,6 +22,7 @@ RUN yum install -y \
     unzip \
     rpmdevtools \
     rpmlint
+ENV SHELL /bin/zsh
 RUN localedef -i en_US -f UTF-8 en_US.UTF-8
 RUN git clone --depth 1 https://github.com/asdf-vm/asdf.git $HOME/.asdf
 ENV PATH="/root/.asdf/bin:/root/.asdf/shims:${PATH}"
