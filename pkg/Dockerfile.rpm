@@ -1,32 +1,8 @@
-ARG PKG_FILE
 ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
 
-RUN yum groupinstall -y 'Development Tools'
-RUN yum install -y \
-    autoconf \
-    automake \
-    procps \
-    openssl-devel \
-    ncurses-devel \
-    curl \
-    git \
-    glibc-common \
-    glibc-locale-source \
-    glibc-langpack-en \
-    findutils \
-    unzip \
-    rpmdevtools \
-    rpmlint
-RUN localedef -i en_US -f UTF-8 en_US.UTF-8
-RUN git clone --depth 1 https://github.com/asdf-vm/asdf.git $HOME/.asdf
+ARG PKG_DIR
 ENV MIX_ENV prod
-ENV PATH="/root/.asdf/bin:/root/.asdf/shims:${PATH}"
-
-WORKDIR /build
-COPY .tool-versions .tool-versions
-COPY pkg/asdf.sh asdf.sh
-RUN ./asdf.sh
 
 # Dockerfile-friendly build release
 RUN mix local.hex --force && \
@@ -44,7 +20,19 @@ COPY apps/fz_http/priv apps/fz_http/priv
 COPY apps/fz_http/assets apps/fz_http/assets
 RUN npm run --prefix ./apps/fz_http/assets deploy && \
     cd apps/fz_http && mix phx.digest
-COPY . .
+# Copy remaining items for release
+COPY rel rel
+COPY deps deps
+COPY config config
+COPY apps apps
 RUN mix release
 
 # Package into rpm
+
+# Copy shared files
+RUN echo $PKG_DIR
+COPY pkg/rpm_shared/rpmbuild rpmbuild
+COPY pkg/skel/ rpmbuild/BUILDROOT/$PKG_DIR/
+RUN rsync -az _build/prod/rel/firezone/* rpmbuild/BUILDROOT/$PKG_DIR/usr/lib/firezone/
+RUN cd rpmbuild/BUILDROOT/$PKG_DIR/usr/bin && ln -s ../lib/firezone/bin/firezone
+RUN rpmbuild -bb rpmbuild/SPECS/firezone.spec
