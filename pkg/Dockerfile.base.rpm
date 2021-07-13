@@ -5,7 +5,7 @@ WORKDIR /root
 
 RUN yum groupinstall -y 'Development Tools'
 RUN yum install -y \
-    bash \
+    zsh \
     tree \
     rsync \
     autoconf \

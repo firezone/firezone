@@ -8,6 +8,8 @@ WORKDIR /root
 RUN apt-get update -q && \
     apt-get install -y --no-install-recommends \
     lintian \
+    procps \
+    zsh \
     rsync \
     gdebi \
     ca-certificates \
