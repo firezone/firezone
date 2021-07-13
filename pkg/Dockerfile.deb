@@ -1,42 +1,8 @@
 ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
 
-# Overridden by build script
 ARG PKG_DIR
-
-# Setup to run build script
-ENV DEBIAN_FRONTEND noninteractive
-RUN apt-get update -q && \
-    apt-get install -y --no-install-recommends \
-    lintian \
-    rsync \
-    gdebi \
-    ca-certificates \
-    build-essential \
-    git \
-    dpkg-dev \
-    libssl-dev \
-    automake \
-    gnupg \
-    curl \
-    autoconf \
-    libncurses5-dev \
-    unzip \
-    zlib1g-dev \
-    locales && \
-    apt-get clean && \
-    rm -rf /tmp/* /var/tmp/*
-RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && \
-    locale-gen
-ENV LANG en_US.UTF-8
-ENV LANGUAGE en_US:en
-ENV LC_ALL en_US.UTF-8
-
-RUN curl -sL https://deb.nodesource.com/setup_14.x | bash -
-RUN apt-get install -y --no-install-recommends nodejs
-
 ENV MIX_ENV prod
-WORKDIR /build
 
 # Dockerfile-friendly build release
 RUN mix local.hex --force && \
@@ -54,18 +20,18 @@ COPY apps/fz_http/priv apps/fz_http/priv
 COPY apps/fz_http/assets apps/fz_http/assets
 RUN npm run --prefix ./apps/fz_http/assets deploy && \
     cd apps/fz_http && mix phx.digest
-COPY . .
+# Copy remaining items for release
+COPY rel rel
+COPY deps deps
+COPY config config
+COPY apps apps
 RUN mix release
-
 
 # PACKAGING
 
 # Copy shared files
-RUN rsync -avz pkg/debian_shared/* pkg/$PKG_DIR/
-
-RUN mkdir -p pkg/$PKG_DIR/etc/firezone
-RUN mkdir -p pkg/$PKG_DIR/usr/bin
-RUN mkdir -p pkg/$PKG_DIR/usr/lib/firezone
+COPY pkg pkg
+RUN rsync -avz pkg/skel/* pkg/$PKG_DIR/
 RUN rsync -avz _build/prod/rel/firezone/* pkg/$PKG_DIR/usr/lib/firezone/
 RUN cd pkg/$PKG_DIR/usr/bin && ln -s ../lib/firezone/bin/firezone
 RUN cd pkg && dpkg-deb --build $PKG_DIR
