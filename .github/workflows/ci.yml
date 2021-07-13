@@ -7,7 +7,7 @@ defaults:
 
 jobs:
   unit-integration-test:
-    runs-on: ubuntu-18.04
+    runs-on: ${{ matrix.os }}
     env:
       MIX_ENV: test
       POSTGRES_HOST: localhost
@@ -16,6 +16,9 @@ jobs:
       MATRIX_ARCH: amd64
     strategy:
       matrix:
+        os:
+          - ubuntu-20.04
+          - ubuntu-18.04
         postgres:
           - postgres:9.6
           - postgres:10
@@ -66,8 +69,7 @@ jobs:
 
   build:
     needs: unit-integration-test
-    # The CPU and RAM resources for macOS machines are much better on Github-hosted runners
-    runs-on: macos-10.15
+    runs-on: ubuntu-20.04
     name: Build
     env:
       MATRIX_ARCH: ${{ matrix.arch }}
