@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 set -e
 
-docker build \
-  -t ghcr.io/firezone/debian:10 \
-  -f pkg/Dockerfile.base.deb \
+docker buildx build \
+  --push \
+  --platform linux/arm64,linux/amd64 \
+  --tag ghcr.io/firezone/debian:10 \
   --build-arg BASE_IMAGE="debian:10" \
   --progress plain \
+  -f pkg/Dockerfile.base.deb \
   .
