@@ -89,6 +89,11 @@ jobs:
           # XXX: This currently takes upwards of 10 minutes or more. Disabling for now
           # - arch: arm64
     steps:
+      - uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/checkout@v2
       - uses: satackey/action-docker-layer-caching@v0.0.11
         continue-on-error: true
