@@ -12,6 +12,7 @@ docker build \
   -t $IMAGE \
   -f pkg/Dockerfile.deb \
   --platform linux/$ARCH \
+  --build-arg PLATFORM=linux/$ARCH \
   --build-arg PKG_DIR=$PKG_DIR \
   --build-arg BASE_IMAGE=$BASE_IMAGE \
   --progress plain \
