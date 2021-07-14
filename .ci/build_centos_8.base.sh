@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-platform="linux/arm64,linux/amd64,linux/arm/v6,linux/arm/v7"
+platform="linux/arm64,linux/amd64,linux/arm/v7"
 docker buildx build \
   --no-cache \
   --push \
