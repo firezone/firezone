@@ -3,6 +3,7 @@ set -e
 
 # Required due to a buildx bug.
 # See https://github.com/docker/buildx/issues/495#issuecomment-761562905
+docker buildx rm multiarch || true
 docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
 docker buildx create --name multiarch --driver docker-container --use
 docker buildx inspect --bootstrap
