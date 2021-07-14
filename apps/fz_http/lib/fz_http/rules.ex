@@ -5,9 +5,8 @@ defmodule FzHttp.Rules do
 
   import Ecto.Query, warn: false
   alias EctoNetwork.INET
-  alias FzCommon.FzNet
 
-  alias FzHttp.{Devices.Device, Repo, Rules.Rule}
+  alias FzHttp.{Repo, Rules.Rule}
 
   def get_rule!(id), do: Repo.get!(Rule, id)
 
@@ -26,62 +25,35 @@ defmodule FzHttp.Rules do
     Repo.delete(rule)
   end
 
-  def to_iptables do
-    Enum.map(iptables_query(), fn {int4, int6, dest, act} ->
-      {
-        decode(int4),
-        decode(int6),
-        decode(dest),
-        act
-      }
-    end)
+  def allowlist do
+    Repo.all(
+      from r in Rule,
+        where: r.action == :allow
+    )
+  end
+
+  def denylist do
+    Repo.all(
+      from r in Rule,
+        where: r.action == :deny
+    )
   end
 
   def iptables_spec(rule) do
-    device = Repo.preload(rule, :device).device
-    dest = decode(rule.destination)
-
-    # I pass INET.decode as a function to FzNet so that I don't need
-    # to include ecto_network as a dependency in FzCommon.
-    source =
-      case FzNet.ip_type(dest) do
-        "IPv6" -> device.interface_address6
-        "IPv4" -> device.interface_address4
-        _ -> nil
-      end
-
-    {decode(source), dest, rule.action}
+    {decode(rule.destination), rule.action}
   end
 
-  def allowlist(device) when is_map(device), do: allowlist(device.id)
-
-  def allowlist(device_id) when is_binary(device_id) or is_number(device_id) do
-    Repo.all(
-      from r in Rule,
-        where: r.device_id == ^device_id and r.action == :allow
-    )
-  end
-
-  def denylist(device) when is_map(device), do: denylist(device.id)
-
-  def denylist(device_id) when is_binary(device_id) or is_number(device_id) do
-    Repo.all(
-      from r in Rule,
-        where: r.device_id == ^device_id and r.action == :deny
-    )
+  def to_iptables do
+    Enum.map(iptables_query(), fn {dest, act} ->
+      {decode(dest), act}
+    end)
   end
 
   defp iptables_query do
     query =
-      from d in Device,
-        join: r in Rule,
-        on: r.device_id == d.id,
+      from r in Rule,
         order_by: r.action,
         select: {
-          # Need to select both ipv4 and ipv6 since we don't know which the
-          # corresponding rule is.
-          d.interface_address4,
-          d.interface_address6,
           r.destination,
           r.action
         }

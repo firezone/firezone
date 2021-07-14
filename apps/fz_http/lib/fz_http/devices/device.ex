@@ -6,7 +6,7 @@ defmodule FzHttp.Devices.Device do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias FzHttp.{Rules.Rule, Users.User}
+  alias FzHttp.Users.User
 
   schema "devices" do
     field :name, :string
@@ -20,7 +20,6 @@ defmodule FzHttp.Devices.Device do
     field :interface_address6, EctoNetwork.INET
     field :last_seen_at, :utc_datetime_usec
 
-    has_many :rules, Rule
     belongs_to :user, User
 
     timestamps(type: :utc_datetime_usec)

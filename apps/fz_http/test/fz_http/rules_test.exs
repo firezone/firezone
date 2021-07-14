@@ -24,10 +24,8 @@ defmodule FzHttp.RulesTest do
   end
 
   describe "create_rule/1" do
-    setup [:create_device]
-
-    test "creates rule", %{device: device} do
-      {:ok, rule} = Rules.create_rule(%{destination: "::1", device_id: device.id})
+    test "creates rule" do
+      {:ok, rule} = Rules.create_rule(%{destination: "::1"})
       assert !is_nil(rule.id)
       assert rule.action == :deny
     end
@@ -61,49 +59,40 @@ defmodule FzHttp.RulesTest do
     end
   end
 
-  describe "allowlist/1" do
+  describe "allowlist/0" do
     setup [:create_allow_rule]
 
-    test "returns allow rules for a device", %{rule: rule} do
-      test_rule = Repo.preload(rule, :device)
-      assert Rules.allowlist(test_rule.device) == [rule]
-    end
-
-    test "returns allow rules for a device_id", %{rule: rule} do
-      assert Rules.allowlist(rule.device_id) == [rule]
+    test "returns allow rules", %{rule: rule} do
+      assert Rules.allowlist() == [rule]
     end
   end
 
-  describe "denylist/1" do
+  describe "denylist/0" do
     setup [:create_deny_rule]
 
-    test "returns deny rules for a device", %{rule: rule} do
-      test_rule = Repo.preload(rule, :device)
-      assert Rules.denylist(test_rule.device) == [rule]
-    end
-
-    test "returns deny rules for a device_id", %{rule: rule} do
-      assert Rules.denylist(rule.device_id) == [rule]
+    test "returns deny rules", %{rule: rule} do
+      assert Rules.denylist() == [rule]
     end
   end
 
-  describe "iptables_spec/1 IPv4" do
-    setup [:create_rule4]
-
-    @ipv4tables_spec {"10.0.0.1", "10.10.10.0/24", :deny}
-
-    test "returns IPv4 tuple", %{rule4: rule} do
-      assert @ipv4tables_spec = Rules.iptables_spec(rule)
-    end
-  end
-
-  describe "iptables_spec/1 IPv6" do
-    setup [:create_rule6]
-
-    @ipv6tables_spec {"::1", "::/0", :deny}
-
-    test "returns IPv6 tuple", %{rule6: rule} do
-      assert @ipv6tables_spec = Rules.iptables_spec(rule)
-    end
-  end
+  # XXX: Revisit this when devices are linked to rules
+  # describe "iptables_spec/1 IPv4" do
+  #   setup [:create_rule4]
+  #
+  #   @ipv4tables_spec {"10.0.0.1", "10.10.10.0/24", :deny}
+  #
+  #   test "returns IPv4 tuple", %{rule4: rule} do
+  #     assert @ipv4tables_spec = Rules.iptables_spec(rule)
+  #   end
+  # end
+  #
+  # describe "iptables_spec/1 IPv6" do
+  #   setup [:create_rule6]
+  #
+  #   @ipv6tables_spec {"::1", "::/0", :deny}
+  #
+  #   test "returns IPv6 tuple", %{rule6: rule} do
+  #     assert @ipv6tables_spec = Rules.iptables_spec(rule)
+  #   end
+  # end
 end
