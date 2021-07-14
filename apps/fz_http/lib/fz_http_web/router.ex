@@ -26,6 +26,8 @@ defmodule FzHttpWeb.Router do
   scope "/", FzHttpWeb do
     pipe_through :browser
 
+    get "/admin", AdminController, :index
+
     live "/sign_in", SessionLive.New, :new
     live "/sign_up", UserLive.New, :new
     live "/account", AccountLive.Show, :show
