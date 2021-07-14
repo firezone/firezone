@@ -13,6 +13,5 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: action/checkout@v2
+      - uses: actions/checkout@v2
       - run: scripts/build_and_push_base_images.sh
-
