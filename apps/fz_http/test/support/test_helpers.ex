@@ -61,32 +61,27 @@ defmodule FzHttp.TestHelpers do
   end
 
   def create_allow_rule(tags) do
-    {:ok, device: device} = create_device(tags)
-    rule = Fixtures.rule(%{action: :allow, device_id: device.id})
+    rule = Fixtures.rule(%{action: :allow})
     {:ok, rule: rule}
   end
 
   def create_deny_rule(tags) do
-    {:ok, device: device} = create_device(tags)
-    rule = Fixtures.rule(%{action: :deny, device_id: device.id})
+    rule = Fixtures.rule(%{action: :deny})
     {:ok, rule: rule}
   end
 
   def create_rule(tags) do
-    {:ok, device: device} = create_device(tags)
-    rule = Fixtures.rule(%{device_id: device.id})
+    rule = Fixtures.rule(%{})
     {:ok, rule: rule}
   end
 
   def create_rule6(tags) do
-    {:ok, device: device} = create_device(tags)
-    rule = Fixtures.rule6(%{device_id: device.id})
+    rule = Fixtures.rule6(%{})
     {:ok, rule6: rule}
   end
 
   def create_rule4(tags) do
-    {:ok, device: device} = create_device(tags)
-    rule = Fixtures.rule4(%{device_id: device.id})
+    rule = Fixtures.rule4(%{})
     {:ok, rule4: rule}
   end
 
@@ -94,13 +89,11 @@ defmodule FzHttp.TestHelpers do
   XXX: Mimic a more realistic setup.
   """
   def create_rules(tags) do
-    {:ok, device: device} = create_device(tags)
-
     rules =
       1..5
       |> Enum.map(fn num ->
         destination = "#{num}.#{num}.#{num}.0/24"
-        Fixtures.rule(%{destination: destination, device_id: device.id})
+        Fixtures.rule(%{destination: destination})
       end)
 
     {:ok, rules: rules}
