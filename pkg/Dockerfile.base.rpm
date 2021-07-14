@@ -15,17 +15,23 @@ RUN yum install -y \
     ncurses-devel \
     curl \
     git \
-    glibc-common \
-    glibc-locale-source \
-    glibc-langpack-en \
     findutils \
     unzip \
+    glibc-all-langpacks \
     rpmdevtools \
     rpmlint
 ENV SHELL /bin/zsh
-RUN localedef -i en_US -f UTF-8 en_US.UTF-8
+
+# Restore missing locales from base image
+RUN yum reinstall glibc-common -y && \
+    # localedef -i en_US -f UTF-8 en_US.UTF-8 && \
+    echo "LANG=en_US.UTF-8" > /etc/locale.conf
+ENV LANG en_US.UTF-8
+ENV LC_ALL en_US.UTF-8
+
 RUN git clone --depth 1 https://github.com/asdf-vm/asdf.git $HOME/.asdf
 ENV PATH="/root/.asdf/bin:/root/.asdf/shims:${PATH}"
+RUN echo 'PATH="/root/.asdf/bin:/root/.asdf/shims:${PATH}"' >> /etc/environment
 COPY .tool-versions .tool-versions
 RUN asdf plugin-add nodejs
 RUN asdf plugin-add erlang
