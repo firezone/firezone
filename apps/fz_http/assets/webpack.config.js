@@ -15,7 +15,8 @@ module.exports = (env, options) => ({
     './js/app.js': glob.sync('./vendor/**/*.js').concat([
       // Local JS files to include in the bundle
       './js/hooks.js',
-      './js/app.js'
+      './js/app.js',
+      './node_modules/admin-one-bulma-dashboard/src/js/main.js'
     ])
   },
   output: {
