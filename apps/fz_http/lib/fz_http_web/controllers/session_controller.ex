@@ -6,6 +6,12 @@ defmodule FzHttpWeb.SessionController do
   alias FzHttp.Users
   use FzHttpWeb, :controller
 
+  plug :put_root_layout, "auth.html"
+
+  def new(conn, _params) do
+    render(conn, "new.html")
+  end
+
   # GET /sign_in/:token
   def create(conn, %{"token" => token}) do
     case Users.consume_sign_in_token(token) do

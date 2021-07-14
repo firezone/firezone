@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="has-aside-left has-aside-mobile-transition has-navbar-fixed-top has-aside-expanded">
   <head>
     <meta charset="utf-8"/>
     <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
@@ -8,40 +8,240 @@
     <%= live_title_tag assigns[:page_title] || "FireZone" %>
     <link phx-track-static rel="stylesheet" href="<%= Routes.static_path(@conn, "/css/app.css") %>"/>
     <script defer phx-track-static type="text/javascript" src="<%= Routes.static_path(@conn, "/js/app.js") %>"></script>
+
+    <!-- Favicon -->
+    <link rel="apple-touch-icon-precomposed" sizes="57x57" href="images/favicon-apple-touch-114.png">
+    <link rel="apple-touch-icon-precomposed" sizes="114x114" href="images/favicon-apple-touch-114.png">
+    <link rel="apple-touch-icon-precomposed" sizes="72x72" href="images/favicon-apple-touch-144.png">
+    <link rel="apple-touch-icon-precomposed" sizes="144x144" href="images/favicon-apple-touch-144.png">
+    <link rel="icon" type="image/vnd.microsoft.icon" sizes="32x32 48x48" href="images/favicon.ico">
+    <link rel="icon" sizes="128x128" href="images/favicon.icns">
+    <link rel="icon" href="images/favicon.png" type="image/x-icon">
+
+    <!-- Fonts -->
+    <link rel="dns-prefetch" href="https://fonts.gstatic.com">
+    <link href="https://fonts.googleapis.com/css?family=Nunito" rel="stylesheet" type="text/css">
   </head>
   <body>
-    <nav class="navbar" role="navigation" aria-label="main navigation">
-      <div class="container">
-        <div class="navbar-brand">
-          <h4 class="title is-4 navbar-item">
-            FireZone
-          </h4>
+<div id="app">
+  <nav id="navbar-main" class="navbar is-fixed-top">
+    <div class="navbar-brand">
+      <a class="navbar-item is-hidden-desktop jb-aside-mobile-toggle">
+        <span class="icon"><i class="mdi mdi-forwardburger mdi-24px"></i></span>
+      </a>
+      <div class="navbar-item has-control">
+        <div class="control"><input placeholder="Search everywhere..." class="input"></div>
+      </div>
+    </div>
+    <div class="navbar-brand is-right">
+      <a class="navbar-item is-hidden-desktop jb-navbar-menu-toggle" data-target="navbar-menu">
+        <span class="icon"><i class="mdi mdi-dots-vertical"></i></span>
+      </a>
+    </div>
+    <div class="navbar-menu fadeIn animated faster" id="navbar-menu">
+      <div class="navbar-end">
+        <div class="navbar-item has-dropdown has-dropdown-with-icons has-divider is-hoverable">
+          <a class="navbar-link is-arrowless">
+            <span class="icon"><i class="mdi mdi-menu"></i></span>
+            <span>Sample Menu</span>
+            <span class="icon">
+            <i class="mdi mdi-chevron-down"></i>
+          </span>
+          </a>
+          <div class="navbar-dropdown">
+            <a href="profile.html" class="navbar-item">
+              <span class="icon"><i class="mdi mdi-account"></i></span>
+              <span>My Profile</span>
+            </a>
+            <a class="navbar-item">
+              <span class="icon"><i class="mdi mdi-settings"></i></span>
+              <span>Settings</span>
+            </a>
+            <a class="navbar-item">
+              <span class="icon"><i class="mdi mdi-email"></i></span>
+              <span>Messages</span>
+            </a>
+            <hr class="navbar-divider">
+            <a class="navbar-item">
+              <span class="icon"><i class="mdi mdi-logout"></i></span>
+              <span>Log Out</span>
+            </a>
+          </div>
         </div>
-        <div class="navbar-menu">
-          <%= if assigns[:current_user] do %>
-            <div class="navbar-start">
-              <%= live_redirect("Devices", to: Routes.device_index_path(@conn, :index), class: "navbar-item") %>
+        <div class="navbar-item has-dropdown has-dropdown-with-icons has-divider has-user-avatar is-hoverable">
+          <a class="navbar-link is-arrowless">
+            <div class="is-user-avatar">
+              <img src="https://avatars.dicebear.com/v2/initials/john-doe.svg" alt="John Doe">
             </div>
-          <% end %>
+            <div class="is-user-name"><span>John Doe</span></div>
+            <span class="icon"><i class="mdi mdi-chevron-down"></i></span>
+          </a>
+          <div class="navbar-dropdown">
+            <a href="profile.html" class="navbar-item">
+              <span class="icon"><i class="mdi mdi-account"></i></span>
+              <span>My Profile</span>
+            </a>
+            <a class="navbar-item">
+              <span class="icon"><i class="mdi mdi-settings"></i></span>
+              <span>Settings</span>
+            </a>
+            <a class="navbar-item">
+              <span class="icon"><i class="mdi mdi-email"></i></span>
+              <span>Messages</span>
+            </a>
+            <hr class="navbar-divider">
+            <a class="navbar-item">
+              <span class="icon"><i class="mdi mdi-logout"></i></span>
+              <span>Log Out</span>
+            </a>
+          </div>
         </div>
-        <div class="navbar-end">
-          <%= if assigns[:current_user] do %>
-            <div class="navbar-item">
-              <%= live_redirect("Your Account", to: Routes.account_show_path(@conn, :show)) %>
-            </div>
-            <div class="navbar-item">
-              <%= link("Sign out", to: Routes.session_path(@conn, :delete), method: :post) %>
-            </div>
-          <% else %>
-            <div class="navbar-item">
-              <%= live_redirect("Sign in", to: Routes.session_new_path(@conn, :new)) %>
-            </div>
+        <a href="https://justboil.me/bulma-admin-template/one-html" title="About" class="navbar-item has-divider is-desktop-icon-only">
+          <span class="icon"><i class="mdi mdi-help-circle-outline"></i></span>
+          <span>About</span>
+        </a>
+        <a title="Log out" class="navbar-item is-desktop-icon-only">
+          <span class="icon"><i class="mdi mdi-logout"></i></span>
+          <span>Log out</span>
+        </a>
+      </div>
+    </div>
+  </nav>
+  <aside class="aside is-placed-left is-expanded">
+    <div class="aside-tools">
+      <div class="aside-tools-label">
+        <svg width="61px" height="50px" viewBox="0 0 61 50" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+            <!-- Generator: Sketch 48.2 (47327) - http://www.bohemiancoding.com/sketch -->
+            <title>FireZone Logo</title>
+            <desc>Created with Sketch.</desc>
+            <defs></defs>
+            <g id="Page-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+                <g id="logo" fill-rule="nonzero">
+                    <path d="M39,0 C53.4646225,10.216092 38.4902693,32.8579033 43.7745309,42 C32.9156077,28.7869488 47.7103982,17.4318817 39,0 Z" id="path6" fill="#CF5C00"></path>
+                    <path d="M45.5721512,20 C53.6658575,25.1774781 43.9504017,37.3086952 49.1225552,40.4139724 C54.360351,43.5589903 53.7676545,30.4886105 61,33.8415467 C53.4697245,31.3192611 56.5935085,46.8804922 47.2629968,44.8096152 C36.5851821,42.4396992 49.8644908,25.7184291 45.5721697,20 L45.5721512,20 Z" id="path8" fill="#8D1E00"></path>
+                    <path d="M0,37.0921183 C15.1549675,24.5701403 35.7978051,44.6643852 45.5391399,45.9200184 C58.0667645,47.5345273 54.7296815,32.5131026 61,33.0727747 C55.2222045,33.7953512 58.690437,49.5052264 45.7727132,49.9907056 C31.7048684,50.519467 17.6695285,28.2763149 2.59209039e-05,37.0921183 L0,37.0921183 Z" id="path10" fill="#2B1200"></path>
+                </g>
+            </g>
+        </svg>
+        <span>FireZone</span>
+      </div>
+    </div>
+    <div class="menu is-menu-main">
+      <p class="menu-label">Configuration</p>
+      <ul class="menu-list">
+        <li>
+          <%= link(to: Routes.device_path(@conn, :index), class: nav_class(@conn.request_path, :devices)) do %>
+            <span class="icon has-update-mark"><i class="mdi mdi-table"></i></span>
+            <span class="menu-item-label">Devices</span>
           <% end %>
+        </li>
+        <li>
+          <%= link(to: Routes.rule_path(@conn, :index), class: nav_class(@conn.request_path, :rules)) do %>
+            <span class="icon"><i class="mdi mdi-square-edit-outline"></i></span>
+            <span class="menu-item-label">Rules</span>
+          <% end %>
+        </li>
+      </ul>
+      <p class="menu-label">Settings</p>
+      <ul class="menu-list">
+        <li>
+          <a href="https://admin-one-html.justboil.me/" target="_blank" class="has-icon">
+            <span class="icon"><i class="mdi mdi-credit-card-outline"></i></span>
+            <span class="menu-item-label">Admin</span>
+          </a>
+        </li>
+        <li>
+          <a href="https://justboil.me/bulma-admin-template/one-html" class="has-icon">
+            <span class="icon"><i class="mdi mdi-help-circle"></i></span>
+            <span class="menu-item-label">Account</span>
+          </a>
+        </li>
+      </ul>
+    </div>
+  </aside>
+  <section class="section is-title-bar">
+    <div class="level">
+      <div class="level-left">
+        <div class="level-item">
+          <ul>
+            <li>Admin</li>
+            <li><%= @page_heading %></li>
+          </ul>
         </div>
       </div>
-    </nav>
-    <section class="section">
-      <%= @inner_content %>
+      <div class="level-right">
+        <div class="level-item">
+          <div class="buttons is-right">
+            <a href="https://admin-one-html.justboil.me/" target="_blank" class="button is-primary">
+              <span class="icon"><i class="mdi mdi-credit-card-outline"></i></span>
+              <span>Premium Demo</span>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+  <section class="hero is-hero-bar">
+    <div class="hero-body">
+      <div class="level">
+        <div class="level-left">
+          <div class="level-item">
+            <h1 class="title">
+              <%= @page_heading %>
+            </h1>
+          </div>
+        </div>
+        <div class="level-right" style="display: none;">
+          <div class="level-item"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+  <footer class="footer">
+    <div class="container-fluid">
+      <div class="level">
+        <div class="level-left">
+          <div class="level-item">
+            <a href="mailto:<%= feedback_recipient() %>">Leave us feedback!</a>
+          </div>
+          <div class="level-item">
+            <a href="https://github.com/firezone/firezone" style="height: 20px">
+              <img src="https://img.shields.io/github/v/release/firezone/firezone?color=%23999">
+            </a>
+          </div>
+        </div>
+        <div class="level-right">
+          <div class="level-item">
+            <div class="logo">
+              <a href="https://justboil.me"><img src="images/logo.svg" alt="firez.one"></a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </footer>
+</div>
+
+<div id="sample-modal" class="modal">
+  <div class="modal-background jb-modal-close"></div>
+  <div class="modal-card">
+    <header class="modal-card-head">
+      <p class="modal-card-title">Confirm action</p>
+      <button class="delete jb-modal-close" aria-label="close"></button>
+    </header>
+    <section class="modal-card-body">
+      <p>This will permanently delete <b>Some Object</b></p>
+      <p>This is sample modal</p>
     </section>
+    <footer class="modal-card-foot">
+      <button class="button jb-modal-close">Cancel</button>
+      <button class="button is-danger jb-modal-close">Delete</button>
+    </footer>
+  </div>
+  <button class="modal-close is-large jb-modal-close" aria-label="close"></button>
+</div>
+
+<!-- Icons below are for demo only. Feel free to use any icon pack. Docs: https://bulma.io/documentation/elements/icon/ -->
+<link rel="stylesheet" href="https://cdn.materialdesignicons.com/4.9.95/css/materialdesignicons.min.css">
   </body>
 </html>

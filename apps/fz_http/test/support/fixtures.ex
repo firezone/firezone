@@ -2,7 +2,7 @@ defmodule FzHttp.Fixtures do
   @moduledoc """
   Convenience helpers for inserting records
   """
-  alias FzHttp.{Devices, PasswordResets, Repo, Rules, Sessions, Users, Users.User}
+  alias FzHttp.{Devices, Repo, Rules, Sessions, Users, Users.User}
 
   # return user specified by email, or generate a new otherwise
   def user(attrs \\ %{}) do
@@ -64,18 +64,6 @@ defmodule FzHttp.Fixtures do
     create_params = %{email: email, password: "test"}
     {:ok, session} = Sessions.create_session(record, create_params)
     session
-  end
-
-  def password_reset(attrs \\ %{}) do
-    email = user().email
-
-    create_attrs = Map.merge(attrs, %{email: email})
-
-    {:ok, password_reset} =
-      PasswordResets.get_password_reset!(email: email)
-      |> PasswordResets.create_password_reset(create_attrs)
-
-    password_reset
   end
 
   defp counter do
