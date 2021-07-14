@@ -71,17 +71,6 @@
         </dl>
       </div>
     </div>
-
-    <div class="tile is-child box">
-      <%= live_component(
-          @socket,
-          FzHttpWeb.DeviceLive.RuleListComponent,
-          title: "Allowlist",
-          id: :allowlist,
-          current_user: @current_user,
-          device_id: @device.id) %>
-    </div>
-
   </div>
   <div class="tile is-parent is-vertical">
 
@@ -113,13 +102,6 @@ Endpoint = <%= Application.fetch_env!(:fz_http, :vpn_endpoint) %></code></pre>
     </div>
 
     <div class="tile is-child box">
-      <%= live_component(
-          @socket,
-          FzHttpWeb.DeviceLive.RuleListComponent,
-          title: "Denylist",
-          id: :denylist,
-          current_user: @current_user,
-          device_id: @device.id) %>
     </div>
   </div>
 </div>

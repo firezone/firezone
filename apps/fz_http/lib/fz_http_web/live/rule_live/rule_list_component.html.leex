@@ -2,7 +2,6 @@
 <hr>
 <%= f = form_for @changeset, "#", [id: "#{@action}-form", phx_target: @myself, phx_submit: :add_rule] %>
   <%= hidden_input f, :action, value: @action %>
-  <%= hidden_input f, :device_id, value: @device_id %>
   <div class="field has-addons">
     <div class="control is-expanded">
       <%= text_input f,
