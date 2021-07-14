@@ -50,11 +50,7 @@ defmodule FzHttp.Fixtures do
   end
 
   def rule(attrs \\ %{}) do
-    # don't create a device if device_id is passed
-    device_id = Map.get_lazy(attrs, :device_id, fn -> device().id end)
-
     default_attrs = %{
-      device_id: device_id,
       destination: "10.10.10.0/24"
     }
 

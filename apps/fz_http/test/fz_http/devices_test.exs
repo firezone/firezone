@@ -21,40 +21,14 @@ defmodule FzHttp.DevicesTest do
       user = Users.get_user!(device.user_id)
       assert Devices.list_devices(user) == [device]
     end
-
-    test "rules aren't loaded", %{device: device} do
-      test_device = Devices.list_devices(device.user_id) |> List.first()
-      assert %Ecto.Association.NotLoaded{} = test_device.rules
-    end
-  end
-
-  describe "list_devices/2" do
-    setup [:create_device]
-
-    test "rules are loaded", %{device: device} do
-      test_device = Devices.list_devices(device.user_id, :with_rules) |> List.first()
-      assert test_device.id == device.id
-      assert [] = test_device.rules
-    end
-  end
-
-  describe "get_device!/2" do
-    setup [:create_device]
-
-    test "rules are loaded", %{device: device} do
-      test_device = Devices.get_device!(device.id, :with_rules)
-      assert test_device.id == device.id
-      assert [] = test_device.rules
-    end
   end
 
   describe "get_device!/1" do
     setup [:create_device]
 
-    test "rules aren't loaded", %{device: device} do
+    test "device is loaded", %{device: device} do
       test_device = Devices.get_device!(device.id)
       assert test_device.id == device.id
-      assert %Ecto.Association.NotLoaded{} = test_device.rules
     end
   end
 
