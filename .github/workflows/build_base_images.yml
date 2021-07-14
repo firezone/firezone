@@ -14,4 +14,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/checkout@v2
-      - run: scripts/build_and_push_base_images.sh
+      - run: |
+          docker buildx create --use
+          scripts/build_and_push_base_images.sh
