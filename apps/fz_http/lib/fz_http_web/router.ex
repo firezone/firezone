@@ -26,23 +26,21 @@ defmodule FzHttpWeb.Router do
   scope "/", FzHttpWeb do
     pipe_through :browser
 
-    get "/admin", AdminController, :index
+    get "/", DeviceController, :index
+    get "/devices", DeviceController, :index
+    get "/rules", RuleController, :index
+    get "/session/new", SessionController, :new
 
-    live "/sign_in", SessionLive.New, :new
-    live "/sign_up", UserLive.New, :new
-    live "/account", AccountLive.Show, :show
-    live "/account/edit", AccountLive.Show, :edit
+    # live "/sign_in", SessionLive.New, :new
+    # live "/sign_up", UserLive.New, :new
+    # live "/account", AccountLive.Show, :show
+    # live "/account/edit", AccountLive.Show, :edit
 
-    live "/password_reset", PasswordResetLive.New, :new
-    live "/password_reset/:reset_token", PasswordResetLive.Edit, :edit
+    # live "/rules", RuleLive.Index, :index
 
-    live "/", RootLive.Index, :index
-
-    live "/rules", RuleLive.Index, :index
-
-    live "/devices", DeviceLive.Index, :index
-    live "/devices/:id", DeviceLive.Show, :show
-    live "/devices/:id/edit", DeviceLive.Show, :edit
+    # live "/devices", DeviceLive.Index, :index
+    # live "/devices/:id", DeviceLive.Show, :show
+    # live "/devices/:id/edit", DeviceLive.Show, :edit
 
     get "/sign_in/:token", SessionController, :create
     post "/sign_out", SessionController, :delete

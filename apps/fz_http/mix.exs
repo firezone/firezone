@@ -56,7 +56,6 @@ defmodule FzHttp.MixProject do
       {:ecto_sql, "~> 3.1"},
       {:ecto_network, "~> 1.3"},
       {:inflex, "~> 2.0"},
-      {:bamboo, "~> 1.5"},
       {:plug, "~> 1.11"},
       {:postgrex, ">= 0.0.0"},
       {:phoenix_html, "~> 2.11"},
