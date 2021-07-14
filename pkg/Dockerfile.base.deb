@@ -35,6 +35,7 @@ ENV LC_ALL en_US.UTF-8
 
 RUN git clone --depth 1 https://github.com/asdf-vm/asdf.git $HOME/.asdf
 ENV PATH="/root/.asdf/bin:/root/.asdf/shims:${PATH}"
+RUN echo 'PATH="/root/.asdf/bin:/root/.asdf/shims:${PATH}"' >> /etc/environment
 COPY .tool-versions .tool-versions
 RUN asdf plugin-add nodejs
 RUN asdf plugin-add erlang

@@ -173,14 +173,15 @@ jobs:
     strategy:
       matrix:
         os:
-          # - amazonlinux_2
+          - amazonlinux_2
           - debian_10
           - ubuntu_18.04
           - ubuntu_20.04
-          # - redhat_7
-          # - redhat_8
-          # - centos_7
-          # - centos_8
+          - centos_7
+          - centos_8
+          - fedora_33
+          - fedora_34
+          - fedora_35
         include:
           - arch: amd64
             # - arch: arm64
