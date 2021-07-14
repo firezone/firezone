@@ -7,7 +7,7 @@ defaults:
 
 jobs:
   unit-integration-test:
-    runs-on: ubuntu-18.04
+    runs-on: ${{ matrix.os }}
     env:
       MIX_ENV: test
       POSTGRES_HOST: localhost
@@ -16,6 +16,9 @@ jobs:
       MATRIX_ARCH: amd64
     strategy:
       matrix:
+        os:
+          - ubuntu-20.04
+          - ubuntu-18.04
         postgres:
           - postgres:9.6
           - postgres:10
@@ -75,30 +78,31 @@ jobs:
     strategy:
       matrix:
         os:
-          # - amazonlinux_2
-          # - debian_10
+          - amazonlinux_2
+          - centos_7
+          - centos_8
+          - debian_10
+          - fedora_33
+          - fedora_34
+          - fedora_35
           - ubuntu_18.04
           - ubuntu_20.04
-          # - redhat_7
-          # - redhat_8
-          # - centos_7
-          # - centos_8
         include:
           - arch: amd64
           # XXX: This currently takes upwards of 10 minutes or more. Disabling for now
           # - arch: arm64
     steps:
-      - uses: actions/checkout@v2
-      - uses: satackey/action-docker-layer-caching@v0.0.11
-        continue-on-error: true
+      - uses: docker/login-action@v1
         with:
-          key: docker-cache-${{ matrix.os }}-${{ matrix.arch }}-${{ github.sha }}
-          restore-keys: |
-            docker-cache-${{ matrix.os }}-${{ matrix.arch }}-
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/checkout@v2
 
       # amd64 build
       - if: ${{ matrix.arch == 'amd64' }}
-        run: .ci/build_${{ matrix.os }}.sh
+        run: |
+          .ci/build_${{ matrix.os }}.sh
 
       # arm64 build
       - uses: uraimo/run-on-arch-action@v2.0.10
@@ -139,13 +143,14 @@ jobs:
       matrix:
         os:
           # - amazonlinux_2
-          # - debian_10
-          - ubuntu_18.04
-          - ubuntu_20.04
-          # - redhat_7
-          # - redhat_8
           # - centos_7
           # - centos_8
+          # - debian_10
+          # - fedora_33
+          # - fedora_34
+          # - fedora_35
+          # - ubuntu_18.04
+          - ubuntu_20.04
         include:
           - arch: amd64
           # - arch: arm64
@@ -168,14 +173,15 @@ jobs:
     strategy:
       matrix:
         os:
-          # - amazonlinux_2
-          # - debian_10
+          - amazonlinux_2
+          - debian_10
           - ubuntu_18.04
           - ubuntu_20.04
-          # - redhat_7
-          # - redhat_8
-          # - centos_7
-          # - centos_8
+          - centos_7
+          - centos_8
+          - fedora_33
+          - fedora_34
+          - fedora_35
         include:
           - arch: amd64
             # - arch: arm64

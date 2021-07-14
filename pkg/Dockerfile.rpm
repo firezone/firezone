@@ -1,0 +1,39 @@
+ARG BASE_IMAGE
+ARG PLATFORM
+FROM --platform=${PLATFORM} ${BASE_IMAGE}
+
+ARG PKG_DIR
+ENV MIX_ENV prod
+
+# Dockerfile-friendly build release
+RUN mix local.hex --force && \
+    mix local.rebar --force
+COPY mix.exs mix.lock ./
+COPY config config
+COPY apps/fz_http/mix.exs ./apps/fz_http/
+COPY apps/fz_wall/mix.exs ./apps/fz_wall/
+COPY apps/fz_vpn/mix.exs ./apps/fz_vpn/
+COPY apps/fz_common/mix.exs ./apps/fz_common/
+RUN mix do deps.get, deps.compile
+COPY apps/fz_http/assets/package.json apps/fz_http/assets/package-lock.json ./apps/fz_http/assets/
+RUN cd apps/fz_http/assets && npm ci --progress=false --no-audit --loglevel=error
+COPY apps/fz_http/priv apps/fz_http/priv
+COPY apps/fz_http/assets apps/fz_http/assets
+RUN npm run --prefix ./apps/fz_http/assets deploy && \
+    cd apps/fz_http && mix phx.digest
+# Copy remaining items for release
+COPY rel rel
+COPY deps deps
+COPY config config
+COPY apps apps
+RUN mix release
+
+# Package into rpm
+
+# Copy shared files
+RUN echo $PKG_DIR
+COPY pkg/rpm_shared/rpmbuild rpmbuild
+COPY pkg/skel/ rpmbuild/BUILDROOT/$PKG_DIR/
+RUN rsync -az _build/prod/rel/firezone/* rpmbuild/BUILDROOT/$PKG_DIR/usr/lib/firezone/
+RUN cd rpmbuild/BUILDROOT/$PKG_DIR/usr/bin && ln -s ../lib/firezone/bin/firezone
+RUN rpmbuild -bb rpmbuild/SPECS/firezone.spec
