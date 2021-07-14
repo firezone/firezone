@@ -1,7 +1,7 @@
 defmodule FzHttp.RulesTest do
   use FzHttp.DataCase, async: true
 
-  alias FzHttp.{Repo, Rules}
+  alias FzHttp.Rules
 
   describe "get_rule!/1" do
     setup [:create_rule]
@@ -47,11 +47,11 @@ defmodule FzHttp.RulesTest do
     setup [:create_rules]
 
     @iptables_rules [
-      {"10.0.0.1", "::1", "1.1.1.0/24", :deny},
-      {"10.0.0.1", "::1", "2.2.2.0/24", :deny},
-      {"10.0.0.1", "::1", "3.3.3.0/24", :deny},
-      {"10.0.0.1", "::1", "4.4.4.0/24", :deny},
-      {"10.0.0.1", "::1", "5.5.5.0/24", :deny}
+      {"1.1.1.0/24", :deny},
+      {"2.2.2.0/24", :deny},
+      {"3.3.3.0/24", :deny},
+      {"4.4.4.0/24", :deny},
+      {"5.5.5.0/24", :deny}
     ]
 
     test "prints all rules to iptables format", %{rules: _rules} do

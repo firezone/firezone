@@ -7,7 +7,7 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
     @destination "1.2.3.4"
     @allow_params %{"rule" => %{"action" => "allow", "destination" => @destination}}
 
-    test "adds to allowlist", %{authed_conn: conn, rule: rule} do
+    test "adds to allowlist", %{authed_conn: conn} do
       path = Routes.rule_index_path(conn, :index)
       {:ok, view, _html} = live(conn, path)
 
@@ -19,7 +19,7 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
       assert test_view =~ @destination
     end
 
-    test "validation fails", %{authed_conn: conn, rule: rule} do
+    test "validation fails", %{authed_conn: conn, rule: _rule} do
       path = Routes.rule_index_path(conn, :index)
       {:ok, view, _html} = live(conn, path)
 
@@ -28,12 +28,12 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
         |> form("#allow-form")
         |> render_submit(%{
           "rule" => %{
-            "destination" => @destination,
+            "destination" => "not a valid destination",
             "action" => "allow"
           }
         })
 
-      refute test_view =~ @destination
+      assert test_view =~ "is invalid"
     end
 
     test "removes from allowlist", %{authed_conn: conn, rule: rule} do
@@ -55,7 +55,7 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
     @destination "1.2.3.4"
     @deny_params %{"rule" => %{"action" => "deny", "destination" => @destination}}
 
-    test "adds to denylist", %{authed_conn: conn, rule: rule} do
+    test "adds to denylist", %{authed_conn: conn, rule: _rule} do
       path = Routes.rule_index_path(conn, :index)
       {:ok, view, _html} = live(conn, path)
 
@@ -67,21 +67,21 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
       assert test_view =~ @destination
     end
 
-    test "validation fails", %{authed_conn: conn, rule: rule} do
+    test "validation fails", %{authed_conn: conn, rule: _rule} do
       path = Routes.rule_index_path(conn, :index)
       {:ok, view, _html} = live(conn, path)
 
       test_view =
         view
-        |> form("#allow-form")
+        |> form("#deny-form")
         |> render_submit(%{
           "rule" => %{
-            "destination" => "invalid",
+            "destination" => "not a valid destination",
             "action" => "deny"
           }
         })
 
-      refute test_view =~ @destination
+      assert test_view =~ "is invalid"
     end
 
     test "removes from denylist", %{authed_conn: conn, rule: rule} do
