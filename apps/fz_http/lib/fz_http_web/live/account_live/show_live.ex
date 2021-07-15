@@ -10,7 +10,8 @@ defmodule FzHttpWeb.AccountLive.Show do
   def mount(params, session, socket) do
     {:ok,
      socket
-     |> assign_defaults(params, session, &load_data/2)}
+     |> assign_defaults(params, session, &load_data/2)
+     |> assign(:page_heading, "Accounts")}
   end
 
   @impl true

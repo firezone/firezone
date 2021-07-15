@@ -145,10 +145,10 @@
       <p class="menu-label">Settings</p>
       <ul class="menu-list">
         <li>
-          <a href="https://justboil.me/bulma-admin-template/one-html" class="has-icon">
+          <%= link(to: Routes.account_show_path(@conn, :show), class: nav_class(@conn.request_path, :account)) do %>
             <span class="icon"><i class="mdi mdi-help-circle"></i></span>
             <span class="menu-item-label">Account</span>
-          </a>
+          <% end %>
         </li>
       </ul>
     </div>
