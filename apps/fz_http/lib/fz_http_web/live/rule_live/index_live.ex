@@ -7,6 +7,7 @@ defmodule FzHttpWeb.RuleLive.Index do
   def mount(params, session, socket) do
     {:ok,
      socket
-     |> assign_defaults(params, session)}
+     |> assign_defaults(params, session)
+     |> assign(:page_heading, "Rules")}
   end
 end
