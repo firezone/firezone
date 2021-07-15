@@ -3,13 +3,40 @@ defmodule FzHttpWeb.SessionController do
   Implements the CRUD for a Session
   """
 
-  alias FzHttp.Users
+  alias FzHttp.{Sessions, Users}
   use FzHttpWeb, :controller
 
   plug :put_root_layout, "auth.html"
 
   def new(conn, _params) do
-    render(conn, "new.html")
+    changeset = Sessions.new_session()
+    render(conn, "new.html", changeset: changeset)
+  end
+
+  # POST /sessions
+  def create(conn, %{"session" => %{"email" => email, "password" => password}}) do
+    case Sessions.get_session(email: email) do
+      nil ->
+        conn
+        |> put_flash(:error, "Email not found.")
+        |> assign(:changeset, Sessions.new_session())
+        |> render("new.html")
+
+      record ->
+        case Sessions.create_session(record, %{email: email, password: password}) do
+          {:ok, session} ->
+            conn
+            |> clear_session()
+            |> put_session(:user_id, session.id)
+            |> redirect(to: Routes.device_path(conn, :index))
+
+          {:error, _changeset} ->
+            conn
+            |> put_flash(:error, "Error signing in. Ensure email and password are correct.")
+            |> assign(:changeset, Sessions.new_session())
+            |> render("new.html")
+        end
+    end
   end
 
   # GET /sign_in/:token
@@ -19,13 +46,12 @@ defmodule FzHttpWeb.SessionController do
         conn
         |> clear_session()
         |> put_session(:user_id, user.id)
-        |> put_flash(:info, "Signed in successfully.")
-        |> redirect(to: Routes.root_index_path(conn, :index))
+        |> redirect(to: Routes.device_path(conn, :index))
 
       {:error, error_msg} ->
         conn
         |> put_flash(:error, error_msg)
-        |> redirect(to: Routes.session_new_path(conn, :new))
+        |> redirect(to: Routes.session_path(conn, :new))
     end
   end
 

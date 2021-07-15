@@ -24,6 +24,7 @@ defmodule FzHttpWeb do
       import Plug.Conn
       import FzHttpWeb.Gettext
       import Phoenix.LiveView.Controller
+      import FzHttpWeb.ControllerHelpers
       alias FzHttpWeb.Router.Helpers, as: Routes
     end
   end
