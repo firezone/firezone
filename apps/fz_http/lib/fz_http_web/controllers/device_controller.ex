@@ -4,6 +4,8 @@ defmodule FzHttpWeb.DeviceController do
   """
   use FzHttpWeb, :controller
 
+  plug :redirect_unauthenticated
+
   def index(conn, _params) do
     render(conn, "index.html", nav_active: "Devices", page_heading: "Devices")
   end

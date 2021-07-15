@@ -18,6 +18,7 @@
     <% end %>
   </div>
 <% end %>
+<!-- foobar -->
 <div class="container">
   <%= @inner_content %>
 </div>

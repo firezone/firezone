@@ -7,7 +7,10 @@ defmodule FzHttpWeb.DeviceLive.Index do
   alias FzHttp.Devices
 
   def mount(params, session, socket) do
-    {:ok, assign_defaults(params, session, socket, &load_data/2)}
+    {:ok,
+     socket
+     |> assign_defaults(params, session, &load_data/2)
+     |> assign(:page_heading, "Devices")}
   end
 
   def handle_event("create_device", _params, socket) do

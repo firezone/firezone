@@ -8,7 +8,9 @@ defmodule FzHttpWeb.AccountLive.Show do
 
   @impl true
   def mount(params, session, socket) do
-    {:ok, assign_defaults(params, session, socket, &load_data/2)}
+    {:ok,
+     socket
+     |> assign_defaults(params, session, &load_data/2)}
   end
 
   @impl true

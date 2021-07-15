@@ -16,7 +16,6 @@ defmodule FzHttpWeb.LayoutView do
   def nav_class("/", :devices), do: "is-active has-icon"
   def nav_class("/devices", :devices), do: "is-active has-icon"
   def nav_class("/rules", :rules), do: "is-active has-icon"
-  def nav_class("/admin", :admin), do: "is-active has-icon"
   def nav_class("/account", :account), do: "is-active has-icon"
   def nav_class(_, _), do: "has-icon"
 end

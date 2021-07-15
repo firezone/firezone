@@ -62,10 +62,10 @@
               <span>Messages</span>
             </a>
             <hr class="navbar-divider">
-            <a class="navbar-item">
+            <%= link(to: Routes.session_path(@conn, :delete, "noop"), method: :delete, class: "navbar-item") do %>
               <span class="icon"><i class="mdi mdi-logout"></i></span>
               <span>Log Out</span>
-            </a>
+            <% end %>
           </div>
         </div>
         <div class="navbar-item has-dropdown has-dropdown-with-icons has-divider has-user-avatar is-hoverable">
@@ -130,13 +130,13 @@
       <p class="menu-label">Configuration</p>
       <ul class="menu-list">
         <li>
-          <%= link(to: Routes.device_path(@conn, :index), class: nav_class(@conn.request_path, :devices)) do %>
+          <%= link(to: Routes.device_index_path(@conn, :index), class: nav_class(@conn.request_path, :devices)) do %>
             <span class="icon has-update-mark"><i class="mdi mdi-table"></i></span>
             <span class="menu-item-label">Devices</span>
           <% end %>
         </li>
         <li>
-          <%= link(to: Routes.rule_path(@conn, :index), class: nav_class(@conn.request_path, :rules)) do %>
+          <%= link(to: Routes.rule_index_path(@conn, :index), class: nav_class(@conn.request_path, :rules)) do %>
             <span class="icon"><i class="mdi mdi-square-edit-outline"></i></span>
             <span class="menu-item-label">Rules</span>
           <% end %>
@@ -144,12 +144,6 @@
       </ul>
       <p class="menu-label">Settings</p>
       <ul class="menu-list">
-        <li>
-          <a href="https://admin-one-html.justboil.me/" target="_blank" class="has-icon">
-            <span class="icon"><i class="mdi mdi-credit-card-outline"></i></span>
-            <span class="menu-item-label">Admin</span>
-          </a>
-        </li>
         <li>
           <a href="https://justboil.me/bulma-admin-template/one-html" class="has-icon">
             <span class="icon"><i class="mdi mdi-help-circle"></i></span>
@@ -197,6 +191,11 @@
       </div>
     </div>
   </section>
+
+  <section class="section is-main-section">
+    <%= @inner_content %>
+  </section>
+
   <footer class="footer">
     <div class="container-fluid">
       <div class="level">
@@ -213,7 +212,7 @@
         <div class="level-right">
           <div class="level-item">
             <div class="logo">
-              <a href="https://justboil.me"><img src="images/logo.svg" alt="firez.one"></a>
+              <a href="https://firez.one"><img src="images/logo.svg" alt="firez.one"></a>
             </div>
           </div>
         </div>
