@@ -8,7 +8,9 @@ defmodule FzHttpWeb.DeviceLive.Show do
 
   @impl true
   def mount(params, session, socket) do
-    {:ok, assign_defaults(params, session, socket, &load_data/2)}
+    {:ok,
+     socket
+     |> assign_defaults(params, session, &load_data/2)}
   end
 
   @impl true
@@ -45,7 +47,7 @@ defmodule FzHttpWeb.DeviceLive.Show do
     device = Devices.get_device!(id)
 
     if device.user_id == socket.assigns.current_user.id do
-      assign(socket, device: device)
+      assign(socket, device: device, page_heading: device.name)
     else
       not_authorized(socket)
     end

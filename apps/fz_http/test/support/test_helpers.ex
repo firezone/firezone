@@ -2,7 +2,7 @@ defmodule FzHttp.TestHelpers do
   @moduledoc """
   Test setup helpers
   """
-  alias FzHttp.{Fixtures, Repo, Users, Users.PasswordReset, Users.User}
+  alias FzHttp.{Fixtures, Repo, Users, Users.User}
 
   def create_device(tags) do
     device =
@@ -97,27 +97,6 @@ defmodule FzHttp.TestHelpers do
       end)
 
     {:ok, rules: rules}
-  end
-
-  def create_password_reset(_) do
-    password_reset = Fixtures.password_reset()
-    {:ok, password_reset: password_reset}
-  end
-
-  def expired_reset_token(_) do
-    # Expired by 1 second
-    reset_sent_at =
-      DateTime.utc_now()
-      |> DateTime.add(-1 * PasswordReset.token_validity_secs() - 1)
-
-    expired_reset_token =
-      Fixtures.password_reset()
-      |> PasswordReset.changeset(%{reset_sent_at: reset_sent_at})
-      |> Repo.update()
-      |> elem(1)
-      |> Map.get(:reset_token)
-
-    {:ok, expired_reset_token: expired_reset_token}
   end
 
   def create_user_with_valid_sign_in_token(_) do

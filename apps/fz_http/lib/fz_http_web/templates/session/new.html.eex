@@ -1,0 +1,37 @@
+<!-- Use https://admin-one.justboil.me/?style=light-dark#/lock-screen for inspiration -->
+<h3 class="title">Sign In</h3>
+<hr>
+
+<%= form_for @changeset, Routes.session_path(@conn, :create), fn f -> %>
+  <%= if assigns[:changeset] && @changeset.action do %>
+    <div>
+      <p>Oops, something went wrong! Please check the errors below.</p>
+    </div>
+  <% end %>
+
+  <div class="field">
+    <%= label(:session, :email, class: "label") %>
+    <div class="control">
+      <%= text_input(f, :email, email_field_opts(class: "input")) %>
+    </div>
+    <p class="help is-danger">
+      <%= error_tag f, :email %>
+    </p>
+  </div>
+
+  <div class="field">
+    <%= label(:session, :password, class: "label") %>
+    <div class="control">
+      <%= password_input(f, :password, class: "input") %>
+    </div>
+    <p class="help is-danger">
+      <%= error_tag f, :password %>
+    </p>
+  </div>
+
+  <div class="field">
+    <div class="control">
+      <%= submit "Sign in", class: "button is-primary" %>
+    </div>
+  </div>
+<% end %>

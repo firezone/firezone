@@ -1,7 +1,6 @@
 /* This file is for your main application css. */
 
 @charset "utf-8";
-@import "../node_modules/bulma/bulma.sass";
 @import "./main.scss";
 @import "./email.scss";
 
@@ -10,3 +9,4 @@ $fa-font-path: "~@fortawesome/fontawesome-free/webfonts";
 @import "~@fortawesome/fontawesome-free/scss/solid.scss";
 @import "~@fortawesome/fontawesome-free/scss/regular.scss";
 @import "~@fortawesome/fontawesome-free/scss/brands.scss";
+@import "~admin-one-bulma-dashboard/src/scss/main.scss";

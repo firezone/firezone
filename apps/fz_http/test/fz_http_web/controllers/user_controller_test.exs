@@ -7,7 +7,7 @@ defmodule FzHttpWeb.UserControllerTest do
     test "deletes the user", %{authed_conn: conn} do
       test_conn = delete(conn, Routes.user_path(conn, :delete))
 
-      assert redirected_to(test_conn) == Routes.root_index_path(test_conn, :index)
+      assert redirected_to(test_conn) == Routes.session_path(test_conn, :new)
     end
   end
 
