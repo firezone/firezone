@@ -6,7 +6,7 @@ defmodule FzHttpWeb.UserController do
   alias FzHttp.Users
   use FzHttpWeb, :controller
 
-  plug :redirect_unauthenticated
+  plug :require_authenticated
 
   def delete(conn, _params) do
     user_id = get_session(conn, :user_id)
@@ -18,27 +18,13 @@ defmodule FzHttpWeb.UserController do
         conn
         |> clear_session()
         |> put_flash(:info, "Account deleted successfully.")
-        |> redirect(to: Routes.root_index_path(conn, :index))
+        |> redirect(to: Routes.session_path(conn, :new))
 
-        # delete_user is unlikely to fail, if so write a test for it and uncomment this
-        # {:error, msg} ->
-        #   conn
-        #   |> clear_session()
-        #   |> put_flash(:error, "Error deleting account: #{msg}")
-        #   |> redirect(to: Routes.root_index_path(conn, :index))
-    end
-  end
-
-  def redirect_unauthenticated(conn, _options) do
-    case get_session(conn, :user_id) do
-      nil ->
+      {:error, msg} ->
         conn
-        |> put_resp_content_type("text/plain")
-        |> send_resp(403, "Forbidden")
-        |> halt()
-
-      _ ->
-        conn
+        |> clear_session()
+        |> put_flash(:error, "Error deleting account: #{msg}")
+        |> redirect(to: Routes.session_path(conn, :new))
     end
   end
 end

@@ -7,7 +7,7 @@ defmodule FzHttpWeb.AccountLive.ShowTest do
   describe "when unauthenticated" do
     test "mount redirects to session path", %{unauthed_conn: conn} do
       path = Routes.account_show_path(conn, :show)
-      expected_path = Routes.session_new_path(conn, :new)
+      expected_path = Routes.session_path(conn, :new)
       assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
     end
   end

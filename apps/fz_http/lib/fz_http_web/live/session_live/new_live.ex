@@ -34,15 +34,6 @@ defmodule FzHttpWeb.SessionLive.New do
     end
   end
 
-  # Guess email if signups are disabled and only one user exists
-  def email_field_opts(opts \\ []) do
-    if Users.single_user?() and signups_disabled?() do
-      opts ++ [value: Users.admin_email()]
-    else
-      opts
-    end
-  end
-
   defp redirect_to_sign_in(socket, session) do
     case create_sign_in_token(session) do
       {:ok, token} ->
@@ -66,10 +57,6 @@ defmodule FzHttpWeb.SessionLive.New do
       err ->
         err
     end
-  end
-
-  defp signups_disabled? do
-    Application.fetch_env!(:fz_http, :disable_signup)
   end
 
   defp sign_in_params do

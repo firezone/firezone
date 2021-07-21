@@ -27,8 +27,6 @@ end
 db_url = System.get_env("DATABASE_URL")
 config :fz_http, FzHttp.Repo, DBConfig.config(db_url)
 
-config :fz_http, FzHttp.Mailer, adapter: Bamboo.TestAdapter
-
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
 config :fz_http, FzHttpWeb.Endpoint,

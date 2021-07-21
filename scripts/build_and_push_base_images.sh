@@ -3,10 +3,14 @@ set -e
 
 # Required due to a buildx bug.
 # See https://github.com/docker/buildx/issues/495#issuecomment-761562905
-docker buildx rm multiarch || true
-docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
-docker buildx create --name multiarch --driver docker-container --use
-docker buildx inspect --bootstrap
+if [ `uname -m` = "amd64" ]; then
+  docker buildx rm multiarch || true
+  docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+  docker buildx create --name multiarch --driver docker-container --use
+  docker buildx inspect --bootstrap
+elif [ `uname -m` = "arm64" ]; then
+  docker buildx create --use
+fi
 .ci/build_amazonlinux_2.base.sh
 .ci/build_centos_7.base.sh
 .ci/build_centos_8.base.sh

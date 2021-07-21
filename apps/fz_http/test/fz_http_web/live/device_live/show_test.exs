@@ -76,7 +76,7 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
       view
       |> render_hook(:delete_device, params)
 
-      flash = assert_redirected(view, Routes.session_new_path(conn, :new))
+      flash = assert_redirected(view, Routes.session_path(conn, :new))
       assert flash["error"] == "Not authorized."
     end
   end
@@ -87,7 +87,7 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
     @tag :unauthed
     test "mount redirects to session path", %{unauthed_conn: conn, device: device} do
       path = Routes.device_show_path(conn, :show, device)
-      expected_path = Routes.session_new_path(conn, :new)
+      expected_path = Routes.session_path(conn, :new)
       assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
     end
   end
@@ -101,7 +101,7 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
       other_device: other_device
     } do
       path = Routes.device_show_path(conn, :show, other_device)
-      expected_path = Routes.session_new_path(conn, :new)
+      expected_path = Routes.session_path(conn, :new)
       assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
     end
   end

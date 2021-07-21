@@ -37,6 +37,10 @@ defmodule FzWall.CLI.Live do
     exec!("iptables -A firezone -s #{s} -d #{d} -j DROP")
   end
 
+  def add_rule({4, d, :deny}) do
+    exec!("iptables -A firezone -d #{d} -j DROP")
+  end
+
   def add_rule({4, s, d, :allow}) do
     exec!("iptables -A firezone -s #{s} -d #{d} -j ACCEPT")
   end
