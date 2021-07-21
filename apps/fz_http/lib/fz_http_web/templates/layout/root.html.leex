@@ -62,7 +62,7 @@
               <span>Messages</span>
             </a>
             <hr class="navbar-divider">
-            <%= link(to: Routes.session_path(@conn, :delete, "noop"), method: :delete, class: "navbar-item") do %>
+            <%= link(to: Routes.session_path(@conn, :delete), method: :delete, class: "navbar-item") do %>
               <span class="icon"><i class="mdi mdi-logout"></i></span>
               <span>Log Out</span>
             <% end %>

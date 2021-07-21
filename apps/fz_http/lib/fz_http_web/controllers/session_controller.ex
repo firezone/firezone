@@ -8,19 +8,20 @@ defmodule FzHttpWeb.SessionController do
 
   plug :put_root_layout, "auth.html"
 
+  # GET /session/new
   def new(conn, _params) do
     changeset = Sessions.new_session()
     render(conn, "new.html", changeset: changeset)
   end
 
-  # POST /sessions
+  # POST /session
   def create(conn, %{"session" => %{"email" => email, "password" => password}}) do
     case Sessions.get_session(email: email) do
       nil ->
         conn
         |> put_flash(:error, "Email not found.")
         |> assign(:changeset, Sessions.new_session())
-        |> render("new.html")
+        |> redirect(to: Routes.session_path(conn, :new))
 
       record ->
         case Sessions.create_session(record, %{email: email, password: password}) do
@@ -34,7 +35,7 @@ defmodule FzHttpWeb.SessionController do
             conn
             |> put_flash(:error, "Error signing in. Ensure email and password are correct.")
             |> assign(:changeset, Sessions.new_session())
-            |> render("new.html")
+            |> redirect(to: Routes.session_path(conn, :new))
         end
     end
   end
@@ -61,6 +62,6 @@ defmodule FzHttpWeb.SessionController do
     conn
     |> clear_session()
     |> put_flash(:info, "Signed out successfully.")
-    |> redirect(to: "/")
+    |> redirect(to: Routes.session_path(conn, :new))
   end
 end

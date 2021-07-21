@@ -47,7 +47,7 @@ defmodule FzHttpWeb.DeviceLive.Show do
     device = Devices.get_device!(id)
 
     if device.user_id == socket.assigns.current_user.id do
-      assign(socket, device: device)
+      assign(socket, device: device, page_heading: device.name)
     else
       not_authorized(socket)
     end
