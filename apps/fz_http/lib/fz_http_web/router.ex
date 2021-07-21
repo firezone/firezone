@@ -22,7 +22,7 @@ defmodule FzHttpWeb.Router do
     pipe_through :browser
 
     get "/", DeviceController, :index
-    resources "/session", SessionController, only: [:new, :create, :delete]
+    resources "/session", SessionController, only: [:new, :create, :delete], singleton: true
 
     live "/account", AccountLive.Show, :show
     live "/account/edit", AccountLive.Show, :edit
