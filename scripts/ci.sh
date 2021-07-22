@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+# Mimics CI build action to test locally on developer machines
+
 # Required due to a buildx bug.
 # See https://github.com/docker/buildx/issues/495#issuecomment-761562905
 if [ `uname -m` = "amd64" ]; then
@@ -11,12 +13,21 @@ if [ `uname -m` = "amd64" ]; then
 elif [ `uname -m` = "arm64" ]; then
   docker buildx create --use
 fi
-.ci/build_amazonlinux_2.base.sh
-.ci/build_centos_7.base.sh
-.ci/build_centos_8.base.sh
-.ci/build_fedora_33.base.sh
-.ci/build_fedora_34.base.sh
-.ci/build_fedora_35.base.sh
-.ci/build_debian_10.base.sh
-.ci/build_ubuntu_18.04.base.sh
-.ci/build_ubuntu_20.04.base.sh
+
+matrix_images=(
+  amazonlinux:2
+  centos:7
+  centos:8
+  fedora:33
+  fedora:34
+  fedora:35
+  debian:10
+  ubuntu:18.04
+  ubuntu:20.04
+)
+
+for image in $matrix_images; do
+  export MATRIX_IMAGE=$image
+  .ci/build_base.sh
+  .ci/build_packages.sh
+done
