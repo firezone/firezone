@@ -28,6 +28,7 @@ docker builder prune -f --all
 
 # Build intermediate release image
 docker buildx build \
+  --no-cache \
   --push \
   -f pkg/Dockerfile.release \
   -t $tag \
@@ -45,6 +46,7 @@ case $format in
     image="ghcr.io/firezone/${pkg_dir}:latest"
 
     docker buildx build \
+      --no-cache \
       --push \
       --tag $image \
       -f pkg/Dockerfile.deb \
@@ -66,6 +68,7 @@ case $format in
     image="ghcr.io/firezone/${MATRIX_IMAGE/:/_}_amd64:latest"
 
     docker buildx build \
+      --no-cache \
       --push \
       -t $image \
       -f pkg/Dockerfile.rpm \
