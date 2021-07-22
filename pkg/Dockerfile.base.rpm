@@ -5,6 +5,7 @@ WORKDIR /root
 
 RUN yum groupinstall -y 'Development Tools'
 RUN yum install -y \
+    gcc-c++ \
     zsh \
     tree \
     rsync \
