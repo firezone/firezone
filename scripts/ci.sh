@@ -14,19 +14,18 @@ elif [ `uname -m` = "arm64" ]; then
   docker buildx create --use
 fi
 
-matrix_images=(
-  amazonlinux:2
-  centos:7
-  centos:8
-  fedora:33
-  fedora:34
-  fedora:35
-  debian:10
-  ubuntu:18.04
-  ubuntu:20.04
+declare -a matrix_images=("amazonlinux:2"
+"centos:7"
+"centos:8"
+"fedora:33"
+"fedora:34"
+"fedora:35"
+"debian:10"
+"ubuntu:18.04"
+"ubuntu:20.04"
 )
 
-for image in $matrix_images; do
+for image in "${matrix_images[@]}"; do
   export MATRIX_IMAGE=$image
   .ci/build_base.sh
   .ci/build_packages.sh
