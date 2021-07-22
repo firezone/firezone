@@ -22,6 +22,8 @@ case $MATRIX_IMAGE in
     ;;
 esac
 
+# Fixes issues with missing directories for some reason
+docker buildx prune -f
 
 # Build intermediate release image
 docker buildx build \
