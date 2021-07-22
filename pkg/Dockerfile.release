@@ -21,7 +21,7 @@ RUN npm run --prefix ./apps/fz_http/assets deploy && \
     cd apps/fz_http && mix phx.digest
 # Copy remaining items for release
 COPY rel rel
-COPY deps deps
 COPY config config
 COPY apps apps
+COPY deps deps
 RUN mix release

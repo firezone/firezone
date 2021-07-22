@@ -11,3 +11,8 @@ apps/fg_vpn/_build
 docs
 
 .DS_Store
+
+.git
+
+# buildx ignores stuff that git ls-files doesn't show, so we need these
+!deps
