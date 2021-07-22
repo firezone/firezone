@@ -13,7 +13,6 @@ jobs:
       POSTGRES_HOST: localhost
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       MATRIX_OS: ubuntu-18.04
-      MATRIX_ARCH: amd64
     strategy:
       matrix:
         os:
@@ -72,25 +71,23 @@ jobs:
     runs-on: ubuntu-20.04
     name: Build
     env:
-      MATRIX_ARCH: ${{ matrix.arch }}
-      MATRIX_OS: ${{ matrix.os }}
+      MATRIX_IMAGE: ${{ matrix.image }}
+      MATRIX_PLATFORM: ${{ matrix.platform }}
       MIX_ENV: prod
     strategy:
       matrix:
-        os:
-          - amazonlinux_2
-          - centos_7
-          - centos_8
-          - debian_10
-          - fedora_33
-          - fedora_34
-          - fedora_35
-          - ubuntu_18.04
-          - ubuntu_20.04
-        include:
-          - arch: amd64
-          # XXX: This currently takes upwards of 10 minutes or more. Disabling for now
-          # - arch: arm64
+        platform:
+          - linux/amd64
+        image:
+          - amazonlinux:2
+          - centos:7
+          - centos:8
+          - debian:10
+          - fedora:33
+          - fedora:34
+          - fedora:35
+          - ubuntu:18.04
+          - ubuntu:20.04
     steps:
       - uses: docker/login-action@v1
         with:
@@ -98,43 +95,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/checkout@v2
-
-      # amd64 build
-      - if: ${{ matrix.arch == 'amd64' }}
-        run: |
-          .ci/build_${{ matrix.os }}.sh
-
-      # arm64 build
-      - uses: uraimo/run-on-arch-action@v2.0.10
-        if: ${{ matrix.arch == 'arm64' }}
-        with:
-          arch: aarch64
-          install: |
-            # No obvious way to load a script file here, so needs inlining :-(
-            apt-get update -q -y
-            apt-get install -q -y gcc g++ make curl gdebi zstd
-
-            curl -O https://packages.erlang-solutions.com/erlang/debian/pool/esl-erlang_24.0.2-1~ubuntu~bionic_arm64.deb
-            curl -O https://packages.erlang-solutions.com/erlang/debian/pool/elixir_1.12.0-1~ubuntu~bionic_all.deb
-            gdebi --non-interactive esl-erlang_24.0.2-1~ubuntu~bionic_arm64.deb
-            gdebi --non-interactive elixir_1.12.0-1~ubuntu~bionic_all.deb
-
-            curl -sL https://deb.nodesource.com/setup_14.x | bash -
-            apt-get install -y -q nodejs
-          dockerRunArgs: |
-            --volume "${PWD}:/app"
-          distro: ubuntu18.04
-          env: |
-            arch: arm64
-          githubToken: ${{ github.token }}
-          run: |
-            cd /app
-            bash -c '.ci/build_release.sh'
+      - run: |
+          .ci/build_packages.sh
 
       - uses: actions/upload-artifact@v2
         with:
-          name: firezone_${{ matrix.os }}_${{ matrix.arch }}.deb
-          path: _build/firezone_${{ matrix.os }}_${{ matrix.arch }}.deb
+          name: firezone_${{ matrix.os }}_${{ matrix.platform }}
+          path: _build/firezone_${{ matrix.os }}_*.*
 
   functional-test:
     needs: build
@@ -151,18 +118,14 @@ jobs:
           # - fedora_35
           # - ubuntu_18.04
           - ubuntu_20.04
-        include:
-          - arch: amd64
-          # - arch: arm64
     env:
       MATRIX_OS: ${{ matrix.os }}
-      MATRIX_ARCH: ${{ matrix.arch }}
       DEBIAN_FRONTEND: noninteractive
     steps:
       - uses: actions/checkout@v2
       - uses: actions/download-artifact@v2
         with:
-          name: firezone_${{ matrix.os }}_${{ matrix.arch }}.deb
+          name: firezone_${{ matrix.os }}_amd64.deb
           path: ./
       - name: Test Install package
         run: .ci/functional_test.sh
@@ -182,9 +145,6 @@ jobs:
           - fedora_33
           - fedora_34
           - fedora_35
-        include:
-          - arch: amd64
-            # - arch: arm64
     if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
     steps:
       - name: Create Release
@@ -199,7 +159,7 @@ jobs:
           prerelease: true
       - uses: actions/download-artifact@v2
         with:
-          name: firezone_${{ matrix.os }}_${{ matrix.arch }}
+          name: firezone_${{ matrix.os }}_amd64
           path: ./
       - name: Upload Release Asset
         id: upload-release-asset
@@ -208,6 +168,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./firezone_${{ matrix.os }}_${{ matrix.arch }}.deb
-          asset_name: ${{ matrix.os }}_${{ matrix.arch }}
+          asset_path: ./firezone_${{ matrix.os }}_amd64.deb
+          asset_name: ${{ matrix.os }}_amd64
           asset_content_type: application/vnd.debian.binary-package

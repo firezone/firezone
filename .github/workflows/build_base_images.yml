@@ -6,18 +6,23 @@ on:
 
 jobs:
   build-and-push:
+    env:
+      MATRIX_IMAGE: ${{ matrix.image }}
+      MATRIX_PLATFORM: ${{ matrix.platform }}
     strategy:
       matrix:
-        os:
-          - amazonlinux_2
-          - centos_7
-          - centos_8
-          - fedora_33
-          - fedora_34
-          - fedora_35
-          - debian_10
-          - ubuntu_18.04
-          - ubuntu_20.04
+        image:
+          - amazonlinux:2
+          - centos:7
+          - centos:8
+          - fedora:33
+          - fedora:34
+          - fedora:35
+          - debian:10
+          - ubuntu:18.04
+          - ubuntu:20.04
+        platform:
+          - linux/amd64
     runs-on: ubuntu-20.04
     steps:
       - uses: docker/login-action@v1
@@ -32,4 +37,4 @@ jobs:
           docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
           docker buildx create --name multiarch --driver docker-container --use
           docker buildx inspect --bootstrap
-          .ci/build_${{ matrix.os }}.base.sh
+          .ci/build_base.sh
