@@ -22,13 +22,9 @@ case $MATRIX_IMAGE in
     ;;
 esac
 
-# Fixes issues with missing directories for some reason
-docker buildx prune -f --all
-docker builder prune -f --all
-
 # Build intermediate release image
 docker buildx build \
-  --no-cache \
+  --pull \
   --push \
   -f pkg/Dockerfile.release \
   -t $tag \
@@ -46,7 +42,7 @@ case $format in
     image="ghcr.io/firezone/${pkg_dir}:latest"
 
     docker buildx build \
-      --no-cache \
+      --pull \
       --push \
       --tag $image \
       -f pkg/Dockerfile.deb \
@@ -68,7 +64,7 @@ case $format in
     image="ghcr.io/firezone/${MATRIX_IMAGE/:/_}_amd64:latest"
 
     docker buildx build \
-      --no-cache \
+      --pull \
       --push \
       -t $image \
       -f pkg/Dockerfile.rpm \
