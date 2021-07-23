@@ -27,5 +27,5 @@ declare -a matrix_images=("amazonlinux:2"
 
 for image in "${matrix_images[@]}"; do
   export MATRIX_IMAGE=$image
-  .ci/build_packages.sh
+  .ci/build_base.sh
 done

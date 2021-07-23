@@ -1,18 +1,10 @@
-apps/fg_http/assets/node_modules
-apps/fg_http/priv/static
-
-_build
-apps/fg_http/_build
-apps/fg_wall/_build
-apps/fg_vpn/_build
-
-**/cover
-
-docs
-
-.DS_Store
-
-.git
-
-# buildx ignores stuff that git ls-files doesn't show, so we need these
-!deps
+/* apps/fg_http/assets/node_modules */
+/* apps/fg_http/priv/static */
+/* _build */
+/* apps/fg_http/_build */
+/* apps/fg_wall/_build */
+/* apps/fg_vpn/_build */
+/* **/cover */
+/* docs */
+/* .DS_Store */
+/* .git */
