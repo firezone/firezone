@@ -2,7 +2,7 @@
 set -xe
 
 base_image="ghcr.io/firezone/${MATRIX_IMAGE}"
-tag="ghcr.io/firezone/release-${MATRIX_IMAGE}:${GITHUB_SHA}"
+tag="ghcr.io/firezone/release-${MATRIX_IMAGE/:/_}:${GITHUB_SHA}"
 
 case $MATRIX_IMAGE in
   amazonlinux*)
