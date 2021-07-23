@@ -46,14 +46,14 @@ jobs:
           sudo -E bash -c '.ci/install_runtimes.sh'
       - name: Install Dependencies
         run: .ci/install_dependencies.sh
-      - uses: actions/cache@v2
-        with:
-          path: |
-            deps
-            _build
-          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-mix-
+      # - uses: actions/cache@v2
+      #   with:
+      #     path: |
+      #       deps
+      #       _build
+      #     key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+      #     restore-keys: |
+      #       ${{ runner.os }}-mix-
       - name: Setup Database
         run: |
           mix ecto.create

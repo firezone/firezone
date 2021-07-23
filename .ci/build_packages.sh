@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-set -e
+set -xe
 
 base_image="ghcr.io/firezone/${MATRIX_IMAGE}"
-tag="ghcr.io/firezone/release-${MATRIX_IMAGE}"
+tag="ghcr.io/firezone/release-${MATRIX_IMAGE}:${GITHUB_SHA}"
 
 case $MATRIX_IMAGE in
   amazonlinux*)
@@ -22,9 +22,9 @@ case $MATRIX_IMAGE in
     ;;
 esac
 
-
 # Build intermediate release image
 docker buildx build \
+  --pull \
   --push \
   -f pkg/Dockerfile.release \
   -t $tag \
@@ -42,6 +42,7 @@ case $format in
     image="ghcr.io/firezone/${pkg_dir}:latest"
 
     docker buildx build \
+      --pull \
       --push \
       --tag $image \
       -f pkg/Dockerfile.deb \
@@ -63,6 +64,7 @@ case $format in
     image="ghcr.io/firezone/${MATRIX_IMAGE/:/_}_amd64:latest"
 
     docker buildx build \
+      --pull \
       --push \
       -t $image \
       -f pkg/Dockerfile.rpm \

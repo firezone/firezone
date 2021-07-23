@@ -10,6 +10,7 @@ RUN apt-get update -q && \
     lintian \
     procps \
     zsh \
+    tree \
     rsync \
     gdebi \
     ca-certificates \

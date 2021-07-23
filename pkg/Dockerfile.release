@@ -12,7 +12,9 @@ COPY apps/fz_http/mix.exs ./apps/fz_http/
 COPY apps/fz_wall/mix.exs ./apps/fz_wall/
 COPY apps/fz_vpn/mix.exs ./apps/fz_vpn/
 COPY apps/fz_common/mix.exs ./apps/fz_common/
-RUN mix do deps.get, deps.compile
+RUN mix deps.get
+RUN mix deps.compile
+COPY deps deps
 COPY apps/fz_http/assets/package.json apps/fz_http/assets/package-lock.json ./apps/fz_http/assets/
 RUN cd apps/fz_http/assets && npm ci --progress=false --no-audit --loglevel=error
 COPY apps/fz_http/priv apps/fz_http/priv
@@ -23,5 +25,4 @@ RUN npm run --prefix ./apps/fz_http/assets deploy && \
 COPY rel rel
 COPY config config
 COPY apps apps
-COPY deps deps
 RUN mix release
