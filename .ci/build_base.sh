@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -e
+set -xe
 
 case $MATRIX_IMAGE in
   amazonlinux*)
@@ -20,6 +20,7 @@ case $MATRIX_IMAGE in
 esac
 
 docker buildx build \
+  --pull \
   --push \
   --platform linux/amd64 \
   --tag ghcr.io/firezone/$MATRIX_IMAGE \
