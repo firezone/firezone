@@ -61,6 +61,7 @@ case $format in
     version=0.2.0-1
     pkg_dir="firezone-${version}.x86_64"
     pkg_file="${pkg_dir}.rpm"
+    file_pkg_file="${pkg_dir}.${MATRIX_IMAGE/:*/}"
     image="ghcr.io/firezone/package-${MATRIX_IMAGE/:/_}:${GITHUB_SHA}"
 
     docker buildx build \
@@ -77,5 +78,6 @@ case $format in
     cid=$(docker create $image)
     mkdir -p _build
     docker cp $cid:/root/rpmbuild/RPMS/x86_64/$pkg_file ./_build/$pkg_file
+    mv _build/$pkg_file _build/$final_pkg_file
     ;;
 esac
