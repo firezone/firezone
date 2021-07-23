@@ -23,7 +23,5 @@ RUN npm run --prefix ./apps/fz_http/assets deploy && \
 COPY rel rel
 COPY config config
 COPY apps apps
-RUN ls -al .
-RUN tree ./
-# COPY deps deps
+COPY deps deps
 RUN mix release
