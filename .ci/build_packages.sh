@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-set -e
+set -xe
 
 base_image="ghcr.io/firezone/${MATRIX_IMAGE}"
-tag="ghcr.io/firezone/release-${MATRIX_IMAGE}"
+tag="ghcr.io/firezone/release-${MATRIX_IMAGE}:${GITHUB_SHA}"
 
 case $MATRIX_IMAGE in
   amazonlinux*)
@@ -21,8 +21,6 @@ case $MATRIX_IMAGE in
     format="deb"
     ;;
 esac
-
-docker buildx prune -f --all
 
 # Build intermediate release image
 docker buildx build \
