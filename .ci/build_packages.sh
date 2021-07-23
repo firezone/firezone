@@ -22,6 +22,8 @@ case $MATRIX_IMAGE in
     ;;
 esac
 
+docker buildx prune -f --all
+
 # Build intermediate release image
 docker buildx build \
   --pull \
