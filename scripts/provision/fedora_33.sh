@@ -12,4 +12,5 @@ yum install -y \
 postgresql-setup initdb
 systemctl restart postgresql
 
-which wg
+rpm -ivh /tmp/firezone*.rpm
+service firezone start
