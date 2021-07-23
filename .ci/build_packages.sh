@@ -24,6 +24,7 @@ esac
 
 # Build intermediate release image
 docker buildx build \
+  --no-cache \
   --pull \
   --push \
   -f pkg/Dockerfile.release \
