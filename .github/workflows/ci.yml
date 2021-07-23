@@ -127,7 +127,7 @@ jobs:
           name: firezone
           path: ./
       - run: |
-          vagrant cloud auth login --token ${VAGRANT_TOKEN}
+          vagrant cloud auth login --token ${{ secrets.VAGRANT_TOKEN }}
       - uses: actions/cache@v2
         with:
           path: |

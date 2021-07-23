@@ -10,4 +10,5 @@ apt-get install -y -q \
   wireguard-tools
 service postgresql start
 
-which wg
+dpkg -i /tmp/firezone*.deb
+service firezone start
