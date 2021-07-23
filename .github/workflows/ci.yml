@@ -46,14 +46,14 @@ jobs:
           sudo -E bash -c '.ci/install_runtimes.sh'
       - name: Install Dependencies
         run: .ci/install_dependencies.sh
-      # - uses: actions/cache@v2
-      #   with:
-      #     path: |
-      #       deps
-      #       _build
-      #     key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
-      #     restore-keys: |
-      #       ${{ runner.os }}-mix-
+      - uses: actions/cache@v2
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-
       - name: Setup Database
         run: |
           mix ecto.create
@@ -100,33 +100,21 @@ jobs:
 
       - uses: actions/upload-artifact@v2
         with:
-          name: firezone_${{ matrix.os }}_${{ matrix.platform }}
-          path: _build/firezone_${{ matrix.os }}_*.*
+          name: firezone
+          path: |
+            _build/firezone*.rpm
+            _build/firezone*.deb
 
   functional-test:
     needs: build
-    runs-on: ubuntu-20.04
-    strategy:
-      matrix:
-        os:
-          # - amazonlinux_2
-          # - centos_7
-          # - centos_8
-          # - debian_10
-          # - fedora_33
-          # - fedora_34
-          # - fedora_35
-          # - ubuntu_18.04
-          - ubuntu_20.04
-    env:
-      MATRIX_OS: ${{ matrix.os }}
-      DEBIAN_FRONTEND: noninteractive
+    runs-on: macos-latest # macos supports Virtualbox / Vagrant
     steps:
       - uses: actions/checkout@v2
       - uses: actions/download-artifact@v2
         with:
-          name: firezone_${{ matrix.os }}_amd64.deb
+          name: firezone
           path: ./
+      - run: ls -al
       - name: Test Install package
         run: .ci/functional_test.sh
 
