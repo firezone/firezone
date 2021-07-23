@@ -126,6 +126,8 @@ jobs:
         with:
           name: firezone
           path: ./
+      - run: |
+          vagrant cloud login --token ${VAGRANT_TOKEN}
       - uses: actions/cache@v2
         with:
           path: |
