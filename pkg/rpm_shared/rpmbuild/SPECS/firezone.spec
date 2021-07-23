@@ -7,7 +7,7 @@ License:    ASL 2.0
 Requires:   libc6
 Requires:   net-tools
 Requires:   wireguard-tools
-Requires:   postgresql-server
+Requires:   postgresql-server >= 9.6
 Requires:   openssl
 Requires:   systemd
 Requires:   iptables
