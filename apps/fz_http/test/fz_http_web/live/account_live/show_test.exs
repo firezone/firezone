@@ -65,6 +65,9 @@ defmodule FzHttpWeb.AccountLive.ShowTest do
       |> element("button.delete")
       |> render_click()
 
+      # Sometimes assert_patched fails without this :-(
+      Process.sleep(100)
+
       assert_patched(view, Routes.account_show_path(conn, :show))
     end
   end
