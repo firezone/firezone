@@ -61,7 +61,7 @@ case $format in
     version=0.2.0-1
     pkg_dir="firezone-${version}.x86_64"
     pkg_file="${pkg_dir}.rpm"
-    file_pkg_file="${pkg_dir}.${MATRIX_IMAGE/:*/}"
+    final_pkg_file="${pkg_dir}.${MATRIX_IMAGE/:*/}"
     image="ghcr.io/firezone/package-${MATRIX_IMAGE/:/_}:${GITHUB_SHA}"
 
     docker buildx build \
