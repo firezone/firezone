@@ -126,6 +126,11 @@ jobs:
         with:
           name: firezone
           path: ./
+      - uses: actions/cache@v2
+        with:
+          path: |
+            ~/.vagrant.d/boxes
+          key: ${{ runner.os }}-${{ matrix.os }}
       - run: vagrant up ${{ matrix.os }}
       - run: .ci/functional_test.sh
 
