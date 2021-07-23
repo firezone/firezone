@@ -19,7 +19,6 @@ jobs:
           - ubuntu-20.04
           - ubuntu-18.04
         postgres:
-          - postgres:9.2
           - postgres:9.6
           - postgres:10
           - postgres:11
