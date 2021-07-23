@@ -29,10 +29,6 @@ Vagrant.configure('2') do |config|
     fedora34.vm.box = "generic/fedora34"
   end
 
-  config.vm.define "fedora_35" do |fedora35|
-    fedora35.vm.box = "generic/fedora35"
-  end
-
   config.vm.define "ubuntu_18.04" do |ubuntu1804|
     ubuntu1804.vm.box = "generic/ubuntu1804"
   end

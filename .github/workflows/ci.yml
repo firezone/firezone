@@ -85,7 +85,6 @@ jobs:
           - debian:10
           - fedora:33
           - fedora:34
-          - fedora:35
           - ubuntu:18.04
           - ubuntu:20.04
     steps:
@@ -119,7 +118,6 @@ jobs:
           - debian_10
           - fedora_33
           - fedora_34
-          - fedora_35
           - ubuntu_18.04
           - ubuntu_20.04
     steps:
@@ -146,7 +144,6 @@ jobs:
           - centos_8
           - fedora_33
           - fedora_34
-          - fedora_35
     if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
     steps:
       - name: Create Release
