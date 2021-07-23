@@ -108,6 +108,20 @@ jobs:
   functional-test:
     needs: build
     runs-on: macos-latest # macos supports Virtualbox / Vagrant
+    env:
+      MATRIX_OS: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os:
+          - amazonlinux_2
+          - centos_7
+          - centos_8
+          - debian_10
+          - fedora_33
+          - fedora_34
+          - fedora_35
+          - ubuntu_18.04
+          - ubuntu_20.04
     steps:
       - uses: actions/checkout@v2
       - uses: actions/download-artifact@v2

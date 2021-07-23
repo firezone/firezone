@@ -1,23 +1,43 @@
 # -*- mode: ruby -*-
 # vi: set ft=ruby :
+
+# This Vagrantfile is used for functional testing in the CI pipeline.
+# Github Actions supports vagrant on the macos host.
 Vagrant.configure('2') do |config|
-  config.vm.provider 'virtualbox' do |vbox|
-    # Speed up compiles
-    vbox.cpus = 4
+
+  config.vm.define "amazonlinux_2" do |vm|
+    vm.box = "bento/amazonlinux-2"
   end
 
-  config.vm.box = 'ubuntu/focal64'
-  config.vm.hostname = 'firezone.local'
+  config.vm.define "centos_7" do |vm|
+    vm.box = "generic/centos7"
+  end
 
-  # Web
-  config.vm.network 'forwarded_port', guest: 8800, host: 8800, protocol: 'tcp'
+  config.vm.define "centos_8" do |vm|
+    vm.box = "generic/centos8"
+  end
 
-  # VPN
-  config.vm.network 'forwarded_port', guest: 51820, host: 51820, protocol: 'udp'
+  config.vm.define "debian_10" do |vm|
+    vm.box = "generic/debian10"
+  end
 
-  # Disabling Ansible provisioner for now in favor of a vanilla Ubuntu VM.
-  # config.vm.provision 'ansible' do |ansible|
-  #   ansible.playbook = 'ansible/playbook.yml'
-  #   ansible.verbose = true
-  # end
+  config.vm.define "fedora_33" do |vm|
+    vm.box = "generic/fedora33"
+  end
+
+  config.vm.define "fedora_34" do |vm|
+    vm.box = "generic/fedora34"
+  end
+
+  config.vm.define "fedora_35" do |vm|
+    vm.box = "generic/fedora35"
+  end
+
+  config.vm.define "ubuntu_18.04" do |vm|
+    vm.box = "generic/ubuntu1804"
+  end
+
+  config.vm.define "ubuntu_20.04" do |vm|
+    vm.box = "generic/ubuntu2004"
+  end
 end
