@@ -39,7 +39,7 @@ case $format in
   deb)
     pkg_dir="${MATRIX_IMAGE/:/_}_amd64"
     pkg_file="${pkg_dir}.deb"
-    image="ghcr.io/firezone/${pkg_dir}:latest"
+    image="ghcr.io/firezone/package-${MATRIX_IMAGE/:/_}:${GITHUB_SHA}"
 
     docker buildx build \
       --pull \
@@ -61,7 +61,7 @@ case $format in
     version=0.2.0-1
     pkg_dir="firezone-${version}.x86_64"
     pkg_file="${pkg_dir}.rpm"
-    image="ghcr.io/firezone/${MATRIX_IMAGE/:/_}_amd64:latest"
+    image="ghcr.io/firezone/package-${MATRIX_IMAGE/:/_}:${GITHUB_SHA}"
 
     docker buildx build \
       --pull \
