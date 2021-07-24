@@ -1,5 +1,4 @@
 # Caches vagrant boxes for github actions. Modifications to this file will evict the cache to redownload boxes.
-bento/amazonlinux-2
 generic/centos7
 generic/centos8
 generic/debian10

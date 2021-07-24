@@ -5,9 +5,6 @@ base_image="ghcr.io/firezone/${MATRIX_IMAGE}"
 tag="ghcr.io/firezone/release-${MATRIX_IMAGE/:/_}:${GITHUB_SHA}"
 
 case $MATRIX_IMAGE in
-  amazonlinux*)
-    format="rpm"
-    ;;
   centos*)
     format="rpm"
     ;;
