@@ -130,7 +130,7 @@ jobs:
         with:
           path: |
             ~/.vagrant.d/boxes
-          key: ${{ runner.os }}-${{ hashFiles('.ci/vagrant-runner-cache') }}
+          key: ${{ matrix.os }}
       - run: vagrant up ${{ matrix.os }}
       - run: .ci/functional_test.sh
 
