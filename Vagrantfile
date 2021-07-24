@@ -5,14 +5,6 @@
 # Github Actions supports vagrant on the macos host.
 Vagrant.configure('2') do |config|
 
-  config.vm.define "amazonlinux_2" do |amazonlinux2|
-    amazonlinux2.vm.box = "bento/amazonlinux-2"
-    amazonlinux2.vm.network "forwarded_port", guest: 8800, host: 8800
-    source_file = Dir["firezone*amazonlinux_2*.rpm"].first
-    amazonlinux2.vm.provision "file", source: source_file, destination: "/tmp/"
-    amazonlinux2.vm.provision "shell", path: "scripts/provision/amazonlinux_2.sh"
-  end
-
   config.vm.define "centos_7" do |centos7|
     centos7.vm.box = "generic/centos7"
     centos7.vm.network "forwarded_port", guest: 8800, host: 8800

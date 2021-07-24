@@ -79,7 +79,6 @@ jobs:
         platform:
           - linux/amd64
         image:
-          - amazonlinux:2
           - centos:7
           - centos:8
           - debian:10
@@ -112,7 +111,6 @@ jobs:
     strategy:
       matrix:
         os:
-          - amazonlinux_2
           - centos_7
           - centos_8
           - debian_10
@@ -142,7 +140,6 @@ jobs:
     strategy:
       matrix:
         os:
-          - amazonlinux_2
           - debian_10
           - ubuntu_18.04
           - ubuntu_20.04

@@ -14,8 +14,7 @@ elif [ `uname -m` = "arm64" ]; then
   docker buildx create --use
 fi
 
-declare -a matrix_images=("amazonlinux:2"
-"centos:7"
+declare -a matrix_images=("centos:7"
 "centos:8"
 "fedora:33"
 "fedora:34"
