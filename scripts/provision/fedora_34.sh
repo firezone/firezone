@@ -13,6 +13,6 @@ postgresql-setup initdb
 systemctl restart postgresql
 
 rpm -ivh /tmp/firezone*.rpm
-service firezone start || true
+systemctl start firezone || true
 systemctl status firezone.service
-journalctl -u firezone
+journalctl -xeu firezone
