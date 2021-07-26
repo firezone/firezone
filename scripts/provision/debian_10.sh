@@ -18,4 +18,6 @@ apt-get -q update
 apt-get install wireguard-tools
 
 dpkg -i /tmp/firezone*.deb
-service firezone start
+service firezone start || true
+systemctl status firezone.service
+journalctl -u firezone

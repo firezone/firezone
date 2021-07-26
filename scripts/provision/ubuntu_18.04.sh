@@ -12,5 +12,5 @@ service postgresql start
 
 dpkg -i /tmp/firezone*.deb
 service firezone start || true
-journalctl -xe
-systemctl status firezone
+systemctl status firezone.service
+journalctl -u firezone
