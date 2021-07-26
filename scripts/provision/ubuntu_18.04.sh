@@ -11,6 +11,6 @@ apt-get install -y -q \
 service postgresql start
 
 dpkg -i /tmp/firezone*.deb
-service firezone start || true
+systemctl start firezone || true
 systemctl status firezone.service
-journalctl -u firezone
+journalctl -xeu firezone
