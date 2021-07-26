@@ -1,5 +1,5 @@
 #!/bin/bash
-set -xe
+set -x
 
 # Install prerequisites
 yum install -y \
@@ -17,6 +17,6 @@ yum install -y yum-plugin-elrepo
 yum install -y kmod-wireguard wireguard-tools
 
 rpm -ivh /tmp/firezone*.rpm
-systemctl start firezone || true
+systemctl start firezone
 systemctl status firezone.service
 journalctl -xeu firezone

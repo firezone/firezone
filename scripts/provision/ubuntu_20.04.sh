@@ -1,5 +1,5 @@
 #!/bin/bash
-set -xe
+set -x
 
 apt-get install -y -q \
   net-tools \
