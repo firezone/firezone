@@ -11,7 +11,7 @@ apt-get install -y -q \
 service postgresql start
 
 # Add Backports repo
-echo "deb http://deb.debian.org/debian buster-backports main" > /etc/apt/sources.list.d/backports
+echo "deb http://deb.debian.org/debian buster-backports main" > /etc/apt/sources.list.d/backports.list
 apt-get -q update
 
 # Install WireGuard
