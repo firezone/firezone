@@ -7,7 +7,7 @@ defaults:
 
 jobs:
   unit-integration-test:
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-18.04
     env:
       MIX_ENV: test
       POSTGRES_HOST: localhost
@@ -15,9 +15,6 @@ jobs:
       MATRIX_OS: ubuntu-18.04
     strategy:
       matrix:
-        os:
-          - ubuntu-20.04
-          - ubuntu-18.04
         postgres:
           - postgres:9.6
           - postgres:10
@@ -39,13 +36,18 @@ jobs:
           --health-retries 5
     steps:
       - name: Install package dependencies
-        run: sudo apt-get install net-tools wireguard unzip gdebi
-      - uses: actions/checkout@v2
-      - name: Install Runtimes
         run: |
-          sudo -E bash -c '.ci/install_runtimes.sh'
-      - name: Install Dependencies
-        run: .ci/install_dependencies.sh
+          sudo apt-get install -q -y \
+            net-tools \
+            wireguard
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v2
+        with:
+          node-version: '14'
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: '24.0'
+          elixir-version: '1.12'
       - uses: actions/cache@v2
         with:
           path: |
@@ -54,17 +56,14 @@ jobs:
           key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
           restore-keys: |
             ${{ runner.os }}-mix-
+      - name: Install Dependencies
+        run: mix do deps.get, deps.compile
       - name: Setup Database
         run: |
           mix ecto.create
           mix ecto.migrate
       - name: Run Tests and Upload Coverage Report
         run: mix coveralls.github --umbrella
-      - uses: actions/upload-artifact@v2
-        if: ${{ always() }}
-        with:
-          name: test screenshots
-          path: apps/fz_http/screenshots
 
   build:
     needs: unit-integration-test
