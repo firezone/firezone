@@ -5,7 +5,7 @@ ARG PKG_DIR
 
 # Copy shared files
 COPY pkg/rpm_shared/rpmbuild rpmbuild
-RUN rsync -avz pkg/skel/* rpmbuild/BUILDROOT/$PKG_DIR/
+COPY pkg/skel/ rpmbuild/BUILDROOT/$PKG_DIR/
 RUN rsync -az _build/prod/rel/firezone/* rpmbuild/BUILDROOT/$PKG_DIR/usr/lib/firezone/
 RUN mkdir -p rpmbuild/BUILDROOT/$PKG_DIR/usr/bin
 RUN cd rpmbuild/BUILDROOT/$PKG_DIR/usr/bin && ln -s ../lib/firezone/bin/firezone
