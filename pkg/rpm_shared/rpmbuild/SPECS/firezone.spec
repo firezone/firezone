@@ -24,6 +24,6 @@ set up firewall rules for your devices.
 
 %files
 %config /etc/firezone
-/lib/systemd/system/firezone.service
+/usr/lib/systemd/system/firezone.service
 /usr/lib/firezone
 /usr/bin/firezone
