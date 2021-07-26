@@ -56,7 +56,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-mix-
       - name: Install Dependencies
-        run: mix do deps.get, deps.compile
+        run: mix deps.get --only test
       - name: Setup Database
         run: |
           mix ecto.create
