@@ -15,7 +15,8 @@ echo "deb http://deb.debian.org/debian buster-backports main" > /etc/apt/sources
 apt-get -q update
 
 # Install WireGuard
-apt-get install wireguard-tools
+apt-get install -y -q \
+  wireguard-tools
 
 dpkg -i /tmp/firezone*.deb
 systemctl start firezone || true
