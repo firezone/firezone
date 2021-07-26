@@ -60,27 +60,27 @@ defmodule FzHttp.TestHelpers do
     {:ok, session: session}
   end
 
-  def create_allow_rule(tags) do
+  def create_allow_rule do
     rule = Fixtures.rule(%{action: :allow})
     {:ok, rule: rule}
   end
 
-  def create_deny_rule(tags) do
+  def create_deny_rule do
     rule = Fixtures.rule(%{action: :deny})
     {:ok, rule: rule}
   end
 
-  def create_rule(tags) do
+  def create_rule do
     rule = Fixtures.rule(%{})
     {:ok, rule: rule}
   end
 
-  def create_rule6(tags) do
+  def create_rule6 do
     rule = Fixtures.rule6(%{})
     {:ok, rule6: rule}
   end
 
-  def create_rule4(tags) do
+  def create_rule4 do
     rule = Fixtures.rule4(%{})
     {:ok, rule4: rule}
   end
@@ -88,7 +88,7 @@ defmodule FzHttp.TestHelpers do
   @doc """
   XXX: Mimic a more realistic setup.
   """
-  def create_rules(tags) do
+  def create_rules do
     rules =
       1..5
       |> Enum.map(fn num ->
