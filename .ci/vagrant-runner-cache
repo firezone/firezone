@@ -1,8 +1,0 @@
-# Caches vagrant boxes for github actions. Modifications to this file will evict the cache to redownload boxes.
-generic/centos7
-generic/centos8
-generic/debian10
-generic/fedora33
-generic/fedora34
-generic/ubuntu1804
-generic/ubuntu2004
