@@ -6,6 +6,7 @@ ARG PKG_DIR
 # Copy shared files
 COPY pkg pkg
 RUN rsync -avz pkg/skel/* pkg/$PKG_DIR/
+RUN rsync -avz pkg/deb_shared/* pkg/$PKG_DIR/
 RUN rsync -avz _build/prod/rel/firezone/* pkg/$PKG_DIR/usr/lib/firezone/
 RUN mkdir -p pkg/$PKG_DIR/usr/bin
 RUN cd pkg/$PKG_DIR/usr/bin && ln -s ../lib/firezone/bin/firezone
