@@ -2,7 +2,7 @@ name: Build base images
 on:
   workflow_dispatch:
   schedule:
-    - cron: '10 0 * * *' # 10am UTC
+    - cron: '0 10 * * *' # 10am UTC
 
 jobs:
   build-and-push:
