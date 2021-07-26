@@ -4,7 +4,6 @@ Release:    1
 Summary:    Web UI + Firewall manager for WireGuard™
 URL:        https://firez.one
 License:    ASL 2.0
-Requires:   libc6
 Requires:   net-tools
 Requires:   wireguard-tools
 Requires:   postgresql-server >= 9.6
