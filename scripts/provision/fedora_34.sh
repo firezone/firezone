@@ -9,10 +9,10 @@ yum install -y \
   systemd \
   iptables \
   wireguard-tools
-postgresql-setup initdb
+postgresql-setup --initdb --unit postgresql
 systemctl restart postgresql
 
 rpm -ivh /tmp/firezone*.rpm
-systemctl start firezone || true
+systemctl start firezone
 systemctl status firezone.service
 journalctl -xeu firezone

@@ -8,7 +8,7 @@ yum install -y \
   postgresql-server \
   systemd \
   iptables
-postgresql-setup initdb
+postgresql-setup --initdb --unit postgresql
 systemctl restart postgresql
 
 # Install WireGuard
