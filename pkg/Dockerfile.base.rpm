@@ -21,7 +21,6 @@ RUN yum install -y \
     glibc-all-langpacks \
     rpmdevtools \
     rpmlint
-ENV SHELL /bin/zsh
 
 # Restore missing locales from base image
 RUN yum reinstall glibc-common -y && \
