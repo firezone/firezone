@@ -1,0 +1,5 @@
+#!/bin/bash
+set -e
+
+# Call the post removal script
+. /usr/lib/firezone/bin/postrm.sh

@@ -1,0 +1,6 @@
+#!/bin/bash
+set -e
+
+# Call the post installation script
+echo "Executing post-installation setup..."
+. /usr/lib/firezone/bin/postinst.sh
