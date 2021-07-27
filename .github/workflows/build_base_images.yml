@@ -12,12 +12,10 @@ jobs:
     strategy:
       matrix:
         image:
-          - amazonlinux:2
           - centos:7
           - centos:8
           - fedora:33
           - fedora:34
-          - fedora:35
           - debian:10
           - ubuntu:18.04
           - ubuntu:20.04
