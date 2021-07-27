@@ -21,8 +21,6 @@ esac
 
 # Build intermediate release image
 docker buildx build \
-  --pull \
-  --push \
   -f pkg/Dockerfile.release \
   -t $tag \
   --platform linux/amd64 \
@@ -41,8 +39,6 @@ case $format in
     image="ghcr.io/firezone/package-${MATRIX_IMAGE/:/_}:${GITHUB_SHA}"
 
     docker buildx build \
-      --pull \
-      --push \
       --tag $image \
       -f pkg/Dockerfile.deb \
       --platform linux/amd64 \
@@ -53,7 +49,7 @@ case $format in
 
     cid=$(docker create $image)
     mkdir -p _build
-    docker cp $cid:/root/pkg/$pkg_file ./_build/$final_pkg_file
+    docker cp $cid:/root/$pkg_file ./_build/$final_pkg_file
     ;;
 
   rpm)
@@ -65,8 +61,6 @@ case $format in
     image="ghcr.io/firezone/package-${MATRIX_IMAGE/:/_}:${GITHUB_SHA}"
 
     docker buildx build \
-      --pull \
-      --push \
       -t $image \
       -f pkg/Dockerfile.rpm \
       --platform linux/amd64 \
