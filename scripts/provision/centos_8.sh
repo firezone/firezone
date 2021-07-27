@@ -29,7 +29,7 @@ set -o allexport; source /etc/firezone/secret/secrets.env; set +o allexport
 echo "DB USER: ${DB_USER}"
 echo "DB PASS: ${DB_PASSWORD}"
 
-PG_PASSWORD=$DB_PASSWORD PGUSER=$DB_USER psql -U $DB_USER -h 127.0.0.1 -d firezone -c '\dt'
+PGPASSWORD=$DB_PASSWORD PGUSER=$DB_USER psql -U $DB_USER -h 127.0.0.1 -d firezone -c '\dt'
 
 systemctl start firezone.service
 systemctl status firezone.service
