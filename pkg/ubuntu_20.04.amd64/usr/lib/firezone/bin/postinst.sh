@@ -64,12 +64,11 @@ db_key="$(openssl rand -base64 32)"
 wg_server_key="$(wg genkey)"
 
 # Write FireZone config file
-if [ -f /etc/firezone/secret.env ]; then
+if [ -f /etc/firezone/secret/secrets.env ]; then
   echo "config file exists; not creating"
 else
-
-umask 037
-cat <<EOT >> /etc/firezone/secret/secrets.env
+  umask 037
+  cat <<EOT > /etc/firezone/secret/secrets.env
 # This file is loaded into FireZone's Environment upon launch to configure it.
 
 # Warning: changing anything here can result in data loss. Make sure you know

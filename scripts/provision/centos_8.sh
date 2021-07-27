@@ -22,6 +22,10 @@ yum install -y epel-release elrepo-release
 yum install -y kmod-wireguard wireguard-tools
 
 rpm -ivh /tmp/firezone*.rpm
+
+cat /etc/firezone/secret/secrets.env
+cat /etc/firezone/config.env
+
 systemctl start firezone.service
 systemctl status firezone.service
 journalctl -xeu firezone
