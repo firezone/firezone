@@ -8,7 +8,8 @@ apt-get install -y -q \
   postgresql \
   systemd \
   wireguard-tools
-service postgresql start
+systemctl enable postgresql
+systemctl start postgresql
 
 dpkg -i /tmp/firezone*.deb
 systemctl start firezone || true

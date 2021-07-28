@@ -8,7 +8,8 @@ apt-get install -y -q \
   openssl \
   postgresql \
   systemd
-service postgresql start
+systemctl enable postgresql
+systemctl start postgresql
 
 # Add Backports repo
 echo "deb http://deb.debian.org/debian buster-backports main" > /etc/apt/sources.list.d/backports.list
