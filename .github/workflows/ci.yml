@@ -145,7 +145,7 @@ jobs:
           - centos_8
           - fedora_33
           - fedora_34
-    # if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/')
     steps:
       - name: Create Release
         id: create_release
