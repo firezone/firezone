@@ -22,15 +22,7 @@ yum install -y epel-release elrepo-release
 yum install -y kmod-wireguard wireguard-tools
 
 rpm -ivh /tmp/firezone*.rpm
-
-echo "sourcing secrets file"
-set -o allexport; source /etc/firezone/secret/secrets.env; set +o allexport
-
-echo "DB USER: ${DB_USER}"
-echo "DB PASS: ${DB_PASSWORD}"
-
-PGPASSWORD=$DB_PASSWORD PGUSER=$DB_USER psql -U $DB_USER -h 127.0.0.1 -d firezone -c '\dt'
-
 systemctl start firezone.service
+tail -n 500 /var/log/audit/audit.log
 systemctl status firezone.service
 journalctl -xeu firezone

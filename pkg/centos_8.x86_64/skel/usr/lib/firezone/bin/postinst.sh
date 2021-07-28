@@ -85,9 +85,6 @@ LIVE_VIEW_SIGNING_SALT="${live_view_signing_salt}"
 # will be signed out.
 SECRET_KEY_BASE="${secret_key_base}"
 
-DB_USER=${db_user}
-DB_PASSWORD=${db_password}
-
 # The URL to connect to your DB. Assumes the database has been created and this
 # user has privileges to create and modify tables. Must start with ecto://
 # Ex: ecto://user:password@localhost/firezone
