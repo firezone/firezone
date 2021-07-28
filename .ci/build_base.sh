@@ -2,9 +2,6 @@
 set -xe
 
 case $MATRIX_IMAGE in
-  amazonlinux*)
-    format="rpm"
-    ;;
   centos*)
     format="rpm"
     ;;
