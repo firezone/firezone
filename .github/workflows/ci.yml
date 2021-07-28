@@ -145,7 +145,7 @@ jobs:
           - centos_8
           - fedora_33
           - fedora_34
-    if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
+    # if: startsWith(github.ref, 'refs/tags/')
     steps:
       - name: Create Release
         id: create_release
@@ -159,15 +159,21 @@ jobs:
           prerelease: true
       - uses: actions/download-artifact@v2
         with:
-          name: firezone_${{ matrix.os }}_amd64
+          name: firezone
           path: ./
-      - name: Upload Release Asset
-        id: upload-release-asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Release
+        uses: softprops/action-gh-release@v1
         with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./firezone_${{ matrix.os }}_amd64.deb
-          asset_name: ${{ matrix.os }}_amd64
-          asset_content_type: application/vnd.debian.binary-package
+          files: |
+            firezone*.deb
+            firezone*.rpm
+      # - name: Upload Release Asset
+      #   id: upload-release-asset
+      #   uses: actions/upload-release-asset@v1
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #   with:
+      #     upload_url: ${{ steps.create_release.outputs.upload_url }}
+      #     asset_path: ./firezone*
+      #     asset_name: ${{ matrix.os }}_amd64
+      #     asset_content_type: application/vnd.debian.binary-package
