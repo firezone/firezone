@@ -23,6 +23,5 @@ yum install -y kmod-wireguard wireguard-tools
 
 rpm -ivh /tmp/firezone*.rpm
 systemctl start firezone.service
-tail -n 500 /var/log/audit/audit.log
 systemctl status firezone.service
 journalctl -xeu firezone

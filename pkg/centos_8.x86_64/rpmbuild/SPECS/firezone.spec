@@ -6,7 +6,7 @@ URL:        https://firez.one
 License:    ASL 2.0
 Requires:   net-tools
 Requires:   wireguard-tools
-Requires:   postgresql-server >= 9.6
+Requires:   postgresql-server
 Requires:   openssl
 Requires:   systemd
 Requires:   iptables
@@ -24,6 +24,6 @@ set up firewall rules for your devices.
 
 %files
 %config /etc/firezone
-/usr/lib/systemd/system/firezone.service
+%attr(0644, root, root) /usr/lib/systemd/system/firezone.service
 /usr/lib/firezone
 /usr/bin/firezone

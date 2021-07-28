@@ -12,7 +12,6 @@ EnvironmentFile=/etc/firezone/config.env
 EnvironmentFile=/etc/firezone/secret/secrets.env
 ExecStartPre=/usr/lib/firezone/bin/firezone eval "FzHttp.Release.migrate"
 ExecStart=/usr/lib/firezone/bin/firezone start
-# XXX: Remove sleeps
 ExecStartPost=/bin/sleep 8
 ExecStartPost=/usr/lib/firezone/bin/firezone rpc "FzHttp.Release.create_admin_user"
 
