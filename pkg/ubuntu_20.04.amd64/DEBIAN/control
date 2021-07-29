@@ -1,8 +1,8 @@
 Package: firezone
 Version: 0.2.0-1
 Architecture: amd64
-Maintainer: FireZone, LLC <dpkg@firez.one>
-Depends: libc6, net-tools (>= 1.60), systemd (>= 237), openssl (>= 1.1.1), wireguard-tools (>= 1.0), postgresql, iptables (>= 1.6.1)
+Maintainer: FireZone <dpkg@firez.one>
+Depends: libc6, net-tools (>= 1.60), systemd (>= 237), openssl (>= 1.1.1), wireguard (>= 1.0), wireguard-tools (>= 1.0), postgresql, iptables (>= 1.6.1)
 Section: net
 Priority: optional
 Homepage: https://firez.one
