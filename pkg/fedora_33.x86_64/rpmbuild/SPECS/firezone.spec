@@ -128,4 +128,3 @@ echo "  rm -rf /etc/firezone/secret"
 %config /etc/firezone
 %attr(0644, root, root) /lib/systemd/system/firezone.service
 /usr/lib/firezone
-/usr/bin/firezone

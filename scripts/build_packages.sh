@@ -14,6 +14,8 @@ elif [ `uname -m` = "arm64" ]; then
   docker buildx create --use
 fi
 
+export GITHUB_SHA=$(git rev-parse --short HEAD)
+
 # If MATRIX_IMAGE is defined, build it, otherwise build all
 if [ -n "$MATRIX_IMAGE" ]; then
   .ci/build_packages.sh
@@ -29,9 +31,7 @@ else
 
   for image in "${matrix_images[@]}"; do
     # Mimic CI pipeline variables
-    export GITHUB_SHA=$(git rev-parse --short HEAD)
     export MATRIX_IMAGE=$image
-
     .ci/build_packages.sh &
   done
 fi

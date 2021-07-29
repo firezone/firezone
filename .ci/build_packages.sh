@@ -2,7 +2,7 @@
 set -xe
 
 base_image="ghcr.io/firezone/${MATRIX_IMAGE}"
-tag="ghcr.io/firezone/release-${MATRIX_IMAGE/:/_}:${GITHUB_SHA}"
+tag="ghcr.io/firezone/release-${MATRIX_IMAGE/:/_}"
 
 case $MATRIX_IMAGE in
   centos*)
@@ -21,6 +21,7 @@ esac
 
 # Build intermediate release image
 docker buildx build \
+  --no-cache \
   --pull \
   --push \
   -f pkg/Dockerfile.release \
@@ -38,12 +39,13 @@ case $format in
     pkg_dir="${MATRIX_IMAGE/:/_}.amd64"
     pkg_file="${pkg_dir}.deb"
     final_pkg_file="firezone-${version}-${pkg_file}"
-    image="ghcr.io/firezone/package-${MATRIX_IMAGE/:/_}:${GITHUB_SHA}"
+    image="ghcr.io/firezone/package-${MATRIX_IMAGE/:/_}"
 
     docker buildx build \
-      --pull \
       --push \
-      --tag $image \
+      --pull \
+      --no-cache \
+      -t $image \
       -f pkg/Dockerfile.deb \
       --platform linux/amd64 \
       --build-arg PKG_DIR=$pkg_dir \
@@ -62,11 +64,12 @@ case $format in
     pkg_file="${pkg_dir}.rpm"
     os_dir="${MATRIX_IMAGE/:/_}.x86_64"
     final_pkg_file="firezone-${version}-${MATRIX_IMAGE/:/_}.x86_64.rpm"
-    image="ghcr.io/firezone/package-${MATRIX_IMAGE/:/_}:${GITHUB_SHA}"
+    image="ghcr.io/firezone/package-${MATRIX_IMAGE/:/_}"
 
     docker buildx build \
-      --pull \
       --push \
+      --pull \
+      --no-cache \
       -t $image \
       -f pkg/Dockerfile.rpm \
       --platform linux/amd64 \

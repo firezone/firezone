@@ -6,6 +6,4 @@ ARG PKG_DIR
 COPY pkg/$PKG_DIR $PKG_DIR
 RUN mkdir -p $PKG_DIR/usr/lib/firezone
 RUN rsync -az _build/prod/rel/firezone/* $PKG_DIR/usr/lib/firezone/
-RUN mkdir -p $PKG_DIR/usr/bin
-RUN cd $PKG_DIR/usr/bin && ln -s ../lib/firezone/bin/firezone
 RUN dpkg-deb --build $PKG_DIR
