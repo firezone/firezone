@@ -17,6 +17,7 @@ apt-get -q update
 
 # Install WireGuard
 apt-get install -y -q \
+  wireguard \
   wireguard-tools
 
 dpkg -i /tmp/firezone*.deb
