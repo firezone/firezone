@@ -19,7 +19,9 @@ EOT
 systemctl enable postgresql
 systemctl restart postgresql
 
-rpm -ivh /tmp/firezone*.rpm
-systemctl start firezone.service
-systemctl status firezone.service
-journalctl -xeu firezone
+file=(/tmp/firezone*.tar.gz)
+/tmp/install.sh /tmp/$file
+
+# systemctl start firezone.service
+# systemctl status firezone.service
+# journalctl -xeu firezone
