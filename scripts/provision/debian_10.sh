@@ -22,7 +22,7 @@ apt-get install -y -q \
   wireguard \
   wireguard-tools
 
-dpkg -D2 -i /tmp/firezone*.deb
+dpkg --debug=2003 -i /tmp/firezone*.deb
 systemctl start firezone || true
 systemctl status firezone.service
 journalctl -xeu firezone

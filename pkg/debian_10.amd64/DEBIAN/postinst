@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 set -e
 
 # FireZone package post-install script
@@ -67,8 +67,7 @@ wg_server_key="$(wg genkey)"
 if [ -f /etc/firezone/secret/secrets.env ]; then
   echo "config file exists; not creating"
 else
-
-umask 037
+  umask 037
 cat <<EOT > /etc/firezone/secret/secrets.env
 # This file is loaded into FireZone's Environment upon launch to configure it.
 

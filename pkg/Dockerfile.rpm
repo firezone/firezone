@@ -7,7 +7,5 @@ ARG OS_DIR
 COPY pkg/$OS_DIR/rpmbuild rpmbuild
 COPY pkg/$OS_DIR/skel/ rpmbuild/BUILDROOT/$PKG_DIR/
 RUN mkdir -p rpmbuild/BUILDROOT/$PKG_DIR/usr/lib/firezone
-RUN mkdir -p rpmbuild/BUILDROOT/$PKG_DIR/usr/bin
 RUN rsync -az _build/prod/rel/firezone/* rpmbuild/BUILDROOT/$PKG_DIR/usr/lib/firezone/
-RUN cd rpmbuild/BUILDROOT/$PKG_DIR/usr/bin && ln -s ../lib/firezone/bin/firezone
 RUN rpmbuild -bb rpmbuild/SPECS/firezone.spec
