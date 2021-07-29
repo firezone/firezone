@@ -1,6 +1,8 @@
 ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
 
+ARG PKG_FILE
+
 ENV MIX_ENV prod
 
 # Dockerfile-friendly build release
@@ -25,3 +27,5 @@ COPY rel rel
 COPY config config
 COPY apps apps
 RUN mix release
+
+RUN tar -zcf $PKG_FILE -C _build/prod/rel/ firezone

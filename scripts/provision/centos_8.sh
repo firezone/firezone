@@ -22,7 +22,11 @@ systemctl restart postgresql
 yum install -y epel-release elrepo-release
 yum install -y kmod-wireguard wireguard-tools
 
-rpm -ivh /tmp/firezone*.rpm
-systemctl start firezone.service
-systemctl status firezone.service
-journalctl -xeu firezone
+
+file=(/tmp/firezone*.tar.gz)
+/tmp/install.sh /tmp/$file
+
+
+# systemctl start firezone.service
+# systemctl status firezone.service
+# journalctl -xeu firezone

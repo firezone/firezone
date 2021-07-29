@@ -14,7 +14,11 @@ apt-get install -y -q \
 systemctl enable postgresql
 systemctl start postgresql
 
-dpkg -i /tmp/firezone*.deb
-systemctl start firezone
-systemctl status firezone.service
-journalctl -xeu firezone
+file=(/tmp/firezone*.tar.gz)
+/tmp/install.sh /tmp/$file
+
+
+
+# systemctl start firezone
+# systemctl status firezone.service
+# journalctl -xeu firezone
