@@ -1,6 +1,8 @@
 #!/bin/bash
 set -x
 
+export DEBIAN_FRONTEND=noninteractive
+
 # Install prerequisites
 apt-get install -y -q \
   net-tools \
@@ -20,7 +22,7 @@ apt-get install -y -q \
   wireguard \
   wireguard-tools
 
-dpkg -i /tmp/firezone*.deb
+dpkg -D2 -i /tmp/firezone*.deb
 systemctl start firezone || true
 systemctl status firezone.service
 journalctl -xeu firezone

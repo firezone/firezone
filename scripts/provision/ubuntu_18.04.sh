@@ -1,6 +1,8 @@
 #!/bin/bash
 set -x
 
+export DEBIAN_FRONTEND=noninteractive
+
 apt-get install -y -q \
   net-tools \
   iptables \
