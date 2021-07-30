@@ -126,14 +126,24 @@ jobs:
           - ubuntu_20.04
     steps:
       - uses: actions/checkout@v2
+      - uses: download-artifact@v2
+        with:
+          name: ${{ matrix.os }}
+          path: ~/.vagrant.d/boxes
+
       - run: |
           vagrant cloud auth login --token ${{ secrets.VAGRANT_TOKEN }}
-      - uses: actions/cache@v2
-        with:
-          path: |
-            ~/.vagrant.d/boxes
-          key: ${{ matrix.os }}
+      # Currently limited to 5GB per repo which is not enough. Using artifacts instead.
+      # - uses: actions/cache@v2
+      #   with:
+      #     path: |
+      #       ~/.vagrant.d/boxes
+      #     key: ${{ matrix.os }}
       - run: vagrant up ${{ matrix.os }}
+      - uses: actions/upload-artifact@v2
+        with:
+          name: ${{ matrix.os }}
+          path: ~/.vagrant/boxes
 
 
 
