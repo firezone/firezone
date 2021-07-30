@@ -19,7 +19,7 @@ sudo yum install -y \
   unzip \
   glibc-all-langpacks \
   rpmdevtools \
-  rpmlint
+  rpmlint \
   openssl \
   net-tools \
   systemd \
