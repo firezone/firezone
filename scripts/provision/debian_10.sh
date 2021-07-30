@@ -23,7 +23,7 @@ apt-get install -y -q \
   wireguard-tools
 
 file=(/tmp/firezone*.tar.gz)
-/tmp/install.sh /tmp/$file
+/tmp/install.sh $file
 
 
 
