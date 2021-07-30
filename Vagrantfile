@@ -7,9 +7,9 @@ VERSION="0.2.0-1"
 Vagrant.configure("2") do |config|
   if ENV['CI']
     # Github Actions MacOS hosts have 14 GB RAM and 3 CPU cores :-D
-    config.vm.provider :libvirt do |libvirt|
-      libvirt.cpus = 3
-      libvirt.memory = 8_192
+    config.vm.provider "virtualbox" do |virtualbox|
+      virtualbox.cpus = 3
+      virtualbox.memory = 8_192
     end
   end
 
