@@ -25,7 +25,7 @@ yum install -y kmod-wireguard wireguard-tools
 
 
 file=(/tmp/firezone*.tar.gz)
-/tmp/install.sh /tmp/$file
+/tmp/install.sh $file
 
 # systemctl start firezone.service
 # systemctl status firezone.service
