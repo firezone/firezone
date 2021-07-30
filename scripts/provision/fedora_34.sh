@@ -51,7 +51,7 @@ echo '. $HOME/.asdf/completions/asdf.bash' >> $HOME/.bashrc
 asdf plugin-add nodejs
 asdf plugin-add erlang
 asdf plugin-add elixir
-cd app
+cd /vagrant
 asdf install
 
 # Build release
@@ -62,7 +62,7 @@ mix deps.get --only prod
 mix deps.compile
 npm ci --prefix apps/fz_http/assets --progress=false --no-audit --loglevel=error
 npm run --prefix ./apps/fz_http/assets deploy
-od=$pwd && cd apps/fz_http && mix phx.digest && cd $od
+cd apps/fz_http && mix phx.digest && cd /vagrant
 mix release
 tar -zcf $PKG_FILE -C _build/prod/rel/ firezone
 
