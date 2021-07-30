@@ -43,7 +43,7 @@ sudo systemctl enable postgresql
 sudo systemctl start postgresql
 
 # Add Backports repo
-sudo echo "deb http://deb.debian.org/debian buster-backports main" > /etc/apt/sources.list.d/backports.list
+sudo bash -c 'echo "deb http://deb.debian.org/debian buster-backports main" > /etc/apt/sources.list.d/backports.list'
 sudo apt-get -q update
 
 # Install WireGuard
@@ -56,10 +56,11 @@ sudo apt-get install -y -q \
 git clone --depth 1 https://github.com/asdf-vm/asdf.git $HOME/.asdf
 echo '. $HOME/.asdf/asdf.sh' >> $HOME/.bashrc
 echo '. $HOME/.asdf/completions/asdf.bash' >> $HOME/.bashrc
-source $HOME/.bashrc
+. $HOME/.asdf/asdf.sh
 asdf plugin-add nodejs
 asdf plugin-add erlang
 asdf plugin-add elixir
+cd app
 asdf install
 
 

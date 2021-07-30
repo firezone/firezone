@@ -49,10 +49,11 @@ sudo systemctl start postgresql
 git clone --depth 1 https://github.com/asdf-vm/asdf.git $HOME/.asdf
 echo '. $HOME/.asdf/asdf.sh' >> $HOME/.bashrc
 echo '. $HOME/.asdf/completions/asdf.bash' >> $HOME/.bashrc
-source $HOME/.bashrc
+. $HOME/.asdf/asdf.sh
 asdf plugin-add nodejs
 asdf plugin-add erlang
 asdf plugin-add elixir
+cd app
 asdf install
 
 

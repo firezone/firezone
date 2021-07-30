@@ -28,21 +28,18 @@ sudo yum install -y \
   wireguard-tools
 
 # Set locale
-sudo localedef -i en_US -f UTF-8 en_US.UTF-8
-sudo echo "LANG=en_US.UTF-8" > /etc/locale.conf
-export LANG=en_US.UTF-8
-export LANGUAGE=en_US:en
-export LC_ALL=en_US.UTF-8
+sudo bash -c 'echo "LANG=en_US.UTF-8" > /etc/locale.conf'
+sudo localectl set-locale LANG=en_US.UTF-8
 
 
 # Set up Postgres
 sudo postgresql-setup --initdb --unit postgresql
 # Fix postgres login
-sudo cat <<EOT > /var/lib/pgsql/data/pg_hba.conf
-local   all             all                                     peer
-host    all             all             127.0.0.1/32            md5
-host    all             all             ::1/128                 md5
-EOT
+# sudo cat <<EOT > /var/lib/pgsql/data/pg_hba.conf
+# local   all             all                                     peer
+# host    all             all             127.0.0.1/32            md5
+# host    all             all             ::1/128                 md5
+# EOT
 sudo systemctl enable postgresql
 sudo systemctl restart postgresql
 
@@ -50,10 +47,11 @@ sudo systemctl restart postgresql
 git clone --depth 1 https://github.com/asdf-vm/asdf.git $HOME/.asdf
 echo '. $HOME/.asdf/asdf.sh' >> $HOME/.bashrc
 echo '. $HOME/.asdf/completions/asdf.bash' >> $HOME/.bashrc
-source $HOME/.bashrc
+. $HOME/.asdf/asdf.sh
 asdf plugin-add nodejs
 asdf plugin-add erlang
 asdf plugin-add elixir
+cd app
 asdf install
 
 # Build release
