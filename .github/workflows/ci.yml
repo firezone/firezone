@@ -138,7 +138,7 @@ jobs:
 
 
   publish:
-    needs: functional-test
+    needs: build-package-test
     runs-on: ubuntu-20.04
     strategy:
       matrix:
