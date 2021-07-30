@@ -7,6 +7,7 @@ pkg_file="firezone-${version}-${MATRIX_IMAGE/:/_}.amd64.tar.gz"
 image="firezone-${version}-${MATRIX_IMAGE/:/_}:${GITHUB_SHA}"
 
 docker build \
+  --no-cache \
   --pull \
   -t $image \
   -f pkg/Dockerfile.release \
