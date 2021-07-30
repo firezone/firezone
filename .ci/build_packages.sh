@@ -6,8 +6,7 @@ base_image="ghcr.io/firezone/${MATRIX_IMAGE}"
 pkg_file="firezone-${version}-${MATRIX_IMAGE/:/_}.amd64.tar.gz"
 image="firezone-${version}-${MATRIX_IMAGE/:/_}:${GITHUB_SHA}"
 
-docker buildx build \
-  --push \
+docker build \
   --pull \
   -t $image \
   -f pkg/Dockerfile.release \
