@@ -6,18 +6,14 @@ defaults:
     shell: bash
 
 jobs:
-  unit-integration-test:
-    runs-on: ${{ matrix.os }}
+  unit-test:
+    runs-on: ubuntu-18.04
     env:
       MIX_ENV: test
       POSTGRES_HOST: localhost
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      MATRIX_OS: ubuntu-18.04
     strategy:
       matrix:
-        os:
-          - ubuntu-20.04
-          - ubuntu-18.04
         postgres:
           - postgres:9.6
           - postgres:10
@@ -39,104 +35,125 @@ jobs:
           --health-retries 5
     steps:
       - name: Install package dependencies
-        run: sudo apt-get install net-tools wireguard unzip gdebi
-      - uses: actions/checkout@v2
-      - name: Install Runtimes
         run: |
-          sudo -E bash -c '.ci/install_runtimes.sh'
+          sudo apt-get install -q -y \
+            net-tools \
+            wireguard
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v2
+        with:
+          node-version: '14'
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: '24.0'
+          elixir-version: '1.12'
+      - uses: actions/cache@v2
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-
       - name: Install Dependencies
-        run: .ci/install_dependencies.sh
-      # - uses: actions/cache@v2
-      #   with:
-      #     path: |
-      #       deps
-      #       _build
-      #     key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
-      #     restore-keys: |
-      #       ${{ runner.os }}-mix-
+        run: mix deps.get --only test
       - name: Setup Database
         run: |
           mix ecto.create
           mix ecto.migrate
       - name: Run Tests and Upload Coverage Report
         run: mix coveralls.github --umbrella
-      - uses: actions/upload-artifact@v2
-        if: ${{ always() }}
-        with:
-          name: test screenshots
-          path: apps/fz_http/screenshots
 
-  build:
-    needs: unit-integration-test
-    runs-on: ubuntu-20.04
-    name: Build
-    env:
-      MATRIX_IMAGE: ${{ matrix.image }}
-      MATRIX_PLATFORM: ${{ matrix.platform }}
-      MIX_ENV: prod
-    strategy:
-      matrix:
-        platform:
-          - linux/amd64
-        image:
-          - amazonlinux:2
-          - centos:7
-          - centos:8
-          - debian:10
-          - fedora:33
-          - fedora:34
-          - fedora:35
-          - ubuntu:18.04
-          - ubuntu:20.04
-    steps:
-      - uses: docker/login-action@v1
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/checkout@v2
-      - run: |
-          .ci/build_packages.sh
 
-      - uses: actions/upload-artifact@v2
-        with:
-          name: firezone_${{ matrix.os }}_${{ matrix.platform }}
-          path: _build/firezone_${{ matrix.os }}_*.*
 
-  functional-test:
-    needs: build
-    runs-on: ubuntu-20.04
+
+
+
+
+
+  # Deprecated in favor of Vagrant-backed build+test
+  # build:
+  #   needs: unit-integration-test
+  #   runs-on: ubuntu-20.04
+  #   name: Build
+  #   env:
+  #     MATRIX_IMAGE: ${{ matrix.image }}
+  #     MATRIX_PLATFORM: ${{ matrix.platform }}
+  #     MIX_ENV: prod
+  #   strategy:
+  #     matrix:
+  #       platform:
+  #         - linux/amd64
+  #       image:
+  #         - centos:7
+  #         - centos:8
+  #         - debian:10
+  #         - fedora:33
+  #         - fedora:34
+  #         - ubuntu:18.04
+  #         - ubuntu:20.04
+  #   steps:
+  #     - uses: docker/login-action@v1
+  #       with:
+  #         registry: ghcr.io
+  #         username: ${{ github.actor }}
+  #         password: ${{ secrets.GITHUB_TOKEN }}
+  #     - uses: actions/checkout@v2
+  #     - run: |
+  #         .ci/build_packages.sh
+  #
+  #     - uses: actions/upload-artifact@v2
+  #       with:
+  #         name: firezone
+  #         path: |
+  #           _build/firezone*.tar.gz
+
+
+
+
+  build-package-test:
+    needs: unit-test
+    runs-on: macos-latest # macos supports Virtualbox / Vagrant
     strategy:
       matrix:
         os:
-          # - amazonlinux_2
-          # - centos_7
-          # - centos_8
-          # - debian_10
-          # - fedora_33
-          # - fedora_34
-          # - fedora_35
-          # - ubuntu_18.04
+          - centos_7
+          - centos_8
+          - debian_10
+          - fedora_33
+          - fedora_34
+          - ubuntu_18.04
           - ubuntu_20.04
-    env:
-      MATRIX_OS: ${{ matrix.os }}
-      DEBIAN_FRONTEND: noninteractive
     steps:
       - uses: actions/checkout@v2
       - uses: actions/download-artifact@v2
+        continue-on-error: true
         with:
-          name: firezone_${{ matrix.os }}_amd64.deb
-          path: ./
-      - name: Test Install package
-        run: .ci/functional_test.sh
+          name: ${{ matrix.os }}
+          path: ~/.vagrant.d/boxes
+
+      - run: |
+          vagrant cloud auth login --token ${{ secrets.VAGRANT_TOKEN }}
+      # Currently limited to 5GB per repo which is not enough. Using artifacts instead.
+      # - uses: actions/cache@v2
+      #   with:
+      #     path: |
+      #       ~/.vagrant.d/boxes
+      #     key: ${{ matrix.os }}
+      - run: vagrant up ${{ matrix.os }}
+      - uses: actions/upload-artifact@v2
+        with:
+          name: ${{ matrix.os }}
+          path: ~/.vagrant/boxes
+
+
 
   publish:
-    needs: functional-test
+    needs: build-package-test
     runs-on: ubuntu-20.04
     strategy:
       matrix:
         os:
-          - amazonlinux_2
           - debian_10
           - ubuntu_18.04
           - ubuntu_20.04
@@ -144,8 +161,7 @@ jobs:
           - centos_8
           - fedora_33
           - fedora_34
-          - fedora_35
-    if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/')
     steps:
       - name: Create Release
         id: create_release
@@ -159,15 +175,20 @@ jobs:
           prerelease: true
       - uses: actions/download-artifact@v2
         with:
-          name: firezone_${{ matrix.os }}_amd64
-          path: ./
-      - name: Upload Release Asset
-        id: upload-release-asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: firezone
+          path: ./_build/
+      - name: Release
+        uses: softprops/action-gh-release@v1
         with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./firezone_${{ matrix.os }}_amd64.deb
-          asset_name: ${{ matrix.os }}_amd64
-          asset_content_type: application/vnd.debian.binary-package
+          files: |
+            _build/firezone*.tar.gz
+      # - name: Upload Release Asset
+      #   id: upload-release-asset
+      #   uses: actions/upload-release-asset@v1
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #   with:
+      #     upload_url: ${{ steps.create_release.outputs.upload_url }}
+      #     asset_path: ./firezone*
+      #     asset_name: ${{ matrix.os }}_amd64
+      #     asset_content_type: application/vnd.debian.binary-package
