@@ -45,7 +45,7 @@ jobs:
           node-version: '14'
       - uses: erlef/setup-beam@v1
         with:
-          otp-version: '24.0'
+          otp-version: '24'
           elixir-version: '1.12'
       - uses: actions/cache@v2
         with:
@@ -63,52 +63,6 @@ jobs:
           mix ecto.migrate
       - name: Run Tests and Upload Coverage Report
         run: mix coveralls.github --umbrella
-
-
-
-
-
-
-
-
-  # Deprecated in favor of Vagrant-backed build+test
-  # build:
-  #   needs: unit-integration-test
-  #   runs-on: ubuntu-20.04
-  #   name: Build
-  #   env:
-  #     MATRIX_IMAGE: ${{ matrix.image }}
-  #     MATRIX_PLATFORM: ${{ matrix.platform }}
-  #     MIX_ENV: prod
-  #   strategy:
-  #     matrix:
-  #       platform:
-  #         - linux/amd64
-  #       image:
-  #         - centos:7
-  #         - centos:8
-  #         - debian:10
-  #         - fedora:33
-  #         - fedora:34
-  #         - ubuntu:18.04
-  #         - ubuntu:20.04
-  #   steps:
-  #     - uses: docker/login-action@v1
-  #       with:
-  #         registry: ghcr.io
-  #         username: ${{ github.actor }}
-  #         password: ${{ secrets.GITHUB_TOKEN }}
-  #     - uses: actions/checkout@v2
-  #     - run: |
-  #         .ci/build_packages.sh
-  #
-  #     - uses: actions/upload-artifact@v2
-  #       with:
-  #         name: firezone
-  #         path: |
-  #           _build/firezone*.tar.gz
-
-
 
 
   build-package-test:
@@ -134,18 +88,11 @@ jobs:
 
       - run: |
           vagrant cloud auth login --token ${{ secrets.VAGRANT_TOKEN }}
-      # Currently limited to 5GB per repo which is not enough. Using artifacts instead.
-      # - uses: actions/cache@v2
-      #   with:
-      #     path: |
-      #       ~/.vagrant.d/boxes
-      #     key: ${{ matrix.os }}
       - run: vagrant up ${{ matrix.os }}
       - uses: actions/upload-artifact@v2
         with:
           name: ${{ matrix.os }}
           path: ~/.vagrant/boxes
-
 
 
   publish:
