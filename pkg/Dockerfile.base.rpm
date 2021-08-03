@@ -21,7 +21,6 @@ RUN yum install -y \
     glibc-all-langpacks \
     rpmdevtools \
     rpmlint
-ENV SHELL /bin/zsh
 
 # Restore missing locales from base image
 RUN yum reinstall glibc-common -y && \
@@ -35,7 +34,6 @@ ENV PATH="/root/.asdf/bin:/root/.asdf/shims:${PATH}"
 RUN echo 'PATH="/root/.asdf/bin:/root/.asdf/shims:${PATH}"' >> /etc/environment
 COPY .tool-versions .tool-versions
 RUN asdf plugin-add nodejs
-RUN asdf plugin-update nodejs
 RUN asdf plugin-add erlang
 RUN asdf plugin-add elixir
 RUN asdf install

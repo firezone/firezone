@@ -2,11 +2,10 @@ ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
 
 ARG PKG_DIR
+ARG OS_DIR
 
-# Copy shared files
-COPY pkg/rpm_shared/rpmbuild rpmbuild
-COPY pkg/skel/ rpmbuild/BUILDROOT/$PKG_DIR/
+COPY pkg/$OS_DIR/rpmbuild rpmbuild
+COPY pkg/$OS_DIR/skel/ rpmbuild/BUILDROOT/$PKG_DIR/
+RUN mkdir -p rpmbuild/BUILDROOT/$PKG_DIR/usr/lib/firezone
 RUN rsync -az _build/prod/rel/firezone/* rpmbuild/BUILDROOT/$PKG_DIR/usr/lib/firezone/
-RUN mkdir -p rpmbuild/BUILDROOT/$PKG_DIR/usr/bin
-RUN cd rpmbuild/BUILDROOT/$PKG_DIR/usr/bin && ln -s ../lib/firezone/bin/firezone
 RUN rpmbuild -bb rpmbuild/SPECS/firezone.spec

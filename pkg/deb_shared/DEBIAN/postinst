@@ -1,5 +1,0 @@
-#!/bin/bash
-set -e
-
-# Call the post installation script
-. /usr/lib/firezone/bin/postinst.sh
