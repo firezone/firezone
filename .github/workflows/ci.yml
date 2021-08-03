@@ -78,6 +78,7 @@ jobs:
           - fedora_34
           - ubuntu_18.04
           - ubuntu_20.04
+    if: github.ref == 'refs/tags/master'
     steps:
       - uses: actions/checkout@v2
       - uses: actions/download-artifact@v2
@@ -85,7 +86,6 @@ jobs:
         with:
           name: ${{ matrix.os }}
           path: ~/.vagrant.d/boxes
-
       - run: |
           vagrant cloud auth login --token ${{ secrets.VAGRANT_TOKEN }}
       - run: vagrant up ${{ matrix.os }}
