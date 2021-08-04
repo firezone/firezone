@@ -55,7 +55,8 @@ build do
           " --prefix=#{install_dir}/embedded" \
           " --with-libedit-preferred" \
           " --with-openssl" \
-          " --with-ossp-uuid" \
+          " --enable-thread-safety" \
+          " --with-uuid=e2fs" \
           " --with-includes=#{install_dir}/embedded/include" \
           " --with-libraries=#{install_dir}/embedded/lib", env: env
 
