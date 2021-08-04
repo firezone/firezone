@@ -70,30 +70,26 @@ jobs:
     runs-on: macos-latest # macos supports Virtualbox / Vagrant
     strategy:
       matrix:
-        os:
-          - centos_7
-          - centos_8
-          - debian_10
-          - fedora_33
-          - fedora_34
-          - ubuntu_18.04
-          - ubuntu_20.04
-    if: github.ref == 'refs/tags/master'
+        include:
+          - port: 8800
+            os: centos_7
+          - port: 8801
+            os: centos_8
+          - port: 8802
+            os: debian_10
+          - port: 8803
+            os: fedora_33
+          - port: 8804
+            os: fedora_34
+          - port: 8805
+            os: ubuntu_18.04
+          - port: 8806
+            os: ubuntu_20.04
+    if: github.ref == 'refs/heads/master'
     steps:
       - uses: actions/checkout@v2
-      - uses: actions/download-artifact@v2
-        continue-on-error: true
-        with:
-          name: ${{ matrix.os }}
-          path: ~/.vagrant.d/boxes
-      - run: |
-          vagrant cloud auth login --token ${{ secrets.VAGRANT_TOKEN }}
       - run: vagrant up ${{ matrix.os }}
-      - uses: actions/upload-artifact@v2
-        with:
-          name: ${{ matrix.os }}
-          path: ~/.vagrant/boxes
-
+      - run: .ci/functional_test.sh
 
   publish:
     needs: build-package-test
