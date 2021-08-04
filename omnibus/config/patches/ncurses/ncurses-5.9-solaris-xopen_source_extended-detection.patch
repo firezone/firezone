@@ -1,0 +1,11 @@
+--- configure.after.pkgin.patches	2012-12-17 01:06:16.964187316 +0000
++++ configure	2012-12-17 01:07:17.046932230 +0000
+@@ -7864,7 +7864,7 @@
+ else
+   echo "$as_me: failed program was:" >&5
+ cat conftest.$ac_ext >&5
+-cf_result=yes
++cf_result=no
+ fi
+ rm -f conftest.$ac_objext conftest.$ac_ext
+ echo "$as_me:7863: result: $cf_result" >&5
