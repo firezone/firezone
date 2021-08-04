@@ -1,0 +1,20 @@
+diff --git a/Makefile.shared b/Makefile.shared
+index e8d222a..02ec85b 100644
+--- a/Makefile.shared
++++ b/Makefile.shared
+@@ -283,13 +283,12 @@ link_a.cygwin:
+ 	base=-Wl,--enable-auto-image-base; \
+ 	if expr $(PLATFORM) : 'mingw' > /dev/null; then \
+ 		case $(LIBNAME) in \
+-			crypto) SHLIB=libeay;; \
+-			ssl) SHLIB=ssleay;; \
++			crypto) SHLIB=libeay; base=-Wl,--image-base,0x64000000;; \
++			ssl) SHLIB=ssleay; base=-Wl,--image-base,0x65000000;; \
+ 		esac; \
+ 		SHLIB_SOVER=32; \
+ 		extras="$(LIBNAME).def"; \
+ 		$(PERL) util/mkdef.pl 32 $$SHLIB > $$extras; \
+-		base=; [ $(LIBNAME) = "crypto" -a -n "$(FIPSCANLIB)" ] && base=-Wl,--image-base,0x63000000; \
+ 	fi; \
+ 	dll_name=$$SHLIB$$SHLIB_SOVER$$SHLIB_SUFFIX; \
+ 	$(PERL) util/mkrc.pl $$dll_name | \

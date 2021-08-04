@@ -1,0 +1,24 @@
+diff -ruN libedit-20120601-3.0/src/vi.c libedit-20120601-3.0.fixed/src/vi.c
+--- libedit-20120601-3.0/src/vi.c	2012-03-11 09:54:58.000000000 +0000
++++ libedit-20120601-3.0.fixed/src/vi.c	2013-02-08 05:22:16.338954507 +0000
+@@ -918,17 +918,15 @@
+  * NB: posix implies that we should enter insert mode, however
+  * this is against historical precedent...
+  */
+-#ifdef __weak_reference
+-__weakref_visible char *my_get_alias_text(const char *)
+-    __weak_reference(get_alias_text);
+-#endif
+ protected el_action_t
+ /*ARGSUSED*/
+ vi_alias(EditLine *el, Int c __attribute__((__unused__)))
+ {
+-#ifdef __weak_reference
++#ifdef __weak_extern
+ 	char alias_name[3];
+ 	char *alias_text;
++	extern __weakref_visible char *my_get_alias_text(const char *);
++	__weak_extern(get_alias_text);
+
+ 	if (my_get_alias_text == 0) {
+ 		return CC_ERROR;

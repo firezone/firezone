@@ -1,0 +1,19 @@
+--- GNUmakefile.in.original     2016-12-19 06:01:36.664961781 -0500
++++ GNUmakefile.in      2016-12-19 06:02:15.872961781 -0500
+@@ -16,7 +16,7 @@
+ docs:
+        $(MAKE) -C doc all
+
+-$(call recurse,world,doc src config contrib,all)
++$(call recurse,world,src config contrib,all)
+ world:
+        +@echo "PostgreSQL, contrib, and documentation successfully made. Ready to install."
+
+@@ -32,7 +32,7 @@
+ install-docs:
+        $(MAKE) -C doc install
+
+-$(call recurse,install-world,doc src config contrib,install)
++$(call recurse,install-world,src config contrib,install)
+ install-world:
+        +@echo "PostgreSQL, contrib, and documentation installation complete."

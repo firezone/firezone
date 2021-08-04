@@ -1,0 +1,9 @@
+#!/bin/sh
+#
+# Perform necessary firezone removal steps
+# after package is uninstalled.
+#
+
+echo "firezone has been uninstalled!"
+
+exit 0
