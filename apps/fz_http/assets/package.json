@@ -6,7 +6,7 @@
     "watch": "webpack --mode=development --watch"
   },
   "engines": {
-    "node": ">= 10.0.0"
+    "node": ">= 16.0.0"
   },
   "dependencies": {
     "buffer": "^6.0.3",
