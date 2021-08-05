@@ -57,4 +57,6 @@ bundle install --binstubs
 
 
 # Build omnibus package
+sudo mkdir /opt/firezone
+sudo chown -R ${USER} /opt/firezone
 bin/omnibus build firezone
