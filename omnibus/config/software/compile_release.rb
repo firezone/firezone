@@ -15,17 +15,26 @@
 # limitations under the License.
 #
 
-name "preparation"
-description "the steps required to prepare the build"
+name "compile_release"
+description "the steps required to compile the firezone elixir application"
 default_version "1.0.0"
+
+dependency "elixir"
+dependency "nodejs"
+
+source path: File.expand_path("../", Omnibus::Config.project_root)
 
 license :project_license
 skip_transitive_dependency_licensing true
 
 build do
-  block do
-    touch "#{install_dir}/embedded/lib/.gitkeep"
-    touch "#{install_dir}/embedded/bin/.gitkeep"
-    touch "#{install_dir}/bin/.gitkeep"
-  end
+  command "mix local.hex --force"
+  command "mix local.rebar --force"
+  command "mix deps.get --only prod"
+  command "mix deps.compile --only prod"
+  command "npm ci --prefix apps/fz_http/assets --progress=false --no-audit --loglevel=error"
+  command "npm run --prefix apps/fz_http/assets deploy"
+  command "cd apps/fz_http && mix phx.digest", env: { "MIX_ENV": "prod" }
+  command "mix release", env: { "MIX_ENV": "prod" }
+  move "_build/prod/rel/firezone", "#{install_dir}/embedded/firezone"
 end

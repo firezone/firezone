@@ -85,7 +85,7 @@ jobs:
             os: ubuntu_18.04
           - port: 8806
             os: ubuntu_20.04
-    if: github.ref == 'refs/heads/master'
+    # if: github.ref == 'refs/heads/master'
     steps:
       - uses: actions/checkout@v2
       - run: vagrant up ${{ matrix.os }}

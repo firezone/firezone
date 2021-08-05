@@ -26,7 +26,6 @@ dependency "zlib"
 dependency "openssl"
 dependency "libedit"
 dependency "ncurses"
-dependency "libossp-uuid"
 dependency "config_guess"
 
 # version_list: url=https://ftp.postgresql.org/pub/source/v#{version}/ filter=*.tar.bz2
