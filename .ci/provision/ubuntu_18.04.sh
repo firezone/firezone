@@ -40,7 +40,9 @@ export LC_ALL=en_US.UTF-8
 
 
 # Install asdf
-git clone --depth 1 https://github.com/asdf-vm/asdf.git $HOME/.asdf
+if [ ! -d $HOME/.asdf ]; then
+  git clone --depth 1 https://github.com/asdf-vm/asdf.git $HOME/.asdf
+fi
 grep -qxF '. $HOME/.asdf/asdf.sh' $HOME/.bashrc || echo '. $HOME/.asdf/asdf.sh' >> $HOME/.bashrc
 grep -qxF '. $HOME/.asdf/completions/asdf.bash' $HOME/.bashrc || echo '. $HOME/.asdf/completions/asdf.bash' >> $HOME/.bashrc
 . $HOME/.asdf/asdf.sh
