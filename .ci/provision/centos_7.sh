@@ -38,8 +38,8 @@ sudo yum install -y kmod-wireguard
 
 # Install asdf ruby
 git clone --depth 1 https://github.com/asdf-vm/asdf.git $HOME/.asdf
-echo '. $HOME/.asdf/asdf.sh' >> $HOME/.bashrc
-echo '. $HOME/.asdf/completions/asdf.bash' >> $HOME/.bashrc
+grep -qxF '. $HOME/.asdf/asdf.sh' $HOME/.bashrc || echo '. $HOME/.asdf/asdf.sh' >> $HOME/.bashrc
+grep -qxF '. $HOME/.asdf/completions/asdf.bash' $HOME/.bashrc || echo '. $HOME/.asdf/completions/asdf.bash' >> $HOME/.bashrc
 . $HOME/.asdf/asdf.sh
 asdf plugin-add ruby
 cd /vagrant
@@ -52,6 +52,6 @@ bundle install --binstubs
 
 
 # Build omnibus package
-sudo mkdir /opt/firezone
+sudo mkdir -p /opt/firezone
 sudo chown -R ${USER} /opt/firezone
 bin/omnibus build firezone
