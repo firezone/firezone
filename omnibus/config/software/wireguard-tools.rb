@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# Copyright 2012-2014 Chef Software, Inc.
+# Copyright 2021 FireZone
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,31 +15,18 @@
 # limitations under the License.
 #
 
-name "libossp-uuid"
-default_version "1.6.2"
+name "wireguard-tools"
+description "wireguard userspace utilities"
+default_version "1.0.20210424"
 
-license "MIT"
-license_file "README"
-skip_transitive_dependency_licensing true
+default_src_url = "https://git.zx2c4.com/wireguard-tools/snapshot/wireguard-tools-#{version}.zip"
 
-dependency "config_guess"
-
-# version_list: url=https://www.mirrorservice.org/sites/ftp.ossp.org/pkg/lib/uuid/ filter=*.tar.gz
-
-version("1.6.2") { source sha256: "11a615225baa5f8bb686824423f50e4427acd3f70d394765bdff32801f0fd5b0" }
-
-# ftp on ftp.ossp.org is unavaiable so we must use another mirror site.
-source url: "https://www.mirrorservice.org/sites/ftp.ossp.org/pkg/lib/uuid/uuid-#{version}.tar.gz"
-
-relative_path "uuid-#{version}"
+version "1.0.20210424" do
+  source url: default_src_url, sha256: "1ad170ded2d66d7c5a02fc2fd5ac3e195ec1c98133986f2d8223ed5a72c8877f"
+end
 
 build do
   env = with_standard_compiler_flags(with_embedded_path)
-
-  update_config_guess
-
-  command "./configure" \
-          " --prefix=#{install_dir}/embedded", env: env
 
   make "-j #{workers}", env: env
   make "install", env: env

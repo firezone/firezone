@@ -18,6 +18,7 @@
 name "firezone"
 maintainer "FireZone"
 homepage "https://firez.one"
+license "Apache-2.0"
 
 # Defaults to C:/firezone on Windows
 # and /opt/firezone on all other platforms
@@ -27,13 +28,19 @@ build_version Omnibus::BuildVersion.semver
 build_iteration 1
 
 # Creates required build directories
-dependency "preparation"
+# dependency "preparation"
 
-# firezone dependencies/components
-dependency "postgresql"
+# firezone build dependencies/components
+dependency "compile_release"
 dependency "erlang"
 dependency "elixir"
+dependency "nodejs"
 dependency "openssl"
+dependency "wireguard-tools"
+
+# firezone runtime dependencies
+runtime_dependency "postgresql"
+runtime_dependency "openssl"
 
 exclude "**/.git"
 exclude "**/bundler/git"

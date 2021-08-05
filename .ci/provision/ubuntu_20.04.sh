@@ -28,10 +28,8 @@ sudo apt-get install -y -q \
   net-tools \
   iptables \
   openssl \
-  postgresql \
   systemd \
-  wireguard \
-  wireguard-tools
+  wireguard
 
 # Set locale
 sudo sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen
@@ -40,37 +38,22 @@ export LANG=en_US.UTF-8
 export LANGUAGE=en_US:en
 export LC_ALL=en_US.UTF-8
 
-# Set up Postgres
-sudo systemctl enable postgresql
-sudo systemctl start postgresql
 
-
-# Install asdf
+# Install asdf ruby
 git clone --depth 1 https://github.com/asdf-vm/asdf.git $HOME/.asdf
 echo '. $HOME/.asdf/asdf.sh' >> $HOME/.bashrc
 echo '. $HOME/.asdf/completions/asdf.bash' >> $HOME/.bashrc
 . $HOME/.asdf/asdf.sh
-asdf plugin-add nodejs
-asdf plugin-add erlang
-asdf plugin-add elixir
+asdf plugin-add ruby
 cd /vagrant
 asdf install
 
 
-# Build release
-export MIX_ENV=prod
-mix local.hex --force
-mix local.rebar --force
-mix deps.get --only prod
-mix deps.compile
-npm ci --prefix apps/fz_http/assets --progress=false --no-audit --loglevel=error
-npm run --prefix ./apps/fz_http/assets deploy
-cd apps/fz_http && mix phx.digest && cd /vagrant
-mix release
-tar -zcf $PKG_FILE -C _build/prod/rel/ firezone
+# Install omnibus
+cd omnibus
+gem install bundler
+bundle install --binstubs
 
-# file=(/tmp/firezone*.tar.gz)
-# /tmp/install.sh /tmp/$file
-# systemctl start firezone || true
-# systemctl status firezone.service
-# journalctl -xeu firezone
+
+# Build omnibus package
+bin/omnibus build firezone
