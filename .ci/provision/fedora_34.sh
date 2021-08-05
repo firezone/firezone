@@ -16,6 +16,7 @@ sudo yum install -y \
   curl \
   git \
   findutils \
+  python3 \
   unzip \
   glibc-all-langpacks \
   rpmdevtools \
