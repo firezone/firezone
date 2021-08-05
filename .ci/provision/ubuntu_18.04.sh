@@ -28,7 +28,6 @@ sudo apt-get install -y -q \
   net-tools \
   iptables \
   openssl \
-  postgresql
   systemd \
   wireguard
 
