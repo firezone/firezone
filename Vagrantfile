@@ -13,7 +13,7 @@ Vagrant.configure("2") do |config|
     end
   end
 
-  config.vm.synced_folder ".", "/vagrant", owner: "vagrant"
+  config.vm.synced_folder ".", "/vagrant"
 
   config.vm.define "centos_7" do |centos7|
     centos7.vm.box = "generic/centos7"

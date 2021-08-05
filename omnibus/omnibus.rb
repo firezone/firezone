@@ -14,7 +14,7 @@
 #
 # Uncomment this line to change the default base directory to "local"
 # -------------------------------------------------------------------
-base_dir "./local"
+base_dir(ENV["CI"] ? "/tmp/local" : "./local")
 #
 # Alternatively you can tune the individual values
 # ------------------------------------------------
