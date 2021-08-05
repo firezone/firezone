@@ -17,6 +17,7 @@ sudo apt-get install -y -q \
   git \
   dpkg-dev \
   libssl-dev \
+  python3 \
   automake \
   gnupg \
   curl \
