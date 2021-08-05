@@ -54,7 +54,7 @@ fi
 grep -qxF '. $HOME/.asdf/asdf.sh' $HOME/.bashrc || echo '. $HOME/.asdf/asdf.sh' >> $HOME/.bashrc
 grep -qxF '. $HOME/.asdf/completions/asdf.bash' $HOME/.bashrc || echo '. $HOME/.asdf/completions/asdf.bash' >> $HOME/.bashrc
 . $HOME/.asdf/asdf.sh
-asdf plugin-add ruby
+asdf list ruby || asdf plugin-add ruby
 cd /vagrant
 asdf install
 
