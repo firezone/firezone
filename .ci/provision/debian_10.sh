@@ -43,6 +43,10 @@ export LC_ALL=en_US.UTF-8
 sudo bash -c 'echo "deb http://deb.debian.org/debian buster-backports main" > /etc/apt/sources.list.d/backports.list'
 sudo apt-get -q update
 
+# Install NodeJS 16
+curl -fsSL https://deb.nodesource.com/setup_16.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
 
 # Install WireGuard
 sudo apt-get install -y -q wireguard

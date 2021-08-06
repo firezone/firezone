@@ -30,6 +30,8 @@ sudo yum install -y \
 sudo bash -c 'echo "LANG=en_US.UTF-8" > /etc/locale.conf'
 sudo localectl set-locale LANG=en_US.UTF-8
 
+# Install NodeJS 16
+curl -fsSL https://rpm.nodesource.com/setup_16.x | sudo bash -
 
 # Install WireGuard
 sudo yum install -y epel-release elrepo-release
