@@ -21,7 +21,8 @@ default_version "1.0.0"
 
 dependency "elixir"
 
-source path: File.expand_path("../", Omnibus::Config.project_root)
+source path: File.expand_path("../", Omnibus::Config.project_root),
+       options: { exclude: ["_build/", "**/deps/", "**/node_modules/"] }
 
 license :project_license
 skip_transitive_dependency_licensing true
