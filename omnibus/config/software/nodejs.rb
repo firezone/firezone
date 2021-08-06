@@ -31,6 +31,10 @@ version "16.6.1" do
   source url: default_src_url, sha256: "36467b8a4e7e3bacc2f4f1709a83b0506429d1999bc461e5e363bc91d3437c09"
 end
 
+version "14.17.4" do
+  source url: default_src_url, sha256: "70c75f21ac601ae9e0fd86bdfd4e13e4d302f42b4fafcd6d21804b043a571c36"
+end
+
 version "12.22.3" do
   source url: default_src_url, sha256: "30acec454f26a168afe6d1c55307c5186ef23dba66527cc34e4497d01f91bda4"
 end

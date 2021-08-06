@@ -5,15 +5,19 @@
 
 # This Vagrantfile is used for functional testing in the CI pipeline.
 Vagrant.configure("2") do |config|
-  if ENV["CI"]
     # Github Actions MacOS hosts have 14 GB RAM and 3 CPU cores :-D
     config.vm.provider "virtualbox" do |virtualbox|
-      virtualbox.cpus = 3
-      virtualbox.memory = 8_192
+      if ENV["CI"]
+        virtualbox.cpus = 3
+        virtualbox.memory = 8_192
+      else
+        virtualbox.cpus = 12
+        virtualbox.memory = 2048
+      end
     end
-  end
 
-  config.vm.synced_folder ".", "/vagrant"
+  config.vm.synced_folder ".", "/vagrant", type: "rsync",
+    rsync__exclude: [".git/", "_build/", "**/deps/", "**/node_modules/"]
 
   config.vm.define "centos_7" do |centos7|
     centos7.vm.box = "generic/centos7"

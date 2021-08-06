@@ -23,7 +23,13 @@ skip_transitive_dependency_licensing true
 dependency "cacerts"
 dependency "openssl-fips" if fips_mode?
 
-default_version "1.1.1i" # do_not_auto_update
+if ohai["platform"] == "centos" && ohai["platform_version"].start_with?("7.")
+  # Need an older version of openssl because newer versions fail to build with the
+  # gcc toolchain that comes with CentOS 7. Need at least gcc/g++ 4.9.
+  default_version "1.0.2i"
+else
+  default_version "1.1.1i" # do_not_auto_update
+end
 
 # Openssl builds engines as libraries into a special directory. We need to include
 # that directory in lib_dirs so omnibus can sign them during macOS deep signing.
@@ -49,6 +55,8 @@ version("1.1.1i") { source sha256: "e8be6a35fe41d10603c3cc635e93289ed00bf34b7967
 version("1.0.2y") { source sha256: "4882ec99f8e147ab26375da8a6af92efae69b6aef505234764f8cd00a1b81ffc" }
 version("1.0.2x") { source sha256: "79cb4e20004a0d1301210aee7e154ddfba3d6a33d0df1f6c5d3257cb915a59c9" }
 version("1.0.2w") { source sha256: "a675ad1a9df59015cebcdf713de76a422347c5d99f11232fe75758143defd680" }
+version("1.0.2i") { source sha256: "9287487d11c9545b6efb287cdb70535d4e9b284dd10d51441d9b9963d000de6f" }
+
 
 relative_path "openssl-#{version}"
 

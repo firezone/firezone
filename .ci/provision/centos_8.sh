@@ -4,12 +4,8 @@ set -ex
 # Install prerequisites
 sudo yum groupinstall -y 'Development Tools'
 sudo yum install -y \
-  gcc-c++ \
-  zsh \
   tree \
   rsync \
-  autoconf \
-  automake \
   procps \
   openssl-devel \
   ncurses-devel \
@@ -18,7 +14,6 @@ sudo yum install -y \
   findutils \
   python3 \
   unzip \
-  glibc-all-langpacks \
   rpmdevtools \
   rpmlint \
   openssl \
