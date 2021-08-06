@@ -15,6 +15,13 @@
 # limitations under the License.
 #
 
+#
+#
+# XXX: Not needed at runtime, so this package is disabled in favor of OS package.
+# This takes forever to compile.
+#
+#
+
 name "nodejs"
 
 license "MIT"

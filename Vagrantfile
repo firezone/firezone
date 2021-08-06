@@ -10,9 +10,6 @@ Vagrant.configure("2") do |config|
       if ENV["CI"]
         virtualbox.cpus = 3
         virtualbox.memory = 8_192
-      else
-        virtualbox.cpus = 12
-        virtualbox.memory = 2048
       end
     end
 
@@ -23,48 +20,48 @@ Vagrant.configure("2") do |config|
     centos7.vm.box = "generic/centos7"
     centos7.vm.box_url = "http://vagrant.cloudfire.network/centos7.box"
     centos7.vm.network "forwarded_port", guest: 8800, host: ENV.fetch("PORT", 8800)
-    centos7.vm.provision "shell", path: ".ci/provision/centos_7.sh", privileged: false, env: { CI: ENV["CI"] }
+    centos7.vm.provision "shell", path: ".ci/provision/centos_7.sh", privileged: false
   end
 
   config.vm.define "centos_8" do |centos8|
     centos8.vm.box = "generic/centos8"
     centos8.vm.box_url = "http://vagrant.cloudfire.network/centos8.box"
     centos8.vm.network "forwarded_port", guest: 8800, host: ENV.fetch("PORT", 8801)
-    centos8.vm.provision "shell", path: ".ci/provision/centos_8.sh", privileged: false, env: { CI: ENV["CI"] }
+    centos8.vm.provision "shell", path: ".ci/provision/centos_8.sh", privileged: false
   end
 
   config.vm.define "debian_10" do |debian10|
     debian10.vm.box = "generic/debian10"
     debian10.vm.box_url = "http://vagrant.cloudfire.network/debian10.box"
     debian10.vm.network "forwarded_port", guest: 8800, host: ENV.fetch("PORT", 8802)
-    debian10.vm.provision "shell", path: ".ci/provision/debian_10.sh", privileged: false, env: { CI: ENV["CI"] }
+    debian10.vm.provision "shell", path: ".ci/provision/debian_10.sh", privileged: false
   end
 
   config.vm.define "fedora_33" do |fedora33|
     fedora33.vm.box = "generic/fedora33"
     fedora33.vm.box_url = "http://vagrant.cloudfire.network/fedora33.box"
     fedora33.vm.network "forwarded_port", guest: 8800, host: ENV.fetch("PORT", 8803)
-    fedora33.vm.provision "shell", path: ".ci/provision/fedora_33.sh", privileged: false, env: { CI: ENV["CI"] }
+    fedora33.vm.provision "shell", path: ".ci/provision/fedora_33.sh", privileged: false
   end
 
   config.vm.define "fedora_34" do |fedora34|
     fedora34.vm.box = "generic/fedora34"
     fedora34.vm.box_url = "http://vagrant.cloudfire.network/fedora34.box"
     fedora34.vm.network "forwarded_port", guest: 8800, host: ENV.fetch("PORT", 8804)
-    fedora34.vm.provision "shell", path: ".ci/provision/fedora_34.sh", privileged: false, env: { CI: ENV["CI"] }
+    fedora34.vm.provision "shell", path: ".ci/provision/fedora_34.sh", privileged: false
   end
 
   config.vm.define "ubuntu_18.04" do |ubuntu1804|
     ubuntu1804.vm.box = "generic/ubuntu1804"
     ubuntu1804.vm.box_url = "http://vagrant.cloudfire.network/ubuntu1804.box"
     ubuntu1804.vm.network "forwarded_port", guest: 8800, host: ENV.fetch("PORT", 8805)
-    ubuntu1804.vm.provision "shell", path: ".ci/provision/ubuntu_18.04.sh", privileged: false, env: { CI: ENV["CI"] }
+    ubuntu1804.vm.provision "shell", path: ".ci/provision/ubuntu_18.04.sh", privileged: false
   end
 
   config.vm.define "ubuntu_20.04" do |ubuntu2004|
     ubuntu2004.vm.box = "generic/ubuntu2004"
     ubuntu2004.vm.box_url = "http://vagrant.cloudfire.network/ubuntu2004.box"
     ubuntu2004.vm.network "forwarded_port", guest: 8800, host: ENV.fetch("PORT", 8806)
-    ubuntu2004.vm.provision "shell", path: ".ci/provision/ubuntu_20.04.sh", privileged: false, env: { CI: ENV["CI"] }
+    ubuntu2004.vm.provision "shell", path: ".ci/provision/ubuntu_20.04.sh", privileged: false
   end
 end

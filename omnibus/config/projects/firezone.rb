@@ -34,9 +34,12 @@ build_iteration 1
 dependency "compile_release"
 dependency "erlang"
 dependency "elixir"
-dependency "nodejs"
 dependency "openssl"
 dependency "wireguard-tools"
+
+# Takes forever to build, so use OS packages instead.
+# Not needed at runtime anyway.
+# dependency "nodejs"
 
 # firezone runtime dependencies
 runtime_dependency "postgresql"

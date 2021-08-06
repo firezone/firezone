@@ -39,6 +39,9 @@ export LANG=en_US.UTF-8
 export LANGUAGE=en_US:en
 export LC_ALL=en_US.UTF-8
 
+# Install NodeJS 16
+curl -fsSL https://deb.nodesource.com/setup_16.x | sudo -E bash -
+sudo apt-get install -y nodejs
 
 # Install asdf ruby
 if [ ! -d $HOME/.asdf ]; then

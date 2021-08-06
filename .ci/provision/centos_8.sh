@@ -30,6 +30,8 @@ sudo localectl set-locale LANG=en_US.UTF-8
 sudo yum install -y epel-release elrepo-release
 sudo yum install -y kmod-wireguard
 
+# Install NodeJS 16
+curl -fsSL https://rpm.nodesource.com/setup_16.x | sudo bash -
 
 # Install asdf ruby
 if [ ! -d $HOME/.asdf ]; then
