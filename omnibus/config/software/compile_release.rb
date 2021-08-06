@@ -20,7 +20,6 @@ description "the steps required to compile the firezone elixir application"
 default_version "1.0.0"
 
 dependency "elixir"
-dependency "nodejs"
 
 source path: File.expand_path("../", Omnibus::Config.project_root)
 
