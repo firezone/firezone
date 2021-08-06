@@ -1,15 +1,16 @@
 #!/bin/bash
 set -ex
 
+# CentOS 7 comes with GCC 4.8.5 which does not fully support C++14, so we need
+# a newer toolchain.
+sudo yum install -y centos-release-scl
+sudo yum install -y devtoolset-9
+source /opt/rh/devtoolset-9/enable
+
 # Install prerequisites
-sudo yum groupinstall -y 'Development Tools'
 sudo yum install -y \
-  gcc-c++ \
-  zsh \
   tree \
   rsync \
-  autoconf \
-  automake \
   procps \
   openssl-devel \
   ncurses-devel \
@@ -18,7 +19,6 @@ sudo yum install -y \
   findutils \
   python3 \
   unzip \
-  glibc-all-langpacks \
   rpmdevtools \
   rpmlint \
   openssl \
@@ -35,7 +35,6 @@ sudo localectl set-locale LANG=en_US.UTF-8
 sudo yum install -y epel-release elrepo-release
 sudo yum install -y yum-plugin-elrepo
 sudo yum install -y kmod-wireguard
-
 
 # Install asdf ruby
 if [ ! -d $HOME/.asdf ]; then
