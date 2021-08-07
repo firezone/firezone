@@ -26,6 +26,7 @@ version "1.0.20210424" do
 end
 
 relative_path "src"
+license "GPL-2.0"
 
 build do
   env = with_standard_compiler_flags(with_embedded_path)

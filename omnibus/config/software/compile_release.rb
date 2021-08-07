@@ -22,13 +22,13 @@ default_version "1.0.0"
 dependency "elixir"
 
 source path: File.expand_path("../", Omnibus::Config.project_root),
-       options: { exclude: ["_build/", "deps/", "apps/fz_http/assets/node_modules/"] }
+       options: { exclude: ["../_build/", "../deps/", "../apps/fz_http/assets/node_modules/"] }
 
 license :project_license
 skip_transitive_dependency_licensing true
 
 build do
-  env = { "MIX_ENV": "prod" }.merge(with_standard_compiler_flags(with_embedded_path))
+  env = with_standard_compiler_flags(with_embedded_path).merge(MIX_ENV: "prod")
 
   command "mix local.hex --force", env: env
   command "mix local.rebar --force", env: env
