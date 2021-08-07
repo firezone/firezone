@@ -28,13 +28,15 @@ license :project_license
 skip_transitive_dependency_licensing true
 
 build do
-  command "mix local.hex --force"
-  command "mix local.rebar --force"
-  command "mix deps.get --only prod"
-  command "mix deps.compile --only prod"
-  command "npm ci --prefix apps/fz_http/assets --progress=false --no-audit --loglevel=error"
-  command "npm run --prefix apps/fz_http/assets deploy"
-  command "cd apps/fz_http && mix phx.digest", env: { "MIX_ENV": "prod" }
-  command "mix release", env: { "MIX_ENV": "prod" }
+  env = { "MIX_ENV": "prod" }.merge(with_standard_compiler_flags(with_embedded_path))
+
+  command "mix local.hex --force", env: env
+  command "mix local.rebar --force", env: env
+  command "mix deps.get --only prod", env: env
+  command "mix deps.compile --only prod", env: env
+  command "npm ci --prefix apps/fz_http/assets --progress=false --no-audit --loglevel=error", env: env
+  command "npm run --prefix apps/fz_http/assets deploy", env: env
+  command "cd apps/fz_http && mix phx.digest", env: env
+  command "mix release", env: env
   move "_build/prod/rel/firezone", "#{install_dir}/embedded/firezone"
 end
