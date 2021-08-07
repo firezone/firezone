@@ -28,7 +28,7 @@ license :project_license
 skip_transitive_dependency_licensing true
 
 build do
-  env = with_standard_compiler_flags(with_embedded_path).merge(MIX_ENV: "prod")
+  env = with_standard_compiler_flags(with_embedded_path).merge("MIX_ENV" => "prod")
 
   command "mix local.hex --force", env: env
   command "mix local.rebar --force", env: env
