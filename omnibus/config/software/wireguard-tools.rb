@@ -26,11 +26,15 @@ version "1.0.20210424" do
 end
 
 relative_path "wireguard-tools-#{version}/src"
-
 license "GPL-2.0"
 
 build do
-  env = with_standard_compiler_flags(with_embedded_path).merge("PREFIX" => "#{install_dir}/embedded")
+  env = with_standard_compiler_flags(with_embedded_path).merge(
+    "PREFIX" => "#{install_dir}/embedded",
+    "RUNSTATEDIR" => "#{install_dir}/embedded/var/run",
+    "SYSCONFDIR" => "#{install_dir}/embedded/etc",
+    "DESTDIR" => "#{install_dir}/embedded"
+  )
 
   make "-j #{workers}", env: env
   make "install", env: env
