@@ -25,11 +25,12 @@ version "1.0.20210424" do
   source url: default_src_url, sha256: "1ad170ded2d66d7c5a02fc2fd5ac3e195ec1c98133986f2d8223ed5a72c8877f"
 end
 
-relative_path "src"
+relative_path "wireguard-tools-#{version}/src"
+
 license "GPL-2.0"
 
 build do
-  env = with_standard_compiler_flags(with_embedded_path)
+  env = with_standard_compiler_flags(with_embedded_path).merge("PREFIX" => "#{install_dir}/embedded")
 
   make "-j #{workers}", env: env
   make "install", env: env
