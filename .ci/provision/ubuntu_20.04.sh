@@ -65,3 +65,5 @@ bundle install --binstubs
 sudo mkdir -p /opt/firezone
 sudo chown -R ${USER} /opt/firezone
 bin/omnibus build firezone
+
+sudo dpkg -i pkg/firezone*.deb

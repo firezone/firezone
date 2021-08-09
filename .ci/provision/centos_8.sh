@@ -55,3 +55,5 @@ bundle install --binstubs
 sudo mkdir -p /opt/firezone
 sudo chown -R ${USER} /opt/firezone
 bin/omnibus build firezone
+
+sudo rpm -i pkg/firezone*.rpm
