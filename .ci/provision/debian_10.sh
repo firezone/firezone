@@ -49,7 +49,7 @@ sudo apt-get install -y nodejs
 
 
 # Install WireGuard
-sudo apt-get install -y -q wireguard
+sudo apt-get install -y -q wireguard-dkms
 
 
 # Install asdf
