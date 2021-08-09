@@ -30,7 +30,7 @@ sudo apt-get install -y -q \
   iptables \
   openssl \
   systemd \
-  wireguard
+  wireguard-dkms
 
 # Set locale
 sudo sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen
