@@ -1,7 +1,7 @@
 #!/bin/sh
 #
 # Perform necessary firezone setup steps
-# prior to installing package.
+# prior to uninstalling package.
 #
 
 PROGNAME=`basename $0`
