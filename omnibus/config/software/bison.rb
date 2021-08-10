@@ -14,28 +14,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-name "nftables"
-default_version "0.9.9"
-
-source url: "https://www.netfilter.org/pub/nftables/nftables-#{version}.tar.bz2"
-
-version("0.9.9") { source sha256: "76ef2dc7fd0d79031a8369487739a217ca83996b3a746cec5bda79da11e3f1b4" }
-
-relative_path "#{name}-#{version}"
-
-dependency "gmp"
-dependency "m4"
-dependency "bison"
-dependency "flex"
-dependency "libmnl"
-dependency "libnftnl"
-dependency "libtool"
-dependency "readline"
-dependency "pkg-config"
+# expeditor/ignore: deprecated 2021-04
+name "bison"
+license "GPL-3.0"
+license_file "COPYING"
+skip_transitive_dependency_licensing true
+default_version "3.7"
+source url: "http://mirrors.ibiblio.org/gnu/bison/bison-#{version}.tar.gz"
+version("3.7") do
+  source sha256: "492ad61202de893ca21a99b621d63fa5389da58804ad79d3f226b8d04b803998"
+end
+relative_path "bison-#{version}"
 
 build do
   env = with_standard_compiler_flags(with_embedded_path)
-  command "./autogen.sh"
+
   command "./configure --prefix=#{install_dir}/embedded", env: env
   make "-j #{workers}", env: env
   make "-j #{workers} install", env: env

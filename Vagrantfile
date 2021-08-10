@@ -20,6 +20,11 @@ Vagrant.configure("2") do |config|
     centos7.vm.box = "generic/centos7"
     centos7.vm.box_url = "http://vagrant.cloudfire.network/centos7.box"
     centos7.vm.network "forwarded_port", guest: 8800, host: ENV.fetch("PORT", 8800)
+    # Install a newer kernel with proper nftables support
+    centos7.vm.provision "shell", reboot: true, inline: <<~SHELL
+      yum install -y elrepo-release
+      yum --enablerepo=elrepo-kernel install -y kernel-lt
+    SHELL
     centos7.vm.provision "shell", path: ".ci/provision/centos_7.sh", privileged: false
   end
 
