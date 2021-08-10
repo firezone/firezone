@@ -32,6 +32,6 @@ relative_path "elixir-#{version}"
 build do
   env = with_standard_compiler_flags(with_embedded_path)
 
-  make env: env
+  make "-j #{workers}", env: env
   make "install PREFIX=#{install_dir}/embedded", env: env
 end

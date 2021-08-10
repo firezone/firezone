@@ -40,11 +40,9 @@ dependency "compile_release"
 dependency "erlang"
 dependency "elixir"
 dependency "openssl"
-
-# firezone runtime dependencies
-runtime_dependency "postgresql"
-runtime_dependency "openssl"
-runtime_dependency "wireguard-tools"
+dependency "postgresql"
+dependency "wireguard-tools"
+dependency "nftables"
 
 exclude "**/.git"
 exclude "**/bundler/git"

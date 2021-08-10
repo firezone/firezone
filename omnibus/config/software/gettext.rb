@@ -13,30 +13,22 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-name "nftables"
-default_version "0.9.9"
 
-source url: "https://www.netfilter.org/pub/nftables/nftables-#{version}.tar.bz2"
+name "gettext"
+license "GPL-3.0"
+license_file "COPYING"
 
-version("0.9.9") { source sha256: "76ef2dc7fd0d79031a8369487739a217ca83996b3a746cec5bda79da11e3f1b4" }
+source url: "https://ftp.gnu.org/pub/gnu/gettext/gettext-#{version}.tar.gz"
+version("0.21") do
+  source sha256: "492ad61202de893ca21a99b621d63fa5389da58804ad79d3f226b8d04b803998"
+end
 
 relative_path "#{name}-#{version}"
 
-dependency "gmp"
-dependency "m4"
-dependency "bison"
-dependency "flex"
-dependency "libmnl"
-dependency "libnftnl"
-dependency "libtool"
-dependency "readline"
-dependency "pkg-config"
-
 build do
   env = with_standard_compiler_flags(with_embedded_path)
-  command "./autogen.sh"
-  command "./configure --prefix=#{install_dir}/embedded", env: env
+
+  command ".configure --prefix=#{install_dir}/embedded", env: env
   make "-j #{workers}", env: env
   make "-j #{workers} install", env: env
 end

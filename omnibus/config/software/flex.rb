@@ -13,28 +13,23 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-name "nftables"
-default_version "0.9.9"
-
-source url: "https://www.netfilter.org/pub/nftables/nftables-#{version}.tar.bz2"
-
-version("0.9.9") { source sha256: "76ef2dc7fd0d79031a8369487739a217ca83996b3a746cec5bda79da11e3f1b4" }
-
+name "flex"
+license_file "COPYING"
+skip_transitive_dependency_licensing true
+default_version "2.6.4"
+source url: "https://github.com/westes/flex/releases/download/v#{version}/flex-#{version}.tar.gz"
+version("2.6.4") do
+  source sha256: "e87aae032bf07c26f85ac0ed3250998c37621d95f8bd748b31f15b33c45ee995"
+end
 relative_path "#{name}-#{version}"
 
-dependency "gmp"
-dependency "m4"
 dependency "bison"
-dependency "flex"
-dependency "libmnl"
-dependency "libnftnl"
-dependency "libtool"
-dependency "readline"
-dependency "pkg-config"
+dependency "m4"
+dependency "gettext"
 
 build do
   env = with_standard_compiler_flags(with_embedded_path)
+
   command "./autogen.sh"
   command "./configure --prefix=#{install_dir}/embedded", env: env
   make "-j #{workers}", env: env

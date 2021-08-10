@@ -23,13 +23,7 @@ skip_transitive_dependency_licensing true
 dependency "cacerts"
 dependency "openssl-fips" if fips_mode?
 
-if ohai["platform"] == "centos" && ohai["platform_version"].start_with?("7.")
-  # Need an older version of openssl because newer versions fail to build with the
-  # gcc toolchain that comes with CentOS 7. Need at least gcc/g++ 4.9.
-  default_version "1.0.2i"
-else
-  default_version "1.1.1i" # do_not_auto_update
-end
+default_version "1.1.1k" # do_not_auto_update
 
 # Openssl builds engines as libraries into a special directory. We need to include
 # that directory in lib_dirs so omnibus can sign them during macOS deep signing.
@@ -168,7 +162,7 @@ build do
 
   make "depend", env: env
   # make -j N on openssl is not reliable
-  make env: env
+  make "-j #{workers}", env: env
   if aix?
     # We have to sudo this because you can't actually run slibclean without being root.
     # Something in openssl changed in the build process so now it loads the libcrypto
@@ -179,5 +173,5 @@ build do
     # Bug Ref: http://rt.openssl.org/Ticket/Display.html?id=2986&user=guest&pass=guest
     command "sudo /usr/sbin/slibclean", env: env
   end
-  make "install", env: env
+  make "-j #{workers} install", env: env
 end
