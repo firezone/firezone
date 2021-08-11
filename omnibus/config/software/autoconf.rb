@@ -1,6 +1,5 @@
-# frozen_string_literal: true
-
-# Copyright:: FireZone
+#
+# Copyright:: Chef Software, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,28 +12,35 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-name "flex"
-license_file "COPYING"
-skip_transitive_dependency_licensing true
-default_version "2.6.4"
-source url: "https://github.com/westes/flex/releases/download/v#{version}/flex-#{version}.tar.gz"
-version("2.6.4") do
-  source sha256: "e87aae032bf07c26f85ac0ed3250998c37621d95f8bd748b31f15b33c45ee995"
-end
-relative_path "#{name}-#{version}"
+#
+# expeditor/ignore: deprecated 2021-04
 
-dependency "bison"
+name "autoconf"
+default_version "2.69"
+
+license "GPL-3.0"
+license_file "COPYING"
+license_file "COPYING.EXCEPTION"
+skip_transitive_dependency_licensing true
+
 dependency "m4"
-dependency "gettext"
-dependency "libtool"
-dependency "autoconf"
-dependency "automake"
+
+version("2.69") { source sha256: "954bd69b391edc12d6a4a51a2dd1476543da5c6bbf05a95b59dc0dd6fd4c2969" }
+
+source url: "https://ftp.gnu.org/gnu/autoconf/autoconf-#{version}.tar.gz"
+
+relative_path "autoconf-#{version}"
 
 build do
   env = with_standard_compiler_flags(with_embedded_path)
 
-  command "./autogen.sh", env: env
-  command "./configure --prefix=#{install_dir}/embedded", env: env
+  if solaris2?
+    env["M4"] = "#{install_dir}/embedded/bin/m4"
+  end
+
+  command "./configure" \
+          " --prefix=#{install_dir}/embedded", env: env
+
   make "-j #{workers}", env: env
-  make "-j #{workers} install", env: env
+  make "install", env: env
 end

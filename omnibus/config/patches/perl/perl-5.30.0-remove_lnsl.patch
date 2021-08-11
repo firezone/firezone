@@ -1,0 +1,518 @@
+diff -ur perl-5.30.0.orig/Configure perl-5.30.0/Configure
+--- perl-5.30.0.orig/Configure	2019-05-11 05:50:20.000000000 -0400
++++ perl-5.30.0/Configure	2019-10-14 17:37:29.512567849 -0400
+@@ -1487,7 +1487,7 @@
+ usereentrant='undef'
+ : List of libraries we want.
+ : If anyone needs extra -lxxx, put those in a hint file.
+-libswanted="cl pthread socket bind inet nsl ndbm gdbm dbm db malloc dl ld"
++libswanted="cl pthread socket bind inet ndbm gdbm dbm db malloc dl ld"
+ libswanted="$libswanted sun m crypt sec util c cposix posix ucb bsd BSD"
+ : We probably want to search /usr/shlib before most other libraries.
+ : This is only used by the lib/ExtUtils/MakeMaker.pm routine extliblist.
+diff -ur perl-5.30.0.orig/configure.com perl-5.30.0/configure.com
+--- perl-5.30.0.orig/configure.com	2019-05-11 05:50:20.000000000 -0400
++++ perl-5.30.0/configure.com	2019-10-14 17:35:46.608063565 -0400
+@@ -117,7 +117,7 @@
+ $!: machines, like the mips.  Usually, it should be empty. !sfn
+ $!plibpth=''                                           !sfn
+ $!: List of libraries we want.                         !sfn
+-$!libswanted='net socket inet nsl nm ndbm gdbm dbm db malloc dl' !sfn
++$!libswanted='net socket inet nm ndbm gdbm dbm db malloc dl' !sfn
+ $!libswanted="$libswanted ld sun m c cposix posix ndir dir crypt" !sfn
+ $!libswanted="$libswanted ucb bsd BSD PW x"            !sfn
+ $!: We probably want to search /usr/shlib before most other libraries. !sfn
+Only in perl-5.30.0/: configure.com.orig
+Only in perl-5.30.0/: Configure.orig
+diff -ur perl-5.30.0.orig/cpan/Config-Perl-V/t/20_plv56.t perl-5.30.0/cpan/Config-Perl-V/t/20_plv56.t
+--- perl-5.30.0.orig/cpan/Config-Perl-V/t/20_plv56.t	2019-05-11 05:50:20.000000000 -0400
++++ perl-5.30.0/cpan/Config-Perl-V/t/20_plv56.t	2019-10-14 17:35:46.612063373 -0400
+@@ -63,8 +63,8 @@
+   Linker and Libraries:
+     ld='cc', ldflags ='-L/pro/local/lib'
+     libpth=/pro/local/lib /lib /usr/lib /usr/local/lib
+-    libs=-lnsl -lgdbm -ldb -ldl -lm -lc -lcrypt -lutil
+-    perllibs=-lnsl -ldl -lm -lc -lcrypt -lutil
++    libs=-lgdbm -ldb -ldl -lm -lc -lcrypt -lutil
++    perllibs=-ldl -lm -lc -lcrypt -lutil
+     libc=/lib/libc-2.10.1.so, so=so, useshrplib=false, libperl=libperl.a
+   Dynamic Linking:
+     dlsrc=dl_dlopen.xs, dlext=so, d_dlsymun=undef, ccdlflags='-rdynamic'
+Only in perl-5.30.0/cpan/Config-Perl-V/t: 20_plv56.t.orig
+diff -ur perl-5.30.0.orig/cpan/Config-Perl-V/t/21_plv58.t perl-5.30.0/cpan/Config-Perl-V/t/21_plv58.t
+--- perl-5.30.0.orig/cpan/Config-Perl-V/t/21_plv58.t	2019-05-11 05:50:20.000000000 -0400
++++ perl-5.30.0/cpan/Config-Perl-V/t/21_plv58.t	2019-10-14 17:35:46.612063373 -0400
+@@ -67,8 +67,8 @@
+   Linker and Libraries:
+     ld='cc', ldflags ='-L/pro/local/lib'
+     libpth=/pro/local/lib /lib /usr/lib /usr/local/lib
+-    libs=-lnsl -lgdbm -ldb -ldl -lm -lcrypt -lutil -lpthread -lc
+-    perllibs=-lnsl -ldl -lm -lcrypt -lutil -lpthread -lc
++    libs=-lgdbm -ldb -ldl -lm -lcrypt -lutil -lpthread -lc
++    perllibs=-ldl -lm -lcrypt -lutil -lpthread -lc
+     libc=/lib/libc-2.11.2.so, so=so, useshrplib=false, libperl=libperl.a
+     gnulibc_version='2.11.2'
+   Dynamic Linking:
+Only in perl-5.30.0/cpan/Config-Perl-V/t: 21_plv58.t.orig
+diff -ur perl-5.30.0.orig/cpan/Config-Perl-V/t/22_plv510.t perl-5.30.0/cpan/Config-Perl-V/t/22_plv510.t
+--- perl-5.30.0.orig/cpan/Config-Perl-V/t/22_plv510.t	2019-05-11 05:50:20.000000000 -0400
++++ perl-5.30.0/cpan/Config-Perl-V/t/22_plv510.t	2019-10-14 17:35:46.612063373 -0400
+@@ -57,8 +57,8 @@
+   Linker and Libraries:
+     ld='cc', ldflags ='-L/pro/local/lib'
+     libpth=/pro/local/lib /lib /usr/lib /usr/local/lib
+-    libs=-lnsl -lgdbm -ldb -ldl -lm -lcrypt -lutil -lc
+-    perllibs=-lnsl -ldl -lm -lcrypt -lutil -lc
++    libs=-lgdbm -ldb -ldl -lm -lcrypt -lutil -lc
++    perllibs=-ldl -lm -lcrypt -lutil -lc
+     libc=/lib/libc-2.6.1.so, so=so, useshrplib=false, libperl=libperl.a
+     gnulibc_version='2.6.1'
+   Dynamic Linking:
+Only in perl-5.30.0/cpan/Config-Perl-V/t: 22_plv510.t.orig
+diff -ur perl-5.30.0.orig/cpan/Config-Perl-V/t/23_plv512.t perl-5.30.0/cpan/Config-Perl-V/t/23_plv512.t
+--- perl-5.30.0.orig/cpan/Config-Perl-V/t/23_plv512.t	2019-05-11 05:50:20.000000000 -0400
++++ perl-5.30.0/cpan/Config-Perl-V/t/23_plv512.t	2019-10-14 17:35:46.612063373 -0400
+@@ -68,8 +68,8 @@
+   Linker and Libraries:
+     ld='/usr/bin/ld', ldflags ='-L/pro/local/lib +DD64 -L/usr/lib/hpux64'
+     libpth=/pro/local/lib /usr/lib/hpux64 /lib /usr/lib /usr/ccs/lib /usr/local/lib
+-    libs=-lcl -lpthread -lnsl -lnm -ldb -ldl -ldld -lm -lsec -lc
+-    perllibs=-lcl -lpthread -lnsl -lnm -ldl -ldld -lm -lsec -lc
++    libs=-lcl -lpthread -lnm -ldb -ldl -ldld -lm -lsec -lc
++    perllibs=-lcl -lpthread -lnm -ldl -ldld -lm -lsec -lc
+     libc=/usr/lib/hpux64/libc.so, so=so, useshrplib=false, libperl=libperl.a
+     gnulibc_version=''
+   Dynamic Linking:
+Only in perl-5.30.0/cpan/Config-Perl-V/t: 23_plv512.t.orig
+diff -ur perl-5.30.0.orig/cpan/Config-Perl-V/t/24_plv514.t perl-5.30.0/cpan/Config-Perl-V/t/24_plv514.t
+--- perl-5.30.0.orig/cpan/Config-Perl-V/t/24_plv514.t	2019-05-11 05:50:20.000000000 -0400
++++ perl-5.30.0/cpan/Config-Perl-V/t/24_plv514.t	2019-10-14 17:35:46.612063373 -0400
+@@ -69,8 +69,8 @@
+   Linker and Libraries:
+     ld='ld', ldflags ='-L/usr/local/ppc64/lib64 -b64 -q64 -L/pro/local/lib -brtl -bdynamic -b64'
+     libpth=/usr/local/ppc64/lib64 /lib /usr/lib /usr/ccs/lib /usr/local/lib /usr/lib64
+-    libs=-lbind -lnsl -ldbm -ldb -ldl -lld -lm -lcrypt -lc
+-    perllibs=-lbind -lnsl -ldl -lld -lm -lcrypt -lc
++    libs=-lbind -ldbm -ldb -ldl -lld -lm -lcrypt -lc
++    perllibs=-lbind -ldl -lld -lm -lcrypt -lc
+     libc=/lib/libc.a, so=a, useshrplib=false, libperl=libperl.a
+     gnulibc_version=''
+   Dynamic Linking:
+Only in perl-5.30.0/cpan/Config-Perl-V/t: 24_plv514.t.orig
+diff -ur perl-5.30.0.orig/cpan/Config-Perl-V/t/25_plv516.t perl-5.30.0/cpan/Config-Perl-V/t/25_plv516.t
+--- perl-5.30.0.orig/cpan/Config-Perl-V/t/25_plv516.t	2019-05-11 05:50:20.000000000 -0400
++++ perl-5.30.0/cpan/Config-Perl-V/t/25_plv516.t	2019-10-14 17:35:46.612063373 -0400
+@@ -69,8 +69,8 @@
+   Linker and Libraries:
+     ld='cc', ldflags ='-L/pro/local/lib -fstack-protector'
+     libpth=/pro/local/lib /lib /usr/lib /usr/local/lib
+-    libs=-lnsl -lgdbm -ldb -ldl -lm -lcrypt -lutil -lc -lgdbm_compat
+-    perllibs=-lnsl -ldl -lm -lcrypt -lutil -lc
++    libs=-lgdbm -ldb -ldl -lm -lcrypt -lutil -lc -lgdbm_compat
++    perllibs=-ldl -lm -lcrypt -lutil -lc
+     libc=/lib/libc-2.15.so, so=so, useshrplib=false, libperl=libperl.a
+     gnulibc_version='2.15'
+   Dynamic Linking:
+Only in perl-5.30.0/cpan/Config-Perl-V/t: 25_plv516.t.orig
+diff -ur perl-5.30.0.orig/cpan/Config-Perl-V/t/26_plv5182.t perl-5.30.0/cpan/Config-Perl-V/t/26_plv5182.t
+--- perl-5.30.0.orig/cpan/Config-Perl-V/t/26_plv5182.t	2019-05-11 05:50:20.000000000 -0400
++++ perl-5.30.0/cpan/Config-Perl-V/t/26_plv5182.t	2019-10-14 17:35:46.612063373 -0400
+@@ -94,8 +94,8 @@
+   Linker and Libraries:
+     ld='cc', ldflags ='-L/pro/local/lib -fstack-protector'
+     libpth=/pro/local/lib /lib /usr/lib /usr/local/lib
+-    libs=-lnsl -lgdbm -ldb -ldl -lm -lcrypt -lutil -lc -lgdbm_compat
+-    perllibs=-lnsl -ldl -lm -lcrypt -lutil -lc
++    libs=-lgdbm -ldb -ldl -lm -lcrypt -lutil -lc -lgdbm_compat
++    perllibs=-ldl -lm -lcrypt -lutil -lc
+     libc=/lib/libc-2.18.so, so=so, useshrplib=false, libperl=libperl.a
+     gnulibc_version='2.18'
+   Dynamic Linking:
+Only in perl-5.30.0/cpan/Config-Perl-V/t: 26_plv5182.t.orig
+diff -ur perl-5.30.0.orig/cpan/Config-Perl-V/t/26_plv518.t perl-5.30.0/cpan/Config-Perl-V/t/26_plv518.t
+--- perl-5.30.0.orig/cpan/Config-Perl-V/t/26_plv518.t	2019-05-11 05:50:20.000000000 -0400
++++ perl-5.30.0/cpan/Config-Perl-V/t/26_plv518.t	2019-10-14 17:35:46.616063181 -0400
+@@ -94,8 +94,8 @@
+   Linker and Libraries:
+     ld='cc', ldflags ='-L/pro/local/lib -fstack-protector'
+     libpth=/pro/local/lib /lib /usr/lib /usr/local/lib
+-    libs=-lnsl -lgdbm -ldb -ldl -lm -lcrypt -lutil -lc -lgdbm_compat
+-    perllibs=-lnsl -ldl -lm -lcrypt -lutil -lc
++    libs=-lgdbm -ldb -ldl -lm -lcrypt -lutil -lc -lgdbm_compat
++    perllibs=-ldl -lm -lcrypt -lutil -lc
+     libc=/lib/libc-2.17.so, so=so, useshrplib=false, libperl=libperl.a
+     gnulibc_version='2.17'
+   Dynamic Linking:
+Only in perl-5.30.0/cpan/Config-Perl-V/t: 26_plv518.t.orig
+diff -ur perl-5.30.0.orig/cpan/Config-Perl-V/t/27_plv5200.t perl-5.30.0/cpan/Config-Perl-V/t/27_plv5200.t
+--- perl-5.30.0.orig/cpan/Config-Perl-V/t/27_plv5200.t	2019-05-11 05:50:20.000000000 -0400
++++ perl-5.30.0/cpan/Config-Perl-V/t/27_plv5200.t	2019-10-14 17:35:46.620062988 -0400
+@@ -96,8 +96,8 @@
+   Linker and Libraries:
+     ld='cc', ldflags ='-L/pro/local/lib -fstack-protector'
+     libpth=/usr/local/lib /usr/lib/gcc/i586-suse-linux/4.8/include-fixed /usr/lib/gcc/i586-suse-linux/4.8/../../../../i586-suse-linux/lib /usr/lib /pro/local/lib /lib
+-    libs=-lnsl -lgdbm -ldb -ldl -lm -lcrypt -lutil -lpthread -lc -lgdbm_compat
+-    perllibs=-lnsl -ldl -lm -lcrypt -lutil -lpthread -lc
++    libs=-lgdbm -ldb -ldl -lm -lcrypt -lutil -lpthread -lc -lgdbm_compat
++    perllibs=-ldl -lm -lcrypt -lutil -lpthread -lc
+     libc=libc-2.18.so, so=so, useshrplib=false, libperl=libperl.a
+     gnulibc_version='2.18'
+   Dynamic Linking:
+Only in perl-5.30.0/cpan/Config-Perl-V/t: 27_plv5200.t.orig
+diff -ur perl-5.30.0.orig/Cross/config.sh-arm-linux perl-5.30.0/Cross/config.sh-arm-linux
+--- perl-5.30.0.orig/Cross/config.sh-arm-linux	2019-05-11 05:50:20.000000000 -0400
++++ perl-5.30.0/Cross/config.sh-arm-linux	2019-10-14 17:35:46.620062988 -0400
+@@ -866,12 +866,12 @@
+ libc='/lib/libc-2.2.2.so'
+ libperl='libperl.so'
+ libpth='/usr/local/lib /lib /usr/lib'
+-libs='-lnsl -ldl -lm -lcrypt -lutil -lc'
++libs='-ldl -lm -lcrypt -lutil -lc'
+ libsdirs=' /usr/lib'
+-libsfiles=' libnsl.so libdl.so libm.so libcrypt.so libutil.so libc.so'
+-libsfound=' /usr/lib/libnsl.so /usr/lib/libdl.so /usr/lib/libm.so /usr/lib/libcrypt.so /usr/lib/libutil.so /usr/lib/libc.so'
++libsfiles=' libdl.so libm.so libcrypt.so libutil.so libc.so'
++libsfound=' /usr/lib/libdl.so /usr/lib/libm.so /usr/lib/libcrypt.so /usr/lib/libutil.so /usr/lib/libc.so'
+ libspath=' /usr/local/lib /lib /usr/lib'
+-libswanted='socket bind inet nsl nm ndbm gdbm dbm db malloc dl ld sun m crypt sec util c cposix posix ucb BSD'
++libswanted='socket bind inet nm ndbm gdbm dbm db malloc dl ld sun m crypt sec util c cposix posix ucb BSD'
+ libswanted_uselargefiles=''
+ line=''
+ lint=''
+@@ -959,7 +959,7 @@
+ perl_patchlevel=''
+ perl_static_inline='static'
+ perladmin='red@criticalintegration.com'
+-perllibs='-lnsl -ldl -lm -lcrypt -lutil -lc'
++perllibs='-ldl -lm -lcrypt -lutil -lc'
+ perlpath='/usr/bin/perl'
+ pg='pg'
+ phostname='hostname'
+diff -ur perl-5.30.0.orig/Cross/config.sh-arm-linux-n770 perl-5.30.0/Cross/config.sh-arm-linux-n770
+--- perl-5.30.0.orig/Cross/config.sh-arm-linux-n770	2019-05-11 05:50:20.000000000 -0400
++++ perl-5.30.0/Cross/config.sh-arm-linux-n770	2019-10-14 17:35:46.620062988 -0400
+@@ -864,12 +864,12 @@
+ libc='/lib/libc-2.2.2.so'
+ libperl='libperl.arma'
+ libpth='/usr/local/lib /lib /usr/lib'
+-libs='-lnsl -ldl -lm -lcrypt -lutil -lc'
++libs='-ldl -lm -lcrypt -lutil -lc'
+ libsdirs=' /usr/lib'
+-libsfiles=' libnsl.so libdl.so libm.so libcrypt.so libutil.so libc.so'
+-libsfound=' /usr/lib/libnsl.so /usr/lib/libdl.so /usr/lib/libm.so /usr/lib/libcrypt.so /usr/lib/libutil.so /usr/lib/libc.so'
++libsfiles=' libdl.so libm.so libcrypt.so libutil.so libc.so'
++libsfound=' /usr/lib/libdl.so /usr/lib/libm.so /usr/lib/libcrypt.so /usr/lib/libutil.so /usr/lib/libc.so'
+ libspath=' /usr/local/lib /lib /usr/lib'
+-libswanted='socket bind inet nsl nm ndbm gdbm dbm db malloc dl ld sun m crypt sec util c cposix posix ucb BSD'
++libswanted='socket bind inet nm ndbm gdbm dbm db malloc dl ld sun m crypt sec util c cposix posix ucb BSD'
+ libswanted_uselargefiles=''
+ line=''
+ lint=''
+@@ -957,7 +957,7 @@
+ perl_patchlevel=''
+ perl_static_inline='static'
+ perladmin='red@criticalintegration.com'
+-perllibs='-lnsl -ldl -lm -lcrypt -lutil -lc'
++perllibs='-ldl -lm -lcrypt -lutil -lc'
+ perlpath='/usr/bin/perl'
+ pg='pg'
+ phostname='hostname'
+Only in perl-5.30.0/Cross: config.sh-arm-linux-n770.orig
+Only in perl-5.30.0/Cross: config.sh-arm-linux.orig
+diff -ur perl-5.30.0.orig/hints/aix_4.sh perl-5.30.0/hints/aix_4.sh
+--- perl-5.30.0.orig/hints/aix_4.sh	2018-06-27 07:17:56.000000000 -0400
++++ perl-5.30.0/hints/aix_4.sh	2019-10-14 17:35:46.620062988 -0400
+@@ -583,7 +583,7 @@
+ 
+ ***
+ *** You seem to be compiling in AIX for the OS/400 PASE environment.
+-*** I'm not going to use the AIX bind, nsl, and possible util libraries, then.
++*** I'm not going to use the AIX bind,  and possible util libraries, then.
+ *** I'm also not going to install perl as /usr/bin/perl.
+ *** Perl will be installed under $prefix.
+ *** For instructions how to install this build from AIX to PASE,
+@@ -591,7 +591,7 @@
+ *** about "Operating system name".
+ ***
+ EOF
+-	set `echo " $libswanted " | sed -e 's@ bind @ @' -e 's@ nsl @ @' -e 's@ util @ @'`
++	set `echo " $libswanted " | sed -e 's@ bind @ @' -e 's@ util @ @'`
+ 	shift
+ 	libswanted="$*"
+ 	installusrbinperl="$undef"
+diff -ur perl-5.30.0.orig/hints/aix.sh perl-5.30.0/hints/aix.sh
+--- perl-5.30.0.orig/hints/aix.sh	2019-05-11 05:50:20.000000000 -0400
++++ perl-5.30.0/hints/aix.sh	2019-10-14 17:35:46.620062988 -0400
+@@ -504,7 +504,7 @@
+ 
+ ***
+ *** You seem to be compiling in AIX for the OS/400 PASE environment.
+-*** I'm not going to use the AIX bind, nsl, and possible util libraries, then.
++*** I'm not going to use the AIX bind,  and possible util libraries, then.
+ *** I'm also not going to install perl as /usr/bin/perl.
+ *** Perl will be installed under $prefix.
+ *** For instructions how to install this build from AIX to PASE,
+@@ -512,7 +512,7 @@
+ *** about "Operating system name".
+ ***
+ EOF
+-	set `echo " $libswanted " | sed -e 's@ bind @ @' -e 's@ nsl @ @' -e 's@ util @ @'`
++	set `echo " $libswanted " | sed -e 's@ bind @ @' -e 's@ util @ @'`
+ 	shift
+ 	libswanted="$*"
+ 	installusrbinperl="$undef"
+diff -ur perl-5.30.0.orig/hints/epix.sh perl-5.30.0/hints/epix.sh
+--- perl-5.30.0.orig/hints/epix.sh	2019-05-11 05:50:20.000000000 -0400
++++ perl-5.30.0/hints/epix.sh	2019-10-14 17:35:46.620062988 -0400
+@@ -37,7 +37,7 @@
+ # Old version had this, but I'm not sure why since the old version
+ # also mucked around with libswanted.  This is also definitely wrong
+ # if the user is trying to use DB_File or GDBM_File.
+-# libs='-lsocket -lnsl -ldbm -ldl -lc -lcrypt -lm -lucb'
++# libs='-lsocket -ldbm -ldl -lc -lcrypt -lm -lucb'
+ 
+ # We include support for using libraries in /usr/ucblib, but the setting
+ # of libswanted excludes some libraries found there.  You may want to
+diff -ur perl-5.30.0.orig/hints/gnu.sh perl-5.30.0/hints/gnu.sh
+--- perl-5.30.0.orig/hints/gnu.sh	2019-05-11 05:50:20.000000000 -0400
++++ perl-5.30.0/hints/gnu.sh	2019-10-14 17:35:46.620062988 -0400
+@@ -3,7 +3,7 @@
+ 
+ # libnsl is unusable on the Hurd.
+ # XXX remove this once SUNRPC is implemented.
+-set `echo X "$libswanted "| sed -e 's/ bsd / /' -e 's/ nsl / /' -e 's/ c / pthread /'`
++set `echo X "$libswanted "| sed -e 's/ bsd / /' -e 's/ c / pthread /'`
+ shift
+ libswanted="$*"
+ 
+Only in perl-5.30.0/hints: gnu.sh.orig
+diff -ur perl-5.30.0.orig/hints/irix_5.sh perl-5.30.0/hints/irix_5.sh
+--- perl-5.30.0.orig/hints/irix_5.sh	2018-06-27 07:17:56.000000000 -0400
++++ perl-5.30.0/hints/irix_5.sh	2019-10-14 17:35:46.624062797 -0400
+@@ -27,9 +27,9 @@
+ esac
+ 
+ lddlflags="-shared"
+-# For some reason we don't want -lsocket -lnsl or -ldl.  Can anyone
++# For some reason we don't want -lsocket or -ldl.  Can anyone
+ # contribute an explanation?
+-set `echo X "$libswanted "|sed -e 's/ socket / /' -e 's/ nsl / /' -e 's/ dl / /'`
++set `echo X "$libswanted "|sed -e 's/ socket / /' -e 's/ dl / /'`
+ shift
+ libswanted="$*"
+ 
+diff -ur perl-5.30.0.orig/hints/irix_6_0.sh perl-5.30.0/hints/irix_6_0.sh
+--- perl-5.30.0.orig/hints/irix_6_0.sh	2018-06-27 07:17:56.000000000 -0400
++++ perl-5.30.0/hints/irix_6_0.sh	2019-10-14 17:35:46.624062797 -0400
+@@ -19,7 +19,7 @@
+ lddlflags="-32 -shared"
+ 
+ # We don't want these libraries.  Anyone know why?
+-set `echo X "$libswanted "|sed -e 's/ socket / /' -e 's/ nsl / /' -e 's/ dl / /'`
++set `echo X "$libswanted "|sed -e 's/ socket / /' -e 's/ dl / /'`
+ shift
+ libswanted="$*"
+ #
+@@ -29,7 +29,7 @@
+ # taken from irix_5.sh .  Changes from irix_5.sh:
+ # Olimit and nested comments (warning 1009) no longer accepted
+ # -OPT:fold_arith_limit so POSIX module will optimize
+-# no 64bit versions of sun, crypt, nsl, socket, dl dso's available
++# no 64bit versions of sun, crypt,  socket, dl dso's available
+ # as of IRIX 6.0.1 so omit those from libswanted line via `sed'.
+ 
+ # perl 5 built with this hints file passes most tests (`make test').
+@@ -38,7 +38,7 @@
+ # i_time='define'
+ # ccflags="$ccflags -D_POSIX_SOURCE -ansiposix -D_BSD_TYPES -woff 1009 -OPT:fold_arith_limit=1046"
+ # lddlflags="-shared"
+-# set `echo X "$libswanted "|sed -e 's/ socket / /' -e 's/ sun / /' -e 's/ crypt / /' -e 's/ nsl / /' -e 's/ dl / /'`
++# set `echo X "$libswanted "|sed -e 's/ socket / /' -e 's/ sun / /' -e 's/ crypt / /' -e 's/ dl / /'`
+ # shift
+ # libswanted="$*"
+ 
+diff -ur perl-5.30.0.orig/hints/irix_6_1.sh perl-5.30.0/hints/irix_6_1.sh
+--- perl-5.30.0.orig/hints/irix_6_1.sh	2018-06-27 07:17:56.000000000 -0400
++++ perl-5.30.0/hints/irix_6_1.sh	2019-10-14 17:35:46.624062797 -0400
+@@ -19,7 +19,7 @@
+ lddlflags="-32 -shared"
+ 
+ # We don't want these libraries.  Anyone know why?
+-set `echo X "$libswanted "|sed -e 's/ socket / /' -e 's/ nsl / /' -e 's/ dl / /'`
++set `echo X "$libswanted "|sed -e 's/ socket / /' -e 's/ dl / /'`
+ shift
+ libswanted="$*"
+ #
+@@ -29,7 +29,7 @@
+ # taken from irix_5.sh .  Changes from irix_5.sh:
+ # Olimit and nested comments (warning 1009) no longer accepted
+ # -OPT:fold_arith_limit so POSIX module will optimize
+-# no 64bit versions of sun, crypt, nsl, socket, dl dso's available
++# no 64bit versions of sun, crypt,  socket, dl dso's available
+ # as of IRIX 6.0.1 so omit those from libswanted line via `sed'.
+ 
+ # perl 5 built with this hints file passes most tests (`make test').
+@@ -38,7 +38,7 @@
+ # i_time='define'
+ # ccflags="$ccflags -D_POSIX_SOURCE -ansiposix -D_BSD_TYPES -woff 1009 -OPT:fold_arith_limit=1046"
+ # lddlflags="-shared"
+-# set `echo X "$libswanted "|sed -e 's/ socket / /' -e 's/ sun / /' -e 's/ crypt / /' -e 's/ nsl / /' -e 's/ dl / /'`
++# set `echo X "$libswanted "|sed -e 's/ socket / /' -e 's/ sun / /' -e 's/ crypt / /' -e 's/ dl / /'`
+ # shift
+ # libswanted="$*"
+ 
+diff -ur perl-5.30.0.orig/hints/irix_6.sh perl-5.30.0/hints/irix_6.sh
+--- perl-5.30.0.orig/hints/irix_6.sh	2019-05-11 05:50:20.000000000 -0400
++++ perl-5.30.0/hints/irix_6.sh	2019-10-14 17:35:46.624062797 -0400
+@@ -388,7 +388,7 @@
+ # Socket networking is in libc, these are not installed by default,
+ # and just slow perl down. (scotth@sgi.com)
+ # librt contains nothing we need (some places need it for Time::HiRes) --jhi
+-set `echo X "$libswanted "|sed -e 's/ socket / /' -e 's/ nsl / /' -e 's/ dl / /' -e 's/ rt / /'`
++set `echo X "$libswanted "|sed -e 's/ socket / /' -e 's/ dl / /' -e 's/ rt / /'`
+ shift
+ libswanted="$*"
+ 
+diff -ur perl-5.30.0.orig/INSTALL perl-5.30.0/INSTALL
+--- perl-5.30.0.orig/INSTALL	2019-05-11 05:50:20.000000000 -0400
++++ perl-5.30.0/INSTALL	2019-10-14 17:36:13.034898813 -0400
+@@ -1623,7 +1623,7 @@
+ undefined symbols, check the libs variable in the config.sh file.  It
+ should look something like
+ 
+-	libs='-lsocket -lnsl -ldl -lm -lc'
++	libs='-lsocket -ldl -lm -lc'
+ 
+ The exact libraries will vary from system to system, but you typically
+ need to include at least the math library -lm.  Normally, Configure
+Only in perl-5.30.0/: INSTALL.orig
+diff -ur perl-5.30.0.orig/NetWare/config.wc perl-5.30.0/NetWare/config.wc
+--- perl-5.30.0.orig/NetWare/config.wc	2019-05-11 05:50:20.000000000 -0400
++++ perl-5.30.0/NetWare/config.wc	2019-10-14 17:36:13.034898813 -0400
+@@ -846,7 +846,7 @@
+ libsfiles=''
+ libsfound=''
+ libspath=''
+-libswanted='net socket inet nsl nm ndbm gdbm dbm db malloc dl ld sun m c cposix posix ndir dir crypt ucb bsd BSD PW x'
++libswanted='net socket inet nm ndbm gdbm dbm db malloc dl ld sun m c cposix posix ndir dir crypt ucb bsd BSD PW x'
+ line='line'
+ lint=''
+ lkflags=''
+Only in perl-5.30.0/NetWare: config.wc.orig
+diff -ur perl-5.30.0.orig/plan9/config_sh.sample perl-5.30.0/plan9/config_sh.sample
+--- perl-5.30.0.orig/plan9/config_sh.sample	2019-05-11 05:50:20.000000000 -0400
++++ perl-5.30.0/plan9/config_sh.sample	2019-10-14 17:36:13.038898652 -0400
+@@ -853,7 +853,7 @@
+ libsfiles=''
+ libsfound=''
+ libspath=' /lib'
+-libswanted='socket bind inet nsl nm ndbm gdbm dbm db malloc dl ld sun m c cposix posix ndir dir crypt sec ucb bsd BSD PW x util'
++libswanted='socket bind inet nm ndbm gdbm dbm db malloc dl ld sun m c cposix posix ndir dir crypt sec ucb bsd BSD PW x util'
+ libswanted_uselargefiles=''
+ line=''
+ lint=''
+Only in perl-5.30.0/plan9: config_sh.sample.orig
+diff -ur perl-5.30.0.orig/pod/perlrun.pod perl-5.30.0/pod/perlrun.pod
+--- perl-5.30.0.orig/pod/perlrun.pod	2019-05-11 05:50:20.000000000 -0400
++++ perl-5.30.0/pod/perlrun.pod	2019-10-14 17:36:13.038898652 -0400
+@@ -887,11 +887,11 @@
+     $ perl -V:libc
+ 	libc='/lib/libc-2.2.4.so';
+     $ perl -V:lib.
+-	libs='-lnsl -lgdbm -ldb -ldl -lm -lcrypt -lutil -lc';
++	libs='-lgdbm -ldb -ldl -lm -lcrypt -lutil -lc';
+ 	libc='/lib/libc-2.2.4.so';
+     $ perl -V:lib.*
+ 	libpth='/usr/local/lib /lib /usr/lib';
+-	libs='-lnsl -lgdbm -ldb -ldl -lm -lcrypt -lutil -lc';
++	libs='-lgdbm -ldb -ldl -lm -lcrypt -lutil -lc';
+ 	lib_ext='.a';
+ 	libc='/lib/libc-2.2.4.so';
+ 	libperl='libperl.a';
+Only in perl-5.30.0/pod: perlrun.pod.orig
+diff -ur perl-5.30.0.orig/Porting/bisect-runner.pl perl-5.30.0/Porting/bisect-runner.pl
+--- perl-5.30.0.orig/Porting/bisect-runner.pl	2019-05-11 05:50:20.000000000 -0400
++++ perl-5.30.0/Porting/bisect-runner.pl	2019-10-14 17:36:13.038898652 -0400
+@@ -1384,7 +1384,7 @@
+     my @libs;
+     # This is the current libswanted list from Configure, less the libs removed
+     # by current hints/linux.sh
+-    foreach my $lib (qw(sfio socket inet nsl nm ndbm gdbm dbm db malloc dl
++    foreach my $lib (qw(sfio socket inet nm ndbm gdbm dbm db malloc dl
+ 			ld sun m crypt sec util c cposix posix ucb BSD)) {
+ 	foreach my $dir (@paths) {
+             # Note the wonderful consistency of dot-or-not in the config vars:
+Only in perl-5.30.0/Porting: bisect-runner.pl.orig
+diff -ur perl-5.30.0.orig/Porting/config.sh perl-5.30.0/Porting/config.sh
+--- perl-5.30.0.orig/Porting/config.sh	2019-05-11 05:50:20.000000000 -0400
++++ perl-5.30.0/Porting/config.sh	2019-10-14 17:38:20.815713492 -0400
+@@ -891,12 +891,12 @@
+ libc='libc-2.19.so'
+ libperl='libperl.a'
+ libpth='/usr/local/lib /usr/lib/gcc/x86_64-linux-gnu/4.9/include-fixed /usr/include/x86_64-linux-gnu /usr/lib /lib/x86_64-linux-gnu /lib/../lib /usr/lib/x86_64-linux-gnu /usr/lib/../lib /lib'
+-libs='-lpthread -lnsl -lgdbm -ldb -ldl -lm -lcrypt -lutil -lc -lgdbm_compat'
++libs='-lpthread -lgdbm -ldb -ldl -lm -lcrypt -lutil -lc -lgdbm_compat'
+ libsdirs=' /usr/lib/x86_64-linux-gnu'
+-libsfiles=' libpthread.so libnsl.so libgdbm.so libdb.so libdl.so libm.so libcrypt.so libutil.so libc.so libgdbm_compat.so'
+-libsfound=' /usr/lib/x86_64-linux-gnu/libpthread.so /usr/lib/x86_64-linux-gnu/libnsl.so /usr/lib/x86_64-linux-gnu/libgdbm.so /usr/lib/x86_64-linux-gnu/libdb.so /usr/lib/x86_64-linux-gnu/libdl.so /usr/lib/x86_64-linux-gnu/libm.so /usr/lib/x86_64-linux-gnu/libcrypt.so /usr/lib/x86_64-linux-gnu/libutil.so /usr/lib/x86_64-linux-gnu/libc.so /usr/lib/x86_64-linux-gnu/libgdbm_compat.so'
++libsfiles=' libpthread.so libgdbm.so libdb.so libdl.so libm.so libcrypt.so libutil.so libc.so libgdbm_compat.so'
++libsfound=' /usr/lib/x86_64-linux-gnu/libpthread.so /usr/lib/x86_64-linux-gnu/libgdbm.so /usr/lib/x86_64-linux-gnu/libdb.so /usr/lib/x86_64-linux-gnu/libdl.so /usr/lib/x86_64-linux-gnu/libm.so /usr/lib/x86_64-linux-gnu/libcrypt.so /usr/lib/x86_64-linux-gnu/libutil.so /usr/lib/x86_64-linux-gnu/libc.so /usr/lib/x86_64-linux-gnu/libgdbm_compat.so'
+ libspath=' /usr/local/lib /usr/lib/gcc/x86_64-linux-gnu/4.9/include-fixed /usr/include/x86_64-linux-gnu /usr/lib /lib/x86_64-linux-gnu /lib/../lib /usr/lib/x86_64-linux-gnu /usr/lib/../lib /lib'
+-libswanted='cl pthread cl pthread socket inet nsl gdbm dbm db malloc dl ld sun m crypt sec util c cposix posix ucb BSD gdbm_compat'
++libswanted='cl pthread cl pthread socket inet gdbm dbm db malloc dl ld sun m crypt sec util c cposix posix ucb BSD gdbm_compat'
+ libswanted_uselargefiles=''
+ line=''
+ lint=''
+@@ -983,7 +983,7 @@
+ perl_patchlevel=''
+ perl_static_inline='static __inline__'
+ perladmin='yourname@yourhost.yourplace.com'
+-perllibs='-lpthread -lnsl -ldl -lm -lcrypt -lutil -lc'
++perllibs='-lpthread -ldl -lm -lcrypt -lutil -lc'
+ perlpath='/opt/perl/bin/perl5.30.0'
+ pg='pg'
+ phostname=''
+Only in perl-5.30.0/Porting: config.sh.orig
+diff -ur perl-5.30.0.orig/win32/config.ce perl-5.30.0/win32/config.ce
+--- perl-5.30.0.orig/win32/config.ce	2019-05-11 05:50:20.000000000 -0400
++++ perl-5.30.0/win32/config.ce	2019-10-14 17:36:13.090896568 -0400
+@@ -839,7 +839,7 @@
+ libsfiles=''
+ libsfound=''
+ libspath=''
+-libswanted='net socket inet nsl nm ndbm gdbm dbm db malloc dl ld sun m c cposix posix ndir dir crypt ucb bsd BSD PW x'
++libswanted='net socket inet nm ndbm gdbm dbm db malloc dl ld sun m c cposix posix ndir dir crypt ucb bsd BSD PW x'
+ line='line'
+ lint=''
+ lkflags=''
+Only in perl-5.30.0/win32: config.ce.orig
+diff -ur perl-5.30.0.orig/win32/config.gc perl-5.30.0/win32/config.gc
+--- perl-5.30.0.orig/win32/config.gc	2019-05-11 05:50:20.000000000 -0400
++++ perl-5.30.0/win32/config.gc	2019-10-14 17:36:13.090896568 -0400
+@@ -865,8 +865,8 @@
+ libsfiles=''
+ libsfound=''
+ libspath=''
+-libswanted='net socket inet nsl nm ndbm gdbm dbm db malloc dl ld sun m c cposix posix ndir dir crypt ucb bsd BSD PW x'
+-libswanted_uselargefiles='net socket inet nsl nm ndbm gdbm dbm db malloc dl ld sun m c cposix posix ndir dir crypt ucb bsd BSD PW x'
++libswanted='net socket inet nm ndbm gdbm dbm db malloc dl ld sun m c cposix posix ndir dir crypt ucb bsd BSD PW x'
++libswanted_uselargefiles='net socket inet nm ndbm gdbm dbm db malloc dl ld sun m c cposix posix ndir dir crypt ucb bsd BSD PW x'
+ line='line'
+ lint=''
+ lkflags=''
+Only in perl-5.30.0/win32: config.gc.orig
+diff -ur perl-5.30.0.orig/win32/config.vc perl-5.30.0/win32/config.vc
+--- perl-5.30.0.orig/win32/config.vc	2019-05-11 05:50:20.000000000 -0400
++++ perl-5.30.0/win32/config.vc	2019-10-14 17:36:13.094896407 -0400
+@@ -864,8 +864,8 @@
+ libsfiles=''
+ libsfound=''
+ libspath=''
+-libswanted='net socket inet nsl nm ndbm gdbm dbm db malloc dl ld sun m c cposix posix ndir dir crypt ucb bsd BSD PW x'
+-libswanted_uselargefiles='net socket inet nsl nm ndbm gdbm dbm db malloc dl ld sun m c cposix posix ndir dir crypt ucb bsd BSD PW x'
++libswanted='net socket inet nm ndbm gdbm dbm db malloc dl ld sun m c cposix posix ndir dir crypt ucb bsd BSD PW x'
++libswanted_uselargefiles='net socket inet nm ndbm gdbm dbm db malloc dl ld sun m c cposix posix ndir dir crypt ucb bsd BSD PW x'
+ line='line'
+ lint=''
+ lkflags=''
+Only in perl-5.30.0/win32: config.vc.orig

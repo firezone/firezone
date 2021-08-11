@@ -1,0 +1,441 @@
+diff -ru perl-5.18.1.orig/Configure perl-5.18.1/Configure
+--- perl-5.18.1.orig/Configure	2013-08-11 20:44:47.000000000 -0600
++++ perl-5.18.1/Configure	2019-08-21 09:07:10.876345427 -0600
+@@ -1381,7 +1381,7 @@
+ : set usesocks on the Configure command line to enable socks.
+ : List of libraries we want.
+ : If anyone needs extra -lxxx, put those in a hint file.
+-libswanted="sfio socket bind inet nsl nm ndbm gdbm dbm db malloc dl dld ld sun"
++libswanted="sfio socket bind inet nm ndbm gdbm dbm db malloc dl dld ld sun"
+ libswanted="$libswanted m crypt sec util c cposix posix ucb bsd BSD"
+ : We probably want to search /usr/shlib before most other libraries.
+ : This is only used by the lib/ExtUtils/MakeMaker.pm routine extliblist.
+diff -ru perl-5.18.1.orig/configure.com perl-5.18.1/configure.com
+--- perl-5.18.1.orig/configure.com	2013-08-11 20:44:47.000000000 -0600
++++ perl-5.18.1/configure.com	2019-08-21 09:07:10.878345427 -0600
+@@ -121,7 +121,7 @@
+ $!: full support for void wanted by default            !sfn
+ $!defvoidused=15                                       !sfn
+ $!: List of libraries we want.                         !sfn
+-$!libswanted='net socket inet nsl nm ndbm gdbm dbm db malloc dl' !sfn
++$!libswanted='net socket inet nm ndbm gdbm dbm db malloc dl' !sfn
+ $!libswanted="$libswanted dld ld sun m c cposix posix ndir dir crypt" !sfn
+ $!libswanted="$libswanted ucb bsd BSD PW x"            !sfn
+ $!: We probably want to search /usr/shlib before most other libraries. !sfn
+diff -ru perl-5.18.1.orig/cpan/Config-Perl-V/t/20_plv.t perl-5.18.1/cpan/Config-Perl-V/t/20_plv.t
+--- perl-5.18.1.orig/cpan/Config-Perl-V/t/20_plv.t	2013-08-11 20:44:47.000000000 -0600
++++ perl-5.18.1/cpan/Config-Perl-V/t/20_plv.t	2019-08-21 09:07:10.879345427 -0600
+@@ -48,8 +48,8 @@
+   Linker and Libraries:
+     ld='cc', ldflags ='-L/pro/local/lib'
+     libpth=/pro/local/lib /lib /usr/lib /usr/local/lib
+-    libs=-lnsl -lgdbm -ldb -ldl -lm -lcrypt -lutil -lc
+-    perllibs=-lnsl -ldl -lm -lcrypt -lutil -lc
++    libs=-lgdbm -ldb -ldl -lm -lcrypt -lutil -lc
++    perllibs=-ldl -lm -lcrypt -lutil -lc
+     libc=/lib/libc-2.6.1.so, so=so, useshrplib=false, libperl=libperl.a
+     gnulibc_version='2.6.1'
+   Dynamic Linking:
+diff -ru perl-5.18.1.orig/Cross/config.sh-arm-linux perl-5.18.1/Cross/config.sh-arm-linux
+--- perl-5.18.1.orig/Cross/config.sh-arm-linux	2013-08-11 20:44:47.000000000 -0600
++++ perl-5.18.1/Cross/config.sh-arm-linux	2019-08-21 09:08:35.251345202 -0600
+@@ -777,12 +777,12 @@
+ libc='/lib/libc-2.2.2.so'
+ libperl='libperl.so'
+ libpth='/usr/local/lib /lib /usr/lib'
+-libs='-lnsl -ldl -lm -lcrypt -lutil -lc'
++libs='-ldl -lm -lcrypt -lutil -lc'
+ libsdirs=' /usr/lib'
+-libsfiles=' libnsl.so libdl.so libm.so libcrypt.so libutil.so libc.so'
+-libsfound=' /usr/lib/libnsl.so /usr/lib/libdl.so /usr/lib/libm.so /usr/lib/libcrypt.so /usr/lib/libutil.so /usr/lib/libc.so'
++libsfiles=' libdl.so libm.so libcrypt.so libutil.so libc.so'
++libsfound=' /usr/lib/libdl.so /usr/lib/libm.so /usr/lib/libcrypt.so /usr/lib/libutil.so /usr/lib/libc.so'
+ libspath=' /usr/local/lib /lib /usr/lib'
+-libswanted='sfio socket bind inet nsl nm ndbm gdbm dbm db malloc dl dld ld sun m crypt sec util c cposix posix ucb BSD'
++libswanted='sfio socket bind inet nm ndbm gdbm dbm db malloc dl dld ld sun m crypt sec util c cposix posix ucb BSD'
+ libswanted_uselargefiles=''
+ line=''
+ lint=''
+@@ -865,7 +865,7 @@
+ perl_patchlevel=''
+ perl_static_inline='static'
+ perladmin='red@criticalintegration.com'
+-perllibs='-lnsl -ldl -lm -lcrypt -lutil -lc'
++perllibs='-ldl -lm -lcrypt -lutil -lc'
+ perlpath='/usr/bin/perl'
+ pg='pg'
+ phostname='hostname'
+diff -ru perl-5.18.1.orig/Cross/config.sh-arm-linux-n770 perl-5.18.1/Cross/config.sh-arm-linux-n770
+--- perl-5.18.1.orig/Cross/config.sh-arm-linux-n770	2013-08-11 20:44:47.000000000 -0600
++++ perl-5.18.1/Cross/config.sh-arm-linux-n770	2019-08-21 09:08:35.252345202 -0600
+@@ -748,12 +748,12 @@
+ libc='/lib/libc-2.2.2.so'
+ libperl='libperl.arma'
+ libpth='/usr/local/lib /lib /usr/lib'
+-libs='-lnsl -ldl -lm -lcrypt -lutil -lc'
++libs='-ldl -lm -lcrypt -lutil -lc'
+ libsdirs=' /usr/lib'
+-libsfiles=' libnsl.so libdl.so libm.so libcrypt.so libutil.so libc.so'
+-libsfound=' /usr/lib/libnsl.so /usr/lib/libdl.so /usr/lib/libm.so /usr/lib/libcrypt.so /usr/lib/libutil.so /usr/lib/libc.so'
++libsfiles=' libdl.so libm.so libcrypt.so libutil.so libc.so'
++libsfound=' /usr/lib/libdl.so /usr/lib/libm.so /usr/lib/libcrypt.so /usr/lib/libutil.so /usr/lib/libc.so'
+ libspath=' /usr/local/lib /lib /usr/lib'
+-libswanted='sfio socket bind inet nsl nm ndbm gdbm dbm db malloc dl dld ld sun m crypt sec util c cposix posix ucb BSD'
++libswanted='sfio socket bind inet nm ndbm gdbm dbm db malloc dl dld ld sun m crypt sec util c cposix posix ucb BSD'
+ libswanted_uselargefiles=''
+ line=''
+ lint=''
+@@ -835,7 +835,7 @@
+ perl=''
+ perl_patchlevel=''
+ perladmin='red@criticalintegration.com'
+-perllibs='-lnsl -ldl -lm -lcrypt -lutil -lc'
++perllibs='-ldl -lm -lcrypt -lutil -lc'
+ perlpath='/usr/bin/perl'
+ pg='pg'
+ phostname='hostname'
+diff -ru perl-5.18.1.orig/hints/aix_4.sh perl-5.18.1/hints/aix_4.sh
+--- perl-5.18.1.orig/hints/aix_4.sh	2013-04-30 20:52:55.000000000 -0600
++++ perl-5.18.1/hints/aix_4.sh	2019-08-21 09:07:10.880345427 -0600
+@@ -583,7 +583,7 @@
+ 
+ ***
+ *** You seem to be compiling in AIX for the OS/400 PASE environment.
+-*** I'm not going to use the AIX bind, nsl, and possible util libraries, then.
++*** I'm not going to use the AIX bind,  and possible util libraries, then.
+ *** I'm also not going to install perl as /usr/bin/perl.
+ *** Perl will be installed under $prefix.
+ *** For instructions how to install this build from AIX to PASE,
+@@ -591,7 +591,7 @@
+ *** about "Operating system name".
+ ***
+ EOF
+-	set `echo " $libswanted " | sed -e 's@ bind @ @' -e 's@ nsl @ @' -e 's@ util @ @'`
++	set `echo " $libswanted " | sed -e 's@ bind @ @' -e 's@ util @ @'`
+ 	shift
+ 	libswanted="$*"
+ 	installusrbinperl="$undef"
+diff -ru perl-5.18.1.orig/hints/aix.sh perl-5.18.1/hints/aix.sh
+--- perl-5.18.1.orig/hints/aix.sh	2013-08-11 20:44:48.000000000 -0600
++++ perl-5.18.1/hints/aix.sh	2019-08-21 09:07:10.880345427 -0600
+@@ -505,7 +505,7 @@
+ 
+ ***
+ *** You seem to be compiling in AIX for the OS/400 PASE environment.
+-*** I'm not going to use the AIX bind, nsl, and possible util libraries, then.
++*** I'm not going to use the AIX bind,  and possible util libraries, then.
+ *** I'm also not going to install perl as /usr/bin/perl.
+ *** Perl will be installed under $prefix.
+ *** For instructions how to install this build from AIX to PASE,
+@@ -513,7 +513,7 @@
+ *** about "Operating system name".
+ ***
+ EOF
+-	set `echo " $libswanted " | sed -e 's@ bind @ @' -e 's@ nsl @ @' -e 's@ util @ @'`
++	set `echo " $libswanted " | sed -e 's@ bind @ @' -e 's@ util @ @'`
+ 	shift
+ 	libswanted="$*"
+ 	installusrbinperl="$undef"
+diff -ru perl-5.18.1.orig/hints/dgux.sh perl-5.18.1/hints/dgux.sh
+--- perl-5.18.1.orig/hints/dgux.sh	2013-08-11 20:44:48.000000000 -0600
++++ perl-5.18.1/hints/dgux.sh	2019-08-21 09:07:10.880345427 -0600
+@@ -154,7 +154,7 @@
+ #libswanted="dbm posix $libswanted"
+ # Do *NOT* add there the malloc native 
+ # DG/UX library!
+-libswanted="dbm posix resolv socket nsl dl m"
++libswanted="dbm posix resolv socket dl m"
+ 
+ #####################################
+ # <takis@XFree86.Org>
+@@ -203,7 +203,7 @@
+ 	# DG/UX's sched_yield is in -lrte
+ 	# Do *NOT* add there the malloc native 
+ 	# DG/UX library!
+-	libswanted="dbm posix resolv socket nsl dl m rte"
++	libswanted="dbm posix resolv socket dl m rte"
+ 	archname="ix86-dgux-thread"
+ 	sitearch="$prefix/lib/perl518/$archname"
+ 	sitelib="$prefix/lib/perl518"
+diff -ru perl-5.18.1.orig/hints/epix.sh perl-5.18.1/hints/epix.sh
+--- perl-5.18.1.orig/hints/epix.sh	2013-04-30 20:52:55.000000000 -0600
++++ perl-5.18.1/hints/epix.sh	2019-08-21 09:07:10.880345427 -0600
+@@ -37,7 +37,7 @@
+ # Old version had this, but I'm not sure why since the old version
+ # also mucked around with libswanted.  This is also definitely wrong
+ # if the user is trying to use DB_File or GDBM_File.
+-# libs='-lsocket -lnsl -ldbm -ldl -lc -lcrypt -lm -lucb'
++# libs='-lsocket -ldbm -ldl -lc -lcrypt -lm -lucb'
+ 
+ # We include support for using libraries in /usr/ucblib, but the setting
+ # of libswanted excludes some libraries found there.  You may want to
+diff -ru perl-5.18.1.orig/hints/gnu.sh perl-5.18.1/hints/gnu.sh
+--- perl-5.18.1.orig/hints/gnu.sh	2013-05-23 17:38:10.000000000 -0600
++++ perl-5.18.1/hints/gnu.sh	2019-08-21 09:07:10.880345427 -0600
+@@ -4,7 +4,7 @@
+ 
+ # libnsl is unusable on the Hurd.
+ # XXX remove this once SUNRPC is implemented.
+-set `echo X "$libswanted "| sed -e 's/ nsl / /' -e 's/ c / pthread /'`
++set `echo X "$libswanted "| sed -e 's/ c / pthread /'`
+ shift
+ libswanted="$*"
+ 
+diff -ru perl-5.18.1.orig/hints/irix_5.sh perl-5.18.1/hints/irix_5.sh
+--- perl-5.18.1.orig/hints/irix_5.sh	2013-02-26 14:28:27.000000000 -0700
++++ perl-5.18.1/hints/irix_5.sh	2019-08-21 09:07:10.881345427 -0600
+@@ -27,9 +27,9 @@
+ esac
+ 
+ lddlflags="-shared"
+-# For some reason we don't want -lsocket -lnsl or -ldl.  Can anyone
++# For some reason we don't want -lsocket or -ldl.  Can anyone
+ # contribute an explanation?
+-set `echo X "$libswanted "|sed -e 's/ socket / /' -e 's/ nsl / /' -e 's/ dl / /'`
++set `echo X "$libswanted "|sed -e 's/ socket / /' -e 's/ dl / /'`
+ shift
+ libswanted="$*"
+ 
+diff -ru perl-5.18.1.orig/hints/irix_6_0.sh perl-5.18.1/hints/irix_6_0.sh
+--- perl-5.18.1.orig/hints/irix_6_0.sh	2013-02-26 14:28:27.000000000 -0700
++++ perl-5.18.1/hints/irix_6_0.sh	2019-08-21 09:07:10.881345427 -0600
+@@ -19,7 +19,7 @@
+ lddlflags="-32 -shared"
+ 
+ # We don't want these libraries.  Anyone know why?
+-set `echo X "$libswanted "|sed -e 's/ socket / /' -e 's/ nsl / /' -e 's/ dl / /'`
++set `echo X "$libswanted "|sed -e 's/ socket / /' -e 's/ dl / /'`
+ shift
+ libswanted="$*"
+ #
+@@ -29,7 +29,7 @@
+ # taken from irix_5.sh .  Changes from irix_5.sh:
+ # Olimit and nested comments (warning 1009) no longer accepted
+ # -OPT:fold_arith_limit so POSIX module will optimize
+-# no 64bit versions of sun, crypt, nsl, socket, dl dso's available
++# no 64bit versions of sun, crypt,  socket, dl dso's available
+ # as of IRIX 6.0.1 so omit those from libswanted line via `sed'.
+ 
+ # perl 5 built with this hints file passes most tests (`make test').
+@@ -38,7 +38,7 @@
+ # i_time='define'
+ # ccflags="$ccflags -D_POSIX_SOURCE -ansiposix -D_BSD_TYPES -woff 1009 -OPT:fold_arith_limit=1046"
+ # lddlflags="-shared"
+-# set `echo X "$libswanted "|sed -e 's/ socket / /' -e 's/ sun / /' -e 's/ crypt / /' -e 's/ nsl / /' -e 's/ dl / /'`
++# set `echo X "$libswanted "|sed -e 's/ socket / /' -e 's/ sun / /' -e 's/ crypt / /' -e 's/ dl / /'`
+ # shift
+ # libswanted="$*"
+ 
+diff -ru perl-5.18.1.orig/hints/irix_6_1.sh perl-5.18.1/hints/irix_6_1.sh
+--- perl-5.18.1.orig/hints/irix_6_1.sh	2013-02-26 14:28:27.000000000 -0700
++++ perl-5.18.1/hints/irix_6_1.sh	2019-08-21 09:07:10.881345427 -0600
+@@ -19,7 +19,7 @@
+ lddlflags="-32 -shared"
+ 
+ # We don't want these libraries.  Anyone know why?
+-set `echo X "$libswanted "|sed -e 's/ socket / /' -e 's/ nsl / /' -e 's/ dl / /'`
++set `echo X "$libswanted "|sed -e 's/ socket / /' -e 's/ dl / /'`
+ shift
+ libswanted="$*"
+ #
+@@ -29,7 +29,7 @@
+ # taken from irix_5.sh .  Changes from irix_5.sh:
+ # Olimit and nested comments (warning 1009) no longer accepted
+ # -OPT:fold_arith_limit so POSIX module will optimize
+-# no 64bit versions of sun, crypt, nsl, socket, dl dso's available
++# no 64bit versions of sun, crypt,  socket, dl dso's available
+ # as of IRIX 6.0.1 so omit those from libswanted line via `sed'.
+ 
+ # perl 5 built with this hints file passes most tests (`make test').
+@@ -38,7 +38,7 @@
+ # i_time='define'
+ # ccflags="$ccflags -D_POSIX_SOURCE -ansiposix -D_BSD_TYPES -woff 1009 -OPT:fold_arith_limit=1046"
+ # lddlflags="-shared"
+-# set `echo X "$libswanted "|sed -e 's/ socket / /' -e 's/ sun / /' -e 's/ crypt / /' -e 's/ nsl / /' -e 's/ dl / /'`
++# set `echo X "$libswanted "|sed -e 's/ socket / /' -e 's/ sun / /' -e 's/ crypt / /' -e 's/ dl / /'`
+ # shift
+ # libswanted="$*"
+ 
+diff -ru perl-5.18.1.orig/hints/irix_6.sh perl-5.18.1/hints/irix_6.sh
+--- perl-5.18.1.orig/hints/irix_6.sh	2013-04-30 20:52:55.000000000 -0600
++++ perl-5.18.1/hints/irix_6.sh	2019-08-21 09:07:10.881345427 -0600
+@@ -359,7 +359,7 @@
+ # Socket networking is in libc, these are not installed by default,
+ # and just slow perl down. (scotth@sgi.com)
+ # librt contains nothing we need (some places need it for Time::HiRes) --jhi
+-set `echo X "$libswanted "|sed -e 's/ socket / /' -e 's/ nsl / /' -e 's/ dl / /' -e 's/ rt / /'`
++set `echo X "$libswanted "|sed -e 's/ socket / /' -e 's/ dl / /' -e 's/ rt / /'`
+ shift
+ libswanted="$*"
+ 
+diff -ru perl-5.18.1.orig/hints/powerux.sh perl-5.18.1/hints/powerux.sh
+--- perl-5.18.1.orig/hints/powerux.sh	2013-04-30 20:52:55.000000000 -0600
++++ perl-5.18.1/hints/powerux.sh	2019-08-21 09:07:10.882345427 -0600
+@@ -27,11 +27,11 @@
+    exit 2
+ fi
+ 
+-# We DO NOT want -lmalloc or -lPW, we DO need -lgen to follow -lnsl, so
++# We DO NOT want -lmalloc or -lPW, we DO need -lgen to follow, so
+ # fixup libswanted to reflect that desire (also need -lresolv if you want
+ # DNS name lookup to work, which seems desirable :-).
+ #
+-libswanted=`echo ' '$libswanted' ' | sed -e 's/ malloc / /' -e 's/ PW / /' -e 's/ nsl / nsl gen resolv /'`
++libswanted=`echo ' '$libswanted' ' | sed -e 's/ malloc / /' -e 's/ PW / /'`
+ 
+ # We DO NOT want /usr/ucblib in glibpth
+ #
+diff -ru perl-5.18.1.orig/hints/titanos.sh perl-5.18.1/hints/titanos.sh
+--- perl-5.18.1.orig/hints/titanos.sh	2013-02-26 14:28:27.000000000 -0700
++++ perl-5.18.1/hints/titanos.sh	2019-08-21 09:07:10.882345427 -0600
+@@ -17,14 +17,14 @@
+ stdchar='unsigned char'
+ #
+ # Apparently there are some harmful libs in Configure's $libswanted.
+-# Perl5.000 had: libs='-lnsl -ldbm -lPW -lmalloc -lm'
++# Perl5.000 had: libs='-ldbm -lPW -lmalloc -lm'
+ # Unfortunately, this line prevents users from including things like
+ # -lgdbm and -ldb, which they may or may not have or want.
+ # We should probably fiddle with libswanted instead of libs.
+ # And even there, we should only bother to delete harmful libraries.
+ # However, I don't know what they are or why they should be deleted,
+ # so this will have to do for now.  --AD  28 Mar 1995
+-libswanted='sfio nsl dbm gdbm db PW malloc m'
++libswanted='sfio dbm gdbm db PW malloc m'
+ #
+ # Extensions:  This system can not compile POSIX. We'll let Configure 
+ # figure out the others. 
+diff -ru perl-5.18.1.orig/INSTALL perl-5.18.1/INSTALL
+--- perl-5.18.1.orig/INSTALL	2013-08-11 20:44:47.000000000 -0600
++++ perl-5.18.1/INSTALL	2019-08-21 09:07:10.883345427 -0600
+@@ -1583,7 +1583,7 @@
+ undefined symbols, check the libs variable in the config.sh file.  It
+ should look something like
+ 
+-	libs='-lsocket -lnsl -ldl -lm -lc'
++	libs='-lsocket -ldl -lm -lc'
+ 
+ The exact libraries will vary from system to system, but you typically
+ need to include at least the math library -lm.  Normally, Configure
+diff -ru perl-5.18.1.orig/NetWare/config.wc perl-5.18.1/NetWare/config.wc
+--- perl-5.18.1.orig/NetWare/config.wc	2013-08-11 20:44:47.000000000 -0600
++++ perl-5.18.1/NetWare/config.wc	2019-08-21 09:07:10.883345427 -0600
+@@ -757,7 +757,7 @@
+ libsfiles=''
+ libsfound=''
+ libspath=''
+-libswanted='net socket inet nsl nm ndbm gdbm dbm db malloc dl dld ld sun m c cposix posix ndir dir crypt ucb bsd BSD PW x'
++libswanted='net socket inet nm ndbm gdbm dbm db malloc dl dld ld sun m c cposix posix ndir dir crypt ucb bsd BSD PW x'
+ line='line'
+ lint=''
+ lkflags=''
+diff -ru perl-5.18.1.orig/plan9/config_sh.sample perl-5.18.1/plan9/config_sh.sample
+--- perl-5.18.1.orig/plan9/config_sh.sample	2013-08-11 20:44:48.000000000 -0600
++++ perl-5.18.1/plan9/config_sh.sample	2019-08-21 09:07:10.883345427 -0600
+@@ -764,7 +764,7 @@
+ libsfiles=''
+ libsfound=''
+ libspath=' /lib'
+-libswanted='sfio socket bind inet nsl nm ndbm gdbm dbm db malloc dl dld ld sun m c cposix posix ndir dir crypt sec ucb bsd BSD PW x util'
++libswanted='sfio socket bind inet nm ndbm gdbm dbm db malloc dl dld ld sun m c cposix posix ndir dir crypt sec ucb bsd BSD PW x util'
+ libswanted_uselargefiles=''
+ line=''
+ lint=''
+diff -ru perl-5.18.1.orig/pod/perlrun.pod perl-5.18.1/pod/perlrun.pod
+--- perl-5.18.1.orig/pod/perlrun.pod	2013-08-11 20:44:48.000000000 -0600
++++ perl-5.18.1/pod/perlrun.pod	2019-08-21 09:07:10.884345427 -0600
+@@ -862,11 +862,11 @@
+     $ perl -V:libc
+ 	libc='/lib/libc-2.2.4.so';
+     $ perl -V:lib.
+-	libs='-lnsl -lgdbm -ldb -ldl -lm -lcrypt -lutil -lc';
++	libs='-lgdbm -ldb -ldl -lm -lcrypt -lutil -lc';
+ 	libc='/lib/libc-2.2.4.so';
+     $ perl -V:lib.*
+ 	libpth='/usr/local/lib /lib /usr/lib';
+-	libs='-lnsl -lgdbm -ldb -ldl -lm -lcrypt -lutil -lc';
++	libs='-lgdbm -ldb -ldl -lm -lcrypt -lutil -lc';
+ 	lib_ext='.a';
+ 	libc='/lib/libc-2.2.4.so';
+ 	libperl='libperl.a';
+diff -ru perl-5.18.1.orig/Porting/bisect-runner.pl perl-5.18.1/Porting/bisect-runner.pl
+--- perl-5.18.1.orig/Porting/bisect-runner.pl	2013-08-11 20:44:47.000000000 -0600
++++ perl-5.18.1/Porting/bisect-runner.pl	2019-08-21 09:07:10.885345427 -0600
+@@ -922,7 +922,7 @@
+     my @libs;
+     # This is the current libswanted list from Configure, less the libs removed
+     # by current hints/linux.sh
+-    foreach my $lib (qw(sfio socket inet nsl nm ndbm gdbm dbm db malloc dl dld
++    foreach my $lib (qw(sfio socket inet nm ndbm gdbm dbm db malloc dl dld
+ 			ld sun m crypt sec util c cposix posix ucb BSD)) {
+ 	foreach my $dir (@paths) {
+ 	    next unless -f "$dir/lib$lib.so";
+diff -ru perl-5.18.1.orig/Porting/config.sh perl-5.18.1/Porting/config.sh
+--- perl-5.18.1.orig/Porting/config.sh	2013-08-11 20:44:47.000000000 -0600
++++ perl-5.18.1/Porting/config.sh	2019-08-21 09:08:35.252345202 -0600
+@@ -795,12 +795,12 @@
+ libc='/lib/libc-2.7.so'
+ libperl='libperl.a'
+ libpth='/usr/local/lib /lib /usr/lib'
+-libs='-lnsl -lgdbm -ldb -ldl -lm -lcrypt -lutil -lc -lgdbm_compat'
++libs='-lgdbm -ldb -ldl -lm -lcrypt -lutil -lc -lgdbm_compat'
+ libsdirs=' /usr/lib'
+-libsfiles=' libnsl.so libgdbm.so libdb.so libdl.so libm.so libcrypt.so libutil.so libc.so libgdbm_compat.so'
+-libsfound=' /usr/lib/libnsl.so /usr/lib/libgdbm.so /usr/lib/libdb.so /usr/lib/libdl.so /usr/lib/libm.so /usr/lib/libcrypt.so /usr/lib/libutil.so /usr/lib/libc.so /usr/lib/libgdbm_compat.so'
++libsfiles=' libgdbm.so libdb.so libdl.so libm.so libcrypt.so libutil.so libc.so libgdbm_compat.so'
++libsfound=' /usr/lib/libgdbm.so /usr/lib/libdb.so /usr/lib/libdl.so /usr/lib/libm.so /usr/lib/libcrypt.so /usr/lib/libutil.so /usr/lib/libc.so /usr/lib/libgdbm_compat.so'
+ libspath=' /usr/local/lib /lib /usr/lib'
+-libswanted='sfio socket inet nsl nm gdbm dbm db malloc dl dld ld sun m crypt sec util c cposix posix ucb BSD gdbm_compat'
++libswanted='sfio socket inet nm gdbm dbm db malloc dl dld ld sun m crypt sec util c cposix posix ucb BSD gdbm_compat'
+ libswanted_uselargefiles=''
+ line=''
+ lint=''
+@@ -886,7 +886,7 @@
+ perl_patchlevel='34948'
+ perl_static_inline='static __inline__'
+ perladmin='yourname@yourhost.yourplace.com'
+-perllibs='-lnsl -ldl -lm -lcrypt -lutil -lc'
++perllibs='-ldl -lm -lcrypt -lutil -lc'
+ perlpath='/opt/perl/bin/perl5.18.1'
+ pg='pg'
+ phostname=''
+diff -ru perl-5.18.1.orig/win32/config.ce perl-5.18.1/win32/config.ce
+--- perl-5.18.1.orig/win32/config.ce	2013-08-11 20:44:49.000000000 -0600
++++ perl-5.18.1/win32/config.ce	2019-08-21 09:07:10.886345427 -0600
+@@ -749,7 +749,7 @@
+ libsfiles=''
+ libsfound=''
+ libspath=''
+-libswanted='net socket inet nsl nm ndbm gdbm dbm db malloc dl dld ld sun m c cposix posix ndir dir crypt ucb bsd BSD PW x'
++libswanted='net socket inet nm ndbm gdbm dbm db malloc dl dld ld sun m c cposix posix ndir dir crypt ucb bsd BSD PW x'
+ line='line'
+ lint=''
+ lkflags=''
+diff -ru perl-5.18.1.orig/win32/config.gc perl-5.18.1/win32/config.gc
+--- perl-5.18.1.orig/win32/config.gc	2013-08-11 20:44:49.000000000 -0600
++++ perl-5.18.1/win32/config.gc	2019-08-21 09:07:10.886345427 -0600
+@@ -775,8 +775,8 @@
+ libsfiles=''
+ libsfound=''
+ libspath=''
+-libswanted='net socket inet nsl nm ndbm gdbm dbm db malloc dl dld ld sun m c cposix posix ndir dir crypt ucb bsd BSD PW x'
+-libswanted_uselargefiles='net socket inet nsl nm ndbm gdbm dbm db malloc dl dld ld sun m c cposix posix ndir dir crypt ucb bsd BSD PW x'
++libswanted='net socket inet nm ndbm gdbm dbm db malloc dl dld ld sun m c cposix posix ndir dir crypt ucb bsd BSD PW x'
++libswanted_uselargefiles='net socket inet nm ndbm gdbm dbm db malloc dl dld ld sun m c cposix posix ndir dir crypt ucb bsd BSD PW x'
+ line='line'
+ lint=''
+ lkflags=''
+diff -ru perl-5.18.1.orig/win32/config.vc perl-5.18.1/win32/config.vc
+--- perl-5.18.1.orig/win32/config.vc	2013-08-11 20:44:49.000000000 -0600
++++ perl-5.18.1/win32/config.vc	2019-08-21 09:07:10.887345427 -0600
+@@ -774,8 +774,8 @@
+ libsfiles=''
+ libsfound=''
+ libspath=''
+-libswanted='net socket inet nsl nm ndbm gdbm dbm db malloc dl dld ld sun m c cposix posix ndir dir crypt ucb bsd BSD PW x'
+-libswanted_uselargefiles='net socket inet nsl nm ndbm gdbm dbm db malloc dl dld ld sun m c cposix posix ndir dir crypt ucb bsd BSD PW x'
++libswanted='net socket inet nm ndbm gdbm dbm db malloc dl dld ld sun m c cposix posix ndir dir crypt ucb bsd BSD PW x'
++libswanted_uselargefiles='net socket inet nm ndbm gdbm dbm db malloc dl dld ld sun m c cposix posix ndir dir crypt ucb bsd BSD PW x'
+ line='line'
+ lint=''
+ lkflags=''

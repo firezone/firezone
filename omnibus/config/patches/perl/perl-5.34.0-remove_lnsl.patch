@@ -1,0 +1,516 @@
+diff --git a/Configure b/Configure
+index 913e080..a015175 100755
+--- a/Configure
++++ b/Configure
+@@ -1493,7 +1493,7 @@ archname=''
+ usereentrant='undef'
+ : List of libraries we want.
+ : If anyone needs extra -lxxx, put those in a hint file.
+-libswanted="cl pthread socket bind inet nsl ndbm gdbm dbm db malloc dl ld"
++libswanted="cl pthread socket bind inet ndbm gdbm dbm db malloc dl ld"
+ libswanted="$libswanted sun m crypt sec util c cposix posix ucb bsd BSD"
+ : We probably want to search /usr/shlib before most other libraries.
+ : This is only used by the lib/ExtUtils/MakeMaker.pm routine extliblist.
+diff --git a/Cross/config.sh-arm-linux b/Cross/config.sh-arm-linux
+index 33bab37..910e834 100644
+--- a/Cross/config.sh-arm-linux
++++ b/Cross/config.sh-arm-linux
+@@ -870,12 +870,12 @@ lib_ext='.a'
+ libc='/lib/libc-2.2.2.so'
+ libperl='libperl.so'
+ libpth='/usr/local/lib /lib /usr/lib'
+-libs='-lnsl -ldl -lm -lcrypt -lutil -lc'
++libs='-ldl -lm -lcrypt -lutil -lc'
+ libsdirs=' /usr/lib'
+-libsfiles=' libnsl.so libdl.so libm.so libcrypt.so libutil.so libc.so'
+-libsfound=' /usr/lib/libnsl.so /usr/lib/libdl.so /usr/lib/libm.so /usr/lib/libcrypt.so /usr/lib/libutil.so /usr/lib/libc.so'
++libsfiles=' libdl.so libm.so libcrypt.so libutil.so libc.so'
++libsfound=' /usr/lib/libdl.so /usr/lib/libm.so /usr/lib/libcrypt.so /usr/lib/libutil.so /usr/lib/libc.so'
+ libspath=' /usr/local/lib /lib /usr/lib'
+-libswanted='socket bind inet nsl nm ndbm gdbm dbm db malloc dl ld sun m crypt sec util c cposix posix ucb BSD'
++libswanted='socket bind inet nm ndbm gdbm dbm db malloc dl ld sun m crypt sec util c cposix posix ucb BSD'
+ libswanted_uselargefiles=''
+ line=''
+ lint=''
+@@ -963,7 +963,7 @@ perl=''
+ perl_patchlevel=''
+ perl_static_inline='static'
+ perladmin='red@criticalintegration.com'
+-perllibs='-lnsl -ldl -lm -lcrypt -lutil -lc'
++perllibs='-ldl -lm -lcrypt -lutil -lc'
+ perlpath='/usr/bin/perl'
+ pg='pg'
+ phostname='hostname'
+diff --git a/Cross/config.sh-arm-linux-n770 b/Cross/config.sh-arm-linux-n770
+index 73567fb..08288ce 100644
+--- a/Cross/config.sh-arm-linux-n770
++++ b/Cross/config.sh-arm-linux-n770
+@@ -868,12 +868,12 @@ lib_ext='.arma'
+ libc='/lib/libc-2.2.2.so'
+ libperl='libperl.arma'
+ libpth='/usr/local/lib /lib /usr/lib'
+-libs='-lnsl -ldl -lm -lcrypt -lutil -lc'
++libs='-ldl -lm -lcrypt -lutil -lc'
+ libsdirs=' /usr/lib'
+-libsfiles=' libnsl.so libdl.so libm.so libcrypt.so libutil.so libc.so'
+-libsfound=' /usr/lib/libnsl.so /usr/lib/libdl.so /usr/lib/libm.so /usr/lib/libcrypt.so /usr/lib/libutil.so /usr/lib/libc.so'
++libsfiles=' libdl.so libm.so libcrypt.so libutil.so libc.so'
++libsfound=' /usr/lib/libdl.so /usr/lib/libm.so /usr/lib/libcrypt.so /usr/lib/libutil.so /usr/lib/libc.so'
+ libspath=' /usr/local/lib /lib /usr/lib'
+-libswanted='socket bind inet nsl nm ndbm gdbm dbm db malloc dl ld sun m crypt sec util c cposix posix ucb BSD'
++libswanted='socket bind inet nm ndbm gdbm dbm db malloc dl ld sun m crypt sec util c cposix posix ucb BSD'
+ libswanted_uselargefiles=''
+ line=''
+ lint=''
+@@ -961,7 +961,7 @@ perl=''
+ perl_patchlevel=''
+ perl_static_inline='static'
+ perladmin='red@criticalintegration.com'
+-perllibs='-lnsl -ldl -lm -lcrypt -lutil -lc'
++perllibs='-ldl -lm -lcrypt -lutil -lc'
+ perlpath='/usr/bin/perl'
+ pg='pg'
+ phostname='hostname'
+diff --git a/INSTALL b/INSTALL
+index ce5ad45..da89b58 100644
+--- a/INSTALL
++++ b/INSTALL
+@@ -1653,7 +1653,7 @@ If the build of miniperl fails with a long list of missing functions or
+ undefined symbols, check the libs variable in the config.sh file.  It
+ should look something like
+
+-	libs='-lsocket -lnsl -ldl -lm -lc'
++	libs='-lsocket -ldl -lm -lc'
+
+ The exact libraries will vary from system to system, but you typically
+ need to include at least the math library -lm.  Normally, Configure
+diff --git a/NetWare/config.wc b/NetWare/config.wc
+index 26c1755..5fd4985 100644
+--- a/NetWare/config.wc
++++ b/NetWare/config.wc
+@@ -850,7 +850,7 @@ libsdirs=''
+ libsfiles=''
+ libsfound=''
+ libspath=''
+-libswanted='net socket inet nsl nm ndbm gdbm dbm db malloc dl ld sun m c cposix posix ndir dir crypt ucb bsd BSD PW x'
++libswanted='net socket inet nm ndbm gdbm dbm db malloc dl ld sun m c cposix posix ndir dir crypt ucb bsd BSD PW x'
+ line='line'
+ lint=''
+ lkflags=''
+diff --git a/Porting/bisect-runner.pl b/Porting/bisect-runner.pl
+index b6c75a9..33de0c0 100755
+--- a/Porting/bisect-runner.pl
++++ b/Porting/bisect-runner.pl
+@@ -1550,7 +1550,7 @@ unless (extract_from_file('Configure', 'ignore_versioned_solibs')) {
+     my @libs;
+     # This is the current libswanted list from Configure, less the libs removed
+     # by current hints/linux.sh
+-    foreach my $lib (qw(sfio socket inet nsl nm ndbm gdbm dbm db malloc dl
++    foreach my $lib (qw(sfio socket inet nm ndbm gdbm dbm db malloc dl
+ 			ld sun m crypt sec util c cposix posix ucb BSD)) {
+ 	foreach my $dir (@paths) {
+             # Note the wonderful consistency of dot-or-not in the config vars:
+diff --git a/Porting/config.sh b/Porting/config.sh
+index d1f54f2..f126291 100644
+--- a/Porting/config.sh
++++ b/Porting/config.sh
+@@ -900,12 +900,12 @@ lib_ext='.a'
+ libc='libc-2.31.so'
+ libperl='libperl.a'
+ libpth='/usr/local/lib /usr/lib64/gcc/x86_64-suse-linux/10/include-fixed /usr/lib64/gcc/x86_64-suse-linux/10/../../../../x86_64-suse-linux/lib /usr/lib /lib/../lib64 /usr/lib/../lib64 /lib /lib64 /usr/lib64 /usr/local/lib64'
+-libs='-lpthread -lnsl -lgdbm -ldb -ldl -lm -lcrypt -lutil -lc -lgdbm_compat'
++libs='-lpthread -lgdbm -ldb -ldl -lm -lcrypt -lutil -lc -lgdbm_compat'
+ libsdirs=' /usr/lib/../lib64'
+-libsfiles=' libpthread.so libnsl.so libgdbm.so libdb.so libdl.so libm.so libcrypt.so libutil.so libc.so libgdbm_compat.so'
+-libsfound=' /usr/lib/../lib64/libpthread.so /usr/lib/../lib64/libnsl.so /usr/lib/../lib64/libgdbm.so /usr/lib/../lib64/libdb.so /usr/lib/../lib64/libdl.so /usr/lib/../lib64/libm.so /usr/lib/../lib64/libcrypt.so /usr/lib/../lib64/libutil.so /usr/lib/../lib64/libc.so /usr/lib/../lib64/libgdbm_compat.so'
++libsfiles=' libpthread.so libgdbm.so libdb.so libdl.so libm.so libcrypt.so libutil.so libc.so libgdbm_compat.so'
++libsfound=' /usr/lib/../lib64/libpthread.so  /usr/lib/../lib64/libgdbm.so /usr/lib/../lib64/libdb.so /usr/lib/../lib64/libdl.so /usr/lib/../lib64/libm.so /usr/lib/../lib64/libcrypt.so /usr/lib/../lib64/libutil.so /usr/lib/../lib64/libc.so /usr/lib/../lib64/libgdbm_compat.so'
+ libspath=' /usr/local/lib /usr/lib64/gcc/x86_64-suse-linux/10/include-fixed /usr/lib64/gcc/x86_64-suse-linux/10/../../../../x86_64-suse-linux/lib /usr/lib /lib/../lib64 /usr/lib/../lib64 /lib /lib64 /usr/lib64 /usr/local/lib64'
+-libswanted='cl pthread cl pthread socket inet nsl gdbm dbm db malloc dl ld sun m crypt sec util c cposix posix ucb BSD gdbm_compat'
++libswanted='cl pthread cl pthread socket inet gdbm dbm db malloc dl ld sun m crypt sec util c cposix posix ucb BSD gdbm_compat'
+ libswanted_uselargefiles=''
+ line=''
+ lint=''
+@@ -992,7 +992,7 @@ perl='perl'
+ perl_patchlevel=''
+ perl_static_inline='static __inline__'
+ perladmin='yourname@yourhost.yourplace.com'
+-perllibs='-lpthread -lnsl -ldl -lm -lcrypt -lutil -lc'
++perllibs='-lpthread -ldl -lm -lcrypt -lutil -lc'
+ perlpath='/opt/perl/bin/perl5.34.0'
+ pg='pg'
+ phostname=''
+diff --git a/configure.com b/configure.com
+index df29582..0171264 100644
+--- a/configure.com
++++ b/configure.com
+@@ -117,7 +117,7 @@ $!: is prepended to libpth. This variable takes care of special !sfn
+ $!: machines, like the mips.  Usually, it should be empty. !sfn
+ $!plibpth=''                                           !sfn
+ $!: List of libraries we want.                         !sfn
+-$!libswanted='net socket inet nsl nm ndbm gdbm dbm db malloc dl' !sfn
++$!libswanted='net socket inet nm ndbm gdbm dbm db malloc dl' !sfn
+ $!libswanted="$libswanted ld sun m c cposix posix ndir dir crypt" !sfn
+ $!libswanted="$libswanted ucb bsd BSD PW x"            !sfn
+ $!: We probably want to search /usr/shlib before most other libraries. !sfn
+diff --git a/cpan/Config-Perl-V/t/20_plv56.t b/cpan/Config-Perl-V/t/20_plv56.t
+index 252a162..5004c9a 100644
+--- a/cpan/Config-Perl-V/t/20_plv56.t
++++ b/cpan/Config-Perl-V/t/20_plv56.t
+@@ -63,8 +63,8 @@ Summary of my perl5 (revision 5.0 version 6 subversion 2) configuration:
+   Linker and Libraries:
+     ld='cc', ldflags ='-L/pro/local/lib'
+     libpth=/pro/local/lib /lib /usr/lib /usr/local/lib
+-    libs=-lnsl -lgdbm -ldb -ldl -lm -lc -lcrypt -lutil
+-    perllibs=-lnsl -ldl -lm -lc -lcrypt -lutil
++    libs=-lgdbm -ldb -ldl -lm -lc -lcrypt -lutil
++    perllibs=-ldl -lm -lc -lcrypt -lutil
+     libc=/lib/libc-2.10.1.so, so=so, useshrplib=false, libperl=libperl.a
+   Dynamic Linking:
+     dlsrc=dl_dlopen.xs, dlext=so, d_dlsymun=undef, ccdlflags='-rdynamic'
+diff --git a/cpan/Config-Perl-V/t/21_plv58.t b/cpan/Config-Perl-V/t/21_plv58.t
+index b354e24..d747355 100644
+--- a/cpan/Config-Perl-V/t/21_plv58.t
++++ b/cpan/Config-Perl-V/t/21_plv58.t
+@@ -67,8 +67,8 @@ Summary of my perl5 (revision 5 version 8 subversion 9) configuration:
+   Linker and Libraries:
+     ld='cc', ldflags ='-L/pro/local/lib'
+     libpth=/pro/local/lib /lib /usr/lib /usr/local/lib
+-    libs=-lnsl -lgdbm -ldb -ldl -lm -lcrypt -lutil -lpthread -lc
+-    perllibs=-lnsl -ldl -lm -lcrypt -lutil -lpthread -lc
++    libs=-lgdbm -ldb -ldl -lm -lcrypt -lutil -lpthread -lc
++    perllibs=-ldl -lm -lcrypt -lutil -lpthread -lc
+     libc=/lib/libc-2.11.2.so, so=so, useshrplib=false, libperl=libperl.a
+     gnulibc_version='2.11.2'
+   Dynamic Linking:
+diff --git a/cpan/Config-Perl-V/t/22_plv510.t b/cpan/Config-Perl-V/t/22_plv510.t
+index bec688c..4641d12 100644
+--- a/cpan/Config-Perl-V/t/22_plv510.t
++++ b/cpan/Config-Perl-V/t/22_plv510.t
+@@ -57,8 +57,8 @@ Summary of my perl5 (revision 5 version 10 subversion 0) configuration:
+   Linker and Libraries:
+     ld='cc', ldflags ='-L/pro/local/lib'
+     libpth=/pro/local/lib /lib /usr/lib /usr/local/lib
+-    libs=-lnsl -lgdbm -ldb -ldl -lm -lcrypt -lutil -lc
+-    perllibs=-lnsl -ldl -lm -lcrypt -lutil -lc
++    libs=-lgdbm -ldb -ldl -lm -lcrypt -lutil -lc
++    perllibs=-ldl -lm -lcrypt -lutil -lc
+     libc=/lib/libc-2.6.1.so, so=so, useshrplib=false, libperl=libperl.a
+     gnulibc_version='2.6.1'
+   Dynamic Linking:
+diff --git a/cpan/Config-Perl-V/t/23_plv512.t b/cpan/Config-Perl-V/t/23_plv512.t
+index 03c69cb..47d7f97 100644
+--- a/cpan/Config-Perl-V/t/23_plv512.t
++++ b/cpan/Config-Perl-V/t/23_plv512.t
+@@ -68,8 +68,8 @@ Summary of my perl5 (revision 5 version 12 subversion 2) configuration:
+   Linker and Libraries:
+     ld='/usr/bin/ld', ldflags ='-L/pro/local/lib +DD64 -L/usr/lib/hpux64'
+     libpth=/pro/local/lib /usr/lib/hpux64 /lib /usr/lib /usr/ccs/lib /usr/local/lib
+-    libs=-lcl -lpthread -lnsl -lnm -ldb -ldl -ldld -lm -lsec -lc
+-    perllibs=-lcl -lpthread -lnsl -lnm -ldl -ldld -lm -lsec -lc
++    libs=-lcl -lpthread -lnm -ldb -ldl -ldld -lm -lsec -lc
++    perllibs=-lcl -lpthread -lnm -ldl -ldld -lm -lsec -lc
+     libc=/usr/lib/hpux64/libc.so, so=so, useshrplib=false, libperl=libperl.a
+     gnulibc_version=''
+   Dynamic Linking:
+diff --git a/cpan/Config-Perl-V/t/24_plv514.t b/cpan/Config-Perl-V/t/24_plv514.t
+index 3377b41..fdd8046 100644
+--- a/cpan/Config-Perl-V/t/24_plv514.t
++++ b/cpan/Config-Perl-V/t/24_plv514.t
+@@ -69,8 +69,8 @@ Summary of my perl5 (revision 5 version 14 subversion 2) configuration:
+   Linker and Libraries:
+     ld='ld', ldflags ='-L/usr/local/ppc64/lib64 -b64 -q64 -L/pro/local/lib -brtl -bdynamic -b64'
+     libpth=/usr/local/ppc64/lib64 /lib /usr/lib /usr/ccs/lib /usr/local/lib /usr/lib64
+-    libs=-lbind -lnsl -ldbm -ldb -ldl -lld -lm -lcrypt -lc
+-    perllibs=-lbind -lnsl -ldl -lld -lm -lcrypt -lc
++    libs=-lbind -ldbm -ldb -ldl -lld -lm -lcrypt -lc
++    perllibs=-lbind -ldl -lld -lm -lcrypt -lc
+     libc=/lib/libc.a, so=a, useshrplib=false, libperl=libperl.a
+     gnulibc_version=''
+   Dynamic Linking:
+diff --git a/cpan/Config-Perl-V/t/25_plv516.t b/cpan/Config-Perl-V/t/25_plv516.t
+index 5505245..5bad2ce 100644
+--- a/cpan/Config-Perl-V/t/25_plv516.t
++++ b/cpan/Config-Perl-V/t/25_plv516.t
+@@ -69,8 +69,8 @@ Summary of my perl5 (revision 5 version 16 subversion 3) configuration:
+   Linker and Libraries:
+     ld='cc', ldflags ='-L/pro/local/lib -fstack-protector'
+     libpth=/pro/local/lib /lib /usr/lib /usr/local/lib
+-    libs=-lnsl -lgdbm -ldb -ldl -lm -lcrypt -lutil -lc -lgdbm_compat
+-    perllibs=-lnsl -ldl -lm -lcrypt -lutil -lc
++    libs=-lgdbm -ldb -ldl -lm -lcrypt -lutil -lc -lgdbm_compat
++    perllibs=-ldl -lm -lcrypt -lutil -lc
+     libc=/lib/libc-2.15.so, so=so, useshrplib=false, libperl=libperl.a
+     gnulibc_version='2.15'
+   Dynamic Linking:
+diff --git a/cpan/Config-Perl-V/t/26_plv518.t b/cpan/Config-Perl-V/t/26_plv518.t
+index a255797..d3ab0b6 100644
+--- a/cpan/Config-Perl-V/t/26_plv518.t
++++ b/cpan/Config-Perl-V/t/26_plv518.t
+@@ -94,8 +94,8 @@ Summary of my perl5 (revision 5 version 18 subversion 0) configuration:
+   Linker and Libraries:
+     ld='cc', ldflags ='-L/pro/local/lib -fstack-protector'
+     libpth=/pro/local/lib /lib /usr/lib /usr/local/lib
+-    libs=-lnsl -lgdbm -ldb -ldl -lm -lcrypt -lutil -lc -lgdbm_compat
+-    perllibs=-lnsl -ldl -lm -lcrypt -lutil -lc
++    libs=-lgdbm -ldb -ldl -lm -lcrypt -lutil -lc -lgdbm_compat
++    perllibs=-ldl -lm -lcrypt -lutil -lc
+     libc=/lib/libc-2.17.so, so=so, useshrplib=false, libperl=libperl.a
+     gnulibc_version='2.17'
+   Dynamic Linking:
+diff --git a/cpan/Config-Perl-V/t/26_plv5182.t b/cpan/Config-Perl-V/t/26_plv5182.t
+index 25e52bb..fc24cd1 100644
+--- a/cpan/Config-Perl-V/t/26_plv5182.t
++++ b/cpan/Config-Perl-V/t/26_plv5182.t
+@@ -94,8 +94,8 @@ Summary of my perl5 (revision 5 version 18 subversion 2) configuration:
+   Linker and Libraries:
+     ld='cc', ldflags ='-L/pro/local/lib -fstack-protector'
+     libpth=/pro/local/lib /lib /usr/lib /usr/local/lib
+-    libs=-lnsl -lgdbm -ldb -ldl -lm -lcrypt -lutil -lc -lgdbm_compat
+-    perllibs=-lnsl -ldl -lm -lcrypt -lutil -lc
++    libs=-lgdbm -ldb -ldl -lm -lcrypt -lutil -lc -lgdbm_compat
++    perllibs=-ldl -lm -lcrypt -lutil -lc
+     libc=/lib/libc-2.18.so, so=so, useshrplib=false, libperl=libperl.a
+     gnulibc_version='2.18'
+   Dynamic Linking:
+diff --git a/cpan/Config-Perl-V/t/27_plv5200.t b/cpan/Config-Perl-V/t/27_plv5200.t
+index f44273d..ca84b18 100644
+--- a/cpan/Config-Perl-V/t/27_plv5200.t
++++ b/cpan/Config-Perl-V/t/27_plv5200.t
+@@ -96,8 +96,8 @@ Summary of my perl5 (revision 5 version 20 subversion 0) configuration:
+   Linker and Libraries:
+     ld='cc', ldflags ='-L/pro/local/lib -fstack-protector'
+     libpth=/usr/local/lib /usr/lib/gcc/i586-suse-linux/4.8/include-fixed /usr/lib/gcc/i586-suse-linux/4.8/../../../../i586-suse-linux/lib /usr/lib /pro/local/lib /lib
+-    libs=-lnsl -lgdbm -ldb -ldl -lm -lcrypt -lutil -lpthread -lc -lgdbm_compat
+-    perllibs=-lnsl -ldl -lm -lcrypt -lutil -lpthread -lc
++    libs=-lgdbm -ldb -ldl -lm -lcrypt -lutil -lpthread -lc -lgdbm_compat
++    perllibs=-ldl -lm -lcrypt -lutil -lpthread -lc
+     libc=libc-2.18.so, so=so, useshrplib=false, libperl=libperl.a
+     gnulibc_version='2.18'
+   Dynamic Linking:
+diff --git a/cpan/Config-Perl-V/t/27_plv5202.t b/cpan/Config-Perl-V/t/27_plv5202.t
+index 83c3cb0..13b58a2 100644
+--- a/cpan/Config-Perl-V/t/27_plv5202.t
++++ b/cpan/Config-Perl-V/t/27_plv5202.t
+@@ -97,8 +97,8 @@ Summary of my perl5 (revision 5 version 20 subversion 2) configuration:
+   Linker and Libraries:
+     ld='cc', ldflags ='-L/pro/local/lib -fstack-protector'
+     libpth=/usr/local/lib /usr/lib64/gcc/x86_64-suse-linux/4.8/include-fixed /usr/lib64/gcc/x86_64-suse-linux/4.8/../../../../x86_64-suse-linux/lib /usr/lib /pro/local/lib /lib/../lib64 /usr/lib/../lib64 /lib /lib64 /usr/lib64 /usr/local/lib64
+-    libs=-lnsl -lgdbm -ldb -ldl -lm -lcrypt -lutil -lpthread -lc -lgdbm_compat
+-    perllibs=-lnsl -ldl -lm -lcrypt -lutil -lpthread -lc
++    libs=-lgdbm -ldb -ldl -lm -lcrypt -lutil -lpthread -lc -lgdbm_compat
++    perllibs=-ldl -lm -lcrypt -lutil -lpthread -lc
+     libc=libc-2.19.so, so=so, useshrplib=false, libperl=libperl.a
+     gnulibc_version='2.19'
+   Dynamic Linking:
+diff --git a/cpan/Config-Perl-V/t/28_plv5220.t b/cpan/Config-Perl-V/t/28_plv5220.t
+index 885445b..26506c3 100644
+--- a/cpan/Config-Perl-V/t/28_plv5220.t
++++ b/cpan/Config-Perl-V/t/28_plv5220.t
+@@ -97,8 +97,8 @@ Summary of my perl5 (revision 5 version 22 subversion 0) configuration:
+   Linker and Libraries:
+     ld='cc', ldflags ='-L/pro/local/lib -fstack-protector'
+     libpth=/usr/local/lib /usr/lib64/gcc/x86_64-suse-linux/4.8/include-fixed /usr/lib64/gcc/x86_64-suse-linux/4.8/../../../../x86_64-suse-linux/lib /usr/lib /pro/local/lib /lib/../lib64 /usr/lib/../lib64 /lib /lib64 /usr/lib64 /usr/local/lib64
+-    libs=-lpthread -lnsl -lgdbm -ldb -ldl -lm -lcrypt -lutil -lc -lgdbm_compat
+-    perllibs=-lpthread -lnsl -ldl -lm -lcrypt -lutil -lc
++    libs=-lpthread -lgdbm -ldb -ldl -lm -lcrypt -lutil -lc -lgdbm_compat
++    perllibs=-lpthread -ldl -lm -lcrypt -lutil -lc
+     libc=libc-2.19.so, so=so, useshrplib=false, libperl=libperl.a
+     gnulibc_version='2.19'
+   Dynamic Linking:
+diff --git a/cpan/Config-Perl-V/t/30_plv5240.t b/cpan/Config-Perl-V/t/30_plv5240.t
+index 2d6c0fd..c4a8e13 100644
+--- a/cpan/Config-Perl-V/t/30_plv5240.t
++++ b/cpan/Config-Perl-V/t/30_plv5240.t
+@@ -102,8 +102,8 @@ Summary of my perl5 (revision 5 version 24 subversion 0) configuration:
+   Linker and Libraries:
+     ld='cc', ldflags ='-L/pro/local/lib -fstack-protector-strong'
+     libpth=/usr/local/lib /usr/lib64/gcc/x86_64-suse-linux/5/include-fixed /usr/lib64/gcc/x86_64-suse-linux/5/../../../../x86_64-suse-linux/lib /usr/lib /pro/local/lib /lib/../lib64 /usr/lib/../lib64 /lib /lib64 /usr/lib64 /usr/local/lib64
+-    libs=-lpthread -lnsl -lgdbm -ldb -ldl -lm -lcrypt -lutil -lc -lgdbm_compat
+-    perllibs=-lpthread -lnsl -ldl -lm -lcrypt -lutil -lc
++    libs=-lpthread -lgdbm -ldb -ldl -lm -lcrypt -lutil -lc -lgdbm_compat
++    perllibs=-lpthread -ldl -lm -lcrypt -lutil -lc
+     libc=libc-2.23.so, so=so, useshrplib=false, libperl=libperl.a
+     gnulibc_version='2.23'
+   Dynamic Linking:
+diff --git a/cpan/Config-Perl-V/t/31_plv52511.t b/cpan/Config-Perl-V/t/31_plv52511.t
+index a5b39ca..bcceca7 100644
+--- a/cpan/Config-Perl-V/t/31_plv52511.t
++++ b/cpan/Config-Perl-V/t/31_plv52511.t
+@@ -131,8 +131,8 @@ Summary of my perl5 (revision 5 version 25 subversion 11) configuration:
+     ld='cc'
+     ldflags ='-L/pro/local/lib -fstack-protector-strong'
+     libpth=/usr/local/lib /usr/lib64/gcc/x86_64-suse-linux/6/include-fixed /usr/lib64/gcc/x86_64-suse-linux/6/../../../../x86_64-suse-linux/lib /usr/lib /pro/local/lib /lib/../lib64 /usr/lib/../lib64 /lib /lib64 /usr/lib64 /usr/local/lib64
+-    libs=-lpthread -lnsl -lgdbm -ldb -ldl -lm -lcrypt -lutil -lc -lgdbm_compat
+-    perllibs=-lpthread -lnsl -ldl -lm -lcrypt -lutil -lc
++    libs=-lpthread -lgdbm -ldb -ldl -lm -lcrypt -lutil -lc -lgdbm_compat
++    perllibs=-lpthread -ldl -lm -lcrypt -lutil -lc
+     libc=libc-2.24.so
+     so=so
+     useshrplib=false
+diff --git a/cpan/Config-Perl-V/t/32_plv5261rc1.t b/cpan/Config-Perl-V/t/32_plv5261rc1.t
+index 9db16b2..57b1e11 100644
+--- a/cpan/Config-Perl-V/t/32_plv5261rc1.t
++++ b/cpan/Config-Perl-V/t/32_plv5261rc1.t
+@@ -130,8 +130,8 @@ Summary of my perl5 (revision 5 version 26 subversion 1) configuration:
+     ld='ccache cc'
+     ldflags ='-L/pro/local/lib -fstack-protector'
+     libpth=/usr/local/lib /usr/lib64/gcc/x86_64-suse-linux/4.8/include-fixed /usr/lib64/gcc/x86_64-suse-linux/4.8/../../../../x86_64-suse-linux/lib /usr/lib /pro/local/lib /lib/../lib64 /usr/lib/../lib64 /lib /lib64 /usr/lib64 /usr/local/lib64
+-    libs=-lpthread -lnsl -ldb -ldl -lm -lcrypt -lutil -lc
+-    perllibs=-lpthread -lnsl -ldl -lm -lcrypt -lutil -lc
++    libs=-lpthread -ldb -ldl -lm -lcrypt -lutil -lc
++    perllibs=-lpthread -ldl -lm -lcrypt -lutil -lc
+     libc=libc-2.19.so
+     so=so
+     useshrplib=false
+diff --git a/cpan/Config-Perl-V/t/33_plv52711r.t b/cpan/Config-Perl-V/t/33_plv52711r.t
+index c6940d2..d7f2147 100644
+--- a/cpan/Config-Perl-V/t/33_plv52711r.t
++++ b/cpan/Config-Perl-V/t/33_plv52711r.t
+@@ -130,8 +130,8 @@ Summary of my perl5 (revision 5 version 27 subversion 11) configuration:
+     ld='cc'
+     ldflags ='-L/pro/local/lib -fstack-protector-strong'
+     libpth=/usr/local/lib /usr/lib64/gcc/x86_64-suse-linux/7/include-fixed /usr/lib64/gcc/x86_64-suse-linux/7/../../../../x86_64-suse-linux/lib /usr/lib /pro/local/lib /lib/../lib64 /usr/lib/../lib64 /lib /lib64 /usr/lib64 /usr/local/lib64
+-    libs=-lpthread -lnsl -lgdbm -ldb -ldl -lm -lcrypt -lutil -lc -lgdbm_compat
+-    perllibs=-lpthread -lnsl -ldl -lm -lcrypt -lutil -lc
++    libs=-lpthread -lgdbm -ldb -ldl -lm -lcrypt -lutil -lc -lgdbm_compat
++    perllibs=-lpthread -ldl -lm -lcrypt -lutil -lc
+     libc=libc-2.27.so
+     so=so
+     useshrplib=false
+diff --git a/cpan/Config-Perl-V/t/34_plv5280.t b/cpan/Config-Perl-V/t/34_plv5280.t
+index f6c38df..47a1e0e 100644
+--- a/cpan/Config-Perl-V/t/34_plv5280.t
++++ b/cpan/Config-Perl-V/t/34_plv5280.t
+@@ -129,8 +129,8 @@ Summary of my perl5 (revision 5 version 28 subversion 0) configuration:
+     ld='cc'
+     ldflags ='-L/pro/local/lib -fstack-protector-strong'
+     libpth=/usr/local/lib /usr/lib64/gcc/x86_64-suse-linux/8/include-fixed /usr/lib64/gcc/x86_64-suse-linux/8/../../../../x86_64-suse-linux/lib /usr/lib /pro/local/lib /lib/../lib64 /usr/lib/../lib64 /lib /lib64 /usr/lib64 /usr/local/lib64
+-    libs=-lpthread -lnsl -lgdbm -ldb -ldl -lm -lcrypt -lutil -lc -lgdbm_compat
+-    perllibs=-lpthread -lnsl -ldl -lm -lcrypt -lutil -lc
++    libs=-lpthread -lgdbm -ldb -ldl -lm -lcrypt -lutil -lc -lgdbm_compat
++    perllibs=-lpthread -ldl -lm -lcrypt -lutil -lc
+     libc=libc-2.27.so
+     so=so
+     useshrplib=false
+diff --git a/cpan/Config-Perl-V/t/35_plv52910g.t b/cpan/Config-Perl-V/t/35_plv52910g.t
+index 6d822d1..383d146 100644
+--- a/cpan/Config-Perl-V/t/35_plv52910g.t
++++ b/cpan/Config-Perl-V/t/35_plv52910g.t
+@@ -130,8 +130,8 @@ Summary of my perl5 (revision 5 version 29 subversion 10) configuration:
+     ld='g++'
+     ldflags ='-L/pro/local/lib -fstack-protector-strong'
+     libpth=/usr/include/c++/8 /usr/include/c++/8/x86_64-suse-linux /usr/include/c++/8/backward /usr/local/lib /usr/lib64/gcc/x86_64-suse-linux/8/include-fixed /usr/lib64/gcc/x86_64-suse-linux/8/../../../../x86_64-suse-linux/lib /usr/lib /pro/local/lib /lib/../lib64 /usr/lib/../lib64 /lib /lib64 /usr/lib64 /usr/local/lib64
+-    libs=-lpthread -lnsl -lgdbm -ldb -ldl -lm -lcrypt -lutil -lc -lgdbm_compat
+-    perllibs=-lpthread -lnsl -ldl -lm -lcrypt -lutil -lc
++    libs=-lpthread -lgdbm -ldb -ldl -lm -lcrypt -lutil -lc -lgdbm_compat
++    perllibs=-lpthread -ldl -lm -lcrypt -lutil -lc
+     libc=libc-2.29.so
+     so=so
+     useshrplib=false
+diff --git a/cpan/Config-Perl-V/t/36_plv5300.t b/cpan/Config-Perl-V/t/36_plv5300.t
+index 6db7512..b3e26e3 100644
+--- a/cpan/Config-Perl-V/t/36_plv5300.t
++++ b/cpan/Config-Perl-V/t/36_plv5300.t
+@@ -130,8 +130,8 @@ Summary of my perl5 (revision 5 version 30 subversion 0) configuration:
+     ld='cc'
+     ldflags ='-L/pro/local/lib -fstack-protector-strong'
+     libpth=/usr/local/lib /usr/lib64/gcc/x86_64-suse-linux/8/include-fixed /usr/lib64/gcc/x86_64-suse-linux/8/../../../../x86_64-suse-linux/lib /usr/lib /pro/local/lib /lib/../lib64 /usr/lib/../lib64 /lib /lib64 /usr/lib64 /usr/local/lib64
+-    libs=-lpthread -lnsl -lgdbm -ldb -ldl -lm -lcrypt -lutil -lc -lgdbm_compat
+-    perllibs=-lpthread -lnsl -ldl -lm -lcrypt -lutil -lc
++    libs=-lpthread -lgdbm -ldb -ldl -lm -lcrypt -lutil -lc -lgdbm_compat
++    perllibs=-lpthread -ldl -lm -lcrypt -lutil -lc
+     libc=libc-2.29.so
+     so=so
+     useshrplib=true
+diff --git a/cpan/Config-Perl-V/t/37_plv53111qm.t b/cpan/Config-Perl-V/t/37_plv53111qm.t
+index f566f76..f94c275 100644
+--- a/cpan/Config-Perl-V/t/37_plv53111qm.t
++++ b/cpan/Config-Perl-V/t/37_plv53111qm.t
+@@ -130,8 +130,8 @@ Summary of my perl5 (revision 5 version 31 subversion 11) configuration:
+     ld='cc'
+     ldflags ='-L/pro/local/lib -fstack-protector-strong'
+     libpth=/usr/local/lib /usr/lib64/gcc/x86_64-suse-linux/10/include-fixed /usr/lib64/gcc/x86_64-suse-linux/10/../../../../x86_64-suse-linux/lib /usr/lib /pro/local/lib /lib/../lib64 /usr/lib/../lib64 /lib /lib64 /usr/lib64 /usr/local/lib64
+-    libs=-lpthread -lnsl -lgdbm -ldb -ldl -lm -lcrypt -lutil -lc -lgdbm_compat -lquadmath
+-    perllibs=-lpthread -lnsl -ldl -lm -lcrypt -lutil -lc -lquadmath
++    libs=-lpthread -lgdbm -ldb -ldl -lm -lcrypt -lutil -lc -lgdbm_compat -lquadmath
++    perllibs=-lpthread -ldl -lm -lcrypt -lutil -lc -lquadmath
+     libc=libc-2.31.so
+     so=so
+     useshrplib=false
+diff --git a/cpan/Config-Perl-V/t/38_plv5320tld.t b/cpan/Config-Perl-V/t/38_plv5320tld.t
+index a8f0d73..b1ba340 100644
+--- a/cpan/Config-Perl-V/t/38_plv5320tld.t
++++ b/cpan/Config-Perl-V/t/38_plv5320tld.t
+@@ -130,8 +130,8 @@ Summary of my perl5 (revision 5 version 32 subversion 0) configuration:
+     ld='cc'
+     ldflags ='-L/pro/local/lib -fstack-protector-strong'
+     libpth=/usr/local/lib /usr/lib64/gcc/x86_64-suse-linux/10/include-fixed /usr/lib64/gcc/x86_64-suse-linux/10/../../../../x86_64-suse-linux/lib /usr/lib /pro/local/lib /lib/../lib64 /usr/lib/../lib64 /lib /lib64 /usr/lib64 /usr/local/lib64
+-    libs=-lpthread -lnsl -lgdbm -ldb -ldl -lm -lcrypt -lutil -lc -lgdbm_compat
+-    perllibs=-lpthread -lnsl -ldl -lm -lcrypt -lutil -lc
++    libs=-lpthread -lgdbm -ldb -ldl -lm -lcrypt -lutil -lc -lgdbm_compat
++    perllibs=-lpthread -ldl -lm -lcrypt -lutil -lc
+     libc=libc-2.31.so
+     so=so
+     useshrplib=true
+diff --git a/plan9/config_sh.sample b/plan9/config_sh.sample
+index b761363..ad711d5 100644
+--- a/plan9/config_sh.sample
++++ b/plan9/config_sh.sample
+@@ -857,7 +857,7 @@ libsdirs=''
+ libsfiles=''
+ libsfound=''
+ libspath=' /lib'
+-libswanted='socket bind inet nsl nm ndbm gdbm dbm db malloc dl ld sun m c cposix posix ndir dir crypt sec ucb bsd BSD PW x util'
++libswanted='socket bind inet nm ndbm gdbm dbm db malloc dl ld sun m c cposix posix ndir dir crypt sec ucb bsd BSD PW x util'
+ libswanted_uselargefiles=''
+ line=''
+ lint=''
+diff --git a/pod/perlrun.pod b/pod/perlrun.pod
+index 5d3aa3e..e632e0a 100644
+--- a/pod/perlrun.pod
++++ b/pod/perlrun.pod
+@@ -895,11 +895,11 @@ non-letters).  For example:
+     $ perl -V:libc
+ 	libc='/lib/libc-2.2.4.so';
+     $ perl -V:lib.
+-	libs='-lnsl -lgdbm -ldb -ldl -lm -lcrypt -lutil -lc';
++	libs='-lgdbm -ldb -ldl -lm -lcrypt -lutil -lc';
+ 	libc='/lib/libc-2.2.4.so';
+     $ perl -V:lib.*
+ 	libpth='/usr/local/lib /lib /usr/lib';
+-	libs='-lnsl -lgdbm -ldb -ldl -lm -lcrypt -lutil -lc';
++	libs='-lgdbm -ldb -ldl -lm -lcrypt -lutil -lc';
+ 	lib_ext='.a';
+ 	libc='/lib/libc-2.2.4.so';
+ 	libperl='libperl.a';
+diff --git a/win32/config.gc b/win32/config.gc
+index af6fed9..111d4ad 100644
+--- a/win32/config.gc
++++ b/win32/config.gc
+@@ -869,8 +869,8 @@ libsdirs=''
+ libsfiles=''
+ libsfound=''
+ libspath=''
+-libswanted='net socket inet nsl nm ndbm gdbm dbm db malloc dl ld sun m c cposix posix ndir dir crypt ucb bsd BSD PW x'
+-libswanted_uselargefiles='net socket inet nsl nm ndbm gdbm dbm db malloc dl ld sun m c cposix posix ndir dir crypt ucb bsd BSD PW x'
++libswanted='net socket inet nm ndbm gdbm dbm db malloc dl ld sun m c cposix posix ndir dir crypt ucb bsd BSD PW x'
++libswanted_uselargefiles='net socket inet nm ndbm gdbm dbm db malloc dl ld sun m c cposix posix ndir dir crypt ucb bsd BSD PW x'
+ line='line'
+ lint=''
+ lkflags=''
+diff --git a/win32/config.vc b/win32/config.vc
+index f4625bf..cfa1c8a 100644
+--- a/win32/config.vc
++++ b/win32/config.vc
+@@ -868,8 +868,8 @@ libsdirs=''
+ libsfiles=''
+ libsfound=''
+ libspath=''
+-libswanted='net socket inet nsl nm ndbm gdbm dbm db malloc dl ld sun m c cposix posix ndir dir crypt ucb bsd BSD PW x'
+-libswanted_uselargefiles='net socket inet nsl nm ndbm gdbm dbm db malloc dl ld sun m c cposix posix ndir dir crypt ucb bsd BSD PW x'
++libswanted='net socket inet nm ndbm gdbm dbm db malloc dl ld sun m c cposix posix ndir dir crypt ucb bsd BSD PW x'
++libswanted_uselargefiles='net socket inet nm ndbm gdbm dbm db malloc dl ld sun m c cposix posix ndir dir crypt ucb bsd BSD PW x'
+ line='line'
+ lint=''
+ lkflags=''

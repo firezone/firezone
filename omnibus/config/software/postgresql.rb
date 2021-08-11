@@ -25,6 +25,7 @@ skip_transitive_dependency_licensing true
 dependency "zlib"
 dependency "openssl"
 dependency "libedit"
+dependency "libossp-uuid"
 dependency "ncurses"
 dependency "config_guess"
 
@@ -55,7 +56,7 @@ build do
           " --with-libedit-preferred" \
           " --with-openssl" \
           " --enable-thread-safety" \
-          " --with-uuid=e2fs" \
+          " --with-uuid=ossp" \
           " --with-includes=#{install_dir}/embedded/include" \
           " --with-libraries=#{install_dir}/embedded/lib", env: env
 
