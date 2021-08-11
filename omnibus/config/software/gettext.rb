@@ -18,9 +18,11 @@ name "gettext"
 license "GPL-3.0"
 license_file "COPYING"
 
+default_version "0.21"
+
 source url: "https://ftp.gnu.org/pub/gnu/gettext/gettext-#{version}.tar.gz"
 version("0.21") do
-  source sha256: "492ad61202de893ca21a99b621d63fa5389da58804ad79d3f226b8d04b803998"
+  source sha256: "c77d0da3102aec9c07f43671e60611ebff89a996ef159497ce8e59d075786b12"
 end
 
 relative_path "#{name}-#{version}"
@@ -28,7 +30,7 @@ relative_path "#{name}-#{version}"
 build do
   env = with_standard_compiler_flags(with_embedded_path)
 
-  command ".configure --prefix=#{install_dir}/embedded", env: env
+  command "./configure --prefix=#{install_dir}/embedded", env: env
   make "-j #{workers}", env: env
   make "-j #{workers} install", env: env
 end

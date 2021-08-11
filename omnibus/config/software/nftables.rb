@@ -29,13 +29,14 @@ dependency "bison"
 dependency "flex"
 dependency "libmnl"
 dependency "libnftnl"
+dependency "ncurses"
 dependency "libtool"
 dependency "readline"
 dependency "pkg-config"
 
 build do
   env = with_standard_compiler_flags(with_embedded_path)
-  command "./autogen.sh"
+  update_config_guess
   command "./configure --prefix=#{install_dir}/embedded", env: env
   make "-j #{workers}", env: env
   make "-j #{workers} install", env: env
