@@ -15,11 +15,15 @@
 # limitations under the License.
 #
 name "nftables"
-default_version "0.9.9"
 
-source url: "https://www.netfilter.org/pub/nftables/nftables-#{version}.tar.bz2"
+license_file "COPYING"
 
-version("0.9.9") { source sha256: "76ef2dc7fd0d79031a8369487739a217ca83996b3a746cec5bda79da11e3f1b4" }
+# Some weirdness in the official release package so use git and switch to tag
+# default_version "0.9.9"
+# source url: "https://www.netfilter.org/pub/nftables/nftables-#{version}.tar.bz2"
+# version("0.9.9") { source sha256: "76ef2dc7fd0d79031a8369487739a217ca83996b3a746cec5bda79da11e3f1b4" }
+source git: "git://git.netfilter.org/nftables"
+default_version "v0.9.9"
 
 relative_path "#{name}-#{version}"
 
@@ -29,15 +33,21 @@ dependency "bison"
 dependency "flex"
 dependency "libmnl"
 dependency "libnftnl"
-dependency "ncurses"
 dependency "libtool"
-dependency "readline"
+dependency "linenoise"
 dependency "pkg-config"
 
 build do
   env = with_standard_compiler_flags(with_embedded_path)
-  update_config_guess
-  command "./configure --prefix=#{install_dir}/embedded", env: env
+  configure_cmd = [
+    "./configure",
+    "--prefix=#{install_dir}/embedded",
+    "--disable-debug",
+    "--disable-man-doc",
+    "--with-cli=linenoise" # readline seems to fail to be detected and libedit fails with missing "editline/history.h"
+  ]
+  command "./autogen.sh", env: env
+  command configure_cmd.join(" "), env: env
   make "-j #{workers}", env: env
   make "-j #{workers} install", env: env
 end
