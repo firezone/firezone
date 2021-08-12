@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# Copyright FireZone
+# Copyright 2012-2014 FireZone
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,23 +15,21 @@
 # limitations under the License.
 #
 
-name "readline"
-default_version "8.1"
+name "linenoise"
+description "A small self-contained alternative to readline and libedit"
 
-license "GPL-3.0"
-license_file "COPYING"
+license_file "LICENSE"
 skip_transitive_dependency_licensing true
 
-version("8.1") { source sha256: "f8ceb4ee131e3232226a17f51b164afc46cd0b9e6cef344be87c65962cb82b02" }
-
-source url: "https://ftp.gnu.org/gnu/readline/readline-#{version}.tar.gz"
-
-relative_path "#{name}-#{version}"
+source github: "antirez/linenoise"
+default_version "master"
 
 build do
   env = with_standard_compiler_flags(with_embedded_path)
 
-  command "./configure --prefix=#{install_dir}/embedded", env: env
-  make "-j #{workers}", env: env
-  make "-j #{workers} install", env: env
+  command "gcc -c linenoise.c -o linenoise.o -fPIC", env: env
+  command "gcc -shared -o liblinenoise.so linenoise.o -lm", env: env
+
+  copy "liblinenoise.so", "#{install_dir}/embedded/lib/"
+  copy "linenoise.h", "#{install_dir}/embedded/include/"
 end

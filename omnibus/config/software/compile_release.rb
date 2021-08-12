@@ -19,19 +19,24 @@ name "compile_release"
 description "the steps required to compile the firezone elixir application"
 default_version "1.0.0"
 
+dependency "postgresql"
+dependency "nodejs"
 dependency "elixir"
 
-source path: File.expand_path("../", Omnibus::Config.project_root),
-  options: { exclude: [
-    ".env",
-    ".git",
-    ".ci",
-    ".vagrant",
-    ".github",
-    "_build",
-    "deps",
-    "apps/fz_http/assets/node_modules"
-  ] }
+version("1.0.0") do
+  source path: File.expand_path("../", Omnibus::Config.project_root),
+    options: { exclude: [
+      ".env",
+      ".git",
+      ".ci",
+      ".vagrant",
+      ".github",
+      "_build",
+      "deps",
+      "omnibus",
+      "apps/fz_http/assets/node_modules"
+    ] }
+end
 
 license :project_license
 skip_transitive_dependency_licensing true

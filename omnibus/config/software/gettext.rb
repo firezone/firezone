@@ -20,6 +20,20 @@ license_file "COPYING"
 
 default_version "0.21"
 
+dependency "m4"
+dependency "autoconf"
+dependency "automake"
+dependency "bison"
+dependency "perl"
+dependency "libiconv"
+dependency "ncurses"
+dependency "bzip2"
+dependency "zlib"
+dependency "libxml2"
+dependency "liblzma"
+dependency "icu"
+dependency "pkg-config"
+
 source url: "https://ftp.gnu.org/pub/gnu/gettext/gettext-#{version}.tar.gz"
 version("0.21") do
   source sha256: "c77d0da3102aec9c07f43671e60611ebff89a996ef159497ce8e59d075786b12"
@@ -29,8 +43,14 @@ relative_path "#{name}-#{version}"
 
 build do
   env = with_standard_compiler_flags(with_embedded_path)
+  configure_command = [
+    "./configure",
+    # Enabling OpenMP requires libgomp, which requires building gcc which is very slow.
+    "--disable-openmp",
+    "--prefix=#{install_dir}/embedded"
+  ]
 
-  command "./configure --prefix=#{install_dir}/embedded", env: env
+  command configure_command, env: env
   make "-j #{workers}", env: env
   make "-j #{workers} install", env: env
 end
