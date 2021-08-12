@@ -33,6 +33,9 @@ dependency "automake"
 build do
   env = with_standard_compiler_flags(with_embedded_path)
 
+  # Fixes https://github.com/spack/spack/issues/8152
+  env["CFLAGS"] << " -D_GNU_SOURCE" if debian?
+
   command "./autogen.sh", env: env
   command "./configure --prefix=#{install_dir}/embedded", env: env
   make "-j #{workers}", env: env
