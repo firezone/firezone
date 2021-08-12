@@ -14,6 +14,7 @@ dependency "bzip2"
 dependency "zlib"
 dependency "openssl"
 dependency "ncurses"
+dependency "libffi"
 
 relative_path "Python-#{version}"
 
