@@ -15,8 +15,18 @@ error_exit()
   exit 1
 }
 
+set_capabilities()
+{
+  # Allow FireZone to control wireguard interface and firewall
+  setcap cap_net_raw,cap_net_admin+eip ${install_dir}/embedded/bin/wg
+  setcap cap_net_raw,cap_net_admin+eip ${install_dir}/embedded/bin/nft
+}
+
+set_capabilities
+
 # All created files are 0600 by default
 umask 077
+
 
 # Add firezone user if not exists
 if id firezone &>/dev/null; then
