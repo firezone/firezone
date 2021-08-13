@@ -12,17 +12,9 @@ jobs:
       MIX_ENV: test
       POSTGRES_HOST: localhost
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    strategy:
-      matrix:
-        postgres:
-          - postgres:9.6
-          - postgres:10
-          - postgres:11
-          - postgres:12
-          - postgres:13
     services:
       postgres:
-        image: ${{ matrix.postgres }}
+        image: postgres:13
         ports:
           - 5432:5432
         env:
@@ -85,7 +77,7 @@ jobs:
             os: ubuntu_18.04
           - port: 8806
             os: ubuntu_20.04
-    if: github.ref == 'refs/heads/master'
+    # if: github.ref == 'refs/heads/master'
     steps:
       - uses: actions/checkout@v2
       - run: vagrant up ${{ matrix.os }}

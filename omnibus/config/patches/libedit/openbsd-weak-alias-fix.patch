@@ -1,0 +1,48 @@
+diff -ur libedit-20120601-3.0.orig/src/strlcat.c libedit-20120601-3.0/src/strlcat.c
+--- libedit-20120601-3.0.orig/src/strlcat.c	Wed May 13 17:47:58 2015
++++ libedit-20120601-3.0/src/strlcat.c	Wed May 13 17:48:14 2015
+@@ -29,7 +29,7 @@
+
+ #ifdef _LIBC
+ # ifdef __weak_alias
+-__weak_alias(strlcat, _strlcat)
++//__weak_alias(strlcat, _strlcat)
+ # endif
+ #endif
+
+diff -ur libedit-20120601-3.0.orig/src/strlcpy.c libedit-20120601-3.0/src/strlcpy.c
+--- libedit-20120601-3.0.orig/src/strlcpy.c	Wed May 13 17:47:58 2015
++++ libedit-20120601-3.0/src/strlcpy.c	Wed May 13 17:48:14 2015
+@@ -29,7 +29,7 @@
+
+ #ifdef _LIBC
+ # ifdef __weak_alias
+-__weak_alias(strlcpy, _strlcpy)
++//__weak_alias(strlcpy, _strlcpy)
+ # endif
+ #endif
+
+diff -ur libedit-20120601-3.0.orig/src/unvis.c libedit-20120601-3.0/src/unvis.c
+--- libedit-20120601-3.0.orig/src/unvis.c	Wed May 13 17:47:58 2015
++++ libedit-20120601-3.0/src/unvis.c	Wed May 13 17:48:14 2015
+@@ -50,7 +50,7 @@
+ #include <vis.h>
+
+ #ifdef __weak_alias
+-__weak_alias(strnunvisx,_strnunvisx)
++//__weak_alias(strnunvisx,_strnunvisx)
+ #endif
+
+ #if !HAVE_VIS
+diff -ur libedit-20120601-3.0.orig/src/vis.c libedit-20120601-3.0/src/vis.c
+--- libedit-20120601-3.0.orig/src/vis.c	Wed May 13 17:47:58 2015
++++ libedit-20120601-3.0/src/vis.c	Wed May 13 17:48:14 2015
+@@ -69,7 +69,7 @@
+ #include <stdlib.h>
+
+ #ifdef __weak_alias
+-__weak_alias(strvisx,_strvisx)
++//__weak_alias(strvisx,_strvisx)
+ #endif
+
+ #if !HAVE_VIS || !HAVE_SVIS

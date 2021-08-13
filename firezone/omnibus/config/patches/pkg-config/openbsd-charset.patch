@@ -1,0 +1,19 @@
+--- pkg-config-0.28.orig/glib/glib/libcharset/config.charset	Wed May 13 18:21:29 2015
++++ pkg-config-0.28/glib/glib/libcharset/config.charset	Wed May 13 18:21:54 2015
+@@ -398,6 +398,16 @@
+ 	echo "BIG5 BIG5"
+ 	echo "SJIS SHIFT_JIS"
+ 	;;
++    openbsd*)
++    echo "646 ASCII"
++    echo "ISO8859-1 ISO-8859-1"
++    echo "ISO8859-2 ISO-8859-2"
++    echo "ISO8859-4 ISO-8859-4"
++    echo "ISO8859-5 ISO-8859-5"
++    echo "ISO8859-7 ISO-8859-7"
++    echo "ISO8859-13 ISO-8859-13"
++    echo "ISO8859-15 ISO-8859-15"
++    ;;
+     darwin[56]*)
+ 	# Darwin 6.8 doesn't have nl_langinfo(CODESET); therefore
+ 	# localcharset.c falls back to using the full locale name
