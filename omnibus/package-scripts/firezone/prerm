@@ -1,0 +1,15 @@
+#!/bin/sh
+#
+# Perform necessary firezone setup steps
+# prior to uninstalling package.
+#
+
+PROGNAME=`basename $0`
+
+error_exit()
+{
+  echo "${PROGNAME}: ${1:-"Unknown Error"}" 1>&2
+  exit 1
+}
+
+exit 0

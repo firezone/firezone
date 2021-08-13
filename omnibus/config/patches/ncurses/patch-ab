@@ -1,0 +1,44 @@
+$NetBSD: patch-ab,v 1.16 2011/02/28 11:02:46 adam Exp $
+
+--- mk-1st.awk.orig	2010-08-07 20:42:30.000000000 +0000
++++ mk-1st.awk
+@@ -396,11 +396,11 @@ END	{
+ 				end_name = lib_name;
+ 				printf "../lib/%s : $(%s_OBJS)\n", lib_name, OBJS
+ 				if ( is_ticlib() ) {
+-					printf "\tcd ../lib && $(LIBTOOL_LINK) $(%s) -o %s $(%s_OBJS:$o=.lo) -rpath $(DESTDIR)$(libdir) %s $(NCURSES_MAJOR):$(NCURSES_MINOR) $(LT_UNDEF) $(TICS_LIST)\n", compile, lib_name, OBJS, libtool_version
++					printf "\tcd ../lib && $(LIBTOOL_LINK) $(%s) -o %s $(%s_OBJS:.o=.lo) -rpath $(DESTDIR)$(libdir) %s $(NCURSES_MAJOR):$(NCURSES_MINOR) $(LT_UNDEF) $(TICS_LIST)\n", compile, lib_name, OBJS, libtool_version
+ 				} else if ( is_termlib() ) {
+-					printf "\tcd ../lib && $(LIBTOOL_LINK) $(%s) -o %s $(%s_OBJS:$o=.lo) -rpath $(DESTDIR)$(libdir) %s $(NCURSES_MAJOR):$(NCURSES_MINOR) $(LT_UNDEF) $(TINFO_LIST)\n", compile, lib_name, OBJS, libtool_version
++					printf "\tcd ../lib && $(LIBTOOL_LINK) $(%s) -o %s $(%s_OBJS:.o=.lo) -rpath $(DESTDIR)$(libdir) %s $(NCURSES_MAJOR):$(NCURSES_MINOR) $(LT_UNDEF) $(TINFO_LIST)\n", compile, lib_name, OBJS, libtool_version
+ 				} else {
+-					printf "\tcd ../lib && $(LIBTOOL_LINK) $(%s) -o %s $(%s_OBJS:$o=.lo) -rpath $(DESTDIR)$(libdir) %s $(NCURSES_MAJOR):$(NCURSES_MINOR) $(LT_UNDEF) $(SHLIB_LIST)\n", compile, lib_name, OBJS, libtool_version
++					printf "\tcd ../lib && $(LIBTOOL_LINK) $(%s) -o %s $(%s_OBJS:.o=.lo) -rpath $(DESTDIR)$(libdir) %s $(NCURSES_MAJOR):$(NCURSES_MINOR) $(LT_UNDEF) $(SHLIB_LIST)\n", compile, lib_name, OBJS, libtool_version
+ 				}
+ 				print  ""
+ 				print  "install \\"
+@@ -469,7 +469,7 @@ END	{
+ 			print "mostlyclean::"
+ 			printf "\t-rm -f $(%s_OBJS)\n", OBJS
+ 			if ( MODEL == "LIBTOOL" ) {
+-				printf "\t-$(LIBTOOL_CLEAN) rm -f $(%s_OBJS:$o=.lo)\n", OBJS
++				printf "\t-$(LIBTOOL_CLEAN) rm -f $(%s_OBJS:.o=.lo)\n", OBJS
+ 			}
+ 		}
+ 		else if ( found == 2 )
+@@ -478,13 +478,13 @@ END	{
+ 			print "mostlyclean::"
+ 			printf "\t-rm -f $(%s_OBJS)\n", OBJS
+ 			if ( MODEL == "LIBTOOL" ) {
+-				printf "\t-$(LIBTOOL_CLEAN) rm -f $(%s_OBJS:$o=.lo)\n", OBJS
++				printf "\t-$(LIBTOOL_CLEAN) rm -f $(%s_OBJS:.o=.lo)\n", OBJS
+ 			}
+ 			print ""
+ 			print "clean ::"
+ 			printf "\t-rm -f $(%s_OBJS)\n", OBJS
+ 			if ( MODEL == "LIBTOOL" ) {
+-				printf "\t-$(LIBTOOL_CLEAN) rm -f $(%s_OBJS:$o=.lo)\n", OBJS
++				printf "\t-$(LIBTOOL_CLEAN) rm -f $(%s_OBJS:.o=.lo)\n", OBJS
+ 			}
+ 		}
+ 	}

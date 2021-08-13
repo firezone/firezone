@@ -27,7 +27,9 @@ repos:
       - id: check-yaml
       - id: check-merge-conflict
       - id: end-of-file-fixer
+        exclude: "^omnibus/config/patches/"
       - id: trailing-whitespace
+        exclude: "^omnibus/config/patches/"
       - id: check-merge-conflict
       - id: no-commit-to-branch
         args: [-b, master, -b, develop]

@@ -34,7 +34,43 @@ else
   download_release
 fi
 
-echo "Extracting package to /opt/firezone..."
-tar -zxf $file -C /opt/
+echo "Setting up FireZone..."
+echo
 
-echo "FireZone installed!"
+if id firezone &>/dev/null; then
+  echo "firezone user exists... not creating."
+else
+  echo "Creating system user firezone"
+  useradd --system firezone
+fi
+
+echo "Extracting package to /opt/firezone..."
+echo
+tar -zxf $file -C /opt/
+chmod -R firezone:firezone /opt/firezone
+
+# Create DB user
+echo "Creating DB user..."
+hostname=$(hostname)
+db_user=firezone
+db_password="$(openssl rand -hex 16)"
+res=$(su postgres -c "psql -c \"SELECT 1 FROM pg_roles WHERE rolname = '${db_user}';\"")
+if [[ $res == *"0 rows"* ]]; then
+  su postgres -c "psql -c \"CREATE ROLE ${db_user} WITH LOGIN PASSWORD '${db_password}';\""
+else
+  echo "${db_user} role found in DB"
+fi
+
+# Create DB if not exists
+db_name=firezone
+res=$(su postgres -c "psql -c \"SELECT 1 FROM pg_database WHERE datname = '${db_name}';\"")
+if [[ $res == *"0 rows"* ]]; then
+  su postgres -c "psql -c \"CREATE DATABASE firezone;\" || true"
+else
+  echo "${db_name} exists; not creating"
+fi
+
+
+
+
+echo "FireZone installed successfully!"
