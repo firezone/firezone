@@ -30,7 +30,7 @@ dependency "config_guess"
 version("1.15") { source sha256: "ccf536620a45458d26ba83887a983b96827001e92a13847b45e4925cc8913178" }
 version("1.16") { source sha256: "e6a1b1b589654277ee790cce3734f07876ac4ccfaecbee8afa0b649cf529cc04" }
 
-source url: "https://ftp.gnu.org/pub/gnu/libiconv/libiconv-#{version}.tar.gz"
+source url: "https://mirrors.ocf.berkeley.edu/gnu/libiconv/libiconv-#{version}.tar.gz"
 
 relative_path "libiconv-#{version}"
 
