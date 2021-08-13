@@ -32,9 +32,6 @@ install_dir "#{default_root}/#{name}"
 build_version Omnibus::BuildVersion.semver
 build_iteration 1
 
-# Creates required build directories
-# dependency "preparation"
-
 # firezone build dependencies/components
 dependency "compile_release"
 dependency "erlang"
@@ -42,7 +39,14 @@ dependency "elixir"
 dependency "openssl"
 dependency "postgresql"
 dependency "wireguard-tools"
-dependency "nftables"
 
+if linux?
+  dependency "nftables"
+end
+
+exclude ".env"
+exclude ".github"
+exclude ".vagrant"
+exclude ".ci"
 exclude "**/.git"
 exclude "**/bundler/git"
