@@ -21,6 +21,8 @@ relative_path "Python-#{version}"
 build do
   env = with_standard_compiler_flags(with_embedded_path)
 
+  env["CC"] = "gcc"
+
   command "./configure --prefix=#{install_dir}/embedded", env: env
   make "-j #{workers}", env: env
   make "-j #{workers} install", env: env
