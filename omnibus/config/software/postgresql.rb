@@ -22,6 +22,10 @@ license "PostgreSQL"
 license_file "COPYRIGHT"
 skip_transitive_dependency_licensing true
 
+dependency "autoconf"
+dependency "automake"
+dependency "m4"
+dependency "pkg-config"
 dependency "zlib"
 dependency "openssl"
 dependency "libedit"
@@ -51,15 +55,23 @@ build do
 
   update_config_guess(target: "config")
 
-  command "./configure" \
-          " --prefix=#{install_dir}/embedded" \
-          " --with-libedit-preferred" \
-          " --with-openssl" \
-          " --enable-thread-safety" \
-          " --with-uuid=ossp" \
-          " --with-includes=#{install_dir}/embedded/include" \
-          " --with-libraries=#{install_dir}/embedded/lib", env: env
+  configure_command = [
+    "./configure",
+    "--prefix=#{install_dir}/embedded",
+    "--with-libedit-preferred",
+    "--with-openssl",
+    "--enable-thread-safety",
+    "--with-includes=#{install_dir}/embedded/include",
+    "--with-libraries=#{install_dir}/embedded/lib"
+  ]
 
+  if linux?
+    configure_command << "--with-uuid=ossp"
+  elsif mac_os_x?
+    configure_command << "--with-uuid=e2fs"
+  end
+
+  command configure_command.join(" "), env: env
   make "world -j #{workers}", env: env
   make "install-world", env: env
 end

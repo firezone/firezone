@@ -9,7 +9,7 @@ version("16.6.2") do
   source sha256: "9b539b1ea5e3fbd173fcbaae97088401b228c36c2076c98d04c73802713bbb73"
 end
 
-dependency "python"
+dependency "python3"
 
 relative_path "node-#{version}"
 
