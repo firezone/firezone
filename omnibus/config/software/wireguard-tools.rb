@@ -19,10 +19,10 @@ name "wireguard-tools"
 description "wireguard userspace utilities"
 default_version "1.0.20210424"
 
-default_src_url = "https://git.zx2c4.com/wireguard-tools/snapshot/wireguard-tools-#{version}.zip"
+default_src_url = "https://github.com/WireGuard/wireguard-tools/archive/refs/tags/v#{version}.tar.gz"
 
 version "1.0.20210424" do
-  source url: default_src_url, sha256: "1ad170ded2d66d7c5a02fc2fd5ac3e195ec1c98133986f2d8223ed5a72c8877f"
+  source url: default_src_url, sha256: "6b32b5deba067b9a920f008a006f001fa1ec903dc69fcaa5674b5a043146c1f7"
 end
 
 relative_path "wireguard-tools-#{version}/src"
