@@ -29,7 +29,7 @@ version("2.4.6") { source sha256: "e3bd4d5d3d025a36c21dd6af7ea818a2afcd4dfc1ea5a
 version("2.4.2") { source sha256: "b38de44862a987293cd3d8dfae1c409d514b6c4e794ebc93648febf9afc38918" }
 version("2.4")   { source sha256: "13df57ab63a94e196c5d6e95d64e53262834fe780d5e82c28f177f9f71ddf62e" }
 
-source url: "https://ftp.gnu.org/gnu/libtool/libtool-#{version}.tar.gz"
+source url: "https://mirrors.ocf.berkeley.edu/gnu/libtool/libtool-#{version}.tar.gz"
 
 relative_path "libtool-#{version}"
 
