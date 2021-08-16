@@ -46,5 +46,5 @@ build do
           " --prefix=#{install_dir}/embedded", env: env
 
   make "-j #{workers}", env: env
-  make "install", env: env
+  make "-j #{workers} install", env: env
 end

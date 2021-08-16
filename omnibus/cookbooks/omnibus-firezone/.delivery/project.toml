@@ -1,0 +1,32 @@
+# Delivery for Local Phases Execution
+#
+# This file allows you to execute test phases locally on a workstation or
+# in a CI pipeline. The delivery-cli will read this file and execute the
+# command(s) that are configured for each phase. You can customize them
+# by just modifying the phase key on this file.
+#
+# By default these phases are configured for Cookbook Workflow only
+#
+
+[local_phases]
+unit = "echo skipping unit phase."
+lint = "chef exec cookstyle"
+# foodcritic has been deprecated in favor of cookstyle so we skip the syntax
+# phase now.
+syntax = "echo skipping syntax phase. Use lint phase instead."
+provision = "chef exec kitchen create"
+deploy = "chef exec kitchen converge"
+smoke = "chef exec kitchen verify"
+# The functional phase is optional, you can define it by uncommenting
+# the line below and running the command: `delivery local functional`
+# functional = ""
+cleanup = "chef exec kitchen destroy"
+
+# Remote project.toml file
+#
+# Instead of the local phases above, you may specify a remote URI location for
+# the `project.toml` file. This is useful for teams that wish to centrally
+# manage the behavior of the `delivery local` command across many different
+# projects.
+#
+# remote_file = "https://url/project.toml"

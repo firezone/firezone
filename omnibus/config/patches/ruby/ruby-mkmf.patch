@@ -1,0 +1,29 @@
+--- a/lib/mkmf.rb	2016-06-16 16:19:13.000000000 -0400
++++ b/lib/mkmf.rb	2016-06-16 16:23:08.000000000 -0400
+@@ -365,6 +365,17 @@
+   end
+ 
+   def libpath_env
++    # Patch for aix
++    # Ideally applications should not need LIBPATH/LD_LIBRARY_PATH set
++    # and should rely on the embedded paths in binaries/shared objects
++    # For chef say on AIX we already build using -blibpath and
++    # LD_RUN_PATH, so the extensions built using chef embedded ruby
++    # (using rbconfig) should have correct paths set.
++    # Setting LIBPATH overrides the behaviour of programs invoked from
++    # chef built ruby, for example xlc ends up picking up libiconv built
++    # within chef embedded ruby libs instead of the one from /usr/lib
++    return {}
++
+     # used only if native compiling
+     if libpathenv = config_string("LIBPATHENV")
+       pathenv = ENV[libpathenv]
+@@ -1799,7 +1810,7 @@
+   #
+   if !CROSS_COMPILING
+     case CONFIG['build_os']
+-    when 'mingw32'
++    when 'mingw32', 'mingw64'
+       def mkintpath(path)
+         # mingw uses make from msys and it needs special care
+         # converts from C:\some\path to /C/some/path

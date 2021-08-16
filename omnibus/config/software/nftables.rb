@@ -17,6 +17,7 @@
 name "nftables"
 
 license_file "COPYING"
+skip_transitive_dependency_licensing true
 
 # Some weirdness in the official release package so use git and switch to tag
 # default_version "0.9.9"
