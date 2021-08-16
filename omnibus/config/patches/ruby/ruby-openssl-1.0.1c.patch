@@ -1,0 +1,42 @@
+diff -Naur ruby-1.9.3-p286.pristine/ext/openssl/openssl_missing.c ruby-1.9.3-p286/ext/openssl/openssl_missing.c
+--- ruby-1.9.3-p286.pristine/ext/openssl/openssl_missing.c	2011-06-26 01:32:03.000000000 +0000
++++ ruby-1.9.3-p286/ext/openssl/openssl_missing.c	2013-01-28 05:08:38.192083253 +0000
+@@ -22,7 +22,7 @@
+ #include "openssl_missing.h"
+ 
+ #if !defined(HAVE_HMAC_CTX_COPY)
+-void
++int
+ HMAC_CTX_copy(HMAC_CTX *out, HMAC_CTX *in)
+ {
+     if (!out || !in) return;
+@@ -118,7 +118,7 @@
+  * tested on 0.9.7d.
+  */
+ int
+-EVP_CIPHER_CTX_copy(EVP_CIPHER_CTX *out, EVP_CIPHER_CTX *in)
++EVP_CIPHER_CTX_copy(EVP_CIPHER_CTX *out, const EVP_CIPHER_CTX *in)
+ {
+     memcpy(out, in, sizeof(EVP_CIPHER_CTX));
+ 
+diff -Naur ruby-1.9.3-p286.pristine/ext/openssl/openssl_missing.h ruby-1.9.3-p286/ext/openssl/openssl_missing.h
+--- ruby-1.9.3-p286.pristine/ext/openssl/openssl_missing.h	2011-06-26 01:32:03.000000000 +0000
++++ ruby-1.9.3-p286/ext/openssl/openssl_missing.h	2013-01-28 05:08:38.192500215 +0000
+@@ -68,7 +68,7 @@
+ #endif
+ 
+ #if !defined(HAVE_HMAC_CTX_COPY)
+-void HMAC_CTX_copy(HMAC_CTX *out, HMAC_CTX *in);
++int HMAC_CTX_copy(HMAC_CTX *out, HMAC_CTX *in);
+ #endif
+ 
+ #if !defined(HAVE_HMAC_CTX_CLEANUP)
+@@ -92,7 +92,7 @@
+ #endif
+ 
+ #if !defined(HAVE_EVP_CIPHER_CTX_COPY)
+-int EVP_CIPHER_CTX_copy(EVP_CIPHER_CTX *out, EVP_CIPHER_CTX *in);
++int EVP_CIPHER_CTX_copy(EVP_CIPHER_CTX *out, const EVP_CIPHER_CTX *in);
+ #endif
+ 
+ #if !defined(HAVE_EVP_DIGESTINIT_EX)

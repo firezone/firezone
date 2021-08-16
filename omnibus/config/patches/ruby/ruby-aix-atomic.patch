@@ -1,0 +1,11 @@
+--- ruby-2.1.2/ruby_atomic.h.orig	2014-09-29 14:08:29.000000000 -0500
++++ ruby-2.1.2/ruby_atomic.h	2014-09-29 14:08:41.000000000 -0500
+@@ -117,7 +117,7 @@
+ # endif
+ 
+ #else
+-typedef int rb_atomic_t;
++typedef long rb_atomic_t;
+ #define NEED_RUBY_ATOMIC_OPS
+ extern rb_atomic_t ruby_atomic_exchange(rb_atomic_t *ptr, rb_atomic_t val);
+ extern rb_atomic_t ruby_atomic_compare_and_swap(rb_atomic_t *ptr,
