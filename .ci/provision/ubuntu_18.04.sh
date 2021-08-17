@@ -15,6 +15,7 @@ sudo apt-get install -y -q \
   ca-certificates \
   build-essential \
   git \
+  gcc-8 \
   dpkg-dev \
   libssl-dev \
   python3 \
@@ -65,6 +66,6 @@ bundle install --binstubs
 # Build omnibus package
 sudo mkdir -p /opt/firezone
 sudo chown -R ${USER} /opt/firezone
-bin/omnibus build firezone
+CC=/usr/bin/gcc-8 bin/omnibus build firezone
 
 sudo dpkg -i pkg/firezone*.deb
