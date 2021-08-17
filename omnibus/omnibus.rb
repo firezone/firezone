@@ -14,7 +14,11 @@
 #
 # Uncomment this line to change the default base directory to "local"
 # -------------------------------------------------------------------
-base_dir("/data/omnibus-local")
+if ENV["CI"]
+  base_dir("/tmp/omnibus-local")
+else
+  base_dir("/data/omnibus-local")
+end
 #
 # Alternatively you can tune the individual values
 # ------------------------------------------------
