@@ -20,12 +20,14 @@ license :project_license
 dependency "omnibus-ctl"
 dependency "runit"
 
-source path: "cookbooks/omnibus-firezone"
+source path: "cookbooks/firezone"
 
 build do
   env = with_standard_compiler_flags(with_embedded_path)
 
   bundle "install --binstubs --without test", env: env
+
+  mkdir "/#{install_dir}/bin"
 
   block do
     erb source: "firezone-ctl.erb",

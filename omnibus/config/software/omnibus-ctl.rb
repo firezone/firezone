@@ -15,31 +15,30 @@
 # limitations under the License.
 #
 
-name 'omnibus-ctl'
-version = Gitlab::Version.new('omnibus-ctl', 'v0.6.0')
-default_version version.print(false)
-display_version version.print(false)
+name "omnibus-ctl"
+default_version "v0.6.0"
 
-license 'Apache-2.0'
-license_file 'LICENSE'
-
+license "Apache-2.0"
+license_file "https://raw.githubusercontent.com/chef/omnibus-ctl/master/LICENSE"
+# Even though omnibus-ctl is a gem, it does not have any dependencies.
 skip_transitive_dependency_licensing true
 
-dependency 'rubygems'
+dependency "rubygems"
+dependency "ruby"
 
-source git: version.remote
+# versions_list: https://github.com/chef/omnibus-ctl/tags filter=*.tar.gz
+source git: "https://github.com/chef/omnibus-ctl.git"
 
-relative_path 'omnibus-ctl'
+relative_path "omnibus-ctl"
 
 build do
   env = with_standard_compiler_flags(with_embedded_path)
-  patch source: 'skip-license-acceptance.patch'
 
   # Remove existing built gems in case they exist in the current dir
-  delete 'omnibus-ctl-*.gem'
+  delete "omnibus-ctl-*.gem"
 
-  gem 'build omnibus-ctl.gemspec', env: env
-  gem 'install omnibus-ctl-*.gem --no-document', env: env
+  gem "build omnibus-ctl.gemspec", env: env
+  gem "install omnibus-ctl-*.gem --no-document ", env: env
 
   touch "#{install_dir}/embedded/service/omnibus-ctl/.gitkeep"
 end
