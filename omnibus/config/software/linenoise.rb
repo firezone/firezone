@@ -26,9 +26,10 @@ default_version "master"
 
 build do
   env = with_standard_compiler_flags(with_embedded_path)
+  cc = env.fetch("CC", "gcc")
 
-  command "gcc -c linenoise.c -o linenoise.o -fPIC", env: env
-  command "gcc -shared -o liblinenoise.so linenoise.o -lm", env: env
+  command "#{cc} -c linenoise.c -o linenoise.o -fPIC", env: env
+  command "#{cc} -shared -o liblinenoise.so linenoise.o -lm", env: env
 
   copy "liblinenoise.so", "#{install_dir}/embedded/lib/"
   copy "linenoise.h", "#{install_dir}/embedded/include/"

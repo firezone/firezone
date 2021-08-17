@@ -12,6 +12,7 @@ sudo apt-get install -y -q \
   tree \
   rsync \
   gdebi \
+  gcc-10 \
   ca-certificates \
   build-essential \
   git \
@@ -64,6 +65,6 @@ bundle install --binstubs
 # Build omnibus package
 sudo mkdir -p /opt/firezone
 sudo chown -R ${USER} /opt/firezone
-bin/omnibus build firezone
+CC=/usr/bin/gcc-10 bin/omnibus build firezone
 
 sudo dpkg -i pkg/firezone*.deb
