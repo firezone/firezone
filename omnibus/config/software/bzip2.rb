@@ -49,7 +49,7 @@ build do
   patch source: "soname_install_dir.patch", env: env if mac_os_x?
   patch source: "aix_makefile.patch", env: env if aix?
 
-  make "#{args}", env: env
-  make "#{args} -f Makefile-libbz2_so", env: env
-  make "#{args} install", env: env
+  make "#{args} -j #{workers}", env: env
+  make "#{args} -j #{workers} -f Makefile-libbz2_so", env: env
+  make "#{args} -j #{workers} install", env: env
 end

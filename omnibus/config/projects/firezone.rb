@@ -42,6 +42,7 @@ dependency "postgresql"
 dependency "wireguard-tools"
 dependency "compile_release"
 dependency "nftables" if linux?
+dependency "firezone-ctl"
 
 exclude ".env"
 exclude ".github"

@@ -54,5 +54,5 @@ build do
 
   configure(*config_command, env: env)
 
-  make "install", env: env
+  make "-j #{workers} install", env: env
 end

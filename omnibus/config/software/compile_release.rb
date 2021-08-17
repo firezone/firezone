@@ -52,5 +52,5 @@ build do
   command "npm run --prefix apps/fz_http/assets deploy", env: env
   command "cd apps/fz_http && mix phx.digest", env: env
   command "mix release", env: env
-  move "_build/prod/rel/firezone", "#{install_dir}/embedded/firezone"
+  sync "_build/prod/rel/firezone", "#{install_dir}/embedded/firezone"
 end

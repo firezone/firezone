@@ -50,7 +50,7 @@ build do
           " --with-ld-opt=-L#{install_dir}/embedded/lib", env: env
 
   make "-j #{workers}", env: env
-  make "install", env: env
+  make "-j #{workers} install", env: env
 
   # Ensure the logs directory is available on rebuild from git cache
   touch "#{install_dir}/embedded/logs/.gitkeep"
