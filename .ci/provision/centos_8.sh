@@ -1,10 +1,6 @@
 #!/bin/bash
 set -ex
 
-sudo yum install -y centos-release-scl
-sudo yum install -y devtoolset-10
-source /opt/rh/devtoolset-10/enable
-
 # Install prerequisites
 sudo yum groupinstall -y 'Development Tools'
 sudo yum install -y \
