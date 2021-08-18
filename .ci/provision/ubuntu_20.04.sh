@@ -6,6 +6,9 @@ export DEBIAN_FRONTEND=noninteractive
 # Install prerequisites
 sudo apt-get update -q
 sudo apt-get install -y -q \
+  zlib1g-dev \
+  libssl-dev \
+  openssl \
   procps \
   rsync \
   ca-certificates \
@@ -45,6 +48,6 @@ bundle install --binstubs
 # Build omnibus package
 sudo mkdir -p /opt/firezone
 sudo chown -R ${USER} /opt/firezone
-CC=/usr/bin/gcc-10 bin/omnibus build firezone
+bin/omnibus build firezone
 
 sudo dpkg -i pkg/firezone*.deb

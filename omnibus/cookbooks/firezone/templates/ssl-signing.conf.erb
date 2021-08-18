@@ -1,0 +1,12 @@
+[ req ]
+distinguished_name = req_distinguished_name
+prompt = no
+
+[ req_distinguished_name ]
+C                      = <%= node['supermarket']['ssl']['country_name'] %>
+ST                     = <%= node['supermarket']['ssl']['state_name'] %>
+L                      = <%= node['supermarket']['ssl']['locality_name'] %>
+O                      = <%= node['supermarket']['ssl']['company_name'] %>
+OU                     = <%= node['supermarket']['ssl']['organizational_unit_name'] %>
+CN                     = <%= node['supermarket']['fqdn'] %>
+emailAddress           = <%= node['supermarket']['ssl']['email_address'] %>

@@ -51,7 +51,7 @@ if node['supermarket']['nginx']['enable']
     package 'supermarket'
     action :enable
     subscribes :restart, 'template[nginx.conf]'
-    subscribes :restart, 'template[rails.nginx.conf]'
+    subscribes :restart, 'template[phoenix.nginx.conf]'
   end
 else
   runit_service 'nginx' do

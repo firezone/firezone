@@ -37,13 +37,6 @@
 # default['firezone']['database']['host'] = 'my.db.server.address'
 # default['firezone']['database']['port'] = 5432
 #
-# ### Using an external Redis server
-#
-# Disable the provided Redis server and use on reachable on your network:
-#
-# default['firezone']['redis']['enable'] = false
-# default['firezone']['redis_url'] = 'redis://my.redis.host:6379/0/mydbname
-#
 # ### Bring your on SSL certificate
 #
 # If a key and certificate are not provided, a self-signed certificate will be
@@ -95,7 +88,7 @@ default['firezone']['sysvinit_id'] = 'SUP'
 # ## Nginx
 
 # These attributes control Firezone-specific portions of the Nginx
-# configuration and the virtual host for the Firezone Rails app.
+# configuration and the virtual host for the Firezone Phoenix app.
 default['firezone']['nginx']['enable'] = true
 default['firezone']['nginx']['force_ssl'] = true
 default['firezone']['nginx']['non_ssl_port'] = 80
@@ -111,7 +104,7 @@ default['firezone']['nginx']['redirect_to_canonical'] = true
 
 # Controls nginx caching, used to cache some endpoints
 default['firezone']['nginx']['cache']['enable'] = false
-default['firezone']['nginx']['cache']['directory'] = "#{node['firezone']['var_directory']}/nginx//cache"
+default['firezone']['nginx']['cache']['directory'] = "#{node['firezone']['var_directory']}/nginx/cache"
 
 # These attributes control the main nginx.conf, including the events and http
 # contexts.
@@ -193,24 +186,14 @@ default['firezone']['postgresql']['shmmax'] = 17179869184
 default['firezone']['postgresql']['shmall'] = 4194304
 default['firezone']['postgresql']['work_mem'] = '8MB'
 
-# ## Rails
+# ## Phoenix
 #
-# The Rails app for Firezone
-default['firezone']['rails']['enable'] = true
-default['firezone']['rails']['port'] = 13000
-default['firezone']['rails']['log_directory'] = "#{node['firezone']['log_directory']}/rails"
-default['firezone']['rails']['log_rotation']['file_maxbytes'] = 104857600
-default['firezone']['rails']['log_rotation']['num_to_keep'] = 10
-
-# ## Redis
-
-default['firezone']['redis']['enable'] = true
-default['firezone']['redis']['bind'] = '127.0.0.1'
-default['firezone']['redis']['directory'] = "#{node['firezone']['var_directory']}/redis"
-default['firezone']['redis']['log_directory'] = "#{node['firezone']['log_directory']}/redis"
-default['firezone']['redis']['log_rotation']['file_maxbytes'] = 104857600
-default['firezone']['redis']['log_rotation']['num_to_keep'] = 10
-default['firezone']['redis']['port'] = 16379
+# The Phoenix app for Firezone
+default['firezone']['phoenix']['enable'] = true
+default['firezone']['phoenix']['port'] = 13000
+default['firezone']['phoenix']['log_directory'] = "#{node['firezone']['log_directory']}/phoenix"
+default['firezone']['phoenix']['log_rotation']['file_maxbytes'] = 104857600
+default['firezone']['phoenix']['log_rotation']['num_to_keep'] = 10
 
 # ## Runit
 
@@ -219,17 +202,6 @@ default['firezone']['redis']['port'] = 16379
 #
 # Will be copied to the root node.runit namespace.
 default['firezone']['runit']['svlogd_bin'] = "#{node['firezone']['install_directory']}/embedded/bin/svlogd"
-
-# ## Sidekiq
-#
-# Used for background jobs
-
-default['firezone']['sidekiq']['enable'] = true
-default['firezone']['sidekiq']['concurrency'] = 25
-default['firezone']['sidekiq']['log_directory'] = "#{node['firezone']['log_directory']}/sidekiq"
-default['firezone']['sidekiq']['log_rotation']['file_maxbytes'] = 104857600
-default['firezone']['sidekiq']['log_rotation']['num_to_keep'] = 10
-default['firezone']['sidekiq']['timeout'] = 30
 
 # ## SSL
 
@@ -265,38 +237,6 @@ default['firezone']['ssl']['protocols'] = 'TLSv1 TLSv1.1 TLSv1.2'
 default['firezone']['ssl']['session_cache'] = 'shared:SSL:4m'
 default['firezone']['ssl']['session_timeout'] = '5m'
 
-# ## Unicorn
-#
-# Settings for main Rails app Unicorn application server. These attributes are
-# used with the template from the community Unicorn cookbook:
-# https://github.com/chef-cookbooks/unicorn/blob/master/templates/default/unicorn.rb.erb
-#
-# Full explanation of all options can be found at
-# http://unicorn.bogomips.org/Unicorn/Configurator.html
-
-default['firezone']['unicorn']['name'] = 'firezone'
-default['firezone']['unicorn']['copy_on_write'] = true
-default['firezone']['unicorn']['enable_stats'] = false
-default['firezone']['unicorn']['forked_user'] = node['firezone']['user']
-default['firezone']['unicorn']['forked_group'] = node['firezone']['group']
-default['firezone']['unicorn']['listen'] = ["127.0.0.1:#{node['firezone']['rails']['port']}"]
-default['firezone']['unicorn']['pid'] = "#{node['firezone']['var_directory']}/rails/run/unicorn.pid"
-default['firezone']['unicorn']['preload_app'] = true
-default['firezone']['unicorn']['worker_timeout'] = 15
-default['firezone']['unicorn']['worker_processes'] = node['cpu'] && node['cpu']['total'] ? node['cpu']['total'] : 1
-
-# These are not used, but you can set them if needed
-default['firezone']['unicorn']['before_exec'] = nil
-default['firezone']['unicorn']['stderr_path'] = nil
-default['firezone']['unicorn']['stdout_path'] = nil
-default['firezone']['unicorn']['unicorn_command_line'] = nil
-default['firezone']['unicorn']['working_directory'] = nil
-
-# These are defined a recipe to be specific things we need that you
-# could change here, but probably should not.
-default['firezone']['unicorn']['before_fork'] = nil
-default['firezone']['unicorn']['after_fork'] = nil
-
 # ## Database
 
 default['firezone']['database']['user'] = node['firezone']['postgresql']['username']
@@ -308,22 +248,15 @@ default['firezone']['database']['extensions'] = { 'plpgsql' => true, 'pg_trgm' =
 
 # ## App-specific top-level attributes
 #
-# These are used by Rails and Sidekiq. Most will be exported directly to
+# These are used by Phoenix. Most will be exported directly to
 # environment variables to be used by the app.
 #
 # Items that are set to nil here and also set in the development environment
-# configuration (https://github.com/chef/firezone/blob/master/.env) will
+# configuration (https://github.com/firezone/firezone/blob/master/.env) will
 # use the value from the development environment. Set them to something other
 # than nil to change them.
 
-default['firezone']['fieri_url'] = 'http://localhost:13000/fieri/jobs'
-default['firezone']['fieri_firezone_endpoint'] = 'https://localhost:13000'
-default['firezone']['fieri_key'] = nil
 default['firezone']['from_email'] = nil
-default['firezone']['github_access_token'] = nil
-default['firezone']['github_key'] = nil
-default['firezone']['github_secret'] = nil
-default['firezone']['google_analytics_id'] = nil
 default['firezone']['segment_write_key'] = nil
 default['firezone']['newrelic_agent_enabled'] = 'false'
 default['firezone']['newrelic_app_name'] = nil
@@ -332,99 +265,8 @@ default['firezone']['datadog_tracer_enabled'] = 'false'
 default['firezone']['datadog_app_name'] = nil
 default['firezone']['port'] = node['firezone']['nginx']['force_ssl'] ? node['firezone']['nginx']['ssl_port'] : node['firezone']['non_ssl_port']
 default['firezone']['protocol'] = node['firezone']['nginx']['force_ssl'] ? 'https' : 'http'
-default['firezone']['pubsubhubbub_callback_url'] = nil
-default['firezone']['pubsubhubbub_secret'] = nil
-default['firezone']['redis_url'] = 'redis://127.0.0.1:16379/0/firezone'
-default['firezone']['redis_jobq_url'] = nil
 default['firezone']['sentry_url'] = nil
-default['firezone']['api_item_limit'] = 100
-default['firezone']['rails_log_to_stdout'] = true
 default['firezone']['fips_enabled'] = nil
-
-# Allow owners to remove their cookbooks, cookbook versions, or tools.
-# Added as a step towards implementing RFC072 Artifact Yanking
-# https://github.com/chef/chef-rfc/blob/f8250a4746d2df530b605ecfaa2dc5ae9b7dc7ff/rfc072-artifact-yanking.md
-# recommend false; set to true as default for backward compatibility
-default['firezone']['owners_can_remove_artifacts'] = true
-
-# ### Chef URL Settings
-#
-# URLs for various links used within Firezone
-#
-# These have defaults in the app based on the chef_server_url along the lines of the interpolations below.
-# Override if you need to set these URLs to targets other than the configured chef_server_url.
-#
-# default['firezone']['chef_identity_url'] = "#{node['firezone']['chef_server_url']}/id"
-# default['firezone']['chef_manage_url'] = node['firezone']['chef_server_url']
-# default['firezone']['chef_profile_url'] = node['firezone']['chef_server_url']
-# default['firezone']['chef_sign_up_url'] = "#{node['firezone']['chef_server_url']}/signup?ref=community"
-
-# URLs for Chef Software, Inc. sites. Most of these have defaults set in
-# Firezone already, but you can customize them here to your liking
-default['firezone']['chef_domain'] = 'chef.io'
-default['firezone']['chef_www_url'] = 'https://www.chef.io'
-#
-# These have defaults in the app based on the chef_domain along the lines of the interpolations below.
-# Override if you need to set these URLs to targets other than the configured chef_domain.
-#
-# default['firezone']['chef_blog_url'] = "https://www.#{node['firezone']['chef_domain']}/blog"
-# default['firezone']['chef_docs_url'] = "https://docs.#{node['firezone']['chef_domain']}"
-# default['firezone']['chef_downloads_url'] = "https://downloads.#{node['firezone']['chef_domain']}"
-# default['firezone']['learn_chef_url'] = "https://learn.#{node['firezone']['chef_domain']}"
-
-# ### Chef OAuth2 Settings
-#
-# These settings configure the service to talk to a Chef identity service.
-#
-# An Application must be created on the Chef server's identity service to do
-# this. With the following in /etc/opscode/chef-server.rb:
-#
-#     oc_id['applications'] = { 'my_firezone' => { 'redirect_uri' => 'https://my.firezone.server.fqdn/auth/chef_oauth2/callback' } }
-#
-# Run `chef-server-ctl reconfigure`, then these values should available in
-# /etc/opscode/oc-id-applications/my_firezone.json.
-#
-# The chef_oauth2_url should be the root URL of your Chef server.
-#
-# If you are using a self-signed certificate on your Chef server without a
-# properly configured certificate authority, chef_oauth2_verify_ssl must be
-# false.
-default['firezone']['chef_oauth2_app_id'] = nil
-default['firezone']['chef_oauth2_secret'] = nil
-default['firezone']['chef_oauth2_url'] = nil
-default['firezone']['chef_oauth2_verify_ssl'] = true
-
-# ### CLA Settings
-#
-# These are used for the Contributor License Agreement features. You only need
-# them if the cla and/or join_ccla features are enabled (see "Features" below.)
-default['firezone']['ccla_version'] = nil
-default['firezone']['cla_signature_notification_email'] = nil
-default['firezone']['cla_report_email'] = nil
-default['firezone']['curry_cla_location'] = nil
-default['firezone']['curry_success_label'] = nil
-default['firezone']['icla_location'] = nil
-default['firezone']['icla_version'] = nil
-default['firezone']['seed_cla_data'] = nil
-
-# ### Features
-#
-# These control the feature flags that turn features on and off.
-#
-# Available features are:
-#
-# * announcement: Display the Firezone initial launch announcement banner
-#   (this will most likely be of no use to you, but could be made a
-#   configurable thing in the future.)
-# * cla: Enable the Contributor License Agreement features
-# * collaborator_groups: Enable collaborator groups, allowing management of collaborators through groups
-# * fieri: Use the fieri service to report on cookbook quality (requires
-#   fieri_url, fieri_firezone_endpoint, and fieri_key to be set.)
-# * github: Enable GitHub integration, used with CLA signing
-# * gravatar: Enable Gravatar integration, used for user avatars
-# * join_ccla: Enable joining of Corporate CLAs
-# * tools: Enable the tools section
-default['firezone']['features'] = 'tools, gravatar'
 
 # ### Air Gapped Settings
 # This controls whether your Firezone will reach out to 3rd party services like certain fonts
@@ -439,51 +281,6 @@ default['firezone']['air_gapped'] = 'false'
 # present in the file.
 default['firezone']['robots_allow'] = '/'
 default['firezone']['robots_disallow'] = nil
-
-# ### S3 Settings
-#
-# If these are not set, uploaded cookbooks will be stored on the local
-# filesystem (this means that running multiple application servers will require
-# some kind of shared storage, which is not provided.)
-
-# #### Required S3
-
-# If these are set, cookbooks will be uploaded to the to the given S3 bucket.
-# The default is to rely on an IAM role with access to the bucket be attached to
-# the compute resources running Firezone.
-default['firezone']['s3_bucket'] = nil
-default['firezone']['s3_region'] = nil
-
-# #### Optional S3
-
-# S3 Server Side Encryption can be enabled by setting to AES256
-default['firezone']['s3_encryption'] = nil
-
-# A cdn_url can be used for an alias if the S3 bucket is behind a CDN like CloudFront.
-default['firezone']['cdn_url'] = nil
-
-# If set then firezone will apply an object-level private ACL. For this to work,
-# the relevant IAM and bucket policies will need to allow PutObjectACL permissions.
-# Note: if this is not set, and "Block all public access" is on for the bucket then Chef
-# Firezone will be unable to update cookbooks.
-# default['firezone']['s3_private_objects'] = nil
-
-# If using IAM user credentials for bucket access, set these.
-default['firezone']['s3_access_key_id'] = nil
-default['firezone']['s3_secret_access_key'] = nil
-
-# By default, Firezone will use domain style S3 urls that look like this:
-#
-#   bucketname.s3.amazonaws.com
-#
-# This style of url will work across all regions.
-#
-# If this is set as ':s3_path_url', the S3 urls will look like this
-# s3.amazonaws.com/bucketname.
-# This will only work if the S3 bucket is in N. Virginia.
-# If your S3 bucket name contains any periods "." - i.e. "my.bucket.name",
-# you must use the path style url and your S3 bucket must be in N. Virginia
-default['firezone']['s3_domain_style'] = ':s3_domain_url'
 
 # ### SMTP Settings
 #
