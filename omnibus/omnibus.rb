@@ -14,9 +14,11 @@
 #
 # Uncomment this line to change the default base directory to "local"
 # -------------------------------------------------------------------
-if ENV["CI"]
+if Dir.exist?("/vagrant")
+  # Running inside vagrant, use tmp dir
   base_dir("/tmp/omnibus-local")
 else
+  # Running on build server, use fast SSD array dir
   base_dir("/data/omnibus-local")
 end
 #

@@ -1,4 +1,7 @@
 # # Firezone configuration
+
+require 'etc'
+
 #
 # Attributes here will be applied to configure the application and the services
 # it uses.
@@ -243,7 +246,7 @@ default['firezone']['database']['user'] = node['firezone']['postgresql']['userna
 default['firezone']['database']['name'] = 'firezone'
 default['firezone']['database']['host'] = node['firezone']['postgresql']['listen_address']
 default['firezone']['database']['port'] = node['firezone']['postgresql']['port']
-default['firezone']['database']['pool'] = node['firezone']['sidekiq']['concurrency']
+default['firezone']['database']['pool'] = [10, Etc.nprocessors].max
 default['firezone']['database']['extensions'] = { 'plpgsql' => true, 'pg_trgm' => true }
 
 # ## App-specific top-level attributes
