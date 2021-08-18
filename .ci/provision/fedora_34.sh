@@ -4,6 +4,8 @@ set -ex
 # Install prerequisites
 sudo yum groupinstall -y 'Development Tools'
 sudo yum install -y \
+  openssl-devel \
+  openssl \
   rsync \
   bzip2 \
   procps \
@@ -17,6 +19,9 @@ sudo yum install -y \
 # Set locale
 sudo bash -c 'echo "LANG=en_US.UTF-8" > /etc/locale.conf'
 sudo localectl set-locale LANG=en_US.UTF-8
+
+# Install latest WireGuard
+sudo yum install -y kmod-wireguard
 
 # Install asdf
 if [ ! -d $HOME/.asdf ]; then

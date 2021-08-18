@@ -27,7 +27,7 @@ build do
 
   bundle "install --binstubs --without test", env: env
 
-  mkdir "/#{install_dir}/bin"
+  mkdir "#{install_dir}/bin"
 
   block do
     erb source: "firezone-ctl.erb",

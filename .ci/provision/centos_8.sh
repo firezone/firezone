@@ -4,6 +4,8 @@ set -ex
 # Install prerequisites
 sudo yum groupinstall -y 'Development Tools'
 sudo yum install -y \
+  openssl-devel \
+  openssl \
   rsync \
   bzip2 \
   procps \

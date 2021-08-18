@@ -9,6 +9,8 @@ source /opt/rh/devtoolset-10/enable
 
 # Install prerequisites
 sudo yum install -y \
+  openssl-devel \
+  openssl \
   rsync \
   bzip2 \
   procps \

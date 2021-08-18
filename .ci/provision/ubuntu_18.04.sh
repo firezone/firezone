@@ -6,6 +6,9 @@ export DEBIAN_FRONTEND=noninteractive
 # Install prerequisites
 sudo apt-get update -q
 sudo apt-get install -y -q \
+  zlib1g-dev \
+  libssl-dev \
+  openssl \
   procps \
   rsync \
   ca-certificates \
@@ -26,7 +29,7 @@ export LANG=en_US.UTF-8
 export LANGUAGE=en_US:en
 export LC_ALL=en_US.UTF-8
 
-# Install asdf
+# Install asdf ruby
 if [ ! -d $HOME/.asdf ]; then
   git clone --depth 1 https://github.com/asdf-vm/asdf.git $HOME/.asdf
 fi
@@ -45,6 +48,6 @@ bundle install --binstubs
 # Build omnibus package
 sudo mkdir -p /opt/firezone
 sudo chown -R ${USER} /opt/firezone
-CC=/usr/bin/gcc-8 bin/omnibus build firezone
+bin/omnibus build firezone
 
 sudo dpkg -i pkg/firezone*.deb

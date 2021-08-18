@@ -40,9 +40,11 @@ dependency "elixir"
 dependency "openssl"
 dependency "postgresql"
 dependency "wireguard-tools"
-dependency "compile_release"
+dependency "firezone"
 dependency "nftables" if linux?
 dependency "firezone-ctl"
+dependency "firezone-scripts"
+dependency "firezone-cookbooks"
 
 exclude ".env"
 exclude ".github"

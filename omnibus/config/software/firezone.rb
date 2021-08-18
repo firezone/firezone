@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-name "compile_release"
+name "firezone"
 description "the steps required to compile the firezone elixir application"
 default_version "1.0.0"
 
@@ -52,5 +52,5 @@ build do
   command "npm run --prefix apps/fz_http/assets deploy", env: env
   command "cd apps/fz_http && mix phx.digest", env: env
   command "mix release", env: env
-  sync "_build/prod/rel/firezone", "#{install_dir}/embedded/firezone"
+  sync "_build/prod/rel/firezone", "#{install_dir}/embedded/service/firezone"
 end
