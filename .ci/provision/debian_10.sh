@@ -6,29 +6,16 @@ export DEBIAN_FRONTEND=noninteractive
 # Install prerequisites
 sudo apt-get update -q
 sudo apt-get install -y -q \
-  lintian \
   procps \
-  zsh \
-  tree \
   rsync \
-  gdebi \
   ca-certificates \
   build-essential \
   git \
-  dpkg-dev \
-  libssl-dev \
-  python3 \
-  automake \
   gnupg \
   curl \
-  autoconf \
-  libncurses5-dev \
   unzip \
-  zlib1g-dev \
   locales \
   net-tools \
-  iptables \
-  openssl \
   systemd
 
 # Set locale
