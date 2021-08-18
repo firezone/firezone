@@ -1,5 +1,5 @@
 #
-# Cookbook:: supermarket
+# Cookbook:: firezone
 # Recipe:: show_config
 #
 # Copyright:: 2014 Chef Software, Inc.
@@ -17,4 +17,4 @@
 # limitations under the License.
 #
 
-puts Chef::JSONCompat.to_json_pretty(node['supermarket'])
+puts Chef::JSONCompat.to_json_pretty(node['firezone'])

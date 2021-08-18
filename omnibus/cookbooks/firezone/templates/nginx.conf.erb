@@ -22,9 +22,9 @@ events {
 
 http {
   <% if @nginx['log_x_forwarded_for'] -%>
-  log_format supermarket '$http_x_forwarded_for - $remote_user [$time_iso8601]  '
+  log_format firezone '$http_x_forwarded_for - $remote_user [$time_iso8601]  '
   <% else -%>
-  log_format supermarket '$remote_addr - $remote_user [$time_iso8601]  '
+  log_format firezone '$remote_addr - $remote_user [$time_iso8601]  '
   <% end -%>
                      '"$request" $status $request_length "$request_time" $body_bytes_sent '
                      '"$http_referer" "$http_user_agent"';
@@ -33,7 +33,7 @@ http {
   default_type  application/octet-stream;
 
   <% unless @nginx['disable_access_log'] -%>
-  access_log	<%= @nginx['log_dir'] %>/access.log supermarket;
+  access_log	<%= @nginx['log_dir'] %>/access.log firezone;
   <% end %>
 
   server_tokens off;

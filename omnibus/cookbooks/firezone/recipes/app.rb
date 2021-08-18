@@ -19,75 +19,75 @@
 
 # Common configuration for Phoenix
 
-include_recipe 'omnibus-supermarket::config'
-include_recipe 'omnibus-supermarket::phoenix'
+include_recipe 'firezone::config'
+include_recipe 'firezone::phoenix'
 
 file 'environment-variables' do
-  path "#{node['supermarket']['var_directory']}/etc/env"
-  content Supermarket::Config.environment_variables_from(node['supermarket'].merge('force_ssl' => node['supermarket']['nginx']['force_ssl']))
-  owner node['supermarket']['user']
-  group node['supermarket']['group']
+  path "#{node['firezone']['var_directory']}/etc/env"
+  content Firezone::Config.environment_variables_from(node['firezone'].merge('force_ssl' => node['firezone']['nginx']['force_ssl']))
+  owner node['firezone']['user']
+  group node['firezone']['group']
   mode '0600'
 end
 
-link "#{node['supermarket']['app_directory']}/.env.production" do
-  to "#{node['supermarket']['var_directory']}/etc/env"
+link "#{node['firezone']['app_directory']}/.env.production" do
+  to "#{node['firezone']['var_directory']}/etc/env"
 end
 
-file "#{node['supermarket']['var_directory']}/etc/database.yml" do
+file "#{node['firezone']['var_directory']}/etc/database.yml" do
   content(YAML.dump({
     'production' => {
       'adapter' => 'postgresql',
-      'database' => node['supermarket']['database']['name'],
-      'username' => node['supermarket']['database']['user'],
-      'password' => node['supermarket']['database']['password'],
-      'host' => node['supermarket']['database']['host'],
-      'port' => node['supermarket']['database']['port'],
-      'pool' => node['supermarket']['database']['pool'],
+      'database' => node['firezone']['database']['name'],
+      'username' => node['firezone']['database']['user'],
+      'password' => node['firezone']['database']['password'],
+      'host' => node['firezone']['database']['host'],
+      'port' => node['firezone']['database']['port'],
+      'pool' => node['firezone']['database']['pool'],
     }
   }))
-  owner node['supermarket']['user']
-  group node['supermarket']['group']
+  owner node['firezone']['user']
+  group node['firezone']['group']
   mode '0600'
 end
 
-link "#{node['supermarket']['app_directory']}/config/database.yml" do
-  to "#{node['supermarket']['var_directory']}/etc/database.yml"
+link "#{node['firezone']['app_directory']}/config/database.yml" do
+  to "#{node['firezone']['var_directory']}/etc/database.yml"
 end
 
-# Ensure the db schema is owned by the supermarket user, so dumping the db
+# Ensure the db schema is owned by the firezone user, so dumping the db
 # schema after migrate works
-file "#{node['supermarket']['app_directory']}/db/schema.rb" do
-  owner node['supermarket']['user']
+file "#{node['firezone']['app_directory']}/db/schema.rb" do
+  owner node['firezone']['user']
 end
 
 execute 'database schema' do
   command 'bundle exec rake db:migrate db:seed'
-  cwd node['supermarket']['app_directory']
+  cwd node['firezone']['app_directory']
   environment(
-    'RAILS_ENV' => 'production',
-    'HOME' => node['supermarket']['app_directory']
+    'MIX_ENV' => 'production',
+    'HOME' => node['firezone']['app_directory']
   )
-  user node['supermarket']['user']
+  user node['firezone']['user']
 end
 
-# tar files for cookbooks are uploaded to /opt/supermarket/embedded/service/supermarket/public/system
-directory node['supermarket']['data_directory'] do
-  owner node['supermarket']['user']
-  group node['supermarket']['group']
+# tar files for cookbooks are uploaded to /opt/firezone/embedded/service/firezone/public/system
+directory node['firezone']['data_directory'] do
+  owner node['firezone']['user']
+  group node['firezone']['group']
   mode '0755'
   action :create
 end
 
-link "#{node['supermarket']['app_directory']}/public/system" do
-  to node['supermarket']['data_directory']
+link "#{node['firezone']['app_directory']}/public/system" do
+  to node['firezone']['data_directory']
 end
 
 sitemap_files = ['sitemap.xml.gz', 'sitemap1.xml.gz']
 sitemap_files.each do |sitemap_file|
-  file "#{node['supermarket']['app_directory']}/public/#{sitemap_file}" do
-    owner node['supermarket']['user']
-    group node['supermarket']['group']
+  file "#{node['firezone']['app_directory']}/public/#{sitemap_file}" do
+    owner node['firezone']['user']
+    group node['firezone']['group']
     mode '0664'
     action :create
   end

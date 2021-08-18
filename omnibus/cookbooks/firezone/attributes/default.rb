@@ -23,13 +23,6 @@ require 'etc'
 # These are examples of things you may want to do, depending on how you set up
 # the application to run.
 #
-# ### Chef Identity
-#
-# You will have to set this up in order to log into Firezone and upload
-# cookbooks with your Chef server keys.
-#
-# See the "Chef OAuth2 Settings" section below
-#
 # ### Using an external Postgres database
 #
 # Disable the provided Postgres instance and connect to your own:
@@ -58,11 +51,6 @@ require 'etc'
 # The fully qualified domain name. Will use the node's fqdn if nothing is
 # specified.
 default['firezone']['fqdn'] = (node['fqdn'] || node['hostname']).downcase
-
-# The URL for the Chef server. Used with the "Chef OAuth2 Settings" and
-# "Chef URL Settings" below. If this is not set, authentication and some of the
-# links in the application will not work.
-default['firezone']['chef_server_url'] = nil
 
 default['firezone']['config_directory'] = '/etc/firezone'
 default['firezone']['install_directory'] = '/opt/firezone'

@@ -7,7 +7,7 @@ upstream phoenix {
 }
 
 <% if @nginx['cache']['enable'] -%>
-proxy_cache_path <%= @nginx['cache']['directory'] %>/supermarket levels=1:2 keys_zone=supermarket-cache:512m max_size=1000m inactive=600m;
+proxy_cache_path <%= @nginx['cache']['directory'] %>/firezone levels=1:2 keys_zone=firezone-cache:512m max_size=1000m inactive=600m;
 proxy_temp_path  <%= @nginx['cache']['directory'] %>/tmp;
 
 log_format cache '$remote_addr - [$time_local] "$request" $upstream_cache_status $upstream_response_time $upstream_status';
@@ -89,7 +89,7 @@ server {
     proxy_ignore_headers Set-Cookie Cache-Control;
     proxy_buffering on;
 
-    proxy_cache   supermarket-cache;
+    proxy_cache   firezone-cache;
     proxy_cache_valid   200 302 240m;
     proxy_cache_valid   any     5m;
     expires   240m;
