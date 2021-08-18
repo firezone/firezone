@@ -20,9 +20,6 @@ sudo yum install -y \
 sudo bash -c 'echo "LANG=en_US.UTF-8" > /etc/locale.conf'
 sudo localectl set-locale LANG=en_US.UTF-8
 
-# Install latest WireGuard
-sudo yum install -y kmod-wireguard
-
 # Install asdf
 if [ ! -d $HOME/.asdf ]; then
   git clone --depth 1 https://github.com/asdf-vm/asdf.git $HOME/.asdf
