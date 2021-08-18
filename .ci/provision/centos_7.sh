@@ -10,6 +10,7 @@ source /opt/rh/devtoolset-10/enable
 # Install prerequisites
 sudo yum install -y \
   rsync \
+  bzip2 \
   procps \
   curl \
   git \
