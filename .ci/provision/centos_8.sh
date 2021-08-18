@@ -5,6 +5,7 @@ set -ex
 sudo yum groupinstall -y 'Development Tools'
 sudo yum install -y \
   rsync \
+  bzip2 \
   procps \
   curl \
   git \
