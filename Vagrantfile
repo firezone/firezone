@@ -47,7 +47,7 @@ Vagrant.configure("2") do |config|
       sudo apt-get -q update
 
       # Install newer kernel
-      sudo apt-get -y -t buster-backports upgrade
+      sudo apt-get -y -t buster-backports dist-upgrade
     SHELL
     debian10.vm.provision "shell", path: ".ci/provision/debian_10.sh", privileged: false
   end
