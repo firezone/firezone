@@ -12,7 +12,6 @@ sudo apt-get install -y -q \
   tree \
   rsync \
   gdebi \
-  gcc-10 \
   ca-certificates \
   build-essential \
   git \
