@@ -9,31 +9,20 @@ source /opt/rh/devtoolset-10/enable
 
 # Install prerequisites
 sudo yum install -y \
-  tree \
   rsync \
   procps \
-  openssl-devel \
-  ncurses-devel \
   curl \
   git \
   findutils \
-  python3 \
   unzip \
-  rpmdevtools \
-  rpmlint \
-  openssl \
   net-tools \
-  systemd \
-  iptables
+  systemd
 
 # Set locale
 sudo bash -c 'echo "LANG=en_US.UTF-8" > /etc/locale.conf'
 sudo localectl set-locale LANG=en_US.UTF-8
 
-# Install NodeJS 16
-curl -fsSL https://rpm.nodesource.com/setup_16.x | sudo bash -
-
-# Install WireGuard
+# Install WireGuard module
 sudo yum install -y epel-release elrepo-release
 sudo yum install -y yum-plugin-elrepo
 sudo yum install -y kmod-wireguard
@@ -53,7 +42,6 @@ asdf install
 cd omnibus
 gem install bundler
 bundle install --binstubs
-
 
 # Build omnibus package
 sudo mkdir -p /opt/firezone

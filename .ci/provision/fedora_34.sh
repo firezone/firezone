@@ -4,34 +4,18 @@ set -ex
 # Install prerequisites
 sudo yum groupinstall -y 'Development Tools'
 sudo yum install -y \
-  gcc-c++ \
-  zsh \
-  tree \
   rsync \
-  autoconf \
-  automake \
   procps \
-  openssl-devel \
-  ncurses-devel \
   curl \
   git \
   findutils \
-  python3 \
   unzip \
-  glibc-all-langpacks \
-  rpmdevtools \
-  rpmlint \
-  openssl \
   net-tools \
-  systemd \
-  iptables
+  systemd
 
 # Set locale
 sudo bash -c 'echo "LANG=en_US.UTF-8" > /etc/locale.conf'
 sudo localectl set-locale LANG=en_US.UTF-8
-
-# Install NodeJS 16
-curl -fsSL https://rpm.nodesource.com/setup_16.x | sudo bash -
 
 # Install asdf
 if [ ! -d $HOME/.asdf ]; then
@@ -48,7 +32,6 @@ asdf install
 cd omnibus
 gem install bundler
 bundle install --binstubs
-
 
 # Build omnibus package
 sudo mkdir -p /opt/firezone
