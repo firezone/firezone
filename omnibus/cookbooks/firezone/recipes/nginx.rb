@@ -1,5 +1,5 @@
 #
-# Cookbook:: supermarket
+# Cookbook:: firezone
 # Recipe:: nginx
 #
 # Copyright:: 2014 Chef Software, Inc.
@@ -17,38 +17,38 @@
 # limitations under the License.
 #
 
-include_recipe 'omnibus-supermarket::config'
+include_recipe 'firezone::config'
 
-[node['supermarket']['nginx']['cache']['directory'],
- node['supermarket']['nginx']['log_directory'],
- node['supermarket']['nginx']['directory'],
- "#{node['supermarket']['nginx']['directory']}/conf.d",
- "#{node['supermarket']['nginx']['directory']}/sites-enabled"].each do |dir|
+[node['firezone']['nginx']['cache']['directory'],
+ node['firezone']['nginx']['log_directory'],
+ node['firezone']['nginx']['directory'],
+ "#{node['firezone']['nginx']['directory']}/conf.d",
+ "#{node['firezone']['nginx']['directory']}/sites-enabled"].each do |dir|
   directory dir do
-    owner node['supermarket']['user']
-    group node['supermarket']['group']
+    owner node['firezone']['user']
+    group node['firezone']['group']
     mode '0700'
     recursive true
   end
 end
 
 # Link the mime.types
-link "#{node['supermarket']['nginx']['directory']}/mime.types" do
-  to "#{node['supermarket']['install_directory']}/embedded/conf/mime.types"
+link "#{node['firezone']['nginx']['directory']}/mime.types" do
+  to "#{node['firezone']['install_directory']}/embedded/conf/mime.types"
 end
 
 template 'nginx.conf' do
-  path "#{node['supermarket']['nginx']['directory']}/nginx.conf"
+  path "#{node['firezone']['nginx']['directory']}/nginx.conf"
   source 'nginx.conf.erb'
-  owner node['supermarket']['user']
-  group node['supermarket']['group']
+  owner node['firezone']['user']
+  group node['firezone']['group']
   mode '0600'
-  variables(nginx: node['supermarket']['nginx'])
+  variables(nginx: node['firezone']['nginx'])
 end
 
-if node['supermarket']['nginx']['enable']
+if node['firezone']['nginx']['enable']
   component_runit_service 'nginx' do
-    package 'supermarket'
+    package 'firezone'
     action :enable
     subscribes :restart, 'template[nginx.conf]'
     subscribes :restart, 'template[phoenix.nginx.conf]'
@@ -61,15 +61,15 @@ end
 
 # setup log rotation with logrotate because nginx and runit's svlogd
 # differ in opinion about who does the logging
-template "#{node['supermarket']['var_directory']}/etc/logrotate.d/nginx" do
+template "#{node['firezone']['var_directory']}/etc/logrotate.d/nginx" do
   source 'logrotate-rule.erb'
   owner 'root'
   group 'root'
   mode '0644'
   variables(
-    'log_directory' => node['supermarket']['nginx']['log_directory'],
-    'log_rotation' => node['supermarket']['nginx']['log_rotation'],
-    'postrotate' => "#{node['supermarket']['install_directory']}/embedded/sbin/nginx -c #{node['supermarket']['nginx']['directory']}/nginx.conf -s reopen",
+    'log_directory' => node['firezone']['nginx']['log_directory'],
+    'log_rotation' => node['firezone']['nginx']['log_rotation'],
+    'postrotate' => "#{node['firezone']['install_directory']}/embedded/sbin/nginx -c #{node['firezone']['nginx']['directory']}/nginx.conf -s reopen",
     'owner' => 'root',
     'group' => 'root'
   )

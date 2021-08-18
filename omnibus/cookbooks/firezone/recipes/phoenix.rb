@@ -18,43 +18,43 @@
 # limitations under the License.
 #
 
-include_recipe 'omnibus-supermarket::config'
-include_recipe 'omnibus-supermarket::nginx'
+include_recipe 'firezone::config'
+include_recipe 'firezone::nginx'
 
-[node['supermarket']['phoenix']['log_directory'],
- "#{node['supermarket']['var_directory']}/rails/run"].each do |dir|
+[node['firezone']['log_directory'],
+ "#{node['firezone']['var_directory']}/phoenix/run"].each do |dir|
   directory dir do
-    owner node['supermarket']['user']
-    group node['supermarket']['group']
+    owner node['firezone']['user']
+    group node['firezone']['group']
     mode '0700'
     recursive true
   end
 end
 
 template 'unicorn.rb' do
-  path "#{node['supermarket']['var_directory']}/etc/unicorn.rb"
+  path "#{node['firezone']['var_directory']}/etc/unicorn.rb"
   source 'unicorn.rb.erb'
-  owner node['supermarket']['user']
-  group node['supermarket']['group']
+  owner node['firezone']['user']
+  group node['firezone']['group']
   mode '0600'
-  variables(node['supermarket']['unicorn'].to_hash)
+  variables(node['firezone']['unicorn'].to_hash)
 end
 
 template 'phoenix.nginx.conf' do
-  path "#{node['supermarket']['nginx']['directory']}/sites-enabled/rails"
-  source 'rails.nginx.conf.erb'
-  owner node['supermarket']['user']
-  group node['supermarket']['group']
+  path "#{node['firezone']['nginx']['directory']}/sites-enabled/phoenix"
+  source 'phoenix.nginx.conf.erb'
+  owner node['firezone']['user']
+  group node['firezone']['group']
   mode '0600'
-  variables(nginx: node['supermarket']['nginx'],
-            phoenix: node['supermarket']['phoenix'],
-            fqdn: node['supermarket']['fqdn'],
-            fips_enabled: node['supermarket']['fips_enabled'],
-            ssl: node['supermarket']['ssl'],
-            app_directory: node['supermarket']['app_directory'])
+  variables(nginx: node['firezone']['nginx'],
+            phoenix: node['firezone']['phoenix'],
+            fqdn: node['firezone']['fqdn'],
+            fips_enabled: node['firezone']['fips_enabled'],
+            ssl: node['firezone']['ssl'],
+            app_directory: node['firezone']['app_directory'])
 end
 
-if node['supermarket']['phoenix']['enable']
+if node['firezone']['phoenix']['enable']
   component_runit_service 'phoenix' do
     package 'firezone'
     action :enable
