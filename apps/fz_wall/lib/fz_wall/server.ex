@@ -40,4 +40,23 @@ defmodule FzWall.Server do
     cli().restore(fz_http_rules)
     {:reply, :ok, rules}
   end
+
+  # XXX: Set up NAT and Masquerade and load existing rules with nftables here
+  @impl true
+  def handle_call(:setup, _from, rules) do
+    {:reply, :ok, rules}
+  end
+
+  # XXX: Tear down NAT and Masquerade and drop rules here
+  @impl true
+  def handle_call(:teardown, _from, rules) do
+    {:reply, :ok, rules}
+  end
+
+  @impl true
+  def handle_call(:vpn_endpoint, _from, rules) do
+    egress_address = cli().egress_address()
+    listen_port = Application.fetch_env!(:fz_vpn, :wireguard_listen_port)
+    {:reply, {:ok, "#{egress_address}:#{listen_port}"}, rules}
+  end
 end

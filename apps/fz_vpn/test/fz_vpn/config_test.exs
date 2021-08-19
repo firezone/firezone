@@ -3,7 +3,7 @@ defmodule FzVpn.ConfigTest do
   alias FzVpn.{Config, Peer}
 
   @default_config "private-key UAeZoaY95pKZE1Glq28sI2GJDfGGRFtlb4KC6rjY2Gs= listen-port 51820 "
-  @populated_config "private-key UAeZoaY95pKZE1Glq28sI2GJDfGGRFtlb4KC6rjY2Gs= listen-port 1 peer test-pubkey allowed-ips test-allowed-ips preshared-key test-preshared-key"
+  @populated_config "private-key UAeZoaY95pKZE1Glq28sI2GJDfGGRFtlb4KC6rjY2Gs= listen-port 51820 peer test-pubkey allowed-ips test-allowed-ips preshared-key test-preshared-key"
 
   describe "render" do
     test "renders default config" do
@@ -14,7 +14,6 @@ defmodule FzVpn.ConfigTest do
 
     test "renders populated config" do
       config = %Config{
-        listen_port: 1,
         peers:
           MapSet.new([
             %Peer{

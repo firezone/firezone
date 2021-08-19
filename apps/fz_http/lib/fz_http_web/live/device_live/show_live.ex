@@ -59,12 +59,12 @@ defmodule FzHttpWeb.DeviceLive.Show do
   end
 
   defp vpn_endpoint do
-    case :global.whereis_name(:fz_vpn_server) do
-      pid when is_pid(pid) ->
-        GenServer.call(pid, {:vpn_endpoint})
+    case GenServer.call(:global.whereis_name(:fz_wall_server), :vpn_endpoint) do
+      {:ok, endpoint} ->
+        endpoint
 
       _ ->
-        raise "VPN Server not found! Not started?"
+        raise "VPN Server couldn't be contacted"
     end
   end
 end

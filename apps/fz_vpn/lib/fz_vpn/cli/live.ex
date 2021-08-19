@@ -8,8 +8,6 @@ defmodule FzVpn.CLI.Live do
   See FzVpn.Server for higher-level functionality.
   """
 
-  @egress_interface_cmd "route | grep '^default' | grep -o '[^ ]*$'"
-
   # Outputs the privkey, then pubkey on the next line
   @genkey_cmd "wg genkey | tee >(wg pubkey)"
   @genpsk_cmd "wg genpsk"
@@ -17,33 +15,11 @@ defmodule FzVpn.CLI.Live do
   import FzCommon.CLI
 
   def setup do
-    setup_iptables()
+    :ok = GenServer.call(:global.whereis_name(:fz_wall_server), :setup)
   end
 
   def teardown do
-    teardown_iptables()
-  end
-
-  def interface_address do
-    case :os.type() do
-      {:unix, :linux} ->
-        cmd = "ip address show dev #{iface_name()} | grep 'inet ' | awk '{print $2}'"
-
-        exec!(cmd)
-        |> String.trim()
-        # Remove CIDR
-        |> String.split("/")
-        |> List.first()
-
-      {:unix, :darwin} ->
-        cmd = "ipconfig getifaddr #{iface_name()}"
-
-        exec!(cmd)
-        |> String.trim()
-
-      _ ->
-        raise "OS not supported (yet)"
-    end
+    :ok = GenServer.call(:global.whereis_name(:fz_wall_server), :teardown)
   end
 
   @doc """
@@ -86,39 +62,8 @@ defmodule FzVpn.CLI.Live do
     show("transfer")
   end
 
-  defp egress_interface do
-    case :os.type() do
-      {:unix, :linux} ->
-        exec!(@egress_interface_cmd)
-        |> String.split()
-        |> List.first()
-
-      {:unix, :darwin} ->
-        # XXX: Figure out what it means to have macOS as a host?
-        "en0"
-    end
-  end
-
   defp show(subcommand) do
     exec!("wg show #{iface_name()} #{subcommand}")
-  end
-
-  # XXX: Move to FzWall and call via PID?
-  defp setup_iptables do
-    exec!("\
-      iptables -A FORWARD -i %i -j ACCEPT;\
-      iptables -A FORWARD -o %i -j ACCEPT;\
-      iptables -t nat -A POSTROUTING -o #{egress_interface()} -j MASQUERADE\
-    ")
-  end
-
-  # XXX: Move to FzWall and call via PID?
-  defp teardown_iptables do
-    exec!("\
-      iptables -D FORWARD -i %i -j ACCEPT;\
-      iptables -D FORWARD -o %i -j ACCEPT;\
-      iptables -t nat -D POSTROUTING -o #{egress_interface()} -j MASQUERADE\
-    ")
   end
 
   defp iface_name do
