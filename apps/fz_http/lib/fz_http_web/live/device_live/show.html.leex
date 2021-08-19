@@ -91,7 +91,7 @@ DNS = 1.1.1.1, 1.0.0.1
 PublicKey = <%= @device.server_public_key %>
 PresharedKey = <%= @device.preshared_key %>
 AllowedIPs = 0.0.0.0/0, ::/0
-Endpoint = <%= Application.fetch_env!(:fz_http, :vpn_endpoint) %></code></pre>
+Endpoint = <%= @vpn_endpoint %></code></pre>
         <h6 class="is-6 title">
           Or scan the QR code with your mobile phone:
         </h6>

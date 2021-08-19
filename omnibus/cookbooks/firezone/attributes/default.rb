@@ -57,7 +57,6 @@ default['firezone']['install_directory'] = '/opt/firezone'
 default['firezone']['app_directory'] = "#{node['firezone']['install_directory']}/embedded/service/firezone"
 default['firezone']['log_directory'] = '/var/log/firezone'
 default['firezone']['var_directory'] = '/var/opt/firezone'
-default['firezone']['data_directory'] = '/var/opt/firezone/data'
 default['firezone']['user'] = 'firezone'
 default['firezone']['group'] = 'firezone'
 
@@ -185,6 +184,17 @@ default['firezone']['phoenix']['port'] = 13000
 default['firezone']['phoenix']['log_directory'] = "#{node['firezone']['log_directory']}/phoenix"
 default['firezone']['phoenix']['log_rotation']['file_maxbytes'] = 104857600
 default['firezone']['phoenix']['log_rotation']['num_to_keep'] = 10
+# Used for generating URLs that point back to this application.
+default['firezone']['phoenix']['url_host'] = 'localhost'
+# Email for the primary admin user
+default['firezone']['phoenix']['admin_email'] =
+  "firezone@#{node['firezone']['phoenix']['url_host']}"
+
+# ## WireGuard
+#
+# The WireGuard interface settings
+default['firezone']['wireguard']['listen_address'] = '0.0.0.0'
+default['firezone']['wireguard']['listen_port'] = 15820
 
 # ## Runit
 

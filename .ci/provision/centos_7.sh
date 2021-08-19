@@ -9,6 +9,7 @@ source /opt/rh/devtoolset-9/enable
 
 # Install prerequisites
 sudo yum install -y \
+  rpmdevtools \
   openssl-devel \
   openssl \
   rsync \

@@ -26,7 +26,7 @@ defmodule FzHttp.ReleaseTest do
   describe "create_admin_user/0" do
     test "creates user" do
       Release.create_admin_user()
-      user = Users.get_user!(email: Application.fetch_env!(:fz_http, :admin_user_email))
+      user = Users.get_user!(email: Application.fetch_env!(:fz_http, :admin_email))
       assert %User{} = user
     end
   end
