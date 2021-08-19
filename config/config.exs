@@ -38,6 +38,8 @@ config :fz_wall,
 # This will be changed per-env
 config :fz_vpn,
   wireguard_private_key: "UAeZoaY95pKZE1Glq28sI2GJDfGGRFtlb4KC6rjY2Gs=",
+  wireguard_interface_name: "wg-firezone",
+  wireguard_listen_port: 51_820,
   cli: FzVpn.CLI.Sandbox,
   server_process_opts: []
 

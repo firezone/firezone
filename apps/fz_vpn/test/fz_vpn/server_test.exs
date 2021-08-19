@@ -1,6 +1,6 @@
 defmodule FzVpn.ServerTest do
   use ExUnit.Case, async: true
-  alias FzVpn.{Config, Peer, Server}
+  alias FzVpn.{Config, Peer}
   import FzVpn.CLI
 
   @empty %Config{}
@@ -8,8 +8,7 @@ defmodule FzVpn.ServerTest do
 
   describe "state" do
     setup %{stubbed_config: config} do
-      test_pid = start_supervised!(Server)
-
+      test_pid = :global.whereis_name(:fz_vpn_server)
       :ok = GenServer.call(test_pid, {:set_config, config})
 
       on_exit(fn -> cli().teardown() end)

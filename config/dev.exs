@@ -34,6 +34,9 @@ config :fz_http, FzHttpWeb.Endpoint,
 config :fz_vpn,
   cli: FzVpn.CLI.Live
 
+config :fz_wall,
+  cli: FzWall.CLI.Live
+
 # ## SSL Support
 #
 # In order to use HTTPS in development, a self-signed
