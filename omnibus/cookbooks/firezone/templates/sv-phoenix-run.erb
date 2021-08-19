@@ -11,8 +11,6 @@ cd $DIR
 
 exec <%= node['runit']['chpst_bin'] %> \
   -P \
-  -U <%= node['firezone']['unicorn']['forked_user'] %> \
-  -u <%= node['firezone']['unicorn']['forked_user'] %> \
-    bundle exec unicorn -E production \
-      -c <%= node['firezone']['var_directory'] %>/etc/unicorn.rb
-      <%= node['firezone']['install_directory'] %>/embedded/service/firezone/config.ru
+  -U <%= node['firezone']['user'] %> \
+  -u <%= node['firezone']['user'] %> \
+  bin/firezone start
