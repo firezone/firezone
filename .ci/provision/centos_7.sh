@@ -4,8 +4,8 @@ set -ex
 # CentOS 7 comes with GCC 4.8.5 which does not fully support C++14, so we need
 # a newer toolchain.
 sudo yum install -y centos-release-scl
-sudo yum install -y devtoolset-10
-source /opt/rh/devtoolset-10/enable
+sudo yum install -y devtoolset-9
+source /opt/rh/devtoolset-9/enable
 
 # Install prerequisites
 sudo yum install -y \
