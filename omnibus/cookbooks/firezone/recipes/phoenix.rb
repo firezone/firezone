@@ -31,15 +31,6 @@ include_recipe 'firezone::nginx'
   end
 end
 
-template 'unicorn.rb' do
-  path "#{node['firezone']['var_directory']}/etc/unicorn.rb"
-  source 'unicorn.rb.erb'
-  owner node['firezone']['user']
-  group node['firezone']['group']
-  mode '0600'
-  variables(node['firezone']['unicorn'].to_hash)
-end
-
 template 'phoenix.nginx.conf' do
   path "#{node['firezone']['nginx']['directory']}/sites-enabled/phoenix"
   source 'phoenix.nginx.conf.erb'
@@ -58,7 +49,6 @@ if node['firezone']['phoenix']['enable']
   component_runit_service 'phoenix' do
     package 'firezone'
     action :enable
-    subscribes :restart, 'template[unicorn.rb]'
     subscribes :restart, 'file[environment-variables]'
   end
 else

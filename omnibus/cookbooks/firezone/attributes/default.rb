@@ -155,7 +155,7 @@ default['firezone']['nginx']['default']['modules'] = []
 
 default['firezone']['postgresql']['enable'] = true
 default['firezone']['postgresql']['username'] = node['firezone']['user']
-default['firezone']['postgresql']['data_directory'] = "#{node['firezone']['var_directory']}/postgresql/9.3/data"
+default['firezone']['postgresql']['data_directory'] = "#{node['firezone']['var_directory']}/postgresql/13.3/data"
 
 # ### Logs
 default['firezone']['postgresql']['log_directory'] = "#{node['firezone']['log_directory']}/postgresql"

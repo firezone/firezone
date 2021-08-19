@@ -22,6 +22,7 @@ default_version "1.0.0"
 dependency "postgresql"
 dependency "nodejs"
 dependency "elixir"
+dependency "nftables" if linux?
 
 version("1.0.0") do
   source path: File.expand_path("../", Omnibus::Config.project_root),

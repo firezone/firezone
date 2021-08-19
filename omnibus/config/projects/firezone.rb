@@ -41,7 +41,6 @@ dependency "openssl"
 dependency "postgresql"
 dependency "wireguard-tools"
 dependency "firezone"
-dependency "nftables" if linux?
 dependency "firezone-ctl"
 dependency "firezone-scripts"
 dependency "firezone-cookbooks"
