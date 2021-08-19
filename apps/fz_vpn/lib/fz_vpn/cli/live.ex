@@ -24,6 +24,28 @@ defmodule FzVpn.CLI.Live do
     teardown_iptables()
   end
 
+  def interface_address do
+    case :os.type() do
+      {:unix, :linux} ->
+        cmd = "ip address show dev #{iface_name()} | grep 'inet ' | awk '{print $2}'"
+
+        exec!(cmd)
+        |> String.trim()
+        # Remove CIDR
+        |> String.split("/")
+        |> List.first()
+
+      {:unix, :darwin} ->
+        cmd = "ipconfig getifaddr #{iface_name()}"
+
+        exec!(cmd)
+        |> String.trim()
+
+      _ ->
+        raise "OS not supported (yet)"
+    end
+  end
+
   @doc """
   Calls wg genkey
   """

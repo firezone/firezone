@@ -24,7 +24,7 @@ defmodule FzVpn.Server do
 
     case GenServer.start_link(__MODULE__, %Config{}, @process_opts) do
       {:ok, pid} ->
-        :global.register_name(pid, :fz_vpn_server)
+        :global.register_name(:fz_vpn_server, pid)
         {:ok, pid}
 
       res ->
