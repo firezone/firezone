@@ -52,3 +52,4 @@ sudo chown -R ${USER} /opt/firezone
 CC=/usr/bin/gcc-10 bin/omnibus build firezone
 
 sudo dpkg -i pkg/firezone*.deb
+sudo firezone-ctl reconfigure
