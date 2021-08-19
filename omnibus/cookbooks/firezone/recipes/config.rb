@@ -26,7 +26,7 @@ Firezone::Config.load_or_create!(
   "#{node['firezone']['config_directory']}/firezone.rb",
   node
 )
-FireZone::Config.load_from_json!(
+Firezone::Config.load_from_json!(
   "#{node['firezone']['config_directory']}/firezone.json",
   node
 )

@@ -15,7 +15,7 @@
 # limitations under the License.
 require 'json'
 
-add_command_under_category 'version', 'general', 'Display current version of FireZone', 2 do
+add_command_under_category 'version', 'general', 'Display current version of Firezone', 2 do
   begin
     version = JSON.parse(File.read('/opt/firezone/version-manifest.json'))['build_version']
     puts version
