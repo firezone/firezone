@@ -4,6 +4,7 @@ set -ex
 # Install prerequisites
 sudo yum groupinstall -y 'Development Tools'
 sudo yum install -y \
+  rpmdevtools \
   openssl-devel \
   openssl \
   rsync \

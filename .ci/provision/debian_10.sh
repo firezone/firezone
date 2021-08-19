@@ -6,6 +6,7 @@ export DEBIAN_FRONTEND=noninteractive
 # Install prerequisites
 sudo apt-get update -q
 sudo apt-get install -y -q \
+  dpkg-dev \
   zlib1g-dev \
   libssl-dev \
   openssl \

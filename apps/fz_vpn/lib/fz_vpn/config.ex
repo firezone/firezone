@@ -3,16 +3,12 @@ defmodule FzVpn.Config do
   Functions for managing the WireGuard configuration.
   """
 
-  @default_interface_ip "172.16.59.1"
-
   import FzVpn.CLI
 
-  defstruct interface_ip: @default_interface_ip,
-            listen_port: 51_820,
-            peers: MapSet.new([])
+  defstruct peers: MapSet.new([])
 
   def render(config) do
-    "private-key #{private_key()} listen-port #{config.listen_port} " <>
+    "private-key #{private_key()} listen-port #{listen_port()} " <>
       Enum.join(
         for peer <- config.peers do
           "peer #{peer.public_key} allowed-ips #{peer.allowed_ips} preshared-key #{peer.preshared_key}"
@@ -22,10 +18,18 @@ defmodule FzVpn.Config do
   end
 
   def private_key do
-    Application.get_env(:fz_vpn, :private_key)
+    Application.get_env(:fz_vpn, :wireguard_private_key)
   end
 
   def public_key do
     cli().pubkey(private_key())
+  end
+
+  def listen_port do
+    Application.get_env(:fz_vpn, :wireguard_listen_port)
+  end
+
+  def listen_address do
+    Application.get_env(:fz_vpn, :wireguard_listen_address)
   end
 end

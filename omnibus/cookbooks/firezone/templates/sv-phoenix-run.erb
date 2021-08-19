@@ -10,6 +10,7 @@ export HOME=$DIR
 cd $DIR
 
 exec <%= node['runit']['chpst_bin'] %> \
+  -e <%= node['firezone']['var_directory'] %>/etc/env \
   -P \
   -U <%= node['firezone']['user'] %> \
   -u <%= node['firezone']['user'] %> \

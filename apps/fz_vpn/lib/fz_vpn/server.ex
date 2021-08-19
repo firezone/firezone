@@ -21,7 +21,15 @@ defmodule FzVpn.Server do
 
   def start_link(_) do
     cli().setup()
-    GenServer.start_link(__MODULE__, %Config{}, @process_opts)
+
+    case GenServer.start_link(__MODULE__, %Config{}, @process_opts) do
+      {:ok, pid} ->
+        :global.register_name(pid, :fz_vpn_server)
+        {:ok, pid}
+
+      res ->
+        res
+    end
   end
 
   @impl true
@@ -58,6 +66,13 @@ defmodule FzVpn.Server do
   def handle_call({:set_config, new_config}, _from, _config) do
     apply(new_config)
     {:reply, :ok, new_config}
+  end
+
+  @impl true
+  def handle_call({:vpn_endpoint}, _from, _config) do
+    interface_address = cli().interface_address()
+    listen_port = Application.fetch_env!(:fz_vpn, :wireguard_listen_port)
+    {:reply, :ok, "#{interface_address}:#{listen_port}"}
   end
 
   @doc """
