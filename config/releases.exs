@@ -40,10 +40,10 @@ connect_opts = [
 ]
 
 if database_password do
-  connect_opts = connect_opts ++ [password: database_password]
+  config(:fz_http, FzHttp.Repo, connect_opts ++ [password: database_password])
+else
+  config(:fz_http, FzHttp.Repo, connect_opts)
 end
-
-config :fz_http, FzHttp.Repo, connect_opts
 
 config :fz_http, FzHttp.Vault,
   ciphers: [
