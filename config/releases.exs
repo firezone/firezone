@@ -9,13 +9,13 @@ alias FzCommon.CLI
 database_name = System.fetch_env!("DATABASE_NAME")
 database_user = System.fetch_env!("DATABASE_USER")
 database_host = System.fetch_env!("DATABASE_HOST")
-database_port = System.fetch_env!("DATABASE_PORT")
-database_pool = System.fetch_env!("DATABASE_POOL")
-port = System.fetch_env!("PHOENIX_PORT")
+database_port = String.to_integer(System.fetch_env!("DATABASE_PORT"))
+database_pool = String.to_integer(System.fetch_env!("DATABASE_POOL"))
+port = String.to_integer(System.fetch_env!("PHOENIX_PORT"))
 url_host = System.fetch_env!("URL_HOST")
 admin_email = System.fetch_env!("ADMIN_EMAIL")
 wireguard_interface_name = System.fetch_env!("WIREGUARD_INTERFACE_NAME")
-wireguard_port = System.fetch_env!("WIREGUARD_PORT")
+wireguard_port = String.to_integer(System.fetch_env!("WIREGUARD_PORT"))
 
 # secrets
 encryption_key = System.fetch_env!("DATABASE_ENCRYPTION_KEY")
