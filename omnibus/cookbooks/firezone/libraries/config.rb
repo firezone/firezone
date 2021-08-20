@@ -51,10 +51,37 @@ class Firezone
                             node['firezone']['secret_key_base']
                           else
                             Chef::Log.warn 'No secret_key_base set! Generating and writing one to secrets.json. If this FireZone installation has multiple hosts, you must duplicate the secrets.json file exactly across all hosts.'
-                            SecureRandom.hex(50)
+                            SecureRandom.base64(48)
+                          end
+        live_view_signing_salt = if node['firezone'] && node['firezone']['live_view_signing_salt']
+                            Chef::Log.warn 'Using live_view_signing_salt from firezone.json. This value should really be managed in secrets.json. Writing to secrets.json.'
+                            node['firezone']['live_view_signing_salt']
+                          else
+                            Chef::Log.warn 'No live_view_signing_salt set! Generating and writing one to secrets.json. If this FireZone installation has multiple hosts, you must duplicate the secrets.json file exactly across all hosts.'
+                            SecureRandom.base64(24)
+                          end
+        wireguard_private_key = if node['firezone'] && node['firezone']['wireguard_private_key']
+                            Chef::Log.warn 'Using wireguard_private_key from firezone.json. This value should really be managed in secrets.json. Writing to secrets.json.'
+                            node['firezone']['wireguard_private_key']
+                          else
+                            Chef::Log.warn 'No wireguard_private_key set! Generating and writing one to secrets.json. If this FireZone installation has multiple hosts, you must duplicate the secrets.json file exactly across all hosts.'
+                            `#{node['firezone']['install_dir']}/embedded/bin/wg genkey`.chomp
+                          end
+        database_encryption_key = if node['firezone'] && node['firezone']['database_encryption_key']
+                            Chef::Log.warn 'Using database_encryption_key from firezone.json. This value should really be managed in secrets.json. Writing to secrets.json.'
+                            node['firezone']['database_encryption_key']
+                          else
+                            Chef::Log.warn 'No database_encryption_key set! Generating and writing one to secrets.json. If this FireZone installation has multiple hosts, you must duplicate the secrets.json file exactly across all hosts.'
+                            SecureRandom.base64(32)
                           end
 
-        secrets = { 'secret_key_base' => secret_key_base }
+
+        secrets = {
+          'secret_key_base' => secret_key_base,
+          'live_view_signing_salt' => live_view_signing_salt,
+          'wireguard_private_key' => wireguard_private_key,
+          'database_encryption_key' => database_encryption_key
+        }
 
         open(filename, 'w') do |file|
           file.puts Chef::JSONCompat.to_json_pretty(secrets)
@@ -154,6 +181,33 @@ class Firezone
                  ''
                end
       end
+    end
+
+    def self.app_env(attributes)
+      env = {
+        'MIX_ENV' => 'prod',
+        'DATABASE_NAME' => attributes['database']['name'],
+        'DATABASE_USER' => attributes['database']['user'],
+        'DATABASE_HOST' => attributes['database']['host'],
+        'DATABASE_PORT' => attributes['database']['port'],
+        'DATABASE_POOL' => attributes['database']['pool'],
+        'PHOENIX_PORT' => attributes['phoenix']['port'],
+        'URL_HOST' => attributes['url_host'],
+        'ADMIN_EMAIL' => attributes['admin_email'],
+        'WIREGUARD_INTERFACE_NAME' => node['firezone']['wireguard']['interface_name'],
+        'WIREGUARD_PORT' => node['firezone']['wireguard']['port'],
+
+        # secrets
+        'SECRET_KEY_BASE' => attributes['secret_key_base'],
+        'LIVE_VIEW_SIGNING_SALT' => attributes['live_view_signing_salt'],
+        'WIREGUARD_PRIVATE_KEY' => attributes['wireguard_private_key'],
+        'DATABASE_ENCRYPTION_KEY' => attributes['database_encryption_key']
+      }
+
+      if attributes.dig('database', 'password')
+        env.merge!('DATABASE_PASSWORD' => attributes['database']['password'])
+      end
+
     end
 
     def self.create_directory!(filename)

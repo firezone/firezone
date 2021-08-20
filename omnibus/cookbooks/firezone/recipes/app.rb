@@ -45,9 +45,6 @@ end
 execute 'database schema' do
   command 'bin/firezone eval "FzHttp.Release.migrate"'
   cwd node['firezone']['app_directory']
-  attributes = node['firezone'].merge(
-    'force_ssl' => node['firezone']['nginx']['force_ssl']
-  )
-  environment(attributes.transform_keys(&:upcase))
+  environment(Firezone::Config.app_env(node['firezone']))
   user node['firezone']['user']
 end
