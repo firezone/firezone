@@ -22,10 +22,21 @@
 include_recipe 'firezone::config'
 include_recipe 'firezone::phoenix'
 
+execute 'fix app permissions' do
+  app_dir = node['firezone']['app_directory']
+  user = node['firezone']['user']
+  group = node['firezone']['group']
+  command "chown -R #{user}:#{group} #{app_dir}"
+  command "chmod -R o-rwx #{app_dir}"
+  command "chmod -R g-rwx #{app_dir}"
+end
+
 file 'environment-variables' do
   path "#{node['firezone']['var_directory']}/etc/env"
-  force_ssl = node['firezone']['nginx']['force_ssl']
-  content Firezone::Config.environment_variables_from(node['firezone'].merge('force_ssl' => force_ssl))
+  attributes = node['firezone'].merge(
+    'force_ssl' => node['firezone']['nginx']['force_ssl']
+  )
+  content Firezone::Config.environment_variables_from(attributes)
   owner node['firezone']['user']
   group node['firezone']['group']
   mode '0600'
@@ -34,9 +45,9 @@ end
 execute 'database schema' do
   command 'bin/firezone eval "FzHttp.Release.migrate"'
   cwd node['firezone']['app_directory']
-  environment(
-    'MIX_ENV' => 'production',
-    'HOME' => node['firezone']['app_directory']
+  attributes = node['firezone'].merge(
+    'force_ssl' => node['firezone']['nginx']['force_ssl']
   )
+  environment(attributes.transform_keys(&:upcase))
   user node['firezone']['user']
 end
