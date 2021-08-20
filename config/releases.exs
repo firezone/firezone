@@ -60,12 +60,13 @@ config :fz_http, FzHttp.Vault,
   ]
 
 config :fz_http, FzHttpWeb.Endpoint,
-  url: [host: url_host, port: port],
+  http: [ip: {0, 0, 0, 0}, port: port],
+  server: true,
+  url: [host: url_host, scheme: "https"],
   secret_key_base: secret_key_base,
   live_view: [
     signing_salt: live_view_signing_salt
-  ],
-  server: true
+  ]
 
 config :fz_vpn,
   wireguard_interface_name: wireguard_interface_name,

@@ -23,6 +23,7 @@ license_file "http://invisible-island.net/ncurses/ncurses-license.html"
 license_file "http://invisible-island.net/ncurses/ncurses.faq.html"
 skip_transitive_dependency_licensing true
 
+dependency "libtool"
 dependency "config_guess"
 
 # versions_list: https://ftp.gnu.org/gnu/ncurses/ filter=*.tar.gz
