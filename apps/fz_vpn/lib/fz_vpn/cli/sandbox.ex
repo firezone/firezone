@@ -8,7 +8,7 @@ defmodule FzVpn.CLI.Sandbox do
   @show_transfer "4.60 MiB received, 59.21 MiB sent"
   @default_returned ""
 
-  def egress_interface, do: "eth0"
+  def interface_address, do: "eth0"
   def setup, do: @default_returned
   def teardown, do: @default_returned
   def genkey, do: {rand_key(), rand_key()}

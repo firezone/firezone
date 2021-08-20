@@ -1,0 +1,10 @@
+diff --git a/chef-bin/bin/chef-client b/chef-bin/bin/chef-client
+index 45a6af546a..95402c9481 100755
+--- a/chef-bin/bin/chef-client
++++ b/chef-bin/bin/chef-client
+@@ -22,4 +22,4 @@ $:.unshift(File.join(File.dirname(__FILE__), "..", "lib"))
+ require "chef"
+ require "chef/application/client"
+ 
+-Chef::Application::Client.new.run(enforce_license: true)
++Chef::Application::Client.new.run(enforce_license: false)

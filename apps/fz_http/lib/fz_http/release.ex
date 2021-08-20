@@ -60,7 +60,7 @@ defmodule FzHttp.Release do
   end
 
   defp email do
-    Application.fetch_env!(@app, :admin_user_email)
+    Application.fetch_env!(@app, :admin_email)
   end
 
   defp load_app do

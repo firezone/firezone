@@ -33,16 +33,17 @@ build_version Omnibus::BuildVersion.semver
 build_iteration 1
 
 # firezone build dependencies/components
-dependency "compile_release"
+dependency "runit"
+dependency "nginx"
 dependency "erlang"
 dependency "elixir"
 dependency "openssl"
 dependency "postgresql"
 dependency "wireguard-tools"
-
-if linux?
-  dependency "nftables"
-end
+dependency "firezone"
+dependency "firezone-ctl"
+dependency "firezone-scripts"
+dependency "firezone-cookbooks"
 
 exclude ".env"
 exclude ".github"

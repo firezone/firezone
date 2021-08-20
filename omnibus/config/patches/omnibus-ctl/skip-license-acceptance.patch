@@ -1,0 +1,12 @@
+diff --git a/lib/omnibus-ctl.rb b/lib/omnibus-ctl.rb
+index b3e06c2..acbf8b9 100644
+--- a/lib/omnibus-ctl.rb
++++ b/lib/omnibus-ctl.rb
+@@ -504,7 +504,6 @@ EOM
+       # args being passed to this command does not include the ones that are
+       # starting with "-". See #is_option? method. If it is starting with "-"
+       # then it is treated as a option and we need to look for them in ARGV.
+-      check_license_acceptance(ARGV.include?("--accept-license"))
+ 
+       status = run_chef("#{base_path}/embedded/cookbooks/dna.json")
+       if status.success?

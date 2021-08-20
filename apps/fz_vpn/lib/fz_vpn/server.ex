@@ -20,12 +20,12 @@ defmodule FzVpn.Server do
   @process_opts Application.compile_env(:fz_vpn, :server_process_opts)
 
   def start_link(_) do
-    cli().setup()
     GenServer.start_link(__MODULE__, %Config{}, @process_opts)
   end
 
   @impl true
   def init(config) do
+    cli().setup()
     {:ok, config}
   end
 

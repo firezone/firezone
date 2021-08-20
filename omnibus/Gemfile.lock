@@ -6,7 +6,7 @@ GEM
     ast (2.4.2)
     awesome_print (1.9.2)
     aws-eventstream (1.1.1)
-    aws-partitions (1.484.0)
+    aws-partitions (1.487.0)
     aws-sdk-core (3.119.0)
       aws-eventstream (~> 1, >= 1.0.2)
       aws-partitions (~> 1, >= 1.239.0)
@@ -182,7 +182,7 @@ GEM
     mixlib-cli (2.1.8)
     mixlib-config (3.0.9)
       tomlrb
-    mixlib-install (3.12.11)
+    mixlib-install (3.12.16)
       mixlib-shellout
       mixlib-versioning
       thor
@@ -190,7 +190,7 @@ GEM
     mixlib-shellout (3.2.5)
       chef-utils
     mixlib-versioning (1.2.12)
-    molinillo (0.7.0)
+    molinillo (0.8.0)
     multi_json (1.15.0)
     multipart-post (2.1.1)
     net-scp (3.0.0)
@@ -272,16 +272,16 @@ GEM
       diff-lcs (>= 1.2.0, < 2.0)
       rspec-support (~> 3.10.0)
     rspec-support (3.10.2)
-    rubocop (1.18.4)
+    rubocop (1.19.0)
       parallel (~> 1.10)
       parser (>= 3.0.0.0)
       rainbow (>= 2.2.2, < 4.0)
       regexp_parser (>= 1.8, < 3.0)
       rexml
-      rubocop-ast (>= 1.8.0, < 2.0)
+      rubocop-ast (>= 1.9.1, < 2.0)
       ruby-progressbar (~> 1.7)
       unicode-display_width (>= 1.4.0, < 3.0)
-    rubocop-ast (1.8.0)
+    rubocop-ast (1.10.0)
       parser (>= 3.0.1.1)
     ruby-progressbar (1.11.0)
     ruby2_keywords (0.0.5)
@@ -380,6 +380,7 @@ PLATFORMS
 
 DEPENDENCIES
   berkshelf
+  chef (~> 16.14.1)
   kitchen-vagrant
   omnibus (~> 8.1)
   rubocop

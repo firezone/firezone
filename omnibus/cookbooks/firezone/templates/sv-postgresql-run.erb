@@ -1,0 +1,8 @@
+#!/bin/sh
+exec 2>&1
+exec chpst \
+       -P \
+       -U <%= node['firezone']['postgresql']['username'] %> \
+       -u <%= node['firezone']['postgresql']['username'] %> \
+     <%= node['firezone']['install_directory']%>/embedded/bin/postgres \
+       -D <%= node['firezone']['postgresql']['data_directory'] %>

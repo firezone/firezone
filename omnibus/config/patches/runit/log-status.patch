@@ -1,0 +1,13 @@
+diff --git a/sv.c b/sv.c
+index 0125795..b79dc4f 100644
+--- a/sv.c
++++ b/sv.c
+@@ -167,7 +167,7 @@ int status(char *unused) {
+   }
+   else {
+     outs("; ");
+-    if (svstatus_get()) { rc =svstatus_print("log"); outs("\n"); }
++    if (svstatus_get()) { svstatus_print("log"); outs("\n"); }
+   }
+   islog =0;
+   flush("");

@@ -1,0 +1,13 @@
+diff --git a/io.c b/io.c
+index 868756ffc5..2e4166d664 100644
+--- a/io.c
++++ b/io.c
+@@ -10887,7 +10887,7 @@ nogvl_copy_stream_wait_write(struct copy_stream_struct *stp)
+     return 0;
+ }
+ 
+-#if defined HAVE_COPY_FILE_RANGE || (defined __linux__ && defined __NR_copy_file_range)
++#if 0
+ #  define USE_COPY_FILE_RANGE
+ #endif
+ 
