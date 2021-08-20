@@ -26,9 +26,7 @@ execute 'fix app permissions' do
   app_dir = node['firezone']['app_directory']
   user = node['firezone']['user']
   group = node['firezone']['group']
-  command "chown -R #{user}:#{group} #{app_dir}"
-  command "chmod -R o-rwx #{app_dir}"
-  command "chmod -R g-rwx #{app_dir}"
+  command "chown -R #{user}:#{group} #{app_dir} && chmod -R o-rwx #{app_dir} && chmod -R g-rwx #{app_dir}"
 end
 
 file 'environment-variables' do
