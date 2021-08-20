@@ -193,8 +193,8 @@ default['firezone']['phoenix']['admin_email'] =
 # ## WireGuard
 #
 # The WireGuard interface settings
-default['firezone']['wireguard']['listen_address'] = '0.0.0.0'
-default['firezone']['wireguard']['listen_port'] = 15820
+default['firezone']['wireguard']['interface_name'] = 'wg-firezone'
+default['firezone']['wireguard']['port'] = 11820
 
 # ## Runit
 
@@ -246,6 +246,9 @@ default['firezone']['database']['host'] = node['firezone']['postgresql']['listen
 default['firezone']['database']['port'] = node['firezone']['postgresql']['port']
 default['firezone']['database']['pool'] = [10, Etc.nprocessors].max
 default['firezone']['database']['extensions'] = { 'plpgsql' => true, 'pg_trgm' => true }
+
+# Uncomment to specify a database password. Not usually needed if using the bundled Postgresql.
+# default['firezone']['database']['password'] = 'change_me'
 
 # ## App-specific top-level attributes
 #

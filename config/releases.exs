@@ -11,22 +11,20 @@ database_user = System.fetch_env!("DATABASE_USER")
 database_host = System.fetch_env!("DATABASE_HOST")
 database_port = System.fetch_env!("DATBASE_PORT")
 database_pool = System.fetch_env!("DATBASE_POOL")
-database_encryption_key = System.fetch_env!("DATABASE_ENCRYPTION_KEY")
-phoenix_port = System.fetch_env!("PHOENIX_PORT")
+port = System.fetch_env!("PHOENIX_PORT")
 url_host = System.fetch_env!("URL_HOST")
+admin_email = System.fetch_env!("ADMIN_EMAIL")
+wireguard_interface_name = System.fetch_env!("WIREGUARD_INTERFACE_NAME")
+wireguard_port = System.fetch_env!("WIREGUARD_PORT")
+
+# secrets
+encryption_key = System.fetch_env!("DATABASE_ENCRYPTION_KEY")
 secret_key_base = System.fetch_env!("SECRET_KEY_BASE")
 live_view_signing_salt = System.fetch_env!("LIVE_VIEW_SIGNING_SALT")
-wireguard_private_key = System.fetch_env!("WIREGUARD_SERVER_KEY")
-wireguard_interface_name = System.fetch_env!("WIREGUARD_INTERFACE_NAME")
-wireguard_listen_port = System.fetch_env!("WIREGUARD_LISTEN_PORT")
-admin_email = System.fetch_env!("ADMIN_EMAIL")
+private_key = System.fetch_env!("WIREGUARD_PRIVATE_KEY")
 
 # Password is not needed if using bundled PostgreSQL, so use nil if it's not set.
 database_password = System.get_env("DATABASE_PASSWORD")
-
-default_egress_address =
-  CLI.exec!("ip route get 8.8.8.8 | grep -oP 'src \\K\\S+'")
-  |> String.trim()
 
 config :fz_http,
   disable_signup: disable_signup
@@ -57,12 +55,12 @@ config :fz_http, FzHttp.Vault,
       # https://github.com/danielberkompas/cloak/issues/93
       #
       # In Cloak 2.0, this will be the default iv length for AES.GCM.
-      tag: "AES.GCM.V1", key: Base.decode64!(database_encryption_key), iv_length: 12
+      tag: "AES.GCM.V1", key: Base.decode64!(encryption_key), iv_length: 12
     }
   ]
 
 config :fz_http, FzHttpWeb.Endpoint,
-  url: [host: url_host, port: phoenix_port],
+  url: [host: url_host, port: port],
   secret_key_base: secret_key_base,
   live_view: [
     signing_salt: live_view_signing_salt
@@ -71,8 +69,8 @@ config :fz_http, FzHttpWeb.Endpoint,
 
 config :fz_vpn,
   wireguard_interface_name: wireguard_interface_name,
-  wireguard_listen_port: wireguard_listen_port,
-  wireguard_private_key: wireguard_private_key
+  wireguard_port: wireguard_port,
+  wireguard_private_key: private_key
 
 config :fz_http,
   admin_email: admin_email
