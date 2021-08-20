@@ -60,6 +60,13 @@ directory node['firezone']['var_directory'] do
   recursive true
 end
 
+directory "#{node['firezone']['app_directory']}/tmp" do
+  owner node['firezone']['user']
+  group node['firezone']['group']
+  mode '0700'
+  recursive true
+end
+
 directory node['firezone']['log_directory'] do
   owner node['firezone']['user']
   group node['firezone']['group']
