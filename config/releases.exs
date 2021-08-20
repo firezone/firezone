@@ -27,7 +27,7 @@ private_key = System.fetch_env!("WIREGUARD_PRIVATE_KEY")
 database_password = System.get_env("DATABASE_PASSWORD")
 
 config :fz_http,
-  disable_signup: disable_signup
+  disable_signup: true
 
 # Database configuration
 connect_opts = [
