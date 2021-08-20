@@ -22,6 +22,7 @@ license "Apache-2.0"
 license_file "LICENSE.txt"
 skip_transitive_dependency_licensing true
 
+dependency "gawk"
 dependency "automake"
 dependency "autoconf"
 dependency "zlib"
