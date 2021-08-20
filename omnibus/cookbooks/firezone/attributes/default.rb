@@ -59,6 +59,11 @@ default['firezone']['log_directory'] = '/var/log/firezone'
 default['firezone']['var_directory'] = '/var/opt/firezone'
 default['firezone']['user'] = 'firezone'
 default['firezone']['group'] = 'firezone'
+# Used for generating URLs that point back to this application.
+default['firezone']['url_host'] = node['firezone']['fqdn']
+# Email for the primary admin user.
+default['firezone']['admin_email'] =
+  "firezone@#{node['firezone']['fqdn']}"
 
 # ## Enterprise
 #
@@ -184,11 +189,6 @@ default['firezone']['phoenix']['port'] = 13000
 default['firezone']['phoenix']['log_directory'] = "#{node['firezone']['log_directory']}/phoenix"
 default['firezone']['phoenix']['log_rotation']['file_maxbytes'] = 104857600
 default['firezone']['phoenix']['log_rotation']['num_to_keep'] = 10
-# Used for generating URLs that point back to this application.
-default['firezone']['phoenix']['url_host'] = 'localhost'
-# Email for the primary admin user
-default['firezone']['phoenix']['admin_email'] =
-  "firezone@#{node['firezone']['phoenix']['url_host']}"
 
 # ## WireGuard
 #
