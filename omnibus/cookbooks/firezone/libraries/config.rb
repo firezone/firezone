@@ -194,8 +194,8 @@ class Firezone
         'PHOENIX_PORT' => attributes['phoenix']['port'],
         'URL_HOST' => attributes['url_host'],
         'ADMIN_EMAIL' => attributes['admin_email'],
-        'WIREGUARD_INTERFACE_NAME' => node['firezone']['wireguard']['interface_name'],
-        'WIREGUARD_PORT' => node['firezone']['wireguard']['port'],
+        'WIREGUARD_INTERFACE_NAME' => attributes['wireguard']['interface_name'],
+        'WIREGUARD_PORT' => attributes['wireguard']['port'],
 
         # secrets
         'SECRET_KEY_BASE' => attributes['secret_key_base'],
@@ -208,6 +208,7 @@ class Firezone
         env.merge!('DATABASE_PASSWORD' => attributes['database']['password'])
       end
 
+      env
     end
 
     def self.create_directory!(filename)
