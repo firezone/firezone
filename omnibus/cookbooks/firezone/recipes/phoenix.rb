@@ -21,7 +21,7 @@
 include_recipe 'firezone::config'
 include_recipe 'firezone::nginx'
 
-[node['firezone']['log_directory'],
+[node['firezone']['phoenix']['log_directory'],
  "#{node['firezone']['var_directory']}/phoenix/run"].each do |dir|
   directory dir do
     owner node['firezone']['user']
