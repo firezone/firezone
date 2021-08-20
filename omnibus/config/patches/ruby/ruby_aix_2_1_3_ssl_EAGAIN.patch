@@ -1,0 +1,19 @@
+--- ruby-2.1.3/ext/openssl/lib/openssl/ssl.rb_orig	2014-10-24 13:09:44.000000000 -0500
++++ ruby-2.1.3/ext/openssl/lib/openssl/ssl.rb	2014-10-24 13:11:01.000000000 -0500
+@@ -194,7 +194,15 @@
+         begin
+           ssl = OpenSSL::SSL::SSLSocket.new(sock, @ctx)
+           ssl.sync_close = true
+-          ssl.accept if @start_immediately
++          if @start_immediately
++            # Retry on EAGAIN (may be due to underlying inprogress for TLS handshake or renegotiation requested.)
++            # Any other error is rescued further.
++             begin
++              ssl.accept
++            rescue Errno::EAGAIN
++              retry
++            end
++          end
+           ssl
+         rescue SSLError => ex
+           sock.close

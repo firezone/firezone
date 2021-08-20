@@ -1,0 +1,27 @@
+--- a/configure.in
++++ b/configure.in
+@@ -267,11 +267,9 @@
+     cflagspat="$cflagspat;s|"`eval echo '"'"${debugflags}"'"' | sed 's/[[][|.*]]/\\&/g;s/^ */ /;s/ *$/ /'`'| |g'
+ test -z "warnflags" ||
+     cflagspat="$cflagspat;s|"`eval echo '"'"${warnflags}"'"' | sed 's/[[][|.*]]/\\&/g;s/^ */ /;s/ *$/ /'`'| |g'
+-if test -z "${CFLAGS+set}"; then
+-    cflags=`echo " $cflags " | sed "$cflagspat;s/^ *//;s/ *$//"`
+-    orig_cflags="$cflags"
+-    cflags="$cflags "'${optflags} ${debugflags} ${warnflags}'
+-fi
++cflags=`echo " $cflags " | sed "$cflagspat;s/^ *//;s/ *$//"`
++orig_cflags="$cflags"
++cflags="$cflags "'${optflags} ${debugflags} ${warnflags}'
+ if test -z "${CXXFLAGS+set}"; then
+     cxxflags=`echo " $cxxflags " | sed "$cflagspat;s/^ *//;s/ *$//"`
+     orig_cxxflags="$cxxflags"
+@@ -511,7 +509,8 @@
+     ])
+ fi
+
+-test -z "${ac_env_CFLAGS_set}" -a -n "${cflags+set}" && eval CFLAGS="\"$cflags $ARCH_FLAG\""
++test -z "${ac_env_CFLAGS_set}" && CFLAGS="$ARCH_FLAG"
++test -n "${cflags:+set}" && eval CFLAGS="\"$cflags\${CFLAGS:+ $CFLAGS}\""
+ test -z "${ac_env_CXXFLAGS_set}" -a -n "${cxxflags+set}" && eval CXXFLAGS="\"$cxxflags $ARCH_FLAG\""
+
+ dnl check for large file stuff

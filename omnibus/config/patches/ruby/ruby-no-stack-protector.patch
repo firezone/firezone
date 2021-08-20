@@ -1,0 +1,13 @@
+diff --git a/configure.dist b/configure
+index d83c15a..bd4813c 100755
+--- a/configure.dist
++++ b/configure
+@@ -7491,7 +7491,7 @@ main ()
+ }
+ _ACEOF
+ if ac_fn_c_try_compile "$LINENO"; then :
+-  stack_protector=yes
++  stack_protector=no
+ 	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+ $as_echo "yes" >&6; }
+ else

@@ -1,0 +1,20 @@
+--- ruby-1.9.3/sparc.c_orig	Wed Apr 22 19:07:16 2015
++++ ruby-1.9.3/sparc.c	Wed Apr 22 19:07:57 2015
+@@ -11,7 +11,16 @@
+ *********************************************************************/
+ void rb_sparc_flush_register_windows(void)
+ {
+-    asm
++ /*
++ * gcc doesn't provide "asm" keyword if -ansi and the various -std options
++ * are given.
++ * http://gcc.gnu.org/onlinedocs/gcc/Alternate-Keywords.html
++ */
++#ifndef __GNUC__
++#define __asm__ asm
++#endif
++
++    __asm__
+ #ifdef __GNUC__
+     __volatile__
+ #endif

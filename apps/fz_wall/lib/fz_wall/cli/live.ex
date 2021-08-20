@@ -10,6 +10,7 @@ defmodule FzWall.CLI.Live do
 
   import FzCommon.CLI
 
+  @egress_interface_cmd "route | grep '^default' | grep -o '[^ ]*$'"
   @setup_chain_cmd "iptables -N firezone && iptables6 -N firezone"
   @teardown_chain_cmd "iptables -F firezone &&\
                        iptables -X firezone &&\
@@ -70,5 +71,43 @@ defmodule FzWall.CLI.Live do
 
   def delete_rule({6, s, d, :allow}) do
     exec!("iptables6 -D firezone -s #{s} -d #{d} -j ACCEPT")
+  end
+
+  def restore(_rules) do
+    # XXX: Implement me
+  end
+
+  def egress_address do
+    case :os.type() do
+      {:unix, :linux} ->
+        cmd = "ip address show dev #{egress_interface()} | grep 'inet ' | awk '{print $2}'"
+
+        exec!(cmd)
+        |> String.trim()
+        |> String.split("/")
+        |> List.first()
+
+      {:unix, :darwin} ->
+        cmd = "ipconfig getifaddr #{egress_interface()}"
+
+        exec!(cmd)
+        |> String.trim()
+
+      _ ->
+        raise "OS not supported (yet)"
+    end
+  end
+
+  defp egress_interface do
+    case :os.type() do
+      {:unix, :linux} ->
+        exec!(@egress_interface_cmd)
+        |> String.split()
+        |> List.first()
+
+      {:unix, :darwin} ->
+        # XXX: Figure out what it means to have macOS as a host?
+        "en0"
+    end
   end
 end

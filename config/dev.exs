@@ -31,6 +31,12 @@ config :fz_http, FzHttpWeb.Endpoint,
     ]
   ]
 
+config :fz_vpn,
+  cli: FzVpn.CLI.Live
+
+config :fz_wall,
+  cli: FzWall.CLI.Live
+
 # ## SSL Support
 #
 # In order to use HTTPS in development, a self-signed
@@ -82,11 +88,4 @@ config :phoenix, :plug_init_mode, :runtime
 config :fz_vpn, :server_process_opts, name: {:global, :fz_vpn_server}
 config :fz_wall, :server_process_opts, name: {:global, :fz_wall_server}
 
-config(
-  :fz_http,
-  :disable_signup,
-  case System.get_env("DISABLE_SIGNUP") do
-    d when d in ["1", "yes"] -> true
-    _ -> false
-  end
-)
+config(:fz_http, :disable_signup, true)

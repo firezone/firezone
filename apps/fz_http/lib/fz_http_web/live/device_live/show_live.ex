@@ -47,9 +47,24 @@ defmodule FzHttpWeb.DeviceLive.Show do
     device = Devices.get_device!(id)
 
     if device.user_id == socket.assigns.current_user.id do
-      assign(socket, device: device, page_heading: device.name)
+      assign(
+        socket,
+        device: device,
+        page_heading: device.name,
+        vpn_endpoint: vpn_endpoint()
+      )
     else
       not_authorized(socket)
+    end
+  end
+
+  defp vpn_endpoint do
+    case GenServer.call(:global.whereis_name(:fz_wall_server), :vpn_endpoint) do
+      {:ok, endpoint} ->
+        endpoint
+
+      _ ->
+        raise "VPN Server couldn't be contacted"
     end
   end
 end

@@ -1,0 +1,103 @@
+$NetBSD: patch-configure,v 1.4 2012/10/12 14:51:31 taca Exp $
+
+* Adding Interix and MirBSD support.
+* Ignore doxygen.
+
+--- configure.orig	2012-10-12 09:23:46.000000000 +0000
++++ configure
+@@ -10654,6 +10654,9 @@ esac
+   superux*) :
+     	ac_cv_func_setitimer=no
+ 		 ;; #(
++  interix*)	LIBS="-lm $LIBS"
++	ac_cv_func_getpgrp_void=yes
++		 ;; #(
+   *) :
+     	LIBS="-lm $LIBS" ;;
+ esac
+@@ -11980,6 +11983,9 @@ fi
+ ac_fn_c_check_type "$LINENO" "struct timespec" "ac_cv_type_struct_timespec" "#ifdef HAVE_TIME_H
+ #include <time.h>
+ #endif
++#ifdef HAVE_SYS_TIME_H
++# include <sys/time.h>
++#endif
+ "
+ if test "x$ac_cv_type_struct_timespec" = xyes; then :
+ 
+@@ -15790,7 +15796,7 @@ done
+     MAINLIBS="-pthread $MAINLIBS" ;; #(
+   *) :
+     case "$target_os" in #(
+-  openbsd*) :
++  openbsd*|mirbsd*) :
+     LIBS="-pthread $LIBS" ;; #(
+   *) :
+     LIBS="-l$pthread_lib $LIBS" ;;
+@@ -16239,8 +16245,12 @@ esac ;; #(
+ 			rb_cv_dlopen=yes ;; #(
+   interix*) :
+     	: ${LDSHARED='$(CC) -shared'}
++			LDFLAGS="$LDFLAGS -Wl,-E"
+ 			XLDFLAGS="$XLDFLAGS -Wl,-E"
++			# use special random-slot linkage in 0x[56]XXXXXXX
+ 			LIBPATHFLAG=" -L%1\$-s"
++			DLDFLAGS="$DLDFLAGS "'-Wl,-h,$(.TARGET) -Wl,--image-base,$$(($$RANDOM %4096/2*262144+1342177280))'
++			RPATHFLAG=' -Wl,-R%1$-s'
+ 			rb_cv_dlopen=yes ;; #(
+   freebsd*|dragonfly*) :
+ 
+@@ -16252,7 +16262,7 @@ esac ;; #(
+ 			  test "$GCC" = yes && test "$rb_cv_prog_gnu_ld" = yes || LDSHARED="ld -Bshareable"
+ 			fi
+ 			rb_cv_dlopen=yes ;; #(
+-  openbsd*) :
++  openbsd*|mirbsd*) :
+     	: ${LDSHARED='$(CC) -shared ${CCDLFLAGS}'}
+ 			if test "$rb_cv_binary_elf" = yes; then
+ 			    LDFLAGS="$LDFLAGS -Wl,-E"
+@@ -16781,7 +16791,7 @@ _ACEOF
+   freebsd*|dragonfly*) :
+ 
+ 	SOLIBS='$(LIBS)'
+-	LIBRUBY_SO='lib$(RUBY_SO_NAME).so.$(MAJOR)$(MINOR)'
++	LIBRUBY_SO='lib$(RUBY_SO_NAME).so.$(MAJOR)$(MINOR)$(TEENY)'
+ 	if test "$rb_cv_binary_elf" != "yes" ; then
+ 	    LIBRUBY_SO="$LIBRUBY_SO.\$(TEENY)"
+ 	    LIBRUBY_ALIASES=''
+@@ -16798,7 +16808,7 @@ _ACEOF
+ 	   LIBRUBY_ALIASES=""
+ 	fi
+ 	 ;; #(
+-  openbsd*) :
++  openbsd*|mirbsd*) :
+ 
+ 	SOLIBS='$(LIBS)'
+ 	LIBRUBY_SO='lib$(RUBY_SO_NAME).so.$(MAJOR).'`expr ${MINOR} \* 10 + ${TEENY}`
+@@ -16859,7 +16869,12 @@ esac
+ 	 ;; #(
+   interix*) :
+ 
+-	LIBRUBYARG_SHARED='-L. -L${libdir} -l$(RUBY_SO_NAME)'
++	SOLIBS='$(LIBS)'
++	LIBRUBY_SO='lib$(RUBY_SO_NAME).so.$(MAJOR)$(MINOR).$(TEENY)'
++	# link explicitly to 0x48000000
++	LIBRUBY_DLDFLAGS='-Wl,-h,lib$(RUBY_SO_NAME).so.$(MAJOR)$(MINOR) -Wl,--image-base,1207959552'
++	LIBRUBYARG_SHARED='-Wl,-R -Wl,${libdir} -L${libdir} -L. -l$(RUBY_SO_NAME)'
++	LIBRUBY_ALIASES='lib$(RUBY_SO_NAME).so.$(MAJOR)$(MINOR) lib$(RUBY_SO_NAME).so'
+ 	 ;; #(
+   *) :
+      ;;
+@@ -16922,11 +16937,7 @@ if test "$install_doc" != no; then
+     else
+ 	RDOCTARGET="nodoc"
+     fi
+-    if test "$install_capi" != no -a -n "$DOXYGEN"; then
+-	CAPITARGET="capi"
+-    else
+-	CAPITARGET="nodoc"
+-    fi
++    CAPITARGET="nodoc"
+ else
+     RDOCTARGET="nodoc"
+     CAPITARGET="nodoc"

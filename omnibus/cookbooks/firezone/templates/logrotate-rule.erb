@@ -1,0 +1,15 @@
+<%= @log_directory %>/*.log {
+  rotate <%= @log_rotation['num_to_keep'] %>
+  size <%= @log_rotation['file_maxbytes'] %>
+  create 644 <%= @owner || 'root' %> <%= @group || 'root' %>
+<% if @postrotate -%>
+  delaycompress
+  sharedscripts
+  postrotate
+    <%= @postrotate %>
+  endscript
+<% end -%>
+<% if @copytruncate -%>
+  copytruncate
+<% end -%>
+}

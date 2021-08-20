@@ -1,0 +1,22 @@
+listen_addresses = '<%= node['firezone']['postgresql']['listen_address'] %>'		# what IP address(es) to listen on;
+port = <%= node['firezone']['postgresql']['port'] %>				# (change requires restart)
+max_connections = <%= node['firezone']['postgresql']['max_connections'] %>			# (change requires restart)
+shared_buffers = <%= node['firezone']['postgresql']['shared_buffers'] %> # min 128kB
+work_mem = <%= node['firezone']['postgresql']['work_mem'] %>				# min 64kB
+
+# XXX: Has been deprecated. Update for Postgresql 13.3
+# checkpoint_segments =  <%= node['firezone']['postgresql']['checkpoint_segments'] %>		# in logfile segments, min 1, 16MB each, default 3
+checkpoint_timeout = <%= node['firezone']['postgresql']['checkpoint_timeout'] %>		# range 30s-1h, default 5min
+checkpoint_completion_target = <%= node['firezone']['postgresql']['checkpoint_completion_target'] %>	# checkpoint target duration, 0.0 - 1.0, default 0.5
+checkpoint_warning = <%= node['firezone']['postgresql']['checkpoint_warning'] %>		# 0 disables, default 30s
+
+effective_cache_size = <%= node['firezone']['postgresql']['effective_cache_size'] %> # Default 128MB
+
+datestyle = 'iso, mdy'
+
+lc_messages = 'C'			# locale for system error message
+lc_monetary = 'C'			# locale for monetary formatting
+lc_numeric = 'C'			# locale for number formatting
+lc_time = 'C'				# locale for time formatting
+
+default_text_search_config = 'pg_catalog.english'

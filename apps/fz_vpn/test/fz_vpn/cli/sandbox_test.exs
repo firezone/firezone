@@ -5,10 +5,6 @@ defmodule FzVpn.CLI.SandboxTest do
 
   @expected_returned ""
 
-  test "egress_interface" do
-    assert is_binary(cli().egress_interface())
-  end
-
   test "setup" do
     assert cli().setup() == @expected_returned
   end

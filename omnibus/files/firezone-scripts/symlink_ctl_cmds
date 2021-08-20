@@ -1,0 +1,26 @@
+#!/bin/bash
+#
+# Symlink the ctl commands
+DEST_DIR=${1:-/opt/firezone}
+
+usr_bin_symlinks=(
+  "${DEST_DIR}/bin/firezone-ctl"
+)
+
+error_exit()
+{
+  echo "${1:-"Unknown Error"}" 1>&2
+  exit 1
+}
+
+create_symlinks()
+{
+  for symlink in "${usr_bin_symlinks[@]}"
+  do
+    if [ -f $symlink ]; then
+      ln -sf $symlink /usr/bin || error_exit "Failed to create symlinks in /usr/bin"
+    fi
+  done
+}
+
+create_symlinks

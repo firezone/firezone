@@ -8,25 +8,18 @@ defmodule FzVpn.CLI.Live do
   See FzVpn.Server for higher-level functionality.
   """
 
-  @egress_interface_cmd "route | grep '^default' | grep -o '[^ ]*$'"
-
   # Outputs the privkey, then pubkey on the next line
   @genkey_cmd "wg genkey | tee >(wg pubkey)"
   @genpsk_cmd "wg genpsk"
-  @iface_name "wg-firezone"
 
   import FzCommon.CLI
 
   def setup do
-    create_interface()
-    setup_iptables()
-    up_interface()
+    :ok = GenServer.call(:global.whereis_name(:fz_wall_server), :setup)
   end
 
   def teardown do
-    down_interface()
-    teardown_iptables()
-    delete_interface()
+    :ok = GenServer.call(:global.whereis_name(:fz_wall_server), :teardown)
   end
 
   @doc """
@@ -54,7 +47,7 @@ defmodule FzVpn.CLI.Live do
   end
 
   def set(config_str) do
-    exec!("wg set #{@iface_name} #{config_str}")
+    exec!("wg set #{iface_name()} #{config_str}")
   end
 
   def show_latest_handshakes do
@@ -69,65 +62,11 @@ defmodule FzVpn.CLI.Live do
     show("transfer")
   end
 
-  defp egress_interface do
-    case :os.type() do
-      {:unix, :linux} ->
-        exec!(@egress_interface_cmd)
-        |> String.split()
-        |> List.first()
-
-      {:unix, :darwin} ->
-        # XXX: Figure out what it means to have macOS as a host?
-        "en0"
-    end
-  end
-
   defp show(subcommand) do
-    exec!("wg show #{@iface_name} #{subcommand}")
+    exec!("wg show #{iface_name()} #{subcommand}")
   end
 
-  defp interface_exists do
-    case bash("ifconfig -a | grep #{@iface_name}") do
-      {_result, 0} -> true
-      {_error, 1} -> false
-    end
-  end
-
-  defp create_interface do
-    unless interface_exists() do
-      exec!("ip link add dev #{@iface_name} type wireguard")
-    end
-  end
-
-  defp delete_interface do
-    if interface_exists() do
-      exec!("ip link dev delete #{@iface_name}")
-    end
-  end
-
-  # XXX: Move to FzWall and call via PID?
-  defp setup_iptables do
-    exec!("\
-      iptables -A FORWARD -i %i -j ACCEPT;\
-      iptables -A FORWARD -o %i -j ACCEPT; \
-      iptables -t nat -A POSTROUTING -o #{egress_interface()} -j MASQUERADE\
-    ")
-  end
-
-  # XXX: Move to FzWall and call via PID?
-  defp teardown_iptables do
-    exec!("\
-      iptables -D FORWARD -i %i -j ACCEPT;\
-      iptables -D FORWARD -o %i -j ACCEPT;\
-      iptables -t nat -D POSTROUTING -o #{egress_interface()} -j MASQUERADE\
-    ")
-  end
-
-  defp up_interface do
-    exec!("ifconfig #{@iface_name} up")
-  end
-
-  defp down_interface do
-    exec!("ifconfig #{@iface_name} down")
+  defp iface_name do
+    Application.get_env(:fz_vpn, :wireguard_interface_name, "wg-firezone")
   end
 end

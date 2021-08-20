@@ -1,4 +1,5 @@
-#
+# frozen_string_literal: true
+
 # Copyright 2017 Chef Software, Inc.
 # Copyright 2021 FireZone
 #
@@ -33,5 +34,5 @@ build do
   env = with_standard_compiler_flags(with_embedded_path)
 
   make "-j #{workers}", env: env
-  make "install PREFIX=#{install_dir}/embedded", env: env
+  make "-j #{workers} install PREFIX=#{install_dir}/embedded", env: env
 end

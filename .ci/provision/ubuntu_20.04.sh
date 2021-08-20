@@ -6,29 +6,20 @@ export DEBIAN_FRONTEND=noninteractive
 # Install prerequisites
 sudo apt-get update -q
 sudo apt-get install -y -q \
-  lintian \
+  dpkg-dev \
+  zlib1g-dev \
+  libssl-dev \
+  openssl \
   procps \
-  zsh \
-  tree \
   rsync \
-  gdebi \
   ca-certificates \
   build-essential \
   git \
-  dpkg-dev \
-  libssl-dev \
-  python3 \
-  automake \
   gnupg \
   curl \
-  autoconf \
-  libncurses5-dev \
   unzip \
-  zlib1g-dev \
   locales \
   net-tools \
-  iptables \
-  openssl \
   systemd \
   wireguard-dkms
 
@@ -38,10 +29,6 @@ sudo locale-gen
 export LANG=en_US.UTF-8
 export LANGUAGE=en_US:en
 export LC_ALL=en_US.UTF-8
-
-# Install NodeJS 16
-curl -fsSL https://deb.nodesource.com/setup_16.x | sudo -E bash -
-sudo apt-get install -y nodejs
 
 # Install asdf ruby
 if [ ! -d $HOME/.asdf ]; then
@@ -54,12 +41,10 @@ asdf list ruby || asdf plugin-add ruby
 cd /vagrant
 asdf install
 
-
 # Install omnibus
 cd omnibus
 gem install bundler
 bundle install --binstubs
-
 
 # Build omnibus package
 sudo mkdir -p /opt/firezone
@@ -67,3 +52,4 @@ sudo chown -R ${USER} /opt/firezone
 bin/omnibus build firezone
 
 sudo dpkg -i pkg/firezone*.deb
+sudo firezone-ctl reconfigure
