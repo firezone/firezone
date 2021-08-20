@@ -65,7 +65,7 @@ class Firezone
                             node['firezone']['wireguard_private_key']
                           else
                             Chef::Log.warn 'No wireguard_private_key set! Generating and writing one to secrets.json. If this FireZone installation has multiple hosts, you must duplicate the secrets.json file exactly across all hosts.'
-                            `#{node['firezone']['install_dir']}/embedded/bin/wg genkey`.chomp
+                            `#{node['firezone']['install_directory']}/embedded/bin/wg genkey`.chomp
                           end
         database_encryption_key = if node['firezone'] && node['firezone']['database_encryption_key']
                             Chef::Log.warn 'Using database_encryption_key from firezone.json. This value should really be managed in secrets.json. Writing to secrets.json.'
