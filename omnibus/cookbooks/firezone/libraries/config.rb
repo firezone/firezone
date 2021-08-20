@@ -189,13 +189,13 @@ class Firezone
         'DATABASE_NAME' => attributes['database']['name'],
         'DATABASE_USER' => attributes['database']['user'],
         'DATABASE_HOST' => attributes['database']['host'],
-        'DATABASE_PORT' => attributes['database']['port'],
-        'DATABASE_POOL' => attributes['database']['pool'],
-        'PHOENIX_PORT' => attributes['phoenix']['port'],
+        'DATABASE_PORT' => attributes['database']['port'].to_s,
+        'DATABASE_POOL' => attributes['database']['pool'].to_s,
+        'PHOENIX_PORT' => attributes['phoenix']['port'].to_s,
         'URL_HOST' => attributes['url_host'],
         'ADMIN_EMAIL' => attributes['admin_email'],
         'WIREGUARD_INTERFACE_NAME' => attributes['wireguard']['interface_name'],
-        'WIREGUARD_PORT' => attributes['wireguard']['port'],
+        'WIREGUARD_PORT' => attributes['wireguard']['port'].to_s,
 
         # secrets
         'SECRET_KEY_BASE' => attributes['secret_key_base'],
