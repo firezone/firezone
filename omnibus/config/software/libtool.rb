@@ -21,6 +21,7 @@ license "GPL-2.0"
 license_file "COPYING"
 skip_transitive_dependency_licensing true
 
+dependency "m4"
 dependency "config_guess"
 
 # version_list: url=https://ftp.gnu.org/gnu/libtool/ filter=*.tar.gz
