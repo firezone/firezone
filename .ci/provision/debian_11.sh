@@ -1,31 +1,36 @@
 #!/bin/bash
-set -ex
+set -xe
+
+export DEBIAN_FRONTEND=noninteractive
 
 # Install prerequisites
-sudo yum groupinstall -y 'Development Tools'
-sudo yum install -y \
-  rpmdevtools \
-  openssl-devel \
+sudo apt-get update -q
+sudo apt-get install -y -q \
+  dpkg-dev \
+  zlib1g-dev \
+  libssl-dev \
   openssl \
-  rsync \
   bzip2 \
   procps \
-  curl \
+  rsync \
+  ca-certificates \
+  build-essential \
   git \
-  findutils \
+  gnupg \
+  curl \
   unzip \
+  locales \
   net-tools \
   systemd
 
 # Set locale
-sudo bash -c 'echo "LANG=en_US.UTF-8" > /etc/locale.conf'
-sudo localectl set-locale LANG=en_US.UTF-8
+sudo sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen
+sudo locale-gen
+export LANG=en_US.UTF-8
+export LANGUAGE=en_US:en
+export LC_ALL=en_US.UTF-8
 
-# Install WireGuard module
-sudo yum install -y epel-release elrepo-release
-sudo yum install -y kmod-wireguard
-
-# Install asdf ruby
+# Install asdf
 if [ ! -d $HOME/.asdf ]; then
   git clone --depth 1 https://github.com/asdf-vm/asdf.git $HOME/.asdf
 fi
@@ -46,7 +51,7 @@ sudo mkdir -p /opt/firezone
 sudo chown -R ${USER} /opt/firezone
 bin/omnibus build firezone
 
-sudo rpm -i pkg/firezone*.rpm
+sudo dpkg -i pkg/firezone*.deb
 
 # Usually fails the first time
 sudo firezone-ctl reconfigure || true

@@ -43,4 +43,8 @@ sudo chown -R ${USER} /opt/firezone
 bin/omnibus build firezone
 
 sudo rpm -i pkg/firezone*.rpm
-sudo firezone-ctl reconfigure
+
+# Usually fails the first time
+sudo firezone-ctl reconfigure || true
+
+sudo firezone-ctl restart

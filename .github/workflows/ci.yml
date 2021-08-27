@@ -77,6 +77,8 @@ jobs:
             os: ubuntu_18.04
           - port: 8806
             os: ubuntu_20.04
+          - port: 8807
+            os: debian_11
     # if: github.ref == 'refs/heads/master'
     steps:
       - uses: actions/checkout@v2
@@ -90,6 +92,7 @@ jobs:
       matrix:
         os:
           - debian_10
+          - debian_11
           - ubuntu_18.04
           - ubuntu_20.04
           - centos_7
