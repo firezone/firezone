@@ -22,7 +22,7 @@ include_recipe 'enterprise::runit'
 
 # These sysctl settings make the shared memory settings work for larger
 # instances
-%w( shmmax shmall ).each do |param|
+%w[shmmax shmall].each do |param|
   sysctl "kernel.#{param}" do
     value node['firezone']['postgresql'][param]
   end
