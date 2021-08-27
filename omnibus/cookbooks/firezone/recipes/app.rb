@@ -17,8 +17,6 @@
 # limitations under the License.
 #
 
-# Common configuration for Phoenix
-
 include_recipe 'firezone::config'
 include_recipe 'firezone::phoenix'
 
@@ -32,7 +30,8 @@ end
 file 'environment-variables' do
   path "#{node['firezone']['var_directory']}/etc/env"
   attributes = node['firezone'].merge(
-    'force_ssl' => node['firezone']['nginx']['force_ssl']
+    'force_ssl' => node['firezone']['nginx']['force_ssl'],
+    'mix_env' => 'prod'
   )
   content Firezone::Config.environment_variables_from(attributes)
   owner node['firezone']['user']

@@ -18,6 +18,8 @@
 # limitations under the License.
 #
 
+# Common configuration for Phoenix
+
 include_recipe 'firezone::config'
 include_recipe 'firezone::nginx'
 
