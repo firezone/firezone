@@ -50,7 +50,11 @@ bundle install --binstubs
 # Build omnibus package
 sudo mkdir -p /opt/firezone
 sudo chown -R ${USER} /opt/firezone
-CC=/usr/bin/gcc-10 bin/omnibus build firezone
+bin/omnibus build firezone
 
 sudo dpkg -i pkg/firezone*.deb
-sudo firezone-ctl reconfigure
+
+# Usually fails the first time
+sudo firezone-ctl reconfigure || true
+
+sudo firezone-ctl restart
