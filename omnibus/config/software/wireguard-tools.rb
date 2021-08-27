@@ -30,7 +30,12 @@ license "GPL-2.0"
 
 build do
   env = with_standard_compiler_flags(with_embedded_path).merge(
-    "PREFIX" => "#{install_dir}/embedded"
+    "PREFIX" => "#{install_dir}/embedded",
+    "WITH_BASHCOMPLETION" => "no",
+    "WITH_SYSTEMDUNITS" => "no",
+    "WITH_WGQUICK" => "no",
+    "SYSCONFDIR" => "/etc/firezone",
+    "RUNSTATEDIR" => "/var/opt/firezone/run"
   )
 
   make "-j #{workers}", env: env
