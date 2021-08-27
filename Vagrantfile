@@ -86,4 +86,11 @@ Vagrant.configure("2") do |config|
     ubuntu2004.vm.network "forwarded_port", guest: 8800, host: ENV.fetch("PORT", 8806)
     ubuntu2004.vm.provision "shell", path: ".ci/provision/ubuntu_20.04.sh", privileged: false
   end
+
+  config.vm.define "debian_11" do |debian11|
+    debian11.vm.box = "generic/debian11"
+    debian11.vm.box_url = "https://home.cloudfirenetwork.com/vb/debian11.box"
+    debian11.vm.network "forwarded_port", guest: 8800, host: ENV.fetch("PORT", 8807)
+    debian11.vm.provision "shell", path: ".ci/provision/debian_11.sh", privileged: false
+  end
 end
