@@ -45,26 +45,27 @@ defmodule FzHttp.MixProject do
   defp deps do
     [
       {:fz_common, in_umbrella: true},
-      {:phoenix, "~> 1.5"},
+      {:decimal, "~> 2.0"},
+      {:phoenix, "~> 1.5.12"},
       {:cloak, "~> 1.1"},
-      {:cloak_ecto, "~> 1.1"},
-      {:excoveralls, "~> 0.13", only: :test},
+      {:cloak_ecto, "~> 1.2"},
+      {:excoveralls, "~> 0.14", only: :test},
       {:floki, ">= 0.0.0", only: :test},
       {:argon2_elixir, "~> 2.0"},
       {:phoenix_pubsub, "~> 2.0"},
-      {:phoenix_ecto, "~> 4.0"},
-      {:ecto_sql, "~> 3.1"},
+      {:phoenix_ecto, "~> 4.4"},
+      {:ecto_sql, "~> 3.7"},
       {:ecto_network, "~> 1.3"},
-      {:inflex, "~> 2.0"},
-      {:plug, "~> 1.11"},
-      {:postgrex, ">= 0.0.0"},
-      {:phoenix_html, "~> 2.11"},
-      {:phoenix_live_reload, "~> 1.2", only: :dev},
-      {:phoenix_live_view, "~> 0.15"},
-      {:gettext, "~> 0.11"},
-      {:jason, "~> 1.0"},
-      {:plug_cowboy, "~> 2.1"},
-      {:credo, "~> 1.4", only: [:dev, :test], runtime: false}
+      {:inflex, "~> 2.1"},
+      {:plug, "~> 1.12"},
+      {:postgrex, "~> 0.15"},
+      {:phoenix_html, "~> 3.0"},
+      {:phoenix_live_reload, "~> 1.3", only: :dev},
+      {:phoenix_live_view, "~> 0.16"},
+      {:gettext, "~> 0.18"},
+      {:jason, "~> 1.2"},
+      {:plug_cowboy, "~> 2.5"},
+      {:credo, "~> 1.5", only: [:dev, :test], runtime: false}
     ]
   end
 
