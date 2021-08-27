@@ -21,8 +21,7 @@ sudo apt-get install -y -q \
   unzip \
   locales \
   net-tools \
-  systemd \
-  wireguard-dkms
+  systemd
 
 # Set locale
 sudo sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen
@@ -50,7 +49,7 @@ bundle install --binstubs
 # Build omnibus package
 sudo mkdir -p /opt/firezone
 sudo chown -R ${USER} /opt/firezone
-CC=/usr/bin/gcc-10 bin/omnibus build firezone
+bin/omnibus build firezone
 
 sudo dpkg -i pkg/firezone*.deb
 
