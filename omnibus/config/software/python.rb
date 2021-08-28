@@ -19,9 +19,8 @@ dependency "libffi"
 relative_path "Python-#{version}"
 
 build do
+  patch source: 'disable_nis.patch', target: 'Modules/Setup'
   env = with_standard_compiler_flags(with_embedded_path)
-
-  env["CC"] = "gcc"
 
   command "./configure --prefix=#{install_dir}/embedded", env: env
   make "-j #{workers}", env: env
