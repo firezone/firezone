@@ -7,9 +7,13 @@
 Vagrant.configure("2") do |config|
     # Github Actions MacOS hosts have 14 GB RAM and 3 CPU cores :-D
     config.vm.provider "virtualbox" do |virtualbox|
+      virtualbox.memory = 8_192
+
       if ENV["CI"]
         virtualbox.cpus = 3
-        virtualbox.memory = 8_192
+      else
+        # Be sure to only run one VM at a time on local dev server
+        virtualbox.cpus = 11
       end
     end
 
