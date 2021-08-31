@@ -42,9 +42,9 @@ defmodule FirezoneUmbrella.MixProject do
   # Run "mix help deps" for examples and options.
   defp deps do
     [
-      {:excoveralls, "~> 0.13", only: :test},
+      {:excoveralls, "~> 0.14", only: :test},
       {:mix_test_watch, "~> 1.0", only: :dev, runtime: false},
-      {:dialyxir, "~> 1.0", only: [:dev], runtime: false}
+      {:dialyxir, "~> 1.1", only: [:dev], runtime: false}
     ]
   end
 
