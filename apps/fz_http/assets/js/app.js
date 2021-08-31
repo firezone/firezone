@@ -37,3 +37,15 @@ liveSocket.connect()
 // >> liveSocket.enableLatencySim(1000)
 
 window.liveSocket = liveSocket
+
+
+// Notification dismiss
+document.addEventListener('DOMContentLoaded', () => {
+  (document.querySelectorAll('.notification .delete') || []).forEach(($delete) => {
+    const $notification = $delete.parentNode;
+
+    $delete.addEventListener('click', () => {
+      $notification.parentNode.removeChild($notification);
+    });
+  });
+});

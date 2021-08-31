@@ -19,6 +19,6 @@
   </div>
 <% end %>
 <!-- foobar -->
-<div class="container">
+<div>
   <%= @inner_content %>
 </div>

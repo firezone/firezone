@@ -19,7 +19,7 @@ defmodule FzHttpWeb.AccountLive.ShowTest do
 
       user = Users.get_user!(get_session(conn, :user_id))
 
-      assert html =~ "<h3 class=\"title\">Your Account</h3>"
+      assert html =~ "<h3 class=\"title\">Account</h3>"
       assert html =~ user.email
     end
   end
