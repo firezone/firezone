@@ -15,6 +15,8 @@ sudo yum install -y \
   findutils \
   unzip \
   net-tools \
+  cronie \
+  cronie-anacron \
   systemd
 
 # Set locale
