@@ -11,7 +11,7 @@ import css from "../css/app.scss"
 //
 import "phoenix_html"
 import {Socket} from "phoenix"
-import LiveSocket from "phoenix_live_view"
+import {LiveSocket} from "phoenix_live_view"
 import Hooks from "./hooks.js"
 
 // LiveView setup
