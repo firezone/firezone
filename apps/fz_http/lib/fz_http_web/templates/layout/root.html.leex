@@ -10,13 +10,13 @@
     <script defer phx-track-static type="text/javascript" src="<%= Routes.static_path(@conn, "/js/app.js") %>"></script>
 
     <!-- Favicon -->
-    <link rel="apple-touch-icon-precomposed" sizes="57x57" href="images/favicon-apple-touch-114.png">
-    <link rel="apple-touch-icon-precomposed" sizes="114x114" href="images/favicon-apple-touch-114.png">
-    <link rel="apple-touch-icon-precomposed" sizes="72x72" href="images/favicon-apple-touch-144.png">
-    <link rel="apple-touch-icon-precomposed" sizes="144x144" href="images/favicon-apple-touch-144.png">
-    <link rel="icon" type="image/vnd.microsoft.icon" sizes="32x32 48x48" href="images/favicon.ico">
-    <link rel="icon" sizes="128x128" href="images/favicon.icns">
-    <link rel="icon" href="images/favicon.png" type="image/x-icon">
+    <link rel="apple-touch-icon-precomposed" sizes="57x57" href="/images/favicon-apple-touch-114.png">
+    <link rel="apple-touch-icon-precomposed" sizes="114x114" href="/images/favicon-apple-touch-114.png">
+    <link rel="apple-touch-icon-precomposed" sizes="72x72" href="/images/favicon-apple-touch-144.png">
+    <link rel="apple-touch-icon-precomposed" sizes="144x144" href="/images/favicon-apple-touch-144.png">
+    <link rel="icon" type="image/vnd.microsoft.icon" sizes="32x32 48x48" href="/images/favicon.ico">
+    <link rel="icon" sizes="128x128" href="/images/favicon.icns">
+    <link rel="icon" href="/images/favicon.png" type="image/x-icon">
 
     <!-- Fonts -->
     <link rel="dns-prefetch" href="https://fonts.gstatic.com">
@@ -29,9 +29,6 @@
       <a class="navbar-item is-hidden-desktop jb-aside-mobile-toggle">
         <span class="icon"><i class="mdi mdi-forwardburger mdi-24px"></i></span>
       </a>
-      <div class="navbar-item has-control">
-        <div class="control"><input placeholder="Search everywhere..." class="input"></div>
-      </div>
     </div>
     <div class="navbar-brand is-right">
       <a class="navbar-item is-hidden-desktop jb-navbar-menu-toggle" data-target="navbar-menu">
@@ -42,25 +39,14 @@
       <div class="navbar-end">
         <div class="navbar-item has-dropdown has-dropdown-with-icons has-divider is-hoverable">
           <a class="navbar-link is-arrowless">
-            <span class="icon"><i class="mdi mdi-menu"></i></span>
-            <span>Sample Menu</span>
-            <span class="icon">
-            <i class="mdi mdi-chevron-down"></i>
-          </span>
+            <div class="is-user-name"><span><%= @current_user.email %></span></div>
+            <span class="icon"><i class="mdi mdi-chevron-down"></i></span>
           </a>
           <div class="navbar-dropdown">
-            <a href="profile.html" class="navbar-item">
-              <span class="icon"><i class="mdi mdi-account"></i></span>
-              <span>My Profile</span>
-            </a>
-            <a class="navbar-item">
+            <%= link(to: Routes.account_show_path(@conn, :show), class: "navbar-item") do %>
               <span class="icon"><i class="mdi mdi-settings"></i></span>
               <span>Settings</span>
-            </a>
-            <a class="navbar-item">
-              <span class="icon"><i class="mdi mdi-email"></i></span>
-              <span>Messages</span>
-            </a>
+            <% end %>
             <hr class="navbar-divider">
             <%= link(to: Routes.session_path(@conn, :delete), method: :delete, class: "navbar-item") do %>
               <span class="icon"><i class="mdi mdi-logout"></i></span>
@@ -68,42 +54,14 @@
             <% end %>
           </div>
         </div>
-        <div class="navbar-item has-dropdown has-dropdown-with-icons has-divider has-user-avatar is-hoverable">
-          <a class="navbar-link is-arrowless">
-            <div class="is-user-avatar">
-              <img src="https://avatars.dicebear.com/v2/initials/john-doe.svg" alt="John Doe">
-            </div>
-            <div class="is-user-name"><span>John Doe</span></div>
-            <span class="icon"><i class="mdi mdi-chevron-down"></i></span>
-          </a>
-          <div class="navbar-dropdown">
-            <a href="profile.html" class="navbar-item">
-              <span class="icon"><i class="mdi mdi-account"></i></span>
-              <span>My Profile</span>
-            </a>
-            <a class="navbar-item">
-              <span class="icon"><i class="mdi mdi-settings"></i></span>
-              <span>Settings</span>
-            </a>
-            <a class="navbar-item">
-              <span class="icon"><i class="mdi mdi-email"></i></span>
-              <span>Messages</span>
-            </a>
-            <hr class="navbar-divider">
-            <a class="navbar-item">
-              <span class="icon"><i class="mdi mdi-logout"></i></span>
-              <span>Log Out</span>
-            </a>
-          </div>
-        </div>
-        <a href="https://justboil.me/bulma-admin-template/one-html" title="About" class="navbar-item has-divider is-desktop-icon-only">
+        <a href="https://justboil.me/bulma-admin-template/one-html" title="Documentation" class="navbar-item has-divider is-desktop-icon-only">
           <span class="icon"><i class="mdi mdi-help-circle-outline"></i></span>
-          <span>About</span>
+          <span>Documentation</span>
         </a>
-        <a title="Log out" class="navbar-item is-desktop-icon-only">
+        <%= link(to: Routes.session_path(@conn, :delete), method: :delete, class: "navbar-item is-desktop-icon-only") do %>
           <span class="icon"><i class="mdi mdi-logout"></i></span>
           <span>Log out</span>
-        </a>
+        <% end %>
       </div>
     </div>
   </nav>
@@ -131,13 +89,13 @@
       <ul class="menu-list">
         <li>
           <%= link(to: Routes.device_index_path(@conn, :index), class: nav_class(@conn.request_path, :devices)) do %>
-            <span class="icon has-update-mark"><i class="mdi mdi-table"></i></span>
+            <span class="icon has-update-mark"><i class="mdi mdi-laptop-windows"></i></span>
             <span class="menu-item-label">Devices</span>
           <% end %>
         </li>
         <li>
           <%= link(to: Routes.rule_index_path(@conn, :index), class: nav_class(@conn.request_path, :rules)) do %>
-            <span class="icon"><i class="mdi mdi-square-edit-outline"></i></span>
+            <span class="icon"><i class="mdi mdi-plus-network"></i></span>
             <span class="menu-item-label">Rules</span>
           <% end %>
         </li>
@@ -146,35 +104,13 @@
       <ul class="menu-list">
         <li>
           <%= link(to: Routes.account_show_path(@conn, :show), class: nav_class(@conn.request_path, :account)) do %>
-            <span class="icon"><i class="mdi mdi-help-circle"></i></span>
+            <span class="icon"><i class="mdi mdi-account"></i></span>
             <span class="menu-item-label">Account</span>
           <% end %>
         </li>
       </ul>
     </div>
   </aside>
-  <section class="section is-title-bar">
-    <div class="level">
-      <div class="level-left">
-        <div class="level-item">
-          <ul>
-            <li>Admin</li>
-            <li><%= @page_heading %></li>
-          </ul>
-        </div>
-      </div>
-      <div class="level-right">
-        <div class="level-item">
-          <div class="buttons is-right">
-            <a href="https://admin-one-html.justboil.me/" target="_blank" class="button is-primary">
-              <span class="icon"><i class="mdi mdi-credit-card-outline"></i></span>
-              <span>Premium Demo</span>
-            </a>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
   <section class="hero is-hero-bar">
     <div class="hero-body">
       <div class="level">

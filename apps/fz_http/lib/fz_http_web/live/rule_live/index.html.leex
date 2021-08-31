@@ -1,13 +1,18 @@
-<h1>Rules</h1>
-<%= live_component(
-    @socket,
-    FzHttpWeb.RuleLive.RuleListComponent,
-    title: "Allowlist",
-    id: :allowlist,
-    current_user: @current_user) %>
-<%= live_component(
-    @socket,
-    FzHttpWeb.RuleLive.RuleListComponent,
-    title: "Denylist",
-    id: :denylist,
-    current_user: @current_user) %>
+<div class="columns">
+  <div class="column">
+    <%= live_component(
+        @socket,
+        FzHttpWeb.RuleLive.RuleListComponent,
+        title: "Allowlist",
+        id: :allowlist,
+        current_user: @current_user) %>
+  </div>
+  <div class="column">
+    <%= live_component(
+        @socket,
+        FzHttpWeb.RuleLive.RuleListComponent,
+        title: "Denylist",
+        id: :denylist,
+        current_user: @current_user) %>
+  </div>
+</div>
