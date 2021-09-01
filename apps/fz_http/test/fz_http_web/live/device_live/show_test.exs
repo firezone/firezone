@@ -10,7 +10,8 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
     test "shows device details", %{authed_conn: conn, device: device} do
       path = Routes.device_show_path(conn, :show, device)
       {:ok, _view, html} = live(conn, path)
-      assert html =~ "<h3 class=\"title\">#{device.name}</h3>"
+      assert html =~ "#{device.name}"
+      assert html =~ "Device Details"
     end
 
     test "opens modal", %{authed_conn: conn, device: device} do
