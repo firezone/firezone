@@ -11,7 +11,7 @@ defmodule FzHttpWeb.AccountLive.Show do
     {:ok,
      socket
      |> assign_defaults(params, session, &load_data/2)
-     |> assign(:page_heading, "Accounts")}
+     |> assign(:page_heading, "Account")}
   end
 
   @impl true
