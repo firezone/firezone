@@ -7,6 +7,7 @@ defmodule FzHttpWeb.DeviceController do
   plug :redirect_unauthenticated
 
   def index(conn, _params) do
-    render(conn, "index.html", nav_active: "Devices", page_heading: "Devices")
+    conn
+    |> redirect(to: Routes.device_index_path(conn, :index))
   end
 end

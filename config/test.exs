@@ -24,7 +24,7 @@ defmodule DBConfig do
 end
 
 # Configure your database
-db_url = System.get_env("FZ_DATABASE_URL")
+db_url = System.get_env("DATABASE_URL")
 config :fz_http, FzHttp.Repo, DBConfig.config(db_url)
 
 # We don't run a server during test. If one is required,
