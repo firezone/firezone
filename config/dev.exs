@@ -32,9 +32,11 @@ config :fz_http, FzHttpWeb.Endpoint,
   ]
 
 config :fz_vpn,
+  wg_path: "wg",
   cli: FzVpn.CLI.Live
 
 config :fz_wall,
+  nft_path: "nft",
   cli: FzWall.CLI.Live
 
 # ## SSL Support

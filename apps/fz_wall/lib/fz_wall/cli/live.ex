@@ -58,7 +58,7 @@ defmodule FzWall.CLI.Live do
   Deletes iptables rule.
   """
   def delete_rule({4, s, d, :deny}) do
-    exec!("iptables -D firezone -s #{s} -d #{d} -j DROP")
+    exec!("#{nft()} -D firezone -s #{s} -d #{d} -j DROP")
   end
 
   def delete_rule({4, s, d, :allow}) do
@@ -109,5 +109,9 @@ defmodule FzWall.CLI.Live do
         # XXX: Figure out what it means to have macOS as a host?
         "en0"
     end
+  end
+
+  defp nft do
+    Application.fetch_env!(:fz_wall, :nft_path)
   end
 end

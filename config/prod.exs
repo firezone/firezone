@@ -10,10 +10,12 @@ import Config
 # which you should run after static files are built and
 # before starting your production server.
 config :fz_vpn,
+  wg_path: "wg",
   cli: FzVpn.CLI.Live,
   server_process_opts: [name: {:global, :fz_vpn_server}]
 
 config :fz_wall,
+  nft_path: "nft",
   cli: FzWall.CLI.Live,
   server_process_opts: [name: {:global, :fz_wall_server}]
 

@@ -205,6 +205,8 @@ class Firezone
 
     def self.app_env(attributes)
       env = {
+        'WG_PATH' => "#{attributes['install_directory']}/embedded/bin/wg",
+        'NFT_PATH' => "#{attributes['install_directory']}/embedded/sbin/nft",
         'MIX_ENV' => 'prod',
         'DATABASE_NAME' => attributes['database']['name'],
         'DATABASE_USER' => attributes['database']['user'],
