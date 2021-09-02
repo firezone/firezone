@@ -1,76 +1,80 @@
 defmodule FzWall.CLI.Live do
   @moduledoc """
-  A low-level module for interacting with the iptables CLI.
+  A low-level module for interacting with the nftables CLI.
 
-  Rules operate on the iptables forward chain to deny outgoing packets to
+  Rules operate on the nftables forward chain to deny outgoing packets to
   specified IP addresses, ports, and protocols from FireZone device IPs.
-
-  Note that iptables chains and rules are mutually exclusive between IPv4 and IPv6.
   """
 
   import FzCommon.CLI
+  require Logger
 
+  @table_name "firezone"
   @egress_interface_cmd "route | grep '^default' | grep -o '[^ ]*$'"
-  @setup_chain_cmd "iptables -N firezone && iptables6 -N firezone"
-  @teardown_chain_cmd "iptables -F firezone &&\
-                       iptables -X firezone &&\
-                       iptables6 -F firezone &&\
-                       iptables6 -X firezone"
 
   @doc """
-  Sets up the FireZone iptables chain.
+  Sets up the FireZone nftables table, base chain, and counts traffic
+  "forward" is the Netfilter hook we want to tie into.
   """
   def setup do
-    exec!(@setup_chain_cmd)
+    exec!("#{nft()} add table ip #{@table_name}")
+
+    exec!(
+      "#{nft()} 'add chain ip #{@table_name} forward { type filter hook forward priority 0 ; }'"
+    )
+
+    exec!("#{nft()} 'add rule ip #{@table_name} forward counter accept'")
   end
 
   @doc """
-  Flushes and removes the FireZone iptables chain.
+  Flushes and removes the FireZone nftables table and base chain.
   """
   def teardown do
-    exec!(@teardown_chain_cmd)
+    exec!("#{nft()} delete table ip #{@table_name}")
   end
 
   @doc """
-  Adds iptables rule.
+  Adds nftables rule.
   """
-  def add_rule({4, s, d, :deny}) do
-    exec!("iptables -A firezone -s #{s} -d #{d} -j DROP")
-  end
-
-  def add_rule({4, d, :deny}) do
-    exec!("iptables -A firezone -d #{d} -j DROP")
-  end
-
-  def add_rule({4, s, d, :allow}) do
-    exec!("iptables -A firezone -s #{s} -d #{d} -j ACCEPT")
-  end
-
-  def add_rule({6, s, d, :deny}) do
-    exec!("iptables6 -A firezone -s #{s} -d #{d} -j DROP")
-  end
-
-  def add_rule({6, s, d, :allow}) do
-    exec!("iptables6 -A firezone -s #{s} -d #{d} -j ACCEPT")
+  def add_rule({dest, action}) do
+    exec!("#{nft()} 'add rule ip #{@table_name} forward ip daddr #{dest} #{action}'")
   end
 
   @doc """
-  Deletes iptables rule.
+  Deletes nftables rule.
   """
-  def delete_rule({4, s, d, :deny}) do
-    exec!("#{nft()} -D firezone -s #{s} -d #{d} -j DROP")
+  def delete_rule_spec({dest, action} = rule_spec) do
+    case get_rule_handle("ip daddr #{dest} #{action}") do
+      {:ok, handle_num} ->
+        exec!("#{nft()} delete rule #{@table_name} forward handle #{handle_num}")
+
+      {:error, cmd_output} ->
+        raise("""
+          ######################################################
+          Could not get handle to delete rule!
+          Rule spec: #{rule_spec}
+
+          Current chain:
+          #{cmd_output}
+          ######################################################
+        """)
+    end
   end
 
-  def delete_rule({4, s, d, :allow}) do
-    exec!("iptables -D firezone -s #{s} -d #{d} -j ACCEPT")
+  def get_rule_handle(rule_str) do
+    cmd_output = exec!("#{nft()} list table #{@table_name}")
+
+    case rule_handle_regex(~r/#{rule_str}.*# handle (?<num>\d+)/, cmd_output) do
+      [handle] ->
+        {:ok, handle}
+
+      [] ->
+        {:error, cmd_output}
+    end
   end
 
-  def delete_rule({6, s, d, :deny}) do
-    exec!("iptables6 -D firezone -s #{s} -d #{d} -j DROP")
-  end
-
-  def delete_rule({6, s, d, :allow}) do
-    exec!("iptables6 -D firezone -s #{s} -d #{d} -j ACCEPT")
+  defp rule_handle_regex(regex, cmd_output) do
+    Regex.run(regex, cmd_output, capture: :all_names)
   end
 
   def restore(_rules) do

@@ -2,10 +2,10 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
   use FzHttpWeb.ConnCase, async: true
 
   describe "allowlist" do
-    setup :create_allow_rule
+    setup :create_accept_rule
 
     @destination "1.2.3.4"
-    @allow_params %{"rule" => %{"action" => "allow", "destination" => @destination}}
+    @allow_params %{"rule" => %{"action" => "accept", "destination" => @destination}}
 
     test "adds to allowlist", %{authed_conn: conn} do
       path = Routes.rule_index_path(conn, :index)
@@ -13,7 +13,7 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
 
       test_view =
         view
-        |> form("#allow-form")
+        |> form("#accept-form")
         |> render_submit(@allow_params)
 
       assert test_view =~ @destination
@@ -25,11 +25,11 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
 
       test_view =
         view
-        |> form("#allow-form")
+        |> form("#accept-form")
         |> render_submit(%{
           "rule" => %{
             "destination" => "not a valid destination",
-            "action" => "allow"
+            "action" => "accept"
           }
         })
 
@@ -50,10 +50,10 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
   end
 
   describe "denylist" do
-    setup :create_deny_rule
+    setup :create_drop_rule
 
     @destination "1.2.3.4"
-    @deny_params %{"rule" => %{"action" => "deny", "destination" => @destination}}
+    @deny_params %{"rule" => %{"action" => "drop", "destination" => @destination}}
 
     test "adds to denylist", %{authed_conn: conn, rule: _rule} do
       path = Routes.rule_index_path(conn, :index)
@@ -61,7 +61,7 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
 
       test_view =
         view
-        |> form("#deny-form")
+        |> form("#drop-form")
         |> render_submit(@deny_params)
 
       assert test_view =~ @destination
@@ -73,11 +73,11 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
 
       test_view =
         view
-        |> form("#deny-form")
+        |> form("#drop-form")
         |> render_submit(%{
           "rule" => %{
             "destination" => "not a valid destination",
-            "action" => "deny"
+            "action" => "drop"
           }
         })
 
