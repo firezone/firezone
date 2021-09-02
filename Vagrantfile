@@ -43,18 +43,6 @@ Vagrant.configure("2") do |config|
     debian10.vm.box = "generic/debian10"
     debian10.vm.box_url = "https://home.cloudfirenetwork.com/vb/debian10.box"
     debian10.vm.network "forwarded_port", guest: 8800, host: ENV.fetch("PORT", 8802)
-    debian10.vm.provision "shell", reboot: true, inline: <<~SHELL
-      export DEBIAN_FRONTEND=noninteractive
-
-      sudo apt-get remove -y --purge apt-listchanges
-
-      # Add Backports repo
-      sudo bash -c 'echo "deb http://deb.debian.org/debian buster-backports main" > /etc/apt/sources.list.d/backports.list'
-      sudo apt-get -q update
-
-      # Install newer kernel
-      sudo apt-get -y -t buster-backports dist-upgrade
-    SHELL
     debian10.vm.provision "shell", path: ".ci/provision/debian_10.sh", privileged: false
   end
 
