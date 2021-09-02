@@ -21,8 +21,7 @@ sudo apt-get install -y -q \
   unzip \
   locales \
   net-tools \
-  systemd \
-  wireguard-dkms
+  systemd
 
 # Set locale
 sudo sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen
