@@ -1,7 +1,7 @@
 defmodule FzHttp.Repo.Migrations.CreateRules do
   use Ecto.Migration
 
-  @create_query "CREATE TYPE action_enum AS ENUM ('deny', 'allow')"
+  @create_query "CREATE TYPE action_enum AS ENUM ('drop', 'accept')"
   @drop_query "DROP TYPE action_enum"
 
   def change do
@@ -9,7 +9,7 @@ defmodule FzHttp.Repo.Migrations.CreateRules do
 
     create table(:rules) do
       add :destination, :inet, null: false
-      add :action, :action_enum, default: "deny", null: false
+      add :action, :action_enum, default: "drop", null: false
 
       timestamps(type: :utc_datetime_usec)
     end
