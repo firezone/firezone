@@ -42,7 +42,7 @@ defmodule FzHttpWeb.RuleLive.RuleListComponent do
     end
   end
 
-  defp action(id) do
+  def action(id) do
     case id do
       :allowlist ->
         :accept

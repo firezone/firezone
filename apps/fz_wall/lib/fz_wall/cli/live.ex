@@ -17,68 +17,79 @@ defmodule FzWall.CLI.Live do
   "forward" is the Netfilter hook we want to tie into.
   """
   def setup do
-    exec!("#{nft()} add table ip #{@table_name}")
+    # Start with a blank slate
+    teardown()
 
-    exec!(
-      "#{nft()} 'add chain ip #{@table_name} forward { type filter hook forward priority 0 ; }'"
-    )
+    for protocol <- ["ip", "ip6"] do
+      exec!("#{nft()} add table #{protocol} #{@table_name}")
 
-    exec!("#{nft()} 'add rule ip #{@table_name} forward counter accept'")
+      exec!(
+        "#{nft()} 'add chain #{protocol} #{@table_name} forward { type filter hook forward priority 0 ; }'"
+      )
+
+      exec!("#{nft()} 'add rule #{protocol} #{@table_name} forward counter accept'")
+    end
   end
 
   @doc """
   Flushes and removes the FireZone nftables table and base chain.
   """
   def teardown do
-    exec!("#{nft()} delete table ip #{@table_name}")
+    for protocol <- ["ip", "ip6"] do
+      exec!("#{nft()} delete table #{protocol} #{@table_name}")
+    end
   end
 
   @doc """
   Adds nftables rule.
   """
-  def add_rule({dest, action}) do
-    exec!("#{nft()} 'add rule ip #{@table_name} forward ip daddr #{dest} #{action}'")
+  def add_rule({proto, dest, action}) do
+    exec!("""
+      #{nft()} 'add rule #{proto} #{@table_name} forward\
+      #{proto} daddr #{standardized_dest(dest)} #{action}'
+    """)
+  end
+
+  @doc """
+  List currently loaded rules.
+  """
+  def list_rules do
+    exec!("#{nft()} -a list table ip firezone")
+    exec!("#{nft()} -a list table ip6 firezone")
   end
 
   @doc """
   Deletes nftables rule.
   """
-  def delete_rule_spec({dest, action} = rule_spec) do
-    case get_rule_handle("ip daddr #{dest} #{action}") do
-      {:ok, handle_num} ->
-        exec!("#{nft()} delete rule #{@table_name} forward handle #{handle_num}")
+  def delete_rule({proto, dest, action}) do
+    rule_str = "#{proto} daddr #{standardized_dest(dest)} #{action}"
+    rules = exec!("#{nft()} -a list table #{proto} #{@table_name}")
 
-      {:error, cmd_output} ->
+    case rule_handle_regex(~r/#{rule_str}.*# handle (?<num>\d+)/, rules) do
+      nil ->
         raise("""
           ######################################################
           Could not get handle to delete rule!
-          Rule spec: #{rule_spec}
+          Rule spec: #{rule_str}
 
-          Current chain:
-          #{cmd_output}
+          Current rules:
+          #{rules}
           ######################################################
         """)
-    end
-  end
 
-  def get_rule_handle(rule_str) do
-    cmd_output = exec!("#{nft()} list table #{@table_name}")
-
-    case rule_handle_regex(~r/#{rule_str}.*# handle (?<num>\d+)/, cmd_output) do
       [handle] ->
-        {:ok, handle}
-
-      [] ->
-        {:error, cmd_output}
+        exec!("#{nft()} delete rule #{proto} #{@table_name} forward handle #{handle}")
     end
   end
 
-  defp rule_handle_regex(regex, cmd_output) do
-    Regex.run(regex, cmd_output, capture: :all_names)
-  end
-
-  def restore(_rules) do
-    # XXX: Implement me
+  @doc """
+  Restores rules.
+  """
+  def restore(rules) do
+    # XXX: Priority?
+    for rule_spec <- rules do
+      add_rule(rule_spec)
+    end
   end
 
   def egress_address do
@@ -100,6 +111,25 @@ defmodule FzWall.CLI.Live do
       _ ->
         raise "OS not supported (yet)"
     end
+  end
+
+  @doc """
+  Standardized IP addresses and CIDR ranges so that we can
+  parse them out of the nftables rulesets.
+  """
+  def standardized_dest(dest) do
+    if String.contains?(dest, "/") do
+      dest
+      |> InetCidr.parse()
+      |> InetCidr.to_string()
+    else
+      {:ok, addr} = dest |> String.to_charlist() |> :inet.parse_address()
+      :inet.ntoa(addr) |> List.to_string()
+    end
+  end
+
+  defp rule_handle_regex(regex, rules) do
+    Regex.run(regex, rules, capture: :all_names)
   end
 
   defp egress_interface do
