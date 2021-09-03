@@ -25,7 +25,7 @@ sudo apt-get install -y -q \
 
 # Bug in the latest libcurl3-gnutls causes git to fail.
 # See https://superuser.com/questions/1642858/git-on-debian-10-backports-throws-fatal-unable-to-access-https-github-com-us
-sudo apt-get install libcurl3-gnutls=7.64.0-4+deb10u2
+sudo apt-get install -y -q libcurl3-gnutls=7.64.0-4+deb10u2
 
 # Set locale
 sudo sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen
