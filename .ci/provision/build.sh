@@ -2,8 +2,8 @@
 set -ex
 
 # Build omnibus package
+. $HOME/.asdf/asdf.sh
 cd /vagrant
-asdf install
 cd omnibus
 sudo mkdir -p /opt/firezone
 sudo chown -R ${USER} /opt/firezone
