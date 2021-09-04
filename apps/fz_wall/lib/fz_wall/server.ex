@@ -52,11 +52,4 @@ defmodule FzWall.Server do
   def handle_call(:teardown, _from, rules) do
     {:reply, :ok, rules}
   end
-
-  @impl true
-  def handle_call(:vpn_endpoint, _from, rules) do
-    egress_address = cli().egress_address()
-    listen_port = Application.fetch_env!(:fz_vpn, :wireguard_listen_port)
-    {:reply, {:ok, "#{egress_address}:#{listen_port}"}, rules}
-  end
 end
