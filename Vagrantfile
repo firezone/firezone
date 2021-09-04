@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 # -*- mode: ruby -*-
 # vi: set ft=ruby :
 
@@ -29,7 +27,7 @@ Vagrant.configure("2") do |config|
     centos7.vm.provision "shell", path: ".ci/provision/centos_7.sh", privileged: false
 
     # Set up ruby
-    centos7.vm.privision "shell", path: ".ci/provision/ruby.sh", privileged: false
+    centos7.vm.provision "shell", path: ".ci/provision/ruby.sh", privileged: false
 
     # Build FireZone
     centos7.vm.provision "shell", path: ".ci/provision/build.sh", privileged: false
@@ -51,7 +49,7 @@ Vagrant.configure("2") do |config|
     centos8.vm.provision "shell", path: ".ci/provision/centos_8.sh", privileged: false
 
     # Set up ruby
-    centos8.vm.privision "shell", path: ".ci/provision/ruby.sh", privileged: false
+    centos8.vm.provision "shell", path: ".ci/provision/ruby.sh", privileged: false
 
     # Build FireZone
     centos8.vm.provision "shell", path: ".ci/provision/build.sh", privileged: false
@@ -67,7 +65,7 @@ Vagrant.configure("2") do |config|
     debian10.vm.provision "shell", path: ".ci/provision/debian_10.sh", privileged: false
 
     # Set up ruby
-    debian10.vm.privision "shell", path: ".ci/provision/ruby.sh", privileged: false
+    debian10.vm.provision "shell", path: ".ci/provision/ruby.sh", privileged: false
 
     # Build FireZone
     debian10.vm.provision "shell", path: ".ci/provision/build.sh", privileged: false
@@ -95,7 +93,7 @@ Vagrant.configure("2") do |config|
     fedora33.vm.provision "shell", path: ".ci/provision/fedora_33.sh", privileged: false
 
     # Set up ruby
-    fedora33.vm.privision "shell", path: ".ci/provision/ruby.sh", privileged: false
+    fedora33.vm.provision "shell", path: ".ci/provision/ruby.sh", privileged: false
 
     # Build FireZone
     fedora33.vm.provision "shell", path: ".ci/provision/build.sh", privileged: false
@@ -111,7 +109,7 @@ Vagrant.configure("2") do |config|
     fedora34.vm.provision "shell", path: ".ci/provision/fedora_34.sh", privileged: false
 
     # Set up ruby
-    fedora34.vm.privision "shell", path: ".ci/provision/ruby.sh", privileged: false
+    fedora34.vm.provision "shell", path: ".ci/provision/ruby.sh", privileged: false
 
     # Build FireZone
     fedora34.vm.provision "shell", path: ".ci/provision/build.sh", privileged: false
@@ -127,7 +125,7 @@ Vagrant.configure("2") do |config|
     ubuntu1804.vm.provision "shell", path: ".ci/provision/ubuntu_18.04.sh", privileged: false
 
     # Set up ruby
-    ubuntu1804.vm.privision "shell", path: ".ci/provision/ruby.sh", privileged: false
+    ubuntu1804.vm.provision "shell", path: ".ci/provision/ruby.sh", privileged: false
 
     # Build FireZone
     ubuntu1804.vm.provision "shell", path: ".ci/provision/build.sh", privileged: false
@@ -150,7 +148,7 @@ Vagrant.configure("2") do |config|
     ubuntu2004.vm.provision "shell", path: ".ci/provision/ubuntu_20.04.sh", privileged: false
 
     # Set up ruby
-    ubuntu2004.vm.privision "shell", path: ".ci/provision/ruby.sh", privileged: false
+    ubuntu2004.vm.provision "shell", path: ".ci/provision/ruby.sh", privileged: false
 
     # Build FireZone
     ubuntu2004.vm.provision "shell", path: ".ci/provision/build.sh", privileged: false
@@ -166,7 +164,7 @@ Vagrant.configure("2") do |config|
     debian11.vm.provision "shell", path: ".ci/provision/debian_11.sh", privileged: false
 
     # Set up ruby
-    debian11.vm.privision "shell", path: ".ci/provision/ruby.sh", privileged: false
+    debian11.vm.provision "shell", path: ".ci/provision/ruby.sh", privileged: false
 
     # Build FireZone
     debian11.vm.provision "shell", path: ".ci/provision/build.sh", privileged: false
