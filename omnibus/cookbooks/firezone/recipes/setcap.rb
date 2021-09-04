@@ -18,6 +18,7 @@ file nft_path do
   mode '0700'
   owner node['firezone']['user']
   group node['firezone']['group']
+  action :touch
 end
 
 file wg_path do
@@ -25,6 +26,7 @@ file wg_path do
   mode '0700'
   owner node['firezone']['user']
   group node['firezone']['group']
+  action :touch
 end
 
 # setcap must be performed after the file resource above otherwise

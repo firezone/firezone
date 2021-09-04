@@ -51,20 +51,11 @@ defmodule FzHttpWeb.DeviceLive.Show do
         socket,
         device: device,
         page_heading: device.name,
-        vpn_endpoint: vpn_endpoint()
+        wireguard_endpoint_ip: Application.fetch_env!(:fz_vpn, :wireguard_endpoint_ip),
+        wireguard_port: Application.fetch_env!(:fz_vpn, :wireguard_port)
       )
     else
       not_authorized(socket)
-    end
-  end
-
-  defp vpn_endpoint do
-    case GenServer.call(:global.whereis_name(:fz_wall_server), :vpn_endpoint) do
-      {:ok, endpoint} ->
-        endpoint
-
-      _ ->
-        raise "VPN Server couldn't be contacted"
     end
   end
 end
