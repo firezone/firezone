@@ -15,24 +15,32 @@ defmodule FzWall.CLI.Live do
   @doc """
   Sets up the FireZone nftables table, base chain, and counts traffic
   "forward" is the Netfilter hook we want to tie into.
+
+  This is idempotent.
   """
   def setup do
-    # Start with a blank slate
-    teardown()
-
     for protocol <- ["ip", "ip6"] do
       exec!("#{nft()} add table #{protocol} #{@table_name}")
 
-      exec!(
-        "#{nft()} 'add chain #{protocol} #{@table_name} forward { type filter hook forward priority 0 ; }'"
-      )
+      exec!("""
+        #{nft()} 'add chain #{protocol} #{@table_name} forward \
+          { type filter hook forward priority 0 ; }'
+      """)
 
+      exec!("""
+        #{nft()} 'add chain #{protocol} firezone postrouting \
+          { type nat hook postrouting priority 100 ; }'
+      """)
+
+      exec!("#{nft()} add rule #{protocol} firezone postrouting masquerade random,persistent")
       exec!("#{nft()} 'add rule #{protocol} #{@table_name} forward counter accept'")
     end
   end
 
   @doc """
   Flushes and removes the FireZone nftables table and base chain.
+
+  This *will* interrupt current connections!
   """
   def teardown do
     for protocol <- ["ip", "ip6"] do
