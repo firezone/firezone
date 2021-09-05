@@ -26,10 +26,6 @@ defmodule FzVpn.Config do
   end
 
   def listen_port do
-    Application.get_env(:fz_vpn, :wireguard_listen_port)
-  end
-
-  def listen_address do
-    Application.get_env(:fz_vpn, :wireguard_listen_address)
+    Application.get_env(:fz_vpn, :wireguard_port)
   end
 end

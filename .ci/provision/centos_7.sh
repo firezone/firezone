@@ -1,11 +1,6 @@
 #!/bin/bash
 set -ex
 
-# CentOS 7 comes with GCC 4.8.5 which does not fully support C++14, so we need
-# a newer toolchain.
-sudo yum install -y centos-release-scl
-sudo yum install -y devtoolset-9
-source /opt/rh/devtoolset-9/enable
 
 # Install prerequisites
 sudo yum install -y \
@@ -31,30 +26,9 @@ sudo yum install -y epel-release elrepo-release
 sudo yum install -y yum-plugin-elrepo
 sudo yum install -y kmod-wireguard
 
-# Install asdf ruby
-if [ ! -d $HOME/.asdf ]; then
-  git clone --depth 1 https://github.com/asdf-vm/asdf.git $HOME/.asdf
-fi
-grep -qxF '. $HOME/.asdf/asdf.sh' $HOME/.bashrc || echo '. $HOME/.asdf/asdf.sh' >> $HOME/.bashrc
-grep -qxF '. $HOME/.asdf/completions/asdf.bash' $HOME/.bashrc || echo '. $HOME/.asdf/completions/asdf.bash' >> $HOME/.bashrc
-. $HOME/.asdf/asdf.sh
-asdf list ruby || asdf plugin-add ruby
-cd /vagrant
-asdf install
-
-# Install omnibus
-cd omnibus
-gem install bundler
-bundle install --binstubs
-
-# Build omnibus package
-sudo mkdir -p /opt/firezone
-sudo chown -R ${USER} /opt/firezone
-bin/omnibus build firezone
-
-sudo rpm -i pkg/firezone*.rpm
-
-# Usually fails the first time
-sudo firezone-ctl reconfigure || true
-
-sudo firezone-ctl restart
+# CentOS 7 comes with GCC 4.8.5 which does not fully support C++14, so we need
+# a newer toolchain.
+sudo yum install -y centos-release-scl
+sudo yum install -y devtoolset-9
+echo 'source /opt/rh/devtoolset-9/enable' >> ~/.profile
+echo 'source /opt/rh/devtoolset-9/enable' >> ~/.bash_profile

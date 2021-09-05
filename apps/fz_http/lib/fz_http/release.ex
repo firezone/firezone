@@ -4,6 +4,7 @@ defmodule FzHttp.Release do
   """
 
   alias FzHttp.{Repo, Users, Users.User}
+  import Ecto.Query, only: [from: 2]
   require Logger
 
   @app :fz_http
@@ -27,16 +28,16 @@ defmodule FzHttp.Release do
 
   # App should be loaded at this point; call with `rpc` not `eval`
   def create_admin_user do
-    unless Repo.exists?(User) do
-      password = secret(12)
+    load_app()
 
+    if Repo.exists?(from u in User, where: u.email == ^email()) do
+      change_password(email(), default_password())
+    else
       Users.create_user(
         email: email(),
-        password: password,
-        password_confirmation: password
+        password: default_password(),
+        password_confirmation: default_password()
       )
-
-      log_email_password(email(), password)
     end
   end
 
@@ -67,21 +68,7 @@ defmodule FzHttp.Release do
     Application.load(@app)
   end
 
-  defp log_email_password(email, password) do
-    Logger.info(
-      "================================================================================="
-    )
-
-    Logger.info(
-      "FireZone user created! Save this information because it will NOT be shown again."
-    )
-
-    Logger.info("Use this to log into the Web UI at #{FzHttpWeb.Endpoint.url()}.")
-    Logger.info("Email: #{email}")
-    Logger.info("Password: #{password}")
-
-    Logger.info(
-      "================================================================================="
-    )
+  defp default_password do
+    Application.fetch_env!(@app, :default_admin_password)
   end
 end

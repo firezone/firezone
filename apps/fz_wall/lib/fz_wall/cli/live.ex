@@ -1,80 +1,67 @@
 defmodule FzWall.CLI.Live do
   @moduledoc """
-  A low-level module for interacting with the iptables CLI.
+  A low-level module for interacting with the nftables CLI.
 
-  Rules operate on the iptables forward chain to deny outgoing packets to
+  Rules operate on the nftables forward chain to deny outgoing packets to
   specified IP addresses, ports, and protocols from FireZone device IPs.
-
-  Note that iptables chains and rules are mutually exclusive between IPv4 and IPv6.
   """
 
   import FzCommon.CLI
+  require Logger
 
+  @table_name "firezone"
   @egress_interface_cmd "route | grep '^default' | grep -o '[^ ]*$'"
-  @setup_chain_cmd "iptables -N firezone && iptables6 -N firezone"
-  @teardown_chain_cmd "iptables -F firezone &&\
-                       iptables -X firezone &&\
-                       iptables6 -F firezone &&\
-                       iptables6 -X firezone"
 
   @doc """
-  Sets up the FireZone iptables chain.
+  Adds nftables rule.
   """
-  def setup do
-    exec!(@setup_chain_cmd)
+  def add_rule({proto, dest, action}) do
+    exec!("""
+      #{nft()} 'add rule #{proto} #{@table_name} forward\
+      #{proto} daddr #{standardized_dest(dest)} #{action}'
+    """)
   end
 
   @doc """
-  Flushes and removes the FireZone iptables chain.
+  List currently loaded rules.
   """
-  def teardown do
-    exec!(@teardown_chain_cmd)
+  def list_rules do
+    exec!("#{nft()} -a list table ip firezone")
+    exec!("#{nft()} -a list table ip6 firezone")
   end
 
   @doc """
-  Adds iptables rule.
+  Deletes nftables rule.
   """
-  def add_rule({4, s, d, :deny}) do
-    exec!("iptables -A firezone -s #{s} -d #{d} -j DROP")
-  end
+  def delete_rule({proto, dest, action}) do
+    rule_str = "#{proto} daddr #{standardized_dest(dest)} #{action}"
+    rules = exec!("#{nft()} -a list table #{proto} #{@table_name}")
 
-  def add_rule({4, d, :deny}) do
-    exec!("iptables -A firezone -d #{d} -j DROP")
-  end
+    case rule_handle_regex(~r/#{rule_str}.*# handle (?<num>\d+)/, rules) do
+      nil ->
+        raise("""
+          ######################################################
+          Could not get handle to delete rule!
+          Rule spec: #{rule_str}
 
-  def add_rule({4, s, d, :allow}) do
-    exec!("iptables -A firezone -s #{s} -d #{d} -j ACCEPT")
-  end
+          Current rules:
+          #{rules}
+          ######################################################
+        """)
 
-  def add_rule({6, s, d, :deny}) do
-    exec!("iptables6 -A firezone -s #{s} -d #{d} -j DROP")
-  end
-
-  def add_rule({6, s, d, :allow}) do
-    exec!("iptables6 -A firezone -s #{s} -d #{d} -j ACCEPT")
+      [handle] ->
+        exec!("#{nft()} delete rule #{proto} #{@table_name} forward handle #{handle}")
+    end
   end
 
   @doc """
-  Deletes iptables rule.
+  Restores rules.
   """
-  def delete_rule({4, s, d, :deny}) do
-    exec!("iptables -D firezone -s #{s} -d #{d} -j DROP")
-  end
-
-  def delete_rule({4, s, d, :allow}) do
-    exec!("iptables -D firezone -s #{s} -d #{d} -j ACCEPT")
-  end
-
-  def delete_rule({6, s, d, :deny}) do
-    exec!("iptables6 -D firezone -s #{s} -d #{d} -j DROP")
-  end
-
-  def delete_rule({6, s, d, :allow}) do
-    exec!("iptables6 -D firezone -s #{s} -d #{d} -j ACCEPT")
-  end
-
-  def restore(_rules) do
-    # XXX: Implement me
+  def restore(rules) do
+    # XXX: Priority?
+    for rule_spec <- rules do
+      add_rule(rule_spec)
+    end
   end
 
   def egress_address do
@@ -98,6 +85,25 @@ defmodule FzWall.CLI.Live do
     end
   end
 
+  @doc """
+  Standardized IP addresses and CIDR ranges so that we can
+  parse them out of the nftables rulesets.
+  """
+  def standardized_dest(dest) do
+    if String.contains?(dest, "/") do
+      dest
+      |> InetCidr.parse()
+      |> InetCidr.to_string()
+    else
+      {:ok, addr} = dest |> String.to_charlist() |> :inet.parse_address()
+      :inet.ntoa(addr) |> List.to_string()
+    end
+  end
+
+  defp rule_handle_regex(regex, rules) do
+    Regex.run(regex, rules, capture: :all_names)
+  end
+
   defp egress_interface do
     case :os.type() do
       {:unix, :linux} ->
@@ -109,5 +115,9 @@ defmodule FzWall.CLI.Live do
         # XXX: Figure out what it means to have macOS as a host?
         "en0"
     end
+  end
+
+  defp nft do
+    Application.fetch_env!(:fz_wall, :nft_path)
   end
 end

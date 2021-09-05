@@ -1,7 +1,7 @@
 # frozen_string_literal: true
-#
+
 # Cookbook:: firezone
-# Recipe:: app
+# Recipe:: create_admin
 #
 # Copyright:: 2014 Chef Software, Inc.
 #
@@ -19,30 +19,28 @@
 #
 
 include_recipe 'firezone::config'
-include_recipe 'firezone::phoenix'
 
-execute 'fix app permissions' do
-  app_dir = node['firezone']['app_directory']
-  user = node['firezone']['user']
-  group = node['firezone']['group']
-  command "chown -R #{user}:#{group} #{app_dir} && chmod -R o-rwx #{app_dir} && chmod -R g-rwx #{app_dir}"
-end
-
-file 'environment-variables' do
-  path "#{node['firezone']['var_directory']}/etc/env"
-  attributes = node['firezone'].merge(
-    'force_ssl' => node['firezone']['nginx']['force_ssl'],
-    'mix_env' => 'prod'
-  )
-  content Firezone::Config.environment_variables_from(attributes)
-  owner node['firezone']['user']
-  group node['firezone']['group']
-  mode '0600'
-end
-
-execute 'database schema' do
-  command 'bin/firezone eval "FzHttp.Release.migrate"'
+execute 'create_admin' do
+  command 'bin/firezone rpc "FzHttp.Release.create_admin_user"'
   cwd node['firezone']['app_directory']
   environment(Firezone::Config.app_env(node['firezone']))
   user node['firezone']['user']
+end
+
+log 'admin_created' do
+  msg = <<~MSG
+    =================================================================================
+
+    FireZone user created! Save this information because it will NOT be shown again.
+
+    Use this to log into the Web UI.
+
+    Email: #{node['firezone']['admin_email']}
+    Password: #{node['firezone']['default_admin_password']}
+
+    =================================================================================
+  MSG
+
+  message msg
+  level :info # info and below are not shown by default
 end

@@ -14,8 +14,12 @@ database_pool = String.to_integer(System.fetch_env!("DATABASE_POOL"))
 port = String.to_integer(System.fetch_env!("PHOENIX_PORT"))
 url_host = System.fetch_env!("URL_HOST")
 admin_email = System.fetch_env!("ADMIN_EMAIL")
+default_admin_password = System.fetch_env!("DEFAULT_ADMIN_PASSWORD")
 wireguard_interface_name = System.fetch_env!("WIREGUARD_INTERFACE_NAME")
+wireguard_endpoint_ip = System.fetch_env!("WIREGUARD_ENDPOINT_IP")
 wireguard_port = String.to_integer(System.fetch_env!("WIREGUARD_PORT"))
+nft_path = System.fetch_env!("NFT_PATH")
+wg_path = System.fetch_env!("WG_PATH")
 
 # secrets
 encryption_key = System.fetch_env!("DATABASE_ENCRYPTION_KEY")
@@ -62,16 +66,21 @@ config :fz_http, FzHttp.Vault,
 config :fz_http, FzHttpWeb.Endpoint,
   http: [ip: {0, 0, 0, 0}, port: port],
   server: true,
-  url: [host: url_host, scheme: "https"],
+  url: [host: url_host, scheme: "http"],
   secret_key_base: secret_key_base,
   live_view: [
     signing_salt: live_view_signing_salt
   ]
 
+config :fz_wall,
+  nft_path: System.get_env()
+
 config :fz_vpn,
   wireguard_interface_name: wireguard_interface_name,
   wireguard_port: wireguard_port,
+  wireguard_endpoint_ip: wireguard_endpoint_ip,
   wireguard_private_key: private_key
 
 config :fz_http,
-  admin_email: admin_email
+  admin_email: admin_email,
+  default_admin_password: default_admin_password
