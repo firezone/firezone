@@ -66,7 +66,7 @@ config :fz_http, FzHttp.Vault,
 config :fz_http, FzHttpWeb.Endpoint,
   http: [ip: {0, 0, 0, 0}, port: port],
   server: true,
-  url: [host: url_host, scheme: "https"],
+  url: [host: url_host, scheme: "http"],
   secret_key_base: secret_key_base,
   live_view: [
     signing_salt: live_view_signing_salt
@@ -82,4 +82,5 @@ config :fz_vpn,
   wireguard_private_key: private_key
 
 config :fz_http,
-  admin_email: admin_email
+  admin_email: admin_email,
+  default_admin_password: default_admin_password

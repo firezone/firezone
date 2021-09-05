@@ -12,7 +12,7 @@ export HOME=$DIR
 cd $DIR
 
 exec <%= node['runit']['chpst_bin'] %> \
-  -P \
-  -U <%= node['firezone']['user'] %> \
-  -u <%= node['firezone']['user'] %> \
-  bin/firezone start
+      -P \
+      -U <%= node['firezone']['user'] %>:<%= node['firezone']['group'] %> \
+      -u <%= node['firezone']['user'] %>:<%= node['firezone']['group'] %> \
+      bin/firezone start

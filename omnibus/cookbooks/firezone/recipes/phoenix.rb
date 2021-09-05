@@ -1,4 +1,5 @@
-#
+# frozen_string_literal: true
+
 # Cookbook:: firezone
 # Recipe:: phoenix
 #
@@ -50,6 +51,7 @@ end
 if node['firezone']['phoenix']['enable']
   component_runit_service 'phoenix' do
     package 'firezone'
+    control ['t']
     action :enable
     subscribes :restart, 'file[environment-variables]'
   end
