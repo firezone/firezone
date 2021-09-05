@@ -28,6 +28,8 @@ defmodule FzHttp.Release do
 
   # App should be loaded at this point; call with `rpc` not `eval`
   def create_admin_user do
+    load_app()
+
     if Repo.exists?(from u in User, where: u.email == ^email()) do
       change_password(email(), default_password())
     else
