@@ -28,14 +28,14 @@ defmodule FzHttp.Rules do
   def allowlist do
     Repo.all(
       from r in Rule,
-        where: r.action == :allow
+        where: r.action == :accept
     )
   end
 
   def denylist do
     Repo.all(
       from r in Rule,
-        where: r.action == :deny
+        where: r.action == :drop
     )
   end
 

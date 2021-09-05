@@ -95,7 +95,7 @@ default['firezone']['nginx']['log_rotation']['num_to_keep'] = 10
 default['firezone']['nginx']['log_x_forwarded_for'] = false
 
 # Redirect to the FQDN
-default['firezone']['nginx']['redirect_to_canonical'] = true
+default['firezone']['nginx']['redirect_to_canonical'] = false
 
 # Controls nginx caching, used to cache some endpoints
 default['firezone']['nginx']['cache']['enable'] = false

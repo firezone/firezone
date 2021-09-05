@@ -10,7 +10,7 @@ defmodule FzHttp.Rules.Rule do
 
   schema "rules" do
     field :destination, EctoNetwork.INET
-    field :action, Ecto.Enum, values: [:deny, :allow], default: :deny
+    field :action, Ecto.Enum, values: [:drop, :accept], default: :drop
 
     timestamps(type: :utc_datetime_usec)
   end

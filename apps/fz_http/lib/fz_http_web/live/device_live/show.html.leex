@@ -39,7 +39,7 @@
         <dt>
           <strong>Preshared key:</strong>
         </dt>
-        <dd class="code"><%= @device.private_key %></dd>
+        <dd class="code"><%= @device.preshared_key %></dd>
 
         <dt>
           <strong>Server Public key:</strong>
@@ -84,7 +84,7 @@ DNS = 1.1.1.1, 1.0.0.1
 PublicKey = <%= @device.server_public_key %>
 PresharedKey = <%= @device.preshared_key %>
 AllowedIPs = 0.0.0.0/0, ::/0
-Endpoint = <%= @vpn_endpoint %></code></pre>
+Endpoint = <%= @wireguard_endpoint_ip %>:<%= @wireguard_port %></code></pre>
       <h6 class="is-6 title">
         Or scan the QR code with your mobile phone:
       </h6>

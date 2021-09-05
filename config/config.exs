@@ -26,8 +26,8 @@ config :phoenix, :json_library, Jason
 
 config :fz_http,
   ecto_repos: [FzHttp.Repo],
-  vpn_endpoint: "127.0.0.1:51820",
   admin_email: "firezone@localhost",
+  default_admin_password: "firezone",
   events_module: FzHttpWeb.Events,
   disable_signup: true
 
@@ -39,7 +39,8 @@ config :fz_wall,
 config :fz_vpn,
   wireguard_private_key: "UAeZoaY95pKZE1Glq28sI2GJDfGGRFtlb4KC6rjY2Gs=",
   wireguard_interface_name: "wg-firezone",
-  wireguard_listen_port: 51_820,
+  wireguard_port: "51820",
+  wireguard_endpoint_ip: "127.0.0.1",
   cli: FzVpn.CLI.Sandbox,
   server_process_opts: []
 

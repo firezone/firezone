@@ -1,6 +1,6 @@
 #!/bin/sh
 exec 2>&1
-exec chpst \
+exec <%= node['runit']['chpst_bin'] %> \
        -P \
        -U <%= node['firezone']['postgresql']['username'] %> \
        -u <%= node['firezone']['postgresql']['username'] %> \

@@ -27,7 +27,7 @@ defmodule FzHttp.RulesTest do
     test "creates rule" do
       {:ok, rule} = Rules.create_rule(%{destination: "::1"})
       assert !is_nil(rule.id)
-      assert rule.action == :deny
+      assert rule.action == :drop
     end
   end
 
@@ -47,11 +47,11 @@ defmodule FzHttp.RulesTest do
     setup [:create_rules]
 
     @iptables_rules [
-      {"1.1.1.0/24", :deny},
-      {"2.2.2.0/24", :deny},
-      {"3.3.3.0/24", :deny},
-      {"4.4.4.0/24", :deny},
-      {"5.5.5.0/24", :deny}
+      {"1.1.1.0/24", :drop},
+      {"2.2.2.0/24", :drop},
+      {"3.3.3.0/24", :drop},
+      {"4.4.4.0/24", :drop},
+      {"5.5.5.0/24", :drop}
     ]
 
     test "prints all rules to iptables format", %{rules: _rules} do
@@ -60,7 +60,7 @@ defmodule FzHttp.RulesTest do
   end
 
   describe "allowlist/0" do
-    setup [:create_allow_rule]
+    setup [:create_accept_rule]
 
     test "returns allow rules", %{rule: rule} do
       assert Rules.allowlist() == [rule]
@@ -68,7 +68,7 @@ defmodule FzHttp.RulesTest do
   end
 
   describe "denylist/0" do
-    setup [:create_deny_rule]
+    setup [:create_drop_rule]
 
     test "returns deny rules", %{rule: rule} do
       assert Rules.denylist() == [rule]
@@ -79,7 +79,7 @@ defmodule FzHttp.RulesTest do
   # describe "iptables_spec/1 IPv4" do
   #   setup [:create_rule4]
   #
-  #   @ipv4tables_spec {"10.0.0.1", "10.10.10.0/24", :deny}
+  #   @ipv4tables_spec {"10.0.0.1", "10.10.10.0/24", :drop}
   #
   #   test "returns IPv4 tuple", %{rule4: rule} do
   #     assert @ipv4tables_spec = Rules.iptables_spec(rule)
@@ -89,7 +89,7 @@ defmodule FzHttp.RulesTest do
   # describe "iptables_spec/1 IPv6" do
   #   setup [:create_rule6]
   #
-  #   @ipv6tables_spec {"::1", "::/0", :deny}
+  #   @ipv6tables_spec {"::1", "::/0", :drop}
   #
   #   test "returns IPv6 tuple", %{rule6: rule} do
   #     assert @ipv6tables_spec = Rules.iptables_spec(rule)

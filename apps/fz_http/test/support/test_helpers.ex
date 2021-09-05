@@ -60,13 +60,13 @@ defmodule FzHttp.TestHelpers do
     {:ok, session: session}
   end
 
-  def create_allow_rule(_) do
-    rule = Fixtures.rule(%{action: :allow})
+  def create_accept_rule(_) do
+    rule = Fixtures.rule(%{action: :accept})
     {:ok, rule: rule}
   end
 
-  def create_deny_rule(_) do
-    rule = Fixtures.rule(%{action: :deny})
+  def create_drop_rule(_) do
+    rule = Fixtures.rule(%{action: :drop})
     {:ok, rule: rule}
   end
 
