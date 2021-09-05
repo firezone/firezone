@@ -27,6 +27,7 @@ config :phoenix, :json_library, Jason
 config :fz_http,
   ecto_repos: [FzHttp.Repo],
   admin_email: "firezone@localhost",
+  default_admin_password: "firezone",
   events_module: FzHttpWeb.Events,
   disable_signup: true
 

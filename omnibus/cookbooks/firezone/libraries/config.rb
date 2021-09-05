@@ -94,13 +94,21 @@ class Firezone
                             Chef::Log.warn 'No database_encryption_key set! Generating and writing one to secrets.json. If this FireZone installation has multiple hosts, you must duplicate the secrets.json file exactly across all hosts.'
                             SecureRandom.base64(32)
                           end
+        default_admin_password = if node['firezone'] && node['firezone']['default_admin_password']
+                            Chef::Log.warn 'Using default_admin_password from firezone.json. This value should really be managed in secrets.json. Writing to secrets.json.'
+                            node['firezone']['default_admin_password']
+                          else
+                            Chef::Log.warn 'No default_admin_password set! Generating and writing one to secrets.json. If this FireZone installation has multiple hosts, you must duplicate the secrets.json file exactly across all hosts.'
+                            SecureRandom.base64(12)
+                          end
 
 
         secrets = {
           'secret_key_base' => secret_key_base,
           'live_view_signing_salt' => live_view_signing_salt,
           'wireguard_private_key' => wireguard_private_key,
-          'database_encryption_key' => database_encryption_key
+          'database_encryption_key' => database_encryption_key,
+          'default_admin_password' => default_admin_password
         }
 
         open(filename, 'w') do |file|
@@ -216,6 +224,7 @@ class Firezone
         'PHOENIX_PORT' => attributes['phoenix']['port'].to_s,
         'URL_HOST' => attributes['url_host'],
         'ADMIN_EMAIL' => attributes['admin_email'],
+        'DEFAULT_ADMIN_PASSWORD' => attributes['default_admin_password'],
         'WIREGUARD_INTERFACE_NAME' => attributes['wireguard']['interface_name'],
         'WIREGUARD_ENDPOINT_IP' => attributes['wireguard']['endpoint_ip'],
         'WIREGUARD_PORT' => attributes['wireguard']['port'].to_s,
