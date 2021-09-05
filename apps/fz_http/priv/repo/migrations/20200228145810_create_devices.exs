@@ -10,6 +10,8 @@ defmodule FzHttp.Repo.Migrations.CreateDevices do
       add :private_key, :bytea, null: false
       add :server_public_key, :string, null: false
       add :remote_ip, :inet
+      # XXX: Rework this in app code
+      add :octet_sequence, :serial
       add :interface_address4, :inet
       add :interface_address6, :inet
       add :last_seen_at, :utc_datetime_usec
@@ -23,5 +25,6 @@ defmodule FzHttp.Repo.Migrations.CreateDevices do
     create unique_index(:devices, [:private_key])
     create unique_index(:devices, [:preshared_key])
     create unique_index(:devices, [:user_id, :name])
+    create unique_index(:devices, [:octet_sequence])
   end
 end
