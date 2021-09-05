@@ -99,7 +99,7 @@ class Firezone
                             node['firezone']['default_admin_password']
                           else
                             Chef::Log.warn 'No default_admin_password set! Generating and writing one to secrets.json. If this FireZone installation has multiple hosts, you must duplicate the secrets.json file exactly across all hosts.'
-                            SecureRandom.base64(12)
+                            SecureRandom.base64(8)
                           end
 
 

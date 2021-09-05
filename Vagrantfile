@@ -24,7 +24,7 @@ Vagrant.configure("2") do |config|
     centos7.vm.network "forwarded_port", guest: 8800, host: ENV.fetch("PORT", 8800)
 
     # Set up base OS
-    centos7.vm.provision "shell", path: ".ci/provision/centos_7.sh", privileged: false
+    centos7.vm.provision "shell", path: ".ci/provision/centos_7.sh", privileged: false, reset: true
 
     # Set up ruby
     centos7.vm.provision "shell", path: ".ci/provision/ruby.sh", privileged: false

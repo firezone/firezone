@@ -36,8 +36,6 @@ defmodule FzHttp.Release do
         password: default_password(),
         password_confirmation: default_password()
       )
-
-      log_email_password(email(), default_password())
     end
   end
 
@@ -70,23 +68,5 @@ defmodule FzHttp.Release do
 
   defp default_password do
     Application.fetch_env!(@app, :default_admin_password)
-  end
-
-  defp log_email_password(email, password) do
-    Logger.info(
-      "================================================================================="
-    )
-
-    Logger.info(
-      "FireZone user created! Save this information because it will NOT be shown again."
-    )
-
-    Logger.info("Use this to log into the Web UI at #{FzHttpWeb.Endpoint.url()}.")
-    Logger.info("Email: #{email}")
-    Logger.info("Password: #{password}")
-
-    Logger.info(
-      "================================================================================="
-    )
   end
 end

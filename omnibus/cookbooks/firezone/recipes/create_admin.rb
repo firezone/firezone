@@ -26,3 +26,21 @@ execute 'create_admin' do
   environment(Firezone::Config.app_env(node['firezone']))
   user node['firezone']['user']
 end
+
+log 'admin_created' do
+  msg = <<~MSG
+    =================================================================================
+
+    FireZone user created! Save this information because it will NOT be shown again.
+
+    Use this to log into the Web UI.
+
+    Email: #{node['firezone']['admin_email']}
+    Password: #{node['firezone']['default_admin_password']}
+
+    =================================================================================
+  MSG
+
+  message msg
+  level :info # info and below are not shown by default
+end
