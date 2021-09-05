@@ -25,3 +25,10 @@ sudo localectl set-locale LANG=en_US.UTF-8
 sudo yum install -y epel-release elrepo-release
 sudo yum install -y yum-plugin-elrepo
 sudo yum install -y kmod-wireguard
+
+# CentOS 7 comes with GCC 4.8.5 which does not fully support C++14, so we need
+# a newer toolchain.
+sudo yum install -y centos-release-scl
+sudo yum install -y devtoolset-9
+echo 'source /opt/rh/devtoolset-9/enable' >> ~/.profile
+echo 'source /opt/rh/devtoolset-9/enable' >> ~/.bash_profile
