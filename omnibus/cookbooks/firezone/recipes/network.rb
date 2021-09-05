@@ -22,13 +22,14 @@ wg_interface = node['firezone']['wireguard']['interface_name']
 private_key_path = "#{node['firezone']['var_directory']}/cache/wg_private_key"
 
 egress_cmd = Mixlib::ShellOut.new("route | grep '^default' | grep -o '[^ ]*$'")
-egress_interface = egress_cmd.run_command.stdout
+egress_interface = egress_cmd.run_command.stdout.chomp
 
 # Set default endpoint ip to default egress ip
 egress_cmd = "ip address show dev #{egress_interface} | grep 'inet ' | #{awk_path} '{print $2}'"
 egress_ip = Mixlib::ShellOut.new(egress_cmd)
 egress_ip.run_command
-node.default['firezone']['wireguard']['endpoint_ip'] = egress_ip.stdout
+node.default['firezone']['wireguard']['endpoint_ip'] =
+  egress_ip.stdout.chomp.gsub(%r{/.*}, '')
 
 # Create wireguard interface if missing
 wg_exists = Mixlib::ShellOut.new("ip link show dev #{wg_interface}")
