@@ -1,5 +1,5 @@
 #!/bin/bash
-set -ex
+set -x
 
 cd /vagrant/omnibus
 
@@ -11,5 +11,5 @@ else
 fi
 
 # Usually fails the first time
-sudo firezone-ctl reconfigure || true
+sudo firezone-ctl reconfigure
 sudo firezone-ctl restart
