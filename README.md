@@ -3,8 +3,6 @@
 ![Test](https://github.com/firezone/firezone/workflows/Test/badge.svg)
 [![Coverage Status](https://coveralls.io/repos/github/firezone/firezone/badge.svg?branch=master)](https://coveralls.io/github/FireZone-LLC/firezone?branch=master)
 
-![IMG_0023](https://user-images.githubusercontent.com/167144/132162016-c17635ae-a715-41ca-b6f9-7cbdf202f8d5.png)
-
 # FireZone
 
 1. [Intro](#intro)
@@ -14,10 +12,12 @@
 5. [Architecture](#architecture)
 6. [Contributing](#contributing)
 
+![IMG_0023](https://user-images.githubusercontent.com/167144/132162016-c17635ae-a715-41ca-b6f9-7cbdf202f8d5.png)
+
 ## Intro
 
-`firezone` is an open-source WireGuard™-based VPN server and firewall for Linux
-designed to be secure and simple to set up and manage.
+FireZone is an open-source WireGuard™-based VPN server and firewall for Linux
+designed to be secure, easy to manage, and quick to set up.
 
 Use FireZone to:
 
@@ -52,7 +52,7 @@ FireZone requires a valid SSL certificate and a matching DNS record to run in pr
 
 ## Architecture
 
-`firezone` is written in the Elixir programming language and composed as an [Umbrella
+FireZone is written in the Elixir programming language and composed as an [Umbrella
 project](https://elixir-lang.org/getting-started/mix-otp/dependencies-and-umbrella-projects.html)
 consisting of three independent applications:
 
@@ -60,7 +60,7 @@ consisting of three independent applications:
 - [apps/fz_wall](apps/fz_wall): Firewall Management Process
 - [apps/fz_vpn](apps/fz_vpn): WireGuard™ Management Process
 
-For now, `firezone` assumes these apps are all running on the same host.
+For now, FireZone assumes these apps are all running on the same host.
 
 [Chef Omnibus](https://github.com/chef/omnibus) is used to bundle all FireZone dependencies into a single distributable Linux package.
 
