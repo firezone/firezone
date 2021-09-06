@@ -42,7 +42,7 @@ end
 
 execute 'setup_wireguard_ip' do
   # XXX: Make this configurable
-  if_addr = '10.3.2.1/24'
+  if_addr = '10.3.2.254/24'
   command "ip address replace #{if_addr} dev #{wg_interface}"
 end
 

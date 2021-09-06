@@ -27,6 +27,11 @@
         <dd><%= @device.name %></dd>
 
         <dt>
+          <strong>Interface IP:</strong>
+        </dt>
+        <dd>10.3.2.<%= @device.octet_sequence %></dd>
+
+        <dt>
           <strong>Public key:</strong>
         </dt>
         <dd class="code"><%= @device.public_key %></dd>
@@ -77,12 +82,11 @@
       <pre><code id="wg-conf">
 [Interface]
 PrivateKey = <%= @device.private_key %>
-Address = 172.16.99.1/24
+Address = 10.3.2.<%= @device.octet_sequence %>
 DNS = 1.1.1.1, 1.0.0.1
 
 [Peer]
 PublicKey = <%= @device.server_public_key %>
-PresharedKey = <%= @device.preshared_key %>
 AllowedIPs = 0.0.0.0/0, ::/0
 Endpoint = <%= @wireguard_endpoint_ip %>:<%= @wireguard_port %></code></pre>
       <h6 class="is-6 title">
