@@ -15,6 +15,10 @@ defmodule FzHttpWeb.MockEvents do
     {:ok, pubkey}
   end
 
+  def device_created(_pubkey, _psk, _ip) do
+    :ok
+  end
+
   def add_rule(_rule) do
     :ok
   end
