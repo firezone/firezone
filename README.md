@@ -51,9 +51,10 @@ FireZone requires a valid SSL certificate and a matching DNS record to run in pr
 
 ## Usage
 
-FireZone can be managed via the `firezone-ctl` command, as shown below. Most subcommands require prefixing with `sudo`.
+Your FireZone installation can be managed via the `firezone-ctl` command, as shown below. Most subcommands require prefixing with `sudo`.
 
 ```shell
+root@demo:~# firezone-ctl
 I don't know that command.
 omnibus-ctl: command (subcommand)
 create_admin
