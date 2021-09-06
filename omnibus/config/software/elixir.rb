@@ -18,7 +18,7 @@
 # expeditor/ignore: deprecated 2021-04
 
 name "elixir"
-default_version "1.12.2"
+default_version "1.12.3"
 
 license "Apache-2.0"
 license_file "LICENSE"
@@ -27,6 +27,8 @@ dependency "erlang"
 
 version("1.4.2") { source sha256: "cb4e2ec4d68b3c8b800179b7ae5779e2999aa3375f74bd188d7d6703497f553f" }
 version("1.12.2") { source sha256: "701006d1279225fc42f15c8d3f39906db127ddcc95373d34d8d160993356b15c" }
+version("1.12.3") { source sha256: "c5affa97defafa1fd89c81656464d61da8f76ccfec2ea80c8a528decd5cb04ad" }
+
 source url: "https://github.com/elixir-lang/elixir/archive/v#{version}.tar.gz"
 relative_path "elixir-#{version}"
 
