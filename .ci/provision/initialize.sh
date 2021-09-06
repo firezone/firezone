@@ -1,6 +1,8 @@
 #!/bin/bash
 set -ex
 
+cd /vagrant/omnibus
+
 which rpm
 if [ $? -eq 0 ]; then
   sudo rpm -i pkg/firezone*.rpm

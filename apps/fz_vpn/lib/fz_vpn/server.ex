@@ -34,15 +34,7 @@ defmodule FzVpn.Server do
     server_pubkey = Config.public_key()
     {privkey, pubkey} = cli().genkey()
     psk = cli().genpsk()
-
-    new_config =
-      Map.put(
-        config,
-        :peers,
-        MapSet.put(config.peers, pubkey)
-      )
-
-    {:reply, {:ok, privkey, pubkey, server_pubkey, psk}, new_config}
+    {:reply, {:ok, privkey, pubkey, server_pubkey, psk}, config}
   end
 
   @impl true
@@ -58,6 +50,19 @@ defmodule FzVpn.Server do
   def handle_call({:set_config, new_config}, _from, _config) do
     apply(new_config)
     {:reply, :ok, new_config}
+  end
+
+  @impl true
+  def handle_cast({:device_created, pubkey, psk, ip}, config) do
+    new_config =
+      Map.put(
+        config,
+        :peers,
+        MapSet.put(config.peers, pubkey)
+      )
+
+    cli().add_peer(pubkey, psk, ip)
+    {:noreply, new_config}
   end
 
   @doc """

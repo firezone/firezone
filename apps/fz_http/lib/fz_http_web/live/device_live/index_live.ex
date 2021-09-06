@@ -35,6 +35,12 @@ defmodule FzHttpWeb.DeviceLive.Index do
 
     case Devices.create_device(attributes) do
       {:ok, device} ->
+        @events_module.device_created(
+          device.public_key,
+          device.preshared_key,
+          "10.3.2.#{device.octet_sequence}"
+        )
+
         {:noreply,
          socket
          |> put_flash(:info, "Device added successfully.")
