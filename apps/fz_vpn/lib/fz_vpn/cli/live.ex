@@ -34,6 +34,10 @@ defmodule FzVpn.CLI.Live do
     {privkey, pubkey}
   end
 
+  def add_peer(pubkey, _psk, ip) do
+    set("peer #{pubkey} allowed-ips #{ip}/32")
+  end
+
   def genpsk do
     exec!(@genpsk_cmd)
     |> String.trim()

@@ -9,6 +9,10 @@ defmodule FzHttpWeb.Events do
     GenServer.call(vpn_pid(), :create_device)
   end
 
+  def device_created(pubkey, psk, ip) do
+    GenServer.cast(vpn_pid(), {:device_created, pubkey, psk, ip})
+  end
+
   def delete_device(device_pubkey) do
     GenServer.call(vpn_pid(), {:delete_device, device_pubkey})
   end
