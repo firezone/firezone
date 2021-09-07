@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 set -e
 #
 # Perform necessary firezone removal steps
