@@ -6,6 +6,8 @@
 
 PROGNAME=`basename $0`
 
+/opt/firezone/embedded/sbin/nft delete table inet firezone
+
 error_exit()
 {
   echo "${PROGNAME}: ${1:-"Unknown Error"}" 1>&2
