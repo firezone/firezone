@@ -58,12 +58,13 @@ defmodule FzHttp.MixProject do
       {:ecto_network, "~> 1.3"},
       {:inflex, "~> 2.1"},
       {:plug, "~> 1.12"},
-      {:postgrex, "~> 0.15"},
+      {:postgrex, "~> 0.15.10"},
       {:phoenix_html, "~> 3.0"},
       {:phoenix_live_reload, "~> 1.3", only: :dev},
       {:phoenix_live_view, "~> 0.16"},
       {:gettext, "~> 0.18"},
       {:jason, "~> 1.2"},
+      {:telemetry, "~> 0.4.3"},
       {:plug_cowboy, "~> 2.5"},
       {:credo, "~> 1.5", only: [:dev, :test], runtime: false}
     ]
