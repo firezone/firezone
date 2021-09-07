@@ -6,8 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <%= csrf_meta_tag() %>
     <%= live_title_tag assigns[:page_heading], prefix: "FireZone • " %>
-    <link phx-track-static rel="stylesheet" href="<%= Routes.static_path(@conn, "/css/app.css") %>"/>
-    <script defer phx-track-static type="text/javascript" src="<%= Routes.static_path(@conn, "/js/app.js") %>"></script>
+    <link phx-track-static rel="stylesheet" href={Routes.static_path(@conn, "/css/app.css")} />
+    <script defer phx-track-static type="text/javascript" src={Routes.static_path(@conn, "/js/app.js")}></script>
 
     <!-- Favicon -->
     <link rel="apple-touch-icon-precomposed" sizes="57x57" href="/images/favicon-apple-touch-114.png">
@@ -120,7 +120,7 @@
       <div class="level">
         <div class="level-left">
           <div class="level-item">
-            <a href="mailto:<%= feedback_recipient() %>">Leave us feedback!</a>
+            <a href="mailto:{feedback_recipient()}">Leave us feedback!</a>
           </div>
           <div class="level-item">
             <a href="https://github.com/firezone/firezone" style="height: 20px">

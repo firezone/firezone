@@ -67,7 +67,7 @@
       <%= live_patch("Back to Devices", to: Routes.device_index_path(@socket, :index), class: "button") %>
       <button class="button is-danger"
               phx-click="delete_device"
-              phx-value-device_id="<%= @device.id %>"
+              phx-value-device_id={@device.id}
               data-confirm="Are you sure? This will remove all data associated with this device.">
         Delete device
       </button>

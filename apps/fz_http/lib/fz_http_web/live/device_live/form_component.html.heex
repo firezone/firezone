@@ -1,4 +1,4 @@
-<.form let={f} for={@changeset} id="edit-device" phx-target={@myself} phx-submit="save">
+<.form let={f} for={@changeset} id="edit-device" phx-target={@myself} %> phx-submit="save">
   <div class="field">
     <%= label f, :name, class: "label" %>
 
@@ -8,7 +8,7 @@
     <p class="help is-danger">
       <%= error_tag f, :name %>
     </p>
-  <div>
+  </div>
 
   <div class="field">
     <div class="control">
