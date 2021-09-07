@@ -1,4 +1,3 @@
-<%= @page_heading %>
 <%= if @live_action == :edit do %>
   <%= live_modal(
         FzHttpWeb.DeviceLive.FormComponent,
@@ -64,7 +63,7 @@
       </dl>
     </div>
     <div class="level">
-      <%= live_patch("Back to Devices", to: Routes.device_index_path(@socket, :index), class: "button") %>
+      <%= link("Back to Devices", to: Routes.device_index_path(@socket, :index), class: "button") %>
       <button class="button is-danger"
               phx-click="delete_device"
               phx-value-device_id={@device.id}

@@ -5,7 +5,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <%= csrf_meta_tag() %>
-    <%= live_title_tag assigns[:page_heading], prefix: "FireZone • " %>
+    <%= live_title_tag assigns[:page_title], prefix: "FireZone • " %>
     <link phx-track-static rel="stylesheet" href={Routes.static_path(@conn, "/css/app.css")} />
     <script defer phx-track-static type="text/javascript" src={Routes.static_path(@conn, "/js/app.js")}></script>
 
@@ -72,7 +72,7 @@
       <ul class="menu-list">
         <li>
           <%= link(to: Routes.device_index_path(@conn, :index), class: nav_class(@conn.request_path, :devices)) do %>
-            <span class="icon has-update-mark"><i class="mdi mdi-laptop-windows"></i></span>
+            <span class="icon"><i class="mdi mdi-laptop-windows"></i></span>
             <span class="menu-item-label">Devices</span>
           <% end %>
         </li>
@@ -100,7 +100,7 @@
         <div class="level-left">
           <div class="level-item">
             <h1 class="title">
-              <%= @page_heading %>
+              <%= @page_title %>
             </h1>
           </div>
         </div>
