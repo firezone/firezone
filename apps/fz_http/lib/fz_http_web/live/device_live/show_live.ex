@@ -50,7 +50,7 @@ defmodule FzHttpWeb.DeviceLive.Show do
       assign(
         socket,
         device: device,
-        page_heading: device.name,
+        page_title: device.name,
         wireguard_endpoint_ip: Application.fetch_env!(:fz_vpn, :wireguard_endpoint_ip),
         wireguard_port: Application.fetch_env!(:fz_vpn, :wireguard_port)
       )
