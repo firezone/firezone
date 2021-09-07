@@ -10,7 +10,7 @@ defmodule FzHttpWeb.DeviceLive.Index do
     {:ok,
      socket
      |> assign_defaults(params, session, &load_data/2)
-     |> assign(:page_heading, "Devices")}
+     |> assign(:page_title, "Devices")}
   end
 
   def handle_event("create_device", _params, socket) do

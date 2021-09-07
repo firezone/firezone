@@ -7,6 +7,6 @@ defmodule FzHttpWeb.RuleController do
   plug :redirect_unauthenticated
 
   def index(conn, _params) do
-    render(conn, "index.html", page_heading: "Rules")
+    render(conn, "index.html", page_title: "Rules")
   end
 end
