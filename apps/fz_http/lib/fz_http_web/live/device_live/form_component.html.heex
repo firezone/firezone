@@ -1,4 +1,4 @@
-<%= f = form_for(@changeset, "#", [id: "edit-device", phx_target: @myself, phx_submit: "save"]) %>
+<.form let={f} for={@changeset} id="edit-device" phx-target={@myself} phx-submit="save">
   <div class="field">
     <%= label f, :name, class: "label" %>
 
@@ -20,4 +20,4 @@
       </div>
     </div>
   </div>
-</form>
+</.form>

@@ -1,6 +1,6 @@
 <h4 class="is-4 title"><%= @title %></h4>
 <hr>
-<%= f = form_for @changeset, "#", [id: "#{@action}-form", phx_target: @myself, phx_submit: :add_rule] %>
+<.form let={f} for={@changeset} id={"#{@action}-form"} phx-target={@myself} phx-submit="add_rule">
   <%= hidden_input f, :action, value: @action %>
   <div class="field has-addons">
     <div class="control is-expanded">
@@ -24,7 +24,7 @@
       </p>
     </div>
   <% end %>
-</form>
+</.form>
 
 <%= if length(@rule_list) > 0 do %>
   <table class="table is-striped is-fullwidth">

@@ -61,7 +61,7 @@ defmodule FzHttp.MixProject do
       {:postgrex, "~> 0.15.10"},
       {:phoenix_html, "~> 3.0"},
       {:phoenix_live_reload, "~> 1.3", only: :dev},
-      {:phoenix_live_view, "~> 0.16"},
+      {:phoenix_live_view, "~> 0.16.3"},
       {:gettext, "~> 0.18"},
       {:jason, "~> 1.2"},
       {:telemetry, "~> 0.4.3"},
