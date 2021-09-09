@@ -19,10 +19,8 @@ defmodule FirezoneUmbrella.MixProject do
         "coveralls.html": :test
       ],
       docs: [
-        # The main page in the docs
-        main: "FireZone",
         logo: "apps/fz_http/assets/static/images/logo.svg",
-        extras: ["README.md"]
+        extras: ["README.md", "SECURITY.md", "CONTRIBUTING.md"]
       ],
       deps: deps(),
       aliases: aliases(),
