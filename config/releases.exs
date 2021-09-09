@@ -25,7 +25,6 @@ wg_path = System.fetch_env!("WG_PATH")
 encryption_key = System.fetch_env!("DATABASE_ENCRYPTION_KEY")
 secret_key_base = System.fetch_env!("SECRET_KEY_BASE")
 live_view_signing_salt = System.fetch_env!("LIVE_VIEW_SIGNING_SALT")
-private_key = System.fetch_env!("WIREGUARD_PRIVATE_KEY")
 
 # Password is not needed if using bundled PostgreSQL, so use nil if it's not set.
 database_password = System.get_env("DATABASE_PASSWORD")
@@ -78,8 +77,7 @@ config :fz_wall,
 config :fz_vpn,
   wireguard_interface_name: wireguard_interface_name,
   wireguard_port: wireguard_port,
-  wireguard_endpoint_ip: wireguard_endpoint_ip,
-  wireguard_private_key: private_key
+  wireguard_endpoint_ip: wireguard_endpoint_ip
 
 config :fz_http,
   admin_email: admin_email,

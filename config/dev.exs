@@ -32,6 +32,7 @@ config :fz_http, FzHttpWeb.Endpoint,
   ]
 
 config :fz_vpn,
+  wireguard_public_key: System.get_env("WIREGUARD_PUBLIC_KEY"),
   wg_path: "wg",
   cli: FzVpn.CLI.Live
 
