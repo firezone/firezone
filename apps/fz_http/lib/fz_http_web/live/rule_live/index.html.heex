@@ -1,18 +1,23 @@
-<div class="columns">
-  <div class="column">
-    <%= live_component(
-        @socket,
-        FzHttpWeb.RuleLive.RuleListComponent,
-        title: "Allowlist",
-        id: :allowlist,
-        current_user: @current_user) %>
+<%= render FzHttpWeb.SharedView, "heading.html", page_title: @page_title %>
+
+<section class="section is-main-section">
+  <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
+  <div class="columns">
+    <div class="column">
+      <%= live_component(
+          @socket,
+          FzHttpWeb.RuleLive.RuleListComponent,
+          title: "Allowlist",
+          id: :allowlist,
+          current_user: @current_user) %>
+    </div>
+    <div class="column">
+      <%= live_component(
+          @socket,
+          FzHttpWeb.RuleLive.RuleListComponent,
+          title: "Denylist",
+          id: :denylist,
+          current_user: @current_user) %>
+    </div>
   </div>
-  <div class="column">
-    <%= live_component(
-        @socket,
-        FzHttpWeb.RuleLive.RuleListComponent,
-        title: "Denylist",
-        id: :denylist,
-        current_user: @current_user) %>
-  </div>
-</div>
+</section>

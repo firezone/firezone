@@ -91,3 +91,11 @@ file "#{node['firezone']['config_directory']}/secrets.json" do
   group node['firezone']['group']
   mode '0600'
 end
+
+file "#{node['firezone']['var_directory']}/cache/wg_private_key" do
+  owner 'root'
+  group 'root'
+  mode '0600'
+  content node['firezone']['wireguard_private_key']
+  action :create_if_missing
+end

@@ -15,13 +15,12 @@ defmodule FzHttpWeb.DeviceLive.Index do
 
   def handle_event("create_device", _params, socket) do
     # XXX: Remove device from WireGuard if create isn't successful
-    {:ok, privkey, pubkey, server_pubkey, psk} = @events_module.create_device()
+    {:ok, privkey, pubkey, server_pubkey} = @events_module.create_device()
 
     device_attrs = %{
       private_key: privkey,
       public_key: pubkey,
-      server_public_key: server_pubkey,
-      preshared_key: psk
+      server_public_key: server_pubkey
     }
 
     attributes =
@@ -37,7 +36,6 @@ defmodule FzHttpWeb.DeviceLive.Index do
       {:ok, device} ->
         @events_module.device_created(
           device.public_key,
-          device.preshared_key,
           "10.3.2.#{device.octet_sequence}"
         )
 

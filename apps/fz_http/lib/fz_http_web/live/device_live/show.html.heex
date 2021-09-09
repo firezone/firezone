@@ -8,78 +8,77 @@
         action: @live_action) %>
 <% end %>
 
-<div class="columns">
-  <div class="column">
-    <div class="level">
-      <div class="level-left">
-        <h4 class="is-4 title">Device Details</h4>
+<%= render FzHttpWeb.SharedView, "heading.html", page_title: @page_title %>
+
+<section class="section is-main-section">
+  <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
+  <div class="columns">
+    <div class="column">
+      <div class="level">
+        <div class="level-left">
+          <h4 class="is-4 title">Device Details</h4>
+        </div>
+        <div class="level-right">
+          <%= live_patch("Edit", to: Routes.device_show_path(@socket, :edit, @device)) %>
+        </div>
       </div>
-      <div class="level-right">
-        <%= live_patch("Edit", to: Routes.device_show_path(@socket, :edit, @device)) %>
+      <hr>
+      <div class="content">
+        <dl>
+          <dt>
+            <strong>Name:</strong>
+          </dt>
+          <dd><%= @device.name %></dd>
+
+          <dt>
+            <strong>Interface IP:</strong>
+          </dt>
+          <dd>10.3.2.<%= @device.octet_sequence %></dd>
+
+          <dt>
+            <strong>Public key:</strong>
+          </dt>
+          <dd class="code"><%= @device.public_key %></dd>
+
+          <dt>
+            <strong>Private key:</strong>
+          </dt>
+          <dd class="code"><%= @device.private_key %></dd>
+
+          <dt>
+            <strong>Server Public key:</strong>
+          </dt>
+          <dd class="code"><%= @device.server_public_key %></dd>
+
+          <dt>
+            <strong>Remote IP:</strong>
+          </dt>
+          <dd class="code"><%= @device.remote_ip %></dd>
+
+          <dt>
+            <strong>Last seen at:</strong>
+          </dt>
+          <dd><%= @device.last_seen_at %></dd>
+        </dl>
+      </div>
+      <div class="level">
+        <%= live_redirect("Back to Devices", to: Routes.device_index_path(@socket, :index), class: "button") %>
+        <button class="button is-danger"
+                phx-click="delete_device"
+                phx-value-device_id={@device.id}
+                data-confirm="Are you sure? This will remove all data associated with this device.">
+          Delete device
+        </button>
       </div>
     </div>
-    <hr>
-    <div class="content">
-      <dl>
-        <dt>
-          <strong>Name:</strong>
-        </dt>
-        <dd><%= @device.name %></dd>
-
-        <dt>
-          <strong>Interface IP:</strong>
-        </dt>
-        <dd>10.3.2.<%= @device.octet_sequence %></dd>
-
-        <dt>
-          <strong>Public key:</strong>
-        </dt>
-        <dd class="code"><%= @device.public_key %></dd>
-
-        <dt>
-          <strong>Private key:</strong>
-        </dt>
-        <dd class="code"><%= @device.private_key %></dd>
-
-        <dt>
-          <strong>Preshared key:</strong>
-        </dt>
-        <dd class="code"><%= @device.preshared_key %></dd>
-
-        <dt>
-          <strong>Server Public key:</strong>
-        </dt>
-        <dd class="code"><%= @device.server_public_key %></dd>
-
-        <dt>
-          <strong>Remote IP:</strong>
-        </dt>
-        <dd class="code"><%= @device.remote_ip %></dd>
-
-        <dt>
-          <strong>Last seen at:</strong>
-        </dt>
-        <dd><%= @device.last_seen_at %></dd>
-      </dl>
-    </div>
-    <div class="level">
-      <%= link("Back to Devices", to: Routes.device_index_path(@socket, :index), class: "button") %>
-      <button class="button is-danger"
-              phx-click="delete_device"
-              phx-value-device_id={@device.id}
-              data-confirm="Are you sure? This will remove all data associated with this device.">
-        Delete device
-      </button>
-    </div>
-  </div>
-  <div class="column">
-    <h4 class="is-4 title">Config</h4>
-    <hr>
-    <div class="content">
-      <h6 class="is-6 title">
-        Add the following to your WireGuard™ configuration file:
-      </h6>
-      <pre><code id="wg-conf">
+    <div class="column">
+      <h4 class="is-4 title">Config</h4>
+      <hr>
+      <div class="content">
+        <h6 class="is-6 title">
+          Add the following to your WireGuard™ configuration file:
+        </h6>
+        <pre><code id="wg-conf">
 [Interface]
 PrivateKey = <%= @device.private_key %>
 Address = 10.3.2.<%= @device.octet_sequence %>
@@ -89,12 +88,13 @@ DNS = 1.1.1.1, 1.0.0.1
 PublicKey = <%= @device.server_public_key %>
 AllowedIPs = 0.0.0.0/0, ::/0
 Endpoint = <%= @wireguard_endpoint_ip %>:<%= @wireguard_port %></code></pre>
-      <h6 class="is-6 title">
-        Or scan the QR code with your mobile phone:
-      </h6>
-      <div class="has-text-centered">
-        <canvas id="qr-canvas" phx-hook="QrCode"></canvas>
+        <h6 class="is-6 title">
+          Or scan the QR code with your mobile phone:
+        </h6>
+        <div class="has-text-centered">
+          <canvas id="qr-canvas" phx-hook="QrCode"></canvas>
+        </div>
       </div>
     </div>
   </div>
-</div>
+</section>

@@ -31,10 +31,9 @@ defmodule FzVpn.Server do
 
   @impl true
   def handle_call(:create_device, _from, config) do
-    server_pubkey = Config.public_key()
+    server_pubkey = Application.get_env(:fz_vpn, :wireguard_public_key)
     {privkey, pubkey} = cli().genkey()
-    psk = cli().genpsk()
-    {:reply, {:ok, privkey, pubkey, server_pubkey, psk}, config}
+    {:reply, {:ok, privkey, pubkey, server_pubkey}, config}
   end
 
   @impl true
@@ -53,7 +52,7 @@ defmodule FzVpn.Server do
   end
 
   @impl true
-  def handle_cast({:device_created, pubkey, psk, ip}, config) do
+  def handle_cast({:device_created, pubkey, ip}, config) do
     new_config =
       Map.put(
         config,
@@ -61,7 +60,7 @@ defmodule FzVpn.Server do
         MapSet.put(config.peers, pubkey)
       )
 
-    cli().add_peer(pubkey, psk, ip)
+    cli().add_peer(pubkey, ip)
     {:noreply, new_config}
   end
 

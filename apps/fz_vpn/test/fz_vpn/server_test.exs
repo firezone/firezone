@@ -18,7 +18,7 @@ defmodule FzVpn.ServerTest do
 
     @tag stubbed_config: @empty
     test "generates new peer when requested", %{test_pid: test_pid} do
-      assert {:ok, _, _, _, _} = GenServer.call(test_pid, :create_device)
+      assert {:ok, _, _, _} = GenServer.call(test_pid, :create_device)
       # Peers aren't added to config until device is successfully created
       assert [] = MapSet.to_list(:sys.get_state(test_pid).peers)
     end

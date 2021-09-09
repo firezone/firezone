@@ -4,7 +4,7 @@ defmodule FzCommon.CLI do
   """
 
   def bash(cmd) do
-    System.cmd("bash", ["-c", cmd])
+    System.cmd("bash", ["-c", cmd], stderr_to_stdout: true)
   end
 
   def exec!(cmd) do
@@ -12,9 +12,9 @@ defmodule FzCommon.CLI do
       {result, 0} ->
         result
 
-      {error, _} ->
+      {error, exit_code} ->
         raise """
-        Error executing command #{cmd} with error #{error}.
+        Error executing command #{cmd}. Exited with code #{exit_code} and error #{error}.
         FireZone cannot recover from this error.
         """
     end

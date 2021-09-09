@@ -62,8 +62,7 @@ default['firezone']['group'] = 'firezone'
 # Used for generating URLs that point back to this application.
 default['firezone']['url_host'] = node['firezone']['fqdn']
 # Email for the primary admin user.
-default['firezone']['admin_email'] =
-  "firezone@#{node['firezone']['fqdn']}"
+default['firezone']['admin_email'] = "firezone@localhost"
 
 # ## Enterprise
 #

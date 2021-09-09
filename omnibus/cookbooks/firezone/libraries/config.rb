@@ -102,6 +102,8 @@ class Firezone
                             SecureRandom.base64(8)
                           end
 
+        node.override['firezone']['wireguard_public_key'] =
+          `echo '#{wireguard_private_key}' | #{node['firezone']['wireguard_private_key']}/embedded/bin/wg pubkey`.chomp
 
         secrets = {
           'secret_key_base' => secret_key_base,
@@ -228,11 +230,11 @@ class Firezone
         'WIREGUARD_INTERFACE_NAME' => attributes['wireguard']['interface_name'],
         'WIREGUARD_ENDPOINT_IP' => attributes['wireguard']['endpoint_ip'],
         'WIREGUARD_PORT' => attributes['wireguard']['port'].to_s,
+        'WIREGUARD_PUBLIC_KEY' => attributes['wireguard_public_key'],
 
         # secrets
         'SECRET_KEY_BASE' => attributes['secret_key_base'],
         'LIVE_VIEW_SIGNING_SALT' => attributes['live_view_signing_salt'],
-        'WIREGUARD_PRIVATE_KEY' => attributes['wireguard_private_key'],
         'DATABASE_ENCRYPTION_KEY' => attributes['database_encryption_key']
       }
 
