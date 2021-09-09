@@ -1,9 +1,0 @@
-ARG BASE_IMAGE
-FROM ${BASE_IMAGE}
-
-ARG PKG_DIR
-
-COPY pkg/$PKG_DIR $PKG_DIR
-RUN mkdir -p $PKG_DIR/usr/lib/firezone
-RUN rsync -az _build/prod/rel/firezone/* $PKG_DIR/usr/lib/firezone/
-RUN dpkg-deb --build $PKG_DIR
