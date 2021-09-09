@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+# XXX: Update this for Omnibus packages.
+
 os_not_found () {
   echo "Operating System not detected. Build from source?"
   exit 1
