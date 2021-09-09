@@ -1,9 +1,0 @@
-#!/bin/bash
-set -e
-
-if [ "$1" = purge ]; then
-  echo "Refusing to purge /etc/firezone/secret and drop database. This must be done manually."
-  echo "If you really want to do this, run the following as root:"
-  echo "  su postgres -c 'psql -c \"DROP DATABASE firezone;\"'"
-  echo "  rm -rf /etc/firezone/secret"
-fi

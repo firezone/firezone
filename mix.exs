@@ -7,6 +7,7 @@ defmodule FirezoneUmbrella.MixProject do
 
   def project do
     [
+      name: :firezone,
       apps_path: "apps",
       version: "0.2.0",
       start_permanent: Mix.env() == :prod,
@@ -16,6 +17,12 @@ defmodule FirezoneUmbrella.MixProject do
         "coveralls.detail": :test,
         "coveralls.post": :test,
         "coveralls.html": :test
+      ],
+      docs: [
+        # The main page in the docs
+        main: "FireZone",
+        logo: "apps/fz_http/assets/static/images/logo.svg",
+        extras: ["README.md"]
       ],
       deps: deps(),
       aliases: aliases(),
@@ -42,6 +49,7 @@ defmodule FirezoneUmbrella.MixProject do
   # Run "mix help deps" for examples and options.
   defp deps do
     [
+      {:ex_doc, "~> 0.24", only: :dev, runtime: false},
       {:excoveralls, "~> 0.14", only: :test},
       {:mix_test_watch, "~> 1.0", only: :dev, runtime: false},
       {:dialyxir, "~> 1.1", only: [:dev], runtime: false}
