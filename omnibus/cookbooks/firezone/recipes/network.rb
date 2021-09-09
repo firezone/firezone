@@ -46,15 +46,6 @@ execute 'setup_wireguard_ip' do
   command "ip address replace #{if_addr} dev #{wg_interface}"
 end
 
-file 'write_private_key_file' do
-  path private_key_path
-  owner 'root'
-  group 'root'
-  mode '0600'
-  content node['firezone']['wireguard_private_key']
-  action :create_if_missing
-end
-
 execute 'set_wireguard_interface_private_key' do
   command "#{wg_path} set #{wg_interface} private-key #{private_key_path}"
 end

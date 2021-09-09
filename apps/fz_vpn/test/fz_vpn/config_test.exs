@@ -2,14 +2,13 @@ defmodule FzVpn.ConfigTest do
   use ExUnit.Case, async: true
   alias FzVpn.{Config, Peer}
 
-  @default_config "private-key UAeZoaY95pKZE1Glq28sI2GJDfGGRFtlb4KC6rjY2Gs= listen-port 51820 "
-  @populated_config "private-key UAeZoaY95pKZE1Glq28sI2GJDfGGRFtlb4KC6rjY2Gs= listen-port 51820 peer test-pubkey allowed-ips test-allowed-ips preshared-key test-preshared-key"
+  @populated_config "peer test-pubkey allowed-ips test-allowed-ips"
 
   describe "render" do
     test "renders default config" do
       config = %Config{}
 
-      assert Config.render(config) == @default_config
+      assert Config.render(config) == ""
     end
 
     test "renders populated config" do
@@ -18,8 +17,7 @@ defmodule FzVpn.ConfigTest do
           MapSet.new([
             %Peer{
               public_key: "test-pubkey",
-              allowed_ips: "test-allowed-ips",
-              preshared_key: "test-preshared-key"
+              allowed_ips: "test-allowed-ips"
             }
           ])
       }

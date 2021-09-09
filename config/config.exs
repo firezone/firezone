@@ -37,7 +37,7 @@ config :fz_wall,
 
 # This will be changed per-env
 config :fz_vpn,
-  wireguard_private_key: "UAeZoaY95pKZE1Glq28sI2GJDfGGRFtlb4KC6rjY2Gs=",
+  wireguard_public_key: "cB2yQeCxHO/qCH8APoM2D2Anf4Yd7sRLyfS7su71K3M=",
   wireguard_interface_name: "wg-firezone",
   wireguard_port: "51820",
   wireguard_endpoint_ip: "127.0.0.1",

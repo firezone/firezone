@@ -1,30 +1,36 @@
-<div class="content">
-  <hr>
+<%= render FzHttpWeb.SharedView, "heading.html", page_title: @page_title %>
 
-  <table class="table is-striped is-fullwidth">
-    <thead>
-      <tr>
-        <th>Name</th>
-        <th>Public key</th>
-        <th>Remote IP</th>
-        <th>Last seen at</th>
-      </tr>
-    </thead>
-    <tbody>
-    <%= for device <- @devices do %>
-      <tr>
-        <td>
-          <%= link(device.name, to: Routes.device_show_path(@socket, :show, device)) %>
-        </td>
-        <td class="code"><%= device.public_key %></td>
-        <td class="code"><%= device.remote_ip || "Never connected" %></td>
-        <td><%= device.last_seen_at %></td>
-      </tr>
-    <% end %>
-    </tbody>
-  </table>
-</div>
+<section class="section is-main-section">
+  <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
 
-<button class="button is-primary" phx-click="create_device">
-  Add Device
-</button>
+  <div class="content">
+    <hr>
+
+    <table class="table is-striped is-fullwidth">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Public key</th>
+          <th>Remote IP</th>
+          <th>Last seen at</th>
+        </tr>
+      </thead>
+      <tbody>
+      <%= for device <- @devices do %>
+        <tr>
+          <td>
+            <%= live_redirect(device.name, to: Routes.device_show_path(@socket, :show, device)) %>
+          </td>
+          <td class="code"><%= device.public_key %></td>
+          <td class="code"><%= device.remote_ip || "Never connected" %></td>
+          <td><%= device.last_seen_at %></td>
+        </tr>
+      <% end %>
+      </tbody>
+    </table>
+  </div>
+
+  <button class="button is-primary" phx-click="create_device">
+    Add Device
+  </button>
+</section>
