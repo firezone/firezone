@@ -10,7 +10,6 @@ defmodule FzVpn.CLI.Live do
 
   # Outputs the privkey, then pubkey on the next line
   @genkey_cmd "wg genkey | tee >(wg pubkey)"
-  @genpsk_cmd "wg genpsk"
 
   import FzCommon.CLI
 
@@ -34,13 +33,8 @@ defmodule FzVpn.CLI.Live do
     {privkey, pubkey}
   end
 
-  def add_peer(pubkey, _psk, ip) do
+  def add_peer(pubkey, ip) do
     set("peer #{pubkey} allowed-ips #{ip}/32")
-  end
-
-  def genpsk do
-    exec!(@genpsk_cmd)
-    |> String.trim()
   end
 
   def pubkey(privkey) when is_nil(privkey), do: nil
@@ -51,7 +45,10 @@ defmodule FzVpn.CLI.Live do
   end
 
   def set(config_str) do
-    exec!("#{wg()} set #{iface_name()} #{config_str}")
+    # Empty config string results in invalid command
+    if String.length(config_str) > 0 do
+      exec!("#{wg()} set #{iface_name()} #{config_str}")
+    end
   end
 
   def show_latest_handshakes do

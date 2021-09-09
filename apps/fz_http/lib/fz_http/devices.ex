@@ -47,8 +47,7 @@ defmodule FzHttp.Devices do
     for device <- Repo.all(Device) do
       %{
         public_key: device.public_key,
-        allowed_ips: device.allowed_ips,
-        preshared_key: device.preshared_key
+        allowed_ips: device.allowed_ips
       }
     end
   end

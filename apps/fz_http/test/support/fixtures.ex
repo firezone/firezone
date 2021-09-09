@@ -33,7 +33,6 @@ defmodule FzHttp.Fixtures do
       public_key: "test-pubkey",
       name: "factory",
       private_key: "test-privkey",
-      preshared_key: "test-psk",
       server_public_key: "test-server-pubkey"
     }
 

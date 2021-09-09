@@ -8,14 +8,14 @@ defmodule FzHttpWeb.MockEvents do
   """
 
   def create_device do
-    {:ok, "privkey", "pubkey", "server_pubkey", "preshared_key"}
+    {:ok, "privkey", "pubkey", "server_pubkey"}
   end
 
   def delete_device(pubkey) do
     {:ok, pubkey}
   end
 
-  def device_created(_pubkey, _psk, _ip) do
+  def device_created(_pubkey, _ip) do
     :ok
   end
 

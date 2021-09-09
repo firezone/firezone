@@ -26,7 +26,6 @@ alias FzHttp.{Devices, Rules, Users}
     public_key: "3Fo+SNnDJ6hi8qzPt3nWLwgjCVwvpjHL35qJeatKwEc=",
     server_public_key: "QFvMfHTjlJN9cfUiK1w4XmxOomH6KRTCMrVC6z3TWFM=",
     private_key: "2JSZtpSHM+69Hm7L3BSGIymbq0byw39iWLevKESd1EM=",
-    preshared_key: "hQS+GkbTWfEhueLM8RJ2anjC4RxzdgL4dpTIetHf6GU=",
     remote_ip: %Postgrex.INET{address: {127, 0, 0, 1}},
     interface_address4: %Postgrex.INET{address: {10, 0, 0, 1}}
   })

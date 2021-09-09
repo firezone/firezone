@@ -12,7 +12,6 @@ defmodule FzHttp.Devices.Device do
     field :name, :string
     field :public_key, :string
     field :allowed_ips, :string
-    field :preshared_key, FzHttp.Encrypted.Binary
     field :private_key, FzHttp.Encrypted.Binary
     field :server_public_key, :string
     field :remote_ip, EctoNetwork.INET
@@ -36,7 +35,6 @@ defmodule FzHttp.Devices.Device do
       :interface_address6,
       :server_public_key,
       :private_key,
-      :preshared_key,
       :user_id,
       :name,
       :public_key
@@ -46,12 +44,10 @@ defmodule FzHttp.Devices.Device do
       :name,
       :public_key,
       :server_public_key,
-      :private_key,
-      :preshared_key
+      :private_key
     ])
     |> unique_constraint(:public_key)
     |> unique_constraint(:private_key)
-    |> unique_constraint(:preshared_key)
     |> unique_constraint([:user_id, :name])
   end
 end
