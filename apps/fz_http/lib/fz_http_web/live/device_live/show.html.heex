@@ -33,7 +33,7 @@
           <dt>
             <strong>Interface IP:</strong>
           </dt>
-          <dd>10.3.2.<%= @device.octet_sequence %></dd>
+          <dd><%= FzHttp.Devices.ipv4_address(@device) %></dd>
 
           <dt>
             <strong>Public key:</strong>
@@ -81,7 +81,7 @@
         <pre><code id="wg-conf">
 [Interface]
 PrivateKey = <%= @device.private_key %>
-Address = 10.3.2.<%= @device.octet_sequence %>
+Address = <%= FzHttp.Devices.ipv4_address(@device) %>
 DNS = 1.1.1.1, 1.0.0.1
 
 [Peer]

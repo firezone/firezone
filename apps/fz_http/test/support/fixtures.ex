@@ -28,8 +28,6 @@ defmodule FzHttp.Fixtures do
 
     default_attrs = %{
       user_id: user_id,
-      interface_address4: "10.0.0.1",
-      interface_address6: "::1",
       public_key: "test-pubkey",
       name: "factory",
       private_key: "test-privkey",
