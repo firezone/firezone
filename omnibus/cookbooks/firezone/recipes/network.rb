@@ -71,20 +71,18 @@ end
 
 # XXX: Idempotent?
 execute 'setup_firezone_forwarding_chain' do
-  command "#{nft_path} 'add chain inet firezone forward { type filter hook forward priority 0 ; }'"
+  command "#{nft_path} 'add chain inet firezone forward "\
+    "{ type filter hook forward priority 0 ; policy accept ; }'"
 end
 
 # XXX: Idempotent?
 execute 'setup_firezone_postrouting_chain' do
-  command "#{nft_path} 'add chain inet firezone postrouting { type nat hook postrouting priority 100 ; }'"
-end
-
-# XXX: Idempotent?
-execute 'enable_packet_counters' do
-  command "#{nft_path} add rule inet firezone forward counter accept"
+  command "#{nft_path} 'add chain inet firezone postrouting "\
+    "{ type nat hook postrouting priority 100 ; }'"
 end
 
 # XXX: Idempotent?
 execute 'enable_masquerading' do
-  command "#{nft_path} add rule inet firezone postrouting oifname \"#{egress_interface}\" masquerade random,persistent"
+  command "#{nft_path} add rule inet firezone postrouting "\
+    "oifname \"#{egress_interface}\" masquerade random,persistent"
 end

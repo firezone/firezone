@@ -154,6 +154,13 @@ default['firezone']['nginx']['client_body_buffer_size'] = nil
 default['firezone']['nginx']['client_max_body_size'] = '250m'
 default['firezone']['nginx']['default']['modules'] = []
 
+# ## Network Service
+
+default['firezone']['network_service']['enable'] = true
+default['firezone']['network_service']['log_directory'] = "#{node['firezone']['log_directory']}/network_service"
+default['firezone']['network_service']['log_rotation']['file_maxbytes'] = 104857600
+default['firezone']['network_service']['log_rotation']['num_to_keep'] = 10
+
 # ## Postgres
 
 default['firezone']['postgresql']['enable'] = true
