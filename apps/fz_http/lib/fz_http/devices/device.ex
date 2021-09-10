@@ -15,9 +15,7 @@ defmodule FzHttp.Devices.Device do
     field :private_key, FzHttp.Encrypted.Binary
     field :server_public_key, :string
     field :remote_ip, EctoNetwork.INET
-    field :octet_sequence, :integer, read_after_writes: true
-    field :interface_address4, EctoNetwork.INET
-    field :interface_address6, EctoNetwork.INET
+    field :address, :integer, read_after_writes: true
     field :last_seen_at, :utc_datetime_usec
 
     belongs_to :user, User
@@ -30,9 +28,7 @@ defmodule FzHttp.Devices.Device do
     |> cast(attrs, [
       :allowed_ips,
       :remote_ip,
-      :octet_sequence,
-      :interface_address4,
-      :interface_address6,
+      :address,
       :server_public_key,
       :private_key,
       :user_id,
@@ -46,6 +42,7 @@ defmodule FzHttp.Devices.Device do
       :server_public_key,
       :private_key
     ])
+    |> unique_constraint(:address)
     |> unique_constraint(:public_key)
     |> unique_constraint(:private_key)
     |> unique_constraint([:user_id, :name])

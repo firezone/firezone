@@ -5,6 +5,7 @@ defmodule FzHttpWeb.DeviceLive.Index do
   use FzHttpWeb, :live_view
 
   alias FzHttp.Devices
+  alias FzHttpWeb.ErrorHelpers
 
   def mount(params, session, socket) do
     {:ok,
@@ -36,7 +37,7 @@ defmodule FzHttpWeb.DeviceLive.Index do
       {:ok, device} ->
         @events_module.device_created(
           device.public_key,
-          "10.3.2.#{device.octet_sequence}"
+          Devices.ipv4_address(device)
         )
 
         {:noreply,
@@ -44,8 +45,13 @@ defmodule FzHttpWeb.DeviceLive.Index do
          |> put_flash(:info, "Device added successfully.")
          |> redirect(to: Routes.device_show_path(socket, :show, device))}
 
-      {:error, _changeset} ->
-        {:noreply, put_flash(socket, :error, "Error creating device.")}
+      {:error, changeset} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "Error creating device: #{ErrorHelpers.aggregated_errors(changeset)}"
+         )}
     end
   end
 

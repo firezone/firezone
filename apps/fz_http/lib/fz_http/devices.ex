@@ -7,6 +7,8 @@ defmodule FzHttp.Devices do
   alias FzCommon.NameGenerator
   alias FzHttp.{Devices.Device, Repo, Users.User}
 
+  @ipv4_prefix "10.3.2."
+
   def list_devices do
     Repo.all(Device)
   end
@@ -41,6 +43,10 @@ defmodule FzHttp.Devices do
 
   def rand_name do
     NameGenerator.generate()
+  end
+
+  def ipv4_address(%Device{} = device) do
+    @ipv4_prefix <> Integer.to_string(device.address)
   end
 
   def to_peer_list do
