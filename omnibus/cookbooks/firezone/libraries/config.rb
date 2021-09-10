@@ -103,7 +103,7 @@ class Firezone
                           end
 
         node.override['firezone']['wireguard_public_key'] =
-          `echo '#{wireguard_private_key}' | #{node['firezone']['wireguard_private_key']}/embedded/bin/wg pubkey`.chomp
+          `echo '#{wireguard_private_key}' | #{node['firezone']['install_directory']}/embedded/bin/wg pubkey`.chomp
 
         secrets = {
           'secret_key_base' => secret_key_base,
