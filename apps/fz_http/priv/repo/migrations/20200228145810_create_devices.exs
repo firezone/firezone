@@ -5,7 +5,7 @@ defmodule FzHttp.Repo.Migrations.CreateDevices do
     create table(:devices) do
       add :name, :string, null: false
       add :public_key, :string, null: false
-      add :allowed_ips, :string
+      add :allowed_ips, :string, default: "0.0.0.0/0,::/0"
       add :private_key, :bytea, null: false
       add :server_public_key, :string, null: false
       add :address, :integer, null: false

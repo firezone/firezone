@@ -39,17 +39,17 @@ defmodule FzHttp.Rules do
     )
   end
 
-  def iptables_spec(rule) do
+  def nftables_spec(rule) do
     {decode(rule.destination), rule.action}
   end
 
-  def to_iptables do
-    Enum.map(iptables_query(), fn {dest, act} ->
+  def to_nftables do
+    Enum.map(nftables_query(), fn {dest, act} ->
       {decode(dest), act}
     end)
   end
 
-  defp iptables_query do
+  defp nftables_query do
     query =
       from r in Rule,
         order_by: r.action,

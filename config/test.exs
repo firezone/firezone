@@ -42,6 +42,3 @@ config :fz_http, :events_module, FzHttpWeb.MockEvents
 
 # Print only warnings and errors during test
 config :logger, level: :warn
-
-config :fz_vpn, :server_process_opts, name: {:global, :fz_vpn_server}
-config :fz_wall, :server_process_opts, name: {:global, :fz_wall_server}
