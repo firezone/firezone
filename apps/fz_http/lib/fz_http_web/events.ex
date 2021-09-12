@@ -18,11 +18,11 @@ defmodule FzHttpWeb.Events do
   end
 
   def add_rule(rule) do
-    GenServer.call(wall_pid(), {:add_rule, Rules.iptables_spec(rule)})
+    GenServer.call(wall_pid(), {:add_rule, Rules.nftables_spec(rule)})
   end
 
   def delete_rule(rule) do
-    GenServer.call(wall_pid(), {:delete_rule, Rules.iptables_spec(rule)})
+    GenServer.call(wall_pid(), {:delete_rule, Rules.nftables_spec(rule)})
   end
 
   def set_config do
@@ -30,7 +30,7 @@ defmodule FzHttpWeb.Events do
   end
 
   def set_rules do
-    GenServer.call(wall_pid(), {:set_rules, Rules.to_iptables()})
+    GenServer.call(wall_pid(), {:set_rules, Rules.to_nftables()})
   end
 
   def vpn_pid do

@@ -1,7 +1,0 @@
-#!/bin/sh
-exec 2>&1
-
-sv o network-service
-exec <%= node['runit']['chpst_bin'] %> \
-      -P \
-      /usr/bin/firezone-ctl setup_network

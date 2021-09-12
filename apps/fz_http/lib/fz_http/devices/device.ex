@@ -11,7 +11,7 @@ defmodule FzHttp.Devices.Device do
   schema "devices" do
     field :name, :string
     field :public_key, :string
-    field :allowed_ips, :string
+    field :allowed_ips, :string, read_after_writes: true
     field :private_key, FzHttp.Encrypted.Binary
     field :server_public_key, :string
     field :remote_ip, EctoNetwork.INET

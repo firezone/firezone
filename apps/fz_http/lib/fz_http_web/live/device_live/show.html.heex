@@ -86,7 +86,7 @@ DNS = 1.1.1.1, 1.0.0.1
 
 [Peer]
 PublicKey = <%= @device.server_public_key %>
-AllowedIPs = 0.0.0.0/0, ::/0
+AllowedIPs = <%= @device.allowed_ips %>
 Endpoint = <%= @wireguard_endpoint_ip %>:<%= @wireguard_port %></code></pre>
         <h6 class="is-6 title">
           Or scan the QR code with your mobile phone:

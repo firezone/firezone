@@ -11,13 +11,11 @@ import Config
 # before starting your production server.
 config :fz_vpn,
   wg_path: "wg",
-  cli: FzVpn.CLI.Live,
-  server_process_opts: [name: {:global, :fz_vpn_server}]
+  cli: FzVpn.CLI.Live
 
 config :fz_wall,
   nft_path: "nft",
-  cli: FzWall.CLI.Live,
-  server_process_opts: [name: {:global, :fz_wall_server}]
+  cli: FzWall.CLI.Live
 
 config :fz_http, FzHttpWeb.Endpoint,
   cache_static_manifest: "priv/static/cache_manifest.json",

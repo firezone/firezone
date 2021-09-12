@@ -43,10 +43,10 @@ defmodule FzHttp.RulesTest do
     end
   end
 
-  describe "to_iptables/0" do
+  describe "to_nftables/0" do
     setup [:create_rules]
 
-    @iptables_rules [
+    @nftables_rules [
       {"1.1.1.0/24", :drop},
       {"2.2.2.0/24", :drop},
       {"3.3.3.0/24", :drop},
@@ -54,8 +54,8 @@ defmodule FzHttp.RulesTest do
       {"5.5.5.0/24", :drop}
     ]
 
-    test "prints all rules to iptables format", %{rules: _rules} do
-      assert @iptables_rules == Rules.to_iptables()
+    test "prints all rules to nftables format", %{rules: _rules} do
+      assert @nftables_rules == Rules.to_nftables()
     end
   end
 
@@ -76,23 +76,23 @@ defmodule FzHttp.RulesTest do
   end
 
   # XXX: Revisit this when devices are linked to rules
-  # describe "iptables_spec/1 IPv4" do
+  # describe "nftables_spec/1 IPv4" do
   #   setup [:create_rule4]
   #
   #   @ipv4tables_spec {"10.0.0.1", "10.10.10.0/24", :drop}
   #
   #   test "returns IPv4 tuple", %{rule4: rule} do
-  #     assert @ipv4tables_spec = Rules.iptables_spec(rule)
+  #     assert @ipv4tables_spec = Rules.nftables_spec(rule)
   #   end
   # end
   #
-  # describe "iptables_spec/1 IPv6" do
+  # describe "nftables_spec/1 IPv6" do
   #   setup [:create_rule6]
   #
   #   @ipv6tables_spec {"::1", "::/0", :drop}
   #
   #   test "returns IPv6 tuple", %{rule6: rule} do
-  #     assert @ipv6tables_spec = Rules.iptables_spec(rule)
+  #     assert @ipv6tables_spec = Rules.nftables_spec(rule)
   #   end
   # end
 end
