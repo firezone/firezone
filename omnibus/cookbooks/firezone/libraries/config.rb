@@ -103,7 +103,7 @@ class Firezone
                           end
 
         node.override['firezone']['wireguard_public_key'] =
-          `echo '#{wireguard_private_key}' | #{node['firezone']['wireguard_private_key']}/embedded/bin/wg pubkey`.chomp
+          `echo '#{wireguard_private_key}' | #{node['firezone']['install_directory']}/embedded/bin/wg pubkey`.chomp
 
         secrets = {
           'secret_key_base' => secret_key_base,
@@ -215,6 +215,7 @@ class Firezone
 
     def self.app_env(attributes)
       env = {
+        'EGRESS_INTERFACE' => attributes['egress_interface'],
         'WG_PATH' => "#{attributes['install_directory']}/embedded/bin/wg",
         'NFT_PATH' => "#{attributes['install_directory']}/embedded/sbin/nft",
         'MIX_ENV' => 'prod',

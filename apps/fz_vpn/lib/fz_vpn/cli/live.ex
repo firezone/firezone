@@ -8,10 +8,11 @@ defmodule FzVpn.CLI.Live do
   See FzVpn.Server for higher-level functionality.
   """
 
-  # Outputs the privkey, then pubkey on the next line
-  @genkey_cmd "wg genkey | tee >(wg pubkey)"
+  # Outputs the privkey
+  @genkey_cmd "wg genkey"
 
   import FzCommon.CLI
+  require Logger
 
   def setup do
     :ok = GenServer.call(:global.whereis_name(:fz_wall_server), :setup)
@@ -25,16 +26,19 @@ defmodule FzVpn.CLI.Live do
   Calls wg genkey
   """
   def genkey do
-    [privkey, pubkey] =
+    privkey =
       exec!(@genkey_cmd)
       |> String.trim()
-      |> String.split("\n")
 
-    {privkey, pubkey}
+    {privkey, pubkey(privkey)}
   end
 
   def add_peer(pubkey, ip) do
-    set("peer #{pubkey} allowed-ips #{ip}/32")
+    set("peer #{pubkey} allowed-ips #{ip}")
+  end
+
+  def delete_peer(pubkey) do
+    set("peer #{pubkey} remove")
   end
 
   def pubkey(privkey) when is_nil(privkey), do: nil
@@ -48,6 +52,8 @@ defmodule FzVpn.CLI.Live do
     # Empty config string results in invalid command
     if String.length(config_str) > 0 do
       exec!("#{wg()} set #{iface_name()} #{config_str}")
+    else
+      Logger.warn("Attempted to set empty WireGuard config string. Bug?")
     end
   end
 

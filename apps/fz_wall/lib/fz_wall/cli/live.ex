@@ -7,35 +7,65 @@ defmodule FzWall.CLI.Live do
   """
 
   import FzCommon.CLI
+  import FzCommon.FzNet, only: [ip_type: 1]
   require Logger
 
   @table_name "firezone"
-  @egress_interface_cmd "route | grep '^default' | grep -o '[^ ]*$'"
 
   @doc """
   Adds nftables rule.
   """
-  def add_rule({proto, dest, action}) do
+  def add_rule({dest, action}) do
     exec!("""
-      #{nft()} 'add rule #{proto} #{@table_name} forward\
-      #{proto} daddr #{standardized_dest(dest)} #{action}'
+      #{nft()} 'add rule inet #{@table_name} forward\
+      #{proto(dest)} daddr #{standardized_dest(dest)} #{action}'
     """)
+  end
+
+  @doc """
+  Sets up firezone table.
+  """
+  def setup_table do
+    exec!("#{nft()} create table inet #{@table_name}")
+  end
+
+  @doc """
+  Sets up firezone chains.
+  """
+  def setup_chains do
+    exec!(
+      "#{nft()} 'add chain inet firezone forward " <>
+        "{ type filter hook forward priority 0 ; policy accept ; }'"
+    )
+
+    exec!(
+      "#{nft()} 'add chain inet firezone postrouting " <>
+        "{ type nat hook postrouting priority 100 ; }'"
+    )
+
+    exec!(
+      "#{nft()} 'add rule inet firezone postrouting " <>
+        "oifname #{egress_interface()} masquerade random,persistent'"
+    )
+  end
+
+  def teardown_table do
+    exec("#{nft()} delete table inet firezone")
   end
 
   @doc """
   List currently loaded rules.
   """
   def list_rules do
-    exec!("#{nft()} -a list table ip firezone")
-    exec!("#{nft()} -a list table ip6 firezone")
+    exec!("#{nft()} -a list table inet firezone")
   end
 
   @doc """
   Deletes nftables rule.
   """
-  def delete_rule({proto, dest, action}) do
-    rule_str = "#{proto} daddr #{standardized_dest(dest)} #{action}"
-    rules = exec!("#{nft()} -a list table #{proto} #{@table_name}")
+  def delete_rule({dest, action}) do
+    rule_str = "#{proto(dest)} daddr #{standardized_dest(dest)} #{action}"
+    rules = exec!("#{nft()} -a list table inet #{@table_name}")
 
     case rule_handle_regex(~r/#{rule_str}.*# handle (?<num>\d+)/, rules) do
       nil ->
@@ -50,7 +80,7 @@ defmodule FzWall.CLI.Live do
         """)
 
       [handle] ->
-        exec!("#{nft()} delete rule #{proto} #{@table_name} forward handle #{handle}")
+        exec!("#{nft()} delete rule inet #{@table_name} forward handle #{handle}")
     end
   end
 
@@ -105,19 +135,18 @@ defmodule FzWall.CLI.Live do
   end
 
   defp egress_interface do
-    case :os.type() do
-      {:unix, :linux} ->
-        exec!(@egress_interface_cmd)
-        |> String.split()
-        |> List.first()
-
-      {:unix, :darwin} ->
-        # XXX: Figure out what it means to have macOS as a host?
-        "en0"
-    end
+    Application.fetch_env!(:fz_wall, :egress_interface)
   end
 
   defp nft do
     Application.fetch_env!(:fz_wall, :nft_path)
+  end
+
+  defp proto(dest) do
+    case ip_type("#{dest}") do
+      "IPv4" -> "ip"
+      "IPv6" -> "ip6"
+      "unknown" -> raise "Unknown protocol."
+    end
   end
 end

@@ -1,3 +1,3 @@
 # FzWall
 
-Elixir/OTP frontend to `iptables`.
+Elixir/OTP frontend to `nft`.

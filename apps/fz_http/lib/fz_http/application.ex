@@ -16,6 +16,7 @@ defmodule FzHttp.Application do
 
         _ ->
           [
+            FzHttp.Server,
             FzHttp.Repo,
             FzHttp.Vault,
             {Phoenix.PubSub, name: FzHttp.PubSub},

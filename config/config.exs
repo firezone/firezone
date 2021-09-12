@@ -14,6 +14,8 @@
 # move said applications out of the umbrella.
 import Config
 
+egress_interface_cmd = "route | grep '^default' | grep -o '[^ ]*$'"
+
 # Sample configuration:
 #
 #     config :logger, :console,
@@ -29,11 +31,14 @@ config :fz_http,
   admin_email: "firezone@localhost",
   default_admin_password: "firezone",
   events_module: FzHttpWeb.Events,
-  disable_signup: true
+  disable_signup: true,
+  server_process_opts: [name: {:global, :fz_http_server}]
 
 config :fz_wall,
   cli: FzWall.CLI.Sandbox,
-  server_process_opts: []
+  server_process_opts: [name: {:global, :fz_wall_server}],
+  egress_interface:
+    System.cmd("/bin/sh", ["-c", egress_interface_cmd]) |> elem(0) |> String.trim()
 
 # This will be changed per-env
 config :fz_vpn,
@@ -42,7 +47,7 @@ config :fz_vpn,
   wireguard_port: "51820",
   wireguard_endpoint_ip: "127.0.0.1",
   cli: FzVpn.CLI.Sandbox,
-  server_process_opts: []
+  server_process_opts: [name: {:global, :fz_vpn_server}]
 
 # Configures the endpoint
 # These will be overridden at runtime in production by config/releases.exs

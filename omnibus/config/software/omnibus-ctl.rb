@@ -1,4 +1,5 @@
-#
+# frozen_string_literal: true
+
 # Copyright 2012-2015 Chef Software, Inc.
 # Copyright 2017-2021 GitLab Inc.
 #

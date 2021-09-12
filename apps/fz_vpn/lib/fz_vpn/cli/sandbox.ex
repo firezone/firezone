@@ -15,6 +15,7 @@ defmodule FzVpn.CLI.Sandbox do
   def pubkey(_privkey), do: rand_key()
   def exec!(_cmd), do: @default_returned
   def set(_conf_str), do: @default_returned
+  def delete_peer(_pubkey), do: @default_returned
   def show_latest_handshakes, do: @show_latest_handshakes
   def show_persistent_keepalives, do: @show_persistent_keepalives
   def show_transfer, do: @show_transfer

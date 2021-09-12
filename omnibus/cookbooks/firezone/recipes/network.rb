@@ -30,6 +30,7 @@ egress_ip = Mixlib::ShellOut.new(egress_cmd)
 egress_ip.run_command
 node.default['firezone']['wireguard']['endpoint_ip'] =
   egress_ip.stdout.chomp.gsub(%r{/.*}, '')
+node.default['firezone']['egress_interface'] = egress_interface
 
 # Create wireguard interface if missing
 wg_exists = Mixlib::ShellOut.new("ip link show dev #{wg_interface}")
@@ -62,29 +63,4 @@ end
 route '10.3.2.0/24' do
   # XXX: Make this configurable
   device wg_interface
-end
-
-# XXX: Idempotent?
-execute 'setup_firezone_firewall_table' do
-  command "#{nft_path} add table inet firezone"
-end
-
-# XXX: Idempotent?
-execute 'setup_firezone_forwarding_chain' do
-  command "#{nft_path} 'add chain inet firezone forward { type filter hook forward priority 0 ; }'"
-end
-
-# XXX: Idempotent?
-execute 'setup_firezone_postrouting_chain' do
-  command "#{nft_path} 'add chain inet firezone postrouting { type nat hook postrouting priority 100 ; }'"
-end
-
-# XXX: Idempotent?
-execute 'enable_packet_counters' do
-  command "#{nft_path} add rule inet firezone forward counter accept"
-end
-
-# XXX: Idempotent?
-execute 'enable_masquerading' do
-  command "#{nft_path} add rule inet firezone postrouting oifname \"#{egress_interface}\" masquerade random,persistent"
 end

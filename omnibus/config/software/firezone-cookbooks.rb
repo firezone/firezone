@@ -35,7 +35,9 @@ build do
     end
 
     unless all_the_gem_deps.empty?
-      raise Omnibus::Error, "Nope. Gem dependencies found in the following cookbooks used during ctl-reconfigure. This will break airgapped installs.\n#{all_the_gem_deps}"
+      raise Omnibus::Error, "Nope. Gem dependencies found in the following "\
+        "cookbooks used during ctl-reconfigure. This will break airgapped "\
+        "installs.\n#{all_the_gem_deps}"
     end
   end
 
@@ -51,12 +53,12 @@ build do
     end
 
     open("#{cookbooks_path}/solo.rb", "w") do |file|
-      file.write <<-EOH.gsub(/^ {8}/, '')
+      file.write <<~SOLO
         cookbook_path   "#{cookbooks_path}"
         cache_path "/var/opt/firezone/cache"
         verbose_logging true
         ssl_verify_mode :verify_peer
-      EOH
+      SOLO
     end
   end
 end
