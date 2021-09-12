@@ -64,6 +64,10 @@ default['firezone']['url_host'] = node['firezone']['fqdn']
 # Email for the primary admin user.
 default['firezone']['admin_email'] = "firezone@localhost"
 
+# The outgoing interface of your internet traffic.
+# This is automatically determined in most cases.
+# default['firezone']['egress_interface'] = nil
+
 # ## Enterprise
 #
 # The "enterprise" cookbook provides recipes and resources we can use for this

@@ -8,8 +8,8 @@ defmodule FzVpn.CLI.Live do
   See FzVpn.Server for higher-level functionality.
   """
 
-  # Outputs the privkey, then pubkey on the next line
-  @genkey_cmd "wg genkey | tee >(wg pubkey)"
+  # Outputs the privkey
+  @genkey_cmd "wg genkey"
 
   import FzCommon.CLI
   require Logger
@@ -26,12 +26,11 @@ defmodule FzVpn.CLI.Live do
   Calls wg genkey
   """
   def genkey do
-    [privkey, pubkey] =
+    privkey =
       exec!(@genkey_cmd)
       |> String.trim()
-      |> String.split("\n")
 
-    {privkey, pubkey}
+    {privkey, pubkey(privkey)}
   end
 
   def add_peer(pubkey, ip) do
