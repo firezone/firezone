@@ -215,6 +215,7 @@ class Firezone
 
     def self.app_env(attributes)
       env = {
+        'EGRESS_INTERFACE' => attributes['egress_interface'],
         'WG_PATH' => "#{attributes['install_directory']}/embedded/bin/wg",
         'NFT_PATH' => "#{attributes['install_directory']}/embedded/sbin/nft",
         'MIX_ENV' => 'prod',

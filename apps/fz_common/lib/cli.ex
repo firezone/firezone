@@ -6,7 +6,7 @@ defmodule FzCommon.CLI do
   require Logger
 
   def bash(cmd) do
-    System.cmd("bash", ["-c", cmd], stderr_to_stdout: true)
+    System.cmd("/bin/sh", ["-c", cmd], stderr_to_stdout: true)
   end
 
   def exec(cmd, opts) when is_list(opts) do

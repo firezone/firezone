@@ -30,6 +30,7 @@ egress_ip = Mixlib::ShellOut.new(egress_cmd)
 egress_ip.run_command
 node.default['firezone']['wireguard']['endpoint_ip'] =
   egress_ip.stdout.chomp.gsub(%r{/.*}, '')
+node.default['firezone']['egress_interface'] = egress_interface
 
 # Create wireguard interface if missing
 wg_exists = Mixlib::ShellOut.new("ip link show dev #{wg_interface}")

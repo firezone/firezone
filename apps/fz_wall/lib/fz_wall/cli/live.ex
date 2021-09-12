@@ -11,7 +11,6 @@ defmodule FzWall.CLI.Live do
   require Logger
 
   @table_name "firezone"
-  @egress_interface_cmd "route | grep '^default' | grep -o '[^ ]*$'"
 
   @doc """
   Adds nftables rule.
@@ -136,16 +135,7 @@ defmodule FzWall.CLI.Live do
   end
 
   defp egress_interface do
-    case :os.type() do
-      {:unix, :linux} ->
-        exec!(@egress_interface_cmd)
-        |> String.split()
-        |> List.first()
-
-      {:unix, :darwin} ->
-        # XXX: Figure out what it means to have macOS as a host?
-        "en0"
-    end
+    Application.fetch_env!(:fz_wall, :egress_interface)
   end
 
   defp nft do
