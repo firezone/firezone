@@ -1,10 +1,9 @@
 defmodule FzVpn.ServerTest do
   use ExUnit.Case, async: true
-  alias FzVpn.{Config, Peer}
   import FzVpn.CLI
 
-  @empty %Config{}
-  @single_peer %Config{peers: MapSet.new([%Peer{public_key: "test-pubkey"}])}
+  @empty %{}
+  @single_peer %{"test-pubkey" => "127.0.0.1"}
 
   describe "state" do
     setup %{stubbed_config: config} do
@@ -20,13 +19,15 @@ defmodule FzVpn.ServerTest do
     test "generates new peer when requested", %{test_pid: test_pid} do
       assert {:ok, _, _, _} = GenServer.call(test_pid, :create_device)
       # Peers aren't added to config until device is successfully created
-      assert [] = MapSet.to_list(:sys.get_state(test_pid).peers)
+
+      assert :sys.get_state(test_pid) == %{}
     end
 
     @tag stubbed_config: @single_peer
     test "removes peers from config when removed", %{test_pid: test_pid} do
       GenServer.call(test_pid, {:delete_device, "test-pubkey"})
-      assert MapSet.to_list(:sys.get_state(test_pid).peers) == []
+
+      assert :sys.get_state(test_pid) == %{}
     end
   end
 end

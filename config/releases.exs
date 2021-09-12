@@ -72,7 +72,7 @@ config :fz_http, FzHttpWeb.Endpoint,
   ]
 
 config :fz_wall,
-  nft_path: System.get_env()
+  nft_path: nft_path
 
 config :fz_vpn,
   wireguard_interface_name: wireguard_interface_name,

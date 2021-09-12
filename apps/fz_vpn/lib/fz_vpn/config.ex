@@ -3,12 +3,11 @@ defmodule FzVpn.Config do
   Functions for managing the WireGuard configuration.
   """
 
-  defstruct peers: MapSet.new([])
-
+  # Render peers list into server config
   def render(config) do
     Enum.join(
-      for peer <- config.peers do
-        "peer #{peer.public_key} allowed-ips #{peer.allowed_ips}"
+      for {public_key, ip} <- config do
+        "peer #{public_key} allowed-ips #{ip}"
       end,
       " "
     )

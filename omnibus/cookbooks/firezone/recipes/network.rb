@@ -63,26 +63,3 @@ route '10.3.2.0/24' do
   # XXX: Make this configurable
   device wg_interface
 end
-
-# XXX: Idempotent?
-execute 'setup_firezone_firewall_table' do
-  command "#{nft_path} add table inet firezone"
-end
-
-# XXX: Idempotent?
-execute 'setup_firezone_forwarding_chain' do
-  command "#{nft_path} 'add chain inet firezone forward "\
-    "{ type filter hook forward priority 0 ; policy accept ; }'"
-end
-
-# XXX: Idempotent?
-execute 'setup_firezone_postrouting_chain' do
-  command "#{nft_path} 'add chain inet firezone postrouting "\
-    "{ type nat hook postrouting priority 100 ; }'"
-end
-
-# XXX: Idempotent?
-execute 'enable_masquerading' do
-  command "#{nft_path} add rule inet firezone postrouting "\
-    "oifname \"#{egress_interface}\" masquerade random,persistent"
-end
