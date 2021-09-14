@@ -73,6 +73,9 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - run: |
+          # XXX: This is required because Omnibus tries to create the install_dir
+          # here even if it already exists.
+          sudo chown vagrant:vagrant /opt
           cd omnibus
           bundle install --binstubs
           bin/omnibus build firezone
