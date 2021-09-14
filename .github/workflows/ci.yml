@@ -73,9 +73,11 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - run: |
+          echo 'MUAHAHAHA'
           cd omnibus
           bundle install --binstubs
           bin/omnibus build firezone
+          
       - uses: actions/upload-artifact@v2
         with:
           name: firezone-${{ matrix.os }}-amd64
