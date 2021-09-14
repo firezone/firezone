@@ -61,26 +61,24 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        arch:
-          - amd64
-        include:
-          - os: centos7
-          - os: centos8
-          - os: debian10
-          - os: fedora33
-          - os: fedora34
-          - os: ubuntu1804
-          - os: ubuntu2004
-          - os: debian11
+        os:
+          - centos7
+          - centos8
+          - debian10
+          - fedora33
+          - fedora34
+          - ubuntu1804
+          - ubuntu2004
+          - debian11
     steps:
       - uses: actions/checkout@v2
       - run: |
           cd omnibus
           bundle install --binstubs
-          bin/build firezone
+          bin/omnibus build firezone
       - uses: actions/upload-artifact@v2
         with:
-          name: firezone-${{ matrix.os }}-${{ matrix.arch }}
+          name: firezone-${{ matrix.os }}-amd64
           path: omnibus/pkg/firezone*.(deb|rpm)
 
   publish:
@@ -88,8 +86,6 @@ jobs:
     runs-on: ubuntu-20.04
     strategy:
       matrix:
-        arch:
-          - amd64
         os:
           - debian10
           - debian11
@@ -113,7 +109,7 @@ jobs:
           prerelease: true
       - uses: actions/download-artifact@v2
         with:
-          name: firezone-${{ matrix.os }}-${{ matrix.arch }}
+          name: firezone-${{ matrix.os }}-amd64
           path: ./
       - name: Release
         uses: softprops/action-gh-release@v1
