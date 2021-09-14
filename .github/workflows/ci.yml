@@ -56,37 +56,31 @@ jobs:
       - name: Run Tests and Upload Coverage Report
         run: mix coveralls.github --umbrella
 
-
   build-package-test:
     needs: unit-test
-    runs-on: macos-latest # macos supports Virtualbox / Vagrant
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
+        arch:
+          - amd64
         include:
-          - port: 8800
-            os: centos_7
-          - port: 8801
-            os: centos_8
-          - port: 8802
-            os: debian_10
-          - port: 8803
-            os: fedora_33
-          - port: 8804
-            os: fedora_34
-          - port: 8805
-            os: ubuntu_18.04
-          - port: 8806
-            os: ubuntu_20.04
-          - port: 8807
-            os: debian_11
+          - os: centos7
+          - os: centos8
+          - os: debian10
+          - os: fedora33
+          - os: fedora34
+          - os: ubuntu1804
+          - os: ubuntu2004
+          - os: debian11
     steps:
       - uses: actions/checkout@v2
-      - run: vagrant up ${{ matrix.os }}
-      # XXX: Currently a noop
-      - run: .ci/functional_test.sh
+      - run: |
+          cd omnibus
+          bundle install --binstubs
+          bin/build firezone
       - uses: actions/upload-artifact@v2
         with:
-          name: firezone-${{ matrix.os }}
+          name: firezone-${{ matrix.os }}-${{ matrix.arch }}
           path: omnibus/pkg/firezone*.(deb|rpm)
 
   publish:
@@ -94,15 +88,17 @@ jobs:
     runs-on: ubuntu-20.04
     strategy:
       matrix:
+        arch:
+          - amd64
         os:
-          - debian_10
-          - debian_11
-          - ubuntu_18.04
-          - ubuntu_20.04
-          - centos_7
-          - centos_8
-          - fedora_33
-          - fedora_34
+          - debian10
+          - debian11
+          - ubuntu1804
+          - ubuntu2004
+          - centos7
+          - centos8
+          - fedora33
+          - fedora34
     if: startsWith(github.ref, 'refs/tags/')
     steps:
       - name: Create Release
@@ -117,7 +113,7 @@ jobs:
           prerelease: true
       - uses: actions/download-artifact@v2
         with:
-          name: firezone-${{ matrix.os }}
+          name: firezone-${{ matrix.os }}-${{ matrix.arch }}
           path: ./
       - name: Release
         uses: softprops/action-gh-release@v1
