@@ -27,7 +27,11 @@ DESC
 
 # Defaults to C:/firezone on Windows
 # and /opt/firezone on all other platforms
-install_dir "#{default_root}/#{name}"
+if ENV["CI"]
+  install_dir "/opt/runner/#{name}"
+else
+  install_dir "#{default_root}/#{name}"
+end
 
 build_version Omnibus::BuildVersion.semver
 build_iteration 1
