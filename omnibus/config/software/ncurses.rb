@@ -19,8 +19,12 @@ name "ncurses"
 default_version "6.2"
 
 license "MIT"
-license_file "http://invisible-island.net/ncurses/ncurses-license.html"
-license_file "http://invisible-island.net/ncurses/ncurses.faq.html"
+license_file "COPYING"
+
+# This quickly gets rate-limit and blocked on self-hosted runners.
+# license_file "http://invisible-island.net/ncurses/ncurses-license.html"
+# license_file "http://invisible-island.net/ncurses/ncurses.faq.html"
+
 skip_transitive_dependency_licensing true
 
 dependency "libtool"
