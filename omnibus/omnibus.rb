@@ -14,7 +14,9 @@
 #
 # Uncomment this line to change the default base directory to "local"
 # -------------------------------------------------------------------
-if Dir.exist?("/vagrant")
+if ENV["CI"]
+  base_dir("/opt/runner/omnibus-local")
+elsif Dir.exist?("/vagrant")
   # Running inside vagrant, use tmp dir
   base_dir("/tmp/omnibus-local")
 else
