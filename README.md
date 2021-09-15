@@ -1,5 +1,5 @@
 ![](./apps/fz_http/assets/static/images/logo.svg)
-
+ 
 ![Test](https://github.com/firezone/firezone/workflows/Test/badge.svg)
 [![Coverage Status](https://coveralls.io/repos/github/firezone/firezone/badge.svg?branch=master)](https://coveralls.io/github/FireZone-LLC/firezone?branch=master)
 
