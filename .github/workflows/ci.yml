@@ -114,6 +114,13 @@ jobs:
         with:
           name: firezone-${{ matrix.os }}-amd64
           path: ./
+      - name: Get the version
+        id: get_version
+        run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
+      - name: Rename artifact file
+        run: |
+          mv ./firezone*.rpm firezone_${{ steps.get_version.outputs.VERSION }}-${{ matrix.os }}-amd64.rpm || true
+          mv ./firezone*.deb firezone_${{ steps.get_version.outputs.VERSION }}-${{ matrix.os }}-amd64.deb || true
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
