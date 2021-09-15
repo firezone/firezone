@@ -81,8 +81,8 @@ jobs:
         with:
           name: firezone-${{ matrix.os }}-amd64
           path: |
-            pkg/firezone*.deb
-            pkg/firezone*.rpm
+            omnibus/pkg/firezone*.deb
+            omnibus/pkg/firezone*.rpm
 
   publish:
     needs: build-package-test
