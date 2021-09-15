@@ -80,7 +80,9 @@ jobs:
       - uses: actions/upload-artifact@v2
         with:
           name: firezone-${{ matrix.os }}-amd64
-          path: omnibus/pkg/firezone*.(deb|rpm)
+          path: |
+            omnibus/pkg/firezone*.deb
+            omnibus/pkg/firezone*.rpm
 
   publish:
     needs: build-package-test
