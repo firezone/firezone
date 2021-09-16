@@ -4,6 +4,13 @@
 <p align="center">
   <a href="https://firez.one">
     <img src="https://img.shields.io/badge/firezone-beta v0.0.5-red" alt="firezone" />
+</p>
+<p align="center">
+  <b>FireZone is a simple WireGuard™-based VPN server and firewall</b>
+</p>
+<p align="center">
+  <a href="https://firez.one">
+    <img src="https://img.shields.io/badge/firezone-beta v0.1-red" alt="firezone" />
   </a>
   <a href="https://e04kusl9oz5.typeform.com/to/zahKLf3d">
     <img src="https://img.shields.io/static/v1?logo=openbugbounty&logoColor=959DA5&label=feedback&labelColor=333a41&message=submit&color=3AC358" alt="firezone Slack" />
@@ -21,6 +28,12 @@
 
 # Firezone VPN
 FireZone is a simple WireGuard™-based VPN server and firewall for Linux designed to be secure, easy to manage, and quick to set up.
+## Why Firezone?
+Firezone is designed to be:
+- Quick to set up
+- Easy to manage
+- Secure and reliable
+
 
 ![Architecture](./apps/fz_http/assets/static/images/firezone-usage.gif)
 
