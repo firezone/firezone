@@ -77,6 +77,8 @@ jobs:
           . $HOME/.asdf/asdf.sh
           cd omnibus
           bundle install --binstubs
+          sudo mkdir -p /opt/firezone
+          sudo chown vagrant:vagrant /opt/firezone
           bin/omnibus build firezone
       - name: Functional Test
         run: |
