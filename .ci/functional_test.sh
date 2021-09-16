@@ -1,13 +1,13 @@
 #!/bin/bash
 set -x
 
-cd /vagrant/omnibus
+# This script should be run from the app root
 
 which rpm
 if [ $? -eq 0 ]; then
-  sudo rpm -i pkg/firezone*.rpm
+  sudo rpm -i omnibus/pkg/firezone*.rpm
 else
-  sudo dpkg -i pkg/firezone*.deb
+  sudo dpkg -i omnibus/pkg/firezone*.deb
 fi
 
 sudo firezone-ctl reconfigure
