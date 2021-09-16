@@ -1,10 +1,19 @@
-#!/usr/bin/env bash
-set -ex
+#!/bin/bash
+set -x
 
-# PORT is set in Github Actions matrix
+cd /vagrant/omnibus
+
+which rpm
+if [ $? -eq 0 ]; then
+  sudo rpm -i pkg/firezone*.rpm
+else
+  sudo dpkg -i pkg/firezone*.deb
+fi
+
+sudo firezone-ctl reconfigure
+
+# Usually fails the first time
+sudo firezone-ctl restart
 
 echo "Trying to load homepage"
-curl -i -vvv -k https://$(hostname):${PORT}/ || true
-
-echo "Printing SSL debug info"
-openssl s_client -connect $(hostname):${PORT} -servername $(hostname) -showcerts -prexit || true
+curl -i -vvv -k https://$(hostname)
