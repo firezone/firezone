@@ -27,6 +27,8 @@ defmodule FzCommon.CLI do
         else
           raise error_msg
         end
+
+        error_msg
     end
   end
 
