@@ -10,7 +10,7 @@
 </p>
 <p align="center">
   <a href="https://firez.one">
-    <img src="https://img.shields.io/badge/firezone-beta v0.1-red" alt="firezone" />
+    <img src="https://img.shields.io/badge/firezone-beta v0.0.5-red" alt="firezone" />
   </a>
   <a href="https://e04kusl9oz5.typeform.com/to/zahKLf3d">
     <img src="https://img.shields.io/static/v1?logo=openbugbounty&logoColor=959DA5&label=feedback&labelColor=333a41&message=submit&color=3AC358" alt="firezone Slack" />
@@ -30,6 +30,7 @@
 FireZone is a simple WireGuard™-based VPN server and firewall for Linux designed to be secure, easy to manage, and quick to set up.
 ## Why Firezone?
 Firezone is designed to be:
+
 - Quick to set up
 - Easy to manage
 - Secure and reliable
@@ -151,11 +152,11 @@ For now, FireZone assumes these apps are all running on the same host.
 For help, feedback or contributions please join our [Slack group](https://admin.typeform.com/form/rpMtkZw4/create?block=a9c11a46-1dcf-4155-b447-0d8ce5700d5f). We're actively working to improve Firezone, and the Slack group is the best way to coordinate our efforts.
 
 
-## Developing and Contributing
+# Developing and Contributing
 
 - See [CONTRIBUTING.md](CONTRIBUTING.md).
 - Report issues and bugs in [this Github project]().
 
-## License
+# License
 
 WireGuard™ is a registered trademark of Jason A. Donenfeld.
