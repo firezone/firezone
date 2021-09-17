@@ -50,7 +50,9 @@ defmodule FzWall.CLI.Live do
   end
 
   def teardown_table do
-    exec("#{nft()} delete table inet firezone")
+    if table_exists?() do
+      exec!("#{nft()} delete table inet firezone")
+    end
   end
 
   @doc """
@@ -140,6 +142,25 @@ defmodule FzWall.CLI.Live do
 
   defp nft do
     Application.fetch_env!(:fz_wall, :nft_path)
+  end
+
+  defp table_exists? do
+    cmd = "#{nft()} list table inet #{@table_name}"
+
+    case bash(cmd) do
+      {_result, 0} ->
+        true
+
+      {error, _exit_code} ->
+        if String.contains?(error, "Error: No such file or directory") do
+          false
+        else
+          raise """
+            Unknown Error from command #{cmd}. Error:
+            #{error}
+          """
+        end
+    end
   end
 
   defp proto(dest) do
