@@ -16,7 +16,7 @@ sudo firezone-ctl reconfigure
 sudo firezone-ctl restart
 
 # Wait for phoenix app to boot
-sleep 5
+sleep 30
 
 sudo find /var/log/firezone/phoenix/ -type f | sudo xargs cat
 
