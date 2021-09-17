@@ -21,7 +21,7 @@ sleep 30
 sudo find /var/log/firezone/phoenix/ -type f | sudo xargs cat
 
 echo "Trying to load homepage"
-page=$(curl -i -vvv -k https://$(hostname))
+page=$(curl -L -i -vvv -k https://$(hostname))
 echo $page
 
 echo "Testing for sign in button"
