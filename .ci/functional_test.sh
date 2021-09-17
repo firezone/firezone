@@ -18,6 +18,8 @@ sudo firezone-ctl restart
 # Wait for phoenix app to boot
 sleep 5
 
+sudo cat /var/log/firezone/*.log
+
 echo "Trying to load homepage"
 page=$(curl -i -vvv -k https://$(hostname))
 echo $page
