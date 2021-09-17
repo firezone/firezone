@@ -21,7 +21,9 @@ awk_path = "#{node['firezone']['install_directory']}/embedded/bin/awk"
 wg_interface = node['firezone']['wireguard']['interface_name']
 private_key_path = "#{node['firezone']['var_directory']}/cache/wg_private_key"
 
-egress_cmd = Mixlib::ShellOut.new("route | grep '^default' | grep -o '[^ ]*$'")
+# Some distros don't have route in PATH, look in /sbin
+route = Mixlib::ShellOut.new("whereis route | cut -f 2 -d' '").run_command.stdout.chomp
+egress_cmd = Mixlib::ShellOut.new("#{route} | grep '^default' | grep -o '[^ ]*$'")
 egress_interface = egress_cmd.run_command.stdout.chomp
 
 # Set default endpoint ip to default egress ip
