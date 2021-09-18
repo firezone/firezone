@@ -83,17 +83,17 @@ jobs:
       - name: Functional Test
         run: |
           .ci/functional_test.sh
-      - name: Cleanup
-        if: always()
-        run: |
-          scripts/uninstall.sh
-          rm -rf omnibus/pkg/*
       - uses: actions/upload-artifact@v2
         with:
           name: firezone-${{ matrix.os }}-amd64
           path: |
             omnibus/pkg/firezone*.deb
             omnibus/pkg/firezone*.rpm
+      - name: Cleanup
+        if: always()
+        run: |
+          scripts/uninstall.sh
+          rm -rf omnibus/pkg/*
 
   publish:
     needs: build-package-test
