@@ -16,8 +16,10 @@ defmodule FzCommon.CLI do
 
       {error, exit_code} ->
         error_msg = """
-          Error executing command #{cmd}. Exited with code #{exit_code} and error #{error}.
-          FireZone cannot recover from this error.
+          Error executing command #{cmd}.
+          Exit code: #{exit_code}
+          Error message:
+          #{error}
         """
 
         if opts[:suppress] do
@@ -25,6 +27,8 @@ defmodule FzCommon.CLI do
         else
           raise error_msg
         end
+
+        error_msg
     end
   end
 

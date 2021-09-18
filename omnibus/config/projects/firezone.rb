@@ -45,6 +45,7 @@ dependency "firezone-ctl"
 dependency "firezone-scripts"
 dependency "firezone-cookbooks"
 
+# XXX: Ensure all development resources aren't included
 exclude ".env"
 exclude ".github"
 exclude ".vagrant"

@@ -1,10 +1,28 @@
-#!/usr/bin/env bash
-set -ex
+#!/bin/bash
+set -x
 
-# PORT is set in Github Actions matrix
+# This script should be run from the app root
+
+which rpm
+if [ $? -eq 0 ]; then
+  sudo rpm -i omnibus/pkg/firezone*.rpm
+else
+  sudo dpkg -i omnibus/pkg/firezone*.deb
+fi
+
+sudo firezone-ctl reconfigure
+
+# Usually fails the first time
+sudo firezone-ctl restart
+
+# Wait for phoenix app to boot
+sleep 30
+
+sudo find /var/log/firezone/phoenix/ -type f | sudo xargs cat
 
 echo "Trying to load homepage"
-curl -i -vvv -k https://$(hostname):${PORT}/ || true
+page=$(curl -L -i -vvv -k https://$(hostname))
+echo $page
 
-echo "Printing SSL debug info"
-openssl s_client -connect $(hostname):${PORT} -servername $(hostname) -showcerts -prexit || true
+echo "Testing for sign in button"
+echo $page | grep "Sign in"
