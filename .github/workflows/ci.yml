@@ -54,7 +54,10 @@ jobs:
           mix ecto.create
           mix ecto.migrate
       - name: Run Tests and Upload Coverage Report
-        run: mix coveralls.github --umbrella
+        run: |
+          # Sometimes coveralls goes down for maintenance, so just run tests if
+          # coveralls fails
+          mix coveralls.github --umbrella || mix test
 
   build-package-test:
     needs: unit-test
