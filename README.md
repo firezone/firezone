@@ -152,11 +152,11 @@ For now, FireZone assumes these apps are all running on the same host.
 For help, feedback or contributions please join our [Slack group](https://admin.typeform.com/form/rpMtkZw4/create?block=a9c11a46-1dcf-4155-b447-0d8ce5700d5f). We're actively working to improve Firezone, and the Slack group is the best way to coordinate our efforts.
 
 
-# Developing and Contributing
+## Developing and Contributing
 
 - See [CONTRIBUTING.md](CONTRIBUTING.md).
 - Report issues and bugs in [this Github project]().
 
-# License
+## License
 
 WireGuard™ is a registered trademark of Jason A. Donenfeld.
