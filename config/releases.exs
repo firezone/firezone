@@ -21,6 +21,7 @@ wireguard_port = String.to_integer(System.fetch_env!("WIREGUARD_PORT"))
 nft_path = System.fetch_env!("NFT_PATH")
 wg_path = System.fetch_env!("WG_PATH")
 egress_interface = System.fetch_env!("EGRESS_INTERFACE")
+wireguard_public_key = System.fetch_env!("WIREGUARD_PUBLIC_KEY")
 
 # secrets
 encryption_key = System.fetch_env!("DATABASE_ENCRYPTION_KEY")
@@ -77,6 +78,7 @@ config :fz_wall,
   egress_interface: egress_interface
 
 config :fz_vpn,
+  wireguard_public_key: wireguard_public_key,
   wireguard_interface_name: wireguard_interface_name,
   wireguard_port: wireguard_port,
   wireguard_endpoint_ip: wireguard_endpoint_ip
