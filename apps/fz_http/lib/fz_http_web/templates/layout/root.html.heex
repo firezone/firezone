@@ -102,7 +102,9 @@
       <div class="level">
         <div class="level-left">
           <div class="level-item">
-            <a href="mailto:{feedback_recipient()}">Leave us feedback!</a>
+            <%= link(to: "mailto:" <> feedback_recipient()) do %>
+              Leave us feedback!
+            <% end %>
           </div>
           <div class="level-item">
             <a href="https://github.com/firezone/firezone" style="height: 20px">
