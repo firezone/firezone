@@ -12,8 +12,6 @@
           <th>Name</th>
           <th>WireGuard IP</th>
           <th>Public key</th>
-          <th>Remote IP</th>
-          <th>Last seen at</th>
         </tr>
       </thead>
       <tbody>
@@ -24,8 +22,6 @@
           </td>
           <td class="code"><%= FzHttp.Devices.ipv4_address(device) %></td>
           <td class="code"><%= device.public_key %></td>
-          <td class="code"><%= device.remote_ip || "Never connected" %></td>
-          <td><%= device.last_seen_at %></td>
         </tr>
       <% end %>
       </tbody>
