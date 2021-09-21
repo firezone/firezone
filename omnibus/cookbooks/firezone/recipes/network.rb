@@ -12,6 +12,7 @@
 # have a configuration file.
 
 include_recipe 'firezone::config'
+include_recipe 'line::default'
 
 require 'mixlib/shellout'
 
@@ -66,3 +67,17 @@ route '10.3.2.0/24' do
   # XXX: Make this configurable
   device wg_interface
 end
+
+replace_or_add "IPv4 packet forwarding" do
+  path "/etc/sysctl.conf"
+  pattern "^#net.ipv4.ip_forward=1"
+  line "net.ipv4.ip_forward=1"
+end
+
+replace_or_add "IPv6 packet forwarding" do
+  path "/etc/sysctl.conf"
+  pattern "^#net.ipv6.conf.all.forwarding=1"
+  line "net.ipv6.conf.all.forwarding=1"
+end
+
+execute "sysctl -p /etc/sysctl.conf"
