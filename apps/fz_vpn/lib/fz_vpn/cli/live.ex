@@ -53,7 +53,9 @@ defmodule FzVpn.CLI.Live do
     if String.length(config_str) > 0 do
       exec!("#{wg()} set #{iface_name()} #{config_str}")
     else
-      Logger.warn("Attempted to set empty WireGuard config string. Bug?")
+      Logger.warn("""
+      Attempted to set empty WireGuard config string. Most of the time this can be safely ignored.
+      """)
     end
   end
 
