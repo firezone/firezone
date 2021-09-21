@@ -1,18 +1,18 @@
 #!/bin/sh
 exec 2>&1
 
+<%= Firezone::Config.environment_variables_from(Firezone::Config.app_env(node['firezone'])) %>
+<%= Firezone::Config.locale_variables %>
 export PATH=<%= node['firezone']['install_directory'] %>/embedded/bin:$PATH
 export LD_LIBRARY_PATH=<%= node['firezone']['install_directory'] %>/embedded/lib
 export DIR=<%= node['firezone']['app_directory'] %>
 export HOME=$DIR
 <%= "export OPENSSL_FIPS=1" if node['firezone']['fips_enabled'] == true %>
-<%= Firezone::Config.environment_variables_from(Firezone::Config.app_env(node['firezone'])) %>
-<%= Firezone::Config.locale_variables %>
 
 cd $DIR
 
 exec <%= node['runit']['chpst_bin'] %> \
-      -P \
-      -U <%= node['firezone']['user'] %>:<%= node['firezone']['group'] %> \
-      -u <%= node['firezone']['user'] %>:<%= node['firezone']['group'] %> \
-      bin/firezone start
+  -P \
+  -U <%= node['firezone']['user'] %>:<%= node['firezone']['group'] %> \
+  -u <%= node['firezone']['user'] %>:<%= node['firezone']['group'] %> \
+  bin/firezone start
