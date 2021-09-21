@@ -12,7 +12,7 @@
 5. [Architecture](#architecture)
 6. [Contributing](#contributing)
 
-![IMG_0023](https://user-images.githubusercontent.com/167144/132162016-c17635ae-a715-41ca-b6f9-7cbdf202f8d5.png)
+![firezone usage](https://user-images.githubusercontent.com/167144/134213154-39a6c5cd-0c6f-4b1f-a482-cd3a02a74443.gif)
 
 ## Intro
 
@@ -104,6 +104,8 @@ Service Management Commands:
 ```
 
 ## Architecture
+
+![Architecture](https://user-images.githubusercontent.com/167144/134213076-732f9d0a-48d5-408b-ac99-d26e615a8a3f.png)
 
 FireZone is written in the Elixir programming language and composed as an [Umbrella
 project](https://elixir-lang.org/getting-started/mix-otp/dependencies-and-umbrella-projects.html)
