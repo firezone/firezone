@@ -61,8 +61,7 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
       |> element("button", "Delete device")
       |> render_click()
 
-      flash = assert_redirected(view, Routes.device_index_path(conn, :index))
-      assert flash["info"] == "Device deleted successfully."
+      _flash = assert_redirected(view, Routes.device_index_path(conn, :index))
     end
   end
 

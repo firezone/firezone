@@ -18,7 +18,7 @@
       <%= for device <- @devices do %>
         <tr>
           <td>
-            <%= live_redirect(device.name, to: Routes.device_show_path(@socket, :show, device)) %>
+            <%= live_patch(device.name, to: Routes.device_show_path(@socket, :show, device)) %>
           </td>
           <td class="code"><%= FzHttp.Devices.ipv4_address(device) %></td>
           <td class="code"><%= device.public_key %></td>

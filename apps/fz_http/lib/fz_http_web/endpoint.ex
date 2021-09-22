@@ -1,13 +1,20 @@
 defmodule FzHttpWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :fz_http
 
+  @max_cookie_age 604_800
+
   # The session will be stored in the cookie and signed,
   # this means its contents can be read but not tampered with.
   # Set :encryption_salt if you would also like to encrypt it.
   @session_options [
     store: :cookie,
     key: "_fz_http_key",
-    signing_salt: "Z9eq8iof"
+    signing_salt: "Z9eq8iof",
+    same_site: "Strict",
+    max_age: @max_cookie_age,
+    secure: true,
+    sign: true,
+    encrypt: true
   ]
 
   if Application.get_env(:fz_http, :sql_sandbox) do

@@ -42,7 +42,6 @@ defmodule FzHttpWeb.DeviceLive.Index do
 
         {:noreply,
          socket
-         |> put_flash(:info, "Device added successfully.")
          |> redirect(to: Routes.device_show_path(socket, :show, device))}
 
       {:error, changeset} ->
