@@ -1,4 +1,0 @@
-#!/bin/sh
-echo "received TERM from runit, sending to process group (-PID)"
-pid=$(<%= node['firezone']['app_directory'] %>/bin/firezone pid)
-kill -- -$pid

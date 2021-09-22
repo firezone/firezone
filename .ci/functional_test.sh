@@ -12,13 +12,8 @@ fi
 
 sudo firezone-ctl reconfigure
 
-# Usually fails the first time
-sudo firezone-ctl restart
-
-# Wait for phoenix app to boot
-sleep 30
-
-sudo find /var/log/firezone/phoenix/ -type f | sudo xargs cat
+# Wait for app to fully boot
+sleep 10
 
 echo "Trying to load homepage"
 page=$(curl -L -i -vvv -k https://$(hostname))
