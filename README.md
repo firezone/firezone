@@ -16,13 +16,13 @@
 
 ## Intro
 
-FireZone is an open-source WireGuard™-based VPN server and firewall for Linux
+FireZone is an open-source WireGuard-based VPN server and firewall for Linux
 designed to be secure, easy to manage, and quick to set up.
 
 Use FireZone to:
 
 - Connect remote teams to a shared private cloud network
-- Set up your own WireGuard™ VPN
+- Set up your own WireGuard VPN
 - Block egress traffic from your devices to specific IPs and CIDR ranges
 - Connect remote teams to a secure virtual LAN
 
@@ -111,7 +111,7 @@ consisting of three independent applications:
 
 - [apps/fz_http](apps/fz_http): The Web Application
 - [apps/fz_wall](apps/fz_wall): Firewall Management Process
-- [apps/fz_vpn](apps/fz_vpn): WireGuard™ Management Process
+- [apps/fz_vpn](apps/fz_vpn): WireGuard Management Process
 
 For now, FireZone assumes these apps are all running on the same host.
 
@@ -121,4 +121,4 @@ For now, FireZone assumes these apps are all running on the same host.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-WireGuard™ is a registered trademark of Jason A. Donenfeld.
+WireGuard is a registered trademark of Jason A. Donenfeld.

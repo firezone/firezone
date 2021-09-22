@@ -7,7 +7,7 @@ Read this guide before opening a pull request.
 1. [Prerequisites](#prerequisites)
 2. [Project Setup](#project-setup)
    1. [Provision the test VMs](#provision-the-test-vms)
-   2. [Start the WireGuard™ interface on the
+   2. [Start the WireGuard interface on the
       server](#start-the-wireguard-interface-on-the-server)
    3. [Start the WireGuard interface on the
       client](#start-the-wireguard-interface-on-the-client)
