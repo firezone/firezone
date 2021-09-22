@@ -35,6 +35,9 @@ Firezone::Config.load_or_create_secrets!(
   node
 )
 
+node.default['firezone']['wireguard_public_key'] =
+  `echo '#{node['firezone']['wireguard_private_key']}' | #{node['firezone']['install_directory']}/embedded/bin/wg pubkey`.chomp
+
 Firezone::Config.audit_config(node['firezone'])
 Firezone::Config.maybe_turn_on_fips(node)
 

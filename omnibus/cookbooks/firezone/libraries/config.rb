@@ -102,9 +102,6 @@ class Firezone
                             SecureRandom.base64(8)
                           end
 
-        node.override['firezone']['wireguard_public_key'] =
-          `echo '#{wireguard_private_key}' | #{node['firezone']['install_directory']}/embedded/bin/wg pubkey`.chomp
-
         secrets = {
           'secret_key_base' => secret_key_base,
           'live_view_signing_salt' => live_view_signing_salt,
