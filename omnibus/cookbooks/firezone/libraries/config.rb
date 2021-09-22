@@ -210,7 +210,9 @@ class Firezone
       end
     end
 
-    def self.app_env(attributes)
+    def self.app_env(attributes, reject = [])
+      attributes = attributes.reject { |k| reject.include?(k) }
+
       env = {
         'EGRESS_INTERFACE' => attributes['egress_interface'],
         'WG_PATH' => "#{attributes['install_directory']}/embedded/bin/wg",
@@ -224,7 +226,6 @@ class Firezone
         'PHOENIX_PORT' => attributes['phoenix']['port'].to_s,
         'URL_HOST' => attributes['url_host'],
         'ADMIN_EMAIL' => attributes['admin_email'],
-        'DEFAULT_ADMIN_PASSWORD' => attributes['default_admin_password'],
         'WIREGUARD_INTERFACE_NAME' => attributes['wireguard']['interface_name'],
         'WIREGUARD_ENDPOINT_IP' => attributes['wireguard']['endpoint_ip'],
         'WIREGUARD_PORT' => attributes['wireguard']['port'].to_s,
@@ -238,6 +239,10 @@ class Firezone
 
       if attributes.dig('database', 'password')
         env.merge!('DATABASE_PASSWORD' => attributes['database']['password'])
+      end
+
+      if attributes.dig('default_admin_password')
+        env.merge!('DEFAULT_ADMIN_PASSWORD' => attributes['default_admin_password'])
       end
 
       env
