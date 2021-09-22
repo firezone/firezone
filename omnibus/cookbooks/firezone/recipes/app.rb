@@ -32,6 +32,12 @@ file 'environment-variables' do
   path "#{node['firezone']['var_directory']}/etc/env"
 
   attributes = node['firezone'].to_hash
+
+  # Remove sensitive fields
+  attributes.delete('wireguard_private_key')
+  attributes.delete('default_admin_password')
+
+  # Add needed fields
   attributes.merge!(
     'force_ssl' => node['firezone']['nginx']['force_ssl'],
     'mix_env' => 'prod'
