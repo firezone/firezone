@@ -22,7 +22,7 @@ license "Apache-2.0"
 license_file "../LICENSE"
 
 description <<~DESC
-  Web UI + Firewall manager for WireGuard™
+  Web UI + Firewall manager for WireGuard
 DESC
 
 # Defaults to C:/firezone on Windows
