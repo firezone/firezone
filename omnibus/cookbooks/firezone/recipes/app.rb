@@ -30,10 +30,13 @@ end
 
 file 'environment-variables' do
   path "#{node['firezone']['var_directory']}/etc/env"
-  attributes = node['firezone'].merge(
+
+  attributes = node['firezone'].to_hash
+  attributes.merge!(
     'force_ssl' => node['firezone']['nginx']['force_ssl'],
     'mix_env' => 'prod'
   )
+
   content Firezone::Config.environment_variables_from(attributes)
   owner node['firezone']['user']
   group node['firezone']['group']
