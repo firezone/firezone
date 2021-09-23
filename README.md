@@ -34,11 +34,34 @@ Firezone can be set up in minutes to manage your WireGuard VPN through a simple 
     unwanted egress traffic.
 - **No dependencies:** All dependencies are bundled thanks to
     [Chef Omnibus](https://github.com/chef/omnibus).
-- **Secure:** Runs unprivileged. HTTPS required. Encrypted cookies.
+- **Secure:** Runs unprivileged. HTTPS enforced. Encrypted cookies.
 
 ![Firezone](./apps/fz_http/assets/static/images/firezone-usage.gif)
 
 # Deploying and Configuring
+
+## Requirements
+
+FireZone currently supports the following operating systems:
+
+| Name | Status |
+| --- | --- |
+| CentOS 7 | <span style="color:green">Fully-supported</span> |
+| CentOS 8 | <span style="color:green">Fully-supported</span> |
+| Ubuntu 18.04 | <span style="color:green">Fully-supported</span> |
+| Ubuntu 20.04 | <span style="color:green">Fully-supported</span> |
+| Debian 10 | <span style="color:green">Fully-supported</span> |
+| Debian 11 | <span style="color:green">Fully-supported</span> |
+| Fedora 33 | <span style="color:green">Fully-supported</span> |
+| Fedora 34 | <span style="color:green">Fully-supported</span> |
+
+If your distro isn't listed here please [open an issue](https://github.com/firezone/firezone/issues/new/choose) and we'll look into adding it.
+
+FireZone requires a valid SSL certificate and a matching DNS record to run in
+production. We recommend using [Let's Encrypt](https://letsencrypt.org) to
+generate a free SSL cert for your domain.
+
+## Installation Instructions
 
 1. Download the relevant package for your distribution from the [releases page](https://github.com/firezone/firezone/releases)
 2. Install with `sudo rpm -i firezone-<version>.rpm` or `sudo dpkg -i firezone-<version>.deb` depending on your distribution. This will unpack the application and set up necessary directory structure.
@@ -101,19 +124,6 @@ Service Management Commands:
   usr2
     Send the services a USR2.
 ```
-
-## Requirements
-
-FireZone currently supports the following Linux distros:
-
-- CentOS: `7`, `8`
-- Ubuntu: `18.04`, `20.04`
-- Debian: `10`, `11`
-- Fedora: `33`, `34`
-
-If your distro isn't listed here please [open an issue](https://github.com/firezone/firezone/issues/new/choose) and we'll look into adding it.
-
-FireZone requires a valid SSL certificate and a matching DNS record to run in production.
 
 # Architecture
 
