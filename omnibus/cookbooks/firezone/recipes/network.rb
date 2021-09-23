@@ -44,15 +44,14 @@ if wg_exists.status.exitstatus == 1
   end
 end
 
-ifconfig '10.3.2.1' do
+ifconfig '10.3.2.1/24' do
   family 'inet'
   device wg_interface
-  netmask '255.255.255.0'
   mtu '1420'
 end
 
   # XXX: Make this configurable
-ifconfig 'fd00:3:2::1' do
+ifconfig 'fd00:3:2::1/120' do
   family 'inet6'
   device wg_interface
   mtu '1420'
@@ -72,7 +71,7 @@ route '10.3.2.0/24' do
   device wg_interface
 end
 
-route 'fd00:3:2::/48' do
+route 'fd00:3:2::0/120' do
   device wg_interface
 end
 
