@@ -25,6 +25,7 @@ import Config
 config :phoenix, :json_library, Jason
 
 config :fz_http,
+  cookie_signing_salt: "Z9eq8iof",
   ecto_repos: [FzHttp.Repo],
   admin_email: "firezone@localhost",
   default_admin_password: "firezone",
