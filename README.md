@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://user-images.githubusercontent.com/167144/134593283-df8865a9-51c2-461e-b9fb-4d9598c58898.png" alt="firezone logo" width="500"/>
+  <img src="https://user-images.githubusercontent.com/167144/134594125-fadeac64-990e-4d6f-9e69-8a04487e00e0.png" alt="firezone logo" width="500"/>
 </p>
 <p align="center">
   <a href="https://github.com/firezone">
