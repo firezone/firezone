@@ -20,7 +20,7 @@
           <td>
             <%= live_patch(device.name, to: Routes.device_show_path(@socket, :show, device)) %>
           </td>
-          <td class="code"><%= FzHttp.Devices.ipv4_address(device) %></td>
+          <td class="code"><%= FzHttp.Devices.ipv4_address(device) %>, <%= FzHttp.Devices.ipv6_address(device) %></td>
           <td class="code"><%= device.public_key %></td>
         </tr>
       <% end %>

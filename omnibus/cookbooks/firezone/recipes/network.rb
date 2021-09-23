@@ -44,9 +44,14 @@ if wg_exists.status.exitstatus == 1
   end
 end
 
-execute 'setup_wireguard_ip' do
+execute 'setup_wireguard_ipv4' do
   # XXX: Make this configurable
   if_addr = '10.3.2.1/24'
+  command "ip address replace #{if_addr} dev #{wg_interface}"
+end
+
+execute 'setup_wireguard_ipv6' do
+  if_addr = 'fd00:3:2:1/48'
   command "ip address replace #{if_addr} dev #{wg_interface}"
 end
 
@@ -65,6 +70,10 @@ end
 
 route '10.3.2.0/24' do
   # XXX: Make this configurable
+  device wg_interface
+end
+
+route 'fd00:3:2::/48' do
   device wg_interface
 end
 
