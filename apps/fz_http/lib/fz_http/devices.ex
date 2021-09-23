@@ -8,6 +8,7 @@ defmodule FzHttp.Devices do
   alias FzHttp.{Devices.Device, Repo, Users.User}
 
   @ipv4_prefix "10.3.2."
+  @ipv6_prefix "fd00:3:2::"
 
   def list_devices do
     Repo.all(Device)
@@ -49,11 +50,15 @@ defmodule FzHttp.Devices do
     @ipv4_prefix <> Integer.to_string(device.address)
   end
 
+  def ipv6_address(%Device{} = device) do
+    @ipv6_prefix <> Integer.to_string(device.address)
+  end
+
   def to_peer_list do
     for device <- Repo.all(Device) do
       %{
         public_key: device.public_key,
-        allowed_ips: ipv4_address(device)
+        allowed_ips: "#{ipv4_address(device)}/32, #{ipv6_address(device)}/128"
       }
     end
   end
