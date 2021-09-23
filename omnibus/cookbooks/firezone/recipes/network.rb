@@ -54,6 +54,10 @@ execute 'wireguard_ipv6' do
   command "ip -6 address replace #{addr} dev #{wg_interface}"
 end
 
+execute 'set_mtu' do
+  command "ip link set mtu 1420 up dev #{wg_interface}"
+end
+
 execute 'set_wireguard_interface_private_key' do
   command "#{wg_path} set #{wg_interface} private-key #{private_key_path}"
 end
@@ -70,10 +74,6 @@ end
 
 route 'fd00:3:2::0/120' do
   device wg_interface
-end
-
-execute 'set_mtu' do
-  command "ip link set mtu 1420 up dev #{wg_interface}"
 end
 
 replace_or_add "IPv4 packet forwarding" do

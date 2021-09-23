@@ -62,9 +62,9 @@ defmodule FzVpn.Server do
   end
 
   @impl GenServer
-  def handle_cast({:device_created, pubkey, ip}, config) do
-    cli().add_peer(pubkey, ip)
-    {:noreply, Map.put(config, pubkey, ip)}
+  def handle_cast({:device_created, pubkey, inet}, config) do
+    cli().add_peer(pubkey, inet)
+    {:noreply, Map.put(config, pubkey, inet)}
   end
 
   @doc """
