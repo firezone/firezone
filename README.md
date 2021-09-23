@@ -29,25 +29,14 @@ Firezone can be set up in minutes to manage your WireGuard VPN through a simple 
 
 ## Features
 
-- **Simple to setup and use:** We support
-    [most major Linux distributions](#supported-operating-systems).
-    Most configuration is managed through a snappy Web UI.
-- **Fast:** Firezone uses the new
-    [WireGuard](https://wireguard.com) VPN protocol to encrypt all VPN traffic,
-    making it [3-4x faster than OpenVPN](https://wireguard.com/performance/).
-- **Firewall built in:** Block egress traffic from your devices to specific IPs
-    and CIDR ranges. Firezone includes a frontend to manage the speedy new
-    [netfilter](https://netfilter.org) packet filtering system built into the
-    Linux kernel.
-- **No dependencies:** Firezone leverages
-    [Chef Omnibus](https://github.com/chef/omnibus) to bundle all its
-    dependencies into a single distributable package. Only a recent Linux kernel
-    (4.19+) and the WireGuard kernel module are required.
-- **Secure:** The Firezone Web UI runs as an unpriveleged user. HTTPS is
-    required everywhere, and cookies are encrypted.
+- **Fast:** [3-4 times](https://wireguard.com/performance/) faster than OpenVPN.
+- **Firewall built in:** Uses [nftables](https://netfilter.org) to block
+    unwanted egress traffic.
+- **No dependencies:** All dependencies are bundled thanks to
+    [Chef Omnibus](https://github.com/chef/omnibus).
+- **Secure:** Runs unprivileged. HTTPS required. Encrypted cookies.
 
 ![Firezone](./apps/fz_http/assets/static/images/firezone-usage.gif)
-
 
 # Deploying and Configuring
 
@@ -59,7 +48,7 @@ Firezone can be set up in minutes to manage your WireGuard VPN through a simple 
 6. Finally, create an admin user with `sudo firezone-ctl create_admin`. Check the console for the login credentials.
 7. Now you should be able to log into the web UI at `https://<your-server-fqdn>`
 
-# Using Firezone VPN
+# Using Firezone
 
 Your FireZone installation can be managed via the `firezone-ctl` command, as shown below. Most subcommands require prefixing with `sudo`.
 
