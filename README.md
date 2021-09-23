@@ -46,14 +46,16 @@ FireZone currently supports the following operating systems:
 
 | Name | Status |
 | --- | --- |
-| CentOS 7 | <span style="color:green">Fully-supported</span> |
-| CentOS 8 | <span style="color:green">Fully-supported</span> |
-| Ubuntu 18.04 | <span style="color:green">Fully-supported</span> |
-| Ubuntu 20.04 | <span style="color:green">Fully-supported</span> |
-| Debian 10 | <span style="color:green">Fully-supported</span> |
-| Debian 11 | <span style="color:green">Fully-supported</span> |
-| Fedora 33 | <span style="color:green">Fully-supported</span> |
-| Fedora 34 | <span style="color:green">Fully-supported</span> |
+| CentOS 7 | **Fully-supported** |
+| CentOS 8 | **Fully-supported** |
+| Ubuntu 18.04 | **Fully-supported** |
+| Ubuntu 20.04 | **Fully-supported** |
+| Debian 10 | **Fully-supported** |
+| Debian 11 | **Fully-supported** |
+| Fedora 33 | **Fully-supported** |
+| Fedora 34 | **Fully-supported** |
+| macOS | Unsupported at this time |
+| Windows | Unsupported at this time |
 
 If your distro isn't listed here please [open an issue](https://github.com/firezone/firezone/issues/new/choose) and we'll look into adding it.
 
