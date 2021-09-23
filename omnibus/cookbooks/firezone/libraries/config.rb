@@ -80,6 +80,13 @@ class Firezone
                             Chef::Log.warn 'No live_view_signing_salt set! Generating and writing one to secrets.json. If this FireZone installation has multiple hosts, you must duplicate the secrets.json file exactly across all hosts.'
                             SecureRandom.base64(24)
                           end
+        cookie_signing_salt = if node['firezone'] && node['firezone']['cookie_signing_salt']
+                            Chef::Log.warn 'Using cookie_signing_salt from firezone.json. This value should really be managed in secrets.json. Writing to secrets.json.'
+                            node['firezone']['cookie_signing_salt']
+                          else
+                            Chef::Log.warn 'No cookie_signing_salt set! Generating and writing one to secrets.json. If this FireZone installation has multiple hosts, you must duplicate the secrets.json file exactly across all hosts.'
+                            SecureRandom.base64(6)
+                          end
         wireguard_private_key = if node['firezone'] && node['firezone']['wireguard_private_key']
                             Chef::Log.warn 'Using wireguard_private_key from firezone.json. This value should really be managed in secrets.json. Writing to secrets.json.'
                             node['firezone']['wireguard_private_key']
@@ -105,6 +112,7 @@ class Firezone
         secrets = {
           'secret_key_base' => secret_key_base,
           'live_view_signing_salt' => live_view_signing_salt,
+          'cookie_signing_salt' => cookie_signing_salt,
           'wireguard_private_key' => wireguard_private_key,
           'database_encryption_key' => database_encryption_key,
           'default_admin_password' => default_admin_password
@@ -234,6 +242,7 @@ class Firezone
         # secrets
         'SECRET_KEY_BASE' => attributes['secret_key_base'],
         'LIVE_VIEW_SIGNING_SALT' => attributes['live_view_signing_salt'],
+        'COOKIE_SIGNING_SALT' => attributes['cookie_signing_salt'],
         'DATABASE_ENCRYPTION_KEY' => attributes['database_encryption_key']
       }
 
