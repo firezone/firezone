@@ -44,15 +44,18 @@ if wg_exists.status.exitstatus == 1
   end
 end
 
-execute 'setup_wireguard_ipv4' do
-  # XXX: Make this configurable
-  if_addr = '10.3.2.1/24'
-  command "ip address replace #{if_addr} dev #{wg_interface}"
+ifconfig '10.3.2.1' do
+  family 'inet'
+  device wg_interface
+  netmask '255.255.255.0'
+  mtu '1420'
 end
 
-execute 'setup_wireguard_ipv6' do
-  if_addr = 'fd00:3:2::1/48'
-  command "ip address replace #{if_addr} dev #{wg_interface}"
+  # XXX: Make this configurable
+ifconfig 'fd00:3:2::1' do
+  family 'inet6'
+  device wg_interface
+  mtu '1420'
 end
 
 execute 'set_wireguard_interface_private_key' do
@@ -62,10 +65,6 @@ end
 execute 'set_listen_port' do
   listen_port = node['firezone']['wireguard']['port']
   command "#{wg_path} set #{wg_interface} listen-port #{listen_port}"
-end
-
-execute 'set_mtu' do
-  command "ip link set mtu 1420 up dev #{wg_interface}"
 end
 
 route '10.3.2.0/24' do
