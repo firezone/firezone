@@ -51,7 +51,7 @@ execute 'setup_wireguard_ipv4' do
 end
 
 execute 'setup_wireguard_ipv6' do
-  if_addr = 'fd00:3:2:1/48'
+  if_addr = 'fd00:3:2::1/48'
   command "ip address replace #{if_addr} dev #{wg_interface}"
 end
 
