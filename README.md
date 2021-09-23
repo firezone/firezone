@@ -4,13 +4,6 @@
 <p align="center">
   <a href="https://firez.one">
     <img src="https://img.shields.io/badge/firezone-beta v0.0.5-red" alt="firezone" />
-</p>
-<p align="center">
-  <b>FireZone is a simple WireGuard™-based VPN server and firewall</b>
-</p>
-<p align="center">
-  <a href="https://firez.one">
-    <img src="https://img.shields.io/badge/firezone-beta v0.0.5-red" alt="firezone" />
   </a>
   <a href="https://e04kusl9oz5.typeform.com/to/zahKLf3d">
     <img src="https://img.shields.io/static/v1?logo=openbugbounty&logoColor=959DA5&label=feedback&labelColor=333a41&message=submit&color=3AC358" alt="firezone Slack" />
@@ -26,32 +19,25 @@
   </a>
 </p>
 
-# Firezone VPN
-FireZone is a simple WireGuard™-based VPN server and firewall for Linux designed to be secure, easy to manage, and quick to set up.
-## Why Firezone?
-Firezone is designed to be:
 
-- Quick to set up
-- Easy to manage
-- Secure and reliable
+FireZone is a simple [WireGuard](https://www.wireguard.com/) based VPN server and firewall for Linux designed to be secure, easy to manage, and quick to set up.
 
-![Architecture](./apps/fz_http/assets/static/images/firezone-usage.gif)
+![Architecture](./apps/fz_http/assets/static/images/firezone-architecture-diagram-1.png)
 
-# What is Firezone VPN?
 
-Firezone can be set up in minutes to:
+# What is Firezone?
 
-- Connect remote teams to a shared private cloud network
-- Set up your own WireGuard™ VPN
-- Block egress traffic from your devices to specific IPs and CIDR ranges
-- Connect remote teams to a secure virtual LAN
+Firezone can be set up in minutes to manage your WireGuard VPN through a simple web interface.
 
-1. [Intro](#intro)
-2. [Requirements](#requirements)
-3. [Install](#install)
-4. [Usage](#usage)
-5. [Architecture](#architecture)
-6. [Contributing](#contributing)
+## Features
+
+- **Simple to setup and use:** 
+- **Based on WireGuard:** 
+- **Firewall built in:** Block egress traffic from your devices to specific IPs and CIDR ranges
+- **Sandboxed (no dependencies):** Firezone leverages [Chef Omnibus](https://github.com/chef/omnibus)
+- **Secure:** The Firezone Web UI runs as an unpriveleged user.
+
+![Firezone](./apps/fz_http/assets/static/images/firezone-usage.gif)
 
 
 # Deploying and Configuring
@@ -132,8 +118,6 @@ If your distro isn't listed here please [open an issue](https://github.com/firez
 FireZone requires a valid SSL certificate and a matching DNS record to run in production.
 
 # Architecture
-
-![Architecture](./apps/fz_http/assets/static/images/firezone-architecture-diagram-1.png)
 
 FireZone is written in the Elixir programming language and composed as an [Umbrella
 project](https://elixir-lang.org/getting-started/mix-otp/dependencies-and-umbrella-projects.html)
