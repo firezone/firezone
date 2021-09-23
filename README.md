@@ -105,7 +105,7 @@ Service Management Commands:
 
 ## Architecture
 
-![Architecture](https://user-images.githubusercontent.com/167144/134213076-732f9d0a-48d5-408b-ac99-d26e615a8a3f.png)
+![Architecture](./apps/fz_http/assets/static/images/firezone-architecture-diagram-1.png)
 
 FireZone is written in the Elixir programming language and composed as an [Umbrella
 project](https://elixir-lang.org/getting-started/mix-otp/dependencies-and-umbrella-projects.html)
