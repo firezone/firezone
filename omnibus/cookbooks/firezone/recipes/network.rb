@@ -44,17 +44,14 @@ if wg_exists.status.exitstatus == 1
   end
 end
 
-ifconfig '10.3.2.1/24' do
-  family 'inet'
-  device wg_interface
-  mtu '1420'
+execute 'wireguard_ipv4' do
+  addr = '10.3.2.1/24'
+  command "ip address replace #{addr} dev #{wg_interface}"
 end
 
-  # XXX: Make this configurable
-ifconfig 'fd00:3:2::1/120' do
-  family 'inet6'
-  device wg_interface
-  mtu '1420'
+execute 'wireguard_ipv6' do
+  addr = 'fd00:3:2::1/120'
+  command "ip -6 address replace #{addr} dev #{wg_interface}"
 end
 
 execute 'set_wireguard_interface_private_key' do
@@ -73,6 +70,10 @@ end
 
 route 'fd00:3:2::0/120' do
   device wg_interface
+end
+
+execute 'set_mtu' do
+  command "ip link set mtu 1420 up dev #{wg_interface}"
 end
 
 replace_or_add "IPv4 packet forwarding" do
