@@ -29,7 +29,6 @@ defmodule FzHttpWeb.DeviceLive.Show do
 
           {:noreply,
            socket
-           |> put_flash(:info, "Device deleted successfully.")
            |> redirect(to: Routes.device_index_path(socket, :index))}
 
           # Not likely to ever happen

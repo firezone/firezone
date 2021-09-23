@@ -1,6 +1,11 @@
 {
-  "repository": {},
-  "license": "MIT",
+  "name": "firezone",
+  "version": "0.1.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/firezone/firezone.git"
+  },
+  "license": "Apache-2.0",
   "scripts": {
     "deploy": "webpack --mode=production",
     "watch": "webpack --mode=development --watch"

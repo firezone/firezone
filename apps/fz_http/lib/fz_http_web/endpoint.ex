@@ -1,14 +1,6 @@
 defmodule FzHttpWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :fz_http
-
-  # The session will be stored in the cookie and signed,
-  # this means its contents can be read but not tampered with.
-  # Set :encryption_salt if you would also like to encrypt it.
-  @session_options [
-    store: :cookie,
-    key: "_fz_http_key",
-    signing_salt: "Z9eq8iof"
-  ]
+  alias FzHttpWeb.Session
 
   if Application.get_env(:fz_http, :sql_sandbox) do
     plug Phoenix.Ecto.SQL.Sandbox
@@ -18,7 +10,12 @@ defmodule FzHttpWeb.Endpoint do
     websocket: true,
     longpoll: false
 
-  socket "/live", Phoenix.LiveView.Socket, websocket: [connect_info: [session: @session_options]]
+  socket "/live", Phoenix.LiveView.Socket,
+    websocket: [
+      connect_info: [
+        session: {Session, :options, []}
+      ]
+    ]
 
   # Serve at "/" the static files from "priv/static" directory.
   #
@@ -49,6 +46,10 @@ defmodule FzHttpWeb.Endpoint do
 
   plug Plug.MethodOverride
   plug Plug.Head
-  plug Plug.Session, @session_options
+  plug(:session)
   plug FzHttpWeb.Router
+
+  defp session(conn, _opts) do
+    Plug.Session.call(conn, Plug.Session.init(Session.options()))
+  end
 end

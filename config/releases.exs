@@ -27,6 +27,7 @@ wireguard_public_key = System.fetch_env!("WIREGUARD_PUBLIC_KEY")
 encryption_key = System.fetch_env!("DATABASE_ENCRYPTION_KEY")
 secret_key_base = System.fetch_env!("SECRET_KEY_BASE")
 live_view_signing_salt = System.fetch_env!("LIVE_VIEW_SIGNING_SALT")
+cookie_signing_salt = System.fetch_env!("COOKIE_SIGNING_SALT")
 
 # Password is not needed if using bundled PostgreSQL, so use nil if it's not set.
 database_password = System.get_env("DATABASE_PASSWORD")
