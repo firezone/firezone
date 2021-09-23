@@ -2,7 +2,7 @@
   <img src="./apps/fz_http/assets/static/images/logo-text.svg" alt="firezone logo" width="500"/>
 </p>
 <p align="center">
-  <a href="https://firez.one">
+  <a href="https://github.com/firezone">
     <img src="https://img.shields.io/badge/firezone-beta v0.0.5-red" alt="firezone" />
   </a>
   <a href="https://e04kusl9oz5.typeform.com/to/zahKLf3d">
@@ -11,12 +11,8 @@
   <a href="https://e04kusl9oz5.typeform.com/to/rpMtkZw4">
     <img src="https://img.shields.io/static/v1?logo=slack&logoColor=959DA5&label=community&labelColor=333a41&message=join&color=611f69" alt="firezone Slack" />
   </a>
-  <a>
-    <img src="https://img.shields.io/static/v1?logo=github&logoColor=959DA5&label=Test&labelColor=333a41&message=passing&color=3AC358" alt="firezone" />
-  </a>
-  <a href="https://coveralls.io/repos/github/firezone/firezone/badge.svg?branch=master">
-    <img src="https://img.shields.io/static/v1?label=coverage&labelColor=333a41&message=66%&color=D7614A" alt="firezone" />
-  </a>
+  <img src="https://img.shields.io/static/v1?logo=github&logoColor=959DA5&label=Test&labelColor=333a41&message=passing&color=3AC358" alt="firezone" />
+  <img src="https://img.shields.io/static/v1?label=coverage&labelColor=333a41&message=66%&color=D7614A" alt="firezone" />
 </p>
 
 
@@ -31,8 +27,8 @@ Firezone can be set up in minutes to manage your WireGuard VPN through a simple 
 
 ## Features
 
-- **Simple to setup and use:** 
-- **Based on WireGuard:** 
+- **Simple to setup and use:**
+- **Based on WireGuard:**
 - **Firewall built in:** Block egress traffic from your devices to specific IPs and CIDR ranges
 - **Sandboxed (no dependencies):** Firezone leverages [Chef Omnibus](https://github.com/chef/omnibus)
 - **Secure:** The Firezone Web UI runs as an unpriveleged user.
