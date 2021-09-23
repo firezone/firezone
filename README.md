@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./apps/fz_http/assets/static/images/logo-text.svg" alt="firezone logo" width="500"/>
+  <img src="https://user-images.githubusercontent.com/167144/134593283-df8865a9-51c2-461e-b9fb-4d9598c58898.png" alt="firezone logo" width="500"/>
 </p>
 <p align="center">
   <a href="https://github.com/firezone">
@@ -13,13 +13,15 @@
   </a>
   <img src="https://img.shields.io/static/v1?logo=github&logoColor=959DA5&label=Test&labelColor=333a41&message=passing&color=3AC358" alt="firezone" />
   <img src="https://img.shields.io/static/v1?label=coverage&labelColor=333a41&message=66%&color=D7614A" alt="firezone" />
+  <a href="https://twitter.com/intent/follow?screen_name=firezonevpn">
+    <img src="https://img.shields.io/twitter/follow/firezonevpn?style=social&logo=twitter" alt="follow on Twitter">
+  </a>
 </p>
 
 
 FireZone is a simple [WireGuard](https://www.wireguard.com/) based VPN server and firewall for Linux designed to be secure, easy to manage, and quick to set up.
 
-![Architecture](./apps/fz_http/assets/static/images/firezone-architecture-diagram-1.png)
-
+![Architecture](https://user-images.githubusercontent.com/167144/134593363-870c982d-921b-4f0c-b210-e77c8860d9ca.png)
 
 # What is Firezone?
 
@@ -27,11 +29,22 @@ Firezone can be set up in minutes to manage your WireGuard VPN through a simple 
 
 ## Features
 
-- **Simple to setup and use:**
-- **Based on WireGuard:**
-- **Firewall built in:** Block egress traffic from your devices to specific IPs and CIDR ranges
-- **Sandboxed (no dependencies):** Firezone leverages [Chef Omnibus](https://github.com/chef/omnibus)
-- **Secure:** The Firezone Web UI runs as an unpriveleged user.
+- **Simple to setup and use:** We support
+    [most major Linux distributions](#supported-operating-systems).
+    Most configuration is managed through a snappy Web UI.
+- **Fast:** Firezone uses the new
+    [WireGuard](https://wireguard.com) VPN protocol to encrypt all VPN traffic,
+    making it [3-4x faster than OpenVPN](https://wireguard.com/performance/).
+- **Firewall built in:** Block egress traffic from your devices to specific IPs
+    and CIDR ranges. Firezone includes a frontend to manage the speedy new
+    [netfilter](https://netfilter.org) packet filtering system built into the
+    Linux kernel.
+- **No dependencies:** Firezone leverages
+    [Chef Omnibus](https://github.com/chef/omnibus) to bundle all its
+    dependencies into a single distributable package. Only a recent Linux kernel
+    (4.19+) and the WireGuard kernel module are required.
+- **Secure:** The Firezone Web UI runs as an unpriveleged user. HTTPS is
+    required everywhere, and cookies are encrypted.
 
 ![Firezone](./apps/fz_http/assets/static/images/firezone-usage.gif)
 
