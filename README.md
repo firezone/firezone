@@ -35,7 +35,6 @@ Firezone is designed to be:
 - Easy to manage
 - Secure and reliable
 
-
 ![Architecture](./apps/fz_http/assets/static/images/firezone-usage.gif)
 
 # What is Firezone VPN?
