@@ -55,7 +55,7 @@ Firezone currently supports the following Linux distributions:
 | --- | --- | --- |
 | CentOS 7 | **Fully-supported** | Kernel upgrade to `kernel-lt` or `kernel-ml` required. See [this guide](https://medium.com/@nazishalam07/update-centos-kernel-3-10-to-5-13-latest-9462b4f1e62c) for an example. |
 | CentOS 8 | **Fully-supported** | Works as-is |
-| Ubuntu 18.04 | **Fully-supported** | WireGuard must be installed with `apt install wireguard-dkms`. We also recommend updating the kernel to 5.4 or higher: `apt install linux-image-generic-hwe-18.04` |
+| Ubuntu 18.04 | **Fully-supported** | WireGuard must be installed: `apt install wireguard-dkms`. We also recommend updating the kernel to 5.4 or higher: `apt install linux-image-generic-hwe-18.04` |
 | Ubuntu 20.04 | **Fully-supported** | Works as-is |
 | Debian 10 | **Fully-supported** | Kernel upgrade required. See [this guide](https://jensd.be/968/linux/install-a-newer-kernel-in-debian-10-buster-stable) for an example. |
 | Debian 11 | **Fully-supported** | Works as-is |
