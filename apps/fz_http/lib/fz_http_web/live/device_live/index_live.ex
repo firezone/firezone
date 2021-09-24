@@ -37,7 +37,7 @@ defmodule FzHttpWeb.DeviceLive.Index do
       {:ok, device} ->
         @events_module.device_created(
           device.public_key,
-          Devices.ipv4_address(device)
+          {Devices.ipv4_address(device), Devices.ipv6_address(device)}
         )
 
         {:noreply,

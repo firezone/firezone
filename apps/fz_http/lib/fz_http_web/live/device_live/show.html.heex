@@ -33,7 +33,7 @@
           <dt>
             <strong>Interface IP:</strong>
           </dt>
-          <dd><%= FzHttp.Devices.ipv4_address(@device) %></dd>
+          <dd><%= FzHttp.Devices.ipv4_address(@device) %>, <%= FzHttp.Devices.ipv6_address(@device) %></dd>
 
           <dt>
             <strong>Public key:</strong>
@@ -72,7 +72,7 @@
         <pre><code id="wg-conf">
 [Interface]
 PrivateKey = <%= @device.private_key %>
-Address = <%= FzHttp.Devices.ipv4_address(@device) %>
+Address = <%= FzHttp.Devices.ipv4_address(@device) %>/32, <%= FzHttp.Devices.ipv6_address(@device) %>/128
 DNS = 1.1.1.1, 1.0.0.1
 
 [Peer]
