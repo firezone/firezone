@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="./apps/fz_http/assets/static/images/logo-text.svg" alt="firezone logo" width="500"/>
+  <img src="https://user-images.githubusercontent.com/167144/134594125-fadeac64-990e-4d6f-9e69-8a04487e00e0.png" alt="firezone logo" width="500"/>
 </p>
 <p align="center">
-  <a href="https://firez.one">
+  <a href="https://github.com/firezone">
     <img src="https://img.shields.io/badge/firezone-beta v0.0.5-red" alt="firezone" />
   </a>
   <a href="https://e04kusl9oz5.typeform.com/to/zahKLf3d">
@@ -11,19 +11,17 @@
   <a href="https://e04kusl9oz5.typeform.com/to/rpMtkZw4">
     <img src="https://img.shields.io/static/v1?logo=slack&logoColor=959DA5&label=community&labelColor=333a41&message=join&color=611f69" alt="firezone Slack" />
   </a>
-  <a>
-    <img src="https://img.shields.io/static/v1?logo=github&logoColor=959DA5&label=Test&labelColor=333a41&message=passing&color=3AC358" alt="firezone" />
-  </a>
-  <a href="https://coveralls.io/repos/github/firezone/firezone/badge.svg?branch=master">
-    <img src="https://img.shields.io/static/v1?label=coverage&labelColor=333a41&message=66%&color=D7614A" alt="firezone" />
+  <img src="https://img.shields.io/static/v1?logo=github&logoColor=959DA5&label=Test&labelColor=333a41&message=passing&color=3AC358" alt="firezone" />
+  <img src="https://img.shields.io/static/v1?label=coverage&labelColor=333a41&message=66%&color=D7614A" alt="firezone" />
+  <a href="https://twitter.com/intent/follow?screen_name=firezonevpn">
+    <img src="https://img.shields.io/twitter/follow/firezonevpn?style=social&logo=twitter" alt="follow on Twitter">
   </a>
 </p>
 
 
 FireZone is a simple [WireGuard](https://www.wireguard.com/) based VPN server and firewall for Linux designed to be secure, easy to manage, and quick to set up.
 
-![Architecture](./apps/fz_http/assets/static/images/firezone-architecture-diagram-1.png)
-
+![Architecture](https://user-images.githubusercontent.com/167144/134593363-870c982d-921b-4f0c-b210-e77c8860d9ca.png)
 
 # What is Firezone?
 
@@ -31,16 +29,41 @@ Firezone can be set up in minutes to manage your WireGuard VPN through a simple 
 
 ## Features
 
-- **Simple to setup and use:** 
-- **Based on WireGuard:** 
-- **Firewall built in:** Block egress traffic from your devices to specific IPs and CIDR ranges
-- **Sandboxed (no dependencies):** Firezone leverages [Chef Omnibus](https://github.com/chef/omnibus)
-- **Secure:** The Firezone Web UI runs as an unpriveleged user.
+- **Fast:** [3-4 times](https://wireguard.com/performance/) faster than OpenVPN.
+- **Firewall built in:** Uses [nftables](https://netfilter.org) to block
+    unwanted egress traffic.
+- **No dependencies:** All dependencies are bundled thanks to
+    [Chef Omnibus](https://github.com/chef/omnibus).
+- **Secure:** Runs unprivileged. HTTPS enforced. Encrypted cookies.
 
 ![Firezone](./apps/fz_http/assets/static/images/firezone-usage.gif)
 
-
 # Deploying and Configuring
+
+## Requirements
+
+FireZone currently supports the following operating systems:
+
+| Name | Status |
+| --- | --- |
+| CentOS 7 | **Fully-supported** |
+| CentOS 8 | **Fully-supported** |
+| Ubuntu 18.04 | **Fully-supported** |
+| Ubuntu 20.04 | **Fully-supported** |
+| Debian 10 | **Fully-supported** |
+| Debian 11 | **Fully-supported** |
+| Fedora 33 | **Fully-supported** |
+| Fedora 34 | **Fully-supported** |
+| macOS | Unsupported at this time |
+| Windows | Unsupported at this time |
+
+If your distro isn't listed here please [open an issue](https://github.com/firezone/firezone/issues/new/choose) and we'll look into adding it.
+
+FireZone requires a valid SSL certificate and a matching DNS record to run in
+production. We recommend using [Let's Encrypt](https://letsencrypt.org) to
+generate a free SSL cert for your domain.
+
+## Installation Instructions
 
 1. Download the relevant package for your distribution from the [releases page](https://github.com/firezone/firezone/releases)
 2. Install with `sudo rpm -i firezone-<version>.rpm` or `sudo dpkg -i firezone-<version>.deb` depending on your distribution. This will unpack the application and set up necessary directory structure.
@@ -50,7 +73,7 @@ Firezone can be set up in minutes to manage your WireGuard VPN through a simple 
 6. Finally, create an admin user with `sudo firezone-ctl create_admin`. Check the console for the login credentials.
 7. Now you should be able to log into the web UI at `https://<your-server-fqdn>`
 
-# Using Firezone VPN
+# Using Firezone
 
 Your FireZone installation can be managed via the `firezone-ctl` command, as shown below. Most subcommands require prefixing with `sudo`.
 
@@ -103,19 +126,6 @@ Service Management Commands:
   usr2
     Send the services a USR2.
 ```
-
-## Requirements
-
-FireZone currently supports the following Linux distros:
-
-- CentOS: `7`, `8`
-- Ubuntu: `18.04`, `20.04`
-- Debian: `10`, `11`
-- Fedora: `33`, `34`
-
-If your distro isn't listed here please [open an issue](https://github.com/firezone/firezone/issues/new/choose) and we'll look into adding it.
-
-FireZone requires a valid SSL certificate and a matching DNS record to run in production.
 
 # Architecture
 
