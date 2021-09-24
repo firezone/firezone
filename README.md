@@ -161,7 +161,7 @@ listed above, follow these steps to setup and install Firezone:
 8. Now you should be able to log into the web UI at the FQDN you specified in
    step 5 above, e.g. `https://firezone.example.com`
 
-## Confiugration File
+## Configuration File
 
 User-configurable settings can be found in `/etc/firezone/firezone.rb`.
 
