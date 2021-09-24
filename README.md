@@ -2,8 +2,8 @@
   <img src="https://user-images.githubusercontent.com/167144/134594125-fadeac64-990e-4d6f-9e69-8a04487e00e0.png" alt="firezone logo" width="500"/>
 </p>
 <p align="center">
-  <a href="https://github.com/firezone">
-    <img src="https://img.shields.io/badge/firezone-beta v0.0.5-red" alt="firezone" />
+  <a href="https://github.com/firezone/firezone/releases">
+    <img src="https://img.shields.io/github/v/release/firezone/firezone?color=%23999">
   </a>
   <a href="https://e04kusl9oz5.typeform.com/to/zahKLf3d">
     <img src="https://img.shields.io/static/v1?logo=openbugbounty&logoColor=959DA5&label=feedback&labelColor=333a41&message=submit&color=3AC358" alt="firezone Slack" />
@@ -19,7 +19,7 @@
 </p>
 
 
-FireZone is a simple [WireGuard](https://www.wireguard.com/) based VPN server and firewall for Linux designed to be secure, easy to manage, and quick to set up.
+Firezone is a simple [WireGuard](https://www.wireguard.com/) based VPN server and firewall for Linux designed to be secure, easy to manage, and quick to set up.
 
 ![Architecture](https://user-images.githubusercontent.com/167144/134593363-870c982d-921b-4f0c-b210-e77c8860d9ca.png)
 
@@ -40,42 +40,47 @@ Firezone can be set up in minutes to manage your WireGuard VPN through a simple 
 
 # Deploying and Configuring
 
+Firezone is built using [Chef Omnibus](https://github.com/chef/omnibus) which
+bundles all dependences into a single distributable `.deb` or `.rpm` for your
+distro. All that's needed is Linux kernel 4.19 or newer with proper WireGuard
+support. We recommend Linux 5.6 or higher since [it has WireGuard
+support](https://lwn.net/ml/linux-kernel/CA+55aFz5EWE9OTbzDoMfsY2ez04Qv9eg0KQhwKfyJY0vFvoD3g@mail.gmail.com/)
+built-in.
+
 ## Requirements
 
-FireZone currently supports the following operating systems:
+Firezone currently supports the following Linux distributions:
 
-| Name | Status |
-| --- | --- |
-| CentOS 7 | **Fully-supported** |
-| CentOS 8 | **Fully-supported** |
-| Ubuntu 18.04 | **Fully-supported** |
-| Ubuntu 20.04 | **Fully-supported** |
-| Debian 10 | **Fully-supported** |
-| Debian 11 | **Fully-supported** |
-| Fedora 33 | **Fully-supported** |
-| Fedora 34 | **Fully-supported** |
-| macOS | Unsupported at this time |
-| Windows | Unsupported at this time |
+| Name | Status | Notes |
+| --- | --- | --- |
+| CentOS 7 | **Fully-supported** | Kernel upgrade to `kernel-lt` or `kernel-ml` required. See [this guide](https://medium.com/@nazishalam07/update-centos-kernel-3-10-to-5-13-latest-9462b4f1e62c) for an example. |
+| CentOS 8 | **Fully-supported** | Works as-is |
+| Ubuntu 18.04 | **Fully-supported** | WireGuard must be installed: `apt install wireguard-dkms`. We also recommend updating the kernel to 5.4 or higher: `apt install linux-image-generic-hwe-18.04` |
+| Ubuntu 20.04 | **Fully-supported** | Works as-is |
+| Debian 10 | **Fully-supported** | Kernel upgrade required. See [this guide](https://jensd.be/968/linux/install-a-newer-kernel-in-debian-10-buster-stable) for an example. |
+| Debian 11 | **Fully-supported** | Works as-is |
+| Fedora 33 | **Fully-supported** | Works as-is |
+| Fedora 34 | **Fully-supported** | Works as-is |
 
-If your distro isn't listed here please [open an issue](https://github.com/firezone/firezone/issues/new/choose) and we'll look into adding it.
+If your distro isn't listed here please [open an issue](https://github.com/firezone/firezone/issues/new/choose) and let us know.
 
-FireZone requires a valid SSL certificate and a matching DNS record to run in
+Firezone requires a valid SSL certificate and a matching DNS record to run in
 production. We recommend using [Let's Encrypt](https://letsencrypt.org) to
 generate a free SSL cert for your domain.
 
 ## Installation Instructions
 
-1. Download the relevant package for your distribution from the [releases page](https://github.com/firezone/firezone/releases)
-2. Install with `sudo rpm -i firezone-<version>.rpm` or `sudo dpkg -i firezone-<version>.deb` depending on your distribution. This will unpack the application and set up necessary directory structure.
+1. Download the relevant package for your distribution from the [releases page](https://github.com/firezone/firezone/releases).
+2. Install with `sudo rpm -i firezone-<version>.rpm` or `sudo dpkg -i firezone-<version>.deb` depending on your distribution.
 3. Bootstrap the application with `sudo firezone-ctl reconfigure`. This will initialize config files, set up needed services and generate the default configuration.
-4. Edit the default configuration at `/etc/firezone/firezone.rb`. You'll want to make sure `default['firezone']['fqdn']`, `default['firezone']['url_host']`, `default['firezone']['ssl']['certificate']`, and `default['firezone']['ssl']['certificate']` are set properly.
+4. Edit the default configuration at `/etc/firezone/firezone.rb`. At a minimum, you'll need to make sure `default['firezone']['fqdn']`, `default['firezone']['url_host']`, `default['firezone']['ssl']['certificate']`, and `default['firezone']['ssl']['certificate_key']` are set properly.
 5. Reconfigure the application to pick up the new changes: `sudo firezone-ctl reconfigure`.
 6. Finally, create an admin user with `sudo firezone-ctl create_admin`. Check the console for the login credentials.
 7. Now you should be able to log into the web UI at `https://<your-server-fqdn>`
 
 # Using Firezone
 
-Your FireZone installation can be managed via the `firezone-ctl` command, as shown below. Most subcommands require prefixing with `sudo`.
+Your Firezone installation can be managed via the `firezone-ctl` command, as shown below. Most subcommands require prefixing with `sudo`.
 
 ```shell
 root@demo:~# firezone-ctl
@@ -127,23 +132,49 @@ Service Management Commands:
     Send the services a USR2.
 ```
 
-# Architecture
+User-configurable settings can be found in `/etc/firezone/firezone.rb`.
+Changing this file **requires re-running** `sudo firezone-ctl reconfigure` to pick up
+the changes and apply them to the running system.
 
-FireZone is written in the Elixir programming language and composed as an [Umbrella
-project](https://elixir-lang.org/getting-started/mix-otp/dependencies-and-umbrella-projects.html)
-consisting of three independent applications:
+## Troubleshooting
 
-- [apps/fz_http](apps/fz_http): The Web Application
-- [apps/fz_wall](apps/fz_wall): Firewall Management Process
-- [apps/fz_vpn](apps/fz_vpn): WireGuard™ Management Process
+To view Firezone logs, run `sudo firezone-ctl tail`.
 
-For now, FireZone assumes these apps are all running on the same host.
+Occasionally, during a `sudo firezone-ctl reconfigure`, the `phoenix` will fail
+to start with a `TIMEOUT` error like below:
 
-[Chef Omnibus](https://github.com/chef/omnibus) is used to bundle all FireZone dependencies into a single distributable Linux package.
+```
+================================================================================
+Error executing action `restart` on resource 'runit_service[phoenix]'
+================================================================================
+
+Mixlib::ShellOut::ShellCommandFailed
+------------------------------------
+Expected process to exit with [0], but received '1'
+---- Begin output of /opt/firezone/embedded/bin/sv restart /opt/firezone/service/phoenix ----
+STDOUT: timeout: run: /opt/firezone/service/phoenix: (pid 3091432) 34s, got TERM
+STDERR:
+---- End output of /opt/firezone/embedded/bin/sv restart /opt/firezone/service/phoenix ----
+Ran /opt/firezone/embedded/bin/sv restart /opt/firezone/service/phoenix returned 1
+```
+
+This happens because of the way phoenix handles input before fully starting up.
+To workaround, simply run `sudo firezone-ctl reconfigure` once more everything
+should start fine.
+
+
+## Uninstalling
+
+To completely remove Firezone and its configuration files, run the [uninstall.sh
+script](https://github.com/firezone/firezone/blob/master/scripts/uninstall.sh):
+
+`curl -L https://github.com/firezone/firezone/raw/master/scripts/uninstall.sh | sudo bash -E`
+
+**Warning**: This will irreversibly destroy ALL Firezone data and can't be
+undone.
 
 # Getting Support
 For help, feedback or contributions please join our [Slack group](https://admin.typeform.com/form/rpMtkZw4/create?block=a9c11a46-1dcf-4155-b447-0d8ce5700d5f). We're actively working to improve Firezone, and the Slack group is the best way to coordinate our efforts.
-
 
 ## Developing and Contributing
 
