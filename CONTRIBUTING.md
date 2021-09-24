@@ -16,23 +16,22 @@ Read this guide before opening a pull request.
 
 ## Prerequisites
 
-You'll need the following software installed to develop for FireZone:
+You'll need the following software installed to develop for Firezone:
 
-- [Vagrant](vagrantup.com)
-- [Ansible](ansible.com)
-- [VirtualBox](virtualbox.org)
-- [asdf VM](asdf-vm.com)
+- [asdf](asdf-vm.com)
 - A recent version of [PostgreSQL](postgresql.org) server installed and running
 - [dotenv](https://github.com/ohmyzsh/ohmyzsh/tree/master/plugins/dotenv)
   functionality for your shell
+-
 
 ## Project Setup
 
-1. Ensure Postgres is running with a superuser role of `firezone`. E.g.
+1. Ensure Postgres is running
   ```
   $ psql -h localhost -d postgres
 
   > CREATE ROLE firezone;
+  > ALTER ROLE firezone WITH LOGIN;
   ```
 2. Install the language versions defined in `.tool-versions`:
   ```
