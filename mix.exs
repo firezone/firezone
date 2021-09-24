@@ -1,6 +1,6 @@
 defmodule FirezoneUmbrella.MixProject do
   @moduledoc """
-  Welcome to the FireZone Elixir Umbrella Project
+  Welcome to the Firezone Elixir Umbrella Project
   """
 
   use Mix.Project

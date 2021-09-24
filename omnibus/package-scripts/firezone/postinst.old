@@ -1,6 +1,6 @@
 #!/bin/sh
 set -e
-# FireZone package post-install script
+# Firezone package post-install script
 #
 # Perform necessary firezone setup steps
 # after package is installed.
@@ -18,7 +18,7 @@ set -e
 #
 # set_capabilities()
 # {
-#   # Allow FireZone to control wireguard interface and firewall
+#   # Allow Firezone to control wireguard interface and firewall
 #   setcap cap_net_raw,cap_net_admin+eip ${install_dir}/embedded/bin/wg
 #   setcap cap_net_raw,cap_net_admin+eip ${install_dir}/embedded/bin/nft
 # }
@@ -67,7 +67,7 @@ set -e
 # chown firezone:root ${install_dir}/embedded/etc/firezone/secret
 # chmod 770 ${install_dir}/embedded/etc/firezone/secret
 #
-# # Write FireZone SSL files
+# # Write Firezone SSL files
 # ssl_key_file=${install_dir}/embedded/etc/firezone/secret/key.pem
 # ssl_cert_file=${install_dir}/embedded/etc/firezone/cert.pem
 # hostname=$(hostname)
@@ -86,14 +86,14 @@ set -e
 # db_key="$(openssl rand -base64 32)"
 # wg_server_key="$(wg genkey)"
 #
-# # Write FireZone config file
+# # Write Firezone config file
 # if [ -f ${install_dir}/embedded/etc/firezone/secret/secrets.env ]; then
 #   echo "config file exists; not creating"
 # else
 #
 # umask 037
 # cat <<EOT > ${install_dir}/embedded/etc/firezone/secret/secrets.env
-# # This file is loaded into FireZone's Environment upon launch to configure it.
+# # This file is loaded into Firezone's Environment upon launch to configure it.
 #
 # # Warning: changing anything here can result in data loss. Make sure you know
 # # what you're doing!
