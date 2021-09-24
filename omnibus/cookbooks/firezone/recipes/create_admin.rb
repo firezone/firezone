@@ -31,7 +31,7 @@ log 'admin_created' do
   msg = <<~MSG
     =================================================================================
 
-    FireZone user created! Save this information because it will NOT be shown again.
+    Firezone user created! Save this information because it will NOT be shown again.
 
     Use this to log into the Web UI.
 

@@ -3,7 +3,7 @@
 # Cookbook:: firezone
 # Recipe:: setcap
 #
-# Copyright:: 2021, FireZone, All Rights Reserved.
+# Copyright:: 2021, Firezone, All Rights Reserved.
 
 # Set capabilities for executables so they can be run without
 # root privileges.
