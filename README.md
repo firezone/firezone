@@ -1,45 +1,69 @@
-![](./apps/fz_http/assets/static/images/logo.svg)
+<p align="center">
+  <img src="https://user-images.githubusercontent.com/167144/134594125-fadeac64-990e-4d6f-9e69-8a04487e00e0.png" alt="firezone logo" width="500"/>
+</p>
+<p align="center">
+  <a href="https://github.com/firezone">
+    <img src="https://img.shields.io/badge/firezone-beta v0.0.5-red" alt="firezone" />
+  </a>
+  <a href="https://e04kusl9oz5.typeform.com/to/zahKLf3d">
+    <img src="https://img.shields.io/static/v1?logo=openbugbounty&logoColor=959DA5&label=feedback&labelColor=333a41&message=submit&color=3AC358" alt="firezone Slack" />
+  </a>
+  <a href="https://e04kusl9oz5.typeform.com/to/rpMtkZw4">
+    <img src="https://img.shields.io/static/v1?logo=slack&logoColor=959DA5&label=community&labelColor=333a41&message=join&color=611f69" alt="firezone Slack" />
+  </a>
+  <img src="https://img.shields.io/static/v1?logo=github&logoColor=959DA5&label=Test&labelColor=333a41&message=passing&color=3AC358" alt="firezone" />
+  <img src="https://img.shields.io/static/v1?label=coverage&labelColor=333a41&message=66%&color=D7614A" alt="firezone" />
+  <a href="https://twitter.com/intent/follow?screen_name=firezonevpn">
+    <img src="https://img.shields.io/twitter/follow/firezonevpn?style=social&logo=twitter" alt="follow on Twitter">
+  </a>
+</p>
 
-![Test](https://github.com/firezone/firezone/workflows/Test/badge.svg)
-[![Coverage Status](https://coveralls.io/repos/github/firezone/firezone/badge.svg?branch=master)](https://coveralls.io/github/FireZone-LLC/firezone?branch=master)
 
-# FireZone
+FireZone is a simple [WireGuard](https://www.wireguard.com/) based VPN server and firewall for Linux designed to be secure, easy to manage, and quick to set up.
 
-1. [Intro](#intro)
-2. [Requirements](#requirements)
-3. [Install](#install)
-4. [Usage](#usage)
-5. [Architecture](#architecture)
-6. [Contributing](#contributing)
+![Architecture](https://user-images.githubusercontent.com/167144/134593363-870c982d-921b-4f0c-b210-e77c8860d9ca.png)
 
-![IMG_0023](https://user-images.githubusercontent.com/167144/132162016-c17635ae-a715-41ca-b6f9-7cbdf202f8d5.png)
+# What is Firezone?
 
-## Intro
+Firezone can be set up in minutes to manage your WireGuard VPN through a simple web interface.
 
-FireZone is an open-source WireGuard-based VPN server and firewall for Linux
-designed to be secure, easy to manage, and quick to set up.
+## Features
 
-Use FireZone to:
+- **Fast:** [3-4 times](https://wireguard.com/performance/) faster than OpenVPN.
+- **Firewall built in:** Uses [nftables](https://netfilter.org) to block
+    unwanted egress traffic.
+- **No dependencies:** All dependencies are bundled thanks to
+    [Chef Omnibus](https://github.com/chef/omnibus).
+- **Secure:** Runs unprivileged. HTTPS enforced. Encrypted cookies.
 
-- Connect remote teams to a shared private cloud network
-- Set up your own WireGuard VPN
-- Block egress traffic from your devices to specific IPs and CIDR ranges
-- Connect remote teams to a secure virtual LAN
+![Firezone](./apps/fz_http/assets/static/images/firezone-usage.gif)
+
+# Deploying and Configuring
 
 ## Requirements
 
-FireZone currently supports the following Linux distros:
+FireZone currently supports the following operating systems:
 
-- CentOS: `7`, `8`
-- Ubuntu: `18.04`, `20.04`
-- Debian: `10`, `11`
-- Fedora: `33`, `34`
+| Name | Status |
+| --- | --- |
+| CentOS 7 | **Fully-supported** |
+| CentOS 8 | **Fully-supported** |
+| Ubuntu 18.04 | **Fully-supported** |
+| Ubuntu 20.04 | **Fully-supported** |
+| Debian 10 | **Fully-supported** |
+| Debian 11 | **Fully-supported** |
+| Fedora 33 | **Fully-supported** |
+| Fedora 34 | **Fully-supported** |
+| macOS | Unsupported at this time |
+| Windows | Unsupported at this time |
 
 If your distro isn't listed here please [open an issue](https://github.com/firezone/firezone/issues/new/choose) and we'll look into adding it.
 
-FireZone requires a valid SSL certificate and a matching DNS record to run in production.
+FireZone requires a valid SSL certificate and a matching DNS record to run in
+production. We recommend using [Let's Encrypt](https://letsencrypt.org) to
+generate a free SSL cert for your domain.
 
-## Install
+## Installation Instructions
 
 1. Download the relevant package for your distribution from the [releases page](https://github.com/firezone/firezone/releases)
 2. Install with `sudo rpm -i firezone-<version>.rpm` or `sudo dpkg -i firezone-<version>.deb` depending on your distribution. This will unpack the application and set up necessary directory structure.
@@ -49,7 +73,7 @@ FireZone requires a valid SSL certificate and a matching DNS record to run in pr
 6. Finally, create an admin user with `sudo firezone-ctl create_admin`. Check the console for the login credentials.
 7. Now you should be able to log into the web UI at `https://<your-server-fqdn>`
 
-## Usage
+# Using Firezone
 
 Your FireZone installation can be managed via the `firezone-ctl` command, as shown below. Most subcommands require prefixing with `sudo`.
 
@@ -103,7 +127,7 @@ Service Management Commands:
     Send the services a USR2.
 ```
 
-## Architecture
+# Architecture
 
 FireZone is written in the Elixir programming language and composed as an [Umbrella
 project](https://elixir-lang.org/getting-started/mix-otp/dependencies-and-umbrella-projects.html)
@@ -111,14 +135,21 @@ consisting of three independent applications:
 
 - [apps/fz_http](apps/fz_http): The Web Application
 - [apps/fz_wall](apps/fz_wall): Firewall Management Process
-- [apps/fz_vpn](apps/fz_vpn): WireGuard Management Process
+- [apps/fz_vpn](apps/fz_vpn): WireGuard™ Management Process
 
 For now, FireZone assumes these apps are all running on the same host.
 
 [Chef Omnibus](https://github.com/chef/omnibus) is used to bundle all FireZone dependencies into a single distributable Linux package.
 
-## Contributing
+# Getting Support
+For help, feedback or contributions please join our [Slack group](https://admin.typeform.com/form/rpMtkZw4/create?block=a9c11a46-1dcf-4155-b447-0d8ce5700d5f). We're actively working to improve Firezone, and the Slack group is the best way to coordinate our efforts.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-WireGuard is a registered trademark of Jason A. Donenfeld.
+## Developing and Contributing
+
+- See [CONTRIBUTING.md](CONTRIBUTING.md).
+- Report issues and bugs in [this Github project]().
+
+## License
+
+WireGuard™ is a registered trademark of Jason A. Donenfeld.
