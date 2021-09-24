@@ -1,3 +1,8 @@
+# We're running on a self-hosted runner, so only allow one workflow to run at a
+# time.
+# XXX: Remove this when self-hosted ephemeral runners are implmented.
+concurrency: ci
+
 name: CI
 on:
   - push

@@ -44,10 +44,18 @@ if wg_exists.status.exitstatus == 1
   end
 end
 
-execute 'setup_wireguard_ip' do
-  # XXX: Make this configurable
-  if_addr = '10.3.2.1/24'
-  command "ip address replace #{if_addr} dev #{wg_interface}"
+execute 'wireguard_ipv4' do
+  addr = '10.3.2.1/24'
+  command "ip address replace #{addr} dev #{wg_interface}"
+end
+
+execute 'wireguard_ipv6' do
+  addr = 'fd00:3:2::1/120'
+  command "ip -6 address replace #{addr} dev #{wg_interface}"
+end
+
+execute 'set_mtu' do
+  command "ip link set mtu 1420 up dev #{wg_interface}"
 end
 
 execute 'set_wireguard_interface_private_key' do
@@ -59,12 +67,12 @@ execute 'set_listen_port' do
   command "#{wg_path} set #{wg_interface} listen-port #{listen_port}"
 end
 
-execute 'set_mtu' do
-  command "ip link set mtu 1420 up dev #{wg_interface}"
-end
-
 route '10.3.2.0/24' do
   # XXX: Make this configurable
+  device wg_interface
+end
+
+route 'fd00:3:2::0/120' do
   device wg_interface
 end
 
