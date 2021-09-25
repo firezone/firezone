@@ -30,7 +30,7 @@ version("1.16") { source sha256: "80da43bb5665596ee389e6d8b64b4f122ea4b92a685b1d
 version("1.15") { source sha256: "7946e945a96e28152ba5a6beb0625ca715c6e32ac55f2e353ef54def0c8ed924" }
 version("1.11.2") { source sha256: "c339e3871d6595620760725da61de02cf1c293af8a05b14592d6587ac39ce546" }
 
-source url: "https://mirrors.ocf.berkeley.edu/gnu/automake/automake-#{version}.tar.gz"
+source url: "https://mirrors.kernel.org/gnu/automake/automake-#{version}.tar.gz"
 
 relative_path "automake-#{version}"
 
