@@ -100,7 +100,7 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          scripts/uninstall.sh
+          sudo scripts/uninstall.sh
           rm -rf omnibus/pkg/*
 
   publish:
