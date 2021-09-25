@@ -20,7 +20,7 @@ default_version "5.1.0"
 
 version("5.1.0") { source sha256: "03a0360edcd84bec156fe211bbc4fc8c78790973ce4e8b990a11d778d40b1a26" }
 
-source url: "https://mirrors.ocf.berkeley.edu/gnu/gawk/gawk-#{version}.tar.gz"
+source url: "https://mirrors.kernel.org/gnu/gawk/gawk-#{version}.tar.gz"
 
 relative_path "gawk-#{version}"
 

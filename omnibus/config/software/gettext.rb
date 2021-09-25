@@ -34,7 +34,7 @@ dependency "liblzma"
 dependency "icu"
 dependency "pkg-config"
 
-source url: "https://mirrors.ocf.berkeley.edu/gnu/gettext/gettext-#{version}.tar.gz"
+source url: "https://mirrors.kernel.org/gnu/gettext/gettext-#{version}.tar.gz"
 version("0.21") do
   source sha256: "c77d0da3102aec9c07f43671e60611ebff89a996ef159497ce8e59d075786b12"
 end
