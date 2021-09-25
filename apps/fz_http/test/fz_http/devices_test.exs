@@ -85,7 +85,8 @@ defmodule FzHttp.DevicesTest do
     test "renders all peers", %{device: device} do
       assert Devices.to_peer_list() |> List.first() == %{
                public_key: device.public_key,
-               allowed_ips: "#{Devices.ipv4_address(device)}/32, #{Devices.ipv6_address(device)}/128"
+               allowed_ips:
+                 "#{Devices.ipv4_address(device)}/32, #{Devices.ipv6_address(device)}/128"
              }
     end
   end
