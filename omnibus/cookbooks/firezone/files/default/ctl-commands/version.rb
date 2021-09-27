@@ -1,6 +1,6 @@
 #
 # Copyright:: Copyright (c) 2019 Chef Software, Inc.
-# Copyright:: Copyright (c) 2021 FireZone, Inc.
+# Copyright:: Copyright (c) 2021 Firezone, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.

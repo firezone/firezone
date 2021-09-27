@@ -24,7 +24,7 @@ skip_transitive_dependency_licensing true
 
 version("1.4.18") { source sha256: "ab2633921a5cd38e48797bf5521ad259bdc4b979078034a3b790d7fec5493fab" }
 
-source url: "https://mirrors.ocf.berkeley.edu/gnu/m4/m4-#{version}.tar.gz"
+source url: "https://mirrors.kernel.org/gnu/m4/m4-#{version}.tar.gz"
 
 relative_path "m4-#{version}"
 

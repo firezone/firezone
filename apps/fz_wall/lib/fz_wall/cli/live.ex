@@ -3,7 +3,7 @@ defmodule FzWall.CLI.Live do
   A low-level module for interacting with the nftables CLI.
 
   Rules operate on the nftables forward chain to deny outgoing packets to
-  specified IP addresses, ports, and protocols from FireZone device IPs.
+  specified IP addresses, ports, and protocols from Firezone device IPs.
   """
 
   import FzCommon.CLI

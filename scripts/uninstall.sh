@@ -1,5 +1,4 @@
 #!/bin/sh
-set -ex
 
 echo 'Removing all Firezone configuration data...'
 firezone-ctl cleanse yes

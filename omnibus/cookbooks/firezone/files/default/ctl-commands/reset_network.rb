@@ -3,7 +3,7 @@
 require "mixlib/shellout"
 
 add_command "reset_network", "Resets nftables, WireGuard interface, "\
-  "and routing table back to FireZone defaults", 1 do
+  "and routing table back to Firezone defaults", 1 do
   command = %W(
     chef-client
     -z
