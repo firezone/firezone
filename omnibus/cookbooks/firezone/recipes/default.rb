@@ -3,7 +3,7 @@
 # Cookbook:: firezone
 # Recipe:: default
 #
-# Copyright:: 2021, FireZone, All Rights Reserved.
+# Copyright:: 2021, Firezone, All Rights Reserved.
 
 include_recipe "firezone::config"
 include_recipe "firezone::setcap"

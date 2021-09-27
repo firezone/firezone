@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 # Copyright 2017 Chef Software, Inc.
-# Copyright 2021 FireZone
+# Copyright 2021 Firezone
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.

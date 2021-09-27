@@ -3,10 +3,10 @@
 # Cookbook:: firezone
 # Recipe:: network
 #
-# Copyright:: 2021, FireZone, All Rights Reserved.
+# Copyright:: 2021, Firezone, All Rights Reserved.
 
 # Set up wireguard interface, default routes, and firewall
-# rules so that FireZone can run without a hitch.
+# rules so that Firezone can run without a hitch.
 #
 # This recipe basically performs the work of wg-quick without having to
 # have a configuration file.

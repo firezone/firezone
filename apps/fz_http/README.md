@@ -1,3 +1,3 @@
 # FzHttp
 
-Phoenix app for managing FireZone.
+Phoenix app for managing Firezone.

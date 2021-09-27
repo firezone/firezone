@@ -1,5 +1,5 @@
 name 'firezone'
-maintainer 'FireZone'
+maintainer 'Firezone'
 maintainer_email 'infra@firez.one'
 license 'Apache-2.0'
 description 'Installs/Configures firezone'
