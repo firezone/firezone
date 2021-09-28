@@ -11,7 +11,7 @@ defmodule FzHttp.Fixtures do
     case Repo.get_by(User, email: email) do
       nil ->
         {:ok, user} =
-          %{email: email, password: "test", password_confirmation: "test"}
+          %{email: email, password: "testtest", password_confirmation: "testtest"}
           |> Map.merge(attrs)
           |> Users.create_user()
 
@@ -58,7 +58,7 @@ defmodule FzHttp.Fixtures do
   def session(_attrs \\ %{}) do
     email = user().email
     record = Sessions.get_session!(email: email)
-    create_params = %{email: email, password: "test"}
+    create_params = %{email: email, password: "testtest"}
     {:ok, session} = Sessions.create_session(record, create_params)
     session
   end

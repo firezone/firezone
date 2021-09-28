@@ -1,7 +1,10 @@
 defmodule FzHttp.Users.User do
   @moduledoc """
-  Represents a User I guess
+  Represents a User.
   """
+
+  @min_password_length 8
+  @max_password_length 64
 
   use Ecto.Schema
   import Ecto.Changeset
@@ -39,6 +42,7 @@ defmodule FzHttp.Users.User do
     ])
     |> validate_required([:email, :password, :password_confirmation])
     |> validate_password_equality()
+    |> validate_length(:password, min: @min_password_length, max: @max_password_length)
     |> validate_format(:email, ~r/@/)
     |> unique_constraint(:email)
     |> put_password_hash()
@@ -89,6 +93,7 @@ defmodule FzHttp.Users.User do
     |> validate_required([:email, :password, :password_confirmation, :current_password])
     |> validate_format(:email, ~r/@/)
     |> verify_current_password(user)
+    |> validate_length(:password, min: @min_password_length, max: @max_password_length)
     |> validate_password_equality()
     |> put_password_hash()
     |> validate_required([:password_hash])
