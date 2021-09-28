@@ -13,7 +13,10 @@ fi
 sudo firezone-ctl reconfigure
 
 # Wait for app to fully boot
-sleep 20
+sleep 10
+
+# Helpful for debugging
+sudo cat /var/log/firezone/phoenix/*
 
 echo "Trying to load homepage"
 page=$(curl -L -i -vvv -k https://$(hostname))
