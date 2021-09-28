@@ -38,7 +38,7 @@ defmodule FzHttpWeb.SessionControllerTest do
       params = %{
         "session" => %{
           "email" => user.email,
-          "password" => "test"
+          "password" => "testtest"
         }
       }
 
