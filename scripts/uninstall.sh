@@ -3,13 +3,10 @@
 echo 'Removing all Firezone configuration data...'
 firezone-ctl cleanse yes
 
-apt=`which apt-get`
-yum=`which yum`
-
 echo 'Removing firezone package...'
-if [ -f $apt ]; then
+if type apt-get > /dev/null; then
   apt-get remove -y --purge firezone
-elif [ -f $yum ]; then
+elif type yum > /dev/null; then
   yum remove -y firezone
 else
   echo 'apt-get or yum not found'

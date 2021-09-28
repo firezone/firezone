@@ -23,7 +23,7 @@ wg_interface = node['firezone']['wireguard']['interface_name']
 private_key_path = "#{node['firezone']['var_directory']}/cache/wg_private_key"
 
 # Use ip route for finding default egress interface
-egress_int_cmd = Mixlib::ShellOut.new("ip route show default 0.0.0.0/0 | grep -oP '(?<=dev ).*'")
+egress_int_cmd = Mixlib::ShellOut.new("ip route show default 0.0.0.0/0 | grep -oP '(?<=dev ).*' | cut -f1 -d' '")
 egress_interface = egress_int_cmd.run_command.stdout.chomp
 
 # Set default endpoint ip to default egress ip
