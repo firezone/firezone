@@ -36,7 +36,7 @@ defmodule FzHttp.SessionsTest do
   describe "create_session/2" do
     setup [:create_user]
 
-    @password_params %{password: "test"}
+    @password_params %{password: "testtest"}
     @invalid_params %{password: "invalid"}
 
     test "creates session (updates existing record)", %{user: user} do
