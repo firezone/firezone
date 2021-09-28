@@ -18,7 +18,7 @@ sudo firezone-ctl reconfigure
 sleep 10
 
 # Helpful for debugging
-sudo cat /var/log/firezone/**/*
+sudo cat /var/log/firezone/phoenix/current
 
 echo "Trying to load homepage"
 page=$(curl -L -i -vvv -k https://$(hostname))
