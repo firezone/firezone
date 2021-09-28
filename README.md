@@ -6,10 +6,10 @@
     <img src="https://img.shields.io/github/v/release/firezone/firezone?color=%23999">
   </a>
   <a href="https://e04kusl9oz5.typeform.com/to/zahKLf3d">
-    <img src="https://img.shields.io/static/v1?logo=openbugbounty&logoColor=959DA5&label=feedback&labelColor=333a41&message=submit&color=3AC358" alt="firezone Slack" />
+    <img src="https://img.shields.io/static/v1?logo=openbugbounty&logoColor=959DA5&label=feedback&labelColor=333a41&message=submit&color=3AC358" alt="submit feedback" />
   </a>
-  <a href="https://e04kusl9oz5.typeform.com/to/rpMtkZw4">
-    <img src="https://img.shields.io/static/v1?logo=slack&logoColor=959DA5&label=community&labelColor=333a41&message=join&color=611f69" alt="firezone Slack" />
+  <a href="https://discourse.firez.one">
+    <img src="https://img.shields.io/static/v1?logo=discourse&logoColor=959DA5&label=community&labelColor=333a41&message=join&color=611f69" alt="firezone Discourse" />
   </a>
   <img src="https://img.shields.io/static/v1?logo=github&logoColor=959DA5&label=Test&labelColor=333a41&message=passing&color=3AC358" alt="firezone" />
   <img src="https://img.shields.io/static/v1?label=coverage&labelColor=333a41&message=66%&color=D7614A" alt="firezone" />
@@ -264,7 +264,7 @@ script](https://github.com/firezone/firezone/blob/master/scripts/uninstall.sh):
 undone.
 
 # Getting Support
-For help, feedback or contributions please join our [Slack group](https://admin.typeform.com/form/rpMtkZw4/create?block=a9c11a46-1dcf-4155-b447-0d8ce5700d5f). We're actively working to improve Firezone, and the Slack group is the best way to coordinate our efforts.
+For help, feedback or contributions please join our [Discourse](https://discourse.firez.one). We're actively working to improve Firezone, and the Discourse is the best way to coordinate our efforts.
 
 # Developing and Contributing
 
