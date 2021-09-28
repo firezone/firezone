@@ -79,6 +79,34 @@ defmodule FzHttp.UsersTest do
       password: "password",
       password_confirmation: "different_password"
     ]
+    @too_short_password [
+      email: "valid@test",
+      password: "short11",
+      password_confirmation: "short11"
+    ]
+    @too_long_password [
+      email: "valid@test",
+      password: String.duplicate("a", 65),
+      password_confirmation: String.duplicate("a", 65)
+    ]
+
+    test "doesn't create user with password too short" do
+      assert {:error, changeset} = Users.create_user(@too_short_password)
+
+      assert changeset.errors[:password] == {
+               "should be at least %{count} character(s)",
+               [count: 8, validation: :length, kind: :min, type: :string]
+             }
+    end
+
+    test "doesn't create user with password too long" do
+      assert {:error, changeset} = Users.create_user(@too_long_password)
+
+      assert changeset.errors[:password] == {
+               "should be at most %{count} character(s)",
+               [count: 64, validation: :length, kind: :max, type: :string]
+             }
+    end
 
     test "creates user with valid map of attributes" do
       assert {:ok, _user} = Users.create_user(@valid_attrs_map)
@@ -112,7 +140,7 @@ defmodule FzHttp.UsersTest do
     @change_password_valid_params %{
       "password" => "new_password",
       "password_confirmation" => "new_password",
-      "current_password" => "test"
+      "current_password" => "testtest"
     }
     @change_password_invalid_params %{
       "password" => "new_password",
