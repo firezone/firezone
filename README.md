@@ -94,18 +94,18 @@ the Web UI** to prevent exposing it to the public Internet.
 
 ## Supported Linux Distributions
 
-Firezone currently supports the following distributions:
+Firezone currently supports the following distributions and architectures:
 
-| Name | Status | Notes |
-| --- | --- | --- |
-| CentOS 7 | **Fully-supported** | See [CentOS 7 Notes](#centos-7-notes) |
-| CentOS 8 | **Fully-supported** | Works as-is |
-| Ubuntu 18.04 | **Fully-supported** | See [Ubuntu 18.04 Notes](#ubuntu-1804-notes) |
-| Ubuntu 20.04 | **Fully-supported** | Works as-is |
-| Debian 10 | **Fully-supported** | See [Debian 10 Notes](#debian-10-notes)|
-| Debian 11 | **Fully-supported** | Works as-is |
-| Fedora 33 | **Fully-supported** | Works as-is |
-| Fedora 34 | **Fully-supported** | Works as-is |
+| Name | Architectures | Status | Notes |
+| --- | --- | --- | --- |
+| CentOS 7 | `amd64` | **Fully-supported** | See [CentOS 7 Notes](#centos-7-notes) |
+| CentOS 8 | `amd64` | **Fully-supported** | Works as-is |
+| Ubuntu 18.04 | `amd64` | **Fully-supported** | See [Ubuntu 18.04 Notes](#ubuntu-1804-notes) |
+| Ubuntu 20.04 | `amd64` | **Fully-supported** | Works as-is |
+| Debian 10 | `amd64` | **Fully-supported** | See [Debian 10 Notes](#debian-10-notes)|
+| Debian 11 | `amd64` | **Fully-supported** | Works as-is |
+| Fedora 33 | `amd64` | **Fully-supported** | Works as-is |
+| Fedora 34 | `amd64` | **Fully-supported** | Works as-is |
 
 If your distro isn't listed here please
 [open an issue](https://github.com/firezone/firezone/issues/new/choose) and let
