@@ -137,7 +137,7 @@ listed above, follow these steps to setup and install Firezone:
    this step.
 2. Download the relevant package for your distribution from the
    [releases page](https://github.com/firezone/firezone/releases).
-3. Install with `sudo rpm -i firezone-*.rpm` or `sudo dpkg -i firezone-*.deb`
+3. Install with `sudo rpm -i firezone*.rpm` or `sudo dpkg -i firezone*.deb`
    depending on your distro.
 4. Bootstrap the application with `sudo firezone-ctl reconfigure`. This will initialize config files, set up needed services and generate the default configuration.
 5. Edit the default configuration located at `/etc/firezone/firezone.rb`.
