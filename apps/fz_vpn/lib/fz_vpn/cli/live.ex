@@ -33,7 +33,7 @@ defmodule FzVpn.CLI.Live do
     {privkey, pubkey(privkey)}
   end
 
-  def add_peer(pubkey, {ipv4, ipv6}) do
+  def set_peer(pubkey, {ipv4, ipv6}) do
     set("peer #{pubkey} allowed-ips #{ipv4}/32,#{ipv6}/128")
   end
 

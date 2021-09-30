@@ -10,6 +10,21 @@ defmodule FzHttp.DevicesTest do
     end
   end
 
+  describe "create_device/1" do
+    setup [:create_user]
+
+    test "creates device with empty attributes", %{user: user} do
+      assert {:ok, _device} =
+               Devices.create_device(%{
+                 name: "dummy",
+                 user_id: user.id,
+                 public_key: "dummy",
+                 private_key: "dummy",
+                 server_public_key: "dummy"
+               })
+    end
+  end
+
   describe "list_devices/1" do
     setup [:create_device]
 
@@ -40,9 +55,53 @@ defmodule FzHttp.DevicesTest do
       allowed_ips: "0.0.0.0"
     }
 
+    @valid_dns_servers_attrs %{
+      dns_servers: "1.1.1.1, 1.0.0.1, 2606:4700:4700::1111, 2606:4700:4700::1001"
+    }
+
+    @invalid_dns_servers_attrs %{
+      dns_servers: "8.8.8.8, 1.1.1, 1.0.0, 1.1.1."
+    }
+
+    @valid_allowed_ips_attrs %{
+      allowed_ips: "0.0.0.0/0, ::/0, ::0/0, 192.168.1.0/24"
+    }
+
+    @invalid_allowed_ips_attrs %{
+      allowed_ips: "1.1.1.1, 11, foobar"
+    }
+
     test "updates device", %{device: device} do
       {:ok, test_device} = Devices.update_device(device, @attrs)
       assert @attrs = test_device
+    end
+
+    test "updates device with valid dns_servers", %{device: device} do
+      {:ok, test_device} = Devices.update_device(device, @valid_dns_servers_attrs)
+      assert @valid_dns_servers_attrs = test_device
+    end
+
+    test "prevents updating device with invalid dns_servers", %{device: device} do
+      {:error, changeset} = Devices.update_device(device, @invalid_dns_servers_attrs)
+
+      assert changeset.errors[:dns_servers] == {
+               "is invalid: 1.1.1 is not a valid IPv4 / IPv6 address",
+               []
+             }
+    end
+
+    test "updates device with valid allowed_ips", %{device: device} do
+      {:ok, test_device} = Devices.update_device(device, @valid_allowed_ips_attrs)
+      assert @valid_allowed_ips_attrs = test_device
+    end
+
+    test "prevents updating device with invalid allowed_ips", %{device: device} do
+      {:error, changeset} = Devices.update_device(device, @invalid_allowed_ips_attrs)
+
+      assert changeset.errors[:allowed_ips] == {
+               "is invalid: 11 is not a valid IPv4 / IPv6 address or CIDR range",
+               []
+             }
     end
   end
 

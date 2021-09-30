@@ -12,64 +12,76 @@
 
 <section class="section is-main-section">
   <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
-  <div class="columns">
-    <div class="column">
-      <div class="level">
-        <div class="level-left">
-          <h4 class="is-4 title">Device Details</h4>
+  <div class="tile is-ancestor">
+    <div class="tile is-parent">
+      <div class="card tile is-child">
+        <header class="card-header">
+          <p class="card-header-title">Device Details</p>
+        </header>
+        <div class="card-content">
+          <div class="content">
+            <dl>
+              <dt><strong>Name</strong></dt>
+              <dd><%= @device.name %></dd>
+
+              <dt><strong>Interface IP</strong></dt>
+              <dd>
+                <%= FzHttp.Devices.ipv4_address(@device) %>,
+                <%= FzHttp.Devices.ipv6_address(@device) %>
+              </dd>
+
+              <dt><strong>Allowed IPs</strong></dt>
+              <dd><%= @device.allowed_ips %></dd>
+
+              <dt><strong>DNS Servers</strong></dt>
+              <dd><%= @device.dns_servers %></dd>
+
+              <dt><strong>Public key</strong></dt>
+              <dd class="code"><%= @device.public_key %></dd>
+
+              <dt><strong>Private key</strong></dt>
+              <dd class="code"><%= @device.private_key %></dd>
+
+              <dt><strong>Server public key</strong></dt>
+              <dd class="code"><%= @device.server_public_key %></dd>
+            </dl>
+          </div>
+          <footer class="card-footer">
+            <div class="field is-grouped card-footer-item">
+              <p class="control">
+                <%= live_patch(to: Routes.device_show_path(@socket, :edit, @device), class: "button is-primary") do %>
+                  <span class="icon is-small">
+                    <i class="fas fa-edit"></i>
+                  </span>
+                  <span>Edit</span>
+                <% end %>
+              </p>
+              <p class="control">
+                <button class="button is-danger"
+                        phx-click="delete_device"
+                        phx-value-device_id={@device.id}
+                        data-confirm="Are you sure? This will remove all data associated with this device.">
+                  <span class="icon is-small">
+                    <i class="fas fa-trash"></i>
+                  </span>
+                  <span>Delete</span>
+                </button>
+              </p>
+            </div>
+          </footer>
         </div>
-        <div class="level-right">
-          <%= live_patch("Edit", to: Routes.device_show_path(@socket, :edit, @device)) %>
-        </div>
-      </div>
-      <hr>
-      <div class="content">
-        <dl>
-          <dt>
-            <strong>Name:</strong>
-          </dt>
-          <dd><%= @device.name %></dd>
-
-          <dt>
-            <strong>Interface IP:</strong>
-          </dt>
-          <dd><%= FzHttp.Devices.ipv4_address(@device) %>, <%= FzHttp.Devices.ipv6_address(@device) %></dd>
-
-          <dt>
-            <strong>Public key:</strong>
-          </dt>
-          <dd class="code"><%= @device.public_key %></dd>
-
-          <dt>
-            <strong>Private key:</strong>
-          </dt>
-          <dd class="code"><%= @device.private_key %></dd>
-
-          <dt>
-            <strong>Server Public key:</strong>
-          </dt>
-          <dd class="code"><%= @device.server_public_key %></dd>
-
-        </dl>
-      </div>
-      <div class="level">
-        <%= live_patch("Back to Devices", to: Routes.device_index_path(@socket, :index), class: "button") %>
-        <button class="button is-danger"
-                phx-click="delete_device"
-                phx-value-device_id={@device.id}
-                data-confirm="Are you sure? This will remove all data associated with this device.">
-          Delete device
-        </button>
       </div>
     </div>
-    <div class="column">
-      <h4 class="is-4 title">Config</h4>
-      <hr>
-      <div class="content">
-        <h6 class="is-6 title">
-          Add the following to your WireGuard configuration file:
-        </h6>
-        <pre><code id="wg-conf">
+    <div class="tile is-parent">
+      <div class="card tile is-child">
+        <header class="card-header">
+          <p class="card-header-title">Device Config</p>
+        </header>
+        <div class="card-content">
+          <h6 class="is-6 title">
+            Add the following to your WireGuard configuration file:
+          </h6>
+          <pre><code id="wg-conf">
 [Interface]
 PrivateKey = <%= @device.private_key %>
 Address = <%= FzHttp.Devices.ipv4_address(@device) %>/32, <%= FzHttp.Devices.ipv6_address(@device) %>/128
@@ -79,11 +91,13 @@ DNS = 1.1.1.1, 1.0.0.1
 PublicKey = <%= @device.server_public_key %>
 AllowedIPs = <%= @device.allowed_ips %>
 Endpoint = <%= @wireguard_endpoint_ip %>:<%= @wireguard_port %></code></pre>
-        <h6 class="is-6 title">
-          Or scan the QR code with your mobile phone:
-        </h6>
-        <div class="has-text-centered">
-          <canvas id="qr-canvas" phx-hook="QrCode"></canvas>
+          <hr>
+          <h6 class="is-6 title">
+            Or scan the QR code with your mobile phone:
+          </h6>
+          <div class="has-text-centered">
+            <canvas id="qr-canvas" phx-hook="QrCode"></canvas>
+          </div>
         </div>
       </div>
     </div>

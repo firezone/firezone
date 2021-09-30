@@ -12,6 +12,39 @@
     </div>
 
     <div class="field">
+      <%= label f, :allowed_ips, "Allowed IPs", class: "label" %>
+
+      <div class="control">
+        <%= text_input f, :allowed_ips, class: "input" %>
+      </div>
+      <p class="help is-danger">
+        <%= error_tag f, :allowed_ips %>
+      </p>
+    </div>
+
+    <div class="field">
+      <%= label f, :dns_servers, "DNS Servers", class: "label" %>
+
+      <div class="control">
+        <%= text_input f, :dns_servers, class: "input" %>
+      </div>
+      <p class="help is-danger">
+        <%= error_tag f, :dns_servers %>
+      </p>
+    </div>
+
+    <div class="field">
+      <%= label f, :address, "Interface Address (last octet only)", class: "label" %>
+
+      <div class="control">
+        <%= text_input f, :address, class: "input" %>
+      </div>
+      <p class="help is-danger">
+        <%= error_tag f, :address %>
+      </p>
+    </div>
+
+    <div class="field">
       <div class="control">
         <div class="level">
           <div class="level-left"></div>
