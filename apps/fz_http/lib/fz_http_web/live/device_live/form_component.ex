@@ -19,7 +19,9 @@ defmodule FzHttpWeb.DeviceLive.FormComponent do
     device = socket.assigns.device
 
     case Devices.update_device(device, device_params) do
-      {:ok, _device} ->
+      {:ok, device} ->
+        @events_module.device_updated(device)
+
         {:noreply,
          socket
          |> put_flash(:info, "Device updated successfully.")

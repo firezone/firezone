@@ -2,8 +2,8 @@
 
 <section class="section is-main-section">
   <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
-  <div class="columns">
-    <div class="column">
+  <div class="tile is-ancestor">
+    <div class="tile is-parent">
       <%= live_component(
           @socket,
           FzHttpWeb.RuleLive.RuleListComponent,
@@ -11,7 +11,7 @@
           id: :allowlist,
           current_user: @current_user) %>
     </div>
-    <div class="column">
+    <div class="tile is-parent">
       <%= live_component(
           @socket,
           FzHttpWeb.RuleLive.RuleListComponent,

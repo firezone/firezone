@@ -7,7 +7,7 @@ defmodule FzWall.CLI.Live do
   """
 
   import FzCommon.CLI
-  import FzCommon.FzNet, only: [ip_type: 1]
+  import FzCommon.FzNet, only: [ip_type: 1, standardized_inet: 1]
   require Logger
 
   @table_name "firezone"
@@ -18,7 +18,7 @@ defmodule FzWall.CLI.Live do
   def add_rule({dest, action}) do
     exec!("""
       #{nft()} 'add rule inet #{@table_name} forward\
-      #{proto(dest)} daddr #{standardized_dest(dest)} #{action}'
+      #{proto(dest)} daddr #{standardized_inet(dest)} #{action}'
     """)
   end
 
@@ -66,7 +66,7 @@ defmodule FzWall.CLI.Live do
   Deletes nftables rule.
   """
   def delete_rule({dest, action}) do
-    rule_str = "#{proto(dest)} daddr #{standardized_dest(dest)} #{action}"
+    rule_str = "#{proto(dest)} daddr #{standardized_inet(dest)} #{action}"
     rules = exec!("#{nft()} -a list table inet #{@table_name}")
 
     case rule_handle_regex(~r/#{rule_str}.*# handle (?<num>\d+)/, rules) do
@@ -114,21 +114,6 @@ defmodule FzWall.CLI.Live do
 
       _ ->
         raise "OS not supported (yet)"
-    end
-  end
-
-  @doc """
-  Standardized IP addresses and CIDR ranges so that we can
-  parse them out of the nftables rulesets.
-  """
-  def standardized_dest(dest) do
-    if String.contains?(dest, "/") do
-      dest
-      |> InetCidr.parse()
-      |> InetCidr.to_string()
-    else
-      {:ok, addr} = dest |> String.to_charlist() |> :inet.parse_address()
-      :inet.ntoa(addr) |> List.to_string()
     end
   end
 
