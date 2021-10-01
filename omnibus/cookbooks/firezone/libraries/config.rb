@@ -232,7 +232,7 @@ class Firezone
         'DATABASE_PORT' => attributes['database']['port'].to_s,
         'DATABASE_POOL' => attributes['database']['pool'].to_s,
         'PHOENIX_PORT' => attributes['phoenix']['port'].to_s,
-        'URL_HOST' => attributes['url_host'],
+        'URL_HOST' => attributes['fqdn'],
         'ADMIN_EMAIL' => attributes['admin_email'],
         'WIREGUARD_INTERFACE_NAME' => attributes['wireguard']['interface_name'],
         'WIREGUARD_ENDPOINT_IP' => attributes['wireguard']['endpoint_ip'],
