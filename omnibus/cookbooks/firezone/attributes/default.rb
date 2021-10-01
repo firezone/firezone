@@ -49,7 +49,7 @@ require 'etc'
 # attributes are further down in this file.
 
 # The fully qualified domain name. Will use the node's fqdn if nothing is
-# specified.
+# specified. Used for generating URLs that point back to this application.
 default['firezone']['fqdn'] = (node['fqdn'] || node['hostname']).downcase
 
 default['firezone']['config_directory'] = '/etc/firezone'
@@ -59,8 +59,6 @@ default['firezone']['log_directory'] = '/var/log/firezone'
 default['firezone']['var_directory'] = '/var/opt/firezone'
 default['firezone']['user'] = 'firezone'
 default['firezone']['group'] = 'firezone'
-# Used for generating URLs that point back to this application.
-default['firezone']['url_host'] = node['firezone']['fqdn']
 # Email for the primary admin user.
 default['firezone']['admin_email'] = "firezone@localhost"
 

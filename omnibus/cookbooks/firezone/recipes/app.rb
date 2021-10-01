@@ -47,6 +47,8 @@ file 'environment-variables' do
   owner node['firezone']['user']
   group node['firezone']['group']
   mode '0600'
+
+  subscribes :create, "file[#{node['firezone']['config_directory']}/firezone.rb]",  :immediately
 end
 
 execute 'database schema' do
