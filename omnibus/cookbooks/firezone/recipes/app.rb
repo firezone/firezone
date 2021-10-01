@@ -33,14 +33,20 @@ file 'environment-variables' do
 
   attributes = node['firezone'].to_hash
 
-  # Remove sensitive fields
+  # Remove sensitive fields that aren't required for application startup
   attributes.delete('wireguard_private_key')
   attributes.delete('default_admin_password')
 
-  # Add needed fields
+  # Add needed fields to top-level so they get added to application env and get
+  # updated when config is updated.
   attributes.merge!(
     'force_ssl' => node['firezone']['nginx']['force_ssl'],
-    'mix_env' => 'prod'
+    'mix_env' => 'prod',
+    'url_host' => node['firezone']['fqdn'],
+    'wireguard_interface_name' => node['firezone']['wireguard']['interface_name'],
+    'wireguard_port' => node['firezone']['wireguard']['port'],
+    'wireguard_endpoint' => node['firezone']['wireguard']['endpoint'],
+    'phoenix_port' => node['firezone']['phoenix']['port']
   )
 
   content Firezone::Config.environment_variables_from(attributes)
@@ -48,7 +54,7 @@ file 'environment-variables' do
   group node['firezone']['group']
   mode '0600'
 
-  subscribes :create, "file[#{node['firezone']['config_directory']}/firezone.rb]",  :immediately
+  subscribes :create, "file[configuration-variables]"
 end
 
 execute 'database schema' do
