@@ -30,7 +30,7 @@ egress_interface = egress_int_cmd.run_command.stdout.chomp
 egress_addr_cmd = "ip address show dev #{egress_interface} | grep 'inet ' | #{awk_path} '{print $2}'"
 egress_ip = Mixlib::ShellOut.new(egress_addr_cmd)
 egress_ip.run_command
-node.default['firezone']['wireguard']['endpoint_ip'] =
+node.default['firezone']['wireguard']['endpoint'] =
   egress_ip.stdout.chomp.gsub(%r{/.*}, '')
 node.default['firezone']['egress_interface'] = egress_interface
 
