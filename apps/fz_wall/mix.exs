@@ -35,7 +35,6 @@ defmodule FzWall.MixProject do
   defp deps do
     [
       {:fz_common, in_umbrella: true},
-      {:inet_cidr, "~> 1.0.0"},
       {:credo, "~> 1.4", only: [:dev, :test], runtime: false},
       {:excoveralls, "~> 0.13", only: :test}
     ]

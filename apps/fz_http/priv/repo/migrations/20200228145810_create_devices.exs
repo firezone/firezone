@@ -1,11 +1,13 @@
 defmodule FzHttp.Repo.Migrations.CreateDevices do
   use Ecto.Migration
 
+  @default_allowed_ips "0.0.0.0/0,::/0"
+
   def change do
     create table(:devices) do
       add :name, :string, null: false
       add :public_key, :string, null: false
-      add :allowed_ips, :string, default: "0.0.0.0/0,::/0"
+      add :allowed_ips, :string, default: @default_allowed_ips
       add :private_key, :bytea, null: false
       add :server_public_key, :string, null: false
       add :address, :integer, null: false

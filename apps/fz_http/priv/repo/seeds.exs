@@ -14,9 +14,9 @@ alias FzHttp.{Devices, Rules, Users}
 
 {:ok, user} =
   Users.create_user(%{
-    email: "factory@factory",
-    password: "factory",
-    password_confirmation: "factory"
+    email: "firezone@localhost",
+    password: "firezone",
+    password_confirmation: "firezone"
   })
 
 {:ok, device} =
