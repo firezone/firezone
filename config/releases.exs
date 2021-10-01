@@ -66,9 +66,10 @@ config :fz_http, FzHttp.Vault,
   ]
 
 config :fz_http, FzHttpWeb.Endpoint,
-  http: [ip: {0, 0, 0, 0}, port: port],
-  server: true,
+  http: [ip: {127, 0, 0, 1}, port: port],
   url: [host: url_host, scheme: "http"],
+  check_origin: ["//127.0.0.1", "//localhost", "//#{url_host}"],
+  server: true,
   secret_key_base: secret_key_base,
   live_view: [
     signing_salt: live_view_signing_salt
