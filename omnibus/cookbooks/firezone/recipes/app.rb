@@ -1,5 +1,5 @@
 # frozen_string_literal: true
-#
+
 # Cookbook:: firezone
 # Recipe:: app
 #
@@ -41,20 +41,13 @@ file 'environment-variables' do
   # updated when config is updated.
   attributes.merge!(
     'force_ssl' => node['firezone']['nginx']['force_ssl'],
-    'mix_env' => 'prod',
-    'url_host' => node['firezone']['fqdn'],
-    'wireguard_interface_name' => node['firezone']['wireguard']['interface_name'],
-    'wireguard_port' => node['firezone']['wireguard']['port'],
-    'wireguard_endpoint' => node['firezone']['wireguard']['endpoint'],
-    'phoenix_port' => node['firezone']['phoenix']['port']
+    'mix_env' => 'prod'
   )
 
   content Firezone::Config.environment_variables_from(attributes)
   owner node['firezone']['user']
   group node['firezone']['group']
   mode '0600'
-
-  subscribes :create, "file[configuration-variables]"
 end
 
 execute 'database schema' do
