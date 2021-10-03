@@ -1,5 +1,5 @@
 # frozen_string_literal: true
-#
+
 # Cookbook:: firezone
 # Recipe:: app
 #
@@ -33,11 +33,12 @@ file 'environment-variables' do
 
   attributes = node['firezone'].to_hash
 
-  # Remove sensitive fields
+  # Remove sensitive fields that aren't required for application startup
   attributes.delete('wireguard_private_key')
   attributes.delete('default_admin_password')
 
-  # Add needed fields
+  # Add needed fields to top-level so they get added to application env and get
+  # updated when config is updated.
   attributes.merge!(
     'force_ssl' => node['firezone']['nginx']['force_ssl'],
     'mix_env' => 'prod'
@@ -47,8 +48,6 @@ file 'environment-variables' do
   owner node['firezone']['user']
   group node['firezone']['group']
   mode '0600'
-
-  subscribes :create, "file[#{node['firezone']['config_directory']}/firezone.rb]",  :immediately
 end
 
 execute 'database schema' do

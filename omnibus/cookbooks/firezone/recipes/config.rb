@@ -83,7 +83,8 @@ directory "#{node['firezone']['var_directory']}/etc" do
   mode '0700'
 end
 
-file "#{node['firezone']['config_directory']}/firezone.rb" do
+file "configuration-variables" do
+  path "#{node['firezone']['config_directory']}/firezone.rb"
   owner node['firezone']['user']
   group node['firezone']['group']
   mode '0600'

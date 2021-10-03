@@ -16,7 +16,7 @@ url_host = System.fetch_env!("URL_HOST")
 admin_email = System.fetch_env!("ADMIN_EMAIL")
 default_admin_password = System.fetch_env!("DEFAULT_ADMIN_PASSWORD")
 wireguard_interface_name = System.fetch_env!("WIREGUARD_INTERFACE_NAME")
-wireguard_endpoint_ip = System.fetch_env!("WIREGUARD_ENDPOINT_IP")
+wireguard_endpoint = System.fetch_env!("WIREGUARD_ENDPOINT")
 wireguard_port = String.to_integer(System.fetch_env!("WIREGUARD_PORT"))
 nft_path = System.fetch_env!("NFT_PATH")
 wg_path = System.fetch_env!("WG_PATH")
@@ -66,9 +66,10 @@ config :fz_http, FzHttp.Vault,
   ]
 
 config :fz_http, FzHttpWeb.Endpoint,
-  http: [ip: {0, 0, 0, 0}, port: port],
-  server: true,
+  http: [ip: {127, 0, 0, 1}, port: port],
   url: [host: url_host, scheme: "http"],
+  check_origin: ["//127.0.0.1", "//localhost", "//#{url_host}"],
+  server: true,
   secret_key_base: secret_key_base,
   live_view: [
     signing_salt: live_view_signing_salt
@@ -82,7 +83,7 @@ config :fz_vpn,
   wireguard_public_key: wireguard_public_key,
   wireguard_interface_name: wireguard_interface_name,
   wireguard_port: wireguard_port,
-  wireguard_endpoint_ip: wireguard_endpoint_ip
+  wireguard_endpoint: wireguard_endpoint
 
 config :fz_http,
   admin_email: admin_email,

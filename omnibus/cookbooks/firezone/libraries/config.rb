@@ -235,7 +235,7 @@ class Firezone
         'URL_HOST' => attributes['fqdn'],
         'ADMIN_EMAIL' => attributes['admin_email'],
         'WIREGUARD_INTERFACE_NAME' => attributes['wireguard']['interface_name'],
-        'WIREGUARD_ENDPOINT_IP' => attributes['wireguard']['endpoint_ip'],
+        'WIREGUARD_ENDPOINT' => attributes['wireguard']['endpoint'],
         'WIREGUARD_PORT' => attributes['wireguard']['port'].to_s,
         'WIREGUARD_PUBLIC_KEY' => attributes['wireguard_public_key'],
 
