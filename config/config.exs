@@ -43,7 +43,7 @@ config :fz_vpn,
   wireguard_public_key: "cB2yQeCxHO/qCH8APoM2D2Anf4Yd7sRLyfS7su71K3M=",
   wireguard_interface_name: "wg-firezone",
   wireguard_port: "51820",
-  wireguard_endpoint_ip: "127.0.0.1",
+  wireguard_endpoint: "127.0.0.1",
   cli: FzVpn.CLI.Sandbox,
   server_process_opts: [name: {:global, :fz_vpn_server}]
 

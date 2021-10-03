@@ -195,7 +195,15 @@ default['firezone']['phoenix']['log_rotation']['num_to_keep'] = 10
 #
 # The WireGuard interface settings
 default['firezone']['wireguard']['interface_name'] = 'wg-firezone'
+
+# Listen port
 default['firezone']['wireguard']['port'] = 11820
+
+# IPv4, IPv6, or hostname that device configs will use to connect to this server.
+# If left blank, this will be set to the IPv4 address of the default egress interface.
+# Override this to your publicly routable IP if you're behind a NAT and need to
+# set up port forwarding to your Firezone server.
+default['firezone']['wireguard']['endpoint'] = nil
 
 # ## Runit
 

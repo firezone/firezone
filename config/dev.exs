@@ -26,7 +26,8 @@ config :fz_http, FzHttpWeb.Endpoint,
   http: [port: 4000],
   debug_errors: true,
   code_reloader: true,
-  check_origin: false,
+  url: [host: "localhost", scheme: "http"],
+  check_origin: ["//127.0.0.1", "//localhost"],
   watchers: [
     node: [
       "node_modules/webpack/bin/webpack.js",
