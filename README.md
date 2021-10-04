@@ -258,7 +258,9 @@ should start fine.
 To completely remove Firezone and its configuration files, run the [uninstall.sh
 script](https://github.com/firezone/firezone/blob/master/scripts/uninstall.sh):
 
-`sudo /bin/bash -c "$(curl -fsSL https://github.com/firezone/firezone/raw/master/scripts/uninstall.sh)"`
+```bash
+sudo /bin/bash -c "$(curl -fsSL https://github.com/firezone/firezone/raw/master/scripts/uninstall.sh)"
+```
 
 **Warning**: This will irreversibly destroy ALL Firezone data and can't be
 undone.
@@ -269,7 +271,8 @@ For help, feedback or contributions please join our [Discourse](https://discours
 # Developing and Contributing
 
 - See [CONTRIBUTING.md](CONTRIBUTING.md).
-- Report issues and bugs in [this Github project]().
+- Report issues and bugs in [this Github
+    project](https://github.com/firezone/firezone/issues).
 
 ## License
 
