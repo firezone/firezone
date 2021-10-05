@@ -1,6 +1,9 @@
 #!/bin/sh
 
-echo 'Removing all Firezone configuration data...'
+echo 'Removing Firezone network settings...'
+firezone-ctl teardown
+
+echo 'Removing all Firezone directories...'
 firezone-ctl cleanse yes
 
 echo 'Removing firezone package...'
