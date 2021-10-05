@@ -1,7 +1,7 @@
 #!/bin/sh
 
 echo 'Removing Firezone network settings...'
-firezone-ctl teardown
+firezone-ctl teardown-network
 
 echo 'Removing all Firezone directories...'
 firezone-ctl cleanse yes
