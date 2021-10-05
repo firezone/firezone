@@ -156,18 +156,6 @@ default['firezone']['postgresql']['data_directory'] = "#{node['firezone']['var_d
 # default['firezone']['database']['host'] = 'my.db.server.address'
 # default['firezone']['database']['port'] = 5432
 
-# ## Database
-
-default['firezone']['database']['user'] = node['firezone']['postgresql']['username']
-default['firezone']['database']['name'] = 'firezone'
-default['firezone']['database']['host'] = node['firezone']['postgresql']['listen_address']
-default['firezone']['database']['port'] = node['firezone']['postgresql']['port']
-default['firezone']['database']['pool'] = [10, Etc.nprocessors].max
-default['firezone']['database']['extensions'] = { 'plpgsql' => true, 'pg_trgm' => true }
-
-# Uncomment to specify a database password. Not usually needed if using the bundled Postgresql.
-# default['firezone']['database']['password'] = 'change_me'
-
 # ### Logs
 default['firezone']['postgresql']['log_directory'] = "#{node['firezone']['log_directory']}/postgresql"
 default['firezone']['postgresql']['log_rotation']['file_maxbytes'] = 104857600
@@ -187,6 +175,18 @@ default['firezone']['postgresql']['shared_buffers'] = "#{(node['memory']['total'
 default['firezone']['postgresql']['shmmax'] = 17179869184
 default['firezone']['postgresql']['shmall'] = 4194304
 default['firezone']['postgresql']['work_mem'] = '8MB'
+
+# ## Database
+
+default['firezone']['database']['user'] = node['firezone']['postgresql']['username']
+default['firezone']['database']['name'] = 'firezone'
+default['firezone']['database']['host'] = node['firezone']['postgresql']['listen_address']
+default['firezone']['database']['port'] = node['firezone']['postgresql']['port']
+default['firezone']['database']['pool'] = [10, Etc.nprocessors].max
+default['firezone']['database']['extensions'] = { 'plpgsql' => true, 'pg_trgm' => true }
+
+# Uncomment to specify a database password. Not usually needed if using the bundled Postgresql.
+# default['firezone']['database']['password'] = 'change_me'
 
 # ## Phoenix
 #
