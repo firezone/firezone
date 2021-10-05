@@ -22,3 +22,10 @@ file "#{node['firezone']['config_directory']}/firezone-running.json" do
   group node['firezone']['group']
   mode '0600'
 end
+
+file "#{node['firezone']['var_directory']}/.license.accepted" do
+  content ""
+  owner node['firezone']['user']
+  group node['firezone']['group']
+  mode '0600'
+end
