@@ -26,7 +26,7 @@ end
 # Delete firewall table
 table_exists_cmd = Mixlib::ShellOut.new("#{nft_path} list table inet firezone")
 table_exists_cmd.run_command
-if table_exists.status.exitstatus == 0
+if table_exists_cmd.status.exitstatus.zero?
   execute 'delete_firewall_table' do
     command "#{nft_path} delete table inet firezone"
   end
