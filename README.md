@@ -231,30 +231,6 @@ For any problems that arise, a good first bet is to check the Firezone logs.
 
 To view Firezone logs, run `sudo firezone-ctl tail`.
 
-### Phoenix restart times out
-
-Occasionally, during a `sudo firezone-ctl reconfigure`, the `phoenix` service
-will fail to start with a `TIMEOUT` error like below:
-
-```
-================================================================================
-Error executing action `restart` on resource 'runit_service[phoenix]'
-================================================================================
-
-Mixlib::ShellOut::ShellCommandFailed
-------------------------------------
-Expected process to exit with [0], but received '1'
----- Begin output of /opt/firezone/embedded/bin/sv restart /opt/firezone/service/phoenix ----
-STDOUT: timeout: run: /opt/firezone/service/phoenix: (pid 3091432) 34s, got TERM
-STDERR:
----- End output of /opt/firezone/embedded/bin/sv restart /opt/firezone/service/phoenix ----
-Ran /opt/firezone/embedded/bin/sv restart /opt/firezone/service/phoenix returned 1
-```
-
-This happens because of the way phoenix handles input before fully starting up.
-To workaround, simply run `sudo firezone-ctl reconfigure` once more and everything
-should start fine.
-
 ## Uninstalling
 
 To completely remove Firezone and its configuration files, run the [uninstall.sh

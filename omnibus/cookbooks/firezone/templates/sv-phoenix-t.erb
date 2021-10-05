@@ -1,0 +1,3 @@
+#!/bin/sh
+echo "received TERM from runit, forcing quit"
+<%= node['runit']['sv_bin'] %> kill phoenix
