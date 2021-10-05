@@ -1,5 +1,5 @@
 #!/bin/bash
-set -x
+set -ex
 
 # This script should be run from the app root
 
@@ -18,6 +18,8 @@ sudo firezone-ctl reconfigure
 sleep 10
 
 # Helpful for debugging
+sudo cat /var/log/firezone/nginx/current
+sudo cat /var/log/firezone/postgresql/current
 sudo cat /var/log/firezone/phoenix/current
 
 echo "Trying to load homepage"
