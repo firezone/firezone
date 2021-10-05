@@ -2,14 +2,14 @@
 
 require "mixlib/shellout"
 
-add_command "reset_network", "Resets nftables, WireGuard interface, "\
+add_command "reset-network", "Resets nftables, WireGuard interface, "\
   "and routing table back to Firezone defaults", 1 do
   command = %W(
     chef-client
     -z
     -l info
     -c #{base_path}/embedded/cookbooks/solo.rb
-    -o recipe[firezone::network]
+    -o recipe[firezone::teardown],recipe[firezone::network]
   )
 
   result = run_command(command.join(" "))
