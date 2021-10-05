@@ -17,7 +17,6 @@ include_recipe 'line::default'
 require 'mixlib/shellout'
 
 wg_path = "#{node['firezone']['install_directory']}/embedded/bin/wg"
-nft_path = "#{node['firezone']['install_directory']}/embedded/sbin/nft"
 awk_path = "#{node['firezone']['install_directory']}/embedded/bin/awk"
 wg_interface = node['firezone']['wireguard']['interface_name']
 private_key_path = "#{node['firezone']['var_directory']}/cache/wg_private_key"
