@@ -2,7 +2,7 @@
 
 require 'mixlib/shellout'
 
-add_command_under_category 'create-admin', 'general', 'Create an Admin user', 2 do
+add_command_under_category 'create-admin', 'general', 'Create an Admin user.', 2 do
   command = %W(
     chef-client
     -z
