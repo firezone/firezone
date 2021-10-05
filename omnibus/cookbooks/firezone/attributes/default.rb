@@ -14,34 +14,9 @@ require 'etc'
 # If /etc/firezone/firezone.json exists, its attributes will be loaded
 # after these, so if you have that file with the contents:
 #
-#     { "redis": { "enable": false } }
+#     { "postgresql": { "enable": false } }
 #
-# for example, it will set the node['firezone']['redis'] attribute to false.
-
-# ## Common Use Cases
-#
-# These are examples of things you may want to do, depending on how you set up
-# the application to run.
-#
-# ### Using an external Postgres database
-#
-# Disable the provided Postgres instance and connect to your own:
-#
-# default['firezone']['postgresql']['enable'] = false
-# default['firezone']['database']['user'] = 'my_db_user_name'
-# default['firezone']['database']['name'] = 'my_db_name''
-# default['firezone']['database']['host'] = 'my.db.server.address'
-# default['firezone']['database']['port'] = 5432
-#
-# ### Bring your on SSL certificate
-#
-# If a key and certificate are not provided, a self-signed certificate will be
-# generated. To use your own, provide the paths to them and ensure SSL is
-# enabled in Nginx:
-#
-# default['firezone']['nginx']['force_ssl'] = true
-# default['firezone']['ssl']['certificate'] = '/path/to/my.crt'
-# default['firezone']['ssl']['certificate_key'] = '/path/to/my.key'
+# for example, it will set the node['firezone']['postgresql']['enable'] attribute to false.
 
 # ## Top-level attributes
 #
@@ -49,7 +24,8 @@ require 'etc'
 # attributes are further down in this file.
 
 # The fully qualified domain name. Will use the node's fqdn if nothing is
-# specified. Used for generating URLs that point back to this application.
+# specified. Used for generating URLs that point back to this application
+# and for securing the Websocket connections to the UI.
 default['firezone']['fqdn'] = (node['fqdn'] || node['hostname']).downcase
 
 default['firezone']['config_directory'] = '/etc/firezone'
@@ -62,9 +38,14 @@ default['firezone']['group'] = 'firezone'
 # Email for the primary admin user.
 default['firezone']['admin_email'] = "firezone@localhost"
 
-# The outgoing interface of your internet traffic.
-# This is automatically determined in most cases.
-# default['firezone']['egress_interface'] = nil
+# The outgoing interface name.
+# This is where tunneled traffic will exit the WireGuard tunnel.
+# If set to nil, this is will be set to the interface for the machine's
+# default route.
+default['firezone']['egress_interface'] = nil
+
+# Whether to use OpenSSL FIPS mode across Firezone. Default disabled.
+default['firezone']['fips_enabled'] = nil
 
 # ## Enterprise
 #
@@ -77,7 +58,7 @@ default['enterprise']['name'] = 'firezone'
 # it's more consistent. Alias it here so both work.
 default['firezone']['install_path'] = node['firezone']['install_directory']
 
-# An identifier used in /etc/inittab (default is 'SV'). Needs to be a unique
+# An identifier used in /etc/inittab (default is 'SUP'). Needs to be a unique
 # (for the file) sequence of 1-4 characters.
 default['firezone']['sysvinit_id'] = 'SUP'
 
@@ -158,9 +139,22 @@ default['firezone']['nginx']['default']['modules'] = []
 
 # ## Postgres
 
+# ### Use the bundled Postgres instance (default, recommended):
+#
+
 default['firezone']['postgresql']['enable'] = true
 default['firezone']['postgresql']['username'] = node['firezone']['user']
 default['firezone']['postgresql']['data_directory'] = "#{node['firezone']['var_directory']}/postgresql/13.3/data"
+
+# ### Using an external Postgres database
+#
+# Disable the provided Postgres instance and connect to your own:
+#
+# default['firezone']['postgresql']['enable'] = false
+# default['firezone']['database']['user'] = 'my_db_user_name'
+# default['firezone']['database']['name'] = 'my_db_name''
+# default['firezone']['database']['host'] = 'my.db.server.address'
+# default['firezone']['database']['port'] = 5432
 
 # ### Logs
 default['firezone']['postgresql']['log_directory'] = "#{node['firezone']['log_directory']}/postgresql"
@@ -182,9 +176,21 @@ default['firezone']['postgresql']['shmmax'] = 17179869184
 default['firezone']['postgresql']['shmall'] = 4194304
 default['firezone']['postgresql']['work_mem'] = '8MB'
 
+# ## Database
+
+default['firezone']['database']['user'] = node['firezone']['postgresql']['username']
+default['firezone']['database']['name'] = 'firezone'
+default['firezone']['database']['host'] = node['firezone']['postgresql']['listen_address']
+default['firezone']['database']['port'] = node['firezone']['postgresql']['port']
+default['firezone']['database']['pool'] = [10, Etc.nprocessors].max
+default['firezone']['database']['extensions'] = { 'plpgsql' => true, 'pg_trgm' => true }
+
+# Uncomment to specify a database password. Not usually needed if using the bundled Postgresql.
+# default['firezone']['database']['password'] = 'change_me'
+
 # ## Phoenix
 #
-# The Phoenix app for Firezone
+# ### The Phoenix web app for Firezone
 default['firezone']['phoenix']['enable'] = true
 default['firezone']['phoenix']['port'] = 13000
 default['firezone']['phoenix']['log_directory'] = "#{node['firezone']['log_directory']}/phoenix"
@@ -193,10 +199,10 @@ default['firezone']['phoenix']['log_rotation']['num_to_keep'] = 10
 
 # ## WireGuard
 #
-# The WireGuard interface settings
+# ### The WireGuard interface settings
 default['firezone']['wireguard']['interface_name'] = 'wg-firezone'
 
-# Listen port
+# ### WireGuard listen port
 default['firezone']['wireguard']['port'] = 51820
 
 # IPv4, IPv6, or hostname that device configs will use to connect to this server.
@@ -217,11 +223,15 @@ default['firezone']['runit']['svlogd_bin'] = "#{node['firezone']['install_direct
 
 default['firezone']['ssl']['directory'] = '/var/opt/firezone/ssl'
 
+# Enable / disable SSL
+default['firezone']['ssl']['enabled'] = true
+
 # Paths to the SSL certificate and key files. If these are not provided we will
 # attempt to generate a self-signed certificate and use that instead.
-default['firezone']['ssl']['enabled'] = true
 default['firezone']['ssl']['certificate'] = nil
 default['firezone']['ssl']['certificate_key'] = nil
+
+# Path to the SSL dhparam file if you want to specify your own SSL DH parameters.
 default['firezone']['ssl']['ssl_dhparam'] = nil
 
 # These are used in creating a self-signed cert if you haven't brought your own.
@@ -247,44 +257,6 @@ default['firezone']['ssl']['protocols'] = 'TLSv1 TLSv1.1 TLSv1.2'
 default['firezone']['ssl']['session_cache'] = 'shared:SSL:4m'
 default['firezone']['ssl']['session_timeout'] = '5m'
 
-# ## Database
-
-default['firezone']['database']['user'] = node['firezone']['postgresql']['username']
-default['firezone']['database']['name'] = 'firezone'
-default['firezone']['database']['host'] = node['firezone']['postgresql']['listen_address']
-default['firezone']['database']['port'] = node['firezone']['postgresql']['port']
-default['firezone']['database']['pool'] = [10, Etc.nprocessors].max
-default['firezone']['database']['extensions'] = { 'plpgsql' => true, 'pg_trgm' => true }
-
-# Uncomment to specify a database password. Not usually needed if using the bundled Postgresql.
-# default['firezone']['database']['password'] = 'change_me'
-
-# ## App-specific top-level attributes
-#
-# These are used by Phoenix. Most will be exported directly to
-# environment variables to be used by the app.
-#
-# Items that are set to nil here and also set in the development environment
-# configuration (https://github.com/firezone/firezone/blob/master/.env) will
-# use the value from the development environment. Set them to something other
-# than nil to change them.
-
-default['firezone']['from_email'] = nil
-default['firezone']['segment_write_key'] = nil
-default['firezone']['newrelic_agent_enabled'] = 'false'
-default['firezone']['newrelic_app_name'] = nil
-default['firezone']['newrelic_license_key'] = nil
-default['firezone']['datadog_tracer_enabled'] = 'false'
-default['firezone']['datadog_app_name'] = nil
-default['firezone']['port'] = node['firezone']['nginx']['force_ssl'] ? node['firezone']['nginx']['ssl_port'] : node['firezone']['non_ssl_port']
-default['firezone']['protocol'] = node['firezone']['nginx']['force_ssl'] ? 'https' : 'http'
-default['firezone']['sentry_url'] = nil
-default['firezone']['fips_enabled'] = nil
-
-# ### Air Gapped Settings
-# This controls whether your Firezone will reach out to 3rd party services like certain fonts
-# and Google Analytics.
-default['firezone']['air_gapped'] = 'false'
 
 # ### robots.txt Settings
 #
@@ -295,20 +267,15 @@ default['firezone']['air_gapped'] = 'false'
 default['firezone']['robots_allow'] = '/'
 default['firezone']['robots_disallow'] = nil
 
-# ### SMTP Settings
+# ### Outbound Email Settings
 #
 # If none of these are set, the :sendmail delivery method will be used. Using
 # the sendmail delivery method requires that a working mail transfer agent
 # (usually set up with a relay host) be configured on this machine.
 #
 # SMTP will use the 'plain' authentication method.
+default['firezone']['from_email'] = nil
 default['firezone']['smtp_address'] = nil
 default['firezone']['smtp_password'] = nil
 default['firezone']['smtp_port'] = nil
 default['firezone']['smtp_user_name'] = nil
-
-# ### StatsD Settings
-#
-# If these are present, metrics can be reported to a StatsD server.
-default['firezone']['statsd_url'] = nil
-default['firezone']['statsd_port'] = nil
