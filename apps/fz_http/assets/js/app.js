@@ -42,10 +42,10 @@ window.liveSocket = liveSocket
 // Notification dismiss
 document.addEventListener('DOMContentLoaded', () => {
   (document.querySelectorAll('.notification .delete') || []).forEach(($delete) => {
-    const $notification = $delete.parentNode;
+    const $notification = $delete.parentNode
 
     $delete.addEventListener('click', () => {
-      $notification.parentNode.removeChild($notification);
-    });
-  });
-});
+      $notification.parentNode.removeChild($notification)
+    })
+  })
+})
