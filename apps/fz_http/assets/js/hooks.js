@@ -1,6 +1,8 @@
+import moment from "moment"
+
 const QRCode = require('qrcode')
 
-const renderQrCode = () => {
+const renderQrCode = function () {
   let canvas = document.getElementById('qr-canvas')
   let conf = document.getElementById('wg-conf')
 
@@ -17,10 +19,19 @@ const renderQrCode = () => {
   }
 }
 
+const formatTimestamp = function () {
+  let timestamp = this.el.dataset.timestamp
+  this.el.innerHTML = moment(timestamp).format("dddd, MMMM Do YYYY, h:mm:ss a")
+}
+
 let Hooks = {}
 Hooks.QrCode = {
   mounted: renderQrCode,
   updated: renderQrCode
+}
+Hooks.FormatTimestamp = {
+  mounted: formatTimestamp,
+  updated: formatTimestamp
 }
 
 export default Hooks
