@@ -16,7 +16,7 @@
     <div class="tile is-parent">
       <div class="card tile is-child">
         <header class="card-header">
-          <p class="card-header-title">Device Details</p>
+          <p class="card-header-title">Details</p>
         </header>
         <div class="card-content">
           <div class="content">
@@ -46,36 +46,36 @@
               <dd class="code"><%= @device.server_public_key %></dd>
             </dl>
           </div>
-          <footer class="card-footer">
-            <div class="field is-grouped card-footer-item">
-              <p class="control">
-                <%= live_patch(to: Routes.device_show_path(@socket, :edit, @device), class: "button is-primary") do %>
-                  <span class="icon is-small">
-                    <i class="fas fa-edit"></i>
-                  </span>
-                  <span>Edit</span>
-                <% end %>
-              </p>
-              <p class="control">
-                <button class="button is-danger"
-                        phx-click="delete_device"
-                        phx-value-device_id={@device.id}
-                        data-confirm="Are you sure? This will remove all data associated with this device.">
-                  <span class="icon is-small">
-                    <i class="fas fa-trash"></i>
-                  </span>
-                  <span>Delete</span>
-                </button>
-              </p>
-            </div>
-          </footer>
         </div>
+        <footer class="card-footer">
+          <div class="field is-grouped card-footer-item">
+            <p class="control">
+              <%= live_patch(to: Routes.device_show_path(@socket, :edit, @device), class: "button is-primary") do %>
+                <span class="icon is-small">
+                  <i class="fas fa-edit"></i>
+                </span>
+                <span>Edit</span>
+              <% end %>
+            </p>
+            <p class="control">
+              <button class="button is-danger"
+                      phx-click="delete_device"
+                      phx-value-device_id={@device.id}
+                      data-confirm="Are you sure? This will remove all data associated with this device.">
+                <span class="icon is-small">
+                  <i class="fas fa-trash"></i>
+                </span>
+                <span>Delete</span>
+              </button>
+            </p>
+          </div>
+        </footer>
       </div>
     </div>
     <div class="tile is-parent">
       <div class="card tile is-child">
         <header class="card-header">
-          <p class="card-header-title">Device Config</p>
+          <p class="card-header-title">Config</p>
         </header>
         <div class="card-content">
           <h6 class="is-6 title">
