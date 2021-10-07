@@ -17,10 +17,8 @@ build do
 
   # XXX: amazonlinux builds fail with OOM errors on only 2gb of RAM.
   # Reduce workers as a workaround for now.
-  if ENV["LABELS"] = "amazonlinux2"
-    workers 1
-  end
+  adjusted_workers = ENV["LABELS"] == "amazonlinux2" ? 1 : workers
 
-  make "-j #{workers}", env: env
-  make "-j #{workers} install", env: env
+  make "-j #{adjusted_workers}", env: env
+  make "-j #{adjusted_workers} install", env: env
 end
