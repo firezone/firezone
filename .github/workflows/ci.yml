@@ -74,11 +74,12 @@ jobs:
           - centos7
           - centos8
           - debian10
+          - debian11
           - fedora33
           - fedora34
           - ubuntu1804
           - ubuntu2004
-          - debian11
+          - opensuse15
     steps:
       - uses: actions/checkout@v2
       - name: Build
@@ -110,6 +111,8 @@ jobs:
     strategy:
       matrix:
         os:
+          - amazonlinux2
+          - opensuse15
           - debian10
           - debian11
           - ubuntu1804
