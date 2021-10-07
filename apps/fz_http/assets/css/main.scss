@@ -7,3 +7,8 @@ nav.navbar {
 .code {
   @extend .is-family-monospace;
 }
+
+/* Add scrolling to the left nav bar */
+aside.aside {
+  overflow-y: auto;
+}
