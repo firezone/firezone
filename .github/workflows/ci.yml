@@ -70,6 +70,7 @@ jobs:
     strategy:
       matrix:
         os:
+          - amazonlinux2
           - centos7
           - centos8
           - debian10
