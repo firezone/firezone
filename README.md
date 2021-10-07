@@ -258,13 +258,13 @@ sudo /bin/bash -c "$(curl -fsSL https://github.com/firezone/firezone/raw/master/
 undone.
 
 # Getting Support
-For help, feedback or contributions please join our [Discourse](https://discourse.firez.one). We're actively working to improve Firezone, and the Discourse is the best way to coordinate our efforts.
+For help, feedback or contributions please join our [
+Discourse](https://discourse.firez.one). We're actively working to improve
+Firezone, and the Discourse is the best way to coordinate our efforts.
 
 # Developing and Contributing
 
-- See [CONTRIBUTING.md](CONTRIBUTING.md).
-- Report issues and bugs in [this Github
-    project](https://github.com/firezone/firezone/issues).
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
