@@ -98,19 +98,33 @@ Firezone currently supports the following distributions and architectures:
 
 | Name | Architectures | Status | Notes |
 | --- | --- | --- | --- |
+| AmazonLinux 2 | `amd64` | **Fully-supported** | See [AmazonLinux 2 Notes](#amazonlinux-2-notes) |
 | CentOS 7 | `amd64` | **Fully-supported** | See [CentOS 7 Notes](#centos-7-notes) |
 | CentOS 8 | `amd64` | **Fully-supported** | Works as-is |
-| Ubuntu 18.04 | `amd64` | **Fully-supported** | See [Ubuntu 18.04 Notes](#ubuntu-1804-notes) |
-| Ubuntu 20.04 | `amd64` | **Fully-supported** | Works as-is |
 | Debian 10 | `amd64` | **Fully-supported** | See [Debian 10 Notes](#debian-10-notes)|
 | Debian 11 | `amd64` | **Fully-supported** | Works as-is |
 | Fedora 33 | `amd64` | **Fully-supported** | Works as-is |
 | Fedora 34 | `amd64` | **Fully-supported** | Works as-is |
+| Ubuntu 18.04 | `amd64` | **Fully-supported** | See [Ubuntu 18.04 Notes](#ubuntu-1804-notes) |
+| Ubuntu 20.04 | `amd64` | **Fully-supported** | Works as-is |
+| openSUSE Leap 15.3 | `amd64` | **Fully-supported** | Works as-is |
 
 If your distro isn't listed here please
 [open an issue](https://github.com/firezone/firezone/issues/new/choose) and let
 us know. New distros are being supported on a regular basis and there's a good
 chance yours will be added soon.
+
+### AmazonLinux 2 Notes
+
+Install the `wireguard-dkms` package:
+
+```bash
+sudo amazon-linux-extras install -y epel
+sudo curl -Lo /etc/yum.repos.d/wireguard.repo \
+  https://copr.fedorainfracloud.org/coprs/jdoss/wireguard/repo/epel-7/jdoss-wireguard-epel-7.repo
+sudo yum clean all
+sudo yum install -y wireguard-dkms
+```
 
 ### CentOS 7 Notes
 
