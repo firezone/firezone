@@ -15,10 +15,6 @@ build do
 
   command "./configure --prefix=#{install_dir}/embedded", env: env
 
-  # XXX: amazonlinux builds fail with OOM errors on only 2gb of RAM.
-  # Reduce workers as a workaround for now.
-  adjusted_workers = ENV["LABELS"] == "amazonlinux2" ? 1 : workers
-
-  make "-j #{adjusted_workers}", env: env
-  make "-j #{adjusted_workers} install", env: env
+  make "-j #{workers}", env: env
+  make "-j #{workers} install", env: env
 end
