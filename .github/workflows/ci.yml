@@ -79,7 +79,8 @@ jobs:
           - fedora34
           - ubuntu1804
           - ubuntu2004
-          - opensuse15
+          # Needs libgdbm for python to be added to software collection
+          # - opensuse15
     steps:
       - uses: actions/checkout@v2
       - name: Build
@@ -112,7 +113,6 @@ jobs:
       matrix:
         os:
           - amazonlinux2
-          - opensuse15
           - debian10
           - debian11
           - ubuntu1804
@@ -121,6 +121,8 @@ jobs:
           - centos8
           - fedora33
           - fedora34
+          # Needs libgdbm for python to be added to software collection
+          # - opensuse15
     if: startsWith(github.ref, 'refs/tags/')
     steps:
       - uses: actions/download-artifact@v2
