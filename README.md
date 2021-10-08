@@ -107,7 +107,8 @@ Firezone currently supports the following distributions and architectures:
 | Fedora 34 | `amd64` | **Fully-supported** | Works as-is |
 | Ubuntu 18.04 | `amd64` | **Fully-supported** | See [Ubuntu 18.04 Notes](#ubuntu-1804-notes) |
 | Ubuntu 20.04 | `amd64` | **Fully-supported** | Works as-is |
-| openSUSE Leap 15.3 | `amd64` | **Fully-supported** | Works as-is |
+<!-- Coming Soon: Needs libgdbm -->
+<!-- | openSUSE Leap 15.3 | `amd64` | **Fully-supported** | Works as-is | -->
 
 If your distro isn't listed here please
 [open an issue](https://github.com/firezone/firezone/issues/new/choose) and let
