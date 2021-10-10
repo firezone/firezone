@@ -117,14 +117,10 @@ chance yours will be added soon.
 
 ### AmazonLinux 2 Notes
 
-Install the `wireguard-dkms` package:
+Kernel upgrade required:
 
 ```bash
-sudo amazon-linux-extras install -y epel
-sudo curl -Lo /etc/yum.repos.d/wireguard.repo \
-  https://copr.fedorainfracloud.org/coprs/jdoss/wireguard/repo/epel-7/jdoss-wireguard-epel-7.repo
-sudo yum clean all
-sudo yum install -y wireguard-dkms
+sudo amazon-linux-extras install -y kernel-5.10
 ```
 
 ### CentOS 7 Notes
