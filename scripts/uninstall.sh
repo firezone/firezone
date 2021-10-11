@@ -11,9 +11,13 @@ if type apt-get > /dev/null; then
   apt-get remove -y --purge firezone
 elif type yum > /dev/null; then
   yum remove -y firezone
+elif type zypper > /dev/null; then
+  zypper remove -u firezone
 else
-  echo 'apt-get or yum not found'
-  exit 1
+  echo 'Warning: package management tool not found; not '\
+    'removing installed package. This can happen if your'\
+    ' package management tool (e.g. yum, apt, etc) is no'\
+    't in your $PATH. Continuing...'
 fi
 
 echo 'Removing remaining directories...'

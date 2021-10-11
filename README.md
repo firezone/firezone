@@ -98,19 +98,30 @@ Firezone currently supports the following distributions and architectures:
 
 | Name | Architectures | Status | Notes |
 | --- | --- | --- | --- |
+| AmazonLinux 2 | `amd64` | **Fully-supported** | See [AmazonLinux 2 Notes](#amazonlinux-2-notes) |
 | CentOS 7 | `amd64` | **Fully-supported** | See [CentOS 7 Notes](#centos-7-notes) |
 | CentOS 8 | `amd64` | **Fully-supported** | Works as-is |
-| Ubuntu 18.04 | `amd64` | **Fully-supported** | See [Ubuntu 18.04 Notes](#ubuntu-1804-notes) |
-| Ubuntu 20.04 | `amd64` | **Fully-supported** | Works as-is |
 | Debian 10 | `amd64` | **Fully-supported** | See [Debian 10 Notes](#debian-10-notes)|
 | Debian 11 | `amd64` | **Fully-supported** | Works as-is |
 | Fedora 33 | `amd64` | **Fully-supported** | Works as-is |
 | Fedora 34 | `amd64` | **Fully-supported** | Works as-is |
+| Ubuntu 18.04 | `amd64` | **Fully-supported** | See [Ubuntu 18.04 Notes](#ubuntu-1804-notes) |
+| Ubuntu 20.04 | `amd64` | **Fully-supported** | Works as-is |
+<!-- Coming Soon: Needs libgdbm -->
+<!-- | openSUSE Leap 15.3 | `amd64` | **Fully-supported** | Works as-is | -->
 
 If your distro isn't listed here please
 [open an issue](https://github.com/firezone/firezone/issues/new/choose) and let
 us know. New distros are being supported on a regular basis and there's a good
 chance yours will be added soon.
+
+### AmazonLinux 2 Notes
+
+Kernel upgrade required:
+
+```bash
+sudo amazon-linux-extras install -y kernel-5.10
+```
 
 ### CentOS 7 Notes
 
@@ -244,13 +255,13 @@ sudo /bin/bash -c "$(curl -fsSL https://github.com/firezone/firezone/raw/master/
 undone.
 
 # Getting Support
-For help, feedback or contributions please join our [Discourse](https://discourse.firez.one). We're actively working to improve Firezone, and the Discourse is the best way to coordinate our efforts.
+For help, feedback or contributions please join our [
+Discourse](https://discourse.firez.one). We're actively working to improve
+Firezone, and the Discourse is the best way to coordinate our efforts.
 
 # Developing and Contributing
 
-- See [CONTRIBUTING.md](CONTRIBUTING.md).
-- Report issues and bugs in [this Github
-    project](https://github.com/firezone/firezone/issues).
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
