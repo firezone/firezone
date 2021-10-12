@@ -22,6 +22,8 @@ version("1.21")  { source sha256: "b0b7dbdefd798de7ddccdd8edf6693a30494f77897778
 
 source url: "https://mirrors.kernel.org/gnu/gdbm/gdbm-#{version}.tar.gz"
 
+relative_path "gdbm-#{version}"
+
 build do
   env = with_standard_compiler_flags(with_embedded_path)
 
