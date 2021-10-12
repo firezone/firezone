@@ -68,6 +68,9 @@ jobs:
     needs: unit-test
     runs-on: ${{ matrix.os }}
     strategy:
+      # Failing fast breaks the Omnibus build cache because the job is
+      # interrupted abruptly, leaving behind index.lock files.
+      fail-fast: false
       matrix:
         os:
           - amazonlinux2
