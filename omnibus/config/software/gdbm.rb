@@ -16,9 +16,10 @@
 #
 
 name "gdbm"
-default_version "1.21"
+default_version "1.12"
 
 version("1.21")  { source sha256: "b0b7dbdefd798de7ddccdd8edf6693a30494f7789777838042991ef107339cc2" }
+version("1.12")  { source sha256: "d97b2166ee867fd6ca5c022efee80702d6f30dd66af0e03ed092285c3af9bcea" }
 
 source url: "https://mirrors.kernel.org/gnu/gdbm/gdbm-#{version}.tar.gz"
 
