@@ -1,0 +1,14 @@
+diff --git a/Setup b/Setup.new
+index 87c6a15..2eccb14 100644
+--- a/Setup
++++ b/Setup.new
+@@ -371,7 +371,8 @@ xxsubtype xxsubtype.c
+ # Uncommenting the following line tells makesetup that all following modules
+ # are not built (see above for more detail).
+ #
+-#*disabled*
++*disabled*
++nis _gdbm _sqlite3
+ #
+ #_sqlite3 _tkinter _curses pyexpat
+ #_codecs_jp _codecs_kr _codecs_tw unicodedata
