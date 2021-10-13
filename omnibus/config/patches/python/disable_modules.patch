@@ -1,14 +1,23 @@
 diff --git a/Setup b/Setup.new
-index 02cfb67..f9c6ed6 100644
+index 02cfb67..26342ef 100644
 --- a/Setup
 +++ b/Setup.new
+@@ -325,7 +325,7 @@ _symtable symtablemodule.c
+ 
+ # Anthony Baxter's gdbm module.  GNU dbm(3) will require -lgdbm:
+ 
+-#_gdbm _gdbmmodule.c -I/usr/local/include -L/usr/local/lib -lgdbm
++_gdbm _gdbmmodule.c -I$(prefix)/include -L$(exec_prefix)/lib -lgdbm
+ 
+ 
+ # Helper module for various ascii-encoders
 @@ -366,7 +366,8 @@ xxsubtype xxsubtype.c
  # Uncommenting the following line tells makesetup that all following modules
  # are not built (see above for more detail).
  #
 -#*disabled*
 +*disabled*
-+nis _ldbm _sqlite3
++nis _sqlite3
  #
  #_sqlite3 _tkinter _curses pyexpat
  #_codecs_jp _codecs_kr _codecs_tw unicodedata
