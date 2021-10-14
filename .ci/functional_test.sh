@@ -23,7 +23,7 @@ sudo cat /var/log/firezone/postgresql/current
 sudo cat /var/log/firezone/phoenix/current
 
 echo "Trying to load homepage"
-page=$(curl -L -i -vvv -k https://$(hostname))
+page=$(curl -L -i -vvv -k https://localhost)
 echo $page
 
 echo "Testing for sign in button"

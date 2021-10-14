@@ -1,6 +1,6 @@
 # We're running on a self-hosted runner, so only allow one workflow to run at a
 # time.
-# XXX: Remove this when self-hosted ephemeral runners are implmented.
+# XXX: Remove this when self-hosted ephemeral runners are implemented.
 concurrency: ci
 
 name: CI
@@ -68,6 +68,9 @@ jobs:
     needs: unit-test
     runs-on: ${{ matrix.os }}
     strategy:
+      # Failing fast breaks the Omnibus build cache because the job is
+      # interrupted abruptly, leaving behind index.lock files.
+      fail-fast: false
       matrix:
         os:
           - amazonlinux2
@@ -79,8 +82,7 @@ jobs:
           - fedora34
           - ubuntu1804
           - ubuntu2004
-          # Needs libgdbm for python to be added to software collection
-          # - opensuse15
+          - opensuse15
     steps:
       - uses: actions/checkout@v2
       - name: Build
@@ -121,8 +123,7 @@ jobs:
           - centos8
           - fedora33
           - fedora34
-          # Needs libgdbm for python to be added to software collection
-          # - opensuse15
+          - opensuse15
     if: startsWith(github.ref, 'refs/tags/')
     steps:
       - uses: actions/download-artifact@v2
