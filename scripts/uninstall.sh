@@ -8,11 +8,11 @@ firezone-ctl cleanse yes
 
 echo 'Removing firezone package...'
 if type apt-get > /dev/null; then
-  apt-get remove -y --purge firezone
+  DEBIAN_FRONTEND=noninteractive apt-get remove -y --purge firezone
 elif type yum > /dev/null; then
   yum remove -y firezone
 elif type zypper > /dev/null; then
-  zypper remove -u firezone
+  zypper --non-interactive remove -y -u firezone
 else
   echo 'Warning: package management tool not found; not '\
     'removing installed package. This can happen if your'\
