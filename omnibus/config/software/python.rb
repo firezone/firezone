@@ -33,7 +33,6 @@ dependency "zlib"
 dependency "openssl"
 dependency "ncurses"
 dependency "libffi"
-dependency "gdbm"
 
 relative_path "Python-#{version}"
 
