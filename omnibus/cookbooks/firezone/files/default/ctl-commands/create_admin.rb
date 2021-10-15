@@ -2,7 +2,11 @@
 
 require 'mixlib/shellout'
 
-add_command_under_category 'create-admin', 'general', 'Create an Admin user.', 2 do
+desc = <<~DESC
+Resets the password for admin with email specified by default['firezone']['admin_email'] or creates a new admin if that email doesn't exist.
+DESC
+
+add_command_under_category 'create-or-reset-admin', 'general', desc, 2 do
   command = %W(
     chef-client
     -z
