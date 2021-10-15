@@ -175,7 +175,7 @@ listed above, follow these steps to setup and install Firezone:
    default['firezone']['ssl']['certificate_key'] = '/path/to/key.pem'
    ```
 6. Reconfigure the application to pick up the new changes: `sudo firezone-ctl reconfigure`.
-7. Finally, create an admin user with `sudo firezone-ctl create-admin`.
+7. Finally, create an admin user with `sudo firezone-ctl create-or-reset-admin`.
    The login credentials will be printed to the console output.
 8. Now you should be able to log into the web UI at the FQDN you specified in
    step 5 above, e.g. `https://firezone.example.com`
@@ -199,8 +199,8 @@ omnibus-ctl: command (subcommand)
 General Commands:
   cleanse
     Delete *all* firezone data, and start from scratch.
-  create-admin
-    Create an Admin user.
+  create-or-reset-admin
+    Resets the password for admin with email specified by default['firezone']['admin_email'] or creates a new admin if that email doesn't exist.
   help
     Print this help message.
   reconfigure
