@@ -64,23 +64,9 @@ defmodule FzHttp.Users do
     change_user(%User{})
   end
 
-  def single_user? do
-    Repo.one(from u in User, select: count()) == 1
-  end
-
   # XXX: For now assume first user is the admin.
   def admin do
     User |> first |> Repo.one()
-  end
-
-  def admin_email do
-    case admin() do
-      %User{} = user ->
-        user.email
-
-      _ ->
-        nil
-    end
   end
 
   defp find_by_token(token) do

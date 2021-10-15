@@ -246,42 +246,4 @@ defmodule FzHttp.UsersTest do
       assert %Ecto.Changeset{} = Users.new_user()
     end
   end
-
-  describe "single_user?/0 one user exists" do
-    setup [:create_user]
-
-    test "returns true", %{user: _user} do
-      assert Users.single_user?()
-    end
-  end
-
-  describe "single_user?/0 no users exist" do
-    test "returns false" do
-      assert !Users.single_user?()
-    end
-  end
-
-  describe "single_user?/0 more than one user exists" do
-    setup [:create_users]
-
-    test "returns false", %{users: _users} do
-      assert !Users.single_user?()
-    end
-  end
-
-  describe "admin/0" do
-    setup [:create_user]
-
-    test "returns the admin user", %{user: user} do
-      assert Users.admin().id == user.id
-    end
-  end
-
-  describe "admin_email/0" do
-    setup [:create_user]
-
-    test "returns email of the admin", %{user: user} do
-      assert Users.admin_email() == user.email
-    end
-  end
 end
