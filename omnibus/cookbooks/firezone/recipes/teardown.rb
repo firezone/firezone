@@ -17,7 +17,7 @@ nft_path = "#{node['firezone']['install_directory']}/embedded/sbin/nft"
 # Delete wireguard interface if exists
 wg_exists = Mixlib::ShellOut.new("ip link show dev #{wg_interface}")
 wg_exists.run_command
-if wg_exists.status.exitstatus == 1
+if wg_exists.status.exitstatus.zero?
   execute 'delete_wireguard_interface' do
     command "ip link delete dev #{wg_interface}"
   end
