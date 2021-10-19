@@ -71,6 +71,18 @@ defmodule FzHttp.DevicesTest do
       allowed_ips: "1.1.1.1, 11, foobar"
     }
 
+    @empty_address %{
+      address: ""
+    }
+
+    @low_address %{
+      address: "1"
+    }
+
+    @high_address %{
+      address: "255"
+    }
+
     test "updates device", %{device: device} do
       {:ok, test_device} = Devices.update_device(device, @attrs)
       assert @attrs = test_device
@@ -88,6 +100,28 @@ defmodule FzHttp.DevicesTest do
                "is invalid: 1.1.1 is not a valid IPv4 / IPv6 address",
                []
              }
+    end
+
+    test "prevents updating device with empty address", %{device: device} do
+      {:error, changeset} = Devices.update_device(device, @empty_address)
+
+      assert changeset.errors[:address] == {"can't be blank", [{:validation, :required}]}
+    end
+
+    test "prevents updating device with address too low", %{device: device} do
+      {:error, changeset} = Devices.update_device(device, @low_address)
+
+      assert changeset.errors[:address] ==
+               {"must be greater than or equal to %{number}",
+                [{:validation, :number}, {:kind, :greater_than_or_equal_to}, {:number, 2}]}
+    end
+
+    test "prevents updating device with address too high", %{device: device} do
+      {:error, changeset} = Devices.update_device(device, @high_address)
+
+      assert changeset.errors[:address] ==
+               {"must be less than or equal to %{number}",
+                [{:validation, :number}, {:kind, :less_than_or_equal_to}, {:number, 254}]}
     end
 
     test "updates device with valid allowed_ips", %{device: device} do
