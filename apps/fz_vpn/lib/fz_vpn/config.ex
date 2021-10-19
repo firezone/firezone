@@ -6,8 +6,8 @@ defmodule FzVpn.Config do
   # Render peers list into server config
   def render(config) do
     Enum.join(
-      for {public_key, {ipv4, ipv6}} <- config do
-        "peer #{public_key} allowed-ips #{ipv4}/32,#{ipv6}/128"
+      for {public_key, allowed_ips} <- config do
+        "peer #{public_key} allowed-ips #{allowed_ips}"
       end,
       " "
     )

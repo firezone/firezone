@@ -12,7 +12,7 @@ defmodule FzVpn.ConfigTest do
     end
 
     test "renders populated config" do
-      config = %{"test-pubkey" => {"test-ipv4", "test-ipv6"}}
+      config = %{"test-pubkey" => "test-ipv4/32,test-ipv6/128"}
 
       assert Config.render(config) == @populated_config
     end

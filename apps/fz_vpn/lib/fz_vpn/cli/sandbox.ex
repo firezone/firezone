@@ -3,6 +3,8 @@ defmodule FzVpn.CLI.Sandbox do
   Sandbox CLI environment for WireGuard CLI operations.
   """
 
+  require Logger
+
   @show_latest_handshakes "4 seconds ago"
   @show_persistent_keepalives "every 25 seconds"
   @show_transfer "4.60 MiB received, 59.21 MiB sent"
@@ -13,10 +15,27 @@ defmodule FzVpn.CLI.Sandbox do
   def teardown, do: @default_returned
   def genkey, do: {rand_key(), rand_key()}
   def pubkey(_privkey), do: rand_key()
-  def exec!(_cmd), do: @default_returned
-  def set(_conf_str), do: @default_returned
-  def delete_peer(_pubkey), do: @default_returned
-  def set_peer(_pubkey, _ip), do: @default_returned
+
+  def exec!(cmd) do
+    Logger.debug("`exec!` called with #{cmd}")
+    @default_returned
+  end
+
+  def set(conf_str) do
+    Logger.debug("`set` called with #{conf_str}")
+    @default_returned
+  end
+
+  def delete_peer(pubkey) do
+    Logger.debug("`delete_peer` called with #{pubkey}")
+    @default_returned
+  end
+
+  def set_peer(pubkey, ip) do
+    Logger.debug("`set_peer` called with #{pubkey}, #{ip}")
+    @default_returned
+  end
+
   def show_latest_handshakes, do: @show_latest_handshakes
   def show_persistent_keepalives, do: @show_persistent_keepalives
   def show_transfer, do: @show_transfer
