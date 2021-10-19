@@ -24,13 +24,13 @@ defmodule FzHttp.Devices do
 
   def create_device(attrs \\ %{}) do
     %Device{}
-    |> Device.changeset(attrs)
+    |> Device.create_changeset(attrs)
     |> Repo.insert()
   end
 
   def update_device(%Device{} = device, attrs) do
     device
-    |> Device.changeset(attrs)
+    |> Device.update_changeset(attrs)
     |> Repo.update()
   end
 
@@ -39,7 +39,7 @@ defmodule FzHttp.Devices do
   end
 
   def change_device(%Device{} = device) do
-    Device.changeset(device, %{})
+    Device.update_changeset(device, %{})
   end
 
   def rand_name do

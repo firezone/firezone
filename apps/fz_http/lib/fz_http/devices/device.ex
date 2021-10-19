@@ -30,7 +30,7 @@ defmodule FzHttp.Devices.Device do
     timestamps(type: :utc_datetime_usec)
   end
 
-  def changeset(device, attrs) do
+  def create_changeset(device, attrs) do
     device
     |> cast(attrs, [
       :allowed_ips,
@@ -43,6 +43,28 @@ defmodule FzHttp.Devices.Device do
       :name,
       :public_key
     ])
+    |> shared_changeset()
+  end
+
+  def update_changeset(device, attrs) do
+    device
+    |> cast(attrs, [
+      :allowed_ips,
+      :dns_servers,
+      :remote_ip,
+      :address,
+      :server_public_key,
+      :private_key,
+      :user_id,
+      :name,
+      :public_key
+    ])
+    |> shared_changeset()
+    |> validate_required(:address)
+  end
+
+  defp shared_changeset(changeset) do
+    changeset
     |> validate_required([
       :user_id,
       :name,
