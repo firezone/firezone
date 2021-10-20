@@ -1,0 +1,15 @@
+#!/bin/sh
+exec 2>&1
+<%= "export OPENSSL_FIPS=1" if node['firezone']['fips_enabled'] == true %>
+
+export WIREGUARD_INTERFACE_NAME=<%= node['firezone']['wireguard']['interface_name'] %>
+export WG_PATH=<%= node['firezone']['install_directory'] %>/embedded/bin/wg
+export WIREGUARD_PRIVATE_KEY_PATH=<%= node['firezone']['var_directory'] %>/cache/wg_private_key
+export WIREGUARD_IPV4=10.3.2.1/24
+export WIREGUARD_IPV6=fd00:3:2::1/120
+export WIREGUARD_INTERFACE_MTU=<%= node['firezone']['wireguard']['mtu'] %>
+export WIREGUARD_LISTEN_PORT=<%= node['firezone']['wireguard']['port'] %>
+
+exec <%= node['runit']['chpst_bin'] %> \
+     -P \
+     <%= node['firezone']['install_directory'] %>/bin/wireguard
