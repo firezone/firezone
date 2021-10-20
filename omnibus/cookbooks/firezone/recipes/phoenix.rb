@@ -23,6 +23,7 @@
 
 include_recipe 'firezone::config'
 include_recipe 'firezone::nginx'
+include_recipe 'firezone::wireguard'
 
 [node['firezone']['phoenix']['log_directory'],
  "#{node['firezone']['var_directory']}/phoenix/run"].each do |dir|
