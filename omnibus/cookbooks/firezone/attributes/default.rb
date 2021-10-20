@@ -199,12 +199,22 @@ default['firezone']['phoenix']['log_rotation']['num_to_keep'] = 10
 
 # ## WireGuard
 #
-# ### The WireGuard interface settings
+# ### Interface Management
+# Enable management of the WireGuard interface itself. Set this to false if you
+# want to manually create your WireGuard interface and manage its interface properties.
+default['firezone']['wireguard']['enable'] = true
+default['firezone']['wireguard']['log_directory'] = "#{node['firezone']['log_directory']}/wireguard"
+default['firezone']['wireguard']['log_rotation']['file_maxbytes'] = 104857600
+default['firezone']['wireguard']['log_rotation']['num_to_keep'] = 10
+
+# The WireGuard interface name Firezone will apply configuration settings to.
 default['firezone']['wireguard']['interface_name'] = 'wg-firezone'
-
-# ### WireGuard listen port
+# WireGuard listen port
 default['firezone']['wireguard']['port'] = 51820
+# WireGuard interface MTU
+default['firezone']['wireguard']['mtu'] = 1420
 
+# ### WireGuard endpoint
 # IPv4, IPv6, or hostname that device configs will use to connect to this server.
 # If left blank, this will be set to the IPv4 address of the default egress interface.
 # Override this to your publicly routable IP if you're behind a NAT and need to
