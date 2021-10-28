@@ -85,7 +85,7 @@
 [Interface]
 PrivateKey = <%= @device.private_key %>
 Address = <%= FzHttp.Devices.ipv4_address(@device) %>/32, <%= FzHttp.Devices.ipv6_address(@device) %>/128
-DNS = 1.1.1.1, 1.0.0.1
+DNS = <%= @device.dns_servers %>
 
 [Peer]
 PublicKey = <%= @device.server_public_key %>
