@@ -6,6 +6,8 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
 
     @valid_params %{"device" => %{"name" => "new_name"}}
     @invalid_params %{"device" => %{"name" => ""}}
+    @dns_servers "8.8.8.8, 8.8.4.4"
+    @dns_servers_change %{"device" => %{"dns_servers" => @dns_servers}}
 
     test "shows device details", %{authed_conn: conn, device: device} do
       path = Routes.device_show_path(conn, :show, device)
@@ -35,6 +37,21 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
 
       flash = assert_redirected(view, Routes.device_show_path(conn, :show, device))
       assert flash["info"] == "Device updated successfully."
+    end
+
+    test "allows dns_servers changes", %{authed_conn: conn, device: device} do
+      path = Routes.device_show_path(conn, :edit, device)
+      {:ok, view, _html} = live(conn, path)
+
+      view
+      |> form("#edit-device")
+      |> render_submit(@dns_servers_change)
+
+      flash = assert_redirected(view, Routes.device_show_path(conn, :show, device))
+      assert flash["info"] == "Device updated successfully."
+
+      {:ok, _view, html} = live(conn, path)
+      assert html =~ "DNS = #{@dns_servers}"
     end
 
     test "prevents empty names", %{authed_conn: conn, device: device} do
