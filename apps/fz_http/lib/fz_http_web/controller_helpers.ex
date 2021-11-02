@@ -23,9 +23,22 @@ defmodule FzHttpWeb.ControllerHelpers do
       nil ->
         conn
         |> redirect(to: Routes.session_path(conn, :new))
+        |> halt()
 
       _ ->
         conn
+    end
+  end
+
+  def redirect_authenticated(conn, _options) do
+    case get_session(conn, :user_id) do
+      nil ->
+        conn
+
+      _ ->
+        conn
+        |> redirect(to: Routes.device_path(conn, :index))
+        |> halt()
     end
   end
 

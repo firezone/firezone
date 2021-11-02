@@ -75,24 +75,23 @@ defmodule FzHttp.RulesTest do
     end
   end
 
-  # XXX: Revisit this when devices are linked to rules
-  # describe "nftables_spec/1 IPv4" do
-  #   setup [:create_rule4]
-  #
-  #   @ipv4tables_spec {"10.0.0.1", "10.10.10.0/24", :drop}
-  #
-  #   test "returns IPv4 tuple", %{rule4: rule} do
-  #     assert @ipv4tables_spec = Rules.nftables_spec(rule)
-  #   end
-  # end
-  #
-  # describe "nftables_spec/1 IPv6" do
-  #   setup [:create_rule6]
-  #
-  #   @ipv6tables_spec {"::1", "::/0", :drop}
-  #
-  #   test "returns IPv6 tuple", %{rule6: rule} do
-  #     assert @ipv6tables_spec = Rules.nftables_spec(rule)
-  #   end
-  # end
+  describe "nftables_spec/1 IPv4" do
+    setup [:create_rule4]
+
+    @ipv4tables_spec {"10.10.10.0/24", :drop}
+
+    test "returns IPv4 tuple", %{rule4: rule} do
+      assert @ipv4tables_spec = Rules.nftables_spec(rule)
+    end
+  end
+
+  describe "nftables_spec/1 IPv6" do
+    setup [:create_rule6]
+
+    @ipv6tables_spec {"::/0", :drop}
+
+    test "returns IPv6 tuple", %{rule6: rule} do
+      assert @ipv6tables_spec = Rules.nftables_spec(rule)
+    end
+  end
 end

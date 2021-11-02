@@ -7,6 +7,7 @@ defmodule FzHttpWeb.SessionController do
   use FzHttpWeb, :controller
 
   plug :put_root_layout, "auth.html"
+  plug :redirect_authenticated when action in [:new]
 
   # GET /session/new
   def new(conn, _params) do

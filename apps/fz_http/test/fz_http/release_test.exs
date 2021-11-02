@@ -21,13 +21,26 @@ defmodule FzHttp.ReleaseTest do
   end
 
   describe "rollback/2" do
+    test "calls function" do
+      for repo <- Application.fetch_env!(:fz_http, :ecto_repos) do
+        Release.rollback(repo, "0")
+      end
+    end
   end
 
   describe "create_admin_user/0" do
-    test "creates user" do
+    test "creates admin when none exists" do
       Release.create_admin_user()
       user = Users.get_user!(email: Application.fetch_env!(:fz_http, :admin_email))
       assert %User{} = user
+    end
+
+    test "reset admin password when user exists" do
+      {:ok, first_user} = Release.create_admin_user()
+      {:ok, new_first_user} = Release.change_password(first_user.email, "newpassword")
+      {:ok, second_user} = Release.create_admin_user()
+
+      assert second_user.password_hash != new_first_user.password_hash
     end
   end
 
