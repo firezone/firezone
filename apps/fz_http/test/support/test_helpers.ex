@@ -4,6 +4,10 @@ defmodule FzHttp.TestHelpers do
   """
   alias FzHttp.{Fixtures, Repo, Users, Users.User}
 
+  def clear_users do
+    Repo.delete_all(User)
+  end
+
   def create_device(tags) do
     device =
       if tags[:unauthed] || is_nil(tags[:user_id]) do
