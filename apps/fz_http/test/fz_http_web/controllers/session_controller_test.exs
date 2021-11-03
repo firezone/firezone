@@ -1,6 +1,22 @@
 defmodule FzHttpWeb.SessionControllerTest do
   use FzHttpWeb.ConnCase, async: true
 
+  describe "new" do
+    setup [:create_user]
+
+    test "unauthed: loads the sign in form", %{unauthed_conn: conn, user: _user} do
+      test_conn = get(conn, Routes.session_path(conn, :new))
+
+      assert html_response(test_conn, 200) =~ "Sign In"
+    end
+
+    test "authed: redirects to devices page", %{authed_conn: conn, user: _user} do
+      test_conn = get(conn, Routes.session_path(conn, :new))
+
+      assert redirected_to(test_conn) == Routes.device_path(test_conn, :index)
+    end
+  end
+
   describe "create session" do
     setup [:create_user]
 

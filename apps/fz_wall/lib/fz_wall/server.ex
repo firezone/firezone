@@ -26,19 +26,35 @@ defmodule FzWall.Server do
   @impl GenServer
   def handle_call({:add_rule, rule_spec}, _from, rules) do
     cli().add_rule(rule_spec)
-    {:reply, :ok, rules}
+    # XXX: Consider using MapSet here
+    new_rules =
+      if rule_spec in rules do
+        rules
+      else
+        rules ++ [rule_spec]
+      end
+
+    {:reply, :ok, new_rules}
   end
 
   @impl GenServer
   def handle_call({:delete_rule, rule_spec}, _from, rules) do
     cli().delete_rule(rule_spec)
-    {:reply, :ok, rules}
+    # XXX: Consider using MapSet here
+    new_rules =
+      if rule_spec in rules do
+        List.delete(rules, rule_spec)
+      else
+        rules
+      end
+
+    {:reply, :ok, new_rules}
   end
 
   @impl GenServer
-  def handle_call({:set_rules, fz_http_rules}, _from, rules) do
+  def handle_call({:set_rules, fz_http_rules}, _from, _rules) do
     cli().restore(fz_http_rules)
-    {:reply, :ok, rules}
+    {:reply, :ok, fz_http_rules}
   end
 
   # XXX: Set up NAT and Masquerade and load existing rules with nftables here

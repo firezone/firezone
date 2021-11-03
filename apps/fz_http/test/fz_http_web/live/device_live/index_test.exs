@@ -16,6 +16,17 @@ defmodule FzHttpWeb.DeviceLive.IndexTest do
     end
   end
 
+  describe "authenticated but user deleted" do
+    setup [:create_user]
+
+    test "redirects to not authorized", %{authed_conn: conn} do
+      path = Routes.device_index_path(conn, :index)
+      clear_users()
+      expected_path = Routes.session_path(conn, :new)
+      assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
+    end
+  end
+
   describe "authenticated/creates device" do
     test "creates device", %{authed_conn: conn} do
       path = Routes.device_index_path(conn, :index)
