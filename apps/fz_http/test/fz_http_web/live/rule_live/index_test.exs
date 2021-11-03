@@ -34,6 +34,18 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
         })
 
       assert test_view =~ "is invalid"
+
+      valid_view =
+        view
+        |> form("#accept-form")
+        |> render_submit(%{
+          "rule" => %{
+            "destination" => "::1",
+            "action" => "accept"
+          }
+        })
+
+      refute valid_view =~ "is invalid"
     end
 
     test "removes from allowlist", %{authed_conn: conn, rule: rule} do

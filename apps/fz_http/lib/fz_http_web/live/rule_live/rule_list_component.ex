@@ -25,7 +25,9 @@ defmodule FzHttpWeb.RuleLive.RuleListComponent do
     case Rules.create_rule(rule_params) do
       {:ok, rule} ->
         @events_module.add_rule(rule)
-        {:noreply, assign(socket, rule_list: rule_list(socket.assigns))}
+
+        {:noreply,
+         assign(socket, changeset: Rules.new_rule(), rule_list: rule_list(socket.assigns))}
 
       {:error, changeset} ->
         {:noreply, assign(socket, changeset: changeset)}
