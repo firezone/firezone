@@ -13,7 +13,7 @@ defmodule FzHttpWeb.Events do
     GenServer.cast(vpn_pid(), {
       :device_created,
       device.public_key,
-      {Devices.ipv4_address(device), Devices.ipv6_address(device)}
+      "#{Devices.ipv4_address(device)},#{Devices.ipv6_address(device)}"
     })
   end
 
@@ -21,12 +21,16 @@ defmodule FzHttpWeb.Events do
     GenServer.cast(vpn_pid(), {
       :device_updated,
       device.public_key,
-      {Devices.ipv4_address(device), Devices.ipv6_address(device)}
+      "#{Devices.ipv4_address(device)},#{Devices.ipv6_address(device)}"
     })
   end
 
-  def delete_device(device_pubkey) do
+  def delete_device(device_pubkey) when is_binary(device_pubkey) do
     GenServer.call(vpn_pid(), {:delete_device, device_pubkey})
+  end
+
+  def delete_device(device) when is_struct(device) do
+    delete_device(device.public_key)
   end
 
   def add_rule(rule) do

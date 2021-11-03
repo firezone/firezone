@@ -35,7 +35,7 @@ defmodule FzHttp.TestHelpers do
 
   def create_devices(tags) do
     user_id =
-      if tags[:unathed] do
+      if tags[:unathed] || is_nil(tags[:user_id]) do
         Fixtures.user().id
       else
         tags[:user_id]

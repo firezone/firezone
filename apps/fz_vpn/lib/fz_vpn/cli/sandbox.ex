@@ -31,8 +31,8 @@ defmodule FzVpn.CLI.Sandbox do
     @default_returned
   end
 
-  def set_peer(pubkey, {ipv4, ipv6}) do
-    Logger.debug("`set_peer` called with #{pubkey}, {#{ipv4}, #{ipv6}}")
+  def set_peer(pubkey, allowed_ips) do
+    Logger.debug("`set_peer` called with #{pubkey}, #{allowed_ips}")
     @default_returned
   end
 
