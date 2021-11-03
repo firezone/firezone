@@ -2,8 +2,10 @@ defmodule FzVpn.ServerTest do
   use ExUnit.Case, async: true
   import FzVpn.CLI
 
-  @empty %{}
-  @single_peer %{"test-pubkey" => "127.0.0.1"}
+  @empty []
+  @single_peer [
+    %{public_key: "test-pubkey", allowed_ips: "127.0.0.1/32,::1/128"}
+  ]
 
   describe "state" do
     setup %{stubbed_config: config} do

@@ -14,8 +14,9 @@ defmodule FzVpn.Server do
   Config is a data structure that looks like this:
 
   %{
-    pubkey1 => device1_ip,
-    pubkey2 => device2_ip,
+    pubkey1 => {device1_ipv4, device1_ipv6},
+    pubkey2 => {device2_ipv4, device2_ipv6},
+    ...
   }
   """
 
@@ -35,7 +36,7 @@ defmodule FzVpn.Server do
   def init(_config) do
     cli().setup()
     {:ok, peers} = GenServer.call(http_pid(), :load_peers, @init_timeout)
-    config = Map.new(peers, fn peer -> {peer.public_key, peer.allowed_ips} end)
+    config = peers_to_config(peers)
     apply_config(config)
   end
 
@@ -56,7 +57,8 @@ defmodule FzVpn.Server do
   end
 
   @impl GenServer
-  def handle_call({:set_config, new_config}, _from, _config) do
+  def handle_call({:set_config, peers}, _from, _config) do
+    new_config = peers_to_config(peers)
     apply_config(new_config)
     {:reply, :ok, new_config}
   end
@@ -83,5 +85,9 @@ defmodule FzVpn.Server do
 
   def http_pid do
     :global.whereis_name(:fz_http_server)
+  end
+
+  defp peers_to_config(peers) do
+    Map.new(peers, fn peer -> {peer.public_key, peer.allowed_ips} end)
   end
 end
