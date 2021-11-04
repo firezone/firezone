@@ -1,12 +1,17 @@
 defmodule FzWall.MixProject do
   use Mix.Project
 
-  @version Mix.Project.config()[:version]
+  @version_path "../../version.exs"
+
+  def version do
+    Code.eval_file(@version_path)
+    |> elem(0)
+  end
 
   def project do
     [
       app: :fz_wall,
-      version: @version,
+      version: version(),
       build_path: "../../_build",
       config_path: "../../config/config.exs",
       deps_path: "../../deps",

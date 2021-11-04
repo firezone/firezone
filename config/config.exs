@@ -26,11 +26,8 @@ require Logger
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
-# Use root-level version for all Umbrella apps
-version = Mix.Project.config()[:version]
-
 github_sha =
-  case System.cmd("git", ["rev-parse", "--short", "HEAD"]) do
+  case System.cmd("git", ["rev-parse", "--short", "HEAD"], stderr_to_stdout: true) do
     {result, 0} ->
       result |> String.trim()
 
@@ -40,7 +37,6 @@ github_sha =
 
 config :fz_http,
   github_sha: github_sha,
-  version: version,
   cookie_signing_salt: "Z9eq8iof",
   ecto_repos: [FzHttp.Repo],
   admin_email: "firezone@localhost",
@@ -50,23 +46,18 @@ config :fz_http,
   server_process_opts: [name: {:global, :fz_http_server}]
 
 config :fz_wall,
-  version: version,
   cli: FzWall.CLI.Sandbox,
   server_process_opts: [name: {:global, :fz_wall_server}],
   egress_interface: "dummy"
 
 # This will be changed per-env
 config :fz_vpn,
-  version: version,
   wireguard_public_key: "cB2yQeCxHO/qCH8APoM2D2Anf4Yd7sRLyfS7su71K3M=",
   wireguard_interface_name: "wg-firezone",
   wireguard_port: "51820",
   wireguard_endpoint: "127.0.0.1",
   cli: FzVpn.CLI.Sandbox,
   server_process_opts: [name: {:global, :fz_vpn_server}]
-
-config :fz_common,
-  version: version
 
 # Configures the endpoint
 # These will be overridden at runtime in production by config/releases.exs
