@@ -1,7 +1,7 @@
 defmodule FzHttp.MixProject do
   use Mix.Project
 
-  @version Application.compile_env!(:fz_http, :version)
+  @version Mix.Project.config()[:version]
 
   def project do
     [
