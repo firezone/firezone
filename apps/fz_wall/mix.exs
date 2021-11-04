@@ -1,10 +1,12 @@
 defmodule FzWall.MixProject do
   use Mix.Project
 
+  @version File.read!(File.cwd!() <> "/../../version") |> String.trim()
+
   def project do
     [
       app: :fz_wall,
-      version: "0.2.0",
+      version: @version,
       build_path: "../../_build",
       config_path: "../../config/config.exs",
       deps_path: "../../deps",
