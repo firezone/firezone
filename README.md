@@ -27,6 +27,14 @@
 
 ![Architecture](https://user-images.githubusercontent.com/167144/134593363-870c982d-921b-4f0c-b210-e77c8860d9ca.png)
 
+**Important**: Ensure you're reading the correct version of this README for the
+current version of Firezone you're running. Links to the README for past
+versions:
+
+* [0.1.17](https://github.com/firezone/firezone/tree/0.1.17)
+* [0.1.16](https://github.com/firezone/firezone/tree/0.1.17)
+* [0.1.15](https://github.com/firezone/firezone/tree/0.1.17)
+
 # Table of Contents
 * [What is Firezone?](#what-is-firezone)
   * [Features](#features)
