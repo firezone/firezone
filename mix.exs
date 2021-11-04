@@ -5,11 +5,13 @@ defmodule FirezoneUmbrella.MixProject do
 
   use Mix.Project
 
+  @version File.read!(File.cwd!() <> "/version") |> String.trim()
+
   def project do
     [
       name: :firezone,
       apps_path: "apps",
-      version: "0.2.0",
+      version: @version,
       start_permanent: Mix.env() == :prod,
       test_coverage: [tool: ExCoveralls],
       preferred_cli_env: [
