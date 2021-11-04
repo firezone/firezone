@@ -106,13 +106,13 @@
               Leave us feedback!
             <% end %>
           </div>
-          <div class="level-item">
-            <a href="https://github.com/firezone/firezone" style="height: 20px">
-              <img src="https://img.shields.io/github/v/release/firezone/firezone?color=%23999">
-            </a>
-          </div>
         </div>
         <div class="level-right">
+          <div class="level-item">
+            <a href={"https://github.com/firezone/firezone/tree/#{application_version()}"}>
+              Release <%= application_version() %>
+            </a>
+          </div>
           <div class="level-item">
             <div class="logo">
               <a href="https://firez.one"><img src="/images/logo.svg" alt="firez.one"></a>
@@ -124,26 +124,6 @@
   </footer>
 </div>
 
-<div id="sample-modal" class="modal">
-  <div class="modal-background jb-modal-close"></div>
-  <div class="modal-card">
-    <header class="modal-card-head">
-      <p class="modal-card-title">Confirm action</p>
-      <button class="delete jb-modal-close" aria-label="close"></button>
-    </header>
-    <section class="modal-card-body">
-      <p>This will permanently delete <b>Some Object</b></p>
-      <p>This is sample modal</p>
-    </section>
-    <footer class="modal-card-foot">
-      <button class="button jb-modal-close">Cancel</button>
-      <button class="button is-danger jb-modal-close">Delete</button>
-    </footer>
-  </div>
-  <button class="modal-close is-large jb-modal-close" aria-label="close"></button>
-</div>
-
-<!-- Icons below are for demo only. Feel free to use any icon pack. Docs: https://bulma.io/documentation/elements/icon/ -->
 <link rel="stylesheet" href="https://cdn.materialdesignicons.com/4.9.95/css/materialdesignicons.min.css">
-  </body>
+</body>
 </html>
