@@ -6,7 +6,7 @@ defmodule FzHttpWeb.RuleLive.RuleListComponent do
 
   alias FzHttp.Rules
 
-  @events_module Application.compile_env(:fz_http, :events_module)
+  @events_module Application.compile_env!(:fz_http, :events_module)
 
   @impl true
   def update(assigns, socket) do

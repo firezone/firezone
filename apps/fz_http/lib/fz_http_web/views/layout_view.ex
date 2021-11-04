@@ -3,6 +3,10 @@ defmodule FzHttpWeb.LayoutView do
 
   alias FzCommon.FzCrypto
 
+  require Logger
+
+  @github_sha Application.compile_env(:fz_http, :github_sha, "master")
+
   @doc """
   Generate a random feedback email to avoid spam.
   """
@@ -15,6 +19,13 @@ defmodule FzHttpWeb.LayoutView do
   """
   def application_version do
     Application.spec(:fz_http, :vsn)
+  end
+
+  @doc """
+  The current github sha, used to link to our Github repo
+  """
+  def github_sha do
+    @github_sha
   end
 
   @doc """
