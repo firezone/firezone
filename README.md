@@ -37,6 +37,7 @@
   * [Configuration File](#configuration-file)
 * [Using Firezone](#using-firezone)
   * [Troubleshooting](#troubleshooting)
+  * [Upgrading](#upgrading)
   * [Uninstalling](#uninstalling)
 * [Getting Support](#getting-support)
 * [Developing and Contributing](#developing-and-contributing)
@@ -192,7 +193,7 @@ the changes and apply them to the running system.
 
 Your Firezone installation can be managed via the `firezone-ctl` command, as shown below. Most subcommands require prefixing with `sudo`.
 
-```shell
+```console
 root@demo:~# firezone-ctl
 I don't know that command.
 omnibus-ctl: command (subcommand)
@@ -251,6 +252,20 @@ Service Management Commands:
 For any problems that arise, a good first bet is to check the Firezone logs.
 
 To view Firezone logs, run `sudo firezone-ctl tail`.
+
+## Upgrading
+
+Upgrading Firezone will disconnect all VPN connections and require shutting
+down the Web UI. We recommend a maintenance window of about an hour in case
+anything goes wrong during the upgrade.
+
+To upgrade Firezone, simply download the new OS package, install it just as you
+would for a regular install (`sudo dpkg -i firezone_X.X.X.deb` or
+`sudo rpm -i firezone_X.X.X.rpm`), and then restart Firezone services with
+`sudo firezone-ctl restart`.
+
+Occasionally problems arise. If you hit any, please let us know by [filing an
+issue](https://github.com/firezone/firezone/issues/new/choose).
 
 ## Uninstalling
 
