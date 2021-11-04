@@ -1,7 +1,7 @@
 defmodule FzCommon.MixProject do
   use Mix.Project
 
-  @version Application.compile_env!(:fz_http, :version)
+  @version Application.compile_env!(:fz_common, :version)
 
   def project do
     [

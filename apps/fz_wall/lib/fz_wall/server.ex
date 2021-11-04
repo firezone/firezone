@@ -6,7 +6,7 @@ defmodule FzWall.Server do
   use GenServer
   import FzWall.CLI
 
-  @process_opts Application.compile_env(:fz_wall, :server_process_opts)
+  @process_opts Application.compile_env(:fz_wall, :server_process_opts, [])
   @init_timeout 1_000
 
   def start_link(_) do
