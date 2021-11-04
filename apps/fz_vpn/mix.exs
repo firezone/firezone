@@ -1,7 +1,7 @@
 defmodule FzVpn.MixProject do
   use Mix.Project
 
-  @version Application.compile_env!(:fz_vpn, :version)
+  @version Mix.Project.config()[:version]
 
   def project do
     [

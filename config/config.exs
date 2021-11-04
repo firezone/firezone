@@ -29,7 +29,17 @@ config :phoenix, :json_library, Jason
 # Use root-level version for all Umbrella apps
 version = Mix.Project.config()[:version]
 
+github_sha =
+  case System.cmd("git", ["rev-parse", "--short", "HEAD"]) do
+    {result, 0} ->
+      result |> String.trim()
+
+    {_, _} ->
+      nil
+  end
+
 config :fz_http,
+  github_sha: github_sha,
   version: version,
   cookie_signing_salt: "Z9eq8iof",
   ecto_repos: [FzHttp.Repo],

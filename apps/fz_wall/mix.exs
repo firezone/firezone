@@ -1,7 +1,7 @@
 defmodule FzWall.MixProject do
   use Mix.Project
 
-  @version Application.compile_env!(:fz_wall, :version)
+  @version Mix.Project.config()[:version]
 
   def project do
     [
