@@ -37,6 +37,9 @@ end
 # ------------------------------
 # use_git_caching false
 
+# Don't append timestamp for builds
+append_timestamp false
+
 # Enable S3 asset caching
 # ------------------------------
 # use_s3_caching true

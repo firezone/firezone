@@ -7,7 +7,7 @@ defmodule FzHttp.Server do
 
   alias FzHttp.{Devices, Rules}
 
-  @process_opts Application.compile_env(:fz_http, :server_process_opts)
+  @process_opts Application.compile_env(:fz_http, :server_process_opts, [])
 
   def start_link(_) do
     # We're not storing state, simply providing an API

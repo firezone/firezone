@@ -25,7 +25,7 @@ defmodule FzVpn.Server do
   import FzVpn.CLI
   require Logger
 
-  @process_opts Application.compile_env(:fz_vpn, :server_process_opts)
+  @process_opts Application.compile_env(:fz_vpn, :server_process_opts, [])
   @init_timeout 1_000
 
   def start_link(_) do

@@ -14,6 +14,8 @@
 # move said applications out of the umbrella.
 import Config
 
+require Logger
+
 # Sample configuration:
 #
 #     config :logger, :console,
@@ -24,7 +26,17 @@ import Config
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
+github_sha =
+  case System.cmd("git", ["rev-parse", "--short", "HEAD"], stderr_to_stdout: true) do
+    {result, 0} ->
+      result |> String.trim()
+
+    {_, _} ->
+      nil
+  end
+
 config :fz_http,
+  github_sha: github_sha,
   cookie_signing_salt: "Z9eq8iof",
   ecto_repos: [FzHttp.Repo],
   admin_email: "firezone@localhost",
