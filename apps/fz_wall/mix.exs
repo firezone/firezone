@@ -1,7 +1,7 @@
 defmodule FzWall.MixProject do
   use Mix.Project
 
-  @version File.read!(File.cwd!() <> "/../../version") |> String.trim()
+  @version Application.compile_env!(:fz_http, :version)
 
   def project do
     [

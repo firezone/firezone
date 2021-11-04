@@ -21,6 +21,8 @@ homepage "https://firez.one"
 license "Apache-2.0"
 license_file "../LICENSE"
 
+append_timestamp false
+
 description <<~DESC
   Web UI + Firewall manager for WireGuard
 DESC

@@ -5,13 +5,25 @@ defmodule FirezoneUmbrella.MixProject do
 
   use Mix.Project
 
-  @version File.read!(File.cwd!() <> "/version") |> String.trim()
+  require Logger
+
+  # Omnibus has already built a nice way of generating this, so use it
+  def version do
+    case System.cmd(File.cwd!() <> "/scripts/semver.sh", []) do
+      {result, 0} ->
+        result |> String.trim()
+
+      {_, _} ->
+        Logger.warn("Could not get semver. Using dummy value of 0.0.0")
+        "0.0.0"
+    end
+  end
 
   def project do
     [
       name: :firezone,
       apps_path: "apps",
-      version: @version,
+      version: version(),
       start_permanent: Mix.env() == :prod,
       test_coverage: [tool: ExCoveralls],
       preferred_cli_env: [
