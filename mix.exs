@@ -5,18 +5,11 @@ defmodule FirezoneUmbrella.MixProject do
 
   use Mix.Project
 
-  require Logger
+  @version_path "version.exs"
 
-  # Omnibus has already built a nice way of generating this, so use it
   def version do
-    case System.cmd(File.cwd!() <> "/scripts/semver.sh", []) do
-      {result, 0} ->
-        result |> String.trim()
-
-      {_, _} ->
-        Logger.warn("Could not get semver. Using dummy value of 0.0.0")
-        "0.0.0"
-    end
+    Code.eval_file(@version_path)
+    |> elem(0)
   end
 
   def project do
