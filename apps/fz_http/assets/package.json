@@ -27,7 +27,7 @@
     "@babel/core": "^7.14.0",
     "@babel/preset-env": "^7.14.0",
     "@fortawesome/fontawesome-free": "^5.15.3",
-    "admin-one-bulma-dashboard": "https://github.com/firezone/admin-one-bulma-dashboard.git",
+    "admin-one-bulma-dashboard": "git+https://github.com/firezone/admin-one-bulma-dashboard.git",
     "autoprefixer": "^9.8.6",
     "babel-loader": "^8.2.2",
     "copy-webpack-plugin": "^8.1.1",
