@@ -43,7 +43,13 @@ defmodule FzWall.CLI.Live do
         "{ type nat hook postrouting priority 100 ; }'"
     )
 
-    exec!("#{nft()} 'add rule inet firezone postrouting masquerade random,persistent'")
+    # XXX: Do more testing with these masquerade rules
+    for int <- File.ls!("/sys/class/net/") do
+      exec!(
+        "#{nft()} 'add rule inet firezone postrouting oifname " <>
+          "#{int} masquerade random,persistent'"
+      )
+    end
   end
 
   def teardown_table do
