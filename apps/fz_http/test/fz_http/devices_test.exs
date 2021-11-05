@@ -63,6 +63,10 @@ defmodule FzHttp.DevicesTest do
       dns_servers: "8.8.8.8, 1.1.1, 1.0.0, 1.1.1."
     }
 
+    @duplicate_dns_servers_attrs %{
+      dns_servers: "8.8.8.8, 1.1.1.1, 1.1.1.1, ::1, ::1, ::1, ::1, ::1, 8.8.8.8"
+    }
+
     @valid_allowed_ips_attrs %{
       allowed_ips: "0.0.0.0/0, ::/0, ::0/0, 192.168.1.0/24"
     }
@@ -98,6 +102,15 @@ defmodule FzHttp.DevicesTest do
 
       assert changeset.errors[:dns_servers] == {
                "is invalid: 1.1.1 is not a valid IPv4 / IPv6 address",
+               []
+             }
+    end
+
+    test "prevents assigning duplicate DNS servers", %{device: device} do
+      {:error, changeset} = Devices.update_device(device, @duplicate_dns_servers_attrs)
+
+      assert changeset.errors[:dns_servers] == {
+               "is invalid: duplicate DNS servers are not allowed: 1.1.1.1, ::1, 8.8.8.8",
                []
              }
     end
