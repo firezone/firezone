@@ -12,7 +12,7 @@
     <img src="https://img.shields.io/static/v1?logo=discourse&logoColor=959DA5&label=community&labelColor=333a41&message=join&color=611f69" alt="firezone Discourse" />
   </a>
   <img src="https://img.shields.io/static/v1?logo=github&logoColor=959DA5&label=Test&labelColor=333a41&message=passing&color=3AC358" alt="firezone" />
-  <img src="https://img.shields.io/static/v1?label=coverage&labelColor=333a41&message=66%&color=D7614A" alt="firezone" />
+  [![Coverage Status](https://coveralls.io/repos/github/firezone/firezone/badge.svg?branch=master)](https://coveralls.io/github/firezone/firezone?branch=master)
   <a href="https://twitter.com/intent/follow?screen_name=firezonevpn">
     <img src="https://img.shields.io/twitter/follow/firezonevpn?style=social&logo=twitter" alt="follow on Twitter">
   </a>
