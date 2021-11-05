@@ -74,11 +74,33 @@ defmodule FzHttp.Devices.Device do
     ])
     |> validate_list_of_ips_or_cidrs(:allowed_ips)
     |> validate_list_of_ips(:dns_servers)
+    |> validate_no_duplicates(:dns_servers)
     |> unique_constraint(:address)
     |> validate_number(:address, greater_than_or_equal_to: 2, less_than_or_equal_to: 254)
     |> unique_constraint(:public_key)
     |> unique_constraint(:private_key)
     |> unique_constraint([:user_id, :name])
+  end
+
+  defp validate_no_duplicates(changeset, field) when is_atom(field) do
+    validate_change(changeset, field, fn _current_field, value ->
+      try do
+        trimmed = Enum.map(String.split(value, ","), fn el -> String.trim(el) end)
+        dupes = Enum.uniq(trimmed -- Enum.uniq(trimmed))
+
+        if length(dupes) > 0 do
+          throw(dupes)
+        end
+
+        []
+      catch
+        dupes ->
+          [
+            {field,
+             "is invalid: duplicate DNS servers are not allowed: #{Enum.join(dupes, ", ")}"}
+          ]
+      end
+    end)
   end
 
   defp validate_list_of_ips(changeset, field) when is_atom(field) do
