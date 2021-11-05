@@ -66,7 +66,7 @@ defmodule FirezoneUmbrella.MixProject do
       "ecto.seed": "run apps/fz_http/priv/repo/seeds.exs",
       "ecto.setup": ["ecto.create", "ecto.migrate", "ecto.seed"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
-      start: ["phx.server", "run --no-halt"]
+      start: ["compile --no-validate-compile-env", "phx.server", "run --no-halt"]
     ]
   end
 end
