@@ -77,7 +77,8 @@ config :fz_http, FzHttpWeb.Endpoint,
 
 config :fz_wall,
   nft_path: nft_path,
-  egress_interface: egress_interface
+  egress_interface: egress_interface,
+  wireguard_interface_name: wireguard_interface_name
 
 config :fz_vpn,
   wireguard_public_key: wireguard_public_key,

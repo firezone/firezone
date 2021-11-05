@@ -48,7 +48,8 @@ config :fz_http,
 config :fz_wall,
   cli: FzWall.CLI.Sandbox,
   server_process_opts: [name: {:global, :fz_wall_server}],
-  egress_interface: "dummy"
+  egress_interface: "dummy",
+  wireguard_interface_name: "wg-firezone"
 
 # This will be changed per-env
 config :fz_vpn,

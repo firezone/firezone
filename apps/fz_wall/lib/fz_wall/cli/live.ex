@@ -43,12 +43,15 @@ defmodule FzWall.CLI.Live do
         "{ type nat hook postrouting priority 100 ; }'"
     )
 
-    # XXX: Do more testing with these masquerade rules
+    # XXX: Do more testing with this method of creating masquerade rules
     for int <- File.ls!("/sys/class/net/") do
-      exec!(
-        "#{nft()} 'add rule inet firezone postrouting oifname " <>
-          "#{int} masquerade random,persistent'"
-      )
+      # Masquerade all interfaces except loopback and our own wireguard interface
+      if int not in ["lo", wireguard_interface_name()] do
+        exec!(
+          "#{nft()} 'add rule inet firezone postrouting oifname " <>
+            "#{int} masquerade random,persistent'"
+        )
+      end
     end
   end
 
@@ -149,6 +152,10 @@ defmodule FzWall.CLI.Live do
           """
         end
     end
+  end
+
+  defp wireguard_interface_name do
+    Application.fetch_env!(:fz_wall, :wireguard_interface_name)
   end
 
   defp proto(dest) do
