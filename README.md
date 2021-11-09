@@ -33,6 +33,8 @@
 current version of Firezone you're running. Links to the README for past
 versions:
 
+* [0.1.19](https://github.com/firezone/firezone/tree/0.1.19)
+* [0.1.18](https://github.com/firezone/firezone/tree/0.1.18)
 * [0.1.17](https://github.com/firezone/firezone/tree/0.1.17)
 * [0.1.16](https://github.com/firezone/firezone/tree/0.1.17)
 * [0.1.15](https://github.com/firezone/firezone/tree/0.1.17)
