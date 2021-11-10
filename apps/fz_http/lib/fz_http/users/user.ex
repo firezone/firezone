@@ -21,6 +21,7 @@ defmodule FzHttp.Users.User do
     field :sign_in_token_created_at, :utc_datetime_usec
 
     # VIRTUAL FIELDS
+    field :device_count, :integer, virtual: true
     field :password, :string, virtual: true
     field :password_confirmation, :string, virtual: true
     field :current_password, :string, virtual: true
@@ -99,7 +100,19 @@ defmodule FzHttp.Users.User do
     |> validate_required([:password_hash])
   end
 
-  # Password updated from token
+  # Email updated from an admin
+  def update_changeset(
+        user,
+        %{
+          "email" => _email,
+          "password" => "",
+          "password_confirmation" => ""
+        } = attrs
+      ) do
+    update_changeset(user, FzMap.compact(attrs, ""))
+  end
+
+  # Password updated from token or admin
   def update_changeset(
         user,
         %{
@@ -109,7 +122,9 @@ defmodule FzHttp.Users.User do
       ) do
     user
     |> cast(attrs, [:email, :password, :password_confirmation])
-    |> validate_required([:password, :password_confirmation])
+    |> validate_required([:email, :password, :password_confirmation])
+    |> validate_format(:email, ~r/@/)
+    |> validate_length(:password, min: @min_password_length, max: @max_password_length)
     |> validate_password_equality()
     |> put_password_hash()
     |> validate_required([:password_hash])

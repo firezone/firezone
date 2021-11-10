@@ -1,0 +1,14 @@
+<dl>
+  <dt>
+    <strong>Email</strong>
+  </dt>
+  <dd><%= @user.email %></dd>
+
+  <dt><strong>Last signed in</strong></dt>
+  <dd
+    id="last-signed-in-at"
+    data-timestamp={@user.last_signed_in_at}
+    phx-hook="FormatTimestamp">
+    …
+  </dd>
+</dl>

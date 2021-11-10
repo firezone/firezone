@@ -1,0 +1,20 @@
+<table class="table is-bordered is-hoverable is-striped is-fullwidth">
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>WireGuard IP</th>
+      <th>Public key</th>
+    </tr>
+  </thead>
+  <tbody>
+  <%= for device <- @devices do %>
+    <tr>
+      <td>
+        <%= link(device.name, to: Routes.device_show_path(@socket, :show, device)) %>
+      </td>
+      <td class="code"><%= FzHttp.Devices.ipv4_address(device) %>, <%= FzHttp.Devices.ipv6_address(device) %></td>
+      <td class="code"><%= device.public_key %></td>
+    </tr>
+  <% end %>
+  </tbody>
+</table>
