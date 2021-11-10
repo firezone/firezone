@@ -1,6 +1,15 @@
 <%= render FzHttpWeb.SharedView, "heading.html", page_title: @page_title %>
 
 <section class="section is-main-section">
+  <div class="content">
+    <p>
+      <span class="icon">
+        <i class="mdi mdi-information-outline"></i>
+      </span>
+      Rules apply to all devices.
+    </p>
+  </div>
+
   <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
   <div class="tile is-ancestor">
     <div class="tile is-parent">

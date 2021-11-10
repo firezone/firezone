@@ -11,27 +11,19 @@ defmodule FzHttpWeb.DeviceLive.Index do
     {:ok,
      socket
      |> assign_defaults(params, session, &load_data/2)
-     |> assign(:page_title, "Devices")}
+     |> assign(:page_title, "All Devices")}
   end
 
   def handle_event("create_device", _params, socket) do
-    # XXX: Remove device from WireGuard if create isn't successful
     {:ok, privkey, pubkey, server_pubkey} = @events_module.create_device()
 
-    device_attrs = %{
+    attributes = %{
       private_key: privkey,
       public_key: pubkey,
-      server_public_key: server_pubkey
+      server_public_key: server_pubkey,
+      user_id: socket.assigns.current_user.id,
+      name: Devices.rand_name()
     }
-
-    attributes =
-      Map.merge(
-        %{
-          user_id: socket.assigns.current_user.id,
-          name: Devices.rand_name()
-        },
-        device_attrs
-      )
 
     case Devices.create_device(attributes) do
       {:ok, device} ->
@@ -52,6 +44,6 @@ defmodule FzHttpWeb.DeviceLive.Index do
   end
 
   defp load_data(_params, socket) do
-    assign(socket, :devices, Devices.list_devices(socket.assigns.current_user.id))
+    assign(socket, :devices, Devices.list_devices())
   end
 end

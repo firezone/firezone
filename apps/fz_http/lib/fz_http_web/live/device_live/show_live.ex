@@ -4,7 +4,7 @@ defmodule FzHttpWeb.DeviceLive.Show do
   """
   use FzHttpWeb, :live_view
 
-  alias FzHttp.Devices
+  alias FzHttp.{Devices, Users}
 
   @impl true
   def mount(params, session, socket) do
@@ -49,6 +49,7 @@ defmodule FzHttpWeb.DeviceLive.Show do
       assign(
         socket,
         device: device,
+        user: Users.get_user!(device.user_id),
         page_title: device.name,
         wireguard_endpoint: Application.fetch_env!(:fz_vpn, :wireguard_endpoint),
         wireguard_port: Application.fetch_env!(:fz_vpn, :wireguard_port)

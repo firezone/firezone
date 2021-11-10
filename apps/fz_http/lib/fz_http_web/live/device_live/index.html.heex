@@ -4,26 +4,7 @@
   <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
 
   <div class="content">
-    <table class="table is-striped is-fullwidth">
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>WireGuard IP</th>
-          <th>Public key</th>
-        </tr>
-      </thead>
-      <tbody>
-      <%= for device <- @devices do %>
-        <tr>
-          <td>
-            <%= live_patch(device.name, to: Routes.device_show_path(@socket, :show, device)) %>
-          </td>
-          <td class="code"><%= FzHttp.Devices.ipv4_address(device) %>, <%= FzHttp.Devices.ipv6_address(device) %></td>
-          <td class="code"><%= device.public_key %></td>
-        </tr>
-      <% end %>
-      </tbody>
-    </table>
+    <%= render FzHttpWeb.SharedView, "devices_table.html", devices: @devices, socket: @socket %>
   </div>
 
   <button class="button is-primary" phx-click="create_device">
