@@ -27,6 +27,11 @@ defmodule FzHttpWeb.Router do
     live "/account", AccountLive.Show, :show
     live "/account/edit", AccountLive.Show, :edit
 
+    live "/users", UserLive.Index, :index
+    live "/users/new", UserLive.Index, :new
+    live "/users/:id", UserLive.Show, :show
+    live "/users/:id/edit", UserLive.Show, :edit
+
     live "/rules", RuleLive.Index, :index
 
     live "/devices", DeviceLive.Index, :index

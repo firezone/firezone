@@ -21,6 +21,9 @@
         <div class="card-content">
           <div class="content">
             <dl>
+              <dt><strong>User</strong></dt>
+              <dd><%= link(@user.email, to: Routes.user_show_path(@socket, :show, @user)) %></dd>
+
               <dt><strong>Name</strong></dt>
               <dd><%= @device.name %></dd>
 

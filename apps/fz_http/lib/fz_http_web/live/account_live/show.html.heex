@@ -24,20 +24,7 @@
 
         <div class="card-content">
           <div class="content">
-            <dl>
-              <dt>
-                <strong>Email</strong>
-              </dt>
-              <dd><%= @current_user.email %></dd>
-
-              <dt><strong>Last signed in at</strong></dt>
-              <dd
-                id="last-signed-in-at"
-                data-timestamp={@current_user.last_signed_in_at}
-                phx-hook="FormatTimestamp">
-                &nbsp;
-              </dd>
-            </dl>
+            <%= render FzHttpWeb.SharedView, "user_details.html", user: @current_user %>
           </div>
         </div>
         <footer class="card-footer">

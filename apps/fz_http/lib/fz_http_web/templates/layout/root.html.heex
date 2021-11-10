@@ -71,13 +71,19 @@
       <p class="menu-label">Configuration</p>
       <ul class="menu-list">
         <li>
-          <%= link(to: Routes.device_index_path(@conn, :index), class: nav_class(@conn.request_path, :devices)) do %>
+          <%= link(to: Routes.user_index_path(@conn, :index), class: nav_class(@conn.request_path, "users")) do %>
+            <span class="icon"><i class="mdi mdi-account-group"></i></span>
+            <span class="menu-item-label">Users</span>
+          <% end %>
+        </li>
+        <li>
+          <%= link(to: Routes.device_index_path(@conn, :index), class: nav_class(@conn.request_path, "devices")) do %>
             <span class="icon"><i class="mdi mdi-laptop-windows"></i></span>
             <span class="menu-item-label">Devices</span>
           <% end %>
         </li>
         <li>
-          <%= link(to: Routes.rule_index_path(@conn, :index), class: nav_class(@conn.request_path, :rules)) do %>
+          <%= link(to: Routes.rule_index_path(@conn, :index), class: nav_class(@conn.request_path, "rules")) do %>
             <span class="icon"><i class="mdi mdi-plus-network"></i></span>
             <span class="menu-item-label">Rules</span>
           <% end %>
@@ -86,7 +92,7 @@
       <p class="menu-label">Settings</p>
       <ul class="menu-list">
         <li>
-          <%= link(to: Routes.account_show_path(@conn, :show), class: nav_class(@conn.request_path, :account)) do %>
+          <%= link(to: Routes.account_show_path(@conn, :show), class: nav_class(@conn.request_path, "account")) do %>
             <span class="icon"><i class="mdi mdi-account"></i></span>
             <span class="menu-item-label">Account</span>
           <% end %>

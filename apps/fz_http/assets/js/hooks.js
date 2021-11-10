@@ -21,7 +21,7 @@ const renderQrCode = function () {
 
 const formatTimestamp = function () {
   let timestamp = this.el.dataset.timestamp
-  this.el.innerHTML = moment(timestamp).format("dddd, MMMM Do YYYY, h:mm:ss a")
+  this.el.innerHTML = moment(timestamp).format("dddd, MMMM Do YYYY, h:mm:ss a z")
 }
 
 let Hooks = {}
