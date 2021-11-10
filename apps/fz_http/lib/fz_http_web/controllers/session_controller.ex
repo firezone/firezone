@@ -7,12 +7,17 @@ defmodule FzHttpWeb.SessionController do
   use FzHttpWeb, :controller
 
   plug :put_root_layout, "auth.html"
-  plug :redirect_authenticated when action in [:new]
 
   # GET /session/new
   def new(conn, _params) do
-    changeset = Sessions.new_session()
-    render(conn, "new.html", changeset: changeset)
+    if redirect_authenticated?(conn) do
+      conn
+      |> redirect(to: Routes.device_path(conn, :index))
+      |> halt()
+    else
+      changeset = Sessions.new_session()
+      render(conn, "new.html", changeset: changeset)
+    end
   end
 
   # POST /session
@@ -30,6 +35,7 @@ defmodule FzHttpWeb.SessionController do
             conn
             |> clear_session()
             |> put_session(:user_id, session.id)
+            |> put_session(:live_socket_id, "users_socket:#{session.id}")
             |> redirect(to: Routes.device_path(conn, :index))
 
           {:error, _changeset} ->
@@ -48,6 +54,7 @@ defmodule FzHttpWeb.SessionController do
         conn
         |> clear_session()
         |> put_session(:user_id, user.id)
+        |> put_session(:live_socket_id, "users_socket:#{user.id}")
         |> redirect(to: Routes.device_path(conn, :index))
 
       {:error, error_msg} ->
@@ -64,5 +71,10 @@ defmodule FzHttpWeb.SessionController do
     |> clear_session()
     |> put_flash(:info, "Signed out successfully.")
     |> redirect(to: Routes.session_path(conn, :new))
+  end
+
+  defp redirect_authenticated?(conn) do
+    user_id = get_session(conn, :user_id)
+    Users.exists?(user_id)
   end
 end

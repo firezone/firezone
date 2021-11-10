@@ -1,5 +1,5 @@
 <%= if !is_nil(live_flash(@flash, :info)) or !is_nil(live_flash(@flash, :error)) do %>
-  <div class="container flash-squeeze">
+  <div class="content flash-squeeze">
     <%= if live_flash(@flash, :info) do %>
       <div class="notification is-info">
         <button title="Dismiss notification"

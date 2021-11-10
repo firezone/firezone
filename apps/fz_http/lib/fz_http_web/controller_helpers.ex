@@ -30,18 +30,6 @@ defmodule FzHttpWeb.ControllerHelpers do
     end
   end
 
-  def redirect_authenticated(conn, _options) do
-    case get_session(conn, :user_id) do
-      nil ->
-        conn
-
-      _ ->
-        conn
-        |> redirect(to: Routes.device_path(conn, :index))
-        |> halt()
-    end
-  end
-
   def require_authenticated(conn, _options) do
     case get_session(conn, :user_id) do
       nil ->

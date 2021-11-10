@@ -7,7 +7,7 @@ defmodule FzHttp.Users do
   alias FzHttp.Repo
 
   alias FzCommon.FzCrypto
-  alias FzHttp.Users.User
+  alias FzHttp.{Devices.Device, Users.User}
 
   # one hour
   @sign_in_token_validity_secs 3600
@@ -17,6 +17,14 @@ defmodule FzHttp.Users do
       {:ok, {:ok, user}} -> {:ok, user}
       {:ok, {:error, msg}} -> {:error, msg}
     end
+  end
+
+  def exists?(user_id) when is_nil(user_id) do
+    false
+  end
+
+  def exists?(user_id) do
+    Repo.exists?(from u in User, where: u.id == ^user_id)
   end
 
   def get_user!(email: email) do
@@ -62,6 +70,23 @@ defmodule FzHttp.Users do
 
   def new_user do
     change_user(%User{})
+  end
+
+  def list_users do
+    Repo.all(User)
+  end
+
+  def list_users(:with_device_counts) do
+    query =
+      from(
+        user in User,
+        left_join: device in Device,
+        on: device.user_id == user.id,
+        group_by: user.id,
+        select_merge: %{device_count: count(device.id)}
+      )
+
+    Repo.all(query)
   end
 
   # XXX: For now assume first user is the admin.
