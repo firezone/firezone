@@ -12,7 +12,9 @@
     <img src="https://img.shields.io/static/v1?logo=discourse&logoColor=959DA5&label=community&labelColor=333a41&message=join&color=611f69" alt="firezone Discourse" />
   </a>
   <img src="https://img.shields.io/static/v1?logo=github&logoColor=959DA5&label=Test&labelColor=333a41&message=passing&color=3AC358" alt="firezone" />
-  <img src="https://img.shields.io/static/v1?label=coverage&labelColor=333a41&message=66%&color=D7614A" alt="firezone" />
+  <a href="https://coveralls.io/github/firezone/firezone?branch=master">
+    <img src="https://coveralls.io/repos/github/firezone/firezone/badge.svg?branch=master" alt="Coverage Status" />
+  </a>
   <a href="https://twitter.com/intent/follow?screen_name=firezonevpn">
     <img src="https://img.shields.io/twitter/follow/firezonevpn?style=social&logo=twitter" alt="follow on Twitter">
   </a>
@@ -27,6 +29,16 @@
 
 ![Architecture](./apps/fz_http/assets/static/images/firezone-architecture-diagram-1.png)
 
+**Important**: Ensure you're reading the correct version of this README for the
+current version of Firezone you're running. Links to the README for past
+versions:
+
+* [0.1.19](https://github.com/firezone/firezone/tree/0.1.19)
+* [0.1.18](https://github.com/firezone/firezone/tree/0.1.18)
+* [0.1.17](https://github.com/firezone/firezone/tree/0.1.17)
+* [0.1.16](https://github.com/firezone/firezone/tree/0.1.17)
+* [0.1.15](https://github.com/firezone/firezone/tree/0.1.17)
+
 # Table of Contents
 * [What is Firezone?](#what-is-firezone)
   * [Features](#features)
@@ -37,6 +49,7 @@
   * [Configuration File](#configuration-file)
 * [Using Firezone](#using-firezone)
   * [Troubleshooting](#troubleshooting)
+  * [Upgrading](#upgrading)
   * [Uninstalling](#uninstalling)
 * [Getting Support](#getting-support)
 * [Developing and Contributing](#developing-and-contributing)
@@ -46,7 +59,7 @@
 
 Firezone is a Linux package to manage your WireGuard VPN through a simple web interface.
 
-![Firezone](./apps/fz_http/assets/static/images/firezone-usage.gif)
+![firezone-usage](https://user-images.githubusercontent.com/167144/141523912-14bdbe5a-9045-4d45-8aee-7c7f5b3d6325.gif)
 
 ## Features
 
@@ -192,7 +205,7 @@ the changes and apply them to the running system.
 
 Your Firezone installation can be managed via the `firezone-ctl` command, as shown below. Most subcommands require prefixing with `sudo`.
 
-```shell
+```console
 root@demo:~# firezone-ctl
 I don't know that command.
 omnibus-ctl: command (subcommand)
@@ -251,6 +264,18 @@ Service Management Commands:
 For any problems that arise, a good first bet is to check the Firezone logs.
 
 To view Firezone logs, run `sudo firezone-ctl tail`.
+
+## Upgrading
+
+Upgrading Firezone will disconnect all VPN connections and require shutting
+down the Web UI. We recommend a maintenance window of about an hour in case
+anything goes wrong during the upgrade.
+
+To upgrade Firezone, simply download the new OS package, install it over the existing installation with `sudo dpkg -i firezone_X.X.X.deb` or
+`sudo rpm -i firezone_X.X.X.rpm` and then run `sudo firezone-ctl reconfigure`.
+
+Occasionally problems arise. If you hit any, please let us know by [filing an
+issue](https://github.com/firezone/firezone/issues/new/choose).
 
 ## Uninstalling
 
