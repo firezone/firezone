@@ -1,0 +1,29 @@
+section.section.is-title-bar {
+  padding: $default-padding;
+  border-bottom: $light-border;
+
+  ul {
+    li {
+      display: inline-block;
+      padding: 0 $default-padding * .5 0 0;
+      font-size: $default-padding;
+      color: $title-bar-color;
+
+      &:after {
+        display: inline-block;
+        content: '/';
+        padding-left: $default-padding * .5;
+      }
+
+      &:last-child {
+        padding-right: 0;
+        font-weight: 900;
+        color: $title-bar-active-color;
+
+        &:after {
+          display: none;
+        }
+      }
+    }
+  }
+}

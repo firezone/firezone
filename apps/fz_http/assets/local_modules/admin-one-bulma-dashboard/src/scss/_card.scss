@@ -1,0 +1,48 @@
+.card:not(:last-child) {
+  margin-bottom: $default-padding;
+}
+
+.card {
+  border-radius: $radius-large;
+  border: $card-border;
+
+  &.has-table {
+    .card-content {
+      padding: 0;
+    }
+    .b-table {
+      border-radius: $radius-large;
+      overflow: hidden;
+    }
+  }
+
+  &.is-card-widget {
+    .card-content {
+      padding: $default-padding * .5;
+    }
+  }
+
+  .card-header {
+    border-bottom: 1px solid $base-color-light;
+  }
+
+  .card-content {
+    hr {
+      margin-left: $card-content-padding * -1;
+      margin-right: $card-content-padding * -1;
+    }
+  }
+
+  .is-widget-icon {
+    .icon {
+      width: 5rem;
+      height: 5rem;
+    }
+  }
+
+  .is-widget-label {
+    .subtitle {
+      color: $grey;
+    }
+  }
+}
