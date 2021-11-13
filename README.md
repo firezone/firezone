@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://user-images.githubusercontent.com/167144/134594125-fadeac64-990e-4d6f-9e69-8a04487e00e0.png" alt="firezone logo" width="500"/>
+  <img src="https://user-images.githubusercontent.com/52545545/141609942-b5434ee2-a769-4fc6-a437-7b85afb4228d.png" alt="firezone logo" width="500"/>
 </p>
 <p align="center">
   <a href="https://github.com/firezone/firezone/releases">
@@ -27,7 +27,7 @@
 
 <hr>
 
-![Architecture](https://user-images.githubusercontent.com/167144/134593363-870c982d-921b-4f0c-b210-e77c8860d9ca.png)
+![Architecture](https://user-images.githubusercontent.com/52545545/141609832-8656814b-80cc-47a2-9a25-6aec1f9c70a3.png)
 
 **Important**: Ensure you're reading the correct version of this README for the
 current version of Firezone you're running. Links to the README for past
