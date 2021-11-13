@@ -1,8 +1,10 @@
 <div>
   <.form let={f} for={@changeset} id="user-form" phx-target={@myself} phx-submit="save">
-    <div class="content">
-      <p>Change user email or enter new password below.</p>
-    </div>
+    <%= if @action == :edit do %>
+      <div class="content">
+        <p>Change user email or enter new password below.</p>
+      </div>
+    <% end %>
 
     <div class="field">
       <%= label f, :email, class: "label" %>

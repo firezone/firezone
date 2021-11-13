@@ -1,0 +1,103 @@
+/* We'll need some initial vars to use here */
+@import "node_modules/bulma/sass/utilities/initial-variables";
+
+/* Base: Size  */
+$size-base: 1rem;
+$default-padding: $size-base * 1.5;
+
+/* Default font */
+$family-sans-serif: "Nunito", sans-serif;
+
+/* Base color */
+$base-color: #2e323a;
+$base-color-light: rgba(24, 28, 33, .06);
+
+/* General overrides */
+$primary: $turquoise;
+$body-background-color: #f8f8f8;
+$link: $blue;
+$link-visited: $purple;
+$light-border: 1px solid $base-color-light;
+$hr-height: 1px;
+
+/* NavBar: specifics */
+$navbar-input-color: $grey-darker;
+$navbar-input-placeholder-color: $grey-lighter;
+$navbar-box-shadow: 0 1px 0 rgba(24,28,33,.04);
+$navbar-divider-border: 1px solid rgba($grey-lighter, .25);
+$navbar-item-h-padding: $default-padding * .75;
+$navbar-avatar-size: 1.75rem;
+
+/* Aside: Bulma override */
+$menu-item-radius: 0;
+$menu-list-link-padding: $size-base * .5 0;
+$menu-label-color: lighten($base-color, 25%);
+$menu-item-color: lighten($base-color, 30%);
+$menu-item-hover-color: $white;
+$menu-item-hover-background-color: darken($base-color, 3.5%);
+$menu-item-active-color: $white;
+$menu-item-active-background-color: darken($base-color, 2.5%);
+
+/* Aside: specifics */
+$aside-width: $size-base * 14;
+$aside-mobile-width: $size-base * 15;
+$aside-icon-width: $size-base * 3;
+$aside-submenu-font-size: $size-base * .95;
+$aside-box-shadow: none;
+$aside-background-color: $base-color;
+$aside-tools-background-color: darken($aside-background-color, 10%);
+$aside-tools-color: $white;
+
+/* Title Bar: specifics */
+$title-bar-color: $grey;
+$title-bar-active-color: $black-ter;
+
+/* Hero Bar: specifics */
+$hero-bar-background: $white;
+
+/* Card: Bulma override */
+$card-shadow: none;
+$card-header-shadow: none;
+
+/* Card: specifics */
+$card-border: 1px solid $base-color-light;
+$card-header-border-bottom-color: $base-color-light;
+
+/* Table: Bulma override */
+$table-cell-border: 1px solid $white-bis;
+
+/* Table: specifics */
+$table-avatar-size: $size-base * 1.5;
+$table-avatar-size-mobile: 25vw;
+
+/* Form */
+$checkbox-border: 1px solid $base-color;
+
+/* Modal card: Bulma override */
+$modal-card-head-background-color: $white-ter;
+$modal-card-title-size: $size-base;
+$modal-card-body-padding: $default-padding 20px;
+$modal-card-head-border-bottom: 1px solid $white-ter;
+$modal-card-foot-border-top: 0;
+
+/* Modal card: specifics */
+$modal-card-width: 40vw;
+$modal-card-width-mobile: 90vw;
+$modal-card-foot-background-color: $white-ter;
+
+/* Notification: Bulma override */
+$notification-padding: $default-padding * .75 $default-padding;
+
+/* Footer: Bulma override */
+$footer-background-color: $white;
+$footer-padding: $default-padding * .33 $default-padding;
+
+/* Footer: specifics */
+$footer-logo-height: $size-base * 2;
+
+/* Progress: Bulma override */
+$progress-bar-background-color: $grey-lighter;
+
+/* Icon: specifics */
+$icon-update-mark-size: $size-base * .5;
+$icon-update-mark-color: $yellow;
