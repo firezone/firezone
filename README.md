@@ -1,6 +1,5 @@
 <p align="center">
-  <img src="https://user-images.githubusercontent.com/52545545/141609885-1ac1396b-2485-4bcc-9ef4-d07209abde62.png" alt="firezone logo" width="500"/>
-
+  <img src="https://user-images.githubusercontent.com/52545545/141609942-b5434ee2-a769-4fc6-a437-7b85afb4228d.png" alt="firezone logo" width="500"/>
 </p>
 <p align="center">
   <a href="https://github.com/firezone/firezone/releases">
