@@ -1,0 +1,10 @@
+# Files
+.DS_Store
+npm-debug.log
+
+# Folders
+.idea/
+node_modules
+
+# Hot
+hot
