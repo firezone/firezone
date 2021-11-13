@@ -1,0 +1,13 @@
+@mixin transition($t) {
+  transition: $t 250ms ease-in-out 50ms;
+}
+
+@mixin icon-with-update-mark ($icon-base-width) {
+  .icon {
+    width: $icon-base-width;
+
+    &.has-update-mark:after {
+      right: ($icon-base-width / 2) - .85;
+    }
+  }
+}

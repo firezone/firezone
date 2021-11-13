@@ -1,0 +1,145 @@
+/* Firezone theme, using palette from https://app.getparade.com/firezoneinc/style-guide */
+
+/* Common variables */
+$primary-main: #FF7300;
+$primary-000: #331700;
+$primary-100: #5c2900;
+$primary-200: #7f3900;
+$primary-300: #c25700;
+$primary-400: #ff7605;
+$primary-500: #ff9a47;
+$primary-600: #ffbc85;
+$primary-700: #ffddc2;
+$primary-800: #fff1e5;
+$primary-900: #fff9f5;
+$accent-main: #5E00D6;
+$accent-000: #160033;
+$accent-100: #28005c;
+$accent-200: #37007f;
+$accent-300: #3400c2;
+$accent-400: #4805ff;
+$accent-500: #7847ff;
+$accent-600: #a585ff;
+$accent-700: #d2c2ff;
+$accent-800: #ece5ff;
+$accent-900: #f8f5ff;
+$interface-main: #1B140E;
+$interface-000: #1b140e;
+$interface-100: #4c3e33;
+$interface-200: #766a60;
+$interface-300: #90867f;
+$interface-400: #a7a3a0;
+$interface-500: #c7c4c2;
+$interface-600: #dfdedd;
+$interface-700: #ebebea;
+$interface-800: #f8f7f7;
+$interface-900: #fcfcfc;
+
+/* We'll need some initial vars to use here */
+@import "node_modules/bulma/sass/utilities/initial-variables";
+
+/* Base: Size  */
+$size-base: 1rem;
+$default-padding: $size-base * 1.5;
+
+/* Default font */
+$family-sans-serif: "Fira Sans", sans-serif;
+
+/* Text color */
+$text: $interface-200;
+$text-light: $interface-300;
+$text-strong: $interface-100;
+
+/* Base color */
+$base-color: $interface-main;
+$base-color-light: rgba(24, 28, 33, .06);
+
+/* General overrides */
+$primary: $accent-500;
+$body-background-color: $interface-900;
+$link: $accent-300;
+$link-visited: $accent-600;
+$light-border: 1px solid $base-color-light;
+$hr-height: 1px;
+
+/* NavBar: specifics */
+$navbar-input-color: $interface-100;
+$navbar-input-placeholder-color: $interface-600;
+$navbar-box-shadow: 0 1px 0 rgba(24,28,33,.04);
+$navbar-divider-border: 1px solid rgba($interface-600, .25);
+$navbar-item-h-padding: $default-padding * .75;
+$navbar-avatar-size: 1.75rem;
+
+/* Aside: Bulma override */
+$menu-item-radius: 0;
+$menu-list-link-padding: $size-base * .5 0;
+$menu-label-color: $interface-300;
+$menu-item-color: $interface-400;
+$menu-item-hover-color: $interface-900;
+$menu-item-hover-background-color: darken($base-color, 3.5%);
+$menu-item-active-color: $interface-900;
+$menu-item-active-background-color: darken($base-color, 2.5%);
+
+/* Aside: specifics */
+$aside-width: $size-base * 14;
+$aside-mobile-width: $size-base * 15;
+$aside-icon-width: $size-base * 3;
+$aside-submenu-font-size: $size-base * .95;
+$aside-box-shadow: none;
+$aside-background-color: $base-color;
+$aside-tools-background-color: darken($aside-background-color, 10%);
+$aside-tools-color: $interface-900;
+
+/* Title Bar: specifics */
+$title-bar-color: $interface-400;
+$title-bar-active-color: $interface-100;
+
+/* Hero Bar: specifics */
+$hero-bar-background: $interface-900;
+
+/* Card: Bulma override */
+$card-shadow: none;
+$card-header-shadow: none;
+
+/* Card: specifics */
+$card-border: 1px solid $base-color-light;
+$card-header-border-bottom-color: $base-color-light;
+
+/* Table: Bulma override */
+$table-cell-border: 1px solid $interface-800;
+
+/* Table: specifics */
+$table-avatar-size: $size-base * 1.5;
+$table-avatar-size-mobile: 25vw;
+
+/* Form */
+$checkbox-border: 1px solid $base-color;
+
+/* Modal card: Bulma override */
+$modal-card-head-background-color: $interface-800;
+$modal-card-title-size: $size-base;
+$modal-card-body-padding: $default-padding 20px;
+$modal-card-head-border-bottom: 1px solid $interface-800;
+$modal-card-foot-border-top: 0;
+
+/* Modal card: specifics */
+$modal-card-width: 40vw;
+$modal-card-width-mobile: 90vw;
+$modal-card-foot-background-color: $interface-800;
+
+/* Notification: Bulma override */
+$notification-padding: $default-padding * .75 $default-padding;
+
+/* Footer: Bulma override */
+$footer-background-color: $interface-900;
+$footer-padding: $default-padding * .33 $default-padding;
+
+/* Footer: specifics */
+$footer-logo-height: $size-base * 2;
+
+/* Progress: Bulma override */
+$progress-bar-background-color: $interface-600;
+
+/* Icon: specifics */
+$icon-update-mark-size: $size-base * .5;
+$icon-update-mark-color: $primary-main;

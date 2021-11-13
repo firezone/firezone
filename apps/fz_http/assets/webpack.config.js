@@ -43,7 +43,7 @@ module.exports = (env, options) => ({
         ]
       },
       {
-        test: /.(png|jpg|jpeg|gif|svg|woff|woff2|ttf|eot)$/,
+        test: /.(png|jpg|jpeg|gif|svg|woff|woff2|ttf|eot|xml|webmanifest)$/,
         use: "url-loader?limit=100000"
       }
     ]
