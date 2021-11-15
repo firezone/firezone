@@ -5,8 +5,6 @@ defmodule FzHttpWeb.LayoutView do
 
   require Logger
 
-  @github_sha Application.compile_env(:fz_http, :github_sha, "master")
-
   @doc """
   Generate a random feedback email to avoid spam.
   """
@@ -22,10 +20,11 @@ defmodule FzHttpWeb.LayoutView do
   end
 
   @doc """
-  The current github sha, used to link to our Github repo
+  The current github sha, used to link to our Github repo.
+  This is set during application compile time.
   """
   def github_sha do
-    @github_sha
+    Application.get_env(:fz_http, :github_sha, "master")
   end
 
   @doc """
