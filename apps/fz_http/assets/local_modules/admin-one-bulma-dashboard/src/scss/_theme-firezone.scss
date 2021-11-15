@@ -56,7 +56,7 @@ $base-color-light: rgba(24, 28, 33, .06);
 
 /* General overrides */
 $primary: $accent-500;
-$body-background-color: $interface-900;
+$body-background-color: $interface-800;
 $link: $accent-300;
 $link-visited: $accent-600;
 $light-border: 1px solid $base-color-light;
@@ -75,9 +75,9 @@ $menu-item-radius: 0;
 $menu-list-link-padding: $size-base * .5 0;
 $menu-label-color: $interface-300;
 $menu-item-color: $interface-400;
-$menu-item-hover-color: $interface-900;
+$menu-item-hover-color: $interface-800;
 $menu-item-hover-background-color: darken($base-color, 3.5%);
-$menu-item-active-color: $interface-900;
+$menu-item-active-color: $interface-800;
 $menu-item-active-background-color: darken($base-color, 2.5%);
 
 /* Aside: specifics */
@@ -88,14 +88,14 @@ $aside-submenu-font-size: $size-base * .95;
 $aside-box-shadow: none;
 $aside-background-color: $base-color;
 $aside-tools-background-color: darken($aside-background-color, 10%);
-$aside-tools-color: $interface-900;
+$aside-tools-color: $interface-800;
 
 /* Title Bar: specifics */
 $title-bar-color: $interface-400;
 $title-bar-active-color: $interface-100;
 
 /* Hero Bar: specifics */
-$hero-bar-background: $interface-900;
+$hero-bar-background: $interface-800;
 
 /* Card: Bulma override */
 $card-shadow: none;
@@ -106,7 +106,7 @@ $card-border: 1px solid $base-color-light;
 $card-header-border-bottom-color: $base-color-light;
 
 /* Table: Bulma override */
-$table-cell-border: 1px solid $interface-800;
+$table-cell-border: 1px solid $interface-700;
 
 /* Table: specifics */
 $table-avatar-size: $size-base * 1.5;
@@ -131,7 +131,7 @@ $modal-card-foot-background-color: $interface-800;
 $notification-padding: $default-padding * .75 $default-padding;
 
 /* Footer: Bulma override */
-$footer-background-color: $interface-900;
+$footer-background-color: $white;
 $footer-padding: $default-padding * .33 $default-padding;
 
 /* Footer: specifics */
