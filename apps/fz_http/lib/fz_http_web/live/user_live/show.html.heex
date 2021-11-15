@@ -23,33 +23,33 @@
         <div class="card-content">
           <div class="content">
             <%= render FzHttpWeb.SharedView, "user_details.html", user: @user %>
-
-            <footer class="card-footer">
-              <div class="field is-grouped card-footer-item">
-                <p class="control">
-                  <%= live_patch(to: Routes.user_show_path(@socket, :edit, @user), class: "button is-primary") do %>
-                    <span class="icon is-small">
-                      <i class="fas fa-edit"></i>
-                    </span>
-                    <span>Change Email or Password</span>
-                  <% end %>
-                </p>
-                <p class="control">
-                  <button
-                    class="button is-danger"
-                    data-confirm="Are you sure? This will permanently delete this user, all associated devices and instantly drop any active VPN sessions associated to this user."
-                    phx-click="delete_user"
-                    phx-value-user_id={@user.id}>
-                    <span class="icon is-small">
-                      <i class="fas fa-trash"></i>
-                    </span>
-                    <span>Delete User</span>
-                  </button>
-                </p>
-              </div>
-            </footer>
           </div>
         </div>
+
+        <footer class="card-footer">
+          <div class="field is-grouped card-footer-item">
+            <p class="control">
+              <%= live_patch(to: Routes.user_show_path(@socket, :edit, @user), class: "button is-primary") do %>
+                <span class="icon is-small">
+                  <i class="fas fa-edit"></i>
+                </span>
+                <span>Change Email or Password</span>
+              <% end %>
+            </p>
+            <p class="control">
+              <button
+                class="button is-danger"
+                data-confirm="Are you sure? This will permanently delete this user, all associated devices and instantly drop any active VPN sessions associated to this user."
+                phx-click="delete_user"
+                phx-value-user_id={@user.id}>
+                <span class="icon is-small">
+                  <i class="fas fa-trash"></i>
+                </span>
+                <span>Delete User</span>
+              </button>
+            </p>
+          </div>
+        </footer>
       </div>
     </div>
     <div class="tile is-parent">
