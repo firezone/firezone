@@ -84,7 +84,7 @@ defmodule FzHttpWeb.UserLive.IndexTest do
 
       {new_path, flash} = assert_redirect(view)
       assert flash["info"] == "User created successfully."
-      user = Users.list_users() |> List.last()
+      user = Users.get_user!(email: @valid_user_attrs["user"]["email"])
       assert new_path == Routes.user_show_path(conn, :show, user)
     end
 
