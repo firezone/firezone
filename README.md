@@ -57,7 +57,7 @@ versions:
 
 # What is Firezone?
 
-Firezone is a Linux package to manage your WireGuard VPN through a simple web interface.
+[Firezone](https://www.firez.one/) is a Linux package to manage your WireGuard VPN through a simple web interface.
 
 ![firezone-usage](https://user-images.githubusercontent.com/167144/141523912-14bdbe5a-9045-4d45-8aee-7c7f5b3d6325.gif)
 
