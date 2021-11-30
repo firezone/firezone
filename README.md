@@ -302,4 +302,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 See [LICENSE](LICENSE).
 
-WireGuard™ is a registered trademark of Jason A. Donenfeld.
+WireGuard® is a registered trademark of Jason A. Donenfeld.
