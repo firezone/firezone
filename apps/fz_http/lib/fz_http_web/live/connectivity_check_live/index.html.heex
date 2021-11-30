@@ -1,0 +1,41 @@
+<%= render FzHttpWeb.SharedView, "heading.html", page_title: @page_title %>
+
+<section class="section is-main-section">
+  <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
+
+  <div class="content">
+    <p>
+      Firezone periodically checks for WAN connectivity to the Internet and logs
+      the result here. This is used to determine the public IP address of this
+      server for populating the default endpoint field in device configurations.
+    </p>
+    <table class="table is-bordered is-hoverable is-striped is-fullwidth">
+      <thead>
+        <tr>
+          <th>Checked At</th>
+          <th>Resolved IP</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+      <%= for connectivity_check <- @connectivity_checks do %>
+        <tr>
+          <td id={"connectivity_check-#{connectivity_check.id}"}
+              phx-hook="FormatTimestamp"
+              data-timestamp={connectivity_check.inserted_at}>
+            …
+          </td>
+          <td><%= connectivity_check.response_body %></td>
+          <td>
+            <span
+              data-tooltip={"HTTP Response Code: #{connectivity_check.response_code}"}
+              class={connectivity_check_span_class(connectivity_check.response_code)}>
+              <i class={connectivity_check_icon_class(connectivity_check.response_code)}></i>
+            </span>
+          </td>
+        </tr>
+      <% end %>
+      </tbody>
+    </table>
+  </div>
+</section>

@@ -36,13 +36,17 @@ github_sha =
   end
 
 config :fz_http,
+  supervision_tree_mode: :full,
+  http_client: HTTPoison,
+  connectivity_checks_enabled: true,
+  connectivity_checks_interval: 3_600,
+  connectivity_checks_url: "https://ping-dev.firez.one/",
   github_sha: github_sha,
   cookie_signing_salt: "Z9eq8iof",
   ecto_repos: [FzHttp.Repo],
   admin_email: "firezone@localhost",
   default_admin_password: "firezone",
   events_module: FzHttpWeb.Events,
-  disable_signup: true,
   server_process_opts: [name: {:global, :fz_http_server}]
 
 config :fz_wall,

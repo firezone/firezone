@@ -35,7 +35,7 @@ directory node['firezone']['postgresql']['log_directory'] do
   recursive true
 end
 
-if node['firezone']['postgresql']['enable']
+if node['firezone']['postgresql']['enabled']
   enterprise_pg_cluster 'firezone' do
     data_dir node['firezone']['postgresql']['data_directory']
     encoding 'UTF8'

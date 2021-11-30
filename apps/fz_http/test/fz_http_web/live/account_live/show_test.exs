@@ -45,6 +45,26 @@ defmodule FzHttpWeb.AccountLive.ShowTest do
       assert flash["info"] == "Account updated successfully."
     end
 
+    test "doesn't allow empty email", %{authed_conn: conn} do
+      path = Routes.account_show_path(conn, :edit)
+      {:ok, view, _html} = live(conn, path)
+
+      test_view =
+        view
+        |> element("#account-edit")
+        |> render_submit(%{
+          "user" => %{
+            "email" => "",
+            "current_password" => "",
+            "password" => "",
+            "password_confirmation" => ""
+          }
+        })
+
+      refute_redirected(view, Routes.account_show_path(conn, :show))
+      assert test_view =~ "can&#39;t be blank"
+    end
+
     test "renders validation errors", %{authed_conn: conn} do
       path = Routes.account_show_path(conn, :edit)
       {:ok, view, _html} = live(conn, path)

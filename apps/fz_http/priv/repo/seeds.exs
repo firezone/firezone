@@ -10,7 +10,7 @@
 # We recommend using the bang functions (`insert!`, `update!`
 # and so on) as they will fail if something goes wrong.
 
-alias FzHttp.{Devices, Rules, Users}
+alias FzHttp.{Devices, ConnectivityChecks, Rules, Users}
 
 {:ok, user} =
   Users.create_user(%{
@@ -33,4 +33,20 @@ alias FzHttp.{Devices, Rules, Users}
   Rules.create_rule(%{
     device_id: device.id,
     destination: %Postgrex.INET{address: {0, 0, 0, 0}, netmask: 0}
+  })
+
+{:ok, _connectivity_check} =
+  ConnectivityChecks.create_connectivity_check(%{
+    response_headers: %{"Content-Type" => "text/plain"},
+    response_body: "127.0.0.1",
+    response_code: 200,
+    url: "https://ping-dev.firez.one/0.1.19"
+  })
+
+{:ok, _connectivity_check} =
+  ConnectivityChecks.create_connectivity_check(%{
+    response_headers: %{"Content-Type" => "text/plain"},
+    response_body: "127.0.0.1",
+    response_code: 400,
+    url: "https://ping-dev.firez.one/0.20.0"
   })

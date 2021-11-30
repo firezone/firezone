@@ -27,3 +27,6 @@ config :fz_http, FzHttpWeb.Endpoint,
 
 # Do not print debug messages in production
 config :logger, level: :info
+
+config :fz_http,
+  connectivity_check_url: "https://ping.firez.one/"
