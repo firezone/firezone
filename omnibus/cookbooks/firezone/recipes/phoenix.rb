@@ -49,7 +49,7 @@ template 'phoenix.nginx.conf' do
             app_directory: node['firezone']['app_directory'])
 end
 
-if node['firezone']['phoenix']['enable']
+if node['firezone']['phoenix']['enabled']
   component_runit_service 'phoenix' do
     package 'firezone'
     control ['t']

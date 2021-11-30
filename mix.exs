@@ -30,6 +30,9 @@ defmodule FirezoneUmbrella.MixProject do
         extras: ["README.md", "SECURITY.md", "CONTRIBUTING.md"]
       ],
       deps: deps(),
+      dialyzer: [
+        plt_file: {:no_warn, "priv/plts/dialyzer.plt"}
+      ],
       aliases: aliases(),
       default_release: :firezone,
       releases: [

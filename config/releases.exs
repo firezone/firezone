@@ -3,7 +3,7 @@
 # although such is generally not recommended and you have to
 # remember to add this file to your .gitignore.
 import Config
-alias FzCommon.CLI
+alias FzCommon.{CLI, FzInteger, FzString}
 
 # For releases, require that all these are set
 database_name = System.fetch_env!("DATABASE_NAME")
@@ -16,12 +16,19 @@ url_host = System.fetch_env!("URL_HOST")
 admin_email = System.fetch_env!("ADMIN_EMAIL")
 default_admin_password = System.fetch_env!("DEFAULT_ADMIN_PASSWORD")
 wireguard_interface_name = System.fetch_env!("WIREGUARD_INTERFACE_NAME")
-wireguard_endpoint = System.fetch_env!("WIREGUARD_ENDPOINT")
 wireguard_port = String.to_integer(System.fetch_env!("WIREGUARD_PORT"))
 nft_path = System.fetch_env!("NFT_PATH")
 wg_path = System.fetch_env!("WG_PATH")
 egress_interface = System.fetch_env!("EGRESS_INTERFACE")
 wireguard_public_key = System.fetch_env!("WIREGUARD_PUBLIC_KEY")
+
+connectivity_checks_enabled =
+  FzString.to_boolean(System.fetch_env!("CONNECTIVITY_CHECKS_ENABLED"))
+
+connectivity_checks_interval =
+  System.fetch_env!("CONNECTIVITY_CHECKS_INTERVAL")
+  |> String.to_integer()
+  |> FzInteger.clamp(60, 86_400)
 
 # secrets
 encryption_key = System.fetch_env!("DATABASE_ENCRYPTION_KEY")
@@ -31,9 +38,6 @@ cookie_signing_salt = System.fetch_env!("COOKIE_SIGNING_SALT")
 
 # Password is not needed if using bundled PostgreSQL, so use nil if it's not set.
 database_password = System.get_env("DATABASE_PASSWORD")
-
-config :fz_http,
-  disable_signup: true
 
 # Database configuration
 connect_opts = [
@@ -83,9 +87,10 @@ config :fz_wall,
 config :fz_vpn,
   wireguard_public_key: wireguard_public_key,
   wireguard_interface_name: wireguard_interface_name,
-  wireguard_port: wireguard_port,
-  wireguard_endpoint: wireguard_endpoint
+  wireguard_port: wireguard_port
 
 config :fz_http,
+  connectivity_checks_enabled: connectivity_checks_enabled,
+  connectivity_checks_interval: connectivity_checks_interval,
   admin_email: admin_email,
   default_admin_password: default_admin_password

@@ -52,10 +52,12 @@ defmodule FzHttp.DevicesTest do
 
     @attrs %{
       name: "Go hard or go home.",
-      allowed_ips: "0.0.0.0"
+      allowed_ips: "0.0.0.0",
+      use_default_allowed_ips: false
     }
 
     @valid_dns_servers_attrs %{
+      use_default_dns_servers: false,
       dns_servers: "1.1.1.1, 1.0.0.1, 2606:4700:4700::1111, 2606:4700:4700::1001"
     }
 
@@ -68,6 +70,7 @@ defmodule FzHttp.DevicesTest do
     }
 
     @valid_allowed_ips_attrs %{
+      use_default_allowed_ips: false,
       allowed_ips: "0.0.0.0/0, ::/0, ::0/0, 192.168.1.0/24"
     }
 

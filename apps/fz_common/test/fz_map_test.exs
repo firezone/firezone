@@ -18,4 +18,18 @@ defmodule FzCommon.FzMapTest do
       assert FzMap.compact(@data, "") == %{foo: "bar"}
     end
   end
+
+  describe "stringify_keys/1" do
+    @data %{foo: "bar", bar: "", map: %{foo: "bar"}}
+
+    test "stringifies the keys" do
+      assert FzMap.stringify_keys(@data) == %{
+               "foo" => "bar",
+               "bar" => "",
+               "map" => %{
+                 foo: "bar"
+               }
+             }
+    end
+  end
 end

@@ -5,7 +5,7 @@ defmodule FzHttp.Devices do
 
   import Ecto.Query, warn: false
   alias FzCommon.NameGenerator
-  alias FzHttp.{Devices.Device, Repo, Users.User}
+  alias FzHttp.{ConnectivityChecks, Devices.Device, Repo, Settings, Users.User}
 
   @ipv4_prefix "10.3.2."
   @ipv6_prefix "fd00:3:2::"
@@ -38,8 +38,8 @@ defmodule FzHttp.Devices do
     Repo.delete(device)
   end
 
-  def change_device(%Device{} = device) do
-    Device.update_changeset(device, %{})
+  def change_device(%Device{} = device, attrs \\ %{}) do
+    Device.update_changeset(device, attrs)
   end
 
   def rand_name do
@@ -61,5 +61,35 @@ defmodule FzHttp.Devices do
         allowed_ips: "#{ipv4_address(device)}/32,#{ipv6_address(device)}/128"
       }
     end
+  end
+
+  def allowed_ips(device) do
+    if device.use_default_allowed_ips do
+      Settings.default_device_allowed_ips()
+    else
+      device.allowed_ips
+    end
+  end
+
+  def dns_servers(device) do
+    if device.use_default_dns_servers do
+      Settings.default_device_dns_servers()
+    else
+      device.dns_servers
+    end
+  end
+
+  def endpoint(device) do
+    if device.use_default_endpoint do
+      Settings.default_device_endpoint() || ConnectivityChecks.endpoint()
+    else
+      device.endpoint
+    end
+  end
+
+  def defaults(changeset) do
+    ~w(use_default_allowed_ips use_default_dns_servers use_default_endpoint)a
+    |> Enum.map(fn field -> {field, Device.field(changeset, field)} end)
+    |> Map.new()
   end
 end

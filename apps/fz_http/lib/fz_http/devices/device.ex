@@ -6,10 +6,13 @@ defmodule FzHttp.Devices.Device do
   use Ecto.Schema
   import Ecto.Changeset
 
-  import FzCommon.FzNet,
+  import FzHttp.SharedValidators,
     only: [
-      valid_ip?: 1,
-      valid_cidr?: 1
+      validate_ip: 2,
+      validate_omitted: 2,
+      validate_list_of_ips: 2,
+      validate_no_duplicates: 2,
+      validate_list_of_ips_or_cidrs: 2
     ]
 
   alias FzHttp.Users.User
@@ -17,8 +20,12 @@ defmodule FzHttp.Devices.Device do
   schema "devices" do
     field :name, :string
     field :public_key, :string
-    field :allowed_ips, :string, read_after_writes: true
-    field :dns_servers, :string, read_after_writes: true
+    field :use_default_allowed_ips, :boolean, read_after_writes: true, default: true
+    field :use_default_dns_servers, :boolean, read_after_writes: true, default: true
+    field :use_default_endpoint, :boolean, read_after_writes: true, default: true
+    field :endpoint, :string
+    field :allowed_ips, :string
+    field :dns_servers, :string
     field :private_key, FzHttp.Encrypted.Binary
     field :server_public_key, :string
     field :remote_ip, EctoNetwork.INET
@@ -32,25 +39,30 @@ defmodule FzHttp.Devices.Device do
 
   def create_changeset(device, attrs) do
     device
-    |> cast(attrs, [
-      :allowed_ips,
-      :dns_servers,
-      :remote_ip,
-      :address,
-      :server_public_key,
-      :private_key,
-      :user_id,
-      :name,
-      :public_key
-    ])
+    |> shared_cast(attrs)
     |> shared_changeset()
   end
 
   def update_changeset(device, attrs) do
     device
+    |> shared_cast(attrs)
+    |> shared_changeset()
+    |> validate_required(:address)
+  end
+
+  def field(changeset, field) do
+    get_field(changeset, field)
+  end
+
+  defp shared_cast(device, attrs) do
+    device
     |> cast(attrs, [
+      :use_default_allowed_ips,
+      :use_default_dns_servers,
+      :use_default_endpoint,
       :allowed_ips,
       :dns_servers,
+      :endpoint,
       :remote_ip,
       :address,
       :server_public_key,
@@ -59,8 +71,6 @@ defmodule FzHttp.Devices.Device do
       :name,
       :public_key
     ])
-    |> shared_changeset()
-    |> validate_required(:address)
   end
 
   defp shared_changeset(changeset) do
@@ -72,9 +82,12 @@ defmodule FzHttp.Devices.Device do
       :server_public_key,
       :private_key
     ])
+    |> validate_required_unless_default([:allowed_ips, :dns_servers, :endpoint])
+    |> validate_omitted_if_default([:allowed_ips, :dns_servers, :endpoint])
     |> validate_list_of_ips_or_cidrs(:allowed_ips)
     |> validate_list_of_ips(:dns_servers)
     |> validate_no_duplicates(:dns_servers)
+    |> validate_ip(:endpoint)
     |> unique_constraint(:address)
     |> validate_number(:address, greater_than_or_equal_to: 2, less_than_or_equal_to: 254)
     |> unique_constraint(:public_key)
@@ -82,66 +95,25 @@ defmodule FzHttp.Devices.Device do
     |> unique_constraint([:user_id, :name])
   end
 
-  defp validate_no_duplicates(changeset, field) when is_atom(field) do
-    validate_change(changeset, field, fn _current_field, value ->
-      try do
-        trimmed = Enum.map(String.split(value, ","), fn el -> String.trim(el) end)
-        dupes = Enum.uniq(trimmed -- Enum.uniq(trimmed))
+  defp validate_omitted_if_default(changeset, fields) when is_list(fields) do
+    fields_to_validate =
+      defaulted_fields(changeset, fields)
+      |> Enum.map(fn field ->
+        String.trim(Atom.to_string(field), "use_default_") |> String.to_atom()
+      end)
 
-        if length(dupes) > 0 do
-          throw(dupes)
-        end
-
-        []
-      catch
-        dupes ->
-          [
-            {field,
-             "is invalid: duplicate DNS servers are not allowed: #{Enum.join(dupes, ", ")}"}
-          ]
-      end
-    end)
+    validate_omitted(changeset, fields_to_validate)
   end
 
-  defp validate_list_of_ips(changeset, field) when is_atom(field) do
-    validate_change(changeset, field, fn _current_field, value ->
-      try do
-        for ip <- String.split(value, ",") do
-          unless valid_ip?(String.trim(ip)) do
-            throw(ip)
-          end
-        end
-
-        []
-      catch
-        ip ->
-          [{field, "is invalid: #{String.trim(ip)} is not a valid IPv4 / IPv6 address"}]
-      end
-    end)
+  defp validate_required_unless_default(changeset, fields) when is_list(fields) do
+    fields_as_atoms = Enum.map(fields, fn field -> String.to_atom("use_default_#{field}") end)
+    fields_to_validate = fields_as_atoms -- defaulted_fields(changeset, fields)
+    validate_required(changeset, fields_to_validate)
   end
 
-  defp validate_list_of_ips_or_cidrs(changeset, field) when is_atom(field) do
-    validate_change(changeset, field, fn _current_field, value ->
-      try do
-        for ip_or_cidr <- String.split(value, ",") do
-          trimmed_ip_or_cidr = String.trim(ip_or_cidr)
-
-          unless valid_ip?(trimmed_ip_or_cidr) or valid_cidr?(trimmed_ip_or_cidr) do
-            throw(ip_or_cidr)
-          end
-        end
-
-        []
-      catch
-        ip_or_cidr ->
-          [
-            {field,
-             """
-             is invalid: #{String.trim(ip_or_cidr)} is not a valid IPv4 / IPv6 address or \
-             CIDR range\
-             """}
-          ]
-      end
-    end)
+  defp defaulted_fields(changeset, fields) do
+    fields
+    |> Enum.map(fn field -> String.to_atom("use_default_#{field}") end)
+    |> Enum.filter(fn field -> get_field(changeset, field) end)
   end
 end

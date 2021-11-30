@@ -34,10 +34,13 @@
               </dd>
 
               <dt><strong>Allowed IPs</strong></dt>
-              <dd><%= @device.allowed_ips %></dd>
+              <dd><%= @allowed_ips %></dd>
 
               <dt><strong>DNS Servers</strong></dt>
-              <dd><%= @device.dns_servers %></dd>
+              <dd><%= @dns_servers || "None" %></dd>
+
+              <dt><strong>Endpoint</strong></dt>
+              <dd><%= @endpoint %></dd>
 
               <dt><strong>Public key</strong></dt>
               <dd class="code"><%= @device.public_key %></dd>
@@ -88,12 +91,12 @@
 [Interface]
 PrivateKey = <%= @device.private_key %>
 Address = <%= FzHttp.Devices.ipv4_address(@device) %>/32, <%= FzHttp.Devices.ipv6_address(@device) %>/128
-DNS = <%= @device.dns_servers %>
+<%= @dns_servers %>
 
 [Peer]
 PublicKey = <%= @device.server_public_key %>
-AllowedIPs = <%= @device.allowed_ips %>
-Endpoint = <%= @wireguard_endpoint %>:<%= @wireguard_port %></code></pre>
+AllowedIPs = <%= @allowed_ips %>
+Endpoint = <%= @endpoint %>:<%= @wireguard_port %></code></pre>
           <hr>
           <h6 class="is-6 title">
             Or scan the QR code with your mobile phone:

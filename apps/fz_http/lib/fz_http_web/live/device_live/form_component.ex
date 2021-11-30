@@ -4,15 +4,30 @@ defmodule FzHttpWeb.DeviceLive.FormComponent do
   """
   use FzHttpWeb, :live_component
 
-  alias FzHttp.Devices
+  alias FzHttp.{ConnectivityChecks, Devices, Settings}
 
   def update(assigns, socket) do
-    changeset = Devices.change_device(assigns.device)
+    device = assigns.device
+    changeset = Devices.change_device(device)
+    default_device_endpoint = Settings.default_device_endpoint() || ConnectivityChecks.endpoint()
 
     {:ok,
      socket
      |> assign(assigns)
+     |> assign(Devices.defaults(changeset))
+     |> assign(:default_device_allowed_ips, Settings.default_device_allowed_ips())
+     |> assign(:default_device_dns_servers, Settings.default_device_dns_servers())
+     |> assign(:default_device_endpoint, default_device_endpoint)
      |> assign(:changeset, changeset)}
+  end
+
+  def handle_event("change", %{"device" => device_params}, socket) do
+    changeset = Devices.change_device(socket.assigns.device, device_params)
+
+    {:noreply,
+     socket
+     |> assign(:changeset, changeset)
+     |> assign(Devices.defaults(changeset))}
   end
 
   def handle_event("save", %{"device" => device_params}, socket) do

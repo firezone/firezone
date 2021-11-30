@@ -24,9 +24,6 @@ defmodule FzHttpWeb.Router do
     get "/", DeviceController, :index
     resources "/session", SessionController, only: [:new, :create, :delete], singleton: true
 
-    live "/account", AccountLive.Show, :show
-    live "/account/edit", AccountLive.Show, :edit
-
     live "/users", UserLive.Index, :index
     live "/users/new", UserLive.Index, :new
     live "/users/:id", UserLive.Show, :show
@@ -37,6 +34,13 @@ defmodule FzHttpWeb.Router do
     live "/devices", DeviceLive.Index, :index
     live "/devices/:id", DeviceLive.Show, :show
     live "/devices/:id/edit", DeviceLive.Show, :edit
+
+    live "/settings/default", SettingLive.Default, :default
+
+    live "/account", AccountLive.Show, :show
+    live "/account/edit", AccountLive.Show, :edit
+
+    live "/connectivity_checks", ConnectivityCheckLive.Index, :index
 
     get "/sign_in/:token", SessionController, :create
     delete "/user", UserController, :delete
