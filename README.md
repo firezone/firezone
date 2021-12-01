@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://user-images.githubusercontent.com/52545545/141609942-b5434ee2-a769-4fc6-a437-7b85afb4228d.png" alt="firezone logo" width="500"/>
+  <img src="https://user-images.githubusercontent.com/52545545/144147936-39f3e416-8ba0-4f24-915e-f0515f85bb64.png" alt="firezone logo" width="500"/>
 </p>
 <p align="center">
   <a href="https://github.com/firezone/firezone/releases">
@@ -27,7 +27,7 @@
 
 <hr>
 
-![Architecture](https://user-images.githubusercontent.com/52545545/141609832-8656814b-80cc-47a2-9a25-6aec1f9c70a3.png)
+![Architecture](https://user-images.githubusercontent.com/52545545/144147802-e6d1c62b-e567-45e4-be96-46a06cf80faa.png)
 
 **Important**: Ensure you're reading the correct version of this README for the
 current version of Firezone you're running. Links to the README for past
@@ -59,7 +59,7 @@ versions:
 
 [Firezone](https://www.firez.one/) is a Linux package to manage your WireGuard VPN through a simple web interface.
 
-![firezone-usage](https://user-images.githubusercontent.com/167144/141523912-14bdbe5a-9045-4d45-8aee-7c7f5b3d6325.gif)
+![firezone-usage](https://user-images.githubusercontent.com/52545545/144147668-d06e6bd2-6e38-4cce-a3f6-9e6f379532bd.gif)
 
 ## Features
 
