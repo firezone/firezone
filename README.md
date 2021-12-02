@@ -103,7 +103,10 @@ generate a free SSL cert for your domain.
 ### Security Considerations
 
 Firezone is **beta** software. We highly recommend **limiting network access to
-the Web UI** to prevent exposing it to the public Internet.
+the Web UI** (by default port tcp/443) to prevent exposing it to the public Internet.
+
+The WireGuard listen port (by default port udp/51821) should be exposed to allow user
+devices to connect.
 
 ## Supported Linux Distributions
 
