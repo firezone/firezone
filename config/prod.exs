@@ -29,4 +29,4 @@ config :fz_http, FzHttpWeb.Endpoint,
 config :logger, level: :info
 
 config :fz_http,
-  connectivity_check_url: "https://ping.firez.one/"
+  connectivity_checks_url: "https://ping.firez.one/"
