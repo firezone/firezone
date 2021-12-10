@@ -19,7 +19,7 @@ defmodule FzHttpWeb.ConnCase do
 
   alias Ecto.Adapters.SQL.Sandbox
 
-  alias FzHttp.Fixtures
+  alias FzHttp.SessionsFixtures
 
   using do
     quote do
@@ -40,7 +40,7 @@ defmodule FzHttpWeb.ConnCase do
   end
 
   def authed_conn do
-    session = Fixtures.session()
+    session = SessionsFixtures.session()
 
     {session.id,
      new_conn()

@@ -10,7 +10,6 @@ defmodule FzHttp.Users.User do
   import Ecto.Changeset
   import FzHttp.Users.PasswordHelpers
 
-  alias FzCommon.FzMap
   alias FzHttp.Devices.Device
 
   schema "users" do
@@ -62,7 +61,7 @@ defmodule FzHttp.Users.User do
     |> validate_required([:sign_in_token, :sign_in_token_created_at])
   end
 
-  # Password updated with user logged in
+  # If password isn't being changed, remove it from list of attributes to validate
   def update_changeset(
         user,
         %{
@@ -71,16 +70,24 @@ defmodule FzHttp.Users.User do
           "current_password" => nil
         } = attrs
       ) do
-    update_changeset(user, FzMap.compact(attrs))
+    update_changeset(
+      user,
+      Map.drop(attrs, ["password", "password_confirmation", "current_password"])
+    )
   end
 
+  # If password isn't being changed, remove it from list of attributes to validate
   def update_changeset(
         user,
         %{"password" => "", "password_confirmation" => "", "current_password" => ""} = attrs
       ) do
-    update_changeset(user, FzMap.compact(attrs, ""))
+    update_changeset(
+      user,
+      Map.drop(attrs, ["password", "password_confirmation", "current_password"])
+    )
   end
 
+  # Password and other fields are being changed
   def update_changeset(
         user,
         %{
@@ -109,7 +116,7 @@ defmodule FzHttp.Users.User do
           "password_confirmation" => ""
         } = attrs
       ) do
-    update_changeset(user, FzMap.compact(attrs, ""))
+    update_changeset(user, Map.drop(attrs, ["password", "password_confirmation"]))
   end
 
   # Password updated from token or admin

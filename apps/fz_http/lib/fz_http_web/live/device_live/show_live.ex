@@ -51,11 +51,34 @@ defmodule FzHttpWeb.DeviceLive.Show do
         device: device,
         user: Users.get_user!(device.user_id),
         page_title: device.name,
-        wireguard_endpoint: Application.fetch_env!(:fz_vpn, :wireguard_endpoint),
+        allowed_ips: Devices.allowed_ips(device),
+        dns_servers: dns_servers(device),
+        endpoint: Devices.endpoint(device),
         wireguard_port: Application.fetch_env!(:fz_vpn, :wireguard_port)
       )
     else
       not_authorized(socket)
     end
+  end
+
+  defp dns_servers(device) when is_struct(device) do
+    dns_servers = Devices.dns_servers(device)
+
+    if dns_servers_empty?(dns_servers) do
+      ""
+    else
+      "DNS = #{dns_servers}"
+    end
+  end
+
+  defp dns_servers_empty?(nil), do: true
+
+  defp dns_servers_empty?(dns_servers) when is_binary(dns_servers) do
+    len =
+      dns_servers
+      |> String.trim()
+      |> String.length()
+
+    len == 0
   end
 end

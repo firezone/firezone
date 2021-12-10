@@ -1,0 +1,49 @@
+<%= render FzHttpWeb.SharedView, "heading.html", page_title: @page_title %>
+
+<section class="section is-main-section">
+  <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
+
+  <div class="tile is-ancestor is-flex-wrap-wrap">
+    <div class="tile is-parent">
+      <div class="card tile is-child">
+        <header class="card-header">
+          <p class="card-header-title">Device</p>
+        </header>
+        <div class="card-content">
+          <div class="content">
+            <%= live_component(
+                @socket,
+                FzHttpWeb.SettingLive.FormComponent,
+                label_text: "Allowed IPs",
+                placeholder: nil,
+                changeset: @changesets["default.device.allowed_ips"],
+                help_text: @help_texts.allowed_ips,
+                id: :allowed_ips_form_component) %>
+
+            <hr>
+
+            <%= live_component(
+                @socket,
+                FzHttpWeb.SettingLive.FormComponent,
+                label_text: "DNS Servers",
+                placeholder: nil,
+                changeset: @changesets["default.device.dns_servers"],
+                help_text: @help_texts.dns_servers,
+                id: :dns_servers_form_component) %>
+
+            <hr>
+
+            <%= live_component(
+                @socket,
+                FzHttpWeb.SettingLive.FormComponent,
+                label_text: "Endpoint",
+                placeholder: @endpoint_placeholder,
+                changeset: @changesets["default.device.endpoint"],
+                help_text: @help_texts.endpoint,
+                id: :endpoint_form_component) %>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

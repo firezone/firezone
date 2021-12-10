@@ -58,6 +58,7 @@ defmodule FzHttp.MixProject do
       {:cloak_ecto, "~> 1.2"},
       {:excoveralls, "~> 0.14", only: :test},
       {:floki, ">= 0.0.0", only: :test},
+      {:httpoison, "~> 1.8"},
       {:argon2_elixir, "~> 2.0"},
       {:phoenix_pubsub, "~> 2.0"},
       {:phoenix_ecto, "~> 4.4"},

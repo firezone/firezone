@@ -46,7 +46,7 @@ template 'nginx.conf' do
   variables(nginx: node['firezone']['nginx'])
 end
 
-if node['firezone']['nginx']['enable']
+if node['firezone']['nginx']['enabled']
   component_runit_service 'nginx' do
     package 'firezone'
     action :enable

@@ -16,7 +16,7 @@ directory node['firezone']['wireguard']['log_directory'] do
   recursive true
 end
 
-if node['firezone']['wireguard']['enable']
+if node['firezone']['wireguard']['enabled']
   component_runit_service 'wireguard' do
     package 'firezone'
     action :enable

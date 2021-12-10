@@ -13,6 +13,12 @@ repos:
         language: system
         pass_filenames: false
         files: \.exs*$
+      - id: mix-analysis
+        name: 'elixir: mix dialyzer'
+        entry: mix dialyzer --format dialyxir
+        language: system
+        pass_filenames: false
+        files: \.exs*$
       - id: mix-compile
         name: 'elixir: mix compile'
         entry: mix compile --force --warnings-as-errors
