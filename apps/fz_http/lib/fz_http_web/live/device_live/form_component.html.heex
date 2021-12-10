@@ -1,8 +1,7 @@
 <div>
-  <.form let={f} for={@changeset} id="edit-device" phx-target={@myself} phx-submit="save">
+  <.form let={f} for={@changeset} id="edit-device" phx-change="change" phx-target={@myself} phx-submit="save">
     <div class="field">
       <%= label f, :name, class: "label" %>
-
       <div class="control">
         <%= text_input f, :name, class: "input" %>
       </div>
@@ -12,10 +11,26 @@
     </div>
 
     <div class="field">
-      <%= label f, :allowed_ips, "Allowed IPs", class: "label" %>
-
+      <%= label f, :use_default_allowed_ips, "Use Default Allowed IPs", class: "label" %>
       <div class="control">
-        <%= text_input f, :allowed_ips, class: "input" %>
+        <label class="radio">
+          <%= radio_button f, :use_default_allowed_ips, true %>
+          Yes
+        </label>
+        <label class="radio">
+          <%= radio_button f, :use_default_allowed_ips, false %>
+          No
+        </label>
+      </div>
+      <p class="help">
+        Default: <%= @default_device_allowed_ips %>
+      </p>
+    </div>
+
+    <div class="field">
+      <%= label f, :allowed_ips, "Allowed IPs", class: "label" %>
+      <div class="control">
+        <%= text_input f, :allowed_ips, class: "input", disabled: @use_default_allowed_ips %>
       </div>
       <p class="help is-danger">
         <%= error_tag f, :allowed_ips %>
@@ -23,13 +38,57 @@
     </div>
 
     <div class="field">
-      <%= label f, :dns_servers, "DNS Servers", class: "label" %>
-
+      <%= label f, :use_default_dns_servers, "Use Default DNS Servers", class: "label" %>
       <div class="control">
-        <%= text_input f, :dns_servers, class: "input" %>
+        <label class="radio">
+          <%= radio_button f, :use_default_dns_servers, true %>
+          Yes
+        </label>
+        <label class="radio">
+          <%= radio_button f, :use_default_dns_servers, false %>
+          No
+        </label>
+      </div>
+      <p class="help">
+        Default: <%= @default_device_dns_servers %>
+      </p>
+    </div>
+
+    <div class="field">
+      <%= label f, :dns_servers, "DNS Servers", class: "label" %>
+      <div class="control">
+        <%= text_input f, :dns_servers, class: "input", disabled: @use_default_dns_servers %>
       </div>
       <p class="help is-danger">
         <%= error_tag f, :dns_servers %>
+      </p>
+    </div>
+
+    <div class="field">
+      <%= label f, :use_default_endpoint, "Use Default Endpoint", class: "label" %>
+      <div class="control">
+        <label class="radio">
+          <%= radio_button f, :use_default_endpoint, true %>
+          Yes
+        </label>
+        <label class="radio">
+          <%= radio_button f, :use_default_endpoint, false %>
+          No
+        </label>
+      </div>
+      <p class="help">
+        Default: <%= @default_device_endpoint %>
+      </p>
+    </div>
+
+    <div class="field">
+      <%= label f, :endpoint, "Server Endpoint", class: "label" %>
+      <p>The IP of the server this device should connect to.</p>
+      <div class="control">
+        <%= text_input f, :endpoint, class: "input", disabled: @use_default_endpoint %>
+      </div>
+      <p class="help is-danger">
+        <%= error_tag f, :endpoint %>
       </p>
     </div>
 

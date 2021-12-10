@@ -6,7 +6,7 @@ defmodule FzHttpWeb.AccountLive.Show do
 
   alias FzHttp.Users
 
-  @impl true
+  @impl Phoenix.LiveView
   def mount(params, session, socket) do
     {:ok,
      socket
@@ -14,7 +14,7 @@ defmodule FzHttpWeb.AccountLive.Show do
      |> assign(:page_title, "Account")}
   end
 
-  @impl true
+  @impl Phoenix.LiveView
   def handle_params(_params, _url, socket) do
     {:noreply, socket}
   end

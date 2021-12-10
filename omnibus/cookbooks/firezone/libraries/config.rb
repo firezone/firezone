@@ -221,6 +221,7 @@ class Firezone
     def self.app_env(attributes, reject = [])
       attributes = attributes.reject { |k| reject.include?(k) }
 
+      # NOTE: All these variables must be Strings
       env = {
         'EGRESS_INTERFACE' => attributes['egress_interface'],
         'WG_PATH' => "#{attributes['install_directory']}/embedded/bin/wg",
@@ -235,9 +236,10 @@ class Firezone
         'URL_HOST' => attributes['fqdn'],
         'ADMIN_EMAIL' => attributes['admin_email'],
         'WIREGUARD_INTERFACE_NAME' => attributes['wireguard']['interface_name'],
-        'WIREGUARD_ENDPOINT' => attributes['wireguard']['endpoint'],
         'WIREGUARD_PORT' => attributes['wireguard']['port'].to_s,
         'WIREGUARD_PUBLIC_KEY' => attributes['wireguard_public_key'],
+        'CONNECTIVITY_CHECKS_ENABLED' => attributes['connectivity_checks']['enabled'].to_s,
+        'CONNECTIVITY_CHECKS_INTERVAL' => attributes['connectivity_checks']['interval'].to_s,
 
         # secrets
         'SECRET_KEY_BASE' => attributes['secret_key_base'],

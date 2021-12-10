@@ -17,10 +17,6 @@
     <meta name="msapplication-config" content="/browserconfig.xml" />
     <meta name="msapplication-TileColor" content="331700">
     <meta name="theme-color" content="331700">
-
-    <!-- Fonts -->
-    <link rel="dns-prefetch" href="https://fonts.gstatic.com">
-    <link href="https://fonts.googleapis.com/css?family=Fira%20Sans" rel="stylesheet" type="text/css">
   </head>
   <body>
 <div id="app">
@@ -44,8 +40,8 @@
           </a>
           <div class="navbar-dropdown">
             <%= link(to: Routes.account_show_path(@conn, :show), class: "navbar-item") do %>
-              <span class="icon"><i class="mdi mdi-settings"></i></span>
-              <span>Settings</span>
+              <span class="icon"><i class="mdi mdi-account"></i></span>
+              <span>Account Settings</span>
             <% end %>
             <hr class="navbar-divider">
             <%= link(to: Routes.session_path(@conn, :delete), method: :delete, class: "navbar-item") do %>
@@ -78,7 +74,7 @@
         </li>
         <li>
           <%= link(to: Routes.device_index_path(@conn, :index), class: nav_class(@conn.request_path, "devices")) do %>
-            <span class="icon"><i class="mdi mdi-laptop-windows"></i></span>
+            <span class="icon"><i class="mdi mdi-laptop"></i></span>
             <span class="menu-item-label">Devices</span>
           <% end %>
         </li>
@@ -92,9 +88,24 @@
       <p class="menu-label">Settings</p>
       <ul class="menu-list">
         <li>
+          <%= link(to: Routes.setting_default_path(@conn, :default), class: nav_class(@conn.request_path, "defaults")) do %>
+            <span class="icon"><i class="mdi mdi-cog"></i></span>
+            <span class="menu-item-label">Defaults</span>
+          <% end %>
+        </li>
+        <li>
           <%= link(to: Routes.account_show_path(@conn, :show), class: nav_class(@conn.request_path, "account")) do %>
             <span class="icon"><i class="mdi mdi-account"></i></span>
             <span class="menu-item-label">Account</span>
+          <% end %>
+        </li>
+      </ul>
+      <p class="menu-label">Diagnostics</p>
+      <ul class="menu-list">
+        <li>
+          <%= link(to: Routes.connectivity_check_index_path(@conn, :index), class: nav_class(@conn.request_path, "connectivity_checks")) do %>
+            <span class="icon"><i class="mdi mdi-access-point"></i></span>
+            <span class="menu-item-label">Connectivity Checks</span>
           <% end %>
         </li>
       </ul>
@@ -109,7 +120,7 @@
         <div class="level-left">
           <div class="level-item">
             <%= link(to: "mailto:" <> feedback_recipient()) do %>
-              Leave us feedback!
+              Click here to leave feedback
             <% end %>
           </div>
         </div>
@@ -129,7 +140,5 @@
     </div>
   </footer>
 </div>
-
-<link rel="stylesheet" href="https://cdn.materialdesignicons.com/4.9.95/css/materialdesignicons.min.css">
 </body>
 </html>

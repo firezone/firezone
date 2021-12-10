@@ -37,8 +37,12 @@ config :fz_http, FzHttpWeb.Endpoint,
   ],
   server: true
 
-config :fz_http, :sql_sandbox, true
-config :fz_http, :events_module, FzHttpWeb.MockEvents
+config :fz_http,
+  supervision_tree_mode: :test,
+  connectivity_checks_interval: 86_400,
+  sql_sandbox: true,
+  events_module: FzHttpWeb.MockEvents,
+  http_client: FzHttp.MockHttpClient
 
 # Print only warnings and errors during test
 config :logger, level: :warn

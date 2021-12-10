@@ -16,7 +16,7 @@ require 'etc'
 #
 #     { "postgresql": { "enable": false } }
 #
-# for example, it will set the node['firezone']['postgresql']['enable'] attribute to false.
+# for example, it will set the node['firezone']['postgresql']['enabled'] attribute to false.
 
 # ## Top-level attributes
 #
@@ -66,7 +66,7 @@ default['firezone']['sysvinit_id'] = 'SUP'
 
 # These attributes control Firezone-specific portions of the Nginx
 # configuration and the virtual host for the Firezone Phoenix app.
-default['firezone']['nginx']['enable'] = true
+default['firezone']['nginx']['enabled'] = true
 default['firezone']['nginx']['force_ssl'] = true
 default['firezone']['nginx']['non_ssl_port'] = 80
 default['firezone']['nginx']['ssl_port'] = 443
@@ -80,7 +80,7 @@ default['firezone']['nginx']['log_x_forwarded_for'] = false
 default['firezone']['nginx']['redirect_to_canonical'] = false
 
 # Controls nginx caching, used to cache some endpoints
-default['firezone']['nginx']['cache']['enable'] = false
+default['firezone']['nginx']['cache']['enabled'] = false
 default['firezone']['nginx']['cache']['directory'] = "#{node['firezone']['var_directory']}/nginx/cache"
 
 # These attributes control the main nginx.conf, including the events and http
@@ -142,7 +142,7 @@ default['firezone']['nginx']['default']['modules'] = []
 # ### Use the bundled Postgres instance (default, recommended):
 #
 
-default['firezone']['postgresql']['enable'] = true
+default['firezone']['postgresql']['enabled'] = true
 default['firezone']['postgresql']['username'] = node['firezone']['user']
 default['firezone']['postgresql']['data_directory'] = "#{node['firezone']['var_directory']}/postgresql/13.3/data"
 
@@ -150,7 +150,7 @@ default['firezone']['postgresql']['data_directory'] = "#{node['firezone']['var_d
 #
 # Disable the provided Postgres instance and connect to your own:
 #
-# default['firezone']['postgresql']['enable'] = false
+# default['firezone']['postgresql']['enabled'] = false
 # default['firezone']['database']['user'] = 'my_db_user_name'
 # default['firezone']['database']['name'] = 'my_db_name''
 # default['firezone']['database']['host'] = 'my.db.server.address'
@@ -189,20 +189,20 @@ default['firezone']['database']['extensions'] = { 'plpgsql' => true, 'pg_trgm' =
 # default['firezone']['database']['password'] = 'change_me'
 
 # ## Phoenix
-#
+
 # ### The Phoenix web app for Firezone
-default['firezone']['phoenix']['enable'] = true
+default['firezone']['phoenix']['enabled'] = true
 default['firezone']['phoenix']['port'] = 13000
 default['firezone']['phoenix']['log_directory'] = "#{node['firezone']['log_directory']}/phoenix"
 default['firezone']['phoenix']['log_rotation']['file_maxbytes'] = 104857600
 default['firezone']['phoenix']['log_rotation']['num_to_keep'] = 10
 
 # ## WireGuard
-#
+
 # ### Interface Management
 # Enable management of the WireGuard interface itself. Set this to false if you
 # want to manually create your WireGuard interface and manage its interface properties.
-default['firezone']['wireguard']['enable'] = true
+default['firezone']['wireguard']['enabled'] = true
 default['firezone']['wireguard']['log_directory'] = "#{node['firezone']['log_directory']}/wireguard"
 default['firezone']['wireguard']['log_rotation']['file_maxbytes'] = 104857600
 default['firezone']['wireguard']['log_rotation']['num_to_keep'] = 10
@@ -213,13 +213,6 @@ default['firezone']['wireguard']['interface_name'] = 'wg-firezone'
 default['firezone']['wireguard']['port'] = 51820
 # WireGuard interface MTU
 default['firezone']['wireguard']['mtu'] = 1420
-
-# ### WireGuard endpoint
-# IPv4, IPv6, or hostname that device configs will use to connect to this server.
-# If left blank, this will be set to the IPv4 address of the default egress interface.
-# Override this to your publicly routable IP if you're behind a NAT and need to
-# set up port forwarding to your Firezone server.
-default['firezone']['wireguard']['endpoint'] = nil
 
 # ## Runit
 
@@ -246,9 +239,9 @@ default['firezone']['ssl']['ssl_dhparam'] = nil
 
 # These are used in creating a self-signed cert if you haven't brought your own.
 default['firezone']['ssl']['country_name'] = 'US'
-default['firezone']['ssl']['state_name'] = 'WA'
-default['firezone']['ssl']['locality_name'] = 'Seattle'
-default['firezone']['ssl']['company_name'] = 'My Firezone'
+default['firezone']['ssl']['state_name'] = 'CA'
+default['firezone']['ssl']['locality_name'] = 'San Francisco'
+default['firezone']['ssl']['company_name'] = 'My Company'
 default['firezone']['ssl']['organizational_unit_name'] = 'Operations'
 default['firezone']['ssl']['email_address'] = 'you@example.com'
 
@@ -289,3 +282,18 @@ default['firezone']['smtp_address'] = nil
 default['firezone']['smtp_password'] = nil
 default['firezone']['smtp_port'] = nil
 default['firezone']['smtp_user_name'] = nil
+
+# ## Diagnostics Settings
+
+# ### Connectivity Checks
+#
+# By default, Firezone periodically checks for WAN connectivity to the Internet
+# by issuing a POST request with an empty body to https://ping.firez.one. This
+# is used to determine the server's publicly routable IP address for populating
+# device configurations and setting up firewall rules. Set this to false to
+# disable.
+default['firezone']['connectivity_checks']['enabled'] = true
+
+# Amount of time to sleep between connectivity checks, in seconds.
+# Default: 3600 (1 hour). Minimum: 60 (1 minute). Maximum: 86400 (1 day).
+default['firezone']['connectivity_checks']['interval'] = 3_600
