@@ -17,6 +17,41 @@
       <div class="card tile is-child">
         <header class="card-header">
           <p class="card-header-title">Details</p>
+          <div class="dropdown is-right" id="details-dropdown">
+            <div class="dropdown-trigger">
+              <button
+                id="details-dropdown-button"
+                phx-hook="ToggleDropdown"
+                data-target="details-dropdown"
+                class="card-header-icon"
+                aria-controls="dropdown-menu"
+                aria-label="more options">
+                <span class="icon">
+                  <i class="mdi mdi-menu" aria-hidden="true"></i>
+                </span>
+              </button>
+            </div>
+            <div role="menu" class="dropdown-menu" id="details-menu">
+              <div class="dropdown-content">
+                <%= live_patch(to: Routes.device_show_path(@socket, :edit, @device), class: "dropdown-item") do %>
+                  <span class="icon is-small">
+                    <i class="fas fa-edit"></i>
+                  </span>
+                  <span>Edit</span>
+                <% end %>
+                <a class="dropdown-item"
+                  href="#"
+                  phx-click="delete_device"
+                  phx-value-device_id={@device.id}
+                  data-confirm="Are you sure? This will remove all data associated with this device.">
+                  <span class="icon is-small">
+                    <i class="fas fa-trash"></i>
+                  </span>
+                  <span>Delete</span>
+                </a>
+              </div>
+            </div>
+          </div>
         </header>
         <div class="card-content">
           <div class="content">
@@ -53,29 +88,6 @@
             </dl>
           </div>
         </div>
-        <footer class="card-footer">
-          <div class="field is-grouped card-footer-item">
-            <p class="control">
-              <%= live_patch(to: Routes.device_show_path(@socket, :edit, @device), class: "button is-primary") do %>
-                <span class="icon is-small">
-                  <i class="fas fa-edit"></i>
-                </span>
-                <span>Edit</span>
-              <% end %>
-            </p>
-            <p class="control">
-              <button class="button is-danger"
-                      phx-click="delete_device"
-                      phx-value-device_id={@device.id}
-                      data-confirm="Are you sure? This will remove all data associated with this device.">
-                <span class="icon is-small">
-                  <i class="fas fa-trash"></i>
-                </span>
-                <span>Delete</span>
-              </button>
-            </p>
-          </div>
-        </footer>
       </div>
     </div>
     <div class="tile is-parent">
@@ -84,6 +96,33 @@
           <p class="card-header-title">
             Config
           </p>
+          <div class="dropdown is-right" id="config-dropdown">
+            <div class="dropdown-trigger">
+              <button
+                id="config-dropdown-button"
+                phx-hook="ToggleDropdown"
+                data-target="config-dropdown"
+                class="card-header-icon"
+                aria-controls="dropdown-menu"
+                aria-label="more options">
+                <span class="icon">
+                  <i class="mdi mdi-menu" aria-hidden="true"></i>
+                </span>
+              </button>
+            </div>
+            <div role="menu" class="dropdown-menu" id="config-menu">
+              <div class="dropdown-content">
+                <%= link(
+                    to: Routes.device_path(@socket, :download_config, @device),
+                    class: "dropdown-item") do %>
+                  <span class="icon is-small">
+                    <i class="fas fa-download"></i>
+                  </span>
+                  <span>Download Config</span>
+                <% end %>
+              </div>
+            </div>
+          </div>
         </header>
         <div class="card-content">
           <h6 class="is-6 title">
@@ -98,20 +137,6 @@
             <canvas id="qr-canvas" phx-hook="QrCode"></canvas>
           </div>
         </div>
-        <footer class="card-footer">
-          <div class="field is-grouped card-footer-item">
-            <p class="control">
-              <%= link(
-                  to: Routes.device_path(@socket, :download_config, @device),
-                  class: "button") do %>
-                <span class="icon is-small">
-                  <i class="fas fa-download"></i>
-                </span>
-                <span>Download Config</span>
-              <% end %>
-            </p>
-          </div>
-        </footer>
       </div>
     </div>
   </div>

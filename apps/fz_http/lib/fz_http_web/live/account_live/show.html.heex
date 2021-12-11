@@ -1,11 +1,11 @@
 <%= if @live_action == :edit do %>
   <%= live_modal(
-        FzHttpWeb.AccountLive.FormComponent,
-        return_to: Routes.account_show_path(@socket, :show),
-        title: "Edit Account",
-        id: "user-#{@current_user.id}",
-        user: @current_user,
-        action: @live_action) %>
+      FzHttpWeb.AccountLive.FormComponent,
+      return_to: Routes.account_show_path(@socket, :show),
+      title: "Edit Account",
+      id: "user-#{@current_user.id}",
+      user: @current_user,
+      action: @live_action) %>
 <% end %>
 
 <%= render FzHttpWeb.SharedView, "heading.html", page_title: @page_title %>
