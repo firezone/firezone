@@ -8,6 +8,6 @@ defmodule FzHttpWeb.RuleLive.Index do
     {:ok,
      socket
      |> assign_defaults(params, session)
-     |> assign(:page_title, "Rules")}
+     |> assign(:page_title, "Egress Rules")}
   end
 end

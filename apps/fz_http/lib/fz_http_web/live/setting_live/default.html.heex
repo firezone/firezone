@@ -12,7 +12,6 @@
         <div class="card-content">
           <div class="content">
             <%= live_component(
-                @socket,
                 FzHttpWeb.SettingLive.FormComponent,
                 label_text: "Allowed IPs",
                 placeholder: nil,
@@ -23,7 +22,6 @@
             <hr>
 
             <%= live_component(
-                @socket,
                 FzHttpWeb.SettingLive.FormComponent,
                 label_text: "DNS Servers",
                 placeholder: nil,
@@ -34,7 +32,6 @@
             <hr>
 
             <%= live_component(
-                @socket,
                 FzHttpWeb.SettingLive.FormComponent,
                 label_text: "Endpoint",
                 placeholder: @endpoint_placeholder,

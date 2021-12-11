@@ -14,7 +14,6 @@
   <div class="tile is-ancestor">
     <div class="tile is-parent">
       <%= live_component(
-          @socket,
           FzHttpWeb.RuleLive.RuleListComponent,
           title: "Allowlist",
           id: :allowlist,
@@ -22,7 +21,6 @@
     </div>
     <div class="tile is-parent">
       <%= live_component(
-          @socket,
           FzHttpWeb.RuleLive.RuleListComponent,
           title: "Denylist",
           id: :denylist,

@@ -6,19 +6,19 @@ defmodule FzHttpWeb.DeviceLive.Show do
 
   alias FzHttp.{Devices, Users}
 
-  @impl true
+  @impl Phoenix.LiveView
   def mount(params, session, socket) do
     {:ok,
      socket
      |> assign_defaults(params, session, &load_data/2)}
   end
 
-  @impl true
+  @impl Phoenix.LiveView
   def handle_params(_params, _url, socket) do
     {:noreply, socket}
   end
 
-  @impl true
+  @impl Phoenix.LiveView
   def handle_event("delete_device", %{"device_id" => device_id}, socket) do
     device = Devices.get_device!(device_id)
 
