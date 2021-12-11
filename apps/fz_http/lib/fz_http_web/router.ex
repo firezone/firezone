@@ -22,6 +22,7 @@ defmodule FzHttpWeb.Router do
     pipe_through :browser
 
     get "/", DeviceController, :index
+    get "/devices/:id/dl", DeviceController, :download_config
     resources "/session", SessionController, only: [:new, :create, :delete], singleton: true
 
     live "/users", UserLive.Index, :index

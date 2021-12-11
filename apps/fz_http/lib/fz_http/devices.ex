@@ -92,4 +92,41 @@ defmodule FzHttp.Devices do
     |> Enum.map(fn field -> {field, Device.field(changeset, field)} end)
     |> Map.new()
   end
+
+  def as_config(device) do
+    wireguard_port = Application.fetch_env!(:fz_vpn, :wireguard_port)
+
+    """
+    [Interface]
+    PrivateKey = #{device.private_key}
+    Address = #{ipv4_address(device)}/32, #{ipv6_address(device)}/128
+    #{dns_servers_config(device)}
+
+    [Peer]
+    PublicKey = #{device.server_public_key}
+    AllowedIPs = #{allowed_ips(device)}
+    Endpoint = #{endpoint(device)}:#{wireguard_port}
+    """
+  end
+
+  defp dns_servers_config(device) when is_struct(device) do
+    dns_servers = dns_servers(device)
+
+    if dns_servers_empty?(dns_servers) do
+      ""
+    else
+      "DNS = #{dns_servers}"
+    end
+  end
+
+  defp dns_servers_empty?(nil), do: true
+
+  defp dns_servers_empty?(dns_servers) when is_binary(dns_servers) do
+    len =
+      dns_servers
+      |> String.trim()
+      |> String.length()
+
+    len == 0
+  end
 end

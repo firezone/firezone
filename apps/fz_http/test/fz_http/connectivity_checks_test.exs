@@ -62,7 +62,7 @@ defmodule FzHttp.ConnectivityChecksTest do
         response_body: "some updated response_body",
         response_code: 500,
         response_headers: %{"updated" => "response headers"},
-        url: "https://ping.firez.one/6.6.6"
+        url: "https://ping-dev.firez.one/6.6.6"
       }
 
       assert {:ok, %ConnectivityCheck{} = connectivity_check} =
@@ -71,7 +71,7 @@ defmodule FzHttp.ConnectivityChecksTest do
       assert connectivity_check.response_body == "some updated response_body"
       assert connectivity_check.response_code == 500
       assert connectivity_check.response_headers == %{"updated" => "response headers"}
-      assert connectivity_check.url == "https://ping.firez.one/6.6.6"
+      assert connectivity_check.url == "https://ping-dev.firez.one/6.6.6"
     end
 
     test "update_connectivity_check/2 with invalid data returns error changeset" do

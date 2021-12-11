@@ -81,22 +81,15 @@
     <div class="tile is-parent">
       <div class="card tile is-child">
         <header class="card-header">
-          <p class="card-header-title">Config</p>
+          <p class="card-header-title">
+            Config
+          </p>
         </header>
         <div class="card-content">
           <h6 class="is-6 title">
             Add the following to your WireGuard configuration file:
           </h6>
-          <pre><code id="wg-conf">
-[Interface]
-PrivateKey = <%= @device.private_key %>
-Address = <%= FzHttp.Devices.ipv4_address(@device) %>/32, <%= FzHttp.Devices.ipv6_address(@device) %>/128
-<%= @dns_servers %>
-
-[Peer]
-PublicKey = <%= @device.server_public_key %>
-AllowedIPs = <%= @allowed_ips %>
-Endpoint = <%= @endpoint %>:<%= @wireguard_port %></code></pre>
+            <pre><code id="wg-conf"><%= @config %></code></pre>
           <hr>
           <h6 class="is-6 title">
             Or scan the QR code with your mobile phone:
@@ -105,6 +98,20 @@ Endpoint = <%= @endpoint %>:<%= @wireguard_port %></code></pre>
             <canvas id="qr-canvas" phx-hook="QrCode"></canvas>
           </div>
         </div>
+        <footer class="card-footer">
+          <div class="field is-grouped card-footer-item">
+            <p class="control">
+              <%= link(
+                  to: Routes.device_path(@socket, :download_config, @device),
+                  class: "button") do %>
+                <span class="icon is-small">
+                  <i class="fas fa-download"></i>
+                </span>
+                <span>Download Config</span>
+              <% end %>
+            </p>
+          </div>
+        </footer>
       </div>
     </div>
   </div>

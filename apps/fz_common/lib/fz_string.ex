@@ -3,6 +3,11 @@ defmodule FzCommon.FzString do
   Utility functions for working with Strings.
   """
 
+  def sanitize_filename(str) when is_binary(str) do
+    str
+    |> String.replace(~r/[^a-zA-Z0-9]+/, "_")
+  end
+
   def to_boolean(str) when is_binary(str) do
     as_bool(String.downcase(str))
   end
