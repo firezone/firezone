@@ -3,6 +3,12 @@ defmodule FzCommon.FzStringTest do
 
   alias FzCommon.FzString
 
+  describe "sanitize_filename/1" do
+    test "santizes sequential spaces" do
+      assert "Factory_Device" == FzString.sanitize_filename("Factory     Device")
+    end
+  end
+
   describe "to_boolean/1" do
     test "converts to true" do
       assert true == FzString.to_boolean("True")
