@@ -39,7 +39,7 @@ color_scheme: fz
 # Footer content
 # appears at the bottom of every page's main content
 
-# footer_content: ""
+footer_content: ""
 
 # Footer last edited timestamp
 last_edit_timestamp: true # show or hide edit time - page must have `last_modified_date` defined in the frontmatter
