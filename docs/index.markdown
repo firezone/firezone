@@ -4,7 +4,3 @@
 
 layout: home
 ---
-
-Firezone Documentation
-
-WIP
