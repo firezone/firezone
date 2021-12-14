@@ -6,7 +6,6 @@ layout: default
 title: Overview
 nav_order: 1
 description: "Firezone is a self-managed WireGuard-based VPN server and Linux firewall designed for simplicity and security."
-permalink: /
 ---
 
 # Overview
