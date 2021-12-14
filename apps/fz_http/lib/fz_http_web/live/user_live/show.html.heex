@@ -8,7 +8,7 @@
         action: @live_action) %>
 <% end %>
 
-<%= render FzHttpWeb.SharedView, "heading.html", page_title: "User #{@user.email}" %>
+<%= render FzHttpWeb.SharedView, "heading.html", page_title: "Users -> #{@user.email}" %>
 
 <section class="section is-main-section">
   <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
@@ -29,7 +29,7 @@
         <footer class="card-footer">
           <div class="field is-grouped card-footer-item">
             <p class="control">
-              <%= live_patch(to: Routes.user_show_path(@socket, :edit, @user), class: "button is-primary") do %>
+              <%= live_patch(to: Routes.user_show_path(@socket, :edit, @user)) do %>
                 <span class="icon is-small">
                   <i class="fas fa-edit"></i>
                 </span>
@@ -70,7 +70,7 @@
         <footer class="card-footer">
           <div class="field is-grouped card-footer-item">
             <p class="control">
-              <button class="button is-primary" phx-value-user_id={@user.id} phx-click="create_device">
+              <button class="button" phx-value-user_id={@user.id} phx-click="create_device">
                 Add Device
               </button>
             </p>

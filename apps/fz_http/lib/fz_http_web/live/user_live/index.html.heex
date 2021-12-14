@@ -12,7 +12,7 @@
 <section class="section is-main-section">
   <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
 
-  <div class="content">
+  <div class="block">
     <table class="table is-hoverable is-bordered is-striped is-fullwidth">
       <thead>
         <tr>
@@ -39,7 +39,7 @@
     </table>
   </div>
 
-  <%= live_patch(to: Routes.user_index_path(@socket, :new), class: "button is-primary") do %>
+  <%= live_patch(to: Routes.user_index_path(@socket, :new), class: "button") do %>
     Add User
   <% end %>
 </section>

@@ -8,136 +8,125 @@
         action: @live_action) %>
 <% end %>
 
-<%= render FzHttpWeb.SharedView, "heading.html", page_title: @page_title %>
+<%= render FzHttpWeb.SharedView, "heading.html", page_title: "Devices -> #{@page_title}" %>
 
 <section class="section is-main-section">
   <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
-  <div class="tile is-ancestor is-flex-wrap-wrap">
-    <div class="tile is-parent">
-      <div class="card tile is-child">
-        <header class="card-header">
-          <p class="card-header-title">Details</p>
-          <div class="dropdown is-right" id="details-dropdown">
-            <div class="dropdown-trigger">
-              <button
-                id="details-dropdown-button"
-                phx-hook="ToggleDropdown"
-                data-target="details-dropdown"
-                class="card-header-icon"
-                aria-controls="dropdown-menu"
-                aria-label="more options">
-                <span class="icon">
-                  <i class="mdi mdi-menu" aria-hidden="true"></i>
-                </span>
-              </button>
-            </div>
-            <div role="menu" class="dropdown-menu" id="details-menu">
-              <div class="dropdown-content">
-                <%= live_patch(to: Routes.device_show_path(@socket, :edit, @device), class: "dropdown-item") do %>
-                  <span class="icon is-small">
-                    <i class="fas fa-edit"></i>
-                  </span>
-                  <span>Edit</span>
-                <% end %>
-                <a class="dropdown-item"
-                  href="#"
-                  phx-click="delete_device"
-                  phx-value-device_id={@device.id}
-                  data-confirm="Are you sure? This will remove all data associated with this device.">
-                  <span class="icon is-small">
-                    <i class="fas fa-trash"></i>
-                  </span>
-                  <span>Delete</span>
-                </a>
-              </div>
-            </div>
-          </div>
-        </header>
-        <div class="card-content">
-          <div class="content">
-            <dl>
-              <dt><strong>User</strong></dt>
-              <dd><%= link(@user.email, to: Routes.user_show_path(@socket, :show, @user)) %></dd>
 
-              <dt><strong>Name</strong></dt>
-              <dd><%= @device.name %></dd>
-
-              <dt><strong>Interface IP</strong></dt>
-              <dd>
-                <%= FzHttp.Devices.ipv4_address(@device) %>,
-                <%= FzHttp.Devices.ipv6_address(@device) %>
-              </dd>
-
-              <dt><strong>Allowed IPs</strong></dt>
-              <dd><%= @allowed_ips %></dd>
-
-              <dt><strong>DNS Servers</strong></dt>
-              <dd><%= @dns_servers || "None" %></dd>
-
-              <dt><strong>Endpoint</strong></dt>
-              <dd><%= @endpoint %></dd>
-
-              <dt><strong>Public key</strong></dt>
-              <dd class="code"><%= @device.public_key %></dd>
-
-              <dt><strong>Private key</strong></dt>
-              <dd class="code"><%= @device.private_key %></dd>
-
-              <dt><strong>Server public key</strong></dt>
-              <dd class="code"><%= @device.server_public_key %></dd>
-            </dl>
-          </div>
-        </div>
-      </div>
+  <div class="level">
+    <div class="level-left">
+      <h4 class="title is-4">Details</h4>
     </div>
-    <div class="tile is-parent">
-      <div class="card tile is-child">
-        <header class="card-header">
-          <p class="card-header-title">
-            Config
-          </p>
-          <div class="dropdown is-right" id="config-dropdown">
-            <div class="dropdown-trigger">
-              <button
-                id="config-dropdown-button"
-                phx-hook="ToggleDropdown"
-                data-target="config-dropdown"
-                class="card-header-icon"
-                aria-controls="dropdown-menu"
-                aria-label="more options">
-                <span class="icon">
-                  <i class="mdi mdi-menu" aria-hidden="true"></i>
-                </span>
-              </button>
-            </div>
-            <div role="menu" class="dropdown-menu" id="config-menu">
-              <div class="dropdown-content">
-                <%= link(
-                    to: Routes.device_path(@socket, :download_config, @device),
-                    class: "dropdown-item") do %>
-                  <span class="icon is-small">
-                    <i class="fas fa-download"></i>
-                  </span>
-                  <span>Download Config</span>
-                <% end %>
-              </div>
-            </div>
-          </div>
-        </header>
-        <div class="card-content">
-          <h6 class="is-6 title">
-            Add the following to your WireGuard configuration file:
-          </h6>
-            <pre><code id="wg-conf"><%= @config %></code></pre>
-          <hr>
-          <h6 class="is-6 title">
-            Or scan the QR code with your mobile phone:
-          </h6>
-          <div class="has-text-centered">
-            <canvas id="qr-canvas" phx-hook="QrCode"></canvas>
-          </div>
-        </div>
-      </div>
+    <div class="level-right">
+      <%= live_patch(to: Routes.device_show_path(@socket, :edit, @device), class: "button") do %>
+        <span class="icon">
+          <i class="mdi mdi-pencil"></i>
+        </span>
+        <span>Edit</span>
+      <% end %>
     </div>
   </div>
+
+  <table class="table is-bordered is-hoverable is-striped is-fullwidth">
+    <tbody>
+      <tr>
+        <td><strong>User</strong></td>
+        <td><%= link(@user.email, to: Routes.user_show_path(@socket, :show, @user)) %></td>
+      </tr>
+
+      <tr>
+        <td><strong>Name</strong></td>
+        <td><%= @device.name %></td>
+      </tr>
+
+      <tr>
+        <td><strong>Interface IP</strong></td>
+        <td>
+          <%= FzHttp.Devices.ipv4_address(@device) %>,
+          <%= FzHttp.Devices.ipv6_address(@device) %>
+        </td>
+      </tr>
+
+      <tr>
+        <td><strong>Allowed IPs</strong></td>
+        <td><%= @allowed_ips %></td>
+      </tr>
+
+      <tr>
+        <td><strong>DNS Servers</strong></td>
+        <td><%= @dns_servers || "None" %></td>
+      </tr>
+
+      <tr>
+        <td><strong>Endpoint</strong></td>
+        <td><%= @endpoint %></td>
+      </tr>
+
+      <tr>
+        <td><strong>Public key</strong></td>
+        <td class="code"><%= @device.public_key %></td>
+      </tr>
+
+      <tr>
+        <td><strong>Private key</strong></td>
+        <td class="code"><%= @device.private_key %></td>
+      </tr>
+
+      <tr>
+        <td><strong>Server public key</strong></td>
+        <td class="code"><%= @device.server_public_key %></td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="section is-main-section">
+  <div class="level">
+    <div class="level-left">
+      <h4 class="title is-4">WireGuard Configuration</h4>
+    </div>
+    <div class="level-right">
+      <%= link(
+          to: Routes.device_path(@socket, :download_config, @device),
+          class: "button") do %>
+        <span class="icon is-small">
+          <i class="mdi mdi-download"></i>
+        </span>
+        <span>Download Configuration</span>
+      <% end %>
+    </div>
+  </div>
+  <div class="block">
+    Install the
+    <a href="https://www.wireguard.com/install/">
+      official WireGuard client
+    </a>
+    for your device, then use the below WireGuard configuration to connect.
+  </div>
+  <div class="columns">
+    <div class="column">
+      <pre><code id="wg-conf" class="language-toml"><%= @config %></code></pre>
+    </div>
+    <div class="column has-text-centered">
+      <canvas id="qr-canvas" phx-hook="QrCode">
+        Generating QR code...
+      </canvas>
+    </div>
+  </div>
+</section>
+
+<section class="section is-main-section">
+  <h4 class="title is-4">
+    Danger Zone
+  </h4>
+
+  <button class="button is-danger"
+    phx-click="delete_device"
+    phx-value-device_id={@device.id}
+    data-confirm="Are you sure? This will immediately disconnect this device and remove all associated data.">
+    <span class="icon is-small">
+      <i class="fas fa-trash"></i>
+    </span>
+    <span>Delete Device <%= @device.name %></span>
+  </button>
 </section>

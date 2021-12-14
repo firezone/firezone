@@ -44,18 +44,27 @@ $default-padding: $size-base * 1.5;
 
 /* Default font */
 $family-sans-serif: "Fira Sans", sans-serif;
+$family-primary: $family-sans-serif;
+
+/* Monospace font */
+$family-monospace: "Fira Mono", monospace;
 
 /* Text color */
-$text: $interface-200;
-$text-light: $interface-300;
-$text-strong: $interface-100;
+$text: $interface-100;
+$text-light: $interface-200;
+$text-strong: $interface-000;
 
 /* Base color */
 $base-color: $interface-main;
 $base-color-light: rgba(24, 28, 33, .06);
 
 /* General overrides */
-$primary: $accent-500;
+/* See https://coolors.co/331700-990c00-ff0000 */
+$info: $accent-300;
+$primary: $accent-main;
+$success: #80B900;
+$warning: #FFB900;
+$danger: #990C00;
 $body-background-color: $interface-800;
 $link: $accent-300;
 $link-visited: $accent-600;

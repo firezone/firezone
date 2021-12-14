@@ -1,7 +1,7 @@
 <%= render FzHttpWeb.SharedView, "heading.html", page_title: @page_title %>
 
 <section class="section is-main-section">
-  <div class="content">
+  <div class="block">
     <p>
       <span class="icon">
         <i class="mdi mdi-information-outline"></i>
@@ -16,6 +16,7 @@
       <%= live_component(
           FzHttpWeb.RuleLive.RuleListComponent,
           title: "Allowlist",
+          header_icon: "mdi mdi-arrow-decision-outline",
           id: :allowlist,
           current_user: @current_user) %>
     </div>
@@ -23,6 +24,7 @@
       <%= live_component(
           FzHttpWeb.RuleLive.RuleListComponent,
           title: "Denylist",
+          header_icon: "mdi mdi-alert-octagon",
           id: :denylist,
           current_user: @current_user) %>
     </div>

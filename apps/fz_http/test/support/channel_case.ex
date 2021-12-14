@@ -22,7 +22,7 @@ defmodule FzHttpWeb.ChannelCase do
   using do
     quote do
       # Import conveniences for testing with channels
-      use Phoenix.ChannelTest
+      import Phoenix.ChannelTest
       import FzHttp.TestHelpers
 
       # The default endpoint for testing
