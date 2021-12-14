@@ -1,0 +1,34 @@
+// Colors
+
+$fz-grey-dk-000: #90867f;
+$fz-grey-dk-100: #766a60;
+$fz-grey-dk-200: #4c3e33;
+$fz-grey-dk-300: #1b140e;
+
+$fz-grey-lt-000: #fcfcfc;
+$fz-grey-lt-100: #f8f7f7;
+$fz-grey-lt-200: #ebebea;
+$fz-grey-lt-300: #dfdedd;
+
+$fz-purple-000: #4805ff;
+$fz-purple-100: #3400c2;
+$fz-purple-200: #37007f;
+$fz-purple-300: #28005c;
+
+$fz-orange: #FF7300;
+
+$link-color: $fz-purple-000;
+$btn-primary-color: $fz-purple-100;
+
+// Fonts
+
+$body-font-family: "Open Sans", sans-serif;
+
+@font-face {
+    font-family: "Open Sans";
+    src: url("../assets/fonts/OpenSans-Italic-VariableFont_wdth,wght.ttf");
+}
+
+// Borders
+
+$border-color: $fz-grey-lt-100;
