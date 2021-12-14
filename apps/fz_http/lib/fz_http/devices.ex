@@ -20,6 +20,10 @@ defmodule FzHttp.Devices do
     Repo.all(from d in Device, where: d.user_id == ^user_id)
   end
 
+  def count(user_id) do
+    Repo.one(from d in Device, where: d.user_id == ^user_id, select: count())
+  end
+
   def get_device!(id), do: Repo.get!(Device, id)
 
   def create_device(attrs \\ %{}) do

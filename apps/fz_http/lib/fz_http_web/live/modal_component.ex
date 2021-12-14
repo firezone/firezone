@@ -22,7 +22,7 @@ defmodule FzHttpWeb.ModalComponent do
           <button class="delete" aria-label="close" phx-click="close" phx-target={@myself}></button>
         </header>
         <section class="modal-card-body">
-          <div class="content">
+          <div class="block">
             <%= live_component(@component, @opts) %>
           </div>
         </section>

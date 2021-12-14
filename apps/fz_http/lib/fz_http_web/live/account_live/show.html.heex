@@ -13,44 +13,63 @@
 <section class="section is-main-section">
   <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
 
-  <div class="tile is-ancestor">
-    <div class="tile is-parent">
-      <div class="card tile is-child">
-        <header class="card-header">
-          <p class="card-header-title">
-            Details
-          </p>
-        </header>
+  <div class="level">
+    <div class="level-left">
+      <h4 class="title is-4">Details</h4>
+    </div>
 
-        <div class="card-content">
-          <div class="content">
-            <%= render FzHttpWeb.SharedView, "user_details.html", user: @current_user %>
-          </div>
-        </div>
-        <footer class="card-footer">
-          <div class="field is-grouped card-footer-item">
-            <p class="control">
-              <%= live_patch(to: Routes.account_show_path(@socket, :edit), class: "button is-primary") do %>
-                <span class="icon is-small">
-                  <i class="fas fa-edit"></i>
-                </span>
-                <span>Change Email or Password</span>
-              <% end %>
-            </p>
-            <p class="control">
-              <%# This is purposefully a synchronous form in order to easily clear the session %>
-              <%= form_for @changeset, Routes.user_path(@socket, :delete), [id: "delete-account", method: :delete], fn _f -> %>
-                <%= submit(class: "button is-danger", data: [confirm: "Are you sure?"]) do %>
-                  <span class="icon is-small">
-                    <i class="fas fa-trash"></i>
-                  </span>
-                  <span>Delete Your Account</span>
-                <% end %>
-              <% end %>
-            </p>
-          </div>
-        </footer>
-      </div>
+    <div class="level-right">
+      <%= live_patch(to: Routes.account_show_path(@socket, :edit), class: "button") do %>
+        <span class="icon is-small">
+          <i class="mdi mdi-pencil"></i>
+        </span>
+        <span>Change Email or Password</span>
+      <% end %>
     </div>
   </div>
+
+  <%= render FzHttpWeb.SharedView, "user_details.html", user: @current_user %>
+</section>
+
+<section class="section is-main-section">
+  <h4 class="title is-4">
+    Active Sessions
+  </h4>
+
+  <div class="block">
+    <p>
+      Your active Firezone web sessions. Each row corresponds to an open browser
+      tab connected to Firezone.
+    </p>
+  </div>
+
+  <div class="block">
+    <table class="table is-bordered is-hoverable is-striped is-fullwidth">
+      <thead>
+        <th>Came Online</th>
+        <th>Last Signed In</th>
+        <th>Remote IP</th>
+        <th>User Agent</th>
+      </thead>
+      <tbody id="sessions-table-body">
+      </tbody>
+    </table>
+  </div>
+</section>
+
+
+<section class="section is-main-section">
+  <h4 class="title is-4">
+    Danger Zone
+  </h4>
+
+  <%# This is purposefully a synchronous form in order to easily clear the session %>
+  <%= form_for @changeset, Routes.user_path(@socket, :delete), [id: "delete-account", method: :delete], fn _f -> %>
+    <%= submit(class: "button is-danger", data: [confirm: "Are you sure?"]) do %>
+      <span class="icon is-small">
+        <i class="fas fa-trash"></i>
+      </span>
+      <span>Delete Your Account</span>
+    <% end %>
+  <% end %>
 </section>

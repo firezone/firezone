@@ -38,10 +38,12 @@ defmodule FzHttpWeb.Router do
 
     live "/settings/default", SettingLive.Default, :default
 
-    live "/account", AccountLive.Show, :show
-    live "/account/edit", AccountLive.Show, :edit
+    live "/settings/security", SettingLive.Security, :security
 
-    live "/connectivity_checks", ConnectivityCheckLive.Index, :index
+    live "/settings/account", AccountLive.Show, :show
+    live "/settings/account/edit", AccountLive.Show, :edit
+
+    live "/diagnostics/connectivity_checks", ConnectivityCheckLive.Index, :index
 
     get "/sign_in/:token", SessionController, :create
     delete "/user", UserController, :delete

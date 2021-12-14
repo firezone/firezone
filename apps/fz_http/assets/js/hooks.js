@@ -1,4 +1,5 @@
-import moment from "moment"
+import hljs from "highlight.js"
+import {FormatTimestamp} from "./util.js"
 
 const QRCode = require('qrcode')
 
@@ -19,16 +20,11 @@ const renderQrCode = function () {
   }
 }
 
-const formatTimestamp = function () {
-  let timestamp = this.el.dataset.timestamp
-  this.el.innerHTML = moment(timestamp).format("dddd, MMMM Do YYYY, h:mm:ss a z")
-}
-
 /* XXX: Sad we have to write custom JS for this. Keep an eye on
  * https://hexdocs.pm/phoenix_live_view/Phoenix.LiveView.JS.html
  * in case a toggleClass function is implemented. The toggle()
  * function listed there automatically adds display: none which is not
- * what we want
+ * what we want in this case.
  */
 const toggleDropdown = function () {
   const button = this.el
@@ -38,10 +34,7 @@ const toggleDropdown = function () {
     let ancestor = e.target
 
     do {
-      if (ancestor == button) {
-        return
-      }
-
+      if (ancestor == button) return
       ancestor = ancestor.parentNode
     } while(ancestor)
 
@@ -52,7 +45,20 @@ const toggleDropdown = function () {
   })
 }
 
+const highlightCode = function () {
+  hljs.highlightAll()
+}
+
+const formatTimestamp = function () {
+  let t = this.el.dataset.timestamp
+  this.el.innerHTML = FormatTimestamp(t)
+}
+
 let Hooks = {}
+Hooks.HighlightCode = {
+  mounted: highlightCode,
+  updated: highlightCode
+}
 Hooks.QrCode = {
   mounted: renderQrCode,
   updated: renderQrCode
