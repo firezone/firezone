@@ -1,29 +1,46 @@
 defmodule FzHttpWeb.NotificationChannelTest do
-  use FzHttpWeb.ChannelCase
+  use FzHttpWeb.ChannelCase, async: true
 
   alias FzHttp.UsersFixtures
+  alias FzHttpWeb.NotificationChannel
 
   describe "channel join" do
-    setup do
+    setup _tags do
+      user = UsersFixtures.user()
+
+      socket =
+        FzHttpWeb.UserSocket
+        |> socket(user.id, %{remote_ip: "127.0.0.1"})
+
       %{
-        user: FzHttp.UsersFixtures.user(),
-        socket: socket(user.id, %{})
+        user: user,
+        socket: socket,
+        token: Phoenix.Token.sign(socket, "channel auth", user.id)
       }
     end
 
-    test "joins channel with valid token", %{user: user} do
-      # token = Phoenix.Token.sign
+    test "joins channel with valid token", %{token: token, socket: socket, user: user} do
+      payload = %{
+        "token" => token,
+        "user_agent" => "test"
+      }
+
+      {:ok, _, test_socket} =
+        socket
+        |> subscribe_and_join(NotificationChannel, "notification:session", payload)
+
+      assert test_socket.assigns.current_user.id == user.id
     end
 
-    test "prevents joining with expired token", %{user: user} do
-    end
+    test "prevents joining with invalid token", %{token: _token, socket: socket, user: _user} do
+      payload = %{
+        "token" => "foobar",
+        "user_agent" => "test"
+      }
 
-    test "prevents joining with invalid token", %{user: user} do
+      assert {:error, %{reason: "unauthorized"}} ==
+               socket
+               |> subscribe_and_join(NotificationChannel, "notification:session", payload)
     end
-  end
-
-  test "broadcasts are pushed to the client", %{socket: socket} do
-    broadcast_from!(socket, "broadcast", %{"some" => "data"})
-    assert_push "broadcast", %{"some" => "data"}
   end
 end

@@ -30,6 +30,10 @@ defmodule FzHttpWeb.LayoutView do
   @doc """
   Generate class for nav links
   """
+  def nav_class(%{request_path: "/"} = _conn, ~r"devices") do
+    "is-active has-icon"
+  end
+
   def nav_class(%{request_path: request_path} = _conn, regex) do
     if String.match?(request_path, regex) do
       "is-active has-icon"

@@ -41,7 +41,7 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
       path = Routes.device_show_path(conn, :show, device)
       {:ok, _view, html} = live(conn, path)
       assert html =~ "#{device.name}"
-      assert html =~ "<p class=\"card-header-title\">Details</p>"
+      assert html =~ "<h4 class=\"title is-4\">Details</h4>"
     end
 
     test "opens modal", %{authed_conn: conn, device: device} do
@@ -220,7 +220,7 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
       {:ok, view, _html} = live(conn, path)
 
       view
-      |> element("a", "Delete")
+      |> element("button", "Delete Device #{device.name}")
       |> render_click()
 
       _flash = assert_redirected(view, Routes.device_index_path(conn, :index))
