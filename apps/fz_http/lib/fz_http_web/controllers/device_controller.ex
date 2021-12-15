@@ -16,7 +16,7 @@ defmodule FzHttpWeb.DeviceController do
 
   def download_config(conn, %{"id" => device_id}) do
     device = Devices.get_device!(device_id)
-    filename = "#{sanitize_filename(device.name)}.conf"
+    filename = "#{sanitize_filename(FzHttpWeb.Endpoint.host())}.conf"
     content_type = "text/plain"
 
     conn
