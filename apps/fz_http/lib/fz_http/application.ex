@@ -28,6 +28,7 @@ defmodule FzHttp.Application do
       FzHttp.Vault,
       FzHttpWeb.Endpoint,
       {Phoenix.PubSub, name: FzHttp.PubSub},
+      FzHttpWeb.Presence,
       FzHttp.ConnectivityCheckService
     ]
   end
@@ -38,7 +39,8 @@ defmodule FzHttp.Application do
       FzHttp.Repo,
       FzHttp.Vault,
       FzHttpWeb.Endpoint,
-      {Phoenix.PubSub, name: FzHttp.PubSub}
+      {Phoenix.PubSub, name: FzHttp.PubSub},
+      FzHttpWeb.Presence
     ]
   end
 end

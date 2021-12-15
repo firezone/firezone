@@ -15,15 +15,20 @@
   </head>
 <body>
 <section class="section hero is-fullheight is-error-section">
-<div id="app" class="hero-body">
-  <div class="container">
-    <div class="columns">
-      <div class="column is-4 is-offset-4">
-        <%= @inner_content %>
+  <div id="app" class="hero-body">
+    <div class="container">
+      <div class="columns is-centered">
+        <div class="column is-two-thirds-tablet is-half-desktop is-one-third-widescreen">
+          <div class="block">
+            <div class="has-text-centered">
+              <img src={Routes.static_path(@conn, "/images/logo-text.svg")} alt="firez.one">
+            </div>
+          </div>
+          <%= @inner_content %>
+        </div>
       </div>
     </div>
   </div>
-</div>
 </section>
 </body>
 </html>

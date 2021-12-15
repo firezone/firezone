@@ -12,13 +12,15 @@
 <section class="section is-main-section">
   <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
 
-  <div class="content">
+  <div class="block">
     <table class="table is-hoverable is-bordered is-striped is-fullwidth">
       <thead>
         <tr>
-          <th class="is-6">Email</th>
-          <th class="is-6">Devices</th>
+          <th>Email</th>
+          <th>Devices</th>
           <th>Last Signed In</th>
+          <th>Created</th>
+          <th>Updated</th>
         </tr>
       </thead>
       <tbody>
@@ -33,13 +35,23 @@
               phx-hook="FormatTimestamp">
             …
           </td>
+          <td id={"user-#{user.id}-inserted-at"}
+              data-timestamp={user.inserted_at}
+              phx-hook="FormatTimestamp">
+            …
+          </td>
+          <td id={"user-#{user.id}-updated-at"}
+              data-timestamp={user.updated_at}
+              phx-hook="FormatTimestamp">
+            …
+          </td>
         </tr>
       <% end %>
       </tbody>
     </table>
   </div>
 
-  <%= live_patch(to: Routes.user_index_path(@socket, :new), class: "button is-primary") do %>
+  <%= live_patch(to: Routes.user_index_path(@socket, :new), class: "button") do %>
     Add User
   <% end %>
 </section>

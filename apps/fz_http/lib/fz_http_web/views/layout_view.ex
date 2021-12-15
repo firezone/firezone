@@ -30,19 +30,15 @@ defmodule FzHttpWeb.LayoutView do
   @doc """
   Generate class for nav links
   """
-  def nav_class(request_path, section) do
-    top_level =
-      request_path
-      |> String.split("/", trim: true)
-      |> List.first("devices")
+  def nav_class(%{request_path: "/"} = _conn, ~r"devices") do
+    "is-active has-icon"
+  end
 
-    active =
-      if top_level == section do
-        "is-active"
-      else
-        ""
-      end
-
-    Enum.join([active, "has-icon"], " ")
+  def nav_class(%{request_path: request_path} = _conn, regex) do
+    if String.match?(request_path, regex) do
+      "is-active has-icon"
+    else
+      "has-icon"
+    end
   end
 end
