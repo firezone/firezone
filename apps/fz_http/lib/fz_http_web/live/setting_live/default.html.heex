@@ -9,44 +9,31 @@
     </p>
   </div>
 
-  <div class="tile is-ancestor is-flex-wrap-wrap">
-    <div class="tile is-parent">
-      <div class="card tile is-child">
-        <header class="card-header">
-          <p class="card-header-title">Device Defaults</p>
-        </header>
-        <div class="card-content">
-          <div class="block">
-            <%= live_component(
-                FzHttpWeb.SettingLive.FormComponent,
-                label_text: "Allowed IPs",
-                placeholder: nil,
-                changeset: @changesets["default.device.allowed_ips"],
-                help_text: @help_texts.allowed_ips,
-                id: :allowed_ips_form_component) %>
+  <h4 class="title is-4">Device Defaults</h4>
 
-            <hr>
+  <div class="block">
+    <%= live_component(
+        FzHttpWeb.SettingLive.FormComponent,
+        label_text: "Allowed IPs",
+        placeholder: nil,
+        changeset: @changesets["default.device.allowed_ips"],
+        help_text: @help_texts.allowed_ips,
+        id: :allowed_ips_form_component) %>
 
-            <%= live_component(
-                FzHttpWeb.SettingLive.FormComponent,
-                label_text: "DNS Servers",
-                placeholder: nil,
-                changeset: @changesets["default.device.dns_servers"],
-                help_text: @help_texts.dns_servers,
-                id: :dns_servers_form_component) %>
+    <%= live_component(
+        FzHttpWeb.SettingLive.FormComponent,
+        label_text: "DNS Servers",
+        placeholder: nil,
+        changeset: @changesets["default.device.dns_servers"],
+        help_text: @help_texts.dns_servers,
+        id: :dns_servers_form_component) %>
 
-            <hr>
-
-            <%= live_component(
-                FzHttpWeb.SettingLive.FormComponent,
-                label_text: "Endpoint",
-                placeholder: @endpoint_placeholder,
-                changeset: @changesets["default.device.endpoint"],
-                help_text: @help_texts.endpoint,
-                id: :endpoint_form_component) %>
-          </div>
-        </div>
-      </div>
-    </div>
+    <%= live_component(
+        FzHttpWeb.SettingLive.FormComponent,
+        label_text: "Endpoint",
+        placeholder: @endpoint_placeholder,
+        changeset: @changesets["default.device.endpoint"],
+        help_text: @help_texts.endpoint,
+        id: :endpoint_form_component) %>
   </div>
 </section>
