@@ -5,7 +5,7 @@ defmodule FirezoneUmbrella.MixProject do
 
   use Mix.Project
 
-  @version_path "version.exs"
+  @version_path "scripts/version.exs"
 
   def version do
     Code.eval_file(@version_path)

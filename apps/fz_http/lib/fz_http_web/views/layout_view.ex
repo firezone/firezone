@@ -23,8 +23,8 @@ defmodule FzHttpWeb.LayoutView do
   The current github sha, used to link to our Github repo.
   This is set during application compile time.
   """
-  def github_sha do
-    Application.get_env(:fz_http, :github_sha, "master")
+  def git_sha do
+    Application.fetch_env!(:fz_http, :git_sha)
   end
 
   @doc """
