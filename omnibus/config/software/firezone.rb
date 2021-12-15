@@ -46,7 +46,8 @@ skip_transitive_dependency_licensing true
 build do
   env = with_standard_compiler_flags(with_embedded_path).merge(
     "MIX_ENV" => "prod",
-    "VERSION" => Omnibus::BuildVersion.semver
+    "VERSION" => Omnibus::BuildVersion.semver,
+    "GIT_SHA" => git_sha_tag
   )
 
   command "mix local.hex --force", env: env
