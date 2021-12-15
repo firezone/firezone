@@ -3,11 +3,11 @@
 <section class="section is-main-section">
   <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
 
-  <div class="block">
-    <%= render FzHttpWeb.SharedView, "devices_table.html", devices: @devices, socket: @socket %>
-  </div>
+  <h4 class="title is-4">Security Settings</h4>
 
-  <button class="button" phx-click="create_device">
-    Add Device
-  </button>
+  <div class="block">
+    <p>
+      Manage security-related settings.
+    </p>
+  </div>
 </section>

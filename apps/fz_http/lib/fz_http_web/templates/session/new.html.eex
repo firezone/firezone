@@ -1,10 +1,11 @@
 <!-- Use https://admin-one.justboil.me/?style=light-dark#/lock-screen for inspiration -->
-<h3 class="title">Sign In</h3>
+<h3 class="is-3 title">Sign In</h3>
+
 <hr>
 
 <%= form_for @changeset, Routes.session_path(@conn, :create), fn f -> %>
   <%= if assigns[:changeset] && @changeset.action do %>
-    <div>
+    <div class="block">
       <p>Oops, something went wrong! Please check the errors below.</p>
     </div>
   <% end %>
@@ -31,7 +32,7 @@
 
   <div class="field">
     <div class="control">
-      <%= submit "Sign in", class: "button is-primary" %>
+      <%= submit "Sign In", class: "button" %>
     </div>
   </div>
 <% end %>

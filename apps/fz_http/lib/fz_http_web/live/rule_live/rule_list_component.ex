@@ -8,7 +8,7 @@ defmodule FzHttpWeb.RuleLive.RuleListComponent do
 
   @events_module Application.compile_env!(:fz_http, :events_module)
 
-  @impl true
+  @impl Phoenix.LiveComponent
   def update(assigns, socket) do
     {:ok,
      socket
@@ -34,7 +34,7 @@ defmodule FzHttpWeb.RuleLive.RuleListComponent do
     end
   end
 
-  @impl true
+  @impl Phoenix.LiveComponent
   def handle_event("delete_rule", %{"rule_id" => rule_id}, socket) do
     rule = Rules.get_rule!(rule_id)
 

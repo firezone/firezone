@@ -8,75 +8,55 @@
         action: @live_action) %>
 <% end %>
 
-<%= render FzHttpWeb.SharedView, "heading.html", page_title: "User #{@user.email}" %>
+<%= render FzHttpWeb.SharedView, "heading.html", page_title: "Users -> #{@user.email}" %>
 
 <section class="section is-main-section">
   <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
-  <div class="tile is-ancestor is-flex-wrap-wrap">
-    <div class="tile is-parent">
-      <div class="card tile is-child">
-        <header class="card-header">
-          <p class="card-header-title">
-            Details
-          </p>
-        </header>
-        <div class="card-content">
-          <div class="content">
-            <%= render FzHttpWeb.SharedView, "user_details.html", user: @user %>
-          </div>
-        </div>
 
-        <footer class="card-footer">
-          <div class="field is-grouped card-footer-item">
-            <p class="control">
-              <%= live_patch(to: Routes.user_show_path(@socket, :edit, @user), class: "button is-primary") do %>
-                <span class="icon is-small">
-                  <i class="fas fa-edit"></i>
-                </span>
-                <span>Change Email or Password</span>
-              <% end %>
-            </p>
-            <p class="control">
-              <button
-                class="button is-danger"
-                data-confirm="Are you sure? This will permanently delete this user, all associated devices and instantly drop any active VPN sessions associated to this user."
-                phx-click="delete_user"
-                phx-value-user_id={@user.id}>
-                <span class="icon is-small">
-                  <i class="fas fa-trash"></i>
-                </span>
-                <span>Delete User</span>
-              </button>
-            </p>
-          </div>
-        </footer>
-      </div>
+  <div class="level">
+    <div class="level-left">
+      <h4 class="title is-4">Details</h4>
     </div>
-    <div class="tile is-parent">
-      <div class="card tile is-child">
-        <header class="card-header">
-          <p class="card-header-title">
-            Devices
-          </p>
-        </header>
-        <div class="card-content">
-          <%= if length(@devices) > 0 do %>
-            <%= render FzHttpWeb.SharedView, "devices_table.html", devices: @devices, socket: @socket %>
-          <% else %>
-              No devices.
-          <% end %>
-
-        </div>
-        <footer class="card-footer">
-          <div class="field is-grouped card-footer-item">
-            <p class="control">
-              <button class="button is-primary" phx-value-user_id={@user.id} phx-click="create_device">
-                Add Device
-              </button>
-            </p>
-          </div>
-        </footer>
-      </div>
+    <div class="level-right">
+      <%= live_patch(to: Routes.user_show_path(@socket, :edit, @user), class: "button") do %>
+        <span class="icon is-small">
+          <i class="mdi mdi-pencil"></i>
+        </span>
+        <span>Change Email or Password</span>
+      <% end %>
     </div>
   </div>
+
+  <%= render FzHttpWeb.SharedView, "user_details.html", user: @user %>
+</section>
+
+<section class="section is-main-section">
+  <h4 class="title is-4">Devices</h4>
+
+  <div class="block">
+    <%= if length(@devices) > 0 do %>
+      <%= render FzHttpWeb.SharedView, "devices_table.html", devices: @devices, socket: @socket %>
+    <% else %>
+        No devices.
+    <% end %>
+  </div>
+
+  <button class="button" phx-value-user_id={@user.id} phx-click="create_device">
+    Add Device
+  </button>
+</section>
+
+<section class="section is-main-section">
+  <h4 class="title is-4">Danger Zone</h4>
+
+  <button
+    class="button is-danger"
+    data-confirm="Are you sure? This will permanently delete this user, all associated devices and instantly drop any active VPN sessions associated to this user."
+    phx-click="delete_user"
+    phx-value-user_id={@user.id}>
+    <span class="icon is-small">
+      <i class="fas fa-trash"></i>
+    </span>
+    <span>Delete User</span>
+  </button>
 </section>

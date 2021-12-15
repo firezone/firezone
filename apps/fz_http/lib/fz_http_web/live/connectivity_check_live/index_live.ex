@@ -11,7 +11,7 @@ defmodule FzHttpWeb.ConnectivityCheckLive.Index do
     {:ok,
      socket
      |> assign_defaults(params, session, &load_data/2)
-     |> assign(:page_title, "Connectivity Checks")}
+     |> assign(:page_title, "WAN Connectivity Checks")}
   end
 
   defp load_data(_params, socket) do

@@ -1,7 +1,7 @@
 <div>
   <.form let={f} for={@changeset} id="user-form" phx-target={@myself} phx-submit="save">
     <%= if @action == :edit do %>
-      <div class="content">
+      <div class="block">
         <p>Change user email or enter new password below.</p>
       </div>
     <% end %>

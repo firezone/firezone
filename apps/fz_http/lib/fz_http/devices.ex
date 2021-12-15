@@ -20,6 +20,10 @@ defmodule FzHttp.Devices do
     Repo.all(from d in Device, where: d.user_id == ^user_id)
   end
 
+  def count(user_id) do
+    Repo.one(from d in Device, where: d.user_id == ^user_id, select: count())
+  end
+
   def get_device!(id), do: Repo.get!(Device, id)
 
   def create_device(attrs \\ %{}) do
@@ -91,5 +95,42 @@ defmodule FzHttp.Devices do
     ~w(use_default_allowed_ips use_default_dns_servers use_default_endpoint)a
     |> Enum.map(fn field -> {field, Device.field(changeset, field)} end)
     |> Map.new()
+  end
+
+  def as_config(device) do
+    wireguard_port = Application.fetch_env!(:fz_vpn, :wireguard_port)
+
+    """
+    [Interface]
+    PrivateKey = #{device.private_key}
+    Address = #{ipv4_address(device)}/32, #{ipv6_address(device)}/128
+    #{dns_servers_config(device)}
+
+    [Peer]
+    PublicKey = #{device.server_public_key}
+    AllowedIPs = #{allowed_ips(device)}
+    Endpoint = #{endpoint(device)}:#{wireguard_port}
+    """
+  end
+
+  defp dns_servers_config(device) when is_struct(device) do
+    dns_servers = dns_servers(device)
+
+    if dns_servers_empty?(dns_servers) do
+      ""
+    else
+      "DNS = #{dns_servers}"
+    end
+  end
+
+  defp dns_servers_empty?(nil), do: true
+
+  defp dns_servers_empty?(dns_servers) when is_binary(dns_servers) do
+    len =
+      dns_servers
+      |> String.trim()
+      |> String.length()
+
+    len == 0
   end
 end

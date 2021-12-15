@@ -7,7 +7,7 @@ defmodule FzHttpWeb.Endpoint do
   end
 
   socket "/socket", FzHttpWeb.UserSocket,
-    websocket: true,
+    websocket: [connect_info: [:peer_data, :x_headers]],
     longpoll: false
 
   socket "/live", Phoenix.LiveView.Socket,
