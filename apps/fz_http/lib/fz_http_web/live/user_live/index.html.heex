@@ -16,9 +16,11 @@
     <table class="table is-hoverable is-bordered is-striped is-fullwidth">
       <thead>
         <tr>
-          <th class="is-6">Email</th>
-          <th class="is-6">Devices</th>
+          <th>Email</th>
+          <th>Devices</th>
           <th>Last Signed In</th>
+          <th>Created</th>
+          <th>Updated</th>
         </tr>
       </thead>
       <tbody>
@@ -30,6 +32,16 @@
           <td id={"user-#{user.id}-device-count"}><%= user.device_count %></td>
           <td id={"user-#{user.id}-timestamp"}
               data-timestamp={user.last_signed_in_at}
+              phx-hook="FormatTimestamp">
+            …
+          </td>
+          <td id={"user-#{user.id}-inserted-at"}
+              data-timestamp={user.inserted_at}
+              phx-hook="FormatTimestamp">
+            …
+          </td>
+          <td id={"user-#{user.id}-updated-at"}
+              data-timestamp={user.updated_at}
               phx-hook="FormatTimestamp">
             …
           </td>
