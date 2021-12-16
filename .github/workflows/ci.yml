@@ -130,6 +130,8 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Build
+        environment:
+          GIT_SHA: ${{ github.sha }}
         run: |
           . $HOME/.asdf/asdf.sh
           cd omnibus
