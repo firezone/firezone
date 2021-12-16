@@ -130,7 +130,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Build
-        environment:
+        env:
           GIT_SHA: ${{ github.sha }}
         run: |
           . $HOME/.asdf/asdf.sh
