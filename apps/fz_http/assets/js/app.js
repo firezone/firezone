@@ -72,6 +72,7 @@ const toggleConnectStatus = function (info) {
 
 userSocket.onError(toggleConnectStatus)
 userSocket.onOpen(toggleConnectStatus)
+userSocket.onClose(toggleConnectStatus)
 
 /* XXX: Refactor this into a LiveView. */
 const sessionConnect = function (pres) {
