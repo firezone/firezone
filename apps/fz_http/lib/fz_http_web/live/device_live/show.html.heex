@@ -86,14 +86,72 @@
       <h4 class="title is-4">WireGuard Configuration</h4>
     </div>
     <div class="level-right">
-      <%= link(
-          to: Routes.device_path(@socket, :download_config, @device),
-          class: "button") do %>
-        <span class="icon is-small">
-          <i class="mdi mdi-download"></i>
-        </span>
-        <span>Download Configuration</span>
-      <% end %>
+      <div class="field has-addons">
+        <div class={@dropdown_active_class <> " control dropdown is-right"}
+          phx-click-away="hide_config_token">
+          <div class="dropdown-trigger">
+            <button
+              id="get-shareable-link"
+              phx-click="create_config_token"
+              class="button">
+              <span class="icon is-small">
+                <i class="mdi mdi-share"></i>
+              </span>
+              <span>
+                Get Shareable Link
+              </span>
+            </button>
+          </div>
+          <div class="dropdown-menu is-large">
+            <div class="dropdown-content">
+              <div class="dropdown-item">
+                <p>
+                  Anyone with this link can view this device's configuration.
+                </p>
+                <p>
+                  Note: Link expires in <strong>10 minutes</strong>.
+                </p>
+              </div>
+              <div class="dropdown-item">
+                <div class="level">
+                  <div class="level-left">
+                    <code id="shareable-link">
+                      <%= if @device.config_token do %>
+                        <%= Routes.device_url(@socket, :config, @device.config_token) %>
+                      <% end %>
+                    </code>
+                  </div>
+                  <div class="level-right">
+                    <%= if @device.config_token do %>
+                      <button id="copy-shareable-link-button"
+                              data-clipboard={Routes.device_url(@socket, :config, @device.config_token)}
+                              data-target="shareable-link"
+                              class="button"
+                              data-tooltip="Click to copy"
+                              phx-hook="ClipboardCopy">
+                        <span class="icon">
+                          <i class="mdi mdi-content-copy"></i>
+                        </span>
+                      </button>
+                    <% end %>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="control">
+          <%= link(
+              to: Routes.device_path(@socket, :download_config, @device),
+              class: "button") do %>
+            <span class="icon is-small">
+              <i class="mdi mdi-download"></i>
+            </span>
+            <span>Download Configuration</span>
+          <% end %>
+        </div>
+      </div>
     </div>
   </div>
   <div class="block">
