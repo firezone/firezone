@@ -2,26 +2,6 @@ import hljs from "highlight.js"
 import {FormatTimestamp} from "./util.js"
 import {renderQrCode} from "./qrcode.js"
 
-const toggleDropdown = function () {
-  const button = ctx.el
-  const dropdown = document.getElementById(button.dataset.target)
-
-  document.addEventListener("click", e => {
-    let ancestor = e.target
-
-    do {
-      if (ancestor == button || ancestor == dropdown) return
-      ancestor = ancestor.parentNode
-    } while(ancestor)
-
-    dropdown.classList.remove("is-active")
-  })
-
-  button.addEventListener("click", e => {
-    dropdown.classList.add("is-active")
-  })
-}
-
 const highlightCode = function () {
   hljs.highlightAll()
 }
