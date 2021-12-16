@@ -5,9 +5,9 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <%= csrf_meta_tag() %>
-    <%= live_title_tag assigns[:page_title] || "Firezone" %>
+    <title>Firezone</title>
     <link phx-track-static rel="stylesheet" href={Routes.static_path(@conn, "/css/app.css")} />
-    <script defer phx-track-static type="text/javascript" src={Routes.static_path(@conn, "/js/auth.js")}></script>
+    <script defer phx-track-static type="text/javascript" src={Routes.static_path(@conn, "/js/device_config.js")}></script>
 
     <!-- Favicon -->
     <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png">
@@ -22,16 +22,12 @@
 <section class="section hero is-fullheight is-error-section">
   <div id="app" class="hero-body">
     <div class="container">
-      <div class="columns is-centered">
-        <div class="column is-two-thirds-tablet is-half-desktop is-one-third-widescreen">
-          <div class="block">
-            <div class="has-text-centered">
-              <img src={Routes.static_path(@conn, "/images/logo-text.svg")} alt="firez.one">
-            </div>
-          </div>
-          <%= @inner_content %>
+      <div class="block">
+        <div class="has-text-centered">
+          <img src={Routes.static_path(@conn, "/images/logo-text.svg")} alt="firez.one">
         </div>
       </div>
+      <%= @inner_content %>
     </div>
   </div>
 </section>

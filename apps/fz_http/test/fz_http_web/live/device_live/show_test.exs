@@ -227,22 +227,6 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
     end
   end
 
-  describe "delete other device" do
-    setup [:create_device, :create_other_user_device]
-
-    test "fails", %{authed_conn: conn, other_device: other_device, device: device} do
-      path = Routes.device_show_path(conn, :show, device)
-      {:ok, view, _html} = live(conn, path)
-      params = %{"device_id" => other_device.id}
-
-      view
-      |> render_hook(:delete_device, params)
-
-      flash = assert_redirected(view, Routes.session_path(conn, :new))
-      assert flash["error"] == "Not authorized."
-    end
-  end
-
   describe "unauthenticated" do
     setup :create_device
 
