@@ -1,0 +1,30 @@
+<div class="level">
+  <div class="level-left">
+    <h4 class="title is-4">WireGuard Configuration</h4>
+  </div>
+  <div class="level-right">
+    <%= link(to: Routes.device_path(@conn, :download_shared_config, @device.config_token), class: "button") do %>
+      <span class="icon is-small">
+        <i class="mdi mdi-download"></i>
+      </span>
+      <span>Download Configuration</span>
+    <% end %>
+  </div>
+</div>
+
+<div class="content">
+  <p>
+    WireGuard configuration for device <strong><%= @device.name %></strong> shown below.
+    Scan the QR code or copy and paste the configuration into your WireGuard application.
+  </p>
+</div>
+<div class="columns">
+  <div class="column">
+    <pre><code id="wg-conf" class="language-toml"><%= @config %></code></pre>
+  </div>
+  <div class="column has-text-centered">
+    <canvas id="qr-canvas">
+      Generating QR code...
+    </canvas>
+  </div>
+</div>
