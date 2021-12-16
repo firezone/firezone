@@ -47,7 +47,7 @@ build do
   env = with_standard_compiler_flags(with_embedded_path).merge(
     "MIX_ENV" => "prod",
     "VERSION" => Omnibus::BuildVersion.semver,
-    "GIT_SHA" => git_sha_tag
+    "GIT_SHA" => Omnibus::BuildVersion.git_describe.split(".").last
   )
 
   command "mix local.hex --force", env: env
