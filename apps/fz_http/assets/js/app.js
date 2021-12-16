@@ -58,6 +58,22 @@ const liveSocket = new LiveSocket(
   }
 )
 
+const toggleConnectStatus = function (info) {
+  let success = document.getElementById("web-ui-connect-success")
+  let error = document.getElementById("web-ui-connect-error")
+  if (userSocket.isConnected()) {
+    success.classList.remove("is-hidden")
+    error.classList.add("is-hidden")
+  } else {
+    success.classList.add("is-hidden")
+    error.classList.remove("is-hidden")
+  }
+}
+
+userSocket.onError(toggleConnectStatus)
+userSocket.onOpen(toggleConnectStatus)
+userSocket.onClose(toggleConnectStatus)
+
 /* XXX: Refactor this into a LiveView. */
 const sessionConnect = function (pres) {
   let tbody = document.getElementById("sessions-table-body")
