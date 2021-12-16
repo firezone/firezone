@@ -26,7 +26,7 @@ require Logger
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
-{git_sha, _} = Code.eval_file("scripts/git_sha.exs")
+{git_sha, 0} = System.cmd("git", ["rev-parse", "--short", "HEAD"], stderr_to_stdout: true)
 
 config :fz_http,
   supervision_tree_mode: :full,
@@ -34,7 +34,7 @@ config :fz_http,
   connectivity_checks_enabled: true,
   connectivity_checks_interval: 3_600,
   connectivity_checks_url: "https://ping-dev.firez.one/",
-  git_sha: git_sha,
+  git_sha: String.trim(git_sha),
   cookie_signing_salt: "Z9eq8iof",
   ecto_repos: [FzHttp.Repo],
   admin_email: "firezone@localhost",
