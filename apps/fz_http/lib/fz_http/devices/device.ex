@@ -31,6 +31,8 @@ defmodule FzHttp.Devices.Device do
     field :remote_ip, EctoNetwork.INET
     field :address, :integer, read_after_writes: true
     field :last_seen_at, :utc_datetime_usec
+    field :config_token, :string
+    field :config_token_expires_at, :utc_datetime_usec
 
     belongs_to :user, User
 
@@ -69,7 +71,9 @@ defmodule FzHttp.Devices.Device do
       :private_key,
       :user_id,
       :name,
-      :public_key
+      :public_key,
+      :config_token,
+      :config_token_expires_at
     ])
   end
 

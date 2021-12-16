@@ -4,11 +4,14 @@ defmodule FzHttp.Devices do
   """
 
   import Ecto.Query, warn: false
-  alias FzCommon.NameGenerator
+  alias FzCommon.{FzCrypto, NameGenerator}
   alias FzHttp.{ConnectivityChecks, Devices.Device, Repo, Settings, Users.User}
 
   @ipv4_prefix "10.3.2."
   @ipv6_prefix "fd00:3:2::"
+
+  # Device configs can be viewable for 10 minutes
+  @config_token_expires_in_sec 600
 
   def list_devices do
     Repo.all(Device)
@@ -22,6 +25,15 @@ defmodule FzHttp.Devices do
 
   def count(user_id) do
     Repo.one(from d in Device, where: d.user_id == ^user_id, select: count())
+  end
+
+  def get_device!(config_token: config_token) do
+    now = DateTime.utc_now()
+
+    Repo.one!(
+      from d in Device,
+        where: d.config_token == ^config_token and d.config_token_expires_at > ^now
+    )
   end
 
   def get_device!(id), do: Repo.get!(Device, id)
@@ -111,6 +123,17 @@ defmodule FzHttp.Devices do
     AllowedIPs = #{allowed_ips(device)}
     Endpoint = #{endpoint(device)}:#{wireguard_port}
     """
+  end
+
+  def create_config_token(device) do
+    expires_at = DateTime.add(DateTime.utc_now(), @config_token_expires_in_sec, :second)
+
+    config_token_attrs = %{
+      config_token: FzCrypto.rand_token(6),
+      config_token_expires_at: expires_at
+    }
+
+    update_device(device, config_token_attrs)
   end
 
   defp dns_servers_config(device) when is_struct(device) do
