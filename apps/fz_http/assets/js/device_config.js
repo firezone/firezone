@@ -10,6 +10,5 @@ import css from "../css/app.scss"
 import {renderQrCode} from "./qrcode.js"
 
 window.addEventListener('DOMContentLoaded', () => {
-  console.log('loaded')
   renderQrCode()
 })
