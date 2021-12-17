@@ -25,7 +25,16 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
       "device" => %{"use_default_endpoint" => "false", "endpoint" => @wireguard_endpoint}
     }
     @endpoint_unchanged %{
-      "device" => %{"use_default_endpoint" => "true", "dns_servers" => @wireguard_endpoint}
+      "device" => %{"use_default_endpoint" => "true", "endpoint" => @wireguard_endpoint}
+    }
+    @persistent_keepalives_change %{
+      "device" => %{
+        "use_default_persistent_keepalives" => "false",
+        "persistent_keepalives" => "120"
+      }
+    }
+    @persistent_keepalives_unchanged %{
+      "device" => %{"use_default_persistent_keepalives" => "true", "persistent_keepalives" => "5"}
     }
     @default_allowed_ips_change %{
       "device" => %{"use_default_allowed_ips" => "false"}
@@ -35,6 +44,9 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
     }
     @default_endpoint_change %{
       "device" => %{"use_default_endpoint" => "false"}
+    }
+    @default_persistent_keepalives_change %{
+      "device" => %{"use_default_persistent_keepalives" => "false"}
     }
 
     test "shows device details", %{authed_conn: conn, device: device} do
@@ -112,6 +124,22 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
       assert test_view =~ "must not be present"
     end
 
+    test "prevents persistent_keepalives changes when use_default_persistent_keepalives is true",
+         %{
+           authed_conn: conn,
+           device: device
+         } do
+      path = Routes.device_show_path(conn, :edit, device)
+      {:ok, view, _html} = live(conn, path)
+
+      test_view =
+        view
+        |> form("#edit-device")
+        |> render_submit(@persistent_keepalives_unchanged)
+
+      assert test_view =~ "must not be present"
+    end
+
     test "allows allowed_ips changes", %{authed_conn: conn, device: device} do
       path = Routes.device_show_path(conn, :edit, device)
       {:ok, view, _html} = live(conn, path)
@@ -155,6 +183,21 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
 
       {:ok, _view, html} = live(conn, path)
       assert html =~ "Endpoint = #{@wireguard_endpoint}:51820"
+    end
+
+    test "allows persistent_keepalives changes", %{authed_conn: conn, device: device} do
+      path = Routes.device_show_path(conn, :edit, device)
+      {:ok, view, _html} = live(conn, path)
+
+      view
+      |> form("#edit-device")
+      |> render_submit(@persistent_keepalives_change)
+
+      flash = assert_redirected(view, Routes.device_show_path(conn, :show, device))
+      assert flash["info"] == "Device updated successfully."
+
+      {:ok, _view, html} = live(conn, path)
+      assert html =~ "PersistentKeepalives = 120"
     end
 
     test "prevents empty names", %{authed_conn: conn, device: device} do
@@ -208,6 +251,20 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
 
       assert test_view =~ """
              <input class="input" id="edit-device_endpoint" name="device[endpoint]" type="text"/>\
+             """
+    end
+
+    test "on use_default_persistent_keepalives change", %{authed_conn: conn, device: device} do
+      path = Routes.device_show_path(conn, :edit, device)
+      {:ok, view, _html} = live(conn, path)
+
+      test_view =
+        view
+        |> form("#edit-device")
+        |> render_change(@default_persistent_keepalives_change)
+
+      assert test_view =~ """
+             <input class="input" id="edit-device_persistent_keepalives" name="device[persistent_keepalives]" type="text"/>\
              """
     end
   end

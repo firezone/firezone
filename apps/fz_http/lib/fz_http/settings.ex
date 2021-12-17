@@ -13,6 +13,7 @@ defmodule FzHttp.Settings do
     default.device.allowed_ips
     default.device.dns_servers
     default.device.endpoint
+    default.device.persistent_keepalives
   ))
 
   @doc """

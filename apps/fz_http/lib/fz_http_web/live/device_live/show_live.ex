@@ -42,7 +42,7 @@ defmodule FzHttpWeb.DeviceLive.Show do
   end
 
   @impl Phoenix.LiveView
-  def handle_event("hide_config_token", _params, socket) do
+  def handle_event("close_dropdown", _params, socket) do
     {:noreply,
      socket
      |> assign(:dropdown_active_class, "")}
@@ -84,6 +84,7 @@ defmodule FzHttpWeb.DeviceLive.Show do
         allowed_ips: Devices.allowed_ips(device),
         dns_servers: Devices.dns_servers(device),
         endpoint: Devices.endpoint(device),
+        persistent_keepalives: Devices.persistent_keepalives(device),
         config: Devices.as_config(device)
       )
     else
