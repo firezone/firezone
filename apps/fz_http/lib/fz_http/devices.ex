@@ -103,8 +103,21 @@ defmodule FzHttp.Devices do
     end
   end
 
+  def persistent_keepalives(device) do
+    if device.use_default_persistent_keepalives do
+      Settings.default_device_persistent_keepalives()
+    else
+      device.persistent_keepalives
+    end
+  end
+
   def defaults(changeset) do
-    ~w(use_default_allowed_ips use_default_dns_servers use_default_endpoint)a
+    ~w(
+      use_default_allowed_ips
+      use_default_dns_servers
+      use_default_endpoint
+      use_default_persistent_keepalives
+    )a
     |> Enum.map(fn field -> {field, Device.field(changeset, field)} end)
     |> Map.new()
   end
@@ -122,6 +135,7 @@ defmodule FzHttp.Devices do
     PublicKey = #{device.server_public_key}
     AllowedIPs = #{allowed_ips(device)}
     Endpoint = #{endpoint(device)}:#{wireguard_port}
+    #{persistent_keepalives_config(device)}
     """
   end
 
@@ -134,6 +148,17 @@ defmodule FzHttp.Devices do
     }
 
     update_device(device, config_token_attrs)
+  end
+
+  defp persistent_keepalives_config(device) do
+    pk = persistent_keepalives(device)
+    pk && "PersistentKeepalives = #{pk}"
+
+    if is_nil(pk) do
+      ""
+    else
+      "PersistentKeepalives = #{pk}"
+    end
   end
 
   defp dns_servers_config(device) when is_struct(device) do
