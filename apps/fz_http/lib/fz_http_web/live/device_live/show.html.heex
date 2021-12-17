@@ -63,6 +63,17 @@
       </tr>
 
       <tr>
+        <td><strong>Persistent Keepalives</strong></td>
+        <td>
+          <%= if @persistent_keepalives == 0 do %>
+            Every <%= @persistent_keepalives %> seconds
+          <% else %>
+            Disabled
+          <% end %>
+        </td>
+      </tr>
+
+      <tr>
         <td><strong>Public key</strong></td>
         <td class="code"><%= @device.public_key %></td>
       </tr>
@@ -87,8 +98,13 @@
     </div>
     <div class="level-right">
       <div class="field has-addons">
-        <div class={@dropdown_active_class <> " control dropdown is-right"}
-          phx-click-away="hide_config_token">
+        <div
+          id="shareable-link-trigger"
+          class={@dropdown_active_class <> " control dropdown is-right"}
+          phx-capture-click="close_dropdown"
+          phx-key="escape"
+          phx-click-away="close_dropdown"
+          phx-window-keydown="close_dropdown">
           <div class="dropdown-trigger">
             <button
               id="get-shareable-link"

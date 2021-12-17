@@ -4,11 +4,11 @@ defmodule FzHttpWeb.ModalComponent do
   """
   use FzHttpWeb, :live_component
 
-  @impl true
+  @impl Phoenix.LiveComponent
   def render(assigns) do
     ~H"""
     <div
-      id={@myself}
+      id={"modal-#{@myself}"}
       class="modal is-active"
       phx-capture-click="close"
       phx-window-keydown="close"
@@ -33,8 +33,18 @@ defmodule FzHttpWeb.ModalComponent do
     """
   end
 
-  @impl true
+  @impl Phoenix.LiveComponent
   def handle_event("close", _, socket) do
     {:noreply, push_patch(socket, to: socket.assigns.return_to)}
+  end
+
+  @impl Phoenix.LiveComponent
+  @doc """
+  XXX: This is needed due to a bug on pages with dropdowns.
+  Basically this modal receives the phx-click-away event and the
+  server crashes if this is not implemented.
+  """
+  def handle_event("close_dropdown", _params, socket) do
+    {:noreply, socket}
   end
 end
