@@ -6,7 +6,7 @@ defmodule FzHttp.Users do
   import Ecto.Query, warn: false
   alias FzHttp.Repo
 
-  alias FzCommon.FzCrypto
+  alias FzCommon.{FzCrypto, FzMap}
   alias FzHttp.{Devices.Device, Users.User}
 
   # one hour
@@ -35,13 +35,30 @@ defmodule FzHttp.Users do
 
   def get_user(id), do: Repo.get(User, id)
 
-  def create_user(attrs) when is_list(attrs) do
+  def create_admin_user(attrs) do
+    create_user_with_role(attrs, :admin)
+  end
+
+  def create_unprivileged_user(attrs) do
+    create_user_with_role(attrs, :unprivileged)
+  end
+
+  defp create_user_with_role(attrs, role) when is_map(attrs) do
     attrs
-    |> Enum.into(%{})
+    |> Map.put(:role, role)
     |> create_user()
   end
 
-  def create_user(attrs) when is_map(attrs) do
+  defp create_user_with_role(attrs, role) when is_list(attrs) do
+    attrs
+    |> Enum.into(%{})
+    |> Map.put(:role, role)
+    |> create_user()
+  end
+
+  defp create_user(attrs) when is_map(attrs) do
+    attrs = FzMap.stringify_keys(attrs)
+
     struct(User, sign_in_keys())
     |> User.create_changeset(attrs)
     |> Repo.insert()
@@ -89,9 +106,13 @@ defmodule FzHttp.Users do
     Repo.all(query)
   end
 
-  # XXX: For now assume first user is the admin.
+  # Assume only one admin
   def admin do
-    User |> first |> Repo.one()
+    Repo.one(
+      from u in User,
+        where: u.role == :admin,
+        limit: 1
+    )
   end
 
   defp find_by_token(token) do
