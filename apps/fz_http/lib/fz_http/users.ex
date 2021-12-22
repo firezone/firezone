@@ -12,6 +12,10 @@ defmodule FzHttp.Users do
   # one hour
   @sign_in_token_validity_secs 3600
 
+  def count do
+    Repo.one(from u in User, select: count(u.id))
+  end
+
   def consume_sign_in_token(token) when is_binary(token) do
     case find_token_transaction(token) do
       {:ok, {:ok, user}} -> {:ok, user}
@@ -93,6 +97,13 @@ defmodule FzHttp.Users do
     Repo.all(User)
   end
 
+  @doc """
+  Fetches all users and groups into an Enumerable that can be used for an HTML form input.
+  """
+  def as_options_for_select do
+    Repo.all(from u in User, select: {u.email, u.id})
+  end
+
   def list_users(:with_device_counts) do
     query =
       from(
@@ -106,7 +117,7 @@ defmodule FzHttp.Users do
     Repo.all(query)
   end
 
-  # Assume only one admin
+  # XXX: Assume only one admin
   def admin do
     Repo.one(
       from u in User,

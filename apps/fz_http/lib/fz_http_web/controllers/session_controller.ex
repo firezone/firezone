@@ -3,7 +3,7 @@ defmodule FzHttpWeb.SessionController do
   Implements the CRUD for a Session
   """
 
-  alias FzHttp.{Sessions, Users}
+  alias FzHttp.{Sessions, Users, Users.Session}
   use FzHttpWeb, :controller
 
   plug :put_root_layout, "auth.html"
@@ -12,7 +12,7 @@ defmodule FzHttpWeb.SessionController do
   def new(conn, _params) do
     if redirect_authenticated?(conn) do
       conn
-      |> redirect(to: Routes.device_path(conn, :index))
+      |> redirect(to: root_path_for_role(conn))
       |> halt()
     else
       changeset = Sessions.new_session()
@@ -31,9 +31,19 @@ defmodule FzHttpWeb.SessionController do
 
       record ->
         case Sessions.create_session(record, %{email: email, password: password}) do
-          {:ok, session} ->
+          {:ok, %Session{role: :unprivileged} = session} ->
             conn
             |> clear_session()
+            |> assign(:current_session, session)
+            |> activate_vpn()
+            |> put_session(:user_id, session.id)
+            |> redirect(to: Routes.user_path(conn, :show))
+
+          {:ok, %Session{role: :admin} = session} ->
+            conn
+            |> clear_session()
+            |> assign(:current_session, session)
+            |> activate_vpn()
             |> put_session(:user_id, session.id)
             |> put_session(:live_socket_id, "users_socket:#{session.id}")
             |> redirect(to: Routes.device_path(conn, :index))
@@ -76,5 +86,10 @@ defmodule FzHttpWeb.SessionController do
   defp redirect_authenticated?(conn) do
     user_id = get_session(conn, :user_id)
     Users.exists?(user_id)
+  end
+
+  defp activate_vpn(conn) do
+    conn
+    |> put_flash(:info, "VPN session activated!")
   end
 end
