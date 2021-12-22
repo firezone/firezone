@@ -13,6 +13,7 @@ defmodule FzHttpWeb.ControllerHelpers do
 
   import Phoenix.Controller,
     only: [
+      put_flash: 3,
       redirect: 2
     ]
 
@@ -31,15 +32,33 @@ defmodule FzHttpWeb.ControllerHelpers do
     end
   end
 
-  def root_path_for_role(conn) do
+  def authorize_authenticated(conn, _options) do
     user = Users.get_user!(get_session(conn, :user_id))
 
+    case user.role do
+      :unprivileged ->
+        conn
+        |> put_flash(:error, "Not authorized.")
+        |> redirect(to: root_path_for_role(conn, user))
+        |> halt()
+
+      :admin ->
+        conn
+    end
+  end
+
+  def root_path_for_role(conn) do
+    user = Users.get_user!(get_session(conn, :user_id))
+    root_path_for_role(conn, user)
+  end
+
+  def root_path_for_role(conn, user) do
     case user.role do
       :unprivileged ->
         Routes.user_path(conn, :show)
 
       :admin ->
-        Routes.device_path(conn, :index)
+        Routes.device_index_path(conn, :index)
 
       _ ->
         Routes.session_path(conn, :new)
