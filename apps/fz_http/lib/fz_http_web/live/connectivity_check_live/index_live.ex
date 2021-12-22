@@ -15,6 +15,13 @@ defmodule FzHttpWeb.ConnectivityCheckLive.Index do
   end
 
   defp load_data(_params, socket) do
-    assign(socket, :connectivity_checks, ConnectivityChecks.list_connectivity_checks(limit: 20))
+    user = socket.assigns.current_user
+
+    if user.role == :admin do
+      socket
+      |> assign(:connectivity_checks, ConnectivityChecks.list_connectivity_checks(limit: 20))
+    else
+      not_authorized(socket)
+    end
   end
 end

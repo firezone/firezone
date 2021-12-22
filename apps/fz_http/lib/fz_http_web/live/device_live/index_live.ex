@@ -42,6 +42,13 @@ defmodule FzHttpWeb.DeviceLive.Index do
   end
 
   defp load_data(_params, socket) do
-    assign(socket, :devices, Devices.list_devices())
+    # XXX: Update this to use new LiveView session auth
+    user = socket.assigns.current_user
+
+    if user.role == :admin do
+      assign(socket, :devices, Devices.list_devices())
+    else
+      not_authorized(socket)
+    end
   end
 end

@@ -3,7 +3,7 @@ defmodule FzHttpWeb.SessionController do
   Implements the CRUD for a Session
   """
 
-  alias FzHttp.{Sessions, Users, Users.Session}
+  alias FzHttp.{Sessions, Users}
   use FzHttpWeb, :controller
 
   plug :put_root_layout, "auth.html"
@@ -31,22 +31,14 @@ defmodule FzHttpWeb.SessionController do
 
       record ->
         case Sessions.create_session(record, %{email: email, password: password}) do
-          {:ok, %Session{role: :unprivileged} = session} ->
-            conn
-            |> clear_session()
-            |> assign(:current_session, session)
-            |> activate_vpn()
-            |> put_session(:user_id, session.id)
-            |> redirect(to: Routes.user_path(conn, :show))
-
-          {:ok, %Session{role: :admin} = session} ->
+          {:ok, session} ->
             conn
             |> clear_session()
             |> assign(:current_session, session)
             |> activate_vpn()
             |> put_session(:user_id, session.id)
             |> put_session(:live_socket_id, "users_socket:#{session.id}")
-            |> redirect(to: Routes.device_path(conn, :index))
+            |> redirect(to: Routes.root_path(conn, :index))
 
           {:error, _changeset} ->
             conn
@@ -65,7 +57,7 @@ defmodule FzHttpWeb.SessionController do
         |> clear_session()
         |> put_session(:user_id, user.id)
         |> put_session(:live_socket_id, "users_socket:#{user.id}")
-        |> redirect(to: Routes.device_path(conn, :index))
+        |> redirect(to: Routes.device_index_path(conn, :index))
 
       {:error, error_msg} ->
         conn
