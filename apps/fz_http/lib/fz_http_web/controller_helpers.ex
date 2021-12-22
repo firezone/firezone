@@ -16,6 +16,7 @@ defmodule FzHttpWeb.ControllerHelpers do
       redirect: 2
     ]
 
+  alias FzHttp.Users
   alias FzHttpWeb.Router.Helpers, as: Routes
 
   def redirect_unauthenticated(conn, _options) do
@@ -27,6 +28,21 @@ defmodule FzHttpWeb.ControllerHelpers do
 
       _ ->
         conn
+    end
+  end
+
+  def root_path_for_role(conn) do
+    user = Users.get_user!(get_session(conn, :user_id))
+
+    case user.role do
+      :unprivileged ->
+        Routes.user_path(conn, :show)
+
+      :admin ->
+        Routes.device_path(conn, :index)
+
+      _ ->
+        Routes.session_path(conn, :new)
     end
   end
 

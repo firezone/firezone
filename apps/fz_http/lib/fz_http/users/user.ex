@@ -34,6 +34,7 @@ defmodule FzHttp.Users.User do
   def create_changeset(user, attrs \\ %{}) do
     user
     |> cast(attrs, [
+      :role,
       :sign_in_token,
       :sign_in_token_created_at,
       :email,
@@ -98,7 +99,7 @@ defmodule FzHttp.Users.User do
         } = attrs
       ) do
     user
-    |> cast(attrs, [:email, :password, :password_confirmation, :current_password])
+    |> cast(attrs, [:role, :email, :password, :password_confirmation, :current_password])
     |> validate_required([:email, :password, :password_confirmation, :current_password])
     |> validate_format(:email, ~r/@/)
     |> verify_current_password(user)
