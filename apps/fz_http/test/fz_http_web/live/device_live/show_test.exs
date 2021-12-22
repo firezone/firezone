@@ -295,17 +295,18 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
     end
   end
 
-  describe "authenticated as other user" do
-    setup [:create_device, :create_other_user_device]
-
-    test "mount redirects to session path", %{
-      authed_conn: conn,
-      device: _device,
-      other_device: other_device
-    } do
-      path = Routes.device_show_path(conn, :show, other_device)
-      expected_path = Routes.session_path(conn, :new)
-      assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
-    end
-  end
+  # XXX: Revisit this when RBAC is more fleshed out. Admins can now view other admins' devices.
+  # describe "authenticated as other user" do
+  #   setup [:create_device, :create_other_user_device]
+  #
+  #   test "mount redirects to session path", %{
+  #     authed_conn: conn,
+  #     device: _device,
+  #     other_device: other_device
+  #   } do
+  #     path = Routes.device_show_path(conn, :show, other_device)
+  #     expected_path = Routes.session_path(conn, :new)
+  #     assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
+  #   end
+  # end
 end
