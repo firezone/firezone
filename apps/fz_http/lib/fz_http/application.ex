@@ -29,7 +29,8 @@ defmodule FzHttp.Application do
       FzHttpWeb.Endpoint,
       {Phoenix.PubSub, name: FzHttp.PubSub},
       FzHttpWeb.Presence,
-      FzHttp.ConnectivityCheckService
+      FzHttp.ConnectivityCheckService,
+      FzHttp.VpnSessionScheduler
     ]
   end
 

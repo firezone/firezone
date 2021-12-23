@@ -12,6 +12,7 @@ defmodule FzHttp.Settings.Setting do
 
   use Ecto.Schema
   import Ecto.Changeset
+  import FzCommon.FzInteger, only: [max_pg_integer: 0]
 
   import FzHttp.SharedValidators,
     only: [
@@ -64,6 +65,18 @@ defmodule FzHttp.Settings.Setting do
   defp validate_kv_pair(changeset, "default.device.persistent_keepalives") do
     changeset
     |> validate_number(:value, greater_than_or_equal_to: 0, less_than_or_equal_to: 120)
+  end
+
+  defp validate_kv_pair(changeset, "security.require_auth_for_vpn_frequency") do
+    validate_change(changeset, :value, fn _current_field, value ->
+      val = String.to_integer(value)
+
+      if val < 0 || val > max_pg_integer() do
+        [{:value, "is invalid: must be between 0 and #{max_pg_integer()}"}]
+      else
+        []
+      end
+    end)
   end
 
   defp validate_kv_pair(changeset, unknown_key) do

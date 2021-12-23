@@ -1,7 +1,7 @@
 <%= if @live_action == :edit do %>
   <%= live_modal(
-      FzHttpWeb.AccountLive.FormComponent,
-      return_to: Routes.account_show_path(@socket, :show),
+      FzHttpWeb.SettingLive.AccountFormComponent,
+      return_to: Routes.setting_account_path(@socket, :show),
       title: "Edit Account",
       id: "user-#{@current_user.id}",
       user: @current_user,
@@ -13,13 +13,19 @@
 <section class="section is-main-section">
   <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
 
+  <div class="block">
+    <p>
+      Configure account settings.
+    </p>
+  </div>
+
   <div class="level">
     <div class="level-left">
       <h4 class="title is-4">Details</h4>
     </div>
 
     <div class="level-right">
-      <%= live_patch(to: Routes.account_show_path(@socket, :edit), class: "button") do %>
+      <%= live_patch(to: Routes.setting_account_path(@socket, :edit), class: "button") do %>
         <span class="icon is-small">
           <i class="mdi mdi-pencil"></i>
         </span>

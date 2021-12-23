@@ -5,7 +5,7 @@ defmodule FzHttp.Devices do
 
   import Ecto.Query, warn: false
   alias FzCommon.{FzCrypto, NameGenerator}
-  alias FzHttp.{ConnectivityChecks, Devices.Device, Repo, Settings, Users.User}
+  alias FzHttp.{ConnectivityChecks, Devices.Device, Repo, Settings, Users, Users.User}
 
   @ipv4_prefix "10.3.2."
   @ipv6_prefix "fd00:3:2::"
@@ -93,12 +93,21 @@ defmodule FzHttp.Devices do
   end
 
   def to_peer_list do
-    for device <- Repo.all(Device) do
+    vpn_duration = Settings.vpn_duration()
+
+    Repo.all(
+      from d in Device,
+        preload: :user
+    )
+    |> Enum.filter(fn device ->
+      device.user.role == :admin || !Users.vpn_session_expired?(device.user, vpn_duration)
+    end)
+    |> Enum.map(fn device ->
       %{
         public_key: device.public_key,
         allowed_ips: "#{ipv4_address(device)}/32,#{ipv6_address(device)}/128"
       }
-    end
+    end)
   end
 
   def allowed_ips(device) do

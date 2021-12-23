@@ -35,7 +35,6 @@ defmodule FzHttpWeb.SessionController do
             conn
             |> clear_session()
             |> assign(:current_session, session)
-            |> activate_vpn()
             |> put_session(:user_id, session.id)
             |> put_session(:live_socket_id, "users_socket:#{session.id}")
             |> redirect(to: Routes.root_path(conn, :index))
@@ -78,10 +77,5 @@ defmodule FzHttpWeb.SessionController do
   defp redirect_authenticated?(conn) do
     user_id = get_session(conn, :user_id)
     Users.exists?(user_id)
-  end
-
-  defp activate_vpn(conn) do
-    conn
-    |> put_flash(:info, "VPN session activated!")
   end
 end
