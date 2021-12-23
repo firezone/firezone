@@ -8,7 +8,7 @@ defmodule FzHttp.Users do
   alias FzHttp.Repo
 
   alias FzCommon.{FzCrypto, FzMap}
-  alias FzHttp.{Devices.Device, Settings, Users.User}
+  alias FzHttp.{Devices.Device, Users.User}
 
   # one hour
   @sign_in_token_validity_secs 3600
@@ -131,15 +131,14 @@ defmodule FzHttp.Users do
   Returns DateTime that VPN sessions expire based on last_signed_in_at
   and the security.require_auth_for_vpn_frequency setting.
   """
-  def vpn_session_expires_at(user) do
-    freq = String.to_integer(Settings.security_require_auth_for_vpn_frequency())
-    DateTime.add(user.last_signed_in_at, freq)
+  def vpn_session_expires_at(user, duration) do
+    DateTime.add(user.last_signed_in_at, duration)
   end
 
-  def vpn_session_expired?(user) do
+  def vpn_session_expired?(user, duration) do
     max = max_pg_integer()
 
-    case String.to_integer(Settings.security_require_auth_for_vpn_frequency()) do
+    case duration do
       0 ->
         false
 
@@ -147,7 +146,8 @@ defmodule FzHttp.Users do
         is_nil(user.last_signed_in_at)
 
       _num ->
-        DateTime.diff(vpn_session_expires_at(user), DateTime.utc_now()) <= 0
+        is_nil(user.last_signed_in_at) ||
+          DateTime.diff(vpn_session_expires_at(user, duration), DateTime.utc_now()) <= 0
     end
   end
 
