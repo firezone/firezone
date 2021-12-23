@@ -13,6 +13,7 @@ defmodule FzHttp.Users.User do
   alias FzHttp.Devices.Device
 
   schema "users" do
+    field :role, Ecto.Enum, values: [:unprivileged, :admin], default: :unprivileged
     field :email, :string
     field :last_signed_in_at, :utc_datetime_usec
     field :password_hash, :string
@@ -33,6 +34,7 @@ defmodule FzHttp.Users.User do
   def create_changeset(user, attrs \\ %{}) do
     user
     |> cast(attrs, [
+      :role,
       :sign_in_token,
       :sign_in_token_created_at,
       :email,
@@ -97,7 +99,7 @@ defmodule FzHttp.Users.User do
         } = attrs
       ) do
     user
-    |> cast(attrs, [:email, :password, :password_confirmation, :current_password])
+    |> cast(attrs, [:role, :email, :password, :password_confirmation, :current_password])
     |> validate_required([:email, :password, :password_confirmation, :current_password])
     |> validate_format(:email, ~r/@/)
     |> verify_current_password(user)

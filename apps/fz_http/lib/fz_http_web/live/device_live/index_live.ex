@@ -4,46 +4,61 @@ defmodule FzHttpWeb.DeviceLive.Index do
   """
   use FzHttpWeb, :live_view
 
-  alias FzHttp.Devices
+  alias FzHttp.{Devices, Users}
   alias FzHttpWeb.ErrorHelpers
 
+  @impl Phoenix.LiveView
   def mount(params, session, socket) do
     {:ok,
      socket
      |> assign_defaults(params, session, &load_data/2)
+     |> assign(:changeset, Devices.new_device())
      |> assign(:page_title, "Devices")}
   end
 
+  @impl Phoenix.LiveView
   def handle_event("create_device", _params, socket) do
-    {:ok, privkey, pubkey, server_pubkey} = @events_module.create_device()
+    if Users.count() == 1 do
+      # Must be the admin user
+      case Devices.auto_create_device(%{user_id: Users.admin().id}) do
+        {:ok, device} ->
+          @events_module.device_created(device)
 
-    attributes = %{
-      private_key: privkey,
-      public_key: pubkey,
-      server_public_key: server_pubkey,
-      user_id: socket.assigns.current_user.id,
-      name: Devices.rand_name()
-    }
+          {:noreply,
+           socket
+           |> push_redirect(to: Routes.device_show_path(socket, :show, device))}
 
-    case Devices.create_device(attributes) do
-      {:ok, device} ->
-        @events_module.device_created(device)
-
-        {:noreply,
-         socket
-         |> redirect(to: Routes.device_show_path(socket, :show, device))}
-
-      {:error, changeset} ->
-        {:noreply,
-         put_flash(
-           socket,
-           :error,
-           "Error creating device: #{ErrorHelpers.aggregated_errors(changeset)}"
-         )}
+        {:error, changeset} ->
+          {:noreply,
+           socket
+           |> put_flash(
+             :error,
+             "Error creating device: #{ErrorHelpers.aggregated_errors(changeset)}"
+           )}
+      end
+    else
+      {:noreply,
+       socket
+       |> push_patch(to: Routes.device_index_path(socket, :new))}
     end
   end
 
+  @doc """
+  Needed because this view will receive handle_params when modal is closed.
+  """
+  @impl Phoenix.LiveView
+  def handle_params(_params, _url, socket) do
+    {:noreply, socket}
+  end
+
   defp load_data(_params, socket) do
-    assign(socket, :devices, Devices.list_devices())
+    # XXX: Update this to use new LiveView session auth
+    user = socket.assigns.current_user
+
+    if user.role == :admin do
+      assign(socket, :devices, Devices.list_devices())
+    else
+      not_authorized(socket)
+    end
   end
 end

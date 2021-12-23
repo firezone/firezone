@@ -31,10 +31,10 @@ defmodule FzHttpWeb.Router do
     live "/rules", RuleLive.Index, :index
 
     live "/devices", DeviceLive.Index, :index
+    live "/devices/new", DeviceLive.Index, :new
     live "/devices/:id", DeviceLive.Show, :show
     live "/devices/:id/edit", DeviceLive.Show, :edit
     get "/devices/:id/dl", DeviceController, :download_config
-    get "/", DeviceController, :index
     get "/device_config/:config_token", DeviceController, :config
     get "/device_config/:config_token/dl", DeviceController, :download_shared_config
 
@@ -49,5 +49,8 @@ defmodule FzHttpWeb.Router do
 
     get "/sign_in/:token", SessionController, :create
     delete "/user", UserController, :delete
+    get "/user", UserController, :show
+
+    get "/", RootController, :index
   end
 end

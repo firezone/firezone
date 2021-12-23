@@ -21,10 +21,16 @@ defmodule FzHttpWeb.UserLive.Index do
   end
 
   defp load_data(_params, socket) do
-    assign(
-      socket,
-      :users,
-      Users.list_users(:with_device_counts)
-    )
+    user = socket.assigns.current_user
+
+    if user.role == :admin do
+      assign(
+        socket,
+        :users,
+        Users.list_users(:with_device_counts)
+      )
+    else
+      not_authorized(socket)
+    end
   end
 end

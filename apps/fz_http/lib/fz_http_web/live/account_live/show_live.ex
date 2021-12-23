@@ -20,7 +20,13 @@ defmodule FzHttpWeb.AccountLive.Show do
   end
 
   defp load_data(_params, socket) do
-    socket
-    |> assign(:changeset, Users.change_user(socket.assigns.current_user))
+    user = socket.assigns.current_user
+
+    if user.role == :admin do
+      socket
+      |> assign(:changeset, Users.change_user(socket.assigns.current_user))
+    else
+      not_authorized(socket)
+    end
   end
 end

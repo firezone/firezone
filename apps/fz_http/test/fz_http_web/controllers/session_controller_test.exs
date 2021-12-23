@@ -13,7 +13,7 @@ defmodule FzHttpWeb.SessionControllerTest do
     test "authed: redirects to devices page", %{authed_conn: conn, user: _user} do
       test_conn = get(conn, Routes.session_path(conn, :new))
 
-      assert redirected_to(test_conn) == Routes.device_path(test_conn, :index)
+      assert redirected_to(test_conn) == Routes.device_index_path(test_conn, :index)
     end
   end
 
@@ -60,7 +60,7 @@ defmodule FzHttpWeb.SessionControllerTest do
 
       test_conn = post(conn, Routes.session_path(conn, :create), params)
 
-      assert redirected_to(test_conn) == Routes.device_path(test_conn, :index)
+      assert redirected_to(test_conn) == Routes.root_path(test_conn, :index)
       assert get_session(test_conn, :user_id) == user.id
     end
 
@@ -74,7 +74,7 @@ defmodule FzHttpWeb.SessionControllerTest do
     test "token valid; sets session", %{unauthed_conn: conn, user: user} do
       test_conn = get(conn, Routes.session_path(conn, :create, user.sign_in_token))
 
-      assert redirected_to(test_conn) == Routes.device_path(test_conn, :index)
+      assert redirected_to(test_conn) == Routes.device_index_path(test_conn, :index)
       assert get_session(test_conn, :user_id) == user.id
     end
   end

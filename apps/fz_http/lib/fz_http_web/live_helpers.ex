@@ -7,7 +7,8 @@ defmodule FzHttpWeb.LiveHelpers do
   import Phoenix.LiveView
   import Phoenix.LiveView.Helpers
   alias FzHttp.Users
-  alias FzHttpWeb.Router.Helpers, as: Routes
+
+  import FzHttpWeb.ControllerHelpers, only: [root_path_for_role: 1]
 
   @doc """
   Load user into socket assigns and call the callback function if provided.
@@ -37,7 +38,7 @@ defmodule FzHttpWeb.LiveHelpers do
   def not_authorized(socket) do
     socket
     |> put_flash(:error, "Not authorized.")
-    |> redirect(to: Routes.session_path(socket, :new))
+    |> redirect(to: root_path_for_role(socket))
   end
 
   def live_modal(component, opts) do

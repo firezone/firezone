@@ -13,6 +13,8 @@ defmodule FzHttp.Devices do
   # Device configs can be viewable for 10 minutes
   @config_token_expires_in_sec 600
 
+  @events_module Application.compile_env!(:fz_http, :events_module)
+
   def list_devices do
     Repo.all(Device)
   end
@@ -42,6 +44,26 @@ defmodule FzHttp.Devices do
     %Device{}
     |> Device.create_changeset(attrs)
     |> Repo.insert()
+  end
+
+  @doc """
+  Creates device with fields populated from the VPN process.
+  """
+  def auto_create_device(attrs \\ %{}) do
+    {:ok, privkey, pubkey, server_pubkey} = @events_module.create_device()
+
+    attributes =
+      Map.merge(
+        %{
+          private_key: privkey,
+          public_key: pubkey,
+          server_public_key: server_pubkey,
+          name: rand_name()
+        },
+        attrs
+      )
+
+    create_device(attributes)
   end
 
   def update_device(%Device{} = device, attrs) do
@@ -93,6 +115,10 @@ defmodule FzHttp.Devices do
     else
       device.dns_servers
     end
+  end
+
+  def new_device do
+    change_device(%Device{})
   end
 
   def endpoint(device) do

@@ -1,0 +1,13 @@
+<p>
+  Your VPN session is active!
+</p>
+
+<p>
+  User: <%= @user.email %>
+</p>
+
+<p>
+  <%= link(to: Routes.session_path(@conn, :delete), method: :delete) do %>
+    Sign out and end your session.
+  <% end %>
+</p>
