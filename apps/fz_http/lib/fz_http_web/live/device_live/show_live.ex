@@ -14,6 +14,9 @@ defmodule FzHttpWeb.DeviceLive.Show do
      |> assign_defaults(params, session, &load_data/2)}
   end
 
+  @doc """
+  Needed because this view will receive handle_params when modal is closed.
+  """
   @impl Phoenix.LiveView
   def handle_params(_params, _url, socket) do
     {:noreply, socket}

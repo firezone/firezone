@@ -7,6 +7,7 @@ defmodule FzHttpWeb.DeviceLive.Index do
   alias FzHttp.{Devices, Users}
   alias FzHttpWeb.ErrorHelpers
 
+  @impl Phoenix.LiveView
   def mount(params, session, socket) do
     {:ok,
      socket
@@ -15,6 +16,7 @@ defmodule FzHttpWeb.DeviceLive.Index do
      |> assign(:page_title, "Devices")}
   end
 
+  @impl Phoenix.LiveView
   def handle_event("create_device", _params, socket) do
     if Users.count() == 1 do
       # Must be the admin user
@@ -37,8 +39,16 @@ defmodule FzHttpWeb.DeviceLive.Index do
     else
       {:noreply,
        socket
-       |> push_redirect(to: Routes.device_index_path(socket, :new))}
+       |> push_patch(to: Routes.device_index_path(socket, :new))}
     end
+  end
+
+  @doc """
+  Needed because this view will receive handle_params when modal is closed.
+  """
+  @impl Phoenix.LiveView
+  def handle_params(_params, _url, socket) do
+    {:noreply, socket}
   end
 
   defp load_data(_params, socket) do
