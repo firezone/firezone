@@ -1,15 +1,19 @@
-<div class="block">
+<div class="content">
   <%= if vpn_sessions_expire?() do %>
     <%= if vpn_expired?(@user) do %>
-      Your VPN session expired at
+      <p>
+        Your VPN session expired at:
+      </p>
     <% else %>
-      Your VPN session expires at
+      <p>
+        Your VPN session expires at:
+      </p>
     <% end %>
-      <span
-        data-timestamp={vpn_expires_at(@user)}
-        id="expires-at"
-        phx-hook="FormatTimestamp">...</span>
-      .
+    <p>
+      <strong>
+        <span data-timestamp={vpn_expires_at(@user)}>...</span>
+      </strong>
+    </p>
   <% else %>
     Your VPN session is active indefinitely.
   <% end %>
