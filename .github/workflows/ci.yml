@@ -58,6 +58,7 @@ jobs:
   unit-test:
     runs-on: ubuntu-18.04
     env:
+      ADMIN_EMAIL: firezone@localhost
       MIX_ENV: test
       POSTGRES_HOST: localhost
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
