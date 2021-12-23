@@ -8,11 +8,7 @@ defmodule FzHttpWeb.DeviceController do
   alias FzHttp.Devices
 
   plug :redirect_unauthenticated, except: [:config]
-
-  def index(conn, _params) do
-    conn
-    |> redirect(to: Routes.device_index_path(conn, :index))
-  end
+  plug :authorize_authenticated, except: [:config]
 
   def download_config(conn, %{"id" => device_id}) do
     device = Devices.get_device!(device_id)

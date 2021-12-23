@@ -19,7 +19,13 @@ defmodule FzCommon.FzMap do
   """
   def stringify_keys(map) when is_map(map) do
     map
-    |> Enum.map(fn {k, v} -> {Atom.to_string(k), v} end)
+    |> Enum.map(fn {k, v} ->
+      if is_atom(k) do
+        {Atom.to_string(k), v}
+      else
+        {k, v}
+      end
+    end)
     |> Enum.into(%{})
   end
 end

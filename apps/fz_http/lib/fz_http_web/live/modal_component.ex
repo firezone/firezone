@@ -8,7 +8,7 @@ defmodule FzHttpWeb.ModalComponent do
   def render(assigns) do
     ~H"""
     <div
-      id={"modal-#{@myself}"}
+      id={@myself}
       class="modal is-active"
       phx-capture-click="close"
       phx-window-keydown="close"

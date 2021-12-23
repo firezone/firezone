@@ -17,7 +17,7 @@ defmodule FzHttp.UsersFixtures do
         {:ok, user} =
           %{email: email, password: "testtest", password_confirmation: "testtest"}
           |> Map.merge(attrs)
-          |> Users.create_user()
+          |> Users.create_admin_user()
 
         user
 

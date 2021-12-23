@@ -30,7 +30,7 @@ defmodule FzHttp.TestHelpers do
   end
 
   def create_other_user_device(_) do
-    user_id = UsersFixtures.user(%{email: "other_user@test"}).id
+    user_id = UsersFixtures.user(%{role: :unprivileged, email: "other_user@test"}).id
 
     device =
       DevicesFixtures.device(%{

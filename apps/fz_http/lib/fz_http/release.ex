@@ -33,7 +33,7 @@ defmodule FzHttp.Release do
     if Repo.exists?(from u in User, where: u.email == ^email()) do
       change_password(email(), default_password())
     else
-      Users.create_user(
+      Users.create_admin_user(
         email: email(),
         password: default_password(),
         password_confirmation: default_password()

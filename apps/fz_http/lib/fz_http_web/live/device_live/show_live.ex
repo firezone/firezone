@@ -14,6 +14,9 @@ defmodule FzHttpWeb.DeviceLive.Show do
      |> assign_defaults(params, session, &load_data/2)}
   end
 
+  @doc """
+  Needed because this view will receive handle_params when modal is closed.
+  """
   @impl Phoenix.LiveView
   def handle_params(_params, _url, socket) do
     {:noreply, socket}
@@ -23,7 +26,7 @@ defmodule FzHttpWeb.DeviceLive.Show do
   def handle_event("create_config_token", _params, socket) do
     device = socket.assigns.device
 
-    if device.user_id == socket.assigns.current_user.id do
+    if authorized?(socket.assigns.current_user, device) do
       case Devices.create_config_token(device) do
         {:ok, device} ->
           {:noreply,
@@ -52,7 +55,7 @@ defmodule FzHttpWeb.DeviceLive.Show do
   def handle_event("delete_device", _params, socket) do
     device = socket.assigns.device
 
-    if device.user_id == socket.assigns.current_user.id do
+    if authorized?(socket.assigns.current_user, device) do
       case Devices.delete_device(device) do
         {:ok, _deleted_device} ->
           {:ok, _deleted_pubkey} = @events_module.delete_device(device.public_key)
@@ -75,7 +78,7 @@ defmodule FzHttpWeb.DeviceLive.Show do
   defp load_data(%{"id" => id}, socket) do
     device = Devices.get_device!(id)
 
-    if device.user_id == socket.assigns.current_user.id do
+    if authorized?(socket.assigns.current_user, device) do
       socket
       |> assign(
         device: device,
@@ -90,5 +93,9 @@ defmodule FzHttpWeb.DeviceLive.Show do
     else
       not_authorized(socket)
     end
+  end
+
+  defp authorized?(user, device) do
+    device.user_id == user.id || user.role == :admin
   end
 end
