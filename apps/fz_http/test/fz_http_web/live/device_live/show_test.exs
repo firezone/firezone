@@ -197,7 +197,7 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
       assert flash["info"] == "Device updated successfully."
 
       {:ok, _view, html} = live(conn, path)
-      assert html =~ "PersistentKeepalives = 120"
+      assert html =~ "PersistentKeepalive = 120"
     end
 
     test "prevents empty names", %{authed_conn: conn, device: device} do
