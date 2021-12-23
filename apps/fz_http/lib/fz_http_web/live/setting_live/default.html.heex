@@ -13,7 +13,7 @@
 
   <div class="block">
     <%= live_component(
-        FzHttpWeb.SettingLive.FormComponent,
+        FzHttpWeb.SettingLive.DefaultFormComponent,
         label_text: "Allowed IPs",
         placeholder: nil,
         changeset: @changesets["default.device.allowed_ips"],
@@ -21,7 +21,7 @@
         id: :allowed_ips_form_component) %>
 
     <%= live_component(
-        FzHttpWeb.SettingLive.FormComponent,
+        FzHttpWeb.SettingLive.DefaultFormComponent,
         label_text: "DNS Servers",
         placeholder: nil,
         changeset: @changesets["default.device.dns_servers"],
@@ -29,7 +29,7 @@
         id: :dns_servers_form_component) %>
 
     <%= live_component(
-        FzHttpWeb.SettingLive.FormComponent,
+        FzHttpWeb.SettingLive.DefaultFormComponent,
         label_text: "Endpoint",
         placeholder: @endpoint_placeholder,
         changeset: @changesets["default.device.endpoint"],

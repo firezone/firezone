@@ -3,11 +3,28 @@
 <section class="section is-main-section">
   <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
 
-  <h4 class="title is-4">Security Settings</h4>
-
   <div class="block">
     <p>
-      Manage security-related settings.
+      Configure security-related settings.
     </p>
+  </div>
+
+  <h4 class="title is-4">Authentication</h4>
+  <div class="block">
+    <.form let={f} for={@changeset} phx-change="change" phx-submit="save">
+      <div class="field">
+        <%= label f, :value, "Require Web Authentication For VPN Sessions", class: "label" %>
+        <div class="field has-addons">
+          <p class="control">
+            <span class="select">
+              <%= select f, :value, @options, class: "input" %>
+            </span>
+          </p>
+          <p class="control">
+            <%= submit "Save", disabled: !@form_changed, phx_disable_with: "Saving...", class: "button is-primary" %>
+          </p>
+        </div>
+      </div>
+    </.form>
   </div>
 </section>

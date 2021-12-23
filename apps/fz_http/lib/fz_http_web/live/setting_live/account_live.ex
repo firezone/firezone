@@ -1,4 +1,4 @@
-defmodule FzHttpWeb.AccountLive.Show do
+defmodule FzHttpWeb.SettingLive.Account do
   @moduledoc """
   Handles Account-related things.
   """
@@ -10,8 +10,7 @@ defmodule FzHttpWeb.AccountLive.Show do
   def mount(params, session, socket) do
     {:ok,
      socket
-     |> assign_defaults(params, session, &load_data/2)
-     |> assign(:page_title, "Account")}
+     |> assign_defaults(params, session, &load_data/2)}
   end
 
   @impl Phoenix.LiveView
@@ -25,6 +24,7 @@ defmodule FzHttpWeb.AccountLive.Show do
     if user.role == :admin do
       socket
       |> assign(:changeset, Users.change_user(socket.assigns.current_user))
+      |> assign(:page_title, "Account Settings")
     else
       not_authorized(socket)
     end
