@@ -4,7 +4,7 @@ source "https://rubygems.org"
 
 # Install omnibus
 gem "omnibus", "~> 8.2.2"
-gem "chef", "~> 16.16.13"
+gem "chef", "~> 16.17.18"
 
 # Use Chef"s software definitions. It is recommended that you write your own
 # software definitions, but you can clone/fork Chef"s to get you started.
