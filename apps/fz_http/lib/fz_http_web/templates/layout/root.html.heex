@@ -47,7 +47,7 @@
             <span class="icon"><i class="mdi mdi-chevron-down"></i></span>
           </a>
           <div class="navbar-dropdown">
-            <%= link(to: Routes.account_show_path(@conn, :show), class: "navbar-item") do %>
+            <%= link(to: Routes.setting_account_path(@conn, :show), class: "navbar-item") do %>
               <span class="icon"><i class="mdi mdi-account"></i></span>
               <span>Account Settings</span>
             <% end %>
@@ -101,25 +101,23 @@
       <p class="menu-label">Settings</p>
       <ul class="menu-list">
         <li>
-          <%= link(to: Routes.setting_default_path(@conn, :default), class: nav_class(@conn, ~r"/settings/default")) do %>
+          <%= link(to: Routes.setting_default_path(@conn, :show), class: nav_class(@conn, ~r"/settings/default")) do %>
             <span class="icon"><i class="mdi mdi-cog"></i></span>
             <span class="menu-item-label">Defaults</span>
           <% end %>
         </li>
         <li>
-          <%= link(to: Routes.account_show_path(@conn, :show), class: nav_class(@conn, ~r"/settings/account")) do %>
+          <%= link(to: Routes.setting_account_path(@conn, :show), class: nav_class(@conn, ~r"/settings/account")) do %>
             <span class="icon"><i class="mdi mdi-account"></i></span>
             <span class="menu-item-label">Account</span>
           <% end %>
         </li>
-        <!-- XXX: Future settings pane
         <li>
-          <%= link(to: Routes.setting_security_path(@conn, :security), class: nav_class(@conn, ~r"/settings/security")) do %>
+          <%= link(to: Routes.setting_security_path(@conn, :show), class: nav_class(@conn, ~r"/settings/security")) do %>
             <span class="icon"><i class="mdi mdi-lock"></i></span>
             <span class="menu-item-label">Security</span>
           <% end %>
         </li>
-        -->
       </ul>
       <p class="menu-label">Diagnostics</p>
       <ul class="menu-list">

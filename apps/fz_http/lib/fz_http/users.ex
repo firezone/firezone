@@ -4,6 +4,7 @@ defmodule FzHttp.Users do
   """
 
   import Ecto.Query, warn: false
+  import FzCommon.FzInteger, only: [max_pg_integer: 0]
   alias FzHttp.Repo
 
   alias FzCommon.{FzCrypto, FzMap}
@@ -124,6 +125,30 @@ defmodule FzHttp.Users do
         where: u.role == :admin,
         limit: 1
     )
+  end
+
+  @doc """
+  Returns DateTime that VPN sessions expire based on last_signed_in_at
+  and the security.require_auth_for_vpn_frequency setting.
+  """
+  def vpn_session_expires_at(user, duration) do
+    DateTime.add(user.last_signed_in_at, duration)
+  end
+
+  def vpn_session_expired?(user, duration) do
+    max = max_pg_integer()
+
+    case duration do
+      0 ->
+        false
+
+      ^max ->
+        is_nil(user.last_signed_in_at)
+
+      _num ->
+        is_nil(user.last_signed_in_at) ||
+          DateTime.diff(vpn_session_expires_at(user, duration), DateTime.utc_now()) <= 0
+    end
   end
 
   defp find_by_token(token) do
