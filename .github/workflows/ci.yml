@@ -134,6 +134,7 @@ jobs:
           GIT_SHA: ${{ github.sha }}
         run: |
           . $HOME/.asdf/asdf.sh
+          gem install bundler
           cd omnibus
           bundle install --binstubs
           sudo mkdir -p /opt/firezone
