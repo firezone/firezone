@@ -1,13 +1,26 @@
-<p>
-  Your VPN session is active!
-</p>
-
-<p>
-  User: <%= @user.email %>
-</p>
-
-<p>
-  <%= link(to: Routes.session_path(@conn, :delete), method: :delete) do %>
-    Sign out and end your session.
+<div class="block">
+  <%= if vpn_sessions_expire?() do %>
+    <%= if vpn_expired?(@user) do %>
+      Your VPN session expired at
+    <% else %>
+      Your VPN session expires at
+    <% end %>
+      <span
+        data-timestamp={vpn_expires_at(@user)}
+        id="expires-at"
+        phx-hook="FormatTimestamp">...</span>
+      .
+  <% else %>
+    Your VPN session is active indefinitely.
   <% end %>
-</p>
+</div>
+
+<div class="block">
+  For any issues, <a href={"mailto:#{admin_email()}"}>contact your Firezone administrator</a>.
+</div>
+
+<div class="block">
+  <%= link(to: Routes.session_path(@conn, :delete), method: :delete) do %>
+    Sign out
+  <% end %>
+</div>

@@ -1,4 +1,4 @@
-defmodule FzHttpWeb.AccountLive.FormComponent do
+defmodule FzHttpWeb.SettingLive.AccountFormComponent do
   @moduledoc """
   Handles the edit account form.
   """
