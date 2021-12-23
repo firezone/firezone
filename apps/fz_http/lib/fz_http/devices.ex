@@ -187,12 +187,12 @@ defmodule FzHttp.Devices do
 
   defp persistent_keepalives_config(device) do
     pk = persistent_keepalives(device)
-    pk && "PersistentKeepalives = #{pk}"
+    pk && "PersistentKeepalive = #{pk}"
 
     if is_nil(pk) do
       ""
     else
-      "PersistentKeepalives = #{pk}"
+      "PersistentKeepalive = #{pk}"
     end
   end
 
