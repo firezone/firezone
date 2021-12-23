@@ -4,7 +4,8 @@
         return_to: Routes.device_index_path(@socket, :index),
         title: "Add Device",
         changeset: @changeset,
-        id: "add-device-modal") %>
+        id: "add-device-modal",
+        action: @live_action) %>
 <% end %>
 
 <%= render FzHttpWeb.SharedView, "heading.html", page_title: @page_title %>

@@ -6,6 +6,7 @@ defmodule FzHttpWeb.DeviceLive.CreateFormComponent do
 
   alias FzHttp.{Devices, Users}
 
+  @impl Phoenix.LiveComponent
   def update(assigns, socket) do
     {:ok,
      socket
@@ -13,6 +14,7 @@ defmodule FzHttpWeb.DeviceLive.CreateFormComponent do
      |> assign(assigns)}
   end
 
+  @impl Phoenix.LiveComponent
   def handle_event("save", %{"device" => %{"user_id" => user_id}}, socket) do
     case Devices.auto_create_device(%{user_id: user_id}) do
       {:ok, device} ->
@@ -20,7 +22,7 @@ defmodule FzHttpWeb.DeviceLive.CreateFormComponent do
 
         {:noreply,
          socket
-         |> redirect(to: Routes.device_show_path(socket, :show, device))}
+         |> push_redirect(to: Routes.device_show_path(socket, :show, device))}
 
       {:error, changeset} ->
         {:noreply,
