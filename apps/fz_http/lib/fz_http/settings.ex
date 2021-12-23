@@ -96,7 +96,11 @@ defmodule FzHttp.Settings do
   end
 
   def vpn_sessions_expire? do
-    freq = String.to_integer(security_require_auth_for_vpn_frequency())
+    freq = vpn_duration()
     freq > 0 && freq < max_pg_integer()
+  end
+
+  def vpn_duration do
+    String.to_integer(security_require_auth_for_vpn_frequency())
   end
 end

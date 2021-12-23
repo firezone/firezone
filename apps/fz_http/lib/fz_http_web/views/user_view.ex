@@ -15,10 +15,10 @@ defmodule FzHttpWeb.UserView do
   end
 
   def vpn_expires_at(user) do
-    Users.vpn_session_expires_at(user)
+    Users.vpn_session_expires_at(user, Settings.vpn_duration())
   end
 
   def vpn_expired?(user) do
-    Users.vpn_session_expired?(user)
+    Users.vpn_session_expired?(user, Settings.vpn_duration())
   end
 end
