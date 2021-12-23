@@ -47,21 +47,37 @@ defmodule FzHttpWeb.ControllerHelpers do
     end
   end
 
-  def root_path_for_role(conn) do
-    user = Users.get_user!(get_session(conn, :user_id))
-    root_path_for_role(conn, user)
+  def root_path_for_role(%Plug.Conn{} = conn) do
+    user_id = get_session(conn, :user_id)
+
+    if is_nil(user_id) do
+      Routes.session_path(conn, :new)
+    else
+      user = Users.get_user!(user_id)
+      root_path_for_role(conn, user)
+    end
   end
 
-  def root_path_for_role(conn, user) do
+  def root_path_for_role(socket) do
+    user = Map.get(socket.assigns, :current_user)
+
+    if is_nil(user) do
+      Routes.session_path(socket, :new)
+    else
+      root_path_for_role(socket, user)
+    end
+  end
+
+  def root_path_for_role(conn_or_sock, user) do
     case user.role do
       :unprivileged ->
-        Routes.user_path(conn, :show)
+        Routes.user_path(conn_or_sock, :show)
 
       :admin ->
-        Routes.device_index_path(conn, :index)
+        Routes.device_index_path(conn_or_sock, :index)
 
       _ ->
-        Routes.session_path(conn, :new)
+        Routes.session_path(conn_or_sock, :new)
     end
   end
 
