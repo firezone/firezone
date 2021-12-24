@@ -20,7 +20,8 @@ defmodule FzHttp.VpnSessionScheduler do
   end
 
   @impl GenServer
-  def handle_info(:perform, _state) do
-    {:noreply, Events.set_config()}
+  def handle_info(:perform, state) do
+    Events.set_config()
+    {:noreply, state}
   end
 end
