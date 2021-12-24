@@ -79,6 +79,7 @@ defmodule FzVpn.Server do
   Apply configuration to interface.
   """
   def apply_config(config) do
+    cli().delete_peers()
     cli().set(Config.render(config))
     {:ok, config}
   end

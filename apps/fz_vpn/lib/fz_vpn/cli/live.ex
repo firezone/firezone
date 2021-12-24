@@ -65,7 +65,6 @@ defmodule FzVpn.CLI.Live do
   def set(config_str) do
     # Empty config string results in invalid command
     if String.length(config_str) > 0 do
-      delete_peers()
       exec!("#{wg()} set #{iface_name()} #{config_str}")
     else
       Logger.warn("""
