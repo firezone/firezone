@@ -9,7 +9,7 @@
     <img src="https://img.shields.io/static/v1?logo=openbugbounty&logoColor=959DA5&label=feedback&labelColor=333a41&message=submit&color=3AC358" alt="submit feedback" />
   </a>
   <a href="https://discourse.firez.one">
-    <img src="https://img.shields.io/static/v1?logo=discourse&logoColor=959DA5&label=community&labelColor=333a41&message=join&color=611f69" alt="firezone Discourse" />
+    <img src="https://img.shields.io/static/v1?logo=discourse&logoColor=959DA5&label=forum&labelColor=333a41&message=join&color=611f69" alt="firezone Discourse" />
   </a>
   <img src="https://img.shields.io/static/v1?logo=github&logoColor=959DA5&label=Test&labelColor=333a41&message=passing&color=3AC358" alt="firezone" />
   <a href="https://coveralls.io/github/firezone/firezone?branch=master">
@@ -27,7 +27,7 @@
 
 <hr>
 
-![Architecture](https://user-images.githubusercontent.com/52545545/144147802-e6d1c62b-e567-45e4-be96-46a06cf80faa.png)
+![Architecture](https://user-images.githubusercontent.com/52545545/147286088-08b0d11f-d81d-4622-8145-179071d2f0fb.png)
 
 **Important**: Ensure you're reading the correct version of this README for the
 current version of Firezone you're running. Links to the README for past
@@ -51,6 +51,9 @@ versions:
   * [Troubleshooting](#troubleshooting)
   * [Upgrading](#upgrading)
   * [Uninstalling](#uninstalling)
+* [Client Setup and Usage](#client-setup-and-usage)
+  * [Adding Devices](#adding-devices)
+  * [Client Instructions](#client-instructions)
 * [Getting Support](#getting-support)
 * [Developing and Contributing](#developing-and-contributing)
 
@@ -306,6 +309,17 @@ sudo /bin/bash -c "$(curl -fsSL https://github.com/firezone/firezone/raw/master/
 
 **Warning**: This will irreversibly destroy ALL Firezone data and can't be
 undone.
+
+# Client Setup and Usage
+
+## Adding Devices
+Add a device through the Web UI by clicking the "Add Device" button under `/devices` or `/users`. Once the device profile is created, you can send the WireGuard configuration file to the client.
+
+## Client Instructions
+Clients should download the latest version of the WireGuard client from https://www.wireguard.com/install/. Once installed, clients can import the tunnel via the `.conf` file sent by the administrator.
+
+![Client Instructions](https://user-images.githubusercontent.com/52545545/147296703-a7fa8fce-33bb-42ef-83b3-1b8e9047d1d5.gif)
+
 
 # Getting Support
 For help, feedback or contributions please join our [

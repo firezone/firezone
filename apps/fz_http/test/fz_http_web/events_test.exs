@@ -29,7 +29,7 @@ defmodule FzHttpWeb.EventsTest do
 
       assert :sys.get_state(Events.vpn_pid()) == %{
                device.public_key =>
-                 "#{Devices.ipv4_address(device)},#{Devices.ipv6_address(device)}"
+                 "#{Devices.ipv4_address(device)}/32,#{Devices.ipv6_address(device)}/128"
              }
     end
   end
@@ -42,7 +42,7 @@ defmodule FzHttpWeb.EventsTest do
 
       assert :sys.get_state(Events.vpn_pid()) == %{
                device.public_key =>
-                 "#{Devices.ipv4_address(device)},#{Devices.ipv6_address(device)}"
+                 "#{Devices.ipv4_address(device)}/32,#{Devices.ipv6_address(device)}/128"
              }
     end
   end
