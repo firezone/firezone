@@ -37,6 +37,20 @@ defmodule FzVpn.CLI.Live do
     set("peer #{pubkey} allowed-ips #{allowed_ips}")
   end
 
+  def delete_peers do
+    exec!("#{wg()} show")
+    |> String.split("\n")
+    |> Enum.filter(fn line ->
+      String.contains?(line, "peer")
+    end)
+    |> Enum.map(fn line ->
+      String.replace_leading(line, "peer: ", "")
+    end)
+    |> Enum.each(fn pubkey ->
+      delete_peer(pubkey)
+    end)
+  end
+
   def delete_peer(pubkey) do
     set("peer #{pubkey} remove")
   end
@@ -51,6 +65,7 @@ defmodule FzVpn.CLI.Live do
   def set(config_str) do
     # Empty config string results in invalid command
     if String.length(config_str) > 0 do
+      delete_peers()
       exec!("#{wg()} set #{iface_name()} #{config_str}")
     else
       Logger.warn("""

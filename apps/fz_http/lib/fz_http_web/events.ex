@@ -3,18 +3,22 @@ defmodule FzHttpWeb.Events do
   Handles interfacing with other processes in the system.
   """
 
-  alias FzHttp.{Devices, Rules}
+  alias FzHttp.{Devices, Rules, Settings, Users}
 
   def create_device do
     GenServer.call(vpn_pid(), :create_device)
   end
 
   def device_created(device) do
-    GenServer.cast(vpn_pid(), {
-      :device_created,
-      device.public_key,
-      "#{Devices.ipv4_address(device)},#{Devices.ipv6_address(device)}"
-    })
+    user = Users.get_user!(device.user_id)
+
+    unless Users.vpn_session_expired?(user, Settings.vpn_duration()) do
+      GenServer.cast(vpn_pid(), {
+        :device_created,
+        device.public_key,
+        "#{Devices.ipv4_address(device)},#{Devices.ipv6_address(device)}"
+      })
+    end
   end
 
   def device_updated(device) do
