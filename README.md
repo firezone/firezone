@@ -69,7 +69,7 @@ versions:
 - **Fast:** Uses WireGuard to be [3-4 times](https://wireguard.com/performance/) faster than OpenVPN.
 - **No dependencies:** All dependencies are bundled thanks to
     [Chef Omnibus](https://github.com/chef/omnibus).
-- **Simple:** Takes minutes to set up. Manage via a simple CLI API.
+- **Simple:** Takes minutes to set up. Manage via a simple CLI.
 - **Secure:** Runs unprivileged. HTTPS enforced. Encrypted cookies.
 - **Firewall included:** Uses Linux [nftables](https://netfilter.org) to block
     unwanted egress traffic.
