@@ -119,7 +119,7 @@ Firezone currently supports the following distributions and architectures:
 | --- | --- | --- | --- |
 | AmazonLinux 2 | `amd64` | **Fully-supported** | See [AmazonLinux 2 Notes](#amazonlinux-2-notes) |
 | CentOS 7 | `amd64` | **Fully-supported** | See [CentOS 7 Notes](#centos-7-notes) |
-| CentOS 8 | `amd64` | **Fully-supported** | Works as-is |
+| CentOS 8 | `amd64` | **Fully-supported** | See [CentOS 8 Notes](#centos-8-notes |
 | Debian 10 | `amd64` | **Fully-supported** | See [Debian 10 Notes](#debian-10-notes)|
 | Debian 11 | `amd64` | **Fully-supported** | Works as-is |
 | Fedora 33 | `amd64` | **Fully-supported** | Works as-is |
@@ -141,19 +141,20 @@ Kernel upgrade required:
 sudo amazon-linux-extras install -y kernel-5.10
 ```
 
-### CentOS 8 Stream Notes
-Firezone will install, but will give wireguard errors without these depencies installed.
-
-```bash
-yum install elrepo-release epel-release
-yum install kmod-wireguard wireguard-tools
-```
-
 ### CentOS 7 Notes
 
 Kernel upgrade to 4.19+ required. See [this guide
 ](https://medium.com/@nazishalam07/update-centos-kernel-3-10-to-5-13-latest-9462b4f1e62c)
 for an example.
+
+### CentOS 8 Notes
+
+The WireGuard kernel module needs to be installed:
+
+```bash
+yum install elrepo-release epel-release
+yum install kmod-wireguard
+```
 
 ### Ubuntu 18.04 Notes
 
