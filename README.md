@@ -141,6 +141,14 @@ Kernel upgrade required:
 sudo amazon-linux-extras install -y kernel-5.10
 ```
 
+### CentOS 8 Stream Notes
+Firezone will install, but will give wireguard errors without these depencies installed.
+
+```bash
+yum install elrepo-release epel-release
+yum install kmod-wireguard wireguard-tools
+```
+
 ### CentOS 7 Notes
 
 Kernel upgrade to 4.19+ required. See [this guide
