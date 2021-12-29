@@ -39,16 +39,9 @@ config :fz_http, FzHttpWeb.Endpoint,
     ]
   ]
 
-sandbox? = System.get_env("FZ_SANDBOX")
-
 config :fz_vpn,
   wg_path: "wg",
-  cli:
-    (if sandbox? do
-       FzVpn.CLI.Sandbox
-     else
-       FzVpn.CLI.Live
-     end)
+  cli: FzVpn.CLI.Sandbox
 
 get_egress_interface = fn ->
   egress_interface_cmd = "route | grep '^default' | grep -o '[^ ]*$'"
@@ -60,12 +53,7 @@ egress_interface = System.get_env("EGRESS_INTERFACE") || get_egress_interface.()
 config :fz_wall,
   nft_path: "nft",
   egress_interface: egress_interface,
-  cli:
-    (if sandbox? do
-       FzWall.CLI.Sandbox
-     else
-       FzWall.CLI.Live
-     end)
+  cli: FzWall.CLI.Sandbox
 
 # ## SSL Support
 #
