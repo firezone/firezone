@@ -8,6 +8,7 @@ defmodule FzHttp.SharedValidators do
   import FzCommon.FzNet,
     only: [
       valid_ip?: 1,
+      valid_fqdn?: 1,
       valid_cidr?: 1
     ]
 
@@ -28,6 +29,23 @@ defmodule FzHttp.SharedValidators do
             {field,
              "is invalid: duplicate DNS servers are not allowed: #{Enum.join(dupes, ", ")}"}
           ]
+      end
+    end)
+  end
+
+  def validate_fqdn_or_ip(changeset, field) when is_atom(field) do
+    validate_change(changeset, field, fn _current_field, value ->
+      try do
+        for ip <- String.split(value, ",") do
+          unless valid_ip?(String.trim(ip)) or valid_fqdn?(String.trim(ip)) do
+            throw(ip)
+          end
+        end
+
+        []
+      catch
+        ip ->
+          [{field, "is invalid: #{String.trim(ip)} is not a valid fqdn or IPv4 / IPv6 address"}]
       end
     end)
   end
