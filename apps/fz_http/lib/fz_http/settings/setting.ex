@@ -16,7 +16,7 @@ defmodule FzHttp.Settings.Setting do
 
   import FzHttp.SharedValidators,
     only: [
-      validate_ip: 2,
+      validate_fqdn_or_ip: 2,
       validate_list_of_ips: 2,
       validate_list_of_ips_or_cidrs: 2,
       validate_no_duplicates: 2
@@ -59,7 +59,7 @@ defmodule FzHttp.Settings.Setting do
 
   defp validate_kv_pair(changeset, "default.device.endpoint") do
     changeset
-    |> validate_ip(:value)
+    |> validate_fqdn_or_ip(:value)
   end
 
   defp validate_kv_pair(changeset, "default.device.persistent_keepalives") do
