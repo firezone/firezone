@@ -7,6 +7,7 @@ defmodule FzHttpWeb.LiveHelpers do
   import Phoenix.LiveView
   import Phoenix.LiveView.Helpers
   alias FzHttp.Users
+  alias FzHttpWeb.Router.Helpers, as: Routes
 
   import FzHttpWeb.ControllerHelpers, only: [root_path_for_role: 1]
 
@@ -60,6 +61,17 @@ defmodule FzHttpWeb.LiveHelpers do
       "mdi mdi-check-circle"
     else
       "mdi mdi-alert-circle"
+    end
+  end
+
+  @doc """
+  URL_HOST is used in releases to set an externally-accessible url. Use that if exists.
+  """
+  def shareable_link(socket, device) do
+    if url_host = Application.get_env(:fz_http, :url_host) do
+      "https://" <> url_host <> Routes.device_path(socket, :config, device.config_token)
+    else
+      Routes.device_url(socket, :config, device.config_token)
     end
   end
 

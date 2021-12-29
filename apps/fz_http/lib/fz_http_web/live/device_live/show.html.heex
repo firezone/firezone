@@ -133,14 +133,14 @@
                   <div class="level-left">
                     <code id="shareable-link">
                       <%= if @device.config_token do %>
-                        <%= Routes.device_url(@socket, :config, @device.config_token) %>
+                        <%= shareable_link(@socket, @device) %>
                       <% end %>
                     </code>
                   </div>
                   <div class="level-right">
                     <%= if @device.config_token do %>
                       <button id="copy-shareable-link-button"
-                              data-clipboard={Routes.device_url(@socket, :config, @device.config_token)}
+                              data-clipboard={shareable_link(@socket, @device)}
                               data-target="shareable-link"
                               class="button"
                               data-tooltip="Click to copy"
