@@ -14,11 +14,18 @@ defmodule FzHttp.SettingsTest do
 
     import FzHttp.SettingsFixtures
 
-    @valid_settings %{
-      "default.device.dns_servers" => "8.8.8.8",
-      "default.device.allowed_ips" => "::/0",
-      "default.device.endpoint" => "172.10.10.10"
-    }
+    @valid_settings [
+      %{
+        "default.device.dns_servers" => "8.8.8.8",
+        "default.device.allowed_ips" => "::/0",
+        "default.device.endpoint" => "172.10.10.10"
+      },
+      %{
+        "default.device.dns_servers" => "8.8.8.8",
+        "default.device.allowed_ips" => "::/0",
+        "default.device.endpoint" => "foobar.example.com"
+      }
+    ]
     @invalid_settings %{
       "default.device.dns_servers" => "foobar",
       "default.device.allowed_ips" => nil,
@@ -39,20 +46,24 @@ defmodule FzHttp.SettingsTest do
 
     test "update_setting/2 with valid data updates the setting via provided setting" do
       for key <- @setting_keys do
-        value = @valid_settings[key]
-        setting = Settings.get_setting!(key: key)
-        assert {:ok, %Setting{} = setting} = Settings.update_setting(setting, %{value: value})
-        assert setting.key == key
-        assert setting.value == value
+        for valid_setting <- @valid_settings do
+          value = valid_setting[key]
+          setting = Settings.get_setting!(key: key)
+          assert {:ok, %Setting{} = setting} = Settings.update_setting(setting, %{value: value})
+          assert setting.key == key
+          assert setting.value == value
+        end
       end
     end
 
     test "update_setting/2 with valid data updates the setting via key, value" do
       for key <- @setting_keys do
-        value = @valid_settings[key]
-        assert {:ok, %Setting{} = setting} = Settings.update_setting(key, value)
-        assert setting.key == key
-        assert setting.value == value
+        for valid_setting <- @valid_settings do
+          value = valid_setting[key]
+          assert {:ok, %Setting{} = setting} = Settings.update_setting(key, value)
+          assert setting.key == key
+          assert setting.value == value
+        end
       end
     end
 
