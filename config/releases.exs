@@ -82,14 +82,17 @@ config :fz_http, FzHttpWeb.Endpoint,
 config :fz_wall,
   nft_path: nft_path,
   egress_interface: egress_interface,
-  wireguard_interface_name: wireguard_interface_name
+  wireguard_interface_name: wireguard_interface_name,
+  cli: FzWall.CLI.Live
 
 config :fz_vpn,
   wireguard_public_key: wireguard_public_key,
   wireguard_interface_name: wireguard_interface_name,
-  wireguard_port: wireguard_port
+  wireguard_port: wireguard_port,
+  cli: FzVpn.CLI.Live
 
 config :fz_http,
+  url_host: url_host,
   connectivity_checks_enabled: connectivity_checks_enabled,
   connectivity_checks_interval: connectivity_checks_interval,
   admin_email: admin_email,
