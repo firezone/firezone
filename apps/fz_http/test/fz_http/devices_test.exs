@@ -74,6 +74,36 @@ defmodule FzHttp.DevicesTest do
       allowed_ips: "0.0.0.0/0, ::/0, ::0/0, 192.168.1.0/24"
     }
 
+    @valid_endpoint_ipv4_attrs %{
+      use_default_endpoint: false,
+      endpoint: "5.5.5.5"
+    }
+
+    @valid_endpoint_ipv6_attrs %{
+      use_default_endpoint: false,
+      endpoint: "fd00::1"
+    }
+
+    @valid_endpoint_host_attrs %{
+      use_default_endpoint: false,
+      endpoint: "valid-endpoint.example.com"
+    }
+
+    @invalid_endpoint_ipv4_attrs %{
+      use_default_endpoint: false,
+      endpoint: "265.1.1.1"
+    }
+
+    @invalid_endpoint_ipv6_attrs %{
+      use_default_endpoint: false,
+      endpoint: "deadbeef::1"
+    }
+
+    @invalid_endpoint_host_attrs %{
+      use_default_endpoint: false,
+      endpoint: "can't have this"
+    }
+
     @invalid_allowed_ips_attrs %{
       allowed_ips: "1.1.1.1, 11, foobar"
     }
@@ -98,6 +128,48 @@ defmodule FzHttp.DevicesTest do
     test "updates device with valid dns_servers", %{device: device} do
       {:ok, test_device} = Devices.update_device(device, @valid_dns_servers_attrs)
       assert @valid_dns_servers_attrs = test_device
+    end
+
+    test "updates device with valid ipv4 endpoint", %{device: device} do
+      {:ok, test_device} = Devices.update_device(device, @valid_endpoint_ipv4_attrs)
+      assert @valid_endpoint_ipv4_attrs = test_device
+    end
+
+    test "updates device with valid ipv6 endpoint", %{device: device} do
+      {:ok, test_device} = Devices.update_device(device, @valid_endpoint_ipv6_attrs)
+      assert @valid_endpoint_ipv6_attrs = test_device
+    end
+
+    test "updates device with valid host endpoint", %{device: device} do
+      {:ok, test_device} = Devices.update_device(device, @valid_endpoint_host_attrs)
+      assert @valid_endpoint_host_attrs = test_device
+    end
+
+    test "prevents updating device with invalid ipv4 endpoint", %{device: device} do
+      {:error, changeset} = Devices.update_device(device, @invalid_endpoint_ipv4_attrs)
+
+      assert changeset.errors[:endpoint] == {
+               "is invalid: 265.1.1.1 is not a valid fqdn or IPv4 / IPv6 address",
+               []
+             }
+    end
+
+    test "prevents updating device with invalid ipv6 endpoint", %{device: device} do
+      {:error, changeset} = Devices.update_device(device, @invalid_endpoint_ipv6_attrs)
+
+      assert changeset.errors[:endpoint] == {
+               "is invalid: deadbeef::1 is not a valid fqdn or IPv4 / IPv6 address",
+               []
+             }
+    end
+
+    test "prevents updating device with invalid host endpoint", %{device: device} do
+      {:error, changeset} = Devices.update_device(device, @invalid_endpoint_host_attrs)
+
+      assert changeset.errors[:endpoint] == {
+               "is invalid: can't have this is not a valid fqdn or IPv4 / IPv6 address",
+               []
+             }
     end
 
     test "prevents updating device with invalid dns_servers", %{device: device} do

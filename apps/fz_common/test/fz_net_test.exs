@@ -39,6 +39,24 @@ defmodule FzCommon.FzNetTest do
     end
   end
 
+  describe "valid_fqdn/1" do
+    test "foobar is invalid" do
+      refute FzNet.valid_fqdn?("foobar")
+    end
+
+    test "-foobar is invalid" do
+      refute FzNet.valid_fqdn?("-foobar")
+    end
+
+    test "foobar.com is valid" do
+      assert FzNet.valid_fqdn?("foobar.com")
+    end
+
+    test "ff99.example.com is valid" do
+      assert FzNet.valid_fqdn?("ff00.example.com")
+    end
+  end
+
   describe "valid_cidr?/1" do
     test "::/0f is an invalid CIDR" do
       refute FzNet.valid_cidr?("::/0f")
