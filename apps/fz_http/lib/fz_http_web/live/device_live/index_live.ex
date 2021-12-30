@@ -22,7 +22,7 @@ defmodule FzHttpWeb.DeviceLive.Index do
       # Must be the admin user
       case Devices.auto_create_device(%{user_id: Users.admin().id}) do
         {:ok, device} ->
-          @events_module.device_created(device)
+          @events_module.update_device(device)
 
           {:noreply,
            socket

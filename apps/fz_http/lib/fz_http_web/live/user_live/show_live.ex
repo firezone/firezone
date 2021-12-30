@@ -64,7 +64,7 @@ defmodule FzHttpWeb.UserLive.Show do
 
     case Devices.create_device(attributes) do
       {:ok, device} ->
-        @events_module.device_created(device)
+        @events_module.update_device(device)
 
         {:noreply,
          socket

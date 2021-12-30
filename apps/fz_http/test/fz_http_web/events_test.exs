@@ -21,15 +21,15 @@ defmodule FzHttpWeb.EventsTest do
     end
   end
 
-  describe "device_created/1" do
+  describe "update_device/1" do
     setup [:create_device]
 
     test "adds device to peer config", %{device: device} do
-      assert :ok == Events.device_created(device)
+      assert :ok == Events.update_device(device)
 
       assert :sys.get_state(Events.vpn_pid()) == %{
                device.public_key =>
-                 "#{Devices.ipv4_address(device)}/32,#{Devices.ipv6_address(device)}/128"
+                 "#{Devices.ipv4_address(device)},#{Devices.ipv6_address(device)}"
              }
     end
   end
@@ -38,11 +38,11 @@ defmodule FzHttpWeb.EventsTest do
     setup [:create_device]
 
     test "updates peer config", %{device: device} do
-      assert :ok = Events.device_updated(device)
+      assert :ok = Events.update_device(device)
 
       assert :sys.get_state(Events.vpn_pid()) == %{
                device.public_key =>
-                 "#{Devices.ipv4_address(device)}/32,#{Devices.ipv6_address(device)}/128"
+                 "#{Devices.ipv4_address(device)},#{Devices.ipv6_address(device)}"
              }
     end
   end
@@ -77,7 +77,7 @@ defmodule FzHttpWeb.EventsTest do
       :ok = Events.set_config()
 
       assert :sys.get_state(Events.vpn_pid()) ==
-               Map.new(Devices.to_peer_list(), fn peer -> {peer.public_key, peer.allowed_ips} end)
+               Map.new(Devices.to_peer_list(), fn peer -> {peer.public_key, peer.inet} end)
     end
   end
 

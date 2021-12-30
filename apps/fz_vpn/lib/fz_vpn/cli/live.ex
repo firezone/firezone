@@ -33,22 +33,8 @@ defmodule FzVpn.CLI.Live do
     {privkey, pubkey(privkey)}
   end
 
-  def set_peer(pubkey, allowed_ips) do
-    set("peer #{pubkey} allowed-ips #{allowed_ips}")
-  end
-
-  def delete_peers do
-    exec!("#{wg()} show")
-    |> String.split("\n")
-    |> Enum.filter(fn line ->
-      String.contains?(line, "peer")
-    end)
-    |> Enum.map(fn line ->
-      String.replace_leading(line, "peer: ", "")
-    end)
-    |> Enum.each(fn pubkey ->
-      delete_peer(pubkey)
-    end)
+  def set_peer(pubkey, inet) do
+    set("peer #{pubkey} allowed-ips #{inet}")
   end
 
   def delete_peer(pubkey) do
