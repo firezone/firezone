@@ -9,7 +9,8 @@ defmodule FzHttpWeb.Endpoint do
   socket "/socket", FzHttpWeb.UserSocket,
     websocket: [
       connect_info: [:peer_data, :x_headers],
-      check_origin: :conn
+      # XXX: channel token should prevent CSWH but double check
+      check_origin: false
     ],
     longpoll: false
 
@@ -18,7 +19,8 @@ defmodule FzHttpWeb.Endpoint do
       connect_info: [
         session: {Session, :options, []}
       ],
-      check_origin: :conn
+      # XXX: csrf token should prevent CSWH but double check
+      check_origin: false
     ]
 
   # Serve at "/" the static files from "priv/static" directory.
