@@ -9,12 +9,10 @@ defmodule FzHttpWeb.Events do
     GenServer.call(vpn_pid(), :create_device)
   end
 
-  def update_device(device) do
-    GenServer.call(vpn_pid(), {
-      :update_device,
-      device.public_key,
-      "#{Devices.ipv4_address(device)},#{Devices.ipv6_address(device)}"
-    })
+  # set_config is used because devices need to be re-evaluated in case a
+  # device is added to a User that's not active.
+  def update_device(_device) do
+    GenServer.call(vpn_pid(), {:set_config, Devices.to_peer_list()})
   end
 
   def delete_device(device_pubkey) when is_binary(device_pubkey) do
