@@ -33,7 +33,7 @@ logo: "/assets/images/firezone-logo-wordmark-dark.svg"
 
 # Build settings
 remote_theme: pmarsceill/just-the-docs
-# theme: just-the-docs # for local development
+theme: just-the-docs
 color_scheme: fz
 
 # Footer content
