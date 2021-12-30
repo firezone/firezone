@@ -39,7 +39,7 @@ defmodule FzHttpWeb.DeviceLive.FormComponent do
 
     case Devices.update_device(device, device_params) do
       {:ok, device} ->
-        @events_module.device_updated(device)
+        @events_module.update_device(device)
 
         {:noreply,
          socket

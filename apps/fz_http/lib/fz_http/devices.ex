@@ -105,7 +105,7 @@ defmodule FzHttp.Devices do
     |> Enum.map(fn device ->
       %{
         public_key: device.public_key,
-        allowed_ips: "#{ipv4_address(device)}/32,#{ipv6_address(device)}/128"
+        inet: "#{ipv4_address(device)},#{ipv6_address(device)}"
       }
     end)
   end
@@ -163,7 +163,7 @@ defmodule FzHttp.Devices do
     """
     [Interface]
     PrivateKey = #{device.private_key}
-    Address = #{ipv4_address(device)}/32, #{ipv6_address(device)}/128
+    Address = #{ipv4_address(device)}, #{ipv6_address(device)}
     #{dns_servers_config(device)}
 
     [Peer]
