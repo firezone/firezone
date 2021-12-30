@@ -9,20 +9,12 @@ defmodule FzHttpWeb.Events do
     GenServer.call(vpn_pid(), :create_device)
   end
 
-  def device_created(_device) do
-    GenServer.call(vpn_pid(), {:set_config, Devices.to_peer_list()})
-  end
-
-  def device_updated(_device) do
-    # XXX: Come up with a better way to do this
-    GenServer.call(vpn_pid(), {:set_config, Devices.to_peer_list()})
-
-    # This gets out of sync
-    # GenServer.cast(vpn_pid(), {
-    #   :device_updated,
-    #   device.public_key,
-    #   "#{Devices.ipv4_address(device)},#{Devices.ipv6_address(device)}"
-    # })
+  def update_device(device) do
+    GenServer.call(vpn_pid(), {
+      :update_device,
+      device.public_key,
+      "#{Devices.ipv4_address(device)},#{Devices.ipv6_address(device)}"
+    })
   end
 
   def delete_device(device_pubkey) when is_binary(device_pubkey) do

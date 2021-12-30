@@ -18,7 +18,7 @@ defmodule FzHttpWeb.DeviceLive.CreateFormComponent do
   def handle_event("save", %{"device" => %{"user_id" => user_id}}, socket) do
     case Devices.auto_create_device(%{user_id: user_id}) do
       {:ok, device} ->
-        @events_module.device_created(device)
+        @events_module.update_device(device)
 
         {:noreply,
          socket
