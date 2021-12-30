@@ -13,7 +13,7 @@ defmodule FzVpn.CLI.Sandbox do
 
   peer: 1RSUaL+er3+HJM7JW2u5uZDIFNNJkw2nV7dnZyOAK2k=
     endpoint: 73.136.58.38:55433
-    allowed ips: 10.3.2.2/32, fd00:3:2::2/128
+    allowed ips: 10.3.2.2, fd00:3:2::2
     latest handshake: 56 minutes, 14 seconds ago
     transfer: 1.21 MiB received, 39.30 MiB sent
   """
