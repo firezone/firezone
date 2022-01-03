@@ -73,6 +73,7 @@ defmodule FzHttp.ConnectivityCheckService do
   end
 
   defp enabled? do
-    Application.fetch_env!(:fz_http, :connectivity_checks_enabled)
+    Application.fetch_env!(:fz_http, :connectivity_checks_enabled) &&
+      System.get_env("CI") != "true"
   end
 end
