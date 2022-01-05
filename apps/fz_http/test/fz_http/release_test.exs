@@ -8,12 +8,6 @@ defmodule FzHttp.ReleaseTest do
 
   alias FzHttp.{Release, Users, Users.User}
 
-  describe "gen_secret/1" do
-    test "calls function" do
-      Release.gen_secret(32)
-    end
-  end
-
   describe "migrate/0" do
     test "calls function" do
       Release.migrate()

@@ -23,6 +23,7 @@ defmodule FzHttp.ConnectivityCheckServiceTest do
     @expected_response %{reason: :nxdomain}
     @url "invalid-url"
 
+    @tag capture_log: true
     test "returns error reason" do
       assert @expected_response = ConnectivityCheckService.post_request(@url)
       assert ConnectivityChecks.list_connectivity_checks() == []

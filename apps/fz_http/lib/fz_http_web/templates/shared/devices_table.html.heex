@@ -14,7 +14,10 @@
       <td>
         <%= live_patch(device.name, to: Routes.device_show_path(@socket, :show, device)) %>
       </td>
-      <td class="code"><%= FzHttp.Devices.ipv4_address(device) %>, <%= FzHttp.Devices.ipv6_address(device) %></td>
+      <td class="code">
+        <span><%= device.ipv4 %></span>
+        <span><%= device.ipv6 %></span>
+      </td>
       <td class="code"><%= device.public_key %></td>
       <td id={"device-#{device.id}-inserted-at"} data-timestamp={device.inserted_at} phx-hook="FormatTimestamp">…</td>
       <td id={"device-#{device.id}-updated-at"} data-timestamp={device.updated_at} phx-hook="FormatTimestamp">…</td>

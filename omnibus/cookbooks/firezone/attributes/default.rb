@@ -214,6 +214,26 @@ default['firezone']['wireguard']['port'] = 51820
 # WireGuard interface MTU
 default['firezone']['wireguard']['mtu'] = 1420
 
+# Enable or disable IPv4 connectivity in your WireGuard network. Default enabled.
+default['firezone']['wireguard']['ipv4']['enabled'] = true
+
+# The CIDR-formatted IPv4 network to use for your WireGuard network. Default 10.3.2.0/24.
+default['firezone']['wireguard']['ipv4']['network'] = '10.3.2.0/24'
+
+# The IPv4 address to assign to your WireGuard interface. Must be an address
+# contained within the WireGuard network specific above. Default 10.3.2.1.
+default['firezone']['wireguard']['ipv4']['address'] = '10.3.2.1'
+
+# Enable or disable IPv4 connectivity in your WireGuard network. Default enabled.
+default['firezone']['wireguard']['ipv6']['enabled'] = true
+
+# The CIDR-formatted IPv4 network to use for your WireGuard network. Default fd00::3:2:0/120.
+default['firezone']['wireguard']['ipv6']['network'] = 'fd00::3:2:0/120'
+
+# The IPv4 address to assign to your WireGuard interface. Must be an address
+# contained within the WireGuard network specific above. Default fd00::3:2:1.
+default['firezone']['wireguard']['ipv6']['address'] = 'fd00::3:2:1'
+
 # ## Runit
 
 # This is missing from the enterprise cookbook
