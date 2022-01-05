@@ -42,8 +42,8 @@
       <tr>
         <td><strong>Interface IP</strong></td>
         <td>
-          <%= FzHttp.Devices.ipv4_address(@device) %>,
-          <%= FzHttp.Devices.ipv6_address(@device) %>
+          <span><%= @device.ipv4 %></span>
+          <span><%= @device.ipv6 %></span>
         </td>
       </tr>
 

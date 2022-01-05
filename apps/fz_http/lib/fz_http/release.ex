@@ -9,10 +9,6 @@ defmodule FzHttp.Release do
 
   @app :fz_http
 
-  def gen_secret(length) when length > 31 do
-    IO.puts(secret(length))
-  end
-
   def migrate do
     load_app()
 
@@ -50,10 +46,6 @@ defmodule FzHttp.Release do
     {:ok, _user} =
       Users.get_user!(email: email)
       |> Users.update_user(params)
-  end
-
-  defp secret(length) do
-    :crypto.strong_rand_bytes(length) |> Base.encode64() |> binary_part(0, length)
   end
 
   defp repos do

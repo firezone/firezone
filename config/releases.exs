@@ -21,6 +21,12 @@ nft_path = System.fetch_env!("NFT_PATH")
 wg_path = System.fetch_env!("WG_PATH")
 egress_interface = System.fetch_env!("EGRESS_INTERFACE")
 wireguard_public_key = System.fetch_env!("WIREGUARD_PUBLIC_KEY")
+wireguard_ipv4_enabled = FzString.to_boolean(System.fetch_env!("WIREGUARD_IPV4_ENABLED"))
+wireguard_ipv4_network = System.fetch_env!("WIREGUARD_IPV4_NETWORK")
+wireguard_ipv4_address = System.fetch_env!("WIREGUARD_IPV4_ADDRESS")
+wireguard_ipv6_enabled = FzString.to_boolean(System.fetch_env!("WIREGUARD_IPV6_ENABLED"))
+wireguard_ipv6_network = System.fetch_env!("WIREGUARD_IPV6_NETWORK")
+wireguard_ipv6_address = System.fetch_env!("WIREGUARD_IPV6_ADDRESS")
 
 connectivity_checks_enabled =
   FzString.to_boolean(System.fetch_env!("CONNECTIVITY_CHECKS_ENABLED"))
@@ -92,6 +98,12 @@ config :fz_vpn,
   cli: FzVpn.CLI.Live
 
 config :fz_http,
+  wireguard_ipv4_enabled: wireguard_ipv4_enabled,
+  wireguard_ipv4_network: wireguard_ipv4_network,
+  wireguard_ipv4_address: wireguard_ipv4_address,
+  wireguard_ipv6_enabled: wireguard_ipv6_enabled,
+  wireguard_ipv6_network: wireguard_ipv6_network,
+  wireguard_ipv6_address: wireguard_ipv6_address,
   url_host: url_host,
   connectivity_checks_enabled: connectivity_checks_enabled,
   connectivity_checks_interval: connectivity_checks_interval,

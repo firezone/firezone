@@ -11,18 +11,30 @@ defmodule FzHttp.DevicesTest do
   end
 
   describe "create_device/1" do
-    setup [:create_user]
+    setup [:create_user, :create_device]
+
+    @device_attrs %{
+      name: "dummy",
+      public_key: "dummy",
+      private_key: "dummy",
+      server_public_key: "dummy",
+      user_id: nil
+    }
 
     test "creates device with empty attributes", %{user: user} do
-      assert {:ok, _device} =
-               Devices.create_device(%{
-                 name: "dummy",
-                 user_id: user.id,
-                 public_key: "dummy",
-                 private_key: "dummy",
-                 server_public_key: "dummy"
-               })
+      assert {:ok, _device} = Devices.create_device(%{@device_attrs | user_id: user.id})
     end
+
+    test "creates devices with default ipv4", %{device: device} do
+      assert device.ipv4 == %Postgrex.INET{address: {10, 3, 2, 2}, netmask: 32}
+    end
+
+    test "creates device with default ipv6", %{device: device} do
+      assert device.ipv6 == %Postgrex.INET{address: {64_768, 0, 0, 0, 0, 3, 2, 2}, netmask: 128}
+    end
+  end
+
+  describe "next_available/1" do
   end
 
   describe "list_devices/1" do
@@ -108,18 +120,6 @@ defmodule FzHttp.DevicesTest do
       allowed_ips: "1.1.1.1, 11, foobar"
     }
 
-    @empty_address %{
-      address: ""
-    }
-
-    @low_address %{
-      address: "1"
-    }
-
-    @high_address %{
-      address: "255"
-    }
-
     test "updates device", %{device: device} do
       {:ok, test_device} = Devices.update_device(device, @attrs)
       assert @attrs = test_device
@@ -190,28 +190,6 @@ defmodule FzHttp.DevicesTest do
              }
     end
 
-    test "prevents updating device with empty address", %{device: device} do
-      {:error, changeset} = Devices.update_device(device, @empty_address)
-
-      assert changeset.errors[:address] == {"can't be blank", [{:validation, :required}]}
-    end
-
-    test "prevents updating device with address too low", %{device: device} do
-      {:error, changeset} = Devices.update_device(device, @low_address)
-
-      assert changeset.errors[:address] ==
-               {"must be greater than or equal to %{number}",
-                [{:validation, :number}, {:kind, :greater_than_or_equal_to}, {:number, 2}]}
-    end
-
-    test "prevents updating device with address too high", %{device: device} do
-      {:error, changeset} = Devices.update_device(device, @high_address)
-
-      assert changeset.errors[:address] ==
-               {"must be less than or equal to %{number}",
-                [{:validation, :number}, {:kind, :less_than_or_equal_to}, {:number, 254}]}
-    end
-
     test "updates device with valid allowed_ips", %{device: device} do
       {:ok, test_device} = Devices.update_device(device, @valid_allowed_ips_attrs)
       assert @valid_allowed_ips_attrs = test_device
@@ -266,7 +244,7 @@ defmodule FzHttp.DevicesTest do
     test "renders all peers", %{device: device} do
       assert Devices.to_peer_list() |> List.first() == %{
                public_key: device.public_key,
-               inet: "#{Devices.ipv4_address(device)}/32,#{Devices.ipv6_address(device)}/128"
+               inet: "#{device.ipv4}/32,#{device.ipv6}/128"
              }
     end
   end
