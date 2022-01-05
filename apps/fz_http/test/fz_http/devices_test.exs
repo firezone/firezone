@@ -13,6 +13,22 @@ defmodule FzHttp.DevicesTest do
   describe "create_device/1" do
     setup [:create_user, :create_device]
 
+    setup context do
+      if ipv4_network = context[:ipv4_network] do
+        restore_env(:wireguard_ipv4_network, ipv4_network, &on_exit/1)
+      else
+        context
+      end
+    end
+
+    setup context do
+      if ipv6_network = context[:ipv6_network] do
+        restore_env(:wireguard_ipv6_network, ipv6_network, &on_exit/1)
+      else
+        context
+      end
+    end
+
     @device_attrs %{
       name: "dummy",
       public_key: "dummy",
@@ -32,9 +48,18 @@ defmodule FzHttp.DevicesTest do
     test "creates device with default ipv6", %{device: device} do
       assert device.ipv6 == %Postgrex.INET{address: {64_768, 0, 0, 0, 0, 3, 2, 2}, netmask: 128}
     end
-  end
 
-  describe "next_available/1" do
+    @tag ipv4_network: "10.3.2.0/30"
+    test "sets error when ipv4 address pool is exhausted", %{user: user} do
+      restore_env(:wireguard_ipv4, "10.3.2.0/30", &on_exit/1)
+      assert {:error, changeset} = Devices.create_device(%{@device_attrs | user_id: user.id})
+    end
+
+    @tag ipv6_network: "fd00::3:2:0/126"
+    test "sets error when ipv6 address pool is exhausted", %{user: user} do
+      restore_env(:wireguard_ipv6, "fd00::3:2:0/126", &on_exit/1)
+      assert {:error, changeset} = Devices.create_device(%{@device_attrs | user_id: user.id})
+    end
   end
 
   describe "list_devices/1" do

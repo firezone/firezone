@@ -8,7 +8,7 @@ defmodule FzHttp.Queries.INET do
     (
       SELECT devices.ipv4 + 1
       FROM devices
-      WHERE devices.ipv4 < host(broadcast($1))::INET
+      WHERE devices.ipv4 + 1 < host(broadcast($1))::INET
       AND devices.ipv4 + 1 != $2
       AND devices.ipv4 >= host($1)::INET
       AND NOT EXISTS (
@@ -17,8 +17,13 @@ defmodule FzHttp.Queries.INET do
       ORDER BY devices.ipv4
       LIMIT 1
     ),
-    CASE WHEN host($1)::INET + 1 << $1 AND host($1)::INET + 1 != $2 THEN host($1)::INET + 1
-         WHEN host($1)::INET + 2 << $1 THEN host($1)::INET + 2
+    CASE WHEN host($1)::INET + 1 < host(broadcast($1))::INET
+          AND host($1)::INET + 1 != $2
+          THEN host($1)::INET + 1
+
+         WHEN host($1)::INET + 2 < host(broadcast($1))::INET
+          THEN host($1)::INET + 2
+
          ELSE NULL
     END
   )
@@ -29,15 +34,20 @@ defmodule FzHttp.Queries.INET do
     (
       SELECT devices.ipv6 + 1
       FROM devices
-      WHERE devices.ipv6 < host(broadcast($1))::INET
+      WHERE devices.ipv6 + 1 < host(broadcast($1))::INET
       AND devices.ipv6 + 1 != $2
       AND devices.ipv6 >= host($1)::INET
       AND NOT EXISTS (SELECT 1 from devices d2 WHERE d2.ipv6 = devices.ipv6 + 1)
       ORDER BY devices.ipv6
       LIMIT 1
     ),
-    CASE WHEN host($1)::INET + 1 << $1 AND host($1)::INET + 1 != $2 THEN host($1)::INET + 1
-         WHEN host($1)::INET + 2 << $1 THEN host($1)::INET + 2
+    CASE WHEN host($1)::INET + 1 < host(broadcast($1))::INET
+          AND host($1)::INET + 1 != $2
+          THEN host($1)::INET + 1
+
+         WHEN host($1)::INET + 2 < host(broadcast($1))::INET
+          THEN host($1)::INET + 2
+
          ELSE NULL
     END
   )
@@ -49,9 +59,11 @@ defmodule FzHttp.Queries.INET do
     query = next_available_query(type)
 
     case FzHttp.Repo.query(query, [network, address]) do
-      {:ok, %Postgrex.Result{} = result} ->
-        [[%Postgrex.INET{} = inet | _fields] | _rows] = result.rows
+      {:ok, %Postgrex.Result{rows: [[%Postgrex.INET{} = inet]]}} ->
         inet
+
+      {:ok, %Postgrex.Result{rows: [[nil]]}} ->
+        nil
 
       {:error, error} ->
         raise(error)
