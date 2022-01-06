@@ -17,7 +17,7 @@ defmodule FzHttp.Repo.Migrations.AddInetsToDevices do
 
     execute """
     UPDATE devices
-    SET ipv4 = ('#{@ipv4_prefix}' || address)::INET;
+    SET ipv4 = ('#{@ipv4_prefix}' || address)::INET, ipv6 = ('#{@ipv6_prefix}' || address)::INET;
     """
 
     alter table(:devices) do
