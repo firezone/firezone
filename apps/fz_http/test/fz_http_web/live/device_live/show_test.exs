@@ -1,5 +1,6 @@
 defmodule FzHttpWeb.DeviceLive.ShowTest do
-  use FzHttpWeb.ConnCase, async: true
+  # XXX: Enabling async causes deadlocks. Figure out why.
+  use FzHttpWeb.ConnCase, async: false
 
   describe "authenticated" do
     setup :create_device
