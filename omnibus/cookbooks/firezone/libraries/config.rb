@@ -238,6 +238,12 @@ class Firezone
         'WIREGUARD_INTERFACE_NAME' => attributes['wireguard']['interface_name'],
         'WIREGUARD_PORT' => attributes['wireguard']['port'].to_s,
         'WIREGUARD_PUBLIC_KEY' => attributes['wireguard_public_key'],
+        'WIREGUARD_IPV4_ENABLED' => attributes['wireguard']['ipv4']['enabled'].to_s,
+        'WIREGUARD_IPV4_NETWORK' => attributes['wireguard']['ipv4']['network'],
+        'WIREGUARD_IPV4_ADDRESS' => attributes['wireguard']['ipv4']['address'],
+        'WIREGUARD_IPV6_ENABLED' => attributes['wireguard']['ipv6']['enabled'].to_s,
+        'WIREGUARD_IPV6_NETWORK' => attributes['wireguard']['ipv6']['network'],
+        'WIREGUARD_IPV6_ADDRESS' => attributes['wireguard']['ipv6']['address'],
         'CONNECTIVITY_CHECKS_ENABLED' => attributes['connectivity_checks']['enabled'].to_s,
         'CONNECTIVITY_CHECKS_INTERVAL' => attributes['connectivity_checks']['interval'].to_s,
 
