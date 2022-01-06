@@ -48,8 +48,8 @@ defmodule FzHttp.Devices.Device do
   def create_changeset(device, attrs) do
     device
     |> shared_cast(attrs)
-    |> put_next_ipv4()
-    |> put_next_ipv6()
+    |> put_next_ip(:ipv4)
+    |> put_next_ip(:ipv6)
     |> shared_changeset()
   end
 
@@ -115,6 +115,10 @@ defmodule FzHttp.Devices.Device do
     |> validate_ipv6_required()
     |> unique_constraint(:ipv4)
     |> unique_constraint(:ipv6)
+    |> validate_exclusion(:ipv4, [ipv4_address()])
+    |> validate_exclusion(:ipv6, [ipv6_address()])
+    |> validate_in_network(:ipv4)
+    |> validate_in_network(:ipv6)
     |> unique_constraint(:public_key)
     |> unique_constraint(:private_key)
     |> unique_constraint([:user_id, :name])
@@ -158,17 +162,62 @@ defmodule FzHttp.Devices.Device do
     end
   end
 
-  defp put_next_ipv4(changeset) do
-    case changeset do
-      %Ecto.Changeset{changes: %{ipv4: _ipv4}} -> changeset
-      _ -> put_change(changeset, :ipv4, next_available(:ipv4))
+  defp validate_in_network(%Ecto.Changeset{changes: %{ipv4: ip}} = changeset, :ipv4) do
+    net = Application.fetch_env!(:fz_http, :wireguard_ipv4_network)
+    maybe_add_net_error(changeset, net, ip, :ipv4)
+  end
+
+  defp validate_in_network(changeset, :ipv4), do: changeset
+
+  defp validate_in_network(%Ecto.Changeset{changes: %{ipv6: ip}} = changeset, :ipv6) do
+    net = Application.fetch_env!(:fz_http, :wireguard_ipv6_network)
+    maybe_add_net_error(changeset, net, ip, :ipv6)
+  end
+
+  defp validate_in_network(changeset, :ipv6), do: changeset
+
+  def maybe_add_net_error(changeset, net, ip, ip_type) do
+    %{address: address} = ip
+    cidr = CIDR.parse(net)
+
+    if CIDR.match!(cidr, address) do
+      changeset
+    else
+      add_error(changeset, ip_type, "IP must be contained within network #{net}")
     end
   end
 
-  defp put_next_ipv6(changeset) do
+  defp put_next_ip(changeset, ip_type) when ip_type in [:ipv4, :ipv6] do
     case changeset do
-      %Ecto.Changeset{changes: %{ipv6: _ipv6}} -> changeset
-      _ -> put_change(changeset, :ipv6, next_available(:ipv6))
+      %Ecto.Changeset{changes: %{^ip_type => _ip}} ->
+        changeset
+
+      _ ->
+        if ip = next_available(ip_type) do
+          put_change(changeset, ip_type, ip)
+        else
+          add_error(
+            changeset,
+            ip_type,
+            "address pool is exhausted. Increase network size or remove some devices."
+          )
+        end
     end
+  end
+
+  defp ipv4_address do
+    {:ok, inet} =
+      Application.fetch_env!(:fz_http, :wireguard_ipv4_address)
+      |> EctoNetwork.INET.cast()
+
+    inet
+  end
+
+  defp ipv6_address do
+    {:ok, inet} =
+      Application.fetch_env!(:fz_http, :wireguard_ipv6_address)
+      |> EctoNetwork.INET.cast()
+
+    inet
   end
 end

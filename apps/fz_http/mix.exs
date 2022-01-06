@@ -72,6 +72,8 @@ defmodule FzHttp.MixProject do
       {:phoenix_live_view, "~> 0.17.5"},
       {:gettext, "~> 0.18"},
       {:jason, "~> 1.2"},
+      # XXX: Change this when hex package is updated
+      {:cidr, github: "firezone/cidr-elixir"},
       {:telemetry, "~> 0.4.3"},
       {:plug_cowboy, "~> 2.5"},
       {:credo, "~> 1.5", only: [:dev, :test], runtime: false}

@@ -88,11 +88,15 @@ defmodule FzHttp.Devices do
     ips =
       if ipv6?() do
         ["#{device.ipv6}/128"]
+      else
+        []
       end
 
     ips =
       if ipv4?() do
         ["#{device.ipv4}/32" | ips]
+      else
+        ips
       end
 
     Enum.join(ips, ",")

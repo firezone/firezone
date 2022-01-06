@@ -51,14 +51,30 @@ defmodule FzHttp.DevicesTest do
 
     @tag ipv4_network: "10.3.2.0/30"
     test "sets error when ipv4 address pool is exhausted", %{user: user} do
-      restore_env(:wireguard_ipv4, "10.3.2.0/30", &on_exit/1)
-      assert {:error, changeset} = Devices.create_device(%{@device_attrs | user_id: user.id})
+      restore_env(:wireguard_ipv4_network, "10.3.2.0/30", &on_exit/1)
+
+      assert {:error,
+              %Ecto.Changeset{
+                errors: [
+                  ipv4:
+                    {"address pool is exhausted. Increase network size or remove some devices.",
+                     []}
+                ]
+              }} = Devices.create_device(%{@device_attrs | user_id: user.id})
     end
 
     @tag ipv6_network: "fd00::3:2:0/126"
     test "sets error when ipv6 address pool is exhausted", %{user: user} do
-      restore_env(:wireguard_ipv6, "fd00::3:2:0/126", &on_exit/1)
-      assert {:error, changeset} = Devices.create_device(%{@device_attrs | user_id: user.id})
+      restore_env(:wireguard_ipv6_network, "fd00::3:2:0/126", &on_exit/1)
+
+      assert {:error,
+              %Ecto.Changeset{
+                errors: [
+                  ipv6:
+                    {"address pool is exhausted. Increase network size or remove some devices.",
+                     []}
+                ]
+              }} = Devices.create_device(%{@device_attrs | user_id: user.id})
     end
   end
 
@@ -226,6 +242,52 @@ defmodule FzHttp.DevicesTest do
       assert changeset.errors[:allowed_ips] == {
                "is invalid: 11 is not a valid IPv4 / IPv6 address or CIDR range",
                []
+             }
+    end
+
+    test "prevents updating ipv4 to out of network", %{device: device} do
+      {:error, changeset} = Devices.update_device(device, %{ipv4: "172.16.0.1"})
+
+      assert changeset.errors[:ipv4] == {
+               "IP must be contained within network 10.3.2.0/24",
+               []
+             }
+    end
+
+    test "prevents updating ipv6 to out of network", %{device: device} do
+      {:error, changeset} = Devices.update_device(device, %{ipv6: "fd00::2:1:1"})
+
+      assert changeset.errors[:ipv6] == {
+               "IP must be contained within network fd00::3:2:0/120",
+               []
+             }
+    end
+
+    test "prevents updating ipv4 to wireguard address", %{device: device} do
+      ip = Application.fetch_env!(:fz_http, :wireguard_ipv4_address)
+      {:error, changeset} = Devices.update_device(device, %{ipv4: ip})
+
+      assert changeset.errors[:ipv4] == {
+               "is reserved",
+               [
+                 {:validation, :exclusion},
+                 {:enum, [%Postgrex.INET{address: {10, 3, 2, 1}, netmask: 32}]}
+               ]
+             }
+    end
+
+    test "prevents updating ipv6 to wireguard address", %{device: device} do
+      {:error, changeset} =
+        Devices.update_device(device, %{
+          ipv6: Application.fetch_env!(:fz_http, :wireguard_ipv6_address)
+        })
+
+      assert changeset.errors[:ipv6] == {
+               "is reserved",
+               [
+                 {:validation, :exclusion},
+                 {:enum, [%Postgrex.INET{address: {64_768, 0, 0, 0, 0, 3, 2, 1}, netmask: 128}]}
+               ]
              }
     end
   end
