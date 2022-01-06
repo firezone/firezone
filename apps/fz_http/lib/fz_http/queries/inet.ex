@@ -4,53 +4,39 @@ defmodule FzHttp.Queries.INET do
   """
 
   @next_available_ipv4_query """
-  SELECT COALESCE(
-    (
-      SELECT devices.ipv4 + 1
-      FROM devices
-      WHERE devices.ipv4 + 1 < host(broadcast($1))::INET
-      AND devices.ipv4 + 1 != $2
-      AND devices.ipv4 >= host($1)::INET
-      AND NOT EXISTS (
-        SELECT 1 from devices d2 WHERE d2.ipv4 = devices.ipv4 + 1
-      )
-      ORDER BY devices.ipv4
-      LIMIT 1
-    ),
-    CASE WHEN host($1)::INET + 1 < host(broadcast($1))::INET
-          AND host($1)::INET + 1 != $2
-          THEN host($1)::INET + 1
-
-         WHEN host($1)::INET + 2 < host(broadcast($1))::INET
-          THEN host($1)::INET + 2
-
-         ELSE NULL
-    END
+  WITH combined AS (
+    SELECT $2 AS ipv4
+    UNION ALL
+    SELECT devices.ipv4 FROM devices
   )
+  SELECT combined.ipv4 + 1 AS ipv4
+  FROM combined
+  WHERE combined.ipv4 + 1 < host(broadcast($1))::INET
+  AND combined.ipv4 + 1 != $2
+  AND combined.ipv4 >= host($1)::INET
+  AND NOT EXISTS (
+    SELECT 1 from combined d2 WHERE d2.ipv4 = combined.ipv4 + 1
+  )
+  ORDER BY combined.ipv4
+  LIMIT 1
   """
 
   @next_available_ipv6_query """
-  SELECT COALESCE(
-    (
-      SELECT devices.ipv6 + 1
-      FROM devices
-      WHERE devices.ipv6 + 1 < host(broadcast($1))::INET
-      AND devices.ipv6 + 1 != $2
-      AND devices.ipv6 >= host($1)::INET
-      AND NOT EXISTS (SELECT 1 from devices d2 WHERE d2.ipv6 = devices.ipv6 + 1)
-      ORDER BY devices.ipv6
-      LIMIT 1
-    ),
-    CASE WHEN host($1)::INET + 1 < host(broadcast($1))::INET
-          AND host($1)::INET + 1 != $2
-          THEN host($1)::INET + 1
-
-         WHEN host($1)::INET + 2 < host(broadcast($1))::INET
-          THEN host($1)::INET + 2
-
-         ELSE NULL
-    END
+  WITH combined AS (
+    SELECT $2 AS ipv6
+    UNION ALL
+    SELECT devices.ipv6 FROM devices
   )
+  SELECT combined.ipv6 + 1 AS ipv6
+  FROM combined
+  WHERE combined.ipv6 + 1 < host(broadcast($1))::INET
+  AND combined.ipv6 + 1 != $2
+  AND combined.ipv6 >= host($1)::INET
+  AND NOT EXISTS (
+    SELECT 1 from combined d2 WHERE d2.ipv6 = combined.ipv6 + 1
+  )
+  ORDER BY combined.ipv6
+  LIMIT 1
   """
 
   def next_available(type) do
@@ -62,7 +48,7 @@ defmodule FzHttp.Queries.INET do
       {:ok, %Postgrex.Result{rows: [[%Postgrex.INET{} = inet]]}} ->
         inet
 
-      {:ok, %Postgrex.Result{rows: [[nil]]}} ->
+      {:ok, %Postgrex.Result{rows: []}} ->
         nil
 
       {:error, error} ->
