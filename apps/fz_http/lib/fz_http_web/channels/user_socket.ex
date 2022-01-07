@@ -1,8 +1,11 @@
 defmodule FzHttpWeb.UserSocket do
   use Phoenix.Socket
 
+  alias FzHttp.Users
+
   ## Channels
   # channel "room:*", FzHttpWeb.RoomChannel
+  channel "notification:session", FzHttpWeb.NotificationChannel
 
   # Socket params are passed from the client and can
   # be used to verify and authenticate a user. After
@@ -15,8 +18,19 @@ defmodule FzHttpWeb.UserSocket do
   #
   # See `Phoenix.Token` documentation for examples in
   # performing token verification on connect.
-  def connect(_params, socket, _connect_info) do
-    {:ok, socket}
+  def connect(%{"token" => token}, socket, connect_info) do
+    ip = get_ip_address(connect_info)
+
+    case Phoenix.Token.verify(socket, "user auth", token, max_age: 86_400) do
+      {:ok, user_id} ->
+        {:ok,
+         socket
+         |> assign(:current_user, Users.get_user!(user_id))
+         |> assign(:remote_ip, ip)}
+
+      {:error, _} ->
+        :error
+    end
   end
 
   # Socket id's are topics that allow you to identify all sockets for a given user:
@@ -31,4 +45,35 @@ defmodule FzHttpWeb.UserSocket do
   # Returning `nil` makes this socket anonymous.
   # def id(_socket), do: nil
   def id(socket), do: "user_socket:#{socket.assigns.current_user.id}"
+
+  defp get_ip_address(%{peer_data: %{address: address}}) do
+    convert_ip(address)
+
+    address
+    |> Tuple.to_list()
+    |> Enum.join(".")
+  end
+
+  defp get_ip_address(%{x_headers: headers_list}) do
+    header = Enum.find(headers_list, fn {key, _val} -> key == "x-real-ip" end)
+
+    case header do
+      {_key, value} -> value
+      _ -> nil
+    end
+  end
+
+  # IPv4
+  defp convert_ip({_, _, _, _} = address) do
+    address
+    |> Tuple.to_list()
+    |> Enum.join(".")
+  end
+
+  # IPv6
+  defp convert_ip(address) do
+    address
+    |> Tuple.to_list()
+    |> Enum.join(":")
+  end
 end

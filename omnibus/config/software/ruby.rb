@@ -28,7 +28,7 @@ skip_transitive_dependency_licensing true
 # - verify that all ffi libs are available for your version on all platforms.
 # - when upgrading please check the ABI version and update the exclusion until
 #   https://gitlab.com/gitlab-org/omnibus-gitlab/issues/3414 is addressed
-default_version '2.7.4'
+default_version '2.7.5'
 
 fips_enabled = (project.overrides[:fips] && project.overrides[:fips][:enabled]) || false
 
@@ -44,6 +44,7 @@ dependency 'libyaml'
 # and that's the only one we will ever use.
 dependency 'libiconv'
 
+version('2.7.5') { source sha256: '2755b900a21235b443bb16dadd9032f784d4a88f143d852bc5d154f22b8781f1' }
 version('2.7.4') { source sha256: '3043099089608859fc8cce7f9fdccaa1f53a462457e3838ec3b25a7d609fbc5b' }
 version('2.7.3') { source sha256: '8925a95e31d8f2c81749025a52a544ea1d05dad18794e6828709268b92e55338' }
 version('2.7.2') { source sha256: '6e5706d0d4ee4e1e2f883db9d768586b4d06567debea353c796ec45e8321c3d4' }
@@ -66,7 +67,7 @@ if mac_os_x?
 elsif freebsd?
   # Stops "libtinfo.so.5.9: could not read symbols: Bad value" error when
   # compiling ext/readline. See the following for more info:
-  #
+
   #   https://lists.freebsd.org/pipermail/freebsd-current/2013-October/045425.html
   #   http://mailing.freebsd.ports-bugs.narkive.com/kCgK8sNQ/ports-183106-patch-sysutils-libcdio-does-not-build-on-10-0-and-head
   #

@@ -15,11 +15,7 @@ defmodule FzHttpWeb.MockEvents do
     {:ok, pubkey}
   end
 
-  def device_created(_device) do
-    :ok
-  end
-
-  def device_updated(_device) do
+  def update_device(_device) do
     :ok
   end
 

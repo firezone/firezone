@@ -1,10 +1,9 @@
-<!DOCTYPE html>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 <html lang="en" class="has-aside-left has-aside-mobile-transition has-navbar-fixed-top has-aside-expanded">
   <head>
     <meta charset="utf-8"/>
     <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <%= csrf_meta_tag() %>
     <%= live_title_tag assigns[:page_title], prefix: "Firezone • " %>
     <link phx-track-static rel="stylesheet" href={Routes.static_path(@conn, "/css/app.css")} />
     <script defer phx-track-static type="text/javascript" src={Routes.static_path(@conn, "/js/app.js")}></script>
@@ -17,6 +16,15 @@
     <meta name="msapplication-config" content="/browserconfig.xml" />
     <meta name="msapplication-TileColor" content="331700">
     <meta name="theme-color" content="331700">
+
+    <!-- User Socket -->
+    <%= tag :meta, name: "user-token", content: Phoenix.Token.sign(@conn, "user auth", @current_user.id) %>
+
+    <!-- Notification Channel -->
+    <%= tag :meta, name: "channel-token", content: Phoenix.Token.sign(@conn, "channel auth", @current_user.id) %>
+
+    <!-- CSRF -->
+    <%= csrf_meta_tag() %>
   </head>
   <body>
 <div id="app">
@@ -39,7 +47,7 @@
             <span class="icon"><i class="mdi mdi-chevron-down"></i></span>
           </a>
           <div class="navbar-dropdown">
-            <%= link(to: Routes.account_show_path(@conn, :show), class: "navbar-item") do %>
+            <%= link(to: Routes.setting_account_path(@conn, :show), class: "navbar-item") do %>
               <span class="icon"><i class="mdi mdi-account"></i></span>
               <span>Account Settings</span>
             <% end %>
@@ -50,9 +58,14 @@
             <% end %>
           </div>
         </div>
-        <a href="https://github.com/firezone/firezone/wiki" title="Documentation" class="navbar-item has-divider is-desktop-icon-only">
+        <a href="https://docs.firez.one" title="Documentation" class="navbar-item has-divider is-desktop-icon-only">
           <span class="icon"><i class="mdi mdi-help-circle-outline"></i></span>
-          <span>Documentation</span>
+        </a>
+        <a id="web-ui-connect-success" href="#" title="You are connected to the Firezone Web UI." class="navbar-item has-divider is-desktop-icon-only">
+          <span class="icon has-text-success"><i class="mdi mdi-wifi"></i></span>
+        </a>
+        <a id="web-ui-connect-error" href="#" title="You are disconnected from the Firezone Web UI." class="is-hidden navbar-item has-divider is-desktop-icon-only">
+          <span class="icon has-text-danger"><i class="mdi mdi-wifi-off"></i></span>
         </a>
       </div>
     </div>
@@ -67,20 +80,20 @@
       <p class="menu-label">Configuration</p>
       <ul class="menu-list">
         <li>
-          <%= link(to: Routes.user_index_path(@conn, :index), class: nav_class(@conn.request_path, "users")) do %>
+          <%= link(to: Routes.user_index_path(@conn, :index), class: nav_class(@conn, ~r"/users")) do %>
             <span class="icon"><i class="mdi mdi-account-group"></i></span>
             <span class="menu-item-label">Users</span>
           <% end %>
         </li>
         <li>
-          <%= link(to: Routes.device_index_path(@conn, :index), class: nav_class(@conn.request_path, "devices")) do %>
+          <%= link(to: Routes.device_index_path(@conn, :index), class: nav_class(@conn, ~r"/devices")) do %>
             <span class="icon"><i class="mdi mdi-laptop"></i></span>
             <span class="menu-item-label">Devices</span>
           <% end %>
         </li>
         <li>
-          <%= link(to: Routes.rule_index_path(@conn, :index), class: nav_class(@conn.request_path, "rules")) do %>
-            <span class="icon"><i class="mdi mdi-plus-network"></i></span>
+          <%= link(to: Routes.rule_index_path(@conn, :index), class: nav_class(@conn, ~r"/rules")) do %>
+            <span class="icon"><i class="mdi mdi-traffic-light"></i></span>
             <span class="menu-item-label">Rules</span>
           <% end %>
         </li>
@@ -88,24 +101,30 @@
       <p class="menu-label">Settings</p>
       <ul class="menu-list">
         <li>
-          <%= link(to: Routes.setting_default_path(@conn, :default), class: nav_class(@conn.request_path, "defaults")) do %>
+          <%= link(to: Routes.setting_default_path(@conn, :show), class: nav_class(@conn, ~r"/settings/default")) do %>
             <span class="icon"><i class="mdi mdi-cog"></i></span>
             <span class="menu-item-label">Defaults</span>
           <% end %>
         </li>
         <li>
-          <%= link(to: Routes.account_show_path(@conn, :show), class: nav_class(@conn.request_path, "account")) do %>
+          <%= link(to: Routes.setting_account_path(@conn, :show), class: nav_class(@conn, ~r"/settings/account")) do %>
             <span class="icon"><i class="mdi mdi-account"></i></span>
             <span class="menu-item-label">Account</span>
+          <% end %>
+        </li>
+        <li>
+          <%= link(to: Routes.setting_security_path(@conn, :show), class: nav_class(@conn, ~r"/settings/security")) do %>
+            <span class="icon"><i class="mdi mdi-lock"></i></span>
+            <span class="menu-item-label">Security</span>
           <% end %>
         </li>
       </ul>
       <p class="menu-label">Diagnostics</p>
       <ul class="menu-list">
         <li>
-          <%= link(to: Routes.connectivity_check_index_path(@conn, :index), class: nav_class(@conn.request_path, "connectivity_checks")) do %>
+          <%= link(to: Routes.connectivity_check_index_path(@conn, :index), class: nav_class(@conn, ~r"/diagnostics/connectivity_checks")) do %>
             <span class="icon"><i class="mdi mdi-access-point"></i></span>
-            <span class="menu-item-label">Connectivity Checks</span>
+            <span class="menu-item-label">WAN Connectivity</span>
           <% end %>
         </li>
       </ul>
@@ -120,13 +139,13 @@
         <div class="level-left">
           <div class="level-item">
             <%= link(to: "mailto:" <> feedback_recipient()) do %>
-              Click here to leave feedback
+              Leave us feedback!
             <% end %>
           </div>
         </div>
         <div class="level-right">
           <div class="level-item">
-            <a href={"https://github.com/firezone/firezone/tree/#{github_sha()}"}>
+            <a href={"https://github.com/firezone/firezone/tree/#{git_sha()}"}>
               Version <%= application_version() %>
             </a>
           </div>

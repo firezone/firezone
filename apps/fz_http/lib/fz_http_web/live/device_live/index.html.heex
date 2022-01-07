@@ -1,13 +1,23 @@
+<%= if @live_action == :new do %>
+  <%= live_modal(
+        FzHttpWeb.DeviceLive.CreateFormComponent,
+        return_to: Routes.device_index_path(@socket, :index),
+        title: "Add Device",
+        changeset: @changeset,
+        id: "add-device-modal",
+        action: @live_action) %>
+<% end %>
+
 <%= render FzHttpWeb.SharedView, "heading.html", page_title: @page_title %>
 
 <section class="section is-main-section">
   <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
 
-  <div class="content">
+  <div class="block">
     <%= render FzHttpWeb.SharedView, "devices_table.html", devices: @devices, socket: @socket %>
   </div>
 
-  <button class="button is-primary" phx-click="create_device">
+  <button class="button" phx-click="create_device">
     Add Device
   </button>
 </section>

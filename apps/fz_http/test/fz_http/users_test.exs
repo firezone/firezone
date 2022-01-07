@@ -91,7 +91,7 @@ defmodule FzHttp.UsersTest do
     ]
 
     test "doesn't create user with password too short" do
-      assert {:error, changeset} = Users.create_user(@too_short_password)
+      assert {:error, changeset} = Users.create_admin_user(@too_short_password)
 
       assert changeset.errors[:password] == {
                "should be at least %{count} character(s)",
@@ -100,7 +100,7 @@ defmodule FzHttp.UsersTest do
     end
 
     test "doesn't create user with password too long" do
-      assert {:error, changeset} = Users.create_user(@too_long_password)
+      assert {:error, changeset} = Users.create_admin_user(@too_long_password)
 
       assert changeset.errors[:password] == {
                "should be at most %{count} character(s)",
@@ -109,19 +109,19 @@ defmodule FzHttp.UsersTest do
     end
 
     test "creates user with valid map of attributes" do
-      assert {:ok, _user} = Users.create_user(@valid_attrs_map)
+      assert {:ok, _user} = Users.create_admin_user(@valid_attrs_map)
     end
 
     test "creates user with valid list of attributes" do
-      assert {:ok, _user} = Users.create_user(@valid_attrs_list)
+      assert {:ok, _user} = Users.create_admin_user(@valid_attrs_list)
     end
 
     test "doesn't create user with invalid map of attributes" do
-      assert {:error, _changeset} = Users.create_user(@invalid_attrs_map)
+      assert {:error, _changeset} = Users.create_admin_user(@invalid_attrs_map)
     end
 
     test "doesn't create user with invalid list of attributes" do
-      assert {:error, _changeset} = Users.create_user(@invalid_attrs_list)
+      assert {:error, _changeset} = Users.create_admin_user(@invalid_attrs_list)
     end
   end
 

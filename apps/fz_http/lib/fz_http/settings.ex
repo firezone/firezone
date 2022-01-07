@@ -5,6 +5,7 @@ defmodule FzHttp.Settings do
 
   import FzHttp.Macros
   import Ecto.Query, warn: false
+  import FzCommon.FzInteger, only: [max_pg_integer: 0]
   alias FzHttp.Repo
 
   alias FzHttp.Settings.Setting
@@ -13,6 +14,8 @@ defmodule FzHttp.Settings do
     default.device.allowed_ips
     default.device.dns_servers
     default.device.endpoint
+    default.device.persistent_keepalives
+    security.require_auth_for_vpn_frequency
   ))
 
   @doc """
@@ -90,5 +93,14 @@ defmodule FzHttp.Settings do
   def to_list(prefix \\ "") do
     starts_with = prefix <> "%"
     Repo.all(from s in Setting, where: ilike(s.key, ^starts_with))
+  end
+
+  def vpn_sessions_expire? do
+    freq = vpn_duration()
+    freq > 0 && freq < max_pg_integer()
+  end
+
+  def vpn_duration do
+    String.to_integer(security_require_auth_for_vpn_frequency())
   end
 end

@@ -6,23 +6,56 @@ defmodule FzHttpWeb.DeviceLive.Show do
 
   alias FzHttp.{Devices, Users}
 
-  @impl true
+  @impl Phoenix.LiveView
   def mount(params, session, socket) do
     {:ok,
      socket
+     |> assign(:dropdown_active_class, "")
      |> assign_defaults(params, session, &load_data/2)}
   end
 
-  @impl true
+  @doc """
+  Needed because this view will receive handle_params when modal is closed.
+  """
+  @impl Phoenix.LiveView
   def handle_params(_params, _url, socket) do
     {:noreply, socket}
   end
 
-  @impl true
-  def handle_event("delete_device", %{"device_id" => device_id}, socket) do
-    device = Devices.get_device!(device_id)
+  @impl Phoenix.LiveView
+  def handle_event("create_config_token", _params, socket) do
+    device = socket.assigns.device
 
-    if device.user_id == socket.assigns.current_user.id do
+    if authorized?(socket.assigns.current_user, device) do
+      case Devices.create_config_token(device) do
+        {:ok, device} ->
+          {:noreply,
+           socket
+           |> assign(:dropdown_active_class, "is-active")
+           |> assign(:device, device)}
+
+        {:error, _changeset} ->
+          {:noreply,
+           socket
+           |> put_flash(:error, "Could not create device config token.")}
+      end
+    else
+      {:noreply, not_authorized(socket)}
+    end
+  end
+
+  @impl Phoenix.LiveView
+  def handle_event("close_dropdown", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:dropdown_active_class, "")}
+  end
+
+  @impl Phoenix.LiveView
+  def handle_event("delete_device", _params, socket) do
+    device = socket.assigns.device
+
+    if authorized?(socket.assigns.current_user, device) do
       case Devices.delete_device(device) do
         {:ok, _deleted_device} ->
           {:ok, _deleted_pubkey} = @events_module.delete_device(device.public_key)
@@ -45,40 +78,24 @@ defmodule FzHttpWeb.DeviceLive.Show do
   defp load_data(%{"id" => id}, socket) do
     device = Devices.get_device!(id)
 
-    if device.user_id == socket.assigns.current_user.id do
-      assign(
-        socket,
+    if authorized?(socket.assigns.current_user, device) do
+      socket
+      |> assign(
         device: device,
         user: Users.get_user!(device.user_id),
         page_title: device.name,
         allowed_ips: Devices.allowed_ips(device),
-        dns_servers: dns_servers(device),
+        dns_servers: Devices.dns_servers(device),
         endpoint: Devices.endpoint(device),
-        wireguard_port: Application.fetch_env!(:fz_vpn, :wireguard_port)
+        persistent_keepalives: Devices.persistent_keepalives(device),
+        config: Devices.as_config(device)
       )
     else
       not_authorized(socket)
     end
   end
 
-  defp dns_servers(device) when is_struct(device) do
-    dns_servers = Devices.dns_servers(device)
-
-    if dns_servers_empty?(dns_servers) do
-      ""
-    else
-      "DNS = #{dns_servers}"
-    end
-  end
-
-  defp dns_servers_empty?(nil), do: true
-
-  defp dns_servers_empty?(dns_servers) when is_binary(dns_servers) do
-    len =
-      dns_servers
-      |> String.trim()
-      |> String.length()
-
-    len == 0
+  defp authorized?(user, device) do
+    device.user_id == user.id || user.role == :admin
   end
 end

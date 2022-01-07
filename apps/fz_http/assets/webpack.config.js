@@ -12,16 +12,18 @@ module.exports = (env, options) => ({
     ]
   },
   entry: {
-    './js/app.js': glob.sync('./vendor/**/*.js').concat([
+    'app': glob.sync('./vendor/**/*.js').concat([
       // Local JS files to include in the bundle
       './js/hooks.js',
       './js/app.js',
       './node_modules/admin-one-bulma-dashboard/src/js/main.js'
-    ])
+    ]),
+    'auth': ['./js/auth.js'],
+    'device_config': ['./js/device_config.js']
   },
   output: {
     path: path.resolve(__dirname, '../priv/static/js'),
-    filename: 'app.js',
+    filename: '[name].js',
     publicPath: '/js/'
   },
   module: {

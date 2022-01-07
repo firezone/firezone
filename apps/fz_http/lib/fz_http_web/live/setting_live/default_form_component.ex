@@ -1,4 +1,4 @@
-defmodule FzHttpWeb.SettingLive.FormComponent do
+defmodule FzHttpWeb.SettingLive.DefaultFormComponent do
   @moduledoc """
   Handles updating setting values, one at a time
   """

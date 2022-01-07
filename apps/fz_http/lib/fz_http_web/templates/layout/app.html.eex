@@ -1,5 +1,5 @@
 <%= if !is_nil(get_flash(@conn, :info)) or !is_nil(get_flash(@conn, :error)) do %>
-  <div class="container flash-squeeze">
+  <div class="block flash-squeeze">
     <%= if get_flash(@conn, :info) do %>
       <div class="notification is-info">
         <button title="Dismiss notification" class="delete"></button>

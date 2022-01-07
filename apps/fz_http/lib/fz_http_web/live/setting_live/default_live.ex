@@ -28,11 +28,7 @@ defmodule FzHttpWeb.SettingLive.Default do
   def mount(params, session, socket) do
     {:ok,
      socket
-     |> assign_defaults(params, session)
-     |> assign(:help_texts, @help_texts)
-     |> assign(:changesets, load_changesets())
-     |> assign(:endpoint_placeholder, endpoint_placeholder())
-     |> assign(:page_title, "Default Settings")}
+     |> assign_defaults(params, session, &load_data/2)}
   end
 
   defp endpoint_placeholder do
@@ -42,5 +38,19 @@ defmodule FzHttpWeb.SettingLive.Default do
   defp load_changesets do
     Settings.to_list("default.")
     |> Map.new(fn setting -> {setting.key, Settings.change_setting(setting)} end)
+  end
+
+  defp load_data(_params, socket) do
+    user = socket.assigns.current_user
+
+    if user.role == :admin do
+      socket
+      |> assign(:changesets, load_changesets())
+      |> assign(:help_texts, @help_texts)
+      |> assign(:endpoint_placeholder, endpoint_placeholder())
+      |> assign(:page_title, "Default Settings")
+    else
+      not_authorized(socket)
+    end
   end
 end

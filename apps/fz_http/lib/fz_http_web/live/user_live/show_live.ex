@@ -15,14 +15,6 @@ defmodule FzHttpWeb.UserLive.Show do
      |> assign_defaults(params, session, &load_data/2)}
   end
 
-  defp load_data(params, socket) do
-    user = Users.get_user!(params["id"])
-
-    socket
-    |> assign(:devices, Devices.list_devices(user))
-    |> assign(:user, user)
-  end
-
   @impl Phoenix.LiveView
   def handle_params(_params, _url, socket) do
     {:noreply, socket}
@@ -72,7 +64,7 @@ defmodule FzHttpWeb.UserLive.Show do
 
     case Devices.create_device(attributes) do
       {:ok, device} ->
-        @events_module.device_created(device)
+        @events_module.update_device(device)
 
         {:noreply,
          socket
@@ -86,6 +78,18 @@ defmodule FzHttpWeb.UserLive.Show do
            :error,
            "Error creating device: #{ErrorHelpers.aggregated_errors(changeset)}"
          )}
+    end
+  end
+
+  defp load_data(params, socket) do
+    user = Users.get_user!(params["id"])
+
+    if socket.assigns.current_user.role == :admin do
+      socket
+      |> assign(:devices, Devices.list_devices(user))
+      |> assign(:user, user)
+    else
+      not_authorized(socket)
     end
   end
 end
