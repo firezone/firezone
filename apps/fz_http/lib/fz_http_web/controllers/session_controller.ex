@@ -12,7 +12,7 @@ defmodule FzHttpWeb.SessionController do
   def new(conn, _params) do
     if redirect_authenticated?(conn) do
       conn
-      |> redirect(to: Routes.device_path(conn, :index))
+      |> redirect(to: root_path_for_role(conn))
       |> halt()
     else
       changeset = Sessions.new_session()
@@ -34,9 +34,10 @@ defmodule FzHttpWeb.SessionController do
           {:ok, session} ->
             conn
             |> clear_session()
+            |> assign(:current_session, session)
             |> put_session(:user_id, session.id)
             |> put_session(:live_socket_id, "users_socket:#{session.id}")
-            |> redirect(to: Routes.device_path(conn, :index))
+            |> redirect(to: Routes.root_path(conn, :index))
 
           {:error, _changeset} ->
             conn
@@ -55,7 +56,7 @@ defmodule FzHttpWeb.SessionController do
         |> clear_session()
         |> put_session(:user_id, user.id)
         |> put_session(:live_socket_id, "users_socket:#{user.id}")
-        |> redirect(to: Routes.device_path(conn, :index))
+        |> redirect(to: Routes.device_index_path(conn, :index))
 
       {:error, error_msg} ->
         conn

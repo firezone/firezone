@@ -16,7 +16,7 @@ defmodule FzHttp.ConnectivityChecksFixtures do
         response_body: "some response_body",
         response_code: 142,
         response_headers: %{"Content-Type" => "text/plain"},
-        url: "https://ping.firez.one/0.0.0+git.0.deadbeef0"
+        url: "https://ping-dev.firez.one/0.0.0+git.0.deadbeef0"
       })
       |> ConnectivityChecks.create_connectivity_check()
 

@@ -1,7 +1,7 @@
 defmodule FzHttp.MixProject do
   use Mix.Project
 
-  @version_path "../../version.exs"
+  @version_path "../../scripts/version.exs"
 
   def version do
     Code.eval_file(@version_path)
@@ -16,7 +16,7 @@ defmodule FzHttp.MixProject do
       config_path: "../../config/config.exs",
       deps_path: "../../deps",
       lockfile: "../../mix.lock",
-      elixir: "~> 1.11",
+      elixir: "~> 1.12",
       elixirc_paths: elixirc_paths(Mix.env()),
       compilers: [:phoenix, :gettext] ++ Mix.compilers(),
       start_permanent: Mix.env() == :prod,
@@ -67,9 +67,9 @@ defmodule FzHttp.MixProject do
       {:inflex, "~> 2.1"},
       {:plug, "~> 1.12.1"},
       {:postgrex, "~> 0.15.10"},
-      {:phoenix_html, "~> 3.0.3"},
+      {:phoenix_html, "~> 3.1.0"},
       {:phoenix_live_reload, "~> 1.3", only: :dev},
-      {:phoenix_live_view, "~> 0.16.3"},
+      {:phoenix_live_view, "~> 0.17.5"},
       {:gettext, "~> 0.18"},
       {:jason, "~> 1.2"},
       {:telemetry, "~> 0.4.3"},

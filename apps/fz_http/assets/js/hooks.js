@@ -1,30 +1,34 @@
-import moment from "moment"
+import hljs from "highlight.js"
+import {FormatTimestamp} from "./util.js"
+import {renderQrCode} from "./qrcode.js"
 
-const QRCode = require('qrcode')
-
-const renderQrCode = function () {
-  let canvas = document.getElementById('qr-canvas')
-  let conf = document.getElementById('wg-conf')
-
-  if (canvas && conf) {
-    QRCode.toCanvas(canvas, conf.innerHTML, {
-      errorCorrectionLevel: 'H',
-      margin: 0,
-      width: 200,
-      height: 200
-
-    }, function (error) {
-      if (error) alert('QRCode Encode Error: ' + error)
-    })
-  }
+const highlightCode = function () {
+  hljs.highlightAll()
 }
 
 const formatTimestamp = function () {
-  let timestamp = this.el.dataset.timestamp
-  this.el.innerHTML = moment(timestamp).format("dddd, MMMM Do YYYY, h:mm:ss a z")
+  let t = this.el.dataset.timestamp
+  this.el.innerHTML = FormatTimestamp(t)
+}
+
+const clipboardCopy = function () {
+  let button = this.el
+  let data = button.dataset.clipboard
+  button.addEventListener("click", () => {
+    button.dataset.tooltip = "Copied!"
+    navigator.clipboard.writeText(data)
+  })
 }
 
 let Hooks = {}
+Hooks.ClipboardCopy = {
+  mounted: clipboardCopy,
+  updated: clipboardCopy
+}
+Hooks.HighlightCode = {
+  mounted: highlightCode,
+  updated: highlightCode
+}
 Hooks.QrCode = {
   mounted: renderQrCode,
   updated: renderQrCode

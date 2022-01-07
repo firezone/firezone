@@ -7,14 +7,20 @@ defmodule FzHttpWeb.Endpoint do
   end
 
   socket "/socket", FzHttpWeb.UserSocket,
-    websocket: true,
+    websocket: [
+      connect_info: [:peer_data, :x_headers],
+      # XXX: channel token should prevent CSWH but double check
+      check_origin: false
+    ],
     longpoll: false
 
   socket "/live", Phoenix.LiveView.Socket,
     websocket: [
       connect_info: [
         session: {Session, :options, []}
-      ]
+      ],
+      # XXX: csrf token should prevent CSWH but double check
+      check_origin: false
     ]
 
   # Serve at "/" the static files from "priv/static" directory.

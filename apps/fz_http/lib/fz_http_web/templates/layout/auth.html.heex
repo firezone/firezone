@@ -7,23 +7,33 @@
     <%= csrf_meta_tag() %>
     <%= live_title_tag assigns[:page_title] || "Firezone" %>
     <link phx-track-static rel="stylesheet" href={Routes.static_path(@conn, "/css/app.css")} />
-    <script defer phx-track-static type="text/javascript" src={Routes.static_path(@conn, "/js/app.js")}></script>
+    <script defer phx-track-static type="text/javascript" src={Routes.static_path(@conn, "/js/auth.js")}></script>
 
-    <!-- Fonts -->
-    <link rel="dns-prefetch" href="https://fonts.gstatic.com">
-    <link href="https://fonts.googleapis.com/css?family=Nunito" rel="stylesheet" type="text/css">
+    <!-- Favicon -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+    <meta name="msapplication-config" content="/browserconfig.xml" />
+    <meta name="msapplication-TileColor" content="331700">
+    <meta name="theme-color" content="331700">
   </head>
 <body>
 <section class="section hero is-fullheight is-error-section">
-<div id="app" class="hero-body">
-  <div class="container">
-    <div class="columns">
-      <div class="column is-4 is-offset-4">
-        <%= @inner_content %>
+  <div id="app" class="hero-body">
+    <div class="container">
+      <div class="columns is-centered">
+        <div class="column is-two-thirds-tablet is-half-desktop is-one-third-widescreen">
+          <div class="block">
+            <div class="has-text-centered">
+              <img src={Routes.static_path(@conn, "/images/logo-text.svg")} alt="firez.one">
+            </div>
+          </div>
+          <%= @inner_content %>
+        </div>
       </div>
     </div>
   </div>
-</div>
 </section>
 </body>
 </html>

@@ -18,6 +18,10 @@ defmodule FzHttpWeb.DeviceLive.FormComponent do
      |> assign(:default_device_allowed_ips, Settings.default_device_allowed_ips())
      |> assign(:default_device_dns_servers, Settings.default_device_dns_servers())
      |> assign(:default_device_endpoint, default_device_endpoint)
+     |> assign(
+       :default_device_persistent_keepalives,
+       Settings.default_device_persistent_keepalives()
+     )
      |> assign(:changeset, changeset)}
   end
 
@@ -35,7 +39,7 @@ defmodule FzHttpWeb.DeviceLive.FormComponent do
 
     case Devices.update_device(device, device_params) do
       {:ok, device} ->
-        @events_module.device_updated(device)
+        @events_module.update_device(device)
 
         {:noreply,
          socket

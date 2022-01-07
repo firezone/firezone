@@ -1,6 +1,9 @@
 <div class="card tile is-child">
   <header class="card-header">
-    <p class="card-header-title"><%= @title %></p>
+    <p class="card-header-title">
+      <span class="icon"><i class={@header_icon}></i></span>
+      <%= @title %>
+    </p>
   </header>
   <div class="card-content">
     <.form let={f} for={@changeset} id={"#{@action}-form"} phx-target={@myself} phx-submit="add_rule">

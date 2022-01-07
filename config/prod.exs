@@ -11,11 +11,11 @@ import Config
 # before starting your production server.
 config :fz_vpn,
   wg_path: "wg",
-  cli: FzVpn.CLI.Live
+  cli: FzVpn.CLI.Sandbox
 
 config :fz_wall,
   nft_path: "nft",
-  cli: FzWall.CLI.Live
+  cli: FzWall.CLI.Sandbox
 
 config :fz_http, FzHttpWeb.Endpoint,
   cache_static_manifest: "priv/static/cache_manifest.json",
@@ -24,6 +24,20 @@ config :fz_http, FzHttpWeb.Endpoint,
   # changed by release config
   live_view: [signing_salt: "dummy"],
   server: true
+
+# This will be overridden on releases
+if url = System.get_env("DATABASE_URL") do
+  config :fz_http, FzHttp.Repo,
+    url: url,
+    pool_size: 10
+else
+  config :fz_http, FzHttp.Repo,
+    username: "postgres",
+    password: "postgres",
+    database: "firezone",
+    hostname: "localhost",
+    pool_size: 10
+end
 
 # Do not print debug messages in production
 config :logger, level: :info

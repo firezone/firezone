@@ -9,7 +9,7 @@
     <img src="https://img.shields.io/static/v1?logo=openbugbounty&logoColor=959DA5&label=feedback&labelColor=333a41&message=submit&color=3AC358" alt="submit feedback" />
   </a>
   <a href="https://discourse.firez.one">
-    <img src="https://img.shields.io/static/v1?logo=discourse&logoColor=959DA5&label=community&labelColor=333a41&message=join&color=611f69" alt="firezone Discourse" />
+    <img src="https://img.shields.io/static/v1?logo=discourse&logoColor=959DA5&label=forum&labelColor=333a41&message=join&color=611f69" alt="firezone Discourse" />
   </a>
   <img src="https://img.shields.io/static/v1?logo=github&logoColor=959DA5&label=Test&labelColor=333a41&message=passing&color=3AC358" alt="firezone" />
   <a href="https://coveralls.io/github/firezone/firezone?branch=master">
@@ -27,7 +27,7 @@
 
 <hr>
 
-![Architecture](https://user-images.githubusercontent.com/52545545/144147802-e6d1c62b-e567-45e4-be96-46a06cf80faa.png)
+![Architecture](https://user-images.githubusercontent.com/52545545/147286088-08b0d11f-d81d-4622-8145-179071d2f0fb.png)
 
 **Important**: Ensure you're reading the correct version of this README for the
 current version of Firezone you're running. Links to the README for past
@@ -51,6 +51,9 @@ versions:
   * [Troubleshooting](#troubleshooting)
   * [Upgrading](#upgrading)
   * [Uninstalling](#uninstalling)
+* [Client Setup and Usage](#client-setup-and-usage)
+  * [Adding Devices](#adding-devices)
+  * [Client Instructions](#client-instructions)
 * [Getting Support](#getting-support)
 * [Developing and Contributing](#developing-and-contributing)
 
@@ -59,14 +62,14 @@ versions:
 
 [Firezone](https://www.firez.one/) is a Linux package to manage your WireGuard VPN through a simple web interface.
 
-![firezone-usage](https://user-images.githubusercontent.com/52545545/144147668-d06e6bd2-6e38-4cce-a3f6-9e6f379532bd.gif)
+![firezone-usage](https://user-images.githubusercontent.com/52545545/147392573-fe4cb936-a0a8-436f-a69b-c0a9587de58b.gif)
 
 ## Features
 
 - **Fast:** Uses WireGuard to be [3-4 times](https://wireguard.com/performance/) faster than OpenVPN.
 - **No dependencies:** All dependencies are bundled thanks to
     [Chef Omnibus](https://github.com/chef/omnibus).
-- **Simple:** Takes minutes to set up. Manage via a simple CLI API.
+- **Simple:** Takes minutes to set up. Manage via a simple CLI.
 - **Secure:** Runs unprivileged. HTTPS enforced. Encrypted cookies.
 - **Firewall included:** Uses Linux [nftables](https://netfilter.org) to block
     unwanted egress traffic.
@@ -116,7 +119,7 @@ Firezone currently supports the following distributions and architectures:
 | --- | --- | --- | --- |
 | AmazonLinux 2 | `amd64` | **Fully-supported** | See [AmazonLinux 2 Notes](#amazonlinux-2-notes) |
 | CentOS 7 | `amd64` | **Fully-supported** | See [CentOS 7 Notes](#centos-7-notes) |
-| CentOS 8 | `amd64` | **Fully-supported** | Works as-is |
+| CentOS 8 | `amd64` | **Fully-supported** | See [CentOS 8 Notes](#centos-8-notes |
 | Debian 10 | `amd64` | **Fully-supported** | See [Debian 10 Notes](#debian-10-notes)|
 | Debian 11 | `amd64` | **Fully-supported** | Works as-is |
 | Fedora 33 | `amd64` | **Fully-supported** | Works as-is |
@@ -143,6 +146,15 @@ sudo amazon-linux-extras install -y kernel-5.10
 Kernel upgrade to 4.19+ required. See [this guide
 ](https://medium.com/@nazishalam07/update-centos-kernel-3-10-to-5-13-latest-9462b4f1e62c)
 for an example.
+
+### CentOS 8 Notes
+
+The WireGuard kernel module needs to be installed:
+
+```bash
+yum install elrepo-release epel-release
+yum install kmod-wireguard
+```
 
 ### Ubuntu 18.04 Notes
 
@@ -280,6 +292,21 @@ To upgrade Firezone, simply download the new OS package, install it over the exi
 Occasionally problems arise. If you hit any, please let us know by [filing an
 issue](https://github.com/firezone/firezone/issues/new/choose).
 
+### Upgrading from 0.1.x to 0.2.x
+
+Firezone 0.2.x contains some configuration file changes that will need to be
+handled manually if you're upgrading from 0.1.x. Run the commands below as root
+to perform the needed changes to your `/etc/firezone/firezone.rb` file.
+
+```bash
+cp /etc/firezone/firezone.rb /etc/firezone/firezone.rb.bak
+sed -i "s/\['enable'\]/\['enabled'\]/" /etc/firezone/firezone.rb
+echo "default['firezone']['connectivity_checks']['enabled'] = true" >> /etc/firezone/firezone.rb
+echo "default['firezone']['connectivity_checks']['interval'] = 3_600" >> /etc/firezone/firezone.rb
+firezone-ctl reconfigure
+firezone-ctl restart
+```
+
 ## Uninstalling
 
 To completely remove Firezone and its configuration files, run the [uninstall.sh
@@ -291,6 +318,17 @@ sudo /bin/bash -c "$(curl -fsSL https://github.com/firezone/firezone/raw/master/
 
 **Warning**: This will irreversibly destroy ALL Firezone data and can't be
 undone.
+
+# Client Setup and Usage
+
+## Adding Devices
+Add a device through the Web UI by clicking the "Add Device" button under `/devices` or `/users`. Once the device profile is created, you can send the WireGuard configuration file to the client.
+
+## Client Instructions
+Clients should download the latest version of the WireGuard client from https://www.wireguard.com/install/. Once installed, clients can import the tunnel via the `.conf` file sent by the administrator.
+
+![Client Instructions](https://user-images.githubusercontent.com/52545545/147296703-a7fa8fce-33bb-42ef-83b3-1b8e9047d1d5.gif)
+
 
 # Getting Support
 For help, feedback or contributions please join our [

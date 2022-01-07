@@ -25,7 +25,7 @@ defmodule FzHttpWeb.SettingLive.DefaultTest do
     }
 
     setup %{authed_conn: conn} do
-      path = Routes.setting_default_path(conn, :default)
+      path = Routes.setting_default_path(conn, :show)
       {:ok, view, html} = live(conn, path)
 
       %{html: html, view: view}
@@ -161,7 +161,7 @@ defmodule FzHttpWeb.SettingLive.DefaultTest do
   describe "unauthenticated/settings default" do
     @tag :unauthed
     test "mount redirects to session path", %{unauthed_conn: conn} do
-      path = Routes.setting_default_path(conn, :default)
+      path = Routes.setting_default_path(conn, :show)
       expected_path = Routes.session_path(conn, :new)
       assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
     end

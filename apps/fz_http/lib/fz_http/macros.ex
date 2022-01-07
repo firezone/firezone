@@ -3,6 +3,9 @@ defmodule FzHttp.Macros do
   Metaprogramming macros
   """
 
+  @doc """
+  Defines getters for all Setting keys as functions on the Settings module.
+  """
   defmacro def_settings(keys) do
     quote bind_quoted: [keys: keys] do
       Enum.each(keys, fn key ->

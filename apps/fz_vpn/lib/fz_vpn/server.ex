@@ -37,7 +37,7 @@ defmodule FzVpn.Server do
     cli().setup()
     {:ok, peers} = GenServer.call(http_pid(), :load_peers, @init_timeout)
     config = peers_to_config(peers)
-    apply_config(config)
+    apply_config_diff(config)
   end
 
   @impl GenServer
@@ -49,38 +49,44 @@ defmodule FzVpn.Server do
 
   @impl GenServer
   def handle_call({:delete_device, pubkey}, _from, config) do
-    new_config = Map.delete(config, pubkey)
     cli().delete_peer(pubkey)
-    apply_config(new_config)
-
+    new_config = Map.delete(config, pubkey)
     {:reply, {:ok, pubkey}, new_config}
   end
 
   @impl GenServer
-  def handle_call({:set_config, peers}, _from, _config) do
+  def handle_call({:set_config, peers}, _from, config) do
     new_config = peers_to_config(peers)
-    apply_config(new_config)
+    apply_config_diff(config, new_config)
     {:reply, :ok, new_config}
   end
 
   @impl GenServer
-  def handle_cast({:device_created, pubkey, inet}, config) do
+  def handle_call({:update_device, pubkey, inet}, _from, config) do
     cli().set_peer(pubkey, inet)
-    {:noreply, Map.put(config, pubkey, inet)}
-  end
-
-  @impl GenServer
-  def handle_cast({:device_updated, pubkey, inet}, config) do
-    cli().set_peer(pubkey, inet)
-    {:noreply, Map.put(config, pubkey, inet)}
+    {:reply, :ok, Map.put(config, pubkey, inet)}
   end
 
   @doc """
-  Apply configuration to interface.
+  Determines which peers to remove, add, and change and sets them on the WireGuard interface.
   """
-  def apply_config(config) do
-    cli().set(Config.render(config))
-    {:ok, config}
+  def apply_config_diff(old_config \\ %{}, new_config) do
+    delete_old_peers(old_config, new_config)
+    update_changed_peers(old_config, new_config)
+    {:ok, new_config}
+  end
+
+  defp delete_old_peers(old_config, new_config) do
+    for pubkey <- Map.keys(old_config) -- Map.keys(new_config) do
+      cli().delete_peer(pubkey)
+    end
+  end
+
+  defp update_changed_peers(old_config, new_config) do
+    new_config
+    |> Enum.filter(fn {pubkey, inet} -> Map.get(old_config, pubkey) != inet end)
+    |> Config.render()
+    |> cli().set()
   end
 
   def http_pid do
@@ -88,6 +94,6 @@ defmodule FzVpn.Server do
   end
 
   defp peers_to_config(peers) do
-    Map.new(peers, fn peer -> {peer.public_key, peer.allowed_ips} end)
+    Map.new(peers, fn peer -> {peer.public_key, peer.inet} end)
   end
 end

@@ -5,6 +5,18 @@ defmodule FzVpn.CLI.Sandbox do
 
   require Logger
 
+  @wg_show """
+  interface: wg-firezone
+  public key: Kewtu/udoH+mZzcS0vixCXa8fiMNcurlNy+oQzLZiQk=
+  private key: (hidden)
+  listening port: 51820
+
+  peer: 1RSUaL+er3+HJM7JW2u5uZDIFNNJkw2nV7dnZyOAK2k=
+    endpoint: 73.136.58.38:55433
+    allowed ips: 10.3.2.2/32, fd00:3:2::2/128
+    latest handshake: 56 minutes, 14 seconds ago
+    transfer: 1.21 MiB received, 39.30 MiB sent
+  """
   @show_latest_handshakes "4 seconds ago"
   @show_persistent_keepalives "every 25 seconds"
   @show_transfer "4.60 MiB received, 59.21 MiB sent"
@@ -24,6 +36,20 @@ defmodule FzVpn.CLI.Sandbox do
   def set(conf_str) do
     Logger.debug("`set` called with #{conf_str}")
     @default_returned
+  end
+
+  def delete_peers do
+    @wg_show
+    |> String.split("\n")
+    |> Enum.filter(fn line ->
+      String.contains?(line, "peer")
+    end)
+    |> Enum.map(fn line ->
+      String.replace_leading(line, "peer: ", "")
+    end)
+    |> Enum.each(fn pubkey ->
+      delete_peer(pubkey)
+    end)
   end
 
   def delete_peer(pubkey) do

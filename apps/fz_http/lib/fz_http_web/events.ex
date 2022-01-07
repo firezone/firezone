@@ -9,20 +9,10 @@ defmodule FzHttpWeb.Events do
     GenServer.call(vpn_pid(), :create_device)
   end
 
-  def device_created(device) do
-    GenServer.cast(vpn_pid(), {
-      :device_created,
-      device.public_key,
-      "#{Devices.ipv4_address(device)},#{Devices.ipv6_address(device)}"
-    })
-  end
-
-  def device_updated(device) do
-    GenServer.cast(vpn_pid(), {
-      :device_updated,
-      device.public_key,
-      "#{Devices.ipv4_address(device)},#{Devices.ipv6_address(device)}"
-    })
+  # set_config is used because devices need to be re-evaluated in case a
+  # device is added to a User that's not active.
+  def update_device(_device) do
+    GenServer.call(vpn_pid(), {:set_config, Devices.to_peer_list()})
   end
 
   def delete_device(device_pubkey) when is_binary(device_pubkey) do
@@ -30,7 +20,7 @@ defmodule FzHttpWeb.Events do
   end
 
   def delete_device(device) when is_struct(device) do
-    delete_device(device.public_key)
+    GenServer.call(vpn_pid(), {:delete_device, device.public_key})
   end
 
   def add_rule(rule) do

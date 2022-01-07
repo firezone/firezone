@@ -12,3 +12,12 @@ nav.navbar {
 aside.aside {
   overflow-y: auto;
 }
+
+pre {
+  background-color: $interface-000;
+  color: $interface-600;
+}
+
+.dropdown-menu.is-large {
+  width: 26rem;
+}

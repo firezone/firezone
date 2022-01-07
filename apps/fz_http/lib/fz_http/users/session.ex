@@ -8,6 +8,7 @@ defmodule FzHttp.Users.Session do
   alias FzHttp.{Users, Users.User}
 
   schema "users" do
+    field :role, Ecto.Enum, values: [:unprivileged, :admin], default: :unprivileged
     field :email, :string
     field :password, :string, virtual: true
     field :last_signed_in_at, :utc_datetime_usec
