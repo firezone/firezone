@@ -1,6 +1,6 @@
 # We're running on a self-hosted runner, so only allow one workflow to run at a
 # time.
-# XXX: Remove this when self-hosted ephemeral runners are implemented.
+# XXX: Remove this when scalable CI pipeline is created
 concurrency: ci
 
 name: CI
@@ -11,6 +11,11 @@ defaults:
     shell: bash
 
 jobs:
+  repo-stats:
+    steps:
+      - name: github-repo-stats
+        uses: jgehrcke/github-repo-stats@v1.3.0
+
   static-analysis:
     runs-on: ubuntu-18.04
     env:
