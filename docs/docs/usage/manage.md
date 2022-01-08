@@ -1,11 +1,13 @@
 ---
 layout: default
-title: Manage Firezone
+title: Manage Installation
 nav_order: 1
 parent: Usage
 ---
 
-# Using Firezone
+# Manage Installation
+
+---
 
 Your Firezone installation can be managed via the `firezone-ctl` command, as shown below. Most subcommands require prefixing with `sudo`.
 

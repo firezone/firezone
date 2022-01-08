@@ -5,7 +5,9 @@ nav_order: 2
 parent: Usage
 ---
 
-## Upgrading
+# Upgrade
+
+---
 
 Upgrading Firezone will disconnect all VPN connections and require shutting
 down the Web UI. We recommend a maintenance window of about an hour in case
@@ -17,7 +19,7 @@ To upgrade Firezone, simply download the new OS package, install it over the exi
 Occasionally problems arise. If you hit any, please let us know by [filing an
 issue](https://github.com/firezone/firezone/issues/new/choose).
 
-### Upgrading from 0.1.x to 0.2.x
+## Upgrading from 0.1.x to 0.2.x
 
 Firezone 0.2.x contains some configuration file changes that will need to be
 handled manually if you're upgrading from 0.1.x. Run the commands below as root
