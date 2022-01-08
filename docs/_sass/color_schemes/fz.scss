@@ -25,9 +25,8 @@ $btn-primary-color: $fz-purple-100;
 $body-font-family: "Fira Sans", sans-serif;
 $mono-font-family: "Fira Mono", monospace;
 
-@font-face {
-    font-family: "Open Sans";
-    src: url("../fonts/OpenSans-VariableFont_wdth,wght.ttf");
+h1, h2, h3, h4, h5, h6 {
+  font-family: "Open Sans", sans-serif;
 }
 
 // Borders
