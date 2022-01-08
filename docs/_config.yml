@@ -32,7 +32,7 @@ github_username:  firezone
 logo: "/assets/images/firezone-logo-wordmark-dark.svg"
 
 # Build settings
-remote_theme: pmarsceill/just-the-docs
+remote_theme: firezone/just-the-docs
 theme: just-the-docs
 color_scheme: fz
 
