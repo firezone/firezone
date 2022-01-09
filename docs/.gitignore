@@ -1,5 +1,7 @@
-_site
-.sass-cache
+*.gem
+.bundle
+.ruby-version
 .jekyll-cache
-.jekyll-metadata
-vendor
+.sass-cache
+_site
+node_modules
