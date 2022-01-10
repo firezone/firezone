@@ -15,8 +15,12 @@ setup_interface()
     ip link add ${WIREGUARD_INTERFACE_NAME} type wireguard
   fi
 
-  ip address replace ${WIREGUARD_IPV4} dev ${WIREGUARD_INTERFACE_NAME}
-  ip -6 address replace ${WIREGUARD_IPV6} dev ${WIREGUARD_INTERFACE_NAME}
+  if [[ $WIREGUARD_IPV4_ENABLED -eq "true" ]]; then
+    ip address replace ${WIREGUARD_IPV4_ADDRESS} dev ${WIREGUARD_INTERFACE_NAME}
+  fi
+  if [[ $WIREGUARD_IPV6_ENABLED -eq "true" ]]; then
+    ip -6 address replace ${WIREGUARD_IPV6_ADDRESS} dev ${WIREGUARD_INTERFACE_NAME}
+  fi
   ip link set mtu ${WIREGUARD_INTERFACE_MTU} up dev ${WIREGUARD_INTERFACE_NAME}
   ${WG_PATH} set ${WIREGUARD_INTERFACE_NAME} private-key ${WIREGUARD_PRIVATE_KEY_PATH}
   ${WG_PATH} set ${WIREGUARD_INTERFACE_NAME} listen-port ${WIREGUARD_LISTEN_PORT}
@@ -24,8 +28,12 @@ setup_interface()
 
 add_routes()
 {
-  ip route add 10.3.2.0/24 dev ${WIREGUARD_INTERFACE_NAME}
-  ip -6 route add fd00:3:2::0/120 dev ${WIREGUARD_INTERFACE_NAME}
+  if [[ $WIREGUARD_IPV4_ENABLED -eq "true" ]]; then
+    ip route add ${WIREGUARD_IPV4_NETWORK} dev ${WIREGUARD_INTERFACE_NAME}
+  fi
+  if [[ $WIREGUARD_IPV6_ENABLED -eq "true" ]]; then
+    ip -6 route add ${WIREGUARD_IPV6_NETWORK} dev ${WIREGUARD_INTERFACE_NAME}
+  fi
 }
 
 main()

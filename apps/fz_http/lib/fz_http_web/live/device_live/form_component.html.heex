@@ -126,13 +126,24 @@
     </div>
 
     <div class="field">
-      <%= label f, :address, "Interface Address (last octet only)", class: "label" %>
+      <%= label f, :ipv4, "IPv4 Address", class: "label" %>
 
       <div class="control">
-        <%= text_input f, :address, class: "input" %>
+        <%= text_input f, :ipv4, class: "input" %>
       </div>
       <p class="help is-danger">
-        <%= error_tag f, :address %>
+        <%= error_tag f, :ipv4 %>
+      </p>
+    </div>
+
+    <div class="field">
+      <%= label f, :ipv6, "IPv6 Address", class: "label" %>
+
+      <div class="control">
+        <%= text_input f, :ipv6, class: "input" %>
+      </div>
+      <p class="help is-danger">
+        <%= error_tag f, :ipv6 %>
       </p>
     </div>
 

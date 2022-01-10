@@ -46,14 +46,6 @@ defmodule FzHttpWeb.UserSocket do
   # def id(_socket), do: nil
   def id(socket), do: "user_socket:#{socket.assigns.current_user.id}"
 
-  defp get_ip_address(%{peer_data: %{address: address}}) do
-    convert_ip(address)
-
-    address
-    |> Tuple.to_list()
-    |> Enum.join(".")
-  end
-
   defp get_ip_address(%{x_headers: headers_list}) do
     header = Enum.find(headers_list, fn {key, _val} -> key == "x-real-ip" end)
 
@@ -61,6 +53,14 @@ defmodule FzHttpWeb.UserSocket do
       {_key, value} -> value
       _ -> nil
     end
+  end
+
+  defp get_ip_address(%{peer_data: %{address: address}}) do
+    convert_ip(address)
+
+    address
+    |> Tuple.to_list()
+    |> Enum.join(".")
   end
 
   # IPv4
