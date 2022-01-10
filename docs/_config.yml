@@ -22,18 +22,21 @@ title: Docs | Firezone
 email: support@firez.one
 description: >- # this means to ignore newlines until "baseurl:"
   Documentation site for Firezone's VPN and firewall server.
-# baseurl: "" # the subpath of your site, e.g. /blog
+baseurl: "" # the subpath of your site, e.g. /blog
 url: "https://docs.firez.one" # the base hostname & protocol for your site, e.g. http://example.com
 permalink: pretty
 twitter_username: firezonevpn
 github_username:  firezone
+
+plugins:
+  - jekyll-seo-tag
 
 # Set a path/url to a logo that will be displayed instead of the title
 logo: "/assets/images/firezone-logo-wordmark-dark.svg"
 
 # Build settings
 remote_theme: firezone/just-the-docs
-theme: just-the-docs
+# theme: firezone/just-the-docs
 color_scheme: fz
 
 # Footer content
