@@ -2,7 +2,7 @@ import moment from "moment"
 
 const FormatTimestamp = function (timestamp) {
   if (timestamp) {
-    return moment(timestamp).format("dddd, MMMM Do YYYY, h:mm:ss a z")
+    return moment(timestamp).format("llll z")
   } else {
     return "Never"
   }

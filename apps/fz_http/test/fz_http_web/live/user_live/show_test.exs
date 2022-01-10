@@ -1,5 +1,6 @@
 defmodule FzHttpWeb.UserLive.ShowTest do
-  use FzHttpWeb.ConnCase, async: true
+  # XXX: Setting to true causes deadlocks. Figure out why.
+  use FzHttpWeb.ConnCase, async: false
 
   describe "authenticated show" do
     setup :create_device

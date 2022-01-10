@@ -5,8 +5,12 @@ exec 2>&1
 export WIREGUARD_INTERFACE_NAME=<%= node['firezone']['wireguard']['interface_name'] %>
 export WG_PATH=<%= node['firezone']['install_directory'] %>/embedded/bin/wg
 export WIREGUARD_PRIVATE_KEY_PATH=<%= node['firezone']['var_directory'] %>/cache/wg_private_key
-export WIREGUARD_IPV4=10.3.2.1/24
-export WIREGUARD_IPV6=fd00:3:2::1/120
+export WIREGUARD_IPV4_ENABLED=<%= node['firezone']['wireguard']['ipv4']['enabled'] %>
+export WIREGUARD_IPV4_ADDRESS=<%= node['firezone']['wireguard']['ipv4']['address'] %>
+export WIREGUARD_IPV4_NETWORK=<%= node['firezone']['wireguard']['ipv4']['network'] %>
+export WIREGUARD_IPV6_ENABLED=<%= node['firezone']['wireguard']['ipv6']['enabled'] %>
+export WIREGUARD_IPV6_ADDRESS=<%= node['firezone']['wireguard']['ipv6']['address'] %>
+export WIREGUARD_IPV6_NETWORK=<%= node['firezone']['wireguard']['ipv6']['network'] %>
 export WIREGUARD_INTERFACE_MTU=<%= node['firezone']['wireguard']['mtu'] %>
 export WIREGUARD_LISTEN_PORT=<%= node['firezone']['wireguard']['port'] %>
 

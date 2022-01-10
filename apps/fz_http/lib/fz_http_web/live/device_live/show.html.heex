@@ -8,7 +8,7 @@
         action: @live_action) %>
 <% end %>
 
-<%= render FzHttpWeb.SharedView, "heading.html", page_title: "Devices -> #{@page_title}" %>
+<%= render FzHttpWeb.SharedView, "heading.html", page_title: "Devices |> #{@page_title}" %>
 
 <section class="section is-main-section">
   <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
@@ -39,13 +39,19 @@
         <td><%= @device.name %></td>
       </tr>
 
-      <tr>
-        <td><strong>Interface IP</strong></td>
-        <td>
-          <%= FzHttp.Devices.ipv4_address(@device) %>,
-          <%= FzHttp.Devices.ipv6_address(@device) %>
-        </td>
-      </tr>
+      <%= if Application.fetch_env!(:fz_http, :wireguard_ipv4_enabled) do %>
+        <tr>
+          <td><strong>Interface IPv4</strong></td>
+          <td><%= @device.ipv4 %></td>
+        </tr>
+      <% end %>
+
+      <%= if Application.fetch_env!(:fz_http, :wireguard_ipv6_enabled) do %>
+        <tr>
+          <td><strong>Interface IPv6</strong></td>
+          <td><%= @device.ipv6 %></td>
+        </tr>
+      <% end %>
 
       <tr>
         <td><strong>Allowed IPs</strong></td>

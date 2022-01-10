@@ -7,9 +7,6 @@ defmodule FzHttp.Devices do
   alias FzCommon.{FzCrypto, NameGenerator}
   alias FzHttp.{ConnectivityChecks, Devices.Device, Repo, Settings, Users, Users.User}
 
-  @ipv4_prefix "10.3.2."
-  @ipv6_prefix "fd00:3:2::"
-
   # Device configs can be viewable for 10 minutes
   @config_token_expires_in_sec 600
 
@@ -41,9 +38,16 @@ defmodule FzHttp.Devices do
   def get_device!(id), do: Repo.get!(Device, id)
 
   def create_device(attrs \\ %{}) do
-    %Device{}
-    |> Device.create_changeset(attrs)
-    |> Repo.insert()
+    # XXX: insert sometimes fails with deadlock errors, probably because
+    # of the giant SELECT in queries/inet.ex. Find a way to do this more gracefully.
+    {:ok, device} =
+      Repo.transaction(fn ->
+        %Device{}
+        |> Device.create_changeset(attrs)
+        |> Repo.insert()
+      end)
+
+    device
   end
 
   @doc """
@@ -84,12 +88,25 @@ defmodule FzHttp.Devices do
     NameGenerator.generate()
   end
 
-  def ipv4_address(%Device{} = device) do
-    @ipv4_prefix <> Integer.to_string(device.address)
-  end
+  @doc """
+  Builds ipv4 / ipv6 config string for a device.
+  """
+  def inet(device) do
+    ips =
+      if ipv6?() do
+        ["#{device.ipv6}/128"]
+      else
+        []
+      end
 
-  def ipv6_address(%Device{} = device) do
-    @ipv6_prefix <> Integer.to_string(device.address)
+    ips =
+      if ipv4?() do
+        ["#{device.ipv4}/32" | ips]
+      else
+        ips
+      end
+
+    Enum.join(ips, ",")
   end
 
   def to_peer_list do
@@ -105,7 +122,7 @@ defmodule FzHttp.Devices do
     |> Enum.map(fn device ->
       %{
         public_key: device.public_key,
-        inet: "#{ipv4_address(device)}/32,#{ipv6_address(device)}/128"
+        inet: inet(device)
       }
     end)
   end
@@ -163,7 +180,7 @@ defmodule FzHttp.Devices do
     """
     [Interface]
     PrivateKey = #{device.private_key}
-    Address = #{ipv4_address(device)}/32, #{ipv6_address(device)}/128
+    Address = #{inet(device)}
     #{dns_servers_config(device)}
 
     [Peer]
@@ -215,5 +232,13 @@ defmodule FzHttp.Devices do
       |> String.length()
 
     len == 0
+  end
+
+  defp ipv4? do
+    Application.fetch_env!(:fz_http, :wireguard_ipv4_enabled)
+  end
+
+  defp ipv6? do
+    Application.fetch_env!(:fz_http, :wireguard_ipv6_enabled)
   end
 end
