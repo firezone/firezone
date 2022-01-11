@@ -216,6 +216,6 @@ jobs:
         uses: JamesIves/github-pages-deploy-action@v4.2.2
         with:
           branch: gh-pages
-          folder: docs/_site
-          target-folder: '0.2.2' #${{ steps.get_version.outputs.VERSION }}
+          folder: docs/
+            # target-folder: '0.2.2' #${{ steps.get_version.outputs.VERSION }}
           clean: true
