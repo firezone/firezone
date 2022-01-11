@@ -1,3 +1,0 @@
-#!/bin/sh
-echo "received TERM from runit, sending INT instead to force quit connections"
-<%= node['runit']['sv_bin'] %> interrupt postgresql

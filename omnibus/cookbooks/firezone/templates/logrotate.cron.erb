@@ -1,6 +1,0 @@
-#!/bin/sh
-
-PATH=<%= @install_directory %>/embedded/sbin:$PATH
-
-command -v logrotate >/dev/null 2>&1 || exit 0
-nice -n 19 ionice -c3 logrotate <%= @var_directory %>/etc/logrotate.conf

@@ -1,6 +1,0 @@
-source 'https://supermarket.chef.io'
-
-metadata
-
-cookbook 'enterprise'
-cookbook 'fipsify'

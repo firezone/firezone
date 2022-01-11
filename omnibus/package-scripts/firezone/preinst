@@ -1,8 +1,0 @@
-#!/bin/sh
-set -e
-#
-# Perform necessary firezone setup steps
-# before package is installed.
-#
-
-echo "You're about to install firezone!"

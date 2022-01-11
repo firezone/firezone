@@ -1,5 +1,0 @@
-source "https://rubygems.org"
-
-gem "chef", "~> 16.14.1"
-gem "chef-bin", "~> 16.14.1"
-gem "berkshelf"
