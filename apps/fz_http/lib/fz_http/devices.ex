@@ -155,6 +155,14 @@ defmodule FzHttp.Devices do
     end
   end
 
+  def mtu(device) do
+    if device.use_default_mtu do
+      Settings.default_device_mtu()
+    else
+      device.mtu
+    end
+  end
+
   def persistent_keepalives(device) do
     if device.use_default_persistent_keepalives do
       Settings.default_device_persistent_keepalives()
@@ -168,6 +176,7 @@ defmodule FzHttp.Devices do
       use_default_allowed_ips
       use_default_dns_servers
       use_default_endpoint
+      use_default_mtu
       use_default_persistent_keepalives
     )a
     |> Enum.map(fn field -> {field, Device.field(changeset, field)} end)
@@ -181,6 +190,7 @@ defmodule FzHttp.Devices do
     [Interface]
     PrivateKey = #{device.private_key}
     Address = #{inet(device)}
+    #{mtu_config(device)}
     #{dns_servers_config(device)}
 
     [Peer]
@@ -202,9 +212,18 @@ defmodule FzHttp.Devices do
     update_device(device, config_token_attrs)
   end
 
+  defp mtu_config(device) do
+    m = mtu(device)
+
+    if is_nil(m) do
+      ""
+    else
+      "MTU = #{m}"
+    end
+  end
+
   defp persistent_keepalives_config(device) do
     pk = persistent_keepalives(device)
-    pk && "PersistentKeepalive = #{pk}"
 
     if is_nil(pk) do
       ""

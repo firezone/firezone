@@ -93,6 +93,34 @@
     </div>
 
     <div class="field">
+      <%= label f, :use_default_mtu, "Use Default MTU", class: "label" %>
+      <div class="control">
+        <label class="radio">
+          <%= radio_button f, :use_default_mtu, true %>
+          Yes
+        </label>
+        <label class="radio">
+          <%= radio_button f, :use_default_mtu, false %>
+          No
+        </label>
+      </div>
+      <p class="help">
+        Default: <%= @default_device_mtu %>
+      </p>
+    </div>
+
+    <div class="field">
+      <%= label f, :mtu, "Interface MTU", class: "label" %>
+      <p>The WireGuard interface MTU for this Device.</p>
+      <div class="contro">
+        <%= text_input f, :mtu, class: "input", disabled: @use_default_mtu %>
+      </div>
+      <p class="help is-danger">
+        <%= error_tag f, :mtu %>
+      </p>
+    </div>
+
+    <div class="field">
       <%= label f, :use_default_persistent_keepalives, "Use Default Persistent Keepalives", class: "label" %>
       <div class="control">
         <label class="radio">

@@ -1,5 +1,5 @@
 defmodule FzHttp.QueriesTest do
-  use FzHttp.DataCase, async: true
+  use FzHttp.DataCase, async: false
 
   alias FzHttp.Queries.INET
 
