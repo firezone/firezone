@@ -200,6 +200,7 @@ jobs:
           ruby-version: '2.7'
       - name: Build jekyll site
         run: |
+          cd docs/
           gem install bundler
           bundle install
           bundle exec jekyll build
