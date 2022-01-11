@@ -198,12 +198,6 @@ jobs:
       - uses: ruby/setup-ruby@v1
         with:
           bundler-cache: true # runs 'bundle install' and caches installed gems automatically
-      - name: Build jekyll site
-        run: |
-          cd docs/
-          gem install bundler
-          bundle install
-          bundle exec jekyll build --destination 1.0.0
       - uses: octokit/request-action@v2.x
         id: get_tags
         with:
@@ -214,11 +208,17 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Write tags manifest
         run: echo '${{ steps.get_tags.outputs.data }}' > docs/assets/tags.json
-      - run: touch .nojekyll
+      - name: Build jekyll site
+        run: |
+          cd docs/
+          gem install bundler
+          bundle install
+          bundle exec jekyll build --destination 1.0.0
+      - run: touch docs/.nojekyll
       - uses: EndBug/add-and-commit@v7
         with:
-          message: Add version manifest to populate docs select
-          add: '["1.0.0/assets/tags.json", ".nojekyll"]'
+          message: Add .nojekyll
+          add: docs/.nojekyll
           branch: gh-pages
       - name: Publish Docs
         uses: JamesIves/github-pages-deploy-action@v4.2.2
