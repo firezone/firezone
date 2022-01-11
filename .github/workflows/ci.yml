@@ -202,12 +202,14 @@ jobs:
           repo: firezone
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Write version manifest
-        run: echo ${{ fromJSON(steps.get_tags.outputs.data).refs }} > docs/version.txt
+      - name: Echo fromjson
+        run: echo '${{ fromJSON(steps.get_tags.outputs.data) }}'
+      - name: Write tags manifest
+        run: echo '${{ steps.get_tags.outputs.data }}' > docs/tags.json
       - uses: EndBug/add-and-commit@v7
         with:
           message: Add version manifest to populate docs select
-          add: docs/version.txt
+          add: docs/tags.json
           branch: gh-pages
       - name: Publish Docs
         uses: JamesIves/github-pages-deploy-action@v4.2.2
