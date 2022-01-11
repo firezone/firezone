@@ -38,6 +38,10 @@ defmodule FzHttpWeb.SettingLive.DefaultTest do
       assert html =~ """
              id="endpoint_form_component"\
              """
+
+      assert html =~ """
+             id="persistent_keepalives_form_component"\
+             """
     end
 
     test "hides Save button by default", %{html: html} do

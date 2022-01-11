@@ -35,5 +35,21 @@
         changeset: @changesets["default.device.endpoint"],
         help_text: @help_texts.endpoint,
         id: :endpoint_form_component) %>
+
+    <%= live_component(
+        FzHttpWeb.SettingLive.DefaultFormComponent,
+        label_text: "Persistent Keepalives",
+        placeholder: "0",
+        changeset: @changesets["default.device.persistent_keepalives"],
+        help_text: @help_texts.persistent_keepalives,
+        id: :persistent_keepalives_form_component) %>
+
+    <%= live_component(
+        FzHttpWeb.SettingLive.DefaultFormComponent,
+        label_text: "MTU",
+        placeholder: @mtu_placeholder,
+        changeset: @changesets["default.device.mtu"],
+        help_text: @help_texts.mtu,
+        id: :mtu_form_component) %>
   </div>
 </section>

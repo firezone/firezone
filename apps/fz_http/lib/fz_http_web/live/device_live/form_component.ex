@@ -11,6 +11,9 @@ defmodule FzHttpWeb.DeviceLive.FormComponent do
     changeset = Devices.change_device(device)
     default_device_endpoint = Settings.default_device_endpoint() || ConnectivityChecks.endpoint()
 
+    default_device_mtu =
+      Settings.default_device_mtu() || Application.fetch_env!(:fz_http, :wireguard_mtu)
+
     {:ok,
      socket
      |> assign(assigns)
@@ -18,6 +21,7 @@ defmodule FzHttpWeb.DeviceLive.FormComponent do
      |> assign(:default_device_allowed_ips, Settings.default_device_allowed_ips())
      |> assign(:default_device_dns_servers, Settings.default_device_dns_servers())
      |> assign(:default_device_endpoint, default_device_endpoint)
+     |> assign(:default_device_mtu, default_device_mtu)
      |> assign(
        :default_device_persistent_keepalives,
        Settings.default_device_persistent_keepalives()

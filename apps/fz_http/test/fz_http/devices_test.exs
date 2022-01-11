@@ -1,5 +1,6 @@
 defmodule FzHttp.DevicesTest do
-  use FzHttp.DataCase, async: true
+  # XXX: Update the device IP query to be an insert
+  use FzHttp.DataCase, async: false
   alias FzHttp.{Devices, Users}
 
   describe "list_devices/0" do
