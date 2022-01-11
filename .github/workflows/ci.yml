@@ -194,6 +194,7 @@ jobs:
   publish-docs:
     runs-on: ubuntu-20.04
     steps:
+      - uses: actions/checkout@v2
       - uses: octokit/request-action@v2.x
         id: get_tags
         with:
@@ -205,16 +206,16 @@ jobs:
       - name: Echo fromjson
         run: echo '${{ fromJSON(steps.get_tags.outputs.data) }}'
       - name: Write tags manifest
-        run: echo '${{ steps.get_tags.outputs.data }}' > docs/tags.json
+        run: echo '${{ steps.get_tags.outputs.data }}' > docs/assets/tags.json
       - uses: EndBug/add-and-commit@v7
         with:
           message: Add version manifest to populate docs select
-          add: docs/tags.json
+          add: docs/assets/tags.json
           branch: gh-pages
       - name: Publish Docs
         uses: JamesIves/github-pages-deploy-action@v4.2.2
         with:
           branch: gh-pages
           folder: docs/_site
-          target_folder: '0.2.2'#${{ steps.get_version.outputs.VERSION }}
+          target_folder: '0.2.2' #${{ steps.get_version.outputs.VERSION }}
           clean: true
