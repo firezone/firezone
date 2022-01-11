@@ -195,6 +195,14 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v2
+      - uses: actions/setup-ruby@v1
+        with:
+          ruby-version: '2.7'
+      - name: Build jekyll site
+        run: |
+          gem install bundler
+          bundle install
+          bundle exec jekyll build
       - uses: octokit/request-action@v2.x
         id: get_tags
         with:
@@ -203,19 +211,20 @@ jobs:
           repo: firezone
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Echo fromjson
-        run: echo '${{ fromJSON(steps.get_tags.outputs.data) }}'
       - name: Write tags manifest
         run: echo '${{ steps.get_tags.outputs.data }}' > docs/assets/tags.json
+      - run: touch .nojekyll
       - uses: EndBug/add-and-commit@v7
         with:
           message: Add version manifest to populate docs select
-          add: docs/assets/tags.json
+          add:
+            - 1.0.0/assets/tags.json
+            - .nojekyll
           branch: gh-pages
       - name: Publish Docs
         uses: JamesIves/github-pages-deploy-action@v4.2.2
         with:
           branch: gh-pages
-          folder: docs/
-            # target-folder: '0.2.2' #${{ steps.get_version.outputs.VERSION }}
+          folder: docs/_site
+          target-folder: 1.0.0 #${{ steps.get_version.outputs.VERSION }}
           clean: true
