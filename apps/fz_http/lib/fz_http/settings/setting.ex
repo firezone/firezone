@@ -28,7 +28,6 @@ defmodule FzHttp.Settings.Setting do
   schema "settings" do
     field :key, :string
     field :value, :string
-    field :persistent_keepalives, :integer, virtual: true
 
     timestamps(type: :utc_datetime_usec)
   end
