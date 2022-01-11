@@ -24,11 +24,11 @@ defmodule FzHttpWeb.SettingLive.Default do
     """,
     persistent_keepalives: """
       Interval in seconds to send persistent keepalive packets. Most users won't need to change
-      this. Leave this blank if you're unsure what this means.
+      this. Set to 0 or leave blank to disable. Leave this blank if you're unsure what this means.
     """,
     mtu: """
-      WireGuard interface MTU for devices. Defaults to the WireGuard default of 1420. Leave this
-      blank if you're unsure what this means.
+      WireGuard interface MTU for devices. Defaults to what's set in the configuration file.
+      Leave this blank if you're unsure what this means.
     """
   }
 
