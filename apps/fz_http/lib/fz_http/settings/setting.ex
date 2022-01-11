@@ -22,9 +22,13 @@ defmodule FzHttp.Settings.Setting do
       validate_no_duplicates: 2
     ]
 
+  @mtu_range 576..1500
+  @persistent_keepalives_range 0..120
+
   schema "settings" do
     field :key, :string
     field :value, :string
+    field :persistent_keepalives, :integer, virtual: true
 
     timestamps(type: :utc_datetime_usec)
   end
@@ -62,26 +66,41 @@ defmodule FzHttp.Settings.Setting do
     |> validate_fqdn_or_ip(:value)
   end
 
+  defp validate_kv_pair(changeset, "default.device.mtu") do
+    validate_range(changeset, @mtu_range)
+  end
+
   defp validate_kv_pair(changeset, "default.device.persistent_keepalives") do
-    changeset
-    |> validate_number(:value, greater_than_or_equal_to: 0, less_than_or_equal_to: 120)
+    validate_range(changeset, @persistent_keepalives_range)
   end
 
   defp validate_kv_pair(changeset, "security.require_auth_for_vpn_frequency") do
-    validate_change(changeset, :value, fn _current_field, value ->
-      val = String.to_integer(value)
-
-      if val < 0 || val > max_pg_integer() do
-        [{:value, "is invalid: must be between 0 and #{max_pg_integer()}"}]
-      else
-        []
-      end
-    end)
+    validate_range(changeset, 0..max_pg_integer())
   end
 
   defp validate_kv_pair(changeset, unknown_key) do
     validate_change(changeset, :key, fn _current_field, _value ->
       [{:key, "is invalid: #{unknown_key} is not a valid setting"}]
     end)
+  end
+
+  defp validate_range(changeset, range) do
+    validate_change(changeset, :value, fn _current_field, value ->
+      case Integer.parse(value) do
+        :error ->
+          [{:value, "must be an integer"}]
+
+        {val, _str} ->
+          add_error_for_range(val, range)
+      end
+    end)
+  end
+
+  defp add_error_for_range(val, start..finish) do
+    if val < start || val > finish do
+      [{:value, "is invalid: must be between #{start} and #{finish}"}]
+    else
+      []
+    end
   end
 end

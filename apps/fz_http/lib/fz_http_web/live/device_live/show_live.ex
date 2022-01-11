@@ -87,6 +87,7 @@ defmodule FzHttpWeb.DeviceLive.Show do
         allowed_ips: Devices.allowed_ips(device),
         dns_servers: Devices.dns_servers(device),
         endpoint: Devices.endpoint(device),
+        mtu: Devices.mtu(device),
         persistent_keepalives: Devices.persistent_keepalives(device),
         config: Devices.as_config(device)
       )

@@ -237,6 +237,7 @@ class Firezone
         'ADMIN_EMAIL' => attributes['admin_email'],
         'WIREGUARD_INTERFACE_NAME' => attributes['wireguard']['interface_name'],
         'WIREGUARD_PORT' => attributes['wireguard']['port'].to_s,
+        'WIREGUARD_MTU' => attributes['wireguard']['mtu'].to_s,
         'WIREGUARD_PUBLIC_KEY' => attributes['wireguard_public_key'],
         'WIREGUARD_IPV4_ENABLED' => attributes['wireguard']['ipv4']['enabled'].to_s,
         'WIREGUARD_IPV4_NETWORK' => attributes['wireguard']['ipv4']['network'],

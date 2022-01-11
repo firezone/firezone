@@ -72,11 +72,16 @@
         <td><strong>Persistent Keepalives</strong></td>
         <td>
           <%= if @persistent_keepalives == 0 do %>
-            Every <%= @persistent_keepalives %> seconds
-          <% else %>
             Disabled
+          <% else %>
+            Every <%= @persistent_keepalives %> seconds
           <% end %>
         </td>
+      </tr>
+
+      <tr>
+        <td><strong>MTU</strong></td>
+        <td><%= @mtu %></td>
       </tr>
 
       <tr>

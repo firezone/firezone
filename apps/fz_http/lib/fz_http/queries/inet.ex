@@ -3,6 +3,7 @@ defmodule FzHttp.Queries.INET do
   Raw SQL INET queries
   """
 
+  # XXX: This needs to be an insert to avoid the deadlocks
   @next_available_ipv4_query """
   WITH combined AS (
     SELECT $2 AS ipv4
@@ -21,6 +22,7 @@ defmodule FzHttp.Queries.INET do
   LIMIT 1
   """
 
+  # XXX: This needs to be an insert to avoid the deadlocks
   @next_available_ipv6_query """
   WITH combined AS (
     SELECT $2 AS ipv6

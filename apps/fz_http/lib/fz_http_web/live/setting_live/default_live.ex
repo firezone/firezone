@@ -21,6 +21,14 @@ defmodule FzHttpWeb.SettingLive.Default do
     endpoint: """
       IPv4 or IPv6 address that devices will be configured to connect
       to. Defaults to this server's public IP if not set.
+    """,
+    persistent_keepalives: """
+      Interval in seconds to send persistent keepalive packets. Most users won't need to change
+      this. Leave this blank if you're unsure what this means.
+    """,
+    mtu: """
+      WireGuard interface MTU for devices. Defaults to the WireGuard default of 1420. Leave this
+      blank if you're unsure what this means.
     """
   }
 
@@ -33,6 +41,10 @@ defmodule FzHttpWeb.SettingLive.Default do
 
   defp endpoint_placeholder do
     ConnectivityChecks.endpoint()
+  end
+
+  defp mtu_placeholder do
+    Application.fetch_env!(:fz_http, :wireguard_mtu)
   end
 
   defp load_changesets do
@@ -48,6 +60,7 @@ defmodule FzHttpWeb.SettingLive.Default do
       |> assign(:changesets, load_changesets())
       |> assign(:help_texts, @help_texts)
       |> assign(:endpoint_placeholder, endpoint_placeholder())
+      |> assign(:mtu_placeholder, mtu_placeholder())
       |> assign(:page_title, "Default Settings")
     else
       not_authorized(socket)

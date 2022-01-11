@@ -7,6 +7,7 @@ defmodule FzHttp.SettingsTest do
     default.device.dns_servers
     default.device.allowed_ips
     default.device.endpoint
+    default.device.mtu
   )
 
   describe "settings" do
@@ -18,18 +19,24 @@ defmodule FzHttp.SettingsTest do
       %{
         "default.device.dns_servers" => "8.8.8.8",
         "default.device.allowed_ips" => "::/0",
-        "default.device.endpoint" => "172.10.10.10"
+        "default.device.endpoint" => "172.10.10.10",
+        "default.device.persistent_keepalives" => "20",
+        "default.device.mtu" => "1280"
       },
       %{
         "default.device.dns_servers" => "8.8.8.8",
         "default.device.allowed_ips" => "::/0",
-        "default.device.endpoint" => "foobar.example.com"
+        "default.device.endpoint" => "foobar.example.com",
+        "default.device.persistent_keepalives" => "15",
+        "default.device.mtu" => "1420"
       }
     ]
     @invalid_settings %{
       "default.device.dns_servers" => "foobar",
       "default.device.allowed_ips" => nil,
-      "default.device.endpoint" => "foobar"
+      "default.device.endpoint" => "foobar",
+      "default.device.persistent_keepalives" => "-120",
+      "default.device.mtu" => "1501"
     }
 
     test "get_setting!/1 returns the setting with given id" do
