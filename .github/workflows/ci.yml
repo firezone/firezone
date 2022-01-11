@@ -215,10 +215,11 @@ jobs:
           bundle install
           bundle exec jekyll build --destination 1.0.0
           touch .nojekyll
+      - run: ls -al
       - uses: EndBug/add-and-commit@v7
         with:
           message: Add .nojekyll
-          add: docs/.nojekyll
+          add: .nojekyll
           branch: gh-pages
       - name: Publish Docs
         uses: JamesIves/github-pages-deploy-action@v4.2.2
