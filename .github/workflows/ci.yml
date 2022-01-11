@@ -214,7 +214,7 @@ jobs:
           gem install bundler
           bundle install
           bundle exec jekyll build --destination 1.0.0
-      - run: touch docs/.nojekyll
+          touch .nojekyll
       - uses: EndBug/add-and-commit@v7
         with:
           message: Add .nojekyll
