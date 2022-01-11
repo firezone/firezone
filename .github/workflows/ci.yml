@@ -195,15 +195,15 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v2
-      - uses: actions/setup-ruby@v1
+      - uses: ruby/setup-ruby@v1
         with:
-          ruby-version: '2.7'
+          bundler-cache: true # runs 'bundle install' and caches installed gems automatically
       - name: Build jekyll site
         run: |
           cd docs/
           gem install bundler
           bundle install
-          bundle exec jekyll build
+          bundle exec jekyll build --destination 1.0.0
       - uses: octokit/request-action@v2.x
         id: get_tags
         with:
@@ -224,6 +224,6 @@ jobs:
         uses: JamesIves/github-pages-deploy-action@v4.2.2
         with:
           branch: gh-pages
-          folder: docs/_site
+          folder: docs/1.0.0
           target-folder: 1.0.0 #${{ steps.get_version.outputs.VERSION }}
           clean: true
