@@ -190,3 +190,29 @@ jobs:
           files: |
             ./firezone*.rpm
             ./firezone*.deb
+
+  publish-docs:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: octokit/request-action@v2.x
+        id: get_tags
+        with:
+          route: GET /repos/{owner}/{repo}/git/matching-refs/tags
+          owner: firezone
+          repo: firezone
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Write version manifest
+        run: echo ${{ steps.get_tags.outputs.data }} > docs/version.txt
+      - uses: EndBug/add-and-commit@v7
+        with:
+          message: Add version manifest to populate docs select
+          add: docs/version.txt
+          branch: gh-pages
+      - name: Publish Docs
+        uses: JamesIves/github-pages-deploy-action@v4.2.2
+        with:
+          branch: gh-pages
+          folder: docs/_site
+          target_folder: '0.2.2'#${{ steps.get_version.outputs.VERSION }}
+          clean: true
