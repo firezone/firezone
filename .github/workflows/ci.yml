@@ -217,5 +217,5 @@ jobs:
         with:
           branch: gh-pages
           folder: docs/_site
-          target_folder: '0.2.2' #${{ steps.get_version.outputs.VERSION }}
+          target-folder: '0.2.2' #${{ steps.get_version.outputs.VERSION }}
           clean: true
