@@ -22,6 +22,7 @@ title: Docs | Firezone
 email: support@firez.one
 description: >- # this means to ignore newlines until "baseurl:"
   Documentation site for Firezone's VPN and firewall server.
+url: "https://docs.firez.one"
 permalink: pretty
 twitter_username: firezonevpn
 github_username:  firezone

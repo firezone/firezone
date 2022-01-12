@@ -197,21 +197,6 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v2
-      - run: |
-          echo '
-            <!DOCTYPE html>
-            <meta charset="utf-8">
-            <title>Redirecting to https://docs.firez.one/${{ steps.get_version.outputs.VERSION }}/</title>
-            <meta http-equiv="refresh" content="0; URL=https://docs.firez.one/${{ steps.get_version.outputs.VERSION }}/">
-            <link rel="canonical" href="https://docs.firez.one/${{ steps.get_version.outputs.VERSION }}/">
-          ' > index.html
-      - uses: EndBug/add-and-commit@v7
-        with:
-          message: Add index.html
-          add: index.html
-          branch: gh-pages
-      # Switch back to working branch
-      - uses: actions/checkout@v2
       - uses: ruby/setup-ruby@v1
         with:
           bundler-cache: true # runs 'bundle install' and caches installed gems automatically
@@ -230,13 +215,26 @@ jobs:
           cd docs/
           gem install bundler
           bundle install
-          echo 'baseurl: "${{ steps.get_version.outputs.VERSION }}"' >> _config.yml
-          echo 'url: "https://docs.firez.one"' >> _config.yml
-          bundle exec jekyll build --destination ${{ steps.get_version.outputs.VERSION }}
-      - name: Publish Docs
+
+          # Generate top-level docs
+          bundle exec jekyll build \
+            --destination latest
+
+          # Generate versioned docs
+          bundle exec jekyll build \
+            --baseurl ${{ steps.get_version.outputs.VERSION }} \
+            --destination ${{ steps.get_version.outputs.VERSION }}
+      - name: Publish Versioned Docs
         uses: JamesIves/github-pages-deploy-action@v4.2.2
         with:
           branch: gh-pages
           folder: docs/${{ steps.get_version.outputs.VERSION }}
           target-folder: ${{ steps.get_version.outputs.VERSION }}
+          clean: true
+      - name: Publish Latest Docs
+        uses: JamesIves/github-pages-deploy-action@v4.2.2
+        with:
+          branch: gh-pages
+          folder: docs/latest
+          target-folder: latest
           clean: true
