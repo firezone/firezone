@@ -197,6 +197,18 @@ jobs:
       - uses: actions/checkout@v2
         with:
           fetch-depth: 0
+      - run: |
+          git branch -a
+          git switch gh-pages
+          echo '
+            <!DOCTYPE html>
+            <meta charset="utf-8">
+            <title>Redirecting to https://docs.firez.one/1.0.0/</title>
+            <meta http-equiv="refresh" content="0; URL=https://docs.firez.one/1.0.0/">
+            <link rel="canonical" href="https://docs.firez.one/1.0.0/">
+          ' > index.html
+          git add index.html
+          git commit -m "Update index.html"
       - uses: ruby/setup-ruby@v1
         with:
           bundler-cache: true # runs 'bundle install' and caches installed gems automatically
@@ -218,18 +230,6 @@ jobs:
           echo 'baseurl: "1.0.0"' >> _config.yml
           echo 'url: "https://docs.firez.one"' >> _config.yml
           bundle exec jekyll build --destination 1.0.0
-      - run: |
-          git branch -a
-          git switch gh-pages
-          echo '
-            <!DOCTYPE html>
-            <meta charset="utf-8">
-            <title>Redirecting to https://docs.firez.one/1.0.0/</title>
-            <meta http-equiv="refresh" content="0; URL=https://docs.firez.one/1.0.0/">
-            <link rel="canonical" href="https://docs.firez.one/1.0.0/">
-          ' > index.html
-          git add index.html
-          git commit -m "Update index.html"
       # - uses: EndBug/add-and-commit@v7
       #   with:
       #     message: Add index.html
