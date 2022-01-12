@@ -15,7 +15,7 @@ description: "Firezone is a self-managed WireGuard-based VPN server and Linux fi
 Firezone is an open source, self-managed VPN server and Linux firewall designed for simplicity and security.
 
 Here are a few helpful links to get you started:
-* [Quick Start Guide]({{ site.baseurl }}{% link docs/get-started/index.md %})
+* [Quick Start Guide]({% link docs/get-started/index.md %})
 
 If you're looking for help in deploying and configuring Firezone, we're happy to help.
 * [Discussion Forums](https://discourse.firez.one/)
