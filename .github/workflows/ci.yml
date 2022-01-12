@@ -213,7 +213,6 @@ jobs:
           cd docs/
           gem install bundler
           bundle install
-          echo 'baseurl: "1.0.0"' >> _config.yml
           echo 'url: "https://docs.firez.one/1.0.0"' >> _config.yml
           bundle exec jekyll build --destination 1.0.0
           touch .nojekyll
