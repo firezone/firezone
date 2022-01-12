@@ -216,11 +216,24 @@ jobs:
           echo 'baseurl: "1.0.0"' >> _config.yml
           echo 'url: "https://docs.firez.one"' >> _config.yml
           bundle exec jekyll build --destination 1.0.0
-          touch .nojekyll
+      - run: |
+          echo '
+            <!DOCTYPE html>
+            <meta charset="utf-8">
+            <title>Redirecting to https://docs.firez.one/1.0.0/</title>
+            <meta http-equiv="refresh" content="0; URL=https://docs.firez.one/1.0.0/">
+            <link rel="canonical" href="https://docs.firez.one/1.0.0/">
+          ' > index.html
+      - run: touch .nojekyll
       - uses: EndBug/add-and-commit@v7
         with:
           message: Add .nojekyll
-          add: docs/.nojekyll
+          add: .nojekyll
+          branch: gh-pages
+      - uses: EndBug/add-and-commit@v7
+        with:
+          message: Add index.html
+          add: index.html
           branch: gh-pages
       - name: Publish Docs
         uses: JamesIves/github-pages-deploy-action@v4.2.2
