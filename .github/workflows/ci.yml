@@ -224,12 +224,6 @@ jobs:
             <meta http-equiv="refresh" content="0; URL=https://docs.firez.one/1.0.0/">
             <link rel="canonical" href="https://docs.firez.one/1.0.0/">
           ' > index.html
-      - run: touch .nojekyll
-      - uses: EndBug/add-and-commit@v7
-        with:
-          message: Add .nojekyll
-          add: .nojekyll
-          branch: gh-pages
       - uses: EndBug/add-and-commit@v7
         with:
           message: Add index.html
