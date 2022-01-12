@@ -217,6 +217,7 @@ jobs:
           echo 'url: "https://docs.firez.one"' >> _config.yml
           bundle exec jekyll build --destination 1.0.0
       - run: |
+          git checkout gh-pages
           echo '
             <!DOCTYPE html>
             <meta charset="utf-8">
@@ -224,11 +225,13 @@ jobs:
             <meta http-equiv="refresh" content="0; URL=https://docs.firez.one/1.0.0/">
             <link rel="canonical" href="https://docs.firez.one/1.0.0/">
           ' > index.html
-      - uses: EndBug/add-and-commit@v7
-        with:
-          message: Add index.html
-          add: index.html
-          branch: gh-pages
+          git add .
+          git commit -m "Update index.html"
+      # - uses: EndBug/add-and-commit@v7
+      #   with:
+      #     message: Add index.html
+      #     add: index.html
+      #     branch: gh-pages
       - name: Publish Docs
         uses: JamesIves/github-pages-deploy-action@v4.2.2
         with:
