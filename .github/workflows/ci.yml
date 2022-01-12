@@ -208,6 +208,8 @@ jobs:
           message: Add index.html
           add: index.html
           branch: gh-pages
+      # Switch back to working branch
+      - uses: actions/checkout@v2
       - uses: ruby/setup-ruby@v1
         with:
           bundler-cache: true # runs 'bundle install' and caches installed gems automatically
