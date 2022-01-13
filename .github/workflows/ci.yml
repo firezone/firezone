@@ -213,7 +213,8 @@ jobs:
           bundle install
 
           # Generate top-level docs
-          bundle exec jekyll build
+          bundle exec jekyll build \
+            --destination latest
 
           # Generate versioned docs
           bundle exec jekyll build \
@@ -223,7 +224,7 @@ jobs:
         uses: JamesIves/github-pages-deploy-action@v4.2.2
         with:
           branch: gh-pages
-          folder: docs/_site
+          folder: docs/latest
           clean: false
       - name: Publish Versioned Docs
         uses: JamesIves/github-pages-deploy-action@v4.2.2
