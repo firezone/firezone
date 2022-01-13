@@ -53,23 +53,23 @@
     "url": "https://docs.firez.one/docs/get-started/deploy/#configuration-file",
     "relUrl": "/docs/get-started/deploy/#configuration-file"
   },"9": {
-    "doc": "Usage",
-    "title": "Using Firezone",
-    "content": " ",
-    "url": "https://docs.firez.one/docs/usage/#using-firezone",
-    "relUrl": "/docs/usage/#using-firezone"
-  },"10": {
-    "doc": "Usage",
-    "title": "Usage",
-    "content": " ",
-    "url": "https://docs.firez.one/docs/usage/",
-    "relUrl": "/docs/usage/"
-  },"11": {
     "doc": "Get Started",
     "title": "Get Started",
     "content": " ",
     "url": "https://docs.firez.one/docs/get-started/",
     "relUrl": "/docs/get-started/"
+  },"10": {
+    "doc": "Usage",
+    "title": "Using Firezone",
+    "content": " ",
+    "url": "https://docs.firez.one/docs/usage/#using-firezone",
+    "relUrl": "/docs/usage/#using-firezone"
+  },"11": {
+    "doc": "Usage",
+    "title": "Usage",
+    "content": " ",
+    "url": "https://docs.firez.one/docs/usage/",
+    "relUrl": "/docs/usage/"
   },"12": {
     "doc": "Overview",
     "title": "Overview",
