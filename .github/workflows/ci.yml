@@ -216,10 +216,14 @@ jobs:
           bundle exec jekyll build \
             --destination latest
 
+          ls -al latest
+
           # Generate versioned docs
           bundle exec jekyll build \
             --baseurl ${{ steps.get_version.outputs.VERSION }} \
             --destination ${{ steps.get_version.outputs.VERSION }}
+
+          ls -al ${{ steps.get_version.outputs.VERSION }}
       - name: Publish Latest Docs
         uses: JamesIves/github-pages-deploy-action@v4.2.2
         with:
