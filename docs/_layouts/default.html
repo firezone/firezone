@@ -47,6 +47,13 @@ layout: table_wrappers
         <svg viewBox="0 0 24 24" class="icon"><use xlink:href="#svg-menu"></use></svg>
       </a>
     </div>
+    <div class="select-version">
+      <label>
+        Select version:
+        <select class="version-selector">
+        </select>
+      </label>
+    </div>
     <nav role="navigation" aria-label="Main" id="site-nav" class="site-nav">
       {% if site.just_the_docs.collections %}
         {% assign collections_size = site.just_the_docs.collections | size %}
