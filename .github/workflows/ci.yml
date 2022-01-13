@@ -197,19 +197,15 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
       - uses: ruby/setup-ruby@v1
         with:
           bundler-cache: true # runs 'bundle install' and caches installed gems automatically
-      - uses: octokit/request-action@v2.x
-        id: get_tags
-        with:
-          route: GET /repos/{owner}/{repo}/git/matching-refs/tags
-          owner: firezone
-          repo: firezone
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Write tags manifest
-        run: echo '${{ steps.get_tags.outputs.data }}' > docs/assets/tags.json
+        run: |
+          tags=`git ls-tree --name-only origin/gh-pages | egrep "\d+\.\d+\.\d+"`
+          echo $tags > docs/assets/versions.txt
       - name: Build jekyll site
         run: |
           cd docs/
