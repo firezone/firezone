@@ -213,7 +213,7 @@ jobs:
           bundle install
 
           # Generate top-level docs
-          bundle exec jekyll build --destination .
+          bundle exec jekyll build
 
           # Generate versioned docs
           bundle exec jekyll build \
