@@ -16,8 +16,8 @@ let populateSelect = function (versions) {
   })
 
   selects.forEach(select => {
-    if (url_version) select.value = url_version
-    else select.value = latest
+    if (versions.indexOf(url_version) === -1) select.value = latest
+    else select.value = url_version
   })
 
   selects.forEach(select => {
@@ -30,7 +30,7 @@ let populateSelect = function (versions) {
 
 document.addEventListener('DOMContentLoaded', () => {
 
-  fetch('/assets/js/tags.txt')
+  fetch('/assets/versions.txt')
   .then(response => response.text())
   .then(text => {
     populateSelect(text.trim().split("\n"))
