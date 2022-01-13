@@ -30,7 +30,7 @@ let populateSelect = function (versions) {
 
 document.addEventListener('DOMContentLoaded', () => {
 
-  fetch('/assets/js/tags.txt')
+  fetch('/assets/versions.txt')
   .then(response => response.text())
   .then(text => {
     populateSelect(text.trim().split("\n"))
