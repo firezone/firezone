@@ -16,8 +16,8 @@ let populateSelect = function (versions) {
   })
 
   selects.forEach(select => {
-    if (url_version) select.value = url_version
-    else select.value = latest
+    if (versions.indexOf(url_version) === -1) select.value = latest
+    else select.value = url_version
   })
 
   selects.forEach(select => {
