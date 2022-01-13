@@ -213,24 +213,22 @@ jobs:
           bundle install
 
           # Generate top-level docs
-          bundle exec jekyll build \
-            --destination latest
+          bundle exec jekyll build --destination .
 
           # Generate versioned docs
           bundle exec jekyll build \
             --baseurl ${{ steps.get_version.outputs.VERSION }} \
             --destination ${{ steps.get_version.outputs.VERSION }}
+      - name: Publish Latest Docs
+        uses: JamesIves/github-pages-deploy-action@v4.2.2
+        with:
+          branch: gh-pages
+          folder: docs/
+          clean: true
       - name: Publish Versioned Docs
         uses: JamesIves/github-pages-deploy-action@v4.2.2
         with:
           branch: gh-pages
           folder: docs/${{ steps.get_version.outputs.VERSION }}
           target-folder: ${{ steps.get_version.outputs.VERSION }}
-          clean: true
-      - name: Publish Latest Docs
-        uses: JamesIves/github-pages-deploy-action@v4.2.2
-        with:
-          branch: gh-pages
-          folder: docs/latest
-          target-folder: latest
           clean: true
