@@ -22,8 +22,18 @@ let populateSelect = function (versions) {
 
   selects.forEach(select => {
     select.addEventListener('change', (e) => {
-      let path = e.target.selectedIndex === 0 ? '/' : e.target.value
-      window.location.href = path
+      if (e.target.selectedIndex === 0) {
+        // Remove version in path
+        window.location.href = window.location.origin +
+          window.location.pathname
+          .split('/')
+          .filter(part => !part.match(/\d+\.\d+\.\d+/g))
+          .join('/')
+      } else {
+        // Add version to path
+        window.location.href =
+          window.location.origin + e.target.value + window.location.pathname
+      }
     })
   })
 }
