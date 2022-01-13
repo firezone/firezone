@@ -223,12 +223,12 @@ jobs:
         uses: JamesIves/github-pages-deploy-action@v4.2.2
         with:
           branch: gh-pages
-          folder: docs/
-          clean: true
+          folder: docs/_site
+          clean: false
       - name: Publish Versioned Docs
         uses: JamesIves/github-pages-deploy-action@v4.2.2
         with:
           branch: gh-pages
           folder: docs/${{ steps.get_version.outputs.VERSION }}
           target-folder: ${{ steps.get_version.outputs.VERSION }}
-          clean: true
+          clean: false
