@@ -11,188 +11,188 @@ defaults:
     shell: bash
 
 jobs:
-  # static-analysis:
-  #   runs-on: ubuntu-18.04
-  #   env:
-  #     MIX_ENV: dev
-  #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  #   steps:
-  #     - uses: actions/checkout@v2
-  #     - uses: erlef/setup-beam@v1
-  #       with:
-  #         otp-version: '24.1'
-  #         elixir-version: '1.12.3'
-  #     - uses: actions/cache@v2
-  #       with:
-  #         path: |
-  #           deps
-  #           _build
-  #         key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
-  #         restore-keys: |
-  #           ${{ runner.os }}-mix-
-  #     - name: Install Dependencies
-  #       run: mix deps.get --only dev
-  #     # Don't cache PLTs based on mix.lock hash, as Dialyzer can incrementally update even old ones
-  #     # Cache key based on Elixir & Erlang version (also usefull when running in matrix)
-  #     - name: Restore PLT cache
-  #       uses: actions/cache@v2
-  #       id: plt_cache
-  #       with:
-  #         key: |
-  #           ${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ steps.beam.outputs.otp-version }}-plt
-  #         restore-keys: |
-  #           ${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ steps.beam.outputs.otp-version }}-plt
-  #         path: |
-  #           priv/plts
-  #     # Create PLTs if no cache was found
-  #     - name: Create PLTs
-  #       if: steps.plt_cache.outputs.cache-hit != 'true'
-  #       run: mix dialyzer --plt
-  #     - name: Run format check
-  #       run: mix format --check-formatted
-  #     - name: Run linter
-  #       run: mix credo --strict
-  #     - name: Run dialyzer
-  #       run: mix dialyzer --format dialyxir
-  #
-  # unit-test:
-  #   runs-on: ubuntu-18.04
-  #   env:
-  #     MIX_ENV: test
-  #     POSTGRES_HOST: localhost
-  #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  #   services:
-  #     postgres:
-  #       image: postgres:13.5
-  #       ports:
-  #         - 5432:5432
-  #       env:
-  #         POSTGRES_USER: postgres
-  #         POSTGRES_PASSWORD: postgres
-  #       options: >-
-  #         --health-cmd pg_isready
-  #         --health-interval 10s
-  #         --health-timeout 5s
-  #         --health-retries 5
-  #   steps:
-  #     - name: Install package dependencies
-  #       run: |
-  #         sudo apt-get install -q -y \
-  #           net-tools \
-  #           wireguard
-  #     - uses: actions/checkout@v2
-  #     - uses: actions/setup-node@v2
-  #       with:
-  #         node-version: '14.18.2'
-  #     - uses: erlef/setup-beam@v1
-  #       with:
-  #         otp-version: '24.2'
-  #         elixir-version: '1.13.1'
-  #     - uses: actions/cache@v2
-  #       with:
-  #         path: |
-  #           deps
-  #           _build
-  #         key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
-  #         restore-keys: |
-  #           ${{ runner.os }}-mix-
-  #     - name: Install Dependencies
-  #       run: mix deps.get --only test
-  #     - name: Setup Database
-  #       run: |
-  #         mix ecto.create
-  #         mix ecto.migrate
-  #     - name: Run Tests and Upload Coverage Report
-  #       run: |
-  #         # Sometimes coveralls goes down for maintenance, so just run tests if
-  #         # coveralls fails
-  #         mix coveralls.github --umbrella || mix test
-  #
-  # build-package-test:
-  #   needs: unit-test
-  #   runs-on: ${{ matrix.os }}
-  #   strategy:
-  #     # Failing fast breaks the Omnibus build cache because the job is
-  #     # interrupted abruptly, leaving behind index.lock files.
-  #     fail-fast: false
-  #     matrix:
-  #       os:
-  #         - amazonlinux2
-  #         - centos7
-  #         - centos8
-  #         - debian10
-  #         - debian11
-  #         - fedora33
-  #         - fedora34
-  #         - ubuntu1804
-  #         - ubuntu2004
-  #         - opensuse15
-  #   steps:
-  #     - uses: actions/checkout@v2
-  #     - name: Build
-  #       env:
-  #         GIT_SHA: ${{ github.sha }}
-  #       run: |
-  #         . $HOME/.asdf/asdf.sh
-  #         gem install bundler
-  #         cd omnibus
-  #         bundle install --binstubs
-  #         sudo mkdir -p /opt/firezone
-  #         sudo chown -R vagrant:vagrant /opt/firezone
-  #         bin/omnibus build firezone
-  #     - name: Functional Test
-  #       run: |
-  #         .ci/functional_test.sh
-  #     - uses: actions/upload-artifact@v2
-  #       with:
-  #         name: firezone-${{ matrix.os }}-amd64
-  #         path: |
-  #           omnibus/pkg/firezone*.deb
-  #           omnibus/pkg/firezone*.rpm
-  #     - name: Cleanup
-  #       if: always()
-  #       run: |
-  #         sudo scripts/uninstall.sh
-  #         rm -rf omnibus/pkg/*
-  #
-  # publish:
-  #   needs: build-package-test
-  #   runs-on: ubuntu-20.04
-  #   strategy:
-  #     matrix:
-  #       os:
-  #         - amazonlinux2
-  #         - debian10
-  #         - debian11
-  #         - ubuntu1804
-  #         - ubuntu2004
-  #         - centos7
-  #         - centos8
-  #         - fedora33
-  #         - fedora34
-  #         - opensuse15
-  #   if: startsWith(github.ref, 'refs/tags/')
-  #   steps:
-  #     - uses: actions/download-artifact@v2
-  #       with:
-  #         name: firezone-${{ matrix.os }}-amd64
-  #         path: ./
-  #     - name: Get the version
-  #       id: get_version
-  #       run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
-  #     - name: Rename artifact file
-  #       run: |
-  #         mv ./firezone*.rpm firezone_${{ steps.get_version.outputs.VERSION }}-${{ matrix.os }}-amd64.rpm || true
-  #         mv ./firezone*.deb firezone_${{ steps.get_version.outputs.VERSION }}-${{ matrix.os }}-amd64.deb || true
-  #     - name: Release
-  #       uses: softprops/action-gh-release@v1
-  #       with:
-  #         files: |
-  #           ./firezone*.rpm
-  #           ./firezone*.deb
+  static-analysis:
+    runs-on: ubuntu-18.04
+    env:
+      MIX_ENV: dev
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v2
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: '24.1'
+          elixir-version: '1.12.3'
+      - uses: actions/cache@v2
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-
+      - name: Install Dependencies
+        run: mix deps.get --only dev
+      # Don't cache PLTs based on mix.lock hash, as Dialyzer can incrementally update even old ones
+      # Cache key based on Elixir & Erlang version (also usefull when running in matrix)
+      - name: Restore PLT cache
+        uses: actions/cache@v2
+        id: plt_cache
+        with:
+          key: |
+            ${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ steps.beam.outputs.otp-version }}-plt
+          restore-keys: |
+            ${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ steps.beam.outputs.otp-version }}-plt
+          path: |
+            priv/plts
+      # Create PLTs if no cache was found
+      - name: Create PLTs
+        if: steps.plt_cache.outputs.cache-hit != 'true'
+        run: mix dialyzer --plt
+      - name: Run format check
+        run: mix format --check-formatted
+      - name: Run linter
+        run: mix credo --strict
+      - name: Run dialyzer
+        run: mix dialyzer --format dialyxir
+
+  unit-test:
+    runs-on: ubuntu-18.04
+    env:
+      MIX_ENV: test
+      POSTGRES_HOST: localhost
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    services:
+      postgres:
+        image: postgres:13.5
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Install package dependencies
+        run: |
+          sudo apt-get install -q -y \
+            net-tools \
+            wireguard
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v2
+        with:
+          node-version: '14.18.2'
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: '24.2'
+          elixir-version: '1.13.1'
+      - uses: actions/cache@v2
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-
+      - name: Install Dependencies
+        run: mix deps.get --only test
+      - name: Setup Database
+        run: |
+          mix ecto.create
+          mix ecto.migrate
+      - name: Run Tests and Upload Coverage Report
+        run: |
+          # Sometimes coveralls goes down for maintenance, so just run tests if
+          # coveralls fails
+          mix coveralls.github --umbrella || mix test
+
+  build-package-test:
+    needs: unit-test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # Failing fast breaks the Omnibus build cache because the job is
+      # interrupted abruptly, leaving behind index.lock files.
+      fail-fast: false
+      matrix:
+        os:
+          - amazonlinux2
+          - centos7
+          - centos8
+          - debian10
+          - debian11
+          - fedora33
+          - fedora34
+          - ubuntu1804
+          - ubuntu2004
+          - opensuse15
+    steps:
+      - uses: actions/checkout@v2
+      - name: Build
+        env:
+          GIT_SHA: ${{ github.sha }}
+        run: |
+          . $HOME/.asdf/asdf.sh
+          gem install bundler
+          cd omnibus
+          bundle install --binstubs
+          sudo mkdir -p /opt/firezone
+          sudo chown -R vagrant:vagrant /opt/firezone
+          bin/omnibus build firezone
+      - name: Functional Test
+        run: |
+          .ci/functional_test.sh
+      - uses: actions/upload-artifact@v2
+        with:
+          name: firezone-${{ matrix.os }}-amd64
+          path: |
+            omnibus/pkg/firezone*.deb
+            omnibus/pkg/firezone*.rpm
+      - name: Cleanup
+        if: always()
+        run: |
+          sudo scripts/uninstall.sh
+          rm -rf omnibus/pkg/*
+
+  publish:
+    needs: build-package-test
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        os:
+          - amazonlinux2
+          - debian10
+          - debian11
+          - ubuntu1804
+          - ubuntu2004
+          - centos7
+          - centos8
+          - fedora33
+          - fedora34
+          - opensuse15
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/download-artifact@v2
+        with:
+          name: firezone-${{ matrix.os }}-amd64
+          path: ./
+      - name: Get the version
+        id: get_version
+        run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
+      - name: Rename artifact file
+        run: |
+          mv ./firezone*.rpm firezone_${{ steps.get_version.outputs.VERSION }}-${{ matrix.os }}-amd64.rpm || true
+          mv ./firezone*.deb firezone_${{ steps.get_version.outputs.VERSION }}-${{ matrix.os }}-amd64.deb || true
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            ./firezone*.rpm
+            ./firezone*.deb
 
   publish-docs:
-    # needs: publish
+    needs: publish
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-20.04
     steps:
