@@ -1,14 +1,16 @@
 ---
 layout: default
-title: Deploy and Configure
-nav_order: 1
+title: Install
+nav_order: 2
 parent: Get Started
 ---
 
-# Deploy and Configure
+# Install
 {: .no_toc }
-
 ---
+
+**Important**: Ensure you've satisfied the [prerequisites]({% link docs/get-started/prerequisites.md %})
+before following this guide.
 
 ## Table of Contents
 {: .no_toc .text-delta }
@@ -18,33 +20,6 @@ parent: Get Started
 
 ---
 
-
-Firezone consists of a single distributable Linux package that you install and
-manage yourself. Management of the Firezone installation is handled by the
-`firezone-ctl` utility while management of the VPN and firewall themselves are
-handled by the Web UI.
-
-Firezone acts as a frontend to both the WireGuard kernel module and
-[netfilter](https://netfilter.org) kernel subsystem. It creates a WireGuard
-interface (by default called `wg-firezone`) and
-`firezone` netfilter table and adds appropriate routes to the routing
-table. Other programs that modify the Linux routing table or netfilter firewall
-may interfere with Firezone's operation.
-
-### SSL
-
-Firezone requires a valid SSL certificate and a matching DNS record to run in
-production. We recommend using [Let's Encrypt](https://letsencrypt.org) to
-generate a free SSL cert for your domain.
-
-### Security Considerations
-
-Firezone is **beta** software. We highly recommend **limiting network access to
-the Web UI** (by default port tcp/443) to prevent exposing it to the public Internet.
-
-The WireGuard listen port (by default port udp/51821) should be exposed to allow user
-devices to connect.
-
 ## Supported Linux Distributions
 
 Firezone currently supports the following distributions and architectures:
@@ -53,7 +28,7 @@ Firezone currently supports the following distributions and architectures:
 | --- | --- | --- | --- |
 | AmazonLinux 2 | `amd64` | **Fully-supported** | See [AmazonLinux 2 Notes](#amazonlinux-2-notes) |
 | CentOS 7 | `amd64` | **Fully-supported** | See [CentOS 7 Notes](#centos-7-notes) |
-| CentOS 8 | `amd64` | **Fully-supported** | Works as-is |
+| CentOS 8 | `amd64` | **Fully-supported** | See [CentOS 8 Notes](#centos-8-notes) |
 | Debian 10 | `amd64` | **Fully-supported** | See [Debian 10 Notes](#debian-10-notes)|
 | Debian 11 | `amd64` | **Fully-supported** | Works as-is |
 | Fedora 33 | `amd64` | **Fully-supported** | Works as-is |
@@ -81,13 +56,22 @@ Kernel upgrade to 4.19+ required. See [this guide
 ](https://medium.com/@nazishalam07/update-centos-kernel-3-10-to-5-13-latest-9462b4f1e62c)
 for an example.
 
+### CentOS 8 Notes
+
+The WireGuard kernel module needs to be installed:
+
+```bash
+yum install elrepo-release epel-release
+yum install kmod-wireguard
+```
+
 ### Ubuntu 18.04 Notes
 
 Kernel upgrade to 4.19+ required. E.g. `apt install linux-image-generic-hwe-18.04`
 
 ### Debian 10 Notes
 
-Kernel upgrade to 4.19+ required. See [this guide
+Kernel upgrade to 5.6+ required. See [this guide
 ](https://jensd.be/968/linux/install-a-newer-kernel-in-debian-10-buster-stable)
 for an example.
 
@@ -96,14 +80,19 @@ for an example.
 Firezone requires the `setcap` utility, but some recent openSUSE releases may
 not have it installed by default. To fix, ensure `libcap-progs` is installed:
 
-```bash
+```shell
 sudo zypper install libcap-progs
 ```
 
 ## Installation Instructions
 
+**NOTE**: Firezone modifies the kernel netfilter and routing tables. Other
+programs that modify the Linux routing table or netfilter firewall
+will likely interfere with Firezone's operation.
+
 Assuming you're running Linux kernel 4.19+ on one of the supported distros
-listed above, follow these steps to setup and install Firezone:
+listed above, follow these steps to install and configure Firezone for first
+use:
 
 1. [Install WireGuard](https://www.wireguard.com/install/) for your distro. If using Linux kernel 5.6 or higher, skip
    this step.
@@ -120,8 +109,6 @@ listed above, follow these steps to setup and install Firezone:
    # Set this to the FQDN used to access the Web UI.
    default['firezone']['fqdn'] = 'firezone.example.com'
 
-   # ...
-
    # Specify the path to your SSL cert and private key.
    # If set to nil, a self-signed cert will be generated for you.
    default['firezone']['ssl']['certificate'] = '/path/to/cert.pem'
@@ -133,9 +120,4 @@ listed above, follow these steps to setup and install Firezone:
 8. Now you should be able to log into the web UI at the FQDN you specified in
    step 5 above, e.g. `https://firezone.example.com`
 
-## Configuration File
-
-User-configurable settings can be found in `/etc/firezone/firezone.rb`.
-
-Changing this file **requires re-running** `sudo firezone-ctl reconfigure` to pick up
-the changes and apply them to the running system.
+Next, proceed to [read about using Firezone]({% link docs/usage/index.md %}).
