@@ -36,6 +36,11 @@ git_sha =
       str
   end
 
+# Public API key for telemetry
+config :posthog,
+  api_url: "https://telemetry.firez.one",
+  api_key: "phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK"
+
 config :fz_http,
   wireguard_ipv4_enabled: true,
   wireguard_ipv4_network: "10.3.2.0/24",
