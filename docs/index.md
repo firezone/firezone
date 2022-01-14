@@ -15,16 +15,6 @@ description: "Firezone is a self-managed WireGuard-based VPN server and Linux fi
 egress firewall for Linux. Use it to **quickly and easily** secure access to
 your private network and internal applications from a simple Web UI.
 
-## Features
-
-- **Fast:** Uses WireGuard to be [3-4 times](https://wireguard.com/performance/) faster than OpenVPN.
-- **No dependencies:** All dependencies are bundled thanks to
-    [Chef Omnibus](https://github.com/chef/omnibus).
-- **Simple:** Takes minutes to set up. Manage via a simple CLI.
-- **Secure:** Runs unprivileged. HTTPS enforced. Encrypted cookies.
-- **Firewall included:** Uses Linux [nftables](https://netfilter.org) to block
-    unwanted egress traffic.
-
 ## Quick Start
 
 1. [Prepare for install]({% link docs/get-started/index.md %})
