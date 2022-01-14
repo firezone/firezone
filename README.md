@@ -29,6 +29,40 @@
 
 ![Architecture](https://user-images.githubusercontent.com/52545545/147286088-08b0d11f-d81d-4622-8145-179071d2f0fb.png)
 
+# Table of Contents
+* [What is Firezone?](#what-is-firezone)
+  * [Features](#features)
+  * [Anti-features](#anti-features)
+* [Documentation](#documentation)
+* [Get Help](#get-help)
+* [Developing and Contributing](#developing-and-contributing)
+* [Security](#security)
+
+# What is Firezone?
+
+[Firezone](https://www.firez.one/) is a Linux package to manage your WireGuard VPN through a simple web interface.
+
+![firezone-usage](https://user-images.githubusercontent.com/52545545/147392573-fe4cb936-a0a8-436f-a69b-c0a9587de58b.gif)
+
+## Features
+
+- **Fast:** Uses WireGuard to be [3-4 times](https://wireguard.com/performance/) faster than OpenVPN.
+- **No dependencies:** All dependencies are bundled thanks to
+    [Chef Omnibus](https://github.com/chef/omnibus).
+- **Simple:** Takes minutes to set up. Manage via a simple CLI.
+- **Secure:** Runs unprivileged. HTTPS enforced. Encrypted cookies.
+- **Firewall included:** Uses Linux [nftables](https://netfilter.org) to block
+    unwanted egress traffic.
+
+## Anti-features
+
+Firezone is **not:**
+
+- An inbound firewall
+- A tool for creating mesh networks
+- A full-featured router
+- An IPSec or OpenVPN server
+
 # Documentation
 
 Our documentation is now published at https://docs.firez.one. Please refer to
@@ -47,7 +81,7 @@ help:
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-# Security Information
+# Security
 
 See [SECURITY.md](SECURITY.md).
 
