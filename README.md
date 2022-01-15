@@ -20,7 +20,6 @@
   </a>
 </p>
 
-
 <p align="center">
   <strong>A self-managed <a href="https://www.wireguard.com/">WireGuard</a>-based VPN server and Linux firewall designed for simplicity and security.</strong>
 </p>
@@ -31,7 +30,7 @@
 
 # Get started
 
-Follow our installation guide at https://docs.firez.one/get-started to install your self-hosted instance of Firezone. 
+Follow our installation guide at https://docs.firez.one/docs/get-started to install your self-hosted instance of Firezone. 
 
 Additional documentation on general usage, troubleshooting, and configuration can be found at https://docs.firez.one/.
 
