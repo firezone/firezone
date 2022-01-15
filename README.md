@@ -20,7 +20,6 @@
   </a>
 </p>
 
-
 <p align="center">
   <strong>A self-managed <a href="https://www.wireguard.com/">WireGuard</a>-based VPN server and Linux firewall designed for simplicity and security.</strong>
 </p>
@@ -29,14 +28,12 @@
 
 ![Architecture](https://user-images.githubusercontent.com/52545545/147286088-08b0d11f-d81d-4622-8145-179071d2f0fb.png)
 
-# Table of Contents
-* [What is Firezone?](#what-is-firezone)
-  * [Features](#features)
-  * [Anti-features](#anti-features)
-* [Documentation](#documentation)
-* [Get Help](#get-help)
-* [Developing and Contributing](#developing-and-contributing)
-* [Security](#security)
+# Get started
+
+Follow our installation guide at https://docs.firez.one/docs/get-started to install your self-hosted instance of Firezone. 
+
+Additional documentation on general usage, troubleshooting, and configuration can be found at https://docs.firez.one/.
+
 
 # What is Firezone?
 
@@ -62,11 +59,6 @@ Firezone is **not:**
 - A tool for creating mesh networks
 - A full-featured router
 - An IPSec or OpenVPN server
-
-# Documentation
-
-Our documentation is now published at https://docs.firez.one. Please refer to
-that to install, configure, and manage Firezone.
 
 # Get Help
 
