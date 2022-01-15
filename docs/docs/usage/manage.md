@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Manage Installation
-nav_order: 1
+nav_order: 2
 parent: Usage
 ---
 
@@ -64,9 +64,3 @@ Service Management Commands:
   usr2
     Send the services a USR2.
 ```
-
-## Troubleshooting
-
-For any problems that arise, a good first bet is to check the Firezone logs.
-
-To view Firezone logs, run `sudo firezone-ctl tail`.

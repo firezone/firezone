@@ -5,7 +5,7 @@ nav_order: 3
 parent: Usage
 ---
 
-# Uninstalling
+# Uninstall
 
 ---
 

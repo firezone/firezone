@@ -51,6 +51,10 @@ gh_edit_branch: "master" # the branch that your docs is served from
 gh_edit_source: docs # the source that your files originate from
 gh_edit_view_mode: "tree" # "tree" or "edit" if you want the user to jump into the editor immediately
 
+asset_urls:
+  architecture_diagram: "https://user-images.githubusercontent.com/52545545/147286088-08b0d11f-d81d-4622-8145-179071d2f0fb.png"
+  client_instructions: "https://user-images.githubusercontent.com/52545545/147296703-a7fa8fce-33bb-42ef-83b3-1b8e9047d1d5.gif"
+
 # Aux links for the upper right navigation
 aux_links:
   "Ask a Question":
