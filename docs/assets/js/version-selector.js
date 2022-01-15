@@ -32,7 +32,8 @@ let populateSelect = function (versions) {
       } else {
         // Add version to path
         window.location.href =
-          window.location.origin + e.target.value + window.location.pathname
+          window.location.origin + '/' +
+            e.target.value + window.location.pathname
       }
     })
   })

@@ -6,7 +6,6 @@ parent: Usage
 ---
 
 # Upgrade
-
 ---
 
 Upgrading Firezone will disconnect all VPN connections and require shutting
