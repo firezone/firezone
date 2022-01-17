@@ -138,7 +138,7 @@ jobs:
           cd omnibus
           bundle install --binstubs
           sudo mkdir -p /opt/firezone
-          sudo chown -R vagrant:vagrant /opt/firezone
+          sudo chown -R $USER /opt/firezone
           bin/omnibus build firezone
       - name: Functional Test
         run: |
