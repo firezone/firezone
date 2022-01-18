@@ -134,11 +134,16 @@ jobs:
           GIT_SHA: ${{ github.sha }}
         run: |
           . $HOME/.asdf/asdf.sh
+          # CentOS 7 has path issues when this runs and doesn't have the
+          # devtools loaded
+          if test -f /opt/rh/devtoolset-9/enable; then
+            . /opt/rh/devtoolset-9/enable
+          fi
           gem install bundler
           cd omnibus
           bundle install --binstubs
           sudo mkdir -p /opt/firezone
-          sudo chown -R vagrant:vagrant /opt/firezone
+          sudo chown -R $USER /opt/firezone
           bin/omnibus build firezone
       - name: Functional Test
         run: |
