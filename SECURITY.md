@@ -22,8 +22,8 @@ and we'll respond as soon as possible.
 
 ## PGP Key
 
-You may the public key below to encrypt security messages to us. You can also
-find this key at:
+You may use the public key below to encrypt emails to `security AT firez.one`.
+You can also find this key at:
 
 https://pgp.mit.edu/pks/lookup?op=get&search=0x45113BA04AD83D8A
 
