@@ -22,7 +22,7 @@ jobs:
       - name: Write tags manifest
         run: |
           echo ${{ steps.get_version.outputs.VERSION }} > docs/assets/versions.txt
-          tags=`git ls-tree --name-only origin/gh-pages | egrep "^((([0-9]+)\.([0-9]+)\.([0-9]+)(?:-([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?)(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?)$"` | tr " " "\n"
+          tags=`git ls-tree --name-only origin/gh-pages | egrep "^((([0-9]+)\.([0-9]+)\.([0-9]+)(?:-([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?)(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?)$" | tr " " "\n"`
           echo $tags >> docs/assets/versions.txt
           cat docs/assets/versions.txt
       - name: Build jekyll site
