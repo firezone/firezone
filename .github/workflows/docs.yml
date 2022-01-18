@@ -8,7 +8,7 @@ defaults:
 jobs:
   publish-docs:
     if: startsWith(github.ref, 'refs/tags/')
-    runs-on: macos-latest
+    runs-on: macos-11
     steps:
       - name: Get the version
         id: get_version
