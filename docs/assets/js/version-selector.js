@@ -1,3 +1,10 @@
+let stripVersion = function (path) {
+  return path
+    .split('/')
+    .filter(part => !part.match(/\d+\.\d+\.\d+/g))
+    .join('/')
+}
+
 let populateSelect = function (versions) {
   let latest = versions[0]
   let selects = document.querySelectorAll('.version-selector')
@@ -24,16 +31,13 @@ let populateSelect = function (versions) {
     select.addEventListener('change', (e) => {
       if (e.target.selectedIndex === 0) {
         // Remove version in path
-        window.location.href = window.location.origin +
-          window.location.pathname
-          .split('/')
-          .filter(part => !part.match(/\d+\.\d+\.\d+/g))
-          .join('/')
+        window.location.href =
+          window.location.origin + stripVersion(window.location.pathname)
       } else {
         // Add version to path
         window.location.href =
           window.location.origin + '/' +
-            e.target.value + window.location.pathname
+            e.target.value + stripVersion(window.location.pathname)
       }
     })
   })
