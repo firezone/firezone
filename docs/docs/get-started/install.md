@@ -9,7 +9,7 @@ parent: Get Started
 {: .no_toc }
 ---
 
-**Important**: Ensure you've satisfied the [prerequisites]({% link docs/get-started/prerequisites.md %})
+**Important**: Ensure you've satisfied the [prerequisites]({{ site.baseurl }}{% link docs/get-started/prerequisites.md %})
 before following this guide.
 
 ## Table of Contents
@@ -120,4 +120,4 @@ use:
 8. Now you should be able to log into the web UI at the FQDN you specified in
    step 5 above, e.g. `https://firezone.example.com`
 
-Next, proceed to [read about using Firezone]({% link docs/usage/index.md %}).
+Next, proceed to [read about using Firezone]({{ site.baseurl }}{% link docs/usage/index.md %}).

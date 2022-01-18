@@ -10,7 +10,7 @@ parent: Get Started
 
 Firezone requires the setup of a DNS record and matching SSL certificate to run
 in production. Not using Firezone in production? [
-Skip directly to the installation guide]({% link docs/get-started/install.md %}).
+Skip directly to the installation guide]({{ site.baseurl }}{% link docs/get-started/install.md %}).
 
 ## Create a DNS record
 
