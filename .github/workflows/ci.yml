@@ -213,7 +213,7 @@ jobs:
         run: |
           echo ${{ steps.get_version.outputs.VERSION }} > docs/assets/versions.txt
           tags=`git ls-tree --name-only origin/gh-pages | egrep "^((([0-9]+)\.([0-9]+)\.([0-9]+)(?:-([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?)(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?)$"`
-          echo $tags | tr " " "\n" >> docs/assets/versions.txt
+          echo $tags | tr " " "\n" | sort -Vr >> docs/assets/versions.txt
       - name: Build jekyll site
         run: |
           cd docs/
@@ -234,11 +234,13 @@ jobs:
           branch: gh-pages
           folder: docs/_latest
           target-folder: .
-          clean: false
+          clean: true
+          clean-exclude: |
+            *.*.*/
       - name: Publish Versioned Docs
         uses: JamesIves/github-pages-deploy-action@v4.2.2
         with:
           branch: gh-pages
           folder: docs/${{ steps.get_version.outputs.VERSION }}
           target-folder: ${{ steps.get_version.outputs.VERSION }}
-          clean: false
+          clean: true
