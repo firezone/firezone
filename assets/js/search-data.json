@@ -29,41 +29,41 @@
     "url": "https://docs.firez.one/docs/usage/configure/",
     "relUrl": "/docs/usage/configure/"
   },"5": {
-    "doc": "Get Started",
-    "title": "Get Started",
-    "content": " ",
-    "url": "https://docs.firez.one/docs/get-started/",
-    "relUrl": "/docs/get-started/"
-  },"6": {
-    "doc": "Usage",
-    "title": "Using Firezone",
-    "content": " ",
-    "url": "https://docs.firez.one/docs/usage/#using-firezone",
-    "relUrl": "/docs/usage/#using-firezone"
-  },"7": {
-    "doc": "Usage",
-    "title": "Usage",
-    "content": " ",
-    "url": "https://docs.firez.one/docs/usage/",
-    "relUrl": "/docs/usage/"
-  },"8": {
     "doc": "Overview",
     "title": "Overview",
     "content": ". Firezone is an open source, self-hosted VPN server and egress firewall for Linux. Use it to quickly and easily secure access to your private network and internal applications from a simple Web UI. ",
     "url": "https://docs.firez.one/",
     "relUrl": "/"
-  },"9": {
+  },"6": {
     "doc": "Overview",
     "title": "Quick Start",
     "content": ". | Prepare for install | Install | Configure | . ",
     "url": "https://docs.firez.one/#quick-start",
     "relUrl": "/#quick-start"
-  },"10": {
+  },"7": {
     "doc": "Overview",
     "title": "Get Help",
     "content": "If you’re looking for help installing and configuring Firezone, we’re happy to help. | Discussion Forums | Public Slack Group | Email Us | . ",
     "url": "https://docs.firez.one/#get-help",
     "relUrl": "/#get-help"
+  },"8": {
+    "doc": "Usage",
+    "title": "Using Firezone",
+    "content": " ",
+    "url": "https://docs.firez.one/docs/usage/#using-firezone",
+    "relUrl": "/docs/usage/#using-firezone"
+  },"9": {
+    "doc": "Usage",
+    "title": "Usage",
+    "content": " ",
+    "url": "https://docs.firez.one/docs/usage/",
+    "relUrl": "/docs/usage/"
+  },"10": {
+    "doc": "Get Started",
+    "title": "Get Started",
+    "content": " ",
+    "url": "https://docs.firez.one/docs/get-started/",
+    "relUrl": "/docs/get-started/"
   },"11": {
     "doc": "Install",
     "title": "Install",
