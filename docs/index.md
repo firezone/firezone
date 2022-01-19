@@ -17,9 +17,9 @@ your private network and internal applications from a simple Web UI.
 
 ## Quick Start
 
-1. [Prepare for install]({{ site.baseurl }}{% link docs/get-started/index.md %})
-2. [Install]({{ site.baseurl }}{% link docs/get-started/install.md %})
-3. [Configure]({{ site.baseurl }}{% link docs/usage/configure.md %})
+1. [Prepare for install]({% link docs/get-started/index.md %})
+2. [Install]({% link docs/get-started/install.md %})
+3. [Configure]({% link docs/usage/configure.md %})
 
 ## Get Help
 
