@@ -16,12 +16,13 @@
 # expeditor/ignore: deprecated 2021-04
 
 name "m4"
-default_version "1.4.18"
+default_version "1.4.19"
 
 license "GPL-3.0"
 license_file "COPYING"
 skip_transitive_dependency_licensing true
 
+version("1.4.19") { source sha256: "3be4a26d825ffdfda52a56fc43246456989a3630093cced3fbddf4771ee58a70" }
 version("1.4.18") { source sha256: "ab2633921a5cd38e48797bf5521ad259bdc4b979078034a3b790d7fec5493fab" }
 
 source url: "https://mirrors.kernel.org/gnu/m4/m4-#{version}.tar.gz"
