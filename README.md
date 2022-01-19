@@ -28,7 +28,7 @@
 
 ![Architecture](https://user-images.githubusercontent.com/52545545/147286088-08b0d11f-d81d-4622-8145-179071d2f0fb.png)
 
-# Get started
+# Get Started
 
 Follow our installation guide at https://docs.firez.one/docs/get-started to install your self-hosted instance of Firezone. 
 
