@@ -22,6 +22,8 @@ version("5.1.0") { source sha256: "03a0360edcd84bec156fe211bbc4fc8c78790973ce4e8
 
 source url: "https://mirrors.kernel.org/gnu/gawk/gawk-#{version}.tar.gz"
 
+dependency "libedit"
+
 relative_path "gawk-#{version}"
 
 build do
