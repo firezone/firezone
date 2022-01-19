@@ -33,6 +33,7 @@ dependency "zlib"
 dependency "openssl"
 dependency "ncurses"
 dependency "libffi"
+dependency "libedit"
 
 relative_path "Python-#{version}"
 
