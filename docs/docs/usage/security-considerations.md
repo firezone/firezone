@@ -1,8 +1,8 @@
 ---
 layout: default
 title: Security Considerations
-nav_order: 4
-parent: Get Started
+nav_order: 5
+parent: Usage
 ---
 
 
