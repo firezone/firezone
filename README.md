@@ -32,6 +32,8 @@
 
 Follow our installation guide at https://docs.firez.one/docs/get-started to install your self-hosted instance of Firezone. 
 
+# Documentation
+
 Additional documentation on general usage, troubleshooting, and configuration can be found at https://docs.firez.one/.
 
 
