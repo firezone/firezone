@@ -29,10 +29,12 @@ Firezone currently supports the following distributions and architectures:
 | AmazonLinux 2 | `amd64` | **Fully-supported** | See [AmazonLinux 2 Notes](#amazonlinux-2-notes) |
 | CentOS 7 | `amd64` | **Fully-supported** | See [CentOS 7 Notes](#centos-7-notes) |
 | CentOS 8 | `amd64` | **Fully-supported** | See [CentOS 8 Notes](#centos-8-notes) |
+| CentOS 8 | `amd64` | **Fully-supported** | Works as-is |
 | Debian 10 | `amd64` | **Fully-supported** | See [Debian 10 Notes](#debian-10-notes)|
 | Debian 11 | `amd64` | **Fully-supported** | Works as-is |
 | Fedora 33 | `amd64` | **Fully-supported** | Works as-is |
 | Fedora 34 | `amd64` | **Fully-supported** | Works as-is |
+| Fedora 35 | `amd64` | **Fully-supported** | Works as-is |
 | Ubuntu 18.04 | `amd64` | **Fully-supported** | See [Ubuntu 18.04 Notes](#ubuntu-1804-notes) |
 | Ubuntu 20.04 | `amd64` | **Fully-supported** | Works as-is |
 | openSUSE Leap 15.3 | `amd64` | **Fully-supported** | See [openSUSE Notes](#opensuse-notes) |
