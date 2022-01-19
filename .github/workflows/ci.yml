@@ -120,10 +120,12 @@ jobs:
           - amazonlinux2
           - centos7
           - centos8
+          - centos9
           - debian10
           - debian11
           - fedora33
           - fedora34
+          - fedora35
           - ubuntu1804
           - ubuntu2004
           - opensuse15
@@ -173,8 +175,10 @@ jobs:
           - ubuntu2004
           - centos7
           - centos8
+          - centos9
           - fedora33
           - fedora34
+          - fedora35
           - opensuse15
     if: startsWith(github.ref, 'refs/tags/')
     steps:
