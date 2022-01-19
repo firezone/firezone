@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Troubleshoot
-nav_order: 10
+nav_order: 6
 parent: Usage
 ---
 
