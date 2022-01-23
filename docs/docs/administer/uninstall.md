@@ -2,11 +2,7 @@
 layout: default
 title: Uninstall
 nav_order: 4
-parent: Usage
----
-
-# Uninstall
-
+parent: Administer
 ---
 
 To completely remove Firezone and its configuration files, run the [uninstall.sh
