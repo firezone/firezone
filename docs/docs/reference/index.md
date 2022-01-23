@@ -1,8 +1,6 @@
 ---
 layout: default
-title: Usage
+title: Reference
 nav_order: 4
 has_children: true
 ---
-
-# Using Firezone
