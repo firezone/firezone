@@ -9,12 +9,12 @@ parent: Reference
 Shown below is a complete listing of the configuration options available in
 `/etc/firezone/firezone.rb`.
 
-<!-- markdownlint-disable MD043 -->
+<!-- markdownlint-disable MD013 -->
 
 | option                                                                        | description                                                                                                  | default value                                                          |
 | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------  |
 | `default['firezone']['nginx']['enabled']`                                     | Whether to enable the bundled nginx server.                                                                  | `true`                                                                 |
-| `default['firezone']['fqdn']`                                                 | FQDN of this Firezone instance.                                                                              | `(node['fqdn'] \|\| node['hostname']).downcase`                        |
+| `default['firezone']['fqdn']`                                                 | FQDN of this Firezone instance.                                                                              | `(node['fqdn'] || node['hostname']).downcase`                        |
 | `default['firezone']['config_directory']`                                     | Top-level directory for Firezone configuration.                                                              | `'/etc/firezone'`                                                      |
 | `default['firezone']['install_directory']`                                    | Top-level directory to install Firezone to.                                                                  | `'/opt/firezone'`                                                      |
 | `default['firezone']['app_directory']`                                        | Top-level directory to install the Firezone web application.                                                 | `"#{node['firezone']['install_directory']}/embedded/service/firezone"` |
@@ -146,4 +146,4 @@ Shown below is a complete listing of the configuration options available in
 | `default['firezone']['connectivity_checks']['enabled']`                       | Enable or disable the Firezone connectivity checks service.                                                  | `true`                                                                 |
 | `default['firezone']['connectivity_checks']['interval']`                      | Interval between connectivity checks in seconds.                                                             | `3_600`                                                                |
 
-<!-- markdownlint-enable MD043 -->
+<!-- markdownlint-enable MD013 -->
