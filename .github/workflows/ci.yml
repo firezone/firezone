@@ -121,7 +121,10 @@ jobs:
           mix coveralls.github --umbrella || mix test
 
   build-package-test:
-    needs: unit-test
+    needs:
+      - static-analysis
+      - unit-test
+      - lint-docs
     runs-on: ${{ matrix.os }}
     strategy:
       # Failing fast breaks the Omnibus build cache because the job is
