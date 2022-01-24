@@ -10,7 +10,6 @@ parent: Deploy
 [prerequisites]({% link docs/deploy/prerequisites.md %}) before following this
 guide.
 
-
 ## Installation Instructions
 
 **NOTE**: Firezone modifies the kernel netfilter and routing tables. Other
