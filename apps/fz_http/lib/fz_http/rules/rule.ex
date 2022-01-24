@@ -9,6 +9,7 @@ defmodule FzHttp.Rules.Rule do
   @rule_dupe_msg "A rule with that IP/CIDR address already exists."
 
   schema "rules" do
+    field :uuid, Ecto.UUID, autogenerate: true
     field :destination, EctoNetwork.INET
     field :action, Ecto.Enum, values: [:drop, :accept], default: :drop
 

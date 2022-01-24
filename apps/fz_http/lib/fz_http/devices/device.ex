@@ -21,6 +21,7 @@ defmodule FzHttp.Devices.Device do
   alias FzHttp.Users.User
 
   schema "devices" do
+    field :uuid, Ecto.UUID, autogenerate: true
     field :name, :string
     field :public_key, :string
     field :use_default_allowed_ips, :boolean, read_after_writes: true, default: true

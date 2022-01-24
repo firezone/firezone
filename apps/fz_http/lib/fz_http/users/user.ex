@@ -13,6 +13,7 @@ defmodule FzHttp.Users.User do
   alias FzHttp.Devices.Device
 
   schema "users" do
+    field :uuid, Ecto.UUID, autogenerate: true
     field :role, Ecto.Enum, values: [:unprivileged, :admin], default: :unprivileged
     field :email, :string
     field :last_signed_in_at, :utc_datetime_usec
