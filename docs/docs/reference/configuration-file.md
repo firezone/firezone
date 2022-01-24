@@ -4,6 +4,7 @@ nav_order: 2
 title: Configuration File
 parent: Reference
 ---
+---
 
 Shown below is a complete listing of the configuration options available in
 `/etc/firezone/firezone.rb`.
