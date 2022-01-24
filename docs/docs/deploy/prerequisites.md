@@ -2,15 +2,15 @@
 layout: default
 title: Prerequisites
 nav_order: 1
-parent: Get Started
+parent: Deploy
+---
 ---
 
-# Prerequisites
----
+Firezone requires the setup of a DNS record and matching SSL certificate for
+in production deployments.
 
-Firezone requires the setup of a DNS record and matching SSL certificate to run
-in production. Not using Firezone in production? [
-Skip directly to the installation guide]({% link docs/get-started/install.md %}).
+Not using Firezone in production? [
+Skip to install the server]({% link docs/deploy/server.md %}).
 
 ## Create a DNS record
 
@@ -27,6 +27,7 @@ you'll need a valid SSL certificate to use Firezone in a production capacity.
 We recommend using [Let's Encrypt](https://letsencrypt.org) to
 generate a free SSL cert for your domain. Firezone will include the ability to
 automatically generate valid SSL certificates for you in an upcoming release,
-but for now these must be generated manually and specified in the configuration
-file. See here for a guide on how to do so:
+but for now these must be generated manually and specified in the main
+configuration file at `/etc/firezone/firezone.rb`. See here for a guide on how
+to do so:
 [https://eff-certbot.readthedocs.io/en/stable/using.html#manual](https://eff-certbot.readthedocs.io/en/stable/using.html#manual)

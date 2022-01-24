@@ -2,16 +2,16 @@
 layout: default
 title: Manage Installation
 nav_order: 2
-parent: Usage
+parent: Administer
+---
 ---
 
-# Manage Installation
+Your Firezone installation can be managed via the `firezone-ctl` command, as
+shown below. Most subcommands require prefixing with `sudo`.
 
----
+<!-- markdownlint-disable MD013 -->
 
-Your Firezone installation can be managed via the `firezone-ctl` command, as shown below. Most subcommands require prefixing with `sudo`.
-
-```console
+```text
 root@demo:~# firezone-ctl
 I don't know that command.
 omnibus-ctl: command (subcommand)
@@ -64,3 +64,5 @@ Service Management Commands:
   usr2
     Send the services a USR2.
 ```
+
+<!-- markdownlint-enable MD013 -->
