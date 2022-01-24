@@ -13,15 +13,15 @@ defaults:
 jobs:
   lint-docs:
     runs-on: macos-11
-  steps:
-    - uses: actions/checkout@v2
+    steps:
+      - uses: actions/checkout@v2
       - uses: actions/setup-node@v2
         with:
           node-version: '14.18.2'
-    - name: Lint Docs
-      run: |
-        npm install -g markdownlint-cli
-        markdownlint docs/
+      - name: Lint Docs
+        run: |
+          npm install -g markdownlint-cli
+          markdownlint docs/
 
   static-analysis:
     runs-on: ubuntu-18.04
