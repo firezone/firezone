@@ -61,6 +61,21 @@ defmodule FzHttp.Telemetry do
     )
   end
 
+  def login(user) do
+    telemetry_module().capture(
+      "login",
+      distinct_id: fqdn(),
+      user_email_hash: hash(user.email)
+    )
+  end
+
+  def fz_http_started do
+    telemetry_module().capture(
+      "fz_http_started",
+      distinct_id: fqdn()
+    )
+  end
+
   defp hash(str) do
     :crypto.hash(:sha256, str) |> Base.encode16()
   end

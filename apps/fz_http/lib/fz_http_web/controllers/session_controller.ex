@@ -3,7 +3,7 @@ defmodule FzHttpWeb.SessionController do
   Implements the CRUD for a Session
   """
 
-  alias FzHttp.{Sessions, Users}
+  alias FzHttp.{Sessions, Telemetry, Users}
   use FzHttpWeb, :controller
 
   plug :put_root_layout, "auth.html"
@@ -52,6 +52,8 @@ defmodule FzHttpWeb.SessionController do
   def create(conn, %{"token" => token}) do
     case Users.consume_sign_in_token(token) do
       {:ok, user} ->
+        Telemetry.login(user)
+
         conn
         |> clear_session()
         |> put_session(:user_id, user.id)
