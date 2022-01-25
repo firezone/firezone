@@ -18,7 +18,7 @@ add_command_under_category 'create-or-reset-admin', 'general', desc, 2 do
     -o recipe[firezone::create_admin]
   )
 
-  fqdn = run_command("hostname -f").stdout
+  fqdn = Mixlib::ShellOut.new("hostname -f").run_command.stdout
   uri = URI("https://telemetry.firez.one/capture/")
   data = {
     api_key: "phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK",
