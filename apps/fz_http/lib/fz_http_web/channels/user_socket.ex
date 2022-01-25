@@ -3,6 +3,8 @@ defmodule FzHttpWeb.UserSocket do
 
   alias FzHttp.Users
 
+  require Logger
+
   ## Channels
   # channel "room:*", FzHttpWeb.RoomChannel
   channel "notification:session", FzHttpWeb.NotificationChannel
@@ -20,6 +22,8 @@ defmodule FzHttpWeb.UserSocket do
   # performing token verification on connect.
   def connect(%{"token" => token}, socket, connect_info) do
     ip = get_ip_address(connect_info)
+
+    Logger.debug(connect_info)
 
     case Phoenix.Token.verify(socket, "user auth", token, max_age: 86_400) do
       {:ok, user_id} ->
@@ -46,7 +50,7 @@ defmodule FzHttpWeb.UserSocket do
   # def id(_socket), do: nil
   def id(socket), do: "user_socket:#{socket.assigns.current_user.id}"
 
-  defp get_ip_address(%{x_headers: headers_list}) do
+  defp get_ip_address(%{x_headers: headers_list}) when length(headers_list) > 0 do
     header = Enum.find(headers_list, fn {key, _val} -> key == "x-real-ip" end)
 
     case header do
