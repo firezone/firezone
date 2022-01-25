@@ -23,7 +23,7 @@ defmodule FzHttpWeb.SettingLive.AccountFormComponent do
         {:noreply,
          socket
          |> put_flash(:info, "Account updated successfully.")
-         |> push_redirect(to: socket.assigns.return_to)}
+         |> redirect(to: socket.assigns.return_to)}
 
       {:error, changeset} ->
         {:noreply, assign(socket, :changeset, changeset)}
