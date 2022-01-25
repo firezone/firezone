@@ -5,6 +5,23 @@ set -e
 # after package is uninstalled.
 #
 
+capture () {
+  if type curl > /dev/null; then
+    host=`hostname -f`
+    curl -s -XPOST \
+      -H 'Content-Type: application/json' \
+      -d "{
+        \"api_key\": \"phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK\",
+        \"event\": \"postrm\",
+        \"properties\": {
+          \"distinct_id\": \"$host\"
+        }
+      }" \
+      https://telemetry.firez.one/capture/ > /dev/null
+  fi
+}
+capture || true
+
 echo "firezone has been uninstalled!"
 
 exit 0
