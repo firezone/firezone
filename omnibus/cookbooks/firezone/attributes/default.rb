@@ -303,6 +303,13 @@ default['firezone']['smtp_password'] = nil
 default['firezone']['smtp_port'] = nil
 default['firezone']['smtp_user_name'] = nil
 
+# ## Telemetry
+#
+# Firezone relies heavily on hashed, anonymized telemetry data to help us build
+# a better product for our users. This data is stored securely and is not
+# shared or accessible to any third parties. Set this to false to disable.
+default['firezone']['telemetry']['enabled'] = true
+
 # ## Diagnostics Settings
 
 # ### Connectivity Checks

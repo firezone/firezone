@@ -32,6 +32,7 @@ defmodule FzCommon.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
+      {:posthog, "~> 0.1"},
       {:jason, "~> 1.2"},
       {:inet_cidr, "~> 1.0.0"}
       # {:dep_from_hexpm, "~> 0.3.0"},
