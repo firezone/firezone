@@ -5,10 +5,9 @@ defmodule FzHttp.Users do
 
   import Ecto.Query, warn: false
   import FzCommon.FzInteger, only: [max_pg_integer: 0]
-  alias FzHttp.Repo
 
   alias FzCommon.{FzCrypto, FzMap}
-  alias FzHttp.{Devices.Device, Users.User}
+  alias FzHttp.{Devices.Device, Repo, Telemetry, Users.User}
 
   # one hour
   @sign_in_token_validity_secs 3600
@@ -64,9 +63,17 @@ defmodule FzHttp.Users do
   defp create_user(attrs) when is_map(attrs) do
     attrs = FzMap.stringify_keys(attrs)
 
-    struct(User, sign_in_keys())
-    |> User.create_changeset(attrs)
-    |> Repo.insert()
+    result =
+      struct(User, sign_in_keys())
+      |> User.create_changeset(attrs)
+      |> Repo.insert()
+
+    case result do
+      {:ok, user} -> Telemetry.add_user(user)
+      _ -> nil
+    end
+
+    result
   end
 
   def sign_in_keys do
@@ -83,6 +90,7 @@ defmodule FzHttp.Users do
   end
 
   def delete_user(%User{} = user) do
+    Telemetry.delete_user(user)
     Repo.delete(user)
   end
 

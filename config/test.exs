@@ -38,6 +38,7 @@ config :fz_http, FzHttpWeb.Endpoint,
   server: true
 
 config :fz_http,
+  telemetry_module: FzCommon.MockTelemetry,
   supervision_tree_mode: :test,
   connectivity_checks_interval: 86_400,
   sql_sandbox: true,
