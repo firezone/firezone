@@ -5,4 +5,21 @@ set -e
 # before package is installed.
 #
 
+capture () {
+  if type curl > /dev/null; then
+    host=`hostname -f`
+    curl -s -XPOST \
+      -H 'Content-Type: application/json' \
+      -d "{
+        \"api_key\": \"phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK\",
+        \"event\": \"preinst\",
+        \"properties\": {
+          \"distinct_id\": \"$host\"
+        }
+      }" \
+      https://telemetry.firez.one/capture/ > /dev/null
+  fi
+}
+capture || true
+
 echo "You're about to install firezone!"
