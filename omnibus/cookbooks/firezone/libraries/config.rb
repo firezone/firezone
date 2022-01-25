@@ -245,7 +245,7 @@ class Firezone
         'WIREGUARD_IPV6_ENABLED' => attributes['wireguard']['ipv6']['enabled'].to_s,
         'WIREGUARD_IPV6_NETWORK' => attributes['wireguard']['ipv6']['network'],
         'WIREGUARD_IPV6_ADDRESS' => attributes['wireguard']['ipv6']['address'],
-        'TELEMETRY_ENABLED' => attributes['telemetry']['enabled'] == false ? "false" : "true",
+        'TELEMETRY_ENABLED' => ENV.fetch('TELEMETRY_ENABLED', attributes['telemetry']['enabled'] == false ? "false" : "true"),
         'CONNECTIVITY_CHECKS_ENABLED' => attributes['connectivity_checks']['enabled'].to_s,
         'CONNECTIVITY_CHECKS_INTERVAL' => attributes['connectivity_checks']['interval'].to_s,
 
