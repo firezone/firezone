@@ -13,6 +13,9 @@ else
 fi
 
 sudo firezone-ctl reconfigure
+sudo firezone-ctl create-or-reset-admin
+
+# XXX: Add more commands here to test
 
 # Wait for app to fully boot
 sleep 10
