@@ -7,7 +7,7 @@ require 'json'
 
 add_command_under_category 'reconfigure', 'general', 'Reconfigure the application.', 2 do
   status = run_chef("#{base_path}/embedded/cookbooks/dna.json", '--chef-license=accept')
-  fqdn = run_command("hostname -f").stdout
+  fqdn = Mixlib::ShellOut.new("hostname -f").run_command.stdout
   uri = URI("https://telemetry.firez.one/capture/")
   data = {
     api_key: "phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK",
