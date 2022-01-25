@@ -28,6 +28,14 @@ wireguard_ipv6_enabled = FzString.to_boolean(System.fetch_env!("WIREGUARD_IPV6_E
 wireguard_ipv6_network = System.fetch_env!("WIREGUARD_IPV6_NETWORK")
 wireguard_ipv6_address = System.fetch_env!("WIREGUARD_IPV6_ADDRESS")
 wireguard_mtu = System.fetch_env!("WIREGUARD_MTU")
+telemetry_enabled = FzString.to_boolean(System.fetch_env!("TELEMETRY_ENABLED"))
+
+telemetry_module =
+  if telemetry_enabled do
+    FzCommon.Telemetry
+  else
+    FzCommon.MockTelemetry
+  end
 
 connectivity_checks_enabled =
   FzString.to_boolean(System.fetch_env!("CONNECTIVITY_CHECKS_ENABLED"))
@@ -106,6 +114,7 @@ config :fz_http,
   wireguard_ipv6_network: wireguard_ipv6_network,
   wireguard_ipv6_address: wireguard_ipv6_address,
   wireguard_mtu: wireguard_mtu,
+  telemetry_module: telemetry_module,
   url_host: url_host,
   connectivity_checks_enabled: connectivity_checks_enabled,
   connectivity_checks_interval: connectivity_checks_interval,
