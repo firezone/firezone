@@ -6,7 +6,7 @@ defmodule FzHttp.Rules do
   import Ecto.Query, warn: false
   alias EctoNetwork.INET
 
-  alias FzHttp.{Repo, Rules.Rule}
+  alias FzHttp.{Repo, Rules.Rule, Telemetry}
 
   def get_rule!(id), do: Repo.get!(Rule, id)
 
@@ -16,12 +16,24 @@ defmodule FzHttp.Rules do
   end
 
   def create_rule(attrs \\ %{}) do
-    attrs
-    |> new_rule()
-    |> Repo.insert()
+    result =
+      attrs
+      |> new_rule()
+      |> Repo.insert()
+
+    case result do
+      {:ok, rule} ->
+        Telemetry.add_rule(rule)
+
+      _ ->
+        nil
+    end
+
+    result
   end
 
   def delete_rule(%Rule{} = rule) do
+    Telemetry.delete_rule(rule)
     Repo.delete(rule)
   end
 

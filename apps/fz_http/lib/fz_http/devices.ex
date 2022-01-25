@@ -5,7 +5,7 @@ defmodule FzHttp.Devices do
 
   import Ecto.Query, warn: false
   alias FzCommon.{FzCrypto, NameGenerator}
-  alias FzHttp.{ConnectivityChecks, Devices.Device, Repo, Settings, Users, Users.User}
+  alias FzHttp.{ConnectivityChecks, Devices.Device, Repo, Settings, Telemetry, Users, Users.User}
 
   # Device configs can be viewable for 10 minutes
   @config_token_expires_in_sec 600
@@ -40,14 +40,22 @@ defmodule FzHttp.Devices do
   def create_device(attrs \\ %{}) do
     # XXX: insert sometimes fails with deadlock errors, probably because
     # of the giant SELECT in queries/inet.ex. Find a way to do this more gracefully.
-    {:ok, device} =
+    {:ok, result} =
       Repo.transaction(fn ->
         %Device{}
         |> Device.create_changeset(attrs)
         |> Repo.insert()
       end)
 
-    device
+    case result do
+      {:ok, device} ->
+        Telemetry.add_device(device)
+
+      _ ->
+        nil
+    end
+
+    result
   end
 
   @doc """
@@ -77,6 +85,7 @@ defmodule FzHttp.Devices do
   end
 
   def delete_device(%Device{} = device) do
+    Telemetry.delete_device(device)
     Repo.delete(device)
   end
 
