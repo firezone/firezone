@@ -8,56 +8,56 @@ defmodule FzHttp.Telemetry do
   def add_device(device) do
     telemetry_module().capture(
       "add_device",
+      distinct_id: fqdn(),
       device_uuid_hash: hash(device.uuid),
       user_email_hash: hash(user_email(device.user_id)),
-      admin_email_hash: hash(admin_email()),
-      fqdn: fqdn()
+      admin_email_hash: hash(admin_email())
     )
   end
 
   def add_user(user) do
     telemetry_module().capture(
       "add_user",
+      distinct_id: fqdn(),
       user_email_hash: hash(user.email),
-      admin_email_hash: hash(admin_email()),
-      fqdn: fqdn()
+      admin_email_hash: hash(admin_email())
     )
   end
 
   def add_rule(rule) do
     telemetry_module().capture(
       "add_rule",
+      distinct_id: fqdn(),
       rule_uuid_hash: hash(rule.uuid),
-      admin_email_hash: hash(admin_email()),
-      fqdn: fqdn()
+      admin_email_hash: hash(admin_email())
     )
   end
 
   def delete_device(device) do
     telemetry_module().capture(
       "delete_device",
+      distinct_id: fqdn(),
       device_uuid_hash: hash(device.uuid),
       user_email_hash: hash(user_email(device.user_id)),
-      admin_email_hash: hash(admin_email()),
-      fqdn: fqdn()
+      admin_email_hash: hash(admin_email())
     )
   end
 
   def delete_user(user) do
     telemetry_module().capture(
       "delete_user",
+      distinct_id: fqdn(),
       user_email_hash: hash(user.email),
-      admin_email_hash: hash(admin_email()),
-      fqdn: fqdn()
+      admin_email_hash: hash(admin_email())
     )
   end
 
   def delete_rule(rule) do
     telemetry_module().capture(
       "delete_rule",
+      distinct_id: fqdn(),
       rule_uuid_hash: hash(rule.uuid),
-      admin_email_hash: hash(admin_email()),
-      fqdn: fqdn()
+      admin_email_hash: hash(admin_email())
     )
   end
 
