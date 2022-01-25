@@ -12,6 +12,8 @@ defaults:
 
 jobs:
   lint-docs:
+    env:
+      TELEMETRY_ENABLED: false
     runs-on: macos-11
     steps:
       - uses: actions/checkout@v2
@@ -26,6 +28,7 @@ jobs:
   static-analysis:
     runs-on: ubuntu-18.04
     env:
+      TELEMETRY_ENABLED: false
       MIX_ENV: dev
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
@@ -73,6 +76,7 @@ jobs:
       MIX_ENV: test
       POSTGRES_HOST: localhost
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TELEMETRY_ENABLED: false
     services:
       postgres:
         image: postgres:13.5
@@ -121,6 +125,8 @@ jobs:
           mix coveralls.github --umbrella || mix test
 
   build-package-test:
+    env:
+      TELEMETRY_ENABLED: false
     needs:
       - static-analysis
       - unit-test
@@ -214,6 +220,7 @@ jobs:
           files: |
             ./firezone*.rpm
             ./firezone*.deb
+
   publish-docs:
     needs: publish
     if: startsWith(github.ref, 'refs/tags/')
