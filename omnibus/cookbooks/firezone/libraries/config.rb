@@ -1,3 +1,4 @@
+require 'json'
 require 'fileutils'
 require 'securerandom'
 
@@ -232,6 +233,9 @@ class Firezone
         'DATABASE_HOST' => attributes['database']['host'],
         'DATABASE_PORT' => attributes['database']['port'].to_s,
         'DATABASE_POOL' => attributes['database']['pool'].to_s,
+        'DATABASE_SSL' => attributes['database']['ssl'].to_s,
+        'DATABASE_SSL_OPTS' => attributes['database']['ssl_opts'].to_json,
+        'DATABASE_PARAMETERS' => attributes['database']['parameters'].to_json,
         'PHOENIX_PORT' => attributes['phoenix']['port'].to_s,
         'URL_HOST' => attributes['fqdn'],
         'ADMIN_EMAIL' => attributes['admin_email'],

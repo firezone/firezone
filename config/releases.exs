@@ -11,6 +11,9 @@ database_user = System.fetch_env!("DATABASE_USER")
 database_host = System.fetch_env!("DATABASE_HOST")
 database_port = String.to_integer(System.fetch_env!("DATABASE_PORT"))
 database_pool = String.to_integer(System.fetch_env!("DATABASE_POOL"))
+database_ssl = FzString.to_boolean(System.fetch_env!("DATABASE_SSL"))
+database_ssl_opts = Jason.decode!(System.fetch_env!("DATABASE_SSL_OPTS"))
+database_parameters = Jason.decode!(System.fetch_env!("DATABASE_PARAMETERS"))
 port = String.to_integer(System.fetch_env!("PHOENIX_PORT"))
 url_host = System.fetch_env!("URL_HOST")
 admin_email = System.fetch_env!("ADMIN_EMAIL")
@@ -61,12 +64,16 @@ connect_opts = [
   hostname: database_host,
   port: database_port,
   pool_size: database_pool,
+  ssl: database_ssl,
+  ssl_opts: Keyword.new(database_ssl_opts, fn {k, v} -> {String.to_existing_atom(k), v} end),
+  parameters: Keyword.new(database_parameters, fn {k, v} -> {String.to_existing_atom(k), v} end),
   queue_target: 500
 ]
 
 if database_password do
   config(:fz_http, FzHttp.Repo, connect_opts ++ [password: database_password])
 else
+  ra
   config(:fz_http, FzHttp.Repo, connect_opts)
 end
 
