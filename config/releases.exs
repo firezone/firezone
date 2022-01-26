@@ -78,7 +78,6 @@ connect_opts = [
 if database_password do
   config(:fz_http, FzHttp.Repo, connect_opts ++ [password: database_password])
 else
-  ra
   config(:fz_http, FzHttp.Repo, connect_opts)
 end
 
