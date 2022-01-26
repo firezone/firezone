@@ -3,7 +3,7 @@ set -ex
 
 # This script should be run from the app root
 # Disable telemetry
-sudo mkdir /opt/firezone/
+sudo mkdir -p /opt/firezone/
 sudo touch /opt/firezone/.disable-telemetry
 
 if type rpm > /dev/null; then
