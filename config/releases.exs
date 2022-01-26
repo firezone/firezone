@@ -57,6 +57,11 @@ cookie_signing_salt = System.fetch_env!("COOKIE_SIGNING_SALT")
 # Password is not needed if using bundled PostgreSQL, so use nil if it's not set.
 database_password = System.get_env("DATABASE_PASSWORD")
 
+# XXX: Using to_atom here because this is trusted input and to_existing_atom
+# won't work because we won't know the keys ahead of time.
+ssl_opts = Keyword.new(database_ssl_opts, fn {k, v} -> {String.to_atom(k), v} end)
+parameters = Keyword.new(database_parameters, fn {k, v} -> {String.to_atom(k), v} end)
+
 # Database configuration
 connect_opts = [
   database: database_name,
@@ -65,8 +70,8 @@ connect_opts = [
   port: database_port,
   pool_size: database_pool,
   ssl: database_ssl,
-  ssl_opts: Keyword.new(database_ssl_opts, fn {k, v} -> {String.to_existing_atom(k), v} end),
-  parameters: Keyword.new(database_parameters, fn {k, v} -> {String.to_existing_atom(k), v} end),
+  ssl_opts: ssl_opts,
+  parameters: parameters,
   queue_target: 500
 ]
 
