@@ -57,6 +57,7 @@ defmodule FirezoneUmbrella.MixProject do
   # Run "mix help deps" for examples and options.
   defp deps do
     [
+      {:jason, "~> 1.2"},
       {:posthog, "~> 0.1"},
       {:ex_doc, "~> 0.24", only: :dev, runtime: false},
       {:excoveralls, "~> 0.14", only: :test},

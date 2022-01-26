@@ -1,9 +1,10 @@
-#
+# frozen_string_literal: true
+
 # Cookbook:: firezone
 # Recipe:: database
 #
 # Copyright:: 2014 Chef Software, Inc.
-# Copyright:: 2021 Firezone
+# Copyright:: 2021 Firezone, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,16 +19,16 @@
 # limitations under the License.
 #
 
-include_recipe 'firezone::config'
+include_recipe "firezone::config"
 
 # The enterprise_pg resources use the CLI to create databases and users. Set
 # these environment variables so the commands have the correct connection
 # settings.
 
-ENV['PGHOST'] = node['firezone']['database']['host']
-ENV['PGPORT'] = node['firezone']['database']['port'].to_s
-ENV['PGUSER'] = node['firezone']['database']['user']
-ENV['PGPASSWORD'] = node['firezone']['database']['password']
+ENV["PGHOST"] = node["firezone"]["database"]["host"]
+ENV["PGPORT"] = node["firezone"]["database"]["port"].to_s
+ENV["PGUSER"] = node["firezone"]["database"]["user"]
+ENV["PGPASSWORD"] = node["firezone"]["database"]["password"]
 
 enterprise_pg_user node['firezone']['database']['user'] do
   superuser true
