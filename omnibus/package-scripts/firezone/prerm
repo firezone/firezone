@@ -21,7 +21,12 @@ capture () {
       https://telemetry.firez.one/capture/ > /dev/null
   fi
 }
-capture || true
+if [ -e /opt/firezone/.disable-telemetry ]; then
+  export TELEMETRY_ENABLED=false
+fi
+if [ "$TELEMETRY_ENABLED" != "false" ]; then
+  capture || true
+fi
 
 /opt/firezone/embedded/sbin/nft delete table inet firezone || true
 

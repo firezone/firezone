@@ -121,6 +121,8 @@ jobs:
           mix coveralls.github --umbrella || mix test
 
   build-package-test:
+    env:
+      TELEMETRY_ENABLED: "false"
     needs:
       - static-analysis
       - unit-test
@@ -214,6 +216,7 @@ jobs:
           files: |
             ./firezone*.rpm
             ./firezone*.deb
+
   publish-docs:
     needs: publish
     if: startsWith(github.ref, 'refs/tags/')
