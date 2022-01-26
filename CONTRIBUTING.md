@@ -62,20 +62,8 @@ higher should work fine. Access can be configured using the [
 ### Pre-commit
 
 We use [pre-commit](https://pre-commit.com) to catch any static analysis issues
-before code is commit. Install with Homebrew: `brew install pre-commit` or pip:
-`pip install pre-commit`.
-
-## The .env File
-
-Local Firezone config is handled mostly through environment variables. Copy
-copy the `.env.sample` to `.env` and edit as necessary.
-
-Then you'll need to load these variable into
-your shell environment before running any Firezone commands. We use the
-[dotenv](https://github.com/ohmyzsh/ohmyzsh/tree/master/plugins/dotenv) plugin
-for [oh-my-zsh](https://ohmyz.sh) but you may load these however best you see
-fit.
-
+before code is committed. Install with Homebrew: `brew install pre-commit` or
+pip: `pip install pre-commit`.
 
 ## Bootstrapping
 
