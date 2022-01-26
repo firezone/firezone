@@ -1,6 +1,8 @@
 #!/bin/bash
 set -ex
 
+export TELEMETRY_ENABLED=false
+
 # This script should be run from the app root
 
 if type rpm > /dev/null; then
