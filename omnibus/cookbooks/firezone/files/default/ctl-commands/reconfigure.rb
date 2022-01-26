@@ -16,7 +16,7 @@ def capture
     }
   }
 
-  unless File.exist?("#{base_path}/.telemetry-disable")
+  unless File.exist?("#{base_path}/.disable-telemetry") || ENV["TELEMETRY_ENABLED"] == "false"
     Net::HTTP.post(uri, data.to_json, "Content-Type" => "application/json")
   end
 end
