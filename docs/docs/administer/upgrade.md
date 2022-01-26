@@ -9,10 +9,17 @@ Upgrading Firezone will disconnect all VPN connections and require shutting
 down the Web UI. We recommend a maintenance window of about an hour in case
 anything goes wrong during the upgrade.
 
-To upgrade Firezone, simply download the new OS package, install it over the
-existing installation with `sudo dpkg -i firezone_X.X.X.deb` or
-`sudo rpm -i --force firezone_X.X.X.rpm` and then run
-`sudo firezone-ctl reconfigure && sudo firezone-ctl restart`.
+We're actively working on making this process more automatic in the future, but
+for now, this is the procedure for upgrading your Firezone instance.
+
+To upgrade Firezone, follow these steps:
+
+1. Download the new release for your platform.
+1. Install the new package over the old one:
+  `sudo dpkg -i firezone_X.X.X.deb` or
+  `sudo rpm -i --force firezone_X.X.X.rpm` depending on your distribution.
+1. Run `firezone-ctl reconfigure` to pick up the new changes.
+1. Run `firezone-ctl restart` to restart services.
 
 Occasionally problems arise. If you hit any, please let us know by [filing an
 issue](https://github.com/firezone/firezone/issues/new/choose).

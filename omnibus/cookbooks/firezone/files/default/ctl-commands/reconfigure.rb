@@ -5,8 +5,7 @@ require 'uri'
 require 'net/http'
 require 'json'
 
-add_command_under_category 'reconfigure', 'general', 'Reconfigure the application.', 2 do
-  status = run_chef("#{base_path}/embedded/cookbooks/dna.json", '--chef-license=accept')
+def capture
   fqdn = Mixlib::ShellOut.new("hostname -f").run_command.stdout
   uri = URI("https://telemetry.firez.one/capture/")
   data = {
@@ -16,7 +15,16 @@ add_command_under_category 'reconfigure', 'general', 'Reconfigure the applicatio
       distinct_id: fqdn
     }
   }
-  Net::HTTP.post(uri, data.to_json, "Content-Type" => "application/json")
+
+  unless File.exist?("#{base_path}/.telemetry-disable")
+    Net::HTTP.post(uri, data.to_json, "Content-Type" => "application/json")
+  end
+end
+
+add_command_under_category 'reconfigure', 'general', 'Reconfigure the application.', 2 do
+  status = run_chef("#{base_path}/embedded/cookbooks/dna.json", '--chef-license=accept')
+
+  capture
 
   if status.success?
     log "#{display_name} Reconfigured!"
