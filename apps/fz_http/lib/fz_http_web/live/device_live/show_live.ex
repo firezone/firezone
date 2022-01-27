@@ -85,10 +85,10 @@ defmodule FzHttpWeb.DeviceLive.Show do
         user: Users.get_user!(device.user_id),
         page_title: device.name,
         allowed_ips: Devices.allowed_ips(device),
-        dns_servers: Devices.dns_servers(device),
+        dns: Devices.dns(device),
         endpoint: Devices.endpoint(device),
         mtu: Devices.mtu(device),
-        persistent_keepalives: Devices.persistent_keepalives(device),
+        persistent_keepalive: Devices.persistent_keepalive(device),
         config: Devices.as_config(device)
       )
     else

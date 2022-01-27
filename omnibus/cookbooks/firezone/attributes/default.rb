@@ -216,10 +216,32 @@ default['firezone']['wireguard']['log_rotation']['num_to_keep'] = 10
 
 # The WireGuard interface name Firezone will apply configuration settings to.
 default['firezone']['wireguard']['interface_name'] = 'wg-firezone'
+
 # WireGuard listen port
 default['firezone']['wireguard']['port'] = 51820
+
 # WireGuard interface MTU
 default['firezone']['wireguard']['mtu'] = 1420
+
+# WireGuard endpoint
+# By default, the public IP address of this server is used as the Endpoint
+# field for generating Device configs. Override this if you wish to change.
+default['firezone']['wireguard']['endpoint'] = nil
+
+# Default AllowedIPs to use for generated device configs specified as a comma-separated
+# list of IPv4 / IPv6 CIDRs.
+# Default is to tunnel all IPv4 and IPv6 traffic with '0.0.0.0/0, ::/0'
+default['firezone']['wireguard']['allowed_ips'] = '0.0.0.0/0, ::/0'
+
+# Default DNS servers to use for generated device configs.
+# Defaults to CloudFlare's public DNS. Set to nil to omit DNS from  generated
+# device configurations.
+default['firezone']['wireguard']['dns'] = '1.1.1.1, 1.0.0.1'
+
+# Default PersistentKeepalive setting to use for generated device configs.
+# See https://www.wireguard.com/quickstart/#nat-and-firewall-traversal-persistence
+# Set to 0 or nil to disable. Default 0.
+default['firezone']['wireguard']['persistent_keepalive'] = 0
 
 # Enable or disable IPv4 connectivity in your WireGuard network. Default enabled.
 default['firezone']['wireguard']['ipv4']['enabled'] = true

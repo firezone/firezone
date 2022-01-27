@@ -9,9 +9,14 @@ defmodule FzHttp.Repo.Migrations.AddMtuToDevices do
 
     now = DateTime.utc_now()
 
-    execute """
-    INSERT INTO settings (key, value, inserted_at, updated_at) VALUES \
-    ('default.device.mtu', null, '#{now}', '#{now}')
-    """
+    execute(
+      """
+      INSERT INTO settings (key, value, inserted_at, updated_at) VALUES \
+      ('default.device.mtu', null, '#{now}', '#{now}')
+      """,
+      """
+      DELETE FROM settings WHERE key = 'default.device.mtu'
+      """
+    )
   end
 end

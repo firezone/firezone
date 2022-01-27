@@ -136,57 +136,63 @@ defmodule FzHttp.Devices do
     end)
   end
 
-  def allowed_ips(device) do
-    if device.use_default_allowed_ips do
-      Settings.default_device_allowed_ips()
-    else
-      device.allowed_ips
-    end
-  end
-
-  def dns_servers(device) do
-    if device.use_default_dns_servers do
-      Settings.default_device_dns_servers()
-    else
-      device.dns_servers
-    end
-  end
-
   def new_device do
     change_device(%Device{})
   end
 
   def endpoint(device) do
     if device.use_default_endpoint do
-      Settings.default_device_endpoint() || ConnectivityChecks.endpoint()
+      Settings.default_device_endpoint() ||
+        Application.fetch_env!(:fz_http, :wireguard_endpoint) ||
+        ConnectivityChecks.endpoint()
     else
       device.endpoint
     end
   end
 
+  def allowed_ips(device) do
+    if device.use_default_allowed_ips do
+      Settings.default_device_allowed_ips() ||
+        Application.fetch_env!(:fz_http, :wireguard_allowed_ips)
+    else
+      device.allowed_ips
+    end
+  end
+
+  def dns(device) do
+    if device.use_default_dns do
+      Settings.default_device_dns() ||
+        Application.fetch_env!(:fz_http, :wireguard_dns)
+    else
+      device.dns
+    end
+  end
+
   def mtu(device) do
     if device.use_default_mtu do
-      Settings.default_device_mtu()
+      Settings.default_device_mtu() ||
+        Application.fetch_env!(:fz_http, :wireguard_mtu)
     else
       device.mtu
     end
   end
 
-  def persistent_keepalives(device) do
-    if device.use_default_persistent_keepalives do
-      Settings.default_device_persistent_keepalives()
+  def persistent_keepalive(device) do
+    if device.use_default_persistent_keepalive do
+      Settings.default_device_persistent_keepalive() ||
+        Application.fetch_env!(:fz_http, :wireguard_persistent_keepalive)
     else
-      device.persistent_keepalives
+      device.persistent_keepalive
     end
   end
 
   def defaults(changeset) do
     ~w(
       use_default_allowed_ips
-      use_default_dns_servers
+      use_default_dns
       use_default_endpoint
       use_default_mtu
-      use_default_persistent_keepalives
+      use_default_persistent_keepalive
     )a
     |> Enum.map(fn field -> {field, Device.field(changeset, field)} end)
     |> Map.new()
@@ -200,13 +206,13 @@ defmodule FzHttp.Devices do
     PrivateKey = #{device.private_key}
     Address = #{inet(device)}
     #{mtu_config(device)}
-    #{dns_servers_config(device)}
+    #{dns_config(device)}
 
     [Peer]
     PublicKey = #{device.server_public_key}
-    AllowedIPs = #{allowed_ips(device)}
+    #{allowed_ips_config(device)}
     Endpoint = #{endpoint(device)}:#{wireguard_port}
-    #{persistent_keepalives_config(device)}
+    #{persistent_keepalive_config(device)}
     """
   end
 
@@ -224,43 +230,57 @@ defmodule FzHttp.Devices do
   defp mtu_config(device) do
     m = mtu(device)
 
-    if is_nil(m) do
+    if field_empty?(m) do
       ""
     else
       "MTU = #{m}"
     end
   end
 
-  defp persistent_keepalives_config(device) do
-    pk = persistent_keepalives(device)
+  defp allowed_ips_config(device) do
+    a = allowed_ips(device)
 
-    if is_nil(pk) do
+    if field_empty?(a) do
+      ""
+    else
+      "AllowedIPs = #{a}"
+    end
+  end
+
+  defp persistent_keepalive_config(device) do
+    pk = persistent_keepalive(device)
+
+    if field_empty?(pk) do
       ""
     else
       "PersistentKeepalive = #{pk}"
     end
   end
 
-  defp dns_servers_config(device) when is_struct(device) do
-    dns_servers = dns_servers(device)
+  defp dns_config(device) when is_struct(device) do
+    dns = dns(device)
 
-    if dns_servers_empty?(dns_servers) do
+    if field_empty?(dns) do
       ""
     else
-      "DNS = #{dns_servers}"
+      "DNS = #{dns}"
     end
   end
 
-  defp dns_servers_empty?(nil), do: true
+  defp field_empty?(nil), do: true
 
-  defp dns_servers_empty?(dns_servers) when is_binary(dns_servers) do
+  defp field_empty?(0), do: true
+
+  defp field_empty?(field) when is_binary(field) do
     len =
-      dns_servers
+      field
       |> String.trim()
       |> String.length()
 
     len == 0
   end
+
+  defp field_empty?(_), do: false
 
   defp ipv4? do
     Application.fetch_env!(:fz_http, :wireguard_ipv4_enabled)

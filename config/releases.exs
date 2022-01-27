@@ -24,6 +24,9 @@ nft_path = System.fetch_env!("NFT_PATH")
 wg_path = System.fetch_env!("WG_PATH")
 egress_interface = System.fetch_env!("EGRESS_INTERFACE")
 wireguard_public_key = System.fetch_env!("WIREGUARD_PUBLIC_KEY")
+wireguard_dns = System.fetch_env!("WIREGUARD_DNS")
+wireguard_allowed_ips = System.fetch_env!("WIREGUARD_ALLOWED_IPS")
+wireguard_persistent_keepalive = System.fetch_env!("WIREGUARD_PERSISTENT_KEEPALIVE")
 wireguard_ipv4_enabled = FzString.to_boolean(System.fetch_env!("WIREGUARD_IPV4_ENABLED"))
 wireguard_ipv4_network = System.fetch_env!("WIREGUARD_IPV4_NETWORK")
 wireguard_ipv4_address = System.fetch_env!("WIREGUARD_IPV4_ADDRESS")
@@ -31,6 +34,7 @@ wireguard_ipv6_enabled = FzString.to_boolean(System.fetch_env!("WIREGUARD_IPV6_E
 wireguard_ipv6_network = System.fetch_env!("WIREGUARD_IPV6_NETWORK")
 wireguard_ipv6_address = System.fetch_env!("WIREGUARD_IPV6_ADDRESS")
 wireguard_mtu = System.fetch_env!("WIREGUARD_MTU")
+wireguard_endpoint = System.fetch_env!("WIREGUARD_ENDPOINT")
 telemetry_enabled = FzString.to_boolean(System.fetch_env!("TELEMETRY_ENABLED"))
 
 telemetry_module =
@@ -118,6 +122,9 @@ config :fz_vpn,
   cli: FzVpn.CLI.Live
 
 config :fz_http,
+  wireguard_dns: wireguard_dns,
+  wireguard_allowed_ips: wireguard_allowed_ips,
+  wireguard_persistent_keepalive: wireguard_persistent_keepalive,
   wireguard_ipv4_enabled: wireguard_ipv4_enabled,
   wireguard_ipv4_network: wireguard_ipv4_network,
   wireguard_ipv4_address: wireguard_ipv4_address,

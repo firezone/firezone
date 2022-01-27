@@ -38,29 +38,29 @@
     </div>
 
     <div class="field">
-      <%= label f, :use_default_dns_servers, "Use Default DNS Servers", class: "label" %>
+      <%= label f, :use_default_dns, "Use Default DNS Servers", class: "label" %>
       <div class="control">
         <label class="radio">
-          <%= radio_button f, :use_default_dns_servers, true %>
+          <%= radio_button f, :use_default_dns, true %>
           Yes
         </label>
         <label class="radio">
-          <%= radio_button f, :use_default_dns_servers, false %>
+          <%= radio_button f, :use_default_dns, false %>
           No
         </label>
       </div>
       <p class="help">
-        Default: <%= @default_device_dns_servers %>
+        Default: <%= @default_device_dns %>
       </p>
     </div>
 
     <div class="field">
-      <%= label f, :dns_servers, "DNS Servers", class: "label" %>
+      <%= label f, :dns, "DNS Servers", class: "label" %>
       <div class="control">
-        <%= text_input f, :dns_servers, class: "input", disabled: @use_default_dns_servers %>
+        <%= text_input f, :dns, class: "input", disabled: @use_default_dns %>
       </div>
       <p class="help is-danger">
-        <%= error_tag f, :dns_servers %>
+        <%= error_tag f, :dns %>
       </p>
     </div>
 
@@ -121,35 +121,35 @@
     </div>
 
     <div class="field">
-      <%= label f, :use_default_persistent_keepalives, "Use Default Persistent Keepalives", class: "label" %>
+      <%= label f, :use_default_persistent_keepalive, "Use Default Persistent Keepalive", class: "label" %>
       <div class="control">
         <label class="radio">
-          <%= radio_button f, :use_default_persistent_keepalives, true %>
+          <%= radio_button f, :use_default_persistent_keepalive, true %>
           Yes
         </label>
         <label class="radio">
-          <%= radio_button f, :use_default_persistent_keepalives, false %>
+          <%= radio_button f, :use_default_persistent_keepalive, false %>
           No
         </label>
       </div>
       <p class="help">
-        Default: <%= @default_device_persistent_keepalives %>
+        Default: <%= @default_device_persistent_keepalive %>
       </p>
     </div>
 
     <div class="field">
-      <%= label f, :persistent_keepalives, "Persistent Keepalives", class: "label" %>
+      <%= label f, :persistent_keepalive, "Persistent Keepalive", class: "label" %>
       <p>
         Interval for WireGuard
         <a href="https://www.wireguard.com/quickstart/#nat-and-firewall-traversal-persistence">
-          persistent keepalives</a>. A value of 0 disables this. Leave this disabled
+          persistent keepalive</a>. A value of 0 disables this. Leave this disabled
           unless you're experiencing NAT or firewall traversal problems.
       </p>
       <div class="control">
-        <%= text_input f, :persistent_keepalives, class: "input", disabled: @use_default_persistent_keepalives %>
+        <%= text_input f, :persistent_keepalive, class: "input", disabled: @use_default_persistent_keepalive %>
       </div>
       <p class="help is-danger">
-        <%= error_tag f, :persistent_keepalives %>
+        <%= error_tag f, :persistent_keepalive %>
       </p>
     </div>
 

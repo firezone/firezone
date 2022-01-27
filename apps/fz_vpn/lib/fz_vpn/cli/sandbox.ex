@@ -18,7 +18,7 @@ defmodule FzVpn.CLI.Sandbox do
     transfer: 1.21 MiB received, 39.30 MiB sent
   """
   @show_latest_handshakes "4 seconds ago"
-  @show_persistent_keepalives "every 25 seconds"
+  @show_persistent_keepalive "every 25 seconds"
   @show_transfer "4.60 MiB received, 59.21 MiB sent"
   @default_returned ""
 
@@ -63,7 +63,7 @@ defmodule FzVpn.CLI.Sandbox do
   end
 
   def show_latest_handshakes, do: @show_latest_handshakes
-  def show_persistent_keepalives, do: @show_persistent_keepalives
+  def show_persistent_keepalive, do: @show_persistent_keepalive
   def show_transfer, do: @show_transfer
 
   # Generate extremely fake keys in Sandbox mode
