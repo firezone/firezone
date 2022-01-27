@@ -238,6 +238,7 @@ class Firezone
         'WIREGUARD_INTERFACE_NAME' => attributes['wireguard']['interface_name'],
         'WIREGUARD_PORT' => attributes['wireguard']['port'].to_s,
         'WIREGUARD_MTU' => attributes['wireguard']['mtu'].to_s,
+        'WIREGUARD_ENDPOINT' => attributes['wireguard']['endpoint'].to_s,
         'WIREGUARD_DNS' => attributes['wireguard']['dns'].to_s,
         'WIREGUARD_ALLOWED_IPS' => attributes['wireguard']['allowed_ips'].to_s,
         'WIREGUARD_PERSISTENT_KEEPALIVE' => attributes['wireguard']['persistent_keepalive'].to_s,

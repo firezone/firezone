@@ -15,7 +15,7 @@
     <%= live_component(
         FzHttpWeb.SettingLive.DefaultFormComponent,
         label_text: "Allowed IPs",
-        placeholder: nil,
+        placeholder: @allowed_ips_placeholder,
         changeset: @changesets["default.device.allowed_ips"],
         help_text: @help_texts.allowed_ips,
         id: :allowed_ips_form_component) %>
@@ -23,10 +23,10 @@
     <%= live_component(
         FzHttpWeb.SettingLive.DefaultFormComponent,
         label_text: "DNS Servers",
-        placeholder: nil,
-        changeset: @changesets["default.device.dns_servers"],
-        help_text: @help_texts.dns_servers,
-        id: :dns_servers_form_component) %>
+        placeholder: @dns_placeholder,
+        changeset: @changesets["default.device.dns"],
+        help_text: @help_texts.dns,
+        id: :dns_form_component) %>
 
     <%= live_component(
         FzHttpWeb.SettingLive.DefaultFormComponent,
@@ -39,7 +39,7 @@
     <%= live_component(
         FzHttpWeb.SettingLive.DefaultFormComponent,
         label_text: "Persistent Keepalive",
-        placeholder: "0",
+        placeholder: @persistent_keepalive_placeholder,
         changeset: @changesets["default.device.persistent_keepalive"],
         help_text: @help_texts.persistent_keepalive,
         id: :persistent_keepalive_form_component) %>

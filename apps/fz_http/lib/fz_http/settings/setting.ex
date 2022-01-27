@@ -47,7 +47,7 @@ defmodule FzHttp.Settings.Setting do
 
   defp validate_setting(changeset), do: changeset
 
-  defp validate_kv_pair(changeset, "default.device.dns_servers") do
+  defp validate_kv_pair(changeset, "default.device.dns") do
     changeset
     |> validate_list_of_ips(:value)
     |> validate_no_duplicates(:value)
@@ -55,7 +55,6 @@ defmodule FzHttp.Settings.Setting do
 
   defp validate_kv_pair(changeset, "default.device.allowed_ips") do
     changeset
-    |> validate_required(:value)
     |> validate_list_of_ips_or_cidrs(:value)
     |> validate_no_duplicates(:value)
   end

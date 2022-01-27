@@ -13,7 +13,7 @@ defmodule FzHttpWeb.SettingLive.Default do
       Firezone. Specify a comma-separated list of IPs or CIDRs here to achieve split tunneling, or use
       <code>0.0.0.0/0, ::/0</code> to route all device traffic through this Firezone server.
     """,
-    dns_servers: """
+    dns: """
       Comma-separated list of DNS servers to use for devices.
       Leaving this blank will omit the <code>DNS</code> section in
       generated device configs.

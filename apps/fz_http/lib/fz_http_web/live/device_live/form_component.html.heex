@@ -38,29 +38,29 @@
     </div>
 
     <div class="field">
-      <%= label f, :use_default_dns_servers, "Use Default DNS Servers", class: "label" %>
+      <%= label f, :use_default_dns, "Use Default DNS Servers", class: "label" %>
       <div class="control">
         <label class="radio">
-          <%= radio_button f, :use_default_dns_servers, true %>
+          <%= radio_button f, :use_default_dns, true %>
           Yes
         </label>
         <label class="radio">
-          <%= radio_button f, :use_default_dns_servers, false %>
+          <%= radio_button f, :use_default_dns, false %>
           No
         </label>
       </div>
       <p class="help">
-        Default: <%= @default_device_dns_servers %>
+        Default: <%= @default_device_dns %>
       </p>
     </div>
 
     <div class="field">
-      <%= label f, :dns_servers, "DNS Servers", class: "label" %>
+      <%= label f, :dns, "DNS Servers", class: "label" %>
       <div class="control">
-        <%= text_input f, :dns_servers, class: "input", disabled: @use_default_dns_servers %>
+        <%= text_input f, :dns, class: "input", disabled: @use_default_dns %>
       </div>
       <p class="help is-danger">
-        <%= error_tag f, :dns_servers %>
+        <%= error_tag f, :dns %>
       </p>
     </div>
 

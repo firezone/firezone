@@ -12,7 +12,7 @@ defmodule FzHttp.Settings do
 
   def_settings(~w(
     default.device.allowed_ips
-    default.device.dns_servers
+    default.device.dns
     default.device.endpoint
     default.device.mtu
     default.device.persistent_keepalive

@@ -13,12 +13,12 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
     @allowed_ips_unchanged %{
       "device" => %{"use_default_allowed_ips" => "true", "allowed_ips" => @allowed_ips}
     }
-    @dns_servers "8.8.8.8, 8.8.4.4"
-    @dns_servers_change %{
-      "device" => %{"use_default_dns_servers" => "false", "dns_servers" => @dns_servers}
+    @dns "8.8.8.8, 8.8.4.4"
+    @dns_change %{
+      "device" => %{"use_default_dns" => "false", "dns" => @dns}
     }
-    @dns_servers_unchanged %{
-      "device" => %{"use_default_dns_servers" => "true", "dns_servers" => @dns_servers}
+    @dns_unchanged %{
+      "device" => %{"use_default_dns" => "true", "dns" => @dns}
     }
     @wireguard_endpoint "6.6.6.6"
     @endpoint_change %{
@@ -45,8 +45,8 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
     @default_allowed_ips_change %{
       "device" => %{"use_default_allowed_ips" => "false"}
     }
-    @default_dns_servers_change %{
-      "device" => %{"use_default_dns_servers" => "false"}
+    @default_dns_change %{
+      "device" => %{"use_default_dns" => "false"}
     }
     @default_endpoint_change %{
       "device" => %{"use_default_endpoint" => "false"}
@@ -103,7 +103,7 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
       assert test_view =~ "must not be present"
     end
 
-    test "prevents dns_servers changes when use_default_dns_servers is true", %{
+    test "prevents dns changes when use_default_dns is true", %{
       authed_conn: conn,
       device: device
     } do
@@ -113,7 +113,7 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
       test_view =
         view
         |> form("#edit-device")
-        |> render_submit(@dns_servers_unchanged)
+        |> render_submit(@dns_unchanged)
 
       assert test_view =~ "must not be present"
     end
@@ -179,19 +179,19 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
       assert html =~ "AllowedIPs = #{@allowed_ips}"
     end
 
-    test "allows dns_servers changes", %{authed_conn: conn, device: device} do
+    test "allows dns changes", %{authed_conn: conn, device: device} do
       path = Routes.device_show_path(conn, :edit, device)
       {:ok, view, _html} = live(conn, path)
 
       view
       |> form("#edit-device")
-      |> render_submit(@dns_servers_change)
+      |> render_submit(@dns_change)
 
       flash = assert_redirected(view, Routes.device_show_path(conn, :show, device))
       assert flash["info"] == "Device updated successfully."
 
       {:ok, _view, html} = live(conn, path)
-      assert html =~ "DNS = #{@dns_servers}"
+      assert html =~ "DNS = #{@dns}"
     end
 
     test "allows endpoint changes", %{authed_conn: conn, device: device} do
@@ -265,17 +265,17 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
              """
     end
 
-    test "on use_default_dns_servers change", %{authed_conn: conn, device: device} do
+    test "on use_default_dns change", %{authed_conn: conn, device: device} do
       path = Routes.device_show_path(conn, :edit, device)
       {:ok, view, _html} = live(conn, path)
 
       test_view =
         view
         |> form("#edit-device")
-        |> render_change(@default_dns_servers_change)
+        |> render_change(@default_dns_change)
 
       assert test_view =~ """
-             <input class="input" id="edit-device_dns_servers" name="device[dns_servers]" type="text"/>\
+             <input class="input" id="edit-device_dns" name="device[dns]" type="text"/>\
              """
     end
 
