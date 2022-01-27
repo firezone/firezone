@@ -28,10 +28,10 @@ defmodule FzHttp.Devices.Device do
     field :use_default_dns_servers, :boolean, read_after_writes: true, default: true
     field :use_default_endpoint, :boolean, read_after_writes: true, default: true
     field :use_default_mtu, :boolean, read_after_writes: true, default: true
-    field :use_default_persistent_keepalives, :boolean, read_after_writes: true, default: true
+    field :use_default_persistent_keepalive, :boolean, read_after_writes: true, default: true
     field :endpoint, :string
     field :mtu, :integer
-    field :persistent_keepalives, :integer
+    field :persistent_keepalive, :integer
     field :allowed_ips, :string
     field :dns_servers, :string
     field :private_key, FzHttp.Encrypted.Binary
@@ -73,12 +73,12 @@ defmodule FzHttp.Devices.Device do
       :use_default_dns_servers,
       :use_default_endpoint,
       :use_default_mtu,
-      :use_default_persistent_keepalives,
+      :use_default_persistent_keepalive,
       :allowed_ips,
       :dns_servers,
       :endpoint,
       :mtu,
-      :persistent_keepalives,
+      :persistent_keepalive,
       :remote_ip,
       :ipv4,
       :ipv6,
@@ -106,20 +106,20 @@ defmodule FzHttp.Devices.Device do
       :dns_servers,
       :endpoint,
       :mtu,
-      :persistent_keepalives
+      :persistent_keepalive
     ])
     |> validate_omitted_if_default([
       :allowed_ips,
       :dns_servers,
       :endpoint,
-      :persistent_keepalives,
+      :persistent_keepalive,
       :mtu
     ])
     |> validate_list_of_ips_or_cidrs(:allowed_ips)
     |> validate_list_of_ips(:dns_servers)
     |> validate_no_duplicates(:dns_servers)
     |> validate_fqdn_or_ip(:endpoint)
-    |> validate_number(:persistent_keepalives,
+    |> validate_number(:persistent_keepalive,
       greater_than_or_equal_to: 0,
       less_than_or_equal_to: 120
     )

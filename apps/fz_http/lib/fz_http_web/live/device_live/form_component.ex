@@ -23,8 +23,8 @@ defmodule FzHttpWeb.DeviceLive.FormComponent do
      |> assign(:default_device_endpoint, default_device_endpoint)
      |> assign(:default_device_mtu, default_device_mtu)
      |> assign(
-       :default_device_persistent_keepalives,
-       Settings.default_device_persistent_keepalives()
+       :default_device_persistent_keepalive,
+       Settings.default_device_persistent_keepalive()
      )
      |> assign(:changeset, changeset)}
   end

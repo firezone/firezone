@@ -22,7 +22,7 @@ defmodule FzHttpWeb.SettingLive.Default do
       IPv4 or IPv6 address that devices will be configured to connect
       to. Defaults to this server's public IP if not set.
     """,
-    persistent_keepalives: """
+    persistent_keepalive: """
       Interval in seconds to send persistent keepalive packets. Most users won't need to change
       this. Set to 0 or leave blank to disable. Leave this blank if you're unsure what this means.
     """,
@@ -47,6 +47,18 @@ defmodule FzHttpWeb.SettingLive.Default do
     Application.fetch_env!(:fz_http, :wireguard_mtu)
   end
 
+  defp dns_placeholder do
+    Application.fetch_env!(:fz_http, :wireguard_dns)
+  end
+
+  defp allowed_ips_placeholder do
+    Application.fetch_env!(:fz_http, :wireguard_allowed_ips)
+  end
+
+  defp persistent_keepalive_placeholder do
+    Application.fetch_env!(:fz_http, :wireguard_persistent_keepalive)
+  end
+
   defp load_changesets do
     Settings.to_list("default.")
     |> Map.new(fn setting -> {setting.key, Settings.change_setting(setting)} end)
@@ -61,6 +73,9 @@ defmodule FzHttpWeb.SettingLive.Default do
       |> assign(:help_texts, @help_texts)
       |> assign(:endpoint_placeholder, endpoint_placeholder())
       |> assign(:mtu_placeholder, mtu_placeholder())
+      |> assign(:dns_placeholder, dns_placeholder())
+      |> assign(:allowed_ips_placeholder, allowed_ips_placeholder())
+      |> assign(:persistent_keepalive_placeholder, persistent_keepalive_placeholder())
       |> assign(:page_title, "Default Settings")
     else
       not_authorized(socket)

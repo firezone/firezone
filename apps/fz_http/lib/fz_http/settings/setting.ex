@@ -23,7 +23,7 @@ defmodule FzHttp.Settings.Setting do
     ]
 
   @mtu_range 576..1500
-  @persistent_keepalives_range 0..120
+  @persistent_keepalive_range 0..120
 
   schema "settings" do
     field :key, :string
@@ -69,8 +69,8 @@ defmodule FzHttp.Settings.Setting do
     validate_range(changeset, @mtu_range)
   end
 
-  defp validate_kv_pair(changeset, "default.device.persistent_keepalives") do
-    validate_range(changeset, @persistent_keepalives_range)
+  defp validate_kv_pair(changeset, "default.device.persistent_keepalive") do
+    validate_range(changeset, @persistent_keepalive_range)
   end
 
   defp validate_kv_pair(changeset, "security.require_auth_for_vpn_frequency") do

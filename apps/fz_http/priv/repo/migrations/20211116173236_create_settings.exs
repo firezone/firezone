@@ -17,8 +17,8 @@ defmodule FzHttp.Repo.Migrations.CreateSettings do
 
     execute """
     INSERT INTO settings (key, value, inserted_at, updated_at) VALUES \
-    ('default.device.dns_servers', '1.1.1.1, 1.0.0.1', '#{now}', '#{now}'),
-    ('default.device.allowed_ips', '0.0.0.0/0, ::/0', '#{now}', '#{now}'),
+    ('default.device.dns_servers', null, '#{now}', '#{now}'),
+    ('default.device.allowed_ips', null, '#{now}', '#{now}'),
     ('default.device.endpoint', null, '#{now}', '#{now}')
     """
   end

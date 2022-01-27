@@ -214,6 +214,19 @@ default['firezone']['wireguard']['port'] = 51820
 # WireGuard interface MTU
 default['firezone']['wireguard']['mtu'] = 1420
 
+# Default AllowedIPs to use for generated device configs. Default is to
+# route all traffic through the tunnel: '0.0.0.0/0, ::/0'
+default['firezone']['wireguard']['allowed_ips'] = '0.0.0.0/0, ::/0'
+
+# Default DNS servers to use for generated device configs. Default is
+# CloudFlare DNS, '1.1.1.1, 1.0.0.1'
+default['firezone']['wireguard']['dns'] = '1.1.1.1, 1.0.0.1'
+
+# Default PersistentKeepalive setting to use for generated device configs.
+# See https://www.wireguard.com/quickstart/#nat-and-firewall-traversal-persistence
+# Default is 0 which disables PersistentKeepalive.
+default['firezone']['wireguard']['persistent_keepalive'] = 0
+
 # Enable or disable IPv4 connectivity in your WireGuard network. Default enabled.
 default['firezone']['wireguard']['ipv4']['enabled'] = true
 

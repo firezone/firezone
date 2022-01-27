@@ -63,8 +63,8 @@ defmodule FzVpn.CLI.Live do
     show("latest-handshakes")
   end
 
-  def show_persistent_keepalives do
-    show("persistent-keepalives")
+  def show_persistent_keepalive do
+    show("persistent-keepalive")
   end
 
   def show_transfer do

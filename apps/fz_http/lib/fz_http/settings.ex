@@ -15,7 +15,7 @@ defmodule FzHttp.Settings do
     default.device.dns_servers
     default.device.endpoint
     default.device.mtu
-    default.device.persistent_keepalives
+    default.device.persistent_keepalive
     security.require_auth_for_vpn_frequency
   ))
 
