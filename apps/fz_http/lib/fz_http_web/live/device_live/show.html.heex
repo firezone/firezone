@@ -60,7 +60,7 @@
 
       <tr>
         <td><strong>DNS Servers</strong></td>
-        <td><%= @dns_servers || "None" %></td>
+        <td><%= @dns || "None" %></td>
       </tr>
 
       <tr>
@@ -69,12 +69,12 @@
       </tr>
 
       <tr>
-        <td><strong>Persistent Keepalives</strong></td>
+        <td><strong>Persistent Keepalive</strong></td>
         <td>
-          <%= if @persistent_keepalives == 0 do %>
+          <%= if @persistent_keepalive == 0 do %>
             Disabled
           <% else %>
-            Every <%= @persistent_keepalives %> seconds
+            Every <%= @persistent_keepalive %> seconds
           <% end %>
         </td>
       </tr>

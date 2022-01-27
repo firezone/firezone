@@ -40,8 +40,8 @@ defmodule FzVpn.CLI.SandboxTest do
     assert cli().show_latest_handshakes() == "4 seconds ago"
   end
 
-  test "show_persistent_keepalives" do
-    assert cli().show_persistent_keepalives() == "every 25 seconds"
+  test "show_persistent_keepalive" do
+    assert cli().show_persistent_keepalive() == "every 25 seconds"
   end
 
   test "show_transfer" do

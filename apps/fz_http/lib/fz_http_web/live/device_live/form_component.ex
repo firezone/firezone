@@ -19,12 +19,12 @@ defmodule FzHttpWeb.DeviceLive.FormComponent do
      |> assign(assigns)
      |> assign(Devices.defaults(changeset))
      |> assign(:default_device_allowed_ips, Settings.default_device_allowed_ips())
-     |> assign(:default_device_dns_servers, Settings.default_device_dns_servers())
+     |> assign(:default_device_dns, Settings.default_device_dns())
      |> assign(:default_device_endpoint, default_device_endpoint)
      |> assign(:default_device_mtu, default_device_mtu)
      |> assign(
-       :default_device_persistent_keepalives,
-       Settings.default_device_persistent_keepalives()
+       :default_device_persistent_keepalive,
+       Settings.default_device_persistent_keepalive()
      )
      |> assign(:changeset, changeset)}
   end
