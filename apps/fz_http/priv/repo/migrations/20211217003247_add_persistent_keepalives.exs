@@ -11,7 +11,7 @@ defmodule FzHttp.Repo.Migrations.AddPersistentKeepalives do
 
     execute """
     INSERT INTO settings (key, value, inserted_at, updated_at) VALUES \
-    ('default.device.persistent_keepalives', 0, '#{now}', '#{now}')
+    ('default.device.persistent_keepalives', null, '#{now}', '#{now}')
     """
   end
 end

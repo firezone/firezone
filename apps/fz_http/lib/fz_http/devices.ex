@@ -138,7 +138,8 @@ defmodule FzHttp.Devices do
 
   def allowed_ips(device) do
     if device.use_default_allowed_ips do
-      Settings.default_device_allowed_ips()
+      Settings.default_device_allowed_ips() ||
+        Application.fetch_env!(:fz_http, :wireguard_allowed_ips)
     else
       device.allowed_ips
     end
@@ -146,7 +147,7 @@ defmodule FzHttp.Devices do
 
   def dns_servers(device) do
     if device.use_default_dns_servers do
-      Settings.default_device_dns_servers()
+      Settings.default_device_dns_servers() || Application.fetch_env!(:fz_http, :wireguard_dns)
     else
       device.dns_servers
     end
@@ -172,11 +173,12 @@ defmodule FzHttp.Devices do
     end
   end
 
-  def persistent_keepalives(device) do
-    if device.use_default_persistent_keepalives do
-      Settings.default_device_persistent_keepalives()
+  def persistent_keepalive(device) do
+    if device.use_default_persistent_keepalive do
+      Settings.default_device_persistent_keepalive() ||
+        Application.fetch_env!(:fz_http, :persistent_keepalive)
     else
-      device.persistent_keepalives
+      device.persistent_keepalive
     end
   end
 
@@ -186,7 +188,7 @@ defmodule FzHttp.Devices do
       use_default_dns_servers
       use_default_endpoint
       use_default_mtu
-      use_default_persistent_keepalives
+      use_default_persistent_keepalive
     )a
     |> Enum.map(fn field -> {field, Device.field(changeset, field)} end)
     |> Map.new()
@@ -206,7 +208,7 @@ defmodule FzHttp.Devices do
     PublicKey = #{device.server_public_key}
     AllowedIPs = #{allowed_ips(device)}
     Endpoint = #{endpoint(device)}:#{wireguard_port}
-    #{persistent_keepalives_config(device)}
+    #{persistent_keepalive_config(device)}
     """
   end
 
@@ -231,8 +233,8 @@ defmodule FzHttp.Devices do
     end
   end
 
-  defp persistent_keepalives_config(device) do
-    pk = persistent_keepalives(device)
+  defp persistent_keepalive_config(device) do
+    pk = persistent_keepalive(device)
 
     if is_nil(pk) do
       ""

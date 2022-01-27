@@ -38,11 +38,11 @@
 
     <%= live_component(
         FzHttpWeb.SettingLive.DefaultFormComponent,
-        label_text: "Persistent Keepalives",
+        label_text: "Persistent Keepalive",
         placeholder: "0",
-        changeset: @changesets["default.device.persistent_keepalives"],
-        help_text: @help_texts.persistent_keepalives,
-        id: :persistent_keepalives_form_component) %>
+        changeset: @changesets["default.device.persistent_keepalive"],
+        help_text: @help_texts.persistent_keepalive,
+        id: :persistent_keepalive_form_component) %>
 
     <%= live_component(
         FzHttpWeb.SettingLive.DefaultFormComponent,

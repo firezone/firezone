@@ -40,7 +40,7 @@ defmodule FzHttpWeb.SettingLive.DefaultTest do
              """
 
       assert html =~ """
-             id="persistent_keepalives_form_component"\
+             id="persistent_keepalive_form_component"\
              """
     end
 

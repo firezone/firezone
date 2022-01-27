@@ -20,14 +20,14 @@ defmodule FzHttp.SettingsTest do
         "default.device.dns_servers" => "8.8.8.8",
         "default.device.allowed_ips" => "::/0",
         "default.device.endpoint" => "172.10.10.10",
-        "default.device.persistent_keepalives" => "20",
+        "default.device.persistent_keepalive" => "20",
         "default.device.mtu" => "1280"
       },
       %{
         "default.device.dns_servers" => "8.8.8.8",
         "default.device.allowed_ips" => "::/0",
         "default.device.endpoint" => "foobar.example.com",
-        "default.device.persistent_keepalives" => "15",
+        "default.device.persistent_keepalive" => "15",
         "default.device.mtu" => "1420"
       }
     ]
@@ -35,7 +35,7 @@ defmodule FzHttp.SettingsTest do
       "default.device.dns_servers" => "foobar",
       "default.device.allowed_ips" => nil,
       "default.device.endpoint" => "foobar",
-      "default.device.persistent_keepalives" => "-120",
+      "default.device.persistent_keepalive" => "-120",
       "default.device.mtu" => "1501"
     }
 
