@@ -11,6 +11,9 @@ else
     username: "postgres",
     password: "postgres",
     database: "firezone_dev",
+    ssl: false,
+    ssl_opts: [],
+    parameters: [],
     hostname: "localhost",
     show_sensitive_data_on_connection_error: true,
     pool_size: 10
