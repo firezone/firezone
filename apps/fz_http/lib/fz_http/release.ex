@@ -58,6 +58,10 @@ defmodule FzHttp.Release do
 
   defp load_app do
     Application.load(@app)
+
+    # Fixes ssl startup when connecting to SSL DBs.
+    # See https://elixirforum.com/t/ssl-connection-cannot-be-established-using-elixir-releases/25444/5
+    Application.ensure_all_started(:ssl)
   end
 
   defp default_password do

@@ -155,13 +155,15 @@ default['firezone']['postgresql']['data_directory'] = "#{node['firezone']['var_d
 # default['firezone']['database']['name'] = 'my_db_name''
 # default['firezone']['database']['host'] = 'my.db.server.address'
 # default['firezone']['database']['port'] = 5432
+#
+# Further database configuration options can be found below
 
 # ### Logs
 default['firezone']['postgresql']['log_directory'] = "#{node['firezone']['log_directory']}/postgresql"
 default['firezone']['postgresql']['log_rotation']['file_maxbytes'] = 104857600
 default['firezone']['postgresql']['log_rotation']['num_to_keep'] = 10
 
-# ### DB settings
+# ### Postgres Settings
 default['firezone']['postgresql']['checkpoint_completion_target'] = 0.5
 default['firezone']['postgresql']['checkpoint_segments'] = 3
 default['firezone']['postgresql']['checkpoint_timeout'] = '5min'
@@ -176,12 +178,17 @@ default['firezone']['postgresql']['shmmax'] = 17179869184
 default['firezone']['postgresql']['shmall'] = 4194304
 default['firezone']['postgresql']['work_mem'] = '8MB'
 
-# ## Database
-
+# ## Common Database Settings
+#
+# The settings below configure how Firezone connects to and uses your database.
+# At this time only Postgres (and Postgres-compatible) databases are supported.
 default['firezone']['database']['user'] = node['firezone']['postgresql']['username']
 default['firezone']['database']['name'] = 'firezone'
 default['firezone']['database']['host'] = node['firezone']['postgresql']['listen_address']
 default['firezone']['database']['port'] = node['firezone']['postgresql']['port']
+default['firezone']['database']['ssl'] = false
+default['firezone']['database']['ssl_opts'] = {}
+default['firezone']['database']['parameters'] = {}
 default['firezone']['database']['pool'] = [10, Etc.nprocessors].max
 default['firezone']['database']['extensions'] = { 'plpgsql' => true, 'pg_trgm' => true }
 
