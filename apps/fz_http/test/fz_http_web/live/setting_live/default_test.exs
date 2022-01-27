@@ -7,7 +7,7 @@ defmodule FzHttpWeb.SettingLive.DefaultTest do
     @valid_allowed_ips %{
       "setting" => %{"value" => "1.1.1.1"}
     }
-    @valid_dns_servers %{
+    @valid_dns %{
       "setting" => %{"value" => "1.1.1.1"}
     }
     @valid_endpoint %{
@@ -17,7 +17,7 @@ defmodule FzHttpWeb.SettingLive.DefaultTest do
     @invalid_allowed_ips %{
       "setting" => %{"value" => "foobar"}
     }
-    @invalid_dns_servers %{
+    @invalid_dns %{
       "setting" => %{"value" => "foobar"}
     }
     @invalid_endpoint %{
@@ -32,8 +32,12 @@ defmodule FzHttpWeb.SettingLive.DefaultTest do
     end
 
     test "renders current settings", %{html: html} do
-      assert html =~ Settings.default_device_allowed_ips()
-      assert html =~ Settings.default_device_dns_servers()
+      assert html =~
+               (Settings.default_device_allowed_ips() ||
+                  Application.fetch_env!(:fz_http, :wireguard_allowed_ips))
+
+      assert html =~
+               (Settings.default_device_dns() || Application.fetch_env!(:fz_http, :wireguard_dns))
 
       assert html =~ """
              id="endpoint_form_component"\
@@ -61,11 +65,11 @@ defmodule FzHttpWeb.SettingLive.DefaultTest do
              """
     end
 
-    test "shows Save button after dns_servers form is changed", %{view: view} do
+    test "shows Save button after dns form is changed", %{view: view} do
       test_view =
         view
-        |> element("#dns_servers_form_component")
-        |> render_change(@valid_dns_servers)
+        |> element("#dns_form_component")
+        |> render_change(@valid_dns)
 
       assert test_view =~ """
              <button class="button is-primary" type="submit">Save</button>\
@@ -92,20 +96,20 @@ defmodule FzHttpWeb.SettingLive.DefaultTest do
       refute test_view =~ "is invalid"
 
       assert test_view =~ """
-             <input class="input is-success" id="allowed_ips_form_component_value" name="setting[value]" type="text" value="1.1.1.1"/>\
+             <input class="input is-success" id="allowed_ips_form_component_value" name="setting[value]" placeholder="0.0.0.0/0, ::/0" type="text" value="1.1.1.1"/>\
              """
     end
 
-    test "updates default dns_servers", %{view: view} do
+    test "updates default dns", %{view: view} do
       test_view =
         view
-        |> element("#dns_servers_form_component")
-        |> render_submit(@valid_dns_servers)
+        |> element("#dns_form_component")
+        |> render_submit(@valid_dns)
 
       refute test_view =~ "is invalid"
 
       assert test_view =~ """
-             <input class="input is-success" id="dns_servers_form_component_value" name="setting[value]" type="text" value="1.1.1.1"/>\
+             <input class="input is-success" id="dns_form_component_value" name="setting[value]" placeholder="1.1.1.1, 1.0.0.1" type="text" value="1.1.1.1"/>\
              """
     end
 
@@ -135,16 +139,16 @@ defmodule FzHttpWeb.SettingLive.DefaultTest do
              """
     end
 
-    test "prevents invalid dns_servers", %{view: view} do
+    test "prevents invalid dns", %{view: view} do
       test_view =
         view
-        |> element("#dns_servers_form_component")
-        |> render_submit(@invalid_dns_servers)
+        |> element("#dns_form_component")
+        |> render_submit(@invalid_dns)
 
       assert test_view =~ "is invalid"
 
       refute test_view =~ """
-             <input id="dns_servers_form_component" class="input is-success"\
+             <input id="dns_form_component" class="input is-success"\
              """
     end
 

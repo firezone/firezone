@@ -25,7 +25,7 @@ defmodule FzHttp.Devices.Device do
     field :name, :string
     field :public_key, :string
     field :use_default_allowed_ips, :boolean, read_after_writes: true, default: true
-    field :use_default_dns_servers, :boolean, read_after_writes: true, default: true
+    field :use_default_dns, :boolean, read_after_writes: true, default: true
     field :use_default_endpoint, :boolean, read_after_writes: true, default: true
     field :use_default_mtu, :boolean, read_after_writes: true, default: true
     field :use_default_persistent_keepalive, :boolean, read_after_writes: true, default: true
@@ -33,7 +33,7 @@ defmodule FzHttp.Devices.Device do
     field :mtu, :integer
     field :persistent_keepalive, :integer
     field :allowed_ips, :string
-    field :dns_servers, :string
+    field :dns, :string
     field :private_key, FzHttp.Encrypted.Binary
     field :server_public_key, :string
     field :remote_ip, EctoNetwork.INET
@@ -70,12 +70,12 @@ defmodule FzHttp.Devices.Device do
     device
     |> cast(attrs, [
       :use_default_allowed_ips,
-      :use_default_dns_servers,
+      :use_default_dns,
       :use_default_endpoint,
       :use_default_mtu,
       :use_default_persistent_keepalive,
       :allowed_ips,
-      :dns_servers,
+      :dns,
       :endpoint,
       :mtu,
       :persistent_keepalive,
@@ -103,21 +103,21 @@ defmodule FzHttp.Devices.Device do
     ])
     |> validate_required_unless_default([
       :allowed_ips,
-      :dns_servers,
+      :dns,
       :endpoint,
       :mtu,
       :persistent_keepalive
     ])
     |> validate_omitted_if_default([
       :allowed_ips,
-      :dns_servers,
+      :dns,
       :endpoint,
       :persistent_keepalive,
       :mtu
     ])
     |> validate_list_of_ips_or_cidrs(:allowed_ips)
-    |> validate_list_of_ips(:dns_servers)
-    |> validate_no_duplicates(:dns_servers)
+    |> validate_list_of_ips(:dns)
+    |> validate_no_duplicates(:dns)
     |> validate_fqdn_or_ip(:endpoint)
     |> validate_number(:persistent_keepalive,
       greater_than_or_equal_to: 0,

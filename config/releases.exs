@@ -31,6 +31,7 @@ wireguard_ipv6_enabled = FzString.to_boolean(System.fetch_env!("WIREGUARD_IPV6_E
 wireguard_ipv6_network = System.fetch_env!("WIREGUARD_IPV6_NETWORK")
 wireguard_ipv6_address = System.fetch_env!("WIREGUARD_IPV6_ADDRESS")
 wireguard_mtu = System.fetch_env!("WIREGUARD_MTU")
+wireguard_endpoint = System.fetch_env!("WIREGUARD_ENDPOINT")
 telemetry_enabled = FzString.to_boolean(System.fetch_env!("TELEMETRY_ENABLED"))
 
 telemetry_module =

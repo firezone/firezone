@@ -43,6 +43,7 @@ config :posthog,
 
 config :fz_http,
   url_host: "firezone.dev",
+  wireguard_endpoint: nil,
   wireguard_dns: "1.1.1.1, 1.0.0.1",
   wireguard_allowed_ips: "0.0.0.0/0, ::/0",
   wireguard_persistent_keepalive: 0,

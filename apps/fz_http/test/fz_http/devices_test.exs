@@ -110,17 +110,17 @@ defmodule FzHttp.DevicesTest do
       use_default_allowed_ips: false
     }
 
-    @valid_dns_servers_attrs %{
-      use_default_dns_servers: false,
-      dns_servers: "1.1.1.1, 1.0.0.1, 2606:4700:4700::1111, 2606:4700:4700::1001"
+    @valid_dns_attrs %{
+      use_default_dns: false,
+      dns: "1.1.1.1, 1.0.0.1, 2606:4700:4700::1111, 2606:4700:4700::1001"
     }
 
-    @invalid_dns_servers_attrs %{
-      dns_servers: "8.8.8.8, 1.1.1, 1.0.0, 1.1.1."
+    @invalid_dns_attrs %{
+      dns: "8.8.8.8, 1.1.1, 1.0.0, 1.1.1."
     }
 
-    @duplicate_dns_servers_attrs %{
-      dns_servers: "8.8.8.8, 1.1.1.1, 1.1.1.1, ::1, ::1, ::1, ::1, ::1, 8.8.8.8"
+    @duplicate_dns_attrs %{
+      dns: "8.8.8.8, 1.1.1.1, 1.1.1.1, ::1, ::1, ::1, ::1, ::1, 8.8.8.8"
     }
 
     @valid_allowed_ips_attrs %{
@@ -167,9 +167,9 @@ defmodule FzHttp.DevicesTest do
       assert @attrs = test_device
     end
 
-    test "updates device with valid dns_servers", %{device: device} do
-      {:ok, test_device} = Devices.update_device(device, @valid_dns_servers_attrs)
-      assert @valid_dns_servers_attrs = test_device
+    test "updates device with valid dns", %{device: device} do
+      {:ok, test_device} = Devices.update_device(device, @valid_dns_attrs)
+      assert @valid_dns_attrs = test_device
     end
 
     test "updates device with valid ipv4 endpoint", %{device: device} do
@@ -214,19 +214,19 @@ defmodule FzHttp.DevicesTest do
              }
     end
 
-    test "prevents updating device with invalid dns_servers", %{device: device} do
-      {:error, changeset} = Devices.update_device(device, @invalid_dns_servers_attrs)
+    test "prevents updating device with invalid dns", %{device: device} do
+      {:error, changeset} = Devices.update_device(device, @invalid_dns_attrs)
 
-      assert changeset.errors[:dns_servers] == {
+      assert changeset.errors[:dns] == {
                "is invalid: 1.1.1 is not a valid IPv4 / IPv6 address",
                []
              }
     end
 
     test "prevents assigning duplicate DNS servers", %{device: device} do
-      {:error, changeset} = Devices.update_device(device, @duplicate_dns_servers_attrs)
+      {:error, changeset} = Devices.update_device(device, @duplicate_dns_attrs)
 
-      assert changeset.errors[:dns_servers] == {
+      assert changeset.errors[:dns] == {
                "is invalid: duplicate DNS servers are not allowed: 1.1.1.1, ::1, 8.8.8.8",
                []
              }

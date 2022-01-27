@@ -9,7 +9,7 @@ defmodule FzHttp.SettingsFixtures do
   @doc """
   Generate a setting.
   """
-  def setting_fixture(key \\ "default.device.dns_servers") do
+  def setting_fixture(key \\ "default.device.dns") do
     Settings.get_setting!(key: key)
   end
 end
