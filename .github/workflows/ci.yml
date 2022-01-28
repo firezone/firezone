@@ -133,6 +133,9 @@ jobs:
       # interrupted abruptly, leaving behind index.lock files.
       fail-fast: false
       matrix:
+        arch:
+          - x64
+          - arm64
         os:
           - amazonlinux2
           - centos7
@@ -169,7 +172,7 @@ jobs:
           .ci/functional_test.sh
       - uses: actions/upload-artifact@v2
         with:
-          name: firezone-${{ matrix.os }}-amd64
+          name: firezone-${{ matrix.os }}-${{ matrix.arch }}
           path: |
             omnibus/pkg/firezone*.deb
             omnibus/pkg/firezone*.rpm
@@ -184,6 +187,9 @@ jobs:
     runs-on: ubuntu-20.04
     strategy:
       matrix:
+        arch:
+          - x64
+          - arm64
         os:
           - amazonlinux2
           - debian10
@@ -201,15 +207,15 @@ jobs:
     steps:
       - uses: actions/download-artifact@v2
         with:
-          name: firezone-${{ matrix.os }}-amd64
+          name: firezone-${{ matrix.os }}-${{ matrix.arch }}
           path: ./
       - name: Get the version
         id: get_version
         run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
       - name: Rename artifact file
         run: |
-          mv ./firezone*.rpm firezone_${{ steps.get_version.outputs.VERSION }}-${{ matrix.os }}-amd64.rpm || true
-          mv ./firezone*.deb firezone_${{ steps.get_version.outputs.VERSION }}-${{ matrix.os }}-amd64.deb || true
+          mv ./firezone*.rpm firezone_${{ steps.get_version.outputs.VERSION }}-${{ matrix.os }}-${{ matrix.arch }}.rpm || true
+          mv ./firezone*.deb firezone_${{ steps.get_version.outputs.VERSION }}-${{ matrix.os }}-${{ matrix.arch }}.deb || true
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
