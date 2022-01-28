@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v2
       - uses: actions/setup-node@v2
         with:
-          node-version: '14.18.2'
+          node-version: '14.18.3'
       - name: Lint Docs
         run: |
           npm install -g markdownlint-cli
@@ -32,8 +32,8 @@ jobs:
       - uses: actions/checkout@v2
       - uses: erlef/setup-beam@v1
         with:
-          otp-version: '24.1'
-          elixir-version: '1.12.3'
+          otp-version: '24.2.1'
+          elixir-version: '1.13.2'
       - uses: actions/cache@v2
         with:
           path: |
@@ -95,11 +95,11 @@ jobs:
       - uses: actions/checkout@v2
       - uses: actions/setup-node@v2
         with:
-          node-version: '14.18.2'
+          node-version: '14.18.3'
       - uses: erlef/setup-beam@v1
         with:
-          otp-version: '24.2'
-          elixir-version: '1.13.1'
+          otp-version: '24.2.1'
+          elixir-version: '1.13.2'
       - uses: actions/cache@v2
         with:
           path: |
@@ -127,28 +127,37 @@ jobs:
       - static-analysis
       - unit-test
       - lint-docs
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.platform }}
     strategy:
       # Failing fast breaks the Omnibus build cache because the job is
       # interrupted abruptly, leaving behind index.lock files.
       fail-fast: false
       matrix:
-        arch:
-          - x64
-          - arm64
-        os:
-          - amazonlinux2
-          - centos7
-          - centos8
-          - centos9
-          - debian10
-          - debian11
-          - fedora33
-          - fedora34
-          - fedora35
-          - ubuntu1804
-          - ubuntu2004
-          - opensuse15
+        platform:
+          # ARM-based
+          - amazonlinux2-arm64
+          - centos8-arm64
+          - debian10-arm64
+          - debian11-arm64
+          - fedora33-arm64
+          - fedora34-arm64
+          - fedora35-arm64
+          - ubuntu1804-arm64
+          - ubuntu2004-arm64
+
+          # x64-based
+          - amazonlinux2-x64
+          - centos7-x64
+          - centos8-x64
+          - centos9-x64
+          - debian10-x64
+          - debian11-x64
+          - fedora33-x64
+          - fedora34-x64
+          - fedora35-x64
+          - ubuntu1804-x64
+          - ubuntu2004-x64
+          - opensuse15-x64
     steps:
       - uses: actions/checkout@v2
       - name: Build
@@ -172,7 +181,7 @@ jobs:
           .ci/functional_test.sh
       - uses: actions/upload-artifact@v2
         with:
-          name: firezone-${{ matrix.os }}-${{ matrix.arch }}
+          name: firezone-${{ matrix.platform }}
           path: |
             omnibus/pkg/firezone*.deb
             omnibus/pkg/firezone*.rpm
@@ -187,35 +196,44 @@ jobs:
     runs-on: ubuntu-20.04
     strategy:
       matrix:
-        arch:
-          - x64
-          - arm64
-        os:
-          - amazonlinux2
-          - debian10
-          - debian11
-          - ubuntu1804
-          - ubuntu2004
-          - centos7
-          - centos8
-          - centos9
-          - fedora33
-          - fedora34
-          - fedora35
-          - opensuse15
+        platform:
+          # ARM-based
+          - amazonlinux2-arm64
+          - centos8-arm64
+          - debian10-arm64
+          - debian11-arm64
+          - fedora33-arm64
+          - fedora34-arm64
+          - fedora35-arm64
+          - ubuntu1804-arm64
+          - ubuntu2004-arm64
+
+          # x64-based
+          - amazonlinux2-x64
+          - centos7-x64
+          - centos8-x64
+          - centos9-x64
+          - debian10-x64
+          - debian11-x64
+          - fedora33-x64
+          - fedora34-x64
+          - fedora35-x64
+          - ubuntu1804-x64
+          - ubuntu2004-x64
+          - opensuse15-x64
     if: startsWith(github.ref, 'refs/tags/')
     steps:
       - uses: actions/download-artifact@v2
         with:
-          name: firezone-${{ matrix.os }}-${{ matrix.arch }}
+          name: firezone-${{ matrix.platform }}
           path: ./
       - name: Get the version
         id: get_version
         run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
       - name: Rename artifact file
         run: |
-          mv ./firezone*.rpm firezone_${{ steps.get_version.outputs.VERSION }}-${{ matrix.os }}-${{ matrix.arch }}.rpm || true
-          mv ./firezone*.deb firezone_${{ steps.get_version.outputs.VERSION }}-${{ matrix.os }}-${{ matrix.arch }}.deb || true
+          mv ./firezone*.rpm firezone_${{ steps.get_version.outputs.VERSION }}-${{ matrix.platform }}.rpm || true
+          mv ./firezone*.deb firezone_${{ steps.get_version.outputs.VERSION }}-${{ matrix.platform }}.deb || true
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
