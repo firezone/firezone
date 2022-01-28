@@ -137,6 +137,7 @@ jobs:
           # ARM-based
           - amazonlinux2-arm64
           - centos8-arm64
+          - centos9-arm64
           - debian10-arm64
           - debian11-arm64
           - fedora33-arm64
@@ -200,6 +201,7 @@ jobs:
           # ARM-based
           - amazonlinux2-arm64
           - centos8-arm64
+          - centos9-arm64
           - debian10-arm64
           - debian11-arm64
           - fedora33-arm64
