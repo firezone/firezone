@@ -14,18 +14,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-name "gawk"
+name "readline"
 
-default_version "5.1.0"
+default_version "8.1"
 
-version("5.1.0") { source sha256: "03a0360edcd84bec156fe211bbc4fc8c78790973ce4e8b990a11d778d40b1a26" }
+version("8.1") { source sha256: "f8ceb4ee131e3232226a17f51b164afc46cd0b9e6cef344be87c65962cb82b02" }
 
-source url: "https://mirrors.kernel.org/gnu/gawk/gawk-#{version}.tar.gz"
+source url: "https://mirrors.kernel.org/gnu/readline/readline-#{version}.tar.gz"
 
-dependency "readline"
 dependency "config_guess"
 
-relative_path "gawk-#{version}"
+relative_path "readline-#{version}"
 
 build do
   env = with_standard_compiler_flags(with_embedded_path)
