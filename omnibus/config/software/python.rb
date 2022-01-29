@@ -34,6 +34,7 @@ dependency "zlib"
 dependency "openssl"
 dependency "ncurses"
 dependency "libffi"
+dependency "config_guess"
 
 relative_path "Python-#{version}"
 
@@ -42,6 +43,7 @@ build do
   patch source: 'disable_modules.patch', target: 'Modules/Setup'
   env = with_standard_compiler_flags(with_embedded_path)
 
+  update_config_guess
   command "./configure --prefix=#{install_dir}/embedded", env: env
   make "-j #{workers}", env: env
   make "-j #{workers} install", env: env
