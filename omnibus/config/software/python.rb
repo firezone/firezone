@@ -28,7 +28,7 @@ version("3.9.6") { source sha256: "d0a35182e19e416fc8eae25a3dcd4d02d4997333e4ad1
 version("3.9.7") { source sha256: "a838d3f9360d157040142b715db34f0218e535333696a5569dc6f854604eb9d1" }
 version("3.10.0") { source sha256: "c4e0cbad57c90690cb813fb4663ef670b4d0f587d8171e2c42bd4c9245bd2758" }
 
-dependency "libedit"
+dependency "readline"
 dependency "bzip2"
 dependency "zlib"
 dependency "openssl"

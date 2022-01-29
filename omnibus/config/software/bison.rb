@@ -17,7 +17,7 @@
 # expeditor/ignore: deprecated 2021-04
 name "bison"
 
-dependency "libedit"
+dependency "readline"
 dependency "config_guess"
 
 license "GPL-3.0"
