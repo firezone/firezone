@@ -1,6 +1,6 @@
 # These are used for the dev environment.
 # This should match the versions used in the built product.
-nodejs 14.18.2
-elixir 1.13.1-otp-24
-erlang 24.2
+nodejs 14.18.3
+elixir 1.13.2-otp-24
+erlang 24.2.1
 ruby 2.7.5

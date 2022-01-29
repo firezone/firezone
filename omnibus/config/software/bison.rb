@@ -16,6 +16,10 @@
 #
 # expeditor/ignore: deprecated 2021-04
 name "bison"
+
+dependency "readline"
+dependency "config_guess"
+
 license "GPL-3.0"
 license_file "COPYING"
 skip_transitive_dependency_licensing true
@@ -28,6 +32,8 @@ relative_path "bison-#{version}"
 
 build do
   env = with_standard_compiler_flags(with_embedded_path)
+
+  update_config_guess
 
   command "./configure --prefix=#{install_dir}/embedded", env: env
   make "-j #{workers}", env: env
