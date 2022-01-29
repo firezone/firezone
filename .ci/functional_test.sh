@@ -15,6 +15,9 @@ else
   exit 1
 fi
 
+# Fixes setcap not found on centos 7
+PATH=/usr/sbin/:$PATH
+
 sudo -E firezone-ctl reconfigure
 sudo -E firezone-ctl create-or-reset-admin
 
