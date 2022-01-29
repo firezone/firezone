@@ -16,6 +16,9 @@
 #
 # expeditor/ignore: deprecated 2021-04
 name "bison"
+
+dependency "libedit"
+
 license "GPL-3.0"
 license_file "COPYING"
 skip_transitive_dependency_licensing true
