@@ -30,7 +30,7 @@
 
 # Get Started
 
-Follow our installation guide at https://docs.firez.one/docs/deploy to install your self-hosted instance of Firezone. 
+Follow our installation guide at https://docs.firez.one/docs/deploy to install your self-hosted instance of Firezone.
 
 # Documentation
 
