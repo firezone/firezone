@@ -1,7 +1,12 @@
 repos:
-  # Elixir config
   - repo: local
     hooks:
+      - id: markdown-lint
+        name: "markdown: lint"
+        entry: markdownlint docs/
+        language: system
+        files: \.md$
+      # Elixir config
       - id: mix-format
         name: 'elixir: mix format'
         entry: mix format --check-formatted
