@@ -45,7 +45,8 @@ telemetry_module =
   end
 
 connectivity_checks_enabled =
-  FzString.to_boolean(System.fetch_env!("CONNECTIVITY_CHECKS_ENABLED"))
+  FzString.to_boolean(System.fetch_env!("CONNECTIVITY_CHECKS_ENABLED")) &&
+    System.get_env("CI") != "true"
 
 connectivity_checks_interval =
   System.fetch_env!("CONNECTIVITY_CHECKS_INTERVAL")
