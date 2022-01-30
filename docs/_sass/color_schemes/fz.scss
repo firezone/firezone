@@ -36,3 +36,12 @@ h1, h2, h3, h4, h5, h6 {
 // Borders
 
 $border-color: $fz-grey-lt-200;
+
+$content-width: 1100px;
+$media-queries: (
+  xs: 620px,
+  sm: 800px,
+  md: $content-width,
+  lg: $content-width + $nav-width,
+  xl: 1700px,
+);
