@@ -89,6 +89,10 @@ package for CentOS 8 should work just fine for RHEL 8. You'll still need to
 install the WireGuard kernel module, however. See [CentOS 8 Notes
 ](#centos-8-notes) above.
 
+### RHEL 9 Notes
+
+Use the package for CentOS 9.
+
 ### Ubuntu 18.04 Notes
 
 Kernel upgrade to 5.4+ required:
