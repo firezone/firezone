@@ -1,7 +1,7 @@
 repos:
-  # Elixir config
   - repo: local
     hooks:
+      # Elixir config
       - id: mix-format
         name: 'elixir: mix format'
         entry: mix format --check-formatted

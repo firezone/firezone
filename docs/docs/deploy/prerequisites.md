@@ -7,9 +7,7 @@ parent: Deploy
 ---
 
 Firezone requires the setup of a DNS record and matching SSL certificate for
-in production deployments.
-
-Not using Firezone in production? [
+production deployments. Not using Firezone in production? [
 Skip to install the server]({% link docs/deploy/server.md %}).
 
 ## Create a DNS record
