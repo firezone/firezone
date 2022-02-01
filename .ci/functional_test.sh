@@ -1,7 +1,7 @@
 #!/bin/bash
 set -ex
-
 # This script should be run from the app root
+
 # Disable telemetry
 sudo mkdir -p /opt/firezone/
 sudo touch /opt/firezone/.disable-telemetry
@@ -17,9 +17,11 @@ fi
 
 # Fixes setcap not found on centos 7
 PATH=/usr/sbin/:$PATH
-CI=true
 
 sudo -E firezone-ctl reconfigure
+sudo -E bash -c "echo \"default['firezone']['connectivity_checks']['enabled'] = false\" >> /etc/firezone/firezone.rb"
+sudo -E firezone-ctl reconfigure
+
 sudo -E firezone-ctl create-or-reset-admin
 
 # XXX: Add more commands here to test
