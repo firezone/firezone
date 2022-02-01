@@ -49,8 +49,10 @@ Firezone::Config.maybe_turn_on_fips(node)
 # necessary for some community cookbooks.
 node.consume_attributes('runit' => node['firezone']['runit'])
 
-# Add telemetry id
-node.consume_attributes('firezone' => { 'telemetry_id' => SecureRandom.uuid() })
+# Add telemetry id if it doesn't exist
+node.consume_attributes('firezone' => {
+  'telemetry_id' => node['firezone']['telemetry_id'] || SecureRandom.uuid()
+})
 
 user node['firezone']['user']
 
