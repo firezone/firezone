@@ -28,13 +28,11 @@ defmodule FzVpn.CLI.Sandbox do
   def genkey, do: {rand_key(), rand_key()}
   def pubkey(_privkey), do: rand_key()
 
-  def exec!(cmd) do
-    Logger.debug("`exec!` called with #{cmd}")
+  def exec!(_cmd) do
     @default_returned
   end
 
-  def set(conf_str) do
-    Logger.debug("`set` called with #{conf_str}")
+  def set(_conf_str) do
     @default_returned
   end
 
@@ -52,13 +50,11 @@ defmodule FzVpn.CLI.Sandbox do
     end)
   end
 
-  def delete_peer(pubkey) do
-    Logger.debug("`delete_peer` called with #{pubkey}")
+  def delete_peer(_pubkey) do
     @default_returned
   end
 
-  def set_peer(pubkey, allowed_ips) do
-    Logger.debug("`set_peer` called with #{pubkey}, #{allowed_ips}")
+  def set_peer(_pubkey, _allowed_ips) do
     @default_returned
   end
 

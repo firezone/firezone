@@ -3,22 +3,24 @@
 # Cookbook:: firezone
 # Recipe:: telemetry
 #
-# Copyright:: 2021, Firezone, All Rights Reserved.
+# Copyright:: 2022, Firezone, All Rights Reserved.
 
 # Configure telemetry app-wide.
 
 include_recipe 'firezone::config'
 
-telemetry_disable = "#{node['firezone']['install_directory']}/.disable-telemetry"
+disable_telemetry_path = "#{node['firezone']['install_directory']}/.disable-telemetry"
 
 if node['firezone']['telemetry']['enabled'] == false
-  file telemetry_disable do
-    mode '0755'
+  file 'disable_telemetry' do
+    path disable_telemetry_path
+    mode '0644'
     user node['firezone']['user']
     group node['firezone']['group']
   end
 else
-  file telemetry_disable do
+  file 'disable_telemetry' do
+    path disable_telemetry_path
     action :delete
   end
 end

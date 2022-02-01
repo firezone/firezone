@@ -3,77 +3,104 @@ defmodule FzHttp.Telemetry do
   Functions for various telemetry events.
   """
 
+  alias FzCommon.CLI
   alias FzHttp.Users
+
+  require Logger
 
   def add_device(device) do
     telemetry_module().capture(
       "add_device",
-      distinct_id: fqdn(),
-      device_uuid_hash: hash(device.uuid),
-      user_email_hash: hash(user_email(device.user_id)),
-      admin_email_hash: hash(admin_email())
+      common_fields() ++
+        [
+          device_uuid_hash: hash(device.uuid),
+          user_email_hash: hash(user_email(device.user_id)),
+          admin_email_hash: hash(admin_email())
+        ]
     )
   end
 
   def add_user(user) do
     telemetry_module().capture(
       "add_user",
-      distinct_id: fqdn(),
-      user_email_hash: hash(user.email),
-      admin_email_hash: hash(admin_email())
+      common_fields() ++
+        [
+          user_email_hash: hash(user.email),
+          admin_email_hash: hash(admin_email())
+        ]
     )
   end
 
   def add_rule(rule) do
     telemetry_module().capture(
       "add_rule",
-      distinct_id: fqdn(),
-      rule_uuid_hash: hash(rule.uuid),
-      admin_email_hash: hash(admin_email())
+      common_fields() ++
+        [
+          rule_uuid_hash: hash(rule.uuid),
+          admin_email_hash: hash(admin_email())
+        ]
     )
   end
 
   def delete_device(device) do
     telemetry_module().capture(
       "delete_device",
-      distinct_id: fqdn(),
-      device_uuid_hash: hash(device.uuid),
-      user_email_hash: hash(user_email(device.user_id)),
-      admin_email_hash: hash(admin_email())
+      common_fields() ++
+        [
+          device_uuid_hash: hash(device.uuid),
+          user_email_hash: hash(user_email(device.user_id)),
+          admin_email_hash: hash(admin_email())
+        ]
     )
   end
 
   def delete_user(user) do
     telemetry_module().capture(
       "delete_user",
-      distinct_id: fqdn(),
-      user_email_hash: hash(user.email),
-      admin_email_hash: hash(admin_email())
+      common_fields() ++
+        [
+          user_email_hash: hash(user.email),
+          admin_email_hash: hash(admin_email())
+        ]
     )
   end
 
   def delete_rule(rule) do
     telemetry_module().capture(
       "delete_rule",
-      distinct_id: fqdn(),
-      rule_uuid_hash: hash(rule.uuid),
-      admin_email_hash: hash(admin_email())
+      common_fields() ++
+        [
+          rule_uuid_hash: hash(rule.uuid),
+          admin_email_hash: hash(admin_email())
+        ]
     )
   end
 
   def login(user) do
     telemetry_module().capture(
       "login",
-      distinct_id: fqdn(),
-      user_email_hash: hash(user.email)
+      common_fields() ++
+        [
+          user_email_hash: hash(user.email)
+        ]
     )
   end
 
   def fz_http_started do
     telemetry_module().capture(
       "fz_http_started",
-      distinct_id: fqdn()
+      common_fields()
     )
+  end
+
+  defp common_fields do
+    [
+      distinct_id: distinct_id(),
+      fqdn: fqdn(),
+      version: version(),
+      kernel_version: "#{os_type()} #{os_version()}",
+      host_info: host_info()
+    ]
   end
 
   defp hash(str) do
@@ -94,5 +121,43 @@ defmodule FzHttp.Telemetry do
 
   defp fqdn do
     Application.fetch_env!(:fz_http, :url_host)
+  end
+
+  defp distinct_id do
+    Application.fetch_env!(:fz_http, :telemetry_id)
+  end
+
+  defp version do
+    Application.spec(:fz_http, :vsn) |> to_string()
+  end
+
+  defp os_type do
+    case :os.type() do
+      {:unix, type} ->
+        "#{type}"
+
+      _ ->
+        "other"
+    end
+  end
+
+  defp os_version do
+    case :os.version() do
+      {major, minor, patch} ->
+        "#{major}.#{minor}.#{patch}"
+
+      _ ->
+        "0.0.0"
+    end
+  end
+
+  defp host_info do
+    case CLI.bash("hostnamectl") do
+      {result, 0} ->
+        result
+
+      {error, _exit_code} ->
+        error
+    end
   end
 end

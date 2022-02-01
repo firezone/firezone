@@ -42,6 +42,7 @@ config :posthog,
   api_key: "phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK"
 
 config :fz_http,
+  telemetry_id: "543aae08-5a2b-428d-b704-2956dd3f5a57",
   url_host: "firezone.dev",
   wireguard_endpoint: nil,
   wireguard_dns: "1.1.1.1, 1.0.0.1",
