@@ -19,7 +19,7 @@ fi
 PATH=/usr/sbin/:$PATH
 
 sudo -E firezone-ctl reconfigure
-echo "default['firezone']['connectivity_checks']['enabled'] = false" >> /etc/firezone/firezone.rb
+sudo -E bash -c "echo \"default['firezone']['connectivity_checks']['enabled'] = false\" >> /etc/firezone/firezone.rb"
 sudo -E firezone-ctl reconfigure
 
 sudo -E firezone-ctl create-or-reset-admin
