@@ -23,8 +23,6 @@ defmodule FzHttpWeb.UserSocket do
   def connect(%{"token" => token}, socket, connect_info) do
     ip = get_ip_address(connect_info)
 
-    Logger.debug(connect_info)
-
     case Phoenix.Token.verify(socket, "user auth", token, max_age: 86_400) do
       {:ok, user_id} ->
         {:ok,

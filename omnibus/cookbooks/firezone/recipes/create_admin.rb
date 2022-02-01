@@ -35,7 +35,7 @@ log 'admin_created' do
 
     Use this to log into the Web UI.
 
-    Email: #{node['firezone']['admin_email']}
+    Email:    #{node['firezone']['admin_email']}
     Password: #{node['firezone']['default_admin_password']}
 
     =================================================================================
