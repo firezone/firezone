@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "securerandom"
+
 # Cookbook:: firezone
 # Recipe:: config
 #
@@ -23,6 +25,7 @@
 #
 # This creates the config_directory if it does not exist as well as the files
 # in it.
+
 Firezone::Config.load_or_create!(
   "#{node['firezone']['config_directory']}/firezone.rb",
   node
@@ -45,6 +48,9 @@ Firezone::Config.maybe_turn_on_fips(node)
 # Copy things we need from the firezone namespace to the top level. This is
 # necessary for some community cookbooks.
 node.consume_attributes('runit' => node['firezone']['runit'])
+
+# Add telemetry id
+node.consume_attributes('firezone' => { 'telemetry_id' => SecureRandom.uuid() })
 
 user node['firezone']['user']
 
