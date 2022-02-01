@@ -9,16 +9,18 @@
 
 include_recipe 'firezone::config'
 
-disable_telemetry = "#{node['firezone']['install_directory']}/.disable-telemetry"
+disable_telemetry_path = "#{node['firezone']['install_directory']}/.disable-telemetry"
 
 if node['firezone']['telemetry']['enabled'] == false
-  file disable_telemetry do
+  file 'disable_telemetry' do
+    path disable_telemetry_path
     mode '0644'
     user node['firezone']['user']
     group node['firezone']['group']
   end
 else
-  file disable_telemetry do
+  file 'disable_telemetry' do
+    path disable_telemetry_path
     action :delete
   end
 end
