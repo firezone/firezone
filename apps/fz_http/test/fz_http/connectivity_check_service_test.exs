@@ -46,6 +46,7 @@ defmodule FzHttp.ConnectivityCheckServiceTest do
 
     test ":perform", %{test_pid: test_pid} do
       Sandbox.allow(Repo, self(), test_pid)
+      send(test_pid, :perform)
       assert @expected_response == :sys.get_state(test_pid)
     end
   end

@@ -93,6 +93,13 @@ defmodule FzHttp.Telemetry do
     )
   end
 
+  def ping do
+    telemetry_module().capture(
+      "ping",
+      common_fields()
+    )
+  end
+
   defp common_fields do
     [
       distinct_id: distinct_id(),
@@ -111,7 +118,7 @@ defmodule FzHttp.Telemetry do
     Application.fetch_env!(:fz_http, :telemetry_module)
   end
 
-  def user_email(user_id) do
+  defp user_email(user_id) do
     Users.get_user!(user_id).email
   end
 
