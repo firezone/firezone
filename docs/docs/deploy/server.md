@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Install Server
-nav_order: 2
+nav_order: 4
 parent: Deploy
 ---
 ---

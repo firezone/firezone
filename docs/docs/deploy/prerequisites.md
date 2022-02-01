@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Prerequisites
-nav_order: 1
+nav_order: 3
 parent: Deploy
 ---
 ---

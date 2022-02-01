@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "securerandom"
+
 # Cookbook:: firezone
 # Recipe:: config
 #
@@ -23,6 +25,7 @@
 #
 # This creates the config_directory if it does not exist as well as the files
 # in it.
+
 Firezone::Config.load_or_create!(
   "#{node['firezone']['config_directory']}/firezone.rb",
   node
