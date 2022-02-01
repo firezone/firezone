@@ -4,6 +4,7 @@ title: Upgrade
 nav_order: 3
 parent: Administer
 ---
+---
 
 Upgrading Firezone will disconnect all VPN connections and require shutting
 down the Web UI. We recommend a maintenance window of about an hour in case
