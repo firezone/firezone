@@ -6,7 +6,7 @@ export LD_LIBRARY_PATH=<%= node['firezone']['install_directory'] %>/embedded/lib
 export DIR=<%= node['firezone']['app_directory'] %>
 export HOME=$DIR
 <%= "export OPENSSL_FIPS=1" if node['firezone']['fips_enabled'] == true %>
-<%= # Firezone::Config.environment_variables_from(Firezone::Config.app_env(node['firezone'], reject: ['default_admin_password'])) %>
+<%# Firezone::Config.environment_variables_from(Firezone::Config.app_env(node['firezone'], reject: ['default_admin_password'])) %>
 <%= Firezone::Config.locale_variables %>
 
 cd $DIR
