@@ -8,23 +8,23 @@ PROGNAME=`basename $0`
 
 capture () {
   if type curl > /dev/null; then
-    host=`hostname -f`
-    curl -s -XPOST \
-      -H 'Content-Type: application/json' \
-      -d "{
-        \"api_key\": \"phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK\",
-        \"event\": \"prerm\",
-        \"properties\": {
-          \"distinct_id\": \"$host\"
-        }
-      }" \
-      https://telemetry.firez.one/capture/ > /dev/null
+    if [ -e /opt/firezone/sv/phoenix/env/TELEMETRY_ID ]; then
+      telemetry_id=`cat /opt/firezone/sv/phoenix/env/TELEMETRY_ID`
+      curl -s -XPOST \
+        -H 'Content-Type: application/json' \
+        -d "{
+          \"api_key\": \"phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK\",
+          \"event\": \"prerm\",
+          \"properties\": {
+            \"distinct_id\": \"$telemetry_id\"
+          }
+        }" \
+        https://telemetry.firez.one/capture/ > /dev/null
+    fi
   fi
 }
-if [ -e /opt/firezone/.disable-telemetry ]; then
-  export TELEMETRY_ENABLED=false
-fi
-if [ "$TELEMETRY_ENABLED" != "false" ]; then
+
+if [ ! -e /opt/firezone/.disable-telemetry ]; then
   capture || true
 fi
 
