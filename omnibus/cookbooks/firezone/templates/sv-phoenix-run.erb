@@ -12,6 +12,7 @@ export HOME=$DIR
 cd $DIR
 
 exec <%= node['runit']['chpst_bin'] %> \
+  -e <%= node['firezone']['install_directory'] %>/sv/phoenix/env \
   -P \
   -U <%= node['firezone']['user'] %>:<%= node['firezone']['group'] %> \
   -u <%= node['firezone']['user'] %>:<%= node['firezone']['group'] %> \
