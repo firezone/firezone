@@ -1,5 +1,5 @@
 #!/bin/bash
-set -ex
+set -x
 # This script should be run from the app root
 
 # Disable telemetry
