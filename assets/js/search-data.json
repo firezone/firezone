@@ -127,7 +127,7 @@
   },"21": {
     "doc": "Uninstall",
     "title": "Uninstall",
-    "content": "To completely remove Firezone and its configuration files, run the uninstall.sh script: . sudo /bin/bash -c \"$(curl -fsSL https://github.com/firezone/firezone/raw/master/scripts/uninstall.sh)\" . Warning: This will irreversibly destroy ALL Firezone data and can’t be undone. ",
+    "content": ". To completely remove Firezone and its configuration files, run the uninstall.sh script: . sudo /bin/bash -c \"$(curl -fsSL https://github.com/firezone/firezone/raw/master/scripts/uninstall.sh)\" . Warning: This will irreversibly destroy ALL Firezone data and can’t be undone. ",
     "url": "https://docs.firez.one/docs/administer/uninstall/",
     "relUrl": "/docs/administer/uninstall/"
   },"22": {
@@ -139,7 +139,7 @@
   },"23": {
     "doc": "Upgrade",
     "title": "Upgrade",
-    "content": "Upgrading Firezone will disconnect all VPN connections and require shutting down the Web UI. We recommend a maintenance window of about an hour in case anything goes wrong during the upgrade. We’re actively working on making this process more automatic in the future, but for now, this is the procedure for upgrading your Firezone instance. To upgrade Firezone, follow these steps: . | Download the new release for your platform. | Install the new package over the old one: sudo dpkg -i firezone_X.X.X.deb or sudo rpm -i --force firezone_X.X.X.rpm depending on your distribution. | Run firezone-ctl reconfigure to pick up the new changes. | Run firezone-ctl restart to restart services. | . Occasionally problems arise. If you hit any, please let us know by filing an issue. ",
+    "content": ". Upgrading Firezone will disconnect all VPN connections and require shutting down the Web UI. We recommend a maintenance window of about an hour in case anything goes wrong during the upgrade. We’re actively working on making this process more automatic in the future, but for now, this is the procedure for upgrading your Firezone instance. To upgrade Firezone, follow these steps: . | Download the new release for your platform. | Install the new package over the old one: sudo dpkg -i firezone_X.X.X.deb or sudo rpm -i --force firezone_X.X.X.rpm depending on your distribution. | Run firezone-ctl reconfigure to pick up the new changes. | Run firezone-ctl restart to restart services. | . Occasionally problems arise. If you hit any, please let us know by filing an issue. ",
     "url": "https://docs.firez.one/docs/administer/upgrade/",
     "relUrl": "/docs/administer/upgrade/"
   }
