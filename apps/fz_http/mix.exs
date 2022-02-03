@@ -64,6 +64,8 @@ defmodule FzHttp.MixProject do
       {:phoenix_ecto, "~> 4.4"},
       {:ecto_sql, "~> 3.7"},
       {:ecto_network, "~> 1.3"},
+      {:hammer, "~> 6.0"},
+      {:hammer_plug, "~> 2.1"},
       {:inflex, "~> 2.1"},
       {:plug, "~> 1.12.1"},
       {:postgrex, "~> 0.15.10"},
