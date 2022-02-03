@@ -40,3 +40,10 @@ echo $page
 
 echo "Testing for sign in button"
 echo $page | grep '<button class="button" type="submit">Sign In</button>'
+
+echo "Testing rate limiter"
+for i in $(seq 1 50); do
+  curl -k https://localhost
+done
+
+curl --head -k -L https://localhost | grep 'HTTP/1.1 429'
