@@ -51,7 +51,7 @@ end
 
 if node['firezone']['phoenix']['enabled']
   component_runit_service 'phoenix' do
-    env Firezone::Config.app_env(node['firezone'])
+    runit_attributes(env: Firezone::Config.app_env(node['firezone']))
     package 'firezone'
     control ['t']
     action :enable
