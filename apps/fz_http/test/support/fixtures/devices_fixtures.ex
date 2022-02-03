@@ -7,6 +7,14 @@ defmodule FzHttp.DevicesFixtures do
   alias FzHttp.{Devices, UsersFixtures}
 
   @doc """
+  Generate a device with config token
+  """
+  def device_with_config_token(attrs \\ %{}) do
+    {:ok, device} = Devices.create_config_token(device(attrs))
+    device
+  end
+
+  @doc """
   Generate a device.
   """
   def device(attrs \\ %{}) do

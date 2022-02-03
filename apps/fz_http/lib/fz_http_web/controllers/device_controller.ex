@@ -7,8 +7,8 @@ defmodule FzHttpWeb.DeviceController do
   import FzCommon.FzString, only: [sanitize_filename: 1]
   alias FzHttp.Devices
 
-  plug :redirect_unauthenticated, except: [:config]
-  plug :authorize_authenticated, except: [:config]
+  plug :redirect_unauthenticated when action not in [:config, :download_shared_config]
+  plug :authorize_authenticated when action not in [:config, :download_shared_config]
 
   def download_config(conn, %{"id" => device_id}) do
     device = Devices.get_device!(device_id)
