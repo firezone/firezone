@@ -75,6 +75,9 @@ config :fz_wall,
   egress_interface: "dummy",
   wireguard_interface_name: "wg-firezone"
 
+config :hammer,
+  backend: {Hammer.Backend.ETS, [expiry_ms: 60_000 * 60 * 4, cleanup_interval_ms: 60_000 * 10]}
+
 # This will be changed per-env
 config :fz_vpn,
   wireguard_public_key: "cB2yQeCxHO/qCH8APoM2D2Anf4Yd7sRLyfS7su71K3M=",
