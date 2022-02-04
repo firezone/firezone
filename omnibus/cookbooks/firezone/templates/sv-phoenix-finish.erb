@@ -5,16 +5,18 @@ capture () {
   if type curl > /dev/null; then
     if [ -e /opt/firezone/sv/phoenix/env/TELEMETRY_ID ]; then
       telemetry_id=`cat /opt/firezone/sv/phoenix/env/TELEMETRY_ID`
-      curl -s -XPOST \
-        -H 'Content-Type: application/json' \
-        -d "{
-          \"api_key\": \"phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK\",
-          \"event\": \"fz_http_crash\",
-          \"properties\": {
-            \"distinct_id\": \"$telemetry_id\"
-          }
-        }" \
-        https://telemetry.firez.one/capture/ > /dev/null
+      if [ ! -z "$telemetry_id" ]; then
+        curl -s -XPOST \
+          -H 'Content-Type: application/json' \
+          -d "{
+            \"api_key\": \"phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK\",
+            \"event\": \"fz_http_crash\",
+            \"properties\": {
+              \"distinct_id\": \"$telemetry_id\"
+            }
+          }" \
+          https://telemetry.firez.one/capture/ > /dev/null
+      fi
     fi
   fi
 }
