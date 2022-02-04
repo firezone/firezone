@@ -255,11 +255,11 @@ class Firezone
         'WIREGUARD_IPV6_ADDRESS' => attributes['wireguard']['ipv6']['address'],
         # Allow env var to override config
         'TELEMETRY_ENABLED' => ENV.fetch('TELEMETRY_ENABLED', attributes['telemetry']['enabled'] == false ? "false" : "true"),
+        'TELEMETRY_ID' => attributes['telemetry_id'],
         'CONNECTIVITY_CHECKS_ENABLED' => attributes['connectivity_checks']['enabled'].to_s,
         'CONNECTIVITY_CHECKS_INTERVAL' => attributes['connectivity_checks']['interval'].to_s,
 
         # secrets
-        'TELEMETRY_ID' => attributes['telemetry_id'],
         'SECRET_KEY_BASE' => attributes['secret_key_base'],
         'LIVE_VIEW_SIGNING_SALT' => attributes['live_view_signing_salt'],
         'COOKIE_SIGNING_SALT' => attributes['cookie_signing_salt'],
