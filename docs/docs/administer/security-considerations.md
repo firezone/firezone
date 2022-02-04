@@ -4,13 +4,21 @@ title: Security Considerations
 nav_order: 6
 parent: Administer
 ---
-
 ---
 
-Firezone is still young software. For mission-critical applications, we
-recommend **limiting network access to the Web UI** (by default ports tcp/443
-and tcp/80) to prevent exposing it to the public Internet at this time.
+Shown below is a table of ports used by Firezone services.
 
-The WireGuard listen port (by default port udp/51820) can be safely exposed to
-allow user devices to connect. Traffic to this port is handled directly by the
-WireGuard kernel module.
+<!-- markdownlint-disable MD013 -->
+
+| Service | Default port | Listen address | Description |
+| Nginx | `80` `443` | `all` | Public HTTP(S) port for administering Firezone and facilitating authentication. |
+| WireGuard | `51820` | `all` | Public WireGuard port used for VPN connections. |
+| Postgresql | `15432` | `127.0.0.1` | Local-only port used for bundled Postgresql server |
+| Phoenix | `13000` | `127.0.0.1` | Local-only port used by upstream elixir app server. |
+
+<!-- markdownlint-enable MD013 -->
+
+## Reporting Security Issues
+
+To report any security-related bugs, see [our security reporting policy
+](https://github.com/firezone/firezone/blob/master/SECURITY.md).
