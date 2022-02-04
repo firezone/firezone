@@ -189,7 +189,6 @@ jobs:
 
   publish:
     needs:
-      - pre-commit
       - static-analysis
       - unit-test
       - lint-docs
