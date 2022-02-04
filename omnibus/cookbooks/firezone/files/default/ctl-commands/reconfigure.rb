@@ -6,13 +6,13 @@ require 'net/http'
 require 'json'
 
 def capture
-  fqdn = Mixlib::ShellOut.new("hostname -f").run_command.stdout
+  telemetry_id = File.read("/opt/firezone/sv/phoenix/env/TELEMETRY_ID")
   uri = URI("https://telemetry.firez.one/capture/")
   data = {
     api_key: "phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK",
     event: "firezone-ctl reconfigure",
     properties: {
-      distinct_id: fqdn
+      distinct_id: telemetry_id
     }
   }
 
