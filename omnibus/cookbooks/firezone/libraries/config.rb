@@ -67,13 +67,6 @@ class Firezone
       node.consume_attributes('firezone' => secrets)
     rescue Errno::ENOENT
       begin
-        telemetry_id = if node['firezone'] && node['firezone']['telemetry_id']
-                            Chef::Log.warn 'Using telemetry_id from firezone.json. This value should really be managed in secrets.json. Writing to secrets.json.'
-                            node['firezone']['telemetry_id']
-                          else
-                            Chef::Log.warn 'No telemetry_id set! Generating and writing one to secrets.json. If this Firezone installation has multiple hosts, you must duplicate the secrets.json file exactly across all hosts.'
-                            SecureRandom.uuid()
-                          end
         secret_key_base = if node['firezone'] && node['firezone']['secret_key_base']
                             Chef::Log.warn 'Using secret_key_base from firezone.json. This value should really be managed in secrets.json. Writing to secrets.json.'
                             node['firezone']['secret_key_base']
@@ -118,7 +111,6 @@ class Firezone
                           end
 
         secrets = {
-          'telemetry_id' => telemetry_id,
           'secret_key_base' => secret_key_base,
           'live_view_signing_salt' => live_view_signing_salt,
           'cookie_signing_salt' => cookie_signing_salt,
