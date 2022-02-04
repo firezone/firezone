@@ -5,6 +5,8 @@ require 'uri'
 require 'net/http'
 require 'json'
 
+telemetry_file = "/opt/firezone/sv/phoenix/env/TELEMETRY_ID"
+
 def capture
   if File.exist?(telemetry_file)
     telemetry_id = File.read(telemetry_file)
