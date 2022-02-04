@@ -10,13 +10,13 @@ Resets the password for admin with email specified by default['firezone']['admin
 DESC
 
 def capture
-  fqdn = Mixlib::ShellOut.new("hostname -f").run_command.stdout
+  telemetry_id = File.read("/opt/firezone/sv/phoenix/env/TELEMETRY_ID")
   uri = URI("https://telemetry.firez.one/capture/")
   data = {
     api_key: "phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK",
     event: "firezone-ctl create-or-reset-admin",
     properties: {
-      distinct_id: fqdn
+      distinct_id: telemetry_id
     }
   }
   unless File.exist?("#{base_path}/.disable-telemetry") || ENV["TELEMETRY_ENABLED"] == "false"
