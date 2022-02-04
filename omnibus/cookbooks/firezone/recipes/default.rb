@@ -5,6 +5,7 @@
 #
 # Copyright:: 2021, Firezone, All Rights Reserved.
 
+include_recipe "firezone::telemetry"
 include_recipe "firezone::config"
 include_recipe "firezone::setcap"
 include_recipe "firezone::log_management"
