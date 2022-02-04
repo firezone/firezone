@@ -9,9 +9,8 @@ desc = <<~DESC
 Resets the password for admin with email specified by default['firezone']['admin_email'] or creates a new admin if that email doesn't exist.
 DESC
 
-telemetry_file = "/opt/firezone/sv/phoenix/env/TELEMETRY_ID"
-
 def capture
+  telemetry_file = "/opt/firezone/sv/phoenix/env/TELEMETRY_ID"
   if File.exist?(telemetry_file)
     telemetry_id = File.read(telemetry_file)
     if telemetry_id
