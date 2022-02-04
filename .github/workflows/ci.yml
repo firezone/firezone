@@ -123,10 +123,6 @@ jobs:
   build-package-test:
     env:
       TELEMETRY_ENABLED: "false"
-    needs:
-      - static-analysis
-      - unit-test
-      - lint-docs
     runs-on: ${{ matrix.platform }}
     strategy:
       # Failing fast breaks the Omnibus build cache because the job is
@@ -193,7 +189,11 @@ jobs:
           rm -rf omnibus/pkg/*
 
   publish:
-    needs: build-package-test
+    needs:
+      - static-analysis
+      - unit-test
+      - lint-docs
+      - build-package-test
     runs-on: ubuntu-20.04
     strategy:
       matrix:
