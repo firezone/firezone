@@ -1,0 +1,42 @@
+#!/bin/sh
+exec 2>&1
+
+capture () {
+  if type curl > /dev/null; then
+    if [ -e /opt/firezone/sv/phoenix/env/TELEMETRY_ID ]; then
+      telemetry_id=`cat /opt/firezone/sv/phoenix/env/TELEMETRY_ID`
+      curl -s -XPOST \
+        -H 'Content-Type: application/json' \
+        -d "{
+          \"api_key\": \"phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK\",
+          \"event\": \"fz_http_crash\",
+          \"properties\": {
+            \"distinct_id\": \"$telemetry_id\"
+          }
+        }" \
+        https://telemetry.firez.one/capture/ > /dev/null
+    fi
+  fi
+}
+
+if [ $1 -eq "1" ]; then
+  if [ ! -e /opt/firezone/.disable-telemetry ]; then
+    capture || true
+  fi
+
+  if [ -e count ]; then
+    count=`cat count`
+    if [ $count -eq "5" ]; then
+      rm -f count
+      echo "Firezone detected a service crash loop. Taking service down. For support please email support@firez.one and include a copy of these crash logs."
+      echo 'd' > supervise/control
+    else
+      new_count=$((count+1))
+      echo $new_count > count
+    fi
+  else
+    echo '1' > count
+  fi
+else
+  rm -f count
+fi
