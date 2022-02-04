@@ -30,6 +30,7 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v2
+      - uses: actions/setup-python@v2
       - uses: erlef/setup-beam@v1
         with:
           otp-version: '24.2.1'
@@ -60,12 +61,10 @@ jobs:
       - name: Create PLTs
         if: steps.plt_cache.outputs.cache-hit != 'true'
         run: mix dialyzer --plt
-      - name: Run format check
-        run: mix format --check-formatted
-      - name: Run linter
-        run: mix credo --strict
-      - name: Run dialyzer
-        run: mix dialyzer --format dialyxir
+      - run: |
+          pre-commit install
+          pre-commit run --all-files
+
 
   unit-test:
     runs-on: ubuntu-18.04
