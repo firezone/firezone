@@ -39,7 +39,7 @@ Firezone::Config.load_or_create_secrets!(
   node
 )
 
-node.default['firezone']['telemetry_id'] ||= SecureRandom.uuid()
+node.default['firezone']['telemetry_id'] = SecureRandom.uuid()
 
 node.default['firezone']['wireguard_public_key'] =
   `echo '#{node['firezone']['wireguard_private_key']}' | #{node['firezone']['install_directory']}/embedded/bin/wg pubkey`.chomp
