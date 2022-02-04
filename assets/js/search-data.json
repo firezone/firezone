@@ -96,47 +96,53 @@
     "relUrl": "/docs/deploy/resource-requirements/"
   },"16": {
     "doc": "Security Considerations",
+    "title": "Reporting Security Issues",
+    "content": "To report any security-related bugs, see our security reporting policy . ",
+    "url": "https://docs.firez.one/docs/administer/security-considerations/#reporting-security-issues",
+    "relUrl": "/docs/administer/security-considerations/#reporting-security-issues"
+  },"17": {
+    "doc": "Security Considerations",
     "title": "Security Considerations",
-    "content": ". Firezone is still young software. For mission-critical applications, we recommend limiting network access to the Web UI (by default ports tcp/443 and tcp/80) to prevent exposing it to the public Internet at this time. The WireGuard listen port (by default port udp/51820) can be safely exposed to allow user devices to connect. Traffic to this port is handled directly by the WireGuard kernel module. ",
+    "content": ". Shown below is a table of ports used by Firezone services. | Service | Default port | Listen address | Description | . | Nginx | 80 443 | all | Public HTTP(S) port for administering Firezone and facilitating authentication. | . | WireGuard | 51820 | all | Public WireGuard port used for VPN connections. | . | Postgresql | 15432 | 127.0.0.1 | Local-only port used for bundled Postgresql server | . | Phoenix | 13000 | 127.0.0.1 | Local-only port used by upstream elixir app server. | . ",
     "url": "https://docs.firez.one/docs/administer/security-considerations/",
     "relUrl": "/docs/administer/security-considerations/"
-  },"17": {
+  },"18": {
     "doc": "Install Server",
     "title": "Installation Instructions",
     "content": "NOTE: Firezone modifies the kernel netfilter and routing tables. Other programs that modify the Linux routing table or netfilter firewall will likely interfere with Firezone’s operation. Assuming you’re running a supported Linux kernel on one of the distros listed above, follow these steps to install and configure Firezone for first use: . | Install WireGuard for your distro. If using Linux kernel 5.6 or higher, skip this step. | Download the relevant package for your distribution from the releases page. | Install with sudo rpm -i firezone*.rpm or sudo dpkg -i firezone*.deb depending on your distro. | Bootstrap the application with sudo firezone-ctl reconfigure. This will initialize config files, set up needed services and generate the default configuration. | Edit the default configuration located at /etc/firezone/firezone.rb. At a minimum, you’ll need to review the following configuration variables: . # Auto-generated based on the server's hostname. # Set this to the FQDN used to access the Web UI. default['firezone']['fqdn'] = 'firezone.example.com' # Specify the path to your SSL cert and private key. # If set to nil, a self-signed cert will be generated for you. default['firezone']['ssl']['certificate'] = '/path/to/cert.pem' default['firezone']['ssl']['certificate_key'] = '/path/to/key.pem' . | Reconfigure the application to pick up the new changes: sudo firezone-ctl reconfigure. | Finally, create an admin user with sudo firezone-ctl create-or-reset-admin. The login credentials will be printed to the console output. | Now you should be able to log into the web UI at the FQDN you specified in step 5 above, e.g. https://firezone.example.com | . Next, proceed to install WireGuard clients . ",
     "url": "https://docs.firez.one/docs/deploy/server/#installation-instructions",
     "relUrl": "/docs/deploy/server/#installation-instructions"
-  },"18": {
+  },"19": {
     "doc": "Install Server",
     "title": "Install Server",
     "content": ". Important: Ensure you’ve satisfied the prerequisites before following this guide. ",
     "url": "https://docs.firez.one/docs/deploy/server/",
     "relUrl": "/docs/deploy/server/"
-  },"19": {
+  },"20": {
     "doc": "Supported Platforms",
     "title": "Supported Platforms",
     "content": ". Firezone currently supports the following platforms: . | OS | Architectures | Status | Notes | . | AmazonLinux 2 | amd64 arm64 | Fully-supported | See AmazonLinux 2 Notes | . | CentOS 7 | amd64 | Fully-supported | See CentOS 7 Notes | . | CentOS 8 | amd64 arm64 | Fully-supported | See CentOS 8 Notes | . | CentOS Stream 9 | amd64 arm64 | Fully-supported | Works as-is | . | Red Hat Enterprise Linux 7 | amd64 | Fully-supported | See RHEL 7 Notes | . | Red Hat Enterprise Linux 8 | amd64 arm64 | Fully-supported | See RHEL 8 Notes | . | Red Hat Enterprise Linux 9 | amd64 arm64 | Fully-supported | See RHEL 9 Notes | . | Debian 10 | amd64 arm64 | Fully-supported | See Debian 10 Notes | . | Debian 11 | amd64 arm64 | Fully-supported | Works as-is | . | Fedora 33 | amd64 arm64 | Fully-supported | Works as-is | . | Fedora 34 | amd64 arm64 | Fully-supported | Works as-is | . | Fedora 35 | amd64 arm64 | Fully-supported | Works as-is | . | Ubuntu 18.04 | amd64 arm64 | Fully-supported | See Ubuntu 18.04 Notes | . | Ubuntu 20.04 | amd64 arm64 | Fully-supported | Works as-is | . | openSUSE Leap 15.3 | amd64 | Fully-supported | See openSUSE Notes | . If your distro isn’t listed here please try using a package for the closest distro first. For example, since Raspberry Pi OS is based on Debian, try using the Debian Firezone package. If that doesn’t work, please open an issue and let us know. New distros are being supported on a regular basis and there’s a good chance yours will be added soon. Note that we only support RPM and DEB based packaging systems. Others, like Arch Linux are currently being investigated in this issue. AmazonLinux 2 Notes . Kernel upgrade required: . sudo amazon-linux-extras install -y kernel-5.10 . CentOS 7 Notes . Kernel upgrade to 5.6+ required. To upgrade to the latest mainline kernel and select it as the default boot kernel: . sudo rpm --import https://www.elrepo.org/RPM-GPG-KEY-elrepo.org sudo yum install -y https://www.elrepo.org/elrepo-release-7.el7.elrepo.noarch.rpm sudo yum install -y elrepo-release sudo yum --enablerepo=elrepo-kernel install -y kernel-ml sudo grub2-set-default 0 sudo grub2-mkconfig -o /boot/grub2/grub.cfg sudo reboot . CentOS 8 Notes . The WireGuard kernel module needs to be installed: . yum install elrepo-release epel-release yum install kmod-wireguard . RHEL 7 Notes . Red Hat Enterprise Linux is binary compatible with CentOS, so the Firezone package for CentOS 7 should work just fine for RHEL 7. You’ll still need to upgrade your kernel to 5.6+ however. To do so, follow the steps for CentOS 7 Notes above. RHEL 8 Notes . Red Hat Enterprise Linux is binary compatible with CentOS, so the Firezone package for CentOS 8 should work just fine for RHEL 8. You’ll still need to install the WireGuard kernel module, however. See CentOS 8 Notes above. RHEL 9 Notes . Use the package for CentOS 9. Ubuntu 18.04 Notes . Kernel upgrade to 5.4+ required: . sudo apt install linux-image-generic-hwe-18.04 . Debian 10 Notes . Kernel upgrade to 5.6+ required. See this guide for an example. openSUSE Notes . Firezone requires the setcap utility, but some recent openSUSE releases may not have it installed by default. To fix, ensure libcap-progs is installed: . sudo zypper install libcap-progs . ",
     "url": "https://docs.firez.one/docs/deploy/supported-platforms/",
     "relUrl": "/docs/deploy/supported-platforms/"
-  },"20": {
+  },"21": {
     "doc": "Troubleshoot",
     "title": "Troubleshoot",
     "content": ". For any problems that arise, a good first bet is to check the Firezone logs. To view Firezone logs, run sudo firezone-ctl tail. ",
     "url": "https://docs.firez.one/docs/administer/troubleshoot/",
     "relUrl": "/docs/administer/troubleshoot/"
-  },"21": {
+  },"22": {
     "doc": "Uninstall",
     "title": "Uninstall",
     "content": ". To completely remove Firezone and its configuration files, run the uninstall.sh script: . sudo /bin/bash -c \"$(curl -fsSL https://github.com/firezone/firezone/raw/master/scripts/uninstall.sh)\" . Warning: This will irreversibly destroy ALL Firezone data and can’t be undone. ",
     "url": "https://docs.firez.one/docs/administer/uninstall/",
     "relUrl": "/docs/administer/uninstall/"
-  },"22": {
+  },"23": {
     "doc": "Upgrade",
     "title": "Upgrading from 0.1.x to 0.2.x",
     "content": "Firezone 0.2.x contains some configuration file changes that will need to be handled manually if you’re upgrading from 0.1.x. Run the commands below as root to perform the needed changes to your /etc/firezone/firezone.rb file. cp /etc/firezone/firezone.rb /etc/firezone/firezone.rb.bak sed -i \"s/\\['enable'\\]/\\['enabled'\\]/\" /etc/firezone/firezone.rb echo \"default['firezone']['connectivity_checks']['enabled'] = true\" &gt;&gt; /etc/firezone/firezone.rb echo \"default['firezone']['connectivity_checks']['interval'] = 3_600\" &gt;&gt; /etc/firezone/firezone.rb firezone-ctl reconfigure firezone-ctl restart . ",
     "url": "https://docs.firez.one/docs/administer/upgrade/#upgrading-from-01x-to-02x",
     "relUrl": "/docs/administer/upgrade/#upgrading-from-01x-to-02x"
-  },"23": {
+  },"24": {
     "doc": "Upgrade",
     "title": "Upgrade",
     "content": ". Upgrading Firezone will disconnect all VPN connections and require shutting down the Web UI. We recommend a maintenance window of about an hour in case anything goes wrong during the upgrade. We’re actively working on making this process more automatic in the future, but for now, this is the procedure for upgrading your Firezone instance. To upgrade Firezone, follow these steps: . | Download the new release for your platform. | Install the new package over the old one: sudo dpkg -i firezone_X.X.X.deb or sudo rpm -i --force firezone_X.X.X.rpm depending on your distribution. | Run firezone-ctl reconfigure to pick up the new changes. | Run firezone-ctl restart to restart services. | . Occasionally problems arise. If you hit any, please let us know by filing an issue. ",
