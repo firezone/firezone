@@ -6,18 +6,21 @@ require 'net/http'
 require 'json'
 
 def capture
-  telemetry_id = File.read("/opt/firezone/sv/phoenix/env/TELEMETRY_ID")
-  uri = URI("https://telemetry.firez.one/capture/")
-  data = {
-    api_key: "phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK",
-    event: "firezone-ctl reconfigure",
-    properties: {
-      distinct_id: telemetry_id
-    }
-  }
-
-  unless File.exist?("#{base_path}/.disable-telemetry") || ENV["TELEMETRY_ENABLED"] == "false"
-    Net::HTTP.post(uri, data.to_json, "Content-Type" => "application/json")
+  if File.exist?(telemetry_file)
+    telemetry_id = File.read(telemetry_file)
+    if telemetry_id
+      uri = URI("https://telemetry.firez.one/capture/")
+      data = {
+        api_key: "phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK",
+        event: "firezone-ctl create-or-reset-admin",
+        properties: {
+          distinct_id: telemetry_id
+        }
+      }
+      unless File.exist?("#{base_path}/.disable-telemetry") || ENV["TELEMETRY_ENABLED"] == "false"
+        Net::HTTP.post(uri, data.to_json, "Content-Type" => "application/json")
+      end
+    end
   end
 end
 
