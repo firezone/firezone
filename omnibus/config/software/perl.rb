@@ -38,6 +38,7 @@ lib_dirs lib_dirs.concat ["#{install_dir}/embedded/lib/perl5/**"]
 
 relative_path "perl-#{version}"
 
+# rubocop:disable Metrics/BlockLength
 build do
   env = with_standard_compiler_flags(with_embedded_path)
 
@@ -74,3 +75,4 @@ build do
   # us skip install the manpages
   make 'install.perl', env: env
 end
+# rubocop:enable Metrics/BlockLength

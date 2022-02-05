@@ -56,6 +56,7 @@ version('18.3')      { source sha256: 'a6d08eb7df06e749ccaf3049b33ceae617a3c466c
 version('18.2')      { source sha256: '3944ce41d13fbef1e1e80d7335b2167849e8566581513d5d9226cd211d3d58f9' }
 version('18.1')      { source sha256: '6b956dda690d3f3bf244249e8d422dd606231cc7229675bf5e34b5ba2ae83e9b' }
 
+# rubocop:disable Metrics/BlockLength
 build do
   if version.satisfies?('>= 18.3')
     # Don't listen on 127.0.0.1/::1 implicitly whenever ERL_EPMD_ADDRESS is given
@@ -145,3 +146,4 @@ build do
   make "-j #{workers}", env: env
   make 'install', env: env
 end
+# rubocop:enable Metrics/BlockLength

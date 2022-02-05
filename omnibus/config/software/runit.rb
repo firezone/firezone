@@ -40,8 +40,11 @@ build do
   env = with_standard_compiler_flags(with_embedded_path)
 
   # Put runit where we want it, not where they tell us to
-  command "sed -i -e \"s/^char\\ \\*varservice\\ \\=\\\"\\/service\\/\\\";$/char\\ \\*varservice\\ \\=\\\"#{install_dir.gsub('/', '\\/')}\\/service\\/\\\";/\" sv.c",
-          env: env
+  # rubocop:disable Style/StringConcatenation
+  cmd = 'sed -i -e "s/^char\ \*varservice\ \=\"\/service\/\";$/char\ \*varservice\ \=\"' + \
+        install_dir.gsub('/', '\\/') + '\/service\/\";/" sv.c'
+  # rubocop:enable Style/StringConcatenation
+  command cmd, env: env
 
   # TODO: the following is not idempotent
   command 'sed -i -e s:-static:: Makefile', env: env

@@ -1,3 +1,4 @@
+# rubocop:disable Naming/FileName
 # frozen_string_literal: true
 
 # Copyright 2012-2015 Chef Software, Inc.
@@ -43,3 +44,4 @@ build do
 
   touch "#{install_dir}/embedded/service/omnibus-ctl/.gitkeep"
 end
+# rubocop:enable Naming/FileName

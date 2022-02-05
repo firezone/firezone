@@ -1,3 +1,4 @@
+# rubocop:disable Naming/FileName
 # frozen_string_literal: true
 
 #
@@ -21,6 +22,7 @@ license :project_license
 
 source path: 'cookbooks/firezone'
 
+# rubocop:disable Metrics/BlockLength
 build do
   cookbooks_path = "#{install_dir}/embedded/cookbooks"
   env = with_standard_compiler_flags(with_embedded_path)
@@ -44,17 +46,17 @@ build do
   end
 
   block do
-    open("#{cookbooks_path}/dna.json", 'w') do |file|
+    File.open("#{cookbooks_path}/dna.json", 'w') do |file|
       file.write FFI_Yajl::Encoder.encode(run_list: ['recipe[firezone::default]'])
     end
 
-    open("#{cookbooks_path}/show-config.json", 'w') do |file|
+    File.open("#{cookbooks_path}/show-config.json", 'w') do |file|
       file.write FFI_Yajl::Encoder.encode(
         run_list: ['recipe[firezone::show_config]']
       )
     end
 
-    open("#{cookbooks_path}/solo.rb", 'w') do |file|
+    File.open("#{cookbooks_path}/solo.rb", 'w') do |file|
       file.write <<~SOLO
         cookbook_path   "#{cookbooks_path}"
         cache_path "/var/opt/firezone/cache"
@@ -64,3 +66,5 @@ build do
     end
   end
 end
+# rubocop:enable Metrics/BlockLength
+# rubocop:enable Naming/FileName

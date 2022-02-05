@@ -44,8 +44,9 @@ unless /[a-f0-9]{8}-([a-f0-9]{4}-){3}[a-f0-9]{12}/.match?(node['firezone']['tele
   node.default['firezone']['telemetry_id'] = SecureRandom.uuid
 end
 
-node.default['firezone']['wireguard_public_key'] =
-  `echo '#{node['firezone']['wireguard_private_key']}' | #{node['firezone']['install_directory']}/embedded/bin/wg pubkey`.chomp
+pkey = node['firezone']['wireguard_private_key']
+wg = "#{node['firezone']['install_directory']}/embedded/bin/wg"
+node.default['firezone']['wireguard_public_key'] = `echo '#{pkey}' | #{wg} pubkey`.chomp
 
 Firezone::Config.audit_config(node['firezone'])
 Firezone::Config.maybe_turn_on_fips(node)

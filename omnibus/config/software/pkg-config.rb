@@ -1,3 +1,4 @@
+# rubocop:disable Naming/FileName
 # frozen_string_literal: true
 
 #
@@ -62,3 +63,4 @@ build do
   # exit with byte conversion errors.
   copy "#{project_dir}/glib/glib/libcharset/charset.alias", "#{install_dir}/embedded/lib/charset.alias" if openbsd?
 end
+# rubocop:enable Naming/FileName

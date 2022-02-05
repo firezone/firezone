@@ -54,6 +54,7 @@ relative_path "ncurses-#{version}"
 #
 ########################################################################
 
+# rubocop:disable Metrics/BlockLength
 build do
   env = with_standard_compiler_flags(with_embedded_path)
   env.delete('CPPFLAGS')
@@ -156,3 +157,4 @@ build do
   # Ensure embedded ncurses wins in the LD search path
   link "#{install_dir}/embedded/lib/libcurses.so", "#{install_dir}/embedded/lib/libcurses.so.1" if smartos?
 end
+# rubocop:enable Metrics/BlockLength

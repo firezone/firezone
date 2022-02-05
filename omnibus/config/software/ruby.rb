@@ -104,6 +104,7 @@ else # including linux
                    end
 end
 
+# rubocop:disable Metrics/BlockLength
 build do
   env['CFLAGS'] << ' -fno-omit-frame-pointer'
 
@@ -183,7 +184,8 @@ build do
     patch source: 'ruby-aix-vm-core.patch', plevel: 1, env: patch_env
 
     # per IBM, just help ruby along on what it's running on
-    configure_command << '--host=powerpc-ibm-aix6.1.0.0 --target=powerpc-ibm-aix6.1.0.0 --build=powerpc-ibm-aix6.1.0.0 --enable-pthread'
+    configure_command << '--host=powerpc-ibm-aix6.1.0.0 --target=powerpc-ibm-aix6.1.0.0 --build=powerpc-ibm-aix6'\
+      '.1.0.0 --enable-pthread'
 
   elsif freebsd?
     # Disable optional support C level backtrace support. This requires the
@@ -209,7 +211,8 @@ build do
     configure_command << ' debugflags=-g'
   else
     # TODO: Consider pulling in Gitlab's OhaiHelper if raspberry_pi is needed
-    # configure_command << %w(host target build).map { |w| "--#{w}=#{OhaiHelper.gcc_target}" } if OhaiHelper.raspberry_pi?
+    # configure_command << %w(host target build).map { |w| "--#{w}=#{OhaiHelper.gcc_target}" } if \
+    # OhaiHelper.raspberry_pi?
     configure_command << "--with-opt-dir=#{install_dir}/embedded"
   end
 
@@ -240,3 +243,4 @@ build do
     end
   end
 end
+# rubocop:enable Metrics/BlockLength

@@ -1,3 +1,4 @@
+# rubocop:disable Naming/FileName
 # frozen_string_literal: true
 
 #
@@ -40,3 +41,4 @@ build do
   make env: env
   make 'install', env: env
 end
+# rubocop:enable Naming/FileName

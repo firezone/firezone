@@ -35,7 +35,8 @@ lib_dirs lib_dirs.concat(["#{install_dir}/embedded/lib/engines-1.1"]) if version
 # OpenSSL source ships with broken symlinks which windows doesn't allow.
 # So skip error checking with `extract: :lax_tar`
 if version.satisfies?('> 1.0.2u') && version.satisfies?('< 1.1.0')
-  # 1.0.2u was the last public release of 1.0.2. Subsequent releases come from a support contract with OpenSSL Software Services
+  # 1.0.2u was the last public release of 1.0.2. Subsequent releases come from a support contract with OpenSSL
+  # Software Services
   source url: "https://s3.amazonaws.com/chef-releng/openssl/openssl-#{version}.tar.gz", extract: :lax_tar
 else
   # As of 2020-09-09 even openssl-1.0.0.tar.gz can be downloaded from /source/openssl-VERSION.tar.gz
@@ -55,6 +56,7 @@ version('1.0.2i') { source sha256: '9287487d11c9545b6efb287cdb70535d4e9b284dd10d
 
 relative_path "openssl-#{version}"
 
+# rubocop:disable Metrics/BlockLength
 build do
   env = with_standard_compiler_flags(with_embedded_path)
   if aix?
@@ -172,3 +174,4 @@ build do
   end
   make "-j #{workers} install", env: env
 end
+# rubocop:enable Metrics/BlockLength

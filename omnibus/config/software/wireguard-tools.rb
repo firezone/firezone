@@ -1,3 +1,4 @@
+# rubocop:disable Naming/FileName
 # frozen_string_literal: true
 
 # Copyright 2021 Firezone
@@ -41,3 +42,4 @@ build do
   make "-j #{workers}", env: env
   make "-j #{workers} install", env: env
 end
+# rubocop:enable Naming/FileName
