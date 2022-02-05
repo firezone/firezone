@@ -29,6 +29,14 @@ DESC
 # and /opt/firezone on all other platforms
 install_dir "#{default_root}/#{name}"
 
+if ENV["CI"]
+  stage_path = "/opt/runner/omnibus-local/stage"
+  # Prevent runner tmp dir from filling up
+  unless Dir.exist?(stage_path)
+    staging_dir = stage_path
+  end
+end
+
 build_version Omnibus::BuildVersion.semver
 build_iteration 1
 
