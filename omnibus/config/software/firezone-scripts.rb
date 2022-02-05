@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 #
 # Copyright:: Copyright (c) 2015 GitLab B.V.
 # Copyright:: Copyright (c) 2021 Firezone
