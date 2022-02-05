@@ -2,6 +2,4 @@ AllCops:
   TargetRubyVersion: 2.7
   Exclude:
     - "apps/fz_http/assets/node_modules/**/*"
-
-Layout/LineLength:
-  Max: 120
+    - "omnibus/cookbooks/firezone/attributes/default.rb"

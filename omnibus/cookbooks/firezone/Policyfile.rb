@@ -1,3 +1,4 @@
+# rubocop:disable Naming/FileName
 # frozen_string_literal: true
 
 # Policyfile.rb - Describe how you want Chef Infra Client to build your system.
@@ -16,3 +17,4 @@ run_list 'firezone::default'
 
 # Specify a custom source for a single cookbook:
 cookbook 'firezone', path: '.'
+# rubocop:enable Naming/FileName

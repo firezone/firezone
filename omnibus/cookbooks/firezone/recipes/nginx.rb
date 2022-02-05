@@ -71,7 +71,8 @@ template "#{node['firezone']['var_directory']}/etc/logrotate.d/nginx" do
   variables(
     'log_directory' => node['firezone']['nginx']['log_directory'],
     'log_rotation' => node['firezone']['nginx']['log_rotation'],
-    'postrotate' => "#{node['firezone']['install_directory']}/embedded/sbin/nginx -c #{node['firezone']['nginx']['directory']}/nginx.conf -s reopen",
+    'postrotate' => "#{node['firezone']['install_directory']}/embedded/sbin/nginx -c "\
+      "#{node['firezone']['nginx']['directory']}/nginx.conf -s reopen",
     'owner' => 'root',
     'group' => 'root'
   )

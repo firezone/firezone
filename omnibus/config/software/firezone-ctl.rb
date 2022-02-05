@@ -1,3 +1,4 @@
+# rubocop:disable Naming/FileName
 # frozen_string_literal: true
 
 #
@@ -44,3 +45,4 @@ build do
   # additional omnibus-ctl commands
   sync "#{project_dir}/files/default/ctl-commands", "#{install_dir}/embedded/service/omnibus-ctl/"
 end
+# rubocop:enable Naming/FileName

@@ -1,3 +1,4 @@
+# rubocop:disable Naming/FileName
 # frozen_string_literal: true
 
 #
@@ -30,3 +31,4 @@ source path: File.expand_path('files/firezone-scripts', Omnibus::Config.project_
 build do
   copy '*', "#{install_dir}/embedded/bin/"
 end
+# rubocop:enable Naming/FileName
