@@ -15,16 +15,16 @@
 # limitations under the License.
 #
 
-name "runit"
-default_version "2.1.2"
+name 'runit'
+default_version '2.1.2'
 
-license "BSD-3-Clause"
-license_file "../package/COPYING"
+license 'BSD-3-Clause'
+license_file '../package/COPYING'
 
 skip_transitive_dependency_licensing true
 
-version "2.1.2" do
-  source md5: "6c985fbfe3a34608eb3c53dc719172c4"
+version '2.1.2' do
+  source md5: '6c985fbfe3a34608eb3c53dc719172c4'
 end
 
 source url: "http://smarden.org/runit/runit-#{version}.tar.gz"
@@ -35,16 +35,16 @@ build do
   # Patch runit to not consider status of log service associated with a service
   # on determining output of status command. For details, check
   # https://gitlab.com/gitlab-org/omnibus-gitlab/issues/4008
-  patch source: "log-status.patch"
+  patch source: 'log-status.patch'
 
   env = with_standard_compiler_flags(with_embedded_path)
 
   # Put runit where we want it, not where they tell us to
-  command "sed -i -e \"s/^char\\ \\*varservice\\ \\=\\\"\\/service\\/\\\";$/char\\ \\*varservice\\ \\=\\\"#{install_dir.gsub("/", '\\/')}\\/service\\/\\\";/\" sv.c",
+  command "sed -i -e \"s/^char\\ \\*varservice\\ \\=\\\"\\/service\\/\\\";$/char\\ \\*varservice\\ \\=\\\"#{install_dir.gsub('/', '\\/')}\\/service\\/\\\";/\" sv.c",
           env: env
 
   # TODO: the following is not idempotent
-  command "sed -i -e s:-static:: Makefile", env: env
+  command 'sed -i -e s:-static:: Makefile', env: env
 
   # Build it
   make "-j #{workers}", env: env
@@ -62,7 +62,7 @@ build do
   copy "#{project_dir}/svlogd",     "#{install_dir}/embedded/bin"
   copy "#{project_dir}/utmpset",    "#{install_dir}/embedded/bin"
 
-  erb source: "runsvdir-start.erb",
+  erb source: 'runsvdir-start.erb',
       dest: "#{install_dir}/embedded/bin/runsvdir-start",
       mode: 0o755,
       vars: { install_dir: install_dir }

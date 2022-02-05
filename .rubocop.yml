@@ -3,17 +3,5 @@ AllCops:
   Exclude:
     - "apps/fz_http/assets/node_modules/**/*"
 
-Style/StringLiterals:
-  Enabled: true
-  EnforcedStyle: double_quotes
-
-Style/StringLiteralsInInterpolation:
-  Enabled: true
-  EnforcedStyle: double_quotes
-
-Metrics/BlockLength:
-  Exclude:
-    - "omnibus/config/software/**/*"
-
 Layout/LineLength:
   Max: 120

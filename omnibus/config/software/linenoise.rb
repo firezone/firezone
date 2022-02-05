@@ -15,22 +15,22 @@
 # limitations under the License.
 #
 
-name "linenoise"
-description "A small self-contained alternative to readline and libedit"
+name 'linenoise'
+description 'A small self-contained alternative to readline and libedit'
 
-license_file "LICENSE"
+license_file 'LICENSE'
 skip_transitive_dependency_licensing true
 
-source github: "antirez/linenoise"
-default_version "master"
+source github: 'antirez/linenoise'
+default_version 'master'
 
 build do
   env = with_standard_compiler_flags(with_embedded_path)
-  cc = env.fetch("CC", "gcc")
+  cc = env.fetch('CC', 'gcc')
 
   command "#{cc} -c linenoise.c -o linenoise.o -fPIC", env: env
   command "#{cc} -shared -o liblinenoise.so linenoise.o -lm", env: env
 
-  copy "liblinenoise.so", "#{install_dir}/embedded/lib/"
-  copy "linenoise.h", "#{install_dir}/embedded/include/"
+  copy 'liblinenoise.so', "#{install_dir}/embedded/lib/"
+  copy 'linenoise.h', "#{install_dir}/embedded/include/"
 end

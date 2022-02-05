@@ -18,16 +18,16 @@
 # limitations under the License.
 #
 
-include_recipe "firezone::config"
+include_recipe 'firezone::config'
 
-execute "create_admin" do
+execute 'create_admin' do
   command 'bin/firezone rpc "FzHttp.Release.create_admin_user"'
-  cwd node["firezone"]["app_directory"]
-  environment(Firezone::Config.app_env(node["firezone"]))
-  user node["firezone"]["user"]
+  cwd node['firezone']['app_directory']
+  environment(Firezone::Config.app_env(node['firezone']))
+  user node['firezone']['user']
 end
 
-log "admin_created" do
+log 'admin_created' do
   msg = <<~MSG
     =================================================================================
 
@@ -35,8 +35,8 @@ log "admin_created" do
 
     Use this to log into the Web UI.
 
-    Email:    #{node["firezone"]["admin_email"]}
-    Password: #{node["firezone"]["default_admin_password"]}
+    Email:    #{node['firezone']['admin_email']}
+    Password: #{node['firezone']['default_admin_password']}
 
     =================================================================================
   MSG

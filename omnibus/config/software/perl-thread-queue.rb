@@ -17,13 +17,13 @@
 #
 # expeditor/ignore: deprecated 2021-04
 
-name "perl-thread-queue"
-default_version "3.13"
+name 'perl-thread-queue'
+default_version '3.13'
 
-dependency "perl"
+dependency 'perl'
 
-version "3.13" do
-  source sha256: "6ba3dacddd2fbb66822b4aa1d11a0a5273cd04c825cb3ff31c20d7037cbfdce8"
+version '3.13' do
+  source sha256: '6ba3dacddd2fbb66822b4aa1d11a0a5273cd04c825cb3ff31c20d7037cbfdce8'
 end
 
 source url: "http://search.cpan.org/CPAN/authors/id/J/JD/JDHEDDEN/Thread-Queue-#{version}.tar.gz"
@@ -32,11 +32,11 @@ relative_path "Thread-Queue-#{version}"
 
 build do
   env = with_standard_compiler_flags(with_embedded_path).merge(
-    "INSTALL_BASE" => "#{install_dir}/embedded"
+    'INSTALL_BASE' => "#{install_dir}/embedded"
   )
 
   command "#{install_dir}/embedded/bin/perl Makefile.PL", env: env
 
   make env: env
-  make "install", env: env
+  make 'install', env: env
 end

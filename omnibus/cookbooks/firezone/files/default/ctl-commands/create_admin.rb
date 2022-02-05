@@ -1,35 +1,35 @@
 # frozen_string_literal: true
 
-require "mixlib/shellout"
-require "uri"
-require "net/http"
-require "json"
+require 'mixlib/shellout'
+require 'uri'
+require 'net/http'
+require 'json'
 
 desc = <<~DESC
   Resets the password for admin with email specified by default['firezone']['admin_email'] or creates a new admin if that email doesn't exist.
 DESC
 
 def capture
-  telemetry_file = "/var/opt/firezone/cache/telemetry_id"
+  telemetry_file = '/var/opt/firezone/cache/telemetry_id'
   if File.exist?(telemetry_file)
     telemetry_id = File.read(telemetry_file)
     if telemetry_id
-      uri = URI("https://telemetry.firez.one/capture/")
+      uri = URI('https://telemetry.firez.one/capture/')
       data = {
-        api_key: "phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK",
-        event: "firezone-ctl create-or-reset-admin",
+        api_key: 'phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK',
+        event: 'firezone-ctl create-or-reset-admin',
         properties: {
           distinct_id: telemetry_id
         }
       }
-      unless File.exist?("/var/opt/firezone/.disable_telemetry") || ENV["TELEMETRY_ENABLED"] == "false"
-        Net::HTTP.post(uri, data.to_json, "Content-Type" => "application/json")
+      unless File.exist?('/var/opt/firezone/.disable_telemetry') || ENV['TELEMETRY_ENABLED'] == 'false'
+        Net::HTTP.post(uri, data.to_json, 'Content-Type' => 'application/json')
       end
     end
   end
 end
 
-add_command_under_category "create-or-reset-admin", "general", desc, 2 do
+add_command_under_category 'create-or-reset-admin', 'general', desc, 2 do
   command = %W(
     chef-client
     -z
@@ -40,7 +40,7 @@ add_command_under_category "create-or-reset-admin", "general", desc, 2 do
 
   capture
 
-  result = run_command(command.join(" "))
+  result = run_command(command.join(' '))
   remove_old_node_state
   Kernel.exit 1 unless result.success?
 end

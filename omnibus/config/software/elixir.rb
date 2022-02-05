@@ -17,19 +17,19 @@
 #
 # expeditor/ignore: deprecated 2021-04
 
-name "elixir"
-default_version "1.13.2"
+name 'elixir'
+default_version '1.13.2'
 
-license "Apache-2.0"
-license_file "LICENSE"
+license 'Apache-2.0'
+license_file 'LICENSE'
 
-dependency "erlang"
+dependency 'erlang'
 
-version("1.4.2") { source sha256: "cb4e2ec4d68b3c8b800179b7ae5779e2999aa3375f74bd188d7d6703497f553f" }
-version("1.12.2") { source sha256: "701006d1279225fc42f15c8d3f39906db127ddcc95373d34d8d160993356b15c" }
-version("1.12.3") { source sha256: "c5affa97defafa1fd89c81656464d61da8f76ccfec2ea80c8a528decd5cb04ad" }
-version("1.13.1") { source sha256: "deaba8156b11777adfa28e54e76ddf49ab1a0132cca54c41d9d7648e800edcc8" }
-version("1.13.2") { source sha256: "03afed42dccf4347c4d3ae2b905134093a3ba2245d0d3098d75009a1d659ed1a" }
+version('1.4.2') { source sha256: 'cb4e2ec4d68b3c8b800179b7ae5779e2999aa3375f74bd188d7d6703497f553f' }
+version('1.12.2') { source sha256: '701006d1279225fc42f15c8d3f39906db127ddcc95373d34d8d160993356b15c' }
+version('1.12.3') { source sha256: 'c5affa97defafa1fd89c81656464d61da8f76ccfec2ea80c8a528decd5cb04ad' }
+version('1.13.1') { source sha256: 'deaba8156b11777adfa28e54e76ddf49ab1a0132cca54c41d9d7648e800edcc8' }
+version('1.13.2') { source sha256: '03afed42dccf4347c4d3ae2b905134093a3ba2245d0d3098d75009a1d659ed1a' }
 
 source url: "https://github.com/elixir-lang/elixir/archive/v#{version}.tar.gz"
 relative_path "elixir-#{version}"
