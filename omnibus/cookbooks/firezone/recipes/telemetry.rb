@@ -18,9 +18,14 @@ if node['firezone']['telemetry']['enabled'] == false
     user node['firezone']['user']
     group node['firezone']['group']
   end
+  node['firezone']['telemetry_id'] = nil
 else
   file 'disable_telemetry' do
     path disable_telemetry_path
     action :delete
   end
+end
+
+unless /[a-f0-9]{8}-([a-f0-9]{4}-){3}[a-f0-9]{12}/.match?(node['firezone']['telemetry_id'].to_s)
+  node.normal['firezone']['telemetry_id'] = SecureRandom.uuid()
 end
