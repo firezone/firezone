@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
-source "https://rubygems.org"
+source 'https://rubygems.org'
 
-gem "berkshelf"
-gem "chef", "~> 16.17.18"
-gem "chef-bin", "~> 16.17.18"
+gem 'berkshelf'
+gem 'chef', '~> 16.17.18'
+gem 'chef-bin', '~> 16.17.18'

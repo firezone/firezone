@@ -17,20 +17,20 @@
 #
 # expeditor/ignore: deprecated 2021-04
 
-name "automake"
-default_version "1.16.4"
+name 'automake'
+default_version '1.16.4'
 
-dependency "autoconf"
-dependency "perl-thread-queue"
+dependency 'autoconf'
+dependency 'perl-thread-queue'
 
-license "GPL-2.0"
-license_file "COPYING"
+license 'GPL-2.0'
+license_file 'COPYING'
 skip_transitive_dependency_licensing true
 
-version("1.16.4") { source sha256: "8a0f0be7aaae2efa3a68482af28e5872d8830b9813a6a932a2571eac63ca1794" }
-version("1.16") { source sha256: "80da43bb5665596ee389e6d8b64b4f122ea4b92a685b1dbd813cd1f0e0c2d83f" }
-version("1.15") { source sha256: "7946e945a96e28152ba5a6beb0625ca715c6e32ac55f2e353ef54def0c8ed924" }
-version("1.11.2") { source sha256: "c339e3871d6595620760725da61de02cf1c293af8a05b14592d6587ac39ce546" }
+version('1.16.4') { source sha256: '8a0f0be7aaae2efa3a68482af28e5872d8830b9813a6a932a2571eac63ca1794' }
+version('1.16') { source sha256: '80da43bb5665596ee389e6d8b64b4f122ea4b92a685b1dbd813cd1f0e0c2d83f' }
+version('1.15') { source sha256: '7946e945a96e28152ba5a6beb0625ca715c6e32ac55f2e353ef54def0c8ed924' }
+version('1.11.2') { source sha256: 'c339e3871d6595620760725da61de02cf1c293af8a05b14592d6587ac39ce546' }
 
 source url: "https://mirrors.kernel.org/gnu/automake/automake-#{version}.tar.gz"
 
@@ -39,12 +39,12 @@ relative_path "automake-#{version}"
 build do
   env = with_standard_compiler_flags(with_embedded_path)
 
-  if version == "1.15"
-    command "./bootstrap.sh", env: env
+  if version == '1.15'
+    command './bootstrap.sh', env: env
   else
-    command "./bootstrap", env: env
+    command './bootstrap', env: env
   end
-  command "./configure" \
+  command './configure' \
           " --prefix=#{install_dir}/embedded", env: env
 
   make "-j #{workers}", env: env

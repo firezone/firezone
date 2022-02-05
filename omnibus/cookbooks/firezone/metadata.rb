@@ -1,16 +1,16 @@
 # frozen_string_literal: true
 
-name "firezone"
-maintainer "Firezone"
-maintainer_email "infra@firez.one"
-license "Apache-2.0"
-description "Installs/Configures firezone"
-version "0.0.1"
-chef_version ">= 16.0"
+name 'firezone'
+maintainer 'Firezone'
+maintainer_email 'infra@firez.one'
+license 'Apache-2.0'
+description 'Installs/Configures firezone'
+version '0.0.1'
+chef_version '>= 16.0'
 
-depends "enterprise"
-depends "runit"
-depends "line"
+depends 'enterprise'
+depends 'runit'
+depends 'line'
 
 # The `issues_url` points to the location where issues for this cookbook are
 # tracked.  A `View Issues` link will be displayed on this cookbook's page when

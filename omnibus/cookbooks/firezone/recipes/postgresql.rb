@@ -19,38 +19,38 @@
 # limitations under the License.
 #
 
-include_recipe "firezone::config"
-include_recipe "enterprise::runit"
+include_recipe 'firezone::config'
+include_recipe 'enterprise::runit'
 
 # These sysctl settings make the shared memory settings work for larger
 # instances
 %w[shmmax shmall].each do |param|
   sysctl "kernel.#{param}" do
-    value node["firezone"]["postgresql"][param]
+    value node['firezone']['postgresql'][param]
   end
 end
 
-directory node["firezone"]["postgresql"]["log_directory"] do
-  owner node["firezone"]["user"]
-  group node["firezone"]["group"]
-  mode "0700"
+directory node['firezone']['postgresql']['log_directory'] do
+  owner node['firezone']['user']
+  group node['firezone']['group']
+  mode '0700'
   recursive true
 end
 
-if node["firezone"]["postgresql"]["enabled"]
-  enterprise_pg_cluster "firezone" do
-    data_dir node["firezone"]["postgresql"]["data_directory"]
-    encoding "UTF8"
+if node['firezone']['postgresql']['enabled']
+  enterprise_pg_cluster 'firezone' do
+    data_dir node['firezone']['postgresql']['data_directory']
+    encoding 'UTF8'
   end
 
-  component_runit_service "postgresql" do
-    package "firezone"
-    control ["t"]
+  component_runit_service 'postgresql' do
+    package 'firezone'
+    control ['t']
     action :enable
-    subscribes :restart, "enterprise_pg_cluster[firezone]"
+    subscribes :restart, 'enterprise_pg_cluster[firezone]'
   end
 else
-  runit_service "postgresql" do
+  runit_service 'postgresql' do
     action :disable
   end
 end

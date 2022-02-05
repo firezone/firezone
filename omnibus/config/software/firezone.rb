@@ -15,28 +15,28 @@
 # limitations under the License.
 #
 
-name "firezone"
-description "the steps required to compile the firezone elixir application"
-default_version "1.0.0"
+name 'firezone'
+description 'the steps required to compile the firezone elixir application'
+default_version '1.0.0'
 
-dependency "postgresql"
-dependency "nodejs"
-dependency "elixir"
-dependency "nftables" if linux?
-dependency "ruby"
+dependency 'postgresql'
+dependency 'nodejs'
+dependency 'elixir'
+dependency 'nftables' if linux?
+dependency 'ruby'
 
-version("1.0.0") do
-  source path: File.expand_path("../", Omnibus::Config.project_root),
+version('1.0.0') do
+  source path: File.expand_path('../', Omnibus::Config.project_root),
          options: { exclude: [
-           ".env",
-           ".git",
-           ".ci",
-           ".vagrant",
-           ".github",
-           "_build",
-           "deps",
-           "omnibus",
-           "apps/fz_http/assets/node_modules"
+           '.env',
+           '.git',
+           '.ci',
+           '.vagrant',
+           '.github',
+           '_build',
+           'deps',
+           'omnibus',
+           'apps/fz_http/assets/node_modules'
          ] }
 end
 
@@ -45,17 +45,17 @@ skip_transitive_dependency_licensing true
 
 build do
   env = with_standard_compiler_flags(with_embedded_path).merge(
-    "MIX_ENV" => "prod",
-    "VERSION" => Omnibus::BuildVersion.semver
+    'MIX_ENV' => 'prod',
+    'VERSION' => Omnibus::BuildVersion.semver
   )
 
-  command "mix local.hex --force", env: env
-  command "mix local.rebar --force", env: env
-  command "mix deps.get --only prod", env: env
-  command "mix deps.compile --only prod", env: env
-  command "npm ci --prefix apps/fz_http/assets --progress=false --no-audit --loglevel=error", env: env
-  command "npm run --prefix apps/fz_http/assets deploy", env: env
-  command "cd apps/fz_http && mix phx.digest", env: env
-  command "mix release", env: env
-  sync "_build/prod/rel/firezone", "#{install_dir}/embedded/service/firezone"
+  command 'mix local.hex --force', env: env
+  command 'mix local.rebar --force', env: env
+  command 'mix deps.get --only prod', env: env
+  command 'mix deps.compile --only prod', env: env
+  command 'npm ci --prefix apps/fz_http/assets --progress=false --no-audit --loglevel=error', env: env
+  command 'npm run --prefix apps/fz_http/assets deploy', env: env
+  command 'cd apps/fz_http && mix phx.digest', env: env
+  command 'mix release', env: env
+  sync '_build/prod/rel/firezone', "#{install_dir}/embedded/service/firezone"
 end

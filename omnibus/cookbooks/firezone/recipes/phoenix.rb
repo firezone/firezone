@@ -21,49 +21,49 @@
 
 # Common configuration for Phoenix
 
-include_recipe "firezone::config"
-include_recipe "firezone::nginx"
-include_recipe "firezone::wireguard"
+include_recipe 'firezone::config'
+include_recipe 'firezone::nginx'
+include_recipe 'firezone::wireguard'
 
-[node["firezone"]["phoenix"]["log_directory"],
- "#{node["firezone"]["var_directory"]}/phoenix/run"].each do |dir|
+[node['firezone']['phoenix']['log_directory'],
+ "#{node['firezone']['var_directory']}/phoenix/run"].each do |dir|
   directory dir do
-    owner node["firezone"]["user"]
-    group node["firezone"]["group"]
-    mode "0700"
+    owner node['firezone']['user']
+    group node['firezone']['group']
+    mode '0700'
     recursive true
   end
 end
 
-template "phoenix.nginx.conf" do
-  path "#{node["firezone"]["nginx"]["directory"]}/sites-enabled/phoenix"
-  source "phoenix.nginx.conf.erb"
-  owner node["firezone"]["user"]
-  group node["firezone"]["group"]
-  mode "0600"
-  variables(nginx: node["firezone"]["nginx"],
-            phoenix: node["firezone"]["phoenix"],
-            fqdn: node["firezone"]["fqdn"],
-            fips_enabled: node["firezone"]["fips_enabled"],
-            ssl: node["firezone"]["ssl"],
-            app_directory: node["firezone"]["app_directory"])
+template 'phoenix.nginx.conf' do
+  path "#{node['firezone']['nginx']['directory']}/sites-enabled/phoenix"
+  source 'phoenix.nginx.conf.erb'
+  owner node['firezone']['user']
+  group node['firezone']['group']
+  mode '0600'
+  variables(nginx: node['firezone']['nginx'],
+            phoenix: node['firezone']['phoenix'],
+            fqdn: node['firezone']['fqdn'],
+            fips_enabled: node['firezone']['fips_enabled'],
+            ssl: node['firezone']['ssl'],
+            app_directory: node['firezone']['app_directory'])
 end
 
-if node["firezone"]["phoenix"]["enabled"]
-  component_runit_service "phoenix" do
+if node['firezone']['phoenix']['enabled']
+  component_runit_service 'phoenix' do
     runit_attributes(
-      env: Firezone::Config.app_env(node["firezone"]),
+      env: Firezone::Config.app_env(node['firezone']),
       finish: true
     )
-    package "firezone"
-    control ["t"]
+    package 'firezone'
+    control ['t']
     action :enable
-    subscribes :restart, "file[environment-variables]"
-    subscribes :restart, "file[disable-telemetry]"
-    subscribes :restart, "file[telemetry-id]"
+    subscribes :restart, 'file[environment-variables]'
+    subscribes :restart, 'file[disable-telemetry]'
+    subscribes :restart, 'file[telemetry-id]'
   end
 else
-  runit_service "phoenix" do
+  runit_service 'phoenix' do
     action :disable
   end
 end

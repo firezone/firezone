@@ -16,10 +16,10 @@
 # limitations under the License.
 #
 
-name "firezone-cookbooks"
+name 'firezone-cookbooks'
 license :project_license
 
-source path: "cookbooks/firezone"
+source path: 'cookbooks/firezone'
 
 build do
   cookbooks_path = "#{install_dir}/embedded/cookbooks"
@@ -32,29 +32,29 @@ build do
     Dir.glob("#{cookbooks_path}/**/metadata.json").each do |metadata|
       cookbook_name = File.basename(File.dirname(metadata))
       metadata_json = FFI_Yajl::Parser.parse(File.read(metadata))
-      gem_deps = metadata_json.fetch("gems", [])
+      gem_deps = metadata_json.fetch('gems', [])
       all_the_gem_deps[cookbook_name] = gem_deps unless gem_deps.empty?
     end
 
     unless all_the_gem_deps.empty?
-      raise Omnibus::Error, "Nope. Gem dependencies found in the following "\
-        "cookbooks used during ctl-reconfigure. This will break airgapped "\
+      raise Omnibus::Error, 'Nope. Gem dependencies found in the following '\
+        'cookbooks used during ctl-reconfigure. This will break airgapped '\
         "installs.\n#{all_the_gem_deps}"
     end
   end
 
   block do
-    open("#{cookbooks_path}/dna.json", "w") do |file|
-      file.write FFI_Yajl::Encoder.encode(run_list: ["recipe[firezone::default]"])
+    open("#{cookbooks_path}/dna.json", 'w') do |file|
+      file.write FFI_Yajl::Encoder.encode(run_list: ['recipe[firezone::default]'])
     end
 
-    open("#{cookbooks_path}/show-config.json", "w") do |file|
+    open("#{cookbooks_path}/show-config.json", 'w') do |file|
       file.write FFI_Yajl::Encoder.encode(
-        run_list: ["recipe[firezone::show_config]"]
+        run_list: ['recipe[firezone::show_config]']
       )
     end
 
-    open("#{cookbooks_path}/solo.rb", "w") do |file|
+    open("#{cookbooks_path}/solo.rb", 'w') do |file|
       file.write <<~SOLO
         cookbook_path   "#{cookbooks_path}"
         cache_path "/var/opt/firezone/cache"

@@ -18,41 +18,41 @@
 # limitations under the License.
 #
 
-include_recipe "firezone::config"
-include_recipe "firezone::phoenix"
+include_recipe 'firezone::config'
+include_recipe 'firezone::phoenix'
 
-execute "fix app permissions" do
-  app_dir = node["firezone"]["app_directory"]
-  user = node["firezone"]["user"]
-  group = node["firezone"]["group"]
+execute 'fix app permissions' do
+  app_dir = node['firezone']['app_directory']
+  user = node['firezone']['user']
+  group = node['firezone']['group']
   command "chown -R #{user}:#{group} #{app_dir} && chmod -R o-rwx #{app_dir} && chmod -R g-rwx #{app_dir}"
 end
 
-file "environment-variables" do
-  path "#{node["firezone"]["var_directory"]}/etc/env"
+file 'environment-variables' do
+  path "#{node['firezone']['var_directory']}/etc/env"
 
-  attributes = node["firezone"].to_hash
+  attributes = node['firezone'].to_hash
 
   # Remove sensitive fields that aren't required for application startup
-  attributes.delete("wireguard_private_key")
-  attributes.delete("default_admin_password")
+  attributes.delete('wireguard_private_key')
+  attributes.delete('default_admin_password')
 
   # Add needed fields to top-level so they get added to application env and get
   # updated when config is updated.
   attributes.merge!(
-    "force_ssl" => node["firezone"]["nginx"]["force_ssl"],
-    "mix_env" => "prod"
+    'force_ssl' => node['firezone']['nginx']['force_ssl'],
+    'mix_env' => 'prod'
   )
 
   content Firezone::Config.environment_variables_from(attributes)
-  owner node["firezone"]["user"]
-  group node["firezone"]["group"]
-  mode "0600"
+  owner node['firezone']['user']
+  group node['firezone']['group']
+  mode '0600'
 end
 
-execute "database schema" do
+execute 'database schema' do
   command 'bin/firezone eval "FzHttp.Release.migrate"'
-  cwd node["firezone"]["app_directory"]
-  environment(Firezone::Config.app_env(node["firezone"]))
-  user node["firezone"]["user"]
+  cwd node['firezone']['app_directory']
+  environment(Firezone::Config.app_env(node['firezone']))
+  user node['firezone']['user']
 end

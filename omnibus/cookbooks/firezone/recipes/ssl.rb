@@ -19,62 +19,62 @@
 # limitations under the License.
 #
 
-include_recipe "firezone::config"
+include_recipe 'firezone::config'
 
-[node["firezone"]["ssl"]["directory"],
- "#{node["firezone"]["ssl"]["directory"]}/ca"].each do |dir|
+[node['firezone']['ssl']['directory'],
+ "#{node['firezone']['ssl']['directory']}/ca"].each do |dir|
   directory dir do
-    owner node["firezone"]["user"]
-    group node["firezone"]["group"]
-    mode "0700"
+    owner node['firezone']['user']
+    group node['firezone']['group']
+    mode '0700'
   end
 end
 
 # Unless SSL is disabled, sets up SSL certificates.
 # Creates a self-signed cert if none is provided.
-if node["firezone"]["ssl"]["enabled"]
-  firezone_ca_dir = File.join(node["firezone"]["ssl"]["directory"], "ca")
-  ssl_dhparam = File.join(firezone_ca_dir, "dhparams.pem")
+if node['firezone']['ssl']['enabled']
+  firezone_ca_dir = File.join(node['firezone']['ssl']['directory'], 'ca')
+  ssl_dhparam = File.join(firezone_ca_dir, 'dhparams.pem')
 
   # Generate dhparams.pem for perfect forward secrecy
   openssl_dhparam ssl_dhparam do
     key_length 2048
     generator 2
-    owner "root"
-    group "root"
-    mode "0644"
+    owner 'root'
+    group 'root'
+    mode '0644'
   end
 
-  node.default["firezone"]["ssl"]["ssl_dhparam"] ||= ssl_dhparam
+  node.default['firezone']['ssl']['ssl_dhparam'] ||= ssl_dhparam
 
   # A certificate has been supplied
-  if node["firezone"]["ssl"]["certificate"]
+  if node['firezone']['ssl']['certificate']
     # Link the standard CA cert into our certs directory
-    link "#{node["firezone"]["ssl"]["directory"]}/cacert.pem" do
-      to "#{node["firezone"]["install_directory"]}/embedded/ssl/certs/cacert.pem"
+    link "#{node['firezone']['ssl']['directory']}/cacert.pem" do
+      to "#{node['firezone']['install_directory']}/embedded/ssl/certs/cacert.pem"
     end
 
   # No certificate has been supplied; generate one
   else
-    ssl_keyfile = File.join(firezone_ca_dir, "#{node["firezone"]["fqdn"]}.key")
-    ssl_crtfile = File.join(firezone_ca_dir, "#{node["firezone"]["fqdn"]}.crt")
+    ssl_keyfile = File.join(firezone_ca_dir, "#{node['firezone']['fqdn']}.key")
+    ssl_crtfile = File.join(firezone_ca_dir, "#{node['firezone']['fqdn']}.crt")
 
     openssl_x509_certificate ssl_crtfile do
-      common_name node["firezone"]["fqdn"]
-      org node["firezone"]["ssl"]["company_name"]
-      org_unit node["firezone"]["ssl"]["organizational_unit_name"]
-      country node["firezone"]["ssl"]["country_name"]
+      common_name node['firezone']['fqdn']
+      org node['firezone']['ssl']['company_name']
+      org_unit node['firezone']['ssl']['organizational_unit_name']
+      country node['firezone']['ssl']['country_name']
       key_length 2048
       expire 3650
-      owner "root"
-      group "root"
-      mode "0644"
+      owner 'root'
+      group 'root'
+      mode '0644'
     end
 
-    node.default["firezone"]["ssl"]["certificate"] ||= ssl_crtfile
-    node.default["firezone"]["ssl"]["certificate_key"] ||= ssl_keyfile
+    node.default['firezone']['ssl']['certificate'] ||= ssl_crtfile
+    node.default['firezone']['ssl']['certificate_key'] ||= ssl_keyfile
 
-    link "#{node["firezone"]["ssl"]["directory"]}/cacert.pem" do
+    link "#{node['firezone']['ssl']['directory']}/cacert.pem" do
       to ssl_crtfile
     end
   end
