@@ -7,8 +7,8 @@ set -e
 
 capture () {
   if type curl > /dev/null; then
-    if [ -e /opt/firezone/sv/phoenix/env/TELEMETRY_ID ]; then
-      telemetry_id=`cat /opt/firezone/sv/phoenix/env/TELEMETRY_ID`
+    if [ -e /var/opt/firezone/cache/telemetry_id ]; then
+      telemetry_id=`cat /var/opt/firezone/cache/telemetry_id`
       if [ ! -z "$telemetry_id" ]; then
         curl -s -XPOST \
           -H 'Content-Type: application/json' \
@@ -24,7 +24,7 @@ capture () {
     fi
   fi
 }
-if [ ! -e /opt/firezone/.disable-telemetry ]; then
+if [ ! -e /var/opt/firezone/.disable_telemetry ]; then
   capture || true
 fi
 

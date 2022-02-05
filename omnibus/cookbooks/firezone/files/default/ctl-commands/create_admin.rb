@@ -10,7 +10,7 @@ Resets the password for admin with email specified by default['firezone']['admin
 DESC
 
 def capture
-  telemetry_file = "/opt/firezone/sv/phoenix/env/TELEMETRY_ID"
+  telemetry_file = "/var/opt/firezone/cache/telemetry_id"
   if File.exist?(telemetry_file)
     telemetry_id = File.read(telemetry_file)
     if telemetry_id
@@ -22,7 +22,7 @@ def capture
           distinct_id: telemetry_id
         }
       }
-      unless File.exist?("#{base_path}/.disable-telemetry") || ENV["TELEMETRY_ENABLED"] == "false"
+      unless File.exist?("/var/opt/firezone/.disable_telemetry") || ENV["TELEMETRY_ENABLED"] == "false"
         Net::HTTP.post(uri, data.to_json, "Content-Type" => "application/json")
       end
     end

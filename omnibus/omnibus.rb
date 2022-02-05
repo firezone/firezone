@@ -16,12 +16,8 @@
 # -------------------------------------------------------------------
 if ENV["CI"]
   base_dir("/opt/runner/omnibus-local")
-elsif Dir.exist?("/vagrant")
-  # Running inside vagrant, use tmp dir
-  base_dir("/tmp/omnibus-local")
 else
-  # Running on build server, use fast SSD array dir
-  base_dir("/data/omnibus-local")
+  base_dir("/tmp/omnibus-local")
 end
 #
 # Alternatively you can tune the individual values
