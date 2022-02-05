@@ -62,6 +62,7 @@ jobs:
         if: steps.plt_cache.outputs.cache-hit != 'true'
         run: mix dialyzer --plt
       - run: |
+          pip install pre-commit
           pre-commit install
           pre-commit run --all-files
 
