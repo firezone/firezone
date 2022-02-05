@@ -64,7 +64,7 @@ jobs:
       - run: |
           pip install pre-commit
           pre-commit install
-          pre-commit run --all-files
+          SKIP=no-commit-to-branch pre-commit run --all-files
 
 
   unit-test:
