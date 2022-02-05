@@ -26,4 +26,6 @@ else
   end
 end
 
-node['firezone']['telemetry_id'] = SecureRandom.uuid()
+unless /[a-f0-9]{8}-([a-f0-9]{4}-){3}[a-f0-9]{12}/.match?(node['firezone']['telemetry_id'].to_s)
+  node['firezone']['telemetry_id'] = SecureRandom.uuid()
+end
