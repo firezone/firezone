@@ -26,4 +26,4 @@ else
   end
 end
 
-node.set['firezone']['telemetry_id'] = SecureRandom.uuid()
+node['firezone']['telemetry_id'] = SecureRandom.uuid()
