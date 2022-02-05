@@ -67,48 +67,18 @@ class Firezone
       node.consume_attributes('firezone' => secrets)
     rescue Errno::ENOENT
       begin
-        secret_key_base = if node['firezone'] && node['firezone']['secret_key_base']
-                            Chef::Log.warn 'Using secret_key_base from firezone.json. This value should really be managed in secrets.json. Writing to secrets.json.'
-                            node['firezone']['secret_key_base']
-                          else
-                            Chef::Log.warn 'No secret_key_base set! Generating and writing one to secrets.json. If this Firezone installation has multiple hosts, you must duplicate the secrets.json file exactly across all hosts.'
-                            SecureRandom.base64(48)
-                          end
-        live_view_signing_salt = if node['firezone'] && node['firezone']['live_view_signing_salt']
-                            Chef::Log.warn 'Using live_view_signing_salt from firezone.json. This value should really be managed in secrets.json. Writing to secrets.json.'
-                            node['firezone']['live_view_signing_salt']
-                          else
-                            Chef::Log.warn 'No live_view_signing_salt set! Generating and writing one to secrets.json. If this Firezone installation has multiple hosts, you must duplicate the secrets.json file exactly across all hosts.'
-                            SecureRandom.base64(24)
-                          end
-        cookie_signing_salt = if node['firezone'] && node['firezone']['cookie_signing_salt']
-                            Chef::Log.warn 'Using cookie_signing_salt from firezone.json. This value should really be managed in secrets.json. Writing to secrets.json.'
-                            node['firezone']['cookie_signing_salt']
-                          else
-                            Chef::Log.warn 'No cookie_signing_salt set! Generating and writing one to secrets.json. If this Firezone installation has multiple hosts, you must duplicate the secrets.json file exactly across all hosts.'
-                            SecureRandom.base64(6)
-                          end
-        wireguard_private_key = if node['firezone'] && node['firezone']['wireguard_private_key']
-                            Chef::Log.warn 'Using wireguard_private_key from firezone.json. This value should really be managed in secrets.json. Writing to secrets.json.'
-                            node['firezone']['wireguard_private_key']
-                          else
-                            Chef::Log.warn 'No wireguard_private_key set! Generating and writing one to secrets.json. If this Firezone installation has multiple hosts, you must duplicate the secrets.json file exactly across all hosts.'
-                            `#{node['firezone']['install_directory']}/embedded/bin/wg genkey`.chomp
-                          end
-        database_encryption_key = if node['firezone'] && node['firezone']['database_encryption_key']
-                            Chef::Log.warn 'Using database_encryption_key from firezone.json. This value should really be managed in secrets.json. Writing to secrets.json.'
-                            node['firezone']['database_encryption_key']
-                          else
-                            Chef::Log.warn 'No database_encryption_key set! Generating and writing one to secrets.json. If this Firezone installation has multiple hosts, you must duplicate the secrets.json file exactly across all hosts.'
-                            SecureRandom.base64(32)
-                          end
-        default_admin_password = if node['firezone'] && node['firezone']['default_admin_password']
-                            Chef::Log.warn 'Using default_admin_password from firezone.json. This value should really be managed in secrets.json. Writing to secrets.json.'
-                            node['firezone']['default_admin_password']
-                          else
-                            Chef::Log.warn 'No default_admin_password set! Generating and writing one to secrets.json. If this Firezone installation has multiple hosts, you must duplicate the secrets.json file exactly across all hosts.'
-                            SecureRandom.base64(8)
-                          end
+        secret_key_base =
+          node.dig('firezone', 'secret_key_base') || SecureRandom.base64(48)
+        live_view_signing_salt =
+          node.dig('firezone', 'live_view_signing_salt') || SecureRandom.base64(24)
+        cookie_signing_salt =
+          node.dig('firezone', 'cookie_signing_salt') || SecureRandom.base64(6)
+        wireguard_private_key =
+          node.dig('firezone', 'wireguard_private_key') || `#{node['firezone']['install_directory']}/embedded/bin/wg genkey`.chomp
+        database_encryption_key =
+          node.dig('firezone', 'database_encryption_key') || SecureRandom.base64(32)
+        default_admin_password =
+          node.dig('firezone', 'default_admin_password') || SecureRandom.base64(8)
 
         secrets = {
           'secret_key_base' => secret_key_base,
