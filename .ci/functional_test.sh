@@ -40,3 +40,18 @@ echo $page
 
 echo "Testing for sign in button"
 echo $page | grep '<button class="button" type="submit">Sign In</button>'
+
+
+echo "Testing telemetry_id survives reconfigures"
+tid1=`sudo grep 'telemetry_id' /etc/firezone/firezone-running.json`
+sudo firezone-ctl reconfigure
+tid2=`sudo grep 'telemetry_id' /etc/firezone/firezone-running.json`
+
+if [ "$tid1" = "$tid2" ]; then
+  echo "telemetry_ids match!"
+else
+  echo "telemetry_ids differ:"
+  echo $tid1
+  echo $tid2
+  exit 1
+fi
