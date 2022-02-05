@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 #
 # Copyright 2013-2018 Chef Software, Inc.
 #

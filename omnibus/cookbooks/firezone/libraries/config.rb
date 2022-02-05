@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "json"
 require "fileutils"
 require "securerandom"
@@ -245,7 +247,7 @@ class Firezone
 
       env.merge!("DATABASE_PASSWORD" => attributes["database"]["password"]) if attributes.dig("database", "password")
 
-      if attributes.dig("default_admin_password")
+      if attributes["default_admin_password"]
         env.merge!("DEFAULT_ADMIN_PASSWORD" => attributes["default_admin_password"])
       end
 

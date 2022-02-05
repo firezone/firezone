@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 name "icu"
 license_file "LICENSE"
 skip_transitive_dependency_licensing true

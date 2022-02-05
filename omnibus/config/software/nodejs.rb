@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 name "nodejs"
 description "NodeJS"
 default_version "14.18.3"

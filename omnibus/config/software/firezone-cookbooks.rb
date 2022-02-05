@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 #
 # Copyright 2014 Chef Software, Inc.
 #
@@ -27,7 +29,7 @@ build do
 
   block do
     all_the_gem_deps = {}
-    Dir.glob(cookbooks_path + "/**/metadata.json").each do |metadata|
+    Dir.glob("#{cookbooks_path}/**/metadata.json").each do |metadata|
       cookbook_name = File.basename(File.dirname(metadata))
       metadata_json = FFI_Yajl::Parser.parse(File.read(metadata))
       gem_deps = metadata_json.fetch("gems", [])
