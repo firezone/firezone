@@ -17,16 +17,16 @@ include_recipe "firezone::database"
 include_recipe "firezone::app"
 
 # Write out a firezone-running.json at the end of the run
-file "#{node['firezone']['config_directory']}/firezone-running.json" do
-  content Chef::JSONCompat.to_json_pretty('firezone' => node['firezone'])
-  owner node['firezone']['user']
-  group node['firezone']['group']
-  mode '0600'
+file "#{node["firezone"]["config_directory"]}/firezone-running.json" do
+  content Chef::JSONCompat.to_json_pretty("firezone" => node["firezone"])
+  owner node["firezone"]["user"]
+  group node["firezone"]["group"]
+  mode "0600"
 end
 
-file "#{node['firezone']['var_directory']}/.license.accepted" do
+file "#{node["firezone"]["var_directory"]}/.license.accepted" do
   content ""
-  owner node['firezone']['user']
-  group node['firezone']['group']
-  mode '0600'
+  owner node["firezone"]["user"]
+  group node["firezone"]["group"]
+  mode "0600"
 end

@@ -13,15 +13,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-require 'json'
+require "json"
 
-add_command_under_category 'version', 'general', 'Display current version of Firezone', 2 do
-  begin
-    version = JSON.parse(File.read('/opt/firezone/version-manifest.json'))['build_version']
-    puts version
-  rescue Errno::ENOENT => e
-    puts 'Error determining version!'
-    puts e.message.to_s
-    exit(1)
-  end
+add_command_under_category "version", "general", "Display current version of Firezone", 2 do
+  version = JSON.parse(File.read("/opt/firezone/version-manifest.json"))["build_version"]
+  puts version
+rescue Errno::ENOENT => e
+  puts "Error determining version!"
+  puts e.message.to_s
+  exit(1)
 end

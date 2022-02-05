@@ -17,4 +17,4 @@
 # limitations under the License.
 #
 
-puts Chef::JSONCompat.to_json_pretty(node['firezone'])
+puts Chef::JSONCompat.to_json_pretty(node["firezone"])

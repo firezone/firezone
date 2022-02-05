@@ -79,16 +79,14 @@ build do
   update_config_guess
 
   # AIX's old version of patch doesn't like the patches here
-  unless aix?
-    if version == "5.9"
-      # Patch to add support for GCC 5, doesn't break previous versions
-      patch source: "ncurses-5.9-gcc-5.patch", plevel: 1, env: env
-    end
+  if !aix? && (version == "5.9")
+    # Patch to add support for GCC 5, doesn't break previous versions
+    patch source: "ncurses-5.9-gcc-5.patch", plevel: 1, env: env
   end
 
   if mac_os_x? ||
-      # Clang became the default compiler in FreeBSD 10+
-      (freebsd? && ohai["os_version"].to_i >= 1000024)
+     # Clang became the default compiler in FreeBSD 10+
+     (freebsd? && ohai["os_version"].to_i >= 1_000_024)
     # References:
     # https://github.com/Homebrew/homebrew-dupes/issues/43
     # http://invisible-island.net/ncurses/NEWS.html#t20110409
@@ -99,9 +97,7 @@ build do
     patch source: "ncurses-clang.patch", env: env
   end
 
-  if openbsd?
-    patch source: "patch-ncurses_tinfo_lib__baudrate.c", plevel: 0, env: env
-  end
+  patch source: "patch-ncurses_tinfo_lib__baudrate.c", plevel: 0, env: env if openbsd?
 
   configure_command = [
     "./configure",
@@ -158,7 +154,5 @@ build do
   make "-j #{workers} install", env: env
 
   # Ensure embedded ncurses wins in the LD search path
-  if smartos?
-    link "#{install_dir}/embedded/lib/libcurses.so", "#{install_dir}/embedded/lib/libcurses.so.1"
-  end
+  link "#{install_dir}/embedded/lib/libcurses.so", "#{install_dir}/embedded/lib/libcurses.so.1" if smartos?
 end

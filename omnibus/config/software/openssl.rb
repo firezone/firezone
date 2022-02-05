@@ -51,7 +51,6 @@ version("1.0.2x") { source sha256: "79cb4e20004a0d1301210aee7e154ddfba3d6a33d0df
 version("1.0.2w") { source sha256: "a675ad1a9df59015cebcdf713de76a422347c5d99f11232fe75758143defd680" }
 version("1.0.2i") { source sha256: "9287487d11c9545b6efb287cdb70535d4e9b284dd10d51441d9b9963d000de6f" }
 
-
 relative_path "openssl-#{version}"
 
 build do
@@ -84,7 +83,7 @@ build do
     "no-ssl2",
     "no-ssl3",
     "no-zlib",
-    "shared",
+    "shared"
   ]
 
   configure_args += ["--with-fipsdir=#{install_dir}/embedded", "fips"] if fips_mode?
@@ -139,9 +138,7 @@ build do
     patch source: "openssl-1.1.0f-do-not-install-docs.patch", env: patch_env
   end
 
-  if version.start_with?("1.0.2") && mac_os_x? && arm?
-    patch source: "openssl-1.0.2x-darwin-arm64.patch"
-  end
+  patch source: "openssl-1.0.2x-darwin-arm64.patch" if version.start_with?("1.0.2") && mac_os_x? && arm?
 
   if version.start_with?("1.0.2") && windows?
     # Patch Makefile.org to update the compiler flags/options table for mingw.
@@ -156,9 +153,7 @@ build do
 
   command configure_command, env: env, in_msys_bash: true
 
-  if version.start_with?("1.0.2") && windows?
-    patch source: "openssl-1.0.1j-windows-relocate-dll.patch", env: env
-  end
+  patch source: "openssl-1.0.1j-windows-relocate-dll.patch", env: env if version.start_with?("1.0.2") && windows?
 
   make "depend", env: env
   # make -j N on openssl is not reliable

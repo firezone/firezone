@@ -1,4 +1,3 @@
-
 # Copyright 2012-2014 Chef Software, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -47,9 +46,7 @@ build do
 
   # The patch is from the FreeBSD ports tree and is for GCC compatibility.
   # http://svnweb.freebsd.org/ports/head/devel/libedit/files/patch-vi.c?annotate=300896
-  if version.to_i < 20150325 && (freebsd? || openbsd?)
-    patch source: "freebsd-vi-fix.patch", env: env
-  end
+  patch source: "freebsd-vi-fix.patch", env: env if version.to_i < 20_150_325 && (freebsd? || openbsd?)
 
   if openbsd?
     patch source: "openbsd-weak-alias-fix.patch", plevel: 1, env: env

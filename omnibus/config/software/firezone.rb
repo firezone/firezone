@@ -27,17 +27,17 @@ dependency "ruby"
 
 version("1.0.0") do
   source path: File.expand_path("../", Omnibus::Config.project_root),
-    options: { exclude: [
-      ".env",
-      ".git",
-      ".ci",
-      ".vagrant",
-      ".github",
-      "_build",
-      "deps",
-      "omnibus",
-      "apps/fz_http/assets/node_modules"
-    ] }
+         options: { exclude: [
+           ".env",
+           ".git",
+           ".ci",
+           ".vagrant",
+           ".github",
+           "_build",
+           "deps",
+           "omnibus",
+           "apps/fz_http/assets/node_modules"
+         ] }
 end
 
 license :project_license

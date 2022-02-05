@@ -32,10 +32,10 @@ build do
   block do
     erb source: "firezone-ctl.erb",
         dest: "#{install_dir}/bin/firezone-ctl",
-        mode: 0755,
+        mode: 0o755,
         vars: {
           embedded_bin: "#{install_dir}/embedded/bin",
-          embedded_service: "#{install_dir}/embedded/service",
+          embedded_service: "#{install_dir}/embedded/service"
         }
   end
 

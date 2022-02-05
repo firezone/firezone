@@ -37,12 +37,9 @@ build do
 
   # disable option checking as disable-docs is 3.3+ only
   configure_command = ["--disable-option-checking",
-                       "--disable-docs",
-  ]
+                       "--disable-docs"]
 
-  if version == "3.3" && mac_os_x? && arm?
-    patch source: "libffi-3.3-arm64.patch", plevel: 1, env: env
-  end
+  patch source: "libffi-3.3-arm64.patch", plevel: 1, env: env if version == "3.3" && mac_os_x? && arm?
 
   # AIX's old version of patch doesn't like the patch here
   unless aix?
@@ -51,9 +48,7 @@ build do
     configure_command << "--disable-multi-os-directory"
 
     # add the --disable-multi-os-directory flag to 3.2.1
-    if version == "3.2.1"
-      patch source: "libffi-3.2.1-disable-multi-os-directory.patch", plevel: 1, env: env
-    end
+    patch source: "libffi-3.2.1-disable-multi-os-directory.patch", plevel: 1, env: env if version == "3.2.1"
   end
 
   configure(*configure_command, env: env)

@@ -1,5 +1,5 @@
 #
-#Copyright 2012-2018 Chef Software, Inc.
+# Copyright 2012-2018 Chef Software, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -50,7 +50,7 @@ build do
       "SHARED_MODE=1",
       "CFLAGS=\"#{env["CFLAGS"]} -Wall\"",
       "ASFLAGS=\"#{env["CFLAGS"]} -Wall\"",
-      "LDFLAGS=\"#{env["LDFLAGS"]}\"",
+      "LDFLAGS=\"#{env["LDFLAGS"]}\""
       # The win32 makefile for zlib does not handle parallel make correctly.
       # In particular, see its rule for IMPLIB and SHAREDLIB. The ld step in
       # SHAREDLIB will generate both the dll and the dll.a files. The step to
