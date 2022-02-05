@@ -39,6 +39,11 @@ Firezone::Config.load_or_create_secrets!(
   node
 )
 
+# Generate new telemetry_id if doesn't exist
+unless /[a-f0-9]{8}-([a-f0-9]{4}-){3}[a-f0-9]{12}/.match?(node["firezone"]["telemetry_id"].to_s)
+  node.default['firezone']['telemetry_id'] = SecureRandom.uuid
+end
+
 node.default['firezone']['wireguard_public_key'] =
   `echo '#{node['firezone']['wireguard_private_key']}' | #{node['firezone']['install_directory']}/embedded/bin/wg pubkey`.chomp
 

@@ -28,18 +28,9 @@ else
 end
 
 file "telemetry-id" do
-  telemetry_id =
-    if /[a-f0-9]{8}-([a-f0-9]{4}-){3}[a-f0-9]{12}/.match?(node['firezone']['telemetry_id'].to_s)
-      # already generated
-      node["firezone"]["telemetry_id"]
-    else
-      SecureRandom.uuid
-    end
-
-  path "#{node['firezone']['var_directory']}/cache/telemetry_id"
+  path "#{node["firezone"]["var_directory"]}/cache/telemetry_id"
   mode "0440"
   owner node["firezone"]["user"]
   group node["firezone"]["group"]
-  content telemetry_id
-  action :create_if_missing
+  content node["firezone"]["telemetry_id"]
 end
