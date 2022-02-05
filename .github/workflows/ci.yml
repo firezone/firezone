@@ -21,7 +21,8 @@ jobs:
       - name: Lint Docs
         run: |
           npm install -g markdownlint-cli
-          markdownlint docs/
+          cd docs
+          markdownlint .
 
   static-analysis:
     runs-on: ubuntu-18.04
