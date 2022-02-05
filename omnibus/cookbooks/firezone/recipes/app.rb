@@ -41,8 +41,7 @@ file 'environment-variables' do
   # updated when config is updated.
   attributes.merge!(
     'force_ssl' => node['firezone']['nginx']['force_ssl'],
-    'mix_env' => 'prod',
-    'telemetry_id' => File.read("#{node["firezone"]["var_directory"]}/cache/telemetry_id")
+    'mix_env' => 'prod'
   )
 
   content Firezone::Config.environment_variables_from(attributes)

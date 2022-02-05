@@ -225,6 +225,7 @@ class Firezone
         'WIREGUARD_IPV6_ADDRESS' => attributes['wireguard']['ipv6']['address'],
         # Allow env var to override config
         'TELEMETRY_ENABLED' => ENV.fetch('TELEMETRY_ENABLED', attributes['telemetry']['enabled'] == false ? "false" : "true"),
+        'TELEMETRY_ID' => File.read("#{node["firezone"]["var_directory"]}/cache/telemetry_id"),
         'CONNECTIVITY_CHECKS_ENABLED' => attributes['connectivity_checks']['enabled'].to_s,
         'CONNECTIVITY_CHECKS_INTERVAL' => attributes['connectivity_checks']['interval'].to_s,
 
