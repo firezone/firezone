@@ -36,9 +36,7 @@ build do
 
   # pkg-config (at least up to 0.28) includes an older version of
   # libcharset/lib/config.charset that doesn't know about openbsd
-  if openbsd?
-    patch source: "openbsd-charset.patch", plevel: 1, env: env
-  end
+  patch source: "openbsd-charset.patch", plevel: 1, env: env if openbsd?
 
   command "./configure" \
           " --prefix=#{install_dir}/embedded" \
@@ -60,7 +58,5 @@ build do
 
   # ensure charset.alias gets installed on openbsd else pkg-config will
   # exit with byte conversion errors.
-  if openbsd?
-    copy "#{project_dir}/glib/glib/libcharset/charset.alias", "#{install_dir}/embedded/lib/charset.alias"
-  end
+  copy "#{project_dir}/glib/glib/libcharset/charset.alias", "#{install_dir}/embedded/lib/charset.alias" if openbsd?
 end

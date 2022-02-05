@@ -41,25 +41,25 @@ build do
 
   patch source: "perl-#{version}-remove_lnsl.patch", plevel: 1, env: env
 
-  if solaris2?
-    cc_command = "-Dcc='gcc -m64 -static-libgcc'"
-  elsif aix?
-    cc_command = "-Dcc='/opt/IBM/xlc/13.1.0/bin/cc_r -q64'"
-  elsif freebsd? && ohai["os_version"].to_i >= 1000024
-    cc_command = "-Dcc='clang'"
-  elsif mac_os_x?
-    cc_command = "-Dcc='clang'"
-  else
-    cc_command = "-Dcc='gcc -static-libgcc'"
-  end
+  cc_command = if solaris2?
+                 "-Dcc='gcc -m64 -static-libgcc'"
+               elsif aix?
+                 "-Dcc='/opt/IBM/xlc/13.1.0/bin/cc_r -q64'"
+               elsif freebsd? && ohai["os_version"].to_i >= 1_000_024
+                 "-Dcc='clang'"
+               elsif mac_os_x?
+                 "-Dcc='clang'"
+               else
+                 "-Dcc='gcc -static-libgcc'"
+               end
 
   configure_command = ["sh Configure",
-                      " -de",
-                      " -Dprefix=#{install_dir}/embedded",
-                      " -Duseshrplib",
-                      " -Dusethreads",
-                      " #{cc_command}",
-                      " -Dnoextensions='DB_File GDBM_File NDBM_File ODBM_File'"]
+                       " -de",
+                       " -Dprefix=#{install_dir}/embedded",
+                       " -Duseshrplib",
+                       " -Dusethreads",
+                       " #{cc_command}",
+                       " -Dnoextensions='DB_File GDBM_File NDBM_File ODBM_File'"]
 
   if aix?
     configure_command << "-Dmake=gmake"

@@ -1,12 +1,12 @@
 # frozen_string_literal: true
 
-require 'mixlib/shellout'
-require 'uri'
-require 'net/http'
-require 'json'
+require "mixlib/shellout"
+require "uri"
+require "net/http"
+require "json"
 
 desc = <<~DESC
-Resets the password for admin with email specified by default['firezone']['admin_email'] or creates a new admin if that email doesn't exist.
+  Resets the password for admin with email specified by default['firezone']['admin_email'] or creates a new admin if that email doesn't exist.
 DESC
 
 def capture
@@ -29,7 +29,7 @@ def capture
   end
 end
 
-add_command_under_category 'create-or-reset-admin', 'general', desc, 2 do
+add_command_under_category "create-or-reset-admin", "general", desc, 2 do
   command = %W(
     chef-client
     -z

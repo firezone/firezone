@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
-require 'mixlib/shellout'
-require 'uri'
-require 'net/http'
-require 'json'
+require "mixlib/shellout"
+require "uri"
+require "net/http"
+require "json"
 
 def capture
   telemetry_file = "/var/opt/firezone/cache/telemetry_id"
@@ -25,8 +25,8 @@ def capture
   end
 end
 
-add_command_under_category 'reconfigure', 'general', 'Reconfigure the application.', 2 do
-  status = run_chef("#{base_path}/embedded/cookbooks/dna.json", '--chef-license=accept')
+add_command_under_category "reconfigure", "general", "Reconfigure the application.", 2 do
+  status = run_chef("#{base_path}/embedded/cookbooks/dna.json", "--chef-license=accept")
 
   capture
 

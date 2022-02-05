@@ -42,9 +42,9 @@ build do
   # Windows does not support symlinks
   unless windows?
     link "certs/cacert.pem", "#{install_dir}/embedded/ssl/cert.pem",
-      unchecked: true,
-      force: true
+         unchecked: true,
+         force: true
 
-    block { File.chmod(0644, "#{install_dir}/embedded/ssl/certs/cacert.pem") }
+    block { File.chmod(0o644, "#{install_dir}/embedded/ssl/certs/cacert.pem") }
   end
 end

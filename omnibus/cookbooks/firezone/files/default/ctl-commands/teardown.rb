@@ -1,8 +1,9 @@
 # frozen_string_literal: true
 
-require 'mixlib/shellout'
+require "mixlib/shellout"
 
-add_command_under_category 'teardown-network', 'general', 'Removes WireGuard interface and firezone nftables table.', 2 do
+add_command_under_category "teardown-network", "general", "Removes WireGuard interface and firezone nftables table.",
+                           2 do
   command = %W(
     chef-client
     -z

@@ -14,15 +14,15 @@
 # limitations under the License.
 #
 
-name 'libyaml'
-default_version '0.1.7'
+name "libyaml"
+default_version "0.1.7"
 
-license 'MIT'
-license_file 'LICENSE'
+license "MIT"
+license_file "LICENSE"
 
 skip_transitive_dependency_licensing true
 
-dependency 'config_guess'
+dependency "config_guess"
 
 version("0.1.7") { source sha256: "8088e457264a98ba451a90b8661fcb4f9d6f478f7265d48322a196cec2480729" }
 
@@ -33,13 +33,13 @@ relative_path "yaml-#{version}"
 build do
   env = with_standard_compiler_flags(with_embedded_path)
 
-  update_config_guess(target: 'config')
+  update_config_guess(target: "config")
 
-  configure '--enable-shared', env: env
+  configure "--enable-shared", env: env
 
   # Windows had worse automake/libtool version issues.
   # Just patch the output instead.
-  patch source: 'v0.1.6.windows-configure.patch', plevel: 1, env: env if version >= '0.1.6' && windows?
+  patch source: "v0.1.6.windows-configure.patch", plevel: 1, env: env if version >= "0.1.6" && windows?
 
   make "-j #{workers}", env: env
   make "-j #{workers} install", env: env

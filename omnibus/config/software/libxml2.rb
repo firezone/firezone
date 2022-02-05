@@ -49,7 +49,7 @@ build do
     "--without-run-debug",
     "--without-legacy", # we don't need legacy interfaces
     "--without-catalog",
-    "--without-docbook",
+    "--without-docbook"
   ]
 
   update_config_guess

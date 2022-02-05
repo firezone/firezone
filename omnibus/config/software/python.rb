@@ -40,7 +40,7 @@ relative_path "Python-#{version}"
 
 build do
   # Disables nis and dbm -- both cause build issues
-  patch source: 'disable_modules.patch', target: 'Modules/Setup'
+  patch source: "disable_modules.patch", target: "Modules/Setup"
   env = with_standard_compiler_flags(with_embedded_path)
 
   update_config_guess

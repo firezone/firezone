@@ -9,19 +9,19 @@ require "securerandom"
 
 # Configure telemetry app-wide.
 
-include_recipe 'firezone::config'
+include_recipe "firezone::config"
 
-disable_telemetry_path = "#{node['firezone']['var_directory']}/.disable_telemetry"
+disable_telemetry_path = "#{node["firezone"]["var_directory"]}/.disable_telemetry"
 
-if node['firezone']['telemetry']['enabled'] == false
-  file 'disable_telemetry' do
+if node["firezone"]["telemetry"]["enabled"] == false
+  file "disable_telemetry" do
     path disable_telemetry_path
-    mode '0644'
-    user node['firezone']['user']
-    group node['firezone']['group']
+    mode "0644"
+    user node["firezone"]["user"]
+    group node["firezone"]["group"]
   end
 else
-  file 'disable_telemetry' do
+  file "disable_telemetry" do
     path disable_telemetry_path
     action :delete
   end

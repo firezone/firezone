@@ -62,7 +62,7 @@ build do
 
   env = with_standard_compiler_flags(with_embedded_path).merge(
     # WARNING!
-    "CFLAGS"  => "-L#{install_dir}/embedded/lib -I#{install_dir}/embedded/erlang/include",
+    "CFLAGS" => "-L#{install_dir}/embedded/lib -I#{install_dir}/embedded/erlang/include",
     "LDFLAGS" => "-Wl,-rpath #{install_dir}/embedded/lib -L#{install_dir}/embedded/lib -I#{install_dir}/embedded/erlang/include"
   )
   env.delete("CPPFLAGS")
@@ -93,7 +93,7 @@ build do
   # In future releases of erlang, someone should check if these flags (or
   # environment variables) are avaiable to remove this ugly hack.
   # Doesn't seem to be necessary for 24.0.5
-  %w{ncurses openssl zlib.h zconf.h}.each do |name|
+  %w[ncurses openssl zlib.h zconf.h].each do |name|
     link "#{install_dir}/embedded/include/#{name}", "#{install_dir}/embedded/erlang/include/#{name}"
   end
 
@@ -114,7 +114,7 @@ build do
     # Building from github source requires this step
     command "./otp_build autoconf"
   end
-  # Note: et, debugger and observer applications require wx to
+  # NOTE: et, debugger and observer applications require wx to
   # build. The tarballs from the downloads site has prebuilt the beam
   # files, so we were able to get away without disabling them and
   # still build. When building from raw source we must disable them
