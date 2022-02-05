@@ -22,6 +22,6 @@
     "bulma-responsive-tables": "^1.2.3",
     "bulma-switch-control": "^1.1.1",
     "bulma-upload-control": "^1.2.0",
-    "node-sass": "^6.0.1"
+    "node-sass": "^7.0.1"
   }
 }

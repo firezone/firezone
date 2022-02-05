@@ -121,6 +121,8 @@ jobs:
           mix coveralls.github --umbrella || mix test
 
   build-package-test:
+    # Doesn't really need, but don't run this stage when iterating over docs
+    needs: lint-docs
     env:
       TELEMETRY_ENABLED: "false"
     runs-on: ${{ matrix.platform }}
