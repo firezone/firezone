@@ -33,6 +33,19 @@ class Firezone
     end
     # rubocop:enable Metrics/MethodLength
 
+    def self.load_or_create_telemetry_id(filename, node)
+      create_directory!(filename)
+      if File.exist?(filename)
+        node.consume_attributes('firezone' => { 'telemetry_id' => File.read(filename) })
+      else
+        telemetry_id = SecureRandom.uuid
+        File.open(filename, 'w') do |file|
+          file.write telemetry_id
+        end
+        node.consume_attributes('firezone' => { 'telemetry_id' => telemetry_id })
+      end
+    end
+
     def self.locale_variables
       <<~LOCALE
         export LANG=en_US.UTF-8

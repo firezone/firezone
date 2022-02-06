@@ -60,7 +60,6 @@ if node['firezone']['phoenix']['enabled']
     action :enable
     subscribes :restart, 'file[environment-variables]'
     subscribes :restart, 'file[disable-telemetry]'
-    subscribes :restart, 'file[telemetry-id]'
   end
 else
   runit_service 'phoenix' do
