@@ -164,6 +164,9 @@ jobs:
         env:
           GIT_SHA: ${{ github.sha }}
         run: |
+          echo "removing lock file in case last run sucked"
+          sudo rm -f /opt/runner/omnibus-local/cache/git_cache/opt/firezone/index.lock
+
           . $HOME/.asdf/asdf.sh
           # CentOS 7 has path issues when this runs and doesn't have the
           # devtools loaded
