@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require 'securerandom'
-
 # Cookbook:: firezone
 # Recipe:: telemetry
 #
