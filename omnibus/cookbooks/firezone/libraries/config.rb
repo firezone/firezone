@@ -1,4 +1,4 @@
-# frozen_string_literal: true
+# frozen_string_literal: false
 
 require 'json'
 require 'fileutils'
@@ -33,6 +33,19 @@ class Firezone
     end
     # rubocop:enable Metrics/MethodLength
 
+    def self.load_or_create_telemetry_id(filename, node)
+      create_directory!(filename)
+      if File.exist?(filename)
+        node.consume_attributes('firezone' => { 'telemetry_id' => File.read(filename) })
+      else
+        telemetry_id = SecureRandom.uuid
+        File.open(filename, 'w') do |file|
+          file.write telemetry_id
+        end
+        node.consume_attributes('firezone' => { 'telemetry_id' => telemetry_id })
+      end
+    end
+
     def self.locale_variables
       <<~LOCALE
         export LANG=en_US.UTF-8
@@ -58,7 +71,7 @@ class Firezone
       create_directory!(filename)
       if File.exist?(filename)
         node.consume_attributes(
-          'firezone' => Chef::JSONCompat.from_json(File.read(filename))
+          'firezone' => Chef::JSONCompat.from_json(File.open(filename).read)
         )
       end
     rescue StandardError => e
@@ -73,6 +86,7 @@ class Firezone
       secrets = Chef::JSONCompat.from_json(File.read(filename))
       node.consume_attributes('firezone' => secrets)
     rescue Errno::ENOENT
+      secrets = build_secrets(node)
       begin
         File.open(filename, 'w') do |file|
           file.puts Chef::JSONCompat.to_json_pretty(secrets)
@@ -86,17 +100,28 @@ class Firezone
     end
     # rubocop:enable Metrics/MethodLength
 
-    def self.secrets(node)
+    # rubocop:disable Metrics/PerceivedComplexity
+    # rubocop:disable Metrics/MethodLength
+    # rubocop:disable Metrics/CyclomaticComplexity
+    # rubocop:disable Metrics/AbcSize
+    def self.build_secrets(node)
       {
-        'secret_key_base' => node.dig('firezone', 'secret_key_base') || SecureRandom.base64(48),
-        'live_view_signing_salt' => node.dig('firezone', 'live_view_signing_salt') || SecureRandom.base64(24),
-        'cookie_signing_salt' => node.dig('firezone', 'cookie_signing_salt') || SecureRandom.base64(6),
-        'wireguard_private_key' => node.dig('firezone', 'wireguard_private_key') || \
+        'secret_key_base' => node['firezone'] && node['firezone']['secret_key_base'] || SecureRandom.base64(48),
+        'live_view_signing_salt' => node['firezone'] && node['firezone']['live_view_signing_salt'] || \
+          SecureRandom.base64(24),
+        'cookie_signing_salt' => node['firezone'] && node['firezone']['cookie_signing_salt'] || SecureRandom.base64(6),
+        'wireguard_private_key' => node['firezone'] && node['firezone']['wireguard_private_key'] || \
           `#{node['firezone']['install_directory']}/embedded/bin/wg genkey`.chomp,
-        'database_encryption_key' => node.dig('firezone', 'database_encryption_key') || SecureRandom.base64(32),
-        'default_admin_password' => node.dig('firezone', 'default_admin_password') || SecureRandom.base64(8)
+        'database_encryption_key' => node['firezone'] && node['firezone']['database_encryption_key'] || \
+          SecureRandom.base64(32),
+        'default_admin_password' => node['firezone'] && node['firezone']['default_admin_password'] || \
+          SecureRandom.base64(8)
       }
     end
+    # rubocop:enable Metrics/PerceivedComplexity
+    # rubocop:enable Metrics/MethodLength
+    # rubocop:enable Metrics/CyclomaticComplexity
+    # rubocop:enable Metrics/AbcSize
 
     def self.audit_config(config)
       audit_fips_config(config)

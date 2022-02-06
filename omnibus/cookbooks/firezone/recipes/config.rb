@@ -30,6 +30,7 @@ Firezone::Config.load_or_create!(
   "#{node['firezone']['config_directory']}/firezone.rb",
   node
 )
+Firezone::Config.load_or_create_telemetry_id("#{node['firezone']['var_directory']}/cache/telemetry_id", node)
 Firezone::Config.load_from_json!(
   "#{node['firezone']['config_directory']}/firezone.json",
   node
@@ -38,11 +39,6 @@ Firezone::Config.load_or_create_secrets!(
   "#{node['firezone']['config_directory']}/secrets.json",
   node
 )
-
-# Generate new telemetry_id if doesn't exist
-unless /[a-f0-9]{8}-([a-f0-9]{4}-){3}[a-f0-9]{12}/.match?(node['firezone']['telemetry_id'].to_s)
-  node.default['firezone']['telemetry_id'] = SecureRandom.uuid
-end
 
 pkey = node['firezone']['wireguard_private_key']
 wg = "#{node['firezone']['install_directory']}/embedded/bin/wg"

@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require 'securerandom'
-
 # Cookbook:: firezone
 # Recipe:: telemetry
 #
@@ -25,12 +23,4 @@ else
     path disable_telemetry_path
     action :delete
   end
-end
-
-file 'telemetry-id' do
-  path "#{node['firezone']['var_directory']}/cache/telemetry_id"
-  mode '0440'
-  owner node['firezone']['user']
-  group node['firezone']['group']
-  content node['firezone']['telemetry_id']
 end
