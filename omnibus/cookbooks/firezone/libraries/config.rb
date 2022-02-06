@@ -58,7 +58,7 @@ class Firezone
       create_directory!(filename)
       if File.exist?(filename)
         node.consume_attributes(
-          'firezone' => Chef::JSONCompat.from_json(File.read(filename))
+          'firezone' => Chef::JSONCompat.from_json(File.open(filename).read)
         )
       end
     rescue StandardError => e
@@ -70,12 +70,12 @@ class Firezone
     # rubocop:disable Metrics/MethodLength
     def self.load_or_create_secrets!(filename, node)
       create_directory!(filename)
-      secrets = Chef::JSONCompat.from_json(File.read(filename))
+      secrets = Chef::JSONCompat.from_json(File.open(filename).read)
       node.consume_attributes('firezone' => secrets)
     rescue Errno::ENOENT
       begin
         File.open(filename, 'w') do |file|
-          file.puts Chef::JSONCompat.to_json_pretty(secrets)
+          file.puts Chef::JSONCompat.to_json_pretty(build_secrets(node))
         end
         Chef::Log.info("Creating secrets file #{filename}")
       rescue Errno::EACCES, Errno::ENOENT => e
@@ -86,7 +86,7 @@ class Firezone
     end
     # rubocop:enable Metrics/MethodLength
 
-    def self.secrets(node)
+    def self.build_secrets(node)
       {
         'secret_key_base' => node.dig('firezone', 'secret_key_base') || SecureRandom.base64(48),
         'live_view_signing_salt' => node.dig('firezone', 'live_view_signing_salt') || SecureRandom.base64(24),
