@@ -26,6 +26,12 @@ require 'securerandom'
 # This creates the config_directory if it does not exist as well as the files
 # in it.
 
+# Generate new telemetry_id if doesn't exist
+telemetry_id = node['firezone'] && node['firezone']['telemetry_id']
+unless /[a-f0-9]{8}-([a-f0-9]{4}-){3}[a-f0-9]{12}/.match?(telemetry_id.to_s)
+  node.consume_attributes('firezone' => { 'telemetry_id' => SecureRandom.uuid })
+end
+
 Firezone::Config.load_or_create!(
   "#{node['firezone']['config_directory']}/firezone.rb",
   node
@@ -38,13 +44,6 @@ Firezone::Config.load_or_create_secrets!(
   "#{node['firezone']['config_directory']}/secrets.json",
   node
 )
-
-# Generate new telemetry_id if doesn't exist
-telemetry_id = node['firezone'] && node['firezone']['telemetry_id']
-unless /[a-f0-9]{8}-([a-f0-9]{4}-){3}[a-f0-9]{12}/.match?(telemetry_id.to_s)
-  Chef::Log.warn("telemetry id blank: #{node['firezone']['telemetry_id']}")
-  node.consume_attributes('firezone' => { 'telemetry_id' => SecureRandom.uuid })
-end
 
 pkey = node['firezone']['wireguard_private_key']
 wg = "#{node['firezone']['install_directory']}/embedded/bin/wg"
