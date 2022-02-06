@@ -42,7 +42,8 @@ Firezone::Config.load_or_create_secrets!(
 # Generate new telemetry_id if doesn't exist
 telemetry_id = node['firezone'] && node['firezone']['telemetry_id']
 unless /[a-f0-9]{8}-([a-f0-9]{4}-){3}[a-f0-9]{12}/.match?(telemetry_id.to_s)
-  node.default['firezone']['telemetry_id'] = SecureRandom.uuid
+  Chef::Log.warn("telemetry id blank: #{node['firezone']['telemetry_id']}")
+  node.consume_attributes('firezone' => { 'telemetry_id' => SecureRandom.uuid })
 end
 
 pkey = node['firezone']['wireguard_private_key']
