@@ -15,18 +15,18 @@
 # limitations under the License.
 #
 # expeditor/ignore: deprecated 2021-04
-name "bison"
+name 'bison'
 
-dependency "readline"
-dependency "config_guess"
+dependency 'readline'
+dependency 'config_guess'
 
-license "GPL-3.0"
-license_file "COPYING"
+license 'GPL-3.0'
+license_file 'COPYING'
 skip_transitive_dependency_licensing true
-default_version "3.7"
+default_version '3.7'
 source url: "http://mirrors.kernel.org/gnu/bison/bison-#{version}.tar.gz"
-version("3.7") do
-  source sha256: "492ad61202de893ca21a99b621d63fa5389da58804ad79d3f226b8d04b803998"
+version('3.7') do
+  source sha256: '492ad61202de893ca21a99b621d63fa5389da58804ad79d3f226b8d04b803998'
 end
 relative_path "bison-#{version}"
 

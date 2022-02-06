@@ -25,6 +25,12 @@ repos:
         language: system
         pass_filenames: false
         files: \.ex$
+      - id: rubocop
+        name: 'ruby: rubocop'
+        entry: rubocop
+        language: system
+        pass_filenames: false
+        files: \.rb$
 
   # Standard pre-commit hooks
   - repo: https://github.com/pre-commit/pre-commit-hooks

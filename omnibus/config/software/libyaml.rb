@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 #
 # Copyright 2012-2015 Chef Software, Inc.
 #
@@ -24,7 +26,7 @@ skip_transitive_dependency_licensing true
 
 dependency 'config_guess'
 
-version("0.1.7") { source sha256: "8088e457264a98ba451a90b8661fcb4f9d6f478f7265d48322a196cec2480729" }
+version('0.1.7') { source sha256: '8088e457264a98ba451a90b8661fcb4f9d6f478f7265d48322a196cec2480729' }
 
 source url: "http://pyyaml.org/download/libyaml/yaml-#{version}.tar.gz"
 

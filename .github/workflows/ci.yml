@@ -21,7 +21,8 @@ jobs:
       - name: Lint Docs
         run: |
           npm install -g markdownlint-cli
-          markdownlint docs/
+          cd docs
+          markdownlint .
 
   static-analysis:
     runs-on: ubuntu-18.04
@@ -64,7 +65,7 @@ jobs:
       - run: |
           pip install pre-commit
           pre-commit install
-          pre-commit run --all-files
+          SKIP=no-commit-to-branch pre-commit run --all-files
 
 
   unit-test:
@@ -121,6 +122,8 @@ jobs:
           mix coveralls.github --umbrella || mix test
 
   build-package-test:
+    # Doesn't really need, but don't run this stage when iterating over docs
+    needs: lint-docs
     env:
       TELEMETRY_ENABLED: "false"
     runs-on: ${{ matrix.platform }}

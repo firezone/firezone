@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # Chef InSpec test for recipe firezone::default
 
 # The Chef InSpec reference, with examples and extensive documentation, can be

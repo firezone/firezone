@@ -1,3 +1,4 @@
+# rubocop:disable Naming/FileName
 # frozen_string_literal: true
 
 # Copyright 2012-2015 Chef Software, Inc.
@@ -16,30 +17,31 @@
 # limitations under the License.
 #
 
-name "omnibus-ctl"
-default_version "v0.6.0"
+name 'omnibus-ctl'
+default_version 'v0.6.0'
 
-license "Apache-2.0"
-license_file "https://raw.githubusercontent.com/chef/omnibus-ctl/master/LICENSE"
+license 'Apache-2.0'
+license_file 'https://raw.githubusercontent.com/chef/omnibus-ctl/master/LICENSE'
 # Even though omnibus-ctl is a gem, it does not have any dependencies.
 skip_transitive_dependency_licensing true
 
-dependency "rubygems"
-dependency "ruby"
+dependency 'rubygems'
+dependency 'ruby'
 
 # versions_list: https://github.com/chef/omnibus-ctl/tags filter=*.tar.gz
-source git: "https://github.com/chef/omnibus-ctl.git"
+source git: 'https://github.com/chef/omnibus-ctl.git'
 
-relative_path "omnibus-ctl"
+relative_path 'omnibus-ctl'
 
 build do
   env = with_standard_compiler_flags(with_embedded_path)
 
   # Remove existing built gems in case they exist in the current dir
-  delete "omnibus-ctl-*.gem"
+  delete 'omnibus-ctl-*.gem'
 
-  gem "build omnibus-ctl.gemspec", env: env
-  gem "install omnibus-ctl-*.gem --no-document ", env: env
+  gem 'build omnibus-ctl.gemspec', env: env
+  gem 'install omnibus-ctl-*.gem --no-document ', env: env
 
   touch "#{install_dir}/embedded/service/omnibus-ctl/.gitkeep"
 end
+# rubocop:enable Naming/FileName

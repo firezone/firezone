@@ -28,16 +28,16 @@ egress_ip.run_command
 node.default['firezone']['wireguard']['endpoint'] ||= egress_ip.stdout.chomp.gsub(%r{/.*}, '')
 node.default['firezone']['egress_interface'] = egress_interface
 
-replace_or_add "IPv4 packet forwarding" do
-  path "/etc/sysctl.conf"
-  pattern /^\s+#\s+net.ipv4.ip_forward\s+=\s+1/
-  line "net.ipv4.ip_forward=1"
+replace_or_add 'IPv4 packet forwarding' do
+  path '/etc/sysctl.conf'
+  pattern(/^\s+#\s+net.ipv4.ip_forward\s+=\s+1/)
+  line 'net.ipv4.ip_forward=1'
 end
 
-replace_or_add "IPv6 packet forwarding" do
-  path "/etc/sysctl.conf"
-  pattern /^\s+#\s+net.ipv6.conf.all.forwarding\s+=\s+1/
-  line "net.ipv6.conf.all.forwarding=1"
+replace_or_add 'IPv6 packet forwarding' do
+  path '/etc/sysctl.conf'
+  pattern(/^\s+#\s+net.ipv6.conf.all.forwarding\s+=\s+1/)
+  line 'net.ipv6.conf.all.forwarding=1'
 end
 
-execute "sysctl -p /etc/sysctl.conf"
+execute 'sysctl -p /etc/sysctl.conf'

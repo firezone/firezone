@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 #
 # Copyright:: Copyright (c) 2019 Chef Software, Inc.
 # Copyright:: Copyright (c) 2021 Firezone, Inc.
@@ -16,12 +18,10 @@
 require 'json'
 
 add_command_under_category 'version', 'general', 'Display current version of Firezone', 2 do
-  begin
-    version = JSON.parse(File.read('/opt/firezone/version-manifest.json'))['build_version']
-    puts version
-  rescue Errno::ENOENT => e
-    puts 'Error determining version!'
-    puts e.message.to_s
-    exit(1)
-  end
+  version = JSON.parse(File.read('/opt/firezone/version-manifest.json'))['build_version']
+  puts version
+rescue Errno::ENOENT => e
+  puts 'Error determining version!'
+  puts e.message.to_s
+  exit(1)
 end

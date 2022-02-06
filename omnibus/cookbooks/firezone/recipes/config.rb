@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require "securerandom"
+require 'securerandom'
 
 # Cookbook:: firezone
 # Recipe:: config
@@ -39,8 +39,14 @@ Firezone::Config.load_or_create_secrets!(
   node
 )
 
-node.default['firezone']['wireguard_public_key'] =
-  `echo '#{node['firezone']['wireguard_private_key']}' | #{node['firezone']['install_directory']}/embedded/bin/wg pubkey`.chomp
+# Generate new telemetry_id if doesn't exist
+unless /[a-f0-9]{8}-([a-f0-9]{4}-){3}[a-f0-9]{12}/.match?(node['firezone']['telemetry_id'].to_s)
+  node.default['firezone']['telemetry_id'] = SecureRandom.uuid
+end
+
+pkey = node['firezone']['wireguard_private_key']
+wg = "#{node['firezone']['install_directory']}/embedded/bin/wg"
+node.default['firezone']['wireguard_public_key'] = `echo '#{pkey}' | #{wg} pubkey`.chomp
 
 Firezone::Config.audit_config(node['firezone'])
 Firezone::Config.maybe_turn_on_fips(node)
@@ -87,7 +93,7 @@ directory "#{node['firezone']['var_directory']}/etc" do
   mode '0700'
 end
 
-file "configuration-variables" do
+file 'configuration-variables' do
   path "#{node['firezone']['config_directory']}/firezone.rb"
   owner node['firezone']['user']
   group node['firezone']['group']

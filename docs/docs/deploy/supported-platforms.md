@@ -43,7 +43,7 @@ Note that we only support RPM and DEB based packaging systems. Others, like Arch
 Linux are currently being investigated [
 in this issue](https://github.com/firezone/firezone/issues/378).
 
-### AmazonLinux 2 Notes
+## AmazonLinux 2 Notes
 
 Kernel upgrade required:
 
@@ -51,7 +51,7 @@ Kernel upgrade required:
 sudo amazon-linux-extras install -y kernel-5.10
 ```
 
-### CentOS 7 Notes
+## CentOS 7 Notes
 
 Kernel upgrade to 5.6+ required. To upgrade to the latest mainline kernel and
 select it as the default boot kernel:
@@ -66,7 +66,7 @@ sudo grub2-mkconfig -o /boot/grub2/grub.cfg
 sudo reboot
 ```
 
-### CentOS 8 Notes
+## CentOS 8 Notes
 
 The WireGuard kernel module needs to be installed:
 
@@ -75,25 +75,25 @@ yum install elrepo-release epel-release
 yum install kmod-wireguard
 ```
 
-### RHEL 7 Notes
+## RHEL 7 Notes
 
 Red Hat Enterprise Linux is binary compatible with CentOS, so the Firezone
 package for CentOS 7 should work just fine for RHEL 7. You'll still need to
 upgrade your kernel to 5.6+ however. To do so, follow the steps for
 [CentOS 7 Notes](#centos-7-notes) above.
 
-### RHEL 8 Notes
+## RHEL 8 Notes
 
 Red Hat Enterprise Linux is binary compatible with CentOS, so the Firezone
 package for CentOS 8 should work just fine for RHEL 8. You'll still need to
 install the WireGuard kernel module, however. See [CentOS 8 Notes
 ](#centos-8-notes) above.
 
-### RHEL 9 Notes
+## RHEL 9 Notes
 
 Use the package for CentOS 9.
 
-### Ubuntu 18.04 Notes
+## Ubuntu 18.04 Notes
 
 Kernel upgrade to 5.4+ required:
 
@@ -101,13 +101,13 @@ Kernel upgrade to 5.4+ required:
 sudo apt install linux-image-generic-hwe-18.04
 ```
 
-### Debian 10 Notes
+## Debian 10 Notes
 
 Kernel upgrade to 5.6+ required. See [this guide
 ](https://jensd.be/968/linux/install-a-newer-kernel-in-debian-10-buster-stable)
 for an example.
 
-### openSUSE Notes
+## openSUSE Notes
 
 Firezone requires the `setcap` utility, but some recent openSUSE releases may
 not have it installed by default. To fix, ensure `libcap-progs` is installed:

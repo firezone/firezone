@@ -14,26 +14,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-name "readline"
+name 'readline'
 
-default_version "8.1"
+default_version '8.1'
 
-version("8.1") { source sha256: "f8ceb4ee131e3232226a17f51b164afc46cd0b9e6cef344be87c65962cb82b02" }
+version('8.1') { source sha256: 'f8ceb4ee131e3232226a17f51b164afc46cd0b9e6cef344be87c65962cb82b02' }
 
 source url: "https://mirrors.kernel.org/gnu/readline/readline-#{version}.tar.gz"
 
-dependency "config_guess"
+dependency 'config_guess'
 
 relative_path "readline-#{version}"
 
 build do
   env = with_standard_compiler_flags(with_embedded_path)
   update_config_guess
-  configure_command = ["./configure",
-                       "--disable-mpfr",
+  configure_command = ['./configure',
+                       '--disable-mpfr',
                        "--prefix=#{install_dir}/embedded"]
 
-  command configure_command.join(" "), env: env
+  command configure_command.join(' '), env: env
   make "-j #{workers}", env: env
   make "-j #{workers} install", env: env
 end

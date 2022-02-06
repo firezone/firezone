@@ -13,30 +13,30 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-name "flex"
-license_file "COPYING"
+name 'flex'
+license_file 'COPYING'
 skip_transitive_dependency_licensing true
-default_version "2.6.4"
+default_version '2.6.4'
 source url: "https://github.com/westes/flex/releases/download/v#{version}/flex-#{version}.tar.gz"
-version("2.6.4") do
-  source sha256: "e87aae032bf07c26f85ac0ed3250998c37621d95f8bd748b31f15b33c45ee995"
+version('2.6.4') do
+  source sha256: 'e87aae032bf07c26f85ac0ed3250998c37621d95f8bd748b31f15b33c45ee995'
 end
 relative_path "#{name}-#{version}"
 
-dependency "bison"
-dependency "m4"
-dependency "gettext"
-dependency "libtool"
-dependency "autoconf"
-dependency "automake"
+dependency 'bison'
+dependency 'm4'
+dependency 'gettext'
+dependency 'libtool'
+dependency 'autoconf'
+dependency 'automake'
 
 build do
   env = with_standard_compiler_flags(with_embedded_path)
 
   # Fixes https://github.com/spack/spack/issues/8152
-  env["CFLAGS"] << " -D_GNU_SOURCE" if debian?
+  env['CFLAGS'] << ' -D_GNU_SOURCE' if debian?
 
-  command "./autogen.sh", env: env
+  command './autogen.sh', env: env
   command "./configure --prefix=#{install_dir}/embedded", env: env
   make "-j #{workers}", env: env
   make "-j #{workers} install", env: env

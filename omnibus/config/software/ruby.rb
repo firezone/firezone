@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 #
 # Copyright 2012-2016 Chef Software, Inc.
 #
@@ -32,7 +34,7 @@ default_version '2.7.5'
 
 fips_enabled = (project.overrides[:fips] && project.overrides[:fips][:enabled]) || false
 
-dependency 'patch' if (solaris? && platform_version.satisfies?("10"))
+dependency 'patch' if solaris? && platform_version.satisfies?('10')
 dependency 'ncurses' unless windows? || version.satisfies?('>= 2.1')
 dependency 'zlib'
 dependency 'openssl'
@@ -83,7 +85,7 @@ elsif aix?
   env['SOLIBS'] = '-lm -lc'
   # need to use GNU m4, default m4 doesn't work
   env['M4'] = '/opt/freeware/bin/m4'
-elsif solaris? && platform_version.satisfies?("10")
+elsif solaris? && platform_version.satisfies?('10')
   if sparc?
     # Known issue with rubby where too much GCC optimization blows up miniruby on sparc
     env['CFLAGS'] << ' -std=c99 -O0 -g -pipe -mcpu=v9'
@@ -95,13 +97,14 @@ elsif windows?
   env['CPPFLAGS'] << ' -DFD_SETSIZE=2048'
 else # including linux
   env['CFLAGS'] << if version.satisfies?('>= 2.3.0') &&
-      rhel? && platform_version.satisfies?('< 6.0')
+                      rhel? && platform_version.satisfies?('< 6.0')
                      ' -O2 -g -pipe'
                    else
                      ' -O3 -g -pipe'
                    end
 end
 
+# rubocop:disable Metrics/BlockLength
 build do
   env['CFLAGS'] << ' -fno-omit-frame-pointer'
 
@@ -109,11 +112,11 @@ build do
   patch_env = env.dup
   patch_env['PATH'] = "/opt/freeware/bin:#{env['PATH']}" if aix?
 
-  if solaris? && platform_version.satisfies?("10") && version.satisfies?('>= 2.1')
+  if solaris? && platform_version.satisfies?('10') && version.satisfies?('>= 2.1')
     patch source: 'ruby-no-stack-protector.patch', plevel: 1, env: patch_env
-  elsif solaris? && platform_version.satisfies?("10") && version =~ /^1.9/
+  elsif solaris? && platform_version.satisfies?('10') && version =~ /^1.9/
     patch source: 'ruby-sparc-1.9.3-c99.patch', plevel: 1, env: patch_env
-  elsif solaris? && platform_version.satisfies?("11") && version =~ /^2.1/
+  elsif solaris? && platform_version.satisfies?('11') && version =~ /^2.1/
     patch source: 'ruby-solaris-linux-socket-compat.patch', plevel: 1, env: patch_env
   end
 
@@ -147,8 +150,8 @@ build do
   # in Ruby trunk and expected to be included in future point releases.
   # https://redmine.ruby-lang.org/issues/11602
   if rhel? &&
-      platform_version.satisfies?('< 6') &&
-      (version == '2.1.7' || version == '2.2.3')
+     platform_version.satisfies?('< 6') &&
+     (version == '2.1.7' || version == '2.2.3')
 
     patch source: 'ruby-fix-reserve-stack-segfault.patch', plevel: 1, env: patch_env
   end
@@ -181,7 +184,8 @@ build do
     patch source: 'ruby-aix-vm-core.patch', plevel: 1, env: patch_env
 
     # per IBM, just help ruby along on what it's running on
-    configure_command << '--host=powerpc-ibm-aix6.1.0.0 --target=powerpc-ibm-aix6.1.0.0 --build=powerpc-ibm-aix6.1.0.0 --enable-pthread'
+    configure_command << '--host=powerpc-ibm-aix6.1.0.0 --target=powerpc-ibm-aix6.1.0.0 --build=powerpc-ibm-aix6'\
+      '.1.0.0 --enable-pthread'
 
   elsif freebsd?
     # Disable optional support C level backtrace support. This requires the
@@ -207,7 +211,8 @@ build do
     configure_command << ' debugflags=-g'
   else
     # TODO: Consider pulling in Gitlab's OhaiHelper if raspberry_pi is needed
-    # configure_command << %w(host target build).map { |w| "--#{w}=#{OhaiHelper.gcc_target}" } if OhaiHelper.raspberry_pi?
+    # configure_command << %w(host target build).map { |w| "--#{w}=#{OhaiHelper.gcc_target}" } if \
+    # OhaiHelper.raspberry_pi?
     configure_command << "--with-opt-dir=#{install_dir}/embedded"
   end
 
@@ -238,3 +243,4 @@ build do
     end
   end
 end
+# rubocop:enable Metrics/BlockLength

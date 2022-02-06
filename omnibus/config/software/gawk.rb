@@ -14,27 +14,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-name "gawk"
+name 'gawk'
 
-default_version "5.1.0"
+default_version '5.1.0'
 
-version("5.1.0") { source sha256: "03a0360edcd84bec156fe211bbc4fc8c78790973ce4e8b990a11d778d40b1a26" }
+version('5.1.0') { source sha256: '03a0360edcd84bec156fe211bbc4fc8c78790973ce4e8b990a11d778d40b1a26' }
 
 source url: "https://mirrors.kernel.org/gnu/gawk/gawk-#{version}.tar.gz"
 
-dependency "readline"
-dependency "config_guess"
+dependency 'readline'
+dependency 'config_guess'
 
 relative_path "gawk-#{version}"
 
 build do
   env = with_standard_compiler_flags(with_embedded_path)
   update_config_guess
-  configure_command = ["./configure",
-                       "--disable-mpfr",
+  configure_command = ['./configure',
+                       '--disable-mpfr',
                        "--prefix=#{install_dir}/embedded"]
 
-  command configure_command.join(" "), env: env
+  command configure_command.join(' '), env: env
   make "-j #{workers}", env: env
   make "-j #{workers} install", env: env
 end
