@@ -15,14 +15,14 @@
 # limitations under the License.
 #
 
-name "libmnl"
-default_version "1.0.4"
+name 'libmnl'
+default_version '1.0.4'
 
-license "GPL-2.1"
-license_file "COPYING"
+license 'GPL-2.1'
+license_file 'COPYING'
 skip_transitive_dependency_licensing true
 
-version("1.0.4") { source sha256: "171f89699f286a5854b72b91d06e8f8e3683064c5901fb09d954a9ab6f551f81" }
+version('1.0.4') { source sha256: '171f89699f286a5854b72b91d06e8f8e3683064c5901fb09d954a9ab6f551f81' }
 
 source url: "https://www.netfilter.org/pub/libmnl/libmnl-#{version}.tar.bz2"
 

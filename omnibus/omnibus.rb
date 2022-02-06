@@ -14,14 +14,10 @@
 #
 # Uncomment this line to change the default base directory to "local"
 # -------------------------------------------------------------------
-if ENV["CI"]
-  base_dir("/opt/runner/omnibus-local")
-elsif Dir.exist?("/vagrant")
-  # Running inside vagrant, use tmp dir
-  base_dir("/tmp/omnibus-local")
+if ENV['CI']
+  base_dir('/opt/runner/omnibus-local')
 else
-  # Running on build server, use fast SSD array dir
-  base_dir("/data/omnibus-local")
+  base_dir('/tmp/omnibus-local')
 end
 #
 # Alternatively you can tune the individual values
@@ -63,5 +59,8 @@ append_timestamp false
 
 # Windows architecture defaults
 # ------------------------------
-windows_arch   %w[x86 x64].include?((ENV["OMNIBUS_WINDOWS_ARCH"] || "").downcase) ?
-                 ENV["OMNIBUS_WINDOWS_ARCH"].downcase.to_sym : :x86
+if %w[x86 x64].include?((ENV['OMNIBUS_WINDOWS_ARCH'] || '').downcase)
+  windows_arch(ENV['OMNIBUS_WINDOWS_ARCH'].downcase.to_sym)
+else
+  windows_arch(:x86)
+end

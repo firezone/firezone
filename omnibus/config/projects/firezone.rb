@@ -15,11 +15,11 @@
 # limitations under the License.
 #
 
-name "firezone"
-maintainer "Firezone"
-homepage "https://firez.one"
-license "Apache-2.0"
-license_file "../LICENSE"
+name 'firezone'
+maintainer 'Firezone'
+homepage 'https://firez.one'
+license 'Apache-2.0'
+license_file '../LICENSE'
 
 description <<~DESC
   Web UI + Firewall manager for WireGuard
@@ -29,34 +29,30 @@ DESC
 # and /opt/firezone on all other platforms
 install_dir "#{default_root}/#{name}"
 
-if ENV["CI"]
-  stage_path = "/opt/runner/omnibus-local/stage"
-  # Prevent runner tmp dir from filling up
-  unless Dir.exist?(stage_path)
-    staging_dir = stage_path
-  end
-end
+# Prevent runner tmp dir from filling up
+stage_path = '/opt/runner/omnibus-local/stage'
+ENV['CI'] && Dir.exist?(stage_path) && staging_dir(stage_path)
 
 build_version Omnibus::BuildVersion.semver
 build_iteration 1
 
 # firezone build dependencies/components
-dependency "runit"
-dependency "nginx"
-dependency "erlang"
-dependency "elixir"
-dependency "openssl"
-dependency "postgresql"
-dependency "wireguard-tools"
-dependency "firezone"
-dependency "firezone-ctl"
-dependency "firezone-scripts"
-dependency "firezone-cookbooks"
+dependency 'runit'
+dependency 'nginx'
+dependency 'erlang'
+dependency 'elixir'
+dependency 'openssl'
+dependency 'postgresql'
+dependency 'wireguard-tools'
+dependency 'firezone'
+dependency 'firezone-ctl'
+dependency 'firezone-scripts'
+dependency 'firezone-cookbooks'
 
 # XXX: Ensure all development resources aren't included
-exclude ".env"
-exclude ".github"
-exclude ".vagrant"
-exclude ".ci"
-exclude "**/.git"
-exclude "**/bundler/git"
+exclude '.env'
+exclude '.github'
+exclude '.vagrant'
+exclude '.ci'
+exclude '**/.git'
+exclude '**/bundler/git'

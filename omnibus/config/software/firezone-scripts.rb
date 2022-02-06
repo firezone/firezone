@@ -1,3 +1,6 @@
+# rubocop:disable Naming/FileName
+# frozen_string_literal: true
+
 #
 # Copyright:: Copyright (c) 2015 GitLab B.V.
 # Copyright:: Copyright (c) 2021 Firezone
@@ -28,3 +31,4 @@ source path: File.expand_path('files/firezone-scripts', Omnibus::Config.project_
 build do
   copy '*', "#{install_dir}/embedded/bin/"
 end
+# rubocop:enable Naming/FileName

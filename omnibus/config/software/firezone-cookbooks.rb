@@ -1,3 +1,6 @@
+# rubocop:disable Naming/FileName
+# frozen_string_literal: true
+
 #
 # Copyright 2014 Chef Software, Inc.
 #
@@ -14,11 +17,12 @@
 # limitations under the License.
 #
 
-name "firezone-cookbooks"
+name 'firezone-cookbooks'
 license :project_license
 
-source path: "cookbooks/firezone"
+source path: 'cookbooks/firezone'
 
+# rubocop:disable Metrics/BlockLength
 build do
   cookbooks_path = "#{install_dir}/embedded/cookbooks"
   env = with_standard_compiler_flags(with_embedded_path)
@@ -27,7 +31,7 @@ build do
 
   block do
     all_the_gem_deps = {}
-    Dir.glob(cookbooks_path + '/**/metadata.json').each do |metadata|
+    Dir.glob("#{cookbooks_path}/**/metadata.json").each do |metadata|
       cookbook_name = File.basename(File.dirname(metadata))
       metadata_json = FFI_Yajl::Parser.parse(File.read(metadata))
       gem_deps = metadata_json.fetch('gems', [])
@@ -35,24 +39,24 @@ build do
     end
 
     unless all_the_gem_deps.empty?
-      raise Omnibus::Error, "Nope. Gem dependencies found in the following "\
-        "cookbooks used during ctl-reconfigure. This will break airgapped "\
+      raise Omnibus::Error, 'Nope. Gem dependencies found in the following '\
+        'cookbooks used during ctl-reconfigure. This will break airgapped '\
         "installs.\n#{all_the_gem_deps}"
     end
   end
 
   block do
-    open("#{cookbooks_path}/dna.json", "w") do |file|
+    File.open("#{cookbooks_path}/dna.json", 'w') do |file|
       file.write FFI_Yajl::Encoder.encode(run_list: ['recipe[firezone::default]'])
     end
 
-    open("#{cookbooks_path}/show-config.json", "w") do |file|
+    File.open("#{cookbooks_path}/show-config.json", 'w') do |file|
       file.write FFI_Yajl::Encoder.encode(
         run_list: ['recipe[firezone::show_config]']
       )
     end
 
-    open("#{cookbooks_path}/solo.rb", "w") do |file|
+    File.open("#{cookbooks_path}/solo.rb", 'w') do |file|
       file.write <<~SOLO
         cookbook_path   "#{cookbooks_path}"
         cache_path "/var/opt/firezone/cache"
@@ -62,3 +66,5 @@ build do
     end
   end
 end
+# rubocop:enable Metrics/BlockLength
+# rubocop:enable Naming/FileName

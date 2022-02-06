@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 #
 # Copyright 2012-2016 Chef Software, Inc.
 #
@@ -69,7 +71,7 @@ if version && !source
 end
 
 # git repo is always expanded to "rubygems"
-relative_path 'rubygems' if source && source.include?(:git)
+relative_path 'rubygems' if source&.include?(:git)
 
 build do
   env = with_standard_compiler_flags(with_embedded_path)
@@ -81,6 +83,6 @@ build do
     # Installing direct from rubygems:
     # If there is no version, this will get latest.
     gem "update --system #{version}", env: env
-    patch source: "license/add-license-file.patch"
+    patch source: 'license/add-license-file.patch'
   end
 end

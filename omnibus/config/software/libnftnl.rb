@@ -15,14 +15,14 @@
 # limitations under the License.
 #
 
-name "libnftnl"
-default_version "1.2.0"
+name 'libnftnl'
+default_version '1.2.0'
 
-license "GPL-2.1"
-license_file "COPYING"
+license 'GPL-2.1'
+license_file 'COPYING'
 skip_transitive_dependency_licensing true
 
-version("1.2.0") { source sha256: "90b01fddfe9be8c3245c3ba5ff5a4424a8df708828f92b2b361976b658c074f5" }
+version('1.2.0') { source sha256: '90b01fddfe9be8c3245c3ba5ff5a4424a8df708828f92b2b361976b658c074f5' }
 
 source url: "https://www.netfilter.org/pub/libnftnl/libnftnl-#{version}.tar.bz2"
 

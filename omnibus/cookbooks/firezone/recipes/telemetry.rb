@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'securerandom'
+
 # Cookbook:: firezone
 # Recipe:: telemetry
 #
@@ -9,7 +11,7 @@
 
 include_recipe 'firezone::config'
 
-disable_telemetry_path = "#{node['firezone']['install_directory']}/.disable-telemetry"
+disable_telemetry_path = "#{node['firezone']['var_directory']}/.disable_telemetry"
 
 if node['firezone']['telemetry']['enabled'] == false
   file 'disable_telemetry' do
@@ -18,7 +20,6 @@ if node['firezone']['telemetry']['enabled'] == false
     user node['firezone']['user']
     group node['firezone']['group']
   end
-  node['firezone']['telemetry_id'] = nil
 else
   file 'disable_telemetry' do
     path disable_telemetry_path
@@ -26,6 +27,10 @@ else
   end
 end
 
-unless /[a-f0-9]{8}-([a-f0-9]{4}-){3}[a-f0-9]{12}/.match?(node['firezone']['telemetry_id'].to_s)
-  node.normal['firezone']['telemetry_id'] = SecureRandom.uuid()
+file 'telemetry-id' do
+  path "#{node['firezone']['var_directory']}/cache/telemetry_id"
+  mode '0440'
+  owner node['firezone']['user']
+  group node['firezone']['group']
+  content node['firezone']['telemetry_id']
 end

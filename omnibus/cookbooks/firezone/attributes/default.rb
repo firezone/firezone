@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # # Firezone configuration
 
 require 'etc'
@@ -36,7 +38,7 @@ default['firezone']['var_directory'] = '/var/opt/firezone'
 default['firezone']['user'] = 'firezone'
 default['firezone']['group'] = 'firezone'
 # Email for the primary admin user.
-default['firezone']['admin_email'] = "firezone@localhost"
+default['firezone']['admin_email'] = 'firezone@localhost'
 
 # The outgoing interface name.
 # This is where tunneled traffic will exit the WireGuard tunnel.
@@ -72,7 +74,7 @@ default['firezone']['nginx']['non_ssl_port'] = 80
 default['firezone']['nginx']['ssl_port'] = 443
 default['firezone']['nginx']['directory'] = "#{node['firezone']['var_directory']}/nginx/etc"
 default['firezone']['nginx']['log_directory'] = "#{node['firezone']['log_directory']}/nginx"
-default['firezone']['nginx']['log_rotation']['file_maxbytes'] = 104857600
+default['firezone']['nginx']['log_rotation']['file_maxbytes'] = 104_857_600
 default['firezone']['nginx']['log_rotation']['num_to_keep'] = 10
 default['firezone']['nginx']['log_x_forwarded_for'] = false
 
@@ -102,7 +104,7 @@ default['firezone']['nginx']['gzip_comp_level'] = '2'
 default['firezone']['nginx']['gzip_proxied'] = 'any'
 default['firezone']['nginx']['gzip_vary'] = 'off'
 default['firezone']['nginx']['gzip_buffers'] = nil
-default['firezone']['nginx']['gzip_types'] = %w(
+default['firezone']['nginx']['gzip_types'] = %w[
   text/plain
   text/css
   application/x-javascript
@@ -113,7 +115,7 @@ default['firezone']['nginx']['gzip_types'] = %w(
   text/javascript
   application/javascript
   application/json
-)
+]
 default['firezone']['nginx']['gzip_min_length'] = 1000
 default['firezone']['nginx']['gzip_disable'] = 'MSIE [1-6]\.'
 default['firezone']['nginx']['keepalive'] = 'on'
@@ -160,7 +162,7 @@ default['firezone']['postgresql']['data_directory'] = "#{node['firezone']['var_d
 
 # ### Logs
 default['firezone']['postgresql']['log_directory'] = "#{node['firezone']['log_directory']}/postgresql"
-default['firezone']['postgresql']['log_rotation']['file_maxbytes'] = 104857600
+default['firezone']['postgresql']['log_rotation']['file_maxbytes'] = 104_857_600
 default['firezone']['postgresql']['log_rotation']['num_to_keep'] = 10
 
 # ### Postgres Settings
@@ -172,10 +174,10 @@ default['firezone']['postgresql']['effective_cache_size'] = '128MB'
 default['firezone']['postgresql']['listen_address'] = '127.0.0.1'
 default['firezone']['postgresql']['max_connections'] = 350
 default['firezone']['postgresql']['md5_auth_cidr_addresses'] = ['127.0.0.1/32', '::1/128']
-default['firezone']['postgresql']['port'] = 15432
+default['firezone']['postgresql']['port'] = 15_432
 default['firezone']['postgresql']['shared_buffers'] = "#{(node['memory']['total'].to_i / 4) / 1024}MB"
-default['firezone']['postgresql']['shmmax'] = 17179869184
-default['firezone']['postgresql']['shmall'] = 4194304
+default['firezone']['postgresql']['shmmax'] = 17_179_869_184
+default['firezone']['postgresql']['shmall'] = 4_194_304
 default['firezone']['postgresql']['work_mem'] = '8MB'
 
 # ## Common Database Settings
@@ -199,9 +201,9 @@ default['firezone']['database']['extensions'] = { 'plpgsql' => true, 'pg_trgm' =
 
 # ### The Phoenix web app for Firezone
 default['firezone']['phoenix']['enabled'] = true
-default['firezone']['phoenix']['port'] = 13000
+default['firezone']['phoenix']['port'] = 13_000
 default['firezone']['phoenix']['log_directory'] = "#{node['firezone']['log_directory']}/phoenix"
-default['firezone']['phoenix']['log_rotation']['file_maxbytes'] = 104857600
+default['firezone']['phoenix']['log_rotation']['file_maxbytes'] = 104_857_600
 default['firezone']['phoenix']['log_rotation']['num_to_keep'] = 10
 
 # ## WireGuard
@@ -211,14 +213,14 @@ default['firezone']['phoenix']['log_rotation']['num_to_keep'] = 10
 # want to manually create your WireGuard interface and manage its interface properties.
 default['firezone']['wireguard']['enabled'] = true
 default['firezone']['wireguard']['log_directory'] = "#{node['firezone']['log_directory']}/wireguard"
-default['firezone']['wireguard']['log_rotation']['file_maxbytes'] = 104857600
+default['firezone']['wireguard']['log_rotation']['file_maxbytes'] = 104_857_600
 default['firezone']['wireguard']['log_rotation']['num_to_keep'] = 10
 
 # The WireGuard interface name Firezone will apply configuration settings to.
 default['firezone']['wireguard']['interface_name'] = 'wg-firezone'
 
 # WireGuard listen port
-default['firezone']['wireguard']['port'] = 51820
+default['firezone']['wireguard']['port'] = 51_820
 
 # WireGuard interface MTU
 default['firezone']['wireguard']['mtu'] = 1420
@@ -303,12 +305,12 @@ default['firezone']['ssl']['email_address'] = 'you@example.com'
 #
 # If your infrastructure still has requirements for the vulnerable/venerable SSLV3, you can add
 # "SSLv3" to the below line.
-default['firezone']['ssl']['ciphers'] = 'ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-DSS-AES128-GCM-SHA256:kEDH+AESGCM:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-DSS-AES128-SHA256:DHE-RSA-AES256-SHA256:DHE-DSS-AES256-SHA:DHE-RSA-AES256-SHA:AES128-GCM-SHA256:AES256-GCM-SHA384:AES128-SHA:AES256-SHA:AES:CAMELLIA:DES-CBC3-SHA:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!aECDH:!EDH-DSS-DES-CBC3-SHA:!EDH-RSA-DES-CBC3-SHA:!KRB5-DES-CBC3-SHA'
+default['firezone']['ssl']['ciphers'] =
+  'ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-DSS-AES128-GCM-SHA256:kEDH+AESGCM:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-DSS-AES128-SHA256:DHE-RSA-AES256-SHA256:DHE-DSS-AES256-SHA:DHE-RSA-AES256-SHA:AES128-GCM-SHA256:AES256-GCM-SHA384:AES128-SHA:AES256-SHA:AES:CAMELLIA:DES-CBC3-SHA:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!aECDH:!EDH-DSS-DES-CBC3-SHA:!EDH-RSA-DES-CBC3-SHA:!KRB5-DES-CBC3-SHA'
 default['firezone']['ssl']['fips_ciphers'] = 'FIPS@STRENGTH:!aNULL:!eNULL'
 default['firezone']['ssl']['protocols'] = 'TLSv1 TLSv1.1 TLSv1.2'
 default['firezone']['ssl']['session_cache'] = 'shared:SSL:4m'
 default['firezone']['ssl']['session_timeout'] = '5m'
-
 
 # ### robots.txt Settings
 #

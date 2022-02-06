@@ -1,3 +1,6 @@
+# rubocop:disable Naming/FileName
+# frozen_string_literal: true
+
 #
 # Copyright 2012-2014 Chef Software, Inc.
 #
@@ -14,18 +17,18 @@
 # limitations under the License.
 #
 
-name "libossp-uuid"
-default_version "1.6.2"
+name 'libossp-uuid'
+default_version '1.6.2'
 
-license "MIT"
-license_file "README"
+license 'MIT'
+license_file 'README'
 skip_transitive_dependency_licensing true
 
-dependency "config_guess"
+dependency 'config_guess'
 
 # version_list: url=https://www.mirrorservice.org/sites/ftp.ossp.org/pkg/lib/uuid/ filter=*.tar.gz
 
-version("1.6.2") { source sha256: "11a615225baa5f8bb686824423f50e4427acd3f70d394765bdff32801f0fd5b0" }
+version('1.6.2') { source sha256: '11a615225baa5f8bb686824423f50e4427acd3f70d394765bdff32801f0fd5b0' }
 
 # ftp on ftp.ossp.org is unavaiable so we must use another mirror site.
 source url: "https://www.mirrorservice.org/sites/ftp.ossp.org/pkg/lib/uuid/uuid-#{version}.tar.gz"
@@ -37,9 +40,10 @@ build do
 
   update_config_guess
 
-  command "./configure" \
+  command './configure' \
           " --prefix=#{install_dir}/embedded", env: env
 
   make "-j #{workers}", env: env
   make "-j #{workers} install", env: env
 end
+# rubocop:enable Naming/FileName

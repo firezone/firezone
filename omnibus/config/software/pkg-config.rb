@@ -1,3 +1,6 @@
+# rubocop:disable Naming/FileName
+# frozen_string_literal: true
+
 #
 # Copyright 2013-2014 Chef Software, Inc.
 #
@@ -15,15 +18,15 @@
 #
 # expeditor/ignore: deprecated 2021-05
 
-name "pkg-config"
-default_version "0.28"
+name 'pkg-config'
+default_version '0.28'
 
-dependency "libiconv"
-dependency "config_guess"
+dependency 'libiconv'
+dependency 'config_guess'
 
 # version_list: url=https://pkgconfig.freedesktop.org/releases/ filter=*.tar.gz
 
-version("0.28") { source sha256: "6b6eb31c6ec4421174578652c7e141fdaae2dabad1021f420d8713206ac1f845" }
+version('0.28') { source sha256: '6b6eb31c6ec4421174578652c7e141fdaae2dabad1021f420d8713206ac1f845' }
 
 source url: "https://pkgconfig.freedesktop.org/releases/pkg-config-#{version}.tar.gz"
 
@@ -36,31 +39,28 @@ build do
 
   # pkg-config (at least up to 0.28) includes an older version of
   # libcharset/lib/config.charset that doesn't know about openbsd
-  if openbsd?
-    patch source: "openbsd-charset.patch", plevel: 1, env: env
-  end
+  patch source: 'openbsd-charset.patch', plevel: 1, env: env if openbsd?
 
-  command "./configure" \
+  command './configure' \
           " --prefix=#{install_dir}/embedded" \
-          " --disable-debug" \
-          " --disable-host-tool" \
-          " --with-internal-glib" \
+          ' --disable-debug' \
+          ' --disable-host-tool' \
+          ' --with-internal-glib' \
           " --with-pc-path=#{install_dir}/embedded/bin/pkgconfig", env: env
 
   # #203: pkg-configs internal glib does not provide a way to pass ldflags.
   # Only allows GLIB_CFLAGS and GLIB_LIBS.
   # These do not serve our purpose, so we must explicitly
   # ./configure in the glib dir, with the Omnibus ldflags.
-  command  "./configure" \
+  command  './configure' \
            " --prefix=#{install_dir}/embedded" \
-           " --with-libiconv=gnu", env: env, cwd: "#{project_dir}/glib"
+           ' --with-libiconv=gnu', env: env, cwd: "#{project_dir}/glib"
 
   make "-j #{workers}", env: env
   make "-j #{workers} install", env: env
 
   # ensure charset.alias gets installed on openbsd else pkg-config will
   # exit with byte conversion errors.
-  if openbsd?
-    copy "#{project_dir}/glib/glib/libcharset/charset.alias", "#{install_dir}/embedded/lib/charset.alias"
-  end
+  copy "#{project_dir}/glib/glib/libcharset/charset.alias", "#{install_dir}/embedded/lib/charset.alias" if openbsd?
 end
+# rubocop:enable Naming/FileName

@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 name 'firezone'
 maintainer 'Firezone'
 maintainer_email 'infra@firez.one'
