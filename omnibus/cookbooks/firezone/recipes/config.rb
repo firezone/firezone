@@ -40,7 +40,8 @@ Firezone::Config.load_or_create_secrets!(
 )
 
 # Generate new telemetry_id if doesn't exist
-unless /[a-f0-9]{8}-([a-f0-9]{4}-){3}[a-f0-9]{12}/.match?(node['firezone']['telemetry_id'].to_s)
+telemetry_id = node['firezone'] && node['firezone']['telemetry_id']
+unless /[a-f0-9]{8}-([a-f0-9]{4}-){3}[a-f0-9]{12}/.match?(telemetry_id.to_s)
   node.default['firezone']['telemetry_id'] = SecureRandom.uuid
 end
 
