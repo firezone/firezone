@@ -31,6 +31,9 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v2
+      - uses: actions/setup-ruby@v1
+        with:
+          ruby-version: '2.7'
       - uses: actions/setup-python@v2
       - uses: erlef/setup-beam@v1
         with:
@@ -63,10 +66,10 @@ jobs:
         if: steps.plt_cache.outputs.cache-hit != 'true'
         run: mix dialyzer --plt
       - run: |
+          gem install rubocop
           pip install pre-commit
           pre-commit install
           SKIP=no-commit-to-branch pre-commit run --all-files
-
 
   unit-test:
     runs-on: ubuntu-18.04
