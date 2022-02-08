@@ -3,7 +3,7 @@
     <div class="field">
       <%= label f, :name, class: "label" %>
       <div class="control">
-        <%= text_input f, :name, class: "input" %>
+        <%= text_input f, :name, class: "input #{input_error_class(f, :name)}" %>
       </div>
       <p class="help is-danger">
         <%= error_tag f, :name %>
@@ -30,7 +30,8 @@
     <div class="field">
       <%= label f, :allowed_ips, "Allowed IPs", class: "label" %>
       <div class="control">
-        <%= text_input f, :allowed_ips, class: "input", disabled: @use_default_allowed_ips %>
+        <%= text_input f, :allowed_ips, class: "input #{input_error_class(f, :allowed_ips)}",
+            disabled: @use_default_allowed_ips %>
       </div>
       <p class="help is-danger">
         <%= error_tag f, :allowed_ips %>
@@ -57,7 +58,8 @@
     <div class="field">
       <%= label f, :dns, "DNS Servers", class: "label" %>
       <div class="control">
-        <%= text_input f, :dns, class: "input", disabled: @use_default_dns %>
+        <%= text_input f, :dns, class: "input #{input_error_class(f, :dns)}",
+            disabled: @use_default_dns %>
       </div>
       <p class="help is-danger">
         <%= error_tag f, :dns %>
@@ -85,7 +87,8 @@
       <%= label f, :endpoint, "Server Endpoint", class: "label" %>
       <p>The IP of the server this device should connect to.</p>
       <div class="control">
-        <%= text_input f, :endpoint, class: "input", disabled: @use_default_endpoint %>
+        <%= text_input f, :endpoint, class: "input #{input_error_class(f, :endpoint)}",
+            disabled: @use_default_endpoint %>
       </div>
       <p class="help is-danger">
         <%= error_tag f, :endpoint %>
@@ -113,7 +116,7 @@
       <%= label f, :mtu, "Interface MTU", class: "label" %>
       <p>The WireGuard interface MTU for this Device.</p>
       <div class="contro">
-        <%= text_input f, :mtu, class: "input", disabled: @use_default_mtu %>
+        <%= text_input f, :mtu, class: "input #{input_error_class(f, :mtu)}", disabled: @use_default_mtu %>
       </div>
       <p class="help is-danger">
         <%= error_tag f, :mtu %>
@@ -146,7 +149,8 @@
           unless you're experiencing NAT or firewall traversal problems.
       </p>
       <div class="control">
-        <%= text_input f, :persistent_keepalive, class: "input", disabled: @use_default_persistent_keepalive %>
+        <%= text_input f, :persistent_keepalive, class: "input #{input_error_class(f, :persistent_keepalive)}",
+            disabled: @use_default_persistent_keepalive %>
       </div>
       <p class="help is-danger">
         <%= error_tag f, :persistent_keepalive %>
@@ -157,7 +161,7 @@
       <%= label f, :ipv4, "IPv4 Address", class: "label" %>
 
       <div class="control">
-        <%= text_input f, :ipv4, class: "input" %>
+        <%= text_input f, :ipv4, class: "input #{input_error_class(f, :ipv4)}" %>
       </div>
       <p class="help is-danger">
         <%= error_tag f, :ipv4 %>
@@ -168,7 +172,7 @@
       <%= label f, :ipv6, "IPv6 Address", class: "label" %>
 
       <div class="control">
-        <%= text_input f, :ipv6, class: "input" %>
+        <%= text_input f, :ipv6, class: "input #{input_error_class(f, :ipv6)}" %>
       </div>
       <p class="help is-danger">
         <%= error_tag f, :ipv6 %>

@@ -31,7 +31,7 @@ defmodule FzHttp.ReleaseTest do
 
     test "reset admin password when user exists" do
       {:ok, first_user} = Release.create_admin_user()
-      {:ok, new_first_user} = Release.change_password(first_user.email, "newpassword")
+      {:ok, new_first_user} = Release.change_password(first_user.email, "newpassword1234")
       {:ok, second_user} = Release.create_admin_user()
 
       assert second_user.password_hash != new_first_user.password_hash
