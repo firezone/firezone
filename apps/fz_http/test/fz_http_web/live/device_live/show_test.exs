@@ -261,7 +261,7 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
         |> render_change(@default_allowed_ips_change)
 
       assert test_view =~ """
-             <input class="input" id="edit-device_allowed_ips" name="device[allowed_ips]" type="text"/>\
+             <input class="input " id="edit-device_allowed_ips" name="device[allowed_ips]" type="text"/>\
              """
     end
 
@@ -275,7 +275,7 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
         |> render_change(@default_dns_change)
 
       assert test_view =~ """
-             <input class="input" id="edit-device_dns" name="device[dns]" type="text"/>\
+             <input class="input " id="edit-device_dns" name="device[dns]" type="text"/>\
              """
     end
 
@@ -289,7 +289,7 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
         |> render_change(@default_endpoint_change)
 
       assert test_view =~ """
-             <input class="input" id="edit-device_endpoint" name="device[endpoint]" type="text"/>\
+             <input class="input " id="edit-device_endpoint" name="device[endpoint]" type="text"/>\
              """
     end
 
@@ -303,7 +303,7 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
         |> render_change(@default_mtu_change)
 
       assert test_view =~ """
-             <input class="input" id="edit-device_mtu" name="device[mtu]" type="text"/>\
+             <input class="input " id="edit-device_mtu" name="device[mtu]" type="text"/>\
              """
     end
 
@@ -317,7 +317,7 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
         |> render_change(@default_persistent_keepalive_change)
 
       assert test_view =~ """
-             <input class="input" id="edit-device_persistent_keepalive" name="device[persistent_keepalive]" type="text"/>\
+             <input class="input " id="edit-device_persistent_keepalive" name="device[persistent_keepalive]" type="text"/>\
              """
     end
   end

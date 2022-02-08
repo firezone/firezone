@@ -30,6 +30,19 @@ defmodule FzHttpWeb.ErrorHelpers do
   end
 
   @doc """
+  Adds "is-danger" to input elements that have errors
+  """
+  def input_error_class(form, field) do
+    case Keyword.get_values(form.errors, field) do
+      [] ->
+        ""
+
+      _ ->
+        "is-danger"
+    end
+  end
+
+  @doc """
   Translates an error message using gettext.
   """
   def translate_error({msg, opts}) do
