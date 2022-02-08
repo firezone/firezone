@@ -48,6 +48,7 @@
     "source-map": "^0.7.3",
     "url-loader": "^4.1.1",
     "webpack": "5.36.0",
-    "webpack-cli": "^4.9.2"
+    "webpack-cli": "^4.9.2",
+    "zxcvbn": "^4.4.2"
   }
 }

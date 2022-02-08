@@ -15,7 +15,7 @@ defmodule FzHttp.UsersFixtures do
     case Repo.get_by(User, email: email) do
       nil ->
         {:ok, user} =
-          %{email: email, password: "testtest", password_confirmation: "testtest"}
+          %{email: email, password: "password1234", password_confirmation: "password1234"}
           |> Map.merge(attrs)
           |> Users.create_admin_user()
 

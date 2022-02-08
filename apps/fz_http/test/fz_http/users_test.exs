@@ -61,23 +61,23 @@ defmodule FzHttp.UsersTest do
   describe "create_user/1" do
     @valid_attrs_map %{
       email: "valid@test",
-      password: "password",
-      password_confirmation: "password"
+      password: "password1234",
+      password_confirmation: "password1234"
     }
     @valid_attrs_list [
       email: "valid@test",
-      password: "password",
-      password_confirmation: "password"
+      password: "password1234",
+      password_confirmation: "password1234"
     ]
     @invalid_attrs_map %{
       email: "invalid_email",
-      password: "password",
-      password_confirmation: "password"
+      password: "password1234",
+      password_confirmation: "password1234"
     }
     @invalid_attrs_list [
       email: "valid@test",
-      password: "password",
-      password_confirmation: "different_password"
+      password: "password1234",
+      password_confirmation: "different_password1234"
     ]
     @too_short_password [
       email: "valid@test",
@@ -95,7 +95,7 @@ defmodule FzHttp.UsersTest do
 
       assert changeset.errors[:password] == {
                "should be at least %{count} character(s)",
-               [count: 8, validation: :length, kind: :min, type: :string]
+               [count: 12, validation: :length, kind: :min, type: :string]
              }
     end
 
@@ -140,7 +140,7 @@ defmodule FzHttp.UsersTest do
     @change_password_valid_params %{
       "password" => "new_password",
       "password_confirmation" => "new_password",
-      "current_password" => "testtest"
+      "current_password" => "password1234"
     }
     @change_password_invalid_params %{
       "password" => "new_password",

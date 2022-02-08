@@ -3,7 +3,7 @@ defmodule FzHttp.Users.User do
   Represents a User.
   """
 
-  @min_password_length 8
+  @min_password_length 12
   @max_password_length 64
 
   use Ecto.Schema
@@ -173,4 +173,6 @@ defmodule FzHttp.Users.User do
       {:error, error_msg} -> changeset |> add_error(:current_password, error_msg)
     end
   end
+
+  defp verify_current_password(changeset, _user), do: changeset
 end

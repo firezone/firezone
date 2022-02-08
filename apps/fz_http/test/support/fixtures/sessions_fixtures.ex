@@ -8,7 +8,7 @@ defmodule FzHttp.SessionsFixtures do
   def session(_attrs \\ %{}) do
     email = UsersFixtures.user().email
     record = Sessions.get_session!(email: email)
-    create_params = %{email: email, password: "testtest"}
+    create_params = %{email: email, password: "password1234"}
     {:ok, session} = Sessions.create_session(record, create_params)
     session
   end

@@ -8,32 +8,24 @@
       <%= label f, :email, class: "label" %>
 
       <div class="control">
-        <%= text_input f, :email, class: "input" %>
+        <%= text_input f, :email, class: "input #{input_error_class(f, :email)}" %>
       </div>
       <p class="help is-danger">
         <%= error_tag f, :email %>
       </p>
     </div>
 
-    <div class="field">
-      <%= label f, :password, "New password", class: "label" %>
-      <div class="control">
-        <%= password_input f, :password, class: "input password" %>
-      </div>
-      <p class="help is-danger">
-        <%= error_tag f, :password %>
-      </p>
-    </div>
+    <%= render FzHttpWeb.SharedView,
+        "password_field.html",
+        context: f,
+        field: :password,
+        label: "Password" %>
 
-    <div class="field">
-      <%= label f, :password_confirmation, "New password confirmation", class: "label" %>
-      <div class="control">
-        <%= password_input f, :password_confirmation, class: "input password" %>
-      </div>
-      <p class="help is-danger">
-        <%= error_tag f, :password_confirmation %>
-      </p>
-    </div>
+    <%= render FzHttpWeb.SharedView,
+        "password_field.html",
+        context: f,
+        field: :password_confirmation,
+        label: "Password Confirmation" %>
 
     <hr>
 

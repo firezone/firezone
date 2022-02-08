@@ -1,4 +1,5 @@
 import moment from "moment"
+import zxcvbn from "zxcvbn"
 
 const FormatTimestamp = function (timestamp) {
   if (timestamp) {
@@ -8,4 +9,9 @@ const FormatTimestamp = function (timestamp) {
   }
 }
 
-export { FormatTimestamp }
+const PasswordStrength = function (password) {
+  const result = zxcvbn(password)
+  return result.score
+}
+
+export { PasswordStrength, FormatTimestamp }

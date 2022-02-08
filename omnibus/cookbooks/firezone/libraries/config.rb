@@ -115,7 +115,7 @@ class Firezone
         'database_encryption_key' => node['firezone'] && node['firezone']['database_encryption_key'] || \
           SecureRandom.base64(32),
         'default_admin_password' => node['firezone'] && node['firezone']['default_admin_password'] || \
-          SecureRandom.base64(8)
+          SecureRandom.base64(12)
       }
     end
     # rubocop:enable Metrics/PerceivedComplexity

@@ -139,7 +139,7 @@ defmodule FzHttpWeb.UserLive.ShowTest do
         |> render_submit(@invalid_attrs)
 
       assert new_view =~ "has invalid format"
-      assert new_view =~ "should be at least 8 character(s)"
+      assert new_view =~ "should be at least 12 character(s)"
     end
   end
 
