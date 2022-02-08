@@ -1,7 +1,7 @@
 {"0": {
     "doc": "Add Devices",
     "title": "Add Devices",
-    "content": "Add a device through the Web UI by clicking the “Add Device” button under /devices or /users. Once the device profile is created, you can send the WireGuard configuration file to the user by: . | Shareable Link: Generates a time limited link to the device config file that can be sent to the user. | Download Config: Downloads the device config file to your local machine to be sent securely to the user. | . Devices are associated with users. See Add Users for more information on how to add a user. ",
+    "content": ". Add a device through the Web UI by clicking the “Add Device” button under /devices or /users. Once the device profile is created, you can send the WireGuard configuration file to the user by: . | Shareable Link: Generates a time limited link to the device config file that can be sent to the user. | Download Config: Downloads the device config file to your local machine to be sent securely to the user. | . Devices are associated with users. See Add Users for more information on how to add a user. ",
     "url": "https://docs.firez.one/docs/user-guides/add-devices/",
     "relUrl": "/docs/user-guides/add-devices/"
   },"1": {
@@ -37,7 +37,7 @@
   },"6": {
     "doc": "Firewall Rules",
     "title": "Firewall Rules",
-    "content": "Firezone supports egress filtering controls. By default, all traffic is allowed. ",
+    "content": ". Firezone supports egress filtering controls to explicitly DROP or ACCEPT packets via the kernel’s netfilter system. By default, all traffic is allowed. The Allowlist and Denylist support both IPv4 and IPv6 CIDRs and IP addresses. ",
     "url": "https://docs.firez.one/docs/user-guides/firewall-rules/",
     "relUrl": "/docs/user-guides/firewall-rules/"
   },"7": {
@@ -198,23 +198,29 @@
     "relUrl": "/docs/deploy/supported-platforms/"
   },"33": {
     "doc": "Troubleshoot",
+    "title": "Debugging Connectivity Issues",
+    "content": "Most connectivity issues with Firezone are caused by other iptables or nftables rules which interfere with Firezone’s operation. If you’re experiencing connectivity issues, check to ensure the iptables ruleset is empty: . root@demo:~# iptables -L Chain INPUT (policy ACCEPT) target prot opt source destination Chain FORWARD (policy ACCEPT) target prot opt source destination Chain OUTPUT (policy ACCEPT) target prot opt source destination . Firezone ships with an embedded nft utility at /opt/firezone/embedded/sbin/nft that can be used to view and debug the kernel’s nftables ruleset. On a fresh Firezone installation, your nftables ruleset should look something like this: . root@demo:~# /opt/firezone/embedded/sbin/nft list ruleset table inet firezone { chain forward { type filter hook forward priority filter; policy accept; } chain postrouting { type nat hook postrouting priority srcnat; policy accept; oifname \"enp1s0\" masquerade random,persistent oifname \"enp6s0\" masquerade random,persistent } } . ",
+    "url": "https://docs.firez.one/docs/administer/troubleshoot/#debugging-connectivity-issues",
+    "relUrl": "/docs/administer/troubleshoot/#debugging-connectivity-issues"
+  },"34": {
+    "doc": "Troubleshoot",
     "title": "Troubleshoot",
     "content": ". For any problems that arise, a good first bet is to check the Firezone logs. To view Firezone logs, run sudo firezone-ctl tail. ",
     "url": "https://docs.firez.one/docs/administer/troubleshoot/",
     "relUrl": "/docs/administer/troubleshoot/"
-  },"34": {
+  },"35": {
     "doc": "Uninstall",
     "title": "Uninstall",
     "content": ". To completely remove Firezone and its configuration files, run the uninstall.sh script: . sudo /bin/bash -c \"$(curl -fsSL https://github.com/firezone/firezone/raw/master/scripts/uninstall.sh)\" . Warning: This will irreversibly destroy ALL Firezone data and can’t be undone. ",
     "url": "https://docs.firez.one/docs/administer/uninstall/",
     "relUrl": "/docs/administer/uninstall/"
-  },"35": {
+  },"36": {
     "doc": "Upgrade",
     "title": "Upgrading from 0.1.x to 0.2.x",
     "content": "Firezone 0.2.x contains some configuration file changes that will need to be handled manually if you’re upgrading from 0.1.x. Run the commands below as root to perform the needed changes to your /etc/firezone/firezone.rb file. cp /etc/firezone/firezone.rb /etc/firezone/firezone.rb.bak sed -i \"s/\\['enable'\\]/\\['enabled'\\]/\" /etc/firezone/firezone.rb echo \"default['firezone']['connectivity_checks']['enabled'] = true\" &gt;&gt; /etc/firezone/firezone.rb echo \"default['firezone']['connectivity_checks']['interval'] = 3_600\" &gt;&gt; /etc/firezone/firezone.rb firezone-ctl reconfigure firezone-ctl restart . ",
     "url": "https://docs.firez.one/docs/administer/upgrade/#upgrading-from-01x-to-02x",
     "relUrl": "/docs/administer/upgrade/#upgrading-from-01x-to-02x"
-  },"36": {
+  },"37": {
     "doc": "Upgrade",
     "title": "Upgrade",
     "content": ". Upgrading Firezone will disconnect all VPN connections and require shutting down the Web UI. We recommend a maintenance window of about an hour in case anything goes wrong during the upgrade. We’re actively working on making this process more automatic in the future, but for now, this is the procedure for upgrading your Firezone instance. To upgrade Firezone, follow these steps: . | Download the new release for your platform. | Install the new package over the old one: sudo dpkg -i firezone_X.X.X.deb or sudo rpm -i --force firezone_X.X.X.rpm depending on your distribution. | Run firezone-ctl reconfigure to pick up the new changes. | Run firezone-ctl restart to restart services. | . Occasionally problems arise. If you hit any, please let us know by filing an issue. ",
