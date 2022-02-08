@@ -65,7 +65,7 @@ config :fz_http,
   cookie_signing_salt: "Z9eq8iof",
   ecto_repos: [FzHttp.Repo],
   admin_email: "firezone@localhost",
-  default_admin_password: "firezone",
+  default_admin_password: "firezone1234",
   events_module: FzHttpWeb.Events,
   server_process_opts: [name: {:global, :fz_http_server}]
 
