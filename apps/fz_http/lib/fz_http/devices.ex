@@ -5,7 +5,7 @@ defmodule FzHttp.Devices do
 
   import Ecto.Query, warn: false
   alias FzCommon.{FzCrypto, NameGenerator}
-  alias FzHttp.{ConnectivityChecks, Devices.Device, Repo, Settings, Telemetry, Users, Users.User}
+  alias FzHttp.{ConnectivityChecks, Devices.Device, Repo, Sites, Telemetry, Users, Users.User}
 
   # Device configs can be viewable for 10 minutes
   @config_token_expires_in_sec 600
@@ -119,7 +119,7 @@ defmodule FzHttp.Devices do
   end
 
   def to_peer_list do
-    vpn_duration = Settings.vpn_duration()
+    vpn_duration = Sites.vpn_duration()
 
     Repo.all(
       from d in Device,
@@ -141,8 +141,8 @@ defmodule FzHttp.Devices do
   end
 
   def endpoint(device) do
-    if device.use_default_endpoint do
-      Settings.default_device_endpoint() ||
+    if device.use_site_endpoint do
+      Sites.get_site!().endpoint ||
         Application.fetch_env!(:fz_http, :wireguard_endpoint) ||
         ConnectivityChecks.endpoint()
     else
@@ -151,8 +151,8 @@ defmodule FzHttp.Devices do
   end
 
   def allowed_ips(device) do
-    if device.use_default_allowed_ips do
-      Settings.default_device_allowed_ips() ||
+    if device.use_site_allowed_ips do
+      Sites.get_site!().allowed_ips ||
         Application.fetch_env!(:fz_http, :wireguard_allowed_ips)
     else
       device.allowed_ips
@@ -160,8 +160,8 @@ defmodule FzHttp.Devices do
   end
 
   def dns(device) do
-    if device.use_default_dns do
-      Settings.default_device_dns() ||
+    if device.use_site_dns do
+      Sites.get_site!().dns ||
         Application.fetch_env!(:fz_http, :wireguard_dns)
     else
       device.dns
@@ -169,8 +169,8 @@ defmodule FzHttp.Devices do
   end
 
   def mtu(device) do
-    if device.use_default_mtu do
-      Settings.default_device_mtu() ||
+    if device.use_site_mtu do
+      Sites.get_site!().mtu ||
         Application.fetch_env!(:fz_http, :wireguard_mtu)
     else
       device.mtu
@@ -178,8 +178,8 @@ defmodule FzHttp.Devices do
   end
 
   def persistent_keepalive(device) do
-    if device.use_default_persistent_keepalive do
-      Settings.default_device_persistent_keepalive() ||
+    if device.use_site_persistent_keepalive do
+      Sites.get_site!().persistent_keepalive ||
         Application.fetch_env!(:fz_http, :wireguard_persistent_keepalive)
     else
       device.persistent_keepalive
@@ -188,11 +188,11 @@ defmodule FzHttp.Devices do
 
   def defaults(changeset) do
     ~w(
-      use_default_allowed_ips
-      use_default_dns
-      use_default_endpoint
-      use_default_mtu
-      use_default_persistent_keepalive
+      use_site_allowed_ips
+      use_site_dns
+      use_site_endpoint
+      use_site_mtu
+      use_site_persistent_keepalive
     )a
     |> Enum.map(fn field -> {field, Device.field(changeset, field)} end)
     |> Map.new()

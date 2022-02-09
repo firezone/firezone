@@ -101,9 +101,9 @@
       <p class="menu-label">Settings</p>
       <ul class="menu-list">
         <li>
-          <%= link(to: Routes.setting_default_path(@conn, :show), class: nav_class(@conn, ~r"/settings/default")) do %>
+          <%= link(to: Routes.setting_site_path(@conn, :show), class: nav_class(@conn, ~r"/settings/site")) do %>
             <span class="icon"><i class="mdi mdi-cog"></i></span>
-            <span class="menu-item-label">Defaults</span>
+            <span class="menu-item-label">Site</span>
           <% end %>
         </li>
         <li>

@@ -24,11 +24,11 @@ defmodule FzHttp.Devices.Device do
     field :uuid, Ecto.UUID, autogenerate: true
     field :name, :string
     field :public_key, :string
-    field :use_default_allowed_ips, :boolean, read_after_writes: true, default: true
-    field :use_default_dns, :boolean, read_after_writes: true, default: true
-    field :use_default_endpoint, :boolean, read_after_writes: true, default: true
-    field :use_default_mtu, :boolean, read_after_writes: true, default: true
-    field :use_default_persistent_keepalive, :boolean, read_after_writes: true, default: true
+    field :use_site_allowed_ips, :boolean, read_after_writes: true, default: true
+    field :use_site_dns, :boolean, read_after_writes: true, default: true
+    field :use_site_endpoint, :boolean, read_after_writes: true, default: true
+    field :use_site_mtu, :boolean, read_after_writes: true, default: true
+    field :use_site_persistent_keepalive, :boolean, read_after_writes: true, default: true
     field :endpoint, :string
     field :mtu, :integer
     field :persistent_keepalive, :integer
@@ -69,11 +69,11 @@ defmodule FzHttp.Devices.Device do
   defp shared_cast(device, attrs) do
     device
     |> cast(attrs, [
-      :use_default_allowed_ips,
-      :use_default_dns,
-      :use_default_endpoint,
-      :use_default_mtu,
-      :use_default_persistent_keepalive,
+      :use_site_allowed_ips,
+      :use_site_dns,
+      :use_site_endpoint,
+      :use_site_mtu,
+      :use_site_persistent_keepalive,
       :allowed_ips,
       :dns,
       :endpoint,
@@ -102,11 +102,7 @@ defmodule FzHttp.Devices.Device do
       :private_key
     ])
     |> validate_required_unless_default([
-      :allowed_ips,
-      :dns,
-      :endpoint,
-      :mtu,
-      :persistent_keepalive
+      :endpoint
     ])
     |> validate_omitted_if_default([
       :allowed_ips,
@@ -144,21 +140,21 @@ defmodule FzHttp.Devices.Device do
     fields_to_validate =
       defaulted_fields(changeset, fields)
       |> Enum.map(fn field ->
-        String.trim(Atom.to_string(field), "use_default_") |> String.to_atom()
+        String.trim(Atom.to_string(field), "use_site_") |> String.to_atom()
       end)
 
     validate_omitted(changeset, fields_to_validate)
   end
 
   defp validate_required_unless_default(changeset, fields) when is_list(fields) do
-    fields_as_atoms = Enum.map(fields, fn field -> String.to_atom("use_default_#{field}") end)
+    fields_as_atoms = Enum.map(fields, fn field -> String.to_atom("use_site_#{field}") end)
     fields_to_validate = fields_as_atoms -- defaulted_fields(changeset, fields)
     validate_required(changeset, fields_to_validate)
   end
 
   defp defaulted_fields(changeset, fields) do
     fields
-    |> Enum.map(fn field -> String.to_atom("use_default_#{field}") end)
+    |> Enum.map(fn field -> String.to_atom("use_site_#{field}") end)
     |> Enum.filter(fn field -> get_field(changeset, field) end)
   end
 

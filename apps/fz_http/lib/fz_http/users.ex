@@ -4,10 +4,9 @@ defmodule FzHttp.Users do
   """
 
   import Ecto.Query, warn: false
-  import FzCommon.FzInteger, only: [max_pg_integer: 0]
 
   alias FzCommon.{FzCrypto, FzMap}
-  alias FzHttp.{Devices.Device, Repo, Telemetry, Users.User}
+  alias FzHttp.{Devices.Device, Repo, Sites.Site, Telemetry, Users.User}
 
   # one hour
   @sign_in_token_validity_secs 3600
@@ -144,7 +143,7 @@ defmodule FzHttp.Users do
   end
 
   def vpn_session_expired?(user, duration) do
-    max = max_pg_integer()
+    max = Site.max_key_ttl()
 
     case duration do
       0 ->
