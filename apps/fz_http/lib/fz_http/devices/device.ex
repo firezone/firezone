@@ -101,10 +101,8 @@ defmodule FzHttp.Devices.Device do
       :server_public_key,
       :private_key
     ])
-    |> validate_required_unless_default([
-      :endpoint
-    ])
-    |> validate_omitted_if_default([
+    |> validate_required_unless_site([:endpoint])
+    |> validate_omitted_if_site([
       :allowed_ips,
       :dns,
       :endpoint,
@@ -136,26 +134,24 @@ defmodule FzHttp.Devices.Device do
     |> unique_constraint([:user_id, :name])
   end
 
-  defp validate_omitted_if_default(changeset, fields) when is_list(fields) do
-    fields_to_validate =
-      defaulted_fields(changeset, fields)
-      |> Enum.map(fn field ->
-        String.trim(Atom.to_string(field), "use_site_") |> String.to_atom()
-      end)
-
-    validate_omitted(changeset, fields_to_validate)
+  defp validate_omitted_if_site(changeset, fields) when is_list(fields) do
+    validate_omitted(changeset, filter_site_fields(changeset, fields, use_site: true))
   end
 
-  defp validate_required_unless_default(changeset, fields) when is_list(fields) do
-    fields_as_atoms = Enum.map(fields, fn field -> String.to_atom("use_site_#{field}") end)
-    fields_to_validate = fields_as_atoms -- defaulted_fields(changeset, fields)
-    validate_required(changeset, fields_to_validate)
+  defp validate_required_unless_site(changeset, fields) when is_list(fields) do
+    validate_required(changeset, filter_site_fields(changeset, fields, use_site: false))
   end
 
-  defp defaulted_fields(changeset, fields) do
+  defp filter_site_fields(changeset, fields, use_site: use_site) when is_boolean(use_site) do
     fields
     |> Enum.map(fn field -> String.to_atom("use_site_#{field}") end)
-    |> Enum.filter(fn field -> get_field(changeset, field) end)
+    |> Enum.filter(fn site_field -> get_field(changeset, site_field) == use_site end)
+    |> Enum.map(fn field ->
+      field
+      |> Atom.to_string()
+      |> String.trim("use_site_")
+      |> String.to_atom()
+    end)
   end
 
   defp validate_ipv4_required(changeset) do
@@ -176,19 +172,19 @@ defmodule FzHttp.Devices.Device do
 
   defp validate_in_network(%Ecto.Changeset{changes: %{ipv4: ip}} = changeset, :ipv4) do
     net = Application.fetch_env!(:fz_http, :wireguard_ipv4_network)
-    maybe_add_net_error(changeset, net, ip, :ipv4)
+    add_net_error_if_outside_bounds(changeset, net, ip, :ipv4)
   end
 
   defp validate_in_network(changeset, :ipv4), do: changeset
 
   defp validate_in_network(%Ecto.Changeset{changes: %{ipv6: ip}} = changeset, :ipv6) do
     net = Application.fetch_env!(:fz_http, :wireguard_ipv6_network)
-    maybe_add_net_error(changeset, net, ip, :ipv6)
+    add_net_error_if_outside_bounds(changeset, net, ip, :ipv6)
   end
 
   defp validate_in_network(changeset, :ipv6), do: changeset
 
-  def maybe_add_net_error(changeset, net, ip, ip_type) do
+  defp add_net_error_if_outside_bounds(changeset, net, ip, ip_type) do
     %{address: address} = ip
     cidr = CIDR.parse(net)
 
