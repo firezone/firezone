@@ -4,28 +4,36 @@ defmodule FzHttpWeb.DeviceLive.FormComponent do
   """
   use FzHttpWeb, :live_component
 
-  alias FzHttp.{ConnectivityChecks, Devices, Settings}
+  alias FzHttp.{ConnectivityChecks, Devices, Sites}
 
   def update(assigns, socket) do
     device = assigns.device
     changeset = Devices.change_device(device)
-    default_device_endpoint = Settings.default_device_endpoint() || ConnectivityChecks.endpoint()
 
-    default_device_mtu =
-      Settings.default_device_mtu() || Application.fetch_env!(:fz_http, :wireguard_mtu)
+    allowed_ips =
+      Sites.get_site!().allowed_ips || Application.fetch_env!(:fz_http, :wireguard_allowed_ips)
+
+    dns = Sites.get_site!().dns || Application.fetch_env!(:fz_http, :wireguard_dns)
+
+    endpoint =
+      Sites.get_site!().endpoint || Application.fetch_env!(:fz_http, :wireguard_endpoint) ||
+        ConnectivityChecks.endpoint()
+
+    persistent_keepalive =
+      Sites.get_site!().persistent_keepalive ||
+        Application.fetch_env!(:fz_http, :wireguard_persistent_keepalive)
+
+    mtu = Sites.get_site!().mtu || Application.fetch_env!(:fz_http, :wireguard_mtu)
 
     {:ok,
      socket
      |> assign(assigns)
      |> assign(Devices.defaults(changeset))
-     |> assign(:default_device_allowed_ips, Settings.default_device_allowed_ips())
-     |> assign(:default_device_dns, Settings.default_device_dns())
-     |> assign(:default_device_endpoint, default_device_endpoint)
-     |> assign(:default_device_mtu, default_device_mtu)
-     |> assign(
-       :default_device_persistent_keepalive,
-       Settings.default_device_persistent_keepalive()
-     )
+     |> assign(:allowed_ips, allowed_ips)
+     |> assign(:dns, dns)
+     |> assign(:endpoint, endpoint)
+     |> assign(:mtu, mtu)
+     |> assign(:persistent_keepalive, persistent_keepalive)
      |> assign(:changeset, changeset)}
   end
 

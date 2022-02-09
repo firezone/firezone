@@ -11,19 +11,19 @@
     </div>
 
     <div class="field">
-      <%= label f, :use_default_allowed_ips, "Use Default Allowed IPs", class: "label" %>
+      <%= label f, :use_site_allowed_ips, "Use Site Allowed IPs", class: "label" %>
       <div class="control">
         <label class="radio">
-          <%= radio_button f, :use_default_allowed_ips, true %>
+          <%= radio_button f, :use_site_allowed_ips, true %>
           Yes
         </label>
         <label class="radio">
-          <%= radio_button f, :use_default_allowed_ips, false %>
+          <%= radio_button f, :use_site_allowed_ips, false %>
           No
         </label>
       </div>
       <p class="help">
-        Default: <%= @default_device_allowed_ips %>
+        Default: <%= @allowed_ips %>
       </p>
     </div>
 
@@ -31,7 +31,7 @@
       <%= label f, :allowed_ips, "Allowed IPs", class: "label" %>
       <div class="control">
         <%= text_input f, :allowed_ips, class: "input #{input_error_class(f, :allowed_ips)}",
-            disabled: @use_default_allowed_ips %>
+            disabled: @use_site_allowed_ips %>
       </div>
       <p class="help is-danger">
         <%= error_tag f, :allowed_ips %>
@@ -39,19 +39,19 @@
     </div>
 
     <div class="field">
-      <%= label f, :use_default_dns, "Use Default DNS Servers", class: "label" %>
+      <%= label f, :use_site_dns, "Use Site DNS Servers", class: "label" %>
       <div class="control">
         <label class="radio">
-          <%= radio_button f, :use_default_dns, true %>
+          <%= radio_button f, :use_site_dns, true %>
           Yes
         </label>
         <label class="radio">
-          <%= radio_button f, :use_default_dns, false %>
+          <%= radio_button f, :use_site_dns, false %>
           No
         </label>
       </div>
       <p class="help">
-        Default: <%= @default_device_dns %>
+        Default: <%= @dns %>
       </p>
     </div>
 
@@ -59,7 +59,7 @@
       <%= label f, :dns, "DNS Servers", class: "label" %>
       <div class="control">
         <%= text_input f, :dns, class: "input #{input_error_class(f, :dns)}",
-            disabled: @use_default_dns %>
+            disabled: @use_site_dns %>
       </div>
       <p class="help is-danger">
         <%= error_tag f, :dns %>
@@ -67,19 +67,19 @@
     </div>
 
     <div class="field">
-      <%= label f, :use_default_endpoint, "Use Default Endpoint", class: "label" %>
+      <%= label f, :use_site_endpoint, "Use Site Endpoint", class: "label" %>
       <div class="control">
         <label class="radio">
-          <%= radio_button f, :use_default_endpoint, true %>
+          <%= radio_button f, :use_site_endpoint, true %>
           Yes
         </label>
         <label class="radio">
-          <%= radio_button f, :use_default_endpoint, false %>
+          <%= radio_button f, :use_site_endpoint, false %>
           No
         </label>
       </div>
       <p class="help">
-        Default: <%= @default_device_endpoint %>
+        Default: <%= @endpoint %>
       </p>
     </div>
 
@@ -88,7 +88,7 @@
       <p>The IP of the server this device should connect to.</p>
       <div class="control">
         <%= text_input f, :endpoint, class: "input #{input_error_class(f, :endpoint)}",
-            disabled: @use_default_endpoint %>
+            disabled: @use_site_endpoint %>
       </div>
       <p class="help is-danger">
         <%= error_tag f, :endpoint %>
@@ -96,19 +96,19 @@
     </div>
 
     <div class="field">
-      <%= label f, :use_default_mtu, "Use Default MTU", class: "label" %>
+      <%= label f, :use_site_mtu, "Use Site MTU", class: "label" %>
       <div class="control">
         <label class="radio">
-          <%= radio_button f, :use_default_mtu, true %>
+          <%= radio_button f, :use_site_mtu, true %>
           Yes
         </label>
         <label class="radio">
-          <%= radio_button f, :use_default_mtu, false %>
+          <%= radio_button f, :use_site_mtu, false %>
           No
         </label>
       </div>
       <p class="help">
-        Default: <%= @default_device_mtu %>
+        Default: <%= @mtu %>
       </p>
     </div>
 
@@ -116,7 +116,7 @@
       <%= label f, :mtu, "Interface MTU", class: "label" %>
       <p>The WireGuard interface MTU for this Device.</p>
       <div class="contro">
-        <%= text_input f, :mtu, class: "input #{input_error_class(f, :mtu)}", disabled: @use_default_mtu %>
+        <%= text_input f, :mtu, class: "input #{input_error_class(f, :mtu)}", disabled: @use_site_mtu %>
       </div>
       <p class="help is-danger">
         <%= error_tag f, :mtu %>
@@ -124,19 +124,19 @@
     </div>
 
     <div class="field">
-      <%= label f, :use_default_persistent_keepalive, "Use Default Persistent Keepalive", class: "label" %>
+      <%= label f, :use_site_persistent_keepalive, "Use Site Persistent Keepalive", class: "label" %>
       <div class="control">
         <label class="radio">
-          <%= radio_button f, :use_default_persistent_keepalive, true %>
+          <%= radio_button f, :use_site_persistent_keepalive, true %>
           Yes
         </label>
         <label class="radio">
-          <%= radio_button f, :use_default_persistent_keepalive, false %>
+          <%= radio_button f, :use_site_persistent_keepalive, false %>
           No
         </label>
       </div>
       <p class="help">
-        Default: <%= @default_device_persistent_keepalive %>
+        Default: <%= @persistent_keepalive %>
       </p>
     </div>
 
@@ -150,7 +150,7 @@
       </p>
       <div class="control">
         <%= text_input f, :persistent_keepalive, class: "input #{input_error_class(f, :persistent_keepalive)}",
-            disabled: @use_default_persistent_keepalive %>
+            disabled: @use_site_persistent_keepalive %>
       </div>
       <p class="help is-danger">
         <%= error_tag f, :persistent_keepalive %>
@@ -179,15 +179,6 @@
       </p>
     </div>
 
-    <div class="field">
-      <div class="control">
-        <div class="level">
-          <div class="level-left"></div>
-          <div class="level-right">
-            <%= submit "Save", phx_disable_with: "Saving...", class: "button is-primary" %>
-          </div>
-        </div>
-      </div>
-    </div>
+    <%= Phoenix.View.render(FzHttpWeb.SharedView, "submit_button.html", []) %>
   </.form>
 </div>

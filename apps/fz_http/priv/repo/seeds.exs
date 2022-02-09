@@ -15,8 +15,8 @@ alias FzHttp.{Devices, ConnectivityChecks, Rules, Users}
 {:ok, user} =
   Users.create_admin_user(%{
     email: "firezone@localhost",
-    password: "firezone",
-    password_confirmation: "firezone"
+    password: "firezone1234",
+    password_confirmation: "firezone1234"
   })
 
 {:ok, device} =
