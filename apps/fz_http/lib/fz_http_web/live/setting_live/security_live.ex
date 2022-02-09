@@ -4,9 +4,7 @@ defmodule FzHttpWeb.SettingLive.Security do
   """
   use FzHttpWeb, :live_view
 
-  import FzCommon.FzInteger, only: [max_pg_integer: 0]
-
-  alias FzHttp.Settings
+  alias FzHttp.{Sites, Sites.Site}
 
   @hour 3_600
   @day 24 * @hour
@@ -26,15 +24,15 @@ defmodule FzHttpWeb.SettingLive.Security do
   end
 
   @impl Phoenix.LiveView
-  def handle_event("save", %{"setting" => %{"value" => value}}, socket) do
-    key = socket.assigns.changeset.data.key
+  def handle_event("save", %{"site" => %{"key_ttl" => key_ttl}}, socket) do
+    site = Sites.get_site!()
 
-    case Settings.update_setting(key, value) do
-      {:ok, setting} ->
+    case Sites.update_site(site, %{key_ttl: key_ttl}) do
+      {:ok, site} ->
         {:noreply,
          socket
          |> assign(:form_changed, false)
-         |> assign(:changeset, Settings.change_setting(setting, %{}))}
+         |> assign(:changeset, Sites.change_site(site))}
 
       {:error, changeset} ->
         {:noreply,
@@ -49,7 +47,7 @@ defmodule FzHttpWeb.SettingLive.Security do
     if user.role == :admin do
       options = [
         Never: 0,
-        Once: max_pg_integer(),
+        Once: Site.max_key_ttl(),
         "Every Hour": @hour,
         "Every Day": @day,
         "Every Week": 7 * @day,
@@ -57,8 +55,8 @@ defmodule FzHttpWeb.SettingLive.Security do
         "Every 90 Days": 90 * @day
       ]
 
-      setting = Settings.get_setting!(key: "security.require_auth_for_vpn_frequency")
-      changeset = Settings.change_setting(setting)
+      site = Sites.get_site!()
+      changeset = Sites.change_site(site)
 
       socket
       |> assign(:form_changed, false)

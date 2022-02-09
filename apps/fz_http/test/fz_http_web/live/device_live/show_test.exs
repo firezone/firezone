@@ -8,54 +8,54 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
     @invalid_params %{"device" => %{"name" => ""}}
     @allowed_ips "2.2.2.2"
     @allowed_ips_change %{
-      "device" => %{"use_default_allowed_ips" => "false", "allowed_ips" => @allowed_ips}
+      "device" => %{"use_site_allowed_ips" => "false", "allowed_ips" => @allowed_ips}
     }
     @allowed_ips_unchanged %{
-      "device" => %{"use_default_allowed_ips" => "true", "allowed_ips" => @allowed_ips}
+      "device" => %{"use_site_allowed_ips" => "true", "allowed_ips" => @allowed_ips}
     }
     @dns "8.8.8.8, 8.8.4.4"
     @dns_change %{
-      "device" => %{"use_default_dns" => "false", "dns" => @dns}
+      "device" => %{"use_site_dns" => "false", "dns" => @dns}
     }
     @dns_unchanged %{
-      "device" => %{"use_default_dns" => "true", "dns" => @dns}
+      "device" => %{"use_site_dns" => "true", "dns" => @dns}
     }
     @wireguard_endpoint "6.6.6.6"
     @endpoint_change %{
-      "device" => %{"use_default_endpoint" => "false", "endpoint" => @wireguard_endpoint}
+      "device" => %{"use_site_endpoint" => "false", "endpoint" => @wireguard_endpoint}
     }
     @endpoint_unchanged %{
-      "device" => %{"use_default_endpoint" => "true", "endpoint" => @wireguard_endpoint}
+      "device" => %{"use_site_endpoint" => "true", "endpoint" => @wireguard_endpoint}
     }
     @mtu_change %{
-      "device" => %{"use_default_mtu" => "false", "mtu" => "1280"}
+      "device" => %{"use_site_mtu" => "false", "mtu" => "1280"}
     }
     @mtu_unchanged %{
-      "device" => %{"use_default_mtu" => "true", "mtu" => "1280"}
+      "device" => %{"use_site_mtu" => "true", "mtu" => "1280"}
     }
     @persistent_keepalive_change %{
       "device" => %{
-        "use_default_persistent_keepalive" => "false",
+        "use_site_persistent_keepalive" => "false",
         "persistent_keepalive" => "120"
       }
     }
     @persistent_keepalive_unchanged %{
-      "device" => %{"use_default_persistent_keepalive" => "true", "persistent_keepalive" => "5"}
+      "device" => %{"use_site_persistent_keepalive" => "true", "persistent_keepalive" => "5"}
     }
     @default_allowed_ips_change %{
-      "device" => %{"use_default_allowed_ips" => "false"}
+      "device" => %{"use_site_allowed_ips" => "false"}
     }
     @default_dns_change %{
-      "device" => %{"use_default_dns" => "false"}
+      "device" => %{"use_site_dns" => "false"}
     }
     @default_endpoint_change %{
-      "device" => %{"use_default_endpoint" => "false"}
+      "device" => %{"use_site_endpoint" => "false"}
     }
     @default_mtu_change %{
-      "device" => %{"use_default_mtu" => "false"}
+      "device" => %{"use_site_mtu" => "false"}
     }
     @default_persistent_keepalive_change %{
-      "device" => %{"use_default_persistent_keepalive" => "false"}
+      "device" => %{"use_site_persistent_keepalive" => "false"}
     }
 
     test "shows device details", %{authed_conn: conn, device: device} do
@@ -88,7 +88,7 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
       assert flash["info"] == "Device updated successfully."
     end
 
-    test "prevents allowed_ips changes when use_default_allowed_ips is true ", %{
+    test "prevents allowed_ips changes when use_site_allowed_ips is true ", %{
       authed_conn: conn,
       device: device
     } do
@@ -103,7 +103,7 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
       assert test_view =~ "must not be present"
     end
 
-    test "prevents dns changes when use_default_dns is true", %{
+    test "prevents dns changes when use_site_dns is true", %{
       authed_conn: conn,
       device: device
     } do
@@ -118,7 +118,7 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
       assert test_view =~ "must not be present"
     end
 
-    test "prevents endpoint changes when use_default_endpoint is true", %{
+    test "prevents endpoint changes when use_site_endpoint is true", %{
       authed_conn: conn,
       device: device
     } do
@@ -133,7 +133,7 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
       assert test_view =~ "must not be present"
     end
 
-    test "prevents mtu changes when use_default_mtu is true", %{
+    test "prevents mtu changes when use_site_mtu is true", %{
       authed_conn: conn,
       device: device
     } do
@@ -148,7 +148,7 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
       assert test_view =~ "must not be present"
     end
 
-    test "prevents persistent_keepalive changes when use_default_persistent_keepalive is true",
+    test "prevents persistent_keepalive changes when use_site_persistent_keepalive is true",
          %{
            authed_conn: conn,
            device: device
@@ -251,7 +251,7 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
       assert test_view =~ "can&#39;t be blank"
     end
 
-    test "on use_default_allowed_ips change", %{authed_conn: conn, device: device} do
+    test "on use_site_allowed_ips change", %{authed_conn: conn, device: device} do
       path = Routes.device_show_path(conn, :edit, device)
       {:ok, view, _html} = live(conn, path)
 
@@ -265,7 +265,7 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
              """
     end
 
-    test "on use_default_dns change", %{authed_conn: conn, device: device} do
+    test "on use_site_dns change", %{authed_conn: conn, device: device} do
       path = Routes.device_show_path(conn, :edit, device)
       {:ok, view, _html} = live(conn, path)
 
@@ -279,7 +279,7 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
              """
     end
 
-    test "on use_default_endpoint change", %{authed_conn: conn, device: device} do
+    test "on use_site_endpoint change", %{authed_conn: conn, device: device} do
       path = Routes.device_show_path(conn, :edit, device)
       {:ok, view, _html} = live(conn, path)
 
@@ -293,7 +293,7 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
              """
     end
 
-    test "on use_default_mtu change", %{authed_conn: conn, device: device} do
+    test "on use_site_mtu change", %{authed_conn: conn, device: device} do
       path = Routes.device_show_path(conn, :edit, device)
       {:ok, view, _html} = live(conn, path)
 
@@ -307,7 +307,7 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
              """
     end
 
-    test "on use_default_persistent_keepalive change", %{authed_conn: conn, device: device} do
+    test "on use_site_persistent_keepalive change", %{authed_conn: conn, device: device} do
       path = Routes.device_show_path(conn, :edit, device)
       {:ok, view, _html} = live(conn, path)
 
