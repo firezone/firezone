@@ -107,11 +107,11 @@ defmodule FzHttp.DevicesTest do
     @attrs %{
       name: "Go hard or go home.",
       allowed_ips: "0.0.0.0",
-      use_default_allowed_ips: false
+      use_site_allowed_ips: false
     }
 
     @valid_dns_attrs %{
-      use_default_dns: false,
+      use_site_dns: false,
       dns: "1.1.1.1, 1.0.0.1, 2606:4700:4700::1111, 2606:4700:4700::1001"
     }
 
@@ -124,38 +124,43 @@ defmodule FzHttp.DevicesTest do
     }
 
     @valid_allowed_ips_attrs %{
-      use_default_allowed_ips: false,
+      use_site_allowed_ips: false,
       allowed_ips: "0.0.0.0/0, ::/0, ::0/0, 192.168.1.0/24"
     }
 
     @valid_endpoint_ipv4_attrs %{
-      use_default_endpoint: false,
+      use_site_endpoint: false,
       endpoint: "5.5.5.5"
     }
 
     @valid_endpoint_ipv6_attrs %{
-      use_default_endpoint: false,
+      use_site_endpoint: false,
       endpoint: "fd00::1"
     }
 
     @valid_endpoint_host_attrs %{
-      use_default_endpoint: false,
+      use_site_endpoint: false,
       endpoint: "valid-endpoint.example.com"
     }
 
     @invalid_endpoint_ipv4_attrs %{
-      use_default_endpoint: false,
+      use_site_endpoint: false,
       endpoint: "265.1.1.1"
     }
 
     @invalid_endpoint_ipv6_attrs %{
-      use_default_endpoint: false,
+      use_site_endpoint: false,
       endpoint: "deadbeef::1"
     }
 
     @invalid_endpoint_host_attrs %{
-      use_default_endpoint: false,
+      use_site_endpoint: false,
       endpoint: "can't have this"
+    }
+
+    @empty_endpoint_attrs %{
+      use_site_endpoint: false,
+      endpoint: ""
     }
 
     @invalid_allowed_ips_attrs %{
@@ -207,6 +212,15 @@ defmodule FzHttp.DevicesTest do
 
     test "prevents updating device with invalid host endpoint", %{device: device} do
       {:error, changeset} = Devices.update_device(device, @invalid_endpoint_host_attrs)
+
+      assert changeset.errors[:endpoint] == {
+               "can't be blank",
+               []
+             }
+    end
+
+    test "prevents updating device with empty endpoint", %{device: device} do
+      {:error, changeset} = Devices.update_device(device, @invalid_endpoint_empty_attrs)
 
       assert changeset.errors[:endpoint] == {
                "is invalid: can't have this is not a valid fqdn or IPv4 / IPv6 address",
