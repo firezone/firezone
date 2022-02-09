@@ -167,6 +167,14 @@ defmodule FzHttp.DevicesTest do
       allowed_ips: "1.1.1.1, 11, foobar"
     }
 
+    @fields_use_site [
+      %{use_site_allowed_ips: true, allowed_ips: "1.1.1.1"},
+      %{use_site_dns: true, dns: "1.1.1.1"},
+      %{use_site_endpoint: true, endpoint: "1.1.1.1"},
+      %{use_site_persistent_keepalive: true, persistent_keepalive: 1},
+      %{use_site_mtu: true, mtu: 1000}
+    ]
+
     test "updates device", %{device: device} do
       {:ok, test_device} = Devices.update_device(device, @attrs)
       assert @attrs = test_device
@@ -201,6 +209,22 @@ defmodule FzHttp.DevicesTest do
              }
     end
 
+    test "prevents updating fields if use_site_", %{device: device} do
+      for attrs <- @fields_use_site do
+        field =
+          Map.keys(attrs)
+          |> Enum.filter(fn attr -> !String.starts_with?(Atom.to_string(attr), "use_site_") end)
+          |> List.first()
+
+        assert {:error, changeset} = Devices.update_device(device, attrs)
+
+        assert changeset.errors[field] == {
+                 "must not be present",
+                 []
+               }
+      end
+    end
+
     test "prevents updating device with invalid ipv6 endpoint", %{device: device} do
       {:error, changeset} = Devices.update_device(device, @invalid_endpoint_ipv6_attrs)
 
@@ -214,17 +238,17 @@ defmodule FzHttp.DevicesTest do
       {:error, changeset} = Devices.update_device(device, @invalid_endpoint_host_attrs)
 
       assert changeset.errors[:endpoint] == {
-               "can't be blank",
+               "is invalid: can't have this is not a valid fqdn or IPv4 / IPv6 address",
                []
              }
     end
 
     test "prevents updating device with empty endpoint", %{device: device} do
-      {:error, changeset} = Devices.update_device(device, @invalid_endpoint_empty_attrs)
+      {:error, changeset} = Devices.update_device(device, @empty_endpoint_attrs)
 
       assert changeset.errors[:endpoint] == {
-               "is invalid: can't have this is not a valid fqdn or IPv4 / IPv6 address",
-               []
+               "can't be blank",
+               [{:validation, :required}]
              }
     end
 
