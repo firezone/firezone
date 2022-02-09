@@ -1,12 +1,9 @@
 <p align="center">
-  <img src="https://user-images.githubusercontent.com/52545545/144147936-39f3e416-8ba0-4f24-915e-f0515f85bb64.png" alt="firezone logo" width="500"/>
+  <img src="https://user-images.githubusercontent.com/52545545/144147936-39f3e416-8ba0-4f24-915e-f0515f85bb64.png" alt="firezone logo" width="305"/>
 </p>
 <p align="center">
   <a href="https://github.com/firezone/firezone/releases">
     <img src="https://img.shields.io/github/v/release/firezone/firezone?color=%23999">
-  </a>
-  <a href="https://e04kusl9oz5.typeform.com/to/zahKLf3d">
-    <img src="https://img.shields.io/static/v1?logo=openbugbounty&logoColor=959DA5&label=feedback&labelColor=333a41&message=submit&color=3AC358" alt="submit feedback" />
   </a>
   <a href="https://discourse.firez.one">
     <img src="https://img.shields.io/static/v1?logo=discourse&logoColor=959DA5&label=forum&labelColor=333a41&message=join&color=611f69" alt="firezone Discourse" />
@@ -21,21 +18,22 @@
 </p>
 
 <p align="center">
-  <strong>A self-managed <a href="https://www.wireguard.com/">WireGuard</a>-based VPN server and Linux firewall designed for simplicity and security.</strong>
+  <strong><a href="https://www.firez.one/">Firezone</a> is a self-managed <a href="https://www.wireguard.com/">WireGuard</a>-based VPN server and Linux firewall designed for simplicity and security.</strong>
 </p>
 
 <hr>
 
-![Architecture](https://user-images.githubusercontent.com/52545545/147286088-08b0d11f-d81d-4622-8145-179071d2f0fb.png)
+<div align="center">
+  <a href="https://www.firez.one/">
+    <img alt="Diagram showing a typical Firezone firewall and vpn gateway setup" src="https://user-images.githubusercontent.com/52545545/147286088-08b0d11f-d81d-4622-8145-179071d2f0fb.png" width="600" />
+  </a>
+</div>
 
 # Get Started
 
 Follow our installation guide at https://docs.firez.one/docs/deploy to install your self-hosted instance of Firezone.
 
-# Documentation
-
-Additional documentation on general usage, troubleshooting, and configuration can be found at https://docs.firez.one/.
-
+Using Firezone for your team? We'd love to [hear from you](https://calendly.com/team-firezone/firezone-intro) and help you get set up.
 
 # What is Firezone?
 
@@ -62,14 +60,18 @@ Firezone is **not:**
 - A full-featured router
 - An IPSec or OpenVPN server
 
+# Documentation
+
+Additional documentation on general usage, troubleshooting, and configuration can be found at https://docs.firez.one/.
+
 # Get Help
 
 If you're looking for help installing and configuring Firezone, we're happy to
 help:
 
-* [Discussion Forums](https://discourse.firez.one/)
-* [Public Slack Group](https://join.slack.com/t/firezone-users/shared_invite/zt-111043zus-j1lP_jP5ohv52FhAayzT6w)
-* [Email Us](mailto:team@firez.one)
+* [Discussion Forums](https://discourse.firez.one/): ask questions, report bugs, and suggest features
+* [Community Slack](https://www.firez.one/slack): join discussions, meet other users, and meet the contributors
+* [Email Us](mailto:team@firez.one): we're always happy to chat
 
 # Developing and Contributing
 
