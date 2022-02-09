@@ -70,8 +70,8 @@ If you're looking for help installing and configuring Firezone, we're happy to
 help:
 
 * [Discussion Forums](https://discourse.firez.one/): ask questions, report bugs, and suggest features
-* [Community Slack](https://www.firez.one/slack) - join discussions, meet other users, and meet the contributors
-* [Email Us](mailto:team@firez.one) - we're always happy to chat
+* [Community Slack](https://www.firez.one/slack): join discussions, meet other users, and meet the contributors
+* [Email Us](mailto:team@firez.one): we're always happy to chat
 
 # Developing and Contributing
 
