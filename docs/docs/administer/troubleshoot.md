@@ -55,6 +55,8 @@ table inet firezone {
 If you're looking for help installing, configuring, or using Firezone, we're
 happy to help.
 
-* [Discussion Forums](https://discourse.firez.one/): ask questions, report bugs, and suggest features
-* [Public Slack Group](https://join.slack.com/t/firezone-users/shared_invite/zt-111043zus-j1lP_jP5ohv52FhAayzT6w): join discussions, meet other users, and meet the contributors
+* [Discussion Forums](https://discourse.firez.one/): ask questions, report bugs,
+and suggest features
+* [Public Slack Group](https://join.slack.com/t/firezone-users/shared_invite/zt-111043zus-j1lP_jP5ohv52FhAayzT6w):
+join discussions, meet other users, and meet the contributors
 * [Email Us](mailto:team@firez.one): we're always happy to chat
