@@ -10,4 +10,3 @@ Firezone can be deployed on most popular Linux distributions in a few minutes. P
 
 \
 [Start Here: Supported Platforms]({% link docs/deploy/supported-platforms.md %}){: .btn .btn-purple }
-
