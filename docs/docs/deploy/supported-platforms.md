@@ -115,3 +115,6 @@ not have it installed by default. To fix, ensure `libcap-progs` is installed:
 ```shell
 sudo zypper install libcap-progs
 ```
+
+\
+[Next: Prerequisites]({% link docs/deploy/prerequisites.md %}){: .btn .btn-purple }

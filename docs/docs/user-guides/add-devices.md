@@ -9,7 +9,7 @@ parent: User Guides
 Add a device through the Web UI by clicking the "Add Device" button under
 `/devices` or `/users`.
 
-![add device](https://user-images.githubusercontent.com/52545545/152582102-7bde379a-57d5-4f35-9b4e-4d02c32241bc.png)
+![add device](https://user-images.githubusercontent.com/52545545/152582102-7bde379a-57d5-4f35-9b4e-4d02c32241bc.png){: width="600" }
 
 Once the device profile is created, you can send the WireGuard configuration
 file to the user by:
