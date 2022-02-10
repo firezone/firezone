@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Install Clients
-nav_order: 5
+nav_order: 4
 parent: Deploy
 ---
 ---
@@ -15,4 +15,7 @@ Once the WireGuard client is installed, users can add the tunnel by
 importing the `.conf` file sent by the administrator or logging into the
 Firezone web UI and downloading a `.conf` file there.
 
-![Client Instructions]({{ site.asset_urls.client_instructions }})
+![Client Instructions]({{ site.asset_urls.client_instructions }}){: width="600" }
+
+\
+[Previous: Install Server]({% link docs/deploy/server.md %}){: .btn .mr-2}
