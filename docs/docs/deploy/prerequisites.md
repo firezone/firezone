@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Prerequisites
-nav_order: 2
+nav_order: 3
 parent: Deploy
 ---
 ---
@@ -31,5 +31,5 @@ to do so:
 [https://eff-certbot.readthedocs.io/en/stable/using.html#manual](https://eff-certbot.readthedocs.io/en/stable/using.html#manual)
 
 \
-[Previous: Supported Platforms]({% link docs/deploy/supported-platforms.md %}){: .btn .mr-2}
+[Previous: Resource Requirements]({% link docs/deploy/resource-requirements.md %}){: .btn .mr-2}
 [Next: Install Server]({% link docs/deploy/server.md %}){: .btn .btn-purple }
