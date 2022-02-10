@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Resource Requirements
-nav_order: 5
+nav_order: 2
 parent: Deploy
 ---
 ---
@@ -14,3 +14,7 @@ of users and tunnels.
 
 In the vast majority of cases, with WireGuard, your network link speed is going
 to be the bottleneck before your CPU will.
+
+\
+[Previous: Supported Platforms]({% link docs/deploy/supported-platforms.md %}){: .btn .mr-2}
+[Next: Prerequisites]({% link docs/deploy/prerequisites.md %}){: .btn .btn-purple }

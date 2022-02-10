@@ -117,4 +117,4 @@ sudo zypper install libcap-progs
 ```
 
 \
-[Next: Prerequisites]({% link docs/deploy/prerequisites.md %}){: .btn .btn-purple }
+[Next: Resource Requirements]({% link docs/deploy/resource-requirements.md %}){: .btn .btn-purple }
