@@ -18,4 +18,4 @@ Firezone web UI and downloading a `.conf` file there.
 ![Client Instructions]({{ site.asset_urls.client_instructions }}){: width="600" }
 
 \
-[Previous: Install Server]({% link docs/deploy/server.md %}){: .btn .mr-2 }
+[Previous: Install Server]({%link docs/deploy/server.md%}){:.btn.mr-2}
