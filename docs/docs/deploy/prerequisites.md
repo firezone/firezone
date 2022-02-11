@@ -29,3 +29,7 @@ but for now these must be generated manually and specified in the main
 configuration file at `/etc/firezone/firezone.rb`. See here for a guide on how
 to do so:
 [https://eff-certbot.readthedocs.io/en/stable/using.html#manual](https://eff-certbot.readthedocs.io/en/stable/using.html#manual)
+
+\
+[Previous: Resource Requirements]({%link docs/deploy/resource-requirements.md%}){:.btn.mr-2}
+[Next: Install Server]({%link docs/deploy/server.md%}){:.btn.btn-purple}
