@@ -15,6 +15,6 @@ Add a user by clicking the "Add User" button under `/users`. You will be asked
 to specify an email and a password for the user. These credentials will be used
 to authenticate the user so they are able to establish the connection.
 
-![add user](https://user-images.githubusercontent.com/52545545/152580539-bdf10332-a528-4650-a0fe-e72bca89e98a.png){: width="600" }
+![add user](https://user-images.githubusercontent.com/52545545/153469244-c007c305-bfb0-4da7-a40c-6f41fa458c76.png){:width="600"}
 
-Next, [add devices]({% link docs/user-guides/add-devices.md %}) to the user.
+Next, [add devices]({%link docs/user-guides/add-devices.md%}) to the user.
