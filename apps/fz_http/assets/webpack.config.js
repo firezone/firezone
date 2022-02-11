@@ -19,6 +19,7 @@ module.exports = (env, options) => ({
       './node_modules/admin-one-bulma-dashboard/src/js/main.js'
     ]),
     'auth': ['./js/auth.js'],
+    'user': ['./js/user.js'],
     'device_config': ['./js/device_config.js']
   },
   output: {

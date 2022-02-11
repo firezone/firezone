@@ -19,7 +19,7 @@ defmodule FzHttpWeb.UserController do
     user = Users.get_user!(user_id)
 
     conn
-    |> put_root_layout({FzHttpWeb.LayoutView, "auth.html"})
+    |> put_root_layout({FzHttpWeb.LayoutView, "user.html"})
     |> put_layout({FzHttpWeb.LayoutView, "app.html"})
     |> render("show.html", user: user)
   end
