@@ -16,7 +16,7 @@ You can set the session length to a minimum of 1 hour andmaximum of 90 days.
 Setting this to Never disables this setting allows VPN sessions indefinitely.
 This is the default.
 
-![Add Web Auth](https://user-images.githubusercontent.com/52545545/153466175-0e1c3ec8-aa3a-42a9-a915-748c9432a10c.png){: width="600" }
+![Add Web Auth](https://user-images.githubusercontent.com/52545545/153466175-0e1c3ec8-aa3a-42a9-a915-748c9432a10c.png){:width="600"}
 
 ## Single Sign On (coming soon)
 
