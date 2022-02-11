@@ -50,8 +50,8 @@ configure Firezone for first use:
 8. Now you should be able to log into the web UI at the FQDN you specified in
    step 5 above, e.g. `https://firezone.example.com`
 
-Find solutions to common issues during deployment in [Troubleshoot]({% link docs/administer/troubleshoot.md %}).
+Find solutions to common issues during deployment in [Troubleshoot]({%link docs/administer/troubleshoot.md%}).
 
 \
-[Previous: Prerequisites]({% link docs/deploy/prerequisites.md %}){:.btn.mr-2}
-[Next: Install WireGuard Clients]({% link docs/deploy/clients.md %}){:.btn.btn-purple}
+[Previous: Prerequisites]({%link docs/deploy/prerequisites.md%}){:.btn.mr-2}
+[Next: Install WireGuard Clients]({%link docs/deploy/clients.md%}){:.btn.btn-purple}
