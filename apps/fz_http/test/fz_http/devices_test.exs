@@ -33,8 +33,6 @@ defmodule FzHttp.DevicesTest do
     @device_attrs %{
       name: "dummy",
       public_key: "dummy",
-      private_key: "dummy",
-      server_public_key: "dummy",
       user_id: nil
     }
 

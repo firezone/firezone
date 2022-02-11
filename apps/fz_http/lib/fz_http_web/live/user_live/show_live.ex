@@ -51,18 +51,8 @@ defmodule FzHttpWeb.UserLive.Show do
   end
 
   @impl Phoenix.LiveView
-  def handle_event("create_device", %{"user_id" => user_id}, socket) do
-    {:ok, privkey, pubkey, server_pubkey} = @events_module.create_device()
-
-    attributes = %{
-      private_key: privkey,
-      public_key: pubkey,
-      server_public_key: server_pubkey,
-      user_id: user_id,
-      name: Devices.rand_name()
-    }
-
-    case Devices.create_device(attributes) do
+  def handle_event("create_device", %{"device" => device_params}, socket) do
+    case Devices.create_device(device_params) do
       {:ok, device} ->
         @events_module.update_device(device)
 

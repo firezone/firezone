@@ -88,99 +88,13 @@
         <td><strong>Public key</strong></td>
         <td class="code"><%= @device.public_key %></td>
       </tr>
-
-      <tr>
-        <td><strong>Private key</strong></td>
-        <td class="code"><%= @device.private_key %></td>
-      </tr>
-
-      <tr>
-        <td><strong>Server public key</strong></td>
-        <td class="code"><%= @device.server_public_key %></td>
-      </tr>
     </tbody>
   </table>
 </section>
 
 <section class="section is-main-section">
-  <div class="level">
-    <div class="level-left">
-      <h4 class="title is-4">WireGuard Configuration</h4>
-    </div>
-    <div class="level-right">
-      <div class="field has-addons">
-        <div
-          id="shareable-link-trigger"
-          class={@dropdown_active_class <> " control dropdown is-right"}
-          phx-capture-click="close_dropdown"
-          phx-key="escape"
-          phx-click-away="close_dropdown"
-          phx-window-keydown="close_dropdown">
-          <div class="dropdown-trigger">
-            <button
-              id="get-shareable-link"
-              phx-click="create_config_token"
-              class="button">
-              <span class="icon is-small">
-                <i class="mdi mdi-share"></i>
-              </span>
-              <span>
-                Get Shareable Link
-              </span>
-            </button>
-          </div>
-          <div class="dropdown-menu is-large">
-            <div class="dropdown-content">
-              <div class="dropdown-item">
-                <p>
-                  Anyone with this link can view this device's configuration.
-                </p>
-                <p>
-                  Note: Link expires in <strong>10 minutes</strong>.
-                </p>
-              </div>
-              <div class="dropdown-item">
-                <div class="level">
-                  <div class="level-left">
-                    <code id="shareable-link">
-                      <%= if @device.config_token do %>
-                        <%= shareable_link(@socket, @device) %>
-                      <% end %>
-                    </code>
-                  </div>
-                  <div class="level-right">
-                    <%= if @device.config_token do %>
-                      <button id="copy-shareable-link-button"
-                              data-clipboard={shareable_link(@socket, @device)}
-                              data-target="shareable-link"
-                              class="button"
-                              data-tooltip="Click to copy"
-                              phx-hook="ClipboardCopy">
-                        <span class="icon">
-                          <i class="mdi mdi-content-copy"></i>
-                        </span>
-                      </button>
-                    <% end %>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+  <h4 class="title is-4">WireGuard Configuration</h4>
 
-        <div class="control">
-          <%= link(
-              to: Routes.device_path(@socket, :download_config, @device),
-              class: "button") do %>
-            <span class="icon is-small">
-              <i class="mdi mdi-download"></i>
-            </span>
-            <span>Download Configuration</span>
-          <% end %>
-        </div>
-      </div>
-    </div>
-  </div>
   <div class="block">
     Install the
     <a href="https://www.wireguard.com/install/">

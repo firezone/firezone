@@ -23,17 +23,9 @@ defmodule FzVpn.ServerTest do
       %{test_pid: test_pid}
     end
 
-    @tag stubbed_config: @empty
-    test "generates new peer when requested", %{test_pid: test_pid} do
-      assert {:ok, _, _, _} = GenServer.call(test_pid, :create_device)
-      # Peers aren't added to config until device is successfully created
-
-      assert :sys.get_state(test_pid) == %{}
-    end
-
     @tag stubbed_config: @single_peer
     test "removes peers from config when removed", %{test_pid: test_pid} do
-      GenServer.call(test_pid, {:delete_device, "test-pubkey"})
+      GenServer.call(test_pid, {:remove_peer, "test-pubkey"})
 
       assert :sys.get_state(test_pid) == %{}
     end

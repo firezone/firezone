@@ -14,12 +14,6 @@ defmodule FzHttp.EventsTest do
     end)
   end
 
-  describe "create_device/0" do
-    test "receives info to create device" do
-      assert {:ok, _privkey, _pubkey, _server_pubkey} = Events.create_device()
-    end
-  end
-
   describe "update_device/1" do
     setup [:create_device]
 

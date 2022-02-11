@@ -23,35 +23,6 @@ defmodule FzHttpWeb.DeviceLive.Show do
   end
 
   @impl Phoenix.LiveView
-  def handle_event("create_config_token", _params, socket) do
-    device = socket.assigns.device
-
-    if authorized?(socket.assigns.current_user, device) do
-      case Devices.create_config_token(device) do
-        {:ok, device} ->
-          {:noreply,
-           socket
-           |> assign(:dropdown_active_class, "is-active")
-           |> assign(:device, device)}
-
-        {:error, _changeset} ->
-          {:noreply,
-           socket
-           |> put_flash(:error, "Could not create device config token.")}
-      end
-    else
-      {:noreply, not_authorized(socket)}
-    end
-  end
-
-  @impl Phoenix.LiveView
-  def handle_event("close_dropdown", _params, socket) do
-    {:noreply,
-     socket
-     |> assign(:dropdown_active_class, "")}
-  end
-
-  @impl Phoenix.LiveView
   def handle_event("delete_device", _params, socket) do
     device = socket.assigns.device
 

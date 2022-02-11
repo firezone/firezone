@@ -40,9 +40,6 @@ defmodule FzHttpWeb.Router do
     live "/devices/new", DeviceLive.Index, :new
     live "/devices/:id", DeviceLive.Show, :show
     live "/devices/:id/edit", DeviceLive.Show, :edit
-    get "/devices/:id/dl", DeviceController, :download_config
-    get "/device_config/:config_token", DeviceController, :config
-    get "/device_config/:config_token/dl", DeviceController, :download_shared_config
 
     live "/settings/site", SettingLive.Site, :show
     live "/settings/security", SettingLive.Security, :show

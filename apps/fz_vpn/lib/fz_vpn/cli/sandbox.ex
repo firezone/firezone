@@ -25,7 +25,6 @@ defmodule FzVpn.CLI.Sandbox do
   def interface_address, do: "eth0"
   def setup, do: @default_returned
   def teardown, do: @default_returned
-  def genkey, do: {rand_key(), rand_key()}
   def pubkey(_privkey), do: rand_key()
 
   def exec!(_cmd) do

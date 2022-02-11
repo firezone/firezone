@@ -4,43 +4,14 @@ defmodule FzHttpWeb.DeviceLive.Index do
   """
   use FzHttpWeb, :live_view
 
-  alias FzHttp.{Devices, Users}
-  alias FzHttpWeb.ErrorHelpers
+  alias FzHttp.Devices
 
   @impl Phoenix.LiveView
   def mount(params, session, socket) do
     {:ok,
      socket
      |> assign_defaults(params, session, &load_data/2)
-     |> assign(:changeset, Devices.new_device())
      |> assign(:page_title, "Devices")}
-  end
-
-  @impl Phoenix.LiveView
-  def handle_event("create_device", _params, socket) do
-    if Users.count() == 1 do
-      # Must be the admin user
-      case Devices.auto_create_device(%{user_id: Users.admin().id}) do
-        {:ok, device} ->
-          @events_module.update_device(device)
-
-          {:noreply,
-           socket
-           |> push_redirect(to: Routes.device_show_path(socket, :show, device))}
-
-        {:error, changeset} ->
-          {:noreply,
-           socket
-           |> put_flash(
-             :error,
-             "Error creating device: #{ErrorHelpers.aggregated_errors(changeset)}"
-           )}
-      end
-    else
-      {:noreply,
-       socket
-       |> push_patch(to: Routes.device_index_path(socket, :new))}
-    end
   end
 
   @doc """
