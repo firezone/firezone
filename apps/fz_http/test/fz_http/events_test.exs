@@ -1,11 +1,10 @@
-defmodule FzHttpWeb.EventsTest do
+defmodule FzHttp.EventsTest do
   @moduledoc """
   XXX: Use start_supervised! somehow here to allow async tests.
   """
   use FzHttp.DataCase, async: false
 
-  alias FzHttp.Devices
-  alias FzHttpWeb.Events
+  alias FzHttp.{Devices, Events}
 
   # XXX: Not needed with start_supervised!
   setup do

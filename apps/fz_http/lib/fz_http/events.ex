@@ -1,4 +1,4 @@
-defmodule FzHttpWeb.Events do
+defmodule FzHttp.Events do
   @moduledoc """
   Handles interfacing with other processes in the system.
   """

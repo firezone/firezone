@@ -4,7 +4,7 @@ defmodule FzHttp.VpnSessionScheduler do
   """
   use GenServer
 
-  alias FzHttpWeb.Events
+  alias FzHttp.Events
 
   # 1 minute
   @interval 60 * 1_000
