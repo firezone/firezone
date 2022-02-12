@@ -55,8 +55,10 @@ server {
   }
 <% end -%>
 
-<% if @nginx['cache']['enabled'] -%>
-  access_log <%= @nginx['log_directory'] %>/cache.log cache;
+<% if @logging_enabled -%>
+  <% if @nginx['cache']['enabled'] -%>
+    access_log <%= @nginx['log_directory'] %>/cache.log cache;
+  <% end -%>
 <% end -%>
 
   location ~ /sitemap\d*.xml.gz {

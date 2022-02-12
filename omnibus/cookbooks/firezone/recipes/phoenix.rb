@@ -42,6 +42,7 @@ template 'phoenix.nginx.conf' do
   group node['firezone']['group']
   mode '0600'
   variables(nginx: node['firezone']['nginx'],
+            logging_enabled: node['firezone']['logging']['enabled'],
             phoenix: node['firezone']['phoenix'],
             fqdn: node['firezone']['fqdn'],
             fips_enabled: node['firezone']['fips_enabled'],

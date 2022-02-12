@@ -7,7 +7,11 @@ daemon off;
 worker_rlimit_nofile <%= @nginx['worker_rlimit_nofile'] %>;
 <% end -%>
 
-error_log  <%= @nginx['log_dir'] %>/error.log;
+<% if @logging_enabled -%>
+  error_log  <%= @nginx['log_dir'] %>/error.log;
+<% else -%>
+  error_log /dev/null;
+<% end -%>
 pid        <%= @nginx['pid'] %>;
 
 events {
@@ -32,9 +36,11 @@ http {
   include       <%= @nginx['dir'] %>/mime.types;
   default_type  application/octet-stream;
 
-  <% unless @nginx['disable_access_log'] -%>
-  access_log	<%= @nginx['log_dir'] %>/access.log firezone;
-  <% end %>
+  <% if @logging_enabled -%>
+    <% unless @nginx['disable_access_log'] -%>
+    access_log	<%= @nginx['log_dir'] %>/access.log firezone;
+    <% end %>
+  <% end -%>
 
   server_tokens off;
   add_header X-Clacks-Overhead "GNU Terry Pratchett";

@@ -49,6 +49,11 @@ default['firezone']['egress_interface'] = nil
 # Whether to use OpenSSL FIPS mode across Firezone. Default disabled.
 default['firezone']['fips_enabled'] = nil
 
+# ## Global Logging Settings
+#
+# Enable or disable logging. Set this to false to disable all Firezone logs.
+default['firezone']['logging']['enabled'] = true
+
 # ## Enterprise
 #
 # The "enterprise" cookbook provides recipes and resources we can use for this

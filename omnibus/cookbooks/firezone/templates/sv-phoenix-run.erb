@@ -15,4 +15,4 @@ exec <%= node['runit']['chpst_bin'] %> \
   -P \
   -U <%= node['firezone']['user'] %>:<%= node['firezone']['group'] %> \
   -u <%= node['firezone']['user'] %>:<%= node['firezone']['group'] %> \
-  bin/firezone start
+  bin/firezone start <%= '> /dev/null' unless node['firezone']['logging']['enabled'] %>
