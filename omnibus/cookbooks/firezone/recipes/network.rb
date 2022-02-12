@@ -21,16 +21,20 @@ require 'net/http'
 egress_int_cmd = Mixlib::ShellOut.new("ip route show default 0.0.0.0/0 | grep -oP '(?<=dev ).*' | cut -f1 -d' '")
 egress_interface = egress_int_cmd.run_command.stdout.chomp
 
-# Figure out a sane default endpoint IP address
-egress_ip =
-  begin
-    Net::HTTP.get('ifconfig.me', '/')
-  rescue StandardError
-    nil
-  end
+unless node['firezone']['wireguard']['endpoint']
+  # Figure out a sane default endpoint IP address
+  egress_ip =
+    begin
+      Net::HTTP.get('ifconfig.me', '/')
+    rescue StandardError
+      nil
+    end
+  node.consume_attributes('firezone' => { 'wireguard' => { 'endpoint' => egress_ip } })
+end
 
-node.default['firezone']['wireguard']['endpoint'] = egress_ip
-node.default['firezone']['egress_interface'] = egress_interface
+unless node['firezone']['egress_interface']
+  node.consume_attributes('firezone' => { 'egress_interface' => egress_interface })
+end
 
 replace_or_add 'IPv4 packet forwarding' do
   path '/etc/sysctl.conf'
