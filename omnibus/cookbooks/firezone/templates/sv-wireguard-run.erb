@@ -16,4 +16,4 @@ export WIREGUARD_LISTEN_PORT=<%= node['firezone']['wireguard']['port'] %>
 
 exec <%= node['runit']['chpst_bin'] %> \
      -P \
-     <%= node['firezone']['install_directory'] %>/embedded/bin/wireguard
+     <%= node['firezone']['install_directory'] %>/embedded/bin/wireguard <%= '> /dev/null' unless node['firezone']['logging']['enabled'] %>

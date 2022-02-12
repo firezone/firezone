@@ -45,7 +45,7 @@ template 'nginx.conf' do
   owner node['firezone']['user']
   group node['firezone']['group']
   mode '0600'
-  variables(nginx: node['firezone']['nginx'])
+  variables(logging_enabled: node['firezone']['logging']['enabled'], nginx: node['firezone']['nginx'])
 end
 
 if node['firezone']['nginx']['enabled']
