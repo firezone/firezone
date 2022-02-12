@@ -15,17 +15,21 @@ include_recipe 'firezone::config'
 include_recipe 'line::default'
 
 require 'mixlib/shellout'
+require 'net/http'
 
 # Use ip route for finding default egress interface
-awk_path = "#{node['firezone']['install_directory']}/embedded/bin/awk"
 egress_int_cmd = Mixlib::ShellOut.new("ip route show default 0.0.0.0/0 | grep -oP '(?<=dev ).*' | cut -f1 -d' '")
 egress_interface = egress_int_cmd.run_command.stdout.chomp
-# Set default endpoint ip to default egress ip
-egress_addr_cmd = "ip address show dev #{egress_interface} | grep 'inet ' | #{awk_path} '{print $2}'"
-egress_ip = Mixlib::ShellOut.new(egress_addr_cmd)
-egress_ip.run_command
 
-node.default['firezone']['wireguard']['endpoint'] ||= egress_ip.stdout.chomp.gsub(%r{/.*}, '')
+# Figure out a sane default endpoint IP address
+egress_ip =
+  begin
+    Net::HTTP.get('ifconfig.me', '/')
+  rescue StandardError
+    nil
+  end
+
+node.default['firezone']['wireguard']['endpoint'] = egress_ip
 node.default['firezone']['egress_interface'] = egress_interface
 
 replace_or_add 'IPv4 packet forwarding' do
