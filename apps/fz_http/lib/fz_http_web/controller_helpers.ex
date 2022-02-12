@@ -74,7 +74,7 @@ defmodule FzHttpWeb.ControllerHelpers do
         Routes.user_path(conn_or_sock, :show)
 
       :admin ->
-        Routes.device_index_path(conn_or_sock, :index)
+        Routes.device_admin_index_path(conn_or_sock, :index)
 
       _ ->
         Routes.session_path(conn_or_sock, :new)

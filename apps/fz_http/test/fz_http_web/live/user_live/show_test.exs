@@ -142,22 +142,4 @@ defmodule FzHttpWeb.UserLive.ShowTest do
       assert new_view =~ "should be at least 12 character(s)"
     end
   end
-
-  describe "create_device" do
-    setup :create_users
-
-    test "creates a new device for user", %{authed_conn: conn, users: users} do
-      user = List.last(users)
-      path = Routes.user_show_path(conn, :show, user.id)
-      {:ok, view, _html} = live(conn, path)
-
-      view
-      |> element("button", "Add Device")
-      |> render_click()
-
-      {new_path, flash} = assert_redirect(view)
-      assert flash["info"] == "Device created successfully."
-      assert new_path =~ ~r/\/devices\/\d+/
-    end
-  end
 end

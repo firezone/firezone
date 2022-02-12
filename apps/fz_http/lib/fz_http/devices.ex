@@ -161,7 +161,7 @@ defmodule FzHttp.Devices do
 
   def as_config(device) do
     wireguard_port = Application.fetch_env!(:fz_vpn, :wireguard_port)
-    server_public_key = Sites.get_site!().public_key
+    server_public_key = Application.fetch_env!(:fz_vpn, :wireguard_public_key)
 
     """
     [Interface]

@@ -353,15 +353,6 @@ defmodule FzHttp.DevicesTest do
     end
   end
 
-  describe "rand_name/0" do
-    test "generates a random name" do
-      name1 = Devices.rand_name()
-      name2 = Devices.rand_name()
-
-      assert name1 != name2
-    end
-  end
-
   describe "to_peer_list/0" do
     setup [:create_device]
 

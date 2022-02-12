@@ -48,7 +48,7 @@ defmodule FzVpn.Server do
 
   defp delete_old_peers(old_config, new_config) do
     for pubkey <- Map.keys(old_config) -- Map.keys(new_config) do
-      cli().delete_peer(pubkey)
+      cli().remove_peer(pubkey)
     end
   end
 

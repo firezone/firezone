@@ -23,7 +23,7 @@ defmodule FzVpn.CLI.Live do
     set("peer #{pubkey} allowed-ips #{inet}")
   end
 
-  def delete_peer(pubkey) do
+  def remove_peer(pubkey) do
     set("peer #{pubkey} remove")
   end
 

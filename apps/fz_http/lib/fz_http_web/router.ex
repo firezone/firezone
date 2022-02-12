@@ -36,10 +36,10 @@ defmodule FzHttpWeb.Router do
 
     live "/rules", RuleLive.Index, :index
 
-    live "/devices", DeviceLive.Index, :index
-    live "/devices/new", DeviceLive.Index, :new
-    live "/devices/:id", DeviceLive.Show, :show
-    live "/devices/:id/edit", DeviceLive.Show, :edit
+    live "/devices", DeviceLive.Admin.Index, :index
+    live "/devices/new", DeviceLive.Admin.Index, :new
+    live "/devices/:id", DeviceLive.Admin.Show, :show
+    live "/devices/:id/edit", DeviceLive.Admin.Show, :edit
 
     live "/settings/site", SettingLive.Site, :show
     live "/settings/security", SettingLive.Security, :show

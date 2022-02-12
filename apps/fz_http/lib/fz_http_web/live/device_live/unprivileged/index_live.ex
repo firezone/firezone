@@ -1,4 +1,4 @@
-defmodule FzHttpWeb.DeviceLive.Index do
+defmodule FzHttpWeb.DeviceLive.Unprivileged.Index do
   @moduledoc """
   Handles Device LiveViews.
   """

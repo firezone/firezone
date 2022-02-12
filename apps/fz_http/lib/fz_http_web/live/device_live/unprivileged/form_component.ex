@@ -1,4 +1,4 @@
-defmodule FzHttpWeb.DeviceLive.FormComponent do
+defmodule FzHttpWeb.DeviceLive.Unprivileged.FormComponent do
   @moduledoc """
   Handles device form.
   """

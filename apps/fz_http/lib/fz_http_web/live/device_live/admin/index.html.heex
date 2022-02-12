@@ -1,7 +1,7 @@
 <%= if @live_action == :new do %>
   <%= live_modal(
         FzHttpWeb.DeviceLive.CreateFormComponent,
-        return_to: Routes.device_index_path(@socket, :index),
+        return_to: Routes.device_admin_index_path(@socket, :index),
         title: "Add Device",
         changeset: @changeset,
         id: "add-device-modal",

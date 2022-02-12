@@ -1,4 +1,4 @@
-defmodule FzHttpWeb.DeviceLive.Show do
+defmodule FzHttpWeb.DeviceLive.Admin.Show do
   @moduledoc """
   Handles Device LiveViews.
   """
@@ -33,7 +33,7 @@ defmodule FzHttpWeb.DeviceLive.Show do
 
           {:noreply,
            socket
-           |> redirect(to: Routes.device_index_path(socket, :index))}
+           |> redirect(to: Routes.device_admin_index_path(socket, :index))}
 
           # Not likely to ever happen
           # {:error, msg} ->

@@ -2,7 +2,6 @@ defmodule FzVpn.ServerTest do
   use ExUnit.Case, async: true
   import FzVpn.CLI
 
-  @empty []
   @single_peer [
     %{public_key: "test-pubkey", inet: "127.0.0.1/32,::1/128"}
   ]

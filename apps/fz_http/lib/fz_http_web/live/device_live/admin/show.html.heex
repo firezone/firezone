@@ -1,7 +1,7 @@
 <%= if @live_action == :edit do %>
   <%= live_modal(
-        FzHttpWeb.DeviceLive.FormComponent,
-        return_to: Routes.device_show_path(@socket, :show, @device),
+        FzHttpWeb.DeviceLive.Unprivileged.FormComponent,
+        return_to: Routes.device_admin_show_path(@socket, :show, @device),
         title: "Edit #{@device.name}",
         id: "device-#{@device.id}",
         device: @device,
@@ -18,7 +18,7 @@
       <h4 class="title is-4">Details</h4>
     </div>
     <div class="level-right">
-      <%= live_patch(to: Routes.device_show_path(@socket, :edit, @device), class: "button") do %>
+      <%= live_patch(to: Routes.device_admin_show_path(@socket, :edit, @device), class: "button") do %>
         <span class="icon">
           <i class="mdi mdi-pencil"></i>
         </span>

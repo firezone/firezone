@@ -58,7 +58,7 @@ defmodule FzHttpWeb.SessionController do
         |> clear_session()
         |> put_session(:user_id, user.id)
         |> put_session(:live_socket_id, "users_socket:#{user.id}")
-        |> redirect(to: Routes.device_index_path(conn, :index))
+        |> redirect(to: Routes.device_admin_index_path(conn, :index))
 
       {:error, error_msg} ->
         conn

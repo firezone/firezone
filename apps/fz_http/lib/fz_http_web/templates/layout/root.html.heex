@@ -86,7 +86,7 @@
           <% end %>
         </li>
         <li>
-          <%= link(to: Routes.device_index_path(@conn, :index), class: nav_class(@conn, ~r"/devices")) do %>
+          <%= link(to: Routes.device_admin_index_path(@conn, :index), class: nav_class(@conn, ~r"/devices")) do %>
             <span class="icon"><i class="mdi mdi-laptop"></i></span>
             <span class="menu-item-label">Devices</span>
           <% end %>
