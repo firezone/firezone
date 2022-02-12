@@ -1,3 +1,5 @@
 #!/bin/sh
-echo "received TERM from runit, sending INT instead to force quit connections"
+<% if node['firezone']['logging']['enabled'] -%>
+  echo "received TERM from runit, sending INT instead to force quit connections"
+<% end -%>
 <%= node['runit']['sv_bin'] %> interrupt postgresql
