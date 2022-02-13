@@ -22,14 +22,14 @@ configure Firezone for first use:
 
 1. [Install WireGuard](https://www.wireguard.com/install/) for your distro.
    If using Linux kernel 5.6 or higher, skip this step.
-2. Download the relevant package for your distribution from the
+1. Download the relevant package for your distribution from the
    [releases page](https://github.com/firezone/firezone/releases).
-3. Install with `sudo rpm -i firezone*.rpm` or `sudo dpkg -i firezone*.deb`
+1. Install with `sudo rpm -i firezone*.rpm` or `sudo dpkg -i firezone*.deb`
    depending on your distro.
-4. Bootstrap the application with `sudo firezone-ctl reconfigure`. This will
+1. Bootstrap the application with `sudo firezone-ctl reconfigure`. This will
    initialize config files, set up needed services and generate the default
    configuration.
-5. Edit the default configuration located at `/etc/firezone/firezone.rb`.
+1. Edit the default configuration located at `/etc/firezone/firezone.rb`.
    At a minimum, you'll need to review the following configuration variables:
 
    ```ruby
@@ -43,11 +43,11 @@ configure Firezone for first use:
    default['firezone']['ssl']['certificate_key'] = '/path/to/key.pem'
    ```
 
-6. Reconfigure the application to pick up the new changes:
+1. Reconfigure the application to pick up the new changes:
    `sudo firezone-ctl reconfigure`.
-7. Finally, create an admin user with `sudo firezone-ctl create-or-reset-admin`.
+1. Finally, create an admin user with `sudo firezone-ctl create-or-reset-admin`.
    The login credentials will be printed to the console output.
-8. Now you should be able to log into the web UI at the FQDN you specified in
+1. Now you should be able to log into the web UI at the FQDN you specified in
    step 5 above, e.g. `https://firezone.example.com`
 
 Find solutions to common issues during deployment in [Troubleshoot]({%link docs/administer/troubleshoot.md%}).
