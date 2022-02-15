@@ -67,7 +67,6 @@ aux_links:
 plugins:
   - jekyll-sitemap
 
-
 # Exclude from processing.
 # The following items will not be processed, by default.
 # Any item listed under the `exclude:` key here will be automatically added to
