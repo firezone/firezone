@@ -3,6 +3,8 @@ layout: default
 title: Add Devices
 nav_order: 2
 parent: User Guides
+description: >
+  To add devices to Firezone, follow these commands.
 ---
 ---
 

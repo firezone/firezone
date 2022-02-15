@@ -3,6 +3,8 @@ layout: default
 title: Firewall Rules
 nav_order: 3
 parent: User Guides
+description: >
+  This section contains details on how to configure the firewall rules for Firezone.
 ---
 ---
 

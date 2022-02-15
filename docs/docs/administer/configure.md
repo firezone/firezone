@@ -3,6 +3,8 @@ layout: default
 title: Configure
 nav_order: 1
 parent: Administer
+description: >
+  There are various environment variables that can be set to configure Firezone.
 ---
 ---
 
