@@ -162,6 +162,8 @@ jobs:
           - ubuntu2004-x64
           - opensuse15-x64
     steps:
+      - name: See output of hostnamectl
+        run: hostnamectl
       - uses: actions/checkout@v2
       - name: Build
         env:
