@@ -14,10 +14,10 @@ module.exports = (env, options) => ({
   entry: {
     'admin': glob.sync('./vendor/**/*.js').concat([
       // Local JS files to include in the bundle
-      './js/app.js',
+      './js/admin.js',
       './node_modules/admin-one-bulma-dashboard/src/js/main.js'
     ]),
-    'auth': ['./js/auth.js'],
+    'root': ['./js/root.js'],
     'unprivileged': ['./js/unprivileged.js']
   },
   output: {
