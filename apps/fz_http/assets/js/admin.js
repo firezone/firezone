@@ -19,6 +19,7 @@ import {Socket, Presence} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import Hooks from "./hooks.js"
 import {FormatTimestamp} from "./util.js"
+import "./event_listeners.js"
 
 // User Socket
 const userToken = document
@@ -115,14 +116,3 @@ notificationChannel.join()
 // >> liveSocket.enableLatencySim(1000)
 
 window.liveSocket = liveSocket
-
-// Notification dismiss
-document.addEventListener('DOMContentLoaded', () => {
-  (document.querySelectorAll('.notification .delete') || []).forEach(($delete) => {
-    const $notification = $delete.parentNode
-
-    $delete.addEventListener('click', () => {
-      $notification.parentNode.removeChild($notification)
-    })
-  })
-})

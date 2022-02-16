@@ -7,22 +7,5 @@ import "@fontsource/open-sans"
 import "@fontsource/fira-mono"
 
 import "phoenix_html"
-
+import "./event_listeners.js"
 import { FormatTimestamp } from './util.js'
-
-// Notification dismiss
-document.addEventListener('DOMContentLoaded', () => {
-  (document.querySelectorAll('.notification .delete') || []).forEach(($delete) => {
-    const $notification = $delete.parentNode
-
-    $delete.addEventListener('click', () => {
-      $notification.parentNode.removeChild($notification)
-    })
-  })
-})
-
-document.addEventListener('DOMContentLoaded', () => {
-  (document.querySelectorAll('[data-timestamp]') || []).forEach(($span) => {
-    $span.innerHTML = FormatTimestamp($span.dataset.timestamp)
-  })
-})
