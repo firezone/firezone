@@ -4,7 +4,8 @@ title: Configure
 nav_order: 1
 parent: Administer
 description: >
-  There are various environment variables that can be set to configure Firezone.
+  Configure Firezone by editing the configuration file and re-running the
+  reconfigure command.
 ---
 ---
 
