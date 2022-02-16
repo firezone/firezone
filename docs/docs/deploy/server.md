@@ -3,6 +3,8 @@ layout: default
 title: Install Server
 nav_order: 4
 parent: Deploy
+description: >
+  To install Firezone on your server, follow these steps.
 ---
 ---
 

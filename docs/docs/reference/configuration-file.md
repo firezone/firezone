@@ -3,6 +3,9 @@ layout: default
 nav_order: 2
 title: Configuration File
 parent: Reference
+description: >
+  When using Firezone, there are various variables you can set to configure
+  your instance. Below is a comprehensive list.
 ---
 ---
 

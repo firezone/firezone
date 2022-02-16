@@ -3,6 +3,8 @@ layout: default
 title: Prerequisites
 nav_order: 3
 parent: Deploy
+description: >
+  This section describes the prerequisites for deploying Firezone.
 ---
 ---
 

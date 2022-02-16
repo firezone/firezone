@@ -3,6 +3,8 @@ layout: default
 title: Uninstall
 nav_order: 4
 parent: Administer
+description: >
+  To uninstall Firezone follow these commands.
 ---
 ---
 

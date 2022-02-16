@@ -3,6 +3,8 @@ layout: default
 title: Authentication
 nav_order: 4
 parent: User Guides
+description: >
+  This page contains all the authentication methods that Firezone supports.
 ---
 ---
 
