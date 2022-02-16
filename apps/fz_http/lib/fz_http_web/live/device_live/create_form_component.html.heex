@@ -1,10 +1,9 @@
 <div>
   <.form let={f} for={@changeset} id="add-device" phx-target={@myself} phx-submit="save">
+    <%= hidden_input f, :user_id %>
+    <%= hidden_input f, :public_key, id: "public-key-input" %>
+
     <div class="field">
-      <%= label f, :user_id, "User", class: "label" %>
-      <div class="select">
-        <%= select f, :user_id, @options_for_select, class: "input" %>
-      </div>
       <p class="help is-danger">
         <%= error_tag f, :user_id %>
       </p>

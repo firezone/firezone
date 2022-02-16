@@ -17,8 +17,6 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
   end
 
   describe "authenticated but user deleted" do
-    setup [:create_user]
-
     test "redirects to not authorized", %{authed_conn: conn} do
       path = Routes.device_admin_index_path(conn, :index)
       clear_users()

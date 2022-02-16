@@ -8,11 +8,14 @@ defmodule FzHttpWeb.UserLive.Show do
   alias FzHttpWeb.ErrorHelpers
 
   @impl Phoenix.LiveView
-  def mount(params, session, socket) do
+  def mount(%{"id" => user_id} = _params, _session, socket) do
+    user = Users.get_user!(user_id)
+
     {:ok,
      socket
-     |> assign(:page_title, "Users")
-     |> assign_defaults(params, session, &load_data/2)}
+     |> assign(:devices, Devices.list_devices(user))
+     |> assign(:user, user)
+     |> assign(:page_title, "Users")}
   end
 
   @impl Phoenix.LiveView
@@ -47,18 +50,6 @@ defmodule FzHttpWeb.UserLive.Show do
              "Error deleting user: #{ErrorHelpers.aggregated_errors(changeset)}"
            )}
       end
-    end
-  end
-
-  defp load_data(params, socket) do
-    user = Users.get_user!(params["id"])
-
-    if socket.assigns.current_user.role == :admin do
-      socket
-      |> assign(:devices, Devices.list_devices(user))
-      |> assign(:user, user)
-    else
-      not_authorized(socket)
     end
   end
 end

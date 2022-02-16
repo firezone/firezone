@@ -3,14 +3,13 @@ defmodule FzHttpWeb.DeviceLive.Admin.Index do
   Handles Device LiveViews.
   """
   use FzHttpWeb, :live_view
-
   alias FzHttp.Devices
 
   @impl Phoenix.LiveView
-  def mount(params, session, socket) do
+  def mount(_params, _session, socket) do
     {:ok,
      socket
-     |> assign_defaults(params, session, &load_data/2)
+     |> assign(:devices, Devices.list_devices())
      |> assign(:page_title, "Devices")}
   end
 
@@ -20,16 +19,5 @@ defmodule FzHttpWeb.DeviceLive.Admin.Index do
   @impl Phoenix.LiveView
   def handle_params(_params, _url, socket) do
     {:noreply, socket}
-  end
-
-  defp load_data(_params, socket) do
-    # XXX: Update this to use new LiveView session auth
-    user = socket.assigns.current_user
-
-    if user.role == :admin do
-      assign(socket, :devices, Devices.list_devices())
-    else
-      not_authorized(socket)
-    end
   end
 end

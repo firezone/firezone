@@ -3,15 +3,15 @@ defmodule FzHttpWeb.DeviceLive.Admin.Show do
   Handles Device LiveViews.
   """
   use FzHttpWeb, :live_view
-
   alias FzHttp.{Devices, Users}
 
   @impl Phoenix.LiveView
-  def mount(params, session, socket) do
+  def mount(%{"id" => device_id} = _params, _session, socket) do
+    device = Devices.get_device!(device_id)
+
     {:ok,
      socket
-     |> assign(:dropdown_active_class, "")
-     |> assign_defaults(params, session, &load_data/2)}
+     |> assign(assigns(device))}
   end
 
   @doc """
@@ -26,48 +26,34 @@ defmodule FzHttpWeb.DeviceLive.Admin.Show do
   def handle_event("delete_device", _params, socket) do
     device = socket.assigns.device
 
-    if authorized?(socket.assigns.current_user, device) do
-      case Devices.delete_device(device) do
-        {:ok, _deleted_device} ->
-          {:ok, _deleted_pubkey} = @events_module.delete_device(device.public_key)
+    case Devices.delete_device(device) do
+      {:ok, _deleted_device} ->
+        {:ok, _deleted_pubkey} = @events_module.delete_device(device.public_key)
 
-          {:noreply,
-           socket
-           |> redirect(to: Routes.device_admin_index_path(socket, :index))}
+        {:noreply,
+         socket
+         |> redirect(to: Routes.device_admin_index_path(socket, :index))}
 
-          # Not likely to ever happen
-          # {:error, msg} ->
-          #   {:noreply,
-          #   socket
-          #   |> put_flash(:error, "Error deleting device: #{msg}")}
-      end
-    else
-      {:noreply, not_authorized(socket)}
+        # Not likely to ever happen
+        # {:error, msg} ->
+        #   {:noreply,
+        #   socket
+        #   |> put_flash(:error, "Error deleting device: #{msg}")}
     end
   end
 
-  defp load_data(%{"id" => id}, socket) do
-    device = Devices.get_device!(id)
-
-    if authorized?(socket.assigns.current_user, device) do
-      socket
-      |> assign(
-        device: device,
-        user: Users.get_user!(device.user_id),
-        page_title: device.name,
-        allowed_ips: Devices.allowed_ips(device),
-        dns: Devices.dns(device),
-        endpoint: Devices.endpoint(device),
-        mtu: Devices.mtu(device),
-        persistent_keepalive: Devices.persistent_keepalive(device),
-        config: Devices.as_config(device)
-      )
-    else
-      not_authorized(socket)
-    end
-  end
-
-  defp authorized?(user, device) do
-    device.user_id == user.id || user.role == :admin
+  defp assigns(device) do
+    [
+      dropdown_active_class: "",
+      device: device,
+      user: Users.get_user!(device.user_id),
+      page_title: device.name,
+      allowed_ips: Devices.allowed_ips(device),
+      dns: Devices.dns(device),
+      endpoint: Devices.endpoint(device),
+      mtu: Devices.mtu(device),
+      persistent_keepalive: Devices.persistent_keepalive(device),
+      config: Devices.as_config(device)
+    ]
   end
 end

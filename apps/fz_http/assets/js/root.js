@@ -1,5 +1,4 @@
-// This is a barebones JS file to use for auth screens. If it gets complicated
-// consider just using the full app bundle.
+// This is a barebones JS file to use for auth screens.
 import css from "../css/app.scss"
 
 /* Application fonts */

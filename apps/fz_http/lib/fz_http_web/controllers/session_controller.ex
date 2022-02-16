@@ -6,7 +6,7 @@ defmodule FzHttpWeb.SessionController do
   alias FzHttp.{Sessions, Telemetry, Users}
   use FzHttpWeb, :controller
 
-  plug :put_root_layout, "auth.html"
+  # plug :put_root_layout, "auth.html"
 
   # GET /session/new
   def new(conn, _params) do
@@ -32,17 +32,18 @@ defmodule FzHttpWeb.SessionController do
       record ->
         case Sessions.create_session(record, %{email: email, password: password}) do
           {:ok, session} ->
+            user = session
+
             conn
             |> clear_session()
-            |> assign(:current_session, session)
             |> put_session(:user_id, session.id)
             |> put_session(:live_socket_id, "users_socket:#{session.id}")
-            |> redirect(to: Routes.root_path(conn, :index))
+            |> redirect(to: root_path_for_role(conn, user))
 
-          {:error, _changeset} ->
+          {:error, changeset} ->
             conn
             |> put_flash(:error, "Error signing in. Ensure email and password are correct.")
-            |> assign(:changeset, Sessions.new_session())
+            |> assign(:changeset, changeset)
             |> redirect(to: Routes.session_path(conn, :new))
         end
     end
@@ -58,7 +59,7 @@ defmodule FzHttpWeb.SessionController do
         |> clear_session()
         |> put_session(:user_id, user.id)
         |> put_session(:live_socket_id, "users_socket:#{user.id}")
-        |> redirect(to: Routes.device_admin_index_path(conn, :index))
+        |> redirect(to: root_path_for_role(conn, user))
 
       {:error, error_msg} ->
         conn

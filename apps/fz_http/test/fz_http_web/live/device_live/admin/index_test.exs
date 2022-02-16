@@ -1,8 +1,6 @@
 defmodule FzHttpWeb.DeviceLive.Admin.IndexTest do
   use FzHttpWeb.ConnCase, async: false
 
-  # alias FzHttp.Devices
-
   describe "authenticated/device list" do
     setup :create_devices
 
@@ -17,8 +15,6 @@ defmodule FzHttpWeb.DeviceLive.Admin.IndexTest do
   end
 
   describe "authenticated but user deleted" do
-    setup [:create_user]
-
     test "redirects to not authorized", %{authed_conn: conn} do
       path = Routes.device_admin_index_path(conn, :index)
       clear_users()

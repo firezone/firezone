@@ -101,6 +101,9 @@ defmodule FzHttpWeb do
       # Import basic rendering functionality (render, render_layout, etc)
       import Phoenix.View
 
+      # Authentication helpers
+      import FzHttpWeb.AuthorizationHelpers
+
       import FzHttpWeb.ErrorHelpers
       import FzHttpWeb.Gettext
       alias FzHttpWeb.Router.Helpers, as: Routes

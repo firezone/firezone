@@ -4,6 +4,7 @@ defmodule FzHttp.Devices do
   """
 
   import Ecto.Query, warn: false
+  alias FzCommon.NameGenerator
   alias FzHttp.{ConnectivityChecks, Devices.Device, Repo, Sites, Telemetry, Users, Users.User}
 
   def list_devices do
@@ -97,8 +98,8 @@ defmodule FzHttp.Devices do
     end)
   end
 
-  def new_device do
-    change_device(%Device{})
+  def new_device(attrs \\ %{}) do
+    change_device(%Device{}, Map.merge(%{name: NameGenerator.generate()}, attrs))
   end
 
   def endpoint(device) do
