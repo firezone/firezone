@@ -3,6 +3,8 @@ layout: default
 title: Install Clients
 nav_order: 5
 parent: Deploy
+description: >
+  Firezone is compatible with the official WireGuard clients available for all major platforms.
 ---
 ---
 

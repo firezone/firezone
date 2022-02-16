@@ -3,6 +3,8 @@ layout: default
 title: Security Considerations
 nav_order: 6
 parent: Administer
+description: >
+  Firezone services uses the following list of ports.
 ---
 ---
 

@@ -3,6 +3,9 @@ layout: default
 title: Configure
 nav_order: 1
 parent: Administer
+description: >
+  Configure Firezone by editing the configuration file and re-running the
+  reconfigure command.
 ---
 ---
 

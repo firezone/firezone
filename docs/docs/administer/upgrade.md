@@ -3,6 +3,9 @@ layout: default
 title: Upgrade
 nav_order: 3
 parent: Administer
+description: >
+  To upgrade Firezone, download the release package and run these commands.
+  We recommend keeping your Firezone installation up-to-date.
 ---
 ---
 

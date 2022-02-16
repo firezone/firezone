@@ -3,6 +3,8 @@ layout: default
 title: Resource Requirements
 nav_order: 2
 parent: Deploy
+description: >
+  This section describes the resource requirements for Firezone.
 ---
 ---
 

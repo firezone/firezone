@@ -3,6 +3,9 @@ layout: default
 title: Supported Platforms
 nav_order: 1
 parent: Deploy
+description: >
+  This section describes the supported platforms for Firezone. For
+  some platforms a kernel upgrade may be required to ensure WireGuard is supported.
 ---
 ---
 
