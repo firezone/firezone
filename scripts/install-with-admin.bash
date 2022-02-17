@@ -21,29 +21,31 @@ function promptEmail() {
   then
     promptEmail "please provide a valid email"
   else
-    echo Administrator username will be: $adminEmail
+    #echo Administrator username will be: $adminEmail
+    eval "$2='$adminEmail'"
   fi
 }
 
 # * checks to ensure wireguard is available (i.e. wireguard net devices can be added) (maybe there's a /sys file?)
+
 function wireguardCheck() {
 	if which wg > /dev/null; then
-     echo $(wg --version) 
+     eval "$1='$(wg --version)'"
   else 
-     echo "not installed"
-     exit
+     eval "$1='not installed'"
 	fi
 }
 
 # * checks to ensure kernel is > 4.19
 function kernelCheck() {
    kernel_version=$(uname -r | cut -d- -f1 | cut -d. -f1)
-   #may get really specific here
+   #trying to avoid _yuge_ if-else here so just starting with the top number >= for now
+   #may need to review linux versions and test a slew of comparisons
    if [ "$kernel_version" -ge "4" ]
    then
-     echo "Kernel is supported"
+     eval "$1='is supported'"
    else
-     echo "Kernel $kernel_version is not supported"
+     eval "$1='\'$kernel_version\': is not supported'"
    fi
 }
 
@@ -52,7 +54,28 @@ function determinDistro() {
   hostnamectl
 }
 
-promptEmail "Enter the administrator email you'd like to use for logging into this Firezone instance:"
-#wireguardCheck
-#kernelCheck
-#determinDistro
+
+function latestRelease() {
+ #based on the os type we only need the specific artifact url
+ curl --silent https://api.github.com/repos/firezone/firezone/releases/latest | grep '"browser_download_url"'
+}
+
+
+promptEmail "Enter the administrator email you'd like to use for logging into this Firezone instance:", adminUser
+
+#guard checks
+wireguardCheck wgInstalledStatus 
+if [ "$wgInstalledStatus" == "not installed" ]; then
+  echo "Wireguard is not installed. Quitting." 
+  exit
+fi
+
+kernelCheck kernelStatus
+if [ "$kernelStatus" != "is supported" ]; then
+  echo "$kernelStatus. Quitting." 
+  exit
+fi
+
+determinDistro
+
+latestRelease
