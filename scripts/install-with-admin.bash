@@ -1,16 +1,9 @@
 #!/bin/bash
 # Add a bash script that:
 #
-# * downloads latest release
-# * installs it with `dpkg -i` or `rpm -i`
-# * creates the first admin user with `firezone-ctl create-or-reset-admin ${admin_email}`
-#
-# Prompt for admin email should be along the lines of:
-#
-# `Enter the administrator email you'd like to use for logging into this Firezone instance:`
-#
-# Sanity check by making sure input has a `@`
-#
+# TODO
+#  * latest release and matching artifact puzzel
+# TODO
 # The `create-or-reset-admin` command will need to be updated to optionally accept an email argument.
 
 # * prompts user for admin email
@@ -54,28 +47,57 @@ function determinDistro() {
   hostnamectl
 }
 
-
 function latestRelease() {
- #based on the os type we only need the specific artifact url
  curl --silent https://api.github.com/repos/firezone/firezone/releases/latest | grep '"browser_download_url"'
 }
 
+function installAndDownloadArtifact() {
+  #this will be passed in once I determine the mapping of OS/Kernel to release artifact
+  #url="https://github.com/firezone/firezone/releases/download/0.2.17/firezone_0.2.17-debian11-x64.deb"
 
-promptEmail "Enter the administrator email you'd like to use for logging into this Firezone instance:", adminUser
+  url="https://github.com/firezone/firezone/releases/download/0.2.17/firezone_0.2.17-fedora34-x64.rpm"
+  file=$(basename $url)
+  echo $file
+  cd /tmp  
+  wget $url
+  if [[ "$url" =~ .*"deb".* ]]; then
+    sudo dpkg -i $file
+  else
+    sudo rpm -i $file
+  fi
+}
 
-#guard checks
-wireguardCheck wgInstalledStatus 
-if [ "$wgInstalledStatus" == "not installed" ]; then
-  echo "Wireguard is not installed. Quitting." 
-  exit
-fi
+function main() {
+  adminUser=''
+  promptEmail "Enter the administrator email you'd like to use for logging into this Firezone instance:" adminUser
 
-kernelCheck kernelStatus
-if [ "$kernelStatus" != "is supported" ]; then
-  echo "$kernelStatus. Quitting." 
-  exit
-fi
+  #guard checks
+  wgInstalledStatus=''
+  wireguardCheck wgInstalledStatus 
+  if [ "$wgInstalledStatus" == "not installed" ]; then
+    echo "Wireguard is not installed. Quitting." 
+    exit
+  fi
 
-determinDistro
+  kernelStatus=''
+  kernelCheck kernelStatus
+  if [ "$kernelStatus" != "is supported" ]; then
+    echo "$kernelStatus. Quitting." 
+    exit
+  fi
 
-latestRelease
+  #puzzle here but the discussion has begun
+  #determinDistro
+  #latestRelease
+
+  echo "Press key to install..."
+  read
+  #after doing the mapping pass url here 
+  #for now hardcoded
+  installAndDownloadArtifact
+  #sanity check or guard condition here too
+  firezone-ctl create-or-reset-admin $adminUser
+}
+
+main
+
