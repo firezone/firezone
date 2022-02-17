@@ -5,7 +5,7 @@ defmodule FzHttp.Devices do
 
   import Ecto.Query, warn: false
   alias FzCommon.NameGenerator
-  alias FzHttp.{ConnectivityChecks, Devices.Device, Repo, Sites, Telemetry, Users, Users.User}
+  alias FzHttp.{Devices.Device, Repo, Sites, Telemetry, Users, Users.User}
 
   def list_devices do
     Repo.all(Device)
@@ -102,49 +102,17 @@ defmodule FzHttp.Devices do
     change_device(%Device{}, Map.merge(%{name: NameGenerator.generate()}, attrs))
   end
 
-  def endpoint(device) do
-    if device.use_site_endpoint do
-      Sites.get_site!().endpoint ||
-        Application.fetch_env!(:fz_http, :wireguard_endpoint) ||
-        ConnectivityChecks.endpoint()
-    else
-      device.endpoint
-    end
-  end
+  def allowed_ips(device), do: config(device, :allowed_ips)
+  def endpoint(device), do: config(device, :endpoint)
+  def dns(device), do: config(device, :dns)
+  def mtu(device), do: config(device, :mtu)
+  def persistent_keepalive(device), do: config(device, :persistent_keepalive)
 
-  def allowed_ips(device) do
-    if device.use_site_allowed_ips do
-      Sites.get_site!().allowed_ips ||
-        Application.fetch_env!(:fz_http, :wireguard_allowed_ips)
+  defp config(device, key) do
+    if Map.get(device, String.to_atom("use_site_#{key}")) do
+      Map.get(Sites.wireguard_defaults(), key)
     else
-      device.allowed_ips
-    end
-  end
-
-  def dns(device) do
-    if device.use_site_dns do
-      Sites.get_site!().dns ||
-        Application.fetch_env!(:fz_http, :wireguard_dns)
-    else
-      device.dns
-    end
-  end
-
-  def mtu(device) do
-    if device.use_site_mtu do
-      Sites.get_site!().mtu ||
-        Application.fetch_env!(:fz_http, :wireguard_mtu)
-    else
-      device.mtu
-    end
-  end
-
-  def persistent_keepalive(device) do
-    if device.use_site_persistent_keepalive do
-      Sites.get_site!().persistent_keepalive ||
-        Application.fetch_env!(:fz_http, :wireguard_persistent_keepalive)
-    else
-      device.persistent_keepalive
+      Map.get(device, key)
     end
   end
 
