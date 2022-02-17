@@ -58,7 +58,7 @@ function installAndDownloadArtifact() {
   url="https://github.com/firezone/firezone/releases/download/0.2.17/firezone_0.2.17-fedora34-x64.rpm"
   file=$(basename $url)
   echo $file
-  cd /tmp  
+  cd /tmp
   wget $url
   if [[ "$url" =~ .*"deb".* ]]; then
     sudo dpkg -i $file
@@ -73,7 +73,7 @@ function main() {
 
   #guard checks
   wgInstalledStatus=''
-  wireguardCheck wgInstalledStatus 
+  wireguardCheck wgInstalledStatus
   if [ "$wgInstalledStatus" == "not installed" ]; then
     echo "Wireguard is not installed. Quitting." 
     exit
@@ -82,7 +82,7 @@ function main() {
   kernelStatus=''
   kernelCheck kernelStatus
   if [ "$kernelStatus" != "is supported" ]; then
-    echo "$kernelStatus. Quitting." 
+    echo "$kernelStatus. Quitting."
     exit
   fi
 
@@ -92,7 +92,7 @@ function main() {
 
   echo "Press key to install..."
   read
-  #after doing the mapping pass url here 
+  #after doing the mapping pass url here
   #for now hardcoded
   installAndDownloadArtifact
   #sanity check or guard condition here too
@@ -100,4 +100,3 @@ function main() {
 }
 
 main
-
