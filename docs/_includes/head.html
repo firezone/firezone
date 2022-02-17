@@ -4,10 +4,6 @@
 
   {% unless site.plugins contains "jekyll-seo-tag" %}
     <title>{{ page.title }} - {{ site.title }}</title>
-
-    {% if page.description %}
-      <meta name="Description" content="{{ page.description }}">
-    {% endif %}
   {% endunless %}
 
   <link rel="shortcut icon" href="{{ 'favicon.ico' | relative_url }}" type="image/x-icon">
