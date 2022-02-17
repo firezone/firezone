@@ -1,6 +1,6 @@
-defmodule FzHttpWeb.DeviceLive.CreateFormComponent do
+defmodule FzHttpWeb.DeviceLive.Admin.CreateFormComponent do
   @moduledoc """
-  Handles create device form.
+  Allows Admins to create devices for users.
   """
   use FzHttpWeb, :live_component
 
@@ -18,12 +18,7 @@ defmodule FzHttpWeb.DeviceLive.CreateFormComponent do
 
   @impl Phoenix.LiveComponent
   def handle_event("create_device", %{"device" => device_params}, socket) do
-    # Any user can create a device for themselves but only admins can do so for other users
-    if device_params["user_id"] == socket.assigns.current_user.id || has_role?(socket, :admin) do
-      create_device(device_params, socket)
-    else
-      not_authorized(socket)
-    end
+    create_device(device_params, socket)
   end
 
   defp create_device(device_params, socket) do
@@ -33,7 +28,7 @@ defmodule FzHttpWeb.DeviceLive.CreateFormComponent do
 
         {:noreply,
          socket
-         |> put_flash(:info, "Config created successfully.")
+         |> put_flash(:info, "Device created successfully.")
          |> redirect(to: socket.assigns.return_to)}
 
       {:error, changeset} ->

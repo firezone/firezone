@@ -1,0 +1,15 @@
+<div>
+  <div class="columns">
+    <div class="column">
+      Left column
+    </div>
+    <div class="column">
+      Right column
+    </div>
+  </div>
+
+  <.form let={f} for={@changeset} id="add-device" phx-target={@myself} phx-submit="create_device">
+    <%= hidden_input f, :public_key, id: "public-key-input" %>
+    <%= Phoenix.View.render(FzHttpWeb.SharedView, "submit_button.html", []) %>
+  </.form>
+</div>

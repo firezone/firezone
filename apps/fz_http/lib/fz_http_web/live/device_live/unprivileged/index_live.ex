@@ -7,10 +7,12 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.Index do
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
+    user_id = socket.assigns.current_user.id
+
     {:ok,
      socket
-     |> assign(:devices, Devices.list_devices())
-     |> assign(:page_title, "Devices")}
+     |> assign(:devices, Devices.list_devices(user_id))
+     |> assign(:page_title, "WireGuard Tunnels")}
   end
 
   @doc """

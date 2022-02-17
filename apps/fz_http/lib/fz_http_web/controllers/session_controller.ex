@@ -6,8 +6,6 @@ defmodule FzHttpWeb.SessionController do
   alias FzHttp.{Sessions, Telemetry, Users}
   use FzHttpWeb, :controller
 
-  # plug :put_root_layout, "auth.html"
-
   # GET /session/new
   def new(conn, _params) do
     if redirect_authenticated?(conn) do

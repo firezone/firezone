@@ -1,5 +1,5 @@
 <div>
-  <.form let={f} for={@changeset} id="add-device" phx-target={@myself} phx-submit="save">
+  <.form let={f} for={@changeset} id="add-device" phx-target={@myself} phx-submit="create_device">
     <%= hidden_input f, :user_id %>
     <%= hidden_input f, :public_key, id: "public-key-input" %>
 

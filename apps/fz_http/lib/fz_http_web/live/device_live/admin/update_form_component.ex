@@ -1,4 +1,4 @@
-defmodule FzHttpWeb.DeviceLive.UpdateFormComponent do
+defmodule FzHttpWeb.DeviceLive.Admin.UpdateFormComponent do
   @moduledoc """
   Handles device form.
   """

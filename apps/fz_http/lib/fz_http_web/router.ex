@@ -27,7 +27,8 @@ defmodule FzHttpWeb.Router do
   scope "/", FzHttpWeb do
     pipe_through :browser
 
-    live_session(:unprivileged,
+    live_session(
+      :unprivileged,
       on_mount: {FzHttpWeb.LiveAuth, :unprivileged},
       root_layout: {FzHttpWeb.LayoutView, :unprivileged}
     ) do
@@ -35,7 +36,8 @@ defmodule FzHttpWeb.Router do
       live "/configs/new", DeviceLive.Unprivileged.Index, :new
     end
 
-    live_session(:admin,
+    live_session(
+      :admin,
       on_mount: {FzHttpWeb.LiveAuth, :admin},
       root_layout: {FzHttpWeb.LayoutView, :admin}
     ) do
