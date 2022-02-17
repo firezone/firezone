@@ -1,3 +1,5 @@
+import {FormatTimestamp} from "./util.js"
+
 // Notification dismiss
 document.addEventListener('DOMContentLoaded', () => {
   (document.querySelectorAll('.notification .delete') || []).forEach(($delete) => {
