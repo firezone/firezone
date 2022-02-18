@@ -1,0 +1,1 @@
+Sitemap: https://docs.firez.one/sitemap.xml

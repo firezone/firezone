@@ -19,7 +19,7 @@
   },"3": {
     "doc": "Authentication",
     "title": "Web Authentication (default)",
-    "content": "Firezone will use the user’s email address and password to authenticate their VPN session. You can set the session length to a minimum of 1 hour andmaximum of 90 days. Setting this to Never disables this setting allows VPN sessions indefinitely. This is the default. ",
+    "content": "Firezone will use the user’s email address and password to authenticate their VPN session. You can set the session length to a minimum of 1 hour and maximum of 90 days. Setting this to Never disables this setting, allowing VPN sessions indefinitely. This is the default. ",
     "url": "https://docs.firez.one/docs/user-guides/authentication/#web-authentication-default",
     "relUrl": "/docs/user-guides/authentication/#web-authentication-default"
   },"4": {
@@ -61,19 +61,19 @@
   },"10": {
     "doc": "Overview",
     "title": "Quick Start",
-    "content": ". | Deploy: A step-by-step walkthrough of setting up Firezone. Start here if you are new. | Administer: This section relates directly to configuring the server instance. | User Guides: Useful guides to help you learn how to use Firezone and trouble shoot common issues. Consult this section after you successfully deploy the Firezone server. | . ",
+    "content": ". | Deploy: A step-by-step walkthrough of setting up Firezone. Start here if you are new. | Administer: This section relates directly to configuring the server instance. | User Guides: Useful guides to help you learn how to use Firezone and troubleshoot common issues. Consult this section after you successfully deploy the Firezone server. | . ",
     "url": "https://docs.firez.one/#quick-start",
     "relUrl": "/#quick-start"
   },"11": {
     "doc": "Overview",
     "title": "Get Help",
-    "content": "If you’re looking for help installing, configuring, or using Firezone, we’re happy to help. | Discussion Forums: ask questions, report bugs, and suggest features | Public Slack Group: join discussions, meet other users, and meet the contributors | Email Us: we’re always happy to chat | . ",
+    "content": "If you’re looking for help installing, configuring, or using Firezone, we’re happy to help. | Discussion Forums: Ask questions, report bugs, and suggest features. | Public Slack Group: Join live discussions, meet other users, and get to know the contributors. | Email Us: We read every email and respond as soon as we can. | . ",
     "url": "https://docs.firez.one/#get-help",
     "relUrl": "/#get-help"
   },"12": {
     "doc": "Overview",
     "title": "Contribute to Firezone",
-    "content": "We deeply appreciate any and all contributions to the project and do our best to ensure your contribution is included. To get started, see CONTRIBUTING.md. ",
+    "content": "We deeply appreciate any and all contributions to the project and do our best to ensure your contribution is included. To get started, see CONTRIBUTING.md . ",
     "url": "https://docs.firez.one/#contribute-to-firezone",
     "relUrl": "/#contribute-to-firezone"
   },"13": {
@@ -85,7 +85,7 @@
   },"14": {
     "doc": "Deploy",
     "title": "Deploy",
-    "content": "Firezone can be deployed on most popular Linux distributions in a few minutes. Start by checking if your environment is listed on supported platforms. A kernel upgrade may be required to ensure WireGuard is supported. Start Here: Supported Platforms . ",
+    "content": ". Firezone can be deployed on most popular Linux distributions in a few minutes. Start by checking if your environment is listed on supported platforms. A kernel upgrade may be required to ensure WireGuard is supported. Start Here: Supported Platforms . ",
     "url": "https://docs.firez.one/docs/deploy/",
     "relUrl": "/docs/deploy/"
   },"15": {
