@@ -2,12 +2,12 @@
 # Add a bash script that:
 #
 # TODO
-#  * latest release and matching artifact puzzel
-# TODO
-# The `create-or-reset-admin` command will need to be updated to optionally accept an email argument.
+#  - [ ] wireguard is a mod not a cli ... how to determine if it's available is still a mystery
+#  - [ ] current distro and correct artifact to download
+#  - [ ] The `create-or-reset-admin` command will need to be updated to optionally accept an email argument.
 
 # * prompts user for admin email
-function promptEmail() {
+ promptEmail() {
   echo $1
   read adminEmail
   if [[ $adminEmail != *[@]* ]]
@@ -21,16 +21,16 @@ function promptEmail() {
 
 # * checks to ensure wireguard is available (i.e. wireguard net devices can be added) (maybe there's a /sys file?)
 
-function wireguardCheck() {
+ wireguardCheck() {
 	if which wg > /dev/null; then
      eval "$1='$(wg --version)'"
-  else 
+  else
      eval "$1='not installed'"
 	fi
 }
 
 # * checks to ensure kernel is > 4.19
-function kernelCheck() {
+ kernelCheck() {
    kernel_version=$(uname -r | cut -d- -f1 | cut -d. -f1)
    #trying to avoid _yuge_ if-else here so just starting with the top number >= for now
    #may need to review linux versions and test a slew of comparisons
@@ -43,31 +43,30 @@ function kernelCheck() {
 }
 
 # * determines distro; aborts if it can't detect or is not supported
-function determinDistro() {
-  hostnamectl
+ determinDistro() {
+  hostnamectl | egrep -i '(opera|kern|arch)'
 }
 
-function latestRelease() {
- curl --silent https://api.github.com/repos/firezone/firezone/releases/latest | grep '"browser_download_url"'
+latestReleases() {
+   curl --silent https://api.github.com/repos/firezone/firezone/releases/latest | grep '"browser_download_url"' | cut -d: -f3
 }
 
-function installAndDownloadArtifact() {
-  #this will be passed in once I determine the mapping of OS/Kernel to release artifact
-  #url="https://github.com/firezone/firezone/releases/download/0.2.17/firezone_0.2.17-debian11-x64.deb"
-
-  url="https://github.com/firezone/firezone/releases/download/0.2.17/firezone_0.2.17-fedora34-x64.rpm"
+ installAndDownloadArtifact() {
+  url=$1
   file=$(basename $url)
   echo $file
   cd /tmp
   wget $url
   if [[ "$url" =~ .*"deb".* ]]; then
+    #echo "use dpkg"
     sudo dpkg -i $file
   else
+    #echo "use rpm"
     sudo rpm -i $file
   fi
 }
 
-function main() {
+ main() {
   adminUser=''
   promptEmail "Enter the administrator email you'd like to use for logging into this Firezone instance:" adminUser
 
@@ -75,7 +74,7 @@ function main() {
   wgInstalledStatus=''
   wireguardCheck wgInstalledStatus
   if [ "$wgInstalledStatus" == "not installed" ]; then
-    echo "Wireguard is not installed. Quitting." 
+    echo "Wireguard is not installed. Quitting."
     exit
   fi
 
@@ -87,10 +86,11 @@ function main() {
   fi
 
   #puzzle here but the discussion has begun
-  #determinDistro
-  #latestRelease
+  determinDistro
+  latestReleases
 
-  echo "Press key to install..."
+  exit
+  echo "Press <ENTER> to install..."
   read
   #after doing the mapping pass url here
   #for now hardcoded
