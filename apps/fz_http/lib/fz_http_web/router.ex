@@ -32,8 +32,8 @@ defmodule FzHttpWeb.Router do
       on_mount: {FzHttpWeb.LiveAuth, :unprivileged},
       root_layout: {FzHttpWeb.LayoutView, :unprivileged}
     ) do
-      live "/configs", DeviceLive.Unprivileged.Index, :index
-      live "/configs/new", DeviceLive.Unprivileged.Index, :new
+      live "/user_tunnels", DeviceLive.Unprivileged.Index, :index
+      live "/user_tunnels/new", DeviceLive.Unprivileged.Index, :new
     end
 
     live_session(

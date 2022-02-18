@@ -1,6 +1,6 @@
 import hljs from "highlight.js"
 import {FormatTimestamp,PasswordStrength} from "./util.js"
-import {renderQrCode} from "./qrcode.js"
+import {createDeviceAndRenderConfig} from "./wg_conf.js"
 
 const highlightCode = function () {
   hljs.highlightAll()
@@ -69,10 +69,6 @@ Hooks.HighlightCode = {
   mounted: highlightCode,
   updated: highlightCode
 }
-Hooks.QrCode = {
-  mounted: renderQrCode,
-  updated: renderQrCode
-}
 Hooks.FormatTimestamp = {
   mounted: formatTimestamp,
   updated: formatTimestamp
@@ -80,6 +76,9 @@ Hooks.FormatTimestamp = {
 Hooks.PasswordStrength = {
   mounted: passwordStrength,
   updated: passwordStrength
+}
+Hooks.CreateDeviceAndRenderConfig = {
+  mounted: createDeviceAndRenderConfig
 }
 
 export default Hooks

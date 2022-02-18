@@ -1,0 +1,35 @@
+<div class="content">
+  <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
+
+  <p>
+    Install the
+    <a href="https://www.wireguard.com/install/">
+      official WireGuard client
+    </a>
+    for your device, then use the below WireGuard configuration to connect.
+  </p>
+
+  <p>
+    <strong>NOTE:</strong> This configuration will NOT
+    be viewable again. Please ensure you've downloaded the
+    configuration file or copied it somewhere safe
+    before closing this dialog.
+  </p>
+
+  <p>
+    <a class="button is-hidden" id="download-config">
+      Download
+    </a>
+  </p>
+  <p>
+    <canvas id="qr-canvas"
+            data-user-id={@target_user_id}
+            phx-hook="CreateDeviceAndRenderConfig">
+      Generating QR code...
+    </canvas>
+  </p>
+  <p>
+    <pre id="wg-conf-container"
+        class="is-hidden"><code id="wg-conf" class="language-toml"></code></pre>
+  </p>
+</div>

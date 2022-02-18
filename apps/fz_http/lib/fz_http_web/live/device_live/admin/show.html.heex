@@ -93,28 +93,6 @@
 </section>
 
 <section class="section is-main-section">
-  <h4 class="title is-4">WireGuard Configuration</h4>
-
-  <div class="block">
-    Install the
-    <a href="https://www.wireguard.com/install/">
-      official WireGuard client
-    </a>
-    for your device, then use the below WireGuard configuration to connect.
-  </div>
-  <div class="columns">
-    <div class="column">
-      <pre><code id="wg-conf" class="language-toml"><%= @config %></code></pre>
-    </div>
-    <div class="column has-text-centered">
-      <canvas id="qr-canvas" phx-hook="QrCode">
-        Generating QR code...
-      </canvas>
-    </div>
-  </div>
-</section>
-
-<section class="section is-main-section">
   <h4 class="title is-4">
     Danger Zone
   </h4>

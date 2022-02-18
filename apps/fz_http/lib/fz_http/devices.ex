@@ -99,7 +99,7 @@ defmodule FzHttp.Devices do
   end
 
   def new_device(attrs \\ %{}) do
-    change_device(%Device{}, Map.merge(%{name: NameGenerator.generate()}, attrs))
+    change_device(%Device{}, Map.merge(%{"name" => NameGenerator.generate()}, attrs))
   end
 
   def allowed_ips(device), do: config(device, :allowed_ips)

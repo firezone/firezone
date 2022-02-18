@@ -9,5 +9,3 @@ import "@fontsource/fira-mono"
 import "phoenix_html"
 import "./live_view.js"
 import "./event_listeners.js"
-
-import { fzCrypto } from "./crypto.js"
