@@ -19,4 +19,5 @@ to authenticate the user so they are able to establish the connection.
 
 ![add user](https://user-images.githubusercontent.com/52545545/153469244-c007c305-bfb0-4da7-a40c-6f41fa458c76.png){:width="600"}
 
-Next, [add devices]({%link docs/user-guides/add-devices.md%}) to the user.
+\
+[Next: Add Devices]({%link docs/user-guides/add-devices.md%}){:.btn.btn-purple}

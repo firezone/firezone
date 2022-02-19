@@ -1,6 +1,6 @@
 ---
 layout: default
-title: WireGuard Client Setup
+title: Client Instructions
 nav_order: 5
 parent: User Guides
 description: >

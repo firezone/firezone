@@ -19,10 +19,13 @@ Once the device profile is created, you can send the WireGuard configuration
 file to the user by:
 
 * **Shareable Link**: Generates a time limited link to the device config file
-  that can be sent to the user.
+that can be sent to the user.
 * **Download Config**: Downloads the device config file to your local machine
-  to be sent securely to the user.
+to be sent securely to the user.
 
 Devices are associated with users. See [Add Users
 ]({% link docs/user-guides/add-users.md %}) for more information on how to add
 a user.
+
+\
+[Related: Client Setup]({%link docs/user-guides/client-instructions.md%}){:.btn.btn-purple}

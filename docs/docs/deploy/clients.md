@@ -1,23 +1,23 @@
 ---
 layout: default
-title: Install Clients
+title: Client Setup
 nav_order: 5
 parent: Deploy
 description: >
   Firezone is compatible with the official WireGuard clients available for all major platforms.
 ---
 ---
+Once successfully deployed, users and devices can be added to
+connect to the VPN server:
 
-Firezone is compatible with the official WireGuard clients available for all
-major platforms. Installation instructions for each platform can be found on the
-main WireGuard website here: [
-https://www.wireguard.com/install/](https://www.wireguard.com/install/).
+* [Add Users]({%link docs/user-guides/add-users.md%}):
+Add users to grant them access to your network.
+* [Client Setup]({%link docs/user-guides/client-setup.md%}):
+Send these instructions to the user attempting to establish a connection.
 
-Once the WireGuard client is installed, users can add the tunnel by
-importing the `.conf` file sent by the administrator or logging into the
-Firezone web UI and downloading a `.conf` file there.
-
-![Client Instructions]({{site.asset_urls.client_instructions}}){:width="600"}
+See [User Guides]({%link docs/user-guides/index.md%})
+for additional information on common tasks.
 
 \
 [Previous: Install Server]({%link docs/deploy/server.md%}){:.btn.mr-2}
+[Related: Troubleshooting]({%link docs/administer/troubleshoot.md%}){:.btn.btn-purple}

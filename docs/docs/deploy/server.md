@@ -56,4 +56,4 @@ Find solutions to common issues during deployment in [Troubleshoot]({%link docs/
 
 \
 [Previous: Prerequisites]({%link docs/deploy/prerequisites.md%}){:.btn.mr-2}
-[Next: Install WireGuard Clients]({%link docs/deploy/clients.md%}){:.btn.btn-purple}
+[Next: Client Setup]({%link docs/deploy/clients.md%}){:.btn.btn-purple}
