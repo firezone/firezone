@@ -1,6 +1,6 @@
 <%= if @live_action == :edit do %>
   <%= live_modal(
-        FzHttpWeb.DeviceLive.Admin.UpdateFormComponent,
+        FzHttpWeb.DeviceLive.UpdateFormComponent,
         return_to: Routes.device_admin_show_path(@socket, :show, @device),
         title: "Edit #{@device.name}",
         id: "device-#{@device.id}",

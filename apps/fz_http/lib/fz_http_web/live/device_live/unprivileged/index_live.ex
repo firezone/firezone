@@ -15,36 +15,6 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.Index do
      |> assign(:page_title, "WireGuard Tunnels")}
   end
 
-  @impl Phoenix.LiveView
-  def handle_event("delete_device", %{"id" => id}, socket) do
-    user_id = socket.assigns.current_user.id
-
-    device = Devices.get_device!(id)
-
-    case delete_device(device, socket) do
-      {:not_authorized} ->
-        {:noreply, not_authorized(socket)}
-
-      {:ok, _device} ->
-        {:noreply,
-         socket
-         |> assign(:devices, Devices.list_devices(user_id))}
-
-      {:error, _changeset} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, "Could not delete device.")}
-    end
-  end
-
-  defp delete_device(device, socket) do
-    if device.user_id == socket.assigns.current_user.id do
-      Devices.delete_device(device)
-    else
-      {:not_authorized}
-    end
-  end
-
   @doc """
   This is called when modal is closed. Conveniently, allows us to reload
   devices table.

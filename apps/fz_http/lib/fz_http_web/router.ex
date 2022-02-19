@@ -27,6 +27,7 @@ defmodule FzHttpWeb.Router do
   scope "/", FzHttpWeb do
     pipe_through :browser
 
+    # Unprivileged routes
     live_session(
       :unprivileged,
       on_mount: {FzHttpWeb.LiveAuth, :unprivileged},
@@ -34,8 +35,10 @@ defmodule FzHttpWeb.Router do
     ) do
       live "/user_tunnels", DeviceLive.Unprivileged.Index, :index
       live "/user_tunnels/new", DeviceLive.Unprivileged.Index, :new
+      live "/user_tunnels/:id", DeviceLive.Unprivileged.Show, :show
     end
 
+    # Admin routes
     live_session(
       :admin,
       on_mount: {FzHttpWeb.LiveAuth, :admin},
@@ -45,9 +48,9 @@ defmodule FzHttpWeb.Router do
       live "/users/new", UserLive.Index, :new
       live "/users/:id", UserLive.Show, :show
       live "/users/:id/edit", UserLive.Show, :edit
+      live "/users/:id/new_tunnel", UserLive.Show, :new_tunnel
       live "/rules", RuleLive.Index, :index
       live "/devices", DeviceLive.Admin.Index, :index
-      live "/devices/new", DeviceLive.Admin.Index, :new
       live "/devices/:id", DeviceLive.Admin.Show, :show
       live "/devices/:id/edit", DeviceLive.Admin.Show, :edit
       live "/settings/site", SettingLive.Site, :show
@@ -57,6 +60,7 @@ defmodule FzHttpWeb.Router do
       live "/diagnostics/connectivity_checks", ConnectivityCheckLive.Index, :index
     end
 
+    # Synchronous routes
     resources "/session", SessionController, only: [:new, :create, :delete], singleton: true
     get "/sign_in/:token", SessionController, :create
     delete "/user", UserController, :delete

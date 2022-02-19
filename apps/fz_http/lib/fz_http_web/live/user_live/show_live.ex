@@ -18,9 +18,16 @@ defmodule FzHttpWeb.UserLive.Show do
      |> assign(:page_title, "Users")}
   end
 
+  @doc """
+  Called when a modal is dismissed; reload devices.
+  """
   @impl Phoenix.LiveView
   def handle_params(_params, _url, socket) do
-    {:noreply, socket}
+    devices = Devices.list_devices(socket.assigns.current_user.id)
+
+    {:noreply,
+     socket
+     |> assign(:devices, devices)}
   end
 
   @impl Phoenix.LiveView

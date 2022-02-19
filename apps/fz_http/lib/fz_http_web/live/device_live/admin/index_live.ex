@@ -10,7 +10,7 @@ defmodule FzHttpWeb.DeviceLive.Admin.Index do
     {:ok,
      socket
      |> assign(:devices, Devices.list_devices())
-     |> assign(:page_title, "Devices")}
+     |> assign(:page_title, "All Devices")}
   end
 
   @doc """

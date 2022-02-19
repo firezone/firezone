@@ -12,8 +12,16 @@ defmodule FzHttpWeb.AuthorizationHelpers do
     |> redirect(to: root_path_for_role(socket))
   end
 
-  def has_role?(socket, role) do
+  def has_role?(%Phoenix.LiveView.Socket{} = socket, role) do
     socket.assigns.current_user && socket.assigns.current_user.role == role
+  end
+
+  def has_role?(%FzHttp.Users.User{} = user, role) do
+    user.role == role
+  end
+
+  def has_role?(_, _) do
+    false
   end
 
   def authorize_role(socket, role) do

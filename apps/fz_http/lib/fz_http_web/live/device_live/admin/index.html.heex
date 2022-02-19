@@ -14,6 +14,11 @@
   <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
 
   <div class="block">
-    <%= render FzHttpWeb.SharedView, "devices_table.html", devices: @devices, socket: @socket %>
+    <%= render FzHttpWeb.SharedView, "devices_table.html", context: :admin, devices: @devices, socket: @socket %>
   </div>
+
+  <p>
+    Tunnels can be added when viewing a User.
+    <%= link("Go to users ->", to: Routes.user_index_path(@socket, :index)) %>
+  </p>
 </section>

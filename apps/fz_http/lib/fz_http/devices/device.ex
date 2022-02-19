@@ -38,6 +38,7 @@ defmodule FzHttp.Devices.Device do
     field :ipv4, EctoNetwork.INET, read_after_writes: true
     field :ipv6, EctoNetwork.INET, read_after_writes: true
     field :last_seen_at, :utc_datetime_usec
+    field :key_regenerated_at, :utc_datetime_usec, read_after_writes: true
 
     belongs_to :user, User
 
@@ -80,7 +81,8 @@ defmodule FzHttp.Devices.Device do
       :ipv6,
       :user_id,
       :name,
-      :public_key
+      :public_key,
+      :key_regenerated_at
     ])
   end
 

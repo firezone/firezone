@@ -42,6 +42,7 @@ defmodule FzHttpWeb do
       use Phoenix.HTML
 
       import FzHttpWeb.ErrorHelpers
+      import FzHttpWeb.AuthorizationHelpers
       import FzHttpWeb.Gettext
       import Phoenix.LiveView.Helpers
       alias FzHttpWeb.Router.Helpers, as: Routes

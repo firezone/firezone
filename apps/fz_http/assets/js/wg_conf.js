@@ -16,6 +16,8 @@ const createDeviceAndRenderConfig = function () {
 
   this.pushEventTo(this.el, "create_device", params, (reply, ref) => {
     let config = reply.config.replace("REPLACE_ME", kp.privateKey)
+    let placeholder = document.getElementById("generating-config")
+    placeholder.classList.add("is-hidden")
     renderDownloadButton(config)
     renderQR(config)
     renderConfig(config)

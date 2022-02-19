@@ -1,6 +1,6 @@
-defmodule FzHttpWeb.DeviceLive.Admin.Show do
+defmodule FzHttpWeb.DeviceLive.Unprivileged.Show do
   @moduledoc """
-  Shows a device for an admin user.
+  Shows a device for an unprivileged user.
   """
   use FzHttpWeb, :live_view
   alias FzHttp.{Devices, Users}
@@ -9,7 +9,7 @@ defmodule FzHttpWeb.DeviceLive.Admin.Show do
   def mount(%{"id" => device_id} = _params, _session, socket) do
     device = Devices.get_device!(device_id)
 
-    if device.user_id == socket.assigns.current_user.id || has_role?(socket, :admin) do
+    if authorized?(device, socket) do
       {:ok,
        socket
        |> assign(assigns(device))}
@@ -18,31 +18,34 @@ defmodule FzHttpWeb.DeviceLive.Admin.Show do
     end
   end
 
-  @doc """
-  Needed because this view will receive handle_params when modal is closed.
-  """
-  @impl Phoenix.LiveView
-  def handle_params(_params, _url, socket) do
-    {:noreply, socket}
-  end
-
   @impl Phoenix.LiveView
   def handle_event("delete_device", _params, socket) do
     device = socket.assigns.device
 
-    case Devices.delete_device(device) do
+    case delete_device(device, socket) do
       {:ok, _deleted_device} ->
         {:ok, _deleted_pubkey} = @events_module.delete_device(device.public_key)
 
         {:noreply,
          socket
-         |> redirect(to: Routes.device_admin_index_path(socket, :index))}
+         |> redirect(to: Routes.device_unprivileged_index_path(socket, :index))}
+
+      {:not_authorized} ->
+        {:noreply, not_authorized(socket)}
 
         # Not likely to ever happen
         # {:error, msg} ->
         #   {:noreply,
         #   socket
         #   |> put_flash(:error, "Error deleting device: #{msg}")}
+    end
+  end
+
+  def delete_device(device, socket) do
+    if socket.assigns.current_user.id == device.user_id do
+      Devices.delete_device(device)
+    else
+      {:not_authorized}
     end
   end
 
@@ -58,5 +61,9 @@ defmodule FzHttpWeb.DeviceLive.Admin.Show do
       persistent_keepalive: Devices.persistent_keepalive(device),
       config: Devices.as_config(device)
     ]
+  end
+
+  defp authorized?(device, socket) do
+    "#{device.user_id}" == "#{socket.assigns.current_user.id}" || has_role?(socket, :admin)
   end
 end
