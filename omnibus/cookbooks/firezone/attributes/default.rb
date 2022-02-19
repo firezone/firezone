@@ -241,7 +241,7 @@ default['firezone']['wireguard']['endpoint'] = nil
 default['firezone']['wireguard']['allowed_ips'] = '0.0.0.0/0, ::/0'
 
 # Default DNS servers to use for generated device configs.
-# Defaults to CloudFlare's public DNS. Set to nil to omit DNS from  generated
+# Defaults to CloudFlare's public DNS. Set to nil to omit DNS from generated
 # device configurations.
 default['firezone']['wireguard']['dns'] = '1.1.1.1, 1.0.0.1'
 
@@ -260,13 +260,13 @@ default['firezone']['wireguard']['ipv4']['network'] = '10.3.2.0/24'
 # contained within the WireGuard network specific above. Default 10.3.2.1.
 default['firezone']['wireguard']['ipv4']['address'] = '10.3.2.1'
 
-# Enable or disable IPv4 connectivity in your WireGuard network. Default enabled.
+# Enable or disable IPv6 connectivity in your WireGuard network. Default enabled.
 default['firezone']['wireguard']['ipv6']['enabled'] = true
 
-# The CIDR-formatted IPv4 network to use for your WireGuard network. Default fd00::3:2:0/120.
+# The CIDR-formatted IPv6 network to use for your WireGuard network. Default fd00::3:2:0/120.
 default['firezone']['wireguard']['ipv6']['network'] = 'fd00::3:2:0/120'
 
-# The IPv4 address to assign to your WireGuard interface. Must be an address
+# The IPv6 address to assign to your WireGuard interface. Must be an address
 # contained within the WireGuard network specific above. Default fd00::3:2:1.
 default['firezone']['wireguard']['ipv6']['address'] = 'fd00::3:2:1'
 
