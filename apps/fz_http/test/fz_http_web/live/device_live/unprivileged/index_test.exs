@@ -25,22 +25,20 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
     end
   end
 
-  #
-  # describe "authenticated/creates device" do
-  #   test "creates device", %{authed_conn: conn} do
-  #     path = Routes.device_admin_index_path(conn, :index)
-  #     {:ok, view, _html} = live(conn, path)
-  #
-  #     view
-  #     |> element("button", "Add Device")
-  #     |> render_click()
-  #
-  #     device = Devices.list_devices() |> List.first()
-  #
-  #     assert %Device{} = device
-  #     assert_redirected(view, Routes.device_admin_show_path(conn, :show, device))
-  #   end
-  # end
+  describe "authenticated/creates tunnel" do
+    test "creates device", %{unprivileged_conn: conn} do
+      path = Routes.device_unprivileged_index_path(conn, :index)
+      {:ok, view, _html} = live(conn, path)
+
+      new_view =
+        view
+        |> element("a", "Add Tunnel")
+        |> render_click()
+
+      assert_patched(view, Routes.device_unprivileged_index_path(conn, :new))
+      assert new_view =~ "Tunnel Added!"
+    end
+  end
 
   describe "unauthenticated" do
     test "mount redirects to session path", %{unauthed_conn: conn} do

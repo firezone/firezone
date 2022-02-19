@@ -176,7 +176,7 @@ defmodule FzHttpWeb.DeviceLive.Admin.ShowTest do
       assert flash["info"] == "Device updated successfully."
 
       {:ok, _view, html} = live(conn, path)
-      assert html =~ "AllowedIPs = #{@allowed_ips}"
+      assert html =~ @allowed_ips
     end
 
     test "allows dns changes", %{authed_conn: conn, device: device} do
@@ -191,7 +191,7 @@ defmodule FzHttpWeb.DeviceLive.Admin.ShowTest do
       assert flash["info"] == "Device updated successfully."
 
       {:ok, _view, html} = live(conn, path)
-      assert html =~ "DNS = #{@dns}"
+      assert html =~ @dns
     end
 
     test "allows endpoint changes", %{authed_conn: conn, device: device} do
@@ -206,7 +206,7 @@ defmodule FzHttpWeb.DeviceLive.Admin.ShowTest do
       assert flash["info"] == "Device updated successfully."
 
       {:ok, _view, html} = live(conn, path)
-      assert html =~ "Endpoint = #{@wireguard_endpoint}:51820"
+      assert html =~ @wireguard_endpoint
     end
 
     test "allows mtu changes", %{authed_conn: conn, device: device} do
@@ -221,7 +221,7 @@ defmodule FzHttpWeb.DeviceLive.Admin.ShowTest do
       assert flash["info"] == "Device updated successfully."
 
       {:ok, _view, html} = live(conn, path)
-      assert html =~ "MTU = 1280"
+      assert html =~ "1280"
     end
 
     test "allows persistent_keepalive changes", %{authed_conn: conn, device: device} do
@@ -236,7 +236,7 @@ defmodule FzHttpWeb.DeviceLive.Admin.ShowTest do
       assert flash["info"] == "Device updated successfully."
 
       {:ok, _view, html} = live(conn, path)
-      assert html =~ "PersistentKeepalive = 120"
+      assert html =~ "120"
     end
 
     test "prevents empty names", %{authed_conn: conn, device: device} do

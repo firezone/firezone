@@ -54,6 +54,7 @@ defmodule FzHttpWeb.DeviceLive.Admin.Show do
       allowed_ips: Devices.allowed_ips(device),
       dns: Devices.dns(device),
       endpoint: Devices.endpoint(device),
+      port: Application.fetch_env!(:fz_vpn, :wireguard_port),
       mtu: Devices.mtu(device),
       persistent_keepalive: Devices.persistent_keepalive(device),
       config: Devices.as_config(device)
