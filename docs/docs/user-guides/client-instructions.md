@@ -4,10 +4,11 @@ title: Client Instructions
 nav_order: 5
 parent: User Guides
 description: >
-  Install the WireGuard client and import the configuration 
+  Install the WireGuard client and import the configuration
   file sent by the administrator to establish a connection.
 ---
 ---
+
 _This is written for the end user who will be connecting
 to the Firezone VPN server._
 
