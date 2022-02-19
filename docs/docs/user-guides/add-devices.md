@@ -28,4 +28,4 @@ Devices are associated with users. See [Add Users
 a user.
 
 \
-[Related: Client Setup]({%link docs/user-guides/client-instructions.md%}){:.btn.btn-purple}
+[Related: Client Instructions]({%link docs/user-guides/client-instructions.md%}){:.btn.btn-purple}

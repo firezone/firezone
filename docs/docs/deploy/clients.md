@@ -12,7 +12,7 @@ connect to the VPN server:
 
 * [Add Users]({%link docs/user-guides/add-users.md%}):
 Add users to grant them access to your network.
-* [Client Setup]({%link docs/user-guides/client-setup.md%}):
+* [Client Instructions]({%link docs/user-guides/client-instructions.md%}):
 Send these instructions to the user attempting to establish a connection.
 
 See [User Guides]({%link docs/user-guides/index.md%})
