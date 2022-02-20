@@ -122,7 +122,7 @@ defmodule FzHttpWeb.SettingLive.DefaultTest do
       refute test_view =~ "is invalid"
 
       assert test_view =~ """
-             <input class="input is-success" id="endpoint_form_component_value" name="setting[value]" type="text" value="1.1.1.1"/>\
+             <input class="input is-success" id="endpoint_form_component_value" name="setting[value]" placeholder="127.0.0.1" type="text" value="1.1.1.1"/>\
              """
     end
 

@@ -55,6 +55,12 @@ defmodule FzHttp.ConnectivityCheckService do
     end
   end
 
+  def initialize do
+    if !ConnectivityChecks.exists?() && enabled?() do
+      post_request()
+    end
+  end
+
   defp url do
     Application.fetch_env!(:fz_http, :connectivity_checks_url) <> version()
   end
