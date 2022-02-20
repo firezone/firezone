@@ -46,20 +46,20 @@ defmodule FzHttp.Users do
     create_user_with_role(attrs, :unprivileged)
   end
 
-  defp create_user_with_role(attrs, role) when is_map(attrs) do
+  def create_user_with_role(attrs, role) when is_map(attrs) do
     attrs
     |> Map.put(:role, role)
     |> create_user()
   end
 
-  defp create_user_with_role(attrs, role) when is_list(attrs) do
+  def create_user_with_role(attrs, role) when is_list(attrs) do
     attrs
     |> Enum.into(%{})
     |> Map.put(:role, role)
     |> create_user()
   end
 
-  defp create_user(attrs) when is_map(attrs) do
+  def create_user(attrs) when is_map(attrs) do
     attrs = FzMap.stringify_keys(attrs)
 
     result =

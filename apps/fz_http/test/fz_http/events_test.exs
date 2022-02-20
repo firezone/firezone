@@ -1,11 +1,10 @@
-defmodule FzHttpWeb.EventsTest do
+defmodule FzHttp.EventsTest do
   @moduledoc """
   XXX: Use start_supervised! somehow here to allow async tests.
   """
   use FzHttp.DataCase, async: false
 
-  alias FzHttp.Devices
-  alias FzHttpWeb.Events
+  alias FzHttp.{Devices, Events}
 
   # XXX: Not needed with start_supervised!
   setup do
@@ -13,12 +12,6 @@ defmodule FzHttpWeb.EventsTest do
       :sys.replace_state(Events.vpn_pid(), fn _state -> %{} end)
       :sys.replace_state(Events.wall_pid(), fn _state -> [] end)
     end)
-  end
-
-  describe "create_device/0" do
-    test "receives info to create device" do
-      assert {:ok, _privkey, _pubkey, _server_pubkey} = Events.create_device()
-    end
   end
 
   describe "update_device/1" do

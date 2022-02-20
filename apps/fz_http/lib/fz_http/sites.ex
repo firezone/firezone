@@ -4,7 +4,9 @@ defmodule FzHttp.Sites do
   """
 
   import Ecto.Query, warn: false
-  alias FzHttp.{Repo, Sites.Site}
+  alias FzHttp.{ConnectivityChecks, Repo, Sites.Site}
+
+  @wg_settings [:allowed_ips, :dns, :endpoint, :persistent_keepalive, :mtu]
 
   def get_site! do
     get_site!(name: "default")
@@ -38,5 +40,33 @@ defmodule FzHttp.Sites do
 
   def vpn_duration do
     get_site!().key_ttl
+  end
+
+  def wireguard_defaults do
+    site = get_site!()
+
+    @wg_settings
+    |> Enum.map(fn s ->
+      site_val = Map.get(site, s)
+
+      if is_nil(site_val) do
+        {s, default(s)}
+      else
+        {s, site_val}
+      end
+    end)
+    |> Map.new()
+  end
+
+  defp default(:endpoint) do
+    app_env(:wireguard_endpoint) || ConnectivityChecks.endpoint()
+  end
+
+  defp default(key) do
+    app_env(String.to_atom("wireguard_#{key}"))
+  end
+
+  defp app_env(key) do
+    Application.fetch_env!(:fz_http, key)
   end
 end

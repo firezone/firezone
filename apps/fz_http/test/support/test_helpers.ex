@@ -24,17 +24,6 @@ defmodule FzHttp.TestHelpers do
     Repo.delete_all(User)
   end
 
-  def create_device_with_config_token(tags) do
-    device =
-      if tags[:unauthed] || is_nil(tags[:user_id]) do
-        DevicesFixtures.device_with_config_token()
-      else
-        DevicesFixtures.device_with_config_token(%{user_id: tags[:user_id]})
-      end
-
-    {:ok, device: device}
-  end
-
   def create_device(tags) do
     device =
       if tags[:unauthed] || is_nil(tags[:user_id]) do
@@ -53,8 +42,7 @@ defmodule FzHttp.TestHelpers do
       DevicesFixtures.device(%{
         user_id: user_id,
         name: "other device",
-        public_key: "other-pubkey",
-        private_key: "other-privkey"
+        public_key: "other-pubkey"
       })
 
     {:ok, other_device: device}
@@ -82,7 +70,6 @@ defmodule FzHttp.TestHelpers do
         DevicesFixtures.device(%{
           name: "device #{num}",
           public_key: "#{num}",
-          private_key: "#{num}",
           user_id: user_id
         })
       end)
