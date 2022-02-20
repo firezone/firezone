@@ -32,6 +32,16 @@ configuration file at `/etc/firezone/firezone.rb`. See here for a guide on how
 to do so:
 [https://eff-certbot.readthedocs.io/en/stable/using.html#manual](https://eff-certbot.readthedocs.io/en/stable/using.html#manual)
 
+## Security Group and Firewall Settings
+
+By default, Firezone requires ports `80`, `443`, and `51820` to be open.
+This can be changed in the configuration file for your Firezone instance. See the
+[configuration file reference]({% link docs/reference/configuration-file.md %})
+for details.
+
+The image below shows this configuration on an AWS EC2 instance:
+![Open ports](https://user-images.githubusercontent.com/52545545/154820330-1bdf7bec-1d82-4c45-99a8-89d3ba4d79ac.png){:width="600"}
+
 \
 [Previous: Resource Requirements]({%link docs/deploy/resource-requirements.md%}){:.btn.mr-2}
 [Next: Install Server]({%link docs/deploy/server.md%}){:.btn.btn-purple}
