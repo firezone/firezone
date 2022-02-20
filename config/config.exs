@@ -66,7 +66,7 @@ config :fz_http,
   ecto_repos: [FzHttp.Repo],
   admin_email: "firezone@localhost",
   default_admin_password: "firezone1234",
-  events_module: FzHttpWeb.Events,
+  events_module: FzHttp.Events,
   server_process_opts: [name: {:global, :fz_http_server}]
 
 config :fz_wall,

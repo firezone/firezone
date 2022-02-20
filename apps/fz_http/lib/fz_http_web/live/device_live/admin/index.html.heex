@@ -1,7 +1,7 @@
 <%= if @live_action == :new do %>
   <%= live_modal(
         FzHttpWeb.DeviceLive.CreateFormComponent,
-        return_to: Routes.device_index_path(@socket, :index),
+        return_to: Routes.device_admin_index_path(@socket, :index),
         title: "Add Device",
         changeset: @changeset,
         id: "add-device-modal",
@@ -14,10 +14,11 @@
   <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
 
   <div class="block">
-    <%= render FzHttpWeb.SharedView, "devices_table.html", devices: @devices, socket: @socket %>
+    <%= render FzHttpWeb.SharedView, "devices_table.html", context: :admin, devices: @devices, socket: @socket %>
   </div>
 
-  <button class="button" phx-click="create_device">
-    Add Device
-  </button>
+  <p>
+    Tunnels can be added when viewing a User.
+    <%= link("Go to users ->", to: Routes.user_index_path(@socket, :index)) %>
+  </p>
 </section>

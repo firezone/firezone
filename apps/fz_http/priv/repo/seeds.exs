@@ -24,8 +24,6 @@ alias FzHttp.{Devices, ConnectivityChecks, Rules, Users}
     user_id: user.id,
     name: "Factory Device",
     public_key: "3Fo+SNnDJ6hi8qzPt3nWLwgjCVwvpjHL35qJeatKwEc=",
-    server_public_key: "QFvMfHTjlJN9cfUiK1w4XmxOomH6KRTCMrVC6z3TWFM=",
-    private_key: "2JSZtpSHM+69Hm7L3BSGIymbq0byw39iWLevKESd1EM=",
     remote_ip: %Postgrex.INET{address: {127, 0, 0, 1}}
   })
 

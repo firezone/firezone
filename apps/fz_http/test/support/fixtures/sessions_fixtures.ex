@@ -5,8 +5,9 @@ defmodule FzHttp.SessionsFixtures do
   """
   alias FzHttp.{Sessions, UsersFixtures}
 
-  def session(_attrs \\ %{}) do
-    email = UsersFixtures.user().email
+  def session(attrs \\ %{}) do
+    role = Map.get(attrs, :role, :admin)
+    email = UsersFixtures.user(%{role: role}).email
     record = Sessions.get_session!(email: email)
     create_params = %{email: email, password: "password1234"}
     {:ok, session} = Sessions.create_session(record, create_params)

@@ -10,10 +10,13 @@ defmodule FzHttpWeb.SettingLive.Security do
   @day 24 * @hour
 
   @impl Phoenix.LiveView
-  def mount(params, session, socket) do
+  def mount(_params, _session, socket) do
     {:ok,
      socket
-     |> assign_defaults(params, session, &load_data/2)}
+     |> assign(:form_changed, false)
+     |> assign(:options, options())
+     |> assign(:changeset, changeset())
+     |> assign(:page_title, "Security Settings")}
   end
 
   @impl Phoenix.LiveView
@@ -41,30 +44,20 @@ defmodule FzHttpWeb.SettingLive.Security do
     end
   end
 
-  defp load_data(_params, socket) do
-    user = socket.assigns.current_user
+  defp changeset do
+    Sites.get_site!()
+    |> Sites.change_site()
+  end
 
-    if user.role == :admin do
-      options = [
-        Never: 0,
-        Once: Site.max_key_ttl(),
-        "Every Hour": @hour,
-        "Every Day": @day,
-        "Every Week": 7 * @day,
-        "Every 30 Days": 30 * @day,
-        "Every 90 Days": 90 * @day
-      ]
-
-      site = Sites.get_site!()
-      changeset = Sites.change_site(site)
-
-      socket
-      |> assign(:form_changed, false)
-      |> assign(:options, options)
-      |> assign(:changeset, changeset)
-      |> assign(:page_title, "Security Settings")
-    else
-      not_authorized(socket)
-    end
+  defp options do
+    [
+      Never: 0,
+      Once: Site.max_key_ttl(),
+      "Every Hour": @hour,
+      "Every Day": @day,
+      "Every Week": 7 * @day,
+      "Every 30 Days": 30 * @day,
+      "Every 90 Days": 90 * @day
+    ]
   end
 end

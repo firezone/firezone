@@ -34,14 +34,11 @@ defmodule FzHttp.Devices.Device do
     field :persistent_keepalive, :integer
     field :allowed_ips, :string
     field :dns, :string
-    field :private_key, FzHttp.Encrypted.Binary
-    field :server_public_key, :string
     field :remote_ip, EctoNetwork.INET
     field :ipv4, EctoNetwork.INET, read_after_writes: true
     field :ipv6, EctoNetwork.INET, read_after_writes: true
     field :last_seen_at, :utc_datetime_usec
-    field :config_token, :string
-    field :config_token_expires_at, :utc_datetime_usec
+    field :key_regenerated_at, :utc_datetime_usec, read_after_writes: true
 
     belongs_to :user, User
 
@@ -82,13 +79,10 @@ defmodule FzHttp.Devices.Device do
       :remote_ip,
       :ipv4,
       :ipv6,
-      :server_public_key,
-      :private_key,
       :user_id,
       :name,
       :public_key,
-      :config_token,
-      :config_token_expires_at
+      :key_regenerated_at
     ])
   end
 
@@ -97,9 +91,7 @@ defmodule FzHttp.Devices.Device do
     |> validate_required([
       :user_id,
       :name,
-      :public_key,
-      :server_public_key,
-      :private_key
+      :public_key
     ])
     |> validate_required_unless_site([:endpoint])
     |> validate_omitted_if_site([
@@ -130,7 +122,6 @@ defmodule FzHttp.Devices.Device do
     |> validate_in_network(:ipv4)
     |> validate_in_network(:ipv6)
     |> unique_constraint(:public_key)
-    |> unique_constraint(:private_key)
     |> unique_constraint([:user_id, :name])
   end
 

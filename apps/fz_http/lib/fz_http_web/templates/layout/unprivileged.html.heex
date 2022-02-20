@@ -4,10 +4,9 @@
     <meta charset="utf-8"/>
     <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <%= csrf_meta_tag() %>
-    <title>Firezone</title>
+    <%= live_title_tag assigns[:page_title] || "Firezone" %>
     <link phx-track-static rel="stylesheet" href={Routes.static_path(@conn, "/css/app.css")} />
-    <script defer phx-track-static type="text/javascript" src={Routes.static_path(@conn, "/js/device_config.js")}></script>
+    <script defer phx-track-static type="text/javascript" src={Routes.static_path(@conn, "/js/unprivileged.js")}></script>
 
     <!-- Favicon -->
     <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png">
@@ -17,17 +16,24 @@
     <meta name="msapplication-config" content="/browserconfig.xml" />
     <meta name="msapplication-TileColor" content="331700">
     <meta name="theme-color" content="331700">
+    <%= render(FzHttpWeb.SharedView, "socket_token_headers.html", current_user: @current_user, conn: @conn) %>
   </head>
 <body>
 <section class="section hero is-fullheight is-error-section">
   <div id="app" class="hero-body">
     <div class="container">
-      <div class="block">
-        <div class="has-text-centered">
-          <img src={Routes.static_path(@conn, "/images/logo-text.svg")} alt="firez.one">
+      <div class="columns is-centered">
+        <div class="column">
+          <div class="block">
+            <div class="has-text-centered">
+              <img src={Routes.static_path(@conn, "/images/logo-text.svg")} alt="firez.one">
+            </div>
+          </div>
+
+          <%= @inner_content %>
+
         </div>
       </div>
-      <%= @inner_content %>
     </div>
   </div>
 </section>

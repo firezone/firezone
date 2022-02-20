@@ -1,4 +1,4 @@
-defmodule FzHttpWeb.DeviceLive.ShowTest do
+defmodule FzHttpWeb.DeviceLive.Admin.ShowTest do
   use FzHttpWeb.ConnCase, async: true
 
   describe "authenticated" do
@@ -59,32 +59,32 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
     }
 
     test "shows device details", %{authed_conn: conn, device: device} do
-      path = Routes.device_show_path(conn, :show, device)
+      path = Routes.device_admin_show_path(conn, :show, device)
       {:ok, _view, html} = live(conn, path)
       assert html =~ "#{device.name}"
       assert html =~ "<h4 class=\"title is-4\">Details</h4>"
     end
 
     test "opens modal", %{authed_conn: conn, device: device} do
-      path = Routes.device_show_path(conn, :show, device)
+      path = Routes.device_admin_show_path(conn, :show, device)
       {:ok, view, _html} = live(conn, path)
 
       view
       |> element("a", "Edit")
       |> render_click()
 
-      assert_patched(view, Routes.device_show_path(conn, :edit, device))
+      assert_patched(view, Routes.device_admin_show_path(conn, :edit, device))
     end
 
     test "allows name changes", %{authed_conn: conn, device: device} do
-      path = Routes.device_show_path(conn, :edit, device)
+      path = Routes.device_admin_show_path(conn, :edit, device)
       {:ok, view, _html} = live(conn, path)
 
       view
       |> form("#edit-device")
       |> render_submit(@valid_params)
 
-      flash = assert_redirected(view, Routes.device_show_path(conn, :show, device))
+      flash = assert_redirected(view, Routes.device_admin_show_path(conn, :show, device))
       assert flash["info"] == "Device updated successfully."
     end
 
@@ -92,7 +92,7 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
       authed_conn: conn,
       device: device
     } do
-      path = Routes.device_show_path(conn, :edit, device)
+      path = Routes.device_admin_show_path(conn, :edit, device)
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -107,7 +107,7 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
       authed_conn: conn,
       device: device
     } do
-      path = Routes.device_show_path(conn, :edit, device)
+      path = Routes.device_admin_show_path(conn, :edit, device)
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -122,7 +122,7 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
       authed_conn: conn,
       device: device
     } do
-      path = Routes.device_show_path(conn, :edit, device)
+      path = Routes.device_admin_show_path(conn, :edit, device)
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -137,7 +137,7 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
       authed_conn: conn,
       device: device
     } do
-      path = Routes.device_show_path(conn, :edit, device)
+      path = Routes.device_admin_show_path(conn, :edit, device)
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -153,7 +153,7 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
            authed_conn: conn,
            device: device
          } do
-      path = Routes.device_show_path(conn, :edit, device)
+      path = Routes.device_admin_show_path(conn, :edit, device)
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -165,82 +165,82 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
     end
 
     test "allows allowed_ips changes", %{authed_conn: conn, device: device} do
-      path = Routes.device_show_path(conn, :edit, device)
+      path = Routes.device_admin_show_path(conn, :edit, device)
       {:ok, view, _html} = live(conn, path)
 
       view
       |> form("#edit-device")
       |> render_submit(@allowed_ips_change)
 
-      flash = assert_redirected(view, Routes.device_show_path(conn, :show, device))
+      flash = assert_redirected(view, Routes.device_admin_show_path(conn, :show, device))
       assert flash["info"] == "Device updated successfully."
 
       {:ok, _view, html} = live(conn, path)
-      assert html =~ "AllowedIPs = #{@allowed_ips}"
+      assert html =~ @allowed_ips
     end
 
     test "allows dns changes", %{authed_conn: conn, device: device} do
-      path = Routes.device_show_path(conn, :edit, device)
+      path = Routes.device_admin_show_path(conn, :edit, device)
       {:ok, view, _html} = live(conn, path)
 
       view
       |> form("#edit-device")
       |> render_submit(@dns_change)
 
-      flash = assert_redirected(view, Routes.device_show_path(conn, :show, device))
+      flash = assert_redirected(view, Routes.device_admin_show_path(conn, :show, device))
       assert flash["info"] == "Device updated successfully."
 
       {:ok, _view, html} = live(conn, path)
-      assert html =~ "DNS = #{@dns}"
+      assert html =~ @dns
     end
 
     test "allows endpoint changes", %{authed_conn: conn, device: device} do
-      path = Routes.device_show_path(conn, :edit, device)
+      path = Routes.device_admin_show_path(conn, :edit, device)
       {:ok, view, _html} = live(conn, path)
 
       view
       |> form("#edit-device")
       |> render_submit(@endpoint_change)
 
-      flash = assert_redirected(view, Routes.device_show_path(conn, :show, device))
+      flash = assert_redirected(view, Routes.device_admin_show_path(conn, :show, device))
       assert flash["info"] == "Device updated successfully."
 
       {:ok, _view, html} = live(conn, path)
-      assert html =~ "Endpoint = #{@wireguard_endpoint}:51820"
+      assert html =~ @wireguard_endpoint
     end
 
     test "allows mtu changes", %{authed_conn: conn, device: device} do
-      path = Routes.device_show_path(conn, :edit, device)
+      path = Routes.device_admin_show_path(conn, :edit, device)
       {:ok, view, _html} = live(conn, path)
 
       view
       |> form("#edit-device")
       |> render_submit(@mtu_change)
 
-      flash = assert_redirected(view, Routes.device_show_path(conn, :show, device))
+      flash = assert_redirected(view, Routes.device_admin_show_path(conn, :show, device))
       assert flash["info"] == "Device updated successfully."
 
       {:ok, _view, html} = live(conn, path)
-      assert html =~ "MTU = 1280"
+      assert html =~ "1280"
     end
 
     test "allows persistent_keepalive changes", %{authed_conn: conn, device: device} do
-      path = Routes.device_show_path(conn, :edit, device)
+      path = Routes.device_admin_show_path(conn, :edit, device)
       {:ok, view, _html} = live(conn, path)
 
       view
       |> form("#edit-device")
       |> render_submit(@persistent_keepalive_change)
 
-      flash = assert_redirected(view, Routes.device_show_path(conn, :show, device))
+      flash = assert_redirected(view, Routes.device_admin_show_path(conn, :show, device))
       assert flash["info"] == "Device updated successfully."
 
       {:ok, _view, html} = live(conn, path)
-      assert html =~ "PersistentKeepalive = 120"
+      assert html =~ "120"
     end
 
     test "prevents empty names", %{authed_conn: conn, device: device} do
-      path = Routes.device_show_path(conn, :edit, device)
+      path = Routes.device_admin_show_path(conn, :edit, device)
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -252,7 +252,7 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
     end
 
     test "on use_site_allowed_ips change", %{authed_conn: conn, device: device} do
-      path = Routes.device_show_path(conn, :edit, device)
+      path = Routes.device_admin_show_path(conn, :edit, device)
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -266,7 +266,7 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
     end
 
     test "on use_site_dns change", %{authed_conn: conn, device: device} do
-      path = Routes.device_show_path(conn, :edit, device)
+      path = Routes.device_admin_show_path(conn, :edit, device)
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -280,7 +280,7 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
     end
 
     test "on use_site_endpoint change", %{authed_conn: conn, device: device} do
-      path = Routes.device_show_path(conn, :edit, device)
+      path = Routes.device_admin_show_path(conn, :edit, device)
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -294,7 +294,7 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
     end
 
     test "on use_site_mtu change", %{authed_conn: conn, device: device} do
-      path = Routes.device_show_path(conn, :edit, device)
+      path = Routes.device_admin_show_path(conn, :edit, device)
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -308,7 +308,7 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
     end
 
     test "on use_site_persistent_keepalive change", %{authed_conn: conn, device: device} do
-      path = Routes.device_show_path(conn, :edit, device)
+      path = Routes.device_admin_show_path(conn, :edit, device)
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -326,14 +326,14 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
     setup :create_device
 
     test "successful", %{authed_conn: conn, device: device} do
-      path = Routes.device_show_path(conn, :show, device)
+      path = Routes.device_admin_show_path(conn, :show, device)
       {:ok, view, _html} = live(conn, path)
 
       view
       |> element("button", "Delete Device #{device.name}")
       |> render_click()
 
-      _flash = assert_redirected(view, Routes.device_index_path(conn, :index))
+      _flash = assert_redirected(view, Routes.device_admin_index_path(conn, :index))
     end
   end
 
@@ -342,7 +342,7 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
 
     @tag :unauthed
     test "mount redirects to session path", %{unauthed_conn: conn, device: device} do
-      path = Routes.device_show_path(conn, :show, device)
+      path = Routes.device_admin_show_path(conn, :show, device)
       expected_path = Routes.session_path(conn, :new)
       assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
     end
@@ -357,7 +357,7 @@ defmodule FzHttpWeb.DeviceLive.ShowTest do
   #     device: _device,
   #     other_device: other_device
   #   } do
-  #     path = Routes.device_show_path(conn, :show, other_device)
+  #     path = Routes.device_admin_show_path(conn, :show, other_device)
   #     expected_path = Routes.session_path(conn, :new)
   #     assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
   #   end
