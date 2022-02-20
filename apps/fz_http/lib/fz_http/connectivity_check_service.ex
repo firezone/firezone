@@ -17,7 +17,6 @@ defmodule FzHttp.ConnectivityCheckService do
   @impl GenServer
   def init(state) do
     if enabled?() do
-      post_request()
       :timer.send_interval(interval(), :perform)
     end
 
@@ -53,6 +52,12 @@ defmodule FzHttp.ConnectivityCheckService do
         """)
 
         error
+    end
+  end
+
+  def initialize do
+    if !ConnectivityChecks.exists?() && enabled?() do
+      post_request()
     end
   end
 
