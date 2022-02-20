@@ -10,6 +10,9 @@
 <loc>https://docs.firez.one/docs/user-guides/authentication/</loc>
 </url>
 <url>
+<loc>https://docs.firez.one/docs/user-guides/client-instructions/</loc>
+</url>
+<url>
 <loc>https://docs.firez.one/docs/deploy/clients/</loc>
 </url>
 <url>
@@ -50,6 +53,9 @@
 </url>
 <url>
 <loc>https://docs.firez.one/docs/deploy/server/</loc>
+</url>
+<url>
+<loc>https://docs.firez.one/docs/user-guides/split-tunnel/</loc>
 </url>
 <url>
 <loc>https://docs.firez.one/docs/deploy/supported-platforms/</loc>
