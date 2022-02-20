@@ -1,23 +1,7 @@
-// We need to import the CSS so that webpack will load it.
-// The MiniCssExtractPlugin is used to separate it out into
-// its own CSS file.
-import css from "../css/app.scss"
-
-/* Application fonts */
-import "@fontsource/fira-sans"
-import "@fontsource/open-sans"
-import "@fontsource/fira-mono"
-
-// webpack automatically bundles all modules in your
-// entry points. Those entry points can be configured
-// in "webpack.config.js".
-//
-// Import dependencies
-//
-import "phoenix_html"
+// Encapsulates LiveView initialization
+import Hooks from "./hooks.js"
 import {Socket, Presence} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
-import Hooks from "./hooks.js"
 import {FormatTimestamp} from "./util.js"
 
 // User Socket
@@ -61,12 +45,14 @@ const liveSocket = new LiveSocket(
 const toggleConnectStatus = function (info) {
   let success = document.getElementById("web-ui-connect-success")
   let error = document.getElementById("web-ui-connect-error")
-  if (userSocket.isConnected()) {
-    success.classList.remove("is-hidden")
-    error.classList.add("is-hidden")
-  } else {
-    success.classList.add("is-hidden")
-    error.classList.remove("is-hidden")
+  if (success && error) {
+    if (userSocket.isConnected()) {
+      success.classList.remove("is-hidden")
+      error.classList.add("is-hidden")
+    } else {
+      success.classList.add("is-hidden")
+      error.classList.remove("is-hidden")
+    }
   }
 }
 
@@ -115,14 +101,3 @@ notificationChannel.join()
 // >> liveSocket.enableLatencySim(1000)
 
 window.liveSocket = liveSocket
-
-// Notification dismiss
-document.addEventListener('DOMContentLoaded', () => {
-  (document.querySelectorAll('.notification .delete') || []).forEach(($delete) => {
-    const $notification = $delete.parentNode
-
-    $delete.addEventListener('click', () => {
-      $notification.parentNode.removeChild($notification)
-    })
-  })
-})

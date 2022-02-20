@@ -4,13 +4,8 @@ defmodule FzHttp.Devices do
   """
 
   import Ecto.Query, warn: false
-  alias FzCommon.{FzCrypto, NameGenerator}
-  alias FzHttp.{ConnectivityChecks, Devices.Device, Repo, Sites, Telemetry, Users, Users.User}
-
-  # Device configs can be viewable for 10 minutes
-  @config_token_expires_in_sec 600
-
-  @events_module Application.compile_env!(:fz_http, :events_module)
+  alias FzCommon.NameGenerator
+  alias FzHttp.{Devices.Device, Repo, Sites, Telemetry, Users, Users.User}
 
   def list_devices do
     Repo.all(Device)
@@ -24,15 +19,6 @@ defmodule FzHttp.Devices do
 
   def count(user_id) do
     Repo.one(from d in Device, where: d.user_id == ^user_id, select: count())
-  end
-
-  def get_device!(config_token: config_token) do
-    now = DateTime.utc_now()
-
-    Repo.one!(
-      from d in Device,
-        where: d.config_token == ^config_token and d.config_token_expires_at > ^now
-    )
   end
 
   def get_device!(id), do: Repo.get!(Device, id)
@@ -58,26 +44,6 @@ defmodule FzHttp.Devices do
     result
   end
 
-  @doc """
-  Creates device with fields populated from the VPN process.
-  """
-  def auto_create_device(attrs \\ %{}) do
-    {:ok, privkey, pubkey, server_pubkey} = @events_module.create_device()
-
-    attributes =
-      Map.merge(
-        %{
-          private_key: privkey,
-          public_key: pubkey,
-          server_public_key: server_pubkey,
-          name: rand_name()
-        },
-        attrs
-      )
-
-    create_device(attributes)
-  end
-
   def update_device(%Device{} = device, attrs) do
     device
     |> Device.update_changeset(attrs)
@@ -91,10 +57,6 @@ defmodule FzHttp.Devices do
 
   def change_device(%Device{} = device, attrs \\ %{}) do
     Device.update_changeset(device, attrs)
-  end
-
-  def rand_name do
-    NameGenerator.generate()
   end
 
   @doc """
@@ -136,53 +98,21 @@ defmodule FzHttp.Devices do
     end)
   end
 
-  def new_device do
-    change_device(%Device{})
+  def new_device(attrs \\ %{}) do
+    change_device(%Device{}, Map.merge(%{"name" => NameGenerator.generate()}, attrs))
   end
 
-  def endpoint(device) do
-    if device.use_site_endpoint do
-      Sites.get_site!().endpoint ||
-        Application.fetch_env!(:fz_http, :wireguard_endpoint) ||
-        ConnectivityChecks.endpoint()
-    else
-      device.endpoint
-    end
-  end
+  def allowed_ips(device), do: config(device, :allowed_ips)
+  def endpoint(device), do: config(device, :endpoint)
+  def dns(device), do: config(device, :dns)
+  def mtu(device), do: config(device, :mtu)
+  def persistent_keepalive(device), do: config(device, :persistent_keepalive)
 
-  def allowed_ips(device) do
-    if device.use_site_allowed_ips do
-      Sites.get_site!().allowed_ips ||
-        Application.fetch_env!(:fz_http, :wireguard_allowed_ips)
+  defp config(device, key) do
+    if Map.get(device, String.to_atom("use_site_#{key}")) do
+      Map.get(Sites.wireguard_defaults(), key)
     else
-      device.allowed_ips
-    end
-  end
-
-  def dns(device) do
-    if device.use_site_dns do
-      Sites.get_site!().dns ||
-        Application.fetch_env!(:fz_http, :wireguard_dns)
-    else
-      device.dns
-    end
-  end
-
-  def mtu(device) do
-    if device.use_site_mtu do
-      Sites.get_site!().mtu ||
-        Application.fetch_env!(:fz_http, :wireguard_mtu)
-    else
-      device.mtu
-    end
-  end
-
-  def persistent_keepalive(device) do
-    if device.use_site_persistent_keepalive do
-      Sites.get_site!().persistent_keepalive ||
-        Application.fetch_env!(:fz_http, :wireguard_persistent_keepalive)
-    else
-      device.persistent_keepalive
+      Map.get(device, key)
     end
   end
 
@@ -200,31 +130,21 @@ defmodule FzHttp.Devices do
 
   def as_config(device) do
     wireguard_port = Application.fetch_env!(:fz_vpn, :wireguard_port)
+    server_public_key = Application.fetch_env!(:fz_vpn, :wireguard_public_key)
 
     """
     [Interface]
-    PrivateKey = #{device.private_key}
+    PrivateKey = REPLACE_ME
     Address = #{inet(device)}
     #{mtu_config(device)}
     #{dns_config(device)}
 
     [Peer]
-    PublicKey = #{device.server_public_key}
+    PublicKey = #{server_public_key}
     #{allowed_ips_config(device)}
     Endpoint = #{endpoint(device)}:#{wireguard_port}
     #{persistent_keepalive_config(device)}
     """
-  end
-
-  def create_config_token(device) do
-    expires_at = DateTime.add(DateTime.utc_now(), @config_token_expires_in_sec, :second)
-
-    config_token_attrs = %{
-      config_token: FzCrypto.rand_token(6),
-      config_token_expires_at: expires_at
-    }
-
-    update_device(device, config_token_attrs)
   end
 
   defp mtu_config(device) do

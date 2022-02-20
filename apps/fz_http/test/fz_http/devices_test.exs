@@ -33,8 +33,6 @@ defmodule FzHttp.DevicesTest do
     @device_attrs %{
       name: "dummy",
       public_key: "dummy",
-      private_key: "dummy",
-      server_public_key: "dummy",
       user_id: nil
     }
 
@@ -352,15 +350,6 @@ defmodule FzHttp.DevicesTest do
 
     test "returns changeset", %{device: device} do
       assert %Ecto.Changeset{} = Devices.change_device(device)
-    end
-  end
-
-  describe "rand_name/0" do
-    test "generates a random name" do
-      name1 = Devices.rand_name()
-      name2 = Devices.rand_name()
-
-      assert name1 != name2
     end
   end
 
