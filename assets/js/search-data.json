@@ -145,158 +145,176 @@
   },"24": {
     "doc": "Prerequisites",
     "title": "Create an SSL certificate",
-    "content": "While Firezone generates a self-signed SSL certificate for you on install, you’ll need a valid SSL certificate to use Firezone in a production capacity. We recommend using Let’s Encrypt to generate a free SSL cert for your domain. Firezone will include the ability to automatically generate valid SSL certificates for you in an upcoming release, but for now these must be generated manually and specified in the main configuration file at /etc/firezone/firezone.rb. See here for a guide on how to do so: https://eff-certbot.readthedocs.io/en/stable/using.html#manual . Previous: Resource Requirements Next: Install Server . ",
+    "content": "While Firezone generates a self-signed SSL certificate for you on install, you’ll need a valid SSL certificate to use Firezone in a production capacity. We recommend using Let’s Encrypt to generate a free SSL cert for your domain. Firezone will include the ability to automatically generate valid SSL certificates for you in an upcoming release, but for now these must be generated manually and specified in the main configuration file at /etc/firezone/firezone.rb. See here for a guide on how to do so: https://eff-certbot.readthedocs.io/en/stable/using.html#manual . ",
     "url": "https://docs.firez.one/docs/deploy/prerequisites/#create-an-ssl-certificate",
     "relUrl": "/docs/deploy/prerequisites/#create-an-ssl-certificate"
   },"25": {
+    "doc": "Prerequisites",
+    "title": "Security Group and Firewall Settings",
+    "content": "By default, Firezone requires ports 80/tcp, 443/tcp, and 51820/udp to be open. This can change based on what you’ve configured in the configuration file. See the configuration file reference for details. The image below shows this configuration on an AWS EC2 instance: . Previous: Resource Requirements Next: Install Server . ",
+    "url": "https://docs.firez.one/docs/deploy/prerequisites/#security-group-and-firewall-settings",
+    "relUrl": "/docs/deploy/prerequisites/#security-group-and-firewall-settings"
+  },"26": {
     "doc": "Prerequisites",
     "title": "Prerequisites",
     "content": ". Firezone requires the setup of a DNS record and matching SSL certificate for production deployments. Not using Firezone in production? Skip to install the server. ",
     "url": "https://docs.firez.one/docs/deploy/prerequisites/",
     "relUrl": "/docs/deploy/prerequisites/"
-  },"26": {
+  },"27": {
     "doc": "Resource Requirements",
     "title": "Resource Requirements",
     "content": ". Firezone uses in-kernel WireGuard, so its performance should be very good. We recommend starting with 1 vCPU and 1 GB of RAM and scaling up as the number of users and bandwidth requirements grow. In general, more CPU cores translate to higher bandwidth capacity per tunnel while more RAM will help with higher counts of users and tunnels. In the vast majority of cases, with WireGuard, your network link speed is going to be the bottleneck before your CPU will. Previous: Supported Platforms Next: Prerequisites . ",
     "url": "https://docs.firez.one/docs/deploy/resource-requirements/",
     "relUrl": "/docs/deploy/resource-requirements/"
-  },"27": {
+  },"28": {
     "doc": "Security Considerations",
     "title": "Reporting Security Issues",
     "content": "To report any security-related bugs, see our security reporting policy . ",
     "url": "https://docs.firez.one/docs/administer/security-considerations/#reporting-security-issues",
     "relUrl": "/docs/administer/security-considerations/#reporting-security-issues"
-  },"28": {
+  },"29": {
     "doc": "Security Considerations",
     "title": "Security Considerations",
     "content": ". Shown below is a table of ports used by Firezone services. | Service | Default port | Listen address | Description | . | Nginx | 80 443 | all | Public HTTP(S) port for administering Firezone and facilitating authentication. | . | WireGuard | 51820 | all | Public WireGuard port used for VPN connections. | . | Postgresql | 15432 | 127.0.0.1 | Local-only port used for bundled Postgresql server | . | Phoenix | 13000 | 127.0.0.1 | Local-only port used by upstream elixir app server. | . ",
     "url": "https://docs.firez.one/docs/administer/security-considerations/",
     "relUrl": "/docs/administer/security-considerations/"
-  },"29": {
+  },"30": {
     "doc": "Install Server",
     "title": "Installation Instructions",
     "content": "NOTE: Firezone modifies the kernel netfilter and routing tables. Other programs that modify the Linux routing table or netfilter firewall will likely interfere with Firezone’s operation. Assuming you’re running a supported Linux kernel on one of the distros listed above, follow these steps to install and configure Firezone for first use: . | Install WireGuard for your distro. If using Linux kernel 5.6 or higher, skip this step. | Download the relevant package for your distribution from the releases page. | Install with sudo rpm -i firezone*.rpm or sudo dpkg -i firezone*.deb depending on your distro. | Bootstrap the application with sudo firezone-ctl reconfigure. This will initialize config files, set up needed services and generate the default configuration. | Edit the default configuration located at /etc/firezone/firezone.rb. At a minimum, you’ll need to review the following configuration variables: . # Auto-generated based on the server's hostname. # Set this to the FQDN used to access the Web UI. default['firezone']['fqdn'] = 'firezone.example.com' # Specify the path to your SSL cert and private key. # If set to nil, a self-signed cert will be generated for you. default['firezone']['ssl']['certificate'] = '/path/to/cert.pem' default['firezone']['ssl']['certificate_key'] = '/path/to/key.pem' . | Reconfigure the application to pick up the new changes: sudo firezone-ctl reconfigure. | Finally, create an admin user with sudo firezone-ctl create-or-reset-admin. The login credentials will be printed to the console output. | Now you should be able to log into the web UI at the FQDN you specified in step 5 above, e.g. https://firezone.example.com | . Find solutions to common issues during deployment in Troubleshoot. Previous: Prerequisites Next: Client Setup . ",
     "url": "https://docs.firez.one/docs/deploy/server/#installation-instructions",
     "relUrl": "/docs/deploy/server/#installation-instructions"
-  },"30": {
+  },"31": {
     "doc": "Install Server",
     "title": "Install Server",
     "content": ". Important: Ensure you’ve satisfied the prerequisites before following this guide. ",
     "url": "https://docs.firez.one/docs/deploy/server/",
     "relUrl": "/docs/deploy/server/"
-  },"31": {
+  },"32": {
     "doc": "Split Tunnel",
     "title": "Step 1 - Configure Allowed IPs",
     "content": "The Allowed IPs field found on the /settings/default page determines the IP ranges for which the client will route network traffic. Modifications to this field will apply only to new WireGuard tunnel configurations generated by Firezone. The default value is 0.0.0.0/0, ::/0, which routes all network traffic from the client to the VPN server. Some examples of values in this field are: . | 0.0.0.0/0, ::/0 - all network traffic will be routed to the VPN server. | 192.0.2.3/32 - only traffic to a single IP address will be routed to the VPN server. | 3.5.140.0/22 - only traffic to IPs in the 3.5.140.1 - 3.5.143.254 range will be routed to the VPN server. In this example, the CIDR range for the ap-northeast-2 AWS region was used. | . Note: When deciding where to route a packet, Firezone chooses the egress interface corresponding to the most specific route first. ",
     "url": "https://docs.firez.one/docs/user-guides/split-tunnel/#step-1---configure-allowed-ips",
     "relUrl": "/docs/user-guides/split-tunnel/#step-1---configure-allowed-ips"
-  },"32": {
+  },"33": {
     "doc": "Split Tunnel",
     "title": "Step 2 - Regenerate WireGuard tunnel configurations",
     "content": "To update existing WireGuard tunnels with the new split tunnel configuration, users will need to regenerate the configuration files and add them to their native WireGuard client. See, add device for instructions. ",
     "url": "https://docs.firez.one/docs/user-guides/split-tunnel/#step-2---regenerate-wireguard-tunnel-configurations",
     "relUrl": "/docs/user-guides/split-tunnel/#step-2---regenerate-wireguard-tunnel-configurations"
-  },"33": {
+  },"34": {
     "doc": "Split Tunnel",
     "title": "Split Tunnel",
     "content": ". This guide will describe the steps required to enable split tunneling with WireGuard using Firezone so only traffic to defined IP ranges will be routed through the VPN server. ",
     "url": "https://docs.firez.one/docs/user-guides/split-tunnel/",
     "relUrl": "/docs/user-guides/split-tunnel/"
-  },"34": {
+  },"35": {
     "doc": "Supported Platforms",
     "title": "AmazonLinux 2 Notes",
     "content": "Kernel upgrade required: . sudo amazon-linux-extras install -y kernel-5.10 . ",
     "url": "https://docs.firez.one/docs/deploy/supported-platforms/#amazonlinux-2-notes",
     "relUrl": "/docs/deploy/supported-platforms/#amazonlinux-2-notes"
-  },"35": {
+  },"36": {
     "doc": "Supported Platforms",
     "title": "CentOS 7 Notes",
     "content": "Kernel upgrade to 5.6+ required. To upgrade to the latest mainline kernel and select it as the default boot kernel: . sudo rpm --import https://www.elrepo.org/RPM-GPG-KEY-elrepo.org sudo yum install -y https://www.elrepo.org/elrepo-release-7.el7.elrepo.noarch.rpm sudo yum install -y elrepo-release sudo yum --enablerepo=elrepo-kernel install -y kernel-ml sudo grub2-set-default 0 sudo grub2-mkconfig -o /boot/grub2/grub.cfg sudo reboot . ",
     "url": "https://docs.firez.one/docs/deploy/supported-platforms/#centos-7-notes",
     "relUrl": "/docs/deploy/supported-platforms/#centos-7-notes"
-  },"36": {
+  },"37": {
     "doc": "Supported Platforms",
     "title": "CentOS 8 Notes",
     "content": "The WireGuard kernel module needs to be installed: . yum install elrepo-release epel-release yum install kmod-wireguard . ",
     "url": "https://docs.firez.one/docs/deploy/supported-platforms/#centos-8-notes",
     "relUrl": "/docs/deploy/supported-platforms/#centos-8-notes"
-  },"37": {
+  },"38": {
     "doc": "Supported Platforms",
     "title": "RHEL 7 Notes",
     "content": "Red Hat Enterprise Linux is binary compatible with CentOS, so the Firezone package for CentOS 7 should work just fine for RHEL 7. You’ll still need to upgrade your kernel to 5.6+ however. To do so, follow the steps for CentOS 7 Notes above. ",
     "url": "https://docs.firez.one/docs/deploy/supported-platforms/#rhel-7-notes",
     "relUrl": "/docs/deploy/supported-platforms/#rhel-7-notes"
-  },"38": {
+  },"39": {
     "doc": "Supported Platforms",
     "title": "RHEL 8 Notes",
     "content": "Red Hat Enterprise Linux is binary compatible with CentOS, so the Firezone package for CentOS 8 should work just fine for RHEL 8. You’ll still need to install the WireGuard kernel module, however. See CentOS 8 Notes above. ",
     "url": "https://docs.firez.one/docs/deploy/supported-platforms/#rhel-8-notes",
     "relUrl": "/docs/deploy/supported-platforms/#rhel-8-notes"
-  },"39": {
+  },"40": {
     "doc": "Supported Platforms",
     "title": "RHEL 9 Notes",
     "content": "Use the package for CentOS 9. ",
     "url": "https://docs.firez.one/docs/deploy/supported-platforms/#rhel-9-notes",
     "relUrl": "/docs/deploy/supported-platforms/#rhel-9-notes"
-  },"40": {
+  },"41": {
     "doc": "Supported Platforms",
     "title": "Ubuntu 18.04 Notes",
     "content": "Kernel upgrade to 5.4+ required: . sudo apt install linux-image-generic-hwe-18.04 . ",
     "url": "https://docs.firez.one/docs/deploy/supported-platforms/#ubuntu-1804-notes",
     "relUrl": "/docs/deploy/supported-platforms/#ubuntu-1804-notes"
-  },"41": {
+  },"42": {
     "doc": "Supported Platforms",
     "title": "Debian 10 Notes",
     "content": "Kernel upgrade to 5.6+ required. See this guide for an example. ",
     "url": "https://docs.firez.one/docs/deploy/supported-platforms/#debian-10-notes",
     "relUrl": "/docs/deploy/supported-platforms/#debian-10-notes"
-  },"42": {
+  },"43": {
     "doc": "Supported Platforms",
     "title": "openSUSE Notes",
     "content": "Firezone requires the setcap utility, but some recent openSUSE releases may not have it installed by default. To fix, ensure libcap-progs is installed: . sudo zypper install libcap-progs . Next: Resource Requirements . ",
     "url": "https://docs.firez.one/docs/deploy/supported-platforms/#opensuse-notes",
     "relUrl": "/docs/deploy/supported-platforms/#opensuse-notes"
-  },"43": {
+  },"44": {
     "doc": "Supported Platforms",
     "title": "Supported Platforms",
     "content": ". Firezone currently supports the following platforms: . | OS | Architectures | Status | Notes | . | AmazonLinux 2 | amd64 arm64 | Fully-supported | See AmazonLinux 2 Notes | . | CentOS 7 | amd64 | Fully-supported | See CentOS 7 Notes | . | CentOS 8 | amd64 arm64 | Fully-supported | See CentOS 8 Notes | . | CentOS Stream 9 | amd64 arm64 | Fully-supported | Works as-is | . | Red Hat Enterprise Linux 7 | amd64 | Fully-supported | See RHEL 7 Notes | . | Red Hat Enterprise Linux 8 | amd64 arm64 | Fully-supported | See RHEL 8 Notes | . | Red Hat Enterprise Linux 9 | amd64 arm64 | Fully-supported | See RHEL 9 Notes | . | Debian 10 | amd64 arm64 | Fully-supported | See Debian 10 Notes | . | Debian 11 | amd64 arm64 | Fully-supported | Works as-is | . | Fedora 33 | amd64 arm64 | Fully-supported | Works as-is | . | Fedora 34 | amd64 arm64 | Fully-supported | Works as-is | . | Fedora 35 | amd64 arm64 | Fully-supported | Works as-is | . | Ubuntu 18.04 | amd64 arm64 | Fully-supported | See Ubuntu 18.04 Notes | . | Ubuntu 20.04 | amd64 arm64 | Fully-supported | Works as-is | . | openSUSE Leap 15.3 | amd64 | Fully-supported | See openSUSE Notes | . If your distro isn’t listed here please try using a package for the closest distro first. For example, since Raspberry Pi OS is based on Debian, try using the Debian Firezone package. If that doesn’t work, please open an issue and let us know. New distros are being supported on a regular basis and there’s a good chance yours will be added soon. Note that we only support RPM and DEB based packaging systems. Others, like Arch Linux are currently being investigated in this issue. ",
     "url": "https://docs.firez.one/docs/deploy/supported-platforms/",
     "relUrl": "/docs/deploy/supported-platforms/"
-  },"44": {
+  },"45": {
     "doc": "Troubleshoot",
     "title": "Debugging Connectivity Issues",
     "content": "Most connectivity issues with Firezone are caused by other iptables or nftables rules which interfere with Firezone’s operation. If you’re experiencing connectivity issues, check to ensure the iptables ruleset is empty: . root@demo:~# iptables -L Chain INPUT (policy ACCEPT) target prot opt source destination Chain FORWARD (policy ACCEPT) target prot opt source destination Chain OUTPUT (policy ACCEPT) target prot opt source destination . Firezone ships with an embedded nft utility at /opt/firezone/embedded/sbin/nft that can be used to view and debug the kernel’s nftables ruleset. On a fresh Firezone installation, your nftables ruleset should look something like this: . root@demo:~# /opt/firezone/embedded/sbin/nft list ruleset table inet firezone { chain forward { type filter hook forward priority filter; policy accept; } chain postrouting { type nat hook postrouting priority srcnat; policy accept; oifname \"enp1s0\" masquerade random,persistent oifname \"enp6s0\" masquerade random,persistent } } . ",
     "url": "https://docs.firez.one/docs/administer/troubleshoot/#debugging-connectivity-issues",
     "relUrl": "/docs/administer/troubleshoot/#debugging-connectivity-issues"
-  },"45": {
+  },"46": {
     "doc": "Troubleshoot",
     "title": "Need additional help?",
     "content": "If you’re looking for help installing, configuring, or using Firezone, we’re happy to help. | Discussion Forums: ask questions, report bugs, and suggest features | Public Slack Group: join discussions, meet other users, and meet the contributors | Email Us: we’re always happy to chat | . ",
     "url": "https://docs.firez.one/docs/administer/troubleshoot/#need-additional-help",
     "relUrl": "/docs/administer/troubleshoot/#need-additional-help"
-  },"46": {
+  },"47": {
     "doc": "Troubleshoot",
     "title": "Troubleshoot",
     "content": ". For any problems that arise, a good first bet is to check the Firezone logs. To view Firezone logs, run sudo firezone-ctl tail. ",
     "url": "https://docs.firez.one/docs/administer/troubleshoot/",
     "relUrl": "/docs/administer/troubleshoot/"
-  },"47": {
+  },"48": {
     "doc": "Uninstall",
     "title": "Uninstall",
     "content": ". To completely remove Firezone and its configuration files, run the uninstall.sh script: . sudo /bin/bash -c \"$(curl -fsSL https://github.com/firezone/firezone/raw/master/scripts/uninstall.sh)\" . Warning: This will irreversibly destroy ALL Firezone data and can’t be undone. ",
     "url": "https://docs.firez.one/docs/administer/uninstall/",
     "relUrl": "/docs/administer/uninstall/"
-  },"48": {
+  },"49": {
     "doc": "Upgrade",
     "title": "Upgrading from 0.1.x to 0.2.x",
     "content": "Firezone 0.2.x contains some configuration file changes that will need to be handled manually if you’re upgrading from 0.1.x. Run the commands below as root to perform the needed changes to your /etc/firezone/firezone.rb file. cp /etc/firezone/firezone.rb /etc/firezone/firezone.rb.bak sed -i \"s/\\['enable'\\]/\\['enabled'\\]/\" /etc/firezone/firezone.rb echo \"default['firezone']['connectivity_checks']['enabled'] = true\" &gt;&gt; /etc/firezone/firezone.rb echo \"default['firezone']['connectivity_checks']['interval'] = 3_600\" &gt;&gt; /etc/firezone/firezone.rb firezone-ctl reconfigure firezone-ctl restart . ",
     "url": "https://docs.firez.one/docs/administer/upgrade/#upgrading-from-01x-to-02x",
     "relUrl": "/docs/administer/upgrade/#upgrading-from-01x-to-02x"
-  },"49": {
+  },"50": {
     "doc": "Upgrade",
     "title": "Upgrade",
     "content": ". Upgrading Firezone will disconnect all VPN connections and require shutting down the Web UI. We recommend a maintenance window of about an hour in case anything goes wrong during the upgrade. We’re actively working on making this process more automatic in the future, but for now, this is the procedure for upgrading your Firezone instance. To upgrade Firezone, follow these steps: . | Download the new release for your platform. | Install the new package over the old one: sudo dpkg -i firezone_X.X.X.deb or sudo rpm -i --force firezone_X.X.X.rpm depending on your distribution. | Run firezone-ctl reconfigure to pick up the new changes. | Run firezone-ctl restart to restart services. | . Occasionally problems arise. If you hit any, please let us know by filing an issue. ",
     "url": "https://docs.firez.one/docs/administer/upgrade/",
     "relUrl": "/docs/administer/upgrade/"
+  },"51": {
+    "doc": "IP Whitelisting via VPN",
+    "title": "AWS Example",
+    "content": "In this example, a Firezone instance has already been set up on a tc2.micro EC2 instance. See the Deployment Guide for details on deploying Firezone. Step 1 - Set a static IP for the Firezone instance . Create and associate an Elastic IP with the Firezone instance. In this case the IP is 52.202.88.54. Step 2 - Restrict access to the protected resource . In this example, the protected resource is a self-hosted web app. Access to the web app is restricted to only requests from 52.202.88.54. Depending on the resource, inbound traffic on different ports and traffic types may need to be allowed. This is outside the scope of this guide. If the protected resource is controlled by a 3rd party, please inform the 3rd party to allow traffic from the static IP set in Step 1 (in this case 52.202.88.54). Step 3 - Route traffic to the protected resource through the VPN server . By default all traffic from users will be routed through the VPN server, and will originate from the static IP set in Step 1 (in this case 52.202.88.54). However, if split tunneling has been enabled, configuration may be required to ensure the destination IP of the protected resource is included in the Allowed IPs. Related: Authentication . ",
+    "url": "https://docs.firez.one/docs/user-guides/whitelist-vpn/#aws-example",
+    "relUrl": "/docs/user-guides/whitelist-vpn/#aws-example"
+  },"52": {
+    "doc": "IP Whitelisting via VPN",
+    "title": "IP Whitelisting via VPN",
+    "content": ". This guide will walk through a simple example restricting access for a self-hosted web app to a single whitelisted static IP running Firezone. In this example the protected resource and Firezone are in separate VPC regions. This arrangement is commonly done in place of maintaining a whitelist for multiple end users, which may become labor intensive to manage as the access list grows. ",
+    "url": "https://docs.firez.one/docs/user-guides/whitelist-vpn/",
+    "relUrl": "/docs/user-guides/whitelist-vpn/"
   }
 }
