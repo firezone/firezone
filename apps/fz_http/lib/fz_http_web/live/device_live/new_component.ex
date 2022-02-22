@@ -27,7 +27,7 @@ defmodule FzHttpWeb.DeviceLive.NewComponent do
          socket
          |> put_flash(
            :error,
-           "Error creating tunnel: #{ErrorHelpers.aggregated_errors(changeset)}"
+           "Error creating device: #{ErrorHelpers.aggregated_errors(changeset)}"
          )}
 
       {:ok, device} ->

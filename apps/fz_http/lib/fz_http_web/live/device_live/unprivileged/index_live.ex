@@ -12,7 +12,7 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.Index do
     {:ok,
      socket
      |> assign(:devices, Devices.list_devices(user_id))
-     |> assign(:page_title, "WireGuard Tunnels")}
+     |> assign(:page_title, "Your Devices")}
   end
 
   @doc """

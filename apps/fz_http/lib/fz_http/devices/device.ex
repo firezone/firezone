@@ -18,7 +18,7 @@ defmodule FzHttp.Devices.Device do
 
   import FzHttp.Queries.INET
 
-  alias FzHttp.{Tunnels, Users.User}
+  alias FzHttp.{Devices, Users.User}
 
   schema "devices" do
     field :uuid, Ecto.UUID, autogenerate: true
@@ -128,14 +128,14 @@ defmodule FzHttp.Devices.Device do
 
   defp validate_max_devices(changeset) do
     user_id = changeset.changes.user_id || changeset.data.user_id
-    count = Tunnels.count(user_id)
+    count = Devices.count(user_id)
     max_devices = Application.fetch_env!(:fz_http, :max_devices_per_user)
 
     if count >= max_devices do
       add_error(
         changeset,
         :base,
-        "Maximum tunnel limit reached. Remove an existing tunnel before creating a new one."
+        "Maximum device limit reached. Remove an existing device before creating a new one."
       )
     else
       changeset

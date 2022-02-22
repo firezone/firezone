@@ -7,14 +7,14 @@
         user: @user,
         action: @live_action) %>
 <% end %>
-<%= if @live_action == :new_tunnel do %>
+<%= if @live_action == :new_device do %>
   <%= live_modal(
       FzHttpWeb.DeviceLive.NewComponent,
       return_to: Routes.user_show_path(@socket, :show, @user),
-      title: "Tunnel Added!",
+      title: "Device Added!",
       target_user_id: @user.id,
       action: @live_action,
-      id: "new-tunnel-component") %>
+      id: "new-device-component") %>
 <% end %>
 
 <%= render FzHttpWeb.SharedView, "heading.html", page_title: "Users |> #{@user.email}" %>
@@ -51,8 +51,8 @@
   </div>
 
   <%= live_patch(
-      "Add Tunnel",
-      to: Routes.user_show_path(@socket, :new_tunnel, @user),
+      "Add Device",
+      to: Routes.user_show_path(@socket, :new_device, @user),
       class: "button") %>
 </section>
 

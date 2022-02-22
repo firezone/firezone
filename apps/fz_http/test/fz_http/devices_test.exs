@@ -53,9 +53,9 @@ defmodule FzHttp.DevicesTest do
                     {"Maximum device limit reached. Remove an existing device before creating a new one.",
                      []}
                 ]
-              }} = Tunnels.create_device(%{@device_attrs | user_id: device.user_id})
+              }} = Devices.create_device(%{@device_attrs | user_id: device.user_id})
 
-      assert [device] == Tunnels.list_devices(device.user_id)
+      assert [device] == Devices.list_devices(device.user_id)
     end
 
     test "creates device with empty attributes", %{user: user} do
