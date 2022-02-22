@@ -232,20 +232,20 @@ default['firezone']['wireguard']['mtu'] = 1420
 
 # WireGuard endpoint
 # By default, the public IP address of this server is used as the Endpoint
-# field for generating Device configs. Override this if you wish to change.
+# field for generating Tunnel configs. Override this if you wish to change.
 default['firezone']['wireguard']['endpoint'] = nil
 
-# Default AllowedIPs to use for generated device configs specified as a comma-separated
+# Default AllowedIPs to use for generated tunnel configs specified as a comma-separated
 # list of IPv4 / IPv6 CIDRs.
 # Default is to tunnel all IPv4 and IPv6 traffic with '0.0.0.0/0, ::/0'
 default['firezone']['wireguard']['allowed_ips'] = '0.0.0.0/0, ::/0'
 
-# Default DNS servers to use for generated device configs.
+# Default DNS servers to use for generated tunnel configs.
 # Defaults to CloudFlare's public DNS. Set to nil to omit DNS from generated
-# device configurations.
+# tunnel configurations.
 default['firezone']['wireguard']['dns'] = '1.1.1.1, 1.0.0.1'
 
-# Default PersistentKeepalive setting to use for generated device configs.
+# Default PersistentKeepalive setting to use for generated tunnel configs.
 # See https://www.wireguard.com/quickstart/#nat-and-firewall-traversal-persistence
 # Set to 0 or nil to disable. Default 0.
 default['firezone']['wireguard']['persistent_keepalive'] = 0
@@ -353,7 +353,7 @@ default['firezone']['telemetry']['enabled'] = true
 # By default, Firezone periodically checks for WAN connectivity to the Internet
 # by issuing a POST request with an empty body to https://ping.firez.one. This
 # is used to determine the server's publicly routable IP address for populating
-# device configurations and setting up firewall rules. Set this to false to
+# tunnel configurations and setting up firewall rules. Set this to false to
 # disable.
 default['firezone']['connectivity_checks']['enabled'] = true
 

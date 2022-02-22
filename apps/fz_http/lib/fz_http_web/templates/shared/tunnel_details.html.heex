@@ -10,20 +10,20 @@
 
     <tr>
       <td><strong>Name</strong></td>
-      <td><%= @device.name %></td>
+      <td><%= @tunnel.name %></td>
     </tr>
 
     <%= if Application.fetch_env!(:fz_http, :wireguard_ipv4_enabled) do %>
       <tr>
         <td><strong>Interface IPv4</strong></td>
-        <td><%= @device.ipv4 %></td>
+        <td><%= @tunnel.ipv4 %></td>
       </tr>
     <% end %>
 
     <%= if Application.fetch_env!(:fz_http, :wireguard_ipv6_enabled) do %>
       <tr>
         <td><strong>Interface IPv6</strong></td>
-        <td><%= @device.ipv6 %></td>
+        <td><%= @tunnel.ipv6 %></td>
       </tr>
     <% end %>
 
@@ -60,7 +60,7 @@
 
     <tr>
       <td><strong>Public key</strong></td>
-      <td class="code"><%= @device.public_key %></td>
+      <td class="code"><%= @tunnel.public_key %></td>
     </tr>
   </tbody>
 </table>

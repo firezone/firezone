@@ -5,10 +5,10 @@ defmodule FzHttp.TestHelpers do
 
   alias FzHttp.{
     ConnectivityChecksFixtures,
-    DevicesFixtures,
     Repo,
     RulesFixtures,
     SessionsFixtures,
+    TunnelsFixtures,
     Users,
     Users.User,
     UsersFixtures
@@ -24,28 +24,28 @@ defmodule FzHttp.TestHelpers do
     Repo.delete_all(User)
   end
 
-  def create_device(tags) do
-    device =
+  def create_tunnel(tags) do
+    tunnel =
       if tags[:unauthed] || is_nil(tags[:user_id]) do
-        DevicesFixtures.device()
+        TunnelsFixtures.tunnel()
       else
-        DevicesFixtures.device(%{user_id: tags[:user_id]})
+        TunnelsFixtures.tunnel(%{user_id: tags[:user_id]})
       end
 
-    {:ok, device: device}
+    {:ok, tunnel: tunnel}
   end
 
-  def create_other_user_device(_) do
+  def create_other_user_tunnel(_) do
     user_id = UsersFixtures.user(%{role: :unprivileged, email: "other_user@test"}).id
 
-    device =
-      DevicesFixtures.device(%{
+    tunnel =
+      TunnelsFixtures.tunnel(%{
         user_id: user_id,
-        name: "other device",
+        name: "other tunnel",
         public_key: "other-pubkey"
       })
 
-    {:ok, other_device: device}
+    {:ok, other_tunnel: tunnel}
   end
 
   def create_connectivity_checks(_tags) do
@@ -57,7 +57,7 @@ defmodule FzHttp.TestHelpers do
     {:ok, connectivity_checks: connectivity_checks}
   end
 
-  def create_devices(tags) do
+  def create_tunnels(tags) do
     user_id =
       if tags[:unathed] || is_nil(tags[:user_id]) do
         UsersFixtures.user().id
@@ -65,16 +65,16 @@ defmodule FzHttp.TestHelpers do
         tags[:user_id]
       end
 
-    devices =
+    tunnels =
       Enum.map(1..5, fn num ->
-        DevicesFixtures.device(%{
-          name: "device #{num}",
+        TunnelsFixtures.tunnel(%{
+          name: "tunnel #{num}",
           public_key: "#{num}",
           user_id: user_id
         })
       end)
 
-    {:ok, devices: devices}
+    {:ok, tunnels: tunnels}
   end
 
   def create_user(_) do

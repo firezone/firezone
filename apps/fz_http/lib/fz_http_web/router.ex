@@ -33,9 +33,9 @@ defmodule FzHttpWeb.Router do
       on_mount: {FzHttpWeb.LiveAuth, :unprivileged},
       root_layout: {FzHttpWeb.LayoutView, :unprivileged}
     ) do
-      live "/user_tunnels", DeviceLive.Unprivileged.Index, :index
-      live "/user_tunnels/new", DeviceLive.Unprivileged.Index, :new
-      live "/user_tunnels/:id", DeviceLive.Unprivileged.Show, :show
+      live "/user_tunnels", TunnelLive.Unprivileged.Index, :index
+      live "/user_tunnels/new", TunnelLive.Unprivileged.Index, :new
+      live "/user_tunnels/:id", TunnelLive.Unprivileged.Show, :show
     end
 
     # Admin routes
@@ -50,9 +50,9 @@ defmodule FzHttpWeb.Router do
       live "/users/:id/edit", UserLive.Show, :edit
       live "/users/:id/new_tunnel", UserLive.Show, :new_tunnel
       live "/rules", RuleLive.Index, :index
-      live "/devices", DeviceLive.Admin.Index, :index
-      live "/devices/:id", DeviceLive.Admin.Show, :show
-      live "/devices/:id/edit", DeviceLive.Admin.Show, :edit
+      live "/tunnels", TunnelLive.Admin.Index, :index
+      live "/tunnels/:id", TunnelLive.Admin.Show, :show
+      live "/tunnels/:id/edit", TunnelLive.Admin.Show, :edit
       live "/settings/site", SettingLive.Site, :show
       live "/settings/security", SettingLive.Security, :show
       live "/settings/account", SettingLive.Account, :show

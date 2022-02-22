@@ -10,7 +10,7 @@ defmodule FzHttp.Users.User do
   import Ecto.Changeset
   import FzHttp.Users.PasswordHelpers
 
-  alias FzHttp.Devices.Device
+  alias FzHttp.Tunnels.Tunnel
 
   schema "users" do
     field :uuid, Ecto.UUID, autogenerate: true
@@ -22,12 +22,12 @@ defmodule FzHttp.Users.User do
     field :sign_in_token_created_at, :utc_datetime_usec
 
     # VIRTUAL FIELDS
-    field :device_count, :integer, virtual: true
+    field :tunnel_count, :integer, virtual: true
     field :password, :string, virtual: true
     field :password_confirmation, :string, virtual: true
     field :current_password, :string, virtual: true
 
-    has_many :devices, Device, on_delete: :delete_all
+    has_many :tunnels, Tunnel, on_delete: :delete_all
 
     timestamps(type: :utc_datetime_usec)
   end

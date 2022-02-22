@@ -1,7 +1,7 @@
 <%= if @live_action == :new do %>
   <%= live_modal(
-      FzHttpWeb.DeviceLive.NewComponent,
-      return_to: Routes.device_unprivileged_index_path(@socket, :index),
+      FzHttpWeb.TunnelLive.NewComponent,
+      return_to: Routes.tunnel_unprivileged_index_path(@socket, :index),
       title: "Tunnel Added!",
       target_user_id: @current_user.id,
       action: @live_action,
@@ -20,7 +20,7 @@
 
 
   <div class="block">
-    <%= if length(@devices) > 0 do %>
+    <%= if length(@tunnels) > 0 do %>
       <table class="table is-bordered is-hoverable is-striped is-fullwidth">
         <thead>
           <tr>
@@ -31,17 +31,17 @@
           </tr>
         </thead>
         <tbody>
-        <%= for device <- @devices do %>
+        <%= for tunnel <- @tunnels do %>
           <tr>
             <td>
-              <%= live_patch(device.name, to: Routes.device_unprivileged_show_path(@socket, :show, device)) %>
+              <%= live_patch(tunnel.name, to: Routes.tunnel_unprivileged_show_path(@socket, :show, tunnel)) %>
             </td>
             <td class="code">
-              <span><%= device.ipv4 %></span>
-              <span><%= device.ipv6 %></span>
+              <span><%= tunnel.ipv4 %></span>
+              <span><%= tunnel.ipv6 %></span>
             </td>
-            <td class="code"><%= device.public_key %></td>
-            <td id={"device-#{device.id}-inserted-at"} data-timestamp={device.inserted_at} phx-hook="FormatTimestamp">…</td>
+            <td class="code"><%= tunnel.public_key %></td>
+            <td id={"tunnel-#{tunnel.id}-inserted-at"} data-timestamp={tunnel.inserted_at} phx-hook="FormatTimestamp">…</td>
           </tr>
         <% end %>
         </tbody>
@@ -55,7 +55,7 @@
 
   <div class="level">
     <div class="level-left">
-      <%= live_patch(to: Routes.device_unprivileged_index_path(@socket, :new), class: "button") do %>
+      <%= live_patch(to: Routes.tunnel_unprivileged_index_path(@socket, :new), class: "button") do %>
         Add Tunnel
       <% end %>
     </div>

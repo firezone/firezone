@@ -2,19 +2,19 @@ const QRCode = require('qrcode')
 import { fzCrypto } from "./crypto.js"
 
 // 1. Generate keypair
-// 2. Create device
+// 2. Create tunnel
 // 2. Replace config PrivateKey sentinel with PrivateKey
 // 3. Set code el innerHTML to new config
 // 4. render QR code
 // 5. render download button
-const createDeviceAndRenderConfig = function () {
+const createTunnelAndRenderConfig = function () {
   let kp = fzCrypto.generateKeyPair()
   let params = {
     public_key: kp.publicKey,
     user_id: this.el.dataset.userId
   }
 
-  this.pushEventTo(this.el, "create_device", params, (reply, ref) => {
+  this.pushEventTo(this.el, "create_tunnel", params, (reply, ref) => {
     let config = reply.config.replace("REPLACE_ME", kp.privateKey)
     let placeholder = document.getElementById("generating-config")
     placeholder.classList.add("is-hidden")
@@ -52,4 +52,4 @@ const renderQR = function (config) {
   }
 }
 
-export { createDeviceAndRenderConfig }
+export { createTunnelAndRenderConfig }

@@ -1,14 +1,14 @@
 <%= if @live_action == :edit do %>
   <%= live_modal(
-        FzHttpWeb.DeviceLive.UpdateFormComponent,
-        return_to: Routes.device_admin_show_path(@socket, :show, @device),
-        title: "Edit #{@device.name}",
-        id: "device-#{@device.id}",
-        device: @device,
+        FzHttpWeb.TunnelLive.UpdateFormComponent,
+        return_to: Routes.tunnel_admin_show_path(@socket, :show, @tunnel),
+        title: "Edit #{@tunnel.name}",
+        id: "tunnel-#{@tunnel.id}",
+        tunnel: @tunnel,
         action: @live_action) %>
 <% end %>
 
-<%= render FzHttpWeb.SharedView, "heading.html", page_title: "Devices |> #{@page_title}" %>
+<%= render FzHttpWeb.SharedView, "heading.html", page_title: "Tunnels |> #{@page_title}" %>
 
 <section class="section is-main-section">
   <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
@@ -18,7 +18,7 @@
       <h4 class="title is-4">Details</h4>
     </div>
     <div class="level-right">
-      <%= live_patch(to: Routes.device_admin_show_path(@socket, :edit, @device), class: "button") do %>
+      <%= live_patch(to: Routes.tunnel_admin_show_path(@socket, :edit, @tunnel), class: "button") do %>
         <span class="icon">
           <i class="mdi mdi-pencil"></i>
         </span>
@@ -36,20 +36,20 @@
 
       <tr>
         <td><strong>Name</strong></td>
-        <td><%= @device.name %></td>
+        <td><%= @tunnel.name %></td>
       </tr>
 
       <%= if Application.fetch_env!(:fz_http, :wireguard_ipv4_enabled) do %>
         <tr>
           <td><strong>Interface IPv4</strong></td>
-          <td><%= @device.ipv4 %></td>
+          <td><%= @tunnel.ipv4 %></td>
         </tr>
       <% end %>
 
       <%= if Application.fetch_env!(:fz_http, :wireguard_ipv6_enabled) do %>
         <tr>
           <td><strong>Interface IPv6</strong></td>
-          <td><%= @device.ipv6 %></td>
+          <td><%= @tunnel.ipv6 %></td>
         </tr>
       <% end %>
 
@@ -86,7 +86,7 @@
 
       <tr>
         <td><strong>Public key</strong></td>
-        <td class="code"><%= @device.public_key %></td>
+        <td class="code"><%= @tunnel.public_key %></td>
       </tr>
     </tbody>
   </table>
@@ -98,12 +98,12 @@
   </h4>
 
   <button class="button is-danger"
-    phx-click="delete_device"
-    phx-value-device_id={@device.id}
-    data-confirm="Are you sure? This will immediately disconnect this device and remove all associated data.">
+    phx-click="delete_tunnel"
+    phx-value-tunnel_id={@tunnel.id}
+    data-confirm="Are you sure? This will immediately disconnect this tunnel and remove all associated data.">
     <span class="icon is-small">
       <i class="fas fa-trash"></i>
     </span>
-    <span>Delete Device <%= @device.name %></span>
+    <span>Delete Tunnel <%= @tunnel.name %></span>
   </button>
 </section>

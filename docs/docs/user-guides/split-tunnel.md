@@ -40,4 +40,4 @@ To update existing WireGuard tunnels with the new split tunnel configuration,
 users will need to regenerate the configuration files
 and add them to their native WireGuard client.
 
-See, [add device]({%link docs/deploy/clients.md%}) for instructions.
+See, [add tunnel]({%link docs/deploy/clients.md%}) for instructions.

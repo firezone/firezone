@@ -3,17 +3,17 @@ defmodule FzHttpWeb.UserLive.ShowTest do
   use FzHttpWeb.ConnCase, async: false
 
   describe "authenticated show" do
-    setup :create_device
+    setup :create_tunnel
 
-    test "includes the device name", %{authed_conn: conn, device: device} do
-      path = Routes.user_show_path(conn, :show, device.user_id)
+    test "includes the tunnel name", %{authed_conn: conn, tunnel: tunnel} do
+      path = Routes.user_show_path(conn, :show, tunnel.user_id)
       {:ok, _view, html} = live(conn, path)
 
-      assert html =~ device.name
+      assert html =~ tunnel.name
     end
 
-    test "opens the edit modal", %{authed_conn: conn, device: device} do
-      path = Routes.user_show_path(conn, :show, device.user_id)
+    test "opens the edit modal", %{authed_conn: conn, tunnel: tunnel} do
+      path = Routes.user_show_path(conn, :show, tunnel.user_id)
       {:ok, view, _html} = live(conn, path)
 
       view
@@ -21,15 +21,15 @@ defmodule FzHttpWeb.UserLive.ShowTest do
       |> render_click()
 
       new_path = assert_patch(view)
-      assert new_path == Routes.user_show_path(conn, :edit, device.user_id)
+      assert new_path == Routes.user_show_path(conn, :edit, tunnel.user_id)
     end
   end
 
   describe "unauthenticated show" do
-    setup :create_device
+    setup :create_tunnel
 
-    test "redirects to sign in", %{unauthed_conn: conn, device: device} do
-      path = Routes.user_show_path(conn, :show, device.user_id)
+    test "redirects to sign in", %{unauthed_conn: conn, tunnel: tunnel} do
+      path = Routes.user_show_path(conn, :show, tunnel.user_id)
       expected_path = Routes.session_path(conn, :new)
       assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
     end

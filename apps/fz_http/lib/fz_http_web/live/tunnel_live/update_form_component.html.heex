@@ -1,5 +1,5 @@
 <div>
-  <.form let={f} for={@changeset} id="edit-device" phx-change="change" phx-target={@myself} phx-submit="save">
+  <.form let={f} for={@changeset} id="edit-tunnel" phx-change="change" phx-target={@myself} phx-submit="save">
     <div class="field">
       <%= label f, :name, class: "label" %>
       <div class="control">
@@ -85,7 +85,7 @@
 
     <div class="field">
       <%= label f, :endpoint, "Server Endpoint", class: "label" %>
-      <p>The IP of the server this device should connect to.</p>
+      <p>The IP of the server this tunnel should connect to.</p>
       <div class="control">
         <%= text_input f, :endpoint, class: "input #{input_error_class(f, :endpoint)}",
             disabled: @use_site_endpoint %>
@@ -114,7 +114,7 @@
 
     <div class="field">
       <%= label f, :mtu, "Interface MTU", class: "label" %>
-      <p>The WireGuard interface MTU for this Device.</p>
+      <p>The WireGuard interface MTU for this Tunnel.</p>
       <div class="contro">
         <%= text_input f, :mtu, class: "input #{input_error_class(f, :mtu)}", disabled: @use_site_mtu %>
       </div>

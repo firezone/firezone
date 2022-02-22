@@ -3,20 +3,20 @@ defmodule FzHttp.Events do
   Handles interfacing with other processes in the system.
   """
 
-  alias FzHttp.{Devices, Rules}
+  alias FzHttp.{Rules, Tunnels}
 
-  # set_config is used because devices need to be re-evaluated in case a
-  # device is added to a User that's not active.
-  def update_device(_device) do
-    GenServer.call(vpn_pid(), {:set_config, Devices.to_peer_list()})
+  # set_config is used because tunnels need to be re-evaluated in case a
+  # tunnel is added to a User that's not active.
+  def update_tunnel(_tunnel) do
+    GenServer.call(vpn_pid(), {:set_config, Tunnels.to_peer_list()})
   end
 
-  def delete_device(device_pubkey) when is_binary(device_pubkey) do
-    GenServer.call(vpn_pid(), {:remove_peer, device_pubkey})
+  def delete_tunnel(tunnel_pubkey) when is_binary(tunnel_pubkey) do
+    GenServer.call(vpn_pid(), {:remove_peer, tunnel_pubkey})
   end
 
-  def delete_device(device) when is_struct(device) do
-    GenServer.call(vpn_pid(), {:remove_peer, device.public_key})
+  def delete_tunnel(tunnel) when is_struct(tunnel) do
+    GenServer.call(vpn_pid(), {:remove_peer, tunnel.public_key})
   end
 
   def add_rule(rule) do
@@ -28,7 +28,7 @@ defmodule FzHttp.Events do
   end
 
   def set_config do
-    GenServer.call(vpn_pid(), {:set_config, Devices.to_peer_list()})
+    GenServer.call(vpn_pid(), {:set_config, Tunnels.to_peer_list()})
   end
 
   def set_rules do

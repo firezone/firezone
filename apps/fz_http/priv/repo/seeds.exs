@@ -10,7 +10,7 @@
 # We recommend using the bang functions (`insert!`, `update!`
 # and so on) as they will fail if something goes wrong.
 
-alias FzHttp.{Devices, ConnectivityChecks, Rules, Users}
+alias FzHttp.{Tunnels, ConnectivityChecks, Rules, Users}
 
 {:ok, user} =
   Users.create_admin_user(%{
@@ -19,17 +19,17 @@ alias FzHttp.{Devices, ConnectivityChecks, Rules, Users}
     password_confirmation: "firezone1234"
   })
 
-{:ok, device} =
-  Devices.create_device(%{
+{:ok, tunnel} =
+  Tunnels.create_tunnel(%{
     user_id: user.id,
-    name: "Factory Device",
+    name: "Factory Tunnel",
     public_key: "3Fo+SNnDJ6hi8qzPt3nWLwgjCVwvpjHL35qJeatKwEc=",
     remote_ip: %Postgrex.INET{address: {127, 0, 0, 1}}
   })
 
 {:ok, _rule} =
   Rules.create_rule(%{
-    device_id: device.id,
+    tunnel_id: tunnel.id,
     destination: %Postgrex.INET{address: {0, 0, 0, 0}, netmask: 0}
   })
 

@@ -1,15 +1,15 @@
-defmodule FzHttp.DevicesFixtures do
+defmodule FzHttp.TunnelsFixtures do
   @moduledoc """
   This module defines test helpers for creating
-  entities via the `FzHttp.Devices` context.
+  entities via the `FzHttp.Tunnels` context.
   """
 
-  alias FzHttp.{Devices, UsersFixtures}
+  alias FzHttp.{Tunnels, UsersFixtures}
 
   @doc """
-  Generate a device.
+  Generate a tunnel.
   """
-  def device(attrs \\ %{}) do
+  def tunnel(attrs \\ %{}) do
     # Don't create a user if user_id is passed
     user_id = Map.get_lazy(attrs, :user_id, fn -> UsersFixtures.user().id end)
 
@@ -19,7 +19,7 @@ defmodule FzHttp.DevicesFixtures do
       name: "factory"
     }
 
-    {:ok, device} = Devices.create_device(Map.merge(default_attrs, attrs))
-    device
+    {:ok, tunnel} = Tunnels.create_tunnel(Map.merge(default_attrs, attrs))
+    tunnel
   end
 end

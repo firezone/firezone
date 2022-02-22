@@ -1,6 +1,6 @@
 <section class="section is-main-section">
   <div class="block">
-    <%= live_patch("<- Back to tunnels", to: Routes.device_unprivileged_index_path(@socket, :index)) %>
+    <%= live_patch("<- Back to tunnels", to: Routes.tunnel_unprivileged_index_path(@socket, :index)) %>
   </div>
 
   <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
@@ -16,12 +16,12 @@
   </h4>
 
   <button class="button is-danger"
-    phx-click="delete_device"
-    phx-value-device_id={@device.id}
-    data-confirm="Are you sure? This will immediately disconnect this device and remove all associated data.">
+    phx-click="delete_tunnel"
+    phx-value-tunnel_id={@tunnel.id}
+    data-confirm="Are you sure? This will immediately disconnect this tunnel and remove all associated data.">
     <span class="icon is-small">
       <i class="fas fa-trash"></i>
     </span>
-    <span>Delete Device <%= @device.name %></span>
+    <span>Delete Tunnel <%= @tunnel.name %></span>
   </button>
 </section>

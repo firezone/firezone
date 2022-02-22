@@ -1,18 +1,18 @@
-defmodule FzHttp.DevicesTest do
-  # XXX: Update the device IP query to be an insert
+defmodule FzHttp.TunnelsTest do
+  # XXX: Update the tunnel IP query to be an insert
   use FzHttp.DataCase, async: false
-  alias FzHttp.{Devices, Users}
+  alias FzHttp.{Tunnels, Users}
 
-  describe "list_devices/0" do
-    setup [:create_device]
+  describe "list_tunnels/0" do
+    setup [:create_tunnel]
 
-    test "shows all devices", %{device: device} do
-      assert Devices.list_devices() == [device]
+    test "shows all tunnels", %{tunnel: tunnel} do
+      assert Tunnels.list_tunnels() == [tunnel]
     end
   end
 
-  describe "create_device/1" do
-    setup [:create_user, :create_device]
+  describe "create_tunnel/1" do
+    setup [:create_user, :create_tunnel]
 
     setup context do
       if ipv4_network = context[:ipv4_network] do
@@ -30,22 +30,22 @@ defmodule FzHttp.DevicesTest do
       end
     end
 
-    @device_attrs %{
+    @tunnel_attrs %{
       name: "dummy",
       public_key: "dummy",
       user_id: nil
     }
 
-    test "creates device with empty attributes", %{user: user} do
-      assert {:ok, _device} = Devices.create_device(%{@device_attrs | user_id: user.id})
+    test "creates tunnel with empty attributes", %{user: user} do
+      assert {:ok, _tunnel} = Tunnels.create_tunnel(%{@tunnel_attrs | user_id: user.id})
     end
 
-    test "creates devices with default ipv4", %{device: device} do
-      assert device.ipv4 == %Postgrex.INET{address: {10, 3, 2, 2}, netmask: 32}
+    test "creates tunnels with default ipv4", %{tunnel: tunnel} do
+      assert tunnel.ipv4 == %Postgrex.INET{address: {10, 3, 2, 2}, netmask: 32}
     end
 
-    test "creates device with default ipv6", %{device: device} do
-      assert device.ipv6 == %Postgrex.INET{address: {64_768, 0, 0, 0, 0, 3, 2, 2}, netmask: 128}
+    test "creates tunnel with default ipv6", %{tunnel: tunnel} do
+      assert tunnel.ipv6 == %Postgrex.INET{address: {64_768, 0, 0, 0, 0, 3, 2, 2}, netmask: 128}
     end
 
     @tag ipv4_network: "10.3.2.0/30"
@@ -56,10 +56,10 @@ defmodule FzHttp.DevicesTest do
               %Ecto.Changeset{
                 errors: [
                   ipv4:
-                    {"address pool is exhausted. Increase network size or remove some devices.",
+                    {"address pool is exhausted. Increase network size or remove some tunnels.",
                      []}
                 ]
-              }} = Devices.create_device(%{@device_attrs | user_id: user.id})
+              }} = Tunnels.create_tunnel(%{@tunnel_attrs | user_id: user.id})
     end
 
     @tag ipv6_network: "fd00::3:2:0/126"
@@ -70,37 +70,37 @@ defmodule FzHttp.DevicesTest do
               %Ecto.Changeset{
                 errors: [
                   ipv6:
-                    {"address pool is exhausted. Increase network size or remove some devices.",
+                    {"address pool is exhausted. Increase network size or remove some tunnels.",
                      []}
                 ]
-              }} = Devices.create_device(%{@device_attrs | user_id: user.id})
+              }} = Tunnels.create_tunnel(%{@tunnel_attrs | user_id: user.id})
     end
   end
 
-  describe "list_devices/1" do
-    setup [:create_device]
+  describe "list_tunnels/1" do
+    setup [:create_tunnel]
 
-    test "shows devices scoped to a user_id", %{device: device} do
-      assert Devices.list_devices(device.user_id) == [device]
+    test "shows tunnels scoped to a user_id", %{tunnel: tunnel} do
+      assert Tunnels.list_tunnels(tunnel.user_id) == [tunnel]
     end
 
-    test "shows devices scoped to a user", %{device: device} do
-      user = Users.get_user!(device.user_id)
-      assert Devices.list_devices(user) == [device]
-    end
-  end
-
-  describe "get_device!/1" do
-    setup [:create_device]
-
-    test "device is loaded", %{device: device} do
-      test_device = Devices.get_device!(device.id)
-      assert test_device.id == device.id
+    test "shows tunnels scoped to a user", %{tunnel: tunnel} do
+      user = Users.get_user!(tunnel.user_id)
+      assert Tunnels.list_tunnels(user) == [tunnel]
     end
   end
 
-  describe "update_device/2" do
-    setup [:create_device]
+  describe "get_tunnel!/1" do
+    setup [:create_tunnel]
+
+    test "tunnel is loaded", %{tunnel: tunnel} do
+      test_tunnel = Tunnels.get_tunnel!(tunnel.id)
+      assert test_tunnel.id == tunnel.id
+    end
+  end
+
+  describe "update_tunnel/2" do
+    setup [:create_tunnel]
 
     @attrs %{
       name: "Go hard or go home.",
@@ -173,33 +173,33 @@ defmodule FzHttp.DevicesTest do
       %{use_site_mtu: true, mtu: 1000}
     ]
 
-    test "updates device", %{device: device} do
-      {:ok, test_device} = Devices.update_device(device, @attrs)
-      assert @attrs = test_device
+    test "updates tunnel", %{tunnel: tunnel} do
+      {:ok, test_tunnel} = Tunnels.update_tunnel(tunnel, @attrs)
+      assert @attrs = test_tunnel
     end
 
-    test "updates device with valid dns", %{device: device} do
-      {:ok, test_device} = Devices.update_device(device, @valid_dns_attrs)
-      assert @valid_dns_attrs = test_device
+    test "updates tunnel with valid dns", %{tunnel: tunnel} do
+      {:ok, test_tunnel} = Tunnels.update_tunnel(tunnel, @valid_dns_attrs)
+      assert @valid_dns_attrs = test_tunnel
     end
 
-    test "updates device with valid ipv4 endpoint", %{device: device} do
-      {:ok, test_device} = Devices.update_device(device, @valid_endpoint_ipv4_attrs)
-      assert @valid_endpoint_ipv4_attrs = test_device
+    test "updates tunnel with valid ipv4 endpoint", %{tunnel: tunnel} do
+      {:ok, test_tunnel} = Tunnels.update_tunnel(tunnel, @valid_endpoint_ipv4_attrs)
+      assert @valid_endpoint_ipv4_attrs = test_tunnel
     end
 
-    test "updates device with valid ipv6 endpoint", %{device: device} do
-      {:ok, test_device} = Devices.update_device(device, @valid_endpoint_ipv6_attrs)
-      assert @valid_endpoint_ipv6_attrs = test_device
+    test "updates tunnel with valid ipv6 endpoint", %{tunnel: tunnel} do
+      {:ok, test_tunnel} = Tunnels.update_tunnel(tunnel, @valid_endpoint_ipv6_attrs)
+      assert @valid_endpoint_ipv6_attrs = test_tunnel
     end
 
-    test "updates device with valid host endpoint", %{device: device} do
-      {:ok, test_device} = Devices.update_device(device, @valid_endpoint_host_attrs)
-      assert @valid_endpoint_host_attrs = test_device
+    test "updates tunnel with valid host endpoint", %{tunnel: tunnel} do
+      {:ok, test_tunnel} = Tunnels.update_tunnel(tunnel, @valid_endpoint_host_attrs)
+      assert @valid_endpoint_host_attrs = test_tunnel
     end
 
-    test "prevents updating device with invalid ipv4 endpoint", %{device: device} do
-      {:error, changeset} = Devices.update_device(device, @invalid_endpoint_ipv4_attrs)
+    test "prevents updating tunnel with invalid ipv4 endpoint", %{tunnel: tunnel} do
+      {:error, changeset} = Tunnels.update_tunnel(tunnel, @invalid_endpoint_ipv4_attrs)
 
       assert changeset.errors[:endpoint] == {
                "is invalid: 265.1.1.1 is not a valid fqdn or IPv4 / IPv6 address",
@@ -207,14 +207,14 @@ defmodule FzHttp.DevicesTest do
              }
     end
 
-    test "prevents updating fields if use_site_", %{device: device} do
+    test "prevents updating fields if use_site_", %{tunnel: tunnel} do
       for attrs <- @fields_use_site do
         field =
           Map.keys(attrs)
           |> Enum.filter(fn attr -> !String.starts_with?(Atom.to_string(attr), "use_site_") end)
           |> List.first()
 
-        assert {:error, changeset} = Devices.update_device(device, attrs)
+        assert {:error, changeset} = Tunnels.update_tunnel(tunnel, attrs)
 
         assert changeset.errors[field] == {
                  "must not be present",
@@ -223,8 +223,8 @@ defmodule FzHttp.DevicesTest do
       end
     end
 
-    test "prevents updating device with invalid ipv6 endpoint", %{device: device} do
-      {:error, changeset} = Devices.update_device(device, @invalid_endpoint_ipv6_attrs)
+    test "prevents updating tunnel with invalid ipv6 endpoint", %{tunnel: tunnel} do
+      {:error, changeset} = Tunnels.update_tunnel(tunnel, @invalid_endpoint_ipv6_attrs)
 
       assert changeset.errors[:endpoint] == {
                "is invalid: deadbeef::1 is not a valid fqdn or IPv4 / IPv6 address",
@@ -232,8 +232,8 @@ defmodule FzHttp.DevicesTest do
              }
     end
 
-    test "prevents updating device with invalid host endpoint", %{device: device} do
-      {:error, changeset} = Devices.update_device(device, @invalid_endpoint_host_attrs)
+    test "prevents updating tunnel with invalid host endpoint", %{tunnel: tunnel} do
+      {:error, changeset} = Tunnels.update_tunnel(tunnel, @invalid_endpoint_host_attrs)
 
       assert changeset.errors[:endpoint] == {
                "is invalid: can't have this is not a valid fqdn or IPv4 / IPv6 address",
@@ -241,8 +241,8 @@ defmodule FzHttp.DevicesTest do
              }
     end
 
-    test "prevents updating device with empty endpoint", %{device: device} do
-      {:error, changeset} = Devices.update_device(device, @empty_endpoint_attrs)
+    test "prevents updating tunnel with empty endpoint", %{tunnel: tunnel} do
+      {:error, changeset} = Tunnels.update_tunnel(tunnel, @empty_endpoint_attrs)
 
       assert changeset.errors[:endpoint] == {
                "can't be blank",
@@ -250,8 +250,8 @@ defmodule FzHttp.DevicesTest do
              }
     end
 
-    test "prevents updating device with invalid dns", %{device: device} do
-      {:error, changeset} = Devices.update_device(device, @invalid_dns_attrs)
+    test "prevents updating tunnel with invalid dns", %{tunnel: tunnel} do
+      {:error, changeset} = Tunnels.update_tunnel(tunnel, @invalid_dns_attrs)
 
       assert changeset.errors[:dns] == {
                "is invalid: 1.1.1 is not a valid IPv4 / IPv6 address",
@@ -259,8 +259,8 @@ defmodule FzHttp.DevicesTest do
              }
     end
 
-    test "prevents assigning duplicate DNS servers", %{device: device} do
-      {:error, changeset} = Devices.update_device(device, @duplicate_dns_attrs)
+    test "prevents assigning duplicate DNS servers", %{tunnel: tunnel} do
+      {:error, changeset} = Tunnels.update_tunnel(tunnel, @duplicate_dns_attrs)
 
       assert changeset.errors[:dns] == {
                "is invalid: duplicate DNS servers are not allowed: 1.1.1.1, ::1, 8.8.8.8",
@@ -268,13 +268,13 @@ defmodule FzHttp.DevicesTest do
              }
     end
 
-    test "updates device with valid allowed_ips", %{device: device} do
-      {:ok, test_device} = Devices.update_device(device, @valid_allowed_ips_attrs)
-      assert @valid_allowed_ips_attrs = test_device
+    test "updates tunnel with valid allowed_ips", %{tunnel: tunnel} do
+      {:ok, test_tunnel} = Tunnels.update_tunnel(tunnel, @valid_allowed_ips_attrs)
+      assert @valid_allowed_ips_attrs = test_tunnel
     end
 
-    test "prevents updating device with invalid allowed_ips", %{device: device} do
-      {:error, changeset} = Devices.update_device(device, @invalid_allowed_ips_attrs)
+    test "prevents updating tunnel with invalid allowed_ips", %{tunnel: tunnel} do
+      {:error, changeset} = Tunnels.update_tunnel(tunnel, @invalid_allowed_ips_attrs)
 
       assert changeset.errors[:allowed_ips] == {
                "is invalid: 11 is not a valid IPv4 / IPv6 address or CIDR range",
@@ -282,8 +282,8 @@ defmodule FzHttp.DevicesTest do
              }
     end
 
-    test "prevents updating ipv4 to out of network", %{device: device} do
-      {:error, changeset} = Devices.update_device(device, %{ipv4: "172.16.0.1"})
+    test "prevents updating ipv4 to out of network", %{tunnel: tunnel} do
+      {:error, changeset} = Tunnels.update_tunnel(tunnel, %{ipv4: "172.16.0.1"})
 
       assert changeset.errors[:ipv4] == {
                "IP must be contained within network 10.3.2.0/24",
@@ -291,8 +291,8 @@ defmodule FzHttp.DevicesTest do
              }
     end
 
-    test "prevents updating ipv6 to out of network", %{device: device} do
-      {:error, changeset} = Devices.update_device(device, %{ipv6: "fd00::2:1:1"})
+    test "prevents updating ipv6 to out of network", %{tunnel: tunnel} do
+      {:error, changeset} = Tunnels.update_tunnel(tunnel, %{ipv6: "fd00::2:1:1"})
 
       assert changeset.errors[:ipv6] == {
                "IP must be contained within network fd00::3:2:0/120",
@@ -300,9 +300,9 @@ defmodule FzHttp.DevicesTest do
              }
     end
 
-    test "prevents updating ipv4 to wireguard address", %{device: device} do
+    test "prevents updating ipv4 to wireguard address", %{tunnel: tunnel} do
       ip = Application.fetch_env!(:fz_http, :wireguard_ipv4_address)
-      {:error, changeset} = Devices.update_device(device, %{ipv4: ip})
+      {:error, changeset} = Tunnels.update_tunnel(tunnel, %{ipv4: ip})
 
       assert changeset.errors[:ipv4] == {
                "is reserved",
@@ -313,9 +313,9 @@ defmodule FzHttp.DevicesTest do
              }
     end
 
-    test "prevents updating ipv6 to wireguard address", %{device: device} do
+    test "prevents updating ipv6 to wireguard address", %{tunnel: tunnel} do
       {:error, changeset} =
-        Devices.update_device(device, %{
+        Tunnels.update_tunnel(tunnel, %{
           ipv6: Application.fetch_env!(:fz_http, :wireguard_ipv6_address)
         })
 
@@ -329,37 +329,37 @@ defmodule FzHttp.DevicesTest do
     end
   end
 
-  describe "delete_device/1" do
-    setup [:create_device]
+  describe "delete_tunnel/1" do
+    setup [:create_tunnel]
 
-    test "deletes device", %{device: device} do
-      {:ok, _deleted} = Devices.delete_device(device)
+    test "deletes tunnel", %{tunnel: tunnel} do
+      {:ok, _deleted} = Tunnels.delete_tunnel(tunnel)
 
       assert_raise(Ecto.StaleEntryError, fn ->
-        Devices.delete_device(device)
+        Tunnels.delete_tunnel(tunnel)
       end)
 
       assert_raise(Ecto.NoResultsError, fn ->
-        Devices.get_device!(device.id)
+        Tunnels.get_tunnel!(tunnel.id)
       end)
     end
   end
 
-  describe "change_device/1" do
-    setup [:create_device]
+  describe "change_tunnel/1" do
+    setup [:create_tunnel]
 
-    test "returns changeset", %{device: device} do
-      assert %Ecto.Changeset{} = Devices.change_device(device)
+    test "returns changeset", %{tunnel: tunnel} do
+      assert %Ecto.Changeset{} = Tunnels.change_tunnel(tunnel)
     end
   end
 
   describe "to_peer_list/0" do
-    setup [:create_device]
+    setup [:create_tunnel]
 
-    test "renders all peers", %{device: device} do
-      assert Devices.to_peer_list() |> List.first() == %{
-               public_key: device.public_key,
-               inet: "#{device.ipv4}/32,#{device.ipv6}/128"
+    test "renders all peers", %{tunnel: tunnel} do
+      assert Tunnels.to_peer_list() |> List.first() == %{
+               public_key: tunnel.public_key,
+               inet: "#{tunnel.ipv4}/32,#{tunnel.ipv6}/128"
              }
     end
   end
