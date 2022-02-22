@@ -1,41 +1,41 @@
-defmodule FzHttp.Devices do
+defmodule FzHttp.Tunnels do
   @moduledoc """
-  The Devices context.
+  The Tunnels context.
   """
 
   import Ecto.Query, warn: false
   alias FzCommon.NameGenerator
-  alias FzHttp.{Devices.Device, Repo, Sites, Telemetry, Users, Users.User}
+  alias FzHttp.{Repo, Sites, Telemetry, Tunnels.Tunnel, Users, Users.User}
 
-  def list_devices do
-    Repo.all(Device)
+  def list_tunnels do
+    Repo.all(Tunnel)
   end
 
-  def list_devices(%User{} = user), do: list_devices(user.id)
+  def list_tunnels(%User{} = user), do: list_tunnels(user.id)
 
-  def list_devices(user_id) do
-    Repo.all(from d in Device, where: d.user_id == ^user_id)
+  def list_tunnels(user_id) do
+    Repo.all(from d in Tunnel, where: d.user_id == ^user_id)
   end
 
   def count(user_id) do
-    Repo.one(from d in Device, where: d.user_id == ^user_id, select: count())
+    Repo.one(from d in Tunnel, where: d.user_id == ^user_id, select: count())
   end
 
-  def get_device!(id), do: Repo.get!(Device, id)
+  def get_tunnel!(id), do: Repo.get!(Tunnel, id)
 
-  def create_device(attrs \\ %{}) do
+  def create_tunnel(attrs \\ %{}) do
     # XXX: insert sometimes fails with deadlock errors, probably because
     # of the giant SELECT in queries/inet.ex. Find a way to do this more gracefully.
     {:ok, result} =
       Repo.transaction(fn ->
-        %Device{}
-        |> Device.create_changeset(attrs)
+        %Tunnel{}
+        |> Tunnel.create_changeset(attrs)
         |> Repo.insert()
       end)
 
     case result do
-      {:ok, device} ->
-        Telemetry.add_device(device)
+      {:ok, tunnel} ->
+        Telemetry.add_tunnel(tunnel)
 
       _ ->
         nil
@@ -44,35 +44,35 @@ defmodule FzHttp.Devices do
     result
   end
 
-  def update_device(%Device{} = device, attrs) do
-    device
-    |> Device.update_changeset(attrs)
+  def update_tunnel(%Tunnel{} = tunnel, attrs) do
+    tunnel
+    |> Tunnel.update_changeset(attrs)
     |> Repo.update()
   end
 
-  def delete_device(%Device{} = device) do
-    Telemetry.delete_device(device)
-    Repo.delete(device)
+  def delete_tunnel(%Tunnel{} = tunnel) do
+    Telemetry.delete_tunnel(tunnel)
+    Repo.delete(tunnel)
   end
 
-  def change_device(%Device{} = device, attrs \\ %{}) do
-    Device.update_changeset(device, attrs)
+  def change_tunnel(%Tunnel{} = tunnel, attrs \\ %{}) do
+    Tunnel.update_changeset(tunnel, attrs)
   end
 
   @doc """
-  Builds ipv4 / ipv6 config string for a device.
+  Builds ipv4 / ipv6 config string for a tunnel.
   """
-  def inet(device) do
+  def inet(tunnel) do
     ips =
       if ipv6?() do
-        ["#{device.ipv6}/128"]
+        ["#{tunnel.ipv6}/128"]
       else
         []
       end
 
     ips =
       if ipv4?() do
-        ["#{device.ipv4}/32" | ips]
+        ["#{tunnel.ipv4}/32" | ips]
       else
         ips
       end
@@ -84,35 +84,35 @@ defmodule FzHttp.Devices do
     vpn_duration = Sites.vpn_duration()
 
     Repo.all(
-      from d in Device,
+      from d in Tunnel,
         preload: :user
     )
-    |> Enum.filter(fn device ->
-      device.user.role == :admin || !Users.vpn_session_expired?(device.user, vpn_duration)
+    |> Enum.filter(fn tunnel ->
+      tunnel.user.role == :admin || !Users.vpn_session_expired?(tunnel.user, vpn_duration)
     end)
-    |> Enum.map(fn device ->
+    |> Enum.map(fn tunnel ->
       %{
-        public_key: device.public_key,
-        inet: inet(device)
+        public_key: tunnel.public_key,
+        inet: inet(tunnel)
       }
     end)
   end
 
-  def new_device(attrs \\ %{}) do
-    change_device(%Device{}, Map.merge(%{"name" => NameGenerator.generate()}, attrs))
+  def new_tunnel(attrs \\ %{}) do
+    change_tunnel(%Tunnel{}, Map.merge(%{"name" => NameGenerator.generate()}, attrs))
   end
 
-  def allowed_ips(device), do: config(device, :allowed_ips)
-  def endpoint(device), do: config(device, :endpoint)
-  def dns(device), do: config(device, :dns)
-  def mtu(device), do: config(device, :mtu)
-  def persistent_keepalive(device), do: config(device, :persistent_keepalive)
+  def allowed_ips(tunnel), do: config(tunnel, :allowed_ips)
+  def endpoint(tunnel), do: config(tunnel, :endpoint)
+  def dns(tunnel), do: config(tunnel, :dns)
+  def mtu(tunnel), do: config(tunnel, :mtu)
+  def persistent_keepalive(tunnel), do: config(tunnel, :persistent_keepalive)
 
-  defp config(device, key) do
-    if Map.get(device, String.to_atom("use_site_#{key}")) do
+  defp config(tunnel, key) do
+    if Map.get(tunnel, String.to_atom("use_site_#{key}")) do
       Map.get(Sites.wireguard_defaults(), key)
     else
-      Map.get(device, key)
+      Map.get(tunnel, key)
     end
   end
 
@@ -124,31 +124,31 @@ defmodule FzHttp.Devices do
       use_site_mtu
       use_site_persistent_keepalive
     )a
-    |> Enum.map(fn field -> {field, Device.field(changeset, field)} end)
+    |> Enum.map(fn field -> {field, Tunnel.field(changeset, field)} end)
     |> Map.new()
   end
 
-  def as_config(device) do
+  def as_config(tunnel) do
     wireguard_port = Application.fetch_env!(:fz_vpn, :wireguard_port)
     server_public_key = Application.fetch_env!(:fz_vpn, :wireguard_public_key)
 
     """
     [Interface]
     PrivateKey = REPLACE_ME
-    Address = #{inet(device)}
-    #{mtu_config(device)}
-    #{dns_config(device)}
+    Address = #{inet(tunnel)}
+    #{mtu_config(tunnel)}
+    #{dns_config(tunnel)}
 
     [Peer]
     PublicKey = #{server_public_key}
-    #{allowed_ips_config(device)}
-    Endpoint = #{endpoint(device)}:#{wireguard_port}
-    #{persistent_keepalive_config(device)}
+    #{allowed_ips_config(tunnel)}
+    Endpoint = #{endpoint(tunnel)}:#{wireguard_port}
+    #{persistent_keepalive_config(tunnel)}
     """
   end
 
-  defp mtu_config(device) do
-    m = mtu(device)
+  defp mtu_config(tunnel) do
+    m = mtu(tunnel)
 
     if field_empty?(m) do
       ""
@@ -157,8 +157,8 @@ defmodule FzHttp.Devices do
     end
   end
 
-  defp allowed_ips_config(device) do
-    a = allowed_ips(device)
+  defp allowed_ips_config(tunnel) do
+    a = allowed_ips(tunnel)
 
     if field_empty?(a) do
       ""
@@ -167,8 +167,8 @@ defmodule FzHttp.Devices do
     end
   end
 
-  defp persistent_keepalive_config(device) do
-    pk = persistent_keepalive(device)
+  defp persistent_keepalive_config(tunnel) do
+    pk = persistent_keepalive(tunnel)
 
     if field_empty?(pk) do
       ""
@@ -177,8 +177,8 @@ defmodule FzHttp.Devices do
     end
   end
 
-  defp dns_config(device) when is_struct(device) do
-    dns = dns(device)
+  defp dns_config(tunnel) when is_struct(tunnel) do
+    dns = dns(tunnel)
 
     if field_empty?(dns) do
       ""

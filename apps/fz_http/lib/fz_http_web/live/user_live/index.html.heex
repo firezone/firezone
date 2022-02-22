@@ -17,7 +17,7 @@
       <thead>
         <tr>
           <th>Email</th>
-          <th>Devices</th>
+          <th>Tunnels</th>
           <th>Last Signed In</th>
           <th>Created</th>
           <th>Updated</th>
@@ -29,7 +29,7 @@
           <td>
             <%= live_patch(user.email, to: Routes.user_show_path(@socket, :show, user)) %>
           </td>
-          <td id={"user-#{user.id}-device-count"}><%= user.device_count %></td>
+          <td id={"user-#{user.id}-tunnel-count"}><%= user.tunnel_count %></td>
           <td id={"user-#{user.id}-timestamp"}
               data-timestamp={user.last_signed_in_at}
               phx-hook="FormatTimestamp">

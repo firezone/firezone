@@ -1,18 +1,18 @@
-defmodule FzHttpWeb.DeviceLive.Admin.Show do
+defmodule FzHttpWeb.TunnelLive.Admin.Show do
   @moduledoc """
-  Shows a device for an admin user.
+  Shows a tunnel for an admin user.
   """
   use FzHttpWeb, :live_view
-  alias FzHttp.{Devices, Users}
+  alias FzHttp.{Tunnels, Users}
 
   @impl Phoenix.LiveView
-  def mount(%{"id" => device_id} = _params, _session, socket) do
-    device = Devices.get_device!(device_id)
+  def mount(%{"id" => tunnel_id} = _params, _session, socket) do
+    tunnel = Tunnels.get_tunnel!(tunnel_id)
 
-    if device.user_id == socket.assigns.current_user.id || has_role?(socket, :admin) do
+    if tunnel.user_id == socket.assigns.current_user.id || has_role?(socket, :admin) do
       {:ok,
        socket
-       |> assign(assigns(device))}
+       |> assign(assigns(tunnel))}
     else
       {:ok, not_authorized(socket)}
     end
@@ -27,37 +27,37 @@ defmodule FzHttpWeb.DeviceLive.Admin.Show do
   end
 
   @impl Phoenix.LiveView
-  def handle_event("delete_device", _params, socket) do
-    device = socket.assigns.device
+  def handle_event("delete_tunnel", _params, socket) do
+    tunnel = socket.assigns.tunnel
 
-    case Devices.delete_device(device) do
-      {:ok, _deleted_device} ->
-        {:ok, _deleted_pubkey} = @events_module.delete_device(device.public_key)
+    case Tunnels.delete_tunnel(tunnel) do
+      {:ok, _deleted_tunnel} ->
+        {:ok, _deleted_pubkey} = @events_module.delete_tunnel(tunnel.public_key)
 
         {:noreply,
          socket
-         |> redirect(to: Routes.device_admin_index_path(socket, :index))}
+         |> redirect(to: Routes.tunnel_admin_index_path(socket, :index))}
 
         # Not likely to ever happen
         # {:error, msg} ->
         #   {:noreply,
         #   socket
-        #   |> put_flash(:error, "Error deleting device: #{msg}")}
+        #   |> put_flash(:error, "Error deleting tunnel: #{msg}")}
     end
   end
 
-  defp assigns(device) do
+  defp assigns(tunnel) do
     [
-      device: device,
-      user: Users.get_user!(device.user_id),
-      page_title: device.name,
-      allowed_ips: Devices.allowed_ips(device),
-      dns: Devices.dns(device),
-      endpoint: Devices.endpoint(device),
+      tunnel: tunnel,
+      user: Users.get_user!(tunnel.user_id),
+      page_title: tunnel.name,
+      allowed_ips: Tunnels.allowed_ips(tunnel),
+      dns: Tunnels.dns(tunnel),
+      endpoint: Tunnels.endpoint(tunnel),
       port: Application.fetch_env!(:fz_vpn, :wireguard_port),
-      mtu: Devices.mtu(device),
-      persistent_keepalive: Devices.persistent_keepalive(device),
-      config: Devices.as_config(device)
+      mtu: Tunnels.mtu(tunnel),
+      persistent_keepalive: Tunnels.persistent_keepalive(tunnel),
+      config: Tunnels.as_config(tunnel)
     ]
   end
 end

@@ -5,7 +5,7 @@ defmodule FzCommon.FzStringTest do
 
   describe "sanitize_filename/1" do
     test "santizes sequential spaces" do
-      assert "Factory_Device" == FzString.sanitize_filename("Factory     Device")
+      assert "Factory_Tunnel" == FzString.sanitize_filename("Factory     Tunnel")
     end
   end
 

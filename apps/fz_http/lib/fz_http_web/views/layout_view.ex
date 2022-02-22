@@ -30,7 +30,7 @@ defmodule FzHttpWeb.LayoutView do
   @doc """
   Generate class for nav links
   """
-  def nav_class(%{request_path: "/"} = _conn, ~r"devices") do
+  def nav_class(%{request_path: "/"} = _conn, ~r"tunnels") do
     "is-active has-icon"
   end
 

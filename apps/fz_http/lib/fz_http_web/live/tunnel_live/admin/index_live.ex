@@ -1,16 +1,16 @@
-defmodule FzHttpWeb.DeviceLive.Admin.Index do
+defmodule FzHttpWeb.TunnelLive.Admin.Index do
   @moduledoc """
-  Handles Device LiveViews.
+  Handles Tunnel LiveViews.
   """
   use FzHttpWeb, :live_view
-  alias FzHttp.Devices
+  alias FzHttp.Tunnels
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
     {:ok,
      socket
-     |> assign(:devices, Devices.list_devices())
-     |> assign(:page_title, "All Devices")}
+     |> assign(:tunnels, Tunnels.list_tunnels())
+     |> assign(:page_title, "All Tunnels")}
   end
 
   @doc """

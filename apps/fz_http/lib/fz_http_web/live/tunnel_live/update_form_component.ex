@@ -1,42 +1,42 @@
-defmodule FzHttpWeb.DeviceLive.UpdateFormComponent do
+defmodule FzHttpWeb.TunnelLive.UpdateFormComponent do
   @moduledoc """
-  Handles device form.
+  Handles tunnel form.
   """
   use FzHttpWeb, :live_component
 
-  alias FzHttp.{Devices, Sites}
+  alias FzHttp.{Sites, Tunnels}
 
   def update(assigns, socket) do
-    device = assigns.device
-    changeset = Devices.change_device(device)
+    tunnel = assigns.tunnel
+    changeset = Tunnels.change_tunnel(tunnel)
 
     {:ok,
      socket
      |> assign(assigns)
-     |> assign(Devices.defaults(changeset))
+     |> assign(Tunnels.defaults(changeset))
      |> assign(Sites.wireguard_defaults())
      |> assign(:changeset, changeset)}
   end
 
-  def handle_event("change", %{"device" => device_params}, socket) do
-    changeset = Devices.change_device(socket.assigns.device, device_params)
+  def handle_event("change", %{"tunnel" => tunnel_params}, socket) do
+    changeset = Tunnels.change_tunnel(socket.assigns.tunnel, tunnel_params)
 
     {:noreply,
      socket
      |> assign(:changeset, changeset)
-     |> assign(Devices.defaults(changeset))}
+     |> assign(Tunnels.defaults(changeset))}
   end
 
-  def handle_event("save", %{"device" => device_params}, socket) do
-    device = socket.assigns.device
+  def handle_event("save", %{"tunnel" => tunnel_params}, socket) do
+    tunnel = socket.assigns.tunnel
 
-    case Devices.update_device(device, device_params) do
-      {:ok, device} ->
-        @events_module.update_device(device)
+    case Tunnels.update_tunnel(tunnel, tunnel_params) do
+      {:ok, tunnel} ->
+        @events_module.update_tunnel(tunnel)
 
         {:noreply,
          socket
-         |> put_flash(:info, "Device updated successfully.")
+         |> put_flash(:info, "Tunnel updated successfully.")
          |> push_redirect(to: socket.assigns.return_to)}
 
       {:error, changeset} ->

@@ -9,18 +9,18 @@
     </tr>
   </thead>
   <tbody>
-  <%= for device <- @devices do %>
+  <%= for tunnel <- @tunnels do %>
     <tr>
       <td>
-        <%= live_patch(device.name, to: Routes.device_admin_show_path(@socket, :show, device)) %>
+        <%= live_patch(tunnel.name, to: Routes.tunnel_admin_show_path(@socket, :show, tunnel)) %>
       </td>
       <td class="code">
-        <span><%= device.ipv4 %></span>
-        <span><%= device.ipv6 %></span>
+        <span><%= tunnel.ipv4 %></span>
+        <span><%= tunnel.ipv6 %></span>
       </td>
-      <td class="code"><%= device.public_key %></td>
-      <td id={"device-#{device.id}-inserted-at"} data-timestamp={device.inserted_at} phx-hook="FormatTimestamp">…</td>
-      <td id={"device-#{device.id}-updated-at"} data-timestamp={device.updated_at} phx-hook="FormatTimestamp">…</td>
+      <td class="code"><%= tunnel.public_key %></td>
+      <td id={"tunnel-#{tunnel.id}-inserted-at"} data-timestamp={tunnel.inserted_at} phx-hook="FormatTimestamp">…</td>
+      <td id={"tunnel-#{tunnel.id}-updated-at"} data-timestamp={tunnel.updated_at} phx-hook="FormatTimestamp">…</td>
     </tr>
   <% end %>
   </tbody>

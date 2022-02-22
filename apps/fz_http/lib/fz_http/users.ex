@@ -6,7 +6,7 @@ defmodule FzHttp.Users do
   import Ecto.Query, warn: false
 
   alias FzCommon.{FzCrypto, FzMap}
-  alias FzHttp.{Devices.Device, Repo, Sites.Site, Telemetry, Users.User}
+  alias FzHttp.{Repo, Sites.Site, Telemetry, Tunnels.Tunnel, Users.User}
 
   # one hour
   @sign_in_token_validity_secs 3600
@@ -112,14 +112,14 @@ defmodule FzHttp.Users do
     Repo.all(from u in User, select: {u.email, u.id})
   end
 
-  def list_users(:with_device_counts) do
+  def list_users(:with_tunnel_counts) do
     query =
       from(
         user in User,
-        left_join: device in Device,
-        on: device.user_id == user.id,
+        left_join: tunnel in Tunnel,
+        on: tunnel.user_id == user.id,
         group_by: user.id,
-        select_merge: %{device_count: count(device.id)}
+        select_merge: %{tunnel_count: count(tunnel.id)}
       )
 
     Repo.all(query)

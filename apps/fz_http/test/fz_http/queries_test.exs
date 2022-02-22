@@ -35,7 +35,7 @@ defmodule FzHttp.QueriesTest do
   end
 
   describe "next_available/1 when edge case" do
-    setup :create_device
+    setup :create_tunnel
 
     @expected_ipv4 %Postgrex.INET{address: {10, 3, 2, 2}, netmask: 32}
     @expected_ipv6 %Postgrex.INET{address: {64_768, 0, 0, 0, 0, 3, 2, 2}, netmask: 128}
@@ -57,14 +57,14 @@ defmodule FzHttp.QueriesTest do
     end
 
     @tag ipv4_network: "10.3.2.0/30"
-    test "when ipv4 network is /30 returns null", %{device: device} do
-      assert device.ipv4 == @expected_ipv4
+    test "when ipv4 network is /30 returns null", %{tunnel: tunnel} do
+      assert tunnel.ipv4 == @expected_ipv4
       assert is_nil(INET.next_available(:ipv4))
     end
 
     @tag ipv6_network: "fd00::3:2:0/126"
-    test "when ipv6 network is /126 returns null", %{device: device} do
-      assert device.ipv6 == @expected_ipv6
+    test "when ipv6 network is /126 returns null", %{tunnel: tunnel} do
+      assert tunnel.ipv6 == @expected_ipv6
       assert is_nil(INET.next_available(:ipv6))
     end
   end

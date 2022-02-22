@@ -59,7 +59,7 @@ defmodule FzHttpWeb.ControllerHelpers do
   def root_path_for_role(conn_or_sock, user) do
     case user.role do
       :unprivileged ->
-        Routes.device_unprivileged_index_path(conn_or_sock, :index)
+        Routes.tunnel_unprivileged_index_path(conn_or_sock, :index)
 
       :admin ->
         Routes.user_index_path(conn_or_sock, :index)

@@ -4,7 +4,7 @@ defmodule FzHttp.EventsTest do
   """
   use FzHttp.DataCase, async: false
 
-  alias FzHttp.{Devices, Events}
+  alias FzHttp.{Events, Tunnels}
 
   # XXX: Not needed with start_supervised!
   setup do
@@ -14,36 +14,36 @@ defmodule FzHttp.EventsTest do
     end)
   end
 
-  describe "update_device/1" do
-    setup [:create_device]
+  describe "update_tunnel/1" do
+    setup [:create_tunnel]
 
-    test "adds device to peer config", %{device: device} do
-      assert :ok == Events.update_device(device)
+    test "adds tunnel to peer config", %{tunnel: tunnel} do
+      assert :ok == Events.update_tunnel(tunnel)
 
       assert :sys.get_state(Events.vpn_pid()) == %{
-               device.public_key => "#{device.ipv4}/32,#{device.ipv6}/128"
+               tunnel.public_key => "#{tunnel.ipv4}/32,#{tunnel.ipv6}/128"
              }
     end
   end
 
-  describe "device_update/1" do
-    setup [:create_device]
+  describe "tunnel_update/1" do
+    setup [:create_tunnel]
 
-    test "updates peer config", %{device: device} do
-      assert :ok = Events.update_device(device)
+    test "updates peer config", %{tunnel: tunnel} do
+      assert :ok = Events.update_tunnel(tunnel)
 
       assert :sys.get_state(Events.vpn_pid()) == %{
-               device.public_key => "#{device.ipv4}/32,#{device.ipv6}/128"
+               tunnel.public_key => "#{tunnel.ipv4}/32,#{tunnel.ipv6}/128"
              }
     end
   end
 
-  describe "delete_device/1" do
-    setup [:create_device]
+  describe "delete_tunnel/1" do
+    setup [:create_tunnel]
 
-    test "removes from peer config", %{device: device} do
-      pubkey = device.public_key
-      assert {:ok, ^pubkey} = Events.delete_device(device)
+    test "removes from peer config", %{tunnel: tunnel} do
+      pubkey = tunnel.public_key
+      assert {:ok, ^pubkey} = Events.delete_tunnel(tunnel)
 
       assert :sys.get_state(Events.vpn_pid()) == %{}
     end
@@ -62,13 +62,13 @@ defmodule FzHttp.EventsTest do
   end
 
   describe "set_config/0" do
-    setup [:create_devices]
+    setup [:create_tunnels]
 
     test "sets config" do
       :ok = Events.set_config()
 
       assert :sys.get_state(Events.vpn_pid()) ==
-               Map.new(Devices.to_peer_list(), fn peer -> {peer.public_key, peer.inet} end)
+               Map.new(Tunnels.to_peer_list(), fn peer -> {peer.public_key, peer.inet} end)
     end
   end
 

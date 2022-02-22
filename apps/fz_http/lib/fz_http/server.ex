@@ -5,7 +5,7 @@ defmodule FzHttp.Server do
 
   use GenServer
 
-  alias FzHttp.{Devices, Rules}
+  alias FzHttp.{Rules, Tunnels}
 
   @process_opts Application.compile_env(:fz_http, :server_process_opts, [])
 
@@ -21,7 +21,7 @@ defmodule FzHttp.Server do
 
   @impl GenServer
   def handle_call(:load_peers, _from, _state) do
-    reply = {:ok, Devices.to_peer_list()}
+    reply = {:ok, Tunnels.to_peer_list()}
     {:reply, reply, nil}
   end
 

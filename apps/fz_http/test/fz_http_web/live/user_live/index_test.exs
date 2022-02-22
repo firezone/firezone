@@ -4,11 +4,11 @@ defmodule FzHttpWeb.UserLive.IndexTest do
   alias FzHttp.Users
 
   describe "authenticated user list" do
-    setup [:create_devices, :create_users]
+    setup [:create_tunnels, :create_users]
 
     test "includes the created user email in the list", %{
       authed_conn: conn,
-      devices: _devices,
+      tunnels: _tunnels,
       users: users
     } do
       path = Routes.user_index_path(conn, :index)
@@ -19,16 +19,16 @@ defmodule FzHttpWeb.UserLive.IndexTest do
       end
     end
 
-    test "includes device_counts in the list", %{
+    test "includes tunnel_counts in the list", %{
       authed_conn: conn,
-      devices: _devices,
+      tunnels: _tunnels,
       users: _users
     } do
       path = Routes.user_index_path(conn, :index)
       {:ok, _view, html} = live(conn, path)
 
-      for user <- Users.list_users(:with_device_counts) do
-        assert html =~ "<td id=\"user-#{user.id}-device-count\">#{user.device_count}</td>"
+      for user <- Users.list_users(:with_tunnel_counts) do
+        assert html =~ "<td id=\"user-#{user.id}-tunnel-count\">#{user.tunnel_count}</td>"
       end
     end
 

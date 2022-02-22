@@ -1,3 +1,3 @@
-defmodule FzHttpWeb.DeviceView do
+defmodule FzHttpWeb.TunnelView do
   use FzHttpWeb, :view
 end

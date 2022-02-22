@@ -1,10 +1,10 @@
 <%= if @live_action == :new do %>
   <%= live_modal(
-        FzHttpWeb.DeviceLive.CreateFormComponent,
-        return_to: Routes.device_admin_index_path(@socket, :index),
-        title: "Add Device",
+        FzHttpWeb.TunnelLive.CreateFormComponent,
+        return_to: Routes.tunnel_admin_index_path(@socket, :index),
+        title: "Add Tunnel",
         changeset: @changeset,
-        id: "add-device-modal",
+        id: "add-tunnel-modal",
         action: @live_action) %>
 <% end %>
 
@@ -14,7 +14,7 @@
   <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
 
   <div class="block">
-    <%= render FzHttpWeb.SharedView, "devices_table.html", context: :admin, devices: @devices, socket: @socket %>
+    <%= render FzHttpWeb.SharedView, "tunnels_table.html", context: :admin, tunnels: @tunnels, socket: @socket %>
   </div>
 
   <p>

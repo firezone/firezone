@@ -4,7 +4,7 @@ defmodule FzHttpWeb.UserLive.Show do
   """
   use FzHttpWeb, :live_view
 
-  alias FzHttp.{Devices, Repo, Users}
+  alias FzHttp.{Repo, Tunnels, Users}
   alias FzHttpWeb.ErrorHelpers
 
   @impl Phoenix.LiveView
@@ -13,21 +13,21 @@ defmodule FzHttpWeb.UserLive.Show do
 
     {:ok,
      socket
-     |> assign(:devices, Devices.list_devices(user))
+     |> assign(:tunnels, Tunnels.list_tunnels(user))
      |> assign(:user, user)
      |> assign(:page_title, "Users")}
   end
 
   @doc """
-  Called when a modal is dismissed; reload devices.
+  Called when a modal is dismissed; reload tunnels.
   """
   @impl Phoenix.LiveView
   def handle_params(_params, _url, socket) do
-    devices = Devices.list_devices(socket.assigns.current_user.id)
+    tunnels = Tunnels.list_tunnels(socket.assigns.current_user.id)
 
     {:noreply,
      socket
-     |> assign(:devices, devices)}
+     |> assign(:tunnels, tunnels)}
   end
 
   @impl Phoenix.LiveView
@@ -37,11 +37,11 @@ defmodule FzHttpWeb.UserLive.Show do
        socket
        |> put_flash(:error, "Use the account section to delete your account.")}
     else
-      user = Users.get_user!(user_id) |> Repo.preload(:devices)
+      user = Users.get_user!(user_id) |> Repo.preload(:tunnels)
 
       case Users.delete_user(user) do
         {:ok, _} ->
-          for device <- user.devices, do: @events_module.delete_device(device)
+          for tunnel <- user.tunnels, do: @events_module.delete_tunnel(tunnel)
           FzHttpWeb.Endpoint.broadcast("users_socket:#{user.id}", "disconnect", %{})
 
           {:noreply,

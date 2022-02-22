@@ -8,7 +8,7 @@ defmodule FzHttp.Queries.INET do
   WITH combined AS (
     SELECT $2 AS ipv4
     UNION ALL
-    SELECT devices.ipv4 FROM devices
+    SELECT tunnels.ipv4 FROM tunnels
   )
   SELECT combined.ipv4 + 1 AS ipv4
   FROM combined
@@ -27,7 +27,7 @@ defmodule FzHttp.Queries.INET do
   WITH combined AS (
     SELECT $2 AS ipv6
     UNION ALL
-    SELECT devices.ipv6 FROM devices
+    SELECT tunnels.ipv6 FROM tunnels
   )
   SELECT combined.ipv6 + 1 AS ipv6
   FROM combined

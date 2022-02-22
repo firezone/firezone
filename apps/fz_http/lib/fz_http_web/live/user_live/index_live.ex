@@ -10,7 +10,7 @@ defmodule FzHttpWeb.UserLive.Index do
   def mount(_params, _session, socket) do
     {:ok,
      socket
-     |> assign(:users, Users.list_users(:with_device_counts))
+     |> assign(:users, Users.list_users(:with_tunnel_counts))
      |> assign(:changeset, Users.new_user())
      |> assign(:page_title, "Users")}
   end

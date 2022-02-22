@@ -9,7 +9,7 @@
 <% end %>
 <%= if @live_action == :new_tunnel do %>
   <%= live_modal(
-      FzHttpWeb.DeviceLive.NewComponent,
+      FzHttpWeb.TunnelLive.NewComponent,
       return_to: Routes.user_show_path(@socket, :show, @user),
       title: "Tunnel Added!",
       target_user_id: @user.id,
@@ -40,13 +40,13 @@
 </section>
 
 <section class="section is-main-section">
-  <h4 class="title is-4">Devices</h4>
+  <h4 class="title is-4">Tunnels</h4>
 
   <div class="block">
-    <%= if length(@devices) > 0 do %>
-      <%= render FzHttpWeb.SharedView, "devices_table.html", devices: @devices, socket: @socket %>
+    <%= if length(@tunnels) > 0 do %>
+      <%= render FzHttpWeb.SharedView, "tunnels_table.html", tunnels: @tunnels, socket: @socket %>
     <% else %>
-        No devices.
+        No tunnels.
     <% end %>
   </div>
 
@@ -61,7 +61,7 @@
 
   <button
     class="button is-danger"
-    data-confirm="Are you sure? This will permanently delete this user, all associated devices and instantly drop any active VPN sessions associated to this user."
+    data-confirm="Are you sure? This will permanently delete this user, all associated tunnels and instantly drop any active VPN sessions associated to this user."
     phx-click="delete_user"
     phx-value-user_id={@user.id}>
     <span class="icon is-small">

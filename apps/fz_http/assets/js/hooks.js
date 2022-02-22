@@ -1,6 +1,6 @@
 import hljs from "highlight.js"
 import {FormatTimestamp,PasswordStrength} from "./util.js"
-import {createDeviceAndRenderConfig} from "./wg_conf.js"
+import {createTunnelAndRenderConfig} from "./wg_conf.js"
 
 const highlightCode = function () {
   hljs.highlightAll()
@@ -77,8 +77,8 @@ Hooks.PasswordStrength = {
   mounted: passwordStrength,
   updated: passwordStrength
 }
-Hooks.CreateDeviceAndRenderConfig = {
-  mounted: createDeviceAndRenderConfig
+Hooks.CreateTunnelAndRenderConfig = {
+  mounted: createTunnelAndRenderConfig
 }
 
 export default Hooks

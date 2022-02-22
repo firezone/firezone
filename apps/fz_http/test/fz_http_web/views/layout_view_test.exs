@@ -9,7 +9,7 @@ defmodule FzHttpWeb.LayoutViewTest do
   # import Phoenix.HTML
   describe "nav_class/2" do
     test "it computes nav class for root route" do
-      assert LayoutView.nav_class(%{request_path: "/"}, ~r"devices") == "is-active has-icon"
+      assert LayoutView.nav_class(%{request_path: "/"}, ~r"tunnels") == "is-active has-icon"
     end
 
     test "it computes nav class for account route" do

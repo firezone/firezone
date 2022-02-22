@@ -7,7 +7,7 @@ description: >
   Firezone is compatible with the official WireGuard clients available for all major platforms.
 ---
 ---
-Once successfully deployed, users and devices can be added to
+Once successfully deployed, users and tunnels can be added to
 connect to the VPN server:
 
 * [Add Users]({%link docs/user-guides/add-users.md%}):

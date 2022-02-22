@@ -1,6 +1,6 @@
-defmodule FzHttp.Devices.Device do
+defmodule FzHttp.Tunnels.Tunnel do
   @moduledoc """
-  Manages Device things
+  Manages Tunnel things
   """
 
   use Ecto.Schema
@@ -20,7 +20,7 @@ defmodule FzHttp.Devices.Device do
 
   alias FzHttp.Users.User
 
-  schema "devices" do
+  schema "tunnels" do
     field :uuid, Ecto.UUID, autogenerate: true
     field :name, :string
     field :public_key, :string
@@ -45,16 +45,16 @@ defmodule FzHttp.Devices.Device do
     timestamps(type: :utc_datetime_usec)
   end
 
-  def create_changeset(device, attrs) do
-    device
+  def create_changeset(tunnel, attrs) do
+    tunnel
     |> shared_cast(attrs)
     |> put_next_ip(:ipv4)
     |> put_next_ip(:ipv6)
     |> shared_changeset()
   end
 
-  def update_changeset(device, attrs) do
-    device
+  def update_changeset(tunnel, attrs) do
+    tunnel
     |> shared_cast(attrs)
     |> shared_changeset()
   end
@@ -63,8 +63,8 @@ defmodule FzHttp.Devices.Device do
     get_field(changeset, field)
   end
 
-  defp shared_cast(device, attrs) do
-    device
+  defp shared_cast(tunnel, attrs) do
+    tunnel
     |> cast(attrs, [
       :use_site_allowed_ips,
       :use_site_dns,
@@ -198,7 +198,7 @@ defmodule FzHttp.Devices.Device do
           add_error(
             changeset,
             ip_type,
-            "address pool is exhausted. Increase network size or remove some devices."
+            "address pool is exhausted. Increase network size or remove some tunnels."
           )
         end
     end

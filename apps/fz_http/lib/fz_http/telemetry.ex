@@ -8,13 +8,13 @@ defmodule FzHttp.Telemetry do
 
   require Logger
 
-  def add_device(device) do
+  def add_tunnel(tunnel) do
     telemetry_module().capture(
-      "add_device",
+      "add_tunnel",
       common_fields() ++
         [
-          device_uuid_hash: hash(device.uuid),
-          user_email_hash: hash(user_email(device.user_id)),
+          tunnel_uuid_hash: hash(tunnel.uuid),
+          user_email_hash: hash(user_email(tunnel.user_id)),
           admin_email_hash: hash(admin_email())
         ]
     )
@@ -42,13 +42,13 @@ defmodule FzHttp.Telemetry do
     )
   end
 
-  def delete_device(device) do
+  def delete_tunnel(tunnel) do
     telemetry_module().capture(
-      "delete_device",
+      "delete_tunnel",
       common_fields() ++
         [
-          device_uuid_hash: hash(device.uuid),
-          user_email_hash: hash(user_email(device.user_id)),
+          tunnel_uuid_hash: hash(tunnel.uuid),
+          user_email_hash: hash(user_email(tunnel.user_id)),
           admin_email_hash: hash(admin_email())
         ]
     )

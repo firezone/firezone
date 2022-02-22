@@ -1,34 +1,34 @@
-defmodule FzHttpWeb.DeviceLive.Unprivileged.Show do
+defmodule FzHttpWeb.TunnelLive.Unprivileged.Show do
   @moduledoc """
-  Shows a device for an unprivileged user.
+  Shows a tunnel for an unprivileged user.
   """
   use FzHttpWeb, :live_view
-  alias FzHttp.{Devices, Users}
+  alias FzHttp.{Tunnels, Users}
 
   @impl Phoenix.LiveView
-  def mount(%{"id" => device_id} = _params, _session, socket) do
-    device = Devices.get_device!(device_id)
+  def mount(%{"id" => tunnel_id} = _params, _session, socket) do
+    tunnel = Tunnels.get_tunnel!(tunnel_id)
 
-    if authorized?(device, socket) do
+    if authorized?(tunnel, socket) do
       {:ok,
        socket
-       |> assign(assigns(device))}
+       |> assign(assigns(tunnel))}
     else
       {:ok, not_authorized(socket)}
     end
   end
 
   @impl Phoenix.LiveView
-  def handle_event("delete_device", _params, socket) do
-    device = socket.assigns.device
+  def handle_event("delete_tunnel", _params, socket) do
+    tunnel = socket.assigns.tunnel
 
-    case delete_device(device, socket) do
-      {:ok, _deleted_device} ->
-        {:ok, _deleted_pubkey} = @events_module.delete_device(device.public_key)
+    case delete_tunnel(tunnel, socket) do
+      {:ok, _deleted_tunnel} ->
+        {:ok, _deleted_pubkey} = @events_module.delete_tunnel(tunnel.public_key)
 
         {:noreply,
          socket
-         |> redirect(to: Routes.device_unprivileged_index_path(socket, :index))}
+         |> redirect(to: Routes.tunnel_unprivileged_index_path(socket, :index))}
 
       {:not_authorized} ->
         {:noreply, not_authorized(socket)}
@@ -37,34 +37,34 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.Show do
         # {:error, msg} ->
         #   {:noreply,
         #   socket
-        #   |> put_flash(:error, "Error deleting device: #{msg}")}
+        #   |> put_flash(:error, "Error deleting tunnel: #{msg}")}
     end
   end
 
-  def delete_device(device, socket) do
-    if socket.assigns.current_user.id == device.user_id do
-      Devices.delete_device(device)
+  def delete_tunnel(tunnel, socket) do
+    if socket.assigns.current_user.id == tunnel.user_id do
+      Tunnels.delete_tunnel(tunnel)
     else
       {:not_authorized}
     end
   end
 
-  defp assigns(device) do
+  defp assigns(tunnel) do
     [
-      device: device,
-      user: Users.get_user!(device.user_id),
-      page_title: device.name,
-      allowed_ips: Devices.allowed_ips(device),
+      tunnel: tunnel,
+      user: Users.get_user!(tunnel.user_id),
+      page_title: tunnel.name,
+      allowed_ips: Tunnels.allowed_ips(tunnel),
       port: Application.fetch_env!(:fz_vpn, :wireguard_port),
-      dns: Devices.dns(device),
-      endpoint: Devices.endpoint(device),
-      mtu: Devices.mtu(device),
-      persistent_keepalive: Devices.persistent_keepalive(device),
-      config: Devices.as_config(device)
+      dns: Tunnels.dns(tunnel),
+      endpoint: Tunnels.endpoint(tunnel),
+      mtu: Tunnels.mtu(tunnel),
+      persistent_keepalive: Tunnels.persistent_keepalive(tunnel),
+      config: Tunnels.as_config(tunnel)
     ]
   end
 
-  defp authorized?(device, socket) do
-    "#{device.user_id}" == "#{socket.assigns.current_user.id}" || has_role?(socket, :admin)
+  defp authorized?(tunnel, socket) do
+    "#{tunnel.user_id}" == "#{socket.assigns.current_user.id}" || has_role?(socket, :admin)
   end
 end
