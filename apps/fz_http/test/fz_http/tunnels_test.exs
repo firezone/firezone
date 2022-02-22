@@ -30,11 +30,33 @@ defmodule FzHttp.TunnelsTest do
       end
     end
 
+    setup context do
+      if max_tunnels = context[:max_tunnels] do
+        restore_env(:max_tunnels_per_user, max_tunnels, &on_exit/1)
+      else
+        context
+      end
+    end
+
     @tunnel_attrs %{
       name: "dummy",
       public_key: "dummy",
       user_id: nil
     }
+
+    @tag max_tunnels: 1
+    test "prevents creating more than max_tunnels_per_user", %{tunnel: tunnel} do
+      assert {:error,
+              %Ecto.Changeset{
+                errors: [
+                  base:
+                    {"Maximum tunnel limit reached. Remove an existing tunnel before creating a new one.",
+                     []}
+                ]
+              }} = Tunnels.create_tunnel(%{@tunnel_attrs | user_id: tunnel.user_id})
+
+      assert [tunnel] == Tunnels.list_tunnels(tunnel.user_id)
+    end
 
     test "creates tunnel with empty attributes", %{user: user} do
       assert {:ok, _tunnel} = Tunnels.create_tunnel(%{@tunnel_attrs | user_id: user.id})

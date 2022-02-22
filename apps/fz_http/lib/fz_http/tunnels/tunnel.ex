@@ -18,7 +18,7 @@ defmodule FzHttp.Tunnels.Tunnel do
 
   import FzHttp.Queries.INET
 
-  alias FzHttp.Users.User
+  alias FzHttp.{Tunnels, Users.User}
 
   schema "tunnels" do
     field :uuid, Ecto.UUID, autogenerate: true
@@ -51,6 +51,7 @@ defmodule FzHttp.Tunnels.Tunnel do
     |> put_next_ip(:ipv4)
     |> put_next_ip(:ipv6)
     |> shared_changeset()
+    |> validate_max_tunnels()
   end
 
   def update_changeset(tunnel, attrs) do
@@ -123,6 +124,22 @@ defmodule FzHttp.Tunnels.Tunnel do
     |> validate_in_network(:ipv6)
     |> unique_constraint(:public_key)
     |> unique_constraint([:user_id, :name])
+  end
+
+  defp validate_max_tunnels(changeset) do
+    user_id = changeset.changes.user_id || changeset.data.user_id
+    count = Tunnels.count(user_id)
+    max_tunnels = Application.fetch_env!(:fz_http, :max_tunnels_per_user)
+
+    if count >= max_tunnels do
+      add_error(
+        changeset,
+        :base,
+        "Maximum tunnel limit reached. Remove an existing tunnel before creating a new one."
+      )
+    else
+      changeset
+    end
   end
 
   defp validate_omitted_if_site(changeset, fields) when is_list(fields) do
