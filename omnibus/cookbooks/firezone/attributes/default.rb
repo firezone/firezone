@@ -273,7 +273,7 @@ default['firezone']['wireguard']['ipv6']['address'] = 'fd00::3:2:1'
 # The maximum number of tunnels a user can have.
 # Max: 100
 # Default: 10
-deafult['firezone']['wireguard']['max_tunnels_per_user'] = 10
+default['firezone']['wireguard']['max_tunnels_per_user'] = 10
 
 # ## Runit
 
