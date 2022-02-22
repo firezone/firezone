@@ -136,7 +136,6 @@ default['firezone']['nginx']['sendfile'] = 'on'
 default['firezone']['nginx']['access_log_options'] = nil
 default['firezone']['nginx']['error_log_options'] = nil
 default['firezone']['nginx']['disable_access_log'] = false
-default['firezone']['nginx']['default_site_enabled'] = false
 default['firezone']['nginx']['types_hash_max_size'] = 2048
 default['firezone']['nginx']['types_hash_bucket_size'] = 64
 default['firezone']['nginx']['proxy_read_timeout'] = nil
