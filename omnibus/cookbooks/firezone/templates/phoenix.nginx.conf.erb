@@ -25,7 +25,7 @@ server {
 }
 
 server {
-  listen <%= @nginx['ssl_port'] %>;
+  listen <%= @nginx['ssl_port'] %> default_server;
   server_name <%= @fqdn %>;
 
 <%   if @ssl['enabled'] -%>
