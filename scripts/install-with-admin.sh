@@ -15,7 +15,8 @@ promptEmail() {
 }
 
 wireguardCheck() {
-  if [[ -z "$(sudo find /sys -name "*wireguard*")" ]]; then
+  #if [[ -z "$(sudo find /sys -name "*wireguard*")" ]]; then
+  if test -f /sys/module/wireguard/version; then
     echo "Error! WireGuard not detected. Please upgrade your kernel to at least 5.6 or install the WireGuard kernel module."
     echo "See more at https://www.wireguard.com/install/"
     exit
@@ -35,11 +36,12 @@ kernelCheck() {
 # * determines distro; aborts if it can't detect or is not supported
 mapReleaseToDistro() {
   #if [[ -z $2 ]]; then
-    echo $1 $2
-    echo "using mock data"
-    hostinfo=$(cat test/hostnamectl/$1 | egrep -i '(opera|arch)')
+  # echo $1
+  # echo $2
+  # echo "using mock data"
+  # hostinfo=$(cat test/hostnamectl/$1 | egrep -i '(opera|arch)')
   #else
-  #hostinfo=$(hostnamectl | egrep -i '(opera|arch)')
+  hostinfo=$(hostnamectl | egrep -i '(opera|arch)')
   #fi
   image_sub_string=''
   echo $hostinfo
@@ -89,30 +91,35 @@ mapReleaseToDistro() {
      image_sub_string="opensuse15-x64"
   fi
 
-  echo "substring: $image_sub_string"
+  #echo "substring: $image_sub_string"
   if [[ -z "$image_sub_string" ]]; then
     echo "Unsupported Operating System. Aborting."
     exit
   fi
 
-  echo $curl_cmd
-
-  #  latest_release=$(
-  #    curl --silent https://api.github.com/repos/firezone/firezone/releases/latest |
-  #    grep browser_download_url |
-  #    cut -d: -f2,3 |
-  #    sed 's/\"//g' |
-  #    grep $image_sub_string
-  #  )
-
-  #avoid over throtteling the API
   latest_release=$(
-    cat $HOME/firezone/scripts/test/api/release |
+    curl --silent https://api.github.com/repos/firezone/firezone/releases/latest |
+    grep browser_download_url |
     cut -d: -f2,3 |
     sed 's/\"//g' |
     grep $image_sub_string
   )
-  echo "url:" $latest_release
+
+  #Avoid over throttling the API
+  #could have a cached version for testing rather than having the rug
+  #pulled out from underneatch ... oddly one could copy the JSON string to a gist
+  #and curl that as a resource with no limits :panda_face:
+
+: <<'BLOCK'
+  latest_release=$(
+    cat test/api/release |
+    cut -d: -f2,3 |
+    sed 's/\"//g' |
+    sed 's/^ //' |
+    grep $image_sub_string
+  )
+BLOCK
+  echo "url: "$latest_release
   eval "$1='$latest_release'"
 }
 
@@ -129,21 +136,18 @@ installAndDownloadArtifact() {
   fi
 }
 
-
 test_mapping() {
-  for os in $(ls $HOME/firezone/scripts/test/hostnamectl/)
+  for os in $(ls test/hostnamectl/)
   do
     echo $os
-    url=''
-    mapReleaseToDistro $url $os
-    echo $url
+    #mapReleaseToDistro $os $url
   done
 }
 
 main() {
-  test_mapping
+  #test_mapping
   adminUser=''
-  #wireguardCheck
+  wireguardCheck
   kernelCheck kernelStatus
   promptEmail "Enter the administrator email you'd like to use for logging into this Firezone instance:" adminUser
   if [ "$kernelStatus" != "is supported" ]; then
