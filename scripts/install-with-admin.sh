@@ -126,7 +126,7 @@ BLOCK
 installAndDownloadArtifact() {
   url=$1
   file=$(basename $url)
-  echo $file
+  #echo $file
   cd /tmp
   curl -sL $url --output $file
   if [[ "$url" =~ .*"deb".* ]]; then
@@ -147,7 +147,7 @@ test_mapping() {
 main() {
   #test_mapping
   adminUser=''
-  wireguardCheck
+  #wireguardCheck
   kernelCheck kernelStatus
   promptEmail "Enter the administrator email you'd like to use for logging into this Firezone instance:" adminUser
   if [ "$kernelStatus" != "is supported" ]; then
