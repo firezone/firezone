@@ -34,7 +34,7 @@ kernelCheck() {
 
 # * determines distro; aborts if it can't detect or is not supported
 mapReleaseToDistro() {
-: <<block_comment
+: <<'block_comment'
   #was attempting to have a way to ensure the logic below works for all
   #platforms but oddly invoking this funciton inside a loop was doing strange things
   #leaving this here as an artifact to test the code in case many more platforms
@@ -111,7 +111,7 @@ block_comment
     grep $image_sub_string
   )
 
-: <<block_comment
+: <<'block_comment'
   #Avoid over throttling the API
   #could have a cached version for testing rather than having the rug
   #pulled out from underneatch ... oddly one could copy the JSON string to a gist
@@ -132,14 +132,24 @@ block_comment
 installAndDownloadArtifact() {
   url=$1
   file=$(basename $url)
-  #echo $file
+  echo "Downloading: $url"
   cd /tmp
   curl -sL $url --output $file
+  echo "Installing: $file"
   if [[ "$url" =~ .*"deb".* ]]; then
     sudo dpkg -i $file
   else
     sudo rpm -i $file
   fi
+}
+
+firezoneConfig() {
+  #firezone-ctl create-or-reset-admin $adminUser
+
+  conf="/opt/firezone/embedded/cookbooks/firezone/attributes/default.rb"
+  sudo sed -i "s/default\['firezone']\['admin_email'] = 'firezone@localhost'/default['firezone']['admin_email'] = '$1' $conf" 
+  sudo firezone-ctl reconfigure
+  sudo firezone-ctl create-or-reset-admin
 }
 
 test_mapping() {
@@ -155,7 +165,7 @@ test_mapping() {
 
 main() {
   adminUser=''
-  wireguardCheck
+  #wireguardCheck
   kernelCheck kernelStatus
   promptEmail "Enter the administrator email you'd like to use for logging into this Firezone instance:" adminUser
   if [ "$kernelStatus" != "is supported" ]; then
@@ -165,11 +175,10 @@ main() {
 
   releaseUrl=''
   mapReleaseToDistro releaseUrl
-  echo $releaseUrl
   echo "Press <ENTER> to install Control-C to Abort."
   read
   installAndDownloadArtifact $releaseUrl
-  firezone-ctl create-or-reset-admin $adminUser
+  firezoneConfig $adminUser
 }
 
 main
