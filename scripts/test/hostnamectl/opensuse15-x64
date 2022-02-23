@@ -1,0 +1,10 @@
+   Static hostname: ip-172-31-49-28
+         Icon name: computer-vm
+           Chassis: vm
+        Machine ID: ec2e22fa43281524f052936327c3140a
+           Boot ID: 5dcdf656869945a3ae82a87b4a8cba7d
+    Virtualization: amazon
+  Operating System: openSUSE Leap 15.3
+       CPE OS Name: cpe:/o:opensuse:leap:15.3
+            Kernel: Linux 5.3.18-59.37-default
+      Architecture: x86-64

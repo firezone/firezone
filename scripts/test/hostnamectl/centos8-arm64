@@ -1,0 +1,8 @@
+   Static hostname: ip-172-31-52-34.us-west-2.compute.internal
+         Icon name: computer
+        Machine ID: a25a6f768631498ca41077d92342deff
+           Boot ID: 5b7e565bc0ab4614889a7146c4c83654
+  Operating System: CentOS Stream 8
+       CPE OS Name: cpe:/o:centos:centos:8
+            Kernel: Linux 4.18.0-305.3.1.el8.aarch64
+      Architecture: arm64

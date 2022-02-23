@@ -1,0 +1,9 @@
+   Static hostname: ip-172-31-58-200
+         Icon name: computer-vm
+           Chassis: vm
+        Machine ID: ec28347f46ce4dadd567684d365b96c2
+           Boot ID: 20dd849d5dd4431b9d20ab42855a6005
+    Virtualization: kvm
+  Operating System: Ubuntu 20.04.3 LTS
+            Kernel: Linux 5.11.0-1028-aws
+      Architecture: x86-64

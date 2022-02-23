@@ -1,0 +1,8 @@
+   Static hostname: ip-172-31-52-160.us-west-2.compute.internal
+         Icon name: computer
+        Machine ID: afbbef11d3d94a30b4e9aa127e094052
+           Boot ID: 6b1f2cb891754144b5793aee1c2dfb6b
+  Operating System: Fedora 33 (Cloud Edition)
+       CPE OS Name: cpe:/o:fedoraproject:fedora:33
+            Kernel: Linux 5.8.15-301.fc33.aarch64
+      Architecture: arm64

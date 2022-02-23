@@ -1,0 +1,12 @@
+ Static hostname: ip-172-31-61-11.us-west-2.compute.internal
+       Icon name: computer-vm
+         Chassis: vm
+      Machine ID: ec20cbcc6e4b998574b72f10a31e0e9d
+         Boot ID: 3cf0d7d767fd415dba8818da757d639e
+  Virtualization: amazon
+Operating System: Fedora Linux 35 (Cloud Edition)
+     CPE OS Name: cpe:/o:fedoraproject:fedora:35
+          Kernel: Linux 5.14.10-300.fc35.x86_64
+    Architecture: x86-64
+ Hardware Vendor: Amazon EC2
+  Hardware Model: c5a.large

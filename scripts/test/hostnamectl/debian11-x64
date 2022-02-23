@@ -1,0 +1,9 @@
+   Static hostname: ip-172-31-48-211
+         Icon name: computer-vm
+           Chassis: vm
+        Machine ID: ec21f13e27faf89b623fd3603e96a6c6
+           Boot ID: 3a2d22c6c031498bad611ea9fbaad8b0
+    Virtualization: kvm
+  Operating System: Debian GNU/Linux 11 (bullseye)
+            Kernel: Linux 5.10.0-11-cloud-amd64
+      Architecture: x86-64

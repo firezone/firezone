@@ -1,0 +1,12 @@
+ Static hostname: ip-172-31-60-198.us-west-2.compute.internal
+       Icon name: computer-vm
+         Chassis: vm
+      Machine ID: ec2e12dbc046bd69e40077fb754ca722
+         Boot ID: 3492192312df4791802f96a16c555b03
+  Virtualization: amazon
+Operating System: CentOS Stream 9
+     CPE OS Name: cpe:/o:centos:centos:9
+          Kernel: Linux 5.14.0-53.el9.x86_64
+    Architecture: x86-64
+ Hardware Vendor: Amazon EC2
+  Hardware Model: c5a.large
