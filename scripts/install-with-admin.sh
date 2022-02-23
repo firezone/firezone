@@ -34,13 +34,15 @@ kernelCheck() {
 
 # * determines distro; aborts if it can't detect or is not supported
 mapReleaseToDistro() {
-  if [[ -z $2 ]]; then
+  #if [[ -z $2 ]]; then
+    echo $1 $2
+    echo "using mock data"
     hostinfo=$(cat test/hostnamectl/$1 | egrep -i '(opera|arch)')
-  else
-    hostinfo=$(hostnamectl | egrep -i '(opera|arch)')
-  fi
+  #else
+  #hostinfo=$(hostnamectl | egrep -i '(opera|arch)')
+  #fi
   image_sub_string=''
-  #echo $hostinfo
+  echo $hostinfo
   if [[ "$hostinfo" =~ .*"Debian GNU/Linux 10".*   && "$hostinfo" =~ .*"x86" ]]; then
      image_sub_string="debian10-x64"
   elif [[ "$hostinfo" =~ .*"Debian GNU/Linux 10".* && "$hostinfo" =~ .*"arm64" ]]; then
@@ -61,9 +63,9 @@ mapReleaseToDistro() {
      image_sub_string="fedora34-x64"
   elif [[ "$hostinfo" =~ .*"Fedora 34".*           &&  "$hostinfo" =~ .*"arm64" ]]; then
      image_sub_string="fedora34-x64"
-  elif [[ "$hostinfo" =~ .*"Fedora 35".*           &&  "$hostinfo" =~ .*"x86" ]]; then
+  elif [[ "$hostinfo" =~ .*"Fedora Linux 35".*     &&  "$hostinfo" =~ .*"x86" ]]; then
      image_sub_string="fedora35-x64"
-  elif [[ "$hostinfo" =~ .*"Fedora 35".*           &&  "$hostinfo" =~ .*"arm64" ]]; then
+  elif [[ "$hostinfo" =~ .*"Fedora Linux 35".*     &&  "$hostinfo" =~ .*"arm64" ]]; then
      image_sub_string="fedora35-x64"
   elif [[ "$hostinfo" =~ .*"Ubuntu 18.04.6 LTS".*  &&  "$hostinfo" =~ .*"x86" ]]; then
      image_sub_string="ubuntu1804-x64"
@@ -93,19 +95,24 @@ mapReleaseToDistro() {
     exit
   fi
 
-  curl_cmd=$(cat <<-CURL
-    curl --silent https://api.github.com/repos/firezone/firezone/releases/latest |
-    grep browser_download_url |
+  echo $curl_cmd
+
+  #  latest_release=$(
+  #    curl --silent https://api.github.com/repos/firezone/firezone/releases/latest |
+  #    grep browser_download_url |
+  #    cut -d: -f2,3 |
+  #    sed 's/\"//g' |
+  #    grep $image_sub_string
+  #  )
+
+  #avoid over throtteling the API
+  latest_release=$(
+    cat $HOME/firezone/scripts/test/api/release |
     cut -d: -f2,3 |
     sed 's/\"//g' |
     grep $image_sub_string
-CURL
-)
-
-  echo $curl_cmd
-  latest_release=$($curl_cmd)
-  echo "url:?" $latest_release
-
+  )
+  echo "url:" $latest_release
   eval "$1='$latest_release'"
 }
 
@@ -136,7 +143,7 @@ test_mapping() {
 main() {
   test_mapping
   adminUser=''
-  wireguardCheck
+  #wireguardCheck
   kernelCheck kernelStatus
   promptEmail "Enter the administrator email you'd like to use for logging into this Firezone instance:" adminUser
   if [ "$kernelStatus" != "is supported" ]; then
