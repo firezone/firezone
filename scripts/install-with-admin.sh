@@ -38,10 +38,11 @@ mapReleaseToDistro() {
   image_sub_string=''
   if [[ "$hostinfo" =~ .*"Debian GNU/Linux 10".*   && "$hostinfo" =~ .*"x86" ]]; then
      image_sub_string="debian10-x64"
+  elif [[ "$hostinfo" =~ .*"Debian GNU/Linux 10".* && "$hostinfo" =~ .*"arm64" ]]; then
+     image_sub_string="debian10-arm64"
   elif [[ "$hostinfo" =~ .*"Debian GNU/Linux 11".* && "$hostinfo" =~ .*"x86" ]]; then
      image_sub_string="debian11-x64"
-  elif [[ "$hostinfo" =~ .*"Debian GNU/Linux 10".* &&  "$hostinfo" =~ .*"arm64" ]]; then
-     image_sub_string="debian11-arm64"
+  elif [[ "$hostinfo" =~ .*"Debian GNU/Linux 11".* &&  "$hostinfo" =~ .*"arm64" ]]; then
      image_sub_string="debian11-arm64"
   elif [[ "$hostinfo" =~ .*"Amazon Linux 2".*      &&  "$hostinfo" =~ .*"x86" ]]; then
      image_sub_string="amazonlinux2-x64"
