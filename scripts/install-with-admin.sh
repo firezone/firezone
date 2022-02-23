@@ -15,7 +15,6 @@ promptEmail() {
 }
 
 wireguardCheck() {
-  #if [[ -z "$(sudo find /sys -name "*wireguard*")" ]]; then
   if test -f /sys/module/wireguard/version; then
     echo "Error! WireGuard not detected. Please upgrade your kernel to at least 5.6 or install the WireGuard kernel module."
     echo "See more at https://www.wireguard.com/install/"
@@ -35,6 +34,11 @@ kernelCheck() {
 
 # * determines distro; aborts if it can't detect or is not supported
 mapReleaseToDistro() {
+: <<block_comment
+  #was attempting to have a way to ensure the logic below works for all
+  #platforms but oddly invoking this funciton inside a loop was doing strange things
+  #leaving this here as an artifact to test the code in case many more platforms
+  #arrive
   #if [[ -z $2 ]]; then
   # echo $1
   # echo $2
@@ -43,6 +47,9 @@ mapReleaseToDistro() {
   #else
   hostinfo=$(hostnamectl | egrep -i '(opera|arch)')
   #fi
+block_comment
+
+  hostinfo=$(hostnamectl | egrep -i '(opera|arch)')
   image_sub_string=''
   echo $hostinfo
   if [[ "$hostinfo" =~ .*"Debian GNU/Linux 10".*   && "$hostinfo" =~ .*"x86" ]]; then
@@ -91,7 +98,6 @@ mapReleaseToDistro() {
      image_sub_string="opensuse15-x64"
   fi
 
-  #echo "substring: $image_sub_string"
   if [[ -z "$image_sub_string" ]]; then
     echo "Unsupported Operating System. Aborting."
     exit
@@ -105,12 +111,12 @@ mapReleaseToDistro() {
     grep $image_sub_string
   )
 
+: <<block_comment
   #Avoid over throttling the API
   #could have a cached version for testing rather than having the rug
   #pulled out from underneatch ... oddly one could copy the JSON string to a gist
   #and curl that as a resource with no limits :panda_face:
 
-: <<'BLOCK'
   latest_release=$(
     cat test/api/release |
     cut -d: -f2,3 |
@@ -118,9 +124,9 @@ mapReleaseToDistro() {
     sed 's/^ //' |
     grep $image_sub_string
   )
-BLOCK
+block_comment
   echo "url: "$latest_release
-  eval "$1='$latest_release'"
+  eval "$1='$latest_release'" # return url to 1st param
 }
 
 installAndDownloadArtifact() {
@@ -140,12 +146,14 @@ test_mapping() {
   for os in $(ls test/hostnamectl/)
   do
     echo $os
+    #this did it's job however
+    #the parameters do weirdness inside this loop
+    #I was able to fix the logic so leaving this here as an artifact
     #mapReleaseToDistro $os $url
   done
 }
 
 main() {
-  #test_mapping
   adminUser=''
   wireguardCheck
   kernelCheck kernelStatus
