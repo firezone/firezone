@@ -112,9 +112,9 @@ installAndDownloadArtifact() {
 
  main() {
   adminUser=''
-  promptEmail "Enter the administrator email you'd like to use for logging into this Firezone instance:" adminUser
-  #wireguardCheck
+  wireguardCheck
   kernelCheck kernelStatus
+  promptEmail "Enter the administrator email you'd like to use for logging into this Firezone instance:" adminUser
   if [ "$kernelStatus" != "is supported" ]; then
     echo "$kernelStatus. Quitting."
     exit
