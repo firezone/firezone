@@ -30,11 +30,33 @@ defmodule FzHttp.DevicesTest do
       end
     end
 
+    setup context do
+      if max_devices = context[:max_devices] do
+        restore_env(:max_devices_per_user, max_devices, &on_exit/1)
+      else
+        context
+      end
+    end
+
     @device_attrs %{
       name: "dummy",
       public_key: "dummy",
       user_id: nil
     }
+
+    @tag max_devices: 1
+    test "prevents creating more than max_devices_per_user", %{device: device} do
+      assert {:error,
+              %Ecto.Changeset{
+                errors: [
+                  base:
+                    {"Maximum device limit reached. Remove an existing device before creating a new one.",
+                     []}
+                ]
+              }} = Devices.create_device(%{@device_attrs | user_id: device.user_id})
+
+      assert [device] == Devices.list_devices(device.user_id)
+    end
 
     test "creates device with empty attributes", %{user: user} do
       assert {:ok, _device} = Devices.create_device(%{@device_attrs | user_id: user.id})
