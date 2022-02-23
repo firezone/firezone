@@ -1,0 +1,10 @@
+   Static hostname: ip-172-31-61-26.us-west-2.compute.internal
+         Icon name: computer-vm
+           Chassis: vm
+        Machine ID: cc2c86fe566741e6a2ff6d399c5d5daa
+           Boot ID: e909b9e422ab4144ac871c2e1df602f0
+    Virtualization: kvm
+  Operating System: CentOS Linux 7 (Core)
+       CPE OS Name: cpe:/o:centos:centos:7
+            Kernel: Linux 5.16.5-1.el7.elrepo.x86_64
+      Architecture: x86-64

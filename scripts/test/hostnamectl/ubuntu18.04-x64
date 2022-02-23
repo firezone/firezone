@@ -1,0 +1,9 @@
+   Static hostname: ip-172-31-48-82
+         Icon name: computer-vm
+           Chassis: vm
+        Machine ID: ec281ae12b9a0f184d62a35c5d9da274
+           Boot ID: b706d88f4c8d468ab3ec921139247055
+    Virtualization: kvm
+  Operating System: Ubuntu 18.04.6 LTS
+            Kernel: Linux 5.4.0-1064-aws
+      Architecture: x86-64

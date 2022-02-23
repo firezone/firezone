@@ -1,0 +1,10 @@
+   Static hostname: ip-172-31-53-123.us-west-2.compute.internal
+         Icon name: computer-vm
+           Chassis: vm
+        Machine ID: ec2af3ae50719ae6217effbc38506a4f
+           Boot ID: 729c38397ec440a99000ecb0dbccbc48
+    Virtualization: kvm
+  Operating System: Fedora 33 (Cloud Edition)
+       CPE OS Name: cpe:/o:fedoraproject:fedora:33
+            Kernel: Linux 5.8.15-301.fc33.x86_64
+      Architecture: x86-64

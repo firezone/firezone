@@ -1,0 +1,10 @@
+ Static hostname: ip-172-31-50-41.us-west-2.compute.internal
+       Icon name: computer
+      Machine ID: 24c3e35fbf094d01a2469ed6fb1b6175
+         Boot ID: 68c085b02f054456926caabee563ee33
+Operating System: Fedora 34 (Cloud Edition)
+     CPE OS Name: cpe:/o:fedoraproject:fedora:34
+          Kernel: Linux 5.15.18-100.fc34.aarch64
+    Architecture: arm64
+ Hardware Vendor: Amazon EC2
+  Hardware Model: c6g.large
