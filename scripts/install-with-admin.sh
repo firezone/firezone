@@ -102,7 +102,7 @@ installAndDownloadArtifact() {
   file=$(basename $url)
   echo $file
   cd /tmp
-  wget $url
+  curl -sL $url --output $file
   if [[ "$url" =~ .*"deb".* ]]; then
     sudo dpkg -i $file
   else
