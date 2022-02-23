@@ -2,10 +2,10 @@
   <%= live_modal(
       FzHttpWeb.DeviceLive.NewComponent,
       return_to: Routes.device_unprivileged_index_path(@socket, :index),
-      title: "Tunnel Added!",
+      title: "Device Added!",
       target_user_id: @current_user.id,
       action: @live_action,
-      id: "new-tunnel-component") %>
+      id: "new-device-component") %>
 <% end %>
 
 <section class="section is-main-section">
@@ -14,7 +14,7 @@
   <h4 class="title is-4"><%= @page_title %></h4>
 
   <div class="block">
-    Each tunnel represents a WireGuard configuration for connecting to this
+    Each device corresponds to a WireGuard configuration for connecting to this
     Firezone server.
   </div>
 
@@ -25,7 +25,7 @@
         <thead>
           <tr>
             <th>Name</th>
-            <th>Assigned Tunnel IP</th>
+            <th>Assigned Device IP</th>
             <th>Public key</th>
             <th>Created</th>
           </tr>
@@ -48,7 +48,7 @@
       </table>
     <% else %>
       <p>
-        <strong>No WireGuard tunnels to show.</strong>
+        <strong>No devices to show.</strong>
       </p>
     <% end %>
   </div>
@@ -56,7 +56,7 @@
   <div class="level">
     <div class="level-left">
       <%= live_patch(to: Routes.device_unprivileged_index_path(@socket, :new), class: "button") do %>
-        Add Tunnel
+        Add Device
       <% end %>
     </div>
     <div class="level-right">

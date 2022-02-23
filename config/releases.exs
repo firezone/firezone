@@ -38,6 +38,11 @@ wireguard_endpoint = System.fetch_env!("WIREGUARD_ENDPOINT")
 telemetry_enabled = FzString.to_boolean(System.fetch_env!("TELEMETRY_ENABLED"))
 telemetry_id = System.fetch_env!("TELEMETRY_ID")
 
+max_devices_per_user =
+  System.fetch_env!("MAX_DEVICES_PER_USER")
+  |> String.to_integer()
+  |> FzInteger.clamp(0, 100)
+
 telemetry_module =
   if telemetry_enabled do
     FzCommon.Telemetry

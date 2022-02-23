@@ -40,6 +40,11 @@ default['firezone']['group'] = 'firezone'
 # Email for the primary admin user.
 default['firezone']['admin_email'] = 'firezone@localhost'
 
+# The maximum number of devices a user can have.
+# Max: 100
+# Default: 10
+default['firezone']['max_devices_per_user'] = 10
+
 # The outgoing interface name.
 # This is where tunneled traffic will exit the WireGuard tunnel.
 # If set to nil, this is will be set to the interface for the machine's
