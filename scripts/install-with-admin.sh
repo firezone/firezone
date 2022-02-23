@@ -61,13 +61,13 @@ mapReleaseToDistro() {
   elif [[ "$hostinfo" =~ .*"Fedora 35".*           &&  "$hostinfo" =~ .*"arm64" ]]; then
      image_sub_string="fedora35-x64"
   elif [[ "$hostinfo" =~ .*"Ubuntu 18.04.6 LTS".*  &&  "$hostinfo" =~ .*"x86" ]]; then
-     image_sub_string="ubuntu18.04-x64"
+     image_sub_string="ubuntu1804-x64"
   elif [[ "$hostinfo" =~ .*"Ubuntu 18.04.6 LTS".*  &&  "$hostinfo" =~ .*"arm64" ]]; then
-     image_sub_string="ubuntu18.04-arm64"
+     image_sub_string="ubuntu1804-arm64"
   elif [[ "$hostinfo" =~ .*"Ubuntu 20.04.3 LTS".*  &&  "$hostinfo" =~ .*"x86" ]]; then
-     image_sub_string="ubuntu20.04-x64"
+     image_sub_string="ubuntu2004-x64"
   elif [[ "$hostinfo" =~ .*"Ubuntu 20.04.3 LTS".*  &&  "$hostinfo" =~ .*"arm64" ]]; then
-     image_sub_string="ubuntu20.04-arm64"
+     image_sub_string="ubuntu2004-arm64"
   elif [[ "$hostinfo" =~ .*"CentOS Linux 7".*      &&  "$hostinfo" =~ .*"x86" ]]; then
      image_sub_string="centos7-x64"
   elif [[ "$hostinfo" =~ .*"CentOS Stream 8".*     &&  "$hostinfo" =~ .*"x86" ]]; then
@@ -81,6 +81,8 @@ mapReleaseToDistro() {
   elif [[ "$hostinfo" =~ .*"openSUSE Leap 15.3".*  &&  "$hostinfo" =~ .*"x86" ]]; then
      image_sub_string="opensuse15-x64"
   fi
+
+  echo hello: $image_sub_string
   if [[ -z "$image_sub_string" ]]; then
     echo "Unsupported Operating System. Aborting."
     exit
@@ -111,7 +113,7 @@ installAndDownloadArtifact() {
  main() {
   adminUser=''
   promptEmail "Enter the administrator email you'd like to use for logging into this Firezone instance:" adminUser
-  wireguardCheck
+  #wireguardCheck
   kernelCheck kernelStatus
   if [ "$kernelStatus" != "is supported" ]; then
     echo "$kernelStatus. Quitting."
@@ -121,7 +123,7 @@ installAndDownloadArtifact() {
   releaseUrl=''
   mapReleaseToDistro releaseUrl
   echo $releaseUrl
-  echo "Press <ENTER> to install..."
+  echo "Press <ENTER> to install Control-C to Abort."
   read
   installAndDownloadArtifact $releaseUrl
   firezone-ctl create-or-reset-admin $adminUser
