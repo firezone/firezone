@@ -138,7 +138,6 @@ jobs:
         platform:
           # ARM-based
           - amazonlinux2-arm64
-          - centos8-arm64
           - centos9-arm64
           - debian10-arm64
           - debian11-arm64
@@ -162,6 +161,7 @@ jobs:
           - ubuntu2004-x64
           - opensuse15-x64
     steps:
+      - run: cat /sys/module/wireguard/version
       - uses: actions/checkout@v2
       - name: Build
         env:
@@ -209,7 +209,6 @@ jobs:
         platform:
           # ARM-based
           - amazonlinux2-arm64
-          - centos8-arm64
           - centos9-arm64
           - debian10-arm64
           - debian11-arm64
