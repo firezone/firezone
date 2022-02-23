@@ -4,6 +4,7 @@
 
 # install test suite
 
+Example of `hostnamectl` for each supported distro
 
 ```
 .
@@ -17,9 +18,15 @@
     .
 ```
 
+which will help drive the install script WIP 
+in case we add or remove platforms
 
 
-# now need a mock API too to avoid this (while testing above)
+# API throttle limits
+
+When iterating of each type of platform it's better to 
+have a cached version of the latest release rather
+than over throttle GitHub's API
 
 ```
 admin@ip-172-31-26-45:~/firezone/scripts/test$ curl -s https://api.github.com/repos/firezone/firezone/releases/latest 
@@ -32,3 +39,9 @@ admin@ip-172-31-26-45:~/firezone/scripts/test$ curl -s https://api.github.com/re
 }
 ```
 
+
+# WIP 
+
+- [ ] passing more than one parameter seems to be acting weird 
+- [ ] Ideaaly, if paramters behave _normally_ can have the ability to smoke test each platform or run live
+- [x] found slight variation os name 'Fedora Linux 35' unlike the previous 'Fedora 34'
