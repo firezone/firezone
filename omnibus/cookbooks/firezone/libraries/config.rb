@@ -233,6 +233,7 @@ class Firezone
         'WIREGUARD_IPV6_ENABLED' => attributes['wireguard']['ipv6']['enabled'].to_s,
         'WIREGUARD_IPV6_NETWORK' => attributes['wireguard']['ipv6']['network'],
         'WIREGUARD_IPV6_ADDRESS' => attributes['wireguard']['ipv6']['address'],
+        'MAX_DEVICES_PER_USER' => attributes['max_devices_per_user'].to_s,
         # Allow env var to override config
         'TELEMETRY_ENABLED' => ENV.fetch('TELEMETRY_ENABLED',
                                          attributes['telemetry']['enabled'] == false ? 'false' : 'true'),

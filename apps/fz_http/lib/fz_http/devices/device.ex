@@ -18,7 +18,7 @@ defmodule FzHttp.Devices.Device do
 
   import FzHttp.Queries.INET
 
-  alias FzHttp.Users.User
+  alias FzHttp.{Devices, Users.User}
 
   schema "devices" do
     field :uuid, Ecto.UUID, autogenerate: true
@@ -51,6 +51,7 @@ defmodule FzHttp.Devices.Device do
     |> put_next_ip(:ipv4)
     |> put_next_ip(:ipv6)
     |> shared_changeset()
+    |> validate_max_devices()
   end
 
   def update_changeset(device, attrs) do
@@ -123,6 +124,22 @@ defmodule FzHttp.Devices.Device do
     |> validate_in_network(:ipv6)
     |> unique_constraint(:public_key)
     |> unique_constraint([:user_id, :name])
+  end
+
+  defp validate_max_devices(changeset) do
+    user_id = changeset.changes.user_id || changeset.data.user_id
+    count = Devices.count(user_id)
+    max_devices = Application.fetch_env!(:fz_http, :max_devices_per_user)
+
+    if count >= max_devices do
+      add_error(
+        changeset,
+        :base,
+        "Maximum device limit reached. Remove an existing device before creating a new one."
+      )
+    else
+      changeset
+    end
   end
 
   defp validate_omitted_if_site(changeset, fields) when is_list(fields) do
