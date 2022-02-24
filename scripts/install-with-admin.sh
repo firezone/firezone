@@ -15,7 +15,7 @@ promptEmail() {
 }
 
 wireguardCheck() {
-  if [[ -z "$(sudo find /sys -name "*wireguard*")" ]]; then
+  if test -f /sys/module/wireguard/version; then
     echo "Error! WireGuard not detected. Please upgrade your kernel to at least 5.6 or install the WireGuard kernel module."
     echo "See more at https://www.wireguard.com/install/"
     exit
@@ -82,27 +82,29 @@ mapReleaseToDistro() {
      image_sub_string="opensuse15-x64"
   fi
 
-  echo hello: $image_sub_string
   if [[ -z "$image_sub_string" ]]; then
     echo "Unsupported Operating System. Aborting."
     exit
   fi
+
   latest_release=$(
     curl --silent https://api.github.com/repos/firezone/firezone/releases/latest |
-    grep '"browser_download_url"' |
+    grep browser_download_url |
     cut -d: -f2,3 |
     sed 's/\"//g' |
     grep $image_sub_string
   )
-  eval "$1='$latest_release'"
+  echo "url: "$latest_release
+  eval "$1='$latest_release'" # return url to 1st param
 }
 
 installAndDownloadArtifact() {
   url=$1
   file=$(basename $url)
-  echo $file
+  echo "Downloading: $url"
   cd /tmp
   curl -sL $url --output $file
+  echo "Installing: $file"
   if [[ "$url" =~ .*"deb".* ]]; then
     sudo dpkg -i $file
   else
@@ -110,7 +112,14 @@ installAndDownloadArtifact() {
   fi
 }
 
- main() {
+firezoneSetup() {
+  conf="/opt/firezone/embedded/cookbooks/firezone/attributes/default.rb"
+  sudo sed -i "s/firezone@localhost/$1/" $conf
+  sudo firezone-ctl reconfigure
+  sudo firezone-ctl create-or-reset-admin
+}
+
+main() {
   adminUser=''
   wireguardCheck
   kernelCheck kernelStatus
@@ -122,11 +131,10 @@ installAndDownloadArtifact() {
 
   releaseUrl=''
   mapReleaseToDistro releaseUrl
-  echo $releaseUrl
   echo "Press <ENTER> to install Control-C to Abort."
   read
   installAndDownloadArtifact $releaseUrl
-  firezone-ctl create-or-reset-admin $adminUser
+  firezoneSetup $adminUser
 }
 
 main
