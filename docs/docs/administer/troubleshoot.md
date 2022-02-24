@@ -30,10 +30,12 @@ If you're using `ufw`, this can be done by making sure the default routing
 policy is `allow`:
 
 ```text
-sudo ufw default allow routed
+ubuntu@fz:~$ sudo ufw default allow routed
+Default routed policy changed to 'allow'
+(be sure to update your rules accordingly)
 ```
 
-A typical `ufw` Firezone status might thus look like this:
+A `ufw` status for a typical Firezone server might look like this:
 
 ```text
 ubuntu@fz:~$ sudo ufw status verbose
