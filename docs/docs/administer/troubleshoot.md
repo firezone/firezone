@@ -16,41 +16,42 @@ To view Firezone logs, run `sudo firezone-ctl tail`.
 ## Debugging Connectivity Issues
 
 Most connectivity issues with Firezone are caused by other `iptables` or
-`nftables` rules which interfere with Firezone's operation.
+`nftables` rules which interfere with Firezone's operation. If you have rules
+active, you'll need to ensure these don't conflict with the Firezone rules.
 
-If you're experiencing connectivity issues, check to ensure the `iptables`
-ruleset is empty:
+### Internet Connectivity Drops when Tunnel is Active
+
+If your Internet connectivity drop whenever you activate your WireGuard
+connection, you should make sure that the `FORWARD` chain allows packets
+from your WireGuard clients to the destinations you want to allow through
+Firezone.
+
+If you're using `ufw`, this can be done by making sure the default routing
+policy is `allow`:
 
 ```text
-root@demo:~# iptables -L
-Chain INPUT (policy ACCEPT)
-target     prot opt source               destination
-
-Chain FORWARD (policy ACCEPT)
-target     prot opt source               destination
-
-Chain OUTPUT (policy ACCEPT)
-target     prot opt source               destination
+sudo ufw default allow routed
 ```
 
-Firezone ships with an embedded `nft` utility at
-`/opt/firezone/embedded/sbin/nft` that can be used to view and debug
-the kernel's `nftables` ruleset. On a fresh Firezone installation,
-your nftables ruleset should look something like this:
+A typical `ufw` Firezone status might thus look like this:
 
 ```text
-root@demo:~# /opt/firezone/embedded/sbin/nft list ruleset
-table inet firezone {
-  chain forward {
-    type filter hook forward priority filter; policy accept;
-  }
+ubuntu@fz:~$ sudo ufw status verbose
+Status: active
+Logging: on (low)
+Default: deny (incoming), allow (outgoing), allow (routed)
+New profiles: skip
 
-  chain postrouting {
-    type nat hook postrouting priority srcnat; policy accept;
-    oifname "enp1s0" masquerade random,persistent
-    oifname "enp6s0" masquerade random,persistent
-  }
-}
+To                         Action      From
+--                         ------      ----
+22/tcp                     ALLOW IN    Anywhere
+80/tcp                     ALLOW IN    Anywhere
+443/tcp                    ALLOW IN    Anywhere
+51820/udp                  ALLOW IN    Anywhere
+22/tcp (v6)                ALLOW IN    Anywhere (v6)
+80/tcp (v6)                ALLOW IN    Anywhere (v6)
+443/tcp (v6)               ALLOW IN    Anywhere (v6)
+51820/udp (v6)             ALLOW IN    Anywhere (v6)
 ```
 
 ## Need additional help?
