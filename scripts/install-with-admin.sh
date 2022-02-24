@@ -143,11 +143,9 @@ installAndDownloadArtifact() {
   fi
 }
 
-firezoneConfig() {
-  #firezone-ctl create-or-reset-admin $adminUser
-
+firezoneSetup() {
   conf="/opt/firezone/embedded/cookbooks/firezone/attributes/default.rb"
-  sudo sed -i "s/default\['firezone']\['admin_email'] = 'firezone@localhost'/default['firezone']['admin_email'] = '$1' $conf" 
+  sudo sed -i "s/firezone@localhost/$1/" $conf
   sudo firezone-ctl reconfigure
   sudo firezone-ctl create-or-reset-admin
 }
@@ -165,7 +163,7 @@ test_mapping() {
 
 main() {
   adminUser=''
-  #wireguardCheck
+  wireguardCheck
   kernelCheck kernelStatus
   promptEmail "Enter the administrator email you'd like to use for logging into this Firezone instance:" adminUser
   if [ "$kernelStatus" != "is supported" ]; then
@@ -178,7 +176,7 @@ main() {
   echo "Press <ENTER> to install Control-C to Abort."
   read
   installAndDownloadArtifact $releaseUrl
-  firezoneConfig $adminUser
+  firezoneSetup $adminUser
 }
 
 main
