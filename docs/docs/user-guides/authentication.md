@@ -10,6 +10,13 @@ description: >
 
 Firezone provides the ability to require authentication to establish VPN connections.
 
+**Note**: To re-authenticate a VPN session, a user will need to turn off their
+VPN connection and log in to the Firezone portal (URL specified during
+[deployment]({%link docs/deploy/prerequisites.md%})
+).
+
+![re-authenticate](https://user-images.githubusercontent.com/52545545/155812962-9b8688c1-00af-41e4-96c3-8fb52f840aed.gif){:width="600"}
+
 ## Web Authentication (default)
 
 Firezone will use the user's email address and password
