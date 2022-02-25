@@ -50,4 +50,4 @@ follow the steps below. You will need:
 Admin. If your company is using a Single Sign On provider (like Google or Okta),
 the Firezone portal will prompt you to authenticate via that provider.
 
-![re-authenticate](https://user-images.githubusercontent.com/52545545/155811459-bba6c4f5-ed85-4a35-bf95-ce6ff4fc2eb4.gif){:width="600"}
+![re-authenticate](https://user-images.githubusercontent.com/52545545/155812962-9b8688c1-00af-41e4-96c3-8fb52f840aed.gif){:width="600"}
