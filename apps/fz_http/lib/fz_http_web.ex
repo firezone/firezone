@@ -102,7 +102,7 @@ defmodule FzHttpWeb do
       # Import basic rendering functionality (render, render_layout, etc)
       import Phoenix.View
 
-      # Authentication helpers
+      # Authorization Helpers
       import FzHttpWeb.AuthorizationHelpers
 
       import FzHttpWeb.ErrorHelpers

@@ -4,14 +4,11 @@ defmodule FzHttpWeb.UserController do
   """
 
   alias FzHttp.Users
+  alias FzHttpWeb.Authentication
   use FzHttpWeb, :controller
 
-  plug :require_authenticated
-  plug :redirect_unauthenticated when action in [:index]
-
   def delete(conn, _params) do
-    user_id = get_session(conn, :user_id)
-    user = Users.get_user!(user_id)
+    user = Authentication.get_current_user(conn)
 
     case Users.delete_user(user) do
       {:ok, _user} ->

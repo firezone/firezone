@@ -38,6 +38,10 @@ defmodule FzHttp.Users do
 
   def get_user(id), do: Repo.get(User, id)
 
+  def get_by_email(email) do
+    Repo.get_by(User, email: email)
+  end
+
   def create_admin_user(attrs) do
     create_user_with_role(attrs, :admin)
   end
@@ -125,13 +129,8 @@ defmodule FzHttp.Users do
     Repo.all(query)
   end
 
-  # XXX: Assume only one admin
-  def admin do
-    Repo.one(
-      from u in User,
-        where: u.role == :admin,
-        limit: 1
-    )
+  def update_last_signed_in(user) do
+    update_user(user, %{last_signed_in_at: DateTime.utc_now()})
   end
 
   @doc """

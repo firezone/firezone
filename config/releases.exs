@@ -37,6 +37,7 @@ wireguard_mtu = System.fetch_env!("WIREGUARD_MTU")
 wireguard_endpoint = System.fetch_env!("WIREGUARD_ENDPOINT")
 telemetry_enabled = FzString.to_boolean(System.fetch_env!("TELEMETRY_ENABLED"))
 telemetry_id = System.fetch_env!("TELEMETRY_ID")
+guardian_secret_key = System.fetch_env!("GUARDIAN_SECRET_KEY")
 
 max_devices_per_user =
   System.fetch_env!("MAX_DEVICES_PER_USER")
@@ -127,6 +128,11 @@ config :fz_vpn,
   wireguard_interface_name: wireguard_interface_name,
   wireguard_port: wireguard_port,
   cli: FzVpn.CLI.Live
+
+# Guardian configuration
+config :fz_http, FzHttpWeb.Authentication,
+  issuer: "fz_http",
+  secret_key: guardian_secret_key
 
 config :fz_http,
   wireguard_dns: wireguard_dns,
