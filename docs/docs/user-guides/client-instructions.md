@@ -12,10 +12,12 @@ description: >
 _This is written for the end user who will be connecting
 to the Firezone VPN server._
 
+## Install and Setup
+
 Follow this guide to establish a connection to the
 VPN server through the WireGuard native client.
 
-## Step 1 - Install the native WireGuard client
+### Step 1 - Install the native WireGuard client
 
 Firezone is compatible with the official WireGuard clients found here:
 
@@ -27,13 +29,25 @@ Firezone is compatible with the official WireGuard clients found here:
 For operating systems not listed above see the Official WireGuard site: [
 https://www.wireguard.com/install/](https://www.wireguard.com/install/).
 
-## Step 2 - Download the connection config file
+### Step 2 - Download the connection config file
 
 This will end in `.conf` and be sent to you by the Firezone administrator.
 
-## Step 3 - Add the config to the client
+### Step 3 - Add the config to the client
 
 Open the WireGuard client and import the `.conf` file.
 Turn on the VPN connection by toggling the `Activate` switch.
 
 ![Client Instructions]({{site.asset_urls.client_instructions}}){:width="600"}
+
+## Authenticating your connection
+
+If your network admin has required periodic authentication to maintain your VPN connection,
+follow the steps below. You will need:
+
+* **URL of the Firezone portal**: Ask your Network Admin for the link.
+* **Credentials**: Your username and password should be provided by your Network
+Admin. If your company is using a Single Sign On provider (like Google or Okta),
+the Firezone portal will prompt you to authenticate via that provider.
+
+![re-authenticate](https://user-images.githubusercontent.com/52545545/155811459-bba6c4f5-ed85-4a35-bf95-ce6ff4fc2eb4.gif){:width="600"}
