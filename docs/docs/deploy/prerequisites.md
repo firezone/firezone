@@ -46,6 +46,7 @@ Firezone's operation. For help troubleshooting connectivity issues, see
 [troubleshoot]({% link docs/administer/troubleshoot.md %}).
 
 The image below shows this configuration on an AWS EC2 instance:
+
 ![Open ports](https://user-images.githubusercontent.com/52545545/155015583-41eec85c-3636-4436-94b9-222afd050c69.png){:width="600"}
 
 \
