@@ -58,14 +58,14 @@ defmodule FzHttpWeb.DeviceLive.Admin.ShowTest do
       "device" => %{"use_site_persistent_keepalive" => "false"}
     }
 
-    test "shows device details", %{authed_conn: conn, device: device} do
+    test "shows device details", %{admin_conn: conn, device: device} do
       path = Routes.device_admin_show_path(conn, :show, device)
       {:ok, _view, html} = live(conn, path)
       assert html =~ "#{device.name}"
       assert html =~ "<h4 class=\"title is-4\">Details</h4>"
     end
 
-    test "opens modal", %{authed_conn: conn, device: device} do
+    test "opens modal", %{admin_conn: conn, device: device} do
       path = Routes.device_admin_show_path(conn, :show, device)
       {:ok, view, _html} = live(conn, path)
 
@@ -76,7 +76,7 @@ defmodule FzHttpWeb.DeviceLive.Admin.ShowTest do
       assert_patched(view, Routes.device_admin_show_path(conn, :edit, device))
     end
 
-    test "allows name changes", %{authed_conn: conn, device: device} do
+    test "allows name changes", %{admin_conn: conn, device: device} do
       path = Routes.device_admin_show_path(conn, :edit, device)
       {:ok, view, _html} = live(conn, path)
 
@@ -89,7 +89,7 @@ defmodule FzHttpWeb.DeviceLive.Admin.ShowTest do
     end
 
     test "prevents allowed_ips changes when use_site_allowed_ips is true ", %{
-      authed_conn: conn,
+      admin_conn: conn,
       device: device
     } do
       path = Routes.device_admin_show_path(conn, :edit, device)
@@ -104,7 +104,7 @@ defmodule FzHttpWeb.DeviceLive.Admin.ShowTest do
     end
 
     test "prevents dns changes when use_site_dns is true", %{
-      authed_conn: conn,
+      admin_conn: conn,
       device: device
     } do
       path = Routes.device_admin_show_path(conn, :edit, device)
@@ -119,7 +119,7 @@ defmodule FzHttpWeb.DeviceLive.Admin.ShowTest do
     end
 
     test "prevents endpoint changes when use_site_endpoint is true", %{
-      authed_conn: conn,
+      admin_conn: conn,
       device: device
     } do
       path = Routes.device_admin_show_path(conn, :edit, device)
@@ -134,7 +134,7 @@ defmodule FzHttpWeb.DeviceLive.Admin.ShowTest do
     end
 
     test "prevents mtu changes when use_site_mtu is true", %{
-      authed_conn: conn,
+      admin_conn: conn,
       device: device
     } do
       path = Routes.device_admin_show_path(conn, :edit, device)
@@ -150,7 +150,7 @@ defmodule FzHttpWeb.DeviceLive.Admin.ShowTest do
 
     test "prevents persistent_keepalive changes when use_site_persistent_keepalive is true",
          %{
-           authed_conn: conn,
+           admin_conn: conn,
            device: device
          } do
       path = Routes.device_admin_show_path(conn, :edit, device)
@@ -164,7 +164,7 @@ defmodule FzHttpWeb.DeviceLive.Admin.ShowTest do
       assert test_view =~ "must not be present"
     end
 
-    test "allows allowed_ips changes", %{authed_conn: conn, device: device} do
+    test "allows allowed_ips changes", %{admin_conn: conn, device: device} do
       path = Routes.device_admin_show_path(conn, :edit, device)
       {:ok, view, _html} = live(conn, path)
 
@@ -179,7 +179,7 @@ defmodule FzHttpWeb.DeviceLive.Admin.ShowTest do
       assert html =~ @allowed_ips
     end
 
-    test "allows dns changes", %{authed_conn: conn, device: device} do
+    test "allows dns changes", %{admin_conn: conn, device: device} do
       path = Routes.device_admin_show_path(conn, :edit, device)
       {:ok, view, _html} = live(conn, path)
 
@@ -194,7 +194,7 @@ defmodule FzHttpWeb.DeviceLive.Admin.ShowTest do
       assert html =~ @dns
     end
 
-    test "allows endpoint changes", %{authed_conn: conn, device: device} do
+    test "allows endpoint changes", %{admin_conn: conn, device: device} do
       path = Routes.device_admin_show_path(conn, :edit, device)
       {:ok, view, _html} = live(conn, path)
 
@@ -209,7 +209,7 @@ defmodule FzHttpWeb.DeviceLive.Admin.ShowTest do
       assert html =~ @wireguard_endpoint
     end
 
-    test "allows mtu changes", %{authed_conn: conn, device: device} do
+    test "allows mtu changes", %{admin_conn: conn, device: device} do
       path = Routes.device_admin_show_path(conn, :edit, device)
       {:ok, view, _html} = live(conn, path)
 
@@ -224,7 +224,7 @@ defmodule FzHttpWeb.DeviceLive.Admin.ShowTest do
       assert html =~ "1280"
     end
 
-    test "allows persistent_keepalive changes", %{authed_conn: conn, device: device} do
+    test "allows persistent_keepalive changes", %{admin_conn: conn, device: device} do
       path = Routes.device_admin_show_path(conn, :edit, device)
       {:ok, view, _html} = live(conn, path)
 
@@ -239,7 +239,7 @@ defmodule FzHttpWeb.DeviceLive.Admin.ShowTest do
       assert html =~ "120"
     end
 
-    test "prevents empty names", %{authed_conn: conn, device: device} do
+    test "prevents empty names", %{admin_conn: conn, device: device} do
       path = Routes.device_admin_show_path(conn, :edit, device)
       {:ok, view, _html} = live(conn, path)
 
@@ -251,7 +251,7 @@ defmodule FzHttpWeb.DeviceLive.Admin.ShowTest do
       assert test_view =~ "can&#39;t be blank"
     end
 
-    test "on use_site_allowed_ips change", %{authed_conn: conn, device: device} do
+    test "on use_site_allowed_ips change", %{admin_conn: conn, device: device} do
       path = Routes.device_admin_show_path(conn, :edit, device)
       {:ok, view, _html} = live(conn, path)
 
@@ -265,7 +265,7 @@ defmodule FzHttpWeb.DeviceLive.Admin.ShowTest do
              """
     end
 
-    test "on use_site_dns change", %{authed_conn: conn, device: device} do
+    test "on use_site_dns change", %{admin_conn: conn, device: device} do
       path = Routes.device_admin_show_path(conn, :edit, device)
       {:ok, view, _html} = live(conn, path)
 
@@ -279,7 +279,7 @@ defmodule FzHttpWeb.DeviceLive.Admin.ShowTest do
              """
     end
 
-    test "on use_site_endpoint change", %{authed_conn: conn, device: device} do
+    test "on use_site_endpoint change", %{admin_conn: conn, device: device} do
       path = Routes.device_admin_show_path(conn, :edit, device)
       {:ok, view, _html} = live(conn, path)
 
@@ -293,7 +293,7 @@ defmodule FzHttpWeb.DeviceLive.Admin.ShowTest do
              """
     end
 
-    test "on use_site_mtu change", %{authed_conn: conn, device: device} do
+    test "on use_site_mtu change", %{admin_conn: conn, device: device} do
       path = Routes.device_admin_show_path(conn, :edit, device)
       {:ok, view, _html} = live(conn, path)
 
@@ -307,7 +307,7 @@ defmodule FzHttpWeb.DeviceLive.Admin.ShowTest do
              """
     end
 
-    test "on use_site_persistent_keepalive change", %{authed_conn: conn, device: device} do
+    test "on use_site_persistent_keepalive change", %{admin_conn: conn, device: device} do
       path = Routes.device_admin_show_path(conn, :edit, device)
       {:ok, view, _html} = live(conn, path)
 
@@ -325,7 +325,7 @@ defmodule FzHttpWeb.DeviceLive.Admin.ShowTest do
   describe "delete own device" do
     setup :create_device
 
-    test "successful", %{authed_conn: conn, device: device} do
+    test "successful", %{admin_conn: conn, device: device} do
       path = Routes.device_admin_show_path(conn, :show, device)
       {:ok, view, _html} = live(conn, path)
 
@@ -353,7 +353,7 @@ defmodule FzHttpWeb.DeviceLive.Admin.ShowTest do
   #   setup [:create_device, :create_other_user_device]
   #
   #   test "mount redirects to session path", %{
-  #     authed_conn: conn,
+  #     admin_conn: conn,
   #     device: _device,
   #     other_device: other_device
   #   } do

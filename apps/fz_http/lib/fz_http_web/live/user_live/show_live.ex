@@ -1,6 +1,7 @@
 defmodule FzHttpWeb.UserLive.Show do
   @moduledoc """
   Handles showing users.
+  XXX: Admin only
   """
   use FzHttpWeb, :live_view
 
@@ -10,10 +11,11 @@ defmodule FzHttpWeb.UserLive.Show do
   @impl Phoenix.LiveView
   def mount(%{"id" => user_id} = _params, _session, socket) do
     user = Users.get_user!(user_id)
+    devices = Devices.list_devices(user)
 
     {:ok,
      socket
-     |> assign(:devices, Devices.list_devices(user))
+     |> assign(:devices, devices)
      |> assign(:user, user)
      |> assign(:page_title, "Users")}
   end
@@ -22,8 +24,9 @@ defmodule FzHttpWeb.UserLive.Show do
   Called when a modal is dismissed; reload devices.
   """
   @impl Phoenix.LiveView
-  def handle_params(_params, _url, socket) do
-    devices = Devices.list_devices(socket.assigns.current_user.id)
+  def handle_params(%{"id" => user_id} = _params, _url, socket) do
+    user = Users.get_user!(user_id)
+    devices = Devices.list_devices(user.id)
 
     {:noreply,
      socket

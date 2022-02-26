@@ -13,11 +13,11 @@ defmodule FzHttpWeb.SettingLive.AccountTest do
   end
 
   describe "when live_action is show" do
-    test "shows account details", %{authed_conn: conn} do
+    test "shows account details", %{admin_user_id: user_id, admin_conn: conn} do
       path = Routes.setting_account_path(conn, :show)
       {:ok, _view, html} = live(conn, path)
 
-      user = Users.get_user!(get_session(conn, :user_id))
+      user = Users.get_user!(user_id)
 
       assert html =~ "Delete Your Account"
       assert html =~ user.email
@@ -33,7 +33,7 @@ defmodule FzHttpWeb.SettingLive.AccountTest do
                "Change email or enter new password below"
     end
 
-    test "saves email when submitted", %{authed_conn: conn} do
+    test "saves email when submitted", %{admin_conn: conn} do
       path = Routes.setting_account_path(conn, :edit)
       {:ok, view, _html} = live(conn, path)
 
@@ -45,7 +45,7 @@ defmodule FzHttpWeb.SettingLive.AccountTest do
       assert flash["info"] == "Account updated successfully."
     end
 
-    test "doesn't allow empty email", %{authed_conn: conn} do
+    test "doesn't allow empty email", %{admin_conn: conn} do
       path = Routes.setting_account_path(conn, :edit)
       {:ok, view, _html} = live(conn, path)
 
@@ -65,7 +65,7 @@ defmodule FzHttpWeb.SettingLive.AccountTest do
       assert test_view =~ "can&#39;t be blank"
     end
 
-    test "renders validation errors", %{authed_conn: conn} do
+    test "renders validation errors", %{admin_conn: conn} do
       path = Routes.setting_account_path(conn, :edit)
       {:ok, view, _html} = live(conn, path)
 
@@ -77,7 +77,7 @@ defmodule FzHttpWeb.SettingLive.AccountTest do
       assert test_view =~ "has invalid format"
     end
 
-    test "closes modal", %{authed_conn: conn} do
+    test "closes modal", %{admin_conn: conn} do
       path = Routes.setting_account_path(conn, :edit)
       {:ok, view, _html} = live(conn, path)
 

@@ -36,7 +36,7 @@ defmodule FzHttpWeb.SettingLive.SiteTest do
       "site" => %{"mtu" => "0"}
     }
 
-    setup %{authed_conn: conn} do
+    setup %{admin_conn: conn} do
       path = Routes.setting_site_path(conn, :show)
       {:ok, view, html} = live(conn, path)
 
