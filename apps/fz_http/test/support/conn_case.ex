@@ -19,7 +19,7 @@ defmodule FzHttpWeb.ConnCase do
 
   alias Ecto.Adapters.SQL.Sandbox
 
-  alias FzHttp.SessionsFixtures
+  alias FzHttp.UsersFixtures
 
   using do
     quote do
@@ -32,19 +32,16 @@ defmodule FzHttpWeb.ConnCase do
 
       # The default endpoint for testing
       @endpoint FzHttpWeb.Endpoint
+
+      def current_user(test_conn) do
+        get_session(test_conn)
+        |> FzHttpWeb.Authentication.get_current_user()
+      end
     end
   end
 
   def new_conn do
     Phoenix.ConnTest.build_conn()
-  end
-
-  def authed_conn(role \\ :admin) do
-    session = SessionsFixtures.session(%{role: role})
-
-    {session.id,
-     new_conn()
-     |> Plug.Test.init_test_session(%{user_id: session.id})}
   end
 
   def admin_conn do
@@ -55,6 +52,18 @@ defmodule FzHttpWeb.ConnCase do
     authed_conn(:unprivileged)
   end
 
+  defp authed_conn(role) do
+    user = UsersFixtures.user(%{role: role})
+
+    conn = new_conn() |> FzHttpWeb.Authentication.sign_in(user)
+
+    {user.id,
+     conn
+     |> Plug.Test.init_test_session(%{
+       "guardian_default_token" => conn.private.guardian_default_token
+     })}
+  end
+
   setup tags do
     :ok = Sandbox.checkout(FzHttp.Repo)
 
@@ -62,13 +71,14 @@ defmodule FzHttpWeb.ConnCase do
       Sandbox.mode(FzHttp.Repo, {:shared, self()})
     end
 
-    {_user_id, unprivileged_conn} = unprivileged_conn()
-    {user_id, authed_conn} = authed_conn()
+    {unprivileged_user_id, unprivileged_conn} = unprivileged_conn()
+    {admin_user_id, admin_conn} = admin_conn()
 
     {:ok,
-     user_id: user_id,
      unauthed_conn: new_conn(),
-     unprivileged_conn: unprivileged_conn,
-     authed_conn: authed_conn}
+     admin_user_id: admin_user_id,
+     unprivileged_user_id: unprivileged_user_id,
+     admin_conn: admin_conn,
+     unprivileged_conn: unprivileged_conn}
   end
 end

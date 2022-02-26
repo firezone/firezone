@@ -5,14 +5,14 @@ defmodule FzHttpWeb.UserLive.ShowTest do
   describe "authenticated show" do
     setup :create_device
 
-    test "includes the device name", %{authed_conn: conn, device: device} do
+    test "includes the device name", %{admin_conn: conn, device: device} do
       path = Routes.user_show_path(conn, :show, device.user_id)
       {:ok, _view, html} = live(conn, path)
 
       assert html =~ device.name
     end
 
-    test "opens the edit modal", %{authed_conn: conn, device: device} do
+    test "opens the edit modal", %{admin_conn: conn, device: device} do
       path = Routes.user_show_path(conn, :show, device.user_id)
       {:ok, view, _html} = live(conn, path)
 
@@ -36,7 +36,7 @@ defmodule FzHttpWeb.UserLive.ShowTest do
   end
 
   describe "delete self" do
-    test "displays flash message with error", %{user_id: user_id, authed_conn: conn} do
+    test "displays flash message with error", %{admin_user_id: user_id, admin_conn: conn} do
       path = Routes.user_show_path(conn, :show, user_id)
       {:ok, view, _html} = live(conn, path)
 
@@ -52,7 +52,7 @@ defmodule FzHttpWeb.UserLive.ShowTest do
   describe "delete_user" do
     setup :create_users
 
-    test "deletes the user", %{authed_conn: conn, users: users} do
+    test "deletes the user", %{admin_conn: conn, users: users} do
       user = List.last(users)
       path = Routes.user_show_path(conn, :show, user.id)
       {:ok, view, _html} = live(conn, path)
@@ -70,7 +70,7 @@ defmodule FzHttpWeb.UserLive.ShowTest do
   describe "edit user" do
     setup :create_users
 
-    setup %{users: users, authed_conn: conn} do
+    setup %{users: users, admin_conn: conn} do
       user = List.last(users)
       path = Routes.user_show_path(conn, :edit, user.id)
       {:ok, view, _html} = live(conn, path)

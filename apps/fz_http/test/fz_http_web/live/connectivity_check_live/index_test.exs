@@ -5,7 +5,7 @@ defmodule FzHttpWeb.ConnectivityCheckLive.IndexTest do
     setup :create_connectivity_checks
 
     test "show connectivity checks", %{
-      authed_conn: conn,
+      admin_conn: conn,
       connectivity_checks: connectivity_checks
     } do
       path = Routes.connectivity_check_index_path(conn, :index)
