@@ -42,7 +42,6 @@ defmodule FzHttpWeb.Authentication do
   end
 
   def sign_in(conn, user) do
-    # XXX: Put user socket id into session
     Telemetry.login(user)
     Users.update_last_signed_in(user)
     __MODULE__.Plug.sign_in(conn, user)

@@ -10,21 +10,11 @@ defmodule FzHttpWeb.Plug.Authorization do
   import FzHttpWeb.ControllerHelpers, only: [root_path_for_role: 2]
   alias FzHttpWeb.Authentication
 
-  @not_authorized "Not authorized to access this page"
+  @not_authorized "Not authorized."
 
   def init(opts), do: opts
 
-  def call(conn, :admin) do
-    require_user_with_role(conn, :admin)
-  end
-
-  def call(conn, :unprivileged) do
-    require_user_with_role(conn, :unprivileged)
-  end
-
-  def call(conn, _opts) do
-    not_authorized(conn)
-  end
+  def call(conn, role), do: require_user_with_role(conn, role)
 
   def require_user_with_role(conn, role) do
     user = Authentication.get_current_user(conn)
@@ -32,19 +22,10 @@ defmodule FzHttpWeb.Plug.Authorization do
     if user.role == role do
       conn
     else
-      not_authorized(conn)
+      conn
+      |> put_flash(:error, @not_authorized)
+      |> redirect(to: root_path_for_role(conn, user.role))
+      |> halt()
     end
-  end
-
-  def not_authorized(conn) do
-    conn
-    |> put_flash(:error, @not_authorized)
-    |> redirect(to: not_authorized_path(conn))
-    |> halt()
-  end
-
-  defp not_authorized_path(conn) do
-    user = Authentication.get_current_user(conn)
-    root_path_for_role(conn, user.role)
   end
 end
