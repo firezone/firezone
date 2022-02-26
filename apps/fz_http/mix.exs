@@ -63,7 +63,6 @@ defmodule FzHttp.MixProject do
       {:cloak_ecto, "~> 1.2"},
       {:excoveralls, "~> 0.14", only: :test},
       {:floki, ">= 0.0.0", only: :test},
-      {:guardian_phoenix, "~> 2.0"},
       {:guardian, "~> 2.0"},
       {:guardian_db, "~> 2.0"},
       {:ueberauth, "~> 0.6"},

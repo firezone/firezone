@@ -8,6 +8,8 @@ defmodule FzHttpWeb.Authentication do
   alias FzHttp.Users
   alias FzHttp.Users.User
 
+  @guardian_token_name "guardian_default_token"
+
   def subject_for_token(resource, _claims) do
     {:ok, to_string(resource.id)}
   end
@@ -17,6 +19,10 @@ defmodule FzHttpWeb.Authentication do
       nil -> {:error, :resource_not_found}
       user -> {:ok, user}
     end
+  end
+
+  def resource_from_session(%{@guardian_token_name => token} = _session) do
+    Guardian.resource_from_token(__MODULE__, token)
   end
 
   def authenticate(%User{} = user, password) do
@@ -50,7 +56,7 @@ defmodule FzHttpWeb.Authentication do
     __MODULE__.Plug.sign_out(conn)
   end
 
-  def get_current_user(conn) do
+  def get_current_user(%Plug.Conn{} = conn) do
     __MODULE__.Plug.current_resource(conn)
   end
 end

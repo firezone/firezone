@@ -30,6 +30,7 @@ defmodule FzHttpWeb.SessionController do
       {:ok, user} ->
         conn
         |> Authentication.sign_in(user)
+        |> put_session(:live_socket_id, "users_socket:#{user.id}")
         |> redirect(to: root_path_for_role(conn, user.role))
 
       {:error, :invalid_credentials} ->
