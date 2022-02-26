@@ -2,7 +2,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
   use FzHttpWeb.ConnCase, async: true
 
   describe "authenticated mount" do
-    test "loads the active sessions table", %{authed_conn: conn} do
+    test "loads the active sessions table", %{admin_conn: conn} do
       path = Routes.setting_security_path(conn, :show)
       {:ok, _view, html} = live(conn, path)
 

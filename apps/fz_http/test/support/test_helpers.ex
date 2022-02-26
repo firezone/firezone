@@ -8,7 +8,6 @@ defmodule FzHttp.TestHelpers do
     DevicesFixtures,
     Repo,
     RulesFixtures,
-    SessionsFixtures,
     Users,
     Users.User,
     UsersFixtures
@@ -80,11 +79,6 @@ defmodule FzHttp.TestHelpers do
   def create_user(_) do
     user = UsersFixtures.user()
     {:ok, user: user}
-  end
-
-  def create_session(_) do
-    session = SessionsFixtures.session()
-    {:ok, session: session}
   end
 
   def create_accept_rule(_) do

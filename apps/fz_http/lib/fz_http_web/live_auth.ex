@@ -3,23 +3,19 @@ defmodule FzHttpWeb.LiveAuth do
   Handles loading default assigns and authorizing.
   """
 
+  alias FzHttpWeb.Authentication
   import Phoenix.LiveView
   import FzHttpWeb.AuthorizationHelpers
-  alias FzHttp.Users
 
-  def on_mount(:admin, _params, %{"user_id" => user_id} = _session, socket) do
-    socket
-    |> assign_new(:current_user, fn -> Users.get_user(user_id) end)
-    |> authorize_role(:admin)
-  end
+  def on_mount(role, _params, session, socket) do
+    user = Authentication.get_current_user(session)
 
-  def on_mount(:unprivileged, _params, %{"user_id" => user_id} = _session, socket) do
-    socket
-    |> assign_new(:current_user, fn -> Users.get_user(user_id) end)
-    |> authorize_role(:unprivileged)
-  end
-
-  def on_mount(_scope, _params, _session, socket) do
-    {:halt, not_authorized(socket)}
+    if user do
+      socket
+      |> assign_new(:current_user, fn -> user end)
+      |> authorize_role(role)
+    else
+      {:halt, not_authorized(socket)}
+    end
   end
 end

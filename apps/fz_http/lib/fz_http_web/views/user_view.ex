@@ -7,7 +7,7 @@ defmodule FzHttpWeb.UserView do
   alias FzHttp.{Sites, Users}
 
   def admin_email do
-    Users.admin().email
+    Application.fetch_env!(:fz_http, :admin_email)
   end
 
   def vpn_sessions_expire? do

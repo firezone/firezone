@@ -41,6 +41,12 @@ config :posthog,
   api_url: "https://telemetry.firez.one",
   api_key: "phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK"
 
+# Guardian configuration
+config :fz_http, FzHttpWeb.Authentication,
+  issuer: "fz_http",
+  # Generate with mix guardian.gen.secret
+  secret_key: "GApJ4c4a/KJLrBePgTDUk0n67AbjCvI9qdypKZEaJFXl6s9H3uRcIhTt49Fij5UO"
+
 config :fz_http,
   telemetry_id: "543aae08-5a2b-428d-b704-2956dd3f5a57",
   url_host: "firezone.dev",
