@@ -21,7 +21,7 @@ behind a NAT or firewall.
 This example demonstrates a simple scenario where a connection is established
 between Peer A and Peer B.
 
-![node-to-node](https://user-images.githubusercontent.com/52545545/155856835-2ad1f686-d894-43d1-8862-e3a8fcccee5c.png)
+![node-to-node](https://user-images.githubusercontent.com/52545545/155856835-2ad1f686-d894-43d1-8862-e3a8fcccee5c.png){:width="600"}
 
 In the settings for each device, ensure the following parameters are set to the
 values listed below. You can edit device settings by clicking the `Edit` button
@@ -47,11 +47,11 @@ Peer B
 ## Admin Case - 1 to Many Nodes
 
 This example demonstrates a scenario where Peer A can communicate
-bi-directionally with Peers B through D. A real scenario involving this setup
-could be an administrator or engineer accessing multiple resources
+bi-directionally with Peers B through D. This configuration could represent an
+administrator or engineer accessing multiple resources
 (servers, containers, or machines) in different networks.
 
-![node-to-multiple-nodes](https://user-images.githubusercontent.com/52545545/155856838-03e968d9-bc1e-46ce-a32f-9f53f3566526.png)
+![node-to-multiple-nodes](https://user-images.githubusercontent.com/52545545/155856838-03e968d9-bc1e-46ce-a32f-9f53f3566526.png){:width="600"}
 
 In the WireGuard configuration files, ensure the following parameters are set
 to the values listed below. Note `PersistentKeepalive` can be set on the
