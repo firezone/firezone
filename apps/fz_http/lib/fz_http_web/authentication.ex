@@ -21,10 +21,6 @@ defmodule FzHttpWeb.Authentication do
     end
   end
 
-  def resource_from_session(%{@guardian_token_name => token} = _session) do
-    Guardian.resource_from_token(__MODULE__, token)
-  end
-
   def authenticate(%User{} = user, password) do
     authenticate(
       user,
@@ -58,5 +54,15 @@ defmodule FzHttpWeb.Authentication do
 
   def get_current_user(%Plug.Conn{} = conn) do
     __MODULE__.Plug.current_resource(conn)
+  end
+
+  def get_current_user(%{@guardian_token_name => token} = _session) do
+    case Guardian.resource_from_token(__MODULE__, token) do
+      {:ok, resource, _claims} ->
+        resource
+
+      {:error, _reason} ->
+        nil
+    end
   end
 end

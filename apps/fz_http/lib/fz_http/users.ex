@@ -97,7 +97,7 @@ defmodule FzHttp.Users do
     Repo.delete(user)
   end
 
-  def change_user(%User{} = user) do
+  def change_user(%User{} = user \\ struct(User)) do
     User.changeset(user, %{})
   end
 

@@ -3,7 +3,6 @@ defmodule FzHttpWeb.SessionController do
   Implements the CRUD for a Session
   """
 
-  alias FzHttp.Sessions
   alias FzHttp.Users
   alias FzHttpWeb.Authentication
 
@@ -18,7 +17,7 @@ defmodule FzHttpWeb.SessionController do
       conn
       |> render(
         "new.html",
-        changeset: Sessions.new_session(),
+        changeset: Users.change_user(),
         action: Routes.session_path(conn, :create)
       )
     end

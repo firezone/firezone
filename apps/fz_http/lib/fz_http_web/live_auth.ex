@@ -8,14 +8,14 @@ defmodule FzHttpWeb.LiveAuth do
   import FzHttpWeb.AuthorizationHelpers
 
   def on_mount(role, _params, session, socket) do
-    case Authentication.resource_from_session(session) do
-      {:ok, user, _claims} ->
-        socket
-        |> assign_new(:current_user, fn -> user end)
-        |> authorize_role(role)
+    user = Authentication.get_current_user(session)
 
-      {:error, _reason} ->
-        {:halt, not_authorized(socket)}
+    if user do
+      socket
+      |> assign_new(:current_user, fn -> user end)
+      |> authorize_role(role)
+    else
+      {:halt, not_authorized(socket)}
     end
   end
 end
