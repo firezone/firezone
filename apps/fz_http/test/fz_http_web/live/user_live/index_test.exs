@@ -50,7 +50,7 @@ defmodule FzHttpWeb.UserLive.IndexTest do
 
     test "redirects to sign in", %{unauthed_conn: conn} do
       path = Routes.user_index_path(conn, :index)
-      expected_path = Routes.session_path(conn, :new)
+      expected_path = Routes.root_path(conn, :index)
       assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
     end
   end

@@ -43,13 +43,12 @@ defmodule FzHttp.Users.User do
       :password,
       :password_confirmation
     ])
-    |> validate_required([:email, :password, :password_confirmation])
+    |> validate_required([:email])
     |> validate_password_equality()
     |> validate_length(:password, min: @min_password_length, max: @max_password_length)
     |> validate_format(:email, ~r/@/)
     |> unique_constraint(:email)
     |> put_password_hash()
-    |> validate_required([:password_hash])
   end
 
   # Sign in token

@@ -18,7 +18,7 @@ defmodule FzHttpWeb.DeviceLive.Admin.IndexTest do
     test "redirects to not authorized", %{admin_conn: conn} do
       path = Routes.device_admin_index_path(conn, :index)
       clear_users()
-      expected_path = Routes.session_path(conn, :new)
+      expected_path = Routes.root_path(conn, :index)
       assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
     end
   end
@@ -26,7 +26,7 @@ defmodule FzHttpWeb.DeviceLive.Admin.IndexTest do
   describe "unauthenticated" do
     test "mount redirects to session path", %{unauthed_conn: conn} do
       path = Routes.device_admin_index_path(conn, :index)
-      expected_path = Routes.session_path(conn, :new)
+      expected_path = Routes.root_path(conn, :index)
       assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
     end
   end

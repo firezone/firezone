@@ -17,13 +17,13 @@ defmodule FzHttpWeb.UserController do
         conn
         |> clear_session()
         |> put_flash(:info, "Account deleted successfully.")
-        |> redirect(to: Routes.session_path(conn, :new))
+        |> redirect(to: Routes.root_path(conn, :index))
 
       {:error, msg} ->
         conn
         |> clear_session()
         |> put_flash(:error, "Error deleting account: #{msg}")
-        |> redirect(to: Routes.session_path(conn, :new))
+        |> redirect(to: Routes.root_path(conn, :index))
     end
   end
 end

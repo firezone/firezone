@@ -58,6 +58,21 @@ config :fz_wall,
   egress_interface: egress_interface,
   cli: FzWall.CLI.Sandbox
 
+# Dummy auth
+if System.get_env("OKTA_AUTH_ENABLED") do
+  config :ueberauth, Ueberauth.Strategy.Okta.OAuth,
+    client_id: System.get_env("OKTA_CLIENT_ID"),
+    client_secret: System.get_env("OKTA_CLIENT_SECRET"),
+    site: System.get_env("OKTA_SITE")
+end
+
+if System.get_env("GOOGLE_AUTH_ENABLED") do
+  config :ueberauth, Ueberauth.Strategy.Google.OAuth,
+    client_id: System.get_env("GOOGLE_CLIENT_ID"),
+    client_secret: System.get_env("GOOGLE_CLIENT_SECRET"),
+    redirect_uri: System.get_env("GOOGLE_REDIRECT_URI")
+end
+
 # ## SSL Support
 #
 # In order to use HTTPS in development, a self-signed

@@ -21,12 +21,20 @@ defmodule FzHttpWeb.Authentication do
     end
   end
 
+  @doc """
+  Authenticates a user against a password hash. Only makes sense
+  for local auth.
+  """
   def authenticate(%User{} = user, password) do
-    authenticate(
-      user,
-      password,
-      Argon2.verify_pass(password, user.password_hash)
-    )
+    if user.password_hash do
+      authenticate(
+        user,
+        password,
+        Argon2.verify_pass(password, user.password_hash)
+      )
+    else
+      authenticate(nil, password)
+    end
   end
 
   def authenticate(nil, password) do
@@ -44,7 +52,7 @@ defmodule FzHttpWeb.Authentication do
   def sign_in(conn, user) do
     Telemetry.login(user)
     Users.update_last_signed_in(user)
-    __MODULE__.Plug.sign_in(conn, user)
+    __MODULE__.Plug.sign_in(conn, user, %{}, ttl: {1, :day})
   end
 
   def sign_out(conn) do

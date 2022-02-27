@@ -3,16 +3,21 @@ defmodule FzHttpWeb.RootController do
   Handles redirecting from /
   """
   use FzHttpWeb, :controller
-  alias FzHttpWeb.Authentication
 
   def index(conn, _params) do
-    if user = Authentication.get_current_user(conn) do
-      conn
-      |> redirect(to: root_path_for_role(conn, user.role))
-    else
-      conn
-      |> put_flash(:error, "You must be signed in.")
-      |> redirect(to: Routes.session_path(conn, :new))
-    end
+    conn
+    |> render(
+      "auth.html",
+      okta_enabled: okta_enabled(),
+      google_enabled: google_enabled()
+    )
+  end
+
+  defp okta_enabled do
+    is_list(Application.get_env(:ueberauth, Ueberauth.Strategy.Okta.OAuth))
+  end
+
+  defp google_enabled do
+    is_list(Application.get_env(:ueberauth, Ueberauth.Strategy.Google.OAuth))
   end
 end

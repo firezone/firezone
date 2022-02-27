@@ -9,7 +9,7 @@ defmodule FzHttpWeb.AuthorizationHelpers do
   def not_authorized(socket) do
     socket
     |> put_flash(:error, "Not authorized.")
-    |> redirect(to: Routes.session_path(socket, :new))
+    |> redirect(to: Routes.root_path(socket, :index))
   end
 
   def has_role?(%Phoenix.LiveView.Socket{} = socket, role) do

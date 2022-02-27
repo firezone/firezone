@@ -74,6 +74,36 @@ default['firezone']['install_path'] = node['firezone']['install_directory']
 # (for the file) sequence of 1-4 characters.
 default['firezone']['sysvinit_id'] = 'SUP'
 
+# ## Authentication
+
+# These settings control authentication-related aspects of Firezone.
+# For more information, see https://docs.firez.one/docs/user-guides/authentication/
+#
+# Authentication method. Choose one of the following:
+# 'local': Local email/password authentication (default)
+# 'okta': Use Okta SSO
+# 'google': Use Google SSO
+#
+# When 'local' authentication method is used, administrators will need to add
+# each user to Firezone one-by-one before they can log in.
+#
+# When SSO authentication methods are used, users are automatically added to Firezone
+# when logging in for the first time via the SSO provider.
+#
+# Users are uniquely identified by their email address, and may log in via multiple providers
+# if configured.
+
+# If using the 'okta' authentication method, set 'enabeld' to true and configure relevant settings here.
+default['firezone']['authentication']['okta']['enabled'] = false
+default['firezone']['authentication']['okta']['client_id'] = nil
+default['firezone']['authentication']['okta']['client_secret'] = nil
+default['firezone']['authentication']['okta']['site'] = 'https://your-domain.okta.com'
+
+# If using the 'google' authentication method, set 'enabled' to true configure relevant settings here.
+default['firezone']['authentication']['google']['enabled'] = false
+default['firezone']['authentication']['google']['client_id'] = nil
+default['firezone']['authentication']['google']['client_secret'] = nil
+
 # ## Nginx
 
 # These attributes control Firezone-specific portions of the Nginx

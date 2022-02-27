@@ -13,7 +13,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
   describe "unauthenticated mount" do
     test "redirects to not authorized", %{unauthed_conn: conn} do
       path = Routes.setting_security_path(conn, :show)
-      expected_path = Routes.session_path(conn, :new)
+      expected_path = Routes.root_path(conn, :index)
 
       assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
     end

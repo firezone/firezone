@@ -195,7 +195,7 @@ defmodule FzHttpWeb.SettingLive.SiteTest do
     @tag :unauthed
     test "mount redirects to session path", %{unauthed_conn: conn} do
       path = Routes.setting_site_path(conn, :show)
-      expected_path = Routes.session_path(conn, :new)
+      expected_path = Routes.root_path(conn, :index)
       assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
     end
   end

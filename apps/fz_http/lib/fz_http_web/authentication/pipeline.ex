@@ -8,6 +8,8 @@ defmodule FzHttpWeb.Authentication.Pipeline do
     error_handler: FzHttpWeb.Authentication.ErrorHandler,
     module: FzHttpWeb.Authentication
 
-  plug Guardian.Plug.VerifySession, claims: %{"typ" => "access"}
+  @claims %{"typ" => "access"}
+
+  plug Guardian.Plug.VerifySession, claims: @claims, refresh_from_cookie: true
   plug Guardian.Plug.LoadResource, allow_blank: true
 end
