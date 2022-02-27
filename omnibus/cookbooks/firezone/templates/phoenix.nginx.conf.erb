@@ -19,7 +19,7 @@ server {
 <% if @nginx['force_ssl'] -%>
   location / {
     <% if @nginx['enable_rate_limiting'] -%>
-      limit_req_zone zone=<%= @nginx['rate_limiting_zone_name'] %>;
+      limit_req zone=<%= @nginx['rate_limiting_zone_name'] %>;
 
     <% end -%>
     if ($http_x_forwarded_proto != 'https') {
