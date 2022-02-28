@@ -9,7 +9,7 @@ description: >
 ---
 ---
 
-Firezone supports Single Sign-On (SSO) through Gmail / Google Workspace / GSuite.
+Firezone supports Single Sign-On (SSO) through Google Workspace.
 After successfully configuring SSO with Firezone, users will be prompted to sign
 in with their Google credentials to in the Firezone portal to authenticate VPN
 sessions, and download device configuration files.
