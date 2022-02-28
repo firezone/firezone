@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Web
-nav_order: 2
+nav_order: 10
 parent: Authentication
 description: >
   This page contains instructions on setting up simple
