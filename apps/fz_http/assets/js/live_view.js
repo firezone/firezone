@@ -71,7 +71,8 @@ const sessionConnect = function (pres) {
         rows +=
           `<tr>
             <td>${FormatTimestamp(meta.online_at)}</td>
-            <td>${FormatTimestamp(meta.last_signed_in_at)}</td>
+            <td>${FormatTimestamp(meta.last_signed_in_at)} via ${meta.last_signed_in_at || "identity"}</td>
+            <td>${meta.last_signed_in_method}</td>
             <td>${meta.remote_ip}</td>
             <td>${meta.user_agent}</td>
           </tr>`

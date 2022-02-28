@@ -93,16 +93,17 @@ default['firezone']['sysvinit_id'] = 'SUP'
 # Users are uniquely identified by their email address, and may log in via multiple providers
 # if configured.
 
-# If using the 'okta' authentication method, set 'enabeld' to true and configure relevant settings here.
+# If using the 'okta' authentication method, set 'enabeld' to true and configure relevant settings below.
 default['firezone']['authentication']['okta']['enabled'] = false
 default['firezone']['authentication']['okta']['client_id'] = nil
 default['firezone']['authentication']['okta']['client_secret'] = nil
 default['firezone']['authentication']['okta']['site'] = 'https://your-domain.okta.com'
 
-# If using the 'google' authentication method, set 'enabled' to true configure relevant settings here.
+# If using the 'google' authentication method, set 'enabled' to true and configure relevant settings below.
 default['firezone']['authentication']['google']['enabled'] = false
 default['firezone']['authentication']['google']['client_id'] = nil
 default['firezone']['authentication']['google']['client_secret'] = nil
+default['firezone']['authentication']['google']['redirect_uri'] = nil
 
 # ## Nginx
 

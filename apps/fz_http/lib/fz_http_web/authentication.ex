@@ -49,10 +49,10 @@ defmodule FzHttpWeb.Authentication do
     {:error, :invalid_credentials}
   end
 
-  def sign_in(conn, user) do
+  def sign_in(conn, user, auth) do
     Telemetry.login(user)
-    Users.update_last_signed_in(user)
-    __MODULE__.Plug.sign_in(conn, user, %{}, ttl: {1, :day})
+    Users.update_last_signed_in(user, auth)
+    __MODULE__.Plug.sign_in(conn, user)
   end
 
   def sign_out(conn) do
