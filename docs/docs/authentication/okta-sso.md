@@ -18,10 +18,9 @@ sessions, and download device configuration files.
 
 To set up SSO, follow the steps below:
 
-
 ## Step 1 - Create Okta App Integration
 
-_This section of the guide is based on 
+_This section of the guide is based on
 [Okta's documentation](https://help.okta.com/en/prod/Content/Topics/Apps/Apps_Apps.htm)._
 
 In the Admin Console, go to `Applications > Applications` and click `Create App Integration`.

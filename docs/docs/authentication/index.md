@@ -10,6 +10,15 @@ description: >
 ---
 
 Firezone provides the ability to require authentication to establish VPN connections.
+Firezone supports the following authentication methods:
+
+* [Google]({%link docs/authentication/google-sso.md%})
+* [Okta]({%link docs/authentication/okta-sso.md%})
+* [Web (default)]({%link docs/authentication/web-auth.md%})
+
+If you currently use an identity provider that is not listed above,
+please open a
+[GitHub issue](https://github.com/firezone/firezone/issues).
 
 **Note**: To re-authenticate a VPN session, a user will need to turn off their
 VPN connection and log in to the Firezone portal (URL specified during
@@ -17,19 +26,3 @@ VPN connection and log in to the Firezone portal (URL specified during
 ).
 
 ![re-authenticate](https://user-images.githubusercontent.com/52545545/155812962-9b8688c1-00af-41e4-96c3-8fb52f840aed.gif){:width="600"}
-
-## Web Authentication (default)
-
-Firezone will use the user's email address and password
-to authenticate their VPN session.
-You can set the session length to a minimum of 1 hour and maximum of 90 days.
-Setting this to Never disables this setting, allowing VPN sessions indefinitely.
-This is the default.
-
-![Add Web Auth](https://user-images.githubusercontent.com/52545545/153466175-0e1c3ec8-aa3a-42a9-a915-748c9432a10c.png){:width="600"}
-
-## Single Sign On (coming soon)
-
-Single Sign-On is currently under development!
-[Contact us](https://e04kusl9oz5.typeform.com/to/Ls4rbMSR#source=docs)
-to share your requirements and be notified when it's available.
