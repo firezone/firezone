@@ -1,6 +1,6 @@
 ---
 layout: default
-title: Google SSO
+title: Google
 nav_order: 1
 parent: Authentication
 description: >
@@ -14,7 +14,7 @@ After successfully configuring SSO with Firezone, users will be prompted to sign
 in with their Google credentials to in the Firezone portal to authenticate VPN
 sessions, and download device configuration files.
 
-![Firezone Google SSO Login]()
+![Firezone Google SSO Login](){:width="600"}
 
 To set up SSO, follow the steps below:
 
@@ -33,8 +33,8 @@ On the OAuth client ID creation screen:
 
 1. Set `Application Type` to `Web application`
 1. Add an entry to `Authorized redirect URIs` with the
-`auth/google/callback` page on your Firezone domain. In this example the domain
-is `https://firezone.example.com`),
+`auth/google/callback` page on your Firezone's fully qualified domain name.
+In this example the domain is `https://firezone.example.com`),
 **but yours will be different**. The redirect URI is where the service will redirect
 the user after they authorize (or deny) the Firezone application.
 
