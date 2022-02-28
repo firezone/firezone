@@ -33,6 +33,11 @@ h1, h2, h3, h4, h5, h6 {
   margin: 1rem;
 }
 
+strong {
+  font-weight: 900 !important;
+  color: $fz-grey-dk-300 !important;
+}
+
 // Borders
 
 $border-color: $fz-grey-lt-200;
