@@ -22,14 +22,31 @@ wireguardCheck() {
   fi
 }
 
+versionDiff() {
+  echo $1 vs $2
+  if [[ $1 == $2 ]];then
+    eval "$3=0"
+    return
+  fi
+  max=$(printf "$1\n$2\n" | sort -r | head -n 1)
+  if [[ $max == $2 ]]; then
+    eval "$3='-1'"
+  else
+    eval "$3='+1'"
+  fi
+}
+
 kernelCheck() {
-   kernel_version=$(uname -r | cut -d- -f1 | cut -d. -f1)
-   if [ "$kernel_version" -ge "4" ]
-   then
-     eval "$1='is supported'"
-   else
-     eval "$1='\'$kernel_version\': is not supported'"
-   fi
+  not_supported="4.19"
+  current=$(uname -r | cut -d- -f1)
+  versionDiff $not_supported $current result
+  #echo $result
+  if [[ $result != -1 ]] ; then
+    echo "Kernel is is not supported $(uname)"
+    exit
+  else
+    echo "Kernel is supported"
+  fi
 }
 
 # * determines distro; aborts if it can't detect or is not supported
@@ -122,7 +139,7 @@ firezoneSetup() {
 main() {
   adminUser=''
   wireguardCheck
-  kernelCheck kernelStatus
+  kernelCheck
   promptEmail "Enter the administrator email you'd like to use for logging into this Firezone instance:" adminUser
   if [ "$kernelStatus" != "is supported" ]; then
     echo "$kernelStatus. Quitting."
