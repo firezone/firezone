@@ -18,10 +18,18 @@ fi
 # Fixes setcap not found on centos 7
 PATH=/usr/sbin/:$PATH
 
+# Disable connectivity checks
 conf="/opt/firezone/embedded/cookbooks/firezone/attributes/default.rb"
 search="default\['firezone']\['connectivity_checks']\['enabled'] = true"
 replace="default['firezone']['connectivity_checks']['enabled'] = false"
 sudo -E sed -i "s/$search/$replace/" $conf
+
+# Disable telemetry
+search="default\['firezone']\['telemetry']\['enabled'] = true"
+search="default['firezone']['telemetry']['enabled'] = false"
+sudo -E sed -i "s/$search/$replace/" $conf
+
+# Bootstrap config
 sudo -E firezone-ctl reconfigure
 
 # Wait for app to fully boot
@@ -44,7 +52,6 @@ echo $page
 
 echo "Testing for sign in button"
 echo $page | grep '<button class="button" type="submit">Sign In</button>'
-
 
 echo "Testing telemetry_id survives reconfigures"
 tid1=`sudo cat /var/opt/firezone/cache/telemetry_id`
