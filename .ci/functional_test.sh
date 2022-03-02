@@ -18,21 +18,25 @@ fi
 # Fixes setcap not found on centos 7
 PATH=/usr/sbin/:$PATH
 
+conf="/opt/firezone/embedded/cookbooks/firezone/attributes/default.rb"
+search="default\['firezone']\['connectivity_checks']\['enabled'] = true"
+replace="default['firezone']['connectivity_checks']['enabled'] = false"
+sudo -E sed -i "s/$search/$replace/" $conf
 sudo -E firezone-ctl reconfigure
-sudo -E bash -c "echo \"default['firezone']['connectivity_checks']['enabled'] = false\" >> /etc/firezone/firezone.rb"
-sudo -E firezone-ctl reconfigure
-
-sudo -E firezone-ctl create-or-reset-admin
-
-# XXX: Add more commands here to test
 
 # Wait for app to fully boot
-sleep 10
+sleep 5
 
 # Helpful for debugging
 sudo cat /var/log/firezone/nginx/current
 sudo cat /var/log/firezone/postgresql/current
 sudo cat /var/log/firezone/phoenix/current
+sudo cat /var/log/firezone/wireguard/current
+
+# Create admin; requires application to be up
+sudo -E firezone-ctl create-or-reset-admin
+
+# XXX: Add more commands here to test
 
 echo "Trying to load homepage"
 page=$(curl -L -i -vvv -k https://localhost)
