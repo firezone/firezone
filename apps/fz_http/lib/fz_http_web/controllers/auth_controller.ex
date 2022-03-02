@@ -15,9 +15,13 @@ defmodule FzHttpWeb.AuthController do
     |> render("request.html", callback_url: Helpers.callback_url(conn))
   end
 
-  def callback(%{assigns: %{ueberauth_failure: fails}} = conn, _params) do
+  def callback(%{assigns: %{ueberauth_failure: %{errors: errors}}} = conn, _params) do
+    msg =
+      errors
+      |> Enum.map_join(". ", fn error -> error.message end)
+
     conn
-    |> put_flash(:error, to_string(fails))
+    |> put_flash(:error, msg)
     |> redirect(to: Routes.root_path(conn, :index))
   end
 
@@ -32,7 +36,7 @@ defmodule FzHttpWeb.AuthController do
 
       {:error, reason} ->
         conn
-        |> put_flash(:error, reason)
+        |> put_flash(:error, "Error signing in: #{reason}")
         |> request(%{})
     end
   end

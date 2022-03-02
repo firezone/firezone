@@ -1,6 +1,6 @@
 defmodule FzHttpWeb.RootController do
   @moduledoc """
-  Handles redirecting from /
+  Firezone landing page -- show auth methods.
   """
   use FzHttpWeb, :controller
 
@@ -8,16 +8,13 @@ defmodule FzHttpWeb.RootController do
     conn
     |> render(
       "auth.html",
-      okta_enabled: okta_enabled(),
-      google_enabled: google_enabled()
+      okta_enabled: conf(:okta_auth_enabled),
+      google_enabled: conf(:google_auth_enabled),
+      local_enabled: conf(:local_auth_enabled)
     )
   end
 
-  defp okta_enabled do
-    is_list(Application.get_env(:ueberauth, Ueberauth.Strategy.Okta.OAuth))
-  end
-
-  defp google_enabled do
-    is_list(Application.get_env(:ueberauth, Ueberauth.Strategy.Google.OAuth))
+  defp conf(key) do
+    Application.fetch_env!(:fz_http, key)
   end
 end

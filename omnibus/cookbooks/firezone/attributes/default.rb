@@ -79,19 +79,17 @@ default['firezone']['sysvinit_id'] = 'SUP'
 # These settings control authentication-related aspects of Firezone.
 # For more information, see https://docs.firez.one/docs/user-guides/authentication/
 #
-# Authentication method. Choose one of the following:
-# 'local': Local email/password authentication (default)
-# 'okta': Use Okta SSO
-# 'google': Use Google SSO
-#
-# When 'local' authentication method is used, administrators will need to add
-# each user to Firezone one-by-one before they can log in.
+# When local email/password authentication is used, users must be created by an Administrator
+# before they can log in.
 #
 # When SSO authentication methods are used, users are automatically added to Firezone
 # when logging in for the first time via the SSO provider.
 #
 # Users are uniquely identified by their email address, and may log in via multiple providers
 # if configured.
+
+# Local email/password authentication is enabled by default
+default['firezone']['authentication']['local']['enabled'] = true
 
 # If using the 'okta' authentication method, set 'enabeld' to true and configure relevant settings below.
 default['firezone']['authentication']['okta']['enabled'] = false

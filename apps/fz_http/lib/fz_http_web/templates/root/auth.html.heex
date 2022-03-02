@@ -7,12 +7,14 @@
     Please sign in via one of the methods below.
   </p>
 
-  <p>
-    <%= link(
-        "Sign in with email/password",
-        to: Routes.auth_path(@conn, :request, "identity"),
-        class: "button") %>
-  </p>
+  <%= if @local_enabled do %>
+    <p>
+      <%= link(
+          "Sign in with email",
+          to: Routes.auth_path(@conn, :request, "identity"),
+          class: "button") %>
+    </p>
+  <% end %>
 
   <%= if @okta_enabled do %>
     <p>

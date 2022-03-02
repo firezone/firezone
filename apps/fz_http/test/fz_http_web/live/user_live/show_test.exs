@@ -36,8 +36,8 @@ defmodule FzHttpWeb.UserLive.ShowTest do
   end
 
   describe "delete self" do
-    test "displays flash message with error", %{admin_user_id: user_id, admin_conn: conn} do
-      path = Routes.user_show_path(conn, :show, user_id)
+    test "displays flash message with error", %{admin_user: user, admin_conn: conn} do
+      path = Routes.user_show_path(conn, :show, user.id)
       {:ok, view, _html} = live(conn, path)
 
       new_view =

@@ -123,19 +123,6 @@ config :fz_http, FzHttp.Vault,
     }
   ]
 
-# Enabled local email / password authentication
-config :ueberauth, Ueberauth,
-  providers: [
-    okta: {Ueberauth.Strategy.Okta, []},
-    google: {Ueberauth.Strategy.Google, []},
-    identity:
-      {Ueberauth.Strategy.Identity,
-       [
-         callback_methods: ["POST"],
-         uid_field: :email
-       ]}
-  ]
-
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{Mix.env()}.exs"

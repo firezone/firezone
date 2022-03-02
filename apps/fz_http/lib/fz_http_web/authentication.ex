@@ -25,7 +25,7 @@ defmodule FzHttpWeb.Authentication do
   Authenticates a user against a password hash. Only makes sense
   for local auth.
   """
-  def authenticate(%User{} = user, password) do
+  def authenticate(%User{} = user, password) when is_binary(password) do
     if user.password_hash do
       authenticate(
         user,
@@ -33,12 +33,12 @@ defmodule FzHttpWeb.Authentication do
         Argon2.verify_pass(password, user.password_hash)
       )
     else
-      authenticate(nil, password)
+      {:error, :invalid_credentials}
     end
   end
 
-  def authenticate(nil, password) do
-    authenticate(nil, password, Argon2.no_user_verify())
+  def authenticate(_user, _password) do
+    authenticate(nil, nil, Argon2.no_user_verify())
   end
 
   defp authenticate(user, _password, true) do

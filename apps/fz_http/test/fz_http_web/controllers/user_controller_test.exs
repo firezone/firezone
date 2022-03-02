@@ -12,8 +12,8 @@ defmodule FzHttpWeb.UserControllerTest do
   end
 
   describe "when user is already deleted" do
-    test "returns 404", %{admin_user_id: user_id, admin_conn: conn} do
-      user_id
+    test "returns 404", %{admin_user: user, admin_conn: conn} do
+      user.id
       |> Users.get_user!()
       |> Users.delete_user()
 

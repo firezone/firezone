@@ -246,6 +246,7 @@ class Firezone
         'CONNECTIVITY_CHECKS_INTERVAL' => attributes['connectivity_checks']['interval'].to_s,
 
         # Auth
+        'LOCAL_AUTH_ENABLED' => attributes['authentication']['local']['enabled'].to_s,
         'OKTA_AUTH_ENABLED' => attributes['authentication']['okta']['enabled'].to_s,
         'OKTA_CLIENT_ID' => attributes['authentication']['okta']['client_id'].to_s,
         'OKTA_CLIENT_SECRET' => attributes['authentication']['okta']['client_secret'].to_s,
