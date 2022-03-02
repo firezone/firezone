@@ -22,16 +22,23 @@ list grows.
 
 ## AWS Example
 
-In this example, a Firezone instance has already been set up on
-a `tc2.micro` EC2 instance.
-See the
+Our goal is to configure VPN traffic to the restricted resource to be routed
+through a Firezone server on an EC2 instance. In this case Firezone is acting as
+a network proxy or NAT gateway to provide a single public egress IP for all the
+devices connected to it.
+
+### Step 1 - Deploy Firezone server
+
+In this example, a Firezone instance has been set up on a `tc2.micro`
+EC2 instance. See the
 [Deployment Guide]({% link docs/deploy/index.md %})
-for details on deploying Firezone.
+for details on deploying Firezone. Specific to AWS, ensure:
 
-### Step 1 - Set a static IP for the Firezone instance
-
-Create and associate an Elastic IP with the Firezone instance. In this case the
-IP is `52.202.88.54`.
+1. The security group of the Firezone EC2 instance allows outbound traffic to the
+IP of the protected resource.
+1. An Elastic IP is associated with the Firezone instance. This will be the
+source IP address of traffic routed through the Firezone instance to external destinations.
+In this case the IP is `52.202.88.54`.
 
 ![Allocate Elastic IP](https://user-images.githubusercontent.com/52545545/154821256-9335703b-a120-4a9d-b9f5-bbca673cef63.png){:width="600"}
 
