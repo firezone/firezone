@@ -148,7 +148,7 @@ defmodule FzHttp.Users do
   end
 
   def vpn_session_expired?(user, duration) do
-    max = Site.max_key_ttl()
+    max = Site.max_vpn_session_duration()
 
     case duration do
       0 ->
