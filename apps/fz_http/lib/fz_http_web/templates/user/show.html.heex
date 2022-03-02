@@ -4,6 +4,11 @@
       <p>
         Your VPN session expired at:
       </p>
+      <p>
+        Please
+        <%= link("reauthenticate", to: Routes.auth_path(@conn, :delete), method: :delete) %>
+        to renew your VPN session.
+      </p>
     <% else %>
       <p>
         Your VPN session expires at:
@@ -14,6 +19,8 @@
         <span data-timestamp={vpn_expires_at(@user)}>...</span>
       </strong>
     </p>
+    <%= link("Reauthenticate", to: Routes.auth_path(@conn, :delete), method: :delete) %>
+    to renew your VPN session.
   <% else %>
     Your VPN session is active indefinitely.
   <% end %>
