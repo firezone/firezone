@@ -23,7 +23,6 @@ wireguardCheck() {
 }
 
 versionDiff() {
-  echo $1 vs $2
   if [[ $1 == $2 ]];then
     eval "$3=0"
     return
@@ -40,12 +39,11 @@ kernelCheck() {
   not_supported="4.19"
   current=$(uname -r | cut -d- -f1)
   versionDiff $not_supported $current result
-  #echo $result
   if [[ $result != -1 ]] ; then
     echo "Kernel is is not supported $(uname)"
     exit
   else
-    echo "Kernel is supported"
+    : # empty statement in bash
   fi
 }
 
@@ -141,11 +139,6 @@ main() {
   wireguardCheck
   kernelCheck
   promptEmail "Enter the administrator email you'd like to use for logging into this Firezone instance:" adminUser
-  if [ "$kernelStatus" != "is supported" ]; then
-    echo "$kernelStatus. Quitting."
-    exit
-  fi
-
   releaseUrl=''
   mapReleaseToDistro releaseUrl
   echo "Press <ENTER> to install Control-C to Abort."
