@@ -9,15 +9,15 @@ description: >
 ---
 ---
 
-Firezone provides the ability to require authentication to establish VPN connections.
+Firezone provides the ability to require authentication to start VPN sessions.
 Firezone supports the following single sign on (SSO) providers and authentication
 methods:
 
 * [Google]({%link docs/authentication/google-sso.md%})
 * [Okta]({%link docs/authentication/okta-sso.md%})
-* [Web (default)]({%link docs/authentication/web-auth.md%})
+* [Local email/password authentication (default)]({%link docs/authentication/web-auth.md%})
 
-If you currently use an identity provider that is not listed above,
+If you wish to use an OAuth provider that is not listed above,
 please open a
 [GitHub issue](https://github.com/firezone/firezone/issues).
 
