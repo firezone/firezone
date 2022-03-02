@@ -23,7 +23,9 @@ list grows.
 ## AWS Example
 
 Our goal is to configure VPN traffic to the restricted resource to be routed
-through a Firezone server on an EC2 instance.
+through a Firezone server on an EC2 instance. In this case Firezone is acting as
+a network proxy or NAT gateway to provide a single public egress IP for all the
+devices connected to it.
 
 ### Step 1 - Deploy Firezone server
 
