@@ -34,8 +34,9 @@ for details on deploying Firezone. Specific to AWS, ensure:
 
 1. The security group of the Firezone EC2 instance allows outbound traffic to the
 IP of the protected resource.
-1. An Elastic IP is associated with the Firezone instance. In this case the
-IP is `52.202.88.54`.
+1. An Elastic IP is associated with the Firezone instance. This will be the
+source IP address of traffic routed through the Firezone instance to external destinations.
+In this case the IP is `52.202.88.54`.
 
 ![Allocate Elastic IP](https://user-images.githubusercontent.com/52545545/154821256-9335703b-a120-4a9d-b9f5-bbca673cef63.png){:width="600"}
 
