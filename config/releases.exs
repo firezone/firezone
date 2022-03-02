@@ -44,15 +44,15 @@ local_auth_enabled = FzString.to_boolean(System.fetch_env!("LOCAL_AUTH_ENABLED")
 
 # Okta auth
 okta_auth_enabled = FzString.to_boolean(System.fetch_env!("OKTA_AUTH_ENABLED"))
-okta_client_id = System.fetch_env!("OKTA_CLIENT_ID")
-okta_client_secret = System.fetch_env!("OKTA_CLIENT_SECRET")
-okta_site = System.fetch_env!("OKTA_SITE")
+okta_client_id = System.get_env("OKTA_CLIENT_ID")
+okta_client_secret = System.get_env("OKTA_CLIENT_SECRET")
+okta_site = System.get_env("OKTA_SITE")
 
 # Google auth
 google_auth_enabled = FzString.to_boolean(System.fetch_env!("GOOGLE_AUTH_ENABLED"))
-google_client_id = System.fetch_env!("GOOGLE_CLIENT_ID")
-google_client_secret = System.fetch_env!("GOOGLE_CLIENT_SECRET")
-google_redirect_uri = System.fetch_env!("GOOGLE_REDIRECT_URI")
+google_client_id = System.get_env("GOOGLE_CLIENT_ID")
+google_client_secret = System.get_env("GOOGLE_CLIENT_SECRET")
+google_redirect_uri = System.get_env("GOOGLE_REDIRECT_URI")
 
 max_devices_per_user =
   System.fetch_env!("MAX_DEVICES_PER_USER")
