@@ -38,13 +38,17 @@ add_routes()
 
 main()
 {
-  echo 'Enabling WireGuard debugging support...'
-  echo module wireguard +p > /sys/kernel/debug/dynamic_debug/control
-  if [ $? -eq 0 ]; then
-    echo 'WireGuard debugging enabled. Starting dmesg...'
-    dmesg -wT | grep "wireguard: ${WIREGUARD_INTERFACE_NAME}:"
+  if [ $LOGGING_ENABLED = "true" ]; then
+    echo 'Enabling WireGuard debugging support...'
+    echo module wireguard +p > /sys/kernel/debug/dynamic_debug/control
+    if [ $? -eq 0 ]; then
+      echo 'WireGuard debugging enabled. Starting dmesg...'
+      dmesg -wT | grep "wireguard: ${WIREGUARD_INTERFACE_NAME}:"
+    else
+      echo 'There was an issue enabling WireGuard debugging. Twiddling my thumbs...'
+      tail -f /dev/null
+    fi
   else
-    echo 'There was an issue enabling WireGuard debugging. Twiddling my thumbs...'
     tail -f /dev/null
   fi
 }
