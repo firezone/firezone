@@ -40,7 +40,7 @@ kernelCheck() {
   current=$(uname -r | cut -d- -f1)
   versionDiff $not_supported $current result
   if [[ $result != -1 ]] ; then
-    echo "Kernel is is not supported $(uname)"
+    echo "Kernel is is not supported $(uname -r)"
     exit
   else
     : # empty statement in bash
