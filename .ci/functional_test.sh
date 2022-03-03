@@ -51,7 +51,7 @@ page=$(curl -L -i -vvv -k https://localhost)
 echo $page
 
 echo "Testing for sign in button"
-echo $page | grep '<button class="button" type="submit">Sign In</button>'
+echo $page | grep '<a class="button" href="/auth/identity">Sign in with email</a>'
 
 echo "Testing telemetry_id survives reconfigures"
 tid1=`sudo cat /var/opt/firezone/cache/telemetry_id`
