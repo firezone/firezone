@@ -6,7 +6,7 @@
       </p>
       <p>
         Please
-        <%= link("reauthenticate", to: Routes.session_path(@conn, :delete), method: :delete) %>
+        <%= link("reauthenticate", to: Routes.auth_path(@conn, :delete), method: :delete) %>
         to renew your VPN session.
       </p>
     <% else %>
@@ -19,7 +19,7 @@
         <span data-timestamp={vpn_expires_at(@user)}>...</span>
       </strong>
     </p>
-    <%= link("Reauthenticate", to: Routes.session_path(@conn, :delete), method: :delete) %>
+    <%= link("Reauthenticate", to: Routes.auth_path(@conn, :delete), method: :delete) %>
     to renew your VPN session.
   <% else %>
     Your VPN session is active indefinitely.
