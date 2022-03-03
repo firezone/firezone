@@ -13,6 +13,7 @@ export WIREGUARD_IPV6_ADDRESS=<%= node['firezone']['wireguard']['ipv6']['address
 export WIREGUARD_IPV6_NETWORK=<%= node['firezone']['wireguard']['ipv6']['network'] %>
 export WIREGUARD_INTERFACE_MTU=<%= node['firezone']['wireguard']['mtu'] %>
 export WIREGUARD_LISTEN_PORT=<%= node['firezone']['wireguard']['port'] %>
+export LOGGING_ENABLED=<%= node['firezone']['logging']['enabled'] %>
 
 exec <%= node['runit']['chpst_bin'] %> \
      -P \
