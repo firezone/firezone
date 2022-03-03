@@ -95,7 +95,7 @@ defmodule FzHttpWeb.SettingLive.SiteTest do
       refute test_view =~ "is invalid"
 
       assert test_view =~ """
-             <input class="input " id="site_form_component_endpoint" name="site[endpoint]" type="text" value="1.1.1.1"/>\
+             <input class="input " id="site_form_component_endpoint" name="site[endpoint]" placeholder="127.0.0.1" type="text" value="1.1.1.1"/>\
              """
     end
 
@@ -160,7 +160,7 @@ defmodule FzHttpWeb.SettingLive.SiteTest do
       assert test_view =~ "is invalid"
 
       assert test_view =~ """
-             <input class="input is-danger" id="site_form_component_endpoint" name="site[endpoint]" type="text" value="foobar"/>\
+             <input class="input is-danger" id="site_form_component_endpoint" name="site[endpoint]" placeholder="127.0.0.1" type="text" value="foobar"/>\
              """
     end
 
