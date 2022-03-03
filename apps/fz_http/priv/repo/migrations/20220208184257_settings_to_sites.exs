@@ -10,7 +10,7 @@ defmodule FzHttp.Repo.Migrations.SettingsToSites do
       add :endpoint, :string
       add :persistent_keepalive, :integer
       add :mtu, :integer
-      add :key_ttl, :integer
+      add :vpn_session_duration, :integer
 
       timestamps(type: :utc_datetime_usec)
     end
@@ -74,7 +74,7 @@ defmodule FzHttp.Repo.Migrations.SettingsToSites do
 
     execute("""
       UPDATE sites
-      SET key_ttl = (
+      SET vpn_session_duration = (
         SELECT value::INTEGER
         FROM settings
         WHERE key = 'security.require_auth_for_vpn_frequency'

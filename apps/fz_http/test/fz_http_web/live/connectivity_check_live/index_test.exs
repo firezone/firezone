@@ -20,7 +20,7 @@ defmodule FzHttpWeb.ConnectivityCheckLive.IndexTest do
   describe "unauthenticated/connectivity_checks list" do
     test "mount redirects to session path", %{unauthed_conn: conn} do
       path = Routes.connectivity_check_index_path(conn, :index)
-      expected_path = Routes.session_path(conn, :new)
+      expected_path = Routes.root_path(conn, :index)
       assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
     end
   end

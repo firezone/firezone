@@ -21,16 +21,24 @@ defmodule FzHttpWeb.Authentication do
     end
   end
 
-  def authenticate(%User{} = user, password) do
-    authenticate(
-      user,
-      password,
-      Argon2.verify_pass(password, user.password_hash)
-    )
+  @doc """
+  Authenticates a user against a password hash. Only makes sense
+  for local auth.
+  """
+  def authenticate(%User{} = user, password) when is_binary(password) do
+    if user.password_hash do
+      authenticate(
+        user,
+        password,
+        Argon2.verify_pass(password, user.password_hash)
+      )
+    else
+      {:error, :invalid_credentials}
+    end
   end
 
-  def authenticate(nil, password) do
-    authenticate(nil, password, Argon2.no_user_verify())
+  def authenticate(_user, _password) do
+    authenticate(nil, nil, Argon2.no_user_verify())
   end
 
   defp authenticate(user, _password, true) do
@@ -41,9 +49,9 @@ defmodule FzHttpWeb.Authentication do
     {:error, :invalid_credentials}
   end
 
-  def sign_in(conn, user) do
+  def sign_in(conn, user, auth) do
     Telemetry.login(user)
-    Users.update_last_signed_in(user)
+    Users.update_last_signed_in(user, auth)
     __MODULE__.Plug.sign_in(conn, user)
   end
 

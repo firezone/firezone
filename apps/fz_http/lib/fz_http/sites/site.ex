@@ -24,8 +24,8 @@ defmodule FzHttp.Sites.Site do
   @max_mtu 1500
   @min_persistent_keepalive 0
   @max_persistent_keepalive 1 * @hour
-  @min_key_ttl 0
-  @max_key_ttl 30 * @day
+  @min_vpn_session_duration 0
+  @max_vpn_session_duration 30 * @day
 
   schema "sites" do
     field :name, :string
@@ -34,7 +34,7 @@ defmodule FzHttp.Sites.Site do
     field :endpoint, :string
     field :persistent_keepalive, :integer
     field :mtu, :integer
-    field :key_ttl, :integer
+    field :vpn_session_duration, :integer
 
     timestamps(type: :utc_datetime_usec)
   end
@@ -48,7 +48,7 @@ defmodule FzHttp.Sites.Site do
       :endpoint,
       :persistent_keepalive,
       :mtu,
-      :key_ttl
+      :vpn_session_duration
     ])
     |> validate_required(:name)
     |> validate_list_of_ips(:dns)
@@ -61,13 +61,13 @@ defmodule FzHttp.Sites.Site do
       greater_than_or_equal_to: @min_persistent_keepalive,
       less_than_or_equal_to: @max_persistent_keepalive
     )
-    |> validate_number(:key_ttl,
-      greater_than_or_equal_to: @min_key_ttl,
-      less_than_or_equal_to: @max_key_ttl
+    |> validate_number(:vpn_session_duration,
+      greater_than_or_equal_to: @min_vpn_session_duration,
+      less_than_or_equal_to: @max_vpn_session_duration
     )
   end
 
-  def max_key_ttl do
-    @max_key_ttl
+  def max_vpn_session_duration do
+    @max_vpn_session_duration
   end
 end

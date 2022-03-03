@@ -129,8 +129,14 @@ defmodule FzHttp.Users do
     Repo.all(query)
   end
 
-  def update_last_signed_in(user) do
-    update_user(user, %{last_signed_in_at: DateTime.utc_now()})
+  def update_last_signed_in(user, %{provider: provider} = _auth) do
+    method =
+      case provider do
+        :identity -> "email"
+        m -> to_string(m)
+      end
+
+    update_user(user, %{last_signed_in_at: DateTime.utc_now(), last_signed_in_method: method})
   end
 
   @doc """
@@ -142,7 +148,7 @@ defmodule FzHttp.Users do
   end
 
   def vpn_session_expired?(user, duration) do
-    max = Site.max_key_ttl()
+    max = Site.max_vpn_session_duration()
 
     case duration do
       0 ->

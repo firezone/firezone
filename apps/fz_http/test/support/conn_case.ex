@@ -55,9 +55,9 @@ defmodule FzHttpWeb.ConnCase do
   defp authed_conn(role) do
     user = UsersFixtures.user(%{role: role})
 
-    conn = new_conn() |> FzHttpWeb.Authentication.sign_in(user)
+    conn = new_conn() |> FzHttpWeb.Authentication.sign_in(user, %{provider: :identity})
 
-    {user.id,
+    {user,
      conn
      |> Plug.Test.init_test_session(%{
        "guardian_default_token" => conn.private.guardian_default_token
@@ -71,13 +71,13 @@ defmodule FzHttpWeb.ConnCase do
       Sandbox.mode(FzHttp.Repo, {:shared, self()})
     end
 
-    {unprivileged_user_id, unprivileged_conn} = unprivileged_conn()
-    {admin_user_id, admin_conn} = admin_conn()
+    {unprivileged_user, unprivileged_conn} = unprivileged_conn()
+    {admin_user, admin_conn} = admin_conn()
 
     {:ok,
      unauthed_conn: new_conn(),
-     admin_user_id: admin_user_id,
-     unprivileged_user_id: unprivileged_user_id,
+     admin_user: admin_user,
+     unprivileged_user: unprivileged_user,
      admin_conn: admin_conn,
      unprivileged_conn: unprivileged_conn}
   end

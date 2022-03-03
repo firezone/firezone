@@ -18,29 +18,40 @@ fi
 # Fixes setcap not found on centos 7
 PATH=/usr/sbin/:$PATH
 
-sudo -E firezone-ctl reconfigure
-sudo -E bash -c "echo \"default['firezone']['connectivity_checks']['enabled'] = false\" >> /etc/firezone/firezone.rb"
-sudo -E firezone-ctl reconfigure
+# Disable connectivity checks
+conf="/opt/firezone/embedded/cookbooks/firezone/attributes/default.rb"
+search="default\['firezone']\['connectivity_checks']\['enabled'] = true"
+replace="default['firezone']['connectivity_checks']['enabled'] = false"
+sudo -E sed -i "s/$search/$replace/" $conf
 
-sudo -E firezone-ctl create-or-reset-admin
+# Disable telemetry
+search="default\['firezone']\['telemetry']\['enabled'] = true"
+search="default['firezone']['telemetry']['enabled'] = false"
+sudo -E sed -i "s/$search/$replace/" $conf
 
-# XXX: Add more commands here to test
+# Bootstrap config
+sudo -E firezone-ctl reconfigure
 
 # Wait for app to fully boot
-sleep 10
+sleep 5
 
 # Helpful for debugging
 sudo cat /var/log/firezone/nginx/current
 sudo cat /var/log/firezone/postgresql/current
 sudo cat /var/log/firezone/phoenix/current
+sudo cat /var/log/firezone/wireguard/current
+
+# Create admin; requires application to be up
+sudo -E firezone-ctl create-or-reset-admin
+
+# XXX: Add more commands here to test
 
 echo "Trying to load homepage"
 page=$(curl -L -i -vvv -k https://localhost)
 echo $page
 
 echo "Testing for sign in button"
-echo $page | grep '<button class="button" type="submit">Sign In</button>'
-
+echo $page | grep '<a class="button" href="/auth/identity">Sign in with email</a>'
 
 echo "Testing telemetry_id survives reconfigures"
 tid1=`sudo cat /var/opt/firezone/cache/telemetry_id`

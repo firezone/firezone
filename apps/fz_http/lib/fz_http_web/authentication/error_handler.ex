@@ -21,7 +21,7 @@ defmodule FzHttpWeb.Authentication.ErrorHandler do
   @impl Guardian.Plug.ErrorHandler
   def auth_error(conn, {:unauthenticated, _reason}, _opts) do
     conn
-    |> redirect(to: Routes.session_path(conn, :new))
+    |> redirect(to: Routes.root_path(conn, :index))
   end
 
   @impl Guardian.Plug.ErrorHandler

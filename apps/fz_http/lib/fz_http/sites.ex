@@ -35,11 +35,11 @@ defmodule FzHttp.Sites do
 
   def vpn_sessions_expire? do
     freq = vpn_duration()
-    freq > 0 && freq < Site.max_key_ttl()
+    freq > 0 && freq < Site.max_vpn_session_duration()
   end
 
   def vpn_duration do
-    get_site!().key_ttl
+    get_site!().vpn_session_duration
   end
 
   def wireguard_defaults do

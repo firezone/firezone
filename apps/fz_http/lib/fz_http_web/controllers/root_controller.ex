@@ -1,18 +1,20 @@
 defmodule FzHttpWeb.RootController do
   @moduledoc """
-  Handles redirecting from /
+  Firezone landing page -- show auth methods.
   """
   use FzHttpWeb, :controller
-  alias FzHttpWeb.Authentication
 
   def index(conn, _params) do
-    if user = Authentication.get_current_user(conn) do
-      conn
-      |> redirect(to: root_path_for_role(conn, user.role))
-    else
-      conn
-      |> put_flash(:error, "You must be signed in.")
-      |> redirect(to: Routes.session_path(conn, :new))
-    end
+    conn
+    |> render(
+      "auth.html",
+      okta_enabled: conf(:okta_auth_enabled),
+      google_enabled: conf(:google_auth_enabled),
+      local_enabled: conf(:local_auth_enabled)
+    )
+  end
+
+  defp conf(key) do
+    Application.fetch_env!(:fz_http, key)
   end
 end

@@ -5,14 +5,18 @@ defmodule FzHttpWeb.Plug.Authorization do
   the connection with Guardian.
   """
 
-  import Plug.Conn, only: [halt: 1]
-  import Phoenix.Controller
+  use FzHttpWeb, :controller
+
   import FzHttpWeb.ControllerHelpers, only: [root_path_for_role: 2]
   alias FzHttpWeb.Authentication
 
   @not_authorized "Not authorized."
 
   def init(opts), do: opts
+
+  def call(conn, :test) do
+    conn
+  end
 
   def call(conn, role), do: require_user_with_role(conn, role)
 

@@ -39,6 +39,21 @@ telemetry_enabled = FzString.to_boolean(System.fetch_env!("TELEMETRY_ENABLED"))
 telemetry_id = System.fetch_env!("TELEMETRY_ID")
 guardian_secret_key = System.fetch_env!("GUARDIAN_SECRET_KEY")
 
+# Local auth
+local_auth_enabled = FzString.to_boolean(System.fetch_env!("LOCAL_AUTH_ENABLED"))
+
+# Okta auth
+okta_auth_enabled = FzString.to_boolean(System.fetch_env!("OKTA_AUTH_ENABLED"))
+okta_client_id = System.get_env("OKTA_CLIENT_ID")
+okta_client_secret = System.get_env("OKTA_CLIENT_SECRET")
+okta_site = System.get_env("OKTA_SITE")
+
+# Google auth
+google_auth_enabled = FzString.to_boolean(System.fetch_env!("GOOGLE_AUTH_ENABLED"))
+google_client_id = System.get_env("GOOGLE_CLIENT_ID")
+google_client_secret = System.get_env("GOOGLE_CLIENT_SECRET")
+google_redirect_uri = System.get_env("GOOGLE_REDIRECT_URI")
+
 max_devices_per_user =
   System.fetch_env!("MAX_DEVICES_PER_USER")
   |> String.to_integer()
@@ -135,6 +150,9 @@ config :fz_http, FzHttpWeb.Authentication,
   secret_key: guardian_secret_key
 
 config :fz_http,
+  local_auth_enabled: local_auth_enabled,
+  okta_auth_enabled: okta_auth_enabled,
+  google_auth_enabled: google_auth_enabled,
   wireguard_dns: wireguard_dns,
   wireguard_allowed_ips: wireguard_allowed_ips,
   wireguard_persistent_keepalive: wireguard_persistent_keepalive,
@@ -152,3 +170,36 @@ config :fz_http,
   connectivity_checks_interval: connectivity_checks_interval,
   admin_email: admin_email,
   default_admin_password: default_admin_password
+
+# Configure strategies
+identity_strategy =
+  {:identity, {Ueberauth.Strategy.Identity, [callback_methods: ["POST"], uid_field: :email]}}
+
+okta_strategy = {:okta, {Ueberauth.Strategy.Okta, []}}
+google_strategy = {:google, {Ueberauth.Strategy.Google, []}}
+
+providers =
+  [
+    {local_auth_enabled, identity_strategy},
+    {google_auth_enabled, google_strategy},
+    {okta_auth_enabled, okta_strategy}
+  ]
+  |> Enum.filter(fn {key, _val} -> key end)
+  |> Enum.map(fn {_key, val} -> val end)
+
+config :ueberauth, Ueberauth, providers: providers
+
+# Configure OAuth portion of enabled strategies
+if okta_auth_enabled do
+  config :ueberauth, Ueberauth.Strategy.Okta.OAuth,
+    client_id: okta_client_id,
+    client_secret: okta_client_secret,
+    site: okta_site
+end
+
+if google_auth_enabled do
+  config :ueberauth, Ueberauth.Strategy.Google.OAuth,
+    client_id: google_client_id,
+    client_secret: google_client_secret,
+    redirect_uri: google_redirect_uri
+end

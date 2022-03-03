@@ -62,7 +62,7 @@
     <div class="level-right">
       Signed in as <%= @current_user.email %>
       |
-      <%= link(to: Routes.session_path(@socket, :delete), method: :delete) do %>
+      <%= link(to: Routes.auth_path(@socket, :delete), method: :delete) do %>
         Sign out
       <% end %>
     </div>

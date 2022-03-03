@@ -37,11 +37,25 @@ defmodule FzHttpWeb.Router do
   end
 
   pipeline :require_unauthenticated do
+    plug FzHttpWeb.Plug.Authorization, :test
     plug Guardian.Plug.EnsureNotAuthenticated
   end
 
   pipeline :guardian do
     plug FzHttpWeb.Authentication.Pipeline
+  end
+
+  # Ueberauth routes
+  scope "/auth", FzHttpWeb do
+    pipe_through [
+      :browser,
+      :guardian,
+      :require_unauthenticated
+    ]
+
+    get "/:provider", AuthController, :request
+    get "/:provider/callback", AuthController, :callback
+    post "/:provider/callback", AuthController, :callback
   end
 
   # Unauthenticated routes
@@ -52,8 +66,7 @@ defmodule FzHttpWeb.Router do
       :require_unauthenticated
     ]
 
-    get "/sign_in", SessionController, :new
-    post "/sign_in", SessionController, :create
+    get "/", RootController, :index
   end
 
   # Authenticated routes
@@ -64,8 +77,7 @@ defmodule FzHttpWeb.Router do
       :require_authenticated
     ]
 
-    get "/", RootController, :index
-    delete "/sign_out", SessionController, :delete
+    delete "/sign_out", AuthController, :delete
   end
 
   # Authenticated Unprivileged routes

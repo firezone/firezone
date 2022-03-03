@@ -31,7 +31,7 @@
 </div>
 
 <div class="block">
-  <%= link(to: Routes.session_path(@conn, :delete), method: :delete) do %>
+  <%= link(to: Routes.auth_path(@conn, :delete), method: :delete) do %>
     Sign out
   <% end %>
 </div>

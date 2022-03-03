@@ -27,10 +27,10 @@ defmodule FzHttpWeb.SettingLive.Security do
   end
 
   @impl Phoenix.LiveView
-  def handle_event("save", %{"site" => %{"key_ttl" => key_ttl}}, socket) do
+  def handle_event("save", %{"site" => %{"vpn_session_duration" => vpn_session_duration}}, socket) do
     site = Sites.get_site!()
 
-    case Sites.update_site(site, %{key_ttl: key_ttl}) do
+    case Sites.update_site(site, %{vpn_session_duration: vpn_session_duration}) do
       {:ok, site} ->
         {:noreply,
          socket
@@ -52,7 +52,7 @@ defmodule FzHttpWeb.SettingLive.Security do
   defp options do
     [
       Never: 0,
-      Once: Site.max_key_ttl(),
+      Once: Site.max_vpn_session_duration(),
       "Every Hour": @hour,
       "Every Day": @day,
       "Every Week": 7 * @day,

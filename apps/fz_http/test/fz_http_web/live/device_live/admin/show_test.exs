@@ -343,7 +343,7 @@ defmodule FzHttpWeb.DeviceLive.Admin.ShowTest do
     @tag :unauthed
     test "mount redirects to session path", %{unauthed_conn: conn, device: device} do
       path = Routes.device_admin_show_path(conn, :show, device)
-      expected_path = Routes.session_path(conn, :new)
+      expected_path = Routes.root_path(conn, :index)
       assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
     end
   end
@@ -358,7 +358,7 @@ defmodule FzHttpWeb.DeviceLive.Admin.ShowTest do
   #     other_device: other_device
   #   } do
   #     path = Routes.device_admin_show_path(conn, :show, other_device)
-  #     expected_path = Routes.session_path(conn, :new)
+  #     expected_path = Routes.auth_path(conn, :request)
   #     assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
   #   end
   # end

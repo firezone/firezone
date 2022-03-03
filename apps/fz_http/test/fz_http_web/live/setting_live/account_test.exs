@@ -7,17 +7,17 @@ defmodule FzHttpWeb.SettingLive.AccountTest do
   describe "when unauthenticated" do
     test "mount redirects to session path", %{unauthed_conn: conn} do
       path = Routes.setting_account_path(conn, :show)
-      expected_path = Routes.session_path(conn, :new)
+      expected_path = Routes.root_path(conn, :index)
       assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
     end
   end
 
   describe "when live_action is show" do
-    test "shows account details", %{admin_user_id: user_id, admin_conn: conn} do
+    test "shows account details", %{admin_user: user, admin_conn: conn} do
       path = Routes.setting_account_path(conn, :show)
       {:ok, _view, html} = live(conn, path)
 
-      user = Users.get_user!(user_id)
+      user = Users.get_user!(user.id)
 
       assert html =~ "Delete Your Account"
       assert html =~ user.email
