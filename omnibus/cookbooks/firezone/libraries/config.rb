@@ -251,7 +251,7 @@ class Firezone
         'OKTA_CLIENT_ID' => attributes['authentication']['okta']['client_id'],
         'OKTA_CLIENT_SECRET' => attributes['authentication']['okta']['client_secret'],
         'OKTA_SITE' => attributes['authentication']['okta']['site'],
-        'GOOGLE_AUTH_ENABLED' => attributes['authentication']['google']['enabled'],
+        'GOOGLE_AUTH_ENABLED' => attributes['authentication']['google']['enabled'].to_s,
         'GOOGLE_CLIENT_ID' => attributes['authentication']['google']['client_id'],
         'GOOGLE_CLIENT_SECRET' => attributes['authentication']['google']['client_secret'],
         'GOOGLE_REDIRECT_URI' => attributes['authentication']['google']['redirect_uri'],
