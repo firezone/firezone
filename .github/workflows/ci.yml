@@ -161,6 +161,7 @@ jobs:
           - ubuntu2004-x64
           - opensuse15-x64
     steps:
+      - run: cat /sys/module/wireguard/version
       - uses: actions/checkout@v2
       - name: Build
         env:

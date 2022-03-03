@@ -18,6 +18,10 @@ server {
   server_name <%= @fqdn %>;
 <% if @nginx['force_ssl'] -%>
   location / {
+    <% if @nginx['enable_rate_limiting'] -%>
+      limit_req zone=<%= @nginx['rate_limiting_zone_name'] %>;
+
+    <% end -%>
     if ($http_x_forwarded_proto != 'https') {
       return 301 https://$server_name$request_uri;
     }
@@ -25,7 +29,7 @@ server {
 }
 
 server {
-  listen <%= @nginx['ssl_port'] %>;
+  listen <%= @nginx['ssl_port'] %> default_server;
   server_name <%= @fqdn %>;
 
 <%   if @ssl['enabled'] -%>

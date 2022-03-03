@@ -133,21 +133,28 @@ default['firezone']['nginx']['keepalive_timeout'] = 65
 default['firezone']['nginx']['worker_processes'] = node['cpu'] && node['cpu']['total'] ? node['cpu']['total'] : 1
 default['firezone']['nginx']['worker_connections'] = 1024
 default['firezone']['nginx']['worker_rlimit_nofile'] = nil
-default['firezone']['nginx']['multi_accept'] = false
-default['firezone']['nginx']['event'] = nil
+default['firezone']['nginx']['multi_accept'] = true
+default['firezone']['nginx']['event'] = 'epoll'
 default['firezone']['nginx']['server_tokens'] = nil
 default['firezone']['nginx']['server_names_hash_bucket_size'] = 64
 default['firezone']['nginx']['sendfile'] = 'on'
 default['firezone']['nginx']['access_log_options'] = nil
 default['firezone']['nginx']['error_log_options'] = nil
 default['firezone']['nginx']['disable_access_log'] = false
-default['firezone']['nginx']['default_site_enabled'] = false
 default['firezone']['nginx']['types_hash_max_size'] = 2048
 default['firezone']['nginx']['types_hash_bucket_size'] = 64
 default['firezone']['nginx']['proxy_read_timeout'] = nil
 default['firezone']['nginx']['client_body_buffer_size'] = nil
 default['firezone']['nginx']['client_max_body_size'] = '250m'
 default['firezone']['nginx']['default']['modules'] = []
+
+# Nginx rate limiting configuration.
+# Note that requests are also rate limited by the upstream Phoenix application.
+default['firezone']['nginx']['enable_rate_limiting'] = true
+default['firezone']['nginx']['rate_limiting_zone_name'] = 'firezone'
+default['firezone']['nginx']['rate_limiting_backoff'] = '10m'
+default['firezone']['nginx']['rate_limit'] = '10r/s'
+
 
 # ## Postgres
 

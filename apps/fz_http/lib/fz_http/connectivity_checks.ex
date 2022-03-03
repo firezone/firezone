@@ -6,7 +6,7 @@ defmodule FzHttp.ConnectivityChecks do
   import Ecto.Query, warn: false
   alias FzHttp.Repo
 
-  alias FzHttp.ConnectivityChecks.ConnectivityCheck
+  alias FzHttp.{ConnectivityChecks.ConnectivityCheck, ConnectivityCheckService}
 
   @doc """
   Returns the list of connectivity_checks.
@@ -130,9 +130,18 @@ defmodule FzHttp.ConnectivityChecks do
   IP.
   """
   def endpoint do
+    ConnectivityCheckService.initialize()
+
     case latest_connectivity_check() do
       nil -> nil
       connectivity_check -> connectivity_check.response_body
     end
+  end
+
+  @doc """
+  Returns count of ConnectivityChecks table
+  """
+  def exists? do
+    Repo.exists?(ConnectivityCheck)
   end
 end

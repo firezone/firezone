@@ -14,10 +14,6 @@ guide.
 
 ## Installation Instructions
 
-**NOTE**: Firezone modifies the kernel netfilter and routing tables. Other
-programs that modify the Linux routing table or netfilter firewall
-will likely interfere with Firezone's operation.
-
 Assuming you're running a supported Linux kernel on one of the [distros
 listed above](#supported-linux-distributions), follow these steps to install and
 configure Firezone for first use:
