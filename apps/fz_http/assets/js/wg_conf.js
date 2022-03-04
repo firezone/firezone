@@ -10,6 +10,7 @@ const alertPrivateKeyError = function () {
 // 5. render download button
 const renderConfig = function () {
   const publicKey = this.el.dataset.publicKey
+  const deviceName = this.el.dataset.deviceName
   if (publicKey) {
     const privateKey = sessionStorage.getItem(publicKey)
 
@@ -21,7 +22,7 @@ const renderConfig = function () {
       const templateConfig = atob(this.el.dataset.config)
       const config = templateConfig.replace("REPLACE_ME", privateKey)
 
-      renderDownloadButton(config)
+      renderDownloadButton(config, deviceName)
       renderQR(config)
       renderTunnel(config)
 
@@ -37,10 +38,10 @@ const renderConfig = function () {
   }
 }
 
-const renderDownloadButton = function (config) {
+const renderDownloadButton = function (config, deviceName) {
   let button = document.getElementById("download-config")
   button.setAttribute("href", "data:text/plain;charset=utf-8," + encodeURIComponent(config))
-  button.setAttribute("download", window.location.hostname + ".conf")
+  button.setAttribute("download", deviceName + ".conf")
   button.classList.remove("is-hidden")
 }
 

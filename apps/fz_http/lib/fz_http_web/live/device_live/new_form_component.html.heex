@@ -1,5 +1,6 @@
 <div id="new-device-data"
      data-public-key={@device && @device.public_key}
+     data-device-name={@device && @device.name}
      data-config={@config}
      phx-hook="RenderConfig">
 
@@ -12,11 +13,12 @@
       </p>
 
       <p>
-        Install the
-        <a target="_blank" href="https://www.wireguard.com/install/">
-          official WireGuard client
+        To use this configuration, you'll need a WireGuard client installed
+        for your device. See
+        <a target="_blank" href="https://docs.firez.one/docs/user-guides/client-instructions/">
+          the Firezone documentation
         </a>
-        for your device, then use the below WireGuard configuration to connect.
+        for a step-by-step guide.
       </p>
 
       <p>
