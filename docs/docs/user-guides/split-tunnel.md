@@ -34,9 +34,9 @@ In this example, the CIDR range for the `ap-northeast-2` AWS region was used.
 Note: When deciding where to route a packet, Firezone chooses the egress
 interface corresponding to the most specific route first.
 
-## Step 2 - Regenerate WireGuard tunnel configurations
+## Step 2 - Regenerate WireGuard configurations
 
-To update existing WireGuard tunnels with the new split tunnel configuration,
+To update existing user devices with the new split tunnel configuration,
 users will need to regenerate the configuration files
 and add them to their native WireGuard client.
 

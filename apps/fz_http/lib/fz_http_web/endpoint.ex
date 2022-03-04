@@ -8,7 +8,7 @@ defmodule FzHttpWeb.Endpoint do
 
   socket "/socket", FzHttpWeb.UserSocket,
     websocket: [
-      connect_info: [:peer_data, :x_headers],
+      connect_info: [:peer_data, :x_headers, :uri],
       # XXX: channel token should prevent CSWH but double check
       check_origin: false
     ],

@@ -1,0 +1,8 @@
+<!-- User Socket -->
+<%= tag :meta, name: "user-token", content: Phoenix.Token.sign(@conn, "user auth", @current_user.id) %>
+
+<!-- Notification Channel -->
+<%= tag :meta, name: "channel-token", content: Phoenix.Token.sign(@conn, "channel auth", @current_user.id) %>
+
+<!-- CSRF -->
+<%= csrf_meta_tag() %>

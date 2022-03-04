@@ -4,10 +4,9 @@ defmodule FzHttp.Users do
   """
 
   import Ecto.Query, warn: false
-  import FzCommon.FzInteger, only: [max_pg_integer: 0]
 
   alias FzCommon.{FzCrypto, FzMap}
-  alias FzHttp.{Devices.Device, Repo, Telemetry, Users.User}
+  alias FzHttp.{Devices.Device, Repo, Sites.Site, Telemetry, Users.User}
 
   # one hour
   @sign_in_token_validity_secs 3600
@@ -39,6 +38,10 @@ defmodule FzHttp.Users do
 
   def get_user(id), do: Repo.get(User, id)
 
+  def get_by_email(email) do
+    Repo.get_by(User, email: email)
+  end
+
   def create_admin_user(attrs) do
     create_user_with_role(attrs, :admin)
   end
@@ -47,20 +50,20 @@ defmodule FzHttp.Users do
     create_user_with_role(attrs, :unprivileged)
   end
 
-  defp create_user_with_role(attrs, role) when is_map(attrs) do
+  def create_user_with_role(attrs, role) when is_map(attrs) do
     attrs
     |> Map.put(:role, role)
     |> create_user()
   end
 
-  defp create_user_with_role(attrs, role) when is_list(attrs) do
+  def create_user_with_role(attrs, role) when is_list(attrs) do
     attrs
     |> Enum.into(%{})
     |> Map.put(:role, role)
     |> create_user()
   end
 
-  defp create_user(attrs) when is_map(attrs) do
+  def create_user(attrs) when is_map(attrs) do
     attrs = FzMap.stringify_keys(attrs)
 
     result =
@@ -94,7 +97,7 @@ defmodule FzHttp.Users do
     Repo.delete(user)
   end
 
-  def change_user(%User{} = user) do
+  def change_user(%User{} = user \\ struct(User)) do
     User.changeset(user, %{})
   end
 
@@ -126,13 +129,14 @@ defmodule FzHttp.Users do
     Repo.all(query)
   end
 
-  # XXX: Assume only one admin
-  def admin do
-    Repo.one(
-      from u in User,
-        where: u.role == :admin,
-        limit: 1
-    )
+  def update_last_signed_in(user, %{provider: provider} = _auth) do
+    method =
+      case provider do
+        :identity -> "email"
+        m -> to_string(m)
+      end
+
+    update_user(user, %{last_signed_in_at: DateTime.utc_now(), last_signed_in_method: method})
   end
 
   @doc """
@@ -144,7 +148,7 @@ defmodule FzHttp.Users do
   end
 
   def vpn_session_expired?(user, duration) do
-    max = max_pg_integer()
+    max = Site.max_vpn_session_duration()
 
     case duration do
       0 ->

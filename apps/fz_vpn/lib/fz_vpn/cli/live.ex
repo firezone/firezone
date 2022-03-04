@@ -8,9 +8,6 @@ defmodule FzVpn.CLI.Live do
   See FzVpn.Server for higher-level functionality.
   """
 
-  # Outputs the privkey
-  @genkey_cmd "wg genkey"
-
   import FzCommon.CLI
   require Logger
 
@@ -22,30 +19,12 @@ defmodule FzVpn.CLI.Live do
     :ok = GenServer.call(:global.whereis_name(:fz_wall_server), :teardown)
   end
 
-  @doc """
-  Calls wg genkey
-  """
-  def genkey do
-    privkey =
-      exec!(@genkey_cmd)
-      |> String.trim()
-
-    {privkey, pubkey(privkey)}
-  end
-
   def set_peer(pubkey, inet) do
     set("peer #{pubkey} allowed-ips #{inet}")
   end
 
-  def delete_peer(pubkey) do
+  def remove_peer(pubkey) do
     set("peer #{pubkey} remove")
-  end
-
-  def pubkey(privkey) when is_nil(privkey), do: nil
-
-  def pubkey(privkey) when is_binary(privkey) do
-    exec!("echo #{privkey} | wg pubkey")
-    |> String.trim()
   end
 
   def set(config_str) do

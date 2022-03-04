@@ -39,6 +39,7 @@ defmodule FzHttpWeb.NotificationChannel do
       email: user.email,
       online_at: DateTime.utc_now(),
       last_signed_in_at: user.last_signed_in_at,
+      last_signed_in_method: user.last_signed_in_method,
       remote_ip: socket.assigns.remote_ip,
       user_agent: socket.assigns.user_agent
     }

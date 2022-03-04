@@ -41,6 +41,12 @@ config :posthog,
   api_url: "https://telemetry.firez.one",
   api_key: "phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK"
 
+# Guardian configuration
+config :fz_http, FzHttpWeb.Authentication,
+  issuer: "fz_http",
+  # Generate with mix guardian.gen.secret
+  secret_key: "GApJ4c4a/KJLrBePgTDUk0n67AbjCvI9qdypKZEaJFXl6s9H3uRcIhTt49Fij5UO"
+
 config :fz_http,
   telemetry_id: "543aae08-5a2b-428d-b704-2956dd3f5a57",
   url_host: "firezone.dev",
@@ -55,6 +61,7 @@ config :fz_http,
   wireguard_ipv6_network: "fd00::3:2:0/120",
   wireguard_ipv6_address: "fd00::3:2:1",
   wireguard_mtu: "1420",
+  max_devices_per_user: 10,
   telemetry_module: FzCommon.Telemetry,
   supervision_tree_mode: :full,
   http_client: HTTPoison,
@@ -66,7 +73,7 @@ config :fz_http,
   ecto_repos: [FzHttp.Repo],
   admin_email: "firezone@localhost",
   default_admin_password: "firezone1234",
-  events_module: FzHttpWeb.Events,
+  events_module: FzHttp.Events,
   server_process_opts: [name: {:global, :fz_http_server}]
 
 config :fz_wall,

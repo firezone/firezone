@@ -1,0 +1,31 @@
+<h3 class="is-3 title">Sign In</h3>
+
+<hr>
+
+<div class="block">
+  <%= link("<- Back to sign in methods", to: Routes.root_path(@conn, :index)) %>
+</div>
+
+<div class="block">
+  <%= form_tag @callback_url, method: "post" do %>
+    <div class="field">
+      <label for="email" class="label">Email</label>
+      <div class="control">
+        <input class="input" type="email" name="email" id="email" required value={@conn.params["email"]} />
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="password" class="label">Password</label>
+      <div class="control">
+        <input class="input" type="password" name="password" id="password" required />
+      </div>
+    </div>
+
+    <div class="field">
+      <div class="control">
+        <%= submit "Sign In", class: "button" %>
+      </div>
+    </div>
+  <% end %>
+</div>

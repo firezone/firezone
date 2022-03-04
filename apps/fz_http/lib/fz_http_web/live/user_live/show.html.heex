@@ -1,11 +1,20 @@
 <%= if @live_action == :edit do %>
   <%= live_modal(
-        FzHttpWeb.UserLive.FormComponent,
-        return_to: Routes.user_show_path(@socket, :show, @user),
-        title: "Edit #{@user.email}",
-        id: "user-form-component",
-        user: @user,
-        action: @live_action) %>
+      FzHttpWeb.UserLive.FormComponent,
+      return_to: Routes.user_show_path(@socket, :show, @user),
+      title: "Edit #{@user.email}",
+      id: "user-form-component",
+      user: @user,
+      action: @live_action) %>
+<% end %>
+<%= if @live_action == :new_device do %>
+  <%= live_modal(
+      FzHttpWeb.DeviceLive.NewFormComponent,
+      return_to: Routes.user_show_path(@socket, :show, @user.id),
+      title: "Add Device",
+      current_user: @current_user,
+      target_user_id: @user.id,
+      id: "create-device-component") %>
 <% end %>
 
 <%= render FzHttpWeb.SharedView, "heading.html", page_title: "Users |> #{@user.email}" %>
@@ -41,9 +50,11 @@
     <% end %>
   </div>
 
-  <button class="button" phx-value-user_id={@user.id} phx-click="create_device">
-    Add Device
-  </button>
+  <%= live_patch(
+      "Add Device",
+      to: Routes.user_show_path(@socket, :new_device, @user),
+      id: "add-device-button",
+      class: "button") %>
 </section>
 
 <section class="section is-main-section">

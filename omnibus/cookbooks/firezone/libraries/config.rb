@@ -80,25 +80,28 @@ class Firezone
 
     # Read in the filename (as JSON) and add its attributes to the node object.
     # If it doesn't exist, create it with generated secrets.
-    # rubocop:disable Metrics/MethodLength
     def self.load_or_create_secrets!(filename, node)
       create_directory!(filename)
-      secrets = Chef::JSONCompat.from_json(File.read(filename))
-      node.consume_attributes('firezone' => secrets)
-    rescue Errno::ENOENT
       secrets = build_secrets(node)
-      begin
-        File.open(filename, 'w') do |file|
-          file.puts Chef::JSONCompat.to_json_pretty(secrets)
-        end
-        Chef::Log.info("Creating secrets file #{filename}")
-      rescue Errno::EACCES, Errno::ENOENT => e
-        Chef::Log.warn "Could not create #{filename}: #{e}"
-      end
 
+      # Merge in existing secrets from JSON file
+      File.exist?(filename) && secrets.merge!(Chef::JSONCompat.from_json(File.read(filename)))
+
+      # Apply to running system
       node.consume_attributes('firezone' => secrets)
+
+      # Save them for next run
+      write_secrets(filename, secrets)
     end
-    # rubocop:enable Metrics/MethodLength
+
+    def self.write_secrets(filename, secrets)
+      File.open(filename, 'w') do |file|
+        file.puts Chef::JSONCompat.to_json_pretty(secrets)
+      end
+      Chef::Log.info("Creating secrets file #{filename}")
+    rescue Errno::EACCES, Errno::ENOENT => e
+      Chef::Log.warn "Could not create #{filename}: #{e}"
+    end
 
     # rubocop:disable Metrics/PerceivedComplexity
     # rubocop:disable Metrics/MethodLength
@@ -106,6 +109,7 @@ class Firezone
     # rubocop:disable Metrics/AbcSize
     def self.build_secrets(node)
       {
+        'guardian_secret_key' => node['firezone'] && node['firezone']['guardian_secret_key'] || SecureRandom.base64(48),
         'secret_key_base' => node['firezone'] && node['firezone']['secret_key_base'] || SecureRandom.base64(48),
         'live_view_signing_salt' => node['firezone'] && node['firezone']['live_view_signing_salt'] || \
           SecureRandom.base64(24),
@@ -233,6 +237,7 @@ class Firezone
         'WIREGUARD_IPV6_ENABLED' => attributes['wireguard']['ipv6']['enabled'].to_s,
         'WIREGUARD_IPV6_NETWORK' => attributes['wireguard']['ipv6']['network'],
         'WIREGUARD_IPV6_ADDRESS' => attributes['wireguard']['ipv6']['address'],
+        'MAX_DEVICES_PER_USER' => attributes['max_devices_per_user'].to_s,
         # Allow env var to override config
         'TELEMETRY_ENABLED' => ENV.fetch('TELEMETRY_ENABLED',
                                          attributes['telemetry']['enabled'] == false ? 'false' : 'true'),
@@ -240,7 +245,19 @@ class Firezone
         'CONNECTIVITY_CHECKS_ENABLED' => attributes['connectivity_checks']['enabled'].to_s,
         'CONNECTIVITY_CHECKS_INTERVAL' => attributes['connectivity_checks']['interval'].to_s,
 
+        # Auth
+        'LOCAL_AUTH_ENABLED' => attributes['authentication']['local']['enabled'].to_s,
+        'OKTA_AUTH_ENABLED' => attributes['authentication']['okta']['enabled'].to_s,
+        'OKTA_CLIENT_ID' => attributes['authentication']['okta']['client_id'],
+        'OKTA_CLIENT_SECRET' => attributes['authentication']['okta']['client_secret'],
+        'OKTA_SITE' => attributes['authentication']['okta']['site'],
+        'GOOGLE_AUTH_ENABLED' => attributes['authentication']['google']['enabled'].to_s,
+        'GOOGLE_CLIENT_ID' => attributes['authentication']['google']['client_id'],
+        'GOOGLE_CLIENT_SECRET' => attributes['authentication']['google']['client_secret'],
+        'GOOGLE_REDIRECT_URI' => attributes['authentication']['google']['redirect_uri'],
+
         # secrets
+        'GUARDIAN_SECRET_KEY' => attributes['guardian_secret_key'],
         'SECRET_KEY_BASE' => attributes['secret_key_base'],
         'LIVE_VIEW_SIGNING_SALT' => attributes['live_view_signing_salt'],
         'COOKIE_SIGNING_SALT' => attributes['cookie_signing_salt'],

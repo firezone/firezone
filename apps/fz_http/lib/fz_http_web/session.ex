@@ -11,7 +11,8 @@ defmodule FzHttpWeb.Session do
   @session_options [
     store: :cookie,
     key: "_fz_http_key",
-    same_site: "Strict",
+    # XXX: Strict doesn't work for SSO auth
+    # same_site: "Strict",
     max_age: @max_cookie_age,
     secure: true,
     sign: true,

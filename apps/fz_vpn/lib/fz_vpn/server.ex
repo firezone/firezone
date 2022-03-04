@@ -1,23 +1,6 @@
 defmodule FzVpn.Server do
   @moduledoc """
-  Functions for reading / writing the WireGuard config
-
-  Startup:
-  Set empty config
-
-  Received events:
-  - start: set config and apply it
-  - new_peer: gen peer pubkey, return it, but don't apply config
-  - commit_peer: commit pending peer to config
-  - remove_peer: remove peer
-
-  Config is a data structure that looks like this:
-
-  %{
-    pubkey1 => {device1_ipv4, device1_ipv6},
-    pubkey2 => {device2_ipv4, device2_ipv6},
-    ...
-  }
+  Functions for reading / writing the WireGuard config.
   """
 
   alias FzVpn.Config
@@ -41,15 +24,8 @@ defmodule FzVpn.Server do
   end
 
   @impl GenServer
-  def handle_call(:create_device, _from, config) do
-    server_pubkey = Application.get_env(:fz_vpn, :wireguard_public_key)
-    {privkey, pubkey} = cli().genkey()
-    {:reply, {:ok, privkey, pubkey, server_pubkey}, config}
-  end
-
-  @impl GenServer
-  def handle_call({:delete_device, pubkey}, _from, config) do
-    cli().delete_peer(pubkey)
+  def handle_call({:remove_peer, pubkey}, _from, config) do
+    cli().remove_peer(pubkey)
     new_config = Map.delete(config, pubkey)
     {:reply, {:ok, pubkey}, new_config}
   end
@@ -59,12 +35,6 @@ defmodule FzVpn.Server do
     new_config = peers_to_config(peers)
     apply_config_diff(config, new_config)
     {:reply, :ok, new_config}
-  end
-
-  @impl GenServer
-  def handle_call({:update_device, pubkey, inet}, _from, config) do
-    cli().set_peer(pubkey, inet)
-    {:reply, :ok, Map.put(config, pubkey, inet)}
   end
 
   @doc """
@@ -78,7 +48,7 @@ defmodule FzVpn.Server do
 
   defp delete_old_peers(old_config, new_config) do
     for pubkey <- Map.keys(old_config) -- Map.keys(new_config) do
-      cli().delete_peer(pubkey)
+      cli().remove_peer(pubkey)
     end
   end
 

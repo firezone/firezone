@@ -38,7 +38,12 @@ defmodule FzHttp.MixProject do
   def application do
     [
       mod: {FzHttp.Application, []},
-      extra_applications: [:logger, :runtime_tools]
+      extra_applications: [
+        :logger,
+        :runtime_tools,
+        :ueberauth_okta,
+        :ueberauth_identity
+      ]
     ]
   end
 
@@ -58,6 +63,12 @@ defmodule FzHttp.MixProject do
       {:cloak_ecto, "~> 1.2"},
       {:excoveralls, "~> 0.14", only: :test},
       {:floki, ">= 0.0.0", only: :test},
+      {:guardian, "~> 2.0"},
+      {:guardian_db, "~> 2.0"},
+      {:ueberauth, "~> 0.6"},
+      {:ueberauth_google, "~> 0.10"},
+      {:ueberauth_okta, "~> 0.2"},
+      {:ueberauth_identity, "~> 0.3"},
       {:httpoison, "~> 1.8"},
       {:argon2_elixir, "~> 2.0"},
       {:phoenix_pubsub, "~> 2.0"},

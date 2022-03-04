@@ -25,7 +25,6 @@ defmodule FzVpn.CLI.Sandbox do
   def interface_address, do: "eth0"
   def setup, do: @default_returned
   def teardown, do: @default_returned
-  def genkey, do: {rand_key(), rand_key()}
   def pubkey(_privkey), do: rand_key()
 
   def exec!(_cmd) do
@@ -36,7 +35,7 @@ defmodule FzVpn.CLI.Sandbox do
     @default_returned
   end
 
-  def delete_peers do
+  def remove_peers do
     @wg_show
     |> String.split("\n")
     |> Enum.filter(fn line ->
@@ -46,11 +45,11 @@ defmodule FzVpn.CLI.Sandbox do
       String.replace_leading(line, "peer: ", "")
     end)
     |> Enum.each(fn pubkey ->
-      delete_peer(pubkey)
+      remove_peer(pubkey)
     end)
   end
 
-  def delete_peer(_pubkey) do
+  def remove_peer(_pubkey) do
     @default_returned
   end
 

@@ -195,6 +195,7 @@ jobs:
         if: always()
         run: |
           sudo scripts/uninstall.sh
+          sudo rm -rf /tmp/firezone*
           rm -rf omnibus/pkg/*
 
   publish:

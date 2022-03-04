@@ -30,13 +30,33 @@ defmodule FzHttp.DevicesTest do
       end
     end
 
+    setup context do
+      if max_devices = context[:max_devices] do
+        restore_env(:max_devices_per_user, max_devices, &on_exit/1)
+      else
+        context
+      end
+    end
+
     @device_attrs %{
       name: "dummy",
       public_key: "dummy",
-      private_key: "dummy",
-      server_public_key: "dummy",
       user_id: nil
     }
+
+    @tag max_devices: 1
+    test "prevents creating more than max_devices_per_user", %{device: device} do
+      assert {:error,
+              %Ecto.Changeset{
+                errors: [
+                  base:
+                    {"Maximum device limit reached. Remove an existing device before creating a new one.",
+                     []}
+                ]
+              }} = Devices.create_device(%{@device_attrs | user_id: device.user_id})
+
+      assert [device] == Devices.list_devices(device.user_id)
+    end
 
     test "creates device with empty attributes", %{user: user} do
       assert {:ok, _device} = Devices.create_device(%{@device_attrs | user_id: user.id})
@@ -107,11 +127,11 @@ defmodule FzHttp.DevicesTest do
     @attrs %{
       name: "Go hard or go home.",
       allowed_ips: "0.0.0.0",
-      use_default_allowed_ips: false
+      use_site_allowed_ips: false
     }
 
     @valid_dns_attrs %{
-      use_default_dns: false,
+      use_site_dns: false,
       dns: "1.1.1.1, 1.0.0.1, 2606:4700:4700::1111, 2606:4700:4700::1001"
     }
 
@@ -124,43 +144,56 @@ defmodule FzHttp.DevicesTest do
     }
 
     @valid_allowed_ips_attrs %{
-      use_default_allowed_ips: false,
+      use_site_allowed_ips: false,
       allowed_ips: "0.0.0.0/0, ::/0, ::0/0, 192.168.1.0/24"
     }
 
     @valid_endpoint_ipv4_attrs %{
-      use_default_endpoint: false,
+      use_site_endpoint: false,
       endpoint: "5.5.5.5"
     }
 
     @valid_endpoint_ipv6_attrs %{
-      use_default_endpoint: false,
+      use_site_endpoint: false,
       endpoint: "fd00::1"
     }
 
     @valid_endpoint_host_attrs %{
-      use_default_endpoint: false,
+      use_site_endpoint: false,
       endpoint: "valid-endpoint.example.com"
     }
 
     @invalid_endpoint_ipv4_attrs %{
-      use_default_endpoint: false,
+      use_site_endpoint: false,
       endpoint: "265.1.1.1"
     }
 
     @invalid_endpoint_ipv6_attrs %{
-      use_default_endpoint: false,
+      use_site_endpoint: false,
       endpoint: "deadbeef::1"
     }
 
     @invalid_endpoint_host_attrs %{
-      use_default_endpoint: false,
+      use_site_endpoint: false,
       endpoint: "can't have this"
+    }
+
+    @empty_endpoint_attrs %{
+      use_site_endpoint: false,
+      endpoint: ""
     }
 
     @invalid_allowed_ips_attrs %{
       allowed_ips: "1.1.1.1, 11, foobar"
     }
+
+    @fields_use_site [
+      %{use_site_allowed_ips: true, allowed_ips: "1.1.1.1"},
+      %{use_site_dns: true, dns: "1.1.1.1"},
+      %{use_site_endpoint: true, endpoint: "1.1.1.1"},
+      %{use_site_persistent_keepalive: true, persistent_keepalive: 1},
+      %{use_site_mtu: true, mtu: 1000}
+    ]
 
     test "updates device", %{device: device} do
       {:ok, test_device} = Devices.update_device(device, @attrs)
@@ -196,6 +229,22 @@ defmodule FzHttp.DevicesTest do
              }
     end
 
+    test "prevents updating fields if use_site_", %{device: device} do
+      for attrs <- @fields_use_site do
+        field =
+          Map.keys(attrs)
+          |> Enum.filter(fn attr -> !String.starts_with?(Atom.to_string(attr), "use_site_") end)
+          |> List.first()
+
+        assert {:error, changeset} = Devices.update_device(device, attrs)
+
+        assert changeset.errors[field] == {
+                 "must not be present",
+                 []
+               }
+      end
+    end
+
     test "prevents updating device with invalid ipv6 endpoint", %{device: device} do
       {:error, changeset} = Devices.update_device(device, @invalid_endpoint_ipv6_attrs)
 
@@ -211,6 +260,15 @@ defmodule FzHttp.DevicesTest do
       assert changeset.errors[:endpoint] == {
                "is invalid: can't have this is not a valid fqdn or IPv4 / IPv6 address",
                []
+             }
+    end
+
+    test "prevents updating device with empty endpoint", %{device: device} do
+      {:error, changeset} = Devices.update_device(device, @empty_endpoint_attrs)
+
+      assert changeset.errors[:endpoint] == {
+               "can't be blank",
+               [{:validation, :required}]
              }
     end
 
@@ -314,15 +372,6 @@ defmodule FzHttp.DevicesTest do
 
     test "returns changeset", %{device: device} do
       assert %Ecto.Changeset{} = Devices.change_device(device)
-    end
-  end
-
-  describe "rand_name/0" do
-    test "generates a random name" do
-      name1 = Devices.rand_name()
-      name2 = Devices.rand_name()
-
-      assert name1 != name2
     end
   end
 

@@ -7,7 +7,7 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
     @destination "1.2.3.4"
     @allow_params %{"rule" => %{"action" => "accept", "destination" => @destination}}
 
-    test "adds to allowlist", %{authed_conn: conn} do
+    test "adds to allowlist", %{admin_conn: conn} do
       path = Routes.rule_index_path(conn, :index)
       {:ok, view, _html} = live(conn, path)
 
@@ -19,7 +19,7 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
       assert test_view =~ @destination
     end
 
-    test "validation fails", %{authed_conn: conn, rule: _rule} do
+    test "validation fails", %{admin_conn: conn, rule: _rule} do
       path = Routes.rule_index_path(conn, :index)
       {:ok, view, _html} = live(conn, path)
 
@@ -48,7 +48,7 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
       refute valid_view =~ "is invalid"
     end
 
-    test "removes from allowlist", %{authed_conn: conn, rule: rule} do
+    test "removes from allowlist", %{admin_conn: conn, rule: rule} do
       path = Routes.rule_index_path(conn, :index)
       {:ok, view, _html} = live(conn, path)
 
@@ -67,7 +67,7 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
     @destination "1.2.3.4"
     @deny_params %{"rule" => %{"action" => "drop", "destination" => @destination}}
 
-    test "adds to denylist", %{authed_conn: conn, rule: _rule} do
+    test "adds to denylist", %{admin_conn: conn, rule: _rule} do
       path = Routes.rule_index_path(conn, :index)
       {:ok, view, _html} = live(conn, path)
 
@@ -79,7 +79,7 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
       assert test_view =~ @destination
     end
 
-    test "validation fails", %{authed_conn: conn, rule: _rule} do
+    test "validation fails", %{admin_conn: conn, rule: _rule} do
       path = Routes.rule_index_path(conn, :index)
       {:ok, view, _html} = live(conn, path)
 
@@ -96,7 +96,7 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
       assert test_view =~ "is invalid"
     end
 
-    test "removes from denylist", %{authed_conn: conn, rule: rule} do
+    test "removes from denylist", %{admin_conn: conn, rule: rule} do
       path = Routes.rule_index_path(conn, :index)
       {:ok, view, _html} = live(conn, path)
 

@@ -13,21 +13,6 @@ defmodule FzVpn.CLI.SandboxTest do
     assert cli().teardown() == @expected_returned
   end
 
-  test "genkey" do
-    {privkey, pubkey} = cli().genkey()
-
-    assert is_binary(privkey)
-    assert is_binary(pubkey)
-  end
-
-  test "pubkey" do
-    {privkey, _pubkey} = cli().genkey()
-    pubkey = cli().pubkey(privkey)
-
-    assert is_binary(pubkey)
-    assert String.length(pubkey) == 44
-  end
-
   test "exec!" do
     assert cli().exec!("dummy") == @expected_returned
   end

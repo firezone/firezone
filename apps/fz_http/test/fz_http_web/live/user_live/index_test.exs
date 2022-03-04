@@ -7,7 +7,7 @@ defmodule FzHttpWeb.UserLive.IndexTest do
     setup [:create_devices, :create_users]
 
     test "includes the created user email in the list", %{
-      authed_conn: conn,
+      admin_conn: conn,
       devices: _devices,
       users: users
     } do
@@ -20,7 +20,7 @@ defmodule FzHttpWeb.UserLive.IndexTest do
     end
 
     test "includes device_counts in the list", %{
-      authed_conn: conn,
+      admin_conn: conn,
       devices: _devices,
       users: _users
     } do
@@ -32,7 +32,7 @@ defmodule FzHttpWeb.UserLive.IndexTest do
       end
     end
 
-    test "navigates to user show", %{authed_conn: conn, users: users} do
+    test "navigates to user show", %{admin_conn: conn, users: users} do
       path = Routes.user_index_path(conn, :index)
       {:ok, view, _html} = live(conn, path)
       user = List.first(users)
@@ -50,7 +50,7 @@ defmodule FzHttpWeb.UserLive.IndexTest do
 
     test "redirects to sign in", %{unauthed_conn: conn} do
       path = Routes.user_index_path(conn, :index)
-      expected_path = Routes.session_path(conn, :new)
+      expected_path = Routes.root_path(conn, :index)
       assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
     end
   end
@@ -74,7 +74,7 @@ defmodule FzHttpWeb.UserLive.IndexTest do
       }
     }
 
-    test "successfully creates user", %{authed_conn: conn} do
+    test "successfully creates user", %{admin_conn: conn} do
       path = Routes.user_index_path(conn, :new)
       {:ok, view, _html} = live(conn, path)
 
@@ -88,7 +88,7 @@ defmodule FzHttpWeb.UserLive.IndexTest do
       assert new_path == Routes.user_show_path(conn, :show, user)
     end
 
-    test "renders errors", %{authed_conn: conn} do
+    test "renders errors", %{admin_conn: conn} do
       path = Routes.user_index_path(conn, :new)
       {:ok, view, _html} = live(conn, path)
 
@@ -105,7 +105,7 @@ defmodule FzHttpWeb.UserLive.IndexTest do
   describe "add user modal" do
     setup :create_users
 
-    test "shows the modal", %{authed_conn: conn} do
+    test "shows the modal", %{admin_conn: conn} do
       path = Routes.user_index_path(conn, :index)
       {:ok, view, _html} = live(conn, path)
 

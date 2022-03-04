@@ -5,6 +5,7 @@ defmodule FzHttpWeb.Router do
 
   use FzHttpWeb, :router
 
+  # Limit total requests to 20 per every 10 seconds
   @root_rate_limit [rate_limit: {"root", 10_000, 50}, by: :ip]
 
   pipeline :browser do
@@ -15,7 +16,6 @@ defmodule FzHttpWeb.Router do
     plug :protect_from_forgery
     plug :put_secure_browser_headers
 
-    # Limit total requests to 20 per every 10 seconds
     # XXX: Make this configurable
     plug Hammer.Plug, @root_rate_limit
   end
@@ -24,37 +24,114 @@ defmodule FzHttpWeb.Router do
     plug :accepts, ["json"]
   end
 
+  pipeline :require_admin_user do
+    plug FzHttpWeb.Plug.Authorization, :admin
+  end
+
+  pipeline :require_unprivileged_user do
+    plug FzHttpWeb.Plug.Authorization, :unprivileged
+  end
+
+  pipeline :require_authenticated do
+    plug Guardian.Plug.EnsureAuthenticated
+  end
+
+  pipeline :require_unauthenticated do
+    plug FzHttpWeb.Plug.Authorization, :test
+    plug Guardian.Plug.EnsureNotAuthenticated
+  end
+
+  pipeline :guardian do
+    plug FzHttpWeb.Authentication.Pipeline
+  end
+
+  # Ueberauth routes
+  scope "/auth", FzHttpWeb do
+    pipe_through [
+      :browser,
+      :guardian,
+      :require_unauthenticated
+    ]
+
+    get "/:provider", AuthController, :request
+    get "/:provider/callback", AuthController, :callback
+    post "/:provider/callback", AuthController, :callback
+  end
+
+  # Unauthenticated routes
   scope "/", FzHttpWeb do
-    pipe_through :browser
-
-    resources "/session", SessionController, only: [:new, :create, :delete], singleton: true
-
-    live "/users", UserLive.Index, :index
-    live "/users/new", UserLive.Index, :new
-    live "/users/:id", UserLive.Show, :show
-    live "/users/:id/edit", UserLive.Show, :edit
-
-    live "/rules", RuleLive.Index, :index
-
-    live "/devices", DeviceLive.Index, :index
-    live "/devices/new", DeviceLive.Index, :new
-    live "/devices/:id", DeviceLive.Show, :show
-    live "/devices/:id/edit", DeviceLive.Show, :edit
-    get "/devices/:id/dl", DeviceController, :download_config
-    get "/device_config/:config_token", DeviceController, :config
-    get "/device_config/:config_token/dl", DeviceController, :download_shared_config
-
-    live "/settings/default", SettingLive.Default, :show
-    live "/settings/security", SettingLive.Security, :show
-    live "/settings/account", SettingLive.Account, :show
-    live "/settings/account/edit", SettingLive.Account, :edit
-
-    live "/diagnostics/connectivity_checks", ConnectivityCheckLive.Index, :index
-
-    get "/sign_in/:token", SessionController, :create
-    delete "/user", UserController, :delete
-    get "/user", UserController, :show
+    pipe_through [
+      :browser,
+      :guardian,
+      :require_unauthenticated
+    ]
 
     get "/", RootController, :index
+  end
+
+  # Authenticated routes
+  scope "/", FzHttpWeb do
+    pipe_through [
+      :browser,
+      :guardian,
+      :require_authenticated
+    ]
+
+    delete "/sign_out", AuthController, :delete
+  end
+
+  # Authenticated Unprivileged routes
+  scope "/", FzHttpWeb do
+    pipe_through [
+      :browser,
+      :guardian,
+      :require_authenticated,
+      :require_unprivileged_user
+    ]
+
+    # Unprivileged Live routes
+    live_session(
+      :unprivileged,
+      on_mount: {FzHttpWeb.LiveAuth, :unprivileged},
+      root_layout: {FzHttpWeb.LayoutView, :unprivileged}
+    ) do
+      live "/user_devices", DeviceLive.Unprivileged.Index, :index
+      live "/user_devices/new", DeviceLive.Unprivileged.Index, :new
+      live "/user_devices/:id", DeviceLive.Unprivileged.Show, :show
+    end
+  end
+
+  # Authenticated Admin routes
+  scope "/", FzHttpWeb do
+    pipe_through [
+      :browser,
+      :guardian,
+      :require_authenticated,
+      :require_admin_user
+    ]
+
+    # Admins can delete themselves synchronously
+    delete "/user", UserController, :delete
+
+    # Admin Live routes
+    live_session(
+      :admin,
+      on_mount: {FzHttpWeb.LiveAuth, :admin},
+      root_layout: {FzHttpWeb.LayoutView, :admin}
+    ) do
+      live "/users", UserLive.Index, :index
+      live "/users/new", UserLive.Index, :new
+      live "/users/:id", UserLive.Show, :show
+      live "/users/:id/edit", UserLive.Show, :edit
+      live "/users/:id/new_device", UserLive.Show, :new_device
+      live "/rules", RuleLive.Index, :index
+      live "/devices", DeviceLive.Admin.Index, :index
+      live "/devices/:id", DeviceLive.Admin.Show, :show
+      live "/settings/site", SettingLive.Site, :show
+      live "/settings/security", SettingLive.Security, :show
+      live "/settings/account", SettingLive.Account, :show
+      live "/settings/account/edit", SettingLive.Account, :edit
+      live "/diagnostics/connectivity_checks", ConnectivityCheckLive.Index, :index
+    end
   end
 end

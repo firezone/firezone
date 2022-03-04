@@ -4,29 +4,11 @@ defmodule FzHttpWeb.UserController do
   """
 
   alias FzHttp.Users
+  alias FzHttpWeb.Authentication
   use FzHttpWeb, :controller
 
-  plug :require_authenticated
-  plug :redirect_unauthenticated when action in [:index]
-
-  def index(conn, _params) do
-    conn
-    |> redirect(to: Routes.user_index_path(conn, :index))
-  end
-
-  def show(conn, _params) do
-    user_id = get_session(conn, :user_id)
-    user = Users.get_user!(user_id)
-
-    conn
-    |> put_root_layout({FzHttpWeb.LayoutView, "auth.html"})
-    |> put_layout({FzHttpWeb.LayoutView, "app.html"})
-    |> render("show.html", user: user)
-  end
-
   def delete(conn, _params) do
-    user_id = get_session(conn, :user_id)
-    user = Users.get_user!(user_id)
+    user = Authentication.get_current_user(conn)
 
     case Users.delete_user(user) do
       {:ok, _user} ->
@@ -35,13 +17,13 @@ defmodule FzHttpWeb.UserController do
         conn
         |> clear_session()
         |> put_flash(:info, "Account deleted successfully.")
-        |> redirect(to: Routes.session_path(conn, :new))
+        |> redirect(to: Routes.root_path(conn, :index))
 
       {:error, msg} ->
         conn
         |> clear_session()
         |> put_flash(:error, "Error deleting account: #{msg}")
-        |> redirect(to: Routes.session_path(conn, :new))
+        |> redirect(to: Routes.root_path(conn, :index))
     end
   end
 end

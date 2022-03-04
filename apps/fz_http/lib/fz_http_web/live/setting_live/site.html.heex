@@ -1,0 +1,21 @@
+<%= render FzHttpWeb.SharedView, "heading.html", page_title: @page_title %>
+
+<section class="section is-main-section">
+  <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
+
+  <div class="block">
+    <p>
+      Configure default WireGuard settings for this site.
+    </p>
+  </div>
+
+  <h4 class="title is-4">Site Defaults</h4>
+
+  <div class="block">
+    <%= live_component(
+        FzHttpWeb.SettingLive.SiteFormComponent,
+        placeholders: @placeholders,
+        changeset: @changeset,
+        id: :site_form_component) %>
+  </div>
+</section>
