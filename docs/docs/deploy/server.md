@@ -14,9 +14,31 @@ guide.
 
 ## Installation Instructions
 
-Assuming you're running a supported Linux kernel on one of the [distros
-listed above](#supported-linux-distributions), follow these steps to install and
-configure Firezone for first use:
+Assuming you're running a supported Linux kernel on one of the [supported
+platforms](#supported-linux-distributions), use one of the methods below
+to get started:
+
+* [Automatic Install](#automatic-install)
+* [Manual Install](#manual-install)
+
+### Automatic Install
+
+The easiest way to get started using Firezone is via the automatic installation
+script:
+
+```bash
+bash <(curl -Ls https://github.com/firezone/firezone/raw/master/scripts/install.sh)
+```
+
+This will ask you a few questions regarding your install, download the latest
+release for your platform, then create an administrator user and print to the
+console instructions for logging in to the web UI.
+
+If that fails, try the manual installation method below.
+
+### Manual Install
+
+If the Automatic Install fails, try these steps to install Firezone manually.
 
 1. [Install WireGuard](https://www.wireguard.com/install/) for your distro.
    If using Linux kernel 5.6 or higher, skip this step.
@@ -28,7 +50,9 @@ configure Firezone for first use:
    initialize config files, set up needed services and generate the default
    configuration.
 1. Edit the default configuration located at `/etc/firezone/firezone.rb`.
-   At a minimum, you'll need to review the following configuration variables:
+   We've chosen sensible defaults that should be a good starting point for most
+   installations. For production installations, you'll want to specify your
+   FQDN and SSL certificate paths:
 
    ```ruby
    # Auto-generated based on the server's hostname.
@@ -36,10 +60,13 @@ configure Firezone for first use:
    default['firezone']['fqdn'] = 'firezone.example.com'
 
    # Specify the path to your SSL cert and private key.
-   # If set to nil, a self-signed cert will be generated for you.
+   # If set to nil (default), a self-signed cert will be generated for you.
    default['firezone']['ssl']['certificate'] = '/path/to/cert.pem'
    default['firezone']['ssl']['certificate_key'] = '/path/to/key.pem'
    ```
+
+   See the complete [configuration file reference for more details](
+   {%link docs/reference/configuration-file.md%}).
 
 1. Reconfigure the application to pick up the new changes:
    `sudo firezone-ctl reconfigure`.
