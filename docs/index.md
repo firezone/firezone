@@ -34,7 +34,6 @@ Configure a VPN server with a static IP address.
 1. [Reverse Tunnels]({% link docs/user-guides/reverse-tunnel.md %}):
 Establish connections between multiple peers.
 
-
 ## Get Help
 
 If you're looking for help installing, configuring, or using Firezone, we're
