@@ -16,6 +16,7 @@ defmodule FzHttpWeb.UserLive.Show do
     {:ok,
      socket
      |> assign(:devices, devices)
+     |> assign(:device_config, socket.assigns[:device_config])
      |> assign(:user, user)
      |> assign(:page_title, "Users")}
   end

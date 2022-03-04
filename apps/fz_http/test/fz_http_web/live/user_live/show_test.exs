@@ -11,17 +11,426 @@ defmodule FzHttpWeb.UserLive.ShowTest do
 
       assert html =~ device.name
     end
+  end
 
-    test "opens the edit modal", %{admin_conn: conn, device: device} do
-      path = Routes.user_show_path(conn, :show, device.user_id)
+  describe "authenticated show device" do
+    setup :create_device
+
+    test "shows device details", %{admin_conn: conn, device: device} do
+      path = Routes.device_admin_show_path(conn, :show, device)
+      {:ok, _view, html} = live(conn, path)
+      assert html =~ "#{device.name}"
+      assert html =~ "<h4 class=\"title is-4\">Details</h4>"
+    end
+  end
+
+  describe "authenticated new device" do
+    @device_id_regex ~r/device-(?<device_id>.*)-inserted-at/
+    @valid_params %{
+      "device" => %{
+        "public_key" => "test-pubkey",
+        "name" => "new_name"
+      }
+    }
+    @invalid_params %{
+      "device" => %{
+        "public_key" => "test-pubkey",
+        "name" => ""
+      }
+    }
+    @allowed_ips "2.2.2.2"
+    @allowed_ips_change %{
+      "device" => %{
+        "public_key" => "test-pubkey",
+        "use_site_allowed_ips" => "false",
+        "allowed_ips" => @allowed_ips
+      }
+    }
+    @allowed_ips_unchanged %{
+      "device" => %{
+        "public_key" => "test-pubkey",
+        "use_site_allowed_ips" => "true",
+        "allowed_ips" => @allowed_ips
+      }
+    }
+    @dns "8.8.8.8, 8.8.4.4"
+    @dns_change %{
+      "device" => %{
+        "public_key" => "test-pubkey",
+        "use_site_dns" => "false",
+        "dns" => @dns
+      }
+    }
+    @dns_unchanged %{
+      "device" => %{
+        "public_key" => "test-pubkey",
+        "use_site_dns" => "true",
+        "dns" => @dns
+      }
+    }
+    @wireguard_endpoint "6.6.6.6"
+    @endpoint_change %{
+      "device" => %{
+        "public_key" => "test-pubkey",
+        "use_site_endpoint" => "false",
+        "endpoint" => @wireguard_endpoint
+      }
+    }
+    @endpoint_unchanged %{
+      "device" => %{
+        "public_key" => "test-pubkey",
+        "use_site_endpoint" => "true",
+        "endpoint" => @wireguard_endpoint
+      }
+    }
+    @mtu_change %{
+      "device" => %{
+        "public_key" => "test-pubkey",
+        "use_site_mtu" => "false",
+        "mtu" => "1280"
+      }
+    }
+    @mtu_unchanged %{
+      "device" => %{
+        "public_key" => "test-pubkey",
+        "use_site_mtu" => "true",
+        "mtu" => "1280"
+      }
+    }
+    @persistent_keepalive_change %{
+      "device" => %{
+        "public_key" => "test-pubkey",
+        "use_site_persistent_keepalive" => "false",
+        "persistent_keepalive" => "120"
+      }
+    }
+    @persistent_keepalive_unchanged %{
+      "device" => %{
+        "public_key" => "test-pubkey",
+        "use_site_persistent_keepalive" => "true",
+        "persistent_keepalive" => "5"
+      }
+    }
+    @default_allowed_ips_change %{
+      "device" => %{
+        "public_key" => "test-pubkey",
+        "use_site_allowed_ips" => "false"
+      }
+    }
+    @default_dns_change %{
+      "device" => %{
+        "public_key" => "test-pubkey",
+        "use_site_dns" => "false"
+      }
+    }
+    @default_endpoint_change %{
+      "device" => %{
+        "public_key" => "test-pubkey",
+        "use_site_endpoint" => "false"
+      }
+    }
+    @default_mtu_change %{
+      "device" => %{
+        "public_key" => "test-pubkey",
+        "use_site_mtu" => "false"
+      }
+    }
+    @default_persistent_keepalive_change %{
+      "device" => %{
+        "public_key" => "test-pubkey",
+        "use_site_persistent_keepalive" => "false"
+      }
+    }
+
+    def device_id(view) do
+      %{"device_id" => device_id} = Regex.named_captures(@device_id_regex, view)
+      device_id
+    end
+
+    test "opens modal", %{admin_conn: conn, admin_user: user} do
+      path = Routes.user_show_path(conn, :new_device, user.id)
       {:ok, view, _html} = live(conn, path)
 
       view
-      |> element("a", "Change Email or Password")
+      |> element("#add-device-button")
       |> render_click()
 
-      new_path = assert_patch(view)
-      assert new_path == Routes.user_show_path(conn, :edit, device.user_id)
+      assert_patched(view, Routes.user_show_path(conn, :new_device, user.id))
+    end
+
+    test "allows name changes", %{admin_conn: conn, admin_user: user} do
+      path = Routes.user_show_path(conn, :new_device, user.id)
+      {:ok, view, _html} = live(conn, path)
+
+      test_view =
+        view
+        |> form("#create-device")
+        |> render_submit(@valid_params)
+
+      assert test_view =~ "Device added!"
+    end
+
+    test "prevents allowed_ips changes when use_site_allowed_ips is true", %{
+      admin_conn: conn,
+      admin_user: user
+    } do
+      path = Routes.user_show_path(conn, :new_device, user.id)
+      {:ok, view, _html} = live(conn, path)
+
+      test_view =
+        view
+        |> form("#create-device")
+        |> render_submit(@allowed_ips_unchanged)
+
+      assert test_view =~ "must not be present"
+    end
+
+    test "prevents dns changes when use_site_dns is true", %{
+      admin_conn: conn,
+      admin_user: user
+    } do
+      path = Routes.user_show_path(conn, :new_device, user.id)
+      {:ok, view, _html} = live(conn, path)
+
+      test_view =
+        view
+        |> form("#create-device")
+        |> render_submit(@dns_unchanged)
+
+      assert test_view =~ "must not be present"
+    end
+
+    test "prevents endpoint changes when use_site_endpoint is true", %{
+      admin_conn: conn,
+      admin_user: user
+    } do
+      path = Routes.user_show_path(conn, :new_device, user.id)
+      {:ok, view, _html} = live(conn, path)
+
+      test_view =
+        view
+        |> form("#create-device")
+        |> render_submit(@endpoint_unchanged)
+
+      assert test_view =~ "must not be present"
+    end
+
+    test "prevents mtu changes when use_site_mtu is true", %{
+      admin_conn: conn,
+      admin_user: user
+    } do
+      path = Routes.user_show_path(conn, :new_device, user.id)
+      {:ok, view, _html} = live(conn, path)
+
+      test_view =
+        view
+        |> form("#create-device")
+        |> render_submit(@mtu_unchanged)
+
+      assert test_view =~ "must not be present"
+    end
+
+    test "prevents persistent_keepalive changes when use_site_persistent_keepalive is true",
+         %{
+           admin_conn: conn,
+           admin_user: user
+         } do
+      path = Routes.user_show_path(conn, :new_device, user.id)
+      {:ok, view, _html} = live(conn, path)
+
+      test_view =
+        view
+        |> form("#create-device")
+        |> render_submit(@persistent_keepalive_unchanged)
+
+      assert test_view =~ "must not be present"
+    end
+
+    test "allows allowed_ips changes", %{admin_conn: conn, admin_user: user} do
+      path = Routes.user_show_path(conn, :new_device, user.id)
+      {:ok, view, _html} = live(conn, path)
+
+      test_view =
+        view
+        |> form("#create-device")
+        |> render_submit(@allowed_ips_change)
+
+      assert test_view =~ "Device added!"
+
+      path = Routes.user_show_path(conn, :show, user.id)
+      {:ok, _view, html} = live(conn, path)
+      path = Routes.device_admin_show_path(conn, :show, device_id(html))
+      {:ok, _view, html} = live(conn, path)
+      assert html =~ @allowed_ips
+    end
+
+    test "allows dns changes", %{admin_conn: conn, admin_user: user} do
+      path = Routes.user_show_path(conn, :new_device, user.id)
+      {:ok, view, _html} = live(conn, path)
+
+      test_view =
+        view
+        |> form("#create-device")
+        |> render_submit(@dns_change)
+
+      assert test_view =~ "Device added!"
+
+      path = Routes.user_show_path(conn, :show, user.id)
+      {:ok, _view, html} = live(conn, path)
+      path = Routes.device_admin_show_path(conn, :show, device_id(html))
+      {:ok, _view, html} = live(conn, path)
+      assert html =~ @dns
+    end
+
+    test "allows endpoint changes", %{admin_conn: conn, admin_user: user} do
+      path = Routes.user_show_path(conn, :new_device, user.id)
+      {:ok, view, _html} = live(conn, path)
+
+      test_view =
+        view
+        |> form("#create-device")
+        |> render_submit(@endpoint_change)
+
+      assert test_view =~ "Device added!"
+
+      path = Routes.user_show_path(conn, :show, user.id)
+      {:ok, _view, html} = live(conn, path)
+      path = Routes.device_admin_show_path(conn, :show, device_id(html))
+      {:ok, _view, html} = live(conn, path)
+      assert html =~ @wireguard_endpoint
+    end
+
+    test "allows mtu changes", %{admin_conn: conn, admin_user: user} do
+      path = Routes.user_show_path(conn, :new_device, user.id)
+      {:ok, view, _html} = live(conn, path)
+
+      test_view =
+        view
+        |> form("#create-device")
+        |> render_submit(@mtu_change)
+
+      assert test_view =~ "Device added!"
+
+      path = Routes.user_show_path(conn, :show, user.id)
+      {:ok, _view, html} = live(conn, path)
+      path = Routes.device_admin_show_path(conn, :show, device_id(html))
+      {:ok, _view, html} = live(conn, path)
+      assert html =~ "1280"
+    end
+
+    test "allows persistent_keepalive changes", %{admin_conn: conn, admin_user: user} do
+      path = Routes.user_show_path(conn, :new_device, user.id)
+      {:ok, view, _html} = live(conn, path)
+
+      test_view =
+        view
+        |> form("#create-device")
+        |> render_submit(@persistent_keepalive_change)
+
+      assert test_view =~ "Device added!"
+
+      path = Routes.user_show_path(conn, :show, user.id)
+      {:ok, _view, html} = live(conn, path)
+      path = Routes.device_admin_show_path(conn, :show, device_id(html))
+      {:ok, _view, html} = live(conn, path)
+      assert html =~ "120"
+    end
+
+    test "prevents empty names", %{admin_conn: conn, admin_user: user} do
+      path = Routes.user_show_path(conn, :new_device, user.id)
+      {:ok, view, _html} = live(conn, path)
+
+      test_view =
+        view
+        |> form("#create-device")
+        |> render_submit(@invalid_params)
+
+      assert test_view =~ "can&#39;t be blank"
+    end
+
+    test "on use_site_allowed_ips change", %{admin_conn: conn, admin_user: user} do
+      path = Routes.user_show_path(conn, :new_device, user.id)
+      {:ok, view, _html} = live(conn, path)
+
+      test_view =
+        view
+        |> form("#create-device")
+        |> render_change(@default_allowed_ips_change)
+
+      assert test_view =~ """
+             <input class="input " id="create-device_allowed_ips" name="device[allowed_ips]" type="text"/>\
+             """
+    end
+
+    test "on use_site_dns change", %{admin_conn: conn, admin_user: user} do
+      path = Routes.user_show_path(conn, :new_device, user.id)
+      {:ok, view, _html} = live(conn, path)
+
+      test_view =
+        view
+        |> form("#create-device")
+        |> render_change(@default_dns_change)
+
+      assert test_view =~ """
+             <input class="input " id="create-device_dns" name="device[dns]" type="text"/>\
+             """
+    end
+
+    test "on use_site_endpoint change", %{admin_conn: conn, admin_user: user} do
+      path = Routes.user_show_path(conn, :new_device, user.id)
+      {:ok, view, _html} = live(conn, path)
+
+      test_view =
+        view
+        |> form("#create-device")
+        |> render_change(@default_endpoint_change)
+
+      assert test_view =~ """
+             <input class="input " id="create-device_endpoint" name="device[endpoint]" type="text"/>\
+             """
+    end
+
+    test "on use_site_mtu change", %{admin_conn: conn, admin_user: user} do
+      path = Routes.user_show_path(conn, :new_device, user.id)
+      {:ok, view, _html} = live(conn, path)
+
+      test_view =
+        view
+        |> form("#create-device")
+        |> render_change(@default_mtu_change)
+
+      assert test_view =~ """
+             <input class="input " id="create-device_mtu" name="device[mtu]" type="text"/>\
+             """
+    end
+
+    test "on use_site_persistent_keepalive change", %{admin_conn: conn, admin_user: user} do
+      path = Routes.user_show_path(conn, :new_device, user.id)
+      {:ok, view, _html} = live(conn, path)
+
+      test_view =
+        view
+        |> form("#create-device")
+        |> render_change(@default_persistent_keepalive_change)
+
+      assert test_view =~ """
+             <input class="input " id="create-device_persistent_keepalive" name="device[persistent_keepalive]" type="text"/>\
+             """
+    end
+  end
+
+  describe "delete own device" do
+    setup :create_device
+
+    test "successful", %{admin_conn: conn, device: device} do
+      path = Routes.device_admin_show_path(conn, :show, device)
+      {:ok, view, _html} = live(conn, path)
+
+      view
+      |> element("button", "Delete Device #{device.name}")
+      |> render_click()
+
+      _flash = assert_redirected(view, Routes.device_admin_index_path(conn, :index))
     end
   end
 
@@ -40,12 +449,12 @@ defmodule FzHttpWeb.UserLive.ShowTest do
       path = Routes.user_show_path(conn, :show, user.id)
       {:ok, view, _html} = live(conn, path)
 
-      new_view =
+      test_view =
         view
         |> element("button", "Delete User")
         |> render_click()
 
-      assert new_view =~ "Use the account section to delete your account."
+      assert test_view =~ "Use the account section to delete your account."
     end
   end
 
@@ -81,7 +490,7 @@ defmodule FzHttpWeb.UserLive.ShowTest do
         assert new_path == Routes.user_show_path(conn, :show, user)
       end
 
-      %{success: success, view: view, conn: conn, user: user}
+      %{success: success, view: view, admin_conn: conn, user: user}
     end
 
     @new_email_attrs %{"user" => %{"email" => "newemail@localhost"}}
@@ -103,7 +512,12 @@ defmodule FzHttpWeb.UserLive.ShowTest do
       }
     }
 
-    test "successfully changes email", %{success: success, view: view, user: user, conn: conn} do
+    test "successfully changes email", %{
+      success: success,
+      view: view,
+      user: user,
+      admin_conn: conn
+    } do
       view
       |> element("form#user-form")
       |> render_submit(@new_email_attrs)
@@ -111,7 +525,12 @@ defmodule FzHttpWeb.UserLive.ShowTest do
       success.(conn, view, user)
     end
 
-    test "successfully changes password", %{success: success, view: view, conn: conn, user: user} do
+    test "successfully changes password", %{
+      success: success,
+      view: view,
+      admin_conn: conn,
+      user: user
+    } do
       view
       |> element("form#user-form")
       |> render_submit(@new_password_attrs)
@@ -122,7 +541,7 @@ defmodule FzHttpWeb.UserLive.ShowTest do
     test "successfully changes email and password", %{
       success: success,
       view: view,
-      conn: conn,
+      admin_conn: conn,
       user: user
     } do
       view
@@ -133,13 +552,13 @@ defmodule FzHttpWeb.UserLive.ShowTest do
     end
 
     test "displays errors for invalid changes", %{view: view} do
-      new_view =
+      test_view =
         view
         |> element("form#user-form")
         |> render_submit(@invalid_attrs)
 
-      assert new_view =~ "has invalid format"
-      assert new_view =~ "should be at least 12 character(s)"
+      assert test_view =~ "has invalid format"
+      assert test_view =~ "should be at least 12 character(s)"
     end
   end
 end

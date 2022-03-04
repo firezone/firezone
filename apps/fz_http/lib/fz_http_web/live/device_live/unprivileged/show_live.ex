@@ -3,7 +3,8 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.Show do
   Shows a device for an unprivileged user.
   """
   use FzHttpWeb, :live_view
-  alias FzHttp.{Devices, Users}
+  alias FzHttp.Devices
+  alias FzHttp.Users
 
   @impl Phoenix.LiveView
   def mount(%{"id" => device_id} = _params, _session, socket) do

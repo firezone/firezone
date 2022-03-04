@@ -26,7 +26,7 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
   end
 
   describe "authenticated/creates device" do
-    test "creates device", %{unprivileged_conn: conn} do
+    test "shows new form", %{unprivileged_conn: conn} do
       path = Routes.device_unprivileged_index_path(conn, :index)
       {:ok, view, _html} = live(conn, path)
 
@@ -36,7 +36,23 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
         |> render_click()
 
       assert_patched(view, Routes.device_unprivileged_index_path(conn, :new))
-      assert new_view =~ "Device Added!"
+      assert new_view =~ "Add Device"
+
+      assert new_view =~ """
+             <form action="#" method="post" id="create-device\
+             """
+    end
+
+    test "creates tunnel", %{unprivileged_conn: conn} do
+      path = Routes.device_unprivileged_index_path(conn, :new)
+      {:ok, view, _html} = live(conn, path)
+
+      new_view =
+        view
+        |> element("#create-device")
+        |> render_submit(%{"device" => %{"public_key" => "test-pubkey", "name" => "test-tunnel"}})
+
+      assert new_view =~ "Device added!"
     end
   end
 
