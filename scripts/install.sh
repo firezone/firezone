@@ -40,8 +40,7 @@ promptContact() {
 }
 
 wireguardCheck() {
-  # if ! test -f /sys/module/wireguard/version; then
-  if false; then
+  if ! test -f /sys/module/wireguard/version; then
     echo "Error! WireGuard not detected. Please upgrade your kernel to at least 5.6 or install the WireGuard kernel module."
     echo "See more at https://www.wireguard.com/install/"
     exit
