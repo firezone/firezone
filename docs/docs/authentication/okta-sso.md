@@ -14,7 +14,7 @@ After successfully configuring SSO with Firezone, users will be prompted to sign
 in with their Okta credentials in the Firezone portal to authenticate VPN
 sessions and download device configuration files.
 
-![Firezone Okta SSO Login](){:width="600"}
+![Firezone Okta SSO Login](https://user-images.githubusercontent.com/52545545/156855886-5a4a0da7-065c-4ec1-af33-583dff4dbb72.gif){:width="600"}
 
 To set up SSO, follow the steps below:
 
@@ -54,3 +54,16 @@ These 3 values will be used in Step 2 to configure Firezone.
 ![Okta credentials](https://user-images.githubusercontent.com/52545545/156463942-7130b4bb-372a-4e27-ae06-7d3405214ec7.png){:width="800"}
 
 ## Step 2 - Configure Firezone
+
+Edit the configuration located at `/etc/firezone/firezone.rb` to include the
+following:
+
+```ruby
+# set the following variables to the values obtained in step 1
+default['firezone']['authentication']['okta']['enabled'] = true
+default['firezone']['authentication']['okta']['client_id'] = '<client id>'
+default['firezone']['authentication']['okta']['client_secret'] = '<client secret>'
+default['firezone']['authentication']['okta']['site'] = '<okta domain>'
+```
+
+Run `firezone-ctl reconfigure` and `firezone-ctl restart` to apply the changes.
