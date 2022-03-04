@@ -17,6 +17,7 @@ defmodule FzHttp.Users.User do
     field :role, Ecto.Enum, values: [:unprivileged, :admin], default: :unprivileged
     field :email, :string
     field :last_signed_in_at, :utc_datetime_usec
+    field :last_signed_in_method, :string
     field :password_hash, :string
     field :sign_in_token, :string
     field :sign_in_token_created_at, :utc_datetime_usec
@@ -43,13 +44,12 @@ defmodule FzHttp.Users.User do
       :password,
       :password_confirmation
     ])
-    |> validate_required([:email, :password, :password_confirmation])
+    |> validate_required([:email])
     |> validate_password_equality()
     |> validate_length(:password, min: @min_password_length, max: @max_password_length)
     |> validate_format(:email, ~r/@/)
     |> unique_constraint(:email)
     |> put_password_hash()
-    |> validate_required([:password_hash])
   end
 
   # Sign in token
@@ -155,7 +155,7 @@ defmodule FzHttp.Users.User do
 
   def changeset(user, attrs) do
     user
-    |> cast(attrs, [:email, :last_signed_in_at])
+    |> cast(attrs, [:email, :last_signed_in_method, :last_signed_in_at])
   end
 
   def authenticate_user(user, password_candidate) do

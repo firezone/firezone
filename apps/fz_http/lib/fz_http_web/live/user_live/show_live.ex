@@ -1,6 +1,7 @@
 defmodule FzHttpWeb.UserLive.Show do
   @moduledoc """
   Handles showing users.
+  XXX: Admin only
   """
   use FzHttpWeb, :live_view
 
@@ -8,16 +9,29 @@ defmodule FzHttpWeb.UserLive.Show do
   alias FzHttpWeb.ErrorHelpers
 
   @impl Phoenix.LiveView
-  def mount(params, session, socket) do
+  def mount(%{"id" => user_id} = _params, _session, socket) do
+    user = Users.get_user!(user_id)
+    devices = Devices.list_devices(user)
+
     {:ok,
      socket
-     |> assign(:page_title, "Users")
-     |> assign_defaults(params, session, &load_data/2)}
+     |> assign(:devices, devices)
+     |> assign(:device_config, socket.assigns[:device_config])
+     |> assign(:user, user)
+     |> assign(:page_title, "Users")}
   end
 
+  @doc """
+  Called when a modal is dismissed; reload devices.
+  """
   @impl Phoenix.LiveView
-  def handle_params(_params, _url, socket) do
-    {:noreply, socket}
+  def handle_params(%{"id" => user_id} = _params, _url, socket) do
+    user = Users.get_user!(user_id)
+    devices = Devices.list_devices(user.id)
+
+    {:noreply,
+     socket
+     |> assign(:devices, devices)}
   end
 
   @impl Phoenix.LiveView
@@ -47,49 +61,6 @@ defmodule FzHttpWeb.UserLive.Show do
              "Error deleting user: #{ErrorHelpers.aggregated_errors(changeset)}"
            )}
       end
-    end
-  end
-
-  @impl Phoenix.LiveView
-  def handle_event("create_device", %{"user_id" => user_id}, socket) do
-    {:ok, privkey, pubkey, server_pubkey} = @events_module.create_device()
-
-    attributes = %{
-      private_key: privkey,
-      public_key: pubkey,
-      server_public_key: server_pubkey,
-      user_id: user_id,
-      name: Devices.rand_name()
-    }
-
-    case Devices.create_device(attributes) do
-      {:ok, device} ->
-        @events_module.update_device(device)
-
-        {:noreply,
-         socket
-         |> put_flash(:info, "Device created successfully.")
-         |> redirect(to: Routes.device_show_path(socket, :show, device))}
-
-      {:error, changeset} ->
-        {:noreply,
-         socket
-         |> put_flash(
-           :error,
-           "Error creating device: #{ErrorHelpers.aggregated_errors(changeset)}"
-         )}
-    end
-  end
-
-  defp load_data(params, socket) do
-    user = Users.get_user!(params["id"])
-
-    if socket.assigns.current_user.role == :admin do
-      socket
-      |> assign(:devices, Devices.list_devices(user))
-      |> assign(:user, user)
-    else
-      not_authorized(socket)
     end
   end
 end

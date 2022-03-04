@@ -19,6 +19,7 @@
           <th>Email</th>
           <th>Devices</th>
           <th>Last Signed In</th>
+          <th>Last Signed In Method</th>
           <th>Created</th>
           <th>Updated</th>
         </tr>
@@ -35,6 +36,7 @@
               phx-hook="FormatTimestamp">
             …
           </td>
+          <td><%= user.last_signed_in_method %></td>
           <td id={"user-#{user.id}-inserted-at"}
               data-timestamp={user.inserted_at}
               phx-hook="FormatTimestamp">

@@ -40,6 +40,11 @@ default['firezone']['group'] = 'firezone'
 # Email for the primary admin user.
 default['firezone']['admin_email'] = 'firezone@localhost'
 
+# The maximum number of devices a user can have.
+# Max: 100
+# Default: 10
+default['firezone']['max_devices_per_user'] = 10
+
 # The outgoing interface name.
 # This is where tunneled traffic will exit the WireGuard tunnel.
 # If set to nil, this is will be set to the interface for the machine's
@@ -68,6 +73,35 @@ default['firezone']['install_path'] = node['firezone']['install_directory']
 # An identifier used in /etc/inittab (default is 'SUP'). Needs to be a unique
 # (for the file) sequence of 1-4 characters.
 default['firezone']['sysvinit_id'] = 'SUP'
+
+# ## Authentication
+
+# These settings control authentication-related aspects of Firezone.
+# For more information, see https://docs.firez.one/docs/user-guides/authentication/
+#
+# When local email/password authentication is used, users must be created by an Administrator
+# before they can log in.
+#
+# When SSO authentication methods are used, users are automatically added to Firezone
+# when logging in for the first time via the SSO provider.
+#
+# Users are uniquely identified by their email address, and may log in via multiple providers
+# if configured.
+
+# Local email/password authentication is enabled by default
+default['firezone']['authentication']['local']['enabled'] = true
+
+# If using the 'okta' authentication method, set 'enabeld' to true and configure relevant settings below.
+default['firezone']['authentication']['okta']['enabled'] = false
+default['firezone']['authentication']['okta']['client_id'] = nil
+default['firezone']['authentication']['okta']['client_secret'] = nil
+default['firezone']['authentication']['okta']['site'] = 'https://your-domain.okta.com'
+
+# If using the 'google' authentication method, set 'enabled' to true and configure relevant settings below.
+default['firezone']['authentication']['google']['enabled'] = false
+default['firezone']['authentication']['google']['client_id'] = nil
+default['firezone']['authentication']['google']['client_secret'] = nil
+default['firezone']['authentication']['google']['redirect_uri'] = nil
 
 # ## Nginx
 

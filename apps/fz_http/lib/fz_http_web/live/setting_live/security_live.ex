@@ -4,18 +4,19 @@ defmodule FzHttpWeb.SettingLive.Security do
   """
   use FzHttpWeb, :live_view
 
-  import FzCommon.FzInteger, only: [max_pg_integer: 0]
-
-  alias FzHttp.Settings
+  alias FzHttp.{Sites, Sites.Site}
 
   @hour 3_600
   @day 24 * @hour
 
   @impl Phoenix.LiveView
-  def mount(params, session, socket) do
+  def mount(_params, _session, socket) do
     {:ok,
      socket
-     |> assign_defaults(params, session, &load_data/2)}
+     |> assign(:form_changed, false)
+     |> assign(:options, options())
+     |> assign(:changeset, changeset())
+     |> assign(:page_title, "Security Settings")}
   end
 
   @impl Phoenix.LiveView
@@ -26,15 +27,15 @@ defmodule FzHttpWeb.SettingLive.Security do
   end
 
   @impl Phoenix.LiveView
-  def handle_event("save", %{"setting" => %{"value" => value}}, socket) do
-    key = socket.assigns.changeset.data.key
+  def handle_event("save", %{"site" => %{"vpn_session_duration" => vpn_session_duration}}, socket) do
+    site = Sites.get_site!()
 
-    case Settings.update_setting(key, value) do
-      {:ok, setting} ->
+    case Sites.update_site(site, %{vpn_session_duration: vpn_session_duration}) do
+      {:ok, site} ->
         {:noreply,
          socket
          |> assign(:form_changed, false)
-         |> assign(:changeset, Settings.change_setting(setting, %{}))}
+         |> assign(:changeset, Sites.change_site(site))}
 
       {:error, changeset} ->
         {:noreply,
@@ -43,30 +44,20 @@ defmodule FzHttpWeb.SettingLive.Security do
     end
   end
 
-  defp load_data(_params, socket) do
-    user = socket.assigns.current_user
+  defp changeset do
+    Sites.get_site!()
+    |> Sites.change_site()
+  end
 
-    if user.role == :admin do
-      options = [
-        Never: 0,
-        Once: max_pg_integer(),
-        "Every Hour": @hour,
-        "Every Day": @day,
-        "Every Week": 7 * @day,
-        "Every 30 Days": 30 * @day,
-        "Every 90 Days": 90 * @day
-      ]
-
-      setting = Settings.get_setting!(key: "security.require_auth_for_vpn_frequency")
-      changeset = Settings.change_setting(setting)
-
-      socket
-      |> assign(:form_changed, false)
-      |> assign(:options, options)
-      |> assign(:changeset, changeset)
-      |> assign(:page_title, "Security Settings")
-    else
-      not_authorized(socket)
-    end
+  defp options do
+    [
+      Never: 0,
+      Once: Site.max_vpn_session_duration(),
+      "Every Hour": @hour,
+      "Every Day": @day,
+      "Every Week": 7 * @day,
+      "Every 30 Days": 30 * @day,
+      "Every 90 Days": 90 * @day
+    ]
   end
 end
