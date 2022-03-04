@@ -13,9 +13,6 @@ Upgrading Firezone will disconnect all VPN connections and require shutting
 down the Web UI. We recommend a maintenance window of about an hour in case
 anything goes wrong during the upgrade.
 
-We're actively working on making this process more automatic in the future, but
-for now, this is the procedure for upgrading your Firezone instance.
-
 To upgrade Firezone, follow these steps:
 
 1. Download the new release for your platform.
@@ -27,6 +24,13 @@ To upgrade Firezone, follow these steps:
 
 Occasionally problems arise. If you hit any, please let us know by [filing an
 issue](https://github.com/firezone/firezone/issues/new/choose).
+
+## Upgrading from 0.2.x to 0.3.x
+
+**Note**: Starting with version 0.3.0, Firezone no longer stores device private
+keys on the Firezone server. Any existing devices should continue to function
+as-is, but you will not be able to re-download or view these configurations in
+the Firezone Web UI.
 
 ## Upgrading from 0.1.x to 0.2.x
 
