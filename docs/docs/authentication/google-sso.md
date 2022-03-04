@@ -72,7 +72,8 @@ These will be used in Step 2.
 
 ## Step 3 - Configure Firezone
 
-Edit the configuration located at `/etc/firezone/firezone.rb` to include the following lines:
+Edit the configuration located at `/etc/firezone/firezone.rb` to include the
+following:
 
 ```ruby
 # set the following variables to the values obtained in step 2
