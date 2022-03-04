@@ -28,6 +28,13 @@ To upgrade Firezone, follow these steps:
 Occasionally problems arise. If you hit any, please let us know by [filing an
 issue](https://github.com/firezone/firezone/issues/new/choose).
 
+## Upgrading from 0.2.x to 0.3.x
+
+**Note**: Starting with version 0.3.0, Firezone no longer stores device private
+keys on the server. Any existing devices should continue to function as-is, but
+you will not be able to re-download or view these configurations in the Firezone
+Web UI.
+
 ## Upgrading from 0.1.x to 0.2.x
 
 Firezone 0.2.x contains some configuration file changes that will need to be
