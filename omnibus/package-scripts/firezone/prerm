@@ -30,8 +30,6 @@ if [ ! -e /var/opt/firezone/.disable_telemetry ]; then
   capture || true
 fi
 
-/opt/firezone/embedded/sbin/nft delete table inet firezone || true
-
 error_exit()
 {
   echo "${PROGNAME}: ${1:-"Unknown Error"}" 1>&2
