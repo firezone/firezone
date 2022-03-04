@@ -1,55 +1,63 @@
 #!/bin/bash
-# TODO
-#  - [ ] The `create-or-reset-admin` command will need to be updated to optionally accept an email argument.
+set -e
 
+telemetry_id=`od -vN "8" -An -tx1 /dev/urandom | tr -d " \n" ; echo`
+
+capture () {
+  if type curl > /dev/null; then
+    if [ ! -z "$telemetry_id" ]; then
+      curl -s -XPOST \
+        -H 'Content-Type: application/json' \
+        -d "{
+          \"api_key\": \"phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK\",
+          \"event\": \"$1\",
+          \"properties\": {
+            \"distinct_id\": \"$telemetry_id\",
+            \"email\": \"$2\"
+          }
+        }" \
+        https://telemetry.firez.one/capture/ > /dev/null
+    fi
+  fi
+}
 promptEmail() {
   echo $1
   read adminEmail
-  if [[ $adminEmail != *[@]* ]]
-  then
-    promptEmail "please provide a valid email"
-  else
-    #echo Administrator username will be: $adminEmail
-    eval "$2='$adminEmail'"
-  fi
+  case $adminEmail in
+    *@*) adminUser=$adminEmail;;
+    *) promptEmail "Please provide a valid email: "
+  esac
+}
+
+promptContact() {
+  echo "Could we email you to ask for product feedback? Firezone depends heavily on input from users like you to steer development. (Y/n): "
+  read contact
+  case $contact in
+    n);;
+    N);;
+    *) capture "contactOk" $adminUser
+  esac
 }
 
 wireguardCheck() {
-  if test -f /sys/module/wireguard/version; then
+  if ! test -f /sys/module/wireguard/version; then
     echo "Error! WireGuard not detected. Please upgrade your kernel to at least 5.6 or install the WireGuard kernel module."
     echo "See more at https://www.wireguard.com/install/"
     exit
   fi
 }
 
-versionDiff() {
-  if [[ $1 == $2 ]];then
-    eval "$3=0"
-    return
-  fi
-  max=$(printf "$1\n$2\n" | sort -r | head -n 1)
-  if [[ $max == $2 ]]; then
-    eval "$3='-1'"
-  else
-    eval "$3='+1'"
-  fi
-}
-
 kernelCheck() {
-  not_supported="4.19"
-  current=$(uname -r | cut -d- -f1)
-  versionDiff $not_supported $current result
-  if [[ $result != -1 ]] ; then
-    echo "Kernel is is not supported $(uname -r)"
+  major=`uname -r | cut -d'.' -f1`
+  if [ "$major" -lt "5" ]; then
+    echo "Kernel is not supported `uname -r`"
     exit
-  else
-    : # empty statement in bash
   fi
 }
 
 # * determines distro; aborts if it can't detect or is not supported
 mapReleaseToDistro() {
-  hostinfo=$(hostnamectl | egrep -i '(opera|arch)')
+  hostinfo=`hostnamectl | egrep -i '(opera|arch)'`
   image_sub_string=''
   if [[ "$hostinfo" =~ .*"Debian GNU/Linux 10".*   && "$hostinfo" =~ .*"x86" ]]; then
      image_sub_string="debian10-x64"
@@ -75,13 +83,13 @@ mapReleaseToDistro() {
      image_sub_string="fedora35-x64"
   elif [[ "$hostinfo" =~ .*"Fedora Linux 35".*     &&  "$hostinfo" =~ .*"arm64" ]]; then
      image_sub_string="fedora35-x64"
-  elif [[ "$hostinfo" =~ .*"Ubuntu 18.04.6 LTS".*  &&  "$hostinfo" =~ .*"x86" ]]; then
+  elif [[ "$hostinfo" =~ .*"Ubuntu 18.04".*  &&  "$hostinfo" =~ .*"x86" ]]; then
      image_sub_string="ubuntu1804-x64"
-  elif [[ "$hostinfo" =~ .*"Ubuntu 18.04.6 LTS".*  &&  "$hostinfo" =~ .*"arm64" ]]; then
+  elif [[ "$hostinfo" =~ .*"Ubuntu 18.04".*  &&  "$hostinfo" =~ .*"arm64" ]]; then
      image_sub_string="ubuntu1804-arm64"
-  elif [[ "$hostinfo" =~ .*"Ubuntu 20.04.3 LTS".*  &&  "$hostinfo" =~ .*"x86" ]]; then
+  elif [[ "$hostinfo" =~ .*"Ubuntu 20.04".*  &&  "$hostinfo" =~ .*"x86" ]]; then
      image_sub_string="ubuntu2004-x64"
-  elif [[ "$hostinfo" =~ .*"Ubuntu 20.04.3 LTS".*  &&  "$hostinfo" =~ .*"arm64" ]]; then
+  elif [[ "$hostinfo" =~ .*"Ubuntu 20.04".*  &&  "$hostinfo" =~ .*"arm64" ]]; then
      image_sub_string="ubuntu2004-arm64"
   elif [[ "$hostinfo" =~ .*"CentOS Linux 7".*      &&  "$hostinfo" =~ .*"x86" ]]; then
      image_sub_string="centos7-x64"
@@ -93,37 +101,37 @@ mapReleaseToDistro() {
      image_sub_string="centos9-x64"
   elif [[ "$hostinfo" =~ .*"CentOS Stream 9".*     &&  "$hostinfo" =~ .*"arm64" ]]; then
      image_sub_string="centos9-arm64"
-  elif [[ "$hostinfo" =~ .*"openSUSE Leap 15.3".*  &&  "$hostinfo" =~ .*"x86" ]]; then
+  elif [[ "$hostinfo" =~ .*"openSUSE Leap 15".*  &&  "$hostinfo" =~ .*"x86" ]]; then
      image_sub_string="opensuse15-x64"
   fi
 
-  if [[ -z "$image_sub_string" ]]; then
+  if [ -z "$image_sub_string" ]; then
     echo "Unsupported Operating System. Aborting."
     exit
   fi
 
-  latest_release=$(
+  latest_release=`
     curl --silent https://api.github.com/repos/firezone/firezone/releases/latest |
     grep browser_download_url |
     cut -d: -f2,3 |
     sed 's/\"//g' |
     grep $image_sub_string
-  )
+  `
   echo "url: "$latest_release
   eval "$1='$latest_release'" # return url to 1st param
 }
 
 installAndDownloadArtifact() {
   url=$1
-  file=$(basename $url)
+  file=`basename $url`
   echo "Downloading: $url"
   cd /tmp
-  curl -sL $url --output $file
+  curl --progress-bar -L $url --output $file
   echo "Installing: $file"
   if [[ "$url" =~ .*"deb".* ]]; then
     sudo dpkg -i $file
   else
-    sudo rpm -i $file
+    sudo rpm -i --force $file
   fi
 }
 
@@ -138,13 +146,15 @@ main() {
   adminUser=''
   wireguardCheck
   kernelCheck
-  promptEmail "Enter the administrator email you'd like to use for logging into this Firezone instance:" adminUser
+  promptEmail "Enter the administrator email you'd like to use for logging into this Firezone instance:"
+  promptContact
   releaseUrl=''
   mapReleaseToDistro releaseUrl
-  echo "Press <ENTER> to install Control-C to Abort."
+  echo "Press <ENTER> to install or Ctrl-C to abort."
   read
   installAndDownloadArtifact $releaseUrl
   firezoneSetup $adminUser
 }
 
+capture "install" "email-not-collected@dummy.domain"
 main
