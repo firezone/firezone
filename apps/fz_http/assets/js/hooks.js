@@ -1,6 +1,7 @@
 import hljs from "highlight.js"
 import {FormatTimestamp,PasswordStrength} from "./util.js"
-import {createDeviceAndRenderConfig} from "./wg_conf.js"
+import {renderConfig} from "./wg_conf.js"
+import {fzCrypto} from "./crypto.js"
 
 const highlightCode = function () {
   hljs.highlightAll()
@@ -51,6 +52,14 @@ const passwordStrength = function () {
   })
 }
 
+const generateKeyPair = function () {
+  let kp = fzCrypto.generateKeyPair()
+  this.el.value = kp.publicKey
+
+  // XXX: Verify
+  sessionStorage.setItem(kp.publicKey, kp.privateKey)
+}
+
 const clipboardCopy = function () {
   let button = this.el
   let data = button.dataset.clipboard
@@ -77,8 +86,12 @@ Hooks.PasswordStrength = {
   mounted: passwordStrength,
   updated: passwordStrength
 }
-Hooks.CreateDeviceAndRenderConfig = {
-  mounted: createDeviceAndRenderConfig
+Hooks.RenderConfig = {
+  mounted: renderConfig,
+  updated: renderConfig
+}
+Hooks.GenerateKeyPair = {
+  mounted: generateKeyPair
 }
 
 export default Hooks

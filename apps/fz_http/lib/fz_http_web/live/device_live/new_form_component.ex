@@ -1,0 +1,91 @@
+defmodule FzHttpWeb.DeviceLive.NewFormComponent do
+  @moduledoc """
+  Handles device form.
+  """
+  use FzHttpWeb, :live_component
+
+  alias FzHttp.Devices
+  alias FzHttp.Sites
+  alias FzHttpWeb.ErrorHelpers
+
+  @impl Phoenix.LiveComponent
+  def mount(socket) do
+    {:ok,
+     socket
+     |> assign(:device, nil)
+     |> assign(:config, nil)}
+  end
+
+  @impl Phoenix.LiveComponent
+  def update(assigns, socket) do
+    changeset = new_changeset(socket)
+
+    {:ok,
+     socket
+     |> assign(assigns)
+     |> assign(:changeset, changeset)
+     |> assign(Sites.wireguard_defaults())
+     |> assign(Devices.defaults(changeset))}
+  end
+
+  @impl Phoenix.LiveComponent
+  def handle_event("change", %{"device" => device_params}, socket) do
+    changeset = Devices.new_device(device_params)
+
+    {:noreply,
+     socket
+     |> assign(:changeset, changeset)
+     |> assign(Devices.defaults(changeset))}
+  end
+
+  @impl Phoenix.LiveComponent
+  def handle_event("save", %{"device" => device_params}, socket) do
+    result =
+      device_params
+      |> Map.put("user_id", socket.assigns.target_user_id)
+      |> create_device(socket)
+
+    case result do
+      {:not_authorized} ->
+        {:noreply, not_authorized(socket)}
+
+      {:ok, device} ->
+        @events_module.update_device(device)
+
+        {:noreply,
+         socket
+         |> assign(:device, device)
+         |> assign(:config, Devices.as_encoded_config(device))}
+
+      {:error, changeset} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, ErrorHelpers.aggregated_errors(changeset))
+         |> assign(:changeset, changeset)}
+    end
+  end
+
+  defp create_device(params, socket) do
+    if authorized_to_create?(socket) do
+      Devices.create_device(params)
+    else
+      {:not_authorized}
+    end
+  end
+
+  defp authorized_to_create?(socket) do
+    to_string(socket.assigns.current_user.id) == to_string(socket.assigns.target_user_id) ||
+      has_role?(socket, :admin)
+  end
+
+  # update/2 is called twice: on load and then connect.
+  # Use blank name the first time to prevent flashing two different names in the form.
+  # XXX: Clean this up using assign_new/3
+  defp new_changeset(socket) do
+    if connected?(socket) do
+      Devices.new_device()
+    else
+      Devices.new_device(%{"name" => nil})
+    end
+  end
+end

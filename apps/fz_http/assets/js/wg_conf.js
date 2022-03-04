@@ -1,27 +1,40 @@
 const QRCode = require('qrcode')
-import { fzCrypto } from "./crypto.js"
 
-// 1. Generate keypair
-// 2. Create device
+const alertPrivateKeyError = function () {
+}
+
+// 1. Load generated keypair from previous step
 // 2. Replace config PrivateKey sentinel with PrivateKey
 // 3. Set code el innerHTML to new config
 // 4. render QR code
 // 5. render download button
-const createDeviceAndRenderConfig = function () {
-  let kp = fzCrypto.generateKeyPair()
-  let params = {
-    public_key: kp.publicKey,
-    user_id: this.el.dataset.userId
-  }
+const renderConfig = function () {
+  const publicKey = this.el.dataset.publicKey
+  if (publicKey) {
+    const privateKey = sessionStorage.getItem(publicKey)
 
-  this.pushEventTo(this.el, "create_device", params, (reply, ref) => {
-    let config = reply.config.replace("REPLACE_ME", kp.privateKey)
-    let placeholder = document.getElementById("generating-config")
-    placeholder.classList.add("is-hidden")
-    renderDownloadButton(config)
-    renderQR(config)
-    renderConfig(config)
-  })
+    // XXX: Clear all private keys
+    sessionStorage.removeItem(publicKey)
+    const placeholder = document.getElementById("generating-config")
+
+    if (privateKey) {
+      const templateConfig = atob(this.el.dataset.config)
+      const config = templateConfig.replace("REPLACE_ME", privateKey)
+
+      renderDownloadButton(config)
+      renderQR(config)
+      renderTunnel(config)
+
+      placeholder.classList.add("is-hidden")
+    } else {
+      placeholder.innerHTML =
+        `<p>
+          Error generating configuration. Could not load private key from
+          sessionStorage. Close window and try again. If the issue persists,
+          please contact support@firez.one.
+        </p>`
+    }
+  }
 }
 
 const renderDownloadButton = function (config) {
@@ -31,7 +44,7 @@ const renderDownloadButton = function (config) {
   button.classList.remove("is-hidden")
 }
 
-const renderConfig = function (config) {
+const renderTunnel = function (config) {
   let code = document.getElementById("wg-conf")
   let container = document.getElementById("wg-conf-container")
   code.innerHTML = config
@@ -52,4 +65,4 @@ const renderQR = function (config) {
   }
 }
 
-export { createDeviceAndRenderConfig }
+export { renderConfig }

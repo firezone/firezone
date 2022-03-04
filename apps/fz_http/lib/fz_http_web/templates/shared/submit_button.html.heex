@@ -3,7 +3,7 @@
     <div class="level">
       <div class="level-left"></div>
       <div class="level-right">
-        <%= submit "Save", phx_disable_with: "Saving...", class: "button is-primary" %>
+        <%= submit assigns[:button_text] || "Save", phx_disable_with: "Saving...", class: "button is-primary" %>
       </div>
     </div>
   </div>

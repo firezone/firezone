@@ -1,11 +1,11 @@
 <%= if @live_action == :new do %>
   <%= live_modal(
-      FzHttpWeb.DeviceLive.NewComponent,
+      FzHttpWeb.DeviceLive.NewFormComponent,
       return_to: Routes.device_unprivileged_index_path(@socket, :index),
-      title: "Device Added!",
+      title: "Add Device",
+      current_user: @current_user,
       target_user_id: @current_user.id,
-      action: @live_action,
-      id: "new-device-component") %>
+      id: "create-device-component") %>
 <% end %>
 
 <section class="section is-main-section">

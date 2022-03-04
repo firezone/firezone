@@ -205,6 +205,7 @@ defmodule FzHttp.Devices.Device do
 
   defp put_next_ip(changeset, ip_type) when ip_type in [:ipv4, :ipv6] do
     case changeset do
+      # Don't put a new ip if the user is trying to assign one manually
       %Ecto.Changeset{changes: %{^ip_type => _ip}} ->
         changeset
 
