@@ -9,9 +9,9 @@ description: >
 ---
 ---
 
-Firezone supports Single Sign-On (SSO) through Google Workspace.
+Firezone supports Single Sign-On (SSO) through Google Workspace and Cloud Identity.
 After successfully configuring SSO with Firezone, users will be prompted to sign
-in with their Google credentials to in the Firezone portal to authenticate VPN
+in with their Google credentials in the Firezone portal to authenticate VPN
 sessions, and download device configuration files.
 
 ![Firezone Google SSO Login](https://user-images.githubusercontent.com/52545545/156853456-1ab3f041-1002-4c79-a266-82acb5802890.gif){:width="600"}
@@ -23,8 +23,10 @@ To set up SSO, follow the steps below:
 If this is the first time you are creating a new OAuth client ID, you will
 be asked to configure a consent screen.
 
-Select `Internal` for user type. This ensures only accounts belonging to users
-in your Google Workspace Organization can create device configs.
+**IMPORTANT**: Select `Internal` for user type. This ensures only accounts
+belonging to users in your Google Workspace Organization can create device configs.
+DO NOT select `External` unless you want to enable anyone with a valid Google Account
+to create device configs.
 
 ![OAuth Consent Internal](https://user-images.githubusercontent.com/52545545/156853731-1e4ad1d4-c761-4a28-84db-cd880e3c46a3.png){:width="800"}
 
@@ -67,20 +69,29 @@ the user's browser to the appropriate page depending on the user's role.
 ![Create OAuth client ID](https://user-images.githubusercontent.com/52545545/155904581-9a82fc9f-26ce-4fdf-8143-060cbad0a207.png){:width="800"}
 
 After creating the OAuth client ID, you will be given a Client ID and Client Secret.
-These will be used in Step 2.
+These will be used together with the redirect URI entered above to configure
+Firezone SSO in Step 3.
+
 ![Copy Client ID and Secret](https://user-images.githubusercontent.com/52545545/155906344-aa3673e1-903a-482f-86fb-75f12fd17f4f.png){:width="800"}
 
 ## Step 3 - Configure Firezone
 
-Edit the configuration located at `/etc/firezone/firezone.rb` to include the
-following:
+Using the client ID, secret, and redirect URI from above, edit the `/etc/firezone/firezone.rb`
+configuration file to include the following options:
 
 ```ruby
 # set the following variables to the values obtained in step 2
-default['firezone']['authentication']['google']['enabled'] = true
-default['firezone']['authentication']['google']['client_id'] = '<client_id>'
-default['firezone']['authentication']['google']['client_secret'] = '<client_secret>'
-default['firezone']['authentication']['google']['redirect_uri'] = 'https://firezone.example.com/auth/google/callback'
+default['firezone']['authentication']['google']['enabeld'] = true
+default['firezone']['authentication']['google']['client_id'] = 'GOOGLE_CLIENT_ID'
+default['firezone']['authentication']['google']['client_secret'] = 'GOOGLE_CLIENT_SECRET'
+default['firezone']['authentication']['google']['redirect_uri'] = 'GOOGLE_REDIRECT_URI'
 ```
 
-Run `firezone-ctl reconfigure` and `firezone-ctl restart` to apply the changes.
+Run the following commands to apply the changes:
+
+```text
+firezone-ctl reconfigure
+firezone-ctl restart
+```
+
+You should now see a `Sign in with Google` button at the root Firezone URL.

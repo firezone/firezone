@@ -55,15 +55,22 @@ These 3 values will be used in Step 2 to configure Firezone.
 
 ## Step 2 - Configure Firezone
 
-Edit the configuration located at `/etc/firezone/firezone.rb` to include the
-following:
+Using the client ID, secret, and redirect URI from above, edit the `/etc/firezone/firezone.rb`
+configuration file to include the following options:
 
 ```ruby
-# set the following variables to the values obtained in step 1
+# set the following variables to the values obtained in step 2
 default['firezone']['authentication']['okta']['enabled'] = true
-default['firezone']['authentication']['okta']['client_id'] = '<client id>'
-default['firezone']['authentication']['okta']['client_secret'] = '<client secret>'
-default['firezone']['authentication']['okta']['site'] = '<okta domain>'
+default['firezone']['authentication']['okta']['client_id'] = 'OKTA_CLIENT_ID'
+default['firezone']['authentication']['okta']['client_secret'] = 'OKTA_CLIENT_SECRET'
+default['firezone']['authentication']['okta']['site'] = 'OKTA_SITE'
 ```
 
-Run `firezone-ctl reconfigure` and `firezone-ctl restart` to apply the changes.
+Run the following commands to apply the changes:
+
+```text
+firezone-ctl reconfigure
+firezone-ctl restart
+```
+
+You should now see a `Sign in with Okta` button at the root Firezone URL.

@@ -1,11 +1,11 @@
 ---
 layout: default
-title: Web
+title: Local Email / Password
 nav_order: 10
 parent: Authenticate
 description: >
-  This page contains instructions on setting up simple
-  username/password authentication for Firezone.
+  This page contains instructions on setting up local
+  email and password authentication for Firezone.
 ---
 ---
 
