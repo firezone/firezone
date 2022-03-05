@@ -52,9 +52,9 @@ administrator. This URL will be specific to your company
 Open the WireGuard client and import the `.conf` file.
 Turn on the VPN connection by toggling the `Activate` switch.
 
-![Client Instructions]({{site.asset_urls.client_instructions}}){:width="600"}
+![Activate Tunnel](https://user-images.githubusercontent.com/52545545/156859686-41755bf7-a9ad-42ec-af5e-9f0734d962db.gif)
 
-## Authenticating your connection
+## Re-authenticating your connection
 
 If your network admin has required periodic authentication to maintain your VPN connection,
 follow the steps below. You will need:
@@ -64,4 +64,17 @@ follow the steps below. You will need:
 Admin. If your company is using a Single Sign On provider (like Google or Okta),
 the Firezone portal will prompt you to authenticate via that provider.
 
+### Step 1 - Deactivate VPN connection
+
+![WireGuard Deactivate](https://user-images.githubusercontent.com/52545545/156859259-a3d386ce-b304-4caa-96e6-a8e7ca96d098.png)
+
+### Step 2 - Re-authenticate
+
+Visit the URL of your Firezone portal and log in using credentials provided by your
+network admin.
+
 ![re-authenticate](https://user-images.githubusercontent.com/52545545/155812962-9b8688c1-00af-41e4-96c3-8fb52f840aed.gif){:width="600"}
+
+### Step 3 - Activate VPN connection
+
+![Activate Connection](https://user-images.githubusercontent.com/52545545/156859636-fde95fc5-5b9c-4697-9108-2f277ed3fbef.png)

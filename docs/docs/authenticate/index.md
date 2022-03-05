@@ -9,9 +9,9 @@ description: >
 ---
 ---
 
-Firezone provides the ability to require authentication to start VPN sessions.
-Firezone supports the following single sign on (SSO) providers and authentication
-methods:
+Firezone provides the ability to require authentication to download device
+configuration files. Firezone supports the following single sign on (SSO)
+providers and authentication methods:
 
 * [Google]({%link docs/authenticate/google-sso.md%})
 * [Okta]({%link docs/authenticate/okta-sso.md%})
@@ -21,7 +21,8 @@ If you wish to use an OAuth provider that is not listed above,
 please open a
 [GitHub issue](https://github.com/firezone/firezone/issues).
 
-**Note**: To re-authenticate a VPN session, a user will need to turn off their
+Periodic re-authentication can be enforced by changing the setting in `settings/security`.
+To re-authenticate a VPN session, a user will need to turn off their
 VPN connection and log in to the Firezone portal (URL specified during
 [deployment]({%link docs/deploy/prerequisites.md%})
 ).
