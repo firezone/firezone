@@ -8,8 +8,15 @@ description: >
 ---
 ---
 
-Add a device through the Web UI by clicking the "Add Device" button under
-`/devices` or `/users`.
+**We recommend asking users to generate their own device configs so the private
+key is only exposed to them.** Users can follow instructions on the
+[Client Instructions]({%link docs/user-guides/client-instructions.md%})
+page to generate their own device configs.
+
+## Admin device config generation
+
+Firezone admins can generate device configs for all users. This can be done by
+clicking the "Add Device" button under `/devices` or `/users`.
 
 ![add device under devices](https://user-images.githubusercontent.com/52545545/153468000-06b2ea64-30b3-4f62-a2f4-043e5f231cb4.png){:width="600"}
 

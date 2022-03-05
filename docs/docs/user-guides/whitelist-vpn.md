@@ -64,4 +64,4 @@ has been enabled, configuration may be required to ensure the destination IP of
 the protected resource is included in the `Allowed IPs`.
 
 \
-[Related: Authentication]({%link docs/user-guides/authentication.md%}){:.btn.btn-purple}
+[Related: Authenticate]({%link docs/authenticate/index.md%}){:.btn.btn-purple}

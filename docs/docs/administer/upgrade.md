@@ -9,7 +9,7 @@ description: >
 ---
 ---
 
-Upgrading Firezone will disconnect all VPN connections and require shutting
+Upgrading Firezone will disconnect all VPN sessions and require shutting
 down the Web UI. We recommend a maintenance window of about an hour in case
 anything goes wrong during the upgrade.
 

@@ -25,6 +25,15 @@ These docs explain how to deploy, configure, and use Firezone.
    learn how to use Firezone and troubleshoot common issues. Consult this section
    after you successfully deploy the Firezone server.
 
+## Common Configuration Guides
+
+1. [Split Tunneling]({% link docs/user-guides/split-tunnel.md %}):
+Only route traffic to certain IP ranges through the VPN.
+1. [Whitelisting with VPN]({% link docs/user-guides/whitelist-vpn.md %}):
+Configure a VPN server with a static IP address.
+1. [Reverse Tunnels]({% link docs/user-guides/reverse-tunnel.md %}):
+Establish tunnels between multiple peers.
+
 ## Get Help
 
 If you're looking for help installing, configuring, or using Firezone, we're
