@@ -1,95 +1,79 @@
-defmodule FzHttpWeb.SessionControllerTest do
+defmodule FzHttpWeb.AuthControllerTest do
   use FzHttpWeb.ConnCase, async: true
 
   describe "new" do
     setup [:create_user]
 
-    test "unauthed: loads the sign in form", %{unauthed_conn: conn, user: _user} do
-      test_conn = get(conn, Routes.session_path(conn, :new))
+    test "unauthed: loads the sign in form", %{unauthed_conn: conn} do
+      test_conn = get(conn, Routes.root_path(conn, :index))
 
       assert html_response(test_conn, 200) =~ "Sign In"
     end
 
-    test "authed: redirects to devices page", %{authed_conn: conn, user: _user} do
-      test_conn = get(conn, Routes.session_path(conn, :new))
+    test "authed as admin: redirects to users page", %{admin_conn: conn} do
+      test_conn = get(conn, Routes.root_path(conn, :index))
 
-      assert redirected_to(test_conn) == Routes.device_index_path(test_conn, :index)
+      assert redirected_to(test_conn) == Routes.user_index_path(test_conn, :index)
+    end
+
+    test "authed as unprivileged: redirects to user_devices page", %{unprivileged_conn: conn} do
+      test_conn = get(conn, Routes.root_path(conn, :index))
+
+      assert redirected_to(test_conn) == Routes.device_unprivileged_index_path(test_conn, :index)
     end
   end
 
   describe "create session" do
     setup [:create_user]
 
-    test "invalid email", %{unauthed_conn: conn, user: _user} do
+    test "invalid email", %{unauthed_conn: conn} do
       params = %{
-        "session" => %{
-          "email" => "invalid@test",
-          "password" => "test"
-        }
+        "email" => "invalid@test",
+        "password" => "test"
       }
 
-      test_conn = post(conn, Routes.session_path(conn, :create), params)
+      test_conn = post(conn, Routes.auth_path(conn, :callback, :identity), params)
 
-      assert redirected_to(test_conn) == Routes.session_path(test_conn, :new)
-      assert get_flash(test_conn, :error) =~ "Email not found."
+      assert test_conn.request_path == Routes.auth_path(test_conn, :callback, :identity)
+      assert get_flash(test_conn, :error) == "Error signing in: invalid_credentials"
     end
 
     test "invalid password", %{unauthed_conn: conn, user: user} do
       params = %{
-        "session" => %{
-          "email" => user.email,
-          "password" => "invalid"
-        }
+        "email" => user.email,
+        "password" => "invalid"
       }
 
-      test_conn = post(conn, Routes.session_path(conn, :create), params)
+      test_conn = post(conn, Routes.auth_path(conn, :callback, :identity), params)
 
-      assert redirected_to(test_conn) == Routes.session_path(test_conn, :new)
-
-      assert get_flash(test_conn, :error) =~
-               "Error signing in. Ensure email and password are correct."
+      assert test_conn.request_path == Routes.auth_path(test_conn, :callback, :identity)
+      assert get_flash(test_conn, :error) == "Error signing in: invalid_credentials"
     end
 
     test "valid params", %{unauthed_conn: conn, user: user} do
       params = %{
-        "session" => %{
-          "email" => user.email,
-          "password" => "password1234"
-        }
+        "email" => user.email,
+        "password" => "password1234"
       }
 
-      test_conn = post(conn, Routes.session_path(conn, :create), params)
+      test_conn = post(conn, Routes.auth_path(conn, :callback, :identity), params)
 
-      assert redirected_to(test_conn) == Routes.root_path(test_conn, :index)
-      assert get_session(test_conn, :user_id) == user.id
-    end
-
-    test "token invalid; session not set", %{unauthed_conn: conn, user: _user} do
-      test_conn = get(conn, Routes.session_path(conn, :create, "invalid"))
-
-      assert redirected_to(test_conn) == Routes.session_path(test_conn, :new)
-      assert get_flash(test_conn, :error) == "Token invalid."
-    end
-
-    test "token valid; sets session", %{unauthed_conn: conn, user: user} do
-      test_conn = get(conn, Routes.session_path(conn, :create, user.sign_in_token))
-
-      assert redirected_to(test_conn) == Routes.device_index_path(test_conn, :index)
-      assert get_session(test_conn, :user_id) == user.id
+      assert redirected_to(test_conn) == Routes.user_index_path(test_conn, :index)
+      assert current_user(test_conn).id == user.id
     end
   end
 
   describe "when deleting a session" do
     setup :create_user
 
-    test "user signed in", %{authed_conn: conn, user: _user} do
-      test_conn = delete(conn, Routes.session_path(conn, :delete))
-      assert redirected_to(test_conn) == Routes.session_path(test_conn, :new)
+    test "user signed in", %{admin_conn: conn} do
+      test_conn = delete(conn, Routes.auth_path(conn, :delete))
+      assert redirected_to(test_conn) == Routes.root_path(test_conn, :index)
     end
 
-    test "user not signed in", %{unauthed_conn: conn, user: _user} do
-      test_conn = delete(conn, Routes.session_path(conn, :delete))
-      assert redirected_to(test_conn) == Routes.session_path(test_conn, :new)
+    test "user not signed in", %{unauthed_conn: conn} do
+      test_conn = delete(conn, Routes.auth_path(conn, :delete))
+      assert redirected_to(test_conn) == Routes.root_path(test_conn, :index)
     end
   end
 end

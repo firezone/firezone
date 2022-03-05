@@ -33,6 +33,12 @@
 
 Follow our installation guide at https://docs.firez.one/docs/deploy to install your self-hosted instance of Firezone.
 
+Or, if you're on a [supported platform](https://docs.firez.one/docs/deploy/supported-platforms/), try our one-line install script:
+
+```bash
+bash <(curl -Ls https://github.com/firezone/firezone/raw/master/scripts/install.sh)
+```
+
 Using Firezone for your team? We'd love to [hear from you](https://calendly.com/team-firezone/firezone-intro) and help you get set up.
 
 # What is Firezone?

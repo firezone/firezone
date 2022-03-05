@@ -12,7 +12,7 @@
   <%= for device <- @devices do %>
     <tr>
       <td>
-        <%= live_patch(device.name, to: Routes.device_show_path(@socket, :show, device)) %>
+        <%= live_patch(device.name, to: Routes.device_admin_show_path(@socket, :show, device)) %>
       </td>
       <td class="code">
         <span><%= device.ipv4 %></span>

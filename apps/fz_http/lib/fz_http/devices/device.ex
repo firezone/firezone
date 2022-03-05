@@ -18,30 +18,27 @@ defmodule FzHttp.Devices.Device do
 
   import FzHttp.Queries.INET
 
-  alias FzHttp.Users.User
+  alias FzHttp.{Devices, Users.User}
 
   schema "devices" do
     field :uuid, Ecto.UUID, autogenerate: true
     field :name, :string
     field :public_key, :string
-    field :use_default_allowed_ips, :boolean, read_after_writes: true, default: true
-    field :use_default_dns, :boolean, read_after_writes: true, default: true
-    field :use_default_endpoint, :boolean, read_after_writes: true, default: true
-    field :use_default_mtu, :boolean, read_after_writes: true, default: true
-    field :use_default_persistent_keepalive, :boolean, read_after_writes: true, default: true
+    field :use_site_allowed_ips, :boolean, read_after_writes: true, default: true
+    field :use_site_dns, :boolean, read_after_writes: true, default: true
+    field :use_site_endpoint, :boolean, read_after_writes: true, default: true
+    field :use_site_mtu, :boolean, read_after_writes: true, default: true
+    field :use_site_persistent_keepalive, :boolean, read_after_writes: true, default: true
     field :endpoint, :string
     field :mtu, :integer
     field :persistent_keepalive, :integer
     field :allowed_ips, :string
     field :dns, :string
-    field :private_key, FzHttp.Encrypted.Binary
-    field :server_public_key, :string
     field :remote_ip, EctoNetwork.INET
     field :ipv4, EctoNetwork.INET, read_after_writes: true
     field :ipv6, EctoNetwork.INET, read_after_writes: true
     field :last_seen_at, :utc_datetime_usec
-    field :config_token, :string
-    field :config_token_expires_at, :utc_datetime_usec
+    field :key_regenerated_at, :utc_datetime_usec, read_after_writes: true
 
     belongs_to :user, User
 
@@ -54,6 +51,7 @@ defmodule FzHttp.Devices.Device do
     |> put_next_ip(:ipv4)
     |> put_next_ip(:ipv6)
     |> shared_changeset()
+    |> validate_max_devices()
   end
 
   def update_changeset(device, attrs) do
@@ -69,11 +67,11 @@ defmodule FzHttp.Devices.Device do
   defp shared_cast(device, attrs) do
     device
     |> cast(attrs, [
-      :use_default_allowed_ips,
-      :use_default_dns,
-      :use_default_endpoint,
-      :use_default_mtu,
-      :use_default_persistent_keepalive,
+      :use_site_allowed_ips,
+      :use_site_dns,
+      :use_site_endpoint,
+      :use_site_mtu,
+      :use_site_persistent_keepalive,
       :allowed_ips,
       :dns,
       :endpoint,
@@ -82,13 +80,10 @@ defmodule FzHttp.Devices.Device do
       :remote_ip,
       :ipv4,
       :ipv6,
-      :server_public_key,
-      :private_key,
       :user_id,
       :name,
       :public_key,
-      :config_token,
-      :config_token_expires_at
+      :key_regenerated_at
     ])
   end
 
@@ -97,18 +92,10 @@ defmodule FzHttp.Devices.Device do
     |> validate_required([
       :user_id,
       :name,
-      :public_key,
-      :server_public_key,
-      :private_key
+      :public_key
     ])
-    |> validate_required_unless_default([
-      :allowed_ips,
-      :dns,
-      :endpoint,
-      :mtu,
-      :persistent_keepalive
-    ])
-    |> validate_omitted_if_default([
+    |> validate_required_unless_site([:endpoint])
+    |> validate_omitted_if_site([
       :allowed_ips,
       :dns,
       :endpoint,
@@ -136,30 +123,43 @@ defmodule FzHttp.Devices.Device do
     |> validate_in_network(:ipv4)
     |> validate_in_network(:ipv6)
     |> unique_constraint(:public_key)
-    |> unique_constraint(:private_key)
     |> unique_constraint([:user_id, :name])
   end
 
-  defp validate_omitted_if_default(changeset, fields) when is_list(fields) do
-    fields_to_validate =
-      defaulted_fields(changeset, fields)
-      |> Enum.map(fn field ->
-        String.trim(Atom.to_string(field), "use_default_") |> String.to_atom()
-      end)
+  defp validate_max_devices(changeset) do
+    user_id = changeset.changes.user_id || changeset.data.user_id
+    count = Devices.count(user_id)
+    max_devices = Application.fetch_env!(:fz_http, :max_devices_per_user)
 
-    validate_omitted(changeset, fields_to_validate)
+    if count >= max_devices do
+      add_error(
+        changeset,
+        :base,
+        "Maximum device limit reached. Remove an existing device before creating a new one."
+      )
+    else
+      changeset
+    end
   end
 
-  defp validate_required_unless_default(changeset, fields) when is_list(fields) do
-    fields_as_atoms = Enum.map(fields, fn field -> String.to_atom("use_default_#{field}") end)
-    fields_to_validate = fields_as_atoms -- defaulted_fields(changeset, fields)
-    validate_required(changeset, fields_to_validate)
+  defp validate_omitted_if_site(changeset, fields) when is_list(fields) do
+    validate_omitted(changeset, filter_site_fields(changeset, fields, use_site: true))
   end
 
-  defp defaulted_fields(changeset, fields) do
+  defp validate_required_unless_site(changeset, fields) when is_list(fields) do
+    validate_required(changeset, filter_site_fields(changeset, fields, use_site: false))
+  end
+
+  defp filter_site_fields(changeset, fields, use_site: use_site) when is_boolean(use_site) do
     fields
-    |> Enum.map(fn field -> String.to_atom("use_default_#{field}") end)
-    |> Enum.filter(fn field -> get_field(changeset, field) end)
+    |> Enum.map(fn field -> String.to_atom("use_site_#{field}") end)
+    |> Enum.filter(fn site_field -> get_field(changeset, site_field) == use_site end)
+    |> Enum.map(fn field ->
+      field
+      |> Atom.to_string()
+      |> String.trim("use_site_")
+      |> String.to_atom()
+    end)
   end
 
   defp validate_ipv4_required(changeset) do
@@ -180,19 +180,19 @@ defmodule FzHttp.Devices.Device do
 
   defp validate_in_network(%Ecto.Changeset{changes: %{ipv4: ip}} = changeset, :ipv4) do
     net = Application.fetch_env!(:fz_http, :wireguard_ipv4_network)
-    maybe_add_net_error(changeset, net, ip, :ipv4)
+    add_net_error_if_outside_bounds(changeset, net, ip, :ipv4)
   end
 
   defp validate_in_network(changeset, :ipv4), do: changeset
 
   defp validate_in_network(%Ecto.Changeset{changes: %{ipv6: ip}} = changeset, :ipv6) do
     net = Application.fetch_env!(:fz_http, :wireguard_ipv6_network)
-    maybe_add_net_error(changeset, net, ip, :ipv6)
+    add_net_error_if_outside_bounds(changeset, net, ip, :ipv6)
   end
 
   defp validate_in_network(changeset, :ipv6), do: changeset
 
-  def maybe_add_net_error(changeset, net, ip, ip_type) do
+  defp add_net_error_if_outside_bounds(changeset, net, ip, ip_type) do
     %{address: address} = ip
     cidr = CIDR.parse(net)
 
@@ -205,6 +205,7 @@ defmodule FzHttp.Devices.Device do
 
   defp put_next_ip(changeset, ip_type) when ip_type in [:ipv4, :ipv6] do
     case changeset do
+      # Don't put a new ip if the user is trying to assign one manually
       %Ecto.Changeset{changes: %{^ip_type => _ip}} ->
         changeset
 

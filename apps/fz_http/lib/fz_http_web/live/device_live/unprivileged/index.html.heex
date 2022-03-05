@@ -1,0 +1,104 @@
+<%= if @live_action == :new do %>
+  <%= live_modal(
+      FzHttpWeb.DeviceLive.NewFormComponent,
+      return_to: Routes.device_unprivileged_index_path(@socket, :index),
+      title: "Add Device",
+      current_user: @current_user,
+      target_user_id: @current_user.id,
+      id: "create-device-component") %>
+<% end %>
+
+<section class="section is-main-section">
+  <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
+  <h4 class="title is-4"><%= @page_title %></h4>
+
+  <div class="block">
+    Each device corresponds to a WireGuard configuration for connecting to this
+    Firezone server.
+  </div>
+
+  <div class="block">
+    You'll need a WireGuard client installed in order to connect to this Firezone
+    instance. See
+    <a target="_blank" href="https://docs.firez.one/docs/user-guides/client-instructions/">
+      the Firezone documentation
+    </a>
+    for a step-by-step guide.
+  </div>
+
+  <div class="block">
+    <%= if length(@devices) > 0 do %>
+      <table class="table is-bordered is-hoverable is-striped is-fullwidth">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Assigned Device IP</th>
+            <th>Public key</th>
+            <th>Created</th>
+          </tr>
+        </thead>
+        <tbody>
+        <%= for device <- @devices do %>
+          <tr>
+            <td>
+              <%= live_patch(device.name, to: Routes.device_unprivileged_show_path(@socket, :show, device)) %>
+            </td>
+            <td class="code">
+              <span><%= device.ipv4 %></span>
+              <span><%= device.ipv6 %></span>
+            </td>
+            <td class="code"><%= device.public_key %></td>
+            <td id={"device-#{device.id}-inserted-at"} data-timestamp={device.inserted_at} phx-hook="FormatTimestamp">…</td>
+          </tr>
+        <% end %>
+        </tbody>
+      </table>
+    <% else %>
+      <p>
+        <strong>No devices to show.</strong>
+      </p>
+    <% end %>
+  </div>
+
+  <div class="block">
+    <%= live_patch(to: Routes.device_unprivileged_index_path(@socket, :new), class: "button") do %>
+      Add Device
+    <% end %>
+  </div>
+
+  <h4 class="title is-4">VPN Session</h4>
+
+  <div class="block">
+    <%= if vpn_sessions_expire?() do %>
+      <%= if vpn_expired?(@current_user) do %>
+        <p>
+          Your VPN session expired at:
+        </p>
+      <% else %>
+        <p>
+          Your VPN session expires at:
+        </p>
+      <% end %>
+      <p>
+        <strong>
+          <span id="vpn-expires" phx-hook="FormatTimestamp" data-timestamp={vpn_expires_at(@current_user)}>...</span>
+        </strong>
+      </p>
+      <%= link("Reauthenticate", to: Routes.auth_path(@socket, :delete), method: :delete) %>
+      to renew your VPN session.
+    <% else %>
+      Your VPN session is active indefinitely.
+    <% end %>
+  </div>
+
+  <div class="block">
+    For any issues, <a href={"mailto:#{admin_email()}"}>contact your Firezone administrator</a>.
+  </div>
+
+  <div class="block">
+    <%= link(to: Routes.auth_path(@socket, :delete), method: :delete) do %>
+      Sign out
+    <% end %>
+  </div>
+
+</section>
