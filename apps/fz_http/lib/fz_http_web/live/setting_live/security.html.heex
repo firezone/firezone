@@ -13,7 +13,7 @@
   <div class="block">
     <.form let={f} for={@changeset} phx-change="change" phx-submit="save">
       <div class="field">
-        <%= label f, :value, "Require Web Authentication For VPN Sessions", class: "label" %>
+        <%= label f, :value, "Require Authentication For VPN Sessions", class: "label" %>
         <div class="field has-addons">
           <p class="control">
             <span class="select">
@@ -24,20 +24,21 @@
             <%= submit "Save", disabled: !@form_changed, phx_disable_with: "Saving...", class: "button is-primary" %>
           </p>
         </div>
+        <p class="help">
+          Optionally require users to periodically authenticate to the Firezone
+          web UI in order to keep their VPN sessions active.
+        </p>
       </div>
     </.form>
   </div>
-</section>
 
-<section class="section">
   <h4 class="title is-4">Single Sign-On</h4>
   <div class="block">
     <p>
-      Single Sign-On is currently under development!
-      <a href="https://e04kusl9oz5.typeform.com/to/Ls4rbMSR#source=webui">
-        Contact us
-      </a> to share your requirements
-      and be notified when it's available.
+      Single Sign-On can be configured in the main Firezone configuration
+      file. Refer to the
+      <a href="https://docs.firez.one/docs/authenticate/">Firezone documentation</a>
+      for more details.
     </p>
   </div>
 </section>
