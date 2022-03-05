@@ -1,6 +1,6 @@
 ---
 layout: default
-title: Authentication
+title: Authenticate
 nav_order: 3
 has_children: true
 has_toc: false
@@ -13,9 +13,9 @@ Firezone provides the ability to require authentication to start VPN sessions.
 Firezone supports the following single sign on (SSO) providers and authentication
 methods:
 
-* [Google]({%link docs/authentication/google-sso.md%})
-* [Okta]({%link docs/authentication/okta-sso.md%})
-* [Local email/password authentication (default)]({%link docs/authentication/web-auth.md%})
+* [Google]({%link docs/authenticate/google-sso.md%})
+* [Okta]({%link docs/authenticate/okta-sso.md%})
+* [Local email/password authentication (default)]({%link docs/authenticate/web-auth.md%})
 
 If you wish to use an OAuth provider that is not listed above,
 please open a

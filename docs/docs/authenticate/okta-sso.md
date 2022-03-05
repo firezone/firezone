@@ -2,7 +2,7 @@
 layout: default
 title: Okta
 nav_order: 2
-parent: Authentication
+parent: Authenticate
 description: >
   This page contains instructions on setting up Okta
   as the SSO provider for Firezone.

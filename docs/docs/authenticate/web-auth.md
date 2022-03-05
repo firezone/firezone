@@ -2,7 +2,7 @@
 layout: default
 title: Web
 nav_order: 10
-parent: Authentication
+parent: Authenticate
 description: >
   This page contains instructions on setting up simple
   username/password authentication for Firezone.

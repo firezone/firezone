@@ -7,6 +7,13 @@ description: >
   Install the WireGuard client and import the configuration
   file sent by the administrator to establish a connection.
 ---
+
+## Table of contents
+{: .no_toc .text-delta }
+
+1. TOC
+{:toc}
+
 ---
 
 _This is written for the end user who will be connecting
@@ -31,7 +38,14 @@ https://www.wireguard.com/install/](https://www.wireguard.com/install/).
 
 ### Step 2 - Download the connection config file
 
-This will end in `.conf` and be sent to you by the Firezone administrator.
+The connection config file can either be obtained from your Firezone administrator
+or self-generated via the Firezone portal.
+
+To self generate a connection config file, visit the domain provided by your Firezone
+administrator. This URL will be specific to your company
+(in this example it is `https://firezone.example.com`)
+
+![Firezone Okta SSO Login](https://user-images.githubusercontent.com/52545545/156855886-5a4a0da7-065c-4ec1-af33-583dff4dbb72.gif){:width="600"}
 
 ### Step 3 - Add the config to the client
 

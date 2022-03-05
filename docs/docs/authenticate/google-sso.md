@@ -2,7 +2,7 @@
 layout: default
 title: Google
 nav_order: 1
-parent: Authentication
+parent: Authenticate
 description: >
   This page contains instructions on setting up Google
   as the SSO provider for Firezone.

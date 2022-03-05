@@ -20,4 +20,4 @@ for additional information on common tasks.
 
 \
 [Previous: Install Server]({%link docs/deploy/server.md%}){:.btn.mr-2}
-[Related: Troubleshooting]({%link docs/administer/troubleshoot.md%}){:.btn.btn-purple}
+[Related: Authenticate]({%link docs/authenticate/index.md%}){:.btn.btn-purple}
