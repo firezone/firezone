@@ -22,7 +22,7 @@ active, you'll need to ensure these don't conflict with the Firezone rules.
 ### Internet Connectivity Drops when Tunnel is Active
 
 If your Internet connectivity drops whenever you activate your WireGuard
-connection, you should make sure that the `FORWARD` chain allows packets
+tunnel, you should make sure that the `FORWARD` chain allows packets
 from your WireGuard clients to the destinations you want to allow through
 Firezone.
 

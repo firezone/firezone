@@ -32,7 +32,7 @@ Only route traffic to certain IP ranges through the VPN.
 1. [Whitelisting with VPN]({% link docs/user-guides/whitelist-vpn.md %}):
 Configure a VPN server with a static IP address.
 1. [Reverse Tunnels]({% link docs/user-guides/reverse-tunnel.md %}):
-Establish connections between multiple peers.
+Establish tunnels between multiple peers.
 
 ## Get Help
 

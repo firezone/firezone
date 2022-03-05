@@ -23,7 +23,7 @@ please open a
 
 Periodic re-authentication can be enforced by changing the setting in `settings/security`.
 To re-authenticate a VPN session, a user will need to turn off their
-VPN connection and log in to the Firezone portal (URL specified during
+VPN session and log in to the Firezone portal (URL specified during
 [deployment]({%link docs/deploy/prerequisites.md%})
 ).
 

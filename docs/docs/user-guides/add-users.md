@@ -15,7 +15,7 @@ them access to your network. This is done through the Web UI.
 
 Add a user by clicking the "Add User" button under `/users`. You will be asked
 to specify an email and a password for the user. These credentials will be used
-to authenticate the user so they are able to establish the connection.
+to authenticate the user so they are able to establish the tunnel.
 
 ![add user](https://user-images.githubusercontent.com/52545545/153469244-c007c305-bfb0-4da7-a40c-6f41fa458c76.png){:width="600"}
 
