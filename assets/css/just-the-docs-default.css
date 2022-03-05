@@ -3,6 +3,8 @@ h1, h2, h3, h4, h5, h6 { font-family: "Open Sans", sans-serif; }
 
 .select-version { margin: 1rem; }
 
+strong { font-weight: 900 !important; color: #1b140e !important; }
+
 /*! normalize.css v8.0.1 | MIT License | github.com/necolas/normalize.css */
 /* Document ========================================================================== */
 /** 1. Correct the line height in all browsers. 2. Prevent adjustments of font size after orientation changes in iOS. */
