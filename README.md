@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <strong><a href="https://www.firez.one/">Firezone</a> is a self-managed <a href="https://www.wireguard.com/">WireGuard</a>-based VPN server and Linux firewall designed for simplicity and security.</strong>
+  <strong><a href="https://www.firez.one/">Firezone</a> is a self-managed <a href="https://www.wireguard.com/">WireGuard®</a>-based VPN server and Linux firewall designed for simplicity and security.</strong>
 </p>
 
 <hr>
@@ -43,13 +43,13 @@ Using Firezone for your team? We'd love to [hear from you](https://calendly.com/
 
 # What is Firezone?
 
-[Firezone](https://www.firez.one/) is a Linux package to manage your WireGuard VPN through a simple web interface.
+[Firezone](https://www.firez.one/) is a Linux package to manage your WireGuard® VPN through a simple web interface.
 
 ![firezone-usage](https://user-images.githubusercontent.com/52545545/147392573-fe4cb936-a0a8-436f-a69b-c0a9587de58b.gif)
 
 ## Features
 
-- **Fast:** Uses WireGuard to be [3-4 times](https://wireguard.com/performance/) faster than OpenVPN.
+- **Fast:** Uses WireGuard® to be [3-4 times](https://wireguard.com/performance/) faster than OpenVPN.
 - **No dependencies:** All dependencies are bundled thanks to
     [Chef Omnibus](https://github.com/chef/omnibus).
 - **Simple:** Takes minutes to set up. Manage via a simple CLI.
