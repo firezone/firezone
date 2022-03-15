@@ -41,8 +41,13 @@ promptContact() {
 
 wireguardCheck() {
   if ! test -f /sys/module/wireguard/version; then
-    echo "Error! WireGuard not detected. Please upgrade your kernel to at least 5.6 or install the WireGuard kernel module."
-    echo "See more at https://www.wireguard.com/install/"
+    if test -f `find /lib/modules/$(uname -r) -type f -name 'wireguard.ko'`; then
+      echo "Wireguard kernel module found, but not loaded."
+      echo "Load it with 'sudo modprobe wireguard' and run this install script again"
+    else
+      echo "Error! WireGuard not detected. Please upgrade your kernel to at least 5.6 or install the WireGuard kernel module."
+      echo "See more at https://www.wireguard.com/install/"
+    fi
     exit
   fi
 }
