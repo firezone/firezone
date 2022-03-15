@@ -1,20 +1,30 @@
 ---
 layout: default
-title: IP Whitelisting via VPN
+title: Using Firezone as a NAT Gateway
 nav_order: 6
 parent: User Guides
 description: >
-  Configure a VPN server with a static IP address to simplify
-  IP whitelist management and add additional security.
+  Configure a VPN server with a static IP address to act as
+  a NAT gateway.
 ---
 ---
+
+Firezone can be used as NAT gateway in order to provide a single,
+static egress IP for all of your team's traffic to flow out of.
+This is commonly used in the following scenarios:
+
+* Consulting engagements: Ask your client to whitelist a single static
+  IP address associated with your engagement instead of your employees'
+  individual device IPs.
+* Masking your device IP or proxying your source IP for privacy or
+  security reasons.
 
 This guide will walk through a simple example restricting access for a
 self-hosted web app to a single whitelisted static IP running Firezone.
 In this example the protected resource and Firezone are
 in separate VPC regions.
 
-This arrangement is commonly done in place of maintaining a whitelist for
+This arrangement is commonly done in place of maintaining an IP whitelist for
 multiple end users, which may become labor intensive to manage as the access
 list grows.
 
