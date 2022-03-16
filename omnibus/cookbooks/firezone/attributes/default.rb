@@ -80,12 +80,12 @@ default['firezone']['sysvinit_id'] = 'SUP'
 # For more information, see https://docs.firez.one/docs/user-guides/authentication/
 #
 # When local email/password authentication is used, users must be created by an Administrator
-# before they can log in.
+# before they can sign in.
 #
 # When SSO authentication methods are used, users are automatically added to Firezone
 # when logging in for the first time via the SSO provider.
 #
-# Users are uniquely identified by their email address, and may log in via multiple providers
+# Users are uniquely identified by their email address, and may sign in via multiple providers
 # if configured.
 
 # Local email/password authentication is enabled by default
