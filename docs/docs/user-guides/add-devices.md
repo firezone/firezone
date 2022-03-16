@@ -9,7 +9,7 @@ description: >
 ---
 
 **We recommend asking users to generate their own device configs so the private
-key is only exposed to them.** Users can follow instructions on the
+key is exposed only to them.** Users can follow instructions on the
 [Client Instructions]({%link docs/user-guides/client-instructions.md%})
 page to generate their own device configs.
 

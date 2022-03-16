@@ -95,7 +95,7 @@ cd ../..
 mix start
 ```
 
-At this point you should be able to log into
+At this point you should be able to sign in to
 [http://localhost:4000](http://localhost:4000) with email `factory@factory` and
 password `factory`.
 

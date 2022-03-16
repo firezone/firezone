@@ -12,7 +12,7 @@ description: >
 Firezone can be deployed on most popular Linux distributions in a few minutes.
 Start by checking if your environment is listed on
 [supported platforms]({% link docs/deploy/supported-platforms.md %}).
-A kernel upgrade may be required to ensure WireGuard is supported.
+A kernel upgrade may be required to ensure WireGuard® is available.
 
 \
 [Start Here: Supported Platforms]({%link docs/deploy/supported-platforms.md%}){:.btn.btn-purple}
