@@ -144,7 +144,7 @@ installAndDownloadArtifact() {
 firezoneSetup() {
   conf="/opt/firezone/embedded/cookbooks/firezone/attributes/default.rb"
   sudo sed -i "s/firezone@localhost/$1/" $conf
-  sudo sed -i "s/default\['firezone']\['fqdn'].*/default['firezone']['fqdn'] = '$public_ip'/"
+  sudo sed -i "s/default\['firezone']\['fqdn'].*/default['firezone']['fqdn'] = '$public_ip'/" $conf
   sudo firezone-ctl reconfigure
   sudo firezone-ctl create-or-reset-admin
 }
