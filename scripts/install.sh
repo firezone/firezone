@@ -2,6 +2,7 @@
 set -e
 
 telemetry_id=`od -vN "8" -An -tx1 /dev/urandom | tr -d " \n" ; echo`
+public_ip=`curl --silent ifconfig.me`
 
 capture () {
   if type curl > /dev/null; then
@@ -143,6 +144,7 @@ installAndDownloadArtifact() {
 firezoneSetup() {
   conf="/opt/firezone/embedded/cookbooks/firezone/attributes/default.rb"
   sudo sed -i "s/firezone@localhost/$1/" $conf
+  sudo sed -i "s/default\['firezone']\['fqdn'].*/default['firezone']['fqdn'] = '$public_ip'/"
   sudo firezone-ctl reconfigure
   sudo firezone-ctl create-or-reset-admin
 }
