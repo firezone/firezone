@@ -203,6 +203,8 @@ class Firezone
 
     # rubocop:disable Metrics/MethodLength
     # rubocop:disable Metrics/AbcSize
+    # rubocop:disable Metrics/PerceivedComplexity
+    # rubocop:disable Metrics/CyclomaticComplexity
     def self.app_env(attributes, reject = [])
       attributes = attributes.reject { |k| reject.include?(k) }
 
@@ -221,7 +223,10 @@ class Firezone
         'DATABASE_SSL_OPTS' => attributes['database']['ssl_opts'].to_json,
         'DATABASE_PARAMETERS' => attributes['database']['parameters'].to_json,
         'PHOENIX_PORT' => attributes['phoenix']['port'].to_s,
-        'URL_HOST' => attributes['fqdn'],
+        'EXT_URL_SCHEME' => attributes['ext_url_scheme'] || 'https',
+        'EXT_URL_PORT' => attributes['ext_url_port'].to_s || '443',
+        'EXT_URL_HOST' => attributes['ext_url_host'] || attributes['fqdn'],
+        'EXT_URL_PATH' => attributes['ext_url_path'] || '',
         'ADMIN_EMAIL' => attributes['admin_email'],
         'WIREGUARD_INTERFACE_NAME' => attributes['wireguard']['interface_name'],
         'WIREGUARD_PORT' => attributes['wireguard']['port'].to_s,
@@ -272,6 +277,8 @@ class Firezone
 
       env
     end
+    # rubocop:enable Metrics/CyclomaticComplexity
+    # rubocop:enable Metrics/PerceivedComplexity
     # rubocop:enable Metrics/MethodLength
     # rubocop:enable Metrics/AbcSize
 

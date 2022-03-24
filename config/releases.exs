@@ -15,7 +15,10 @@ database_ssl = FzString.to_boolean(System.fetch_env!("DATABASE_SSL"))
 database_ssl_opts = Jason.decode!(System.fetch_env!("DATABASE_SSL_OPTS"))
 database_parameters = Jason.decode!(System.fetch_env!("DATABASE_PARAMETERS"))
 port = String.to_integer(System.fetch_env!("PHOENIX_PORT"))
-url_host = System.fetch_env!("URL_HOST")
+ext_url_host = System.fetch_env!("EXT_URL_HOST")
+ext_url_scheme = System.fetch_env!("EXT_URL_SCHEME")
+ext_url_port = System.fetch_env!("EXT_URL_PORT")
+ext_url_path = System.fetch_env!("EXT_URL_PATH")
 admin_email = System.fetch_env!("ADMIN_EMAIL")
 default_admin_password = System.fetch_env!("DEFAULT_ADMIN_PASSWORD")
 wireguard_interface_name = System.fetch_env!("WIREGUARD_INTERFACE_NAME")
@@ -124,8 +127,8 @@ config :fz_http, FzHttp.Vault,
 
 config :fz_http, FzHttpWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: port],
-  url: [host: url_host, scheme: "http"],
-  check_origin: ["//127.0.0.1", "//localhost", "//#{url_host}"],
+  url: [host: ext_url_host, scheme: ext_url_scheme, port: ext_url_port, path: ext_url_path],
+  check_origin: ["//127.0.0.1", "//localhost", "//#{ext_url_host}"],
   server: true,
   secret_key_base: secret_key_base,
   live_view: [
@@ -163,9 +166,9 @@ config :fz_http,
   wireguard_ipv6_network: wireguard_ipv6_network,
   wireguard_ipv6_address: wireguard_ipv6_address,
   wireguard_mtu: wireguard_mtu,
+  wireguard_endpoint: wireguard_endpoint,
   telemetry_module: telemetry_module,
   telemetry_id: telemetry_id,
-  url_host: url_host,
   connectivity_checks_enabled: connectivity_checks_enabled,
   connectivity_checks_interval: connectivity_checks_interval,
   admin_email: admin_email,
@@ -173,7 +176,12 @@ config :fz_http,
 
 # Configure strategies
 identity_strategy =
-  {:identity, {Ueberauth.Strategy.Identity, [callback_methods: ["POST"], uid_field: :email]}}
+  {:identity,
+   {Ueberauth.Strategy.Identity,
+    [
+      callback_methods: ["POST"],
+      uid_field: :email
+    ]}}
 
 okta_strategy = {:okta, {Ueberauth.Strategy.Okta, []}}
 google_strategy = {:google, {Ueberauth.Strategy.Google, []}}

@@ -56,7 +56,7 @@ default['firezone']['fips_enabled'] = nil
 
 # ## Global Logging Settings
 #
-# Enable or disable logging. Set this to false to disable all Firezone logs.
+# Enable or disable logging. Set this to false to disable Firezone logs.
 default['firezone']['logging']['enabled'] = true
 
 # ## Enterprise
@@ -183,6 +183,20 @@ default['firezone']['nginx']['enable_rate_limiting'] = true
 default['firezone']['nginx']['rate_limiting_zone_name'] = 'firezone'
 default['firezone']['nginx']['rate_limiting_backoff'] = '10m'
 default['firezone']['nginx']['rate_limit'] = '10r/s'
+
+# ## External URL
+
+# These are used to generate external URLs pointing back to this instance.
+# This is used in auth callbacks, outbound emails, and other places. If you've changed
+# these for your nginx config above, you'll want to change them here as well.
+# If you're using an external load balancer or custom nginx config you may want to change these in that
+# case too.
+#
+# These are combined to generate URLs like {scheme}://{host}:{port}/{path}
+default['firezone']['ext_url_scheme'] = 'https'
+default['firezone']['ext_url_port'] = 443
+default['firezone']['ext_url_host'] = default['firezone']['fqdn']
+default['firezone']['ext_url_path'] = ''
 
 
 # ## Postgres
