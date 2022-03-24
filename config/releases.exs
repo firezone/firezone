@@ -179,6 +179,9 @@ identity_strategy =
   {:identity,
    {Ueberauth.Strategy.Identity,
     [
+      callback_port: ext_url_port,
+      callback_path: "#{ext_url_path}/auth/identity/callback",
+      callback_scheme: ext_url_scheme,
       callback_methods: ["POST"],
       uid_field: :email
     ]}}
