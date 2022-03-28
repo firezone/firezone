@@ -31,7 +31,7 @@ that can be sent to the user.
 to be sent securely to the user.
 
 Devices are associated with users. See [Add Users
-]({% link docs/user-guides/add-users.md %}) for more information on how to add
+]({%link docs/user-guides/add-users.md%}) for more information on how to add
 a user.
 
 \

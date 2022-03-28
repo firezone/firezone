@@ -34,6 +34,9 @@ This is the default.
 To re-authenticate an expired VPN session, a user will need to turn off their
 VPN session and sign in to the Firezone portal (URL specified during
 [deployment]({%link docs/deploy/prerequisites.md%})
-). See detailed Client Instructions [here]({%link docs/user-guides/client-instructions.md%}).
+).
+
+See detailed Client Instructions on how to re-authenticate your session
+[here]({%link docs/user-guides/client-instructions.md%}).
 
 ![re-authenticate](https://user-images.githubusercontent.com/52545545/155812962-9b8688c1-00af-41e4-96c3-8fb52f840aed.gif){:width="600"}
