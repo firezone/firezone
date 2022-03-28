@@ -27,6 +27,8 @@ Periodic re-authentication can be enforced by changing the setting in
 `settings/security`. This can be used to ensure a user must sign in to Firezone
 periodically in order to maintain their VPN session.
 
+![periodic-auth](https://user-images.githubusercontent.com/52545545/160450817-26406854-285c-4977-aa69-033eee2cfa57.png){:width="600"}
+
 You can set the session length to a minimum of 1 hour and maximum of 90 days.
 Setting this to Never disables this setting, allowing VPN sessions indefinitely.
 This is the default.
@@ -38,5 +40,3 @@ VPN session and sign in to the Firezone portal (URL specified during
 
 See detailed Client Instructions on how to re-authenticate your session
 [here]({%link docs/user-guides/client-instructions.md%}).
-
-![re-authenticate](https://user-images.githubusercontent.com/52545545/155812962-9b8688c1-00af-41e4-96c3-8fb52f840aed.gif){:width="600"}
