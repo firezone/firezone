@@ -21,6 +21,8 @@ If you wish to use an OAuth provider that is not listed above,
 please open a
 [GitHub issue](https://github.com/firezone/firezone/issues).
 
+## Enforce Periodic Re-authentication
+
 Periodic re-authentication can be enforced by changing the setting in
 `settings/security`. This can be used to ensure a user must sign in to Firezone
 periodically in order to maintain their VPN session.
@@ -32,6 +34,6 @@ This is the default.
 To re-authenticate an expired VPN session, a user will need to turn off their
 VPN session and sign in to the Firezone portal (URL specified during
 [deployment]({%link docs/deploy/prerequisites.md%})
-).
+). See detailed Client Instructions [here]({%link docs/user-guides/client-instructions.md%}).
 
 ![re-authenticate](https://user-images.githubusercontent.com/52545545/155812962-9b8688c1-00af-41e4-96c3-8fb52f840aed.gif){:width="600"}
