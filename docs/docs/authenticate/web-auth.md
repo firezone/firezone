@@ -13,4 +13,4 @@ By default, Firezone will use local email / password for authenticating users to
 the Firezone portal. Administrators can add users and assign their passwords on
 `/users` page.
 
-![Add Web Auth](https://user-images.githubusercontent.com/52545545/153466175-0e1c3ec8-aa3a-42a9-a915-748c9432a10c.png){:width="600"}
+![Add Web Auth](https://user-images.githubusercontent.com/52545545/160450817-26406854-285c-4977-aa69-033eee2cfa57.png){:width="600"}

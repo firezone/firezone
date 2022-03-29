@@ -72,7 +72,8 @@ the Firezone portal will prompt you to authenticate via that provider.
 ### Step 2 - Re-authenticate
 
 Visit the URL of your Firezone portal and sign in using credentials provided by your
-network admin.
+network admin. If you are already logged into the portal,
+click the `Reauthenticate` button, then sign in again.
 
 ![re-authenticate](https://user-images.githubusercontent.com/52545545/155812962-9b8688c1-00af-41e4-96c3-8fb52f840aed.gif){:width="600"}
 
