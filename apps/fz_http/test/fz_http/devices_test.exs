@@ -224,7 +224,7 @@ defmodule FzHttp.DevicesTest do
       {:error, changeset} = Devices.update_device(device, @invalid_endpoint_ipv4_attrs)
 
       assert changeset.errors[:endpoint] == {
-               "is invalid: 265.1.1.1 is not a valid fqdn or IPv4 / IPv6 address",
+               "is invalid: 265.1.1.1 is not a valid FQDN or IPv4 / IPv6 address",
                []
              }
     end
@@ -249,7 +249,7 @@ defmodule FzHttp.DevicesTest do
       {:error, changeset} = Devices.update_device(device, @invalid_endpoint_ipv6_attrs)
 
       assert changeset.errors[:endpoint] == {
-               "is invalid: deadbeef::1 is not a valid fqdn or IPv4 / IPv6 address",
+               "is invalid: deadbeef::1 is not a valid FQDN or IPv4 / IPv6 address",
                []
              }
     end
@@ -258,7 +258,7 @@ defmodule FzHttp.DevicesTest do
       {:error, changeset} = Devices.update_device(device, @invalid_endpoint_host_attrs)
 
       assert changeset.errors[:endpoint] == {
-               "is invalid: can't have this is not a valid fqdn or IPv4 / IPv6 address",
+               "is invalid: can't have this is not a valid FQDN or IPv4 / IPv6 address",
                []
              }
     end

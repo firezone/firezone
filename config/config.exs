@@ -95,8 +95,10 @@ config :fz_vpn,
 
 # Configures the endpoint
 # These will be overridden at runtime in production by config/releases.exs
+%{host: host, scheme: scheme, port: port, path: path} = URI.parse("http://localhost:4000")
+
 config :fz_http, FzHttpWeb.Endpoint,
-  url: [host: "localhost"],
+  url: [host: host, port: port, scheme: scheme, path: path],
   render_errors: [view: FzHttpWeb.ErrorView, accepts: ~w(html json)],
   pubsub_server: FzHttp.PubSub
 

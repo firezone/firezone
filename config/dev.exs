@@ -31,7 +31,6 @@ config :fz_http, FzHttpWeb.Endpoint,
   http: [port: 4000],
   debug_errors: true,
   code_reloader: true,
-  url: [port: 1234, path: "", host: "localhost", scheme: "http"],
   check_origin: ["//127.0.0.1", "//localhost"],
   watchers: [
     node: [
@@ -71,6 +70,8 @@ identity_strategy =
    {Ueberauth.Strategy.Identity,
     [
       callback_methods: ["POST"],
+      callback_port: 1234,
+      callback_scheme: "https",
       uid_field: :email
     ]}}
 

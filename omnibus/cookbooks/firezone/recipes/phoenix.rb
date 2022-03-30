@@ -44,7 +44,7 @@ template 'phoenix.nginx.conf' do
   variables(nginx: node['firezone']['nginx'],
             logging_enabled: node['firezone']['logging']['enabled'],
             phoenix: node['firezone']['phoenix'],
-            fqdn: node['firezone']['fqdn'],
+            fqdn: URI.parse(node['firezone']['external_url']).host,
             fips_enabled: node['firezone']['fips_enabled'],
             ssl: node['firezone']['ssl'],
             app_directory: node['firezone']['app_directory'])

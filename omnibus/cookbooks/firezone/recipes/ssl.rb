@@ -56,11 +56,12 @@ if node['firezone']['ssl']['enabled']
 
   # No certificate has been supplied; generate one
   else
-    ssl_keyfile = File.join(firezone_ca_dir, "#{node['firezone']['fqdn']}.key")
-    ssl_crtfile = File.join(firezone_ca_dir, "#{node['firezone']['fqdn']}.crt")
+    host = URI.parse(node['firezone']['external_url']).host
+    ssl_keyfile = File.join(firezone_ca_dir, "#{host}.key")
+    ssl_crtfile = File.join(firezone_ca_dir, "#{host}.crt")
 
     openssl_x509_certificate ssl_crtfile do
-      common_name node['firezone']['fqdn']
+      common_name host
       org node['firezone']['ssl']['company_name']
       org_unit node['firezone']['ssl']['organizational_unit_name']
       country node['firezone']['ssl']['country_name']
