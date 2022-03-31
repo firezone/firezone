@@ -13,6 +13,7 @@ Shown below is a complete listing of the configuration options available in
 `/etc/firezone/firezone.rb`.
 
 <!-- markdownlint-disable MD013 -->
+<!-- markdownlint-disable MD034 -->
 
 | option                                                                        | description                                                                                                  | default value                                                          |
 | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
@@ -162,3 +163,4 @@ Shown below is a complete listing of the configuration options available in
 | `default['firezone']['connectivity_checks']['interval']`                      | Interval between connectivity checks in seconds.                                                             | `3_600`                                                                |
 
 <!-- markdownlint-enable MD013 -->
+<!-- markdownlint-enable MD034 -->
