@@ -14,7 +14,7 @@ database_pool = String.to_integer(System.fetch_env!("DATABASE_POOL"))
 database_ssl = FzString.to_boolean(System.fetch_env!("DATABASE_SSL"))
 database_ssl_opts = Jason.decode!(System.fetch_env!("DATABASE_SSL_OPTS"))
 database_parameters = Jason.decode!(System.fetch_env!("DATABASE_PARAMETERS"))
-port = String.to_integer(System.fetch_env!("PHOENIX_PORT"))
+phoenix_port = String.to_integer(System.fetch_env!("PHOENIX_PORT"))
 admin_email = System.fetch_env!("ADMIN_EMAIL")
 default_admin_password = System.fetch_env!("DEFAULT_ADMIN_PASSWORD")
 wireguard_interface_name = System.fetch_env!("WIREGUARD_INTERFACE_NAME")
@@ -125,7 +125,7 @@ config :fz_http, FzHttp.Vault,
 %{host: host, path: path, port: port, scheme: scheme} = URI.parse(external_url)
 
 config :fz_http, FzHttpWeb.Endpoint,
-  http: [ip: {127, 0, 0, 1}, port: port],
+  http: [ip: {127, 0, 0, 1}, port: phoenix_port],
   url: [host: host, scheme: scheme, port: port, path: path],
   check_origin: ["//127.0.0.1", "//localhost", "//#{host}"],
   server: true,
