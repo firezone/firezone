@@ -28,15 +28,12 @@ execute 'create_admin' do
 end
 
 log 'admin_created' do
-  url = "#{node['firezone']['ext_url_scheme']}://#{node['firezone']['ext_url_host']}:"\
-    "#{node['firezone']['ext_url_port']}#{node['firezone']['ext_url_path']}"
-
   msg = <<~MSG
     =================================================================================
 
     Firezone user created! Save this information because it will NOT be shown again.
 
-    Use these credentials to sign in to the web UI at #{url}.
+    Use these credentials to sign in to the web UI at #{node['firezone']['external_url']}.
 
     Email:    #{node['firezone']['admin_email']}
     Password: #{node['firezone']['default_admin_password']}
