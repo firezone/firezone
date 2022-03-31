@@ -127,7 +127,7 @@ config :fz_http, FzHttp.Vault,
 config :fz_http, FzHttpWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: port],
   url: [host: host, scheme: scheme, port: port, path: path],
-  check_origin: ["//127.0.0.1", "//localhost", "//#{ext_url_host}"],
+  check_origin: ["//127.0.0.1", "//localhost", "//#{host}"],
   server: true,
   secret_key_base: secret_key_base,
   live_view: [
@@ -178,9 +178,7 @@ identity_strategy =
   {:identity,
    {Ueberauth.Strategy.Identity,
     [
-      callback_port: ext_url_port,
-      callback_path: "#{ext_url_path}/auth/identity/callback",
-      callback_scheme: ext_url_scheme,
+      callback_url: external_url,
       callback_methods: ["POST"],
       uid_field: :email
     ]}}

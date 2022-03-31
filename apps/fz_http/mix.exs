@@ -65,7 +65,7 @@ defmodule FzHttp.MixProject do
       {:floki, ">= 0.0.0", only: :test},
       {:guardian, "~> 2.0"},
       {:guardian_db, "~> 2.0"},
-      {:ueberauth, github: "ueberauth/ueberauth", override: true},
+      {:ueberauth, "~> 0.7"},
       {:ueberauth_google, "~> 0.10"},
       {:ueberauth_okta, "~> 0.2"},
       {:ueberauth_identity, "~> 0.3"},
