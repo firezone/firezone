@@ -80,15 +80,15 @@ mapReleaseToDistro() {
   elif [[ "$hostinfo" =~ .*"Fedora 33".*           &&  "$hostinfo" =~ .*"x86" ]]; then
      image_sub_string="fedora33-x64"
   elif [[ "$hostinfo" =~ .*"Fedora 33".*           &&  "$hostinfo" =~ .*"arm64" ]]; then
-     image_sub_string="fedora33-x64"
+     image_sub_string="fedora33-arm64"
   elif [[ "$hostinfo" =~ .*"Fedora 34".*           &&  "$hostinfo" =~ .*"x86" ]]; then
      image_sub_string="fedora34-x64"
   elif [[ "$hostinfo" =~ .*"Fedora 34".*           &&  "$hostinfo" =~ .*"arm64" ]]; then
-     image_sub_string="fedora34-x64"
+     image_sub_string="fedora34-arm64"
   elif [[ "$hostinfo" =~ .*"Fedora Linux 35".*     &&  "$hostinfo" =~ .*"x86" ]]; then
      image_sub_string="fedora35-x64"
   elif [[ "$hostinfo" =~ .*"Fedora Linux 35".*     &&  "$hostinfo" =~ .*"arm64" ]]; then
-     image_sub_string="fedora35-x64"
+     image_sub_string="fedora35-arm64"
   elif [[ "$hostinfo" =~ .*"Ubuntu 18.04".*  &&  "$hostinfo" =~ .*"x86" ]]; then
      image_sub_string="ubuntu1804-x64"
   elif [[ "$hostinfo" =~ .*"Ubuntu 18.04".*  &&  "$hostinfo" =~ .*"arm64" ]]; then
