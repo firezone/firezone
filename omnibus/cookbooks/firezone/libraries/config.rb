@@ -204,7 +204,8 @@ class Firezone
     # rubocop:disable Metrics/MethodLength
     # rubocop:disable Metrics/AbcSize
     # rubocop:disable Metrics/CyclomaticComplexity
-    def self.app_env(attributes, reject = [])
+    def self.app_env(node, reject = [])
+      attributes = node['firezone']
       attributes = attributes.reject { |k| reject.include?(k) }
 
       fqdn_url = "https://#{attributes['fqdn'] || node['fqdn'] || node['hostname']}"
