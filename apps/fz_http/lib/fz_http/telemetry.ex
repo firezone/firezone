@@ -127,7 +127,10 @@ defmodule FzHttp.Telemetry do
   end
 
   defp fqdn do
-    Application.fetch_env!(:fz_http, :url_host)
+    :fz_http
+    |> Application.fetch_env!(FzHttpWeb.Endpoint)
+    |> Keyword.get(:url)
+    |> Keyword.get(:host)
   end
 
   defp distinct_id do

@@ -25,6 +25,13 @@ To upgrade Firezone, follow these steps:
 Occasionally problems arise. If you hit any, please let us know by [filing an
 issue](https://github.com/firezone/firezone/issues/new/choose).
 
+## Upgrading from 0.3.1 to >= 0.3.2
+
+The configuration option `default['firezone']['fqdn']` has been removed in favor
+of `default['firezone']['external_url']`. Please set this to the
+publicly-accessible URL of your Firezone web portal. If left unspecified it will
+default to `https://` + the FQDN of your server.
+
 ## Upgrading from 0.2.x to 0.3.x
 
 **Note**: Starting with version 0.3.0, Firezone no longer stores device private

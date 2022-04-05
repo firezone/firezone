@@ -45,7 +45,7 @@ defmodule FzHttp.SharedValidators do
         []
       catch
         ip ->
-          [{field, "is invalid: #{String.trim(ip)} is not a valid fqdn or IPv4 / IPv6 address"}]
+          [{field, "is invalid: #{String.trim(ip)} is not a valid FQDN or IPv4 / IPv6 address"}]
       end
     end)
   end

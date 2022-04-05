@@ -23,17 +23,20 @@ include_recipe 'firezone::config'
 execute 'create_admin' do
   command 'bin/firezone rpc "FzHttp.Release.create_admin_user"'
   cwd node['firezone']['app_directory']
-  environment(Firezone::Config.app_env(node['firezone']))
+  environment(Firezone::Config.app_env(node))
   user node['firezone']['user']
 end
 
 log 'admin_created' do
+  external_url =
+    node['firezone']['external_url'] || "https://#{node['firezone']['fqdn'] || node['fqdn'] || node['hostname']}"
+
   msg = <<~MSG
     =================================================================================
 
     Firezone user created! Save this information because it will NOT be shown again.
 
-    Use this to sign in to the Web UI.
+    Use these credentials to sign in to the web UI at #{external_url}.
 
     Email:    #{node['firezone']['admin_email']}
     Password: #{node['firezone']['default_admin_password']}

@@ -44,7 +44,7 @@ template 'phoenix.nginx.conf' do
   variables(nginx: node['firezone']['nginx'],
             logging_enabled: node['firezone']['logging']['enabled'],
             phoenix: node['firezone']['phoenix'],
-            fqdn: node['firezone']['fqdn'],
+            fqdn: URI.parse(node['firezone']['external_url']).host,
             fips_enabled: node['firezone']['fips_enabled'],
             ssl: node['firezone']['ssl'],
             app_directory: node['firezone']['app_directory'])
@@ -53,7 +53,7 @@ end
 if node['firezone']['phoenix']['enabled']
   component_runit_service 'phoenix' do
     runit_attributes(
-      env: Firezone::Config.app_env(node['firezone']),
+      env: Firezone::Config.app_env(node),
       finish: true
     )
     package 'firezone'

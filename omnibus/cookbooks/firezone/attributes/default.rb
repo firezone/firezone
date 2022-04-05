@@ -25,10 +25,21 @@ require 'etc'
 # These are used by the other items below. More app-specific top-level
 # attributes are further down in this file.
 
-# The fully qualified domain name. Will use the node's fqdn if nothing is
-# specified. Used for generating URLs that point back to this application
-# and for securing the Websocket connections to the UI.
-default['firezone']['fqdn'] = (node['fqdn'] || node['hostname']).downcase
+# ## External URL (REQUIRED)
+#
+# This will be used to generate URLs for outbound emails, websocket connections
+# and OAuth redirects.
+# and host headers that nginx passes along. If using a custom path, scheme, or port,
+# you may want to change this, e.g. http://firezone.example.com:1234/custom-root-prefix/
+default['firezone']['external_url'] = "https://#{node['fqdn'] || node['hostname']}"
+
+# Email for the primary admin user.
+default['firezone']['admin_email'] = 'firezone@localhost'
+
+# The maximum number of devices a user can have.
+# Max: 100
+# Default: 10
+default['firezone']['max_devices_per_user'] = 10
 
 default['firezone']['config_directory'] = '/etc/firezone'
 default['firezone']['install_directory'] = '/opt/firezone'
@@ -37,13 +48,6 @@ default['firezone']['log_directory'] = '/var/log/firezone'
 default['firezone']['var_directory'] = '/var/opt/firezone'
 default['firezone']['user'] = 'firezone'
 default['firezone']['group'] = 'firezone'
-# Email for the primary admin user.
-default['firezone']['admin_email'] = 'firezone@localhost'
-
-# The maximum number of devices a user can have.
-# Max: 100
-# Default: 10
-default['firezone']['max_devices_per_user'] = 10
 
 # The outgoing interface name.
 # This is where tunneled traffic will exit the WireGuard tunnel.
@@ -56,7 +60,7 @@ default['firezone']['fips_enabled'] = nil
 
 # ## Global Logging Settings
 #
-# Enable or disable logging. Set this to false to disable all Firezone logs.
+# Enable or disable logging. Set this to false to disable Firezone logs.
 default['firezone']['logging']['enabled'] = true
 
 # ## Enterprise
@@ -183,7 +187,6 @@ default['firezone']['nginx']['enable_rate_limiting'] = true
 default['firezone']['nginx']['rate_limiting_zone_name'] = 'firezone'
 default['firezone']['nginx']['rate_limiting_backoff'] = '10m'
 default['firezone']['nginx']['rate_limit'] = '10r/s'
-
 
 # ## Postgres
 

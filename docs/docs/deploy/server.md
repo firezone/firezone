@@ -56,8 +56,8 @@ If the Automatic Install fails, try these steps to install Firezone manually.
 
    ```ruby
    # Auto-generated based on the server's hostname.
-   # Set this to the FQDN used to access the Web UI.
-   default['firezone']['fqdn'] = 'firezone.example.com'
+   # Set this to the URL used to access the Firezone Web UI.
+   default['firezone']['external_url'] = 'https://firezone.example.com'
 
    # Specify the path to your SSL cert and private key.
    # If set to nil (default), a self-signed cert will be generated for you.
@@ -72,7 +72,7 @@ If the Automatic Install fails, try these steps to install Firezone manually.
    `sudo firezone-ctl reconfigure`.
 1. Finally, create an admin user with `sudo firezone-ctl create-or-reset-admin`.
    The login credentials will be printed to the console output.
-1. Now you should be able to sign in to the web UI at the FQDN you specified in
+1. Now you should be able to sign in to the web UI at the URL you specified in
    step 5 above, e.g. `https://firezone.example.com`
 
 Find solutions to common issues during deployment in [Troubleshoot]({%link docs/administer/troubleshoot.md%}).
