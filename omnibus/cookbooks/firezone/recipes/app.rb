@@ -53,6 +53,6 @@ end
 execute 'database schema' do
   command 'bin/firezone eval "FzHttp.Release.migrate"'
   cwd node['firezone']['app_directory']
-  environment(Firezone::Config.app_env(node['firezone']))
+  environment(Firezone::Config.app_env(node))
   user node['firezone']['user']
 end

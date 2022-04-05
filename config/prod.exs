@@ -50,7 +50,12 @@ config :fz_http,
 
 config :ueberauth, Ueberauth,
   providers: [
-    {:identity, {Ueberauth.Strategy.Identity, [callback_methods: ["POST"], uid_field: :email]}},
+    {:identity,
+     {Ueberauth.Strategy.Identity,
+      [
+        callback_methods: ["POST"],
+        uid_field: :email
+      ]}},
     {:okta, {Ueberauth.Strategy.Okta, []}},
     {:google, {Ueberauth.Strategy.Google, []}}
   ]

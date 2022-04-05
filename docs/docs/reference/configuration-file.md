@@ -13,10 +13,11 @@ Shown below is a complete listing of the configuration options available in
 `/etc/firezone/firezone.rb`.
 
 <!-- markdownlint-disable MD013 -->
+<!-- markdownlint-disable MD034 -->
 
 | option                                                                        | description                                                                                                  | default value                                                          |
 | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
-| `default['firezone']['fqdn']`                                                 | FQDN of this Firezone instance.                                                                              | `(node['fqdn'] || node['hostname']).downcase`                          |
+| `default['firezone']['external_url']`                                         | URL used to access the web portal of this Firezone instance.                                                 | `"https://#{node['fqdn'] || node['hostname']}"`                        |
 | `default['firezone']['config_directory']`                                     | Top-level directory for Firezone configuration.                                                              | `'/etc/firezone'`                                                      |
 | `default['firezone']['install_directory']`                                    | Top-level directory to install Firezone to.                                                                  | `'/opt/firezone'`                                                      |
 | `default['firezone']['app_directory']`                                        | Top-level directory to install the Firezone web application.                                                 | `"#{node['firezone']['install_directory']}/embedded/service/firezone"` |
@@ -102,6 +103,7 @@ Shown below is a complete listing of the configuration options available in
 | `default['firezone']['postgresql']['shmall']`                                 | Postgresql shmall in bytes.                                                                                  | `4194304`                                                              |
 | `default['firezone']['postgresql']['work_mem']`                               | Postgresql working memory size.                                                                              | `'8MB'`                                                                |
 | `default['firezone']['database']['user']`                                     | Specifies the username Firezone will use to connect to the DB.                                               | `node['firezone']['postgresql']['username']`                           |
+| `default['firezone']['database']['password']`                                 | If using an external DB, specifies the password Firezone will use to connect to the DB.                      | `'change_me'`                                                           |
 | `default['firezone']['database']['name']`                                     | Database that Firezone will use. Will be created if it doesn't exist.                                        | `'firezone'`                                                           |
 | `default['firezone']['database']['host']`                                     | Database host that Firezone will connect to.                                                                 | `node['firezone']['postgresql']['listen_address']`                     |
 | `default['firezone']['database']['port']`                                     | Database port that Firezone will connect to.                                                                 | `node['firezone']['postgresql']['port']`                               |
@@ -162,3 +164,4 @@ Shown below is a complete listing of the configuration options available in
 | `default['firezone']['connectivity_checks']['interval']`                      | Interval between connectivity checks in seconds.                                                             | `3_600`                                                                |
 
 <!-- markdownlint-enable MD013 -->
+<!-- markdownlint-enable MD034 -->

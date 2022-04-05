@@ -49,7 +49,6 @@ config :fz_http, FzHttpWeb.Authentication,
 
 config :fz_http,
   telemetry_id: "543aae08-5a2b-428d-b704-2956dd3f5a57",
-  url_host: "firezone.dev",
   wireguard_endpoint: nil,
   wireguard_dns: "1.1.1.1, 1.0.0.1",
   wireguard_allowed_ips: "0.0.0.0/0, ::/0",
@@ -96,8 +95,11 @@ config :fz_vpn,
 
 # Configures the endpoint
 # These will be overridden at runtime in production by config/releases.exs
+external_url = "http://localhost:4000"
+%{host: host, scheme: scheme, port: port, path: path} = URI.parse(external_url)
+
 config :fz_http, FzHttpWeb.Endpoint,
-  url: [host: "localhost"],
+  url: [host: host, port: port, scheme: scheme, path: path],
   render_errors: [view: FzHttpWeb.ErrorView, accepts: ~w(html json)],
   pubsub_server: FzHttp.PubSub
 

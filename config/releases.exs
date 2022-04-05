@@ -14,8 +14,7 @@ database_pool = String.to_integer(System.fetch_env!("DATABASE_POOL"))
 database_ssl = FzString.to_boolean(System.fetch_env!("DATABASE_SSL"))
 database_ssl_opts = Jason.decode!(System.fetch_env!("DATABASE_SSL_OPTS"))
 database_parameters = Jason.decode!(System.fetch_env!("DATABASE_PARAMETERS"))
-port = String.to_integer(System.fetch_env!("PHOENIX_PORT"))
-url_host = System.fetch_env!("URL_HOST")
+phoenix_port = String.to_integer(System.fetch_env!("PHOENIX_PORT"))
 admin_email = System.fetch_env!("ADMIN_EMAIL")
 default_admin_password = System.fetch_env!("DEFAULT_ADMIN_PASSWORD")
 wireguard_interface_name = System.fetch_env!("WIREGUARD_INTERFACE_NAME")
@@ -38,6 +37,7 @@ wireguard_endpoint = System.fetch_env!("WIREGUARD_ENDPOINT")
 telemetry_enabled = FzString.to_boolean(System.fetch_env!("TELEMETRY_ENABLED"))
 telemetry_id = System.fetch_env!("TELEMETRY_ID")
 guardian_secret_key = System.fetch_env!("GUARDIAN_SECRET_KEY")
+external_url = System.fetch_env!("EXTERNAL_URL")
 
 # Local auth
 local_auth_enabled = FzString.to_boolean(System.fetch_env!("LOCAL_AUTH_ENABLED"))
@@ -122,10 +122,12 @@ config :fz_http, FzHttp.Vault,
     }
   ]
 
+%{host: host, path: path, port: port, scheme: scheme} = URI.parse(external_url)
+
 config :fz_http, FzHttpWeb.Endpoint,
-  http: [ip: {127, 0, 0, 1}, port: port],
-  url: [host: url_host, scheme: "http"],
-  check_origin: ["//127.0.0.1", "//localhost", "//#{url_host}"],
+  http: [ip: {127, 0, 0, 1}, port: phoenix_port],
+  url: [host: host, scheme: scheme, port: port, path: path],
+  check_origin: ["//127.0.0.1", "//localhost", "//#{host}"],
   server: true,
   secret_key_base: secret_key_base,
   live_view: [
@@ -163,9 +165,9 @@ config :fz_http,
   wireguard_ipv6_network: wireguard_ipv6_network,
   wireguard_ipv6_address: wireguard_ipv6_address,
   wireguard_mtu: wireguard_mtu,
+  wireguard_endpoint: wireguard_endpoint,
   telemetry_module: telemetry_module,
   telemetry_id: telemetry_id,
-  url_host: url_host,
   connectivity_checks_enabled: connectivity_checks_enabled,
   connectivity_checks_interval: connectivity_checks_interval,
   admin_email: admin_email,
@@ -173,7 +175,13 @@ config :fz_http,
 
 # Configure strategies
 identity_strategy =
-  {:identity, {Ueberauth.Strategy.Identity, [callback_methods: ["POST"], uid_field: :email]}}
+  {:identity,
+   {Ueberauth.Strategy.Identity,
+    [
+      callback_methods: ["POST"],
+      callback_url: "#{external_url}/auth/identity/callback",
+      uid_field: :email
+    ]}}
 
 okta_strategy = {:okta, {Ueberauth.Strategy.Okta, []}}
 google_strategy = {:google, {Ueberauth.Strategy.Google, []}}

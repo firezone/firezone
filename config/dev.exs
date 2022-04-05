@@ -31,7 +31,6 @@ config :fz_http, FzHttpWeb.Endpoint,
   http: [port: 4000],
   debug_errors: true,
   code_reloader: true,
-  url: [host: "localhost", scheme: "http"],
   check_origin: ["//127.0.0.1", "//localhost"],
   watchers: [
     node: [
@@ -67,7 +66,13 @@ google_auth_enabled = (System.get_env("GOOGLE_AUTH_ENABLED") && true) || false
 
 # Configure strategies
 identity_strategy =
-  {:identity, {Ueberauth.Strategy.Identity, [callback_methods: ["POST"], uid_field: :email]}}
+  {:identity,
+   {Ueberauth.Strategy.Identity,
+    [
+      callback_methods: ["POST"],
+      callback_url: "http://localhost:1111/auth/identity/callback",
+      uid_field: :email
+    ]}}
 
 okta_strategy = {:okta, {Ueberauth.Strategy.Okta, []}}
 google_strategy = {:google, {Ueberauth.Strategy.Google, []}}
