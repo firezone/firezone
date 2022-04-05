@@ -243,6 +243,12 @@ default['firezone']['database']['parameters'] = {}
 default['firezone']['database']['pool'] = [10, Etc.nprocessors].max
 default['firezone']['database']['extensions'] = { 'plpgsql' => true, 'pg_trgm' => true }
 
+# Create the DB user. Set this to false if the user already exists.
+default['firezone']['database']['create_user'] = true
+
+# Create the DB. Set this to false if the database already exists.
+default['firezone']['database']['create_db'] = true
+
 # Uncomment to specify a database password. Not usually needed if using the bundled Postgresql.
 # default['firezone']['database']['password'] = 'change_me'
 

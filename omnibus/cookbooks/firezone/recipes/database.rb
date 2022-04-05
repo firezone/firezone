@@ -30,18 +30,22 @@ ENV['PGPORT'] = node['firezone']['database']['port'].to_s
 ENV['PGUSER'] = node['firezone']['database']['user']
 ENV['PGPASSWORD'] = node['firezone']['database']['password']
 
-enterprise_pg_user node['firezone']['database']['user'] do
-  superuser true
-  password node['firezone']['database']['password'] || ''
-  # If the database user is the same as the main postgres user, don't create it.
-  not_if do
-    node['firezone']['database']['user'] ==
-      node['firezone']['postgresql']['username']
+unless node['firezone']['database']['create_user'] == false
+  enterprise_pg_user node['firezone']['database']['user'] do
+    superuser true
+    password node['firezone']['database']['password'] || ''
+    # If the database user is the same as the main postgres user, don't create it.
+    not_if do
+      node['firezone']['database']['user'] ==
+        node['firezone']['postgresql']['username']
+    end
   end
 end
 
-enterprise_pg_database node['firezone']['database']['name'] do
-  owner node['firezone']['database']['user']
+unless node['firezone']['database']['create_db'] == false
+  enterprise_pg_database node['firezone']['database']['name'] do
+    owner node['firezone']['database']['user']
+  end
 end
 
 node['firezone']['database']['extensions'].each do |ext, _enable|
