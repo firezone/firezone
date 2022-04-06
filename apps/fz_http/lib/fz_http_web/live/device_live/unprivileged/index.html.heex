@@ -68,37 +68,44 @@
 
   <h4 class="title is-4">VPN Session</h4>
 
-  <div class="block">
-    <%= if vpn_sessions_expire?() do %>
-      <%= if vpn_expired?(@current_user) do %>
+  <div class="level">
+    <div class="level-left">
+      <div class="block">
+        <%= if vpn_sessions_expire?() do %>
+          <%= if vpn_expired?(@current_user) do %>
+            <p>
+              Your VPN session expired at:
+            </p>
+          <% else %>
+            <p>
+              Your VPN session expires at:
+            </p>
+          <% end %>
+          <p>
+            <strong>
+              <span id="vpn-expires" phx-hook="FormatTimestamp" data-timestamp={vpn_expires_at(@current_user)}>...</span>
+            </strong>
+          </p>
+          <%= link("Reauthenticate", to: Routes.auth_path(@socket, :delete), method: :delete) %>
+          to renew your VPN session.
+        <% else %>
+          Your VPN session is active indefinitely.
+        <% end %>
+      </div>
+    </div>
+
+    <div class="level-right">
+      <div class="block">
         <p>
-          Your VPN session expired at:
+          Signed in as <%= @current_user.email %>.
+          <%= link(to: Routes.auth_path(@socket, :delete), method: :delete) do %>
+            Sign out
+          <% end %>
         </p>
-      <% else %>
         <p>
-          Your VPN session expires at:
+          For any issues, <a href={"mailto:#{admin_email()}"}>contact your Firezone administrator</a>.
         </p>
-      <% end %>
-      <p>
-        <strong>
-          <span id="vpn-expires" phx-hook="FormatTimestamp" data-timestamp={vpn_expires_at(@current_user)}>...</span>
-        </strong>
-      </p>
-      <%= link("Reauthenticate", to: Routes.auth_path(@socket, :delete), method: :delete) %>
-      to renew your VPN session.
-    <% else %>
-      Your VPN session is active indefinitely.
-    <% end %>
+      </div>
+    </div>
   </div>
-
-  <div class="block">
-    For any issues, <a href={"mailto:#{admin_email()}"}>contact your Firezone administrator</a>.
-  </div>
-
-  <div class="block">
-    <%= link(to: Routes.auth_path(@socket, :delete), method: :delete) do %>
-      Sign out
-    <% end %>
-  </div>
-
 </section>
