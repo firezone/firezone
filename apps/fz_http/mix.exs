@@ -68,7 +68,7 @@ defmodule FzHttp.MixProject do
       {:ueberauth, "~> 0.7"},
       {:ueberauth_google, "~> 0.10"},
       {:ueberauth_okta, "~> 0.2"},
-      {:ueberauth_identity, "~> 0.3"},
+      {:ueberauth_identity, "~> 0.4"},
       {:httpoison, "~> 1.8"},
       {:argon2_elixir, "~> 2.0"},
       {:phoenix_pubsub, "~> 2.0"},
