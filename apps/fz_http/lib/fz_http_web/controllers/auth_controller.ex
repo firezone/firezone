@@ -5,14 +5,21 @@ defmodule FzHttpWeb.AuthController do
   use FzHttpWeb, :controller
 
   alias FzHttpWeb.Authentication
+  alias FzHttpWeb.Router.Helpers, as: Routes
   alias FzHttpWeb.UserFromAuth
-  alias Ueberauth.Strategy.Helpers
+
+  # Uncomment when Helpers.callback_url/1 is fixed
+  # alias Ueberauth.Strategy.Helpers
 
   plug Ueberauth
 
   def request(conn, _params) do
+    # XXX: Helpers.callback_url/1 generates the wrong URL behind nginx.
+    # This is a bug in Ueberauth. auth_url is used instead.
+    url = Routes.auth_url(conn, :callback, :identity)
+
     conn
-    |> render("request.html", callback_url: Helpers.callback_url(conn))
+    |> render("request.html", callback_url: url)
   end
 
   def callback(%{assigns: %{ueberauth_failure: %{errors: errors}}} = conn, _params) do
