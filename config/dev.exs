@@ -70,7 +70,6 @@ identity_strategy =
    {Ueberauth.Strategy.Identity,
     [
       callback_methods: ["POST"],
-      callback_url: "http://localhost:1111/auth/identity/callback",
       uid_field: :email
     ]}}
 
