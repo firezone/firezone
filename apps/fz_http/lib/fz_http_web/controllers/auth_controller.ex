@@ -5,14 +5,21 @@ defmodule FzHttpWeb.AuthController do
   use FzHttpWeb, :controller
 
   alias FzHttpWeb.Authentication
+  alias FzHttpWeb.Router.Helpers, as: Routes
   alias FzHttpWeb.UserFromAuth
-  alias Ueberauth.Strategy.Helpers
+
+  # Uncomment when Helpers.callback_url/1 is fixed
+  # alias Ueberauth.Strategy.Helpers
 
   plug Ueberauth
 
   def request(conn, _params) do
+    # XXX: Helpers.callback_url/1 generates the wrong URL behind nginx.
+    # This is a bug in Ueberauth. auth_url is used instead.
+    url = Routes.auth_url(conn, :callback, :identity)
+
     conn
-    |> render("request.html", callback_url: Helpers.callback_url(conn))
+    |> render("request.html", callback_url: url)
   end
 
   def callback(%{assigns: %{ueberauth_failure: %{errors: errors}}} = conn, _params) do
@@ -29,9 +36,9 @@ defmodule FzHttpWeb.AuthController do
     case UserFromAuth.find_or_create(auth) do
       {:ok, user} ->
         conn
+        |> configure_session(renew: true)
         |> put_session(:live_socket_id, "users_socket:#{user.id}")
         |> Authentication.sign_in(user, auth)
-        |> configure_session(renew: true)
         |> redirect(to: root_path_for_role(conn, user.role))
 
       {:error, reason} ->
@@ -43,9 +50,9 @@ defmodule FzHttpWeb.AuthController do
 
   def delete(conn, _params) do
     conn
-    |> put_flash(:info, "You are now signed out.")
-    |> Authentication.sign_out()
     |> clear_session()
+    |> Authentication.sign_out()
+    |> put_flash(:info, "You are now signed out.")
     |> redirect(to: Routes.root_path(conn, :index))
   end
 end
