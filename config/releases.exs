@@ -152,6 +152,7 @@ config :fz_http, FzHttpWeb.Authentication,
   secret_key: guardian_secret_key
 
 config :fz_http,
+  max_devices_per_user: max_devices_per_user,
   local_auth_enabled: local_auth_enabled,
   okta_auth_enabled: okta_auth_enabled,
   google_auth_enabled: google_auth_enabled,
