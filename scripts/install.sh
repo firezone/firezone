@@ -93,9 +93,9 @@ mapReleaseToDistro() {
      image_sub_string="ubuntu1804-x64"
   elif [[ "$hostinfo" =~ .*"Ubuntu 18.04".*  &&  "$hostinfo" =~ .*"arm64" ]]; then
      image_sub_string="ubuntu1804-arm64"
-  elif [[ "$hostinfo" =~ .*"Ubuntu 20.04".*  &&  "$hostinfo" =~ .*"x86" ]]; then
+  elif [[ "$hostinfo" =~ .*"Ubuntu 2"(0|1)".04".*  &&  "$hostinfo" =~ .*"x86" ]]; then
      image_sub_string="ubuntu2004-x64"
-  elif [[ "$hostinfo" =~ .*"Ubuntu 20.04".*  &&  "$hostinfo" =~ .*"arm64" ]]; then
+  elif [[ "$hostinfo" =~ .*"Ubuntu 2"(0|1)".04".*  &&  "$hostinfo" =~ .*"arm64" ]]; then
      image_sub_string="ubuntu2004-arm64"
   elif [[ "$hostinfo" =~ .*"CentOS Linux 7".*      &&  "$hostinfo" =~ .*"x86" ]]; then
      image_sub_string="centos7-x64"
