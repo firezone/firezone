@@ -81,7 +81,7 @@ configuration file to include the following options:
 
 ```ruby
 # set the following variables to the values obtained in step 2
-default['firezone']['authentication']['google']['enabeld'] = true
+default['firezone']['authentication']['google']['enabled'] = true
 default['firezone']['authentication']['google']['client_id'] = 'GOOGLE_CLIENT_ID'
 default['firezone']['authentication']['google']['client_secret'] = 'GOOGLE_CLIENT_SECRET'
 default['firezone']['authentication']['google']['redirect_uri'] = 'GOOGLE_REDIRECT_URI'
