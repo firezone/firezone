@@ -95,7 +95,7 @@ default['firezone']['sysvinit_id'] = 'SUP'
 # Local email/password authentication is enabled by default
 default['firezone']['authentication']['local']['enabled'] = true
 
-# If using the 'okta' authentication method, set 'enabeld' to true and configure relevant settings below.
+# If using the 'okta' authentication method, set 'enabled' to true and configure relevant settings below.
 default['firezone']['authentication']['okta']['enabled'] = false
 default['firezone']['authentication']['okta']['client_id'] = nil
 default['firezone']['authentication']['okta']['client_secret'] = nil
