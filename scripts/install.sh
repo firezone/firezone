@@ -1,8 +1,20 @@
 #!/bin/bash
 set -e
 
-telemetry_id=`od -vN "8" -An -tx1 /dev/urandom | tr -d " \n" ; echo`
-public_ip=`curl --silent ifconfig.me`
+osCheck () {
+  os=`uname -s`
+  if [[ $os -ne "Linux" ]]; then
+    echo "Please ensure you're running this script on Linux and try again."
+    exit
+  fi
+}
+
+curlCheck () {
+  if ! type curl > /dev/null; then
+    echo 'curl not found. Please install curl to use this script.'
+    exit
+  fi
+}
 
 capture () {
   if type curl > /dev/null; then
@@ -42,8 +54,8 @@ promptContact() {
 
 wireguardCheck() {
   if ! test -f /sys/module/wireguard/version; then
-    if test -f `find /lib/modules/$(uname -r) -type f -name 'wireguard.ko'`; then
-      echo "Wireguard kernel module found, but not loaded."
+    if test -d /lib/modules/$(uname -r) && test -f `find /lib/modules/$(uname -r) -type f -name 'wireguard.ko'`; then
+      echo "WireGuard kernel module found, but not loaded."
       echo "Load it with 'sudo modprobe wireguard' and run this install script again"
     else
       echo "Error! WireGuard not detected. Please upgrade your kernel to at least 5.6 or install the WireGuard kernel module."
@@ -112,7 +124,7 @@ mapReleaseToDistro() {
   fi
 
   if [ -z "$image_sub_string" ]; then
-    echo "Unsupported Operating System. Aborting."
+    echo "Unsupported Linux Distribution. Aborting."
     exit
   fi
 
@@ -163,5 +175,12 @@ main() {
   firezoneSetup $adminUser
 }
 
+osCheck
+curlCheck
+
+telemetry_id=`od -vN "8" -An -tx1 /dev/urandom | tr -d " \n" ; echo`
+public_ip=`curl --silent ifconfig.me`
+
 capture "install" "email-not-collected@dummy.domain"
+
 main
