@@ -3,7 +3,7 @@ set -e
 
 osCheck () {
   os=`uname -s`
-  if [[ $os -ne "Linux" ]]; then
+  if [ ! $os = "Linux" ]; then
     echo "Please ensure you're running this script on Linux and try again."
     exit
   fi
