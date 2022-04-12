@@ -33,7 +33,7 @@ publicly-accessible URL of your Firezone web portal. If left unspecified it will
 default to `https://` + the FQDN of your server.
 
 Reminder, the configuration file can be found at `/etc/firezone/firezone.rb`.
-For an exhaustive list of configuration variables and their description, see the
+For an exhaustive list of configuration variables and their descriptions, see the
 [configuration file reference]({%link docs/reference/configuration-file.md%}).
 
 ## Upgrading from 0.2.x to 0.3.x
