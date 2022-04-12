@@ -32,6 +32,10 @@ of `default['firezone']['external_url']`. Please set this to the
 publicly-accessible URL of your Firezone web portal. If left unspecified it will
 default to `https://` + the FQDN of your server.
 
+Reminder, the configuration file can be found at `/etc/firezone/firezone.rb`.
+For an exhaustive list of configuration variables and their descriptions, see the
+[configuration file reference]({%link docs/reference/configuration-file.md%}).
+
 ## Upgrading from 0.2.x to 0.3.x
 
 **Note**: Starting with version 0.3.0, Firezone no longer stores device private
