@@ -23,6 +23,7 @@ alias FzHttp.{Devices, ConnectivityChecks, Rules, Users}
   Devices.create_device(%{
     user_id: user.id,
     name: "Factory Device",
+    preshared_key: "27eCDMVvVFfMVS5Rfnn9n7as4M6MemGY/oghmdrwX2E=",
     public_key: "3Fo+SNnDJ6hi8qzPt3nWLwgjCVwvpjHL35qJeatKwEc=",
     remote_ip: %Postgrex.INET{address: {127, 0, 0, 1}}
   })

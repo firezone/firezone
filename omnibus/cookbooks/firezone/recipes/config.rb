@@ -109,3 +109,9 @@ file "#{node['firezone']['var_directory']}/cache/wg_private_key" do
   content node['firezone']['wireguard_private_key']
   action :create_if_missing
 end
+
+directory "#{node['firezone']['var_directory']}/cache/psks" do
+  owner 'root'
+  group node['firezone']['group']
+  mode '0770'
+end

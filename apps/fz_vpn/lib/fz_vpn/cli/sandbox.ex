@@ -1,8 +1,10 @@
 defmodule FzVpn.CLI.Sandbox do
   @moduledoc """
-  Sandbox CLI environment for WireGuard CLI operations.
+  Sandbox CLI environment for WireGuard CLI operations used in
+  dev and test modes.
   """
 
+  alias FzVpn.Config
   require Logger
 
   @wg_show """
@@ -44,16 +46,13 @@ defmodule FzVpn.CLI.Sandbox do
     |> Enum.map(fn line ->
       String.replace_leading(line, "peer: ", "")
     end)
-    |> Enum.each(fn pubkey ->
-      remove_peer(pubkey)
+    |> Enum.each(fn public_key ->
+      remove_peer(public_key)
     end)
   end
 
-  def remove_peer(_pubkey) do
-    @default_returned
-  end
-
-  def set_peer(_pubkey, _allowed_ips) do
+  def remove_peer(public_key) do
+    Config.delete_psk(public_key)
     @default_returned
   end
 

@@ -21,7 +21,10 @@ defmodule FzHttp.EventsTest do
       assert :ok == Events.update_device(device)
 
       assert :sys.get_state(Events.vpn_pid()) == %{
-               device.public_key => "#{device.ipv4}/32,#{device.ipv6}/128"
+               device.public_key => %{
+                 allowed_ips: "#{device.ipv4}/32,#{device.ipv6}/128",
+                 preshared_key: nil
+               }
              }
     end
   end
@@ -33,7 +36,10 @@ defmodule FzHttp.EventsTest do
       assert :ok = Events.update_device(device)
 
       assert :sys.get_state(Events.vpn_pid()) == %{
-               device.public_key => "#{device.ipv4}/32,#{device.ipv6}/128"
+               device.public_key => %{
+                 allowed_ips: "#{device.ipv4}/32,#{device.ipv6}/128",
+                 preshared_key: nil
+               }
              }
     end
   end
@@ -68,7 +74,9 @@ defmodule FzHttp.EventsTest do
       :ok = Events.set_config()
 
       assert :sys.get_state(Events.vpn_pid()) ==
-               Map.new(Devices.to_peer_list(), fn peer -> {peer.public_key, peer.inet} end)
+               Map.new(Devices.to_peer_list(), fn peer ->
+                 {peer.public_key, %{allowed_ips: peer.inet, preshared_key: peer.preshared_key}}
+               end)
     end
   end
 
