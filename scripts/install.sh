@@ -68,7 +68,7 @@ wireguardCheck() {
 kernelCheck() {
   major=`uname -r | cut -d'.' -f1`
   if [ "$major" -lt "5" ]; then
-    echo "Kernel is not supported `uname -r`"
+    echo "Kernel version `uname -r ` is not supported. Please upgrade to 5.0 or higher."
     exit
   fi
 }
