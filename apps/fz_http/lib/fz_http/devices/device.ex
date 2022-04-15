@@ -24,6 +24,7 @@ defmodule FzHttp.Devices.Device do
     field :uuid, Ecto.UUID, autogenerate: true
     field :name, :string
     field :public_key, :string
+    field :preshared_key, FzHttp.Encrypted.Binary
     field :use_site_allowed_ips, :boolean, read_after_writes: true, default: true
     field :use_site_dns, :boolean, read_after_writes: true, default: true
     field :use_site_endpoint, :boolean, read_after_writes: true, default: true
@@ -83,6 +84,7 @@ defmodule FzHttp.Devices.Device do
       :user_id,
       :name,
       :public_key,
+      :preshared_key,
       :key_regenerated_at
     ])
   end

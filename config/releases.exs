@@ -23,6 +23,7 @@ nft_path = System.fetch_env!("NFT_PATH")
 wg_path = System.fetch_env!("WG_PATH")
 egress_interface = System.fetch_env!("EGRESS_INTERFACE")
 wireguard_public_key = System.fetch_env!("WIREGUARD_PUBLIC_KEY")
+wireguard_psk_dir = System.fetch_env!("WIREGUARD_PSK_DIR")
 wireguard_dns = System.fetch_env!("WIREGUARD_DNS")
 wireguard_allowed_ips = System.fetch_env!("WIREGUARD_ALLOWED_IPS")
 wireguard_persistent_keepalive = System.fetch_env!("WIREGUARD_PERSISTENT_KEEPALIVE")
@@ -141,6 +142,7 @@ config :fz_wall,
   cli: FzWall.CLI.Live
 
 config :fz_vpn,
+  wireguard_psk_dir: wireguard_psk_dir,
   wireguard_public_key: wireguard_public_key,
   wireguard_interface_name: wireguard_interface_name,
   wireguard_port: wireguard_port,
