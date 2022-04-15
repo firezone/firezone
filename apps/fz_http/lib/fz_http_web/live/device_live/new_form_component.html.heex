@@ -53,6 +53,7 @@
     <div>
       <.form let={f} for={@changeset} id="create-device" phx-change="change" phx-target={@myself} phx-submit="save">
         <%= hidden_input f, :public_key, id: "device-public-key", phx_hook: "GenerateKeyPair" %>
+        <%= hidden_input f, :preshared_key %>
 
         <%= if @changeset.action do %>
           <div class="notification is-danger">

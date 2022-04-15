@@ -7,8 +7,8 @@ defmodule FzHttpWeb.MockEvents do
   inside FzHttp and use that for the tests.
   """
 
-  def delete_device(pubkey) do
-    {:ok, pubkey}
+  def delete_device(public_key) do
+    {:ok, public_key}
   end
 
   def update_device(_device) do

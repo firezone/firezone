@@ -70,6 +70,10 @@ defmodule FzHttp.DevicesTest do
       assert device.ipv6 == %Postgrex.INET{address: {64_768, 0, 0, 0, 0, 3, 2, 2}, netmask: 128}
     end
 
+    test "generates preshared_key" do
+      assert String.length(Devices.new_device().changes.preshared_key) == 44
+    end
+
     @tag ipv4_network: "10.3.2.0/30"
     test "sets error when ipv4 address pool is exhausted", %{user: user} do
       restore_env(:wireguard_ipv4_network, "10.3.2.0/30", &on_exit/1)
@@ -380,6 +384,7 @@ defmodule FzHttp.DevicesTest do
 
     test "renders all peers", %{device: device} do
       assert Devices.to_peer_list() |> List.first() == %{
+               preshared_key: nil,
                public_key: device.public_key,
                inet: "#{device.ipv4}/32,#{device.ipv6}/128"
              }

@@ -43,7 +43,8 @@ defmodule FzHttp.MixProject do
         :runtime_tools,
         :ueberauth_okta,
         :ueberauth_identity
-      ]
+      ],
+      registered: [:fz_http_server]
     ]
   end
 

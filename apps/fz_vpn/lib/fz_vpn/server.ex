@@ -24,10 +24,10 @@ defmodule FzVpn.Server do
   end
 
   @impl GenServer
-  def handle_call({:remove_peer, pubkey}, _from, config) do
-    cli().remove_peer(pubkey)
-    new_config = Map.delete(config, pubkey)
-    {:reply, {:ok, pubkey}, new_config}
+  def handle_call({:remove_peer, public_key}, _from, config) do
+    cli().remove_peer(public_key)
+    new_config = Map.delete(config, public_key)
+    {:reply, {:ok, public_key}, new_config}
   end
 
   @impl GenServer
@@ -47,14 +47,14 @@ defmodule FzVpn.Server do
   end
 
   defp delete_old_peers(old_config, new_config) do
-    for pubkey <- Map.keys(old_config) -- Map.keys(new_config) do
-      cli().remove_peer(pubkey)
+    for public_key <- Map.keys(old_config) -- Map.keys(new_config) do
+      cli().remove_peer(public_key)
     end
   end
 
   defp update_changed_peers(old_config, new_config) do
     new_config
-    |> Enum.filter(fn {pubkey, inet} -> Map.get(old_config, pubkey) != inet end)
+    |> Enum.filter(fn {public_key, settings} -> Map.get(old_config, public_key) != settings end)
     |> Config.render()
     |> cli().set()
   end
@@ -64,6 +64,8 @@ defmodule FzVpn.Server do
   end
 
   defp peers_to_config(peers) do
-    Map.new(peers, fn peer -> {peer.public_key, peer.inet} end)
+    Map.new(peers, fn peer ->
+      {peer.public_key, %{allowed_ips: peer.inet, preshared_key: peer.preshared_key}}
+    end)
   end
 end

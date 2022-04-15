@@ -4,7 +4,7 @@ defmodule FzHttp.Devices do
   """
 
   import Ecto.Query, warn: false
-  alias FzCommon.NameGenerator
+  alias FzCommon.{FzCrypto, NameGenerator}
   alias FzHttp.{Devices.Device, Repo, Sites, Telemetry, Users, Users.User}
 
   def list_devices do
@@ -93,13 +93,23 @@ defmodule FzHttp.Devices do
     |> Enum.map(fn device ->
       %{
         public_key: device.public_key,
-        inet: inet(device)
+        inet: inet(device),
+        preshared_key: device.preshared_key
       }
     end)
   end
 
   def new_device(attrs \\ %{}) do
-    change_device(%Device{}, Map.merge(%{"name" => NameGenerator.generate()}, attrs))
+    change_device(
+      %Device{},
+      Map.merge(
+        %{
+          "name" => NameGenerator.generate(),
+          "preshared_key" => FzCrypto.psk()
+        },
+        attrs
+      )
+    )
   end
 
   def allowed_ips(device), do: config(device, :allowed_ips)
@@ -142,11 +152,20 @@ defmodule FzHttp.Devices do
     #{dns_config(device)}
 
     [Peer]
+    #{psk_config(device)}
     PublicKey = #{server_public_key}
     #{allowed_ips_config(device)}
     Endpoint = #{endpoint(device)}:#{wireguard_port}
     #{persistent_keepalive_config(device)}
     """
+  end
+
+  defp psk_config(device) do
+    if device.preshared_key do
+      "PresharedKey = #{device.preshared_key}"
+    else
+      ""
+    end
   end
 
   defp mtu_config(device) do

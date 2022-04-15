@@ -8,6 +8,7 @@ defmodule FzVpn.CLI.Live do
   See FzVpn.Server for higher-level functionality.
   """
 
+  alias FzVpn.Config
   import FzCommon.CLI
   require Logger
 
@@ -19,12 +20,9 @@ defmodule FzVpn.CLI.Live do
     :ok = GenServer.call(:global.whereis_name(:fz_wall_server), :teardown)
   end
 
-  def set_peer(pubkey, inet) do
-    set("peer #{pubkey} allowed-ips #{inet}")
-  end
-
-  def remove_peer(pubkey) do
-    set("peer #{pubkey} remove")
+  def remove_peer(public_key) do
+    set("peer #{public_key} remove")
+    Config.delete_psk(public_key)
   end
 
   def set(config_str) do

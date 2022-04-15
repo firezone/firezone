@@ -41,6 +41,7 @@ defmodule FzWall.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
+      {:fz_http, in_umbrella: true},
       {:fz_common, in_umbrella: true},
       {:credo, "~> 1.4", only: [:dev, :test], runtime: false},
       {:excoveralls, "~> 0.13", only: :test}
