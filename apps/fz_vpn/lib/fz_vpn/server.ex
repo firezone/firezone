@@ -10,6 +10,16 @@ defmodule FzVpn.Server do
 
   @process_opts Application.compile_env(:fz_vpn, :server_process_opts, [])
   @init_timeout 1_000
+  @dump_fields [
+    :public_key,
+    :preshared_key,
+    :endpoint,
+    :allowed_ips,
+    :latest_handshake,
+    :received_bytes,
+    :transferred_bytes,
+    :persistent_keepalive
+  ]
 
   def start_link(_) do
     GenServer.start_link(__MODULE__, %{}, @process_opts)
@@ -37,6 +47,11 @@ defmodule FzVpn.Server do
     {:reply, :ok, new_config}
   end
 
+  @impl GenServer
+  def handle_call({:show_dump, public_keys}, _from, config) do
+    {:reply, {:ok, dump(public_keys)}, config}
+  end
+
   @doc """
   Determines which peers to remove, add, and change and sets them on the WireGuard interface.
   """
@@ -44,6 +59,19 @@ defmodule FzVpn.Server do
     delete_old_peers(old_config, new_config)
     update_changed_peers(old_config, new_config)
     {:ok, new_config}
+  end
+
+  # XXX: Consider using MapSet for this instead of List
+  defp dump(public_keys) when is_list(public_keys) do
+    cli().show_dump()
+    |> String.split("\n")
+    |> Enum.map(&String.split(&1, "\t"))
+    |> Enum.filter(fn [public_key | _tail] -> Enum.member?(public_keys, public_key) end)
+    |> Enum.map(fn fields ->
+      @dump_fields
+      |> Enum.zip(fields)
+      |> Map.new()
+    end)
   end
 
   defp delete_old_peers(old_config, new_config) do
