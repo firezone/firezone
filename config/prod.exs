@@ -10,6 +10,7 @@ import Config
 # which you should run after static files are built and
 # before starting your production server.
 config :fz_vpn,
+  sandbox: false,
   wg_path: "wg",
   cli: FzVpn.CLI.Sandbox
 
