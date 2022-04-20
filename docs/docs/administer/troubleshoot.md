@@ -65,4 +65,4 @@ happy to help.
 and suggest features
 * [Public Slack Group](https://join.slack.com/t/firezone-users/shared_invite/zt-111043zus-j1lP_jP5ohv52FhAayzT6w):
 join discussions, meet other users, and meet the contributors
-* [Email Us](mailto:team@firez.one): we're always happy to chat
+* [Email Us](mailto:team@firezone.dev): we're always happy to chat

@@ -7,7 +7,7 @@ description: >
 ---
 ---
 
-[Firezone](https://firez.one) is an open source, self-hosted VPN server and
+[Firezone](https://firezone.dev) is an open source, self-hosted VPN server and
 egress firewall for Linux. Use it to **quickly and easily** secure access to
 your private network and internal applications from a simple Web UI.
 
@@ -43,8 +43,8 @@ happy to help.
    and suggest features.
 1. [Public Slack Group](https://join.slack.com/t/firezone-users/shared_invite/zt-111043zus-j1lP_jP5ohv52FhAayzT6w):
    Join live discussions, meet other users, and get to know the contributors.
-1. [Email Us](mailto:team@firez.one): We read every email and respond as soon as
-   we can.
+1. [Email Us](mailto:team@firezone.dev): We read every email and respond as soon
+   as we can.
 
 ## Contribute to Firezone
 

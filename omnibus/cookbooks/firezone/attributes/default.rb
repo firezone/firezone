@@ -81,7 +81,7 @@ default['firezone']['sysvinit_id'] = 'SUP'
 # ## Authentication
 
 # These settings control authentication-related aspects of Firezone.
-# For more information, see https://docs.firez.one/docs/user-guides/authentication/
+# For more information, see https://docs.firezone.dev/docs/user-guides/authentication/
 #
 # When local email/password authentication is used, users must be created by an Administrator
 # before they can sign in.
