@@ -25,7 +25,9 @@ alias FzHttp.{Devices, ConnectivityChecks, Rules, Users}
     name: "Factory Device",
     preshared_key: "27eCDMVvVFfMVS5Rfnn9n7as4M6MemGY/oghmdrwX2E=",
     public_key: "3Fo+SNnDJ6hi8qzPt3nWLwgjCVwvpjHL35qJeatKwEc=",
-    remote_ip: %Postgrex.INET{address: {127, 0, 0, 1}}
+    remote_ip: %Postgrex.INET{address: {127, 0, 0, 1}},
+    rx_bytes: 123_917_823,
+    tx_bytes: 1_934_475_211_087_234
   })
 
 {:ok, _rule} =

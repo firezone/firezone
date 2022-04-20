@@ -21,6 +21,8 @@ defmodule FzCommon.FzInteger do
     @max_integer
   end
 
+  def to_human_bytes(nil), do: to_human_bytes(0)
+
   def to_human_bytes(bytes) when is_integer(bytes) do
     case bytes do
       # KiB
