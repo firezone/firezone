@@ -10,7 +10,6 @@ import Config
 # which you should run after static files are built and
 # before starting your production server.
 config :fz_vpn,
-  sandbox: false,
   wg_path: "wg",
   cli: FzVpn.CLI.Sandbox
 
@@ -44,6 +43,7 @@ end
 config :logger, level: :info
 
 config :fz_http,
+  sandbox: false,
   local_auth_enabled: true,
   google_auth_enabled: true,
   okta_auth_enabled: true,
