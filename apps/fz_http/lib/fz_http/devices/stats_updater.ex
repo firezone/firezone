@@ -14,8 +14,8 @@ defmodule FzHttp.Devices.StatsUpdater do
 
         device ->
           attrs = %{
-            rx_bytes: data.rx_bytes,
-            tx_bytes: data.tx_bytes,
+            rx_bytes: String.to_integer(data.rx_bytes),
+            tx_bytes: String.to_integer(data.tx_bytes),
             remote_ip: remote_ip(data.endpoint),
             latest_handshake: latest_handshake(data.latest_handshake)
           }
@@ -53,6 +53,8 @@ defmodule FzHttp.Devices.StatsUpdater do
   end
 
   defp latest_handshake(epoch) do
-    DateTime.from_unix!(epoch)
+    epoch
+    |> String.to_integer()
+    |> DateTime.from_unix!()
   end
 end
