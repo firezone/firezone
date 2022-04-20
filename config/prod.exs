@@ -43,6 +43,7 @@ end
 config :logger, level: :info
 
 config :fz_http,
+  sandbox: false,
   local_auth_enabled: true,
   google_auth_enabled: true,
   okta_auth_enabled: true,

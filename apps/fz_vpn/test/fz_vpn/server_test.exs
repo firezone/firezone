@@ -2,25 +2,25 @@ defmodule FzVpn.ServerTest do
   use ExUnit.Case, async: true
   import FzVpn.CLI
 
-  @single_peer [
-    %{public_key: "test-pubkey", preshared_key: "foobar", inet: "127.0.0.1/32,::1/128"}
-  ]
-  @many_peers [
-    %{public_key: "key1", preshared_key: "foobar", inet: "0.0.0.0/32,::1/128"},
-    %{public_key: "key2", preshared_key: "foobar", inet: "127.0.0.1/32,::1/128"},
-    %{public_key: "key3", preshared_key: "foobar", inet: "127.0.0.1/32,::1/128"},
-    %{public_key: "key4", preshared_key: "foobar", inet: "127.0.0.1/32,::1/128"}
-  ]
+  setup %{stubbed_config: config} do
+    test_pid = :global.whereis_name(:fz_vpn_server)
+    :ok = GenServer.call(test_pid, {:set_config, config})
+
+    on_exit(fn -> cli().teardown() end)
+
+    %{test_pid: test_pid}
+  end
 
   describe "state" do
-    setup %{stubbed_config: config} do
-      test_pid = :global.whereis_name(:fz_vpn_server)
-      :ok = GenServer.call(test_pid, {:set_config, config})
-
-      on_exit(fn -> cli().teardown() end)
-
-      %{test_pid: test_pid}
-    end
+    @single_peer [
+      %{public_key: "test-pubkey", preshared_key: "foobar", inet: "127.0.0.1/32,::1/128"}
+    ]
+    @many_peers [
+      %{public_key: "key1", preshared_key: "foobar", inet: "0.0.0.0/32,::1/128"},
+      %{public_key: "key2", preshared_key: "foobar", inet: "127.0.0.1/32,::1/128"},
+      %{public_key: "key3", preshared_key: "foobar", inet: "127.0.0.1/32,::1/128"},
+      %{public_key: "key4", preshared_key: "foobar", inet: "127.0.0.1/32,::1/128"}
+    ]
 
     @tag stubbed_config: @single_peer
     test "removes peers from config when removed", %{test_pid: test_pid} do

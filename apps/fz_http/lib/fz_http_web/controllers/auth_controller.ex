@@ -50,7 +50,7 @@ defmodule FzHttpWeb.AuthController do
 
   def delete(conn, _params) do
     conn
-    |> clear_session()
+    |> configure_session(drop: true)
     |> Authentication.sign_out()
     |> put_flash(:info, "You are now signed out.")
     |> redirect(to: Routes.root_path(conn, :index))
