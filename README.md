@@ -18,22 +18,22 @@
 </p>
 
 <p align="center">
-  <strong><a href="https://www.firez.one/">Firezone</a> is a self-managed <a href="https://www.wireguard.com/">WireGuard®</a>-based VPN server and Linux firewall designed for simplicity and security.</strong>
+  <strong><a href="https://www.firezone.dev">Firezone</a> is a self-managed <a href="https://www.wireguard.com/">WireGuard®</a>-based VPN server and Linux firewall designed for simplicity and security.</strong>
 </p>
 
 <hr>
 
 <div align="center">
-  <a href="https://www.firez.one/">
+  <a href="https://www.firezone.dev">
     <img alt="Diagram showing a typical Firezone firewall and vpn gateway setup" src="https://user-images.githubusercontent.com/52545545/147286088-08b0d11f-d81d-4622-8145-179071d2f0fb.png" width="600" />
   </a>
 </div>
 
 # Get Started
 
-Follow our installation guide at https://docs.firez.one/docs/deploy to install your self-hosted instance of Firezone.
+Follow our installation guide at https://docs.firezone.dev/docs/deploy to install your self-hosted instance of Firezone.
 
-Or, if you're on a [supported platform](https://docs.firez.one/docs/deploy/supported-platforms/), try our one-line install script:
+Or, if you're on a [supported platform](https://docs.firezone.dev/docs/deploy/supported-platforms/), try our one-line install script:
 
 ```bash
 bash <(curl -Ls https://github.com/firezone/firezone/raw/master/scripts/install.sh)
@@ -43,7 +43,7 @@ Using Firezone for your team? We'd love to [hear from you](https://calendly.com/
 
 # What is Firezone?
 
-[Firezone](https://www.firez.one/) is a Linux package to manage your WireGuard® VPN through a simple web interface.
+[Firezone](https://www.firezone.dev) is a Linux package to manage your WireGuard® VPN through a simple web interface.
 
 ![firezone-usage](https://user-images.githubusercontent.com/52545545/147392573-fe4cb936-a0a8-436f-a69b-c0a9587de58b.gif)
 
@@ -68,7 +68,7 @@ Firezone is **not:**
 
 # Documentation
 
-Additional documentation on general usage, troubleshooting, and configuration can be found at https://docs.firez.one/.
+Additional documentation on general usage, troubleshooting, and configuration can be found at https://docs.firezone.dev.
 
 # Get Help
 
@@ -76,8 +76,8 @@ If you're looking for help installing and configuring Firezone, we're happy to
 help:
 
 * [Discussion Forums](https://discourse.firez.one/): ask questions, report bugs, and suggest features
-* [Community Slack](https://www.firez.one/slack): join discussions, meet other users, and meet the contributors
-* [Email Us](mailto:team@firez.one): we're always happy to chat
+* [Community Slack](https://www.firezone.dev/slack): join discussions, meet other users, and meet the contributors
+* [Email Us](mailto:team@firezone.dev): we're always happy to chat
 
 # Developing and Contributing
 

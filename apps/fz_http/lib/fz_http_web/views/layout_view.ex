@@ -1,15 +1,13 @@
 defmodule FzHttpWeb.LayoutView do
   use FzHttpWeb, :view
 
-  alias FzCommon.FzCrypto
-
   require Logger
 
   @doc """
   Generate a random feedback email to avoid spam.
   """
   def feedback_recipient do
-    "feedback-#{FzCrypto.rand_string(8)}@firez.one"
+    "feedback@firezone.dev"
   end
 
   @doc """

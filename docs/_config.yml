@@ -20,10 +20,10 @@
 
 title: Docs | Firezone
 tagline: The official documentation for Firezone
-email: support@firez.one
+email: support@firezone.dev
 description: >- # this means to ignore newlines until "baseurl:"
   Documentation site for Firezone's VPN and firewall server.
-url: "https://docs.firez.one"
+url: "https://docs.firezone.dev"
 permalink: pretty
 twitter_username: firezonevpn
 github_username:  firezone
