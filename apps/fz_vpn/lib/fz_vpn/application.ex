@@ -7,7 +7,8 @@ defmodule FzVpn.Application do
 
   def start(_type, _args) do
     children = [
-      FzVpn.Server
+      FzVpn.Server,
+      FzVpn.StatsPushService
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html

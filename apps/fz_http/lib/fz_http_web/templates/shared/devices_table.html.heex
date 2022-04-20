@@ -3,6 +3,8 @@
     <tr>
       <th>Name</th>
       <th>WireGuard IP</th>
+      <th>Remote IP</th>
+      <th>Transfer</th>
       <th>Public key</th>
       <th>Created</th>
       <th>Updated</th>
@@ -15,8 +17,17 @@
         <%= live_patch(device.name, to: Routes.device_admin_show_path(@socket, :show, device)) %>
       </td>
       <td class="code">
-        <span><%= device.ipv4 %></span>
-        <span><%= device.ipv6 %></span>
+        <%= device.ipv4 %>
+        <br>
+        <%= device.ipv6 %>
+      </td>
+      <td class="code">
+        <%= device.remote_ip %>
+      </td>
+      <td class="code">
+        <%= FzCommon.FzInteger.to_human_bytes(device.rx_bytes) %> received
+        <br>
+        <%= FzCommon.FzInteger.to_human_bytes(device.tx_bytes) %> sent
       </td>
       <td class="code"><%= device.public_key %></td>
       <td id={"device-#{device.id}-inserted-at"} data-timestamp={device.inserted_at} phx-hook="FormatTimestamp">…</td>

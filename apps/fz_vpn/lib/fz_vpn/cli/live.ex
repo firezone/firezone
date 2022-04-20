@@ -44,6 +44,10 @@ defmodule FzVpn.CLI.Live do
     show("transfer")
   end
 
+  def show_dump do
+    show("dump")
+  end
+
   defp show(subcommand) do
     exec!("#{wg()} show #{iface_name()} #{subcommand}")
   end

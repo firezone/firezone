@@ -21,6 +21,8 @@ defmodule FzHttp.Devices.Device do
   alias FzHttp.{Devices, Users.User}
 
   schema "devices" do
+    field :rx_bytes, :integer
+    field :tx_bytes, :integer
     field :uuid, Ecto.UUID, autogenerate: true
     field :name, :string
     field :public_key, :string
@@ -38,7 +40,7 @@ defmodule FzHttp.Devices.Device do
     field :remote_ip, EctoNetwork.INET
     field :ipv4, EctoNetwork.INET, read_after_writes: true
     field :ipv6, EctoNetwork.INET, read_after_writes: true
-    field :last_seen_at, :utc_datetime_usec
+    field :latest_handshake, :utc_datetime_usec
     field :key_regenerated_at, :utc_datetime_usec, read_after_writes: true
 
     belongs_to :user, User
@@ -68,6 +70,9 @@ defmodule FzHttp.Devices.Device do
   defp shared_cast(device, attrs) do
     device
     |> cast(attrs, [
+      :latest_handshake,
+      :rx_bytes,
+      :tx_bytes,
       :use_site_allowed_ips,
       :use_site_dns,
       :use_site_endpoint,
