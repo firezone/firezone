@@ -17,7 +17,7 @@
 
 name 'firezone'
 maintainer 'Firezone'
-homepage 'https://firez.one'
+homepage 'https://firezone.dev'
 license 'Apache-2.0'
 license_file '../LICENSE'
 

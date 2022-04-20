@@ -5,7 +5,7 @@
 ## Overview
 
 This repository is for our documentation website found at
-[https://docs.firez.one/](https://docs.firez.one).
+[https://docs.firezone.dev](https://docs.firezone.dev).
 
 ## Contributing
 
