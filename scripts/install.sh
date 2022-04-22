@@ -68,7 +68,11 @@ wireguardCheck() {
 kernelCheck() {
   major=`uname -r | cut -d'.' -f1`
   if [ "$major" -lt "5" ]; then
-    echo "Kernel version `uname -r ` is not supported. Please upgrade to 5.0 or higher."
+    echo "################################################################################"
+    echo "# WARNING: Kernel version {uname -r} is not supported. Firezone requires       #"
+    echo "# kernel >= 5 or higher. See our listed of supported platforms for more        #"
+    echo "# information: https://docs.firez.one/docs/deploy/supported-platforms/         #"
+    echo "################################################################################"
     exit
   fi
 }
@@ -101,9 +105,9 @@ mapReleaseToDistro() {
      image_sub_string="fedora35-x64"
   elif [[ "$hostinfo" =~ .*"Fedora Linux 35".*     &&  "$hostinfo" =~ .*"arm64" ]]; then
      image_sub_string="fedora35-arm64"
-  elif [[ "$hostinfo" =~ .*"Ubuntu 18.04".*  &&  "$hostinfo" =~ .*"x86" ]]; then
+  elif [[ "$hostinfo" =~ .*"Ubuntu 18.04".*        &&  "$hostinfo" =~ .*"x86" ]]; then
      image_sub_string="ubuntu1804-x64"
-  elif [[ "$hostinfo" =~ .*"Ubuntu 18.04".*  &&  "$hostinfo" =~ .*"arm64" ]]; then
+  elif [[ "$hostinfo" =~ .*"Ubuntu 18.04".*        &&  "$hostinfo" =~ .*"arm64" ]]; then
      image_sub_string="ubuntu1804-arm64"
   elif [[ "$hostinfo" =~ .*"Ubuntu 2"(0|1)".04".*  &&  "$hostinfo" =~ .*"x86" ]]; then
      image_sub_string="ubuntu2004-x64"
@@ -119,7 +123,7 @@ mapReleaseToDistro() {
      image_sub_string="centos9-x64"
   elif [[ "$hostinfo" =~ .*"CentOS Stream 9".*     &&  "$hostinfo" =~ .*"arm64" ]]; then
      image_sub_string="centos9-arm64"
-  elif [[ "$hostinfo" =~ .*"openSUSE Leap 15".*  &&  "$hostinfo" =~ .*"x86" ]]; then
+  elif [[ "$hostinfo" =~ .*"openSUSE Leap 15".*    &&  "$hostinfo" =~ .*"x86" ]]; then
      image_sub_string="opensuse15-x64"
   fi
 
