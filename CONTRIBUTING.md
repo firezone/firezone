@@ -77,7 +77,7 @@ asdf install
 mix local.hex --force
 mix local.rebar --force
 mix deps.get
-MIX_ENV=test mix do ecto.setup
+MIX_ENV=test mix do ecto.remigrate
 mix test
 ```
 
