@@ -103,7 +103,8 @@ external_url = "http://localhost:4000"
 config :fz_http, FzHttpWeb.Endpoint,
   url: [host: host, port: port, scheme: scheme, path: path],
   render_errors: [view: FzHttpWeb.ErrorView, accepts: ~w(html json)],
-  pubsub_server: FzHttp.PubSub
+  pubsub_server: FzHttp.PubSub,
+  proxy_forwarded: false
 
 # Configures Elixir's Logger
 config :logger, :console,
