@@ -179,8 +179,8 @@ firezoneSetup() {
 
 main() {
   adminUser=''
-  wireguardCheck
   kernelCheck
+  wireguardCheck
   promptEmail "Enter the administrator email you'd like to use for logging into this Firezone instance:"
   promptContact
   releaseUrl=''
