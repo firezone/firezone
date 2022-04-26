@@ -5,6 +5,18 @@ set -e
 # before package is installed.
 #
 
+kernelCheck() {
+  major=`uname -r | cut -d'.' -f1`
+  if [ "$major" -lt "5" ]; then
+    echo "################################################################################"
+    echo "# ERROR: Kernel version `uname -r` is not supported. Firezone requires         #"
+    echo "# kernel >= 5 or higher. See our listed of supported platforms for more        #"
+    echo "# information: https://docs.firez.one/docs/deploy/supported-platforms/         #"
+    echo "################################################################################"
+    exit
+  fi
+}
+
 capture () {
   if type curl > /dev/null; then
     if [ -e /var/opt/firezone/cache/telemetry_id ]; then
@@ -29,3 +41,4 @@ if [ ! -e /var/opt/firezone/.disable_telemetry ]; then
 fi
 
 echo "You're about to install firezone!"
+kernelCheck
