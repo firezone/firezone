@@ -41,6 +41,10 @@ default['firezone']['admin_email'] = 'firezone@localhost'
 # Default: 10
 default['firezone']['max_devices_per_user'] = 10
 
+# Allow users to create (and download) their own devices. Set to false
+# if you only want administrators to create and manage devices.
+default['firezone']['allow_unprivileged_device_management'] = true
+
 default['firezone']['config_directory'] = '/etc/firezone'
 default['firezone']['install_directory'] = '/opt/firezone'
 default['firezone']['app_directory'] = "#{node['firezone']['install_directory']}/embedded/service/firezone"

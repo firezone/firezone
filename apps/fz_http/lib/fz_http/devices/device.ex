@@ -18,7 +18,7 @@ defmodule FzHttp.Devices.Device do
 
   import FzHttp.Queries.INET
 
-  alias FzHttp.{Devices, Users.User}
+  alias FzHttp.{Devices, Users, Users.User}
 
   @description_max_length 2048
 
@@ -127,6 +127,7 @@ defmodule FzHttp.Devices.Device do
     )
     |> validate_length(:description, max: @description_max_length)
     |> validate_ipv4_required()
+    |> validate_device_management()
     |> validate_ipv6_required()
     |> unique_constraint(:ipv4)
     |> unique_constraint(:ipv6)
@@ -151,6 +152,21 @@ defmodule FzHttp.Devices.Device do
       )
     else
       changeset
+    end
+  end
+
+  defp validate_device_management(changeset) do
+    user_id = changeset.changes.user_id || changeset.data.user_id
+
+    if Users.get_user!(user_id).role == :admin ||
+         Application.fetch_env!(:fz_http, :allow_unprivileged_device_management) do
+      changeset
+    else
+      add_error(
+        changeset,
+        :base,
+        "Must be an administrator to manage devices."
+      )
     end
   end
 
