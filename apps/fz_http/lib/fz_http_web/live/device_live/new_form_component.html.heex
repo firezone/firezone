@@ -74,6 +74,20 @@
         </div>
 
         <div class="field">
+          <%= label f, :description, class: "label" %>
+          <div class="control">
+            <%= textarea(
+                f,
+                :description,
+                placeholder: "Enter an optional description for this device",
+                class: "pre-wrapped input #{input_error_class(f, :description)}") %>
+          </div>
+          <p class="help is-danger">
+            <%= error_tag f, :description %>
+          </p>
+        </div>
+
+        <div class="field">
           <%= label f, :use_site_allowed_ips, "Use Default Allowed IPs", class: "label" %>
           <div class="control">
             <label class="radio">
