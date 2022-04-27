@@ -16,7 +16,8 @@ defmodule FzHttp.DevicesFixtures do
     default_attrs = %{
       user_id: user_id,
       public_key: "test-pubkey",
-      name: "factory"
+      name: "factory",
+      description: "factory description"
     }
 
     {:ok, device} = Devices.create_device(Map.merge(default_attrs, attrs))

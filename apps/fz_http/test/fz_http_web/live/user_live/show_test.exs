@@ -19,7 +19,8 @@ defmodule FzHttpWeb.UserLive.ShowTest do
     test "shows device details", %{admin_conn: conn, device: device} do
       path = Routes.device_admin_show_path(conn, :show, device)
       {:ok, _view, html} = live(conn, path)
-      assert html =~ "#{device.name}"
+      assert html =~ device.name
+      assert html =~ device.description
       assert html =~ "<h4 class=\"title is-4\">Details</h4>"
     end
   end
@@ -29,7 +30,8 @@ defmodule FzHttpWeb.UserLive.ShowTest do
     @valid_params %{
       "device" => %{
         "public_key" => "test-pubkey",
-        "name" => "new_name"
+        "name" => "new_name",
+        "description" => "new_description"
       }
     }
     @invalid_params %{
@@ -168,6 +170,7 @@ defmodule FzHttpWeb.UserLive.ShowTest do
         |> render_submit(@valid_params)
 
       assert test_view =~ "Device added!"
+      assert test_view =~ @valid_params["device"]["name"]
     end
 
     test "prevents allowed_ips changes when use_site_allowed_ips is true", %{
