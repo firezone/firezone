@@ -1,13 +1,14 @@
 defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
   use FzHttpWeb.ConnCase, async: false
 
-  # alias FzHttp.{Devices, Devices.Device}
-
   describe "authenticated/device list" do
-    setup :create_devices
+    test "includes the device name in the list", %{
+      unprivileged_user: user,
+      unprivileged_conn: conn
+    } do
+      {:ok, devices: devices} = create_devices(user_id: user.id)
 
-    test "includes the device name in the list", %{admin_conn: conn, devices: devices} do
-      path = Routes.device_admin_index_path(conn, :index)
+      path = Routes.device_unprivileged_index_path(conn, :index)
       {:ok, _view, html} = live(conn, path)
 
       for device <- devices do
@@ -22,6 +23,32 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
       clear_users()
       expected_path = Routes.root_path(conn, :index)
       assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
+    end
+  end
+
+  describe "authenticated device management disabled" do
+    setup do
+      restore_env(:allow_unprivileged_device_management, false, &on_exit/1)
+    end
+
+    test "omits Add Device button", %{unprivileged_conn: conn} do
+      path = Routes.device_unprivileged_index_path(conn, :index)
+      {:ok, _view, html} = live(conn, path)
+
+      refute html =~ "Add Device"
+    end
+
+    test "prevents creating a device", %{unprivileged_conn: conn} do
+      path = Routes.device_unprivileged_index_path(conn, :new)
+      {:ok, view, _html} = live(conn, path)
+
+      new_view =
+        view
+        |> element("#create-device")
+        |> render_submit(%{"device" => %{"public_key" => "test-pubkey", "name" => "test-tunnel"}})
+
+      assert new_view =~ "Must be an administrator to manage devices."
+      refute new_view =~ "Device added!"
     end
   end
 
@@ -43,7 +70,7 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
              """
     end
 
-    test "creates tunnel", %{unprivileged_conn: conn} do
+    test "creates device", %{unprivileged_conn: conn} do
       path = Routes.device_unprivileged_index_path(conn, :new)
       {:ok, view, _html} = live(conn, path)
 

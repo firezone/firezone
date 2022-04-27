@@ -76,8 +76,14 @@ defmodule FzHttp.TestHelpers do
     {:ok, devices: devices}
   end
 
-  def create_user(_) do
-    user = UsersFixtures.user()
+  def create_user(tags) do
+    user =
+      if tags[:unprivileged] do
+        UsersFixtures.user(%{role: :unprivileged})
+      else
+        UsersFixtures.user()
+      end
+
     {:ok, user: user}
   end
 
