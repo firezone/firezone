@@ -58,6 +58,7 @@ defmodule FzHttp.Devices.Device do
     |> put_next_ip(:ipv6)
     |> shared_changeset()
     |> validate_max_devices()
+    |> validate_device_management()
   end
 
   def update_changeset(device, attrs) do
@@ -127,7 +128,6 @@ defmodule FzHttp.Devices.Device do
     )
     |> validate_length(:description, max: @description_max_length)
     |> validate_ipv4_required()
-    |> validate_device_management()
     |> validate_ipv6_required()
     |> unique_constraint(:ipv4)
     |> unique_constraint(:ipv6)

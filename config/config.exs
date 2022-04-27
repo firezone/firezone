@@ -49,7 +49,7 @@ config :fz_http, FzHttpWeb.Authentication,
 
 config :fz_http,
   sandbox: true,
-  allow_unprivileged_device_management: false,
+  allow_unprivileged_device_management: true,
   telemetry_id: "543aae08-5a2b-428d-b704-2956dd3f5a57",
   wireguard_endpoint: nil,
   wireguard_dns: "1.1.1.1, 1.0.0.1",
