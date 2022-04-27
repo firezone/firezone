@@ -60,11 +60,13 @@
     <% end %>
   </div>
 
-  <div class="block">
-    <%= live_patch(to: Routes.device_unprivileged_index_path(@socket, :new), class: "button") do %>
-      Add Device
-    <% end %>
-  </div>
+  <%= if FzHttpWeb.DeviceView.can_manage_devices?(@current_user) do %>
+    <div class="block">
+      <%= live_patch(to: Routes.device_unprivileged_index_path(@socket, :new), class: "button") do %>
+        Add Device
+      <% end %>
+    </div>
+  <% end %>
 
   <h4 class="title is-4">VPN Session</h4>
 

@@ -40,6 +40,9 @@ telemetry_id = System.fetch_env!("TELEMETRY_ID")
 guardian_secret_key = System.fetch_env!("GUARDIAN_SECRET_KEY")
 external_url = System.fetch_env!("EXTERNAL_URL")
 
+allow_unprivileged_device_management =
+  FzString.to_boolean(System.fetch_env!("ALLOW_UNPRIVILEGED_DEVICE_MANAGEMENT"))
+
 # Local auth
 local_auth_enabled = FzString.to_boolean(System.fetch_env!("LOCAL_AUTH_ENABLED"))
 
@@ -154,6 +157,7 @@ config :fz_http, FzHttpWeb.Authentication,
   secret_key: guardian_secret_key
 
 config :fz_http,
+  allow_unprivileged_device_management: allow_unprivileged_device_management,
   max_devices_per_user: max_devices_per_user,
   local_auth_enabled: local_auth_enabled,
   okta_auth_enabled: okta_auth_enabled,
