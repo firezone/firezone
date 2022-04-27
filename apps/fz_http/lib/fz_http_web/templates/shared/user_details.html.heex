@@ -23,7 +23,7 @@
     <tr>
       <td><strong>Created</strong></td>
       <td
-        id="created-at"
+        id={"user-#{@user.id}-created-at"}
         data-timestamp={@user.inserted_at}
         phx-hook="FormatTimestamp">
         …
@@ -33,7 +33,7 @@
     <tr>
       <td><strong>Updated</strong></td>
       <td
-        id="created-at"
+        id={"user-#{@user.id}-updated-at"}
         data-timestamp={@user.updated_at}
         phx-hook="FormatTimestamp">
         …

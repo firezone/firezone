@@ -6,8 +6,8 @@ defmodule FzVpn.StatsPushService do
   import FzVpn.CLI
   alias FzVpn.Server
 
-  # 1 minute
-  @interval 3_600
+  # 60 seconds
+  @interval 60_000
   @dump_fields [
     :preshared_key,
     :endpoint,

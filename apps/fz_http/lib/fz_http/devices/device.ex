@@ -20,11 +20,14 @@ defmodule FzHttp.Devices.Device do
 
   alias FzHttp.{Devices, Users.User}
 
+  @description_max_length 2048
+
   schema "devices" do
     field :rx_bytes, :integer
     field :tx_bytes, :integer
     field :uuid, Ecto.UUID, autogenerate: true
     field :name, :string
+    field :description, :string
     field :public_key, :string
     field :preshared_key, FzHttp.Encrypted.Binary
     field :use_site_allowed_ips, :boolean, read_after_writes: true, default: true
@@ -88,6 +91,7 @@ defmodule FzHttp.Devices.Device do
       :ipv6,
       :user_id,
       :name,
+      :description,
       :public_key,
       :preshared_key,
       :key_regenerated_at
@@ -121,6 +125,7 @@ defmodule FzHttp.Devices.Device do
       greater_than_or_equal_to: 576,
       less_than_or_equal_to: 1500
     )
+    |> validate_length(:description, max: @description_max_length)
     |> validate_ipv4_required()
     |> validate_ipv6_required()
     |> unique_constraint(:ipv4)
