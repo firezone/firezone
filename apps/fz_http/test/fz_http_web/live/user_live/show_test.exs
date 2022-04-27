@@ -5,7 +5,7 @@ defmodule FzHttpWeb.UserLive.ShowTest do
   describe "authenticated show" do
     setup :create_device
 
-    test "includes the device name and description", %{admin_conn: conn, device: device} do
+    test "includes the device name", %{admin_conn: conn, device: device} do
       path = Routes.user_show_path(conn, :show, device.user_id)
       {:ok, _view, html} = live(conn, path)
 
