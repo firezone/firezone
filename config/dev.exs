@@ -1,7 +1,5 @@
 import Config
 
-alias FzCommon.ConfigHelpers
-
 # Configure your database
 if url = System.get_env("DATABASE_URL") do
   config :fz_http, FzHttp.Repo,

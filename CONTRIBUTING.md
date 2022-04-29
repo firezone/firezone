@@ -65,6 +65,19 @@ We use [pre-commit](https://pre-commit.com) to catch any static analysis issues
 before code is committed. Install with Homebrew: `brew install pre-commit` or
 pip: `pip install pre-commit`.
 
+### The ENV file
+
+In order to save local environment variables in your development environment,
+you can use a `.env` file in the project root directory to store any commonly
+used settings.
+
+.env.sample will give you an example of what this file may look like.
+
+Run the following command to 'source' the environment variables from .env on
+`mix start`
+
+`env $(cat .env | grep -v \# | xargs) mix start`
+
 ## Bootstrapping
 
 Assuming you've completed the steps above, you should be able to get everything
@@ -96,8 +109,26 @@ mix start
 ```
 
 At this point you should be able to sign in to
-[http://localhost:4000](http://localhost:4000) with email `factory@factory` and
-password `factory`.
+[http://localhost:4000](http://localhost:4000) with email `firezone@localhost` and
+password `firezone1234`.
+
+## Running this inside a Devcontainer
+
+You can run this using Github Codespaces or your own devcontainer using Docker.
+
+On GitHub Codespaces, follow the instructions above but start the server with
+PROXY_FORWARDED enabled and pass in your Codespace external url:
+
+`PROXY_FORWARDED=true EXTERNAL_URL=[your_devcontainer_url] MIX_ENV=dev mix start`
+
+or using the `.env` file
+
+`env $(cat .env | grep -v \# | xargs) mix start`
+
+On Github Codespaces you can find your EXTERNAL_URL by issuing the following
+command in the terminal:
+
+`echo "https://${CODESPACE_NAME}-4000.githubpreview.dev"`
 
 # Reporting Bugs
 We appreciate any and all bug reports.
