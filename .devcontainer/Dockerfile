@@ -16,6 +16,7 @@ RUN echo "APT::Install-Recommends 0;" >> /etc/apt/apt.conf.d/01norecommends \
     wget \
     net-tools \
     wireguard \
+    inotify-tools \
     ca-certificates \
     build-essential \
     python python-pip \
@@ -79,9 +80,7 @@ ENV HOME=/home/$USERNAME \
   ASDF_DATA_DIR="/opt/asdf-data"
 
 RUN echo '\n. /opt/asdf/asdf.sh' >> ~/.bashrc \
-    && echo '\n. /opt/asdf/completions/asdf.bash' >> ~/.bashrc \
-    && echo '\nexport LC_ALL="C.UTF-8"' >> ~/.bashrc \
-    && echo '\nexport TZ="UTC"' >> ~/.bashrc
+    && echo '\n. /opt/asdf/completions/asdf.bash' >> ~/.bashrc
 
 SHELL ["/bin/bash", "-ic"]
 
@@ -97,11 +96,15 @@ RUN asdf install erlang
 # No order to asdf, so elixir error without Erlang
 RUN asdf install
 
+RUN mix local.hex --force
+RUN mix local.rebar --force
+
 VOLUME ["${ASDF_DATA_DIR}"]
 
 # Pre-commit install with deps
 RUN pip install setuptools wheel
 RUN pip install pre-commit
-RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+
+ENV PATH=${HOME}/.local/bin:/opt/asdf-data/shims:/opt/asdf/bin:${PATH}
 
 CMD ["/bin/bash"]
