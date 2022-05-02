@@ -1,6 +1,8 @@
 defmodule FzHttpWeb.SettingLive.SecurityTest do
   use FzHttpWeb.ConnCase, async: true
 
+  alias FzHttpWeb.SettingLive.Security
+
   describe "authenticated mount" do
     test "loads the active sessions table", %{admin_conn: conn} do
       path = Routes.setting_security_path(conn, :show)
@@ -8,7 +10,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
 
       assert html =~ "<h4 class=\"title is-4\">Authentication</h4>"
     end
-    
+
     test "selects the chosen option", %{admin_conn: conn} do
       path = Routes.setting_security_path(conn, :show)
       {:ok, _view, html} = live(conn, path)
@@ -27,6 +29,22 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
       expected_path = Routes.root_path(conn, :index)
 
       assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
+    end
+  end
+
+  describe "session_duration_options/0" do
+    @expected_durations [
+      Never: 0,
+      Once: 2_147_483_647,
+      "Every Hour": 3_600,
+      "Every Day": 86_400,
+      "Every Week": 604_800,
+      "Every 30 Days": 2_592_000,
+      "Every 90 Days": 7_776_000
+    ]
+
+    test "displays the correct session duration integers" do
+      assert Security.session_duration_options() == @expected_durations
     end
   end
 end
