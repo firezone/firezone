@@ -9,7 +9,7 @@
 	// Set *default* container specific settings.json values on container create.
 	"settings": {},
 
-	"initializeCommand": "cp .tool-versions .devcontainer/.tool-versions",
+	"initializeCommand": [".devcontainer/init"],
 
 	// Add the IDs of extensions you want installed when the container is created.
 	"extensions": [
