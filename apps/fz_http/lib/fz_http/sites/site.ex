@@ -17,15 +17,17 @@ defmodule FzHttp.Sites.Site do
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
 
+  # Postgres max int size is 4 bytes
+  @max_pg_integer 2_147_483_647
+
   @minute 60
   @hour 60 * @minute
-  @day 24 * @hour
   @min_mtu 576
   @max_mtu 1500
   @min_persistent_keepalive 0
   @max_persistent_keepalive 1 * @hour
   @min_vpn_session_duration 0
-  @max_vpn_session_duration 30 * @day
+  @max_vpn_session_duration @max_pg_integer
 
   schema "sites" do
     field :name, :string

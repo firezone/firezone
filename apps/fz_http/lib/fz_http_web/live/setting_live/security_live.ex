@@ -14,7 +14,7 @@ defmodule FzHttpWeb.SettingLive.Security do
     {:ok,
      socket
      |> assign(:form_changed, false)
-     |> assign(:options, options())
+     |> assign(:session_duration_options, session_duration_options())
      |> assign(:changeset, changeset())
      |> assign(:page_title, "Security Settings")}
   end
@@ -44,12 +44,7 @@ defmodule FzHttpWeb.SettingLive.Security do
     end
   end
 
-  defp changeset do
-    Sites.get_site!()
-    |> Sites.change_site()
-  end
-
-  defp options do
+  def session_duration_options do
     [
       Never: 0,
       Once: Site.max_vpn_session_duration(),
@@ -59,5 +54,10 @@ defmodule FzHttpWeb.SettingLive.Security do
       "Every 30 Days": 30 * @day,
       "Every 90 Days": 90 * @day
     ]
+  end
+
+  defp changeset do
+    Sites.get_site!()
+    |> Sites.change_site()
   end
 end
