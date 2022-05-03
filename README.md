@@ -12,8 +12,8 @@
   <a href="https://coveralls.io/github/firezone/firezone?branch=master">
     <img src="https://coveralls.io/repos/github/firezone/firezone/badge.svg?branch=master" alt="Coverage Status" />
   </a>
-  <a href="https://twitter.com/intent/follow?screen_name=firezonevpn">
-    <img src="https://img.shields.io/twitter/follow/firezonevpn?style=social&logo=twitter" alt="follow on Twitter">
+  <a href="https://twitter.com/intent/follow?screen_name=firezonehq">
+    <img src="https://img.shields.io/twitter/follow/firezonehq?style=social&logo=twitter" alt="follow on Twitter">
   </a>
 </p>
 
