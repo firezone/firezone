@@ -12,6 +12,18 @@ defmodule FzHttpWeb.DeviceLive.Admin.ShowTest do
     end
   end
 
+  describe "authenticated" do
+    setup :create_device
+
+    test "includes the device details", %{admin_conn: conn, device: device} do
+      path = Routes.device_admin_show_path(conn, :show, device)
+      {:ok, _view, html} = live(conn, path)
+
+      assert html =~ device.name
+      assert html =~ "Latest Handshake"
+    end
+  end
+
   # XXX: Revisit this when RBAC is more fleshed out. Admins can now view other admins' devices.
   # describe "authenticated as other user" do
   #   setup [:create_device, :create_other_user_device]

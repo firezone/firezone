@@ -4,12 +4,13 @@ defmodule FzHttpWeb.DeviceLive.Admin.IndexTest do
   describe "authenticated/device list" do
     setup :create_devices
 
-    test "includes the device name in the list", %{admin_conn: conn, devices: devices} do
+    test "includes the device details in the list", %{admin_conn: conn, devices: devices} do
       path = Routes.device_admin_index_path(conn, :index)
       {:ok, _view, html} = live(conn, path)
 
       for device <- devices do
         assert html =~ device.name
+        assert html =~ "Latest Handshake"
       end
     end
   end

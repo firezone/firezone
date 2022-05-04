@@ -12,6 +12,18 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.ShowTest do
     end
   end
 
+  describe "authenticated" do
+    setup :create_device
+
+    test "includes the device details", %{unprivileged_conn: conn, device: device} do
+      path = Routes.device_admin_show_path(conn, :show, device)
+      {:ok, _view, html} = live(conn, path)
+
+      assert html =~ device.name
+      assert html =~ "Latest Handshake"
+    end
+  end
+
   describe "authenticated; device management disabled" do
     test "prevents deleting a device; doesn't show button", %{
       unprivileged_user: user,
