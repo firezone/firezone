@@ -40,6 +40,8 @@ RUN echo "APT::Install-Recommends 0;" >> /etc/apt/apt.conf.d/01norecommends \
     bsdmainutils \
     gpg \
     dirmngr \
+    jq \
+    locales \
   # Clean up
   && apt-get autoremove -y \
   && apt-get clean -y \
@@ -54,6 +56,14 @@ RUN echo "APT::Install-Recommends 0;" >> /etc/apt/apt.conf.d/01norecommends \
       /home/$USERNAME/.vscode-server-insiders \
   && mkdir -p /workspace \
   && chown -R $USERNAME /workspace
+
+# Set the locale to en_US.UTF-8 and TZ to UTC
+RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && \
+    locale-gen
+ENV LANG en_US.UTF-8
+ENV LANGUAGE en_US:en
+ENV LC_ALL en_US.UTF-8
+ENV TZ 'UTC'
 
 ENV DEBIAN_FRONTEND=dialog
 
@@ -75,7 +85,6 @@ USER $USERNAME
 WORKDIR /home/$USERNAME
 ENV HOME=/home/$USERNAME \
   TZ="UTC" \
-  LC_ALL="C.UTF-8" \
   ASDF_DIR="/opt/asdf" \
   ASDF_DATA_DIR="/opt/asdf-data"
 
@@ -104,6 +113,7 @@ VOLUME ["${ASDF_DATA_DIR}"]
 # Pre-commit install with deps
 RUN pip install setuptools wheel
 RUN pip install pre-commit
+RUN gem install rubocop
 
 ENV PATH=${HOME}/.local/bin:/opt/asdf-data/shims:/opt/asdf/bin:${PATH}
 

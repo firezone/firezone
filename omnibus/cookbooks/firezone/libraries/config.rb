@@ -261,6 +261,7 @@ class Firezone
         'GOOGLE_CLIENT_ID' => attributes['authentication']['google']['client_id'],
         'GOOGLE_CLIENT_SECRET' => attributes['authentication']['google']['client_secret'],
         'GOOGLE_REDIRECT_URI' => attributes['authentication']['google']['redirect_uri'],
+        'AUTH_OIDC' => attributes['authentication']['oidc'].to_json,
 
         # secrets
         'GUARDIAN_SECRET_KEY' => attributes['guardian_secret_key'],

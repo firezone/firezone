@@ -10,7 +10,9 @@ defmodule FzHttpWeb.RootController do
       "auth.html",
       okta_enabled: conf(:okta_auth_enabled),
       google_enabled: conf(:google_auth_enabled),
-      local_enabled: conf(:local_auth_enabled)
+      local_enabled: conf(:local_auth_enabled),
+      oidc_auth_enabled: conf(:oidc_auth_enabled),
+      openid_connect_providers: conf(:openid_connect_providers)
     )
   end
 

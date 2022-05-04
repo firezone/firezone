@@ -56,6 +56,7 @@ defmodule FzHttpWeb.Router do
     get "/:provider", AuthController, :request
     get "/:provider/callback", AuthController, :callback
     post "/:provider/callback", AuthController, :callback
+    get "/oidc/:provider/callback", AuthController, :callback
   end
 
   # Unauthenticated routes

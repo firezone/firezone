@@ -33,7 +33,8 @@ defmodule FzHttp.Application do
       {Phoenix.PubSub, name: FzHttp.PubSub},
       FzHttpWeb.Presence,
       FzHttp.ConnectivityCheckService,
-      FzHttp.VpnSessionScheduler
+      FzHttp.VpnSessionScheduler,
+      {OpenIDConnect.Worker, Application.get_env(:fz_http, :openid_connect_providers)}
     ]
   end
 

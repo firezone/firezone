@@ -7,6 +7,17 @@
     Please sign in via one of the methods below.
   </p>
 
+  <%= if @oidc_auth_enabled do %>
+    <%= for x <- @openid_connect_providers do %>
+      <p>
+        <%= link(
+            "Sign in with #{Keyword.get(elem(x, 1), :label)}",
+            to: OpenIDConnect.authorization_uri(elem(x, 0)),
+            class: "button") %>
+      </p>
+    <% end %>
+  <% end %>
+
   <%= if @local_enabled do %>
     <p>
       <%= link(
