@@ -8,9 +8,10 @@ defmodule FzHttpWeb.DeviceLive.Admin.IndexTest do
       path = Routes.device_admin_index_path(conn, :index)
       {:ok, _view, html} = live(conn, path)
 
+      assert html =~ "Latest Handshake"
+
       for device <- devices do
         assert html =~ device.name
-        assert html =~ "Latest Handshake"
       end
     end
   end
