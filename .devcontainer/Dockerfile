@@ -107,4 +107,6 @@ RUN pip install pre-commit
 
 ENV PATH=${HOME}/.local/bin:/opt/asdf-data/shims:/opt/asdf/bin:${PATH}
 
+RUN git config --global --add safe.directory /workspace
+
 CMD ["/bin/bash"]
