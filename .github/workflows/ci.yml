@@ -37,8 +37,8 @@ jobs:
       - uses: actions/setup-python@v2
       - uses: erlef/setup-beam@v1
         with:
-          otp-version: '24.2.1'
-          elixir-version: '1.13.2'
+          otp-version: '24.3.4'
+          elixir-version: '1.13.4'
       - uses: actions/cache@v2
         with:
           path: |
@@ -102,8 +102,8 @@ jobs:
           node-version: '14.18.3'
       - uses: erlef/setup-beam@v1
         with:
-          otp-version: '24.2.1'
-          elixir-version: '1.13.2'
+          otp-version: '24.3.4'
+          elixir-version: '1.13.4'
       - uses: actions/cache@v2
         with:
           path: |
