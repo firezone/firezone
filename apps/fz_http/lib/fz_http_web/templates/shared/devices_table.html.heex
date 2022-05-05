@@ -25,7 +25,7 @@
       <td class="code">
         <%= device.remote_ip %>
       </td>
-      <td id={"device-#{@device.id}-latest-handshake"} data-timestamp={device.latest_handshake} phx-hook="FormatTimestamp">…</td>
+      <td id={"device-#{device.id}-latest-handshake"} data-timestamp={device.latest_handshake} phx-hook="FormatTimestamp">…</td>
       <td class="code">
         <%= FzCommon.FzInteger.to_human_bytes(device.rx_bytes) %> received
         <br>
