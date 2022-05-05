@@ -4,6 +4,8 @@
 # remember to add this file to your .gitignore.
 
 import Config
+
+require Logger
 alias FzCommon.{CLI, FzInteger, FzString}
 
 # Optional config across all envs
@@ -246,12 +248,18 @@ auth_oidc_env = System.get_env("AUTH_OIDC")
 if auth_oidc_env do
   auth_oidc =
     Jason.decode!(auth_oidc_env)
-    |> FzCommon.FzMap.map_to_keyword_list()
-    |> Enum.map(fn provider ->
-      {name, value} = provider
-      {name, put_in(value, [:redirect_uri], "#{external_url}/auth/oidc/#{name}/callback/")}
+    |> Enum.reduce(%{}, fn {provider, settings}, acc ->
+      Map.put(
+        acc,
+        provider,
+        FzCommon.FzMap.map_to_keyword_list(
+          settings
+          |> Map.put("redirect_uri", "#{external_url}/auth/oidc/#{provider}/callback/")
+        )
+      )
     end)
 
+  Logger.debug(inspect(auth_oidc))
   config :fz_http, :openid_connect_providers, auth_oidc
   config :fz_http, oidc_auth_enabled: true
 end

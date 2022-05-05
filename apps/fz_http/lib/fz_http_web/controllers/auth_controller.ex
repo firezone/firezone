@@ -52,8 +52,8 @@ defmodule FzHttpWeb.AuthController do
   def callback(conn, params) do
     %{"provider" => provider} = params
 
-    with {:ok, tokens} <- OpenIDConnect.fetch_tokens(String.to_atom(provider), params),
-         {:ok, claims} <- OpenIDConnect.verify(String.to_atom(provider), tokens["id_token"]) do
+    with {:ok, tokens} <- OpenIDConnect.fetch_tokens(provider, params),
+         {:ok, claims} <- OpenIDConnect.verify(provider, tokens["id_token"]) do
       case UserFromAuth.find_or_create(provider, claims) do
         {:ok, user} ->
           conn
