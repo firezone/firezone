@@ -34,8 +34,11 @@ defmodule FzHttp.Application do
       FzHttpWeb.Presence,
       FzHttp.ConnectivityCheckService,
       FzHttp.VpnSessionScheduler,
-      {OpenIDConnect.Worker, Application.get_env(:fz_http, :openid_connect_providers)}
-    ]
+    ] ++ if Application.get_env(:fz_http, :openid_connect_providers) do
+      [{OpenIDConnect.Worker, Application.get_env(:fz_http, :openid_connect_providers)}]
+    else
+      []
+    end
   end
 
   defp children(:test) do

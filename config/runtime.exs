@@ -5,7 +5,6 @@
 
 import Config
 
-require Logger
 alias FzCommon.{CLI, FzInteger, FzString}
 
 # Optional config across all envs
@@ -259,7 +258,6 @@ if auth_oidc_env do
       )
     end)
 
-  Logger.debug(inspect(auth_oidc))
   config :fz_http, :openid_connect_providers, auth_oidc
   config :fz_http, oidc_auth_enabled: true
 end
