@@ -130,6 +130,11 @@ command in the terminal:
 
 `echo "https://${CODESPACE_NAME}-4000.githubpreview.dev"`
 
+### Note: Devcontainer on Windows
+
+If you are on Windows, make sure your git config `core.autocrlf` is off. Otherwise,
+the `\r` characters confuse asdf, which in turn fails the devcontainer build.
+
 # Reporting Bugs
 We appreciate any and all bug reports.
 
