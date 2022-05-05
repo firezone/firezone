@@ -38,6 +38,13 @@
     </tr>
 
     <tr>
+      <td><strong>Latest Handshake</strong></td>
+      <td id={"device-#{@device.id}-latest-handshake"}
+          data-timestamp={@device.latest_handshake}
+          phx-hook="FormatTimestamp">…</td>
+    </tr>
+
+    <tr>
       <td><strong>Received</strong></td>
       <td><%= FzCommon.FzInteger.to_human_bytes(@device.rx_bytes) %></td>
     </tr>

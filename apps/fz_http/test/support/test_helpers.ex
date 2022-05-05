@@ -23,6 +23,10 @@ defmodule FzHttp.TestHelpers do
     Repo.delete_all(User)
   end
 
+  def create_unprivileged_device(%{unprivileged_user: user}) do
+    {:ok, device: DevicesFixtures.device(%{user_id: user.id})}
+  end
+
   def create_device(tags) do
     device =
       if tags[:unauthed] || is_nil(tags[:user_id]) do
