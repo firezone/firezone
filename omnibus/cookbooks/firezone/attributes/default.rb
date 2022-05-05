@@ -108,7 +108,7 @@ default['firezone']['authentication']['oidc']['google'] = {
     client_secret: "CLIENT_SECRET",
     redirect_uri: "https://example.com/session",
     response_type: "code",
-    scope: "openid email profile"
+    scope: "openid email profile",
     label: "Google"
 }
 
