@@ -247,12 +247,15 @@ auth_oidc_env = System.get_env("AUTH_OIDC")
 if auth_oidc_env do
   auth_oidc =
     Jason.decode!(auth_oidc_env)
+    # Convert Map to something openid_connect expects, atomic keyed configs
+    # eg. %{"provider" => [client_id: "CLIENT_ID" ...]}
     |> Enum.reduce(%{}, fn {provider, settings}, acc ->
       Map.put(
         acc,
         provider,
         FzCommon.FzMap.map_to_keyword_list(
           settings
+          # Update redirect/callback url to use the external_url
           |> Map.put("redirect_uri", "#{external_url}/auth/oidc/#{provider}/callback/")
         )
       )
