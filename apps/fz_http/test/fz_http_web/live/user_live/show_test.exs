@@ -479,6 +479,53 @@ defmodule FzHttpWeb.UserLive.ShowTest do
     end
   end
 
+  describe "user role" do
+    setup do
+      admin_user = FzHttp.UsersFixtures.user(role: :admin)
+      unprivileged_user = FzHttp.UsersFixtures.user(role: :unprivileged)
+      {:ok, other_admin_user: admin_user, unprivileged_user: unprivileged_user}
+    end
+
+    test "promotes to admin", %{admin_conn: conn, unprivileged_user: unprivileged_user} do
+      path = Routes.user_show_path(conn, :show, unprivileged_user.id)
+      {:ok, view, _html} = live(conn, path)
+
+      test_view =
+        view
+        |> element("button", "promote")
+        |> render_click()
+
+      assert test_view =~ "User updated successfully."
+      assert test_view =~ "<td>admin</td>"
+    end
+
+    test "demotes to unprivileged", %{admin_conn: conn, other_admin_user: other_admin_user} do
+      path = Routes.user_show_path(conn, :show, other_admin_user.id)
+      {:ok, view, _html} = live(conn, path)
+
+      test_view =
+        view
+        |> element("button", "demote")
+        |> render_click()
+
+      assert test_view =~ "User updated successfully."
+      assert test_view =~ "<td>unprivileged</td>"
+    end
+
+    test "demotes self", %{admin_conn: conn, admin_user: admin_user} do
+      path = Routes.user_show_path(conn, :show, admin_user.id)
+      {:ok, view, _html} = live(conn, path)
+
+      test_view =
+        view
+        |> element("button", "demote")
+        |> render_click()
+
+      assert test_view =~ "not supported"
+      assert test_view =~ "<td>admin</td>"
+    end
+  end
+
   describe "edit user" do
     setup :create_users
 
