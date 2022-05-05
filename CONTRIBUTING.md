@@ -133,7 +133,7 @@ command in the terminal:
 ### Note: Devcontainer on Windows
 
 If you are on Windows, make sure your git config `core.autocrlf` is off. Otherwise,
-the `\r` characters confuses asdf, which in turn fails the devcontainer build.
+the `\r` characters confuse asdf, which in turn fails the devcontainer build.
 
 # Reporting Bugs
 We appreciate any and all bug reports.
