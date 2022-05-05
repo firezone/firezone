@@ -83,6 +83,7 @@ defmodule FzHttpWeb.UserLive.Show do
         {:ok, user} ->
           # Force reconnect with new role
           FzHttpWeb.Endpoint.broadcast("users_socket:#{user.id}", "disconnect", %{})
+
           {:noreply,
            socket
            |> assign(:user, user)
