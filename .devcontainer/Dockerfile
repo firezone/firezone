@@ -16,6 +16,7 @@ RUN echo "APT::Install-Recommends 0;" >> /etc/apt/apt.conf.d/01norecommends \
     wget \
     net-tools \
     wireguard \
+    nftables \
     inotify-tools \
     ca-certificates \
     build-essential \
@@ -84,7 +85,6 @@ ARG USERNAME=vscode
 USER $USERNAME
 WORKDIR /home/$USERNAME
 ENV HOME=/home/$USERNAME \
-  TZ="UTC" \
   ASDF_DIR="/opt/asdf" \
   ASDF_DATA_DIR="/opt/asdf-data"
 
@@ -116,5 +116,7 @@ RUN pip install pre-commit
 RUN gem install rubocop
 
 ENV PATH=${HOME}/.local/bin:/opt/asdf-data/shims:/opt/asdf/bin:${PATH}
+
+RUN git config --global --add safe.directory /workspace
 
 CMD ["/bin/bash"]
