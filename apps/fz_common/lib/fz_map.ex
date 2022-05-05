@@ -36,11 +36,7 @@ defmodule FzCommon.FzMap do
     map
     |> Enum.into([], fn {k, v} ->
       {
-        try do
-          String.to_existing_atom(k)
-        rescue
-          ArgumentError -> String.to_atom(k)
-        end,
+        String.to_atom(k),
         case is_map(v) do
           true -> map_to_keyword_list(v)
           _ -> v
