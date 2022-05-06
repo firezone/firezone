@@ -2,6 +2,8 @@ defmodule FzHttpWeb.UserLive.ShowTest do
   # XXX: Setting to true causes deadlocks. Figure out why.
   use FzHttpWeb.ConnCase, async: false
 
+  alias FzHttp.UsersFixtures
+
   describe "authenticated show" do
     setup :create_device
 
@@ -481,8 +483,8 @@ defmodule FzHttpWeb.UserLive.ShowTest do
 
   describe "user role" do
     setup do
-      admin_user = FzHttp.UsersFixtures.user(role: :admin)
-      unprivileged_user = FzHttp.UsersFixtures.user(role: :unprivileged)
+      admin_user = UsersFixtures.user(role: :admin)
+      unprivileged_user = UsersFixtures.user(role: :unprivileged)
       {:ok, other_admin_user: admin_user, unprivileged_user: unprivileged_user}
     end
 
