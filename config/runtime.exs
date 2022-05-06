@@ -257,7 +257,7 @@ if auth_oidc_env do
        )
        # Update redirect/callback url to use the external_url
        |> Map.put("redirect_uri", "#{external_url}/auth/oidc/#{provider}/callback/")
-       |> Enum.map(fn {k, v} -> {String.to_existing_atom(k), v} end)}
+       |> Enum.map(fn {k, v} -> {String.to_atom(k), v} end)}
     end)
 
   config :fz_http, :openid_connect_providers, auth_oidc
