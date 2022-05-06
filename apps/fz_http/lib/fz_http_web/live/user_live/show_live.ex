@@ -100,19 +100,22 @@ defmodule FzHttpWeb.UserLive.Show do
     end
   end
 
-  def mote(%{role: :admin}) do
-    "demote"
+  @action_and_message %{
+    admin: %{
+      action: "demote",
+      message: "This will remove admin permissions from the user."
+    },
+    unprivileged: %{
+      action: "promote",
+      message: "This will give admin permissions to the user."
+    }
+  }
+
+  defp mote(%{role: role}) do
+    @action_and_message[role].action
   end
 
-  def mote(%{role: _}) do
-    "promote"
-  end
-
-  def mote_message(%{role: :admin}) do
-    "This will remove admin permissions from the user."
-  end
-
-  def mote_message(%{role: _}) do
-    "This will give admin permissions to the user."
+  defp mote_message(%{role: role}) do
+    @action_and_message[role].message
   end
 end
