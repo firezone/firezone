@@ -3,6 +3,8 @@ defmodule FzHttpWeb.AuthControllerTest do
 
   import Mox
 
+  require Logger
+
   describe "new" do
     setup [:create_user]
 
@@ -75,12 +77,14 @@ defmodule FzHttpWeb.AuthControllerTest do
   end
 
   #   test "signing in from OIDC callback", %{unauthed_conn: conn} do
-  describe "create session from OpenID Connect" do
-    test "successfully logs in a user", %{unauthed_conn: conn} do
-      expect(OpenIDConnect.Mock, :fetch_tokens, fn _, _ -> {:ok, %{}} end)
+  describe "creating session from OpenID Connect" do
+    setup [:create_user]
+
+    test "when a user returns with a valid claim", %{unauthed_conn: conn, user: user} do
+      expect(OpenIDConnect.Mock, :fetch_tokens, fn _, _ -> {:ok, %{"id_token" => "abc"}} end)
 
       expect(OpenIDConnect.Mock, :verify, fn _, _ ->
-        {:ok, %{"email" => "fz@firez.one", "email_verified" => "true"}}
+        {:ok, %{"email" => user.email, "email_verified" => true, "sub" => "12345"}}
       end)
 
       params = %{
@@ -88,9 +92,25 @@ defmodule FzHttpWeb.AuthControllerTest do
         "provider" => "google"
       }
 
-      test_conn = get(conn, Routes.auth_path(conn, :callback, "google"), params)
+      test_conn = get(conn, Routes.auth_oidc_path(conn, :callback, "google"), params)
 
-      assert redirected_to(test_conn) == Routes.root_path(test_conn, :index)
+      assert redirected_to(test_conn) == Routes.user_index_path(test_conn, :index)
+    end
+
+    test "when a user returns with an invalid claim", %{unauthed_conn: conn} do
+      expect(OpenIDConnect.Mock, :fetch_tokens, fn _, _ -> {:ok, %{}} end)
+
+      expect(OpenIDConnect.Mock, :verify, fn _, _ ->
+        {:error, "Invalid token for user!"}
+      end)
+
+      params = %{
+        "code" => "MyFaketoken",
+        "provider" => "google"
+      }
+
+      test_conn = get(conn, Routes.auth_oidc_path(conn, :callback, "google"), params)
+      assert get_flash(test_conn, :error) == "Error signing in: Invalid token for user!"
     end
   end
 

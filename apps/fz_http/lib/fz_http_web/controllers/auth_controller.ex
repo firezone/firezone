@@ -9,6 +9,8 @@ defmodule FzHttpWeb.AuthController do
   alias FzHttpWeb.Router.Helpers, as: Routes
   alias FzHttpWeb.UserFromAuth
 
+  require Logger
+
   # Uncomment when Helpers.callback_url/1 is fixed
   # alias Ueberauth.Strategy.Helpers
 
@@ -51,9 +53,10 @@ defmodule FzHttpWeb.AuthController do
 
   def callback(conn, params) do
     %{"provider" => provider} = params
+    openid_connect = Application.fetch_env!(:fz_http, :openid_connect)
 
-    with {:ok, tokens} <- OpenIDConnect.fetch_tokens(provider, params),
-         {:ok, claims} <- OpenIDConnect.verify(provider, tokens["id_token"]) do
+    with {:ok, tokens} <- openid_connect.fetch_tokens(provider, params),
+         {:ok, claims} <- openid_connect.verify(provider, tokens["id_token"]) do
       case UserFromAuth.find_or_create(provider, claims) do
         {:ok, user} ->
           conn
@@ -68,7 +71,13 @@ defmodule FzHttpWeb.AuthController do
           |> request(%{})
       end
     else
-      _ -> send_resp(conn, 401, "")
+      {:error, reason} ->
+        conn
+        |> put_flash(:error, "Error signing in: #{reason}")
+        |> request(%{})
+
+      _ ->
+        send_resp(conn, 401, "")
     end
   end
 
