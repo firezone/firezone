@@ -381,17 +381,43 @@ default['firezone']['robots_allow'] = '/'
 default['firezone']['robots_disallow'] = nil
 
 # ### Outbound Email Settings
-#
 # If none of these are set, the :sendmail delivery method will be used. Using
 # the sendmail delivery method requires that a working mail transfer agent
 # (usually set up with a relay host) be configured on this machine.
-#
-# SMTP will use the 'plain' authentication method.
-default['firezone']['from_email'] = nil
-default['firezone']['smtp_address'] = nil
-default['firezone']['smtp_password'] = nil
-default['firezone']['smtp_port'] = nil
-default['firezone']['smtp_user_name'] = nil
+default['firezone']['outbound_email']['from'] = nil
+default['firezone']['outbound_email']['provider'] = nil
+default['firezone']['outbound_email']['configs'] = {
+  smtp: {
+    # only relay is required, but you will need some combination of the rest
+    relay: 'smtp.example.com',
+    port: 25, # integer
+    username: '', # needs to be string if present
+    password: '', # needs to be string if present
+    ssl: false, # boolean
+    tls: :if_available, # always / never / if_available
+    auth: :if_available, # always / never / if_available
+    no_mx_lookup: false, # boolean
+    retries: 1 # integer
+  },
+  mailgun: {
+    # both are required
+    apikey: nil,
+    domain: nil
+  },
+  mandrill: {
+    api_key: nil
+  },
+  sendgrid: {
+    api_key: nil
+  },
+  post_mark: {
+    api_key: nil
+  },
+  sendmail: {
+    cmd_path: '/usr/bin/sendmail',
+    cmd_args: '-N delay,failure,success'
+  }
+}
 
 # ## Telemetry
 #

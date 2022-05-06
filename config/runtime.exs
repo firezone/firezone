@@ -65,6 +65,28 @@ if config_env() == :prod do
   allow_unprivileged_device_management =
     FzString.to_boolean(System.fetch_env!("ALLOW_UNPRIVILEGED_DEVICE_MANAGEMENT"))
 
+  # Outbound Email
+  adapters = %{
+    "smtp" => Swoosh.Adapters.SMTP,
+    "mailgun" => Swoosh.Adapters.Mailgun,
+    "mandrill" => Swoosh.Adapters.Mandrill,
+    "sendgrid" => Swoosh.Adapters.Sendgrid,
+    "post_mark" => Swoosh.Adapters.Postmark,
+    "sendmail" => Swoosh.Adapters.Sendmail
+  }
+
+  from_email = System.fetch_env!("OUTBOUND_EMAIL_FROM")
+  provider = System.get_env("OUTBOUND_EMAIL_PROVIDER", "sendmail")
+  adapter = Map.fetch!(adapters, provider)
+
+  mailer_configs =
+    System.fetch_env!("OUTBOUND_EMAIL_CONFIGS")
+    |> Jason.decode!()
+    |> Map.fetch!(provider)
+    |> Enum.map(fn {k, v} -> {String.to_existing_atom(k), v} end)
+
+  config :fz_http, FzHttp.Mailer, [from_email: from_email, adapter: adapter] ++ mailer_configs
+
   # Local auth
   local_auth_enabled = FzString.to_boolean(System.fetch_env!("LOCAL_AUTH_ENABLED"))
 
