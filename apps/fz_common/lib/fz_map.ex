@@ -28,20 +28,4 @@ defmodule FzCommon.FzMap do
     end)
     |> Enum.into(%{})
   end
-
-  @doc """
-  Converts a map to a keyword list
-  """
-  def map_to_keyword_list(map) when is_map(map) do
-    map
-    |> Enum.into([], fn {k, v} ->
-      {
-        String.to_atom(k),
-        case is_map(v) do
-          true -> map_to_keyword_list(v)
-          _ -> v
-        end
-      }
-    end)
-  end
 end

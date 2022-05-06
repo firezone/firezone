@@ -7,7 +7,7 @@
     Please sign in via one of the methods below.
   </p>
 
-  <%= if @oidc_auth_enabled do %>
+  <%= if length(@openid_connect_providers) > 0 do %>
     <%= for x <- @openid_connect_providers do %>
       <p>
         <%= link(

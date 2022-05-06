@@ -32,16 +32,4 @@ defmodule FzCommon.FzMapTest do
              }
     end
   end
-
-  describe "map_to_keyword_list/1" do
-    @data %{"foo" => "bar", "bar" => "", "map" => %{"foo" => "bar"}}
-    @expected [foo: "bar", bar: "", map: [foo: "bar"]]
-
-    test "converts a map to a keyword list" do
-      result = FzMap.map_to_keyword_list(@data)
-
-      assert Enum.sort(result) == Enum.sort(@expected),
-             "Result #{inspect(result)}, Expected: #{inspect(@expected)}"
-    end
-  end
 end

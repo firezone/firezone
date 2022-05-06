@@ -249,18 +249,18 @@ if auth_oidc_env do
     Jason.decode!(auth_oidc_env)
     # Convert Map to something openid_connect expects, atomic keyed configs
     # eg. %{"provider" => [client_id: "CLIENT_ID" ...]}
-    |> Enum.reduce(%{}, fn {provider, settings}, acc ->
-      Map.put(
-        acc,
-        provider,
-        FzCommon.FzMap.map_to_keyword_list(
-          settings
-          # Update redirect/callback url to use the external_url
-          |> Map.put("redirect_uri", "#{external_url}/auth/oidc/#{provider}/callback/")
-        )
-      )
+    |> Map.new(fn {provider, settings} ->
+      {provider,
+       settings
+       |> Map.take(
+         ~w(discovery_document_uri client_id client_secret redirect_uri response_type scope label)
+       )
+       # Update redirect/callback url to use the external_url
+       |> Map.put("redirect_uri", "#{external_url}/auth/oidc/#{provider}/callback/")
+       |> Enum.map(fn {k, v} -> {String.to_existing_atom(k), v} end)}
     end)
 
   config :fz_http, :openid_connect_providers, auth_oidc
-  config :fz_http, oidc_auth_enabled: true
+else
+  config :fz_http, :openid_connect_providers, []
 end
