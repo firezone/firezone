@@ -260,7 +260,5 @@ if auth_oidc_env do
        |> Enum.map(fn {k, v} -> {String.to_atom(k), v} end)}
     end)
 
-  config :fz_http, :openid_connect_providers, auth_oidc
-else
-  config :fz_http, :openid_connect_providers, []
+  config :fz_http, :openid_connect_, auth_oidc
 end

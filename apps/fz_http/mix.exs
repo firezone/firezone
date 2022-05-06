@@ -64,6 +64,7 @@ defmodule FzHttp.MixProject do
       {:cloak_ecto, "~> 1.2"},
       {:excoveralls, "~> 0.14", only: :test},
       {:floki, ">= 0.0.0", only: :test},
+      {:mox, "~> 1.0.1", only: :test},
       {:guardian, "~> 2.0"},
       {:guardian_db, "~> 2.0"},
       {:openid_connect, "~> 0.2.2"},

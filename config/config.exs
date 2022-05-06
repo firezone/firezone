@@ -75,7 +75,8 @@ config :fz_http,
   admin_email: "firezone@localhost",
   default_admin_password: "firezone1234",
   events_module: FzHttp.Events,
-  server_process_opts: [name: {:global, :fz_http_server}]
+  server_process_opts: [name: {:global, :fz_http_server}],
+  openid_connect: OpenIDConnect
 
 config :fz_wall,
   cli: FzWall.CLI.Sandbox,

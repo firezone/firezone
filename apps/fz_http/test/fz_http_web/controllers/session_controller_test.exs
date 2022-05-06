@@ -1,13 +1,24 @@
 defmodule FzHttpWeb.AuthControllerTest do
   use FzHttpWeb.ConnCase, async: true
 
+  import Mox
+
   describe "new" do
     setup [:create_user]
 
     test "unauthed: loads the sign in form", %{unauthed_conn: conn} do
+      expect(OpenIDConnect.Mock, :authorization_uri, fn _ -> "https://auth.url" end)
       test_conn = get(conn, Routes.root_path(conn, :index))
 
-      assert html_response(test_conn, 200) =~ "Sign In"
+      # Assert that we email, OIDC and Oauth2 buttons provided
+      for expected <- [
+            "Sign in with email",
+            "Sign in with OIDC Google",
+            "Sign in with Google",
+            "Sign in with Okta"
+          ] do
+        assert html_response(test_conn, 200) =~ expected
+      end
     end
 
     test "authed as admin: redirects to users page", %{admin_conn: conn} do
@@ -60,6 +71,26 @@ defmodule FzHttpWeb.AuthControllerTest do
 
       assert redirected_to(test_conn) == Routes.user_index_path(test_conn, :index)
       assert current_user(test_conn).id == user.id
+    end
+  end
+
+  #   test "signing in from OIDC callback", %{unauthed_conn: conn} do
+  describe "create session from OpenID Connect" do
+    test "successfully logs in a user", %{unauthed_conn: conn} do
+      expect(OpenIDConnect.Mock, :fetch_tokens, fn _, _ -> {:ok, %{}} end)
+
+      expect(OpenIDConnect.Mock, :verify, fn _, _ ->
+        {:ok, %{"email" => "fz@firez.one", "email_verified" => "true"}}
+      end)
+
+      params = %{
+        "code" => "MyFaketoken",
+        "provider" => "google"
+      }
+
+      test_conn = get(conn, Routes.auth_path(conn, :callback, "google"), params)
+
+      assert redirected_to(test_conn) == Routes.root_path(test_conn, :index)
     end
   end
 
