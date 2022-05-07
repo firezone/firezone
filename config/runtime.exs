@@ -251,13 +251,15 @@ if auth_oidc_env do
     # eg. %{"provider" => [client_id: "CLIENT_ID" ...]}
     |> Map.new(fn {provider, settings} ->
       {provider,
-       settings
-       |> Map.take(
-         ~w(discovery_document_uri client_id client_secret redirect_uri response_type scope label)
-       )
-       # Update redirect/callback url to use the external_url
-       |> Map.put("redirect_uri", "#{external_url}/auth/oidc/#{provider}/callback/")
-       |> Enum.map(fn {k, v} -> {String.to_atom(k), v} end)}
+       [
+         discovery_document_uri: settings["discovery_document_uri"],
+         client_id: settings["client_id"],
+         client_secret: settings["client_secret"],
+         redirect_uri: "#{external_url}/auth/oidc/#{provider}/callback/",
+         response_type: settings["response_type"],
+         scope: settings["scope"],
+         label: settings["label"]
+       ]}
     end)
 
   config :fz_http, :openid_connect_, auth_oidc

@@ -9,8 +9,6 @@ defmodule FzHttpWeb.AuthController do
   alias FzHttpWeb.Router.Helpers, as: Routes
   alias FzHttpWeb.UserFromAuth
 
-  require Logger
-
   # Uncomment when Helpers.callback_url/1 is fixed
   # alias Ueberauth.Strategy.Helpers
 
@@ -72,8 +70,11 @@ defmodule FzHttpWeb.AuthController do
       end
     else
       {:error, reason} ->
+        msg = "OpenIDConnect Error: #{reason}"
+        Logger.warn(msg)
+
         conn
-        |> put_flash(:error, "Error signing in: #{reason}")
+        |> put_flash(:error, msg)
         |> request(%{})
 
       _ ->

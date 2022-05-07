@@ -3,8 +3,6 @@ defmodule FzHttpWeb.AuthControllerTest do
 
   import Mox
 
-  require Logger
-
   describe "new" do
     setup [:create_user]
 
@@ -97,6 +95,7 @@ defmodule FzHttpWeb.AuthControllerTest do
       assert redirected_to(test_conn) == Routes.user_index_path(test_conn, :index)
     end
 
+    @moduletag :capture_log
     test "when a user returns with an invalid claim", %{unauthed_conn: conn} do
       expect(OpenIDConnect.Mock, :fetch_tokens, fn _, _ -> {:ok, %{}} end)
 
@@ -110,7 +109,7 @@ defmodule FzHttpWeb.AuthControllerTest do
       }
 
       test_conn = get(conn, Routes.auth_oidc_path(conn, :callback, "google"), params)
-      assert get_flash(test_conn, :error) == "Error signing in: Invalid token for user!"
+      assert get_flash(test_conn, :error) == "OpenIDConnect Error: Invalid token for user!"
     end
   end
 
