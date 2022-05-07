@@ -148,6 +148,13 @@ defmodule FzHttp.Users.User do
     |> validate_format(:email, ~r/@/)
   end
 
+  # Promotion / Demotion
+  def update_changeset(user, %{role: _role} = attrs) do
+    user
+    |> cast(attrs, [:role])
+    |> validate_required([:role])
+  end
+
   # XXX: Invalidate password reset when user is updated
   def update_changeset(user, %{} = attrs) do
     changeset(user, attrs)

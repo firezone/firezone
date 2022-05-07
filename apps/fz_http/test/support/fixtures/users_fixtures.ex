@@ -10,18 +10,18 @@ defmodule FzHttp.UsersFixtures do
   Generate a user specified by email, or generate a new otherwise.
   """
   def user(attrs \\ %{}) do
-    email = Map.get(attrs, :email, "test-#{counter()}@test")
+    email = attrs[:email] || "test-#{counter()}@test"
 
     case Repo.get_by(User, email: email) do
       nil ->
         {:ok, user} =
-          %{
+          attrs
+          |> Enum.into(%{
             email: email,
             role: :admin,
             password: "password1234",
             password_confirmation: "password1234"
-          }
-          |> Map.merge(attrs)
+          })
           |> Users.create_user()
 
         user
