@@ -66,7 +66,7 @@ if config_env() == :prod do
     FzString.to_boolean(System.fetch_env!("ALLOW_UNPRIVILEGED_DEVICE_MANAGEMENT"))
 
   # Outbound Email
-  from_email = System.fetch_env!("OUTBOUND_EMAIL_FROM")
+  from_email = System.get_env("OUTBOUND_EMAIL_FROM")
 
   if from_email do
     provider = System.get_env("OUTBOUND_EMAIL_PROVIDER", "sendmail")
