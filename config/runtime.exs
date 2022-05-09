@@ -71,26 +71,9 @@ if config_env() == :prod do
   if from_email do
     provider = System.get_env("OUTBOUND_EMAIL_PROVIDER", "sendmail")
 
-    adapter =
-      Map.fetch!(
-        %{
-          "smtp" => Swoosh.Adapters.SMTP,
-          "mailgun" => Swoosh.Adapters.Mailgun,
-          "mandrill" => Swoosh.Adapters.Mandrill,
-          "sendgrid" => Swoosh.Adapters.Sendgrid,
-          "post_mark" => Swoosh.Adapters.Postmark,
-          "sendmail" => Swoosh.Adapters.Sendmail
-        },
-        provider
-      )
-
-    mailer_configs =
-      System.fetch_env!("OUTBOUND_EMAIL_CONFIGS")
-      |> Jason.decode!()
-      |> Map.fetch!(provider)
-      |> Enum.map(fn {k, v} -> {String.to_existing_atom(k), v} end)
-
-    config :fz_http, FzHttp.Mailer, [from_email: from_email, adapter: adapter] ++ mailer_configs
+    config :fz_http,
+           FzHttp.Mailer,
+           [from_email: from_email] ++ FzHttp.Mailer.configs_for(provider)
   end
 
   # Local auth

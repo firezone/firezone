@@ -8,6 +8,18 @@ defmodule FzHttp.MailerTest do
     assert Mailer.default_email().from == {"", "test@firez.one"}
   end
 
+  test "configs_for provider" do
+    System.put_env(
+      "OUTBOUND_EMAIL_CONFIGS",
+      Jason.encode!(%{"smtp" => %{"config_key" => "config_value"}})
+    )
+
+    assert Mailer.configs_for("smtp") == [
+             adapter: Swoosh.Adapters.SMTP,
+             config_key: "config_value"
+           ]
+  end
+
   describe "with templates" do
     defmodule SampleEmail do
       use Phoenix.Swoosh,

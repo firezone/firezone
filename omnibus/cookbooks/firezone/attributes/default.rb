@@ -381,23 +381,27 @@ default['firezone']['robots_allow'] = '/'
 default['firezone']['robots_disallow'] = nil
 
 # ### Outbound Email Settings
-# If none of these are set, the :sendmail delivery method will be used. Using
+# If from_email not set, the outbound email feature will be disabled
+default['firezone']['outbound_email']['from'] = nil
+# If provider not set, the :sendmail delivery method will be used. Using
 # the sendmail delivery method requires that a working mail transfer agent
 # (usually set up with a relay host) be configured on this machine.
-default['firezone']['outbound_email']['from'] = nil
 default['firezone']['outbound_email']['provider'] = nil
+# Configure one or more providers below.
+# See the Swoosh library documentation for more information on configuring adapters:
+# https://github.com/swoosh/swoosh#adapters
 default['firezone']['outbound_email']['configs'] = {
   smtp: {
     # only relay is required, but you will need some combination of the rest
     relay: 'smtp.example.com',
-    port: 25, # integer
+    port: 587, # integer
     username: '', # needs to be string if present
     password: '', # needs to be string if present
-    ssl: false, # boolean
-    tls: :if_available, # always / never / if_available
-    auth: :if_available, # always / never / if_available
+    ssl: true, # boolean
+    tls: :always, # always / never / if_available
+    auth: :always, # always / never / if_available
     no_mx_lookup: false, # boolean
-    retries: 1 # integer
+    retries: 2 # integer
   },
   mailgun: {
     # both are required
