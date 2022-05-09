@@ -29,7 +29,7 @@
   </a>
 </div>
 
-# Get Started
+# Get Started on Firezone!
 
 Follow our installation guide at https://docs.firezone.dev/docs/deploy to install your self-hosted instance of Firezone.
 
