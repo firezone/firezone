@@ -402,7 +402,7 @@ default['firezone']['outbound_email']['configs'] = {
   mailgun: {
     # both are required
     apikey: nil,
-    domain: nil
+    domain: nil # example.com
   },
   mandrill: {
     api_key: nil
