@@ -135,4 +135,12 @@ defmodule FzHttpWeb.Router do
       live "/diagnostics/connectivity_checks", ConnectivityCheckLive.Index, :index
     end
   end
+
+  if Mix.env() == :dev do
+    scope "/dev" do
+      pipe_through [:browser]
+
+      forward "/mailbox", Plug.Swoosh.MailboxPreview
+    end
+  end
 end

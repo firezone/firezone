@@ -73,3 +73,5 @@ config :fz_http, :openid_connect_providers, %{
 
 # Provide mock for HTTPClient
 config :fz_http, :openid_connect, OpenIDConnect.Mock
+
+config :fz_http, FzHttp.Mailer, adapter: Swoosh.Adapters.Test, from_email: "test@firez.one"
