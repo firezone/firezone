@@ -251,6 +251,11 @@ class Firezone
         'CONNECTIVITY_CHECKS_ENABLED' => attributes['connectivity_checks']['enabled'].to_s,
         'CONNECTIVITY_CHECKS_INTERVAL' => attributes['connectivity_checks']['interval'].to_s,
 
+        # Outbound Emails
+        'OUTBOUND_EMAIL_PROVIDER' => attributes['outbound_email']['provider'],
+        'OUTBOUND_EMAIL_CONFIGS' => attributes['outbound_email']['configs'].to_json,
+        'OUTBOUND_EMAIL_FROM' => attributes['outbound_email']['from'],
+
         # Auth
         'LOCAL_AUTH_ENABLED' => attributes['authentication']['local']['enabled'].to_s,
         'OKTA_AUTH_ENABLED' => attributes['authentication']['okta']['enabled'].to_s,

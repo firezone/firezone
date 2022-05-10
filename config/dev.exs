@@ -153,3 +153,5 @@ config :fz_http,
   local_auth_enabled: local_auth_enabled,
   okta_auth_enabled: google_auth_enabled,
   google_auth_enabled: okta_auth_enabled
+
+config :fz_http, FzHttp.Mailer, adapter: Swoosh.Adapters.Local, from_email: "dev@firez.one"
