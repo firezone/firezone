@@ -60,3 +60,5 @@ config :ueberauth, Ueberauth,
     {:okta, {Ueberauth.Strategy.Okta, []}},
     {:google, {Ueberauth.Strategy.Google, []}}
   ]
+
+config :swoosh, local: false

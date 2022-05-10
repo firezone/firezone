@@ -65,6 +65,17 @@ if config_env() == :prod do
   allow_unprivileged_device_management =
     FzString.to_boolean(System.fetch_env!("ALLOW_UNPRIVILEGED_DEVICE_MANAGEMENT"))
 
+  # Outbound Email
+  from_email = System.get_env("OUTBOUND_EMAIL_FROM")
+
+  if from_email do
+    provider = System.get_env("OUTBOUND_EMAIL_PROVIDER", "sendmail")
+
+    config :fz_http,
+           FzHttp.Mailer,
+           [from_email: from_email] ++ FzHttp.Mailer.configs_for(provider)
+  end
+
   # Local auth
   local_auth_enabled = FzString.to_boolean(System.fetch_env!("LOCAL_AUTH_ENABLED"))
 

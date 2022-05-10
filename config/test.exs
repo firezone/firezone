@@ -57,3 +57,5 @@ config :ueberauth, Ueberauth,
     {:okta, {Ueberauth.Strategy.Okta, []}},
     {:google, {Ueberauth.Strategy.Google, []}}
   ]
+
+config :fz_http, FzHttp.Mailer, adapter: Swoosh.Adapters.Test, from_email: "test@firez.one"
