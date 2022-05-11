@@ -60,7 +60,7 @@ config :ueberauth, Ueberauth,
 
 # OIDC auth for testing
 config :fz_http, :openid_connect_providers, %{
-  "google" => [
+  google: [
     discovery_document_uri: "https://accounts.google.com/.well-known/openid-configuration",
     client_id: "CLIENT_ID",
     client_secret: "CLIENT_SECRET",

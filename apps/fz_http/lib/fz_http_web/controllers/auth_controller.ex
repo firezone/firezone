@@ -12,7 +12,7 @@ defmodule FzHttpWeb.AuthController do
   # Uncomment when Helpers.callback_url/1 is fixed
   # alias Ueberauth.Strategy.Helpers
 
-  plug Ueberauth
+  plug(Ueberauth)
 
   def request(conn, _params) do
     # XXX: Helpers.callback_url/1 generates the wrong URL behind nginx.
@@ -50,10 +50,19 @@ defmodule FzHttpWeb.AuthController do
   end
 
   def callback(conn, params) do
-    %{"provider" => provider} = params
+    %{"provider" => provider_key} = params
     openid_connect = Application.fetch_env!(:fz_http, :openid_connect)
 
-    with {:ok, tokens} <- openid_connect.fetch_tokens(provider, params),
+    atomize = fn key ->
+      try do
+        {:ok, String.to_existing_atom(key)}
+      catch
+        ArgumentError -> {:error, "OIDC Provider not found"}
+      end
+    end
+
+    with {:ok, provider} <- atomize.(provider_key),
+         {:ok, tokens} <- openid_connect.fetch_tokens(provider, params),
          {:ok, claims} <- openid_connect.verify(provider, tokens["id_token"]) do
       case UserFromAuth.find_or_create(provider, claims) do
         {:ok, user} ->
