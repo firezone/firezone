@@ -53,6 +53,7 @@ defmodule FzHttpWeb.Router do
       :require_unauthenticated
     ]
 
+    get "/forgot_password", AuthController, :forgot_password
     get "/:provider", AuthController, :request
     get "/:provider/callback", AuthController, :callback
     post "/:provider/callback", AuthController, :callback
@@ -67,6 +68,8 @@ defmodule FzHttpWeb.Router do
     ]
 
     get "/", RootController, :index
+
+    post "/user/reset_password", UserController, :reset_password
   end
 
   # Authenticated routes

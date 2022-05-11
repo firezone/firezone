@@ -25,6 +25,7 @@
     <div class="field">
       <div class="control">
         <%= submit "Sign In", class: "button" %>
+        <%= link("Forgot password", to: Routes.auth_path(@conn, :forgot_password), class: "forgot-password") %>
       </div>
     </div>
   <% end %>
