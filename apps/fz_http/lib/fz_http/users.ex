@@ -6,7 +6,7 @@ defmodule FzHttp.Users do
   import Ecto.Query, warn: false
 
   alias FzCommon.{FzCrypto, FzMap}
-  alias FzHttp.{Devices.Device, Repo, Sites.Site, Telemetry, Users.User, Mailer}
+  alias FzHttp.{Devices.Device, Mailer, Repo, Sites.Site, Telemetry, Users.User}
 
   require Logger
 
