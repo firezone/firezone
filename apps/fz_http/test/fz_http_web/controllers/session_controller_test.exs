@@ -77,6 +77,19 @@ defmodule FzHttpWeb.AuthControllerTest do
     end
   end
 
+  describe "getting magic link" do
+    setup :create_user
+
+    import Swoosh.TestAssertions
+
+    test "sends a magic link in email", %{unauthed_conn: conn, user: user} do
+      post(conn, Routes.auth_path(conn, :magic_link), %{"email" => user.email})
+
+      Process.sleep(100)
+      assert_email_sent(subject: "Firezone Magic Link", to: [{"", user.email}])
+    end
+  end
+
   describe "when using magic link" do
     setup :create_user
 
