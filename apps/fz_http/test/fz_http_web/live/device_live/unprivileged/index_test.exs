@@ -42,13 +42,12 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
       path = Routes.device_unprivileged_index_path(conn, :new)
       {:ok, view, _html} = live(conn, path)
 
-      new_view =
-        view
-        |> element("#create-device")
-        |> render_submit(%{"device" => %{"public_key" => "test-pubkey", "name" => "test-tunnel"}})
+      view
+      |> element("#create-device")
+      |> render_submit(%{"device" => %{"public_key" => "test-pubkey", "name" => "test-tunnel"}})
 
-      assert new_view =~ "Must be an administrator to manage devices."
-      refute new_view =~ "Device added!"
+      flash = assert_redirected(view, "/")
+      assert flash["error"] == "Not authorized."
     end
   end
 
