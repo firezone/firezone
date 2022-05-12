@@ -1,4 +1,8 @@
 defmodule FzHttp.Mailer.AuthEmail do
+  @moduledoc """
+  This module generates emails that are Auth related.
+  """
+
   use Phoenix.Swoosh,
     template_root: Path.join(__DIR__, "templates"),
     template_path: "auth_email"
