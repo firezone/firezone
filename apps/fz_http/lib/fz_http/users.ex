@@ -165,7 +165,7 @@ defmodule FzHttp.Users do
     end
   end
 
-  def reset_sign_in_token(%{"email" => email}) do
+  def reset_sign_in_token(email) do
     with %User{} = user <- Repo.get_by(User, email: email),
          {:ok, user} <- update_user(user, sign_in_keys()) do
       # send email in a separate process so that the time this function takes

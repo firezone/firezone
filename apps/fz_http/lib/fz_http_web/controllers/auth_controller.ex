@@ -60,8 +60,8 @@ defmodule FzHttpWeb.AuthController do
     render(conn, "forgot_password.html")
   end
 
-  def magic_link(conn, %{"email" => _email} = attrs) do
-    case Users.reset_sign_in_token(attrs) do
+  def magic_link(conn, %{"email" => email}) do
+    case Users.reset_sign_in_token(email) do
       :ok ->
         conn
         |> put_flash(:info, "Please check your inbox for the magic link.")
