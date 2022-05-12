@@ -3,6 +3,7 @@ defmodule FzHttpWeb.AuthController do
   Implements the CRUD for a Session
   """
   use FzHttpWeb, :controller
+  require Logger
 
   alias FzHttpWeb.Authentication
   alias FzHttpWeb.Router.Helpers, as: Routes
@@ -45,6 +46,48 @@ defmodule FzHttpWeb.AuthController do
         conn
         |> put_flash(:error, "Error signing in: #{reason}")
         |> request(%{})
+    end
+  end
+
+  def callback(conn, params) do
+    %{"provider" => provider_key} = params
+    openid_connect = Application.fetch_env!(:fz_http, :openid_connect)
+
+    atomize = fn key ->
+      try do
+        {:ok, String.to_existing_atom(key)}
+      catch
+        ArgumentError -> {:error, "OIDC Provider not found"}
+      end
+    end
+
+    with {:ok, provider} <- atomize.(provider_key),
+         {:ok, tokens} <- openid_connect.fetch_tokens(provider, params),
+         {:ok, claims} <- openid_connect.verify(provider, tokens["id_token"]) do
+      case UserFromAuth.find_or_create(provider, claims) do
+        {:ok, user} ->
+          conn
+          |> configure_session(renew: true)
+          |> put_session(:live_socket_id, "users_socket:#{user.id}")
+          |> Authentication.sign_in(user, %{provider: provider})
+          |> redirect(to: root_path_for_role(conn, user.role))
+
+        {:error, reason} ->
+          conn
+          |> put_flash(:error, "Error signing in: #{reason}")
+          |> request(%{})
+      end
+    else
+      {:error, reason} ->
+        msg = "OpenIDConnect Error: #{reason}"
+        Logger.warn(msg)
+
+        conn
+        |> put_flash(:error, msg)
+        |> request(%{})
+
+      _ ->
+        send_resp(conn, 401, "")
     end
   end
 

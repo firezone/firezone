@@ -52,6 +52,7 @@ npm-debug.log
 
 # Development environment configuration
 .env
+.oidc_env.json
 
 # Built packages
 /*.deb

@@ -99,13 +99,31 @@ default['firezone']['sysvinit_id'] = 'SUP'
 # Local email/password authentication is enabled by default
 default['firezone']['authentication']['local']['enabled'] = true
 
-# If using the 'okta' authentication method, set 'enabled' to true and configure relevant settings below.
+# OIDC Authentication
+# Any OpenID Connect provider can be used here.
+# Example of a Google setup
+default['firezone']['authentication']['oidc']['google'] = {
+    discovery_document_uri: "https://accounts.google.com/.well-known/openid-configuration",
+    client_id: "CLIENT_ID",
+    client_secret: "CLIENT_SECRET",
+    redirect_uri: "https://firezone.example.com/auth/oidc/google/callback",
+    response_type: "code",
+    scope: "openid email profile",
+    label: "Google"
+}
+
+# DEPRECATED
+# Previously, Firezone used preconfigured Oauth2 providers. We've moved to OIDC authentication
+# which allows for any OpenID Connect provider (Google, Okta, Dex) to be used for authetication.
+# See the above OIDC Authentication section
+#
+# DEPRECATED: Okta example config
 default['firezone']['authentication']['okta']['enabled'] = false
 default['firezone']['authentication']['okta']['client_id'] = nil
 default['firezone']['authentication']['okta']['client_secret'] = nil
 default['firezone']['authentication']['okta']['site'] = 'https://your-domain.okta.com'
 
-# If using the 'google' authentication method, set 'enabled' to true and configure relevant settings below.
+# DEPRECATED: Google example config
 default['firezone']['authentication']['google']['enabled'] = false
 default['firezone']['authentication']['google']['client_id'] = nil
 default['firezone']['authentication']['google']['client_secret'] = nil
