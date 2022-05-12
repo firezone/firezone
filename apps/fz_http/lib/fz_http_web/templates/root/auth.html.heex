@@ -7,6 +7,17 @@
     Please sign in via one of the methods below.
   </p>
 
+  <%= if @openid_connect_providers > 0 do %>
+    <%= for {provider, config} <- @openid_connect_providers do %>
+      <p>
+        <%= link(
+            "Sign in with #{Keyword.get(config, :label)}",
+            to: @openid_connect.authorization_uri(provider),
+            class: "button") %>
+      </p>
+    <% end %>
+  <% end %>
+
   <%= if @local_enabled do %>
     <p>
       <%= link(

@@ -58,4 +58,20 @@ config :ueberauth, Ueberauth,
     {:google, {Ueberauth.Strategy.Google, []}}
   ]
 
+# OIDC auth for testing
+config :fz_http, :openid_connect_providers, %{
+  google: [
+    discovery_document_uri: "https://accounts.google.com/.well-known/openid-configuration",
+    client_id: "CLIENT_ID",
+    client_secret: "CLIENT_SECRET",
+    redirect_uri: "https://firezone.example.com/auth/oidc/google/callback",
+    response_type: "code",
+    scope: "openid email profile",
+    label: "OIDC Google"
+  ]
+}
+
+# Provide mock for HTTPClient
+config :fz_http, :openid_connect, OpenIDConnect.Mock
+
 config :fz_http, FzHttp.Mailer, adapter: Swoosh.Adapters.Test, from_email: "test@firez.one"

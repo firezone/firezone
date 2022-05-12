@@ -4,6 +4,7 @@
 # remember to add this file to your .gitignore.
 
 import Config
+
 alias FzCommon.{CLI, FzInteger, FzString}
 
 # Optional config across all envs
@@ -249,4 +250,30 @@ if config_env() == :prod do
       client_secret: google_client_secret,
       redirect_uri: google_redirect_uri
   end
+end
+
+# OIDC Auth
+auth_oidc_env = System.get_env("AUTH_OIDC")
+
+if auth_oidc_env do
+  auth_oidc =
+    Jason.decode!(auth_oidc_env)
+    # Convert Map to something openid_connect expects, atomic keyed configs
+    # eg. [provider: [client_id: "CLIENT_ID" ...]]
+    |> Enum.map(fn {provider, settings} ->
+      {
+        String.to_atom(provider),
+        [
+          discovery_document_uri: settings["discovery_document_uri"],
+          client_id: settings["client_id"],
+          client_secret: settings["client_secret"],
+          redirect_uri: "#{external_url}/auth/oidc/#{provider}/callback/",
+          response_type: settings["response_type"],
+          scope: settings["scope"],
+          label: settings["label"]
+        ]
+      }
+    end)
+
+  config :fz_http, :openid_connect_providers, auth_oidc
 end
