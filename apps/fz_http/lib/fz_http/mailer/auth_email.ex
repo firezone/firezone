@@ -4,11 +4,14 @@ defmodule FzHttp.Mailer.AuthEmail do
     template_path: "auth_email"
 
   alias FzHttp.Mailer
+  alias FzHttpWeb.Router.Helpers, as: Routes
 
   def magic_link(%FzHttp.Users.User{} = user) do
     Mailer.default_email()
     |> subject("Firezone Magic Link")
     |> to(user.email)
-    |> render_body("magic_link.html", link: "https://test.test")
+    |> render_body("magic_link.html",
+      link: Routes.auth_url(FzHttpWeb.Endpoint, :magic_sign_in, user.sign_in_token)
+    )
   end
 end
