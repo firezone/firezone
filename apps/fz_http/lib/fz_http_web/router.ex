@@ -101,6 +101,11 @@ defmodule FzHttpWeb.Router do
     ) do
       live "/user_devices", DeviceLive.Unprivileged.Index, :index
       live "/user_devices/new", DeviceLive.Unprivileged.Index, :new
+
+      live "/user_devices/change_email_or_password",
+           DeviceLive.Unprivileged.Index,
+           :change_email_or_password
+
       live "/user_devices/:id", DeviceLive.Unprivileged.Show, :show
     end
   end
