@@ -25,6 +25,9 @@ defmodule FzHttp.Application do
   defp children, do: children(Application.fetch_env!(:fz_http, :supervision_tree_mode))
 
   defp children(:full) do
+    # Pull in OpenIDConnect config if available
+    openid_connect_providers = Application.get_env(:fz_http, :openid_connect_providers)
+
     [
       FzHttp.Server,
       FzHttp.Repo,
@@ -35,6 +38,7 @@ defmodule FzHttp.Application do
       FzHttp.ConnectivityCheckService,
       FzHttp.VpnSessionScheduler
     ]
+    |> append_if(openid_connect_providers, {OpenIDConnect.Worker, openid_connect_providers})
   end
 
   defp children(:test) do
@@ -46,5 +50,9 @@ defmodule FzHttp.Application do
       {Phoenix.PubSub, name: FzHttp.PubSub},
       FzHttpWeb.Presence
     ]
+  end
+
+  defp append_if(list, condition, item) do
+    if condition, do: list ++ [item], else: list
   end
 end

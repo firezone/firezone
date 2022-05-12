@@ -1,13 +1,24 @@
 defmodule FzHttpWeb.AuthControllerTest do
   use FzHttpWeb.ConnCase, async: true
 
+  import Mox
+
   describe "new" do
     setup [:create_user]
 
     test "unauthed: loads the sign in form", %{unauthed_conn: conn} do
+      expect(OpenIDConnect.Mock, :authorization_uri, fn _ -> "https://auth.url" end)
       test_conn = get(conn, Routes.root_path(conn, :index))
 
-      assert html_response(test_conn, 200) =~ "Sign In"
+      # Assert that we email, OIDC and Oauth2 buttons provided
+      for expected <- [
+            "Sign in with email",
+            "Sign in with OIDC Google",
+            "Sign in with Google",
+            "Sign in with Okta"
+          ] do
+        assert html_response(test_conn, 200) =~ expected
+      end
     end
 
     test "authed as admin: redirects to users page", %{admin_conn: conn} do
@@ -60,6 +71,44 @@ defmodule FzHttpWeb.AuthControllerTest do
 
       assert redirected_to(test_conn) == Routes.user_index_path(test_conn, :index)
       assert current_user(test_conn).id == user.id
+    end
+  end
+
+  describe "creating session from OpenID Connect" do
+    setup [:create_user]
+
+    test "when a user returns with a valid claim", %{unauthed_conn: conn, user: user} do
+      expect(OpenIDConnect.Mock, :fetch_tokens, fn _, _ -> {:ok, %{"id_token" => "abc"}} end)
+
+      expect(OpenIDConnect.Mock, :verify, fn _, _ ->
+        {:ok, %{"email" => user.email, "email_verified" => true, "sub" => "12345"}}
+      end)
+
+      params = %{
+        "code" => "MyFaketoken",
+        "provider" => "google"
+      }
+
+      test_conn = get(conn, Routes.auth_oidc_path(conn, :callback, "google"), params)
+
+      assert redirected_to(test_conn) == Routes.user_index_path(test_conn, :index)
+    end
+
+    @moduletag :capture_log
+    test "when a user returns with an invalid claim", %{unauthed_conn: conn} do
+      expect(OpenIDConnect.Mock, :fetch_tokens, fn _, _ -> {:ok, %{}} end)
+
+      expect(OpenIDConnect.Mock, :verify, fn _, _ ->
+        {:error, "Invalid token for user!"}
+      end)
+
+      params = %{
+        "code" => "MyFaketoken",
+        "provider" => "google"
+      }
+
+      test_conn = get(conn, Routes.auth_oidc_path(conn, :callback, "google"), params)
+      assert get_flash(test_conn, :error) == "OpenIDConnect Error: Invalid token for user!"
     end
   end
 
