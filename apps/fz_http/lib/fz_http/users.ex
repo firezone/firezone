@@ -173,7 +173,7 @@ defmodule FzHttp.Users do
       Task.start(fn ->
         # blow up if it failed, it won't affect the request handling process.
         # we want it to blow up so that it leaves something in the logs.
-        Mailer.UserEmail.reset_password(user) |> Mailer.deliver!()
+        Mailer.AuthEmail.magic_link(user) |> Mailer.deliver!()
       end)
 
       :ok

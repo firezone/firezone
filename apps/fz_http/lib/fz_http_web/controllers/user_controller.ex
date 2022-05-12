@@ -7,19 +7,6 @@ defmodule FzHttpWeb.UserController do
   alias FzHttpWeb.Authentication
   use FzHttpWeb, :controller
 
-  def reset_password(conn, %{"email" => _email} = attrs) do
-    with :ok <- Users.reset_sign_in_token(attrs) do
-      conn
-      |> put_flash(:info, "Please check your inbox for the password reset link.")
-      |> redirect(to: Routes.root_path(conn, :index))
-    else
-      :error ->
-        conn
-        |> put_flash(:warning, "Failed to send password reset email.")
-        |> redirect(to: Routes.auth_path(conn, :forgot_password))
-    end
-  end
-
   def delete(conn, _params) do
     user = Authentication.get_current_user(conn)
 
