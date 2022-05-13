@@ -8,7 +8,7 @@
       id: "create-device-component") %>
 <% end %>
 
-<%= if @live_action == :change_email_or_password do %>
+<%= if @live_action == :change_password do %>
   <%= live_modal(
       FzHttpWeb.UserLive.FormComponent,
       return_to: Routes.device_unprivileged_index_path(@socket, :index),
@@ -112,7 +112,7 @@
           Signed in as <%= @current_user.email %>.
         </p>
         <p>
-          <%= live_patch(to: Routes.device_unprivileged_index_path(@socket, :change_email_or_password)) do %>
+          <%= live_patch(to: Routes.device_unprivileged_index_path(@socket, :change_password)) do %>
             Change email or password
           <% end %>
           /

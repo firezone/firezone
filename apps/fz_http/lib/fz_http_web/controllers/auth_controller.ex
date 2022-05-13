@@ -56,8 +56,8 @@ defmodule FzHttpWeb.AuthController do
     |> redirect(to: Routes.root_path(conn, :index))
   end
 
-  def forgot_password(conn, _params) do
-    render(conn, "forgot_password.html")
+  def reset_password(conn, _params) do
+    render(conn, "reset_password.html")
   end
 
   def magic_link(conn, %{"email" => email}) do
@@ -70,7 +70,7 @@ defmodule FzHttpWeb.AuthController do
       :error ->
         conn
         |> put_flash(:warning, "Failed to send magic link email.")
-        |> redirect(to: Routes.auth_path(conn, :forgot_password))
+        |> redirect(to: Routes.auth_path(conn, :reset_password))
     end
   end
 

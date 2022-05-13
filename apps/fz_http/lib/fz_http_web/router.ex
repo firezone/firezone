@@ -53,7 +53,7 @@ defmodule FzHttpWeb.Router do
       :require_unauthenticated
     ]
 
-    get "/forgot_password", AuthController, :forgot_password
+    get "/reset_password", AuthController, :reset_password
     post "/magic_link", AuthController, :magic_link
     get "/magic/:token", AuthController, :magic_sign_in
 
@@ -101,12 +101,9 @@ defmodule FzHttpWeb.Router do
     ) do
       live "/user_devices", DeviceLive.Unprivileged.Index, :index
       live "/user_devices/new", DeviceLive.Unprivileged.Index, :new
-
-      live "/user_devices/change_email_or_password",
-           DeviceLive.Unprivileged.Index,
-           :change_email_or_password
-
       live "/user_devices/:id", DeviceLive.Unprivileged.Show, :show
+
+      live "/user_account/change_password", DeviceLive.Unprivileged.Index, :change_password
     end
   end
 
