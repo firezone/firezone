@@ -167,8 +167,8 @@ defmodule FzHttp.UsersTest do
       "current_password" => ""
     }
     @sign_in_token_params %{
-      "sign_in_token" => "foobar",
-      "sign_in_token_created_at" => DateTime.utc_now()
+      sign_in_token: "foobar",
+      sign_in_token_created_at: DateTime.utc_now()
     }
 
     test "changes password when only password is updated", %{user: user} do
@@ -198,7 +198,7 @@ defmodule FzHttp.UsersTest do
 
     test "adding a sign in token", %{user: user} do
       {:ok, new_user} = Users.update_user(user, @sign_in_token_params)
-      assert new_user.sign_in_token == @sign_in_token_params["sign_in_token"]
+      assert new_user.sign_in_token == @sign_in_token_params.sign_in_token
     end
 
     test "changes email", %{user: user} do

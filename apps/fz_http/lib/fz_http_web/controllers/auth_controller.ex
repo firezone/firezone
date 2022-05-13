@@ -5,6 +5,7 @@ defmodule FzHttpWeb.AuthController do
   use FzHttpWeb, :controller
   require Logger
 
+  alias FzHttp.Users
   alias FzHttpWeb.Authentication
   alias FzHttpWeb.Router.Helpers, as: Routes
   alias FzHttpWeb.UserFromAuth
@@ -96,5 +97,39 @@ defmodule FzHttpWeb.AuthController do
     |> Authentication.sign_out()
     |> put_flash(:info, "You are now signed out.")
     |> redirect(to: Routes.root_path(conn, :index))
+  end
+
+  def reset_password(conn, _params) do
+    render(conn, "reset_password.html")
+  end
+
+  def magic_link(conn, %{"email" => email}) do
+    case Users.reset_sign_in_token(email) do
+      :ok ->
+        conn
+        |> put_flash(:info, "Please check your inbox for the magic link.")
+        |> redirect(to: Routes.root_path(conn, :index))
+
+      :error ->
+        conn
+        |> put_flash(:warning, "Failed to send magic link email.")
+        |> redirect(to: Routes.auth_path(conn, :reset_password))
+    end
+  end
+
+  def magic_sign_in(conn, %{"token" => token}) do
+    case Users.consume_sign_in_token(token) do
+      {:ok, user} ->
+        conn
+        |> configure_session(renew: true)
+        |> put_session(:live_socket_id, "users_socket:#{user.id}")
+        |> Authentication.sign_in(user, %{provider: :magic_link})
+        |> redirect(to: root_path_for_role(conn, user.role))
+
+      {:error, _} ->
+        conn
+        |> put_flash(:warning, "The magic link is not valid or has expired.")
+        |> redirect(to: Routes.root_path(conn, :index))
+    end
   end
 end

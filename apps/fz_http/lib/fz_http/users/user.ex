@@ -37,8 +37,6 @@ defmodule FzHttp.Users.User do
     user
     |> cast(attrs, [
       :role,
-      :sign_in_token,
-      :sign_in_token_created_at,
       :email,
       :password_hash,
       :password,
@@ -55,15 +53,6 @@ defmodule FzHttp.Users.User do
   # Sign in token
   # XXX: Map keys must be strings for this approach to work. Refactor to something that is key
   # type agnostic.
-  def update_changeset(
-        user,
-        %{"sign_in_token" => _token, "sign_in_token_created_at" => _created_at} = attrs
-      ) do
-    user
-    |> cast(attrs, [:sign_in_token, :sign_in_token_created_at])
-    |> validate_required([:sign_in_token, :sign_in_token_created_at])
-  end
-
   # If password isn't being changed, remove it from list of attributes to validate
   def update_changeset(
         user,
@@ -153,6 +142,14 @@ defmodule FzHttp.Users.User do
     user
     |> cast(attrs, [:role])
     |> validate_required([:role])
+  end
+
+  # Password reset token
+  def update_changeset(
+        user,
+        %{sign_in_token: _token, sign_in_token_created_at: _created_at} = attrs
+      ) do
+    cast(user, attrs, [:sign_in_token, :sign_in_token_created_at])
   end
 
   # XXX: Invalidate password reset when user is updated

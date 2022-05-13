@@ -4,6 +4,8 @@
     return_to: Routes.user_index_path(@socket, :index),
     title: "Add User",
     id: "user-form-component",
+    user: nil,
+    current_user: @current_user,
     action: @live_action) %>
 <% end %>
 

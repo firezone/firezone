@@ -6,7 +6,9 @@ defmodule FzHttp.Users do
   import Ecto.Query, warn: false
 
   alias FzCommon.{FzCrypto, FzMap}
-  alias FzHttp.{Devices.Device, Repo, Sites.Site, Telemetry, Users.User}
+  alias FzHttp.{Devices.Device, Mailer, Repo, Sites.Site, Telemetry, Users.User}
+
+  require Logger
 
   # one hour
   @sign_in_token_validity_secs 3600
@@ -16,7 +18,7 @@ defmodule FzHttp.Users do
   end
 
   def consume_sign_in_token(token) when is_binary(token) do
-    case find_token_transaction(token) do
+    case find_and_clear_token(token) do
       {:ok, {:ok, user}} -> {:ok, user}
       {:ok, {:error, msg}} -> {:error, msg}
     end
@@ -163,6 +165,30 @@ defmodule FzHttp.Users do
     end
   end
 
+  def reset_sign_in_token(email) do
+    with %User{} = user <- Repo.get_by(User, email: email),
+         {:ok, user} <- update_user(user, sign_in_keys()) do
+      # send email in a separate process so that the time this function takes
+      # doesn't reflect whether a user exists or not
+      Task.start(fn ->
+        # blow up if it failed, it won't affect the request handling process.
+        # we want it to blow up so that it leaves something in the logs.
+        Mailer.AuthEmail.magic_link(user) |> Mailer.deliver!()
+      end)
+
+      :ok
+    else
+      nil ->
+        # no user was found, we don't act any differently
+        Logger.info("Attempt to reset password of non-existing email: #{email}")
+        :ok
+
+      {:error, _changeset} ->
+        # failed to update user, something wrong internally
+        :error
+    end
+  end
+
   defp find_by_token(token) do
     validity_secs = -1 * @sign_in_token_validity_secs
     now = DateTime.utc_now()
@@ -176,24 +202,20 @@ defmodule FzHttp.Users do
     )
   end
 
-  defp find_token_transaction(token) do
+  defp find_and_clear_token(token) do
     Repo.transaction(fn ->
       case find_by_token(token) do
         nil -> {:error, "Token invalid."}
-        user -> token_update_fn(user)
+        user -> clear_token(user)
       end
     end)
   end
 
-  defp token_update_fn(user) do
-    result =
-      Repo.update_all(
-        from(u in User, where: u.id == ^user.id),
-        set: [sign_in_token: nil, sign_in_token_created_at: nil]
-      )
+  defp clear_token(user) do
+    result = update_user(user, %{sign_in_token: nil, sign_in_token_created_at: nil})
 
     case result do
-      {1, _result} -> {:ok, user}
+      {:ok, user} -> {:ok, user}
       _ -> {:error, "Unexpected error attempting to clear sign in token."}
     end
   end

@@ -3,7 +3,7 @@
 <hr>
 
 <div class="block">
-  <%= link("<- Back to sign in methods", to: Routes.root_path(@conn, :index)) %>
+  <%= link "<- Back to sign in methods", to: Routes.root_path(@conn, :index) %>
 </div>
 
 <div class="block">
@@ -24,7 +24,14 @@
 
     <div class="field">
       <div class="control">
-        <%= submit "Sign In", class: "button" %>
+        <div class="level">
+          <div class="level-left">
+            <%= submit "Sign In", class: "button" %>
+          </div>
+          <div class="level-right">
+            <%= link "Forgot password", to: Routes.auth_path(@conn, :reset_password), class: "forgot-password" %>
+          </div>
+        </div>
       </div>
     </div>
   <% end %>

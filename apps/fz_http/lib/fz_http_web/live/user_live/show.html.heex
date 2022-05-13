@@ -5,6 +5,7 @@
       title: "Edit #{@user.email}",
       id: "user-form-component",
       user: @user,
+      current_user: @current_user,
       action: @live_action) %>
 <% end %>
 <%= if @live_action == :new_device do %>
