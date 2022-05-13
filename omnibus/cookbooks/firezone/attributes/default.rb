@@ -101,16 +101,25 @@ default['firezone']['authentication']['local']['enabled'] = true
 
 # OIDC Authentication
 # Any OpenID Connect provider can be used here.
+default['firezone']['authentication']['oidc'] = {}
 # Example of a Google setup
-default['firezone']['authentication']['oidc']['google'] = {
-    discovery_document_uri: "https://accounts.google.com/.well-known/openid-configuration",
-    client_id: "CLIENT_ID",
-    client_secret: "CLIENT_SECRET",
-    redirect_uri: "https://firezone.example.com/auth/oidc/google/callback",
-    response_type: "code",
-    scope: "openid email profile",
-    label: "Google"
-}
+# default['firezone']['authentication']['oidc'] = {
+#   google: {
+#     discovery_document_uri: "https://accounts.google.com/.well-known/openid-configuration",
+#     client_id: "CLIENT_ID",
+#     client_secret: "CLIENT_SECRET",
+#     redirect_uri: "https://firezone.example.com/auth/oidc/google/callback",
+#     response_type: "code",
+#     scope: "openid email profile",
+#     label: "Google"
+#   },
+#   okta: {
+#   ...
+#   },
+#   azure: {
+#   ...
+#   }
+# }
 
 # DEPRECATED
 # Previously, Firezone used preconfigured Oauth2 providers. We've moved to OIDC authentication
@@ -399,12 +408,14 @@ default['firezone']['robots_allow'] = '/'
 default['firezone']['robots_disallow'] = nil
 
 # ### Outbound Email Settings
-# If from_email not set, the outbound email feature will be disabled
+# If from_email not set, the outbound email feature will be disabled (default)
 default['firezone']['outbound_email']['from'] = nil
+
 # If provider not set, the :sendmail delivery method will be used. Using
 # the sendmail delivery method requires that a working mail transfer agent
 # (usually set up with a relay host) be configured on this machine.
 default['firezone']['outbound_email']['provider'] = nil
+
 # Configure one or more providers below.
 # See the Swoosh library documentation for more information on configuring adapters:
 # https://github.com/swoosh/swoosh#adapters
