@@ -58,9 +58,9 @@ config :fz_wall,
   cli: FzWall.CLI.Sandbox
 
 # Auth
-local_auth_enabled = (System.get_env("LOCAL_AUTH_ENABLED") && true) || false
-okta_auth_enabled = (System.get_env("OKTA_AUTH_ENABLED") && true) || false
-google_auth_enabled = (System.get_env("GOOGLE_AUTH_ENABLED") && true) || false
+local_auth_enabled = System.get_env("LOCAL_AUTH_ENABLED") == "true"
+okta_auth_enabled = System.get_env("OKTA_AUTH_ENABLED") == "true"
+google_auth_enabled = System.get_env("GOOGLE_AUTH_ENABLED") == "true"
 
 # Configure strategies
 identity_strategy =
