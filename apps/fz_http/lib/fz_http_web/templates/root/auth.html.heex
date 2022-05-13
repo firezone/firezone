@@ -12,7 +12,7 @@
       <p>
         <%= link(
             "Sign in with #{Keyword.get(config, :label)}",
-            to: @openid_connect.authorization_uri(provider),
+            to: authorization_uri(@openid_connect, provider),
             class: "button") %>
       </p>
     <% end %>
