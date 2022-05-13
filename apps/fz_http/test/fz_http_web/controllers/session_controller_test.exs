@@ -7,7 +7,7 @@ defmodule FzHttpWeb.AuthControllerTest do
     setup [:create_user]
 
     test "unauthed: loads the sign in form", %{unauthed_conn: conn} do
-      expect(OpenIDConnect.Mock, :authorization_uri, fn _ -> "https://auth.url" end)
+      expect(OpenIDConnect.Mock, :authorization_uri, fn _, _ -> "https://auth.url" end)
       test_conn = get(conn, Routes.root_path(conn, :index))
 
       # Assert that we email, OIDC and Oauth2 buttons provided
