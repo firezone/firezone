@@ -25,7 +25,7 @@ defmodule FzHttpWeb.UserFromAuth do
     end
   end
 
-  def find_or_create(_provider, %{"email" => email, "sub" => _sub, "email_verified" => true}) do
+  def find_or_create(_provider, %{"email" => email, "sub" => _sub}) do
     case Users.get_by_email(email) do
       nil -> Users.create_unprivileged_user(%{email: email})
       user -> {:ok, user}

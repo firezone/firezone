@@ -81,7 +81,7 @@ defmodule FzHttpWeb.AuthControllerTest do
       expect(OpenIDConnect.Mock, :fetch_tokens, fn _, _ -> {:ok, %{"id_token" => "abc"}} end)
 
       expect(OpenIDConnect.Mock, :verify, fn _, _ ->
-        {:ok, %{"email" => user.email, "email_verified" => true, "sub" => "12345"}}
+        {:ok, %{"email" => user.email, "sub" => "12345"}}
       end)
 
       params = %{
