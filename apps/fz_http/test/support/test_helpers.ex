@@ -135,9 +135,15 @@ defmodule FzHttp.TestHelpers do
   end
 
   def create_user_with_expired_sign_in_token(_) do
-    expired = DateTime.add(DateTime.utc_now(), -1 * 86_401)
-    params = %{Users.sign_in_keys() | sign_in_token_created_at: expired}
-    {:ok, user: %User{} = UsersFixtures.user(params)}
+    expired_at = DateTime.add(DateTime.utc_now(), -1 * 86_401)
+
+    {:ok, user} =
+      Users.update_user(UsersFixtures.user(), %{
+        sign_in_token: "EXPIRED_TOKEN",
+        sign_in_token_created_at: expired_at
+      })
+
+    {:ok, user: user}
   end
 
   def create_users(%{count: count}) do

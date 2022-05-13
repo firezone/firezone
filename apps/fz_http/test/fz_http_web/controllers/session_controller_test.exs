@@ -125,4 +125,49 @@ defmodule FzHttpWeb.AuthControllerTest do
       assert redirected_to(test_conn) == Routes.root_path(test_conn, :index)
     end
   end
+
+  describe "getting magic link" do
+    setup :create_user
+
+    import Swoosh.TestAssertions
+
+    test "sends a magic link in email", %{unauthed_conn: conn, user: user} do
+      post(conn, Routes.auth_path(conn, :magic_link), %{"email" => user.email})
+
+      Process.sleep(100)
+      assert_email_sent(subject: "Firezone Magic Link", to: [{"", user.email}])
+    end
+  end
+
+  describe "when using magic link" do
+    setup :create_user
+
+    alias FzHttp.Repo
+
+    test "user sign_in_token is cleared", %{unauthed_conn: conn, user: user} do
+      assert not is_nil(user.sign_in_token)
+      assert not is_nil(user.sign_in_token_created_at)
+
+      get(conn, Routes.auth_path(conn, :magic_sign_in, user.sign_in_token))
+
+      user = Repo.reload!(user)
+
+      assert is_nil(user.sign_in_token)
+      assert is_nil(user.sign_in_token_created_at)
+    end
+
+    test "user last signed in with magic_link provider", %{unauthed_conn: conn, user: user} do
+      get(conn, Routes.auth_path(conn, :magic_sign_in, user.sign_in_token))
+
+      user = Repo.reload!(user)
+
+      assert user.last_signed_in_method == "magic_link"
+    end
+
+    test "user is signed in", %{unauthed_conn: conn, user: user} do
+      test_conn = get(conn, Routes.auth_path(conn, :magic_sign_in, user.sign_in_token))
+
+      assert current_user(test_conn).id == user.id
+    end
+  end
 end
