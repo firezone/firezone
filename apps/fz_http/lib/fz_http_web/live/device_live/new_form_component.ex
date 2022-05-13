@@ -74,8 +74,9 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
   end
 
   defp authorized_to_create?(socket) do
-    to_string(socket.assigns.current_user.id) == to_string(socket.assigns.target_user_id) ||
-      has_role?(socket, :admin)
+    has_role?(socket, :admin) ||
+      (Application.fetch_env!(:fz_http, :allow_unprivileged_device_management) &&
+         to_string(socket.assigns.current_user.id) == to_string(socket.assigns.target_user_id))
   end
 
   # update/2 is called twice: on load and then connect.
