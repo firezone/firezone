@@ -18,7 +18,6 @@
     "buffer-from": "^1.1.1",
     "glob": "^7.1.7",
     "highlight.js": "^11.4.0",
-    "moment": "^2.29.1",
     "phoenix": "file:../../../deps/phoenix",
     "phoenix_html": "file:../../../deps/phoenix_html",
     "phoenix_live_view": "file:../../../deps/phoenix_live_view",
