@@ -7,7 +7,7 @@
 }
 
 @include mobile {
-  .modal .animation-content .modal-card {
+  .modal .modal-card {
     width: $modal-card-width-mobile;
     margin: 0 auto;
   }
