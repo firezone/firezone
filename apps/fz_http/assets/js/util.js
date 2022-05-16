@@ -1,9 +1,20 @@
-import moment from "moment"
 import zxcvbn from "zxcvbn"
+
+const dateFormatter = new Intl.DateTimeFormat(
+  'en-US',
+  {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: 'numeric'
+  }
+)
 
 const FormatTimestamp = function (timestamp) {
   if (timestamp) {
-    return moment(timestamp).format("llll z")
+    return dateFormatter.format(new Date(timestamp))
   } else {
     return "Never"
   }
