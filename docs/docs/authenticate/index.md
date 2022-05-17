@@ -5,21 +5,57 @@ nav_order: 3
 has_children: true
 has_toc: false
 description: >
-  This page contains all the authentication methods that Firezone supports.
+  This page documents all the authentication methods that Firezone supports.
 ---
 ---
 
-Firezone provides the ability to require authentication to download device
-configuration files. Firezone supports the following single sign on (SSO)
-providers and authentication methods:
+Firezone can be configured to require authentication before users can generate
+or download device configuration files. Optionally,
+[periodic re-authentication](#enforce-periodic-re-authentication)
+can also be required for users to maintain their VPN session.
 
-* [Google]({%link docs/authenticate/google-sso.md%})
-* [Okta]({%link docs/authenticate/okta-sso.md%})
+By default, Firezone uses local email/password authentication, but can also
+support integration with any generic OpenID Connect
+(OIDC) identity provider. This allows users to sign in to Firezone using
+their credentials from their existing account at an OIDC Identity Provider (IdP),
+such as Okta, Google, Azure AD, or your own custom identity provider.
+
+## Integrating with a Generic OIDC Identity Provider
+
+The example below details the config settings required by Firezone.
+Reminder, the configuration file can be found at `/etc/firezone/firezone.rb` and
+generally requires running `firezone-ctl reconfigure` to pick up changes.
+
+```ruby
+# Multiple OIDC configs can be added to the same Firezone instance.
+default['firezone']['authentication']['oidc'] = {
+  google: [
+    discovery_document_uri: "https://accounts.google.com/.well-known/openid-configuration",
+    client_id: "CLIENT_ID",
+    client_secret: "CLIENT_SECRET",
+    redirect_uri: "https://firezone.example.com/auth/oidc/google/callback",
+    response_type: "code",
+    scope: "openid email profile",
+    label: "Google"
+  ]
+}
+```
+
+We've included instructions on how to set up Firezone with several popular
+identity providers below:
+
+* [Azure AD]({%link docs/authenticate/azure-ad.md%})
+* [Google]({%link docs/authenticate/google.md%})
+* [Okta]({%link docs/authenticate/okta.md%})
 * [Local email/password authentication (default)]({%link docs/authenticate/web-auth.md%})
 
-If you wish to use an OAuth provider that is not listed above,
-please open a
-[GitHub issue](https://github.com/firezone/firezone/issues).
+If your identity provider is not listed above, but has a generic OIDC
+connector, please consult their documentation to find instructions on obtaining
+the config settings above.
+
+Join our [Slack](https://www.firezone.dev/slack) to request additional help or
+open a [Github Issue](https://github.com/firezone/firezone/issues) to request
+additional documentation for your provider.
 
 ## Enforce Periodic Re-authentication
 
