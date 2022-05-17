@@ -24,7 +24,7 @@ request should be sent.
 This should be set to `openid email profile`.
 1. `label`: The button label text that shows up on your Firezone login screen.
 
-![Azure SSO](https://user-images.githubusercontent.com/52545545/168913014-94998ffe-69f2-48a7-a11c-d8abd5a68b72.gif){:width="600"}
+![Azure SSO](https://user-images.githubusercontent.com/52545545/168922621-1f0f4dea-adfc-4e15-a140-a2f213676103.gif){:width="600"}
 
 ## Obtain Config Settings
 

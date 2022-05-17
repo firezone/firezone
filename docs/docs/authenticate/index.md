@@ -14,18 +14,19 @@ or download device configuration files. Optionally,
 [periodic re-authentication](#enforce-periodic-re-authentication)
 can also be required for users to maintain their VPN session.
 
+![Azure SSO](https://user-images.githubusercontent.com/52545545/168922621-1f0f4dea-adfc-4e15-a140-a2f213676103.gif){:width="600"}
+
 By default, Firezone uses local email/password authentication, but can also
 support integration with any generic OpenID Connect
 (OIDC) identity provider. This allows users to sign in to Firezone using
-their credentials from their existing account at an OIDC Identity Provider (IdP),
-such as Okta, Google, Azure AD, or your own custom identity provider.
+their credentials from Okta, Google, Azure AD, or your own custom identity provider.
 
 ## Integrating a Generic OIDC Identity Provider
 
 The example below details the config settings required by Firezone to enable SSO
 through an OIDC identity provider. The configuration file can be found at
 `/etc/firezone/firezone.rb`. To pick up changes, run `firezone-ctl reconfigure`
-and `firezone-ctl restart` update the application.
+and `firezone-ctl restart` to update the application.
 
 ```ruby
 # This is an example using Google as an SSO identity provider. 
