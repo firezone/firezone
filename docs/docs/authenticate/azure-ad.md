@@ -50,15 +50,33 @@ Next, select the Certificates & secrets link under the Manage menu and
 create a new client secret. Copy the client secret - **this will be the
 `client_secret` value**.
 
-![Screen Shot 2022-05-16 at 4 10 47 PM](https://user-images.githubusercontent.com/52545545/168720697-1a28d2c1-4108-459c-9915-4397a4108818.png){:width="800"}
+![Add a client secret](https://user-images.githubusercontent.com/52545545/168720697-1a28d2c1-4108-459c-9915-4397a4108818.png){:width="800"}
 
 Lastly, select the API permissions link under the Manage menu,
 click `Add a permission`, and select `Microsoft Graph`. Add `email`, `openid`,
 and `profile` to the required permissions.
 
-![Screen Shot 2022-05-16 at 4 26 39 PM](https://user-images.githubusercontent.com/52545545/168720688-19f92516-bc5e-437f-b3aa-7638632161a2.png)
+![Permissions](https://user-images.githubusercontent.com/52545545/168720688-19f92516-bc5e-437f-b3aa-7638632161a2.png)
 
 ## Integrating With Firezone
 
-After the config settings are obtained, integrating with Firezone is the same
-for every identity provider. See 
+Edit `/etc/firezone/firezone.rb` to include the options below.
+To pick up changes, run `firezone-ctl reconfigure`
+and `firezone-ctl restart` update the application.
+
+```ruby
+# Using Azure Active Directory as the SSO identity provider
+default['firezone']['authentication']['oidc'] = {
+  azure: [
+    discovery_document_uri: "https://login.microsoftonline.com/{tenant_ID}/v2.0/.well-known/openid-configurationn",
+    client_id: "CLIENT_ID",
+    client_secret: "CLIENT_SECRET",
+    redirect_uri: "https://firezone.example.com/auth/oidc/azure/callback",
+    response_type: "code",
+    scope: "openid email profile",
+    label: "Sign in with Azure"
+  ]
+}
+```
+
+You should now see a `Sign in with Azure` button at the root Firezone URL.

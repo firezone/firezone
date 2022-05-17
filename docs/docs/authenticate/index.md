@@ -20,14 +20,17 @@ support integration with any generic OpenID Connect
 their credentials from their existing account at an OIDC Identity Provider (IdP),
 such as Okta, Google, Azure AD, or your own custom identity provider.
 
-## Integrating with a Generic OIDC Identity Provider
+## Integrating a Generic OIDC Identity Provider
 
-The example below details the config settings required by Firezone.
-Reminder, the configuration file can be found at `/etc/firezone/firezone.rb` and
-generally requires running `firezone-ctl reconfigure` to pick up changes.
+The example below details the config settings required by Firezone to enable SSO
+through an OIDC identity provider. The configuration file can be found at
+`/etc/firezone/firezone.rb`. To pick up changes, run `firezone-ctl reconfigure`
+and `firezone-ctl restart` update the application.
 
 ```ruby
+# This is an example using Google as an SSO identity provider. 
 # Multiple OIDC configs can be added to the same Firezone instance.
+
 default['firezone']['authentication']['oidc'] = {
   google: [
     discovery_document_uri: "https://accounts.google.com/.well-known/openid-configuration",
@@ -42,7 +45,7 @@ default['firezone']['authentication']['oidc'] = {
 ```
 
 We've included instructions on how to set up Firezone with several popular
-identity providers below:
+identity providers:
 
 * [Azure AD]({%link docs/authenticate/azure-ad.md%})
 * [Google]({%link docs/authenticate/google.md%})
@@ -51,7 +54,7 @@ identity providers below:
 
 If your identity provider is not listed above, but has a generic OIDC
 connector, please consult their documentation to find instructions on obtaining
-the config settings above.
+the config settings required.
 
 Join our [Slack](https://www.firezone.dev/slack) to request additional help or
 open a [Github Issue](https://github.com/firezone/firezone/issues) to request

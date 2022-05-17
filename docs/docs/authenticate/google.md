@@ -9,6 +9,12 @@ description: >
 ---
 ---
 
+Deprecated
+{: .label .label-red }
+Previously, Firezone used preconfigured Oauth2 providers. We've moved to OIDC
+authentication which allows for any OpenID Connect provider
+(Google, Okta, Dex) to be used for authetication.
+
 Firezone supports Single Sign-On (SSO) through Google Workspace and Cloud Identity.
 After successfully configuring SSO with Firezone, users will be prompted to sign
 in with their Google credentials in the Firezone portal to authenticate VPN
