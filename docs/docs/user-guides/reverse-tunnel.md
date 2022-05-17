@@ -24,9 +24,10 @@ between Peer A and Peer B.
 ![node-to-node](https://user-images.githubusercontent.com/52545545/155856835-2ad1f686-d894-43d1-8862-e3a8fcccee5c.png){:width="600"}
 
 In the settings for each device, ensure the following parameters are set to the
-values listed below. You can edit device settings by clicking the `Edit` button
-on the `settings/[device_id]/edit` page.
-See [link to edit device article] for additional details on editing device settings.
+values listed below. You can set device settings when creating the WireGuard config
+(see [Add Devices]({%link docs/user-guides/add-devices.md%})).
+If you need to update settings on an existing device, you can do so by generating
+a new device config.
 
 Note `PersistentKeepalive` can also be set in on the
 `/settings/defaults` page for all devices.
@@ -54,9 +55,10 @@ administrator or engineer accessing multiple resources
 ![node-to-multiple-nodes](https://user-images.githubusercontent.com/52545545/155856838-03e968d9-bc1e-46ce-a32f-9f53f3566526.png){:width="600"}
 
 In the settings for each device, ensure the following parameters are set to the
-values listed below. You can edit device settings by clicking the `Edit` button
-on the `settings/[device_id]/edit` page.
-See [link to edit device article] for additional details on editing device settings.
+values listed below. You can set device settings when creating the WireGuard config
+(see [Add Devices]({%link docs/user-guides/add-devices.md%})).
+If you need to update settings on an existing device, you can do so by generating
+a new device config.
 
 Peer A (Administrator Node)
 
