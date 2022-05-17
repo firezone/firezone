@@ -9,9 +9,9 @@ description: >
 ---
 ---
 
-Firezone supports Single Sign-On (SSO) using Azure Active Directory. This guide
-will walk you through how to obtain the following config settings required
-for the integration:
+Firezone supports Single Sign-On (SSO) using Azure Active Directory through the generic
+OIDC connector. This guide will walk you through how to obtain the following
+config settings required for the integration:
 
 1. `discovery_document_uri`: This URL returns a JSON with information to
 construct a request to the OpenID server.
@@ -24,7 +24,9 @@ request should be sent.
 This should be set to `openid email profile`.
 1. `label`: The button label text that shows up on your Firezone login screen.
 
-## Obtaining Config Settings
+![Azure SSO](https://user-images.githubusercontent.com/52545545/168913014-94998ffe-69f2-48a7-a11c-d8abd5a68b72.gif){:width="600"}
+
+## Obtain Config Settings
 
 _This guide is adapted from the [Azure Active Directory documentation](https://docs.microsoft.com/en-us/azure/active-directory/fundamentals/auth-oidc)._
 
@@ -44,7 +46,7 @@ After registering, open the details view of the application and copy the
 the endpoints menu to retrieve the `OpenID Connect metadata document`.
 **This will be the `discovery_document_uri` value**.
 
-![Azure Client ID](https://user-images.githubusercontent.com/52545545/168724099-100e4a9a-0bf6-42f6-b0ee-13a4c9a8da23.png)
+![Azure Client ID](https://user-images.githubusercontent.com/52545545/168724099-100e4a9a-0bf6-42f6-b0ee-13a4c9a8da23.png){:width="800"}
 
 Next, select the Certificates & secrets link under the Manage menu and
 create a new client secret. Copy the client secret - **this will be the
@@ -56,27 +58,26 @@ Lastly, select the API permissions link under the Manage menu,
 click `Add a permission`, and select `Microsoft Graph`. Add `email`, `openid`,
 and `profile` to the required permissions.
 
-![Permissions](https://user-images.githubusercontent.com/52545545/168720688-19f92516-bc5e-437f-b3aa-7638632161a2.png)
+![Permissions](https://user-images.githubusercontent.com/52545545/168720688-19f92516-bc5e-437f-b3aa-7638632161a2.png){:width="800"}
 
-## Integrating With Firezone
+## Integrate With Firezone
 
 Edit `/etc/firezone/firezone.rb` to include the options below.
-To pick up changes, run `firezone-ctl reconfigure`
-and `firezone-ctl restart` update the application.
 
 ```ruby
 # Using Azure Active Directory as the SSO identity provider
 default['firezone']['authentication']['oidc'] = {
   azure: [
-    discovery_document_uri: "https://login.microsoftonline.com/{tenant_ID}/v2.0/.well-known/openid-configurationn",
+    discovery_document_uri: "https://login.microsoftonline.com/{tenant_ID}/v2.0/.well-known/openid-configuration",
     client_id: "CLIENT_ID",
     client_secret: "CLIENT_SECRET",
     redirect_uri: "https://firezone.example.com/auth/oidc/azure/callback",
     response_type: "code",
     scope: "openid email profile",
-    label: "Sign in with Azure"
+    label: "Azure"
   ]
 }
 ```
 
+Run `firezone-ctl reconfigure`and `firezone-ctl restart` to update the application.
 You should now see a `Sign in with Azure` button at the root Firezone URL.
