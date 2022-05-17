@@ -100,7 +100,7 @@ config :fz_vpn,
 
 # Configures the endpoint
 # These will be overridden at runtime in production by config/releases.exs
-external_url = "http://localhost:4000"
+external_url = "http://127.0.0.1:4000"
 %{host: host, scheme: scheme, port: port, path: path} = URI.parse(external_url)
 
 config :fz_http, FzHttpWeb.Endpoint,
