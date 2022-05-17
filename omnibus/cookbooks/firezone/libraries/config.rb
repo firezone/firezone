@@ -224,6 +224,7 @@ class Firezone
         'DATABASE_SSL' => attributes['database']['ssl'].to_s,
         'DATABASE_SSL_OPTS' => attributes['database']['ssl_opts'].to_json,
         'DATABASE_PARAMETERS' => attributes['database']['parameters'].to_json,
+        'PHOENIX_LISTEN_ADDRESS' => attributes['phoenix']['listen_address'].to_s,
         'PHOENIX_PORT' => attributes['phoenix']['port'].to_s,
         'EXTERNAL_URL' => attributes['external_url'] || fqdn_url,
         'ADMIN_EMAIL' => attributes['admin_email'],

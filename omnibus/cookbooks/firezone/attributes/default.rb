@@ -287,6 +287,7 @@ default['firezone']['database']['create_db'] = true
 
 # ### The Phoenix web app for Firezone
 default['firezone']['phoenix']['enabled'] = true
+default['firezone']['phoenix']['listen_address'] = '127.0.0.1'
 default['firezone']['phoenix']['port'] = 13_000
 default['firezone']['phoenix']['log_directory'] = "#{node['firezone']['log_directory']}/phoenix"
 default['firezone']['phoenix']['log_rotation']['file_maxbytes'] = 104_857_600
