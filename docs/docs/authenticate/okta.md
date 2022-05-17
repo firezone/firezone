@@ -26,8 +26,8 @@ This should be set to `openid email profile`.
 
 ![Firezone Okta SSO Login](https://user-images.githubusercontent.com/52545545/156855886-5a4a0da7-065c-4ec1-af33-583dff4dbb72.gif){:width="600"}
 
-_Note: Previously, Firezone used pre-configured Oauth2 providers. We've moved to OIDC
-based authentication, which allows for any OpenID Connect provider
+_Note: Previously, Firezone used pre-configured Oauth2 providers. We've moved to
+OIDC based authentication, which allows for any OpenID Connect provider
 (Google, Okta, Dex) to be used for authetication._
 
 To set up SSO, follow the steps below:
@@ -48,8 +48,8 @@ On the following screen, configure the following settings:
 1. **App logo**:
 [Firezone logo](https://user-images.githubusercontent.com/52545545/155907625-a4f6c8c2-3952-488d-b244-3c37400846cf.png)
 (save link as).
-1. **Sign-in redirect URIs**: Append `/auth/oidc/okta/callback` to your Firezone base
-URL. For example, if your Firezone instance is available at
+1. **Sign-in redirect URIs**: Append `/auth/oidc/okta/callback` to your Firezone
+base URL. For example, if your Firezone instance is available at
 `https://firezone.example.com`, then you would enter
 `https://firezone.example.com/auth/oidc/okta/callback` here. The redirect URI is
 where Okta will redirect the user's browser after successful authentication.

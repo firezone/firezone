@@ -26,8 +26,8 @@ This should be set to `openid email profile`.
 
 ![Firezone Google SSO Login](https://user-images.githubusercontent.com/52545545/156853456-1ab3f041-1002-4c79-a266-82acb5802890.gif){:width="600"}
 
-_Note: Previously, Firezone used pre-configured Oauth2 providers. We've moved to OIDC
-based authentication, which allows for any OpenID Connect provider
+_Note: Previously, Firezone used pre-configured Oauth2 providers. We've moved to
+OIDC based authentication, which allows for any OpenID Connect provider
 (Google, Okta, Dex) to be used for authetication._
 
 To set up SSO, follow the steps below:
