@@ -1,6 +1,12 @@
 version: "3.8"
 
 services:
+  caddy:
+    image: caddy:2
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+    network_mode: service:elixir
+
   elixir:
     build:
       context: .
