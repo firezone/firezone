@@ -25,7 +25,7 @@ between Device A and Device B.
 
 Start by creating Device A and Device B by navigating to `/users/[user_id]/new_device`.
 In the settings for each device, ensure the following parameters are set to the
-values listed below. You can set device settings when creating the WireGuard config
+values listed below. You can set device settings when creating the device config
 (see [Add Devices]({%link docs/user-guides/add-devices.md%})).
 If you need to update settings on an existing device, you can do so by generating
 a new device config.
@@ -56,7 +56,7 @@ administrator or engineer accessing multiple resources
 ![node-to-multiple-nodes](https://user-images.githubusercontent.com/52545545/155856838-03e968d9-bc1e-46ce-a32f-9f53f3566526.png){:width="600"}
 
 In the settings for each device, ensure the following parameters are set to the
-values listed below. You can set device settings when creating the WireGuard config
+values listed below. You can set device settings when creating the device config
 (see [Add Devices]({%link docs/user-guides/add-devices.md%})).
 If you need to update settings on an existing device, you can do so by generating
 a new device config.
