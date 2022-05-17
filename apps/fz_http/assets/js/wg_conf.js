@@ -58,8 +58,7 @@ const renderQR = function (config) {
     QRCode.toCanvas(canvas, config, {
       errorCorrectionLevel: "H",
       margin: 0,
-      width: 200,
-      height: 200
+      width: 300
     }, function (error) {
       if (error) alert("QRCode Encode Error: " + error)
     })
