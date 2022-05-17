@@ -38,7 +38,7 @@ if config_env() == :prod do
   database_ssl = FzString.to_boolean(System.fetch_env!("DATABASE_SSL"))
   database_ssl_opts = Jason.decode!(System.fetch_env!("DATABASE_SSL_OPTS"))
   database_parameters = Jason.decode!(System.fetch_env!("DATABASE_PARAMETERS"))
-  phoenix_listen_address = String.to_integer(System.fetch_env!("PHOENIX_LISTEN_ADDRESS"))
+  phoenix_listen_address = System.fetch_env!("PHOENIX_LISTEN_ADDRESS")
   phoenix_port = String.to_integer(System.fetch_env!("PHOENIX_PORT"))
   admin_email = System.fetch_env!("ADMIN_EMAIL")
   default_admin_password = System.fetch_env!("DEFAULT_ADMIN_PASSWORD")
