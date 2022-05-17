@@ -38,6 +38,7 @@ if config_env() == :prod do
   database_ssl = FzString.to_boolean(System.fetch_env!("DATABASE_SSL"))
   database_ssl_opts = Jason.decode!(System.fetch_env!("DATABASE_SSL_OPTS"))
   database_parameters = Jason.decode!(System.fetch_env!("DATABASE_PARAMETERS"))
+  phoenix_listen_address = System.fetch_env!("PHOENIX_LISTEN_ADDRESS")
   phoenix_port = String.to_integer(System.fetch_env!("PHOENIX_PORT"))
   admin_email = System.fetch_env!("ADMIN_EMAIL")
   default_admin_password = System.fetch_env!("DEFAULT_ADMIN_PASSWORD")
@@ -160,8 +161,14 @@ if config_env() == :prod do
       }
     ]
 
+  listen_ip =
+    phoenix_listen_address
+    |> String.split(".")
+    |> Enum.map(&String.to_integer/1)
+    |> List.to_tuple()
+
   config :fz_http, FzHttpWeb.Endpoint,
-    http: [ip: {127, 0, 0, 1}, port: phoenix_port],
+    http: [ip: listen_ip, port: phoenix_port],
     server: true,
     secret_key_base: secret_key_base,
     live_view: [

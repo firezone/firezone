@@ -14,13 +14,16 @@ defmodule FzHttpWeb.Session do
     # XXX: Strict doesn't work for SSO auth
     # same_site: "Strict",
     max_age: @max_cookie_age,
-    secure: true,
     sign: true,
     encrypt: true
   ]
 
   def options do
-    @session_options ++ [signing_salt: signing_salt()]
+    @session_options ++ [secure: cookie_secure(), signing_salt: signing_salt()]
+  end
+
+  defp cookie_secure do
+    Application.fetch_env!(:fz_http, :cookie_secure)
   end
 
   defp signing_salt do

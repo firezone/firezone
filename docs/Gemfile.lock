@@ -10,7 +10,7 @@ GIT
 GEM
   remote: https://rubygems.org/
   specs:
-    activesupport (6.0.4.8)
+    activesupport (6.0.5)
       concurrent-ruby (~> 1.0, >= 1.0.2)
       i18n (>= 0.7, < 2)
       minitest (~> 5.1)
@@ -240,9 +240,9 @@ GEM
       jekyll-seo-tag (~> 2.1)
     minitest (5.15.0)
     multipart-post (2.1.1)
-    nokogiri (1.13.4-arm64-darwin)
+    nokogiri (1.13.6-arm64-darwin)
       racc (~> 1.4)
-    nokogiri (1.13.4-x86_64-darwin)
+    nokogiri (1.13.6-x86_64-darwin)
       racc (~> 1.4)
     octokit (4.22.0)
       faraday (>= 0.9)
