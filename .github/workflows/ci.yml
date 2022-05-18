@@ -216,7 +216,7 @@ jobs:
         id: release_drafter
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          
+
   publish:
     needs: draft_release
     runs-on: ubuntu-20.04
