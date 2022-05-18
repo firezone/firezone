@@ -1,3 +1,7 @@
+<%= if @path do %>
+  <FzHttpWeb.SidebarComponent.render path={@path} />
+<% end %>
+
 <div>
   <%= @inner_content %>
 </div>

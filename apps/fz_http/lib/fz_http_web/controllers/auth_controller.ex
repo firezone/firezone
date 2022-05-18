@@ -17,11 +17,11 @@ defmodule FzHttpWeb.AuthController do
 
   def request(conn, _params) do
     # XXX: Helpers.callback_url/1 generates the wrong URL behind nginx.
-    # This is a bug in Ueberauth. auth_url is used instead.
-    url = Routes.auth_url(conn, :callback, :identity)
+    # This is a bug in Ueberauth. auth_path is used instead.
+    path = Routes.auth_path(conn, :callback, :identity)
 
     conn
-    |> render("request.html", callback_url: url)
+    |> render("request.html", callback_path: path)
   end
 
   def callback(%{assigns: %{ueberauth_failure: %{errors: errors}}} = conn, _params) do

@@ -10,6 +10,6 @@
 
   <p>
     Devices can be added when viewing a User.
-    <%= link("Go to users ->", to: Routes.user_index_path(@socket, :index)) %>
+    <%= live_redirect("Go to users ->", to: Routes.user_index_path(@socket, :index)) %>
   </p>
 </section>
