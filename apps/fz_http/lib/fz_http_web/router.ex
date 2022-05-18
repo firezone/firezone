@@ -97,7 +97,7 @@ defmodule FzHttpWeb.Router do
     # Unprivileged Live routes
     live_session(
       :unprivileged,
-      on_mount: {FzHttpWeb.LiveAuth, :unprivileged},
+      on_mount: [{FzHttpWeb.LiveAuth, :unprivileged}, {FzHttpWeb.LiveNav, nil}],
       root_layout: {FzHttpWeb.LayoutView, :unprivileged}
     ) do
       live "/user_devices", DeviceLive.Unprivileged.Index, :index
@@ -123,7 +123,7 @@ defmodule FzHttpWeb.Router do
     # Admin Live routes
     live_session(
       :admin,
-      on_mount: {FzHttpWeb.LiveAuth, :admin},
+      on_mount: [{FzHttpWeb.LiveAuth, :admin}, FzHttpWeb.LiveNav],
       root_layout: {FzHttpWeb.LayoutView, :admin}
     ) do
       live "/users", UserLive.Index, :index
