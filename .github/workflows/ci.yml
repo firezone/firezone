@@ -201,6 +201,7 @@ jobs:
           rm -rf omnibus/pkg/*
 
   draft_release:
+    runs-on: ubuntu-latest
     needs:
       - static-analysis
       - unit-test
