@@ -244,6 +244,7 @@ jobs:
           - ubuntu1804-x64
           - ubuntu2004-x64
           - opensuse15-x64
+    steps:
       - uses: actions/download-artifact@v3
         with:
           name: firezone-${{ matrix.platform }}
