@@ -21,7 +21,7 @@ support integration with any generic OpenID Connect
 (OIDC) identity provider. This allows users to sign in to Firezone using
 their credentials from Okta, Google, Azure AD, or your own custom identity provider.
 
-## Integrating a Generic OIDC Identity Provider
+## Integrating A Generic OIDC Identity Provider
 
 The example below details the config settings required by Firezone to enable SSO
 through an OIDC identity provider. The configuration file can be found at
