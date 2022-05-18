@@ -4,10 +4,10 @@
       <%= label f, :allowed_ips, "Allowed IPs", class: "label" %>
 
       <div class="control">
-        <%= text_input f,
+        <%= textarea f,
             :allowed_ips,
             placeholder: @placeholders[:allowed_ips],
-            class: "input #{input_error_class(f, :allowed_ips)}" %>
+            class: "textarea #{input_error_class(f, :allowed_ips)}" %>
       </div>
 
       <p class="help is-danger">
