@@ -69,7 +69,8 @@ defmodule FzHttpWeb.SettingLive.SiteTest do
       refute test_view =~ "is invalid"
 
       assert test_view =~ """
-             <input class="input " id="site_form_component_allowed_ips" name="site[allowed_ips]" placeholder="0.0.0.0/0, ::/0" type="text" value="1.1.1.1"/>\
+             <textarea class="textarea " id="site_form_component_allowed_ips" name="site[allowed_ips]" placeholder="0.0.0.0/0, ::/0">
+             1.1.1.1</textarea>\
              """
     end
 
@@ -134,7 +135,8 @@ defmodule FzHttpWeb.SettingLive.SiteTest do
       assert test_view =~ "is invalid"
 
       assert test_view =~ """
-             <input class="input is-danger" id="site_form_component_allowed_ips" name="site[allowed_ips]" placeholder="0.0.0.0/0, ::/0" type="text" value="foobar"/>\
+             <textarea class="textarea is-danger" id="site_form_component_allowed_ips" name="site[allowed_ips]" placeholder="0.0.0.0/0, ::/0">
+             foobar</textarea>\
              """
     end
 
