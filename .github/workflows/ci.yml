@@ -5,7 +5,6 @@ concurrency: ci
 
 name: CI
 on:
-  workflow_dispatch:
   push:
   pull_request:
 defaults:
@@ -126,9 +125,23 @@ jobs:
           # coveralls fails
           mix coveralls.github --umbrella || mix test
 
+  draft-release:
+    runs-on: ubuntu-20.04
+    needs:
+      - static-analysis
+      - unit-test
+      - lint-docs
+    outputs:
+      tag_name: ${{ steps.release_drafter.outputs.tag_name }}
+    steps:
+      - uses: release-drafter/release-drafter@v5
+        id: release_drafter
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   build-package-test:
     # Doesn't really need, but don't run this stage when iterating over docs
-    needs: lint-docs
+    needs: draft-release
     env:
       TELEMETRY_ENABLED: "false"
     runs-on: ${{ matrix.platform }}
@@ -168,6 +181,7 @@ jobs:
       - name: Build
         env:
           GIT_SHA: ${{ github.sha }}
+          VERSION: ${{ needs.draft_release.outputs.tag_name }}
         run: |
           echo "removing lock file in case last run sucked"
           sudo rm -f /opt/runner/omnibus-local/cache/git_cache/opt/firezone/index.lock
@@ -200,25 +214,8 @@ jobs:
           sudo rm -rf /tmp/firezone*
           rm -rf omnibus/pkg/*
 
-  draft_release:
-    runs-on: ubuntu-latest
-    needs:
-      - static-analysis
-      - unit-test
-      - lint-docs
-      - build-package-test
-    # Draft releases on merges to master
-    if: startsWith(github.ref, 'refs/heads/master')
-    outputs:
-      tag_name: ${{ steps.release_drafter.outputs.tag_name }}
-    steps:
-      - uses: release-drafter/release-drafter@v5
-        id: release_drafter
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   publish:
-    needs: draft_release
+    needs: build-package-test
     runs-on: ubuntu-20.04
     strategy:
       matrix:
