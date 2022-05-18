@@ -363,7 +363,8 @@ defmodule FzHttpWeb.UserLive.ShowTest do
         |> render_change(@default_allowed_ips_change)
 
       assert test_view =~ """
-             <input class="input " id="create-device_allowed_ips" name="device[allowed_ips]" type="text"/>\
+             <textarea class="textarea " id="create-device_allowed_ips" name="device[allowed_ips]">
+             </textarea>\
              """
     end
 
