@@ -4,7 +4,7 @@
     <%= if has_role?(@current_user, :admin) do %>
       <tr>
         <td><strong>User</strong></td>
-        <td><%= link(@user.email, to: Routes.user_show_path(@socket, :show, @user)) %></td>
+        <td><%= live_redirect(@user.email, to: Routes.user_show_path(@socket, :show, @user)) %></td>
       </tr>
     <% end %>
 
