@@ -214,7 +214,11 @@ jobs:
           sudo rm -rf /tmp/firezone*
           rm -rf omnibus/pkg/*
 
+  # Publish packages to the drafted release on merges to master so we can
+  # manually test them if needed. Then we can just publish the drafted release
+  # and we're good to go.
   publish:
+    if: startsWith(github.ref, 'refs/heads/master')
     needs: build-package-test
     runs-on: ubuntu-20.04
     strategy:
