@@ -15,13 +15,13 @@ defmodule FzHttpWeb.UserController do
         FzHttpWeb.Endpoint.broadcast("users_socket:#{user.id}", "disconnect", %{})
 
         conn
-        |> clear_session()
+        |> Authentication.sign_out()
         |> put_flash(:info, "Account deleted successfully.")
         |> redirect(to: Routes.root_path(conn, :index))
 
       {:error, msg} ->
         conn
-        |> clear_session()
+        |> Authentication.sign_out()
         |> put_flash(:error, "Error deleting account: #{msg}")
         |> redirect(to: Routes.root_path(conn, :index))
     end
