@@ -200,12 +200,22 @@ jobs:
           sudo rm -rf /tmp/firezone*
           rm -rf omnibus/pkg/*
 
-  publish:
+  draft_release:
     needs:
       - static-analysis
       - unit-test
       - lint-docs
       - build-package-test
+    # Draft releases on merges to master
+    if: startsWith(github.ref, 'refs/heads/master')
+    steps:
+      - uses: release-drafter/release-drafter@v5
+        id: release_drafter
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
+  publish:
+    needs: draft_release
     runs-on: ubuntu-20.04
     strategy:
       matrix:
@@ -234,25 +244,18 @@ jobs:
           - ubuntu1804-x64
           - ubuntu2004-x64
           - opensuse15-x64
-    # Draft releases on merges to master
-    if: startsWith(github.ref, 'refs/heads/master')
-    steps:
-      - uses: release-drafter/release-drafter@v5
-        id: release_drafter
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/download-artifact@v3
         with:
           name: firezone-${{ matrix.platform }}
           path: ./
       - name: Rename artifact file to tag
         run: |
-          mv ./firezone*.rpm firezone_${{ steps.release_drafter.outputs.name }}-${{ matrix.platform }}.rpm || true
-          mv ./firezone*.deb firezone_${{ steps.release_drafter.outputs.name }}-${{ matrix.platform }}.deb || true
+          mv ./firezone*.rpm firezone_${{ jobs.draft_release.steps.release_drafter.outputs.name }}-${{ matrix.platform }}.rpm || true
+          mv ./firezone*.deb firezone_${{ jobs.draft_release.steps.release_drafter.outputs.name }}-${{ matrix.platform }}.deb || true
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
-          name: ${{ steps.release_drafter.outputs.name }}
+          name: ${{ jobs.draft_release.steps.release_drafter.outputs.name }}
           draft: true
           files: |
             ./firezone*.rpm
