@@ -59,10 +59,11 @@ version('18.1')      { source sha256: '6b956dda690d3f3bf244249e8d422dd606231cc72
 
 # rubocop:disable Metrics/BlockLength
 build do
-  if version.satisfies?('>= 18.3')
-    # Don't listen on 127.0.0.1/::1 implicitly whenever ERL_EPMD_ADDRESS is given
-    patch source: 'epmd-require-explicitly-adding-loopback-address.patch', plevel: 1
-  end
+  # Deprecated
+  # if version.satisfies?('>= 18.3')
+  #   # Don't listen on 127.0.0.1/::1 implicitly whenever ERL_EPMD_ADDRESS is given
+  #   patch source: 'epmd-require-explicitly-adding-loopback-address.patch', plevel: 1
+  # end
 
   env = with_standard_compiler_flags(with_embedded_path).merge(
     # WARNING!

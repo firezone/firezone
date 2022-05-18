@@ -5,8 +5,9 @@ concurrency: ci
 
 name: CI
 on:
-  - push
-  - pull_request
+  workflow_dispatch:
+  push:
+  pull_request:
 defaults:
   run:
     shell: bash
