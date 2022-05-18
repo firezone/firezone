@@ -3,7 +3,7 @@
 <section class="section is-main-section">
   <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
 
-  <div class="block">
+  <div class="block is-horizontally-scrollable">
     <%= render FzHttpWeb.SharedView, "devices_table.html",
         devices: @devices, show_user: true, socket: @socket %>
   </div>
