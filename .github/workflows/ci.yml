@@ -210,7 +210,7 @@ jobs:
     # Draft releases on merges to master
     if: startsWith(github.ref, 'refs/heads/master')
     outputs:
-      release_name: ${{ steps.release_drafter.outputs.name }}
+      tag_name: ${{ steps.release_drafter.outputs.tag_name }}
     steps:
       - uses: release-drafter/release-drafter@v5
         id: release_drafter
@@ -254,12 +254,12 @@ jobs:
           path: ./
       - name: Rename artifact file to tag
         run: |
-          mv ./firezone*.rpm firezone_${{ needs.draft_release.outputs.release_name }}-${{ matrix.platform }}.rpm || true
-          mv ./firezone*.deb firezone_${{ needs.draft_release.outputs.release_name }}-${{ matrix.platform }}.deb || true
+          mv ./firezone*.rpm firezone_${{ needs.draft_release.outputs.tag_name }}-${{ matrix.platform }}.rpm || true
+          mv ./firezone*.deb firezone_${{ needs.draft_release.outputs.tag_name }}-${{ matrix.platform }}.deb || true
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
-          name: ${{ needs.draft_release.outputs.release_name }}
+          tag_name: ${{ needs.draft_release.outputs.tag_name }}
           draft: true
           files: |
             ./firezone*.rpm
