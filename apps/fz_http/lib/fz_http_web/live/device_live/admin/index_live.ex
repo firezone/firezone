@@ -3,13 +3,18 @@ defmodule FzHttpWeb.DeviceLive.Admin.Index do
   Handles Device LiveViews.
   """
   use FzHttpWeb, :live_view
-  alias FzHttp.Devices
+  alias FzHttp.{Devices, Repo}
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
+    devices =
+      Devices.list_devices()
+      |> Repo.preload(:user)
+      |> Enum.sort_by(& &1.user_id)
+
     {:ok,
      socket
-     |> assign(:devices, Devices.list_devices())
+     |> assign(:devices, devices)
      |> assign(:page_title, "All Devices")}
   end
 

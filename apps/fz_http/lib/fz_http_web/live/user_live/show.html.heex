@@ -45,7 +45,8 @@
 
   <div class="block">
     <%= if length(@devices) > 0 do %>
-      <%= render FzHttpWeb.SharedView, "devices_table.html", devices: @devices, socket: @socket %>
+      <%= render FzHttpWeb.SharedView, "devices_table.html",
+          devices: @devices, show_user: false, socket: @socket %>
     <% else %>
         No devices.
     <% end %>

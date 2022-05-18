@@ -14,6 +14,20 @@ defmodule FzHttpWeb.DeviceLive.Admin.IndexTest do
         assert html =~ device.name
       end
     end
+
+    test "includes the user in the list", %{admin_conn: conn, devices: devices} do
+      path = Routes.device_admin_index_path(conn, :index)
+      {:ok, _view, html} = live(conn, path)
+
+      assert html =~ "User"
+
+      devices = FzHttp.Repo.preload(devices, :user)
+
+      for device <- devices do
+        assert html =~ device.user.email
+        assert html =~ ~s[href="/users/#{device.user.id}"]
+      end
+    end
   end
 
   describe "authenticated but user deleted" do

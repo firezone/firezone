@@ -4,7 +4,8 @@
   <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
 
   <div class="block">
-    <%= render FzHttpWeb.SharedView, "devices_table.html", devices: @devices, socket: @socket %>
+    <%= render FzHttpWeb.SharedView, "devices_table.html",
+        devices: @devices, show_user: true, socket: @socket %>
   </div>
 
   <p>
