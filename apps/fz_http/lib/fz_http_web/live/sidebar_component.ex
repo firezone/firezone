@@ -8,7 +8,7 @@ defmodule FzHttpWeb.SidebarComponent do
 
   def render(assigns) do
     ~H"""
-    <aside class="aside is-placed-left is-expanded">
+    <aside class="aside is-placed-left is-expanded is-vertically-scrollable ">
       <div class="aside-tools">
         <div class="aside-tools-label">
           <span>Firezone</span>
