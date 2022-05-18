@@ -233,29 +233,29 @@ jobs:
           - ubuntu1804-x64
           - ubuntu2004-x64
           - opensuse15-x64
-    if: startsWith(github.ref, 'refs/tags/')
+    # Draft releases on merges to master
+    if: startsWith(github.ref, 'refs/heads/master')
     steps:
+      - uses: release-drafter/release-drafter@v5
+        id: release_drafter
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/download-artifact@v3
         with:
           name: firezone-${{ matrix.platform }}
           path: ./
-      - name: Get the version
-        id: get_version
-        run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
       - name: Rename artifact file to tag
         run: |
-          mv ./firezone*.rpm firezone_${{ steps.get_version.outputs.VERSION }}-${{ matrix.platform }}.rpm || true
-          mv ./firezone*.deb firezone_${{ steps.get_version.outputs.VERSION }}-${{ matrix.platform }}.deb || true
+          mv ./firezone*.rpm firezone_${{ steps.release_drafter.outputs.name }}-${{ matrix.platform }}.rpm || true
+          mv ./firezone*.deb firezone_${{ steps.release_drafter.outputs.name }}-${{ matrix.platform }}.deb || true
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
+          name: ${{ steps.release_drafter.outputs.name }}
           draft: true
           files: |
             ./firezone*.rpm
             ./firezone*.deb
-      - uses: release-drafter/release-drafter@v5
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   publish-docs:
     needs: publish
