@@ -20,7 +20,7 @@
       </td>
       <%= if @show_user do %>
         <td>
-          <%= device.user.email %>
+          <%= link(device.user.email, to: Routes.user_show_path(@socket, :show, device.user)) %>
         </td>
       <% end %>
       <td class="code">
