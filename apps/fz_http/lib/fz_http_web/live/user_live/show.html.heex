@@ -43,7 +43,7 @@
 <section class="section is-main-section">
   <h4 class="title is-4">Devices</h4>
 
-  <div class="block">
+  <div class="block is-horizontally-scrollable">
     <%= if length(@devices) > 0 do %>
       <%= render FzHttpWeb.SharedView, "devices_table.html",
           devices: @devices, show_user: false, socket: @socket %>

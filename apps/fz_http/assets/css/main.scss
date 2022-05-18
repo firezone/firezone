@@ -8,8 +8,11 @@ nav.navbar {
   @extend .is-family-monospace;
 }
 
-/* Add scrolling to the left nav bar */
-aside.aside {
+.is-horizontally-scrollable {
+  overflow-x: auto;
+}
+
+.is-vertically-scrollable {
   overflow-y: auto;
 }
 
