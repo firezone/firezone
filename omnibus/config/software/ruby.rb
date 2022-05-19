@@ -30,7 +30,7 @@ skip_transitive_dependency_licensing true
 # - verify that all ffi libs are available for your version on all platforms.
 # - when upgrading please check the ABI version and update the exclusion until
 #   https://gitlab.com/gitlab-org/omnibus-gitlab/issues/3414 is addressed
-default_version '2.7.6'
+default_version '2.7.5'
 
 fips_enabled = (project.overrides[:fips] && project.overrides[:fips][:enabled]) || false
 

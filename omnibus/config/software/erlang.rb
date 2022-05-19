@@ -98,10 +98,9 @@ build do
   #
   # In future releases of erlang, someone should check if these flags (or
   # environment variables) are avaiable to remove this ugly hack.
-  # Doesn't seem to be necessary for > 24
-  # %w[ncurses openssl zlib.h zconf.h].each do |name|
-  #   link "#{install_dir}/embedded/include/#{name}", "#{install_dir}/embedded/erlang/include/#{name}"
-  # end
+  %w[ncurses openssl zlib.h zconf.h].each do |name|
+    link "#{install_dir}/embedded/include/#{name}", "#{install_dir}/embedded/erlang/include/#{name}"
+  end
 
   # Note 2017-02-28 sr: HiPE doesn't compile with OTP 18.3 on ppc64le (https://bugs.erlang.org/browse/ERL-369)
   # Compiling fails when linking beam.smp, with
