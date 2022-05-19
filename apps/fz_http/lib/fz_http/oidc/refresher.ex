@@ -5,7 +5,7 @@ defmodule FzHttp.OIDC.Refresher do
   use GenServer, restart: :temporary
 
   import Ecto.Query
-  alias FzHttp.{Repo, OIDC.Connection, OIDC, Users.User, Users}
+  alias FzHttp.{OIDC, OIDC.Connection, Repo, Users, Users.User}
   require Logger
 
   @delay_range 15
