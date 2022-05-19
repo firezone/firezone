@@ -24,7 +24,7 @@ defmodule FzHttp.OIDC.Refresher do
   end
 
   defp refresh(user_id) do
-    connections = Repo.all(from(Connection, where: [user_id: ^user_id]))
+    connections = Repo.all(from Connection, where: [user_id: ^user_id])
     Enum.each(connections, &do_refresh(user_id, &1))
     {:stop, :shutdown, user_id}
   end
