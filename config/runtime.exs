@@ -7,36 +7,20 @@ import Config
 
 alias FzCommon.{CLI, FzInteger, FzString}
 
+# external is important
+external_url = System.get_env("EXTERNAL_URL", "http://localhost:4000")
+
 # Optional config across all envs
-
-# Defaults to what's set upstream
-external_url = System.get_env("EXTERNAL_URL")
-
-if config_env() == :prod do
-  # Errors if not set in production
-  System.fetch_env!("EXTERNAL_URL")
-end
 
 # Enable Forwarded headers, e.g 'X-FORWARDED-HOST'
 proxy_forwarded = FzString.to_boolean(System.get_env("PROXY_FORWARDED") || "false")
 
-endpoint_opts =
-  if external_url do
-    %{host: host, path: path, port: port, scheme: scheme} = URI.parse(external_url)
+%{host: host, path: path, port: port, scheme: scheme} = URI.parse(external_url)
 
-    [
-      url: [host: host, scheme: scheme, port: port, path: path],
-      check_origin: ["//127.0.0.1", "//localhost", "//#{host}"],
-      proxy_forwarded: proxy_forwarded
-    ]
-  else
-    [
-      check_origin: ["//127.0.0.1", "//localhost"],
-      proxy_forwarded: proxy_forwarded
-    ]
-  end
-
-config :fz_http, FzHttpWeb.Endpoint, endpoint_opts
+config :fz_http, FzHttpWeb.Endpoint,
+  url: [host: host, scheme: scheme, port: port, path: path],
+  check_origin: ["//127.0.0.1", "//localhost", "//#{host}"],
+  proxy_forwarded: proxy_forwarded
 
 # Formerly releases.exs - Only evaluated in production
 if config_env() == :prod do
