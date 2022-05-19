@@ -18,8 +18,8 @@ construct a request to the OpenID server.
 1. `client_id`: The client ID of the application.
 1. `client_secret`: The client secret of the application.
 1. `redirect_uri`: Instructs OIDC provider where to redirect after authentication.
-This should be your firezone `EXTERNAL_URL + /auth/oidc/<provider_key>/callback`
-(e.g. `https://firezone.example.com/auth/oidc/azure/callback`).
+This should be your Firezone `EXTERNAL_URL + /auth/oidc/<provider_key>/callback/`
+(e.g. `https://firezone.example.com/auth/oidc/azure/callback/`).
 1. `response_type`: Set to `code`.
 1. `scope`: [OIDC scopes](https://openid.net/specs/openid-connect-basic-1_0.html#Scopes)
 to obtain from your OIDC provider. This should be set to `openid email profile`
@@ -38,8 +38,10 @@ Select the App registrations link under the Manage menu, click
 
 1. `Name`: `Firezone`
 1. `Supported account types`: `(Default Directory only - Single tenant)`
-1. `Redirect URI`: Append `/auth/oidc/azure/callback/` to your Firezone base URL.
-Make sure you include the trailing slash. **This will be the `redirect_uri` value**.
+1. `Redirect URI`: This should be your firezone `EXTERNAL_URL + /auth/oidc/azure/callback/`
+(e.g. `https://firezone.example.com/auth/oidc/azure/callback/`).
+Make sure you include the trailing slash.
+**This will be the `redirect_uri` value**.
 
 ![App Registration](https://user-images.githubusercontent.com/52545545/168722092-716c8448-4dc4-4d7a-a25c-1af701a57744.png){:width="800"}
 

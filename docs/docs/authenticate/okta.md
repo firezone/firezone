@@ -17,11 +17,13 @@ obtain the following config settings required for the integration:
 construct a request to the OpenID server.
 1. `client_id`: The client ID of the application.
 1. `client_secret`: The client secret of the application.
-1. `redirect_uri`: Instructs OIDC provider where the response to the
-request should be sent.
+1. `redirect_uri`: Instructs OIDC provider where to redirect after authentication.
+This should be your Firezone `EXTERNAL_URL + /auth/oidc/<provider_key>/callback/`
+(e.g. `https://firezone.example.com/auth/oidc/okta/callback/`).
 1. `response_type`: Set to `code`.
-1. `scope`: The permissions required by Firezone.
-This should be set to `openid email profile`.
+1. `scope`: [OIDC scopes](https://openid.net/specs/openid-connect-basic-1_0.html#Scopes)
+to obtain from your OIDC provider. This should be set to `openid email profile`
+to provide Firezone with the user's email in the returned claims.
 1. `label`: The button label text that shows up on your Firezone login screen.
 
 ![Firezone Okta SSO Login](https://user-images.githubusercontent.com/52545545/156855886-5a4a0da7-065c-4ec1-af33-583dff4dbb72.gif){:width="600"}
@@ -48,13 +50,9 @@ On the following screen, configure the following settings:
 1. **App logo**:
 [Firezone logo](https://user-images.githubusercontent.com/52545545/155907625-a4f6c8c2-3952-488d-b244-3c37400846cf.png)
 (save link as).
-1. **Sign-in redirect URIs**: Append `/auth/oidc/okta/callback` to your Firezone
-base URL. For example, if your Firezone instance is available at
-`https://firezone.example.com`, then you would enter
-`https://firezone.example.com/auth/oidc/okta/callback` here. The redirect URI is
-where Okta will redirect the user's browser after successful authentication.
-Firezone will receive this callback, initiate the user's session, and redirect
-the user's browser to the appropriate page depending on the user's role.
+1. **Sign-in redirect URIs**: Add your Firezone `EXTERNAL_URL + /auth/oidc/okta/callback/`
+(e.g. `https://firezone.example.com/auth/oidc/okta/callback/`) as an entry to
+Authorized redirect URIs.
 1. **Assignments**:
 Limit to the groups you wish to provide access to your Firezone instance.
 

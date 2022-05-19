@@ -17,11 +17,13 @@ obtain the following config settings required for the integration:
 construct a request to the OpenID server.
 1. `client_id`: The client ID of the application.
 1. `client_secret`: The client secret of the application.
-1. `redirect_uri`: Instructs OIDC provider where the response to the
-request should be sent.
+1. `redirect_uri`: Instructs OIDC provider where to redirect after authentication.
+This should be your Firezone `EXTERNAL_URL + /auth/oidc/<provider_key>/callback/`
+(e.g. `https://firezone.example.com/auth/oidc/google/callback/`).
 1. `response_type`: Set to `code`.
-1. `scope`: The permissions required by Firezone.
-This should be set to `openid email profile`.
+1. `scope`: [OIDC scopes](https://openid.net/specs/openid-connect-basic-1_0.html#Scopes)
+to obtain from your OIDC provider. This should be set to `openid email profile`
+to provide Firezone with the user's email in the returned claims.
 1. `label`: The button label text that shows up on your Firezone login screen.
 
 ![Firezone Google SSO Login](https://user-images.githubusercontent.com/52545545/156853456-1ab3f041-1002-4c79-a266-82acb5802890.gif){:width="600"}
@@ -79,13 +81,9 @@ page, click `+ Create Credentials` and select `OAuth client ID`.
 On the OAuth client ID creation screen:
 
 1. Set `Application Type` to `Web application`
-1. Add an entry to Authorized redirect URIs that consists of appending
-`/auth/oidc/google/callback/` to your Firezone base URL. For example, if your Firezone
-instance is available at `https://firezone.example.com`, then you would enter
-`https://firezone.example.com/auth/google/callback` here. The redirect URI is
-where Google will redirect the user's browser after successful authentication.
-Firezone will receive this callback, initiate the user's session, and redirect
-the user's browser to the appropriate page depending on the user's role.
+1. Add your Firezone `EXTERNAL_URL + /auth/oidc/google/callback/`
+(e.g. `https://firezone.example.com/auth/oidc/google/callback/`) as an entry to
+Authorized redirect URIs.
 
 ![Create OAuth client ID](https://user-images.githubusercontent.com/52545545/168910923-819300d3-b0c2-49a6-81ee-884dce471362.png){:width="800"}
 
