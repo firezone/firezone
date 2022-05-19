@@ -33,7 +33,8 @@ install_dir "#{default_root}/#{name}"
 stage_path = '/opt/runner/omnibus-local/stage'
 ENV['CI'] && Dir.exist?(stage_path) && staging_dir(stage_path)
 
-build_version Omnibus::BuildVersion.semver
+# Use Release Drafter's resolved version
+build_version ENV.fetch('VERSION', Omnibus::BuildVersion.semver)
 build_iteration 1
 
 # firezone build dependencies/components
