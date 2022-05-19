@@ -100,10 +100,10 @@ jobs:
       - uses: actions/checkout@v2
       - uses: actions/setup-node@v2
         with:
-          node-version: '14.18.3'
+          node-version: '14.19.3'
       - uses: erlef/setup-beam@v1
         with:
-          otp-version: '24.3.4'
+          otp-version: '25.0'
           elixir-version: '1.13.4'
       - uses: actions/cache@v2
         with:
@@ -187,6 +187,8 @@ jobs:
           sudo rm -f /opt/runner/omnibus-local/cache/git_cache/opt/firezone/index.lock
 
           . $HOME/.asdf/asdf.sh
+          asdf install ruby
+
           # CentOS 7 has path issues when this runs and doesn't have the
           # devtools loaded
           if test -f /opt/rh/devtoolset-9/enable; then
