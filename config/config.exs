@@ -99,13 +99,7 @@ config :fz_vpn,
   cli: FzVpn.CLI.Sandbox,
   server_process_opts: [name: {:global, :fz_vpn_server}]
 
-# Configures the endpoint
-# These will be overridden at runtime in production by config/releases.exs
-external_url = "http://localhost:4000"
-%{host: host, scheme: scheme, port: port, path: path} = URI.parse(external_url)
-
 config :fz_http, FzHttpWeb.Endpoint,
-  url: [host: host, port: port, scheme: scheme, path: path],
   render_errors: [view: FzHttpWeb.ErrorView, accepts: ~w(html json)],
   pubsub_server: FzHttp.PubSub,
   proxy_forwarded: false
