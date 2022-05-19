@@ -1,0 +1,14 @@
+[package]
+name = "wireguard_nif"
+version = "0.1.0"
+authors = ["Andrew Rousset <andrew@firezone.dev>"]
+edition = "2018"
+
+[lib]
+name = "wireguard_nif"
+path = "src/lib.rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+rustler = "0.25"
+wireguard-control = "1.5"
