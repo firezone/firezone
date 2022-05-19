@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v2
       - uses: actions/setup-node@v2
         with:
-          node-version: '14.18.3'
+          node-version: '14.19.3'
       - name: Lint Docs
         run: |
           npm install -g markdownlint-cli
@@ -38,7 +38,7 @@ jobs:
       - uses: actions/setup-python@v2
       - uses: erlef/setup-beam@v1
         with:
-          otp-version: '24.3.4'
+          otp-version: '25.0'
           elixir-version: '1.13.4'
       - uses: actions/cache@v2
         with:
