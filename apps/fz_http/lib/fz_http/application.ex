@@ -37,7 +37,7 @@ defmodule FzHttp.Application do
       FzHttpWeb.Presence,
       FzHttp.ConnectivityCheckService,
       FzHttp.VpnSessionScheduler,
-      if(openid_connect_providers, do: {OpenIDConnect.Worker, openid_connect_providers}),
+      {OpenIDConnect.Worker, openid_connect_providers},
       {DynamicSupervisor, name: FzHttp.RefresherSupervisor, strategy: :one_for_one},
       FzHttp.OIDC.RefreshManager
     ]
