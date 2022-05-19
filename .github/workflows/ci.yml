@@ -181,7 +181,7 @@ jobs:
       - name: Build
         env:
           GIT_SHA: ${{ github.sha }}
-          VERSION: ${{ needs.draft_release.outputs.tag_name }}
+          VERSION: ${{ needs.draft-release.outputs.tag_name }}
         run: |
           echo "removing lock file in case last run sucked"
           sudo rm -f /opt/runner/omnibus-local/cache/git_cache/opt/firezone/index.lock
@@ -255,12 +255,12 @@ jobs:
           path: ./
       - name: Rename artifact file to tag
         run: |
-          mv ./firezone*.rpm firezone_${{ needs.draft_release.outputs.tag_name }}-${{ matrix.platform }}.rpm || true
-          mv ./firezone*.deb firezone_${{ needs.draft_release.outputs.tag_name }}-${{ matrix.platform }}.deb || true
+          mv ./firezone*.rpm firezone_${{ needs.draft-release.outputs.tag_name }}-${{ matrix.platform }}.rpm || true
+          mv ./firezone*.deb firezone_${{ needs.draft-release.outputs.tag_name }}-${{ matrix.platform }}.deb || true
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ needs.draft_release.outputs.tag_name }}
+          tag_name: ${{ needs.draft-release.outputs.tag_name }}
           draft: true
           files: |
             ./firezone*.rpm
