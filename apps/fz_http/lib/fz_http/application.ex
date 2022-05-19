@@ -41,7 +41,6 @@ defmodule FzHttp.Application do
       {DynamicSupervisor, name: FzHttp.RefresherSupervisor, strategy: :one_for_one},
       FzHttp.OIDC.RefreshManager
     ]
-    |> Enum.reject(&is_nil/1)
   end
 
   defp children(:test) do
