@@ -1,11 +1,9 @@
 defmodule FzHttp.MixProject do
   use Mix.Project
 
-  @version_path "../../scripts/version.exs"
-
   def version do
-    Code.eval_file(@version_path)
-    |> elem(0)
+    # Use dummy version for dev and test
+    System.get_env("VERSION", "0.0.0+git.0.deadbeef")
   end
 
   def project do
