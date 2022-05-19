@@ -187,6 +187,9 @@ jobs:
           sudo rm -f /opt/runner/omnibus-local/cache/git_cache/opt/firezone/index.lock
 
           . $HOME/.asdf/asdf.sh
+          asdf update
+          asdf plugin-add ruby
+          asdf plugin-update ruby
           asdf install ruby
 
           # CentOS 7 has path issues when this runs and doesn't have the
