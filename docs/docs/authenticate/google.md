@@ -17,7 +17,7 @@ obtain the following config settings required for the integration:
 construct a request to the OpenID server.
 1. `client_id`: The client ID of the application.
 1. `client_secret`: The client secret of the application.
-1. `redirect_uri`: Instructs OIDC identity provider where the response to the
+1. `redirect_uri`: Instructs OIDC provider where the response to the
 request should be sent.
 1. `response_type`: Set to `code`.
 1. `scope`: The permissions required by Firezone.
@@ -28,7 +28,12 @@ This should be set to `openid email profile`.
 
 _Note: Previously, Firezone used pre-configured Oauth2 providers. We've moved to
 OIDC based authentication, which allows for any OpenID Connect provider
-(Google, Okta, Dex) to be used for authetication._
+(Google, Okta, Dex) to be used for authentication._
+
+_We strongly recommend transitioning your existing Google or Okta-based SSO
+configuration to the generic OIDC-based configuration format described here.
+We'll be removing the Google-specific and Okta-specific SSO functionality
+in a future release._
 
 To set up SSO, follow the steps below:
 
@@ -96,7 +101,7 @@ Edit `/etc/firezone/firezone.rb` to include the options below.
 ```ruby
 # Using Google as the SSO identity provider
 default['firezone']['authentication']['oidc'] = {
-  google: [
+  google: {
     discovery_document_uri: "https://accounts.google.com/.well-known/openid-configuration",
     client_id: "CLIENT_ID",
     client_secret: "CLIENT_SECRET",
@@ -104,7 +109,7 @@ default['firezone']['authentication']['oidc'] = {
     response_type: "code",
     scope: "openid email profile",
     label: "Google"
-  ]
+  }
 }
 ```
 

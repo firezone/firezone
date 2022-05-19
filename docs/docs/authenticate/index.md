@@ -21,10 +21,10 @@ support integration with any generic OpenID Connect
 (OIDC) identity provider. This allows users to sign in to Firezone using
 their credentials from Okta, Google, Azure AD, or your own custom identity provider.
 
-## Integrating A Generic OIDC Identity Provider
+## Integrating A Generic OIDC Provider
 
 The example below details the config settings required by Firezone to enable SSO
-through an OIDC identity provider. The configuration file can be found at
+through an OIDC provider. The configuration file can be found at
 `/etc/firezone/firezone.rb`. To pick up changes, run `firezone-ctl reconfigure`
 and `firezone-ctl restart` to update the application.
 
@@ -33,7 +33,7 @@ and `firezone-ctl restart` to update the application.
 # Multiple OIDC configs can be added to the same Firezone instance.
 
 default['firezone']['authentication']['oidc'] = {
-  google: [
+  google: {
     discovery_document_uri: "https://accounts.google.com/.well-known/openid-configuration",
     client_id: "CLIENT_ID",
     client_secret: "CLIENT_SECRET",
@@ -41,7 +41,7 @@ default['firezone']['authentication']['oidc'] = {
     response_type: "code",
     scope: "openid email profile",
     label: "Google"
-  ]
+  }
 }
 ```
 

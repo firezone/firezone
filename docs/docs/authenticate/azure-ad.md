@@ -17,11 +17,13 @@ config settings required for the integration:
 construct a request to the OpenID server.
 1. `client_id`: The client ID of the application.
 1. `client_secret`: The client secret of the application.
-1. `redirect_uri`: Instructs OIDC identity provider where the response to the
-request should be sent.
+1. `redirect_uri`: Instructs OIDC provider where to redirect after authentication.
+This should be your firezone `EXTERNAL_URL + /auth/oidc/<provider_key>/callback`
+(e.g. `https://firezone.example.com/auth/oidc/azure/callback`).
 1. `response_type`: Set to `code`.
-1. `scope`: The permissions required by Firezone.
-This should be set to `openid email profile`.
+1. `scope`: [OIDC scopes](https://openid.net/specs/openid-connect-basic-1_0.html#Scopes)
+to obtain from your OIDC provider. This should be set to `openid email profile`
+to provide Firezone with the user's email in the returned claims.
 1. `label`: The button label text that shows up on your Firezone login screen.
 
 ![Azure SSO](https://user-images.githubusercontent.com/52545545/168922621-1f0f4dea-adfc-4e15-a140-a2f213676103.gif){:width="600"}
@@ -67,7 +69,7 @@ Edit `/etc/firezone/firezone.rb` to include the options below.
 ```ruby
 # Using Azure Active Directory as the SSO identity provider
 default['firezone']['authentication']['oidc'] = {
-  azure: [
+  azure: {
     discovery_document_uri: "https://login.microsoftonline.com/{tenant_ID}/v2.0/.well-known/openid-configuration",
     client_id: "CLIENT_ID",
     client_secret: "CLIENT_SECRET",
@@ -75,7 +77,7 @@ default['firezone']['authentication']['oidc'] = {
     response_type: "code",
     scope: "openid email profile",
     label: "Azure"
-  ]
+  }
 }
 ```
 

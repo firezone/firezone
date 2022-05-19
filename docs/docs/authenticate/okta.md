@@ -17,7 +17,7 @@ obtain the following config settings required for the integration:
 construct a request to the OpenID server.
 1. `client_id`: The client ID of the application.
 1. `client_secret`: The client secret of the application.
-1. `redirect_uri`: Instructs OIDC identity provider where the response to the
+1. `redirect_uri`: Instructs OIDC provider where the response to the
 request should be sent.
 1. `response_type`: Set to `code`.
 1. `scope`: The permissions required by Firezone.
@@ -73,7 +73,7 @@ will be `/.well-known/openid-configuration` appended to the end of your `okta_do
 ```ruby
 # Using Okta as the SSO identity provider
 default['firezone']['authentication']['oidc'] = {
-  okta: [
+  okta: {
     discovery_document_uri: "https://{okta_domain}/.well-known/openid-configuration",
     client_id: "CLIENT_ID",
     client_secret: "CLIENT_SECRET",
@@ -81,7 +81,7 @@ default['firezone']['authentication']['oidc'] = {
     response_type: "code",
     scope: "openid email profile",
     label: "Okta"
-  ]
+  }
 }
 ```
 
