@@ -197,6 +197,10 @@ jobs:
           asdf plugin-update ruby
           asdf install ruby
 
+          # Install local rust to build native code
+          asdf plugin-update rust
+          asdf install rust
+
           # CentOS 7 has path issues when this runs and doesn't have the
           # devtools loaded
           if test -f /opt/rh/devtoolset-9/enable; then
