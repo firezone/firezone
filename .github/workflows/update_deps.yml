@@ -41,7 +41,7 @@ jobs:
         if: startsWith(matrix.platform, 'opensuse')
         run: |
           sudo zypper refresh
-          sudo zypper --non-interactive install llvm clang
+          sudo zypper --non-interactive install llvm
       - name: install llvm on redhat-based
         if: >
           startsWith(matrix.platform, 'amazonlinux') ||
@@ -49,11 +49,11 @@ jobs:
           startsWith(matrix.platform, 'fedora') ||
           startsWith(matrix.platform, 'fedora')
         run: |
-          sudo yum install -y llvm clang
+          sudo yum install -y llvm
       - name: install llvm on debian-based
         if: >
           startsWith(matrix.platform, 'debian') ||
           startsWith(matrix.platform, 'ubuntu')
         run: |
           sudo apt-get update
-          sudo apt-get install -yq llvm libclang-dev
+          sudo apt-get install -yq llvm
