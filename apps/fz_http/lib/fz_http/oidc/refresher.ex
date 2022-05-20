@@ -4,8 +4,8 @@ defmodule FzHttp.OIDC.Refresher do
   """
   use GenServer, restart: :temporary
 
-  import Ecto.Query
-  alias FzHttp.{OIDC, OIDC.Connection, Repo, Users, Users.User}
+  import Ecto.{Changeset, Query}
+  alias FzHttp.{OIDC, OIDC.Connection, Repo, Users}
   require Logger
 
   @delay_range 15
@@ -62,7 +62,8 @@ defmodule FzHttp.OIDC.Refresher do
 
       user_id
       |> Users.get_user!()
-      |> User.changeset(%{last_signed_in_at: ~U[1970-01-01 00:00:00Z]})
+      |> change()
+      |> put_change(:allowed_to_connect, false)
       |> Repo.update!()
     end
   end

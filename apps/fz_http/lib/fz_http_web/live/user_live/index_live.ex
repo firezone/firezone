@@ -4,7 +4,8 @@ defmodule FzHttpWeb.UserLive.Index do
   """
   use FzHttpWeb, :live_view
 
-  alias FzHttp.Users
+  import Ecto.Changeset
+  alias FzHttp.{Repo, Users}
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
@@ -18,5 +19,21 @@ defmodule FzHttpWeb.UserLive.Index do
   @impl Phoenix.LiveView
   def handle_params(_params, _url, socket) do
     {:noreply, socket}
+  end
+
+  @impl Phoenix.LiveView
+  def handle_event(
+        "toggle_allowed_to_connect",
+        %{"_target" => ["allowed-to-connect-" <> user_id]} = params,
+        socket
+      ) do
+    Users.get_user!(user_id)
+    |> change
+    |> put_change(:allowed_to_connect, !!params["allowed-to-connect-#{user_id}"])
+    |> Repo.update!()
+
+    {:noreply,
+     socket
+     |> assign(:users, Users.list_users(:with_device_counts))}
   end
 end

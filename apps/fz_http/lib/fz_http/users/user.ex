@@ -21,6 +21,7 @@ defmodule FzHttp.Users.User do
     field :password_hash, :string
     field :sign_in_token, :string
     field :sign_in_token_created_at, :utc_datetime_usec
+    field :allowed_to_connect, :boolean
 
     # VIRTUAL FIELDS
     field :device_count, :integer, virtual: true

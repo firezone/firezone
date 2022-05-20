@@ -20,6 +20,7 @@
         <tr>
           <th>Email</th>
           <th>Devices</th>
+          <th>Can Connect</th>
           <th>Last Signed In</th>
           <th>Last Signed In Method</th>
           <th>Created</th>
@@ -33,6 +34,11 @@
             <%= live_patch(user.email, to: Routes.user_show_path(@socket, :show, user)) %>
           </td>
           <td id={"user-#{user.id}-device-count"}><%= user.device_count %></td>
+          <td>
+            <form phx-change="toggle_allowed_to_connect">
+              <input type="checkbox" name={"allowed-to-connect-#{user.id}"} checked={user.allowed_to_connect} /> 
+            </form>
+          </td>
           <td id={"user-#{user.id}-timestamp"}
               data-timestamp={user.last_signed_in_at}
               phx-hook="FormatTimestamp">
