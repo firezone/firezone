@@ -8,5 +8,5 @@ defmodule FzVpn.WireguardBridge do
   def set(_config, _name), do: error()
   def show(_subcommand, _name), do: error()
 
-  defp error(), do: :erlang.nif_error(:nif_not_loaded)
+  defp error, do: :erlang.nif_error(:nif_not_loaded)
 end
