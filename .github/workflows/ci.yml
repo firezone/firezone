@@ -35,7 +35,7 @@ jobs:
       - name: install llvm
         run: |
           sudo apt-get update
-          sudo apt-get install -yq llvm
+          sudo apt-get install -yq llvm libclang-dev
       - uses: actions/setup-ruby@v1
         with:
           ruby-version: '2.7'
@@ -101,7 +101,8 @@ jobs:
           sudo apt-get install -q -y \
             net-tools \
             wireguard \
-            llvm
+            llvm \
+            libclang-dev
       - uses: actions/checkout@v2
       - uses: actions/setup-node@v2
         with:
