@@ -4,3 +4,4 @@ nodejs 14.19.3
 elixir 1.13.4-otp-25
 erlang 25.0
 ruby 2.7.5
+rust 1.60.0
