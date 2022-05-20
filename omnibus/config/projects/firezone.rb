@@ -34,7 +34,7 @@ stage_path = '/opt/runner/omnibus-local/stage'
 ENV['CI'] && Dir.exist?(stage_path) && staging_dir(stage_path)
 
 # Use Release Drafter's resolved version
-build_version ENV.fetch('VERSION', Omnibus::BuildVersion.semver)
+build_version ENV.fetch('VERSION', '0.0.0+git.0.ci')
 build_iteration 1
 
 # firezone build dependencies/components
