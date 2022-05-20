@@ -10,7 +10,7 @@ defmodule FzHttpWeb.UserLive.AllowedToConnectComponent do
   @impl Phoenix.LiveComponent
   def render(assigns) do
     ~H"""
-    <input type="checkbox" phx-target={@myself}
+    <input type="checkbox" phx-target={@myself} disabled={@user.role == :admin}
         phx-click="toggle_allowed_to_connect" checked={@user.allowed_to_connect} />
     """
   end
