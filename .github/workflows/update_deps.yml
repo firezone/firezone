@@ -46,7 +46,6 @@ jobs:
         if: >
           startsWith(matrix.platform, 'amazonlinux') ||
           startsWith(matrix.platform, 'centos') ||
-          startsWith(matrix.platform, 'fedora') ||
           startsWith(matrix.platform, 'fedora')
         run: |
           sudo yum install -y llvm clang
@@ -56,4 +55,4 @@ jobs:
           startsWith(matrix.platform, 'ubuntu')
         run: |
           sudo apt-get update
-          sudo apt-get install -yq llvm clang
+          sudo apt-get install -yq llvm libclang-dev
