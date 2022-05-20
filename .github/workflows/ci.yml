@@ -26,12 +26,16 @@ jobs:
           markdownlint .
 
   static-analysis:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-latest
     env:
       MIX_ENV: dev
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v2
+      - name: install llvm
+        run: |
+          sudo apt-get update
+          sudo apt-get install -yq llvm
       - uses: actions/setup-ruby@v1
         with:
           ruby-version: '2.7'
@@ -96,7 +100,8 @@ jobs:
         run: |
           sudo apt-get install -q -y \
             net-tools \
-            wireguard
+            wireguard \
+            llvm
       - uses: actions/checkout@v2
       - uses: actions/setup-node@v2
         with:
