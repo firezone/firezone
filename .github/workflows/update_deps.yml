@@ -1,3 +1,4 @@
+name: Update Dependencies
 on: workflow_dispatch
 
 jobs:
@@ -39,7 +40,7 @@ jobs:
       - name: install llvm on suse-based
         if: startsWith(matrix.platform, 'opensuse')
         run: |
-          zypper install -y -t llvm
+          sudo zypper install -y -t llvm
       - name: install llvm on redhat-based
         if: >
           startsWith(matrix.platform, 'amazonlinux') ||
@@ -47,11 +48,11 @@ jobs:
           startsWith(matrix.platform, 'fedora') ||
           startsWith(matrix.platform, 'fedora')
         run: |
-          yum install -y llvm
+          sudo yum install -y llvm
       - name: install llvm on debian-based
         if: >
           startsWith(matrix.platform, 'debian') ||
           startsWith(matrix.platform, 'ubuntu')
         run: |
-          apt-get update
-          apt-get install -yq llvm
+          sudo apt-get update
+          sudo apt-get install -yq llvm
