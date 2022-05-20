@@ -41,7 +41,7 @@ jobs:
         if: startsWith(matrix.platform, 'opensuse')
         run: |
           sudo zypper refresh
-          sudo zypper install --non-interactive llvm
+          sudo zypper --non-interactive install llvm
       - name: install llvm on redhat-based
         if: >
           startsWith(matrix.platform, 'amazonlinux') ||
