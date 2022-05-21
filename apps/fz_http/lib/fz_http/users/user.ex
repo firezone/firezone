@@ -10,7 +10,7 @@ defmodule FzHttp.Users.User do
   import Ecto.Changeset
   import FzHttp.Users.PasswordHelpers
 
-  alias FzHttp.Devices.Device
+  alias FzHttp.{Devices.Device, OIDC.Connection}
 
   schema "users" do
     field :uuid, Ecto.UUID, autogenerate: true
@@ -30,6 +30,7 @@ defmodule FzHttp.Users.User do
     field :current_password, :string, virtual: true
 
     has_many :devices, Device, on_delete: :delete_all
+    has_many :oidc_connections, Connection, on_delete: :delete_all
 
     timestamps(type: :utc_datetime_usec)
   end

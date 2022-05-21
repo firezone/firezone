@@ -5,7 +5,11 @@ defmodule FzHttp.OIDC do
 
   import Ecto.Query, warn: false
 
-  alias FzHttp.{OIDC.Connection, Repo}
+  alias FzHttp.{OIDC.Connection, Repo, Users.User}
+
+  def list_connections(%User{id: id}) do
+    Repo.all(from Connection, where: [user_id: ^id])
+  end
 
   def get_connection!(site_id, user_id, provider) do
     Repo.get_by!(Connection, site_id: site_id, user_id: user_id, provider: provider)

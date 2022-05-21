@@ -41,6 +41,12 @@
 </section>
 
 <section class="section is-main-section">
+  <h4 class="title is-4">OIDC Connections</h4>
+
+  <%= render FzHttpWeb.SharedView, "oidc_connections_table.html", connections: @connections %>
+</section>
+
+<section class="section is-main-section">
   <h4 class="title is-4">Devices</h4>
 
   <div class="block is-horizontally-scrollable">

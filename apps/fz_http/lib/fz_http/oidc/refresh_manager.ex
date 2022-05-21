@@ -4,6 +4,7 @@ defmodule FzHttp.OIDC.RefreshManager do
   """
   use GenServer, restart: :permanent
 
+  import Ecto.Query
   alias FzHttp.{Repo, Users.User}
 
   @spawn_interval 60 * 60 * 1000
@@ -33,7 +34,7 @@ defmodule FzHttp.OIDC.RefreshManager do
   defp spawn_refresher do
     schedule()
 
-    User
+    from(User, where: [allowed_to_connect: true])
     |> Repo.all()
     |> Enum.each(&do_spawn/1)
   end
