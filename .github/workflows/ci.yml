@@ -198,7 +198,6 @@ jobs:
           asdf install ruby
 
           # Install local rust to build native code
-          asdf plugin-add rust
           asdf plugin-update rust
           asdf install rust
 
