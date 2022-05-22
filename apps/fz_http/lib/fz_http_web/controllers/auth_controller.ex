@@ -69,12 +69,7 @@ defmodule FzHttpWeb.AuthController do
         {:ok, user} ->
           # only first-time connect will include refresh token
           with %{"refresh_token" => refresh_token} <- tokens do
-            FzHttp.OIDC.create_connection(
-              FzHttp.Sites.get_site!().id,
-              user.id,
-              provider_key,
-              refresh_token
-            )
+            FzHttp.OIDC.create_connection(user.id, provider_key, refresh_token)
           end
 
           conn

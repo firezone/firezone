@@ -11,19 +11,19 @@ defmodule FzHttp.OIDC do
     Repo.all(from Connection, where: [user_id: ^id])
   end
 
-  def get_connection!(site_id, user_id, provider) do
-    Repo.get_by!(Connection, site_id: site_id, user_id: user_id, provider: provider)
+  def get_connection!(user_id, provider) do
+    Repo.get_by!(Connection, user_id: user_id, provider: provider)
   end
 
-  def get_connection(site_id, user_id, provider) do
-    Repo.get_by(Connection, site_id: site_id, user_id: user_id, provider: provider)
+  def get_connection(user_id, provider) do
+    Repo.get_by(Connection, user_id: user_id, provider: provider)
   end
 
-  def create_connection(site_id, user_id, provider, refresh_token) do
-    %Connection{site_id: site_id, user_id: user_id}
+  def create_connection(user_id, provider, refresh_token) do
+    %Connection{user_id: user_id}
     |> Connection.changeset(%{provider: provider, refresh_token: refresh_token})
     |> Repo.insert(
-      conflict_target: [:site_id, :user_id, :provider],
+      conflict_target: [:user_id, :provider],
       on_conflict: {:replace, [:refresh_token]}
     )
   end

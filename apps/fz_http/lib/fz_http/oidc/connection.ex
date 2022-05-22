@@ -11,7 +11,6 @@ defmodule FzHttp.OIDC.Connection do
     field :refresh_response, :map
     field :refresh_token, :string
     field :refreshed_at, :utc_datetime_usec
-    field :site_id, :binary_id
     field :user_id, :id
 
     timestamps(type: :utc_datetime_usec)
