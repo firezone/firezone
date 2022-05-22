@@ -8,6 +8,7 @@ defmodule FzHttp.OIDC.RefreshManager do
   alias FzHttp.{Repo, Users.User}
 
   @spawn_interval 60 * 60 * 1000
+  @max_delay_after_spawn 15
 
   def start_link(_) do
     GenServer.start_link(__MODULE__, [])
@@ -40,6 +41,11 @@ defmodule FzHttp.OIDC.RefreshManager do
   end
 
   defp do_spawn(%{id: id} = _user) do
-    DynamicSupervisor.start_child(FzHttp.RefresherSupervisor, {FzHttp.OIDC.Refresher, id})
+    delay_after_spawn = Enum.random(1..@max_delay_after_spawn) * 1000
+
+    DynamicSupervisor.start_child(
+      FzHttp.RefresherSupervisor,
+      {FzHttp.OIDC.Refresher, {id, delay_after_spawn}}
+    )
   end
 end

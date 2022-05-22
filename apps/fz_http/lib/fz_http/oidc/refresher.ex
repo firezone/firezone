@@ -8,18 +8,16 @@ defmodule FzHttp.OIDC.Refresher do
   alias FzHttp.{OIDC, OIDC.Connection, Repo, Users}
   require Logger
 
-  @delay_range 15
-
-  def start_link(user_id) do
-    GenServer.start_link(__MODULE__, user_id)
+  def start_link(init_opts) do
+    GenServer.start_link(__MODULE__, init_opts)
   end
 
-  def init(user_id) do
-    {:ok, user_id, {:continue, :delay}}
+  def init({user_id, delay}) do
+    {:ok, user_id, {:continue, {:delay, delay}}}
   end
 
-  def handle_continue(:delay, user_id) do
-    Process.sleep(Enum.random(1..@delay_range) * 1000)
+  def handle_continue({:delay, delay}, user_id) do
+    Process.sleep(delay)
     refresh(user_id)
   end
 
