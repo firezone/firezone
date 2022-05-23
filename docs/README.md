@@ -2,7 +2,7 @@
 # Firezone Docs
 <!-- markdownlint-enable MD002 -->
 
-## To run the local docs server:
+## To run the local docs server
 
 1. Make sure you're in this directory: `cd docs/`
 2. `bundle install`
