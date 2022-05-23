@@ -21,7 +21,7 @@ defmodule FzHttp.OIDC.Refresher do
     refresh(user_id)
   end
 
-  defp refresh(user_id) do
+  def refresh(user_id) do
     connections = Repo.all(from Connection, where: [user_id: ^user_id])
     Enum.each(connections, &do_refresh(user_id, &1))
     {:stop, :shutdown, user_id}
@@ -40,10 +40,10 @@ defmodule FzHttp.OIDC.Refresher do
 
     refresh_response =
       case result do
-        {:ok, refreshed_claims} ->
-          refreshed_claims
+        {:ok, refreshed} ->
+          refreshed
 
-        {:error, _, %{body: body}} ->
+        {:error, :fetch_tokens, %{body: body}} ->
           %{error: body}
 
         _ ->
