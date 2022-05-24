@@ -141,14 +141,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-nifs:
-    runs-on: ${{ matrix.platform }}
+    runs-on: ubuntu-18.04
     strategy:
       matrix:
-        platform:
+        target:
           #arm64 target
-          - ubuntu1804-arm64
+          - aarch64-unknown-linux-gnu
           #x64 target
-          - ubuntu1804-x64
+          - x86_64-unknown-linux-gnu
     env:
       TELEMETRY_ENABLED: "false"
     steps:
@@ -172,8 +172,6 @@ jobs:
         with:
           otp-version: '25.0'
           elixir-version: '1.13.4'
-        env:
-          ImageOS: ubuntu18
       - uses: actions/cache@v2
         with:
           path: |
@@ -185,7 +183,9 @@ jobs:
       - name: Install Dependencies
         run: mix deps.get
       - name: Compile
-        run: mix compile
+        run: |
+          export CARGO_BUILD_TARGET=${{ matrix.target }}
+          mix compile
       # Upload built NIF artifact
       - uses: actions/upload-artifact@v2
         with:
