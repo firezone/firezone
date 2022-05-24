@@ -172,6 +172,8 @@ jobs:
         with:
           otp-version: '25.0'
           elixir-version: '1.13.4'
+        env:
+          ImageOS: ubuntu18
       - uses: actions/cache@v2
         with:
           path: |
