@@ -181,13 +181,13 @@ jobs:
       - name: Install Dependencies
         run: mix deps.get
       - name: Compile
-        run: MIX_ENV=prod mix compile
+        run: mix compile
       # Upload built NIF artifact
       - uses: actions/upload-artifact@v2
         with:
           name: wireguard_nif
           path: |
-            _build/prod/lib/fz_vpn/native/wireguard_nif/release/libwireguard_nif.so
+            apps/fz_vpn/priv/native/*
 
   build-package-test:
     # Doesn't really need, but don't run this stage when iterating over docs
@@ -233,7 +233,7 @@ jobs:
       - uses: actions/download-artifact@v3
         with:
           name: wireguard_nif
-          path: ./
+          path: ./apps/fz_vpn/priv/native/
       - run: tree _build
       - name: Build
         env:
