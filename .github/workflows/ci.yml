@@ -145,9 +145,55 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  build-nifs:
+    runs-on: ubuntu-18.04
+    env:
+      TELEMETRY_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install package dependencies
+        run: |
+          sudo apt-get install -q -y \
+            net-tools \
+            wireguard \
+            llvm \
+            libclang-dev
+      - uses: actions/checkout@v2
+      - name: Setup | Rust
+        uses: ATiltedTree/setup-rust@v1
+        with:
+          rust-version: 1.60.0
+      - uses: actions/setup-node@v2
+        with:
+          node-version: '14.19.3'
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: '25.0'
+          elixir-version: '1.13.4'
+      - uses: actions/cache@v2
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-
+      - name: Install Dependencies
+        run: mix deps.get
+      - name: Compile
+        run: MIX_ENV=prod mix compile
+      # Upload built NIF artifact
+      - uses: actions/upload-artifact@v2
+        with:
+          name: wireguard_nif
+          path: |
+            _build/prod/lib/fz_vpn/native/wireguard_nif/release/libwireguard_nif.so
+
   build-package-test:
     # Doesn't really need, but don't run this stage when iterating over docs
-    needs: draft-release
+    needs:
+      - draft-release
+      - build-nifs
     env:
       TELEMETRY_ENABLED: "false"
     runs-on: ${{ matrix.platform }}
@@ -184,6 +230,11 @@ jobs:
     steps:
       - run: cat /sys/module/wireguard/version
       - uses: actions/checkout@v2
+      - uses: actions/download-artifact@v3
+        with:
+          name: wireguard_nif
+          path: ./
+      - run: tree _build
       - name: Build
         env:
           GIT_SHA: ${{ github.sha }}
@@ -196,10 +247,6 @@ jobs:
           asdf update
           asdf plugin-update ruby
           asdf install ruby
-
-          # Install local rust to build native code
-          asdf plugin-update rust
-          asdf install rust
 
           # CentOS 7 has path issues when this runs and doesn't have the
           # devtools loaded
