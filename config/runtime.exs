@@ -255,7 +255,7 @@ end
 # OIDC Auth
 auth_oidc_env = System.get_env("AUTH_OIDC")
 
-if auth_oidc_env do
+if config_env() != :test && auth_oidc_env do
   auth_oidc =
     Jason.decode!(auth_oidc_env)
     # Convert Map to something openid_connect expects, atomic keyed configs
