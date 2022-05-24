@@ -187,6 +187,9 @@ jobs:
   build-package-test:
     # Doesn't really need, but don't run this stage when iterating over docs
     needs:
+      - static-analysis
+      - unit-test
+      - lint-docs
       - draft-release
       - build-nifs
     env:

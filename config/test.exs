@@ -58,6 +58,10 @@ config :ueberauth, Ueberauth,
     {:google, {Ueberauth.Strategy.Google, []}}
   ]
 
+config :fz_vpn,
+  # XXX: Replace this with a stubbed out module
+  stats_push_service_enabled: false
+
 # OIDC auth for testing
 config :fz_http, :openid_connect_providers, %{
   google: [

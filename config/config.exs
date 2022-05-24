@@ -91,6 +91,7 @@ config :hammer,
 
 # This will be changed per-env
 config :fz_vpn,
+  stats_push_service_enabled: true,
   rustler_opts: [
     otp_app: :fz_vpn,
     crate: "wireguard_nif"
