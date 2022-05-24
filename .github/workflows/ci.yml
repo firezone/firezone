@@ -141,7 +141,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-nifs:
-    runs-on: ubuntu-18.04
+    runs-on: ${{ matrix.platform }}
+    strategy:
+      matrix:
+        platform:
+          #arm64 target
+          - ubuntu1804-arm64
+          #x64 target
+          - ubuntu1804-x64
     env:
       TELEMETRY_ENABLED: "false"
     steps:
@@ -154,7 +161,7 @@ jobs:
             llvm \
             libclang-dev
       - uses: actions/checkout@v2
-      - name: Setup | Rust
+      - name: Setup Rust
         uses: ATiltedTree/setup-rust@v1
         with:
           rust-version: 1.60.0
@@ -187,6 +194,9 @@ jobs:
   build-package-test:
     # Doesn't really need, but don't run this stage when iterating over docs
     needs:
+      - static-analysis
+      - unit-test
+      - lint-docs
       - draft-release
       - build-nifs
     env:
