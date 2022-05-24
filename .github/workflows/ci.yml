@@ -127,16 +127,11 @@ jobs:
           mix ecto.migrate
       - name: Run Tests and Upload Coverage Report
         run: |
-          # Sometimes coveralls goes down for maintenance, so just run tests if
-          # coveralls fails
-          mix coveralls.github --umbrella || mix test
+          # XXX: This will fail when coveralls goes down for maintenance
+          mix coveralls.github --umbrella
 
   draft-release:
     runs-on: ubuntu-20.04
-    needs:
-      - static-analysis
-      - unit-test
-      - lint-docs
     outputs:
       tag_name: ${{ steps.release_drafter.outputs.tag_name }}
     steps:
@@ -234,7 +229,6 @@ jobs:
         with:
           name: wireguard_nif
           path: ./apps/fz_vpn/priv/native/
-      - run: tree _build
       - name: Build
         env:
           GIT_SHA: ${{ github.sha }}
