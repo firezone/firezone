@@ -10,6 +10,11 @@ import Config
 # which you should run after static files are built and
 # before starting your production server.
 config :fz_vpn,
+  rustler_opts: [
+    skip_compilation?: true,
+    otp_app: :fz_vpn,
+    crate: "wireguard_nif"
+  ],
   wg_path: "wg",
   cli: FzVpn.CLI.Sandbox
 
