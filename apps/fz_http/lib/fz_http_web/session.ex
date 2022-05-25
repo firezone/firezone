@@ -3,7 +3,8 @@ defmodule FzHttpWeb.Session do
   Dynamically configures session.
   """
 
-  @max_cookie_age 604_800
+  # 4 hours
+  @max_cookie_age 14_400
 
   # The session will be stored in the cookie and signed,
   # this means its contents can be read but not tampered with.
