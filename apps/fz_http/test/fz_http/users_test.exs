@@ -1,7 +1,7 @@
 defmodule FzHttp.UsersTest do
   use FzHttp.DataCase, async: true
 
-  alias FzHttp.{Repo, Users, UsersFixtures}
+  alias FzHttp.{Repo, Users}
 
   describe "consume_sign_in_token/1 valid token" do
     setup [:create_user_with_valid_sign_in_token]
@@ -248,8 +248,17 @@ defmodule FzHttp.UsersTest do
   end
 
   describe "enable_vpn_connection/2" do
-    test "enable via OIDC" do
-      user = UsersFixtures.user(disabled_at: DateTime.utc_now())
+    import Ecto.Changeset
+
+    setup :create_user
+
+    setup %{user: user} do
+      user = user |> change |> put_change(:disabled_at, DateTime.utc_now()) |> Repo.update!()
+      {:ok, user: user}
+    end
+
+    @tag :unprivileged
+    test "enable via OIDC", %{user: user} do
       Users.enable_vpn_connection(user, %{provider: :oidc})
 
       user = Repo.reload(user)
@@ -257,8 +266,8 @@ defmodule FzHttp.UsersTest do
       assert %{disabled_at: nil} = user
     end
 
-    test "no change via password" do
-      user = UsersFixtures.user(disabled_at: DateTime.utc_now())
+    @tag :unprivileged
+    test "no change via password", %{user: user} do
       Users.enable_vpn_connection(user, %{provider: :identity})
 
       user = Repo.reload(user)

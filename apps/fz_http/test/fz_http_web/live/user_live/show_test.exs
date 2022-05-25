@@ -616,10 +616,11 @@ defmodule FzHttpWeb.UserLive.ShowTest do
   end
 
   describe "disable/enable user" do
+    import Ecto.Changeset
     alias FzHttp.Repo
 
-    test "enable user", %{admin_conn: conn} do
-      user = UsersFixtures.user(role: :unprivileged, disabled_at: DateTime.utc_now())
+    test "enable user", %{admin_conn: conn, unprivileged_user: user} do
+      user = user |> change |> put_change(:disabled_at, DateTime.utc_now()) |> Repo.update!()
       path = Routes.user_show_path(conn, :show, user.id)
 
       {:ok, view, _html} = live(conn, path)
@@ -633,8 +634,7 @@ defmodule FzHttpWeb.UserLive.ShowTest do
       refute user.disabled_at
     end
 
-    test "disable user", %{admin_conn: conn} do
-      user = UsersFixtures.user(role: :unprivileged, disabled_at: nil)
+    test "disable user", %{admin_conn: conn, unprivileged_user: user} do
       path = Routes.user_show_path(conn, :show, user.id)
 
       {:ok, view, _html} = live(conn, path)
