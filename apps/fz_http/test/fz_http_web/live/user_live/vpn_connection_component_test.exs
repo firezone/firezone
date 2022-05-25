@@ -19,4 +19,5 @@ defmodule FzHttpWeb.UserLive.VPNConnectionComponentTest do
     test "checkbox is not disabled", %{user: user} do
       refute render_component(VPNConnectionComponent, id: "1", user: user) =~ ~r"\bdisabled\b"
     end
+  end
 end
