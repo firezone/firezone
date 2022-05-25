@@ -8,7 +8,7 @@ defmodule FzHttpWeb.UserLive.VPNConnectionComponentTest do
     setup :create_user
 
     test "checkbox is disabled", %{user: user} do
-      assert render_component(VPNConnectionComponent, id: "1", user: user) =~ "disabled"
+      assert render_component(VPNConnectionComponent, id: "1", user: user) =~ ~r"\bdisabled\b"
     end
   end
 
@@ -17,7 +17,7 @@ defmodule FzHttpWeb.UserLive.VPNConnectionComponentTest do
 
     @tag :unprivileged
     test "checkbox is not disabled", %{user: user} do
-      refute render_component(VPNConnectionComponent, id: "1", user: user) =~ "disabled"
+      refute render_component(VPNConnectionComponent, id: "1", user: user) =~ ~r"\bdisabled\b"
     end
 
     @tag :unprivileged
