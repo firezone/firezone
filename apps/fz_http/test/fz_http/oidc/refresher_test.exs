@@ -32,7 +32,7 @@ defmodule FzHttp.OIDC.RefresherTest do
       user = Repo.reload(user)
       conn = Repo.reload(conn)
 
-      refute user.allowed_to_connect
+      assert user.disabled_at
       assert %{"error" => _} = conn.refresh_response
     end
   end
@@ -51,7 +51,7 @@ defmodule FzHttp.OIDC.RefresherTest do
       user = Repo.reload(user)
       conn = Repo.reload(conn)
 
-      assert user.allowed_to_connect
+      refute user.disabled_at
       refute match?(%{"error" => _}, conn.refresh_response)
     end
   end

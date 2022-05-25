@@ -35,7 +35,7 @@ defmodule FzHttp.OIDC.RefreshManager do
   defp spawn_refresher do
     schedule()
 
-    from(User, where: [allowed_to_connect: true])
+    from(u in User, where: is_nil(u.disabled_at))
     |> Repo.all()
     |> Enum.each(&do_spawn/1)
   end

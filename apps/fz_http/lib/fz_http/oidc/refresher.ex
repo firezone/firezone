@@ -56,12 +56,18 @@ defmodule FzHttp.OIDC.Refresher do
     })
 
     with %{error: _} <- refresh_response do
-      Logger.info("Disabling user\##{user_id}...")
+      user = Users.get_user!(user_id)
 
-      user_id
-      |> Users.get_user!()
+      Logger.info("Disabling user #{user.email} due to OIDC token refresh failure...")
+
+      user
       |> change()
-      |> put_change(:allowed_to_connect, false)
+      |> put_change(:disabled_at, DateTime.utc_now())
+      |> prepare_changes(fn changeset ->
+        FzHttp.Telemetry.disable_user(user, "oidc refresh failure")
+        FzHttpWeb.Endpoint.broadcast("users_socket:#{user.id}", "disconnect", %{})
+        changeset
+      end)
       |> Repo.update!()
     end
   end
