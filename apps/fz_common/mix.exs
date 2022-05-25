@@ -16,6 +16,7 @@ defmodule FzCommon.MixProject do
       lockfile: "../../mix.lock",
       elixir: "~> 1.12",
       start_permanent: Mix.env() == :prod,
+      test_coverage: [tool: ExCoveralls],
       deps: deps()
     ]
   end
@@ -30,6 +31,7 @@ defmodule FzCommon.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
+      {:file_size, "~> 3.0.1"},
       {:posthog, "~> 0.1"},
       {:jason, "~> 1.2"},
       {:inet_cidr, "~> 1.0.0"}

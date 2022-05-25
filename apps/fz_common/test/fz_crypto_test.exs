@@ -3,6 +3,12 @@ defmodule FzCommon.FzCryptoTest do
 
   alias FzCommon.FzCrypto
 
+  describe "psk/0" do
+    test "it returns a string of proper length" do
+      assert 44 == String.length(FzCrypto.psk())
+    end
+  end
+
   describe "rand_string/1" do
     test "it returns a string of default length" do
       assert 16 == String.length(FzCrypto.rand_string())

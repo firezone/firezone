@@ -26,7 +26,7 @@ jobs:
           markdownlint .
 
   static-analysis:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-latest
     env:
       MIX_ENV: dev
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -121,9 +121,8 @@ jobs:
           mix ecto.migrate
       - name: Run Tests and Upload Coverage Report
         run: |
-          # Sometimes coveralls goes down for maintenance, so just run tests if
-          # coveralls fails
-          mix coveralls.github --umbrella || mix test
+          # XXX: This can fail when coveralls is down
+          mix coveralls.github --umbrella
 
   draft-release:
     runs-on: ubuntu-20.04
