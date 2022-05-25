@@ -1,7 +1,6 @@
 defmodule FzHttpWeb.UserLive.VPNConnectionComponentTest do
   use FzHttpWeb.ConnCase, async: true
 
-  alias FzHttp.Repo
   alias FzHttpWeb.UserLive.VPNConnectionComponent
 
   describe "admin" do
