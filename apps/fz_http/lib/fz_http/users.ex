@@ -3,10 +3,11 @@ defmodule FzHttp.Users do
   The Users context.
   """
 
+  import Ecto.Changeset
   import Ecto.Query, warn: false
 
   alias FzCommon.{FzCrypto, FzMap}
-  alias FzHttp.{Devices.Device, Mailer, Repo, Sites.Site, Telemetry, Users.User}
+  alias FzHttp.{Devices.Device, OIDC, Mailer, Repo, Sites.Site, Telemetry, Users.User}
 
   require Logger
 
@@ -14,7 +15,7 @@ defmodule FzHttp.Users do
   @sign_in_token_validity_secs 3600
 
   def count do
-    Repo.one(from u in User, select: count(u.id))
+    Repo.one(from(u in User, select: count(u.id)))
   end
 
   def consume_sign_in_token(token) when is_binary(token) do
@@ -29,7 +30,7 @@ defmodule FzHttp.Users do
   end
 
   def exists?(user_id) do
-    Repo.exists?(from u in User, where: u.id == ^user_id)
+    Repo.exists?(from(u in User, where: u.id == ^user_id))
   end
 
   def get_user!(email: email) do
@@ -115,7 +116,7 @@ defmodule FzHttp.Users do
   Fetches all users and groups into an Enumerable that can be used for an HTML form input.
   """
   def as_options_for_select do
-    Repo.all(from u in User, select: {u.email, u.id})
+    Repo.all(from(u in User, select: {u.email, u.id}))
   end
 
   def list_users(:with_device_counts) do
@@ -139,6 +140,16 @@ defmodule FzHttp.Users do
       end
 
     update_user(user, %{last_signed_in_at: DateTime.utc_now(), last_signed_in_method: method})
+  end
+
+  def enable_vpn_connection(user, %{provider: :identity}), do: user
+  def enable_vpn_connection(user, %{provider: :magic_link}), do: user
+
+  def enable_vpn_connection(user, %{provider: _oidc_provider}) do
+    user
+    |> change()
+    |> put_change(:disabled_at, nil)
+    |> Repo.update()
   end
 
   @doc """
