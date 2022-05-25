@@ -82,4 +82,14 @@ defmodule FzCommon.FzNetTest do
       assert FzNet.valid_cidr?("::/0")
     end
   end
+
+  describe "standardized_inet/1" do
+    test "formats CIDRs" do
+      assert "::/0" == FzNet.standardized_inet("::0/0")
+    end
+
+    test "formats IP address" do
+      assert "fd00:3::1" == FzNet.standardized_inet("fd00:3:0000::1")
+    end
+  end
 end
