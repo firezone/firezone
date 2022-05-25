@@ -91,6 +91,7 @@ config :hammer,
 
 # This will be changed per-env
 config :fz_vpn,
+  stats_push_service_enabled: true,
   wireguard_psk_dir: "/tmp",
   wireguard_public_key: "cB2yQeCxHO/qCH8APoM2D2Anf4Yd7sRLyfS7su71K3M=",
   wireguard_interface_name: "wg-firezone",
