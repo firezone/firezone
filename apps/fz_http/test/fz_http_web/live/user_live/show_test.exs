@@ -614,4 +614,38 @@ defmodule FzHttpWeb.UserLive.ShowTest do
       assert test_view =~ "should be at least 12 character(s)"
     end
   end
+
+  describe "disable/enable user" do
+    alias FzHttp.Repo
+
+    test "enable user", %{admin_conn: conn} do
+      user = UsersFixtures.user(role: :unprivileged, disabled_at: DateTime.utc_now())
+      path = Routes.user_show_path(conn, :show, user.id)
+
+      {:ok, view, _html} = live(conn, path)
+
+      view
+      |> element("input[type=checkbox]")
+      |> render_click()
+
+      user = Repo.reload(user)
+
+      refute user.disabled_at
+    end
+
+    test "disable user", %{admin_conn: conn} do
+      user = UsersFixtures.user(role: :unprivileged, disabled_at: nil)
+      path = Routes.user_show_path(conn, :show, user.id)
+
+      {:ok, view, _html} = live(conn, path)
+
+      view
+      |> element("input[type=checkbox]")
+      |> render_click()
+
+      user = Repo.reload(user)
+
+      assert user.disabled_at
+    end
+  end
 end

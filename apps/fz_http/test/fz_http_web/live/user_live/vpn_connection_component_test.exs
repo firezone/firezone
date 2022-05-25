@@ -19,25 +19,4 @@ defmodule FzHttpWeb.UserLive.VPNConnectionComponentTest do
     test "checkbox is not disabled", %{user: user} do
       refute render_component(VPNConnectionComponent, id: "1", user: user) =~ ~r"\bdisabled\b"
     end
-
-    @tag :unprivileged
-    test "handle_event toggle_disabled_at on", %{user: user} do
-      VPNConnectionComponent.handle_event("toggle_disabled_at", %{"value" => "on"}, %{
-        assigns: %{user: user}
-      })
-
-      user = Repo.reload(user)
-
-      refute user.disabled_at
-    end
-
-    @tag :unprivileged
-    test "handle_event toggle_disabled_at off", %{user: user} do
-      VPNConnectionComponent.handle_event("toggle_disabled_at", %{}, %{assigns: %{user: user}})
-
-      user = Repo.reload(user)
-
-      assert user.disabled_at
-    end
-  end
 end

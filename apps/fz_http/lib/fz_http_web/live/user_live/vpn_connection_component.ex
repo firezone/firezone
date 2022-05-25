@@ -10,15 +10,13 @@ defmodule FzHttpWeb.UserLive.VPNConnectionComponent do
   @impl Phoenix.LiveComponent
   def render(assigns) do
     ~H"""
-    <div>
-      <label>
-        <input type="checkbox" phx-target={@myself} phx-click="toggle_disabled_at"
-            data-confirm="Are you sure? This may affect this user's internet connectivity."
-            disabled={assigns[:disabled] || @user.role == :admin}
-            checked={!@user.disabled_at} />
-        <%= assigns[:label] %>
-      </label>
-    </div>
+    <label>
+      <input type="checkbox" phx-target={@myself} phx-click="toggle_disabled_at"
+          data-confirm="Are you sure? This may affect this user's internet connectivity."
+          disabled={assigns[:disabled] || @user.role == :admin}
+          checked={!@user.disabled_at} value={if(@user.disabled_at, do: "on")} />
+      <%= assigns[:label] %>
+    </label>
     """
   end
 

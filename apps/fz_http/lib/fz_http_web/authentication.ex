@@ -51,7 +51,7 @@ defmodule FzHttpWeb.Authentication do
 
   def sign_in(conn, user, auth) do
     Telemetry.login(user)
-    Users.update_last_signed_in(user, auth)
+    {:ok, user} = Users.update_last_signed_in(user, auth)
     Users.enable_vpn_connection(user, auth)
     __MODULE__.Plug.sign_in(conn, user)
   end

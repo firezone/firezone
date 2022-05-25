@@ -4,7 +4,8 @@ defmodule FzHttp.UsersFixtures do
   entities via the `FzHttp.Users` context.
   """
 
-  alias FzHttp.{Repo, Users, Users.User}
+  import Ecto.Changeset
+  alias FzHttp.{Repo, Users.User}
 
   @doc """
   Generate a user specified by email, or generate a new otherwise.
@@ -22,7 +23,10 @@ defmodule FzHttp.UsersFixtures do
             password: "password1234",
             password_confirmation: "password1234"
           })
-          |> Users.create_user()
+          |> Enum.reduce(change(%User{}), fn {field, value}, changeset ->
+            put_change(changeset, field, value)
+          end)
+          |> Repo.insert()
 
         user
 
