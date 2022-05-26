@@ -17,16 +17,11 @@ defmodule FzHttp.SharedValidators do
       trimmed = Enum.map(String.split(value, ","), fn el -> String.trim(el) end)
       dupes = Enum.uniq(trimmed -- Enum.uniq(trimmed))
 
-      case dupes do
-        [] ->
-          []
-
-        dupes ->
-          [
-            {field,
-             "is invalid: duplicate DNS servers are not allowed: #{Enum.join(dupes, ", ")}"}
-          ]
-      end
+      error_if(
+        dupes,
+        &(&1 != []),
+        &{field, "is invalid: duplicate DNS servers are not allowed: #{Enum.join(&1, ", ")}"}
+      )
     end)
   end
 
@@ -35,13 +30,10 @@ defmodule FzHttp.SharedValidators do
       value
       |> split_comma_list()
       |> Enum.find(&(not (valid_ip?(&1) or valid_fqdn?(&1))))
-      |> then(fn invalid ->
-        if invalid do
-          [{field, "is invalid: #{invalid} is not a valid FQDN or IPv4 / IPv6 address"}]
-        else
-          []
-        end
-      end)
+      |> error_if(
+        &(!is_nil(&1)),
+        &{field, "is invalid: #{&1} is not a valid FQDN or IPv4 / IPv6 address"}
+      )
     end)
   end
 
@@ -50,13 +42,10 @@ defmodule FzHttp.SharedValidators do
       value
       |> split_comma_list()
       |> Enum.find(&(not valid_ip?(&1)))
-      |> then(fn invalid ->
-        if invalid do
-          [{field, "is invalid: #{invalid} is not a valid IPv4 / IPv6 address"}]
-        else
-          []
-        end
-      end)
+      |> error_if(
+        &(!is_nil(&1)),
+        &{field, "is invalid: #{&1} is not a valid IPv4 / IPv6 address"}
+      )
     end)
   end
 
@@ -65,13 +54,10 @@ defmodule FzHttp.SharedValidators do
       value
       |> split_comma_list()
       |> Enum.find(&(not (valid_ip?(&1) or valid_cidr?(&1))))
-      |> then(fn invalid ->
-        if invalid do
-          [{field, "is invalid: #{invalid} is not a valid IPv4 / IPv6 address or CIDR range"}]
-        else
-          []
-        end
-      end)
+      |> error_if(
+        &(!is_nil(&1)),
+        &{field, "is invalid: #{&1} is not a valid IPv4 / IPv6 address or CIDR range"}
+      )
     end)
   end
 
@@ -95,5 +81,13 @@ defmodule FzHttp.SharedValidators do
     text
     |> String.split(",")
     |> Enum.map(&String.trim/1)
+  end
+
+  defp error_if(value, is_error, error) do
+    if is_error.(value) do
+      [error.(value)]
+    else
+      []
+    end
   end
 end
