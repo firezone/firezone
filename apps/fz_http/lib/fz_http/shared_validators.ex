@@ -14,8 +14,8 @@ defmodule FzHttp.SharedValidators do
 
   def validate_no_duplicates(changeset, field) when is_atom(field) do
     validate_change(changeset, field, fn _current_field, value ->
-      trimmed = Enum.map(String.split(value, ","), fn el -> String.trim(el) end)
-      dupes = Enum.uniq(trimmed -- Enum.uniq(trimmed))
+      values = split_comma_list(value)
+      dupes = Enum.uniq(values -- Enum.uniq(values))
 
       error_if(
         dupes,
