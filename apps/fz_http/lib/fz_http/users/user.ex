@@ -164,17 +164,13 @@ defmodule FzHttp.Users.User do
     |> cast(attrs, [:email, :last_signed_in_method, :last_signed_in_at])
   end
 
-  def authenticate_user(user, password_candidate) do
-    Argon2.check_pass(user, password_candidate)
-  end
-
   defp verify_current_password(
          %Ecto.Changeset{
            changes: %{current_password: _}
          } = changeset,
          user
        ) do
-    case authenticate_user(user, changeset.changes.current_password) do
+    case Argon2.check_pass(user, changeset.changes.current_password) do
       {:ok, _user} -> changeset |> delete_change(:current_password)
       {:error, error_msg} -> changeset |> add_error(:current_password, error_msg)
     end

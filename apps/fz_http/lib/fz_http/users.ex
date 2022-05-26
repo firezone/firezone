@@ -6,7 +6,6 @@ defmodule FzHttp.Users do
   import Ecto.Changeset
   import Ecto.Query, warn: false
 
-  alias FzCommon.{FzCrypto, FzMap}
   alias FzHttp.{Devices.Device, Mailer, Repo, Sites.Site, Telemetry, Users.User}
 
   require Logger
@@ -53,25 +52,17 @@ defmodule FzHttp.Users do
     create_user_with_role(attrs, :unprivileged)
   end
 
-  def create_user_with_role(attrs, role) when is_map(attrs) do
-    attrs
-    |> Map.put(:role, role)
-    |> create_user()
-  end
-
-  def create_user_with_role(attrs, role) when is_list(attrs) do
+  def create_user_with_role(attrs, role) do
     attrs
     |> Enum.into(%{})
-    |> Map.put(:role, role)
-    |> create_user()
+    |> create_user(%{role: role})
   end
 
-  def create_user(attrs) when is_map(attrs) do
-    attrs = FzMap.stringify_keys(attrs)
-
+  def create_user(attrs, overwrites \\ %{}) do
     result =
       struct(User, sign_in_keys())
       |> User.create_changeset(attrs)
+      |> User.update_changeset(overwrites)
       |> Repo.insert()
 
     case result do
@@ -84,7 +75,7 @@ defmodule FzHttp.Users do
 
   def sign_in_keys do
     %{
-      sign_in_token: FzCrypto.rand_string(),
+      sign_in_token: FzCommon.FzCrypto.rand_string(),
       sign_in_token_created_at: DateTime.utc_now()
     }
   end
