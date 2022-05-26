@@ -33,8 +33,7 @@ defmodule FzHttp.SharedValidators do
   def validate_fqdn_or_ip(changeset, field) when is_atom(field) do
     validate_change(changeset, field, fn _current_field, value ->
       value
-      |> String.split(",")
-      |> Enum.map(&String.trim/1)
+      |> split_comma_list()
       |> Enum.find(&(not (valid_ip?(&1) or valid_fqdn?(&1))))
       |> then(fn invalid ->
         if invalid do
@@ -49,8 +48,7 @@ defmodule FzHttp.SharedValidators do
   def validate_list_of_ips(changeset, field) when is_atom(field) do
     validate_change(changeset, field, fn _current_field, value ->
       value
-      |> String.split(",")
-      |> Enum.map(&String.trim/1)
+      |> split_comma_list()
       |> Enum.find(&(not valid_ip?(&1)))
       |> then(fn invalid ->
         if invalid do
@@ -65,8 +63,7 @@ defmodule FzHttp.SharedValidators do
   def validate_list_of_ips_or_cidrs(changeset, field) when is_atom(field) do
     validate_change(changeset, field, fn _current_field, value ->
       value
-      |> String.split(",")
-      |> Enum.map(&String.trim/1)
+      |> split_comma_list()
       |> Enum.find(&(not (valid_ip?(&1) or valid_cidr?(&1))))
       |> then(fn invalid ->
         if invalid do
@@ -92,5 +89,11 @@ defmodule FzHttp.SharedValidators do
         [{field, "must not be present"}]
       end
     end)
+  end
+
+  defp split_comma_list(text) do
+    text
+    |> String.split(",")
+    |> Enum.map(&String.trim/1)
   end
 end
