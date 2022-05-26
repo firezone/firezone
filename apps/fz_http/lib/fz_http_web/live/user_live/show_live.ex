@@ -5,18 +5,20 @@ defmodule FzHttpWeb.UserLive.Show do
   """
   use FzHttpWeb, :live_view
 
-  alias FzHttp.{Devices, Repo, Users}
+  alias FzHttp.{Devices, OIDC, Repo, Users}
   alias FzHttpWeb.ErrorHelpers
 
   @impl Phoenix.LiveView
   def mount(%{"id" => user_id} = _params, _session, socket) do
     user = Users.get_user!(user_id)
     devices = Devices.list_devices(user)
+    connections = OIDC.list_connections(user)
 
     {:ok,
      socket
      |> assign(:devices, devices)
      |> assign(:device_config, socket.assigns[:device_config])
+     |> assign(:connections, connections)
      |> assign(:user, user)
      |> assign(:page_title, "Users")}
   end

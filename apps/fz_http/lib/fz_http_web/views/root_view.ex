@@ -5,7 +5,9 @@ defmodule FzHttpWeb.RootView do
 
   def authorization_uri(oidc, provider) do
     params = %{
-      state: FzCrypto.rand_string()
+      state: FzCrypto.rand_string(),
+      # needed for google
+      access_type: "offline"
     }
 
     oidc.authorization_uri(provider, params)

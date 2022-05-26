@@ -146,7 +146,9 @@ defmodule FzHttp.TestHelpers do
     {:ok, user: user}
   end
 
-  def create_users(%{count: count}) do
+  def create_users(opts) do
+    count = opts[:count] || 5
+
     users =
       Enum.map(1..count, fn i ->
         UsersFixtures.user(%{email: "userlist#{i}@test"})
@@ -154,8 +156,6 @@ defmodule FzHttp.TestHelpers do
 
     {:ok, users: users}
   end
-
-  def create_users(_), do: create_users(%{count: 5})
 
   def clear_users(_) do
     {count, _result} = Repo.delete_all(User)

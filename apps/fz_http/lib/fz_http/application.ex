@@ -36,9 +36,11 @@ defmodule FzHttp.Application do
       {Phoenix.PubSub, name: FzHttp.PubSub},
       FzHttpWeb.Presence,
       FzHttp.ConnectivityCheckService,
-      FzHttp.VpnSessionScheduler
+      FzHttp.VpnSessionScheduler,
+      {OpenIDConnect.Worker, openid_connect_providers},
+      {DynamicSupervisor, name: FzHttp.RefresherSupervisor, strategy: :one_for_one},
+      FzHttp.OIDC.RefreshManager
     ]
-    |> append_if(openid_connect_providers, {OpenIDConnect.Worker, openid_connect_providers})
   end
 
   defp children(:test) do
@@ -50,9 +52,5 @@ defmodule FzHttp.Application do
       {Phoenix.PubSub, name: FzHttp.PubSub},
       FzHttpWeb.Presence
     ]
-  end
-
-  defp append_if(list, condition, item) do
-    if condition, do: list ++ [item], else: list
   end
 end

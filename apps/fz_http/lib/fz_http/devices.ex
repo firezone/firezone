@@ -88,7 +88,7 @@ defmodule FzHttp.Devices do
         preload: :user
     )
     |> Enum.filter(fn device ->
-      device.user.role == :admin || !Users.vpn_session_expired?(device.user, vpn_duration)
+      !device.user.disabled_at && !Users.vpn_session_expired?(device.user, vpn_duration)
     end)
     |> Enum.map(fn device ->
       %{

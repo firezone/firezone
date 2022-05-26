@@ -86,6 +86,14 @@ defmodule FzHttp.Telemetry do
     )
   end
 
+  def disable_user(user, reason) do
+    telemetry_module().capture(
+      "disable_user",
+      common_fields() ++
+        [user_email_hash: hash(user.email), reason: reason]
+    )
+  end
+
   def fz_http_started do
     telemetry_module().capture(
       "fz_http_started",
