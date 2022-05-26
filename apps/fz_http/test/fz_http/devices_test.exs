@@ -390,4 +390,15 @@ defmodule FzHttp.DevicesTest do
              }
     end
   end
+
+  describe "Device.new_name/0,1" do
+    test "retains name with less than or equal to 15 chars" do
+      assert Devices.Device.new_name("12345") == "12345"
+      assert Devices.Device.new_name("1234567890ABCDE") == "1234567890ABCDE"
+    end
+
+    test "truncates long names that exceed 15 chars" do
+      assert Devices.Device.new_name("1234567890ABCDEF") == "1234567890A4772"
+    end
+  end
 end

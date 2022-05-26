@@ -66,8 +66,20 @@ defmodule FzHttp.Devices.Device do
     |> shared_changeset()
   end
 
-  def field(changeset, field) do
-    get_field(changeset, field)
+  @hash_range 2 ** 16
+
+  def new_name(name \\ FzCommon.NameGenerator.generate()) do
+    hash =
+      name
+      |> :erlang.phash2(@hash_range)
+      |> Integer.to_string(16)
+      |> String.pad_leading(4, "0")
+
+    if String.length(name) > 15 do
+      String.slice(name, 0..10) <> hash
+    else
+      name
+    end
   end
 
   defp shared_cast(device, attrs) do

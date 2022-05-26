@@ -3,8 +3,8 @@ defmodule FzHttp.Devices do
   The Devices context.
   """
 
+  import Ecto.Changeset
   import Ecto.Query, warn: false
-  alias FzCommon.{FzCrypto, NameGenerator}
   alias FzHttp.{Devices.Device, Repo, Sites, Telemetry, Users, Users.User}
 
   def list_devices do
@@ -104,8 +104,8 @@ defmodule FzHttp.Devices do
       %Device{},
       Map.merge(
         %{
-          "name" => NameGenerator.generate(),
-          "preshared_key" => FzCrypto.psk()
+          "name" => Device.new_name(),
+          "preshared_key" => FzCommon.FzCrypto.psk()
         },
         attrs
       )
@@ -134,8 +134,7 @@ defmodule FzHttp.Devices do
       use_site_mtu
       use_site_persistent_keepalive
     )a
-    |> Enum.map(fn field -> {field, Device.field(changeset, field)} end)
-    |> Map.new()
+    |> Map.new(&{&1, get_field(changeset, &1)})
   end
 
   def as_encoded_config(device), do: Base.encode64(as_config(device))
