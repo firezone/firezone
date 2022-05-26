@@ -67,6 +67,11 @@ defmodule FzHttpWeb.AuthController do
          {:ok, claims} <- openid_connect.verify(provider, tokens["id_token"]) do
       case UserFromAuth.find_or_create(provider, claims) do
         {:ok, user} ->
+          # only first-time connect will include refresh token
+          with %{"refresh_token" => refresh_token} <- tokens do
+            FzHttp.OIDC.create_connection(user.id, provider_key, refresh_token)
+          end
+
           conn
           |> configure_session(renew: true)
           |> put_session(:live_socket_id, "users_socket:#{user.id}")

@@ -614,4 +614,38 @@ defmodule FzHttpWeb.UserLive.ShowTest do
       assert test_view =~ "should be at least 12 character(s)"
     end
   end
+
+  describe "disable/enable user" do
+    import Ecto.Changeset
+    alias FzHttp.Repo
+
+    test "enable user", %{admin_conn: conn, unprivileged_user: user} do
+      user = user |> change |> put_change(:disabled_at, DateTime.utc_now()) |> Repo.update!()
+      path = Routes.user_show_path(conn, :show, user.id)
+
+      {:ok, view, _html} = live(conn, path)
+
+      view
+      |> element("input[type=checkbox]")
+      |> render_click()
+
+      user = Repo.reload(user)
+
+      refute user.disabled_at
+    end
+
+    test "disable user", %{admin_conn: conn, unprivileged_user: user} do
+      path = Routes.user_show_path(conn, :show, user.id)
+
+      {:ok, view, _html} = live(conn, path)
+
+      view
+      |> element("input[type=checkbox]")
+      |> render_click()
+
+      user = Repo.reload(user)
+
+      assert user.disabled_at
+    end
+  end
 end

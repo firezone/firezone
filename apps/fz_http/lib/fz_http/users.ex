@@ -3,6 +3,7 @@ defmodule FzHttp.Users do
   The Users context.
   """
 
+  import Ecto.Changeset
   import Ecto.Query, warn: false
 
   alias FzCommon.{FzCrypto, FzMap}
@@ -139,6 +140,16 @@ defmodule FzHttp.Users do
       end
 
     update_user(user, %{last_signed_in_at: DateTime.utc_now(), last_signed_in_method: method})
+  end
+
+  def enable_vpn_connection(user, %{provider: :identity}), do: user
+  def enable_vpn_connection(user, %{provider: :magic_link}), do: user
+
+  def enable_vpn_connection(user, %{provider: _oidc_provider}) do
+    user
+    |> change()
+    |> put_change(:disabled_at, nil)
+    |> Repo.update!()
   end
 
   @doc """

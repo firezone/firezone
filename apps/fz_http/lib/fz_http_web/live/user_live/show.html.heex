@@ -40,6 +40,14 @@
   <%= render FzHttpWeb.SharedView, "user_details.html", user: @user %>
 </section>
 
+<%= if length(@connections) > 0 do %>
+<section class="section is-main-section">
+  <h4 class="title is-4">OIDC Connections</h4>
+
+  <%= render FzHttpWeb.SharedView, "oidc_connections_table.html", connections: @connections %>
+</section>
+<% end %>
+
 <section class="section is-main-section">
   <h4 class="title is-4">Devices</h4>
 
@@ -62,25 +70,31 @@
 <section class="section is-main-section">
   <h4 class="title is-4">Danger Zone</h4>
 
-  <button
-    class="button is-warning"
-    data-confirm={"Are you sure? #{mote_message(@user)}"}
-    phx-click={mote(@user)}
-    phx-value-user_id={@user.id}>
-    <span class="icon is-small">
-      <i class="fas fa-user-shield"></i>
-    </span>
-    <span class="is-capitalized"><%= mote(@user) %></span>
-  </button>
+  <.live_component id="allowed-to-connect"
+      module={FzHttpWeb.UserLive.VPNConnectionComponent }
+      user={@user} label="Permission to Connect VPN" />
 
-  <button
-    class="button is-danger"
-    data-confirm="Are you sure? This will permanently delete this user, all associated devices and instantly drop any active VPN sessions associated to this user."
-    phx-click="delete_user"
-    phx-value-user_id={@user.id}>
-    <span class="icon is-small">
-      <i class="fas fa-trash"></i>
-    </span>
-    <span>Delete User</span>
-  </button>
+  <div class="mt-4">
+    <button
+      class="button is-warning"
+      data-confirm={"Are you sure? #{mote_message(@user)}"}
+      phx-click={mote(@user)}
+      phx-value-user_id={@user.id}>
+      <span class="icon is-small">
+        <i class="fas fa-user-shield"></i>
+      </span>
+      <span class="is-capitalized"><%= mote(@user) %></span>
+    </button>
+
+    <button
+      class="button is-danger"
+      data-confirm="Are you sure? This will permanently delete this user, all associated devices and instantly drop any active VPN sessions associated to this user."
+      phx-click="delete_user"
+      phx-value-user_id={@user.id}>
+      <span class="icon is-small">
+        <i class="fas fa-trash"></i>
+      </span>
+      <span>Delete User</span>
+    </button>
+  </div>
 </section>
