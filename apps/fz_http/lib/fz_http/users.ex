@@ -60,14 +60,12 @@ defmodule FzHttp.Users do
 
   def create_user_with_role(attrs, role) when is_list(attrs) do
     attrs
-    |> Enum.into(%{})
+    |> Map.new()
     |> Map.put(:role, role)
     |> create_user()
   end
 
   def create_user(attrs) when is_map(attrs) do
-    attrs = FzMap.stringify_keys(attrs)
-
     result =
       struct(User, sign_in_keys())
       |> User.create_changeset(attrs)
