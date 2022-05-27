@@ -33,6 +33,13 @@ defmodule FzCommon.FzNet do
     end
   end
 
+  def cidr_contains?(cidr, address) when is_binary(cidr) and is_binary(address) do
+    parsed_cidr = InetCidr.parse(cidr)
+    parsed_address = InetCidr.parse_address!(address)
+
+    InetCidr.contains?(parsed_cidr, parsed_address)
+  end
+
   def valid_cidr?(cidr) when is_binary(cidr) do
     String.match?(cidr, @cidr4_regex) or String.match?(cidr, @cidr6_regex)
   end

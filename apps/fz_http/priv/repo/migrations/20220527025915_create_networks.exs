@@ -17,6 +17,7 @@ defmodule FzHttp.Repo.Migrations.CreateNetworks do
       add :ipv6_address, :inet
       add :ipv6_network, :cidr
       add :mtu, :integer, default: @default_mtu, null: false
+      add :require_privileged, :boolean, default: true, null: false
 
       timestamps(type: :utc_datetime_usec)
     end

@@ -10,8 +10,8 @@ defmodule FzHttp.Networks.Network do
   import FzHttp.SharedValidators,
     only: [
       validate_mtu: 2,
-      validate_ip: 2,
-      validate_cidr: 2
+      validate_cidr_inclusion: 3,
+      validate_ip_pair_existence: 2
     ]
 
   @interface_name_max_length 15
@@ -32,6 +32,7 @@ defmodule FzHttp.Networks.Network do
     field :ipv6_address, EctoNetwork.INET
     field :ipv6_network, EctoNetwork.CIDR
     field :mtu, :integer, read_after_writes: true
+    field :require_privileged, :boolean, read_after_writes: true
 
     timestamps(type: :utc_datetime_usec)
   end
@@ -47,8 +48,17 @@ defmodule FzHttp.Networks.Network do
       :ipv4_network,
       :ipv6_address,
       :ipv6_network,
-      :mtu
+      :mtu,
+      :require_privileged
     ])
+    |> unique_constraint(:interface_name)
+    |> unique_constraint(:private_key)
+    |> unique_constraint(:listen_port)
+    |> unique_constraint(:ipv4_address)
+    |> unique_constraint(:ipv6_address)
+    |> validate_ip_pair_existence([{:ipv4_network, :ipv4_address}, {:ipv6_network, :ipv6_address}])
+    |> exclusion_constraint(:ipv4_network, name: :networks_ipv4_network_excl)
+    |> exclusion_constraint(:ipv6_network, name: :networks_ipv6_network_excl)
     |> validate_required([
       :interface_name,
       :private_key,
@@ -64,9 +74,7 @@ defmodule FzHttp.Networks.Network do
       less_than_or_equal_to: @listen_port_max
     )
     |> validate_mtu(:mtu)
-    |> validate_ip(:ipv4_address)
-    |> validate_ip(:ipv6_address)
-    |> validate_cidr(:ipv4_network)
-    |> validate_cidr(:ipv6_network)
+    |> validate_cidr_inclusion(:ipv4_network, :ipv4_address)
+    |> validate_cidr_inclusion(:ipv6_network, :ipv6_address)
   end
 end

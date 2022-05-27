@@ -3,6 +3,18 @@ defmodule FzCommon.FzNetTest do
 
   alias FzCommon.FzNet
 
+  describe "cidr_contains?/2" do
+    test "it confirms inclusion of address within CIDR" do
+      assert FzNet.cidr_contains?("fd00::3:2:0/127", "fd00::3:2:1")
+      assert FzNet.cidr_contains?("10.0.0.0/24", "10.0.0.16")
+    end
+
+    test "it confirms exclusion of address within CIDR" do
+      refute FzNet.cidr_contains?("fd00::3:2:0/127", "fd00::3:2:20")
+      refute FzNet.cidr_contains?("10.0.0.0/24", "192.168.1.1")
+    end
+  end
+
   describe "ip_type/1" do
     test "it detects IPv4 addresses" do
       assert FzNet.ip_type("127.0.0.1") == "IPv4"

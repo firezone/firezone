@@ -11,7 +11,9 @@ defmodule FzHttp.NetworksFixtures do
       private_key: "test",
       public_key: "test",
       interface_name: "wg-test",
-      listen_port: 1
+      listen_port: 1,
+      ipv4_address: "10.0.0.1",
+      ipv4_network: "10.0.0.0/24"
     }
 
     {:ok, network} = Networks.create_network(Map.merge(default_attrs, attrs))

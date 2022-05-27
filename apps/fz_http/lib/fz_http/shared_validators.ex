@@ -15,16 +15,37 @@ defmodule FzHttp.SharedValidators do
   @mtu_min 576
   @mtu_max 1_420
 
-  def validate_ip(changeset, field), do: validate_list_of_ips(changeset, field)
+  def validate_cidr_inclusion(changeset, cidr_field, addr_field)
+      when is_atom(cidr_field) and is_atom(addr_field) do
+    cidr_value = get_field(changeset, cidr_field)
+    addr_value = get_field(changeset, addr_field)
 
-  def validate_cidr(changeset, field) when is_atom(field) do
-    validate_change(changeset, field, fn _current_field, value ->
-      error_if(
-        valid_cidr?(value),
-        &(&1 != true),
-        &{field, "is invalid: #{&1} is not a valid CIDR range."}
+    if is_struct(cidr_value) && is_struct(addr_value) do
+      if FzCommon.FzNet.cidr_contains?(decode(cidr_value), decode(addr_value)) do
+        changeset
+      else
+        add_error(changeset, addr_field, "must be contained within the network #{cidr_value}")
+      end
+    else
+      changeset
+    end
+  end
+
+  def validate_ip_pair_existence(changeset, field_tuples) when is_list(field_tuples) do
+    if field_tuples
+       |> Enum.all?(fn {net, addr} ->
+         is_nil(get_field(changeset, net)) || is_nil(get_field(changeset, addr))
+       end) do
+      add_error(
+        changeset,
+        :ipv4_address,
+        "is invalid",
+        additional_info:
+          "Must specify a valid IPv4 address and network or IPv6 address and network."
       )
-    end)
+    else
+      changeset
+    end
   end
 
   def validate_mtu(changeset, field) when is_atom(field) do
@@ -113,5 +134,9 @@ defmodule FzHttp.SharedValidators do
     else
       []
     end
+  end
+
+  defp decode(%Postgrex.INET{} = inet) do
+    EctoNetwork.INET.decode(inet)
   end
 end
