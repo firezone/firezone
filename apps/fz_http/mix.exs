@@ -79,7 +79,7 @@ defmodule FzHttp.MixProject do
       {:hammer, "~> 6.0"},
       {:hammer_plug, "~> 2.1"},
       {:inflex, "~> 2.1"},
-      {:plug, "~> 1.12.1"},
+      {:plug, "~> 1.13"},
       {:postgrex, "~> 0.15.10"},
       {:phoenix_html, "~> 3.1.0"},
       {:phoenix_live_reload, "~> 1.3", only: :dev},
@@ -90,7 +90,7 @@ defmodule FzHttp.MixProject do
       {:gen_smtp, "~> 1.0"},
       # XXX: Change this when hex package is updated
       {:cidr, github: "firezone/cidr-elixir"},
-      {:telemetry, "~> 0.4.3"},
+      {:telemetry, "~> 1.0"},
       {:plug_cowboy, "~> 2.5"},
       {:credo, "~> 1.5", only: [:dev, :test], runtime: false}
     ]
