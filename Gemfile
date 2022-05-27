@@ -1,3 +1,5 @@
-source "https://rubygems.org"
+# frozen_string_literal: true
 
-gem "rubocop"
+source 'https://rubygems.org'
+
+gem 'rubocop'
