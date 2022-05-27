@@ -35,16 +35,15 @@ jobs:
       - uses: actions/setup-ruby@v1
         with:
           ruby-version: '2.7'
-          bundler-cache: true
       - uses: actions/setup-python@v2
         with:
           python-version: '3.9'
-          cache: 'pip'
       - uses: erlef/setup-beam@v1
         with:
           otp-version: '25.0'
           elixir-version: '1.13.4'
       - uses: actions/cache@v2
+        name: Setup Elixir cache
         with:
           path: |
             deps
@@ -52,8 +51,29 @@ jobs:
           key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
           restore-keys: |
             ${{ runner.os }}-mix-
-      - name: Install Dependencies
+      - uses: actions/cache@v2
+        name: Setup ruby cache
+        with:
+          path: vendor/bundle
+          key: ${{ runner.os }}-gems-${{ hashFiles('**/Gemfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-gems-
+      - uses: actions/cache@v2
+        name: Setup Python cache
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+      - name: Install Elixir Dependencies
         run: mix deps.get --only dev
+      - name: Install Ruby Dependencies
+        run: |
+          bundle config path vendor/bundle
+          bundle install --jobs 4 --retry 3
+      - name: Install Python Dependencies
+        run: |
+          pip install -r requirements.txt
       # Don't cache PLTs based on mix.lock hash, as Dialyzer can incrementally update even old ones
       # Cache key based on Elixir & Erlang version (also usefull when running in matrix)
       - name: Restore PLT cache
@@ -70,9 +90,8 @@ jobs:
       - name: Create PLTs
         if: steps.plt_cache.outputs.cache-hit != 'true'
         run: mix dialyzer --plt
-      - run: |
-          gem install rubocop
-          pip install pre-commit
+      - name: Run pre-commit
+        run: |
           pre-commit install
           SKIP=no-commit-to-branch pre-commit run --all-files
 
