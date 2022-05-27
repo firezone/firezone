@@ -61,17 +61,14 @@ defmodule FzHttp.Telemetry do
     )
   end
 
-  def fz_http_started do
-    telemetry_module().capture(
-      "fz_http_started",
-      common_fields()
-    )
-  end
+  def fz_http_started, do: capture_event("fz_http_started")
 
-  def ping do
+  def ping, do: capture_event("ping")
+
+  defp capture_event(name, extra_fields \\ []) do
     telemetry_module().capture(
-      "ping",
-      common_fields()
+      name,
+      common_fields() ++ extra_fields
     )
   end
 

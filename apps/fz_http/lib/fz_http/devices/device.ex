@@ -9,6 +9,7 @@ defmodule FzHttp.Devices.Device do
 
   import FzHttp.SharedValidators,
     only: [
+      validate_mtu: 2,
       validate_fqdn_or_ip: 2,
       validate_omitted: 2,
       validate_list_of_ips: 2,
@@ -133,10 +134,7 @@ defmodule FzHttp.Devices.Device do
       greater_than_or_equal_to: 0,
       less_than_or_equal_to: 120
     )
-    |> validate_number(:mtu,
-      greater_than_or_equal_to: 576,
-      less_than_or_equal_to: 1500
-    )
+    |> validate_mtu(:mtu)
     |> validate_length(:description, max: @description_max_length)
     |> validate_ipv4_required()
     |> validate_ipv6_required()

@@ -1,6 +1,6 @@
 defmodule FzHttp.Rules.Rule do
   @moduledoc """
-  Not really sure what to write here. I'll update this later.
+  Schema for managing Rules.
   """
 
   use Ecto.Schema

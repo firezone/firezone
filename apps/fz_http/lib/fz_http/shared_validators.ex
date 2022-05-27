@@ -12,6 +12,30 @@ defmodule FzHttp.SharedValidators do
       valid_cidr?: 1
     ]
 
+  @mtu_min 576
+  @mtu_max 1_420
+
+  def validate_ip(changeset, field), do: validate_list_of_ips(changeset, field)
+
+  def validate_cidr(changeset, field) when is_atom(field) do
+    validate_change(changeset, field, fn _current_field, value ->
+      error_if(
+        valid_cidr?(value),
+        &(&1 != true),
+        &{field, "is invalid: #{&1} is not a valid CIDR range."}
+      )
+    end)
+  end
+
+  def validate_mtu(changeset, field) when is_atom(field) do
+    validate_number(
+      changeset,
+      field,
+      greater_than_or_equal_to: @mtu_min,
+      less_than_or_equal_to: @mtu_max
+    )
+  end
+
   def validate_no_duplicates(changeset, field) when is_atom(field) do
     validate_change(changeset, field, fn _current_field, value ->
       values = split_comma_list(value)
