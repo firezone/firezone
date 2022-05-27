@@ -35,7 +35,11 @@ jobs:
       - uses: actions/setup-ruby@v1
         with:
           ruby-version: '2.7'
+          bundler-cache: true
       - uses: actions/setup-python@v2
+        with:
+          python-version: '3.9'
+          cache: 'pip'
       - uses: erlef/setup-beam@v1
         with:
           otp-version: '25.0'
