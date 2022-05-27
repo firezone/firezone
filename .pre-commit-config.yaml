@@ -27,7 +27,7 @@ repos:
         files: \.ex$
       - id: rubocop
         name: 'ruby: rubocop'
-        entry: rubocop
+        entry: bundle exec rubocop
         language: system
         pass_filenames: false
         files: \.rb$
