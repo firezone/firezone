@@ -3,4 +3,7 @@
 nodejs 14.19.3
 elixir 1.13.4-otp-25
 erlang 25.0
+
+# Used for static analysis
 ruby 2.7.5
+python 3.9.13

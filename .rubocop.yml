@@ -1,5 +1,6 @@
 AllCops:
   TargetRubyVersion: 2.7
   Exclude:
+    - "vendor/**/*"
     - "apps/fz_http/assets/node_modules/**/*"
     - "omnibus/cookbooks/firezone/attributes/default.rb"
