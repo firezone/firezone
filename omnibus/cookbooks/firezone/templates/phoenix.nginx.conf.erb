@@ -15,6 +15,9 @@ log_format cache '$remote_addr - [$time_local] "$request" $upstream_cache_status
 
 server {
   listen <%= @nginx['non_ssl_port'] %> default_server;
+<% if @nginx['ipv6'] -%>
+  listen [::]:<%= @nginx['non_ssl_port'] %> default_server;
+<% end -%>
   server_name <%= @fqdn %>;
 <% if @nginx['force_ssl'] -%>
   location / {
@@ -30,6 +33,9 @@ server {
 
 server {
   listen <%= @nginx['ssl_port'] %> default_server;
+<% if @nginx['ipv6'] -%>
+  listen [::]:<%= @nginx['ssl_port'] %> default_server;
+<% end -%>
   server_name <%= @fqdn %>;
 
 <%   if @ssl['enabled'] -%>
