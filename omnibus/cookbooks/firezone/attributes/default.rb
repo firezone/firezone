@@ -152,6 +152,9 @@ default['firezone']['nginx']['log_rotation']['file_maxbytes'] = 104_857_600
 default['firezone']['nginx']['log_rotation']['num_to_keep'] = 10
 default['firezone']['nginx']['log_x_forwarded_for'] = false
 
+# Permit nginx to listen for IPv6 connections in addition to IPv4
+default['firezone']['nginx']['ipv6'] = true
+
 # Redirect to the FQDN
 default['firezone']['nginx']['redirect_to_canonical'] = false
 
