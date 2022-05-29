@@ -113,8 +113,7 @@ defmodule FzHttp.Telemetry do
       distinct_id: distinct_id(),
       fqdn: fqdn(),
       version: version(),
-      kernel_version: "#{os_type()} #{os_version()}",
-      host_info: host_info()
+      kernel_version: "#{os_type()} #{os_version()}"
     ]
   end
 
@@ -166,16 +165,6 @@ defmodule FzHttp.Telemetry do
 
       _ ->
         "0.0.0"
-    end
-  end
-
-  defp host_info do
-    case CLI.bash("hostnamectl") do
-      {result, 0} ->
-        result
-
-      {error, _exit_code} ->
-        error
     end
   end
 end
