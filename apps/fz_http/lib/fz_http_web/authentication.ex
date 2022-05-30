@@ -50,7 +50,7 @@ defmodule FzHttpWeb.Authentication do
   end
 
   def sign_in(conn, user, auth) do
-    Telemetry.login(user)
+    Telemetry.login()
     Users.update_last_signed_in(user, auth)
     __MODULE__.Plug.sign_in(conn, user)
   end

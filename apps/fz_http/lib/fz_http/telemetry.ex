@@ -3,9 +3,6 @@ defmodule FzHttp.Telemetry do
   Functions for various telemetry events.
   """
 
-  alias FzCommon.CLI
-  alias FzHttp.Users
-
   require Logger
 
   def add_device do
@@ -89,14 +86,6 @@ defmodule FzHttp.Telemetry do
 
   defp telemetry_module do
     Application.fetch_env!(:fz_http, :telemetry_module)
-  end
-
-  defp user_email(user_id) do
-    Users.get_user!(user_id).email
-  end
-
-  defp admin_email do
-    Application.fetch_env!(:fz_http, :admin_email)
   end
 
   defp fqdn do

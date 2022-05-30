@@ -64,7 +64,7 @@ defmodule FzHttp.OIDC.Refresher do
       |> change()
       |> put_change(:disabled_at, DateTime.utc_now())
       |> prepare_changes(fn changeset ->
-        FzHttp.Telemetry.disable_user(user, "oidc refresh failure")
+        FzHttp.Telemetry.disable_user()
         FzHttpWeb.Endpoint.broadcast("users_socket:#{user.id}", "disconnect", %{})
         changeset
       end)

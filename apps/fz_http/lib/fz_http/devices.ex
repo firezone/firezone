@@ -34,8 +34,8 @@ defmodule FzHttp.Devices do
       end)
 
     case result do
-      {:ok, device} ->
-        Telemetry.add_device(device)
+      {:ok, _device} ->
+        Telemetry.add_device()
 
       _ ->
         nil
@@ -51,7 +51,7 @@ defmodule FzHttp.Devices do
   end
 
   def delete_device(%Device{} = device) do
-    Telemetry.delete_device(device)
+    Telemetry.delete_device()
     Repo.delete(device)
   end
 
