@@ -36,7 +36,7 @@ defmodule FzHttpWeb.UserLive.VPNConnectionComponent do
           changeset
 
         %{data: user} = changeset ->
-          FzHttp.Telemetry.disable_user(user, "disabled by admin")
+          FzHttp.Telemetry.disable_user()
           FzHttpWeb.Endpoint.broadcast("users_socket:#{user.id}", "disconnect", %{})
           changeset
       end)

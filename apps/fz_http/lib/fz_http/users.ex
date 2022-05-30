@@ -66,7 +66,7 @@ defmodule FzHttp.Users do
       |> Repo.insert()
 
     case result do
-      {:ok, user} -> Telemetry.add_user(user)
+      {:ok, _user} -> Telemetry.add_user()
       _ -> nil
     end
 
@@ -87,7 +87,7 @@ defmodule FzHttp.Users do
   end
 
   def delete_user(%User{} = user) do
-    Telemetry.delete_user(user)
+    Telemetry.delete_user()
     Repo.delete(user)
   end
 

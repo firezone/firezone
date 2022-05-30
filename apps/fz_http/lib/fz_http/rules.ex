@@ -22,8 +22,8 @@ defmodule FzHttp.Rules do
       |> Repo.insert()
 
     case result do
-      {:ok, rule} ->
-        Telemetry.add_rule(rule)
+      {:ok, _rule} ->
+        Telemetry.add_rule()
 
       _ ->
         nil
@@ -33,7 +33,7 @@ defmodule FzHttp.Rules do
   end
 
   def delete_rule(%Rule{} = rule) do
-    Telemetry.delete_rule(rule)
+    Telemetry.delete_rule()
     Repo.delete(rule)
   end
 
