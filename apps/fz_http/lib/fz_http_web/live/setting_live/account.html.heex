@@ -76,6 +76,27 @@
   </div>
 </section>
 
+<section class="section is-main-section">
+  <h4 class="title is-4">
+    Multi Factor Authentication
+  </h4>
+
+  <div class="block">
+    <p>
+      Your MFA methods are invoked when login with username and password.
+    </p>
+  </div>
+
+  <div class="block">
+    <%= if length(@methods) > 0 do %>
+      <%= render FzHttpWeb.SharedView, "mfa_methods_table.html", methods: @methods %>
+    <% else %>
+      <div>No MFA methods added.</div>
+    <% end %>
+  </div>
+
+  <button class="button is-primary" phx-click="add_method">Add MFA Method</button>
+</section>
 
 <section class="section is-main-section">
   <h4 class="title is-4">

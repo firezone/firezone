@@ -4,7 +4,7 @@ defmodule FzHttpWeb.SettingLive.Account do
   """
   use FzHttpWeb, :live_view
 
-  alias FzHttp.Users
+  alias FzHttp.{MFA, Users}
   alias FzHttpWeb.{Endpoint, Presence}
 
   @live_sessions_topic "notification:session"
@@ -16,6 +16,7 @@ defmodule FzHttpWeb.SettingLive.Account do
     {:ok,
      socket
      |> assign(:changeset, Users.change_user(socket.assigns.current_user))
+     |> assign(:methods, MFA.list_methods(socket.assigns.current_user))
      |> assign(:page_title, "Account Settings")
      |> assign(
        :metas,

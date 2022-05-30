@@ -1,0 +1,24 @@
+<table class="table is-bordered is-hoverable is-striped is-fullwidth">
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Type</th>
+      <th>Last Used At</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+  <%= for method <- @methods do %>
+    <tr>
+      <td>
+        <%= method.name %>
+      </td>
+      <td>
+        <%= method.type %>
+      </td>
+      <td id={"method-#{method.id}-last-used-at"} data-timestamp={method.last_used_at} phx-hook="FormatTimestamp">…</td>
+      <td></td>
+    </tr>
+  <% end %>
+  </tbody>
+</table>
