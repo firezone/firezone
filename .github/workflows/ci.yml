@@ -40,7 +40,7 @@ jobs:
           python-version: '3.9'
       - uses: erlef/setup-beam@v1
         with:
-          otp-version: '25.0'
+          otp-version: '24'
           elixir-version: '1.13.4'
       - uses: actions/cache@v2
         name: Setup Elixir cache
@@ -126,7 +126,7 @@ jobs:
           node-version: '14.19.3'
       - uses: erlef/setup-beam@v1
         with:
-          otp-version: '25.0'
+          otp-version: '24'
           elixir-version: '1.13.4'
       - uses: actions/cache@v2
         with:
