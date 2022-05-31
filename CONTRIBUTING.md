@@ -59,6 +59,11 @@ Firezone development requires access to a Postgresql instance. Versions 9.6 or
 higher should work fine. Access can be configured using the [
 .env](#the-env-file) described below.
 
+**Note:** To use the default configuration without specifying the database URL in the `.env` file, you need to configure the `postgres` user with the password `postgres` to do so use the following command:
+```sql
+ALTER USER postgres WITH PASSWORD 'postgres';
+```
+
 ### Pre-commit
 
 We use [pre-commit](https://pre-commit.com) to catch any static analysis issues

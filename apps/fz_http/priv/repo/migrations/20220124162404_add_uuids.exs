@@ -3,6 +3,11 @@ defmodule FzHttp.Repo.Migrations.AddUuids do
 
   def change do
     execute(
+      "CREATE EXTENSION pgcrypto",
+      "DROP EXTENSION pgcrypto"
+    )
+
+    execute(
       "ALTER TABLE rules ADD COLUMN uuid uuid DEFAULT gen_random_uuid() NOT NULL",
       "ALTER TABLE rules DROP COLUMN uuid"
     )
