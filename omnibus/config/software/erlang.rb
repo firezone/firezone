@@ -18,7 +18,9 @@
 #
 
 name 'erlang'
-default_version '25.0'
+
+# Erlang 25 has SSL issues -- HTTPoison times out to some servers, e.g. Azure https://login.microsoftonline.com
+default_version '24.3.4'
 
 license 'Apache-2.0'
 license_file 'LICENSE.txt'
