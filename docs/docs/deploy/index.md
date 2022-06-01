@@ -56,8 +56,6 @@ Add users to grant them access to your network.
 * [Client Instructions]({%link docs/user-guides/client-instructions.md%}):
 Instructions to establish a VPN session.
 
-
-
 ## After Setup
 
 Congrats! You have completed the setup, but there's a lot more you can do with Firezone!
