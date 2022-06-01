@@ -84,6 +84,10 @@ defmodule FzCommon.FzNetTest do
   end
 
   describe "standardized_inet/1" do
+    test "sanitizes CIDRs with invalid start" do
+      assert "10.0.0.0/24" == FzNet.standardized_inet("10.0.0.5/24")
+    end
+
     test "formats CIDRs" do
       assert "::/0" == FzNet.standardized_inet("::0/0")
     end
