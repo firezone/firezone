@@ -140,7 +140,7 @@ mapReleaseToDistro() {
   fi
 
   if [ -z "$image_sub_string" ]; then
-    echo "Unsupported Linux Distribution. Aborting."
+    echo "Did not detect a supported Linux distribution. Try using the manual installation method using a release package from a similar distribution. Aborting."
     exit
   fi
 
