@@ -10,7 +10,7 @@ defmodule FzHttp.Rules.Rule do
 
   schema "rules" do
     field :uuid, Ecto.UUID, autogenerate: true
-    field :destination, EctoNetwork.INET
+    field :destination, EctoNetwork.INET, read_after_writes: true
     field :action, Ecto.Enum, values: [:drop, :accept], default: :drop
 
     timestamps(type: :utc_datetime_usec)

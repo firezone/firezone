@@ -47,7 +47,8 @@ defmodule FzCommon.FzNet do
   def standardized_inet(inet) when is_binary(inet) do
     if String.contains?(inet, "/") do
       inet
-      |> InetCidr.parse()
+      # normalize CIDR
+      |> InetCidr.parse(true)
       |> InetCidr.to_string()
     else
       {:ok, addr} = inet |> String.to_charlist() |> :inet.parse_address()

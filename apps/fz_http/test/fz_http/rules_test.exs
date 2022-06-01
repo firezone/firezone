@@ -29,6 +29,13 @@ defmodule FzHttp.RulesTest do
       assert !is_nil(rule.id)
       assert rule.action == :drop
     end
+
+    test "prevents invalid CIDRs" do
+      {:error, changeset} = Rules.create_rule(%{destination: "10.0 0.0/24"})
+
+      assert changeset.errors[:destination] ==
+               {"is invalid", [type: EctoNetwork.INET, validation: :cast]}
+    end
   end
 
   describe "delete_rule/1" do
