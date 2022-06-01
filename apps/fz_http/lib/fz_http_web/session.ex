@@ -20,7 +20,8 @@ defmodule FzHttpWeb.Session do
   ]
 
   def options do
-    @session_options ++ [secure: cookie_secure(), signing_salt: signing_salt()]
+    @session_options ++
+      [secure: cookie_secure(), signing_salt: signing_salt(), encryption_salt: encryption_salt()]
   end
 
   defp cookie_secure do
@@ -29,5 +30,9 @@ defmodule FzHttpWeb.Session do
 
   defp signing_salt do
     Application.fetch_env!(:fz_http, :cookie_signing_salt)
+  end
+
+  defp encryption_salt do
+    Application.fetch_env!(:fz_http, :cookie_encryption_salt)
   end
 end
