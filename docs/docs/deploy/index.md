@@ -9,10 +9,79 @@ description: >
 ---
 ---
 
-Firezone can be deployed on most popular Linux distributions in a few minutes.
+Firezone can be self-hosted on most popular Linux distributions in a few minutes.
+This guide will walk you through the steps to get started.
+
+## Step 1: Environment Setup
+
+### Supported operating systems
+
 Start by checking if your environment is listed on
 [supported platforms]({% link docs/deploy/supported-platforms.md %}).
 A kernel upgrade may be required to ensure WireGuard® is available.
 
-\
-[Start Here: Supported Platforms]({%link docs/deploy/supported-platforms.md%}){:.btn.btn-purple}
+### Firewall settings
+
+Firezone requires ports `80/tcp`, `443/tcp`, and `51820/udp` to be open.
+
+### Production deployments
+
+Firezone requires the setup of a DNS record and matching SSL certificate
+for production deployments. See instructions
+[here]({% link docs/deploy/prerequisites.md %}).
+
+## Step 2: Server Install Script
+
+The easiest way to get started using Firezone is via the automatic installation
+script below.
+
+```bash
+bash <(curl -Ls https://github.com/firezone/firezone/raw/master/scripts/install.sh)
+```
+
+This will ask you a few questions regarding your install, download the latest
+release for your platform, then create an administrator user and print to the
+console instructions for logging in to the web UI.
+
+If the script fails, follow instructions for
+[manual installation]({% link docs/deploy/server.md %}).
+
+## Step 3: Install Client Apps
+
+Once successfully deployed, users and devices can be added to
+connect to the VPN server:
+
+* [Add Users]({%link docs/user-guides/add-users.md%}):
+Add users to grant them access to your network.
+* [Client Instructions]({%link docs/user-guides/client-instructions.md%}):
+Instructions to establish a VPN session.
+
+
+
+## After Setup
+
+Congrats! You have completed the setup, but there's a lot more you can do with Firezone!
+
+* [Integrate your identity provider]({% link docs/authenticate/index.md %})
+for authenticating clients
+* Using Firezone to
+[establish a static IP]({% link docs/user-guides/whitelist-vpn.md %})
+* Create tunnels between multiple peers with
+[reverse tunnels]({% link docs/user-guides/reverse-tunnel.md %})
+* Only route certain traffic through Firezone with
+[split tunneling]({% link docs/user-guides/split-tunnel.md %})
+
+If you run into issues or need help:
+
+* Ask a question in our
+[discussion forums](https://discourse.firez.one/)
+* Report bugs or propose new features on
+[Github](https://github.com/firezone/firezone)
+* Join discussions and speak to the team live in our
+[Slack channel](https://www.firezone.dev/slack)
+
+Support us by:
+
+* Star our repo on [Github](https://github.com/firezone/firezone)
+* Follow us on Twitter at [@firezonehq](https://twitter.com/firezonehq)
+* Follow us on LinkedIn at [@firezonehq](https://www.linkedin.com/company/firezonehq)

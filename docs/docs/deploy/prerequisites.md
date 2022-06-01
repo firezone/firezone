@@ -49,6 +49,11 @@ The image below shows this configuration on an AWS EC2 instance:
 
 ![Open ports](https://user-images.githubusercontent.com/52545545/155015583-41eec85c-3636-4436-94b9-222afd050c69.png){:width="600"}
 
-\
-[Previous: Resource Requirements]({%link docs/deploy/resource-requirements.md%}){:.btn.mr-2}
-[Next: Install Server]({%link docs/deploy/server.md%}){:.btn.btn-purple}
+### Resource requirements
+
+We recommend **starting with 1 vCPU and 1 GB of RAM and scaling up** as the
+number of users and bandwidth requirements grow.
+
+Firezone uses in-kernel WireGuard, so its performance should be very good.
+In general, more CPU cores translate to higher bandwidth capacity per tunnel
+while more RAM will help with higher counts of users and tunnels.

@@ -129,6 +129,3 @@ not have it installed by default. To fix, ensure `libcap-progs` is installed:
 ```shell
 sudo zypper install libcap-progs
 ```
-
-\
-[Next: Resource Requirements]({%link docs/deploy/resource-requirements.md%}){:.btn.btn-purple}
