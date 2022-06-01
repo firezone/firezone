@@ -56,6 +56,17 @@ Add users to grant them access to your network.
 * [Client Instructions]({%link docs/user-guides/client-instructions.md%}):
 Instructions to establish a VPN session.
 
+## Troubleshooting
+
+Check the [troubleshooting guide]({% link docs/administer/troubleshoot.md %}).
+If you are unable to resolve the issue:
+
+* Ask a question in our
+[discussion forums](https://discourse.firez.one/) or
+[Slack channel](https://www.firezone.dev/slack)
+* Report bugs or propose new features on
+[Github](https://github.com/firezone/firezone)
+
 ## After Setup
 
 Congrats! You have completed the setup, but there's a lot more you can do with Firezone!
@@ -68,15 +79,6 @@ for authenticating clients
 [reverse tunnels]({% link docs/user-guides/reverse-tunnel.md %})
 * Only route certain traffic through Firezone with
 [split tunneling]({% link docs/user-guides/split-tunnel.md %})
-
-If you run into issues or need help:
-
-* Ask a question in our
-[discussion forums](https://discourse.firez.one/)
-* Report bugs or propose new features on
-[Github](https://github.com/firezone/firezone)
-* Join discussions and speak to the team live in our
-[Slack channel](https://www.firezone.dev/slack)
 
 Support us by:
 
