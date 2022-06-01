@@ -6,7 +6,8 @@
       id: "user-form-component",
       user: @user,
       current_user: @current_user,
-      action: @live_action) %>
+      action: @live_action,
+      form: "user-form") %>
 <% end %>
 <%= if @live_action == :new_device do %>
   <%= live_modal(
@@ -15,7 +16,9 @@
       title: "Add Device",
       current_user: @current_user,
       target_user_id: @user.id,
-      id: "create-device-component") %>
+      id: "create-device-component",
+      form: "create-device",
+      button_text: "Generate Configuration") %>
 <% end %>
 
 <%= render FzHttpWeb.SharedView, "heading.html", page_title: "Users |> #{@user.email}" %>
