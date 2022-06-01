@@ -5,7 +5,9 @@
       title: "Add Device",
       current_user: @current_user,
       target_user_id: @current_user.id,
-      id: "create-device-component") %>
+      id: "create-device-component",
+      form: "create-device",
+      button_text: "Generate Configuration") %>
 <% end %>
 
 <%= if @live_action == :change_password do %>
@@ -16,7 +18,8 @@
       id: "user-form-component",
       user: @user,
       current_user: @current_user,
-      action: :edit) %>
+      action: :edit,
+      form: "user-form") %>
 <% end %>
 
 <section class="section is-main-section">

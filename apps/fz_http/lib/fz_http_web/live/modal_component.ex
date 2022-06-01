@@ -26,7 +26,9 @@ defmodule FzHttpWeb.ModalComponent do
             <%= live_component(@component, @opts) %>
           </div>
         </section>
-        <footer class="modal-card-foot">
+        <footer class="modal-card-foot is-justify-content-flex-end">
+          <%= Phoenix.View.render(FzHttpWeb.SharedView, "submit_button.html",
+              button_text: @opts[:button_text], form: @opts[:form]) %>
         </footer>
       </div>
     </div>

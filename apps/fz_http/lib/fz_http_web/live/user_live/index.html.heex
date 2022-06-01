@@ -6,7 +6,8 @@
     id: "user-form-component",
     user: nil,
     current_user: @current_user,
-    action: @live_action) %>
+    action: @live_action,
+    form: "user-form") %>
 <% end %>
 
 <%= render FzHttpWeb.SharedView, "heading.html", page_title: @page_title %>
