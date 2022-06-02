@@ -60,9 +60,9 @@ create a new client secret. Copy the client secret - **this will be the
 
 Lastly, select the API permissions link under the Manage menu,
 click `Add a permission`, and select `Microsoft Graph`. Add `email`, `openid`,
-and `profile` to the required permissions.
+`offline_access` and `profile` to the required permissions.
 
-![Permissions](https://user-images.githubusercontent.com/52545545/168720688-19f92516-bc5e-437f-b3aa-7638632161a2.png){:width="800"}
+![Permissions](https://user-images.githubusercontent.com/52545545/171556138-26de489b-7de5-4b53-91dc-dc8058f0f901.png){:width="800"}
 
 ## Integrate With Firezone
 
