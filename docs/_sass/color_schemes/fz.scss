@@ -32,6 +32,7 @@ $mono-font-family: "Fira Mono", monospace;
 h1, h2, h3, h4, h5, h6 {
   font-family: "Open Sans", sans-serif;
   margin-bottom: 0.5em !important;
+  font-weight: 600 !important;
 }
 
 .select-version {
@@ -73,7 +74,7 @@ body {
 }
 
 code {
-  font-size: 15px !important;
+  font-size: 14px !important;
 }
 
 // Borders
