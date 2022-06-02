@@ -43,6 +43,10 @@ This will ask you a few questions regarding your install, download the latest
 release for your platform, then create an administrator user and print to the
 console instructions for logging in to the web UI.
 
+By default, the web UI can be reached at the IP or domain name of your server.
+You can re-generate the admin credentials using the
+`firezone-ctl create-or-reset-admin` command.
+
 If the script fails, follow instructions for
 [manual installation]({% link docs/deploy/server.md %}).
 
