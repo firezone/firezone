@@ -38,4 +38,12 @@ defmodule FzHttp.MFA do
     |> Method.changeset(attrs)
     |> Repo.update()
   end
+
+  def new_method(attrs \\ %{}) do
+    Method.changeset(%Method{}, attrs)
+  end
+
+  def change_method(method, attrs \\ %{}) do
+    Method.changeset(method, attrs)
+  end
 end

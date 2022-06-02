@@ -9,6 +9,10 @@
       form: "account-edit") %>
 <% end %>
 
+<%= if @live_action == :register_mfa do %>
+  <.live_component module={FzHttpWeb.MFA.RegisterComponent} id="register-mfa" />
+<% end %>
+
 <%= render FzHttpWeb.SharedView, "heading.html", page_title: @page_title %>
 
 <section class="section is-main-section">
@@ -95,7 +99,12 @@
     <% end %>
   </div>
 
-  <button class="button is-primary" phx-click="add_method">Add MFA Method</button>
+  <%= live_patch(to: Routes.setting_account_path(@socket, :register_mfa), class: "button") do %>
+    <span class="icon is-small">
+      <i class="mdi mdi-plus"></i>
+    </span>
+    <span>Add MFA Method</span>
+  <% end %>
 </section>
 
 <section class="section is-main-section">
