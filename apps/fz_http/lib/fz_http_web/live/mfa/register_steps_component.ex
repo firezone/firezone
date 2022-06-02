@@ -83,11 +83,8 @@ defmodule FzHttpWeb.MFA.RegisterStepsComponent do
         <div class="field-body">
           <div class="field">
             <p class="control">
-              <input class="input" type="text"
-                  name="name"
-                  placeholder="Name"
-                  value="My Authenticator"
-                  required />
+              <input class="input" type="text" name="name"
+                  placeholder="Name" value="My Authenticator" required />
             </p>
           </div>
         </div>
@@ -109,10 +106,8 @@ defmodule FzHttpWeb.MFA.RegisterStepsComponent do
         <div class="field-body">
           <div class="field">
             <p class="control">
-              <input class={"input #{input_error_class(@changeset, :code)}"} type="text"
-                  name="code"
-                  placeholder="123456"
-                  required />
+              <input class={"input #{input_error_class(@changeset, :code)}"}
+                  type="text" name="code" placeholder="123456" required />
             </p>
           </div>
         </div>
@@ -124,7 +119,13 @@ defmodule FzHttpWeb.MFA.RegisterStepsComponent do
   def save(assigns) do
     ~H"""
     <form id="mfa-method-form" phx-target={@parent} phx-submit="save">
-      Save
+      Confirm to save this Authentication method.
+
+      <%= if !@changeset.valid? do %>
+      <p class="help is-danger">
+        Something went wrong. Try saving again or starting over.
+      </p>
+      <% end %>
     </form>
     """
   end

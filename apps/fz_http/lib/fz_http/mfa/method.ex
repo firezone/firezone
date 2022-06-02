@@ -31,13 +31,15 @@ defmodule FzHttp.MFA.Method do
   end
 
   defp cast_payload(%{changes: %{secret: secret}} = changeset) do
-    put_change(changeset, :payload, %{secret: secret})
+    put_change(changeset, :payload, %{"secret" => secret})
   end
 
   defp cast_payload(changeset), do: changeset
 
-  defp validate_code(%{changes: %{code: code, secret: secret}} = changeset) do
-    if NimbleTOTP.verification_code(Base.decode64!(secret)) == code do
+  defp validate_code(%{changes: %{code: code}} = changeset) do
+    secret = Base.decode64!(fetch_field!(changeset, :payload)["secret"])
+
+    if NimbleTOTP.verification_code(secret) == code do
       changeset
     else
       add_error(changeset, :code, "is not valid")

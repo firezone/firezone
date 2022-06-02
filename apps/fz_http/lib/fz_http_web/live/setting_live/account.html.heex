@@ -10,7 +10,9 @@
 <% end %>
 
 <%= if @live_action == :register_mfa do %>
-  <.live_component module={FzHttpWeb.MFA.RegisterComponent} id="register-mfa" />
+  <.live_component module={FzHttpWeb.MFA.RegisterComponent}
+      id="register-mfa"
+      user={@current_user} />
 <% end %>
 
 <%= render FzHttpWeb.SharedView, "heading.html", page_title: @page_title %>

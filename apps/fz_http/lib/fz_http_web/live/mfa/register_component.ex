@@ -5,7 +5,7 @@ defmodule FzHttpWeb.MFA.RegisterComponent do
   use FzHttpWeb, :live_component
 
   import Ecto.Changeset
-  alias FzHttp.MFA
+  alias FzHttp.{MFA, Repo}
 
   @steps ~w(pick_type register verify save)a
   @next_steps @steps |> Enum.zip(Enum.drop(@steps, 1)) |> Map.new()
@@ -35,11 +35,7 @@ defmodule FzHttpWeb.MFA.RegisterComponent do
   end
 
   @impl Phoenix.LiveComponent
-  def handle_event(
-        "next",
-        %{"code" => code} = params,
-        %{assigns: %{step: :verify, changeset: changeset}} = socket
-      ) do
+  def handle_event("next", params, %{assigns: %{step: :verify, changeset: changeset}} = socket) do
     changeset = MFA.change_method(apply_changes(changeset), params)
 
     next_step =
@@ -64,10 +60,20 @@ defmodule FzHttpWeb.MFA.RegisterComponent do
   end
 
   @impl Phoenix.LiveComponent
-  def handle_event("save", _params, socket) do
-    {:noreply,
-     socket
-     |> put_flash(:info, "MFA method added!")
-     |> push_redirect(to: Routes.setting_account_path(socket, :show))}
+  def handle_event("save", _params, %{assigns: %{changeset: changeset}} = socket) do
+    changeset = put_change(changeset, :user_id, socket.assigns.user.id)
+
+    with {:ok, _method} <- Repo.insert(changeset) do
+      {:noreply,
+       socket
+       |> put_flash(:info, "MFA method added!")
+       |> push_redirect(to: Routes.setting_account_path(socket, :show))}
+    else
+      {:error, changeset} ->
+        {:noreply,
+         socket
+         |> assign(:changeset, changeset)
+         |> assign(:step, :save)}
+    end
   end
 end
