@@ -19,10 +19,9 @@ $fz-orange: #FF7300;
 
 $link-color: $fz-purple-100;
 $btn-primary-color: $fz-purple-100;
-$base-font-weight: 400 !default;
 
 $body-heading-color: $fz-purple-300;
-$body-text-color: $fz-grey-dk-300; 
+$body-text-color: $fz-grey-dk-200; 
 
 // Fonts
 
@@ -35,6 +34,16 @@ h1, h2, h3, h4, h5, h6 {
   font-weight: 600 !important;
 }
 
+body {
+  font-size: 15px !important;
+}
+
+code {
+  font-size: 14px !important;
+}
+
+// Other Styling
+
 .select-version {
   margin: 1rem;
 }
@@ -42,7 +51,6 @@ h1, h2, h3, h4, h5, h6 {
 .side-bar {
   border: none !important;
   background-color: inherit !important;  
-  // width: 33% !important;
 }
 
 .nav-list-link {
@@ -50,7 +58,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .site-nav > .nav-list .nav-list-item {
-  margin-top: 1rem;
+  margin-top: 0.5rem;
   font-weight: 500;
   color: $fz-grey-dk-300 !important;
 }
@@ -76,25 +84,10 @@ h1, h2, h3, h4, h5, h6 {
   background-image: none !important;
 }
 
-body {
-  font-size: 14px !important;
-}
-
-code {
-  font-size: 14px !important;
-}
-
 // Borders
 
 $border-color: $fz-grey-lt-200;
 
 // Container
 
-// $content-width: 1100px;
-// $media-queries: (
-//   xs: 620px,
-//   sm: 800px,
-//   md: $content-width,
-//   lg: $content-width + $nav-width,
-//   xl: 1700px,
-// );
+$nav-width: 300px;
