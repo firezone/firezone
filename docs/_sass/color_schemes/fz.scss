@@ -17,7 +17,7 @@ $fz-purple-300: #28005c;
 
 $fz-orange: #FF7300;
 
-$link-color: $fz-purple-000;
+$link-color: $fz-purple-100;
 $btn-primary-color: $fz-purple-100;
 $base-font-weight: 400 !default;
 
@@ -66,6 +66,13 @@ h1, h2, h3, h4, h5, h6 {
   // border-left: 4px solid $fz-purple-000;
   color: $link-color !important;
   background-color: $fz-grey-lt-100;
+  border-radius: 10px;
+  background-image: none !important;
+}
+
+.nav-list-link:hover {  
+  background-color: $fz-grey-lt-100;
+  border-radius: 10px;
   background-image: none !important;
 }
 
