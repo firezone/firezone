@@ -74,7 +74,7 @@ If you are unable to resolve the issue:
 
 ## After Setup
 
-Congrats! You have completed the setup, but there's a lot more you can do with Firezone!
+Congrats! You have completed the setup, but there's a lot more you can do with Firezone.
 
 * [Integrate your identity provider]({% link docs/authenticate/index.md %})
 for authenticating clients
