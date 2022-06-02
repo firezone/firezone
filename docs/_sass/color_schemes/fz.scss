@@ -55,20 +55,30 @@ $header-height: 100px;
   background-color: inherit !important;  
 }
 
+.nav-list {
+  padding-left: .25rem !important;
+}
+
 .nav-list-link {
   color: $fz-grey-dk-200 !important;
 }
 
 .site-nav > .nav-list .nav-list-item {
-  margin-top: 0.5rem;
+  margin-top: 1.25rem;
   font-weight: 500;
   color: $fz-grey-dk-300 !important;
 }
 
 .site-nav > .nav-list .nav-list-item > .nav-list .nav-list-item {
-  margin-top: 0;
+  margin-top: 0px;  
   font-weight: 400;
   color: $fz-grey-dk-200 !important;
+
+  .nav-list-link {
+    min-height: 1.25rem;
+    line-height: 1.25rem;
+    font-size: 13px;
+  }
 }
 
 
