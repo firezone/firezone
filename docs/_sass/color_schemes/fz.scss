@@ -44,6 +44,8 @@ code {
 
 // Other Styling
 
+$header-height: 100px;
+
 .select-version {
   margin: 1rem;
 }
@@ -70,17 +72,14 @@ code {
 }
 
 
-.nav-list-link.active {
-  // border-left: 4px solid $fz-purple-000;
+.nav-list-link.active {  
   color: $link-color !important;
-  background-color: $fz-grey-lt-100;
-  border-radius: 10px;
+  background-color: $fz-grey-lt-000;
   background-image: none !important;
 }
 
 .nav-list-link:hover {  
-  background-color: $fz-grey-lt-100;
-  border-radius: 10px;
+  background-color: $fz-grey-lt-000;
   background-image: none !important;
 }
 
