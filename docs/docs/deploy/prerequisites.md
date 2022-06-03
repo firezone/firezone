@@ -34,8 +34,9 @@ to do so:
 
 ## Security Group and Firewall Settings
 
-By default, Firezone requires ports `80/tcp`, `443/tcp`, and `51820/udp` to be open.
-This can change based on what you've configured in the configuration file.
+By default, Firezone requires ports `80/tcp` or `443/tcp`, and `51820/udp` to be
+accessible. We highliy recommend using https over `443/tcp`.
+These ports can change based on what you've configured in the configuration file.
 See the
 [configuration file reference]({% link docs/reference/configuration-file.md %})
 for details.
@@ -44,10 +45,6 @@ for details.
 programs that modify the Linux routing table or firewall may interfere with
 Firezone's operation. For help troubleshooting connectivity issues, see
 [troubleshoot]({% link docs/administer/troubleshoot.md %}).
-
-The image below shows this configuration on an AWS EC2 instance:
-
-![Open ports](https://user-images.githubusercontent.com/52545545/155015583-41eec85c-3636-4436-94b9-222afd050c69.png){:width="600"}
 
 ### Resource requirements
 

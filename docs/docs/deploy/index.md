@@ -5,8 +5,12 @@ nav_order: 2
 has_children: true
 has_toc: false
 description: >
+  Get started with Firezone in a few minutes by self-hosting on a supported platform.
   This section walks through the steps to deploy Firezone.
 ---
+
+### Get started with Firezone in a few minutes by self-hosting on a supported platform
+
 ---
 
 Firezone can be self-hosted on a server running a supported
@@ -21,9 +25,18 @@ Start by checking if your environment is listed on
 [supported platforms]({% link docs/deploy/supported-platforms.md %}).
 A kernel upgrade may be required to ensure WireGuard® is available.
 
-### Firewall settings
+### Security settings
 
-Firezone requires ports `80/tcp`, `443/tcp`, and `51820/udp` to be open.
+Ensure port forwarding is enabled on your firewall.
+The default Firezone configuration requires the following ports to be open:
+
+* `80/tcp` or `443/tcp`: To access the web UI. We highly recommend https over `443/tcp`.
+* `51820/udp`: The VPN traffic listen-port.
+
+Note: Firezone modifies the kernel netfilter and routing tables.
+Other programs that modify the Linux routing table or firewall may interfere
+with Firezone’s operation. For help troubleshooting connectivity issues, see the
+[troubleshooting guide]({% link docs/administer/troubleshoot.md %}).
 
 ### Production deployments
 
@@ -44,8 +57,10 @@ This will ask you a few questions regarding your install, download the latest
 release for your platform, then create an administrator user and print to the
 console instructions for logging in to the web UI.
 
+![install complete](https://user-images.githubusercontent.com/52545545/171948328-4771552f-e5dd-4c30-8c0b-baac80b6e7b1.png)
+
 By default, the web UI can be reached at the IP or domain name of your server.
-You can re-generate the admin credentials using the
+You can regenerate the admin credentials using the
 `firezone-ctl create-or-reset-admin` command.
 
 If the script fails, follow instructions for
@@ -63,7 +78,9 @@ Instructions to establish a VPN session.
 
 ## Troubleshooting
 
-Check the [troubleshooting guide]({% link docs/administer/troubleshoot.md %}).
+First, check our
+[troubleshooting guide]({% link docs/administer/troubleshoot.md %})
+to see if your issue is covered there.
 If you are unable to resolve the issue:
 
 * Ask a question in our

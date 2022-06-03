@@ -25,12 +25,6 @@ To upgrade Firezone, follow these steps:
 Occasionally problems arise. If you hit any, please let us know by [filing an
 issue](https://github.com/firezone/firezone/issues/new/choose).
 
-## Upgrading from >= 0.3.11 to >= 0.3.17
-
-Firezone 0.3.17 requires the `offline_access` scope for OIDC integrations.
-This ensures VPN sessions are terminated once user access is removed from
-the OIDC provider.
-
 ## Upgrading from 0.3.1 to >= 0.3.2
 
 The configuration option `default['firezone']['fqdn']` has been removed in favor
