@@ -26,10 +26,10 @@ description: >- # this means to ignore newlines until "baseurl:"
 url: "https://docs.firezone.dev"
 permalink: pretty
 twitter_username: firezonehq
-github_username:  firezone
+github_username: firezone
 
 # Set a path/url to a logo that will be displayed instead of the title
-logo: "/assets/images/firezone-logo-wordmark-dark.svg"
+logo: "/assets/images/logo-main.svg"
 
 # Build settings
 remote_theme: firezone/just-the-docs
@@ -66,7 +66,6 @@ aux_links:
 # Plugins
 plugins:
   - jekyll-sitemap
-
 # Exclude from processing.
 # The following items will not be processed, by default.
 # Any item listed under the `exclude:` key here will be automatically added to

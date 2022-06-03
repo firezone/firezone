@@ -56,8 +56,38 @@ code {
 
 $header-height: 100px;
 
-// Select Version
+// Header
+.site-header .site-title {
+  margin: 0px !important;
+  padding: 0px !important;
+}
 
+.site-header .site-title:hover {
+  background: none !important;
+}
+
+.site-header .site-logo-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.site-header .site-logo-wrapper h1 {
+  font-size: 1rem !important;
+  margin-top: 5px !important;
+  color: $fz-grey-dk-300;
+}
+
+.site-header .site-logo-wrapper a:hover {
+  background: none !important;
+}
+
+.site-header .site-logo {
+  height: 2rem !important;
+  width: 2rem !important;
+  margin-right: 10px;
+}
+
+// Select Version
 .select-version {
   width: 100% !important;
   margin: 0rem !important;
@@ -84,6 +114,7 @@ $header-height: 100px;
 
 .site-nav {
   padding-top: 0 !important;
+  margin-right: 20px !important;
 }
 .site-nav::-webkit-scrollbar {
   width: 0px !important;
