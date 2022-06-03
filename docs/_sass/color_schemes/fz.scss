@@ -35,8 +35,13 @@ h4,
 h5,
 h6 {
   font-family: "Open Sans", sans-serif;
-  margin-bottom: 0.5em !important;
+  margin-top: 0.1rem !important;
+  margin-bottom: 0.1rem !important;
   font-weight: 600 !important;
+}
+
+hr {
+  margin: 1rem 0 !important;
 }
 
 body {
@@ -51,44 +56,53 @@ code {
 
 $header-height: 100px;
 
+// Select Version
+
 .select-version {
-  margin: 1rem;
+  width: 100% !important;
+  margin: 0rem !important;
+  padding: 1rem !important;
+}
+
+.select-version select {
+  background-color: none;
+  padding: 10px;
+  border-radius: 12px;
+  border: none;
+  background-color: $fz-grey-lt-100;
+  -moz-appearance: none; /* Firefox */
+  -webkit-appearance: none; /* Safari and Chrome */
+  appearance: none;
+  cursor: pointer;
+}
+
+.select-version select::-ms-expand {
+  display: none;
+}
+
+// Site Nav
+
+.site-nav {
+  padding-top: 0 !important;
 }
 .site-nav::-webkit-scrollbar {
   width: 0px !important;
 }
+
+// Side Bar
 
 .side-bar {
   border: none !important;
   background-color: inherit !important;
 }
 
+// Nav List
+
 .nav-list {
   padding-left: 0.25rem !important;
 }
 .nav-list:first-child {
   border-left: 0px;
-}
-
-// Nav List Link
-
-.nav-list-link {
-  color: $fz-grey-dk-200 !important;
-  border-radius: 6px !important;
-  opacity: 0.7;
-  transition: all 0.2s ease-out;
-  border: 1px solid transparent;
-  padding: 10px !important;
-}
-.nav-list-link:hover {
-  background-color: $fz-grey-lt-200;
-  background-image: none !important;
-  border: 1px solid $fz-grey-dk-300;
-}
-
-.active {
-  opacity: 1;
-  color: $fz-grey-dk-300 !important;
 }
 
 .site-nav > .nav-list .nav-list-item {
@@ -109,6 +123,22 @@ $header-height: 100px;
   }
 }
 
+// Nav List Link
+
+.nav-list-link {
+  color: $fz-grey-dk-200 !important;
+  border-radius: 6px !important;
+  opacity: 0.7;
+  transition: all 0.2s ease-out;
+  border: 1px solid transparent;
+  padding: 10px !important;
+}
+.nav-list-link:hover {
+  background-color: $fz-grey-lt-200;
+  background-image: none !important;
+  border: 1px solid $fz-grey-dk-300;
+}
+
 .nav-list-link.active {
   color: $fz-grey-dk-300 !important;
   background-color: $fz-grey-lt-100;
@@ -116,6 +146,8 @@ $header-height: 100px;
   opacity: 1 !important;
   border-radius: 6px !important;
 }
+
+// Nav List Expander
 
 .nav-list-expander {
   color: #1b140e !important;
