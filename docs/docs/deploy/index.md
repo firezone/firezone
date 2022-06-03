@@ -64,6 +64,7 @@ SSH connection. If this happens and you miss the admin
 instructions, reconnect to the
 server to run `firezone-ctl create-or-reset-admin`.
 This will re-create the admin user and output the address of the web UI to the console.
+We are actively working on a fix for this [issue](https://github.com/firezone/firezone/issues/478).
 
 By default, the web UI can be reached at the IP or domain name of your server.
 You can regenerate the admin credentials using the
