@@ -33,7 +33,7 @@ The default Firezone configuration requires the following ports to be open:
 * `80/tcp` or `443/tcp`: To access the web UI. We highly recommend https over `443/tcp`.
 * `51820/udp`: The VPN traffic listen-port.
 
-Note: Firezone modifies the kernel netfilter and routing tables.
+**Note**: Firezone modifies the kernel netfilter and routing tables.
 Other programs that modify the Linux routing table or firewall may interfere
 with Firezone’s operation. For help troubleshooting connectivity issues, see the
 [troubleshooting guide]({% link docs/administer/troubleshoot.md %}).
@@ -58,6 +58,12 @@ release for your platform, then create an administrator user and print to the
 console instructions for logging in to the web UI.
 
 ![install complete](https://user-images.githubusercontent.com/52545545/171948328-4771552f-e5dd-4c30-8c0b-baac80b6e7b1.png)
+
+**Note**: During install new firewall rules are added, which can interrupt the
+SSH connection. If this happens and you miss the admin
+instructions, reconnect to the
+server to run `firezone-ctl create-or-reset-admin`.
+This will re-create the admin user and output the address of the web UI to the console.
 
 By default, the web UI can be reached at the IP or domain name of your server.
 You can regenerate the admin credentials using the
