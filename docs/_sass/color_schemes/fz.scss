@@ -15,20 +15,25 @@ $fz-purple-100: #3400c2;
 $fz-purple-200: #37007f;
 $fz-purple-300: #28005c;
 
-$fz-orange: #FF7300;
+$fz-orange: #ff7300;
 
 $link-color: $fz-purple-100;
 $btn-primary-color: $fz-purple-100;
 
 $body-heading-color: $fz-purple-300;
-$body-text-color: $fz-grey-dk-200; 
+$body-text-color: $fz-grey-dk-200;
 
 // Fonts
 
 $body-font-family: "Inter", sans-serif;
 $mono-font-family: "Fira Mono", monospace;
 
-h1, h2, h3, h4, h5, h6 {
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
   font-family: "Open Sans", sans-serif;
   margin-bottom: 0.5em !important;
   font-weight: 600 !important;
@@ -49,18 +54,41 @@ $header-height: 100px;
 .select-version {
   margin: 1rem;
 }
+.site-nav::-webkit-scrollbar {
+  width: 0px !important;
+}
 
 .side-bar {
   border: none !important;
-  background-color: inherit !important;  
+  background-color: inherit !important;
 }
 
 .nav-list {
-  padding-left: .25rem !important;
+  padding-left: 0.25rem !important;
 }
+.nav-list:first-child {
+  border-left: 0px;
+}
+
+// Nav List Link
 
 .nav-list-link {
   color: $fz-grey-dk-200 !important;
+  border-radius: 6px !important;
+  opacity: 0.7;
+  transition: all 0.2s ease-out;
+  border: 1px solid transparent;
+  padding: 10px !important;
+}
+.nav-list-link:hover {
+  background-color: $fz-grey-lt-200;
+  background-image: none !important;
+  border: 1px solid $fz-grey-dk-300;
+}
+
+.active {
+  opacity: 1;
+  color: $fz-grey-dk-300 !important;
 }
 
 .site-nav > .nav-list .nav-list-item {
@@ -70,7 +98,7 @@ $header-height: 100px;
 }
 
 .site-nav > .nav-list .nav-list-item > .nav-list .nav-list-item {
-  margin-top: 0px;  
+  margin-top: 0px;
   font-weight: 400;
   color: $fz-grey-dk-200 !important;
 
@@ -81,16 +109,21 @@ $header-height: 100px;
   }
 }
 
-
-.nav-list-link.active {  
-  color: $link-color !important;
-  background-color: $fz-grey-lt-000;
+.nav-list-link.active {
+  color: $fz-grey-dk-300 !important;
+  background-color: $fz-grey-lt-100;
   background-image: none !important;
+  opacity: 1 !important;
+  border-radius: 6px !important;
 }
 
-.nav-list-link:hover {  
-  background-color: $fz-grey-lt-000;
-  background-image: none !important;
+.nav-list-expander {
+  color: #1b140e !important;
+  border-radius: 6px !important;
+  height: 3rem !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 // Borders
