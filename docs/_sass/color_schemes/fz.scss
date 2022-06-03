@@ -87,6 +87,30 @@ $header-height: 100px;
   margin-right: 10px;
 }
 
+// Auxalary Buttons
+.aux-nav-list {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.aux-nav-list-item {
+  margin: 5px !important;
+  border-radius: 6px !important;
+  height: 50px !important;
+  background: $fz-grey-lt-100;
+  color: $fz-grey-dk-300 !important;
+}
+
+.aux-nav-list a {
+  color: $fz-grey-dk-300 !important;
+}
+.aux-nav-list a:hover {
+  background: $fz-grey-lt-200;
+  border-radius: 6px !important;
+}
+
 // Select Version
 .select-version {
   width: 100% !important;
@@ -187,6 +211,11 @@ $header-height: 100px;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+// Main Content
+.main-content h1 {
+  color: $fz-grey-dk-300 !important;
 }
 
 // Borders
