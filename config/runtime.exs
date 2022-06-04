@@ -42,7 +42,7 @@ if config_env() == :prod do
   egress_interface = System.fetch_env!("EGRESS_INTERFACE")
   wireguard_public_key = System.fetch_env!("WIREGUARD_PUBLIC_KEY")
   wireguard_psk_dir = System.fetch_env!("WIREGUARD_PSK_DIR")
-  wireguard_dns = System.fetch_env!("WIREGUARD_DNS")
+  wireguard_dns = System.get_env("WIREGUARD_DNS")
   wireguard_allowed_ips = System.fetch_env!("WIREGUARD_ALLOWED_IPS")
   wireguard_persistent_keepalive = System.fetch_env!("WIREGUARD_PERSISTENT_KEEPALIVE")
   wireguard_ipv4_enabled = FzString.to_boolean(System.fetch_env!("WIREGUARD_IPV4_ENABLED"))
