@@ -18,9 +18,9 @@ configuration file.
 | path | description |
 | --- | --- |
 | `/var/opt/firezone` | Top-level directory containing data and generated configuration for Firezone bundled services. |
-| `/opt/firezone/embedded` | Top-level directory containing built libraries, binaries and runtime files needed by Firezone. |
-| `/opt/firezone/sv` | Top-level directory containing Firezone service files. |
+| `/opt/firezone` | Top-level directory containing built libraries, binaries and runtime files needed by Firezone. |
 | `/usr/bin/firezone-ctl` | `firezone-ctl` utility for managing your Firezone installation. |
 | `/etc/systemd/system/firezone-runsvdir-start.service` | systemd unit file for starting the Firezone runsvdir supervisor process. |
+| `/etc/firezone` | Firezone configuration files. |
 
 <!-- markdownlint-disable MD013 -->
