@@ -9,6 +9,7 @@ defmodule FzHttpWeb.LiveHelpers do
 
   def live_modal(component, opts) do
     path = Keyword.fetch!(opts, :return_to)
+
     live_component(%{
       module: FzHttpWeb.ModalComponent,
       id: :modal,

@@ -64,12 +64,13 @@ defmodule FzHttpWeb.MFA.RegisterComponent do
   def handle_event("save", _params, %{assigns: %{changeset: changeset}} = socket) do
     changeset = put_change(changeset, :user_id, socket.assigns.user.id)
 
-    with {:ok, _method} <- Repo.insert(changeset) do
-      {:noreply,
-       socket
-       |> put_flash(:info, "MFA method added!")
-       |> push_redirect(to: Routes.setting_account_path(socket, :show))}
-    else
+    case Repo.insert(changeset) do
+      {:ok, _method} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "MFA method added!")
+         |> push_redirect(to: Routes.setting_account_path(socket, :show))}
+
       {:error, changeset} ->
         {:noreply,
          socket
