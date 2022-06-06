@@ -35,9 +35,13 @@ h4,
 h5,
 h6 {
   font-family: "Open Sans", sans-serif;
-  margin-top: 0.1rem !important;
-  margin-bottom: 0.1rem !important;
+  margin-top: 20px !important;
+  margin-bottom: 20px !important;
   font-weight: 600 !important;
+  color: $fz-grey-dk-300 !important;
+}
+h1:first-child {
+  margin-top: 0px !important;
 }
 
 hr {
@@ -52,11 +56,104 @@ code {
   font-size: 14px !important;
 }
 
+.main-content a {
+  color: $fz-grey-dk-300 !important;
+  border: 2px solid transparent;
+  opacity: 1 !important;
+  transition: all 0.2s ease-out;
+  font-weight: 500;
+}
+
+.main-content a:not([class]):hover {
+  background: none !important;
+  border-bottom: 2px solid $fz-grey-dk-300;
+}
+.main-content a:not([class]) {
+  background: none !important;
+}
+
+// Anchor
+
+.anchor-heading {
+  border: none !important;
+}
+
+.anchor-heading:hover {
+  border: none !important;
+}
+
+// button
+
+.btn {
+  padding: 10px 20px !important;
+  color: $fz-grey-dk-300 !important;
+  background: $fz-grey-lt-300 !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease-in-out;
+  border: 2px solid transparent !important;
+}
+.btn:hover {
+  background: $fz-grey-lt-100 !important;
+  border: 2px solid transparent !important;
+}
+.btn > a:hover {
+  opacity: 1 !important;
+}
+
+.btn.btn-purple {
+  background: $fz-purple-300 !important;
+  color: white !important;
+  border: 2px solid transparent !important;
+}
+.btn.btn-purple:hover {
+  background: $fz-purple-100 !important;
+  color: white !important;
+  border: 2px solid transparent !important;
+  opacity: 1 !important;
+}
+
+// Code
+
+.language-shell,
+.language-ruby,
+.language-text,
+.language-plaintext,
+.language-bash {
+  background-color: $fz-grey-dk-300 !important;
+  margin: 2px !important;
+  padding: 5px !important;
+  border-radius: 6px !important;
+}
+
+code {
+  background-color: transparent !important;
+  color: white !important;
+}
+
+// Search Results
+.search-icon {
+  color: $fz-grey-dk-300 !important;
+}
+.search-result-doc .search-result-icon {
+  color: $fz-grey-dk-300 !important;
+}
+.search-result-title {
+  color: $fz-grey-dk-300 !important;
+}
+.search-result-highlight {
+  color: $fz-grey-dk-300 !important;
+}
+
 // Other Styling
 
 $header-height: 100px;
 
 // Header
+.site-header {
+  margin-bottom: 20px !important;
+}
 .site-header .site-title {
   margin: 0px !important;
   padding: 0px !important;
@@ -74,6 +171,7 @@ $header-height: 100px;
 .site-header .site-logo-wrapper h1 {
   font-size: 1rem !important;
   margin-top: 5px !important;
+  margin-bottom: 0px !important;
   color: $fz-grey-dk-300;
 }
 
@@ -109,6 +207,7 @@ $header-height: 100px;
 .aux-nav-list a:hover {
   background: $fz-grey-lt-200;
   border-radius: 6px !important;
+  border: none !important;
 }
 
 // Select Version
@@ -214,6 +313,9 @@ $header-height: 100px;
 }
 
 // Main Content
+.main-content-wrap {
+  margin-top: 20px !important;
+}
 .main-content h1 {
   color: $fz-grey-dk-300 !important;
 }
@@ -225,3 +327,32 @@ $border-color: $fz-grey-lt-200;
 // Container
 
 $nav-width: 300px;
+
+// Responsive Refinements
+
+/* SMARTPHONES PORTRAIT */
+@media only screen and (min-width: 300px) {
+  .site-header {
+    min-height: 50px !important;
+  }
+  .site-header .site-title {
+    margin-left: 5px !important;
+  }
+}
+
+/* SMARTPHONES LANDSCAPE */
+@media only screen and (min-width: 480px) {
+  .site-header {
+    min-height: 50px !important;
+  }
+  .site-header .site-title {
+    margin-left: 5px !important;
+  }
+}
+
+/* TABLET LANDSCAPE / DESKTOP */
+@media only screen and (max-width: 1024px) {
+  .site-nav {
+    margin-right: 0px !important;
+  }
+}
