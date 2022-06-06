@@ -30,6 +30,15 @@ defmodule FzHttpWeb.SettingLive.Account do
   end
 
   @impl Phoenix.LiveView
+  def handle_event("delete_authenticator", %{"id" => id}, socket) do
+    {:ok, _deleted} = id |> MFA.get_method!() |> MFA.delete_method()
+
+    {:noreply,
+     socket
+     |> assign(:methods, MFA.list_methods(socket.assigns.current_user))}
+  end
+
+  @impl Phoenix.LiveView
   def handle_info(
         %{event: "presence_diff", payload: %{joins: joins, leaves: leaves}},
         %{assigns: %{metas: metas}} = socket

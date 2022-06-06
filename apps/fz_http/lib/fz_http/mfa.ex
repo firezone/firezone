@@ -46,4 +46,8 @@ defmodule FzHttp.MFA do
   def change_method(method, attrs \\ %{}) do
     Method.changeset(method, attrs)
   end
+
+  def delete_method(method) do
+    Repo.delete(method)
+  end
 end

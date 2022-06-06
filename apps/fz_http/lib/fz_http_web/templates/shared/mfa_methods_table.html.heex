@@ -17,7 +17,18 @@
         <%= method.type %>
       </td>
       <td id={"method-#{method.id}-last-used-at"} data-timestamp={method.last_used_at} phx-hook="FormatTimestamp">…</td>
-      <td></td>
+      <td>
+        <button
+          class="button is-warning"
+          data-confirm={"Are you sure about deleting this authenticator <#{method.name}>?"}
+          phx-click="delete_authenticator"
+          phx-value-id={method.id}>
+          <span class="icon is-small">
+            <i class="fas fa-trash"></i>
+          </span>
+          <span>Delete</span>
+        </button>
+      </td>
     </tr>
   <% end %>
   </tbody>
