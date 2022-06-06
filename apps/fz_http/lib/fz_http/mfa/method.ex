@@ -39,8 +39,8 @@ defmodule FzHttp.MFA.Method do
   defp validate_code(%{changes: %{code: code}} = changeset) do
     secret = Base.decode64!(fetch_field!(changeset, :payload)["secret"])
 
-    if NimbleTOTP.verification_code(secret) == code do
-      changeset
+    if NimbleTOTP.valid?(secret, code, since: fetch_field!(changeset, :last_used_at)) do
+      put_change(changeset, :last_used_at, DateTime.utc_now())
     else
       add_error(changeset, :code, "is not valid")
     end
