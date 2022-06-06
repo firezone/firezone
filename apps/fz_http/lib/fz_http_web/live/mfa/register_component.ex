@@ -23,7 +23,8 @@ defmodule FzHttpWeb.MFA.RegisterComponent do
           FzHttpWeb.MFA.RegisterStepsComponent.render_step(%{
             step: @step,
             changeset: @changeset,
-            parent: @myself
+            parent: @myself,
+            user: @user
           }),
           return_to: Routes.setting_account_path(@socket, :show),
           id: "register-mfa-modal",

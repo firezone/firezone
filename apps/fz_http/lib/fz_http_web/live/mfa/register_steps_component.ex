@@ -7,19 +7,7 @@ defmodule FzHttpWeb.MFA.RegisterStepsComponent do
   import FzHttpWeb.ErrorHelpers
 
   def render_step(assigns) do
-    case assigns[:step] do
-      :pick_type ->
-        pick_type(assigns)
-
-      :register ->
-        register(assigns)
-
-      :verify ->
-        verify(assigns)
-
-      :save ->
-        save(assigns)
-    end
+    apply(__MODULE__, assigns[:step], [assigns])
   end
 
   def pick_type(assigns) do
@@ -61,7 +49,12 @@ defmodule FzHttpWeb.MFA.RegisterStepsComponent do
         %{
           secret: secret,
           secret_base64_encoded: Base.encode64(secret),
-          uri: NimbleTOTP.otpauth_uri("Firezone:test@test.com", secret, issuer: "Firezone")
+          uri:
+            NimbleTOTP.otpauth_uri(
+              "Firezone:#{assigns[:user].email}",
+              secret,
+              issuer: "Firezone"
+            )
         }
       )
 
