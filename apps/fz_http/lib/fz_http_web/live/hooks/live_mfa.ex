@@ -4,8 +4,8 @@ defmodule FzHttpWeb.LiveMFA do
   """
 
   import Phoenix.LiveView
-  alias FzHttpWeb.Router.Helpers, as: Routes
   alias FzHttp.MFA
+  alias FzHttpWeb.Router.Helpers, as: Routes
 
   def on_mount(_, _params, session, socket) do
     with %{"mfa_required_at" => mfa_required_at} <- session,
