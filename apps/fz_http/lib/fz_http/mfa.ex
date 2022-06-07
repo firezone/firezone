@@ -7,8 +7,16 @@ defmodule FzHttp.MFA do
 
   alias FzHttp.{MFA.Method, Repo, Users.User}
 
+  def exists?(%User{id: id}) do
+    Repo.exists?(from Method, where: [user_id: ^id])
+  end
+
   def list_methods(%User{id: id}) do
-    Repo.all(from Method, where: [user_id: ^id])
+    Repo.all(from Method, where: [user_id: ^id], order_by: [desc: :last_used_at])
+  end
+
+  def most_recent_method(%User{id: id}) do
+    Repo.one(from Method, where: [user_id: ^id], order_by: [desc: :last_used_at], limit: 1)
   end
 
   def get_method!(credential_id: id) do
