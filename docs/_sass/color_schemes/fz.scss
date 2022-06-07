@@ -54,6 +54,7 @@ body {
 
 code {
   font-size: 14px !important;
+  border: none !important;
 }
 
 .main-content a {
@@ -316,10 +317,11 @@ $header-height: 100px;
 .nav-list-expander {
   color: #1b140e !important;
   border-radius: 6px !important;
-  height: 3rem !important;
+  height: 2.8rem !important;
   display: flex;
   align-items: center;
   justify-content: center;
+  z-index: 100;
 }
 
 // Main Content
@@ -360,11 +362,6 @@ $header-height: 100px;
   }
 }
 
-// Table Wrapper
-.table-wrapper {
-  overflow-x: visible !important;
-}
-
 // Borders
 
 $border-color: $fz-grey-lt-200;
@@ -376,7 +373,7 @@ $nav-width: 300px;
 // Responsive Refinements
 
 /* SMARTPHONES PORTRAIT */
-@media only screen and (min-width: 300px) {
+@media only screen and (max-width: 300px) {
   .site-header {
     min-height: 50px !important;
   }
@@ -388,11 +385,13 @@ $nav-width: 300px;
   }
   .main-header {
     background-color: transparent !important;
+    padding-bottom: 20px !important;
+    border-bottom: 1px solid $fz-grey-dk-300 !important;
   }
 }
 
 /* SMARTPHONES LANDSCAPE */
-@media only screen and (min-width: 480px) {
+@media only screen and (max-width: 480px) {
   .site-header {
     min-height: 50px !important;
   }
@@ -404,6 +403,8 @@ $nav-width: 300px;
   }
   .main-header {
     background-color: transparent !important;
+    padding-bottom: 20px !important;
+    border-bottom: 1px solid $fz-grey-dk-300 !important;
   }
 }
 
