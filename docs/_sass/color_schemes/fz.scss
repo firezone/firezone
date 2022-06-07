@@ -64,12 +64,16 @@ code {
   font-weight: 500;
 }
 
+.main-content a:not([class]) {
+  background: none !important;
+  opacity: 1 !important;
+  border-bottom: 2px solid $fz-grey-dk-300;
+}
+
 .main-content a:not([class]):hover {
   background: none !important;
   border-bottom: 2px solid $fz-grey-dk-300;
-}
-.main-content a:not([class]) {
-  background: none !important;
+  opacity: 0.8 !important;
 }
 
 // Anchor
@@ -118,12 +122,18 @@ code {
 
 .language-shell,
 .language-ruby,
-.language-text,
-.language-plaintext,
 .language-bash {
   background-color: $fz-grey-dk-300 !important;
   margin: 2px !important;
-  padding: 5px !important;
+  padding: 10px !important;
+  border-radius: 6px !important;
+}
+
+.language-plaintext,
+.language-text {
+  background-color: $fz-grey-dk-300 !important;
+  margin: 0px !important;
+  padding: 2px !important;
   border-radius: 6px !important;
 }
 
@@ -196,7 +206,7 @@ $header-height: 100px;
 .aux-nav-list-item {
   margin: 5px !important;
   border-radius: 6px !important;
-  height: 50px !important;
+  height: 30px !important;
   background: $fz-grey-lt-100;
   color: $fz-grey-dk-300 !important;
 }
@@ -273,7 +283,7 @@ $header-height: 100px;
   .nav-list-link {
     min-height: 1.25rem;
     line-height: 1.25rem;
-    font-size: 13px;
+    font-size: 12px;
   }
 }
 
@@ -320,6 +330,41 @@ $header-height: 100px;
   color: $fz-grey-dk-300 !important;
 }
 
+// Floating Content Summary
+
+.floating-content-summary {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  background-color: $fz-grey-lt-100;
+  padding: 10px;
+  border-radius: 6px;
+  top: 150px;
+  right: 100px;
+  display: flex;
+  width: 200px;
+
+  h3 {
+    margin: 0 !important;
+  }
+
+  ul {
+    margin-top: 10px;
+    margin-left: 0;
+    padding: 0;
+    li {
+      list-style-type: none;
+      margin-left: 0;
+      padding: 5px;
+    }
+  }
+}
+
+// Table Wrapper
+.table-wrapper {
+  overflow-x: visible !important;
+}
+
 // Borders
 
 $border-color: $fz-grey-lt-200;
@@ -338,6 +383,12 @@ $nav-width: 300px;
   .site-header .site-title {
     margin-left: 5px !important;
   }
+  .nav-list .nav-list-item .nav-list-link {
+    line-height: 1rem !important;
+  }
+  .main-header {
+    background-color: transparent !important;
+  }
 }
 
 /* SMARTPHONES LANDSCAPE */
@@ -347,6 +398,12 @@ $nav-width: 300px;
   }
   .site-header .site-title {
     margin-left: 5px !important;
+  }
+  .nav-list .nav-list-item .nav-list-link {
+    line-height: 1rem !important;
+  }
+  .main-header {
+    background-color: transparent !important;
   }
 }
 
