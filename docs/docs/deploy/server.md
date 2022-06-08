@@ -18,8 +18,9 @@ Assuming you're running a supported Linux kernel on one of the [supported
 platforms](#supported-linux-distributions), use one of the methods below
 to get started:
 
-* [Automatic Install](#automatic-install)
-* [Manual Install](#manual-install)
+- [Installation Instructions](#installation-instructions)
+  - [Automatic Install](#automatic-install)
+  - [Manual Install](#manual-install)
 
 ### Automatic Install
 
@@ -76,7 +77,3 @@ If the Automatic Install fails, try these steps to install Firezone manually.
    step 5 above, e.g. `https://firezone.example.com`
 
 Find solutions to common issues during deployment in [Troubleshoot]({%link docs/administer/troubleshoot.md%}).
-
-\
-[Previous: Prerequisites]({%link docs/deploy/prerequisites.md%}){:.btn.mr-2}
-[Next: Client Setup]({%link docs/deploy/clients.md%}){:.btn.btn-purple}
