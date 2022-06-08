@@ -34,8 +34,9 @@ to do so:
 
 ## Security Group and Firewall Settings
 
-By default, Firezone requires ports `80/tcp`, `443/tcp`, and `51820/udp` to be open.
-This can change based on what you've configured in the configuration file.
+By default, Firezone requires ports `443/tcp` and `51820/udp` to be
+accessible for HTTPS and WireGuard traffic respectively.
+These ports can change based on what you've configured in the configuration file.
 See the
 [configuration file reference]({% link docs/reference/configuration-file.md %})
 for details.
@@ -45,10 +46,11 @@ programs that modify the Linux routing table or firewall may interfere with
 Firezone's operation. For help troubleshooting connectivity issues, see
 [troubleshoot]({% link docs/administer/troubleshoot.md %}).
 
-The image below shows this configuration on an AWS EC2 instance:
+### Resource requirements
 
-![Open ports](https://user-images.githubusercontent.com/52545545/155015583-41eec85c-3636-4436-94b9-222afd050c69.png){:width="600"}
+We recommend **starting with 1 vCPU and 1 GB of RAM and scaling up** as the
+number of users and bandwidth requirements grow.
 
-\
-[Previous: Resource Requirements]({%link docs/deploy/resource-requirements.md%}){:.btn.mr-2}
-[Next: Install Server]({%link docs/deploy/server.md%}){:.btn.btn-purple}
+Firezone uses in-kernel WireGuard, so its performance should be very good.
+In general, more CPU cores translate to higher bandwidth capacity per tunnel
+while more RAM will help with higher counts of users and tunnels.
