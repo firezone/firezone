@@ -26,10 +26,10 @@ description: >- # this means to ignore newlines until "baseurl:"
 url: "https://docs.firezone.dev"
 permalink: pretty
 twitter_username: firezonehq
-github_username:  firezone
+github_username: firezone
 
 # Set a path/url to a logo that will be displayed instead of the title
-logo: "/assets/images/firezone-logo-wordmark-dark.svg"
+logo: "/assets/images/logo-main.svg"
 
 # Build settings
 remote_theme: firezone/just-the-docs
@@ -59,14 +59,13 @@ asset_urls:
 # Aux links for the upper right navigation
 aux_links:
   "Ask a Question":
-    - "https://discourse.firez.one/new-topic?body=%23%23%20Describe%20the%20issue%0A%0AA%20clear%20and%20concise%20description%20of%20what%20the%20bug%20is.%20Code%20samples%20are%20helpful.%0A%0A%23%23%20Reproduction%20instructions%0A%0ATry%20to%20give%20as%20much%20context%20as%20you%20can!%20%0A%0A%23%23%20Expected%20behavior%0A%0ADescription%20of%20expected%20behavior.%0A%0A%23%23%20Screenshots%0A%0AIf%20applicable%2C%20add%20screenshots%20to%20help%20explain%20your%20problem.%0A%0A%23%23%20Environment%20Details%0A%0A-%20OS%3A%20%5Be.g.%20Ubuntu%2C%20Fedora%2C%20CentOS%5D%0A-%20VPC%3A%0A-%20Firebase%20Version%3A%20%0A%0A%23%23%20Other%20Info%0A%0AAdd%20any%20other%20context%20about%20the%20problem%20here.&category=category/subcategory&tags=docs"
-  "Join the Beta":
-    - "https://e04kusl9oz5.typeform.com/to/uD689MvN#source=docs"
+    - "https://discourse.firez.one"
+  "Join the Business Beta":
+    - "https://e04kusl9oz5.typeform.com/to/ZPYb31sA#int=docs&source=nav"
 
 # Plugins
 plugins:
   - jekyll-sitemap
-
 # Exclude from processing.
 # The following items will not be processed, by default.
 # Any item listed under the `exclude:` key here will be automatically added to
