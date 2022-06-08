@@ -72,6 +72,7 @@ config :fz_http,
   git_sha: git_sha,
   cookie_secure: true,
   cookie_signing_salt: "Z9eq8iof",
+  cookie_encryption_salt: "3A33Dz4C2k",
   ecto_repos: [FzHttp.Repo],
   admin_email: "firezone@localhost",
   default_admin_password: "firezone1234",
@@ -91,6 +92,7 @@ config :hammer,
 
 # This will be changed per-env
 config :fz_vpn,
+  stats_push_service_enabled: true,
   wireguard_psk_dir: "/tmp",
   wireguard_public_key: "cB2yQeCxHO/qCH8APoM2D2Anf4Yd7sRLyfS7su71K3M=",
   wireguard_interface_name: "wg-firezone",
@@ -99,13 +101,7 @@ config :fz_vpn,
   cli: FzVpn.CLI.Sandbox,
   server_process_opts: [name: {:global, :fz_vpn_server}]
 
-# Configures the endpoint
-# These will be overridden at runtime in production by config/releases.exs
-external_url = "http://localhost:4000"
-%{host: host, scheme: scheme, port: port, path: path} = URI.parse(external_url)
-
 config :fz_http, FzHttpWeb.Endpoint,
-  url: [host: host, port: port, scheme: scheme, path: path],
   render_errors: [view: FzHttpWeb.ErrorView, accepts: ~w(html json)],
   pubsub_server: FzHttp.PubSub,
   proxy_forwarded: false

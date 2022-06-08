@@ -1,11 +1,9 @@
 defmodule FzVpn.MixProject do
   use Mix.Project
 
-  @version_path "../../scripts/version.exs"
-
   def version do
-    Code.eval_file(@version_path)
-    |> elem(0)
+    # Use dummy version for dev and test
+    System.get_env("VERSION", "0.0.0+git.0.deadbeef")
   end
 
   def project do
@@ -44,7 +42,8 @@ defmodule FzVpn.MixProject do
       {:fz_http, in_umbrella: true},
       {:fz_common, in_umbrella: true},
       {:credo, "~> 1.4", only: [:dev, :test], runtime: false},
-      {:excoveralls, "~> 0.13", only: :test}
+      {:excoveralls, "~> 0.13", only: :test},
+      {:wireguardex, "~> 0.1.1"}
     ]
   end
 end

@@ -3,8 +3,8 @@ defmodule FzHttp.Devices do
   The Devices context.
   """
 
+  import Ecto.Changeset
   import Ecto.Query, warn: false
-  alias FzCommon.{FzCrypto, NameGenerator}
   alias FzHttp.{Devices.Device, Repo, Sites, Telemetry, Users, Users.User}
 
   def list_devices do
@@ -34,8 +34,8 @@ defmodule FzHttp.Devices do
       end)
 
     case result do
-      {:ok, device} ->
-        Telemetry.add_device(device)
+      {:ok, _device} ->
+        Telemetry.add_device()
 
       _ ->
         nil
@@ -51,7 +51,7 @@ defmodule FzHttp.Devices do
   end
 
   def delete_device(%Device{} = device) do
-    Telemetry.delete_device(device)
+    Telemetry.delete_device()
     Repo.delete(device)
   end
 
@@ -88,7 +88,7 @@ defmodule FzHttp.Devices do
         preload: :user
     )
     |> Enum.filter(fn device ->
-      device.user.role == :admin || !Users.vpn_session_expired?(device.user, vpn_duration)
+      !device.user.disabled_at && !Users.vpn_session_expired?(device.user, vpn_duration)
     end)
     |> Enum.map(fn device ->
       %{
@@ -104,8 +104,8 @@ defmodule FzHttp.Devices do
       %Device{},
       Map.merge(
         %{
-          "name" => NameGenerator.generate(),
-          "preshared_key" => FzCrypto.psk()
+          "name" => Device.new_name(),
+          "preshared_key" => FzCommon.FzCrypto.psk()
         },
         attrs
       )
@@ -134,8 +134,7 @@ defmodule FzHttp.Devices do
       use_site_mtu
       use_site_persistent_keepalive
     )a
-    |> Enum.map(fn field -> {field, Device.field(changeset, field)} end)
-    |> Map.new()
+    |> Map.new(&{&1, get_field(changeset, &1)})
   end
 
   def as_encoded_config(device), do: Base.encode64(as_config(device))

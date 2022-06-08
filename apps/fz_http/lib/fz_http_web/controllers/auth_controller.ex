@@ -17,11 +17,11 @@ defmodule FzHttpWeb.AuthController do
 
   def request(conn, _params) do
     # XXX: Helpers.callback_url/1 generates the wrong URL behind nginx.
-    # This is a bug in Ueberauth. auth_url is used instead.
-    url = Routes.auth_url(conn, :callback, :identity)
+    # This is a bug in Ueberauth. auth_path is used instead.
+    path = Routes.auth_path(conn, :callback, :identity)
 
     conn
-    |> render("request.html", callback_url: url)
+    |> render("request.html", callback_path: path)
   end
 
   def callback(%{assigns: %{ueberauth_failure: %{errors: errors}}} = conn, _params) do
@@ -67,6 +67,11 @@ defmodule FzHttpWeb.AuthController do
          {:ok, claims} <- openid_connect.verify(provider, tokens["id_token"]) do
       case UserFromAuth.find_or_create(provider, claims) do
         {:ok, user} ->
+          # only first-time connect will include refresh token
+          with %{"refresh_token" => refresh_token} <- tokens do
+            FzHttp.OIDC.create_connection(user.id, provider_key, refresh_token)
+          end
+
           conn
           |> configure_session(renew: true)
           |> put_session(:live_socket_id, "users_socket:#{user.id}")

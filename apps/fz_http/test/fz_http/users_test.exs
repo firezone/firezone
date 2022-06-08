@@ -1,7 +1,7 @@
 defmodule FzHttp.UsersTest do
   use FzHttp.DataCase, async: true
 
-  alias FzHttp.Users
+  alias FzHttp.{Repo, Users}
 
   describe "consume_sign_in_token/1 valid token" do
     setup [:create_user_with_valid_sign_in_token]
@@ -222,7 +222,7 @@ defmodule FzHttp.UsersTest do
   end
 
   describe "delete_user/1" do
-    setup [:create_user]
+    setup :create_user
 
     test "raises Ecto.NoResultsError when a deleted user is fetched", %{user: user} do
       Users.delete_user(user)
@@ -234,7 +234,7 @@ defmodule FzHttp.UsersTest do
   end
 
   describe "change_user/1" do
-    setup [:create_user]
+    setup :create_user
 
     test "returns changeset", %{user: user} do
       assert %Ecto.Changeset{} = Users.change_user(user)
@@ -244,6 +244,35 @@ defmodule FzHttp.UsersTest do
   describe "new_user/0" do
     test "returns changeset" do
       assert %Ecto.Changeset{} = Users.new_user()
+    end
+  end
+
+  describe "enable_vpn_connection/2" do
+    import Ecto.Changeset
+
+    setup :create_user
+
+    setup %{user: user} do
+      user = user |> change |> put_change(:disabled_at, DateTime.utc_now()) |> Repo.update!()
+      {:ok, user: user}
+    end
+
+    @tag :unprivileged
+    test "enable via OIDC", %{user: user} do
+      Users.enable_vpn_connection(user, %{provider: :oidc})
+
+      user = Repo.reload(user)
+
+      assert %{disabled_at: nil} = user
+    end
+
+    @tag :unprivileged
+    test "no change via password", %{user: user} do
+      Users.enable_vpn_connection(user, %{provider: :identity})
+
+      user = Repo.reload(user)
+
+      assert user.disabled_at
     end
   end
 end

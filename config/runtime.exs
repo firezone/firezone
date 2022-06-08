@@ -7,36 +7,18 @@ import Config
 
 alias FzCommon.{CLI, FzInteger, FzString}
 
-# Optional config across all envs
-
-# Defaults to what's set upstream
-external_url = System.get_env("EXTERNAL_URL")
-
-if config_env() == :prod do
-  # Errors if not set in production
-  System.fetch_env!("EXTERNAL_URL")
-end
+# external_url is important
+external_url = System.get_env("EXTERNAL_URL", "http://localhost:4000")
 
 # Enable Forwarded headers, e.g 'X-FORWARDED-HOST'
 proxy_forwarded = FzString.to_boolean(System.get_env("PROXY_FORWARDED") || "false")
 
-endpoint_opts =
-  if external_url do
-    %{host: host, path: path, port: port, scheme: scheme} = URI.parse(external_url)
+%{host: host, path: path, port: port, scheme: scheme} = URI.parse(external_url)
 
-    [
-      url: [host: host, scheme: scheme, port: port, path: path],
-      check_origin: ["//127.0.0.1", "//localhost", "//#{host}"],
-      proxy_forwarded: proxy_forwarded
-    ]
-  else
-    [
-      check_origin: ["//127.0.0.1", "//localhost"],
-      proxy_forwarded: proxy_forwarded
-    ]
-  end
-
-config :fz_http, FzHttpWeb.Endpoint, endpoint_opts
+config :fz_http, FzHttpWeb.Endpoint,
+  url: [host: host, scheme: scheme, port: port, path: path],
+  check_origin: ["//127.0.0.1", "//localhost", "//#{host}"],
+  proxy_forwarded: proxy_forwarded
 
 # Formerly releases.exs - Only evaluated in production
 if config_env() == :prod do
@@ -60,7 +42,7 @@ if config_env() == :prod do
   egress_interface = System.fetch_env!("EGRESS_INTERFACE")
   wireguard_public_key = System.fetch_env!("WIREGUARD_PUBLIC_KEY")
   wireguard_psk_dir = System.fetch_env!("WIREGUARD_PSK_DIR")
-  wireguard_dns = System.fetch_env!("WIREGUARD_DNS")
+  wireguard_dns = System.get_env("WIREGUARD_DNS")
   wireguard_allowed_ips = System.fetch_env!("WIREGUARD_ALLOWED_IPS")
   wireguard_persistent_keepalive = System.fetch_env!("WIREGUARD_PERSISTENT_KEEPALIVE")
   wireguard_ipv4_enabled = FzString.to_boolean(System.fetch_env!("WIREGUARD_IPV4_ENABLED"))
@@ -130,6 +112,7 @@ if config_env() == :prod do
   secret_key_base = System.fetch_env!("SECRET_KEY_BASE")
   live_view_signing_salt = System.fetch_env!("LIVE_VIEW_SIGNING_SALT")
   cookie_signing_salt = System.fetch_env!("COOKIE_SIGNING_SALT")
+  cookie_encryption_salt = System.fetch_env!("COOKIE_ENCRYPTION_SALT")
 
   # Password is not needed if using bundled PostgreSQL, so use nil if it's not set.
   database_password = System.get_env("DATABASE_PASSWORD")
@@ -207,6 +190,7 @@ if config_env() == :prod do
   config :fz_http,
     wg_path: wg_path,
     cookie_signing_salt: cookie_signing_salt,
+    cookie_encryption_salt: cookie_encryption_salt,
     allow_unprivileged_device_management: allow_unprivileged_device_management,
     max_devices_per_user: max_devices_per_user,
     local_auth_enabled: local_auth_enabled,
@@ -273,7 +257,7 @@ end
 # OIDC Auth
 auth_oidc_env = System.get_env("AUTH_OIDC")
 
-if auth_oidc_env do
+if config_env() != :test && auth_oidc_env do
   auth_oidc =
     Jason.decode!(auth_oidc_env)
     # Convert Map to something openid_connect expects, atomic keyed configs

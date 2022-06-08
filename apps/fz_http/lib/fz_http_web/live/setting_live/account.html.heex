@@ -5,7 +5,8 @@
       title: "Edit Account",
       id: "user-#{@current_user.id}",
       user: @current_user,
-      action: @live_action) %>
+      action: @live_action,
+      form: "account-edit") %>
 <% end %>
 
 <%= render FzHttpWeb.SharedView, "heading.html", page_title: @page_title %>
@@ -52,12 +53,24 @@
   <div class="block">
     <table class="table is-bordered is-hoverable is-striped is-fullwidth">
       <thead>
-        <th>Came Online</th>
-        <th>Last Signed In</th>
-        <th>Remote IP</th>
-        <th>User Agent</th>
+        <tr>
+          <th>Came Online</th>
+          <th>Last Signed In</th>
+          <th>Remote IP</th>
+          <th>User Agent</th>
+        </tr>
       </thead>
-      <tbody id="sessions-table-body">
+      <tbody>
+        <%= for {meta, index} <- Enum.with_index(@metas) do %>
+          <tr>
+            <td data-timestamp={meta.online_at}
+                phx-hook="FormatTimestamp" id={"meta-#{index}-online-at"}>…</td>
+            <td data-timestamp={meta.last_signed_in_at}
+                phx-hook="FormatTimestamp" id={"meta-#{index}-last-signed-in-at"}>…</td>
+            <td><%= meta.remote_ip || "-" %></td>
+            <td><%= meta.user_agent %></td>
+          </tr>
+        <% end %>
       </tbody>
     </table>
   </div>

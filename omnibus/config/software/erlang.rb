@@ -18,6 +18,8 @@
 #
 
 name 'erlang'
+
+# Erlang 25 has SSL issues -- HTTPoison times out to some servers, e.g. Azure https://login.microsoftonline.com
 default_version '24.3.4'
 
 license 'Apache-2.0'
@@ -37,6 +39,7 @@ source url: "https://github.com/erlang/otp/archive/OTP-#{version}.tar.gz"
 relative_path "otp-OTP-#{version}"
 
 # versions_list: https://github.com/erlang/otp/tags filter=*.tar.gz
+version('25.0')      { source sha256: '5988e3bca208486494446e885ca2149fe487ee115cbc3770535fd22a795af5d2' }
 version('24.3.4')    { source sha256: 'e59bedbb871af52244ca5284fd0a572d52128abd4decf4347fe2aef047b65c58' }
 version('24.2.1')    { source sha256: '2854318d12d727fc508e8fd5fe6921c0cbc7727d1183ad8f6f808585496e42d6' }
 version('24.2')      { source sha256: '0b9c9ba7d8b40f6c77d529e07561b10f0914d2bfe9023294d7eda85b62936792' }
@@ -59,14 +62,14 @@ version('18.1')      { source sha256: '6b956dda690d3f3bf244249e8d422dd606231cc72
 
 # rubocop:disable Metrics/BlockLength
 build do
-  if version.satisfies?('>= 18.3')
-    # Don't listen on 127.0.0.1/::1 implicitly whenever ERL_EPMD_ADDRESS is given
-    patch source: 'epmd-require-explicitly-adding-loopback-address.patch', plevel: 1
-  end
+  # Deprecated
+  # if version.satisfies?('>= 18.3')
+  #   # Don't listen on 127.0.0.1/::1 implicitly whenever ERL_EPMD_ADDRESS is given
+  #   patch source: 'epmd-require-explicitly-adding-loopback-address.patch', plevel: 1
+  # end
 
   env = with_standard_compiler_flags(with_embedded_path).merge(
-    # WARNING!
-    'CFLAGS' => "-L#{install_dir}/embedded/lib -I#{install_dir}/embedded/erlang/include",
+    'CFLAGS' => "-O2 -g -L#{install_dir}/embedded/lib -I#{install_dir}/embedded/erlang/include",
     'LDFLAGS' => "-Wl,-rpath #{install_dir}/embedded/lib -L#{install_dir}/embedded/lib -I#{install_dir}/embedded/er"\
       'lang/include'
   )
@@ -97,7 +100,6 @@ build do
   #
   # In future releases of erlang, someone should check if these flags (or
   # environment variables) are avaiable to remove this ugly hack.
-  # Doesn't seem to be necessary for 24.0.5
   %w[ncurses openssl zlib.h zconf.h].each do |name|
     link "#{install_dir}/embedded/include/#{name}", "#{install_dir}/embedded/erlang/include/#{name}"
   end

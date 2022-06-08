@@ -2,6 +2,7 @@
   <thead>
     <tr>
       <th>Name</th>
+      <%= if @show_user do %><th>User</th><% end %>
       <th>WireGuard IP</th>
       <th>Remote IP</th>
       <th>Latest Handshake</th>
@@ -17,6 +18,11 @@
       <td>
         <%= live_patch(device.name, to: Routes.device_admin_show_path(@socket, :show, device)) %>
       </td>
+      <%= if @show_user do %>
+        <td>
+          <%= live_redirect(device.user.email, to: Routes.user_show_path(@socket, :show, device.user)) %>
+        </td>
+      <% end %>
       <td class="code">
         <%= device.ipv4 %>
         <br>

@@ -3,12 +3,13 @@
 <section class="section is-main-section">
   <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
 
-  <div class="block">
-    <%= render FzHttpWeb.SharedView, "devices_table.html", devices: @devices, socket: @socket %>
+  <div class="block is-horizontally-scrollable">
+    <%= render FzHttpWeb.SharedView, "devices_table.html",
+        devices: @devices, show_user: true, socket: @socket %>
   </div>
 
   <p>
     Devices can be added when viewing a User.
-    <%= link("Go to users ->", to: Routes.user_index_path(@socket, :index)) %>
+    <%= live_redirect("Go to users ->", to: Routes.user_index_path(@socket, :index)) %>
   </p>
 </section>

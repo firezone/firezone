@@ -1,6 +1,11 @@
 # These are used for the dev environment.
 # This should match the versions used in the built product.
-nodejs 14.18.3
+nodejs 14.19.3
 elixir 1.13.4-otp-24
 erlang 24.3.4
+# HTTPoison times out to some SSL connections with OTP 25
+# erlang 25.0
+
+# Used for static analysis
 ruby 2.7.5
+python 3.9.13

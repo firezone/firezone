@@ -2,6 +2,12 @@
 # Firezone Docs
 <!-- markdownlint-enable MD002 -->
 
+## To run the local docs server
+
+1. Make sure you're in this directory: `cd docs/`
+2. `bundle install`
+3. `bundle exec jekyll serve`
+
 ## Overview
 
 This repository is for our documentation website found at
