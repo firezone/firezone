@@ -26,7 +26,7 @@ defmodule FzHttpWeb.MFA.RegisterComponent do
             parent: @myself,
             user: @user
           }),
-          return_to: Routes.setting_account_path(@socket, :show),
+          return_to: @return_to,
           id: "register-mfa-modal",
           title: "Registering MFA Method",
           form: "mfa-method-form",
@@ -69,7 +69,7 @@ defmodule FzHttpWeb.MFA.RegisterComponent do
         {:noreply,
          socket
          |> put_flash(:info, "MFA method added!")
-         |> push_redirect(to: Routes.setting_account_path(socket, :show))}
+         |> push_redirect(to: socket.assigns.return_to)}
 
       {:error, changeset} ->
         {:noreply,
