@@ -15,7 +15,7 @@ description: >
 
 Firezone can be self-hosted on a server running a supported
 [Linux distribution]({% link docs/deploy/supported-platforms.md %})
-in a few minutes. This guide will walk you through the steps to get started.
+within a few minutes. This guide will walk you through the steps to get started.
 
 ## Step 1: Environment Setup
 
