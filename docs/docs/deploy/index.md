@@ -30,7 +30,7 @@ A kernel upgrade may be required to ensure WireGuard® is available.
 Ensure port forwarding is enabled on your firewall.
 The default Firezone configuration requires the following ports to be open:
 
-* `80/tcp` or `443/tcp`: To access the web UI. We highly recommend https over `443/tcp`.
+* `443/tcp`: To access the web UI.
 * `51820/udp`: The VPN traffic listen-port.
 
 **Note**: Firezone modifies the kernel netfilter and routing tables.
@@ -57,7 +57,7 @@ This will ask you a few questions regarding your install, download the latest
 release for your platform, then create an administrator user and print to the
 console instructions for logging in to the web UI.
 
-![install complete](https://user-images.githubusercontent.com/52545545/171948328-4771552f-e5dd-4c30-8c0b-baac80b6e7b1.png)
+![install complete](https://user-images.githubusercontent.com/52545545/171948328-4771552f-e5dd-4c30-8c0b-baac80b6e7b1.png){:width="600"}
 
 **Note**: During install new firewall rules are added, which can interrupt the
 SSH connection. If this happens and you miss the admin

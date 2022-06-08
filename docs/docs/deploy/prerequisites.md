@@ -34,8 +34,8 @@ to do so:
 
 ## Security Group and Firewall Settings
 
-By default, Firezone requires ports `80/tcp` or `443/tcp`, and `51820/udp` to be
-accessible. We highliy recommend using https over `443/tcp`.
+By default, Firezone requires ports `443/tcp` and `51820/udp` to be
+accessible for HTTPS and WireGuard traffic respectively.
 These ports can change based on what you've configured in the configuration file.
 See the
 [configuration file reference]({% link docs/reference/configuration-file.md %})
