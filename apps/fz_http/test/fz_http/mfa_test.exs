@@ -3,20 +3,6 @@ defmodule FzHttp.MFATest do
 
   alias FzHttp.MFA
 
-  defp create_method(user, attrs \\ %{}) do
-    secret = NimbleTOTP.secret()
-
-    MFA.create_method(
-      Enum.into(attrs, %{
-        name: "Test Default",
-        type: :totp,
-        secret: Base.encode64(secret),
-        code: NimbleTOTP.verification_code(secret)
-      }),
-      user.id
-    )
-  end
-
   setup :create_user
 
   setup %{user: user} do
