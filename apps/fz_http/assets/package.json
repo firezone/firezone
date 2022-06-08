@@ -45,7 +45,7 @@
     "postcss": "^8.3.11",
     "postcss-loader": "^6.2.1",
     "sass": "^1.49.0",
-    "sass-loader": "^11.0.1",
+    "sass-loader": "^13.0.0",
     "source-map": "^0.7.3",
     "url-loader": "^4.1.1",
     "webpack": "5.36.0",
