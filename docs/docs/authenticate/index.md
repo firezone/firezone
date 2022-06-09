@@ -29,7 +29,7 @@ through an OIDC provider. The configuration file can be found at
 and `firezone-ctl restart` to update the application.
 
 ```ruby
-# This is an example using Google as an SSO identity provider. 
+# This is an example using Google as an SSO identity provider.
 # Multiple OIDC configs can be added to the same Firezone instance.
 
 default['firezone']['authentication']['oidc'] = {
