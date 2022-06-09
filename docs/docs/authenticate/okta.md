@@ -22,7 +22,7 @@ This should be your Firezone `EXTERNAL_URL + /auth/oidc/<provider_key>/callback/
 (e.g. `https://firezone.example.com/auth/oidc/okta/callback/`).
 1. `response_type`: Set to `code`.
 1. `scope`: [OIDC scopes](https://openid.net/specs/openid-connect-basic-1_0.html#Scopes)
-to obtain from your OIDC provider. This should be set to `openid email profile`
+to obtain from your OIDC provider. This should be set to `openid email profile offline_access`
 to provide Firezone with the user's email in the returned claims.
 1. `label`: The button label text that shows up on your Firezone login screen.
 
@@ -85,7 +85,7 @@ default['firezone']['authentication']['oidc'] = {
     client_secret: "CLIENT_SECRET",
     redirect_uri: "https://firezone.example.com/auth/oidc/okta/callback",
     response_type: "code",
-    scope: "openid email profile",
+    scope: "openid email profile offline_access",
     label: "Okta"
   }
 }

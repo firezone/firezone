@@ -101,8 +101,8 @@ Edit `/etc/firezone/firezone.rb` to include the options below.
 default['firezone']['authentication']['oidc'] = {
   google: {
     discovery_document_uri: "https://accounts.google.com/.well-known/openid-configuration",
-    client_id: "CLIENT_ID",
-    client_secret: "CLIENT_SECRET",
+    client_id: "<CLIENT_ID>",
+    client_secret: "<CLIENT_SECRET>",
     redirect_uri: "https://firezone.example.com/auth/oidc/google/callback",
     response_type: "code",
     scope: "openid email profile",
