@@ -74,6 +74,23 @@ defmodule FzHttpWeb.Router do
     get "/", RootController, :index
   end
 
+  scope "/mfa", FzHttpWeb do
+    pipe_through([
+      :browser,
+      :guardian
+    ])
+
+    live_session(
+      :authenticated,
+      on_mount: [{FzHttpWeb.LiveAuth, :any}, {FzHttpWeb.LiveNav, nil}],
+      root_layout: {FzHttpWeb.LayoutView, :unprivileged}
+    ) do
+      live "/auth", MFALive.Auth, :auth
+      live "/auth/:id", MFALive.Auth, :auth
+      live "/types", MFALive.Auth, :types
+    end
+  end
+
   # Authenticated routes
   scope "/", FzHttpWeb do
     pipe_through [
@@ -97,14 +114,16 @@ defmodule FzHttpWeb.Router do
     # Unprivileged Live routes
     live_session(
       :unprivileged,
-      on_mount: [{FzHttpWeb.LiveAuth, :unprivileged}, {FzHttpWeb.LiveNav, nil}],
+      on_mount: [{FzHttpWeb.LiveAuth, :unprivileged}, {FzHttpWeb.LiveNav, nil}, FzHttpWeb.LiveMFA],
       root_layout: {FzHttpWeb.LayoutView, :unprivileged}
     ) do
       live "/user_devices", DeviceLive.Unprivileged.Index, :index
       live "/user_devices/new", DeviceLive.Unprivileged.Index, :new
       live "/user_devices/:id", DeviceLive.Unprivileged.Show, :show
 
-      live "/user_account/change_password", DeviceLive.Unprivileged.Index, :change_password
+      live "/user_account", SettingLive.Unprivileged.Account, :show
+      live "/user_account/change_password", SettingLive.Unprivileged.Account, :change_password
+      live "/user_account/register_mfa", SettingLive.Unprivileged.Account, :register_mfa
     end
   end
 
@@ -123,7 +142,7 @@ defmodule FzHttpWeb.Router do
     # Admin Live routes
     live_session(
       :admin,
-      on_mount: [{FzHttpWeb.LiveAuth, :admin}, FzHttpWeb.LiveNav],
+      on_mount: [{FzHttpWeb.LiveAuth, :admin}, FzHttpWeb.LiveNav, FzHttpWeb.LiveMFA],
       root_layout: {FzHttpWeb.LayoutView, :admin}
     ) do
       live "/users", UserLive.Index, :index
@@ -138,6 +157,7 @@ defmodule FzHttpWeb.Router do
       live "/settings/security", SettingLive.Security, :show
       live "/settings/account", SettingLive.Account, :show
       live "/settings/account/edit", SettingLive.Account, :edit
+      live "/settings/account/register_mfa", SettingLive.Account, :register_mfa
       live "/diagnostics/connectivity_checks", ConnectivityCheckLive.Index, :index
     end
   end
