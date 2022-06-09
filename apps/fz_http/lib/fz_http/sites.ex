@@ -6,7 +6,7 @@ defmodule FzHttp.Sites do
   import Ecto.Query, warn: false
   alias FzHttp.{ConnectivityChecks, Repo, Sites.Site}
 
-  @wg_settings [:allowed_ips, :dns, :endpoint, :persistent_keepalive, :mtu]
+  @wg_settings [:allowed_ips, :dns, :host, :persistent_keepalive, :mtu]
 
   def get_site! do
     get_site!(name: "default")
@@ -58,8 +58,8 @@ defmodule FzHttp.Sites do
     |> Map.new()
   end
 
-  defp default(:endpoint) do
-    app_env(:wireguard_endpoint) || ConnectivityChecks.endpoint()
+  defp default(:host) do
+    app_env(:wireguard_host) || ConnectivityChecks.host()
   end
 
   defp default(key) do

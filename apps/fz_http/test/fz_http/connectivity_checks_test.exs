@@ -21,9 +21,9 @@ defmodule FzHttp.ConnectivityChecksTest do
       assert ConnectivityChecks.list_connectivity_checks(limit: 1) == [connectivity_check]
     end
 
-    test "endpoint/0 returns latest check's response body" do
+    test "host/0 returns latest check's response body" do
       connectivity_check = connectivity_check_fixture()
-      assert ConnectivityChecks.endpoint() == connectivity_check.response_body
+      assert ConnectivityChecks.host() == connectivity_check.response_body
     end
 
     test "get_connectivity_check!/1 returns the connectivity_check with given id" do

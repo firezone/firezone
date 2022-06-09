@@ -10,8 +10,8 @@ defmodule FzHttpWeb.SettingLive.SiteTest do
     @valid_dns %{
       "site" => %{"dns" => "1.1.1.1"}
     }
-    @valid_endpoint %{
-      "site" => %{"endpoint" => "1.1.1.1"}
+    @valid_host %{
+      "site" => %{"host" => "1.1.1.1"}
     }
     @valid_persistent_keepalive %{
       "site" => %{"persistent_keepalive" => "1"}
@@ -26,8 +26,8 @@ defmodule FzHttpWeb.SettingLive.SiteTest do
     @invalid_dns %{
       "site" => %{"dns" => "foobar"}
     }
-    @invalid_endpoint %{
-      "site" => %{"endpoint" => "foobar"}
+    @invalid_host %{
+      "site" => %{"host" => "foobar"}
     }
     @invalid_persistent_keepalive %{
       "site" => %{"persistent_keepalive" => "-1"}
@@ -52,7 +52,7 @@ defmodule FzHttpWeb.SettingLive.SiteTest do
                (Sites.get_site!().dns || Application.fetch_env!(:fz_http, :wireguard_dns))
 
       assert html =~ """
-             id="site_form_component_endpoint"\
+             id="site_form_component_host"\
              """
 
       assert html =~ """
@@ -87,16 +87,16 @@ defmodule FzHttpWeb.SettingLive.SiteTest do
              """
     end
 
-    test "updates site endpoint", %{view: view} do
+    test "updates site host", %{view: view} do
       test_view =
         view
         |> element("#site_form_component")
-        |> render_submit(@valid_endpoint)
+        |> render_submit(@valid_host)
 
       refute test_view =~ "is invalid"
 
       assert test_view =~ """
-             <input class="input " id="site_form_component_endpoint" name="site[endpoint]" placeholder="127.0.0.1" type="text" value="1.1.1.1"/>\
+             <input class="input " id="site_form_component_host" name="site[host]" placeholder="127.0.0.1" type="text" value="1.1.1.1"/>\
              """
     end
 
@@ -153,16 +153,16 @@ defmodule FzHttpWeb.SettingLive.SiteTest do
              """
     end
 
-    test "prevents invalid endpoint", %{view: view} do
+    test "prevents invalid host", %{view: view} do
       test_view =
         view
         |> element("#site_form_component")
-        |> render_submit(@invalid_endpoint)
+        |> render_submit(@invalid_host)
 
       assert test_view =~ "is invalid"
 
       assert test_view =~ """
-             <input class="input is-danger" id="site_form_component_endpoint" name="site[endpoint]" placeholder="127.0.0.1" type="text" value="foobar"/>\
+             <input class="input is-danger" id="site_form_component_host" name="site[host]" placeholder="127.0.0.1" type="text" value="foobar"/>\
              """
     end
 

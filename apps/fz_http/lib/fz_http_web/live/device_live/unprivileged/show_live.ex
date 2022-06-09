@@ -60,7 +60,7 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.Show do
       allowed_ips: Devices.allowed_ips(device),
       port: Application.fetch_env!(:fz_vpn, :wireguard_port),
       dns: Devices.dns(device),
-      endpoint: Devices.endpoint(device),
+      host: Devices.endpoint(device),
       mtu: Devices.mtu(device),
       persistent_keepalive: Devices.persistent_keepalive(device),
       config: Devices.as_config(device)

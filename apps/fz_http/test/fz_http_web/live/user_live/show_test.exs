@@ -72,18 +72,18 @@ defmodule FzHttpWeb.UserLive.ShowTest do
         "dns" => @dns
       }
     }
-    @wireguard_endpoint "6.6.6.6"
+    @wireguard_endpoint "6.6.6.6:51820"
     @endpoint_change %{
       "device" => %{
         "public_key" => "test-pubkey",
-        "use_site_endpoint" => "false",
+        "use_site_host" => "false",
         "endpoint" => @wireguard_endpoint
       }
     }
     @endpoint_unchanged %{
       "device" => %{
         "public_key" => "test-pubkey",
-        "use_site_endpoint" => "true",
+        "use_site_host" => "true",
         "endpoint" => @wireguard_endpoint
       }
     }
@@ -130,7 +130,7 @@ defmodule FzHttpWeb.UserLive.ShowTest do
     @default_endpoint_change %{
       "device" => %{
         "public_key" => "test-pubkey",
-        "use_site_endpoint" => "false"
+        "use_site_host" => "false"
       }
     }
     @default_mtu_change %{
@@ -205,7 +205,7 @@ defmodule FzHttpWeb.UserLive.ShowTest do
       assert test_view =~ "must not be present"
     end
 
-    test "prevents endpoint changes when use_site_endpoint is true", %{
+    test "prevents host changes when use_site_host is true", %{
       admin_conn: conn,
       admin_user: user
     } do
@@ -382,7 +382,7 @@ defmodule FzHttpWeb.UserLive.ShowTest do
              """
     end
 
-    test "on use_site_endpoint change", %{admin_conn: conn, admin_user: user} do
+    test "on use_site_host change", %{admin_conn: conn, admin_user: user} do
       path = Routes.user_show_path(conn, :new_device, user.id)
       {:ok, view, _html} = live(conn, path)
 

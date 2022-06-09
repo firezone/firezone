@@ -129,7 +129,7 @@ defmodule FzHttp.ConnectivityChecks do
   Returns the latest connectivity_check's response_body which should contain the resolved public
   IP.
   """
-  def endpoint do
+  def host do
     ConnectivityCheckService.initialize()
 
     case latest_connectivity_check() do

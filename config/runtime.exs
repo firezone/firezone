@@ -57,6 +57,9 @@ if config_env() == :prod do
   telemetry_id = System.fetch_env!("TELEMETRY_ID")
   guardian_secret_key = System.fetch_env!("GUARDIAN_SECRET_KEY")
 
+  # Used for 0.4.0 migration
+  secrets_path = System.get_env("SECRETS_PATH", "/etc/firezone/secrets.json")
+
   allow_unprivileged_device_management =
     FzString.to_boolean(System.fetch_env!("ALLOW_UNPRIVILEGED_DEVICE_MANAGEMENT"))
 
@@ -188,6 +191,7 @@ if config_env() == :prod do
     secret_key: guardian_secret_key
 
   config :fz_http,
+    secrets_path: secrets_path,
     wg_path: wg_path,
     cookie_signing_salt: cookie_signing_salt,
     cookie_encryption_salt: cookie_encryption_salt,

@@ -12,14 +12,14 @@ defmodule FzHttp.SitesTest do
       %{
         "dns" => "8.8.8.8",
         "allowed_ips" => "::/0",
-        "endpoint" => "172.10.10.10",
+        "host" => "172.10.10.10",
         "persistent_keepalive" => "20",
         "mtu" => "1280"
       },
       %{
         "dns" => "8.8.8.8",
         "allowed_ips" => "::/0",
-        "endpoint" => "foobar.example.com",
+        "host" => "foobar.example.com",
         "persistent_keepalive" => "15",
         "mtu" => "1420"
       }
@@ -27,7 +27,7 @@ defmodule FzHttp.SitesTest do
     @invalid_site %{
       "dns" => "foobar",
       "allowed_ips" => "foobar",
-      "endpoint" => "foobar",
+      "host" => "foobar",
       "persistent_keepalive" => "-120",
       "mtu" => "1501"
     }
@@ -57,7 +57,7 @@ defmodule FzHttp.SitesTest do
 
       refute site.dns == "foobar"
       refute site.allowed_ips == "foobar"
-      refute site.endpoint == "foobar"
+      refute site.host == "foobar"
       refute site.persistent_keepalive == -120
       refute site.mtu == 1501
     end

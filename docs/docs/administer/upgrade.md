@@ -25,6 +25,48 @@ To upgrade Firezone, follow these steps:
 Occasionally problems arise. If you hit any, please let us know by [filing an
 issue](https://github.com/firezone/firezone/issues/new/choose).
 
+## Upgrading from 0.3.x to >= 0.4.0
+
+**Important**: Before upgrading to `0.4.0`, we highly recommend first upgrading
+to the latest point-release of the `0.3.x` series (`0.3.17` at the time of this
+writing). This will ensure your instance and data is in a consistent state
+for the 0.4.0 migration script to execute smoothly.
+
+**Important**: Upgrading from 0.3.x to >= 0.4.0 involves running a large
+database migration. We highly recommend accounting for some downtime (1-2 hours)
+to perform this upgrade to give the migrations time to complete, especially
+if you have lots of devices and users.
+
+Firezone 0.4.0 adds the ability to manage multiple WireGuard networks in a
+single instance. As such, the following config options have been moved to the
+fields of the `networks` table:
+
+```
+default['firezone']['wireguard']['interface_name']
+default['firezone']['wireguard']['port']
+default['firezone']['wireguard']['mtu']
+default['firezone']['wireguard']['endpoint']
+default['firezone']['wireguard']['dns']
+default['firezone']['wireguard']['allowed_ips']
+default['firezone']['wireguard']['persistent_keepalive']
+default['firezone']['wireguard']['ipv4']['enabled']
+default['firezone']['wireguard']['ipv4']['network']
+default['firezone']['wireguard']['ipv4']['address']
+default['firezone']['wireguard']['ipv6']['enabled']
+default['firezone']['wireguard']['ipv6']['network']
+default['firezone']['wireguard']['ipv6']['address']
+```
+
+In the 0.4.0 migration script, these configuration variables will be used to
+bootstrap the first network record. If any are missing, defaults are used
+instead. If you'd like to customize the initial network beyond the defaults
+shown in the configuration file, we recommend configuring them here and doing
+a `firezone-ctl reconfigure` **before** upgrading to `0.4.0`.
+
+For any questions or issues, please don't hesitate to [join our Slack for help](
+https://firezone.dev/slack)
+
+
 ## Upgrading from 0.3.1 to >= 0.3.2
 
 The configuration option `default['firezone']['fqdn']` has been removed in favor

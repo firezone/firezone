@@ -5,67 +5,20 @@ defmodule FzHttp.Telemetry do
 
   require Logger
 
-  def add_device do
-    telemetry_module().capture(
-      "add_device",
-      common_fields()
-    )
-  end
+  def add_network, do: capture("add_network")
+  def delete_network, do: capture("delete_network")
+  def add_device, do: capture("add_device")
+  def add_user, do: capture("add_user")
+  def add_rule, do: capture("add_rule")
+  def delete_device, do: capture("delete_device")
+  def delete_user, do: capture("delete_user")
+  def delete_rule, do: capture("delete_rule")
+  def login, do: capture("login")
+  def disable_user, do: capture("disable_user")
+  def fz_http_started, do: capture("fz_http_started")
+  def ping, do: capture("ping")
 
-  def add_user do
-    telemetry_module().capture(
-      "add_user",
-      common_fields()
-    )
-  end
-
-  def add_rule do
-    telemetry_module().capture(
-      "add_rule",
-      common_fields()
-    )
-  end
-
-  def delete_device do
-    telemetry_module().capture(
-      "delete_device",
-      common_fields()
-    )
-  end
-
-  def delete_user do
-    telemetry_module().capture(
-      "delete_user",
-      common_fields()
-    )
-  end
-
-  def delete_rule do
-    telemetry_module().capture(
-      "delete_rule",
-      common_fields()
-    )
-  end
-
-  def login do
-    telemetry_module().capture(
-      "login",
-      common_fields()
-    )
-  end
-
-  def disable_user do
-    telemetry_module().capture(
-      "disable_user",
-      common_fields()
-    )
-  end
-
-  def fz_http_started, do: capture_event("fz_http_started")
-
-  def ping, do: capture_event("ping")
-
-  defp capture_event(name, extra_fields \\ []) do
+  defp capture(name, extra_fields \\ []) do
     telemetry_module().capture(
       name,
       common_fields() ++ extra_fields

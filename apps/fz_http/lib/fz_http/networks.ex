@@ -22,7 +22,7 @@ defmodule FzHttp.Networks do
          |> Network.create_changeset(attrs)
          |> Repo.insert() do
       {:ok, network} ->
-        Telemetry.add_network(network)
+        Telemetry.add_network()
         {:ok, network}
 
       result ->
@@ -33,7 +33,7 @@ defmodule FzHttp.Networks do
   def delete_network(%Network{} = network) do
     case Repo.delete(network) do
       {:ok, network} ->
-        Telemetry.delete_network(network)
+        Telemetry.delete_network()
         {:ok, network}
 
       result ->

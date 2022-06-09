@@ -15,8 +15,8 @@ defmodule FzHttpWeb.SettingLive.Site do
      |> assign(:page_title, "Site Settings")}
   end
 
-  defp endpoint_placeholder do
-    ConnectivityChecks.endpoint()
+  defp host_placeholder do
+    ConnectivityChecks.host()
   end
 
   defp mtu_placeholder do
@@ -40,7 +40,7 @@ defmodule FzHttpWeb.SettingLive.Site do
       allowed_ips: allowed_ips_placeholder(),
       dns: dns_placeholder(),
       persistent_keepalive: persistent_keepalive_placeholder(),
-      endpoint: endpoint_placeholder(),
+      host: host_placeholder(),
       mtu: mtu_placeholder()
     }
   end

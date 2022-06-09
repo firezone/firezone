@@ -26,11 +26,14 @@ defmodule FzHttp.Networks.Network do
     field :interface_name, :string
     field :private_key, FzHttp.Encrypted.Binary
     field :public_key, :string
-    field :listen_port, :integer
+    field :listen_port, :integer, read_after_writes: true
     field :ipv4_address, EctoNetwork.INET
     field :ipv4_network, EctoNetwork.CIDR
     field :ipv6_address, EctoNetwork.INET
     field :ipv6_network, EctoNetwork.CIDR
+    field :dns, :string
+    field :allowed_ips, :string
+    field :persistent_keepalive, :integer
     field :mtu, :integer, read_after_writes: true
     field :require_privileged, :boolean, read_after_writes: true
 

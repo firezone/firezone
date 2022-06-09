@@ -48,6 +48,7 @@ config :fz_http, FzHttpWeb.Authentication,
   secret_key: "GApJ4c4a/KJLrBePgTDUk0n67AbjCvI9qdypKZEaJFXl6s9H3uRcIhTt49Fij5UO"
 
 config :fz_http,
+  secrets_path: "priv/secrets.json",
   sandbox: true,
   allow_unprivileged_device_management: true,
   telemetry_id: "543aae08-5a2b-428d-b704-2956dd3f5a57",

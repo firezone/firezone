@@ -153,37 +153,37 @@ defmodule FzHttp.DevicesTest do
     }
 
     @valid_endpoint_ipv4_attrs %{
-      use_site_endpoint: false,
+      use_site_host: false,
       endpoint: "5.5.5.5"
     }
 
     @valid_endpoint_ipv6_attrs %{
-      use_site_endpoint: false,
+      use_site_host: false,
       endpoint: "fd00::1"
     }
 
     @valid_endpoint_host_attrs %{
-      use_site_endpoint: false,
+      use_site_host: false,
       endpoint: "valid-endpoint.example.com"
     }
 
     @invalid_endpoint_ipv4_attrs %{
-      use_site_endpoint: false,
+      use_site_host: false,
       endpoint: "265.1.1.1"
     }
 
     @invalid_endpoint_ipv6_attrs %{
-      use_site_endpoint: false,
+      use_site_host: false,
       endpoint: "deadbeef::1"
     }
 
     @invalid_endpoint_host_attrs %{
-      use_site_endpoint: false,
+      use_site_host: false,
       endpoint: "can't have this"
     }
 
     @empty_endpoint_attrs %{
-      use_site_endpoint: false,
+      use_site_host: false,
       endpoint: ""
     }
 
@@ -194,7 +194,7 @@ defmodule FzHttp.DevicesTest do
     @fields_use_site [
       %{use_site_allowed_ips: true, allowed_ips: "1.1.1.1"},
       %{use_site_dns: true, dns: "1.1.1.1"},
-      %{use_site_endpoint: true, endpoint: "1.1.1.1"},
+      %{use_site_host: true, endpoint: "1.1.1.1"},
       %{use_site_persistent_keepalive: true, persistent_keepalive: 1},
       %{use_site_mtu: true, mtu: 1000}
     ]

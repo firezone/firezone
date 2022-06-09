@@ -33,7 +33,7 @@ defmodule FzHttp.Sites.Site do
     field :name, :string
     field :dns, :string
     field :allowed_ips, :string
-    field :endpoint, :string
+    field :host, :string
     field :persistent_keepalive, :integer
     field :mtu, :integer
     field :vpn_session_duration, :integer
@@ -47,7 +47,7 @@ defmodule FzHttp.Sites.Site do
       :name,
       :dns,
       :allowed_ips,
-      :endpoint,
+      :host,
       :persistent_keepalive,
       :mtu,
       :vpn_session_duration
@@ -57,7 +57,7 @@ defmodule FzHttp.Sites.Site do
     |> validate_no_duplicates(:dns)
     |> validate_list_of_ips_or_cidrs(:allowed_ips)
     |> validate_no_duplicates(:allowed_ips)
-    |> validate_fqdn_or_ip(:endpoint)
+    |> validate_fqdn_or_ip(:host)
     |> validate_number(:mtu, greater_than_or_equal_to: @min_mtu, less_than_or_equal_to: @max_mtu)
     |> validate_number(:persistent_keepalive,
       greater_than_or_equal_to: @min_persistent_keepalive,
