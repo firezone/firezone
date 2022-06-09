@@ -50,6 +50,13 @@ template 'phoenix.nginx.conf' do
             app_directory: node['firezone']['app_directory'])
 end
 
+warning = 'Initializing server it will create the nftables this might cause
+  existing connections (including SSH) to stop'
+log 'creating nftable warning' do
+  message warning
+  level :warn
+end
+
 if node['firezone']['phoenix']['enabled']
   component_runit_service 'phoenix' do
     runit_attributes(
