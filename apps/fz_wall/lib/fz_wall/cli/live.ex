@@ -49,7 +49,7 @@ defmodule FzWall.CLI.Live do
       if int not in ["lo", wireguard_interface_name()] do
         exec!(
           "#{nft()} 'add rule inet firezone postrouting oifname " <>
-            "#{int} masquerade random,persistent'"
+            "#{int} masquerade persistent'"
         )
       end
     end
