@@ -85,3 +85,10 @@ default['firezone']['authentication']['oidc'] = {
 
 Run `firezone-ctl reconfigure`and `firezone-ctl restart` to update the application.
 You should now see a `Sign in with Azure` button at the root Firezone URL.
+
+## Restricting Access to Certain Members
+
+Azure AD allows admins to restrict app access to a subset of users within your
+organization. See Microsoft's
+[documentation](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-restrict-your-app-to-a-set-of-users)
+for more information on how to do this.

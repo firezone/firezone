@@ -27,9 +27,37 @@ issue](https://github.com/firezone/firezone/issues/new/choose).
 
 ## Upgrading from 0.3.x to >= 0.3.16
 
-Firezone 0.3.17 requires the `offline_access` scope for OIDC integrations.
+Follow the instructions below based on your current version and setup:
+
+### I have an existing OIDC integration
+
+You will need to repeat the OIDC setup steps to
+[create a new app integration]({%link docs/authenticate/index.md%}).
+
+Upgrading to >= 0.3.16 requires the `offline_access` scope for OIDC integrations.
 This ensures VPN sessions are terminated once user access is removed from
 the OIDC provider.
+
+The refresh token required to sync users with your identity
+provider can only be obtained the first time a user grants permissions to Firezone.
+So even if the scope was provided previously, you will need to re-setup the OIDC
+integration after upgrading.
+
+Previous versions of Firezone do not have this capability.
+Users who are removed from your identity provider will still have active VPN sessions
+in some cases.
+
+### I have an existing OAuth integration
+
+Prior to 0.3.11, Firezone used pre-configured OAuth2 providers. Follow the
+instructions [here]({%link docs/authenticate/index.md%}) to migrate
+to OIDC.
+
+### I have not integrated an identity provider
+
+No action needed. You can follow the instructions
+[here]({%link docs/authenticate/index.md%})
+to enable SSO through an OIDC provider.
 
 ## Upgrading from 0.3.1 to >= 0.3.2
 
