@@ -35,8 +35,8 @@ You will need to repeat the OIDC setup steps to
 [create a new app integration]({%link docs/authenticate/index.md%}).
 
 Upgrading to >= 0.3.16 requires the `offline_access` scope for OIDC integrations.
-This ensures VPN sessions are terminated once user access is removed from
-the OIDC provider.
+This ensures Firezone syncs with the identity provider and VPN access is terminated
+once the user is removed.
 
 The refresh token required to sync users with your identity
 provider can only be obtained the first time a user grants permissions to Firezone.

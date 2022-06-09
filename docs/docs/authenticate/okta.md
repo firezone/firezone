@@ -28,9 +28,9 @@ to provide Firezone with the user's email in the returned claims.
 
 ![Firezone Okta SSO Login](https://user-images.githubusercontent.com/52545545/156855886-5a4a0da7-065c-4ec1-af33-583dff4dbb72.gif){:width="600"}
 
-Note: Previously, Firezone used pre-configured Oauth2 providers. We've moved to
-OIDC based authentication, which allows for any OpenID Connect provider
-(Google, Okta, Dex) to be used for authentication.
+**Note:** Previously, Firezone used pre-configured Oauth2 providers. We've moved
+to OIDC based authentication, which allows for any OpenID Connect provider
+(Google, Okta, Dex) to be integrated.
 
 We strongly recommend transitioning your existing Google or Okta-based SSO
 configuration to the generic OIDC-based configuration format described here.
@@ -44,8 +44,9 @@ To set up SSO, follow the steps below:
 _This section of the guide is based on
 [Okta's documentation](https://help.okta.com/en/prod/Content/Topics/Apps/Apps_App_Integration_Wizard_OIDC.htm)._
 
-In the Admin Console, go to `Applications > Applications` and click `Create App Integration`.
-Set `Sign-in method` to `OICD - OpenID Connect` and `Application type` to `Web application`.
+In the Admin Console, go to **Applications > Applications** and click
+**Create App Integration**. Set **Sign-in method** to **OICD - OpenID Connect**
+and **Application type** to **Web application**.
 
 ![Okta Create Options](https://user-images.githubusercontent.com/52545545/168918378-0dd9f705-2544-412d-bbbe-4a7cd9253907.png){:width="800"}
 
@@ -55,18 +56,20 @@ On the following screen, configure the following settings:
 1. **App logo**:
 [Firezone logo](https://user-images.githubusercontent.com/52545545/155907625-a4f6c8c2-3952-488d-b244-3c37400846cf.png)
 (save link as).
+1. **Grant Type**: Check the **Refresh Token** box. This ensures Firezone syncs
+with the identity provider and VPN access is terminated once the user is removed.
 1. **Sign-in redirect URIs**: Add your Firezone `EXTERNAL_URL + /auth/oidc/okta/callback/`
 (e.g. `https://firezone.example.com/auth/oidc/okta/callback/`) as an entry to
 Authorized redirect URIs.
 1. **Assignments**:
 Limit to the groups you wish to provide access to your Firezone instance.
 
-![Okta Settings](https://user-images.githubusercontent.com/52545545/168918397-0d948838-d6f0-442d-9ef9-035108e2a1f8.png){:width="800"}
+![Okta Settings](https://user-images.githubusercontent.com/52545545/172768478-e8be516d-aa0a-4882-b017-adc938bbd10b.png){:width="800"}
 
-Once settings are saved, you will be given a Client ID, Client Secret, and Okta Domain.
-These 3 values will be used in Step 2 to configure Firezone.
+Once settings are saved, you will be given a **Client ID**, **Client Secret**,
+and **Okta Domain**. These 3 values will be used in Step 2 to configure Firezone.
 
-![Okta credentials](https://user-images.githubusercontent.com/52545545/168918391-cfdc7c8c-6b58-4780-8588-3d3b8c51bce1.png){:width="800"}
+![Okta credentials](https://user-images.githubusercontent.com/52545545/172768856-8a373d56-1362-4fc3-a747-3c84f0e76dae.png){:width="800"}
 
 ## Integrate With Firezone
 
@@ -89,4 +92,12 @@ default['firezone']['authentication']['oidc'] = {
 ```
 
 Run `firezone-ctl reconfigure`and `firezone-ctl restart` to update the application.
-You should now see a `Sign in with Okta` button at the root Firezone URL.
+You should now see a **Sign in with Okta** button at the root Firezone URL.
+
+## Restricting Access to Certain Users
+
+Okta can limit the users with access to the Firezone app. To do this,
+go to the Assignments tab of the Firezone App Integration in your Okta
+Admin Console.
+
+![Okta Assignments](https://user-images.githubusercontent.com/52545545/172766608-b95e20e2-eb58-4085-b532-84386de1ea23.png){:width="800"}
