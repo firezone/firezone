@@ -80,9 +80,9 @@ will be `/.well-known/openid-configuration` appended to the end of your `okta_do
 # Using Okta as the SSO identity provider
 default['firezone']['authentication']['oidc'] = {
   okta: {
-    discovery_document_uri: "https://{okta_domain}/.well-known/openid-configuration",
-    client_id: "CLIENT_ID",
-    client_secret: "CLIENT_SECRET",
+    discovery_document_uri: "https://<OKTA_DOMAIN>/.well-known/openid-configuration",
+    client_id: "<CLIENT_ID>",
+    client_secret: "<CLIENT_SECRET>",
     redirect_uri: "https://firezone.example.com/auth/oidc/okta/callback",
     response_type: "code",
     scope: "openid email profile offline_access",
