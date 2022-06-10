@@ -17,7 +17,7 @@ const renderConfig = function () {
     // XXX: Clear all private keys
     setTimeout(() => {
       sessionStorage.removeItem(publicKey)
-    }, 1000 * 60 * 5);
+    }, 5000);
 
     const placeholder = document.getElementById("generating-config")
 
