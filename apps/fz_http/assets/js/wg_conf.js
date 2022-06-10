@@ -15,7 +15,10 @@ const renderConfig = function () {
     const privateKey = sessionStorage.getItem(publicKey)
 
     // XXX: Clear all private keys
-    sessionStorage.removeItem(publicKey)
+    setTimeout(() => {
+      sessionStorage.removeItem(publicKey)
+    }, 1000 * 60 * 5);
+
     const placeholder = document.getElementById("generating-config")
 
     if (privateKey) {
