@@ -25,7 +25,8 @@ defmodule FzHttpWeb.SettingLive.Account do
 
   @impl Phoenix.LiveView
   def handle_params(_params, _url, socket) do
-    {:noreply, socket}
+    admins = Users.list_admins()
+    {:noreply, assign(socket, :allow_delete, length(admins) > 1)}
   end
 
   @impl Phoenix.LiveView

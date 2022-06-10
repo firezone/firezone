@@ -32,6 +32,10 @@ defmodule FzHttp.Users do
     Repo.exists?(from u in User, where: u.id == ^user_id)
   end
 
+  def list_admins do
+    Repo.all(from User, where: [role: :admin])
+  end
+
   def get_user!(email: email) do
     Repo.get_by!(User, email: email)
   end
