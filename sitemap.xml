@@ -10,9 +10,6 @@
 <loc>https://docs.firezone.dev/docs/user-guides/client-instructions/</loc>
 </url>
 <url>
-<loc>https://docs.firezone.dev/docs/deploy/clients/</loc>
-</url>
-<url>
 <loc>https://docs.firezone.dev/docs/reference/configuration-file/</loc>
 </url>
 <url>
@@ -53,9 +50,6 @@
 </url>
 <url>
 <loc>https://docs.firezone.dev/docs/deploy/prerequisites/</loc>
-</url>
-<url>
-<loc>https://docs.firezone.dev/docs/deploy/resource-requirements/</loc>
 </url>
 <url>
 <loc>https://docs.firezone.dev/docs/user-guides/reverse-tunnel/</loc>
