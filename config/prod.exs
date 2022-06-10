@@ -11,7 +11,7 @@ import Config
 # before starting your production server.
 config :fz_vpn,
   wg_path: "wg",
-  cli: FzVpn.CLI.Sandbox
+  wg_adapter: FzVpn.Interface.WGAdapter.Sandbox
 
 config :fz_wall,
   nft_path: "nft",

@@ -61,6 +61,7 @@ config :fz_wall,
 
 config :fz_vpn,
   wg_path: "wg",
+  wg_adapter: FzVpn.Interface.WGAdapter.Sandbox,
   cli: fz_vpn_cli_module
 
 # Auth

@@ -180,7 +180,7 @@ if config_env() == :prod do
     wireguard_public_key: wireguard_public_key,
     wireguard_interface_name: wireguard_interface_name,
     wireguard_port: wireguard_port,
-    cli: FzVpn.CLI.Live
+    wg_adapter: FzVpn.Interface.WGAdapter.Live
 
   # Guardian configuration
   config :fz_http, FzHttpWeb.Authentication,
