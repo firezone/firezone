@@ -31,21 +31,27 @@ Follow the instructions below based on your current version and setup:
 
 ### I have an existing OIDC integration
 
-You will need to repeat the OIDC setup steps to
-[create a new app integration]({%link docs/authenticate/index.md%}).
-
-Upgrading to >= 0.3.16 requires the `offline_access` scope for OIDC integrations.
+Upgrading to >= 0.3.16 requires the `offline_access` scope for some OIDC providers
+to obtain a refresh token.
 This ensures Firezone syncs with the identity provider and VPN access is terminated
-once the user is removed.
-
-The refresh token required to sync users with your identity
-provider can only be obtained the first time a user grants permissions to Firezone.
-So even if the scope was provided previously, you will need to re-setup the OIDC
-integration after upgrading.
-
-Previous versions of Firezone do not have this capability.
+once the user is removed. Previous versions of Firezone do not have this capability.
 Users who are removed from your identity provider will still have active VPN sessions
 in some cases.
+
+For OIDC providers that support the `offline_access` scope, you will need to add
+`offline_access` to the `scope` parameter of your OIDC config. The
+Firezone configuration file can be found at `/etc/firezone/firezone.rb` and requires
+running `firezone-ctl reconfigure` to pick up the changes.
+
+If Firezone is able to successfully retrieve the refresh token, you will see
+the **OIDC Connections** heading in the user details page of the web UI for
+users authenticated through your OIDC provider.
+
+![Group 14](https://user-images.githubusercontent.com/52545545/173169922-b0e5f2f1-74d5-4313-b839-6a001041c07e.png)
+
+If this does not work, you will need to delete your existing OAuth app
+and repeat the OIDC setup steps to
+[create a new app integration]({%link docs/authenticate/index.md%}).
 
 ### I have an existing OAuth integration
 
