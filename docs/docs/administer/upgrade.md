@@ -47,7 +47,7 @@ If Firezone is able to successfully retrieve the refresh token, you will see
 the **OIDC Connections** heading in the user details page of the web UI for
 users authenticated through your OIDC provider.
 
-![Group 14](https://user-images.githubusercontent.com/52545545/173169922-b0e5f2f1-74d5-4313-b839-6a001041c07e.png)
+![OIDC Connections](https://user-images.githubusercontent.com/52545545/173169922-b0e5f2f1-74d5-4313-b839-6a001041c07e.png)
 
 If this does not work, you will need to delete your existing OAuth app
 and repeat the OIDC setup steps to
