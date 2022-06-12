@@ -20,7 +20,7 @@
 ## [Firezone](https://www.firezone.dev) is a self-hosted VPN server and Linux firewall
 
 * Manage remote access through an intuitive web interface and CLI utility.
-* Deploy on your own infrastructure to keep control of your network traffic.
+* [Deploy on your own infrastructure](https://docs.firezone.dev/docs/deploy) to keep control of your network traffic.
 * Built on [WireGuard®](https://www.wireguard.com/) to be stable, performant, and lightweight.
 
 ![Firezone Architecture](https://user-images.githubusercontent.com/52545545/173246039-a1b37ef2-d885-4535-bca7-f5cd57da21a2.png)
