@@ -9,7 +9,7 @@ description: >
 ---
 ---
 
-Firezone supports Single Sign-On (SSO) using Onelogin
+Firezone supports Single Sign-On (SSO) using OneLogin
 through the generic OIDC connector. This guide will walk you through how to
 obtain the following config settings required for the integration:
 
@@ -65,10 +65,10 @@ default['firezone']['authentication']['oidc'] = {
     redirect_uri: "https://firezone.example.com/auth/oidc/onelogin/callback",
     response_type: "code",
     scope: "openid email profile",
-    label: "Onelogin"
+    label: "OneLogin"
   }
 }
 ```
 
 Run `firezone-ctl reconfigure`and `firezone-ctl restart` to update the application.
-You should now see a `Sign in with Onelogin` button at the root Firezone URL.
+You should now see a `Sign in with OneLogin` button at the root Firezone URL.
