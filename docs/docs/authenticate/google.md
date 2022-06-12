@@ -81,7 +81,7 @@ page, click `+ Create Credentials` and select `OAuth client ID`.
 On the OAuth client ID creation screen:
 
 1. Set `Application Type` to `Web application`
-1. Add your Firezone `EXTERNAL_URL + /auth/oidc/google/callback/`
+1. Add your Firezone `<EXTERNAL_URL> + /auth/oidc/google/callback/`
 (e.g. `https://firezone.example.com/auth/oidc/google/callback/`) as an entry to
 Authorized redirect URIs.
 

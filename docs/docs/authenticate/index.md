@@ -70,18 +70,27 @@ or `openid email profile offline_access` depending on the provider.
 We've included instructions on how to set up Firezone with several popular
 identity providers:
 
-* [Azure AD]({%link docs/authenticate/azure-ad.md%})
-* [Google]({%link docs/authenticate/google.md%})
-* [Okta]({%link docs/authenticate/okta.md%})
-* [Local email/password authentication (default)]({%link docs/authenticate/web-auth.md%})
+<!-- markdownlint-disable MD013 -->
+<!-- markdownlint-disable MD034 -->
+
+| OIDC provider | offline_access | Link to Guide                                        |
+|---------------|-------------------------------|------------------------------------------------------|
+| Okta          | ✅ required in `scope` parameter      | [ Okta ]({%link docs/authenticate/okta.md%})         |
+| Azure         | ✅ required in `scope` parameter      | [Azure AD]({%link docs/authenticate/azure-ad.md%})   |
+| Google        | ✅ supported by default          | [ Google ]({%link docs/authenticate/google.md%})     |
+| Onelogin      | not supported                 | [ Onelogin ]({%link docs/authenticate/onelogin.md%}) |
+
+<!-- markdownlint-enable MD013 -->
+<!-- markdownlint-enable MD034 -->
 
 If your identity provider is not listed above, but has a generic OIDC
 connector, please consult their documentation to find instructions on obtaining
 the config settings required.
 
-Join our [Slack](https://www.firezone.dev/slack) to request additional help or
-open a [Github Issue](https://github.com/firezone/firezone/issues) to request
-additional documentation for your provider.
+Join our [Slack](https://www.firezone.dev/slack) to request additional help.
+Open a [Github Issue](https://github.com/firezone/firezone/issues) or
+[pull request](https://github.com/firezone/firezone/tree/master/docs/docs/authenticate/index.md)
+to add documentation for your provider.
 
 ## Enforce Periodic Re-authentication
 
