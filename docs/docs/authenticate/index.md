@@ -77,9 +77,9 @@ identity providers:
 
 | OIDC provider | offline_access | Link to Guide                                        |
 |---------------|-------------------------------|------------------------------------------------------|
+| Google        | ✅ supported by default          | [ Google ]({%link docs/authenticate/google.md%})     |
 | Okta          | ✅ required in `scope` parameter      | [ Okta ]({%link docs/authenticate/okta.md%})         |
 | Azure AD        | ✅ required in `scope` parameter      | [Azure AD]({%link docs/authenticate/azure-ad.md%})   |
-| Google        | ✅ supported by default          | [ Google ]({%link docs/authenticate/google.md%})     |
 | OneLogin      | not supported                 | [ OneLogin ]({%link docs/authenticate/onelogin.md%}) |
 
 <!-- markdownlint-enable MD013 -->
