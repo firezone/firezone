@@ -29,6 +29,7 @@ ENV['PGHOST'] = node['firezone']['database']['host']
 ENV['PGPORT'] = node['firezone']['database']['port'].to_s
 ENV['PGUSER'] = node['firezone']['database']['user']
 ENV['PGPASSWORD'] = node['firezone']['database']['password']
+ENV['PGDATABASE'] = node['firezone']['database']['name']
 
 unless node['firezone']['database']['create_user'] == false
   enterprise_pg_user node['firezone']['database']['user'] do
