@@ -28,6 +28,21 @@ through an OIDC provider. The configuration file can be found at
 `/etc/firezone/firezone.rb`. To pick up changes, run `firezone-ctl reconfigure`
 and `firezone-ctl restart` to update the application.
 
+The following config settings are required for the integration:
+
+1. `discovery_document_uri`: This URL returns a JSON with information to
+construct a request to the OpenID server.
+1. `client_id`: The client ID of the application.
+1. `client_secret`: The client secret of the application.
+1. `redirect_uri`: Instructs OIDC provider where to redirect after authentication.
+This should be your Firezone `EXTERNAL_URL + /auth/oidc/<provider_key>/callback/`
+(e.g. `https://firezone.example.com/auth/oidc/google/callback/`).
+1. `response_type`: Set to `code`.
+1. `scope`: [OIDC scopes](https://openid.net/specs/openid-connect-basic-1_0.html#Scopes)
+to obtain from your OIDC provider. This should be set to `openid email profile`
+or `openid email profile offline_access` depending on the provider.
+1. `label`: The button label text that shows up on your Firezone login screen.
+
 ```ruby
 # This is an example using Google and Okta as an SSO identity provider.
 # Multiple OIDC configs can be added to the same Firezone instance.
@@ -54,19 +69,6 @@ default['firezone']['authentication']['oidc'] = {
 }
 ```
 
-1. `discovery_document_uri`: This URL returns a JSON with information to
-construct a request to the OpenID server.
-1. `client_id`: The client ID of the application.
-1. `client_secret`: The client secret of the application.
-1. `redirect_uri`: Instructs OIDC provider where to redirect after authentication.
-This should be your Firezone `EXTERNAL_URL + /auth/oidc/<provider_key>/callback/`
-(e.g. `https://firezone.example.com/auth/oidc/google/callback/`).
-1. `response_type`: Set to `code`.
-1. `scope`: [OIDC scopes](https://openid.net/specs/openid-connect-basic-1_0.html#Scopes)
-to obtain from your OIDC provider. This should be set to `openid email profile`
-or `openid email profile offline_access` depending on the provider.
-1. `label`: The button label text that shows up on your Firezone login screen.
-
 We've included instructions on how to set up Firezone with several popular
 identity providers:
 
@@ -87,10 +89,12 @@ If your identity provider is not listed above, but has a generic OIDC
 connector, please consult their documentation to find instructions on obtaining
 the config settings required.
 
-Join our [Slack](https://www.firezone.dev/slack) to request additional help.
-Open a [Github Issue](https://github.com/firezone/firezone/issues) or
-[pull request](https://github.com/firezone/firezone/tree/master/docs/docs/authenticate/index.md)
+Open a [Github Issue](https://github.com/firezone/firezone/issues)
+to request documentation
+or submit a [pull request](https://github.com/firezone/firezone/tree/master/docs/docs/authenticate/index.md)
 to add documentation for your provider.
+If you require assistance in setting up your OIDC provider, please
+join the [Firezone Slack group](https://www.firezone.dev/slack).
 
 ## Enforce Periodic Re-authentication
 
