@@ -91,48 +91,67 @@ defmodule FzVpn.Interface do
   end
 
   def dump(name) do
-    dump_fields = [
-      :preshared_key,
-      :endpoint,
-      :allowed_ips,
-      :persistent_keepalive,
-      :latest_handshake,
-      :rx_bytes,
-      :tx_bytes
-    ]
-
     result = wg_adapter().get_device(name)
 
     case result do
       %Wireguardex.Device{} ->
-        Map.new(result.peers, fn peer ->
-          info =
-            Map.from_struct(peer.config)
-            |> Map.merge(Map.from_struct(peer.stats))
-            |> Enum.map(fn {k, v} ->
-              case {k, v} do
-                {:allowed_ips, []} -> {k, "(none)"}
-                {:allowed_ips, ips} -> {k, Enum.join(ips, ",")}
-                {:preshared_key, nil} -> {k, "(none)"}
-                {:endpoint, nil} -> {k, "(none)"}
-                {:last_handshake_time, t} -> {:latest_handshake, t}
-                {:persistent_keepalive_interval, 0} -> {:persistent_keepalive, "off"}
-                {:persistent_keepalive_interval, n} -> {:persistent_keepalive, n}
-                _ -> {k, v}
-              end
-            end)
-            |> Enum.into(%{})
-            |> Map.take(dump_fields)
-
-          {
-            peer.config.public_key,
-            info
-          }
-        end)
+        peers_to_dump_map(result.peers)
 
       {:error, error_info} ->
         Logger.warn("Failed to get interface #{name} stats: #{error_info}")
         result
+    end
+  end
+
+  defp peers_to_dump_map(peers) do
+    Map.new(peers, fn peer ->
+      dump =
+        Map.from_struct(peer.config)
+        |> Map.merge(Map.from_struct(peer.stats))
+        |> Enum.map(&dump_field/1)
+        |> Enum.into(%{})
+        # dump these fields from the peer info
+        |> Map.take([
+          :preshared_key,
+          :endpoint,
+          :allowed_ips,
+          :persistent_keepalive,
+          :latest_handshake,
+          :rx_bytes,
+          :tx_bytes
+        ])
+
+      {
+        peer.config.public_key,
+        dump
+      }
+    end)
+  end
+
+  defp dump_field({field, value}) do
+    case {field, value} do
+      {:allowed_ips, ips} -> dump_allowed_ips(ips)
+      {:persistent_keepalive_interval, n} -> dump_persistent_keepalive(n)
+      {:endpoint, nil} -> {:endpoint, "(none)"}
+      {:last_handshake_time, t} -> {:latest_handshake, to_string(t)}
+      {:preshared_key, nil} -> {:preshared_key, "(none)"}
+      _ -> {field, to_string(value)}
+    end
+  end
+
+  defp dump_allowed_ips(allowed_ips) do
+    if allowed_ips == [] do
+      {:allowed_ips, "(none)"}
+    else
+      {:allowed_ips, Enum.join(allowed_ips, ",")}
+    end
+  end
+
+  defp dump_persistent_keepalive(n) do
+    if !n || n == 0 do
+      {:persistent_keepalive, "off"}
+    else
+      {:persistent_keepalive, to_string(n)}
     end
   end
 

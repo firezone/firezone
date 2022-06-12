@@ -1,6 +1,6 @@
 defmodule FzVpn.Interface.WGAdapter.Sandbox do
   @moduledoc """
-  The live WireGuard adapter.
+  The sandbox WireGuard adapter.
   """
 
   import Wireguardex.PeerConfigBuilder
@@ -11,17 +11,17 @@ defmodule FzVpn.Interface.WGAdapter.Sandbox do
   require Logger
 
   @devices %{
-    Application.fetch_env!(:fz_vpn, :wireguard_interface_name) => %Wireguardex.Device{
-      name: Application.fetch_env!(:fz_vpn, :wireguard_interface_name),
-      public_key: Application.fetch_env!(:fz_vpn, :wireguard_public_key),
-      listen_port: Application.fetch_env!(:fz_vpn, :wireguard_port),
+    Application.compile_env!(:fz_vpn, :wireguard_interface_name) => %Wireguardex.Device{
+      name: Application.compile_env!(:fz_vpn, :wireguard_interface_name),
+      public_key: Application.compile_env!(:fz_vpn, :wireguard_public_key),
+      listen_port: Application.compile_env!(:fz_vpn, :wireguard_port),
       peers: [
         %PeerInfo{
           config:
             peer_config()
             |> public_key("+wEYaT5kNg7mp+KbDMjK0FkQBtrN8RprHxudAgS0vS0=")
             |> endpoint("140.82.48.115:54248")
-            |> allowed_ips(["10.3.2.7/32", "fd00::3::2::7/128"]),
+            |> allowed_ips(["10.3.2.7/32", "fd00::3:2:7/128"]),
           stats: %PeerStats{
             last_handshake_time: 1_650_286_790,
             rx_bytes: 14_161_600,
