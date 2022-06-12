@@ -46,11 +46,12 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
       |> create_device(socket)
 
     case result do
-      {:not_authorized} ->
+      :not_authorized ->
         {:noreply, not_authorized(socket)}
 
       {:ok, device} ->
         @events_module.update_device(device)
+        send_update(FzHttpWeb.ModalComponent, id: :modal, hide_footer_content: true)
 
         {:noreply,
          socket
@@ -69,7 +70,7 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
     if authorized_to_create?(socket) do
       Devices.create_device(params)
     else
-      {:not_authorized}
+      :not_authorized
     end
   end
 
