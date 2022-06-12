@@ -39,13 +39,9 @@ bash <(curl -Ls https://github.com/firezone/firezone/raw/master/scripts/install.
 
 Using Firezone for your team? Take a look at our [business tier](https://www.firezone.dev/pricing).
 
-## What is Firezone?
-
-[Firezone](https://www.firezone.dev) is a Linux package to manage your WireGuard® VPN through a simple web interface.
+## Features
 
 ![firezone-usage](https://user-images.githubusercontent.com/52545545/147392573-fe4cb936-a0a8-436f-a69b-c0a9587de58b.gif)
-
-### Features
 
 * **Fast:** Uses WireGuard® to be [3-4 times](https://wireguard.com/performance/) faster than OpenVPN.
 * **SSO Integration:** Authenticate using any identity provider with an OpenID Connect (OIDC) connector.
