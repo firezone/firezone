@@ -75,7 +75,7 @@ identity providers:
 <!-- markdownlint-disable MD013 -->
 <!-- markdownlint-disable MD034 -->
 
-| OIDC provider | offline_access | Link to Guide                                        |
+| OIDC provider | User Synchronization | Link to Guide                                        |
 |---------------|-------------------------------|------------------------------------------------------|
 | Google        | ✅ supported by default          | [ Google ]({%link docs/authenticate/google.md%})     |
 | Okta          | ✅ required in `scope` parameter      | [ Okta ]({%link docs/authenticate/okta.md%})         |
