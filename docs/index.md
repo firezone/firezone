@@ -11,7 +11,7 @@ description: >
 egress firewall for Linux. Use it to **quickly and easily** secure access to
 your private network and internal applications from a simple Web UI.
 
-![Architecture](https://user-images.githubusercontent.com/52545545/171501688-76523077-937a-44e5-b92d-56de06a83ae8.png){:width="500"}
+![Architecture](https://user-images.githubusercontent.com/52545545/173246039-a1b37ef2-d885-4535-bca7-f5cd57da21a2.png){:width="500"}
 
 These docs explain how to deploy, configure, and use Firezone.
 
