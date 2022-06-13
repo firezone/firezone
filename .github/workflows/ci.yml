@@ -40,7 +40,7 @@ jobs:
           python-version: '3.9'
       - uses: erlef/setup-beam@v1
         with:
-          otp-version: '24'
+          otp-version: '25'
           elixir-version: '1.13.4'
       - uses: actions/cache@v2
         name: Setup Elixir cache
@@ -48,9 +48,9 @@ jobs:
           path: |
             deps
             _build
-          key: ${{ runner.os }}-mix-otp-24-${{ hashFiles('**/mix.lock') }}
+          key: ${{ runner.os }}-mix-otp-25-${{ hashFiles('**/mix.lock') }}
           restore-keys: |
-            ${{ runner.os }}-mix-otp-24-
+            ${{ runner.os }}-mix-otp-25-
       - uses: actions/cache@v2
         name: Setup ruby cache
         with:
@@ -126,16 +126,16 @@ jobs:
           node-version: '14.19.3'
       - uses: erlef/setup-beam@v1
         with:
-          otp-version: '24'
+          otp-version: '25'
           elixir-version: '1.13.4'
       - uses: actions/cache@v2
         with:
           path: |
             deps
             _build
-          key: ${{ runner.os }}-mix-otp-24-${{ hashFiles('**/mix.lock') }}
+          key: ${{ runner.os }}-mix-otp-25-${{ hashFiles('**/mix.lock') }}
           restore-keys: |
-            ${{ runner.os }}-mix-otp-24
+            ${{ runner.os }}-mix-otp-25
       - name: Install Dependencies
         run: mix deps.get --only test
       - name: Setup Database

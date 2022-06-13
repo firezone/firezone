@@ -84,7 +84,7 @@
 
   <%# This is purposefully a synchronous form in order to easily clear the session %>
   <%= form_for @changeset, Routes.user_path(@socket, :delete), [id: "delete-account", method: :delete], fn _f -> %>
-    <%= submit(class: "button is-danger", data: [confirm: "Are you sure?"]) do %>
+    <%= submit(class: "button is-danger", data: [confirm: "Are you sure?"], disabled: !@allow_delete) do %>
       <span class="icon is-small">
         <i class="fas fa-trash"></i>
       </span>
