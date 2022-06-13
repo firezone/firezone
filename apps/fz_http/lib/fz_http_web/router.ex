@@ -83,7 +83,7 @@ defmodule FzHttpWeb.Router do
     live_session(
       :authenticated,
       on_mount: [{FzHttpWeb.LiveAuth, :any}, {FzHttpWeb.LiveNav, nil}],
-      root_layout: {FzHttpWeb.LayoutView, :unprivileged}
+      root_layout: {FzHttpWeb.LayoutView, :root}
     ) do
       live "/auth", MFALive.Auth, :auth
       live "/auth/:id", MFALive.Auth, :auth
