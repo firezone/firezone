@@ -10,7 +10,7 @@ defmodule FzVpn.Interface.WGAdapter.Sandbox do
 
   require Logger
 
-  @devices %{
+  @sandbox_device %{
     Application.compile_env!(:fz_vpn, :wireguard_interface_name) => %Wireguardex.Device{
       name: Application.compile_env!(:fz_vpn, :wireguard_interface_name),
       public_key: Application.compile_env!(:fz_vpn, :wireguard_public_key),
@@ -45,38 +45,18 @@ defmodule FzVpn.Interface.WGAdapter.Sandbox do
   }
 
   def get_device(name) do
-    Map.get(@devices, name)
+    Map.get(@sandbox_device, name)
   end
 
-  def set_device(config, name) do
-    Map.put(@devices, name, %Wireguardex.Device{
-      name: name,
-      public_key: config.public_key,
-      private_key: config.private_key,
-      fwmark: config.fwmark,
-      listen_port: config.listen_port,
-      peers:
-        config.peers
-        |> Enum.map(fn peer ->
-          %PeerInfo{
-            config: peer,
-            stats: %PeerStats{last_handshake_time: 0, rx_bytes: 0, tx_bytes: 0}
-          }
-        end)
-    })
-
+  def set_device(_config, _name) do
     :ok
   end
 
-  def delete_device(name) do
-    Map.delete(@devices, name)
-
+  def delete_device(_name) do
     :ok
   end
 
-  def remove_peer(name, _public_key) do
-    _device = Map.get(@devices, name)
-
+  def remove_peer(_name, _public_key) do
     :ok
   end
 end

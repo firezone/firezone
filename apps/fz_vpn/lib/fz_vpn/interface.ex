@@ -64,7 +64,7 @@ defmodule FzVpn.Interface do
     end
   end
 
-  def delete_interface(name) do
+  def delete(name) do
     result = wg_adapter().delete_device(name)
 
     case result do
