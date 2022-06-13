@@ -25,6 +25,46 @@ To upgrade Firezone, follow these steps:
 Occasionally problems arise. If you hit any, please let us know by [filing an
 issue](https://github.com/firezone/firezone/issues/new/choose).
 
+## Upgrading from 0.3.x to >= 0.3.16
+
+Follow the instructions below based on your current version and setup:
+
+### I have an existing OIDC integration
+
+Upgrading to >= 0.3.16 requires the `offline_access` scope for some OIDC providers
+to obtain a refresh token.
+This ensures Firezone syncs with the identity provider and VPN access is terminated
+once the user is removed. Previous versions of Firezone do not have this capability.
+Users who are removed from your identity provider will still have active VPN sessions
+in some cases.
+
+For OIDC providers that support the `offline_access` scope, you will need to add
+`offline_access` to the `scope` parameter of your OIDC config. The
+Firezone configuration file can be found at `/etc/firezone/firezone.rb` and requires
+running `firezone-ctl reconfigure` to pick up the changes.
+
+If Firezone is able to successfully retrieve the refresh token, you will see
+the **OIDC Connections** heading in the user details page of the web UI for
+users authenticated through your OIDC provider.
+
+![OIDC Connections](https://user-images.githubusercontent.com/52545545/173169922-b0e5f2f1-74d5-4313-b839-6a001041c07e.png)
+
+If this does not work, you will need to delete your existing OAuth app
+and repeat the OIDC setup steps to
+[create a new app integration]({%link docs/authenticate/index.md%}).
+
+### I have an existing OAuth integration
+
+Prior to 0.3.11, Firezone used pre-configured OAuth2 providers. Follow the
+instructions [here]({%link docs/authenticate/index.md%}) to migrate
+to OIDC.
+
+### I have not integrated an identity provider
+
+No action needed. You can follow the instructions
+[here]({%link docs/authenticate/index.md%})
+to enable SSO through an OIDC provider.
+
 ## Upgrading from 0.3.1 to >= 0.3.2
 
 The configuration option `default['firezone']['fqdn']` has been removed in favor
