@@ -5,6 +5,8 @@ $fz-grey-dk-100: #766a60;
 $fz-grey-dk-200: #4c3e33;
 $fz-grey-dk-300: #1b140e;
 
+$fz-code-bg: rgb(76, 62, 51);
+
 $fz-grey-lt-000: #fcfcfc;
 $fz-grey-lt-100: #f8f7f7;
 $fz-grey-lt-200: #ebebea;
@@ -124,7 +126,7 @@ code {
 .language-shell,
 .language-ruby,
 .language-bash {
-  background-color: $fz-grey-dk-300 !important;
+  background-color: $fz-code-bg !important;
   margin: 2px !important;
   padding: 10px !important;
   border-radius: 6px !important;
@@ -132,15 +134,18 @@ code {
 
 .language-plaintext,
 .language-text {
-  background-color: $fz-grey-dk-300 !important;
+  background-color: $fz-code-bg !important;
   margin: 0px !important;
-  padding: 2px !important;
+  padding: 3px !important;
   border-radius: 6px !important;
 }
 
+.highlight {
+  padding: 5px !important;
+}
 code {
   background-color: transparent !important;
-  color: white !important;
+  color: rgba($color: #fff, $alpha: 0.7) !important;
 }
 
 // Search Results
