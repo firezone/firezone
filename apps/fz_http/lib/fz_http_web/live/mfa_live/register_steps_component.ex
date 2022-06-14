@@ -23,6 +23,8 @@ defmodule FzHttpWeb.MFA.RegisterStepsComponent do
             Time-Based One-Time Password
           </label>
         </div>
+
+        <!-- Coming Soon
         <div>
           <label class="radio disabled">
             <input type="radio" name="type" value="native" disabled>
@@ -35,6 +37,7 @@ defmodule FzHttpWeb.MFA.RegisterStepsComponent do
             Portable (YubiKey-like products)
           </label>
         </div>
+        -->
       </div>
     </form>
     """
