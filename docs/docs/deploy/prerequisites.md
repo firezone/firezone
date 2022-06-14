@@ -9,8 +9,7 @@ description: >
 ---
 
 Firezone requires the setup of a DNS record and matching SSL certificate for
-production deployments. Not using Firezone in production? [
-Skip to install the server]({% link docs/deploy/server.md %}).
+production deployments.
 
 ## Create a DNS record
 
@@ -46,7 +45,7 @@ programs that modify the Linux routing table or firewall may interfere with
 Firezone's operation. For help troubleshooting connectivity issues, see
 [troubleshoot]({% link docs/administer/troubleshoot.md %}).
 
-### Resource requirements
+## Resource Requirements
 
 We recommend **starting with 1 vCPU and 1 GB of RAM and scaling up** as the
 number of users and bandwidth requirements grow.
