@@ -8,7 +8,7 @@ import "@fontsource/fira-mono"
 
 import "phoenix_html"
 import Hooks from "./hooks.js"
-import {Socket, Presence} from "phoenix"
+import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import "./event_listeners.js"
 
