@@ -1,16 +1,22 @@
 <section class="section is-main-section">
-  <h4 class="title is-4 is-flex is-align-items-center">
-    <span class="mr-4">OIDC Connections</span>
-
-    <button class="button"
-        data-confirm="Refresh this user's connections?"
-        phx-click="refresh"
-        phx-target={@myself}>
-      <span class="icon is-small">
-        <i class="fas fa-redo"></i>
-      </span>
-    </button>
-  </h4>
+  <div class="level">
+    <div class="level-left">
+      <h4 class="title is-4">OIDC Connections</h4>
+    </div>
+    <div class="level-right">
+      <button class="button"
+          data-confirm="Refresh this users' tokens?"
+          phx-click="refresh"
+          phx-target={@myself}>
+        <span class="icon is-small">
+          <i class="fas fa-redo"></i>
+        </span>
+        <span>
+          Refresh Tokens
+        </span>
+      </button>
+    </div>
+  </div>
 
   <table class="table is-bordered is-hoverable is-striped is-fullwidth">
     <thead>
