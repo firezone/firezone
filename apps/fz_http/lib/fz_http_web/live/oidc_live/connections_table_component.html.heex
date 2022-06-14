@@ -1,0 +1,43 @@
+<section class="section is-main-section">
+  <h4 class="title is-4 is-flex is-align-items-center">
+    <span class="mr-4">OIDC Connections</span>
+
+    <button class="button"
+        data-confirm="Refresh this user's connections?"
+        phx-click="refresh"
+        phx-target={@myself}>
+      <span class="icon is-small">
+        <i class="fas fa-redo"></i>
+      </span>
+    </button>
+  </h4>
+
+  <table class="table is-bordered is-hoverable is-striped is-fullwidth">
+    <thead>
+      <tr>
+        <th>Provider</th>
+        <th>Refreshed At</th>
+        <th>Refresh Result</th>
+      </tr>
+    </thead>
+    <tbody>
+    <%= for conn <- @connections do %>
+      <tr>
+        <td>
+          <%= conn.provider %>
+        </td>
+        <td id={"connection-#{conn.id}-refreshed-at"}
+            data-timestamp={conn.refreshed_at}
+            phx-hook="FormatTimestamp">…</td>
+        <td>
+          <%= if match?(%{"error" => _}, conn.refresh_response) do %>
+            ERROR: <%= conn.refresh_response["error"] %>
+          <% else %>
+            OK
+          <% end %>
+        </td>
+      </tr>
+    <% end %>
+    </tbody>
+  </table>
+</section>
