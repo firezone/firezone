@@ -51,7 +51,7 @@ defmodule FzHttpWeb.MFALive.AuthTest do
       {:ok, view, _html} = live(conn, path)
 
       view
-      |> element("a")
+      |> element("a[href=\"/mfa/types\"]")
       |> render_click()
 
       assert_patched(view, "/mfa/types")

@@ -9,7 +9,7 @@ defmodule FzHttpWeb.MFALive.Auth do
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
-    {:ok, socket |> assign(:page_title, "MFA")}
+    {:ok, socket |> assign(:page_title, "Multi-factor Authentication")}
   end
 
   @impl Phoenix.LiveView
@@ -31,25 +31,28 @@ defmodule FzHttpWeb.MFALive.Auth do
   @impl Phoenix.LiveView
   def render(%{live_action: :auth} = assigns) do
     ~H"""
-    <section class="section is-main-section">
-      <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
-      <h4 class="title is-4"><%= @page_title %></h4>
+    <h3 class="is-3 title"><%= @page_title %></h3>
 
-      <form id="mfa-method-form" phx-submit="verify">
-        <h4>Verify Code</h4>
-        <hr>
+    <p>
+      Authenticate with your configured MFA method.
+    </p>
 
-        <div class="field is-horizontal">
-          <div class="field-label is-normal">
-            <label class="label">Code</label>
-          </div>
-          <div class="field-body">
-            <div class="field">
-              <p class="control">
-                <input class={"input #{input_error_class(@changeset, :code)}"}
-                    type="text" name="code" placeholder="123456" required />
-              </p>
-            </div>
+    <hr>
+
+    <div class="block has-text-right">
+      <%= live_patch "Other authenticators ->", to: Routes.mfa_auth_path(@socket, :types) %>
+    </div>
+
+    <div class="block">
+      <.form let={f} for={@changeset} id="mfa-method-form" phx-submit="verify">
+
+        <div class="field">
+          <%= label f, :code, class: "label" %>
+          <div class="control">
+            <%= text_input f, :code, name: "code", placeholder: "123456", required: true, class: "input #{input_error_class(@changeset, :code)}" %>
+            <p class="help is-danger">
+              <%= error_tag f, :code %>
+            </p>
           </div>
         </div>
 
@@ -59,18 +62,18 @@ defmodule FzHttpWeb.MFALive.Auth do
               <div class="level-left">
                 <%= submit "Verify",
                     phx_disable_with: "verifying...",
-                    form: assigns[:form],
-                    class: "button is-primary" %>
+                    class: "button" %>
               </div>
               <div class="level-right">
-                <%= live_patch "Other authenticators ->",
-                    to: Routes.mfa_auth_path(@socket, :types) %>
+                <%= link(to: Routes.auth_path(@socket, :delete), method: :delete) do %>
+                  Sign out
+                <% end %>
               </div>
             </div>
           </div>
         </div>
-      </form>
-    </section>
+      </.form>
+    </div>
     """
   end
 
@@ -79,10 +82,13 @@ defmodule FzHttpWeb.MFALive.Auth do
     assigns = Map.put(assigns, :methods, MFA.list_methods(assigns.current_user))
 
     ~H"""
-    <section class="section is-main-section">
-      <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
-      <h4 class="title is-4"><%= @page_title %></h4>
+    <h3 class="is-3 title"><%= @page_title %></h3>
 
+    <p class="block">
+      Select your MFA method:
+    </p>
+
+    <div class="block">
       <ul>
         <%= for method <- @methods do %>
         <li>
@@ -91,7 +97,7 @@ defmodule FzHttpWeb.MFALive.Auth do
         </li>
         <% end %>
       </ul>
-    </section>
+    </div>
     """
   end
 
