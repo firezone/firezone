@@ -15,10 +15,9 @@ defmodule FzWall.CLI.Live do
   @doc """
   Adds nftables rule.
   """
-  def add_rule({dest, action}) do
+  def add_rule(params) do
     exec!("""
-      #{nft()} 'add rule inet #{@table_name} forward\
-      #{proto(dest)} daddr #{standardized_inet(dest)} #{action}'
+      #{nft()} 'add rule inet #{@table_name} forward #{rule_str(params)}'
     """)
   end
 
@@ -34,12 +33,12 @@ defmodule FzWall.CLI.Live do
   """
   def setup_chains do
     exec!(
-      "#{nft()} 'add chain inet firezone forward " <>
+      "#{nft()} 'add chain inet #{@table_name} forward " <>
         "{ type filter hook forward priority 0 ; policy accept ; }'"
     )
 
     exec!(
-      "#{nft()} 'add chain inet firezone postrouting " <>
+      "#{nft()} 'add chain inet #{@table_name} postrouting " <>
         "{ type nat hook postrouting priority 100 ; }'"
     )
 
@@ -48,7 +47,7 @@ defmodule FzWall.CLI.Live do
       # Masquerade all interfaces except loopback and our own wireguard interface
       if int not in ["lo", wireguard_interface_name()] do
         exec!(
-          "#{nft()} 'add rule inet firezone postrouting oifname " <>
+          "#{nft()} 'add rule inet #{@table_name} postrouting oifname " <>
             "#{int} masquerade persistent'"
         )
       end
@@ -57,7 +56,7 @@ defmodule FzWall.CLI.Live do
 
   def teardown_table do
     if table_exists?() do
-      exec!("#{nft()} delete table inet firezone")
+      exec!("#{nft()} delete table inet #{@table_name}")
     end
   end
 
@@ -65,14 +64,14 @@ defmodule FzWall.CLI.Live do
   List currently loaded rules.
   """
   def list_rules do
-    exec!("#{nft()} -a list table inet firezone")
+    exec!("#{nft()} -a list table inet #{@table_name}")
   end
 
   @doc """
   Deletes nftables rule.
   """
-  def delete_rule({dest, action}) do
-    rule_str = "#{proto(dest)} daddr #{standardized_inet(dest)} #{action}"
+  def delete_rule(params) do
+    rule_str = rule_str(params)
     rules = exec!("#{nft()} -a list table inet #{@table_name}")
 
     case rule_handle_regex(~r/#{rule_str}.*# handle (?<num>\d+)/, rules) do
@@ -164,5 +163,14 @@ defmodule FzWall.CLI.Live do
       "IPv6" -> "ip6"
       "unknown" -> raise "Unknown protocol."
     end
+  end
+
+  defp rule_str({dest, action}), do: "#{rule_match_str(dest)} #{action}"
+  defp rule_str({dest, source, action}), do: "#{rule_match_str(dest, source)} #{action}"
+
+  defp rule_match_str(dest), do: "#{proto(dest)} daddr #{standardized_inet(dest)}"
+
+  defp rule_match_str(dest, source) do
+    "#{proto(source)} saddr #{standardized_inet(source)} #{rule_match_str(dest)}"
   end
 end
