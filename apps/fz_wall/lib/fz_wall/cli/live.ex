@@ -166,11 +166,11 @@ defmodule FzWall.CLI.Live do
   end
 
   defp rule_str({dest, action}), do: "#{rule_match_str(dest)} #{action}"
-  defp rule_str({dest, source, action}), do: "#{rule_match_str(dest, source)} #{action}"
+  defp rule_str({source, dest, action}), do: "#{rule_match_str(source, dest)} #{action}"
 
   defp rule_match_str(dest), do: "#{proto(dest)} daddr #{standardized_inet(dest)}"
 
-  defp rule_match_str(dest, source) do
+  defp rule_match_str(source, dest) do
     "#{proto(source)} saddr #{standardized_inet(source)} #{rule_match_str(dest)}"
   end
 end
