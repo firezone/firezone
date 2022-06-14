@@ -6,6 +6,7 @@ defmodule FzHttp.TestHelpers do
   alias FzHttp.{
     ConnectivityChecksFixtures,
     DevicesFixtures,
+    MFA,
     Repo,
     RulesFixtures,
     Users,
@@ -160,5 +161,19 @@ defmodule FzHttp.TestHelpers do
   def clear_users(_) do
     {count, _result} = Repo.delete_all(User)
     {:ok, count: count}
+  end
+
+  def create_method(user, attrs \\ %{}) do
+    secret = NimbleTOTP.secret()
+
+    MFA.create_method(
+      Enum.into(attrs, %{
+        name: "Test Default",
+        type: :totp,
+        secret: Base.encode64(secret),
+        code: NimbleTOTP.verification_code(secret)
+      }),
+      user.id
+    )
   end
 end

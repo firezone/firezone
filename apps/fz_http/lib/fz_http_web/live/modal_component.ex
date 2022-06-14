@@ -23,7 +23,11 @@ defmodule FzHttpWeb.ModalComponent do
         </header>
         <section class="modal-card-body">
           <div class="block">
-            <%= live_component(@component, @opts) %>
+            <%= if is_atom(@component) do %>
+              <.live_component module={@component} {@opts} />
+            <% else %>
+              <%= @component %>
+            <% end %>
           </div>
         </section>
         <footer class="modal-card-foot is-justify-content-flex-end">

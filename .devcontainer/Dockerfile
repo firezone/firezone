@@ -20,7 +20,6 @@ RUN echo "APT::Install-Recommends 0;" >> /etc/apt/apt.conf.d/01norecommends \
     inotify-tools \
     ca-certificates \
     build-essential \
-    python python-pip \
     less \
     automake \
     autoconf \
@@ -96,14 +95,14 @@ SHELL ["/bin/bash", "-ic"]
 RUN asdf plugin-add erlang https://github.com/asdf-vm/asdf-erlang.git && \
     asdf plugin-add elixir https://github.com/asdf-vm/asdf-elixir.git && \
     asdf plugin-add nodejs https://github.com/asdf-vm/asdf-nodejs.git && \
+    asdf plugin-add python https://github.com/danhper/asdf-python.git && \
     asdf plugin-add ruby https://github.com/asdf-vm/asdf-ruby.git
 
 # Need global erlang version to install Elixir -     https://github.com/asdf-vm/asdf-elixir/issues/113
 COPY .tool-versions /home/vscode/.tool-versions
 
-RUN asdf install erlang
 # No order to asdf, so elixir error without Erlang
-RUN asdf install
+RUN asdf install erlang && asdf install
 
 RUN mix local.hex --force
 RUN mix local.rebar --force

@@ -68,6 +68,7 @@ defmodule FzHttpWeb do
   def live_component do
     quote do
       use Phoenix.LiveComponent
+      import FzHttpWeb.LiveHelpers
 
       @events_module Application.compile_env!(:fz_http, :events_module)
 
