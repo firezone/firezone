@@ -41,10 +41,6 @@ config :fz_http, FzHttpWeb.Endpoint,
     ]
   ]
 
-config :fz_vpn,
-  wg_path: "wg",
-  cli: FzVpn.CLI.Sandbox
-
 get_egress_interface = fn ->
   egress_interface_cmd = "route | grep '^default' | grep -o '[^ ]*$'"
   System.cmd("/bin/sh", ["-c", egress_interface_cmd]) |> elem(0) |> String.trim()
@@ -52,10 +48,20 @@ end
 
 egress_interface = System.get_env("EGRESS_INTERFACE") || get_egress_interface.()
 
+{fz_wall_cli_module, _} =
+  Code.eval_string(System.get_env("FZ_WALL_CLI_MODULE", "FzWall.CLI.Sandbox"))
+
+{fz_vpn_cli_module, _} =
+  Code.eval_string(System.get_env("FZ_VPN_CLI_MODULE", "FzVpn.CLI.Sandbox"))
+
 config :fz_wall,
-  nft_path: "nft",
+  nft_path: System.get_env("NFT_PATH", "nft"),
   egress_interface: egress_interface,
-  cli: FzWall.CLI.Sandbox
+  cli: fz_wall_cli_module
+
+config :fz_vpn,
+  wg_path: "wg",
+  cli: fz_vpn_cli_module
 
 # Auth
 local_auth_enabled = System.get_env("LOCAL_AUTH_ENABLED") == "true"
