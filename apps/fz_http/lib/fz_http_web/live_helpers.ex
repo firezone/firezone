@@ -9,8 +9,14 @@ defmodule FzHttpWeb.LiveHelpers do
 
   def live_modal(component, opts) do
     path = Keyword.fetch!(opts, :return_to)
-    modal_opts = [id: :modal, return_to: path, component: component, opts: opts]
-    live_component(FzHttpWeb.ModalComponent, modal_opts)
+
+    live_component(%{
+      module: FzHttpWeb.ModalComponent,
+      id: :modal,
+      return_to: path,
+      component: component,
+      opts: opts
+    })
   end
 
   def connectivity_check_span_class(response_code) do

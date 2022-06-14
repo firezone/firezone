@@ -1,6 +1,10 @@
-defmodule FzHttpWeb.SettingLive.Account do
+defmodule FzHttpWeb.SettingLive.Unprivileged.Account do
   @moduledoc """
-  Handles Account-related things.
+  Handles unprivileged Account-related things.
+
+  XXX: At this moment, this is a carbon copy of the admin account live view.
+  Only the html is going to be different. This serves its purpose until a
+  redesign happens.
   """
   use FzHttpWeb, :live_view
 
@@ -26,8 +30,7 @@ defmodule FzHttpWeb.SettingLive.Account do
 
   @impl Phoenix.LiveView
   def handle_params(_params, _url, socket) do
-    admins = Users.list_admins()
-    {:noreply, assign(socket, :allow_delete, length(admins) > 1)}
+    {:noreply, socket}
   end
 
   @impl Phoenix.LiveView

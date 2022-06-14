@@ -1,7 +1,8 @@
 import hljs from "highlight.js"
-import {FormatTimestamp,PasswordStrength} from "./util.js"
-import {renderConfig} from "./wg_conf.js"
-import {fzCrypto} from "./crypto.js"
+import { FormatTimestamp, PasswordStrength } from "./util.js"
+import { renderConfig } from "./wg_conf.js"
+import { renderQR } from "./qrcode.js"
+import { fzCrypto } from "./crypto.js"
 
 const highlightCode = function () {
   hljs.highlightAll()
@@ -89,6 +90,9 @@ Hooks.PasswordStrength = {
 Hooks.RenderConfig = {
   mounted: renderConfig,
   updated: renderConfig
+}
+Hooks.RenderQR = {
+  mounted: renderQR
 }
 Hooks.GenerateKeyPair = {
   mounted: generateKeyPair

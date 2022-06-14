@@ -44,11 +44,10 @@
 </section>
 
 <%= if length(@connections) > 0 do %>
-<section class="section is-main-section">
-  <h4 class="title is-4">OIDC Connections</h4>
-
-  <%= render FzHttpWeb.SharedView, "oidc_connections_table.html", connections: @connections %>
-</section>
+  <.live_component id="connections-table"
+      module={FzHttpWeb.OIDCLive.ConnectionsTableComponent}
+      connections={@connections}
+      user={@user} />
 <% end %>
 
 <section class="section is-main-section">

@@ -10,18 +10,6 @@
       button_text: "Generate Configuration") %>
 <% end %>
 
-<%= if @live_action == :change_password do %>
-  <%= live_modal(
-      FzHttpWeb.UserLive.FormComponent,
-      return_to: Routes.device_unprivileged_index_path(@socket, :index),
-      title: "Change password",
-      id: "user-form-component",
-      user: @user,
-      current_user: @current_user,
-      action: :edit,
-      form: "user-form") %>
-<% end %>
-
 <section class="section is-main-section">
   <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
   <h4 class="title is-4"><%= @page_title %></h4>
@@ -116,8 +104,8 @@
           Signed in as <%= @current_user.email %>.
         </p>
         <p>
-          <%= live_patch(to: Routes.device_unprivileged_index_path(@socket, :change_password)) do %>
-            Change email or password
+          <%= live_patch(to: Routes.setting_unprivileged_account_path(@socket, :show)) do %>
+            My Account
           <% end %>
           /
           <%= link(to: Routes.auth_path(@socket, :delete), method: :delete) do %>

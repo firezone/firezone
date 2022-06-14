@@ -19,4 +19,8 @@
 # limitations under the License.
 #
 
-puts Chef::JSONCompat.to_json_pretty(node['firezone'])
+file_name = "#{node['firezone']['config_directory']}/firezone-running.json"
+
+raise 'Please run firezone-ctl reconfigure before attemping this command' unless File.exist?(file_name)
+
+puts File.read(file_name)

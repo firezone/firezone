@@ -6,32 +6,30 @@
     <img src="https://img.shields.io/github/v/release/firezone/firezone?color=%23999">
   </a>
   <a href="https://discourse.firez.one">
-    <img src="https://img.shields.io/static/v1?logo=discourse&logoColor=959DA5&label=forum&labelColor=333a41&message=join&color=611f69" alt="firezone Discourse" />
+    <img src="https://img.shields.io/static/v1?logo=discourse&logoColor=959DA5&label=support%20forum&labelColor=333a41&message=join&color=611f69" alt="firezone Discourse" />
   </a>
   <img src="https://img.shields.io/static/v1?logo=github&logoColor=959DA5&label=Test&labelColor=333a41&message=passing&color=3AC358" alt="firezone" />
   <a href="https://coveralls.io/github/firezone/firezone?branch=master">
     <img src="https://coveralls.io/repos/github/firezone/firezone/badge.svg?branch=master" alt="Coverage Status" />
   </a>
+  <img alt="GitHub commit activity" src="https://img.shields.io/github/commit-activity/m/firezone/firezone"/>
+  <img alt="GitHub closed issues" src="https://img.shields.io/github/issues-closed/firezone/firezone"/>
   <a href="https://twitter.com/intent/follow?screen_name=firezonehq">
     <img src="https://img.shields.io/twitter/follow/firezonehq?style=social&logo=twitter" alt="follow on Twitter">
   </a>
 </p>
 
-<p align="center">
-  <strong><a href="https://www.firezone.dev">Firezone</a> is a self-managed <a href="https://www.wireguard.com/">WireGuard®</a>-based VPN server and Linux firewall designed for simplicity and security.</strong>
-</p>
+## [Firezone](https://www.firezone.dev) is a self-hosted VPN server and Linux firewall
 
-<hr>
+* Manage remote access through an intuitive web interface and CLI utility.
+* [Deploy on your own infrastructure](https://docs.firezone.dev/docs/deploy) to keep control of your network traffic.
+* Built on [WireGuard®](https://www.wireguard.com/) to be stable, performant, and lightweight.
 
-<div align="center">
-  <a href="https://www.firezone.dev">
-    <img alt="Diagram showing a typical Firezone firewall and vpn gateway setup" src="https://user-images.githubusercontent.com/52545545/147286088-08b0d11f-d81d-4622-8145-179071d2f0fb.png" width="600" />
-  </a>
-</div>
+![Firezone Architecture](https://user-images.githubusercontent.com/52545545/173246039-a1b37ef2-d885-4535-bca7-f5cd57da21a2.png)
 
-# Get Started
+## Get Started
 
-Follow our installation guide at https://docs.firezone.dev/docs/deploy to install your self-hosted instance of Firezone.
+Follow our [deploy guide](https://docs.firezone.dev/docs/deploy) to install your self-hosted instance of Firezone.
 
 Or, if you're on a [supported platform](https://docs.firezone.dev/docs/deploy/supported-platforms/), try our one-line install script:
 
@@ -39,38 +37,35 @@ Or, if you're on a [supported platform](https://docs.firezone.dev/docs/deploy/su
 bash <(curl -Ls https://github.com/firezone/firezone/raw/master/scripts/install.sh)
 ```
 
-Using Firezone for your team? We'd love to [hear from you](https://calendly.com/team-firezone/firezone-intro) and help you get set up.
-
-# What is Firezone?
-
-[Firezone](https://www.firezone.dev) is a Linux package to manage your WireGuard® VPN through a simple web interface.
-
-![firezone-usage](https://user-images.githubusercontent.com/52545545/147392573-fe4cb936-a0a8-436f-a69b-c0a9587de58b.gif)
+Using Firezone for your team? Take a look at our [business tier](https://www.firezone.dev/pricing).
 
 ## Features
 
-- **Fast:** Uses WireGuard® to be [3-4 times](https://wireguard.com/performance/) faster than OpenVPN.
-- **No dependencies:** All dependencies are bundled thanks to
-    [Chef Omnibus](https://github.com/chef/omnibus).
-- **Simple:** Takes minutes to set up. Manage via a simple CLI.
-- **Secure:** Runs unprivileged. HTTPS enforced. Encrypted cookies.
-- **Firewall included:** Uses Linux [nftables](https://netfilter.org) to block
-    unwanted egress traffic.
+![firezone-usage](https://user-images.githubusercontent.com/52545545/147392573-fe4cb936-a0a8-436f-a69b-c0a9587de58b.gif)
 
-## Anti-features
+* **Fast:** Uses WireGuard® to be [3-4 times](https://wireguard.com/performance/) faster than OpenVPN.
+* **SSO Integration:** Authenticate using any identity provider with an OpenID Connect (OIDC) connector.
+* **No dependencies:** All dependencies are bundled thanks to
+[Chef Omnibus](https://github.com/chef/omnibus).
+* **Simple:** Takes minutes to set up. Manage via a simple CLI.
+* **Secure:** Runs unprivileged. HTTPS enforced. Encrypted cookies.
+* **Firewall included:** Uses Linux [nftables](https://netfilter.org) to block unwanted egress traffic.
+
+### Anti-features
 
 Firezone is **not:**
 
-- An inbound firewall
-- A tool for creating mesh networks
-- A full-featured router
-- An IPSec or OpenVPN server
+* An inbound firewall
+* A tool for creating mesh networks
+* A full-featured router
+* An IPSec or OpenVPN server
 
-# Documentation
+## Documentation
 
-Additional documentation on general usage, troubleshooting, and configuration can be found at https://docs.firezone.dev.
+Additional documentation on general usage, troubleshooting, and configuration can be found at
+[https://docs.firezone.dev](https://docs.firezone.dev).
 
-# Get Help
+## Get Help
 
 If you're looking for help installing and configuring Firezone, we're happy to
 help:
@@ -79,15 +74,15 @@ help:
 * [Community Slack](https://www.firezone.dev/slack): join discussions, meet other users, and meet the contributors
 * [Email Us](mailto:team@firezone.dev): we're always happy to chat
 
-# Developing and Contributing
+## Developing and Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-# Security
+## Security
 
 See [SECURITY.md](SECURITY.md).
 
-# License
+## License
 
 See [LICENSE](LICENSE).
 

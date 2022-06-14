@@ -1,20 +1,23 @@
-<%= if @live_action == :edit do %>
+<%= if @live_action == :change_password do %>
   <%= live_modal(
-      FzHttpWeb.SettingLive.AccountFormComponent,
-      return_to: Routes.setting_account_path(@socket, :show),
-      title: "Edit Account",
-      id: "user-#{@current_user.id}",
+      FzHttpWeb.UserLive.FormComponent,
+      return_to: Routes.setting_unprivileged_account_path(@socket, :show),
+      title: "Change password",
+      id: "user-form-component",
       user: @current_user,
-      action: @live_action,
-      form: "account-edit") %>
+      current_user: @current_user,
+      action: :edit,
+      form: "user-form") %>
 <% end %>
 
 <%= if @live_action == :register_mfa do %>
   <.live_component module={FzHttpWeb.MFA.RegisterComponent}
       id="register-mfa"
       user={@current_user}
-      return_to={Routes.setting_account_path(@socket, :show)} />
+      return_to={Routes.setting_unprivileged_account_path(@socket, :show)} />
 <% end %>
+
+<%= live_patch("<- Back to devices", to: Routes.device_unprivileged_index_path(@socket, :index)) %>
 
 <%= render FzHttpWeb.SharedView, "heading.html", page_title: @page_title %>
 
@@ -33,11 +36,11 @@
     </div>
 
     <div class="level-right">
-      <%= live_patch(to: Routes.setting_account_path(@socket, :edit), class: "button") do %>
+      <%= live_patch(to: Routes.setting_unprivileged_account_path(@socket, :change_password), class: "button") do %>
         <span class="icon is-small">
           <i class="mdi mdi-pencil"></i>
         </span>
-        <span>Change Email or Password</span>
+        <span>Change Password</span>
       <% end %>
     </div>
   </div>
@@ -102,26 +105,10 @@
     <% end %>
   </div>
 
-  <%= live_patch(to: Routes.setting_account_path(@socket, :register_mfa), class: "button") do %>
+  <%= live_patch(to: Routes.setting_unprivileged_account_path(@socket, :register_mfa), class: "button") do %>
     <span class="icon is-small">
       <i class="mdi mdi-plus"></i>
     </span>
     <span>Add MFA Method</span>
-  <% end %>
-</section>
-
-<section class="section is-main-section">
-  <h4 class="title is-4">
-    Danger Zone
-  </h4>
-
-  <%# This is purposefully a synchronous form in order to easily clear the session %>
-  <%= form_for @changeset, Routes.user_path(@socket, :delete), [id: "delete-account", method: :delete], fn _f -> %>
-    <%= submit(class: "button is-danger", data: [confirm: "Are you sure?"], disabled: !@allow_delete) do %>
-      <span class="icon is-small">
-        <i class="fas fa-trash"></i>
-      </span>
-      <span>Delete Your Account</span>
-    <% end %>
   <% end %>
 </section>
