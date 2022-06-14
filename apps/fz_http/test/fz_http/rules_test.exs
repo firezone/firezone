@@ -3,6 +3,22 @@ defmodule FzHttp.RulesTest do
 
   alias FzHttp.Rules
 
+  describe "list_rules/0" do
+    setup [:create_rules]
+
+    test "lists all Rules", %{rules: rules} do
+      assert length(rules) == length(Rules.list_rules())
+    end
+  end
+
+  describe "list_rules/1" do
+    setup [:create_rule_with_user]
+
+    test "list Rules scoped by user", %{user: user, rule: rule} do
+      assert Rules.list_rules(user.id) == [rule]
+    end
+  end
+
   describe "get_rule!/1" do
     setup [:create_rule]
 

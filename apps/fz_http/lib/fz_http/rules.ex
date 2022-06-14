@@ -8,6 +8,15 @@ defmodule FzHttp.Rules do
 
   alias FzHttp.{Repo, Rules.Rule, Telemetry}
 
+  def list_rules, do: Repo.all(Rule)
+
+  def list_rules(user_id) do
+    Repo.all(
+      from r in Rule,
+        where: r.user_id == ^user_id
+    )
+  end
+
   def get_rule!(id), do: Repo.get!(Rule, id)
 
   def new_rule(attrs \\ %{}) do

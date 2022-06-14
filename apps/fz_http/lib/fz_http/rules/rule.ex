@@ -12,6 +12,7 @@ defmodule FzHttp.Rules.Rule do
     field :uuid, Ecto.UUID, autogenerate: true
     field :destination, EctoNetwork.INET, read_after_writes: true
     field :action, Ecto.Enum, values: [:drop, :accept], default: :drop
+    belongs_to :user, FzHttp.Users.User
 
     timestamps(type: :utc_datetime_usec)
   end
@@ -19,6 +20,7 @@ defmodule FzHttp.Rules.Rule do
   def changeset(rule, attrs) do
     rule
     |> cast(attrs, [
+      :user_id,
       :action,
       :destination
     ])
