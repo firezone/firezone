@@ -51,8 +51,8 @@ egress_interface = System.get_env("EGRESS_INTERFACE") || get_egress_interface.()
 {fz_wall_cli_module, _} =
   Code.eval_string(System.get_env("FZ_WALL_CLI_MODULE", "FzWall.CLI.Sandbox"))
 
-{fz_vpn_cli_module, _} =
-  Code.eval_string(System.get_env("FZ_VPN_CLI_MODULE", "FzVpn.CLI.Sandbox"))
+{fz_vpn_wgadapter_module, _} =
+  Code.eval_string(System.get_env("FZ_VPN_WGADAPTER_MODULE", "FzVpn.Interface.WGAdapter.Sandbox"))
 
 config :fz_wall,
   nft_path: System.get_env("NFT_PATH", "nft"),
@@ -61,8 +61,7 @@ config :fz_wall,
 
 config :fz_vpn,
   wg_path: "wg",
-  wg_adapter: FzVpn.Interface.WGAdapter.Sandbox,
-  cli: fz_vpn_cli_module
+  wg_adapter: fz_vpn_wgadapter_module
 
 # Auth
 local_auth_enabled = System.get_env("LOCAL_AUTH_ENABLED") == "true"
