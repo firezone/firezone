@@ -17,7 +17,7 @@ const tildePlugin = {
 }
 
 module.exports.config = {
-  entryPoints: ['css/app.scss', 'js/admin.js', 'js/root.js', 'js/unprivileged.js'],
+  entryPoints: ['js/admin.js', 'js/root.js', 'js/unprivileged.js'],
   bundle: true,
   outdir: '../priv/static/dist',
   publicPath: '/dist/',
