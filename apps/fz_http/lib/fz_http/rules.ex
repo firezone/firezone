@@ -61,7 +61,26 @@ defmodule FzHttp.Rules do
   end
 
   def nftables_spec(rule) do
-    {decode(rule.destination), rule.action}
+    {get_user_ips(rule.user_id, FzCommon.FzNet.ip_type("#{rule.destination}")),
+     decode(rule.destination), rule.action}
+  end
+
+  defp get_user_ips(nil, _), do: nil
+
+  defp get_user_ips(user_id, "IPv4") do
+    Enum.map(FzHttp.Devices.list_devices(user_id), fn device ->
+      "#{device.ipv4}"
+    end)
+  end
+
+  defp get_user_ips(user_id, "IPv6") do
+    Enum.map(FzHttp.Devices.list_devices(user_id), fn device ->
+      "#{device.ipv6}"
+    end)
+  end
+
+  defp get_user_ips(_, "unknown") do
+    raise "Unknown protoocl."
   end
 
   def to_nftables do

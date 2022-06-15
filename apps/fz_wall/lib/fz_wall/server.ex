@@ -23,30 +23,44 @@ defmodule FzWall.Server do
     {:ok, existing_rules}
   end
 
+  defp get_rule_list({nil, dest, action}), do: [{dest, action}]
+
+  defp get_rule_list({[source | sources], dest, action}) do
+    [{source, dest, action}] ++ get_rule_list({sources, dest, action})
+  end
+
   @impl GenServer
   def handle_call({:add_rule, rule_spec}, _from, rules) do
-    cli().add_rule(rule_spec)
-    # XXX: Consider using MapSet here
     new_rules =
-      if rule_spec in rules do
-        rules
-      else
-        rules ++ [rule_spec]
-      end
+      get_rule_list(rule_spec)
+      |> List.foldl(rules, fn rule_spec, rules_acc ->
+        cli().add_rule(rule_spec)
+
+        if rule_spec in rules_acc do
+          rules_acc
+        else
+          rules_acc ++ [rule_spec]
+        end
+      end)
 
     {:reply, :ok, new_rules}
   end
 
+  # XXX: For multiple rules it'd be better to have something like [ src1 | src2 | src3 | ...]
+  # instead of multiple callings to delete_rule
   @impl GenServer
   def handle_call({:delete_rule, rule_spec}, _from, rules) do
-    cli().delete_rule(rule_spec)
-    # XXX: Consider using MapSet here
     new_rules =
-      if rule_spec in rules do
-        List.delete(rules, rule_spec)
-      else
-        rules
-      end
+      get_rule_list(rule_spec)
+      |> List.foldl(rules, fn rule_spec, rules_acc ->
+        cli().delete_rule(rule_spec)
+        # XXX: Consider using MapSet here
+        if rule_spec in rules_acc do
+          List.delete(rules_acc, rule_spec)
+        else
+          rules_acc
+        end
+      end)
 
     {:reply, :ok, new_rules}
   end

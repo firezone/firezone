@@ -71,7 +71,26 @@ defmodule FzWall.CLI.Live do
   Deletes nftables rule.
   """
   def delete_rule(params) do
-    rule_str = rule_str(params)
+    rule_str(params)
+    |> delete_rule_matching()
+  end
+
+  def delete_rules({source}) do
+    source_match_str(source)
+    |> delete_rule_matching()
+  end
+
+  def delete_rules({[source | sources], dest}) do
+    rule_match_str(source, dest)
+    |> delete_rule_matching()
+
+    delete_rules({sources, dest})
+  end
+
+  def delete_rules({[], _}) do
+  end
+
+  defp delete_rule_matching(rule_str) do
     rules = exec!("#{nft()} -a list table inet #{@table_name}")
 
     case rule_handle_regex(~r/#{rule_str}.*# handle (?<num>\d+)/, rules) do
@@ -86,8 +105,13 @@ defmodule FzWall.CLI.Live do
           ######################################################
         """)
 
-      [handle] ->
-        exec!("#{nft()} delete rule inet #{@table_name} forward handle #{handle}")
+      handles ->
+        Enum.each(
+          handles,
+          fn handle ->
+            exec!("#{nft()} delete rule inet #{@table_name} forward handle #{handle}")
+          end
+        )
     end
   end
 
@@ -169,8 +193,7 @@ defmodule FzWall.CLI.Live do
   defp rule_str({source, dest, action}), do: "#{rule_match_str(source, dest)} #{action}"
 
   defp rule_match_str(dest), do: "#{proto(dest)} daddr #{standardized_inet(dest)}"
+  defp rule_match_str(source, dest), do: "#{source_match_str(source)} #{rule_match_str(dest)}"
 
-  defp rule_match_str(source, dest) do
-    "#{proto(source)} saddr #{standardized_inet(source)} #{rule_match_str(dest)}"
-  end
+  defp source_match_str(source), do: "#{proto(source)} saddr #{standardized_inet(source)}"
 end
