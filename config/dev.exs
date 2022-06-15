@@ -21,24 +21,13 @@ end
 
 # For development, we disable any cache and enable
 # debugging and code reloading.
-#
-# The watchers configuration can be used to run external
-# watchers to your application. For example, we use it
-# with webpack to recompile .js and .css sources.
 config :fz_http, FzHttpWeb.Endpoint,
   http: [port: 4000],
   debug_errors: true,
   code_reloader: true,
   check_origin: ["//127.0.0.1", "//localhost"],
   watchers: [
-    node: [
-      "node_modules/webpack/bin/webpack.js",
-      "--mode",
-      "development",
-      "--watch",
-      "--watch-options-stdin",
-      cd: Path.expand("../apps/fz_http/assets", __DIR__)
-    ]
+    node: ["esbuild.js", "dev", cd: Path.expand("../apps/fz_http/assets", __DIR__)]
   ]
 
 get_egress_interface = fn ->

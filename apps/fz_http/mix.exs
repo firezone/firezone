@@ -112,12 +112,7 @@ defmodule FzHttp.MixProject do
         "ecto.create --quiet",
         "ecto.migrate",
         "test"
-      ],
-      "assets.compile": &compile_assets/1
+      ]
     ]
-  end
-
-  defp compile_assets(_) do
-    Mix.shell().cmd("cd assets && ./node_modules/.bin/webpack --mode development", quiet: false)
   end
 end

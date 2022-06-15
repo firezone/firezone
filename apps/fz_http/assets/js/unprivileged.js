@@ -1,4 +1,3 @@
-// JS bundle for user layout
 import css from "../css/app.scss"
 
 /* Application fonts */
