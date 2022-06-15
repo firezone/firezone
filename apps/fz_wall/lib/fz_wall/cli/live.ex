@@ -80,16 +80,6 @@ defmodule FzWall.CLI.Live do
     |> delete_rule_matching()
   end
 
-  def delete_rules({[source | sources], dest}) do
-    rule_match_str(source, dest)
-    |> delete_rule_matching()
-
-    delete_rules({sources, dest})
-  end
-
-  def delete_rules({[], _}) do
-  end
-
   defp delete_rule_matching(rule_str) do
     rules = exec!("#{nft()} -a list table inet #{@table_name}")
 

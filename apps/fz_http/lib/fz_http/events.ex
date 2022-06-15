@@ -17,6 +17,7 @@ defmodule FzHttp.Events do
 
   def delete_device(device) when is_struct(device) do
     GenServer.call(vpn_pid(), {:remove_peer, device.public_key})
+    GenServer.call(wall_pid(), {:delete_device_rules, {device.ipv4, device.ipv6}})
   end
 
   def add_rule(rule) do

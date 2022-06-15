@@ -66,6 +66,20 @@ defmodule FzWall.Server do
   end
 
   @impl GenServer
+  def handle_call({:delete_device_rules, {ipv4, nil}}, _from, rules),
+    do: delete_rules(ipv4, rules)
+
+  @impl GenServer
+  def handle_call({:delete_device_rules, {nil, ipv6}}, _from, rules),
+    do: delete_rules(ipv6, rules)
+
+  @impl GenServer
+  def handle_call({:delete_device_rules, {ipv4, ipv6}}, _from, rules) do
+    {:reply, :ok, new_rules} = delete_rules(ipv4, rules)
+    delete_rules(ipv6, new_rules)
+  end
+
+  @impl GenServer
   def handle_call({:set_rules, fz_http_rules}, _from, _rules) do
     cli().restore(fz_http_rules)
     {:reply, :ok, fz_http_rules}
@@ -85,5 +99,20 @@ defmodule FzWall.Server do
 
   def http_pid do
     :global.whereis_name(:fz_http_server)
+  end
+
+  defp delete_rules(source, rules) do
+    cli().delete_rules({source})
+    # XXX: Consider using MapSet here
+
+    new_rules =
+      Enum.reject(rules, fn rule ->
+        case rule do
+          {src, _, _} -> src == source
+          _ -> false
+        end
+      end)
+
+    {:reply, :ok, new_rules}
   end
 end
