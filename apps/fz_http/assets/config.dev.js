@@ -1,4 +1,4 @@
-const { config: prodConfig } = require('./prod')
+const { config: prodConfig } = require('./config.prod')
 
 module.exports.config = {
   ...prodConfig,
