@@ -60,7 +60,6 @@ config :fz_wall,
   cli: fz_wall_cli_module
 
 config :fz_vpn,
-  wg_path: "wg",
   wg_adapter: fz_vpn_wgadapter_module
 
 # Auth

@@ -30,15 +30,14 @@ defmodule FzVpn.Interface do
         {:ok, {private_key, public_key}}
 
       {:error, error_info} ->
-        Logger.warn("Failed to create interface #{name}: #{error_info}")
+        Logger.error("Failed to create interface #{name}: #{error_info}")
         result
     end
   end
 
   def set(name, private_key, peers) do
     peer_configs =
-      for public_key <- Map.keys(peers) do
-        settings = Map.get(peers, public_key)
+      for {public_key, settings} <- peers do
         preshared_key = settings.preshared_key
         allowed_ips = String.split(settings.allowed_ips, ",")
 
@@ -59,7 +58,7 @@ defmodule FzVpn.Interface do
         :ok
 
       {:error, error_info} ->
-        Logger.warn("Failed to set interface #{name}: #{error_info}")
+        Logger.error("Failed to set interface #{name}: #{error_info}")
         result
     end
   end
@@ -72,7 +71,7 @@ defmodule FzVpn.Interface do
         :ok
 
       {:error, error_info} ->
-        Logger.warn("Failed to delete interface #{name}: #{error_info}")
+        Logger.error("Failed to delete interface #{name}: #{error_info}")
         result
     end
   end
@@ -85,7 +84,7 @@ defmodule FzVpn.Interface do
         :ok
 
       {:error, error_info} ->
-        Logger.warn("Failed to remove peer from interface #{name}: #{error_info}")
+        Logger.error("Failed to remove peer from interface #{name}: #{error_info}")
         result
     end
   end
@@ -98,7 +97,7 @@ defmodule FzVpn.Interface do
         peers_to_dump_map(result.peers)
 
       {:error, error_info} ->
-        Logger.warn("Failed to get interface #{name} stats: #{error_info}")
+        Logger.error("Failed to get interface #{name} stats: #{error_info}")
         result
     end
   end
@@ -109,7 +108,7 @@ defmodule FzVpn.Interface do
         Map.from_struct(peer.config)
         |> Map.merge(Map.from_struct(peer.stats))
         |> Enum.map(&dump_field/1)
-        |> Enum.into(%{})
+        |> Map.new()
         # dump these fields from the peer info
         |> Map.take([
           :preshared_key,
