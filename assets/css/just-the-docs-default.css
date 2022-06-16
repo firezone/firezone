@@ -29,11 +29,13 @@ code { font-size: 14px !important; border: none !important; }
 
 .btn.btn-purple:hover { background: #3400c2 !important; color: white !important; border: 2px solid transparent !important; opacity: 1 !important; }
 
-.language-shell, .language-ruby, .language-bash { background-color: #1b140e !important; margin: 2px !important; padding: 10px !important; border-radius: 6px !important; }
+.language-shell, .language-ruby, .language-bash { background-color: #4c3e33 !important; margin: 2px !important; padding: 10px !important; border-radius: 6px !important; }
 
-.language-plaintext, .language-text { background-color: #1b140e !important; margin: 0px !important; padding: 2px !important; border-radius: 6px !important; }
+.language-plaintext, .language-text { background-color: #4c3e33 !important; margin: 0px !important; padding: 3px !important; border-radius: 6px !important; }
 
-code { background-color: transparent !important; color: white !important; }
+.highlight { padding: 5px !important; }
+
+code { background-color: transparent !important; color: rgba(255, 255, 255, 0.7) !important; }
 
 .search-icon { color: #1b140e !important; }
 
