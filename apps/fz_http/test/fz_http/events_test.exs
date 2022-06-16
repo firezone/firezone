@@ -29,8 +29,8 @@ defmodule FzHttp.EventsTest do
     end
   end
 
-  describe "device_update/1" do
-    setup [:create_device]
+  describe "device_update/1 with rules" do
+    setup [:create_device_with_rules]
 
     test "updates peer config", %{device: device} do
       assert :ok = Events.update_device(device)
@@ -41,6 +41,17 @@ defmodule FzHttp.EventsTest do
                  preshared_key: nil
                }
              }
+
+      assert :sys.get_state(Events.wall_pid()) == [
+               {"10.3.2.2", "1.1.1.0/24", :drop},
+               {"10.3.2.2", "2.2.2.0/24", :drop},
+               {"10.3.2.2", "3.3.3.0/24", :drop},
+               {"10.3.2.2", "4.4.4.0/24", :drop},
+               {"fd00::3:2:2", "1::/112", :drop},
+               {"fd00::3:2:2", "2::/112", :drop},
+               {"fd00::3:2:2", "3::/112", :drop},
+               {"fd00::3:2:2", "4::/112", :drop}
+             ]
     end
   end
 
@@ -52,6 +63,69 @@ defmodule FzHttp.EventsTest do
       assert {:ok, ^pubkey} = Events.delete_device(device)
 
       assert :sys.get_state(Events.vpn_pid()) == %{}
+    end
+  end
+
+  describe "delete_device/1 with rules" do
+    setup [:create_device_with_rules, :create_rules]
+
+    test "removes from peer config", %{device: device, rules: rules} do
+      assert :ok = Events.update_device(device)
+      Enum.each(rules, fn rule -> assert :ok = Events.add_rule(rule) end)
+
+      assert MapSet.equal?(
+               MapSet.new(:sys.get_state(Events.wall_pid())),
+               MapSet.new([
+                 {"10.3.2.2", "1.1.1.0/24", :drop},
+                 {"10.3.2.2", "2.2.2.0/24", :drop},
+                 {"10.3.2.2", "3.3.3.0/24", :drop},
+                 {"10.3.2.2", "4.4.4.0/24", :drop},
+                 {"10.3.2.4", "4.4.4.0/24", :drop},
+                 {"10.3.2.5", "5.5.5.0/24", :drop},
+                 {"10.3.2.6", "6.6.6.0/24", :drop},
+                 {"fd00::3:2:2", "1::/112", :drop},
+                 {"fd00::3:2:2", "2::/112", :drop},
+                 {"fd00::3:2:2", "3::/112", :drop},
+                 {"fd00::3:2:2", "4::/112", :drop},
+                 {"1.1.1.0/24", :drop},
+                 {"2.2.2.0/24", :drop},
+                 {"3.3.3.0/24", :drop},
+                 {"4.4.4.0/24", :drop},
+                 {"5.5.5.0/24", :drop}
+               ])
+             )
+
+      pubkey = device.public_key
+      assert {:ok, ^pubkey} = Events.delete_device(pubkey)
+
+      assert :sys.get_state(Events.vpn_pid()) == %{
+               "4" => %{
+                 allowed_ips: "10.3.2.4/32,fd00::3:2:4/128",
+                 preshared_key: nil
+               },
+               "5" => %{
+                 allowed_ips: "10.3.2.5/32,fd00::3:2:5/128",
+                 preshared_key: nil
+               },
+               "6" => %{
+                 allowed_ips: "10.3.2.6/32,fd00::3:2:6/128",
+                 preshared_key: nil
+               }
+             }
+
+      assert MapSet.equal?(
+               MapSet.new(:sys.get_state(Events.wall_pid())),
+               MapSet.new([
+                 {"10.3.2.4", "4.4.4.0/24", :drop},
+                 {"10.3.2.5", "5.5.5.0/24", :drop},
+                 {"10.3.2.6", "6.6.6.0/24", :drop},
+                 {"1.1.1.0/24", :drop},
+                 {"2.2.2.0/24", :drop},
+                 {"3.3.3.0/24", :drop},
+                 {"4.4.4.0/24", :drop},
+                 {"5.5.5.0/24", :drop}
+               ])
+             )
     end
   end
 
@@ -91,7 +165,10 @@ defmodule FzHttp.EventsTest do
                {"2.2.2.0/24", :drop},
                {"3.3.3.0/24", :drop},
                {"4.4.4.0/24", :drop},
-               {"5.5.5.0/24", :drop}
+               {"5.5.5.0/24", :drop},
+               {"10.3.2.4", "4.4.4.0/24", :drop},
+               {"10.3.2.5", "5.5.5.0/24", :drop},
+               {"10.3.2.6", "6.6.6.0/24", :drop}
              ]
     end
   end

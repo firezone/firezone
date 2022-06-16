@@ -61,33 +61,48 @@ defmodule FzHttp.Rules do
     )
   end
 
-  def nftables_spec(device, rules) do
+  def nftables_device_spec(device) do
+    rules = FzHttp.Rules.list_rules(device.user_id)
+
     Enum.map(rules, fn rule ->
       {get_device_ip(device, ip_type("#{rule.destination}")), decode(rule.destination),
        rule.action}
     end)
+    # XXX: This should only be needed if a destination can be ipv4/v6 while ipv4/v6
+    # is disabled in firezone
+    |> Enum.reject(fn {source, _, _} -> is_nil(source) end)
+    |> Enum.map(fn {s, d, r} -> {decode(s), d, r} end)
   end
 
   def nftables_spec(rule) do
-    {get_user_ips(rule.user_id, ip_type("#{rule.destination}")), decode(rule.destination),
-     rule.action}
+    nftables_spec(rule, rule.user_id)
+  end
+
+  defp nftables_spec(rule, nil) do
+    [{decode(rule.destination), rule.action}]
+  end
+
+  defp nftables_spec(rule, user_id) do
+    get_user_ips(user_id, ip_type("#{rule.destination}"))
+    # XXX: This should only be needed if a destination can be ipv4/v6 while ipv4/v6
+    # is disabled in firezone
+    |> Enum.reject(fn ip -> is_nil(ip) end)
+    |> Enum.map(fn source -> {decode(source), decode(rule.destination), rule.action} end)
   end
 
   defp get_device_ip(device, "IPv4"), do: device.ipv4
   defp get_device_ip(device, "IPv6"), do: device.ipv6
   defp get_device_ip(_, "unknown"), do: raise("Unknown protocol")
 
-  defp get_user_ips(nil, _), do: nil
-
   defp get_user_ips(user_id, "IPv4") do
     Enum.map(FzHttp.Devices.list_devices(user_id), fn device ->
-      "#{device.ipv4}"
+      device.ipv4
     end)
   end
 
   defp get_user_ips(user_id, "IPv6") do
     Enum.map(FzHttp.Devices.list_devices(user_id), fn device ->
-      "#{device.ipv6}"
+      device.ipv6
     end)
   end
 
@@ -96,23 +111,20 @@ defmodule FzHttp.Rules do
   end
 
   def to_nftables do
-    Enum.map(nftables_query(), fn {dest, act} ->
-      {decode(dest), act}
+    Enum.map(nftables_query(), fn rule ->
+      nftables_spec(rule)
     end)
+    |> List.flatten()
   end
 
   defp nftables_query do
     query =
       from r in Rule,
-        order_by: r.action,
-        select: {
-          r.destination,
-          r.action
-        }
+        order_by: r.action
 
     Repo.all(query)
   end
 
-  defp decode(nil), do: nil
-  defp decode(inet), do: INET.decode(inet)
+  def decode(nil), do: nil
+  def decode(inet), do: INET.decode(inet)
 end
