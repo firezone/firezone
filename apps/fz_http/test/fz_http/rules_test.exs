@@ -101,7 +101,7 @@ defmodule FzHttp.RulesTest do
   describe "nftables_spec/1 IPv4" do
     setup [:create_rule4]
 
-    @ipv4tables_spec {"10.10.10.0/24", :drop}
+    @ipv4tables_spec {nil, "10.10.10.0/24", :drop}
 
     test "returns IPv4 tuple", %{rule4: rule} do
       assert @ipv4tables_spec = Rules.nftables_spec(rule)
@@ -111,7 +111,7 @@ defmodule FzHttp.RulesTest do
   describe "nftables_spec/1 IPv6" do
     setup [:create_rule6]
 
-    @ipv6tables_spec {"::/0", :drop}
+    @ipv6tables_spec {nil, "::/0", :drop}
 
     test "returns IPv6 tuple", %{rule6: rule} do
       assert @ipv6tables_spec = Rules.nftables_spec(rule)

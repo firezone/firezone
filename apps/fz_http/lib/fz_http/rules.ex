@@ -4,6 +4,7 @@ defmodule FzHttp.Rules do
   """
 
   import Ecto.Query, warn: false
+  import FzCommon.FzNet
   alias EctoNetwork.INET
 
   alias FzHttp.{Repo, Rules.Rule, Telemetry}
@@ -60,10 +61,21 @@ defmodule FzHttp.Rules do
     )
   end
 
-  def nftables_spec(rule) do
-    {get_user_ips(rule.user_id, FzCommon.FzNet.ip_type("#{rule.destination}")),
-     decode(rule.destination), rule.action}
+  def nftables_spec(device, rules) do
+    Enum.map(rules, fn rule ->
+      {get_device_ip(device, ip_type("#{rule.destination}")), decode(rule.destination),
+       rule.action}
+    end)
   end
+
+  def nftables_spec(rule) do
+    {get_user_ips(rule.user_id, ip_type("#{rule.destination}")), decode(rule.destination),
+     rule.action}
+  end
+
+  defp get_device_ip(device, "IPv4"), do: device.ipv4
+  defp get_device_ip(device, "IPv6"), do: device.ipv6
+  defp get_device_ip(_, "unknown"), do: raise("Unknown protocol")
 
   defp get_user_ips(nil, _), do: nil
 
@@ -80,7 +92,7 @@ defmodule FzHttp.Rules do
   end
 
   defp get_user_ips(_, "unknown") do
-    raise "Unknown protoocl."
+    raise "Unknown protocol."
   end
 
   def to_nftables do

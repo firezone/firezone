@@ -29,19 +29,27 @@ defmodule FzWall.Server do
     [{source, dest, action}] ++ get_rule_list({sources, dest, action})
   end
 
+  defp get_rule_list({source, dest, action}) do
+    [{source, dest, action}]
+  end
+
+  defp add_device_rules([rule_spec | rules_spec], rules) do
+    new_rules = add_rules(rule_spec, rules)
+    add_device_rules(rules_spec, new_rules)
+  end
+
+  defp add_device_rules([], _) do
+  end
+
+  @impl GenServer
+  def handle_call({:add_device_rules, rules_spec}, _from, rules) do
+    new_rules = add_device_rules(rules_spec, rules)
+    {:reply, :ok, new_rules}
+  end
+
   @impl GenServer
   def handle_call({:add_rule, rule_spec}, _from, rules) do
-    new_rules =
-      get_rule_list(rule_spec)
-      |> List.foldl(rules, fn rule_spec, rules_acc ->
-        cli().add_rule(rule_spec)
-
-        if rule_spec in rules_acc do
-          rules_acc
-        else
-          rules_acc ++ [rule_spec]
-        end
-      end)
+    new_rules = add_rules(rule_spec, rules)
 
     {:reply, :ok, new_rules}
   end
@@ -114,5 +122,18 @@ defmodule FzWall.Server do
       end)
 
     {:reply, :ok, new_rules}
+  end
+
+  defp add_rules(rule_spec, rules) do
+    get_rule_list(rule_spec)
+    |> List.foldl(rules, fn rule_spec, rules_acc ->
+      cli().add_rule(rule_spec)
+
+      if rule_spec in rules_acc do
+        rules_acc
+      else
+        rules_acc ++ [rule_spec]
+      end
+    end)
   end
 end

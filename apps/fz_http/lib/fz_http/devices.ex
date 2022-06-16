@@ -23,6 +23,10 @@ defmodule FzHttp.Devices do
 
   def get_device!(id), do: Repo.get!(Device, id)
 
+  def get_device(public_key) when is_binary(public_key) do
+    Repo.one(from d in Device, where: d.public_key == ^public_key)
+  end
+
   def create_device(attrs \\ %{}) do
     # XXX: insert sometimes fails with deadlock errors, probably because
     # of the giant SELECT in queries/inet.ex. Find a way to do this more gracefully.
