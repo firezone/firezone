@@ -7,7 +7,9 @@ defmodule FzHttp.OIDC.RefreshManager do
   import Ecto.Query
   alias FzHttp.{Repo, Users.User}
 
-  @spawn_interval 60 * 60 * 1000
+  # Refresh every 10 minutes -- Keycloak's ttl for refresh tokens
+  # is 30 minutes by default.
+  @spawn_interval 10 * 60 * 1000
   @max_delay_after_spawn 15
 
   def start_link(_) do
