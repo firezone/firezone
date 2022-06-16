@@ -5,22 +5,27 @@ defmodule FzVpn.Interface do
   """
   import FzCommon.CLI
   import FzVpn.Interface.WGAdapter
-  import Wireguardex.DeviceConfigBuilder, except: [public_key: 2]
-  import Wireguardex.PeerConfigBuilder, except: [public_key: 2]
 
   alias Wireguardex.DeviceConfigBuilder
   alias Wireguardex.PeerConfigBuilder
 
   require Logger
 
+  @doc """
+  Creates an interface with a name, listening port, ipv4 address, ipv6 address,
+  and MTU.
+
+  If successful `{:ok, {private_key, public_key}}` is returned. If the interface
+  creation fails, `{:error, error_info}` will be logged and returned.
+  """
   def create(name, listen_port, ipv4_address, ipv6_address, mtu) do
     private_key = Wireguardex.generate_private_key()
     public_key = Wireguardex.get_public_key(private_key)
 
     result =
       DeviceConfigBuilder.device_config()
-      |> listen_port(listen_port)
-      |> private_key(private_key)
+      |> DeviceConfigBuilder.listen_port(listen_port)
+      |> DeviceConfigBuilder.private_key(private_key)
       |> DeviceConfigBuilder.public_key(public_key)
       |> wg_adapter().set_device(name)
 
@@ -35,22 +40,25 @@ defmodule FzVpn.Interface do
     end
   end
 
+  @doc """
+  Set an interface's private key and peers.
+
+  If successful we return an :ok status. If interface fails to be set,
+  `{:error, error_info}` will be logged and returned.
+  """
   def set(name, private_key, peers) do
     peer_configs =
       for {public_key, settings} <- peers do
-        preshared_key = settings.preshared_key
-        allowed_ips = String.split(settings.allowed_ips, ",")
-
         PeerConfigBuilder.peer_config()
         |> PeerConfigBuilder.public_key(public_key)
-        |> preshared_key(preshared_key)
-        |> allowed_ips(allowed_ips)
+        |> PeerConfigBuilder.preshared_key(settings.preshared_key)
+        |> PeerConfigBuilder.allowed_ips(String.split(settings.allowed_ips, ","))
       end
 
     result =
       DeviceConfigBuilder.device_config()
-      |> private_key(private_key)
-      |> peers(peer_configs)
+      |> DeviceConfigBuilder.private_key(private_key)
+      |> DeviceConfigBuilder.peers(peer_configs)
       |> wg_adapter().set_device(name)
 
     case result do
@@ -63,6 +71,12 @@ defmodule FzVpn.Interface do
     end
   end
 
+  @doc """
+  Delete an interface.
+
+  If successful we return an :ok status. If interface fails to be deleted,
+  `{:error, error_info}` will be logged and returned.
+  """
   def delete(name) do
     result = wg_adapter().delete_device(name)
 
@@ -76,6 +90,12 @@ defmodule FzVpn.Interface do
     end
   end
 
+  @doc """
+  Remove a peer from an interface.
+
+  If successful we return an :ok status. If the peer fails to be removed from
+  the interface, `{:errorr, error_info}` will be logged and returned.
+  """
   def remove_peer(name, public_key) do
     result = wg_adapter().remove_peer(name, public_key)
 
@@ -89,6 +109,12 @@ defmodule FzVpn.Interface do
     end
   end
 
+  @doc """
+  Return a map of information on all the current peers of the interface.
+
+  If successful we return the map of peer information. If the device fails to be
+  retrieved for info, `{:error, error_info}` will be logged and returned.
+  """
   def dump(name) do
     result = wg_adapter().get_device(name)
 
@@ -129,30 +155,34 @@ defmodule FzVpn.Interface do
 
   defp dump_field({field, value}) do
     case {field, value} do
-      {:allowed_ips, ips} -> dump_allowed_ips(ips)
-      {:persistent_keepalive_interval, n} -> dump_persistent_keepalive(n)
-      {:endpoint, nil} -> {:endpoint, "(none)"}
-      {:last_handshake_time, t} -> {:latest_handshake, to_string(t)}
-      {:preshared_key, nil} -> {:preshared_key, "(none)"}
-      _ -> {field, to_string(value)}
+      {:allowed_ips, allowed_ips} ->
+        {:allowed_ips, allowed_ips_to_str(allowed_ips)}
+
+      {:persistent_keepalive_interval, n} ->
+        {:persistent_keepalive, persistent_keepalive_to_str(n)}
+
+      {:endpoint, nil} ->
+        {:endpoint, "(none)"}
+
+      {:last_handshake_time, t} ->
+        {:latest_handshake, latest_handshake_to_str(t)}
+
+      {:preshared_key, nil} ->
+        {:preshared_key, "(none)"}
+
+      _ ->
+        {field, to_string(value)}
     end
   end
 
-  defp dump_allowed_ips(allowed_ips) do
-    if allowed_ips == [] do
-      {:allowed_ips, "(none)"}
-    else
-      {:allowed_ips, Enum.join(allowed_ips, ",")}
-    end
-  end
+  defp allowed_ips_to_str([]), do: "(none)"
+  defp allowed_ips_to_str(allowed_ips), do: Enum.join(allowed_ips, ",")
 
-  defp dump_persistent_keepalive(n) do
-    if !n || n == 0 do
-      {:persistent_keepalive, "off"}
-    else
-      {:persistent_keepalive, to_string(n)}
-    end
-  end
+  defp latest_handshake_to_str(t) when is_nil(t), do: "0"
+  defp latest_handshake_to_str(t), do: to_string(t)
+
+  defp persistent_keepalive_to_str(n) when is_nil(n) or n == 0, do: "off"
+  defp persistent_keepalive_to_str(n), do: to_string(n)
 
   defp ip_cmds(name, ipv4_address, ipv6_address, mtu) do
     if !is_nil(ipv4_address) do

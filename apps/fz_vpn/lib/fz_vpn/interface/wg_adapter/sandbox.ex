@@ -3,60 +3,90 @@ defmodule FzVpn.Interface.WGAdapter.Sandbox do
   The sandbox WireGuard adapter.
   """
 
-  import Wireguardex.PeerConfigBuilder
+  use GenServer
 
-  alias Wireguardex.PeerInfo
-  alias Wireguardex.PeerStats
-
-  require Logger
-
-  @sandbox_device %{
-    Application.compile_env!(:fz_vpn, :wireguard_interface_name) => %Wireguardex.Device{
-      name: Application.compile_env!(:fz_vpn, :wireguard_interface_name),
-      public_key: Application.compile_env!(:fz_vpn, :wireguard_public_key),
-      listen_port: Application.compile_env!(:fz_vpn, :wireguard_port),
-      peers: [
-        %PeerInfo{
-          config:
-            peer_config()
-            |> public_key("+wEYaT5kNg7mp+KbDMjK0FkQBtrN8RprHxudAgS0vS0=")
-            |> endpoint("140.82.48.115:54248")
-            |> allowed_ips(["10.3.2.7/32", "fd00::3:2:7/128"]),
-          stats: %PeerStats{
-            last_handshake_time: 1_650_286_790,
-            rx_bytes: 14_161_600,
-            tx_bytes: 3_668_160
-          }
-        },
-        %PeerInfo{
-          config:
-            peer_config()
-            |> public_key("JOvewkquusVzBHIRjvq32gE4rtsmDKyGh8ubhT4miAY=")
-            |> endpoint("149.28.197.67:44491")
-            |> allowed_ips(["10.3.2.8/32", "fd00::3:2:8/128"]),
-          stats: %PeerStats{
-            last_handshake_time: 1_650_286_747,
-            rx_bytes: 177_417_128,
-            tx_bytes: 138_272_552
-          }
-        }
-      ]
-    }
-  }
+  def start_link(_) do
+    GenServer.start_link(__MODULE__, %{}, name: __MODULE__)
+  end
 
   def get_device(name) do
-    Map.get(@sandbox_device, name)
+    {:ok, device} = GenServer.call(__MODULE__, {:get_device, name})
+    device
   end
 
-  def set_device(_config, _name) do
-    :ok
+  def set_device(config, name) do
+    GenServer.call(__MODULE__, {:set_device, config, name})
   end
 
-  def delete_device(_name) do
-    :ok
+  def delete_device(name) do
+    GenServer.call(__MODULE__, {:delete_device, name})
   end
 
-  def remove_peer(_name, _public_key) do
-    :ok
+  def remove_peer(name, public_key) do
+    GenServer.call(__MODULE__, {:remove_peer, name, public_key})
+  end
+
+  @impl GenServer
+  def init(_) do
+    {:ok, %{}}
+  end
+
+  @impl GenServer
+  def handle_call({:get_device, name}, _from, devices) do
+    {:reply, {:ok, Map.get(devices, name)}, devices}
+  end
+
+  @impl GenServer
+  def handle_call({:set_device, config, name}, _from, devices) do
+    public_key =
+      if config.private_key do
+        Wireguardex.get_public_key(config.private_key)
+      end
+
+    peers =
+      config.peers
+      |> Enum.map(fn peer ->
+        %Wireguardex.PeerInfo{
+          config: peer,
+          stats: %Wireguardex.PeerStats{}
+        }
+      end)
+
+    device = %Wireguardex.Device{
+      name: name,
+      public_key: public_key,
+      private_key: config.private_key,
+      listen_port: config.listen_port,
+      peers: peers
+    }
+
+    {:reply, :ok, Map.put(devices, name, device)}
+  end
+
+  @impl GenServer
+  def handle_call({:delete_device, name}, _from, devices) do
+    {:reply, :ok, Map.delete(devices, name)}
+  end
+
+  @impl GenServer
+  def handle_call({:remove_peer, name, public_key}, _from, devices) do
+    device = Map.get(devices, name)
+
+    peers =
+      Enum.reject(device.peers, fn peer ->
+        peer.config.public_key == public_key
+      end)
+
+    new_device = %Wireguardex.Device{
+      name: device.name,
+      public_key: device.public_key,
+      private_key: device.private_key,
+      fwmark: device.fwmark,
+      listen_port: device.listen_port,
+      peers: peers,
+      linked_name: device.linked_name
+    }
+
+    {:reply, :ok, Map.put(devices, name, new_device)}
   end
 end

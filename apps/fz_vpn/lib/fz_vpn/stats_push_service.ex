@@ -29,11 +29,7 @@ defmodule FzVpn.StatsPushService do
   end
 
   def push_stats do
-    GenServer.call(Server.http_pid(), {:update_device_stats, dump()})
-  end
-
-  def dump do
-    Interface.dump(Server.iface_name())
+    GenServer.call(Server.http_pid(), {:update_device_stats, Interface.dump(Server.iface_name())})
   end
 
   defp enabled? do
