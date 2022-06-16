@@ -51,6 +51,7 @@ defmodule FzHttpWeb.MFA.RegisterStepsComponent do
         assigns,
         %{
           secret: secret,
+          secret_base32_encoded: Base.encode32(secret),
           secret_base64_encoded: Base.encode64(secret),
           uri:
             NimbleTOTP.otpauth_uri(
@@ -70,6 +71,11 @@ defmodule FzHttpWeb.MFA.RegisterStepsComponent do
 
       <div class="has-text-centered">
         <canvas data-qrdata={@uri} id="register-totp" phx-hook="RenderQR" />
+
+        <pre class="mb-4"
+            id="copy-totp-key"
+            phx-hook="ClipboardCopy"
+            data-clipboard={@secret_base32_encoded}><code><%= format_key(@secret_base32_encoded) %></code></pre>
       </div>
 
       <div class="field is-horizontal">
@@ -124,5 +130,13 @@ defmodule FzHttpWeb.MFA.RegisterStepsComponent do
       <% end %>
     </form>
     """
+  end
+
+  defp format_key(string) do
+    string
+    |> String.split("", trim: true)
+    |> Enum.chunk_every(4)
+    |> Enum.intersperse(" ")
+    |> Enum.join("")
   end
 end
