@@ -8,7 +8,15 @@ defmodule FzHttp.OIDC do
   alias FzHttp.{OIDC.Connection, Repo, Users.User}
 
   def list_connections(%User{id: id}) do
-    Repo.all(from Connection, where: [user_id: ^id])
+    Repo.all(from(Connection, where: [user_id: ^id]))
+  end
+
+  def get_connection(id) do
+    Repo.get(Connection, id)
+  end
+
+  def get_connection!(id) do
+    Repo.get!(Connection, id)
   end
 
   def get_connection!(user_id, provider) do
@@ -32,5 +40,9 @@ defmodule FzHttp.OIDC do
     connection
     |> Connection.changeset(attrs)
     |> Repo.update()
+  end
+
+  def delete_connection(connection) do
+    Repo.delete(connection)
   end
 end

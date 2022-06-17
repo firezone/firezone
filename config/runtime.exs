@@ -55,6 +55,7 @@ if config_env() == :prod do
   telemetry_enabled = FzString.to_boolean(System.fetch_env!("TELEMETRY_ENABLED"))
   telemetry_id = System.fetch_env!("TELEMETRY_ID")
   guardian_secret_key = System.fetch_env!("GUARDIAN_SECRET_KEY")
+  disable_vpn_on_oidc_error = FzString.to_boolean(System.fetch_env!("DISABLE_VPN_ON_OIDC_ERROR"))
 
   allow_unprivileged_device_management =
     FzString.to_boolean(System.fetch_env!("ALLOW_UNPRIVILEGED_DEVICE_MANAGEMENT"))
@@ -187,6 +188,7 @@ if config_env() == :prod do
     secret_key: guardian_secret_key
 
   config :fz_http,
+    disable_vpn_on_oidc_error: disable_vpn_on_oidc_error,
     cookie_signing_salt: cookie_signing_salt,
     cookie_encryption_salt: cookie_encryption_salt,
     allow_unprivileged_device_management: allow_unprivileged_device_management,
