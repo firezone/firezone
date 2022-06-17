@@ -72,6 +72,16 @@ defmodule FzVpn.Interface do
   end
 
   @doc """
+  Get an interface by its name.
+
+  If successful we return an `{:ok, Device}`. If the interface fails to be
+  retrieved, return `{:error, error_info}`.
+  """
+  def get(name) do
+    wg_adapter().get_device(name)
+  end
+
+  @doc """
   Delete an interface.
 
   If successful we return an :ok status. If interface fails to be deleted,
@@ -116,11 +126,11 @@ defmodule FzVpn.Interface do
   retrieved for info, `{:error, error_info}` will be logged and returned.
   """
   def dump(name) do
-    result = wg_adapter().get_device(name)
+    result = get(name)
 
     case result do
-      %Wireguardex.Device{} ->
-        peers_to_dump_map(result.peers)
+      {:ok, device} ->
+        peers_to_dump_map(device.peers)
 
       {:error, error_info} ->
         Logger.error("Failed to get interface #{name} stats: #{error_info}")

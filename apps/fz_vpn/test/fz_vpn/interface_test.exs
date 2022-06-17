@@ -2,13 +2,12 @@ defmodule FzVpn.InterfaceTest do
   use ExUnit.Case, async: true
 
   alias FzVpn.Interface
-  import FzVpn.Interface.WGAdapter
 
   test "create interface" do
     name = "wg-create"
     {:ok, key_pair} = Interface.create(name, nil, nil, nil, nil)
     {private_key, public_key} = key_pair
-    device = wg_adapter().get_device(name)
+    {:ok, device} = Interface.get(name)
 
     assert device.name == name && device.private_key == private_key &&
              device.public_key == public_key
@@ -19,7 +18,9 @@ defmodule FzVpn.InterfaceTest do
     :ok = Interface.set(name, nil, [])
     :ok = Interface.delete(name)
 
-    assert is_nil(wg_adapter().get_device(name))
+    {:ok, device} = Interface.get(name)
+
+    assert is_nil(device)
   end
 
   test "remove peer from interface" do
@@ -35,7 +36,7 @@ defmodule FzVpn.InterfaceTest do
 
     :ok = Interface.set(name, nil, peers)
     :ok = Interface.remove_peer(name, public_key)
-    device = wg_adapter().get_device(name)
+    {:ok, device} = Interface.get(name)
 
     assert device.peers == []
   end

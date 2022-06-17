@@ -10,8 +10,7 @@ defmodule FzVpn.Interface.WGAdapter.Sandbox do
   end
 
   def get_device(name) do
-    {:ok, device} = GenServer.call(__MODULE__, {:get_device, name})
-    device
+    GenServer.call(__MODULE__, {:get_device, name})
   end
 
   def set_device(config, name) do
