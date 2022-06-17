@@ -85,15 +85,7 @@ defmodule FzWall.CLI.Live do
 
     case rule_handle_regex(~r/#{rule_str}.*# handle (?<num>\d+)/, rules) do
       nil ->
-        raise("""
-          ######################################################
-          Could not get handle to delete rule!
-          Rule spec: #{rule_str}
-
-          Current rules:
-          #{rules}
-          ######################################################
-        """)
+        {:error, "rule not found"}
 
       handles ->
         Enum.each(

@@ -73,9 +73,10 @@ defmodule FzWall.Server do
   end
 
   defp delete_device_rules(source, rules) do
+    # We ignore the errors here so that we can keep deleting rules
     cli().delete_rules(source)
-    # XXX: Consider using MapSet here
 
+    # XXX: Consider using MapSet here
     new_rules =
       Enum.reject(rules, fn rule ->
         case rule do
@@ -91,6 +92,7 @@ defmodule FzWall.Server do
   # instead of multiple callings to delete_rule
   defp delete_rules(rules_spec, rules) do
     Enum.reduce(rules_spec, MapSet.new(rules), fn rule_spec, rules_acc ->
+      # We ignore errors here just to keep deleting the other rules
       cli().delete_rule(rule_spec)
       MapSet.delete(rules_acc, rule_spec)
     end)
