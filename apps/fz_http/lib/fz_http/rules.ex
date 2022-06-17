@@ -111,10 +111,9 @@ defmodule FzHttp.Rules do
   end
 
   def to_nftables do
-    Enum.map(nftables_query(), fn rule ->
+    Enum.flat_map(nftables_query(), fn rule ->
       nftables_spec(rule)
     end)
-    |> List.flatten()
   end
 
   defp nftables_query do

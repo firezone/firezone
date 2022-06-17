@@ -23,7 +23,7 @@ defmodule FzHttp.Devices do
 
   def get_device!(id), do: Repo.get!(Device, id)
 
-  def get_device(public_key) when is_binary(public_key) do
+  def get_device({:public_key, public_key}) do
     Repo.one(from d in Device, where: d.public_key == ^public_key)
   end
 

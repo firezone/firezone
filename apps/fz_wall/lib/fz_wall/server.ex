@@ -73,7 +73,7 @@ defmodule FzWall.Server do
   end
 
   defp delete_device_rules(source, rules) do
-    cli().delete_rules({source})
+    cli().delete_rules(source)
     # XXX: Consider using MapSet here
 
     new_rules =
@@ -90,26 +90,18 @@ defmodule FzWall.Server do
   # XXX: For multiple rules it'd be better to have something like [ src1 | src2 | src3 | ...]
   # instead of multiple callings to delete_rule
   defp delete_rules(rules_spec, rules) do
-    List.foldl(rules_spec, rules, fn rule_spec, rules_acc ->
+    Enum.reduce(rules_spec, MapSet.new(rules), fn rule_spec, rules_acc ->
       cli().delete_rule(rule_spec)
-      # XXX: Consider using MapSet here
-      if rule_spec in rules_acc do
-        List.delete(rules_acc, rule_spec)
-      else
-        rules_acc
-      end
+      MapSet.delete(rules_acc, rule_spec)
     end)
+    |> Enum.to_list()
   end
 
   defp add_rules(rules_spec, rules) do
-    List.foldl(rules_spec, rules, fn rule_spec, rules_acc ->
+    Enum.reduce(rules_spec, MapSet.new(rules), fn rule_spec, rules_acc ->
       cli().add_rule(rule_spec)
-
-      if rule_spec in rules_acc do
-        rules_acc
-      else
-        rules_acc ++ [rule_spec]
-      end
+      MapSet.put(rules_acc, rule_spec)
     end)
+    |> Enum.to_list()
   end
 end

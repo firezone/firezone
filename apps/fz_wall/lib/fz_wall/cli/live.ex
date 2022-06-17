@@ -75,7 +75,7 @@ defmodule FzWall.CLI.Live do
     |> delete_rule_matching()
   end
 
-  def delete_rules({source}) do
+  def delete_rules(source) do
     source_match_str(source)
     |> delete_rule_matching()
   end

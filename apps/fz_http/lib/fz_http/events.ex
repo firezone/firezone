@@ -13,9 +13,9 @@ defmodule FzHttp.Events do
   end
 
   def delete_device(public_key) when is_binary(public_key) do
-    # XXX: Handle nil case
-    device = Devices.get_device(public_key)
-    delete_device(device)
+    if device = Devices.get_device({:public_key, public_key}) do
+      delete_device(device)
+    end
   end
 
   def delete_device(device) when is_struct(device) do
