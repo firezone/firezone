@@ -12,13 +12,7 @@ defmodule FzHttp.Events do
     GenServer.call(vpn_pid(), {:set_config, Devices.to_peer_list()})
   end
 
-  def delete_device(public_key) when is_binary(public_key) do
-    if device = Devices.get_device({:public_key, public_key}) do
-      delete_device(device)
-    end
-  end
-
-  def delete_device(device) when is_struct(device) do
+  def delete_device(device) do
     GenServer.call(
       wall_pid(),
       {:delete_device_rules, {Rules.decode(device.ipv4), Rules.decode(device.ipv6)}}

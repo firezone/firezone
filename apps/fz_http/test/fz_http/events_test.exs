@@ -95,8 +95,7 @@ defmodule FzHttp.EventsTest do
                ])
              )
 
-      pubkey = device.public_key
-      assert {:ok, ^pubkey} = Events.delete_device(pubkey)
+      assert {:ok, _} = Events.delete_device(device)
 
       assert :sys.get_state(Events.vpn_pid()) == %{
                "4" => %{

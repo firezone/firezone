@@ -32,7 +32,7 @@ defmodule FzHttpWeb.DeviceLive.Admin.Show do
 
     case Devices.delete_device(device) do
       {:ok, _deleted_device} ->
-        {:ok, _deleted_pubkey} = @events_module.delete_device(device.public_key)
+        {:ok, _deleted_pubkey} = @events_module.delete_device(device)
 
         {:noreply,
          socket
