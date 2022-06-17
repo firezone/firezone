@@ -36,13 +36,13 @@ By default, Firezone requires ports `443/tcp` and `51820/udp` to be
 accessible for HTTPS and WireGuard traffic respectively.
 These ports can change based on what you've configured in the configuration file.
 See the
-[configuration file reference]({% link docs/reference/configuration-file.md %})
+[configuration file reference](../reference/configuration-file)
 for details.
 
 **NOTE**: Firezone modifies the kernel netfilter and routing tables. Other
 programs that modify the Linux routing table or firewall may interfere with
 Firezone's operation. For help troubleshooting connectivity issues, see
-[troubleshoot]({% link docs/administer/troubleshoot.md %}).
+[troubleshoot](../administer/troubleshoot).
 
 ## Resource Requirements
 

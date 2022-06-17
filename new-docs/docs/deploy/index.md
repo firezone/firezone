@@ -13,7 +13,7 @@ description: >
 
 
 Firezone can be self-hosted on a server running a supported
-[Linux distribution]({% link docs/deploy/supported-platforms.md %})
+[Linux distribution](../deploy/supported-platforms.md)
 in a few minutes. This guide will walk you through the steps to get started.
 
 ## Step 1: Environment Setup
@@ -21,7 +21,7 @@ in a few minutes. This guide will walk you through the steps to get started.
 ### Supported operating systems
 
 Start by checking if your environment is listed on
-[supported platforms]({% link docs/deploy/supported-platforms.md %}).
+[supported platforms](../deploy/supported-platforms.md).
 A kernel upgrade may be required to ensure WireGuard® is available.
 
 ### Security settings
@@ -35,13 +35,13 @@ The default Firezone configuration requires the following ports to be open:
 **Note**: Firezone modifies the kernel netfilter and routing tables.
 Other programs that modify the Linux routing table or firewall may interfere
 with Firezone’s operation. For help troubleshooting connectivity issues, see the
-[troubleshooting guide]({% link docs/administer/troubleshoot.md %}).
+[troubleshooting guide](../administer/troubleshoot.md).
 
 ### Production deployments
 
 Firezone requires the setup of a DNS record and matching SSL certificate
 for production deployments. See instructions
-[here]({% link docs/deploy/prerequisites.md %}).
+[here](../deploy/prerequisites).
 
 ## Step 2: Server Install Script
 
@@ -56,7 +56,7 @@ This will ask you a few questions regarding your install, download the latest
 release for your platform, then create an administrator user and print to the
 console instructions for logging in to the web UI.
 
-![install complete](https://user-images.githubusercontent.com/52545545/171948328-4771552f-e5dd-4c30-8c0b-baac80b6e7b1.png){:width="600"}
+![install complete](https://user-images.githubusercontent.com/52545545/171948328-4771552f-e5dd-4c30-8c0b-baac80b6e7b1.png)
 
 **Note**: During install new firewall rules are added, which can interrupt the
 SSH connection. If this happens and you miss the admin
@@ -70,7 +70,7 @@ You can regenerate the admin credentials using the
 `firezone-ctl create-or-reset-admin` command.
 
 If the script fails, follow instructions for
-[manual installation]({% link docs/deploy/server.md %}).
+[manual installation](../deploy/server.md).
 
 ## Step 3: Install Client Apps
 
@@ -85,7 +85,7 @@ Instructions to establish a VPN session.
 ## Troubleshooting
 
 First, check our
-[troubleshooting guide]({% link docs/administer/troubleshoot.md %})
+[troubleshooting guide](../administer/troubleshoot)
 to see if your issue is covered there.
 If you are unable to resolve the issue:
 
@@ -99,14 +99,14 @@ If you are unable to resolve the issue:
 
 Congrats! You have completed the setup, but there's a lot more you can do with Firezone.
 
-* [Integrate your identity provider]({% link docs/authenticate/index.md %})
+* [Integrate your identity provider](../authenticate/)
 for authenticating clients
 * Using Firezone to
-[establish a static IP]({% link docs/user-guides/whitelist-vpn.md %})
+[establish a static IP](../user-guides/whitelist-vpn)
 * Create tunnels between multiple peers with
-[reverse tunnels]({% link docs/user-guides/reverse-tunnel.md %})
+[reverse tunnels](../user-guides/reverse-tunnel)
 * Only route certain traffic through Firezone with
-[split tunneling]({% link docs/user-guides/split-tunnel.md %})
+[split tunneling](../user-guides/split-tunnel.md)
 
 Support us by:
 

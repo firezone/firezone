@@ -40,7 +40,7 @@ devices connected to it.
 
 In this example, a Firezone instance has been set up on a `tc2.micro`
 EC2 instance. See the
-[Deployment Guide]({% link docs/deploy/index.md %})
+[Deployment Guide](../deploy/)
 for details on deploying Firezone. Specific to AWS, ensure:
 
 1. The security group of the Firezone EC2 instance allows outbound traffic to the
@@ -68,7 +68,7 @@ party to allow traffic from the static IP set in Step 1 (in this case `52.202.88
 By default all traffic from users will be routed through the VPN server,
 and will originate from the static IP set in Step 1 (in this case `52.202.88.54`).
 However, if
-[split tunneling]({% link docs/user-guides/split-tunnel.md %})
+[split tunneling](../user-guides/split-tunnel)
 has been enabled, configuration may be required to ensure the destination IP of
 the protected resource is included in the `Allowed IPs`.
 

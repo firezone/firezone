@@ -8,7 +8,7 @@ description: >
 ---
 
 **Important**: Ensure you've satisfied the
-[prerequisites]({% link docs/deploy/prerequisites.md %}) before following this
+[prerequisites](../deploy/prerequisites) before following this
 guide.
 
 ## Installation Instructions
