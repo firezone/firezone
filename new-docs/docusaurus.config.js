@@ -64,6 +64,22 @@ const config = {
         },
         items: [
           {
+            type: "docsVersionDropdown",
+            position: "left",
+          },
+          {
+            href: "https://github.com/facebook/docusaurus",
+            label: "Ask a Question",
+            position: "right",
+            "aria-label": "GitHub repository",
+          },
+          {
+            href: "https://github.com/facebook/docusaurus",
+            label: "Join the Business Beta",
+            position: "right",
+            "aria-label": "GitHub repository",
+          },
+          {
             href: "https://github.com/firezone/firezone",
             label: "GitHub",
             position: "right",
