@@ -1,12 +1,6 @@
 ---
-layout: default
 title: Configure
-nav_order: 1
-parent: Administer
-description: >
-  Configure Firezone by editing the configuration file and re-running the
-  reconfigure command.
----
+sidebar_position: 1
 ---
 
 Firezone leverages [Chef Omnibus](https://github.com/chef/omnibus) to handle
@@ -18,4 +12,4 @@ re-running** `sudo firezone-ctl reconfigure` which triggers Chef to pick up the
 changes and apply them to the running system.
 
 For an exhaustive list of configuration variables and their descriptions, see the
-[configuration file reference]({%link docs/reference/configuration-file.md%}).
+[configuration file reference](../reference/configuration-file).

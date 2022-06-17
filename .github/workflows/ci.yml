@@ -16,14 +16,16 @@ jobs:
     runs-on: macos-11
     steps:
       - uses: actions/checkout@v2
-      - uses: actions/setup-node@v2
+      - uses: actions/setup-node@v3
         with:
           node-version: '16.15.1'
+          cache: 'npm'
+          cache-dependency-path: docs/package-lock.json
       - name: Lint Docs
         run: |
-          npm install -g markdownlint-cli
           cd docs
-          markdownlint .
+          npm install
+          npx markdownlint .
 
   static-analysis:
     runs-on: ubuntu-latest
