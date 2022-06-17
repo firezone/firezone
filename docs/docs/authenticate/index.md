@@ -34,7 +34,7 @@ and `firezone-ctl restart` to update the application.
 
 # Firezone can disable a user's VPN if there's any error detected trying
 # to refresh their access_token. This is verified to work for Google, Okta, and
-# Azure SSO and is used to automatically disconnect a user's VPN if the're removed
+# Azure SSO and is used to automatically disconnect a user's VPN if they're removed
 # from the OIDC provider. Leave this disabled if your OIDC provider
 # has issues refreshing access tokens as it could unexpectedly interrupt a
 # user's VPN session.
