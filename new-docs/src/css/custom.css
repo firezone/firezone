@@ -28,3 +28,7 @@
   --ifm-color-primary-lightest: #fff1e5;
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
 }
+
+article a {
+  text-decoration: underline;
+}

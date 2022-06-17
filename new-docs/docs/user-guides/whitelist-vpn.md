@@ -27,7 +27,7 @@ This arrangement is commonly done in place of maintaining an IP whitelist for
 multiple end users, which may become labor intensive to manage as the access
 list grows.
 
-![Architecture](https://user-images.githubusercontent.com/52545545/154868328-688067dd-deca-4548-ac9d-f6ffe7eacf86.png){:width="600"}
+![Architecture](https://user-images.githubusercontent.com/52545545/154868328-688067dd-deca-4548-ac9d-f6ffe7eacf86.png)
 
 ## AWS Example
 
@@ -49,7 +49,7 @@ IP of the protected resource.
 source IP address of traffic routed through the Firezone instance to external destinations.
 In this case the IP is `52.202.88.54`.
 
-![Allocate Elastic IP](https://user-images.githubusercontent.com/52545545/154821256-9335703b-a120-4a9d-b9f5-bbca673cef63.png){:width="600"}
+![Allocate Elastic IP](https://user-images.githubusercontent.com/52545545/154821256-9335703b-a120-4a9d-b9f5-bbca673cef63.png)
 
 ### Step 2 - Restrict access to the protected resource
 
@@ -58,7 +58,7 @@ web app is restricted to only requests from `52.202.88.54`.
 Depending on the resource, inbound traffic on different ports and traffic types
 may need to be allowed. This is outside the scope of this guide.
 
-![Configure Security Group](https://user-images.githubusercontent.com/52545545/154821653-160f91d4-44d1-4b6c-b453-31604be930dc.png){:width="600"}
+![Configure Security Group](https://user-images.githubusercontent.com/52545545/154821653-160f91d4-44d1-4b6c-b453-31604be930dc.png)
 
 If the protected resource is controlled by a 3rd party, please inform the 3rd
 party to allow traffic from the static IP set in Step 1 (in this case `52.202.88.54`).
@@ -72,4 +72,4 @@ However, if
 has been enabled, configuration may be required to ensure the destination IP of
 the protected resource is included in the `Allowed IPs`.
 
-[Related: Authenticate](../authenticate/index){:.btn.btn-purple}
+[Related: Authenticate](../authenticate/index)

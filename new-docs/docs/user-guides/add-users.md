@@ -18,6 +18,6 @@ sync with an identity provider to automatically grant access to users in your
 organization. See [Authenticate](../authenticate/index) for more
 information.
 
-![add user](https://user-images.githubusercontent.com/52545545/153469244-c007c305-bfb0-4da7-a40c-6f41fa458c76.png){:width="600"}
+![add user](https://user-images.githubusercontent.com/52545545/153469244-c007c305-bfb0-4da7-a40c-6f41fa458c76.png)
 
 [Related: Authenticate](../authenticate/index){:.btn.btn-purple}

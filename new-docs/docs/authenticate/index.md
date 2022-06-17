@@ -13,7 +13,7 @@ or download device configuration files. Optionally,
 [periodic re-authentication](#enforce-periodic-re-authentication)
 can also be required for users to maintain their VPN session.
 
-![Azure SSO](https://user-images.githubusercontent.com/52545545/168922621-1f0f4dea-adfc-4e15-a140-a2f213676103.gif){:width="600"}
+![Azure SSO](https://user-images.githubusercontent.com/52545545/168922621-1f0f4dea-adfc-4e15-a140-a2f213676103.gif)
 
 By default, Firezone uses local email/password authentication, but can also
 support integration with any generic OpenID Connect

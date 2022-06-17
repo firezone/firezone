@@ -46,7 +46,7 @@ To self generate a device config file, visit the domain provided by your Firezon
 administrator. This URL will be specific to your company
 (in this example it is `https://firezone.example.com`)
 
-![Firezone Okta SSO Login](https://user-images.githubusercontent.com/52545545/156855886-5a4a0da7-065c-4ec1-af33-583dff4dbb72.gif){:width="600"}
+![Firezone Okta SSO Login](https://user-images.githubusercontent.com/52545545/156855886-5a4a0da7-065c-4ec1-af33-583dff4dbb72.gif)
 
 ### Step 3 - Add the config to the client
 
@@ -75,7 +75,7 @@ Visit the URL of your Firezone portal and sign in using credentials provided by 
 network admin. If you are already logged into the portal,
 click the `Reauthenticate` button, then sign in again.
 
-![re-authenticate](https://user-images.githubusercontent.com/52545545/155812962-9b8688c1-00af-41e4-96c3-8fb52f840aed.gif){:width="600"}
+![re-authenticate](https://user-images.githubusercontent.com/52545545/155812962-9b8688c1-00af-41e4-96c3-8fb52f840aed.gif)
 
 ### Step 3 - Activate VPN session
 

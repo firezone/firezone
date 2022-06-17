@@ -25,7 +25,7 @@ to obtain from your OIDC provider. This should be set to `openid email profile`
 to provide Firezone with the user's email in the returned claims.
 1. `label`: The button label text that shows up on your Firezone login screen.
 
-![Firezone Google SSO Login](https://user-images.githubusercontent.com/52545545/156853456-1ab3f041-1002-4c79-a266-82acb5802890.gif){:width="600"}
+![Firezone Google SSO Login](https://user-images.githubusercontent.com/52545545/156853456-1ab3f041-1002-4c79-a266-82acb5802890.gif)
 
 Note: Previously, Firezone used pre-configured Oauth2 providers. We've moved to
 OIDC based authentication, which allows for any OpenID Connect provider

@@ -25,7 +25,7 @@ to obtain from your OIDC provider. This should be set to `openid email profile o
 to provide Firezone with the user's email in the returned claims.
 1. `label`: The button label text that shows up on your Firezone login screen.
 
-![Firezone Okta SSO Login](https://user-images.githubusercontent.com/52545545/156855886-5a4a0da7-065c-4ec1-af33-583dff4dbb72.gif){:width="600"}
+![Firezone Okta SSO Login](https://user-images.githubusercontent.com/52545545/156855886-5a4a0da7-065c-4ec1-af33-583dff4dbb72.gif)
 
 **Note:** Previously, Firezone used pre-configured Oauth2 providers. We've moved
 to OIDC based authentication, which allows for any OpenID Connect provider
@@ -47,7 +47,7 @@ In the Admin Console, go to **Applications > Applications** and click
 **Create App Integration**. Set **Sign-in method** to **OICD - OpenID Connect**
 and **Application type** to **Web application**.
 
-![Okta Create Options](https://user-images.githubusercontent.com/52545545/168918378-0dd9f705-2544-412d-bbbe-4a7cd9253907.png){:width="800"}
+![Okta Create Options](https://user-images.githubusercontent.com/52545545/168918378-0dd9f705-2544-412d-bbbe-4a7cd9253907.png)
 
 On the following screen, configure the following settings:
 
@@ -63,12 +63,12 @@ Authorized redirect URIs.
 1. **Assignments**:
 Limit to the groups you wish to provide access to your Firezone instance.
 
-![Okta Settings](https://user-images.githubusercontent.com/52545545/172768478-e8be516d-aa0a-4882-b017-adc938bbd10b.png){:width="800"}
+![Okta Settings](https://user-images.githubusercontent.com/52545545/172768478-e8be516d-aa0a-4882-b017-adc938bbd10b.png)
 
 Once settings are saved, you will be given a **Client ID**, **Client Secret**,
 and **Okta Domain**. These 3 values will be used in Step 2 to configure Firezone.
 
-![Okta credentials](https://user-images.githubusercontent.com/52545545/172768856-8a373d56-1362-4fc3-a747-3c84f0e76dae.png){:width="800"}
+![Okta credentials](https://user-images.githubusercontent.com/52545545/172768856-8a373d56-1362-4fc3-a747-3c84f0e76dae.png)
 
 ## Integrate With Firezone
 
@@ -99,4 +99,4 @@ Okta can limit the users with access to the Firezone app. To do this,
 go to the Assignments tab of the Firezone App Integration in your Okta
 Admin Console.
 
-![Okta Assignments](https://user-images.githubusercontent.com/52545545/172766608-b95e20e2-eb58-4085-b532-84386de1ea23.png){:width="800"}
+![Okta Assignments](https://user-images.githubusercontent.com/52545545/172766608-b95e20e2-eb58-4085-b532-84386de1ea23.png)

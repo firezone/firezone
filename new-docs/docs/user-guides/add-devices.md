@@ -17,7 +17,7 @@ page to generate their own device configs.
 Firezone admins can generate device configs for all users. This can be done by
 clicking the "Add Device" button on the user profile page found in `/users`.
 
-![add device under user](https://user-images.githubusercontent.com/52545545/153467794-a9912bf0-2a13-4d05-9df9-2bd6e32b594c.png){:width="600"}
+![add device under user](https://user-images.githubusercontent.com/52545545/153467794-a9912bf0-2a13-4d05-9df9-2bd6e32b594c.png)
 
 Once the device profile is created, you can send the WireGuard configuration
 file to the user.

@@ -12,4 +12,4 @@ via the kernel's netfilter system. By default, all traffic is allowed.
 
 The Allowlist and Denylist support both IPv4 and IPv6 CIDRs and IP addresses.
 
-![firewall rules](https://user-images.githubusercontent.com/52545545/153467657-fe287f2c-feab-41f5-8852-6cefd9d5d6b5.png){:width="600"}
+![firewall rules](https://user-images.githubusercontent.com/52545545/153467657-fe287f2c-feab-41f5-8852-6cefd9d5d6b5.png)
