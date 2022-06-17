@@ -7,6 +7,8 @@ defmodule FzHttpWeb.LiveAuth do
   import Phoenix.LiveView
   import FzHttpWeb.AuthorizationHelpers
 
+  require Logger
+
   def on_mount(role, _params, session, socket) do
     user = Authentication.get_current_user(session)
 
@@ -15,6 +17,7 @@ defmodule FzHttpWeb.LiveAuth do
       |> assign_new(:current_user, fn -> user end)
       |> authorize_role(role)
     else
+      Logger.warn("Could get_current_user from session in LiveAuth.on_mount/4.")
       {:halt, not_authorized(socket)}
     end
   end
