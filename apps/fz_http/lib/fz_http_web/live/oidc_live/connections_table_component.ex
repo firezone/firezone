@@ -21,7 +21,7 @@ defmodule FzHttpWeb.OIDCLive.ConnectionsTableComponent do
 
   def handle_event("delete", %{"id" => id}, socket) do
     conn = OIDC.get_connection!(id)
-    OIDC.delete_connection(conn)
+    {:ok, _connection} = OIDC.delete_connection(conn)
 
     {:noreply,
      socket
