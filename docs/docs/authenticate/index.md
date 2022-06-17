@@ -32,6 +32,14 @@ and `firezone-ctl restart` to update the application.
 # This is an example using Google and Okta as an SSO identity provider.
 # Multiple OIDC configs can be added to the same Firezone instance.
 
+# Firezone can disable a user's VPN if there's any error detected trying
+# to refresh their access_token. This is verified to work for Google, Okta, and
+# Azure SSO and is used to automatically disconnect a user's VPN if the're removed
+# from the OIDC provider. Leave this disabled if your OIDC provider
+# has issues refreshing access tokens as it could unexpectedly interrupt a
+# user's VPN session.
+default['firezone']['authentication']['disable_vpn_on_oidc_error'] = false
+
 default['firezone']['authentication']['oidc'] = {
   google: {
     discovery_document_uri: "https://accounts.google.com/.well-known/openid-configuration",

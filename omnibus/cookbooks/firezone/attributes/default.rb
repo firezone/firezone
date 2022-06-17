@@ -100,6 +100,13 @@ default['firezone']['sysvinit_id'] = 'SUP'
 default['firezone']['authentication']['local']['enabled'] = true
 
 # OIDC Authentication
+#
+# If a refresh_token is found in the response from the OIDC provider,
+# Firezone will refresh this token periodically to ensure the user is still
+# valid. Set this to true to disconnect a user's VPN if their refresh token
+# fails to renew.
+default['firezone']['authentication']['disable_vpn_on_oidc_error'] = false
+
 # Any OpenID Connect provider can be used here.
 default['firezone']['authentication']['oidc'] = {}
 # Example of a Google setup
