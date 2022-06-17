@@ -1,47 +1,53 @@
 ---
-sidebar_position: 1
+layout: default
+title: Overview
+nav_order: 1
+description: >
+  Firezone is a self-managed WireGuard-based VPN server and Linux firewall designed for simplicity and security.
 ---
 
-# Tutorial Intro
+[Firezone](https://firezone.dev) is an open source, self-hosted VPN server and
+egress firewall for Linux. Use it to **quickly and easily** secure access to
+your private network and internal applications from a simple Web UI.
 
-Let's discover **Docusaurus in less than 5 minutes**.
+![Architecture](https://user-images.githubusercontent.com/52545545/173246039-a1b37ef2-d885-4535-bca7-f5cd57da21a2.png){:width="500"}
 
-## Getting Started
+These docs explain how to deploy, configure, and use Firezone.
 
-Get started by **creating a new site**.
+## Quick Start
 
-Or **try Docusaurus immediately** with **[docusaurus.new](https://docusaurus.new)**.
+1. [Deploy]({% link docs/deploy/index.md %}): A step-by-step walkthrough of
+   setting up Firezone. Start here if you are new.
+1. [Administer]({% link docs/administer/index.md %}): This section relates
+   directly to configuring the server instance.
+1. [User Guides]({% link docs/user-guides/index.md %}): Useful guides to help you
+   learn how to use Firezone and troubleshoot common issues. Consult this section
+   after you successfully deploy the Firezone server.
 
-### What you'll need
+## Common Configuration Guides
 
-- [Node.js](https://nodejs.org/en/download/) version 14 or above:
-  - When installing Node.js, you are recommended to check all checkboxes related to dependencies.
+1. [Split Tunneling]({% link docs/user-guides/split-tunnel.md %}):
+Only route traffic to certain IP ranges through the VPN.
+1. [Whitelisting with VPN]({% link docs/user-guides/whitelist-vpn.md %}):
+Configure a VPN server with a static IP address.
+1. [Reverse Tunnels]({% link docs/user-guides/reverse-tunnel.md %}):
+Establish tunnels between multiple peers.
 
-## Generate a new site
+## Get Help
 
-Generate a new Docusaurus site using the **classic template**.
+If you're looking for help installing, configuring, or using Firezone, we're
+happy to help.
 
-The classic template will automatically be added to your project after you run the command:
+1. [Discussion Forums](https://discourse.firez.one/): Ask questions, report bugs,
+   and suggest features.
+1. [Public Slack Group](https://join.slack.com/t/firezone-users/shared_invite/zt-111043zus-j1lP_jP5ohv52FhAayzT6w):
+   Join live discussions, meet other users, and get to know the contributors.
+1. [Email Us](mailto:team@firezone.dev): We read every email and respond as soon
+   as we can.
 
-```bash
-npm init docusaurus@latest my-website classic
-```
+## Contribute to Firezone
 
-You can type this command into Command Prompt, Powershell, Terminal, or any other integrated terminal of your code editor.
-
-The command also installs all necessary dependencies you need to run Docusaurus.
-
-## Start your site
-
-Run the development server:
-
-```bash
-cd my-website
-npm run start
-```
-
-The `cd` command changes the directory you're working with. In order to work with your newly created Docusaurus site, you'll need to navigate the terminal there.
-
-The `npm run start` command builds your website locally and serves it through a development server, ready for you to view at http://localhost:3000/.
-
-Open `docs/intro.md` (this page) and edit some lines: the site **reloads automatically** and displays your changes.
+We deeply appreciate any and all contributions to the project and do our best to
+ensure your contribution is included. To get started, see
+[CONTRIBUTING.md
+](https://github.com/firezone/firezone/blob/master/CONTRIBUTING.md).

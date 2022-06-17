@@ -64,12 +64,6 @@ const config = {
         },
         items: [
           {
-            type: "doc",
-            docId: "intro",
-            position: "left",
-            label: "Tutorial",
-          },
-          {
             href: "https://github.com/firezone/firezone",
             label: "GitHub",
             position: "right",
