@@ -24,6 +24,7 @@
         <th>Provider</th>
         <th>Refreshed At</th>
         <th>Refresh Result</th>
+        <th></th>
       </tr>
     </thead>
     <tbody>
@@ -41,6 +42,20 @@
           <% else %>
             OK
           <% end %>
+        </td>
+        <td>
+          <button class="button is-warning"
+              data-confirm={delete_warning(conn)}
+              phx-click="delete"
+              phx-value-id={conn.id}
+              phx-target={@myself}>
+            <span class="icon is-small">
+              <i class="fas fa-trash"></i>
+            </span>
+            <span>
+              Delete Connection
+            </span>
+          </button>
         </td>
       </tr>
     <% end %>
