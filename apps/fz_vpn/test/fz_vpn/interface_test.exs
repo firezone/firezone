@@ -17,7 +17,6 @@ defmodule FzVpn.InterfaceTest do
     name = "wg-delete"
     :ok = Interface.set(name, nil, [])
     :ok = Interface.delete(name)
-
     {:ok, device} = Interface.get(name)
 
     assert is_nil(device)
