@@ -101,10 +101,12 @@ default['firezone']['authentication']['local']['enabled'] = true
 
 # OIDC Authentication
 #
-# If a refresh_token is found in the response from the OIDC provider,
-# Firezone will refresh this token periodically to ensure the user is still
-# valid. Set this to true to disconnect a user's VPN if their refresh token
-# fails to renew.
+# Firezone can disable a user's VPN if there's any error detected trying
+ # to refresh their access_token. This is verified to work for Google, Okta, and
+ # Azure SSO and is used to automatically disconnect a user's VPN if they're removed
+ # from the OIDC provider. Leave this disabled if your OIDC provider
+ # has issues refreshing access tokens as it could unexpectedly interrupt a
+ # user's VPN session.
 default['firezone']['authentication']['disable_vpn_on_oidc_error'] = false
 
 # Any OpenID Connect provider can be used here.
