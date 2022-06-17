@@ -17,7 +17,7 @@ defmodule FzHttpWeb.LiveAuth do
       |> assign_new(:current_user, fn -> user end)
       |> authorize_role(role)
     else
-      Logger.warn("Could get_current_user from session in LiveAuth.on_mount/4.")
+      Logger.warn("Could not get_current_user from session in LiveAuth.on_mount/4.")
       {:halt, not_authorized(socket)}
     end
   end
