@@ -7,6 +7,7 @@ defmodule FzHttpWeb.Authentication.ErrorHandler do
   alias FzHttpWeb.Authentication
   alias FzHttpWeb.Router.Helpers, as: Routes
   import FzHttpWeb.ControllerHelpers, only: [root_path_for_role: 2]
+  require Logger
 
   @behaviour Guardian.Plug.ErrorHandler
 
@@ -25,7 +26,14 @@ defmodule FzHttpWeb.Authentication.ErrorHandler do
   end
 
   @impl Guardian.Plug.ErrorHandler
-  def auth_error(conn, {type, _reason}, _opts) do
+  def auth_error(conn, {type, reason}, opts) do
+    Logger.warn("""
+      ErrorHandler.auth_error: Could not validate user.
+      Type: #{type}
+      Reason: #{reason}
+      Opts: #{opts}
+    """)
+
     conn
     |> put_resp_content_type("text/plain")
     |> send_resp(401, to_string(type))

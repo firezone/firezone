@@ -270,6 +270,8 @@ class Firezone
         'GOOGLE_CLIENT_SECRET' => attributes['authentication']['google']['client_secret'],
         'GOOGLE_REDIRECT_URI' => attributes['authentication']['google']['redirect_uri'],
 
+        'DISABLE_VPN_ON_OIDC_ERROR' => attributes['authentication']['disable_vpn_on_oidc_error'].to_s,
+
         # OpenID Connect auth settings are serialized to json for consumption by fz_http
         'AUTH_OIDC' => attributes['authentication']['oidc'].to_json,
 
