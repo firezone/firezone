@@ -1,10 +1,11 @@
 ---
 layout: default
 title: Overview
-nav_order: 1
+position: 1
 description: >
   Firezone is a self-managed WireGuard-based VPN server and Linux firewall designed for simplicity and security.
 slug: /
+sidebar_position: 1
 ---
 
 [Firezone](https://firezone.dev) is an open source, self-hosted VPN server and

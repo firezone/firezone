@@ -6,3 +6,4 @@ has_children: true
 description: >
   This section contains commands and guides for administering Firezone.
 ---
+
