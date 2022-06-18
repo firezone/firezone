@@ -20,24 +20,24 @@ defmodule FzHttpWeb.UserFromAuth do
   def find_or_create(%Auth{provider: provider, info: %Auth.Info{email: email}} = _auth)
       when provider in [:google, :okta] do
     case Users.get_by_email(email) do
-      nil -> maybe_create_user(auto_create_oidc_users?(), email)
+      nil -> maybe_create_user(email)
       user -> {:ok, user}
     end
   end
 
   def find_or_create(_provider, %{"email" => email, "sub" => _sub}) do
     case Users.get_by_email(email) do
-      nil -> maybe_create_user(auto_create_oidc_users?(), email)
+      nil -> maybe_create_user(email)
       user -> {:ok, user}
     end
   end
 
-  defp maybe_create_user(true, email) do
-    Users.create_unprivileged_user(%{email: email})
-  end
-
-  defp maybe_create_user(false, _email) do
-    {:error, "not found"}
+  defp maybe_create_user(email) do
+    if auto_create_oidc_users?() do
+      Users.create_unprivileged_user(%{email: email})
+    else
+      {:error, "not found"}
+    end
   end
 
   defp auto_create_oidc_users? do
