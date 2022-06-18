@@ -99,6 +99,11 @@ default['firezone']['sysvinit_id'] = 'SUP'
 # Local email/password authentication is enabled by default
 default['firezone']['authentication']['local']['enabled'] = true
 
+# Automatically create users siging in from OIDC for the first time. Disable this
+# and manually create them (leaving their password blank) if you wish to only
+# allow existing certain existing users to sign in.
+default['firezone']['authentication']['auto_create_oidc_users'] = true
+
 # OIDC Authentication
 #
 # Firezone can disable a user's VPN if there's any error detected trying
