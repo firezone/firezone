@@ -179,8 +179,7 @@ if config_env() == :prod do
     wireguard_psk_dir: wireguard_psk_dir,
     wireguard_public_key: wireguard_public_key,
     wireguard_interface_name: wireguard_interface_name,
-    wireguard_port: wireguard_port,
-    wg_adapter: FzVpn.Interface.WGAdapter.Live
+    wireguard_port: wireguard_port
 
   # Guardian configuration
   config :fz_http, FzHttpWeb.Authentication,
