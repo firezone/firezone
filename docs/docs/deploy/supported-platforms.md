@@ -30,6 +30,7 @@ Firezone currently supports the following platforms:
 | Fedora 35 | `amd64` `arm64` | **Fully-supported** | See [Fedora Notes](#fedora-notes) |
 | Ubuntu 18.04 | `amd64` `arm64` | **Fully-supported** | See [Ubuntu 18.04 Notes](#ubuntu-1804-notes) |
 | Ubuntu 20.04 | `amd64` `arm64` | **Fully-supported** | Works as-is |
+| Ubuntu 22.04 | `amd64` `arm64` | **Fully-supported** | Works as-is |
 | openSUSE Leap 15.3 | `amd64` | **Fully-supported** | See [openSUSE Notes](#opensuse-notes) |
 
 <!-- markdownlint-enable MD013 -->
