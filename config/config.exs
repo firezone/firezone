@@ -49,6 +49,7 @@ config :fz_http, FzHttpWeb.Authentication,
 
 config :fz_http,
   disable_vpn_on_oidc_error: true,
+  auto_create_oidc_users: true,
   sandbox: true,
   allow_unprivileged_device_management: true,
   telemetry_id: "543aae08-5a2b-428d-b704-2956dd3f5a57",
