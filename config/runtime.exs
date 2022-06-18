@@ -38,7 +38,6 @@ if config_env() == :prod do
   wireguard_interface_name = System.fetch_env!("WIREGUARD_INTERFACE_NAME")
   wireguard_port = String.to_integer(System.fetch_env!("WIREGUARD_PORT"))
   nft_path = System.fetch_env!("NFT_PATH")
-  wg_path = System.fetch_env!("WG_PATH")
   egress_interface = System.fetch_env!("EGRESS_INTERFACE")
   wireguard_public_key = System.fetch_env!("WIREGUARD_PUBLIC_KEY")
   wireguard_psk_dir = System.fetch_env!("WIREGUARD_PSK_DIR")
@@ -180,8 +179,7 @@ if config_env() == :prod do
     wireguard_psk_dir: wireguard_psk_dir,
     wireguard_public_key: wireguard_public_key,
     wireguard_interface_name: wireguard_interface_name,
-    wireguard_port: wireguard_port,
-    cli: FzVpn.CLI.Live
+    wireguard_port: wireguard_port
 
   # Guardian configuration
   config :fz_http, FzHttpWeb.Authentication,
@@ -190,7 +188,6 @@ if config_env() == :prod do
 
   config :fz_http,
     disable_vpn_on_oidc_error: disable_vpn_on_oidc_error,
-    wg_path: wg_path,
     cookie_signing_salt: cookie_signing_salt,
     cookie_encryption_salt: cookie_encryption_salt,
     allow_unprivileged_device_management: allow_unprivileged_device_management,
