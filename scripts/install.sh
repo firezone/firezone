@@ -29,7 +29,8 @@ capture () {
             \"email\": \"$2\"
           }
         }" \
-        https://telemetry.firez.one/capture/ > /dev/null
+        https://telemetry.firez.one/capture/ > /dev/null \
+        || true
     fi
   fi
 }
