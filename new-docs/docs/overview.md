@@ -8,7 +8,6 @@ slug: /
 sidebar_position: 1
 ---
 
-
 [Firezone](https://firezone.dev) is an open source, self-hosted VPN server and
 egress firewall for Linux. Use it to **quickly and easily** secure access to
 your private network and internal applications from a simple Web UI.
@@ -54,3 +53,6 @@ happy to help.
 We deeply appreciate any and all contributions to the project and do our best to
 ensure your contribution is included. To get started, see
 [CONTRIBUTING.md](https://github.com/firezone/firezone/blob/master/CONTRIBUTING.md).
+
+
+<newsletter />
