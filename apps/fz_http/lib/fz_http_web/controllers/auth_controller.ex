@@ -92,7 +92,9 @@ defmodule FzHttpWeb.AuthController do
         |> put_flash(:error, msg)
         |> request(%{})
 
-      _ ->
+      # Error verifying claims or fetching tokens
+      {:error, action, reason} ->
+        Logger.warn("OpenIDConnect Error during #{action}: #{reason}")
         send_resp(conn, 401, "")
     end
   end
