@@ -1,0 +1,67 @@
+.accentBlock {
+  width: 100%;
+  background-color: #f8f7f7;
+  border-radius: 6px;
+  padding: 20px;
+  margin: 20px 0px;
+  color: #1b140e;
+  display: flex;
+  justify-content: space-between;
+}
+
+.contentBlock {
+  width: 60%;
+  height: inherit;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.accentBlock h1 {
+  margin: 0 !important;
+  font-size: 1.5rem;
+}
+
+.accentBlock p {
+  font-size: 1rem;
+  margin-top: 5px;
+  margin-bottom: 0px;
+}
+
+.btnWrapper {
+  margin-top: 10px;
+}
+
+.btnWrapper button {
+  padding: 15px 25px;
+  margin: 5px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease-out;
+}
+
+.btnWrapper button:first-child {
+  margin-left: 0px;
+}
+
+.btnPrimary {
+  background-color: #1b140e;
+  color: #fcfcfc;
+  border: none;
+}
+
+.btnPrimary:hover {
+  transform: scale(1.05);
+}
+
+.btn {
+  background: transparent;
+  border: none;
+}
+
+.sideImage {
+  padding: 10px;
+  width: 40%;
+  object-fit: cover;
+  border: none;
+}
