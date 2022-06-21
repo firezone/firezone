@@ -88,7 +88,7 @@ defmodule FzHttp.RulesTest do
     ]
 
     test "prints all rules to nftables format", %{rules: _rules} do
-      assert @nftables_rules == Rules.to_nftables()
+      assert MapSet.equal?(MapSet.new(@nftables_rules), MapSet.new(Rules.to_nftables()))
     end
   end
 

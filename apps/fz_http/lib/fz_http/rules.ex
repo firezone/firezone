@@ -7,7 +7,7 @@ defmodule FzHttp.Rules do
   import FzCommon.FzNet
   alias EctoNetwork.INET
 
-  alias FzHttp.{Repo, Rules.Rule, Telemetry}
+  alias FzHttp.{Devices.Device, Repo, Rules.Rule, Telemetry}
 
   def list_rules, do: Repo.all(Rule)
 
@@ -79,47 +79,52 @@ defmodule FzHttp.Rules do
   end
 
   defp nftables_spec(rule, nil) do
-    [{decode(rule.destination), rule.action}]
+    [spec_tuple(rule, nil)]
   end
 
   defp nftables_spec(rule, user_id) do
-    get_user_ips(user_id, ip_type("#{rule.destination}"))
+    FzHttp.Devices.list_devices(user_id)
+    |> Enum.map(fn device -> spec_tuple(rule, device) end)
     # XXX: This should only be needed if a destination can be ipv4/v6 while ipv4/v6
     # is disabled in firezone
     |> Enum.reject(fn ip -> is_nil(ip) end)
-    |> Enum.map(fn source -> {decode(source), decode(rule.destination), rule.action} end)
+  end
+
+  defp spec_tuple({rule, device}) do
+    spec_tuple(rule, device)
+  end
+
+  defp spec_tuple(rule, nil) do
+    {decode(rule.destination), rule.action}
+  end
+
+  defp spec_tuple(rule, device) do
+    case get_device_ip(device, ip_type("#{rule.destination}")) do
+      nil -> nil
+      ip -> {decode(ip), decode(rule.destination), rule.action}
+    end
   end
 
   defp get_device_ip(device, "IPv4"), do: device.ipv4
   defp get_device_ip(device, "IPv6"), do: device.ipv6
   defp get_device_ip(_, "unknown"), do: raise("Unknown protocol")
 
-  defp get_user_ips(user_id, "IPv4") do
-    Enum.map(FzHttp.Devices.list_devices(user_id), fn device ->
-      device.ipv4
-    end)
-  end
-
-  defp get_user_ips(user_id, "IPv6") do
-    Enum.map(FzHttp.Devices.list_devices(user_id), fn device ->
-      device.ipv6
-    end)
-  end
-
-  defp get_user_ips(_, "unknown") do
-    raise "Unknown protocol."
-  end
-
   def to_nftables do
-    Enum.flat_map(nftables_query(), fn rule ->
-      nftables_spec(rule)
+    Enum.map(nftables_query(), fn spec ->
+      spec_tuple(spec)
     end)
+    |> Enum.reject(fn spec -> is_nil(spec) end)
   end
 
   defp nftables_query do
     query =
       from r in Rule,
-        order_by: r.action
+        left_join: d in Device,
+        on: d.user_id == r.user_id,
+        select: {r, d},
+        order_by: r.action,
+        where: is_nil(r.user_id),
+        or_where: not is_nil(d)
 
     Repo.all(query)
   end
