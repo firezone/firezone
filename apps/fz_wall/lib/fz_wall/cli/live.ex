@@ -83,10 +83,17 @@ defmodule FzWall.CLI.Live do
   defp delete_rule_matching(rule_str) do
     rules = exec!("#{nft()} -a list table inet #{@table_name}")
 
-    rule_handle_regex(~r/#{rule_str}.*# handle (?<num>\d+)/, rules)
-    |> Enum.flat_map(fn handle ->
-      exec!("#{nft()} delete rule inet #{@table_name} forward handle #{handle}")
-    end)
+    # When a rule is deleted the others might change handle so we need to
+    # re-scan each time.
+    case rule_handle_regex(~r/#{rule_str}.*# handle (?<num>\d+)/, rules) do
+      nil ->
+        :no_rule
+
+      [handle] ->
+        exec!("#{nft()} delete rule inet #{@table_name} forward handle #{handle}")
+        # There might still be matching rules so re-run it
+        delete_rule_matching(rule_str)
+    end
   end
 
   @doc """
@@ -121,7 +128,7 @@ defmodule FzWall.CLI.Live do
   end
 
   defp rule_handle_regex(regex, rules) do
-    Regex.scan(regex, rules, capture: :all_names)
+    Regex.run(regex, rules, capture: :all_names)
   end
 
   defp egress_interface do
