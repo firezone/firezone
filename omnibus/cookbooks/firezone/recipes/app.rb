@@ -28,9 +28,11 @@ execute 'fix app permissions' do
   command "chown -R #{user}:#{group} #{app_dir} && chmod -R o-rwx #{app_dir} && chmod -R g-rwx #{app_dir}"
 end
 
-beam_path = `ls -1 #{node['firezone']['install_directory']}/embedded/service/firezone/erts-*/bin/beam.smp`
+beam_path = `ls -1 #{node['firezone']['install_directory']}/embedded/service/firezone/erts-*/bin/beam.smp \
+             | sort -nr | head -n 1 | tr -d '\n'`
 execute 'setcap_beam' do
   command "setcap 'cap_net_admin+eip' #{beam_path}"
+  node['firezone']['phoenix']['enabled'] && notifies(:restart, 'component_runit_service[phoenix]', :delayed)
 end
 
 file 'environment-variables' do
