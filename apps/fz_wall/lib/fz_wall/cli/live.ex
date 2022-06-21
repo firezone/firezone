@@ -85,7 +85,7 @@ defmodule FzWall.CLI.Live do
 
     # When a rule is deleted the others might change handle so we need to
     # re-scan each time.
-    case rule_handle_regex(~r/^#{rule_str}.*# handle (?<num>\d+)/m, rules) do
+    case rule_handle_regex(~r/^\s*#{rule_str}.*# handle (?<num>\d+)/m, rules) do
       nil ->
         :no_rule
 
