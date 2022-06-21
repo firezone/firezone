@@ -2,7 +2,7 @@ localhost
 
 log
 
-reverse_proxy * localhost:4000
+reverse_proxy * elixir:4000
 
 encode gzip
 

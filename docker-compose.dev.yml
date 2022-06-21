@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  caddy:
+    image: caddy:2
+    volumes:
+      - ./.devcontainer/Caddyfile:/etc/caddy/Caddyfile
+    ports:
+      - 80:80
+      - 443:443
+
+  elixir:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        DATABASE_URL: postgresql://postgres:postgres@postgres:5432/firezone_dev
+    image: firezone_dev
+    volumes:
+      - ./apps:/var/app/apps:ro
+      - ./apps/fz_http/priv/static/dist:/var/app/apps/fz_http/priv/static/dist:rw
+      - ./config:/var/app/config:ro
+      - ./mix.exs:/var/app/mix.exs:ro
+      - ./mix.lock:/var/app/mix.lock:ro
+    environment:
+      LOCAL_AUTH_ENABLED: 'true'
+    cap_add:
+      - NET_ADMIN
+    privileged: true
+
+  postgres:
+    image: postgres:13.5
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: firezone_dev
+    ports:
+      - 5432:5432
+
+volumes:
+  postgres-data:
