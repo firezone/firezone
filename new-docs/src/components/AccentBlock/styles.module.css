@@ -4,9 +4,12 @@
   border-radius: 12px;
   padding: 20px;
   margin: 20px 0px;
-  color: #1b140e;
   display: flex;
   justify-content: space-between;
+}
+
+[data-theme="dark"] .accentBlock {
+  background-color: #1b140e;
 }
 
 .contentBlock {

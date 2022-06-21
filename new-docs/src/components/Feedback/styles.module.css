@@ -36,12 +36,20 @@
   transition: all 0.2s ease-out;
 }
 
+[data-theme="dark"] .voteWrapper button {
+  border: 1px solid rgba(255, 255, 255, 0.5);
+}
+
 .voteWrapper button:first-child {
   margin-left: 0px;
 }
 
 .voteWrapper button:hover {
   border: 1px solid rgba(0, 0, 0, 1);
+}
+
+[data-theme="dark"] .voteWrapper button:hover {
+  border: 1px solid rgba(255, 255, 255, 1);
 }
 
 .voteWrapper button img {
