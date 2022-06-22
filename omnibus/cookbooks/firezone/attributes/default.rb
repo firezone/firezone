@@ -327,7 +327,7 @@ default['firezone']['wireguard']['interface_name'] = 'wg-firezone'
 default['firezone']['wireguard']['port'] = 51_820
 
 # WireGuard interface MTU
-default['firezone']['wireguard']['mtu'] = 1420
+default['firezone']['wireguard']['mtu'] = 1280
 
 # WireGuard endpoint
 # By default, the public IP address of this server is used as the Endpoint

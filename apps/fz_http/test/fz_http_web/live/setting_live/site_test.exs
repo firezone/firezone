@@ -122,7 +122,7 @@ defmodule FzHttpWeb.SettingLive.SiteTest do
       refute test_view =~ "is invalid"
 
       assert test_view =~ """
-             <input class="input " id="site_form_component_mtu" name="site[mtu]" placeholder="1420" type="text" value="1000"/>\
+             <input class="input " id="site_form_component_mtu" name="site[mtu]" placeholder="1280" type="text" value="1000"/>\
              """
     end
 
@@ -188,7 +188,7 @@ defmodule FzHttpWeb.SettingLive.SiteTest do
       assert test_view =~ "must be greater than or equal to 576"
 
       assert test_view =~ """
-             <input class="input is-danger" id="site_form_component_mtu" name="site[mtu]" placeholder="1420" type="text" value="0"/>\
+             <input class="input is-danger" id="site_form_component_mtu" name="site[mtu]" placeholder="1280" type="text" value="0"/>\
              """
     end
   end

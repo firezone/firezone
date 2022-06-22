@@ -21,7 +21,7 @@ defmodule FzHttp.SitesTest do
         "allowed_ips" => "::/0",
         "endpoint" => "foobar.example.com",
         "persistent_keepalive" => "15",
-        "mtu" => "1420"
+        "mtu" => "1280"
       }
     ]
     @invalid_site %{
