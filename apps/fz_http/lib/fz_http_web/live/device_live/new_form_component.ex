@@ -71,10 +71,10 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
       :ok ->
         socket
 
-      {:error, resp} ->
+      {:error, _resp} ->
         error_msg = """
         Device created but an error occured applying its configuration to the WireGuard
-        interface. Error: #{resp}.
+        interface. Check logs for more information.
         """
 
         socket

@@ -64,7 +64,7 @@ defmodule FzVpn.Server do
     |> set_peers()
     |> case do
       :ok -> {:ok, new_config}
-      err -> err
+      {:error, _error_info} -> {:error, old_config}
     end
   end
 
