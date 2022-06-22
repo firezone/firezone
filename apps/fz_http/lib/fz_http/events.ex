@@ -7,21 +7,22 @@ defmodule FzHttp.Events do
 
   # set_config is used because devices need to be re-evaluated in case a
   # device is added to a User that's not active.
-  # XXX: In the future maybe update only this peer in fz_vpn
-  def update_device(_device) do
+  def update_device(device) do
+    GenServer.call(wall_pid(), {:add_rules, Rules.nftables_device_spec(device)})
     GenServer.call(vpn_pid(), {:set_config, Devices.to_peer_list()})
   end
 
-  def delete_device(public_key) when is_binary(public_key) do
-    GenServer.call(vpn_pid(), {:remove_peer, public_key})
-  end
+  def delete_device(device) do
+    GenServer.call(
+      wall_pid(),
+      {:delete_device_rules, {Rules.decode(device.ipv4), Rules.decode(device.ipv6)}}
+    )
 
-  def delete_device(device) when is_struct(device) do
     GenServer.call(vpn_pid(), {:remove_peer, device.public_key})
   end
 
   def add_rule(rule) do
-    GenServer.call(wall_pid(), {:add_rule, Rules.nftables_spec(rule)})
+    GenServer.call(wall_pid(), {:add_rules, Rules.nftables_spec(rule)})
   end
 
   def delete_rule(rule) do
