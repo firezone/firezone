@@ -95,23 +95,28 @@ defmodule FzWall.CLI.Live do
   Deletes nftables rule.
   """
   def delete_rule(params) do
-    rule_str = rule_str(params)
+    rule_str(params)
+    |> delete_rule_matching()
+  end
+
+  def delete_rules(source) do
+    source_match_str(source)
+    |> delete_rule_matching()
+  end
+
+  defp delete_rule_matching(rule_str) do
     rules = exec!("#{nft()} -a list table inet #{@table_name}")
 
-    case rule_handle_regex(~r/#{rule_str}.*# handle (?<num>\d+)/, rules) do
+    # When a rule is deleted the others might change handle so we need to
+    # re-scan each time.
+    case rule_handle_regex(~r/^\s*#{rule_str}.*# handle (?<num>\d+)/m, rules) do
       nil ->
-        raise("""
-          ######################################################
-          Could not get handle to delete rule!
-          Rule spec: #{rule_str}
-
-          Current rules:
-          #{rules}
-          ######################################################
-        """)
+        :no_rule
 
       [handle] ->
         exec!("#{nft()} delete rule inet #{@table_name} forward handle #{handle}")
+        # There might still be matching rules so re-run it
+        delete_rule_matching(rule_str)
     end
   end
 
@@ -193,8 +198,7 @@ defmodule FzWall.CLI.Live do
   defp rule_str({source, dest, action}), do: "#{rule_match_str(source, dest)} #{action}"
 
   defp rule_match_str(dest), do: "#{proto(dest)} daddr #{standardized_inet(dest)}"
+  defp rule_match_str(source, dest), do: "#{source_match_str(source)} #{rule_match_str(dest)}"
 
-  defp rule_match_str(source, dest) do
-    "#{proto(source)} saddr #{standardized_inet(source)} #{rule_match_str(dest)}"
-  end
+  defp source_match_str(source), do: "#{proto(source)} saddr #{standardized_inet(source)}"
 end
