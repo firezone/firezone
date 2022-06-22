@@ -30,6 +30,11 @@ defmodule FzHttp.MFATest do
   end
 
   describe "queries" do
+    test "count_distinct_by_user_id", %{user: user} do
+      Enum.each(1..5, fn _ -> create_method(user) end)
+      assert MFA.count_distinct_by_user_id() == 1
+    end
+
     test "list in descending order", %{user: user} do
       Enum.each(1..5, fn _ -> create_method(user) end)
       methods = MFA.list_methods(user)

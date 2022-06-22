@@ -3,6 +3,14 @@ defmodule FzHttp.DevicesTest do
   use FzHttp.DataCase, async: false
   alias FzHttp.{Devices, Users}
 
+  describe "count/0" do
+    setup :create_devices
+
+    test "counts devices", %{devices: devices} do
+      assert length(devices) == Devices.count()
+    end
+  end
+
   describe "list_devices/0" do
     setup [:create_device]
 
