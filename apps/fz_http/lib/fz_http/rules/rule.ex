@@ -6,7 +6,7 @@ defmodule FzHttp.Rules.Rule do
   use Ecto.Schema
   import Ecto.Changeset
 
-  @rule_dupe_msg "A rule with that IP/CIDR address already exists and for the same user (or no user)."
+  @rule_dupe_msg "A rule with that specification already exists."
 
   schema "rules" do
     field :uuid, Ecto.UUID, autogenerate: true
