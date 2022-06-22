@@ -17,10 +17,6 @@ include_recipe 'line::default'
 require 'mixlib/shellout'
 require 'net/http'
 
-# Use ip route for finding default egress interface
-egress_int_cmd = Mixlib::ShellOut.new("ip route show default 0.0.0.0/0 | grep -oP '(?<=dev ).*' | cut -f1 -d' '")
-egress_interface = egress_int_cmd.run_command.stdout.chomp
-
 unless node['firezone']['wireguard']['endpoint']
   # Figure out a sane default endpoint IP address
   egress_ip =
@@ -33,6 +29,9 @@ unless node['firezone']['wireguard']['endpoint']
 end
 
 unless node['firezone']['egress_interface']
+  # Use ip route for finding default egress interface
+  egress_int_cmd = Mixlib::ShellOut.new("ip route show default 0.0.0.0/0 | grep -oP '(?<=dev ).*' | cut -f1 -d' '")
+  egress_interface = egress_int_cmd.run_command.stdout.chomp
   node.consume_attributes('firezone' => { 'egress_interface' => egress_interface })
 end
 
