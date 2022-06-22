@@ -112,8 +112,42 @@ defmodule FzHttp.TestHelpers do
     {:ok, rule6: rule}
   end
 
+  def create_rule6_with_user(_) do
+    user = UsersFixtures.user()
+
+    2..5
+    |> Enum.each(fn num ->
+      DevicesFixtures.device(%{
+        name: "device #{num}",
+        public_key: "#{num}",
+        user_id: user.id,
+        ipv6: "fd00::3:2:#{num}"
+      })
+    end)
+
+    rule = RulesFixtures.rule6(%{user_id: user.id})
+    {:ok, rule6: rule}
+  end
+
   def create_rule4(_) do
     rule = RulesFixtures.rule4(%{})
+    {:ok, rule4: rule}
+  end
+
+  def create_rule4_with_user(_) do
+    user = UsersFixtures.user()
+
+    2..5
+    |> Enum.each(fn num ->
+      DevicesFixtures.device(%{
+        name: "device #{num}",
+        public_key: "#{num}",
+        user_id: user.id,
+        ipv4: "10.3.2.#{num}"
+      })
+    end)
+
+    rule = RulesFixtures.rule4(%{user_id: user.id})
     {:ok, rule4: rule}
   end
 
@@ -128,7 +162,61 @@ defmodule FzHttp.TestHelpers do
         RulesFixtures.rule(%{destination: destination})
       end)
 
-    {:ok, rules: rules}
+    rules_with_user =
+      4..6
+      |> Enum.map(fn num ->
+        destination = "#{num}.#{num}.#{num}.0/24"
+        user = UsersFixtures.user()
+
+        DevicesFixtures.device(%{
+          name: "device #{num}",
+          public_key: "#{num}",
+          user_id: user.id,
+          ipv4: "10.3.2.#{num}",
+          ipv6: "fd00::3:2:#{num}"
+        })
+
+        RulesFixtures.rule(%{destination: destination, user_id: user.id})
+      end)
+
+    destination = "7.7.7.0/24"
+    user = UsersFixtures.user()
+    rule_without_device = RulesFixtures.rule(%{destination: destination, user_id: user.id})
+    {:ok, rules: rules ++ rules_with_user ++ [rule_without_device]}
+  end
+
+  def create_device_with_rules(_) do
+    user = UsersFixtures.user()
+
+    1..4
+    |> Enum.each(fn num ->
+      destination = "#{num}.#{num}.#{num}.0/24"
+      RulesFixtures.rule(%{destination: destination, user_id: user.id})
+    end)
+
+    1..4
+    |> Enum.each(fn num ->
+      destination = "#{num}::/112"
+      RulesFixtures.rule(%{destination: destination, user_id: user.id})
+    end)
+
+    device =
+      DevicesFixtures.device(%{
+        name: "device",
+        public_key: "1",
+        user_id: user.id,
+        ipv4: "10.3.2.2",
+        ipv6: "fd00::3:2:2"
+      })
+
+    {:ok, device: device}
+  end
+
+  def create_rule_with_user(_) do
+    user = UsersFixtures.user()
+    rule = RulesFixtures.rule(%{user_id: user.id})
+
+    {:ok, rule: rule, user: user}
   end
 
   def create_user_with_valid_sign_in_token(_) do
