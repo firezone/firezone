@@ -26,6 +26,13 @@ require 'securerandom'
 # This creates the config_directory if it does not exist as well as the files
 # in it.
 
+file "#{node['firezone']['var_directory']}/cache/wg_private_key" do
+  owner node['firezone']['user']
+  group node['firezone']['group']
+  mode '0600'
+  action :create_if_missing
+end
+
 Firezone::Config.load_or_create!(
   "#{node['firezone']['config_directory']}/firezone.rb",
   node

@@ -3,17 +3,6 @@ defmodule FzCommon.FzCryptoTest do
 
   alias FzCommon.FzCrypto
 
-  describe "private_key/1" do
-    @test_bytes <<31, 128, 125, 219, 126, 99, 195, 9, 10, 186, 14, 40, 244, 71, 25, 38, 142, 120,
-                  187, 54, 204, 31, 198, 199, 240, 44, 175, 43, 127, 237, 126, 35>>
-    @expected_private_key <<24, 128, 125, 219, 126, 99, 195, 9, 10, 186, 14, 40, 244, 71, 25, 38,
-                            142, 120, 187, 54, 204, 31, 198, 199, 240, 44, 175, 43, 127, 237, 126,
-                            99>>
-    test "clamps bytes" do
-      assert FzCrypto.private_key(@test_bytes) == @expected_private_key
-    end
-  end
-
   describe "psk/0" do
     test "it returns a string of proper length" do
       assert 44 == String.length(FzCrypto.psk())
