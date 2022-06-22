@@ -7,6 +7,7 @@ defmodule FzVpn.Server do
   require Logger
 
   alias FzVpn.Interface
+  alias FzVpn.Keypair
 
   @process_opts Application.compile_env(:fz_vpn, :server_process_opts, [])
   @init_timeout 1_000
@@ -55,16 +56,9 @@ defmodule FzVpn.Server do
   end
 
   defp setup_interface do
-    {:ok, iface_names} = Interface.list_names()
-
-    if Enum.member?(iface_names, iface_name()) do
-      {:ok, device} = Interface.get(iface_name())
-      Application.put_env(:fz_vpn, :wireguard_public_key, device.public_key, persistent: true)
-    else
-      {listen_port, _} = Integer.parse(Application.get_env(:fz_vpn, :wireguard_port))
-      {:ok, {_private_key, public_key}} = Interface.create(iface_name(), listen_port)
-      Application.put_env(:fz_vpn, :wireguard_public_key, public_key, persistent: true)
-    end
+    private_key = Keypair.load_or_generate_private_key()
+    {listen_port, _} = Integer.parse(Application.fetch_env!(:fz_vpn, :wireguard_port))
+    Interface.set(iface_name(), private_key, listen_port)
   end
 
   defp delete_old_peers(old_config, new_config) do
@@ -79,8 +73,8 @@ defmodule FzVpn.Server do
     |> set_peers()
   end
 
-  defp set_peers(config) do
-    Interface.set(iface_name(), nil, config)
+  defp set_peers(peers) do
+    Interface.set(iface_name(), nil, nil, peers)
   end
 
   defp peers_to_config(peers) do

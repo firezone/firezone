@@ -30,6 +30,7 @@ defmodule FzHttp.Sites.Site do
   @max_vpn_session_duration @max_pg_integer
 
   schema "sites" do
+    field :public_key, :string
     field :name, :string
     field :dns, :string
     field :allowed_ips, :string
@@ -44,6 +45,7 @@ defmodule FzHttp.Sites.Site do
   def changeset(site, attrs) do
     site
     |> cast(attrs, [
+      :private_key,
       :name,
       :dns,
       :allowed_ips,

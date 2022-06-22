@@ -44,7 +44,7 @@ defmodule FzVpn.Interface do
   If successful we return an :ok status. If interface fails to be set,
   `{:error, error_info}` will be logged and returned.
   """
-  def set(name, private_key, peers) do
+  def set(name, private_key, listen_port, peers \\ []) do
     peer_configs =
       for {public_key, settings} <- peers do
         PeerConfigBuilder.peer_config()
@@ -56,6 +56,7 @@ defmodule FzVpn.Interface do
     result =
       DeviceConfigBuilder.device_config()
       |> DeviceConfigBuilder.private_key(private_key)
+      |> DeviceConfigBuilder.listen_port(listen_port)
       |> DeviceConfigBuilder.peers(peer_configs)
       |> wg_adapter().set_device(name)
 

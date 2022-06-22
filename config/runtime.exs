@@ -35,6 +35,7 @@ if config_env() == :prod do
   phoenix_port = String.to_integer(System.fetch_env!("PHOENIX_PORT"))
   admin_email = System.fetch_env!("ADMIN_EMAIL")
   default_admin_password = System.fetch_env!("DEFAULT_ADMIN_PASSWORD")
+  wireguard_private_key_path = System.fetch_env!("WIREGUARD_PRIVATE_KEY_PATH")
   wireguard_interface_name = System.fetch_env!("WIREGUARD_INTERFACE_NAME")
   wireguard_port = String.to_integer(System.fetch_env!("WIREGUARD_PORT"))
   nft_path = System.fetch_env!("NFT_PATH")
@@ -175,6 +176,7 @@ if config_env() == :prod do
     cli: FzWall.CLI.Live
 
   config :fz_vpn,
+    wireguard_private_key_path: wireguard_private_key_path,
     wireguard_interface_name: wireguard_interface_name,
     wireguard_port: wireguard_port
 

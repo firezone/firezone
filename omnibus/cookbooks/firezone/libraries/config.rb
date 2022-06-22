@@ -254,6 +254,10 @@ class Firezone
         'OUTBOUND_EMAIL_CONFIGS' => attributes['outbound_email']['configs'].to_json,
         'OUTBOUND_EMAIL_FROM' => attributes['outbound_email']['from'],
 
+        # XXX: Remove this in the future when we're fairly sure that users won't upgrade across
+        # the <= 0.4.4 to >= 0.4.5 version boundary.
+        'WIREGUARD_PRIVATE_KEY_PATH' => "#{node['firezone']['var_directory']}/cache/wg_private_key",
+
         # Auth
         'LOCAL_AUTH_ENABLED' => attributes['authentication']['local']['enabled'].to_s,
         'OKTA_AUTH_ENABLED' => attributes['authentication']['okta']['enabled'].to_s,

@@ -5,6 +5,12 @@ defmodule FzVpn.Interface.WGAdapter.Live do
 
   use GenServer
 
+  defdelegate get_device(name), to: Wireguardex
+  defdelegate list_devices, to: Wireguardex
+  defdelegate set_device(config, name), to: Wireguardex
+  defdelegate delete_device(name), to: Wireguardex
+  defdelegate remove_peer(name, public_key), to: Wireguardex
+
   # Stub out a GenServer start and init for now.
   # Track state around the WireGuard calls if needed later.
 
@@ -12,24 +18,4 @@ defmodule FzVpn.Interface.WGAdapter.Live do
 
   @impl GenServer
   def init(_), do: {:ok, %{}}
-
-  def get_device(name) do
-    Wireguardex.get_device(name)
-  end
-
-  def list_devices do
-    Wireguardex.list_devices()
-  end
-
-  def set_device(config, name) do
-    Wireguardex.set_device(config, name)
-  end
-
-  def delete_device(name) do
-    Wireguardex.delete_device(name)
-  end
-
-  def remove_peer(name, public_key) do
-    Wireguardex.remove_peer(name, public_key)
-  end
 end
