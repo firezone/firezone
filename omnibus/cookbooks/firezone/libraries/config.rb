@@ -236,7 +236,6 @@ class Firezone
         'WIREGUARD_DNS' => attributes['wireguard']['dns'].to_s,
         'WIREGUARD_ALLOWED_IPS' => attributes['wireguard']['allowed_ips'].to_s,
         'WIREGUARD_PERSISTENT_KEEPALIVE' => attributes['wireguard']['persistent_keepalive'].to_s,
-        'WIREGUARD_PUBLIC_KEY' => attributes['wireguard_public_key'],
         'WIREGUARD_IPV4_ENABLED' => attributes['wireguard']['ipv4']['enabled'].to_s,
         'WIREGUARD_IPV4_NETWORK' => attributes['wireguard']['ipv4']['network'],
         'WIREGUARD_IPV4_ADDRESS' => attributes['wireguard']['ipv4']['address'],
