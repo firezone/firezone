@@ -8,6 +8,7 @@ RUN set -xe \
   && bash setup_node_deb \
   && apt-get install -y \
     net-tools \
+    iproute2 \
     wireguard \
     nftables \
     inotify-tools \
@@ -17,6 +18,7 @@ RUN set -xe \
     nodejs \
   && apt-get autoremove -y \
   && apt-get clean -y \
+  && rm setup_node_deb \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /var/app
@@ -39,5 +41,7 @@ COPY mix.lock /var/app/mix.lock
 RUN npm install --prefix apps/fz_http/assets
 
 RUN mix do deps.get --only $MIX_ENV, deps.compile
+
+EXPOSE 4000 51820/udp
 
 CMD ["mix", "start"]

@@ -22,11 +22,15 @@ services:
       - ./config:/var/app/config:ro
       - ./mix.exs:/var/app/mix.exs:ro
       - ./mix.lock:/var/app/mix.lock:ro
+    ports:
+      - 51820:51820/udp
     environment:
       LOCAL_AUTH_ENABLED: 'true'
     cap_add:
       - NET_ADMIN
-    privileged: true
+      - SYS_MODULE
+    depends_on:
+      - postgres
 
   postgres:
     image: postgres:13.5
