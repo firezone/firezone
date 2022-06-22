@@ -116,8 +116,6 @@ class Firezone
         'cookie_signing_salt' => node['firezone'] && node['firezone']['cookie_signing_salt'] || SecureRandom.base64(6),
         'cookie_encryption_salt' => node['firezone'] && node['firezone']['cookie_encryption_salt'] || \
           SecureRandom.base64(6),
-        'wireguard_private_key' => node['firezone'] && node['firezone']['wireguard_private_key'] || \
-          `#{node['firezone']['install_directory']}/embedded/bin/wg genkey`.chomp,
         'database_encryption_key' => node['firezone'] && node['firezone']['database_encryption_key'] || \
           SecureRandom.base64(32),
         'default_admin_password' => node['firezone'] && node['firezone']['default_admin_password'] || \
