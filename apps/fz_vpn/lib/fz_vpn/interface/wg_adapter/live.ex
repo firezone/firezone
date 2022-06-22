@@ -17,6 +17,10 @@ defmodule FzVpn.Interface.WGAdapter.Live do
     Wireguardex.get_device(name)
   end
 
+  def list_devices do
+    Wireguardex.list_devices()
+  end
+
   def set_device(config, name) do
     Wireguardex.set_device(config, name)
   end

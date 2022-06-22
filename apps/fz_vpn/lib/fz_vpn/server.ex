@@ -17,6 +17,7 @@ defmodule FzVpn.Server do
 
   @impl GenServer
   def init(_config) do
+    setup_interface()
     {:ok, peers} = GenServer.call(http_pid(), :load_peers, @init_timeout)
     config = peers_to_config(peers)
     apply_config_diff(config)
@@ -51,6 +52,19 @@ defmodule FzVpn.Server do
 
   def http_pid do
     :global.whereis_name(:fz_http_server)
+  end
+
+  defp setup_interface do
+    {:ok, iface_names} = Interface.list_names()
+
+    if Enum.member?(iface_names, iface_name()) do
+      {:ok, device} = Interface.get(iface_name())
+      Application.put_env(:fz_vpn, :wireguard_public_key, device.public_key, persistent: true)
+    else
+      {listen_port, _} = Integer.parse(Application.get_env(:fz_vpn, :wireguard_port))
+      {:ok, {_private_key, public_key}} = Interface.create(iface_name(), listen_port)
+      Application.put_env(:fz_vpn, :wireguard_public_key, public_key, persistent: true)
+    end
   end
 
   defp delete_old_peers(old_config, new_config) do

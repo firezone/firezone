@@ -13,6 +13,10 @@ defmodule FzVpn.Interface.WGAdapter.Sandbox do
     GenServer.call(__MODULE__, {:get_device, name})
   end
 
+  def list_devices do
+    GenServer.call(__MODULE__, {:list_devices})
+  end
+
   def set_device(config, name) do
     GenServer.call(__MODULE__, {:set_device, config, name})
   end
@@ -36,10 +40,16 @@ defmodule FzVpn.Interface.WGAdapter.Sandbox do
   end
 
   @impl GenServer
+  def handle_call({:list_devices}, _from, devices) do
+    {:reply, {:ok, Map.keys(devices)}, devices}
+  end
+
+  @impl GenServer
   def handle_call({:set_device, config, name}, _from, devices) do
     public_key =
       if config.private_key do
-        Wireguardex.get_public_key(config.private_key)
+        {:ok, public_key} = Wireguardex.get_public_key(config.private_key)
+        public_key
       end
 
     peers =

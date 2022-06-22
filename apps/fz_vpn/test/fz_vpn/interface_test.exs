@@ -2,12 +2,18 @@ defmodule FzVpn.InterfaceTest do
   use ExUnit.Case, async: true
 
   alias FzVpn.Interface
+  alias FzVpn.Server
+
+  setup_all do
+    # remove the interface added on server init
+    :ok = Interface.delete(Server.iface_name())
+  end
 
   test "create interface" do
     name = "wg-create"
-    {:ok, key_pair} = Interface.create(name, nil, nil, nil, nil)
-    {private_key, public_key} = key_pair
+    {:ok, {private_key, public_key}} = Interface.create(name, 51_820)
     {:ok, device} = Interface.get(name)
+    :ok = Interface.delete(name)
 
     assert device.name == name && device.private_key == private_key &&
              device.public_key == public_key
@@ -16,10 +22,17 @@ defmodule FzVpn.InterfaceTest do
   test "delete interface" do
     name = "wg-delete"
     :ok = Interface.set(name, nil, [])
-    :ok = Interface.delete(name)
-    {:ok, device} = Interface.get(name)
 
-    assert is_nil(device)
+    assert :ok == Interface.delete(name)
+  end
+
+  test "list interface names" do
+    expected_names = ["wg0-list", "wg1-list"]
+    Enum.each(expected_names, fn name -> Interface.create(name, 51_820) end)
+    {:ok, names} = Interface.list_names()
+    Enum.each(expected_names, fn name -> :ok = Interface.delete(name) end)
+
+    assert names == expected_names
   end
 
   test "remove peer from interface" do
@@ -36,6 +49,7 @@ defmodule FzVpn.InterfaceTest do
     :ok = Interface.set(name, nil, peers)
     :ok = Interface.remove_peer(name, public_key)
     {:ok, device} = Interface.get(name)
+    :ok = Interface.delete(name)
 
     assert device.peers == []
   end
@@ -78,6 +92,7 @@ defmodule FzVpn.InterfaceTest do
 
       :ok = Interface.set(name, nil, peers)
       interface_info = Interface.dump(name)
+      :ok = Interface.delete(name)
 
       assert interface_info == @expected_interface_info
     end
