@@ -4,11 +4,6 @@ defmodule FzVpn.InterfaceTest do
   alias FzVpn.Interface
   alias FzVpn.Server
 
-  setup_all do
-    # remove the interface added on server init
-    :ok = Interface.delete(Server.iface_name())
-  end
-
   test "delete interface" do
     name = "wg-delete"
     :ok = Interface.set(name, %{})
@@ -17,7 +12,7 @@ defmodule FzVpn.InterfaceTest do
   end
 
   test "list interface names" do
-    expected_names = ["wg0-list", "wg1-list"]
+    expected_names = [Server.iface_name(), "wg0-list", "wg1-list"]
     Enum.each(expected_names, fn name -> Interface.set(name, %{}) end)
     {:ok, names} = Interface.list_names()
     Enum.each(expected_names, fn name -> :ok = Interface.delete(name) end)

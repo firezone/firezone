@@ -7,7 +7,6 @@ defmodule FzVpn.Application do
 
   def start(_type, _args) do
     children = [
-      Application.fetch_env!(:fz_vpn, :wg_adapter),
       FzVpn.Server,
       FzVpn.StatsPushService
     ]
