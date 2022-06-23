@@ -61,6 +61,12 @@ const config = {
             position: "left",
           },
           {
+            href: "https://docs.firezone.dev/",
+            label: "Old Documentation",
+            position: "left",
+            "aria-label": "Old Documentation",
+          },
+          {
             href: "https://github.com/facebook/docusaurus",
             label: "Ask a Question",
             position: "right",
