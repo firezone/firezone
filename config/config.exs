@@ -95,10 +95,9 @@ config :hammer,
 # This will be changed per-env
 config :fz_vpn,
   stats_push_service_enabled: true,
-  wireguard_psk_dir: "/tmp",
-  wireguard_public_key: "cB2yQeCxHO/qCH8APoM2D2Anf4Yd7sRLyfS7su71K3M=",
+  wireguard_private_key_path: "priv/.wg_dummy_private_key",
   wireguard_interface_name: "wg-firezone",
-  wireguard_port: "51820",
+  wireguard_port: 51820,
   wireguard_endpoint: "127.0.0.1",
   wg_adapter: FzVpn.Interface.WGAdapter.Sandbox,
   server_process_opts: [name: {:global, :fz_vpn_server}]

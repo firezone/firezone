@@ -116,8 +116,6 @@ class Firezone
         'cookie_signing_salt' => node['firezone'] && node['firezone']['cookie_signing_salt'] || SecureRandom.base64(6),
         'cookie_encryption_salt' => node['firezone'] && node['firezone']['cookie_encryption_salt'] || \
           SecureRandom.base64(6),
-        'wireguard_private_key' => node['firezone'] && node['firezone']['wireguard_private_key'] || \
-          `#{node['firezone']['install_directory']}/embedded/bin/wg genkey`.chomp,
         'database_encryption_key' => node['firezone'] && node['firezone']['database_encryption_key'] || \
           SecureRandom.base64(32),
         'default_admin_password' => node['firezone'] && node['firezone']['default_admin_password'] || \
@@ -215,7 +213,6 @@ class Firezone
       # NOTE: All these variables must be Strings
       env = {
         'EGRESS_INTERFACE' => attributes['egress_interface'],
-        'WG_PATH' => "#{attributes['install_directory']}/embedded/bin/wg",
         'NFT_PATH' => "#{attributes['install_directory']}/embedded/sbin/nft",
         'MIX_ENV' => 'prod',
         'DATABASE_NAME' => attributes['database']['name'],
@@ -237,8 +234,6 @@ class Firezone
         'WIREGUARD_DNS' => attributes['wireguard']['dns'].to_s,
         'WIREGUARD_ALLOWED_IPS' => attributes['wireguard']['allowed_ips'].to_s,
         'WIREGUARD_PERSISTENT_KEEPALIVE' => attributes['wireguard']['persistent_keepalive'].to_s,
-        'WIREGUARD_PUBLIC_KEY' => attributes['wireguard_public_key'],
-        'WIREGUARD_PSK_DIR' => "#{attributes['var_directory']}/cache/psks",
         'WIREGUARD_IPV4_ENABLED' => attributes['wireguard']['ipv4']['enabled'].to_s,
         'WIREGUARD_IPV4_NETWORK' => attributes['wireguard']['ipv4']['network'],
         'WIREGUARD_IPV4_ADDRESS' => attributes['wireguard']['ipv4']['address'],
@@ -258,6 +253,10 @@ class Firezone
         'OUTBOUND_EMAIL_PROVIDER' => attributes['outbound_email']['provider'],
         'OUTBOUND_EMAIL_CONFIGS' => attributes['outbound_email']['configs'].to_json,
         'OUTBOUND_EMAIL_FROM' => attributes['outbound_email']['from'],
+
+        # XXX: Remove this in the future when we're fairly sure that users won't upgrade across
+        # the <= 0.4.4 to >= 0.4.5 version boundary.
+        'WIREGUARD_PRIVATE_KEY_PATH' => "#{node['firezone']['var_directory']}/cache/wg_private_key",
 
         # Auth
         'LOCAL_AUTH_ENABLED' => attributes['authentication']['local']['enabled'].to_s,
