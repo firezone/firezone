@@ -11,14 +11,14 @@ defmodule FzVpn.InterfaceTest do
 
   test "delete interface" do
     name = "wg-delete"
-    :ok = Interface.set(name, nil, [])
+    :ok = Interface.set(name, %{})
 
     assert :ok == Interface.delete(name)
   end
 
   test "list interface names" do
     expected_names = ["wg0-list", "wg1-list"]
-    Enum.each(expected_names, fn name -> Interface.set(name, nil, 51_820) end)
+    Enum.each(expected_names, fn name -> Interface.set(name, %{}) end)
     {:ok, names} = Interface.list_names()
     Enum.each(expected_names, fn name -> :ok = Interface.delete(name) end)
 
@@ -36,7 +36,7 @@ defmodule FzVpn.InterfaceTest do
       }
     }
 
-    :ok = Interface.set(name, nil, 51_820, peers)
+    :ok = Interface.set(name, peers)
     :ok = Interface.remove_peer(name, public_key)
     {:ok, device} = Interface.get(name)
     :ok = Interface.delete(name)
@@ -80,7 +80,7 @@ defmodule FzVpn.InterfaceTest do
         }
       }
 
-      :ok = Interface.set(name, nil, nil, peers)
+      :ok = Interface.set(name, peers)
       interface_info = Interface.dump(name)
       :ok = Interface.delete(name)
 

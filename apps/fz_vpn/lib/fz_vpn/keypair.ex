@@ -7,7 +7,7 @@ defmodule FzVpn.Keypair do
     path = Application.fetch_env!(:fz_vpn, :wireguard_private_key_path)
 
     private_key =
-      if File.exists?(path) do
+      if File.exists?(path) && File.stat!(path).size > 0 do
         File.read!(path)
         |> String.trim()
       else

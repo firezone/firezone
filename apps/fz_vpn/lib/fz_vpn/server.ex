@@ -57,8 +57,8 @@ defmodule FzVpn.Server do
 
   defp setup_interface do
     private_key = Keypair.load_or_generate_private_key()
-    {listen_port, _} = Integer.parse(Application.fetch_env!(:fz_vpn, :wireguard_port))
-    Interface.set(iface_name(), private_key, listen_port)
+    listen_port = Application.fetch_env!(:fz_vpn, :wireguard_port)
+    Interface.set(iface_name(), %{}, private_key: private_key, listen_port: listen_port)
   end
 
   defp delete_old_peers(old_config, new_config) do
@@ -74,7 +74,7 @@ defmodule FzVpn.Server do
   end
 
   defp set_peers(peers) do
-    Interface.set(iface_name(), nil, nil, peers)
+    Interface.set(iface_name(), peers)
   end
 
   defp peers_to_config(peers) do

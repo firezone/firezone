@@ -70,7 +70,7 @@ fi
 echo "Testing FzVpn.Interface module works with WireGuard"
 fz_bin="/opt/firezone/embedded/service/firezone/bin/firezone"
 ok_res=":ok"
-set_interface=`sudo $fz_bin rpc "IO.inspect(FzVpn.Interface.set(\"wg-fz-test\", nil, %{}))"`
+set_interface=`sudo $fz_bin rpc "IO.inspect(FzVpn.Interface.set(\"wg-fz-test\", %{}))"`
 del_interface=`sudo $fz_bin rpc "IO.inspect(FzVpn.Interface.delete(\"wg-fz-test\"))"`
 
 if [[ "$set_interface" != $ok_res || "$del_interface" != $ok_res ]]; then

@@ -11,12 +11,21 @@ defmodule FzVpn.Interface do
   require Logger
 
   @doc """
-  Set an interface's private key and peers.
+  Set an interface by name with its peers. If the interface does not exist, it
+  will be created.
+
+  ## Options
+
+  * `:private_key` - the interface's private key will be set
+  * `:listen_port - the interface's listening port will be set
 
   If successful we return an :ok status. If interface fails to be set,
   `{:error, error_info}` will be logged and returned.
   """
-  def set(name, private_key, listen_port, peers \\ []) do
+  def set(name, peers, opts \\ []) do
+    private_key = opts[:private_key]
+    listen_port = opts[:listen_port]
+
     peer_configs =
       for {public_key, settings} <- peers do
         PeerConfigBuilder.peer_config()
