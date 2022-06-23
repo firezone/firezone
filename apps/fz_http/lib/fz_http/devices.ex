@@ -7,6 +7,8 @@ defmodule FzHttp.Devices do
   import Ecto.Query, warn: false
   alias FzHttp.{Devices.Device, Repo, Sites, Telemetry, Users, Users.User}
 
+  require Logger
+
   def list_devices do
     Repo.all(Device)
   end
@@ -141,7 +143,13 @@ defmodule FzHttp.Devices do
 
   def as_config(device) do
     wireguard_port = Application.fetch_env!(:fz_vpn, :wireguard_port)
-    server_public_key = Application.fetch_env!(:fz_vpn, :wireguard_public_key)
+    server_public_key = Application.get_env(:fz_vpn, :wireguard_public_key)
+
+    if is_nil(server_public_key) do
+      Logger.error(
+        "No server public key found! This will break device config generation. Is fz_vpn alive?"
+      )
+    end
 
     """
     [Interface]
