@@ -7,6 +7,8 @@ defmodule FzHttp.Devices do
   import Ecto.Query, warn: false
   alias FzHttp.{Devices.Device, Repo, Sites, Telemetry, Users, Users.User}
 
+  require Logger
+
   def count do
     Repo.one(from d in Device, select: count(d.id))
   end
