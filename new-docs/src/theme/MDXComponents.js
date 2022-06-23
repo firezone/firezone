@@ -1,4 +1,3 @@
-import React from "react";
 // Import the original mapper
 import MDXComponents from "@theme-original/MDXComponents";
 import AccentBlock from "@site/src/components/AccentBlock";
