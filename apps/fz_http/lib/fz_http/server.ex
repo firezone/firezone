@@ -26,8 +26,8 @@ defmodule FzHttp.Server do
   end
 
   @impl GenServer
-  def handle_call(:load_rules, _from, state) do
-    reply = {:ok, Rules.to_nftables()}
+  def handle_call(:load_settings, _from, state) do
+    reply = {:ok, Rules.to_settings()}
     {:reply, reply, state}
   end
 
