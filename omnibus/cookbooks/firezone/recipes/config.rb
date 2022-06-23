@@ -40,10 +40,6 @@ Firezone::Config.load_or_create_secrets!(
   node
 )
 
-pkey = node['firezone']['wireguard_private_key']
-wg = "#{node['firezone']['install_directory']}/embedded/bin/wg"
-node.default['firezone']['wireguard_public_key'] = `echo '#{pkey}' | #{wg} pubkey`.chomp
-
 Firezone::Config.audit_config(node['firezone'])
 Firezone::Config.maybe_turn_on_fips(node)
 
@@ -103,15 +99,7 @@ file "#{node['firezone']['config_directory']}/secrets.json" do
 end
 
 file "#{node['firezone']['var_directory']}/cache/wg_private_key" do
-  owner 'root'
-  group 'root'
-  mode '0600'
-  content node['firezone']['wireguard_private_key']
-  action :create_if_missing
-end
-
-directory "#{node['firezone']['var_directory']}/cache/psks" do
-  owner 'root'
+  owner node['firezone']['user']
   group node['firezone']['group']
-  mode '0770'
+  mode '0600'
 end

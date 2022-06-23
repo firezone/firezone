@@ -3,7 +3,6 @@ defmodule FzVpn.Interface do
   This module has functions to create interfaces, set configurations on them,
   and get peer info via [WireGuard](https://wireguard.com)
   """
-  import FzCommon.CLI
   import FzVpn.Interface.WGAdapter
 
   alias Wireguardex.DeviceConfigBuilder
@@ -12,41 +11,21 @@ defmodule FzVpn.Interface do
   require Logger
 
   @doc """
-  Creates an interface with a name, listening port, ipv4 address, ipv6 address,
-  and MTU.
+  Set an interface by name with its peers. If the interface does not exist, it
+  will be created.
 
-  If successful `{:ok, {private_key, public_key}}` is returned. If the interface
-  creation fails, `{:error, error_info}` will be logged and returned.
-  """
-  def create(name, listen_port, ipv4_address, ipv6_address, mtu) do
-    private_key = Wireguardex.generate_private_key()
-    public_key = Wireguardex.get_public_key(private_key)
+  ## Options
 
-    result =
-      DeviceConfigBuilder.device_config()
-      |> DeviceConfigBuilder.listen_port(listen_port)
-      |> DeviceConfigBuilder.private_key(private_key)
-      |> DeviceConfigBuilder.public_key(public_key)
-      |> wg_adapter().set_device(name)
-
-    case result do
-      :ok ->
-        ip_cmds(name, ipv4_address, ipv6_address, mtu)
-        {:ok, {private_key, public_key}}
-
-      {:error, error_info} ->
-        Logger.error("Failed to create interface #{name}: #{error_info}")
-        result
-    end
-  end
-
-  @doc """
-  Set an interface's private key and peers.
+  * `:private_key` - the interface's private key will be set
+  * `:listen_port - the interface's listening port will be set
 
   If successful we return an :ok status. If interface fails to be set,
   `{:error, error_info}` will be logged and returned.
   """
-  def set(name, private_key, peers) do
+  def set(name, peers, opts \\ []) do
+    private_key = opts[:private_key]
+    listen_port = opts[:listen_port]
+
     peer_configs =
       for {public_key, settings} <- peers do
         PeerConfigBuilder.peer_config()
@@ -58,6 +37,7 @@ defmodule FzVpn.Interface do
     result =
       DeviceConfigBuilder.device_config()
       |> DeviceConfigBuilder.private_key(private_key)
+      |> DeviceConfigBuilder.listen_port(listen_port)
       |> DeviceConfigBuilder.peers(peer_configs)
       |> wg_adapter().set_device(name)
 
@@ -78,7 +58,35 @@ defmodule FzVpn.Interface do
   retrieved, return `{:error, error_info}`.
   """
   def get(name) do
-    wg_adapter().get_device(name)
+    result = wg_adapter().get_device(name)
+
+    case result do
+      {:ok, device} ->
+        {:ok, device}
+
+      {:error, error_info} ->
+        Logger.error("Failed to get interface #{name}: #{error_info}")
+        result
+    end
+  end
+
+  @doc """
+  Get a list of interface names.
+
+  If successful we return `{:ok, [Device]}. If getting the list fails, return
+  '{:error, error_info}'.
+  """
+  def list_names do
+    result = wg_adapter().list_devices()
+
+    case result do
+      {:ok, iface_names} ->
+        {:ok, iface_names}
+
+      {:error, error_info} ->
+        Logger.error("Failed to get list of interface names: #{error_info}")
+        result
+    end
   end
 
   @doc """
@@ -193,18 +201,4 @@ defmodule FzVpn.Interface do
 
   defp persistent_keepalive_to_str(n) when is_nil(n) or n == 0, do: "off"
   defp persistent_keepalive_to_str(n), do: to_string(n)
-
-  defp ip_cmds(name, ipv4_address, ipv6_address, mtu) do
-    if !is_nil(ipv4_address) do
-      exec!("ip address replace #{ipv4_address} dev #{name}")
-    end
-
-    if !is_nil(ipv6_address) do
-      exec!("ip -6 address replace #{ipv6_address} dev #{name}")
-    end
-
-    if !is_nil(mtu) do
-      exec!("ip link set mtu #{mtu} up dev #{name}")
-    end
-  end
 end

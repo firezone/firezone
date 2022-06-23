@@ -7,6 +7,7 @@ defmodule FzVpn.Server do
   require Logger
 
   alias FzVpn.Interface
+  alias FzVpn.Keypair
 
   @process_opts Application.compile_env(:fz_vpn, :server_process_opts, [])
   @init_timeout 1_000
@@ -17,6 +18,7 @@ defmodule FzVpn.Server do
 
   @impl GenServer
   def init(_config) do
+    setup_interface()
     {:ok, peers} = GenServer.call(http_pid(), :load_peers, @init_timeout)
     config = peers_to_config(peers)
     apply_config_diff(config)
@@ -56,6 +58,12 @@ defmodule FzVpn.Server do
     :global.whereis_name(:fz_http_server)
   end
 
+  defp setup_interface do
+    private_key = Keypair.load_or_generate_private_key()
+    listen_port = Application.fetch_env!(:fz_vpn, :wireguard_port)
+    Interface.set(iface_name(), %{}, private_key: private_key, listen_port: listen_port)
+  end
+
   defp delete_old_peers(old_config, new_config) do
     for public_key <- Map.keys(old_config) -- Map.keys(new_config) do
       Interface.remove_peer(iface_name(), public_key)
@@ -72,8 +80,8 @@ defmodule FzVpn.Server do
     end
   end
 
-  defp set_peers(config) do
-    Interface.set(iface_name(), nil, config)
+  defp set_peers(peers) do
+    Interface.set(iface_name(), peers)
   end
 
   defp peers_to_config(peers) do

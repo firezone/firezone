@@ -22,8 +22,6 @@ setup_interface()
     ip -6 address replace ${WIREGUARD_IPV6_ADDRESS} dev ${WIREGUARD_INTERFACE_NAME}
   fi
   ip link set mtu ${WIREGUARD_INTERFACE_MTU} up dev ${WIREGUARD_INTERFACE_NAME}
-  ${WG_PATH} set ${WIREGUARD_INTERFACE_NAME} private-key ${WIREGUARD_PRIVATE_KEY_PATH}
-  ${WG_PATH} set ${WIREGUARD_INTERFACE_NAME} listen-port ${WIREGUARD_LISTEN_PORT}
 }
 
 add_routes()

@@ -1,3 +1,3 @@
 # FzVpn
 
-Elixir/OTP frontend to `wg` cli.
+Elixir/OTP frontend to WireGuard.
