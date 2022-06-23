@@ -7,27 +7,18 @@ defmodule FzHttpWeb.MockEvents do
   inside FzHttp and use that for the tests.
   """
 
-  def delete_device(public_key) do
-    {:ok, public_key}
-  end
+  def delete_device(_device), do: maybe_mock_error()
+  def update_device(_device), do: maybe_mock_error()
+  def add_rule(_rule), do: maybe_mock_error()
+  def delete_rule(_rule), do: maybe_mock_error()
+  def set_config, do: maybe_mock_error()
+  def set_rules, do: maybe_mock_error()
 
-  def update_device(_device) do
-    :ok
-  end
-
-  def add_rule(_rule) do
-    :ok
-  end
-
-  def delete_rule(_rule) do
-    :ok
-  end
-
-  def set_config do
-    :ok
-  end
-
-  def set_rules do
-    :ok
+  defp maybe_mock_error do
+    if Application.get_env(:fz_http, :mock_events_module_errors) do
+      {:error, "mocked error"}
+    else
+      :ok
+    end
   end
 end
