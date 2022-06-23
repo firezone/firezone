@@ -1,0 +1,34 @@
+<div>
+  <.form let={f} for={@changeset} autocomplete="off" id="account-edit" phx-target={@myself} phx-submit="save">
+    <div class="block">
+      <p>Enter new password below.</p>
+    </div>
+
+    <%= render FzHttpWeb.SharedView,
+        "password_field.html",
+        context: f,
+        field: :password,
+        label: "Password" %>
+
+    <%= render FzHttpWeb.SharedView,
+        "password_field.html",
+        context: f,
+        field: :password_confirmation,
+        label: "Password Confirmation" %>
+
+    <hr>
+
+    <div class="block">
+      <p>Enter your current password to make these changes.</p>
+    </div>
+
+    <div class="field">
+      <%= label f, :current_password, class: "label" %>
+      <%= password_input f, :current_password, class: "input password" %>
+
+      <p class="help is-danger">
+        <%= error_tag f, :current_password %>
+      </p>
+    </div>
+  </.form>
+</div>
