@@ -2,7 +2,6 @@ defmodule FzCommon.FzCrypto do
   @moduledoc """
   Utilities for working with crypto functions
   """
-  use Bitwise
 
   @wg_psk_length 32
 

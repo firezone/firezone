@@ -11,34 +11,6 @@ defmodule FzVpn.Interface do
   require Logger
 
   @doc """
-  Creates an interface with a name, listening port, ipv4 address, ipv6 address,
-  and MTU.
-
-  If successful `{:ok, {private_key, public_key}}` is returned. If the interface
-  creation fails, `{:error, error_info}` will be logged and returned.
-  """
-  def create(name, listen_port) do
-    private_key = Wireguardex.generate_private_key()
-    {:ok, public_key} = Wireguardex.get_public_key(private_key)
-
-    result =
-      DeviceConfigBuilder.device_config()
-      |> DeviceConfigBuilder.listen_port(listen_port)
-      |> DeviceConfigBuilder.private_key(private_key)
-      |> DeviceConfigBuilder.public_key(public_key)
-      |> wg_adapter().set_device(name)
-
-    case result do
-      :ok ->
-        {:ok, {private_key, public_key}}
-
-      {:error, error_info} ->
-        Logger.error("Failed to create interface #{name}: #{error_info}")
-        result
-    end
-  end
-
-  @doc """
   Set an interface's private key and peers.
 
   If successful we return an :ok status. If interface fails to be set,
