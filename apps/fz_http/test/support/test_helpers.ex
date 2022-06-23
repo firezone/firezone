@@ -14,10 +14,12 @@ defmodule FzHttp.TestHelpers do
     UsersFixtures
   }
 
-  def restore_env(key, val, cb) do
-    old = Application.fetch_env!(:fz_http, key)
-    Application.put_env(:fz_http, key, val)
-    cb.(fn -> Application.put_env(:fz_http, key, old) end)
+  def restore_env(key, val, cb), do: restore_env(:fz_http, key, val, cb)
+
+  def restore_env(app, key, val, cb) do
+    old = Application.fetch_env!(app, key)
+    Application.put_env(app, key, val)
+    cb.(fn -> Application.put_env(app, key, old) end)
   end
 
   def clear_users do

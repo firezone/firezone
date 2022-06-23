@@ -24,16 +24,20 @@ defmodule FzVpn.Server do
 
   @impl GenServer
   def handle_call({:remove_peer, public_key}, _from, config) do
-    Interface.remove_peer(iface_name(), public_key)
-    new_config = Map.delete(config, public_key)
-    {:reply, {:ok, public_key}, new_config}
+    case Interface.remove_peer(iface_name(), public_key) do
+      :ok ->
+        {:reply, :ok, Map.delete(config, public_key)}
+
+      err ->
+        {:reply, err, config}
+    end
   end
 
   @impl GenServer
   def handle_call({:set_config, peers}, _from, config) do
     new_config = peers_to_config(peers)
-    apply_config_diff(config, new_config)
-    {:reply, :ok, new_config}
+    {res, resp} = apply_config_diff(config, new_config)
+    {:reply, res, resp}
   end
 
   @doc """
@@ -42,7 +46,6 @@ defmodule FzVpn.Server do
   def apply_config_diff(old_config \\ %{}, new_config) do
     delete_old_peers(old_config, new_config)
     update_changed_peers(old_config, new_config)
-    {:ok, new_config}
   end
 
   def iface_name do
@@ -63,6 +66,10 @@ defmodule FzVpn.Server do
     new_config
     |> Map.filter(fn {public_key, settings} -> Map.get(old_config, public_key) != settings end)
     |> set_peers()
+    |> case do
+      :ok -> {:ok, new_config}
+      {:error, _error_info} -> {:error, old_config}
+    end
   end
 
   defp set_peers(config) do
