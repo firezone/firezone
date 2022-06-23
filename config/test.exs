@@ -38,6 +38,7 @@ config :fz_http, FzHttpWeb.Endpoint,
   server: true
 
 config :fz_http,
+  mock_events_module_errors: false,
   local_auth_enabled: true,
   google_auth_enabled: true,
   okta_auth_enabled: true,

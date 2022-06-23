@@ -48,8 +48,7 @@ defmodule FzHttp.EventsTest do
     setup [:create_device]
 
     test "removes from peer config", %{device: device} do
-      pubkey = device.public_key
-      assert {:ok, ^pubkey} = Events.delete_device(device)
+      assert :ok = Events.delete_device(device)
 
       assert :sys.get_state(Events.vpn_pid()) == %{}
     end

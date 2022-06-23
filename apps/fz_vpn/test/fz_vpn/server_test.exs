@@ -37,7 +37,7 @@ defmodule FzVpn.ServerTest do
                "key4" => %{allowed_ips: "127.0.0.1/32,::1/128", preshared_key: "foobar"}
              }
 
-      GenServer.call(test_pid, {:set_config, new_peers})
+      :ok = GenServer.call(test_pid, {:set_config, new_peers})
 
       assert :sys.get_state(test_pid) == %{
                "key5" => %{allowed_ips: "1.1.1.1/32,::2/128", preshared_key: "foobar"}
