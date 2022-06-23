@@ -22,6 +22,44 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.ShowTest do
       assert html =~ device.name
       assert html =~ "Latest Handshake"
     end
+
+    test "deletes the device", %{unprivileged_conn: conn, device: device} do
+      path = Routes.device_unprivileged_show_path(conn, :show, device)
+      {:ok, view, _html} = live(conn, path)
+
+      view
+      |> element("#delete-device-button")
+      |> render_click()
+
+      {new_path, _flash} = assert_redirect(view)
+      assert new_path == Routes.device_unprivileged_index_path(conn, :index)
+    end
+  end
+
+  describe "authenticated, wireguard interface error" do
+    setup :create_unprivileged_device
+
+    setup do
+      restore_env(:mock_events_module_errors, true, &on_exit/1)
+    end
+
+    test "deletes the device but displays flash error", %{unprivileged_conn: conn, device: device} do
+      path = Routes.device_unprivileged_show_path(conn, :show, device)
+      {:ok, view, _html} = live(conn, path)
+
+      view
+      |> element("#delete-device-button")
+      |> render_click()
+
+      {new_path, flash} = assert_redirect(view)
+      assert new_path == Routes.device_unprivileged_index_path(conn, :index)
+
+      assert flash["error"] ==
+               """
+               Device deleted successfully but an error occured applying its configuration to the WireGuard
+               interface. Please contact your administrator about this error.
+               """
+    end
   end
 
   describe "authenticated; device management disabled" do

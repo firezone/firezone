@@ -5,6 +5,10 @@ defmodule FzHttp.Telemetry do
 
   require Logger
 
+  alias FzHttp.Devices
+  alias FzHttp.MFA
+  alias FzHttp.Users
+
   def add_device do
     telemetry_module().capture(
       "add_device",
@@ -71,7 +75,12 @@ defmodule FzHttp.Telemetry do
   def ping do
     telemetry_module().capture(
       "ping",
-      common_fields()
+      common_fields() ++
+        [
+          user_count: Users.count(),
+          device_count: Devices.count(),
+          users_with_mfa: MFA.count_distinct_by_user_id()
+        ]
     )
   end
 

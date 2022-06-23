@@ -25,20 +25,33 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.Show do
 
     case delete_device(device, socket) do
       {:ok, _deleted_device} ->
-        {:ok, _deleted_pubkey} = @events_module.delete_device(device.public_key)
-
         {:noreply,
          socket
+         |> dispatch_delete_device(device)
          |> redirect(to: Routes.device_unprivileged_index_path(socket, :index))}
 
       {:not_authorized} ->
         {:noreply, not_authorized(socket)}
 
-        # Not likely to ever happen
-        # {:error, msg} ->
-        #   {:noreply,
-        #   socket
-        #   |> put_flash(:error, "Error deleting device: #{msg}")}
+      {:error, msg} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Error deleting device: #{msg}")}
+    end
+  end
+
+  @event_error_msg """
+  Device deleted successfully but an error occured applying its configuration to the WireGuard
+  interface. Please contact your administrator about this error.
+  """
+  defp dispatch_delete_device(socket, device) do
+    case @events_module.delete_device(device) do
+      :ok ->
+        socket
+
+      _err ->
+        socket
+        |> put_flash(:error, @event_error_msg)
     end
   end
 

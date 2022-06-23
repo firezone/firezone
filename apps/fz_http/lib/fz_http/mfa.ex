@@ -7,6 +7,10 @@ defmodule FzHttp.MFA do
 
   alias FzHttp.{MFA.Method, Repo, Users.User}
 
+  def count_distinct_by_user_id do
+    Repo.one(from m in Method, select: count(m.user_id, :distinct))
+  end
+
   def exists?(%User{id: id}) do
     Repo.exists?(from Method, where: [user_id: ^id])
   end
