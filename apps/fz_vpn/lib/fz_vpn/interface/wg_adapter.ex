@@ -12,7 +12,6 @@ defmodule FzVpn.Interface.WGAdapter do
   """
 
   def wg_adapter do
-    FzVpn.Interface.WGAdapter.Live
-    # Application.fetch_env!(:fz_vpn, :wg_adapter)
+    Application.fetch_env!(:fz_vpn, :wg_adapter)
   end
 end
