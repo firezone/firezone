@@ -24,9 +24,13 @@ defmodule FzVpn.Server do
 
   @impl GenServer
   def handle_call({:remove_peer, public_key}, _from, config) do
-    Interface.remove_peer(iface_name(), public_key)
-    new_config = Map.delete(config, public_key)
-    {:reply, {:ok, public_key}, new_config}
+    case Interface.remove_peer(iface_name(), public_key) do
+      :ok ->
+        {:reply, :ok, Map.delete(config, public_key)}
+
+      err ->
+        {:reply, err, config}
+    end
   end
 
   @impl GenServer
