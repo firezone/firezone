@@ -8,8 +8,7 @@ defmodule FzHttpWeb.SettingLive.Unprivileged.AccountFormComponent do
 
   @allowed_params [
     "password",
-    "password_confirmation",
-    "current_password"
+    "password_confirmation"
   ]
 
   def update(assigns, socket) do

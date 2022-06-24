@@ -7,6 +7,15 @@ defmodule FzHttpWeb.Authentication do
   alias FzHttp.Telemetry
   alias FzHttp.Users
   alias FzHttp.Users.User
+  alias FzHttpWeb.Router.Helpers, as: Routes
+
+  import Phoenix.Controller
+
+  import Plug.Conn,
+    only: [
+      halt: 1,
+      put_session: 3
+    ]
 
   @guardian_token_name "guardian_default_token"
 
@@ -49,19 +58,28 @@ defmodule FzHttpWeb.Authentication do
     {:error, :invalid_credentials}
   end
 
-  def sign_in(conn, user, auth) do
-    Telemetry.login()
-    Users.update_last_signed_in(user, auth)
+  def sign_in(conn, user, %{provider: provider} = auth) do
+    if !Application.fetch_env!(:fz_http, :local_auth_enabled) &&
+         provider in [:identity, :magic_link] do
+      conn
+      |> sign_out()
+      |> put_flash(:error, "Local auth disabled.")
+      |> redirect(to: Routes.root_path(conn, :index))
+      |> halt()
+    else
+      conn =
+        with :identity <- provider,
+             true <- FzHttp.MFA.exists?(user) do
+          put_session(conn, :mfa_required_at, DateTime.utc_now())
+        else
+          _ -> conn
+        end
 
-    conn =
-      with %{provider: :identity} <- auth,
-           true <- FzHttp.MFA.exists?(user) do
-        Plug.Conn.put_session(conn, :mfa_required_at, DateTime.utc_now())
-      else
-        _ -> conn
-      end
+      Telemetry.login()
+      Users.update_last_signed_in(user, auth)
 
-    __MODULE__.Plug.sign_in(conn, user)
+      __MODULE__.Plug.sign_in(conn, user)
+    end
   end
 
   def sign_out(conn) do

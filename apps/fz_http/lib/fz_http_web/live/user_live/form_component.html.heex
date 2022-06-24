@@ -10,7 +10,8 @@
       <%= label f, :email, class: "label" %>
 
       <div class="control">
-        <%= text_input f, :email, class: "input #{input_error_class(f, :email)}",
+        <%= text_input f, :email,
+            class: "input #{input_error_class(f, :email)}",
             disabled: @user && @user.id == @current_user.id %>
       </div>
       <p class="help is-danger">
