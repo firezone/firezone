@@ -72,6 +72,18 @@ defmodule FzHttpWeb.AuthControllerTest do
       assert redirected_to(test_conn) == Routes.user_index_path(test_conn, :index)
       assert current_user(test_conn).id == user.id
     end
+
+    test "prevents signing in when local_auth_disabled", %{unauthed_conn: conn, user: user} do
+      params = %{
+        "email" => user.email,
+        "password" => "password1234"
+      }
+
+      restore_env(:local_auth_enabled, false, &on_exit/1)
+
+      test_conn = post(conn, Routes.auth_path(conn, :callback, :identity), params)
+      assert text_response(test_conn, 401) == "Local auth disabled"
+    end
   end
 
   describe "creating session from OpenID Connect" do
@@ -168,6 +180,13 @@ defmodule FzHttpWeb.AuthControllerTest do
       test_conn = get(conn, Routes.auth_path(conn, :magic_sign_in, user.sign_in_token))
 
       assert current_user(test_conn).id == user.id
+    end
+
+    test "prevents signing in when local_auth_disabled", %{unauthed_conn: conn, user: user} do
+      restore_env(:local_auth_enabled, false, &on_exit/1)
+
+      test_conn = get(conn, Routes.auth_path(conn, :magic_sign_in, user.sign_in_token))
+      assert text_response(test_conn, 401) == "Local auth disabled"
     end
   end
 end

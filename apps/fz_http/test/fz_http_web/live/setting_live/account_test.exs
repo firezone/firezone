@@ -86,7 +86,7 @@ defmodule FzHttpWeb.SettingLive.AccountTest do
       |> render_click()
 
       # Sometimes assert_patched fails without this :-(
-      Process.sleep(100)
+      Process.sleep(1000)
 
       assert_patched(view, Routes.setting_account_path(conn, :show))
     end

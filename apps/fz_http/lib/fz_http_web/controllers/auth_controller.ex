@@ -37,11 +37,7 @@ defmodule FzHttpWeb.AuthController do
   def callback(%{assigns: %{ueberauth_auth: auth}} = conn, _params) do
     case UserFromAuth.find_or_create(auth) do
       {:ok, user} ->
-        conn
-        |> configure_session(renew: true)
-        |> put_session(:live_socket_id, "users_socket:#{user.id}")
-        |> Authentication.sign_in(user, auth)
-        |> redirect(to: root_path_for_role(conn, user.role))
+        maybe_sign_in(conn, user, auth)
 
       {:error, reason} ->
         conn
@@ -72,11 +68,7 @@ defmodule FzHttpWeb.AuthController do
             FzHttp.OIDC.create_connection(user.id, provider_key, refresh_token)
           end
 
-          conn
-          |> configure_session(renew: true)
-          |> put_session(:live_socket_id, "users_socket:#{user.id}")
-          |> Authentication.sign_in(user, %{provider: provider})
-          |> redirect(to: root_path_for_role(conn, user.role))
+          maybe_sign_in(conn, user, %{provider: provider})
 
         {:error, reason} ->
           conn
@@ -127,16 +119,34 @@ defmodule FzHttpWeb.AuthController do
   def magic_sign_in(conn, %{"token" => token}) do
     case Users.consume_sign_in_token(token) do
       {:ok, user} ->
-        conn
-        |> configure_session(renew: true)
-        |> put_session(:live_socket_id, "users_socket:#{user.id}")
-        |> Authentication.sign_in(user, %{provider: :magic_link})
-        |> redirect(to: root_path_for_role(conn, user.role))
+        maybe_sign_in(conn, user, %{provider: :magic_link})
 
       {:error, _} ->
         conn
-        |> put_flash(:warning, "The magic link is not valid or has expired.")
+        |> put_flash(:error, "The magic link is not valid or has expired.")
         |> redirect(to: Routes.root_path(conn, :index))
     end
+  end
+
+  defp maybe_sign_in(conn, user, %{provider: provider} = auth)
+       when provider in [:identity, :magic_link] do
+    if Application.fetch_env!(:fz_http, :local_auth_enabled) do
+      do_sign_in(conn, user, auth)
+    else
+      conn
+      |> put_resp_content_type("text/plain")
+      |> send_resp(401, "Local auth disabled")
+      |> halt()
+    end
+  end
+
+  defp maybe_sign_in(conn, user, auth), do: do_sign_in(conn, user, auth)
+
+  defp do_sign_in(conn, user, auth) do
+    conn
+    |> configure_session(renew: true)
+    |> Authentication.sign_in(user, auth)
+    |> put_session(:live_socket_id, "users_socket:#{user.id}")
+    |> redirect(to: root_path_for_role(conn, user.role))
   end
 end

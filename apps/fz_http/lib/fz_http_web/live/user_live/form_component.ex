@@ -1,6 +1,6 @@
 defmodule FzHttpWeb.UserLive.FormComponent do
   @moduledoc """
-  Handles user form.
+  Handles user form for admins.
   """
   use FzHttpWeb, :live_component
 
