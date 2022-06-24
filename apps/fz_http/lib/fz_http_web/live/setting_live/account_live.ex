@@ -1,6 +1,6 @@
 defmodule FzHttpWeb.SettingLive.Account do
   @moduledoc """
-  Handles Account-related things.
+  Handles Account-related things for admins.
   """
   use FzHttpWeb, :live_view
 

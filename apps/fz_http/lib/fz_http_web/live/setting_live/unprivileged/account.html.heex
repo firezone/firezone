@@ -1,13 +1,11 @@
 <%= if @live_action == :change_password do %>
   <%= live_modal(
-      FzHttpWeb.UserLive.FormComponent,
+      FzHttpWeb.SettingLive.Unprivileged.AccountFormComponent,
       return_to: Routes.setting_unprivileged_account_path(@socket, :show),
       title: "Change password",
-      id: "user-form-component",
-      user: @current_user,
+      id: "account-form-component",
       current_user: @current_user,
-      action: :edit,
-      form: "user-form") %>
+      form: "account-edit") %>
 <% end %>
 
 <%= if @live_action == :register_mfa do %>
@@ -36,11 +34,13 @@
     </div>
 
     <div class="level-right">
-      <%= live_patch(to: Routes.setting_unprivileged_account_path(@socket, :change_password), class: "button") do %>
-        <span class="icon is-small">
-          <i class="mdi mdi-pencil"></i>
-        </span>
-        <span>Change Password</span>
+      <%= if @local_auth_enabled do %>
+        <%= live_patch(to: Routes.setting_unprivileged_account_path(@socket, :change_password), class: "button") do %>
+          <span class="icon is-small">
+            <i class="mdi mdi-pencil"></i>
+          </span>
+          <span>Change Password</span>
+        <% end %>
       <% end %>
     </div>
   </div>
