@@ -15,7 +15,12 @@ fi
 cat <<END > /config/wg-firezone.conf
 [Interface]
 ListenPort = 51820
+Address = 10.3.2.1/32
 PrivateKey = $(cat /config/server/privatekey-server)
+PostUp = iptables -A FORWARD -i wg-firezone -j ACCEPT; iptables -A FORWARD -o wg-firezone -j ACCEPT; iptables -t nat -A POSTROUTING -o eth+ -j MASQUERADE
+PostDown = iptables -D FORWARD -i wg-firezone -j ACCEPT; iptables -D FORWARD -o wg-firezone -j ACCEPT; iptables -t nat -D POSTROUTING -o eth+ -j MASQUERADE
 END
+
+wg-quick up /config/wg-firezone.conf
 
 mix start

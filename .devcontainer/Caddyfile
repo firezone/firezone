@@ -10,6 +10,7 @@ localhost {
 
 :80 {
   handle /hello {
-    respond "HELLO"
+    respond "HELLO
+"
   }
 }

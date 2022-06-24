@@ -9,6 +9,7 @@ RUN set -xe \
   && apt-get install -y \
     net-tools \
     iproute2 \
+    iptables \
     wireguard \
     nftables \
     inotify-tools \
