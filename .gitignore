@@ -58,8 +58,5 @@ npm-debug.log
 /*.deb
 /*.rpm
 
-# Docker container outputs
-/wg-config/
-
 # Test screenshots
 apps/fz_http/screenshots

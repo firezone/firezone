@@ -20,12 +20,6 @@ config :fz_http, FzHttpWeb.Endpoint,
   check_origin: ["//127.0.0.1", "//localhost", "//#{host}"],
   proxy_forwarded: proxy_forwarded
 
-if File.exists?("/config/server/publickey-server") do
-  config :fz_vpn,
-         :wireguard_public_key,
-         String.trim(File.read!("/config/server/publickey-server"))
-end
-
 # Formerly releases.exs - Only evaluated in production
 if config_env() == :prod do
   # For releases, require that all these are set

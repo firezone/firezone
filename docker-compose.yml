@@ -17,7 +17,7 @@ services:
         DATABASE_URL: postgresql://postgres:postgres@postgres:5432/firezone_dev
     image: firezone_dev
     volumes:
-      - ./wg-config:/config:rw
+      - ./priv:/var/app/priv:ro
       - ./apps:/var/app/apps:ro
       - ./apps/fz_http/priv/static/dist:/var/app/apps/fz_http/priv/static/dist:rw
       - ./config:/var/app/config:ro

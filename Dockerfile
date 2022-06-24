@@ -10,7 +10,6 @@ RUN set -xe \
     net-tools \
     iproute2 \
     iptables \
-    wireguard \
     nftables \
     inotify-tools \
     ca-certificates \
@@ -43,8 +42,6 @@ RUN npm install --prefix apps/fz_http/assets
 
 RUN mix do deps.get --only $MIX_ENV, deps.compile
 
-COPY scripts/dev_start.sh /var/app/dev_start.sh
-
 EXPOSE 4000 51820/udp
 
-CMD ["/var/app/dev_start.sh"]
+CMD ["mix", "start"]
