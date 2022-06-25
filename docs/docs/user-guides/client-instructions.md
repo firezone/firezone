@@ -161,3 +161,18 @@ nmcli connection down [vpn name]
 
 If using a GUI, the relevant Network Manager applet can also be used to control
 the connection.
+
+### Auto Connection
+
+The VPN connection can be set to automatically connect by setting the `autoconnect`
+option to `yes`:
+
+```shell
+nmcli connection modify [vpn name] connection.autoconnect yes
+```
+
+To disable the automatic connection set it back to `no`:
+
+```shell
+nmcli connection modify [vpn name] connection.autoconnect no
+```
