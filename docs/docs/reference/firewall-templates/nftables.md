@@ -35,6 +35,20 @@ default port change the `WIREGUARD_PORT` variable.
 from the rules to drop traffic and are rate limited. Removing the relevant
 logging rules will not affect trafic.
 
+#### Firezone Managed Rules
+
+Firezone configures its own nftables rules to permit/reject traffic to destinations
+configured in the web interface and to handle outbound NAT for client traffic.
+
+Applying the below firewall template on an already running server (not at boot time)
+will result in the Firezone rules being cleared. This may have security implications.
+
+To work around this restart the `phoenix` service:
+
+```shell
+firezone-ctl restart phoenix
+```
+
 #### Base Firewall Template
 
 ```shell
