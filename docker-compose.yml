@@ -19,7 +19,6 @@ services:
     volumes:
       - ./priv:/var/app/priv
       - ./apps:/var/app/apps
-      - ./apps/fz_http/priv/static/dist:/var/app/apps/fz_http/priv/static/dist
       - ./config:/var/app/config
       - ./mix.exs:/var/app/mix.exs
       - ./mix.lock:/var/app/mix.lock
