@@ -1,4 +1,4 @@
-FROM hexpm/elixir:1.13.4-erlang-25.0.1-ubuntu-bionic-20210930
+FROM hexpm/elixir:1.13.4-erlang-25.0.2-ubuntu-jammy-20220428
 
 RUN set -xe \
   && apt-get update \
