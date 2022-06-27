@@ -39,7 +39,7 @@ COPY mix.lock /var/app/mix.lock
 
 RUN npm install --prefix apps/fz_http/assets
 
-RUN mix do deps.get --only $MIX_ENV, deps.compile
+RUN mix do deps.get --only $MIX_ENV, deps.compile, compile
 
 EXPOSE 4000 51820/udp
 
