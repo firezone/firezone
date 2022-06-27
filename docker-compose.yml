@@ -26,6 +26,8 @@ services:
       - 51820:51820/udp
     environment:
       LOCAL_AUTH_ENABLED: 'true'
+      FZ_WALL_CLI_MODULE: FzWall.CLI.Live
+      FZ_VPN_WGADAPTER_MODULE: FzVpn.Interface.WGAdapter.Live
     cap_add:
       - NET_ADMIN
       - SYS_MODULE
