@@ -142,7 +142,7 @@ defmodule FzWall.CLI.Live do
         true
 
       {error, _exit_code} ->
-        if error =~ ~r"No such file or directory|does not exist") do
+        if error =~ ~r"No such file or directory|does not exist" do
           false
         else
           raise """
