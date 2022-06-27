@@ -17,12 +17,12 @@ services:
         DATABASE_URL: postgresql://postgres:postgres@postgres:5432/firezone_dev
     image: firezone_dev
     volumes:
-      - ./priv:/var/app/priv:ro
-      - ./apps:/var/app/apps:ro
-      - ./apps/fz_http/priv/static/dist:/var/app/apps/fz_http/priv/static/dist:rw
-      - ./config:/var/app/config:ro
-      - ./mix.exs:/var/app/mix.exs:ro
-      - ./mix.lock:/var/app/mix.lock:ro
+      - ./priv:/var/app/priv
+      - ./apps:/var/app/apps
+      - ./apps/fz_http/priv/static/dist:/var/app/apps/fz_http/priv/static/dist
+      - ./config:/var/app/config
+      - ./mix.exs:/var/app/mix.exs
+      - ./mix.lock:/var/app/mix.lock
     ports:
       - 51820:51820/udp
     environment:
