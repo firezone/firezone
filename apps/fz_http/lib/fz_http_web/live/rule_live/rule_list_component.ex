@@ -5,6 +5,7 @@ defmodule FzHttpWeb.RuleLive.RuleListComponent do
   use FzHttpWeb, :live_component
 
   alias FzHttp.Rules
+  alias FzHttp.Users
 
   @events_module Application.compile_env!(:fz_http, :events_module)
 
@@ -16,6 +17,7 @@ defmodule FzHttpWeb.RuleLive.RuleListComponent do
      |> assign(
        action: action(assigns.id),
        rule_list: rule_list(assigns),
+       user_list: user_list(assigns.current_user.id),
        changeset: Rules.new_rule()
      )}
   end
@@ -65,6 +67,18 @@ defmodule FzHttpWeb.RuleLive.RuleListComponent do
 
       :denylist ->
         Rules.denylist()
+    end
+  end
+
+  defp user_list(current_user_id) do
+    Users.list_users()
+    |> Enum.filter(fn user -> user.id != current_user_id end)
+    |> Enum.map(fn user -> {user.email, user.id} end)
+  end
+
+  defp get_scoped_user(user_id) do
+    if user_id do
+      Users.get_user(user_id).email
     end
   end
 end
