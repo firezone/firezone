@@ -17,7 +17,7 @@ defmodule FzHttpWeb.RuleLive.RuleListComponent do
      |> assign(
        action: action(assigns.id),
        rule_list: rule_list(assigns),
-       users: users(assigns.current_user.id),
+       users: users(),
        changeset: Rules.new_rule()
      )}
   end
@@ -70,9 +70,8 @@ defmodule FzHttpWeb.RuleLive.RuleListComponent do
     end
   end
 
-  defp users(current_user_id) do
+  defp users do
     Users.list_users()
-    |> Stream.filter(fn user -> user.id != current_user_id end)
     |> Stream.map(&{&1.id, &1.email})
     |> Map.new()
   end
