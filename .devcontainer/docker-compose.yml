@@ -1,10 +1,11 @@
-version: '3.8'
+version: "3.8"
 
 services:
   caddy:
     image: caddy:2
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
+    network_mode: service:elixir
 
   elixir:
     build:
@@ -12,15 +13,17 @@ services:
       dockerfile: Dockerfile
       args:
         # Elixir Version: 1.9, 1.10, 1.10.4, ...
-        VARIANT: '1.13.4'
+        VARIANT: "1.13.4"
         # Phoenix Version: 1.4.17, 1.5.4, ...
-        PHOENIX_VERSION: '1.6.2'
+        PHOENIX_VERSION: "1.6.2"
         # Node Version: 12, 14, ...
-        NODE_VERSION: '14'
-        RUBY_VERSION: '2.7.5'
+        NODE_VERSION: "14"
+        RUBY_VERSION: "2.7.5"
 
     volumes:
       - ..:/workspace:cached
+    # Runs app on the same network as the database container, allows "forwardPorts" in devcontainer.json function.
+    network_mode: service:postgres
 
     environment:
       LOCAL_AUTH_ENABLED: 'true'
