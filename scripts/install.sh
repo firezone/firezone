@@ -98,9 +98,9 @@ mapReleaseToDistro() {
      image_sub_string="fedora34-x64"
   elif [[ "$hostinfo" =~ .*"Fedora 34".*           &&  "$hostinfo" =~ .*"arm64" ]]; then
      image_sub_string="fedora34-arm64"
-  elif [[ "$hostinfo" =~ .*"Fedora Linux 35".*     &&  "$hostinfo" =~ .*"x86" ]]; then
+  elif [[ "$hostinfo" =~ .*"Fedora Linux 3"(5|6).*     &&  "$hostinfo" =~ .*"x86" ]]; then
      image_sub_string="fedora35-x64"
-  elif [[ "$hostinfo" =~ .*"Fedora Linux 35".*     &&  "$hostinfo" =~ .*"arm64" ]]; then
+  elif [[ "$hostinfo" =~ .*"Fedora Linux 3"(5|6).*     &&  "$hostinfo" =~ .*"arm64" ]]; then
      image_sub_string="fedora35-arm64"
   elif [[ "$hostinfo" =~ .*"Ubuntu 18.04".*        &&  "$hostinfo" =~ .*"x86" ]]; then
      image_sub_string="ubuntu1804-x64"
