@@ -2,7 +2,7 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
   use FzHttpWeb.ConnCase, async: true
 
   describe "allowlist" do
-    setup :create_accept_rule
+    setup [:create_accept_rule, :create_user]
 
     @destination "1.2.3.4"
     @allow_params %{"rule" => %{"action" => "accept", "destination" => @destination}}
@@ -17,6 +17,19 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
         |> render_submit(@allow_params)
 
       assert test_view =~ @destination
+    end
+
+    test "scope rule to user", %{admin_conn: conn, rule: _rule, user: user} do
+      params_with_user = %{"rule" => Map.put(@allow_params, :user_id, user.id)}
+      path = Routes.rule_index_path(conn, :index)
+      {:ok, view, _html} = live(conn, path)
+
+      test_view = 
+        view
+        |> form("#accept-form")
+        |> render_submit(params_with_user)
+
+      assert test_view =~ user.email
     end
 
     test "validation fails", %{admin_conn: conn, rule: _rule} do
@@ -62,7 +75,7 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
   end
 
   describe "denylist" do
-    setup :create_drop_rule
+    setup [:create_drop_rule, :create_user]
 
     @destination "1.2.3.4"
     @deny_params %{"rule" => %{"action" => "drop", "destination" => @destination}}
@@ -77,6 +90,19 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
         |> render_submit(@deny_params)
 
       assert test_view =~ @destination
+    end
+
+    test "scope rule to user", %{admin_conn: conn, rule: _rule, user: user} do
+      params_with_user = %{"rule" => Map.put(@deny_params, :user_id, user.id)}
+      path = Routes.rule_index_path(conn, :index)
+      {:ok, view, _html} = live(conn, path)
+
+      test_view = 
+        view
+        |> form("#drop-form")
+        |> render_submit(params_with_user)
+
+      assert test_view =~ user.email
     end
 
     test "validation fails", %{admin_conn: conn, rule: _rule} do
