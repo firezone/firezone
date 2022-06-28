@@ -19,7 +19,7 @@
           <div class="select">
             <%= select f,
                 :user_id,
-                @user_list,
+                Enum.map(@users, fn {id, email} -> {email, id} end),
                 prompt: "Optional user scope" %>
           </div>
         </div>
@@ -50,7 +50,7 @@
                 </dd>
               </td>
               <td class="has-text-left">
-                <%= get_scoped_user(rule.user_id) %>
+                <%= @users[rule.user_id] %>
               </td>
               <td class="has-text-right">
                 <a href="#"
