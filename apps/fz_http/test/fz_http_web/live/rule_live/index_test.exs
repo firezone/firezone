@@ -162,6 +162,8 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
   end
 
   describe "removing scoped rules" do
+    @destination "1.2.3.4"
+
     test "removes allow", %{admin_conn: conn} do
       {:ok, rule: rule, user: user} =
         create_rule_with_user(%{action: "accept", destination: @destination})
@@ -176,7 +178,7 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
         |> element("#accept-rules")
         |> render()
 
-      refute accept_table =~ "#{rule.destination}"
+      refute accept_table =~ @destination
       refute accept_table =~ user.email
     end
 
@@ -194,7 +196,7 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
         |> element("#drop-rules")
         |> render()
 
-      refute drop_table =~ "#{rule.destination}"
+      refute drop_table =~ @destination
       refute drop_table =~ user.email
     end
   end
