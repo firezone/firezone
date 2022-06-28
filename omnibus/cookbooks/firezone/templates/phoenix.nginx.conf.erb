@@ -32,14 +32,21 @@ server {
 }
 
 server {
+<% if @ssl['enabled'] -%>
+  listen <%= @nginx['ssl_port'] %> default_server ssl;
+  <% if @nginx['ipv6'] -%>
+    listen [::]:<%= @nginx['ssl_port'] %> default_server ssl;
+  <% end -%>
+<% else -%>
   listen <%= @nginx['ssl_port'] %> default_server;
-<% if @nginx['ipv6'] -%>
-  listen [::]:<%= @nginx['ssl_port'] %> default_server;
+  <% if @nginx['ipv6'] -%>
+    listen [::]:<%= @nginx['ssl_port'] %> default_server;
+  <% end -%>
 <% end -%>
+
   server_name <%= @fqdn %>;
 
 <%   if @ssl['enabled'] -%>
-  ssl on;
   ssl_certificate <%= @ssl['certificate'] %>;
   ssl_certificate_key <%= @ssl['certificate_key'] %>;
   ssl_dhparam <%= @ssl['ssl_dhparam'] %>;
