@@ -32,8 +32,8 @@
       </p>
     </.form>
 
+    <table id={"#{@action}-rules"} class="table is-hoverable is-bordered is-striped is-fullwidth">
     <%= if length(@rule_list) > 0 do %>
-      <table class="table is-hoverable is-bordered is-striped is-fullwidth">
         <thead>
           <tr>
             <th>Destination</th>
@@ -63,7 +63,7 @@
             </tr>
           <% end %>
         </tbody>
-      </table>
     <% end %>
+    </table>
   </div>
 </div>
