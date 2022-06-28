@@ -26,8 +26,8 @@ services:
       - 51820:51820/udp
     environment:
       LOCAL_AUTH_ENABLED: 'true'
-      FZ_WALL_CLI_MODULE: FzWall.CLI.Live
-      FZ_VPN_WGADAPTER_MODULE: FzVpn.Interface.WGAdapter.Live
+      # FZ_WALL_CLI_MODULE: FzWall.CLI.Live
+      # FZ_VPN_WGADAPTER_MODULE: FzVpn.Interface.WGAdapter.Live
     cap_add:
       - NET_ADMIN
       - SYS_MODULE
@@ -42,8 +42,8 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: firezone_dev
-    ports:
-      - 5432:5432
+    # ports:
+    #   - 5432:5432
 
 volumes:
   postgres-data:
