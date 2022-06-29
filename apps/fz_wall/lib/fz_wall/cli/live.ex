@@ -42,28 +42,27 @@ defmodule FzWall.CLI.Live do
         "{ type nat hook postrouting priority 100 ; }'"
     )
 
-    if masquerade_ipv4?() || masquerade_ipv6?() do
-      setup_masquerade()
-    end
+    setup_masquerade()
   end
 
   defp setup_masquerade do
+    if masquerade_ipv4?() do
+      setup_masquerade(:ipv4)
+    end
+
+    if masquerade_ipv6?() do
+      setup_masquerade(:ipv6)
+    end
+  end
+
+  defp setup_masquerade(proto) do
     File.ls!("/sys/class/net/")
     |> Enum.reject(&skip_masquerade_for_interface?/1)
     |> Enum.map(fn int ->
-      if masquerade_ipv4?() do
-        exec!(
-          "#{nft()} 'add rule inet #{@table_name} postrouting oifname " <>
-            "#{int} meta nfproto ipv4 masquerade persistent'"
-        )
-      end
-
-      if masquerade_ipv6?() do
-        exec!(
-          "#{nft()} 'add rule inet #{@table_name} postrouting oifname " <>
-            "#{int} meta nfproto ipv6 masquerade persistent'"
-        )
-      end
+      exec!(
+        "#{nft()} 'add rule inet #{@table_name} postrouting oifname " <>
+          "#{int} meta nfproto #{proto} masquerade persistent'"
+      )
     end)
   end
 
