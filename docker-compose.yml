@@ -31,6 +31,7 @@ services:
     cap_add:
       - NET_ADMIN
       - SYS_MODULE
+      - SYSLOG
     sysctls:
       - net.ipv4.ip_forward=1
       - net.ipv6.conf.all.forwarding=1
