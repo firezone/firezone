@@ -214,9 +214,9 @@ defmodule FzHttp.TestHelpers do
     {:ok, device: device}
   end
 
-  def create_rule_with_user(_) do
+  def create_rule_with_user(opts \\ %{}) do
     user = UsersFixtures.user()
-    rule = RulesFixtures.rule(%{user_id: user.id})
+    rule = RulesFixtures.rule(Map.merge(%{user_id: user.id}, opts))
 
     {:ok, rule: rule, user: user}
   end

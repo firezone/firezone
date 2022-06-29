@@ -40,7 +40,7 @@
     </div>
   </div>
 
-  <%= render FzHttpWeb.SharedView, "user_details.html", user: @user %>
+  <%= render FzHttpWeb.SharedView, "user_details.html", user: @user, rules_path: @rules_path %>
 </section>
 
 <%= if length(@connections) > 0 do %>
