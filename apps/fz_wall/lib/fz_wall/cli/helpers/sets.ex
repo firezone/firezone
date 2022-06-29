@@ -17,7 +17,7 @@ defmodule FzWall.CLI.Helpers.Sets do
 
   def list_sets(user_id) do
     list_dest_sets(user_id) ++
-      (@types |> Enum.map(fn type -> %{name: get_device_set_name(user_id, type), type: type} end))
+      Enum.map(@types, fn type -> %{name: get_device_set_name(user_id, type), type: type} end)
   end
 
   def get_types do
