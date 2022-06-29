@@ -45,9 +45,11 @@
       <td><%= FzHttp.Devices.count(@user.id) %></td>
     </tr>
 
-    <tr>
-      <td><strong>Number of Rules</strong></td>
-      <td><a href={"#{@rules_path}"}><%= FzHttp.Rules.count(@user.id) %></a></td>
-    </tr>
+    <%= if @rules_path do %>
+      <tr>
+        <td><strong>Number of Rules</strong></td>
+        <td><a href={"#{@rules_path}"}><%= FzHttp.Rules.count(@user.id) %></a></td>
+      </tr>
+    <% end %>
   </tbody>
 </table>
