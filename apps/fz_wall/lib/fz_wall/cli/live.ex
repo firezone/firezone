@@ -42,16 +42,41 @@ defmodule FzWall.CLI.Live do
         "{ type nat hook postrouting priority 100 ; }'"
     )
 
-    # XXX: Do more testing with this method of creating masquerade rules
-    for int <- File.ls!("/sys/class/net/") do
-      # Masquerade all interfaces except loopback and our own wireguard interface
-      if int not in ["lo", wireguard_interface_name()] do
+    if masquerade_ipv4?() || masquerade_ipv6?() do
+      setup_masquerade()
+    end
+  end
+
+  defp setup_masquerade do
+    File.ls!("/sys/class/net/")
+    |> Enum.reject(&skip_masquerade_for_interface?/1)
+    |> Enum.map(fn int ->
+      if masquerade_ipv4?() do
         exec!(
           "#{nft()} 'add rule inet #{@table_name} postrouting oifname " <>
-            "#{int} masquerade persistent'"
+            "#{int} meta nfproto ipv4 masquerade persistent'"
         )
       end
-    end
+
+      if masquerade_ipv6?() do
+        exec!(
+          "#{nft()} 'add rule inet #{@table_name} postrouting oifname " <>
+            "#{int} meta nfproto ipv6 masquerade persistent'"
+        )
+      end
+    end)
+  end
+
+  defp skip_masquerade_for_interface?(int) do
+    int in ["lo", wireguard_interface_name()]
+  end
+
+  defp masquerade_ipv4? do
+    Application.fetch_env!(:fz_wall, :wireguard_ipv4_masquerade)
+  end
+
+  defp masquerade_ipv6? do
+    Application.fetch_env!(:fz_wall, :wireguard_ipv6_masquerade)
   end
 
   def teardown_table do
