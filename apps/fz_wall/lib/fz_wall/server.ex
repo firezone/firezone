@@ -15,10 +15,7 @@ defmodule FzWall.Server do
 
   @impl GenServer
   def init(_rules) do
-    cli().teardown_table()
-    cli().setup_table()
-    cli().setup_chains()
-    cli().setup_rules()
+    cli().setup_firewall()
     {:ok, settings} = GenServer.call(http_pid(), :load_settings, @init_timeout)
     cli().restore(settings)
     {:ok, settings}

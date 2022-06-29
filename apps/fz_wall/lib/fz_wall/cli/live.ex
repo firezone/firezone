@@ -13,6 +13,16 @@ defmodule FzWall.CLI.Live do
   require Logger
 
   @doc """
+  Setup
+  """
+  def setup_firewall do
+    teardown_table()
+    setup_table()
+    setup_chains()
+    setup_rules()
+  end
+
+  @doc """
   Adds user sets and rules.
   """
   def add_user(user_id) do
