@@ -16,6 +16,14 @@
               placeholder: "IPv4/6 CIDR range or address" %>
         </div>
         <div class="control">
+          <div class="select">
+            <%= select f,
+                :user_id,
+                user_options(@users),
+                prompt: "Optional user scope" %>
+          </div>
+        </div>
+        <div class="control">
           <%= submit "Add", class: "button is-primary" %>
         </div>
       </div>
@@ -24,11 +32,12 @@
       </p>
     </.form>
 
+    <table id={"#{@action}-rules"} class="table is-hoverable is-bordered is-striped is-fullwidth">
     <%= if length(@rule_list) > 0 do %>
-      <table class="table is-hoverable is-bordered is-striped is-fullwidth">
         <thead>
           <tr>
             <th>Destination</th>
+            <th>User Scope</th>
             <th></th>
           </tr>
         </thead>
@@ -39,6 +48,9 @@
                 <dd class="code">
                   <%= rule.destination %>
                 </dd>
+              </td>
+              <td class="has-text-left">
+                <%= @users[rule.user_id] %>
               </td>
               <td class="has-text-right">
                 <a href="#"
@@ -51,7 +63,7 @@
             </tr>
           <% end %>
         </tbody>
-      </table>
     <% end %>
+    </table>
   </div>
 </div>
