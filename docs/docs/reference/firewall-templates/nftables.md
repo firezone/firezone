@@ -37,11 +37,13 @@ adjust the rules to suite your use case:
 
 ## Firezone-managed Rules
 
-Firezone configures its own nftables rules to permit/reject traffic to destinations
-configured in the web interface and to handle outbound NAT for client traffic.
+Firezone configures its own nftables rules to permit/reject traffic to
+destinations configured in the web interface and to handle outbound NAT for
+client traffic.
 
-Applying the below firewall template on an already running server (not at boot time)
-will result in the Firezone rules being cleared. This may have security implications.
+Applying the below firewall template on an already running server (not at boot
+time) will result in the Firezone rules being cleared. This may have security
+implications.
 
 To work around this restart the `phoenix` service:
 
@@ -323,22 +325,23 @@ table inet nat {
 
 ## Usage
 
-The firewall should be stored in the relevant location for the Linux distribution
-that is running. For Debian/Ubuntu this is `/etc/nftables.conf` and for RHEL this
-is `/etc/sysconfig/nftables.conf`.
+The firewall should be stored in the relevant location for the Linux
+distribution that is running. For Debian/Ubuntu this is `/etc/nftables.conf`
+and for RHEL this is `/etc/sysconfig/nftables.conf`.
 
-`nftables.service` will need to be configured to start on boot (if not already) set:
+`nftables.service` will need to be configured to start on boot (if not already)
+set:
 
 ```shell
 systemctl enable nftables.service
 ```
 
-If making any changes to the firewall template the syntax can be validated by running
-the check command:
+If making any changes to the firewall template the syntax can be validated by
+running the check command:
 
 ```shell
 nft -f /path/to/nftables.conf -c
 ```
 
-Be sure to validate the firewall works as expected as certain nftables features may
-not be available depending on the release running on the server.
+Be sure to validate the firewall works as expected as certain nftables features
+may not be available depending on the release running on the server.
