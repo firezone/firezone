@@ -75,4 +75,8 @@ defmodule FzHttpWeb.RuleLive.RuleListComponent do
     |> Stream.map(&{&1.id, &1.email})
     |> Map.new()
   end
+
+  defp user_options(users) do
+    Enum.map(users, fn {id, email} -> {email, id} end)
+  end
 end

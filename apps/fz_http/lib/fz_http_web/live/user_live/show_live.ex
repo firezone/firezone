@@ -21,7 +21,7 @@ defmodule FzHttpWeb.UserLive.Show do
      |> assign(:connections, connections)
      |> assign(:user, user)
      |> assign(:page_title, "Users")
-     |> assign(:rules_path, Routes.rule_index_path(FzHttpWeb.Endpoint, :index))}
+     |> assign(:rules_path, Routes.rule_index_path(socket, :index))}
   end
 
   @doc """

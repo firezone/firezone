@@ -19,7 +19,7 @@
           <div class="select">
             <%= select f,
                 :user_id,
-                Enum.map(@users, fn {id, email} -> {email, id} end),
+                user_options(@users),
                 prompt: "Optional user scope" %>
           </div>
         </div>

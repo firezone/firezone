@@ -18,7 +18,7 @@ defmodule FzHttpWeb.SettingLive.Account do
      |> assign(:changeset, Users.change_user(socket.assigns.current_user))
      |> assign(:methods, MFA.list_methods(socket.assigns.current_user))
      |> assign(:page_title, "Account Settings")
-     |> assign(:rules_path, Routes.rule_index_path(FzHttpWeb.Endpoint, :index))
+     |> assign(:rules_path, Routes.rule_index_path(socket, :index))
      |> assign(
        :metas,
        get_metas(Presence.list(@live_sessions_topic), socket.assigns.current_user.id)
