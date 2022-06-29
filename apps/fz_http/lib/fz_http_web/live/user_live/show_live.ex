@@ -20,7 +20,8 @@ defmodule FzHttpWeb.UserLive.Show do
      |> assign(:device_config, socket.assigns[:device_config])
      |> assign(:connections, connections)
      |> assign(:user, user)
-     |> assign(:page_title, "Users")}
+     |> assign(:page_title, "Users")
+     |> assign(:rules_path, Routes.rule_index_path(socket, :index))}
   end
 
   @doc """
