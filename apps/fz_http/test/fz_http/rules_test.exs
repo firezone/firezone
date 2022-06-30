@@ -12,7 +12,7 @@ defmodule FzHttp.RulesTest do
   end
 
   describe "list_rules/1" do
-    setup [:create_rule_with_user]
+    setup [:create_rule_with_user_and_device]
 
     test "list Rules scoped by user", %{user: user, rule: rule} do
       assert Rules.list_rules(user.id) == [rule]
@@ -73,25 +73,6 @@ defmodule FzHttp.RulesTest do
     end
   end
 
-  describe "to_nftables/0" do
-    setup [:create_rules]
-
-    @nftables_rules [
-      {"1.1.1.0/24", :drop},
-      {"2.2.2.0/24", :drop},
-      {"3.3.3.0/24", :drop},
-      {"4.4.4.0/24", :drop},
-      {"5.5.5.0/24", :drop},
-      {"10.3.2.4", "4.4.4.0/24", :drop},
-      {"10.3.2.5", "5.5.5.0/24", :drop},
-      {"10.3.2.6", "6.6.6.0/24", :drop}
-    ]
-
-    test "prints all rules to nftables format", %{rules: _rules} do
-      assert MapSet.equal?(MapSet.new(@nftables_rules), MapSet.new(Rules.to_nftables()))
-    end
-  end
-
   describe "allowlist/0" do
     setup [:create_accept_rule]
 
@@ -108,72 +89,22 @@ defmodule FzHttp.RulesTest do
     end
   end
 
-  describe "nftables_spec/1 IPv4" do
-    setup [:create_rule4]
+  describe "setting_projection/1" do
+    setup [:create_rule_with_user_and_device]
 
-    @ipv4tables_spec [{"10.10.10.0/24", :drop}]
-
-    test "returns IPv4 tuple", %{rule4: rule} do
-      assert @ipv4tables_spec = Rules.nftables_spec(rule)
+    test "projects expected fields", %{rule: rule, user: user} do
+      user_id = user.id
+      assert %{destination: "10.20.30.0/24", user_id: ^user_id} = Rules.setting_projection(rule)
     end
   end
 
-  describe "nftables_spec/1 with user IPv4" do
-    setup [:create_rule4_with_user]
+  describe "as_settings/0" do
+    setup [:create_rules]
 
-    @ipv4tables_spec [
-      {"10.3.2.2", "10.10.10.0/24", :drop},
-      {"10.3.2.3", "10.10.10.0/24", :drop},
-      {"10.3.2.4", "10.10.10.0/24", :drop},
-      {"10.3.2.5", "10.10.10.0/24", :drop}
-    ]
+    test "Maps rules to projections", %{rules: rules} do
+      expected_rules = Enum.map(rules, &Rules.setting_projection/1) |> MapSet.new()
 
-    test "returns IPv4 tuple", %{rule4: rule} do
-      assert @ipv4tables_spec = Rules.nftables_spec(rule)
-    end
-  end
-
-  describe "nftables_spec/1 with user IPv6" do
-    setup [:create_rule6_with_user]
-
-    @ipv6tables_spec [
-      {"fd00::3:2:2", "::/0", :drop},
-      {"fd00::3:2:3", "::/0", :drop},
-      {"fd00::3:2:4", "::/0", :drop},
-      {"fd00::3:2:5", "::/0", :drop}
-    ]
-
-    test "returns IPv6 tuple", %{rule6: rule} do
-      assert @ipv6tables_spec = Rules.nftables_spec(rule)
-    end
-  end
-
-  describe "nftables_spec/1 with user no devices" do
-    setup [:create_rule_with_user]
-
-    @iptables_spec []
-
-    test "returns Empty", %{rule: rule} do
-      assert @iptables_spec = Rules.nftables_spec(rule)
-    end
-  end
-
-  describe "nftables_device_spec/1" do
-    setup [:create_device_with_rules]
-
-    @ipv4tables_spec [
-      {"10.3.2.2", "1.1.1.0/24", :drop},
-      {"10.3.2.2", "2.2.2.0/24", :drop},
-      {"10.3.2.2", "3.3.3.0/24", :drop},
-      {"10.3.2.2", "4.4.4.0/24", :drop},
-      {"fd00::3:2:2", "1::/112", :drop},
-      {"fd00::3:2:2", "2::/112", :drop},
-      {"fd00::3:2:2", "3::/112", :drop},
-      {"fd00::3:2:2", "4::/112", :drop}
-    ]
-
-    test "returns IPv4 tuple", %{device: device} do
-      assert @ipv4tables_spec = Rules.nftables_device_spec(device)
+      assert Rules.as_settings() == expected_rules
     end
   end
 end

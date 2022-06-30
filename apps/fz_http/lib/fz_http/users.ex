@@ -8,6 +8,8 @@ defmodule FzHttp.Users do
 
   alias FzHttp.{Devices.Device, Mailer, Repo, Sites.Site, Telemetry, Users.User}
 
+  @events_module Application.compile_env!(:fz_http, :events_module)
+
   require Logger
 
   # one hour
@@ -70,8 +72,12 @@ defmodule FzHttp.Users do
       |> Repo.insert()
 
     case result do
-      {:ok, _user} -> Telemetry.add_user()
-      _ -> nil
+      {:ok, user} ->
+        @events_module.create_user(user)
+        Telemetry.add_user()
+
+      _ ->
+        nil
     end
 
     result
@@ -105,6 +111,16 @@ defmodule FzHttp.Users do
 
   def list_users do
     Repo.all(User)
+  end
+
+  def as_settings do
+    Repo.all(from u in User, select: %{id: u.id})
+    |> Enum.map(&setting_projection/1)
+    |> MapSet.new()
+  end
+
+  def setting_projection(user) do
+    user.id
   end
 
   @doc """
