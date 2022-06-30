@@ -171,6 +171,13 @@ defmodule FzHttp.TestHelpers do
     {:ok, rule: rule, user: user, device: device}
   end
 
+  def create_rule_with_user(opts \\ %{}) do
+    user = UsersFixtures.user()
+    rule = RulesFixtures.rule(Map.merge(%{user_id: user.id}, opts))
+
+    {:ok, rule: rule, user: user}
+  end
+
   def create_user_with_valid_sign_in_token(_) do
     {:ok, user: %User{} = UsersFixtures.user(Users.sign_in_keys())}
   end

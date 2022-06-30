@@ -29,6 +29,10 @@ defmodule FzHttp.Rules do
     %{destination: decode(rule.destination), user_id: rule.user_id, action: rule.action}
   end
 
+  def count(user_id) do
+    Repo.one(from r in Rule, where: r.user_id == ^user_id, select: count())
+  end
+
   def get_rule!(id), do: Repo.get!(Rule, id)
 
   def new_rule(attrs \\ %{}) do
