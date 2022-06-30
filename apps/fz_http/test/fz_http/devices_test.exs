@@ -401,4 +401,25 @@ defmodule FzHttp.DevicesTest do
       assert Devices.Device.new_name("1234567890ABCDEF") == "1234567890A4772"
     end
   end
+
+  describe "setting_projection/1" do
+    setup [:create_rule_with_user_and_device]
+
+    test "projects expected fields", %{device: device, user: user} do
+      user_id = user.id
+
+      assert %{ip: "10.3.2.2", ip6: "fd00::3:2:2", user_id: ^user_id} =
+               Devices.setting_projection(device)
+    end
+  end
+
+  describe "as_settings/0" do
+    setup [:create_rules]
+
+    test "Maps rules to projections", %{devices: devices} do
+      expected_devices = Enum.map(devices, &Devices.setting_projection/1) |> MapSet.new()
+
+      assert Devices.as_settings() == expected_devices
+    end
+  end
 end

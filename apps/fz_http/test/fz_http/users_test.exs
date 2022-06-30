@@ -275,4 +275,22 @@ defmodule FzHttp.UsersTest do
       assert user.disabled_at
     end
   end
+
+  describe "setting_projection/1" do
+    setup [:create_rule_with_user_and_device]
+
+    test "projects expected fields", %{user: user} do
+      assert user.id == Users.setting_projection(user)
+    end
+  end
+
+  describe "as_settings/0" do
+    setup [:create_rules]
+
+    test "Maps rules to projections", %{users: users} do
+      expected_users = Enum.map(users, &Users.setting_projection/1) |> MapSet.new()
+
+      assert Users.as_settings() == expected_users
+    end
+  end
 end
