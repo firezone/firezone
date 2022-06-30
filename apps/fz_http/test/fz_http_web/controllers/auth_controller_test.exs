@@ -189,4 +189,20 @@ defmodule FzHttpWeb.AuthControllerTest do
       assert text_response(test_conn, 401) == "Local auth disabled"
     end
   end
+
+  describe "oidc signin url" do
+    @oidc_auth_uri "https://auth.url"
+
+    test "redirects to oidc auth uri", %{unauthed_conn: conn} do
+      expect(OpenIDConnect.Mock, :authorization_uri, fn provider, _ ->
+        case provider do
+          :google -> @oidc_auth_uri
+        end
+      end)
+
+      test_conn = get(conn, Routes.auth_oidc_path(conn, :redirect_oidc_auth_uri, "google"))
+
+      assert redirected_to(test_conn) == @oidc_auth_uri
+    end
+  end
 end
