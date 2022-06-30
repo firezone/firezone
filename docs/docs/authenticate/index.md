@@ -81,10 +81,8 @@ For each OIDC provider a corresponding pretty URL is created for redirecting to
 the configured provider's sign-in URL. For the example OIDC config above, the
 URLs are:
 
-```
-https://firezone.example.com/auth/oidc/google
-https://firezone.example.com/auth/oidc/okta
-```
+* `https://firezone.example.com/auth/oidc/google`
+* `https://firezone.example.com/auth/oidc/okta`
 
 ### Common Providers
 
