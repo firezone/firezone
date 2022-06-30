@@ -12,7 +12,7 @@
       <%=
         link(
           "Sign in with #{config[:label]}",
-          to: "/auth/oidc/#{provider}",
+          to: Routes.auth_oidc_path(@conn, :redirect_oidc_auth_uri, provider),
           class: "button") %>
     </p>
   <% end %>
