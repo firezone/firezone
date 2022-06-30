@@ -6,128 +6,139 @@ defmodule FzWall.CLI.Live do
   specified IP addresses, ports, and protocols from Firezone device IPs.
   """
 
+  import FzWall.CLI.Helpers.Sets
+  import FzWall.CLI.Helpers.Nft
   import FzCommon.CLI
-  import FzCommon.FzNet, only: [ip_type: 1, standardized_inet: 1]
+  import FzCommon.FzNet, only: [ip_type: 1]
   require Logger
 
-  @table_name "firezone"
-
   @doc """
-  Adds nftables rule.
+  Setup
   """
-  def add_rule(params) do
-    exec!("""
-      #{nft()} 'add rule inet #{@table_name} forward #{rule_str(params)}'
-    """)
-  end
-
-  @doc """
-  Sets up firezone table.
-  """
-  def setup_table do
-    exec!("#{nft()} create table inet #{@table_name}")
+  def setup_firewall do
+    teardown_table()
+    setup_table()
+    setup_chains()
+    setup_rules()
   end
 
   @doc """
-  Sets up firezone chains.
+  Adds user sets and rules.
   """
-  def setup_chains do
-    exec!(
-      "#{nft()} 'add chain inet #{@table_name} forward " <>
-        "{ type filter hook forward priority 0 ; policy accept ; }'"
-    )
-
-    exec!(
-      "#{nft()} 'add chain inet #{@table_name} postrouting " <>
-        "{ type nat hook postrouting priority 100 ; }'"
-    )
-
-    setup_masquerade()
+  def add_user(user_id) do
+    add_sets(user_id)
+    add_rules(user_id)
   end
 
-  defp setup_masquerade do
-    if masquerade_ipv4?() do
-      setup_masquerade(:ipv4)
-    end
-
-    if masquerade_ipv6?() do
-      setup_masquerade(:ipv6)
-    end
+  @doc """
+  Remove user sets and rules.
+  """
+  def delete_user(user_id) do
+    delete_rules(user_id)
+    delete_sets(user_id)
   end
 
-  defp setup_masquerade(proto) do
-    File.ls!("/sys/class/net/")
-    |> Enum.reject(&skip_masquerade_for_interface?/1)
-    |> Enum.map(fn int ->
-      exec!(
-        "#{nft()} 'add rule inet #{@table_name} postrouting oifname " <>
-          "#{int} meta nfproto #{proto} masquerade persistent'"
+  @doc """
+  Adds general sets and rules.
+  """
+  def setup_rules do
+    add_sets(nil)
+    add_rules(nil)
+  end
+
+  @doc """
+  Adds device ip to the user's sets.
+  """
+  def add_device(device) do
+    get_types()
+    |> Enum.each(fn type -> add_to_set(device.user_id, device[type], type) end)
+  end
+
+  @doc """
+  Adds rule ip to its corresponding sets.
+  """
+  def add_rule(rule) do
+    add_to_set(rule.user_id, rule.destination, proto(rule.destination), rule.action)
+  end
+
+  @doc """
+  Delete rule destination ip from its corresponding sets.
+  """
+  def delete_rule(rule) do
+    remove_from_set(rule.user_id, rule.destination, proto(rule.destination), rule.action)
+  end
+
+  @doc """
+  Eliminates device rules from its corresponding sets.
+  """
+  def delete_device(device) do
+    get_types()
+    |> Enum.each(fn type -> remove_from_set(device.user_id, device[type], type) end)
+  end
+
+  defp remove_from_set(_user_id, nil, _type), do: :no_ip
+
+  defp remove_from_set(user_id, ip, type) do
+    get_device_set_name(user_id, type)
+    |> delete_elem(ip)
+  end
+
+  defp remove_from_set(user_id, ip, type, action) do
+    get_dest_set_name(user_id, type, action)
+    |> delete_elem(ip)
+  end
+
+  defp add_to_set(_user_id, nil, _type), do: :no_ip
+
+  defp add_to_set(user_id, ip, type) do
+    get_device_set_name(user_id, type)
+    |> add_elem(ip)
+  end
+
+  defp add_to_set(user_id, ip, type, action) do
+    get_dest_set_name(user_id, type, action)
+    |> add_elem(ip)
+  end
+
+  defp add_sets(user_id) do
+    list_sets(user_id)
+    |> Enum.each(&add_set/1)
+  end
+
+  defp delete_sets(user_id) do
+    list_sets(user_id)
+    |> Enum.each(&delete_set/1)
+  end
+
+  defp add_rules(user_id) do
+    cross(get_types(), get_actions())
+    |> Enum.each(fn {type, action} ->
+      create_rule(
+        type,
+        get_device_set_name(user_id, type),
+        get_dest_set_name(user_id, type, action),
+        action
       )
     end)
   end
 
-  defp skip_masquerade_for_interface?(int) do
-    int in ["lo", wireguard_interface_name()]
+  defp delete_rules(user_id) do
+    cross(get_types(), get_actions())
+    |> Enum.each(fn {type, action} ->
+      remove_rule(
+        type,
+        get_device_set_name(user_id, type),
+        get_dest_set_name(user_id, type, action),
+        action
+      )
+    end)
   end
 
-  defp masquerade_ipv4? do
-    Application.fetch_env!(:fz_wall, :wireguard_ipv4_masquerade)
-  end
-
-  defp masquerade_ipv6? do
-    Application.fetch_env!(:fz_wall, :wireguard_ipv6_masquerade)
-  end
-
-  def teardown_table do
-    if table_exists?() do
-      exec!("#{nft()} delete table inet #{@table_name}")
-    end
-  end
-
-  @doc """
-  List currently loaded rules.
-  """
-  def list_rules do
-    exec!("#{nft()} -a list table inet #{@table_name}")
-  end
-
-  @doc """
-  Deletes nftables rule.
-  """
-  def delete_rule(params) do
-    rule_str(params)
-    |> delete_rule_matching()
-  end
-
-  def delete_rules(source) do
-    source_match_str(source)
-    |> delete_rule_matching()
-  end
-
-  defp delete_rule_matching(rule_str) do
-    rules = exec!("#{nft()} -a list table inet #{@table_name}")
-
-    # When a rule is deleted the others might change handle so we need to
-    # re-scan each time.
-    case rule_handle_regex(~r/^\s*#{rule_str}.*# handle (?<num>\d+)/m, rules) do
-      nil ->
-        :no_rule
-
-      [handle] ->
-        exec!("#{nft()} delete rule inet #{@table_name} forward handle #{handle}")
-        # There might still be matching rules so re-run it
-        delete_rule_matching(rule_str)
-    end
-  end
-
-  @doc """
-  Restores rules.
-  """
-  def restore(rules) do
-    # XXX: Priority?
-    for rule_spec <- rules do
-      add_rule(rule_spec)
-    end
+  # xxx: here we could add multiple devices/rules in a single nft call
+  def restore(%{users: users, devices: devices, rules: rules}) do
+    Enum.each(users, &add_user/1)
+    Enum.each(devices, &add_device/1)
+    Enum.each(rules, &add_rule/1)
   end
 
   def egress_address do
@@ -151,54 +162,15 @@ defmodule FzWall.CLI.Live do
     end
   end
 
-  defp rule_handle_regex(regex, rules) do
-    Regex.run(regex, rules, capture: :all_names)
-  end
-
   defp egress_interface do
     Application.fetch_env!(:fz_wall, :egress_interface)
   end
 
-  defp nft do
-    Application.fetch_env!(:fz_wall, :nft_path)
-  end
-
-  defp table_exists? do
-    cmd = "#{nft()} list table inet #{@table_name}"
-
-    case bash(cmd) do
-      {_result, 0} ->
-        true
-
-      {error, _exit_code} ->
-        if error =~ ~r/No such file or directory|does not exist/ do
-          false
-        else
-          raise """
-            Unknown Error from command #{cmd}. Error:
-            #{error}
-          """
-        end
-    end
-  end
-
-  defp wireguard_interface_name do
-    Application.fetch_env!(:fz_wall, :wireguard_interface_name)
-  end
-
-  defp proto(dest) do
-    case ip_type("#{dest}") do
+  defp proto(ip) do
+    case ip_type("#{ip}") do
       "IPv4" -> "ip"
       "IPv6" -> "ip6"
       "unknown" -> raise "Unknown protocol."
     end
   end
-
-  defp rule_str({dest, action}), do: "#{rule_match_str(dest)} #{action}"
-  defp rule_str({source, dest, action}), do: "#{rule_match_str(source, dest)} #{action}"
-
-  defp rule_match_str(dest), do: "#{proto(dest)} daddr #{standardized_inet(dest)}"
-  defp rule_match_str(source, dest), do: "#{source_match_str(source)} #{rule_match_str(dest)}"
-
-  defp source_match_str(source), do: "#{proto(source)} saddr #{standardized_inet(source)}"
 end
