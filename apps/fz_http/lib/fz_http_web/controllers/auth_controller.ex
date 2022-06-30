@@ -1,10 +1,11 @@
 defmodule FzHttpWeb.AuthController do
   @moduledoc """
-  Implements the CRUD for a Session
+  Authentication Controller
   """
   use FzHttpWeb, :controller
   require Logger
 
+  alias FzCommon.FzCrypto
   alias FzHttp.Users
   alias FzHttpWeb.Authentication
   alias FzHttpWeb.Router.Helpers, as: Routes
@@ -138,5 +139,20 @@ defmodule FzHttpWeb.AuthController do
         |> put_flash(:warning, "The magic link is not valid or has expired.")
         |> redirect(to: Routes.root_path(conn, :index))
     end
+  end
+
+  def redirect_oidc_auth_uri(conn, %{"provider" => provider}) do
+    openid_connect = Application.fetch_env!(:fz_http, :openid_connect)
+
+    params = %{
+      state: FzCrypto.rand_string(),
+      # needed for google
+      access_type: "offline"
+    }
+
+    uri = openid_connect.authorization_uri(String.to_atom(provider), params)
+
+    conn
+    |> redirect(external: uri)
   end
 end

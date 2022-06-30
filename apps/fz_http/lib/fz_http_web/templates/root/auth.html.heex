@@ -9,9 +9,10 @@
 
   <%= for {provider, config} <- @openid_connect_providers do %>
     <p>
-      <%= link(
+      <%= 
+        link(
           "Sign in with #{config[:label]}",
-          to: authorization_uri(@openid_connect, provider),
+          to: "/auth/oidc/#{provider}",
           class: "button") %>
     </p>
   <% end %>
