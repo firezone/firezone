@@ -2,13 +2,13 @@
 
 name 'nodejs'
 description 'NodeJS'
-default_version '14.19.3'
+default_version '16.15.1'
 license_file 'LICENSE'
 
 source url: "https://github.com/nodejs/node/archive/refs/tags/v#{version}.tar.gz"
 
-version('16.6.2') do
-  source sha256: '9b539b1ea5e3fbd173fcbaae97088401b228c36c2076c98d04c73802713bbb73'
+version('16.15.1') do
+  source sha256: '4275c903232e9d32f143908b3bd43578e7a214f871eb4363f0999d6f2874df0e'
 end
 version('14.19.3') do
   source sha256: '69f2dbcdfe3a8f8c29848ad5c29b8db23512d2ff8dc64f73acc49ca77945dc54'
