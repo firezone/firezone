@@ -31,7 +31,6 @@ services:
     cap_add:
       - NET_ADMIN
       - SYS_MODULE
-      - SYSLOG
     sysctls:
       - net.ipv4.ip_forward=1
       - net.ipv6.conf.all.forwarding=1
@@ -48,6 +47,13 @@ services:
       POSTGRES_DB: firezone_dev
     # ports:
     #   - 5432:5432
+
+  wireguard:
+    image: ubuntu:jammy
+    volumes:
+      - /sys/kernel/debug:/sys/kernel/debug
+    privileged: true
+    command: bash -c 'dmesg -wT | grep wireguard:'
 
 volumes:
   postgres-data:
