@@ -75,6 +75,19 @@ to obtain from your OIDC provider. This should be set to `openid email profile`
 or `openid email profile offline_access` depending on the provider.
 1. `label`: The button label text that shows up on your Firezone login screen.
 
+### Pretty URLs
+
+For each OIDC provider a corresponding pretty URL is created for redirecting to
+the configured provider's sign-in URL. For the example OIDC config above, the
+URLs are:
+
+```
+https://firezone.example.com/auth/oidc/google
+https://firezone.example.com/auth/oidc/okta
+```
+
+### Common Providers
+
 We've included instructions on how to set up Firezone with several popular
 identity providers:
 
