@@ -1,6 +1,6 @@
 defmodule FzHttpWeb.AuthController do
   @moduledoc """
-  Authentication Controller
+  Implements the CRUD for a Session
   """
   use FzHttpWeb, :controller
   require Logger
