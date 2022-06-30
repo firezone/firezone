@@ -10,132 +10,116 @@ defmodule FzHttp.EventsTest do
   setup do
     on_exit(fn ->
       :sys.replace_state(Events.vpn_pid(), fn _state -> %{} end)
-      :sys.replace_state(Events.wall_pid(), fn _state -> [] end)
+
+      :sys.replace_state(Events.wall_pid(), fn _state ->
+        %{users: MapSet.new(), devices: MapSet.new(), rules: MapSet.new()}
+      end)
     end)
   end
 
   describe "update_device/1" do
-    setup [:create_device]
+    setup [:create_rule_with_user_and_device]
 
-    test "adds device to peer config", %{device: device} do
-      assert :ok == Events.update_device(device)
+    test "adds device to wall and vpn state", %{device: device, user: user} do
+      :ok = Events.update_device(device)
+
+      assert :sys.get_state(Events.wall_pid()) ==
+               %{
+                 users: MapSet.new(),
+                 devices: MapSet.new([%{ip: "10.3.2.2", ip6: "fd00::3:2:2", user_id: user.id}]),
+                 rules: MapSet.new()
+               }
 
       assert :sys.get_state(Events.vpn_pid()) == %{
-               device.public_key => %{
-                 allowed_ips: "#{device.ipv4}/32,#{device.ipv6}/128",
+               "1" => %{
+                 allowed_ips: "10.3.2.2/32,fd00::3:2:2/128",
                  preshared_key: nil
                }
              }
-    end
-  end
-
-  describe "device_update/1 with rules" do
-    setup [:create_device_with_rules]
-
-    test "updates peer config", %{device: device} do
-      assert :ok = Events.update_device(device)
-
-      assert :sys.get_state(Events.vpn_pid()) == %{
-               device.public_key => %{
-                 allowed_ips: "#{device.ipv4}/32,#{device.ipv6}/128",
-                 preshared_key: nil
-               }
-             }
-
-      assert :sys.get_state(Events.wall_pid()) == [
-               {"10.3.2.2", "1.1.1.0/24", :drop},
-               {"10.3.2.2", "2.2.2.0/24", :drop},
-               {"10.3.2.2", "3.3.3.0/24", :drop},
-               {"10.3.2.2", "4.4.4.0/24", :drop},
-               {"fd00::3:2:2", "1::/112", :drop},
-               {"fd00::3:2:2", "2::/112", :drop},
-               {"fd00::3:2:2", "3::/112", :drop},
-               {"fd00::3:2:2", "4::/112", :drop}
-             ]
     end
   end
 
   describe "delete_device/1" do
-    setup [:create_device]
+    setup [:create_rule_with_user_and_device]
 
-    test "removes from peer config", %{device: device} do
-      assert :ok = Events.delete_device(device)
+    test "removes device from vpn and wall state", %{device: device} do
+      :ok = Events.update_device(device)
+      pubkey = device.public_key
+      assert {:ok, ^pubkey} = Events.delete_device(device)
 
       assert :sys.get_state(Events.vpn_pid()) == %{}
+
+      assert :sys.get_state(Events.wall_pid()) ==
+               %{users: MapSet.new(), devices: MapSet.new(), rules: MapSet.new()}
     end
   end
 
-  describe "delete_device/1 with rules" do
-    setup [:create_device_with_rules, :create_rules]
+  describe "create_user/1" do
+    setup [:create_rule_with_user_and_device]
 
-    test "removes from peer config", %{device: device, rules: rules} do
-      assert :ok = Events.update_device(device)
-      Enum.each(rules, fn rule -> assert :ok = Events.add_rule(rule) end)
+    test "Adds user to wall state", %{user: user} do
+      :ok = Events.create_user(user)
 
-      assert MapSet.equal?(
-               MapSet.new(:sys.get_state(Events.wall_pid())),
-               MapSet.new([
-                 {"10.3.2.2", "1.1.1.0/24", :drop},
-                 {"10.3.2.2", "2.2.2.0/24", :drop},
-                 {"10.3.2.2", "3.3.3.0/24", :drop},
-                 {"10.3.2.2", "4.4.4.0/24", :drop},
-                 {"10.3.2.4", "4.4.4.0/24", :drop},
-                 {"10.3.2.5", "5.5.5.0/24", :drop},
-                 {"10.3.2.6", "6.6.6.0/24", :drop},
-                 {"fd00::3:2:2", "1::/112", :drop},
-                 {"fd00::3:2:2", "2::/112", :drop},
-                 {"fd00::3:2:2", "3::/112", :drop},
-                 {"fd00::3:2:2", "4::/112", :drop},
-                 {"1.1.1.0/24", :drop},
-                 {"2.2.2.0/24", :drop},
-                 {"3.3.3.0/24", :drop},
-                 {"4.4.4.0/24", :drop},
-                 {"5.5.5.0/24", :drop}
-               ])
-             )
-
-      assert {:ok, _} = Events.delete_device(device)
-
-      assert :sys.get_state(Events.vpn_pid()) == %{
-               "4" => %{
-                 allowed_ips: "10.3.2.4/32,fd00::3:2:4/128",
-                 preshared_key: nil
-               },
-               "5" => %{
-                 allowed_ips: "10.3.2.5/32,fd00::3:2:5/128",
-                 preshared_key: nil
-               },
-               "6" => %{
-                 allowed_ips: "10.3.2.6/32,fd00::3:2:6/128",
-                 preshared_key: nil
-               }
-             }
-
-      assert MapSet.equal?(
-               MapSet.new(:sys.get_state(Events.wall_pid())),
-               MapSet.new([
-                 {"10.3.2.4", "4.4.4.0/24", :drop},
-                 {"10.3.2.5", "5.5.5.0/24", :drop},
-                 {"10.3.2.6", "6.6.6.0/24", :drop},
-                 {"1.1.1.0/24", :drop},
-                 {"2.2.2.0/24", :drop},
-                 {"3.3.3.0/24", :drop},
-                 {"4.4.4.0/24", :drop},
-                 {"5.5.5.0/24", :drop}
-               ])
-             )
+      assert :sys.get_state(Events.wall_pid()) ==
+               %{users: MapSet.new([user.id]), devices: MapSet.new(), rules: MapSet.new()}
     end
   end
 
-  describe "add_rule/1 and delete_rule/1" do
+  describe "delete_user/1" do
+    setup [:create_rule_with_user_and_device]
+
+    test "removes user from wall state", %{user: user} do
+      :ok = Events.create_user(user)
+      :ok = Events.delete_user(user)
+
+      assert :sys.get_state(Events.wall_pid()) ==
+               %{users: MapSet.new(), devices: MapSet.new(), rules: MapSet.new()}
+    end
+  end
+
+  describe "add_rule/1" do
     setup [:create_rule]
 
-    test "adds rule and deletes rule", %{rule: rule} do
+    test "adds rule to wall state", %{rule: rule} do
       :ok = Events.add_rule(rule)
-      assert :sys.get_state(Events.wall_pid()) == [{"10.10.10.0/24", :drop}]
 
+      assert :sys.get_state(Events.wall_pid()) ==
+               %{
+                 users: MapSet.new(),
+                 devices: MapSet.new(),
+                 rules: MapSet.new([%{destination: "10.10.10.0/24", user_id: nil, action: :drop}])
+               }
+    end
+  end
+
+  describe "add_rule/1 accept" do
+    setup [:create_rule_accept]
+
+    test "adds rule to wall state", %{rule: rule} do
+      :ok = Events.add_rule(rule)
+
+      assert :sys.get_state(Events.wall_pid()) ==
+               %{
+                 users: MapSet.new(),
+                 devices: MapSet.new(),
+                 rules:
+                   MapSet.new([%{destination: "10.10.10.0/24", user_id: nil, action: :accept}])
+               }
+    end
+  end
+
+  describe "remove_rule/1" do
+    setup [:create_rule]
+
+    test "adds rule to wall state", %{rule: rule} do
+      :ok = Events.add_rule(rule)
       :ok = Events.delete_rule(rule)
-      assert :sys.get_state(Events.wall_pid()) == []
+
+      assert :sys.get_state(Events.wall_pid()) == %{
+               users: MapSet.new(),
+               rules: MapSet.new(),
+               devices: MapSet.new()
+             }
     end
   end
 
@@ -155,19 +139,41 @@ defmodule FzHttp.EventsTest do
   describe "set_rules/0" do
     setup [:create_rules]
 
-    test "sets rules" do
+    test "sets rules", %{
+      rules: expected_rules,
+      users: expected_users,
+      devices: expected_devices
+    } do
       :ok = Events.set_rules()
 
-      assert :sys.get_state(Events.wall_pid()) == [
-               {"1.1.1.0/24", :drop},
-               {"2.2.2.0/24", :drop},
-               {"3.3.3.0/24", :drop},
-               {"4.4.4.0/24", :drop},
-               {"5.5.5.0/24", :drop},
-               {"10.3.2.4", "4.4.4.0/24", :drop},
-               {"10.3.2.5", "5.5.5.0/24", :drop},
-               {"10.3.2.6", "6.6.6.0/24", :drop}
-             ]
+      expected_user_ids = MapSet.new(Enum.map(expected_users, fn user -> user.id end))
+
+      expected_devices =
+        MapSet.new(
+          Enum.map(expected_devices, fn device ->
+            %{
+              # XXX: Ideally we could hardcode the expected ips here as not to depend on the `decode` implementation
+              # However, we can't know user_id in advance, perhaps we can test the user_id part and ip parts separately
+              user_id: device.user_id,
+              ip: FzHttp.Devices.decode(device.ipv4),
+              ip6: FzHttp.Devices.decode(device.ipv6)
+            }
+          end)
+        )
+
+      expected_rules =
+        MapSet.new(
+          Enum.map(expected_rules, fn rule ->
+            %{
+              user_id: rule.user_id,
+              destination: FzHttp.Devices.decode(rule.destination),
+              action: rule.action
+            }
+          end)
+        )
+
+      assert :sys.get_state(Events.wall_pid()) ==
+               %{users: expected_user_ids, devices: expected_devices, rules: expected_rules}
     end
   end
 

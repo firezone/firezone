@@ -4,10 +4,9 @@ defmodule FzHttp.Rules do
   """
 
   import Ecto.Query, warn: false
-  import FzCommon.FzNet
-  alias EctoNetwork.INET
+  import FzHttp.Devices, only: [decode: 1]
 
-  alias FzHttp.{Devices.Device, Repo, Rules.Rule, Telemetry}
+  alias FzHttp.{Repo, Rules.Rule, Telemetry}
 
   def list_rules, do: Repo.all(Rule)
 
@@ -16,6 +15,18 @@ defmodule FzHttp.Rules do
       from r in Rule,
         where: r.user_id == ^user_id
     )
+  end
+
+  def as_settings do
+    Repo.all(
+      from r in Rule, select: %{destination: r.destination, user_id: r.user_id, action: r.action}
+    )
+    |> Enum.map(&setting_projection/1)
+    |> MapSet.new()
+  end
+
+  def setting_projection(rule) do
+    %{destination: decode(rule.destination), user_id: rule.user_id, action: rule.action}
   end
 
   def count(user_id) do
@@ -64,75 +75,4 @@ defmodule FzHttp.Rules do
         where: r.action == :drop
     )
   end
-
-  def nftables_device_spec(device) do
-    rules = FzHttp.Rules.list_rules(device.user_id)
-
-    Enum.map(rules, fn rule ->
-      {get_device_ip(device, ip_type("#{rule.destination}")), decode(rule.destination),
-       rule.action}
-    end)
-    # XXX: This should only be needed if a destination can be ipv4/v6 while ipv4/v6
-    # is disabled in firezone
-    |> Enum.reject(fn {source, _, _} -> is_nil(source) end)
-    |> Enum.map(fn {s, d, r} -> {decode(s), d, r} end)
-  end
-
-  def nftables_spec(rule) do
-    nftables_spec(rule, rule.user_id)
-  end
-
-  defp nftables_spec(rule, nil) do
-    [spec_tuple(rule, nil)]
-  end
-
-  defp nftables_spec(rule, user_id) do
-    FzHttp.Devices.list_devices(user_id)
-    |> Enum.map(fn device -> spec_tuple(rule, device) end)
-    # XXX: This should only be needed if a destination can be ipv4/v6 while ipv4/v6
-    # is disabled in firezone
-    |> Enum.reject(fn ip -> is_nil(ip) end)
-  end
-
-  defp spec_tuple({rule, device}) do
-    spec_tuple(rule, device)
-  end
-
-  defp spec_tuple(rule, nil) do
-    {decode(rule.destination), rule.action}
-  end
-
-  defp spec_tuple(rule, device) do
-    case get_device_ip(device, ip_type("#{rule.destination}")) do
-      nil -> nil
-      ip -> {decode(ip), decode(rule.destination), rule.action}
-    end
-  end
-
-  defp get_device_ip(device, "IPv4"), do: device.ipv4
-  defp get_device_ip(device, "IPv6"), do: device.ipv6
-  defp get_device_ip(_, "unknown"), do: raise("Unknown protocol")
-
-  def to_nftables do
-    Enum.map(nftables_query(), fn spec ->
-      spec_tuple(spec)
-    end)
-    |> Enum.reject(fn spec -> is_nil(spec) end)
-  end
-
-  defp nftables_query do
-    query =
-      from r in Rule,
-        left_join: d in Device,
-        on: d.user_id == r.user_id,
-        select: {r, d},
-        order_by: r.action,
-        where: is_nil(r.user_id),
-        or_where: not is_nil(d)
-
-    Repo.all(query)
-  end
-
-  def decode(nil), do: nil
-  def decode(inet), do: INET.decode(inet)
 end

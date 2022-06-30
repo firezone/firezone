@@ -5,7 +5,7 @@ defmodule FzHttp.Server do
 
   use GenServer
 
-  alias FzHttp.{Devices, Devices.StatsUpdater, Rules}
+  alias FzHttp.{Devices, Devices.StatsUpdater, Rules, Users}
 
   @process_opts Application.compile_env(:fz_http, :server_process_opts, [])
 
@@ -26,8 +26,15 @@ defmodule FzHttp.Server do
   end
 
   @impl GenServer
-  def handle_call(:load_rules, _from, state) do
-    reply = {:ok, Rules.to_nftables()}
+  def handle_call(:load_settings, _from, state) do
+    reply =
+      {:ok,
+       %{
+         users: Users.as_settings(),
+         devices: Devices.as_settings(),
+         rules: Rules.as_settings()
+       }}
+
     {:reply, reply, state}
   end
 

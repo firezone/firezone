@@ -15,95 +15,98 @@ defmodule FzWall.Server do
 
   @impl GenServer
   def init(_rules) do
-    cli().teardown_table()
-    cli().setup_table()
-    cli().setup_chains()
-    {:ok, existing_rules} = GenServer.call(http_pid(), :load_rules, @init_timeout)
-    cli().restore(existing_rules)
-    {:ok, existing_rules}
+    cli().setup_firewall()
+    {:ok, settings} = GenServer.call(http_pid(), :load_settings, @init_timeout)
+    cli().restore(settings)
+    {:ok, settings}
   end
 
   @impl GenServer
-  def handle_call({:add_rules, rule_spec}, _from, rules) do
-    new_rules = add_rules(rule_spec, rules)
+  def handle_call({:add_rule, rule}, _from, %{rules: existing_rules} = state) do
+    new_rules = add_rule(rule, existing_rules)
 
-    {:reply, :ok, new_rules}
+    {:reply, :ok, %{state | rules: new_rules}}
   end
 
   @impl GenServer
-  def handle_call({:delete_rule, rules_spec}, _from, rules) do
-    new_rules = delete_rules(rules_spec, rules)
-    {:reply, :ok, new_rules}
+  def handle_call({:delete_rule, rule}, _from, %{rules: existing_rules} = state) do
+    new_rules = delete_rule(rule, existing_rules)
+
+    {:reply, :ok, %{state | rules: new_rules}}
   end
 
   @impl GenServer
-  def handle_call({:delete_device_rules, {ipv4, nil}}, _from, rules),
-    do: delete_device_rules(ipv4, rules)
+  def handle_call({:add_device, device}, _from, %{devices: existing_devices} = state) do
+    new_devices = add_device(device, existing_devices)
 
-  @impl GenServer
-  def handle_call({:delete_device_rules, {nil, ipv6}}, _from, rules),
-    do: delete_device_rules(ipv6, rules)
-
-  @impl GenServer
-  def handle_call({:delete_device_rules, {ipv4, ipv6}}, _from, rules) do
-    {:reply, :ok, new_rules} = delete_device_rules(ipv4, rules)
-    delete_device_rules(ipv6, new_rules)
+    {:reply, :ok, %{state | devices: new_devices}}
   end
 
   @impl GenServer
-  def handle_call({:set_rules, fz_http_rules}, _from, _rules) do
-    cli().restore(fz_http_rules)
-    {:reply, :ok, fz_http_rules}
+  def handle_call({:delete_device, device}, _from, %{devices: existing_devices} = state) do
+    new_devices = delete_device(device, existing_devices)
+
+    {:reply, :ok, %{state | devices: new_devices}}
   end
 
-  # XXX: Set up NAT and Masquerade and load existing rules with nftables here
   @impl GenServer
-  def handle_call(:setup, _from, rules) do
-    {:reply, :ok, rules}
+  def handle_call({:set_rules, settings}, _from, _settings) do
+    cli().restore(settings)
+
+    {:reply, :ok, settings}
   end
 
-  # XXX: Tear down NAT and Masquerade and drop rules here
   @impl GenServer
-  def handle_call(:teardown, _from, rules) do
-    {:reply, :ok, rules}
+  def handle_call({:add_user, user_id}, _from, %{users: existing_users} = state) do
+    new_users = add_user(user_id, existing_users)
+
+    {:reply, :ok, %{state | users: new_users}}
+  end
+
+  @impl GenServer
+  def handle_call({:delete_user, user_id}, _from, %{users: existing_users} = state) do
+    new_users = delete_user(user_id, existing_users)
+
+    {:reply, :ok, %{state | users: new_users}}
   end
 
   def http_pid do
     :global.whereis_name(:fz_http_server)
   end
 
-  defp delete_device_rules(source, rules) do
-    # We ignore the errors here so that we can keep deleting rules
-    cli().delete_rules(source)
+  defp add_rule(rule, existing_rules) do
+    cli().add_rule(rule)
 
-    # XXX: Consider using MapSet here
-    new_rules =
-      Enum.reject(rules, fn rule ->
-        case rule do
-          {src, _, _} -> src == source
-          _ -> false
-        end
-      end)
-
-    {:reply, :ok, new_rules}
+    MapSet.put(existing_rules, rule)
   end
 
-  # XXX: For multiple rules it'd be better to have something like [ src1 | src2 | src3 | ...]
-  # instead of multiple callings to delete_rule
-  defp delete_rules(rules_spec, rules) do
-    Enum.reduce(rules_spec, MapSet.new(rules), fn rule_spec, rules_acc ->
-      # We ignore errors here just to keep deleting the other rules
-      cli().delete_rule(rule_spec)
-      MapSet.delete(rules_acc, rule_spec)
-    end)
-    |> Enum.to_list()
+  defp delete_rule(rule, existing_rules) do
+    cli().delete_rule(rule)
+
+    MapSet.delete(existing_rules, rule)
   end
 
-  defp add_rules(rules_spec, rules) do
-    Enum.reduce(rules_spec, MapSet.new(rules), fn rule_spec, rules_acc ->
-      cli().add_rule(rule_spec)
-      MapSet.put(rules_acc, rule_spec)
-    end)
-    |> Enum.to_list()
+  defp add_user(user_id, existing_users) do
+    cli().add_user(user_id)
+
+    MapSet.put(existing_users, user_id)
+  end
+
+  defp delete_user(user_id, existing_users) do
+    cli().delete_user(user_id)
+
+    MapSet.delete(existing_users, user_id)
+  end
+
+  defp add_device(device, existing_devices) do
+    cli().add_device(device)
+
+    MapSet.put(existing_devices, device)
+  end
+
+  defp delete_device(device, existing_devices) do
+    cli().delete_device(device)
+
+    MapSet.delete(existing_devices, device)
   end
 end

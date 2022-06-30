@@ -11,6 +11,14 @@ defmodule FzHttpWeb.MockEvents do
     {:ok, device}
   end
 
+  def create_user(_user) do
+    :ok
+  end
+
+  def delete_user(_user) do
+    :ok
+  end
+
   def update_device(_device) do
     :ok
   end
