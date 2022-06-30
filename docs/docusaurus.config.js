@@ -58,11 +58,7 @@ const config = {
         },
         items: [
           {
-            type: "docsVersionDropdown",
-            position: "left",
-          },
-          {
-            href: "https://docs.firezone.dev/",
+            href: "https://old-docs.firezone.dev/",
             label: "Old Documentation",
             position: "left",
             "aria-label": "Old Documentation",
@@ -90,41 +86,23 @@ const config = {
         style: "light",
         links: [
           {
-            title: "Docs",
-            items: [
-              {
-                label: "Tutorial",
-                to: "/docs/intro",
-              },
-            ],
-          },
-          {
             title: "Community",
             items: [
               {
-                label: "Stack Overflow",
-                href: "https://stackoverflow.com/questions/tagged/docusaurus",
+                label: "Support Forums",
+                href: "https://discourse.firez.one/",
               },
               {
-                label: "Discord",
-                href: "https://discordapp.com/invite/docusaurus",
+                label: "Slack",
+                href: "https://join.slack.com/t/firezone-users/shared_invite/zt-19jd956j4-rWcCqiKMh~ikPGsUFbvZiA",
+              },
+              {
+                label: "Github",
+                href: "https://github.com/firezone/firezone",
               },
               {
                 label: "Twitter",
-                href: "https://twitter.com/docusaurus",
-              },
-            ],
-          },
-          {
-            title: "More",
-            items: [
-              {
-                label: "Blog",
-                to: "/blog",
-              },
-              {
-                label: "GitHub",
-                href: "https://github.com/facebook/docusaurus",
+                href: "https://twitter.com/firezonehq",
               },
             ],
           },

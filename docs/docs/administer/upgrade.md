@@ -50,18 +50,18 @@ users authenticated through your OIDC provider.
 
 If this does not work, you will need to delete your existing OAuth app
 and repeat the OIDC setup steps to
-[create a new app integration](../authenticate/index) .
+[create a new app integration](../authenticate/) .
 
 ### I have an existing OAuth integration
 
 Prior to 0.3.11, Firezone used pre-configured OAuth2 providers. Follow the
-instructions [here](../authenticate/index) to migrate
+instructions [here](../authenticate/) to migrate
 to OIDC.
 
 ### I have not integrated an identity provider
 
 No action needed. You can follow the instructions
-[here](../authenticate/index)
+[here](../authenticate/)
 to enable SSO through an OIDC provider.
 
 ## Upgrading from 0.3.1 to >= 0.3.2

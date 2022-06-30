@@ -69,7 +69,7 @@ or `openid email profile offline_access` depending on the provider.
 We've included instructions on how to set up Firezone with several popular
 identity providers:
 
-* [Azure AD](../authenticate/azure-ad})
+* [AzureAD](../authenticate/azuread)
 * [Google](../authenticate/google)
 * [Okta](../authenticate/okta.md)
 * [Local email/password authentication (default)](../authenticate/web-auth)
