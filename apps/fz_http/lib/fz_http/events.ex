@@ -45,10 +45,10 @@ defmodule FzHttp.Events do
     GenServer.call(
       wall_pid(),
       {:set_rules,
-       {
-         Users.as_settings(),
-         Devices.as_settings(),
-         Rules.as_settings()
+       %{
+         users: Users.as_settings(),
+         devices: Devices.as_settings(),
+         rules: Rules.as_settings()
        }}
     )
   end

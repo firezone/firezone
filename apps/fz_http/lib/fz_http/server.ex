@@ -29,10 +29,10 @@ defmodule FzHttp.Server do
   def handle_call(:load_settings, _from, state) do
     reply =
       {:ok,
-       {
-         Users.as_settings(),
-         Devices.as_settings(),
-         Rules.as_settings()
+       %{
+         users: Users.as_settings(),
+         devices: Devices.as_settings(),
+         rules: Rules.as_settings()
        }}
 
     {:reply, reply, state}

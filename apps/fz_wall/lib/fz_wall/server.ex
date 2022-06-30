@@ -22,39 +22,31 @@ defmodule FzWall.Server do
   end
 
   @impl GenServer
-  def handle_call({:add_rule, rule}, _from, {existing_users, existing_devices, existing_rules}) do
+  def handle_call({:add_rule, rule}, _from, %{rules: existing_rules} = state) do
     new_rules = add_rule(rule, existing_rules)
 
-    {:reply, :ok, {existing_users, existing_devices, new_rules}}
+    {:reply, :ok, %{state | rules: new_rules}}
   end
 
   @impl GenServer
-  def handle_call({:delete_rule, rule}, _from, {existing_users, existing_devices, existing_rules}) do
+  def handle_call({:delete_rule, rule}, _from, %{rules: existing_rules} = state) do
     new_rules = delete_rule(rule, existing_rules)
 
-    {:reply, :ok, {existing_users, existing_devices, new_rules}}
+    {:reply, :ok, %{state | rules: new_rules}}
   end
 
   @impl GenServer
-  def handle_call(
-        {:add_device, device},
-        _from,
-        {existing_users, existing_devices, existing_rules}
-      ) do
+  def handle_call({:add_device, device}, _from, %{devices: existing_devices} = state) do
     new_devices = add_device(device, existing_devices)
 
-    {:reply, :ok, {existing_users, new_devices, existing_rules}}
+    {:reply, :ok, %{state | devices: new_devices}}
   end
 
   @impl GenServer
-  def handle_call(
-        {:delete_device, device},
-        _from,
-        {existing_users, existing_devices, existing_rules}
-      ) do
+  def handle_call({:delete_device, device}, _from, %{devices: existing_devices} = state) do
     new_devices = delete_device(device, existing_devices)
 
-    {:reply, :ok, {existing_users, new_devices, existing_rules}}
+    {:reply, :ok, %{state | devices: new_devices}}
   end
 
   @impl GenServer
@@ -65,21 +57,17 @@ defmodule FzWall.Server do
   end
 
   @impl GenServer
-  def handle_call({:add_user, user_id}, _from, {existing_users, existing_devices, existing_rules}) do
+  def handle_call({:add_user, user_id}, _from, %{users: existing_users} = state) do
     new_users = add_user(user_id, existing_users)
 
-    {:reply, :ok, {new_users, existing_devices, existing_rules}}
+    {:reply, :ok, %{state | users: new_users}}
   end
 
   @impl GenServer
-  def handle_call(
-        {:delete_user, user_id},
-        _from,
-        {existing_users, existing_devices, existing_rules}
-      ) do
+  def handle_call({:delete_user, user_id}, _from, %{users: existing_users} = state) do
     new_users = delete_user(user_id, existing_users)
 
-    {:reply, :ok, {new_users, existing_devices, existing_rules}}
+    {:reply, :ok, %{state | users: new_users}}
   end
 
   def http_pid do

@@ -12,7 +12,7 @@ defmodule FzHttp.EventsTest do
       :sys.replace_state(Events.vpn_pid(), fn _state -> %{} end)
 
       :sys.replace_state(Events.wall_pid(), fn _state ->
-        {MapSet.new(), MapSet.new(), MapSet.new()}
+        %{users: MapSet.new(), devices: MapSet.new(), rules: MapSet.new()}
       end)
     end)
   end
@@ -24,9 +24,11 @@ defmodule FzHttp.EventsTest do
       :ok = Events.update_device(device)
 
       assert :sys.get_state(Events.wall_pid()) ==
-               {MapSet.new(),
-                MapSet.new([%{ip: "10.3.2.2", ip6: "fd00::3:2:2", user_id: user.id}]),
-                MapSet.new()}
+               %{
+                 users: MapSet.new(),
+                 devices: MapSet.new([%{ip: "10.3.2.2", ip6: "fd00::3:2:2", user_id: user.id}]),
+                 rules: MapSet.new()
+               }
 
       assert :sys.get_state(Events.vpn_pid()) == %{
                "1" => %{
@@ -48,7 +50,7 @@ defmodule FzHttp.EventsTest do
       assert :sys.get_state(Events.vpn_pid()) == %{}
 
       assert :sys.get_state(Events.wall_pid()) ==
-               {MapSet.new(), MapSet.new(), MapSet.new()}
+               %{users: MapSet.new(), devices: MapSet.new(), rules: MapSet.new()}
     end
   end
 
@@ -59,7 +61,7 @@ defmodule FzHttp.EventsTest do
       :ok = Events.create_user(user)
 
       assert :sys.get_state(Events.wall_pid()) ==
-               {MapSet.new([user.id]), MapSet.new(), MapSet.new()}
+               %{users: MapSet.new([user.id]), devices: MapSet.new(), rules: MapSet.new()}
     end
   end
 
@@ -71,7 +73,7 @@ defmodule FzHttp.EventsTest do
       :ok = Events.delete_user(user)
 
       assert :sys.get_state(Events.wall_pid()) ==
-               {MapSet.new(), MapSet.new(), MapSet.new()}
+               %{users: MapSet.new(), devices: MapSet.new(), rules: MapSet.new()}
     end
   end
 
@@ -82,8 +84,11 @@ defmodule FzHttp.EventsTest do
       :ok = Events.add_rule(rule)
 
       assert :sys.get_state(Events.wall_pid()) ==
-               {MapSet.new(), MapSet.new(),
-                MapSet.new([%{destination: "10.10.10.0/24", user_id: nil, action: :drop}])}
+               %{
+                 users: MapSet.new(),
+                 devices: MapSet.new(),
+                 rules: MapSet.new([%{destination: "10.10.10.0/24", user_id: nil, action: :drop}])
+               }
     end
   end
 
@@ -94,8 +99,12 @@ defmodule FzHttp.EventsTest do
       :ok = Events.add_rule(rule)
 
       assert :sys.get_state(Events.wall_pid()) ==
-               {MapSet.new(), MapSet.new(),
-                MapSet.new([%{destination: "10.10.10.0/24", user_id: nil, action: :accept}])}
+               %{
+                 users: MapSet.new(),
+                 devices: MapSet.new(),
+                 rules:
+                   MapSet.new([%{destination: "10.10.10.0/24", user_id: nil, action: :accept}])
+               }
     end
   end
 
@@ -106,7 +115,11 @@ defmodule FzHttp.EventsTest do
       :ok = Events.add_rule(rule)
       :ok = Events.delete_rule(rule)
 
-      assert :sys.get_state(Events.wall_pid()) == {MapSet.new(), MapSet.new(), MapSet.new()}
+      assert :sys.get_state(Events.wall_pid()) == %{
+               users: MapSet.new(),
+               rules: MapSet.new(),
+               devices: MapSet.new()
+             }
     end
   end
 
@@ -159,8 +172,8 @@ defmodule FzHttp.EventsTest do
           end)
         )
 
-      assert {^expected_user_ids, ^expected_devices, ^expected_rules} =
-               :sys.get_state(Events.wall_pid())
+      assert :sys.get_state(Events.wall_pid()) ==
+               %{users: expected_user_ids, devices: expected_devices, rules: expected_rules}
     end
   end
 
