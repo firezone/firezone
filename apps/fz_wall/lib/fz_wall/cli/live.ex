@@ -135,7 +135,7 @@ defmodule FzWall.CLI.Live do
   end
 
   # xxx: here we could add multiple devices/rules in a single nft call
-  def restore({users, devices, rules}) do
+  def restore(%{users: users, devices: devices, rules: rules}) do
     Enum.each(users, &add_user/1)
     Enum.each(devices, &add_device/1)
     Enum.each(rules, &add_rule/1)
