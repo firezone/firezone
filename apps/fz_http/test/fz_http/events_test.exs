@@ -18,124 +18,95 @@ defmodule FzHttp.EventsTest do
   end
 
   describe "update_device/1" do
-    setup [:create_device]
-
-    test "adds device to peer config", %{device: device} do
-      assert :ok == Events.update_device(device)
-
-      assert :sys.get_state(Events.vpn_pid()) == %{
-               device.public_key => %{
-                 allowed_ips: "#{device.ipv4}/32,#{device.ipv6}/128",
-                 preshared_key: nil
-               }
-             }
-    end
-  end
-
-  describe "device_update/1 with rules" do
     setup [:create_rule_with_user_and_device]
 
-    test "updates peer config", %{device: device, user: user, rule: rule} do
-      assert :ok = Events.create_user(user)
-      assert :ok = Events.update_device(device)
-      assert :ok = Events.add_rule(rule)
+    test "adds device to wall and vpn state", %{device: device, user: user} do
+      :ok = Events.update_device(device)
+
+      assert :sys.get_state(Events.wall_pid()) ==
+               {MapSet.new(),
+                MapSet.new([%{ip: "10.3.2.2", ip6: "fd00::3:2:2", user_id: user.id}]),
+                MapSet.new()}
 
       assert :sys.get_state(Events.vpn_pid()) == %{
-               device.public_key => %{
-                 allowed_ips: "#{device.ipv4}/32,#{device.ipv6}/128",
+               "1" => %{
+                 allowed_ips: "10.3.2.2/32,fd00::3:2:2/128",
                  preshared_key: nil
                }
              }
-
-      expected_state =
-        {MapSet.new([user.id]),
-         MapSet.new([%{ip: "10.3.2.2", ip6: "fd00::3:2:2", user_id: user.id}]),
-         MapSet.new([%{action: :drop, destination: "10.20.30.0/24", user_id: user.id}])}
-
-      assert ^expected_state = :sys.get_state(Events.wall_pid())
     end
   end
 
   describe "delete_device/1" do
-    setup [:create_device]
+    setup [:create_rule_with_user_and_device]
 
-    test "removes from peer config", %{device: device} do
+    test "removes device from vpn and wall state", %{device: device} do
+      :ok = Events.update_device(device)
       pubkey = device.public_key
       assert {:ok, ^pubkey} = Events.delete_device(device)
 
       assert :sys.get_state(Events.vpn_pid()) == %{}
+
+      assert :sys.get_state(Events.wall_pid()) ==
+               {MapSet.new(), MapSet.new(), MapSet.new()}
     end
   end
 
-  describe "Delete and add user/device/rule" do
-    setup [:create_rule_with_user_and_device, :create_rules]
+  describe "create_user/1" do
+    setup [:create_rule_with_user_and_device]
 
-    test "add and remove user/device/rule", %{device: device, rule: rule, user: user} do
-      assert :ok = Events.create_user(user)
-      assert :ok = Events.add_rule(rule)
-      assert :ok = Events.update_device(device)
-
-      assert :sys.get_state(Events.wall_pid()) ==
-               {MapSet.new([user.id]),
-                MapSet.new([%{ip: "10.3.2.2", ip6: "fd00::3:2:2", user_id: user.id}]),
-                MapSet.new([%{action: :drop, destination: "10.20.30.0/24", user_id: user.id}])}
-
-      assert {:ok, _} = Events.delete_device(device)
-
-      assert :sys.get_state(Events.vpn_pid()) == %{
-               "4" => %{
-                 allowed_ips: "10.3.2.4/32,fd00::3:2:4/128",
-                 preshared_key: nil
-               },
-               "5" => %{
-                 allowed_ips: "10.3.2.5/32,fd00::3:2:5/128",
-                 preshared_key: nil
-               },
-               "6" => %{
-                 allowed_ips: "10.3.2.6/32,fd00::3:2:6/128",
-                 preshared_key: nil
-               }
-             }
-
-      assert :sys.get_state(Events.wall_pid()) ==
-               {MapSet.new([user.id]), MapSet.new(),
-                MapSet.new([%{action: :drop, destination: "10.20.30.0/24", user_id: user.id}])}
-
-      assert :ok = Events.delete_rule(rule)
+    test "Adds user to wall state", %{user: user} do
+      :ok = Events.create_user(user)
 
       assert :sys.get_state(Events.wall_pid()) ==
                {MapSet.new([user.id]), MapSet.new(), MapSet.new()}
-
-      assert :ok = Events.delete_user(user)
-
-      assert :sys.get_state(Events.wall_pid()) == {MapSet.new(), MapSet.new(), MapSet.new()}
     end
   end
 
-  describe "add_rule/1 and delete_rule/1" do
+  describe "delete_user/1" do
+    setup [:create_rule_with_user_and_device]
+
+    test "removes user from wall state", %{user: user} do
+      :ok = Events.create_user(user)
+      :ok = Events.delete_user(user)
+
+      assert :sys.get_state(Events.wall_pid()) ==
+               {MapSet.new(), MapSet.new(), MapSet.new()}
+    end
+  end
+
+  describe "add_rule/1" do
     setup [:create_rule]
 
-    test "adds rule and deletes rule", %{rule: rule} do
+    test "adds rule to wall state", %{rule: rule} do
       :ok = Events.add_rule(rule)
 
       assert :sys.get_state(Events.wall_pid()) ==
                {MapSet.new(), MapSet.new(),
                 MapSet.new([%{destination: "10.10.10.0/24", user_id: nil, action: :drop}])}
-
-      :ok = Events.delete_rule(rule)
-      assert :sys.get_state(Events.wall_pid()) == {MapSet.new(), MapSet.new(), MapSet.new()}
     end
   end
 
   describe "add_rule/1 accept" do
     setup [:create_rule_accept]
 
-    test "adds rule and deletes rule", %{rule: rule} do
+    test "adds rule to wall state", %{rule: rule} do
       :ok = Events.add_rule(rule)
 
       assert :sys.get_state(Events.wall_pid()) ==
                {MapSet.new(), MapSet.new(),
                 MapSet.new([%{destination: "10.10.10.0/24", user_id: nil, action: :accept}])}
+    end
+  end
+
+  describe "remove_rule/1" do
+    setup [:create_rule]
+
+    test "adds rule to wall state", %{rule: rule} do
+      :ok = Events.add_rule(rule)
+      :ok = Events.delete_rule(rule)
+
+      assert :sys.get_state(Events.wall_pid()) == {MapSet.new(), MapSet.new(), MapSet.new()}
     end
   end
 
@@ -171,8 +142,8 @@ defmodule FzHttp.EventsTest do
               # XXX: Ideally we could hardcode the expected ips here as not to depend on the `decode` implementation
               # However, we can't know user_id in advance, perhaps we can test the user_id part and ip parts separately
               user_id: device.user_id,
-              ip: FzHttp.Rules.decode(device.ipv4),
-              ip6: FzHttp.Rules.decode(device.ipv6)
+              ip: FzHttp.Devices.decode(device.ipv4),
+              ip6: FzHttp.Devices.decode(device.ipv6)
             }
           end)
         )
@@ -182,7 +153,7 @@ defmodule FzHttp.EventsTest do
           Enum.map(expected_rules, fn rule ->
             %{
               user_id: rule.user_id,
-              destination: FzHttp.Rules.decode(rule.destination),
+              destination: FzHttp.Devices.decode(rule.destination),
               action: rule.action
             }
           end)

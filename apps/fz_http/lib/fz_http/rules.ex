@@ -4,9 +4,9 @@ defmodule FzHttp.Rules do
   """
 
   import Ecto.Query, warn: false
-  alias EctoNetwork.INET
+  import FzHttp.Devices, only: [decode: 1]
 
-  alias FzHttp.{Devices, Repo, Rules, Rules.Rule, Telemetry, Users}
+  alias FzHttp.{Repo, Rules.Rule, Telemetry}
 
   def list_rules, do: Repo.all(Rule)
 
@@ -15,6 +15,18 @@ defmodule FzHttp.Rules do
       from r in Rule,
         where: r.user_id == ^user_id
     )
+  end
+
+  def as_settings do
+    Repo.all(
+      from r in Rule, select: %{destination: r.destination, user_id: r.user_id, action: r.action}
+    )
+    |> Enum.map(&setting_projection/1)
+    |> MapSet.new()
+  end
+
+  def setting_projection(rule) do
+    %{destination: decode(rule.destination), user_id: rule.user_id, action: rule.action}
   end
 
   def get_rule!(id), do: Repo.get!(Rule, id)
@@ -59,44 +71,4 @@ defmodule FzHttp.Rules do
         where: r.action == :drop
     )
   end
-
-  def device_projection(device) do
-    %{ip: decode(device.ipv4), ip6: decode(device.ipv6), user_id: device.user_id}
-  end
-
-  def rule_projection(rule) do
-    %{destination: decode(rule.destination), user_id: rule.user_id, action: rule.action}
-  end
-
-  def user_projection(user) do
-    user.id
-  end
-
-  def to_settings do
-    # Would prefer the query to do the projection in `select`
-    # but it doesn't seem to be supported with Ecto DSL
-    {
-      project_users(Users.list_users()),
-      project_devices(Devices.list_devices()),
-      project_rules(Rules.list_rules())
-    }
-  end
-
-  defp project_users(users) do
-    Enum.map(users, fn user -> user_projection(user) end)
-    |> MapSet.new()
-  end
-
-  defp project_devices(devices) do
-    Enum.map(devices, fn device -> device_projection(device) end)
-    |> MapSet.new()
-  end
-
-  defp project_rules(rules) do
-    Enum.map(rules, fn rule -> rule_projection(rule) end)
-    |> MapSet.new()
-  end
-
-  def decode(nil), do: nil
-  def decode(inet), do: INET.decode(inet)
 end

@@ -113,6 +113,16 @@ defmodule FzHttp.Users do
     Repo.all(User)
   end
 
+  def as_settings do
+    Repo.all(from u in User, select: %{id: u.id})
+    |> Enum.map(&setting_projection/1)
+    |> MapSet.new()
+  end
+
+  def setting_projection(user) do
+    user.id
+  end
+
   @doc """
   Fetches all users and groups into an Enumerable that can be used for an HTML form input.
   """

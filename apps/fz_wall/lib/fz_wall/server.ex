@@ -89,42 +89,36 @@ defmodule FzWall.Server do
   defp add_rule(rule, existing_rules) do
     cli().add_rule(rule)
 
-    existing_rules
-    |> MapSet.put(rule)
+    MapSet.put(existing_rules, rule)
   end
 
   defp delete_rule(rule, existing_rules) do
     cli().delete_rule(rule)
 
-    existing_rules
-    |> MapSet.delete(rule)
+    MapSet.delete(existing_rules, rule)
   end
 
   defp add_user(user_id, existing_users) do
     cli().add_user(user_id)
 
-    existing_users
-    |> MapSet.put(user_id)
+    MapSet.put(existing_users, user_id)
   end
 
   defp delete_user(user_id, existing_users) do
     cli().delete_user(user_id)
 
-    existing_users
-    |> MapSet.delete(user_id)
+    MapSet.delete(existing_users, user_id)
   end
 
   defp add_device(device, existing_devices) do
     cli().add_device(device)
 
-    existing_devices
-    |> MapSet.put(device)
+    MapSet.put(existing_devices, device)
   end
 
   defp delete_device(device, existing_devices) do
     cli().delete_device(device)
 
-    existing_devices
-    |> MapSet.delete(device)
+    MapSet.delete(existing_devices, device)
   end
 end

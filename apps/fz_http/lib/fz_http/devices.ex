@@ -5,6 +5,8 @@ defmodule FzHttp.Devices do
 
   import Ecto.Changeset
   import Ecto.Query, warn: false
+
+  alias EctoNetwork.INET
   alias FzHttp.{Devices.Device, Repo, Sites, Telemetry, Users, Users.User}
 
   def list_devices do
@@ -15,6 +17,16 @@ defmodule FzHttp.Devices do
 
   def list_devices(user_id) do
     Repo.all(from d in Device, where: d.user_id == ^user_id)
+  end
+
+  def as_settings do
+    Repo.all(from d in Device, select: %{ipv4: d.ipv4, ipv6: d.ipv6, user_id: d.user_id})
+    |> Enum.map(&setting_projection/1)
+    |> MapSet.new()
+  end
+
+  def setting_projection(device) do
+    %{ip: decode(device.ipv4), ip6: decode(device.ipv6), user_id: device.user_id}
   end
 
   def count(user_id) do
@@ -158,6 +170,9 @@ defmodule FzHttp.Devices do
     #{persistent_keepalive_config(device)}
     """
   end
+
+  def decode(nil), do: nil
+  def decode(inet), do: INET.decode(inet)
 
   defp psk_config(device) do
     if device.preshared_key do

@@ -113,7 +113,7 @@ defmodule FzWall.CLI.Helpers.Nft do
         true
 
       {error, _exit_code} ->
-        if String.contains?(error, "Error: No such file or directory") do
+        if error =~ ~r/No such file or directory|does not exist/ do
           false
         else
           raise """
