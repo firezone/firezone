@@ -352,6 +352,9 @@ default['firezone']['wireguard']['persistent_keepalive'] = 0
 # Enable or disable IPv4 connectivity in your WireGuard network. Default enabled.
 default['firezone']['wireguard']['ipv4']['enabled'] = true
 
+# Enable or disable SNAT/Masquerade for packets leaving the WireGuard ipv4 tunnel. Default true.
+default['firezone']['wireguard']['ipv4']['masquerade'] = true
+
 # The CIDR-formatted IPv4 network to use for your WireGuard network. Default 10.3.2.0/24.
 default['firezone']['wireguard']['ipv4']['network'] = '10.3.2.0/24'
 
@@ -361,6 +364,9 @@ default['firezone']['wireguard']['ipv4']['address'] = '10.3.2.1'
 
 # Enable or disable IPv6 connectivity in your WireGuard network. Default enabled.
 default['firezone']['wireguard']['ipv6']['enabled'] = true
+
+# Enable or disable SNAT/Masquerade for packets leaving the WireGuard ipv6 tunnel. Default true.
+default['firezone']['wireguard']['ipv6']['masquerade'] = true
 
 # The CIDR-formatted IPv6 network to use for your WireGuard network. Default fd00::3:2:0/120.
 default['firezone']['wireguard']['ipv6']['network'] = 'fd00::3:2:0/120'

@@ -13,10 +13,10 @@ running Firezone. The template does make some assumptions; you may need to
 adjust the rules to suite your use case:
 
 * The WireGuard interface is named `wg-firezone`. If this is not correct,
-change the `DEV_WIREGUARD` variable to match the
-`default['firezone']['wireguard']['interface_name']` configuration option.
+  change the `DEV_WIREGUARD` variable to match the
+  `default['firezone']['wireguard']['interface_name']` configuration option.
 * The port WireGuard is listening on is `51820`. If you are not using the
-default port change the `WIREGUARD_PORT` variable.
+  default port change the `WIREGUARD_PORT` variable.
 * Only the following inbound traffic will be allowed to the server:
   * SSH (TCP dport 22)
   * HTTP (TCP dport 80)
@@ -32,16 +32,18 @@ default port change the `WIREGUARD_PORT` variable.
   * SMTP submission (TCP dport 587)
   * UDP traceroute (UDP dport 33434-33524, rate limited to 500/second)
 * Unmatched traffic will be logged. The rules used for logging are separated
-from the rules to drop traffic and are rate limited. Removing the relevant
-logging rules will not affect trafic.
+  from the rules to drop traffic and are rate limited. Removing the relevant
+  logging rules will not affect trafic.
 
-#### Firezone Managed Rules
+## Firezone-managed Rules
 
-Firezone configures its own nftables rules to permit/reject traffic to destinations
-configured in the web interface and to handle outbound NAT for client traffic.
+Firezone configures its own nftables rules to permit/reject traffic to
+destinations configured in the web interface and to handle outbound NAT for
+client traffic.
 
-Applying the below firewall template on an already running server (not at boot time)
-will result in the Firezone rules being cleared. This may have security implications.
+Applying the below firewall template on an already running server (not at boot
+time) will result in the Firezone rules being cleared. This may have security
+implications.
 
 To work around this restart the `phoenix` service:
 
@@ -49,7 +51,9 @@ To work around this restart the `phoenix` service:
 firezone-ctl restart phoenix
 ```
 
-#### Base Firewall Template
+## Base Firewall Template
+
+<!-- markdownlint-disable MD013 -->
 
 ```shell
 #!/usr/sbin/nft -f
@@ -321,24 +325,27 @@ table inet nat {
 }
 ```
 
-#### Usage
+<!-- markdownlint-enable MD013 -->
 
-The firewall should be stored in the relevant location for the Linux distribution
-that is running. For Debian/Ubuntu this is `/etc/nftables.conf` and for RHEL this
-is `/etc/sysconfig/nftables.conf`.
+## Usage
 
-`nftables.service` will need to be configured to start on boot (if not already) set:
+The firewall should be stored in the relevant location for the Linux
+distribution that is running. For Debian/Ubuntu this is `/etc/nftables.conf`
+and for RHEL this is `/etc/sysconfig/nftables.conf`.
+
+`nftables.service` will need to be configured to start on boot (if not already)
+set:
 
 ```shell
 systemctl enable nftables.service
 ```
 
-If making any changes to the firewall template the syntax can be validated by running
-the check command:
+If making any changes to the firewall template the syntax can be validated by
+running the check command:
 
 ```shell
 nft -f /path/to/nftables.conf -c
 ```
 
-Be sure to validate the firewall works as expected as certain nftables features may
-not be available depending on the release running on the server.
+Be sure to validate the firewall works as expected as certain nftables features
+may not be available depending on the release running on the server.
