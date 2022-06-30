@@ -7,7 +7,7 @@ defmodule FzHttp.ConnectivityCheckService do
 
   require Logger
 
-  alias FzHttp.{ConnectivityChecks, Telemetry}
+  alias FzHttp.ConnectivityChecks
 
   def start_link(_) do
     http_client().start()
@@ -26,7 +26,6 @@ defmodule FzHttp.ConnectivityCheckService do
   # XXX: Consider passing state here to implement exponential backoff in case of errors.
   @impl GenServer
   def handle_info(:perform, _state) do
-    Telemetry.ping()
     {:noreply, post_request()}
   end
 

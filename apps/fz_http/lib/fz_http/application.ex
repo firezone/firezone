@@ -36,6 +36,7 @@ defmodule FzHttp.Application do
       {Phoenix.PubSub, name: FzHttp.PubSub},
       FzHttpWeb.Presence,
       FzHttp.ConnectivityCheckService,
+      FzHttp.TelemetryPingService,
       FzHttp.VpnSessionScheduler,
       {OpenIDConnect.Worker, openid_connect_providers},
       {DynamicSupervisor, name: FzHttp.RefresherSupervisor, strategy: :one_for_one},
