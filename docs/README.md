@@ -1,26 +1,41 @@
-<!-- markdownlint-disable MD002 -->
-# Firezone Docs
-<!-- markdownlint-enable MD002 -->
+# Website
 
-## To run the local docs server
+This website is built using [Docusaurus 2](https://docusaurus.io/), a modern static website generator.
 
-1. Make sure you're in this directory: `cd docs/`
-2. `bundle install`
-3. `bundle exec jekyll serve`
+### Installation
 
-## Overview
+```
+$ yarn
+```
 
-This repository is for our documentation website found at
-[https://docs.firezone.dev](https://docs.firezone.dev).
+### Local Development
 
-## Contributing
+```
+$ yarn start
+```
 
-We uses pages to organize our documentation. Please see the
-[Jekyll site](https://jekyllrb.com/docs/pages/) for more information.
+This command starts a local development server and opens up a browser window. Most changes are reflected live without having to restart the server.
 
-### Setup
+### Build
 
-We are using [Jekyll](https://jekyllrb.com/docs/) to generate the site and
-[Github Pages](https://pages.github.com/) to host it. When developing locally,
-you can use the [`jekyll serve`](https://jekyllrb.com/docs/serving-jekyll/)
-command to start a server from the `/docs` directory.
+```
+$ yarn build
+```
+
+This command generates static content into the `build` directory and can be served using any static contents hosting service.
+
+### Deployment
+
+Using SSH:
+
+```
+$ USE_SSH=true yarn deploy
+```
+
+Not using SSH:
+
+```
+$ GIT_USER=<Your GitHub username> yarn deploy
+```
+
+If you are using GitHub pages for hosting, this command is a convenient way to build the website and push to the `gh-pages` branch.

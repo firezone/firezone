@@ -6,10 +6,9 @@ parent: Deploy
 description: >
   To install Firezone on your server, follow these steps.
 ---
----
 
 **Important**: Ensure you've satisfied the
-[prerequisites]({% link docs/deploy/prerequisites.md %}) before following this
+[prerequisites](../deploy/prerequisites) before following this
 guide.
 
 ## Installation Instructions
@@ -66,8 +65,7 @@ If the Automatic Install fails, try these steps to install Firezone manually.
    default['firezone']['ssl']['certificate_key'] = '/path/to/key.pem'
    ```
 
-   See the complete [configuration file reference for more details](
-   {%link docs/reference/configuration-file.md%}).
+   See the complete [configuration file reference for more details](../reference/configuration-file).
 
 1. Reconfigure the application to pick up the new changes:
    `sudo firezone-ctl reconfigure`.
@@ -76,4 +74,4 @@ If the Automatic Install fails, try these steps to install Firezone manually.
 1. Now you should be able to sign in to the web UI at the URL you specified in
    step 5 above, e.g. `https://firezone.example.com`
 
-Find solutions to common issues during deployment in [Troubleshoot]({%link docs/administer/troubleshoot.md%}).
+Find solutions to common issues during deployment in [Troubleshoot](../administer/troubleshoot).

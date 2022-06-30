@@ -8,7 +8,6 @@ description: >
   some platforms a kernel upgrade may be required to ensure WireGuard® is
   available.
 ---
----
 
 Firezone currently supports the following platforms:
 

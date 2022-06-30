@@ -7,7 +7,6 @@ description: >
   Configure Firezone by editing the configuration file and re-running the
   reconfigure command.
 ---
----
 
 Firezone leverages [Chef Omnibus](https://github.com/chef/omnibus) to handle
 release packaging, process supervision, log management, and more.
@@ -18,4 +17,4 @@ re-running** `sudo firezone-ctl reconfigure` which triggers Chef to pick up the
 changes and apply them to the running system.
 
 For an exhaustive list of configuration variables and their descriptions, see the
-[configuration file reference]({%link docs/reference/configuration-file.md%}).
+[configuration file reference](../reference/configuration-file).

@@ -7,7 +7,6 @@ description: >
   To upgrade Firezone, download the release package and run these commands.
   We recommend keeping your Firezone installation up-to-date.
 ---
----
 
 Upgrading Firezone will disconnect all VPN sessions and require shutting
 down the Web UI. We recommend a maintenance window of about an hour in case
@@ -51,18 +50,18 @@ users authenticated through your OIDC provider.
 
 If this does not work, you will need to delete your existing OAuth app
 and repeat the OIDC setup steps to
-[create a new app integration]({%link docs/authenticate/index.md%}).
+[create a new app integration](../authenticate/index) .
 
 ### I have an existing OAuth integration
 
 Prior to 0.3.11, Firezone used pre-configured OAuth2 providers. Follow the
-instructions [here]({%link docs/authenticate/index.md%}) to migrate
+instructions [here](../authenticate/index) to migrate
 to OIDC.
 
 ### I have not integrated an identity provider
 
 No action needed. You can follow the instructions
-[here]({%link docs/authenticate/index.md%})
+[here](../authenticate/index)
 to enable SSO through an OIDC provider.
 
 ## Upgrading from 0.3.1 to >= 0.3.2
@@ -74,7 +73,7 @@ default to `https://` + the FQDN of your server.
 
 Reminder, the configuration file can be found at `/etc/firezone/firezone.rb`.
 For an exhaustive list of configuration variables and their descriptions, see the
-[configuration file reference]({%link docs/reference/configuration-file.md%}).
+[configuration file reference](../reference/configuration-file).
 
 ## Upgrading from 0.2.x to 0.3.x
 

@@ -7,14 +7,13 @@ has_toc: false
 description: >
   This page documents all the authentication methods that Firezone supports.
 ---
----
 
 Firezone can be configured to require authentication before users can generate
 or download device configuration files. Optionally,
 [periodic re-authentication](#enforce-periodic-re-authentication)
 can also be required for users to maintain their VPN session.
 
-![Azure SSO](https://user-images.githubusercontent.com/52545545/168922621-1f0f4dea-adfc-4e15-a140-a2f213676103.gif){:width="600"}
+![Azure SSO](https://user-images.githubusercontent.com/52545545/168922621-1f0f4dea-adfc-4e15-a140-a2f213676103.gif)
 
 By default, Firezone uses local email/password authentication, but can also
 support integration with any generic OpenID Connect
@@ -70,10 +69,10 @@ or `openid email profile offline_access` depending on the provider.
 We've included instructions on how to set up Firezone with several popular
 identity providers:
 
-* [Azure AD]({%link docs/authenticate/azure-ad.md%})
-* [Google]({%link docs/authenticate/google.md%})
-* [Okta]({%link docs/authenticate/okta.md%})
-* [Local email/password authentication (default)]({%link docs/authenticate/web-auth.md%})
+* [Azure AD](../authenticate/azure-ad})
+* [Google](../authenticate/google)
+* [Okta](../authenticate/okta.md)
+* [Local email/password authentication (default)](../authenticate/web-auth)
 
 If your identity provider is not listed above, but has a generic OIDC
 connector, please consult their documentation to find instructions on obtaining
@@ -97,8 +96,8 @@ This is the default.
 
 To re-authenticate an expired VPN session, a user will need to turn off their
 VPN session and sign in to the Firezone portal (URL specified during
-[deployment]({%link docs/deploy/prerequisites.md%})
+[deployment](../deploy/prerequisites)
 ).
 
 See detailed Client Instructions on how to re-authenticate your session
-[here]({%link docs/user-guides/client-instructions.md%}).
+[here](../user-guides/client-instructions).

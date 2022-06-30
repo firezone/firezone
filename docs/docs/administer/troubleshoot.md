@@ -7,7 +7,6 @@ description: >
  Start with these steps to troubleshoot your Firezone
  installation. A good first bet is to check the Firezone logs.
 ---
----
 
 For any problems that arise, a good first bet is to check the Firezone logs.
 

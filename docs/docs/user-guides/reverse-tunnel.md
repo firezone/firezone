@@ -9,7 +9,6 @@ description: >
   establish a reverse tunnel between two or more devices that
   may be behind NAT.
 ---
----
 
 This guide will walk through using Firezone as a relay to connect
 two devices. A typical use case for this configuration is to enable an
@@ -21,12 +20,11 @@ behind a NAT or firewall.
 This example demonstrates a simple scenario where a tunnel is established
 between Device A and Device B.
 
-![node-to-node](https://user-images.githubusercontent.com/52545545/155856835-2ad1f686-d894-43d1-8862-e3a8fcccee5c.png){:width="600"}
-
+![node-to-node](https://user-images.githubusercontent.com/52545545/155856835-2ad1f686-d894-43d1-8862-e3a8fcccee5c.png)
 Start by creating Device A and Device B by navigating to `/users/[user_id]/new_device`.
 In the settings for each device, ensure the following parameters are set to the
 values listed below. You can set device settings when creating the device config
-(see [Add Devices]({%link docs/user-guides/add-devices.md%})).
+(see [Add Devices](../user-guides/add-devices)).
 If you need to update settings on an existing device, you can do so by generating
 a new device config.
 
@@ -53,11 +51,11 @@ bi-directionally with Devices B through D. This configuration could represent an
 administrator or engineer accessing multiple resources
 (servers, containers, or machines) in different networks.
 
-![node-to-multiple-nodes](https://user-images.githubusercontent.com/52545545/155856838-03e968d9-bc1e-46ce-a32f-9f53f3566526.png){:width="600"}
+![node-to-multiple-nodes](https://user-images.githubusercontent.com/52545545/155856838-03e968d9-bc1e-46ce-a32f-9f53f3566526.png)
 
 In the settings for each device, ensure the following parameters are set to the
 values listed below. You can set device settings when creating the device config
-(see [Add Devices]({%link docs/user-guides/add-devices.md%})).
+(see [Add Devices](../user-guides/add-devices)).
 If you need to update settings on an existing device, you can do so by generating
 a new device config.
 
@@ -87,5 +85,4 @@ Device D
 - `PersistentKeepalive = 25`
 
 \
-[Related: Whitelisting via VPN
-]({%link docs/user-guides/whitelist-vpn.md%}){:.btn.btn-purple}
+[Related: Whitelisting via VPN](../user-guides/whitelist-vpn)

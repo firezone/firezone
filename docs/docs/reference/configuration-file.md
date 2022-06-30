@@ -7,7 +7,6 @@ description: >
   When using Firezone, there are various variables you can set to configure
   your instance. Below is a comprehensive list.
 ---
----
 
 Shown below is a complete listing of the configuration options available in
 `/etc/firezone/firezone.rb`.
@@ -17,7 +16,7 @@ Shown below is a complete listing of the configuration options available in
 
 | option                                                                        | description                                                                                                  | default value                                                          |
 | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
-| `default['firezone']['external_url']`                                         | URL used to access the web portal of this Firezone instance.                                                 | `"https://#{node['fqdn'] || node['hostname']}"`                        |
+| `default['firezone']['external_url']`                                         | URL used to access the web portal of this Firezone instance.                                                 | <code>"https://#{node['fqdn'] &vert;&vert; node['hostname']}"</code>                       |
 | `default['firezone']['config_directory']`                                     | Top-level directory for Firezone configuration.                                                              | `'/etc/firezone'`                                                      |
 | `default['firezone']['install_directory']`                                    | Top-level directory to install Firezone to.                                                                  | `'/opt/firezone'`                                                      |
 | `default['firezone']['app_directory']`                                        | Top-level directory to install the Firezone web application.                                                 | `"#{node['firezone']['install_directory']}/embedded/service/firezone"` |

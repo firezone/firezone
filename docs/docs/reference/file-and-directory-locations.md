@@ -7,7 +7,6 @@ description: >
   Locations of various files and directories related to
   a typical Firezone installation.
 ---
----
 
 Here you'll find a listing of files and directories related to a typical
 Firezone installation. These could change depending on changes to your

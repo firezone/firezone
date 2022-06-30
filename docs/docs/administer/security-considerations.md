@@ -6,7 +6,6 @@ parent: Administer
 description: >
   Security considerations in production deployments.
 ---
----
 
 **Disclaimer**: Firezone is still beta software. The codebase has not yet
 received a formal security audit. For highly sensitive and mission-critical
@@ -17,15 +16,12 @@ detailed [below](#production-deployments).
 
 Shown below is a table of ports used by Firezone services.
 
-<!-- markdownlint-disable MD013 -->
-
 | Service | Default port | Listen address | Description |
+| ------ | --------- | ------- | --------- |
 | Nginx | `80` `443` | `all` | Public HTTP(S) port for administering Firezone and facilitating authentication. |
 | WireGuard | `51820` | `all` | Public WireGuard port used for VPN sessions. |
 | Postgresql | `15432` | `127.0.0.1` | Local-only port used for bundled Postgresql server. |
 | Phoenix | `13000` | `127.0.0.1` | Local-only port used by upstream elixir app server. |
-
-<!-- markdownlint-enable MD013 -->
 
 ## Production deployments
 

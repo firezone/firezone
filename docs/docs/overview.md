@@ -1,37 +1,45 @@
 ---
 layout: default
 title: Overview
-nav_order: 1
+position: 1
 description: >
   Firezone is a self-managed WireGuard-based VPN server and Linux firewall designed for simplicity and security.
+slug: /
+sidebar_position: 1
 ---
----
+
+
+
+
 
 [Firezone](https://firezone.dev) is an open source, self-hosted VPN server and
 egress firewall for Linux. Use it to **quickly and easily** secure access to
 your private network and internal applications from a simple Web UI.
 
-![Architecture](https://user-images.githubusercontent.com/52545545/173246039-a1b37ef2-d885-4535-bca7-f5cd57da21a2.png){:width="500"}
+
+
+![Architecture](https://user-images.githubusercontent.com/52545545/173246039-a1b37ef2-d885-4535-bca7-f5cd57da21a2.png)
 
 These docs explain how to deploy, configure, and use Firezone.
 
 ## Quick Start
 
-1. [Deploy]({% link docs/deploy/index.md %}): A step-by-step walkthrough of
+1. [Deploy](./deploy): A step-by-step walkthrough of
    setting up Firezone. Start here if you are new.
-1. [Administer]({% link docs/administer/index.md %}): This section relates
+1. [Administer](./administer/): This section relates
    directly to configuring the server instance.
-1. [User Guides]({% link docs/user-guides/index.md %}): Useful guides to help you
+1. [User Guides](./user-guides): Useful guides to help you
    learn how to use Firezone and troubleshoot common issues. Consult this section
    after you successfully deploy the Firezone server.
 
+
 ## Common Configuration Guides
 
-1. [Split Tunneling]({% link docs/user-guides/split-tunnel.md %}):
+1. [Split Tunneling](./user-guides/split-tunnel):
 Only route traffic to certain IP ranges through the VPN.
-1. [Whitelisting with VPN]({% link docs/user-guides/whitelist-vpn.md %}):
+1. [Whitelisting with VPN](./user-guides/whitelist-vpn):
 Configure a VPN server with a static IP address.
-1. [Reverse Tunnels]({% link docs/user-guides/reverse-tunnel.md %}):
+1. [Reverse Tunnels](./user-guides/reverse-tunnel):
 Establish tunnels between multiple peers.
 
 ## Get Help
@@ -46,9 +54,13 @@ happy to help.
 1. [Email Us](mailto:team@firezone.dev): We read every email and respond as soon
    as we can.
 
+<accentblock title="Title" description="Lorem Ipsum is simply dummy text of the printing and typesetting industry." buttonOneText="Primary" buttonOneLink="#" buttonTwoText="Secondary" buttonTwoLink="#" />
+
 ## Contribute to Firezone
 
 We deeply appreciate any and all contributions to the project and do our best to
 ensure your contribution is included. To get started, see
-[CONTRIBUTING.md
-](https://github.com/firezone/firezone/blob/master/CONTRIBUTING.md).
+[CONTRIBUTING.md](https://github.com/firezone/firezone/blob/master/CONTRIBUTING.md).
+
+<feedback />
+<newsletter />

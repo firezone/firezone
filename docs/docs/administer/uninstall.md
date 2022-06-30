@@ -6,7 +6,6 @@ parent: Administer
 description: >
   To uninstall Firezone follow these commands.
 ---
----
 
 To completely remove Firezone and its configuration files, run the [uninstall.sh
 script](https://github.com/firezone/firezone/blob/master/scripts/uninstall.sh):

@@ -6,7 +6,6 @@ parent: Administer
 description: >
   Your Firezone installation can be managed via the `firezone-ctl` command.
 ---
----
 
 Your Firezone installation can be managed via the `firezone-ctl` command, as
 shown below. Most subcommands require prefixing with `sudo`.

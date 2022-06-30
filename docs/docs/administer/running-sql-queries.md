@@ -6,7 +6,6 @@ parent: Administer
 description: >
   Running SQL directly on the embedded Postgresql instance.
 ---
----
 
 Firezone bundles a Postgresql server and matching `psql` utility that can be
 used from the local shell like so:
