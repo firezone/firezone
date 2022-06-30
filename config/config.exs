@@ -85,6 +85,8 @@ config :fz_http,
 
 config :fz_wall,
   cli: FzWall.CLI.Sandbox,
+  wireguard_ipv4_masquerade: true,
+  wireguard_ipv6_masquerade: true,
   server_process_opts: [name: {:global, :fz_wall_server}],
   egress_interface: "dummy",
   wireguard_interface_name: "wg-firezone"

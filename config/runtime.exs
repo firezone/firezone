@@ -44,6 +44,8 @@ if config_env() == :prod do
   wireguard_allowed_ips = System.fetch_env!("WIREGUARD_ALLOWED_IPS")
   wireguard_persistent_keepalive = System.fetch_env!("WIREGUARD_PERSISTENT_KEEPALIVE")
   wireguard_ipv4_enabled = FzString.to_boolean(System.fetch_env!("WIREGUARD_IPV4_ENABLED"))
+  wireguard_ipv4_masquerade = FzString.to_boolean(System.fetch_env!("WIREGUARD_IPV4_MASQUERADE"))
+  wireguard_ipv6_masquerade = FzString.to_boolean(System.fetch_env!("WIREGUARD_IPV6_MASQUERADE"))
   wireguard_ipv4_network = System.fetch_env!("WIREGUARD_IPV4_NETWORK")
   wireguard_ipv4_address = System.fetch_env!("WIREGUARD_IPV4_ADDRESS")
   wireguard_ipv6_enabled = FzString.to_boolean(System.fetch_env!("WIREGUARD_IPV6_ENABLED"))
@@ -170,6 +172,8 @@ if config_env() == :prod do
     ]
 
   config :fz_wall,
+    wireguard_ipv4_masquerade: wireguard_ipv4_masquerade,
+    wireguard_ipv6_masquerade: wireguard_ipv6_masquerade,
     nft_path: nft_path,
     egress_interface: egress_interface,
     wireguard_interface_name: wireguard_interface_name,
