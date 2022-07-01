@@ -25,8 +25,6 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.Show do
 
     case delete_device(device, socket) do
       {:ok, _deleted_device} ->
-        {:ok, _deleted_pubkey} = @events_module.delete_device(device)
-
         {:noreply,
          socket
          |> dispatch_delete_device(device)
