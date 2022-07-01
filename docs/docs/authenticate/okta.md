@@ -83,7 +83,7 @@ default['firezone']['authentication']['oidc'] = {
     discovery_document_uri: "https://<OKTA_DOMAIN>/.well-known/openid-configuration",
     client_id: "<CLIENT_ID>",
     client_secret: "<CLIENT_SECRET>",
-    redirect_uri: "https://firezone.example.com/auth/oidc/okta/callback",
+    redirect_uri: "https://firezone.example.com/auth/oidc/okta/callback/",
     response_type: "code",
     scope: "openid email profile offline_access",
     label: "Okta"
