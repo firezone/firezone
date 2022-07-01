@@ -25,12 +25,18 @@ services:
       - ./config:/var/app/config
       - ./mix.exs:/var/app/mix.exs
       - ./mix.lock:/var/app/mix.lock
+
+      # Mask the following build directories to keep compiled binaries isolated
+      # from the local project. This is needed when the Docker Host platform
+      # doesn't match the platform under which Docker Engine is running. e.g.
+      # WSL, Docker for Mac, etc.
+      - /var/app/apps/fz_http/assets/node_modules
     ports:
       - 51820:51820/udp
     environment:
       LOCAL_AUTH_ENABLED: 'true'
-      # FZ_WALL_CLI_MODULE: FzWall.CLI.Live
-      # FZ_VPN_WGADAPTER_MODULE: FzVpn.Interface.WGAdapter.Live
+      FZ_WALL_CLI_MODULE: FzWall.CLI.Live
+      FZ_VPN_WGADAPTER_MODULE: FzVpn.Interface.WGAdapter.Live
     cap_add:
       - NET_ADMIN
       - SYS_MODULE

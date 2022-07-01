@@ -33,7 +33,7 @@
     "@fortawesome/fontawesome-free": "^5.15.3",
     "@mdi/font": "^6.5.95",
     "admin-one-bulma-dashboard": "file:local_modules/admin-one-bulma-dashboard",
-    "esbuild": "^0.14.43",
+    "esbuild": "^0.14.48",
     "esbuild-sass-plugin": "^2.2.6",
     "zxcvbn": "^4.4.2"
   }
