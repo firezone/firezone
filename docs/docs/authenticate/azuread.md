@@ -74,7 +74,7 @@ default['firezone']['authentication']['oidc'] = {
     discovery_document_uri: "https://login.microsoftonline.com/<TENANT_ID>/v2.0/.well-known/openid-configuration",
     client_id: "<CLIENT_ID>",
     client_secret: "<CLIENT_SECRET>",
-    redirect_uri: "https://firezone.example.com/auth/oidc/azure/callback",
+    redirect_uri: "https://firezone.example.com/auth/oidc/azure/callback/",
     response_type: "code",
     scope: "openid email profile offline_access",
     label: "Azure"
