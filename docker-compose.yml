@@ -3,13 +3,14 @@ version: '3.7'
 services:
   caddy:
     image: caddy:2
-    networks:
-      - firezone_dev
     volumes:
       - ./.devcontainer/Caddyfile:/etc/caddy/Caddyfile
     ports:
       - 80:80
       - 443:443
+    networks:
+      app:
+        ipv4_address: 172.28.0.99
 
   elixir:
     build:
@@ -26,8 +27,6 @@ services:
       - ./mix.lock:/var/app/mix.lock
     ports:
       - 51820:51820/udp
-    networks:
-      - firezone_dev
     environment:
       LOCAL_AUTH_ENABLED: 'true'
       FZ_WALL_CLI_MODULE: FzWall.CLI.Live
@@ -40,35 +39,53 @@ services:
       - net.ipv6.conf.all.forwarding=1
     depends_on:
       - postgres
+    networks:
+      - app
+      - isolation
 
   postgres:
     image: postgres:13.5
     volumes:
       - postgres-data:/var/lib/postgresql/data
-    networks:
-      - firezone_dev
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: firezone_dev
     # ports:
     #   - 5432:5432
+    networks:
+      - app
 
-  wireguard:
+  wireguard-log:
     image: ubuntu:jammy
     volumes:
       - /sys/kernel/debug:/sys/kernel/debug
     privileged: true
     command: bash -c 'dmesg -wT | grep wireguard:'
+
+  wireguard-client:
+    image: linuxserver/wireguard:latest
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Australia/Melbourne
+      - ALLOWEDIPS=0.0.0.0/0
+    volumes:
+      - ./tmp/config:/config
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
     networks:
-      - firezone_dev
+      - isolation
 
 volumes:
   postgres-data:
 
 networks:
-  firezone_dev:
+  app:
     ipam:
-      driver: default
       config:
-        - subnet: "172.28.0.0/16"
+        - subnet: 172.28.0.0/16
+  isolation:
