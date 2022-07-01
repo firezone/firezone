@@ -9,17 +9,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v3
-        run: |
+        with:
+          node-version: 16
+          cache: 'npm'
+      - run: |
           cd docs/
-          yarn install --forzen-lockfile
-          yarn build
+          npm ci
+          npm build
       - name: Publish Latest Docs ✨
         uses: JamesIves/github-pages-deploy-action@v4.2.2
         with:
           branch: gh-pages
           folder: docs/build
           target-folder: .
-          clean: true
+          clean: false
           clean-exclude: |
             *.*.*/

@@ -58,7 +58,7 @@ const config = {
         },
         items: [
           {
-            href: "https://old-docs.firezone.dev/",
+            href: "https://docs.firezone.dev/0.4.5",
             label: "Old Documentation",
             position: "left",
             "aria-label": "Old Documentation",
