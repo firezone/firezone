@@ -204,7 +204,7 @@ jobs:
       - name: Build
         env:
           GIT_SHA: ${{ github.sha }}
-          VERSION: ${{ needs.draft-release.outputs.tag_name || "0.0.0" }}
+          VERSION: ${{ needs.draft-release.outputs.tag_name || '0.0.0' }}
         run: |
           echo "removing lock file in case last run sucked"
           sudo rm -f /opt/runner/omnibus-local/cache/git_cache/opt/firezone/index.lock
