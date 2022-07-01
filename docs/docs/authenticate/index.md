@@ -45,7 +45,7 @@ default['firezone']['authentication']['oidc'] = {
     discovery_document_uri: "https://accounts.google.com/.well-known/openid-configuration",
     client_id: "<GOOGLE_CLIENT_ID>",
     client_secret: "<GOOGLE_CLIENT_SECRET>",
-    redirect_uri: "https://firezone.example.com/auth/oidc/google/callback",
+    redirect_uri: "https://firezone.example.com/auth/oidc/google/callback/",
     response_type: "code",
     scope: "openid email profile",
     label: "Google"
@@ -54,7 +54,7 @@ default['firezone']['authentication']['oidc'] = {
     discovery_document_uri: "https://<OKTA_DOMAIN>/.well-known/openid-configuration",
     client_id: "<OKTA_CLIENT_ID>",
     client_secret: "<OKTA_CLIENT_SECRET>",
-    redirect_uri: "https://firezone.example.com/auth/oidc/okta/callback",
+    redirect_uri: "https://firezone.example.com/auth/oidc/okta/callback/",
     response_type: "code",
     scope: "openid email profile offline_access",
     label: "Okta"
