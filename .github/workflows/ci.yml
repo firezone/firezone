@@ -23,7 +23,7 @@ jobs:
       - name: Lint Docs
         run: |
           cd docs
-          npm ci
+          npm install
           npx markdownlint .
 
   static-analysis:
