@@ -8,6 +8,9 @@ services:
     ports:
       - 80:80
       - 443:443
+    networks:
+      app:
+        ipv4_address: 172.28.0.99
 
   elixir:
     build:
@@ -36,6 +39,9 @@ services:
       - net.ipv6.conf.all.forwarding=1
     depends_on:
       - postgres
+    networks:
+      - app
+      - isolation
 
   postgres:
     image: postgres:13.5
@@ -47,13 +53,39 @@ services:
       POSTGRES_DB: firezone_dev
     # ports:
     #   - 5432:5432
+    networks:
+      - app
 
-  wireguard:
+  wireguard-log:
     image: ubuntu:jammy
     volumes:
       - /sys/kernel/debug:/sys/kernel/debug
     privileged: true
     command: bash -c 'dmesg -wT | grep wireguard:'
 
+  wireguard-client:
+    image: linuxserver/wireguard:latest
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Australia/Melbourne
+      - ALLOWEDIPS=0.0.0.0/0
+    volumes:
+      - ./tmp/config:/config
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+    networks:
+      - isolation
+
 volumes:
   postgres-data:
+
+networks:
+  app:
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+  isolation:
