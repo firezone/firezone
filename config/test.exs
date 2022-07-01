@@ -65,7 +65,7 @@ config :fz_http, :openid_connect_providers, %{
     discovery_document_uri: "https://accounts.google.com/.well-known/openid-configuration",
     client_id: "CLIENT_ID",
     client_secret: "CLIENT_SECRET",
-    redirect_uri: "https://firezone.example.com/auth/oidc/google/callback",
+    redirect_uri: "https://firezone.example.com/auth/oidc/google/callback/",
     response_type: "code",
     scope: "openid email profile",
     label: "OIDC Google"
