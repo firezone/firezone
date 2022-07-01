@@ -1,0 +1,1 @@
+Sitemap: https://docs.firezone.dev/0.3.10/sitemap.xml
