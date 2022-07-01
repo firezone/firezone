@@ -1,0 +1,530 @@
+{"0": {
+    "doc": "Add Devices",
+    "title": "Admin device config generation",
+    "content": "Firezone admins can generate device configs for all users. This can be done by clicking the “Add Device” button on the user profile page found in /users. Once the device profile is created, you can send the WireGuard configuration file to the user. Devices are associated with users. See Add Users for more information on how to add a user. Related: Client Instructions . ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/user-guides/add-devices/#admin-device-config-generation",
+    "relUrl": "/docs/user-guides/add-devices/#admin-device-config-generation"
+  },"1": {
+    "doc": "Add Devices",
+    "title": "Add Devices",
+    "content": ". We recommend asking users to generate their own device configs so the private key is exposed only to them. Users can follow instructions on the Client Instructions page to generate their own device configs. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/user-guides/add-devices/",
+    "relUrl": "/docs/user-guides/add-devices/"
+  },"2": {
+    "doc": "Add Users",
+    "title": "Web UI",
+    "content": "Add a user by clicking the “Add User” button under /users. You will be asked to specify an email and a password for the user. Firezone can also integrate and sync with an identity provider to automatically grant access to users in your organization. See Authenticate for more information. Related: Authenticate . ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/user-guides/add-users/#web-ui",
+    "relUrl": "/docs/user-guides/add-users/#web-ui"
+  },"3": {
+    "doc": "Add Users",
+    "title": "Add Users",
+    "content": ". Once you have successfully installed Firezone you’ll need to add users to grant them access to your network. This is done through the Web UI. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/user-guides/add-users/",
+    "relUrl": "/docs/user-guides/add-users/"
+  },"4": {
+    "doc": "Azure Active Directory",
+    "title": "Obtain Config Settings",
+    "content": "This guide is adapted from the Azure Active Directory documentation. Navigate to the Azure Active Directory page on the Azure portal. Select the App registrations link under the Manage menu, click New Registration, and register after entering the following: . | Name: Firezone | Supported account types: (Default Directory only - Single tenant) | Redirect URI: This should be your firezone EXTERNAL_URL + /auth/oidc/azure/callback/ (e.g. https://firezone.example.com/auth/oidc/azure/callback/). Make sure you include the trailing slash. This will be the redirect_uri value. | . After registering, open the details view of the application and copy the Application (client) ID. This will be the client_id value. Next, open the endpoints menu to retrieve the OpenID Connect metadata document. This will be the discovery_document_uri value. Next, select the Certificates &amp; secrets link under the Manage menu and create a new client secret. Copy the client secret - this will be the client_secret value. Lastly, select the API permissions link under the Manage menu, click Add a permission, and select Microsoft Graph. Add email, openid, offline_access and profile to the required permissions. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/authenticate/azure-ad/#obtain-config-settings",
+    "relUrl": "/docs/authenticate/azure-ad/#obtain-config-settings"
+  },"5": {
+    "doc": "Azure Active Directory",
+    "title": "Integrate With Firezone",
+    "content": "Edit /etc/firezone/firezone.rb to include the options below. # Using Azure Active Directory as the SSO identity provider default['firezone']['authentication']['oidc'] = { azure: { discovery_document_uri: \"https://login.microsoftonline.com/&lt;TENANT_ID&gt;/v2.0/.well-known/openid-configuration\", client_id: \"&lt;CLIENT_ID&gt;\", client_secret: \"&lt;CLIENT_SECRET&gt;\", redirect_uri: \"https://firezone.example.com/auth/oidc/azure/callback/\", response_type: \"code\", scope: \"openid email profile offline_access\", label: \"Azure\" } } . Run firezone-ctl reconfigureand firezone-ctl restart to update the application. You should now see a Sign in with Azure button at the root Firezone URL. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/authenticate/azure-ad/#integrate-with-firezone",
+    "relUrl": "/docs/authenticate/azure-ad/#integrate-with-firezone"
+  },"6": {
+    "doc": "Azure Active Directory",
+    "title": "Restricting Access to Certain Members",
+    "content": "Azure AD allows admins to restrict app access to a subset of users within your organization. See Microsoft’s documentation for more information on how to do this. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/authenticate/azure-ad/#restricting-access-to-certain-members",
+    "relUrl": "/docs/authenticate/azure-ad/#restricting-access-to-certain-members"
+  },"7": {
+    "doc": "Azure Active Directory",
+    "title": "Azure Active Directory",
+    "content": ". Firezone supports Single Sign-On (SSO) using Azure Active Directory through the generic OIDC connector. This guide will walk you through how to obtain the following config settings required for the integration: . | discovery_document_uri: This URL returns a JSON with information to construct a request to the OpenID server. | client_id: The client ID of the application. | client_secret: The client secret of the application. | redirect_uri: Instructs OIDC provider where to redirect after authentication. This should be your Firezone EXTERNAL_URL + /auth/oidc/&lt;provider_key&gt;/callback/ (e.g. https://firezone.example.com/auth/oidc/azure/callback/). | response_type: Set to code. | scope: OIDC scopes to obtain from your OIDC provider. This should be set to openid email profile offline_access to provide Firezone with the user’s email in the returned claims. | label: The button label text that shows up on your Firezone login screen. | . ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/authenticate/azure-ad/",
+    "relUrl": "/docs/authenticate/azure-ad/"
+  },"8": {
+    "doc": "Client Instructions",
+    "title": "Table of contents",
+    "content": ". | | Install and Setup . | Step 1 - Install the native WireGuard client | Step 2 - Download the device config file | Step 3 - Add the config to the client | . | Re-authenticating your session . | Step 1 - Deactivate VPN session | Step 2 - Re-authenticate | Step 3 - Activate VPN session | . | Linux - Network Manager . | Step 1 - Install the WireGuard Tools | Step 2 - Download configuration | Step 3 - Import configuration | Step 4 - Connect/disconnect | Auto Connection | . | . This is written for the end user who will be connecting to the Firezone VPN server. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/user-guides/client-instructions/#table-of-contents",
+    "relUrl": "/docs/user-guides/client-instructions/#table-of-contents"
+  },"9": {
+    "doc": "Client Instructions",
+    "title": "Install and Setup",
+    "content": "Follow this guide to establish a VPN session through the WireGuard native client. Step 1 - Install the native WireGuard client . Firezone is compatible with the official WireGuard clients found here: . | MacOS | Windows | iOS | Android | . For operating systems not listed above see the Official WireGuard site: https://www.wireguard.com/install/. Step 2 - Download the device config file . The device config file can either be obtained from your Firezone administrator or self-generated via the Firezone portal. To self generate a device config file, visit the domain provided by your Firezone administrator. This URL will be specific to your company (in this example it is https://firezone.example.com) . Step 3 - Add the config to the client . Open the WireGuard client and import the .conf file. Activate the VPN session by toggling the Activate switch. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/user-guides/client-instructions/#install-and-setup",
+    "relUrl": "/docs/user-guides/client-instructions/#install-and-setup"
+  },"10": {
+    "doc": "Client Instructions",
+    "title": "Re-authenticating your session",
+    "content": "If your network admin has required periodic authentication to maintain your VPN session, follow the steps below. You will need: . | URL of the Firezone portal: Ask your Network Admin for the link. | Credentials: Your username and password should be provided by your Network Admin. If your company is using a Single Sign On provider (like Google or Okta), the Firezone portal will prompt you to authenticate via that provider. | . Step 1 - Deactivate VPN session . Step 2 - Re-authenticate . Visit the URL of your Firezone portal and sign in using credentials provided by your network admin. If you are already logged into the portal, click the Reauthenticate button, then sign in again. Step 3 - Activate VPN session . ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/user-guides/client-instructions/#re-authenticating-your-session",
+    "relUrl": "/docs/user-guides/client-instructions/#re-authenticating-your-session"
+  },"11": {
+    "doc": "Client Instructions",
+    "title": "Linux - Network Manager",
+    "content": "The following steps can be used on Linux devices to import the WireGuard configuration profile using Network Manager CLI (nmcli). Note: Importing the configuration file using the Network Manager GUI may fail with the following error if the profile has IPv6 support enabled: . ipv6.method: method \"auto\" is not supported for WireGuard . Step 1 - Install the WireGuard Tools . The WireGuard userspace tools need to be installed. For most Linux distributions this will be a package named wireguard or wireguard-tools. For Debian/Ubuntu: . sudo apt install wireguard . For Fedora: . sudo dnf install wireguard-tools . For Arch Linux: . sudo pacman -S wireguard-tools . For distributions not listed above see the Official WireGuard site: https://www.wireguard.com/install/. Step 2 - Download configuration . The device config file can either be obtained from your Firezone administrator or self-generated via the Firezone portal. To self generate a device config file, visit the domain provided by your Firezone administrator. This URL will be specific to your company (in this example it is https://firezone.example.com) . Step 3 - Import configuration . Using nmcli, import the downloaded configuration file: . sudo nmcli connection import type wireguard file /path/to/configuration.conf . Note: The WireGuard connection/interface will match the name of the configuration file. If required, the connection can be renamed after import: . nmcli connection modify [old name] connection.id [new name] . Step 4 - Connect/disconnect . To connect to the VPN via the command line: . nmcli connection up [vpn name] . To disconnect: . nmcli connection down [vpn name] . If using a GUI, the relevant Network Manager applet can also be used to control the connection. Auto Connection . The VPN connection can be set to automatically connect by setting the autoconnect option to yes: . nmcli connection modify [vpn name] connection.autoconnect yes . To disable the automatic connection set it back to no: . nmcli connection modify [vpn name] connection.autoconnect no . ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/user-guides/client-instructions/#linux---network-manager",
+    "relUrl": "/docs/user-guides/client-instructions/#linux---network-manager"
+  },"12": {
+    "doc": "Client Instructions",
+    "title": "Client Instructions",
+    "content": " ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/user-guides/client-instructions/",
+    "relUrl": "/docs/user-guides/client-instructions/"
+  },"13": {
+    "doc": "Configuration File",
+    "title": "Configuration File",
+    "content": ". Shown below is a complete listing of the configuration options available in /etc/firezone/firezone.rb. | option | description | default value | . | default['firezone']['external_url'] | URL used to access the web portal of this Firezone instance. | \"https://#{node['fqdn'] || node['hostname']}\" | . | default['firezone']['config_directory'] | Top-level directory for Firezone configuration. | '/etc/firezone' | . | default['firezone']['install_directory'] | Top-level directory to install Firezone to. | '/opt/firezone' | . | default['firezone']['app_directory'] | Top-level directory to install the Firezone web application. | \"#{node['firezone']['install_directory']}/embedded/service/firezone\" | . | default['firezone']['log_directory'] | Top-level directory for Firezone logs. | '/var/log/firezone' | . | default['firezone']['var_directory'] | Top-level directory for Firezone runtime files. | '/var/opt/firezone' | . | default['firezone']['user'] | Name of unprivileged Linux user most services and files will belong to. | 'firezone' | . | default['firezone']['group'] | Name of Linux group most services and files will belong to. | 'firezone' | . | default['firezone']['admin_email'] | Email address for initial Firezone user. | \"firezone@localhost\" | . | default['firezone']['max_devices_per_user'] | Maximum number of devices a user can have. | 10 | . | default['firezone']['allow_unprivileged_device_management'] | Allows non-admin users to create and manage devices. | true | . | default['firezone']['egress_interface'] | Interface name where tunneled traffic will exit. If nil, the default route interface will be used. | nil | . | default['firezone']['fips_enabled'] | Enable or disable OpenSSL FIPs mode. | nil | . | default['firezone']['logging']['enabled'] | Enable or disable logging across Firezone. Set to false to disable logging entirely. | true | . | default['enterprise']['name'] | Name used by the Chef ‘enterprise’ cookbook. | 'firezone' | . | default['firezone']['install_path'] | Install path used by Chef ‘enterprise’ cookbook. Should be set to the same as the install_directory above. | node['firezone']['install_directory'] | . | default['firezone']['sysvinit_id'] | An identifier used in /etc/inittab. Must be a unique sequence of 1-4 characters. | 'SUP' | . | default['firezone']['authentication']['local']['enabled'] | Enable or disable local email/password authentication. | true | . | default['firezone']['authentication']['auto_create_oidc_users'] | Automatically create users signing in from OIDC for the first time. Disable to allow only existing users to sign in via OIDC. | true | . | default['firezone']['authentication']['disable_vpn_on_oidc_error'] | Disable a user’s VPN if an error is detected trying to refresh their OIDC token. | false | . | default['firezone']['authentication']['oidc'] | OpenID Connect config, in the format of {\"provider\" =&gt; [config...]} - See OpenIDConnect documentation for config examples. | {} | . | default['firezone']['authentication']['okta']['enabled'] | Enable or disable Okta SSO authentication. | false | . | default['firezone']['authentication']['okta']['client_id'] | OAuth Client ID for Okta SSO authentication. | nil | . | default['firezone']['authentication']['okta']['client_secret'] | OAuth Client Secret for Okta SSO authentication. | nil | . | default['firezone']['authentication']['okta']['site'] | Okta site to redirect to after successful authentication. | 'https://your-domain.okta.com' | . | default['firezone']['authentication']['google']['enabled'] | Enable or disable Google SSO authentication. | false | . | default['firezone']['authentication']['google']['client_id'] | OAuth Client ID for Google SSO authentication. | nil | . | default['firezone']['authentication']['google']['client_secret'] | OAuth Client Secret for Google SSO authentication. | nil | . | default['firezone']['authentication']['google']['redirect_uri'] | Google redirect URI for Google SSO authentication. | nil | . | default['firezone']['nginx']['enabled'] | Enable or disable the bundled nginx server. | true | . | default['firezone']['nginx']['force_ssl'] | Force nginx to SSL mode only. | true | . | default['firezone']['nginx']['non_ssl_port'] | HTTP listen port. | 80 | . | default['firezone']['nginx']['ssl_port'] | HTTPS listen port. | 443 | . | default['firezone']['nginx']['directory'] | Directory to store Firezone-related nginx virtual host configuration. | \"#{node['firezone']['var_directory']}/nginx/etc\" | . | default['firezone']['nginx']['log_directory'] | Directory to store Firezone-related nginx log files. | \"#{node['firezone']['log_directory']}/nginx\" | . | default['firezone']['nginx']['log_rotation']['file_maxbytes'] | File size at which to rotate Nginx log files. | 104857600 | . | default['firezone']['nginx']['log_rotation']['num_to_keep'] | Number of Firezone nginx log files to keep before discarding. | 10 | . | default['firezone']['nginx']['log_x_forwarded_for'] | Whether to log Firezone nginx x-forwarded-for header. | false | . | default['firezone']['nginx']['redirect_to_canonical'] | Whether to redirect URLs to the canonical FQDN specified above | false | . | default['firezone']['nginx']['cache']['enabled'] | Enable or disable the Firezone nginx cache. | false | . | default['firezone']['nginx']['cache']['directory'] | Directory for Firezone nginx cache. | \"#{node['firezone']['var_directory']}/nginx/cache\" | . | default['firezone']['nginx']['user'] | Firezone nginx user. | node['firezone']['user'] | . | default['firezone']['nginx']['group'] | Firezone nginx group. | node['firezone']['group'] | . | default['firezone']['nginx']['dir'] | Top-level nginx configuration directory. | node['firezone']['nginx']['directory'] | . | default['firezone']['nginx']['log_dir'] | Top-level nginx log directory. | node['firezone']['nginx']['log_directory'] | . | default['firezone']['nginx']['pid'] | Location for nginx pid file. | \"#{node['firezone']['nginx']['directory']}/nginx.pid\" | . | default['firezone']['nginx']['daemon_disable'] | Disable nginx daemon mode so we can monitor it instead. | true | . | default['firezone']['nginx']['gzip'] | Turn nginx gzip compression on or off. | 'on' | . | default['firezone']['nginx']['gzip_static'] | Turn nginx gzip compression on or off for static files. | 'off' | . | default['firezone']['nginx']['gzip_http_version'] | HTTP version to use for serving static files. | '1.0' | . | default['firezone']['nginx']['gzip_comp_level'] | nginx gzip compression level. | '2' | . | default['firezone']['nginx']['gzip_proxied'] | Enables or disables gzipping of responses for proxied requests depending on the request and response. | 'any' | . | default['firezone']['nginx']['gzip_vary'] | Enables or disables inserting the “Vary: Accept-Encoding” response header. | 'off' | . | default['firezone']['nginx']['gzip_buffers'] | Sets the number and size of buffers used to compress a response. If nil, nginx default is used. | nil | . | default['firezone']['nginx']['gzip_types'] | MIME types to enable gzip compression for. | ['text/plain', 'text/css','application/x-javascript', 'text/xml', 'application/xml', 'application/rss+xml', 'application/atom+xml', 'text/javascript', 'application/javascript', 'application/json'] | . | default['firezone']['nginx']['gzip_min_length'] | Minimum file length to enable file gzip compression for. | 1000 | . | default['firezone']['nginx']['gzip_disable'] | User-agent matcher to disable gzip compression for. | 'MSIE [1-6]\\.' | . | default['firezone']['nginx']['keepalive'] | Activates cache for connection to upstream servers. | 'on' | . | default['firezone']['nginx']['keepalive_timeout'] | Timeout in seconds for keepalive connection to upstream servers. | 65 | . | default['firezone']['nginx']['worker_processes'] | Number of nginx worker processes. | node['cpu'] &amp;&amp; node['cpu']['total'] ? node['cpu']['total'] : 1 | . | default['firezone']['nginx']['worker_connections'] | Max number of simultaneous connections that can be opened by a worker process. | 1024 | . | default['firezone']['nginx']['worker_rlimit_nofile'] | Changes the limit on the maximum number of open files for worker processes. Uses nginx default if nil. | nil | . | default['firezone']['nginx']['multi_accept'] | Whether workers should accept one connection at a time or multiple. | true | . | default['firezone']['nginx']['event'] | Specifies the connection processing method to use inside nginx events context. | 'epoll' | . | default['firezone']['nginx']['server_tokens'] | Enables or disables emitting nginx version on error pages and in the “Server” response header field. | nil | . | default['firezone']['nginx']['server_names_hash_bucket_size'] | Sets the bucket size for the server names hash tables. | 64 | . | default['firezone']['nginx']['sendfile'] | Enables or disables the use of nginx’s sendfile(). | 'on' | . | default['firezone']['nginx']['access_log_options'] | Sets nginx access log options. | nil | . | default['firezone']['nginx']['error_log_options'] | Sets nginx error log options. | nil | . | default['firezone']['nginx']['disable_access_log'] | Disables nginx access log. | false | . | default['firezone']['nginx']['types_hash_max_size'] | nginx types hash max size. | 2048 | . | default['firezone']['nginx']['types_hash_bucket_size'] | nginx types hash bucket size. | 64 | . | default['firezone']['nginx']['proxy_read_timeout'] | nginx proxy read timeout. Set to nil to use nginx default. | nil | . | default['firezone']['nginx']['client_body_buffer_size'] | nginx client body buffer size. Set to nil to use nginx default. | nil | . | default['firezone']['nginx']['client_max_body_size'] | nginx client max body size. | '250m' | . | default['firezone']['nginx']['default']['modules'] | Specify additional nginx modules. | [] | . | default['firezone']['nginx']['enable_rate_limiting'] | Enable or disable nginx rate limiting. | true | . | default['firezone']['nginx']['rate_limiting_zone_name'] | Nginx rate limiting zone name. | 'firezone' | . | default['firezone']['nginx']['rate_limiting_backoff'] | Nginx rate limiting backoff. | '10m' | . | default['firezone']['nginx']['rate_limit'] | Nginx rate limit. | '10r/s' | . | default['firezone']['nginx']['ipv6'] | Allow nginx to listen for HTTP requests for IPv6 in addition to IPv4. | true | . | default['firezone']['postgresql']['enabled'] | Enable or disable bundled Postgresql. Set to false and fill in the database options below to use your own Postgresql instance. | true | . | default['firezone']['postgresql']['username'] | Username for Postgresql. | node['firezone']['user'] | . | default['firezone']['postgresql']['data_directory'] | Postgresql data directory. | \"#{node['firezone']['var_directory']}/postgresql/13.3/data\" | . | default['firezone']['postgresql']['log_directory'] | Postgresql log directory. | \"#{node['firezone']['log_directory']}/postgresql\" | . | default['firezone']['postgresql']['log_rotation']['file_maxbytes'] | Postgresql log file maximum size before it’s rotated. | 104857600 | . | default['firezone']['postgresql']['log_rotation']['num_to_keep'] | Number of Postgresql log files to keep. | 10 | . | default['firezone']['postgresql']['checkpoint_completion_target'] | Postgresql checkpoint completion target. | 0.5 | . | default['firezone']['postgresql']['checkpoint_segments'] | Number of Postgresql checkpoint segments. | 3 | . | default['firezone']['postgresql']['checkpoint_timeout'] | Postgresql checkpoint timeout. | '5min' | . | default['firezone']['postgresql']['checkpoint_warning'] | Postgresql checkpoint warning time in seconds. | '30s' | . | default['firezone']['postgresql']['effective_cache_size'] | Postgresql effective cache size. | '128MB' | . | default['firezone']['postgresql']['listen_address'] | Postgresql listen address. | '127.0.0.1' | . | default['firezone']['postgresql']['max_connections'] | Postgresql max connections. | 350 | . | default['firezone']['postgresql']['md5_auth_cidr_addresses'] | Postgresql CIDRs to allow for md5 auth. | ['127.0.0.1/32', '::1/128'] | . | default['firezone']['postgresql']['port'] | Postgresql listen port. | 15432 | . | default['firezone']['postgresql']['shared_buffers'] | Postgresql shared buffers size. | \"#{(node['memory']['total'].to_i / 4) / 1024}MB\" | . | default['firezone']['postgresql']['shmmax'] | Postgresql shmmax in bytes. | 17179869184 | . | default['firezone']['postgresql']['shmall'] | Postgresql shmall in bytes. | 4194304 | . | default['firezone']['postgresql']['work_mem'] | Postgresql working memory size. | '8MB' | . | default['firezone']['database']['user'] | Specifies the username Firezone will use to connect to the DB. | node['firezone']['postgresql']['username'] | . | default['firezone']['database']['password'] | If using an external DB, specifies the password Firezone will use to connect to the DB. | 'change_me' | . | default['firezone']['database']['name'] | Database that Firezone will use. Will be created if it doesn’t exist. | 'firezone' | . | default['firezone']['database']['host'] | Database host that Firezone will connect to. | node['firezone']['postgresql']['listen_address'] | . | default['firezone']['database']['port'] | Database port that Firezone will connect to. | node['firezone']['postgresql']['port'] | . | default['firezone']['database']['pool'] | Database pool size Firezone will use. | [10, Etc.nprocessors].max | . | default['firezone']['database']['ssl'] | Whether to connect to the database over SSL. | false | . | default['firezone']['database']['ssl_opts'] | Hash of options to send to the :ssl_opts option when connecting over SSL. See Ecto.Adapters.Postgres documentation. | {} | . | default['firezone']['database']['parameters'] | Hash of parameters to send to the :parameters option when connecting to the database. See Ecto.Adapters.Postgres documentation. | {} | . | default['firezone']['database']['extensions'] | Database extensions to enable. | { 'plpgsql' =&gt; true, 'pg_trgm' =&gt; true } | . | default['firezone']['phoenix']['enabled'] | Enable or disable the Firezone web application. | true | . | default['firezone']['phoenix']['listen_address'] | Firezone web application listen address. This will be the upstream listen address that nginx proxies. | '127.0.0.1' | . | default['firezone']['phoenix']['port'] | Firezone web application listen port. This will be the upstream port that nginx proxies. | 13000 | . | default['firezone']['phoenix']['log_directory'] | Firezone web application log directory. | \"#{node['firezone']['log_directory']}/phoenix\" | . | default['firezone']['phoenix']['log_rotation']['file_maxbytes'] | Firezone web application log file size. | 104857600 | . | default['firezone']['phoenix']['log_rotation']['num_to_keep'] | Number of Firezone web application log files to keep. | 10 | . | default['firezone']['wireguard']['enabled'] | Enable or disable bundled WireGuard management. | true | . | default['firezone']['wireguard']['log_directory'] | Log directory for bundled WireGuard management. | \"#{node['firezone']['log_directory']}/wireguard\" | . | default['firezone']['wireguard']['log_rotation']['file_maxbytes'] | WireGuard log file max size. | 104857600 | . | default['firezone']['wireguard']['log_rotation']['num_to_keep'] | Number of WireGuard log files to keep. | 10 | . | default['firezone']['wireguard']['interface_name'] | WireGuard interface name. | 'wg-firezone' | . | default['firezone']['wireguard']['port'] | WireGuard listen port. | 51820 | . | default['firezone']['wireguard']['mtu'] | WireGuard interface MTU for this server and for device configurations. | 1280 | . | default['firezone']['wireguard']['endpoint'] | WireGuard Endpoint to use for generating device configurations. If nil, defaults to the server’s public IP address. | nil | . | default['firezone']['wireguard']['dns'] | WireGuard DNS to use for generated device configurations. | '1.1.1.1, 1.0.0.1' | . | default['firezone']['wireguard']['allowed_ips'] | WireGuard AllowedIPs to use for generated device configurations. | '0.0.0.0/0, ::/0' | . | default['firezone']['wireguard']['persistent_keepalive'] | Default PersistentKeepalive setting for generated device configurations. A value of 0 disables. | 0 | . | default['firezone']['wireguard']['ipv4']['enabled'] | Enable or disable IPv4 for WireGuard network. | true | . | default['firezone']['wireguard']['ipv4']['masquerade'] | Enable or disable masquerade for packets leaving the IPv4 tunnel. | true | . | default['firezone']['wireguard']['ipv4']['network'] | WireGuard network IPv4 address pool. | '10.3.2.0/24' | . | default['firezone']['wireguard']['ipv4']['address'] | WireGuard interface IPv4 address. Must be within WireGuard address pool. | '10.3.2.1' | . | default['firezone']['wireguard']['ipv6']['enabled'] | Enable or disable IPv6 for WireGuard network. | true | . | default['firezone']['wireguard']['ipv6']['masquerade'] | Enable or disable masquerade for packets leaving the IPv6 tunnel. | true | . | default['firezone']['wireguard']['ipv6']['network'] | WireGuard network IPv6 address pool. | 'fd00::3:2:0/120' | . | default['firezone']['wireguard']['ipv6']['address'] | WireGuard interface IPv6 address. Must be within IPv6 address pool. | 'fd00::3:2:1' | . | default['firezone']['runit']['svlogd_bin'] | Runit svlogd bin location. | \"#{node['firezone']['install_directory']}/embedded/bin/svlogd\" | . | default['firezone']['ssl']['directory'] | SSL directory for storing generated certs. | '/var/opt/firezone/ssl' | . | default['firezone']['ssl']['enabled'] | Enable or disable SSL for nginx. | true | . | default['firezone']['ssl']['certificate'] | Path to the certificate file for your FQDN. If this is nil, a self-signed on will be generated for you. | nil | . | default['firezone']['ssl']['certificate_key'] | Path to the certificate key file for your FQDN. If this is nil, a self-signed certificate will be generated for you. | nil | . | default['firezone']['ssl']['ssl_dhparam'] | nginx ssl dh_param. | nil | . | default['firezone']['ssl']['country_name'] | Country name for self-signed cert. | 'US' | . | default['firezone']['ssl']['state_name'] | State name for self-signed cert. | 'CA' | . | default['firezone']['ssl']['locality_name'] | Locality name for self-signed cert. | 'San Francisco' | . | default['firezone']['ssl']['company_name'] | Company name self-signed cert. | 'My Company' | . | default['firezone']['ssl']['organizational_unit_name'] | Organizational unit name for self-signed cert. | 'Operations' | . | default['firezone']['ssl']['email_address'] | Email address for self-signed cert. | 'you@example.com' | . | default['firezone']['ssl']['ciphers'] | SSL ciphers for nginx to use. | 'ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-DSS-AES128-GCM-SHA256:kEDH+AESGCM:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-DSS-AES128-SHA256:DHE-RSA-AES256-SHA256:DHE-DSS-AES256-SHA:DHE-RSA-AES256-SHA:AES128-GCM-SHA256:AES256-GCM-SHA384:AES128-SHA:AES256-SHA:AES:CAMELLIA:DES-CBC3-SHA:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!aECDH:!EDH-DSS-DES-CBC3-SHA:!EDH-RSA-DES-CBC3-SHA:!KRB5-DES-CBC3-SHA' | . | default['firezone']['ssl']['fips_ciphers'] | SSL ciphers for FIPs mode. | 'FIPS@STRENGTH:!aNULL:!eNULL' | . | default['firezone']['ssl']['protocols'] | TLS protocols to use. | 'TLSv1 TLSv1.1 TLSv1.2' | . | default['firezone']['ssl']['session_cache'] | SSL session cache. | 'shared:SSL:4m' | . | default['firezone']['ssl']['session_timeout'] | SSL session timeout. | '5m' | . | default['firezone']['robots_allow'] | nginx robots allow. | '/' | . | default['firezone']['robots_disallow'] | nginx robots disallow. | nil | . | default['firezone']['outbound_email']['from'] | Outbound email from address. | nil | . | default['firezone']['outbound_email']['provider'] | Outbound email service provider. | nil | . | default['firezone']['outbound_email']['configs'] | Outbound email provider configs. | see omnibus/cookbooks/firezone/attributes/default.rb | . | default['firezone']['telemetry']['enabled'] | Enable or disable anonymized product telemetry. | true | . | default['firezone']['connectivity_checks']['enabled'] | Enable or disable the Firezone connectivity checks service. | true | . | default['firezone']['connectivity_checks']['interval'] | Interval between connectivity checks in seconds. | 3_600 | . ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/reference/configuration-file/",
+    "relUrl": "/docs/reference/configuration-file/"
+  },"14": {
+    "doc": "Configure",
+    "title": "Configure",
+    "content": ". Firezone leverages Chef Omnibus to handle release packaging, process supervision, log management, and more. The main configuration file is written in Ruby and can be found at /etc/firezone/firezone.rb. Changing this file requires re-running sudo firezone-ctl reconfigure which triggers Chef to pick up the changes and apply them to the running system. For an exhaustive list of configuration variables and their descriptions, see the configuration file reference. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/administer/configure/",
+    "relUrl": "/docs/administer/configure/"
+  },"15": {
+    "doc": "File and Directory Locations",
+    "title": "File and Directory Locations",
+    "content": ". Here you’ll find a listing of files and directories related to a typical Firezone installation. These could change depending on changes to your configuration file. | path | description | . | /var/opt/firezone | Top-level directory containing data and generated configuration for Firezone bundled services. | . | /opt/firezone | Top-level directory containing built libraries, binaries and runtime files needed by Firezone. | . | /usr/bin/firezone-ctl | firezone-ctl utility for managing your Firezone installation. | . | /etc/systemd/system/firezone-runsvdir-start.service | systemd unit file for starting the Firezone runsvdir supervisor process. | . | /etc/firezone | Firezone configuration files. | . ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/reference/file-and-directory-locations/",
+    "relUrl": "/docs/reference/file-and-directory-locations/"
+  },"16": {
+    "doc": "Firewall Rules",
+    "title": "Firewall Rules",
+    "content": ". Firezone supports egress filtering controls to explicitly DROP or ACCEPT packets via the kernel’s netfilter system. By default, all traffic is allowed. The Allowlist and Denylist support both IPv4 and IPv6 CIDRs and IP addresses. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/user-guides/firewall-rules/",
+    "relUrl": "/docs/user-guides/firewall-rules/"
+  },"17": {
+    "doc": "Google",
+    "title": "Obtain Config Settings",
+    "content": "Step 1 - OAuth Config Screen . If this is the first time you are creating a new OAuth client ID, you will be asked to configure a consent screen. IMPORTANT: Select Internal for user type. This ensures only accounts belonging to users in your Google Workspace Organization can create device configs. DO NOT select External unless you want to enable anyone with a valid Google Account to create device configs. On the App information screen: . | App name: Firezone | App logo: Firezone logo (save link as). | Application home page: the URL of your Firezone instance. | Authorized domains: the top level domain of your Firezone instance. | . On the next step add the following scopes: . Step 2 - Create OAuth Client IDs . This section is based off Google’s own documentation on setting up OAuth 2.0. Visit the Google Cloud Console Credentials page page, click + Create Credentials and select OAuth client ID. On the OAuth client ID creation screen: . | Set Application Type to Web application | Add your Firezone EXTERNAL_URL + /auth/oidc/google/callback/ (e.g. https://firezone.example.com/auth/oidc/google/callback/) as an entry to Authorized redirect URIs. | . After creating the OAuth client ID, you will be given a Client ID and Client Secret. These will be used together with the redirect URI in the next step. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/authenticate/google/#obtain-config-settings",
+    "relUrl": "/docs/authenticate/google/#obtain-config-settings"
+  },"18": {
+    "doc": "Google",
+    "title": "Integrate With Firezone",
+    "content": "Edit /etc/firezone/firezone.rb to include the options below. # Using Google as the SSO identity provider default['firezone']['authentication']['oidc'] = { google: { discovery_document_uri: \"https://accounts.google.com/.well-known/openid-configuration\", client_id: \"&lt;CLIENT_ID&gt;\", client_secret: \"&lt;CLIENT_SECRET&gt;\", redirect_uri: \"https://firezone.example.com/auth/oidc/google/callback/\", response_type: \"code\", scope: \"openid email profile\", label: \"Google\" } } . Run firezone-ctl reconfigureand firezone-ctl restart to update the application. You should now see a Sign in with Google button at the root Firezone URL. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/authenticate/google/#integrate-with-firezone",
+    "relUrl": "/docs/authenticate/google/#integrate-with-firezone"
+  },"19": {
+    "doc": "Google",
+    "title": "Google",
+    "content": ". Firezone supports Single Sign-On (SSO) using Google Workspace and Cloud Identity through the generic OIDC connector. This guide will walk you through how to obtain the following config settings required for the integration: . | discovery_document_uri: This URL returns a JSON with information to construct a request to the OpenID server. | client_id: The client ID of the application. | client_secret: The client secret of the application. | redirect_uri: Instructs OIDC provider where to redirect after authentication. This should be your Firezone EXTERNAL_URL + /auth/oidc/&lt;provider_key&gt;/callback/ (e.g. https://firezone.example.com/auth/oidc/google/callback/). | response_type: Set to code. | scope: OIDC scopes to obtain from your OIDC provider. This should be set to openid email profile to provide Firezone with the user’s email in the returned claims. | label: The button label text that shows up on your Firezone login screen. | . Note: Previously, Firezone used pre-configured Oauth2 providers. We’ve moved to OIDC based authentication, which allows for any OpenID Connect provider (Google, Okta, Dex) to be used for authentication. We strongly recommend transitioning your existing Google or Okta-based SSO configuration to the generic OIDC-based configuration format described here. We’ll be removing the Google-specific and Okta-specific SSO functionality in a future release. To set up SSO, follow the steps below: . ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/authenticate/google/",
+    "relUrl": "/docs/authenticate/google/"
+  },"20": {
+    "doc": "Authenticate",
+    "title": "Integrating A Generic OIDC Provider",
+    "content": "The example below details the config settings required by Firezone to enable SSO through an OIDC provider. The configuration file can be found at /etc/firezone/firezone.rb. To pick up changes, run firezone-ctl reconfigure and firezone-ctl restart to update the application. # This is an example using Google and Okta as an SSO identity provider. # Multiple OIDC configs can be added to the same Firezone instance. # Firezone can disable a user's VPN if there's any error detected trying # to refresh their access_token. This is verified to work for Google, Okta, and # Azure SSO and is used to automatically disconnect a user's VPN if they're removed # from the OIDC provider. Leave this disabled if your OIDC provider # has issues refreshing access tokens as it could unexpectedly interrupt a # user's VPN session. default['firezone']['authentication']['disable_vpn_on_oidc_error'] = false default['firezone']['authentication']['oidc'] = { google: { discovery_document_uri: \"https://accounts.google.com/.well-known/openid-configuration\", client_id: \"&lt;GOOGLE_CLIENT_ID&gt;\", client_secret: \"&lt;GOOGLE_CLIENT_SECRET&gt;\", redirect_uri: \"https://firezone.example.com/auth/oidc/google/callback/\", response_type: \"code\", scope: \"openid email profile\", label: \"Google\" }, okta: { discovery_document_uri: \"https://&lt;OKTA_DOMAIN&gt;/.well-known/openid-configuration\", client_id: \"&lt;OKTA_CLIENT_ID&gt;\", client_secret: \"&lt;OKTA_CLIENT_SECRET&gt;\", redirect_uri: \"https://firezone.example.com/auth/oidc/okta/callback/\", response_type: \"code\", scope: \"openid email profile offline_access\", label: \"Okta\" } } . | discovery_document_uri: This URL returns a JSON with information to construct a request to the OpenID server. | client_id: The client ID of the application. | client_secret: The client secret of the application. | redirect_uri: Instructs OIDC provider where to redirect after authentication. This should be your Firezone EXTERNAL_URL + /auth/oidc/&lt;provider_key&gt;/callback/ (e.g. https://firezone.example.com/auth/oidc/google/callback/). | response_type: Set to code. | scope: OIDC scopes to obtain from your OIDC provider. This should be set to openid email profile or openid email profile offline_access depending on the provider. | label: The button label text that shows up on your Firezone login screen. | . We’ve included instructions on how to set up Firezone with several popular identity providers: . | Azure AD | Google | Okta | Local email/password authentication (default) | . If your identity provider is not listed above, but has a generic OIDC connector, please consult their documentation to find instructions on obtaining the config settings required. Join our Slack to request additional help or open a Github Issue to request additional documentation for your provider. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/authenticate/#integrating-a-generic-oidc-provider",
+    "relUrl": "/docs/authenticate/#integrating-a-generic-oidc-provider"
+  },"21": {
+    "doc": "Authenticate",
+    "title": "Enforce Periodic Re-authentication",
+    "content": "Periodic re-authentication can be enforced by changing the setting in settings/security. This can be used to ensure a user must sign in to Firezone periodically in order to maintain their VPN session. You can set the session length to a minimum of 1 hour and maximum of 90 days. Setting this to Never disables this setting, allowing VPN sessions indefinitely. This is the default. To re-authenticate an expired VPN session, a user will need to turn off their VPN session and sign in to the Firezone portal (URL specified during deployment ). See detailed Client Instructions on how to re-authenticate your session here. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/authenticate/#enforce-periodic-re-authentication",
+    "relUrl": "/docs/authenticate/#enforce-periodic-re-authentication"
+  },"22": {
+    "doc": "Authenticate",
+    "title": "Authenticate",
+    "content": ". Firezone can be configured to require authentication before users can generate or download device configuration files. Optionally, periodic re-authentication can also be required for users to maintain their VPN session. By default, Firezone uses local email/password authentication, but can also support integration with any generic OpenID Connect (OIDC) identity provider. This allows users to sign in to Firezone using their credentials from Okta, Google, Azure AD, or your own custom identity provider. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/authenticate/",
+    "relUrl": "/docs/authenticate/"
+  },"23": {
+    "doc": "Overview",
+    "title": "Quick Start",
+    "content": ". | Deploy: A step-by-step walkthrough of setting up Firezone. Start here if you are new. | Administer: This section relates directly to configuring the server instance. | User Guides: Useful guides to help you learn how to use Firezone and troubleshoot common issues. Consult this section after you successfully deploy the Firezone server. | . ",
+    "url": "https://docs.firezone.dev/0.4.5/#quick-start",
+    "relUrl": "/#quick-start"
+  },"24": {
+    "doc": "Overview",
+    "title": "Common Configuration Guides",
+    "content": ". | Split Tunneling: Only route traffic to certain IP ranges through the VPN. | Whitelisting with VPN: Configure a VPN server with a static IP address. | Reverse Tunnels: Establish tunnels between multiple peers. | . ",
+    "url": "https://docs.firezone.dev/0.4.5/#common-configuration-guides",
+    "relUrl": "/#common-configuration-guides"
+  },"25": {
+    "doc": "Overview",
+    "title": "Get Help",
+    "content": "If you’re looking for help installing, configuring, or using Firezone, we’re happy to help. | Discussion Forums: Ask questions, report bugs, and suggest features. | Public Slack Group: Join live discussions, meet other users, and get to know the contributors. | Email Us: We read every email and respond as soon as we can. | . ",
+    "url": "https://docs.firezone.dev/0.4.5/#get-help",
+    "relUrl": "/#get-help"
+  },"26": {
+    "doc": "Overview",
+    "title": "Contribute to Firezone",
+    "content": "We deeply appreciate any and all contributions to the project and do our best to ensure your contribution is included. To get started, see CONTRIBUTING.md . ",
+    "url": "https://docs.firezone.dev/0.4.5/#contribute-to-firezone",
+    "relUrl": "/#contribute-to-firezone"
+  },"27": {
+    "doc": "Overview",
+    "title": "Overview",
+    "content": ". Firezone is an open source, self-hosted VPN server and egress firewall for Linux. Use it to quickly and easily secure access to your private network and internal applications from a simple Web UI. These docs explain how to deploy, configure, and use Firezone. ",
+    "url": "https://docs.firezone.dev/0.4.5/",
+    "relUrl": "/"
+  },"28": {
+    "doc": "Reference",
+    "title": "Reference",
+    "content": " ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/reference/",
+    "relUrl": "/docs/reference/"
+  },"29": {
+    "doc": "Deploy",
+    "title": "Step 1: Environment Setup",
+    "content": "Supported operating systems . Start by checking if your environment is listed on supported platforms. A kernel upgrade may be required to ensure WireGuard® is available. Security settings . Ensure port forwarding is enabled on your firewall. The default Firezone configuration requires the following ports to be open: . | 443/tcp: To access the web UI. | 51820/udp: The VPN traffic listen-port. | . Note: Firezone modifies the kernel netfilter and routing tables. Other programs that modify the Linux routing table or firewall may interfere with Firezone’s operation. For help troubleshooting connectivity issues, see the troubleshooting guide. Production deployments . Firezone requires the setup of a DNS record and matching SSL certificate for production deployments. See instructions here. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/deploy/#step-1-environment-setup",
+    "relUrl": "/docs/deploy/#step-1-environment-setup"
+  },"30": {
+    "doc": "Deploy",
+    "title": "Step 2: Server Install Script",
+    "content": "The easiest way to get started using Firezone is via the automatic installation script below. bash &lt;(curl -Ls https://github.com/firezone/firezone/raw/master/scripts/install.sh) . This will ask you a few questions regarding your install, download the latest release for your platform, then create an administrator user and print to the console instructions for logging in to the web UI. By default, the web UI can be reached at the IP or domain name of your server. You can regenerate the admin credentials using the firezone-ctl create-or-reset-admin command. If the script fails, follow instructions for manual installation. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/deploy/#step-2-server-install-script",
+    "relUrl": "/docs/deploy/#step-2-server-install-script"
+  },"31": {
+    "doc": "Deploy",
+    "title": "Step 3: Install Client Apps",
+    "content": "Once successfully deployed, users and devices can be added to connect to the VPN server: . | Add Users: Add users to grant them access to your network. | Client Instructions: Instructions to establish a VPN session. | . ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/deploy/#step-3-install-client-apps",
+    "relUrl": "/docs/deploy/#step-3-install-client-apps"
+  },"32": {
+    "doc": "Deploy",
+    "title": "Troubleshooting",
+    "content": "First, check our troubleshooting guide to see if your issue is covered there. If you are unable to resolve the issue: . | Ask a question in our discussion forums or Slack channel | Report bugs or propose new features on Github | . ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/deploy/#troubleshooting",
+    "relUrl": "/docs/deploy/#troubleshooting"
+  },"33": {
+    "doc": "Deploy",
+    "title": "After Setup",
+    "content": "Congrats! You have completed the setup, but there’s a lot more you can do with Firezone. | Integrate your identity provider for authenticating clients | Using Firezone to establish a static IP | Create tunnels between multiple peers with reverse tunnels | Only route certain traffic through Firezone with split tunneling | . Support us by: . | Star our repo on Github | Follow us on Twitter at @firezonehq | Follow us on LinkedIn at @firezonehq | . ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/deploy/#after-setup",
+    "relUrl": "/docs/deploy/#after-setup"
+  },"34": {
+    "doc": "Deploy",
+    "title": "Deploy",
+    "content": "Get started with Firezone in a few minutes by self-hosting on a supported platform . Firezone can be self-hosted on a server running a supported Linux distribution in a few minutes. This guide will walk you through the steps to get started. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/deploy/",
+    "relUrl": "/docs/deploy/"
+  },"35": {
+    "doc": "Firewall Templates",
+    "title": "Firewall Templates",
+    "content": ". Firewall templates to secure the Firezone server are available from here. If the server is not running any services other than Firezone, the firewall template should work as-is. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/reference/firewall-templates/",
+    "relUrl": "/docs/reference/firewall-templates/"
+  },"36": {
+    "doc": "Administer",
+    "title": "Administer",
+    "content": " ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/administer/",
+    "relUrl": "/docs/administer/"
+  },"37": {
+    "doc": "User Guides",
+    "title": "User Guides",
+    "content": " ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/user-guides/",
+    "relUrl": "/docs/user-guides/"
+  },"38": {
+    "doc": "Manage Installation",
+    "title": "Manage Installation",
+    "content": ". Your Firezone installation can be managed via the firezone-ctl command, as shown below. Most subcommands require prefixing with sudo. root@demo:~# firezone-ctl I don't know that command. omnibus-ctl: command (subcommand) General Commands: cleanse Delete *all* firezone data, and start from scratch. create-or-reset-admin Resets the password for admin with email specified by default['firezone']['admin_email'] or creates a new admin if that email doesn't exist. help Print this help message. reconfigure Reconfigure the application. reset-network Resets nftables, WireGuard interface, and routing table back to Firezone defaults. show-config Show the configuration that would be generated by reconfigure. teardown-network Removes WireGuard interface and firezone nftables table. uninstall Kill all processes and uninstall the process supervisor (data will be preserved). version Display current version of Firezone Service Management Commands: graceful-kill Attempt a graceful stop, then SIGKILL the entire process group. hup Send the services a HUP. int Send the services an INT. kill Send the services a KILL. once Start the services if they are down. Do not restart them if they stop. restart Stop the services if they are running, then start them again. service-list List all the services (enabled services appear with a *.) start Start services if they are down, and restart them if they stop. status Show the status of all the services. stop Stop the services, and do not restart them. tail Watch the service logs of all enabled services. term Send the services a TERM. usr1 Send the services a USR1. usr2 Send the services a USR2. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/administer/manage/",
+    "relUrl": "/docs/administer/manage/"
+  },"39": {
+    "doc": "nftables Firewall Template",
+    "title": "Firezone-managed Rules",
+    "content": "Firezone configures its own nftables rules to permit/reject traffic to destinations configured in the web interface and to handle outbound NAT for client traffic. Applying the below firewall template on an already running server (not at boot time) will result in the Firezone rules being cleared. This may have security implications. To work around this restart the phoenix service: . firezone-ctl restart phoenix . ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/reference/firewall-templates/nftables/#firezone-managed-rules",
+    "relUrl": "/docs/reference/firewall-templates/nftables/#firezone-managed-rules"
+  },"40": {
+    "doc": "nftables Firewall Template",
+    "title": "Base Firewall Template",
+    "content": "#!/usr/sbin/nft -f ## Clear/flush all existing rules flush ruleset ################################ VARIABLES ################################ ## Internet/WAN interface name define DEV_WAN = eth0 ## WireGuard interface name define DEV_WIREGUARD = wg-firezone ## WireGuard listen port define WIREGUARD_PORT = 51820 ############################## VARIABLES END ############################## # Main inet family filtering table table inet filter { # Rules for forwarded traffic # This chain is processed before the Firezone forward chain chain forward { type filter hook forward priority filter - 5; policy accept } # Rules for input traffic chain input { type filter hook input priority filter; policy drop ## Permit inbound traffic to loopback interface iif lo \\ accept \\ comment \"Permit all traffic in from loopback interface\" ## Permit established and related connections ct state established,related \\ accept \\ comment \"Permit established/related connections\" ## Permit inbound WireGuard traffic iif $DEV_WAN udp dport $WIREGUARD_PORT \\ counter \\ accept \\ comment \"Permit inbound WireGuard traffic\" ## Log and drop new TCP non-SYN packets tcp flags != syn ct state new \\ limit rate 100/minute burst 150 packets \\ log prefix \"IN - New !SYN: \" \\ comment \"Rate limit logging for new connections that do not have the SYN TCP flag set\" tcp flags != syn ct state new \\ counter \\ drop \\ comment \"Drop new connections that do not have the SYN TCP flag set\" ## Log and drop TCP packets with invalid fin/syn flag set tcp flags &amp; (fin|syn) == (fin|syn) \\ limit rate 100/minute burst 150 packets \\ log prefix \"IN - TCP FIN|SIN: \" \\ comment \"Rate limit logging for TCP packets with invalid fin/syn flag set\" tcp flags &amp; (fin|syn) == (fin|syn) \\ counter \\ drop \\ comment \"Drop TCP packets with invalid fin/syn flag set\" ## Log and drop TCP packets with invalid syn/rst flag set tcp flags &amp; (syn|rst) == (syn|rst) \\ limit rate 100/minute burst 150 packets \\ log prefix \"IN - TCP SYN|RST: \" \\ comment \"Rate limit logging for TCP packets with invalid syn/rst flag set\" tcp flags &amp; (syn|rst) == (syn|rst) \\ counter \\ drop \\ comment \"Drop TCP packets with invalid syn/rst flag set\" ## Log and drop invalid TCP flags tcp flags &amp; (fin|syn|rst|psh|ack|urg) &lt; (fin) \\ limit rate 100/minute burst 150 packets \\ log prefix \"IN - FIN:\" \\ comment \"Rate limit logging for invalid TCP flags (fin|syn|rst|psh|ack|urg) &lt; (fin)\" tcp flags &amp; (fin|syn|rst|psh|ack|urg) &lt; (fin) \\ counter \\ drop \\ comment \"Drop TCP packets with flags (fin|syn|rst|psh|ack|urg) &lt; (fin)\" ## Log and drop invalid TCP flags tcp flags &amp; (fin|syn|rst|psh|ack|urg) == (fin|psh|urg) \\ limit rate 100/minute burst 150 packets \\ log prefix \"IN - FIN|PSH|URG:\" \\ comment \"Rate limit logging for invalid TCP flags (fin|syn|rst|psh|ack|urg) == (fin|psh|urg)\" tcp flags &amp; (fin|syn|rst|psh|ack|urg) == (fin|psh|urg) \\ counter \\ drop \\ comment \"Drop TCP packets with flags (fin|syn|rst|psh|ack|urg) == (fin|psh|urg)\" ## Drop traffic with invalid connection state ct state invalid \\ limit rate 100/minute burst 150 packets \\ log flags all prefix \"IN - Invalid: \" \\ comment \"Rate limit logging for traffic with invalid connection state\" ct state invalid \\ counter \\ drop \\ comment \"Drop traffic with invalid connection state\" ## Permit IPv4 ping/ping responses but rate limit to 2000 PPS ip protocol icmp icmp type { echo-reply, echo-request } \\ limit rate 2000/second \\ counter \\ accept \\ comment \"Permit inbound IPv4 echo (ping) limited to 2000 PPS\" ## Permit all other inbound IPv4 ICMP ip protocol icmp \\ counter \\ accept \\ comment \"Permit all other IPv4 ICMP\" ## Permit IPv6 ping/ping responses but rate limit to 2000 PPS icmpv6 type { echo-reply, echo-request } \\ limit rate 2000/second \\ counter \\ accept \\ comment \"Permit inbound IPv6 echo (ping) limited to 2000 PPS\" ## Permit all other inbound IPv6 ICMP meta l4proto { icmpv6 } \\ counter \\ accept \\ comment \"Permit all other IPv6 ICMP\" ## Permit inbound traceroute UDP ports but limit to 500 PPS udp dport 33434-33524 \\ limit rate 500/second \\ counter \\ accept \\ comment \"Permit inbound UDP traceroute limited to 500 PPS\" ## Permit inbound SSH tcp dport ssh ct state new \\ counter \\ accept \\ comment \"Permit inbound SSH connections\" ## Permit inbound HTTP and HTTPS tcp dport { http, https } ct state new \\ counter \\ accept \\ comment \"Permit inbound HTTP and HTTPS connections\" ## Log any unmatched traffic but rate limit logging to a maximum of 60 messages/minute ## The default policy will be applied to unmatched traffic limit rate 60/minute burst 100 packets \\ log prefix \"IN - Drop: \" \\ comment \"Log any unmatched traffic\" ## Count the unmatched traffic counter \\ comment \"Count any unmatched traffic\" } # Rules for output traffic chain output { type filter hook output priority filter; policy drop ## Permit outbound traffic to loopback interface oif lo \\ accept \\ comment \"Permit all traffic out to loopback interface\" ## Permit established and related connections ct state established,related \\ counter \\ accept \\ comment \"Permit established/related connections\" ## Permit outbound WireGuard traffic before dropping connections with bad state oif $DEV_WAN udp sport $WIREGUARD_PORT \\ counter \\ accept \\ comment \"Permit WireGuard outbound traffic\" ## Drop traffic with invalid connection state ct state invalid \\ limit rate 100/minute burst 150 packets \\ log flags all prefix \"OUT - Invalid: \" \\ comment \"Rate limit logging for traffic with invalid connection state\" ct state invalid \\ counter \\ drop \\ comment \"Drop traffic with invalid connection state\" ## Permit all other outbound IPv4 ICMP ip protocol icmp \\ counter \\ accept \\ comment \"Permit all IPv4 ICMP types\" ## Permit all other outbound IPv6 ICMP meta l4proto { icmpv6 } \\ counter \\ accept \\ comment \"Permit all IPv6 ICMP types\" ## Permit outbound traceroute UDP ports but limit to 500 PPS udp dport 33434-33524 \\ limit rate 500/second \\ counter \\ accept \\ comment \"Permit outbound UDP traceroute limited to 500 PPS\" ## Permit outbound HTTP and HTTPS connections tcp dport { http, https } ct state new \\ counter \\ accept \\ comment \"Permit outbound HTTP and HTTPS connections\" ## Permit outbound SMTP submission tcp dport submission ct state new \\ counter \\ accept \\ comment \"Permit outbound SMTP submission\" ## Permit outbound DNS requests udp dport 53 \\ counter \\ accept \\ comment \"Permit outbound UDP DNS requests\" tcp dport 53 \\ counter \\ accept \\ comment \"Permit outbound TCP DNS requests\" ## Permit outbound NTP requests udp dport 123 \\ counter \\ accept \\ comment \"Permit outbound NTP requests\" ## Log any unmatched traffic but rate limit logging to a maximum of 60 messages/minute ## The default policy will be applied to unmatched traffic limit rate 60/minute burst 100 packets \\ log prefix \"OUT - Drop: \" \\ comment \"Log any unmatched traffic\" ## Count the unmatched traffic counter \\ comment \"Count any unmatched traffic\" } } # Main NAT filtering table table inet nat { # Rules for NAT traffic pre-routing chain prerouting { type nat hook prerouting priority dstnat; policy accept } # Rules for NAT traffic post-routing # This table is processed before the Firezone post-routing chain chain postrouting { type nat hook postrouting priority srcnat - 5; policy accept } } . ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/reference/firewall-templates/nftables/#base-firewall-template",
+    "relUrl": "/docs/reference/firewall-templates/nftables/#base-firewall-template"
+  },"41": {
+    "doc": "nftables Firewall Template",
+    "title": "Usage",
+    "content": "The firewall should be stored in the relevant location for the Linux distribution that is running. For Debian/Ubuntu this is /etc/nftables.conf and for RHEL this is /etc/sysconfig/nftables.conf. nftables.service will need to be configured to start on boot (if not already) set: . systemctl enable nftables.service . If making any changes to the firewall template the syntax can be validated by running the check command: . nft -f /path/to/nftables.conf -c . Be sure to validate the firewall works as expected as certain nftables features may not be available depending on the release running on the server. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/reference/firewall-templates/nftables/#usage",
+    "relUrl": "/docs/reference/firewall-templates/nftables/#usage"
+  },"42": {
+    "doc": "nftables Firewall Template",
+    "title": "nftables Firewall Template",
+    "content": ". The following nftables firewall template can be used to secure the server running Firezone. The template does make some assumptions; you may need to adjust the rules to suite your use case: . | The WireGuard interface is named wg-firezone. If this is not correct, change the DEV_WIREGUARD variable to match the default['firezone']['wireguard']['interface_name'] configuration option. | The port WireGuard is listening on is 51820. If you are not using the default port change the WIREGUARD_PORT variable. | Only the following inbound traffic will be allowed to the server: . | SSH (TCP dport 22) | HTTP (TCP dport 80) | HTTPS (TCP dport 443) | WireGuard (UDP dport WIREGUARD_PORT) | UDP traceroute (UDP dport 33434-33524, rate limited to 500/second) | ICMP and ICMPv6 (ping/ping responses rate limited to 2000/second) | . | Only the following outbound traffic will be allowed from the server: . | DNS (UDP and TCP dport 53) | HTTP (TCP dport 80) | NTP (UDP port 123) | HTTPS (TCP dport 443) | SMTP submission (TCP dport 587) | UDP traceroute (UDP dport 33434-33524, rate limited to 500/second) | . | Unmatched traffic will be logged. The rules used for logging are separated from the rules to drop traffic and are rate limited. Removing the relevant logging rules will not affect trafic. | . ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/reference/firewall-templates/nftables/",
+    "relUrl": "/docs/reference/firewall-templates/nftables/"
+  },"43": {
+    "doc": "Okta",
+    "title": "Step 1 - Create Okta App Integration",
+    "content": "This section of the guide is based on Okta’s documentation. In the Admin Console, go to Applications &gt; Applications and click Create App Integration. Set Sign-in method to OICD - OpenID Connect and Application type to Web application. On the following screen, configure the following settings: . | App Name: Firezone | App logo: Firezone logo (save link as). | Grant Type: Check the Refresh Token box. This ensures Firezone syncs with the identity provider and VPN access is terminated once the user is removed. | Sign-in redirect URIs: Add your Firezone EXTERNAL_URL + /auth/oidc/okta/callback/ (e.g. https://firezone.example.com/auth/oidc/okta/callback/) as an entry to Authorized redirect URIs. | Assignments: Limit to the groups you wish to provide access to your Firezone instance. | . Once settings are saved, you will be given a Client ID, Client Secret, and Okta Domain. These 3 values will be used in Step 2 to configure Firezone. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/authenticate/okta/#step-1---create-okta-app-integration",
+    "relUrl": "/docs/authenticate/okta/#step-1---create-okta-app-integration"
+  },"44": {
+    "doc": "Okta",
+    "title": "Integrate With Firezone",
+    "content": "Edit /etc/firezone/firezone.rb to include the options below. Your discovery_document_url will be /.well-known/openid-configuration appended to the end of your okta_domain. # Using Okta as the SSO identity provider default['firezone']['authentication']['oidc'] = { okta: { discovery_document_uri: \"https://&lt;OKTA_DOMAIN&gt;/.well-known/openid-configuration\", client_id: \"&lt;CLIENT_ID&gt;\", client_secret: \"&lt;CLIENT_SECRET&gt;\", redirect_uri: \"https://firezone.example.com/auth/oidc/okta/callback/\", response_type: \"code\", scope: \"openid email profile offline_access\", label: \"Okta\" } } . Run firezone-ctl reconfigureand firezone-ctl restart to update the application. You should now see a Sign in with Okta button at the root Firezone URL. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/authenticate/okta/#integrate-with-firezone",
+    "relUrl": "/docs/authenticate/okta/#integrate-with-firezone"
+  },"45": {
+    "doc": "Okta",
+    "title": "Restricting Access to Certain Users",
+    "content": "Okta can limit the users with access to the Firezone app. To do this, go to the Assignments tab of the Firezone App Integration in your Okta Admin Console. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/authenticate/okta/#restricting-access-to-certain-users",
+    "relUrl": "/docs/authenticate/okta/#restricting-access-to-certain-users"
+  },"46": {
+    "doc": "Okta",
+    "title": "Okta",
+    "content": ". Firezone supports Single Sign-On (SSO) using Okta through the generic OIDC connector. This guide will walk you through how to obtain the following config settings required for the integration: . | discovery_document_uri: This URL returns a JSON with information to construct a request to the OpenID server. | client_id: The client ID of the application. | client_secret: The client secret of the application. | redirect_uri: Instructs OIDC provider where to redirect after authentication. This should be your Firezone EXTERNAL_URL + /auth/oidc/&lt;provider_key&gt;/callback/ (e.g. https://firezone.example.com/auth/oidc/okta/callback/). | response_type: Set to code. | scope: OIDC scopes to obtain from your OIDC provider. This should be set to openid email profile offline_access to provide Firezone with the user’s email in the returned claims. | label: The button label text that shows up on your Firezone login screen. | . Note: Previously, Firezone used pre-configured Oauth2 providers. We’ve moved to OIDC based authentication, which allows for any OpenID Connect provider (Google, Okta, Dex) to be integrated. We strongly recommend transitioning your existing Google or Okta-based SSO configuration to the generic OIDC-based configuration format described here. We’ll be removing the Google-specific and Okta-specific SSO functionality in a future release. To set up SSO, follow the steps below: . ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/authenticate/okta/",
+    "relUrl": "/docs/authenticate/okta/"
+  },"47": {
+    "doc": "Prerequisites",
+    "title": "Create a DNS record",
+    "content": "Firezone requires a fully-qualified domain name (e.g. firezone.company.com) for production use. You’ll need to create the appropriate DNS record at your registrar to achieve this. Typically this is either an A, CNAME, or AAAA record depending on your requirements. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/deploy/prerequisites/#create-a-dns-record",
+    "relUrl": "/docs/deploy/prerequisites/#create-a-dns-record"
+  },"48": {
+    "doc": "Prerequisites",
+    "title": "Create an SSL certificate",
+    "content": "While Firezone generates a self-signed SSL certificate for you on install, you’ll need a valid SSL certificate to use Firezone in a production capacity. We recommend using Let’s Encrypt to generate a free SSL cert for your domain. Firezone will include the ability to automatically generate valid SSL certificates for you in an upcoming release, but for now these must be generated manually and specified in the main configuration file at /etc/firezone/firezone.rb. See here for a guide on how to do so: https://eff-certbot.readthedocs.io/en/stable/using.html#manual . ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/deploy/prerequisites/#create-an-ssl-certificate",
+    "relUrl": "/docs/deploy/prerequisites/#create-an-ssl-certificate"
+  },"49": {
+    "doc": "Prerequisites",
+    "title": "Security Group and Firewall Settings",
+    "content": "By default, Firezone requires ports 443/tcp and 51820/udp to be accessible for HTTPS and WireGuard traffic respectively. These ports can change based on what you’ve configured in the configuration file. See the configuration file reference for details. NOTE: Firezone modifies the kernel netfilter and routing tables. Other programs that modify the Linux routing table or firewall may interfere with Firezone’s operation. For help troubleshooting connectivity issues, see troubleshoot. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/deploy/prerequisites/#security-group-and-firewall-settings",
+    "relUrl": "/docs/deploy/prerequisites/#security-group-and-firewall-settings"
+  },"50": {
+    "doc": "Prerequisites",
+    "title": "Resource Requirements",
+    "content": "We recommend starting with 1 vCPU and 1 GB of RAM and scaling up as the number of users and bandwidth requirements grow. Firezone uses in-kernel WireGuard, so its performance should be very good. In general, more CPU cores translate to higher bandwidth capacity per tunnel while more RAM will help with higher counts of users and tunnels. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/deploy/prerequisites/#resource-requirements",
+    "relUrl": "/docs/deploy/prerequisites/#resource-requirements"
+  },"51": {
+    "doc": "Prerequisites",
+    "title": "Prerequisites",
+    "content": ". Firezone requires the setup of a DNS record and matching SSL certificate for production deployments. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/deploy/prerequisites/",
+    "relUrl": "/docs/deploy/prerequisites/"
+  },"52": {
+    "doc": "Reverse Tunnel",
+    "title": "General Case - Node to Node",
+    "content": "This example demonstrates a simple scenario where a tunnel is established between Device A and Device B. Start by creating Device A and Device B by navigating to /users/[user_id]/new_device. In the settings for each device, ensure the following parameters are set to the values listed below. You can set device settings when creating the device config (see Add Devices). If you need to update settings on an existing device, you can do so by generating a new device config. Note PersistentKeepalive can also be set in on the /settings/defaults page for all devices. Device A . | AllowedIPs = 10.3.2.2/32: This is the IP or range of IPs of Device B | PersistentKeepalive = 25 If the device is behind a NAT, this ensures the device is able to keep the tunnel alive and continue to receive packets from the WireGuard interface. Usually a value of 25 is sufficient, but you may need to decrease this value depending on your environment. | . Device B . | AllowedIPs = 10.3.2.3/32: This is the IP or range of IPs of Device A | PersistentKeepalive = 25 | . ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/user-guides/reverse-tunnel/#general-case---node-to-node",
+    "relUrl": "/docs/user-guides/reverse-tunnel/#general-case---node-to-node"
+  },"53": {
+    "doc": "Reverse Tunnel",
+    "title": "Admin Case - One to Many Nodes",
+    "content": "This example demonstrates a scenario where Device A can communicate bi-directionally with Devices B through D. This configuration could represent an administrator or engineer accessing multiple resources (servers, containers, or machines) in different networks. In the settings for each device, ensure the following parameters are set to the values listed below. You can set device settings when creating the device config (see Add Devices). If you need to update settings on an existing device, you can do so by generating a new device config. Device A (Administrator Node) . | AllowedIPs = 10.3.2.3/32, 10.3.2.4/32, 10.3.2.5/32: This is the IP of devices B through D. Optionally you could set a range of IPs as long as it includes the IPs of Devices B through D. | PersistentKeepalive = 25 If the device is behind a NAT, this ensures the device is able to keep the tunnel alive and continue to receive packets from the WireGuard interface. Usually a value of 25 is sufficient, but you may need to decrease this value depending on your environment. | . Device B . | AllowedIPs = 10.3.2.2/32: This is the IP or range of IPs of Device A | PersistentKeepalive = 25 | . Device C . | AllowedIPs = 10.3.2.2/32: This is the IP or range of IPs of Device A | PersistentKeepalive = 25 | . Device D . | AllowedIPs = 10.3.2.2/32: This is the IP or range of IPs of Device A | PersistentKeepalive = 25 | . Related: Whitelisting via VPN . ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/user-guides/reverse-tunnel/#admin-case---one-to-many-nodes",
+    "relUrl": "/docs/user-guides/reverse-tunnel/#admin-case---one-to-many-nodes"
+  },"54": {
+    "doc": "Reverse Tunnel",
+    "title": "Reverse Tunnel",
+    "content": ". This guide will walk through using Firezone as a relay to connect two devices. A typical use case for this configuration is to enable an administrator to access a server, container, or machine that is normally behind a NAT or firewall. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/user-guides/reverse-tunnel/",
+    "relUrl": "/docs/user-guides/reverse-tunnel/"
+  },"55": {
+    "doc": "Running SQL Queries",
+    "title": "Running SQL Queries",
+    "content": ". Firezone bundles a Postgresql server and matching psql utility that can be used from the local shell like so: . /opt/firezone/embedded/bin/psql \\ -U firezone \\ -d firezone \\ -h localhost \\ -p 15432 \\ -c \"SQL_STATEMENT\" . This can be useful for debugging or troubleshooting purposes. It can also be used to modify Firezone configuration data, but this can have unintended consequences. We recommend using the UI (or upcoming API) whenever possible. Some examples of common tasks: . | Listing all users | Listing all devices | Changing a user’s role | Backing up the DB | . Listing all users . /opt/firezone/embedded/bin/psql \\ -U firezone \\ -d firezone \\ -h localhost \\ -p 15432 \\ -c \"SELECT * FROM users;\" . Listing all devices . /opt/firezone/embedded/bin/psql \\ -U firezone \\ -d firezone \\ -h localhost \\ -p 15432 \\ -c \"SELECT * FROM devices;\" . Changing a user’s role . Set role to 'admin' or 'unprivileged': . /opt/firezone/embedded/bin/psql \\ -U firezone \\ -d firezone \\ -h localhost \\ -p 15432 \\ -c \"UPDATE users SET role = 'admin' WHERE email = 'user@example.com';\" . Backing up the DB . The pg_dump utility is also bundled; this can be used to take consistent backups of the database. To dump a copy of the database in the standard SQL query format execute it like this (replace /path/to/backup.sql with the location to create the SQL file): . /opt/firezone/embedded/bin/pg_dump \\ -U firezone \\ -d firezone \\ -h localhost \\ -p 15432 &gt; /path/to/backup.sql . ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/administer/running-sql-queries/",
+    "relUrl": "/docs/administer/running-sql-queries/"
+  },"56": {
+    "doc": "Security Considerations",
+    "title": "List of services and ports",
+    "content": "Shown below is a table of ports used by Firezone services. | Service | Default port | Listen address | Description | . | Nginx | 80 443 | all | Public HTTP(S) port for administering Firezone and facilitating authentication. | . | WireGuard | 51820 | all | Public WireGuard port used for VPN sessions. | . | Postgresql | 15432 | 127.0.0.1 | Local-only port used for bundled Postgresql server. | . | Phoenix | 13000 | 127.0.0.1 | Local-only port used by upstream elixir app server. | . ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/administer/security-considerations/#list-of-services-and-ports",
+    "relUrl": "/docs/administer/security-considerations/#list-of-services-and-ports"
+  },"57": {
+    "doc": "Security Considerations",
+    "title": "Production deployments",
+    "content": "For production and public-facing deployments where a single administrator will be responsible for generating and distributing device configurations to end users, we advise you to consider limiting access to Firezone’s publicly exposed web UI (by default ports 443/tcp and 80/tcp) and instead use the WireGuard tunnel itself to manage Firezone. For example, assuming an administrator has generated a device configuration and established a tunnel with local WireGuard address 10.3.2.2, the following ufw configuration would allow the administrator the ability to reach the Firezone web UI on the default 10.3.2.1 tunnel address for the server’s wg-firezone interface: . root@demo:~# ufw status verbose Status: active Logging: on (low) Default: deny (incoming), allow (outgoing), allow (routed) New profiles: skip To Action From -- ------ ---- 22/tcp ALLOW IN Anywhere 51820/udp ALLOW IN Anywhere Anywhere ALLOW IN 10.3.2.2 22/tcp (v6) ALLOW IN Anywhere (v6) 51820/udp (v6) ALLOW IN Anywhere (v6) . This would leave only 22/tcp exposed for SSH access to manage the server (optional), and 51820/udp exposed in order to establish WireGuard tunnels. Note: This type of configuration has not been fully tested with SSO authentication and may it to break or behave unexpectedly. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/administer/security-considerations/#production-deployments",
+    "relUrl": "/docs/administer/security-considerations/#production-deployments"
+  },"58": {
+    "doc": "Security Considerations",
+    "title": "Reporting Security Issues",
+    "content": "To report any security-related bugs, see our security bug reporting policy . ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/administer/security-considerations/#reporting-security-issues",
+    "relUrl": "/docs/administer/security-considerations/#reporting-security-issues"
+  },"59": {
+    "doc": "Security Considerations",
+    "title": "Security Considerations",
+    "content": ". Disclaimer: Firezone is still beta software. The codebase has not yet received a formal security audit. For highly sensitive and mission-critical production deployments, we recommend limiting access to the web interface, as detailed below. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/administer/security-considerations/",
+    "relUrl": "/docs/administer/security-considerations/"
+  },"60": {
+    "doc": "Install Server",
+    "title": "Installation Instructions",
+    "content": "Assuming you’re running a supported Linux kernel on one of the supported platforms, use one of the methods below to get started: . | Installation Instructions . | Automatic Install | Manual Install | . | . Automatic Install . The easiest way to get started using Firezone is via the automatic installation script: . bash &lt;(curl -Ls https://github.com/firezone/firezone/raw/master/scripts/install.sh) . This will ask you a few questions regarding your install, download the latest release for your platform, then create an administrator user and print to the console instructions for logging in to the web UI. If that fails, try the manual installation method below. Manual Install . If the Automatic Install fails, try these steps to install Firezone manually. | Install WireGuard for your distro. If using Linux kernel 5.6 or higher, skip this step. | Download the relevant package for your distribution from the releases page. | Install with sudo rpm -i firezone*.rpm or sudo dpkg -i firezone*.deb depending on your distro. | Bootstrap the application with sudo firezone-ctl reconfigure. This will initialize config files, set up needed services and generate the default configuration. | Edit the default configuration located at /etc/firezone/firezone.rb. We’ve chosen sensible defaults that should be a good starting point for most installations. For production installations, you’ll want to specify your FQDN and SSL certificate paths: . # Auto-generated based on the server's hostname. # Set this to the URL used to access the Firezone Web UI. default['firezone']['external_url'] = 'https://firezone.example.com' # Specify the path to your SSL cert and private key. # If set to nil (default), a self-signed cert will be generated for you. default['firezone']['ssl']['certificate'] = '/path/to/cert.pem' default['firezone']['ssl']['certificate_key'] = '/path/to/key.pem' . See the complete configuration file reference for more details. | Reconfigure the application to pick up the new changes: sudo firezone-ctl reconfigure. | Finally, create an admin user with sudo firezone-ctl create-or-reset-admin. The login credentials will be printed to the console output. | Now you should be able to sign in to the web UI at the URL you specified in step 5 above, e.g. https://firezone.example.com | . Find solutions to common issues during deployment in Troubleshoot. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/deploy/server/#installation-instructions",
+    "relUrl": "/docs/deploy/server/#installation-instructions"
+  },"61": {
+    "doc": "Install Server",
+    "title": "Install Server",
+    "content": ". Important: Ensure you’ve satisfied the prerequisites before following this guide. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/deploy/server/",
+    "relUrl": "/docs/deploy/server/"
+  },"62": {
+    "doc": "Split Tunnel",
+    "title": "Step 1 - Configure Allowed IPs",
+    "content": "The Allowed IPs field found on the /settings/default page determines the IP ranges for which the client will route network traffic. Modifications to this field will apply only to new WireGuard tunnel configurations generated by Firezone. The default value is 0.0.0.0/0, ::/0, which routes all network traffic from the client to the VPN server. Some examples of values in this field are: . | 0.0.0.0/0, ::/0 - all network traffic will be routed to the VPN server. | 192.0.2.3/32 - only traffic to a single IP address will be routed to the VPN server. | 3.5.140.0/22 - only traffic to IPs in the 3.5.140.1 - 3.5.143.254 range will be routed to the VPN server. In this example, the CIDR range for the ap-northeast-2 AWS region was used. | . Note: When deciding where to route a packet, Firezone chooses the egress interface corresponding to the most specific route first. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/user-guides/split-tunnel/#step-1---configure-allowed-ips",
+    "relUrl": "/docs/user-guides/split-tunnel/#step-1---configure-allowed-ips"
+  },"63": {
+    "doc": "Split Tunnel",
+    "title": "Step 2 - Regenerate WireGuard configurations",
+    "content": "To update existing user devices with the new split tunnel configuration, users will need to regenerate the configuration files and add them to their native WireGuard client. See, add device for instructions. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/user-guides/split-tunnel/#step-2---regenerate-wireguard-configurations",
+    "relUrl": "/docs/user-guides/split-tunnel/#step-2---regenerate-wireguard-configurations"
+  },"64": {
+    "doc": "Split Tunnel",
+    "title": "Split Tunnel",
+    "content": ". This guide will describe the steps required to enable split tunneling with WireGuard using Firezone so only traffic to defined IP ranges will be routed through the VPN server. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/user-guides/split-tunnel/",
+    "relUrl": "/docs/user-guides/split-tunnel/"
+  },"65": {
+    "doc": "Supported Platforms",
+    "title": "AmazonLinux 2 Notes",
+    "content": "Kernel upgrade required: . sudo amazon-linux-extras install -y kernel-5.10 . ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/deploy/supported-platforms/#amazonlinux-2-notes",
+    "relUrl": "/docs/deploy/supported-platforms/#amazonlinux-2-notes"
+  },"66": {
+    "doc": "Supported Platforms",
+    "title": "CentOS 7 Notes",
+    "content": "Kernel upgrade to 5.6+ required. To upgrade to the latest mainline kernel and select it as the default boot kernel: . sudo rpm --import https://www.elrepo.org/RPM-GPG-KEY-elrepo.org sudo yum install -y https://www.elrepo.org/elrepo-release-7.el7.elrepo.noarch.rpm sudo yum install -y elrepo-release sudo yum --enablerepo=elrepo-kernel install -y kernel-ml sudo grub2-set-default 0 sudo grub2-mkconfig -o /boot/grub2/grub.cfg sudo reboot . ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/deploy/supported-platforms/#centos-7-notes",
+    "relUrl": "/docs/deploy/supported-platforms/#centos-7-notes"
+  },"67": {
+    "doc": "Supported Platforms",
+    "title": "CentOS 8 Notes",
+    "content": "The WireGuard kernel module needs to be installed: . yum install elrepo-release epel-release yum install kmod-wireguard . ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/deploy/supported-platforms/#centos-8-notes",
+    "relUrl": "/docs/deploy/supported-platforms/#centos-8-notes"
+  },"68": {
+    "doc": "Supported Platforms",
+    "title": "RHEL 7 Notes",
+    "content": "Red Hat Enterprise Linux is binary compatible with CentOS, so the Firezone package for CentOS 7 should work just fine for RHEL 7. You’ll still need to upgrade your kernel to 5.6+ however. To do so, follow the steps for CentOS 7 Notes above. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/deploy/supported-platforms/#rhel-7-notes",
+    "relUrl": "/docs/deploy/supported-platforms/#rhel-7-notes"
+  },"69": {
+    "doc": "Supported Platforms",
+    "title": "RHEL 8 Notes",
+    "content": "Red Hat Enterprise Linux is binary compatible with CentOS, so the Firezone package for CentOS 8 should work just fine for RHEL 8. You’ll still need to install the WireGuard kernel module, however. See CentOS 8 Notes above. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/deploy/supported-platforms/#rhel-8-notes",
+    "relUrl": "/docs/deploy/supported-platforms/#rhel-8-notes"
+  },"70": {
+    "doc": "Supported Platforms",
+    "title": "RHEL 9 Notes",
+    "content": "Use the package for CentOS 9. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/deploy/supported-platforms/#rhel-9-notes",
+    "relUrl": "/docs/deploy/supported-platforms/#rhel-9-notes"
+  },"71": {
+    "doc": "Supported Platforms",
+    "title": "Fedora Notes",
+    "content": "On fresh Fedora installations you’ll probably need to install a cron implementation to support the logrotate functionality, otherwise you may receive errors about a missing /etc/cron.hourly directory. yum install cronie-anacron . ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/deploy/supported-platforms/#fedora-notes",
+    "relUrl": "/docs/deploy/supported-platforms/#fedora-notes"
+  },"72": {
+    "doc": "Supported Platforms",
+    "title": "Ubuntu 18.04 Notes",
+    "content": "Kernel upgrade to 5.4+ required: . sudo apt install linux-image-generic-hwe-18.04 . ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/deploy/supported-platforms/#ubuntu-1804-notes",
+    "relUrl": "/docs/deploy/supported-platforms/#ubuntu-1804-notes"
+  },"73": {
+    "doc": "Supported Platforms",
+    "title": "Debian 10 Notes",
+    "content": "Kernel upgrade to 5.6+ required. See this guide for an example. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/deploy/supported-platforms/#debian-10-notes",
+    "relUrl": "/docs/deploy/supported-platforms/#debian-10-notes"
+  },"74": {
+    "doc": "Supported Platforms",
+    "title": "openSUSE Notes",
+    "content": "Firezone requires the setcap utility, but some recent openSUSE releases may not have it installed by default. To fix, ensure libcap-progs is installed: . sudo zypper install libcap-progs . ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/deploy/supported-platforms/#opensuse-notes",
+    "relUrl": "/docs/deploy/supported-platforms/#opensuse-notes"
+  },"75": {
+    "doc": "Supported Platforms",
+    "title": "Supported Platforms",
+    "content": ". Firezone currently supports the following platforms: . | OS | Architectures | Status | Notes | . | AmazonLinux 2 | amd64 arm64 | Fully-supported | See AmazonLinux 2 Notes | . | CentOS 7 | amd64 | Fully-supported | See CentOS 7 Notes | . | CentOS 8 | amd64 arm64 | Fully-supported | See CentOS 8 Notes | . | CentOS Stream 9 | amd64 arm64 | Fully-supported | Works as-is | . | Red Hat Enterprise Linux 7 | amd64 | Fully-supported | See RHEL 7 Notes | . | Red Hat Enterprise Linux 8 | amd64 arm64 | Fully-supported | See RHEL 8 Notes | . | Red Hat Enterprise Linux 9 | amd64 arm64 | Fully-supported | See RHEL 9 Notes | . | Debian 10 | amd64 arm64 | Fully-supported | See Debian 10 Notes | . | Debian 11 | amd64 arm64 | Fully-supported | Works as-is | . | Fedora 33 | amd64 arm64 | Fully-supported | See Fedora Notes | . | Fedora 34 | amd64 arm64 | Fully-supported | See Fedora Notes | . | Fedora 35 | amd64 arm64 | Fully-supported | See Fedora Notes | . | Ubuntu 18.04 | amd64 arm64 | Fully-supported | See Ubuntu 18.04 Notes | . | Ubuntu 20.04 | amd64 arm64 | Fully-supported | Works as-is | . | Ubuntu 22.04 | amd64 arm64 | Fully-supported | Works as-is | . | openSUSE Leap 15.3 | amd64 | Fully-supported | See openSUSE Notes | . If your distro isn’t listed here please try using a package for the closest distro first. For example, since Raspberry Pi OS is based on Debian, try using the Debian Firezone package. If that doesn’t work, please open an issue and let us know. New distros are being supported on a regular basis and there’s a good chance yours will be added soon. Note that we only support RPM and DEB based packaging systems. Others, like Arch Linux are currently being investigated in this issue. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/deploy/supported-platforms/",
+    "relUrl": "/docs/deploy/supported-platforms/"
+  },"76": {
+    "doc": "Troubleshoot",
+    "title": "Debugging Connectivity Issues",
+    "content": "Most connectivity issues with Firezone are caused by other iptables or nftables rules which interfere with Firezone’s operation. If you have rules active, you’ll need to ensure these don’t conflict with the Firezone rules. Internet Connectivity Drops when Tunnel is Active . If your Internet connectivity drops whenever you activate your WireGuard tunnel, you should make sure that the FORWARD chain allows packets from your WireGuard clients to the destinations you want to allow through Firezone. If you’re using ufw, this can be done by making sure the default routing policy is allow: . ubuntu@fz:~$ sudo ufw default allow routed Default routed policy changed to 'allow' (be sure to update your rules accordingly) . A ufw status for a typical Firezone server might look like this: . ubuntu@fz:~$ sudo ufw status verbose Status: active Logging: on (low) Default: deny (incoming), allow (outgoing), allow (routed) New profiles: skip To Action From -- ------ ---- 22/tcp ALLOW IN Anywhere 80/tcp ALLOW IN Anywhere 443/tcp ALLOW IN Anywhere 51820/udp ALLOW IN Anywhere 22/tcp (v6) ALLOW IN Anywhere (v6) 80/tcp (v6) ALLOW IN Anywhere (v6) 443/tcp (v6) ALLOW IN Anywhere (v6) 51820/udp (v6) ALLOW IN Anywhere (v6) . ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/administer/troubleshoot/#debugging-connectivity-issues",
+    "relUrl": "/docs/administer/troubleshoot/#debugging-connectivity-issues"
+  },"77": {
+    "doc": "Troubleshoot",
+    "title": "Need additional help?",
+    "content": "If you’re looking for help installing, configuring, or using Firezone, we’re happy to help. | Discussion Forums: ask questions, report bugs, and suggest features | Public Slack Group: join discussions, meet other users, and meet the contributors | Email Us: we’re always happy to chat | . ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/administer/troubleshoot/#need-additional-help",
+    "relUrl": "/docs/administer/troubleshoot/#need-additional-help"
+  },"78": {
+    "doc": "Troubleshoot",
+    "title": "Troubleshoot",
+    "content": ". For any problems that arise, a good first bet is to check the Firezone logs. To view Firezone logs, run sudo firezone-ctl tail. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/administer/troubleshoot/",
+    "relUrl": "/docs/administer/troubleshoot/"
+  },"79": {
+    "doc": "Uninstall",
+    "title": "Uninstall",
+    "content": ". To completely remove Firezone and its configuration files, run the uninstall.sh script: . sudo /bin/bash -c \"$(curl -fsSL https://github.com/firezone/firezone/raw/master/scripts/uninstall.sh)\" . Warning: This will irreversibly destroy ALL Firezone data and can’t be undone. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/administer/uninstall/",
+    "relUrl": "/docs/administer/uninstall/"
+  },"80": {
+    "doc": "Upgrade",
+    "title": "Upgrading from 0.3.x to &gt;= 0.3.16",
+    "content": "Follow the instructions below based on your current version and setup: . I have an existing OIDC integration . Upgrading to &gt;= 0.3.16 requires the offline_access scope for some OIDC providers to obtain a refresh token. This ensures Firezone syncs with the identity provider and VPN access is terminated once the user is removed. Previous versions of Firezone do not have this capability. Users who are removed from your identity provider will still have active VPN sessions in some cases. For OIDC providers that support the offline_access scope, you will need to add offline_access to the scope parameter of your OIDC config. The Firezone configuration file can be found at /etc/firezone/firezone.rb and requires running firezone-ctl reconfigure to pick up the changes. If Firezone is able to successfully retrieve the refresh token, you will see the OIDC Connections heading in the user details page of the web UI for users authenticated through your OIDC provider. If this does not work, you will need to delete your existing OAuth app and repeat the OIDC setup steps to create a new app integration. I have an existing OAuth integration . Prior to 0.3.11, Firezone used pre-configured OAuth2 providers. Follow the instructions here to migrate to OIDC. I have not integrated an identity provider . No action needed. You can follow the instructions here to enable SSO through an OIDC provider. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/administer/upgrade/#upgrading-from-03x-to--0316",
+    "relUrl": "/docs/administer/upgrade/#upgrading-from-03x-to--0316"
+  },"81": {
+    "doc": "Upgrade",
+    "title": "Upgrading from 0.3.1 to &gt;= 0.3.2",
+    "content": "The configuration option default['firezone']['fqdn'] has been removed in favor of default['firezone']['external_url']. Please set this to the publicly-accessible URL of your Firezone web portal. If left unspecified it will default to https:// + the FQDN of your server. Reminder, the configuration file can be found at /etc/firezone/firezone.rb. For an exhaustive list of configuration variables and their descriptions, see the configuration file reference. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/administer/upgrade/#upgrading-from-031-to--032",
+    "relUrl": "/docs/administer/upgrade/#upgrading-from-031-to--032"
+  },"82": {
+    "doc": "Upgrade",
+    "title": "Upgrading from 0.2.x to 0.3.x",
+    "content": "Note: Starting with version 0.3.0, Firezone no longer stores device private keys on the Firezone server. Any existing devices should continue to function as-is, but you will not be able to re-download or view these configurations in the Firezone Web UI. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/administer/upgrade/#upgrading-from-02x-to-03x",
+    "relUrl": "/docs/administer/upgrade/#upgrading-from-02x-to-03x"
+  },"83": {
+    "doc": "Upgrade",
+    "title": "Upgrading from 0.1.x to 0.2.x",
+    "content": "Firezone 0.2.x contains some configuration file changes that will need to be handled manually if you’re upgrading from 0.1.x. Run the commands below as root to perform the needed changes to your /etc/firezone/firezone.rb file. cp /etc/firezone/firezone.rb /etc/firezone/firezone.rb.bak sed -i \"s/\\['enable'\\]/\\['enabled'\\]/\" /etc/firezone/firezone.rb echo \"default['firezone']['connectivity_checks']['enabled'] = true\" &gt;&gt; /etc/firezone/firezone.rb echo \"default['firezone']['connectivity_checks']['interval'] = 3_600\" &gt;&gt; /etc/firezone/firezone.rb firezone-ctl reconfigure firezone-ctl restart . ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/administer/upgrade/#upgrading-from-01x-to-02x",
+    "relUrl": "/docs/administer/upgrade/#upgrading-from-01x-to-02x"
+  },"84": {
+    "doc": "Upgrade",
+    "title": "Upgrade",
+    "content": ". Upgrading Firezone will disconnect all VPN sessions and require shutting down the Web UI. We recommend a maintenance window of about an hour in case anything goes wrong during the upgrade. To upgrade Firezone, follow these steps: . | Download the new release for your platform. | Install the new package over the old one: sudo dpkg -i firezone_X.X.X.deb or sudo rpm -i --force firezone_X.X.X.rpm depending on your distribution. | Run firezone-ctl reconfigure to pick up the new changes. | Run firezone-ctl restart to restart services. | . Occasionally problems arise. If you hit any, please let us know by filing an issue. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/administer/upgrade/",
+    "relUrl": "/docs/administer/upgrade/"
+  },"85": {
+    "doc": "Local Email / Password Authentication",
+    "title": "Local Email / Password Authentication",
+    "content": ". By default, Firezone will use local email / password for authenticating users to the Firezone portal. Administrators can add users and assign their passwords on /users page. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/authenticate/web-auth/",
+    "relUrl": "/docs/authenticate/web-auth/"
+  },"86": {
+    "doc": "Using Firezone as a NAT Gateway",
+    "title": "AWS Example",
+    "content": "Our goal is to configure VPN traffic to the restricted resource to be routed through a Firezone server on an EC2 instance. In this case Firezone is acting as a network proxy or NAT gateway to provide a single public egress IP for all the devices connected to it. Step 1 - Deploy Firezone server . In this example, a Firezone instance has been set up on a tc2.micro EC2 instance. See the Deployment Guide for details on deploying Firezone. Specific to AWS, ensure: . | The security group of the Firezone EC2 instance allows outbound traffic to the IP of the protected resource. | An Elastic IP is associated with the Firezone instance. This will be the source IP address of traffic routed through the Firezone instance to external destinations. In this case the IP is 52.202.88.54. | . Step 2 - Restrict access to the protected resource . In this example, the protected resource is a self-hosted web app. Access to the web app is restricted to only requests from 52.202.88.54. Depending on the resource, inbound traffic on different ports and traffic types may need to be allowed. This is outside the scope of this guide. If the protected resource is controlled by a 3rd party, please inform the 3rd party to allow traffic from the static IP set in Step 1 (in this case 52.202.88.54). Step 3 - Route traffic to the protected resource through the VPN server . By default all traffic from users will be routed through the VPN server, and will originate from the static IP set in Step 1 (in this case 52.202.88.54). However, if split tunneling has been enabled, configuration may be required to ensure the destination IP of the protected resource is included in the Allowed IPs. Related: Authenticate . ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/user-guides/whitelist-vpn/#aws-example",
+    "relUrl": "/docs/user-guides/whitelist-vpn/#aws-example"
+  },"87": {
+    "doc": "Using Firezone as a NAT Gateway",
+    "title": "Using Firezone as a NAT Gateway",
+    "content": ". Firezone can be used as NAT gateway in order to provide a single, static egress IP for all of your team’s traffic to flow out of. This is commonly used in the following scenarios: . | Consulting engagements: Ask your client to whitelist a single static IP address associated with your engagement instead of your employees’ individual device IPs. | Masking your device IP or proxying your source IP for privacy or security reasons. | . This guide will walk through a simple example restricting access for a self-hosted web app to a single whitelisted static IP running Firezone. In this example the protected resource and Firezone are in separate VPC regions. This arrangement is commonly done in place of maintaining an IP whitelist for multiple end users, which may become labor intensive to manage as the access list grows. ",
+    "url": "https://docs.firezone.dev/0.4.5/docs/user-guides/whitelist-vpn/",
+    "relUrl": "/docs/user-guides/whitelist-vpn/"
+  }
+}
