@@ -1,0 +1,155 @@
+# We're running on a self-hosted runner, so only allow one workflow to run at a
+# time.
+concurrency: build
+
+name: Build
+on:
+  push:
+    branches:
+      - master
+      - 'build/**'
+
+jobs:
+  draft-release:
+    runs-on: ubuntu-20.04
+    outputs:
+      tag_name: ${{ steps.release_drafter.outputs.tag_name }}
+    steps:
+      - uses: release-drafter/release-drafter@v5
+        id: release_drafter
+        if: startsWith(github.ref, 'refs/heads/master')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-package-test:
+    # Doesn't really need, but don't run this stage when iterating over docs
+    needs: draft-release
+    env:
+      TELEMETRY_ENABLED: "false"
+    runs-on: ${{ matrix.platform }}
+    strategy:
+      # Failing fast breaks the Omnibus build cache because the job is
+      # interrupted abruptly, leaving behind index.lock files.
+      fail-fast: false
+      matrix:
+        platform:
+          # ARM-based
+          - amazonlinux2-arm64
+          - centos9-arm64
+          - debian10-arm64
+          - debian11-arm64
+          - fedora33-arm64
+          - fedora34-arm64
+          - fedora35-arm64
+          - ubuntu1804-arm64
+          - ubuntu2004-arm64
+
+          # x64-based
+          - amazonlinux2-x64
+          - centos7-x64
+          - centos8-x64
+          - centos9-x64
+          - debian10-x64
+          - debian11-x64
+          - fedora33-x64
+          - fedora34-x64
+          - fedora35-x64
+          - ubuntu1804-x64
+          - ubuntu2004-x64
+          - opensuse15-x64
+    steps:
+      - run: cat /sys/module/wireguard/version
+      - uses: actions/checkout@v2
+      - name: Build
+        env:
+          GIT_SHA: ${{ github.sha }}
+          VERSION: ${{ needs.draft-release.outputs.tag_name }}
+        run: |
+          echo "removing lock file in case last run sucked"
+          sudo rm -f /opt/runner/omnibus-local/cache/git_cache/opt/firezone/index.lock
+
+          . $HOME/.asdf/asdf.sh
+          asdf update
+          asdf plugin-update ruby
+          asdf install ruby
+
+          # CentOS 7 has path issues when this runs and doesn't have the
+          # devtools loaded
+          if test -f /opt/rh/devtoolset-9/enable; then
+            . /opt/rh/devtoolset-9/enable
+          fi
+          gem install bundler
+          cd omnibus
+          bundle install --binstubs
+          sudo mkdir -p /opt/firezone
+          sudo chown -R $USER /opt/firezone
+          bin/omnibus build firezone
+      - name: Functional Test
+        run: |
+          .ci/functional_test.sh
+      - uses: actions/upload-artifact@v2
+        with:
+          name: firezone-${{ matrix.platform }}
+          path: |
+            omnibus/pkg/firezone*.deb
+            omnibus/pkg/firezone*.rpm
+      - name: Cleanup
+        if: always()
+        run: |
+          sudo scripts/uninstall.sh
+          sudo rm -rf /tmp/firezone*
+          rm -rf omnibus/pkg/*
+
+  # Publish packages to the drafted release on merges to master so we can
+  # manually test them if needed. Then we can just publish the drafted release
+  # and we're good to go.
+  publish:
+    if: startsWith(github.ref, 'refs/heads/master')
+    needs:
+      - build-package-test
+      - draft-release
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        platform:
+          # ARM-based
+          - amazonlinux2-arm64
+          - centos9-arm64
+          - debian10-arm64
+          - debian11-arm64
+          - fedora33-arm64
+          - fedora34-arm64
+          - fedora35-arm64
+          - ubuntu1804-arm64
+          - ubuntu2004-arm64
+
+          # x64-based
+          - amazonlinux2-x64
+          - centos7-x64
+          - centos8-x64
+          - centos9-x64
+          - debian10-x64
+          - debian11-x64
+          - fedora33-x64
+          - fedora34-x64
+          - fedora35-x64
+          - ubuntu1804-x64
+          - ubuntu2004-x64
+          - opensuse15-x64
+    steps:
+      - uses: actions/download-artifact@v3
+        with:
+          name: firezone-${{ matrix.platform }}
+          path: ./
+      - name: Rename artifact file to tag
+        run: |
+          mv ./firezone*.rpm firezone_${{ needs.draft-release.outputs.tag_name }}-${{ matrix.platform }}.rpm || true
+          mv ./firezone*.deb firezone_${{ needs.draft-release.outputs.tag_name }}-${{ matrix.platform }}.deb || true
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.draft-release.outputs.tag_name }}
+          draft: true
+          files: |
+            ./firezone*.rpm
+            ./firezone*.deb
