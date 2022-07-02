@@ -94,4 +94,8 @@ http {
 
   include <%= @nginx['dir'] %>/conf.d/*.conf;
   include <%= @nginx['dir'] %>/sites-enabled/*;
+
+  <% if @acme_enabled -%>
+    include <%= @nginx['dir'] %>/acme.conf;
+  <% end -%>
 }

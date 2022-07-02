@@ -390,8 +390,11 @@ default['firezone']['ssl']['directory'] = '/var/opt/firezone/ssl'
 # Enable / disable SSL
 default['firezone']['ssl']['enabled'] = true
 
-# Paths to the SSL certificate and key files. If these are not provided we will
-# attempt to generate a self-signed certificate and use that instead.
+# Enable / disable ACME protocol support to auto-provision SSL certificates.
+default['firezone']['ssl']['acme'] = true
+
+# Paths to the SSL certificate and key files. If these are set, ACME is automatically disabled.
+# If these are nil and ACME is disabled, we will attempt to generate a self-signed certificate and use that instead.
 default['firezone']['ssl']['certificate'] = nil
 default['firezone']['ssl']['certificate_key'] = nil
 

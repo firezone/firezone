@@ -47,8 +47,13 @@ server {
   server_name <%= @fqdn %>;
 
 <%   if @ssl['enabled'] -%>
-  ssl_certificate <%= @ssl['certificate'] %>;
-  ssl_certificate_key <%= @ssl['certificate_key'] %>;
+  <% if @acme['enabled'] -%>
+    ssl_certificate <%= @acme['certificate'] %>;
+    ssl_certificate_key <%= @acme['certificate_key'] %>;
+  <% else -%>
+    ssl_certificate <%= @ssl['certificate'] %>;
+    ssl_certificate_key <%= @ssl['certificate_key'] %>;
+  <% end %>
   ssl_dhparam <%= @ssl['ssl_dhparam'] %>;
   ssl_prefer_server_ciphers on;
   ssl_ciphers <%= @fips_enabled ? @ssl['fips_ciphers'] : @ssl['ciphers'] %>;

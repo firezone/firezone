@@ -25,7 +25,10 @@ include_recipe 'firezone::config'
  node['firezone']['nginx']['log_directory'],
  node['firezone']['nginx']['directory'],
  "#{node['firezone']['nginx']['directory']}/conf.d",
- "#{node['firezone']['nginx']['directory']}/sites-enabled"].each do |dir|
+ "#{node['firezone']['nginx']['directory']}/sites-enabled",
+ "#{node['firezone']['var_directory']}/nginx/acme_root",
+ "#{node['firezone']['var_directory']}/nginx/acme_root/.well-known",
+ "#{node['firezone']['var_directory']}/nginx/acme_root/.well-known/acme-challenge"].each do |dir|
   directory dir do
     owner node['firezone']['user']
     group node['firezone']['group']
@@ -40,12 +43,32 @@ link "#{node['firezone']['nginx']['directory']}/mime.types" do
 end
 
 template 'nginx.conf' do
+  acme_enabled = \
+    node['firezone']['ssl']['acme'] \
+    && !node['firezone']['ssl']['certificate'] \
+    && !node['firezone']['ssl']['certificate_key']
   path "#{node['firezone']['nginx']['directory']}/nginx.conf"
   source 'nginx.conf.erb'
   owner node['firezone']['user']
   group node['firezone']['group']
   mode '0600'
-  variables(logging_enabled: node['firezone']['logging']['enabled'], nginx: node['firezone']['nginx'])
+  variables(
+    logging_enabled: node['firezone']['logging']['enabled'],
+    nginx: node['firezone']['nginx'],
+    acme_enabled: acme_enabled
+  )
+end
+
+template 'acme.conf' do
+  path "#{node['firezone']['nginx']['directory']}/acme.conf"
+  source 'acme.conf.erb'
+  owner 'root'
+  group node['firezone']['group']
+  mode '0640'
+  variables(
+    server_name: URI.parse(node['firezone']['external_url']).host,
+    acme_www_root: "#{node['firezone']['var_directory']}/nginx/acme_root"
+  )
 end
 
 if node['firezone']['nginx']['enabled']
@@ -54,6 +77,7 @@ if node['firezone']['nginx']['enabled']
     action :enable
     subscribes :restart, 'template[nginx.conf]'
     subscribes :restart, 'template[phoenix.nginx.conf]'
+    subscribes :restart, 'template[acme.conf]'
   end
 else
   runit_service 'nginx' do
