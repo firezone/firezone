@@ -391,7 +391,11 @@ default['firezone']['ssl']['directory'] = '/var/opt/firezone/ssl'
 default['firezone']['ssl']['enabled'] = true
 
 # Enable / disable ACME protocol support to auto-provision SSL certificates.
-default['firezone']['ssl']['acme'] = true
+# Before turning this on, please ensure:
+# 1. default['firezone']['external_url'] includes a valid FQDN
+# 2. Port 80/tcp is accessible; this is used for domain validation.
+# 3. default['firezone']['admin_email'] is set properly. This will be used for renewal notices.
+default['firezone']['ssl']['acme'] = false
 
 # Paths to the SSL certificate and key files. If these are set, ACME is automatically disabled.
 # If these are nil and ACME is disabled, we will attempt to generate a self-signed certificate and use that instead.

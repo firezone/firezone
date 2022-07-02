@@ -35,14 +35,24 @@ if node['firezone']['ssl']['acme'] \
     cwd bin_path
     command <<~ACME
       ./acme.sh --install \
+      --debug \
       --home #{acme_home} \
       --accountemail "#{node['firezone']['admin_email']}"
+    ACME
+  end
+
+  execute 'ACME registration' do
+    command <<~ACME
+      #{bin_path}/acme.sh --register-account \
+      --debug \
+      -m #{node['firezone']['admin_email']}
     ACME
   end
 
   execute 'ACME issue' do
     command <<~ACME
       #{bin_path}/acme.sh --issue \
+        --debug \
         -d #{URI.parse(node['firezone']['external_url']).host} \
         -w #{node['firezone']['var_directory']}/nginx/acme_root
     ACME
@@ -52,6 +62,7 @@ if node['firezone']['ssl']['acme'] \
     fqdn = URI.parse(node['firezone']['external_url']).host
     command <<~ACME
       #{bin_path}/acme.sh --install-cert \
+        --debug \
         -d #{fqdn} \
         --cert-file "#{node['firezone']['var_directory']}/ssl/acme/#{fqdn}.cert" \
         --key-file "#{node['firezone']['var_directory']}/ssl/acme/#{fqdn}.key" \
