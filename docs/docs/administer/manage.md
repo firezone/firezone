@@ -1,11 +1,6 @@
 ---
-layout: default
 title: Manage Installation
-nav_order: 2
-parent: Administer
-description: >
-  Your Firezone installation can be managed via the `firezone-ctl` command.
----
+sidebar_position: 2
 ---
 
 Your Firezone installation can be managed via the `firezone-ctl` command, as

@@ -1,1 +1,4 @@
-_site/
+.docusaurus
+node_modules
+src
+static
