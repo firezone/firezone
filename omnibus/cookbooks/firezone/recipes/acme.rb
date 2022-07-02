@@ -8,10 +8,10 @@
 include_recipe 'firezone::config'
 include_recipe 'firezone::ssl'
 
-acme_sh_path = "#{node['firezone']['install_directory']}/embedded/bin/acme.sh"
+bin_path = "#{node['firezone']['install_directory']}/embedded/bin"
 
-file acme_sh_path do
-  mode '0700'
+file "#{bin_path}/acme.sh" do
+  mode '0770'
   owner 'root'
   group 'root'
 end
@@ -25,14 +25,16 @@ if node['firezone']['ssl']['acme'] \
   acme_home = "#{node['firezone']['var_directory']}/acme"
 
   directory acme_home do
-    mode '0750'
+    mode '0770'
     owner 'root'
-    group node['firezone']['group']
+    group 'root'
   end
 
   execute 'ACME initialization' do
+    # Need to cwd to bin_path because ACME expects to copy itself
+    cwd bin_path
     command <<~ACME
-      #{acme_sh_path} --install \
+      ./acme.sh --install \
       --home #{acme_home} \
       --accountemail "#{node['firezone']['admin_email']}"
     ACME
@@ -40,7 +42,7 @@ if node['firezone']['ssl']['acme'] \
 
   execute 'ACME issue' do
     command <<~ACME
-      #{acme_sh_path} --issue \
+      #{bin_path}/acme.sh --issue \
         -d #{URI.parse(node['firezone']['external_url']).host} \
         -w #{node['firezone']['var_directory']}/nginx/acme_root
     ACME
@@ -49,7 +51,7 @@ if node['firezone']['ssl']['acme'] \
   execute 'ACME install-cert' do
     fqdn = URI.parse(node['firezone']['external_url']).host
     command <<~ACME
-      #{acme_sh_path} --install-cert \
+      #{bin_path}/acme.sh --install-cert \
         -d #{fqdn} \
         --cert-file "#{node['firezone']['var_directory']}/ssl/acme/#{fqdn}.cert" \
         --key-file "#{node['firezone']['var_directory']}/ssl/acme/#{fqdn}.key" \
