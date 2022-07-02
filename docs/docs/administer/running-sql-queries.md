@@ -1,11 +1,6 @@
 ---
-layout: default
 title: Running SQL Queries
-nav_order: 7
-parent: Administer
-description: >
-  Running SQL directly on the embedded Postgresql instance.
----
+sidebar_position: 7
 ---
 
 Firezone bundles a Postgresql server and matching `psql` utility that can be
