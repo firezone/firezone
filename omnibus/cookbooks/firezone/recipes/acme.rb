@@ -33,7 +33,7 @@ if node['firezone']['ssl']['acme'] \
   execute 'ACME initialization' do
     command <<~ACME
       #{acme_sh_path} --install \
-      --home #{acme_home}
+      --home #{acme_home} \
       --accountemail "#{node['firezone']['admin_email']}"
     ACME
   end
