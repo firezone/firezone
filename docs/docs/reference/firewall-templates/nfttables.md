@@ -1,0 +1,342 @@
+---
+title: nftables Firewall Template
+---
+
+The following nftables firewall template can be used to secure the server
+running Firezone. The template does make some assumptions; you may need to
+adjust the rules to suite your use case:
+
+* The WireGuard interface is named `wg-firezone`. If this is not correct,
+change the `DEV_WIREGUARD` variable to match the
+`default['firezone']['wireguard']['interface_name']` configuration option.
+* The port WireGuard is listening on is `51820`. If you are not using the
+default port change the `WIREGUARD_PORT` variable.
+* Only the following inbound traffic will be allowed to the server:
+  * SSH (TCP dport 22)
+  * HTTP (TCP dport 80)
+  * HTTPS (TCP dport 443)
+  * WireGuard (UDP dport `WIREGUARD_PORT`)
+  * UDP traceroute (UDP dport 33434-33524, rate limited to 500/second)
+  * ICMP and ICMPv6 (ping/ping responses rate limited to 2000/second)
+* Only the following outbound traffic will be allowed from the server:
+  * DNS (UDP and TCP dport 53)
+  * HTTP (TCP dport 80)
+  * NTP (UDP port 123)
+  * HTTPS (TCP dport 443)
+  * SMTP submission (TCP dport 587)
+  * UDP traceroute (UDP dport 33434-33524, rate limited to 500/second)
+* Unmatched traffic will be logged. The rules used for logging are separated
+from the rules to drop traffic and are rate limited. Removing the relevant
+logging rules will not affect trafic.
+
+#### Firezone Managed Rules
+
+Firezone configures its own nftables rules to permit/reject traffic to destinations
+configured in the web interface and to handle outbound NAT for client traffic.
+
+Applying the below firewall template on an already running server (not at boot time)
+will result in the Firezone rules being cleared. This may have security implications.
+
+To work around this restart the `phoenix` service:
+
+```shell
+firezone-ctl restart phoenix
+```
+
+#### Base Firewall Template
+
+<!-- markdownlint-disable MD013 -->
+
+```shell
+#!/usr/sbin/nft -f
+
+## Clear/flush all existing rules
+flush ruleset
+
+################################ VARIABLES ################################
+## Internet/WAN interface name
+define DEV_WAN = eth0
+
+## WireGuard interface name
+define DEV_WIREGUARD = wg-firezone
+
+## WireGuard listen port
+define WIREGUARD_PORT = 51820
+############################## VARIABLES END ##############################
+
+# Main inet family filtering table
+table inet filter {
+
+  # Rules for forwarded traffic
+  # This chain is processed before the Firezone forward chain
+  chain forward {
+    type filter hook forward priority filter - 5; policy accept
+  }
+
+  # Rules for input traffic
+  chain input {
+    type filter hook input priority filter; policy drop
+
+    ## Permit inbound traffic to loopback interface
+    iif lo \
+      accept \
+      comment "Permit all traffic in from loopback interface"
+
+    ## Permit established and related connections
+    ct state established,related \
+      accept \
+      comment "Permit established/related connections"
+
+    ## Permit inbound WireGuard traffic
+    iif $DEV_WAN udp dport $WIREGUARD_PORT \
+      counter \
+      accept \
+      comment "Permit inbound WireGuard traffic"
+
+    ## Log and drop new TCP non-SYN packets
+    tcp flags != syn ct state new \
+      limit rate 100/minute burst 150 packets \
+      log prefix "IN - New !SYN: " \
+      comment "Rate limit logging for new connections that do not have the SYN TCP flag set"
+    tcp flags != syn ct state new \
+      counter \
+      drop \
+      comment "Drop new connections that do not have the SYN TCP flag set"
+
+    ## Log and drop TCP packets with invalid fin/syn flag set
+    tcp flags & (fin|syn) == (fin|syn) \
+      limit rate 100/minute burst 150 packets \
+      log prefix "IN - TCP FIN|SIN: " \
+      comment "Rate limit logging for TCP packets with invalid fin/syn flag set"
+    tcp flags & (fin|syn) == (fin|syn) \
+      counter \
+      drop \
+      comment "Drop TCP packets with invalid fin/syn flag set"
+
+    ## Log and drop TCP packets with invalid syn/rst flag set
+    tcp flags & (syn|rst) == (syn|rst) \
+      limit rate 100/minute burst 150 packets \
+      log prefix "IN - TCP SYN|RST: " \
+      comment "Rate limit logging for TCP packets with invalid syn/rst flag set"
+    tcp flags & (syn|rst) == (syn|rst) \
+      counter \
+      drop \
+      comment "Drop TCP packets with invalid syn/rst flag set"
+
+    ## Log and drop invalid TCP flags
+    tcp flags & (fin|syn|rst|psh|ack|urg) < (fin) \
+      limit rate 100/minute burst 150 packets \
+      log prefix "IN - FIN:" \
+      comment "Rate limit logging for invalid TCP flags (fin|syn|rst|psh|ack|urg) < (fin)"
+    tcp flags & (fin|syn|rst|psh|ack|urg) < (fin) \
+      counter \
+      drop \
+      comment "Drop TCP packets with flags (fin|syn|rst|psh|ack|urg) < (fin)"
+
+    ## Log and drop invalid TCP flags
+    tcp flags & (fin|syn|rst|psh|ack|urg) == (fin|psh|urg) \
+      limit rate 100/minute burst 150 packets \
+      log prefix "IN - FIN|PSH|URG:" \
+      comment "Rate limit logging for invalid TCP flags (fin|syn|rst|psh|ack|urg) == (fin|psh|urg)"
+    tcp flags & (fin|syn|rst|psh|ack|urg) == (fin|psh|urg) \
+      counter \
+      drop \
+      comment "Drop TCP packets with flags (fin|syn|rst|psh|ack|urg) == (fin|psh|urg)"
+
+    ## Drop traffic with invalid connection state
+    ct state invalid \
+      limit rate 100/minute burst 150 packets \
+      log flags all prefix "IN - Invalid: " \
+      comment "Rate limit logging for traffic with invalid connection state"
+    ct state invalid \
+      counter \
+      drop \
+      comment "Drop traffic with invalid connection state"
+
+    ## Permit IPv4 ping/ping responses but rate limit to 2000 PPS
+    ip protocol icmp icmp type { echo-reply, echo-request } \
+      limit rate 2000/second \
+      counter \
+      accept \
+      comment "Permit inbound IPv4 echo (ping) limited to 2000 PPS"
+
+    ## Permit all other inbound IPv4 ICMP
+    ip protocol icmp \
+      counter \
+      accept \
+      comment "Permit all other IPv4 ICMP"
+
+    ## Permit IPv6 ping/ping responses but rate limit to 2000 PPS
+    icmpv6 type { echo-reply, echo-request } \
+      limit rate 2000/second \
+      counter \
+      accept \
+      comment "Permit inbound IPv6 echo (ping) limited to 2000 PPS"
+
+    ## Permit all other inbound IPv6 ICMP
+    meta l4proto { icmpv6 } \
+      counter \
+      accept \
+      comment "Permit all other IPv6 ICMP"
+
+    ## Permit inbound traceroute UDP ports but limit to 500 PPS
+    udp dport 33434-33524 \
+      limit rate 500/second \
+      counter \
+      accept \
+      comment "Permit inbound UDP traceroute limited to 500 PPS"
+
+    ## Permit inbound SSH
+    tcp dport ssh ct state new \
+      counter \
+      accept \
+      comment "Permit inbound SSH connections"
+
+    ## Permit inbound HTTP and HTTPS
+    tcp dport { http, https } ct state new \
+      counter \
+      accept \
+      comment "Permit inbound HTTP and HTTPS connections"
+
+    ## Log any unmatched traffic but rate limit logging to a maximum of 60 messages/minute
+    ## The default policy will be applied to unmatched traffic
+    limit rate 60/minute burst 100 packets \
+      log prefix "IN - Drop: " \
+      comment "Log any unmatched traffic"
+
+    ## Count the unmatched traffic
+    counter \
+      comment "Count any unmatched traffic"
+  }
+
+  # Rules for output traffic
+  chain output {
+    type filter hook output priority filter; policy drop
+
+    ## Permit outbound traffic to loopback interface
+    oif lo \
+      accept \
+      comment "Permit all traffic out to loopback interface"
+
+    ## Permit established and related connections
+    ct state established,related \
+      counter \
+      accept \
+      comment "Permit established/related connections"
+
+    ## Permit outbound WireGuard traffic before dropping connections with bad state
+    oif $DEV_WAN udp sport $WIREGUARD_PORT \
+      counter \
+      accept \
+      comment "Permit WireGuard outbound traffic"
+
+    ## Drop traffic with invalid connection state
+    ct state invalid \
+      limit rate 100/minute burst 150 packets \
+      log flags all prefix "OUT - Invalid: " \
+      comment "Rate limit logging for traffic with invalid connection state"
+    ct state invalid \
+      counter \
+      drop \
+      comment "Drop traffic with invalid connection state"
+
+    ## Permit all other outbound IPv4 ICMP
+    ip protocol icmp \
+      counter \
+      accept \
+      comment "Permit all IPv4 ICMP types"
+
+    ## Permit all other outbound IPv6 ICMP
+    meta l4proto { icmpv6 } \
+      counter \
+      accept \
+      comment "Permit all IPv6 ICMP types"
+
+    ## Permit outbound traceroute UDP ports but limit to 500 PPS
+    udp dport 33434-33524 \
+      limit rate 500/second \
+      counter \
+      accept \
+      comment "Permit outbound UDP traceroute limited to 500 PPS"
+
+    ## Permit outbound HTTP and HTTPS connections
+    tcp dport { http, https } ct state new \
+      counter \
+      accept \
+      comment "Permit outbound HTTP and HTTPS connections"
+
+    ## Permit outbound SMTP submission
+    tcp dport submission ct state new \
+      counter \
+      accept \
+      comment "Permit outbound SMTP submission"
+
+    ## Permit outbound DNS requests
+    udp dport 53 \
+      counter \
+      accept \
+      comment "Permit outbound UDP DNS requests"
+    tcp dport 53 \
+      counter \
+      accept \
+      comment "Permit outbound TCP DNS requests"
+
+    ## Permit outbound NTP requests
+    udp dport 123 \
+      counter \
+      accept \
+      comment "Permit outbound NTP requests"
+
+    ## Log any unmatched traffic but rate limit logging to a maximum of 60 messages/minute
+    ## The default policy will be applied to unmatched traffic
+    limit rate 60/minute burst 100 packets \
+      log prefix "OUT - Drop: " \
+      comment "Log any unmatched traffic"
+
+    ## Count the unmatched traffic
+    counter \
+      comment "Count any unmatched traffic"
+  }
+
+}
+
+# Main NAT filtering table
+table inet nat {
+
+  # Rules for NAT traffic pre-routing
+  chain prerouting {
+    type nat hook prerouting priority dstnat; policy accept
+  }
+
+  # Rules for NAT traffic post-routing
+  # This table is processed before the Firezone post-routing chain
+  chain postrouting {
+    type nat hook postrouting priority srcnat - 5; policy accept
+  }
+
+}
+```
+
+<!-- markdownlint-enable MD013 -->
+
+#### Usage
+
+The firewall should be stored in the relevant location for the Linux distribution
+that is running. For Debian/Ubuntu this is `/etc/nftables.conf` and for RHEL this
+is `/etc/sysconfig/nftables.conf`.
+
+`nftables.service` will need to be configured to start on boot (if not already) set:
+
+```shell
+systemctl enable nftables.service
+```
+
+If making any changes to the firewall template the syntax can be validated by running
+the check command:
+
+```shell
+nft -f /path/to/nftables.conf -c
+```
+
+Be sure to validate the firewall works as expected as certain nftables features may
+not be available depending on the release running on the server.

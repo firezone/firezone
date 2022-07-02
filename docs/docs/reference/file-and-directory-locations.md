@@ -1,12 +1,6 @@
 ---
-layout: default
-nav_order: 3
 title: File and Directory Locations
-parent: Reference
-description: >
-  Locations of various files and directories related to
-  a typical Firezone installation.
----
+sidebar_position: 2
 ---
 
 Here you'll find a listing of files and directories related to a typical
