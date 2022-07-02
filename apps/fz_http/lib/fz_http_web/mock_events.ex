@@ -7,8 +7,8 @@ defmodule FzHttpWeb.MockEvents do
   inside FzHttp and use that for the tests.
   """
 
-  def delete_device(device) do
-    {:ok, device}
+  def delete_device(_device) do
+    maybe_mock_error()
   end
 
   def create_user(_user) do
