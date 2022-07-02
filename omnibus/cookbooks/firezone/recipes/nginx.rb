@@ -43,10 +43,7 @@ link "#{node['firezone']['nginx']['directory']}/mime.types" do
 end
 
 template 'nginx.conf' do
-  acme_enabled = \
-    node['firezone']['ssl']['acme'] \
-    && !node['firezone']['ssl']['certificate'] \
-    && !node['firezone']['ssl']['certificate_key']
+  acme_enabled = node['firezone']['ssl']['acme'] && !node['firezone']['ssl']['certificate']
   path "#{node['firezone']['nginx']['directory']}/nginx.conf"
   source 'nginx.conf.erb'
   owner node['firezone']['user']

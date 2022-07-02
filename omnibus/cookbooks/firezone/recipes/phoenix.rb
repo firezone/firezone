@@ -23,6 +23,8 @@
 
 include_recipe 'firezone::config'
 include_recipe 'firezone::nginx'
+include_recipe 'firezone::acme'
+include_recipe 'firezone::ssl'
 include_recipe 'firezone::wireguard'
 
 [node['firezone']['phoenix']['log_directory'],

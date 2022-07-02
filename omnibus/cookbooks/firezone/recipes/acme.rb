@@ -6,7 +6,6 @@
 # Copyright:: 2022, Firezone, All Rights Reserved.
 
 include_recipe 'firezone::config'
-include_recipe 'firezone::ssl'
 
 bin_path = "#{node['firezone']['install_directory']}/embedded/bin"
 
@@ -18,10 +17,7 @@ end
 
 # Enable ACME if set to enabled and user-specified certs are disabled, maintains
 # backwards compatibility during upgrades.
-if node['firezone']['ssl']['acme'] \
-    && !node['firezone']['ssl']['certificate'] \
-    && !node['firezone']['ssl']['certificate_key']
-
+if node['firezone']['ssl']['acme'] && !node['firezone']['ssl']['certificate']
   acme_home = "#{node['firezone']['var_directory']}/acme"
 
   directory acme_home do
