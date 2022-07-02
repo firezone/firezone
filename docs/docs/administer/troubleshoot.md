@@ -1,12 +1,6 @@
 ---
-layout: default
 title: Troubleshoot
-nav_order: 5
-parent: Administer
-description: >
- Start with these steps to troubleshoot your Firezone
- installation. A good first bet is to check the Firezone logs.
----
+sidebar_position: 5
 ---
 
 For any problems that arise, a good first bet is to check the Firezone logs.

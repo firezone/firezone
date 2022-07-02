@@ -5,49 +5,26 @@ on:
 
 jobs:
   publish-docs:
-    runs-on: macos-11
+    name: Build Docusaurus 🐲
+    runs-on: ubuntu-latest
     steps:
-      - name: Get the version
-        id: get_version
-        run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
       - uses: actions/checkout@v2
         with:
           fetch-depth: 0
-      - uses: ruby/setup-ruby@v1
+      - uses: actions/setup-node@v3
         with:
-          bundler-cache: true # runs 'bundle install' and caches installed gems automatically
-      - name: Write tags manifest
-        run: |
-          echo ${{ steps.get_version.outputs.VERSION }} > docs/assets/versions.txt
-          tags=`git ls-tree --name-only origin/gh-pages | egrep "^((([0-9]+)\.([0-9]+)\.([0-9]+)(?:-([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?)(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?)$"`
-          echo $tags | tr " " "\n" | sort -Vr >> docs/assets/versions.txt
-      - name: Build jekyll site
-        run: |
+          node-version: 16
+          cache: 'npm'
+      - run: |
           cd docs/
-          gem install bundler
-          bundle install
-
-          # Generate top-level docs
-          bundle exec jekyll build \
-            --destination _latest
-
-          # Generate versioned docs
-          bundle exec jekyll build \
-            --baseurl ${{ steps.get_version.outputs.VERSION }} \
-            --destination ${{ steps.get_version.outputs.VERSION }}
-      - name: Publish Latest Docs
+          npm ci
+          npm run build
+      - name: Publish Latest Docs ✨
         uses: JamesIves/github-pages-deploy-action@v4.2.2
         with:
           branch: gh-pages
-          folder: docs/_latest
+          folder: docs/build
           target-folder: .
-          clean: true
+          clean: false
           clean-exclude: |
             *.*.*/
-      - name: Publish Versioned Docs
-        uses: JamesIves/github-pages-deploy-action@v4.2.2
-        with:
-          branch: gh-pages
-          folder: docs/${{ steps.get_version.outputs.VERSION }}
-          target-folder: ${{ steps.get_version.outputs.VERSION }}
-          clean: true
