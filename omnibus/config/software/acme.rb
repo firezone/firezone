@@ -12,6 +12,8 @@ version('3.0.4') do
   source sha256: 'c2855836a6db5766474c860fa54fa2f9f378ab334856b0cf0d07512866b808bb'
 end
 
+relative_path "acme.sh-#{version}"
+
 build do
   copy 'acme.sh', "#{install_dir}/embedded/bin"
 end
