@@ -39,7 +39,7 @@ build_iteration 1
 
 # firezone build dependencies/components
 dependency 'runit'
-dependency 'nginx'
+dependency 'openresty'
 dependency 'erlang'
 dependency 'elixir'
 dependency 'openssl'
