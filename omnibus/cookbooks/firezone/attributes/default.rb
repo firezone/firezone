@@ -396,6 +396,12 @@ default['firezone']['ssl']['enabled'] = true
 # 2. Port 80/tcp is accessible; this is used for domain validation.
 # 3. default['firezone']['admin_email'] is set properly. This will be used for renewal notices.
 default['firezone']['ssl']['acme'] = false
+# Set the ACME server directory for ACME protocol SSL certificate issuance
+# This option requires default['firezone']['ssl']['acme']
+# You can either set one of the CA short names as explained here (https://github.com/acmesh-official/acme.sh/wiki/Server)
+# or the directory URL.
+# In case ACME is enabled this option will default to zerossl
+default['firezone']['ssl']['acme_server'] = zerossl
 
 # Paths to the SSL certificate and key files. If these are set, ACME is automatically disabled.
 # If these are nil and ACME is disabled, we will attempt to generate a self-signed certificate and use that instead.
