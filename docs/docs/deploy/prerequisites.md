@@ -19,12 +19,11 @@ While Firezone generates a self-signed SSL certificate for you on install,
 you'll need a valid SSL certificate to use Firezone in a production capacity.
 
 We recommend using [Let's Encrypt](https://letsencrypt.org) to
-generate a free SSL cert for your domain. Firezone will include the ability to
-automatically generate valid SSL certificates for you in an upcoming release,
-but for now these must be generated manually and specified in the main
-configuration file at `/etc/firezone/firezone.rb`. See here for a guide on how
-to do so:
-[https://eff-certbot.readthedocs.io/en/stable/using.html#manual](https://eff-certbot.readthedocs.io/en/stable/using.html#manual)
+generate a free SSL cert for your domain.
+To enable it you just need to set 3 settings in the [configuration file](../reference/configuration-file.md):
+* default['firezone']['external_url']: The FQDN for the server.
+* default['firezone']['ssl']['email_address']: The email that will be used for the issued certificates.
+* default['firezone']['ssl']['acme']: Set this to true to enable it.
 
 ## Security Group and Firewall Settings
 

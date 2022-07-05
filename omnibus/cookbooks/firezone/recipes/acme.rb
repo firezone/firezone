@@ -37,7 +37,7 @@ if node['firezone']['ssl']['acme'] && !node['firezone']['ssl']['certificate']
       ./acme.sh --install \
       --debug \
       --home #{acme_home} \
-      --accountemail "#{node['firezone']['admin_email']}"
+      --accountemail "#{node['firezone']['ssl']['email_address']}"
     ACME
   end
 
@@ -48,7 +48,7 @@ if node['firezone']['ssl']['acme'] && !node['firezone']['ssl']['certificate']
         --home #{acme_home} \
         --server #{node['firezone']['ssl']['acme_server']} \
         --debug \
-        -m #{node['firezone']['admin_email']}
+        -m #{node['firezone']['ssl']['email_address']}
       ACME
     end
   end
@@ -79,4 +79,6 @@ if node['firezone']['ssl']['acme'] && !node['firezone']['ssl']['certificate']
         --reloadcmd "firezone-ctl hup nginx"
     ACME
   end
+
+  # TODO: Set notifications
 end

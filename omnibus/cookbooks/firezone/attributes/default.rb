@@ -390,18 +390,24 @@ default['firezone']['ssl']['directory'] = '/var/opt/firezone/ssl'
 # Enable / disable SSL
 default['firezone']['ssl']['enabled'] = true
 
+# The email address that will be used either for issuing the certificate and renewal notices
+# or for the self-signed certificate if that's generated.
+default['firezone']['ssl']['email_address'] = 'you@example.com'
+
 # Enable / disable ACME protocol support to auto-provision SSL certificates.
 # Before turning this on, please ensure:
 # 1. default['firezone']['external_url'] includes a valid FQDN
 # 2. Port 80/tcp is accessible; this is used for domain validation.
-# 3. default['firezone']['admin_email'] is set properly. This will be used for renewal notices.
+# 3. default['firezone']['ssl']['email_address'] is set properly. This will be used for renewal notices.
 default['firezone']['ssl']['acme'] = false
+
 # Set the ACME server directory for ACME protocol SSL certificate issuance
 # This option requires default['firezone']['ssl']['acme']
 # You can either set one of the CA short names as explained here (https://github.com/acmesh-official/acme.sh/wiki/Server)
 # or the directory URL.
-# In case ACME is enabled this option will default to zerossl
-default['firezone']['ssl']['acme_server'] = 'zerossl'
+# In case ACME is enabled this option will default to letsencrypt
+default['firezone']['ssl']['acme_server'] = 'letsencrypt'
+
 
 # Paths to the SSL certificate and key files. If these are set, ACME is automatically disabled.
 # If these are nil and ACME is disabled, we will attempt to generate a self-signed certificate and use that instead.
@@ -417,7 +423,6 @@ default['firezone']['ssl']['state_name'] = 'CA'
 default['firezone']['ssl']['locality_name'] = 'San Francisco'
 default['firezone']['ssl']['company_name'] = 'My Company'
 default['firezone']['ssl']['organizational_unit_name'] = 'Operations'
-default['firezone']['ssl']['email_address'] = 'you@example.com'
 
 # ### Cipher settings
 #
