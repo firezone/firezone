@@ -1,139 +1,154 @@
-name: Test
+# We're running on a self-hosted runner, so only allow one workflow to run at a
+# time.
+concurrency: build
+
+name: Build
 on:
   push:
+    branches:
+      - master
+      - 'build/**'
 
 jobs:
-  lint-docs:
-    runs-on: macos-11
+  draft-release:
+    runs-on: ubuntu-20.04
+    outputs:
+      tag_name: ${{ steps.release_drafter.outputs.tag_name }}
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v2
-        with:
-          node-version: '16'
-      - name: Lint Docs
-        run: |
-          npm install -g markdownlint-cli
-          cd docs
-          markdownlint .
-
-  static-analysis:
-    runs-on: ubuntu-latest
-    env:
-      MIX_ENV: dev
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-ruby@v1
-        with:
-          ruby-version: '2.7'
-      - uses: actions/setup-python@v2
-        with:
-          python-version: '3.9'
-      - uses: erlef/setup-beam@v1
-        with:
-          otp-version: '25'
-          elixir-version: '1.13.4'
-      - uses: actions/cache@v2
-        name: Setup Elixir cache
-        with:
-          path: |
-            deps
-            _build
-          key: ${{ runner.os }}-mix-otp-25-${{ hashFiles('**/mix.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-mix-otp-25-
-      - uses: actions/cache@v2
-        name: Setup ruby cache
-        with:
-          path: vendor/bundle
-          key: ${{ runner.os }}-gems-${{ hashFiles('**/Gemfile.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-gems-
-      - uses: actions/cache@v2
-        name: Setup Python cache
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-      - name: Install Elixir Dependencies
-        run: mix deps.get --only dev
-      - name: Install Ruby Dependencies
-        run: |
-          bundle config path vendor/bundle
-          bundle install --jobs 4 --retry 3
-      - name: Install Python Dependencies
-        run: |
-          pip install -r requirements.txt
-      # Don't cache PLTs based on mix.lock hash, as Dialyzer can incrementally update even old ones
-      # Cache key based on Elixir & Erlang version (also usefull when running in matrix)
-      - name: Restore PLT cache
-        uses: actions/cache@v2
-        id: plt_cache
-        with:
-          key: |
-            ${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ steps.beam.outputs.otp-version }}-plt
-          restore-keys: |
-            ${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ steps.beam.outputs.otp-version }}-plt
-          path: |
-            priv/plts
-      # Create PLTs if no cache was found
-      - name: Create PLTs
-        if: steps.plt_cache.outputs.cache-hit != 'true'
-        run: mix dialyzer --plt
-      - name: Run pre-commit
-        run: |
-          pre-commit install
-          SKIP=no-commit-to-branch pre-commit run --all-files
-
-  unit-test:
-    runs-on: ubuntu-latest
-    env:
-      MIX_ENV: test
-      POSTGRES_HOST: localhost
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    services:
-      postgres:
-        image: postgres:13.5
-        ports:
-          - 5432:5432
+      - uses: release-drafter/release-drafter@v5
+        id: release_drafter
         env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-package-test:
+    # Doesn't really need, but don't run this stage when iterating over docs
+    needs: draft-release
+    env:
+      TELEMETRY_ENABLED: "false"
+    runs-on: ${{ matrix.platform }}
+    strategy:
+      # Failing fast breaks the Omnibus build cache because the job is
+      # interrupted abruptly, leaving behind index.lock files.
+      fail-fast: false
+      matrix:
+        platform:
+          # ARM-based
+          - amazonlinux2-arm64
+          - centos9-arm64
+          - debian10-arm64
+          - debian11-arm64
+          - fedora33-arm64
+          - fedora34-arm64
+          - fedora35-arm64
+          - ubuntu1804-arm64
+          - ubuntu2004-arm64
+
+          # x64-based
+          - amazonlinux2-x64
+          - centos7-x64
+          - centos8-x64
+          - centos9-x64
+          - debian10-x64
+          - debian11-x64
+          - fedora33-x64
+          - fedora34-x64
+          - fedora35-x64
+          - ubuntu1804-x64
+          - ubuntu2004-x64
+          - opensuse15-x64
     steps:
-      - name: Install package dependencies
-        run: |
-          sudo apt-get install -q -y \
-            net-tools \
-            wireguard
+      - run: cat /sys/module/wireguard/version
       - uses: actions/checkout@v2
-      - uses: actions/setup-node@v2
+      - name: Build
+        env:
+          GIT_SHA: ${{ github.sha }}
+          VERSION: ${{ needs.draft-release.outputs.tag_name }}
+        run: |
+          echo "removing lock file in case last run sucked"
+          sudo rm -f /opt/runner/omnibus-local/cache/git_cache/opt/firezone/index.lock
+
+          . $HOME/.asdf/asdf.sh
+          asdf update
+          asdf plugin-update ruby
+          asdf install ruby
+
+          # CentOS 7 has path issues when this runs and doesn't have the
+          # devtools loaded
+          if test -f /opt/rh/devtoolset-9/enable; then
+            . /opt/rh/devtoolset-9/enable
+          fi
+          gem install bundler
+          cd omnibus
+          bundle install --binstubs
+          sudo mkdir -p /opt/firezone
+          sudo chown -R $USER /opt/firezone
+          bin/omnibus build firezone
+      - name: Functional Test
+        run: |
+          .ci/functional_test.sh
+      - uses: actions/upload-artifact@v2
         with:
-          node-version: '16'
-      - uses: erlef/setup-beam@v1
-        with:
-          otp-version: '25'
-          elixir-version: '1.13.4'
-      - uses: actions/cache@v2
-        with:
+          name: firezone-${{ matrix.platform }}
           path: |
-            deps
-            _build
-          key: ${{ runner.os }}-mix-otp-25-${{ hashFiles('**/mix.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-mix-otp-25
-      - name: Install Dependencies
-        run: mix deps.get --only test
-      - name: Setup Database
+            omnibus/pkg/firezone*.deb
+            omnibus/pkg/firezone*.rpm
+      - name: Cleanup
+        if: always()
         run: |
-          mix ecto.create
-          mix ecto.migrate
-      - name: Run Tests and Upload Coverage Report
+          sudo scripts/uninstall.sh
+          sudo rm -rf /tmp/firezone*
+          rm -rf omnibus/pkg/*
+
+  # Publish packages to the drafted release on merges to master so we can
+  # manually test them if needed. Then we can just publish the drafted release
+  # and we're good to go.
+  publish:
+    if: startsWith(github.ref, 'refs/heads/master')
+    needs:
+      - build-package-test
+      - draft-release
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        platform:
+          # ARM-based
+          - amazonlinux2-arm64
+          - centos9-arm64
+          - debian10-arm64
+          - debian11-arm64
+          - fedora33-arm64
+          - fedora34-arm64
+          - fedora35-arm64
+          - ubuntu1804-arm64
+          - ubuntu2004-arm64
+
+          # x64-based
+          - amazonlinux2-x64
+          - centos7-x64
+          - centos8-x64
+          - centos9-x64
+          - debian10-x64
+          - debian11-x64
+          - fedora33-x64
+          - fedora34-x64
+          - fedora35-x64
+          - ubuntu1804-x64
+          - ubuntu2004-x64
+          - opensuse15-x64
+    steps:
+      - uses: actions/download-artifact@v3
+        with:
+          name: firezone-${{ matrix.platform }}
+          path: ./
+      - name: Rename artifact file to tag
         run: |
-          # XXX: This can fail when coveralls is down
-          mix coveralls.github --umbrella
+          mv ./firezone*.rpm firezone_${{ needs.draft-release.outputs.tag_name }}-${{ matrix.platform }}.rpm || true
+          mv ./firezone*.deb firezone_${{ needs.draft-release.outputs.tag_name }}-${{ matrix.platform }}.deb || true
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.draft-release.outputs.tag_name }}
+          draft: true
+          files: |
+            ./firezone*.rpm
+            ./firezone*.deb
