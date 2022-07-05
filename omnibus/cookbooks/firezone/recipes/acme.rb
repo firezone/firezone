@@ -41,29 +41,28 @@ if node['firezone']['ssl']['acme'] && !node['firezone']['ssl']['certificate']
     ACME
   end
 
-  unless File.exist?("#{acme_home}/account.conf")
-    execute 'ACME registration' do
-      command <<~ACME
-        #{bin_path}/acme.sh --register-account \
+  execute 'ACME registration' do
+    command <<~ACME
+      #{bin_path}/acme.sh --register-account \
+      --home #{acme_home} \
+      --server #{node['firezone']['ssl']['acme_server']} \
+      --debug \
+      -m #{node['firezone']['ssl']['email_address']}
+    ACME
+  end
+
+  execute 'ACME issue' do
+    # Command returns 0: Cert was issued
+    # Command returns 2: Skipping because renewal isn't needed
+    returns [0, 2]
+    command <<~ACME
+      #{bin_path}/acme.sh --issue \
         --home #{acme_home} \
         --server #{node['firezone']['ssl']['acme_server']} \
         --debug \
-        -m #{node['firezone']['ssl']['email_address']}
-      ACME
-    end
-  end
-
-  unless File.exist?(certfile)
-    execute 'ACME first-time issue' do
-      command <<~ACME
-        #{bin_path}/acme.sh --issue \
-          --home #{acme_home} \
-          --server #{node['firezone']['ssl']['acme_server']} \
-          --debug \
-          -d #{URI.parse(node['firezone']['external_url']).host} \
-          -w #{node['firezone']['var_directory']}/nginx/acme_root
-      ACME
-    end
+        -d #{URI.parse(node['firezone']['external_url']).host} \
+        -w #{node['firezone']['var_directory']}/nginx/acme_root
+    ACME
   end
 
   execute 'ACME install-cert' do
