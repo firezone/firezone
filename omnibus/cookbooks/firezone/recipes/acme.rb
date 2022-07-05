@@ -33,6 +33,13 @@ if node['firezone']['ssl']['acme'] && !node['firezone']['ssl']['certificate']
     recursive true
   end
 
+  # Remove cronjob to make sure it's correctly re-created
+  execute 'ACME remove cronjob' do
+    command <<~ACME
+      #{bin_path}/acme.sh --uninstall-cronjob
+    ACME
+  end
+
   execute 'ACME initialization' do
     # Need to cwd to bin_path because ACME expects to copy itself
     cwd bin_path
