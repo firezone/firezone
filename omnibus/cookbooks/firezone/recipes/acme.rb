@@ -47,7 +47,7 @@ if node['firezone']['ssl']['acme'] && !node['firezone']['ssl']['certificate']
     command <<~ACME
       #{bin_path}/acme.sh --register-account \
       --home #{acme_home} \
-      --server #{acme_server} \
+      --server #{server} \
       --debug \
       -m #{node['firezone']['ssl']['email_address']}
     ACME
@@ -60,7 +60,7 @@ if node['firezone']['ssl']['acme'] && !node['firezone']['ssl']['certificate']
     command <<~ACME
       #{bin_path}/acme.sh --issue \
         --home #{acme_home} \
-        --server #{acme_server} \
+        --server #{server} \
         --debug \
         -d #{URI.parse(node['firezone']['external_url']).host} \
         -w #{node['firezone']['var_directory']}/nginx/acme_root
@@ -75,7 +75,7 @@ if node['firezone']['ssl']['acme'] && !node['firezone']['ssl']['certificate']
         -d #{fqdn} \
         --cert-file "#{certfile}" \
         --key-file "#{keyfile}" \
-        --server #{acme_server} \
+        --server #{server} \
         --fullchain-file "#{fullchainfile}" \
         --reloadcmd "firezone-ctl hup nginx"
     ACME
