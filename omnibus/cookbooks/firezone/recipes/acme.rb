@@ -27,7 +27,7 @@ if node['firezone']['ssl']['acme'] && !node['firezone']['ssl']['certificate']
   keyfile = "#{acme_root_dir}/ssl/acme/#{fqdn}.key"
   fullchainfile = "#{acme_root_dir}/ssl/acme/#{fqdn}.fullchain"
 
-  [acme_root, acme_home, "#{acme_root_dir}/ssl/acme/"].each do |dir|
+  [acme_root_dir, acme_home, "#{acme_root_dir}/ssl/acme/"].each do |dir|
     directory dir do
       owner node['firezone']['user']
       group node['firezone']['group']
