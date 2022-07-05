@@ -30,6 +30,7 @@ acme_root_dir = "#{node['firezone']['var_directory']}/#{fqdn}/#{email_address}/#
  node['firezone']['nginx']['log_directory'],
  node['firezone']['nginx']['directory'],
  acme_root_dir,
+ "#{acme_root_dir}/acme",
  "#{node['firezone']['nginx']['directory']}/conf.d",
  "#{node['firezone']['nginx']['directory']}/sites-enabled",
  "#{node['firezone']['var_directory']}/nginx/acme_root",
