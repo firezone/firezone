@@ -30,6 +30,7 @@ if node['firezone']['ssl']['acme'] && !node['firezone']['ssl']['certificate']
     mode '0770'
     owner 'root'
     group 'root'
+    recursive true
   end
 
   execute 'ACME initialization' do
