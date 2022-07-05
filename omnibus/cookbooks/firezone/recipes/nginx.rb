@@ -21,6 +21,11 @@
 
 include_recipe 'firezone::config'
 
+fqdn = URI.parse(node['firezone']['external_url']).host
+email_address = node['firezone']['ssl']['email_address']
+server = node['firezone']['ssl']['acme_server']
+acme_root_dir = "#{node['firezone']['var_directory']}/#{fqdn}/#{email_address}/#{server}"
+
 [node['firezone']['nginx']['cache']['directory'],
  node['firezone']['nginx']['log_directory'],
  node['firezone']['nginx']['directory'],
@@ -52,18 +57,19 @@ template 'nginx.conf' do
   variables(
     logging_enabled: node['firezone']['logging']['enabled'],
     nginx: node['firezone']['nginx'],
+    acme_path: "#{acme_root_dir}/acme/acme.conf",
     acme_enabled: acme_enabled
   )
 end
 
 template 'acme.conf' do
-  path "#{node['firezone']['nginx']['directory']}/acme.conf"
+  path "#{acme_root_dir}/acme/acme.conf"
   source 'acme.conf.erb'
   owner 'root'
   group node['firezone']['group']
   mode '0640'
   variables(
-    server_name: URI.parse(node['firezone']['external_url']).host,
+    server_name: fqdn,
     acme_www_root: "#{node['firezone']['var_directory']}/nginx/acme_root"
   )
 end

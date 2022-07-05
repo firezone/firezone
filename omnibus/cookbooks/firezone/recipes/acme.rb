@@ -18,11 +18,14 @@ end
 # Enable ACME if set to enabled and user-specified certs are disabled, maintains
 # backwards compatibility during upgrades.
 if node['firezone']['ssl']['acme'] && !node['firezone']['ssl']['certificate']
-  acme_home = "#{node['firezone']['var_directory']}/acme"
   fqdn = URI.parse(node['firezone']['external_url']).host
-  certfile = "#{node['firezone']['var_directory']}/ssl/acme/#{fqdn}.cert"
-  keyfile = "#{node['firezone']['var_directory']}/ssl/acme/#{fqdn}.key"
-  fullchainfile = "#{node['firezone']['var_directory']}/ssl/acme/#{fqdn}.fullchain"
+  email_address = node['firezone']['ssl']['email_address']
+  server = node['firezone']['ssl']['acme_server']
+  acme_root_dir = "#{node['firezone']['var_directory']}/#{fqdn}/#{email_address}/#{server}"
+  acme_home = "#{acme_root_dir}/acme"
+  certfile = "#{acme_root_dir}/ssl/acme/#{fqdn}.cert"
+  keyfile = "#{acme_root_dir}/ssl/acme/#{fqdn}.key"
+  fullchainfile = "#{acme_root_dir}/ssl/acme/#{fqdn}.fullchain"
 
   directory acme_home do
     mode '0770'
@@ -37,7 +40,7 @@ if node['firezone']['ssl']['acme'] && !node['firezone']['ssl']['certificate']
       ./acme.sh --install \
       --debug \
       --home #{acme_home} \
-      --accountemail "#{node['firezone']['ssl']['email_address']}"
+      --accountemail "#{email_address}"
     ACME
   end
 
@@ -46,9 +49,9 @@ if node['firezone']['ssl']['acme'] && !node['firezone']['ssl']['certificate']
       command <<~ACME
         #{bin_path}/acme.sh --register-account \
         --home #{acme_home} \
-        --server #{node['firezone']['ssl']['acme_server']} \
+        --server #{server} \
         --debug \
-        -m #{node['firezone']['ssl']['email_address']}
+        -m #{email_address}
       ACME
     end
   end
@@ -58,7 +61,7 @@ if node['firezone']['ssl']['acme'] && !node['firezone']['ssl']['certificate']
       command <<~ACME
         #{bin_path}/acme.sh --issue \
           --home #{acme_home} \
-          --server #{node['firezone']['ssl']['acme_server']} \
+          --server #{server} \
           --debug \
           -d #{URI.parse(node['firezone']['external_url']).host} \
           -w #{node['firezone']['var_directory']}/nginx/acme_root
@@ -74,7 +77,7 @@ if node['firezone']['ssl']['acme'] && !node['firezone']['ssl']['certificate']
         -d #{fqdn} \
         --cert-file "#{certfile}" \
         --key-file "#{keyfile}" \
-        --server #{node['firezone']['ssl']['acme_server']} \
+        --server #{server} \
         --fullchain-file "#{fullchainfile}" \
         --reloadcmd "firezone-ctl hup nginx"
     ACME
