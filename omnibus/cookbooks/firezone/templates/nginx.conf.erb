@@ -96,6 +96,6 @@ http {
   include <%= @nginx['dir'] %>/sites-enabled/*;
 
   <% if @acme_enabled -%>
-    include <%= @acme_path %>;
+    include <%= @nginx['dir'] %>/acme.conf;
   <% end -%>
 }

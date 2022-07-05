@@ -27,11 +27,6 @@ include_recipe 'firezone::acme'
 include_recipe 'firezone::ssl'
 include_recipe 'firezone::wireguard'
 
-fqdn = URI.parse(node['firezone']['external_url']).host
-email_address = node['firezone']['ssl']['email_address']
-server = node['firezone']['ssl']['acme_server']
-acme_root_dir = "#{node['firezone']['var_directory']}/#{fqdn}/#{email_address}/#{server}"
-
 [node['firezone']['phoenix']['log_directory'],
  "#{node['firezone']['var_directory']}/phoenix/run"].each do |dir|
   directory dir do
@@ -58,8 +53,8 @@ template 'phoenix.nginx.conf' do
             app_directory: node['firezone']['app_directory'],
             acme: {
               'enabled' => node['firezone']['ssl']['acme'],
-              'certificate' => "#{acme_root_dir}/ssl/acme/#{fqdn}.fullchain",
-              'certificate_key' => "#{acme_root_dir}/ssl/acme/#{fqdn}.key"
+              'certificate' => "#{node['firezone']['var_directory']}/ssl/acme/#{fqdn}.fullchain",
+              'certificate_key' => "#{node['firezone']['var_directory']}/ssl/acme/#{fqdn}.key"
             })
 end
 
