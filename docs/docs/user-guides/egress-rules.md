@@ -10,4 +10,4 @@ The Allowlist and Denylist support both IPv4 and IPv6 CIDRs and IP addresses.
 When adding a rule, you may optionally scope it to a user which applies the
 rule to all their devices.
 
-![firewall rules](https://user-images.githubusercontent.com/52545545/153467657-fe287f2c-feab-41f5-8852-6cefd9d5d6b5.png)
+![firewall_rules](https://user-images.githubusercontent.com/69542737/177398544-89df7f6b-9296-4c11-ba6a-e95c72f853b7.png)
