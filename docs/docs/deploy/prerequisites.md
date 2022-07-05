@@ -21,9 +21,11 @@ you'll need a valid SSL certificate to use Firezone in a production capacity.
 We recommend using [Let's Encrypt](https://letsencrypt.org) to
 generate a free SSL cert for your domain.
 To enable it you just need to set 3 settings in the [configuration file](../reference/configuration-file.md):
-* default['firezone']['external_url']: The FQDN for the server.
-* default['firezone']['ssl']['email_address']: The email that will be used for the issued certificates.
-* default['firezone']['ssl']['acme']: Set this to true to enable it.
+
+* `default['firezone']['external_url']`: The FQDN for the server.
+* `default['firezone']['ssl']['email_address']`: The email that will be used for
+the issued certificates.
+* `default['firezone']['ssl']['acme']`: Set this to true to enable it.
 
 ## Security Group and Firewall Settings
 
