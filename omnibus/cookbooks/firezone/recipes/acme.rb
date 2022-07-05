@@ -27,10 +27,13 @@ if node['firezone']['ssl']['acme'] && !node['firezone']['ssl']['certificate']
   keyfile = "#{acme_root_dir}/ssl/acme/#{fqdn}.key"
   fullchainfile = "#{acme_root_dir}/ssl/acme/#{fqdn}.fullchain"
 
-  directory acme_home do
-    mode '0770'
-    owner 'root'
-    group 'root'
+  [acme_root, acme_home, "#{acme_root_dir}/ssl/acme/"].each do |dir|
+    directory dir do
+      owner node['firezone']['user']
+      group node['firezone']['group']
+      mode '0700'
+      recursive true
+    end
   end
 
   execute 'ACME initialization' do
