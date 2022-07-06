@@ -21,6 +21,12 @@ jobs:
           - platform: debian11-arm64
             distro: debian
             release: bullseye
+          - platform: debian10-arm64
+            distro: raspbian
+            release: buster
+          - platform: debian11-arm64
+            distro: raspbian
+            release: bullseye
           - platform: fedora33-arm64
             distro: fedora
             release: '33'
@@ -30,12 +36,21 @@ jobs:
           - platform: fedora35-arm64
             distro: fedora
             release: '35'
+          - platform: fedora35-arm64
+            distro: fedora
+            release: '36'
           - platform: ubuntu1804-arm64
             distro: ubuntu
             release: bionic
           - platform: ubuntu2004-arm64
             distro: ubuntu
             release: focal
+          - platform: ubuntu2004-arm64
+            distro: ubuntu
+            release: hirsute
+          - platform: ubuntu2004-arm64
+            distro: ubuntu
+            release: jammy
 
           # x64-based
           - platform: amazonlinux2-x64
@@ -50,6 +65,27 @@ jobs:
           - platform: centos9-x64
             distro: el
             release: '9'
+          - platform: centos8-x64
+            distro: rocky
+            release: '8.3'
+          - platform: centos8-x64
+            distro: rocky
+            release: '8.4'
+          - platform: centos8-x64
+            distro: rocky
+            release: '8.5'
+          - platform: centos8-x64
+            distro: rocky
+            release: '8.6'
+          - platform: centos8-x64
+            distro: almalinux
+            release: '8.3'
+          - platform: centos8-x64
+            distro: almalinux
+            release: '8.4'
+          - platform: centos8-x64
+            distro: almalinux
+            release: '8.5'
           - platform: debian10-x64
             distro: debian
             release: buster
@@ -65,6 +101,9 @@ jobs:
           - platform: fedora35-x64
             distro: fedora
             release: '35'
+          - platform: fedora35-x64
+            distro: fedora
+            release: '36'
           - platform: ubuntu1804-x64
             distro: ubuntu
             release: bionic
@@ -77,6 +116,12 @@ jobs:
           - platform: ubuntu2004-x64
             distro: ubuntu
             release: jammy
+          - platform: opensuse15-x64
+            distro: opensuse
+            release: '15.1'
+          - platform: opensuse15-x64
+            distro: opensuse
+            release: '15.2'
           - platform: opensuse15-x64
             distro: opensuse
             release: '15.3'
