@@ -37,7 +37,9 @@ defmodule FzHttpWeb.UserLive.VPNStatusComponentTest do
         })
 
       assert test_component =~ ~r"\bEXPIRED\b"
-      assert test_component =~ ~r"\bThis user's VPN connection is disabled due to authentication expiration\b"
+
+      assert test_component =~
+               ~r"\bThis user's VPN connection is disabled due to authentication expiration\b"
     end
 
     test "expired tag user signed out", %{user: user} do
