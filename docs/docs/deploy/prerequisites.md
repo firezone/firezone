@@ -20,19 +20,21 @@ you'll need a valid SSL certificate to use Firezone in a production capacity.
 
 We recommend using [Let's Encrypt](https://letsencrypt.org) to
 generate a free SSL cert for your domain.
-Starting with Firezone 0.5.0 you have the option to auto-provision Let's Encrypt SSL certificates for your
-instance using the ACME protocol. This is disabled by default to maintain backwards compatibility for
-existing installations.
+Starting with Firezone 0.5.0 you have the option to auto-provision Let's
+Encrypt SSL certificates for your instance using the ACME protocol. This is
+disabled by default to maintain backwards compatibility for existing
+installations.
 
 To enable this, you must ensure the following conditions are met:
+
 * `80/tcp` is allow inbound
 * The bundled Firezone `nginx` service is enabled and functioning
 * you have a valid DNS record assigned to this isntance's public IP
 * the following 3 settings are configure in the [configuration file](../reference/configuration-file.md):
-    * `default['firezone']['external_url']`: The FQDN for the server.
-    * `default['firezone']['ssl']['email_address']`: The email that will be used for
-    the issued certificates.
-    * `default['firezone']['ssl']['acme']`: Set this to true to enable it.
+  * `default['firezone']['external_url']`: The FQDN for the server.
+  * `default['firezone']['ssl']['email_address']`: The email that will be used
+  for the issued certificates.
+  * `default['firezone']['ssl']['acme']`: Set this to true to enable it.
 
 ## Security Group and Firewall Settings
 
