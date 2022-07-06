@@ -44,7 +44,7 @@ Firezone::Config.audit_config(node['firezone'])
 Firezone::Config.maybe_turn_on_fips(node)
 
 # Set SSL email address to admin's email if none was provided.
-node['firezone']['ssl']['email_address'] |= node['firezone']['ssl']['email_address']
+node.default['firezone']['ssl']['email_address'] ||= node['firezone']['ssl']['email_address']
 
 # Copy things we need from the firezone namespace to the top level. This is
 # necessary for some community cookbooks.
