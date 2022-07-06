@@ -124,6 +124,6 @@ A user's connection status is shown on the Users page under the table column
 `VPN Connection`. The connection statuses are:
 
 * ENABLED - The connection is enabled.
-* DISABLED - The connection is disabled by an administrator or OIDC refresh error.
+* DISABLED - The connection is disabled by an administrator or OIDC refresh failure.
 * EXPIRED - The connection is disabled due to authentication expiration or a user
     has not signed in for the first time.

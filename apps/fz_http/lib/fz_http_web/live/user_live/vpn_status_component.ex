@@ -7,10 +7,10 @@ defmodule FzHttpWeb.UserLive.VPNStatusComponent do
   @impl Phoenix.LiveComponent
   def render(assigns) do
     ~H"""
-    <label>
+    <div>
     <%= cond do %>
       <% @user.disabled_at -> %>
-      <span class="tag is-danger is-medium" title="This user's VPN connect is disabled by an administrator or OIDC refresh error">DISABLED</span>
+      <span class="tag is-danger is-medium" title="This user's VPN connect is disabled by an administrator or OIDC refresh failure">DISABLED</span>
       <% @vpn_expired && @user.last_signed_in_at -> %>
       <span class="tag is-warning is-medium" title="This user's VPN connection is disabled due to authentication expiration">EXPIRED</span>
       <% @vpn_expired && !@user.last_signed_in_at -> %>
@@ -18,7 +18,7 @@ defmodule FzHttpWeb.UserLive.VPNStatusComponent do
       <% !@vpn_expired -> %>
       <span class="tag is-success is-medium" title="This user's VPN connection is enabled">ENABLED</span>
     <% end %>
-    </label>
+    </div>
     """
   end
 end
