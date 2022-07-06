@@ -19,7 +19,7 @@ server {
   listen [::]:<%= @nginx['non_ssl_port'] %> default_server;
 <% end -%>
   server_name <%= @fqdn %>;
-<% if @ssl['enabled'] - %>
+<% if @ssl['enabled'] -%>
   <% if @nginx['force_ssl'] -%>
   location / {
     <% if @nginx['enable_rate_limiting'] -%>
