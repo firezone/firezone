@@ -13,7 +13,6 @@ require 'mixlib/shellout'
 
 wg_interface = node['firezone']['wireguard']['interface_name']
 nft_path = "#{node['firezone']['install_directory']}/embedded/sbin/nft"
-bin_path = "#{node['firezone']['install_directory']}/embedded/bin"
 
 # Delete wireguard interface if exists
 wg_exists = Mixlib::ShellOut.new("ip link show dev #{wg_interface}")
@@ -31,11 +30,4 @@ if table_exists_cmd.status.exitstatus.zero?
   execute 'delete_firewall_table' do
     command "#{nft_path} delete table inet firezone"
   end
-end
-
-# Remove cronjob (if cronjob doesn't exist no harm is done)
-execute 'ACME remove cronjob' do
-  command <<~ACME
-    #{bin_path}/acme.sh --uninstall-cronjob
-  ACME
 end

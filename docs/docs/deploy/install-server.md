@@ -47,8 +47,8 @@ If the Automatic Install fails, try these steps to install Firezone manually.
    configuration.
 1. Edit the default configuration located at `/etc/firezone/firezone.rb`.
    We've chosen sensible defaults that should be a good starting point for most
-   installations. For production installations, you'll want to specify your
-   FQDN and enable ACME for certificate issuance and renewal:
+   installations. For production installations, you'll want to specify a valid
+   external URL and enable ACME for certificate issuance and renewal:
 
    ```ruby
    # Auto-generated based on the server's hostname.
