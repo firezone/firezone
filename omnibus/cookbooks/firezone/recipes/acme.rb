@@ -6,6 +6,7 @@
 # Copyright:: 2022, Firezone, All Rights Reserved.
 
 include_recipe 'firezone::config'
+include_recipe 'firezone::phoenix'
 
 bin_path = "#{node['firezone']['install_directory']}/embedded/bin"
 
@@ -89,6 +90,4 @@ if node['firezone']['ssl']['acme'] && !node['firezone']['ssl']['certificate']
         --reloadcmd "firezone-ctl hup nginx"
     ACME
   end
-
-  # TODO: Set notifications
 end

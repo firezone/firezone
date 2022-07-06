@@ -56,18 +56,6 @@ template 'nginx.conf' do
   )
 end
 
-template 'acme.conf' do
-  path "#{node['firezone']['nginx']['directory']}/acme.conf"
-  source 'acme.conf.erb'
-  owner 'root'
-  group node['firezone']['group']
-  mode '0640'
-  variables(
-    server_name: URI.parse(node['firezone']['external_url']).host,
-    acme_www_root: "#{node['firezone']['var_directory']}/nginx/acme_root"
-  )
-end
-
 if node['firezone']['nginx']['enabled']
   component_runit_service 'nginx' do
     package 'firezone'

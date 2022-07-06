@@ -18,6 +18,10 @@ server {
 <% if @nginx['ipv6'] -%>
   listen [::]:<%= @nginx['non_ssl_port'] %> default_server;
 <% end -%>
+
+  location /.well-known/acme-challenge/ {
+    alias <%= @acme_www_root %>/.well-known/acme-challenge/;
+  }
 <% if @ssl['enabled'] -%>
   <% if @nginx['force_ssl'] -%>
   server_name <%= @fqdn %>;

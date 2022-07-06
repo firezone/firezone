@@ -92,12 +92,6 @@ http {
   add_header Content-Security-Policy "default-src 'self' ws: wss: http: https: data: blob: 'unsafe-inline'; frame-ancestors 'self';" always;
   add_header Permissions-Policy      "interest-cohort=()" always;
 
-  # ==== Always include acme.conf first otherwise phoenix config will redirect acme requests to https!
-  <% if @acme_enabled -%>
-  include <%= @nginx['dir'] %>/acme.conf;
-  <% end -%>
-  # ==== ^ This one first!
-
   include <%= @nginx['dir'] %>/conf.d/*.conf;
   include <%= @nginx['dir'] %>/sites-enabled/*;
 }
