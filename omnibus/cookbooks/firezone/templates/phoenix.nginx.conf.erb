@@ -47,7 +47,7 @@ server {
   server_name <%= @fqdn %>;
 
 <%   if @ssl['enabled'] -%>
-  <% if @acme['enabled'] -%>
+  <% if @acme['enabled'] && !@ssl['certificate'] -%>
     ssl_certificate <%= @acme['certificate'] %>;
     ssl_certificate_key <%= @acme['certificate_key'] %>;
   <% else -%>
