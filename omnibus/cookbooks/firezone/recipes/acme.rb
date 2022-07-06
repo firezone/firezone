@@ -15,6 +15,14 @@ file "#{bin_path}/acme.sh" do
   group 'root'
 end
 
+# Remove cronjob to make sure it's correctly re-created
+# and remove even if acme is disabled.
+execute 'ACME remove cronjob' do
+  command <<~ACME
+    #{bin_path}/acme.sh --uninstall-cronjob
+  ACME
+end
+
 # Enable ACME if set to enabled and user-specified certs are disabled, maintains
 # backwards compatibility during upgrades.
 if node['firezone']['ssl']['acme'] && !node['firezone']['ssl']['certificate']
@@ -31,13 +39,6 @@ if node['firezone']['ssl']['acme'] && !node['firezone']['ssl']['certificate']
     owner 'root'
     group 'root'
     recursive true
-  end
-
-  # Remove cronjob to make sure it's correctly re-created
-  execute 'ACME remove cronjob' do
-    command <<~ACME
-      #{bin_path}/acme.sh --uninstall-cronjob
-    ACME
   end
 
   execute 'ACME initialization' do
