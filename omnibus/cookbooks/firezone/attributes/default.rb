@@ -390,9 +390,9 @@ default['firezone']['ssl']['directory'] = '/var/opt/firezone/ssl'
 # Enable / disable SSL
 default['firezone']['ssl']['enabled'] = true
 
-# The email address that will be used either for issuing the certificate and renewal notices
-# or for the self-signed certificate if that's generated.
-default['firezone']['ssl']['email_address'] = 'you@example.com'
+# Email to use for self signed certs and ACME cert issuance and renewal notices.
+# Defaults to default['firezone']['admin_email'] if nil.
+default['firezone']['ssl']['email_address'] = nil
 
 # Enable / disable ACME protocol support to auto-provision SSL certificates.
 # Before turning this on, please ensure:
