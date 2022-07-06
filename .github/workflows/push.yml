@@ -1,10 +1,22 @@
 name: Publish
 
-on: push
+on:
+  push:
+    tags:
+      - '*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        type: text
+        required: true
 
 jobs:
   publish:
     runs-on: ubuntu-20.04
+
+    env:
+      tag: ${{ github.event.inputs.tag || github.ref_name }}
+
     strategy:
       matrix:
         include:
@@ -126,34 +138,30 @@ jobs:
             distro: opensuse
             release: '15.3'
     steps:
-      # - uses: actions/download-artifact@v3
-      #   with:
-      #     name: firezone-${{ matrix.platform }}
-      #     path: ./
-
       - name: Download artifact
         uses: dawidd6/action-download-artifact@v2
         with:
+          commit: ${{ github.sha }}
           workflow: build.yml
           workflow_conclusion: success
           name: firezone-${{ matrix.platform }}
 
       - name: Rename artifact file to tag
         run: |
-          mv ./firezone*.rpm firezone_0.4.6-${{ matrix.platform }}.rpm || true
-          mv ./firezone*.deb firezone_0.4.6-${{ matrix.platform }}.deb || true
+          mv ./firezone*.rpm firezone_${{ env.tag }}-${{ matrix.platform }}.rpm || true
+          mv ./firezone*.deb firezone_${{ env.tag }}-${{ matrix.platform }}.deb || true
 
       - name: Check DEB
         uses: andstor/file-existence-action@v1
         id: check_deb
         with:
-          files: firezone_0.4.6-${{ matrix.platform }}.deb
+          files: firezone_${{ env.tag }}-${{ matrix.platform }}.deb
 
       - name: Check RPM
         uses: andstor/file-existence-action@v1
         id: check_rpm
         with:
-          files: firezone_0.4.6-${{ matrix.platform }}.rpm
+          files: firezone_${{ env.tag }}-${{ matrix.platform }}.rpm
 
       - name: Pubslih RPM
         uses: cloudsmith-io/action@master
@@ -167,7 +175,7 @@ jobs:
           distro: ${{ matrix.distro }}
           release: ${{ matrix.release }}
           republish: 'true'
-          file: firezone_0.4.6-${{ matrix.platform }}.rpm
+          file: firezone_${{ env.tag }}-${{ matrix.platform }}.rpm
 
       - name: Pubslih DEB
         uses: cloudsmith-io/action@master
@@ -181,4 +189,4 @@ jobs:
           distro: ${{ matrix.distro }}
           release: ${{ matrix.release }}
           republish: 'true'
-          file: firezone_0.4.6-${{ matrix.platform }}.deb
+          file: firezone_${{ env.tag }}-${{ matrix.platform }}.deb
