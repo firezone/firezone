@@ -5,6 +5,9 @@ defmodule FzHttpWeb.AuthController do
   use FzHttpWeb, :controller
   require Logger
 
+  @oidc_state_key "fz_oidc_state"
+  @oidc_state_valid_duration 300
+
   alias FzCommon.FzCrypto
   alias FzHttp.Users
   alias FzHttpWeb.Authentication
@@ -47,19 +50,11 @@ defmodule FzHttpWeb.AuthController do
     end
   end
 
-  def callback(conn, params) do
-    %{"provider" => provider_key} = params
+  def callback(conn, %{"provider" => provider_key, "state" => state} = params) do
     openid_connect = Application.fetch_env!(:fz_http, :openid_connect)
 
-    atomize = fn key ->
-      try do
-        {:ok, String.to_existing_atom(key)}
-      catch
-        ArgumentError -> {:error, "OIDC Provider not found"}
-      end
-    end
-
-    with {:ok, provider} <- atomize.(provider_key),
+    with {:ok, provider} <- atomize_provider(provider_key),
+         {:ok, _state} <- verify_state(conn, state),
          {:ok, tokens} <- openid_connect.fetch_tokens(provider, params),
          {:ok, claims} <- openid_connect.verify(provider, tokens["id_token"]) do
       case UserFromAuth.find_or_create(provider, claims) do
@@ -74,7 +69,7 @@ defmodule FzHttpWeb.AuthController do
         {:error, reason} ->
           conn
           |> put_flash(:error, "Error signing in: #{reason}")
-          |> request(%{})
+          |> redirect(to: Routes.root_path(conn, :index))
       end
     else
       {:error, reason} ->
@@ -83,13 +78,31 @@ defmodule FzHttpWeb.AuthController do
 
         conn
         |> put_flash(:error, msg)
-        |> request(%{})
+        |> redirect(to: Routes.root_path(conn, :index))
 
       # Error verifying claims or fetching tokens
       {:error, action, reason} ->
         Logger.warn("OpenIDConnect Error during #{action}: #{reason}")
         send_resp(conn, 401, "")
     end
+  end
+
+  defp atomize_provider(key) do
+    {:ok, String.to_existing_atom(key)}
+  rescue
+    ArgumentError -> {:error, "OIDC Provider not found"}
+  end
+
+  defp verify_state(conn, state) do
+    conn
+    |> fetch_cookies(signed: [@oidc_state_key])
+    |> then(fn
+      %{cookies: %{@oidc_state_key => ^state}} ->
+        {:ok, []}
+
+      _ ->
+        {:error, "Cannot verify state"}
+    end)
   end
 
   def delete(conn, _params) do
@@ -131,9 +144,10 @@ defmodule FzHttpWeb.AuthController do
 
   def redirect_oidc_auth_uri(conn, %{"provider" => provider}) do
     openid_connect = Application.fetch_env!(:fz_http, :openid_connect)
+    state = FzCrypto.rand_string()
 
     params = %{
-      state: FzCrypto.rand_string(),
+      state: state,
       # needed for google
       access_type: "offline"
     }
@@ -141,6 +155,12 @@ defmodule FzHttpWeb.AuthController do
     uri = openid_connect.authorization_uri(String.to_existing_atom(provider), params)
 
     conn
+    |> put_resp_cookie(@oidc_state_key, state,
+      max_age: @oidc_state_valid_duration,
+      sign: true,
+      same_site: "Lax",
+      secure: true
+    )
     |> redirect(external: uri)
   end
 
