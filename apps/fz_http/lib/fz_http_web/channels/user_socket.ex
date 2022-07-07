@@ -49,7 +49,9 @@ defmodule FzHttpWeb.UserSocket do
   def id(socket), do: "user_socket:#{socket.assigns.current_user.id}"
 
   defp get_ip_address(%{x_headers: headers_list}) when length(headers_list) > 0 do
-    header = Enum.find(headers_list, fn {key, _val} -> key == "x-real-ip" end)
+    header =
+      Enum.find(headers_list, fn {key, _val} -> key == "x-real-ip" end) ||
+        Enum.find(headers_list, fn {key, _val} -> key == "x-forwarded-for" end)
 
     case header do
       {_key, value} -> value
