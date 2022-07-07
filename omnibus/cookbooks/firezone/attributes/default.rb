@@ -400,14 +400,19 @@ default['firezone']['ssl']['email_address'] = nil
 # 3. default['firezone']['ssl']['email_address'] is set properly. This will be used for renewal notices.
 # 4. default['firezone']['nginx']['non_ssl_port'] is set to 80
 # 5. default['firezone']['ssl']['enabled'] is set to true
-default['firezone']['ssl']['acme'] = false
+default['firezone']['ssl']['acme']['enabled'] = false
 
 # Set the ACME server directory for ACME protocol SSL certificate issuance
-# This option requires default['firezone']['ssl']['acme']
+# This option requires default['firezone']['ssl']['acme']['enabled']
 # You can either set one of the CA short names as explained here (https://github.com/acmesh-official/acme.sh/wiki/Server)
 # or the directory URL.
 # In case ACME is enabled this option will default to letsencrypt
-default['firezone']['ssl']['acme_server'] = 'letsencrypt'
+default['firezone']['ssl']['acme']['server'] = 'letsencrypt'
+# Specify the key type and length for the cert. See more at https://github.com/acmesh-official/acme.sh#10-issue-ecc-certificates
+# Allowed values are:
+# * RSA: 2048, 3072, 4096, 8192
+# * ECDSA(recommended): ec-256, ec-384, ec-521
+default['firezone']['ssl']['acme']['keylength'] = 'ec-256'
 
 
 # Paths to the SSL certificate and key files. If these are set, ACME is automatically disabled.

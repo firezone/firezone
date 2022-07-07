@@ -52,7 +52,7 @@ template 'phoenix.nginx.conf' do
             ssl: node['firezone']['ssl'],
             app_directory: node['firezone']['app_directory'],
             acme: {
-              'enabled' => node['firezone']['ssl']['acme'],
+              'enabled' => node['firezone']['ssl']['acme']['enabled'],
               'certificate' => "#{node['firezone']['var_directory']}/ssl/acme/#{fqdn}.fullchain",
               'certificate_key' => "#{node['firezone']['var_directory']}/ssl/acme/#{fqdn}.key"
             })

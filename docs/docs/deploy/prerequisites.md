@@ -34,7 +34,7 @@ To enable this, you must ensure the following conditions are met:
   * `default['firezone']['external_url']`: The FQDN for the server.
   * `default['firezone']['ssl']['email_address']`: The email that will be used
   for the issued certificates.
-  * `default['firezone']['ssl']['acme']`: Set this to true to enable it.
+  * `default['firezone']['ssl']['acme']['enabled']`: Set this to true to enable it.
 
 ## Security Group and Firewall Settings
 

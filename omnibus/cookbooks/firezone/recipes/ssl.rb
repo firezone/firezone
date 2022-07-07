@@ -53,7 +53,7 @@ if node['firezone']['ssl']['enabled']
     link "#{node['firezone']['ssl']['directory']}/cacert.pem" do
       to "#{node['firezone']['install_directory']}/embedded/ssl/certs/cacert.pem"
     end
-  elsif node['firezone']['ssl']['acme']
+  elsif node['firezone']['ssl']['acme']['enabled']
     # No certificate provided but acme enabled don't
     # auto-generate and ensure acme directory is setup
     directory "#{node['firezone']['var_directory']}/ssl/acme" do

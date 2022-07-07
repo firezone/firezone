@@ -11,8 +11,10 @@ include_recipe 'firezone::config'
 
 require 'mixlib/shellout'
 
+server = node['firezone']['ssl']['acme']['server']
+keylength = node['firezone']['ssl']['acme']['keylength']
 bin_path = "#{node['firezone']['install_directory']}/embedded/bin"
-acme_home = "#{node['firezone']['var_directory']}/#{node['firezone']['ssl']['acme_server']}/acme"
+acme_home = "#{node['firezone']['var_directory']}/#{server}/#{keylength}/acme"
 
 # Remove cronjob (if cronjob doesn't exist no harm is done)
 execute 'ACME remove cronjob' do

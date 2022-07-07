@@ -59,7 +59,7 @@ If the Automatic Install fails, try these steps to install Firezone manually.
    default['firezone']['ssl']['email_address'] = 'your@email.com'
 
    # Enable ACME renewal
-   default['firezone']['ssl']['acme'] = true
+   default['firezone']['ssl']['acme']['enabled'] = true
    ```
 
    See the complete [configuration file reference for more details](../reference/configuration-file).
