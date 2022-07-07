@@ -44,7 +44,7 @@ defmodule FzHttp.EventsTest do
 
     test "removes device from vpn and wall state", %{device: device} do
       :ok = Events.update_device(device)
-      pubkey = device.public_key
+
       assert :ok = Events.delete_device(device)
 
       assert :sys.get_state(Events.vpn_pid()) == %{}
