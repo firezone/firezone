@@ -94,6 +94,7 @@ http {
 
   include <%= @nginx['dir'] %>/conf.d/*.conf;
   include <%= @nginx['dir'] %>/sites-enabled/*;
-  # Include redirect.conf after sites-enabled/* so everything works when SSL is disabled
+  <% if @ssl_enabled -%>
   include <%= @nginx['dir'] %>/redirect.conf;
+  <% end -%>
 }

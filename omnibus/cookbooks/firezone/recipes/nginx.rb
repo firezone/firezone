@@ -50,7 +50,8 @@ template 'nginx.conf' do
   mode '0600'
   variables(
     logging_enabled: node['firezone']['logging']['enabled'],
-    nginx: node['firezone']['nginx']
+    nginx: node['firezone']['nginx'],
+    ssl_enabled: node['firezone']['ssl']['enabled']
   )
 end
 
@@ -64,7 +65,8 @@ template 'redirect.conf' do
     server_name: URI.parse(node['firezone']['external_url']).host,
     acme_www_root: "#{node['firezone']['var_directory']}/nginx/acme_root",
     non_ssl_port: node['firezone']['nginx']['non_ssl_port'],
-    rate_limiting_zone_name: node['firezone']['nginx']['rate_limiting_zone_name']
+    rate_limiting_zone_name: node['firezone']['nginx']['rate_limiting_zone_name'],
+    ipv6: node['firezone']['nginx']['ipv6']
   )
 end
 

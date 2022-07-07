@@ -1,6 +1,8 @@
 server {
   listen <%= @non_ssl_port %> default_server;
-  listen [::]:<%= @non_ssl_port %> default_server;
+  <% if @ipv6 -%>
+  listen [::]:<%= @nginx['non_ssl_port'] %> default_server;
+  <% end -%>
   server_name <%= @server_name %>;
 
   # Needed for ACME requests
