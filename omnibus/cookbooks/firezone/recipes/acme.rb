@@ -25,8 +25,10 @@ end
 
 # Enable ACME if set to enabled and user-specified certs are disabled, maintains
 # backwards compatibility during upgrades.
-if node['firezone']['ssl']['acme'] && !node['firezone']['ssl']['certificate']
-  server = node['firezone']['ssl']['acme_server'] && node['firezone']['ssl']['enabled']
+if node['firezone']['ssl']['acme'] && !node['firezone']['ssl']['certificate'] &&
+   node['firezone']['ssl']['enabled']
+
+  server = node['firezone']['ssl']['acme_server']
   # We include the server in acme's home to force it to re-generate
   acme_home = "#{node['firezone']['var_directory']}/#{server}/acme"
   fqdn = URI.parse(node['firezone']['external_url']).host
