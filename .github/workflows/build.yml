@@ -24,7 +24,7 @@ jobs:
     # Doesn't really need, but don't run this stage when iterating over docs
     needs: draft-release
     env:
-      TELEMETRY_ENABLED: "false"
+      TELEMETRY_ENABLED: 'false'
     runs-on: ${{ matrix.platform }}
     strategy:
       # Failing fast breaks the Omnibus build cache because the job is
@@ -58,7 +58,7 @@ jobs:
           - opensuse15-x64
     steps:
       - run: cat /sys/module/wireguard/version
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Build
         env:
           GIT_SHA: ${{ github.sha }}
@@ -86,7 +86,7 @@ jobs:
       - name: Functional Test
         run: |
           .ci/functional_test.sh
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v3
         with:
           name: firezone-${{ matrix.platform }}
           path: |

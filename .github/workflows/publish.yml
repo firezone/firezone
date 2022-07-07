@@ -1,0 +1,183 @@
+name: Publish to Cloudsmith
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    runs-on: ubuntu-20.04
+
+    strategy:
+      matrix:
+        include:
+          # ARM-based
+          - platform: amazonlinux2-arm64
+            distro: amzn
+            release: '2'
+          - platform: centos9-arm64
+            distro: el
+            release: '9'
+          - platform: debian10-arm64
+            distro: debian
+            release: buster
+          - platform: debian11-arm64
+            distro: debian
+            release: bullseye
+          - platform: debian10-arm64
+            distro: raspbian
+            release: buster
+          - platform: debian11-arm64
+            distro: raspbian
+            release: bullseye
+          - platform: fedora33-arm64
+            distro: fedora
+            release: '33'
+          - platform: fedora34-arm64
+            distro: fedora
+            release: '34'
+          - platform: fedora35-arm64
+            distro: fedora
+            release: '35'
+          - platform: fedora35-arm64
+            distro: fedora
+            release: '36'
+          - platform: ubuntu1804-arm64
+            distro: ubuntu
+            release: bionic
+          - platform: ubuntu2004-arm64
+            distro: ubuntu
+            release: focal
+          - platform: ubuntu2004-arm64
+            distro: ubuntu
+            release: hirsute
+          - platform: ubuntu2004-arm64
+            distro: ubuntu
+            release: jammy
+
+          # x64-based
+          - platform: amazonlinux2-x64
+            distro: amzn
+            release: '2'
+          - platform: centos7-x64
+            distro: el
+            release: '7'
+          - platform: centos8-x64
+            distro: el
+            release: '8'
+          - platform: centos9-x64
+            distro: el
+            release: '9'
+          - platform: centos8-x64
+            distro: rocky
+            release: '8.3'
+          - platform: centos8-x64
+            distro: rocky
+            release: '8.4'
+          - platform: centos8-x64
+            distro: rocky
+            release: '8.5'
+          - platform: centos8-x64
+            distro: rocky
+            release: '8.6'
+          - platform: centos8-x64
+            distro: almalinux
+            release: '8.3'
+          - platform: centos8-x64
+            distro: almalinux
+            release: '8.4'
+          - platform: centos8-x64
+            distro: almalinux
+            release: '8.5'
+          - platform: debian10-x64
+            distro: debian
+            release: buster
+          - platform: debian11-x64
+            distro: debian
+            release: bullseye
+          - platform: fedora33-x64
+            distro: fedora
+            release: '33'
+          - platform: fedora34-x64
+            distro: fedora
+            release: '34'
+          - platform: fedora35-x64
+            distro: fedora
+            release: '35'
+          - platform: fedora35-x64
+            distro: fedora
+            release: '36'
+          - platform: ubuntu1804-x64
+            distro: ubuntu
+            release: bionic
+          - platform: ubuntu2004-x64
+            distro: ubuntu
+            release: focal
+          - platform: ubuntu2004-x64
+            distro: ubuntu
+            release: hirsute
+          - platform: ubuntu2004-x64
+            distro: ubuntu
+            release: jammy
+          - platform: opensuse15-x64
+            distro: opensuse
+            release: '15.1'
+          - platform: opensuse15-x64
+            distro: opensuse
+            release: '15.2'
+          - platform: opensuse15-x64
+            distro: opensuse
+            release: '15.3'
+    steps:
+      - name: Download artifact
+        uses: dawidd6/action-download-artifact@v2
+        with:
+          commit: ${{ github.sha }}
+          workflow: build.yml
+          workflow_conclusion: success
+          name: firezone-${{ matrix.platform }}
+
+      - name: Rename artifact file to tag
+        run: |
+          mv ./firezone*.rpm firezone_${{ github.ref_name }}-${{ matrix.platform }}.rpm || true
+          mv ./firezone*.deb firezone_${{ github.ref_name }}-${{ matrix.platform }}.deb || true
+
+      - name: Check DEB
+        uses: andstor/file-existence-action@v1
+        id: check_deb
+        with:
+          files: firezone_${{ github.ref_name }}-${{ matrix.platform }}.deb
+
+      - name: Check RPM
+        uses: andstor/file-existence-action@v1
+        id: check_rpm
+        with:
+          files: firezone_${{ github.ref_name }}-${{ matrix.platform }}.rpm
+
+      - name: Pubslih RPM
+        uses: cloudsmith-io/action@master
+        if: steps.check_rpm.outputs.files_exists == 'true'
+        with:
+          api-key: ${{ secrets.CLOUDSMITH_API_KEY }}
+          command: 'push'
+          format: 'rpm'
+          owner: 'firezone'
+          repo: 'firezone'
+          distro: ${{ matrix.distro }}
+          release: ${{ matrix.release }}
+          republish: 'true'
+          file: firezone_${{ github.ref_name }}-${{ matrix.platform }}.rpm
+
+      - name: Pubslih DEB
+        uses: cloudsmith-io/action@master
+        if: steps.check_deb.outputs.files_exists == 'true'
+        with:
+          api-key: ${{ secrets.CLOUDSMITH_API_KEY }}
+          command: 'push'
+          format: 'deb'
+          owner: 'firezone'
+          repo: 'firezone'
+          distro: ${{ matrix.distro }}
+          release: ${{ matrix.release }}
+          republish: 'true'
+          file: firezone_${{ github.ref_name }}-${{ matrix.platform }}.deb
