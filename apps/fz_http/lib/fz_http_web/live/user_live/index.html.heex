@@ -35,11 +35,10 @@
             <%= live_patch(user.email, to: Routes.user_show_path(@socket, :show, user)) %>
           </td>
           <td id={"user-#{user.id}-device-count"}><%= user.device_count %></td>
-          <td class="has-text-centered">
-            <.live_component id={"vpn-status-#{user.id}"}
-              module={FzHttpWeb.UserLive.VPNStatusComponent}
+          <td id={"user-#{user.id}-vpn-status"} class="has-text-centered">
+            <FzHttpWeb.UserLive.VPNStatusComponent.status
               user={user}
-              vpn_expired={vpn_expired?(user)}
+              expired={vpn_expired?(user)}
             />
           </td>
           <td id={"user-#{user.id}-timestamp"}

@@ -8,10 +8,9 @@ defmodule FzHttpWeb.UserLive.VPNStatusComponentTest do
 
     test "enabled tag", %{user: user} do
       test_component =
-        render_component(VPNStatusComponent, %{
-          id: "1",
+        render_component(&VPNStatusComponent.status/1, %{
           user: user,
-          vpn_expired: false
+          expired: false
         })
 
       assert test_component =~ ~r"\bENABLED\b"
@@ -19,10 +18,9 @@ defmodule FzHttpWeb.UserLive.VPNStatusComponentTest do
 
     test "disabled tag", %{user: user} do
       test_component =
-        render_component(VPNStatusComponent, %{
-          id: "1",
+        render_component(&VPNStatusComponent.status/1, %{
           user: Map.put(user, :disabled_at, DateTime.utc_now()),
-          vpn_expired: false
+          expired: false
         })
 
       assert test_component =~ ~r"\bDISABLED\b"
@@ -30,10 +28,9 @@ defmodule FzHttpWeb.UserLive.VPNStatusComponentTest do
 
     test "expired tag user signed in", %{user: user} do
       test_component =
-        render_component(VPNStatusComponent, %{
-          id: "1",
+        render_component(&VPNStatusComponent.status/1, %{
           user: Map.put(user, :last_signed_in_at, DateTime.utc_now()),
-          vpn_expired: true
+          expired: true
         })
 
       assert test_component =~ ~r"\bEXPIRED\b"
@@ -44,10 +41,9 @@ defmodule FzHttpWeb.UserLive.VPNStatusComponentTest do
 
     test "expired tag user signed out", %{user: user} do
       test_component =
-        render_component(VPNStatusComponent, %{
-          id: "1",
+        render_component(&VPNStatusComponent.status/1, %{
           user: user,
-          vpn_expired: true
+          expired: true
         })
 
       assert test_component =~ ~r"\bEXPIRED\b"

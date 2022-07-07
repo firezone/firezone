@@ -2,18 +2,12 @@ defmodule FzHttpWeb.UserLive.VPNStatusComponent do
   @moduledoc """
   Handles VPN status tag.
   """
-  use FzHttpWeb, :live_component
+  use Phoenix.Component
 
-  @impl Phoenix.LiveComponent
-  def render(assigns) do
-    ~H"""
-    <div>
-      <%= tag_for_vpn_status(@user, @vpn_expired, assigns) %>
-    </div>
-    """
-  end
+  def status(assigns) do
+    user = assigns.user
+    expired = assigns.expired
 
-  defp tag_for_vpn_status(user, expired, assigns) do
     cond do
       user.disabled_at -> disabled_tag(assigns)
       expired && user.last_signed_in_at -> expired_tag_sign_in(assigns)
