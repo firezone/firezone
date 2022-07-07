@@ -23,6 +23,7 @@
 
 include_recipe 'firezone::config'
 include_recipe 'firezone::nginx'
+include_recipe 'firezone::acme'
 include_recipe 'firezone::ssl'
 include_recipe 'firezone::wireguard'
 
@@ -50,7 +51,6 @@ template 'phoenix.nginx.conf' do
             fips_enabled: node['firezone']['fips_enabled'],
             ssl: node['firezone']['ssl'],
             app_directory: node['firezone']['app_directory'],
-            acme_www_root: "#{node['firezone']['var_directory']}/nginx/acme_root",
             acme: {
               'enabled' => node['firezone']['ssl']['acme'],
               'certificate' => "#{node['firezone']['var_directory']}/ssl/acme/#{fqdn}.fullchain",

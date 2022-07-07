@@ -1,12 +1,13 @@
 #!/bin/sh
-echo 'Stopping ACME from renewing certificates...'
-firezone-ctl stop-cert-renewal
 
 echo 'Removing Firezone network settings...'
 firezone-ctl teardown-network
 
 echo 'Removing all Firezone directories...'
 firezone-ctl cleanse yes
+
+echo 'Stopping ACME from renewing certificates...'
+firezone-ctl stop-cert-renewal
 
 echo 'Removing firezone package...'
 if type apt-get > /dev/null; then
