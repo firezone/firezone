@@ -157,7 +157,6 @@ default['firezone']['authentication']['google']['redirect_uri'] = nil
 # These attributes control Firezone-specific portions of the Nginx
 # configuration and the virtual host for the Firezone Phoenix app.
 default['firezone']['nginx']['enabled'] = true
-default['firezone']['nginx']['force_ssl'] = true
 default['firezone']['nginx']['non_ssl_port'] = 80
 default['firezone']['nginx']['ssl_port'] = 443
 default['firezone']['nginx']['directory'] = "#{node['firezone']['var_directory']}/nginx/etc"
@@ -399,6 +398,8 @@ default['firezone']['ssl']['email_address'] = nil
 # 1. default['firezone']['external_url'] includes a valid FQDN
 # 2. Port 80/tcp is accessible; this is used for domain validation.
 # 3. default['firezone']['ssl']['email_address'] is set properly. This will be used for renewal notices.
+# 4. default['firezone']['nginx']['non_ssl_port'] is set to 80
+# 5. default['firezone']['ssl']['enabled'] is set to true
 default['firezone']['ssl']['acme'] = false
 
 # Set the ACME server directory for ACME protocol SSL certificate issuance

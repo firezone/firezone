@@ -43,7 +43,6 @@ link "#{node['firezone']['nginx']['directory']}/mime.types" do
 end
 
 template 'nginx.conf' do
-  acme_enabled = node['firezone']['ssl']['acme'] && !node['firezone']['ssl']['certificate']
   path "#{node['firezone']['nginx']['directory']}/nginx.conf"
   source 'nginx.conf.erb'
   owner node['firezone']['user']
@@ -51,20 +50,21 @@ template 'nginx.conf' do
   mode '0600'
   variables(
     logging_enabled: node['firezone']['logging']['enabled'],
-    nginx: node['firezone']['nginx'],
-    acme_enabled: acme_enabled
+    nginx: node['firezone']['nginx']
   )
 end
 
-template 'acme.conf' do
+template 'redirect.conf' do
   path "#{node['firezone']['nginx']['directory']}/acme.conf"
-  source 'acme.conf.erb'
+  source 'redirect.conf.erb'
   owner 'root'
   group node['firezone']['group']
   mode '0640'
   variables(
     server_name: URI.parse(node['firezone']['external_url']).host,
-    acme_www_root: "#{node['firezone']['var_directory']}/nginx/acme_root"
+    acme_www_root: "#{node['firezone']['var_directory']}/nginx/acme_root",
+    non_ssl_port: node['firezone']['nginx']['non_ssl_port'],
+    rate_limiting_zone_name: node['firezone']['nginx']['rate_limiting_zone_name']
   )
 end
 

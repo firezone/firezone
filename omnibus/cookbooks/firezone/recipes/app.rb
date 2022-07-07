@@ -47,7 +47,6 @@ file 'environment-variables' do
   # Add needed fields to top-level so they get added to application env and get
   # updated when config is updated.
   attributes.merge!(
-    'force_ssl' => node['firezone']['nginx']['force_ssl'],
     'mix_env' => 'prod'
   )
 
