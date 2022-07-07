@@ -1,21 +1,12 @@
 name: Publish to Cloudsmith
 
 on:
-  push:
-    tags:
-      - '*'
-  workflow_dispatch:
-    inputs:
-      tag:
-        type: text
-        required: true
+  release:
+    types: [published]
 
 jobs:
   publish:
     runs-on: ubuntu-20.04
-
-    env:
-      tag: ${{ github.event.inputs.tag || github.ref_name }}
 
     strategy:
       matrix:
@@ -148,20 +139,20 @@ jobs:
 
       - name: Rename artifact file to tag
         run: |
-          mv ./firezone*.rpm firezone_${{ env.tag }}-${{ matrix.platform }}.rpm || true
-          mv ./firezone*.deb firezone_${{ env.tag }}-${{ matrix.platform }}.deb || true
+          mv ./firezone*.rpm firezone_${{ github.ref_name }}-${{ matrix.platform }}.rpm || true
+          mv ./firezone*.deb firezone_${{ github.ref_name }}-${{ matrix.platform }}.deb || true
 
       - name: Check DEB
         uses: andstor/file-existence-action@v1
         id: check_deb
         with:
-          files: firezone_${{ env.tag }}-${{ matrix.platform }}.deb
+          files: firezone_${{ github.ref_name }}-${{ matrix.platform }}.deb
 
       - name: Check RPM
         uses: andstor/file-existence-action@v1
         id: check_rpm
         with:
-          files: firezone_${{ env.tag }}-${{ matrix.platform }}.rpm
+          files: firezone_${{ github.ref_name }}-${{ matrix.platform }}.rpm
 
       - name: Pubslih RPM
         uses: cloudsmith-io/action@master
@@ -175,7 +166,7 @@ jobs:
           distro: ${{ matrix.distro }}
           release: ${{ matrix.release }}
           republish: 'true'
-          file: firezone_${{ env.tag }}-${{ matrix.platform }}.rpm
+          file: firezone_${{ github.ref_name }}-${{ matrix.platform }}.rpm
 
       - name: Pubslih DEB
         uses: cloudsmith-io/action@master
@@ -189,4 +180,4 @@ jobs:
           distro: ${{ matrix.distro }}
           release: ${{ matrix.release }}
           republish: 'true'
-          file: firezone_${{ env.tag }}-${{ matrix.platform }}.deb
+          file: firezone_${{ github.ref_name }}-${{ matrix.platform }}.deb
