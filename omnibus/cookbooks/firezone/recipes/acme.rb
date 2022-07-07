@@ -36,6 +36,7 @@ if node['firezone']['ssl']['acme']['enabled'] && !node['firezone']['ssl']['certi
   certfile = "#{node['firezone']['var_directory']}/ssl/acme/#{fqdn}.cert"
   keyfile = "#{node['firezone']['var_directory']}/ssl/acme/#{fqdn}.key"
   fullchainfile = "#{node['firezone']['var_directory']}/ssl/acme/#{fqdn}.fullchain"
+  is_ecc = keylength.include? 'ec'
 
   directory acme_home do
     mode '0770'
@@ -86,6 +87,7 @@ if node['firezone']['ssl']['acme']['enabled'] && !node['firezone']['ssl']['certi
         --home #{acme_home} \
         --debug \
         -d #{fqdn} \
+        #{'--ecc' if is_ecc} \
         --cert-file "#{certfile}" \
         --key-file "#{keyfile}" \
         --server #{server} \
