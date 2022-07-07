@@ -55,7 +55,7 @@ template 'nginx.conf' do
 end
 
 template 'redirect.conf' do
-  path "#{node['firezone']['nginx']['directory']}/acme.conf"
+  path "#{node['firezone']['nginx']['directory']}/redirect.conf"
   source 'redirect.conf.erb'
   owner 'root'
   group node['firezone']['group']
