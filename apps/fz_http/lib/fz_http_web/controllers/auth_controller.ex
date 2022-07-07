@@ -138,7 +138,7 @@ defmodule FzHttpWeb.AuthController do
       access_type: "offline"
     }
 
-    uri = openid_connect.authorization_uri(String.to_atom(provider), params)
+    uri = openid_connect.authorization_uri(String.to_existing_atom(provider), params)
 
     conn
     |> redirect(external: uri)
