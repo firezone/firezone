@@ -14,6 +14,9 @@
   </a>
   <img alt="GitHub commit activity" src="https://img.shields.io/github/commit-activity/m/firezone/firezone"/>
   <img alt="GitHub closed issues" src="https://img.shields.io/github/issues-closed/firezone/firezone"/>
+  <a href="https://cloudsmith.com">
+    <img src="https://img.shields.io/badge/OSS%20hosting%20by-cloudsmith-blue?logo=cloudsmith" alt="Cloudsmith">
+  </a>
   <a href="https://twitter.com/intent/follow?screen_name=firezonehq">
     <img src="https://img.shields.io/twitter/follow/firezonehq?style=social&logo=twitter" alt="follow on Twitter">
   </a>
@@ -73,6 +76,17 @@ help:
 * [Discussion Forums](https://discourse.firez.one/): ask questions, report bugs, and suggest features
 * [Community Slack](https://www.firezone.dev/slack): join discussions, meet other users, and meet the contributors
 * [Email Us](mailto:team@firezone.dev): we're always happy to chat
+
+
+## Package Repository
+
+[![Hosted By: Cloudsmith](https://img.shields.io/badge/OSS%20hosting%20by-cloudsmith-blue?logo=cloudsmith&style=for-the-badge)](https://cloudsmith.com)
+
+Package repository hosting is graciously provided by  [Cloudsmith](https://cloudsmith.com).
+Cloudsmith is the only fully hosted, cloud-native, universal package management solution, that
+enables your organization to create, store and share packages in any format, to any place, with total
+confidence.
+
 
 ## Developing and Contributing
 
