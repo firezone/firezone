@@ -43,6 +43,9 @@ Firezone::Config.load_or_create_secrets!(
 Firezone::Config.audit_config(node['firezone'])
 Firezone::Config.maybe_turn_on_fips(node)
 
+# Set SSL email address to admin's email if none was provided.
+node.default['firezone']['ssl']['email_address'] ||= node['firezone']['admin_email']
+
 # Copy things we need from the firezone namespace to the top level. This is
 # necessary for some community cookbooks.
 node.consume_attributes('runit' => node['firezone']['runit'])
