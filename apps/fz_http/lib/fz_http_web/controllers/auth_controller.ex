@@ -98,7 +98,7 @@ defmodule FzHttpWeb.AuthController do
     |> fetch_cookies(signed: [@oidc_state_key])
     |> then(fn
       %{cookies: %{@oidc_state_key => ^state}} ->
-        {:ok, []}
+        {:ok, state}
 
       _ ->
         {:error, "Cannot verify state"}
