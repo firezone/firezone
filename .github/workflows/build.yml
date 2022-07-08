@@ -71,6 +71,8 @@ jobs:
           asdf update
           asdf plugin-update ruby
           asdf install ruby
+          asdf plugin-update nodejs
+          asdf install nodejs
 
           # CentOS 7 has path issues when this runs and doesn't have the
           # devtools loaded
