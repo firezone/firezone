@@ -47,11 +47,19 @@ if node['firezone']['ssl']['enabled']
 
   node.default['firezone']['ssl']['ssl_dhparam'] ||= ssl_dhparam
 
-  # A certificate has been supplied
   if node['firezone']['ssl']['certificate']
+    # A certificate has been supplied
     # Link the standard CA cert into our certs directory
     link "#{node['firezone']['ssl']['directory']}/cacert.pem" do
       to "#{node['firezone']['install_directory']}/embedded/ssl/certs/cacert.pem"
+    end
+  elsif node['firezone']['ssl']['acme']['enabled']
+    # No certificate provided but acme enabled don't
+    # auto-generate and ensure acme directory is setup
+    directory "#{node['firezone']['var_directory']}/ssl/acme" do
+      owner 'root'
+      group 'root'
+      mode '0600'
     end
 
   # No certificate has been supplied; generate one

@@ -94,4 +94,7 @@ http {
 
   include <%= @nginx['dir'] %>/conf.d/*.conf;
   include <%= @nginx['dir'] %>/sites-enabled/*;
+  <% if @ssl_enabled -%>
+  include <%= @nginx['dir'] %>/redirect.conf;
+  <% end -%>
 }

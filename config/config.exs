@@ -29,8 +29,13 @@ config :phoenix, :json_library, Jason
 git_sha =
   case System.get_env("GIT_SHA") do
     nil ->
-      {output, 0} = System.cmd("git", ["rev-parse", "--short", "HEAD"], stderr_to_stdout: true)
-      String.trim(output)
+      case System.cmd("git", ["rev-parse", "--short", "HEAD"], stderr_to_stdout: true) do
+        {output, 0} ->
+          String.trim(output)
+
+        {_error, _code} ->
+          "deadbeef"
+      end
 
     str ->
       str
@@ -99,7 +104,7 @@ config :fz_vpn,
   stats_push_service_enabled: true,
   wireguard_private_key_path: "priv/.wg_dummy_private_key",
   wireguard_interface_name: "wg-firezone",
-  wireguard_port: 51820,
+  wireguard_port: 51_820,
   wireguard_endpoint: "127.0.0.1",
   wg_adapter: FzVpn.Interface.WGAdapter.Sandbox,
   server_process_opts: [name: {:global, :fz_vpn_server}]

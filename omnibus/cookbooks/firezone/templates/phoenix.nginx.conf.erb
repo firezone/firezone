@@ -14,48 +14,32 @@ log_format cache '$remote_addr - [$time_local] "$request" $upstream_cache_status
 <% end %>
 
 server {
-  listen <%= @nginx['non_ssl_port'] %> default_server;
-<% if @nginx['ipv6'] -%>
-  listen [::]:<%= @nginx['non_ssl_port'] %> default_server;
-<% end -%>
-  server_name <%= @fqdn %>;
-<% if @nginx['force_ssl'] -%>
-  location / {
-    <% if @nginx['enable_rate_limiting'] -%>
-      limit_req zone=<%= @nginx['rate_limiting_zone_name'] %>;
-
-    <% end -%>
-    if ($http_x_forwarded_proto != 'https') {
-      return 301 https://$server_name$request_uri;
-    }
-  }
-}
-
-server {
 <% if @ssl['enabled'] -%>
   listen <%= @nginx['ssl_port'] %> default_server ssl;
   <% if @nginx['ipv6'] -%>
-    listen [::]:<%= @nginx['ssl_port'] %> default_server ssl;
+  listen [::]:<%= @nginx['ssl_port'] %> default_server ssl;
   <% end -%>
-<% else -%>
-  listen <%= @nginx['ssl_port'] %> default_server;
-  <% if @nginx['ipv6'] -%>
-    listen [::]:<%= @nginx['ssl_port'] %> default_server;
-  <% end -%>
-<% end -%>
 
   server_name <%= @fqdn %>;
 
-<%   if @ssl['enabled'] -%>
+  <% if @acme['enabled'] && !@ssl['certificate'] -%>
+  ssl_certificate <%= @acme['certificate'] %>;
+  ssl_certificate_key <%= @acme['certificate_key'] %>;
+  <% else -%>
   ssl_certificate <%= @ssl['certificate'] %>;
   ssl_certificate_key <%= @ssl['certificate_key'] %>;
+  <% end %>
   ssl_dhparam <%= @ssl['ssl_dhparam'] %>;
   ssl_prefer_server_ciphers on;
   ssl_ciphers <%= @fips_enabled ? @ssl['fips_ciphers'] : @ssl['ciphers'] %>;
   ssl_protocols <%= @ssl['protocols'] %>;
   ssl_session_cache <%= @ssl['session_cache'] %>;
   ssl_session_timeout <%= @ssl['session_timeout'] %>;
-<%   end -%>
+<% else -%>
+  listen <%= @nginx['non_ssl_port'] %> default_server;
+  <% if @nginx['ipv6'] -%>
+  listen [::]:<%= @nginx['non_ssl_port'] %> default_server;
+  <% end -%>
 <% end -%>
 
 <% if @nginx['redirect_to_canonical'] -%>
@@ -68,7 +52,7 @@ server {
   }
 
   if ($redirect_to_canonical = H) {
-    return 301 http<%= @nginx['force_ssl'] ? 's' : '' %>://<%= @fqdn %>$request_uri;
+    return 301 http<%= @ssl['enabled'] ? 's' : '' %>://<%= @fqdn %>$request_uri;
   }
 <% end -%>
 

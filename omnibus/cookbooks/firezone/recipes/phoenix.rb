@@ -23,6 +23,8 @@
 
 include_recipe 'firezone::config'
 include_recipe 'firezone::nginx'
+include_recipe 'firezone::acme'
+include_recipe 'firezone::ssl'
 include_recipe 'firezone::wireguard'
 
 [node['firezone']['phoenix']['log_directory'],
@@ -36,6 +38,7 @@ include_recipe 'firezone::wireguard'
 end
 
 template 'phoenix.nginx.conf' do
+  fqdn = URI.parse(node['firezone']['external_url']).host
   path "#{node['firezone']['nginx']['directory']}/sites-enabled/phoenix"
   source 'phoenix.nginx.conf.erb'
   owner node['firezone']['user']
@@ -44,10 +47,15 @@ template 'phoenix.nginx.conf' do
   variables(nginx: node['firezone']['nginx'],
             logging_enabled: node['firezone']['logging']['enabled'],
             phoenix: node['firezone']['phoenix'],
-            fqdn: URI.parse(node['firezone']['external_url']).host,
+            fqdn: fqdn,
             fips_enabled: node['firezone']['fips_enabled'],
             ssl: node['firezone']['ssl'],
-            app_directory: node['firezone']['app_directory'])
+            app_directory: node['firezone']['app_directory'],
+            acme: {
+              'enabled' => node['firezone']['ssl']['acme']['enabled'],
+              'certificate' => "#{node['firezone']['var_directory']}/ssl/acme/#{fqdn}.fullchain",
+              'certificate_key' => "#{node['firezone']['var_directory']}/ssl/acme/#{fqdn}.key"
+            })
 end
 
 if node['firezone']['phoenix']['enabled']
