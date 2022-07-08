@@ -25,8 +25,7 @@ end
 
 # Enable ACME if set to enabled and user-specified certs are disabled, maintains
 # backwards compatibility during upgrades.
-if node['firezone']['ssl']['acme']['enabled'] && !node['firezone']['ssl']['certificate'] &&
-   node['firezone']['ssl']['enabled']
+if node['firezone']['ssl']['acme']['enabled'] && !node['firezone']['ssl']['certificate']
 
   keylength = node['firezone']['ssl']['acme']['keylength']
   server = node['firezone']['ssl']['acme']['server']
