@@ -21,6 +21,7 @@ default_version '1.20.1'
 dependency 'pcre'
 dependency 'openssl'
 dependency 'zlib'
+dependency 'acme'
 
 license 'BSD-2-Clause'
 license_file 'LICENSE'

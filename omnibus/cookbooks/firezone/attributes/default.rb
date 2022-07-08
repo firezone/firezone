@@ -157,7 +157,6 @@ default['firezone']['authentication']['google']['redirect_uri'] = nil
 # These attributes control Firezone-specific portions of the Nginx
 # configuration and the virtual host for the Firezone Phoenix app.
 default['firezone']['nginx']['enabled'] = true
-default['firezone']['nginx']['force_ssl'] = true
 default['firezone']['nginx']['non_ssl_port'] = 80
 default['firezone']['nginx']['ssl_port'] = 443
 default['firezone']['nginx']['directory'] = "#{node['firezone']['var_directory']}/nginx/etc"
@@ -390,8 +389,34 @@ default['firezone']['ssl']['directory'] = '/var/opt/firezone/ssl'
 # Enable / disable SSL
 default['firezone']['ssl']['enabled'] = true
 
-# Paths to the SSL certificate and key files. If these are not provided we will
-# attempt to generate a self-signed certificate and use that instead.
+# Email to use for self signed certs and ACME cert issuance and renewal notices.
+# Defaults to default['firezone']['admin_email'] if nil.
+default['firezone']['ssl']['email_address'] = nil
+
+# Enable / disable ACME protocol support to auto-provision SSL certificates.
+# Before turning this on, please ensure:
+# 1. default['firezone']['external_url'] includes a valid FQDN
+# 2. Port 80/tcp is accessible; this is used for domain validation.
+# 3. default['firezone']['ssl']['email_address'] is set properly. This will be used for renewal notices.
+# 4. default['firezone']['nginx']['non_ssl_port'] is set to 80
+# 5. default['firezone']['ssl']['enabled'] is set to true
+default['firezone']['ssl']['acme']['enabled'] = false
+
+# Set the ACME server directory for ACME protocol SSL certificate issuance
+# This option requires default['firezone']['ssl']['acme']['enabled']
+# You can either set one of the CA short names as explained here (https://github.com/acmesh-official/acme.sh/wiki/Server)
+# or the directory URL.
+# In case ACME is enabled this option will default to letsencrypt
+default['firezone']['ssl']['acme']['server'] = 'letsencrypt'
+# Specify the key type and length for the cert. See more at https://github.com/acmesh-official/acme.sh#10-issue-ecc-certificates
+# Allowed values are:
+# * RSA: 2048, 3072, 4096, 8192
+# * ECDSA(recommended): ec-256, ec-384, ec-521
+default['firezone']['ssl']['acme']['keylength'] = 'ec-256'
+
+
+# Paths to the SSL certificate and key files. If these are set, ACME is automatically disabled.
+# If these are nil and ACME is disabled, we will attempt to generate a self-signed certificate and use that instead.
 default['firezone']['ssl']['certificate'] = nil
 default['firezone']['ssl']['certificate_key'] = nil
 
@@ -404,7 +429,6 @@ default['firezone']['ssl']['state_name'] = 'CA'
 default['firezone']['ssl']['locality_name'] = 'San Francisco'
 default['firezone']['ssl']['company_name'] = 'My Company'
 default['firezone']['ssl']['organizational_unit_name'] = 'Operations'
-default['firezone']['ssl']['email_address'] = 'you@example.com'
 
 # ### Cipher settings
 #
