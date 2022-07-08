@@ -25,7 +25,10 @@ include_recipe 'firezone::config'
  node['firezone']['nginx']['log_directory'],
  node['firezone']['nginx']['directory'],
  "#{node['firezone']['nginx']['directory']}/conf.d",
- "#{node['firezone']['nginx']['directory']}/sites-enabled"].each do |dir|
+ "#{node['firezone']['nginx']['directory']}/sites-enabled",
+ "#{node['firezone']['var_directory']}/nginx/acme_root",
+ "#{node['firezone']['var_directory']}/nginx/acme_root/.well-known",
+ "#{node['firezone']['var_directory']}/nginx/acme_root/.well-known/acme-challenge"].each do |dir|
   directory dir do
     owner node['firezone']['user']
     group node['firezone']['group']
@@ -45,7 +48,26 @@ template 'nginx.conf' do
   owner node['firezone']['user']
   group node['firezone']['group']
   mode '0600'
-  variables(logging_enabled: node['firezone']['logging']['enabled'], nginx: node['firezone']['nginx'])
+  variables(
+    logging_enabled: node['firezone']['logging']['enabled'],
+    nginx: node['firezone']['nginx'],
+    ssl_enabled: node['firezone']['ssl']['enabled']
+  )
+end
+
+template 'redirect.conf' do
+  path "#{node['firezone']['nginx']['directory']}/redirect.conf"
+  source 'redirect.conf.erb'
+  owner 'root'
+  group node['firezone']['group']
+  mode '0640'
+  variables(
+    server_name: URI.parse(node['firezone']['external_url']).host,
+    acme_www_root: "#{node['firezone']['var_directory']}/nginx/acme_root",
+    non_ssl_port: node['firezone']['nginx']['non_ssl_port'],
+    rate_limiting_zone_name: node['firezone']['nginx']['rate_limiting_zone_name'],
+    ipv6: node['firezone']['nginx']['ipv6']
+  )
 end
 
 if node['firezone']['nginx']['enabled']
@@ -54,6 +76,7 @@ if node['firezone']['nginx']['enabled']
     action :enable
     subscribes :restart, 'template[nginx.conf]'
     subscribes :restart, 'template[phoenix.nginx.conf]'
+    subscribes :restart, 'template[acme.conf]'
   end
 else
   runit_service 'nginx' do

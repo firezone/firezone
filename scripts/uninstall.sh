@@ -6,6 +6,9 @@ firezone-ctl teardown-network
 echo 'Removing all Firezone directories...'
 firezone-ctl cleanse yes
 
+echo 'Stopping ACME from renewing certificates...'
+firezone-ctl stop-cert-renewal
+
 echo 'Removing firezone package...'
 if type apt-get > /dev/null; then
   DEBIAN_FRONTEND=noninteractive apt-get remove -y --purge firezone
