@@ -159,7 +159,7 @@ defmodule FzHttpWeb.AuthController do
       max_age: @oidc_state_valid_duration,
       sign: true,
       same_site: "Lax",
-      secure: true
+      secure: Application.fetch_env!(:fz_http, :cookie_secure)
     )
     |> redirect(external: uri)
   end
