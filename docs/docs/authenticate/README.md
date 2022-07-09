@@ -108,6 +108,8 @@ You can set the session length to a minimum of 1 hour and maximum of 90 days.
 Setting this to Never disables this setting, allowing VPN sessions indefinitely.
 This is the default.
 
+### Re-authentication
+
 To re-authenticate an expired VPN session, a user will need to turn off their
 VPN session and sign in to the Firezone portal (URL specified during
 [deployment](../deploy/prerequisites)
@@ -115,3 +117,13 @@ VPN session and sign in to the Firezone portal (URL specified during
 
 See detailed Client Instructions on how to re-authenticate your session
 [here](../user-guides/client-instructions).
+
+#### VPN Connection Status
+
+A user's connection status is shown on the Users page under the table column
+`VPN Connection`. The connection statuses are:
+
+* ENABLED - The connection is enabled.
+* DISABLED - The connection is disabled by an administrator or OIDC refresh failure.
+* EXPIRED - The connection is disabled due to authentication expiration or a user
+  has not signed in for the first time.

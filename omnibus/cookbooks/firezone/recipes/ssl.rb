@@ -58,7 +58,6 @@ elsif node['firezone']['ssl']['acme']['enabled']
     group 'root'
     mode '0600'
   end
-
 # No certificate has been supplied; generate one
 else
   host = URI.parse(node['firezone']['external_url']).host

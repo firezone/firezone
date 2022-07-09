@@ -5,7 +5,7 @@
 #
 # Copyright:: 2021, Firezone, All Rights Reserved.
 
-# Force ceritifacte to renew now even if it hasn't expired.
+# Force certificate to renew now even if it hasn't expired.
 
 include_recipe 'firezone::config'
 
