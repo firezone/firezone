@@ -2,6 +2,7 @@ defmodule FzHttpWeb.UserSocket do
   use Phoenix.Socket
 
   alias FzHttp.Users
+  alias FzHttpWeb.HeaderHelpers
 
   require Logger
 
@@ -21,17 +22,26 @@ defmodule FzHttpWeb.UserSocket do
   # See `Phoenix.Token` documentation for examples in
   # performing token verification on connect.
   def connect(%{"token" => token}, socket, connect_info) do
-    ip = get_ip_address(connect_info)
+    # XXX: Might need to do something similar to convert_ip again
+    ip =
+      RemoteIp.from(connect_info[:x_headers],
+        headers: HeaderHelpers.ip_x_headers(),
+        proxy: HeaderHelpers.trusted_proxy()
+      )
 
-    case Phoenix.Token.verify(socket, "user auth", token, max_age: 86_400) do
-      {:ok, user_id} ->
-        {:ok,
-         socket
-         |> assign(:current_user, Users.get_user!(user_id))
-         |> assign(:remote_ip, ip)}
+    if is_nil(ip) do
+      :error
+    else
+      case Phoenix.Token.verify(socket, "user auth", token, max_age: 86_400) do
+        {:ok, user_id} ->
+          {:ok,
+           socket
+           |> assign(:current_user, Users.get_user!(user_id))
+           |> assign(:remote_ip, ip)}
 
-      {:error, _} ->
-        :error
+        {:error, _} ->
+          :error
+      end
     end
   end
 
@@ -47,35 +57,4 @@ defmodule FzHttpWeb.UserSocket do
   # Returning `nil` makes this socket anonymous.
   # def id(_socket), do: nil
   def id(socket), do: "user_socket:#{socket.assigns.current_user.id}"
-
-  defp get_ip_address(%{x_headers: headers_list}) when length(headers_list) > 0 do
-    header = Enum.find(headers_list, fn {key, _val} -> key == "x-real-ip" end)
-
-    case header do
-      {_key, value} -> value
-      _ -> nil
-    end
-  end
-
-  defp get_ip_address(%{peer_data: %{address: address}}) do
-    convert_ip(address)
-
-    address
-    |> Tuple.to_list()
-    |> Enum.join(".")
-  end
-
-  # IPv4
-  defp convert_ip({_, _, _, _} = address) do
-    address
-    |> Tuple.to_list()
-    |> Enum.join(".")
-  end
-
-  # IPv6
-  defp convert_ip(address) do
-    address
-    |> Tuple.to_list()
-    |> Enum.join(":")
-  end
 end

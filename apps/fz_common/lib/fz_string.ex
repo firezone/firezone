@@ -12,6 +12,10 @@ defmodule FzCommon.FzString do
     as_bool(String.downcase(str))
   end
 
+  def to_array(str) do
+    String.split(str, ", ")
+  end
+
   defp as_bool("true") do
     true
   end

@@ -93,7 +93,8 @@ defmodule FzHttp.MixProject do
       {:cidr, github: "firezone/cidr-elixir"},
       {:telemetry, "~> 1.0"},
       {:plug_cowboy, "~> 2.5"},
-      {:credo, "~> 1.5", only: [:dev, :test], runtime: false}
+      {:credo, "~> 1.5", only: [:dev, :test], runtime: false},
+      {:remote_ip, "~> 1.0"}
     ]
   end
 
