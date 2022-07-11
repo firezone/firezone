@@ -87,7 +87,29 @@ defmodule FzHttpWeb.AuthControllerTest do
   end
 
   describe "creating session from OpenID Connect" do
-    setup [:create_user]
+    setup :create_user
+
+    @key "fz_oidc_state"
+    @state "test"
+
+    @params %{
+      "code" => "MyFaketoken",
+      "provider" => "google",
+      "state" => @state
+    }
+
+    setup %{unauthed_conn: conn} = context do
+      signed_state =
+        Plug.Crypto.sign(
+          Application.fetch_env!(:fz_http, FzHttpWeb.Endpoint)[:secret_key_base],
+          @key <> "_cookie",
+          @state,
+          key: Plug.Keys,
+          max_age: context[:max_age] || 300
+        )
+
+      {:ok, unauthed_conn: put_req_cookie(conn, "fz_oidc_state", signed_state)}
+    end
 
     test "when a user returns with a valid claim", %{unauthed_conn: conn, user: user} do
       expect(OpenIDConnect.Mock, :fetch_tokens, fn _, _ -> {:ok, %{"id_token" => "abc"}} end)
@@ -96,17 +118,12 @@ defmodule FzHttpWeb.AuthControllerTest do
         {:ok, %{"email" => user.email, "sub" => "12345"}}
       end)
 
-      params = %{
-        "code" => "MyFaketoken",
-        "provider" => "google"
-      }
-
-      test_conn = get(conn, Routes.auth_oidc_path(conn, :callback, "google"), params)
-
+      test_conn = get(conn, Routes.auth_oidc_path(conn, :callback, "google"), @params)
       assert redirected_to(test_conn) == Routes.user_index_path(test_conn, :index)
     end
 
     @moduletag :capture_log
+
     test "when a user returns with an invalid claim", %{unauthed_conn: conn} do
       expect(OpenIDConnect.Mock, :fetch_tokens, fn _, _ -> {:ok, %{}} end)
 
@@ -114,13 +131,25 @@ defmodule FzHttpWeb.AuthControllerTest do
         {:error, "Invalid token for user!"}
       end)
 
-      params = %{
-        "code" => "MyFaketoken",
-        "provider" => "google"
-      }
-
-      test_conn = get(conn, Routes.auth_oidc_path(conn, :callback, "google"), params)
+      test_conn = get(conn, Routes.auth_oidc_path(conn, :callback, "google"), @params)
       assert get_flash(test_conn, :error) == "OpenIDConnect Error: Invalid token for user!"
+    end
+
+    test "when a user returns with an invalid state", %{unauthed_conn: conn} do
+      test_conn =
+        get(conn, Routes.auth_oidc_path(conn, :callback, "google"), %{
+          @params
+          | "state" => "not_valid"
+        })
+
+      assert get_flash(test_conn, :error) == "OpenIDConnect Error: Cannot verify state"
+    end
+
+    @tag max_age: 0
+    test "when a user returns with an expired state", %{unauthed_conn: conn} do
+      test_conn = get(conn, Routes.auth_oidc_path(conn, :callback, "google"), @params)
+
+      assert get_flash(test_conn, :error) == "OpenIDConnect Error: Cannot verify state"
     end
   end
 
