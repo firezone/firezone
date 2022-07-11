@@ -369,9 +369,6 @@ default['firezone']['runit']['svlogd_bin'] = "#{node['firezone']['install_direct
 
 default['firezone']['ssl']['directory'] = '/var/opt/firezone/ssl'
 
-# Enable / disable SSL
-default['firezone']['ssl']['enabled'] = true
-
 # Email to use for self signed certs and ACME cert issuance and renewal notices.
 # Defaults to default['firezone']['admin_email'] if nil.
 default['firezone']['ssl']['email_address'] = nil
@@ -382,7 +379,6 @@ default['firezone']['ssl']['email_address'] = nil
 # 2. Port 80/tcp is accessible; this is used for domain validation.
 # 3. default['firezone']['ssl']['email_address'] is set properly. This will be used for renewal notices.
 # 4. default['firezone']['nginx']['non_ssl_port'] is set to 80
-# 5. default['firezone']['ssl']['enabled'] is set to true
 default['firezone']['ssl']['acme']['enabled'] = false
 
 # Set the ACME server directory for ACME protocol SSL certificate issuance
@@ -504,3 +500,10 @@ default['firezone']['connectivity_checks']['enabled'] = true
 # Amount of time to sleep between connectivity checks, in seconds.
 # Default: 3600 (1 hour). Minimum: 60 (1 minute). Maximum: 86400 (1 day).
 default['firezone']['connectivity_checks']['interval'] = 3_600
+
+# === DEV ONLY ===
+# These are attributes meant only for developers they might break compatibility
+# with future versions and be incompatible with some options. Change at your own **risk**.
+
+# Enables/Disables the requirement for SSL when running behind non-bundled proxies.
+default['dev']['secure'] = true

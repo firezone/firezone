@@ -275,7 +275,10 @@ class Firezone
         'LIVE_VIEW_SIGNING_SALT' => attributes['live_view_signing_salt'],
         'COOKIE_SIGNING_SALT' => attributes['cookie_signing_salt'],
         'COOKIE_ENCRYPTION_SALT' => attributes['cookie_encryption_salt'],
-        'DATABASE_ENCRYPTION_KEY' => attributes['database_encryption_key']
+        'DATABASE_ENCRYPTION_KEY' => attributes['database_encryption_key'],
+
+        # dev
+        'DEV_SECURE' => node['dev']['secure'].to_s
       }
 
       env.merge!('DATABASE_PASSWORD' => attributes['database']['password']) if attributes.dig('database', 'password')

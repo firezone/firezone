@@ -14,6 +14,7 @@ server {
     <% if @enable_rate_limiting -%>
       limit_req zone=<%= @rate_limiting_zone_name %>;
     <% end -%>
+
     if ($http_x_forwarded_proto != 'https') {
       return 301 https://$server_name$request_uri;
     }

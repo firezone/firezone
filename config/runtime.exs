@@ -12,6 +12,7 @@ external_url = System.get_env("EXTERNAL_URL", "http://localhost:4000")
 
 # Enable Forwarded headers, e.g 'X-FORWARDED-HOST'
 proxy_forwarded = FzString.to_boolean(System.get_env("PROXY_FORWARDED") || "false")
+trusted_proxy = FzString.to_array(System.get_env("TRUSTED_PROXY") || "[]")
 
 %{host: host, path: path, port: port, scheme: scheme} = URI.parse(external_url)
 
@@ -58,6 +59,7 @@ if config_env() == :prod do
   guardian_secret_key = System.fetch_env!("GUARDIAN_SECRET_KEY")
   disable_vpn_on_oidc_error = FzString.to_boolean(System.fetch_env!("DISABLE_VPN_ON_OIDC_ERROR"))
   auto_create_oidc_users = FzString.to_boolean(System.fetch_env!("AUTO_CREATE_OIDC_USERS"))
+  secure = FzString.to_boolean(System.get_env("DEV_SECURE", "true"))
 
   allow_unprivileged_device_management =
     FzString.to_boolean(System.fetch_env!("ALLOW_UNPRIVILEGED_DEVICE_MANAGEMENT"))
@@ -103,6 +105,7 @@ if config_env() == :prod do
   live_view_signing_salt = System.fetch_env!("LIVE_VIEW_SIGNING_SALT")
   cookie_signing_salt = System.fetch_env!("COOKIE_SIGNING_SALT")
   cookie_encryption_salt = System.fetch_env!("COOKIE_ENCRYPTION_SALT")
+  cookie_secure = secure
 
   # Password is not needed if using bundled PostgreSQL, so use nil if it's not set.
   database_password = System.get_env("DATABASE_PASSWORD")
@@ -182,6 +185,7 @@ if config_env() == :prod do
     auto_create_oidc_users: auto_create_oidc_users,
     cookie_signing_salt: cookie_signing_salt,
     cookie_encryption_salt: cookie_encryption_salt,
+    cookie_secure: cookie_secure,
     allow_unprivileged_device_management: allow_unprivileged_device_management,
     max_devices_per_user: max_devices_per_user,
     local_auth_enabled: local_auth_enabled,

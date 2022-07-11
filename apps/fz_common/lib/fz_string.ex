@@ -8,6 +8,11 @@ defmodule FzCommon.FzString do
     |> String.replace(~r/[^a-zA-Z0-9]+/, "_")
   end
 
+  # xxx: to_ip?
+  def to_array(str) do
+    String.split(str, ", ")
+  end
+
   def to_boolean(str) when is_binary(str) do
     as_bool(String.downcase(str))
   end
