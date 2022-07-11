@@ -25,22 +25,4 @@
           class: "button") %>
     </p>
   <% end %>
-
-  <%= if @okta_enabled do %>
-    <p>
-      <%= link(
-          "Sign in with Okta",
-          to: Routes.auth_path(@conn, :request, "okta"),
-          class: "button") %>
-    </p>
-  <% end %>
-
-  <%= if @google_enabled do %>
-    <p>
-      <%= link(
-          "Sign in with Google",
-          to: Routes.auth_path(@conn, :request, "google"),
-          class: "button") %>
-    </p>
-  <% end %>
 </div>
