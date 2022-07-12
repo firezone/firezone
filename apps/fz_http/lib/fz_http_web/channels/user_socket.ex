@@ -22,13 +22,9 @@ defmodule FzHttpWeb.UserSocket do
   # See `Phoenix.Token` documentation for examples in
   # performing token verification on connect.
   def connect(%{"token" => token}, socket, connect_info) do
-    # XXX: Might need to do something similar to convert_ip again
-    ip =
-      RemoteIp.from(connect_info[:x_headers],
-        headers: HeaderHelpers.ip_x_headers(),
-        proxy: HeaderHelpers.trusted_proxy()
-      )
+    ip = get_ip_address(connect_info)
 
+    # XXX: We want to error here? If IP is nil definetly something fishy is going on.
     if is_nil(ip) do
       :error
     else
@@ -57,4 +53,31 @@ defmodule FzHttpWeb.UserSocket do
   # Returning `nil` makes this socket anonymous.
   # def id(_socket), do: nil
   def id(socket), do: "user_socket:#{socket.assigns.current_user.id}"
+
+  defp get_ip_address(%{x_headers: x_headers, peer_data: %{address: address}}) do
+    if HeaderHelpers.proxied?() do
+      Logger.debug("Proxied connection")
+
+      RemoteIp.from(x_headers,
+        headers: HeaderHelpers.ip_x_headers(),
+        proxy: HeaderHelpers.trusted_proxy()
+      )
+    else
+      convert_ip(address)
+    end
+  end
+
+  # IPv4
+  defp convert_ip({_, _, _, _} = address) do
+    address
+    |> Tuple.to_list()
+    |> Enum.join(".")
+  end
+
+  # IPv6
+  defp convert_ip(address) do
+    address
+    |> Tuple.to_list()
+    |> Enum.join(":")
+  end
 end

@@ -3,7 +3,7 @@ defmodule FzHttpWeb.Endpoint do
   alias FzHttpWeb.HeaderHelpers
   alias FzHttpWeb.Session
 
-  if Application.get_env(:fz_http, FzHttpWeb.Endpoint, :proxy_forwarded) do
+  if HeaderHelpers.proxied?() do
     plug RemoteIp, headers: HeaderHelpers.ip_x_headers(), proxy_ip: HeaderHelpers.trusted_proxy()
     # XXX: Safety similar to RemoteIp? (https://github.com/ajvondrak/remote_ip/issues/4)
     plug Plug.RewriteOn, [:x_forwarded_proto]
