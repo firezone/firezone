@@ -9,8 +9,14 @@ defmodule FzCommon.FzString do
   end
 
   # xxx: to_ip?
-  def to_array(str) do
-    String.split(str, ", ")
+  def to_cidr_list(str) do
+    String.trim(str)
+    |> String.trim("[")
+    |> String.trim("]")
+    |> String.split(~r{,\s*}, trim: true)
+    |> Enum.map(&String.trim/1)
+    |> Enum.filter(fn ip -> FzCommon.FzNet.valid_cidr?(ip) || FzCommon.FzNet.valid_ip?(ip) end)
+    |> Enum.map(&FzCommon.FzNet.standardized_inet/1)
   end
 
   def to_boolean(str) when is_binary(str) do

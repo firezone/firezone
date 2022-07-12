@@ -12,7 +12,7 @@ external_url = System.get_env("EXTERNAL_URL", "http://localhost:4000")
 
 # Enable Forwarded headers, e.g 'X-FORWARDED-HOST'
 proxy_forwarded = FzString.to_boolean(System.get_env("PROXY_FORWARDED") || "false")
-trusted_proxy = FzString.to_array(System.get_env("TRUSTED_PROXY") || "[]")
+trusted_proxy = FzString.to_cidr_list(System.get_env("TRUSTED_PROXY") || "[]")
 
 %{host: host, path: path, port: port, scheme: scheme} = URI.parse(external_url)
 
