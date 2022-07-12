@@ -135,6 +135,9 @@ default['firezone']['authentication']['oidc'] = {}
 #   }
 # }
 
+# ## Proxy
+default['firezone']['trusted_proxy'] = []
+
 # ## Nginx
 
 # These attributes control Firezone-specific portions of the Nginx
