@@ -20,7 +20,6 @@ description 'the steps required to compile the firezone elixir application'
 default_version '1.0.0'
 
 dependency 'postgresql'
-dependency 'nodejs'
 dependency 'elixir'
 dependency 'nftables' if linux?
 dependency 'ruby'
