@@ -71,7 +71,6 @@ jobs:
           asdf update
           asdf plugin-update ruby
           asdf install ruby
-          asdf plugin-add nodejs
           asdf plugin-update nodejs
           asdf install nodejs
 
