@@ -19,7 +19,8 @@ trusted_proxy = FzString.to_cidr_list(System.get_env("TRUSTED_PROXY") || "[]")
 config :fz_http, FzHttpWeb.Endpoint,
   url: [host: host, scheme: scheme, port: port, path: path],
   check_origin: ["//127.0.0.1", "//localhost", "//#{host}"],
-  proxy_forwarded: proxy_forwarded
+  proxy_forwarded: proxy_forwarded,
+  trusted_proxy: trusted_proxy
 
 # Formerly releases.exs - Only evaluated in production
 if config_env() == :prod do

@@ -1,13 +1,9 @@
 defmodule FzHttpWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :fz_http
-  alias FzHttpWeb.HeaderHelpers
+  alias FzHttpWeb.ProxyHeaders
   alias FzHttpWeb.Session
 
-  if HeaderHelpers.proxied?() do
-    plug RemoteIp, headers: HeaderHelpers.ip_x_headers(), proxy_ip: HeaderHelpers.trusted_proxy()
-    # XXX: Safety similar to RemoteIp? (https://github.com/ajvondrak/remote_ip/issues/4)
-    plug Plug.RewriteOn, [:x_forwarded_proto]
-  end
+  plug ProxyHeaders
 
   if Application.get_env(:fz_http, :sql_sandbox) do
     plug Phoenix.Ecto.SQL.Sandbox
