@@ -77,7 +77,7 @@ services:
     environment:
       - PUID=1000
       - PGID=1000
-      - TZ=Australia/Melbourne
+      - TZ=UTC
       - ALLOWEDIPS=0.0.0.0/0
     volumes:
       - ./tmp/config:/config
