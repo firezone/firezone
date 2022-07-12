@@ -25,7 +25,7 @@ defmodule FzHttpWeb.UserSocket do
     ip = get_ip_address(connect_info)
 
     # XXX: We want to error here? If IP is nil definetly something fishy is going on.
-    if is_nil(ip) do
+    if ip == "" do
       :error
     else
       Logger.metadata(remote_ip: ip)
@@ -58,11 +58,11 @@ defmodule FzHttpWeb.UserSocket do
 
   defp get_ip_address(%{x_headers: x_headers, peer_data: %{address: address}}) do
     if HeaderHelpers.proxied?() do
-      Logger.debug("Proxied connection")
-
-      RemoteIp.from(x_headers,
-        headers: HeaderHelpers.ip_x_headers(),
-        proxy: HeaderHelpers.trusted_proxy()
+      convert_ip(
+        RemoteIp.from(x_headers,
+          headers: HeaderHelpers.ip_x_headers(),
+          proxy: HeaderHelpers.trusted_proxy()
+        )
       )
     else
       convert_ip(address)
