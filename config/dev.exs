@@ -53,8 +53,6 @@ config :fz_vpn,
 
 # Auth
 local_auth_enabled = System.get_env("LOCAL_AUTH_ENABLED") == "true"
-okta_auth_enabled = System.get_env("OKTA_AUTH_ENABLED") == "true"
-google_auth_enabled = System.get_env("GOOGLE_AUTH_ENABLED") == "true"
 
 # Configure strategies
 identity_strategy =
@@ -65,33 +63,14 @@ identity_strategy =
       uid_field: :email
     ]}}
 
-okta_strategy = {:okta, {Ueberauth.Strategy.Okta, []}}
-google_strategy = {:google, {Ueberauth.Strategy.Google, []}}
-
 providers =
   [
-    {local_auth_enabled, identity_strategy},
-    {google_auth_enabled, google_strategy},
-    {okta_auth_enabled, okta_strategy}
+    {local_auth_enabled, identity_strategy}
   ]
   |> Enum.filter(fn {key, _val} -> key end)
   |> Enum.map(fn {_key, val} -> val end)
 
 config :ueberauth, Ueberauth, providers: providers
-
-if okta_auth_enabled do
-  config :ueberauth, Ueberauth.Strategy.Okta.OAuth,
-    client_id: System.get_env("OKTA_CLIENT_ID"),
-    client_secret: System.get_env("OKTA_CLIENT_SECRET"),
-    site: System.get_env("OKTA_SITE")
-end
-
-if google_auth_enabled do
-  config :ueberauth, Ueberauth.Strategy.Google.OAuth,
-    client_id: System.get_env("GOOGLE_CLIENT_ID"),
-    client_secret: System.get_env("GOOGLE_CLIENT_SECRET"),
-    redirect_uri: System.get_env("GOOGLE_REDIRECT_URI")
-end
 
 # ## SSL Support
 #
@@ -145,8 +124,6 @@ config :phoenix, :plug_init_mode, :runtime
 config :fz_http,
   cookie_secure: false,
   telemetry_module: FzCommon.MockTelemetry,
-  local_auth_enabled: local_auth_enabled,
-  okta_auth_enabled: google_auth_enabled,
-  google_auth_enabled: okta_auth_enabled
+  local_auth_enabled: local_auth_enabled
 
 config :fz_http, FzHttp.Mailer, adapter: Swoosh.Adapters.Local, from_email: "dev@firez.one"

@@ -28,4 +28,6 @@ fi
 # Symlink ctl commands
 DEST_DIR=/opt/firezone
 
-${DEST_DIR}/embedded/bin/symlink_ctl_cmds
+if [ -e ${DEST_DIR}/embedded/bin/symlink_ctl_cmds ]; then
+    ${DEST_DIR}/embedded/bin/symlink_ctl_cmds
+fi

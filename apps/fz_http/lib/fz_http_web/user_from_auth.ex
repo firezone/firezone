@@ -17,14 +17,6 @@ defmodule FzHttpWeb.UserFromAuth do
     Users.get_by_email(email) |> Authentication.authenticate(password)
   end
 
-  def find_or_create(%Auth{provider: provider, info: %Auth.Info{email: email}} = _auth)
-      when provider in [:google, :okta] do
-    case Users.get_by_email(email) do
-      nil -> maybe_create_user(email)
-      user -> {:ok, user}
-    end
-  end
-
   def find_or_create(_provider, %{"email" => email, "sub" => _sub}) do
     case Users.get_by_email(email) do
       nil -> maybe_create_user(email)

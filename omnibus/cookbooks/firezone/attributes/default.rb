@@ -135,23 +135,6 @@ default['firezone']['authentication']['oidc'] = {}
 #   }
 # }
 
-# DEPRECATED
-# Previously, Firezone used preconfigured Oauth2 providers. We've moved to OIDC authentication
-# which allows for any OpenID Connect provider (Google, Okta, Dex) to be used for authetication.
-# See the above OIDC Authentication section
-#
-# DEPRECATED: Okta example config
-default['firezone']['authentication']['okta']['enabled'] = false
-default['firezone']['authentication']['okta']['client_id'] = nil
-default['firezone']['authentication']['okta']['client_secret'] = nil
-default['firezone']['authentication']['okta']['site'] = 'https://your-domain.okta.com'
-
-# DEPRECATED: Google example config
-default['firezone']['authentication']['google']['enabled'] = false
-default['firezone']['authentication']['google']['client_id'] = nil
-default['firezone']['authentication']['google']['client_secret'] = nil
-default['firezone']['authentication']['google']['redirect_uri'] = nil
-
 # ## Nginx
 
 # These attributes control Firezone-specific portions of the Nginx

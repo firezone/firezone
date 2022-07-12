@@ -13,9 +13,7 @@ defmodule FzHttpWeb.AuthControllerTest do
       # Assert that we email, OIDC and Oauth2 buttons provided
       for expected <- [
             "Sign in with email",
-            "Sign in with OIDC Google",
-            "Sign in with Google",
-            "Sign in with Okta"
+            "Sign in with OIDC Google"
           ] do
         assert html_response(test_conn, 200) =~ expected
       end

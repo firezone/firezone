@@ -45,8 +45,6 @@ config :logger, level: :info
 config :fz_http,
   sandbox: false,
   local_auth_enabled: true,
-  google_auth_enabled: true,
-  okta_auth_enabled: true,
   connectivity_checks_url: "https://ping.firez.one/"
 
 config :ueberauth, Ueberauth,
@@ -56,9 +54,7 @@ config :ueberauth, Ueberauth,
       [
         callback_methods: ["POST"],
         uid_field: :email
-      ]}},
-    {:okta, {Ueberauth.Strategy.Okta, []}},
-    {:google, {Ueberauth.Strategy.Google, []}}
+      ]}}
   ]
 
 config :swoosh, local: false

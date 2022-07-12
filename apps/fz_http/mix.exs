@@ -39,7 +39,6 @@ defmodule FzHttp.MixProject do
       extra_applications: [
         :logger,
         :runtime_tools,
-        :ueberauth_okta,
         :ueberauth_identity
       ],
       registered: [:fz_http_server]
@@ -67,8 +66,6 @@ defmodule FzHttp.MixProject do
       {:guardian_db, "~> 2.0"},
       {:openid_connect, "~> 0.2.2"},
       {:ueberauth, "~> 0.7"},
-      {:ueberauth_google, "~> 0.10"},
-      {:ueberauth_okta, "~> 0.2"},
       {:ueberauth_identity, "~> 0.4"},
       {:httpoison, "~> 1.8"},
       {:argon2_elixir, "~> 2.0"},
