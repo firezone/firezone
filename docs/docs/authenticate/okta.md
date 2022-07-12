@@ -22,17 +22,6 @@ to provide Firezone with the user's email in the returned claims.
 
 ![Firezone Okta SSO Login](https://user-images.githubusercontent.com/52545545/156855886-5a4a0da7-065c-4ec1-af33-583dff4dbb72.gif)
 
-**Note:** Previously, Firezone used pre-configured Oauth2 providers. We've moved
-to OIDC based authentication, which allows for any OpenID Connect provider
-(Google, Okta, Dex) to be integrated.
-
-We strongly recommend transitioning your existing Google or Okta-based SSO
-configuration to the generic OIDC-based configuration format described here.
-We'll be removing the Google-specific and Okta-specific SSO functionality
-in a future release.
-
-To set up SSO, follow the steps below:
-
 ## Step 1 - Create Okta App Integration
 
 _This section of the guide is based on
