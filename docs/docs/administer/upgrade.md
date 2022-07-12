@@ -19,7 +19,7 @@ To upgrade Firezone, follow these steps:
 Occasionally problems arise. If you hit any, please let us know by [filing an
 issue](https://github.com/firezone/firezone/issues/new/choose).
 
-## Upgrading from < 0.5.0 to 0.5.0
+## Upgrading from < 0.5.0 to >= 0.5.0
 
 Firezone has removed support for pre-configured Okta and Google OAuth2 providers.
 Follow the instructions below based on your current setup to migrate to OIDC providers:
@@ -48,7 +48,7 @@ file located at `/etc/firezone/firezone.rb`
 default['firezone']['authentication']['okta']['enabled']
 default['firezone']['authentication']['okta']['client_id']
 default['firezone']['authentication']['okta']['client_secret']
-default['firezone']['authentication']['okta']['redirect_uri']
+default['firezone']['authentication']['okta']['site']
 ```
 
 Then, follow the instructions [here](../authenticate/okta) to configure Okta as
