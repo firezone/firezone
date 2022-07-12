@@ -28,6 +28,8 @@ defmodule FzHttpWeb.UserSocket do
     if is_nil(ip) do
       :error
     else
+      Logger.metadata(remote_ip: ip)
+
       case Phoenix.Token.verify(socket, "user auth", token, max_age: 86_400) do
         {:ok, user_id} ->
           {:ok,

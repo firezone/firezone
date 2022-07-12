@@ -137,6 +137,7 @@ default['firezone']['authentication']['oidc'] = {}
 
 # ## Proxy
 default['firezone']['trusted_proxy'] = []
+default['firezone']['proxy_forwarded'] = true
 
 # ## Nginx
 
