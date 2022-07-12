@@ -40,8 +40,6 @@ config :fz_http, FzHttpWeb.Endpoint,
 config :fz_http,
   mock_events_module_errors: false,
   local_auth_enabled: true,
-  google_auth_enabled: true,
-  okta_auth_enabled: true,
   telemetry_module: FzCommon.MockTelemetry,
   supervision_tree_mode: :test,
   connectivity_checks_interval: 86_400,
@@ -54,9 +52,7 @@ config :logger, level: :warn
 
 config :ueberauth, Ueberauth,
   providers: [
-    {:identity, {Ueberauth.Strategy.Identity, [callback_methods: ["POST"], uid_field: :email]}},
-    {:okta, {Ueberauth.Strategy.Okta, []}},
-    {:google, {Ueberauth.Strategy.Google, []}}
+    {:identity, {Ueberauth.Strategy.Identity, [callback_methods: ["POST"], uid_field: :email]}}
   ]
 
 # OIDC auth for testing
