@@ -58,6 +58,5 @@ npm-debug.log
 /*.deb
 /*.rpm
 
-
 # Test screenshots
 apps/fz_http/screenshots

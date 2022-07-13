@@ -55,12 +55,6 @@ alias FzHttp.{Devices, ConnectivityChecks, Rules, Users}
     tx_bytes: 1_934_475_211_087_234
   })
 
-{:ok, _rule} =
-  Rules.create_rule(%{
-    device_id: device.id,
-    destination: %Postgrex.INET{address: {0, 0, 0, 0}, netmask: 0}
-  })
-
 {:ok, _connectivity_check} =
   ConnectivityChecks.create_connectivity_check(%{
     response_headers: %{"Content-Type" => "text/plain"},

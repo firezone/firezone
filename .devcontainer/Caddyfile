@@ -1,9 +1,16 @@
-localhost
+localhost {
+  log
 
-log
+  reverse_proxy * elixir:4000
 
-reverse_proxy * localhost:4000
+  encode gzip
 
-encode gzip
+  tls internal
+}
 
-tls internal
+:54321 {
+  handle /hello {
+    respond "HELLO
+"
+  }
+}
