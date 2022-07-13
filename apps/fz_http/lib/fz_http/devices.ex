@@ -15,6 +15,16 @@ defmodule FzHttp.Devices do
     Repo.one(from d in Device, select: count(d.id))
   end
 
+  def max_count_by_user_id do
+    Repo.one(
+      from d in Device,
+        select: fragment("count(*) AS user_count"),
+        group_by: d.user_id,
+        order_by: fragment("user_count DESC"),
+        limit: 1
+    )
+  end
+
   def list_devices do
     Repo.all(Device)
   end

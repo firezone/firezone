@@ -79,7 +79,16 @@ defmodule FzHttp.Telemetry do
         [
           user_count: Users.count(),
           device_count: Devices.count(),
-          users_with_mfa: MFA.count_distinct_by_user_id()
+          max_devices_for_users: Devices.max_count_by_user_id(),
+          users_with_mfa: MFA.count_distinct_by_user_id(),
+          users_with_mfa_totp: MFA.count_distinct_totp_by_user_id(),
+          openid_providers: length(conf(:openid_connect_providers)),
+          auto_create_oidc_users: conf(:auto_create_oidc_users),
+          unprivileged_device_management: conf(:allow_unprivileged_device_management),
+          local_authentication: conf(:local_auth_enabled),
+          disable_vpn_on_oidc_error: conf(:disable_vpn_on_oidc_error),
+          outbound_email: outbound_email?(),
+          external_database: external_database?()
         ]
     )
   end
@@ -112,6 +121,18 @@ defmodule FzHttp.Telemetry do
     Application.spec(:fz_http, :vsn) |> to_string()
   end
 
+  defp external_database? do
+    db_host = Application.fetch_env!(:fz_http, FzHttp.Repo)[:hostname]
+
+    db_host != "localhost" && db_host != "127.0.0.1"
+  end
+
+  defp outbound_email? do
+    from_email = Application.fetch_env!(:fz_http, FzHttp.Mailer)[:from_email]
+
+    !is_nil(from_email)
+  end
+
   defp os_type do
     case :os.type() do
       {:unix, type} ->
@@ -130,5 +151,9 @@ defmodule FzHttp.Telemetry do
       _ ->
         "0.0.0"
     end
+  end
+
+  defp conf(key) do
+    Application.fetch_env!(:fz_http, key)
   end
 end
