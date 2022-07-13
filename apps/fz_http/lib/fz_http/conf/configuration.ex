@@ -3,7 +3,6 @@ defmodule FzHttp.Conf.Configuration do
   import Ecto.Changeset
 
   schema "configurations" do
-    field :name, :string
     field :logo, :map
 
     timestamps(type: :utc_datetime_usec)
@@ -12,7 +11,7 @@ defmodule FzHttp.Conf.Configuration do
   @doc false
   def changeset(configuration, attrs) do
     configuration
-    |> cast(attrs, [:name, :logo])
-    |> validate_required([:name, :logo])
+    |> cast(attrs, [:logo])
+    |> validate_required([:logo])
   end
 end
