@@ -41,5 +41,5 @@ build do
   )
 
   make "-j #{workers}", env: env
-  make "-j #{workers} --prefix=/opt/runner/local install", env: env
+  make "-j #{workers} install PREFIX=/opt/runner/local", env: env
 end

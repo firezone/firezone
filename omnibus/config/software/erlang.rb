@@ -130,7 +130,7 @@ build do
   wx = 'without'
 
   command './configure' \
-          " --prefix=#{install_dir}/embedded" \
+          ' --prefix=/opt/runner/local' \
           ' --enable-threads' \
           ' --enable-smp-support' \
           ' --enable-kernel-poll' \
@@ -149,6 +149,6 @@ build do
           ' --disable-debug', env: env
 
   make "-j #{workers}", env: env
-  make "-j #{workers} --prefix=/opt/runner/local install", env: env
+  make "-j #{workers} install", env: env
 end
 # rubocop:enable Metrics/BlockLength

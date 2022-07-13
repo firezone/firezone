@@ -53,6 +53,7 @@ build do
     'VERSION' => ENV.fetch('VERSION', '0.0.0+git.0.ci')
   )
 
+  command 'export PATH="/opt/runner/local/bin:$PATH"', env: env
   command 'mix local.hex --force', env: env
   command 'mix local.rebar --force', env: env
   command 'mix deps.get --only prod', env: env
