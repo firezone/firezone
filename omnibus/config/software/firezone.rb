@@ -30,6 +30,11 @@ version('1.0.0') do
            '.env',
            '.git',
            '.ci',
+           'docs',
+           'doc',
+           'priv',
+           'scripts',
+           'tmp',
            '.vagrant',
            '.github',
            '_build',
@@ -43,7 +48,9 @@ license :project_license
 skip_transitive_dependency_licensing true
 
 build do
-  env = with_standard_compiler_flags(with_embedded_path).merge(
+  env = with_standard_compiler_flags(
+    'PATH' => "/opt/runner/local/bin:#{with_embedded_path['PATH']}"
+  ).merge(
     'MIX_ENV' => 'prod',
     'VERSION' => ENV.fetch('VERSION', '0.0.0+git.0.ci')
   )
@@ -56,5 +63,6 @@ build do
   command 'npm run --prefix apps/fz_http/assets deploy', env: env
   command 'cd apps/fz_http && mix phx.digest', env: env
   command 'mix release', env: env
+
   sync '_build/prod/rel/firezone', "#{install_dir}/embedded/service/firezone"
 end

@@ -36,8 +36,10 @@ source url: "https://github.com/elixir-lang/elixir/archive/v#{version}.tar.gz"
 relative_path "elixir-#{version}"
 
 build do
-  env = with_standard_compiler_flags(with_embedded_path)
+  env = with_standard_compiler_flags(
+    'PATH' => "/opt/runner/local/bin:#{with_embedded_path['PATH']}"
+  )
 
   make "-j #{workers}", env: env
-  make "-j #{workers} install PREFIX=#{install_dir}/embedded", env: env
+  make "-j #{workers} install PREFIX=/opt/runner/local", env: env
 end

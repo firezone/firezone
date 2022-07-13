@@ -69,9 +69,11 @@ jobs:
 
           . $HOME/.asdf/asdf.sh
           asdf update
-          asdf plugin-update ruby
+          asdf plugin-add ruby || asdf plugin-update ruby
           asdf install ruby
-          asdf plugin-update nodejs
+
+          # Needed for building assets later on
+          asdf plugin-add nodejs || asdf plugin-update nodejs
           asdf install nodejs
 
           # CentOS 7 has path issues when this runs and doesn't have the
