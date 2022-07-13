@@ -39,5 +39,9 @@ build do
   env = with_standard_compiler_flags(with_embedded_path)
 
   make "-j #{workers}", env: env
-  make "-j #{workers} install PREFIX=#{install_dir}/embedded", env: env
+
+  # XXX: This pollutes the build host but is what we want --
+  # we want to use elixir for the build without including it
+  # in the built artifact.
+  make "-j #{workers} install PREFIX=/usr/local", env: env
 end
