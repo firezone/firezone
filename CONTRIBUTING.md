@@ -117,6 +117,46 @@ At this point you should be able to sign in to
 [http://localhost:4000](http://localhost:4000) with email `firezone@localhost` and
 password `firezone1234`.
 
+## Run using Docker
+
+To run using docker follow these steps:
+
+```
+docker compose build
+docker compose up -d postgres
+docker compose run --rm elixir mix ecto.setup
+docker compose up
+```
+
+Now you should be able to connect to `https://localhost/`
+and sign in with email `firezone@localhost` and password `firezone1234`.
+
+### Testing wireguard connections and NAT using wireguard-client container
+
+There is a `wireguard-client` container in the docker-compose configuration that helps testing
+wireguard connections, it's connected to a separate network from the `caddy` container but the
+firezone server is connected to both network so you can verify the connections using:
+
+* `docker compose exec wireguard-client ping 172.28.0.99`
+* `docker compose exec wireguard-client curl -k 172.28.0.99:54321/hello` this should return `HELLO` text.
+
+To setup this test before doing `docker compose up` do this:
+* Create a device in firezone using the default configuration except for:
+  * `DNS`: `127.0.0.11` (Docker internal DNS)
+  * `Endpoint`: `elixir:51820` (Need to edit after download)
+* Download the generated configuration to `./tmp/config/wg0.conf`
+* `docker compose up`
+
+### Testing wireguard connections and NAT in Linux from the host
+
+To test wireguard connections you can create an interface through the firezone website and add it
+using [`wg-quick`](https://man7.org/linux/man-pages/man8/wg-quick.8.html) but after
+`wg-quick up <interface_name>` you need to run `./scripts/post-up-wg.sh` now all traffic originating
+from the host should be going through your wireguard interface into the docker container
+(except for traffic outgoing from the docker bridge network).
+
+After `wg-quick down <interface_name>` run `./scripts/post-down-wg.sh` to clean everything up.
+
 ## Running this inside a Devcontainer
 
 You can run this using Github Codespaces or your own devcontainer using Docker.
