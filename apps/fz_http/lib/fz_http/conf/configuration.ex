@@ -1,4 +1,8 @@
 defmodule FzHttp.Conf.Configuration do
+  @moduledoc """
+  App global configuration, singleton resource
+  """
+
   use Ecto.Schema
   import Ecto.Changeset
 
