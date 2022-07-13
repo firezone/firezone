@@ -36,12 +36,10 @@ source url: "https://github.com/elixir-lang/elixir/archive/v#{version}.tar.gz"
 relative_path "elixir-#{version}"
 
 build do
-  env = with_standard_compiler_flags(with_embedded_path)
+  env = with_standard_compiler_flags(with_embedded_path).merge(
+    'PATH' => '$PATH;$HOME/local/bin'
+  )
 
   make "-j #{workers}", env: env
-
-  # XXX: This pollutes the build host but is what we want --
-  # we want to use elixir for the build without including it
-  # in the built artifact.
-  make "-j #{workers} install PREFIX=/usr/local", env: env
+  make "-j #{workers} install PREFIX=$HOME/local", env: env
 end

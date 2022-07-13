@@ -44,6 +44,7 @@ skip_transitive_dependency_licensing true
 
 build do
   env = with_standard_compiler_flags(with_embedded_path).merge(
+    'PATH' => '$PATH;$HOME/local/bin',
     'MIX_ENV' => 'prod',
     'VERSION' => ENV.fetch('VERSION', '0.0.0+git.0.ci')
   )

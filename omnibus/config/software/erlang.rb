@@ -149,10 +149,6 @@ build do
           ' --disable-debug', env: env
 
   make "-j #{workers}", env: env
-
-  # XXX: This pollutes the build host but is what we want --
-  # we want to use erlang for the build without including it
-  # in the built artifact. `mix release` will that handle that.
-  make "-j #{workers} install PREFIX=/usr/local", env: env
+  make "-j #{workers} install PREFIX=$HOME/local", env: env
 end
 # rubocop:enable Metrics/BlockLength
