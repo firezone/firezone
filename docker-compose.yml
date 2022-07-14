@@ -78,7 +78,7 @@ services:
       - PUID=1000
       - PGID=1000
       - TZ=UTC
-      - ALLOWEDIPS=0.0.0.0/0
+      - ALLOWEDIPS="0.0.0.0/0,::/0"
     volumes:
       - ./tmp/config:/config
     cap_add:

@@ -122,6 +122,7 @@ config :phoenix, :stacktrace_depth, 20
 config :phoenix, :plug_init_mode, :runtime
 
 config :fz_http,
+  wireguard_allowed_ips: "172.28.0.0/16",
   cookie_secure: false,
   telemetry_module: FzCommon.MockTelemetry,
   local_auth_enabled: local_auth_enabled
