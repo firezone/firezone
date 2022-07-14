@@ -51,7 +51,7 @@ defmodule FzHttpWeb.SidebarComponent do
             <% end %>
           </li>
           <li>
-            <%= live_redirect(to: Routes.setting_customization_path(FzHttpWeb.Endpoint, :show), class: nav_class(@path, "/settings/security")) do %>
+            <%= live_redirect(to: Routes.setting_customization_path(FzHttpWeb.Endpoint, :show), class: nav_class(@path, "/settings/customization")) do %>
               <span class="icon"><i class="mdi mdi-palette"></i></span>
               <span class="menu-item-label">Customizaiton</span>
             <% end %>
