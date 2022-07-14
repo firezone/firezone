@@ -10,13 +10,80 @@
 # We recommend using the bang functions (`insert!`, `update!`
 # and so on) as they will fail if something goes wrong.
 
-alias FzHttp.{Devices, ConnectivityChecks, Rules, Users}
+alias FzHttp.{Devices, ConnectivityChecks, Users}
 
 {:ok, user} =
   Users.create_admin_user(%{
     email: "firezone@localhost",
     password: "firezone1234",
     password_confirmation: "firezone1234"
+  })
+
+{:ok, device} =
+  Devices.create_device(%{
+    user_id: user.id,
+    name: "Factory Device 3",
+    description: "foo 3",
+    preshared_key: "23eCDMVRVFfMVS5Rfnn9n7as4M6MemGY/oghmdrwX2E=",
+    public_key: "3Fo+SBnDJ6hi8q4Pt3nWLwgjCVwvpjHL35qJeatKwEc=",
+    remote_ip: %Postgrex.INET{address: {127, 1, 0, 1}},
+    rx_bytes: 123_917_823,
+    tx_bytes: 1_934_475_211_087_234
+  })
+
+{:ok, device} =
+  Devices.create_device(%{
+    user_id: user.id,
+    name: "Factory Device 6",
+    description: "foo 4",
+    preshared_key: "24eCDMVRVFfMVS5Rfnn9n7as4t6MemGY/oghmdrwX2E=",
+    public_key: "33o+SBnDJ6hi8q4Pt3nWLwgjCVwvpjHL35qJeatKwEc=",
+    remote_ip: %Postgrex.INET{address: {127, 2, 0, 1}},
+    rx_bytes: 123_917_823,
+    tx_bytes: 1_934_475_211_087_234
+  })
+
+{:ok, device} =
+  Devices.create_device(%{
+    user_id: user.id,
+    name: "Factory Device 5",
+    description: "foo 3",
+    preshared_key: "23eCDMVRbFfMVS5Rfnn9n7as4M6MemGY/oghmdrwX2E=",
+    public_key: "3Fo+SBnDJ6hb8q4Pt3nWLwgjCVwvpjHL35qJeatKwEc=",
+    remote_ip: %Postgrex.INET{address: {127, 3, 0, 1}},
+    rx_bytes: 123_917_823,
+    tx_bytes: 1_934_475_211_087_234
+  })
+
+{:ok, device} =
+  Devices.create_device(%{
+    user_id: user.id,
+    name: "Factory Device 4",
+    description: "foo 3",
+    preshared_key: "2yeCDMVRVFfMVS5Rfnn9n7as4M6MemGY/oghmdrwX2E=",
+    public_key: "3Fo+nBnDJ6hi8q4Pt3nWLwgjCVwvpjHL35qJeatKwEc=",
+    remote_ip: %Postgrex.INET{address: {127, 4, 0, 1}},
+    rx_bytes: 123_917_823,
+    tx_bytes: 1_934_475_211_087_234
+  })
+
+{:ok, user} =
+  Users.create_admin_user(%{
+    email: "firezone2@localhost",
+    password: "firezone1234",
+    password_confirmation: "firezone1234"
+  })
+
+{:ok, device} =
+  Devices.create_device(%{
+    user_id: user.id,
+    name: "Factory Device 2",
+    description: "foo 2",
+    preshared_key: "27eCDMVRVFfMVS5Rfnn9n7as4M6MemGY/oghmdrwX2E=",
+    public_key: "3Fo+SBnDJ6hi8qzPt3nWLwgjCVwvpjHL35qJeatKwEc=",
+    remote_ip: %Postgrex.INET{address: {127, 5, 0, 1}},
+    rx_bytes: 123_917_823,
+    tx_bytes: 1_934_475_211_087_234
   })
 
 {:ok, device} =
@@ -50,7 +117,7 @@ alias FzHttp.{Devices, ConnectivityChecks, Rules, Users}
     """,
     preshared_key: "27eCDMVvVFfMVS5Rfnn9n7as4M6MemGY/oghmdrwX2E=",
     public_key: "3Fo+SNnDJ6hi8qzPt3nWLwgjCVwvpjHL35qJeatKwEc=",
-    remote_ip: %Postgrex.INET{address: {127, 0, 0, 1}},
+    remote_ip: %Postgrex.INET{address: {127, 6, 0, 1}},
     rx_bytes: 123_917_823,
     tx_bytes: 1_934_475_211_087_234
   })
