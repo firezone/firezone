@@ -18,7 +18,6 @@ defmodule FzHttpWeb.SettingLive.Customization do
      |> assign(:page_title, "Customization")
      |> assign(:config, config)
      |> assign(:logo_type, logo_type)
-     |> assign(:uploaded_files, [])
      |> allow_upload(:logo,
        accept: ~w(.jpg .jpeg .png .gif .webp .avif .svg .tiff),
        max_file_size: @max_logo_size
