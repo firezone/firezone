@@ -8,11 +8,11 @@ defmodule FzWall.CLI.Helpers.Nft do
   @table_name "firezone"
 
   @doc """
-  Creates a nft rule
+  Insert a nft rule
   """
-  def create_rule(type, source_set, dest_set, action) do
+  def insert_rule(type, source_set, dest_set, action) do
     exec!("""
-      #{nft()} 'add rule inet #{@table_name} forward #{rule_match_str(type, source_set, dest_set, action)}'
+      #{nft()} 'insert rule inet #{@table_name} forward #{rule_match_str(type, source_set, dest_set, action)}'
     """)
   end
 
