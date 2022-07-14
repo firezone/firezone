@@ -72,7 +72,7 @@ defmodule FzHttpWeb.SettingLive.Customization do
     {:noreply, assign(socket, :config, config)}
   end
 
-  defp error_to_string(:too_large), do: "The file is too large"
-  defp error_to_string(:too_many_files), do: "You have selected too many files"
-  defp error_to_string(:not_accepted), do: "You have selected an unacceptable file type"
+  defp error_to_string(:too_large), do: "The file exceeds the maximum size of 256KB."
+  defp error_to_string(:too_many_files), do: "You have selected too many files."
+  defp error_to_string(:not_accepted), do: "You have selected an unacceptable file type."
 end
