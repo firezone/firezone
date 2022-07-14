@@ -11,6 +11,10 @@ defmodule FzHttp.MFA do
     Repo.one(from m in Method, select: count(m.user_id, :distinct))
   end
 
+  def count_distinct_totp_by_user_id do
+    Repo.one(from m in Method, select: count(m.user_id, :distinct), where: [type: :totp])
+  end
+
   def exists?(%User{id: id}) do
     Repo.exists?(from Method, where: [user_id: ^id])
   end
