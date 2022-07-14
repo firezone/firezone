@@ -40,46 +40,131 @@ defmodule FzHttp.TelemetryTest do
   end
 
   describe "auth" do
+    setup context do
+      if context[:config] do
+        {key, value} = context[:config]
+        restore_env(key, value, &on_exit/1)
+      else
+        context
+      end
+    end
+
     test "count openid providers" do
       ping_data = Telemetry.ping_data()
 
       assert ping_data[:openid_providers] == 2
     end
 
-    test "auto create oidc users" do
+    @tag config: {:auto_create_oidc_users, true}
+    test "auto create oidc users enabled" do
       ping_data = Telemetry.ping_data()
 
       assert ping_data[:auto_create_oidc_users]
     end
 
-    test "disable vpn on oidc error" do
+    @tag config: {:auto_create_oidc_users, false}
+    test "auto create oidc users disabled" do
+      ping_data = Telemetry.ping_data()
+
+      refute ping_data[:auto_create_oidc_users]
+    end
+
+    @tag config: {:disable_vpn_on_oidc_error, true}
+    test "disable vpn on oidc error enabled" do
       ping_data = Telemetry.ping_data()
 
       assert ping_data[:disable_vpn_on_oidc_error]
     end
 
-    test "local authentication" do
+    @tag config: {:disable_vpn_on_oidc_error, false}
+    test "disable vpn on oidc error disabled" do
+      ping_data = Telemetry.ping_data()
+
+      refute ping_data[:disable_vpn_on_oidc_error]
+    end
+
+    @tag config: {:local_auth_enabled, true}
+    test "local authentication enabled" do
+      restore_env(:local_auth_enabled, true, &on_exit/1)
       ping_data = Telemetry.ping_data()
 
       assert ping_data[:local_authentication]
     end
 
-    test "unprivileged device management" do
+    @tag config: {:local_auth_enabled, false}
+    test "local authentication disabled" do
+      restore_env(:local_auth_enabled, false, &on_exit/1)
+      ping_data = Telemetry.ping_data()
+
+      refute ping_data[:local_authentication]
+    end
+
+    @tag config: {:allow_unprivileged_device_management, true}
+    test "unprivileged device management enabled" do
       ping_data = Telemetry.ping_data()
 
       assert ping_data[:unprivileged_device_management]
     end
+
+    @tag config: {:allow_unprivileged_device_management, false}
+    test "unprivileged device management disabled" do
+      ping_data = Telemetry.ping_data()
+
+      refute ping_data[:unprivileged_device_management]
+    end
   end
 
-  test "external database" do
-    ping_data = Telemetry.ping_data()
+  describe "database" do
+    setup context do
+      restore_env(FzHttp.Repo, context[:db_config], &on_exit/1)
+    end
 
-    assert !ping_data[:external_database]
+    @tag db_config: [hostname: "localhost"]
+    test "local hostname" do
+      ping_data = Telemetry.ping_data()
+
+      refute ping_data[:external_database]
+    end
+
+    @tag db_config: [url: "postgres://127.0.0.1"]
+    test "local url" do
+      ping_data = Telemetry.ping_data()
+
+      refute ping_data[:external_database]
+    end
+
+    @tag db_config: [hostname: "firezone.dev"]
+    test "external hostname" do
+      ping_data = Telemetry.ping_data()
+
+      assert ping_data[:external_database]
+    end
+
+    @tag db_config: [url: "postgres://firezone.dev"]
+    test "external url" do
+      ping_data = Telemetry.ping_data()
+
+      assert ping_data[:external_database]
+    end
   end
 
-  test "outbound email" do
-    ping_data = Telemetry.ping_data()
+  describe "email" do
+    setup context do
+      restore_env(FzHttp.Mailer, [from_email: context[:from_email]], &on_exit/1)
+    end
 
-    assert ping_data[:outbound_email]
+    @tag from_email: "test@firezone.dev"
+    test "outbound set" do
+      ping_data = Telemetry.ping_data()
+
+      assert ping_data[:outbound_email]
+    end
+
+    @tag from_email: nil
+    test "outbound unset" do
+      ping_data = Telemetry.ping_data()
+
+      refute ping_data[:outbound_email]
+    end
   end
 end

@@ -90,7 +90,7 @@ defmodule FzHttp.Telemetry do
         local_authentication: conf(:local_auth_enabled),
         disable_vpn_on_oidc_error: conf(:disable_vpn_on_oidc_error),
         outbound_email: outbound_email?(),
-        external_database: external_database?()
+        external_database: external_database?(Map.new(conf(FzHttp.Repo)))
       ]
   end
 
@@ -118,10 +118,18 @@ defmodule FzHttp.Telemetry do
     Application.spec(:fz_http, :vsn) |> to_string()
   end
 
-  defp external_database? do
-    db_host = conf(FzHttp.Repo)[:hostname]
+  defp external_database?(repo_conf) when is_map_key(repo_conf, :hostname) do
+    is_external_db?(repo_conf.hostname)
+  end
 
-    db_host != "localhost" && db_host != "127.0.0.1"
+  defp external_database?(repo_conf) when is_map_key(repo_conf, :url) do
+    %{host: host} = URI.parse(repo_conf.url)
+
+    is_external_db?(host)
+  end
+
+  defp is_external_db?(host) do
+    host != "localhost" && host != "127.0.0.1"
   end
 
   defp outbound_email? do
