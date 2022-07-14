@@ -6,23 +6,40 @@ defmodule FzHttpWeb.SettingLive.Customization do
 
   alias FzHttp.Conf
 
+  @max_logo_size 256 * 1024
+
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
+    config = Conf.get_configuration!()
+    logo_type = Conf.logo_type(config)
+
     {:ok,
      socket
      |> assign(:page_title, "Customization")
-     |> assign(:config, Conf.get_configuration!())
+     |> assign(:config, config)
+     |> assign(:logo_type, logo_type)
      |> assign(:uploaded_files, [])
      |> allow_upload(:logo,
        accept: ~w(.jpg .jpeg .png .gif .webp .avif .svg .tiff),
-       max_entries: 1,
-       max_file_size: 256 * 1024
+       max_file_size: @max_logo_size
      )}
+  end
+
+  @impl Phoenix.LiveView
+  def handle_event("choose", %{"type" => type}, socket) do
+    {:noreply, assign(socket, :logo_type, type)}
   end
 
   @impl Phoenix.LiveView
   def handle_event("validate", _params, socket) do
     {:noreply, socket}
+  end
+
+  @impl Phoenix.LiveView
+  def handle_event("save", %{"default" => "true"}, socket) do
+    {:ok, config} = Conf.update_configuration(socket.assigns.config, %{logo: nil})
+
+    {:noreply, assign(socket, :config, config)}
   end
 
   @impl Phoenix.LiveView

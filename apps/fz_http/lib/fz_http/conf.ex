@@ -19,4 +19,10 @@ defmodule FzHttp.Conf do
     |> Configuration.changeset(attrs)
     |> Repo.update()
   end
+
+  def logo_types, do: ~w(Default URL Upload)
+
+  def logo_type(%Configuration{logo: nil}), do: "Default"
+  def logo_type(%Configuration{logo: %{"url" => _url}}), do: "URL"
+  def logo_type(%Configuration{logo: %{"data" => _data}}), do: "Upload"
 end

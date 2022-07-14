@@ -18,6 +18,5 @@ defmodule FzHttp.Conf.Configuration do
   def changeset(configuration, attrs) do
     configuration
     |> cast(attrs, [:logo])
-    |> validate_required([:logo])
   end
 end
