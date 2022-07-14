@@ -12,14 +12,19 @@
   <h4 class="title is-4">Logo</h4>
 
   <div class="block">
-    <form id="upload-form" phx-submit="save" phx-change="validate">
-      <%= if @config.logo do %>
-      <p>
-        Current Logo:
-        <%= preview_logo(@config.logo) %>
-      </p>
-      <% end %>
+    <%= if @config.logo do %>
+    <p>
+      Current Logo:
+      <%= preview_logo(@config.logo) %>
+    </p>
+    <% end %>
 
+    <form id="url-form" phx-submit="save">
+      <input type="url" name="url" >
+      <button class="button" type="submit">Save</button>
+    </form>
+
+    <form id="upload-form" phx-submit="save" phx-change="validate">
       <%= for entry <- @uploads.logo.entries do %>
         <%= for err <- upload_errors(@uploads.logo, entry) do %>
           <p class="notification is-warning"><%= error_to_string(err) %></p>
