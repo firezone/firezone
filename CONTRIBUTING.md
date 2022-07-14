@@ -8,7 +8,7 @@ started.
 * [Overview](#overview)
 * [Developer Environment Setup](#developer-environment-setup)
   * [Docker Setup](#docker-setup)
-    * [Docker Cavet](#docker-caveat)
+    * [Docker Caveat](#docker-caveat)
   * [asdf-vm](#asdf-vm)
   * [Pre-commit](#pre-commit)
   * [The .env File](#the-env-file)
