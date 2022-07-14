@@ -1,0 +1,34 @@
+<%= render FzHttpWeb.SharedView, "heading.html", page_title: @page_title %>
+
+<section class="section is-main-section">
+  <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
+
+  <div class="block">
+    <p>
+      Customize your web portal.
+    </p>
+  </div>
+
+  <h4 class="title is-4">Logo</h4>
+
+  <div class="block">
+    <form id="upload-form" phx-submit="save" phx-change="validate">
+      <%= if @config.logo do %>
+      <p>
+        Current Logo:
+        <%= preview_logo(@config.logo) %>
+      </p>
+      <% end %>
+
+      <%= for entry <- @uploads.logo.entries do %>
+        <%= for err <- upload_errors(@uploads.logo, entry) do %>
+          <p class="notification is-warning"><%= error_to_string(err) %></p>
+        <% end %>
+      <% end %>
+
+      <%= live_file_input @uploads.logo %>
+
+      <button class="button" type="submit">Upload</button>
+    </form>
+  </div>
+</section>
