@@ -64,15 +64,23 @@ services:
     networks:
       - app
 
-  wireguard-log:
-    image: ubuntu:jammy
-    volumes:
-      - /sys/kernel/debug:/sys/kernel/debug
-    # cap SYSLOG was enough for reading but privilege is required for tailing
-    privileged: true
-    command: bash -c 'dmesg -wT | grep wireguard:'
+  # Unfortunately the Linux VM kernel for Docker Desktop is not compiled with
+  # Dynamic Debug enabled, so we're unable to enable WireGuard debug logging.
+  # Since WireGuard is designed to be silent by default, this basically does
+  # nothing.
+  # wireguard-log:
+  #   image: ubuntu:jammy
+  #   # cap SYSLOG was enough for reading but privilege is required for tailing
+  #   privileged: true
+  #   command: >
+  #     bash -c '
+  #     mount -t debugfs none /sys/kernel/debug
+  #     && echo module wireguard +p > /sys/kernel/debug/dynamic_debug/control
+  #     && dmesg -wT | grep wireguard:'
 
-  wireguard-client:
+  client:
+    depends_on:
+      - elixir
     image: linuxserver/wireguard:latest
     environment:
       - PUID=1000
@@ -80,7 +88,7 @@ services:
       - TZ=UTC
       - ALLOWEDIPS="0.0.0.0/0,::/0"
     volumes:
-      - ./tmp/config:/config
+      - ./.devcontainer/wg0.client.conf:/config/wg0.conf
     cap_add:
       - NET_ADMIN
       - SYS_MODULE

@@ -49,6 +49,7 @@ config :fz_wall,
   cli: fz_wall_cli_module
 
 config :fz_vpn,
+  wireguard_private_key_path: "priv/wg_dev_private_key",
   wg_adapter: fz_vpn_wgadapter_module
 
 # Auth

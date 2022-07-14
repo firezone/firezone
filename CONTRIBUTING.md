@@ -7,15 +7,20 @@ started.
 
 * [Overview](#overview)
 * [Developer Environment Setup](#developer-environment-setup)
-  * [Prerequisites](#prerequisites)
-    * [asdf-vm](#asdf-vm)
-    * [Postgresql](#postgresql)
-    * [Pre-commit](#pre-commit)
+  * [Docker Setup](#docker-setup)
+    * [Docker Cavet](#docker-caveat)
+  * [asdf-vm](#asdf-vm)
+  * [Pre-commit](#pre-commit)
   * [The .env File](#the-env-file)
   * [Bootstrapping](#bootstrapping)
+  * [Ensure Everything Works](#ensure-everything-works)
+  * [Running this inside a Devcontainer](#running-this-inside-a-devcontainer)
+    * [Note: Devcontainer on Windows](#note--devcontainer-on-windows)
 * [Reporting Bugs](#reporting-bugs)
 * [Opening a Pull Request](#opening-a-pull-request)
-  * [Running Tests](#running-tests)
+  * [Run Tests](#run-tests)
+    * [Unit Tests](#unit-tests)
+    * [End-to-end Tests](#end-to-end-tests)
   * [Use Detailed Commit Messages](#use-detailed-commit-messages)
   * [Ensure Static Analysis Checks Pass](#ensure-static-analysis-checks-pass)
 * [Code of Conduct](#code-of-conduct)
@@ -76,6 +81,23 @@ reach their destination through the tunnel just fine. Because of this, it's
 recommended to use `172.28.0.0/16` for your `AllowedIPs` parameter when using
 host-based WireGuard clients with Firezone running under Docker Desktop.
 
+### asdf-vm Setup
+
+While not strictly required, we use [asdf-vm](https://asdf-vm.com) to manage
+language versions for Firezone. You'll need to install the language runtimes
+according to the versions laid out in the [.tool-versions](.tool-versions) file.
+
+If using asdf, simply run `asdf install` from the project root.
+
+This is used to run static analysis checks during [pre-commit](#pre-commit) and
+for any local, non-Docker development or testing.
+
+### Pre-commit
+
+We use [pre-commit](https://pre-commit.com) to catch any static analysis issues
+before code is committed. Install with Homebrew: `brew install pre-commit` or
+pip: `pip install pre-commit`.
+
 ### The ENV file
 
 For running tests and developing Firezone outside of Docker, you'll need some
@@ -97,9 +119,9 @@ At this point you should be able to sign in to
 [http://localhost:4000](http://localhost:4000) with email `firezone@localhost` and
 password `firezone1234`.
 
-### Start the Docker Development Cluster
+### Bootstrapping
 
-To run using docker follow these steps:
+To start the local development cluster, follow these steps:
 
 ```
 docker compose build
@@ -113,23 +135,22 @@ and sign in with email `firezone@localhost` and password `firezone1234`.
 
 ### Ensure Everything Works
 
-There is a `wireguard-client` container in the docker-compose configuration that
-can be used to simulate a WireGuard client connecting to Firezone.
+There is a `client` container in the docker-compose configuration that
+can be used to simulate a WireGuard client connecting to Firezone. It's already
+provisioned in the Firezone development cluster and has a corresponding
+WireGuard configuration located at .devcontainer/wg0.client.conf.
 It's attached to the `isolation` Docker network which is isolated from the other
-Firezone Docker services. By connecting to Firezone from the `wireguard-client`
+Firezone Docker services. By connecting to Firezone from the `client`
 container, you can test the WireGuard tunnel is set up correctly by pinging the
 `caddy` container:
 
-* `docker compose exec wireguard-client ping caddy`
-* `docker compose exec wireguard-client curl -k https://caddy/hello`: this should return `HELLO` text.
-To setup this test before doing `docker compose up` do this:
-* Create a device in firezone using the default configuration except for:
-  * `DNS`: `127.0.0.11` (Docker internal DNS)
-  * `Endpoint`: `elixir:51820` (Need to edit after download)
-* Download the generated configuration to `./tmp/config/wg0.conf`
-* `docker compose up`
+* `docker compose exec client ping 172.28.0.99`
+* `docker compose exec client curl -k 172.28.0.99:8443/hello`: this
+  should return `HELLO` text.
 
-## Running this inside a Devcontainer
+If the above commands indicate success, you should be good to go!
+
+### Running this inside a Devcontainer
 
 You can run this using Github Codespaces or your own devcontainer using Docker.
 
@@ -147,7 +168,7 @@ command in the terminal:
 
 `echo "https://${CODESPACE_NAME}-4000.githubpreview.dev"`
 
-### Note: Devcontainer on Windows
+#### Note: Devcontainer on Windows
 
 If you are on Windows, make sure your git config `core.autocrlf` is off. Otherwise,
 the `\r` characters confuse asdf, which in turn fails the devcontainer build.
@@ -176,50 +197,27 @@ If it's not there, please open a new issue and include the following:
 We love pull requests! To ensure your pull request gets reviewed and merged
 swiftly, please read the below *before* opening a pull request.
 
-### Running local static analysis checks
-
-Before submitting a PR, be sure to run local static analysis checks. This can
-be done by ensuring you have all the language runtimes installed and
-running `pre-commit` as detailed below.
-
-### asdf-vm Setup
-
-While not strictly required, we use [asdf-vm](https://asdf-vm.com) to manage
-language versions for Firezone. You'll need to install the language runtimes
-according to the versions laid out in the [.tool-versions](.tool-versions) file.
-
-If using asdf, simply run `asdf install` from the project root.
-
-This is used to run static analysis checks during [pre-commit](#pre-commit) and
-for any local, non-Docker development or testing.
-
-### Pre-commit
-
-We use [pre-commit](https://pre-commit.com) to catch any static analysis issues
-before code is committed. Install with Homebrew: `brew install pre-commit` or
-pip: `pip install pre-commit`.
-
-## Run Tests
+### Run Tests
 
 Please test your code. As a contributor, it is **your** responsibility to ensure
 your code is bug-free, otherwise it may be rejected. It's also a good idea to
 check the code coverage report to ensure your tests are covering your new
 code. E.g.
 
-### Unit Tests
+#### Unit Tests
 
 Unit tests can be run with `mix test` from the project root.
 
 To view line coverage information, you may run `mix coveralls.html`
 which will generate an HTML coverage report in `cover/`.
 
-### End-to-end Tests
+#### End-to-end Tests
 
 More comprehensive e2e testing is performed in the CI pipeline, but for security
 reasons these will not be triggered automatically by your pull request and must
 be manually triggered by a reviewer.
 
-## Use Detailed Commit Messages
+### Use Detailed Commit Messages
 
 This will help tremendously during our release engineering process. E.g.
 
@@ -234,7 +232,7 @@ EOM
 git commit -m "$COMMIT_MSG"
 ```
 
-## Ensure Static Analysis Checks Pass
+### Ensure Static Analysis Checks Pass
 
 This should run automatically when you run `git commit`, but in case it doesn't:
 
