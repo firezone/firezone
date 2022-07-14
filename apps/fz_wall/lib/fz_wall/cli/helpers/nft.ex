@@ -46,7 +46,7 @@ defmodule FzWall.CLI.Helpers.Nft do
   """
   def add_set(set_spec) do
     exec!("""
-      #{nft()} 'add set inet #{@table_name} #{set_spec.name} { type #{set_type(set_spec.type)} ; flags interval ; }'
+      #{nft()} 'add set inet #{@table_name} #{set_spec.name} { type #{set_type(set_spec.type)} ; flags interval ; auto-merge ; }'
     """)
   end
 
