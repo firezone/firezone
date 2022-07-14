@@ -15,7 +15,7 @@
     <%= if @config.logo do %>
     <p>
       Current Logo:
-      <%= preview_logo(@config.logo) %>
+      <%= FzHttpWeb.LogoComponent.render(@config.logo) %>
     </p>
     <% end %>
 

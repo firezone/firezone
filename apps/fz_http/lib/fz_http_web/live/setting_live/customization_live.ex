@@ -58,18 +58,4 @@ defmodule FzHttpWeb.SettingLive.Customization do
   defp error_to_string(:too_large), do: "The file is too large"
   defp error_to_string(:too_many_files), do: "You have selected too many files"
   defp error_to_string(:not_accepted), do: "You have selected an unacceptable file type"
-
-  defp preview_logo(nil), do: nil
-
-  defp preview_logo(%{"url" => url} = assigns) do
-    ~H"""
-    <img src={url} alt="Firezone App Logo" />
-    """
-  end
-
-  defp preview_logo(%{"data" => data, "type" => type} = assigns) do
-    ~H"""
-    <img src={"data:#{type};base64," <> data} alt="Firezone App Logo" />
-    """
-  end
 end
