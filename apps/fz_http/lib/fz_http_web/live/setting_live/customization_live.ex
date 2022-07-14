@@ -14,7 +14,7 @@ defmodule FzHttpWeb.SettingLive.Customization do
      |> assign(:config, Conf.get_configuration!())
      |> assign(:uploaded_files, [])
      |> allow_upload(:logo,
-       accept: ~w(.jpg .jpeg .png .gif .webp .avif),
+       accept: ~w(.jpg .jpeg .png .gif .webp .avif .svg .tiff),
        max_entries: 1,
        max_file_size: 256 * 1024
      )}
