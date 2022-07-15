@@ -17,8 +17,18 @@ include_recipe 'firezone::setcap'
 include_recipe 'firezone::app'
 include_recipe 'firezone::telemetry'
 
+running_config = "#{node['firezone']['config_directory']}/firezone-running.json"
+
+execute 'handle_interface_change' do
+  old_interface = Chef::JSONCompat.from_json(
+    File.open(running_config).read
+  )['firezone']['wireguard']['interface_name']
+  only_if (old_interface != node['firezone']['wireguard']['interface_name']).to_s
+  command "ip link del dev #{old_interface}"
+end
+
 # Write out a firezone-running.json at the end of the run
-file "#{node['firezone']['config_directory']}/firezone-running.json" do
+file running_config do
   content Chef::JSONCompat.to_json_pretty('firezone' => node['firezone'])
   owner node['firezone']['user']
   group node['firezone']['group']
