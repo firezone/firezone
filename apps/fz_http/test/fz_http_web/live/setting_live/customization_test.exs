@@ -44,5 +44,42 @@ defmodule FzHttpWeb.SettingLive.CustomizationTest do
              |> element("input[value=Upload]")
              |> render_click() =~ ~s|<form id="upload-form"|
     end
+
+    @tag logo: %{"url" => "test"}
+    test "reset to default", %{view: view, html: html} do
+      html =~ ~s|<form id="url-form"|
+      view |> element("input[value=Default]") |> render_click()
+      view |> element("form") |> render_submit()
+
+      assert nil == Conf.get(:logo)
+    end
+
+    test "change to url", %{view: view, html: html} do
+      html =~ ~s|<form id="default-form"|
+      view |> element("input[value=URL]") |> render_click()
+      view |> render_submit("save", %{"url" => "new"})
+
+      assert %{"url" => "new"} == Conf.get(:logo)
+    end
+
+    test "change to upload", %{view: view, html: html} do
+      html =~ ~s|<form id="default-form"|
+      view |> element("input[value=Upload]") |> render_click()
+
+      view
+      |> file_input("#upload-form", :logo, [
+        %{
+          last_modified: 0,
+          name: "logo.jpeg",
+          content: "new",
+          size: 3,
+          type: "image/jpeg"
+        }
+      ])
+      |> render_upload("logo.jpeg")
+
+      view |> render_submit("save", %{})
+      assert %{"data" => Base.encode64("new"), "type" => "image/jpeg"} == Conf.get(:logo)
+    end
   end
 end
