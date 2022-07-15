@@ -177,7 +177,7 @@ defmodule FzHttp.DevicesTest do
 
     @invalid_endpoint_ipv4_attrs %{
       use_site_endpoint: false,
-      endpoint: "265.1.1.1"
+      endpoint: "-265.1.1.1"
     }
 
     @invalid_endpoint_ipv6_attrs %{
@@ -236,7 +236,7 @@ defmodule FzHttp.DevicesTest do
       {:error, changeset} = Devices.update_device(device, @invalid_endpoint_ipv4_attrs)
 
       assert changeset.errors[:endpoint] == {
-               "is invalid: 265.1.1.1 is not a valid FQDN or IPv4 / IPv6 address",
+               "is invalid: -265.1.1.1 is not a valid FQDN or IPv4 / IPv6 address",
                []
              }
     end

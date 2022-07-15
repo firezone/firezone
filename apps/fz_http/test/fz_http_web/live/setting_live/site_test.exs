@@ -27,7 +27,7 @@ defmodule FzHttpWeb.SettingLive.SiteTest do
       "site" => %{"dns" => "foobar"}
     }
     @invalid_endpoint %{
-      "site" => %{"endpoint" => "foobar"}
+      "site" => %{"endpoint" => "-foobar"}
     }
     @invalid_persistent_keepalive %{
       "site" => %{"persistent_keepalive" => "-1"}
@@ -162,7 +162,7 @@ defmodule FzHttpWeb.SettingLive.SiteTest do
       assert test_view =~ "is invalid"
 
       assert test_view =~ """
-             <input class="input is-danger" id="site_form_component_endpoint" name="site[endpoint]" placeholder="127.0.0.1" type="text" value="foobar"/>\
+             <input class="input is-danger" id="site_form_component_endpoint" name="site[endpoint]" placeholder="127.0.0.1" type="text" value="-foobar"/>\
              """
     end
 

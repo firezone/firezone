@@ -19,7 +19,30 @@ alias FzHttp.{Devices, ConnectivityChecks, Users}
     password_confirmation: "firezone1234"
   })
 
-{:ok, device} =
+{:ok, _device} =
+  Devices.create_device(%{
+    user_id: user.id,
+    name: "wireguard-client",
+    description: """
+    Test device corresponding to the client configuration used in the wireguard-client container
+    """,
+    preshared_key: "C+Tte1echarIObr6rq+nFeYQ1QO5xo5N29ygDjMlpS8=",
+    public_key: "pSLWbPiQ2mKh26IG1dMFQQWuAstFJXV91dNk+olzEjA=",
+    ipv4: "10.3.2.6",
+    ipv6: "fd00::3:2:6",
+    mtu: 1280,
+    persistent_keepalive: 25,
+    allowed_ips: "0.0.0.0,::/0",
+    endpoint: "elixir:51820",
+    dns: "127.0.0.11",
+    use_site_allowed_ips: false,
+    use_site_dns: false,
+    use_site_endpoint: false,
+    use_site_mtu: false,
+    use_site_persistent_keepalive: false
+  })
+
+{:ok, _device} =
   Devices.create_device(%{
     user_id: user.id,
     name: "Factory Device 3",
@@ -31,19 +54,7 @@ alias FzHttp.{Devices, ConnectivityChecks, Users}
     tx_bytes: 1_934_475_211_087_234
   })
 
-{:ok, device} =
-  Devices.create_device(%{
-    user_id: user.id,
-    name: "Factory Device 6",
-    description: "foo 4",
-    preshared_key: "24eCDMVRVFfMVS5Rfnn9n7as4t6MemGY/oghmdrwX2E=",
-    public_key: "33o+SBnDJ6hi8q4Pt3nWLwgjCVwvpjHL35qJeatKwEc=",
-    remote_ip: %Postgrex.INET{address: {127, 2, 0, 1}},
-    rx_bytes: 123_917_823,
-    tx_bytes: 1_934_475_211_087_234
-  })
-
-{:ok, device} =
+{:ok, _device} =
   Devices.create_device(%{
     user_id: user.id,
     name: "Factory Device 5",
@@ -55,7 +66,7 @@ alias FzHttp.{Devices, ConnectivityChecks, Users}
     tx_bytes: 1_934_475_211_087_234
   })
 
-{:ok, device} =
+{:ok, _device} =
   Devices.create_device(%{
     user_id: user.id,
     name: "Factory Device 4",
@@ -74,7 +85,7 @@ alias FzHttp.{Devices, ConnectivityChecks, Users}
     password_confirmation: "firezone1234"
   })
 
-{:ok, device} =
+{:ok, _device} =
   Devices.create_device(%{
     user_id: user.id,
     name: "Factory Device 2",
@@ -86,7 +97,7 @@ alias FzHttp.{Devices, ConnectivityChecks, Users}
     tx_bytes: 1_934_475_211_087_234
   })
 
-{:ok, device} =
+{:ok, _device} =
   Devices.create_device(%{
     user_id: user.id,
     name: "Factory Device",

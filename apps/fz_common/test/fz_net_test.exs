@@ -39,7 +39,21 @@ defmodule FzCommon.FzNetTest do
     end
   end
 
-  describe "valid_fqdn/1" do
+  describe "valid_host?/1" do
+    test "foobar is valid" do
+      assert FzNet.valid_hostname?("foobar")
+    end
+
+    test "-foobar is invalid" do
+      refute FzNet.valid_hostname?("-foobar")
+    end
+
+    test "1234 is valid" do
+      assert FzNet.valid_hostname?("1234")
+    end
+  end
+
+  describe "valid_fqdn?/1" do
     test "foobar is invalid" do
       refute FzNet.valid_fqdn?("foobar")
     end
