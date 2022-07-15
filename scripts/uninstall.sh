@@ -19,7 +19,9 @@ if type apt-get > /dev/null; then
 elif type yum > /dev/null; then
   yum remove -y firezone
   rm /etc/yum.repos.d/firezone-firezone.repo
-  rm /etc/yum.repos.d/firezone-firezone-source.repo
+  # some distros (eg, CentOS 7) do not include this repo file
+  # silence if it can't be found for removal
+  rm /etc/yum.repos.d/firezone-firezone-source.repo 2> /dev/null
 elif type zypper > /dev/null; then
   zypper --non-interactive remove -y -u firezone
   zypper --non-interactive rr firezone-firezone
