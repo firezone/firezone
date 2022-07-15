@@ -36,17 +36,14 @@ defmodule FzHttpWeb.SettingLive.Customization do
 
   @impl Phoenix.LiveView
   def handle_event("save", %{"default" => "true"}, socket) do
-    {:ok, config} = Conf.update_configuration(Conf.get_configuration!(), %{logo: nil})
+    {:ok, config} = Conf.update_configuration(%{logo: nil})
 
     {:noreply, assign(socket, :logo, config.logo)}
   end
 
   @impl Phoenix.LiveView
   def handle_event("save", %{"url" => url}, socket) do
-    {:ok, config} =
-      Conf.update_configuration(Conf.get_configuration!(), %{
-        logo: %{"url" => url}
-      })
+    {:ok, config} = Conf.update_configuration(%{logo: %{"url" => url}})
 
     {:noreply, assign(socket, :logo, config.logo)}
   end
@@ -61,9 +58,7 @@ defmodule FzHttpWeb.SettingLive.Customization do
 
         # enforce OK, error from update_configuration instead of consume_uploaded_entry
         {:ok, config} =
-          Conf.update_configuration(Conf.get_configuration!(), %{
-            logo: %{"data" => data, "type" => entry.client_type}
-          })
+          Conf.update_configuration(%{logo: %{"data" => data, "type" => entry.client_type}})
 
         {:ok, config}
       end)

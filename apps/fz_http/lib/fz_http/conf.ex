@@ -13,11 +13,11 @@ defmodule FzHttp.Conf do
     Repo.one!(Configuration)
   end
 
-  def change_configuration(%Configuration{} = config) do
+  def change_configuration(%Configuration{} = config \\ get_configuration!()) do
     Configuration.changeset(config, %{})
   end
 
-  def update_configuration(%Configuration{} = config, attrs) do
+  def update_configuration(%Configuration{} = config \\ get_configuration!(), attrs) do
     config
     |> Configuration.changeset(attrs)
     |> prepare_changes(fn changeset ->
