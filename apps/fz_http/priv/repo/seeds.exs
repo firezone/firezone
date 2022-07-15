@@ -33,7 +33,7 @@ alias FzHttp.{Devices, ConnectivityChecks, Users}
     mtu: 1280,
     persistent_keepalive: 25,
     allowed_ips: "0.0.0.0,::/0",
-    endpoint: "elixir:51820",
+    endpoint: "elixir",
     dns: "127.0.0.11",
     use_site_allowed_ips: false,
     use_site_dns: false,
