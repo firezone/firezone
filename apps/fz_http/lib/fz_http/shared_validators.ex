@@ -9,6 +9,7 @@ defmodule FzHttp.SharedValidators do
     only: [
       valid_ip?: 1,
       valid_fqdn?: 1,
+      valid_hostname?: 1,
       valid_cidr?: 1
     ]
 
@@ -29,7 +30,7 @@ defmodule FzHttp.SharedValidators do
     validate_change(changeset, field, fn _current_field, value ->
       value
       |> split_comma_list()
-      |> Enum.find(&(not (valid_ip?(&1) or valid_fqdn?(&1))))
+      |> Enum.find(&(not (valid_ip?(&1) or valid_fqdn?(&1) or valid_hostname?(&1))))
       |> error_if(
         &(!is_nil(&1)),
         &{field, "is invalid: #{&1} is not a valid FQDN or IPv4 / IPv6 address"}
