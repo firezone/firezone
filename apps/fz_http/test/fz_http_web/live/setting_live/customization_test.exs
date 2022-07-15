@@ -13,6 +13,7 @@ defmodule FzHttpWeb.SettingLive.CustomizationTest do
       {:ok, view: view, html: html}
     end
 
+    @tag logo: nil
     test "show default", %{html: html} do
       assert html =~ ~s|<input type="radio" name="logo" value="Default" checked|
     end
@@ -27,18 +28,21 @@ defmodule FzHttpWeb.SettingLive.CustomizationTest do
       assert html =~ ~s|<input type="radio" name="logo" value="Upload" checked|
     end
 
+    @tag logo: %{"url" => "test"}
     test "click default radio", %{view: view} do
       assert view
              |> element("input[value=Default]")
              |> render_click() =~ ~s|<form id="default-form"|
     end
 
+    @tag logo: nil
     test "click url radio", %{view: view} do
       assert view
              |> element("input[value=URL]")
              |> render_click() =~ ~s|<form id="url-form"|
     end
 
+    @tag logo: nil
     test "click upload radio", %{view: view} do
       assert view
              |> element("input[value=Upload]")
@@ -54,6 +58,7 @@ defmodule FzHttpWeb.SettingLive.CustomizationTest do
       assert nil == Conf.get(:logo)
     end
 
+    @tag logo: nil
     test "change to url", %{view: view, html: html} do
       html =~ ~s|<form id="default-form"|
       view |> element("input[value=URL]") |> render_click()
@@ -62,6 +67,7 @@ defmodule FzHttpWeb.SettingLive.CustomizationTest do
       assert %{"url" => "new"} == Conf.get(:logo)
     end
 
+    @tag logo: nil
     test "change to upload", %{view: view, html: html} do
       html =~ ~s|<form id="default-form"|
       view |> element("input[value=Upload]") |> render_click()
