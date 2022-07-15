@@ -14,17 +14,17 @@ defmodule FzHttpWeb.SettingLive.CustomizationTest do
     end
 
     test "show default", %{html: html} do
-      assert html =~ ~s|<input type="radio" name="logo" value="Default" checked|
+      assert html =~ ~s|value="Default" checked|
     end
 
     @tag logo: %{"url" => "test"}
     test "show url", %{html: html} do
-      assert html =~ ~s|<input type="radio" name="logo" value="URL" checked|
+      assert html =~ ~s|value="URL" checked|
     end
 
     @tag logo: %{"data" => "test", "type" => "test"}
     test "show upload", %{html: html} do
-      assert html =~ ~s|<input type="radio" name="logo" value="Upload" checked|
+      assert html =~ ~s|value="Upload" checked|
     end
 
     test "click default radio", %{view: view} do
