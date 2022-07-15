@@ -6,17 +6,17 @@ defmodule FzHttpWeb.SettingLive.Customization do
 
   alias FzHttp.Conf
 
-  @max_logo_size 256 * 1024
+  @max_logo_size 1024 ** 2
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
-    config = Conf.get_configuration!()
-    logo_type = Conf.logo_type(config)
+    logo = Conf.get(:logo)
+    logo_type = Conf.logo_type(logo)
 
     {:ok,
      socket
      |> assign(:page_title, "Customization")
-     |> assign(:config, config)
+     |> assign(:logo, logo)
      |> assign(:logo_type, logo_type)
      |> allow_upload(:logo,
        accept: ~w(.jpg .jpeg .png .gif .webp .avif .svg .tiff),
@@ -36,19 +36,19 @@ defmodule FzHttpWeb.SettingLive.Customization do
 
   @impl Phoenix.LiveView
   def handle_event("save", %{"default" => "true"}, socket) do
-    {:ok, config} = Conf.update_configuration(socket.assigns.config, %{logo: nil})
+    {:ok, config} = Conf.update_configuration(Conf.get_configuration!(), %{logo: nil})
 
-    {:noreply, assign(socket, :config, config)}
+    {:noreply, assign(socket, :logo, config.logo)}
   end
 
   @impl Phoenix.LiveView
   def handle_event("save", %{"url" => url}, socket) do
     {:ok, config} =
-      Conf.update_configuration(socket.assigns.config, %{
+      Conf.update_configuration(Conf.get_configuration!(), %{
         logo: %{"url" => url}
       })
 
-    {:noreply, assign(socket, :config, config)}
+    {:noreply, assign(socket, :logo, config.logo)}
   end
 
   @impl Phoenix.LiveView
@@ -61,17 +61,17 @@ defmodule FzHttpWeb.SettingLive.Customization do
 
         # enforce OK, error from update_configuration instead of consume_uploaded_entry
         {:ok, config} =
-          Conf.update_configuration(socket.assigns.config, %{
+          Conf.update_configuration(Conf.get_configuration!(), %{
             logo: %{"data" => data, "type" => entry.client_type}
           })
 
         {:ok, config}
       end)
 
-    {:noreply, assign(socket, :config, config)}
+    {:noreply, assign(socket, :logo, config.logo)}
   end
 
-  defp error_to_string(:too_large), do: "The file exceeds the maximum size of 256KB."
+  defp error_to_string(:too_large), do: "The file exceeds the maximum size of 1MB."
   defp error_to_string(:too_many_files), do: "You have selected too many files."
   defp error_to_string(:not_accepted), do: "You have selected an unacceptable file type."
 end

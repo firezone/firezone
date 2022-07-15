@@ -37,7 +37,7 @@
       <%= if @logo_type == "Default" do %>
         <%= FzHttpWeb.LogoComponent.render(nil) %>
       <% else %>
-        <%= FzHttpWeb.LogoComponent.render(@config.logo) %>
+        <%= FzHttpWeb.LogoComponent.render(@logo) %>
       <% end %>
     </div>
 
