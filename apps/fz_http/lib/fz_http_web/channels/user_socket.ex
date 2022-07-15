@@ -61,7 +61,7 @@ defmodule FzHttpWeb.UserSocket do
       convert_ip(
         RemoteIp.from(x_headers,
           headers: HeaderHelpers.ip_x_headers(),
-          proxy: HeaderHelpers.trusted_proxy()
+          proxies: HeaderHelpers.trusted_proxy()
         )
       )
     else
