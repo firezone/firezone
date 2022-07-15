@@ -29,11 +29,11 @@ defmodule FzHttp.Rules do
   defp overlap_find(query, destination) do
     Repo.all(query)
     |> Enum.find(fn rule ->
-      existing_rule = FzCommon.FzNet.standardized_inet_range(decode(rule.destination))
-      incoming_rule = FzCommon.FzNet.standardized_inet_range(decode(destination))
+      existing_rule = CIDR.parse(decode(rule.destination))
+      incoming_rule = CIDR.parse(decode(destination))
 
-      InetCidr.contains?(existing_rule, incoming_rule) ||
-        InetCidr.contains?(incoming_rule, existing_rule) || existing_rule == incoming_rule
+      CIDR.subnet?(existing_rule, incoming_rule) ||
+        CIDR.subnet?(incoming_rule, existing_rule)
     end)
   end
 
