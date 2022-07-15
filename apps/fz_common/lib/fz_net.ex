@@ -46,13 +46,21 @@ defmodule FzCommon.FzNet do
   """
   def standardized_inet(inet) when is_binary(inet) do
     if String.contains?(inet, "/") do
+      standardized_inet_range(inet)
+      |> InetCidr.to_string()
+    else
+      standardized_inet_range(inet) |> :inet.ntoa() |> List.to_string()
+    end
+  end
+
+  def standardized_inet_range(inet) when is_binary(inet) do
+    if String.contains?(inet, "/") do
       inet
       # normalize CIDR
       |> InetCidr.parse(true)
-      |> InetCidr.to_string()
     else
       {:ok, addr} = inet |> String.to_charlist() |> :inet.parse_address()
-      :inet.ntoa(addr) |> List.to_string()
+      addr
     end
   end
 
