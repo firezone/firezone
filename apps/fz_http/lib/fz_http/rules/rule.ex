@@ -6,6 +6,8 @@ defmodule FzHttp.Rules.Rule do
   use Ecto.Schema
   alias FzHttp.Rules
   import Ecto.Changeset
+  import FzHttp.Devices, only: [decode: 1]
+  import FzHttp.Users, only: [get_user: 1, exists?: 1]
 
   @rule_dupe_msg "A rule with that specification already exists."
   @default_action :drop
@@ -40,9 +42,9 @@ defmodule FzHttp.Rules.Rule do
         add_error(
           changeset,
           :destination,
-          "Destination overlaps with an existing rule: Destination: #{FzHttp.Devices.decode(rule.destination)}" <>
-            if(Map.has_key?(changes, :user_id) and FzHttp.Users.exists?(changes.user_id),
-              do: ", User Scope: #{FzHttp.Users.get_user(changes.user_id).email}",
+          "Destination overlaps with an existing rule: Destination: #{decode(rule.destination)}" <>
+            if(Map.has_key?(changes, :user_id) and exists?(changes.user_id),
+              do: ", User Scope: #{get_user(changes.user_id).email}",
               else: ""
             )
         )
