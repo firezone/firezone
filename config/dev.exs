@@ -49,6 +49,7 @@ config :fz_wall,
   cli: fz_wall_cli_module
 
 config :fz_vpn,
+  wireguard_private_key_path: "priv/wg_dev_private_key",
   wg_adapter: fz_vpn_wgadapter_module
 
 # Auth
@@ -122,6 +123,7 @@ config :phoenix, :stacktrace_depth, 20
 config :phoenix, :plug_init_mode, :runtime
 
 config :fz_http,
+  wireguard_allowed_ips: "172.28.0.0/16",
   cookie_secure: false,
   telemetry_module: FzCommon.MockTelemetry,
   local_auth_enabled: local_auth_enabled
