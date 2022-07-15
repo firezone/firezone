@@ -20,11 +20,11 @@ license_file 'COPYING'
 skip_transitive_dependency_licensing true
 
 # Some weirdness in the official release package so use git and switch to tag
-# default_version "1.0.4"
+# default_version "0.9.9"
 # source url: "https://www.netfilter.org/pub/nftables/nftables-#{version}.tar.bz2"
-# version("1.0.4") { source sha256: "927fb1fea1f685a328c10cf791eb655d7e1ed49d310eea5cb3101dfd8d6cba35" }
+# version("0.9.9") { source sha256: "76ef2dc7fd0d79031a8369487739a217ca83996b3a746cec5bda79da11e3f1b4" }
 source git: 'git://git.netfilter.org/nftables'
-default_version 'v1.0.4'
+default_version 'v0.9.9'
 
 relative_path "#{name}-#{version}"
 
