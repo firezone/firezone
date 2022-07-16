@@ -30,6 +30,6 @@ defmodule FzHttp.Conf.Cache do
       put(k, v)
     end
 
-    {:ok, []}
+    :ignore
   end
 end
