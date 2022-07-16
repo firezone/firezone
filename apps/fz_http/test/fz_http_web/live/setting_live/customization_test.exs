@@ -8,6 +8,8 @@ defmodule FzHttpWeb.SettingLive.CustomizationTest do
       Conf.update_configuration(%{logo: context[:logo]})
 
       on_exit(fn ->
+        # this is required because configuration is automatically reset (rolled back)
+        # after each run, but persistent terms are not. we need to manually reset it here.
         Conf.Cache.put(:logo, nil)
       end)
 
