@@ -22,7 +22,7 @@ defmodule FzHttp.Conf do
     |> Configuration.changeset(attrs)
     |> prepare_changes(fn changeset ->
       for {k, v} <- changeset.changes do
-        Cache.put(k, v)
+        :ok = Cache.put(k, v)
       end
 
       changeset

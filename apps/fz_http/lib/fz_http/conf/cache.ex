@@ -27,7 +27,7 @@ defmodule FzHttp.Conf.Cache do
       |> Map.delete(:id)
 
     for {k, v} <- configurations do
-      put(k, v)
+      :ok = put(k, v)
     end
 
     :ignore
