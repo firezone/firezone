@@ -7,12 +7,15 @@ defmodule FzHttpWeb.SettingLive.CustomizationTest do
     setup %{admin_conn: conn} = context do
       Conf.update_configuration(%{logo: context[:logo]})
 
+      IO.inspect({context[:logo], Conf.get(:logo)}, label: context.test)
+
       path = Routes.setting_customization_path(conn, :show)
       {:ok, view, html} = live(conn, path)
 
       {:ok, view: view, html: html}
     end
 
+    @tag logo: nil
     test "show default", %{html: html} do
       assert html =~ ~s|value="Default" checked|
     end
