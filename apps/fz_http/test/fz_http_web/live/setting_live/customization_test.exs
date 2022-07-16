@@ -7,7 +7,9 @@ defmodule FzHttpWeb.SettingLive.CustomizationTest do
     setup %{admin_conn: conn} = context do
       Conf.update_configuration(%{logo: context[:logo]})
 
-      IO.inspect({context[:logo], Conf.get(:logo)}, label: context.test)
+      on_exit(fn ->
+        Conf.Cache.put(:logo, nil)
+      end)
 
       path = Routes.setting_customization_path(conn, :show)
       {:ok, view, html} = live(conn, path)
