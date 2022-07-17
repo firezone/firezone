@@ -32,6 +32,7 @@ defmodule FzHttp.Application do
       FzHttp.Server,
       FzHttp.Repo,
       FzHttp.Vault,
+      FzHttp.Conf.Cache,
       FzHttpWeb.Endpoint,
       {Phoenix.PubSub, name: FzHttp.PubSub},
       FzHttpWeb.Presence,
