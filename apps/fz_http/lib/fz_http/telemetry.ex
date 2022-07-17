@@ -5,9 +5,7 @@ defmodule FzHttp.Telemetry do
 
   require Logger
 
-  alias FzHttp.Devices
-  alias FzHttp.MFA
-  alias FzHttp.Users
+  alias FzHttp.{Conf, Devices, MFA, Users}
 
   def add_device do
     telemetry_module().capture(
@@ -90,7 +88,8 @@ defmodule FzHttp.Telemetry do
         local_authentication: conf(:local_auth_enabled),
         disable_vpn_on_oidc_error: conf(:disable_vpn_on_oidc_error),
         outbound_email: outbound_email?(),
-        external_database: external_database?(Map.new(conf(FzHttp.Repo)))
+        external_database: external_database?(Map.new(conf(FzHttp.Repo))),
+        logo_type: Conf.logo_type(Conf.get(:logo))
       ]
   end
 

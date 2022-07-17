@@ -159,6 +159,7 @@ defmodule FzHttpWeb.Router do
       live "/settings/account", SettingLive.Account, :show
       live "/settings/account/edit", SettingLive.Account, :edit
       live "/settings/account/register_mfa", SettingLive.Account, :register_mfa
+      live "/settings/customization", SettingLive.Customization, :show
       live "/diagnostics/connectivity_checks", ConnectivityCheckLive.Index, :index
     end
   end
