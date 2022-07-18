@@ -86,10 +86,11 @@ setupCloudsmithRepoAndInstall() {
   then
     if [ ! -f /etc/apt/sources.list.d/firezone-firezone.list ]; then
       setupCloudsmithRepo "deb"
+    else
+      apt -qqy update
     fi
 
-    apt-get update -qy
-    apt-get install -y firezone
+    apt install -y firezone
   elif [[ "$hostinfo" =~ .*"Amazon Linux 2".*      || \
           "$hostinfo" =~ .*"Fedora 33".*           || \
           "$hostinfo" =~ .*"Fedora 34".*           || \
@@ -112,9 +113,10 @@ setupCloudsmithRepoAndInstall() {
   then
     if ! zypper lr | grep firezone-firezone; then
       setupCloudsmithRepo "rpm"
+    else
+      zypper --non-interactive --quiet ref firezone-firezone
     fi
 
-    zypper --non-interactive ref firezone-firezone
     zypper --non-interactive install -y firezone
   else
     echo "Did not detect a supported Linux distribution. Try using the manual installation method using a release package from a similar distribution. Aborting."

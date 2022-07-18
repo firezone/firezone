@@ -9,10 +9,11 @@ anything goes wrong during the upgrade.
 
 To upgrade Firezone, follow these steps:
 
-1. Download the new release for your platform.
-1. Install the new package over the old one:
-  `sudo dpkg -i firezone_X.X.X.deb` or
-  `sudo rpm -i --force firezone_X.X.X.rpm` depending on your distribution.
+1. If not setup already, install our package repository based on your distro's
+    package format:
+    - [deb packages](https://cloudsmith.io/~firezone/repos/firezone/setup/#formats-deb)
+    - [rpm packages](https://cloudsmith.io/~firezone/repos/firezone/setup/#formats-rpm)
+1. Upgrade the `firezone` package using your distro's package manager.
 1. Run `firezone-ctl reconfigure` to pick up the new changes.
 1. Run `firezone-ctl restart` to restart services.
 

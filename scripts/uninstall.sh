@@ -13,9 +13,9 @@ echo 'Removing firezone package...'
 if type apt-get > /dev/null; then
   DEBIAN_FRONTEND=noninteractive apt-get remove -y --purge firezone
   rm /etc/apt/sources.list.d/firezone-firezone.list
-  apt-get autoclean
+  apt-get clean
   rm -rf /var/lib/apt/lists/*
-  apt-get update -qy
+  apt-get -qqy update
 elif type yum > /dev/null; then
   yum remove -y firezone
   rm /etc/yum.repos.d/firezone-firezone.repo
@@ -42,3 +42,12 @@ rm -rf \
   /opt/firezone
 
 echo 'Done! Firezone has been uninstalled.'
+
+bold='\033[1m'
+reset='\033[0m'
+echo $bold
+echo 'We rely on feedback from users to steer development.' \
+    'Would you mind taking a minute to share product feedback in exchange' \
+    'for some Firezone stickers?'
+echo "https://firezone.dev/feedback#source=uninstall-script"
+echo $reset

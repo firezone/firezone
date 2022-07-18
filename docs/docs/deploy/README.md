@@ -45,7 +45,7 @@ script below.
 bash <(curl -Ls https://github.com/firezone/firezone/raw/master/scripts/install.sh)
 ```
 
-This will ask you a few questions regarding your install, download the latest
+This will ask you a few questions regarding your install, install the latest
 release for your platform, then create an administrator user and print to the
 console instructions for logging in to the web UI.
 
@@ -56,7 +56,7 @@ You can regenerate the admin credentials using the
 `firezone-ctl create-or-reset-admin` command.
 
 If the script fails, follow instructions for
-[manual installation](../deploy/install-server).
+[manual installation](../deploy/install-server#manual-install).
 
 ## Step 3: Install Client Apps
 
