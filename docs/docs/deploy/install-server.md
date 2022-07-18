@@ -13,10 +13,6 @@ Assuming you're running a supported Linux kernel on one of the [supported
 platforms](../deploy/supported-platforms), use one of the methods below
 to get started:
 
-- [Installation Instructions](#installation-instructions)
-  - [Automatic Install](#automatic-install)
-  - [Manual Install](#manual-install)
-
 ### Automatic Install
 
 The easiest way to get started using Firezone is via the automatic installation
