@@ -17,8 +17,11 @@ include_recipe 'firezone::setcap'
 include_recipe 'firezone::app'
 include_recipe 'firezone::telemetry'
 
+running_config = "#{node['firezone']['config_directory']}/firezone-running.json"
+old_interface = Chef::JSONCompat.from_json(File.open(running_config).read)['firezone']['wireguard']['interface_name']
+
 # Write out a firezone-running.json at the end of the run
-file "#{node['firezone']['config_directory']}/firezone-running.json" do
+file running_config do
   content Chef::JSONCompat.to_json_pretty('firezone' => node['firezone'])
   owner node['firezone']['user']
   group node['firezone']['group']
@@ -30,4 +33,10 @@ file "#{node['firezone']['var_directory']}/.license.accepted" do
   owner node['firezone']['user']
   group node['firezone']['group']
   mode '0600'
+end
+
+# Run at the end to try to minimize VPN disruption.
+execute 'handle_interface_change' do
+  only_if (old_interface != node['firezone']['wireguard']['interface_name']).to_s
+  command "ip link del dev #{old_interface}"
 end

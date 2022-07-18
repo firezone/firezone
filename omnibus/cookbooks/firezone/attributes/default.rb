@@ -268,8 +268,20 @@ default['firezone']['database']['name'] = 'firezone'
 default['firezone']['database']['host'] = node['firezone']['postgresql']['listen_address']
 default['firezone']['database']['port'] = node['firezone']['postgresql']['port']
 default['firezone']['database']['ssl'] = false
+
+# SSL opts to pass to Erlang's SSL module. See a full listing at https://www.erlang.org/doc/man/ssl.html
+# Firezone supports the following subset:
+# {
+#   verify: :verify_peer, # or :verify_none
+#   cacerts: "...",       # The DER-encoded trusted certificates. Overrides :cacertfile if specified.
+#   cacertfile: "/path/to/cert.pem", # Path to a file containing PEM-encoded CA certificates.
+#   versions: ["tlsv1.1", "tlsv1.2", "tlsv1.3"], # Array of TLS versions to enable
+# }
 default['firezone']['database']['ssl_opts'] = {}
+
+# DB Connection Parameters to pass to the Postgrex driver. If you're unsure, leave this blank.
 default['firezone']['database']['parameters'] = {}
+
 default['firezone']['database']['pool'] = [10, Etc.nprocessors].max
 default['firezone']['database']['extensions'] = { 'plpgsql' => true, 'pg_trgm' => true }
 
