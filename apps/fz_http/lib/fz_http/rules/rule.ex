@@ -6,12 +6,10 @@ defmodule FzHttp.Rules.Rule do
   use Ecto.Schema
   import Ecto.Changeset
 
-  @default_action :drop
-
   schema "rules" do
     field :uuid, Ecto.UUID, autogenerate: true
     field :destination, EctoNetwork.INET, read_after_writes: true
-    field :action, Ecto.Enum, values: [:drop, :accept], default: @default_action
+    field :action, Ecto.Enum, values: [:drop, :accept], default: :drop
     belongs_to :user, FzHttp.Users.User
 
     timestamps(type: :utc_datetime_usec)
