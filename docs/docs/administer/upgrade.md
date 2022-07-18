@@ -21,20 +21,26 @@ issue](https://github.com/firezone/firezone/issues/new/choose).
 
 ## Upgrading from < 0.5.0 to >= 0.5.0
 
-In order to support user-scoped rules Firezone now requires that no two firewall
-rules within the deny or allow lists fall within the same network range.
-So when upgrading firezone will keep the most general rule.
+### Overlapping egress rule destinations
 
-e.g. If you had in the deny-list the following rules:
-10.0.1.0/24, 10.0.0.0/16 and 10.0.1.97 we will keep 10.0.0.0/16.
+Firezone 0.5.0 removes the ability to add rules with overlapping destinations.
+When upgrading to 0.5.0, our migration script will automatically detect these
+cases and **keep only the rules whose destination encompasses the other rule**.
+If this is OK, **there is nothing you need to do**.
 
-Furthemore, Firezone has removed support for pre-configured Okta and Google
-OAuth2 providers.
+Otherwise, we recommend modifying your ruleset to eleminate these cases before
+upgrading.
 
-Follow the instructions below based on your current version and setup to
-migrate to OIDC providers:
+### Preconfigured Okta and Google SSO
 
-### I have an existing Google OAuth configuration
+Firezone 0.5.0 removes support for the old-style Okta and Google SSO
+configuration in favor of the new, more flexible OIDC-based configuration.
+If you have any configuration under the
+`default['firezone']['authentication']['okta']` or
+`default['firezone']['authentication']['google']` keys, **you need to migration
+these to our OIDC-based configuration using the guide below.**
+
+#### Existing Google OAuth configuration
 
 Remove these lines containing the old Google OAuth configs from your configuration
 file located at `/etc/firezone/firezone.rb`
@@ -49,7 +55,7 @@ default['firezone']['authentication']['google']['redirect_uri']
 Then, follow the instructions [here](../authenticate/google) to configure Google
 as an OIDC provider.
 
-### I have an existing Okta OAuth configuration
+#### Existing Okta OAuth configuration
 
 Remove these lines containing the old Okta OAuth configs from your configuration
 file located at `/etc/firezone/firezone.rb`

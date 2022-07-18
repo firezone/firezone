@@ -6,6 +6,8 @@ defmodule FzHttp.Rules.Rule do
   use Ecto.Schema
   import Ecto.Changeset
 
+  @exclusion_msg "Destination overlaps with an existing rule"
+
   schema "rules" do
     field :uuid, Ecto.UUID, autogenerate: true
     field :destination, EctoNetwork.INET, read_after_writes: true
@@ -24,11 +26,11 @@ defmodule FzHttp.Rules.Rule do
     ])
     |> validate_required([:action, :destination])
     |> exclusion_constraint(:destination,
-      message: "New user rule destination includes or is within the range of an existing one",
+      message: @exclusion_msg,
       name: :destination_overlap_excl_usr_rule
     )
     |> exclusion_constraint(:destination,
-      message: "New rule destination includes or is within the range of an existing one",
+      message: @exclusion_msg,
       name: :destination_overlap_excl
     )
   end
