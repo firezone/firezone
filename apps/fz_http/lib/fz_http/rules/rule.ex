@@ -4,12 +4,8 @@ defmodule FzHttp.Rules.Rule do
   """
 
   use Ecto.Schema
-  alias FzHttp.Rules
   import Ecto.Changeset
-  import FzHttp.Devices, only: [decode: 1]
-  import FzHttp.Users, only: [get_user: 1, exists?: 1]
 
-  @rule_dupe_msg "A rule with that specification already exists."
   @default_action :drop
 
   schema "rules" do
@@ -29,29 +25,13 @@ defmodule FzHttp.Rules.Rule do
       :destination
     ])
     |> validate_required([:action, :destination])
-    |> unique_constraint([:user_id, :destination, :action], message: @rule_dupe_msg)
-    |> validate_non_overlap()
-  end
-
-  defp validate_non_overlap(%{changes: changes, valid?: true} = changeset) do
-    case Rules.overlap(Map.put_new(changes, :action, @default_action)) do
-      nil ->
-        changeset
-
-      rule ->
-        add_error(
-          changeset,
-          :destination,
-          "Destination overlaps with an existing rule: Destination: #{decode(rule.destination)}" <>
-            if(Map.has_key?(changes, :user_id) and exists?(changes.user_id),
-              do: ", User Scope: #{get_user(changes.user_id).email}",
-              else: ""
-            )
-        )
-    end
-  end
-
-  defp validate_non_overlap(changeset) do
-    changeset
+    |> exclusion_constraint(:destination,
+      message: "New user rule destination includes or is within the range of an existing one",
+      name: :destination_overlap_excl_usr_rule
+    )
+    |> exclusion_constraint(:destination,
+      message: "New rule destination includes or is within the range of an existing one",
+      name: :destination_overlap_excl
+    )
   end
 end
