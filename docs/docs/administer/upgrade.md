@@ -21,7 +21,6 @@ issue](https://github.com/firezone/firezone/issues/new/choose).
 
 ## Upgrading from < 0.5.0 to >= 0.5.0
 
-
 In order to support user-scoped rules Firezone now requires that no firewalls rules within the
 deny or allow lists are within the same network range.
 So when upgrading firezone will keep the most general rule.

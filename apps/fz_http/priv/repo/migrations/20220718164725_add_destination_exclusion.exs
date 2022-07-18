@@ -8,6 +8,17 @@ defmodule FzHttp.Repo.Migrations.AddDestinationExclusion do
       DELETE FROM rules r1
       USING rules r2
       WHERE r2.destination >> r1.destination
+      AND r2.action = r1.action
+      AND r1.user_id IS NULL
+      AND r2.user_id IS NULL
+    ")
+
+    execute("
+      DELETE FROM rules r1
+      USING rules r2
+      WHERE r2.destination >> r1.destination
+      AND r2.action = r1.action
+      AND r2.user_id = r1.user_id
     ")
 
     execute(
