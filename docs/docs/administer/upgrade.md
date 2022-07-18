@@ -21,8 +21,16 @@ issue](https://github.com/firezone/firezone/issues/new/choose).
 
 ## Upgrading from < 0.5.0 to >= 0.5.0
 
-Firezone has removed support for pre-configured Okta and Google OAuth2 providers.
-Follow the instructions below based on your current setup to migrate to OIDC providers:
+
+In order to support user-scoped rules Firezone now requires that no firewalls rules within the
+deny or allow lists are within the same network range.
+So when upgrading firezone will keep the most general rule.
+
+e.g. If you had in the deny-list the following rules: 10.0.1.0/24, 10.0.0.0/16 and 10.0.1.97 we will keep 10.0.0.0/16.
+
+Furthemore, Firezone has removed support for pre-configured Okta and Google OAuth2 providers.
+
+Follow the instructions below based on your current version and setup to migrate to OIDC providers:
 
 ### I have an existing Google OAuth configuration
 

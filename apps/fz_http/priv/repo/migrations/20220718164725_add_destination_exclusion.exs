@@ -4,6 +4,12 @@ defmodule FzHttp.Repo.Migrations.AddDestinationExclusion do
   def change do
     drop unique_index(:rules, [:user_id, :destination, :action])
 
+    execute("
+      DELETE FROM rules r1
+      USING rules r2
+      WHERE r2.destination >> r1.destination
+    ")
+
     execute(
       "CREATE EXTENSION btree_gist",
       "DROP EXTENSION btree_gist"
