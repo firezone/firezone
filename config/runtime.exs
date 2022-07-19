@@ -112,8 +112,27 @@ if config_env() == :prod do
   database_password = System.get_env("DATABASE_PASSWORD")
 
   # XXX: Using to_atom here because this is trusted input and to_existing_atom
-  # won't work because we won't know the keys ahead of time.
-  ssl_opts = Keyword.new(database_ssl_opts, fn {k, v} -> {String.to_atom(k), v} end)
+  # won't work because we won't know the keys ahead of time. Hardcoding supported
+  # ssl_opts as well.
+  map_ssl_opt_val = fn k, v ->
+    case k do
+      "verify" ->
+        # verify expects an atom
+        String.to_atom(v)
+
+      "versions" ->
+        # versions expects a list of atoms
+        Enum.map(v, &String.to_atom(&1))
+
+      _ ->
+        # Everything else is usually a string
+        v
+    end
+  end
+
+  ssl_opts =
+    Keyword.new(database_ssl_opts, fn {k, v} -> {String.to_atom(k), map_ssl_opt_val.(k, v)} end)
+
   parameters = Keyword.new(database_parameters, fn {k, v} -> {String.to_atom(k), v} end)
 
   # Database configuration

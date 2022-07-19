@@ -10,12 +10,7 @@ guide.
 ## Installation Instructions
 
 Assuming you're running a supported Linux kernel on one of the [supported
-platforms](#supported-linux-distributions), use one of the methods below
-to get started:
-
-- [Installation Instructions](#installation-instructions)
-  - [Automatic Install](#automatic-install)
-  - [Manual Install](#manual-install)
+platforms](./supported-platforms), use one of the methods below to get started:
 
 ### Automatic Install
 
@@ -26,7 +21,7 @@ script:
 bash <(curl -Ls https://github.com/firezone/firezone/raw/master/scripts/install.sh)
 ```
 
-This will ask you a few questions regarding your install, download the latest
+This will ask you a few questions regarding your install, install the latest
 release for your platform, then create an administrator user and print to the
 console instructions for logging in to the web UI.
 
@@ -38,10 +33,44 @@ If the Automatic Install fails, try these steps to install Firezone manually.
 
 1. [Install WireGuard](https://www.wireguard.com/install/) for your distro.
    If using Linux kernel 5.6 or higher, skip this step.
-1. Download the relevant package for your distribution from the
-   [releases page](https://github.com/firezone/firezone/releases).
-1. Install with `sudo rpm -i firezone*.rpm` or `sudo dpkg -i firezone*.deb`
-   depending on your distro.
+
+1. Install our package [repository](https://cloudsmith.io/~firezone/repos/firezone)
+    for your distro's package format:
+    - deb packages:
+
+        ```bash
+        curl -1sLf \
+          'https://dl.cloudsmith.io/public/firezone/firezone/setup.deb.sh' \
+          | sudo -E bash
+        ```
+
+    - rpm packages:
+
+        ```bash
+        curl -1sLf \
+          'https://dl.cloudsmith.io/public/firezone/firezone/setup.rpm.sh' \
+          | sudo -E bash
+        ```
+
+    See Cloudsmith [setup docs](https://cloudsmith.io/~firezone/repos/firezone/setup)
+    for more info.
+
+1. Install Firezone with your distro's package manager:
+
+    ```bash
+    # Using apt
+    sudo apt install firezone
+
+    # Using dnf
+    sudo dnf install firezone
+
+    # Using yum
+    sudo yum install firezone
+
+    # Using zypper
+    sudo zypper install firezone
+    ```
+
 1. Bootstrap the application with `sudo firezone-ctl reconfigure`. This will
    initialize config files, set up needed services and generate the default
    configuration.

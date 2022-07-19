@@ -9,10 +9,11 @@ anything goes wrong during the upgrade.
 
 To upgrade Firezone, follow these steps:
 
-1. Download the new release for your platform.
-1. Install the new package over the old one:
-  `sudo dpkg -i firezone_X.X.X.deb` or
-  `sudo rpm -i --force firezone_X.X.X.rpm` depending on your distribution.
+1. If not setup already, install our package repository based on your distro's
+    package format:
+    - [deb packages](https://cloudsmith.io/~firezone/repos/firezone/setup/#formats-deb)
+    - [rpm packages](https://cloudsmith.io/~firezone/repos/firezone/setup/#formats-rpm)
+1. Upgrade the `firezone` package using your distro's package manager.
 1. Run `firezone-ctl reconfigure` to pick up the new changes.
 1. Run `firezone-ctl restart` to restart services.
 
@@ -21,10 +22,26 @@ issue](https://github.com/firezone/firezone/issues/new/choose).
 
 ## Upgrading from < 0.5.0 to >= 0.5.0
 
-Firezone has removed support for pre-configured Okta and Google OAuth2 providers.
-Follow the instructions below based on your current setup to migrate to OIDC providers:
+### Overlapping egress rule destinations
 
-### I have an existing Google OAuth configuration
+Firezone 0.5.0 removes the ability to add rules with overlapping destinations.
+When upgrading to 0.5.0, our migration script will automatically detect these
+cases and **keep only the rules whose destination encompasses the other rule**.
+If this is OK, **there is nothing you need to do**.
+
+Otherwise, we recommend modifying your ruleset to eliminate these cases before
+upgrading.
+
+### Preconfigured Okta and Google SSO
+
+Firezone 0.5.0 removes support for the old-style Okta and Google SSO
+configuration in favor of the new, more flexible OIDC-based configuration.
+If you have any configuration under the
+`default['firezone']['authentication']['okta']` or
+`default['firezone']['authentication']['google']` keys, **you need to migrate
+these to our OIDC-based configuration using the guide below.**
+
+#### Existing Google OAuth configuration
 
 Remove these lines containing the old Google OAuth configs from your configuration
 file located at `/etc/firezone/firezone.rb`
@@ -39,7 +56,7 @@ default['firezone']['authentication']['google']['redirect_uri']
 Then, follow the instructions [here](../authenticate/google) to configure Google
 as an OIDC provider.
 
-### I have an existing Okta OAuth configuration
+#### Existing Okta OAuth configuration
 
 Remove these lines containing the old Okta OAuth configs from your configuration
 file located at `/etc/firezone/firezone.rb`

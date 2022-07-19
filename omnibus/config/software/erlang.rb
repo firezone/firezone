@@ -20,7 +20,7 @@
 name 'erlang'
 
 # Erlang 25 has SSL issues -- HTTPoison times out to some servers, e.g. Azure https://login.microsoftonline.com
-default_version '25.0.1'
+default_version '25.0.2'
 
 license 'Apache-2.0'
 license_file 'LICENSE.txt'
@@ -31,7 +31,6 @@ dependency 'automake'
 dependency 'autoconf'
 dependency 'zlib'
 dependency 'openssl'
-dependency 'ncurses'
 dependency 'config_guess'
 
 # grab from github so we can get patch releases if we need to
@@ -39,6 +38,7 @@ source url: "https://github.com/erlang/otp/archive/OTP-#{version}.tar.gz"
 relative_path "otp-OTP-#{version}"
 
 # versions_list: https://github.com/erlang/otp/tags filter=*.tar.gz
+version('25.0.2')    { source sha256: 'f78764c6fd504f7b264c47e469c0fcb86a01c92344dc9d625dfd42f6c3ed8224' }
 version('25.0.1')    { source sha256: '4426bdf717c9f359f592fceb5dc29b9cab152010cd258475730de4582de42bff' }
 version('25.0')      { source sha256: '5988e3bca208486494446e885ca2149fe487ee115cbc3770535fd22a795af5d2' }
 version('24.3.4')    { source sha256: 'e59bedbb871af52244ca5284fd0a572d52128abd4decf4347fe2aef047b65c58' }
@@ -101,7 +101,7 @@ build do
   #
   # In future releases of erlang, someone should check if these flags (or
   # environment variables) are avaiable to remove this ugly hack.
-  %w[ncurses openssl zlib.h zconf.h].each do |name|
+  %w[openssl zlib.h zconf.h].each do |name|
     link "#{install_dir}/embedded/include/#{name}", "#{install_dir}/embedded/erlang/include/#{name}"
   end
 
@@ -130,7 +130,7 @@ build do
   wx = 'without'
 
   command './configure' \
-          " --prefix=#{install_dir}/embedded" \
+          ' --prefix=/opt/runner/local' \
           ' --enable-threads' \
           ' --enable-smp-support' \
           ' --enable-kernel-poll' \
@@ -142,12 +142,13 @@ build do
           " --#{wx}-et" \
           " --#{wx}-debugger" \
           " --#{wx}-observer" \
+          ' --without-termcap' \
           ' --without-megaco' \
           ' --without-javac' \
           " --with-ssl=#{install_dir}/embedded" \
           ' --disable-debug', env: env
 
   make "-j #{workers}", env: env
-  make 'install', env: env
+  make "-j #{workers} install", env: env
 end
 # rubocop:enable Metrics/BlockLength
