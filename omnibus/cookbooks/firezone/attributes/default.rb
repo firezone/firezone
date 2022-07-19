@@ -303,6 +303,10 @@ default['firezone']['phoenix']['port'] = 13_000
 default['firezone']['phoenix']['log_directory'] = "#{node['firezone']['log_directory']}/phoenix"
 default['firezone']['phoenix']['log_rotation']['file_maxbytes'] = 104_857_600
 default['firezone']['phoenix']['log_rotation']['num_to_keep'] = 10
+
+# Toggle bringing down the web app for Firezone if a crash loop is detected.
+# When set to true, the web app will be brought down after 5 crashes.
+# When set to false, this will allow the web app to crash indefinitely.
 default['firezone']['phoenix']['crash_detection']['enabled'] = true
 
 # ## WireGuard
