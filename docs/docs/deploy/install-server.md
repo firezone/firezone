@@ -10,8 +10,7 @@ guide.
 ## Installation Instructions
 
 Assuming you're running a supported Linux kernel on one of the [supported
-platforms](../deploy/supported-platforms), use one of the methods below
-to get started:
+platforms](./supported-platforms), use one of the methods below to get started:
 
 ### Automatic Install
 
