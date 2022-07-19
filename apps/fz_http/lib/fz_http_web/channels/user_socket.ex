@@ -8,7 +8,7 @@ defmodule FzHttpWeb.UserSocket do
 
   ## Channels
   # channel "room:*", FzHttpWeb.RoomChannel
-  channel "notification:session", FzHttpWeb.NotificationChannel
+  channel("notification:session", FzHttpWeb.NotificationChannel)
 
   # Socket params are passed from the client and can
   # be used to verify and authenticate a user. After
@@ -22,6 +22,7 @@ defmodule FzHttpWeb.UserSocket do
   # See `Phoenix.Token` documentation for examples in
   # performing token verification on connect.
   def connect(%{"token" => token}, socket, connect_info) do
+    Logger.warn("x-headers found: #{connect_info.x_headers}")
     ip = get_ip_address(connect_info)
 
     # XXX: We want to error here? If IP is nil definetly something fishy is going on.
