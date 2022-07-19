@@ -87,21 +87,23 @@ setupCloudsmithRepoAndInstall() {
     if [ ! -f /etc/apt/sources.list.d/firezone-firezone.list ]; then
       setupCloudsmithRepo "deb"
     else
-      apt -qqy update
+      apt-get -qqy update
     fi
 
-    apt install -y firezone
-  elif [[ "$hostinfo" =~ .*"Amazon Linux 2".*      || \
-          "$hostinfo" =~ .*"Fedora 33".*           || \
-          "$hostinfo" =~ .*"Fedora 34".*           || \
-          "$hostinfo" =~ .*"Fedora Linux 3"(5|6).* || \
-          "$hostinfo" =~ .*"CentOS Linux 7".*      || \
-          "$hostinfo" =~ .*"CentOS Stream 8".*     || \
-          "$hostinfo" =~ .*"CentOS Linux 8".*      || \
-          "$hostinfo" =~ .*"Rocky Linux 8".*       || \
-          "$hostinfo" =~ .*"AlmaLinux 8".*         || \
-          "$hostinfo" =~ .*"VzLinux 8".*           || \
-          "$hostinfo" =~ .*"CentOS Stream 9".*
+    apt-get install -y firezone
+  elif [[ "$hostinfo" =~ .*"Amazon Linux 2".*                   || \
+          "$hostinfo" =~ .*"Fedora 33".*                        || \
+          "$hostinfo" =~ .*"Fedora 34".*                        || \
+          "$hostinfo" =~ .*"Fedora Linux 3"(5|6).*              || \
+          "$hostinfo" =~ .*"CentOS Linux 7".*                   || \
+          "$hostinfo" =~ .*"CentOS Stream 8".*                  || \
+          "$hostinfo" =~ .*"CentOS Linux 8".*                   || \
+          "$hostinfo" =~ .*"CentOS Stream 9".*                  || \
+          "$hostinfo" =~ .*"Oracle Linux Server "(7|8|9).*      || \
+          "$hostinfo" =~ .*"Red Hat Enterprise Linux "(7|8|9).* || \
+          "$hostinfo" =~ .*"Rocky Linux 8".*                    || \
+          "$hostinfo" =~ .*"AlmaLinux 8".*                      || \
+          "$hostinfo" =~ .*"VzLinux 8".*
        ]]
   then
     if [ ! -f /etc/yum.repos.d/firezone-firezone.repo ]; then
@@ -127,7 +129,7 @@ setupCloudsmithRepoAndInstall() {
 setupCloudsmithRepo() {
   curl -1sLf \
     "https://dl.cloudsmith.io/public/firezone/firezone/setup.$1.sh" \
-    | sudo -E bash
+    | bash
 }
 
 firezoneSetup() {
