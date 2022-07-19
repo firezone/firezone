@@ -303,6 +303,7 @@ default['firezone']['phoenix']['port'] = 13_000
 default['firezone']['phoenix']['log_directory'] = "#{node['firezone']['log_directory']}/phoenix"
 default['firezone']['phoenix']['log_rotation']['file_maxbytes'] = 104_857_600
 default['firezone']['phoenix']['log_rotation']['num_to_keep'] = 10
+default['firezone']['phoenix']['crash_detection']['enabled'] = true
 
 # ## WireGuard
 
