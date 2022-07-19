@@ -31,3 +31,10 @@ DEST_DIR=/opt/firezone
 if [ -e ${DEST_DIR}/embedded/bin/symlink_ctl_cmds ]; then
     ${DEST_DIR}/embedded/bin/symlink_ctl_cmds
 fi
+
+bold=$(tput bold)
+reset=$(tput sgr0)
+echo $bold
+echo "Please see our upgrade guide for any version notes that apply:"
+echo "https://docs.firezone.dev/administer/upgrade"
+echo $reset
