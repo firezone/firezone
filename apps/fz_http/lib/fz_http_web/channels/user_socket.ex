@@ -26,6 +26,7 @@ defmodule FzHttpWeb.UserSocket do
 
     # XXX: We want to error here? If IP is nil definetly something fishy is going on.
     if ip == "" do
+      Logger.warn("x-headers found: #{connect_info.x_headers}")
       :error
     else
       Logger.metadata(remote_ip: ip)
