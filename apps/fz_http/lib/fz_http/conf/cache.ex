@@ -27,6 +27,12 @@ defmodule FzHttp.Conf.Cache do
       |> Map.delete(:id)
 
     for {k, v} <- configurations do
+      # XXX: Remove fallbacks before 1.0?
+      v =
+        with nil <- v do
+          Application.fetch_env!(:fz_http, k)
+        end
+
       :ok = put(k, v)
     end
 
