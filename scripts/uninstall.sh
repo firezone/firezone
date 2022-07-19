@@ -43,11 +43,11 @@ rm -rf \
 
 echo 'Done! Firezone has been uninstalled.'
 
-bold='\033[1m'
-reset='\033[0m'
+bold=$(tput bold)
+normal=$(tput sgr0)
 echo $bold
 echo 'We rely on feedback from users to steer development.' \
     'Would you mind taking a minute to share product feedback in exchange' \
     'for some Firezone stickers?'
 echo "https://firezone.dev/feedback#source=uninstall-script"
-echo $reset
+echo $normal
