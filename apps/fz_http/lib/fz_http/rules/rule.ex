@@ -6,7 +6,7 @@ defmodule FzHttp.Rules.Rule do
   use Ecto.Schema
   import Ecto.Changeset
 
-  @rule_dupe_msg "A rule with that specification already exists."
+  @exclusion_msg "Destination overlaps with an existing rule"
 
   schema "rules" do
     field :uuid, Ecto.UUID, autogenerate: true
@@ -25,6 +25,13 @@ defmodule FzHttp.Rules.Rule do
       :destination
     ])
     |> validate_required([:action, :destination])
-    |> unique_constraint([:user_id, :destination, :action], message: @rule_dupe_msg)
+    |> exclusion_constraint(:destination,
+      message: @exclusion_msg,
+      name: :destination_overlap_excl_usr_rule
+    )
+    |> exclusion_constraint(:destination,
+      message: @exclusion_msg,
+      name: :destination_overlap_excl
+    )
   end
 end
