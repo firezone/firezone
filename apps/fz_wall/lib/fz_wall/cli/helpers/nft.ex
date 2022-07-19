@@ -8,11 +8,11 @@ defmodule FzWall.CLI.Helpers.Nft do
   @table_name "firezone"
 
   @doc """
-  Creates a nft rule
+  Insert a nft rule
   """
-  def create_rule(type, source_set, dest_set, action) do
+  def insert_rule(type, source_set, dest_set, action) do
     exec!("""
-      #{nft()} 'add rule inet #{@table_name} forward #{rule_match_str(type, source_set, dest_set, action)}'
+      #{nft()} 'insert rule inet #{@table_name} forward #{rule_match_str(type, source_set, dest_set, action)}'
     """)
   end
 
@@ -176,7 +176,7 @@ defmodule FzWall.CLI.Helpers.Nft do
   defp set_type(:ip6), do: "ipv6_addr"
 
   defp rule_match_str(type, nil, dest_set, action) do
-    "#{type} daddr @#{dest_set} #{action}"
+    "#{type} daddr @#{dest_set} ct state != established #{action}"
   end
 
   defp rule_match_str(type, source_set, dest_set, action) do

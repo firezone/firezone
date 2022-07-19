@@ -113,7 +113,7 @@ defmodule FzWall.CLI.Live do
   defp add_rules(user_id) do
     cross(get_types(), get_actions())
     |> Enum.each(fn {type, action} ->
-      create_rule(
+      insert_rule(
         type,
         get_device_set_name(user_id, type),
         get_dest_set_name(user_id, type, action),

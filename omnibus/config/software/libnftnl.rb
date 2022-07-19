@@ -16,13 +16,13 @@
 #
 
 name 'libnftnl'
-default_version '1.2.0'
+default_version '1.2.2'
 
 license 'GPL-2.1'
 license_file 'COPYING'
 skip_transitive_dependency_licensing true
 
-version('1.2.0') { source sha256: '90b01fddfe9be8c3245c3ba5ff5a4424a8df708828f92b2b361976b658c074f5' }
+version('1.2.2') { source sha256: '9efc004f9d15918d68f9e98e194d55e030168f33bb67c3e7a545b740c9ed6d0a' }
 
 source url: "https://www.netfilter.org/pub/libnftnl/libnftnl-#{version}.tar.bz2"
 
