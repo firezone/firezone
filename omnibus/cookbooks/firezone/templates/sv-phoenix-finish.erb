@@ -26,7 +26,8 @@ if [ $1 -eq "1" ]; then
     capture || true
   fi
 
-  if [ -e count ]; then
+  enabled=<%=node['firezone']['phoenix']['crash_detection']['enabled']%>
+  if $enabled && [ -e count ]; then
     count=`cat count`
     if [ $count -eq "5" ]; then
       rm -f count

@@ -7,13 +7,12 @@ Shown below is a complete listing of the configuration options available in
 `/etc/firezone/firezone.rb`.
 
 <!-- markdownlint-disable MD013 -->
+<!-- markdownlint-disable MD033 -->
 <!-- markdownlint-disable MD034 -->
 
 | option                                                                        | description                                                                                                  | default value                                                          |
 | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
-<!-- markdownlint-disable MD033 -->
 | `default['firezone']['external_url']`                                         | URL used to access the web portal of this Firezone instance.                                                 | <code>"https://#{node['fqdn'] &vert;&vert; node['hostname']}"</code>   |
-<!-- markdownlint-enable MD033 -->
 | `default['firezone']['config_directory']`                                     | Top-level directory for Firezone configuration.                                                              | `'/etc/firezone'`                                                      |
 | `default['firezone']['install_directory']`                                    | Top-level directory to install Firezone to.                                                                  | `'/opt/firezone'`                                                      |
 | `default['firezone']['app_directory']`                                        | Top-level directory to install the Firezone web application.                                                 | `"#{node['firezone']['install_directory']}/embedded/service/firezone"` |
@@ -120,6 +119,7 @@ Shown below is a complete listing of the configuration options available in
 | `default['firezone']['phoenix']['log_directory']`                             | Firezone web application log directory.                                                                      | `"#{node['firezone']['log_directory']}/phoenix"`                       |
 | `default['firezone']['phoenix']['log_rotation']['file_maxbytes']`             | Firezone web application log file size.                                                                      | `104857600`                                                            |
 | `default['firezone']['phoenix']['log_rotation']['num_to_keep']`               | Number of Firezone web application log files to keep.                                                        | `10`                                                                   |
+| `default['firezone']['phoenix']['crash_detection']['enabled']`                | Enable or disable bringing down the Firezone web application when a crash is detected.                       | `true`                                                                 |
 | `default['firezone']['wireguard']['enabled']`                                 | Enable or disable bundled WireGuard management.                                                              | `true`                                                                 |
 | `default['firezone']['wireguard']['log_directory']`                           | Log directory for bundled WireGuard management.                                                              | `"#{node['firezone']['log_directory']}/wireguard"`                     |
 | `default['firezone']['wireguard']['log_rotation']['file_maxbytes']`           | WireGuard log file max size.                                                                                 | `104857600`                                                            |
@@ -143,11 +143,11 @@ Shown below is a complete listing of the configuration options available in
 | `default['firezone']['ssl']['directory']`                                     | SSL directory for storing generated certs.                                                                   | `'/var/opt/firezone/ssl'`                                              |
 | `default['firezone']['ssl']['enabled']`                                       | Enable or disable SSL for nginx.                                                                             | `true`                                                                 |
 | `default['firezone']['ssl']['email_address']`                                 | Email address to use for self-signed certs and ACME protocol renewal notices.                                | `'you@example.com'`                                                    |
-| `default['firezone']['ssl']['acme']['enabled']`                                          | Enable ACME for automatic SSL cert provisioning. See [here](https://docs.firezone.dev/docs/deploy/prerequisites/#create-an-ssl-certificate) for mor instructions.   | `false`                                                    |
-| `default['firezone']['ssl']['acme']['server']`                                   | ACME server to use for certificate issuance/renewal. Can be any [valid acme.sh server](https://github.com/acmesh-official/acme.sh/wiki/Server)                              | `letsencrypt`                                                    |
-| `default['firezone']['ssl']['acme']['keylength']`                                  | Specify the key type and length for SSL certificates. See [here](https://github.com/acmesh-official/acme.sh#10-issue-ecc-certificates)                              | `ec-256`                                                    |
-| `default['firezone']['ssl']['certificate']`                                   | Path to the certificate file for your FQDN. Overrides ACME setting above if specified. If both ACME and this are `nil` a self-signed cert will be generated.     | `nil`                                                                  |
-| `default['firezone']['ssl']['certificate_key']`                               | Path to the certificate file.                                                                                | `nil`                                                          |
+| `default['firezone']['ssl']['acme']['enabled']`                               | Enable ACME for automatic SSL cert provisioning. See [here](https://docs.firezone.dev/docs/deploy/prerequisites/#create-an-ssl-certificate) for more instructions.    | `false`       |
+| `default['firezone']['ssl']['acme']['server']`                                | ACME server to use for certificate issuance/renewal. Can be any [valid acme.sh server](https://github.com/acmesh-official/acme.sh/wiki/Server)                        | `letsencrypt` |
+| `default['firezone']['ssl']['acme']['keylength']`                             | Specify the key type and length for SSL certificates. See [here](https://github.com/acmesh-official/acme.sh#10-issue-ecc-certificates)                                | `ec-256`      |
+| `default['firezone']['ssl']['certificate']`                                   | Path to the certificate file for your FQDN. Overrides ACME setting above if specified. If both ACME and this are `nil` a self-signed cert will be generated.          | `nil`         |
+| `default['firezone']['ssl']['certificate_key']`                               | Path to the certificate file.                                                                                | `nil`                                                                  |
 | `default['firezone']['ssl']['ssl_dhparam']`                                   | nginx ssl dh_param.                                                                                          | `nil`                                                                  |
 | `default['firezone']['ssl']['country_name']`                                  | Country name for self-signed cert.                                                                           | `'US'`                                                                 |
 | `default['firezone']['ssl']['state_name']`                                    | State name for self-signed cert.                                                                             | `'CA'`                                                                 |
@@ -169,4 +169,5 @@ Shown below is a complete listing of the configuration options available in
 | `default['firezone']['connectivity_checks']['interval']`                      | Interval between connectivity checks in seconds.                                                             | `3_600`                                                                |
 
 <!-- markdownlint-enable MD013 -->
+<!-- markdownlint-enable MD033 -->
 <!-- markdownlint-enable MD034 -->
