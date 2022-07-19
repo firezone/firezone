@@ -1,15 +1,21 @@
 ---
-title: Example Apache configuration
-sidebar_position: 5
+title: Apache
+sidebar_position: 1
 ---
 
-The following are example apache2 configurations with and without SSL.
+The following are example [apache](https://httpd.apache.org/) configurations with and without SSL termination.
 
-These expect the apache2 to be running on the same host as firezone and `default['firezone']['phoenix']['port']` to be `13000`.
+These expect the apache to be running on the same host as firezone and `default['firezone']['phoenix']['port']` to be `13000`.
 
-### Without SSL
+### Without SSL termination
 
-Take into account that having traffic directly incoming without SSL won't work you'll need at some point to terminate an SSL connection.
+Take into account that a previous proxy will need to terminate SSL connections.
+
+`<server-name>` needs to be replaced with your domain name.
+
+This configuration needs to be placed in `/etc/sites-available/<server-name>.conf`
+
+and activated with `a2ensite <server-name>`
 
 ```
 LoadModule rewrite_module /usr/lib/apache2/modules/mod_rewrite.so
@@ -18,7 +24,6 @@ LoadModule proxy_http_module /usr/lib/apache2/modules/mod_proxy_http.so
 LoadModule proxy_wstunnel_module /usr/lib/apache2/modules/mod_proxy_wstunnel.so
 <VirtualHost *:80>
         ServerName <server-name>
-        ProxyPreserveHost On
         ProxyPassReverse "/" "http://127.0.0.1:13000/"
         ProxyPass "/" "http://127.0.0.1:13000/"
         RewriteEngine on
@@ -28,9 +33,9 @@ LoadModule proxy_wstunnel_module /usr/lib/apache2/modules/mod_proxy_wstunnel.so
 </VirtualHost>
 ```
 
-### With SSL
+### With SSL termination
 
-This configuration uses the generated self-signed certs
+This configuration should be used exactly like the previous and uses Firezone's generated self-signed certs to terminate SSL.
 
 ```
 LoadModule rewrite_module /usr/lib/apache2/modules/mod_rewrite.so
@@ -43,7 +48,6 @@ Listen 443
 <VirtualHost *:443>
         ServerName <server-name>
         RequestHeader set X-Forwarded-Proto "https"
-        ProxyPreserveHost On
         ProxyPassReverse "/" "http://127.0.0.1:13000/"
         ProxyPass "/" "http://127.0.0.1:13000/"
         RewriteEngine on
