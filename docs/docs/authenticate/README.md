@@ -96,9 +96,12 @@ If your identity provider is not listed above, but has a generic OIDC
 connector, please consult their documentation to find instructions on obtaining
 the config settings required.
 
-Join our [Slack](https://www.firezone.dev/slack) to request additional help or
-open a [Github Issue](https://github.com/firezone/firezone/issues) to request
-additional documentation for your provider.
+Open a [Github Issue](https://github.com/firezone/firezone/issues)
+to request documentation
+or submit a [pull request](https://github.com/firezone/firezone/tree/master/docs/docs/authenticate/index.md)
+to add documentation for your provider.
+If you require assistance in setting up your OIDC provider, please
+join the [Firezone Slack group](https://www.firezone.dev/slack).
 
 ## Enforce Periodic Re-authentication
 
