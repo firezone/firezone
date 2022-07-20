@@ -19,6 +19,8 @@ defmodule FzHttp.Conf.Cache do
     GenServer.start_link(__MODULE__, [])
   end
 
+  @no_fallback [:logo]
+
   @impl true
   def init(_) do
     configurations =
@@ -29,8 +31,10 @@ defmodule FzHttp.Conf.Cache do
     for {k, v} <- configurations do
       # XXX: Remove fallbacks before 1.0?
       v =
-        with nil <- v do
+        with nil <- v, true <- k not in @no_fallback do
           Application.fetch_env!(:fz_http, k)
+        else
+          _ -> v
         end
 
       :ok = put(k, v)
