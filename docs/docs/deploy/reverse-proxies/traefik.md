@@ -3,11 +3,17 @@ title: Traefik
 sidebar_position: 2
 ---
 
-The following are examples for configuring the [Traefik](https://traefik.io/) proxy.
+The following are examples for configuring the [Traefik](https://traefik.io/)
+proxy.
 
-As of right now Firezone can't be run as a container in production, although this is a [planned feature](https://github.com/firezone/firezone/issues/260). So, these example configurations expects Firezone to be deployed in the same host as the proxy.
+As of right now Firezone can't be run as a container in production, although
+this is a [planned feature](https://github.com/firezone/firezone/issues/260).
+So, these example configurations expects Firezone to be deployed in the same
+host as the proxy.
 
-In these configurations we assume `default['firezone']['phoenix']['port']` to be `13000`. Furthermore, for these configuration to work we need the Firezone app to listen in the Docker interface so you should set:
+In these configurations we assume `default['firezone']['phoenix']['port']` to be
+`13000`. Furthermore, for these configuration to work we need the Firezone app
+to listen in the Docker interface so you should set:
 
 * `default['firezone']['phoenix']['listen_address'] = '172.17.0.1'`
 * `default['firezone']['trusted_proxy'] = ['172.18.0.2']`
@@ -21,7 +27,8 @@ Take into account that a previous proxy will need to terminate SSL connections.
 Set the following files
 
 ### `docker-compose.yml`
-```
+
+```conf
 ubuntu@ip-172-31-79-208:~/traefik$ cat docker-compose.yml
 version: '3'
 
@@ -49,7 +56,8 @@ services:
 ```
 
 ### `rules.yml`
-```
+
+```conf
 ubuntu@ip-172-31-79-208:~/traefik$ cat rules.yml
 http:
   routers:
@@ -69,10 +77,12 @@ And then you can start the Traefik proxy with `docker compose up`
 
 ## With SSL termination
 
-This configuration use the auto-generated Firezone self-signed certs as the default certificates for SSL.
+This configuration use the auto-generated Firezone self-signed certs as the
+default certificates for SSL.
 
-### `docker-compose.yml`
-```
+### SSL `docker-compose.yml`
+
+```conf
 version: '3'
 
 services:
@@ -99,8 +109,9 @@ services:
       - /var/opt/firezone/ssl/ca:/ssl:ro
 ```
 
-### `rules.yml`
-```
+### SSL `rules.yml`
+
+```conf
 http:
   routers:
     test:
