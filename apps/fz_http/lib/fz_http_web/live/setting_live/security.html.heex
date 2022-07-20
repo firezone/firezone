@@ -10,8 +10,9 @@
   </div>
 
   <h4 class="title is-4">Authentication</h4>
+
   <div class="block">
-    <.form let={f} for={@changeset} phx-change="change" phx-submit="save">
+    <.form let={f} for={@site_changeset} phx-change="change" phx-submit="save">
       <div class="field">
         <%= label f, :vpn_session_duration, "Require Authentication For VPN Sessions", class: "label" %>
         <div class="field has-addons">
@@ -32,7 +33,45 @@
     </.form>
   </div>
 
+  <div class="block">
+    <strong>Local Auth</strong>
+
+    <div class="level">
+      <div class="level-left">
+        <p>Enable or disable authentication with email and password.</p>
+      </div>
+      <div class="level-right">
+        <label class="switch is-medium">
+          <input type="checkbox" phx-click="toggle" phx-value-config="local_auth_enabled"
+              checked={Conf.get(:local_auth_enabled)}
+              value={if(Conf.get(:local_auth_enabled), do: "on")} />
+          <span class="check"></span>
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <div class="block">
+    <strong>Allow unprivileged device management</strong>
+
+    <div class="level">
+      <div class="level-left">
+        <p>Enable or disable management of devices on unprivileged accounts.</p>
+      </div>
+      <div class="level-right">
+        <label class="switch is-medium">
+          <input type="checkbox" phx-click="toggle"
+              phx-value-config="allow_unprivileged_device_management"
+              checked={Conf.get(:allow_unprivileged_device_management)}
+              value={if(Conf.get(:allow_unprivileged_device_management), do: "on")} />
+          <span class="check"></span>
+        </label>
+      </div>
+    </div>
+  </div>
+
   <h4 class="title is-4">Single Sign-On</h4>
+
   <div class="block">
     <p>
       Single Sign-On can be configured in the main Firezone configuration
@@ -40,5 +79,43 @@
       <a href="https://docs.firezone.dev/docs/authenticate/">Firezone documentation</a>
       for more details.
     </p>
+  </div>
+
+  <div class="block">
+    <strong>Auto disable VPN</strong>
+
+    <div class="level">
+      <div class="level-left">
+        <p>Enable or disable auto disabling VPN connection on OIDC refresh error.</p>
+      </div>
+      <div class="level-right">
+        <label class="switch is-medium">
+          <input type="checkbox" phx-click="toggle"
+              phx-value-config="disable_vpn_on_oidc_error"
+              checked={Conf.get(:disable_vpn_on_oidc_error)}
+              value={if(Conf.get(:disable_vpn_on_oidc_error), do: "on")} />
+          <span class="check"></span>
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <div class="block">
+    <strong>Auto create OIDC users</strong>
+
+    <div class="level">
+      <div class="level-left">
+        <p>Enable or disable auto creation of new users on OIDC login.</p>
+      </div>
+      <div class="level-right">
+        <label class="switch is-medium">
+          <input type="checkbox" phx-click="toggle"
+              phx-value-config="auto_create_oidc_users"
+              checked={Conf.get(:auto_create_oidc_users)}
+              value={if(Conf.get(:auto_create_oidc_users), do: "on")} />
+          <span class="check"></span>
+        </label>
+      </div>
+    </div>
   </div>
 </section>

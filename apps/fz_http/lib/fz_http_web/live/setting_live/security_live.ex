@@ -4,10 +4,7 @@ defmodule FzHttpWeb.SettingLive.Security do
   """
   use FzHttpWeb, :live_view
 
-  alias FzHttp.{Sites, Sites.Site}
-
-  @hour 3_600
-  @day 24 * @hour
+  alias FzHttp.{Conf, Sites, Sites.Site}
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
@@ -15,7 +12,7 @@ defmodule FzHttpWeb.SettingLive.Security do
      socket
      |> assign(:form_changed, false)
      |> assign(:session_duration_options, session_duration_options())
-     |> assign(:changeset, changeset())
+     |> assign(:site_changeset, site_changeset())
      |> assign(:page_title, "Security Settings")}
   end
 
@@ -35,14 +32,26 @@ defmodule FzHttpWeb.SettingLive.Security do
         {:noreply,
          socket
          |> assign(:form_changed, false)
-         |> assign(:changeset, Sites.change_site(site))}
+         |> assign(:site_changeset, Sites.change_site(site))}
 
-      {:error, changeset} ->
+      {:error, site_changeset} ->
         {:noreply,
          socket
-         |> assign(:changeset, changeset)}
+         |> assign(:site_changeset, site_changeset)}
     end
   end
+
+  @impl Phoenix.LiveView
+  def handle_event("toggle", %{"config" => config} = params, socket) do
+    toggle_value = !!params["value"]
+
+    {:ok, _conf} = Conf.update_configuration(%{config => toggle_value})
+
+    {:noreply, socket}
+  end
+
+  @hour 3_600
+  @day 24 * @hour
 
   def session_duration_options do
     [
@@ -56,7 +65,7 @@ defmodule FzHttpWeb.SettingLive.Security do
     ]
   end
 
-  defp changeset do
+  defp site_changeset do
     Sites.get_site!()
     |> Sites.change_site()
   end
