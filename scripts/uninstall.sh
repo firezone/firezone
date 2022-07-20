@@ -43,11 +43,20 @@ rm -rf \
 
 echo 'Done! Firezone has been uninstalled.'
 
-bold=$(tput bold)
-normal=$(tput sgr0)
+if tput bold; then
+  bold=$(tput bold)
+else
+  bold=''
+fi
+if tput sgr0; then
+  normal=$(tput sgr0)
+else
+  normal=''
+fi
+
 echo $bold
 echo 'We rely on feedback from users to steer development.' \
-    'Would you mind taking a minute to share product feedback in exchange' \
-    'for some Firezone stickers?'
+  'Would you mind taking a minute to share product feedback in exchange' \
+  'for some Firezone stickers?'
 echo "https://firezone.dev/feedback#source=uninstall-script"
 echo $normal
