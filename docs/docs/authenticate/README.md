@@ -56,6 +56,8 @@ default['firezone']['authentication']['oidc'] = {
 }
 ```
 
+The following config settings are required for the integration:
+
 1. `discovery_document_uri`: This URL returns a JSON with information to
 construct a request to the OpenID server.
 1. `client_id`: The client ID of the application.
