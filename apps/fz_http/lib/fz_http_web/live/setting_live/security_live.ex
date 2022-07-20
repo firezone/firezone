@@ -64,7 +64,7 @@ defmodule FzHttpWeb.SettingLive.Security do
     with {:ok, json} <- Jason.decode(config),
          {:ok, conf} <- Conf.update_configuration(%{openid_connect_providers: json}) do
       :ok = Supervisor.terminate_child(FzHttp.Supervisor, FzHttp.OIDC.StartProxy)
-      IO.inspect(Supervisor.restart_child(FzHttp.Supervisor, FzHttp.OIDC.StartProxy))
+      {:ok, _pid} = Supervisor.restart_child(FzHttp.Supervisor, FzHttp.OIDC.StartProxy)
       {:noreply, assign(socket, :config_changeset, Conf.change_configuration(conf))}
     else
       {:error, %Jason.DecodeError{}} ->
