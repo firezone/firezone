@@ -32,7 +32,7 @@ jobs:
         with:
           otp-version: '25'
           elixir-version: '1.13.4'
-      - uses: actions/cache@v2
+      - uses: actions/cache@v3
         name: Setup Elixir cache
         with:
           path: |
@@ -41,14 +41,14 @@ jobs:
           key: ${{ runner.os }}-mix-otp-25-${{ hashFiles('**/mix.lock') }}
           restore-keys: |
             ${{ runner.os }}-mix-otp-25-
-      - uses: actions/cache@v2
+      - uses: actions/cache@v3
         name: Setup ruby cache
         with:
           path: vendor/bundle
           key: ${{ runner.os }}-gems-${{ hashFiles('**/Gemfile.lock') }}
           restore-keys: |
             ${{ runner.os }}-gems-
-      - uses: actions/cache@v2
+      - uses: actions/cache@v3
         name: Setup Python cache
         with:
           path: ~/.cache/pip
@@ -67,7 +67,7 @@ jobs:
       # Don't cache PLTs based on mix.lock hash, as Dialyzer can incrementally update even old ones
       # Cache key based on Elixir & Erlang version (also usefull when running in matrix)
       - name: Restore PLT cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         id: plt_cache
         with:
           key: |
@@ -118,7 +118,7 @@ jobs:
         with:
           otp-version: '25'
           elixir-version: '1.13.4'
-      - uses: actions/cache@v2
+      - uses: actions/cache@v3
         with:
           path: |
             deps
