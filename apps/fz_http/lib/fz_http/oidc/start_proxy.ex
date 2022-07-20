@@ -11,24 +11,19 @@ defmodule FzHttp.OIDC.StartProxy do
   def start_link(_) do
     auth_oidc_env = FzHttp.Conf.get(:openid_connect_providers)
 
-    openid_connect_providers =
-      case auth_oidc_env do
-        nil -> nil
-        string when is_binary(string) -> parse_env(string)
-        value when is_map(value) or is_list(value) -> value
-      end
-
-    if openid_connect_providers do
-      OpenIDConnect.Worker.start_link(openid_connect_providers)
+    if parsed = auth_oidc_env && parse(auth_oidc_env) do
+      :ok = FzHttp.Conf.Cache.put(:parsed_openid_connect_providers, parsed)
+      OpenIDConnect.Worker.start_link(parsed)
     else
       :ignore
     end
   end
 
-  defp parse_env(auth_oidc_env) do
+  defp parse(auth_oidc_env) do
     external_url = Application.fetch_env!(:fz_http, :external_url)
 
-    Jason.decode!(auth_oidc_env)
+    auth_oidc_env
+    |> Jason.decode!()
     # Convert Map to something openid_connect expects, atomic keyed configs
     # eg. [provider: [client_id: "CLIENT_ID" ...]]
     |> Enum.map(fn {provider, settings} ->

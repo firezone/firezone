@@ -8,7 +8,7 @@ import Config
 alias FzCommon.{CLI, FzInteger, FzString}
 
 # external_url is important
-external_url = System.get_env("EXTERNAL_URL", "http://localhost:4000")
+external_url = System.get_env("EXTERNAL_URL", "https://localhost")
 config :fz_http, :external_url, external_url
 
 # Enable Forwarded headers, e.g 'X-FORWARDED-HOST'
