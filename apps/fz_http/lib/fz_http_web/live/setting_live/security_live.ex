@@ -13,6 +13,7 @@ defmodule FzHttpWeb.SettingLive.Security do
      |> assign(:form_changed, false)
      |> assign(:session_duration_options, session_duration_options())
      |> assign(:site_changeset, site_changeset())
+     |> assign(:config_changeset, Conf.change_configuration())
      |> assign(:page_title, "Security Settings")}
   end
 
@@ -52,6 +53,33 @@ defmodule FzHttpWeb.SettingLive.Security do
     {:ok, _conf} = Conf.update_configuration(%{config => toggle_value})
 
     {:noreply, socket}
+  end
+
+  @impl Phoenix.LiveView
+  def handle_event(
+        "save_oidc_config",
+        %{"configuration" => %{"openid_connect_providers" => config}},
+        socket
+      ) do
+    with {:ok, json} <- Jason.decode(config),
+         {:ok, conf} <- Conf.update_configuration(%{openid_connect_providers: json}) do
+      :ok = Supervisor.terminate_child(FzHttp.Supervisor, FzHttp.OIDC.StartProxy)
+      IO.inspect(Supervisor.restart_child(FzHttp.Supervisor, FzHttp.OIDC.StartProxy))
+      {:noreply, assign(socket, :config_changeset, Conf.change_configuration(conf))}
+    else
+      {:error, %Jason.DecodeError{}} ->
+        {:noreply,
+         assign(
+           socket,
+           :config_changeset,
+           Conf.change_configuration()
+           |> Ecto.Changeset.put_change(:openid_connect_providers, config)
+           |> Ecto.Changeset.add_error(:openid_connect_providers, "Invalid JSON configuration")
+         )}
+
+      {:error, changeset} ->
+        {:noreply, assign(socket, :config_changeset, changeset)}
+    end
   end
 
   @hour 3_600
