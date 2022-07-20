@@ -36,7 +36,7 @@ jobs:
             --baseurl ${{ steps.get_version.outputs.VERSION }} \
             --destination ${{ steps.get_version.outputs.VERSION }}
       - name: Publish Latest Docs
-        uses: JamesIves/github-pages-deploy-action@v4.2.2
+        uses: JamesIves/github-pages-deploy-action@v4.3.4
         with:
           branch: gh-pages
           folder: docs/_latest
@@ -45,7 +45,7 @@ jobs:
           clean-exclude: |
             *.*.*/
       - name: Publish Versioned Docs
-        uses: JamesIves/github-pages-deploy-action@v4.2.2
+        uses: JamesIves/github-pages-deploy-action@v4.3.4
         with:
           branch: gh-pages
           folder: docs/${{ steps.get_version.outputs.VERSION }}
