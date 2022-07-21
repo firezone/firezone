@@ -59,7 +59,7 @@ if config_env() == :prod do
   guardian_secret_key = System.fetch_env!("GUARDIAN_SECRET_KEY")
   disable_vpn_on_oidc_error = FzString.to_boolean(System.fetch_env!("DISABLE_VPN_ON_OIDC_ERROR"))
   auto_create_oidc_users = FzString.to_boolean(System.fetch_env!("AUTO_CREATE_OIDC_USERS"))
-  secure = FzString.to_boolean(System.get_env("DEV_SECURE", "true"))
+  secure = FzString.to_boolean(System.get_env("SECURE_COOKIES", "true"))
 
   allow_unprivileged_device_management =
     FzString.to_boolean(System.fetch_env!("ALLOW_UNPRIVILEGED_DEVICE_MANAGEMENT"))

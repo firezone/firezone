@@ -537,9 +537,8 @@ default['firezone']['connectivity_checks']['enabled'] = true
 # Default: 3600 (1 hour). Minimum: 60 (1 minute). Maximum: 86400 (1 day).
 default['firezone']['connectivity_checks']['interval'] = 3_600
 
-# === DEV ONLY ===
-# These are attributes meant only for developers they might break compatibility
-# with future versions and be incompatible with some options. Change at your own **risk**.
+# ## Cookies settings
 
-# Enables/Disables the requirement for SSL when running behind non-bundled proxies.
-default['dev']['secure'] = true
+# Enable or disable the secure attributes for Firezone cookies. It's highly
+# recommended you leave this enabled unless you know what you're doing.
+default['firezone']['phoenix']['secure_cookies'] = true

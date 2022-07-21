@@ -280,8 +280,8 @@ class Firezone
         'COOKIE_ENCRYPTION_SALT' => attributes['cookie_encryption_salt'],
         'DATABASE_ENCRYPTION_KEY' => attributes['database_encryption_key'],
 
-        # dev
-        'DEV_SECURE' => node['dev']['secure'].to_s
+        # cookies
+        'SECURE_COOKIES' => attributes['firezone']['phoenix']['secure_cookies'].to_s
       }
 
       env.merge!('DATABASE_PASSWORD' => attributes['database']['password']) if attributes.dig('database', 'password')
