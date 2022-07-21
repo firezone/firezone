@@ -87,6 +87,27 @@ const config = {
         style: "light",
         links: [
           {
+            title: "Company",
+            items: [
+              {
+                label: "Homepage",
+                href: "https://www.firezone.dev/",
+              },
+              {
+                label: "Pricing",
+                href: "https://www.firezone.dev/pricing",
+              },
+              {
+                label: "About",
+                href: "https://www.firezone.dev/about",
+              },
+              {
+                label: "Join the Beta",
+                href: "https://e04kusl9oz5.typeform.com/to/gzzaZZ52#source=docsfooter",
+              },
+            ],
+          },
+          {
             title: "Community",
             items: [
               {
