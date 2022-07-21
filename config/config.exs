@@ -111,8 +111,7 @@ config :fz_vpn,
 
 config :fz_http, FzHttpWeb.Endpoint,
   render_errors: [view: FzHttpWeb.ErrorView, accepts: ~w(html json)],
-  pubsub_server: FzHttp.PubSub,
-  proxy_forwarded: false
+  pubsub_server: FzHttp.PubSub
 
 # Configures Elixir's Logger
 config :logger, :console,
