@@ -130,6 +130,7 @@ file. If required, the connection can be renamed after import:
 ```shell
 nmcli connection modify [old name] connection.id [new name]
 ```
+
 :::
 
 ### Step 4 - Connect/disconnect

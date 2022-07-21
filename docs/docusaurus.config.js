@@ -7,7 +7,7 @@ const darkCodeTheme = require("prism-react-renderer/themes/dracula");
 /** @type {import('@docusaurus/types').Config} */
 const config = {
   title: "Firezone",
-  tagline: "Open Source VPN",
+  tagline: "Open-source VPN server and Linux firewall built on WireGuard®",
   url: "https://docs.firezone.dev",
   baseUrl: "/",
   onBrokenLinks: "throw",
@@ -36,8 +36,6 @@ const config = {
         docs: {
           routeBasePath: "/",
           sidebarPath: require.resolve("./sidebars.js"),
-          // Please change this to your repo.
-          // Remove this to remove the "edit this page" links.
           editUrl: "https://github.com/firezone/firezone",
         },
         theme: {
@@ -151,6 +149,9 @@ const config = {
         searchPagePath: "search",
 
         //... other Algolia params
+      },
+      themeConfig: {
+        metadata: [{name: 'keywords', content: 'wireguard, vpn, firewall, remote, network, documentation'}],
       },
     }),
 };
