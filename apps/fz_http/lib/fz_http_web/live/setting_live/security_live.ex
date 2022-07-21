@@ -53,7 +53,7 @@ defmodule FzHttpWeb.SettingLive.Security do
 
   @impl Phoenix.LiveView
   def handle_event("toggle", %{"config" => config} = params, socket) do
-    toggle_value = !params["value"]
+    toggle_value = !!params["value"]
     {:ok, conf} = Conf.update_configuration(%{config => toggle_value})
     {:noreply, assign(socket, :configs, conf)}
   end

@@ -44,7 +44,7 @@
         <label class="switch is-medium">
           <input type="checkbox" phx-click="toggle" phx-value-config="local_auth_enabled"
               checked={@configs.local_auth_enabled}
-              value={if(@configs.local_auth_enabled, do: "on")} />
+              value={if(!@configs.local_auth_enabled, do: "on")} />
           <span class="check"></span>
         </label>
       </div>
@@ -63,7 +63,7 @@
           <input type="checkbox" phx-click="toggle"
               phx-value-config="allow_unprivileged_device_management"
               checked={@configs.allow_unprivileged_device_management}
-              value={if(@configs.allow_unprivileged_device_management, do: "on")} />
+              value={if(!@configs.allow_unprivileged_device_management, do: "on")} />
           <span class="check"></span>
         </label>
       </div>
@@ -93,7 +93,7 @@
           <input type="checkbox" phx-click="toggle"
               phx-value-config="disable_vpn_on_oidc_error"
               checked={@configs.disable_vpn_on_oidc_error}
-              value={if(@configs.disable_vpn_on_oidc_error, do: "on")} />
+              value={if(!@configs.disable_vpn_on_oidc_error, do: "on")} />
           <span class="check"></span>
         </label>
       </div>
@@ -112,7 +112,7 @@
           <input type="checkbox" phx-click="toggle"
               phx-value-config="auto_create_oidc_users"
               checked={@configs.auto_create_oidc_users}
-              value={if(@configs.auto_create_oidc_users, do: "on")} />
+              value={if(!@configs.auto_create_oidc_users, do: "on")} />
           <span class="check"></span>
         </label>
       </div>
