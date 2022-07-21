@@ -43,8 +43,8 @@
       <div class="level-right">
         <label class="switch is-medium">
           <input type="checkbox" phx-click="toggle" phx-value-config="local_auth_enabled"
-              checked={Conf.get(:local_auth_enabled)}
-              value={if(Conf.get(:local_auth_enabled), do: "on")} />
+              checked={@configs.local_auth_enabled}
+              value={if(@configs.local_auth_enabled, do: "on")} />
           <span class="check"></span>
         </label>
       </div>
@@ -62,8 +62,8 @@
         <label class="switch is-medium">
           <input type="checkbox" phx-click="toggle"
               phx-value-config="allow_unprivileged_device_management"
-              checked={Conf.get(:allow_unprivileged_device_management)}
-              value={if(Conf.get(:allow_unprivileged_device_management), do: "on")} />
+              checked={@configs.allow_unprivileged_device_management}
+              value={if(@configs.allow_unprivileged_device_management, do: "on")} />
           <span class="check"></span>
         </label>
       </div>
@@ -92,8 +92,8 @@
         <label class="switch is-medium">
           <input type="checkbox" phx-click="toggle"
               phx-value-config="disable_vpn_on_oidc_error"
-              checked={Conf.get(:disable_vpn_on_oidc_error)}
-              value={if(Conf.get(:disable_vpn_on_oidc_error), do: "on")} />
+              checked={@configs.disable_vpn_on_oidc_error}
+              value={if(@configs.disable_vpn_on_oidc_error, do: "on")} />
           <span class="check"></span>
         </label>
       </div>
@@ -111,8 +111,8 @@
         <label class="switch is-medium">
           <input type="checkbox" phx-click="toggle"
               phx-value-config="auto_create_oidc_users"
-              checked={Conf.get(:auto_create_oidc_users)}
-              value={if(Conf.get(:auto_create_oidc_users), do: "on")} />
+              checked={@configs.auto_create_oidc_users}
+              value={if(@configs.auto_create_oidc_users, do: "on")} />
           <span class="check"></span>
         </label>
       </div>

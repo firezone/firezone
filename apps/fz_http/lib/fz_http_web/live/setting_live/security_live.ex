@@ -4,16 +4,21 @@ defmodule FzHttpWeb.SettingLive.Security do
   """
   use FzHttpWeb, :live_view
 
+  import Ecto.Changeset
+
   alias FzHttp.{Conf, Sites, Sites.Site}
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
+    config_changeset = Conf.change_configuration()
+
     {:ok,
      socket
      |> assign(:form_changed, false)
      |> assign(:session_duration_options, session_duration_options())
      |> assign(:site_changeset, site_changeset())
-     |> assign(:config_changeset, Conf.change_configuration())
+     |> assign(:config_changeset, config_changeset)
+     |> assign(:configs, config_changeset.data)
      |> assign(:page_title, "Security Settings")}
   end
 
@@ -48,11 +53,9 @@ defmodule FzHttpWeb.SettingLive.Security do
 
   @impl Phoenix.LiveView
   def handle_event("toggle", %{"config" => config} = params, socket) do
-    toggle_value = !!params["value"]
-
-    {:ok, _conf} = Conf.update_configuration(%{config => toggle_value})
-
-    {:noreply, socket}
+    toggle_value = !params["value"]
+    {:ok, conf} = Conf.update_configuration(%{config => toggle_value})
+    {:noreply, assign(socket, :configs, conf)}
   end
 
   @impl Phoenix.LiveView
@@ -73,8 +76,8 @@ defmodule FzHttpWeb.SettingLive.Security do
            socket,
            :config_changeset,
            Conf.change_configuration()
-           |> Ecto.Changeset.put_change(:openid_connect_providers, config)
-           |> Ecto.Changeset.add_error(:openid_connect_providers, "Invalid JSON configuration")
+           |> put_change(:openid_connect_providers, config)
+           |> add_error(:openid_connect_providers, "Invalid JSON configuration")
          )}
 
       {:error, changeset} ->
