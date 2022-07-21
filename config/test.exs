@@ -82,5 +82,6 @@ config :fz_http, :openid_connect, OpenIDConnect.Mock
 config :fz_http, FzHttp.Mailer, adapter: Swoosh.Adapters.Test, from_email: "test@firez.one"
 
 config :fz_vpn,
-  # XXX: Bump test coverage by replacing this with a stubbed out module
-  stats_push_service_enabled: false
+  # XXX: Bump test coverage by adding a stubbed out module for FzVpn.StatsPushService
+  supervised_children: [FzVpn.Interface.WGAdapter.Sandbox, FzVpn.Server],
+  wg_adapter: FzVpn.Interface.WGAdapter.Sandbox

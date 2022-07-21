@@ -16,10 +16,7 @@ defmodule FzVpn.StatsPushService do
 
   @impl GenServer
   def init(state) do
-    if enabled?() do
-      :timer.send_interval(@interval, :perform)
-    end
-
+    :timer.send_interval(@interval, :perform)
     {:ok, state}
   end
 
@@ -30,9 +27,5 @@ defmodule FzVpn.StatsPushService do
 
   def push_stats do
     GenServer.call(Server.http_pid(), {:update_device_stats, Interface.dump(Server.iface_name())})
-  end
-
-  defp enabled? do
-    Application.fetch_env!(:fz_vpn, :stats_push_service_enabled)
   end
 end

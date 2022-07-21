@@ -5,38 +5,28 @@ defmodule FzVpn.Interface.WGAdapter.Sandbox do
 
   use GenServer
 
-  @adapter_pid :sandbox_adapter_pid
+  def start_link(_) do
+    GenServer.start_link(__MODULE__, %{}, name: __MODULE__)
+  end
 
   def get_device(name) do
-    GenServer.call(sandbox_pid(), {:get_device, name})
+    GenServer.call(__MODULE__, {:get_device, name})
   end
 
   def list_devices do
-    GenServer.call(sandbox_pid(), {:list_devices})
+    GenServer.call(__MODULE__, {:list_devices})
   end
 
   def set_device(config, name) do
-    GenServer.call(sandbox_pid(), {:set_device, config, name})
+    GenServer.call(__MODULE__, {:set_device, config, name})
   end
 
   def delete_device(name) do
-    GenServer.call(sandbox_pid(), {:delete_device, name})
+    GenServer.call(__MODULE__, {:delete_device, name})
   end
 
   def remove_peer(name, public_key) do
-    GenServer.call(sandbox_pid(), {:remove_peer, name, public_key})
-  end
-
-  defp sandbox_pid do
-    case Process.get(@adapter_pid) do
-      nil ->
-        {:ok, pid} = GenServer.start_link(__MODULE__, %{})
-        Process.put(@adapter_pid, pid)
-        pid
-
-      pid ->
-        pid
-    end
+    GenServer.call(__MODULE__, {:remove_peer, name, public_key})
   end
 
   @impl GenServer
