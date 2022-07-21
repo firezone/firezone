@@ -39,11 +39,14 @@ or
 
 ### Step 2 - Configure the OIDC Application
 
-Next, click **Add App to Connector** to create an OIDC application. You will
-find the values for the config settings required by Firezone
-under the **SSO** sub-menu.
+Next, click **Add App to Connector** to create an OIDC application.
+Visit the **SSO** tab, then change the token endpoint authentication method
+to **POST**.
 
-![Onelogin Config Parameters](https://user-images.githubusercontent.com/52545545/173190389-d8cf7382-b415-413f-b16c-4196ccee6726.png)
+You will find the values for the config settings required by Firezone
+on this page as well.
+
+![Onelogin Config Parameters](https://user-images.githubusercontent.com/52545545/180120191-dfeab4ef-d7f5-4c04-a7b2-7d9338af34e6.png)
 
 ## Integrate With Firezone
 
