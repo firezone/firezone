@@ -47,4 +47,42 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
       assert Security.session_duration_options() == @expected_durations
     end
   end
+
+  describe "toggles" do
+    alias FzHttp.Conf
+
+    setup %{admin_conn: conn} do
+      Conf.update_configuration(%{
+        local_auth_enabled: true,
+        allow_unprivileged_device_management: true,
+        disable_vpn_on_oidc_error: true,
+        auto_create_oidc_users: true
+      })
+
+      path = Routes.setting_security_path(conn, :show)
+      {:ok, view, _html} = live(conn, path)
+      [view: view]
+    end
+
+    for t <- [
+          :local_auth_enabled,
+          :allow_unprivileged_device_management,
+          :disable_vpn_on_oidc_error,
+          :auto_create_oidc_users
+        ] do
+      test "toggle #{t}", %{view: view} do
+        html = view |> element("input[phx-value-config=#{unquote(t)}]") |> render()
+        assert html =~ "checked"
+
+        view |> element("input[phx-value-config=#{unquote(t)}]") |> render_click()
+        assert Conf.get(unquote(t)) == false
+
+        html = view |> element("input[phx-value-config=#{unquote(t)}]") |> render()
+        refute html =~ "checked"
+
+        view |> element("input[phx-value-config=#{unquote(t)}]") |> render_click()
+        assert Conf.get(unquote(t)) == true
+      end
+    end
+  end
 end
