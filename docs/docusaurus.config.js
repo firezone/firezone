@@ -28,6 +28,21 @@ const config = {
     locales: ["en"],
   },
 
+  // An array of scripts to load. The values can be either strings or plain
+  // objects of attribute-value maps. The <script> tags will be inserted in the
+  // HTML <head>. If you use a plain object, the only required attribute is src,
+  // and any other attributes are permitted (each one should have boolean/string
+  // values).
+  //
+  // Note that <script> added here are render-blocking, so you might want to
+  // add async: true/defer: true to the objects.
+  scripts: [
+    {
+      src: '/js/posthog.js',
+      async: true
+    }
+  ],
+
   presets: [
     [
       "classic",
