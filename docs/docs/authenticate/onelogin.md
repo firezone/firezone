@@ -7,8 +7,10 @@ Firezone supports Single Sign-On (SSO) using OneLogin
 through the generic OIDC connector. This guide will walk you through how to
 obtain the following config settings required for the integration:
 
-1. `discovery_document_uri`: This URL returns a JSON with information to
-construct a request to the OpenID server.
+1. `discovery_document_uri`: The
+[OpenID Connect provider configuration URI](https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderConfig)
+which returns a JSON document used to construct subsequent requests to this
+OIDC provider.
 1. `client_id`: The client ID of the application.
 1. `client_secret`: The client secret of the application.
 1. `redirect_uri`: Instructs OIDC provider where to redirect after authentication.
@@ -67,5 +69,5 @@ default['firezone']['authentication']['oidc'] = {
 }
 ```
 
-Run `firezone-ctl reconfigure`and `firezone-ctl restart` to update the application.
+Run `firezone-ctl reconfigure` to update the application.
 You should now see a `Sign in with OneLogin` button at the root Firezone URL.
