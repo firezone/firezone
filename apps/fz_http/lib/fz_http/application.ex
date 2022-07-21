@@ -49,6 +49,7 @@ defmodule FzHttp.Application do
       FzHttp.Vault,
       FzHttp.Conf.Cache,
       FzHttpWeb.Endpoint,
+      {FzHttp.OIDC.StartProxy, :test},
       {Phoenix.PubSub, name: FzHttp.PubSub},
       FzHttpWeb.Presence
     ]

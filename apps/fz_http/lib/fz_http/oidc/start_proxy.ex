@@ -6,8 +6,14 @@ defmodule FzHttp.OIDC.StartProxy do
 
   alias FzHttp.Conf
 
-  def child_spec(_) do
-    %{id: __MODULE__, start: {__MODULE__, :start_link, [[]]}}
+  def child_spec(arg) do
+    %{id: __MODULE__, start: {__MODULE__, :start_link, [arg]}}
+  end
+
+  def start_link(:test) do
+    auth_oidc_env = Conf.get(:openid_connect_providers)
+    :ok = Conf.Cache.put(:parsed_openid_connect_providers, parse(auth_oidc_env))
+    :ignore
   end
 
   def start_link(_) do
