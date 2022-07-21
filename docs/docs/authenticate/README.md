@@ -22,7 +22,7 @@ through an OIDC provider. The configuration file can be found at
 `/etc/firezone/firezone.rb`. To pick up changes, run `firezone-ctl reconfigure`
 and `firezone-ctl restart` to update the application.
 
-```shell
+```ruby
 # This is an example using Google and Okta as an SSO identity provider.
 # Multiple OIDC configs can be added to the same Firezone instance.
 

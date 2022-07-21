@@ -54,7 +54,7 @@ on this page as well.
 
 Edit `/etc/firezone/firezone.rb` to include the options below.
 
-```shell
+```ruby
 # Using Google as the SSO identity provider
 default['firezone']['authentication']['oidc'] = {
   onelogin: {

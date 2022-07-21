@@ -64,7 +64,7 @@ click `Add a permission`, and select `Microsoft Graph`. Add `email`, `openid`,
 
 Edit `/etc/firezone/firezone.rb` to include the options below.
 
-```shell
+```ruby
 # Using Azure Active Directory as the SSO identity provider
 default['firezone']['authentication']['oidc'] = {
   azure: {

@@ -81,7 +81,7 @@ These will be used together with the redirect URI in the next step.
 
 Edit `/etc/firezone/firezone.rb` to include the options below.
 
-```shell
+```ruby
 # Using Google as the SSO identity provider
 default['firezone']['authentication']['oidc'] = {
   google: {

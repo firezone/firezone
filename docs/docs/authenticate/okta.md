@@ -61,7 +61,7 @@ and **Okta Domain**. These 3 values will be used in Step 2 to configure Firezone
 Edit `/etc/firezone/firezone.rb` to include the options below. Your `discovery_document_url`
 will be `/.well-known/openid-configuration` appended to the end of your `okta_domain`.
 
-```shell
+```ruby
 # Using Okta as the SSO identity provider
 default['firezone']['authentication']['oidc'] = {
   okta: {
