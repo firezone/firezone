@@ -76,6 +76,7 @@ with the following error if the profile has IPv6 support enabled:
 ```text
 ipv6.method: method "auto" is not supported for WireGuard
 ```
+
 :::
 
 ### Step 1 - Install the WireGuard Tools
