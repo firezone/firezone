@@ -32,9 +32,18 @@ if [ -e ${DEST_DIR}/embedded/bin/symlink_ctl_cmds ]; then
     ${DEST_DIR}/embedded/bin/symlink_ctl_cmds
 fi
 
-bold=$(tput bold)
-reset=$(tput sgr0)
+if tput bold; then
+  bold=$(tput bold)
+else
+  bold=''
+fi
+if tput sgr0; then
+  normal=$(tput sgr0)
+else
+  normal=''
+fi
+
 echo $bold
 echo "Please see our upgrade guide for any version notes that apply:"
 echo "https://docs.firezone.dev/administer/upgrade"
-echo $reset
+echo $normal
