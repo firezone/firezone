@@ -106,8 +106,9 @@ config :fz_vpn,
   wireguard_interface_name: "wg-firezone",
   wireguard_port: 51_820,
   wireguard_endpoint: "127.0.0.1",
-  wg_adapter: FzVpn.Interface.WGAdapter.Sandbox,
-  server_process_opts: [name: {:global, :fz_vpn_server}]
+  wg_adapter: FzVpn.Interface.WGAdapter.Live,
+  server_process_opts: [name: {:global, :fz_vpn_server}],
+  supervised_children: [FzVpn.Server, FzVpn.StatsPushService]
 
 config :fz_http, FzHttpWeb.Endpoint,
   render_errors: [view: FzHttpWeb.ErrorView, accepts: ~w(html json)],
