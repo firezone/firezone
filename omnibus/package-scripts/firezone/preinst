@@ -18,15 +18,24 @@ kernelCheck() {
 }
 
 configCheck() {
-    config_file='/etc/firezone/firezone.rb'
-    error_color=$(tput setaf 1) #red
-    reset_color=$(tput sgr0)
+  config_file='/etc/firezone/firezone.rb'
 
-    if test -f $config_file && grep -q "^\s*default\['firezone'\]\['authentication'\]\['\(google\|okta\)'\]\['enabled'\]\s*=\s*true" $config_file ; then
-        echo "${error_color}ERROR: Firezone 0.5+ disables support for pre-configured Okta and Google OAuth2 providers!${reset_color}"
-        echo "Please see our transition guide to move to a generic OIDC config: https://docs.firezone.dev/administer/upgrade#upgrading-from--050-to--050"
-        exit 1
-    fi
+  if tput setaf 1; then
+    error=$(tput setaf 1)
+  else
+    error=''
+  fi
+  if tput sgr0; then
+    normal=$(tput sgr0)
+  else
+    normal=''
+  fi
+
+  if test -f $config_file && grep -q "^\s*default\['firezone'\]\['authentication'\]\['\(google\|okta\)'\]\['enabled'\]\s*=\s*true" $config_file ; then
+    echo "${error}ERROR: Firezone 0.5+ disables support for pre-configured Okta and Google OAuth2 providers!${normal}"
+    echo "Please see our transition guide to move to a generic OIDC config: https://docs.firezone.dev/administer/upgrade#upgrading-from--050-to--050"
+    exit 1
+  fi
 }
 
 capture () {
