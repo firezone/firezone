@@ -1,7 +1,7 @@
 defmodule FzHttp.OIDC.StartProxy do
   @moduledoc """
   This proxy simply gets the relevant config at an appropriate timing
-  (after `FzHttp.Conf.Cache` has started) and pass to `OpenIDConnect.Worker`'s own child_spec/1
+  (after `FzHttp.Conf.Cache` has started) and pass to `OpenIDConnect.Worker`
   """
 
   alias FzHttp.Conf
