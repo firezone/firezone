@@ -120,7 +120,7 @@
   </div>
 
   <div class="block">
-    <.form let={f} for={@config_changeset} id="abcde" phx-submit="save_oidc_config">
+    <.form let={f} for={@config_changeset} id="oidc-config-form" phx-submit="save_oidc_config">
       <div class="field">
         <%= label f, :openid_connect_providers, "OpenID Connect providers configuration",
             class: "label" %>
