@@ -10,8 +10,6 @@ alias FzCommon.{CLI, FzInteger, FzString}
 # external_url is important
 external_url = System.get_env("EXTERNAL_URL", "http://localhost:4000")
 
-# Enable Forwarded headers, e.g 'X-FORWARDED-HOST'
-proxy_forwarded = FzString.to_boolean(System.get_env("PROXY_FORWARDED") || "false")
 trusted_proxy = FzString.to_cidr_list(System.get_env("TRUSTED_PROXY") || "[]")
 
 %{host: host, path: path, port: port, scheme: scheme} = URI.parse(external_url)
@@ -19,7 +17,6 @@ trusted_proxy = FzString.to_cidr_list(System.get_env("TRUSTED_PROXY") || "[]")
 config :fz_http, FzHttpWeb.Endpoint,
   url: [host: host, scheme: scheme, port: port, path: path],
   check_origin: ["//127.0.0.1", "//localhost", "//#{host}"],
-  proxy_forwarded: proxy_forwarded,
   trusted_proxy: trusted_proxy
 
 # Formerly releases.exs - Only evaluated in production
@@ -271,4 +268,10 @@ if config_env() != :test && auth_oidc_env do
     end)
 
   config :fz_http, :openid_connect_providers, auth_oidc
+end
+
+if config_env() == :dev do
+  # Enable Forwarded headers, e.g 'X-FORWARDED-HOST'
+  proxy_forwarded = FzString.to_boolean(System.get_env("PROXY_FORWARDED") || "false")
+  config :fz_http, FzHttpWeb.Endpoint, proxy_forwarded: proxy_forwarded
 end

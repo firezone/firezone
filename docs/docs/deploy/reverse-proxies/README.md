@@ -24,7 +24,6 @@ reverse-proxies.
   to `false` in the config file.
 * Add all intermediate proxies IPs to `default['firezone']['trusted_proxy']`,
   this is used to calculate the actual client ip and prevent spoofing.
-* Make sure `default['firezone']['proxy_fowrarded']` is set to `true`.
 
 Read more about the configuration options
 [here](../../../reference/configuration-file.md).
