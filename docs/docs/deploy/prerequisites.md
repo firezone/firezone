@@ -45,10 +45,12 @@ See the
 [configuration file reference](../reference/configuration-file)
 for details.
 
-**NOTE**: Firezone modifies the kernel netfilter and routing tables. Other
+:::warning
+Firezone modifies the kernel netfilter and routing tables. Other
 programs that modify the Linux routing table or firewall may interfere with
 Firezone's operation. For help troubleshooting connectivity issues, see
 [troubleshoot](../administer/troubleshoot).
+:::
 
 ## Resource Requirements
 

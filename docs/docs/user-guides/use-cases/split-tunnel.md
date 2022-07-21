@@ -27,8 +27,10 @@ will be routed to the VPN server.
 will be routed to the VPN server.
 In this example, the CIDR range for the `ap-northeast-2` AWS region was used.
 
-Note: When deciding where to route a packet, Firezone chooses the egress
+:::note
+When deciding where to route a packet, Firezone chooses the egress
 interface corresponding to the most specific route first.
+:::
 
 ## Step 2 - Regenerate WireGuard configurations
 

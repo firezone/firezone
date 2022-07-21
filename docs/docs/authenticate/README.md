@@ -80,13 +80,15 @@ URLs are:
 
 ### Common Providers
 
+```mdx-code-block
+import DocCardList from '@theme/DocCardList';
+import {useCurrentSidebarCategory} from '@docusaurus/theme-common';
+
 We've included instructions on how to set up Firezone with several popular
 identity providers:
 
-* [AzureAD](../authenticate/azuread)
-* [Google](../authenticate/google)
-* [Okta](../authenticate/okta)
-* [Local email/password authentication (default)](../authenticate/local-auth)
+<DocCardList items={useCurrentSidebarCategory().items}/>
+```
 
 If your identity provider is not listed above, but has a generic OIDC
 connector, please consult their documentation to find instructions on obtaining

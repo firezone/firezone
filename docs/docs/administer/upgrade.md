@@ -124,7 +124,7 @@ For an exhaustive list of configuration variables and their descriptions, see th
 
 ## Upgrading from 0.2.x to 0.3.x
 
-**Note**: Starting with version 0.3.0, Firezone no longer stores device private
+Starting with version 0.3.0, Firezone no longer stores device private
 keys on the Firezone server. Any existing devices should continue to function
 as-is, but you will not be able to re-download or view these configurations in
 the Firezone Web UI.

@@ -55,8 +55,10 @@ Anywhere                   ALLOW IN    10.3.2.2
 This would leave only `22/tcp` exposed for SSH access to manage the server (optional),
 and `51820/udp` exposed in order to establish WireGuard tunnels.
 
-**Note**: This type of configuration has not been fully tested with SSO
+:::note
+This type of configuration has not been fully tested with SSO
 authentication and may it to break or behave unexpectedly.
+:::
 
 ## Reporting Security Issues
 

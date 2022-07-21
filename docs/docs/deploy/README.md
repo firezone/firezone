@@ -25,10 +25,12 @@ The default Firezone configuration requires the following ports to be open:
 * `443/tcp`: To access the web UI.
 * `51820/udp`: The VPN traffic listen-port.
 
-**Note**: Firezone modifies the kernel netfilter and routing tables.
+:::note
+Firezone modifies the kernel netfilter and routing tables.
 Other programs that modify the Linux routing table or firewall may interfere
 with Firezone’s operation. For help troubleshooting connectivity issues, see the
 [troubleshooting guide](../administer/troubleshoot.md).
+:::
 
 ### Production deployments
 
