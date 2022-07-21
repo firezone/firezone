@@ -4,7 +4,8 @@ defmodule FzHttpWeb.HeaderHelpers do
   """
   def ip_x_headers, do: ~w[x-forwarded-for]
 
-  def trusted_proxy, do: Application.get_env(:fz_http, FzHttpWeb.Endpoint)[:trusted_proxy]
+  def trusted_proxies, do: Application.get_env(:fz_http, FzHttpWeb.Endpoint)[:trusted_proxies]
+  def clients, do: Application.get_env(:fz_http, FzHttpWeb.Endpoint)[:clients]
 
   def proxied?, do: Application.fetch_env!(:fz_http, FzHttpWeb.Endpoint)[:proxy_forwarded]
 end

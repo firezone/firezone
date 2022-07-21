@@ -16,7 +16,7 @@ In these configurations we assume `default['firezone']['phoenix']['port']` to be
 to listen in the Docker interface so you should set:
 
 * `default['firezone']['phoenix']['listen_address'] = '172.17.0.1'`
-* `default['firezone']['trusted_proxy'] = ['172.18.0.2']`
+* `default['firezone']['trusted_proxies'] = ['172.18.0.2']`
 
 In the [configuration file](../../reference/configuration-file.md).
 

@@ -13,7 +13,8 @@ defmodule FzHttpWeb.ProxyHeaders do
       opts =
         RemoteIp.init(
           headers: HeaderHelpers.ip_x_headers(),
-          proxies: HeaderHelpers.trusted_proxy()
+          proxies: HeaderHelpers.trusted_proxies(),
+          clients: HeaderHelpers.clients()
         )
 
       RemoteIp.call(conn, opts)
