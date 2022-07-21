@@ -82,8 +82,11 @@ defmodule FzHttpWeb.AuthController do
 
       # Error verifying claims or fetching tokens
       {:error, action, reason} ->
-        Logger.warn("OpenIDConnect Error during #{action}: #{reason}")
-        send_resp(conn, 401, "")
+        Logger.warn("OpenIDConnect Error during #{action}: #{inspect(reason)}")
+
+        conn
+        |> put_flash(:error, "Failed when performing this action: #{action}")
+        |> redirect(to: Routes.root_path(conn, :index))
     end
   end
 
