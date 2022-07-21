@@ -271,9 +271,3 @@ if config_env() != :test && auth_oidc_env do
 
   config :fz_http, :openid_connect_providers, auth_oidc
 end
-
-if config_env() == :dev do
-  # Enable Forwarded headers, e.g 'X-FORWARDED-HOST'
-  proxy_forwarded = FzString.to_boolean(System.get_env("PROXY_FORWARDED") || "true")
-  config :fz_http, FzHttpWeb.Endpoint, proxy_forwarded: proxy_forwarded
-end

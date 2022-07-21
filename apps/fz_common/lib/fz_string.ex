@@ -8,6 +8,9 @@ defmodule FzCommon.FzString do
     |> String.replace(~r/[^a-zA-Z0-9]+/, "_")
   end
 
+  def to_cidr_list("nil"), do: nil
+  def to_cidr_list("null"), do: nil
+
   # xxx: to_ip?
   def to_cidr_list(str) do
     Jason.decode!(str)

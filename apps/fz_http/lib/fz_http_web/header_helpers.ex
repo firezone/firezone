@@ -7,5 +7,5 @@ defmodule FzHttpWeb.HeaderHelpers do
   def trusted_proxies, do: Application.get_env(:fz_http, FzHttpWeb.Endpoint)[:trusted_proxies]
   def clients, do: Application.get_env(:fz_http, FzHttpWeb.Endpoint)[:clients]
 
-  def proxied?, do: Application.fetch_env!(:fz_http, FzHttpWeb.Endpoint)[:proxy_forwarded]
+  def proxied?, do: not is_nil(trusted_proxies())
 end

@@ -23,7 +23,6 @@ config :fz_http, FzHttpWeb.Endpoint,
   secret_key_base: "dummy",
   # changed by release config
   live_view: [signing_salt: "dummy"],
-  proxy_forwarded: true,
   server: true
 
 # This will be overridden on releases

@@ -116,7 +116,6 @@ config :fz_http, FzHttpWeb.Endpoint,
 # Configures Elixir's Logger
 config :logger, :console,
   format: "$time $metadata[$level] $message\n",
-  # Note: remote_ip will only be logged when `proxy_forwarded`.
   metadata: [:request_id, :remote_ip]
 
 # Configures the vault

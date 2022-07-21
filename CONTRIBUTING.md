@@ -154,10 +154,10 @@ If the above commands indicate success, you should be good to go!
 
 You can run this using Github Codespaces or your own devcontainer using Docker.
 
-On GitHub Codespaces, follow the instructions above but start the server with
-PROXY_FORWARDED enabled and pass in your Codespace external url:
+On GitHub Codespaces, follow the instructions above but pass in your Codespace
+external url:
 
-`PROXY_FORWARDED=true EXTERNAL_URL=[your_devcontainer_url] MIX_ENV=dev mix start`
+`TRUSTED_PROXY=[] EXTERNAL_URL=[your_devcontainer_url] MIX_ENV=dev mix start`
 
 or using the `.env` file
 

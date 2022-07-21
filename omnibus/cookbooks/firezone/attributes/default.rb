@@ -145,6 +145,8 @@ default['firezone']['authentication']['oidc'] = {}
 #
 # If some of this IPs should be counted as clients
 # instead of proxies add it to the config default['firezone']['clients'] below
+#
+# If set to nil Firezone will assume that it is not running behind a proxy
 default['firezone']['trusted_proxies'] = []
 
 # An array of IPs that Firezone will assume are clients, and thus, not a trusted
