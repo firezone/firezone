@@ -5,16 +5,26 @@ defmodule FzHttp.Events do
 
   alias FzHttp.{Devices, Rules, Users}
 
+  require Logger
+
   # set_config is used because devices need to be re-evaluated in case a
   # device is added to a User that's not active.
-  def update_device(device) do
-    GenServer.call(wall_pid(), {:add_device, Devices.setting_projection(device)})
-    GenServer.call(vpn_pid(), {:set_config, Devices.to_peer_list()})
+  def add_device(device) do
+    with :ok <- GenServer.call(wall_pid(), {:add_device, Devices.setting_projection(device)}),
+         :ok <- GenServer.call(vpn_pid(), {:set_config, Devices.to_peer_list()}) do
+      :ok
+    else
+      _err -> nil # TODO: propagate error to ui
+    end
   end
 
   def delete_device(device) do
-    GenServer.call(wall_pid(), {:delete_device, Devices.setting_projection(device)})
-    GenServer.call(vpn_pid(), {:remove_peer, device.public_key})
+    with :ok <- GenServer.call(wall_pid(), {:delete_device, Devices.setting_projection(device)}),
+         :ok <- GenServer.call(vpn_pid(), {:remove_peer, device.public_key}) do
+      :ok
+    else
+      _err -> nil # TODO: propagate error to ui
+    end
   end
 
   def delete_user(user) do

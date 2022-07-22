@@ -17,11 +17,11 @@ defmodule FzHttp.EventsTest do
     end)
   end
 
-  describe "update_device/1" do
+  describe "add_device/1" do
     setup [:create_rule_with_user_and_device]
 
     test "adds device to wall and vpn state", %{device: device, user: user} do
-      :ok = Events.update_device(device)
+      :ok = Events.add_device(device)
 
       assert :sys.get_state(Events.wall_pid()) ==
                %{
@@ -43,7 +43,7 @@ defmodule FzHttp.EventsTest do
     setup [:create_rule_with_user_and_device]
 
     test "removes device from vpn and wall state", %{device: device} do
-      :ok = Events.update_device(device)
+      :ok = Events.add_device(device)
 
       assert :ok = Events.delete_device(device)
 
