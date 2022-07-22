@@ -7,7 +7,7 @@ const darkCodeTheme = require("prism-react-renderer/themes/dracula");
 /** @type {import('@docusaurus/types').Config} */
 const config = {
   title: "Firezone",
-  tagline: "Open Source VPN",
+  tagline: "Open-source VPN server and Linux firewall built on WireGuard®",
   url: "https://docs.firezone.dev",
   baseUrl: "/",
   onBrokenLinks: "throw",
@@ -28,6 +28,21 @@ const config = {
     locales: ["en"],
   },
 
+  // An array of scripts to load. The values can be either strings or plain
+  // objects of attribute-value maps. The <script> tags will be inserted in the
+  // HTML <head>. If you use a plain object, the only required attribute is src,
+  // and any other attributes are permitted (each one should have boolean/string
+  // values).
+  //
+  // Note that <script> added here are render-blocking, so you might want to
+  // add async: true/defer: true to the objects.
+  scripts: [
+    {
+      src: '/js/posthog.js',
+      async: true
+    }
+  ],
+
   presets: [
     [
       "classic",
@@ -36,8 +51,6 @@ const config = {
         docs: {
           routeBasePath: "/",
           sidebarPath: require.resolve("./sidebars.js"),
-          // Please change this to your repo.
-          // Remove this to remove the "edit this page" links.
           editUrl: "https://github.com/firezone/firezone",
         },
         theme: {
@@ -77,14 +90,36 @@ const config = {
           },
           {
             href: "https://github.com/firezone/firezone",
-            label: "GitHub",
+            className: 'header-github-link',
             position: "right",
+            'aria-label': 'GitHub repository',
           },
         ],
       },
       footer: {
         style: "light",
         links: [
+          {
+            title: "Company",
+            items: [
+              {
+                label: "Homepage",
+                href: "https://www.firezone.dev/",
+              },
+              {
+                label: "Pricing",
+                href: "https://www.firezone.dev/pricing",
+              },
+              {
+                label: "About",
+                href: "https://www.firezone.dev/about",
+              },
+              {
+                label: "Join the Beta",
+                href: "https://e04kusl9oz5.typeform.com/to/gzzaZZ52#source=docsfooter",
+              },
+            ],
+          },
           {
             title: "Community",
             items: [
@@ -111,7 +146,8 @@ const config = {
       },
       prism: {
         theme: lightCodeTheme,
-        darkTheme: darkCodeTheme
+        darkTheme: darkCodeTheme,
+        additionalLanguages: ['ruby', 'elixir']
       },
       algolia: {
         // The application ID provided by Algolia
@@ -129,6 +165,9 @@ const config = {
         searchPagePath: "search",
 
         //... other Algolia params
+      },
+      themeConfig: {
+        metadata: [{name: 'keywords', content: 'wireguard, vpn, firewall, remote, network, documentation'}],
       },
     }),
 };
