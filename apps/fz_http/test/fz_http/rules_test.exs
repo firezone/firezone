@@ -103,7 +103,7 @@ defmodule FzHttp.RulesTest do
       rule_map =
         rule
         |> Map.from_struct()
-        |> Map.put(:destination, EctoNetwork.INET.decode(rule.destination))
+        |> Map.put(:destination, FzHttp.Devices.decode(rule.destination))
 
       assert %{destination: "10.20.30.0/24", user_id: ^user_id} =
                Rules.setting_projection(rule_map)

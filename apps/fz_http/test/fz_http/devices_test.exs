@@ -426,8 +426,8 @@ defmodule FzHttp.DevicesTest do
       device_map =
         device
         |> Map.from_struct()
-        |> Map.put(:ipv4, EctoNetwork.INET.decode(device.ipv4))
-        |> Map.put(:ipv6, EctoNetwork.INET.decode(device.ipv6))
+        |> Map.put(:ipv4, FzHttp.Devices.decode(device.ipv4))
+        |> Map.put(:ipv6, FzHttp.Devices.decode(device.ipv6))
 
       assert %{ip: "10.3.2.2", ip6: "fd00::3:2:2", user_id: ^user_id} =
                Devices.setting_projection(device_map)
