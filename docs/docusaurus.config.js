@@ -77,14 +77,14 @@ const config = {
             "aria-label": "Old Documentation",
           },
           {
-            href: "https://github.com/facebook/docusaurus",
+            href: "https://discourse.firez.one/",
             label: "Ask a Question",
             position: "right",
             "aria-label": "GitHub repository",
           },
           {
-            href: "https://github.com/facebook/docusaurus",
-            label: "Join the Business Beta",
+            href: "https://www.firezone.dev/pricing",
+            label: "Join the Beta",
             position: "right",
             "aria-label": "GitHub repository",
           },
@@ -129,7 +129,7 @@ const config = {
               },
               {
                 label: "Slack",
-                href: "https://join.slack.com/t/firezone-users/shared_invite/zt-19jd956j4-rWcCqiKMh~ikPGsUFbvZiA",
+                href: "https://www.firezone.dev/slack",
               },
               {
                 label: "Github",
