@@ -32,25 +32,6 @@ defmodule FzHttp.Devices.DeviceSetting do
 
     %__MODULE__{}
     |> cast(device, [:ip, :ip6, :user_id])
-    |> validate_required(:user_id)
-    |> validate_ip_required()
-    |> validate_ip6_required()
     |> apply_changes()
-  end
-
-  defp validate_ip_required(changeset) do
-    if Application.fetch_env!(:fz_http, :wireguard_ipv4_enabled) do
-      validate_required(changeset, :ip)
-    else
-      changeset
-    end
-  end
-
-  defp validate_ip6_required(changeset) do
-    if Application.fetch_env!(:fz_http, :wireguard_ipv6_enabled) do
-      validate_required(changeset, :ip6)
-    else
-      changeset
-    end
   end
 end

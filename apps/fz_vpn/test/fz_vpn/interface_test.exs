@@ -12,12 +12,12 @@ defmodule FzVpn.InterfaceTest do
   end
 
   test "list interface names" do
-    expected_names = [Server.iface_name(), "wg0-list", "wg1-list"]
+    expected_names = ["wg0-list", "wg1-list"]
     Enum.each(expected_names, fn name -> Interface.set(name, %{}) end)
     {:ok, names} = Interface.list_names()
     Enum.each(expected_names, fn name -> :ok = Interface.delete(name) end)
 
-    assert names == expected_names
+    assert names == [Server.iface_name()] ++ expected_names
   end
 
   test "remove peer from interface" do

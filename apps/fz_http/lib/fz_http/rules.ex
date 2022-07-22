@@ -17,7 +17,7 @@ defmodule FzHttp.Rules do
   end
 
   def as_settings do
-    Repo.all(from(r in Rule))
+    Repo.all(from(Rule))
     |> Enum.map(&setting_projection/1)
     |> MapSet.new()
   end

@@ -36,7 +36,7 @@ defmodule FzHttp.Devices do
   end
 
   def as_settings do
-    Repo.all(from(d in Device))
+    Repo.all(from(Device))
     |> Enum.map(&setting_projection/1)
     |> MapSet.new()
   end

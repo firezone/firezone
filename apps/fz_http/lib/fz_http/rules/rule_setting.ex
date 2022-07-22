@@ -27,7 +27,6 @@ defmodule FzHttp.Rules.RuleSetting do
   def parse(rule) when is_map(rule) do
     %__MODULE__{}
     |> cast(rule, [:action, :destination, :user_id])
-    |> validate_required([:action, :destination])
     |> apply_changes()
   end
 end
