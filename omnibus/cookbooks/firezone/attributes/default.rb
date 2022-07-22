@@ -147,13 +147,13 @@ default['firezone']['authentication']['oidc'] = {}
 # instead of proxies add it to the config default['firezone']['clients'] below
 #
 # If set to nil Firezone will assume that it is not running behind a proxy
-default['firezone']['trusted_proxies'] = []
+default['firezone']['external_trusted_proxies'] = []
 
 # An array of IPs that Firezone will assume are clients, and thus, not a trusted
 # prox, for the purpose of calculating the client's IP.
 # See more here: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-For#selecting_an_ip_address
 # This will supersede any proxy configured manually or by default by
-# default['firezone']['trusted_proxies']
+# default['firezone']['external_trusted_proxies']
 default['firezone']['clients'] = []
 
 # ## Nginx

@@ -10,7 +10,9 @@ alias FzCommon.{CLI, FzInteger, FzString}
 # external_url is important
 external_url = System.get_env("EXTERNAL_URL", "http://localhost:4000")
 
-trusted_proxies = FzString.to_cidr_list(System.get_env("TRUSTED_PROXIES") || "[]")
+external_trusted_proxies =
+  FzString.to_cidr_list(System.get_env("EXTERNAL_TRUSTED_PROXIES") || "[]")
+
 clients = FzString.to_cidr_list(System.get_env("CLIENTS") || "[]")
 
 %{host: host, path: path, port: port, scheme: scheme} = URI.parse(external_url)
@@ -18,7 +20,7 @@ clients = FzString.to_cidr_list(System.get_env("CLIENTS") || "[]")
 config :fz_http, FzHttpWeb.Endpoint,
   url: [host: host, scheme: scheme, port: port, path: path],
   check_origin: ["//127.0.0.1", "//localhost", "//#{host}"],
-  trusted_proxies: trusted_proxies,
+  external_trusted_proxies: external_trusted_proxies,
   clients: clients
 
 # Formerly releases.exs - Only evaluated in production

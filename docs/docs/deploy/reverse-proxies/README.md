@@ -22,8 +22,13 @@ reverse-proxies.
 
 * Disable the bundled Nginx by setting `default['firezone']['nginx']['enabled']`
   to `false` in the config file.
-* Add all intermediate proxies IPs to `default['firezone']['trusted_proxies']`,
+* Add all intermediate proxies IPs to `default['firezone']['external_trusted_proxies']`,
   this is used to calculate the actual client ip and prevent spoofing.
+
+**Note:** `external_trusted_proxies` consider by default that `127.0.0.0/8`,
+`10.0.0.0/8`, `172.16.0.0/12`, `1926.0.0/16`, `::1/128` and `fc00::/7` are
+ proxies, even when empty, you can add any IP in these ranges to
+`default['firezone']['clients']` to consider them as clients instead.
 
 Read more about the configuration options
 [here](../../../reference/configuration-file.md).

@@ -9,6 +9,7 @@ defmodule FzCommon.FzString do
   end
 
   def to_cidr_list("nil"), do: nil
+  def to_cidr_list("false"), do: nil
   def to_cidr_list("null"), do: nil
 
   # xxx: to_ip?
