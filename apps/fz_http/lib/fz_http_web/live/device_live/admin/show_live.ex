@@ -43,13 +43,11 @@ defmodule FzHttpWeb.DeviceLive.Admin.Show do
     end
   end
 
-  @event_error_msg """
-  Device deleted successfully but an error occured applying its configuration to the WireGuard
-  interface. Check logs for more information.
-  """
-
-  # socket
-  # |> put_flash(:error, @event_error_msg)
+  # XXX: Re-implement showing this error in 0.5.1 when events can send an error.
+  # @event_error_msg """
+  # Device deleted successfully but an error occured applying its configuration to the WireGuard
+  # # interface. Check logs for more information.
+  # """
 
   defp assigns(device) do
     [

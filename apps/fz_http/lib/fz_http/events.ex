@@ -14,7 +14,8 @@ defmodule FzHttp.Events do
          :ok <- GenServer.call(vpn_pid(), {:set_config, Devices.to_peer_list()}) do
       :ok
     else
-      _err -> nil # TODO: propagate error to ui
+      # XXX: propagate error to ui in 0.5.1
+      _err -> nil
     end
   end
 
@@ -23,7 +24,8 @@ defmodule FzHttp.Events do
          :ok <- GenServer.call(vpn_pid(), {:remove_peer, device.public_key}) do
       :ok
     else
-      _err -> nil # TODO: propagate error to ui
+      # XXX: propagate error to ui in 0.5.1
+      _err -> nil
     end
   end
 

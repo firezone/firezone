@@ -6,6 +6,7 @@ defmodule FzHttp.Devices do
   import Ecto.Changeset
   import Ecto.Query, warn: false
 
+  alias EctoNetwork.INET
   alias FzHttp.{Devices.Device, Devices.DeviceSetting, Repo, Sites, Telemetry, Users, Users.User}
 
   require Logger
@@ -192,6 +193,9 @@ defmodule FzHttp.Devices do
     #{persistent_keepalive_config(device)}
     """
   end
+
+  def decode(nil), do: nil
+  def decode(inet), do: INET.decode(inet)
 
   defp psk_config(device) do
     if device.preshared_key do

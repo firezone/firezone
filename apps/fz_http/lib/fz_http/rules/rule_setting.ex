@@ -5,7 +5,7 @@ defmodule FzHttp.Rules.RuleSetting do
   use Ecto.Schema
 
   import Ecto.Changeset
-  import EctoNetwork.INET, only: [decode: 1]
+  import FzHttp.Devices, only: [decode: 1]
 
   alias FzHttp.Rules.Rule
 
