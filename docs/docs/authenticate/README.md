@@ -56,8 +56,12 @@ default['firezone']['authentication']['oidc'] = {
 }
 ```
 
-1. `discovery_document_uri`: This URL returns a JSON with information to
-construct a request to the OpenID server.
+The following config settings are required for the integration:
+
+1. `discovery_document_uri`: The
+[OpenID Connect provider configuration URI](https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderConfig)
+which returns a JSON document used to construct subsequent requests to this
+OIDC provider.
 1. `client_id`: The client ID of the application.
 1. `client_secret`: The client secret of the application.
 1. `redirect_uri`: Instructs OIDC provider where to redirect after authentication.
@@ -94,9 +98,12 @@ If your identity provider is not listed above, but has a generic OIDC
 connector, please consult their documentation to find instructions on obtaining
 the config settings required.
 
-Join our [Slack](https://www.firezone.dev/slack) to request additional help or
-open a [Github Issue](https://github.com/firezone/firezone/issues) to request
-additional documentation for your provider.
+Open a [Github Issue](https://github.com/firezone/firezone/issues)
+to request documentation
+or submit a [pull request](https://github.com/firezone/firezone/tree/master/docs/docs/authenticate/index.md)
+to add documentation for your provider.
+If you require assistance in setting up your OIDC provider, please
+join the [Firezone Slack group](https://www.firezone.dev/slack).
 
 ## Enforce Periodic Re-authentication
 
