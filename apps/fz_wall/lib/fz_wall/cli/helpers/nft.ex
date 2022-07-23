@@ -10,23 +10,41 @@ defmodule FzWall.CLI.Helpers.Nft do
   @doc """
   Insert a nft rule
   """
-  def insert_rule(type, source_set, dest_set, action) do
+  def insert_filter_rule(chain, type, dest_set, action, layer4) do
     exec!("""
-      #{nft()} 'insert rule inet #{@table_name} forward #{rule_match_str(type, source_set, dest_set, action)}'
+      #{nft()} 'insert rule inet #{@table_name} #{chain} #{rule_filter_match_str(type, dest_set, action, layer4)}'
     """)
   end
 
   @doc """
-  Removes a nft rule
+  Insert a nft rule
   """
-  def remove_rule(type, source_set, dest_set, action) do
-    delete_rule_matching(rule_match_str(type, source_set, dest_set, action))
+  def insert_dev_rule(ip_type, source_set, jump_chain) do
+    exec!("""
+      #{nft()} 'insert rule inet #{@table_name} #{rule_dev_match_str(ip_type, source_set, jump_chain)}'
+    """)
+  end
+
+  def remove_dev_rule(ip_type, source_set, jump_chain) do
+    delete_rule_matching(rule_dev_match_str(ip_type, source_set, jump_chain))
+  end
+
+  def add_filter_elem(set, ip, nil, nil) do
+    exec!("""
+      #{nft()} 'add element inet #{@table_name} #{set} { #{standardized_inet(ip)} }'
+    """)
+  end
+
+  def add_filter_elem(set, ip, proto, ports) do
+    exec!("""
+      #{nft()} 'add element inet #{@table_name} #{set} { #{standardized_inet(ip)} . #{proto} . #{ports} }'
+    """)
   end
 
   @doc """
   Adds an element from a nft set
   """
-  def add_elem(set, ip) do
+  def add_dev_elem(set, ip) do
     exec!("""
       #{nft()} 'add element inet #{@table_name} #{set} { #{standardized_inet(ip)} }'
     """)
@@ -41,12 +59,36 @@ defmodule FzWall.CLI.Helpers.Nft do
     """)
   end
 
+  def delete_elem(set, ip, nil, ports) do
+    exec!("""
+      #{nft()} 'delete element inet #{@table_name} #{set} { #{standardized_inet(ip)} . #{ports} }'
+    """)
+  end
+
+  def delete_elem(set, ip, proto, ports) do
+    exec!("""
+      #{nft()} 'delete element inet #{@table_name} #{set} { #{standardized_inet(ip)} . #{proto} . #{ports} }'
+    """)
+  end
+
   @doc """
   Adds a nft set
   """
-  def add_set(set_spec) do
+  def add_dev_set(set_spec) do
     exec!("""
-      #{nft()} 'add set inet #{@table_name} #{set_spec.name} { type #{set_type(set_spec.type)} ; flags interval ; }'
+      #{nft()} 'add set inet #{@table_name} #{set_spec.name} { type #{dev_set_type(set_spec.ip_type)} ; flags interval ; }'
+    """)
+  end
+
+  def remove_dev_set(set_spec) do
+    exec!("""
+      #{nft()} 'add set inet #{@table_name} #{set_spec.name}'
+    """)
+  end
+
+  def add_filter_set(set_spec) do
+    exec!("""
+      #{nft()} 'add set inet #{@table_name} #{set_spec.name} { type #{filter_set_type(set_spec.ip_type, set_spec.layer4)} ; flags interval ; }'
     """)
   end
 
@@ -81,6 +123,17 @@ defmodule FzWall.CLI.Helpers.Nft do
     )
 
     setup_masquerade()
+  end
+
+  @doc """
+  Adds a regular nftable chain
+  """
+  def add_chain(chain_name) do
+    exec!("#{nft()} 'add chain inet #{@table_name} #{chain_name}'")
+  end
+
+  def delete_chain(chain_name) do
+    exec!("#{nft()} 'delete chain inet #{@table_name} #{chain_name}'")
   end
 
   defp setup_masquerade do
@@ -172,14 +225,23 @@ defmodule FzWall.CLI.Helpers.Nft do
     Regex.run(regex, rules, capture: :all_names)
   end
 
-  defp set_type(:ip), do: "ipv4_addr"
-  defp set_type(:ip6), do: "ipv6_addr"
+  defp filter_set_type(:ip, false), do: "ipv4_addr"
+  defp filter_set_type(:ip6, false), do: "ipv6_addr"
+  defp filter_set_type(:ip, true), do: "ipv4_addr . inet_proto . inet_service"
+  defp filter_set_type(:ip6, true), do: "ipv6_addr . inet_proto . inet_service"
 
-  defp rule_match_str(type, nil, dest_set, action) do
+  defp dev_set_type(:ip), do: "ipv4_addr"
+  defp dev_set_type(:ip6), do: "ipv6_addr"
+
+  defp rule_filter_match_str(type, dest_set, action, false) do
     "#{type} daddr @#{dest_set} ct state != established #{action}"
   end
 
-  defp rule_match_str(type, source_set, dest_set, action) do
-    "#{type} saddr @#{source_set} #{rule_match_str(type, nil, dest_set, action)}"
+  defp rule_filter_match_str(type, dest_set, action, true) do
+    "#{type} daddr . meta l4proto . th dport @#{dest_set} ct state != established #{action}"
+  end
+
+  defp rule_dev_match_str(ip_type, source_set, jump_chain) do
+    "forward #{ip_type} saddr @#{source_set} jump #{jump_chain}"
   end
 end

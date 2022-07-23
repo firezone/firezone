@@ -24,6 +24,33 @@
           </div>
         </div>
         <div class="control">
+          <div class="select">
+            <%= select f,
+                :port_type,
+                [[key: :TCP, value: :tcp], [key: :UDP, value: :udp]],
+                default: nil,
+                prompt: "Optional port scoped rule" %>
+          </div>
+          <div class="control">
+            <div class="field">
+              <%= number_input f,
+                  :port_start,
+                  default: nil,
+                  min: 1,
+                  max: 65535,
+                  placeholder: "Port start" %>
+            </div>
+            <div class="field">
+              <%= number_input f,
+                  :port_stop,
+                  default: nil,
+                  min: 1,
+                  max: 65535,
+                  placeholder: "Port stop" %>
+            </div>
+          </div>
+        </div>
+        <div class="control">
           <%= submit "Add", class: "button is-primary" %>
         </div>
       </div>
@@ -38,6 +65,8 @@
           <tr>
             <th>Destination</th>
             <th>User Scope</th>
+            <th>Port Type</th>
+            <th>Port Range</th>
             <th></th>
           </tr>
         </thead>
@@ -51,6 +80,12 @@
               </td>
               <td class="has-text-left">
                 <%= @users[rule.user_id] %>
+              </td>
+              <td class="has-text-left">
+                <%= rule.port_type %>
+              </td>
+              <td class="has-text-left">
+                  <%= if rule.port_range != nil, do: "#{Enum.at(rule.port_range, 0)} - #{Enum.at(rule.port_range, 1)}" %>
               </td>
               <td class="has-text-right">
                 <a href="#"

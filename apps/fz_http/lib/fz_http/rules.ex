@@ -19,14 +19,27 @@ defmodule FzHttp.Rules do
 
   def as_settings do
     Repo.all(
-      from r in Rule, select: %{destination: r.destination, user_id: r.user_id, action: r.action}
+      from r in Rule,
+        select: %{
+          destination: r.destination,
+          user_id: r.user_id,
+          action: r.action,
+          port_range: r.port_range,
+          port_type: r.port_type
+        }
     )
     |> Enum.map(&setting_projection/1)
     |> MapSet.new()
   end
 
   def setting_projection(rule) do
-    %{destination: decode(rule.destination), user_id: rule.user_id, action: rule.action}
+    %{
+      destination: decode(rule.destination),
+      user_id: rule.user_id,
+      action: rule.action,
+      port_range: rule.port_range,
+      port_type: rule.port_type
+    }
   end
 
   def count(user_id) do
@@ -43,6 +56,7 @@ defmodule FzHttp.Rules do
   def create_rule(attrs \\ %{}) do
     result =
       attrs
+      |> range_from_params()
       |> new_rule()
       |> Repo.insert()
 
@@ -55,6 +69,22 @@ defmodule FzHttp.Rules do
     end
 
     result
+  end
+
+  defp range_from_params(%{"port_start" => "", "port_stop" => ""} = attrs) do
+    attrs
+  end
+
+  defp range_from_params(%{"port_start" => port_start, "port_stop" => port_stop} = attrs) do
+    Map.put_new(attrs, "port_range", [to_num(port_start), to_num(port_stop)])
+  end
+
+  defp to_num(nil), do: nil
+  defp to_num(""), do: nil
+
+  defp to_num(port) when is_binary(port) do
+    {port, _} = Integer.parse(port)
+    port
   end
 
   def delete_rule(%Rule{} = rule) do
