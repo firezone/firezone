@@ -17,7 +17,7 @@ def capture
   uri = URI('https://telemetry.firez.one/capture/')
   data = {
     api_key: 'phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK',
-    event: 'firezone-ctl create-or-reset-admin',
+    event: 'firezone-ctl reconfigure',
     properties: {
       distinct_id: telemetry_id
     }
