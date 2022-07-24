@@ -57,6 +57,7 @@ defmodule FzHttpWeb do
     quote do
       use Phoenix.LiveView, layout: {FzHttpWeb.LayoutView, "live.html"}
       import FzHttpWeb.LiveHelpers
+      alias FzHttp.Conf
       alias Phoenix.LiveView.JS
 
       @events_module Application.compile_env!(:fz_http, :events_module)
@@ -69,6 +70,7 @@ defmodule FzHttpWeb do
     quote do
       use Phoenix.LiveComponent
       import FzHttpWeb.LiveHelpers
+      alias FzHttp.Conf
 
       @events_module Application.compile_env!(:fz_http, :events_module)
 
