@@ -8,6 +8,7 @@ capture () {
       telemetry_id=`cat /var/opt/firezone/cache/telemetry_id`
       if [ ! -z "$telemetry_id" ]; then
         curl -s -XPOST \
+          -m 5 \
           -H 'Content-Type: application/json' \
           -d "{
             \"api_key\": \"phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK\",
