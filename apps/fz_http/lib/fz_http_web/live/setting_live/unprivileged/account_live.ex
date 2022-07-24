@@ -19,7 +19,7 @@ defmodule FzHttpWeb.SettingLive.Unprivileged.Account do
 
     {:ok,
      socket
-     |> assign(:local_auth_enabled, Application.fetch_env!(:fz_http, :local_auth_enabled))
+     |> assign(:local_auth_enabled, FzHttp.Conf.get(:local_auth_enabled))
      |> assign(:changeset, Users.change_user(socket.assigns.current_user))
      |> assign(:methods, MFA.list_methods(socket.assigns.current_user))
      |> assign(:page_title, "Account Settings")

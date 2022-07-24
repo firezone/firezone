@@ -4,6 +4,7 @@ defmodule FzHttp.TestHelpers do
   """
 
   alias FzHttp.{
+    Conf.Cache,
     ConnectivityChecksFixtures,
     DevicesFixtures,
     MFA,
@@ -19,7 +20,12 @@ defmodule FzHttp.TestHelpers do
   def restore_env(app, key, val, cb) do
     old = Application.fetch_env!(app, key)
     Application.put_env(app, key, val)
-    cb.(fn -> Application.put_env(app, key, old) end)
+    Cache.put(key, val)
+
+    cb.(fn ->
+      Application.put_env(app, key, old)
+      Cache.put(key, old)
+    end)
   end
 
   def clear_users do
