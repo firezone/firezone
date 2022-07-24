@@ -165,10 +165,13 @@ defmodule FzHttpWeb.Router do
   end
 
   if Mix.env() == :dev do
+    import Phoenix.LiveDashboard.Router
+
     scope "/dev" do
       pipe_through [:browser]
 
       forward "/mailbox", Plug.Swoosh.MailboxPreview
+      live_dashboard "/dashboard"
     end
   end
 end

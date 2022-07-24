@@ -10,8 +10,9 @@
   </div>
 
   <h4 class="title is-4">Authentication</h4>
+
   <div class="block">
-    <.form let={f} for={@changeset} phx-change="change" phx-submit="save">
+    <.form let={f} for={@site_changeset} phx-change="change" phx-submit="save_site">
       <div class="field">
         <%= label f, :vpn_session_duration, "Require Authentication For VPN Sessions", class: "label" %>
         <div class="field has-addons">
@@ -32,7 +33,45 @@
     </.form>
   </div>
 
+  <div class="block">
+    <strong>Local Auth</strong>
+
+    <div class="level">
+      <div class="level-left">
+        <p>Enable or disable authentication with email and password.</p>
+      </div>
+      <div class="level-right">
+        <label class="switch is-medium">
+          <input type="checkbox" phx-click="toggle" phx-value-config="local_auth_enabled"
+              checked={@configs.local_auth_enabled}
+              value={if(!@configs.local_auth_enabled, do: "on")} />
+          <span class="check"></span>
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <div class="block">
+    <strong>Allow unprivileged device management</strong>
+
+    <div class="level">
+      <div class="level-left">
+        <p>Enable or disable management of devices on unprivileged accounts.</p>
+      </div>
+      <div class="level-right">
+        <label class="switch is-medium">
+          <input type="checkbox" phx-click="toggle"
+              phx-value-config="allow_unprivileged_device_management"
+              checked={@configs.allow_unprivileged_device_management}
+              value={if(!@configs.allow_unprivileged_device_management, do: "on")} />
+          <span class="check"></span>
+        </label>
+      </div>
+    </div>
+  </div>
+
   <h4 class="title is-4">Single Sign-On</h4>
+
   <div class="block">
     <p>
       Single Sign-On can be configured in the main Firezone configuration
@@ -40,5 +79,65 @@
       <a href="https://docs.firezone.dev/docs/authenticate/">Firezone documentation</a>
       for more details.
     </p>
+  </div>
+
+  <div class="block">
+    <strong>Auto disable VPN</strong>
+
+    <div class="level">
+      <div class="level-left">
+        <p>Enable or disable auto disabling VPN connection on OIDC refresh error.</p>
+      </div>
+      <div class="level-right">
+        <label class="switch is-medium">
+          <input type="checkbox" phx-click="toggle"
+              phx-value-config="disable_vpn_on_oidc_error"
+              checked={@configs.disable_vpn_on_oidc_error}
+              value={if(!@configs.disable_vpn_on_oidc_error, do: "on")} />
+          <span class="check"></span>
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <div class="block">
+    <strong>Auto create OIDC users</strong>
+
+    <div class="level">
+      <div class="level-left">
+        <p>Enable or disable auto creation of new users when logging in via OIDC for the first time.</p>
+      </div>
+      <div class="level-right">
+        <label class="switch is-medium">
+          <input type="checkbox" phx-click="toggle"
+              phx-value-config="auto_create_oidc_users"
+              checked={@configs.auto_create_oidc_users}
+              value={if(!@configs.auto_create_oidc_users, do: "on")} />
+          <span class="check"></span>
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <div class="block">
+    <.form let={f} for={@config_changeset} id="oidc-config-form" phx-submit="save_oidc_config">
+      <div class="field">
+        <%= label f, :openid_connect_providers, "OpenID Connect providers configuration",
+            class: "label" %>
+
+        <div class="control">
+          <%= textarea f,
+              :openid_connect_providers,
+              placeholder: ~s|{"google": {...}, "okta": {...}}|,
+              class: "textarea #{input_error_class(@config_changeset, :openid_connect_providers)}" %>
+        </div>
+
+        <p class="help is-danger">
+          <%= error_tag @config_changeset, :openid_connect_providers %>
+        </p>
+      </div>
+
+      <%= Phoenix.View.render(FzHttpWeb.SharedView, "submit_button.html", []) %>
+    </.form>
   </div>
 </section>

@@ -169,7 +169,7 @@ defmodule FzHttpWeb.AuthController do
 
   defp maybe_sign_in(conn, user, %{provider: provider} = auth)
        when provider in [:identity, :magic_link] do
-    if Application.fetch_env!(:fz_http, :local_auth_enabled) do
+    if FzHttp.Conf.get(:local_auth_enabled) do
       do_sign_in(conn, user, auth)
     else
       conn

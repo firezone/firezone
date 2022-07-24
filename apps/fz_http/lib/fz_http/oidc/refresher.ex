@@ -55,7 +55,7 @@ defmodule FzHttp.OIDC.Refresher do
       refresh_response: refresh_response
     })
 
-    with %{error: _} <- refresh_response, true <- disable_vpn_on_oidc_error?() do
+    with %{error: _} <- refresh_response, true <- FzHttp.Conf.get(:disable_vpn_on_oidc_error) do
       user = Users.get_user!(user_id)
 
       Logger.info("Disabling user #{user.email} due to OIDC token refresh failure...")
@@ -70,10 +70,6 @@ defmodule FzHttp.OIDC.Refresher do
       end)
       |> Repo.update!()
     end
-  end
-
-  defp disable_vpn_on_oidc_error? do
-    Application.fetch_env!(:fz_http, :disable_vpn_on_oidc_error)
   end
 
   defp openid_connect do

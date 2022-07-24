@@ -58,7 +58,7 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.Show do
   def delete_device(device, socket) do
     if socket.assigns.current_user.id == device.user_id &&
          (has_role?(socket.assigns.current_user, :admin) ||
-            Application.fetch_env!(:fz_http, :allow_unprivileged_device_management)) do
+            FzHttp.Conf.get(:allow_unprivileged_device_management)) do
       Devices.delete_device(device)
     else
       {:not_authorized}
