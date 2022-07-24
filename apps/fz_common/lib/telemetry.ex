@@ -7,10 +7,18 @@ defmodule FzCommon.Telemetry do
 
   def capture(event, metadata) do
     Logger.debug("Capturing event #{event}")
-    Posthog.capture(event, metadata)
+
+    Task.start(fn ->
+      # Detach from calling process to prevent blocking
+      Posthog.capture(event, metadata)
+    end)
   end
 
   def batch(events) when is_list(events) do
-    Posthog.batch(events)
+    Logger.debug("Capturing events #{inspect(events)}")
+
+    Task.start(fn ->
+      Posthog.batch(events)
+    end)
   end
 end
