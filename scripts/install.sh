@@ -20,6 +20,7 @@ capture () {
   if type curl > /dev/null; then
     if [ ! -z "$telemetry_id" ]; then
       curl -s -XPOST \
+        -m 5 \
         -H 'Content-Type: application/json' \
         -d "{
           \"api_key\": \"phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK\",
@@ -156,7 +157,7 @@ osCheck
 curlCheck
 
 telemetry_id=`od -vN "8" -An -tx1 /dev/urandom | tr -d " \n" ; echo`
-public_ip=`curl --silent ifconfig.me`
+public_ip=`curl -m 5 --silent ifconfig.me`
 
 capture "install" "email-not-collected@dummy.domain"
 
