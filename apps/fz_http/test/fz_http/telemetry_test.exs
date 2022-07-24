@@ -85,7 +85,6 @@ defmodule FzHttp.TelemetryTest do
 
     @tag config: {:local_auth_enabled, true}
     test "local authentication enabled" do
-      restore_env(:local_auth_enabled, true, &on_exit/1)
       ping_data = Telemetry.ping_data()
 
       assert ping_data[:local_authentication]
@@ -93,7 +92,6 @@ defmodule FzHttp.TelemetryTest do
 
     @tag config: {:local_auth_enabled, false}
     test "local authentication disabled" do
-      restore_env(:local_auth_enabled, false, &on_exit/1)
       ping_data = Telemetry.ping_data()
 
       refute ping_data[:local_authentication]
