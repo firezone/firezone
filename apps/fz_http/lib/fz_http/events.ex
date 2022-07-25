@@ -9,7 +9,7 @@ defmodule FzHttp.Events do
 
   # set_config is used because devices need to be re-evaluated in case a
   # device is added to a User that's not active.
-  def add_device(device) do
+  def add(subject, device) when subject == "devices" do
     with :ok <- GenServer.call(wall_pid(), {:add_device, Devices.setting_projection(device)}),
          :ok <- GenServer.call(vpn_pid(), {:set_config, Devices.to_peer_list()}) do
       :ok
@@ -19,7 +19,19 @@ defmodule FzHttp.Events do
     end
   end
 
-  def delete_device(device) do
+  def add(subject, rule) when subject == "rules" do
+    GenServer.call(wall_pid(), {:add_rule, Rules.setting_projection(rule)})
+  end
+
+  def add(subject, user) when subject == "users" do
+    # Security note: It's important to let an exception here crash this service
+    # otherwise, nft could have succeeded in adding the user's set but not the rules
+    # this means that in `update_device` add_device can succeed adding the device to the user's set
+    # but any rule for the user won't take effect since the user rule doesn't exists.
+    GenServer.call(wall_pid(), {:add_user, Users.setting_projection(user)})
+  end
+
+  def delete(subject, device) when subject == "devices" do
     with :ok <- GenServer.call(wall_pid(), {:delete_device, Devices.setting_projection(device)}),
          :ok <- GenServer.call(vpn_pid(), {:remove_peer, device.public_key}) do
       :ok
@@ -29,24 +41,12 @@ defmodule FzHttp.Events do
     end
   end
 
-  def delete_user(user) do
-    GenServer.call(wall_pid(), {:delete_user, Users.setting_projection(user)})
-  end
-
-  def create_user(user) do
-    # Security note: It's important to let an exception here crash this service
-    # otherwise, nft could have succeeded in adding the user's set but not the rules
-    # this means that in `update_device` add_device can succeed adding the device to the user's set
-    # but any rule for the user won't take effect since the user rule doesn't exists.
-    GenServer.call(wall_pid(), {:add_user, Users.setting_projection(user)})
-  end
-
-  def add_rule(rule) do
-    GenServer.call(wall_pid(), {:add_rule, Rules.setting_projection(rule)})
-  end
-
-  def delete_rule(rule) do
+  def delete(subject, rule) when subject == "rules" do
     GenServer.call(wall_pid(), {:delete_rule, Rules.setting_projection(rule)})
+  end
+
+  def delete(subject, user) when subject == "users" do
+    GenServer.call(wall_pid(), {:delete_user, Users.setting_projection(user)})
   end
 
   def set_config do

@@ -1,13 +1,11 @@
 defmodule FzHttp.Rules.RuleSetting do
   @moduledoc """
-  Rule setting parsed from either a Rule or Map.
+  Rule setting parsed from either a Rule struct or map.
   """
   use Ecto.Schema
 
   import Ecto.Changeset
   import FzHttp.Devices, only: [decode: 1]
-
-  alias FzHttp.Rules.Rule
 
   @primary_key false
   embedded_schema do
@@ -16,7 +14,7 @@ defmodule FzHttp.Rules.RuleSetting do
     field :user_id, :integer
   end
 
-  def parse(%Rule{} = rule) do
+  def parse(rule) when is_struct(rule) do
     %__MODULE__{
       destination: decode(rule.destination),
       action: rule.action,

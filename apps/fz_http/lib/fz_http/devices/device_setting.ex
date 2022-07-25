@@ -1,13 +1,11 @@
 defmodule FzHttp.Devices.DeviceSetting do
   @moduledoc """
-  Device setting parsed from either a Device or Map.
+  Device setting parsed from either a Device struct or map.
   """
   use Ecto.Schema
 
   import Ecto.Changeset
   import FzHttp.Devices, only: [decode: 1]
-
-  alias FzHttp.Devices.Device
 
   @primary_key false
   embedded_schema do
@@ -16,7 +14,7 @@ defmodule FzHttp.Devices.DeviceSetting do
     field :user_id, :integer
   end
 
-  def parse(%Device{} = device) do
+  def parse(device) when is_struct(device) do
     %__MODULE__{
       ip: decode(device.ipv4),
       ip6: decode(device.ipv6),
