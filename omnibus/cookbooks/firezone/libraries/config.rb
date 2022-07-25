@@ -225,6 +225,8 @@ class Firezone
         'DATABASE_PARAMETERS' => attributes['database']['parameters'].to_json,
         'PHOENIX_LISTEN_ADDRESS' => attributes['phoenix']['listen_address'].to_s,
         'PHOENIX_PORT' => attributes['phoenix']['port'].to_s,
+        'EXTERNAL_TRUSTED_PROXIES' => Chef::JSONCompat.to_json(attributes['phoenix']['external_trusted_proxies']),
+        'PRIVATE_CLIENTS' => Chef::JSONCompat.to_json(attributes['phoenix']['private_clients']),
         'EXTERNAL_URL' => attributes['external_url'] || fqdn_url,
         'ADMIN_EMAIL' => attributes['admin_email'],
         'WIREGUARD_INTERFACE_NAME' => attributes['wireguard']['interface_name'],
@@ -244,6 +246,7 @@ class Firezone
         'WIREGUARD_IPV6_ADDRESS' => attributes['wireguard']['ipv6']['address'],
         'MAX_DEVICES_PER_USER' => attributes['max_devices_per_user'].to_s,
         'ALLOW_UNPRIVILEGED_DEVICE_MANAGEMENT' => attributes['allow_unprivileged_device_management'].to_s,
+
         # Allow env var to override config
         'TELEMETRY_ENABLED' => ENV.fetch('TELEMETRY_ENABLED',
                                          attributes['telemetry']['enabled'] == false ? 'false' : 'true'),
@@ -275,7 +278,10 @@ class Firezone
         'LIVE_VIEW_SIGNING_SALT' => attributes['live_view_signing_salt'],
         'COOKIE_SIGNING_SALT' => attributes['cookie_signing_salt'],
         'COOKIE_ENCRYPTION_SALT' => attributes['cookie_encryption_salt'],
-        'DATABASE_ENCRYPTION_KEY' => attributes['database_encryption_key']
+        'DATABASE_ENCRYPTION_KEY' => attributes['database_encryption_key'],
+
+        # cookies
+        'SECURE_COOKIES' => attributes['phoenix']['secure_cookies'].to_s
       }
 
       env.merge!('DATABASE_PASSWORD' => attributes['database']['password']) if attributes.dig('database', 'password')
