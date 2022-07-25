@@ -9,7 +9,7 @@ self-hosted instance and how to disable it.
 ## Why Firezone collects telemetry
 
 We *rely* on telemetry to prioritize our roadmap and optimize the engineering
-resources we have to make Firezone better for everyone. The biggest contribution
+resources we have to make Firezone better for everyone.
 
 The telemetry we collect aims to answer the following questions:
 
