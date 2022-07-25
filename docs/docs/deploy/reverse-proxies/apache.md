@@ -6,7 +6,7 @@ sidebar_position: 1
 The following are example [apache](https://httpd.apache.org/) configurations
 with and without SSL termination.
 
-These expect the apache to be running on the same host as firezone and
+These expect the apache to be running on the same host as Firezone and
 `default['firezone']['phoenix']['port']` to be `13000`.
 
 ### Without SSL termination

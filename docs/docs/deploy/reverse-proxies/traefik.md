@@ -8,7 +8,7 @@ proxy.
 
 As of right now Firezone can't be run as a container in production, although
 this is a [planned feature](https://github.com/firezone/firezone/issues/260).
-So, these example configurations expects Firezone to be deployed in the same
+So, these example configurations expects Firezone to be deployed on the same
 host as the proxy.
 
 In these configurations we assume `default['firezone']['phoenix']['port']` to be

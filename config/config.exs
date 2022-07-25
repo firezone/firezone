@@ -53,6 +53,8 @@ config :fz_http, FzHttpWeb.Authentication,
   secret_key: "GApJ4c4a/KJLrBePgTDUk0n67AbjCvI9qdypKZEaJFXl6s9H3uRcIhTt49Fij5UO"
 
 config :fz_http,
+  external_trusted_proxies: [],
+  private_clients: [],
   disable_vpn_on_oidc_error: true,
   auto_create_oidc_users: true,
   sandbox: true,

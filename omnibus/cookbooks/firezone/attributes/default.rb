@@ -135,26 +135,29 @@ default['firezone']['authentication']['oidc'] = {}
 #   }
 # }
 
-# ## Proxy
-# An array of IPs that Firezone will trust as reverse-proxies. These will be
-# trusted for the puropse of deriving the Client's real ip. Read more here:
+# ## Custom Reverse Proxy
+#
+# An array of IPs that Firezone will trust as reverse proxies.
+#
+# Read more here:
 # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-For#selecting_an_ip_address
+#
 # By default the following IPs are included:
 # * IPv4: 127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
 # * IPv6: ::1/128, fc00::/7
 #
-# If some of this IPs should be counted as clients
-# instead of proxies add it to the config default['firezone']['clients'] below
+# If any client requests will actually be coming from these private IPs, add them to
+# default['firezone']['phoenix']['private_clients'] below instead of here.
 #
-# If set to nil Firezone will assume that it is not running behind a proxy
+# If set to false Firezone will assume that it is not running behind a proxy
 default['firezone']['external_trusted_proxies'] = []
 
 # An array of IPs that Firezone will assume are clients, and thus, not a trusted
-# prox, for the purpose of calculating the client's IP.
+# proxy for the purpose of determining the client's IP. By default the bundled
 # See more here: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-For#selecting_an_ip_address
 # This will supersede any proxy configured manually or by default by
 # default['firezone']['external_trusted_proxies']
-default['firezone']['clients'] = []
+default['firezone']['phoenix']['private_clients'] = []
 
 # ## Nginx
 

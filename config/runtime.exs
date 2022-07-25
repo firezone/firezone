@@ -10,18 +10,11 @@ alias FzCommon.{CLI, FzInteger, FzString}
 # external_url is important
 external_url = System.get_env("EXTERNAL_URL", "http://localhost:4000")
 
-external_trusted_proxies =
-  FzString.to_cidr_list(System.get_env("EXTERNAL_TRUSTED_PROXIES") || "[]")
-
-clients = FzString.to_cidr_list(System.get_env("CLIENTS") || "[]")
-
 %{host: host, path: path, port: port, scheme: scheme} = URI.parse(external_url)
 
 config :fz_http, FzHttpWeb.Endpoint,
   url: [host: host, scheme: scheme, port: port, path: path],
-  check_origin: ["//127.0.0.1", "//localhost", "//#{host}"],
-  external_trusted_proxies: external_trusted_proxies,
-  clients: clients
+  check_origin: ["//127.0.0.1", "//localhost", "//#{host}"]
 
 # Formerly releases.exs - Only evaluated in production
 if config_env() == :prod do
@@ -36,6 +29,9 @@ if config_env() == :prod do
   database_parameters = Jason.decode!(System.fetch_env!("DATABASE_PARAMETERS"))
   phoenix_listen_address = System.fetch_env!("PHOENIX_LISTEN_ADDRESS")
   phoenix_port = String.to_integer(System.fetch_env!("PHOENIX_PORT"))
+  external_trusted_proxies = Jason.decode!(System.fetch_env!("EXTERNAL_TRUSTED_PROXIES"))
+  private_clients = Jason.decode!(System.fetch_env!("PRIVATE_CLIENTS"))
+
   admin_email = System.fetch_env!("ADMIN_EMAIL")
   default_admin_password = System.fetch_env!("DEFAULT_ADMIN_PASSWORD")
   wireguard_private_key_path = System.fetch_env!("WIREGUARD_PRIVATE_KEY_PATH")
@@ -202,6 +198,8 @@ if config_env() == :prod do
     secret_key: guardian_secret_key
 
   config :fz_http,
+    external_trusted_proxies: external_trusted_proxies,
+    private_clients: private_clients,
     disable_vpn_on_oidc_error: disable_vpn_on_oidc_error,
     auto_create_oidc_users: auto_create_oidc_users,
     cookie_signing_salt: cookie_signing_salt,

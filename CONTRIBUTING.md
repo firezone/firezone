@@ -157,7 +157,7 @@ You can run this using Github Codespaces or your own devcontainer using Docker.
 On GitHub Codespaces, follow the instructions above but pass in your Codespace
 external url:
 
-`TRUSTED_PROXY=[] EXTERNAL_URL=[your_devcontainer_url] MIX_ENV=dev mix start`
+`EXTERNAL_URL=[your_devcontainer_url] MIX_ENV=dev mix start`
 
 or using the `.env` file
 

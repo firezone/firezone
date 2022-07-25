@@ -65,4 +65,20 @@ defmodule FzCommon.FzNet do
   def valid_hostname?(hostname) when is_binary(hostname) do
     String.match?(hostname, @host_regex)
   end
+
+  # IPv4
+  def convert_ip({_, _, _, _} = address) when is_tuple(address) do
+    address
+    |> Tuple.to_list()
+    |> Enum.join(".")
+  end
+
+  # IPv6
+  def convert_ip(address) when is_tuple(address) do
+    address
+    |> Tuple.to_list()
+    |> Enum.join(":")
+  end
+
+  def convert_ip(address) when is_binary(address), do: address
 end

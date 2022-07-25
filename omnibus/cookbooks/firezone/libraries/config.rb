@@ -225,6 +225,8 @@ class Firezone
         'DATABASE_PARAMETERS' => attributes['database']['parameters'].to_json,
         'PHOENIX_LISTEN_ADDRESS' => attributes['phoenix']['listen_address'].to_s,
         'PHOENIX_PORT' => attributes['phoenix']['port'].to_s,
+        'EXTERNAL_TRUSTED_PROXIES' => Chef::JSONCompat.to_json(attributes['phoenix']['external_trusted_proxies']),
+        'PRIVATE_CLIENTS' => Chef::JSONCompat.to_json(attributes['phoenix']['private_clients']),
         'EXTERNAL_URL' => attributes['external_url'] || fqdn_url,
         'ADMIN_EMAIL' => attributes['admin_email'],
         'WIREGUARD_INTERFACE_NAME' => attributes['wireguard']['interface_name'],
@@ -244,8 +246,6 @@ class Firezone
         'WIREGUARD_IPV6_ADDRESS' => attributes['wireguard']['ipv6']['address'],
         'MAX_DEVICES_PER_USER' => attributes['max_devices_per_user'].to_s,
         'ALLOW_UNPRIVILEGED_DEVICE_MANAGEMENT' => attributes['allow_unprivileged_device_management'].to_s,
-        'EXTERNAL_TRUSTED_PROXIES' => attributes['external_trusted_proxies'].to_s,
-        'CLIENTS' => attributes['clients'].to_s,
 
         # Allow env var to override config
         'TELEMETRY_ENABLED' => ENV.fetch('TELEMETRY_ENABLED',
