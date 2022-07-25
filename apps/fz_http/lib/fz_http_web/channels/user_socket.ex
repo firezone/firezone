@@ -63,11 +63,9 @@ defmodule FzHttpWeb.UserSocket do
   # def id(_socket), do: nil
   def id(socket), do: "user_socket:#{socket.assigns.current_user.id}"
 
+  # Proxied
   defp get_ip_address(%{x_headers: x_headers}) do
-    RemoteIp.from(x_headers,
-      proxies: HeaderHelpers.external_trusted_proxies(),
-      clients: HeaderHelpers.clients()
-    )
+    RemoteIp.from(x_headers, HeaderHelpers.remote_ip_opts())
   end
 
   # No proxy
