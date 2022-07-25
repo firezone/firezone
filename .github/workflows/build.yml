@@ -88,15 +88,15 @@ jobs:
           sudo mkdir -p /opt/firezone
           sudo chown -R $USER /opt/firezone
           bin/omnibus build firezone
-      - name: Functional Test
-        run: |
-          .ci/functional_test.sh
       - uses: actions/upload-artifact@v3
         with:
           name: firezone-${{ matrix.platform }}
           path: |
             omnibus/pkg/firezone*.deb
             omnibus/pkg/firezone*.rpm
+      - name: Functional Test
+        run: |
+          .ci/functional_test.sh
       - name: Cleanup
         if: always()
         run: |
