@@ -87,7 +87,7 @@ config :fz_http,
   default_admin_password: "firezone1234",
   events_module: FzHttp.Events,
   server_process_opts: [name: {:global, :fz_http_server}],
-  openid_connect_providers: [],
+  openid_connect_providers: "{}",
   openid_connect: OpenIDConnect
 
 config :fz_wall,
