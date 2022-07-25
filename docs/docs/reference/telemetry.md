@@ -1,0 +1,97 @@
+---
+title: Telemetry
+sidebar_position: 4
+---
+
+This document presents an overview of the telemetry Firezone collects from your
+self-hosted instance and how to disable it.
+
+## Why Firezone collects telemetry
+
+We *rely* on telemetry to prioritize our roadmap and optimize the engineering
+resources we have to make Firezone better for everyone.
+
+The telemetry we collect aims to answer the following questions:
+
+- How many people install, use, and stop using Firezone?
+- What features are most valuable, and which ones don’t see any use?
+- What functionality needs the most improvement?
+- When something breaks, why did it break, and how can we prevent it from happening
+in the future?
+
+## How we collect telemetry
+
+There are three main places where telemetry is collected in Firezone:
+
+1. Package telemetry. Includes events such as install, uninstall, and upgrade.
+2. CLI telemetry from `firezone-ctl` commands.
+3. Product telemetry associated with the Web portal.
+
+In each of these three contexts, we capture the minimum amount of data necessary
+to answer the questions in the section above.
+
+Admin emails are collected **only if** you explicitly opt-in to product updates.
+Otherwise, personally-identifiable information is ***never*** collected.
+
+We store telemetry in a self-hosted instance of PostHog running in a private
+Kubernetes cluster, only accessible by the Firezone team. Here is an example of
+a telemetry event that is sent from your instance of Firezone to our telemetry server:
+
+```json
+{
+    "id": "0182272d-0b88-0000-d419-7b9a413713f1",
+    "timestamp": "2022-07-22T18:30:39.748000+00:00",
+    "event": "fz_http_started",
+    "distinct_id": "1ec2e794-1c3e-43fc-a78f-1db6d1a37f54",
+    "properties": {
+        "$geoip_city_name": "Ashburn",
+        "$geoip_continent_code": "NA",
+        "$geoip_continent_name": "North America",
+        "$geoip_country_code": "US",
+        "$geoip_country_name": "United States",
+        "$geoip_latitude": 39.0469,
+        "$geoip_longitude": -77.4903,
+        "$geoip_postal_code": "20149",
+        "$geoip_subdivision_1_code": "VA",
+        "$geoip_subdivision_1_name": "Virginia",
+        "$geoip_time_zone": "America/New_York",
+        "$ip": "52.200.241.107",
+        "$plugins_deferred": [],
+        "$plugins_failed": [],
+        "$plugins_succeeded": [
+            "GeoIP (3)"
+        ],
+        "distinct_id": "1zc2e794-1c3e-43fc-a78f-1db6d1a37f54",
+        "fqdn": "awsdemo.firezone.dev",
+        "kernel_version": "linux 5.13.0",
+        "version": "0.4.6"
+    },
+    "elements_chain": ""
+}
+```
+
+## How to disable telemetry
+
+:::note
+We *rely* on product analytics to make Firezone better for everyone.
+Leaving telemetry enabled is the **single most valuable contribution** you can
+make to Firezone’s development. That said, we understand some users have higher
+privacy or security requirements and would prefer to disable telemetry altogether.
+If that’s you, keep reading.
+:::
+
+Telemetry is enabled by default. To completely disable product telemetry, set the
+following configuration option to `false` in `/etc/firezone/firezone.rb` and run
+`sudo firezone-ctl reconfigure` to pick up the changes.
+
+```ruby
+default['firezone']['telemetry']['enabled'] = false
+```
+
+That will completely disable all product telemetry.
+
+:::note
+If you’re looking for support running Firezone in air-gapped or other restrictive
+environments, [contact us](mailto:sales@firezone.dev) about our
+[Enterprise](https://www.firezone.dev/pricing) functionality.
+:::
