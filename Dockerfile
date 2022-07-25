@@ -1,3 +1,5 @@
+# This Dockerfile builds a development image to use for local development work
+
 FROM hexpm/elixir:1.13.4-erlang-25.0.2-ubuntu-jammy-20220428
 
 RUN set -xe \
@@ -32,14 +34,22 @@ ENV DATABASE_URL=$DATABASE_URL
 
 RUN mix local.hex --force && mix local.rebar --force
 
-COPY apps /var/app/apps
-COPY config /var/app/config
-COPY mix.exs /var/app/mix.exs
-COPY mix.lock /var/app/mix.lock
-
+# Copy more granular, dependency management files first to prevent
+# busting the Docker build cache unnecessarily
+COPY apps/fz_http/assets/package.json /var/app/apps/fz_http/assets/package.json
+COPY apps/fz_http/assets/package-lock.json /var/app/apps/fz_http/assets/package-lock.json
 RUN npm install --prefix apps/fz_http/assets
 
+COPY apps/fz_common/mix.exs /var/app/apps/fz_common/mix.exs
+COPY apps/fz_http/mix.exs /var/app/apps/fz_http/mix.exs
+COPY apps/fz_vpn/mix.exs /var/app/apps/fz_vpn/mix.exs
+COPY apps/fz_wall/mix.exs /var/app/apps/fz_wall/mix.exs
+COPY mix.exs /var/app/mix.exs
+COPY mix.lock /var/app/mix.lock
 RUN mix do deps.get --only $MIX_ENV, deps.compile, compile
+
+COPY apps /var/app/apps
+COPY config /var/app/config
 
 COPY scripts/dev_start.sh /var/app/dev_start.sh
 
