@@ -11,15 +11,11 @@ alias FzCommon.{CLI, FzInteger, FzString}
 external_url = System.get_env("EXTERNAL_URL", "https://localhost")
 config :fz_http, :external_url, external_url
 
-# Enable Forwarded headers, e.g 'X-FORWARDED-HOST'
-proxy_forwarded = FzString.to_boolean(System.get_env("PROXY_FORWARDED") || "false")
-
 %{host: host, path: path, port: port, scheme: scheme} = URI.parse(external_url)
 
 config :fz_http, FzHttpWeb.Endpoint,
   url: [host: host, scheme: scheme, port: port, path: path],
-  check_origin: ["//127.0.0.1", "//localhost", "//#{host}"],
-  proxy_forwarded: proxy_forwarded
+  check_origin: ["//127.0.0.1", "//localhost", "//#{host}"]
 
 # Formerly releases.exs - Only evaluated in production
 if config_env() == :prod do
@@ -34,6 +30,9 @@ if config_env() == :prod do
   database_parameters = Jason.decode!(System.fetch_env!("DATABASE_PARAMETERS"))
   phoenix_listen_address = System.fetch_env!("PHOENIX_LISTEN_ADDRESS")
   phoenix_port = String.to_integer(System.fetch_env!("PHOENIX_PORT"))
+  external_trusted_proxies = Jason.decode!(System.fetch_env!("EXTERNAL_TRUSTED_PROXIES"))
+  private_clients = Jason.decode!(System.fetch_env!("PRIVATE_CLIENTS"))
+
   admin_email = System.fetch_env!("ADMIN_EMAIL")
   default_admin_password = System.fetch_env!("DEFAULT_ADMIN_PASSWORD")
   wireguard_private_key_path = System.fetch_env!("WIREGUARD_PRIVATE_KEY_PATH")
@@ -59,6 +58,7 @@ if config_env() == :prod do
   guardian_secret_key = System.fetch_env!("GUARDIAN_SECRET_KEY")
   disable_vpn_on_oidc_error = FzString.to_boolean(System.fetch_env!("DISABLE_VPN_ON_OIDC_ERROR"))
   auto_create_oidc_users = FzString.to_boolean(System.fetch_env!("AUTO_CREATE_OIDC_USERS"))
+  secure = FzString.to_boolean(System.get_env("SECURE_COOKIES", "true"))
 
   allow_unprivileged_device_management =
     FzString.to_boolean(System.fetch_env!("ALLOW_UNPRIVILEGED_DEVICE_MANAGEMENT"))
@@ -104,6 +104,7 @@ if config_env() == :prod do
   live_view_signing_salt = System.fetch_env!("LIVE_VIEW_SIGNING_SALT")
   cookie_signing_salt = System.fetch_env!("COOKIE_SIGNING_SALT")
   cookie_encryption_salt = System.fetch_env!("COOKIE_ENCRYPTION_SALT")
+  cookie_secure = secure
 
   # Password is not needed if using bundled PostgreSQL, so use nil if it's not set.
   database_password = System.get_env("DATABASE_PASSWORD")
@@ -198,10 +199,13 @@ if config_env() == :prod do
     secret_key: guardian_secret_key
 
   config :fz_http,
+    external_trusted_proxies: external_trusted_proxies,
+    private_clients: private_clients,
     disable_vpn_on_oidc_error: disable_vpn_on_oidc_error,
     auto_create_oidc_users: auto_create_oidc_users,
     cookie_signing_salt: cookie_signing_salt,
     cookie_encryption_salt: cookie_encryption_salt,
+    cookie_secure: cookie_secure,
     allow_unprivileged_device_management: allow_unprivileged_device_management,
     max_devices_per_user: max_devices_per_user,
     local_auth_enabled: local_auth_enabled,

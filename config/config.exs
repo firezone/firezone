@@ -53,6 +53,8 @@ config :fz_http, FzHttpWeb.Authentication,
   secret_key: "GApJ4c4a/KJLrBePgTDUk0n67AbjCvI9qdypKZEaJFXl6s9H3uRcIhTt49Fij5UO"
 
 config :fz_http,
+  external_trusted_proxies: [],
+  private_clients: [],
   disable_vpn_on_oidc_error: true,
   auto_create_oidc_users: true,
   sandbox: true,
@@ -112,13 +114,12 @@ config :fz_vpn,
 
 config :fz_http, FzHttpWeb.Endpoint,
   render_errors: [view: FzHttpWeb.ErrorView, accepts: ~w(html json)],
-  pubsub_server: FzHttp.PubSub,
-  proxy_forwarded: false
+  pubsub_server: FzHttp.PubSub
 
 # Configures Elixir's Logger
 config :logger, :console,
   format: "$time $metadata[$level] $message\n",
-  metadata: [:request_id]
+  metadata: [:request_id, :remote_ip]
 
 # Configures the vault
 config :fz_http, FzHttp.Vault,

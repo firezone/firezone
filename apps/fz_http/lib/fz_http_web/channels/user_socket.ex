@@ -2,12 +2,19 @@ defmodule FzHttpWeb.UserSocket do
   use Phoenix.Socket
 
   alias FzHttp.Users
+  alias FzHttpWeb.HeaderHelpers
+  import FzCommon.FzNet, only: [convert_ip: 1]
+
+  @blank_ip_error {:error, "client IP couldn't be determined!"}
+
+  # 4 hour channel tokens
+  @token_verify_opts [max_age: 86_400]
 
   require Logger
 
   ## Channels
   # channel "room:*", FzHttpWeb.RoomChannel
-  channel "notification:session", FzHttpWeb.NotificationChannel
+  channel("notification:session", FzHttpWeb.NotificationChannel)
 
   # Socket params are passed from the client and can
   # be used to verify and authenticate a user. After
@@ -21,17 +28,25 @@ defmodule FzHttpWeb.UserSocket do
   # See `Phoenix.Token` documentation for examples in
   # performing token verification on connect.
   def connect(%{"token" => token}, socket, connect_info) do
-    ip = get_ip_address(connect_info)
+    case get_ip_address(connect_info) do
+      ip when ip in ["", nil] ->
+        @blank_ip_error
 
-    case Phoenix.Token.verify(socket, "user auth", token, max_age: 86_400) do
+      ip ->
+        verify_token_and_assign_remote_ip(socket, token, convert_ip(ip))
+    end
+  end
+
+  defp verify_token_and_assign_remote_ip(socket, token, ip) do
+    case Phoenix.Token.verify(socket, "user auth", token, @token_verify_opts) do
       {:ok, user_id} ->
         {:ok,
          socket
          |> assign(:current_user, Users.get_user!(user_id))
          |> assign(:remote_ip, ip)}
 
-      {:error, _} ->
-        :error
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -48,36 +63,15 @@ defmodule FzHttpWeb.UserSocket do
   # def id(_socket), do: nil
   def id(socket), do: "user_socket:#{socket.assigns.current_user.id}"
 
-  defp get_ip_address(%{x_headers: headers_list}) when length(headers_list) > 0 do
-    header =
-      Enum.find(headers_list, fn {key, _val} -> key == "x-real-ip" end) ||
-        Enum.find(headers_list, fn {key, _val} -> key == "x-forwarded-for" end)
-
-    case header do
-      {_key, value} -> value
-      _ -> nil
-    end
+  defp get_ip_address(%{x_headers: x_headers}) do
+    RemoteIp.from(x_headers,
+      proxies: HeaderHelpers.external_trusted_proxies(),
+      clients: HeaderHelpers.clients()
+    )
   end
 
+  # No proxy
   defp get_ip_address(%{peer_data: %{address: address}}) do
     convert_ip(address)
-
-    address
-    |> Tuple.to_list()
-    |> Enum.join(".")
-  end
-
-  # IPv4
-  defp convert_ip({_, _, _, _} = address) do
-    address
-    |> Tuple.to_list()
-    |> Enum.join(".")
-  end
-
-  # IPv6
-  defp convert_ip(address) do
-    address
-    |> Tuple.to_list()
-    |> Enum.join(":")
   end
 end

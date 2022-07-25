@@ -135,6 +135,30 @@ default['firezone']['authentication']['oidc'] = {}
 #   }
 # }
 
+# ## Custom Reverse Proxy
+#
+# An array of IPs that Firezone will trust as reverse proxies.
+#
+# Read more here:
+# https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-For#selecting_an_ip_address
+#
+# By default the following IPs are included:
+# * IPv4: 127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
+# * IPv6: ::1/128, fc00::/7
+#
+# If any client requests will actually be coming from these private IPs, add them to
+# default['firezone']['phoenix']['private_clients'] below instead of here.
+#
+# If set to false Firezone will assume that it is not running behind a proxy
+default['firezone']['external_trusted_proxies'] = []
+
+# An array of IPs that Firezone will assume are clients, and thus, not a trusted
+# proxy for the purpose of determining the client's IP. By default the bundled
+# See more here: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-For#selecting_an_ip_address
+# This will supersede any proxy configured manually or by default by
+# default['firezone']['external_trusted_proxies']
+default['firezone']['phoenix']['private_clients'] = []
+
 # ## Nginx
 
 # These attributes control Firezone-specific portions of the Nginx
@@ -386,9 +410,6 @@ default['firezone']['runit']['svlogd_bin'] = "#{node['firezone']['install_direct
 
 default['firezone']['ssl']['directory'] = '/var/opt/firezone/ssl'
 
-# Enable / disable SSL
-default['firezone']['ssl']['enabled'] = true
-
 # Email to use for self signed certs and ACME cert issuance and renewal notices.
 # Defaults to default['firezone']['admin_email'] if nil.
 default['firezone']['ssl']['email_address'] = nil
@@ -399,7 +420,6 @@ default['firezone']['ssl']['email_address'] = nil
 # 2. Port 80/tcp is accessible; this is used for domain validation.
 # 3. default['firezone']['ssl']['email_address'] is set properly. This will be used for renewal notices.
 # 4. default['firezone']['nginx']['non_ssl_port'] is set to 80
-# 5. default['firezone']['ssl']['enabled'] is set to true
 default['firezone']['ssl']['acme']['enabled'] = false
 
 # Set the ACME server directory for ACME protocol SSL certificate issuance
@@ -521,3 +541,9 @@ default['firezone']['connectivity_checks']['enabled'] = true
 # Amount of time to sleep between connectivity checks, in seconds.
 # Default: 3600 (1 hour). Minimum: 60 (1 minute). Maximum: 86400 (1 day).
 default['firezone']['connectivity_checks']['interval'] = 3_600
+
+# ## Cookies settings
+
+# Enable or disable the secure attributes for Firezone cookies. It's highly
+# recommended you leave this enabled unless you know what you're doing.
+default['firezone']['phoenix']['secure_cookies'] = true

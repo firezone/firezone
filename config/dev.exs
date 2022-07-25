@@ -119,6 +119,7 @@ config :phoenix, :stacktrace_depth, 20
 config :phoenix, :plug_init_mode, :runtime
 
 config :fz_http,
+  private_clients: ["172.28.0.0/16"],
   wireguard_allowed_ips: "172.28.0.0/16",
   cookie_secure: false,
   telemetry_module: FzCommon.MockTelemetry,
