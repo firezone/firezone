@@ -27,6 +27,12 @@ defmodule FzHttp.OIDC.StartProxy do
     end
   end
 
+  # XXX: Not sure why this happens? Possibly caused by blank config?
+  # @princemaple
+  defp parse([]) do
+    false
+  end
+
   defp parse(auth_oidc_env) when is_binary(auth_oidc_env) do
     auth_oidc_env |> Jason.decode!() |> parse()
   end

@@ -58,9 +58,8 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: firezone_dev
-    # when you want to connect db with a graphic tool, uncomment ports
-    # ports:
-    #   - 5432:5432
+    ports:
+      - 5432:5432
     networks:
       - app
 
