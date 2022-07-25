@@ -14,7 +14,6 @@ log_format cache '$remote_addr - [$time_local] "$request" $upstream_cache_status
 <% end %>
 
 server {
-<% if @ssl['enabled'] -%>
   listen <%= @nginx['ssl_port'] %> default_server ssl;
   <% if @nginx['ipv6'] -%>
   listen [::]:<%= @nginx['ssl_port'] %> default_server ssl;
@@ -35,12 +34,6 @@ server {
   ssl_protocols <%= @ssl['protocols'] %>;
   ssl_session_cache <%= @ssl['session_cache'] %>;
   ssl_session_timeout <%= @ssl['session_timeout'] %>;
-<% else -%>
-  listen <%= @nginx['non_ssl_port'] %> default_server;
-  <% if @nginx['ipv6'] -%>
-  listen [::]:<%= @nginx['non_ssl_port'] %> default_server;
-  <% end -%>
-<% end -%>
 
 <% if @nginx['redirect_to_canonical'] -%>
   set $redirect_to_canonical 0;

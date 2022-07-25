@@ -1,10 +1,8 @@
 defmodule FzHttpWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :fz_http
+  alias FzHttpWeb.ProxyHeaders
+  alias FzHttpWeb.HeaderHelpers
   alias FzHttpWeb.Session
-
-  if Application.get_env(:fz_http, FzHttpWeb.Endpoint, :proxy_forwarded) do
-    plug Plug.RewriteOn, [:x_forwarded_host, :x_forwarded_port, :x_forwarded_proto]
-  end
 
   if Application.get_env(:fz_http, :sql_sandbox) do
     plug Phoenix.Ecto.SQL.Sandbox
@@ -21,11 +19,15 @@ defmodule FzHttpWeb.Endpoint do
   socket "/live", Phoenix.LiveView.Socket,
     websocket: [
       connect_info: [
+        :peer_data,
+        :x_headers,
+        :uri,
         session: {Session, :options, []}
       ],
       # XXX: csrf token should prevent CSWH but double check
       check_origin: false
-    ]
+    ],
+    longpoll: false
 
   # Serve at "/" the static files from "priv/static" directory.
   #
@@ -65,6 +67,11 @@ defmodule FzHttpWeb.Endpoint do
   plug Plug.MethodOverride
   plug Plug.Head
   plug(:session)
+
+  if HeaderHelpers.proxied?() do
+    plug ProxyHeaders
+  end
+
   plug FzHttpWeb.Router
 
   defp session(conn, _opts) do

@@ -50,8 +50,7 @@ template 'nginx.conf' do
   mode '0600'
   variables(
     logging_enabled: node['firezone']['logging']['enabled'],
-    nginx: node['firezone']['nginx'],
-    ssl_enabled: node['firezone']['ssl']['enabled']
+    nginx: node['firezone']['nginx']
   )
 end
 

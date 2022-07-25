@@ -3,12 +3,15 @@ defmodule FzHttpWeb.NotificationChannel do
   Handles dispatching realtime notifications to users' browser sessions.
   """
   use FzHttpWeb, :channel
+  import FzCommon.FzNet, only: [convert_ip: 1]
   alias FzHttp.Users
   alias FzHttpWeb.Presence
 
+  @token_verify_opts [max_age: 86_400]
+
   @impl Phoenix.Channel
   def join("notification:session", %{"user_agent" => user_agent, "token" => token}, socket) do
-    case Phoenix.Token.verify(socket, "channel auth", token, max_age: 86_400) do
+    case Phoenix.Token.verify(socket, "channel auth", token, @token_verify_opts) do
       {:ok, user_id} ->
         socket =
           socket
@@ -40,7 +43,7 @@ defmodule FzHttpWeb.NotificationChannel do
       online_at: DateTime.utc_now(),
       last_signed_in_at: user.last_signed_in_at,
       last_signed_in_method: user.last_signed_in_method,
-      remote_ip: socket.assigns.remote_ip,
+      remote_ip: convert_ip(socket.assigns.remote_ip),
       user_agent: socket.assigns.user_agent
     }
 
