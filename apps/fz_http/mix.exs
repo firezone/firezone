@@ -81,7 +81,7 @@ defmodule FzHttp.MixProject do
       {:inflex, "~> 2.1"},
       {:plug, "~> 1.13"},
       {:postgrex, "~> 0.15.10"},
-      {:phoenix_html, "~> 3.1.0"},
+      {:phoenix_html, "~> 3.2.0"},
       {:phoenix_live_reload, "~> 1.3", only: :dev},
       {:phoenix_live_view, "~> 0.17.5"},
       {:gettext, "~> 0.18"},
