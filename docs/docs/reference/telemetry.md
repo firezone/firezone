@@ -35,7 +35,7 @@ Otherwise, personally-identifiable information is ***never*** collected.
 
 We store telemetry in a self-hosted instance of PostHog running in a private
 Kubernetes cluster, only accessible by the Firezone team. Here is an example of
-a status report that is sent from your instance of Firezone to our telemetry server:
+a telemetry event that is sent from your instance of Firezone to our telemetry server:
 
 ```json
 {
