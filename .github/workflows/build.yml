@@ -25,6 +25,7 @@ jobs:
     needs: draft-release
     env:
       TELEMETRY_ENABLED: 'false'
+      TERMINFO: /usr/lib/terminfo
     runs-on: ${{ matrix.platform }}
     strategy:
       # Failing fast breaks the Omnibus build cache because the job is
