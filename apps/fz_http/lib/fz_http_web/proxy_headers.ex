@@ -7,6 +7,8 @@ defmodule FzHttpWeb.ProxyHeaders do
 
   require Logger
 
+  @remote_ip_headers ["x-forwarded-for"]
+
   def init(opts), do: opts
 
   def call(conn, _opts) do
@@ -17,6 +19,7 @@ defmodule FzHttpWeb.ProxyHeaders do
 
   defp remote_ip_opts do
     RemoteIp.init(
+      headers: @remote_ip_headers,
       proxies: external_trusted_proxies(),
       clients: clients()
     )
