@@ -38,7 +38,6 @@ defmodule FzHttp.Users.User do
   def create_changeset(user, attrs \\ %{}) do
     user
     |> cast(attrs, [
-      :role,
       :email,
       :password_hash,
       :password,
