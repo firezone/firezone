@@ -1,5 +1,3 @@
 #!/bin/sh
-exec 2>&1
-
 exec <%= node['runit']['svlogd_bin'] %> \
        -tt <%= node['firezone']['phoenix']['log_directory'] %>
