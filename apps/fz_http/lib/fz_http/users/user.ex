@@ -90,7 +90,7 @@ defmodule FzHttp.Users.User do
         } = attrs
       ) do
     user
-    |> cast(attrs, [:role, :email, :password, :password_confirmation, :current_password])
+    |> cast(attrs, [:email, :password, :password_confirmation, :current_password])
     |> validate_required([:email, :password, :password_confirmation, :current_password])
     |> validate_format(:email, ~r/@/)
     |> verify_current_password(user)
