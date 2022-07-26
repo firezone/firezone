@@ -135,10 +135,10 @@ setupCloudsmithRepo() {
 
 firezoneSetup() {
   conf="/opt/firezone/embedded/cookbooks/firezone/attributes/default.rb"
-  sudo sed -i "s/firezone@localhost/$1/" $conf
-  sudo sed -i "s/default\['firezone']\['external_url'].*/default['firezone']['external_url'] = 'https:\/\/$public_ip'/" $conf
-  sudo firezone-ctl reconfigure
-  sudo firezone-ctl create-or-reset-admin
+  sed -i "s/firezone@localhost/$1/" $conf
+  sed -i "s/default\['firezone']\['external_url'].*/default['firezone']['external_url'] = 'https:\/\/$public_ip'/" $conf
+  firezone-ctl reconfigure
+  firezone-ctl create-or-reset-admin
 }
 
 main() {
