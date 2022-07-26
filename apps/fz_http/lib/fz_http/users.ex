@@ -61,14 +61,18 @@ defmodule FzHttp.Users do
   def create_user_with_role(attrs, role) do
     attrs
     |> Enum.into(%{})
-    |> create_user(%{role: role})
+    |> create_user(role: role)
   end
 
-  def create_user(attrs, overwrites \\ %{}) do
-    result =
-      struct(User, sign_in_keys())
+  def create_user(attrs, overwrites \\ []) do
+    changeset =
+      User
+      |> struct(sign_in_keys())
       |> User.create_changeset(attrs)
-      |> User.update_changeset(overwrites)
+
+    result =
+      overwrites
+      |> Enum.reduce(changeset, fn {k, v}, cs -> put_change(cs, k, v) end)
       |> Repo.insert()
 
     case result do
