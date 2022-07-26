@@ -44,7 +44,7 @@ The easiest way to get started using Firezone is via the automatic installation
 script below.
 
 ```bash
-sudo -E bash -c "$(curl -Ls https://github.com/firezone/firezone/raw/master/scripts/install.sh)"
+sudo -E bash -c "$(curl -fsSL https://github.com/firezone/firezone/raw/master/scripts/install.sh)"
 ```
 
 This will ask you a few questions regarding your install, install the latest
