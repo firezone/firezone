@@ -11,7 +11,7 @@ defmodule FzHttpWeb.ProxyHeaders do
 
   def call(conn, _opts) do
     conn
-    |> RemoteIp.call(HeaderHelpers.remote_ip_opts())
+    |> RemoteIp.call(RemoteIp.init(HeaderHelpers.remote_ip_opts()))
     |> Plug.RewriteOn.call(rewrite_opts())
   end
 

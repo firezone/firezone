@@ -150,7 +150,7 @@ default['firezone']['authentication']['oidc'] = {}
 # default['firezone']['phoenix']['private_clients'] below instead of here.
 #
 # If set to false Firezone will assume that it is not running behind a proxy
-default['firezone']['external_trusted_proxies'] = []
+default['firezone']['phoenix']['external_trusted_proxies'] = []
 
 # An array of IPs that Firezone will assume are clients, and thus, not a trusted
 # proxy for the purpose of determining the client's IP. By default the bundled
