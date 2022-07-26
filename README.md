@@ -37,7 +37,7 @@ Follow our [deploy guide](https://docs.firezone.dev/docs/deploy) to install your
 Or, if you're on a [supported platform](https://docs.firezone.dev/docs/deploy/supported-platforms/), try our one-line install script:
 
 ```bash
-bash <(curl -Ls https://github.com/firezone/firezone/raw/master/scripts/install.sh)
+sudo bash -E -c "$(curl -fsSL https://github.com/firezone/firezone/raw/master/scripts/install.sh)"
 ```
 
 Using Firezone for your team? Take a look at our [business tier](https://www.firezone.dev/pricing).
