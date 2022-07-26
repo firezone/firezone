@@ -83,7 +83,7 @@ const config = {
             "aria-label": "GitHub repository",
           },
           {
-            href: "https://www.firezone.dev/pricing",
+            href: "https://e04kusl9oz5.typeform.com/to/gzzaZZ52#source=docsheader",
             label: "Join the Beta",
             position: "right",
             "aria-label": "GitHub repository",
