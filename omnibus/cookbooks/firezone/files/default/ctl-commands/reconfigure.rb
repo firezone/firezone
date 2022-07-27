@@ -40,12 +40,12 @@ add_command_under_category 'reconfigure', 'general', 'Reconfigure the applicatio
     license key good for up to one year of Firezone Team or Business. Read more about
     the announcement here:
 
-    https://www.firezone.dev/blog/release-0-5-0
+    https://www.firezone.dev/blog/release-0-5-0/?utm_source=reconfigure
 
     =================================================================================
   MSG
 
-  Chef::Log.info(msg)
+  log(msg)
 
   capture
 
