@@ -138,27 +138,18 @@ defmodule FzHttp.Users.User do
     |> validate_format(:email, ~r/@/)
   end
 
-  def update_role(user, %{role: _role} = attrs) do
+  def update_role(user, attrs) do
     user
     |> cast(attrs, [:role])
     |> validate_required([:role])
   end
 
-  def update_sign_in_token(
-        user,
-        %{sign_in_token: _token, sign_in_token_created_at: _created_at} = attrs
-      ) do
+  def update_sign_in_token(user, attrs) do
     cast(user, attrs, [:sign_in_token, :sign_in_token_created_at])
   end
 
-  # XXX: Invalidate password reset when user is updated
-  def update_changeset(user, %{} = attrs) do
-    changeset(user, attrs)
-  end
-
-  def changeset(user, attrs) do
-    user
-    |> cast(attrs, [:email, :last_signed_in_method, :last_signed_in_at])
+  def update_last_signed_in(user, attrs) do
+    cast(user, attrs, [:last_signed_in_method, :last_signed_in_at])
   end
 
   defp verify_current_password(

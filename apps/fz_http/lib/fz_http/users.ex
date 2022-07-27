@@ -166,7 +166,12 @@ defmodule FzHttp.Users do
         m -> to_string(m)
       end
 
-    update_user(user, %{last_signed_in_at: DateTime.utc_now(), last_signed_in_method: method})
+    user
+    |> User.update_last_signed_in(%{
+      last_signed_in_at: DateTime.utc_now(),
+      last_signed_in_method: method
+    })
+    |> Repo.update()
   end
 
   def enable_vpn_connection(user, %{provider: :identity}), do: user
