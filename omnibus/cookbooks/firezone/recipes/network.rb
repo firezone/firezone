@@ -21,8 +21,10 @@ unless node['firezone']['wireguard']['endpoint']
   # Figure out a sane default endpoint IP address
   egress_ip =
     begin
-      Net::HTTP.get('ifconfig.me', '/')
-    rescue StandardError
+      # Parse to ensure we get back something usable.
+      URI.parse(Net::HTTP.get('ifconfig.me', '/'))
+    rescue StandardError => e
+      Chef::Log.warn(e)
       nil
     end
   node.consume_attributes('firezone' => { 'wireguard' => { 'endpoint' => egress_ip } })
