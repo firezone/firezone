@@ -255,7 +255,7 @@ defmodule FzHttp.Users do
   end
 
   defp clear_token(user) do
-    result = update_user(user, %{sign_in_token: nil, sign_in_token_created_at: nil})
+    result = update_user_sign_in_token(user, %{sign_in_token: nil, sign_in_token_created_at: nil})
 
     case result do
       {:ok, user} -> {:ok, user}
