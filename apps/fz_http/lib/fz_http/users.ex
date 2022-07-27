@@ -100,9 +100,9 @@ defmodule FzHttp.Users do
     |> Repo.update()
   end
 
-  def update_user_role(%User{} = user, attrs) do
+  def update_user_role(%User{} = user, role) do
     user
-    |> User.update_role(attrs)
+    |> User.update_role(%{role: role})
     |> Repo.update()
   end
 

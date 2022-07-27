@@ -243,20 +243,10 @@ defmodule FzHttp.UsersTest do
     end
 
     test "update last_signed_in_*", %{user: user} do
-      {:ok, user} =
-        Users.update_last_signed_in(user, %{
-          last_signed_in_at: DateTime.utc_now(),
-          last_signed_in_method: "test"
-        })
-
+      {:ok, user} = Users.update_last_signed_in(user, %{provider: :test})
       assert user.last_signed_in_method == "test"
 
-      {:ok, user} =
-        Users.update_last_signed_in(user, %{
-          last_signed_in_at: DateTime.utc_now(),
-          last_signed_in_method: "another_test"
-        })
-
+      {:ok, user} = Users.update_last_signed_in(user, %{provider: :another_test})
       assert user.last_signed_in_method == "another_test"
     end
   end
