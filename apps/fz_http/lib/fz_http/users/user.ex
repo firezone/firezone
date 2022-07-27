@@ -138,15 +138,13 @@ defmodule FzHttp.Users.User do
     |> validate_format(:email, ~r/@/)
   end
 
-  # Promotion / Demotion
-  def update_changeset(user, %{role: _role} = attrs) do
+  def update_role(user, %{role: _role} = attrs) do
     user
     |> cast(attrs, [:role])
     |> validate_required([:role])
   end
 
-  # Password reset token
-  def update_changeset(
+  def update_sign_in_token(
         user,
         %{sign_in_token: _token, sign_in_token_created_at: _created_at} = attrs
       ) do

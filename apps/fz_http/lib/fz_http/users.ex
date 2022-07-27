@@ -100,6 +100,18 @@ defmodule FzHttp.Users do
     |> Repo.update()
   end
 
+  def update_user_role(%User{} = user, attrs) do
+    user
+    |> User.update_role(attrs)
+    |> Repo.update()
+  end
+
+  def update_user_sign_in_token(%User{} = user, attrs) do
+    user
+    |> User.update_sign_in_token(attrs)
+    |> Repo.update()
+  end
+
   def delete_user(%User{} = user) do
     Telemetry.delete_user()
     Repo.delete(user)
@@ -193,7 +205,7 @@ defmodule FzHttp.Users do
 
   def reset_sign_in_token(email) do
     with %User{} = user <- Repo.get_by(User, email: email),
-         {:ok, user} <- update_user(user, sign_in_keys()) do
+         {:ok, user} <- update_user_sign_in_token(user, sign_in_keys()) do
       # send email in a separate process so that the time this function takes
       # doesn't reflect whether a user exists or not
       Task.start(fn ->
