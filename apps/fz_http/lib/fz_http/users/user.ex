@@ -73,6 +73,12 @@ defmodule FzHttp.Users.User do
     |> validate_required([:password_hash])
   end
 
+  def require_password_change(user, attrs) do
+    user
+    |> cast(attrs, [:password, :password_confirmation])
+    |> validate_required([:password, :password_confirmation])
+  end
+
   def update_email(user, attrs) do
     user
     |> cast(attrs, [:email])

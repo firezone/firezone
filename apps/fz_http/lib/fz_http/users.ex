@@ -111,6 +111,7 @@ defmodule FzHttp.Users do
 
   def unprivileged_update_self(%User{} = user, attrs) do
     user
+    |> User.require_password_change(attrs)
     |> User.update_password(attrs)
     |> Repo.update()
   end
