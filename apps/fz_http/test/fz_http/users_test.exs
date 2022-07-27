@@ -135,7 +135,7 @@ defmodule FzHttp.UsersTest do
   end
 
   describe "update_user/2" do
-    setup [:create_user]
+    setup :create_user
 
     @change_password_valid_params %{
       "password" => "new_password",
@@ -166,10 +166,6 @@ defmodule FzHttp.UsersTest do
       "password_confirmation" => "",
       "current_password" => ""
     }
-    @sign_in_token_params %{
-      sign_in_token: "foobar",
-      sign_in_token_created_at: DateTime.utc_now()
-    }
 
     test "changes password when only password is updated", %{user: user} do
       {:ok, new_user} = Users.update_user(user, @password_params)
@@ -196,11 +192,6 @@ defmodule FzHttp.UsersTest do
       assert new_user.password_hash == user.password_hash
     end
 
-    test "adding a sign in token", %{user: user} do
-      {:ok, new_user} = Users.update_user(user, @sign_in_token_params)
-      assert new_user.sign_in_token == @sign_in_token_params.sign_in_token
-    end
-
     test "changes email", %{user: user} do
       {:ok, new_user} = Users.update_user(user, @email_params)
       assert new_user.email == "new_email@test"
@@ -218,6 +209,55 @@ defmodule FzHttp.UsersTest do
       {:ok, new_user} = Users.update_user(user, @email_and_password_params)
       assert new_user.email == "new_email@test"
       assert new_user.password_hash != user.password_hash
+    end
+  end
+
+  describe "update_*" do
+    setup :create_user
+
+    @sign_in_token_params %{
+      sign_in_token: "foobar",
+      sign_in_token_created_at: DateTime.utc_now()
+    }
+
+    test "update sign_in_token", %{user: user} do
+      {:ok, new_user} = Users.update_user_sign_in_token(user, @sign_in_token_params)
+
+      assert new_user.sign_in_token == @sign_in_token_params.sign_in_token
+
+      {:ok, new_user} =
+        Users.update_user_sign_in_token(new_user, %{
+          sign_in_token: nil,
+          sign_in_token_created_at: nil
+        })
+
+      assert is_nil(new_user.sign_in_token)
+    end
+
+    test "update role", %{user: user} do
+      {:ok, user} = Users.update_user_role(user, :admin)
+      assert user.role == :admin
+
+      {:ok, user} = Users.update_user_role(user, :unprivileged)
+      assert user.role == :unprivileged
+    end
+
+    test "update last_signed_in_*", %{user: user} do
+      {:ok, user} =
+        Users.update_last_signed_in(user, %{
+          last_signed_in_at: DateTime.utc_now(),
+          last_signed_in_method: "test"
+        })
+
+      assert user.last_signed_in_method == "test"
+
+      {:ok, user} =
+        Users.update_last_signed_in(user, %{
+          last_signed_in_at: DateTime.utc_now(),
+          last_signed_in_method: "another_test"
+        })
+
+      assert user.last_signed_in_method == "another_test"
     end
   end
 
