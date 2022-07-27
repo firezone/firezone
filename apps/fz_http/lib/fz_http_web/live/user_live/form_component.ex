@@ -47,7 +47,7 @@ defmodule FzHttpWeb.UserLive.FormComponent do
   def handle_event("save", %{"user" => user_params}, %{assigns: %{action: :edit}} = socket) do
     user = socket.assigns.user
 
-    case Users.update_user(user, user_params) do
+    case Users.admin_update_user(user, user_params) do
       {:ok, user} ->
         {:noreply,
          socket

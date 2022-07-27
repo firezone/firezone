@@ -94,9 +94,24 @@ defmodule FzHttp.Users do
     }
   end
 
-  def update_user(%User{} = user, attrs) do
+  def admin_update_user(%User{} = user, attrs) do
     user
-    |> User.update_changeset(attrs)
+    |> User.update_email(attrs)
+    |> User.update_password(attrs)
+    |> Repo.update()
+  end
+
+  def admin_update_self(%User{} = user, attrs) do
+    user
+    |> User.update_email(attrs)
+    |> User.update_password(attrs)
+    |> User.require_current_password(attrs)
+    |> Repo.update()
+  end
+
+  def unprivileged_update_self(%User{} = user, attrs) do
+    user
+    |> User.update_password(attrs)
     |> Repo.update()
   end
 

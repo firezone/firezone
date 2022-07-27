@@ -134,80 +134,104 @@ defmodule FzHttp.UsersTest do
     end
   end
 
-  describe "update_user/2" do
+  @change_password_valid_params %{
+    "password" => "new_password",
+    "password_confirmation" => "new_password",
+    "current_password" => "password1234"
+  }
+  @change_password_invalid_params %{
+    "password" => "new_password",
+    "password_confirmation" => "new_password",
+    "current_password" => "invalid"
+  }
+  @password_params %{"password" => "new_password", "password_confirmation" => "new_password"}
+  @email_params %{"email" => "new_email@test", "current_password" => "password1234"}
+  @email_and_password_params %{
+    "password" => "new_password",
+    "password_confirmation" => "new_password",
+    "email" => "new_email@test",
+    "current_password" => "password1234"
+  }
+  @clear_hash_params %{"password_hash" => nil, "current_password" => "password1234"}
+  @empty_password_params %{
+    "password" => nil,
+    "password_confirmation" => nil,
+    "current_password" => "password1234"
+  }
+  @email_empty_password_params %{
+    "email" => "foobar@test",
+    "password" => "",
+    "password_confirmation" => "",
+    "current_password" => "password1234"
+  }
+
+  describe "admin_update_user/2" do
     setup :create_user
 
-    @change_password_valid_params %{
-      "password" => "new_password",
-      "password_confirmation" => "new_password",
-      "current_password" => "password1234"
-    }
-    @change_password_invalid_params %{
-      "password" => "new_password",
-      "password_confirmation" => "new_password",
-      "current_password" => "invalid"
-    }
-    @password_params %{"password" => "new_password", "password_confirmation" => "new_password"}
-    @email_params %{"email" => "new_email@test"}
-    @email_and_password_params %{
-      "password" => "new_password",
-      "password_confirmation" => "new_password",
-      "email" => "new_email@test"
-    }
-    @no_password_params %{"password_hash" => nil}
-    @empty_password_params %{
-      "password" => nil,
-      "password_confirmation" => nil,
-      "current_password" => nil
-    }
-    @email_empty_password_params %{
-      "email" => "foobar@test",
-      "password" => "",
-      "password_confirmation" => "",
-      "current_password" => ""
-    }
-
     test "changes password when only password is updated", %{user: user} do
-      {:ok, new_user} = Users.update_user(user, @password_params)
+      {:ok, new_user} = Users.admin_update_user(user, @password_params)
       assert new_user.password_hash != user.password_hash
-    end
-
-    test "changes password when current_password valid", %{user: user} do
-      {:ok, new_user} = Users.update_user(user, @change_password_valid_params)
-      assert new_user.password_hash != user.password_hash
-    end
-
-    test "does not change password when current_password invalid", %{user: user} do
-      {:error, changeset} = Users.update_user(user, @change_password_invalid_params)
-      assert [current_password: _] = changeset.errors
     end
 
     test "prevents clearing the password", %{user: user} do
-      {:ok, new_user} = Users.update_user(user, @no_password_params)
+      {:ok, new_user} = Users.admin_update_user(user, @clear_hash_params)
       assert new_user.password_hash == user.password_hash
     end
 
     test "nil password params", %{user: user} do
-      {:ok, new_user} = Users.update_user(user, @empty_password_params)
+      {:ok, new_user} = Users.admin_update_user(user, @empty_password_params)
       assert new_user.password_hash == user.password_hash
     end
 
     test "changes email", %{user: user} do
-      {:ok, new_user} = Users.update_user(user, @email_params)
+      {:ok, new_user} = Users.admin_update_user(user, @email_params)
       assert new_user.email == "new_email@test"
     end
 
     test "handles empty params", %{user: user} do
-      assert {:ok, _new_user} = Users.update_user(user, %{})
+      assert {:ok, _new_user} = Users.admin_update_user(user, %{})
     end
 
     test "handles nil password", %{user: user} do
-      assert {:ok, _new_user} = Users.update_user(user, @email_empty_password_params)
+      assert {:ok, _new_user} = Users.admin_update_user(user, @email_empty_password_params)
     end
 
     test "changes email and password", %{user: user} do
-      {:ok, new_user} = Users.update_user(user, @email_and_password_params)
+      {:ok, new_user} = Users.admin_update_user(user, @email_and_password_params)
       assert new_user.email == "new_email@test"
+      assert new_user.password_hash != user.password_hash
+    end
+  end
+
+  describe "unprivileged_update_self/2" do
+    setup :create_user
+
+    test "changes password when only password is updated", %{user: user} do
+      {:ok, new_user} = Users.unprivileged_update_self(user, @password_params)
+      assert new_user.password_hash != user.password_hash
+    end
+
+    test "prevents clearing the password", %{user: user} do
+      {:ok, new_user} = Users.unprivileged_update_self(user, @clear_hash_params)
+      assert new_user.password_hash == user.password_hash
+    end
+
+    test "prevents changing email", %{user: user} do
+      {:ok, new_user} = Users.unprivileged_update_self(user, @email_params)
+      assert new_user.email == user.email
+    end
+  end
+
+  describe "admin_update_self/2" do
+    setup :create_user
+
+    test "does not change password when current_password invalid", %{user: user} do
+      {:error, changeset} = Users.admin_update_self(user, @change_password_invalid_params)
+      assert [current_password: _] = changeset.errors
+    end
+
+    test "changes password when current_password valid", %{user: user} do
+      {:ok, new_user} = Users.admin_update_self(user, @change_password_valid_params)
       assert new_user.password_hash != user.password_hash
     end
   end
