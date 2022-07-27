@@ -15,6 +15,7 @@ jobs:
         with:
           node-version: 16
           cache: 'npm'
+          cache-dependency-path: docs/package-lock.json
       - run: |
           cd docs/
           npm ci
