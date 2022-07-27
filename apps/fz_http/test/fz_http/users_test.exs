@@ -135,9 +135,9 @@ defmodule FzHttp.UsersTest do
   end
 
   @change_password_valid_params %{
-    "password" => "new_password",
-    "password_confirmation" => "new_password",
-    "current_password" => "password1234"
+    password: "new_password",
+    password_confirmation: "new_password",
+    current_password: "password1234"
   }
   @change_password_invalid_params %{
     "password" => "new_password",
@@ -168,7 +168,7 @@ defmodule FzHttp.UsersTest do
   describe "admin_update_user/2" do
     setup :create_user
 
-    test "changes password when only password is updated", %{user: user} do
+    test "changes password", %{user: user} do
       {:ok, new_user} = Users.admin_update_user(user, @password_params)
       assert new_user.password_hash != user.password_hash
     end
@@ -206,18 +206,17 @@ defmodule FzHttp.UsersTest do
   describe "unprivileged_update_self/2" do
     setup :create_user
 
-    test "changes password when only password is updated", %{user: user} do
+    test "changes password", %{user: user} do
       {:ok, new_user} = Users.unprivileged_update_self(user, @password_params)
       assert new_user.password_hash != user.password_hash
     end
 
     test "prevents clearing the password", %{user: user} do
-      {:ok, new_user} = Users.unprivileged_update_self(user, @clear_hash_params)
-      assert new_user.password_hash == user.password_hash
+      assert {:error, _changeset} = Users.unprivileged_update_self(user, @clear_hash_params)
     end
 
     test "prevents changing email", %{user: user} do
-      {:ok, new_user} = Users.unprivileged_update_self(user, @email_params)
+      {:ok, new_user} = Users.unprivileged_update_self(user, @email_and_password_params)
       assert new_user.email == user.email
     end
   end
