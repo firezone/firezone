@@ -4,7 +4,7 @@ sidebar_position: 4
 ---
 
 :::note
-This is an advanced configuration. The default bundled nginx proxy
+This is an advanced configuration. The default bundled Nginx proxy
 is suitable for the vast majority of use cases and is recommended for most
 users. There are important security risks if the Firezone reverse proxy is
 not set up correctly. Use only if you know what you are doing.
@@ -12,13 +12,13 @@ not set up correctly. Use only if you know what you are doing.
 
 ## Introduction
 
-Firezone comes with a bundled [Nginx](https://www.nginx.com/) reverse-proxy,
+Firezone comes with a bundled [Nginx](https://www.nginx.com/) reverse proxy,
 however, in some cases you might want to deploy your own server such as when
-using behind your own load-balancer.
+using behind your own load balancer.
 
-## Requisites
+## Prerequisites
 
-Below you will find the requirements in order to setup firezone and the
+Below you will find the requirements in order to setup Firezone and the
 reverse-proxies.
 
 ### Firezone configuration requirements
@@ -54,7 +54,7 @@ this range (as seen by the Firezone web app), be sure to add them to the
 :::
 
 Read more about the configuration options
-[here](../../../reference/configuration-file.md).
+[here](../../reference/configuration-file.md).
 
 ### Proxy requirements
 
@@ -102,7 +102,7 @@ These configurations are written to be as simple as possible. They're designed
 to function as a simple template which you can customize further to suit your
 needs.
 
-If you have a working configuration for a different reverse-proxy or a different
+If you have a working configuration for a different reverse proxy or a different
 version of an existing one we appreciate any
 [contribution](https://github.com/firezone/firezone/) to expand the examples for
 the community.
