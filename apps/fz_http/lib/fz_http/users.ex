@@ -118,7 +118,7 @@ defmodule FzHttp.Users do
   end
 
   def change_user(%User{} = user \\ struct(User)) do
-    User.changeset(user, %{})
+    change(user)
   end
 
   def new_user do
