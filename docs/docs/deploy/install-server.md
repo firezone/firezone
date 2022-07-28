@@ -25,17 +25,15 @@ This will ask you a few questions regarding your install, install the latest
 release for your platform, then create an administrator user and print to the
 console instructions for logging in to the web UI.
 
-If that fails, try the manual installation method below.
+### Install from our Debian or Red Hat repostiories
 
-### Manual Install
-
-If the Automatic Install fails, try these steps to install Firezone manually.
+If the automatic install script fails, try these steps to install Firezone from our
+[Cloudsmith repository](https://cloudsmith.io/~firezone/repos/firezone).
 
 1. [Install WireGuard](https://www.wireguard.com/install/) for your distro.
    If using Linux kernel 5.6 or higher, skip this step.
 
-1. Install our package [repository](https://cloudsmith.io/~firezone/repos/firezone)
-    for your distro's package format:
+1. Install our package repository for your distro's package format:
     - deb packages:
 
         ```bash
@@ -43,6 +41,9 @@ If the Automatic Install fails, try these steps to install Firezone manually.
           'https://dl.cloudsmith.io/public/firezone/firezone/setup.deb.sh' \
           | sudo -E bash
         ```
+
+    See the [Debian setup docs](https://cloudsmith.io/~firezone/repos/firezone/setup/#formats-deb)
+    for more options if the script fails to setup the repo.
 
     - rpm packages:
 
@@ -52,8 +53,8 @@ If the Automatic Install fails, try these steps to install Firezone manually.
           | sudo -E bash
         ```
 
-    See Cloudsmith [setup docs](https://cloudsmith.io/~firezone/repos/firezone/setup)
-    for more info.
+    See the [RedHat setup docs](https://cloudsmith.io/~firezone/repos/firezone/setup/#formats-rpm)
+    for more options if the script fails to setup the repo.
 
 1. Install Firezone with your distro's package manager:
 
@@ -70,6 +71,21 @@ If the Automatic Install fails, try these steps to install Firezone manually.
     # Using zypper
     sudo zypper install firezone
     ```
+1. Follow the [bootstrap instructions](#bootstrap-firezone) to setup Firezone.
+
+
+### Manual Install
+
+If all else fails, try these steps to install Firezone manually.
+
+1. [Install WireGuard](https://www.wireguard.com/install/) for your distro.
+   If using Linux kernel 5.6 or higher, skip this step.
+1. Download the relevant package for your distribution from the [releases page](https://github.com/firezone/firezone/releases).
+1. Install with `sudo rpm -i firezone*.rpm` or `sudo dpkg -i firezone*.deb`
+   depending on your distro.
+1. Follow the [bootstrap instructions](#bootstrap-firezone) to setup Firezone.
+
+### Bootstrap Firezone
 
 1. Bootstrap the application with `sudo firezone-ctl reconfigure`. This will
    initialize config files, set up needed services and generate the default
