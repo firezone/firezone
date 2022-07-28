@@ -29,7 +29,7 @@ defmodule FzHttp.Notifications.Errors do
 
   @impl GenServer
   def handle_call({:add, %{error: message}}, _from, errors) do
-    new_errors = errors ++ [message]
+    new_errors = [message | errors]
 
     PubSub.broadcast(
       FzHttp.PubSub,
