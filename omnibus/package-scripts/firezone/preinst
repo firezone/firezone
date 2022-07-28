@@ -39,7 +39,7 @@ configCheck() {
 
   if test -f $config_file && grep -q "^\s*default\['firezone'\]\['nginx'\]\['force_ssl'\]\s*=\s*false" $config_file ; then
     echo "${error}ERROR: Firezone 0.5+ removes support for disabling SSL redirect!${normal}"
-    echo "To deploy your own proxy instead see our new docs on how to do it: https://docs.firezone.dev/deploy/reverse-proxies"
+    echo "Instead, disable Nginx and point your SSL-terminating proxy directly to the phoenix app on port 13000. See the docs for more information: https://docs.firezone.dev/deploy/reverse-proxies"
     exit 1
   fi
 }
