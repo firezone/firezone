@@ -63,7 +63,6 @@ template 'redirect.conf' do
   variables(
     server_name: URI.parse(node['firezone']['external_url']).host,
     acme_www_root: "#{node['firezone']['var_directory']}/nginx/acme_root",
-    non_ssl_port: node['firezone']['nginx']['non_ssl_port'],
     rate_limiting_zone_name: node['firezone']['nginx']['rate_limiting_zone_name'],
     ipv6: node['firezone']['nginx']['ipv6']
   )

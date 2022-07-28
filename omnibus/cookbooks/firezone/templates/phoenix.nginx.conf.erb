@@ -45,7 +45,7 @@ server {
   }
 
   if ($redirect_to_canonical = H) {
-    return 301 http<%= @ssl['enabled'] ? 's' : '' %>://<%= @fqdn %>$request_uri;
+    return 301 https://<%= @fqdn %>$request_uri;
   }
 <% end -%>
 
