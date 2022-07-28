@@ -3,7 +3,6 @@ defmodule FzHttpWeb.NotificationChannel do
   Handles dispatching realtime notifications to users' browser sessions.
   """
   use FzHttpWeb, :channel
-  import FzCommon.FzNet, only: [convert_ip: 1]
   alias FzHttp.Users
   alias FzHttpWeb.Presence
 
@@ -43,7 +42,7 @@ defmodule FzHttpWeb.NotificationChannel do
       online_at: DateTime.utc_now(),
       last_signed_in_at: user.last_signed_in_at,
       last_signed_in_method: user.last_signed_in_method,
-      remote_ip: convert_ip(socket.assigns.remote_ip),
+      remote_ip: socket.assigns.remote_ip,
       user_agent: socket.assigns.user_agent
     }
 
