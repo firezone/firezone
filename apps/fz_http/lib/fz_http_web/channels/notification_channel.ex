@@ -5,7 +5,10 @@ defmodule FzHttpWeb.NotificationChannel do
   use FzHttpWeb, :channel
   import FzCommon.FzNet, only: [convert_ip: 1]
   alias FzHttp.Users
+  alias FzHttp.Notifications
   alias FzHttpWeb.Presence
+
+  require Logger
 
   @token_verify_opts [max_age: 86_400]
 
@@ -30,9 +33,45 @@ defmodule FzHttpWeb.NotificationChannel do
   end
 
   @impl Phoenix.Channel
+  def join("notification:error", %{"token" => token}, socket) do
+    case Phoenix.Token.verify(socket, "channel auth", token, @token_verify_opts) do
+      {:ok, user_id} ->
+        user = Users.get_user!(user_id)
+
+        if user.role == :admin do
+          {:ok, socket}
+        else
+          {:error, %{reason: "unauthorized"}}
+        end
+
+      {:error, _} ->
+        {:error, %{reason: "unauthorized"}}
+    end
+  end
+
+  @impl Phoenix.Channel
   def handle_info(:after_join, socket) do
     track(socket)
     {:noreply, socket}
+  end
+
+  @impl Phoenix.Channel
+  def handle_info(%{type: "error"} = info, socket) do
+    Phoenix.PubSub.broadcast(
+      FzHttp.PubSub,
+      Notifications.Errors.topic(),
+      info.payload.data
+    )
+
+    {:noreply, socket}
+  end
+
+  def send_to_channel(subtopic, data) do
+    Phoenix.PubSub.broadcast(
+      FzHttp.PubSub,
+      "notification:#{subtopic}",
+      %{type: subtopic, payload: %{data: data}}
+    )
   end
 
   defp track(socket) do

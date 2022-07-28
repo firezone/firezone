@@ -39,12 +39,6 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.Show do
     end
   end
 
-  # XXX: Re-implement showing this error in 0.5.1 when events can send an error.
-  # @event_error_msg """
-  # Device deleted successfully but an error occured applying its configuration to the WireGuard
-  # interface. Please contact your administrator about this error.
-  # """
-
   def delete_device(device, socket) do
     if socket.assigns.current_user.id == device.user_id &&
          (has_role?(socket.assigns.current_user, :admin) ||

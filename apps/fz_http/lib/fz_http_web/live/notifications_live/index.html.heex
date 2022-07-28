@@ -1,0 +1,31 @@
+<%= render FzHttpWeb.SharedView, "heading.html", page_title: @page_title %>
+
+<section class="section is-main-section">
+  <div class="block">
+    <table class="table is-hoverable is-bordered is-striped is-fullwidth">
+      <thead>
+        <tr>
+          <th></th>
+          <th>User</th>
+          <th>Notification</th>
+          <th>Clear</th>
+        </tr>
+      </thead>
+      <tbody>
+        <%= for error <- @errors do %>
+          <tr>
+            <td class="has-text-centered has-text-danger">
+              <i class="mdi mdi-24px mdi-alert-circle"></i>
+            </td>
+            <td class="has-text-centered is-vcentered"><%= error.user %></td>
+            <td class="is-vcentered"><%= error.message %></td>
+            <%# XXX: Implement clear button %>
+            <td class="has-text-centered is-vcentered">
+              <button title="Dissmiss notification" class="delete is-medium"></button>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+</section>

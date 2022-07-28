@@ -4,8 +4,7 @@ defmodule FzHttp.Events do
   """
 
   alias FzHttp.{Devices, Rules, Users}
-
-  require Logger
+  alias FzHttpWeb.NotificationChannel
 
   # set_config is used because devices need to be re-evaluated in case a
   # device is added to a User that's not active.
@@ -14,8 +13,20 @@ defmodule FzHttp.Events do
          :ok <- GenServer.call(vpn_pid(), {:set_config, Devices.to_peer_list()}) do
       :ok
     else
-      # XXX: propagate error to ui in 0.5.1
-      _err -> nil
+      _err ->
+        NotificationChannel.send_to_channel(
+          "error",
+          %{
+            error: %{
+              user: Users.get_user!(device.user_id).email,
+              message: """
+              #{device.name} was created successfully but an error occured applying its
+              configuration to the WireGuard interface. Check the logs for more
+              information.
+              """
+            }
+          }
+        )
     end
   end
 
@@ -36,8 +47,20 @@ defmodule FzHttp.Events do
          :ok <- GenServer.call(vpn_pid(), {:remove_peer, device.public_key}) do
       :ok
     else
-      # XXX: propagate error to ui in 0.5.1
-      _err -> nil
+      _err ->
+        NotificationChannel.send_to_channel(
+          "error",
+          %{
+            error: %{
+              user: Users.get_user!(device.user_id).email,
+              message: """
+              #{device.name} was deleted successfully but an error occured applying its
+              configuration to the WireGuard interface. Check the logs for more
+              information.
+              """
+            }
+          }
+        )
     end
   end
 

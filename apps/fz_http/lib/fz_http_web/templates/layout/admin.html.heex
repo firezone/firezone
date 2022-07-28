@@ -49,6 +49,9 @@
             <% end %>
           </div>
         </div>
+        <div class="navbar-item has-divider is-desktop-icon-only" title="Notifications">
+          <%= live_render(@conn, FzHttpWeb.NotificationsLive.Badge, id: "notifications-badge", router: FzHttpWeb.Router) %>
+        </div>
         <a href="https://docs.firezone.dev/?utm_source=docs" title="Documentation" class="navbar-item has-divider is-desktop-icon-only">
           <span class="icon"><i class="mdi mdi-help-circle-outline"></i></span>
         </a>

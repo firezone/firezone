@@ -14,7 +14,7 @@ defmodule FzHttpWeb.UserSocket do
 
   ## Channels
   # channel "room:*", FzHttpWeb.RoomChannel
-  channel("notification:session", FzHttpWeb.NotificationChannel)
+  channel("notification:*", FzHttpWeb.NotificationChannel)
 
   # Socket params are passed from the client and can
   # be used to verify and authenticate a user. After
