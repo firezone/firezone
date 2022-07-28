@@ -25,16 +25,16 @@
 ## [Firezone](https://www.firezone.dev) is a self-hosted VPN server and Linux firewall
 
 * Manage remote access through an intuitive web interface and CLI utility.
-* [Deploy on your own infrastructure](https://docs.firezone.dev/docs/deploy) to keep control of your network traffic.
+* [Deploy on your own infrastructure](https://docs.firezone.dev/deploy) to keep control of your network traffic.
 * Built on [WireGuard®](https://www.wireguard.com/) to be stable, performant, and lightweight.
 
 ![Firezone Architecture](https://user-images.githubusercontent.com/52545545/173246039-a1b37ef2-d885-4535-bca7-f5cd57da21a2.png)
 
 ## Get Started
 
-Follow our [deploy guide](https://docs.firezone.dev/docs/deploy) to install your self-hosted instance of Firezone.
+Follow our [deploy guide](https://docs.firezone.dev/deploy) to install your self-hosted instance of Firezone.
 
-Or, if you're on a [supported platform](https://docs.firezone.dev/docs/deploy/supported-platforms/), try our one-line install script:
+Or, if you're on a [supported platform](https://docs.firezone.dev/deploy/supported-platforms/), try our one-line install script:
 
 ```bash
 sudo -E bash -c "$(curl -fsSL https://github.com/firezone/firezone/raw/master/scripts/install.sh)"
