@@ -71,8 +71,8 @@ If the automatic install script fails, try these steps to install Firezone from 
     # Using zypper
     sudo zypper install firezone
     ```
-1. Follow the [bootstrap instructions](#bootstrap-firezone) to setup Firezone.
 
+1. Follow the [bootstrap instructions](#bootstrap-firezone) to setup Firezone.
 
 ### Manual Install
 
