@@ -3,7 +3,6 @@ defmodule FzHttpWeb.UserSocket do
 
   alias FzHttp.Users
   alias FzHttpWeb.HeaderHelpers
-  import FzCommon.FzNet, only: [convert_ip: 1]
 
   @blank_ip_error {:error, "client IP couldn't be determined!"}
 
@@ -33,7 +32,7 @@ defmodule FzHttpWeb.UserSocket do
         @blank_ip_error
 
       ip ->
-        verify_token_and_assign_remote_ip(socket, token, convert_ip(ip))
+        verify_token_and_assign_remote_ip(socket, token, :inet.ntoa(ip) |> List.to_string())
     end
   end
 
@@ -63,13 +62,13 @@ defmodule FzHttpWeb.UserSocket do
   # def id(_socket), do: nil
   def id(socket), do: "user_socket:#{socket.assigns.current_user.id}"
 
+  # No proxy
+  defp get_ip_address(%{peer_data: %{address: address}, x_headers: []}) do
+    address
+  end
+
   # Proxied
   defp get_ip_address(%{x_headers: x_headers}) do
     RemoteIp.from(x_headers, HeaderHelpers.remote_ip_opts())
-  end
-
-  # No proxy
-  defp get_ip_address(%{peer_data: %{address: address}}) do
-    convert_ip(address)
   end
 end
