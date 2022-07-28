@@ -17,6 +17,10 @@ defmodule FzHttp.Notifications.Errors do
 
   def add(error), do: GenServer.call(__MODULE__, {:add, error})
 
+  def clear, do: GenServer.call(__MODULE__, :clear_all)
+
+  def clear(message), do: GenServer.call(__MODULE__, {:clear, message})
+
   @impl GenServer
   def init(errors) do
     {:ok, errors}
@@ -25,6 +29,16 @@ defmodule FzHttp.Notifications.Errors do
   @impl GenServer
   def handle_call(:current, _from, errors) do
     {:reply, errors, errors}
+  end
+
+  @impl GenServer
+  def handle_call(:clear_all, _from, errors) do
+    {:reply, :ok, []}
+  end
+
+  @impl GenServer
+  def handle_call({:clear, message}, _from, errors) do
+    {:reply, :ok, Enum.reject(errors, &(&1 == message))}
   end
 
   @impl GenServer
