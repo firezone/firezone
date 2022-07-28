@@ -7,8 +7,6 @@ defmodule FzHttp.Notifications.Errors do
 
   alias Phoenix.PubSub
 
-  @topic "notifications_errors"
-
   alias FzHttpWeb.NotificationsLive
 
   def start_link(_) do
@@ -16,11 +14,15 @@ defmodule FzHttp.Notifications.Errors do
   end
 
   def current, do: GenServer.call(__MODULE__, :current)
-  def topic, do: @topic
+
+  def add(error), do: GenServer.call(__MODULE__, {:add, error})
+
+  def clear, do: GenServer.call(__MODULE__, :clear_all)
+
+  def clear(message), do: GenServer.call(__MODULE__, {:clear, message})
 
   @impl GenServer
   def init(errors) do
-    PubSub.subscribe(FzHttp.PubSub, topic())
     {:ok, errors}
   end
 
@@ -30,8 +32,18 @@ defmodule FzHttp.Notifications.Errors do
   end
 
   @impl GenServer
-  def handle_info(%{error: message}, errors) do
-    new_errors = errors ++ [message]
+  def handle_call(:clear_all, _from, _errors) do
+    {:reply, :ok, []}
+  end
+
+  @impl GenServer
+  def handle_call({:clear, message}, _from, errors) do
+    {:reply, :ok, Enum.reject(errors, &(&1 == message))}
+  end
+
+  @impl GenServer
+  def handle_call({:add, %{error: message}}, _from, errors) do
+    new_errors = [message | errors]
 
     PubSub.broadcast(
       FzHttp.PubSub,
@@ -39,6 +51,6 @@ defmodule FzHttp.Notifications.Errors do
       {:errors, new_errors}
     )
 
-    {:noreply, new_errors}
+    {:reply, :ok, new_errors}
   end
 end
