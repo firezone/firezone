@@ -55,18 +55,9 @@ defmodule FzHttpWeb.NotificationChannel do
     {:noreply, socket}
   end
 
-  @impl Phoenix.Channel
-  def handle_info(%{type: "error"} = info, socket) do
-    Phoenix.PubSub.broadcast(
-      FzHttp.PubSub,
-      Notifications.Errors.topic(),
-      info.payload.data
-    )
-
-    {:noreply, socket}
-  end
-
   def send_to_channel(subtopic, data) do
+    Notifications.Errors.add(data)
+
     Phoenix.PubSub.broadcast(
       FzHttp.PubSub,
       "notification:#{subtopic}",
