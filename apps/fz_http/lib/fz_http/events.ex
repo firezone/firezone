@@ -3,8 +3,7 @@ defmodule FzHttp.Events do
   Handles interfacing with other processes in the system.
   """
 
-  alias FzHttp.{Devices, Rules, Users}
-  alias FzHttpWeb.NotificationChannel
+  alias FzHttp.{Devices, Rules, Users, Notifications}
 
   # set_config is used because devices need to be re-evaluated in case a
   # device is added to a User that's not active.
@@ -14,19 +13,16 @@ defmodule FzHttp.Events do
       :ok
     else
       _err ->
-        NotificationChannel.send_to_channel(
-          "error",
-          %{
-            error: %{
-              user: Users.get_user!(device.user_id).email,
-              message: """
-              #{device.name} was created successfully but an error occured applying its
-              configuration to the WireGuard interface. Check the logs for more
-              information.
-              """
-            }
+        Notifications.Errors.add(%{
+          error: %{
+            user: Users.get_user!(device.user_id).email,
+            message: """
+            #{device.name} was created successfully but an error occured applying its
+            configuration to the WireGuard interface. Check the logs for more
+            information.
+            """
           }
-        )
+        })
     end
   end
 
@@ -48,19 +44,16 @@ defmodule FzHttp.Events do
       :ok
     else
       _err ->
-        NotificationChannel.send_to_channel(
-          "error",
-          %{
-            error: %{
-              user: Users.get_user!(device.user_id).email,
-              message: """
-              #{device.name} was deleted successfully but an error occured applying its
-              configuration to the WireGuard interface. Check the logs for more
-              information.
-              """
-            }
+        Notifications.Errors.add(%{
+          error: %{
+            user: Users.get_user!(device.user_id).email,
+            message: """
+            #{device.name} was deleted successfully but an error occured applying its
+            configuration to the WireGuard interface. Check the logs for more
+            information.
+            """
           }
-        )
+        })
     end
   end
 

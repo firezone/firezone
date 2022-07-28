@@ -32,7 +32,7 @@ defmodule FzHttp.Notifications.Errors do
   end
 
   @impl GenServer
-  def handle_call(:clear_all, _from, errors) do
+  def handle_call(:clear_all, _from, _errors) do
     {:reply, :ok, []}
   end
 
@@ -51,6 +51,6 @@ defmodule FzHttp.Notifications.Errors do
       {:errors, new_errors}
     )
 
-    {:noreply, new_errors}
+    {:reply, :ok, new_errors}
   end
 end

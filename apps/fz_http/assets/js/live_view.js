@@ -18,14 +18,10 @@ const userSocket = new Socket("/socket", {
 const channelToken = document
   .querySelector("meta[name='channel-token']")
   .getAttribute("content")
-const notificationSessionChannel =
+const notificationChannel =
   userSocket.channel("notification:session", {
     token: channelToken,
     user_agent: window.navigator.userAgent
-  })
-const notificationErrorChannel =
-  userSocket.channel("notification:error", {
-    token: channelToken
   })
 
 // LiveView setup
@@ -65,8 +61,7 @@ userSocket.onClose(toggleConnectStatus)
 liveSocket.connect()
 userSocket.connect()
 
-notificationSessionChannel.join()
-notificationErrorChannel.join()
+notificationChannel.join()
   // .receive("ok", ({messages}) => console.log("catching up", messages))
   // .receive("error", ({reason}) => console.log("error", reason))
   // .receive("timeout", () => console.log("Networking issue. Still waiting..."))
