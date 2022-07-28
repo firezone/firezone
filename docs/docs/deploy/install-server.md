@@ -25,7 +25,7 @@ This will ask you a few questions regarding your install, install the latest
 release for your platform, then create an administrator user and print to the
 console instructions for logging in to the web UI.
 
-### Install from our Debian or RedHat repostiories
+### Install from our Debian or RedHat repositories
 
 If the automatic install script fails, try these steps to install Firezone from our
 [Cloudsmith repository](https://cloudsmith.io/~firezone/repos/firezone).
