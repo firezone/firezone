@@ -56,7 +56,9 @@ defmodule FzHttpWeb.NotificationChannel do
   end
 
   def send_to_channel(subtopic, data) do
-    Notifications.Errors.add(data)
+    with "error" <- subtopic do
+      Notifications.Errors.add(data)
+    end
 
     Phoenix.PubSub.broadcast(
       FzHttp.PubSub,
