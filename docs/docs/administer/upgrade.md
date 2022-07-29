@@ -22,6 +22,33 @@ issue](https://github.com/firezone/firezone/issues/new/choose).
 
 ## Upgrading from < 0.5.0 to >= 0.5.0
 
+0.5.0 introduces a few breaking changes and configuration updates that will need
+to be addressed. Read more below.
+
+### Bundled Nginx non_ssl_port (HTTP) requests removed
+
+0.5.0 and above removes the `force_ssl` and `non_ssl_port` settings for
+Nginx. SSL is required for Firezone to function; if you're using (or would like
+to use) your own reverse proxy, we recommend disabling the bundle Nginx service
+by setting `default['firezone']['nginx']['enabled'] = false` and pointing your
+reverse proxy directly to the Phoenix app on port 13000 (by default).
+
+Read more about setting up a custom reverse proxy
+[here](../deploy/reverse-proxies).
+
+### ACME protocol support
+
+0.5.0 introduces ACME protocol support for automatically renewing SSL
+certificates with the bundled Nginx service. To enable,
+
+- Make sure `default['firezone']['external_url']` contains a valid FQDN that
+  resolves to your server's public IP address.
+
+- Ensure port `80/tcp` is reachable
+
+- Enable ACME protocol support with
+  `default['firezone']['ssl']['acme']['enabled'] = true` in your config file.
+
 ### Overlapping egress rule destinations
 
 Firezone 0.5.0 removes the ability to add rules with overlapping destinations.
