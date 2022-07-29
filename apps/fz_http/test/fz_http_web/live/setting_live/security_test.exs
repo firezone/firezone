@@ -49,18 +49,18 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
     end
   end
 
-  describe "toggles" do
+  describe "toggles with db nil value" do
     setup %{admin_conn: conn} do
       Conf.update_configuration(%{
-        local_auth_enabled: true,
-        allow_unprivileged_device_management: true,
-        disable_vpn_on_oidc_error: true,
-        auto_create_oidc_users: true
+        local_auth_enabled: nil,
+        allow_unprivileged_device_management: nil,
+        disable_vpn_on_oidc_error: nil,
+        auto_create_oidc_users: nil
       })
 
-      path = Routes.setting_security_path(conn, :show)
-      {:ok, view, _html} = live(conn, path)
-      [view: view]
+      FzHttp.Conf.Cache.init([])
+
+      {:ok, path: Routes.setting_security_path(conn, :show)}
     end
 
     for t <- [
@@ -69,13 +69,51 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
           :disable_vpn_on_oidc_error,
           :auto_create_oidc_users
         ] do
-      test "toggle #{t}", %{view: view} do
+      test "toggle #{t}", %{admin_conn: conn, path: path} do
+        {:ok, view, _html} = live(conn, path)
         html = view |> element("input[phx-value-config=#{unquote(t)}]") |> render()
         assert html =~ "checked"
 
         view |> element("input[phx-value-config=#{unquote(t)}]") |> render_click()
         assert Conf.get(unquote(t)) == false
 
+        {:ok, view, _html} = live(conn, path)
+        html = view |> element("input[phx-value-config=#{unquote(t)}]") |> render()
+        refute html =~ "checked"
+
+        view |> element("input[phx-value-config=#{unquote(t)}]") |> render_click()
+        assert Conf.get(unquote(t)) == true
+      end
+    end
+  end
+
+  describe "toggles with db existing value" do
+    setup %{admin_conn: conn} do
+      Conf.update_configuration(%{
+        local_auth_enabled: true,
+        allow_unprivileged_device_management: true,
+        disable_vpn_on_oidc_error: true,
+        auto_create_oidc_users: true
+      })
+
+      {:ok, path: Routes.setting_security_path(conn, :show)}
+    end
+
+    for t <- [
+          :local_auth_enabled,
+          :allow_unprivileged_device_management,
+          :disable_vpn_on_oidc_error,
+          :auto_create_oidc_users
+        ] do
+      test "toggle #{t}", %{admin_conn: conn, path: path} do
+        {:ok, view, _html} = live(conn, path)
+        html = view |> element("input[phx-value-config=#{unquote(t)}]") |> render()
+        assert html =~ "checked"
+
+        view |> element("input[phx-value-config=#{unquote(t)}]") |> render_click()
+        assert Conf.get(unquote(t)) == false
+
+        {:ok, view, _html} = live(conn, path)
         html = view |> element("input[phx-value-config=#{unquote(t)}]") |> render()
         refute html =~ "checked"
 
