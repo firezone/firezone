@@ -13,15 +13,15 @@ defmodule FzHttp.Events do
       :ok
     else
       _err ->
-        Notifications.Errors.add(%{
-          error: %{
-            user: Users.get_user!(device.user_id).email,
-            message: """
-            #{device.name} was created successfully but an error occured applying its
-            configuration to the WireGuard interface. Check the logs for more
-            information.
-            """
-          }
+        Notifications.add(%{
+          type: :error,
+          message: """
+          #{device.name} was created successfully but an error occured applying its
+          configuration to the WireGuard interface. Check the logs for more
+          information.
+          """,
+          timestamp: DateTime.utc_now(),
+          user: Users.get_user!(device.user_id).email
         })
     end
   end
@@ -44,15 +44,15 @@ defmodule FzHttp.Events do
       :ok
     else
       _err ->
-        Notifications.Errors.add(%{
-          error: %{
-            user: Users.get_user!(device.user_id).email,
-            message: """
-            #{device.name} was deleted successfully but an error occured applying its
-            configuration to the WireGuard interface. Check the logs for more
-            information.
-            """
-          }
+        Notifications.add(%{
+          type: :error,
+          message: """
+          #{device.name} was deleted successfully but an error occured applying its
+          configuration to the WireGuard interface. Check the logs for more
+          information.
+          """,
+          timestamp: DateTime.utc_now(),
+          user: Users.get_user!(device.user_id).email
         })
     end
   end

@@ -34,7 +34,7 @@ defmodule FzHttp.Application do
       FzHttp.Conf.Cache,
       FzHttpWeb.Endpoint,
       {Phoenix.PubSub, name: FzHttp.PubSub},
-      FzHttp.Notifications.Errors,
+      FzHttp.Notifications,
       FzHttpWeb.Presence,
       FzHttp.ConnectivityCheckService,
       FzHttp.TelemetryPingService,
@@ -54,7 +54,7 @@ defmodule FzHttp.Application do
       FzHttpWeb.Endpoint,
       {FzHttp.OIDC.StartProxy, :test},
       {Phoenix.PubSub, name: FzHttp.PubSub},
-      FzHttp.Notifications.Errors,
+      FzHttp.Notifications,
       FzHttpWeb.Presence
     ]
   end

@@ -4,29 +4,29 @@ defmodule FzHttpWeb.NotificationsLive.Index do
   """
   use FzHttpWeb, :live_view
 
-  alias FzHttp.Notifications.Errors
+  alias FzHttp.Notifications
   alias Phoenix.PubSub
 
   require Logger
 
-  @errors_topic "notifications_live_errors"
+  @topic "notifications_live"
 
-  def errors_topic, do: @errors_topic
+  def topic, do: @topic
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
-    PubSub.subscribe(FzHttp.PubSub, errors_topic())
+    PubSub.subscribe(FzHttp.PubSub, topic())
 
     {:ok,
      socket
-     |> assign(:errors, Errors.current())
+     |> assign(:notifications, Notifications.current())
      |> assign(:page_title, "Notifications")}
   end
 
   @impl Phoenix.LiveView
-  def handle_info({:errors, errors}, socket) do
+  def handle_info({:notifications, notifications}, socket) do
     {:noreply,
      socket
-     |> assign(errors: errors)}
+     |> assign(notifications: notifications)}
   end
 end

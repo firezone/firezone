@@ -4,24 +4,24 @@ defmodule FzHttpWeb.NotificationsLive.Badge do
   """
   use FzHttpWeb, :live_view
 
-  alias FzHttp.Notifications.Errors
+  alias FzHttp.Notifications
   alias Phoenix.PubSub
 
-  import FzHttpWeb.NotificationsLive.Index, only: [errors_topic: 0]
+  import FzHttpWeb.NotificationsLive.Index, only: [topic: 0]
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
-    PubSub.subscribe(FzHttp.PubSub, errors_topic())
+    PubSub.subscribe(FzHttp.PubSub, topic())
 
     {:ok,
      socket
-     |> assign(:count, length(Errors.current()))}
+     |> assign(:count, length(Notifications.current()))}
   end
 
   @impl Phoenix.LiveView
-  def handle_info({:errors, errors}, socket) do
+  def handle_info({:notifications, notifications}, socket) do
     {:noreply,
      socket
-     |> assign(:count, length(errors))}
+     |> assign(:count, length(notifications))}
   end
 end
