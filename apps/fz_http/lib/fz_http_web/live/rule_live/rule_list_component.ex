@@ -11,15 +11,28 @@ defmodule FzHttpWeb.RuleLive.RuleListComponent do
 
   @impl Phoenix.LiveComponent
   def update(assigns, socket) do
+    changeset = Rules.new_rule()
+
     {:ok,
      socket
      |> assign(assigns)
+     |> assign(Rules.defaults(changeset))
      |> assign(
        action: action(assigns.id),
        rule_list: rule_list(assigns),
        users: users(),
-       changeset: Rules.new_rule()
+       changeset: changeset
      )}
+  end
+
+  @impl Phoenix.LiveComponent
+  def handle_event("change", %{"rule" => rule_params}, socket) do
+    changeset = Rules.new_rule(rule_params)
+
+    {:noreply,
+     socket
+     |> assign(:changeset, changeset)
+     |> assign(Rules.defaults(changeset))}
   end
 
   @impl true

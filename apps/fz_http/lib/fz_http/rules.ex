@@ -4,6 +4,7 @@ defmodule FzHttp.Rules do
   """
 
   import Ecto.Query, warn: false
+  import Ecto.Changeset
   import FzHttp.Devices, only: [decode: 1]
 
   alias FzHttp.{Repo, Rules.Rule, Telemetry}
@@ -53,10 +54,16 @@ defmodule FzHttp.Rules do
     |> Rule.changeset(attrs)
   end
 
+  def defaults(changeset) do
+    ~w(
+      port_type
+    )a
+    |> Map.new(&{&1, get_field(changeset, &1)})
+  end
+
   def create_rule(attrs \\ %{}) do
     result =
       attrs
-      |> range_from_params()
       |> new_rule()
       |> Repo.insert()
 
@@ -69,26 +76,6 @@ defmodule FzHttp.Rules do
     end
 
     result
-  end
-
-  defp range_from_params(%{"port_start" => "", "port_stop" => ""} = attrs) do
-    attrs
-  end
-
-  defp range_from_params(%{"port_start" => port_start, "port_stop" => port_stop} = attrs) do
-    Map.put_new(attrs, "port_range", [to_num(port_start), to_num(port_stop)])
-  end
-
-  defp range_from_params(attrs) do
-    attrs
-  end
-
-  defp to_num(nil), do: nil
-  defp to_num(""), do: nil
-
-  defp to_num(port) when is_binary(port) do
-    {port, _} = Integer.parse(port)
-    port
   end
 
   def delete_rule(%Rule{} = rule) do

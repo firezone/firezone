@@ -5,6 +5,19 @@ defmodule FzHttp.Int4Range do
   use Ecto.Type
   def type, do: :int4range
 
+  def cast(str) when is_binary(str) do
+    res =
+      String.trim(str)
+      |> String.split("-", trim: true, parts: 2)
+      |> Enum.map(&Integer.parse/1)
+
+    case res do
+      [{lower, _}, {upper, _}] -> {:ok, [lower, upper]}
+      [{num, _}] -> {:ok, [num, num]}
+      _ -> {:error, message: "Port range bad format"}
+    end
+  end
+
   def cast([lower, nil]) do
     [lower, nil]
   end

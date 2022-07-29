@@ -30,10 +30,7 @@ defmodule FzHttp.Rules.Rule do
       :port_range
     ])
     |> validate_required([:action, :destination])
-    # Name needs to be one of the elements in the form
-    # What to do here???
-    # TODO: empty range problem
-    |> check_constraint(:destination,
+    |> check_constraint(:port_type,
       message: @port_range_error,
       name: :port_range_needs_type
     )

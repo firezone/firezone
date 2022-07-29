@@ -6,7 +6,7 @@
     </p>
   </header>
   <div class="card-content">
-    <.form let={f} for={@changeset} id={"#{@action}-form"} phx-target={@myself} phx-submit="add_rule">
+    <.form let={f} for={@changeset} id={"#{@action}-form"} phx-change="change" phx-target={@myself} phx-submit="add_rule">
       <%= hidden_input f, :action, value: @action %>
       <div class="field has-addons">
         <div class="control is-expanded">
@@ -23,32 +23,26 @@
                 prompt: "Optional user scope" %>
           </div>
         </div>
+
         <div class="control">
           <div class="select">
             <%= select f,
                 :port_type,
                 [[key: :TCP, value: :tcp], [key: :UDP, value: :udp]],
                 default: nil,
-                prompt: "Optional port scoped rule" %>
+                prompt: "Optional port type" %>
           </div>
+        </div>
+        <div class="field">
           <div class="control">
-            <div class="field">
-              <%= number_input f,
-                  :port_start,
-                  default: nil,
-                  min: 1,
-                  max: 65535,
-                  placeholder: "Port start" %>
-            </div>
-            <div class="field">
-              <%= number_input f,
-                  :port_stop,
-                  default: nil,
-                  min: 1,
-                  max: 65535,
-                  placeholder: "Port stop" %>
-            </div>
+            <%= text_input f, :port_range,
+                class: "input #{input_error_class(f, :port_range)}",
+                placeholder: "Port Range",
+                disabled: @port_type == nil %>
           </div>
+          <p class="help">
+            Formatted as 'start - stop' or 'port' e.g. 20-80 or 80 (Requires port type)
+          </p>
         </div>
         <div class="control">
           <%= submit "Add", class: "button is-primary" %>
