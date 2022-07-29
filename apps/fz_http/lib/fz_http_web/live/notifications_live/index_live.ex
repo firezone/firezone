@@ -1,6 +1,6 @@
 defmodule FzHttpWeb.NotificationsLive.Index do
   @moduledoc """
-  Real time notifications received from the server.
+  Real time notifications live view.
   """
   use FzHttpWeb, :live_view
 
@@ -28,5 +28,19 @@ defmodule FzHttpWeb.NotificationsLive.Index do
     {:noreply,
      socket
      |> assign(notifications: notifications)}
+  end
+
+  @impl Phoenix.LiveView
+  def handle_event("clear_notification", %{"index" => index}, socket) do
+    Notifications.clear_at(String.to_integer(index))
+    {:noreply, socket}
+  end
+
+  defp icon(:error, assigns) do
+    ~H"""
+    <span class="icon has-text-danger">
+      <i class="mdi mdi-24px mdi-alert-circle"></i>
+    </span>
+    """
   end
 end

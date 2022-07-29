@@ -15,12 +15,9 @@
       <tbody>
         <%= for {notification, index} <- Enum.with_index(@notifications) do %>
           <tr>
-            <%= case notification.type do %>
-              <% :error -> %>
-                <td class="has-text-centered has-text-danger is-vcentered">
-                  <i class="mdi mdi-24px mdi-alert-circle"></i>
-                </td>
-            <% end %>
+            <td class="has-text-centered is-vcentered">
+              <%= icon(notification.type, assigns) %>
+            </td>
             <td
               class="has-text-centered is-vcentered"
               id={"notification-time-#{index}"}
@@ -30,9 +27,13 @@
             </td>
             <td class="has-text-centered is-vcentered"><%= notification.user %></td>
             <td class="is-vcentered"><%= notification.message %></td>
-            <%# XXX: Implement clear button %>
             <td class="has-text-centered is-vcentered">
-              <button title="Dissmiss notification" class="delete is-medium"></button>
+              <button
+                title="Dissmiss notification"
+                class="delete is-medium"
+                phx-click="clear_notification"
+                phx-value-index={index}>
+              </button>
             </td>
           </tr>
         <% end %>

@@ -18,6 +18,8 @@ defmodule FzHttp.Notifications do
 
   def clear(notification), do: GenServer.call(__MODULE__, {:clear, notification})
 
+  def clear_at(index), do: GenServer.call(__MODULE__, {:clear_at, index})
+
   @impl GenServer
   def init(notifications) do
     {:ok, notifications}
@@ -30,12 +32,40 @@ defmodule FzHttp.Notifications do
 
   @impl GenServer
   def handle_call(:clear_all, _from, _notifications) do
+    PubSub.broadcast(
+      FzHttp.PubSub,
+      NotificationsLive.Index.topic(),
+      {:notifications, []}
+    )
+
     {:reply, :ok, %{notifications: []}}
   end
 
   @impl GenServer
   def handle_call({:clear, notification}, _from, notifications) do
-    {:reply, :ok, Enum.reject(notifications, &(&1 == notification))}
+    new_notifications = Enum.reject(notifications, &(&1 == notification))
+
+    PubSub.broadcast(
+      FzHttp.PubSub,
+      NotificationsLive.Index.topic(),
+      {:notifications, new_notifications}
+    )
+
+    {:reply, :ok, new_notifications}
+  end
+
+  @impl GenServer
+  def handle_call({:clear_at, index}, _from, notifications) do
+    notification = Enum.at(notifications, index)
+    new_notifications = Enum.reject(notifications, &(&1 == notification))
+
+    PubSub.broadcast(
+      FzHttp.PubSub,
+      NotificationsLive.Index.topic(),
+      {:notifications, new_notifications}
+    )
+
+    {:reply, :ok, new_notifications}
   end
 
   @impl GenServer
