@@ -25,16 +25,6 @@ defmodule FzWall.CLI.Live do
   Adds user sets and rules.
   """
   def add_user(user_id) do
-    # {
-    # sets:
-    # useri_ip/ipv6[tcp/udp]_accept/drop
-    # useri_ip/ipv6_dev
-    # ip/ipv6[tcp/udp]_accept/drop
-    # rules:
-    # useri_dev jump useri_chain
-    # useri: ip/ipv6 daddr . tcp/udp port . accept/drop
-    # ip/ipv6 daddr . tcp/udp port . accept/drop
-    # }
     add_user_set(user_id)
     add_chain(get_user_chain(user_id))
     set_jump_rule(user_id)
@@ -43,12 +33,12 @@ defmodule FzWall.CLI.Live do
 
   defp add_user_set(user_id) do
     list_dev_sets(user_id)
-    |> Enum.map(&add_dev_set/1)
+    |> Enum.map(fn set_spec -> add_dev_set(set_spec.name, set_spec.ip_type) end)
   end
 
   defp delete_user_set(user_id) do
     list_dev_sets(user_id)
-    |> Enum.map(&remove_dev_set/1)
+    |> Enum.map(fn set_spec -> delete_set(set_spec.name) end)
   end
 
   @doc """
@@ -81,7 +71,7 @@ defmodule FzWall.CLI.Live do
   """
   def add_device(device) do
     list_dev_sets(device.user_id)
-    |> Enum.each(fn set_spec -> add_dev_elem(set_spec.name, device[set_spec.ip_type]) end)
+    |> Enum.each(fn set_spec -> add_elem(set_spec.name, device[set_spec.ip_type]) end)
   end
 
   @doc """
@@ -89,10 +79,10 @@ defmodule FzWall.CLI.Live do
   """
   def add_rule(rule) do
     ip_type = proto(rule.destination)
-    port_type = rule[:port_type]
+    port_type = rule.port_type
     layer4 = port_type != nil
 
-    add_filter_elem(
+    add_elem(
       get_filter_set_name(rule.user_id, ip_type, rule.action, layer4),
       rule.destination,
       port_type,
@@ -110,20 +100,17 @@ defmodule FzWall.CLI.Live do
   @doc """
   Delete rule destination ip from its corresponding sets.
   """
-  # TODO: Should work similar to add_rule
   def delete_rule(rule) do
-    port_type = rule[:port_type]
+    ip_type = proto(rule.destination)
+    port_type = rule.port_type
     ports = get_port_range(rule.port_range)
     layer4 = port_type != nil
 
-    remove_from_set(
-      rule.user_id,
+    delete_elem(
+      get_filter_set_name(rule.user_id, ip_type, rule.action, layer4),
       rule.destination,
-      proto(rule.destination),
-      rule.action,
       port_type,
-      ports,
-      layer4
+      ports
     )
   end
 
@@ -142,14 +129,11 @@ defmodule FzWall.CLI.Live do
     |> delete_elem(ip)
   end
 
-  defp remove_from_set(user_id, ip, type, action, proto, ports, layer4) do
-    get_filter_set_name(user_id, type, action, layer4)
-    |> delete_elem(ip, proto, ports)
-  end
-
   defp add_filter_sets(user_id) do
     list_filter_sets(user_id)
-    |> Enum.each(&add_filter_set/1)
+    |> Enum.each(fn set_spec ->
+      add_filter_set(set_spec.name, set_spec.ip_type, set_spec.layer4)
+    end)
   end
 
   defp delete_filter_sets(user_id) do
@@ -186,8 +170,8 @@ defmodule FzWall.CLI.Live do
 
   defp proto(ip) do
     case ip_type("#{ip}") do
-      "IPv4" -> "ip"
-      "IPv6" -> "ip6"
+      "IPv4" -> :ip
+      "IPv6" -> :ip6
       "unknown" -> raise "Unknown protocol."
     end
   end
