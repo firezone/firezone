@@ -6,11 +6,6 @@ defmodule FzHttpWeb.SettingLive.Unprivileged.AccountFormComponent do
 
   alias FzHttp.Users
 
-  @allowed_params [
-    "password",
-    "password_confirmation"
-  ]
-
   def update(assigns, socket) do
     changeset = Users.change_user(assigns.current_user)
 
@@ -21,9 +16,7 @@ defmodule FzHttpWeb.SettingLive.Unprivileged.AccountFormComponent do
   end
 
   def handle_event("save", %{"user" => user_params}, socket) do
-    allowed_params = Map.take(user_params, @allowed_params)
-
-    case Users.update_user(socket.assigns.current_user, allowed_params) do
+    case Users.unprivileged_update_self(socket.assigns.current_user, user_params) do
       {:ok, _user} ->
         {:noreply,
          socket

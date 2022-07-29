@@ -38,7 +38,6 @@ defmodule FzHttp.Users.User do
   def create_changeset(user, attrs \\ %{}) do
     user
     |> cast(attrs, [
-      :role,
       :email,
       :password_hash,
       :password,
@@ -52,129 +51,67 @@ defmodule FzHttp.Users.User do
     |> put_password_hash()
   end
 
-  # Sign in token
-  # XXX: Map keys must be strings for this approach to work. Refactor to something that is key
-  # type agnostic.
-  # If password isn't being changed, remove it from list of attributes to validate
-  def update_changeset(
-        user,
-        %{
-          "password" => nil,
-          "password_confirmation" => nil,
-          "current_password" => nil
-        } = attrs
-      ) do
-    update_changeset(
-      user,
-      Map.drop(attrs, ["password", "password_confirmation", "current_password"])
-    )
-  end
-
-  # If password isn't being changed, remove it from list of attributes to validate
-  def update_changeset(
-        user,
-        %{"password" => "", "password_confirmation" => "", "current_password" => ""} = attrs
-      ) do
-    update_changeset(
-      user,
-      Map.drop(attrs, ["password", "password_confirmation", "current_password"])
-    )
-  end
-
-  # Password and other fields are being changed
-  def update_changeset(
-        user,
-        %{
-          "password" => _password,
-          "password_confirmation" => _password_confirmation,
-          "current_password" => _current_password
-        } = attrs
-      ) do
+  def require_current_password(user, attrs) do
     user
-    |> cast(attrs, [:role, :email, :password, :password_confirmation, :current_password])
-    |> validate_required([:email, :password, :password_confirmation, :current_password])
-    |> validate_format(:email, ~r/@/)
-    |> verify_current_password(user)
-    |> validate_length(:password, min: @min_password_length, max: @max_password_length)
+    |> cast(attrs, [:current_password])
+    |> validate_required([:current_password])
+    |> verify_current_password()
+  end
+
+  def update_password(user, attrs) do
+    user
+    |> cast(attrs, [:password, :password_confirmation])
+    |> then(fn
+      %{changes: %{password: _}} = changeset ->
+        validate_length(changeset, :password, min: @min_password_length, max: @max_password_length)
+
+      changeset ->
+        changeset
+    end)
     |> validate_password_equality()
     |> put_password_hash()
     |> validate_required([:password_hash])
   end
 
-  # Email updated from an admin
-  def update_changeset(
-        user,
-        %{
-          "email" => _email,
-          "password" => "",
-          "password_confirmation" => ""
-        } = attrs
-      ) do
-    update_changeset(user, Map.drop(attrs, ["password", "password_confirmation"]))
-  end
-
-  # Password updated from token or admin
-  def update_changeset(
-        user,
-        %{
-          "password" => _password,
-          "password_confirmation" => _password_confirmation
-        } = attrs
-      ) do
+  def require_password_change(user, attrs) do
     user
-    |> cast(attrs, [:email, :password, :password_confirmation])
-    |> validate_required([:email, :password, :password_confirmation])
-    |> validate_format(:email, ~r/@/)
-    |> validate_length(:password, min: @min_password_length, max: @max_password_length)
-    |> validate_password_equality()
-    |> put_password_hash()
-    |> validate_required([:password_hash])
+    |> cast(attrs, [:password, :password_confirmation])
+    |> validate_required([:password, :password_confirmation])
   end
 
-  # Only email being updated
-  def update_changeset(user, %{"email" => _email} = attrs) do
+  def update_email(user, attrs) do
     user
     |> cast(attrs, [:email])
     |> validate_required([:email])
     |> validate_format(:email, ~r/@/)
   end
 
-  # Promotion / Demotion
-  def update_changeset(user, %{role: _role} = attrs) do
+  def update_role(user, attrs) do
     user
     |> cast(attrs, [:role])
     |> validate_required([:role])
   end
 
-  # Password reset token
-  def update_changeset(
-        user,
-        %{sign_in_token: _token, sign_in_token_created_at: _created_at} = attrs
-      ) do
+  def update_sign_in_token(user, attrs) do
     cast(user, attrs, [:sign_in_token, :sign_in_token_created_at])
   end
 
-  # XXX: Invalidate password reset when user is updated
-  def update_changeset(user, %{} = attrs) do
-    changeset(user, attrs)
-  end
-
-  def changeset(user, attrs) do
-    user
-    |> cast(attrs, [:email, :last_signed_in_method, :last_signed_in_at])
+  def update_last_signed_in(user, attrs) do
+    cast(user, attrs, [:last_signed_in_method, :last_signed_in_at])
   end
 
   defp verify_current_password(
          %Ecto.Changeset{
-           changes: %{current_password: _}
-         } = changeset,
-         user
+           data: %{password_hash: password_hash},
+           changes: %{current_password: current_password}
+         } = changeset
        ) do
-    case Argon2.check_pass(user, changeset.changes.current_password) do
-      {:ok, _user} -> changeset |> delete_change(:current_password)
-      {:error, error_msg} -> changeset |> add_error(:current_password, error_msg)
+    if Argon2.verify_pass(current_password, password_hash) do
+      delete_change(changeset, :current_password)
+    else
+      add_error(changeset, :current_password, "invalid password")
     end
   end
 
-  defp verify_current_password(changeset, _user), do: changeset
+  defp verify_current_password(changeset), do: changeset
 end

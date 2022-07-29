@@ -25,7 +25,7 @@ defmodule FzHttpWeb.SettingLive.AccountTest do
   end
 
   describe "when live_action is edit" do
-    @valid_params %{"user" => %{"email" => "foobar@test"}}
+    @valid_params %{"user" => %{"email" => "foobar@test", "current_password" => "password1234"}}
     @invalid_params %{"user" => %{"email" => "foobar"}}
 
     test "loads the form" do

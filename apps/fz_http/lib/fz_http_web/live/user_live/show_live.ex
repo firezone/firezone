@@ -84,7 +84,7 @@ defmodule FzHttpWeb.UserLive.Show do
           "demote" -> :unprivileged
         end
 
-      case Users.update_user(user, %{role: role}) do
+      case Users.update_user_role(user, role) do
         {:ok, user} ->
           # Force reconnect with new role
           FzHttpWeb.Endpoint.broadcast("users_socket:#{user.id}", "disconnect", %{})

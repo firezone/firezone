@@ -45,7 +45,7 @@ defmodule FzHttp.Release do
 
     {:ok, _user} =
       Users.get_user!(email: email)
-      |> Users.update_user(params)
+      |> Users.admin_update_user(params)
   end
 
   defp repos do
