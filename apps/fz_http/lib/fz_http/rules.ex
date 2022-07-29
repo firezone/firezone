@@ -79,6 +79,10 @@ defmodule FzHttp.Rules do
     Map.put_new(attrs, "port_range", [to_num(port_start), to_num(port_stop)])
   end
 
+  defp range_from_params(attrs) do
+    attrs
+  end
+
   defp to_num(nil), do: nil
   defp to_num(""), do: nil
 
