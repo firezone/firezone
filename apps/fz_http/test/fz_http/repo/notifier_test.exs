@@ -7,6 +7,8 @@ defmodule FzHttp.Repo.NotifierTest do
   alias FzHttp.Events
   alias FzHttp.Repo
 
+  @notify_wait 1
+
   setup do
     start_supervised!({Postgrex.Notifications, [name: Repo.Notifications] ++ Repo.config()})
     start_supervised!(Repo.Notifier)
@@ -17,13 +19,13 @@ defmodule FzHttp.Repo.NotifierTest do
     Sandbox.unboxed_run(Repo, fn ->
       {:ok, [user: user]} = create_user(%{})
 
-      Process.sleep(250)
+      Process.sleep(@notify_wait)
 
       wall_state_add = :sys.get_state(Events.wall_pid())
 
       Repo.delete!(user)
 
-      Process.sleep(250)
+      Process.sleep(@notify_wait)
 
       wall_state_remove = :sys.get_state(Events.wall_pid())
 
@@ -47,13 +49,13 @@ defmodule FzHttp.Repo.NotifierTest do
     Sandbox.unboxed_run(Repo, fn ->
       {:ok, [rule: rule]} = create_rule(%{})
 
-      Process.sleep(250)
+      Process.sleep(@notify_wait)
 
       wall_state_add = :sys.get_state(Events.wall_pid())
 
       Repo.delete!(rule)
 
-      Process.sleep(250)
+      Process.sleep(@notify_wait)
 
       wall_state_remove = :sys.get_state(Events.wall_pid())
 
