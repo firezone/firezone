@@ -92,4 +92,20 @@ defmodule FzHttpWeb.RuleLive.RuleListComponent do
   defp user_options(users) do
     Enum.map(users, fn {id, email} -> {email, id} end)
   end
+
+  defp port_type_options do
+    %{TCP: :tcp, UDP: :udp}
+  end
+
+  defp port_range_display([a, a]) do
+    a
+  end
+
+  defp port_range_display([a, b]) do
+    "#{a} - #{b}"
+  end
+
+  defp port_type_display(nil), do: nil
+  defp port_type_display(:tcp), do: "TCP"
+  defp port_type_display(:udp), do: "UDP"
 end

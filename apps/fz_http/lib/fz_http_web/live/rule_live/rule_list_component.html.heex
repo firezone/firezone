@@ -28,10 +28,12 @@
           <div class="select">
             <%= select f,
                 :port_type,
-                [[key: :TCP, value: :tcp], [key: :UDP, value: :udp]],
-                default: nil,
-                prompt: "Optional port type" %>
+                port_type_options(),
+                prompt: "Optional port range" %>
           </div>
+          <p class="help is-danger">
+            <%= error_tag f, :port_type %>
+          </p>
         </div>
         <div class="field">
           <div class="control">
@@ -42,6 +44,9 @@
           </div>
           <p class="help">
             Formatted as 'start - stop' or 'port' e.g. 20-80 or 80 (Requires port type)
+          </p>
+          <p class="help is-danger">
+            <%= error_tag f, :port_range %>
           </p>
         </div>
         <div class="control">
@@ -76,10 +81,10 @@
                 <%= @users[rule.user_id] %>
               </td>
               <td class="has-text-left">
-                <%= rule.port_type %>
+                <%= port_type_display(rule.port_type) %>
               </td>
               <td class="has-text-left">
-                  <%= if rule.port_range != nil, do: "#{Enum.at(rule.port_range, 0)} - #{Enum.at(rule.port_range, 1)}" %>
+                  <%= if rule.port_range != nil, do: port_range_display(rule.port_range) %>
               </td>
               <td class="has-text-right">
                 <a href="#"

@@ -12,9 +12,9 @@ defmodule FzHttp.Int4Range do
       |> Enum.map(&Integer.parse/1)
 
     case res do
-      [{lower, _}, {upper, _}] -> {:ok, [lower, upper]}
+      [{lower, _}, {upper, _}] -> cast([lower, upper])
       [{num, _}] -> {:ok, [num, num]}
-      _ -> {:error, message: "Port range bad format"}
+      _ -> {:error, message: "Range Error: Bad format"}
     end
   end
 
