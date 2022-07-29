@@ -6,8 +6,7 @@ defmodule FzHttpWeb.NotificationsLive.IndexTest do
   alias FzHttp.Notifications
 
   setup do
-    start_supervised!(Notifications)
-    :ok
+    on_exit(fn -> Notifications.clear() end)
   end
 
   setup [:create_notification, :create_notifications]
