@@ -54,7 +54,6 @@ defmodule FzHttp.Application do
       FzHttpWeb.Endpoint,
       {FzHttp.OIDC.StartProxy, :test},
       {Phoenix.PubSub, name: FzHttp.PubSub},
-      FzHttp.Notifications,
       FzHttpWeb.Presence
     ]
   end

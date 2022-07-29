@@ -54,10 +54,18 @@ defmodule FzHttp.Notifications do
   end
 
   @impl GenServer
+  def handle_call({:add, notification}, _from, notifications) do
+    new_notifications = [notification | notifications]
+    broadcast(new_notifications)
+
+    {:reply, :ok, new_notifications}
+  end
+
+  @impl GenServer
   def handle_call(:clear_all, _from, _notifications) do
     broadcast([])
 
-    {:reply, :ok, %{notifications: []}}
+    {:reply, :ok, []}
   end
 
   @impl GenServer
@@ -71,14 +79,6 @@ defmodule FzHttp.Notifications do
   @impl GenServer
   def handle_call({:clear_at, index}, _from, notifications) do
     {_, new_notifications} = List.pop_at(notifications, index)
-    broadcast(new_notifications)
-
-    {:reply, :ok, new_notifications}
-  end
-
-  @impl GenServer
-  def handle_call({:add, notification}, _from, notifications) do
-    new_notifications = [notification | notifications]
     broadcast(new_notifications)
 
     {:reply, :ok, new_notifications}
