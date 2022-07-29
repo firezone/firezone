@@ -2,8 +2,9 @@ defmodule FzHttpWeb.NotificationsLive.Badge do
   @moduledoc """
   Notifications badge that shows the status of current notifications.
   """
-  use FzHttpWeb, :live_view
+  use FzHttpWeb, :live_view_without_layout
 
+  alias FzHttpWeb.Router.Helpers, as: Routes
   alias FzHttp.Notifications
   alias Phoenix.PubSub
 

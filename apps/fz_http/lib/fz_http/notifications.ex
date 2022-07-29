@@ -10,14 +10,29 @@ defmodule FzHttp.Notifications do
 
   def start_link(_), do: GenServer.start_link(__MODULE__, [], name: __MODULE__)
 
+  @doc """
+  Gets a list of current notifications.
+  """
   def current, do: GenServer.call(__MODULE__, :current)
 
+  @doc """
+  Add a notification.
+  """
   def add(notification), do: GenServer.call(__MODULE__, {:add, notification})
 
+  @doc """
+  Clear all notifications.
+  """
   def clear, do: GenServer.call(__MODULE__, :clear_all)
 
+  @doc """
+  Clear the given notification.
+  """
   def clear(notification), do: GenServer.call(__MODULE__, {:clear, notification})
 
+  @doc """
+  Clear a notification at the given index.
+  """
   def clear_at(index), do: GenServer.call(__MODULE__, {:clear_at, index})
 
   defp broadcast(notifications) do
@@ -55,8 +70,7 @@ defmodule FzHttp.Notifications do
 
   @impl GenServer
   def handle_call({:clear_at, index}, _from, notifications) do
-    notification = Enum.at(notifications, index)
-    new_notifications = Enum.reject(notifications, &(&1 == notification))
+    {_, new_notifications} = List.pop_at(notifications, index)
     broadcast(new_notifications)
 
     {:reply, :ok, new_notifications}
