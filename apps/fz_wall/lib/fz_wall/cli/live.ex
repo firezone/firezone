@@ -78,40 +78,14 @@ defmodule FzWall.CLI.Live do
   Adds rule ip to its corresponding sets.
   """
   def add_rule(rule) do
-    ip_type = proto(rule.destination)
-    port_type = rule.port_type
-    layer4 = port_type != nil
-
-    add_elem(
-      get_filter_set_name(rule.user_id, ip_type, rule.action, layer4),
-      rule.destination,
-      port_type,
-      get_port_range(rule.port_range)
-    )
+    modify_elem(&add_elem/4, rule)
   end
-
-  defp get_port_range(nil), do: nil
-  defp get_port_range([nil, nil]), do: "1-65535"
-  defp get_port_range([nil, stop]), do: "#{stop}"
-  defp get_port_range([start, nil]), do: "#{start}"
-  defp get_port_range([p, p]), do: "#{p}"
-  defp get_port_range([start, stop]), do: "#{start}-#{stop}"
 
   @doc """
   Delete rule destination ip from its corresponding sets.
   """
   def delete_rule(rule) do
-    ip_type = proto(rule.destination)
-    port_type = rule.port_type
-    ports = get_port_range(rule.port_range)
-    layer4 = port_type != nil
-
-    delete_elem(
-      get_filter_set_name(rule.user_id, ip_type, rule.action, layer4),
-      rule.destination,
-      port_type,
-      ports
-    )
+    modify_elem(&delete_elem/4, rule)
   end
 
   @doc """
@@ -174,5 +148,18 @@ defmodule FzWall.CLI.Live do
       "IPv6" -> :ip6
       "unknown" -> raise "Unknown protocol."
     end
+  end
+
+  defp modify_elem(action, rule) do
+    ip_type = proto(rule.destination)
+    port_type = rule.port_type
+    layer4 = port_type != nil
+
+    action.(
+      get_filter_set_name(rule.user_id, ip_type, rule.action, layer4),
+      rule.destination,
+      port_type,
+      rule.port_range
+    )
   end
 end

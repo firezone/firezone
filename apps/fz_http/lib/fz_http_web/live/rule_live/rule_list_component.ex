@@ -11,17 +11,15 @@ defmodule FzHttpWeb.RuleLive.RuleListComponent do
 
   @impl Phoenix.LiveComponent
   def update(assigns, socket) do
-    changeset = Rules.new_rule()
-
     {:ok,
      socket
      |> assign(assigns)
-     |> assign(Rules.defaults(changeset))
+     |> assign(Rules.defaults())
      |> assign(
        action: action(assigns.id),
        rule_list: rule_list(assigns),
        users: users(),
-       changeset: changeset
+       changeset: Rules.new_rule()
      )}
   end
 
@@ -42,7 +40,8 @@ defmodule FzHttpWeb.RuleLive.RuleListComponent do
         @events_module.add_rule(rule)
 
         {:noreply,
-         assign(socket, changeset: Rules.new_rule(), rule_list: rule_list(socket.assigns))}
+         assign(socket, changeset: Rules.new_rule(), rule_list: rule_list(socket.assigns))
+         |> assign(Rules.defaults())}
 
       {:error, changeset} ->
         {:noreply, assign(socket, changeset: changeset)}
@@ -95,14 +94,6 @@ defmodule FzHttpWeb.RuleLive.RuleListComponent do
 
   defp port_type_options do
     %{TCP: :tcp, UDP: :udp}
-  end
-
-  defp port_range_display([a, a]) do
-    a
-  end
-
-  defp port_range_display([a, b]) do
-    "#{a} - #{b}"
   end
 
   defp port_type_display(nil), do: nil

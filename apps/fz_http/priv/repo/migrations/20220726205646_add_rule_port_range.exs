@@ -17,8 +17,11 @@ defmodule FzHttp.Repo.Migrations.AddRulePortRange do
     end
 
     create constraint("rules", :port_range_needs_type,
-             check:
-               "(NOT port_range IS NULL AND NOT port_type IS NULL AND port_range <@ int4range(1, 65535) AND NOT isempty(port_range)) OR (port_type IS NULL AND port_range IS NULL)"
+             check: "(port_range IS NULL) = (port_type IS NULL)"
+           )
+
+    create constraint("rules", :port_range_is_within_valid_values,
+             check: "port_range <@ int4range(1, 65535)"
            )
 
     execute(

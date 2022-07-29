@@ -7,7 +7,8 @@ defmodule FzHttp.Rules.Rule do
   import Ecto.Changeset
 
   @exclusion_msg "Destination overlaps with an existing rule"
-  @port_range_error "Port range needs type"
+  @port_range_msg "Port is not within valid range"
+  @port_type_msg "Port range needs type"
 
   schema "rules" do
     field :uuid, Ecto.UUID, autogenerate: true
@@ -30,8 +31,12 @@ defmodule FzHttp.Rules.Rule do
       :port_range
     ])
     |> validate_required([:action, :destination])
+    |> check_constraint(:port_range,
+      message: @port_range_msg,
+      name: :port_range_is_within_valid_values
+    )
     |> check_constraint(:port_type,
-      message: @port_range_error,
+      message: @port_type_msg,
       name: :port_range_needs_type
     )
     |> exclusion_constraint(:destination,

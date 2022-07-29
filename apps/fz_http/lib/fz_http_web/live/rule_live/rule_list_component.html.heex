@@ -23,7 +23,6 @@
                 prompt: "Optional user scope" %>
           </div>
         </div>
-
         <div class="control">
           <div class="select">
             <%= select f,
@@ -77,14 +76,14 @@
                   <%= rule.destination %>
                 </dd>
               </td>
-              <td class="has-text-left">
+              <td class="has-text-left ">
                 <%= @users[rule.user_id] %>
               </td>
               <td class="has-text-left">
                 <%= port_type_display(rule.port_type) %>
               </td>
               <td class="has-text-left">
-                  <%= if rule.port_range != nil, do: port_range_display(rule.port_range) %>
+                  <%= if rule.port_range != nil, do: rule.port_range %>
               </td>
               <td class="has-text-right">
                 <a href="#"

@@ -61,6 +61,10 @@ defmodule FzHttp.Rules do
     |> Map.new(&{&1, get_field(changeset, &1)})
   end
 
+  def defaults do
+    defaults(new_rule())
+  end
+
   def create_rule(attrs \\ %{}) do
     result =
       attrs
