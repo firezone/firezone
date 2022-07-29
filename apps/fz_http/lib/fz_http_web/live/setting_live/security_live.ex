@@ -18,7 +18,6 @@ defmodule FzHttpWeb.SettingLive.Security do
      |> assign(:session_duration_options, session_duration_options())
      |> assign(:site_changeset, site_changeset())
      |> assign(:config_changeset, config_changeset)
-     |> assign(:configs, config_changeset.data)
      |> assign(:page_title, "Security Settings")}
   end
 
@@ -54,8 +53,8 @@ defmodule FzHttpWeb.SettingLive.Security do
   @impl Phoenix.LiveView
   def handle_event("toggle", %{"config" => config} = params, socket) do
     toggle_value = !!params["value"]
-    {:ok, conf} = Conf.update_configuration(%{config => toggle_value})
-    {:noreply, assign(socket, :configs, conf)}
+    {:ok, _conf} = Conf.update_configuration(%{config => toggle_value})
+    {:noreply, socket}
   end
 
   @impl Phoenix.LiveView
