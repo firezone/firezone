@@ -4,7 +4,11 @@ defmodule FzHttpWeb.UserSocket do
   alias FzHttp.Users
   alias FzHttpWeb.HeaderHelpers
 
-  @blank_ip_error {:error, "client IP couldn't be determined!"}
+  @blank_ip_warning """
+  Client IP couldn't be determined! Check to ensure your reverse proxy is properly sending the \
+  X-Forwarded-For header. Read more in our reverse proxy docs: \
+  https://docs.firezone.dev/deploy/reverse-proxies?utm_source=code \
+  """
 
   # 4 hour channel tokens
   @token_verify_opts [max_age: 86_400]
@@ -27,16 +31,23 @@ defmodule FzHttpWeb.UserSocket do
   # See `Phoenix.Token` documentation for examples in
   # performing token verification on connect.
   def connect(%{"token" => token}, socket, connect_info) do
+    parse_ip(connect_info)
+    |> verify_token_and_assign_remote_ip(token, socket)
+  end
+
+  defp parse_ip(connect_info) do
     case get_ip_address(connect_info) do
       ip when ip in ["", nil] ->
-        @blank_ip_error
+        Logger.warn(@blank_ip_warning)
+        Logger.warn(connect_info)
+        :x_forward_for_header_issue
 
-      ip ->
-        verify_token_and_assign_remote_ip(socket, token, :inet.ntoa(ip) |> List.to_string())
+      ip when is_tuple(ip) ->
+        :inet.ntoa(ip) |> List.to_string()
     end
   end
 
-  defp verify_token_and_assign_remote_ip(socket, token, ip) do
+  defp verify_token_and_assign_remote_ip(ip, token, socket) do
     case Phoenix.Token.verify(socket, "user auth", token, @token_verify_opts) do
       {:ok, user_id} ->
         {:ok,
