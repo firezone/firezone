@@ -19,10 +19,15 @@ defmodule FzHttp.Conf.Cache do
     GenServer.start_link(__MODULE__, [])
   end
 
+  @impl true
+  def init(_) do
+    {:ok, [], {:continue, :load_cache}}
+  end
+
   @no_fallback [:logo]
 
   @impl true
-  def init(_) do
+  def handle_continue(:load_cache, _state) do
     configurations =
       Conf.get_configuration!()
       |> Map.from_struct()
@@ -40,6 +45,6 @@ defmodule FzHttp.Conf.Cache do
       :ok = put(k, v)
     end
 
-    :ignore
+    {:stop, :normal, []}
   end
 end
