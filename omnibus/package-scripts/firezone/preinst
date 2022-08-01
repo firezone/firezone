@@ -36,6 +36,12 @@ configCheck() {
     echo "Please see our transition guide to move to a generic OIDC config: https://docs.firezone.dev/administer/upgrade#upgrading-from--050-to--050"
     exit 1
   fi
+
+  if test -f $config_file && grep -q "^\s*default\['firezone'\]\['nginx'\]\['force_ssl'\]\s*=\s*false" $config_file ; then
+    echo "${error}ERROR: Firezone 0.5+ removes support for disabling SSL redirect!${normal}"
+    echo "Instead, disable Nginx and point your SSL-terminating proxy directly to the phoenix app on port 13000. See the docs for more information: https://docs.firezone.dev/deploy/reverse-proxies"
+    exit 1
+  fi
 }
 
 capture () {

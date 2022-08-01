@@ -1,21 +1,12 @@
 server {
-  listen <%= @non_ssl_port %> default_server;
+  listen 80 default_server;
   <% if @ipv6 -%>
-  listen [::]:<%= @non_ssl_port %> default_server;
+  listen [::]:80 default_server;
   <% end -%>
   server_name <%= @server_name %>;
 
   # Needed for ACME requests
   location /.well-known/acme-challenge/ {
     alias <%= @acme_www_root %>/.well-known/acme-challenge/;
-  }
-
-  location / {
-    <% if @enable_rate_limiting -%>
-      limit_req zone=<%= @rate_limiting_zone_name %>;
-    <% end -%>
-    if ($http_x_forwarded_proto != 'https') {
-      return 301 https://$server_name$request_uri;
-    }
   }
 }

@@ -5,6 +5,8 @@ defmodule FzHttp.Events do
 
   alias FzHttp.{Devices, Rules, Users, Notifications}
 
+  require Logger
+
   # set_config is used because devices need to be re-evaluated in case a
   # device is added to a User that's not active.
   def add(subject, device) when subject == "devices" do
