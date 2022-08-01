@@ -19,15 +19,8 @@ defmodule FzHttp.Int4Range do
     {:ok, Integer.to_string(num)}
   end
 
-  def cast([lower, upper]) do
-    if upper >= lower do
-      {:ok, "#{lower} - #{upper}"}
-    else
-      {:error, message: "Range Error: Lower bound higher than upper bound"}
-    end
-  end
-
-  def cast(_), do: :error
+  def cast([lower, upper]) when upper >= lower, do: {:ok, "#{lower} - #{upper}"}
+  def cast([_, _]), do: {:error, message: "Range Error: Lower bound higher than upper bound"}
 
   def load(%Postgrex.Range{
         lower: lower,
@@ -66,5 +59,6 @@ defmodule FzHttp.Int4Range do
     end
   end
 
-  defp to_num(b), do: if(b, do: 1, else: 0)
+  defp to_num(b) when b, do: 1
+  defp to_num(_b), do: 0
 end
