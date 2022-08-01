@@ -1,78 +1,115 @@
 defmodule FzHttp.Repo.NotifierTest do
-  use ExUnit.Case, async: false
+  use FzHttp.DataCase, async: false
 
-  import FzHttp.TestHelpers
-
-  alias Ecto.Adapters.SQL.Sandbox
+  alias FzHttp.Repo.Notifier
   alias FzHttp.Events
-  alias FzHttp.Repo
-
-  @notify_wait 1
 
   setup do
-    start_supervised!({Postgrex.Notifications, [name: Repo.Notifications] ++ Repo.config()})
-    start_supervised!(Repo.Notifier)
-    :ok = Sandbox.checkout(Repo)
-  end
+    on_exit(fn ->
+      :sys.replace_state(Events.vpn_pid(), fn _state -> %{} end)
 
-  test "adds and removes user from wall state on db notifications" do
-    Sandbox.unboxed_run(Repo, fn ->
-      {:ok, [user: user]} = create_user(%{})
-
-      Process.sleep(@notify_wait)
-
-      wall_state_add = :sys.get_state(Events.wall_pid())
-
-      Repo.delete!(user)
-
-      Process.sleep(@notify_wait)
-
-      wall_state_remove = :sys.get_state(Events.wall_pid())
-
-      assert wall_state_add ==
-               %{
-                 users: MapSet.new([user.id]),
-                 devices: MapSet.new([]),
-                 rules: MapSet.new([])
-               }
-
-      assert wall_state_remove ==
-               %{
-                 users: MapSet.new([]),
-                 devices: MapSet.new([]),
-                 rules: MapSet.new([])
-               }
+      :sys.replace_state(Events.wall_pid(), fn _state ->
+        %{users: MapSet.new(), devices: MapSet.new(), rules: MapSet.new()}
+      end)
     end)
   end
 
-  test "adds and removes rule from wall state on db notifications" do
-    Sandbox.unboxed_run(Repo, fn ->
-      {:ok, [rule: rule]} = create_rule(%{})
+  describe "users changed" do
+    setup :create_user
 
-      Process.sleep(@notify_wait)
+    test "adds user to wall state", %{user: user} do
+      Notifier.handle_event("users", %{op: "INSERT", row: user})
 
-      wall_state_add = :sys.get_state(Events.wall_pid())
+      expected_state = %{
+        users: MapSet.new([user.id]),
+        rules: MapSet.new([]),
+        devices: MapSet.new([])
+      }
 
-      Repo.delete!(rule)
+      assert :sys.get_state(Events.wall_pid()) == expected_state
+    end
 
-      Process.sleep(@notify_wait)
+    test "user delete removes user from wall state", %{user: user} do
+      Notifier.handle_event("users", %{op: "INSERT", row: user})
+      Notifier.handle_event("users", %{op: "DELETE", row: user})
 
-      wall_state_remove = :sys.get_state(Events.wall_pid())
+      expected_state = %{
+        users: MapSet.new([]),
+        rules: MapSet.new([]),
+        devices: MapSet.new([])
+      }
 
-      assert wall_state_add ==
-               %{
-                 users: MapSet.new([]),
-                 devices: MapSet.new([]),
-                 rules:
-                   MapSet.new([%{action: rule.action, destination: "10.10.10.0/24", user_id: nil}])
-               }
+      assert :sys.get_state(Events.wall_pid()) == expected_state
+    end
+  end
 
-      assert wall_state_remove ==
-               %{
-                 users: MapSet.new([]),
-                 devices: MapSet.new([]),
-                 rules: MapSet.new([])
-               }
-    end)
+  describe "rules changed" do
+    setup :create_rule
+
+    test "rule insert adds rule to wall state", %{rule: rule} do
+      Notifier.handle_event("rules", %{op: "INSERT", row: rule})
+
+      expected_state = %{
+        users: MapSet.new([]),
+        rules:
+          MapSet.new([%{action: rule.action, destination: "10.10.10.0/24", user_id: rule.user_id}]),
+        devices: MapSet.new([])
+      }
+
+      assert :sys.get_state(Events.wall_pid()) == expected_state
+    end
+
+    test "rule delete removes rule from wall state", %{rule: rule} do
+      Notifier.handle_event("rules", %{op: "INSERT", row: rule})
+      Notifier.handle_event("rules", %{op: "DELETE", row: rule})
+
+      expected_state = %{
+        users: MapSet.new([]),
+        rules: MapSet.new([]),
+        devices: MapSet.new([])
+      }
+
+      assert :sys.get_state(Events.wall_pid()) == expected_state
+    end
+  end
+
+  describe "devices changed" do
+    setup :create_rule_with_user_and_device
+
+    test "device insert adds device to vpn and wall state", %{device: device, user: user} do
+      Notifier.handle_event("devices", %{op: "INSERT", row: device})
+
+      expected_vpn_state = %{
+        "1" => %{
+          allowed_ips: "10.3.2.2/32,fd00::3:2:2/128",
+          preshared_key: nil
+        }
+      }
+
+      expected_wall_state = %{
+        users: MapSet.new([]),
+        rules: MapSet.new([]),
+        devices: MapSet.new([%{ip: "10.3.2.2", ip6: "fd00::3:2:2", user_id: user.id}])
+      }
+
+      assert :sys.get_state(Events.vpn_pid()) == expected_vpn_state
+      assert :sys.get_state(Events.wall_pid()) == expected_wall_state
+    end
+
+    test "device delete removes device from vpn and wall state", %{device: device} do
+      Notifier.handle_event("devices", %{op: "INSERT", row: device})
+      Notifier.handle_event("devices", %{op: "DELETE", row: device})
+
+      expected_vpn_state = %{}
+
+      expected_wall_state = %{
+        users: MapSet.new([]),
+        rules: MapSet.new([]),
+        devices: MapSet.new([])
+      }
+
+      assert :sys.get_state(Events.vpn_pid()) == expected_vpn_state
+      assert :sys.get_state(Events.wall_pid()) == expected_wall_state
+    end
   end
 end

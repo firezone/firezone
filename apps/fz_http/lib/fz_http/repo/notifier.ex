@@ -8,10 +8,6 @@ defmodule FzHttp.Repo.Notifier do
   alias FzHttp.Events
   alias FzHttp.Repo
 
-  require Logger
-
-  def start_link(opts \\ []), do: GenServer.start_link(__MODULE__, opts)
-
   @impl GenServer
   def init(state) do
     for subject <- ~w(devices rules users)a do
@@ -23,19 +19,21 @@ defmodule FzHttp.Repo.Notifier do
 
   @impl GenServer
   def handle_info({:notification, _pid, _ref, event, payload}, _state) do
-    data = Jason.decode!(payload, keys: :atoms)
     subject = String.split(event, "_") |> List.first()
+    data = Jason.decode!(payload, keys: :atoms)
 
     handle_event(subject, data)
 
     {:noreply, :event_handled}
   end
 
-  defp handle_event(subject, %{op: "INSERT"} = data) do
+  def start_link(opts \\ []), do: GenServer.start_link(__MODULE__, opts)
+
+  def handle_event(subject, %{op: "INSERT"} = data) do
     Events.add(subject, data.row)
   end
 
-  defp handle_event(subject, %{op: "DELETE"} = data) do
+  def handle_event(subject, %{op: "DELETE"} = data) do
     Events.delete(subject, data.row)
   end
 end
