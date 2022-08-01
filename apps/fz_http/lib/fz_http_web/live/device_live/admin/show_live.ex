@@ -34,7 +34,6 @@ defmodule FzHttpWeb.DeviceLive.Admin.Show do
       {:ok, _deleted_device} ->
         {:noreply,
          socket
-         |> dispatch_delete_device(device)
          |> redirect(to: Routes.device_admin_index_path(socket, :index))}
 
       {:error, msg} ->
@@ -44,20 +43,11 @@ defmodule FzHttpWeb.DeviceLive.Admin.Show do
     end
   end
 
-  @event_error_msg """
-  Device deleted successfully but an error occured applying its configuration to the WireGuard
-  interface. Check logs for more information.
-  """
-  defp dispatch_delete_device(socket, device) do
-    case @events_module.delete_device(device) do
-      :ok ->
-        socket
-
-      _err ->
-        socket
-        |> put_flash(:error, @event_error_msg)
-    end
-  end
+  # XXX: Re-implement showing this error in 0.5.1 when events can send an error.
+  # @event_error_msg """
+  # Device deleted successfully but an error occured applying its configuration to the WireGuard
+  # # interface. Check logs for more information.
+  # """
 
   defp assigns(device) do
     [

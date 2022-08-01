@@ -332,8 +332,13 @@ defmodule FzHttp.UsersTest do
   describe "setting_projection/1" do
     setup [:create_rule_with_user_and_device]
 
-    test "projects expected fields", %{user: user} do
+    test "projects expected fields with user", %{user: user} do
       assert user.id == Users.setting_projection(user)
+    end
+
+    test "projects expected fields with user map", %{user: user} do
+      user_map = Map.from_struct(user)
+      assert user.id == Users.setting_projection(user_map)
     end
   end
 

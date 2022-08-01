@@ -413,11 +413,24 @@ defmodule FzHttp.DevicesTest do
   describe "setting_projection/1" do
     setup [:create_rule_with_user_and_device]
 
-    test "projects expected fields", %{device: device, user: user} do
+    test "projects expected fields with device", %{device: device, user: user} do
       user_id = user.id
 
       assert %{ip: "10.3.2.2", ip6: "fd00::3:2:2", user_id: ^user_id} =
                Devices.setting_projection(device)
+    end
+
+    test "projects expected fields with device map", %{device: device, user: user} do
+      user_id = user.id
+
+      device_map =
+        device
+        |> Map.from_struct()
+        |> Map.put(:ipv4, FzHttp.Devices.decode(device.ipv4))
+        |> Map.put(:ipv6, FzHttp.Devices.decode(device.ipv6))
+
+      assert %{ip: "10.3.2.2", ip6: "fd00::3:2:2", user_id: ^user_id} =
+               Devices.setting_projection(device_map)
     end
   end
 
