@@ -8,7 +8,7 @@ defmodule FzHttp.Rules.Rule do
 
   @exclusion_msg "Destination overlaps with an existing rule"
   @port_range_msg "Port is not within valid range"
-  @port_type_msg "Port range needs type"
+  @port_type_msg "Please specify a port-range for the given port type"
 
   schema "rules" do
     field :uuid, Ecto.UUID, autogenerate: true

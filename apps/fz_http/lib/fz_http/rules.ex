@@ -55,10 +55,7 @@ defmodule FzHttp.Rules do
   end
 
   def defaults(changeset) do
-    ~w(
-      port_type
-    )a
-    |> Map.new(&{&1, get_field(changeset, &1)})
+    %{port_type: get_field(changeset, :port_type)}
   end
 
   def defaults do
