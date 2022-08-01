@@ -75,7 +75,7 @@ defmodule FzHttp.RulesTest do
       {:error, changeset} = Rules.create_rule(%{destination: "10.0.0.0/24", port_range: "10-20"})
 
       assert changeset.errors[:port_type] ==
-               {"Port range needs type",
+               {"Please specify a port-range for the given port type",
                 [constraint: :check, constraint_name: "port_range_needs_type"]}
     end
 
@@ -83,7 +83,7 @@ defmodule FzHttp.RulesTest do
       {:error, changeset} = Rules.create_rule(%{destination: "10.0.0.0/24", port_type: :tcp})
 
       assert changeset.errors[:port_type] ==
-               {"Port range needs type",
+               {"Please specify a port-range for the given port type",
                 [constraint: :check, constraint_name: "port_range_needs_type"]}
     end
 
