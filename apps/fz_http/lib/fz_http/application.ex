@@ -28,6 +28,8 @@ defmodule FzHttp.Application do
     [
       FzHttp.Server,
       FzHttp.Repo,
+      {Postgrex.Notifications, [name: FzHttp.Repo.Notifications] ++ FzHttp.Repo.config()},
+      FzHttp.Repo.Notifier,
       FzHttp.Vault,
       FzHttp.Conf.Cache,
       FzHttpWeb.Endpoint,

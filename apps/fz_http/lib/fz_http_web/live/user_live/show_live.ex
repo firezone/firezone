@@ -5,7 +5,7 @@ defmodule FzHttpWeb.UserLive.Show do
   """
   use FzHttpWeb, :live_view
 
-  alias FzHttp.{Devices, OIDC, Repo, Users}
+  alias FzHttp.{Devices, OIDC, Users}
   alias FzHttpWeb.ErrorHelpers
 
   @impl Phoenix.LiveView
@@ -45,12 +45,10 @@ defmodule FzHttpWeb.UserLive.Show do
        socket
        |> put_flash(:error, "Use the account section to delete your account.")}
     else
-      user = Users.get_user!(user_id) |> Repo.preload(:devices)
+      user = Users.get_user!(user_id)
 
       case Users.delete_user(user) do
         {:ok, _} ->
-          for device <- user.devices, do: @events_module.delete_device(device)
-          @events_module.delete_user(user)
           FzHttpWeb.Endpoint.broadcast("users_socket:#{user.id}", "disconnect", %{})
 
           {:noreply,
