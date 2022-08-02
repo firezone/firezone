@@ -154,7 +154,7 @@ const config = {
         appId: "XXPZ9QVGFB",
 
         // Public API key: it is safe to commit it
-        apiKey: "8b06d6aa4f48c60daeacf9eaf79373f6",
+        apiKey: "66664e8765e1645ea0b500acebb0b0c2",
 
         indexName: "firezone",
 
