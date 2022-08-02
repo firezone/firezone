@@ -237,13 +237,13 @@ defmodule FzHttp.TestHelpers do
 
     notifications =
       for i <- 1..count do
-        NotificationsFixtures.notification_fixture(%{user: "test#{i}@localhost"})
+        NotificationsFixtures.notification_fixture(user: "test#{i}@localhost")
       end
 
     {:ok, notifications: notifications}
   end
 
-  def create_notification(attrs \\ %{}) do
+  def create_notification(attrs \\ []) do
     {:ok, notification: NotificationsFixtures.notification_fixture(attrs)}
   end
 end

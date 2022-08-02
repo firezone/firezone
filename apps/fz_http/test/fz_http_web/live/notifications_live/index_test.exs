@@ -13,13 +13,10 @@ defmodule FzHttpWeb.NotificationsLive.IndexTest do
 
   test "add notification to the table", %{admin_conn: conn, notification: notification} do
     path = Routes.notifications_index_path(conn, :index)
-    {:ok, view, _html} = live(conn, path)
 
     Notifications.add(notification)
 
-    html =
-      view
-      |> render()
+    {:ok, _view, html} = live(conn, path)
 
     assert html =~ notification.user
   end

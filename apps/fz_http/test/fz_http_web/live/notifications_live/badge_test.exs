@@ -12,11 +12,7 @@ defmodule FzHttpWeb.NotificationsLive.BadgeTest do
   setup [:create_notifications]
 
   test "badge has no notifications", %{admin_conn: conn} do
-    {:ok, view, _html} = live_isolated(conn, FzHttpWeb.NotificationsLive.Badge)
-
-    html =
-      view
-      |> render()
+    {:ok, _view, html} = live_isolated(conn, FzHttpWeb.NotificationsLive.Badge)
 
     assert html =~
              "<span class=\"icon has-text-grey-dark\"><i class=\"mdi mdi-circle-outline\"></i></span>"
@@ -26,15 +22,11 @@ defmodule FzHttpWeb.NotificationsLive.BadgeTest do
     admin_conn: conn,
     notifications: notifications
   } do
-    {:ok, view, _html} = live_isolated(conn, FzHttpWeb.NotificationsLive.Badge)
-
     for notification <- notifications do
       Notifications.add(notification)
     end
 
-    html =
-      view
-      |> render()
+    {:ok, _view, html} = live_isolated(conn, FzHttpWeb.NotificationsLive.Badge)
 
     assert html =~ "<span class=\"icon has-text-danger\"><i class=\"mdi mdi-circle\"></i>5</span>"
   end
@@ -43,8 +35,6 @@ defmodule FzHttpWeb.NotificationsLive.BadgeTest do
     admin_conn: conn,
     notifications: notifications
   } do
-    {:ok, view, _html} = live_isolated(conn, FzHttpWeb.NotificationsLive.Badge)
-
     for notification <- notifications do
       Notifications.add(notification)
     end
@@ -52,9 +42,7 @@ defmodule FzHttpWeb.NotificationsLive.BadgeTest do
     Notifications.clear_at(0)
     Notifications.clear_at(1)
 
-    html =
-      view
-      |> render()
+    {:ok, _view, html} = live_isolated(conn, FzHttpWeb.NotificationsLive.Badge)
 
     assert html =~ "<span class=\"icon has-text-danger\"><i class=\"mdi mdi-circle\"></i>3</span>"
   end
@@ -63,17 +51,13 @@ defmodule FzHttpWeb.NotificationsLive.BadgeTest do
     admin_conn: conn,
     notifications: notifications
   } do
-    {:ok, view, _html} = live_isolated(conn, FzHttpWeb.NotificationsLive.Badge)
-
     for notification <- notifications do
       Notifications.add(notification)
     end
 
     Notifications.clear()
 
-    html =
-      view
-      |> render()
+    {:ok, _view, html} = live_isolated(conn, FzHttpWeb.NotificationsLive.Badge)
 
     assert html =~
              "<span class=\"icon has-text-grey-dark\"><i class=\"mdi mdi-circle-outline\"></i></span>"

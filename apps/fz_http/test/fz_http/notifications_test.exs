@@ -26,7 +26,7 @@ defmodule FzHttp.NotificationsTest do
       Notifications.add(notification)
     end
 
-    assert notifications |> Enum.reverse() == Notifications.current()
+    assert Enum.reverse(notifications) == Notifications.current()
   end
 
   test "clear all notifications", %{notifications: notifications} do
@@ -48,6 +48,6 @@ defmodule FzHttp.NotificationsTest do
 
     {_, expected_notifications} = List.pop_at(notifications, 2)
 
-    assert expected_notifications |> Enum.reverse() == Notifications.current()
+    assert Enum.reverse(expected_notifications) == Notifications.current()
   end
 end
