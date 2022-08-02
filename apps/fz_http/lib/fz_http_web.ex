@@ -60,8 +60,6 @@ defmodule FzHttpWeb do
       alias FzHttp.Conf
       alias Phoenix.LiveView.JS
 
-      @events_module Application.compile_env!(:fz_http, :events_module)
-
       unquote(view_helpers())
     end
   end
@@ -71,8 +69,6 @@ defmodule FzHttpWeb do
       use Phoenix.LiveComponent
       import FzHttpWeb.LiveHelpers
       alias FzHttp.Conf
-
-      @events_module Application.compile_env!(:fz_http, :events_module)
 
       unquote(view_helpers())
     end

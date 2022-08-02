@@ -54,7 +54,6 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
 
         {:noreply,
          socket
-         |> dispatch_create_device(device)
          |> assign(:device, device)
          |> assign(:config, Devices.as_encoded_config(device))}
 
@@ -66,20 +65,11 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
     end
   end
 
-  @event_error_msg """
-  Device created successfully but an error occured applying its configuration to the WireGuard
-  interface. Check logs for more information.
-  """
-  defp dispatch_create_device(socket, device) do
-    case @events_module.update_device(device) do
-      :ok ->
-        socket
-
-      _err ->
-        socket
-        |> put_flash(:error, @event_error_msg)
-    end
-  end
+  # XXX: Re-implement showing this error in 0.5.1 when events can send an error.
+  # @event_error_msg """
+  # Device created successfully but an error occured applying its configuration to the WireGuard
+  # interface. Check logs for more information.
+  # """
 
   defp create_device(params, socket) do
     if authorized_to_create?(socket) do

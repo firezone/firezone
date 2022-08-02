@@ -8,8 +8,6 @@ defmodule FzHttp.Users do
 
   alias FzHttp.{Devices.Device, Mailer, Repo, Sites.Site, Telemetry, Users.User}
 
-  @events_module Application.compile_env!(:fz_http, :events_module)
-
   require Logger
 
   # one hour
@@ -61,19 +59,22 @@ defmodule FzHttp.Users do
   def create_user_with_role(attrs, role) do
     attrs
     |> Enum.into(%{})
-    |> create_user(%{role: role})
+    |> create_user(role: role)
   end
 
-  def create_user(attrs, overwrites \\ %{}) do
-    result =
-      struct(User, sign_in_keys())
+  def create_user(attrs, overwrites \\ []) do
+    changeset =
+      User
+      |> struct(sign_in_keys())
       |> User.create_changeset(attrs)
-      |> User.update_changeset(overwrites)
+
+    result =
+      overwrites
+      |> Enum.reduce(changeset, fn {k, v}, cs -> put_change(cs, k, v) end)
       |> Repo.insert()
 
     case result do
-      {:ok, user} ->
-        @events_module.create_user(user)
+      {:ok, _user} ->
         Telemetry.add_user()
 
       _ ->
@@ -90,9 +91,37 @@ defmodule FzHttp.Users do
     }
   end
 
-  def update_user(%User{} = user, attrs) do
+  def admin_update_user(%User{} = user, attrs) do
     user
-    |> User.update_changeset(attrs)
+    |> User.update_email(attrs)
+    |> User.update_password(attrs)
+    |> Repo.update()
+  end
+
+  def admin_update_self(%User{} = user, attrs) do
+    user
+    |> User.update_email(attrs)
+    |> User.update_password(attrs)
+    |> User.require_current_password(attrs)
+    |> Repo.update()
+  end
+
+  def unprivileged_update_self(%User{} = user, attrs) do
+    user
+    |> User.require_password_change(attrs)
+    |> User.update_password(attrs)
+    |> Repo.update()
+  end
+
+  def update_user_role(%User{} = user, role) do
+    user
+    |> User.update_role(%{role: role})
+    |> Repo.update()
+  end
+
+  def update_user_sign_in_token(%User{} = user, attrs) do
+    user
+    |> User.update_sign_in_token(attrs)
     |> Repo.update()
   end
 
@@ -102,7 +131,7 @@ defmodule FzHttp.Users do
   end
 
   def change_user(%User{} = user \\ struct(User)) do
-    User.changeset(user, %{})
+    change(user)
   end
 
   def new_user do
@@ -150,7 +179,12 @@ defmodule FzHttp.Users do
         m -> to_string(m)
       end
 
-    update_user(user, %{last_signed_in_at: DateTime.utc_now(), last_signed_in_method: method})
+    user
+    |> User.update_last_signed_in(%{
+      last_signed_in_at: DateTime.utc_now(),
+      last_signed_in_method: method
+    })
+    |> Repo.update()
   end
 
   def enable_vpn_connection(user, %{provider: :identity}), do: user
@@ -189,7 +223,7 @@ defmodule FzHttp.Users do
 
   def reset_sign_in_token(email) do
     with %User{} = user <- Repo.get_by(User, email: email),
-         {:ok, user} <- update_user(user, sign_in_keys()) do
+         {:ok, user} <- update_user_sign_in_token(user, sign_in_keys()) do
       # send email in a separate process so that the time this function takes
       # doesn't reflect whether a user exists or not
       Task.start(fn ->
@@ -234,7 +268,7 @@ defmodule FzHttp.Users do
   end
 
   defp clear_token(user) do
-    result = update_user(user, %{sign_in_token: nil, sign_in_token_created_at: nil})
+    result = update_user_sign_in_token(user, %{sign_in_token: nil, sign_in_token_created_at: nil})
 
     case result do
       {:ok, user} -> {:ok, user}

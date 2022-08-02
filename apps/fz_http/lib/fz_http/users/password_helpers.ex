@@ -18,6 +18,11 @@ defmodule FzHttp.Users.PasswordHelpers do
 
   def validate_password_equality(changeset), do: changeset
 
+  def put_password_hash(%Ecto.Changeset{changes: %{password: password}} = changeset)
+      when password in ["", nil] do
+    changeset
+  end
+
   def put_password_hash(
         %Ecto.Changeset{
           valid?: true,
@@ -25,7 +30,7 @@ defmodule FzHttp.Users.PasswordHelpers do
         } = changeset
       ) do
     changeset
-    |> change(password_hash: Argon2.hash_pwd_salt(password))
+    |> put_change(:password_hash, Argon2.hash_pwd_salt(password))
     |> delete_change(:password)
     |> delete_change(:password_confirmation)
   end

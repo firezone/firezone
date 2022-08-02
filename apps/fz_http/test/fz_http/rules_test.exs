@@ -137,9 +137,21 @@ defmodule FzHttp.RulesTest do
   describe "setting_projection/1" do
     setup [:create_rule_with_user_and_device]
 
-    test "projects expected fields", %{rule: rule, user: user} do
+    test "projects expected fields with rule", %{rule: rule, user: user} do
       user_id = user.id
       assert %{destination: "10.20.30.0/24", user_id: ^user_id} = Rules.setting_projection(rule)
+    end
+
+    test "projects expected fields with rule map", %{rule: rule, user: user} do
+      user_id = user.id
+
+      rule_map =
+        rule
+        |> Map.from_struct()
+        |> Map.put(:destination, FzHttp.Devices.decode(rule.destination))
+
+      assert %{destination: "10.20.30.0/24", user_id: ^user_id} =
+               Rules.setting_projection(rule_map)
     end
   end
 

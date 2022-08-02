@@ -44,7 +44,6 @@ config :fz_http,
   supervision_tree_mode: :test,
   connectivity_checks_interval: 86_400,
   sql_sandbox: true,
-  events_module: FzHttpWeb.MockEvents,
   http_client: FzHttp.MockHttpClient
 
 # Print only warnings and errors during test

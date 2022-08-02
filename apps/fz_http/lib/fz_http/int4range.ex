@@ -5,11 +5,21 @@ defmodule FzHttp.Int4Range do
   # Note: we represent a port range as a string: lower - upper for ease of use
   # with Phoenix LiveView and nftables
   use Ecto.Type
+  @format_error "Range Error: Bad format"
 
   def type, do: :int4range
 
   def cast(str) when is_binary(str) do
-    case parse_range(str) do
+    # We need to handle this case since postgre notifies
+    # before inserting the range in the database using this format
+    parse_str =
+      if String.starts_with?(str, ["[", "("]) do
+        &parse_bracket/1
+      else
+        &parse_range/1
+      end
+
+    case parse_str.(str) do
       {:ok, range} -> cast(range)
       err -> err
     end
@@ -45,7 +55,7 @@ defmodule FzHttp.Int4Range do
 
   def dump(_), do: :error
 
-  def parse_range(range) when is_binary(range) do
+  defp parse_range(range) do
     res =
       String.trim(range)
       |> String.split("-", trim: true, parts: 2)
@@ -55,7 +65,23 @@ defmodule FzHttp.Int4Range do
     case res do
       [{lower, _}, {upper, _}] -> {:ok, [lower, upper]}
       [{num, _}] -> {:ok, [num, num]}
-      _ -> {:error, message: "Range Error: Bad format"}
+      _ -> {:error, message: @format_error}
+    end
+  end
+
+  defp parse_bracket(bracket) do
+    res =
+      Regex.named_captures(
+        ~r/(?<start>[\[|(])\s*(?<lower>\d+),\s*(?<upper>\d+)\s*(?<end>[\]|\)])/,
+        bracket
+      )
+
+    if is_nil(res) || Enum.any?(["lower", "upper", "start", "end"], &is_nil(res[&1])) do
+      {:error, message: @format_error}
+    else
+      lower = String.to_integer(res["lower"]) + to_num(res["start"] == "(")
+      upper = String.to_integer(res["upper"]) - to_num(res["end"] == ")")
+      {:ok, [lower, upper]}
     end
   end
 

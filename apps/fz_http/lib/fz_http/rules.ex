@@ -5,9 +5,7 @@ defmodule FzHttp.Rules do
 
   import Ecto.Query, warn: false
   import Ecto.Changeset
-  import FzHttp.Devices, only: [decode: 1]
-
-  alias FzHttp.{Repo, Rules.Rule, Telemetry}
+  alias FzHttp.{Repo, Rules.Rule, Rules.RuleSetting, Telemetry}
 
   def list_rules, do: Repo.all(Rule)
 
@@ -19,28 +17,14 @@ defmodule FzHttp.Rules do
   end
 
   def as_settings do
-    Repo.all(
-      from r in Rule,
-        select: %{
-          destination: r.destination,
-          user_id: r.user_id,
-          action: r.action,
-          port_range: r.port_range,
-          port_type: r.port_type
-        }
-    )
+    Repo.all(from(Rule))
     |> Enum.map(&setting_projection/1)
     |> MapSet.new()
   end
 
   def setting_projection(rule) do
-    %{
-      destination: decode(rule.destination),
-      user_id: rule.user_id,
-      action: rule.action,
-      port_range: rule.port_range,
-      port_type: rule.port_type
-    }
+    RuleSetting.parse(rule)
+    |> Map.from_struct()
   end
 
   def count(user_id) do

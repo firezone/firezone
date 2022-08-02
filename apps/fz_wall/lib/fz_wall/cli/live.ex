@@ -112,7 +112,7 @@ defmodule FzWall.CLI.Live do
 
   defp delete_filter_sets(user_id) do
     list_filter_sets(user_id)
-    |> Enum.each(&delete_set/1)
+    |> Enum.each(fn set_spec -> delete_set(set_spec.name) end)
   end
 
   defp add_filter_rules(user_id) do

@@ -15,14 +15,15 @@ defmodule FzHttp.UsersFixtures do
     case Repo.get_by(User, email: email) do
       nil ->
         {:ok, user} =
-          attrs
-          |> Enum.into(%{
-            email: email,
-            role: :admin,
-            password: "password1234",
-            password_confirmation: "password1234"
-          })
-          |> Users.create_user()
+          Users.create_user(
+            %{
+              email: email,
+              role: :admin,
+              password: "password1234",
+              password_confirmation: "password1234"
+            },
+            Enum.into(attrs, %{role: :admin})
+          )
 
         user
 

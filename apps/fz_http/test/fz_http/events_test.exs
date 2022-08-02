@@ -17,11 +17,11 @@ defmodule FzHttp.EventsTest do
     end)
   end
 
-  describe "update_device/1" do
+  describe "add_device/1" do
     setup [:create_rule_with_user_and_device]
 
     test "adds device to wall and vpn state", %{device: device, user: user} do
-      :ok = Events.update_device(device)
+      :ok = Events.add("devices", device)
 
       assert :sys.get_state(Events.wall_pid()) ==
                %{
@@ -43,9 +43,9 @@ defmodule FzHttp.EventsTest do
     setup [:create_rule_with_user_and_device]
 
     test "removes device from vpn and wall state", %{device: device} do
-      :ok = Events.update_device(device)
+      :ok = Events.add("devices", device)
 
-      assert :ok = Events.delete_device(device)
+      assert :ok = Events.delete("devices", device)
 
       assert :sys.get_state(Events.vpn_pid()) == %{}
 
@@ -58,7 +58,7 @@ defmodule FzHttp.EventsTest do
     setup [:create_rule_with_user_and_device]
 
     test "Adds user to wall state", %{user: user} do
-      :ok = Events.create_user(user)
+      :ok = Events.add("users", user)
 
       assert :sys.get_state(Events.wall_pid()) ==
                %{users: MapSet.new([user.id]), devices: MapSet.new(), rules: MapSet.new()}
@@ -69,8 +69,8 @@ defmodule FzHttp.EventsTest do
     setup [:create_rule_with_user_and_device]
 
     test "removes user from wall state", %{user: user} do
-      :ok = Events.create_user(user)
-      :ok = Events.delete_user(user)
+      :ok = Events.add("users", user)
+      :ok = Events.delete("users", user)
 
       assert :sys.get_state(Events.wall_pid()) ==
                %{users: MapSet.new(), devices: MapSet.new(), rules: MapSet.new()}
@@ -81,7 +81,7 @@ defmodule FzHttp.EventsTest do
     setup [:create_rule]
 
     test "adds rule to wall state", %{rule: rule} do
-      :ok = Events.add_rule(rule)
+      :ok = Events.add("rules", rule)
 
       assert :sys.get_state(Events.wall_pid()) ==
                %{
@@ -105,7 +105,7 @@ defmodule FzHttp.EventsTest do
     setup [:create_rule_accept]
 
     test "adds rule to wall state", %{rule: rule} do
-      :ok = Events.add_rule(rule)
+      :ok = Events.add("rules", rule)
 
       assert :sys.get_state(Events.wall_pid()) ==
                %{
@@ -129,8 +129,8 @@ defmodule FzHttp.EventsTest do
     setup [:create_rule]
 
     test "adds rule to wall state", %{rule: rule} do
-      :ok = Events.add_rule(rule)
-      :ok = Events.delete_rule(rule)
+      :ok = Events.add("rules", rule)
+      :ok = Events.delete("rules", rule)
 
       assert :sys.get_state(Events.wall_pid()) == %{
                users: MapSet.new(),

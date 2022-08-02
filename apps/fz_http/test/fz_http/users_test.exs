@@ -134,90 +134,143 @@ defmodule FzHttp.UsersTest do
     end
   end
 
-  describe "update_user/2" do
-    setup [:create_user]
+  @change_password_valid_params %{
+    password: "new_password",
+    password_confirmation: "new_password",
+    current_password: "password1234"
+  }
+  @change_password_invalid_params %{
+    "password" => "new_password",
+    "password_confirmation" => "new_password",
+    "current_password" => "invalid"
+  }
+  @password_params %{"password" => "new_password", "password_confirmation" => "new_password"}
+  @email_params %{"email" => "new_email@test", "current_password" => "password1234"}
+  @email_and_password_params %{
+    "password" => "new_password",
+    "password_confirmation" => "new_password",
+    "email" => "new_email@test",
+    "current_password" => "password1234"
+  }
+  @clear_hash_params %{"password_hash" => nil, "current_password" => "password1234"}
+  @empty_password_params %{
+    "password" => nil,
+    "password_confirmation" => nil,
+    "current_password" => "password1234"
+  }
+  @email_empty_password_params %{
+    "email" => "foobar@test",
+    "password" => "",
+    "password_confirmation" => "",
+    "current_password" => "password1234"
+  }
 
-    @change_password_valid_params %{
-      "password" => "new_password",
-      "password_confirmation" => "new_password",
-      "current_password" => "password1234"
-    }
-    @change_password_invalid_params %{
-      "password" => "new_password",
-      "password_confirmation" => "new_password",
-      "current_password" => "invalid"
-    }
-    @password_params %{"password" => "new_password", "password_confirmation" => "new_password"}
-    @email_params %{"email" => "new_email@test"}
-    @email_and_password_params %{
-      "password" => "new_password",
-      "password_confirmation" => "new_password",
-      "email" => "new_email@test"
-    }
-    @no_password_params %{"password_hash" => nil}
-    @empty_password_params %{
-      "password" => nil,
-      "password_confirmation" => nil,
-      "current_password" => nil
-    }
-    @email_empty_password_params %{
-      "email" => "foobar@test",
-      "password" => "",
-      "password_confirmation" => "",
-      "current_password" => ""
-    }
+  describe "admin_update_user/2" do
+    setup :create_user
+
+    test "changes password", %{user: user} do
+      {:ok, new_user} = Users.admin_update_user(user, @password_params)
+      assert new_user.password_hash != user.password_hash
+    end
+
+    test "prevents clearing the password", %{user: user} do
+      {:ok, new_user} = Users.admin_update_user(user, @clear_hash_params)
+      assert new_user.password_hash == user.password_hash
+    end
+
+    test "nil password params", %{user: user} do
+      {:ok, new_user} = Users.admin_update_user(user, @empty_password_params)
+      assert new_user.password_hash == user.password_hash
+    end
+
+    test "changes email", %{user: user} do
+      {:ok, new_user} = Users.admin_update_user(user, @email_params)
+      assert new_user.email == "new_email@test"
+    end
+
+    test "handles empty params", %{user: user} do
+      assert {:ok, _new_user} = Users.admin_update_user(user, %{})
+    end
+
+    test "handles nil password", %{user: user} do
+      assert {:ok, _new_user} = Users.admin_update_user(user, @email_empty_password_params)
+    end
+
+    test "changes email and password", %{user: user} do
+      {:ok, new_user} = Users.admin_update_user(user, @email_and_password_params)
+      assert new_user.email == "new_email@test"
+      assert new_user.password_hash != user.password_hash
+    end
+  end
+
+  describe "unprivileged_update_self/2" do
+    setup :create_user
+
+    test "changes password", %{user: user} do
+      {:ok, new_user} = Users.unprivileged_update_self(user, @password_params)
+      assert new_user.password_hash != user.password_hash
+    end
+
+    test "prevents clearing the password", %{user: user} do
+      assert {:error, _changeset} = Users.unprivileged_update_self(user, @clear_hash_params)
+    end
+
+    test "prevents changing email", %{user: user} do
+      {:ok, new_user} = Users.unprivileged_update_self(user, @email_and_password_params)
+      assert new_user.email == user.email
+    end
+  end
+
+  describe "admin_update_self/2" do
+    setup :create_user
+
+    test "does not change password when current_password invalid", %{user: user} do
+      {:error, changeset} = Users.admin_update_self(user, @change_password_invalid_params)
+      assert [current_password: _] = changeset.errors
+    end
+
+    test "changes password when current_password valid", %{user: user} do
+      {:ok, new_user} = Users.admin_update_self(user, @change_password_valid_params)
+      assert new_user.password_hash != user.password_hash
+    end
+  end
+
+  describe "update_*" do
+    setup :create_user
+
     @sign_in_token_params %{
       sign_in_token: "foobar",
       sign_in_token_created_at: DateTime.utc_now()
     }
 
-    test "changes password when only password is updated", %{user: user} do
-      {:ok, new_user} = Users.update_user(user, @password_params)
-      assert new_user.password_hash != user.password_hash
-    end
+    test "update sign_in_token", %{user: user} do
+      {:ok, new_user} = Users.update_user_sign_in_token(user, @sign_in_token_params)
 
-    test "changes password when current_password valid", %{user: user} do
-      {:ok, new_user} = Users.update_user(user, @change_password_valid_params)
-      assert new_user.password_hash != user.password_hash
-    end
-
-    test "does not change password when current_password invalid", %{user: user} do
-      {:error, changeset} = Users.update_user(user, @change_password_invalid_params)
-      assert [current_password: _] = changeset.errors
-    end
-
-    test "prevents clearing the password", %{user: user} do
-      {:ok, new_user} = Users.update_user(user, @no_password_params)
-      assert new_user.password_hash == user.password_hash
-    end
-
-    test "nil password params", %{user: user} do
-      {:ok, new_user} = Users.update_user(user, @empty_password_params)
-      assert new_user.password_hash == user.password_hash
-    end
-
-    test "adding a sign in token", %{user: user} do
-      {:ok, new_user} = Users.update_user(user, @sign_in_token_params)
       assert new_user.sign_in_token == @sign_in_token_params.sign_in_token
+
+      {:ok, new_user} =
+        Users.update_user_sign_in_token(new_user, %{
+          sign_in_token: nil,
+          sign_in_token_created_at: nil
+        })
+
+      assert is_nil(new_user.sign_in_token)
     end
 
-    test "changes email", %{user: user} do
-      {:ok, new_user} = Users.update_user(user, @email_params)
-      assert new_user.email == "new_email@test"
+    test "update role", %{user: user} do
+      {:ok, user} = Users.update_user_role(user, :admin)
+      assert user.role == :admin
+
+      {:ok, user} = Users.update_user_role(user, :unprivileged)
+      assert user.role == :unprivileged
     end
 
-    test "handles empty params", %{user: user} do
-      assert {:ok, _new_user} = Users.update_user(user, %{})
-    end
+    test "update last_signed_in_*", %{user: user} do
+      {:ok, user} = Users.update_last_signed_in(user, %{provider: :test})
+      assert user.last_signed_in_method == "test"
 
-    test "handles nil password", %{user: user} do
-      assert {:ok, _new_user} = Users.update_user(user, @email_empty_password_params)
-    end
-
-    test "changes email and password", %{user: user} do
-      {:ok, new_user} = Users.update_user(user, @email_and_password_params)
-      assert new_user.email == "new_email@test"
-      assert new_user.password_hash != user.password_hash
+      {:ok, user} = Users.update_last_signed_in(user, %{provider: :another_test})
+      assert user.last_signed_in_method == "another_test"
     end
   end
 
@@ -279,8 +332,13 @@ defmodule FzHttp.UsersTest do
   describe "setting_projection/1" do
     setup [:create_rule_with_user_and_device]
 
-    test "projects expected fields", %{user: user} do
+    test "projects expected fields with user", %{user: user} do
       assert user.id == Users.setting_projection(user)
+    end
+
+    test "projects expected fields with user map", %{user: user} do
+      user_map = Map.from_struct(user)
+      assert user.id == Users.setting_projection(user_map)
     end
   end
 

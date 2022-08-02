@@ -7,7 +7,7 @@ defmodule FzHttp.Devices do
   import Ecto.Query, warn: false
 
   alias EctoNetwork.INET
-  alias FzHttp.{Devices.Device, Repo, Sites, Telemetry, Users, Users.User}
+  alias FzHttp.{Devices.Device, Devices.DeviceSetting, Repo, Sites, Telemetry, Users, Users.User}
 
   require Logger
 
@@ -36,13 +36,14 @@ defmodule FzHttp.Devices do
   end
 
   def as_settings do
-    Repo.all(from d in Device, select: %{ipv4: d.ipv4, ipv6: d.ipv6, user_id: d.user_id})
+    Repo.all(from(Device))
     |> Enum.map(&setting_projection/1)
     |> MapSet.new()
   end
 
   def setting_projection(device) do
-    %{ip: decode(device.ipv4), ip6: decode(device.ipv6), user_id: device.user_id}
+    DeviceSetting.parse(device)
+    |> Map.from_struct()
   end
 
   def count(user_id) do
