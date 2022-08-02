@@ -4,7 +4,7 @@ defmodule FzHttp.Rules do
   """
 
   import Ecto.Query, warn: false
-
+  import Ecto.Changeset
   alias FzHttp.{Repo, Rules.Rule, Rules.RuleSetting, Telemetry}
 
   def list_rules, do: Repo.all(Rule)
@@ -36,6 +36,14 @@ defmodule FzHttp.Rules do
   def new_rule(attrs \\ %{}) do
     %Rule{}
     |> Rule.changeset(attrs)
+  end
+
+  def defaults(changeset) do
+    %{port_type: get_field(changeset, :port_type)}
+  end
+
+  def defaults do
+    defaults(new_rule())
   end
 
   def create_rule(attrs \\ %{}) do

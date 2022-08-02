@@ -186,6 +186,12 @@ defmodule FzHttp.TestHelpers do
     {:ok, rule: rule, user: user}
   end
 
+  def create_rule_with_ports(opts \\ %{}) do
+    rule = RulesFixtures.rule(Map.merge(%{port_range: "10 - 20", port_type: :udp}, opts))
+
+    {:ok, rule: rule}
+  end
+
   def create_user_with_valid_sign_in_token(_) do
     {:ok, user: %User{} = UsersFixtures.user(Users.sign_in_keys())}
   end
