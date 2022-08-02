@@ -8,6 +8,7 @@ defmodule FzHttp.TestHelpers do
     ConnectivityChecksFixtures,
     DevicesFixtures,
     MFA,
+    NotificationsFixtures,
     Repo,
     RulesFixtures,
     Users,
@@ -235,5 +236,20 @@ defmodule FzHttp.TestHelpers do
       }),
       user.id
     )
+  end
+
+  def create_notifications(opts \\ []) do
+    count = opts[:count] || 5
+
+    notifications =
+      for i <- 1..count do
+        NotificationsFixtures.notification_fixture(user: "test#{i}@localhost")
+      end
+
+    {:ok, notifications: notifications}
+  end
+
+  def create_notification(attrs \\ []) do
+    {:ok, notification: NotificationsFixtures.notification_fixture(attrs)}
   end
 end

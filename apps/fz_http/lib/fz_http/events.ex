@@ -3,7 +3,7 @@ defmodule FzHttp.Events do
   Handles interfacing with other processes in the system.
   """
 
-  alias FzHttp.{Devices, Rules, Users}
+  alias FzHttp.{Devices, Rules, Users, Notifications}
 
   require Logger
 
@@ -14,8 +14,17 @@ defmodule FzHttp.Events do
          :ok <- GenServer.call(vpn_pid(), {:set_config, Devices.to_peer_list()}) do
       :ok
     else
-      # XXX: propagate error to ui in 0.5.1
-      _err -> nil
+      _err ->
+        Notifications.add(%{
+          type: :error,
+          message: """
+          #{device.name} was created successfully but an error occured applying its
+          configuration to the WireGuard interface. Check the logs for more
+          information.
+          """,
+          timestamp: DateTime.utc_now(),
+          user: Users.get_user!(device.user_id).email
+        })
     end
   end
 
@@ -36,8 +45,17 @@ defmodule FzHttp.Events do
          :ok <- GenServer.call(vpn_pid(), {:remove_peer, device.public_key}) do
       :ok
     else
-      # XXX: propagate error to ui in 0.5.1
-      _err -> nil
+      _err ->
+        Notifications.add(%{
+          type: :error,
+          message: """
+          #{device.name} was deleted successfully but an error occured applying its
+          configuration to the WireGuard interface. Check the logs for more
+          information.
+          """,
+          timestamp: DateTime.utc_now(),
+          user: Users.get_user!(device.user_id).email
+        })
     end
   end
 
