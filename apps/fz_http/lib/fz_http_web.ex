@@ -64,6 +64,17 @@ defmodule FzHttpWeb do
     end
   end
 
+  def live_view_without_layout do
+    quote do
+      use Phoenix.LiveView, layout: nil
+      import FzHttpWeb.LiveHelpers
+      alias FzHttp.Conf
+      alias Phoenix.LiveView.JS
+
+      unquote(view_helpers())
+    end
+  end
+
   def live_component do
     quote do
       use Phoenix.LiveComponent
