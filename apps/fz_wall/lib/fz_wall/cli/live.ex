@@ -22,6 +22,13 @@ defmodule FzWall.CLI.Live do
   end
 
   @doc """
+  Returns if port-based rules are supported by the running kernel.
+  """
+  def port_rules_supported? do
+    FzWall.CLI.Helpers.HasFeature.port_rules?()
+  end
+
+  @doc """
   Adds user sets and rules.
   """
   def add_user(user_id) do

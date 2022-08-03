@@ -3,24 +3,33 @@ defmodule FzWall.CLI.Helpers.Sets do
   Helper module concering nft's named sets
   """
 
+  alias FzWall.CLI.Helpers.HasFeature
+
   @actions [:drop, :accept]
   @ip_types [:ip, :ip6]
 
   def list_filter_sets(user_id) do
-    Enum.flat_map(
-      [true, false],
-      fn layer4 ->
-        cross(@ip_types, @actions)
-        |> Enum.map(fn {ip_type, action} ->
-          %{
-            name: get_filter_set_name(user_id, ip_type, action, layer4),
-            ip_type: ip_type,
-            action: action,
-            layer4: layer4
-          }
-        end)
-      end
-    )
+    get_all_filter_sets(user_id, HasFeature.port_rules?())
+  end
+
+  defp get_all_filter_sets(user_id, false) do
+    get_filter_sets_spec(user_id, false)
+  end
+
+  defp get_all_filter_sets(user_id, true) do
+    get_all_filter_sets(user_id, false) ++ get_filter_sets_spec(user_id, true)
+  end
+
+  defp get_filter_sets_spec(user_id, layer4) do
+    cross(@ip_types, @actions)
+    |> Enum.map(fn {ip_type, action} ->
+      %{
+        name: get_filter_set_name(user_id, ip_type, action, layer4),
+        ip_type: ip_type,
+        action: action,
+        layer4: layer4
+      }
+    end)
   end
 
   def list_dev_sets(user_id) do
@@ -51,10 +60,10 @@ defmodule FzWall.CLI.Helpers.Sets do
   def get_filter_set_name(user_id, ip_type, action, true),
     do: "user#{user_id}_#{ip_type}_#{action}_layer4"
 
-  def cross([x | a], [y | b]) do
+  defp cross([x | a], [y | b]) do
     [{x, y}] ++ cross([x], b) ++ cross(a, [y | b])
   end
 
-  def cross([], _b), do: []
-  def cross(_a, []), do: []
+  defp cross([], _b), do: []
+  defp cross(_a, []), do: []
 end
