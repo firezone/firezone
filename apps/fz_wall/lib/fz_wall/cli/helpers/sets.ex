@@ -4,52 +4,34 @@ defmodule FzWall.CLI.Helpers.Sets do
   """
 
   @actions [:drop, :accept]
-  @ip_types [:ip, :ip6]
+  @types [:ip, :ip6]
 
-  def list_filter_sets(user_id) do
-    Enum.flat_map(
-      [true, false],
-      fn layer4 ->
-        cross(@ip_types, @actions)
-        |> Enum.map(fn {ip_type, action} ->
-          %{
-            name: get_filter_set_name(user_id, ip_type, action, layer4),
-            ip_type: ip_type,
-            action: action,
-            layer4: layer4
-          }
-        end)
-      end
-    )
+  def list_dest_sets(user_id) do
+    cross(@types, @actions)
+    |> Enum.map(fn {type, action} ->
+      %{name: get_dest_set_name(user_id, type, action), type: type}
+    end)
   end
 
-  def list_dev_sets(user_id) do
-    Enum.map(@ip_types, fn type -> %{name: get_device_set_name(user_id, type), ip_type: type} end)
+  def list_sets(nil), do: list_dest_sets(nil)
+
+  def list_sets(user_id) do
+    list_dest_sets(user_id) ++
+      Enum.map(@types, fn type -> %{name: get_device_set_name(user_id, type), type: type} end)
   end
 
-  def get_ip_types do
-    @ip_types
+  def get_types do
+    @types
   end
 
   def get_actions do
     @actions
   end
 
-  def get_device_set_name(user_id, type), do: "user#{user_id}_#{type}_devices"
-  def get_user_chain(nil), do: "forward"
-  def get_user_chain(user_id), do: "user#{user_id}"
-
-  def get_filter_set_name(nil, ip_type, action, false),
-    do: "#{ip_type}_#{action}"
-
-  def get_filter_set_name(user_id, ip_type, action, false),
-    do: "user#{user_id}_#{ip_type}_#{action}"
-
-  def get_filter_set_name(nil, ip_type, action, true),
-    do: "#{ip_type}_#{action}_layer4"
-
-  def get_filter_set_name(user_id, ip_type, action, true),
-    do: "user#{user_id}_#{ip_type}_#{action}_layer4"
+  def get_dest_set_name(nil, type, action), do: "#{type}_#{action}"
+  def get_dest_set_name(user_id, type, action), do: "user_#{user_id}_#{type}_#{action}"
+  def get_device_set_name(nil, _type), do: nil
+  def get_device_set_name(user_id, type), do: "user_#{user_id}_#{type}_devices"
 
   def cross([x | a], [y | b]) do
     [{x, y}] ++ cross([x], b) ++ cross(a, [y | b])

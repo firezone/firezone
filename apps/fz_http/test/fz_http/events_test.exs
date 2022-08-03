@@ -87,16 +87,7 @@ defmodule FzHttp.EventsTest do
                %{
                  users: MapSet.new(),
                  devices: MapSet.new(),
-                 rules:
-                   MapSet.new([
-                     %{
-                       destination: "10.10.10.0/24",
-                       port_range: nil,
-                       port_type: nil,
-                       user_id: nil,
-                       action: :drop
-                     }
-                   ])
+                 rules: MapSet.new([%{destination: "10.10.10.0/24", user_id: nil, action: :drop}])
                }
     end
   end
@@ -112,15 +103,7 @@ defmodule FzHttp.EventsTest do
                  users: MapSet.new(),
                  devices: MapSet.new(),
                  rules:
-                   MapSet.new([
-                     %{
-                       destination: "10.10.10.0/24",
-                       user_id: nil,
-                       action: :accept,
-                       port_type: nil,
-                       port_range: nil
-                     }
-                   ])
+                   MapSet.new([%{destination: "10.10.10.0/24", user_id: nil, action: :accept}])
                }
     end
   end
@@ -184,9 +167,7 @@ defmodule FzHttp.EventsTest do
             %{
               user_id: rule.user_id,
               destination: FzHttp.Devices.decode(rule.destination),
-              action: rule.action,
-              port_range: nil,
-              port_type: nil
+              action: rule.action
             }
           end)
         )
