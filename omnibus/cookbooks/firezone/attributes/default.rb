@@ -172,7 +172,7 @@ default['firezone']['nginx']['log_rotation']['num_to_keep'] = 10
 default['firezone']['nginx']['log_x_forwarded_for'] = true
 
 # HSTS Header settings
-default['firezone']['nginx']['hsts_header'] = true
+default['firezone']['nginx']['hsts_header']['enabled'] = true
 default['firezone']['nginx']['hsts_header']['include_subdomains'] = true
 default['firezone']['nginx']['hsts_header']['max_age'] = 31536000
 
