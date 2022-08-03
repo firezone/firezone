@@ -16,7 +16,7 @@ services:
   elixir:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dev
       args:
         DATABASE_URL: postgresql://postgres:postgres@postgres:5432/firezone_dev
     image: firezone_dev
