@@ -1,6 +1,6 @@
 # This Dockerfile builds a development image to use for local development work
 
-FROM hexpm/elixir:1.13.4-erlang-25.0.2-ubuntu-jammy-20220428
+FROM hexpm/elixir:1.13.4-erlang-25.0.3-ubuntu-jammy-20220428
 
 RUN set -xe \
   && apt-get update \
@@ -46,7 +46,7 @@ COPY apps/fz_vpn/mix.exs /var/app/apps/fz_vpn/mix.exs
 COPY apps/fz_wall/mix.exs /var/app/apps/fz_wall/mix.exs
 COPY mix.exs /var/app/mix.exs
 COPY mix.lock /var/app/mix.lock
-RUN mix do deps.get --only $MIX_ENV, deps.compile, compile
+RUN mix do deps.get, deps.compile, compile
 
 COPY apps /var/app/apps
 COPY config /var/app/config
