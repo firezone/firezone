@@ -46,7 +46,9 @@ COPY apps apps
 # compile assets
 RUN cd apps/fz_http/assets \
     && npm install \
-    && npm run deploy
+    && npm run deploy \
+    && cd .. \
+    && mix phx.digest
 
 # Compile the release
 RUN mix compile
