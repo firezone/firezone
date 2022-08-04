@@ -6,13 +6,15 @@ defmodule FzHttpWeb.UserLive.Index do
 
   alias FzHttp.Users
 
+  @page_title "Users"
+
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
     {:ok,
      socket
      |> assign(:users, Users.list_users(:with_device_counts))
      |> assign(:changeset, Users.new_user())
-     |> assign(:page_title, "Users")}
+     |> assign(:page_title, @page_title)}
   end
 
   @impl Phoenix.LiveView
