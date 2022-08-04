@@ -22,11 +22,6 @@ defmodule FzWall.Server do
   end
 
   @impl GenServer
-  def handle_call(:port_rules_supported, _from, state) do
-    {:reply, cli().port_rules_supported?(), state}
-  end
-
-  @impl GenServer
   def handle_call({:add_rule, rule}, _from, %{rules: existing_rules} = state) do
     new_rules = add_rule(rule, existing_rules)
 

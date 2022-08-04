@@ -87,3 +87,6 @@ config :fz_vpn,
   # XXX: Bump test coverage by adding a stubbed out module for FzVpn.StatsPushService
   supervised_children: [FzVpn.Interface.WGAdapter.Sandbox, FzVpn.Server],
   wg_adapter: FzVpn.Interface.WGAdapter.Sandbox
+
+config fz_wall,
+  port_based_rules_supported: true

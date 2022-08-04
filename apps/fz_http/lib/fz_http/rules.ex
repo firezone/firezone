@@ -7,7 +7,7 @@ defmodule FzHttp.Rules do
   import Ecto.Changeset
   alias FzHttp.{Repo, Rules.Rule, Rules.RuleSetting, Telemetry}
 
-  def port_rules_supported?, do: GenServer.call(FzHttp.Events.wall_pid(), :port_rules_supported)
+  def port_rules_supported?, do: Application.fetch_env!(:fz_wall, :port_based_rules_supported)
 
   defp rules do
     query = from(r in Rule)
@@ -19,17 +19,17 @@ defmodule FzHttp.Rules do
     end
   end
 
-  def list_rules, do: Repo.all(rules())
+  def list_rules, do: Repo.all(Rule)
 
   def list_rules(user_id) do
     Repo.all(
-      from r in rules(),
+      from r in Rule,
         where: r.user_id == ^user_id
     )
   end
 
   def as_settings do
-    Repo.all(from(Rule))
+    Repo.all(rules())
     |> Enum.map(&setting_projection/1)
     |> MapSet.new()
   end
@@ -40,7 +40,7 @@ defmodule FzHttp.Rules do
   end
 
   def count(user_id) do
-    Repo.one(from r in rules(), where: r.user_id == ^user_id, select: count())
+    Repo.one(from r in Rule, where: r.user_id == ^user_id, select: count())
   end
 
   def get_rule!(id), do: Repo.get!(Rule, id)
@@ -82,14 +82,14 @@ defmodule FzHttp.Rules do
 
   def allowlist do
     Repo.all(
-      from r in rules(),
+      from r in Rule,
         where: r.action == :accept
     )
   end
 
   def denylist do
     Repo.all(
-      from r in rules(),
+      from r in Rule,
         where: r.action == :drop
     )
   end

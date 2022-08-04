@@ -3,13 +3,13 @@ defmodule FzWall.CLI.Helpers.Sets do
   Helper module concering nft's named sets
   """
 
-  alias FzWall.CLI.Helpers.HasFeature
-
   @actions [:drop, :accept]
   @ip_types [:ip, :ip6]
 
+  defp port_rules_supported?, do: Application.fetch_env!(:fz_wall, :port_based_rules_supported)
+
   def list_filter_sets(user_id) do
-    get_all_filter_sets(user_id, HasFeature.port_rules?())
+    get_all_filter_sets(user_id, port_rules_supported?())
   end
 
   defp get_all_filter_sets(user_id, false) do

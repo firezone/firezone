@@ -13,5 +13,4 @@ defmodule FzWall.CLI.Sandbox do
   def delete_device(_device), do: @default_returned
   def add_user(_user), do: @default_returned
   def delete_user(_user), do: @default_returned
-  def port_rules_supported?, do: true
 end
