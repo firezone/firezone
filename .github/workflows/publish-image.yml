@@ -4,6 +4,7 @@ on:
   release:
     types: [published]
 
+jobs:
   deploy-app:
     runs-on: ubuntu-latest
     steps:
