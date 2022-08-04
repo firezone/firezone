@@ -34,7 +34,7 @@ defmodule FzHttpWeb.RuleLive.RuleListComponent do
 
   @impl true
   def handle_event("add_rule", %{"rule" => rule_params}, socket) do
-    if Rules.port_rules_supported?() || Map.get(rule_params.port_type, :port_type) do
+    if Rules.port_rules_supported?() || Map.get(rule_params, :port_type) do
       case Rules.create_rule(rule_params) do
         {:ok, _rule} ->
           {:noreply,
