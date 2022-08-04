@@ -65,8 +65,10 @@
           <tr>
             <th>Destination</th>
             <th>User Scope</th>
-            <th>Port Type</th>
-            <th>Port Range</th>
+            <%= if @port_rules_supported do %>
+              <th>Port Type</th>
+              <th>Port Range</th>
+            <% end %>
             <th></th>
           </tr>
         </thead>
