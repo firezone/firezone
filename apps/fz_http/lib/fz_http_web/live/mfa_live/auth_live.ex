@@ -7,9 +7,11 @@ defmodule FzHttpWeb.MFALive.Auth do
   import FzHttpWeb.ControllerHelpers
   alias FzHttp.MFA
 
+  @page_title "Multi-factor Authentication"
+
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
-    {:ok, socket |> assign(:page_title, "Multi-factor Authentication")}
+    {:ok, socket |> assign(:page_title, @page_title)}
   end
 
   @impl Phoenix.LiveView

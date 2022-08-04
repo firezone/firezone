@@ -31,6 +31,7 @@ services:
       # doesn't match the platform under which Docker Engine is running. e.g.
       # WSL, Docker for Mac, etc.
       - /var/app/apps/fz_http/assets/node_modules
+      - /var/app/_build
     ports:
       - 51820:51820/udp
     environment:

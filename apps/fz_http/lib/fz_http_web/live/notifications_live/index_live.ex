@@ -10,6 +10,8 @@ defmodule FzHttpWeb.NotificationsLive.Index do
   require Logger
 
   @topic "notifications_live"
+  @page_title "Notifications"
+  @page_subtitle "Persisted notifications will appear below."
 
   def topic, do: @topic
 
@@ -20,7 +22,8 @@ defmodule FzHttpWeb.NotificationsLive.Index do
     {:ok,
      socket
      |> assign(:notifications, Notifications.current())
-     |> assign(:page_title, "Notifications")}
+     |> assign(:page_subtitle, @page_subtitle)
+     |> assign(:page_title, @page_title)}
   end
 
   @impl Phoenix.LiveView

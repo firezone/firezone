@@ -5,6 +5,11 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.Index do
   use FzHttpWeb, :live_view
   alias FzHttp.Devices
 
+  @page_title "Your Devices"
+  @page_subtitle """
+  Each device corresponds to a WireGuard configuration for connecting to this Firezone server.
+  """
+
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
     user = socket.assigns.current_user
@@ -13,7 +18,8 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.Index do
      socket
      |> assign(:devices, Devices.list_devices(user.id))
      |> assign(:user, user)
-     |> assign(:page_title, "Your Devices")}
+     |> assign(:page_subtitle, @page_subtitle)
+     |> assign(:page_title, @page_title)}
   end
 
   @doc """

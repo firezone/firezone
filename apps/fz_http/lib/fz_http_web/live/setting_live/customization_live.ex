@@ -7,6 +7,8 @@ defmodule FzHttpWeb.SettingLive.Customization do
   alias FzHttp.Conf
 
   @max_logo_size 1024 ** 2
+  @page_title "Customization"
+  @page_subtitle "Customize the look and feel of your Firezone web portal."
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
@@ -15,7 +17,8 @@ defmodule FzHttpWeb.SettingLive.Customization do
 
     {:ok,
      socket
-     |> assign(:page_title, "Customization")
+     |> assign(:page_title, @page_title)
+     |> assign(:page_subtitle, @page_subtitle)
      |> assign(:logo, logo)
      |> assign(:logo_type, logo_type)
      |> allow_upload(:logo,

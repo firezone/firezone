@@ -8,6 +8,9 @@ defmodule FzHttpWeb.SettingLive.Security do
 
   alias FzHttp.{Conf, Sites, Sites.Site}
 
+  @page_title "Security Settings"
+  @page_subtitle "Configure security-related settings."
+
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
     config_changeset = Conf.change_configuration()
@@ -18,7 +21,8 @@ defmodule FzHttpWeb.SettingLive.Security do
      |> assign(:session_duration_options, session_duration_options())
      |> assign(:site_changeset, site_changeset())
      |> assign(:config_changeset, config_changeset)
-     |> assign(:page_title, "Security Settings")}
+     |> assign(:page_subtitle, @page_subtitle)
+     |> assign(:page_title, @page_title)}
   end
 
   @impl Phoenix.LiveView
