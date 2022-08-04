@@ -81,12 +81,14 @@
               <td class="has-text-left">
                 <%= @users[rule.user_id] %>
               </td>
-              <td class="has-text-left">
-                <%= port_type_display(rule.port_type) %>
-              </td>
-              <td class="has-text-left">
-                  <%= if rule.port_range != nil, do: rule.port_range %>
-              </td>
+              <%= if @port_rules_supported do %>
+                <td class="has-text-left">
+                  <%= port_type_display(rule.port_type) %>
+                </td>
+                <td class="has-text-left">
+                    <%= if rule.port_range != nil, do: rule.port_range %>
+                </td>
+              <% end %>
               <td class="has-text-right">
                 <a href="#"
                   phx-click="delete_rule"
