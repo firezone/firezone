@@ -1,0 +1,57 @@
+# Example compose deployment
+version: '3.7'
+
+services:
+  caddy:
+    image: caddy:2
+    volumes:
+      - /data/caddy:/data/caddy
+    ports:
+      - 80:80
+      - 443:443
+    command: caddy reverse-proxy --to elixir:4000 # --from https://my.awesome.site
+
+  elixir:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    image: firezone
+    ports:
+      - 51820:51820/udp
+    environment:
+      EXTERNAL_URL: SET_ME_REQUIRED # https://my.awesome.site
+      ADMIN_EMAIL: SET_ME_REQUIRED
+      DEFAULT_ADMIN_PASSWORD: SET_ME_REQUIRED
+
+      DATABASE_NAME: firezone
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: CHANGE_ME
+      DATABASE_HOST: postgres
+      DATABASE_PORT: '5432'
+      DATABASE_POOL: '10'
+      DATABASE_SSL: 'false'
+      DATABASE_SSL_OPTS: '{}'
+      DATABASE_PARAMETERS: '{}'
+
+      LOCAL_AUTH_ENABLED: 'true'
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=0
+      - net.ipv4.ip_forward=1
+      - net.ipv6.conf.all.forwarding=1
+    depends_on:
+      - postgres
+
+  postgres:
+    image: postgres:13.5
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: CHANGE_ME
+      POSTGRES_DB: firezone
+
+volumes:
+  postgres-data:
