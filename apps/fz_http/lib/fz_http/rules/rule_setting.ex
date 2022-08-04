@@ -21,8 +21,8 @@ defmodule FzHttp.Rules.RuleSetting do
       destination: decode(rule.destination),
       action: rule.action,
       user_id: rule.user_id,
-      port_type: rule.port_type,
-      port_range: rule.port_range
+      port_type: rule[:port_type],
+      port_range: rule[:port_range]
     }
   end
 
