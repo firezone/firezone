@@ -16,13 +16,21 @@ defmodule FzHttpWeb.NotificationsLive.Badge do
 
     {:ok,
      socket
-     |> assign(:count, length(Notifications.current()))}
+     |> assign(assigns(Notifications.current()))}
   end
 
   @impl Phoenix.LiveView
   def handle_info({:notifications, notifications}, socket) do
     {:noreply,
      socket
-     |> assign(:count, length(notifications))}
+     |> assign(assigns(notifications))}
   end
+
+  defp assigns(notifications) do
+    count = length(notifications)
+    %{title: title(count), count: count}
+  end
+
+  defp title(0), do: "No Notifications"
+  defp title(n), do: "#{n} Notifications"
 end

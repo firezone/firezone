@@ -12,6 +12,8 @@ defmodule FzHttpWeb.SettingLive.Unprivileged.Account do
   alias FzHttpWeb.{Endpoint, Presence}
 
   @live_sessions_topic "notification:session"
+  @page_title "Account Settings"
+  @page_subtitle "Configure account settings."
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
@@ -22,7 +24,8 @@ defmodule FzHttpWeb.SettingLive.Unprivileged.Account do
      |> assign(:local_auth_enabled, FzHttp.Conf.get(:local_auth_enabled))
      |> assign(:changeset, Users.change_user(socket.assigns.current_user))
      |> assign(:methods, MFA.list_methods(socket.assigns.current_user))
-     |> assign(:page_title, "Account Settings")
+     |> assign(:page_title, @page_title)
+     |> assign(:page_subtitle, @page_subtitle)
      |> assign(
        :metas,
        get_metas(Presence.list(@live_sessions_topic), socket.assigns.current_user.id)

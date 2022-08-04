@@ -8,6 +8,8 @@ defmodule FzHttpWeb.SettingLive.Account do
   alias FzHttpWeb.{Endpoint, Presence}
 
   @live_sessions_topic "notification:session"
+  @page_title "Account Settings"
+  @page_subtitle "Configure settings related to your Firezone web portal account."
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
@@ -17,7 +19,8 @@ defmodule FzHttpWeb.SettingLive.Account do
      socket
      |> assign(:changeset, Users.change_user(socket.assigns.current_user))
      |> assign(:methods, MFA.list_methods(socket.assigns.current_user))
-     |> assign(:page_title, "Account Settings")
+     |> assign(:page_title, @page_title)
+     |> assign(:page_subtitle, @page_subtitle)
      |> assign(:rules_path, Routes.rule_index_path(socket, :index))
      |> assign(
        :metas,

@@ -6,13 +6,17 @@ defmodule FzHttpWeb.SettingLive.Site do
 
   alias FzHttp.{ConnectivityChecks, Sites}
 
+  @page_title "Site Settings"
+  @page_subtitle "Configure default WireGuard settings for this site."
+
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
     {:ok,
      socket
      |> assign(:changeset, changeset())
      |> assign(:placeholders, placeholders())
-     |> assign(:page_title, "Site Settings")}
+     |> assign(:page_subtitle, @page_subtitle)
+     |> assign(:page_title, @page_title)}
   end
 
   defp endpoint_placeholder do
