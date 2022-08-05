@@ -67,9 +67,10 @@ else
   exit 1
 fi
 
-echo "Testing FzVpn.Interface module works with WireGuard"
 fz_bin="/opt/firezone/embedded/service/firezone/bin/firezone"
 ok_res=":ok"
+
+echo "Testing FzVpn.Interface module works with WireGuard"
 set_interface=`sudo $fz_bin rpc "IO.inspect(FzVpn.Interface.set(\"wg-fz-test\", %{}))"`
 del_interface=`sudo $fz_bin rpc "IO.inspect(FzVpn.Interface.delete(\"wg-fz-test\"))"`
 
@@ -79,9 +80,7 @@ if [[ "$set_interface" != $ok_res || "$del_interface" != $ok_res ]]; then
 fi
 
 echo "Testing Firewall Rules"
-fz_bin="/opt/firezone/embedded/service/firezone/bin/firezone"
-nft_bin="/opt/firezone/embedded/sbin/nft"
-ok_res=":ok"
+su - firezone
 user_id="5" # Picking a high enough user_id so there is no overlap
 device="%{ip: \"10.0.0.1\", ip6: \"fd00::3:2:1\", user_id: $user_id}"
 rule="%{destination: \"10.0.0.2\", user_id: $user_id, action: :drop, port_type: nil, port_range: nil}"
