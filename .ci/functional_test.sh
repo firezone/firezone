@@ -90,7 +90,7 @@ del_rule=`sudo $fz_bin rpc "IO.inspect(FzWall.CLI.Live.delete_rule($rule))"`
 del_device=`sudo $fz_bin rpc "IO.inspect(FzWall.CLI.Live.delete_device($device))"`
 del_user=`sudo $fz_bin rpc "IO.inspect(FzWall.CLI.Live.delete_user($user_id))"`
 
-if [[ "$add_user" != $ok_res || "$add_device" != $ok_res || "$add_rule" != $ok_res || "$del_rule" != $ok_res || "$del_device" != $ok_res || "$del_user" != $ok_res ]]; then
+if [[ "$add_user" != $ok_res || "$add_device" != $ok_res || "$add_rule" != '""' || "$del_rule" != '""' || "$del_device" != $ok_res || "$del_user" != $ok_res ]]; then
     echo "Firewall test failed!"
     exit 1
 fi
