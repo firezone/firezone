@@ -85,14 +85,14 @@ ok_res=":ok"
 user_id="5" # Picking a high enough user_id so there is no overlap
 device="%{ip: \"10.0.0.1\", ip6: \"fd00::3:2:1\", user_id: $user_id}"
 rule="%{destination: \"10.0.0.2\", user_id: $user_id, action: :drop, port_type: nil, port_range: nil}"
-add_user=`sudo $fz_bin rpc "IO.inspect(FzWall.CLI.Live.add_user($user_id))"`
-add_device=`sudo $fz_bin rpc "IO.inspect(FzWall.CLI.Live.add_device($device))"`
-add_rule=`sudo $fz_bin rpc "IO.inspect(FzWall.CLI.Live.add_rule($rule))"`
-del_rule=`sudo $fz_bin rpc "IO.inspect(FzWall.CLI.Live.delete_rule($rule))"`
-del_device=`sudo $fz_bin rpc "IO.inspect(FzWall.CLI.Live.delete_device($device))"`
-del_user=`sudo $fz_bin rpc "IO.inspect(FzWall.CLI.Live.delete_user($user_id))"`
+add_user=`$fz_bin rpc "IO.inspect(FzWall.CLI.Live.add_user($user_id))"`
+add_device=`$fz_bin rpc "IO.inspect(FzWall.CLI.Live.add_device($device))"`
+add_rule=`$fz_bin rpc "IO.inspect(FzWall.CLI.Live.add_rule($rule))"`
+del_rule=`$fz_bin rpc "IO.inspect(FzWall.CLI.Live.delete_rule($rule))"`
+del_device=`$fz_bin rpc "IO.inspect(FzWall.CLI.Live.delete_device($device))"`
+del_user=`$fz_bin rpc "IO.inspect(FzWall.CLI.Live.delete_user($user_id))"`
 
-if [[ "$add_user" != $ok_res || "$add_device" != $ok_res || "$add_rule" != $ok_res || "$del_rule" != $ok_res || "$del_device" != $ok_res || "$del_user" != $ok_res]]; then
+if [[ "$add_user" != $ok_res || "$add_device" != $ok_res || "$add_rule" != $ok_res || "$del_rule" != $ok_res || "$del_device" != $ok_res || "$del_user" != $ok_res ]]; then
     echo "Firewall test failed!"
     exit 1
 fi
