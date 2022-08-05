@@ -85,19 +85,19 @@ ok_res=":ok"
 user_id="1"
 device="%{ip: \"10.0.0.1\", ip6: \"fd00::3:2:1\", user_id: $user_id}"
 rule="%{destination: \"10.0.0.2\", user_id: $user_id, action: :drop, port_type: nil, port_range: nil}"
-`sudo $nft_bin list table inet firezone`
+sudo $nft_bin list table inet firezone
 add_user=`sudo $fz_bin rpc "IO.inspect(FzWall.CLI.Live.add_user($user_id))"`
-`sudo $nft_bin list table inet firezone`
+sudo $nft_bin list table inet firezone
 add_device=`sudo $fz_bin rpc "IO.inspect(FzWall.CLI.Live.add_device($device))"`
-`sudo $nft_bin list table inet firezone`
+sudo $nft_bin list table inet firezone
 add_rule=`sudo $fz_bin rpc "IO.inspect(FzWall.CLI.Live.add_rule($rule))"`
-`sudo $nft_bin list table inet firezone`
+sudo $nft_bin list table inet firezone
 del_rule=`sudo $fz_bin rpc "IO.inspect(FzWall.CLI.Live.delete_rule($rule))"`
-`sudo $nft_bin list table inet firezone`
+sudo $nft_bin list table inet firezone
 del_device=`sudo $fz_bin rpc "IO.inspect(FzWall.CLI.Live.delete_device($device))"`
-`sudo $nft_bin list table inet firezone`
+sudo $nft_bin list table inet firezone
 del_user=`sudo $fz_bin rpc "IO.inspect(FzWall.CLI.Live.delete_user($user_id))"`
-`sudo $nft_bin list table inet firezone`
+sudo $nft_bin list table inet firezone
 
 if [[ "$add_user" != $ok_res || "$add_device" != $ok_res || "$add_rule" != $ok_res || "$del_rule" != $ok_res || "$del_device" != $ok_res || "$del_user" != $ok_res]]; then
     echo "Firewall test failed!"
