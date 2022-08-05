@@ -19,6 +19,8 @@ services:
     ports:
       - 51820:51820/udp
     # env_file: app_env
+    volumes:
+      - /var/firezone
     environment:
       # Admin
       EXTERNAL_URL: ${EXTERNAL_URL:?err}
