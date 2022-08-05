@@ -67,13 +67,30 @@ else
   exit 1
 fi
 
-echo "Testing FzVpn.Interface module works with WireGuard"
 fz_bin="/opt/firezone/embedded/service/firezone/bin/firezone"
 ok_res=":ok"
+
+echo "Testing FzVpn.Interface module works with WireGuard"
 set_interface=`sudo $fz_bin rpc "IO.inspect(FzVpn.Interface.set(\"wg-fz-test\", %{}))"`
 del_interface=`sudo $fz_bin rpc "IO.inspect(FzVpn.Interface.delete(\"wg-fz-test\"))"`
 
 if [[ "$set_interface" != $ok_res || "$del_interface" != $ok_res ]]; then
     echo "WireGuard test failed!"
+    exit 1
+fi
+
+echo "Testing Firewall Rules"
+user_id="5" # Picking a high enough user_id so there is no overlap
+device="%{ip: \"10.0.0.1\", ip6: \"fd00::3:2:1\", user_id: $user_id}"
+rule="%{destination: \"10.0.0.2\", user_id: $user_id, action: :drop, port_type: nil, port_range: nil}"
+add_user=`sudo $fz_bin rpc "IO.inspect(FzWall.CLI.Live.add_user($user_id))"`
+add_device=`sudo $fz_bin rpc "IO.inspect(FzWall.CLI.Live.add_device($device))"`
+add_rule=`sudo $fz_bin rpc "IO.inspect(FzWall.CLI.Live.add_rule($rule))"`
+del_rule=`sudo $fz_bin rpc "IO.inspect(FzWall.CLI.Live.delete_rule($rule))"`
+del_device=`sudo $fz_bin rpc "IO.inspect(FzWall.CLI.Live.delete_device($device))"`
+del_user=`sudo $fz_bin rpc "IO.inspect(FzWall.CLI.Live.delete_user($user_id))"`
+
+if [[ "$add_user" != $ok_res || "$add_device" != $ok_res || "$add_rule" != '""' || "$del_rule" != '""' || "$del_device" != $ok_res || "$del_user" != $ok_res ]]; then
+    echo "Firewall test failed!"
     exit 1
 fi

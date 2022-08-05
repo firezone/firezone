@@ -52,7 +52,15 @@ defmodule FzHttp.Repo.NotifierTest do
       expected_state = %{
         users: MapSet.new([]),
         rules:
-          MapSet.new([%{action: rule.action, destination: "10.10.10.0/24", user_id: rule.user_id}]),
+          MapSet.new([
+            %{
+              action: rule.action,
+              destination: "10.10.10.0/24",
+              user_id: rule.user_id,
+              port_range: nil,
+              port_type: nil
+            }
+          ]),
         devices: MapSet.new([])
       }
 

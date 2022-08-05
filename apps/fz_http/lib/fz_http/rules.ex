@@ -4,8 +4,18 @@ defmodule FzHttp.Rules do
   """
 
   import Ecto.Query, warn: false
-
+  import Ecto.Changeset
   alias FzHttp.{Repo, Rules.Rule, Rules.RuleSetting, Telemetry}
+
+  def port_rules_supported?, do: Application.fetch_env!(:fz_wall, :port_based_rules_supported)
+
+  defp scope(port_based_rules) when port_based_rules == true do
+    Rule
+  end
+
+  defp scope(port_based_rules) when port_based_rules == false do
+    from r in Rule, where: is_nil(r.port_type)
+  end
 
   def list_rules, do: Repo.all(Rule)
 
@@ -17,7 +27,9 @@ defmodule FzHttp.Rules do
   end
 
   def as_settings do
-    Repo.all(from(Rule))
+    port_rules_supported?()
+    |> scope()
+    |> Repo.all()
     |> Enum.map(&setting_projection/1)
     |> MapSet.new()
   end
@@ -36,6 +48,14 @@ defmodule FzHttp.Rules do
   def new_rule(attrs \\ %{}) do
     %Rule{}
     |> Rule.changeset(attrs)
+  end
+
+  def defaults(changeset) do
+    %{port_type: get_field(changeset, :port_type)}
+  end
+
+  def defaults do
+    defaults(new_rule())
   end
 
   def create_rule(attrs \\ %{}) do
