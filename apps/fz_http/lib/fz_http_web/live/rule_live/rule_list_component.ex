@@ -47,7 +47,7 @@ defmodule FzHttpWeb.RuleLive.RuleListComponent do
     else
       # While using the UI this should never happen
       {:noreply,
-       put_flash(socket, :error, "Couldn't delete rule. Port-based rules are not supported.")}
+       put_flash(socket, :error, "Couldn't add rule. Port-based rules are not supported.")}
     end
   end
 
