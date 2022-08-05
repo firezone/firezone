@@ -95,7 +95,8 @@ config :fz_wall,
   wireguard_ipv6_masquerade: true,
   server_process_opts: [name: {:global, :fz_wall_server}],
   egress_interface: "dummy",
-  wireguard_interface_name: "wg-firezone"
+  wireguard_interface_name: "wg-firezone",
+  port_based_rules_supported: true
 
 config :hammer,
   backend: {Hammer.Backend.ETS, [expiry_ms: 60_000 * 60 * 4, cleanup_interval_ms: 60_000 * 10]}

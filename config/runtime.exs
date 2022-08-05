@@ -5,7 +5,7 @@
 
 import Config
 
-alias FzCommon.{CLI, FzInteger, FzString}
+alias FzCommon.{CLI, FzInteger, FzString, FzKernelVersion}
 
 # external_url is important
 external_url = System.get_env("EXTERNAL_URL", "https://localhost")
@@ -16,6 +16,9 @@ config :fz_http, :external_url, external_url
 config :fz_http, FzHttpWeb.Endpoint,
   url: [host: host, scheme: scheme, port: port, path: path],
   check_origin: ["//127.0.0.1", "//localhost", "//#{host}"]
+
+config :fz_wall,
+  port_based_rules_supported: FzKernelVersion.is_version_greater_than?({5, 6, 8})
 
 # Formerly releases.exs - Only evaluated in production
 if config_env() == :prod do
