@@ -41,6 +41,7 @@ services:
       PRIVATE_CLIENTS: '[]'
 
       # External
+      EGRESS_INTERFACE: eth0
       NFT_PATH: nft
       WIREGUARD_INTERFACE_NAME: 'wg-firezone'
       WIREGUARD_PORT: '51820'
