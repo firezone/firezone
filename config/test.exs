@@ -88,5 +88,5 @@ config :fz_vpn,
   supervised_children: [FzVpn.Interface.WGAdapter.Sandbox, FzVpn.Server],
   wg_adapter: FzVpn.Interface.WGAdapter.Sandbox
 
-config fz_wall,
+config :fz_wall,
   port_based_rules_supported: true
