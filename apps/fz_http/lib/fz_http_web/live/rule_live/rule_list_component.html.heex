@@ -96,7 +96,7 @@
                   phx-click="delete_rule"
                   phx-value-rule_id={rule.id}
                   phx-target={@myself}
-                  disabled={@port_rules_supported || rule.port_range == nil} >
+                  disabled={!@port_rules_supported && rule.port_range != nil} >
                   Delete
                 </a>
               </td>
