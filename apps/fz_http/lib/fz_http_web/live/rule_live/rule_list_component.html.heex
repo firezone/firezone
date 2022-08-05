@@ -31,11 +31,6 @@
                 prompt: "Optional port range",
                 disabled: !@port_rules_supported %>
           </div>
-          <%= if !@port_rules_supported do %>
-          <p class="help">
-            Port based rules need Linux Kernel version at least 5.6.9
-          </p>
-          <% end %>
           <p class="help is-danger">
             <%= error_tag f, :port_type %>
           </p>
@@ -61,6 +56,11 @@
       <p class="help is-danger">
         <%= error_tag f, :destination %>
       </p>
+      <%= if !@port_rules_supported do %>
+      <p class="help">
+        Port-based rules needs Firezone's host kernel version to be at least 5.6.9
+      </p>
+      <% end %>
     </.form>
 
     <table id={"#{@action}-rules"} class="table is-hoverable is-bordered is-striped is-fullwidth">
