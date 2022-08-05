@@ -9,14 +9,12 @@ defmodule FzHttp.Rules do
 
   def port_rules_supported?, do: Application.fetch_env!(:fz_wall, :port_based_rules_supported)
 
-  defp rules do
-    query = from(r in Rule)
+  defp scope(port_based_rules) when port_based_rules == true do
+    Rule
+  end
 
-    if port_rules_supported?() do
-      query
-    else
-      from r in query, where: is_nil(r.port_type)
-    end
+  defp scope(port_based_rules) when port_based_rules == false do
+    from r in Rule, where: is_nil(r.port_type)
   end
 
   def list_rules, do: Repo.all(Rule)
@@ -29,7 +27,9 @@ defmodule FzHttp.Rules do
   end
 
   def as_settings do
-    Repo.all(rules())
+    port_rules_supported?()
+    |> scope()
+    |> Repo.all()
     |> Enum.map(&setting_projection/1)
     |> MapSet.new()
   end
