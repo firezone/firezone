@@ -10,6 +10,20 @@ defmodule FzHttpWeb.SettingLive.Security do
 
   @page_title "Security Settings"
   @page_subtitle "Configure security-related settings."
+  @override_title "This value is overridding the configuration file value."
+  @oidc_placeholder """
+  {
+    "google": {
+      "discovery_document_uri": "https://accounts.google.com/.well-known/openid-configuration",
+      "client_id": "CLIENT_ID",
+      "client_secret": "CLIENT_SECRET",
+      "redirect_uri": "https://firezone.example.com/auth/oidc/google/callback/",
+      "response_type": "code",
+      "scope:" "openid email profile",
+      "label": "Google"
+    }
+  }
+  """
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
@@ -21,6 +35,8 @@ defmodule FzHttpWeb.SettingLive.Security do
      |> assign(:session_duration_options, session_duration_options())
      |> assign(:site_changeset, site_changeset())
      |> assign(:config_changeset, config_changeset)
+     |> assign(:override_title, @override_title)
+     |> assign(:oidc_placeholder, @oidc_placeholder)
      |> assign(:page_subtitle, @page_subtitle)
      |> assign(:page_title, @page_title)}
   end
