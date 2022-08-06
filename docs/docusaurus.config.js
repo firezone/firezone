@@ -71,12 +71,6 @@ const config = {
         },
         items: [
           {
-            href: "https://docs.firezone.dev/0.4.5",
-            label: "Docs for older versions",
-            position: "left",
-            "aria-label": "Old Documentation",
-          },
-          {
             href: "https://discourse.firez.one/",
             label: "Ask a Question",
             position: "right",
