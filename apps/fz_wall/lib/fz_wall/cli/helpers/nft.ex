@@ -226,12 +226,16 @@ defmodule FzWall.CLI.Helpers.Nft do
 
   defp dev_set_type(ip_type), do: filter_set_type(ip_type, false)
 
+  defp additional_matches do
+    "ct state != established meta iifname #{wireguard_interface_name()}"
+  end
+
   defp rule_filter_match_str(type, dest_set, action, false) do
-    "#{type} daddr @#{dest_set} ct state != established #{action}"
+    "#{type} daddr @#{dest_set} #{additional_matches()} #{action}"
   end
 
   defp rule_filter_match_str(type, dest_set, action, true) do
-    "#{type} daddr . meta l4proto . th dport @#{dest_set} ct state != established #{action}"
+    "#{type} daddr . meta l4proto . th dport @#{dest_set} #{additional_matches()} #{action}"
   end
 
   defp rule_dev_match_str(ip_type, source_set, jump_chain) do
