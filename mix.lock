@@ -1,7 +1,7 @@
 %{
   "argon2_elixir": {:hex, :argon2_elixir, "2.4.1", "edb27bdd326bc738f3e4614eddc2f73507be6fedc9533c6bcc6f15bbac9c85cc", [:make, :mix], [{:comeonin, "~> 5.3", [hex: :comeonin, repo: "hexpm", optional: false]}, {:elixir_make, "~> 0.6", [hex: :elixir_make, repo: "hexpm", optional: false]}], "hexpm", "0e21f52a373739d00bdfd5fe6da2f04eea623cb4f66899f7526dd9db03903d9f"},
   "bunt": {:hex, :bunt, "0.2.0", "951c6e801e8b1d2cbe58ebbd3e616a869061ddadcc4863d0a2182541acae9a38", [:mix], [], "hexpm", "7af5c7e09fe1d40f76c8e4f9dd2be7cebd83909f31fee7cd0e9eadc567da8353"},
-  "castore": {:hex, :castore, "0.1.17", "ba672681de4e51ed8ec1f74ed624d104c0db72742ea1a5e74edbc770c815182f", [:mix], [], "hexpm", "d9844227ed52d26e7519224525cb6868650c272d4a3d327ce3ca5570c12163f9"},
+  "castore": {:hex, :castore, "0.1.18", "deb5b9ab02400561b6f5708f3e7660fc35ca2d51bfc6a940d2f513f89c2975fc", [:mix], [], "hexpm", "61bbaf6452b782ef80b33cdb45701afbcf0a918a45ebe7e73f1130d661e66a06"},
   "certifi": {:hex, :certifi, "2.9.0", "6f2a475689dd47f19fb74334859d460a2dc4e3252a3324bd2111b8f0429e7e21", [:rebar3], [], "hexpm", "266da46bdb06d6c6d35fde799bcb28d36d985d424ad7c08b5bb48f5b5cdd4641"},
   "cidr": {:git, "https://github.com/firezone/cidr-elixir.git", "9072aaab069bca38ef55fd901a37448861596532", []},
   "cloak": {:hex, :cloak, "1.1.2", "7e0006c2b0b98d976d4f559080fabefd81f0e0a50a3c4b621f85ceeb563e80bb", [:mix], [{:jason, "~> 1.0", [hex: :jason, repo: "hexpm", optional: true]}], "hexpm", "940d5ac4fcd51b252930fd112e319ea5ae6ab540b722f3ca60a85666759b9585"},
@@ -79,5 +79,5 @@
   "ueberauth": {:hex, :ueberauth, "0.10.1", "6706b410ee6bd9d67eac983ed9dc7fdc1f06b18677d7b8ba71d5725e07cc8826", [:mix], [{:plug, "~> 1.5", [hex: :plug, repo: "hexpm", optional: false]}], "hexpm", "bb715b562395c4cc26b2d8e637c6bb0eb8c67d50c0ea543c0f78f06b7e8efdb1"},
   "ueberauth_identity": {:hex, :ueberauth_identity, "0.4.2", "1ef48b37428d225a2eb0cc453b0d446440d8f62c70dbbfef675ed923986136f2", [:mix], [{:plug, "~> 1.0", [hex: :plug, repo: "hexpm", optional: false]}, {:ueberauth, "~> 0.7", [hex: :ueberauth, repo: "hexpm", optional: false]}], "hexpm", "134354bc3da3ece4333f3611fbe283372134b19b2ed8a3d7f43554c6102c4bff"},
   "unicode_util_compat": {:hex, :unicode_util_compat, "0.7.0", "bc84380c9ab48177092f43ac89e4dfa2c6d62b40b8bd132b1059ecc7232f9a78", [:rebar3], [], "hexpm", "25eee6d67df61960cf6a794239566599b09e17e668d3700247bc498638152521"},
-  "wireguardex": {:hex, :wireguardex, "0.3.2", "67d334487db990931b95ba53ed7aed3fe00cf420e52b942727997eecc809fd51", [:mix], [{:rustler, ">= 0.0.0", [hex: :rustler, repo: "hexpm", optional: true]}, {:rustler_precompiled, "~> 0.5.1", [hex: :rustler_precompiled, repo: "hexpm", optional: false]}], "hexpm", "709805b40e733aba29b4f0542648ccf47325d9b4f42b260751dbdb2f7a3548c9"},
+  "wireguardex": {:hex, :wireguardex, "0.3.3", "72a0ed269a7738a54e74b91d65925ab06e44ce31c93937141ebb8b6743c1edf2", [:mix], [{:rustler, ">= 0.0.0", [hex: :rustler, repo: "hexpm", optional: true]}, {:rustler_precompiled, "~> 0.5.1", [hex: :rustler_precompiled, repo: "hexpm", optional: false]}], "hexpm", "7d5098e7a5de42e030534f3cf82135b657d6eba94b8b70afa4de3ef1efdcea23"},
 }
