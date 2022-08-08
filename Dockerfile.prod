@@ -59,7 +59,7 @@ RUN mix release
 # the compiled release and other runtime necessities
 FROM ${RUNNER_IMAGE}
 
-RUN apk add -u --no-cache nftables libstdc++6 ncurses-libs openssl
+RUN apk add -u --no-cache nftables libstdc++ ncurses-libs openssl
 
 WORKDIR /app
 
