@@ -6,7 +6,7 @@ sidebar_position: 2
 Multi-factor authentication (MFA) can be added directly through Firezone
 or by adding an additional factor directly through your identity provider.
 
-## TOTP-based MFA through Firezone
+## MFA with Firezone
 
 Firezone currently supports using a time-based one time password
 (TOTP) as an additional factor.
@@ -17,7 +17,7 @@ QR code to be scanned by your authenticator app.
 Unprivileged users can visit the **My Account** page after logging into
 the user portal.
 
-## MFA through your Identity Provider
+## Identity Provider
 
 MFA can be configured through your identity provider if you have an existing
 integration for SSO. Consult your provider's documentation to enforce an

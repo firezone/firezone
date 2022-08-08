@@ -17,7 +17,7 @@ can optionally be required to add an additional authentication factor.
 in using their credentials from Okta, Google, Azure AD, or your own custom identity
 provider.
 
-## Integrating a SSO provider
+## Integrate A SSO Provider
 
 We've included instructions on how to set up Firezone with several popular
 identity providers:
