@@ -55,8 +55,13 @@ Firezone's operation. For help troubleshooting connectivity issues, see
 ## Resource Requirements
 
 We recommend **starting with 1 vCPU and 1 GB of RAM and scaling up** as the
-number of users and bandwidth requirements grow.
+number of users and devices grows.
 
-Firezone uses in-kernel WireGuard, so its performance should be very good.
-In general, more CPU cores translate to higher bandwidth capacity per tunnel
-while more RAM will help with higher counts of users and tunnels.
+For Omnibus-based deployments on servers with less than 1GB of memory, we
+recommend turning on swap to prevent the Linux kernel from killing
+Firezone processes unexpectedly. When this happens, it's often difficult to
+debug and results in strange, unpredictable failure modes.
+
+For the VPN tunnels themselves, Firezone uses in-kernel WireGuard, so its
+performance should be very good. 1 vCPU should be more than enough to saturate
+a 1 Gbps network link.
