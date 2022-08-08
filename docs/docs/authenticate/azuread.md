@@ -1,6 +1,6 @@
 ---
 title: Azure Active Directory
-sidebar_position: 3
+sidebar_position: 4
 ---
 
 Firezone supports Single Sign-On (SSO) using Azure Active Directory through the generic

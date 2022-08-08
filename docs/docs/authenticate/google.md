@@ -1,6 +1,6 @@
 ---
 title: Google
-sidebar_position: 1
+sidebar_position: 5
 ---
 
 Firezone supports Single Sign-On (SSO) using Google Workspace and Cloud Identity

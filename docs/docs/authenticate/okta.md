@@ -1,6 +1,6 @@
 ---
 title: Okta
-sidebar_position: 2
+sidebar_position: 3
 ---
 
 Firezone supports Single Sign-On (SSO) using Okta
