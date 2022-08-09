@@ -60,6 +60,32 @@ const config = {
     ],
   ],
 
+  plugins: [
+    [
+      '@docusaurus/plugin-client-redirects',
+      {
+        redirects: [
+          {
+            to: '/deploy',
+            from: [
+              '/docs/deploy',
+              '/docs/deploy/'
+            ],
+          },
+          {
+            to: '/user-guides/client-instructions',
+            from: [
+              '/docs//user-guides/client-instructions',
+              '/docs/user-guides/client-instructions/',
+              '/0.4.5/docs/user-guides/client-instructions',
+              '/0.4.5/docs/user-guides/client-instructions/'
+            ],
+          },
+        ],
+      },
+    ],
+  ],
+
   themeConfig:
     /** @type {import('@docusaurus/preset-classic').ThemeConfig} */
     ({
