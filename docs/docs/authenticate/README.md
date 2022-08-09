@@ -14,8 +14,8 @@ Firezone supports the following authentication methods:
 one time password (TOTP)](../authenticate/multi-factor)
 can optionally be configured to add an additional authentication factor.
 1. [Single Sign-On (SSO)](#integrate-a-sso-provider): Enables users to sign
-in using their credentials from Okta, Google, Azure AD, or any service supporting the OpenID Connect (OIDC) protocol.
-provider.
+in using their credentials from Okta, Google, Azure AD, or any service supporting
+the OpenID Connect (OIDC) protocol.
 
 ## Integrate A SSO Provider
 
@@ -42,7 +42,8 @@ join the [Firezone Slack group](https://www.firezone.dev/slack).
 ### The OIDC Redirect URL
 
 For each OIDC provider a corresponding URL is created for redirecting to
-the configured provider's sign-in URL. The URL format is `/auth/oidc/PROVIDER` where `PROVIDER` is the OIDC key for that particular provider.
+the configured provider's sign-in URL. The URL format is `/auth/oidc/PROVIDER`
+where `PROVIDER` is the OIDC key for that particular provider.
 
 For example, the OIDC config below
 
@@ -52,16 +53,18 @@ google: {
   # ...
 },
 okta: {
-  # ... 
+  # ...
 }
-\```
+```
 
-would generate the following URLs: 
+would generate the following URLs:
 
 * `https://firezone.example.com/auth/oidc/google`
 * `https://firezone.example.com/auth/oidc/okta`
 
-These URLs could then be distributed by an Admin directly to end users to navigate to the appropriate identity provider login page to authenticate to Firezone.
+These URLs could then be distributed by an Admin directly to end users to navigate
+to the appropriate identity provider login page to authenticate to Firezone.
+
 ## Enforce Periodic Re-authentication
 
 Periodic re-authentication can be enforced by changing the setting in
@@ -90,4 +93,4 @@ A user's connection status is shown on the Users page under the table column
 * ENABLED - The connection is enabled.
 * DISABLED - The connection is disabled by an administrator or OIDC refresh failure.
 * EXPIRED - The connection is disabled due to authentication expiration or a user
-  has not signed in for the first time.
+has not signed in for the first time.

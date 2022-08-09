@@ -11,7 +11,7 @@ or by adding an additional factor directly through your identity provider.
 Firezone currently supports using a time-based one time password
 (TOTP) as an additional factor. This is supported with the local authentication
 method only; for SSO authentication we recommend enabling your provider's MFA
-functionality [as described below](#identity-provider).
+functionality [as described below](#mfa-with-identity-provider).
 
 Admins can visit `/settings/account/register_mfa` in the admin portal to generate
 a QR code to be scanned by your authenticator app.
