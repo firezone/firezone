@@ -64,8 +64,8 @@ services:
       WIREGUARD_PRIVATE_KEY_PATH: '/var/firezone/private_key'
 
       ## DB
-      # DATABASE_NAME: firezone
-      # DATABASE_USER: postgres
+      DATABASE_NAME: ${DATABASE_NAME:-firezone}
+      DATABASE_USER: ${DATABASE_USER:-postgres}
       DATABASE_PASSWORD: ${DATABASE_PASSWORD:?err}
       # DATABASE_HOST: postgres
       # DATABASE_PORT: '5432'
@@ -101,9 +101,10 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
     environment:
-      POSTGRES_USER: postgres
+      # same value as ## DB section above
+      POSTGRES_DB: ${DATABASE_NAME:-firezone}
+      POSTGRES_USER: ${DATABASE_USER:-postgres}
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?err}
-      POSTGRES_DB: firezone
 
 volumes:
   postgres-data:
