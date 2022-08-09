@@ -17,8 +17,11 @@ WORKDIR /app
 RUN mix local.hex --force && \
     mix local.rebar --force
 
+ARG VERSION=0.0.0-docker
+
 # set build ENV
-ENV MIX_ENV="prod"
+ENV MIX_ENV="prod" \
+    VERSION=$VERSION
 
 # install mix dependencies
 COPY mix.exs mix.lock ./
