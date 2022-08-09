@@ -30,4 +30,5 @@ setup_interface
 add_routes
 
 cd -P -- "$(dirname -- "$0")"
+./firezone eval FzHttp.Release.migrate
 exec ./firezone start
