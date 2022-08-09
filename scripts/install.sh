@@ -48,8 +48,7 @@ promptContact() {
   echo "Could we email you to ask for product feedback? Firezone depends heavily on input from users like you to steer development. (Y/n): "
   read contact
   case $contact in
-    n);;
-    N);;
+    n|N);;
     *) capture "contactOk" $adminUser
   esac
 }
@@ -57,13 +56,17 @@ promptContact() {
 wireguardCheck() {
   if ! test -f /sys/module/wireguard/version; then
     if test -d /lib/modules/$(uname -r) && test -f `find /lib/modules/$(uname -r) -type f -name 'wireguard.ko'`; then
-      echo "WireGuard kernel module found, but not loaded."
-      echo "Load it with 'sudo modprobe wireguard' and run this install script again"
+      echo "WireGuard kernel module found, but not loaded. Load it now? (Y/n): "
+      read load_wgmod
+      case $load_wgmod in
+        n|N) echo "Load it with 'sudo modprobe wireguard' and run this install script again"; exit;;
+        *) modprobe wireguard
+      esac
     else
       echo "Error! WireGuard not detected. Please upgrade your kernel to at least 5.6 or install the WireGuard kernel module."
       echo "See more at https://www.wireguard.com/install/"
+      exit
     fi
-    exit
   fi
 }
 
@@ -86,6 +89,8 @@ setupCloudsmithRepoAndInstall() {
      ]]
   then
     if [ ! -f /etc/apt/sources.list.d/firezone-firezone.list ]; then
+      apt-get -qqy update
+      apt-get -qqy install apt-transport-https gnupg
       setupCloudsmithRepo "deb"
     else
       apt-get -qqy update
