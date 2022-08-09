@@ -10,9 +10,9 @@ services:
     ports:
       - 80:80
       - 443:443
-    command: caddy reverse-proxy --to elixir:4000 --from ${EXTERNAL_URL?err}
+    command: caddy reverse-proxy --to firezone:4000 --from ${EXTERNAL_URL?err}
 
-  elixir:
+  firezone:
     build:
       context: .
       dockerfile: Dockerfile.prod
