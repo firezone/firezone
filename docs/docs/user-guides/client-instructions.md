@@ -168,7 +168,7 @@ nmcli connection modify [vpn name] connection.autoconnect no
 
 ## Enable Multi-Factor Authentication
 
-To enable MFA visit the **My Account** link in the Firezone portal.
+To enable MFA navigate to `/user_account/register_mfa` in the Firezone portal.
 After generating the QR code, scan using your authenticator app and
 input the 6 digit code.
 
