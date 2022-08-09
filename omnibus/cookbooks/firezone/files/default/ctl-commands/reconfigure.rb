@@ -33,20 +33,6 @@ end
 add_command_under_category 'reconfigure', 'general', 'Reconfigure the application.', 2 do
   status = run_chef("#{base_path}/embedded/cookbooks/dna.json", '--chef-license=accept')
 
-  msg = <<~MSG
-    =================================================================================
-
-    Heads up! We've announced a new public beta program. Sign up to receive a free
-    license key good for up to one year of Firezone Team or Business. Read more about
-    the announcement here:
-
-    https://www.firezone.dev/blog/release-0-5-0/?utm_source=reconfigure
-
-    =================================================================================
-  MSG
-
-  log(msg)
-
   capture
 
   if status.success?
