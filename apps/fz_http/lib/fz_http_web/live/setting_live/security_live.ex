@@ -10,6 +10,19 @@ defmodule FzHttpWeb.SettingLive.Security do
 
   @page_title "Security Settings"
   @page_subtitle "Configure security-related settings."
+  @oidc_placeholder """
+  {
+    "google": {
+      "discovery_document_uri": "https://accounts.google.com/.well-known/openid-configuration",
+      "client_id": "CLIENT_ID",
+      "client_secret": "CLIENT_SECRET",
+      "redirect_uri": "https://firezone.example.com/auth/oidc/google/callback/",
+      "response_type": "code",
+      "scope:" "openid email profile",
+      "label": "Google"
+    }
+  }
+  """
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
@@ -21,6 +34,8 @@ defmodule FzHttpWeb.SettingLive.Security do
      |> assign(:session_duration_options, session_duration_options())
      |> assign(:site_changeset, site_changeset())
      |> assign(:config_changeset, config_changeset)
+     |> assign(:field_titles, field_titles(config_changeset))
+     |> assign(:oidc_placeholder, @oidc_placeholder)
      |> assign(:page_subtitle, @page_subtitle)
      |> assign(:page_title, @page_title)}
   end
@@ -106,5 +121,26 @@ defmodule FzHttpWeb.SettingLive.Security do
   defp site_changeset do
     Sites.get_site!()
     |> Sites.change_site()
+  end
+
+  @fields ~w(
+    local_auth_enabled
+    disable_vpn_on_oidc_error
+    allow_unprivileged_device_management
+    auto_create_oidc_users
+    openid_connect_providers
+  )a
+  @override_title """
+  This value is currently overriding the value set in your configuration file.
+  """
+  defp field_titles(changeset) do
+    @fields
+    |> Map.new(fn key ->
+      if is_nil(get_field(changeset, key)) do
+        {key, ""}
+      else
+        {key, @override_title}
+      end
+    end)
   end
 end
