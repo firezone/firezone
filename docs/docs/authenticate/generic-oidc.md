@@ -6,7 +6,7 @@ sidebar_position: 10
 The example below details the config settings required by Firezone to enable SSO
 through a generic OIDC provider. The configuration file can be found at
 `/etc/firezone/firezone.rb`. To pick up changes, run `firezone-ctl reconfigure`
-and `firezone-ctl restart` to update the application.
+to update the application.
 
 ```ruby
 # This is an example using Google and Okta as an SSO identity provider.

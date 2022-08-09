@@ -96,5 +96,5 @@ default['firezone']['authentication']['oidc'] = {
 }
 ```
 
-Run `firezone-ctl reconfigure`and `firezone-ctl restart` to update the application.
+Run `firezone-ctl reconfigure` to update the application.
 You should now see a `Sign in with Google` button at the root Firezone URL.
