@@ -1,4 +1,5 @@
 # Example compose deployment
+
 version: '3.7'
 
 services:
@@ -18,9 +19,8 @@ services:
     image: fz
     ports:
       - 51820:51820/udp
-    # env_file: app_env
     volumes:
-      # persist private key through containers, the parent path to WIREGUARD_PRIVATE_KEY_PATH
+      # Persist private key through containers, the parent path to WIREGUARD_PRIVATE_KEY_PATH.
       - /data/firezone:/var/firezone
     environment:
       # Admin
