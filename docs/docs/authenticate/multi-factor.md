@@ -14,7 +14,7 @@ Firezone currently supports using a time-based one time password
 Admins can visit `/settings/account/register_mfa` in the admin portal to generate a
 QR code to be scanned by your authenticator app.
 
-Unprivileged users can visit the **My Account** page after logging into
+Unprivileged users can visit `/user_account/register_mfa` after logging into
 the user portal.
 
 ## Identity Provider
