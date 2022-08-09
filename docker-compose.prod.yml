@@ -112,7 +112,7 @@ services:
   postgres:
     image: postgres:13.5
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - /data/postgres:/var/lib/postgresql/data
     environment:
       # same value as ## DB section above
       POSTGRES_DB: ${DATABASE_NAME:-firezone}
@@ -122,6 +122,3 @@ services:
       <<: *default-deploy
       update_config:
         order: stop-first
-
-volumes:
-  postgres-data:
