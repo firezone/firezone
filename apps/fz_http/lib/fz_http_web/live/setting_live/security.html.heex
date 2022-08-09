@@ -29,8 +29,7 @@
     </.form>
   </div>
 
-  <div class="block"
-       title={if(!is_nil(Conf.get(:local_auth_enabled)), do: @override_title)}>
+  <div class="block" title={@field_titles.local_auth_enabled}>
 
     <strong>Local Auth</strong>
 
@@ -50,8 +49,7 @@
     </div>
   </div>
 
-  <div class="block"
-       title={if(!is_nil(Conf.get(:allow_unprivileged_device_management)), do: @override_title)}>
+  <div class="block" title={@field_titles.allow_unprivileged_device_management}>
 
     <strong>Allow unprivileged device management</strong>
 
@@ -82,8 +80,7 @@
     </p>
   </div>
 
-  <div class="block"
-       title={if(!is_nil(Conf.get(:disable_vpn_on_oidc_error)), do: @override_title)}>
+  <div class="block" title={@field_titles.disable_vpn_on_oidc_error}>
     <strong>Auto disable VPN</strong>
 
     <div class="level">
@@ -102,8 +99,7 @@
     </div>
   </div>
 
-  <div class="block"
-       title={if(!is_nil(Conf.get(:auto_create_oidc_users)), do: @override_title)}>
+  <div class="block" title={@field_titles.auto_create_oidc_users}>
     <strong>Auto create OIDC users</strong>
 
     <div class="level">
@@ -122,8 +118,7 @@
     </div>
   </div>
 
-  <div class="block"
-       title={if(!is_nil(Conf.get(:openid_connect_providers)), do: @override_title)}>
+  <div class="block" title={@field_titles.openid_connect_providers}>
     <.form let={f} for={@config_changeset} id="oidc-config-form" phx-submit="save_oidc_config">
       <div class="field">
         <%= label f, :openid_connect_providers, "OpenID Connect providers configuration",
