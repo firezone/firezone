@@ -13,7 +13,7 @@ setup_interface()
   if [ $WIREGUARD_IPV6_ENABLED = "true" ]; then
     ip -6 address replace ${WIREGUARD_IPV6_ADDRESS} dev ${WIREGUARD_INTERFACE_NAME}
   fi
-  ip link set mtu ${WIREGUARD_INTERFACE_MTU} up dev ${WIREGUARD_INTERFACE_NAME}
+  ip link set mtu ${WIREGUARD_MTU} up dev ${WIREGUARD_INTERFACE_NAME}
 }
 
 add_routes()
