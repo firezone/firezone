@@ -42,7 +42,7 @@ join the [Firezone Slack group](https://www.firezone.dev/slack).
 ### The OIDC Redirect URL
 
 For each OIDC provider a corresponding URL is created for redirecting to
-the configured provider's sign-in URL. The URL format is `/auth/oidc/PROVIDER`
+the configured provider's sign-in URL. The URL format is `https://firezone.example.com/auth/oidc/PROVIDER`
 where `PROVIDER` is the OIDC key for that particular provider.
 
 For example, the OIDC config below
