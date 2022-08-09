@@ -26,6 +26,8 @@ jobs:
         uses: docker/build-push-action@v3
         with:
           push: true
+          build-args: |
+            VERSION=${{ github.ref_name }}
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/firezone:${{ github.ref_name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
