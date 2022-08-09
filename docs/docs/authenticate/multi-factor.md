@@ -9,7 +9,7 @@ or by adding an additional factor directly through your identity provider.
 ## MFA with Firezone
 
 Firezone currently supports using a time-based one time password
-(TOTP) as an additional factor.
+(TOTP) as an additional factor. This is supported with the local authentication method only; for SSO authentication we recommend enabling your provider's MFA functionality [as described below](#identity-provider).
 
 Admins can visit `/settings/account/register_mfa` in the admin portal to generate a
 QR code to be scanned by your authenticator app.
@@ -17,10 +17,9 @@ QR code to be scanned by your authenticator app.
 Unprivileged users can visit `/user_account/register_mfa` after logging into
 the user portal.
 
-## Identity Provider
+## MFA with Identity Provider
 
-MFA can be configured through your identity provider if you have an existing
-integration for SSO. Consult your provider's documentation to enforce an
+Most identity providers support additional authentication factors in addition to email/password. Consult your provider's documentation to enforce an
 additional factor. We have included links to a few common providers below:
 
 * [Okta](https://help.okta.com/en-us/Content/Topics/Security/mfa/mfa-home.htm)

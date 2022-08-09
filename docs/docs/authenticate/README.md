@@ -12,9 +12,9 @@ Firezone supports the following authentication methods:
 
 1. [Local email/password](../authenticate/local-auth): Enabled by default. A [time-based
 one time password (TOTP)](../authenticate/multi-factor)
-can optionally be required to add an additional authentication factor.
+can optionally be configured to add an additional authentication factor.
 1. [Single Sign-On (SSO)](#integrate-a-sso-provider): Enables users to sign
-in using their credentials from Okta, Google, Azure AD, or your own custom identity
+in using their credentials from Okta, Google, Azure AD, or any service supporting the OpenID Connect (OIDC) protocol.
 provider.
 
 ## Integrate A SSO Provider
