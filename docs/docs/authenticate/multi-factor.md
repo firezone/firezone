@@ -11,7 +11,7 @@ or by adding an additional factor directly through your identity provider.
 Firezone currently supports using a time-based one time password
 (TOTP) as an additional factor.
 
-Admins can visit `/settings/account` in the admin portal to generate a
+Admins can visit `/settings/account/register_mfa` in the admin portal to generate a
 QR code to be scanned by your authenticator app.
 
 Unprivileged users can visit the **My Account** page after logging into
