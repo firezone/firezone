@@ -1,5 +1,14 @@
 # Example compose deployment
 
+x-deploy: &default-deploy
+  restart_policy:
+    condition: on-failure
+    delay: 5s
+    max_attempts: 3
+    window: 120s
+  update_config:
+    order: start-first
+
 version: '3.7'
 
 services:
@@ -11,6 +20,8 @@ services:
       - 80:80
       - 443:443
     command: caddy reverse-proxy --to firezone:4000 --from ${EXTERNAL_URL?err}
+    deploy:
+      <<: *default-deploy
 
   firezone:
     build:
@@ -95,6 +106,8 @@ services:
       - net.ipv6.conf.all.forwarding=1
     depends_on:
       - postgres
+    deploy:
+      <<: *default-deploy
 
   postgres:
     image: postgres:13.5
@@ -105,6 +118,10 @@ services:
       POSTGRES_DB: ${DATABASE_NAME:-firezone}
       POSTGRES_USER: ${DATABASE_USER:-postgres}
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?err}
+    deploy:
+      <<: *default-deploy
+      update_config:
+        order: stop-first
 
 volumes:
   postgres-data:
