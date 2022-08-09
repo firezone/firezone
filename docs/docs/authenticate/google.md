@@ -1,6 +1,6 @@
 ---
 title: Google
-sidebar_position: 1
+sidebar_position: 5
 ---
 
 Firezone supports Single Sign-On (SSO) using Google Workspace and Cloud Identity
@@ -96,5 +96,5 @@ default['firezone']['authentication']['oidc'] = {
 }
 ```
 
-Run `firezone-ctl reconfigure`and `firezone-ctl restart` to update the application.
+Run `firezone-ctl reconfigure` to update the application.
 You should now see a `Sign in with Google` button at the root Firezone URL.
