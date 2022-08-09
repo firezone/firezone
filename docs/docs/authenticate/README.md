@@ -39,15 +39,29 @@ to add documentation for your provider.
 If you require assistance in setting up your OIDC provider, please
 join the [Firezone Slack group](https://www.firezone.dev/slack).
 
-### Pretty URLs
+### The OIDC Redirect URL
 
-For each OIDC provider a corresponding pretty URL is created for redirecting to
-the configured provider's sign-in URL. For the example OIDC config found
-[here](../authenticate/generic-oidc), the URLs are:
+For each OIDC provider a corresponding URL is created for redirecting to
+the configured provider's sign-in URL. The URL format is `/auth/oidc/PROVIDER` where `PROVIDER` is the OIDC key for that particular provider.
+
+For example, the OIDC config below
+
+```ruby
+default['firezone']['authentication']['oidc'] = {
+google: {
+  # ...
+},
+okta: {
+  # ... 
+}
+\```
+
+would generate the following URLs: 
 
 * `https://firezone.example.com/auth/oidc/google`
 * `https://firezone.example.com/auth/oidc/okta`
 
+These URLs could then be distributed by an Admin directly to end users to navigate to the appropriate identity provider login page to authenticate to Firezone.
 ## Enforce Periodic Re-authentication
 
 Periodic re-authentication can be enforced by changing the setting in
