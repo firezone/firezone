@@ -1,6 +1,6 @@
 ---
 title: Local Authentication
-sidebar_position: 5
+sidebar_position: 1
 ---
 
 By default, Firezone will use local email / password for authenticating users to

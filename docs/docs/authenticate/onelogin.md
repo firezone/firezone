@@ -1,6 +1,6 @@
 ---
 title: Onelogin
-sidebar_position: 3
+sidebar_position: 6
 ---
 
 Firezone supports Single Sign-On (SSO) using OneLogin

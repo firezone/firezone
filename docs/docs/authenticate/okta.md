@@ -1,6 +1,6 @@
 ---
 title: Okta
-sidebar_position: 2
+sidebar_position: 3
 ---
 
 Firezone supports Single Sign-On (SSO) using Okta
@@ -76,7 +76,7 @@ default['firezone']['authentication']['oidc'] = {
 }
 ```
 
-Run `firezone-ctl reconfigure`and `firezone-ctl restart` to update the application.
+Run `firezone-ctl reconfigure` to update the application.
 You should now see a **Sign in with Okta** button at the root Firezone URL.
 
 ## Restricting Access to Certain Users

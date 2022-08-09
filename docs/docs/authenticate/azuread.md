@@ -1,6 +1,6 @@
 ---
 title: Azure Active Directory
-sidebar_position: 3
+sidebar_position: 4
 ---
 
 Firezone supports Single Sign-On (SSO) using Azure Active Directory through the generic
@@ -79,7 +79,7 @@ default['firezone']['authentication']['oidc'] = {
 }
 ```
 
-Run `firezone-ctl reconfigure`and `firezone-ctl restart` to update the application.
+Run `firezone-ctl reconfigure` to update the application.
 You should now see a `Sign in with Azure` button at the root Firezone URL.
 
 ## Restricting Access to Certain Members

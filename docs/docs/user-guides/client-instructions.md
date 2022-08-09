@@ -165,3 +165,12 @@ To disable the automatic connection set it back to `no`:
 ```shell
 nmcli connection modify [vpn name] connection.autoconnect no
 ```
+
+## Enable Multi-Factor Authentication
+
+To enable MFA navigate to `/user_account/register_mfa` in the Firezone portal.
+After generating the QR code, scan using your authenticator app and
+input the 6 digit code.
+
+If you lose your authenticator app, contact your Admin to reset
+access to your account.
