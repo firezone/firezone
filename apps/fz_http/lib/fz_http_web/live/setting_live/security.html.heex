@@ -29,7 +29,8 @@
     </.form>
   </div>
 
-  <div class="block">
+  <div class="block" title={@field_titles.local_auth_enabled}>
+
     <strong>Local Auth</strong>
 
     <div class="level">
@@ -38,7 +39,8 @@
       </div>
       <div class="level-right">
         <label class="switch is-medium">
-          <input type="checkbox" phx-click="toggle" phx-value-config="local_auth_enabled"
+          <input type="checkbox" phx-click="toggle"
+              phx-value-config="local_auth_enabled"
               checked={Conf.get(:local_auth_enabled)}
               value={if(!Conf.get(:local_auth_enabled), do: "on")} />
           <span class="check"></span>
@@ -47,7 +49,8 @@
     </div>
   </div>
 
-  <div class="block">
+  <div class="block" title={@field_titles.allow_unprivileged_device_management}>
+
     <strong>Allow unprivileged device management</strong>
 
     <div class="level">
@@ -77,7 +80,7 @@
     </p>
   </div>
 
-  <div class="block">
+  <div class="block" title={@field_titles.disable_vpn_on_oidc_error}>
     <strong>Auto disable VPN</strong>
 
     <div class="level">
@@ -96,7 +99,7 @@
     </div>
   </div>
 
-  <div class="block">
+  <div class="block" title={@field_titles.auto_create_oidc_users}>
     <strong>Auto create OIDC users</strong>
 
     <div class="level">
@@ -115,16 +118,24 @@
     </div>
   </div>
 
-  <div class="block">
+  <div class="block" title={@field_titles.openid_connect_providers}>
     <.form let={f} for={@config_changeset} id="oidc-config-form" phx-submit="save_oidc_config">
       <div class="field">
         <%= label f, :openid_connect_providers, "OpenID Connect providers configuration",
             class: "label" %>
+        <p>
+          Enter a valid JSON string representing the OIDC configuration to apply.
+          Read more about the format of this field in
+          <a href="https://docs.firezone.dev/authenticate">
+            our documentation
+          </a>.
+        </p>
 
         <div class="control">
           <%= textarea f,
               :openid_connect_providers,
-              placeholder: ~s|{"google": {...}, "okta": {...}}|,
+              rows: 10,
+              placeholder: @oidc_placeholder,
               class: "textarea #{input_error_class(@config_changeset, :openid_connect_providers)}" %>
         </div>
 
@@ -133,7 +144,7 @@
         </p>
       </div>
 
-      <%= Phoenix.View.render(FzHttpWeb.SharedView, "submit_button.html", []) %>
+      <%= Phoenix.View.render(FzHttpWeb.SharedView, "submit_button.html", button_text: "Save Providers") %>
     </.form>
   </div>
 </section>
