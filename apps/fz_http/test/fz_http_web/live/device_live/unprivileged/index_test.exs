@@ -51,6 +51,50 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
     end
   end
 
+  describe "authenticated device configuration disabled" do
+    setup do
+      restore_env(:allow_unprivileged_device_configuration, false, &on_exit/1)
+    end
+
+    @tag fields: ~w(
+      use_site_allowed_ips
+      allowed_ips
+      use_site_dns
+      dns
+      use_site_endpoint
+      endpoint
+      use_site_mtu
+      mtu
+      use_site_persistent_keepalive
+      persistent_keepalive
+      ipv4
+      ipv6
+    )
+    test "hides the customization fields", %{fields: fields, unprivileged_conn: conn} do
+      path = Routes.device_unprivileged_index_path(conn, :new)
+      {:ok, _view, html} = live(conn, path)
+
+      for field <- fields do
+        refute html =~ ~r/input.*device[#{field}]/
+      end
+    end
+
+    @tag fields: ~w(
+      name
+      description
+      public_key
+      preshared_key
+    )
+    test "renders the needed fields", %{fields: fields, unprivileged_conn: conn} do
+      path = Routes.device_unprivileged_index_path(conn, :new)
+      {:ok, _view, html} = live(conn, path)
+
+      for field <- fields do
+        assert html =~ ~r/input.*device[#{field}]/
+      end
+    end
+  end
+
   describe "authenticated/creates device" do
     test "shows new form", %{unprivileged_conn: conn} do
       path = Routes.device_unprivileged_index_path(conn, :index)

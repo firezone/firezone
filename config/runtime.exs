@@ -66,6 +66,9 @@ if config_env() == :prod do
   allow_unprivileged_device_management =
     FzString.to_boolean(System.fetch_env!("ALLOW_UNPRIVILEGED_DEVICE_MANAGEMENT"))
 
+  allow_unprivileged_device_configuration =
+    FzString.to_boolean(System.fetch_env!("ALLOW_UNPRIVILEGED_DEVICE_CONFIGURATION"))
+
   # Outbound Email
   from_email = System.get_env("OUTBOUND_EMAIL_FROM")
 
@@ -210,6 +213,7 @@ if config_env() == :prod do
     cookie_encryption_salt: cookie_encryption_salt,
     cookie_secure: cookie_secure,
     allow_unprivileged_device_management: allow_unprivileged_device_management,
+    allow_unprivileged_device_configuration: allow_unprivileged_device_configuration,
     max_devices_per_user: max_devices_per_user,
     local_auth_enabled: local_auth_enabled,
     wireguard_dns: wireguard_dns,

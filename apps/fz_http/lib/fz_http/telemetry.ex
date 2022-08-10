@@ -85,6 +85,7 @@ defmodule FzHttp.Telemetry do
         openid_providers: length(Conf.get(:parsed_openid_connect_providers)),
         auto_create_oidc_users: Conf.get(:auto_create_oidc_users),
         unprivileged_device_management: Conf.get(:allow_unprivileged_device_management),
+        unprivileged_device_configuration: Conf.get(:allow_unprivileged_device_configuration),
         local_authentication: Conf.get(:local_auth_enabled),
         disable_vpn_on_oidc_error: Conf.get(:disable_vpn_on_oidc_error),
         outbound_email: outbound_email?(),

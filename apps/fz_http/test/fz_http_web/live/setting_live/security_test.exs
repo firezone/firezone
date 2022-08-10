@@ -61,10 +61,12 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
     for {t, val} <- [
           {:local_auth_enabled, true},
           {:allow_unprivileged_device_management, true},
+          {:allow_unprivileged_device_configuration, true},
           {:disable_vpn_on_oidc_error, true},
           {:auto_create_oidc_users, true},
           {:local_auth_enabled, nil},
           {:allow_unprivileged_device_management, nil},
+          {:allow_unprivileged_device_configuration, nil},
           {:disable_vpn_on_oidc_error, nil},
           {:auto_create_oidc_users, nil}
         ] do
