@@ -75,7 +75,7 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
       {:ok, _view, html} = live(conn, path)
 
       for field <- fields do
-        refute html =~ ~r/device[#{field}]/
+        refute html =~ "device[#{field}]"
       end
     end
 
@@ -90,7 +90,7 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
       {:ok, _view, html} = live(conn, path)
 
       for field <- fields do
-        assert html =~ ~r/device[#{field}]/
+        assert html =~ "device[#{field}]"
       end
     end
   end
