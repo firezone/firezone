@@ -15,8 +15,7 @@ defmodule FzCommon.FzCrypto do
       {"COOKIE_ENCRYPTION_SALT", rand_base64(6)},
       {"DATABASE_ENCRYPTION_KEY", rand_base64(32)}
     ]
-    |> Enum.map(fn {k, v} -> "#{k}=#{v}" end)
-    |> Enum.join("\n")
+    |> Enum.map_join("\n", fn {k, v} -> "#{k}=#{v}" end)
     |> IO.puts()
   end
 
