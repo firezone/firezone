@@ -43,7 +43,7 @@ defmodule FzVpn.MixProject do
       {:fz_common, in_umbrella: true},
       {:credo, "~> 1.4", only: [:dev, :test], runtime: false},
       {:excoveralls, "~> 0.13", only: :test},
-      {:wireguardex, "~> 0.3.4"}
+      {:wireguardex, "~> 0.3.5"}
     ]
   end
 end
