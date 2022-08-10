@@ -28,7 +28,7 @@
 * [Deploy on your own infrastructure](https://docs.firezone.dev/deploy) to keep control of your network traffic.
 * Built on [WireGuard®](https://www.wireguard.com/) to be stable, performant, and lightweight.
 
-![Firezone Architecture](https://user-images.githubusercontent.com/52545545/173246039-a1b37ef2-d885-4535-bca7-f5cd57da21a2.png)
+![Firezone Architecture](https://user-images.githubusercontent.com/52545545/183804397-ae81ca4e-6972-41f9-80d4-b431a077119d.png)
 
 ## Get Started
 
@@ -77,7 +77,6 @@ help:
 * [Community Slack](https://www.firezone.dev/slack): join discussions, meet other users, and meet the contributors
 * [Email Us](mailto:team@firezone.dev): we're always happy to chat
 
-
 ## Package Repository
 
 [![Hosted By: Cloudsmith](https://img.shields.io/badge/OSS%20hosting%20by-cloudsmith-blue?logo=cloudsmith&style=for-the-badge)](https://cloudsmith.com)
@@ -86,7 +85,6 @@ Package repository hosting is graciously provided by  [Cloudsmith](https://cloud
 Cloudsmith is the only fully hosted, cloud-native, universal package management solution, that
 enables your organization to create, store and share packages in any format, to any place, with total
 confidence.
-
 
 ## Developing and Contributing
 
