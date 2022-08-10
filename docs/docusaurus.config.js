@@ -162,9 +162,7 @@ const config = {
 
         //... other Algolia params
       },
-      themeConfig: {
-        metadata: [{name: 'keywords', content: 'wireguard, vpn, firewall, remote, network, documentation'}],
-      },
+      metadata: [{name: 'keywords', content: 'wireguard, vpn, firewall, remote access, network, documentation'}],
     }),
 };
 
