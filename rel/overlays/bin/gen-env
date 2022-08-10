@@ -1,6 +1,6 @@
 #!/bin/sh
 
-echo=<<-GEN
+cat <<-EOF
 EXTERNAL_URL=
 ADMIN_EMAIL=
 DEFAULT_ADMIN_PASSWORD=$(openssl rand -base64 12)
@@ -10,4 +10,4 @@ LIVE_VIEW_SIGNING_SALT=$(openssl rand -base64 24)
 COOKIE_SIGNING_SALT=$(openssl rand -base64 6)
 COOKIE_ENCRYPTION_SALT=$(openssl rand -base64 6)
 DATABASE_ENCRYPTION_KEY=$(openssl rand -base64 32)
-GEN
+EOF
