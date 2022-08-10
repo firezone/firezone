@@ -1,0 +1,115 @@
+ARG ELIXIR_VERSION=1.13.4
+ARG OTP_VERSION=25.0.3
+ARG ALPINE_VERSION=3.16.0
+
+ARG BUILDER_IMAGE="hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-alpine-${ALPINE_VERSION}"
+ARG RUNNER_IMAGE="alpine:${ALPINE_VERSION}"
+
+FROM ${BUILDER_IMAGE} as builder
+
+# install build dependencies
+RUN apk add nodejs npm build-base git
+
+# prepare build dir
+WORKDIR /app
+
+# install hex + rebar
+RUN mix local.hex --force && \
+    mix local.rebar --force
+
+# set build ENV
+ENV MIX_ENV="prod"
+
+# install mix dependencies
+COPY mix.exs mix.lock ./
+COPY apps/fz_common/mix.exs ./apps/fz_common/mix.exs
+COPY apps/fz_http/mix.exs ./apps/fz_http/mix.exs
+COPY apps/fz_vpn/mix.exs ./apps/fz_vpn/mix.exs
+COPY apps/fz_wall/mix.exs ./apps/fz_wall/mix.exs
+
+RUN mix deps.get --only $MIX_ENV
+RUN mkdir config
+
+# copy compile-time config files before we compile dependencies
+# to ensure any relevant config change will trigger the dependencies
+# to be re-compiled.
+COPY config/config.exs config/${MIX_ENV}.exs config/
+RUN mix deps.compile
+
+COPY priv priv
+COPY apps apps
+
+# mix phx.digest triggers fz_http compilation, need version to be set here
+ARG VERSION=0.0.0-docker
+ENV VERSION=$VERSION
+
+# compile assets
+RUN cd apps/fz_http/assets \
+    && npm install \
+    && npm run deploy \
+    && cd .. \
+    && mix phx.digest
+
+# Compile the release
+RUN mix compile
+
+# Changes to config/runtime.exs don't require recompiling the code
+COPY config/runtime.exs config/
+
+COPY rel rel
+RUN mix release
+
+# start a new build stage so that the final image will only contain
+# the compiled release and other runtime necessities
+FROM ${RUNNER_IMAGE}
+
+RUN apk add -u --no-cache nftables libstdc++ ncurses-libs openssl
+
+WORKDIR /app
+
+# set runner ENV
+ENV MIX_ENV="prod" \
+    PHOENIX_LISTEN_ADDRESS='0.0.0.0' \
+    PHOENIX_PORT='4000' \
+    SECURE_COOKIES='true' \
+    EXTERNAL_TRUSTED_PROXIES='[]' \
+    PRIVATE_CLIENTS='[]' \
+    EGRESS_INTERFACE=eth0 \
+    NFT_PATH=nft \
+    WIREGUARD_INTERFACE_NAME='wg-firezone' \
+    WIREGUARD_PORT='51820' \
+    WIREGUARD_MTU='1280' \
+    WIREGUARD_ALLOWED_IPS='0.0.0.0/0, ::/0' \
+    WIREGUARD_DNS='1.1.1.1, 1.0.0.1' \
+    WIREGUARD_PERSISTENT_KEEPALIVE=0 \
+    WIREGUARD_IPV4_ENABLED=true \
+    WIREGUARD_IPV4_MASQUERADE=true \
+    WIREGUARD_IPV4_NETWORK='10.3.2.0/24' \
+    WIREGUARD_IPV4_ADDRESS='10.3.2.1' \
+    WIREGUARD_IPV6_ENABLED=true \
+    WIREGUARD_IPV6_MASQUERADE=true \
+    WIREGUARD_IPV6_NETWORK='fd00::3:2:0/120' \
+    WIREGUARD_IPV6_ADDRESS='fd00::3:2:1' \
+    WIREGUARD_PRIVATE_KEY_PATH='/var/firezone/private_key' \
+    DATABASE_NAME=firezone \
+    DATABASE_USER=postgres \
+    DATABASE_HOST=postgres \
+    DATABASE_PORT='5432' \
+    DATABASE_POOL='10' \
+    DATABASE_SSL='false' \
+    DATABASE_SSL_OPTS='{}' \
+    DATABASE_PARAMETERS='{}' \
+    LOCAL_AUTH_ENABLED='true' \
+    ALLOW_UNPRIVILEGED_DEVICE_MANAGEMENT='true' \
+    DISABLE_VPN_ON_OIDC_ERROR='false' \
+    AUTO_CREATE_OIDC_USERS='true' \
+    AUTH_OIDC='{}' \
+    MAX_DEVICES_PER_USER='10' \
+    CONNECTIVITY_CHECKS_ENABLED='true' \
+    CONNECTIVITY_CHECKS_INTERVAL='3600' \
+    TELEMETRY_ENABLED='true'
+
+# Only copy the final release from the build stage
+COPY --from=builder /app/_build/${MIX_ENV}/rel/firezone ./
+
+CMD ["/app/bin/server"]

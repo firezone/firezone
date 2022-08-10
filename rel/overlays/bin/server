@@ -1,0 +1,41 @@
+#!/bin/sh
+
+setup_interface()
+{
+  ip link show dev ${WIREGUARD_INTERFACE_NAME}
+  if [ $? -ne 0 ]; then
+    ip link add ${WIREGUARD_INTERFACE_NAME} type wireguard
+  fi
+
+  if [ $WIREGUARD_IPV4_ENABLED = "true" ]; then
+    ip address replace ${WIREGUARD_IPV4_ADDRESS} dev ${WIREGUARD_INTERFACE_NAME}
+  fi
+  if [ $WIREGUARD_IPV6_ENABLED = "true" ]; then
+    ip -6 address replace ${WIREGUARD_IPV6_ADDRESS} dev ${WIREGUARD_INTERFACE_NAME}
+  fi
+  ip link set mtu ${WIREGUARD_MTU} up dev ${WIREGUARD_INTERFACE_NAME}
+}
+
+add_routes()
+{
+  if [ $WIREGUARD_IPV4_ENABLED = "true" ]; then
+    ip route add ${WIREGUARD_IPV4_NETWORK} dev ${WIREGUARD_INTERFACE_NAME}
+  fi
+  if [ $WIREGUARD_IPV6_ENABLED = "true" ]; then
+    ip -6 route add ${WIREGUARD_IPV6_NETWORK} dev ${WIREGUARD_INTERFACE_NAME}
+  fi
+}
+
+setup_telemetry() {
+  [ -f /var/firezone/telemetry_id ] || cat /proc/sys/kernel/random/uuid > /var/firezone/telemetry_id
+  export TELEMETRY_ID=$(cat /var/firezone/telemetry_id)
+}
+
+setup_interface
+add_routes
+
+setup_telemetry
+
+cd -P -- "$(dirname -- "$0")"
+./firezone eval FzHttp.Release.migrate
+exec ./firezone start
