@@ -4,6 +4,7 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
   """
   use FzHttpWeb, :live_component
 
+  alias FzHttp.Conf
   alias FzHttp.Devices
   alias FzHttp.Sites
   alias FzHttpWeb.ErrorHelpers
@@ -12,6 +13,7 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
   def mount(socket) do
     {:ok,
      socket
+     |> assign(allowed_to_configure?())
      |> assign(:device, nil)
      |> assign(:config, nil)}
   end
@@ -71,6 +73,12 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
     else
       :not_authorized
     end
+  end
+
+  defp allowed_to_configure? do
+    %{
+      allow_unprivileged_device_configuration: Conf.get(:allow_unprivileged_device_configuration)
+    }
   end
 
   defp authorized_to_create?(socket) do
