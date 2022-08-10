@@ -51,7 +51,7 @@ const config = {
         docs: {
           routeBasePath: "/",
           sidebarPath: require.resolve("./sidebars.js"),
-          editUrl: "https://github.com/firezone/firezone",
+          editUrl: "https://github.com/firezone/firezone/tree/master",
         },
         theme: {
           customCss: require.resolve("./src/css/custom.css"),
@@ -162,9 +162,7 @@ const config = {
 
         //... other Algolia params
       },
-      themeConfig: {
-        metadata: [{name: 'keywords', content: 'wireguard, vpn, firewall, remote, network, documentation'}],
-      },
+      metadata: [{name: 'keywords', content: 'wireguard, vpn, firewall, remote access, network, documentation'}],
     }),
 };
 
