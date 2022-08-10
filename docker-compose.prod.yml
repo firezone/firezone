@@ -88,6 +88,7 @@ services:
       ## App
       # LOCAL_AUTH_ENABLED: 'true'
       # ALLOW_UNPRIVILEGED_DEVICE_MANAGEMENT: 'true'
+      # ALLOW_UNPRIVILEGED_DEVICE_CONFIGURATION: 'true'
       # DISABLE_VPN_ON_OIDC_ERROR: 'false'
       # AUTO_CREATE_OIDC_USERS: 'true'
       # AUTH_OIDC: '{}'
