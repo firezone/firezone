@@ -12,6 +12,7 @@ defmodule FzHttp.Conf.Configuration do
     field :logo, :map
     field :local_auth_enabled, :boolean
     field :allow_unprivileged_device_management, :boolean
+    field :allow_unprivileged_device_configuration, :boolean
     field :openid_connect_providers, :map
     field :disable_vpn_on_oidc_error, :boolean
     field :auto_create_oidc_users, :boolean
@@ -26,6 +27,7 @@ defmodule FzHttp.Conf.Configuration do
       :logo,
       :local_auth_enabled,
       :allow_unprivileged_device_management,
+      :allow_unprivileged_device_configuration,
       :openid_connect_providers,
       :disable_vpn_on_oidc_error,
       :auto_create_oidc_users
