@@ -51,7 +51,7 @@ const config = {
         docs: {
           routeBasePath: "/",
           sidebarPath: require.resolve("./sidebars.js"),
-          editUrl: "https://github.com/firezone/firezone",
+          editUrl: "https://github.com/firezone/firezone/tree/master",
         },
         theme: {
           customCss: require.resolve("./src/css/custom.css"),
