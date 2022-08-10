@@ -17,11 +17,8 @@ WORKDIR /app
 RUN mix local.hex --force && \
     mix local.rebar --force
 
-ARG VERSION=0.0.0-docker
-
 # set build ENV
-ENV MIX_ENV="prod" \
-    VERSION=$VERSION
+ENV MIX_ENV="prod"
 
 # install mix dependencies
 COPY mix.exs mix.lock ./
@@ -48,6 +45,9 @@ RUN cd apps/fz_http/assets \
     && npm run deploy \
     && cd .. \
     && mix phx.digest
+
+ARG VERSION=0.0.0-docker
+ENV VERSION=$VERSION
 
 # Compile the release
 RUN mix compile
