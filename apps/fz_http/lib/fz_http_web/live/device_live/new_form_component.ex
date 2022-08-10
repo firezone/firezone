@@ -4,6 +4,7 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
   """
   use FzHttpWeb, :live_component
 
+  alias FzHttp.Conf
   alias FzHttp.Devices
   alias FzHttp.Sites
   alias FzHttpWeb.ErrorHelpers

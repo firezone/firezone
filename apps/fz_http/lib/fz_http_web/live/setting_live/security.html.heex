@@ -69,6 +69,30 @@
     </div>
   </div>
 
+  <div class="block" title={@field_titles.allow_unprivileged_device_configuration}>
+
+    <strong>Allow unprivileged device configuration</strong>
+
+    <div class="level">
+      <div class="level-left">
+        <p>
+          Enable or disable configuration of device fields for unprivileged users.
+          <strong>Note:</strong> <code>name</code> and <code>description</code> will
+          still be editable by unprivileged users when this setting is enabled.
+        </p>
+      </div>
+      <div class="level-right">
+        <label class="switch is-medium">
+          <input type="checkbox" phx-click="toggle"
+              phx-value-config="allow_unprivileged_device_configuration"
+              checked={Conf.get(:allow_unprivileged_device_configuration)}
+              value={if(!Conf.get(:allow_unprivileged_device_configuration), do: "on")} />
+          <span class="check"></span>
+        </label>
+      </div>
+    </div>
+  </div>
+
   <h4 class="title is-4">Single Sign-On</h4>
 
   <div class="block">

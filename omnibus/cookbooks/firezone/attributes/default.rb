@@ -45,6 +45,24 @@ default['firezone']['max_devices_per_user'] = 10
 # if you only want administrators to create and manage devices.
 default['firezone']['allow_unprivileged_device_management'] = true
 
+# Allow users to configure the following device fields when creating a device:
+# use_site_allowed_ips
+# allowed_ips
+# use_site_dns
+# dns
+# use_site_endpoint
+# endpoint
+# use_site_mtu
+# mtu
+# use_site_persistent_keepalive
+# persistent_keepalive
+# ipv4
+# ipv6
+#
+# If you only want users to modify the name and description for new devices,
+# disable this.
+default['firezone']['allow_unprivileged_device_configuration'] = true
+
 default['firezone']['config_directory'] = '/etc/firezone'
 default['firezone']['install_directory'] = '/opt/firezone'
 default['firezone']['app_directory'] = "#{node['firezone']['install_directory']}/embedded/service/firezone"

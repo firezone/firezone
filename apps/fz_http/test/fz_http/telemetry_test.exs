@@ -104,11 +104,18 @@ defmodule FzHttp.TelemetryTest do
       assert ping_data[:unprivileged_device_management]
     end
 
-    @tag config: {:allow_unprivileged_device_management, false}
-    test "unprivileged device management disabled" do
+    @tag config: {:allow_unprivileged_device_configuration, true}
+    test "unprivileged device configuration enabled" do
       ping_data = Telemetry.ping_data()
 
-      refute ping_data[:unprivileged_device_management]
+      assert ping_data[:unprivileged_device_configuration]
+    end
+
+    @tag config: {:allow_unprivileged_device_configuration, false}
+    test "unprivileged device configuration disabled" do
+      ping_data = Telemetry.ping_data()
+
+      refute ping_data[:unprivileged_device_configuration]
     end
   end
 
