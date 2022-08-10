@@ -26,8 +26,15 @@ add_routes()
   fi
 }
 
+setup_telemetry() {
+  [ -f /var/firezone/telemetry_id ] || cat /proc/sys/kernel/random/uuid > /var/firezone/telemetry_id
+  export TELEMETRY_ID=$(cat /var/firezone/telemetry_id)
+}
+
 setup_interface
 add_routes
+
+setup_telemetry
 
 cd -P -- "$(dirname -- "$0")"
 ./firezone eval FzHttp.Release.migrate

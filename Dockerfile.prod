@@ -107,8 +107,7 @@ ENV MIX_ENV="prod" \
     MAX_DEVICES_PER_USER='10' \
     CONNECTIVITY_CHECKS_ENABLED='true' \
     CONNECTIVITY_CHECKS_INTERVAL='3600' \
-    TELEMETRY_ENABLED='false' \
-    TELEMETRY_ID=NONE
+    TELEMETRY_ENABLED='true'
 
 # Only copy the final release from the build stage
 COPY --from=builder /app/_build/${MIX_ENV}/rel/firezone ./

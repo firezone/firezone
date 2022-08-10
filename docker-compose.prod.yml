@@ -95,7 +95,6 @@ services:
       # CONNECTIVITY_CHECKS_ENABLED: 'true'
       # CONNECTIVITY_CHECKS_INTERVAL: '3600'
       # TELEMETRY_ENABLED: 'false'
-      # TELEMETRY_ID: NONE
 
     cap_add:
       - NET_ADMIN
