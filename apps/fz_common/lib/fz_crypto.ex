@@ -5,6 +5,21 @@ defmodule FzCommon.FzCrypto do
 
   @wg_psk_length 32
 
+  def gen_secrets do
+    [
+      {"DEFAULT_ADMIN_PASSWORD", rand_base64(12)},
+      {"GUARDIAN_SECRET_KEY", rand_base64(48)},
+      {"SECRET_KEY_BASE", rand_base64(48)},
+      {"LIVE_VIEW_SIGNING_SALT", rand_base64(24)},
+      {"COOKIE_SIGNING_SALT", rand_base64(6)},
+      {"COOKIE_ENCRYPTION_SALT", rand_base64(6)},
+      {"DATABASE_ENCRYPTION_KEY", rand_base64(32)}
+    ]
+    |> Enum.map(fn {k, v} -> "#{k}=#{v}")
+    |> Enum.join("\n")
+    |> IO.puts()
+  end
+
   def psk do
     rand_base64(@wg_psk_length)
   end
