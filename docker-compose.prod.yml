@@ -1,0 +1,123 @@
+# Example compose deployment
+
+x-deploy: &default-deploy
+  restart_policy:
+    condition: on-failure
+    delay: 5s
+    max_attempts: 3
+    window: 120s
+  update_config:
+    order: start-first
+
+version: '3.7'
+
+services:
+  caddy:
+    image: caddy:2
+    volumes:
+      - /data/caddy:/data/caddy
+    ports:
+      - 80:80
+      - 443:443
+    command: caddy reverse-proxy --to firezone:4000 --from ${EXTERNAL_URL?err}
+    deploy:
+      <<: *default-deploy
+
+  firezone:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    image: fz
+    ports:
+      - 51820:51820/udp
+    volumes:
+      # Persist private key through containers, the parent path to WIREGUARD_PRIVATE_KEY_PATH.
+      - /data/firezone:/var/firezone
+    environment:
+      # Admin
+      EXTERNAL_URL: ${EXTERNAL_URL:?err}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:?err}
+      DEFAULT_ADMIN_PASSWORD: ${DEFAULT_ADMIN_PASSWORD:?err}
+
+      # Secrets
+      GUARDIAN_SECRET_KEY: ${GUARDIAN_SECRET_KEY:?err}
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:?err}
+      LIVE_VIEW_SIGNING_SALT: ${LIVE_VIEW_SIGNING_SALT:?err}
+      COOKIE_SIGNING_SALT: ${COOKIE_SIGNING_SALT:?err}
+      COOKIE_ENCRYPTION_SALT: ${COOKIE_ENCRYPTION_SALT:?err}
+      DATABASE_ENCRYPTION_KEY: ${DATABASE_ENCRYPTION_KEY:?err}
+
+      ## Web
+      # PHOENIX_LISTEN_ADDRESS: '0.0.0.0'
+      # PHOENIX_PORT: '4000'
+      # SECURE_COOKIES: 'true'
+      # EXTERNAL_TRUSTED_PROXIES: '[]'
+      # PRIVATE_CLIENTS: '[]'
+
+      ## External
+      # EGRESS_INTERFACE: eth0
+      # NFT_PATH: nft
+      # WIREGUARD_INTERFACE_NAME: 'wg-firezone'
+      # WIREGUARD_PORT: '51820'
+      # WIREGUARD_MTU: '1280'
+      WIREGUARD_ENDPOINT: ${WIREGUARD_ENDPOINT:?err}
+      # WIREGUARD_ALLOWED_IPS: '0.0.0.0/0, ::/0'
+      # WIREGUARD_DNS: '1.1.1.1, 1.0.0.1'
+      # WIREGUARD_PERSISTENT_KEEPALIVE: 0
+      # WIREGUARD_IPV4_ENABLED: true
+      # WIREGUARD_IPV4_MASQUERADE: true
+      # WIREGUARD_IPV4_NETWORK: '10.3.2.0/24'
+      # WIREGUARD_IPV4_ADDRESS: '10.3.2.1'
+      # WIREGUARD_IPV6_ENABLED: true
+      # WIREGUARD_IPV6_MASQUERADE: true
+      # WIREGUARD_IPV6_NETWORK: 'fd00::3:2:0/120'
+      # WIREGUARD_IPV6_ADDRESS: 'fd00::3:2:1'
+      WIREGUARD_PRIVATE_KEY_PATH: '/var/firezone/private_key'
+
+      ## DB
+      DATABASE_NAME: ${DATABASE_NAME:-firezone}
+      DATABASE_USER: ${DATABASE_USER:-postgres}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:?err}
+      # DATABASE_HOST: postgres
+      # DATABASE_PORT: '5432'
+      # DATABASE_POOL: '10'
+      # DATABASE_SSL: 'false'
+      # DATABASE_SSL_OPTS: '{}'
+      # DATABASE_PARAMETERS: '{}'
+
+      ## App
+      # LOCAL_AUTH_ENABLED: 'true'
+      # ALLOW_UNPRIVILEGED_DEVICE_MANAGEMENT: 'true'
+      # DISABLE_VPN_ON_OIDC_ERROR: 'false'
+      # AUTO_CREATE_OIDC_USERS: 'true'
+      # AUTH_OIDC: '{}'
+      # MAX_DEVICES_PER_USER: '10'
+      # CONNECTIVITY_CHECKS_ENABLED: 'true'
+      # CONNECTIVITY_CHECKS_INTERVAL: '3600'
+      # TELEMETRY_ENABLED: 'false'
+
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=0
+      - net.ipv4.ip_forward=1
+      - net.ipv6.conf.all.forwarding=1
+    depends_on:
+      - postgres
+    deploy:
+      <<: *default-deploy
+
+  postgres:
+    image: postgres:13.5
+    volumes:
+      - /data/postgres:/var/lib/postgresql/data
+    environment:
+      # same value as ## DB section above
+      POSTGRES_DB: ${DATABASE_NAME:-firezone}
+      POSTGRES_USER: ${DATABASE_USER:-postgres}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?err}
+    deploy:
+      <<: *default-deploy
+      update_config:
+        order: stop-first
