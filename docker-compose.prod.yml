@@ -24,10 +24,7 @@ services:
       <<: *default-deploy
 
   firezone:
-    build:
-      context: .
-      dockerfile: Dockerfile.prod
-    image: fz
+    image: firezone/firezone
     ports:
       - 51820:51820/udp
     volumes:
