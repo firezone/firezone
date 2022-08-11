@@ -6,7 +6,7 @@
       <div class="control">
         <%= textarea f,
             :allowed_ips,
-            placeholder: @placeholders[:allowed_ips],
+            placeholder: Sites.default(:allowed_ips),
             class: "textarea #{input_error_class(f, :allowed_ips)}" %>
       </div>
 
@@ -27,7 +27,7 @@
       <div class="control">
         <%= text_input f,
             :dns,
-            placeholder: @placeholders[:dns],
+            placeholder: Sites.default(:dns),
             class: "input #{input_error_class(f, :dns)}" %>
       </div>
 
@@ -47,7 +47,7 @@
       <div class="control">
         <%= text_input f,
             :endpoint,
-            placeholder: @placeholders[:endpoint],
+            placeholder: Sites.default(:endpoint),
             class: "input #{input_error_class(f, :endpoint)}" %>
       </div>
       <p class="help is-danger">
@@ -65,7 +65,7 @@
       <div class="control">
         <%= text_input f,
             :persistent_keepalive,
-            placeholder: @placeholders[:persistent_keepalive],
+            placeholder: Sites.default(:persistent_keepalive),
             class: "input #{input_error_class(f, :persistent_keepalive)}" %>
         <p class="help is-danger">
           <%= error_tag f, :persistent_keepalive %>
@@ -83,7 +83,7 @@
       <div class="control">
         <%= text_input f,
             :mtu,
-            placeholder: @placeholders[:mtu],
+            placeholder: Sites.default(:mtu),
             class: "input #{input_error_class(f, :mtu)}" %>
       </div>
       <p class="help is-danger">
