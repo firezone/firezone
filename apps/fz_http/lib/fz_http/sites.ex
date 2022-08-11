@@ -58,11 +58,11 @@ defmodule FzHttp.Sites do
     |> Map.new()
   end
 
-  defp default(:endpoint) do
+  def default(:endpoint) do
     app_env(:wireguard_endpoint) || ConnectivityChecks.endpoint()
   end
 
-  defp default(key) do
+  def default(key) do
     app_env(String.to_atom("wireguard_#{key}"))
   end
 
