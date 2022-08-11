@@ -1,4 +1,4 @@
-name: Publish container image to Docker Hub
+name: Publish image to Docker Hub
 
 on:
   release:
@@ -26,6 +26,7 @@ jobs:
         uses: docker/build-push-action@v3
         with:
           push: true
+          file: Dockerfile.prod
           build-args: |
             VERSION=${{ github.ref_name }}
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/firezone:${{ github.ref_name }}
