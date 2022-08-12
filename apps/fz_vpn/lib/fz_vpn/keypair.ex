@@ -4,16 +4,31 @@ defmodule FzVpn.Keypair do
   """
 
   def load_or_generate_private_key do
-    path = Application.fetch_env!(:fz_vpn, :wireguard_private_key_path)
+    key = Application.get_env(:fz_vpn, :wireguard_private_key)
+
+    path =
+      if key in [nil, ""] do
+        Application.fetch_env!(:fz_vpn, :wireguard_private_key_path)
+      end
 
     private_key =
-      if File.exists?(path) && File.stat!(path).size > 0 do
-        File.read!(path)
-        |> String.trim()
-      else
-        key = Wireguardex.generate_private_key()
-        write_private_key(path, key)
-        key
+      case {key, path} do
+        {key, path} when key in [nil, ""] and path in [nil, ""] ->
+          raise "Either WIREGUARD_PRIVATE_KEY or WIREGUARD_PRIVATE_KEY_PATH" <>
+                  " needs to be set on the environment"
+
+        {key, _path} when key not in [nil, ""] ->
+          key
+
+        {_key, path} when path not in [nil, ""] ->
+          if File.exists?(path) && File.stat!(path).size > 0 do
+            File.read!(path)
+            |> String.trim()
+          else
+            key = Wireguardex.generate_private_key()
+            write_private_key(path, key)
+            key
+          end
       end
 
     set_public_key(private_key)
