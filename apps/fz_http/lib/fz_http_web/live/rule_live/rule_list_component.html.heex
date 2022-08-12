@@ -8,62 +8,66 @@
   <div class="card-content">
     <.form let={f} for={@changeset} id={"#{@action}-form"} phx-change="change" phx-target={@myself} phx-submit="add_rule">
       <%= hidden_input f, :action, value: @action %>
-      <div class="field has-addons">
-        <div class="control is-expanded">
+
+      <div class="field">
+        <%= label f, :destination, class: "label" %>
+        <div class="control">
           <%= text_input f,
               :destination,
               class: "input #{input_error_class(f, :destination)}",
               placeholder: "IPv4/6 CIDR range or address" %>
         </div>
+        <p class="help is-danger">
+          <%= error_tag f, :destination %>
+        </p>
+      </div>
+
+      <div class="field">
+        <%= label f, "User", class: "label" %>
+        <div class="select">
+          <%= select f,
+              :user_id,
+              user_options(@users),
+              prompt: "Optional user scope" %>
+        </div>
+      </div>
+
+      <div class="field">
+        <%= label f, :port_type, class: "label" %>
+        <div class="select">
+          <%= select f,
+              :port_type,
+              port_type_options(),
+              prompt: "Optional port type",
+              title: if(!@port_rules_supported, do: "Kernel 5.6.9 required for port-based rules."),
+              disabled: !@port_rules_supported %>
+        </div>
+        <p class="help is-danger">
+          <%= error_tag f, :port_type %>
+        </p>
+      </div>
+
+      <div class="field">
+        <%= label f, :port_range, class: "label" %>
         <div class="control">
-          <div class="select">
-            <%= select f,
-                :user_id,
-                user_options(@users),
-                prompt: "Optional user scope" %>
-          </div>
+          <%= text_input f, :port_range,
+              class: "input #{input_error_class(f, :port_range)}",
+              placeholder: "23000-24000",
+              disabled: @port_type == nil %>
         </div>
-        <div class="control">
-          <div class="select">
-            <%= select f,
-                :port_type,
-                port_type_options(),
-                prompt: "Optional port range",
-                disabled: !@port_rules_supported %>
-          </div>
-          <p class="help is-danger">
-            <%= error_tag f, :port_type %>
-          </p>
-        </div>
-        <div class="field">
-          <div class="control">
-            <%= text_input f, :port_range,
-                class: "input #{input_error_class(f, :port_range)}",
-                placeholder: "Port Range",
-                disabled: @port_type == nil %>
-          </div>
-          <p class="help">
-            Formatted as 'start - stop' or 'port' e.g. 20-80 or 80 (Requires port type)
-          </p>
-          <p class="help is-danger">
-            <%= error_tag f, :port_range %>
-          </p>
-        </div>
+        <p class="help is-danger">
+          <%= error_tag f, :port_range %>
+        </p>
+      </div>
+
+      <div class="field">
         <div class="control">
           <%= submit "Add", class: "button is-primary" %>
         </div>
       </div>
-      <p class="help is-danger">
-        <%= error_tag f, :destination %>
-      </p>
-      <%= if !@port_rules_supported do %>
-      <p class="help">
-        Minimum kernel version 5.6.9 required for port-based rules
-      </p>
-      <% end %>
     </.form>
 
-    <table id={"#{@action}-rules"} class="table is-hoverable is-bordered is-striped is-fullwidth">
+    <table id={"#{@action}-rules"} class="mt-4 table is-hoverable is-bordered is-striped is-fullwidth">
     <%= if length(@rule_list) > 0 do %>
         <thead>
           <tr>
