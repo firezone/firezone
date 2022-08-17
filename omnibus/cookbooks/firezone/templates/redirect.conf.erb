@@ -1,12 +1,14 @@
-server {
-  listen 80 default_server;
-  <% if @ipv6 -%>
-  listen [::]:80 default_server;
-  <% end -%>
-  server_name <%= @server_name %>;
+<% if @acme['enabled'] -%>
+  server {
+    listen 80 default_server;
+    <% if @ipv6 -%>
+    listen [::]:80 default_server;
+    <% end -%>
+    server_name <%= @server_name %>;
 
-  # Needed for ACME requests
-  location /.well-known/acme-challenge/ {
-    alias <%= @acme_www_root %>/.well-known/acme-challenge/;
+    # Needed for ACME requests
+    location /.well-known/acme-challenge/ {
+      alias <%= @acme_www_root %>/.well-known/acme-challenge/;
+    }
   }
-}
+<% end -%>
