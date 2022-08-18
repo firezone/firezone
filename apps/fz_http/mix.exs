@@ -65,6 +65,7 @@ defmodule FzHttp.MixProject do
       {:guardian, "~> 2.0"},
       {:guardian_db, "~> 2.0"},
       {:openid_connect, "~> 0.2.2"},
+      {:samly, github: "dropbox/samly"},
       {:ueberauth, "~> 0.7"},
       {:ueberauth_identity, "~> 0.4"},
       {:httpoison, "~> 1.8"},

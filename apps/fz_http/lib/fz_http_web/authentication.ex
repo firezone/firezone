@@ -65,7 +65,10 @@ defmodule FzHttpWeb.Authentication do
   end
 
   def sign_out(conn) do
-    __MODULE__.Plug.sign_out(conn)
+    conn
+    |> Plug.Conn.delete_session("samly_assertion")
+    |> Plug.Conn.delete_session("samly_assertion_key")
+    |> __MODULE__.Plug.sign_out()
   end
 
   def get_current_user(%Plug.Conn{} = conn) do

@@ -18,6 +18,17 @@ defmodule FzHttpWeb.UserFromAuth do
     Users.get_by_email(email) |> Authentication.authenticate(password)
   end
 
+  def find_or_create(:saml, %{"email" => email}) do
+    case Users.get_by_email(email) do
+      nil ->
+        # TODO: SCIM or auto create
+        {:error, "not found"}
+
+      user ->
+        {:ok, user}
+    end
+  end
+
   def find_or_create(_provider, %{"email" => email, "sub" => _sub}) do
     case Users.get_by_email(email) do
       nil -> maybe_create_user(email)

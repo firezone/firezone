@@ -53,6 +53,9 @@ RUN cd apps/fz_http/assets \
 # Compile the release
 RUN mix compile
 
+# Gen SAML certs
+RUN cd apps/fz_http && mix phx.gen.cert
+
 # Changes to config/runtime.exs don't require recompiling the code
 COPY config/runtime.exs config/
 

@@ -5,25 +5,13 @@ defmodule FzHttpWeb.SettingLive.Security do
   use FzHttpWeb, :live_view
 
   import Ecto.Changeset
+  import FzCommon.FzCrypto, only: [rand_string: 1]
 
   alias FzHttp.Configurations, as: Conf
   alias FzHttp.{Sites, Sites.Site}
 
   @page_title "Security Settings"
   @page_subtitle "Configure security-related settings."
-  @oidc_placeholder """
-  {
-    "google": {
-      "discovery_document_uri": "https://accounts.google.com/.well-known/openid-configuration",
-      "client_id": "CLIENT_ID",
-      "client_secret": "CLIENT_SECRET",
-      "redirect_uri": "https://firezone.example.com/auth/oidc/google/callback/",
-      "response_type": "code",
-      "scope:" "openid email profile",
-      "label": "Google"
-    }
-  }
-  """
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
@@ -35,10 +23,16 @@ defmodule FzHttpWeb.SettingLive.Security do
      |> assign(:session_duration_options, session_duration_options())
      |> assign(:site_changeset, site_changeset())
      |> assign(:config_changeset, config_changeset)
+     |> assign(:oidc_configs, config_changeset.data.openid_connect_providers || %{})
+     |> assign(:saml_configs, config_changeset.data.saml_identity_providers || %{})
      |> assign(:field_titles, field_titles(config_changeset))
-     |> assign(:oidc_placeholder, @oidc_placeholder)
      |> assign(:page_subtitle, @page_subtitle)
      |> assign(:page_title, @page_title)}
+  end
+
+  @impl Phoenix.LiveView
+  def handle_params(params, _uri, socket) do
+    {:noreply, assign(socket, :id, params["id"])}
   end
 
   @impl Phoenix.LiveView
@@ -77,31 +71,21 @@ defmodule FzHttpWeb.SettingLive.Security do
     {:noreply, socket}
   end
 
-  @impl Phoenix.LiveView
-  def handle_event(
-        "save_oidc_config",
-        %{"configuration" => %{"openid_connect_providers" => config}},
-        socket
-      ) do
-    with {:ok, json} <- Jason.decode(config),
-         {:ok, conf} <- Conf.update_configuration(%{openid_connect_providers: json}) do
-      :ok = Supervisor.terminate_child(FzHttp.Supervisor, FzHttp.OIDC.StartProxy)
-      {:ok, _pid} = Supervisor.restart_child(FzHttp.Supervisor, FzHttp.OIDC.StartProxy)
-      {:noreply, assign(socket, :config_changeset, Conf.change_configuration(conf))}
-    else
-      {:error, %Jason.DecodeError{}} ->
-        {:noreply,
-         assign(
-           socket,
-           :config_changeset,
-           Conf.change_configuration()
-           |> put_change(:openid_connect_providers, config)
-           |> add_error(:openid_connect_providers, "Invalid JSON configuration")
-         )}
+  @types %{"oidc" => :openid_connect_providers, "saml" => :saml_identity_providers}
 
-      {:error, changeset} ->
-        {:noreply, assign(socket, :config_changeset, changeset)}
-    end
+  @impl Phoenix.LiveView
+  def handle_event("delete", %{"type" => type, "key" => key}, socket) do
+    field_key = Map.fetch!(@types, type)
+
+    providers =
+      get_in(socket.assigns.config_changeset, [Access.key!(:data), Access.key!(field_key)])
+
+    {:ok, conf} = Conf.update_configuration(%{field_key => Map.delete(providers, key)})
+
+    {:noreply,
+     socket
+     |> assign(String.to_existing_atom("#{type}_configs"), get_in(conf, [Access.key!(field_key)]))
+     |> assign(:config_changeset, change(conf))}
   end
 
   @hour 3_600
