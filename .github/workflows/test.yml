@@ -13,8 +13,9 @@ jobs:
           cache-dependency-path: docs/package-lock.json
       - name: Lint Docs
         run: |
-          npm install --prefix docs/
-          ./.ci/lint-docs.sh
+          cd docs
+          npm install
+          ./node_modules/markdownlint-cli/markdownlint.js .
 
   static-analysis:
     runs-on: ubuntu-latest

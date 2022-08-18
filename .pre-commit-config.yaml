@@ -33,7 +33,9 @@ repos:
         files: \.rb$
       - id: markdownlint
         name: 'nodejs: markdownlint'
-        entry: .ci/lint-docs.sh
+        entry: |
+          cd docs
+          ./node_modules/markdownlint-cli/markdownlint.js .
         language: system
         pass_filenames: false
         files: \.md$
