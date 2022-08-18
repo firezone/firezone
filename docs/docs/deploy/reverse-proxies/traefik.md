@@ -80,7 +80,7 @@ Now you should be able to start the Traefik proxy with `docker compose up`.
 
 This configuration uses Firezone's auto-generated self-signed certificates.
 
-### `docker-compose.yml`
+### SSL `docker-compose.yml`
 
 ```yaml
 version: '3'
@@ -109,7 +109,7 @@ services:
       - /var/opt/firezone/ssl/ca:/ssl:ro
 ```
 
-### `rules.yml`
+### SSL `rules.yml`
 
 ```yaml
 http:

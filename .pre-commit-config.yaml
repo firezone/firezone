@@ -31,6 +31,12 @@ repos:
         language: system
         pass_filenames: false
         files: \.rb$
+      - id: markdownlint
+        name: 'nodejs: markdownlint'
+        entry: .ci/lint-docs.sh
+        language: system
+        pass_filenames: false
+        files: \.md$
 
   # Standard pre-commit hooks
   - repo: https://github.com/pre-commit/pre-commit-hooks

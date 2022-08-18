@@ -9,11 +9,12 @@ jobs:
       - uses: actions/setup-node@v2
         with:
           node-version: '16'
+          cache: 'npm'
+          cache-dependency-path: docs/package-lock.json
       - name: Lint Docs
         run: |
-          npm install -g markdownlint-cli
-          cd docs
-          markdownlint .
+          npm install --prefix docs/
+          ./.ci/lint-docs.sh
 
   static-analysis:
     runs-on: ubuntu-latest
@@ -114,6 +115,8 @@ jobs:
       - uses: actions/setup-node@v2
         with:
           node-version: '16'
+          cache: 'npm'
+          cache-dependency-path: apps/fz_http/assets/package-lock.json
       - uses: erlef/setup-beam@v1
         with:
           otp-version: '25'
