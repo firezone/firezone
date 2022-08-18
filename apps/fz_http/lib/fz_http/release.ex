@@ -28,6 +28,7 @@ defmodule FzHttp.Release do
 
     if Repo.exists?(from u in User, where: u.email == ^email()) do
       change_password(email(), default_password())
+      reset_role(email(), :admin)
     else
       Users.create_admin_user(
         email: email(),
@@ -46,6 +47,11 @@ defmodule FzHttp.Release do
     {:ok, _user} =
       Users.get_user!(email: email)
       |> Users.admin_update_user(params)
+  end
+
+  def reset_role(email, role) do
+    Users.get_user!(email: email)
+    |> Users.update_user_role(role)
   end
 
   defp repos do
