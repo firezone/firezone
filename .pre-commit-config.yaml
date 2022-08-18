@@ -36,7 +36,7 @@ repos:
         entry: ./docs/node_modules/markdownlint-cli/markdownlint.js
         language: system
         pass_filenames: true
-        files: \.md$
+        files: docs/.*\.md$
 
   # Standard pre-commit hooks
   - repo: https://github.com/pre-commit/pre-commit-hooks
