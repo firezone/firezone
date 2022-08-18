@@ -86,3 +86,18 @@ else
     to ssl_crtfile
   end
 end
+
+# SAML certs
+host = URI.parse(node['firezone']['external_url']).host
+ssl_crtfile = File.join(node['firezone']['ssl']['directory'], 'saml.crt')
+openssl_x509_certificate ssl_crtfile do
+  common_name host
+  org node['firezone']['ssl']['company_name']
+  org_unit node['firezone']['ssl']['organizational_unit_name']
+  country node['firezone']['ssl']['country_name']
+  key_length 2048
+  expire 3650
+  owner 'root'
+  group 'root'
+  mode '0644'
+end

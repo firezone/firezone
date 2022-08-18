@@ -106,7 +106,6 @@ firezoneSetup() {
   docker run --rm firezone/firezone bin/gen-env > .env
   sed -i "s/ADMIN_EMAIL=_CHANGE_ME_/ADMIN_EMAIL=$1/" .env
   sed -i "s~EXTERNAL_URL=_CHANGE_ME_~EXTERNAL_URL=$2~" .env
-  sed -i "s/TELEMETRY_ID=.*/TELEMETRY_ID=$telemetry_id/" .env
   docker-compose up -d
   docker-compose exec firezone bin/create-or-reset-admin
 

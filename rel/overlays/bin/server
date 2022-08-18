@@ -27,13 +27,30 @@ add_routes()
 }
 
 setup_telemetry() {
-  [ -f /var/firezone/telemetry_id ] || cat /proc/sys/kernel/random/uuid > /var/firezone/telemetry_id
-  export TELEMETRY_ID=$(cat /var/firezone/telemetry_id)
+  [ -f /var/firezone/.tid ] || cat /proc/sys/kernel/random/uuid > /var/firezone/.tid
+  export TELEMETRY_ID=$(cat /var/firezone/.tid)
+}
+
+gen_cert() {
+  openssl req \
+    -x509 \
+    -sha256 \
+    -nodes \
+    -days 365 \
+    -newkey rsa:2048 \
+    -keyout /var/firezone/saml.key \
+    -out /var/firezone/saml.crt \
+    -subj "/C=US/ST=Denial/L=Firezone/O=Dis/CN=www.example.com"
+}
+
+setup_saml() {
+  ([ -f /var/firezone/saml.key ] && [ -f /var/firezone/saml.crt ]) || gen_cert
 }
 
 setup_interface
 add_routes
 
+setup_saml
 setup_telemetry
 
 cd -P -- "$(dirname -- "$0")"

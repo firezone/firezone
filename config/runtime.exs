@@ -25,18 +25,20 @@ if config_env() == :prod do
   # For releases, require that all these are set
   admin_email = System.fetch_env!("ADMIN_EMAIL")
   default_admin_password = System.fetch_env!("DEFAULT_ADMIN_PASSWORD")
-  telemetry_id = System.get_env("TELEMETRY_ID", File.read!("/var/firezone/.tid"))
   guardian_secret_key = System.fetch_env!("GUARDIAN_SECRET_KEY")
   encryption_key = System.fetch_env!("DATABASE_ENCRYPTION_KEY")
   secret_key_base = System.fetch_env!("SECRET_KEY_BASE")
   live_view_signing_salt = System.fetch_env!("LIVE_VIEW_SIGNING_SALT")
   cookie_signing_salt = System.fetch_env!("COOKIE_SIGNING_SALT")
   cookie_encryption_salt = System.fetch_env!("COOKIE_ENCRYPTION_SALT")
+  telemetry_id = System.fetch_env!("TELEMETRY_ID")
 
   # OPTIONAL
   wireguard_private_key_path =
     System.get_env("WIREGUARD_PRIVATE_KEY_PATH", "/var/firezone/private_key")
 
+  saml_keyfile_path = System.get_env("SAML_KEYFILE_PATH", "/var/firezone/saml.key")
+  saml_certfile_path = System.get_env("SAML_CERTFILE_PATH", "/var/firezone/saml.crt")
   database_name = System.get_env("DATABASE_NAME", "firezone")
   database_user = System.get_env("DATABASE_USER", "postgres")
   database_host = System.get_env("DATABASE_HOST", "postgres")
@@ -100,7 +102,7 @@ if config_env() == :prod do
   local_auth_enabled = FzString.to_boolean(System.get_env("LOCAL_AUTH_ENABLED", "true"))
 
   max_devices_per_user =
-    System.get_env("MAX_DEVICES_PER_USER", 10)
+    System.get_env("MAX_DEVICES_PER_USER", "10")
     |> String.to_integer()
     |> FzInteger.clamp(0, 100)
 
@@ -213,6 +215,8 @@ if config_env() == :prod do
     secret_key: guardian_secret_key
 
   config :fz_http,
+    saml_certfile_path: saml_certfile_path,
+    saml_keyfile_path: saml_keyfile_path,
     external_trusted_proxies: external_trusted_proxies,
     private_clients: private_clients,
     disable_vpn_on_oidc_error: disable_vpn_on_oidc_error,

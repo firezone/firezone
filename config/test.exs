@@ -78,6 +78,8 @@ config :fz_http, :openid_connect_providers, """
 }
 """
 
+config :fz_http, :saml_identity_providers, %{"test" => %{"label" => "SAML"}}
+
 # Provide mock for HTTPClient
 config :fz_http, :openid_connect, OpenIDConnect.Mock
 

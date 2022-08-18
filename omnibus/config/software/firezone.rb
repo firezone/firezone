@@ -40,7 +40,8 @@ version('1.0.0') do
            '_build',
            'deps',
            'omnibus',
-           'apps/fz_http/assets/node_modules'
+           'apps/fz_http/assets/node_modules',
+           'apps/fz_http/priv/cert'
          ] }
 end
 
