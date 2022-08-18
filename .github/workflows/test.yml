@@ -9,11 +9,11 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v2
-      - uses: actions/setup-node@v2
+      - uses: actions/setup-node@v3
         with:
           node-version: '16'
           cache: 'npm'
-          cache-dependency-path: docs/package-lock.json
+          cache-dependency-path: '**/package-lock.json'
       - uses: actions/setup-ruby@v1
         with:
           ruby-version: '2.7'
@@ -72,6 +72,10 @@ jobs:
       - name: Create PLTs
         if: steps.plt_cache.outputs.cache-hit != 'true'
         run: mix dialyzer --plt
+      - name: Install node modules
+        run: |
+          cd docs
+          npm ci
       - name: Run pre-commit
         run: |
           pre-commit install
@@ -103,11 +107,11 @@ jobs:
             net-tools \
             wireguard
       - uses: actions/checkout@v2
-      - uses: actions/setup-node@v2
+      - uses: actions/setup-node@v3
         with:
           node-version: '16'
           cache: 'npm'
-          cache-dependency-path: apps/fz_http/assets/package-lock.json
+          cache-dependency-path: '**/package-lock.json'
       - uses: erlef/setup-beam@v1
         with:
           otp-version: '25'
