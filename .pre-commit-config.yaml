@@ -33,11 +33,9 @@ repos:
         files: \.rb$
       - id: markdownlint
         name: 'nodejs: markdownlint'
-        entry: |
-          cd docs
-          ./node_modules/markdownlint-cli/markdownlint.js .
+        entry: ./docs/node_modules/markdownlint-cli/markdownlint.js
         language: system
-        pass_filenames: false
+        pass_filenames: true
         files: \.md$
 
   # Standard pre-commit hooks
