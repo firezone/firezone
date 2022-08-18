@@ -9,6 +9,11 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v2
+      - uses: actions/setup-node@v2
+        with:
+          node-version: '16'
+          cache: 'npm'
+          cache-dependency-path: docs/package-lock.json
       - uses: actions/setup-ruby@v1
         with:
           ruby-version: '2.7'
