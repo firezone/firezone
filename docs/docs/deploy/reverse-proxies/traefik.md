@@ -4,32 +4,34 @@ sidebar_position: 2
 ---
 
 The following are examples for configuring the [Traefik](https://traefik.io/)
-proxy.
+proxy as a reverse proxy for Firezone.
 
-As of right now Firezone can't be run as a container in production, although
-this is a [planned feature](https://github.com/firezone/firezone/issues/260).
-So, these example configurations expects Firezone to be deployed on the same
-host as the proxy.
+In these examples, we assume Traefik is deployed using Docker on the same host
+as Firezone. For this to work, you'll need to make sure Firezone's phoenix
+app is bound to port `13000` on the Docker interface address and
+`external_trusted_proxies` is set properly:
 
-In these configurations we assume `default['firezone']['phoenix']['port']` to be
-`13000`. Furthermore, for these configuration to work we need the Firezone app
-to listen in the Docker interface so you should set:
+```ruby
+# /etc/firezone/firezone.rb
 
-* `default['firezone']['phoenix']['listen_address'] = '172.17.0.1'`
-* `default['firezone']['external_trusted_proxies'] = ['172.18.0.2']`
+# ...
 
-In the [configuration file](../../reference/configuration-file.md).
+default['firezone']['phoenix']['port'] = 13000
+default['firezone']['phoenix']['listen_address'] = '172.17.0.1'
+default['firezone']['external_trusted_proxies'] = ['172.18.0.2']
+```
 
 ## Without SSL termination
 
-Take into account that a previous proxy will need to terminate SSL connections.
+Since Firezone requires HTTPS for the web portal, please bear in mind a
+downstream proxy will need to terminate SSL connections in this scenario.
 
-Set the following files
+Use the following `docker-compose.yml` and `rules.yml` files to configure
+Traefik:
 
 ### `docker-compose.yml`
 
-```conf
-ubuntu@ip-172-31-79-208:~/traefik$ cat docker-compose.yml
+```yaml
 version: '3'
 
 services:
@@ -57,8 +59,7 @@ services:
 
 ### `rules.yml`
 
-```conf
-ubuntu@ip-172-31-79-208:~/traefik$ cat rules.yml
+```yaml
 http:
   routers:
     test:
@@ -73,16 +74,15 @@ http:
         - url: "http://host.docker.internal:13000"
 ```
 
-And then you can start the Traefik proxy with `docker compose up`
+Now you should be able to start the Traefik proxy with `docker compose up`.
 
 ## With SSL termination
 
-This configuration use the auto-generated Firezone self-signed certs as the
-default certificates for SSL.
+This configuration uses Firezone's auto-generated self-signed certificates.
 
 ### SSL `docker-compose.yml`
 
-```conf
+```yaml
 version: '3'
 
 services:
@@ -111,7 +111,7 @@ services:
 
 ### SSL `rules.yml`
 
-```conf
+```yaml
 http:
   routers:
     test:
@@ -129,6 +129,6 @@ tls:
   stores:
     default:
       defaultCertificate:
-        certFile: /ssl/ip-172-31-79-208.ec2.internal.crt
-        keyFile: /ssl/ip-172-31-79-208.ec2.internal.key
+        certFile: /path/to/your/cert.crt
+        keyFile: /path/to/your/key.key
 ```
