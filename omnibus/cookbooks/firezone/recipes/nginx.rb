@@ -74,6 +74,7 @@ if node['firezone']['nginx']['enabled']
     package 'firezone'
     action :enable
     subscribes :restart, 'template[nginx.conf]'
+    subscribes :restart, 'template[redirect.conf]'
     subscribes :restart, 'template[phoenix.nginx.conf]'
     subscribes :restart, 'template[acme.conf]'
   end
