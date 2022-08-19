@@ -4,10 +4,10 @@ sidebar_position: 4
 ---
 
 :::note
-This is an advanced configuration. The default bundled Nginx proxy
-is suitable for the vast majority of use cases and is recommended for most
-users. There are important security risks if the Firezone reverse proxy is
-not set up correctly. Use only if you know what you are doing.
+Using a custom reverse proxy is an advanced configuration. The default bundled
+Nginx proxy is suitable for the vast majority of use cases and is recommended
+for most users. There are important security risks if the Firezone reverse proxy
+is not set up correctly. Use only if you know what you are doing.
 :::
 
 ## Introduction
@@ -18,8 +18,8 @@ using behind your own load balancer.
 
 ## Prerequisites
 
-Below you will find the requirements in order to setup Firezone and the
-reverse-proxies.
+Below you will find the requirements in order to setup Firezone with a custom
+reverse proxy.
 
 ### Firezone configuration requirements
 
@@ -31,10 +31,9 @@ reverse-proxies.
   way the [X-Forwarded-For header works](
   https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-For),
   this is needed to parse the actual client's IP address to prevent
-  spoofing.
+  IP spoofing.
 
 :::note
-
 The `external_trusted_proxies` list automatically implicitly includes the
 following private CIDR ranges, even if they're not specified in the
 configuration file:
@@ -49,8 +48,7 @@ configuration file:
 This means any web requests originating from these IPs are automatically ignored
 from the `X-Forwarded-For` headers. If you're accessing Firezone from any IPs in
 this range (as seen by the Firezone web app), be sure to add them to the
-`default['firezone']['phoenix']['clients']` configuration option.
-
+`default['firezone']['phoenix']['clients']` configuration option instead.
 :::
 
 Read more about the configuration options
@@ -62,7 +60,8 @@ Read more about the configuration options
   [here](
   https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-For)
 * Your proxy should also set the `X-Forwarded-Proto` to `https`.
-* Your proxy **must** terminate SSL since we enforce [secure cookies](
+* Your proxy (or another downstream proxy) **must** terminate SSL since we
+  enforce [secure cookies](
   https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#restrict_access_to_cookies).
 * Firezone requires the use of WebSockets to establish realtime connections. We
   recommended following your proxy's specific documentation for supporting

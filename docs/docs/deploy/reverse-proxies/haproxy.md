@@ -3,13 +3,13 @@ title: HAProxy
 sidebar_position: 3
 ---
 
-The following is an example configuration for the
-[HAProxy](https://www.haproxy.org/) proxy. we assume
+The following is an example reverse proxy configuration for [HAProxy](
+https://www.haproxy.org/) proxy. We assume
 `default['firezone']['phoenix']['port']` to be `13000` and the proxy running on
 the same host as the Firezone app.
 
-There is not SSL termination in this configuration so a previous proxy will
-need to terminate the SSL connection.
+Since Firezone requires HTTPS for the web portal, please bear in mind a
+downstream proxy will need to terminate SSL connections in this scenario.
 
 You can also configure HAProxy to handle the SSL termination as explained
 [here](https://www.haproxy.com/blog/haproxy-ssl-termination/) but take into
