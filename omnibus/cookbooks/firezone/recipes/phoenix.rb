@@ -27,6 +27,10 @@ include_recipe 'firezone::acme'
 include_recipe 'firezone::ssl'
 include_recipe 'firezone::wireguard'
 
+fqdn = URI.parse(node['firezone']['external_url']).host
+acme_cert = "#{node['firezone']['var_directory']}/ssl/acme/#{fqdn}.fullchain"
+acme_key = "#{node['firezone']['var_directory']}/ssl/acme/#{fqdn}.key"
+
 [node['firezone']['phoenix']['log_directory'],
  "#{node['firezone']['var_directory']}/phoenix/run"].each do |dir|
   directory dir do
@@ -37,14 +41,10 @@ include_recipe 'firezone::wireguard'
   end
 end
 
-acme_cert = "#{node['firezone']['var_directory']}/ssl/acme/#{fqdn}.fullchain"
-acme_key = "#{node['firezone']['var_directory']}/ssl/acme/#{fqdn}.key"
-host = URI.parse(node['firezone']['external_url']).host
-
 if node['firezone']['ssl']['acme']['enabled']
   # Generate a temporary cert until ACME issues one
   openssl_x509_certificate acme_cert do
-    common_name host
+    common_name fqdn
     org node['firezone']['ssl']['company_name']
     org_unit node['firezone']['ssl']['organizational_unit_name']
     country node['firezone']['ssl']['country_name']
@@ -57,7 +57,6 @@ if node['firezone']['ssl']['acme']['enabled']
 end
 
 template 'phoenix.nginx.conf' do
-  fqdn = URI.parse(node['firezone']['external_url']).host
   path "#{node['firezone']['nginx']['directory']}/sites-enabled/phoenix"
   source 'phoenix.nginx.conf.erb'
   owner node['firezone']['user']
