@@ -65,7 +65,7 @@ template 'redirect.conf' do
     acme_www_root: "#{node['firezone']['var_directory']}/nginx/acme_root",
     rate_limiting_zone_name: node['firezone']['nginx']['rate_limiting_zone_name'],
     ipv6: node['firezone']['nginx']['ipv6'],
-    acme: { 'enabled' => node['firezone']['ssl']['acme']['enabled'] }
+    acme: node['firezone']['ssl']['acme']
   )
 end
 
