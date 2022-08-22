@@ -1,3 +1,4 @@
+<% if @acme['enabled'] -%>
 server {
   listen 80 default_server;
   <% if @ipv6 -%>
@@ -10,3 +11,4 @@ server {
     alias <%= @acme_www_root %>/.well-known/acme-challenge/;
   }
 }
+<% end -%>
