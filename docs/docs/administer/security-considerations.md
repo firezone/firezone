@@ -16,7 +16,8 @@ Shown below is a table of ports used by Firezone services.
 
 | Service | Default port | Listen address | Description |
 | ------ | --------- | ------- | --------- |
-| Nginx | `80` `443` | `all` | Public HTTP(S) port for administering Firezone and facilitating authentication. |
+| Nginx | `443` | `all` | Public HTTPS port for administering Firezone and facilitating authentication. |
+| Nginx | `80` | `all` | Public HTTP port used for ACME. Disabled when ACME is disabled. |
 | WireGuard | `51820` | `all` | Public WireGuard port used for VPN sessions. |
 | Postgresql | `15432` | `127.0.0.1` | Local-only port used for bundled Postgresql server. |
 | Phoenix | `13000` | `127.0.0.1` | Local-only port used by upstream elixir app server. |
