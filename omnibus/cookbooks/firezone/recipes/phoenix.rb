@@ -42,7 +42,7 @@ acme_key = "#{node['firezone']['var_directory']}/ssl/acme/#{fqdn}.key"
 end
 
 if node['firezone']['ssl']['acme']['enabled']
-  # Generate a temporary cert until ACME issues one
+  # Generate a temporary cert until ACME issues one so that nginx can be restarted
   openssl_x509_certificate acme_cert do
     common_name fqdn
     org node['firezone']['ssl']['company_name']
