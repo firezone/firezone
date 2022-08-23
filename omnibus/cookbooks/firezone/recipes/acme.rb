@@ -65,10 +65,13 @@ if node['firezone']['ssl']['acme']['enabled'] && !node['firezone']['ssl']['certi
     ACME
   end
 
-  execute 'ACME issue' do
-    # Pick up any nginx conf changes that may have happened during this Chef run
+  # Pick up any nginx conf changes that may have happened during this Chef run
+  execute 'Reload Nginx' do
     notifies :reload, 'component_runit_service[nginx]', :immediately
+    command 'echo "reloading nginx..."'
+  end
 
+  execute 'ACME issue' do
     # Command returns 0: Cert was issued
     # Command returns 2: Skipping because renewal isn't needed
     returns [0, 2]
