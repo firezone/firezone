@@ -21,8 +21,7 @@ server {
 
   server_name <%= @fqdn %>;
 
-  <% if @acme['enabled'] && !@ssl['certificate'] && \
-      File.exist?(@acme['certificate']) && File.exist?(@acme['certificate_key']) -%>
+  <% if @acme['enabled'] && !@ssl['certificate'] -%>
   ssl_certificate <%= @acme['certificate'] %>;
   ssl_certificate_key <%= @acme['certificate_key'] %>;
   <% else -%>
