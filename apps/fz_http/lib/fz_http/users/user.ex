@@ -9,8 +9,12 @@ defmodule FzHttp.Users.User do
   use Ecto.Schema
   import Ecto.Changeset
   import FzHttp.Users.PasswordHelpers
+  import FzHttp.SharedValidators, only: [trim: 2]
 
   alias FzHttp.{Devices.Device, OIDC.Connection}
+
+  # Fields for which to trim whitespace after cast, before validation
+  @whitespace_trimmed_fields :email
 
   schema "users" do
     field :uuid, Ecto.UUID, autogenerate: true
@@ -43,6 +47,7 @@ defmodule FzHttp.Users.User do
       :password,
       :password_confirmation
     ])
+    |> trim(@whitespace_trimmed_fields)
     |> validate_required([:email])
     |> validate_password_equality()
     |> validate_length(:password, min: @min_password_length, max: @max_password_length)
@@ -82,6 +87,7 @@ defmodule FzHttp.Users.User do
   def update_email(user, attrs) do
     user
     |> cast(attrs, [:email])
+    |> trim(:email)
     |> validate_required([:email])
     |> validate_format(:email, ~r/@/)
   end

@@ -3,6 +3,21 @@ defmodule FzHttp.UsersTest do
 
   alias FzHttp.{Repo, Users}
 
+  describe "trimmed fields" do
+    test "trims expected fields" do
+      changeset =
+        Users.User.create_changeset(struct(Users.User), %{
+          "email" => " foo "
+        })
+
+      assert %Ecto.Changeset{
+               changes: %{
+                 email: "foo"
+               }
+             } = changeset
+    end
+  end
+
   describe "consume_sign_in_token/1 valid token" do
     setup [:create_user_with_valid_sign_in_token]
 

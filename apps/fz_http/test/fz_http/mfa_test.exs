@@ -11,6 +11,21 @@ defmodule FzHttp.MFATest do
     {:ok, method: method}
   end
 
+  describe "trimmed fields" do
+    test "trims expected fields" do
+      changeset =
+        MFA.new_method(%{
+          "name" => " foo "
+        })
+
+      assert %Ecto.Changeset{
+               changes: %{
+                 name: "foo"
+               }
+             } = changeset
+    end
+  end
+
   describe "types" do
     test "totp", %{user: user} do
       assert {:ok, _method} = create_method(user, type: :totp)

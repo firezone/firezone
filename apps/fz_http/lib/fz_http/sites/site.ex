@@ -8,6 +8,7 @@ defmodule FzHttp.Sites.Site do
 
   import FzHttp.SharedValidators,
     only: [
+      trim: 2,
       validate_fqdn_or_ip: 2,
       validate_list_of_ips: 2,
       validate_list_of_ips_or_cidrs: 2,
@@ -28,6 +29,7 @@ defmodule FzHttp.Sites.Site do
   @max_persistent_keepalive 1 * @hour
   @min_vpn_session_duration 0
   @max_vpn_session_duration @max_pg_integer
+  @whitespace_trimmed_fields ~w(name dns allowed_ips endpoint)a
 
   schema "sites" do
     field :name, :string
@@ -52,6 +54,7 @@ defmodule FzHttp.Sites.Site do
       :mtu,
       :vpn_session_duration
     ])
+    |> trim(@whitespace_trimmed_fields)
     |> validate_required(:name)
     |> validate_list_of_ips(:dns)
     |> validate_no_duplicates(:dns)
