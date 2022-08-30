@@ -227,7 +227,7 @@ defmodule FzWall.CLI.Helpers.Nft do
   defp dev_set_type(ip_type), do: filter_set_type(ip_type, false)
 
   defp additional_matches do
-    "ct state != established meta iifname #{wireguard_interface_name()}"
+    "meta iifname #{wireguard_interface_name()}"
   end
 
   defp rule_filter_match_str(type, dest_set, action, false) do
