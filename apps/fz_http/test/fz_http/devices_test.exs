@@ -82,32 +82,38 @@ defmodule FzHttp.DevicesTest do
       assert String.length(Devices.new_device().changes.preshared_key) == 44
     end
 
-    @tag ipv4_network: "10.3.2.0/30"
-    test "sets error when ipv4 address pool is exhausted", %{user: user} do
-      restore_env(:wireguard_ipv4_network, "10.3.2.0/30", &on_exit/1)
+    @tag ipv4_network: "10.3.2.0/30",
+         errors: [
+           ipv4: {"can't be blank", [validation: :required]},
+           base:
+             {"ipv4 address pool is exhausted. Increase network size or remove some devices.", []}
+         ]
+    test "sets error when ipv4 address pool is exhausted", %{
+      ipv4_network: ipv4_network,
+      user: user,
+      errors: errors
+    } do
+      restore_env(:wireguard_ipv4_network, ipv4_network, &on_exit/1)
 
-      assert {:error,
-              %Ecto.Changeset{
-                errors: [
-                  ipv4:
-                    {"address pool is exhausted. Increase network size or remove some devices.",
-                     []}
-                ]
-              }} = Devices.create_device(%{@device_attrs | user_id: user.id})
+      {:error, changeset} = Devices.create_device(%{@device_attrs | user_id: user.id})
+      assert errors == changeset.errors
     end
 
-    @tag ipv6_network: "fd00::3:2:0/126"
-    test "sets error when ipv6 address pool is exhausted", %{user: user} do
-      restore_env(:wireguard_ipv6_network, "fd00::3:2:0/126", &on_exit/1)
+    @tag ipv6_network: "fd00::3:2:0/126",
+         errors: [
+           ipv6: {"can't be blank", [validation: :required]},
+           base:
+             {"ipv6 address pool is exhausted. Increase network size or remove some devices.", []}
+         ]
+    test "sets error when ipv6 address pool is exhausted", %{
+      ipv6_network: ipv6_network,
+      user: user,
+      errors: errors
+    } do
+      restore_env(:wireguard_ipv6_network, ipv6_network, &on_exit/1)
 
-      assert {:error,
-              %Ecto.Changeset{
-                errors: [
-                  ipv6:
-                    {"address pool is exhausted. Increase network size or remove some devices.",
-                     []}
-                ]
-              }} = Devices.create_device(%{@device_attrs | user_id: user.id})
+      {:error, changeset} = Devices.create_device(%{@device_attrs | user_id: user.id})
+      assert errors == changeset.errors
     end
   end
 
