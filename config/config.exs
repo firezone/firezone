@@ -104,7 +104,7 @@ config :hammer,
 
 # This will be changed per-env
 config :fz_vpn,
-  wireguard_private_key_path: "dummy",
+  wireguard_private_key_path: "tmp/dummy",
   stats_push_service_enabled: true,
   wireguard_interface_name: "wg-firezone",
   wireguard_port: 51_820,

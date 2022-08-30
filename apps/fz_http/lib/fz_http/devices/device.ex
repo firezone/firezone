@@ -239,8 +239,8 @@ defmodule FzHttp.Devices.Device do
         else
           add_error(
             changeset,
-            ip_type,
-            "address pool is exhausted. Increase network size or remove some devices."
+            :base,
+            "#{ip_type} address pool is exhausted. Increase network size or remove some devices."
           )
         end
     end
