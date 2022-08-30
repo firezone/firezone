@@ -19,12 +19,14 @@
         "password_field.html",
         context: f,
         field: :password,
+        autocomplete: "new-password",
         label: "Password" %>
 
     <%= render FzHttpWeb.SharedView,
         "password_field.html",
         context: f,
         field: :password_confirmation,
+        autocomplete: "new-password",
         label: "Password Confirmation" %>
 
     <hr>
