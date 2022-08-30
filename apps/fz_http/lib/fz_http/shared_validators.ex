@@ -15,7 +15,7 @@ defmodule FzHttp.SharedValidators do
 
   defp do_trim(nil), do: nil
 
-  defp do_trim(str), do: String.trim(str)
+  defp do_trim(str) when is_binary(str), do: String.trim(str)
 
   def trim(changeset, field) when is_atom(field) do
     trim(changeset, [field])
