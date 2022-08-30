@@ -3,6 +3,27 @@ defmodule FzHttp.SitesTest do
 
   alias FzHttp.Sites
 
+  describe "trimmed fields" do
+    test "trims expected fields" do
+      changeset =
+        Sites.new_site(%{
+          "allowed_ips" => " foo ",
+          "dns" => " foo ",
+          "endpoint" => " foo ",
+          "name" => " foo "
+        })
+
+      assert %Ecto.Changeset{
+               changes: %{
+                 allowed_ips: "foo",
+                 dns: "foo",
+                 endpoint: "foo",
+                 name: "foo"
+               }
+             } = changeset
+    end
+  end
+
   describe "sites" do
     alias FzHttp.Sites.Site
 
