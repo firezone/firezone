@@ -8,6 +8,10 @@ defmodule FzHttp.Sites do
 
   @wg_settings [:allowed_ips, :dns, :endpoint, :persistent_keepalive, :mtu]
 
+  def new_site(attrs \\ %{}) do
+    Site.changeset(%Site{}, attrs)
+  end
+
   def get_site! do
     get_site!(name: "default")
   end

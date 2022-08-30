@@ -13,6 +13,20 @@ defmodule FzHttp.SharedValidators do
       valid_cidr?: 1
     ]
 
+  defp do_trim(nil), do: nil
+
+  defp do_trim(str), do: String.trim(str)
+
+  def trim(changeset, field) when is_atom(field) do
+    trim(changeset, [field])
+  end
+
+  def trim(changeset, fields) when is_list(fields) do
+    Enum.reduce(fields, changeset, fn field, cs ->
+      update_change(cs, field, &do_trim/1)
+    end)
+  end
+
   def validate_no_duplicates(changeset, field) when is_atom(field) do
     validate_change(changeset, field, fn _current_field, value ->
       values = split_comma_list(value)

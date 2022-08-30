@@ -3,6 +3,29 @@ defmodule FzHttp.DevicesTest do
   use FzHttp.DataCase, async: false
   alias FzHttp.{Devices, Users}
 
+  describe "trimmed fields" do
+    test "trims expected fields" do
+      changeset =
+        Devices.new_device(%{
+          "allowed_ips" => " foo ",
+          "dns" => " foo ",
+          "endpoint" => " foo ",
+          "name" => " foo ",
+          "description" => " foo "
+        })
+
+      assert %Ecto.Changeset{
+               changes: %{
+                 allowed_ips: "foo",
+                 dns: "foo",
+                 endpoint: "foo",
+                 name: "foo",
+                 description: "foo"
+               }
+             } = changeset
+    end
+  end
+
   describe "count/0" do
     setup :create_devices
 

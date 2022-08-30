@@ -9,6 +9,7 @@ defmodule FzHttp.Devices.Device do
 
   import FzHttp.SharedValidators,
     only: [
+      trim: 2,
       validate_fqdn_or_ip: 2,
       validate_omitted: 2,
       validate_list_of_ips: 2,
@@ -21,6 +22,15 @@ defmodule FzHttp.Devices.Device do
   alias FzHttp.{Devices, Users.User}
 
   @description_max_length 2048
+
+  # Fields for which to trim whitespace after cast, before validation
+  @whitespace_trimmed_fields ~w(
+    allowed_ips
+    dns
+    endpoint
+    name
+    description
+  )a
 
   schema "devices" do
     field :rx_bytes, :integer
@@ -108,6 +118,7 @@ defmodule FzHttp.Devices.Device do
       :preshared_key,
       :key_regenerated_at
     ])
+    |> trim(@whitespace_trimmed_fields)
   end
 
   defp shared_changeset(changeset) do
