@@ -47,6 +47,7 @@ build do
           ' --with-http_ssl_module' \
           ' --with-http_stub_status_module' \
           ' --with-ipv6' \
+          ' --without-pcre2' \
           ' --with-debug' \
           " --with-cc-opt=\"-L#{install_dir}/embedded/lib -I#{install_dir}/embedded/include\"" \
           " --with-ld-opt=-L#{install_dir}/embedded/lib", env: env
