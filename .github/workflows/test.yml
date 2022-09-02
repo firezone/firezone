@@ -89,7 +89,7 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     services:
       postgres:
-        image: postgres:13.5
+        image: postgres:13
         ports:
           - 5432:5432
         env:
