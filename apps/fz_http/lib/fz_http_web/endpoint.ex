@@ -4,7 +4,7 @@ defmodule FzHttpWeb.Endpoint do
   alias FzHttpWeb.HeaderHelpers
   alias FzHttpWeb.Session
 
-  if Application.get_env(:fz_http, :sql_sandbox) do
+  if Application.compile_env(:fz_http, :sql_sandbox) do
     plug Phoenix.Ecto.SQL.Sandbox
   end
 
