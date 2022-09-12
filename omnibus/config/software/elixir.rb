@@ -18,7 +18,7 @@
 # expeditor/ignore: deprecated 2021-04
 
 name 'elixir'
-default_version '1.13.4'
+default_version '1.14.0'
 
 license 'Apache-2.0'
 license_file 'LICENSE'
@@ -31,6 +31,7 @@ version('1.12.3') { source sha256: 'c5affa97defafa1fd89c81656464d61da8f76ccfec2e
 version('1.13.1') { source sha256: 'deaba8156b11777adfa28e54e76ddf49ab1a0132cca54c41d9d7648e800edcc8' }
 version('1.13.2') { source sha256: '03afed42dccf4347c4d3ae2b905134093a3ba2245d0d3098d75009a1d659ed1a' }
 version('1.13.4') { source sha256: '95daf2dd3052e6ca7d4d849457eaaba09de52d65ca38d6933c65bc1cdf6b8579' }
+version('1.14.0') { source sha256: 'ac129e266a1e04cdc389551843ec3dbdf36086bb2174d3d7e7936e820735003b' }
 
 source url: "https://github.com/elixir-lang/elixir/archive/v#{version}.tar.gz"
 relative_path "elixir-#{version}"
