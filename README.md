@@ -77,6 +77,10 @@ help:
 * [Community Slack](https://www.firezone.dev/slack): join discussions, meet other users, and meet the contributors
 * [Email Us](mailto:team@firezone.dev): we're always happy to chat
 
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=firezone/firezone&type=Date)](https://star-history.com/#firezone/firezone&Date)
+
 ## Package Repository
 
 [![Hosted By: Cloudsmith](https://img.shields.io/badge/OSS%20hosting%20by-cloudsmith-blue?logo=cloudsmith&style=for-the-badge)](https://cloudsmith.com)
