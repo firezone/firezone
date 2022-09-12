@@ -13,12 +13,12 @@ services:
       dockerfile: Dockerfile
       args:
         # Elixir Version: 1.9, 1.10, 1.10.4, ...
-        VARIANT: "1.13.4"
+        VARIANT: "1.14.0"
         # Phoenix Version: 1.4.17, 1.5.4, ...
-        PHOENIX_VERSION: "1.6.2"
+        PHOENIX_VERSION: "1.6.12"
         # Node Version: 12, 14, ...
-        NODE_VERSION: "14"
-        RUBY_VERSION: "2.7.5"
+        NODE_VERSION: "16"
+        RUBY_VERSION: "2.7.6"
 
     volumes:
       - ..:/workspace:cached
@@ -32,7 +32,7 @@ services:
     command: sleep infinity
 
   postgres:
-    image: postgres:13.5
+    image: postgres:13
     restart: unless-stopped
     volumes:
       - postgres-data:/var/lib/postgresql/data

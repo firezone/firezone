@@ -22,7 +22,7 @@ license 'Apache-2.0'
 license_file '../LICENSE'
 
 description <<~DESC
-  Web UI + Firewall manager for WireGuard
+  Open source secure remote access platform.
 DESC
 
 # Defaults to C:/firezone on Windows
@@ -40,7 +40,6 @@ build_iteration 1
 # firezone build dependencies/components
 dependency 'runit'
 dependency 'nginx'
-dependency 'erlang'
 dependency 'elixir'
 dependency 'openssl'
 dependency 'postgresql'

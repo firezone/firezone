@@ -23,7 +23,7 @@ jobs:
       - uses: erlef/setup-beam@v1
         with:
           otp-version: '25'
-          elixir-version: '1.13'
+          elixir-version: '1.14'
       - uses: actions/cache@v2
         name: Setup Elixir cache
         with:
@@ -115,7 +115,7 @@ jobs:
       - uses: erlef/setup-beam@v1
         with:
           otp-version: '25'
-          elixir-version: '1.13'
+          elixir-version: '1.14'
       - uses: actions/cache@v2
         with:
           path: |
