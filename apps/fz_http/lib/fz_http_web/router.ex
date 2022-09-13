@@ -138,7 +138,7 @@ defmodule FzHttpWeb.Router do
     ]
 
     # Admins can delete themselves synchronously
-    delete "/user", UserController, :delete
+    delete "/user", UserController, :delete, as: :session
 
     # Admin Live routes
     live_session(
@@ -163,6 +163,13 @@ defmodule FzHttpWeb.Router do
       live "/diagnostics/connectivity_checks", ConnectivityCheckLive.Index, :index
       live "/notifications", NotificationsLive.Index, :index
     end
+  end
+
+  scope "/api", FzHttpWeb.API do
+    pipe_through :api
+
+    resources "/configuration", ConfigurationController, singleton: true, only: [:show, :update]
+    resources "/users", UserController, except: [:new, :edit]
   end
 
   if Mix.env() == :dev do

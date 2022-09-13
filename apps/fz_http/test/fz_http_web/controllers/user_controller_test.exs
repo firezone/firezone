@@ -9,7 +9,7 @@ defmodule FzHttpWeb.UserControllerTest do
 
   describe "when user signed in" do
     test "deletes the user", %{admin_conn: conn} do
-      test_conn = delete(conn, Routes.user_path(conn, :delete))
+      test_conn = delete(conn, Routes.session_path(conn, :delete))
 
       assert redirected_to(test_conn) == Routes.root_path(test_conn, :index)
     end
@@ -18,7 +18,7 @@ defmodule FzHttpWeb.UserControllerTest do
       Users.delete_user(extra_admin)
 
       assert_raise(RuntimeError, fn ->
-        delete(conn, Routes.user_path(conn, :delete))
+        delete(conn, Routes.session_path(conn, :delete))
       end)
     end
   end
@@ -37,14 +37,14 @@ defmodule FzHttpWeb.UserControllerTest do
       |> Users.delete_user()
 
       assert_raise(Ecto.StaleEntryError, fn ->
-        delete(conn, Routes.user_path(conn, :delete))
+        delete(conn, Routes.session_path(conn, :delete))
       end)
     end
   end
 
   describe "when user not signed in" do
     test "delete redirects to sign in", %{unauthed_conn: conn} do
-      test_conn = delete(conn, Routes.user_path(conn, :delete))
+      test_conn = delete(conn, Routes.session_path(conn, :delete))
 
       assert redirected_to(test_conn) == Routes.root_path(test_conn, :index)
     end
