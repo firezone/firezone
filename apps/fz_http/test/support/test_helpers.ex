@@ -91,12 +91,8 @@ defmodule FzHttp.TestHelpers do
   end
 
   def create_user(tags) do
-    user =
-      if tags[:unprivileged] do
-        UsersFixtures.user(%{role: :unprivileged})
-      else
-        UsersFixtures.user()
-      end
+    role = tags[:role] || :admin
+    user = UsersFixtures.user(%{role: role})
 
     {:ok, user: user}
   end
@@ -208,12 +204,13 @@ defmodule FzHttp.TestHelpers do
        })}
   end
 
-  def create_users(opts) do
-    count = opts[:count] || 5
+  def create_users(tags) do
+    count = tags[:count] || 5
+    role = tags[:role] || :admin
 
     users =
       Enum.map(1..count, fn i ->
-        UsersFixtures.user(%{email: "userlist#{i}@test"})
+        UsersFixtures.user(%{role: role, email: "userlist#{i}@test"})
       end)
 
     {:ok, users: users}

@@ -11,6 +11,16 @@ defmodule FzHttp.Devices do
 
   require Logger
 
+  def count_active_within(duration_in_secs) when is_integer(duration_in_secs) do
+    cutoff = DateTime.add(DateTime.utc_now(), -1 * duration_in_secs)
+
+    Repo.one(
+      from d in Device,
+        select: count(d.id),
+        where: d.latest_handshake > ^cutoff
+    )
+  end
+
   def count do
     Repo.one(from d in Device, select: count(d.id))
   end

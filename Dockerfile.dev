@@ -47,6 +47,7 @@ COPY apps/fz_wall/mix.exs /var/app/apps/fz_wall/mix.exs
 COPY mix.exs /var/app/mix.exs
 COPY mix.lock /var/app/mix.lock
 RUN mix do deps.get, deps.compile, compile
+RUN mix do deps.get --only test, deps.compile --only test, compile --only test
 
 COPY apps /var/app/apps
 COPY config /var/app/config
