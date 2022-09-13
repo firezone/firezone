@@ -36,7 +36,7 @@ defmodule FzHttp.DevicesTest do
     end
   end
 
-  describe "active_within/1" do
+  describe "count_active_within/1" do
     @active_within 30
 
     test "returns device count active within the last 30 seconds" do
