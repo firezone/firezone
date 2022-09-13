@@ -74,9 +74,13 @@ defmodule FzHttp.Telemetry do
     telemetry_module().capture("ping", ping_data())
   end
 
+  # How far back to count handshakes as an active device
+  @active_device_window 86_400
   def ping_data do
     common_fields() ++
       [
+        devices_active_within_24h: Devices.count_active_within(@active_device_window),
+        admin_count: Users.count(role: :admin),
         user_count: Users.count(),
         device_count: Devices.count(),
         max_devices_for_users: Devices.max_count_by_user_id(),
