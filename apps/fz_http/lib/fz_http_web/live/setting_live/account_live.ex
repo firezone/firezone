@@ -17,6 +17,7 @@ defmodule FzHttpWeb.SettingLive.Account do
 
     {:ok,
      socket
+     |> assign(:subscribe_link, subscribe_link())
      |> assign(:changeset, Users.change_user(socket.assigns.current_user))
      |> assign(:methods, MFA.list_methods(socket.assigns.current_user))
      |> assign(:page_title, @page_title)
@@ -58,5 +59,10 @@ defmodule FzHttpWeb.SettingLive.Account do
 
   defp get_metas(presences, user_id) do
     get_in(presences, [to_string(user_id), :metas]) || []
+  end
+
+  defp subscribe_link do
+    tid = Application.get_env(:fz_http, :telemetry_id)
+    "https://e04kusl9oz5.typeform.com/to/o7gPAFz6#uid=#{tid}"
   end
 end
