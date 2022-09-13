@@ -17,6 +17,10 @@ defmodule FzHttp.Users do
     Repo.one(from u in User, select: count(u.id))
   end
 
+  def count(role: role) do
+    Repo.one(from u in User, select: count(u.id), where: u.role == ^role)
+  end
+
   def consume_sign_in_token(token) when is_binary(token) do
     case find_and_clear_token(token) do
       {:ok, {:ok, user}} -> {:ok, user}

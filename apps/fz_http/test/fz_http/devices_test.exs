@@ -1,7 +1,9 @@
 defmodule FzHttp.DevicesTest do
   # XXX: Update the device IP query to be an insert
   use FzHttp.DataCase, async: false
-  alias FzHttp.{Devices, Users}
+  alias FzHttp.Devices
+  alias FzHttp.DevicesFixtures
+  alias FzHttp.Users
 
   describe "trimmed fields" do
     test "trims expected fields" do
@@ -31,6 +33,23 @@ defmodule FzHttp.DevicesTest do
 
     test "counts devices", %{devices: devices} do
       assert length(devices) == Devices.count()
+    end
+  end
+
+  describe "active_within/1" do
+    @active_within 30
+
+    test "returns device count active within the last 30 seconds" do
+      DevicesFixtures.device(%{latest_handshake: DateTime.utc_now()})
+
+      assert Devices.count_active_within(@active_within) == 1
+    end
+
+    test "omits device active exceeding 30 seconds" do
+      latest_handshake = DateTime.add(DateTime.utc_now(), -31)
+      DevicesFixtures.device(%{latest_handshake: latest_handshake})
+
+      assert Devices.count_active_within(@active_within) == 0
     end
   end
 
