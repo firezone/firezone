@@ -22,6 +22,8 @@ defmodule FzHttp.Configurations do
     config
     |> Configuration.changeset(attrs)
     |> prepare_changes(fn changeset ->
+      # XXX: Move OIDC and SAML restart logic in here after SAML PR is merged
+
       for {k, v} <- changeset.changes do
         case v do
           %Ecto.Changeset{} ->
