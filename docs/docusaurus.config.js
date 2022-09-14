@@ -1,31 +1,30 @@
 // @ts-check
 // Note: type annotations allow type checking and IDEs autocompletion
 
-const lightCodeTheme = require("prism-react-renderer/themes/github");
-const darkCodeTheme = require("prism-react-renderer/themes/dracula");
+const lightCodeTheme = require('prism-react-renderer/themes/github');
+const darkCodeTheme = require('prism-react-renderer/themes/dracula');
 
 /** @type {import('@docusaurus/types').Config} */
 const config = {
-  title: "Firezone",
-  tagline: "Open-source VPN server and Linux firewall built on WireGuard®",
-  url: "https://docs.firezone.dev",
-  baseUrl: "/",
-  onBrokenLinks: "throw",
-  onBrokenMarkdownLinks: "warn",
-  favicon: "img/favicon.ico",
+  title: 'Firezone',
+  tagline: 'Open-source VPN server and Linux firewall built on WireGuard®',
+  url: 'https://docs.firezone.dev',
+  baseUrl: '/',
+  onBrokenLinks: 'throw',
+  onBrokenMarkdownLinks: 'warn',
+  favicon: 'img/favicon.ico',
 
   // GitHub pages deployment config.
   // If you aren't using GitHub pages, you don't need these.
-  organizationName: "firezone", // Usually your GitHub org/user name.
-  projectName: "firezone", // Usually your repo name.
-  trailingSlash: false,
+  organizationName: 'firezone', // Usually your GitHub org/user name.
+  projectName: 'firezone', // Usually your repo name.
 
   // Even if you don't use internalization, you can use this field to set useful
   // metadata like html lang. For example, if your site is Chinese, you may want
-  // to replace "en" with "zh-Hans".
+  // to replace 'en' with 'zh-Hans'.
   i18n: {
-    defaultLocale: "en",
-    locales: ["en"],
+    defaultLocale: 'en',
+    locales: ['en'],
   },
 
   // An array of scripts to load. The values can be either strings or plain
@@ -45,16 +44,16 @@ const config = {
 
   presets: [
     [
-      "classic",
+      'classic',
       /** @type {import('@docusaurus/preset-classic').Options} */
       ({
         docs: {
-          routeBasePath: "/",
-          sidebarPath: require.resolve("./sidebars.js"),
-          editUrl: "https://github.com/firezone/firezone/tree/master",
+          routeBasePath: '/',
+          sidebarPath: require.resolve('./sidebars.js'),
+          editUrl: 'https://github.com/firezone/firezone/tree/master',
         },
         theme: {
-          customCss: require.resolve("./src/css/custom.css"),
+          customCss: require.resolve('./src/css/custom.css'),
         },
       }),
     ],
@@ -64,74 +63,70 @@ const config = {
     /** @type {import('@docusaurus/preset-classic').ThemeConfig} */
     ({
       navbar: {
-        title: "Documentation",
+        title: 'Documentation',
         logo: {
-          alt: "Firezone",
-          src: "img/logo.svg",
+          alt: 'Firezone Logo',
+          src: 'img/logo.svg',
         },
         items: [
           {
-            href: "https://discourse.firez.one/",
-            label: "Ask a Question",
-            position: "right",
-            "aria-label": "GitHub repository",
+            href: 'https://discourse.firez.one/',
+            label: 'Ask a Question',
+            position: 'right',
+            'aria-label': 'GitHub repository',
           },
           {
-            href: "https://e04kusl9oz5.typeform.com/to/gzzaZZ52#source=docsheader",
-            label: "Join the Beta",
-            position: "right",
-            "aria-label": "GitHub repository",
+            href: 'https://e04kusl9oz5.typeform.com/to/gzzaZZ52#source=docsheader',
+            label: 'Contact sales',
+            position: 'right',
+            'aria-label': 'Contact sales',
           },
           {
-            href: "https://github.com/firezone/firezone",
+            href: 'https://github.com/firezone/firezone',
             className: 'header-github-link',
-            position: "right",
+            position: 'right',
             'aria-label': 'GitHub repository',
           },
         ],
       },
       footer: {
-        style: "light",
+        style: 'light',
         links: [
           {
-            title: "Company",
+            title: 'Company',
             items: [
               {
-                label: "Homepage",
-                href: "https://www.firezone.dev/",
+                label: 'Homepage',
+                href: 'https://firezone.dev',
               },
               {
-                label: "Pricing",
-                href: "https://www.firezone.dev/pricing",
+                label: 'Pricing',
+                href: 'https://firezone.dev/pricing',
               },
               {
-                label: "About",
-                href: "https://www.firezone.dev/about",
-              },
-              {
-                label: "Join the Beta",
-                href: "https://e04kusl9oz5.typeform.com/to/gzzaZZ52#source=docsfooter",
+                label: 'About',
+                href: 'https://firezone.dev/about',
               },
             ],
           },
           {
-            title: "Community",
+            title: 'Community',
             items: [
               {
-                label: "Support Forums",
-                href: "https://discourse.firez.one/",
+                label: 'Support Forums',
+                href: 'https://discourse.firez.one',
               },
               {
-                label: "Slack",
-                href: "https://www.firezone.dev/slack",
+                label: 'Slack',
+                href: 'https://firezone.dev/slack',
               },
               {
-                label: "Github",
-                href: "https://github.com/firezone/firezone",
+                label: 'Github',
+                href: 'https://github.com/firezone/firezone',
               },
               {
-                label: "Twitter",
-                href: "https://twitter.com/firezonehq",
+                label: 'Twitter',
+                href: 'https://twitter.com/firezonehq',
               },
             ],
           },
@@ -145,20 +140,20 @@ const config = {
       },
       algolia: {
         // The application ID provided by Algolia
-        appId: "XXPZ9QVGFB",
+        appId: 'XXPZ9QVGFB',
 
         start_urls: [
-          "https://docs.firezone.dev/"
+          'https://docs.firezone.dev/'
         ],
 
         sitemap_urls: [
-          "https://docs.firezone.dev/sitemap.xml"
+          'https://docs.firezone.dev/sitemap.xml'
         ],
 
         // Public API key: it is safe to commit it
-        apiKey: "66664e8765e1645ea0b500acebb0b0c2",
+        apiKey: '66664e8765e1645ea0b500acebb0b0c2',
 
-        indexName: "firezone",
+        indexName: 'firezone',
 
         // Optional: see doc section below
         // Requires more configuration and setup to work, so disabling. See
@@ -166,7 +161,7 @@ const config = {
         contextualSearch: true,
 
         // Optional: path for search page that enabled by default (`false` to disable it)
-        searchPagePath: "search",
+        searchPagePath: 'search',
 
         //... other Algolia params
       },

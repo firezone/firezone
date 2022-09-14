@@ -1,42 +1,64 @@
 ---
-title: Prerequisites
+title: Deploy
 sidebar_position: 2
 ---
+
+Firezone can typically be deployed on most Linux servers in minutes. Read more
+below to get started.
+
+## Deployment Methods
+
+You have three options for deploying and managing Firezone:
+
+1. [Docker](./docker) (recommended)
+1. [Omnibus](./omnibus)
+1. [Build from source](./from-source) (**unsupported** only for advanced users)
+
+## Prerequisites
 
 Firezone requires the setup of a DNS record and matching SSL certificate for
 production deployments.
 
-## Create a DNS record
+### Create a DNS record
 
 Firezone requires a fully-qualified domain name (e.g. `firezone.company.com`)
 for production use. You'll need to create the appropriate DNS record at your
 registrar to achieve this. Typically this is either an A, CNAME, or AAAA record
 depending on your requirements.
 
-## Create an SSL certificate
+### Create an SSL certificate
 
 While Firezone generates a self-signed SSL certificate for you on install,
 you'll need a valid SSL certificate to use Firezone in a production capacity.
 
 We recommend using [Let's Encrypt](https://letsencrypt.org) to
 generate a free SSL cert for your domain.
-Starting with Firezone 0.5.0 you have the option to auto-provision Let's
-Encrypt SSL certificates for your instance using the ACME protocol. This is
-disabled by default to maintain backwards compatibility for existing
-installations.
 
-To enable this, you must ensure the following conditions are met:
+<Tabs>
+  <TabItem value="docker" label="Docker" default>
+  </TabItem>
+  <TabItem value="omnibus" label="Omnibus">
 
-* `80/tcp` is allow inbound
-* The bundled Firezone `nginx` service is enabled and functioning
-* You have a valid DNS record assigned to this instance's public IP
-* The following 3 settings are configure in the [configuration file](../reference/configuration-file):
-  * `default['firezone']['external_url']`: The FQDN for the server.
-  * `default['firezone']['ssl']['email_address']`: The email that will be used
-  for the issued certificates.
-  * `default['firezone']['ssl']['acme']['enabled']`: Set this to true to enable it.
+    Starting with Firezone 0.5.0 you have the option to auto-provision Let's
+    Encrypt SSL certificates for your instance using the ACME protocol. This is
+    disabled by default to maintain backwards compatibility for existing
+    installations.
 
-## Security Group and Firewall Settings
+    To enable this, you must ensure the following conditions are met:
+
+    * `80/tcp` is allow inbound
+    * The bundled Firezone `nginx` service is enabled and functioning
+    * You have a valid DNS record assigned to this instance's public IP
+    * The following 3 settings are configure in the [configuration file](../reference/configuration-file):
+      * `default['firezone']['external_url']`: The FQDN for the server.
+      * `default['firezone']['ssl']['email_address']`: The email that will be used
+      for the issued certificates.
+      * `default['firezone']['ssl']['acme']['enabled']`: Set this to true to enable it.
+
+  </TabItem>
+</Tabs>
+
+### Security Group and Firewall Settings
 
 By default, Firezone requires ports `443/tcp` and `51820/udp` to be
 accessible for HTTPS and WireGuard traffic respectively.
@@ -52,7 +74,7 @@ Firezone's operation. For help troubleshooting connectivity issues, see
 [troubleshoot](../administer/troubleshoot).
 :::
 
-## Resource Requirements
+### Resource Requirements
 
 We recommend **starting with 1 vCPU and 1 GB of RAM and scaling up** as the
 number of users and devices grows.

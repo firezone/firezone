@@ -15,7 +15,7 @@ OIDC provider.
 1. `client_secret`: The client secret of the application.
 1. `redirect_uri`: Instructs OIDC provider where to redirect after authentication.
 This should be your Firezone `EXTERNAL_URL + /auth/oidc/<provider_key>/callback/`
-(e.g. `https://firezone.example.com/auth/oidc/okta/callback/`).
+(e.g. `https://firezone.example.com/auth/oidc/zitadel/callback/`).
 1. `response_type`: Set to `code`.
 1. `scope`: [OIDC scopes](https://openid.net/specs/openid-connect-basic-1_0.html#Scopes)
 to obtain from your OIDC provider. This should be set to `openid email profile offline_access`

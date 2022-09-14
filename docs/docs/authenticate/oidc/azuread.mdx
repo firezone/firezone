@@ -4,7 +4,7 @@ sidebar_position: 4
 ---
 
 Firezone supports Single Sign-On (SSO) using Azure Active Directory through the generic
-OIDC connector. This guide will walk you through how to obtain the following
+generic OIDC connector. This guide will walk you through how to obtain the following
 config settings required for the integration:
 
 1. `discovery_document_uri`: The
@@ -82,9 +82,9 @@ default['firezone']['authentication']['oidc'] = {
 Run `firezone-ctl reconfigure` to update the application.
 You should now see a `Sign in with Azure` button at the root Firezone URL.
 
-## Restricting Access to Certain Members
+## Restricting Access to Certain Users
 
-Azure AD allows admins to restrict app access to a subset of users within your
-organization. See Microsoft's
+Azure AD allows admins to restrict OAuth application access to a subset of users
+within your organization. See Microsoft's
 [documentation](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-restrict-your-app-to-a-set-of-users)
 for more information on how to do this.
