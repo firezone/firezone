@@ -24,5 +24,13 @@
           to: Routes.auth_path(@conn, :request, "identity"),
           class: "button") %>
     </p>
+  <% else %>
+    <%= if Enum.empty?(@openid_connect_providers) do %>
+      <p>
+        <strong>No authentication methods have been enabled.</strong>
+        See our <a href="https://docs.firezone.dev/authenticate">documentation</a>
+        for configuring an authentication method.
+      </p>
+    <% end %>
   <% end %>
 </div>

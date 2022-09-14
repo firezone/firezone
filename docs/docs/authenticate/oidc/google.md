@@ -1,5 +1,5 @@
 ---
-title: Google
+title: Google Workspace
 sidebar_position: 5
 ---
 

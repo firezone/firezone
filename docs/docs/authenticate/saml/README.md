@@ -1,0 +1,63 @@
+---
+title: SAML 2.0
+sidebar_position: 11
+---
+
+Firezone supports Single Sign-On (SSO) via SAML 2.0.
+
+## Provider Support
+
+In general, most identity providers that support SAML 2.0 should work with
+Firezone.
+
+<!-- TODO: Create SAML docs for popular providers -->
+1. Okta
+1. Onelogin
+1. Azure AD
+1. Google
+
+Occasionally, providers that don't implement the full SAML 2.0 standard or use
+uncommon configurations may be problematic. If this is the case, [contact us](
+https://www.firezone.dev/contact/sales) about a custom integration.
+
+## Prerequisites
+
+Before using SAML 2.0 in Firezone, you'll first need to generate a set of
+private and public keys using the RSA or DSA algorithms along with an X.509
+certificate that contains the public key. This can be generated with `openssl`
+using the following one-liner:
+
+```shell
+openssl req -x509 -sha256 -nodes -days 365 \
+  -newkey rsa:2048 -keyout saml.key -out saml.crt
+```
+
+Now, configure your Firezone portal to use these:
+
+**For Omnibus deployments:**
+
+Set the following attributes in your `/etc/firezone/firezone.rb` configuration file:
+
+```ruby
+default['firezone']['authentication']['saml']['key'] = '/path/to/your/saml.key'
+default['firezone']['authentication']['saml']['cert'] = '/path/to/your/saml.crt'
+```
+
+and run `firezone-ctl reconfigure` to pick up the changes.
+
+**For Docker deployments:**
+
+Set the `SAML_KEY_PATH` and `SAML_CERT_PATH` environment variables to
+path containing your `saml.key` and `saml.crt` above. If using our [example
+docker compose file](https://github.com/firezone/firezone/blob/master/docker-compose.prod.yml),
+which includes a volume for mapping configuration,
+save these files to `/data/firezone/` on the Docker host and set the
+`SAML_KEY_PATH=/var/firezone/saml.key` and
+`SAML_CERT_PATH=/var/firezone/saml.crt` environment variables for the firezone
+container.
+
+## General Instructions
+
+Once you've configured Firezone with an X.509 certificate and corresponding
+private key as shown above, you'll need to get the SAML Metadata XML document
+from your identity provider.

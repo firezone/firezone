@@ -3,29 +3,27 @@ title: Authenticate
 sidebar_position: 3
 ---
 
-Firezone can be configured to require authentication before users can generate
-or download device configuration files. Optionally,
-[periodic re-authentication](#enforce-periodic-re-authentication)
-can also be required for users to maintain their VPN session.
-
 Firezone supports the following authentication methods:
 
-1. [Local email/password](../authenticate/local-auth): Enabled by default. A [time-based
-one time password (TOTP)](../authenticate/multi-factor)
-can optionally be configured to add an additional authentication factor.
-1. [Single Sign-On (SSO)](#integrate-a-sso-provider): Enables users to sign
-in using their credentials from Okta, Google, Azure AD, or any service supporting
-the OpenID Connect (OIDC) protocol.
+1. [Local email/password (default)](../authenticate/local-auth)
+1. [SSO authentication via OpenID Connect](../authenticate/oidc)
+1. [SSO authentication via SAML 2.0](../authenticate/saml)
 
-## Integrate A SSO Provider
+:::note
+If your Identity Provider doesn't work with the methods listed above,
+[contact us](https://www.firezone.dev/contact/sales) about building a custom
+integration.
+:::
+
+## Integrate an SSO Provider
 
 We've included instructions on how to set up Firezone with several popular
-identity providers:
+identity providers using our Generic OIDC integration:
 
-* [Okta](../authenticate/okta)
-* [Azure Active Directory](../authenticate/azuread)
-* [Google](../authenticate/google)
-* [Onelogin](../authenticate/onelogin)
+* [Okta](../authenticate/oidc/okta)
+* [Azure Active Directory](../authenticate/oidc/azuread)
+* [Google](../authenticate/oidc/google)
+* [Onelogin](../authenticate/oidc/onelogin)
 
 If your identity provider is not listed above, but has a generic OIDC
 connector, please consult their documentation to find instructions on obtaining
