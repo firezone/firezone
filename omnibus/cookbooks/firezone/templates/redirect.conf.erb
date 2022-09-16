@@ -6,11 +6,13 @@ server {
   <% end -%>
   server_name <%= @server_name %>;
 
-  return 301 https://<%= @server_name %>$request_uri;
-
   # Needed for ACME requests
   location /.well-known/acme-challenge/ {
     alias <%= @acme_www_root %>/.well-known/acme-challenge/;
+  }
+
+  location ^~ ^/.well-known/acme-challenge/ {
+    return 301 https://<%= @server_name %>$request_uri;
   }
 }
 <% end -%>
