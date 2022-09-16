@@ -246,7 +246,7 @@ class Firezone
         'WIREGUARD_IPV6_ADDRESS' => attributes['wireguard']['ipv6']['address'],
         'MAX_DEVICES_PER_USER' => attributes['max_devices_per_user'].to_s,
         'ALLOW_UNPRIVILEGED_DEVICE_MANAGEMENT' => attributes['allow_unprivileged_device_management'].to_s,
-        'ALLOW_UNPRIVILEGED_DEVICE_CONFIGURATION' => attributes['allow_unprivileged_device_management'].to_s,
+        'ALLOW_UNPRIVILEGED_DEVICE_CONFIGURATION' => attributes['allow_unprivileged_device_configuration'].to_s,
 
         # Allow env var to override config
         'TELEMETRY_ENABLED' => ENV.fetch('TELEMETRY_ENABLED',
