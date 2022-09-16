@@ -17,7 +17,7 @@ bin_path = "#{node['firezone']['install_directory']}/embedded/bin"
 acme_home = "#{node['firezone']['var_directory']}/#{server}/#{keylength}/acme"
 
 # Remove cronjob (if cronjob doesn't exist no harm is done)
-execute 'ACME remove cronjob' do
+execute 'ACME force cronjob' do
   command <<~ACME
     #{bin_path}/acme.sh --cron \
     --force \
