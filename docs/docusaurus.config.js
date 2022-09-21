@@ -147,6 +147,14 @@ const config = {
         // The application ID provided by Algolia
         appId: "XXPZ9QVGFB",
 
+        start_urls: [
+          "https://docs.firezone.dev/"
+        ],
+
+        sitemap_urls: [
+          "https://docs.firezone.dev/sitemap.xml"
+        ],
+
         // Public API key: it is safe to commit it
         apiKey: "66664e8765e1645ea0b500acebb0b0c2",
 
