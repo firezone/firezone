@@ -26,6 +26,7 @@ identity providers:
 * [Azure Active Directory](../authenticate/azuread)
 * [Google](../authenticate/google)
 * [Onelogin](../authenticate/onelogin)
+* [Zitadel](../authenticate/zitadel)
 
 If your identity provider is not listed above, but has a generic OIDC
 connector, please consult their documentation to find instructions on obtaining
