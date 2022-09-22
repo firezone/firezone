@@ -155,7 +155,7 @@ const config = {
         // Optional: see doc section below
         // Requires more configuration and setup to work, so disabling. See
         // https://discourse.algolia.com/t/algolia-searchbar-is-not-working-with-docusaurus-v2/14659/2
-        contextualSearch: false,
+        contextualSearch: true,
 
         // Optional: path for search page that enabled by default (`false` to disable it)
         searchPagePath: "search",
