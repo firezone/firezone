@@ -46,8 +46,6 @@ firezone-ctl restart phoenix
 
 #### Base Firewall Template
 
-<!-- markdownlint-disable MD013 -->
-
 ```shell
 #!/usr/sbin/nft -f
 
@@ -317,8 +315,6 @@ table inet nat {
 
 }
 ```
-
-<!-- markdownlint-enable MD013 -->
 
 #### Usage
 

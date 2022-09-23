@@ -6,8 +6,6 @@ sidebar_position: 2
 Your Firezone installation can be managed via the `firezone-ctl` command, as
 shown below. Most subcommands require prefixing with `sudo`.
 
-<!-- markdownlint-disable MD013 -->
-
 ```text
 root@demo:~# firezone-ctl
 I don't know that command.
@@ -65,5 +63,3 @@ Service Management Commands:
   usr2
     Send the services a USR2.
 ```
-
-<!-- markdownlint-enable MD013 -->
