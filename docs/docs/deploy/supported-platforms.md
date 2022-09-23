@@ -5,8 +5,6 @@ sidebar_position: 1
 
 Firezone currently supports the following platforms:
 
-<!-- markdownlint-disable MD013 -->
-
 | OS | Architectures | Status | Notes |
 | --- | --- | --- | --- |
 | AmazonLinux 2 | `amd64` `arm64` | **Fully-supported** | See [AmazonLinux 2 Notes](#amazonlinux-2-notes) |
@@ -25,8 +23,6 @@ Firezone currently supports the following platforms:
 | Ubuntu 20.04 | `amd64` `arm64` | **Fully-supported** | Works as-is |
 | Ubuntu 22.04 | `amd64` `arm64` | **Fully-supported** | Works as-is |
 | openSUSE Leap 15.3 | `amd64` | **Fully-supported** | See [openSUSE Notes](#opensuse-notes) |
-
-<!-- markdownlint-enable MD013 -->
 
 If your distro isn't listed here  please try using a package for the closest
 distro first. For example, since Raspberry Pi OS is based on Debian, try using
