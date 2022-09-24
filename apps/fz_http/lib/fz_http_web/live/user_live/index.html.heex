@@ -32,7 +32,10 @@
       <%= for user <- @users do %>
         <tr>
           <td>
-            <%= live_patch(user.email, to: Routes.user_show_path(@socket, :show, user)) %>
+            <%= live_patch(
+                user.email,
+                to: Routes.user_show_path(@socket, :show, user),
+                replace: true) %>
           </td>
           <td id={"user-#{user.id}-device-count"}><%= user.device_count %></td>
           <td id={"user-#{user.id}-vpn-status"} class="has-text-centered">
@@ -63,7 +66,7 @@
     </table>
   </div>
 
-  <%= live_patch(to: Routes.user_index_path(@socket, :new), class: "button") do %>
+  <%= live_patch(to: Routes.user_index_path(@socket, :new), replace: true, class: "button") do %>
     Add User
   <% end %>
 </section>
