@@ -3,8 +3,8 @@ defmodule FzHttpWeb.LiveAuth do
   Handles loading default assigns and authorizing.
   """
 
+  use Phoenix.Component
   alias FzHttpWeb.Authentication
-  import Phoenix.LiveView
   import FzHttpWeb.AuthorizationHelpers
 
   require Logger

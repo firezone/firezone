@@ -31,7 +31,10 @@
       <h4 class="title is-4">Details</h4>
     </div>
     <div class="level-right">
-      <%= live_patch(to: Routes.user_show_path(@socket, :edit, @user), class: "button") do %>
+      <%= live_patch(
+          to: Routes.user_show_path(@socket, :edit, @user),
+          replace: true,
+          class: "button") do %>
         <span class="icon is-small">
           <i class="mdi mdi-pencil"></i>
         </span>
@@ -66,6 +69,7 @@
       "Add Device",
       to: Routes.user_show_path(@socket, :new_device, @user),
       id: "add-device-button",
+      replace: true,
       class: "button") %>
 </section>
 

@@ -3,6 +3,7 @@ defmodule FzHttpWeb.LiveNav do
   Handles admin navigation link highlight
   """
 
+  use Phoenix.Component
   import Phoenix.LiveView
 
   def on_mount(nil, _params, _session, socket) do

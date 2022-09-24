@@ -42,7 +42,7 @@ defmodule FzHttpWeb.MFALive.Auth do
     <hr>
 
     <div class="block has-text-right">
-      <%= live_patch "Other authenticators ->", to: Routes.mfa_auth_path(@socket, :types) %>
+      <%= live_patch("Other authenticators ->", to: Routes.mfa_auth_path(@socket, :types), replace: true) %>
     </div>
 
     <div class="block">
@@ -94,8 +94,9 @@ defmodule FzHttpWeb.MFALive.Auth do
       <ul>
         <%= for method <- @methods do %>
         <li>
-          <%= live_patch "[#{method.type}] #{method.name} ->",
-              to: Routes.mfa_auth_path(@socket, :auth, method.id) %>
+          <%= live_patch("[#{method.type}] #{method.name} ->",
+              to: Routes.mfa_auth_path(@socket, :auth, method.id),
+              replace: true) %>
         </li>
         <% end %>
       </ul>

@@ -1,5 +1,5 @@
 <div>
-  <.form let={f} for={@changeset} autocomplete="off" id="user-form" phx-target={@myself} phx-submit="save">
+  <.form let={f} for={@changeset} x-autocomplete="off" id="user-form" phx-target={@myself} phx-submit="save">
     <%= if @action == :edit do %>
       <div class="block">
         <p>Change user email or enter new password below.</p>

@@ -4,7 +4,7 @@ defmodule FzHttpWeb.LiveHelpers do
   XXX: Consider splitting these up using one of the techniques at
   https://bernheisel.com/blog/phoenix-liveview-and-views
   """
-  import Phoenix.LiveView.Helpers
+  use Phoenix.Component
   alias FzHttp.{Sites, Users}
 
   def live_modal(component, opts) do

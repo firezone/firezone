@@ -4,7 +4,9 @@
     <meta charset="utf-8"/>
     <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <%= live_title_tag assigns[:page_title], prefix: "Firezone • " %>
+    <.live_title prefix="Firezone • ">
+      <%= assigns[:page_title] %>
+    </.live_title>
     <link phx-track-static rel="stylesheet" href={Routes.static_path(@conn, "/dist/admin.css")} />
     <script defer phx-track-static type="text/javascript" src={Routes.static_path(@conn, "/dist/admin.js")}></script>
 
@@ -49,7 +51,7 @@
             <% end %>
           </div>
         </div>
-        <%= live_render(@conn, FzHttpWeb.NotificationsLive.Badge, router: FzHttpWeb.Router) %>
+        <%= Phoenix.Component.live_render(@conn, FzHttpWeb.NotificationsLive.Badge, router: FzHttpWeb.Router) %>
         <a target="_blank" href="https://docs.firezone.dev/?utm_source=product" title="Documentation" class="navbar-item has-divider is-desktop-icon-only">
           <span class="icon"><i class="mdi mdi-help-circle-outline"></i></span>
         </a>

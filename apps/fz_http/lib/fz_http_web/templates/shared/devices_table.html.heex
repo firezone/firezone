@@ -16,7 +16,10 @@
   <%= for device <- @devices do %>
     <tr>
       <td>
-        <%= live_patch(device.name, to: Routes.device_admin_show_path(@socket, :show, device)) %>
+        <%= live_patch(
+            device.name,
+            to: Routes.device_admin_show_path(@socket, :show, device),
+            replace: true) %>
       </td>
       <%= if @show_user do %>
         <td>

@@ -32,7 +32,7 @@ defmodule FzHttpWeb.RuleLive.RuleListComponent do
      |> assign(Rules.defaults(changeset))}
   end
 
-  @impl true
+  @impl Phoenix.LiveComponent
   def handle_event("add_rule", %{"rule" => rule_params}, socket) do
     if Rules.port_rules_supported?() || Map.get(rule_params, :port_type) == nil do
       case Rules.create_rule(rule_params) do
