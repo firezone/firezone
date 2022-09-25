@@ -33,14 +33,16 @@ jobs:
           - linux/amd64/v2
           - linux/amd64/v3
           - linux/arm64
-          - linux/riscv64
-          - linux/ppc64le
-          - linux/s390x
-          - linux/386
-          - linux/mips64le
-          - linux/mips64
-          - linux/arm/v7
-          - linux/arm/v6
+          # TODO: These aren't supported by our base elixir image, but could be
+          # useful to build for in the future
+          # - linux/riscv64
+          # - linux/ppc64le
+          # - linux/s390x
+          # - linux/386
+          # - linux/mips64le
+          # - linux/mips64
+          # - linux/arm/v7
+          # - linux/arm/v6
     steps:
       - uses: actions/checkout@v3
       - name: Set up QEMU
