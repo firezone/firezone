@@ -7,6 +7,11 @@ ARG RUNNER_IMAGE="alpine:${ALPINE_VERSION}"
 
 FROM ${BUILDER_IMAGE} as builder
 
+# Version is mandatory for building prod image
+ARG VERSION
+RUN test -n "$VERSION"
+ENV VERSION=$VERSION
+
 # install build dependencies
 RUN apk add nodejs npm build-base git
 
@@ -38,10 +43,6 @@ RUN mix deps.compile
 
 COPY priv priv
 COPY apps apps
-
-# mix phx.digest triggers fz_http compilation, need version to be set here
-ARG VERSION=0.0.0-docker
-ENV VERSION=$VERSION
 
 # compile assets
 RUN cd apps/fz_http/assets \
