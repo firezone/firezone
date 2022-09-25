@@ -28,7 +28,6 @@ jobs:
     needs: draft-release
     env:
       REGISTRY: ghcr.io
-      VERSION: ${{ needs.draft-release.outputs.tag_name }}
       IMAGE_NAME: ${{ github.repository }}
     steps:
       - name: Set up QEMU
@@ -50,6 +49,8 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v3
         with:
+          build-args:
+            VERSION: ${{ needs.draft-release.outputs.tag_name }}
           file: Dockerfile.prod
           context: .
           push: true
