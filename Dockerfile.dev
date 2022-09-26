@@ -1,6 +1,6 @@
 # This Dockerfile builds a development image to use for local development work
 
-FROM hexpm/elixir:1.14.0-erlang-25.0.4-ubuntu-jammy-20220428
+FROM hexpm/elixir:1.14.0-erlang-25.1-ubuntu-jammy-20220428
 
 RUN set -xe \
   && apt-get update \
