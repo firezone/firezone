@@ -13,9 +13,9 @@ jobs:
           - linux/amd64
           - linux/amd64/v2
           - linux/amd64/v3
-          - linux/arm64
           # TODO: These aren't supported by our base elixir image, but could be
           # useful to build for in the future
+          # - linux/arm64
           # - linux/riscv64
           # - linux/ppc64le
           # - linux/s390x

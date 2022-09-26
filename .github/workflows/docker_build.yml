@@ -32,9 +32,10 @@ jobs:
           - linux/amd64
           - linux/amd64/v2
           - linux/amd64/v3
-          - linux/arm64
-          # TODO: These aren't supported by our base elixir image, but could be
-          # useful to build for in the future
+          # TODO: Build for other platforms. Will likely need our own
+          # runners for each of these since QEMU segfaults for most of
+          # these on GH actions :-(.
+          # - linux/arm64
           # - linux/riscv64
           # - linux/ppc64le
           # - linux/s390x
@@ -74,11 +75,14 @@ jobs:
             type=semver,pattern={{major}}
             type=sha
             type=raw,${{ needs.draft-release.outputs.tag_name }}
+
+      # Push to GHCR; our registry for testing / dev builds. Publish will
+      # make these public via Docker Hub later on.
       - name: Build and push Docker image
         uses: docker/build-push-action@v3
         with:
           build-args: |
-            "VERSION=${{ needs.draft-release.outputs.tag_name }}"
+            VERSION=${{ needs.draft-release.outputs.tag_name }}
           file: Dockerfile.prod
           context: .
           push: true
