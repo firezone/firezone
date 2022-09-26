@@ -1,26 +1,22 @@
 # This Dockerfile builds a development image to use for local development work
 
-FROM hexpm/elixir:1.14.0-erlang-25.1-ubuntu-jammy-20220428
+FROM firezone/elixir:1.14.0-otp-25.1
 
-RUN set -xe \
-  && apt-get update \
-  && apt-get upgrade -y \
-  && apt-get install -y apt-utils curl git \
-  && curl -sL https://deb.nodesource.com/setup_16.x -o setup_node_deb \
-  && bash setup_node_deb \
-  && apt-get install -y \
-    net-tools \
-    iproute2 \
-    nftables \
-    inotify-tools \
-    ca-certificates \
-    build-essential \
-    sudo \
-    nodejs \
-  && apt-get autoremove -y \
-  && apt-get clean -y \
-  && rm setup_node_deb \
-  && rm -rf /var/lib/apt/lists/*
+# Install dev dependencies / convenience tools
+RUN apk add \
+nodejs \
+npm \
+build-base \
+git \
+python3 \
+curl \
+net-tools \
+iproute2 \
+nftables \
+inotify-tools \
+ca-certificates \
+sudo \
+nodejs
 
 WORKDIR /var/app
 

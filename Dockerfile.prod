@@ -1,8 +1,8 @@
 ARG ELIXIR_VERSION=1.14.0
-ARG OTP_VERSION=24.3.4.5
+ARG OTP_VERSION=25.1
 ARG ALPINE_VERSION=3.16.2
 
-ARG BUILDER_IMAGE="hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-alpine-${ALPINE_VERSION}"
+ARG BUILDER_IMAGE="firezone/elixir:${ELIXIR_VERSION}-otp-${OTP_VERSION}"
 ARG RUNNER_IMAGE="alpine:${ALPINE_VERSION}"
 
 FROM ${BUILDER_IMAGE} as builder
@@ -64,7 +64,11 @@ RUN mix release
 # the compiled release and other runtime necessities
 FROM ${RUNNER_IMAGE}
 
-RUN apk add -u --no-cache nftables libstdc++ ncurses-libs openssl
+RUN apk add -u --no-cache \
+  nftables \
+  libstdc++ \
+  ncurses-libs \
+  openssl
 
 WORKDIR /app
 
