@@ -13,7 +13,7 @@ RUN test -n "$VERSION"
 ENV VERSION=$VERSION
 
 # install build dependencies
-RUN apk add nodejs npm build-base git python
+RUN apk add nodejs npm build-base git python3
 
 # prepare build dir
 WORKDIR /app
