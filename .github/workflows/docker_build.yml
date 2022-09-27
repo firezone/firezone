@@ -51,9 +51,6 @@ jobs:
             type=semver,pattern={{major}}
             type=sha
             type=raw,${{ needs.draft-release.outputs.tag_name }}
-
-      - run: |
-          echo "${{ steps.meta.outputs.tags }}"
       # Push to GHCR; our registry for testing / dev builds. Publish will
       # make these public via Docker Hub later on.
       - name: Build and push Docker image
