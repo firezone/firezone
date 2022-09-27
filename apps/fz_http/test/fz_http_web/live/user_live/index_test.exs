@@ -109,12 +109,11 @@ defmodule FzHttpWeb.UserLive.IndexTest do
       path = Routes.user_index_path(conn, :index)
       {:ok, view, _html} = live(conn, path)
 
-      modal =
-        view
-        |> element("a", "Add User")
-        |> render_click()
+      view
+      |> element("a", "Add User")
+      |> render_click()
 
-      assert modal =~ "<p class=\"modal-card-title\">Add User</p>"
+      assert_redirected(view, Routes.user_index_path(conn, :new))
     end
   end
 end
