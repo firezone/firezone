@@ -159,7 +159,7 @@ defmodule FzHttpWeb.UserLive.ShowTest do
       |> element("#add-device-button")
       |> render_click()
 
-      assert_patched(view, Routes.user_show_path(conn, :new_device, user.id))
+      assert_redirected(view, Routes.user_show_path(conn, :new_device, user.id))
     end
 
     test "allows name changes", %{admin_conn: conn, admin_user: user} do
@@ -436,7 +436,7 @@ defmodule FzHttpWeb.UserLive.ShowTest do
       |> element("button", "Delete Device #{device.name}")
       |> render_click()
 
-      _flash = assert_redirected(view, Routes.device_admin_index_path(conn, :index))
+      assert_redirected(view, Routes.device_admin_index_path(conn, :index))
     end
   end
 

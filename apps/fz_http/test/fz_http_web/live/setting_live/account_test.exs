@@ -85,10 +85,7 @@ defmodule FzHttpWeb.SettingLive.AccountTest do
       |> element("button.delete")
       |> render_click()
 
-      # Sometimes assert_patched fails without this :-(
-      Process.sleep(1000)
-
-      assert_patched(view, Routes.setting_account_path(conn, :show))
+      assert_redirected(view, Routes.setting_account_path(conn, :show))
     end
   end
 end

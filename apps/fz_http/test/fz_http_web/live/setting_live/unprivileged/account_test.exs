@@ -71,10 +71,7 @@ defmodule FzHttpWeb.SettingLive.Unprivileged.AccountTest do
       |> element("button.delete")
       |> render_click()
 
-      # Sometimes we have to wait a little
-      Process.sleep(10)
-
-      assert_patched(view, Routes.setting_unprivileged_account_path(conn, :show))
+      assert_redirected(view, Routes.setting_unprivileged_account_path(conn, :show))
     end
   end
 end

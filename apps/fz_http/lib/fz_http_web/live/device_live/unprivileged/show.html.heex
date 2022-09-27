@@ -1,7 +1,6 @@
 <div class="block">
-  <%= live_patch(
-      "<- Back to devices",
-      to: Routes.device_unprivileged_index_path(@socket, :index),
-      replace: true) %>
+  <.link navigate={Routes.device_unprivileged_index_path(@socket, :index)}>
+    &lt;- Back to devices
+  </.link>
 </div>
 <%= render FzHttpWeb.SharedView, "show_device.html", assigns %>

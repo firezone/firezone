@@ -42,10 +42,9 @@
         <%= for device <- @devices do %>
           <tr>
             <td>
-              <%= live_patch(
-                  device.name,
-                  to: Routes.device_unprivileged_show_path(@socket, :show, device),
-                  replace: true) %>
+              <.link navigate={Routes.device_unprivileged_show_path(@socket, :show, device)}>
+                <%= device.name %>
+              </.link>
             </td>
             <td class="code">
               <span><%= device.ipv4 %></span>
@@ -66,12 +65,9 @@
 
   <%= if FzHttpWeb.DeviceView.can_manage_devices?(@current_user) do %>
     <div class="block">
-      <%= live_patch(
-          to: Routes.device_unprivileged_index_path(@socket, :new),
-          replace: true,
-          class: "button") do %>
+      <.link navigate={Routes.device_unprivileged_index_path(@socket, :new)} class="button">
         Add Device
-      <% end %>
+      </.link>
     </div>
   <% end %>
 
@@ -109,11 +105,9 @@
           Signed in as <%= @current_user.email %>.
         </p>
         <p>
-          <%= live_patch(
-              to: Routes.setting_unprivileged_account_path(@socket, :show),
-              replace: true) do %>
+          <.link navigate={Routes.setting_unprivileged_account_path(@socket, :show)}>
             My Account
-          <% end %>
+          </.link>
           /
           <%= link(to: Routes.auth_path(@socket, :delete), method: :delete) do %>
             Sign out
