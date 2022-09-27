@@ -16,7 +16,7 @@ defmodule FzHttpWeb.OIDCLive.ConnectionsTableComponent do
     {:noreply,
      socket
      |> put_flash(:info, "A refresh is underway, please check back in a minute.")
-     |> push_patch(to: Routes.user_show_path(socket, :show, socket.assigns.user.id))}
+     |> push_redirect(to: Routes.user_show_path(socket, :show, socket.assigns.user.id))}
   end
 
   def handle_event("delete", %{"id" => id}, socket) do

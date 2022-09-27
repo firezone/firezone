@@ -28,7 +28,7 @@
           <%= select f,
               :user_id,
               user_options(@users),
-              prompt: "Optional user scope" %>
+              prompt: "All users" %>
         </div>
       </div>
 
@@ -38,7 +38,7 @@
           <%= select f,
               :port_type,
               port_type_options(),
-              prompt: "Optional port type",
+              prompt: "All protocols",
               title: if(!@port_rules_supported, do: "Kernel 5.6.9 required for port-based rules."),
               disabled: !@port_rules_supported %>
         </div>

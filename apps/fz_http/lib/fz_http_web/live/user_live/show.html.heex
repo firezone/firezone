@@ -31,15 +31,12 @@
       <h4 class="title is-4">Details</h4>
     </div>
     <div class="level-right">
-      <%= live_patch(
-          to: Routes.user_show_path(@socket, :edit, @user),
-          replace: true,
-          class: "button") do %>
+      <.link navigate={Routes.user_show_path(@socket, :edit, @user)} class="button">
         <span class="icon is-small">
           <i class="mdi mdi-pencil"></i>
         </span>
         <span>Change Email or Password</span>
-      <% end %>
+      </.link>
     </div>
   </div>
 
@@ -65,12 +62,12 @@
     <% end %>
   </div>
 
-  <%= live_patch(
-      "Add Device",
-      to: Routes.user_show_path(@socket, :new_device, @user),
-      id: "add-device-button",
-      replace: true,
-      class: "button") %>
+  <.link
+       navigate={Routes.user_show_path(@socket, :new_device, @user)}
+       id="add-device-button"
+       class="button">
+    Add Device
+  </.link>
 </section>
 
 <section class="section is-main-section">
