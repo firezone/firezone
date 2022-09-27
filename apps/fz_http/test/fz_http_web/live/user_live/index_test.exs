@@ -41,7 +41,7 @@ defmodule FzHttpWeb.UserLive.IndexTest do
       |> element("a", user.email)
       |> render_click()
 
-      assert_patched(view, Routes.user_show_path(conn, :show, user))
+      assert_redirected(view, Routes.user_show_path(conn, :show, user))
     end
   end
 
