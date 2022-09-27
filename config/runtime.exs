@@ -55,7 +55,7 @@ if config_env() == :prod do
   wireguard_ipv6_network = System.fetch_env!("WIREGUARD_IPV6_NETWORK")
   wireguard_ipv6_address = System.fetch_env!("WIREGUARD_IPV6_ADDRESS")
   wireguard_mtu = System.fetch_env!("WIREGUARD_MTU")
-  wireguard_endpoint = System.fetch_env!("WIREGUARD_ENDPOINT")
+  wireguard_endpoint = System.get_env("WIREGUARD_ENDPOINT", host)
   telemetry_enabled = FzString.to_boolean(System.fetch_env!("TELEMETRY_ENABLED"))
   telemetry_id = System.fetch_env!("TELEMETRY_ID")
   guardian_secret_key = System.fetch_env!("GUARDIAN_SECRET_KEY")
