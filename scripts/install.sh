@@ -106,7 +106,7 @@ firezoneSetup() {
   sed -i "s~EXTERNAL_URL=_CHANGE_ME_~EXTERNAL_URL=$2~" .env
   sed -i "s/TELEMETRY_ID=.*/TELEMETRY_ID=$telemetry_id/" .env
   docker-compose up -d
-  docker compose run --rm firezone bin/create-or-reset-admin
+  docker-compose run --rm firezone bin/create-or-reset-admin
 
   displayLogo
 
