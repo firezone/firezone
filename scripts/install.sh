@@ -52,6 +52,8 @@ promptInstallDir() {
 
 promptExternalUrl() {
   read -p "$1" externalUrl
+  # Remove trailing slash if present
+  externalUrl=$(echo $externalUrl | sed 's:/*$::')
   if [ -z "$externalUrl" ]; then
     externalUrl=$defaultExternalUrl
   fi
@@ -106,7 +108,7 @@ firezoneSetup() {
   sed -i "s~EXTERNAL_URL=_CHANGE_ME_~EXTERNAL_URL=$2~" .env
   sed -i "s/TELEMETRY_ID=.*/TELEMETRY_ID=$telemetry_id/" .env
   docker-compose up -d
-  docker-compose run --rm firezone bin/create-or-reset-admin
+  docker-compose exec firezone bin/create-or-reset-admin
 
   displayLogo
 
@@ -170,7 +172,7 @@ EOF
 
 main() {
   defaultInstallDir=`pwd`
-  defaultExternalUrl="https://$public_ip/"
+  defaultExternalUrl="https://$public_ip"
   adminUser=''
   externalUrl=''
   kernelCheck
