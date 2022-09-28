@@ -52,11 +52,11 @@ jobs:
             type=sha
             type=raw,${{ needs.draft-release.outputs.tag_name }}
       # Push to GHCR; our registry for testing / dev builds. Publish will
-      # make these public via Docker Hub later on.
+      # make these public via Docker Hub in the docker_publish workflow.
       - name: Build and push Docker image
         uses: docker/build-push-action@v3
         with:
-          platforms: linux/amd64,linux/amd64/v2,linux/amd64/v3,linux/arm64
+          platforms: linux/amd64,linux/arm64
           build-args: |
             VERSION=${{ needs.draft-release.outputs.tag_name }}
           file: Dockerfile.prod
