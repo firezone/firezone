@@ -1,19 +1,14 @@
 ARG ELIXIR_VERSION=1.14.0
-ARG OTP_VERSION=25.1
-ARG ALPINE_VERSION=3.16.2
+ARG OTP_VERSION=25.0.4
+ARG ALPINE_VERSION=3.16.1
 
-ARG BUILDER_IMAGE="firezone/elixir:${ELIXIR_VERSION}-otp-${OTP_VERSION}"
+ARG BUILDER_IMAGE="hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-alpine-${ALPINE_VERSION}"
 ARG RUNNER_IMAGE="alpine:${ALPINE_VERSION}"
 
 FROM ${BUILDER_IMAGE} as builder
 
-# Version is mandatory for building prod image
-ARG VERSION
-RUN test -n "$VERSION"
-ENV VERSION=$VERSION
-
 # install build dependencies
-RUN apk add nodejs npm build-base git python3
+RUN apk add nodejs npm build-base git
 
 # prepare build dir
 WORKDIR /app
@@ -44,6 +39,10 @@ RUN mix deps.compile
 COPY priv priv
 COPY apps apps
 
+# mix phx.digest triggers fz_http compilation, need version to be set here
+ARG VERSION=0.0.0-docker
+ENV VERSION=$VERSION
+
 # compile assets
 RUN cd apps/fz_http/assets \
     && npm install \
@@ -64,11 +63,7 @@ RUN mix release
 # the compiled release and other runtime necessities
 FROM ${RUNNER_IMAGE}
 
-RUN apk add -u --no-cache \
-  nftables \
-  libstdc++ \
-  ncurses-libs \
-  openssl
+RUN apk add -u --no-cache nftables libstdc++ ncurses-libs openssl
 
 WORKDIR /app
 
@@ -109,7 +104,7 @@ ENV MIX_ENV="prod" \
     ALLOW_UNPRIVILEGED_DEVICE_CONFIGURATION='true' \
     DISABLE_VPN_ON_OIDC_ERROR='false' \
     AUTO_CREATE_OIDC_USERS='true' \
-    AUTH_OIDC='{}' \
+    AUTH_OIDC_JSON='{}' \
     MAX_DEVICES_PER_USER='10' \
     CONNECTIVITY_CHECKS_ENABLED='true' \
     CONNECTIVITY_CHECKS_INTERVAL='3600' \
