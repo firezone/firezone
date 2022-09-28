@@ -51,6 +51,7 @@ jobs:
             type=semver,pattern={{major}}
             type=sha
             type=raw,${{ needs.draft-release.outputs.tag_name }}
+            type=raw,latest
       # Push to GHCR; our registry for testing / dev builds. Publish will
       # make these public via Docker Hub in the docker_publish workflow.
       - name: Build and push Docker image
