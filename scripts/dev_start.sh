@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 ip link add dev wg-firezone type wireguard
 ip address replace dev wg-firezone 10.3.2.1/24
