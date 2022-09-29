@@ -29,7 +29,6 @@ jobs:
         uses: akhilerm/tag-push-action@v2.0.0
         with:
           src: |
-            ${{ env.GITHUB_REGISTRY }}/firezone/firezone:latest # ${{ github.ref_name }}
+            ${{ env.GITHUB_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           dst: |
             ${{ env.DOCKERHUB_REGISTRY }}/${{ env.IMAGE_NAME}}:${{ github.ref_name }}
-            # ${{ env.DOCKERHUB_REGISTRY }}/firezone/${{ env.IMAGE_NAME}}:latest
