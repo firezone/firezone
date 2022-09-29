@@ -9,13 +9,6 @@ osCheck () {
   fi
 }
 
-dockerCheck () {
-  if ! type docker > /dev/null; then
-    echo 'docker not found. Please install docker and try again.'
-    exit
-  fi
-}
-
 curlCheck () {
   if ! type curl > /dev/null; then
     echo 'curl not found. Please install curl to use this script.'
@@ -42,25 +35,9 @@ capture () {
     fi
   fi
 }
-
-promptInstallDir() {
-  read -p "$1" installDir
-  if [ -z "$installDir" ]; then
-    installDir=$defaultInstallDir
-  fi
-}
-
-promptExternalUrl() {
-  read -p "$1" externalUrl
-  # Remove trailing slash if present
-  externalUrl=$(echo $externalUrl | sed 's:/*$::')
-  if [ -z "$externalUrl" ]; then
-    externalUrl=$defaultExternalUrl
-  fi
-}
-
 promptEmail() {
-  read -p "$1" adminEmail
+  echo $1
+  read adminEmail
   case $adminEmail in
     *@*) adminUser=$adminEmail;;
     *) promptEmail "Please provide a valid email: "
@@ -68,7 +45,8 @@ promptEmail() {
 }
 
 promptContact() {
-  read -p 'Could we email you to ask for product feedback? Firezone depends heavily on input from users like you to steer development. (Y/n): ' contact
+  echo "Could we email you to ask for product feedback? Firezone depends heavily on input from users like you to steer development. (Y/n): "
+  read contact
   case $contact in
     n|N);;
     *) capture "contactOk" $adminUser
@@ -100,93 +78,87 @@ kernelCheck() {
   fi
 }
 
+# determines distro and sets up and installs from cloudsmith repo
+# aborts if it can't detect or is not supported
+setupCloudsmithRepoAndInstall() {
+  hostinfo=`hostnamectl | egrep -i 'opera'`
+  if [[ "$hostinfo" =~ .*"Debian GNU/Linux 10".* || \
+        "$hostinfo" =~ .*"Debian GNU/Linux 11".* || \
+        "$hostinfo" =~ .*"Ubuntu 18.04".*        || \
+        "$hostinfo" =~ .*"Ubuntu 2"(0|1|2)".04".*
+     ]]
+  then
+    if [ ! -f /etc/apt/sources.list.d/firezone-firezone.list ]; then
+      apt-get -qqy update
+      apt-get -qqy install apt-transport-https gnupg
+      setupCloudsmithRepo "deb"
+    else
+      apt-get -qqy update
+    fi
+
+    apt-get install -y firezone
+  elif [[ "$hostinfo" =~ .*"Amazon Linux 2".*                   || \
+          "$hostinfo" =~ .*"Fedora 33".*                        || \
+          "$hostinfo" =~ .*"Fedora 34".*                        || \
+          "$hostinfo" =~ .*"Fedora Linux 3"(5|6).*              || \
+          "$hostinfo" =~ .*"CentOS Linux 7".*                   || \
+          "$hostinfo" =~ .*"CentOS Stream 8".*                  || \
+          "$hostinfo" =~ .*"CentOS Linux 8".*                   || \
+          "$hostinfo" =~ .*"CentOS Stream 9".*                  || \
+          "$hostinfo" =~ .*"Oracle Linux Server "(7|8|9).*      || \
+          "$hostinfo" =~ .*"Red Hat Enterprise Linux "(7|8|9).* || \
+          "$hostinfo" =~ .*"Rocky Linux 8".*                    || \
+          "$hostinfo" =~ .*"AlmaLinux 8".*                      || \
+          "$hostinfo" =~ .*"VzLinux 8".*
+       ]]
+  then
+    if [ ! -f /etc/yum.repos.d/firezone-firezone.repo ]; then
+      setupCloudsmithRepo "rpm"
+    fi
+
+    yum install -y firezone
+  elif [[ "$hostinfo" =~ .*"openSUSE Leap 15".* ]]
+  then
+    if ! zypper lr | grep firezone-firezone; then
+      setupCloudsmithRepo "rpm"
+    else
+      zypper --non-interactive --quiet ref firezone-firezone
+    fi
+
+    zypper --non-interactive install -y firezone
+  else
+    echo "Did not detect a supported Linux distribution. Try using the manual installation method using a release package from a similar distribution. Aborting."
+    exit
+  fi
+}
+
+setupCloudsmithRepo() {
+  curl -1sLf \
+    "https://dl.cloudsmith.io/public/firezone/firezone/setup.$1.sh" \
+    | bash
+}
+
 firezoneSetup() {
-  cd $installDir
-  curl -fsSL https://raw.githubusercontent.com/firezone/firezone/master/docker-compose.prod.yml -o docker-compose.yml
-  docker run --rm firezone/firezone bin/gen-env > .env
-  sed -i "s/ADMIN_EMAIL=_CHANGE_ME_/ADMIN_EMAIL=$1/" .env
-  sed -i "s~EXTERNAL_URL=_CHANGE_ME_~EXTERNAL_URL=$2~" .env
-  sed -i "s/TELEMETRY_ID=.*/TELEMETRY_ID=$telemetry_id/" .env
-  docker-compose up -d
-  docker-compose exec firezone bin/create-or-reset-admin
-
-  displayLogo
-
-cat << EOF
-Installation complete!
-
-You should now be able to log into the Web UI at $externalUrl with the
-following credentials:
-
-`grep ADMIN_EMAIL .env`
-`grep DEFAULT_ADMIN_PASSWORD .env`
-
-EOF
-
-  cd -
+  conf="/opt/firezone/embedded/cookbooks/firezone/attributes/default.rb"
+  sed -i "s/firezone@localhost/$1/" $conf
+  sed -i "s/default\['firezone']\['external_url'].*/default['firezone']['external_url'] = 'https:\/\/$public_ip'/" $conf
+  firezone-ctl reconfigure
+  firezone-ctl create-or-reset-admin
 }
-
-displayLogo() {
-cat << EOF
-
-
-
-
-
-
-                                             ::
-                                              !!:
-                                              .??^
-                                               ~J?^
-                                               :???.
-                                               .??J^
-                                               .??J!
-                                               .??J!
-                                               ^J?J~
-                                               !???:
-                                              .???? ::
-                                              ^J?J! :~:
-                                              7???: :~~
-                                             .???7  ~~~.
-                                             :??J^ :~~^
-                                             :???..~~~:
-           .............                     .?J7 ^~~~        ....
-        ..        ......::....                ~J!.~~~^       ::..
-                         ...:::....            !7^~~~^     .^: .
-                             ...:::....         ~~~~~~:. .:~^ .
-                                ....:::....      .~~~~~~~~~:..
-                                    ...::::....   .::^^^^:...
-                                       .....:::.............
-                                           .......:::.....
-
-
-
-
-
-
-
-
-EOF
-}
-
 
 main() {
-  defaultInstallDir=`pwd`
-  defaultExternalUrl="https://$public_ip"
   adminUser=''
-  externalUrl=''
   kernelCheck
   wireguardCheck
-  promptEmail "Enter the administrator email you'd like to use for logging into this Firezone instance: "
-  promptInstallDir "Enter the desired installation directory ($defaultInstallDir): "
-  promptExternalUrl "Enter the external URL that will be used to access this instance ($defaultExternalUrl): "
+  promptEmail "Enter the administrator email you'd like to use for logging into this Firezone instance:"
   promptContact
-  read -p "Press <ENTER> to install or Ctrl-C to abort."
-  firezoneSetup $adminUser $externalUrl
+  echo "Press <ENTER> to install or Ctrl-C to abort."
+  read
+  setupCloudsmithRepoAndInstall
+  firezoneSetup $adminUser
 }
 
 osCheck
-dockerCheck
 curlCheck
 
 telemetry_id=`od -vN "8" -An -tx1 /dev/urandom | tr -d " \n" ; echo`
