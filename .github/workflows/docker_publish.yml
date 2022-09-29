@@ -1,8 +1,8 @@
 name: Publish image to Docker Hub
 
-on:
-  release:
-    types: [published]
+on: push
+  # release:
+  #   types: [published]
 
 jobs:
   deploy-app:
