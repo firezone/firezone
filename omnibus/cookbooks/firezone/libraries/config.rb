@@ -271,7 +271,7 @@ class Firezone
         'AUTO_CREATE_OIDC_USERS' => attributes['authentication']['auto_create_oidc_users'].to_s,
 
         # OpenID Connect auth settings are serialized to json for consumption by fz_http
-        'AUTH_OIDC' => attributes['authentication']['oidc'].to_json,
+        'AUTH_OIDC_JSON' => attributes['authentication']['oidc'].to_json,
 
         # secrets
         'GUARDIAN_SECRET_KEY' => attributes['guardian_secret_key'],

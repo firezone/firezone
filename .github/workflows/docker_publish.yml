@@ -1,0 +1,34 @@
+name: Publish image to Docker Hub
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  deploy-app:
+    env:
+      DOCKERHUB_REGISTRY: docker.io
+      GITHUB_REGISTRY: ghcr.io
+      IMAGE_NAME: ${{ github.repository }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Login to DockerHub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.GITHUB_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Copy image from Github (staging) to Docker (production)
+        uses: akhilerm/tag-push-action@v2.0.0
+        with:
+          src: ${{ env.GITHUB_REGISTRY }}/${{ env.IMAGE_NAME}}:${{ github.ref_name }}
+          dst: |
+            ${{ env.DOCKERHUB_REGISTRY }}/${{ env.IMAGE_NAME}}:latest
+            ${{ env.DOCKERHUB_REGISTRY }}/${{ env.IMAGE_NAME}}:${{ github.ref_name }}

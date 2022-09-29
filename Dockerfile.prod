@@ -1,14 +1,14 @@
 ARG ELIXIR_VERSION=1.14.0
-ARG OTP_VERSION=25.0.4
-ARG ALPINE_VERSION=3.16.1
+ARG OTP_VERSION=25.1
+ARG ALPINE_VERSION=3.16.2
 
-ARG BUILDER_IMAGE="hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-alpine-${ALPINE_VERSION}"
+ARG BUILDER_IMAGE="firezone/elixir:${ELIXIR_VERSION}-otp-${OTP_VERSION}"
 ARG RUNNER_IMAGE="alpine:${ALPINE_VERSION}"
 
 FROM ${BUILDER_IMAGE} as builder
 
 # install build dependencies
-RUN apk add nodejs npm build-base git
+RUN apk add nodejs npm build-base git python3
 
 # prepare build dir
 WORKDIR /app
@@ -104,7 +104,7 @@ ENV MIX_ENV="prod" \
     ALLOW_UNPRIVILEGED_DEVICE_CONFIGURATION='true' \
     DISABLE_VPN_ON_OIDC_ERROR='false' \
     AUTO_CREATE_OIDC_USERS='true' \
-    AUTH_OIDC='{}' \
+    AUTH_OIDC_JSON='{}' \
     MAX_DEVICES_PER_USER='10' \
     CONNECTIVITY_CHECKS_ENABLED='true' \
     CONNECTIVITY_CHECKS_INTERVAL='3600' \

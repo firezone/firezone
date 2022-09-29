@@ -13,7 +13,7 @@ services:
         ipv4_address: 172.28.0.99
         ipv6_address: 2001:3990:3990::99
 
-  elixir:
+  firezone:
     build:
       context: .
       dockerfile: Dockerfile.dev
@@ -78,7 +78,7 @@ services:
 
   client:
     depends_on:
-      - elixir
+      - firezone
     image: linuxserver/wireguard:latest
     environment:
       - PUID=1000

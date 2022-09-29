@@ -168,7 +168,7 @@ jobs:
           republish: 'true'
           file: firezone_${{ github.ref_name }}-${{ matrix.platform }}.rpm
 
-      - name: Pubslih DEB
+      - name: Publish DEB
         uses: cloudsmith-io/action@master
         if: steps.check_deb.outputs.files_exists == 'true'
         with:
