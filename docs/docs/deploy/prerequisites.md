@@ -30,7 +30,7 @@ To enable this, you must ensure the following conditions are met:
 * `80/tcp` is allow inbound
 * The bundled Firezone `nginx` service is enabled and functioning
 * You have a valid DNS record assigned to this instance's public IP
-* The following 3 settings are configure in the [configuration file](../reference/configuration-file.md):
+* The following 3 settings are configure in the [configuration file](../reference/configuration-file):
   * `default['firezone']['external_url']`: The FQDN for the server.
   * `default['firezone']['ssl']['email_address']`: The email that will be used
   for the issued certificates.
