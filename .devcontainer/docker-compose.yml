@@ -5,9 +5,9 @@ services:
     image: caddy:2
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
-    network_mode: service:elixir
+    network_mode: service:firezone
 
-  elixir:
+  firezone:
     build:
       context: .
       dockerfile: Dockerfile
