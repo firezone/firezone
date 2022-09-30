@@ -19,7 +19,7 @@ services:
     ports:
       - 80:80
       - 443:443
-    command: caddy reverse-proxy --to firezone:4000 --from ${EXTERNAL_URL?err}
+    command: caddy reverse-proxy --to firezone:13000 --from ${EXTERNAL_URL?err}
     deploy:
       <<: *default-deploy
 
@@ -46,7 +46,7 @@ services:
 
       ## Web
       # PHOENIX_LISTEN_ADDRESS: '0.0.0.0'
-      # PHOENIX_PORT: '4000'
+      # PHOENIX_PORT: '13000'
       # SECURE_COOKIES: 'true'
       # EXTERNAL_TRUSTED_PROXIES: '[]'
       # PRIVATE_CLIENTS: '[]'

@@ -70,7 +70,7 @@ WORKDIR /app
 # set runner ENV
 ENV MIX_ENV="prod" \
     PHOENIX_LISTEN_ADDRESS='0.0.0.0' \
-    PHOENIX_PORT='4000' \
+    PHOENIX_PORT='13000' \
     SECURE_COOKIES='true' \
     EXTERNAL_TRUSTED_PROXIES='[]' \
     PRIVATE_CLIENTS='[]' \

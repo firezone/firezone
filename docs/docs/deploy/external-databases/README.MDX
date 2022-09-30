@@ -1,0 +1,41 @@
+---
+title: External Databases
+sidebar_position: 4
+---
+
+Firezone uses Postgresql as its primary data store. AES-GCM encryption
+is used to encrypt sensitive fields.
+
+## Compatibility
+
+Firezone should work fine on Postgres versions 9.6 and above, but we recommend
+using the latest stable version whenever possible. If you find an issue with
+your particular version of Postgres, [please open a GitHub issue
+](https://github.com/firezone/firezone/issues).
+
+In general, Firezone should also work fine using external Postgres-compatible
+database services like Amazon RDS and CockroachDB. See the configuration section
+below for more information configuring Firezone with an external DB.
+
+:::warning
+Configuring Firezone to use an external database can be complicated and
+error-prone. We recommend using the bundled Postgres for Omnibus-based
+deployments or the official Postgres Docker image for Docker-based deployments.
+:::
+
+:::info
+Need help deploying or maintaining Firezone with an external database? Consider
+[contacting us about our business plan](https://firezone.dev/contact/sales) for
+recommended configurations, white-glove deployment assistance, and more.
+:::
+
+## Configuration
+
+<Tabs>
+  <TabItem value="docker" label="Docker" default>
+
+  </TabItem>
+  <TabItem value="omnibus" label="Omnibus">
+
+  </TabItem>
+</Tabs>

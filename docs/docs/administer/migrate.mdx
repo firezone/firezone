@@ -1,0 +1,28 @@
+---
+title: Migrate
+sidebar_position: 2
+---
+
+Chef Infra Client, the configuration system Chef Omnibus relies on, has been
+scheduled for End-of-Life in 2024. As such, Omnibus-based deployments
+will be deprecated in a future version of Firezone.
+
+Follow this guide to migrate from an Omnibus-based deployment to a Docker-based
+deployment. In most cases this can be done with minimal downtime and without
+requiring you to regenerate WireGuard configurations for each device.
+from Omnibus today, follow our [migration guide]().
+:::
+
+Estimated time to complete: **2 hours**.
+
+## Steps to Migrate
+
+1. We recommend allocating about **2 hours** of downtime in case anything goes
+   wrong. Most migrations will take much less than this, but the goal is to
+   create a buffer for any unforeseen issues.
+1. **Back up** your server. This ensure you have a working state to roll back to
+   in case anything goes wrong. At a _bare minimum_ you'll want to back up the
+   [file and directories Firezone uses
+   ](../reference/file-and-directory-locations), but we recommend taking a full
+   snapshot if possible.
+1.

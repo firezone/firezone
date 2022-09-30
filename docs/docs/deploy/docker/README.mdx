@@ -3,38 +3,50 @@ title: Docker
 sidebar_position: 2
 ---
 
-As of 0.6.0, Docker is now the **preferred method** for deploying Firezone. It
-offers a number of benefits over the [Omnibus method](../omnibus):
+As of 0.6.0, Docker is now the **preferred method** for
+deploying Firezone. Docker offers a number of benefits over the old
+[Omnibus method](../omnibus):
 
 - **Simpler, more robust upgrades**: In most cases, simply pull the latest `firezone/firezone`
   image and restart the container.
 - **Simpler configuration**: Most day-to-day configuration of Firezone can now
   be done in the web UI instead of the `/etc/firezone/firezone.rb` configuration
   file. All other configuration variables can be specified as ENV vars to the
-  firezone container.
-- **Smaller footprint**: The firezone image weighs in at a couple dozen
+  Firezone container.
+- **Smaller footprint**: The Firezone image weighs in at a couple dozen
   megabytes versus hundreds of megabytes for the Omnibus package.
-- **Portability**: The firezone web portal can (in theory) now run on any
-  platform that runs Docker.
-- **Security**: Containerization providers better isolation than simply running
-  as an unprivileged local user.
+- **Portability**: Firezone now runs on any platform supports Docker.
+- **Security**: Containerization providers better security isolation than
+  simply running as an unprivileged local user.
 
-## Quickstart
+## Prerequisites
 
-Follow the quick start guide below to get up and running with Firezone on Docker.
+Ensure the following conditions are met before attempting to run the automatic
+install script:
+
+1. A recent version[`docker-compose`]( is installed for your
+
+## Automatic Install
+
+The easiest way to deploy Firezone with Docker is the automatic install script:
+
+```bash
+sudo -E bash -c "$(curl -fsSL https://github.com/firezone/firezone/raw/master/scripts/docker_install.sh)"
+```
+
+This will ask you a few questions regarding initial configuration, then proceed
+to download a sample docker-compose.yml file, configure it with your responses,
+and then print instructions for accessing the Web UI.
+
+## Manual Install
+
+If the automatic install fails, or you'd just like more control over the
+installation process, follow the steps below to install manually.
 
 :::note
 Before deploying Firezone in production, you'll need a valid DNS record
-pointing to this instance. See [prerequisites](../#prerequisites) if you haven't
-done this already.
-:::
-
-:::warning
-Docker Desktop [rewrites the source IP
-](https://www.docker.com/blog/how-docker-desktop-networking-works-under-the-hood/)
-for packets leaving the container network. This causes routing loops for
-NAT / masqueraded traffic and is not recommended. We recommend using [Docker
-Server](https://docs.docker.com/engine/install/#server) only at this time.
+pointing to this instance. See [Prepare to Deploy](../#prepare-to-deploy)
+if you haven't done this already.
 :::
 
 1. Ensure you're on a supported platform and have a recent version of

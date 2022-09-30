@@ -3,26 +3,15 @@ title: Supported Platforms
 sidebar_position: 1
 ---
 
-Omnibus Firezone currently supports the following platforms:
+Dockerized Firezone currently supports the following platforms:
 
-| OS | Architectures | Status | Notes |
-| --- | --- | --- | --- |
-| AmazonLinux 2 | `amd64` `arm64` | **Fully-supported** | See [AmazonLinux 2 Notes](#amazonlinux-2-notes) |
-| CentOS 7 | `amd64` | **Fully-supported** | See [CentOS 7 Notes](#centos-7-notes) |
-| CentOS 8 | `amd64` `arm64` | **Fully-supported** | See [CentOS 8 Notes](#centos-8-notes) |
-| CentOS Stream 9 | `amd64` `arm64` | **Fully-supported** | Works as-is |
-| Red Hat Enterprise Linux 7 | `amd64` | **Fully-supported** | See [RHEL 7 Notes](#rhel-7-notes) |
-| Red Hat Enterprise Linux 8 | `amd64` `arm64` | **Fully-supported** | See [RHEL 8 Notes](#rhel-8-notes) |
-| Red Hat Enterprise Linux 9 | `amd64` `arm64` | **Fully-supported** | See [RHEL 9 Notes](#rhel-9-notes) |
-| Debian 10 | `amd64` `arm64` | **Fully-supported** | See [Debian 10 Notes](#debian-10-notes)|
-| Debian 11 | `amd64` `arm64` | **Fully-supported** | Works as-is |
-| Fedora 33 | `amd64` `arm64` | **Fully-supported** | See [Fedora Notes](#fedora-notes) |
-| Fedora 34 | `amd64` `arm64` | **Fully-supported** | See [Fedora Notes](#fedora-notes) |
-| Fedora 35 | `amd64` `arm64` | **Fully-supported** | See [Fedora Notes](#fedora-notes) |
-| Ubuntu 18.04 | `amd64` `arm64` | **Fully-supported** | See [Ubuntu 18.04 Notes](#ubuntu-1804-notes) |
-| Ubuntu 20.04 | `amd64` `arm64` | **Fully-supported** | Works as-is |
-| Ubuntu 22.04 | `amd64` `arm64` | **Fully-supported** | Works as-is |
-| openSUSE Leap 15.3 | `amd64` | **Fully-supported** | See [openSUSE Notes](#opensuse-notes) |
+| Platform | Runtime | Status |
+| --- | --- | --- |
+| `linux/amd64`, `linux/arm64` | Docker Server | Fully-supported |
+| `linux/arm64`, `linux/amd64` | Docker Desktop | Fully-supported |
+|
+
+
 
 If your distro isn't listed here  please try using a package for the closest
 distro first. For example, since Raspberry Pi OS is based on Debian, try using

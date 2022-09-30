@@ -1,13 +1,23 @@
 ---
 title: Custom Reverse Proxy
-sidebar_position: 4
+sidebar_position: 5
 ---
 
-:::note
+:::info
+Due to its speed, security, ease-of-use, and support of the latest
+HTTP standards, Caddy (used by default for Docker-based deployments) is the
+recommended proxy server to use with Firezone.
+:::
+
+:::warning
 Using a custom reverse proxy is an advanced configuration. The default bundled
-Nginx proxy is suitable for the vast majority of use cases and is recommended
-for most users. There are important security risks if the Firezone reverse proxy
-is not set up correctly. Use only if you know what you are doing.
+Nginx proxy (Omnibus-based installs) and Caddy (Docker-based installs) is
+suitable for the vast majority of use cases and is recommended for most users.
+There are important security risks if the Firezone reverse proxy
+is not set up correctly.
+
+For help deploying Firezone with a custom reverse proxy, consider [contacting us
+for support](https://www.firezone.dev/contact/sales).
 :::
 
 ## Introduction

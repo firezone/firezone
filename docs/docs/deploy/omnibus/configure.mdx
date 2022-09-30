@@ -1,0 +1,20 @@
+---
+title: Configure
+sidebar_position: 1
+---
+
+Most day-to-day configuration of Firezone can be done via the Web UI.
+
+Deployment and other infrastructure-related configuration is handled via
+environment variables that are loaded from your configuration file (for
+Omnibus-based deployments) or from your `docker-compose.yml` file (for
+Docker-based deployments).
+
+Docker-based deployments are configured through environment
+variables passed to the `firezone` container. These can be
+specified either in a `.env` file in the current directory,
+the `docker-compose.yml` file, or passed to the `docker run`
+call directly.
+
+See [Docker's documentation
+](https://docs.docker.com/compose/envvars-precedence/) for more information.
