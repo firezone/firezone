@@ -2,3 +2,26 @@
 title: Environment Variables
 sidebar_position: 2
 ---
+
+Most day-to-day configuration of Firezone can (and should) be done via the
+Web UI or REST API.
+
+For Docker-based deployments, deployment-related or infrastructure-related
+configuration of Firezone is done through environment variables passed to the
+Firezone image upon launch.
+
+We recommend setting these in your Docker ENV file (`/data/firezone/.env` by
+default):
+
+| Name                          | Description                                                                                                                                                                                                           | Format                | Default                              |
+| ---                           | ---                                                                                                                                                                                                                   | ---                   | ---                                  |
+| **`DATABASE_ENCRYPTION_KEY`** | The base64-encoded symmetric encryption key used to encrypt and decrypt sensitive fields.                                                                                                                             | base64-encoded String | None -- must be generated on install |
+| `DATABASE_HOST`               | Database host                                                                                                                                                                                                         | IP or hostname        | `postgres`                           |
+| `DATABASE_PORT`               | Database port                                                                                                                                                                                                         | Integer               | `5432`                               |
+| `DATABASE_NAME`               | Name of database                                                                                                                                                                                                      | String                | `firezone`                           |
+| `DATABASE_USER`               | User                                                                                                                                                                                                                  | String                | `postgres`                           |
+| `DATABASE_PASSWORD`           | Password                                                                                                                                                                                                              | String                | `postgres`                           |
+| `DATABASE_POOL`               | Size of the Firezone connection pool                                                                                                                                                                                  | Integer               | `10`                                 |
+| `DATABASE_SSL`                | Whether to connect to the database over SSL                                                                                                                                                                           | Boolean               | `false`                              |
+| `DATABASE_SSL_OPTS`           | Map of options to send to the `:ssl_opts` option when connecting over SSL. See [Ecto.Adapters.Postgres documentation](https://hexdocs.pm/ecto_sql/Ecto.Adapters.Postgres.html#module-connection-options)              | JSON-encoded String   | `{}`                                 |
+| `DATABASE_PARAMETERS`         | Map of parameters to send to the `:parameters` option when connecting to the database. See [Ecto.Adapters.Postgres documentation](https://hexdocs.pm/ecto_sql/Ecto.Adapters.Postgres.html#module-connection-options). | JSON-encoded String   | `{}`                                 |

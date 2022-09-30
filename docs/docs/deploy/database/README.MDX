@@ -29,13 +29,59 @@ Need help deploying or maintaining Firezone with an external database? Consider
 recommended configurations, white-glove deployment assistance, and more.
 :::
 
-## Configuration
+## Configure Firezone to Connect
 
 <Tabs>
   <TabItem value="docker" label="Docker" default>
 
+The Firezone Docker image uses the following environment
+variables to connect to the DB:
+
+| Name | Description | Format | Default |
+| --- | --- | --- | --- |
+| **`DATABASE_ENCRYPTION_KEY`** | The base64-encoded symmetric encryption key used to encrypt and decrypt sensitive fields. | base64-encoded String | None -- must be generated on install |
+| `DATABASE_HOST` | Database host | IP or hostname | `postgres` |
+| `DATABASE_PORT` | Database port | Integer | `5432` |
+| `DATABASE_NAME` | Name of database | String | `firezone` |
+| `DATABASE_USER` | User | String | `postgres` |
+| `DATABASE_PASSWORD` | Password | String | `postgres` |
+| `DATABASE_POOL` | Size of the Firezone connection pool | Integer | `10` |
+| `DATABASE_SSL` | Whether to connect to the database over SSL | Boolean | `false` |
+| `DATABASE_SSL_OPTS` | Map of options to send to the `:ssl_opts` option when connecting over SSL. See [Ecto.Adapters.Postgres documentation](https://hexdocs.pm/ecto_sql/Ecto.Adapters.Postgres.html#module-connection-options) | JSON-encoded String | `{}` |
+| `DATABASE_PARAMETERS` | Map of parameters to send to the `:parameters` option when connecting to the database. See [Ecto.Adapters.Postgres documentation](https://hexdocs.pm/ecto_sql/Ecto.Adapters.Postgres.html#module-connection-options). | JSON-encoded String | `{}` |
+
+(Bold fields are required.)
+
+For more information, see the [environment variable reference
+](../../reference/env-vars).
+
+:::note
+The official `postgres` docker image can be configured by setting
+environment variables for the container. See the Postgres image
+[documentation](https://hub.docker.com/_/postgres) for more details.
+:::
+
   </TabItem>
   <TabItem value="omnibus" label="Omnibus">
+
+The following configuration options are used to configure the bundled Postgres
+for Omnibus-based deployments:
+
+| Config Key | Description | Default |
+| --- | --- | --- |
+| `default['firezone']['database']['user']`                                     | Specifies the username Firezone will use to connect to the DB.                                               | `node['firezone']['postgresql']['username']`                           |
+| `default['firezone']['database']['password']`                                 | If using an external DB, specifies the password Firezone will use to connect to the DB.                      | `'change_me'`                                                          |
+| `default['firezone']['database']['name']`                                     | Database that Firezone will use. Will be created if it doesn't exist.                                        | `'firezone'`                                                           |
+| `default['firezone']['database']['host']`                                     | Database host that Firezone will connect to.                                                                 | `node['firezone']['postgresql']['listen_address']`                     |
+| `default['firezone']['database']['port']`                                     | Database port that Firezone will connect to.                                                                 | `node['firezone']['postgresql']['port']`                               |
+| `default['firezone']['database']['pool']`                                     | Database pool size Firezone will use.                                                                        | `[10, Etc.nprocessors].max`                                            |
+| `default['firezone']['database']['ssl']`                                      | Whether to connect to the database over SSL.                                                                 | `false`                                                                |
+| `default['firezone']['database']['ssl_opts']`                                 | Hash of options to send to the `:ssl_opts` option when connecting over SSL. See [Ecto.Adapters.Postgres documentation](https://hexdocs.pm/ecto_sql/Ecto.Adapters.Postgres.html#module-connection-options). | `{}` |
+| `default['firezone']['database']['parameters']`                               | Hash of parameters to send to the `:parameters` option when connecting to the database. See [Ecto.Adapters.Postgres documentation](https://hexdocs.pm/ecto_sql/Ecto.Adapters.Postgres.html#module-connection-options). | `{}` |
+| `default['firezone']['database']['extensions']`                               | Database extensions to enable.                                                                               | `{ 'plpgsql' => true, 'pg_trgm' => true }`                             |
+
+For more details, see the [configuration file reference
+](../../reference/configuration-file).
 
   </TabItem>
 </Tabs>
