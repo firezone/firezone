@@ -80,7 +80,7 @@ default['firezone']['authentication']['google']['client_secret']
 default['firezone']['authentication']['google']['redirect_uri']
 ```
 
-Then, follow the instructions [here](../authenticate/google) to configure Google
+Then, follow the instructions [here](../authenticate/oidc/google) to configure Google
 as an OIDC provider.
 
 #### Existing Okta OAuth configuration
@@ -95,7 +95,7 @@ default['firezone']['authentication']['okta']['client_secret']
 default['firezone']['authentication']['okta']['site']
 ```
 
-Then, follow the instructions [here](../authenticate/okta) to configure Okta as
+Then, follow the instructions [here](../authenticate/oidc/okta) to configure Okta as
 an OIDC provider.
 
 ## Upgrading from 0.3.x to >= 0.3.16
@@ -124,18 +124,17 @@ users authenticated through your OIDC provider.
 
 If this does not work, you will need to delete your existing OAuth app
 and repeat the OIDC setup steps to
-[create a new app integration](../authenticate/) .
+[create a new app integration](../authenticate/oidc) .
 
 ### I have an existing OAuth integration
 
 Prior to 0.3.11, Firezone used pre-configured OAuth2 providers. Follow the
-instructions [here](../authenticate/) to migrate
-to OIDC.
+instructions [here](../authenticate/oidc) to migrate to OIDC.
 
 ### I have not integrated an identity provider
 
 No action needed. You can follow the instructions
-[here](../authenticate/)
+[here](../authenticate/oidc)
 to enable SSO through an OIDC provider.
 
 ## Upgrading from 0.3.1 to >= 0.3.2

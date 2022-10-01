@@ -10,16 +10,12 @@ environment variables that are loaded from your configuration file (for
 Omnibus-based deployments) or from your `docker-compose.yml` file (for
 Docker-based deployments).
 
-For Omnibus-based deployments, Firezone leverages [Chef Omnibus
-](https://github.com/chef/omnibus) to handle release packaging, process
-supervision, log management, and more.
+Docker-based deployments are configured through environment
+variables passed to the `firezone` container. These can be
+specified either in a `.env` file in the current directory,
+the `docker-compose.yml` file, or passed to the `docker run`
+call directly. See the [env var reference](../../reference/env-vars)
+for a complete listing.
 
-The main configuration file is written in [Ruby](https://ruby-lang.org) and can
-be found at `/etc/firezone/firezone.rb` on a default installation.
-Changing this file **requires re-running** `sudo firezone-ctl reconfigure`
-which triggers Chef to pick up the changes and apply them to the running
-system.
-
-For an exhaustive list of Omnibus configuration variables and their
-descriptions, see the [configuration file reference
-](../reference/configuration-file).
+See [Docker's documentation
+](https://docs.docker.com/compose/envvars-precedence/) for more information.

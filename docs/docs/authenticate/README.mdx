@@ -5,9 +5,9 @@ sidebar_position: 3
 
 Firezone supports the following authentication methods:
 
-1. [Local email/password (default)](../authenticate/local-auth)
-1. [SSO authentication via OpenID Connect](../authenticate/oidc)
-1. [SSO authentication via SAML 2.0](../authenticate/saml)
+1. [Local email/password (default)](local-auth)
+1. [SSO authentication via OpenID Connect](oidc)
+1. [SSO authentication via SAML 2.0](saml)
 
 :::note
 If your Identity Provider doesn't work with the methods listed above,
@@ -19,16 +19,16 @@ If your Identity Provider doesn't work with the methods listed above,
 We've included instructions on how to set up Firezone with several popular
 identity providers using our Generic OIDC integration:
 
-* [Okta](../authenticate/okta)
-* [Azure Active Directory](../authenticate/azuread)
-* [Google](../authenticate/google)
-* [Onelogin](../authenticate/onelogin)
-* [Zitadel](../authenticate/zitadel)
+* [Okta](oidc/okta)
+* [Azure Active Directory](oidc/azuread)
+* [Google](oidc/google)
+* [Onelogin](oidc/onelogin)
+* [Zitadel](oidc/zitadel)
 
 If your identity provider is not listed above, but has a generic OIDC or SAML
 connector, please consult their documentation to find instructions on obtaining
 the config settings required. Instructions for setting up Firezone with a
-generic OIDC provider can be found [here](../authenticate/generic-oidc).
+generic OIDC provider can be found [here](oidc).
 
 Open a [Github issue](https://github.com/firezone/firezone/issues)
 to request documentation or submit a pull request to add documentation for your
@@ -79,7 +79,7 @@ This is the default.
 
 To re-authenticate an expired VPN session, a user will need to turn off their
 VPN session and sign in to the Firezone portal (URL specified during
-[deployment](../deploy/prerequisites)).
+[deployment](../deploy#prepare-to-deploy)).
 
 See detailed Client Instructions on how to re-authenticate your session
 [here](../user-guides/client-instructions).

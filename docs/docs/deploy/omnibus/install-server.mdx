@@ -4,13 +4,13 @@ sidebar_position: 3
 ---
 
 **Important**: Ensure you've satisfied the
-[prerequisites](../deploy/prerequisites) before following this
+[prerequisites](../#prepare-to-deploy) before following this
 guide.
 
 ## Installation Instructions
 
 Assuming you're running a supported Linux kernel on one of the [supported
-platforms](./supported-platforms), use one of the methods below to get started:
+platforms](supported-platforms), use one of the methods below to get started:
 
 ### Automatic Install
 
@@ -107,7 +107,8 @@ If all else fails, try these steps to install Firezone manually.
    default['firezone']['ssl']['acme']['enabled'] = true
    ```
 
-   See the complete [configuration file reference for more details](../reference/configuration-file).
+   See the complete [configuration file reference for more details
+   ](../../reference/configuration-file).
 
 1. Reconfigure the application to pick up the new changes:
    `sudo firezone-ctl reconfigure`.
@@ -116,4 +117,5 @@ If all else fails, try these steps to install Firezone manually.
 1. Now you should be able to sign in to the web UI at the URL you specified in
    step 5 above, e.g. `https://firezone.example.com`
 
-Find solutions to common issues during deployment in [Troubleshoot](../administer/troubleshoot).
+Find solutions to common issues during deployment in [Troubleshoot
+](../../administer/troubleshoot).
