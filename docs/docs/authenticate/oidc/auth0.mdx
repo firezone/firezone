@@ -1,6 +1,6 @@
 ---
 title: Auth0
-sidebar_position: 7
+sidebar_position: 8
 ---
 
 Firezone supports Single Sign-On (SSO) using Auth0
@@ -9,12 +9,13 @@ obtain the following config settings required for the integration:
 
 1. `discovery_document_uri`: The
 [OpenID Connect provider configuration URI](https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderConfig)
-which returns a JSON document used to construct subsequent requests to this
-OIDC provider.
+which returns a JSON document used to construct subsequent requests to this OIDC
+provider.
 1. `client_id`: The client ID of the application.
 1. `client_secret`: The client secret of the application.
-1. `redirect_uri`: Instructs OIDC provider where to redirect after authentication.
-This should be your Firezone `EXTERNAL_URL + /auth/oidc/<provider_key>/callback/`
+1. `redirect_uri`: Instructs OIDC provider where to redirect after
+authentication. This should be your Firezone
+`EXTERNAL_URL + /auth/oidc/<provider_key>/callback/`
 (e.g. `https://firezone.example.com/auth/oidc/auth0/callback/`).
 1. `response_type`: Set to `code`.
 1. `scope`: [OIDC scopes](https://openid.net/specs/openid-connect-basic-1_0.html#Scopes)
