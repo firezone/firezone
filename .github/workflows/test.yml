@@ -72,10 +72,6 @@ jobs:
       - name: Create PLTs
         if: steps.plt_cache.outputs.cache-hit != 'true'
         run: mix dialyzer --plt
-      - name: Install node modules
-        run: |
-          cd docs
-          npm ci
       - name: Run pre-commit
         run: |
           pre-commit install
