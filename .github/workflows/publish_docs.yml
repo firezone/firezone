@@ -20,6 +20,7 @@ jobs:
       - run: |
           cd docs/
           yarn install --frozen-lockfile
+          yarn docusaurus gen-api-docs rest_api
           yarn build
       - name: Publish Latest Docs
         uses: JamesIves/github-pages-deploy-action@v4.4.0
