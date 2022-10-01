@@ -15,13 +15,13 @@ jobs:
       - uses: actions/setup-node@v3
         with:
           node-version: 16
-          cache: 'yarn'
-          cache-dependency-path: docs/yarn.lock
+          cache: 'npm'
+          cache-dependency-path: docs/pcakge-lock.json
       - run: |
           cd docs/
-          yarn install --frozen-lockfile
-          yarn docusaurus gen-api-docs rest_api
-          yarn build
+          npm ci
+          npm run docusaurus gen-api-docs rest_api
+          npm run build
       - name: Publish Latest Docs
         uses: JamesIves/github-pages-deploy-action@v4.4.0
         with:
