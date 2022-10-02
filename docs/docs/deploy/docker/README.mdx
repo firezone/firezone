@@ -15,16 +15,20 @@ deploying Firezone. Docker offers a number of benefits over the old
   Firezone container.
 - **Smaller footprint**: The Firezone image weighs in at a couple dozen
   megabytes versus hundreds of megabytes for the Omnibus package.
-- **Portability**: Firezone now runs on any platform supports Docker.
+- **Portability**: Firezone now runs on any platform that supports Docker.
 - **Security**: Containerization providers better security isolation than
   simply running as an unprivileged local user.
 
 ## Prerequisites
 
-Ensure the following conditions are met before attempting to run the automatic
-install script:
+Ensure you're on a [supported platform](supported-platforms) with a recent
+version of [docker-compose](https://docs.docker.com/compose/install/) installed.
 
-1. A recent version[`docker-compose`]( is installed for your
+:::note
+Before deploying Firezone in **production**, you'll need a valid DNS record
+pointing to this instance. See [Prepare to Deploy](../#prepare-to-deploy)
+if you haven't done this already.
+:::
 
 ## Automatic Install
 
@@ -44,12 +48,6 @@ Firezone files will be installed in `/data/firezone` by default.
 
 If the automatic install fails, or you'd just like more control over the
 installation process, follow the steps below to install manually.
-
-:::note
-Before deploying Firezone in production, you'll need a valid DNS record
-pointing to this instance. See [Prepare to Deploy](../#prepare-to-deploy)
-if you haven't done this already.
-:::
 
 1. Ensure you're on a supported platform and have a recent version of
    [docker-compose](https://docs.docker.com/compose/install/) installed.

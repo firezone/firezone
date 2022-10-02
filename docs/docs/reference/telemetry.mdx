@@ -33,9 +33,10 @@ to answer the questions in the section above.
 Admin emails are collected **only if** you explicitly opt-in to product updates.
 Otherwise, personally-identifiable information is ***never*** collected.
 
-We store telemetry in a self-hosted instance of PostHog running in a private
-Kubernetes cluster, only accessible by the Firezone team. Here is an example of
-a telemetry event that is sent from your instance of Firezone to our telemetry server:
+We store telemetry in a self-hosted instance of [PostHog](https://posthog.com)
+running in a private Kubernetes cluster, only accessible by the Firezone team.
+Here is an example of a telemetry event that is sent from your instance of
+Firezone to our telemetry server:
 
 ```json
 {
@@ -80,18 +81,29 @@ privacy or security requirements and would prefer to disable telemetry altogethe
 If that’s you, keep reading.
 :::
 
-Telemetry is enabled by default. To completely disable product telemetry, set the
-following configuration option to `false` in `/etc/firezone/firezone.rb` and run
-`sudo firezone-ctl reconfigure` to pick up the changes.
+Telemetry is enabled by default. To completely disable product telemetry:
+
+<Tabs>
+  <TabItem value="docker" label="Docker" default>
+
+Set the `TELEMETRY_ENABLED` environment variable to `false` and
+restart the `firezone` container.
+
+  </TabItem>
+  <TabItem value="omnibus" label="Omnibus">
+
+Set the following configuration option to `false` in `/etc/firezone/firezone.rb`
+and run `sudo firezone-ctl reconfigure` to pick up the changes.
 
 ```ruby
 default['firezone']['telemetry']['enabled'] = false
 ```
 
-That will completely disable all product telemetry.
+  </TabItem>
+</Tabs>
 
 :::note
-If you’re looking for support running Firezone in air-gapped or other restrictive
-environments, [contact us](mailto:sales@firezone.dev) about our
-[Enterprise](https://www.firezone.dev/pricing) functionality.
+If you’re looking for support running Firezone in air-gapped or other
+restrictive environments, [contact us](mailto:sales@firezone.dev) about our
+[Business](https://www.firezone.dev/pricing) functionality.
 :::

@@ -3,108 +3,20 @@ title: Supported Platforms
 sidebar_position: 1
 ---
 
-Dockerized Firezone currently supports the following platforms:
+Firezone currently supports the following platforms for Docker-based
+deployments.
 
-| Platform | Runtime | Status |
-| --- | --- | --- |
-| `linux/amd64`, `linux/arm64` | Docker Server | Fully-supported |
-| `linux/arm64`, `linux/amd64` | Docker Desktop | Fully-supported |
-|
+| OS      | Architecture(s) | Runtime(s)     | Status          | Notes                                            |
+| ---     | ---             | ---            | ---             | ---                                              |
+| Linux   | `amd64` `arm64` | Docker Server  | Fully-supported | `wireguard` module needed for kernels &lt; `5.6` |
+| Linux   | `amd64` `arm64` | Docker Desktop | Fully-supported | Not recommended for production deployments.      |
+| macOS   | `amd64` `arm64` | Docker Desktop | Fully-supported | Not recommended for production deployments.      |
+| Windows | `amd64` `arm64` | Docker Desktop | Fully-supported | Not recommended for production deployments.      |
 
-
-
-If your distro isn't listed here  please try using a package for the closest
-distro first. For example, since Raspberry Pi OS is based on Debian, try using
-the Debian Firezone package.
-
-If that doesn't work, please
-[open an issue](https://github.com/firezone/firezone/issues/new/choose)
-and let us know. New distros are being supported on a regular basis and there's
-a good chance yours will be added soon.
-
-Note that we only support RPM and DEB based packaging systems. Others, like Arch
-Linux are currently being investigated [
-in this issue](https://github.com/firezone/firezone/issues/378).
-
-## AmazonLinux 2 Notes
-
-Kernel upgrade required:
-
-```shell
-sudo amazon-linux-extras install -y kernel-5.10
-```
-
-## CentOS 7 Notes
-
-Kernel upgrade to 5.6+ required. To upgrade to the latest mainline kernel and
-select it as the default boot kernel:
-
-```shell
-sudo rpm --import https://www.elrepo.org/RPM-GPG-KEY-elrepo.org
-sudo yum install -y https://www.elrepo.org/elrepo-release-7.el7.elrepo.noarch.rpm
-sudo yum install -y elrepo-release
-sudo yum --enablerepo=elrepo-kernel install -y kernel-ml
-sudo grub2-set-default 0
-sudo grub2-mkconfig -o /boot/grub2/grub.cfg
-sudo reboot
-```
-
-## CentOS 8 Notes
-
-The WireGuard kernel module needs to be installed:
-
-```shell
-yum install elrepo-release epel-release
-yum install kmod-wireguard
-```
-
-## RHEL 7 Notes
-
-Red Hat Enterprise Linux is binary compatible with CentOS, so the Firezone
-package for CentOS 7 should work just fine for RHEL 7. You'll still need to
-upgrade your kernel to 5.6+ however. To do so, follow the steps for
-[CentOS 7 Notes](#centos-7-notes) above.
-
-## RHEL 8 Notes
-
-Red Hat Enterprise Linux is binary compatible with CentOS, so the Firezone
-package for CentOS 8 should work just fine for RHEL 8. You'll still need to
-install the WireGuard kernel module, however. See [CentOS 8 Notes
-](#centos-8-notes) above.
-
-## RHEL 9 Notes
-
-Use the package for CentOS 9.
-
-## Fedora Notes
-
-On fresh Fedora installations you'll probably need to install a cron
-implementation to support the logrotate functionality, otherwise
-you may receive errors about a missing `/etc/cron.hourly` directory.
-
-```shell
-yum install cronie-anacron
-```
-
-## Ubuntu 18.04 Notes
-
-Kernel upgrade to 5.4+ required:
-
-```shell
-sudo apt install linux-image-generic-hwe-18.04
-```
-
-## Debian 10 Notes
-
-Kernel upgrade to 5.6+ required. See [this guide
-](https://jensd.be/968/linux/install-a-newer-kernel-in-debian-10-buster-stable)
-for an example.
-
-## openSUSE Notes
-
-Firezone requires the `setcap` utility, but some recent openSUSE releases may
-not have it installed by default. To fix, ensure `libcap-progs` is installed:
-
-```shell
-sudo zypper install libcap-progs
-```
+:::info
+Docker Desktop [rewrites the source address
+](https://www.docker.com/blog/how-docker-desktop-networking-works-under-the-hood/)
+for packets flowing out of container networks under some conditions. This can
+cause routing loops and other hard to debug connectivity issues with Firezone.
+We recommend **only** using Docker Server for Linux for production deployments.
+:::
