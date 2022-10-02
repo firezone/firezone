@@ -1,7 +1,16 @@
 ---
 title: Configure
-sidebar_position: 4
+sidebar_position: 5
 ---
+
+There are two types of configuration in Firezone:
+
+* [Runtime configuration](#runtime-configuration): Application configuration
+  related to day-to-day operation of Firezone.
+* [Deployment configuration](#deployment-configuration): Deployment or
+  infrastructure-related configuration releveant to running Firezone on-prem.
+
+## Runtime Configuration
 
 Most day-to-day configuration of Firezone can be done via the Web UI or
 REST API. See our [REST API documentation](../../reference/REST API) for more
@@ -10,5 +19,43 @@ configuration can be changed **with little to no downtime** in a production
 deployment.
 
 We're actively working to move more configuration variables to
-this type of configuration, so expect more ENV vars to move to runtime
+this type of configuration, so expect more ENV vars to transition to runtime
 configuration in the future.
+
+## Deployment Configuration
+
+Deployment-related and infrastructure configuration require restarting Firezone
+services after change.
+
+<Tabs>
+<TabItem value="docker" label="Docker" default>
+
+Docker-based deployments are configured through environment
+variables passed to the `firezone` container. These can be
+specified either in a `.env` file in the current directory,
+the `docker-compose.yml` file, or passed to the `docker run`
+call directly. See the [env var reference](../../reference/env-vars)
+for a complete listing.
+
+See [Docker's documentation
+](https://docs.docker.com/compose/envvars-precedence/) for more information.
+
+</TabItem>
+<TabItem value="omnibus" label="Omnibus">
+
+For Omnibus-based deployments, Firezone leverages [Chef Omnibus
+](https://github.com/chef/omnibus) to handle release packaging, process
+supervision, log management, and more.
+
+The main configuration file is written in [Ruby](https://ruby-lang.org) and can
+be found at `/etc/firezone/firezone.rb` on a default installation.
+Changing this file **requires re-running** `sudo firezone-ctl reconfigure`
+which triggers Chef to pick up the changes and apply them to the running
+system.
+
+For an exhaustive list of Omnibus configuration variables and their
+descriptions, see the [configuration file reference
+](../../reference/configuration-file).
+
+</TabItem>
+</Tabs>

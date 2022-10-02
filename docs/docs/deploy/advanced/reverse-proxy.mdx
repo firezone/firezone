@@ -1,30 +1,24 @@
 ---
 title: Custom Reverse Proxy
-sidebar_position: 5
+sidebar_position: 3
 ---
-
-:::info
-Due to its speed, security, ease-of-use, and support of the latest
-HTTP standards, Caddy (used by default for Docker-based deployments) is the
-recommended proxy server to use with Firezone.
-:::
 
 :::warning
 Using a custom reverse proxy is an advanced configuration. The default bundled
-Nginx proxy (Omnibus-based installs) and Caddy (Docker-based installs) is
+Nginx proxy (Omnibus-based deployments) and Caddy (Docker-based deployments) is
 suitable for the vast majority of use cases and is recommended for most users.
-There are important security risks if the Firezone reverse proxy
-is not set up correctly.
+There are important security risks if the reverse proxy is not set up correctly.
+:::
 
 For help deploying Firezone with a custom reverse proxy, consider [contacting us
 for support](https://www.firezone.dev/contact/sales).
-:::
 
 ## Introduction
 
-Firezone comes with a bundled [Nginx](https://www.nginx.com/) reverse proxy,
-however, in some cases you might want to deploy your own server such as when
-using behind your own load balancer.
+Firezone comes with bundled [Nginx](https://www.nginx.com/) (Omnibus-based
+deployments) or uses Caddy (Docker-based deployments) by default. However, in
+some cases you might want to deploy your own server such as when using behind
+your own load balancer.
 
 ## Prerequisites
 
@@ -103,9 +97,9 @@ reverse proxy to proxy to that instead.
 
 ## Example configurations
 
-* [Apache](../reverse-proxies/apache)
-* [Traefik](../reverse-proxies/traefik)
-* [HAProxy](../reverse-proxies/haproxy)
+* [Apache](../../reference/reverse-proxy-templates/apache)
+* [Traefik](../../reference/reverse-proxy-templates/traefik)
+* [HAProxy](../../reference/reverse-proxy-templates/haproxy)
 
 These configurations are written to be as simple as possible. They're designed
 to function as a simple template which you can customize further to suit your

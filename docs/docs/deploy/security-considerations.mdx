@@ -10,15 +10,32 @@ detailed [below](#production-deployments).
 
 ## List of services and ports
 
-Shown below is a table of ports used by Firezone services.
+Shown below is a table of default ports used by Firezone services.
 
-| Service | Default port | Listen address | Description |
-| ------ | --------- | ------- | --------- |
-| Nginx | `443` | `all` | Public HTTPS port for administering Firezone and facilitating authentication. |
-| Nginx | `80` | `all` | Public HTTP port used for ACME. Disabled when ACME is disabled. |
-| WireGuard | `51820` | `all` | Public WireGuard port used for VPN sessions. |
-| Postgresql | `15432` | `127.0.0.1` | Local-only port used for bundled Postgresql server. |
-| Phoenix | `13000` | `127.0.0.1` | Local-only port used by upstream elixir app server. |
+<Tabs>
+<TabItem label="Docker" value="docker" default>
+
+| Service    | Port        | Listen address | Description                                                                   |
+| ------     | ---------   | -------        | ---------                                                                     |
+| Caddy      | `443/tcp`   | `all`          | Public HTTPS port for administering Firezone and facilitating authentication. |
+| Caddy      | `80/tcp`    | `all`          | Public HTTP port used for ACME. Disabled when ACME is disabled.               |
+| WireGuard  | `51820/udp` | `all`          | Public WireGuard port used for VPN sessions.                                  |
+| Postgresql | `5432/tcp`  | `-`            | Containerized port used for bundled Postgresql server.                        |
+| Phoenix    | `13000/tcp` | `-`            | Containerized port used by upstream elixir app server.                        |
+
+</TabItem>
+<TabItem label="Omnibus" value="omnibus">
+
+| Service    | Port        | Listen address | Description                                                                   |
+| ------     | ---------   | -------        | ---------                                                                     |
+| Nginx      | `443/tcp`   | `all`          | Public HTTPS port for administering Firezone and facilitating authentication. |
+| Nginx      | `80/tcp`    | `all`          | Public HTTP port used for ACME. Disabled when ACME is disabled.               |
+| WireGuard  | `51820/udp` | `all`          | Public WireGuard port used for VPN sessions.                                  |
+| Postgresql | `15432/tcp` | `127.0.0.1`    | Local-only port used for bundled Postgresql server.                           |
+| Phoenix    | `13000/tcp` | `127.0.0.1`    | Local-only port used by upstream elixir app server.                           |
+
+</TabItem>
+</Tabs>
 
 ## Production deployments
 
@@ -31,7 +48,8 @@ and instead use the WireGuard tunnel itself to manage Firezone.
 For example, assuming an administrator has generated a device configuration and
 established a tunnel with local WireGuard address `10.3.2.2`, the following `ufw`
 configuration would allow the administrator the ability to reach the Firezone web
-UI on the default `10.3.2.1` tunnel address for the server's `wg-firezone` interface:
+UI on the default `10.3.2.1` tunnel address for the server's `wg-firezone`
+interface:
 
 ```text
 root@demo:~# ufw status verbose
@@ -49,13 +67,8 @@ Anywhere                   ALLOW IN    10.3.2.2
 51820/udp (v6)             ALLOW IN    Anywhere (v6)
 ```
 
-This would leave only `22/tcp` exposed for SSH access to manage the server (optional),
-and `51820/udp` exposed in order to establish WireGuard tunnels.
-
-:::note
-This type of configuration has not been fully tested with SSO
-authentication and may it to break or behave unexpectedly.
-:::
+This would leave only `22/tcp` exposed for SSH access to manage the server
+(optional), and `51820/udp` exposed in order to establish WireGuard tunnels.
 
 ## Reporting Security Issues
 

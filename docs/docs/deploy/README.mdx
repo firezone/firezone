@@ -42,42 +42,40 @@ depending on your requirements.
 
 ### Set up SSL
 
-While Firezone generates a self-signed SSL certificate for you on install,
-you'll need a valid SSL certificate to use Firezone in a production capacity.
-
+You'll need a valid SSL certificate to use Firezone in a production capacity.
 Firezone supports ACME for automatic provisioning of SSL certificates for both
-Docker-based and Omnibus-based installations.
+Docker-based and Omnibus-based installations. This is recommended in most cases.
 
 <Tabs>
-  <TabItem value="docker" label="Docker" default>
+<TabItem value="docker" label="Docker" default>
 
-    #### Setting up ACME for Docker-based deployments
+#### Setting up ACME for Docker-based deployments
 
-    For Docker-based deployments, the simplest way to provision an SSL
-    certificate is to use our Caddy service example in docker-compose.yml.
-    Caddy uses ACME to automatically provision SSL certificates as long as
-    it's available on port 80/tcp and the DNS record for the server is valid.
+For Docker-based deployments, the simplest way to provision an SSL
+certificate is to use our Caddy service example in docker-compose.yml.
+Caddy uses ACME to automatically provision SSL certificates as long as
+it's available on port 80/tcp and the DNS record for the server is valid.
 
-    See the [Docker deployment guide](docker) for more info.
+See the [Docker deployment guide](docker) for more info.
 
-  </TabItem>
-  <TabItem value="omnibus" label="Omnibus">
+</TabItem>
+<TabItem value="omnibus" label="Omnibus">
 
-    For Omnibus-based deployments, ACME is disabled by default to maintain
-    compatibility with existing installations.
+For Omnibus-based deployments, ACME is disabled by default to maintain
+compatibility with existing installations.
 
-    To enable ACME, ensure the following conditions are met:
+To enable ACME, ensure the following conditions are met:
 
-    * `80/tcp` is allow inbound
-    * The bundled Firezone `nginx` service is enabled and functioning
-    * You have a valid DNS record assigned to this instance's public IP
-    * The following 3 settings are configure in the [configuration file](../reference/configuration-file):
-      * `default['firezone']['external_url']`: The FQDN for the server.
-      * `default['firezone']['ssl']['email_address']`: The email that will be used
-      for the issued certificates.
-      * `default['firezone']['ssl']['acme']['enabled']`: Set this to true to enable it.
+* `80/tcp` is allow inbound
+* The bundled Firezone `nginx` service is enabled and functioning
+* You have a valid DNS record assigned to this instance's public IP
+* The following 3 settings are configure in the [configuration file](../reference/configuration-file):
+  * `default['firezone']['external_url']`: The FQDN for the server.
+  * `default['firezone']['ssl']['email_address']`: The email that will be used
+    for the issued certificates.
+  * `default['firezone']['ssl']['acme']['enabled']`: Set this to true to enable it.
 
-  </TabItem>
+</TabItem>
 </Tabs>
 
 ### Open required firewall ports
