@@ -7,36 +7,77 @@ The following are examples for configuring the [Traefik](https://traefik.io/)
 proxy as a reverse proxy for Firezone.
 
 In these examples, we assume Traefik is deployed using Docker on the same host
-as Firezone. For this to work, you'll need to make sure Firezone's phoenix
-app is bound to port `13000` on the Docker interface address and
-`external_trusted_proxies` is set properly:
-
-```ruby
-# /etc/firezone/firezone.rb
-
-# ...
-
-default['firezone']['phoenix']['port'] = 13000
-default['firezone']['phoenix']['listen_address'] = '172.17.0.1'
-default['firezone']['external_trusted_proxies'] = ['172.18.0.2']
-```
+as Firezone. For this to work, you'll need to make sure
+`EXTERNAL_TRUSTED_PROXIES` is set to include the Docker address of the Traefik
+service.
 
 ## Without SSL termination
 
 Since Firezone requires HTTPS for the web portal, please bear in mind a
 downstream proxy will need to terminate SSL connections in this scenario.
 
-Use the following `docker-compose.yml` and `rules.yml` files to configure
-Traefik:
+Use the following `docker-compose.yml` and `rules.yml` files as a starting
+point for your own Firezone config:
 
 ### `docker-compose.yml`
 
 ```yaml
 version: '3'
 
+x-deploy: &default-deploy
+  restart_policy:
+    condition: on-failure
+    delay: 5s
+    max_attempts: 3
+    window: 120s
+  update_config:
+    order: start-first
+
+networks:
+  app:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+        - subnet: 2001:3990:3990::/64
+
 services:
-  reverse-proxy:
-          #network_mode: "host"
+  firezone:
+    image: firezone/firezone
+    ports:
+      - 51820:51820/udp
+    volumes:
+      # IMPORTANT: Persists WireGuard private key and other data. If
+      # /var/firezone/private_key exists when Firezone starts, it is
+      # used as the WireGuard private. Otherwise, one is generated.
+      - /data/firezone:/var/firezone
+    environment:
+      EXTERNAL_URL: ${EXTERNAL_URL:?err}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:?err}
+      DEFAULT_ADMIN_PASSWORD: ${DEFAULT_ADMIN_PASSWORD:?err}
+      GUARDIAN_SECRET_KEY: ${GUARDIAN_SECRET_KEY:?err}
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:?err}
+      LIVE_VIEW_SIGNING_SALT: ${LIVE_VIEW_SIGNING_SALT:?err}
+      COOKIE_SIGNING_SALT: ${COOKIE_SIGNING_SALT:?err}
+      COOKIE_ENCRYPTION_SALT: ${COOKIE_ENCRYPTION_SALT:?err}
+      DATABASE_ENCRYPTION_KEY: ${DATABASE_ENCRYPTION_KEY:?err}
+
+      # Ensure this includes the traefik service IP.
+      EXTERAL_TRUSTED_PROXIES: ['']
+    networks:
+      - app
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=0
+      - net.ipv4.ip_forward=1
+      - net.ipv6.conf.all.forwarding=1
+    depends_on:
+      - postgres
+  traefik:
+    deploy:
+      <<: *default-deploy
     # The official v2 Traefik docker image
     image: traefik:v2.8
     # Enables the web UI and tells Traefik to listen to docker
@@ -54,7 +95,25 @@ services:
     volumes:
       # So that Traefik can listen to the Docker events
       - /var/run/docker.sock:/var/run/docker.sock
-      - "./rules.yml:/rules.yml"
+      - ./rules.yml:/rules.yml
+    # make the IP of this service deterministic
+    networks:
+      app:
+        ipv4_address: 172.28.0.99
+        ipv6_address: 2001:3990:3990::99
+  postgres:
+    image: postgres:13
+    volumes:
+      - /data/postgres:/var/lib/postgresql/data
+    environment:
+      # same value as ## DB section above
+      POSTGRES_DB: ${DATABASE_NAME:-firezone}
+      POSTGRES_USER: ${DATABASE_USER:-postgres}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?err}
+    deploy:
+      <<: *default-deploy
+      update_config:
+        order: stop-first
 ```
 
 ### `rules.yml`
@@ -71,7 +130,7 @@ http:
     test:
       loadBalancer:
         servers:
-        - url: "http://host.docker.internal:13000"
+        - url: "http://firezone:13000"
 ```
 
 Now you should be able to start the Traefik proxy with `docker compose up`.
@@ -85,9 +144,60 @@ This configuration uses Firezone's auto-generated self-signed certificates.
 ```yaml
 version: '3'
 
+x-deploy: &default-deploy
+  restart_policy:
+    condition: on-failure
+    delay: 5s
+    max_attempts: 3
+    window: 120s
+  update_config:
+    order: start-first
+
+networks:
+  app:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+        - subnet: 2001:3990:3990::/64
+
 services:
-  reverse-proxy:
-          #network_mode: "host"
+  firezone:
+    image: firezone/firezone
+    ports:
+      - 51820:51820/udp
+    volumes:
+      # IMPORTANT: Persists WireGuard private key and other data. If
+      # /var/firezone/private_key exists when Firezone starts, it is
+      # used as the WireGuard private. Otherwise, one is generated.
+      - /data/firezone:/var/firezone
+    environment:
+      EXTERNAL_URL: ${EXTERNAL_URL:?err}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:?err}
+      DEFAULT_ADMIN_PASSWORD: ${DEFAULT_ADMIN_PASSWORD:?err}
+      GUARDIAN_SECRET_KEY: ${GUARDIAN_SECRET_KEY:?err}
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:?err}
+      LIVE_VIEW_SIGNING_SALT: ${LIVE_VIEW_SIGNING_SALT:?err}
+      COOKIE_SIGNING_SALT: ${COOKIE_SIGNING_SALT:?err}
+      COOKIE_ENCRYPTION_SALT: ${COOKIE_ENCRYPTION_SALT:?err}
+      DATABASE_ENCRYPTION_KEY: ${DATABASE_ENCRYPTION_KEY:?err}
+
+      # Ensure this includes the traefik service IP.
+      EXTERAL_TRUSTED_PROXIES: ['']
+    networks:
+      - app
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=0
+      - net.ipv4.ip_forward=1
+      - net.ipv6.conf.all.forwarding=1
+    depends_on:
+      - postgres
+  traefik:
+    deploy:
+      <<: *default-deploy
     # The official v2 Traefik docker image
     image: traefik:v2.8
     # Enables the web UI and tells Traefik to listen to docker
@@ -105,8 +215,25 @@ services:
     volumes:
       # So that Traefik can listen to the Docker events
       - /var/run/docker.sock:/var/run/docker.sock
-      - "./rules.yml:/rules.yml"
-      - /var/opt/firezone/ssl/ca:/ssl:ro
+      - ./rules.yml:/rules.yml
+    # make the IP of this service deterministic
+    networks:
+      app:
+        ipv4_address: 172.28.0.99
+        ipv6_address: 2001:3990:3990::99
+  postgres:
+    image: postgres:13
+    volumes:
+      - /data/postgres:/var/lib/postgresql/data
+    environment:
+      # same value as ## DB section above
+      POSTGRES_DB: ${DATABASE_NAME:-firezone}
+      POSTGRES_USER: ${DATABASE_USER:-postgres}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?err}
+    deploy:
+      <<: *default-deploy
+      update_config:
+        order: stop-first
 ```
 
 ### SSL `rules.yml`
@@ -124,7 +251,7 @@ http:
     test:
       loadBalancer:
         servers:
-        - url: "http://host.docker.internal:13000"
+        - url: "http://firezone:13000"
 tls:
   stores:
     default:
