@@ -3,22 +3,61 @@ title: Upgrade
 sidebar_position: 3
 ---
 
-Upgrading Firezone will disconnect all VPN sessions and require shutting
-down the Web UI. We recommend a maintenance window of about an hour in case
-anything goes wrong during the upgrade.
+Upgrading Firezone will pause all VPN sessions and temporarily bring
+down the web UI.
+
+:::info
+Automatic rollbacks are still under development. We recommend backing up
+relevant [files and folders](../reference/file-and-directory-locations)
+before upgrading in case anything goes wrong.
+:::
 
 To upgrade Firezone, follow these steps:
 
+<Tabs>
+<TabItem label="Docker" value="docker" default>
+
+1. Update docker-compose images:
+```
+docker-compose pull
+```
+2. Re-up the services (**warning: this will restart updated services**):
+```
+docker-compose up -d
+```
+
+</TabItem>
+<TabItem label="Omnibus" value="omnibus">
+
 1. If not setup already, install our package repository based on your distro's
-    package format:
-    - [deb packages](https://cloudsmith.io/~firezone/repos/firezone/setup/#formats-deb)
-    - [rpm packages](https://cloudsmith.io/~firezone/repos/firezone/setup/#formats-rpm)
+  package format:
+  - [deb packages](https://cloudsmith.io/~firezone/repos/firezone/setup/#formats-deb)
+  - [rpm packages](https://cloudsmith.io/~firezone/repos/firezone/setup/#formats-rpm)
 1. Upgrade the `firezone` package using your distro's package manager.
 1. Run `firezone-ctl reconfigure` to pick up the new changes.
 1. Run `firezone-ctl restart` to restart services.
 
-Occasionally problems arise. If you hit any, please let us know by [filing an
+</TabItem>
+</Tabs>
+
+If you hit any issues, please let us know by [filing an
 issue](https://github.com/firezone/firezone/issues/new/choose).
+
+## Upgrading from 0.5.x to 0.6.x
+
+Firezone 0.6 introduces **Docker support**, a REST API, SAML 2.0 authentication,
+revamped user provisioning logic, and a slew of minor improvements and bugfixes.
+
+### Migrate to Docker
+
+Docker is now the preferred way to deploy and manage Firezone. See the [migration
+guide](migrate) to migrate today. In most cases this can be done in a few minutes
+using our automatic migration script.
+
+### Update Configuration
+
+Some configuration variables have recently moved to the DB in order to be configurable
+at runtime. Check the [REST API reference](../reference/REST API/) for more information.
 
 ## Upgrading from < 0.5.0 to >= 0.5.0
 

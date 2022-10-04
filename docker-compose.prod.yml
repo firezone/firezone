@@ -15,7 +15,7 @@ services:
   caddy:
     image: caddy:2
     volumes:
-      - /data/caddy:/data/caddy
+      - /data/firezone/caddy:/data/caddy
     ports:
       - 80:80
       - 443:443
@@ -31,7 +31,7 @@ services:
       # IMPORTANT: Persists WireGuard private key and other data. If
       # /var/firezone/private_key exists when Firezone starts, it is
       # used as the WireGuard private. Otherwise, one is generated.
-      - /data/firezone:/var/firezone
+      - /data/firezone/firezone:/var/firezone
     environment:
       # Admin
       EXTERNAL_URL: ${EXTERNAL_URL:?err}
@@ -100,7 +100,7 @@ services:
   postgres:
     image: postgres:13
     volumes:
-      - /data/postgres:/var/lib/postgresql/data
+      - /data/firezone/postgres:/var/lib/postgresql/data
     environment:
       # same value as ## DB section above
       POSTGRES_DB: ${DATABASE_NAME:-firezone}
