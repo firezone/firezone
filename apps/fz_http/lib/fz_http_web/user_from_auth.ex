@@ -25,7 +25,7 @@ defmodule FzHttpWeb.UserFromAuth do
   end
 
   defp maybe_create_user(email) do
-    if FzHttp.Conf.get(:auto_create_oidc_users) do
+    if FzHttp.Conf.get!(:auto_create_oidc_users) do
       Users.create_unprivileged_user(%{email: email})
     else
       {:error, "not found"}

@@ -8,8 +8,8 @@ defmodule FzHttpWeb.RootController do
     conn
     |> render(
       "auth.html",
-      local_enabled: FzHttp.Conf.get(:local_auth_enabled),
-      openid_connect_providers: FzHttp.Conf.get(:parsed_openid_connect_providers)
+      local_enabled: FzHttp.Conf.get!(:local_auth_enabled),
+      openid_connect_providers: FzHttp.Conf.get!(:parsed_openid_connect_providers)
     )
   end
 end

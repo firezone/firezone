@@ -130,10 +130,9 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
       path = Routes.device_unprivileged_index_path(conn, :index)
       {:ok, view, _html} = live(conn, path)
 
-      new_view =
-        view
-        |> element("a", "Add Device")
-        |> render_click()
+      view
+      |> element("a", "Add Device")
+      |> render_click()
 
       assert_redirected(view, Routes.device_unprivileged_index_path(conn, :new))
     end

@@ -7,12 +7,22 @@ defmodule FzHttp.Conf.Cache do
 
   alias FzHttp.Conf
 
+  @name :conf
+
   def get(key) do
-    :persistent_term.get({:fz_http, key}, nil)
+    Cachex.get(@name, key)
+  end
+
+  def get!(key) do
+    Cachex.get!(@name, key)
   end
 
   def put(key, value) do
-    :persistent_term.put({:fz_http, key}, value)
+    Cachex.put(@name, key, value)
+  end
+
+  def put!(key, value) do
+    Cachex.put!(@name, key, value)
   end
 
   def start_link(_) do
@@ -37,7 +47,7 @@ defmodule FzHttp.Conf.Cache do
           _ -> v
         end
 
-      :ok = put(k, v)
+      {:ok, _} = put(k, v)
     end
 
     :ignore

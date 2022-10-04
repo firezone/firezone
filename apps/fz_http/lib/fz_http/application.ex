@@ -26,6 +26,7 @@ defmodule FzHttp.Application do
 
   defp children(:full) do
     [
+      {Cachex, name: :conf},
       FzHttp.Server,
       FzHttp.Repo,
       {Postgrex.Notifications, [name: FzHttp.Repo.Notifications] ++ FzHttp.Repo.config()},
@@ -47,6 +48,7 @@ defmodule FzHttp.Application do
 
   defp children(:test) do
     [
+      {Cachex, name: :conf},
       FzHttp.Server,
       FzHttp.Repo,
       FzHttp.Vault,

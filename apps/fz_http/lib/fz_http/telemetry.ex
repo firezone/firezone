@@ -86,15 +86,15 @@ defmodule FzHttp.Telemetry do
         max_devices_for_users: Devices.max_count_by_user_id(),
         users_with_mfa: MFA.count_distinct_by_user_id(),
         users_with_mfa_totp: MFA.count_distinct_totp_by_user_id(),
-        openid_providers: length(Conf.get(:parsed_openid_connect_providers)),
-        auto_create_oidc_users: Conf.get(:auto_create_oidc_users),
-        unprivileged_device_management: Conf.get(:allow_unprivileged_device_management),
-        unprivileged_device_configuration: Conf.get(:allow_unprivileged_device_configuration),
-        local_authentication: Conf.get(:local_auth_enabled),
-        disable_vpn_on_oidc_error: Conf.get(:disable_vpn_on_oidc_error),
+        openid_providers: length(Conf.get!(:parsed_openid_connect_providers)),
+        auto_create_oidc_users: Conf.get!(:auto_create_oidc_users),
+        unprivileged_device_management: Conf.get!(:allow_unprivileged_device_management),
+        unprivileged_device_configuration: Conf.get!(:allow_unprivileged_device_configuration),
+        local_authentication: Conf.get!(:local_auth_enabled),
+        disable_vpn_on_oidc_error: Conf.get!(:disable_vpn_on_oidc_error),
         outbound_email: outbound_email?(),
         external_database: external_database?(Map.new(conf(FzHttp.Repo))),
-        logo_type: Conf.logo_type(Conf.get(:logo))
+        logo_type: Conf.logo_type(Conf.get!(:logo))
       ]
   end
 

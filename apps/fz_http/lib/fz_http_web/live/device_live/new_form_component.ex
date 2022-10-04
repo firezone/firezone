@@ -76,7 +76,7 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
 
   defp authorized_to_create?(socket) do
     has_role?(socket, :admin) ||
-      (FzHttp.Conf.get(:allow_unprivileged_device_management) &&
+      (FzHttp.Conf.get!(:allow_unprivileged_device_management) &&
          to_string(socket.assigns.current_user.id) == to_string(socket.assigns.target_user_id))
   end
 

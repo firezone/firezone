@@ -12,7 +12,7 @@ defmodule FzHttpWeb.SettingLive.Customization do
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
-    logo = Conf.get(:logo)
+    logo = Conf.get!(:logo)
     logo_type = Conf.logo_type(logo)
 
     {:ok,

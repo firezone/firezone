@@ -77,14 +77,14 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
         assert html =~ "checked"
 
         view |> element("input[phx-value-config=#{unquote(t)}]") |> render_click()
-        assert Conf.get(unquote(t)) == false
+        assert Conf.get!(unquote(t)) == false
 
         {:ok, view, _html} = live(conn, path)
         html = view |> element("input[phx-value-config=#{unquote(t)}]") |> render()
         refute html =~ "checked"
 
         view |> element("input[phx-value-config=#{unquote(t)}]") |> render_click()
-        assert Conf.get(unquote(t)) == true
+        assert Conf.get!(unquote(t)) == true
       end
     end
   end
@@ -110,7 +110,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
         "configuration" => %{"openid_connect_providers" => ~s|{"google": {"key": "value"}}|}
       })
 
-      assert Conf.get(:openid_connect_providers) == %{"google" => %{"key" => "value"}}
+      assert Conf.get!(:openid_connect_providers) == %{"google" => %{"key" => "value"}}
     end
 
     test "updates parsed config", %{view: view} do
@@ -118,7 +118,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
         "configuration" => %{"openid_connect_providers" => ~s|{"firezone": {"key": "value"}}|}
       })
 
-      assert [firezone: _] = Conf.get(:parsed_openid_connect_providers)
+      assert [firezone: _] = Conf.get!(:parsed_openid_connect_providers)
     end
   end
 end
