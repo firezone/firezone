@@ -17,6 +17,16 @@
     </p>
   <% end %>
 
+  <%= for {provider, config} <- @saml_identity_providers do %>
+    <p>
+      <%=
+        link(
+          "Sign in with #{config["label"]}",
+          to: "/auth/saml/auth/signin/#{provider}/",
+          class: "button") %>
+    </p>
+  <% end %>
+
   <%= if @local_enabled do %>
     <p>
       <%= link(

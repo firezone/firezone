@@ -65,7 +65,10 @@
 
   <%= if FzHttpWeb.DeviceView.can_manage_devices?(@current_user) do %>
     <div class="block">
-      <.link navigate={Routes.device_unprivileged_index_path(@socket, :new)} class="button">
+      <.link
+         replace={true}
+         patch={Routes.device_unprivileged_index_path(@socket, :new)}
+         class="button">
         Add Device
       </.link>
     </div>

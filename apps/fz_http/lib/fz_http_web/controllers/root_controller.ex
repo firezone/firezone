@@ -11,7 +11,8 @@ defmodule FzHttpWeb.RootController do
     |> render(
       "auth.html",
       local_enabled: Conf.get!(:local_auth_enabled),
-      openid_connect_providers: Conf.get!(:parsed_openid_connect_providers)
+      openid_connect_providers: Conf.get!(:parsed_openid_connect_providers),
+      saml_identity_providers: Conf.get!(:saml_identity_providers)
     )
   end
 end

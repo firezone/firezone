@@ -91,34 +91,115 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
 
   describe "oidc configuration" do
     setup %{admin_conn: conn} do
+      Conf.update_configuration(%{
+        openid_connect_providers: %{"test" => %{"label" => "test123"}},
+        saml_identity_providers: %{}
+      })
+
       path = Routes.setting_security_path(conn, :show)
       {:ok, view, _html} = live(conn, path)
       [view: view]
     end
 
-    test "fails if not proper json", %{view: view} do
+    test "click add button", %{view: view} do
       html =
-        render_submit(view, "save_oidc_config", %{
-          "configuration" => %{"openid_connect_providers" => "{"}
-        })
+        view
+        |> element("a", "Add OpenID Connect Provider")
+        |> render_click()
 
-      assert html =~ "Invalid JSON configuration"
+      assert html =~ ~s|<p class="modal-card-title">OIDC Config</p>|
     end
 
-    test "saves proper json", %{view: view} do
-      render_submit(view, "save_oidc_config", %{
-        "configuration" => %{"openid_connect_providers" => ~s|{"google": {"key": "value"}}|}
-      })
+    test "click edit button", %{view: view} do
+      html =
+        view
+        |> element("a", "Edit")
+        |> render_click()
 
-      assert Conf.get!(:openid_connect_providers) == %{"google" => %{"key" => "value"}}
+      assert html =~ ~s|<p class="modal-card-title">OIDC Config</p>|
+      assert html =~ ~s|value="test123"|
     end
 
-    test "updates parsed config", %{view: view} do
-      render_submit(view, "save_oidc_config", %{
-        "configuration" => %{"openid_connect_providers" => ~s|{"firezone": {"key": "value"}}|}
+    test "validate", %{view: view} do
+      view
+      |> element("a", "Edit")
+      |> render_click()
+
+      html =
+        view
+        |> element("#oidc-form")
+        |> render_submit(%{"label" => "updated"})
+
+      # stays on the modal
+      assert html =~ ~s|<p class="modal-card-title">OIDC Config</p>|
+
+      # not updated
+      assert Conf.get!(:openid_connect_providers) == %{"test" => %{"label" => "test123"}}
+    end
+
+    test "delete", %{view: view} do
+      view
+      |> element("button", "Delete")
+      |> render_click()
+
+      assert Conf.get!(:openid_connect_providers) == %{}
+    end
+  end
+
+  describe "saml configuration" do
+    setup %{admin_conn: conn} do
+      Conf.update_configuration(%{
+        openid_connect_providers: %{},
+        saml_identity_providers: %{"test" => %{"metadata" => "<test></test>"}}
       })
 
-      assert [firezone: _] = Conf.get!(:parsed_openid_connect_providers)
+      path = Routes.setting_security_path(conn, :show)
+      {:ok, view, _html} = live(conn, path)
+      [view: view]
+    end
+
+    test "click add button", %{view: view} do
+      html =
+        view
+        |> element("a", "Add SAML Identity Provider")
+        |> render_click()
+
+      assert html =~ ~s|<p class="modal-card-title">SAML Config</p>|
+    end
+
+    test "click edit button", %{view: view} do
+      html =
+        view
+        |> element("a", "Edit")
+        |> render_click()
+
+      assert html =~ ~s|<p class="modal-card-title">SAML Config</p>|
+      assert html =~ ~s|&amp;amp;amp;lt;test&amp;amp;amp;gt;&amp;amp;amp;lt;/test&amp;amp;amp;gt;|
+    end
+
+    test "validate", %{view: view} do
+      view
+      |> element("a", "Edit")
+      |> render_click()
+
+      html =
+        view
+        |> element("#saml-form")
+        |> render_submit(%{"metadata" => "updated"})
+
+      # stays on the modal
+      assert html =~ ~s|<p class="modal-card-title">SAML Config</p>|
+
+      # not updated
+      assert Conf.get!(:saml_identity_providers) == %{"test" => %{"metadata" => "<test></test>"}}
+    end
+
+    test "delete", %{view: view} do
+      view
+      |> element("button", "Delete")
+      |> render_click()
+
+      assert Conf.get!(:saml_identity_providers) == %{}
     end
   end
 end

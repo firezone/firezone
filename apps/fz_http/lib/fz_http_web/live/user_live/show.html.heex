@@ -31,7 +31,10 @@
       <h4 class="title is-4">Details</h4>
     </div>
     <div class="level-right">
-      <.link navigate={Routes.user_show_path(@socket, :edit, @user)} class="button">
+      <.link
+         patch={Routes.user_show_path(@socket, :edit, @user)}
+         replace={true}
+         class="button">
         <span class="icon is-small">
           <i class="mdi mdi-pencil"></i>
         </span>
@@ -63,7 +66,8 @@
   </div>
 
   <.link
-       navigate={Routes.user_show_path(@socket, :new_device, @user)}
+       patch={Routes.user_show_path(@socket, :new_device, @user)}
+       replace={true}
        id="add-device-button"
        class="button">
     Add Device

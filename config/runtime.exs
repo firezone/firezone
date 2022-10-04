@@ -23,51 +23,69 @@ config :fz_wall,
 # Formerly releases.exs - Only evaluated in production
 if config_env() == :prod do
   # For releases, require that all these are set
-  database_name = System.fetch_env!("DATABASE_NAME")
-  database_user = System.fetch_env!("DATABASE_USER")
-  database_host = System.fetch_env!("DATABASE_HOST")
-  database_port = String.to_integer(System.fetch_env!("DATABASE_PORT"))
-  database_pool = String.to_integer(System.fetch_env!("DATABASE_POOL"))
-  database_ssl = FzString.to_boolean(System.fetch_env!("DATABASE_SSL"))
-  database_ssl_opts = Jason.decode!(System.fetch_env!("DATABASE_SSL_OPTS"))
-  database_parameters = Jason.decode!(System.fetch_env!("DATABASE_PARAMETERS"))
-  phoenix_listen_address = System.fetch_env!("PHOENIX_LISTEN_ADDRESS")
-  phoenix_port = String.to_integer(System.fetch_env!("PHOENIX_PORT"))
-  external_trusted_proxies = Jason.decode!(System.fetch_env!("EXTERNAL_TRUSTED_PROXIES"))
-  private_clients = Jason.decode!(System.fetch_env!("PRIVATE_CLIENTS"))
-
   admin_email = System.fetch_env!("ADMIN_EMAIL")
   default_admin_password = System.fetch_env!("DEFAULT_ADMIN_PASSWORD")
-  wireguard_private_key_path = System.fetch_env!("WIREGUARD_PRIVATE_KEY_PATH")
-  wireguard_interface_name = System.fetch_env!("WIREGUARD_INTERFACE_NAME")
-  wireguard_port = String.to_integer(System.fetch_env!("WIREGUARD_PORT"))
-  nft_path = System.fetch_env!("NFT_PATH")
-  egress_interface = System.fetch_env!("EGRESS_INTERFACE")
-  wireguard_dns = System.get_env("WIREGUARD_DNS")
-  wireguard_allowed_ips = System.fetch_env!("WIREGUARD_ALLOWED_IPS")
-  wireguard_persistent_keepalive = System.fetch_env!("WIREGUARD_PERSISTENT_KEEPALIVE")
-  wireguard_ipv4_enabled = FzString.to_boolean(System.fetch_env!("WIREGUARD_IPV4_ENABLED"))
-  wireguard_ipv4_masquerade = FzString.to_boolean(System.fetch_env!("WIREGUARD_IPV4_MASQUERADE"))
-  wireguard_ipv6_masquerade = FzString.to_boolean(System.fetch_env!("WIREGUARD_IPV6_MASQUERADE"))
-  wireguard_ipv4_network = System.fetch_env!("WIREGUARD_IPV4_NETWORK")
-  wireguard_ipv4_address = System.fetch_env!("WIREGUARD_IPV4_ADDRESS")
-  wireguard_ipv6_enabled = FzString.to_boolean(System.fetch_env!("WIREGUARD_IPV6_ENABLED"))
-  wireguard_ipv6_network = System.fetch_env!("WIREGUARD_IPV6_NETWORK")
-  wireguard_ipv6_address = System.fetch_env!("WIREGUARD_IPV6_ADDRESS")
-  wireguard_mtu = System.fetch_env!("WIREGUARD_MTU")
-  wireguard_endpoint = System.get_env("WIREGUARD_ENDPOINT", host)
-  telemetry_enabled = FzString.to_boolean(System.fetch_env!("TELEMETRY_ENABLED"))
-  telemetry_id = System.fetch_env!("TELEMETRY_ID")
   guardian_secret_key = System.fetch_env!("GUARDIAN_SECRET_KEY")
-  disable_vpn_on_oidc_error = FzString.to_boolean(System.fetch_env!("DISABLE_VPN_ON_OIDC_ERROR"))
-  auto_create_oidc_users = FzString.to_boolean(System.fetch_env!("AUTO_CREATE_OIDC_USERS"))
-  secure = FzString.to_boolean(System.get_env("SECURE_COOKIES", "true"))
+  encryption_key = System.fetch_env!("DATABASE_ENCRYPTION_KEY")
+  secret_key_base = System.fetch_env!("SECRET_KEY_BASE")
+  live_view_signing_salt = System.fetch_env!("LIVE_VIEW_SIGNING_SALT")
+  cookie_signing_salt = System.fetch_env!("COOKIE_SIGNING_SALT")
+  cookie_encryption_salt = System.fetch_env!("COOKIE_ENCRYPTION_SALT")
+  telemetry_id = System.fetch_env!("TELEMETRY_ID")
+
+  # OPTIONAL
+  wireguard_private_key_path =
+    System.get_env("WIREGUARD_PRIVATE_KEY_PATH", "/var/firezone/private_key")
+
+  saml_keyfile_path = System.get_env("SAML_KEYFILE_PATH", "/var/firezone/saml.key")
+  saml_certfile_path = System.get_env("SAML_CERTFILE_PATH", "/var/firezone/saml.crt")
+  database_name = System.get_env("DATABASE_NAME", "firezone")
+  database_user = System.get_env("DATABASE_USER", "postgres")
+  database_host = System.get_env("DATABASE_HOST", "postgres")
+  database_port = String.to_integer(System.get_env("DATABASE_PORT", "5432"))
+  database_pool = String.to_integer(System.get_env("DATABASE_POOL", "10"))
+  database_ssl = FzString.to_boolean(System.get_env("DATABASE_SSL", "false"))
+  database_ssl_opts = Jason.decode!(System.get_env("DATABASE_SSL_OPTS", "{}"))
+  database_parameters = Jason.decode!(System.get_env("DATABASE_PARAMETERS", "{}"))
+  phoenix_listen_address = System.get_env("PHOENIX_LISTEN_ADDRESS", "0.0.0.0")
+  phoenix_port = String.to_integer(System.get_env("PHOENIX_PORT", "13000"))
+  external_trusted_proxies = Jason.decode!(System.get_env("EXTERNAL_TRUSTED_PROXIES", "[]"))
+  private_clients = Jason.decode!(System.get_env("PRIVATE_CLIENTS", "[]"))
+  wireguard_interface_name = System.get_env("WIREGUARD_INTERFACE_NAME", "wg-firezone")
+  wireguard_port = String.to_integer(System.get_env("WIREGUARD_PORT", "51820"))
+  nft_path = System.get_env("NFT_PATH", "nft")
+  egress_interface = System.get_env("EGRESS_INTERFACE", "eth0")
+  wireguard_dns = System.get_env("WIREGUARD_DNS", "1.1.1.1, 1.0.0.1")
+  wireguard_allowed_ips = System.get_env("WIREGUARD_ALLOWED_IPS", "0.0.0.0/0, ::/0")
+  wireguard_persistent_keepalive = System.get_env("WIREGUARD_PERSISTENT_KEEPALIVE", "0")
+  wireguard_ipv4_enabled = FzString.to_boolean(System.get_env("WIREGUARD_IPV4_ENABLED", "true"))
+
+  wireguard_ipv4_masquerade =
+    FzString.to_boolean(System.get_env("WIREGUARD_IPV4_MASQUERADE", "true"))
+
+  wireguard_ipv6_masquerade =
+    FzString.to_boolean(System.get_env("WIREGUARD_IPV6_MASQUERADE", "true"))
+
+  wireguard_ipv4_network = System.get_env("WIREGUARD_IPV4_NETWORK", "10.3.2.0/24")
+  wireguard_ipv4_address = System.get_env("WIREGUARD_IPV4_ADDRESS", "10.3.2.1")
+  wireguard_ipv6_enabled = FzString.to_boolean(System.get_env("WIREGUARD_IPV6_ENABLED", "true"))
+  wireguard_ipv6_network = System.get_env("WIREGUARD_IPV6_NETWORK", "fd00::3:2:0/120")
+  wireguard_ipv6_address = System.get_env("WIREGUARD_IPV6_ADDRESS", "fd00::3:2:1")
+  wireguard_mtu = System.get_env("WIREGUARD_MTU", "1280")
+  wireguard_endpoint = System.get_env("WIREGUARD_ENDPOINT", host)
+  telemetry_enabled = FzString.to_boolean(System.get_env("TELEMETRY_ENABLED", "true"))
+
+  disable_vpn_on_oidc_error =
+    FzString.to_boolean(System.get_env("DISABLE_VPN_ON_OIDC_ERROR", "false"))
+
+  auto_create_oidc_users = FzString.to_boolean(System.get_env("AUTO_CREATE_OIDC_USERS", "true"))
+  cookie_secure = FzString.to_boolean(System.get_env("SECURE_COOKIES", "true"))
 
   allow_unprivileged_device_management =
-    FzString.to_boolean(System.fetch_env!("ALLOW_UNPRIVILEGED_DEVICE_MANAGEMENT"))
+    FzString.to_boolean(System.get_env("ALLOW_UNPRIVILEGED_DEVICE_MANAGEMENT", "true"))
 
   allow_unprivileged_device_configuration =
-    FzString.to_boolean(System.fetch_env!("ALLOW_UNPRIVILEGED_DEVICE_CONFIGURATION"))
+    FzString.to_boolean(System.get_env("ALLOW_UNPRIVILEGED_DEVICE_CONFIGURATION", "true"))
 
   # Outbound Email
   from_email = System.get_env("OUTBOUND_EMAIL_FROM")
@@ -81,10 +99,10 @@ if config_env() == :prod do
   end
 
   # Local auth
-  local_auth_enabled = FzString.to_boolean(System.fetch_env!("LOCAL_AUTH_ENABLED"))
+  local_auth_enabled = FzString.to_boolean(System.get_env("LOCAL_AUTH_ENABLED", "true"))
 
   max_devices_per_user =
-    System.fetch_env!("MAX_DEVICES_PER_USER")
+    System.get_env("MAX_DEVICES_PER_USER", "10")
     |> String.to_integer()
     |> FzInteger.clamp(0, 100)
 
@@ -96,21 +114,13 @@ if config_env() == :prod do
     end
 
   connectivity_checks_enabled =
-    FzString.to_boolean(System.fetch_env!("CONNECTIVITY_CHECKS_ENABLED")) &&
+    FzString.to_boolean(System.get_env("CONNECTIVITY_CHECKS_ENABLED", "true")) &&
       System.get_env("CI") != "true"
 
   connectivity_checks_interval =
-    System.fetch_env!("CONNECTIVITY_CHECKS_INTERVAL")
+    System.get_env("CONNECTIVITY_CHECKS_INTERVAL", "3600")
     |> String.to_integer()
     |> FzInteger.clamp(60, 86_400)
-
-  # secrets
-  encryption_key = System.fetch_env!("DATABASE_ENCRYPTION_KEY")
-  secret_key_base = System.fetch_env!("SECRET_KEY_BASE")
-  live_view_signing_salt = System.fetch_env!("LIVE_VIEW_SIGNING_SALT")
-  cookie_signing_salt = System.fetch_env!("COOKIE_SIGNING_SALT")
-  cookie_encryption_salt = System.fetch_env!("COOKIE_ENCRYPTION_SALT")
-  cookie_secure = secure
 
   # Password is not needed if using bundled PostgreSQL, so use nil if it's not set.
   database_password = System.get_env("DATABASE_PASSWORD")
@@ -205,6 +215,8 @@ if config_env() == :prod do
     secret_key: guardian_secret_key
 
   config :fz_http,
+    saml_certfile_path: saml_certfile_path,
+    saml_keyfile_path: saml_keyfile_path,
     external_trusted_proxies: external_trusted_proxies,
     private_clients: private_clients,
     disable_vpn_on_oidc_error: disable_vpn_on_oidc_error,
@@ -255,7 +267,7 @@ if config_env() == :prod do
 end
 
 # OIDC Auth
-auth_oidc_env = System.get_env("AUTH_OIDC")
+auth_oidc_env = System.get_env("AUTH_OIDC_JSON", "{}")
 
 if config_env() != :test && auth_oidc_env do
   config :fz_http, :openid_connect_providers, auth_oidc_env

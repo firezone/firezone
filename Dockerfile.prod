@@ -68,47 +68,7 @@ RUN apk add -u --no-cache nftables libstdc++ ncurses-libs openssl
 WORKDIR /app
 
 # set runner ENV
-ENV MIX_ENV="prod" \
-    PHOENIX_LISTEN_ADDRESS='0.0.0.0' \
-    PHOENIX_PORT='4000' \
-    SECURE_COOKIES='true' \
-    EXTERNAL_TRUSTED_PROXIES='[]' \
-    PRIVATE_CLIENTS='[]' \
-    EGRESS_INTERFACE=eth0 \
-    NFT_PATH=nft \
-    WIREGUARD_INTERFACE_NAME='wg-firezone' \
-    WIREGUARD_PORT='51820' \
-    WIREGUARD_MTU='1280' \
-    WIREGUARD_ALLOWED_IPS='0.0.0.0/0, ::/0' \
-    WIREGUARD_DNS='1.1.1.1, 1.0.0.1' \
-    WIREGUARD_PERSISTENT_KEEPALIVE=0 \
-    WIREGUARD_IPV4_ENABLED=true \
-    WIREGUARD_IPV4_MASQUERADE=true \
-    WIREGUARD_IPV4_NETWORK='10.3.2.0/24' \
-    WIREGUARD_IPV4_ADDRESS='10.3.2.1' \
-    WIREGUARD_IPV6_ENABLED=true \
-    WIREGUARD_IPV6_MASQUERADE=true \
-    WIREGUARD_IPV6_NETWORK='fd00::3:2:0/120' \
-    WIREGUARD_IPV6_ADDRESS='fd00::3:2:1' \
-    WIREGUARD_PRIVATE_KEY_PATH='/var/firezone/private_key' \
-    DATABASE_NAME=firezone \
-    DATABASE_USER=postgres \
-    DATABASE_HOST=postgres \
-    DATABASE_PORT='5432' \
-    DATABASE_POOL='10' \
-    DATABASE_SSL='false' \
-    DATABASE_SSL_OPTS='{}' \
-    DATABASE_PARAMETERS='{}' \
-    LOCAL_AUTH_ENABLED='true' \
-    ALLOW_UNPRIVILEGED_DEVICE_MANAGEMENT='true' \
-    ALLOW_UNPRIVILEGED_DEVICE_CONFIGURATION='true' \
-    DISABLE_VPN_ON_OIDC_ERROR='false' \
-    AUTO_CREATE_OIDC_USERS='true' \
-    AUTH_OIDC_JSON='{}' \
-    MAX_DEVICES_PER_USER='10' \
-    CONNECTIVITY_CHECKS_ENABLED='true' \
-    CONNECTIVITY_CHECKS_INTERVAL='3600' \
-    TELEMETRY_ENABLED='true'
+ENV MIX_ENV="prod"
 
 # Only copy the final release from the build stage
 COPY --from=builder /app/_build/${MIX_ENV}/rel/firezone ./

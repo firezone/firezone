@@ -1,0 +1,109 @@
+---
+title: Deploy
+sidebar_position: 2
+---
+
+Firezone can be deployed on most Linux servers in minutes. Read more
+below to get started.
+
+## Deployment Methods
+
+You have two options for deploying Firezone:
+
+1. [Docker](./docker) (recommended)
+1. [Omnibus](./omnibus)
+
+Docker is the easiest way to install, manage, and upgrade Firezone and is the
+preferred method of deployment.
+
+:::note
+Chef Infra Client, the configuration system Chef Omnibus relies on, has been
+[scheduled for End-of-Life in 2024](https://docs.chef.io/versions/). As such,
+Omnibus-based deployments will be deprecated in a future version of Firezone.
+To transition to Docker from Omnibus today, follow our [migration guide
+](../administer/migrate).
+:::
+
+## Prepare to Deploy
+
+Regardless of which deployment method you choose, you'll need to follow the
+preparation steps below before deploying Firezone to production.
+
+1. [Create a DNS record](#create-a-dns-record)
+1. [Set up SSL](#set-up-ssl)
+1. [Open required firewall ports](#open-required-firewall-ports)
+
+### Create a DNS record
+
+Firezone requires a fully-qualified domain name (e.g. `firezone.company.com`)
+for production use. You'll need to create the appropriate DNS record at your
+registrar to achieve this. Typically this is either an A, CNAME, or AAAA record
+depending on your requirements.
+
+### Set up SSL
+
+You'll need a valid SSL certificate to use Firezone in a production capacity.
+Firezone supports ACME for automatic provisioning of SSL certificates for both
+Docker-based and Omnibus-based installations. This is recommended in most cases.
+
+<Tabs>
+<TabItem value="docker" label="Docker" default>
+
+#### Setting up ACME for Docker-based deployments
+
+For Docker-based deployments, the simplest way to provision an SSL
+certificate is to use our Caddy service example in docker-compose.yml.
+Caddy uses ACME to automatically provision SSL certificates as long as
+it's available on port 80/tcp and the DNS record for the server is valid.
+
+See the [Docker deployment guide](docker) for more info.
+
+</TabItem>
+<TabItem value="omnibus" label="Omnibus">
+
+For Omnibus-based deployments, ACME is disabled by default to maintain
+compatibility with existing installations.
+
+To enable ACME, ensure the following conditions are met:
+
+* `80/tcp` is allow inbound
+* The bundled Firezone `nginx` service is enabled and functioning
+* You have a valid DNS record assigned to this instance's public IP
+* The following 3 settings are configured in the [configuration file](../reference/configuration-file):
+  * `default['firezone']['external_url']`: The FQDN for the server.
+  * `default['firezone']['ssl']['email_address']`: The email that will be used
+    for the issued certificates.
+  * `default['firezone']['ssl']['acme']['enabled']`: Set this to true to enable it.
+
+</TabItem>
+</Tabs>
+
+### Open required firewall ports
+
+By default, Firezone requires ports `443/tcp` and `51820/udp` to be
+accessible for HTTPS and WireGuard traffic respectively.
+These ports can change based on what you've configured in the configuration file.
+See the
+[configuration file reference](../reference/configuration-file)
+for details.
+
+:::warning
+Firezone modifies the kernel netfilter and routing tables. Other
+programs that modify the Linux routing table or firewall may interfere with
+Firezone's operation. For help troubleshooting connectivity issues, see
+[troubleshoot](../administer/troubleshoot).
+:::
+
+### Resource Requirements
+
+We recommend **starting with 1 vCPU and 1 GB of RAM and scaling up** as the
+number of users and devices grows.
+
+For Omnibus-based deployments on servers with less than 1GB of memory, we
+recommend turning on swap to prevent the Linux kernel from killing
+Firezone processes unexpectedly. When this happens, it's often difficult to
+debug and results in strange, unpredictable failure modes.
+
+For the VPN tunnels themselves, Firezone uses in-kernel WireGuard, so its
+performance should be very good. 1 vCPU should be more than enough to saturate
+a 1 Gbps link.

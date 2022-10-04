@@ -35,7 +35,10 @@
 
     <div class="level-right">
       <%= if @local_auth_enabled do %>
-        <.link navigate={Routes.setting_unprivileged_account_path(@socket, :change_password)} class="button">
+        <.link
+            replace={true}
+            patch={Routes.setting_unprivileged_account_path(@socket, :change_password)}
+            class="button">
           <span class="icon is-small">
             <i class="mdi mdi-pencil"></i>
           </span>
@@ -105,7 +108,10 @@
     <% end %>
   </div>
 
-  <.link navigate={Routes.setting_unprivileged_account_path(@socket, :register_mfa)} class="button">
+  <.link
+        replace={true}
+        patch={Routes.setting_unprivileged_account_path(@socket, :register_mfa)}
+        class="button">
     <span class="icon is-small">
       <i class="mdi mdi-plus"></i>
     </span>

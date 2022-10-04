@@ -85,7 +85,10 @@ defmodule FzHttpWeb.SettingLive.AccountTest do
       |> element("button.delete")
       |> render_click()
 
-      assert_redirected(view, Routes.setting_account_path(conn, :show))
+      # Intermittent failure unless we wait a bit
+      Process.sleep(1)
+
+      assert_patched(view, Routes.setting_account_path(conn, :show))
     end
   end
 end

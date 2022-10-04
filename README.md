@@ -70,12 +70,18 @@ Additional documentation on general usage, troubleshooting, and configuration ca
 
 ## Get Help
 
-If you're looking for help installing and configuring Firezone, we're happy to
-help:
+If you're looking for help installing, configuring, or using Firezone, check our
+community support options:
 
-* [Discussion Forums](https://discourse.firez.one/): ask questions, report bugs, and suggest features
-* [Community Slack](https://www.firezone.dev/slack): join discussions, meet other users, and meet the contributors
-* [Email Us](mailto:team@firezone.dev): we're always happy to chat
+1. [Discussion Forums](https://discourse.firez.one/): Ask questions, report
+  bugs, and suggest features.
+1. [Public Slack Group](https://join.slack.com/t/firezone-users/shared_invite/zt-111043zus-j1lP_jP5ohv52FhAayzT6w):
+  Join live discussions, meet other users, and get to know the contributors.
+1. [Open a PR](https://github.com/firezone/firezone/issues): Contribute a bugfix
+  or make a contribution to Firezone.
+
+If you need help deploying or maintaining Firezone for your business, consider
+[contacting us about our paid support plan](https://firezone.dev/contact/sales).
 
 ## Star History
 
