@@ -4,7 +4,7 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
   """
   use FzHttpWeb, :live_component
 
-  alias FzHttp.Conf
+  alias FzHttp.Configurations, as: Conf
   alias FzHttp.Devices
   alias FzHttp.Sites
   alias FzHttpWeb.ErrorHelpers
@@ -76,7 +76,7 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
 
   defp authorized_to_create?(socket) do
     has_role?(socket, :admin) ||
-      (FzHttp.Conf.get!(:allow_unprivileged_device_management) &&
+      (Conf.get!(:allow_unprivileged_device_management) &&
          to_string(socket.assigns.current_user.id) == to_string(socket.assigns.target_user_id))
   end
 

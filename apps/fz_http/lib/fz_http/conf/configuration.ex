@@ -1,11 +1,11 @@
-defmodule FzHttp.Conf.Configuration do
+defmodule FzHttp.Configurations.Configuration do
   @moduledoc """
   App global configuration, singleton resource
   """
 
   use Ecto.Schema
   import Ecto.Changeset
-  alias FzHttp.Conf.Logo
+  alias FzHttp.Configurations.Logo
 
   @primary_key {:id, :binary_id, autogenerate: true}
 

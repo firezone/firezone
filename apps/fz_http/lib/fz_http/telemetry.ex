@@ -5,7 +5,8 @@ defmodule FzHttp.Telemetry do
 
   require Logger
 
-  alias FzHttp.{Conf, Devices, MFA, Users}
+  alias FzHttp.Configurations, as: Conf
+  alias FzHttp.{Devices, MFA, Users}
 
   def add_device do
     telemetry_module().capture(

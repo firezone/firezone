@@ -1,11 +1,11 @@
-defmodule FzHttp.Conf.Cache do
+defmodule FzHttp.Configurations.Cache do
   @moduledoc """
   Manipulate cached configurations.
   """
 
   use GenServer, restart: :transient
 
-  alias FzHttp.Conf
+  alias FzHttp.Configurations, as: Conf
 
   @name :conf
 

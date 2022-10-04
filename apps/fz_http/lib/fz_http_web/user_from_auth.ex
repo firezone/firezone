@@ -3,6 +3,7 @@ defmodule FzHttpWeb.UserFromAuth do
   Authenticates users.
   """
 
+  alias FzHttp.Configurations, as: Conf
   alias FzHttp.Users
   alias FzHttpWeb.Authentication
   alias Ueberauth.Auth
@@ -25,7 +26,7 @@ defmodule FzHttpWeb.UserFromAuth do
   end
 
   defp maybe_create_user(email) do
-    if FzHttp.Conf.get!(:auto_create_oidc_users) do
+    if Conf.get!(:auto_create_oidc_users) do
       Users.create_unprivileged_user(%{email: email})
     else
       {:error, "not found"}

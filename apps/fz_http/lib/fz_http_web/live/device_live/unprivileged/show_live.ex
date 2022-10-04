@@ -3,6 +3,7 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.Show do
   Shows a device for an unprivileged user.
   """
   use FzHttpWeb, :live_view
+  alias FzHttp.Configurations, as: Conf
   alias FzHttp.Devices
   alias FzHttp.Users
 
@@ -42,7 +43,7 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.Show do
   def delete_device(device, socket) do
     if socket.assigns.current_user.id == device.user_id &&
          (has_role?(socket.assigns.current_user, :admin) ||
-            FzHttp.Conf.get!(:allow_unprivileged_device_management)) do
+            Conf.get!(:allow_unprivileged_device_management)) do
       Devices.delete_device(device)
     else
       {:not_authorized}

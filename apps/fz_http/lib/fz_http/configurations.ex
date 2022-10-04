@@ -1,14 +1,14 @@
-defmodule FzHttp.Conf do
+defmodule FzHttp.Configurations do
   @moduledoc """
   The Conf context for app configurations.
   """
 
   import Ecto.Query, warn: false
   import Ecto.Changeset
-  alias FzHttp.{Repo, Conf.Configuration, Conf.Cache}
+  alias FzHttp.{Repo, Configurations.Configuration, Configurations.Cache}
 
-  defdelegate get(key), to: FzHttp.Conf.Cache
-  defdelegate get!(key), to: FzHttp.Conf.Cache
+  defdelegate get(key), to: FzHttp.Configurations.Cache
+  defdelegate get!(key), to: FzHttp.Configurations.Cache
 
   def get_configuration! do
     Repo.one!(Configuration)

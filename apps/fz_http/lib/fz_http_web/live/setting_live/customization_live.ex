@@ -4,7 +4,7 @@ defmodule FzHttpWeb.SettingLive.Customization do
   """
   use FzHttpWeb, :live_view
 
-  alias FzHttp.Conf
+  alias FzHttp.Configurations, as: Conf
 
   @max_logo_size 1024 ** 2
   @page_title "Customization"

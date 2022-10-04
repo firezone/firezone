@@ -4,7 +4,7 @@ defmodule FzHttp.TestHelpers do
   """
 
   alias FzHttp.{
-    Conf.Cache,
+    Configurations.Cache,
     ConnectivityChecksFixtures,
     DevicesFixtures,
     MFA,

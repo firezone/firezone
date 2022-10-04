@@ -1,7 +1,7 @@
 defmodule FzHttpWeb.SettingLive.CustomizationTest do
   use FzHttpWeb.ConnCase, async: true
 
-  alias FzHttp.Conf
+  alias FzHttp.Configurations, as: Conf
 
   describe "logo" do
     setup %{admin_conn: conn} = context do

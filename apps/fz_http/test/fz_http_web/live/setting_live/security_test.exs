@@ -1,7 +1,7 @@
 defmodule FzHttpWeb.SettingLive.SecurityTest do
   use FzHttpWeb.ConnCase, async: false
 
-  alias FzHttp.Conf
+  alias FzHttp.Configurations, as: Conf
   alias FzHttpWeb.SettingLive.Security
 
   describe "authenticated mount" do
@@ -53,7 +53,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
     setup %{admin_conn: conn, config: config, config_val: config_val} do
       Conf.update_configuration(%{config => config_val})
 
-      FzHttp.Conf.Cache.init([])
+      Conf.Cache.init([])
 
       {:ok, path: Routes.setting_security_path(conn, :show)}
     end

@@ -1,4 +1,4 @@
-defmodule FzHttp.Conf.Logo do
+defmodule FzHttp.Configurations.Logo do
   @moduledoc """
   Embedded Schema for logo
   """
