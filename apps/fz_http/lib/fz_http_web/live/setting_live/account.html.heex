@@ -29,7 +29,10 @@
     </div>
 
     <div class="level-right">
-      <.link navigate={Routes.setting_account_path(@socket, :edit)} class="button">
+      <.link
+         replace={true}
+         patch={Routes.setting_account_path(@socket, :edit)}
+         class="button">
         <span class="icon is-small">
           <i class="mdi mdi-pencil"></i>
         </span>
@@ -99,7 +102,7 @@
   </div>
 
 
-  <.link navigate={Routes.setting_account_path(@socket, :register_mfa)} class="button">
+  <.link replace={true} patch={Routes.setting_account_path(@socket, :register_mfa)} class="button">
     <span class="icon is-small">
       <i class="mdi mdi-plus"></i>
     </span>

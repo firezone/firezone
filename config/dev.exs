@@ -22,7 +22,7 @@ end
 # For development, we disable any cache and enable
 # debugging and code reloading.
 config :fz_http, FzHttpWeb.Endpoint,
-  http: [port: 4000],
+  http: [port: 13000],
   debug_errors: true,
   code_reloader: true,
   check_origin: ["//127.0.0.1", "//localhost"],

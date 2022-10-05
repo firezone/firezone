@@ -65,7 +65,7 @@
     </table>
   </div>
 
-  <.link navigate={Routes.user_index_path(@socket, :new)} class="button">
+  <.link replace={true} patch={Routes.user_index_path(@socket, :new)} class="button">
     Add User
   </.link>
 </section>
