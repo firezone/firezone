@@ -9,6 +9,7 @@ defmodule FzHttpWeb.AuthController do
   @oidc_state_valid_duration 300
 
   alias FzCommon.FzCrypto
+  alias FzHttp.Configurations, as: Conf
   alias FzHttp.Users
   alias FzHttpWeb.Authentication
   alias FzHttpWeb.Router.Helpers, as: Routes
@@ -169,7 +170,7 @@ defmodule FzHttpWeb.AuthController do
 
   defp maybe_sign_in(conn, user, %{provider: provider} = auth)
        when provider in [:identity, :magic_link] do
-    if FzHttp.Conf.get(:local_auth_enabled) do
+    if Conf.get!(:local_auth_enabled) do
       do_sign_in(conn, user, auth)
     else
       conn

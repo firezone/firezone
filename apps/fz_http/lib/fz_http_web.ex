@@ -60,7 +60,7 @@ defmodule FzHttpWeb do
     quote do
       use Phoenix.LiveView, layout: {FzHttpWeb.LayoutView, "live.html"}
       import FzHttpWeb.LiveHelpers
-      alias FzHttp.Conf
+      alias FzHttp.Configurations, as: Conf
       alias Phoenix.LiveView.JS
 
       unquote(view_helpers())
@@ -71,7 +71,7 @@ defmodule FzHttpWeb do
     quote do
       use Phoenix.LiveView, layout: nil
       import FzHttpWeb.LiveHelpers
-      alias FzHttp.Conf
+      alias FzHttp.Configurations, as: Conf
       alias Phoenix.LiveView.JS
 
       unquote(view_helpers())
@@ -84,7 +84,7 @@ defmodule FzHttpWeb do
       use Phoenix.LiveComponent
       use Phoenix.Component, global_prefixes: ~w(x-)
       import FzHttpWeb.LiveHelpers
-      alias FzHttp.Conf
+      alias FzHttp.Configurations, as: Conf
 
       unquote(view_helpers())
     end

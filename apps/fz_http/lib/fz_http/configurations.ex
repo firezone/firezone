@@ -1,13 +1,14 @@
-defmodule FzHttp.Conf do
+defmodule FzHttp.Configurations do
   @moduledoc """
   The Conf context for app configurations.
   """
 
   import Ecto.Query, warn: false
   import Ecto.Changeset
-  alias FzHttp.{Repo, Conf.Configuration, Conf.Cache}
+  alias FzHttp.{Repo, Configurations.Configuration, Configurations.Cache}
 
-  defdelegate get(key), to: FzHttp.Conf.Cache
+  defdelegate get(key), to: FzHttp.Configurations.Cache
+  defdelegate get!(key), to: FzHttp.Configurations.Cache
 
   def get_configuration! do
     Repo.one!(Configuration)
@@ -22,7 +23,13 @@ defmodule FzHttp.Conf do
     |> Configuration.changeset(attrs)
     |> prepare_changes(fn changeset ->
       for {k, v} <- changeset.changes do
-        :ok = Cache.put(k, v)
+        case v do
+          %Ecto.Changeset{} ->
+            Cache.put!(k, v.changes)
+
+          _ ->
+            Cache.put!(k, v)
+        end
       end
 
       changeset
@@ -33,6 +40,6 @@ defmodule FzHttp.Conf do
   def logo_types, do: ~w(Default URL Upload)
 
   def logo_type(nil), do: "Default"
-  def logo_type(%{"url" => _url}), do: "URL"
-  def logo_type(%{"data" => _data}), do: "Upload"
+  def logo_type(%{url: _url}), do: "URL"
+  def logo_type(%{data: _data}), do: "Upload"
 end

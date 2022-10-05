@@ -87,6 +87,7 @@ defmodule FzHttp.MixProject do
       {:phoenix_swoosh, "~> 1.0"},
       {:gen_smtp, "~> 1.0"},
       {:nimble_totp, "~> 0.2"},
+      {:cachex, "~> 3.4"},
       # XXX: Change this when hex package is updated
       {:cidr, github: "firezone/cidr-elixir"},
       {:telemetry, "~> 1.0"},

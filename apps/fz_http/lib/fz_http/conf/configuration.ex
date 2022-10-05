@@ -1,15 +1,16 @@
-defmodule FzHttp.Conf.Configuration do
+defmodule FzHttp.Configurations.Configuration do
   @moduledoc """
   App global configuration, singleton resource
   """
 
   use Ecto.Schema
   import Ecto.Changeset
+  alias FzHttp.Configurations.Logo
 
   @primary_key {:id, :binary_id, autogenerate: true}
 
   schema "configurations" do
-    field :logo, :map
+    embeds_one :logo, Logo, on_replace: :update
     field :local_auth_enabled, :boolean
     field :allow_unprivileged_device_management, :boolean
     field :allow_unprivileged_device_configuration, :boolean
@@ -24,7 +25,6 @@ defmodule FzHttp.Conf.Configuration do
   def changeset(configuration, attrs) do
     configuration
     |> cast(attrs, [
-      :logo,
       :local_auth_enabled,
       :allow_unprivileged_device_management,
       :allow_unprivileged_device_configuration,
@@ -32,5 +32,6 @@ defmodule FzHttp.Conf.Configuration do
       :disable_vpn_on_oidc_error,
       :auto_create_oidc_users
     ])
+    |> cast_embed(:logo)
   end
 end
