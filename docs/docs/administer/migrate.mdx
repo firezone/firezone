@@ -1,0 +1,74 @@
+---
+title: Migrate to Docker
+sidebar_position: 2
+---
+
+Chef Infra Client, the configuration system Chef Omnibus relies on, has been
+[scheduled for End-of-Life in 2024](https://docs.chef.io/versions/#supported-commercial-distributions).
+As such, Omnibus-based deployments
+will be deprecated in a future version of Firezone.
+
+Follow this guide to migrate from an Omnibus-based deployment to a Docker-based
+deployment. In most cases this can be done with minimal downtime and without
+requiring you to regenerate WireGuard configurations for each device.
+
+Estimated time to complete: **2 hours**.
+
+## Steps to Migrate
+
+1. **Back up** your server. This ensure you have a working state to roll back to
+in case anything goes wrong. At a _bare minimum_ you'll want to back up the
+[file and directories Firezone uses
+](../reference/file-and-directory-locations), but we recommend taking a full
+snapshot if possible.
+1. Ensure you're running the latest version of Firezone. See our [upgrade guide
+](upgrade) if not.
+1. Install the latest version of [**Docker Server**
+](https://docs.docker.com/engine/install/#server) and [Docker Compose
+](https://docs.docker.com/compose/install/linux/#install-compose)
+for your distro. We highly recommend using Docker Server for Linux. Docker
+Desktop will probably work too, but is discouraged at this time
+because it rewrites packets under some conditions and may cause unexpected
+issues with Firezone.
+1. Stop Firezone:
+```bash
+sudo firezone-ctl stop
+```
+1. Download and run the migration script:
+```bash
+sudo -E bash -c "$(curl -fsSL https://github.com/firezone/firezone/raw/master/scripts/migrate.sh)"
+```
+This will ask you a few questions, then attempt to migrate your installation to
+Docker.
+1. If all goes well, you should now be able to bring the Docker services up:
+```bash
+docker-compose up -d
+```
+
+## Rolling Back
+
+If anything goes wrong, you can abort the migration by simply bring the Docker
+services down and the Omnibus ones back up:
+
+```bash
+docker-compose down
+sudo firezone-ctl start
+```
+
+If you've found a bug, please [open a GitHub issue](
+https://github.com/firezone/firezone/issues) with the error output and
+any steps needed to reproduce.
+
+## Get Help
+
+If you need help migrating from Omnibus to Docker, check our community
+support options:
+
+1. [Discussion Forums](https://discourse.firez.one/): Ask questions, report
+  bugs, and suggest features.
+1. [Public Slack Group](https://join.slack.com/t/firezone-users/shared_invite/zt-111043zus-j1lP_jP5ohv52FhAayzT6w):
+  Join live discussions, meet other users, and get to know the contributors.
+
+If you'd like dedicated support migrating your installation from Omnibus
+to Docker, consider [contacting us about our paid support plan
+](https://firezone.dev/contact/sales).

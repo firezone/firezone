@@ -1,0 +1,111 @@
+---
+title: Custom Reverse Proxy
+sidebar_position: 3
+---
+
+:::warning
+Using a custom reverse proxy is an advanced configuration. The default bundled
+Nginx proxy (Omnibus-based deployments) and Caddy (Docker-based deployments) is
+suitable for the vast majority of use cases and is recommended for most users.
+There are important security risks if the reverse proxy is not set up correctly.
+:::
+
+For help deploying Firezone with a custom reverse proxy, consider [contacting us
+for support](https://www.firezone.dev/contact/sales).
+
+## Introduction
+
+Firezone comes with bundled [Nginx](https://www.nginx.com/) (Omnibus-based
+deployments) or uses Caddy (Docker-based deployments) by default. However, in
+some cases you might want to deploy your own server such as when using behind
+your own load balancer.
+
+## Prerequisites
+
+Below you will find the requirements in order to setup Firezone with a custom
+reverse proxy.
+
+### Firezone configuration requirements
+
+* Disable the bundled Nginx by setting `default['firezone']['nginx']['enabled']`
+  to `false` in the config file.
+* If you have any immediate proxies between your primary reverse proxy and the
+  Firezone web app, add their IPs to
+  `default['firezone']['phoenix']['external_trusted_proxies']`. Because of the
+  way the [X-Forwarded-For header works](
+  https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-For),
+  this is needed to parse the actual client's IP address to prevent
+  IP spoofing.
+
+:::note
+The `external_trusted_proxies` list automatically implicitly includes the
+following private CIDR ranges, even if they're not specified in the
+configuration file:
+
+* `127.0.0.0/8`
+* `10.0.0.0/8`
+* `172.16.0.0/12`
+* `1926.0.0/16`
+* `::1/128`
+* `fc00::/7`
+
+This means any web requests originating from these IPs are automatically ignored
+from the `X-Forwarded-For` headers. If you're accessing Firezone from any IPs in
+this range (as seen by the Firezone web app), be sure to add them to the
+`default['firezone']['phoenix']['clients']` configuration option instead.
+:::
+
+Read more about the configuration options
+[here](../../reference/configuration-file).
+
+### Proxy requirements
+
+* All your proxies need to configure the `X-Forwarded-For` header as explained
+  [here](
+  https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-For)
+* Your proxy should also set the `X-Forwarded-Proto` to `https`.
+* Your proxy (or another downstream proxy) **must** terminate SSL since we
+  enforce [secure cookies](
+  https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#restrict_access_to_cookies).
+* Firezone requires the use of WebSockets to establish realtime connections. We
+  recommended following your proxy's specific documentation for supporting
+  WebSockets as each proxy varies. In general, your proxy needs to be able to
+  proxy HTTP 1.1 connections, and the Firezone web app expects the following
+  headers to be set:
+  * `Connection: upgrade`
+  * `Upgrade: websocket`
+
+## Security considerations
+
+In addition to the headers above, we recommend adding the following headers for
+security purposes:
+
+* `X-XSS-Protection: 1; mode=block`
+* `X-Content-Type-Options nosniff`
+* `Referrer-Policy no-referrer-when-downgrade`
+* `Content-Security-Policy: default-src 'self' ws: wss: http: https: data: blob:
+  'unsafe-inline'; frame-ancestors 'self';`
+* `Permissions-Policy: interest-cohort=()`
+
+Since the upstream Firezone web app expects plain HTTP traffic, any requests the
+proxy forwards is sent over HTTP and thus is **not encrypted**. In most cases,
+the reverse proxy is installed in a trusted network, and this is not an issue.
+But the connection between your trusted proxy and the Firezone web app spans
+an untrusted network (such as the Internet), you may want to leave the bundled
+`nginx` proxy enabled for SSL termination, and set up your custom
+reverse proxy to proxy to that instead.
+
+## Example configurations
+
+* [Apache](../../reference/reverse-proxy-templates/apache)
+* [Traefik](../../reference/reverse-proxy-templates/traefik)
+* [HAProxy](../../reference/reverse-proxy-templates/haproxy)
+
+These configurations are written to be as simple as possible. They're designed
+to function as a simple template which you can customize further to suit your
+needs.
+
+If you have a working configuration for a different reverse proxy or a different
+version of an existing one we appreciate any
+[contribution](https://github.com/firezone/firezone/) to expand the examples for
+the community.

@@ -1,0 +1,47 @@
+---
+title: OpenID Connect
+sidebar_position: 10
+---
+
+Firezone supports Single Sign-On (SSO) via OpenID Connect (OIDC).
+
+## Provider Support
+
+In general, most identity providers that offer OIDC support work with Firezone. Some providers
+that only implement the OIDC partially or use uncommon configurations may have
+issues, however. If your identity provider falls into this category, [contact us
+](https://www.firezone.dev/contact/sales) about a custom integration.
+
+The following OIDC providers are known to work well with Firezone:
+
+| Provider                                                                          | Support Status                 | Notes                                                                                                                                                  |
+| ---                                                                               | ---                            | ---                                                                                                                                                    |
+| [Azure Active Directory](azuread)                                                 | **Fully tested and supported** | Ensure the [`email` claim](https://learn.microsoft.com/en-us/azure/active-directory/develop/active-directory-optional-claims) is present in the token. |
+| [Google Workspace](google)                                                        | **Fully tested and supported** |                                                                                                                                                        |
+| [Okta](okta)                                                                      | **Fully tested and supported** |                                                                                                                                                        |
+| [Onelogin](onelogin)                                                              | **Fully tested and supported** |                                                                                                                                                        |
+| [Auth0](auth0)                                                                    | **Fully tested and supported** |                                                                                                                                                        |
+| [Zitadel](zitadel)                                                                | Untested but known to work     |                                                                                                                                                        |
+| [Keycloak](https://www.keycloak.org/)                                             | Untested but known to work     |                                                                                                                                                        |
+| [Authentik](https://goauthentik.io/)                                              | Untested but known to work     |                                                                                                                                                        |
+
+## General Instructions
+
+If you're using an OIDC provider not listed above, the following OIDC attributes
+are required for the setting up an OIDC provider
+in Firezone:
+
+1. `discovery_document_uri`: The
+[OpenID Connect provider configuration URI](https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderConfig)
+which returns a JSON document used to construct subsequent requests to this
+OIDC provider. Some providers refer to this as the "well-known URL".
+1. `client_id`: The client ID of the application.
+1. `client_secret`: The client secret of the application.
+1. `redirect_uri`: Instructs OIDC provider where to redirect after authentication.
+This should be your Firezone `EXTERNAL_URL + /auth/oidc/<provider_key>/callback/`
+(e.g. `https://firezone.example.com/auth/oidc/google/callback/`).
+1. `response_type`: Set to `code`.
+1. `scope`: [OIDC scopes](https://openid.net/specs/openid-connect-basic-1_0.html#Scopes)
+to obtain from your OIDC provider. At a minimum, Firezone requires the `openid`
+and `email` scopes.
+1. `label`: The button label text displayed on the Firezone portal login page.

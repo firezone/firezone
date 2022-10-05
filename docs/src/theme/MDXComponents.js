@@ -3,6 +3,8 @@ import MDXComponents from "@theme-original/MDXComponents";
 import AccentBlock from "@site/src/components/AccentBlock";
 import Feedback from "@site/src/components/Feedback";
 import SignUp from "@site/src/components/SignUp";
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
 
 export default {
   // Re-use the default mapping
@@ -12,4 +14,6 @@ export default {
   accentblock: AccentBlock,
   feedback: Feedback,
   newsletter: SignUp,
+  Tabs: Tabs,
+  TabItem: TabItem,
 };

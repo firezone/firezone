@@ -1,7 +1,7 @@
 localhost {
   log
 
-  reverse_proxy * firezone:4000
+  reverse_proxy * firezone:13000
 
   encode gzip
 

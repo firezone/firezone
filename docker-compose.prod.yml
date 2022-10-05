@@ -15,11 +15,11 @@ services:
   caddy:
     image: caddy:2
     volumes:
-      - /data/caddy:/data/caddy
+      - /data/firezone/caddy:/data/caddy
     ports:
       - 80:80
       - 443:443
-    command: caddy reverse-proxy --to firezone:4000 --from ${EXTERNAL_URL?err}
+    command: caddy reverse-proxy --to firezone:13000 --from ${EXTERNAL_URL?err}
     deploy:
       <<: *default-deploy
 
@@ -28,8 +28,10 @@ services:
     ports:
       - 51820:51820/udp
     volumes:
-      # Persist private key through containers, the parent path to WIREGUARD_PRIVATE_KEY_PATH.
-      - /data/firezone:/var/firezone
+      # IMPORTANT: Persists WireGuard private key and other data. If
+      # /var/firezone/private_key exists when Firezone starts, it is
+      # used as the WireGuard private. Otherwise, one is generated.
+      - /data/firezone/firezone:/var/firezone
     environment:
       # Admin
       EXTERNAL_URL: ${EXTERNAL_URL:?err}
@@ -45,16 +47,12 @@ services:
       DATABASE_ENCRYPTION_KEY: ${DATABASE_ENCRYPTION_KEY:?err}
 
       ## Web
-      # PHOENIX_LISTEN_ADDRESS: '0.0.0.0'
-      # PHOENIX_PORT: '4000'
+      # PHOENIX_PORT: '13000'
       # SECURE_COOKIES: 'true'
       # EXTERNAL_TRUSTED_PROXIES: '[]'
       # PRIVATE_CLIENTS: '[]'
 
       ## External
-      # EGRESS_INTERFACE: eth0
-      # NFT_PATH: nft
-      # WIREGUARD_INTERFACE_NAME: 'wg-firezone'
       # WIREGUARD_PORT: '51820'
       # WIREGUARD_MTU: '1280'
       # WIREGUARD_ENDPOINT:
@@ -69,7 +67,6 @@ services:
       # WIREGUARD_IPV6_MASQUERADE: true
       # WIREGUARD_IPV6_NETWORK: 'fd00::3:2:0/120'
       # WIREGUARD_IPV6_ADDRESS: 'fd00::3:2:1'
-      WIREGUARD_PRIVATE_KEY_PATH: '/var/firezone/private_key'
 
       ## DB
       DATABASE_NAME: ${DATABASE_NAME:-firezone}
@@ -83,12 +80,6 @@ services:
       # DATABASE_PARAMETERS: '{}'
 
       ## App
-      # LOCAL_AUTH_ENABLED: 'true'
-      # ALLOW_UNPRIVILEGED_DEVICE_MANAGEMENT: 'true'
-      # ALLOW_UNPRIVILEGED_DEVICE_CONFIGURATION: 'true'
-      # DISABLE_VPN_ON_OIDC_ERROR: 'false'
-      # AUTO_CREATE_OIDC_USERS: 'true'
-      # AUTH_OIDC_JSON: '{}'
       # MAX_DEVICES_PER_USER: '10'
       # CONNECTIVITY_CHECKS_ENABLED: 'true'
       # CONNECTIVITY_CHECKS_INTERVAL: '3600'
@@ -109,7 +100,7 @@ services:
   postgres:
     image: postgres:15rc1
     volumes:
-      - /data/postgres:/var/lib/postgresql/data
+      - /data/firezone/postgres:/var/lib/postgresql/data
     environment:
       # same value as ## DB section above
       POSTGRES_DB: ${DATABASE_NAME:-firezone}

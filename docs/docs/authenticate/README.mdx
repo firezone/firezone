@@ -1,0 +1,96 @@
+---
+title: Authenticate
+sidebar_position: 3
+---
+
+Firezone supports the following authentication methods:
+
+1. [Local email/password (default)](local-auth)
+1. [SSO authentication via OpenID Connect](oidc)
+1. [SSO authentication via SAML 2.0](saml)
+
+:::note
+If your Identity Provider doesn't work with the methods listed above,
+[contact us](https://www.firezone.dev/contact/sales) about custom integrations.
+:::
+
+## Integrate an SSO Provider
+
+We've included instructions on how to set up Firezone with several popular
+identity providers using our Generic OIDC integration:
+
+* [Okta](oidc/okta)
+* [Azure Active Directory](oidc/azuread)
+* [Google](oidc/google)
+* [Onelogin](oidc/onelogin)
+* [Zitadel](oidc/zitadel)
+* [Auth0](oidc/auth0)
+
+If your identity provider is not listed above, but has a generic OIDC or SAML
+connector, please consult their documentation to find instructions on obtaining
+the config settings required. Instructions for setting up Firezone with a
+generic OIDC provider can be found [here](oidc).
+
+Open a [Github issue](https://github.com/firezone/firezone/issues)
+to request documentation or submit a pull request to add documentation for your
+provider. If you require assistance in setting up your OIDC provider, please
+join the [Firezone Slack group
+](https://www.firezone.dev/slack).
+
+### The OIDC Redirect URL
+
+For each OIDC provider a corresponding URL is created for redirecting to
+the configured provider's sign-in URL. The URL format is `https://firezone.example.com/auth/oidc/PROVIDER`
+where `PROVIDER` is the OIDC key for that particular provider.
+
+For example, the OIDC config below
+
+```json
+{
+  "google": {
+    "client_id": "...",
+    "...": "..."
+  },
+  "okta": {
+    "client_id": "...",
+    "...": "..."
+  }
+}
+```
+
+would generate the following URLs:
+
+* `https://firezone.example.com/auth/oidc/google`
+* `https://firezone.example.com/auth/oidc/okta`
+
+These URLs could then be distributed to end users for direct navigation to
+the identity provider's login portal for authentication to Firezone.
+
+## Enforce Periodic Re-authentication
+
+Periodic re-authentication can be enforced by changing the setting in
+`settings/security`. This can be used to ensure a user must sign in to Firezone
+periodically in order to maintain their VPN session.
+
+You can set the session length to a minimum of **1 hour** and maximum of **90 days**.
+Setting this to Never disables this setting, allowing VPN sessions indefinitely.
+This is the default.
+
+### Re-authentication
+
+To re-authenticate an expired VPN session, a user will need to turn off their
+VPN session and sign in to the Firezone portal (URL specified during
+[deployment](../deploy#prepare-to-deploy)).
+
+See detailed Client Instructions on how to re-authenticate your session
+[here](../user-guides/client-instructions).
+
+#### VPN Connection Status
+
+A user's connection status is shown on the Users page under the table column
+`VPN Connection`. The connection statuses are:
+
+* ENABLED - The connection is enabled.
+* DISABLED - The connection is disabled by an administrator or OIDC refresh failure.
+* EXPIRED - The connection is disabled due to authentication expiration or a user
+has not signed in for the first time.
