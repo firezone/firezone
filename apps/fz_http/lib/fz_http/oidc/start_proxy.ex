@@ -1,26 +1,26 @@
 defmodule FzHttp.OIDC.StartProxy do
   @moduledoc """
   This proxy simply gets the relevant config at an appropriate timing
-  (after `FzHttp.Conf.Cache` has started) and pass to `OpenIDConnect.Worker`
+  (after `FzHttp.Configurations.Cache` has started) and pass to `OpenIDConnect.Worker`
   """
 
-  alias FzHttp.Conf
+  alias FzHttp.Configurations, as: Conf
 
   def child_spec(arg) do
     %{id: __MODULE__, start: {__MODULE__, :start_link, [arg]}}
   end
 
   def start_link(:test) do
-    auth_oidc_env = Conf.get(:openid_connect_providers)
-    :ok = Conf.Cache.put(:parsed_openid_connect_providers, parse(auth_oidc_env))
+    auth_oidc_env = Conf.get!(:openid_connect_providers)
+    Conf.Cache.put!(:parsed_openid_connect_providers, parse(auth_oidc_env))
     :ignore
   end
 
   def start_link(_) do
-    auth_oidc_env = Conf.get(:openid_connect_providers)
+    auth_oidc_env = Conf.get!(:openid_connect_providers)
 
     if parsed = auth_oidc_env && parse(auth_oidc_env) do
-      :ok = Conf.Cache.put(:parsed_openid_connect_providers, parsed)
+      Conf.Cache.put!(:parsed_openid_connect_providers, parsed)
       OpenIDConnect.Worker.start_link(parsed)
     else
       :ignore

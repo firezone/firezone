@@ -1,7 +1,7 @@
 defmodule FzHttpWeb.SettingLive.CustomizationTest do
   use FzHttpWeb.ConnCase, async: true
 
-  alias FzHttp.Conf
+  alias FzHttp.Configurations, as: Conf
 
   describe "logo" do
     setup %{admin_conn: conn} = context do
@@ -10,7 +10,7 @@ defmodule FzHttpWeb.SettingLive.CustomizationTest do
       on_exit(fn ->
         # this is required because configuration is automatically reset (rolled back)
         # after each run, but persistent terms are not. we need to manually reset it here.
-        Conf.Cache.put(:logo, nil)
+        Conf.Cache.put!(:logo, nil)
       end)
 
       path = Routes.setting_customization_path(conn, :show)
@@ -58,7 +58,7 @@ defmodule FzHttpWeb.SettingLive.CustomizationTest do
       view |> element("input[value=Default]") |> render_click()
       view |> element("form") |> render_submit()
 
-      assert nil == Conf.get(:logo)
+      assert nil == Conf.get!(:logo)
     end
 
     test "change to url", %{view: view, html: html} do
@@ -66,7 +66,7 @@ defmodule FzHttpWeb.SettingLive.CustomizationTest do
       view |> element("input[value=URL]") |> render_click()
       view |> render_submit("save", %{"url" => "new"})
 
-      assert %{"url" => "new"} == Conf.get(:logo)
+      assert %{url: "new"} == Conf.get!(:logo)
     end
 
     test "change to upload", %{view: view, html: html} do
@@ -86,7 +86,7 @@ defmodule FzHttpWeb.SettingLive.CustomizationTest do
       |> render_upload("logo.jpeg")
 
       view |> render_submit("save", %{})
-      assert %{"data" => Base.encode64("new"), "type" => "image/jpeg"} == Conf.get(:logo)
+      assert %{data: Base.encode64("new"), type: "image/jpeg"} == Conf.get!(:logo)
     end
   end
 end

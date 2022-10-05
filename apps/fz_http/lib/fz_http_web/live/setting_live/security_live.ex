@@ -6,7 +6,8 @@ defmodule FzHttpWeb.SettingLive.Security do
 
   import Ecto.Changeset
 
-  alias FzHttp.{Conf, Sites, Sites.Site}
+  alias FzHttp.Configurations, as: Conf
+  alias FzHttp.{Sites, Sites.Site}
 
   @page_title "Security Settings"
   @page_subtitle "Configure security-related settings."

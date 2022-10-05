@@ -4,7 +4,7 @@ defmodule FzHttpWeb.SettingLive.Customization do
   """
   use FzHttpWeb, :live_view
 
-  alias FzHttp.Conf
+  alias FzHttp.Configurations, as: Conf
 
   @max_logo_size 1024 ** 2
   @page_title "Customization"
@@ -12,7 +12,7 @@ defmodule FzHttpWeb.SettingLive.Customization do
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
-    logo = Conf.get(:logo)
+    logo = Conf.get!(:logo)
     logo_type = Conf.logo_type(logo)
 
     {:ok,

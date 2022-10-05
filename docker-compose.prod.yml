@@ -107,7 +107,7 @@ services:
       <<: *default-deploy
 
   postgres:
-    image: postgres:13
+    image: postgres:15rc1
     volumes:
       - /data/postgres:/var/lib/postgresql/data
     environment:

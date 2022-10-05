@@ -50,7 +50,7 @@ services:
       - isolation
 
   postgres:
-    image: postgres:13
+    image: postgres:15rc1
     volumes:
       - postgres-data:/var/lib/postgresql/data
     environment:

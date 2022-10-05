@@ -4,12 +4,14 @@ defmodule FzHttpWeb.RootController do
   """
   use FzHttpWeb, :controller
 
+  alias FzHttp.Configurations, as: Conf
+
   def index(conn, _params) do
     conn
     |> render(
       "auth.html",
-      local_enabled: FzHttp.Conf.get(:local_auth_enabled),
-      openid_connect_providers: FzHttp.Conf.get(:parsed_openid_connect_providers)
+      local_enabled: Conf.get!(:local_auth_enabled),
+      openid_connect_providers: Conf.get!(:parsed_openid_connect_providers)
     )
   end
 end
