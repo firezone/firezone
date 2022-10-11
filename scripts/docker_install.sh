@@ -14,6 +14,12 @@ dockerCheck () {
     echo 'docker not found. Please install docker and try again.'
     exit
   fi
+
+  if command -v docker-compose &> /dev/null; then
+    dc='docker-compose'
+  else
+    dc='docker compose'
+  fi
 }
 
 curlCheck () {
@@ -106,8 +112,8 @@ firezoneSetup() {
   docker run --rm firezone/firezone bin/gen-env > .env
   sed -i "s/ADMIN_EMAIL=_CHANGE_ME_/ADMIN_EMAIL=$1/" .env
   sed -i "s~EXTERNAL_URL=_CHANGE_ME_~EXTERNAL_URL=$2~" .env
-  docker-compose up -d
-  docker-compose exec firezone bin/create-or-reset-admin
+  $dc up -d
+  $dc exec firezone bin/create-or-reset-admin
 
   displayLogo
 
