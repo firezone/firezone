@@ -30,9 +30,8 @@ services:
     volumes:
       # Persist private key through containers, the parent path to WIREGUARD_PRIVATE_KEY_PATH.
       - /data/firezone:/var/firezone
-    env_files:
+    env_file:
       - .env
-
     cap_add:
       - NET_ADMIN
       - SYS_MODULE
