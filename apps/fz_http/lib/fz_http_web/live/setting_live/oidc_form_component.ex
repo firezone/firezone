@@ -96,6 +96,17 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
           <%= error_tag f, :discovery_document_uri %>
         </p>
       </div>
+
+      <div class="field">
+        <%= label f, :auto_create_users, class: "label" %>
+
+        <div class="control">
+          <%= checkbox f, :auto_create_users %>
+        </div>
+        <p class="help is-danger">
+          <%= error_tag f, :auto_create_users %>
+        </p>
+      </div>
     </.form>
     </div>
     """

@@ -27,7 +27,7 @@ defmodule FzHttp.Repo.Migrations.MoveAutoCreateUsersToProviders do
     # only one configuration at this point
     |> List.first()
     |> Map.get(:openid_connect_providers)
-    |> Map.keys()
+    |> keys()
   end
 
   defp saml_provider_keys do
@@ -35,8 +35,11 @@ defmodule FzHttp.Repo.Migrations.MoveAutoCreateUsersToProviders do
     # only one configuration at this point
     |> List.first()
     |> Map.get(:saml_identity_providers)
-    |> Map.keys()
+    |> keys()
   end
+
+  defp keys(nil), do: []
+  defp keys(map), do: Map.keys(map)
 
   defp cur_oidc_create_users do
     FzHttp.Repo.all(from("configurations", select: [:auto_create_oidc_users]))

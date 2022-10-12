@@ -113,7 +113,6 @@ defmodule FzHttpWeb.SettingLive.Security do
     disable_vpn_on_oidc_error
     allow_unprivileged_device_management
     allow_unprivileged_device_configuration
-    auto_create_oidc_users
     openid_connect_providers
   )a
   @override_title """

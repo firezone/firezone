@@ -161,30 +161,6 @@
     </div>
   </div>
 
-  <div class="block" title={@field_titles.auto_create_oidc_users}>
-    <strong>Auto create OIDC users</strong>
-
-    <div class="level">
-      <div class="level-left">
-        <p>
-          Enable or disable auto creation of new users when logging in via OIDC for the first time.
-        </p>
-      </div>
-      <div class="level-right">
-        <label class="switch is-medium">
-          <input
-            type="checkbox"
-            phx-click="toggle"
-            phx-value-config="auto_create_oidc_users"
-            checked={Conf.get!(:auto_create_oidc_users)}
-            value={if(!Conf.get!(:auto_create_oidc_users), do: "on")}
-          />
-          <span class="check"></span>
-        </label>
-      </div>
-    </div>
-  </div>
-
   <label class="label">OpenID Connect providers configuration</label>
 
   <table class="table is-bordered is-hoverable is-striped is-fullwidth">

@@ -46,6 +46,17 @@ defmodule FzHttpWeb.SettingLive.SAMLFormComponent do
           <%= error_tag f, :metadata %>
         </p>
       </div>
+
+      <div class="field">
+        <%= label f, :auto_create_users, class: "label" %>
+
+        <div class="control">
+          <%= checkbox f, :auto_create_users %>
+        </div>
+        <p class="help is-danger">
+          <%= error_tag f, :auto_create_users %>
+        </p>
+      </div>
     </.form>
     </div>
     """

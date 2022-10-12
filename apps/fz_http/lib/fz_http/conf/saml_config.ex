@@ -11,11 +11,12 @@ defmodule FzHttp.Conf.SAMLConfig do
     field :id, :string
     field :label, :string
     field :metadata, :string
+    field :auto_create_users, :boolean
   end
 
   def changeset(data) do
     %__MODULE__{}
-    |> cast(data, [:id, :label, :metadata])
-    |> validate_required([:id, :label, :metadata])
+    |> cast(data, [:id, :label, :metadata, :auto_create_users])
+    |> validate_required([:id, :label, :metadata, :auto_create_users])
   end
 end
