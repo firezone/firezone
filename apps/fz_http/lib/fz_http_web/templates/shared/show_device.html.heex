@@ -1,5 +1,5 @@
 <section class="section is-main-section">
-  <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
+  <%= render(FzHttpWeb.SharedView, "flash.html", assigns) %>
 
   <h4 class="title is-4">Details</h4>
 
@@ -12,11 +12,13 @@
       Danger Zone
     </h4>
 
-    <button class="button is-danger"
+    <button
+      class="button is-danger"
       id="delete-device-button"
       phx-click="delete_device"
       phx-value-device_id={@device.id}
-      data-confirm="Are you sure? This will immediately disconnect this device and remove all associated data.">
+      data-confirm="Are you sure? This will immediately disconnect this device and remove all associated data."
+    >
       <span class="icon is-small">
         <i class="fas fa-trash"></i>
       </span>

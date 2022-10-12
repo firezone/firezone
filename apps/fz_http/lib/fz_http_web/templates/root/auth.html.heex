@@ -1,6 +1,6 @@
 <h3 class="is-3 title">Sign In</h3>
 
-<hr>
+<hr />
 
 <div class="content">
   <p>
@@ -9,30 +9,31 @@
 
   <%= for {provider, config} <- @openid_connect_providers do %>
     <p>
-      <%=
-        link(
-          "Sign in with #{config[:label]}",
-          to: Routes.auth_oidc_path(@conn, :redirect_oidc_auth_uri, provider),
-          class: "button") %>
+      <%= link(
+        "Sign in with #{config[:label]}",
+        to: Routes.auth_oidc_path(@conn, :redirect_oidc_auth_uri, provider),
+        class: "button"
+      ) %>
     </p>
   <% end %>
 
   <%= for {provider, config} <- @saml_identity_providers do %>
     <p>
-      <%=
-        link(
-          "Sign in with #{config["label"]}",
-          to: "/auth/saml/auth/signin/#{provider}/",
-          class: "button") %>
+      <%= link(
+        "Sign in with #{config["label"]}",
+        to: "/auth/saml/auth/signin/#{provider}/",
+        class: "button"
+      ) %>
     </p>
   <% end %>
 
   <%= if @local_enabled do %>
     <p>
       <%= link(
-          "Sign in with email",
-          to: Routes.auth_path(@conn, :request, "identity"),
-          class: "button") %>
+        "Sign in with email",
+        to: Routes.auth_path(@conn, :request, "identity"),
+        class: "button"
+      ) %>
     </p>
   <% end %>
 </div>

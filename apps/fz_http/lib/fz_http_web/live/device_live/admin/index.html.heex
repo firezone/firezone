@@ -1,17 +1,22 @@
 <%= render(FzHttpWeb.SharedView, "heading.html",
-           page_subtitle: @page_subtitle,
-           page_title: @page_title) %>
+  page_subtitle: @page_subtitle,
+  page_title: @page_title
+) %>
 
 <section class="section is-main-section">
-  <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
+  <%= render(FzHttpWeb.SharedView, "flash.html", assigns) %>
 
   <div class="block is-horizontally-scrollable">
-    <%= render FzHttpWeb.SharedView, "devices_table.html",
-        devices: @devices, show_user: true, socket: @socket %>
+    <%= render(FzHttpWeb.SharedView, "devices_table.html",
+      devices: @devices,
+      show_user: true,
+      socket: @socket
+    ) %>
   </div>
 
   <p>
-    Devices can be added when viewing a User.
-    <%= live_redirect("Go to users ->", to: Routes.user_index_path(@socket, :index)) %>
+    Devices can be added when viewing a User. <%= live_redirect("Go to users ->",
+      to: Routes.user_index_path(@socket, :index)
+    ) %>
   </p>
 </section>

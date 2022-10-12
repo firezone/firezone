@@ -1,17 +1,18 @@
 <%= if @live_action == :new do %>
   <%= live_modal(
-      FzHttpWeb.DeviceLive.NewFormComponent,
-      return_to: Routes.device_unprivileged_index_path(@socket, :index),
-      title: "Add Device",
-      current_user: @current_user,
-      target_user_id: @current_user.id,
-      id: "create-device-component",
-      form: "create-device",
-      button_text: "Generate Configuration") %>
+    FzHttpWeb.DeviceLive.NewFormComponent,
+    return_to: Routes.device_unprivileged_index_path(@socket, :index),
+    title: "Add Device",
+    current_user: @current_user,
+    target_user_id: @current_user.id,
+    id: "create-device-component",
+    form: "create-device",
+    button_text: "Generate Configuration"
+  ) %>
 <% end %>
 
 <section class="section is-main-section">
-  <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
+  <%= render(FzHttpWeb.SharedView, "flash.html", assigns) %>
   <h4 class="title is-4"><%= @page_title %></h4>
 
   <div class="block">
@@ -39,21 +40,27 @@
           </tr>
         </thead>
         <tbody>
-        <%= for device <- @devices do %>
-          <tr>
-            <td>
-              <.link navigate={Routes.device_unprivileged_show_path(@socket, :show, device)}>
-                <%= device.name %>
-              </.link>
-            </td>
-            <td class="code">
-              <span><%= device.ipv4 %></span>
-              <span><%= device.ipv6 %></span>
-            </td>
-            <td class="code"><%= device.public_key %></td>
-            <td id={"device-#{device.id}-inserted-at"} data-timestamp={device.inserted_at} phx-hook="FormatTimestamp">…</td>
-          </tr>
-        <% end %>
+          <%= for device <- @devices do %>
+            <tr>
+              <td>
+                <.link navigate={Routes.device_unprivileged_show_path(@socket, :show, device)}>
+                  <%= device.name %>
+                </.link>
+              </td>
+              <td class="code">
+                <span><%= device.ipv4 %></span>
+                <span><%= device.ipv6 %></span>
+              </td>
+              <td class="code"><%= device.public_key %></td>
+              <td
+                id={"device-#{device.id}-inserted-at"}
+                data-timestamp={device.inserted_at}
+                phx-hook="FormatTimestamp"
+              >
+                …
+              </td>
+            </tr>
+          <% end %>
         </tbody>
       </table>
     <% else %>
@@ -66,9 +73,10 @@
   <%= if FzHttpWeb.DeviceView.can_manage_devices?(@current_user) do %>
     <div class="block">
       <.link
-         replace={true}
-         patch={Routes.device_unprivileged_index_path(@socket, :new)}
-         class="button">
+        replace={true}
+        patch={Routes.device_unprivileged_index_path(@socket, :new)}
+        class="button"
+      >
         Add Device
       </.link>
     </div>
@@ -91,11 +99,16 @@
           <% end %>
           <p>
             <strong>
-              <span id="vpn-expires" phx-hook="FormatTimestamp" data-timestamp={vpn_expires_at(@current_user)}>...</span>
+              <span
+                id="vpn-expires"
+                phx-hook="FormatTimestamp"
+                data-timestamp={vpn_expires_at(@current_user)}
+              >
+                ...
+              </span>
             </strong>
           </p>
-          <%= link("Reauthenticate", to: Routes.auth_path(@socket, :delete), method: :delete) %>
-          to renew your VPN session.
+          <%= link("Reauthenticate", to: Routes.auth_path(@socket, :delete), method: :delete) %> to renew your VPN session.
         <% else %>
           Your VPN session is active indefinitely.
         <% end %>
