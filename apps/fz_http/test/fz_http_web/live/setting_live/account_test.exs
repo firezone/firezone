@@ -86,7 +86,7 @@ defmodule FzHttpWeb.SettingLive.AccountTest do
       |> render_click()
 
       # Intermittent failure unless we wait a bit
-      Process.sleep(1)
+      Process.sleep(10)
 
       assert_patched(view, Routes.setting_account_path(conn, :show))
     end
