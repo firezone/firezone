@@ -1,102 +1,132 @@
 <!DOCTYPE html>
-<html lang="en" class="has-aside-left has-aside-mobile-transition has-navbar-fixed-top has-aside-expanded">
+<html
+  lang="en"
+  class="has-aside-left has-aside-mobile-transition has-navbar-fixed-top has-aside-expanded"
+>
   <head>
-    <meta charset="utf-8"/>
-    <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <.live_title prefix="Firezone • ">
       <%= assigns[:page_title] %>
     </.live_title>
     <link phx-track-static rel="stylesheet" href={Routes.static_path(@conn, "/dist/admin.css")} />
-    <script defer phx-track-static type="text/javascript" src={Routes.static_path(@conn, "/dist/admin.js")}></script>
-
+    <script
+      defer
+      phx-track-static
+      type="text/javascript"
+      src={Routes.static_path(@conn, "/dist/admin.js")}
+    >
+    </script>
     <!-- Favicon -->
-    <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png">
-    <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16.png" />
     <meta name="msapplication-config" content="/browserconfig.xml" />
-    <meta name="msapplication-TileColor" content="331700">
-    <meta name="theme-color" content="331700">
-    <%= render(FzHttpWeb.SharedView, "socket_token_headers.html", conn: @conn, current_user: @current_user) %>
+    <meta name="msapplication-TileColor" content="331700" />
+    <meta name="theme-color" content="331700" />
+    <%= render(FzHttpWeb.SharedView, "socket_token_headers.html",
+      conn: @conn,
+      current_user: @current_user
+    ) %>
   </head>
   <body>
-<div id="app">
-  <nav id="navbar-main" class="navbar is-fixed-top">
-    <div class="navbar-brand">
-      <a class="navbar-item is-hidden-desktop jb-aside-mobile-toggle">
-        <span class="icon"><i class="mdi mdi-forwardburger mdi-24px"></i></span>
-      </a>
-    </div>
-    <div class="navbar-brand is-right">
-      <a class="navbar-item is-hidden-desktop jb-navbar-menu-toggle" data-target="navbar-menu">
-        <span class="icon"><i class="mdi mdi-dots-vertical"></i></span>
-      </a>
-    </div>
-    <div class="navbar-menu fadeIn animated faster" id="navbar-menu">
-      <div class="navbar-end">
-        <div class="navbar-item has-dropdown has-dropdown-with-icons has-divider is-hoverable">
-          <a class="navbar-link is-arrowless">
-            <div class="is-user-name"><span><%= @current_user.email %></span></div>
-            <span class="icon"><i class="mdi mdi-chevron-down"></i></span>
+    <div id="app">
+      <nav id="navbar-main" class="navbar is-fixed-top">
+        <div class="navbar-brand">
+          <a class="navbar-item is-hidden-desktop jb-aside-mobile-toggle">
+            <span class="icon"><i class="mdi mdi-forwardburger mdi-24px"></i></span>
           </a>
-          <div class="navbar-dropdown">
-            <%= link(to: Routes.setting_account_path(@conn, :show), class: "navbar-item") do %>
-              <span class="icon"><i class="mdi mdi-account"></i></span>
-              <span>Account Settings</span>
-            <% end %>
-            <hr class="navbar-divider">
-            <%= link(to: Routes.auth_path(@conn, :delete), method: :delete, class: "navbar-item") do %>
-              <span class="icon"><i class="mdi mdi-logout"></i></span>
-              <span>Log Out</span>
-            <% end %>
-          </div>
         </div>
-        <%= Phoenix.Component.live_render(@conn, FzHttpWeb.NotificationsLive.Badge, router: FzHttpWeb.Router) %>
-        <a target="_blank" href="https://docs.firezone.dev/?utm_source=product" title="Documentation" class="navbar-item has-divider is-desktop-icon-only">
-          <span class="icon"><i class="mdi mdi-help-circle-outline"></i></span>
-        </a>
-        <a id="web-ui-connect-success" href="#" title="Secure websocket connected." class="navbar-item has-divider is-desktop-icon-only">
-          <span class="icon has-text-success"><i class="mdi mdi-wifi"></i></span>
-        </a>
-        <a id="web-ui-connect-error" href="#" title="Secure websocket not connected! Check docs.firezone.dev/administer/troubleshoot for help." class="is-hidden navbar-item has-divider is-desktop-icon-only">
-          <span class="icon has-text-danger"><i class="mdi mdi-wifi-off"></i></span>
-        </a>
-      </div>
-    </div>
-  </nav>
-
-  <%= @inner_content %>
-
-  <footer class="footer">
-    <div class="container-fluid">
-      <div class="level">
-        <div class="level-left">
-          <div class="level-item">
-            🎉
-            &nbsp;
-            <strong>
-              0.5.0 is here!
-              <a href={"https://www.firezone.dev/blog/release-0-5-0/?utm_source=product&uid=#{Application.fetch_env!(:fz_http, :telemetry_id)}"}>
-                Click here to read more.
+        <div class="navbar-brand is-right">
+          <a class="navbar-item is-hidden-desktop jb-navbar-menu-toggle" data-target="navbar-menu">
+            <span class="icon"><i class="mdi mdi-dots-vertical"></i></span>
+          </a>
+        </div>
+        <div class="navbar-menu fadeIn animated faster" id="navbar-menu">
+          <div class="navbar-end">
+            <div class="navbar-item has-dropdown has-dropdown-with-icons has-divider is-hoverable">
+              <a class="navbar-link is-arrowless">
+                <div class="is-user-name"><span><%= @current_user.email %></span></div>
+                <span class="icon"><i class="mdi mdi-chevron-down"></i></span>
               </a>
-            </strong>
-          </div>
-        </div>
-        <div class="level-right">
-          <div class="level-item">
-            <a href={"https://github.com/firezone/firezone/tree/#{git_sha()}"}>
-              Version <%= application_version() %>
+              <div class="navbar-dropdown">
+                <%= link(to: Routes.setting_account_path(@conn, :show), class: "navbar-item") do %>
+                  <span class="icon"><i class="mdi mdi-account"></i></span>
+                  <span>Account Settings</span>
+                <% end %>
+                <hr class="navbar-divider" />
+                <%= link(to: Routes.auth_path(@conn, :delete), method: :delete, class: "navbar-item") do %>
+                  <span class="icon"><i class="mdi mdi-logout"></i></span>
+                  <span>Log Out</span>
+                <% end %>
+              </div>
+            </div>
+            <%= Phoenix.Component.live_render(@conn, FzHttpWeb.NotificationsLive.Badge,
+              router: FzHttpWeb.Router
+            ) %>
+            <a
+              target="_blank"
+              href="https://docs.firezone.dev/?utm_source=product"
+              title="Documentation"
+              class="navbar-item has-divider is-desktop-icon-only"
+            >
+              <span class="icon"><i class="mdi mdi-help-circle-outline"></i></span>
+            </a>
+            <a
+              id="web-ui-connect-success"
+              href="#"
+              title="Secure websocket connected."
+              class="navbar-item has-divider is-desktop-icon-only"
+            >
+              <span class="icon has-text-success"><i class="mdi mdi-wifi"></i></span>
+            </a>
+            <a
+              id="web-ui-connect-error"
+              href="#"
+              title="Secure websocket not connected! Check docs.firezone.dev/administer/troubleshoot for help."
+              class="is-hidden navbar-item has-divider is-desktop-icon-only"
+            >
+              <span class="icon has-text-danger"><i class="mdi mdi-wifi-off"></i></span>
             </a>
           </div>
-          <div class="level-item">
-            <div class="logo">
-              <a href="https://firezone.dev"><img src="/images/logo.svg" alt="firezone.dev"></a>
+        </div>
+      </nav>
+
+      <%= @inner_content %>
+
+      <footer class="footer">
+        <div class="container-fluid">
+          <div class="level">
+            <div class="level-left">
+              <div class="level-item">
+                🎉
+                &nbsp;
+                <strong>
+                  0.6.0 is here!
+                  <a href={"https://blog.firezone.dev/release-0-6-0/?utm_source=product&uid=#{Application.fetch_env!(:fz_http, :telemetry_id)}"}>
+                    Click here to read more.
+                  </a>
+                </strong>
+              </div>
+            </div>
+            <div class="level-right">
+              <div class="level-item">
+                <a href={"https://github.com/firezone/firezone/tree/#{git_sha()}"}>
+                  Version <%= application_version() %>
+                </a>
+              </div>
+              <div class="level-item">
+                <div class="logo">
+                  <a href="https://firezone.dev">
+                    <img src="/images/logo.svg" alt="firezone.dev" />
+                  </a>
+                </div>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      </footer>
     </div>
-  </footer>
-</div>
-</body>
+  </body>
 </html>

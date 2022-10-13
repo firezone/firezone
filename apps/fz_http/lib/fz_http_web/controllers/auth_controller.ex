@@ -51,6 +51,16 @@ defmodule FzHttpWeb.AuthController do
     end
   end
 
+  def callback(conn, %{"provider" => "saml"}) do
+    key = {idp, _} = get_session(conn, "samly_assertion_key")
+    assertion = %Samly.Assertion{} = Samly.State.get_assertion(conn, key)
+
+    with {:ok, user} <-
+           UserFromAuth.find_or_create(:saml, idp, %{"email" => assertion.subject.name}) do
+      maybe_sign_in(conn, user, %{provider: idp})
+    end
+  end
+
   def callback(conn, %{"provider" => provider_key, "state" => state} = params) do
     openid_connect = Application.fetch_env!(:fz_http, :openid_connect)
 

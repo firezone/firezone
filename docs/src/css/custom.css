@@ -16,7 +16,7 @@
   --ifm-color-primary-lighter: #ebebea;
   --ifm-color-primary-lightest: #f8f7f7;
   --ifm-code-font-size: 95%;
-  --docusaurus-highlighted-code-line-bg: rgba(205, 153, 153, 0.1);
+  --docusaurus-highlighted-code-line-bg: rgba(205, 153, 153, 0.2);
 }
 
 /* For readability concerns, you should choose a lighter palette in dark mode. */
@@ -59,4 +59,12 @@ table {
 
 [data-theme='dark'] .header-github-link::before {
   background: url(/img/github_dark.svg) no-repeat;
+}
+
+/* Show a border around Tab containers to make it more clear
+ * where they end
+ */
+.tabs-container {
+  background: rgba(100, 100, 100, 0.2);
+  padding-bottom: 1.5rem;
 }

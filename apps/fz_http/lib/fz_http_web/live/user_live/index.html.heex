@@ -7,13 +7,14 @@
     user: nil,
     current_user: @current_user,
     action: @live_action,
-    form: "user-form") %>
+    form: "user-form"
+  ) %>
 <% end %>
 
-<%= render FzHttpWeb.SharedView, "heading.html", page_title: @page_title %>
+<%= render(FzHttpWeb.SharedView, "heading.html", page_title: @page_title) %>
 
 <section class="section is-main-section">
-  <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
+  <%= render(FzHttpWeb.SharedView, "flash.html", assigns) %>
 
   <div class="block">
     <table class="table is-hoverable is-bordered is-striped is-fullwidth">
@@ -29,43 +30,49 @@
         </tr>
       </thead>
       <tbody>
-      <%= for user <- @users do %>
-        <tr>
-          <td>
-            <.link navigate={Routes.user_show_path(@socket, :show, user)}>
-              <%= user.email %>
-            </.link>
-          </td>
-          <td id={"user-#{user.id}-device-count"}><%= user.device_count %></td>
-          <td id={"user-#{user.id}-vpn-status"} class="has-text-centered">
-            <FzHttpWeb.UserLive.VPNStatusComponent.status
-              user={user}
-              expired={vpn_expired?(user)}
-            />
-          </td>
-          <td id={"user-#{user.id}-timestamp"}
+        <%= for user <- @users do %>
+          <tr>
+            <td>
+              <.link navigate={Routes.user_show_path(@socket, :show, user)}>
+                <%= user.email %>
+              </.link>
+            </td>
+            <td id={"user-#{user.id}-device-count"}><%= user.device_count %></td>
+            <td id={"user-#{user.id}-vpn-status"} class="has-text-centered">
+              <FzHttpWeb.UserLive.VPNStatusComponent.status
+                user={user}
+                expired={vpn_expired?(user)}
+              />
+            </td>
+            <td
+              id={"user-#{user.id}-timestamp"}
               data-timestamp={user.last_signed_in_at}
-              phx-hook="FormatTimestamp">
-            …
-          </td>
-          <td><%= user.last_signed_in_method %></td>
-          <td id={"user-#{user.id}-inserted-at"}
+              phx-hook="FormatTimestamp"
+            >
+              …
+            </td>
+            <td><%= user.last_signed_in_method %></td>
+            <td
+              id={"user-#{user.id}-inserted-at"}
               data-timestamp={user.inserted_at}
-              phx-hook="FormatTimestamp">
-            …
-          </td>
-          <td id={"user-#{user.id}-updated-at"}
+              phx-hook="FormatTimestamp"
+            >
+              …
+            </td>
+            <td
+              id={"user-#{user.id}-updated-at"}
               data-timestamp={user.updated_at}
-              phx-hook="FormatTimestamp">
-            …
-          </td>
-        </tr>
-      <% end %>
+              phx-hook="FormatTimestamp"
+            >
+              …
+            </td>
+          </tr>
+        <% end %>
       </tbody>
     </table>
   </div>
 
-  <.link navigate={Routes.user_index_path(@socket, :new)} class="button">
+  <.link replace={true} patch={Routes.user_index_path(@socket, :new)} class="button">
     Add User
   </.link>
 </section>

@@ -134,7 +134,7 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
       |> element("a", "Add Device")
       |> render_click()
 
-      assert_redirected(view, Routes.device_unprivileged_index_path(conn, :new))
+      assert_patched(view, Routes.device_unprivileged_index_path(conn, :new))
     end
 
     test "creates device", %{unprivileged_conn: conn} do

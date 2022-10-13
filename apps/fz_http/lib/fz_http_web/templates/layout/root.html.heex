@@ -1,42 +1,49 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="utf-8"/>
-    <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <%= csrf_meta_tag() %>
     <.live_title>
       <%= assigns[:page_title] || "Firezone" %>
     </.live_title>
     <link phx-track-static rel="stylesheet" href={Routes.static_path(@conn, "/dist/root.css")} />
-    <script defer phx-track-static type="text/javascript" src={Routes.static_path(@conn, "/dist/root.js")}></script>
-
+    <script
+      defer
+      phx-track-static
+      type="text/javascript"
+      src={Routes.static_path(@conn, "/dist/root.js")}
+    >
+    </script>
     <!-- Favicon -->
-    <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png">
-    <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16.png" />
     <meta name="msapplication-config" content="/browserconfig.xml" />
-    <meta name="msapplication-TileColor" content="331700">
-    <meta name="theme-color" content="331700">
+    <meta name="msapplication-TileColor" content="331700" />
+    <meta name="theme-color" content="331700" />
     <!-- CSRF -->
     <%= csrf_meta_tag() %>
   </head>
-<body>
-<section class="section hero is-fullheight is-error-section">
-  <div id="app" class="hero-body">
-    <div class="container">
-      <div class="columns is-centered">
-        <div class="column is-two-thirds-tablet is-half-desktop is-one-third-widescreen">
-          <div class="block">
-            <div class="has-text-centered">
-              <%= FzHttpWeb.LogoComponent.render(FzHttp.Configurations.get_configuration!().logo) %>
+  <body>
+    <section class="section hero is-fullheight is-error-section">
+      <div id="app" class="hero-body">
+        <div class="container">
+          <div class="columns is-centered">
+            <div class="column is-two-thirds-tablet is-half-desktop is-one-third-widescreen">
+              <div class="block">
+                <div class="has-text-centered">
+                  <%= FzHttpWeb.LogoComponent.render(
+                    FzHttp.Configurations.get_configuration!().logo
+                  ) %>
+                </div>
+              </div>
+              <%= @inner_content %>
             </div>
           </div>
-          <%= @inner_content %>
         </div>
       </div>
-    </div>
-  </div>
-</section>
-</body>
+    </section>
+  </body>
 </html>

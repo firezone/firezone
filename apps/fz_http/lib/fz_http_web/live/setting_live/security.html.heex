@@ -1,24 +1,55 @@
+<%= if @live_action == :edit_oidc do %>
+  <%= live_modal(
+    FzHttpWeb.SettingLive.OIDCFormComponent,
+    return_to: Routes.setting_security_path(@socket, :show),
+    title: "OIDC Config",
+    providers: @oidc_configs,
+    provider_id: @id,
+    id: "oidc-form-component",
+    form: "oidc-form"
+  ) %>
+<% end %>
+
+<%= if @live_action == :edit_saml do %>
+  <%= live_modal(
+    FzHttpWeb.SettingLive.SAMLFormComponent,
+    return_to: Routes.setting_security_path(@socket, :show),
+    title: "SAML Config",
+    providers: @saml_configs,
+    provider_id: @id,
+    id: "saml-form-component",
+    form: "saml-form"
+  ) %>
+<% end %>
+
 <%= render(FzHttpWeb.SharedView, "heading.html",
-           page_subtitle: @page_subtitle,
-           page_title: @page_title) %>
+  page_subtitle: @page_subtitle,
+  page_title: @page_title
+) %>
 
 <section class="section is-main-section">
-  <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
+  <%= render(FzHttpWeb.SharedView, "flash.html", assigns) %>
 
   <h4 class="title is-4">Authentication</h4>
 
   <div class="block">
-    <.form let={f} for={@site_changeset} phx-change="change" phx-submit="save_site">
+    <.form :let={f} for={@site_changeset} phx-change="change" phx-submit="save_site">
       <div class="field">
-        <%= label f, :vpn_session_duration, "Require Authentication For VPN Sessions", class: "label" %>
+        <%= label(f, :vpn_session_duration, "Require Authentication For VPN Sessions",
+          class: "label"
+        ) %>
         <div class="field has-addons">
           <p class="control">
             <span class="select">
-              <%= select f, :vpn_session_duration, @session_duration_options, class: "input" %>
+              <%= select(f, :vpn_session_duration, @session_duration_options, class: "input") %>
             </span>
           </p>
           <p class="control">
-            <%= submit "Save", disabled: !@form_changed, phx_disable_with: "Saving...", class: "button is-primary" %>
+            <%= submit("Save",
+              disabled: !@form_changed,
+              phx_disable_with: "Saving...",
+              class: "button is-primary"
+            ) %>
           </p>
         </div>
         <p class="help">
@@ -30,7 +61,6 @@
   </div>
 
   <div class="block" title={@field_titles.local_auth_enabled}>
-
     <strong>Local Auth</strong>
 
     <div class="level">
@@ -39,10 +69,13 @@
       </div>
       <div class="level-right">
         <label class="switch is-medium">
-          <input type="checkbox" phx-click="toggle"
-              phx-value-config="local_auth_enabled"
-              checked={Conf.get!(:local_auth_enabled)}
-              value={if(!Conf.get!(:local_auth_enabled), do: "on")} />
+          <input
+            type="checkbox"
+            phx-click="toggle"
+            phx-value-config="local_auth_enabled"
+            checked={Conf.get!(:local_auth_enabled)}
+            value={if(!Conf.get!(:local_auth_enabled), do: "on")}
+          />
           <span class="check"></span>
         </label>
       </div>
@@ -50,7 +83,6 @@
   </div>
 
   <div class="block" title={@field_titles.allow_unprivileged_device_management}>
-
     <strong>Allow unprivileged device management</strong>
 
     <div class="level">
@@ -59,10 +91,13 @@
       </div>
       <div class="level-right">
         <label class="switch is-medium">
-          <input type="checkbox" phx-click="toggle"
-              phx-value-config="allow_unprivileged_device_management"
-              checked={Conf.get!(:allow_unprivileged_device_management)}
-              value={if(!Conf.get!(:allow_unprivileged_device_management), do: "on")} />
+          <input
+            type="checkbox"
+            phx-click="toggle"
+            phx-value-config="allow_unprivileged_device_management"
+            checked={Conf.get!(:allow_unprivileged_device_management)}
+            value={if(!Conf.get!(:allow_unprivileged_device_management), do: "on")}
+          />
           <span class="check"></span>
         </label>
       </div>
@@ -70,7 +105,6 @@
   </div>
 
   <div class="block" title={@field_titles.allow_unprivileged_device_configuration}>
-
     <strong>Allow unprivileged device configuration</strong>
 
     <div class="level">
@@ -81,10 +115,13 @@
       </div>
       <div class="level-right">
         <label class="switch is-medium">
-          <input type="checkbox" phx-click="toggle"
-              phx-value-config="allow_unprivileged_device_configuration"
-              checked={Conf.get!(:allow_unprivileged_device_configuration)}
-              value={if(!Conf.get!(:allow_unprivileged_device_configuration), do: "on")} />
+          <input
+            type="checkbox"
+            phx-click="toggle"
+            phx-value-config="allow_unprivileged_device_configuration"
+            checked={Conf.get!(:allow_unprivileged_device_configuration)}
+            value={if(!Conf.get!(:allow_unprivileged_device_configuration), do: "on")}
+          />
           <span class="check"></span>
         </label>
       </div>
@@ -111,62 +148,108 @@
       </div>
       <div class="level-right">
         <label class="switch is-medium">
-          <input type="checkbox" phx-click="toggle"
-              phx-value-config="disable_vpn_on_oidc_error"
-              checked={Conf.get!(:disable_vpn_on_oidc_error)}
-              value={if(!Conf.get!(:disable_vpn_on_oidc_error), do: "on")} />
+          <input
+            type="checkbox"
+            phx-click="toggle"
+            phx-value-config="disable_vpn_on_oidc_error"
+            checked={Conf.get!(:disable_vpn_on_oidc_error)}
+            value={if(!Conf.get!(:disable_vpn_on_oidc_error), do: "on")}
+          />
           <span class="check"></span>
         </label>
       </div>
     </div>
   </div>
 
-  <div class="block" title={@field_titles.auto_create_oidc_users}>
-    <strong>Auto create OIDC users</strong>
+  <label class="label">OpenID Connect providers configuration</label>
 
-    <div class="level">
-      <div class="level-left">
-        <p>Enable or disable auto creation of new users when logging in via OIDC for the first time.</p>
-      </div>
-      <div class="level-right">
-        <label class="switch is-medium">
-          <input type="checkbox" phx-click="toggle"
-              phx-value-config="auto_create_oidc_users"
-              checked={Conf.get!(:auto_create_oidc_users)}
-              value={if(!Conf.get!(:auto_create_oidc_users), do: "on")} />
-          <span class="check"></span>
-        </label>
-      </div>
-    </div>
-  </div>
+  <table class="table is-bordered is-hoverable is-striped is-fullwidth">
+    <thead>
+      <tr>
+        <th>Config ID</th>
+        <th>Label</th>
+        <th>Client ID</th>
+        <th>Discovery URI</th>
+        <th>Scope</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      <%= for {k, v} <- @oidc_configs do %>
+        <tr>
+          <td><%= k %></td>
+          <td><%= v["label"] %></td>
+          <td><%= v["client_id"] %></td>
+          <td><%= v["discovery_document_uri"] %></td>
+          <td><%= v["scope"] %></td>
+          <td>
+            <%= live_patch(to: Routes.setting_security_path(@socket, :edit_oidc, k),
+              class: "button") do %>
+              Edit
+            <% end %>
+            <button
+              class="button is-danger"
+              phx-click="delete"
+              phx-value-key={k}
+              phx-value-type="oidc"
+              data-confirm={"Are you sure about deleting OIDC config #{k}?"}
+            >
+              Delete
+            </button>
+          </td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
 
-  <div class="block" title={@field_titles.openid_connect_providers}>
-    <.form let={f} for={@config_changeset} id="oidc-config-form" phx-submit="save_oidc_config">
-      <div class="field">
-        <%= label f, :openid_connect_providers, "OpenID Connect providers configuration",
-            class: "label" %>
-        <p>
-          Enter a valid JSON string representing the OIDC configuration to apply.
-          Read more about the format of this field in
-          <a href="https://docs.firezone.dev/authenticate">
-            our documentation
-          </a>.
-        </p>
+  <%= live_patch(
+      to: Routes.setting_security_path(@socket, :edit_oidc, "new-provider-#{rand_string(4)}"),
+      class: "button mb-4") do %>
+    Add OpenID Connect Provider
+  <% end %>
 
-        <div class="control">
-          <%= textarea f,
-              :openid_connect_providers,
-              rows: 10,
-              placeholder: @oidc_placeholder,
-              class: "textarea #{input_error_class(@config_changeset, :openid_connect_providers)}" %>
-        </div>
+  <label class="label">SAML identity providers configuration</label>
 
-        <p class="help is-danger">
-          <%= error_tag @config_changeset, :openid_connect_providers %>
-        </p>
-      </div>
+  <table class="table is-bordered is-hoverable is-striped is-fullwidth">
+    <thead>
+      <tr>
+        <th>Config ID</th>
+        <th>label</th>
+        <th>Metadata</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      <%= for {k, v} <- @saml_configs do %>
+        <tr>
+          <td><%= k %></td>
+          <td><%= v["label"] %></td>
+          <td>
+            <div class="line-clamp"><%= v["metadata"] %></div>
+          </td>
+          <td>
+            <%= live_patch(to: Routes.setting_security_path(@socket, :edit_saml, k),
+              class: "button") do %>
+              Edit
+            <% end %>
+            <button
+              class="button is-danger"
+              phx-click="delete"
+              phx-value-key={k}
+              phx-value-type="saml"
+              data-confirm={"Are you sure about deleting SAML config #{k}?"}
+            >
+              Delete
+            </button>
+          </td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
 
-      <%= Phoenix.View.render(FzHttpWeb.SharedView, "submit_button.html", button_text: "Save Providers") %>
-    </.form>
-  </div>
+  <%= live_patch(
+      to: Routes.setting_security_path(@socket, :edit_saml, "new-provider-#{rand_string(4)}"),
+      class: "button mb-4") do %>
+    Add SAML Identity Provider
+  <% end %>
 </section>

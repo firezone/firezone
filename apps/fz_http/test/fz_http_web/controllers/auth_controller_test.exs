@@ -8,12 +8,14 @@ defmodule FzHttpWeb.AuthControllerTest do
 
     test "unauthed: loads the sign in form", %{unauthed_conn: conn} do
       expect(OpenIDConnect.Mock, :authorization_uri, fn _, _ -> "https://auth.url" end)
+
       test_conn = get(conn, Routes.root_path(conn, :index))
 
       # Assert that we email, OIDC and Oauth2 buttons provided
       for expected <- [
             "Sign in with email",
-            "Sign in with OIDC Google"
+            "Sign in with OIDC Google",
+            "Sign in with SAML"
           ] do
         assert html_response(test_conn, 200) =~ expected
       end
@@ -173,7 +175,7 @@ defmodule FzHttpWeb.AuthControllerTest do
     test "sends a magic link in email", %{unauthed_conn: conn, user: user} do
       post(conn, Routes.auth_path(conn, :magic_link), %{"email" => user.email})
 
-      Process.sleep(100)
+      Process.sleep(10)
       assert_email_sent(subject: "Firezone Magic Link", to: [{"", user.email}])
     end
   end

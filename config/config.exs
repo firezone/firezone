@@ -56,7 +56,6 @@ config :fz_http,
   external_trusted_proxies: [],
   private_clients: [],
   disable_vpn_on_oidc_error: true,
-  auto_create_oidc_users: true,
   sandbox: true,
   allow_unprivileged_device_management: true,
   allow_unprivileged_device_configuration: true,
@@ -88,6 +87,9 @@ config :fz_http,
   default_admin_password: "firezone1234",
   server_process_opts: [name: {:global, :fz_http_server}],
   openid_connect_providers: "{}",
+  saml_identity_providers: %{},
+  saml_certfile_path: "apps/fz_http/priv/cert/saml_selfsigned.pem",
+  saml_keyfile_path: "apps/fz_http/priv/cert/saml_selfsigned_key.pem",
   openid_connect: OpenIDConnect
 
 config :fz_wall,
@@ -104,7 +106,7 @@ config :hammer,
 
 # This will be changed per-env
 config :fz_vpn,
-  wireguard_private_key_path: "tmp/dummy",
+  wireguard_private_key_path: "priv/wg_dev_private_key",
   stats_push_service_enabled: true,
   wireguard_interface_name: "wg-firezone",
   wireguard_port: 51_820,
@@ -140,6 +142,13 @@ config :fz_http, FzHttp.Vault,
   ]
 
 config :fz_http, FzHttp.Mailer, adapter: FzHttp.Mailer.NoopAdapter
+
+config :samly, Samly.State, store: Samly.State.Session
+
+config :samly, Samly.Provider,
+  idp_id_from: :path_segment,
+  service_providers: [],
+  identity_providers: []
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.

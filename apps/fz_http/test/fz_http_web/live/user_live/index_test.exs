@@ -113,7 +113,7 @@ defmodule FzHttpWeb.UserLive.IndexTest do
       |> element("a", "Add User")
       |> render_click()
 
-      assert_redirected(view, Routes.user_index_path(conn, :new))
+      assert_patched(view, Routes.user_index_path(conn, :new))
     end
   end
 end

@@ -1,5 +1,6 @@
 apps/fz_http/assets/node_modules
 apps/fz_http/priv/static/dist
+apps/fz_http/priv/cert
 _build
 apps/fz_http/_build
 apps/fz_wall/_build
