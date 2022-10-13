@@ -17,6 +17,13 @@ Below is a table of cryptography used and to which contexts they apply.
 | TLSv1.2/TLSv1.3                                          | Data in transit | Used by the Caddy server to encrypt HTTP connections to the portal. Read more at https://caddyserver.com/docs/caddyfile/directives/tls. SSL certificates are provisioned automatically with the ACME protocol by Let's Encrypt by default. |
 | ChaCha20, Poly1305, Curve25519, BLAKE2s, SipHash24, HKDF | Data in transit | Used by WireGuard® for VPN tunnels. Read more at https://wireguard.com/protocol. Firezone uses Linux kernel WireGuard without modification.                                                                                                |
 
+## Rate Limiting
+
+Firezone employs HTTP rate limiting to help limit the effectiveness of brute
+force attacks against the web portal. Requests from a single IP are
+limited to 5 per second before Firezone responds with an
+`HTTP 429: Too Many Requests`.
+
 ## Security Policy
 
 We take security issues very seriously and strive to fix all security issues
