@@ -1,9 +1,10 @@
 <%= render(FzHttpWeb.SharedView, "heading.html",
-           page_subtitle: @page_subtitle,
-           page_title: @page_title) %>
+  page_subtitle: @page_subtitle,
+  page_title: @page_title
+) %>
 
 <section class="section is-main-section">
-  <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
+  <%= render(FzHttpWeb.SharedView, "flash.html", assigns) %>
 
   <h4 class="title is-4">Logo</h4>
 
@@ -15,16 +16,19 @@
   </div>
 
   <div class="block">
-
     <div class="field">
       <div class="control">
         <%= for type <- Conf.logo_types do %>
-        <label class="radio">
-          <input type="radio" name="logo" value={type}
+          <label class="radio">
+            <input
+              type="radio"
+              name="logo"
+              value={type}
               checked={type == @logo_type}
-              phx-click={JS.push("choose", value: %{type: type})}>
-          <span><%= type %></span>
-        </label>
+              phx-click={JS.push("choose", value: %{type: type})}
+            />
+            <span><%= type %></span>
+          </label>
         <% end %>
       </div>
     </div>
@@ -38,38 +42,43 @@
     </div>
 
     <%= if @logo_type == "Default" do %>
-    <form id="default-form" phx-submit="save">
-      <input type="hidden" name="default" value="true" >
-      <button class="button" type="submit">Save</button>
-    </form>
+      <form id="default-form" phx-submit="save">
+        <input type="hidden" name="default" value="true" />
+        <button class="button" type="submit">Save</button>
+      </form>
     <% end %>
 
     <%= if @logo_type == "URL" do %>
-    <form id="url-form" phx-submit="save">
-      <div class="field has-addons">
-        <div class="control">
-          <input class="input" type="url" name="url"
-              placeholder="https://my.logo.com/logo.jpg" required>
+      <form id="url-form" phx-submit="save">
+        <div class="field has-addons">
+          <div class="control">
+            <input
+              class="input"
+              type="url"
+              name="url"
+              placeholder="https://my.logo.com/logo.jpg"
+              required
+            />
+          </div>
+          <div class="control">
+            <button class="button" type="submit">Save</button>
+          </div>
         </div>
-        <div class="control">
-          <button class="button" type="submit">Save</button>
-        </div>
-      </div>
-    </form>
+      </form>
     <% end %>
 
     <%= if @logo_type == "Upload" do %>
-    <form id="upload-form" phx-submit="save" phx-change="validate">
-      <%= for entry <- @uploads.logo.entries do %>
-        <%= for err <- upload_errors(@uploads.logo, entry) do %>
-          <p class="notification is-warning"><%= error_to_string(err) %></p>
+      <form id="upload-form" phx-submit="save" phx-change="validate">
+        <%= for entry <- @uploads.logo.entries do %>
+          <%= for err <- upload_errors(@uploads.logo, entry) do %>
+            <p class="notification is-warning"><%= error_to_string(err) %></p>
+          <% end %>
         <% end %>
-      <% end %>
 
-      <%= live_file_input @uploads.logo, class: "button", required: true %>
+        <%= live_file_input(@uploads.logo, class: "button", required: true) %>
 
-      <button class="button" type="submit">Upload</button>
-    </form>
+        <button class="button" type="submit">Upload</button>
+      </form>
     <% end %>
   </div>
 </section>

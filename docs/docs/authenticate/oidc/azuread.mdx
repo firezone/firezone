@@ -62,25 +62,14 @@ click `Add a permission`, and select `Microsoft Graph`. Add `email`, `openid`,
 
 ## Integrate With Firezone
 
-Edit `/etc/firezone/firezone.rb` to include the options below.
+Navigate to the `/settings/security` page in the admin portal, click "Add OpenID Connect Provider" and enter details you obtained
+in the steps above.
 
-```ruby
-# Using Azure Active Directory as the SSO identity provider
-default['firezone']['authentication']['oidc'] = {
-  azure: {
-    discovery_document_uri: "https://login.microsoftonline.com/<TENANT_ID>/v2.0/.well-known/openid-configuration",
-    client_id: "<CLIENT_ID>",
-    client_secret: "<CLIENT_SECRET>",
-    redirect_uri: "https://firezone.example.com/auth/oidc/azure/callback/",
-    response_type: "code",
-    scope: "openid email profile offline_access",
-    label: "Azure"
-  }
-}
-```
+Enable or disable the **Auto create users** option to automatically create
+an unprivileged user when signing in via this authentication mechanism.
 
-Run `firezone-ctl reconfigure` to update the application.
-You should now see a `Sign in with Azure` button at the root Firezone URL.
+And that's it! The configuration should be updated immediately. You should now see a `Sign in with Azure` button at
+the root Firezone URL.
 
 ## Restricting Access to Certain Users
 

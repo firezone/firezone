@@ -52,28 +52,14 @@ This will be the `redirect_uri` in the Firezone config.
 
 ## Integrate With Firezone
 
-Visit the `/security` page in the Firezone portal.
+Navigate to the `/settings/security` page in the admin portal, click "Add OpenID Connect Provider" and enter details you obtained
+in the steps above.
 
-Enter a JSON containing the config settings below into the
-single sign-on section of the page. Once complete,
-click **Save Providers**.
+Enable or disable the **Auto create users** option to automatically create
+an unprivileged user when signing in via this authentication mechanism.
 
-```json
-{
-  "auth0": {
-    "client_id": "<CLIENT_ID>",
-    "client_secret": "<CLIENT_SECRET>",
-    "discovery_document_uri": "https://<AUTH0_DOMAIN>/.well-known/openid-configuration",
-    "label": "auth0",
-    "redirect_uri": "https://<EXTERNAL_URL>/auth/oidc/auth0/callback/",
-    "response_type": "code",
-    "scope": "openid email profile"
-  }
-}
-```
-
-If applied correctly, you will see an option to sign
-in with Auth0 in your Firezone portal.
+And that's it! The configuration should be updated immediately.
+You should now see a `Sign in with Auth0` button on the sign in page.
 
 ## Restricting Access to Certain Users
 

@@ -63,12 +63,10 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
           {:allow_unprivileged_device_management, true},
           {:allow_unprivileged_device_configuration, true},
           {:disable_vpn_on_oidc_error, true},
-          {:auto_create_oidc_users, true},
           {:local_auth_enabled, nil},
           {:allow_unprivileged_device_management, nil},
           {:allow_unprivileged_device_configuration, nil},
-          {:disable_vpn_on_oidc_error, nil},
-          {:auto_create_oidc_users, nil}
+          {:disable_vpn_on_oidc_error, nil}
         ] do
       @tag [config: t, config_val: val]
       test "toggle #{t} when value in db is #{val}", %{admin_conn: conn, path: path} do

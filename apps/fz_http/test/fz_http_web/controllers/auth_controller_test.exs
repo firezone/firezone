@@ -175,7 +175,7 @@ defmodule FzHttpWeb.AuthControllerTest do
     test "sends a magic link in email", %{unauthed_conn: conn, user: user} do
       post(conn, Routes.auth_path(conn, :magic_link), %{"email" => user.email})
 
-      Process.sleep(100)
+      Process.sleep(10)
       assert_email_sent(subject: "Firezone Magic Link", to: [{"", user.email}])
     end
   end

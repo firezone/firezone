@@ -56,7 +56,7 @@ defmodule FzHttpWeb.AuthController do
     assertion = %Samly.Assertion{} = Samly.State.get_assertion(conn, key)
 
     with {:ok, user} <-
-           UserFromAuth.find_or_create(:saml, %{"email" => assertion.subject.name}) do
+           UserFromAuth.find_or_create(:saml, idp, %{"email" => assertion.subject.name}) do
       maybe_sign_in(conn, user, %{provider: idp})
     end
   end

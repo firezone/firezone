@@ -88,7 +88,6 @@ defmodule FzHttp.Telemetry do
         users_with_mfa: MFA.count_distinct_by_user_id(),
         users_with_mfa_totp: MFA.count_distinct_totp_by_user_id(),
         openid_providers: length(Conf.get!(:parsed_openid_connect_providers)),
-        auto_create_oidc_users: Conf.get!(:auto_create_oidc_users),
         unprivileged_device_management: Conf.get!(:allow_unprivileged_device_management),
         unprivileged_device_configuration: Conf.get!(:allow_unprivileged_device_configuration),
         local_authentication: Conf.get!(:local_auth_enabled),

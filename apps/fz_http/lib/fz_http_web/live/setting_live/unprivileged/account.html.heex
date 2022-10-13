@@ -1,28 +1,31 @@
 <%= if @live_action == :change_password do %>
   <%= live_modal(
-      FzHttpWeb.SettingLive.Unprivileged.AccountFormComponent,
-      return_to: Routes.setting_unprivileged_account_path(@socket, :show),
-      title: "Change password",
-      id: "account-form-component",
-      current_user: @current_user,
-      form: "account-edit") %>
+    FzHttpWeb.SettingLive.Unprivileged.AccountFormComponent,
+    return_to: Routes.setting_unprivileged_account_path(@socket, :show),
+    title: "Change password",
+    id: "account-form-component",
+    current_user: @current_user,
+    form: "account-edit"
+  ) %>
 <% end %>
 
 <%= if @live_action == :register_mfa do %>
-  <.live_component module={FzHttpWeb.MFA.RegisterComponent}
-      id="register-mfa"
-      user={@current_user}
-      return_to={Routes.setting_unprivileged_account_path(@socket, :show)} />
+  <.live_component
+    module={FzHttpWeb.MFA.RegisterComponent}
+    id="register-mfa"
+    user={@current_user}
+    return_to={Routes.setting_unprivileged_account_path(@socket, :show)}
+  />
 <% end %>
 
 <.link navigate={Routes.device_unprivileged_index_path(@socket, :index)}>
   &lt;- Back to devices
 </.link>
 
-<%= render FzHttpWeb.SharedView, "heading.html", page_title: @page_title %>
+<%= render(FzHttpWeb.SharedView, "heading.html", page_title: @page_title) %>
 
 <section class="section is-main-section">
-  <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
+  <%= render(FzHttpWeb.SharedView, "flash.html", assigns) %>
 
   <div class="block">
     <%= @page_subtitle %>
@@ -36,9 +39,10 @@
     <div class="level-right">
       <%= if @local_auth_enabled do %>
         <.link
-            replace={true}
-            patch={Routes.setting_unprivileged_account_path(@socket, :change_password)}
-            class="button">
+          replace={true}
+          patch={Routes.setting_unprivileged_account_path(@socket, :change_password)}
+          class="button"
+        >
           <span class="icon is-small">
             <i class="mdi mdi-pencil"></i>
           </span>
@@ -48,7 +52,7 @@
     </div>
   </div>
 
-  <%= render FzHttpWeb.SharedView, "user_details.html", user: @current_user, rules_path: nil %>
+  <%= render(FzHttpWeb.SharedView, "user_details.html", user: @current_user, rules_path: nil) %>
 </section>
 
 <section class="section is-main-section">
@@ -76,10 +80,20 @@
       <tbody>
         <%= for {meta, index} <- Enum.with_index(@metas) do %>
           <tr>
-            <td data-timestamp={meta.online_at}
-                phx-hook="FormatTimestamp" id={"meta-#{index}-online-at"}>…</td>
-            <td data-timestamp={meta.last_signed_in_at}
-                phx-hook="FormatTimestamp" id={"meta-#{index}-last-signed-in-at"}>…</td>
+            <td
+              data-timestamp={meta.online_at}
+              phx-hook="FormatTimestamp"
+              id={"meta-#{index}-online-at"}
+            >
+              …
+            </td>
+            <td
+              data-timestamp={meta.last_signed_in_at}
+              phx-hook="FormatTimestamp"
+              id={"meta-#{index}-last-signed-in-at"}
+            >
+              …
+            </td>
             <td><%= meta.remote_ip || "-" %></td>
             <td><%= meta.user_agent %></td>
           </tr>
@@ -102,16 +116,17 @@
 
   <div class="block">
     <%= if length(@methods) > 0 do %>
-      <%= render FzHttpWeb.SharedView, "mfa_methods_table.html", methods: @methods %>
+      <%= render(FzHttpWeb.SharedView, "mfa_methods_table.html", methods: @methods) %>
     <% else %>
       <div>No MFA methods added.</div>
     <% end %>
   </div>
 
   <.link
-        replace={true}
-        patch={Routes.setting_unprivileged_account_path(@socket, :register_mfa)}
-        class="button">
+    replace={true}
+    patch={Routes.setting_unprivileged_account_path(@socket, :register_mfa)}
+    class="button"
+  >
     <span class="icon is-small">
       <i class="mdi mdi-plus"></i>
     </span>

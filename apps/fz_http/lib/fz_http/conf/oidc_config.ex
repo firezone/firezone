@@ -15,6 +15,7 @@ defmodule FzHttp.Conf.OIDCConfig do
     field :client_id, :string
     field :client_secret, :string
     field :discovery_document_uri, :string
+    field :auto_create_users, :boolean
   end
 
   def changeset(data) do
@@ -28,7 +29,8 @@ defmodule FzHttp.Conf.OIDCConfig do
         :response_type,
         :client_id,
         :client_secret,
-        :discovery_document_uri
+        :discovery_document_uri,
+        :auto_create_users
       ]
     )
     |> validate_required([
@@ -38,7 +40,8 @@ defmodule FzHttp.Conf.OIDCConfig do
       :response_type,
       :client_id,
       :client_secret,
-      :discovery_document_uri
+      :discovery_document_uri,
+      :auto_create_users
     ])
   end
 end

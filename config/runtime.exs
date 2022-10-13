@@ -78,7 +78,6 @@ if config_env() == :prod do
   disable_vpn_on_oidc_error =
     FzString.to_boolean(System.get_env("DISABLE_VPN_ON_OIDC_ERROR", "false"))
 
-  auto_create_oidc_users = FzString.to_boolean(System.get_env("AUTO_CREATE_OIDC_USERS", "true"))
   cookie_secure = FzString.to_boolean(System.get_env("SECURE_COOKIES", "true"))
 
   allow_unprivileged_device_management =
@@ -220,7 +219,6 @@ if config_env() == :prod do
     external_trusted_proxies: external_trusted_proxies,
     private_clients: private_clients,
     disable_vpn_on_oidc_error: disable_vpn_on_oidc_error,
-    auto_create_oidc_users: auto_create_oidc_users,
     cookie_signing_salt: cookie_signing_salt,
     cookie_encryption_salt: cookie_encryption_salt,
     cookie_secure: cookie_secure,
