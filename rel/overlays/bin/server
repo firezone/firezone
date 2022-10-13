@@ -1,5 +1,7 @@
 #!/bin/sh
 
+WIREGUARD_INTERFACE_NAME=wg-firezone
+
 setup_interface()
 {
   ip link show dev ${WIREGUARD_INTERFACE_NAME}
