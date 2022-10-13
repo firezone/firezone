@@ -58,28 +58,16 @@ and **Okta Domain**. These 3 values will be used in Step 2 to configure Firezone
 
 ## Integrate With Firezone
 
-Edit `/etc/firezone/firezone.rb` to include the options below. Your `discovery_document_url`
-will be `/.well-known/openid-configuration` appended to the end of your `okta_domain`.
+Navigate to the `/settings/security` page in the admin portal, click "Add OpenID Connect Provider" and enter details you obtained
+in the steps above.
 
-```ruby
-# Using Okta as the SSO identity provider
-default['firezone']['authentication']['oidc'] = {
-  okta: {
-    discovery_document_uri: "https://<OKTA_DOMAIN>/.well-known/openid-configuration",
-    client_id: "<CLIENT_ID>",
-    client_secret: "<CLIENT_SECRET>",
-    redirect_uri: "https://firezone.example.com/auth/oidc/okta/callback/",
-    response_type: "code",
-    scope: "openid email profile offline_access",
-    label: "Okta"
-  }
-}
-```
+Enable or disable the **Auto create users** option to automatically create
+an unprivileged user when signing in via this authentication mechanism.
 
-Run `firezone-ctl reconfigure` to update the application.
-You should now see a **Sign in with Okta** button at the root Firezone URL.
+And that's it! The configuration should be updated immediately.
+You should now see a `Sign in with Okta` button on the sign in page.
 
-## Restricting Access to Certain Users
+## Restricting Access to Certain Users in Okta
 
 Okta can limit the users with access to the Firezone app. To do this,
 go to the Assignments tab of the Firezone App Integration in your Okta

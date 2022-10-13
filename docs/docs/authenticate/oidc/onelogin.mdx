@@ -52,22 +52,11 @@ on this page as well.
 
 ## Integrate With Firezone
 
-Edit `/etc/firezone/firezone.rb` to include the options below.
+Navigate to the `/settings/security` page in the admin portal, click "Add OpenID Connect Provider" and enter details you obtained
+in the steps above.
 
-```ruby
-# Using Google as the SSO identity provider
-default['firezone']['authentication']['oidc'] = {
-  onelogin: {
-    discovery_document_uri: "https://<ONELOGIN_URL>/oidc/2/.well-known/openid-configuration",
-    client_id: "<CLIENT_ID>",
-    client_secret: "<CLIENT_SECRET>",
-    redirect_uri: "https://firezone.example.com/auth/oidc/onelogin/callback",
-    response_type: "code",
-    scope: "openid email profile",
-    label: "OneLogin"
-  }
-}
-```
+Enable or disable the **Auto create users** option to automatically create
+an unprivileged user when signing in via this authentication mechanism.
 
-Run `firezone-ctl reconfigure` to update the application.
-You should now see a `Sign in with OneLogin` button at the root Firezone URL.
+And that's it! The configuration should be updated immediately.
+You should now see a `Sign in with Onelogin` button on the sign in page.

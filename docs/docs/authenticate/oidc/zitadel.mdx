@@ -69,31 +69,16 @@ In the application **Token Settings** select **User roles inside ID Token** and
 
 ## Integrate With Firezone
 
-Edit `/etc/firezone/firezone.rb` to include the options below. Your
-`discovery_document_url` will be `/.well-known/openid-configuration` appended
-to the end of your Zitadel instance domain. You can find this domain for
-example in the application under **Urls**.
+Navigate to the `/settings/security` page in the admin portal, click "Add OpenID Connect Provider" and enter details you obtained
+in the steps above.
 
-```ruby
-# Using Zitadel as the SSO identity provider
-default['firezone']['authentication']['oidc'] = {
-  zitadel: {
-    discovery_document_uri: "https://<ZITADEL_INSTANCE_DOMAIN>/.well-known/openid-configuration",
-    client_id: "<CLIENT_ID>",
-    client_secret: "<CLIENT_SECRET>",
-    redirect_uri: "https://vpn.example.com/auth/oidc/zitadel/callback/",
-    response_type: "code",
-    scope: "openid email profile offline_access",
-    label: "Zitadel"
-  }
-}
-```
+Enable or disable the **Auto create users** option to automatically create
+an unprivileged user when signing in via this authentication mechanism.
 
-Run `firezone-ctl reconfigure` to update the application.
-You should now see a **Sign in with Zitadel** button at the root Firezone URL.
-![Sign in with Zitadel](https://user-images.githubusercontent.com/42775578/190861571-6c7c7db2-13b1-4d46-b080-368a73855c6d.png)
+And that's it! The configuration should be updated immediately.
+You should now see a `Sign in with Zitadel` button on the sign in page.
 
-## Restricting Access to only Users with Roles
+## Restricting Access to Certain Users in Zitadel
 
 Zitadel can limit which users have access to Firezone. To do this,
 go to the project where your created your application. In **General** you can
