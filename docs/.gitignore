@@ -1,6 +1,9 @@
 # Dependencies
 /node_modules
 
+# Generated OpenAPI docs
+/docs/reference/REST\ API/
+
 # Production
 /build
 

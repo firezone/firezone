@@ -14,6 +14,12 @@ defmodule FzHttp.Configurations do
     Repo.one!(Configuration)
   end
 
+  def auto_create_users?(field, provider) do
+    get!(field)
+    |> Map.get(provider)
+    |> Map.get(:auto_create_users)
+  end
+
   def change_configuration(%Configuration{} = config \\ get_configuration!()) do
     Configuration.changeset(config, %{})
   end

@@ -1,22 +1,32 @@
 <div>
-  <.form let={f} for={@changeset} x-autocomplete="off" id="account-edit" phx-target={@myself} phx-submit="save">
+  <.form
+    :let={f}
+    for={@changeset}
+    x-autocomplete="off"
+    id="account-edit"
+    phx-target={@myself}
+    phx-submit="save"
+  >
     <div class="block">
       <p>Enter new password below.</p>
     </div>
 
-    <%= render FzHttpWeb.SharedView,
-        "password_field.html",
-        context: f,
-        field: :password,
-        autocomplete: "new-password",
-        label: "Password" %>
+    <%= render(
+      FzHttpWeb.SharedView,
+      "password_field.html",
+      context: f,
+      field: :password,
+      autocomplete: "new-password",
+      label: "Password"
+    ) %>
 
-    <%= render FzHttpWeb.SharedView,
-        "password_field.html",
-        context: f,
-        field: :password_confirmation,
-        autocomplete: "new-password",
-        label: "Password Confirmation" %>
-
+    <%= render(
+      FzHttpWeb.SharedView,
+      "password_field.html",
+      context: f,
+      field: :password_confirmation,
+      autocomplete: "new-password",
+      label: "Password Confirmation"
+    ) %>
   </.form>
 </div>

@@ -15,7 +15,8 @@
       <td
         id="last-signed-in-at"
         data-timestamp={@user.last_signed_in_at}
-        phx-hook="FormatTimestamp">
+        phx-hook="FormatTimestamp"
+      >
         …
       </td>
     </tr>
@@ -25,7 +26,8 @@
       <td
         id={"user-#{@user.id}-created-at"}
         data-timestamp={@user.inserted_at}
-        phx-hook="FormatTimestamp">
+        phx-hook="FormatTimestamp"
+      >
         …
       </td>
     </tr>
@@ -35,7 +37,8 @@
       <td
         id={"user-#{@user.id}-updated-at"}
         data-timestamp={@user.updated_at}
-        phx-hook="FormatTimestamp">
+        phx-hook="FormatTimestamp"
+      >
         …
       </td>
     </tr>

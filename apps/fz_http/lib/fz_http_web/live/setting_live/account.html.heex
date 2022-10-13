@@ -1,27 +1,31 @@
 <%= if @live_action == :edit do %>
   <%= live_modal(
-      FzHttpWeb.SettingLive.AccountFormComponent,
-      return_to: Routes.setting_account_path(@socket, :show),
-      title: "Edit Account",
-      id: "user-#{@current_user.id}",
-      user: @current_user,
-      action: @live_action,
-      form: "account-edit") %>
+    FzHttpWeb.SettingLive.AccountFormComponent,
+    return_to: Routes.setting_account_path(@socket, :show),
+    title: "Edit Account",
+    id: "user-#{@current_user.id}",
+    user: @current_user,
+    action: @live_action,
+    form: "account-edit"
+  ) %>
 <% end %>
 
 <%= if @live_action == :register_mfa do %>
-  <.live_component module={FzHttpWeb.MFA.RegisterComponent}
-      id="register-mfa"
-      user={@current_user}
-      return_to={Routes.setting_account_path(@socket, :show)} />
+  <.live_component
+    module={FzHttpWeb.MFA.RegisterComponent}
+    id="register-mfa"
+    user={@current_user}
+    return_to={Routes.setting_account_path(@socket, :show)}
+  />
 <% end %>
 
 <%= render(FzHttpWeb.SharedView, "heading.html",
-           page_subtitle: @page_subtitle,
-           page_title: @page_title) %>
+  page_subtitle: @page_subtitle,
+  page_title: @page_title
+) %>
 
 <section class="section is-main-section">
-  <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
+  <%= render(FzHttpWeb.SharedView, "flash.html", assigns) %>
 
   <div class="level">
     <div class="level-left">
@@ -29,7 +33,7 @@
     </div>
 
     <div class="level-right">
-      <.link navigate={Routes.setting_account_path(@socket, :edit)} class="button">
+      <.link replace={true} patch={Routes.setting_account_path(@socket, :edit)} class="button">
         <span class="icon is-small">
           <i class="mdi mdi-pencil"></i>
         </span>
@@ -38,7 +42,10 @@
     </div>
   </div>
 
-  <%= render FzHttpWeb.SharedView, "user_details.html", user: @current_user, rules_path: @rules_path %>
+  <%= render(FzHttpWeb.SharedView, "user_details.html",
+    user: @current_user,
+    rules_path: @rules_path
+  ) %>
 </section>
 
 <section class="section is-main-section">
@@ -66,10 +73,20 @@
       <tbody>
         <%= for {meta, index} <- Enum.with_index(@metas) do %>
           <tr>
-            <td data-timestamp={meta.online_at}
-                phx-hook="FormatTimestamp" id={"meta-#{index}-online-at"}>…</td>
-            <td data-timestamp={meta.last_signed_in_at}
-                phx-hook="FormatTimestamp" id={"meta-#{index}-last-signed-in-at"}>…</td>
+            <td
+              data-timestamp={meta.online_at}
+              phx-hook="FormatTimestamp"
+              id={"meta-#{index}-online-at"}
+            >
+              …
+            </td>
+            <td
+              data-timestamp={meta.last_signed_in_at}
+              phx-hook="FormatTimestamp"
+              id={"meta-#{index}-last-signed-in-at"}
+            >
+              …
+            </td>
             <td><%= meta.remote_ip || "-" %></td>
             <td><%= meta.user_agent %></td>
           </tr>
@@ -92,14 +109,13 @@
 
   <div class="block">
     <%= if length(@methods) > 0 do %>
-      <%= render FzHttpWeb.SharedView, "mfa_methods_table.html", methods: @methods %>
+      <%= render(FzHttpWeb.SharedView, "mfa_methods_table.html", methods: @methods) %>
     <% else %>
       <div>No MFA methods added.</div>
     <% end %>
   </div>
 
-
-  <.link navigate={Routes.setting_account_path(@socket, :register_mfa)} class="button">
+  <.link replace={true} patch={Routes.setting_account_path(@socket, :register_mfa)} class="button">
     <span class="icon is-small">
       <i class="mdi mdi-plus"></i>
     </span>
@@ -114,8 +130,7 @@
 
   <div class="block">
     <p>
-      <%= link("Click here", to: @subscribe_link, target: "_blank") %>
-      to register for product and security updates.
+      <%= link("Click here", to: @subscribe_link, target: "_blank") %> to register for product and security updates.
     </p>
   </div>
 </section>
@@ -125,7 +140,6 @@
     Danger Zone
   </h4>
 
-  <%# This is purposefully a synchronous form in order to easily clear the session %>
   <%= form_for @changeset, Routes.user_path(@socket, :delete), [id: "delete-account", method: :delete], fn _f -> %>
     <%= submit(class: "button is-danger", data: [confirm: "Are you sure?"], disabled: !@allow_delete) do %>
       <span class="icon is-small">

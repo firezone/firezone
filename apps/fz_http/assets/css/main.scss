@@ -32,3 +32,12 @@ pre {
 .is-main-section {
   overflow-x: auto;
 }
+
+.line-clamp {
+  // supported in all browsers but with prefix
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  max-width: 600px;
+  overflow: hidden;
+}

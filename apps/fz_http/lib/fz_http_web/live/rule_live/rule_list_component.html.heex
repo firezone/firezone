@@ -6,69 +6,86 @@
     </p>
   </header>
   <div class="card-content">
-    <.form let={f} for={@changeset} id={"#{@action}-form"} phx-change="change" phx-target={@myself} phx-submit="add_rule">
-      <%= hidden_input f, :action, value: @action %>
+    <.form
+      :let={f}
+      for={@changeset}
+      id={"#{@action}-form"}
+      phx-change="change"
+      phx-target={@myself}
+      phx-submit="add_rule"
+    >
+      <%= hidden_input(f, :action, value: @action) %>
 
       <div class="field">
-        <%= label f, :destination, class: "label" %>
+        <%= label(f, :destination, class: "label") %>
         <div class="control">
-          <%= text_input f,
-              :destination,
-              class: "input #{input_error_class(f, :destination)}",
-              placeholder: "IPv4/6 CIDR range or address" %>
+          <%= text_input(
+            f,
+            :destination,
+            class: "input #{input_error_class(f, :destination)}",
+            placeholder: "IPv4/6 CIDR range or address"
+          ) %>
         </div>
         <p class="help is-danger">
-          <%= error_tag f, :destination %>
+          <%= error_tag(f, :destination) %>
         </p>
       </div>
 
       <div class="field">
-        <%= label f, "User", class: "label" %>
+        <%= label(f, "User", class: "label") %>
         <div class="select">
-          <%= select f,
-              :user_id,
-              user_options(@users),
-              prompt: "All users" %>
+          <%= select(
+            f,
+            :user_id,
+            user_options(@users),
+            prompt: "All users"
+          ) %>
         </div>
       </div>
 
       <div class="field">
-        <%= label f, :port_type, class: "label" %>
+        <%= label(f, :port_type, class: "label") %>
         <div class="select">
-          <%= select f,
-              :port_type,
-              port_type_options(),
-              prompt: "All protocols",
-              title: if(!@port_rules_supported, do: "Kernel 5.6.9 required for port-based rules."),
-              disabled: !@port_rules_supported %>
+          <%= select(
+            f,
+            :port_type,
+            port_type_options(),
+            prompt: "All protocols",
+            title: if(!@port_rules_supported, do: "Kernel 5.6.9 required for port-based rules."),
+            disabled: !@port_rules_supported
+          ) %>
         </div>
         <p class="help is-danger">
-          <%= error_tag f, :port_type %>
+          <%= error_tag(f, :port_type) %>
         </p>
       </div>
 
       <div class="field">
-        <%= label f, :port_range, class: "label" %>
+        <%= label(f, :port_range, class: "label") %>
         <div class="control">
-          <%= text_input f, :port_range,
-              class: "input #{input_error_class(f, :port_range)}",
-              placeholder: "23000-24000",
-              disabled: @port_type == nil %>
+          <%= text_input(f, :port_range,
+            class: "input #{input_error_class(f, :port_range)}",
+            placeholder: "23000-24000",
+            disabled: @port_type == nil
+          ) %>
         </div>
         <p class="help is-danger">
-          <%= error_tag f, :port_range %>
+          <%= error_tag(f, :port_range) %>
         </p>
       </div>
 
       <div class="field">
         <div class="control">
-          <%= submit "Add", class: "button is-primary" %>
+          <%= submit("Add", class: "button is-primary") %>
         </div>
       </div>
     </.form>
 
-    <table id={"#{@action}-rules"} class="mt-4 table is-hoverable is-bordered is-striped is-fullwidth">
-    <%= if length(@rule_list) > 0 do %>
+    <table
+      id={"#{@action}-rules"}
+      class="mt-4 table is-hoverable is-bordered is-striped is-fullwidth"
+    >
+      <%= if length(@rule_list) > 0 do %>
         <thead>
           <tr>
             <th>Destination</th>
@@ -80,7 +97,11 @@
         </thead>
         <tbody>
           <%= for rule <- @rule_list do %>
-            <tr class={if rule.port_range != nil && !@port_rules_supported, do: "has-background-grey", else: ""}>
+            <tr class={
+              if rule.port_range != nil && !@port_rules_supported,
+                do: "has-background-grey",
+                else: ""
+            }>
               <td class="has-text-left">
                 <dd class="code">
                   <%= rule.destination %>
@@ -93,14 +114,16 @@
                 <%= port_type_display(rule.port_type) %>
               </td>
               <td class="has-text-left">
-                  <%= if rule.port_range != nil, do: rule.port_range %>
+                <%= if rule.port_range != nil, do: rule.port_range %>
               </td>
               <td class="has-text-right">
-                <a href="#"
+                <a
+                  href="#"
                   phx-click="delete_rule"
                   phx-value-rule_id={rule.id}
                   phx-target={@myself}
-                  disabled={!@port_rules_supported && rule.port_range != nil} >
+                  disabled={!@port_rules_supported && rule.port_range != nil}
+                >
                   Delete
                 </a>
               </td>
@@ -109,12 +132,12 @@
           <!-- This can happen when moving the DB to an OS with an older Kernel or on the strange case of a
           kernel downgrade. -->
           <%= if !@port_rules_supported && Enum.any?(@rule_list, fn rule -> rule.port_range != nil end) do %>
-          <p class="help">
-            Port-based rules are only applied when Linux Kernel is 5.6.9 or greater
-          </p>
+            <p class="help">
+              Port-based rules are only applied when Linux Kernel is 5.6.9 or greater
+            </p>
           <% end %>
         </tbody>
-    <% end %>
+      <% end %>
     </table>
   </div>
 </div>

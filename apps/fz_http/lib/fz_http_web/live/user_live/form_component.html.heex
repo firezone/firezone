@@ -1,5 +1,12 @@
 <div>
-  <.form let={f} for={@changeset} x-autocomplete="off" id="user-form" phx-target={@myself} phx-submit="save">
+  <.form
+    :let={f}
+    for={@changeset}
+    x-autocomplete="off"
+    id="user-form"
+    phx-target={@myself}
+    phx-submit="save"
+  >
     <%= if @action == :edit do %>
       <div class="block">
         <p>Change user email or enter new password below.</p>
@@ -7,30 +14,35 @@
     <% end %>
 
     <div class="field">
-      <%= label f, :email, class: "label" %>
+      <%= label(f, :email, class: "label") %>
 
       <div class="control">
-        <%= text_input f, :email,
-            class: "input #{input_error_class(f, :email)}",
-            disabled: @user && @user.id == @current_user.id %>
+        <%= text_input(f, :email,
+          class: "input #{input_error_class(f, :email)}",
+          disabled: @user && @user.id == @current_user.id
+        ) %>
       </div>
       <p class="help is-danger">
-        <%= error_tag f, :email %>
+        <%= error_tag(f, :email) %>
       </p>
     </div>
 
-    <%= render FzHttpWeb.SharedView,
-        "password_field.html",
-        context: f,
-        field: :password,
-        autocomplete: "new-password",
-        label: "New Password" %>
+    <%= render(
+      FzHttpWeb.SharedView,
+      "password_field.html",
+      context: f,
+      field: :password,
+      autocomplete: "new-password",
+      label: "New Password"
+    ) %>
 
-    <%= render FzHttpWeb.SharedView,
-        "password_field.html",
-        context: f,
-        field: :password_confirmation,
-        autocomplete: "new-password",
-        label: "New Password Confirmation" %>
+    <%= render(
+      FzHttpWeb.SharedView,
+      "password_field.html",
+      context: f,
+      field: :password_confirmation,
+      autocomplete: "new-password",
+      label: "New Password Confirmation"
+    ) %>
   </.form>
 </div>

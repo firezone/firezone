@@ -1,0 +1,22 @@
+---
+title: Supported Platforms
+sidebar_position: 1
+---
+
+Firezone currently supports the following platforms for Docker-based
+deployments.
+
+| OS      | Architecture(s) | Runtime        | Status          | Notes                                            |
+| ---     | ---             | ---            | ---             | ---                                              |
+| Linux   | `amd64` `arm64` | Docker Server  | Fully-supported | `wireguard` module needed for kernels &lt; `5.6` |
+| Linux   | `amd64` `arm64` | Docker Desktop | Fully-supported | Not recommended for production deployments.      |
+| macOS   | `amd64` `arm64` | Docker Desktop | Fully-supported | Not recommended for production deployments.      |
+| Windows | `amd64` `arm64` | Docker Desktop | Fully-supported | Not recommended for production deployments.      |
+
+:::info
+Docker Desktop [rewrites the source address
+](https://www.docker.com/blog/how-docker-desktop-networking-works-under-the-hood/)
+for packets flowing out of container networks under some conditions. This can
+cause routing loops and other hard to debug connectivity issues with Firezone.
+We recommend **only** using Docker Server for Linux for production deployments.
+:::

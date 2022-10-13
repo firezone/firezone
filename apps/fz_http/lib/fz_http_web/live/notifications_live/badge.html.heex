@@ -5,8 +5,8 @@
       style: "height: 100%"
     ) do %>
   <%= if @count == 0 do %>
-  <span class="icon has-text-grey-dark"><i class="mdi mdi-circle-outline"></i></span>
+    <span class="icon has-text-grey-dark"><i class="mdi mdi-circle-outline"></i></span>
   <% else %>
-  <span class="icon has-text-danger"><i class="mdi mdi-circle"></i><%=@count%></span>
+    <span class="icon has-text-danger"><i class="mdi mdi-circle"></i><%= @count %></span>
   <% end %>
-<%end%>
+<% end %>

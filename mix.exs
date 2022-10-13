@@ -57,6 +57,8 @@ defmodule FirezoneUmbrella.MixProject do
     [
       {:jason, "~> 1.2"},
       {:posthog, "~> 0.1"},
+      # for formatting Heex
+      {:phoenix_live_view, "~> 0.18"},
       {:ex_doc, "~> 0.24", only: :dev, runtime: false},
       {:excoveralls, "~> 0.14", only: :test},
       {:mix_test_watch, "~> 1.0", only: :dev, runtime: false},

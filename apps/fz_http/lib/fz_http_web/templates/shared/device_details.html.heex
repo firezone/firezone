@@ -1,10 +1,11 @@
 <table class="table is-bordered is-hoverable is-striped is-fullwidth">
   <tbody>
-
     <%= if has_role?(@current_user, :admin) do %>
       <tr>
         <td><strong>User</strong></td>
-        <td><%= live_redirect(@user.email, to: Routes.user_show_path(@socket, :show, @user)) %></td>
+        <td>
+          <%= live_redirect(@user.email, to: Routes.user_show_path(@socket, :show, @user)) %>
+        </td>
       </tr>
     <% end %>
 
@@ -39,9 +40,13 @@
 
     <tr>
       <td><strong>Latest Handshake</strong></td>
-      <td id={"device-#{@device.id}-latest-handshake"}
-          data-timestamp={@device.latest_handshake}
-          phx-hook="FormatTimestamp">…</td>
+      <td
+        id={"device-#{@device.id}-latest-handshake"}
+        data-timestamp={@device.latest_handshake}
+        phx-hook="FormatTimestamp"
+      >
+        …
+      </td>
     </tr>
 
     <tr>

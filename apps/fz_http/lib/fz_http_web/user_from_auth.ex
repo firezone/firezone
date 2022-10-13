@@ -18,15 +18,24 @@ defmodule FzHttpWeb.UserFromAuth do
     Users.get_by_email(email) |> Authentication.authenticate(password)
   end
 
-  def find_or_create(_provider, %{"email" => email, "sub" => _sub}) do
+  # SAML
+  def find_or_create(:saml, provider_key, %{"email" => email}) do
     case Users.get_by_email(email) do
-      nil -> maybe_create_user(email)
+      nil -> maybe_create_user(:saml_identity_providers, provider_key, email)
       user -> {:ok, user}
     end
   end
 
-  defp maybe_create_user(email) do
-    if Conf.get!(:auto_create_oidc_users) do
+  # OIDC
+  def find_or_create(provider_key, %{"email" => email, "sub" => _sub}) do
+    case Users.get_by_email(email) do
+      nil -> maybe_create_user(:openid_connect_providers, provider_key, email)
+      user -> {:ok, user}
+    end
+  end
+
+  defp maybe_create_user(idp_field, provider_key, email) do
+    if Conf.auto_create_users?(idp_field, provider_key) do
       Users.create_unprivileged_user(%{email: email})
     else
       {:error, "not found"}

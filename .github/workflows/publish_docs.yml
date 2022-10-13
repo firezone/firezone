@@ -20,6 +20,7 @@ jobs:
       - run: |
           cd docs/
           npm ci
+          npm run docusaurus gen-api-docs rest_api
           npm run build
       - name: Publish Latest Docs
         uses: JamesIves/github-pages-deploy-action@v4.4.0

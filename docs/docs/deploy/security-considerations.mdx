@@ -1,0 +1,54 @@
+---
+title: Security Considerations
+sidebar_position: 6
+---
+
+**Disclaimer**: Firezone is still beta software. The codebase has not yet
+received a formal security audit. For highly sensitive and mission-critical
+production deployments, we recommend disabling local authentication as
+detailed [below](#production-deployments).
+
+## List of services and ports
+
+Shown below is a table of default ports used by Firezone services.
+
+<Tabs>
+<TabItem label="Docker" value="docker" default>
+
+| Service    | Port        | Listen address | Description                                                                   |
+| ------     | ---------   | -------        | ---------                                                                     |
+| Caddy      | `443/tcp`   | `all`          | Public HTTPS port for administering Firezone and facilitating authentication. |
+| Caddy      | `80/tcp`    | `all`          | Public HTTP port used for ACME. Disabled when ACME is disabled.               |
+| WireGuard  | `51820/udp` | `all`          | Public WireGuard port used for VPN sessions.                                  |
+| Postgresql | `5432/tcp`  | `-`            | Containerized port used for bundled Postgresql server.                        |
+| Phoenix    | `13000/tcp` | `-`            | Containerized port used by upstream elixir app server.                        |
+
+</TabItem>
+<TabItem label="Omnibus" value="omnibus">
+
+| Service    | Port        | Listen address | Description                                                                   |
+| ------     | ---------   | -------        | ---------                                                                     |
+| Nginx      | `443/tcp`   | `all`          | Public HTTPS port for administering Firezone and facilitating authentication. |
+| Nginx      | `80/tcp`    | `all`          | Public HTTP port used for ACME. Disabled when ACME is disabled.               |
+| WireGuard  | `51820/udp` | `all`          | Public WireGuard port used for VPN sessions.                                  |
+| Postgresql | `15432/tcp` | `127.0.0.1`    | Local-only port used for bundled Postgresql server.                           |
+| Phoenix    | `13000/tcp` | `127.0.0.1`    | Local-only port used by upstream elixir app server.                           |
+
+</TabItem>
+</Tabs>
+
+## Production deployments
+
+For production deployments of Firezone, we recommend you disable local authentication
+altogether by setting `default['firezone']['authentication']['local']['enabled'] = false`
+(Omnibus-based deployments) or `LOCAL_AUTH_ENABLED=false` (Docker-based deployments).
+
+:::caution
+Ensure you've set up a working [OIDC](../authenticate/oidc) or [SAML](../authenticate/saml)-based
+authentication provider before disabling the local authentication method.
+:::
+
+## Reporting Security Issues
+
+To report any security-related bugs, see [our security bug reporting policy
+](https://github.com/firezone/firezone/blob/master/SECURITY.md).

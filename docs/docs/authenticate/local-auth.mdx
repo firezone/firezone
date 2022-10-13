@@ -1,0 +1,18 @@
+---
+title: Local Authentication
+sidebar_position: 1
+---
+
+By default, Firezone will use local email / password for authenticating users to
+the Firezone portal. Administrators can add users and assign their passwords on
+the `/users` page. See [Add users](../user-guides/add-users) for more details.
+
+:::note
+For production installations, we highly recommend [enabling TOTP-based MFA](multi-factor)
+for any accounts using the local authentication method.
+:::
+
+## Disabling Local Authentication
+
+If you wish to completely disable local authentication in favor of an SSO-only
+approach, see our [OIDC](oidc) or [SAML](saml) guides.

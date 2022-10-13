@@ -4,10 +4,12 @@
       <h4 class="title is-4">OIDC Connections</h4>
     </div>
     <div class="level-right">
-      <button class="button"
-          data-confirm="Refresh this users' tokens?"
-          phx-click="refresh"
-          phx-target={@myself}>
+      <button
+        class="button"
+        data-confirm="Refresh this users' tokens?"
+        phx-click="refresh"
+        phx-target={@myself}
+      >
         <span class="icon is-small">
           <i class="fas fa-redo"></i>
         </span>
@@ -28,37 +30,43 @@
       </tr>
     </thead>
     <tbody>
-    <%= for conn <- @connections do %>
-      <tr>
-        <td>
-          <%= conn.provider %>
-        </td>
-        <td id={"connection-#{conn.id}-refreshed-at"}
+      <%= for conn <- @connections do %>
+        <tr>
+          <td>
+            <%= conn.provider %>
+          </td>
+          <td
+            id={"connection-#{conn.id}-refreshed-at"}
             data-timestamp={conn.refreshed_at}
-            phx-hook="FormatTimestamp">…</td>
-        <td>
-          <%= if match?(%{"error" => _}, conn.refresh_response) do %>
-            ERROR: <%= conn.refresh_response["error"] %>
-          <% else %>
-            OK
-          <% end %>
-        </td>
-        <td>
-          <button class="button is-warning"
+            phx-hook="FormatTimestamp"
+          >
+            …
+          </td>
+          <td>
+            <%= if match?(%{"error" => _}, conn.refresh_response) do %>
+              ERROR: <%= conn.refresh_response["error"] %>
+            <% else %>
+              OK
+            <% end %>
+          </td>
+          <td>
+            <button
+              class="button is-warning"
               data-confirm={delete_warning(conn)}
               phx-click="delete"
               phx-value-id={conn.id}
-              phx-target={@myself}>
-            <span class="icon is-small">
-              <i class="fas fa-trash"></i>
-            </span>
-            <span>
-              Delete Connection
-            </span>
-          </button>
-        </td>
-      </tr>
-    <% end %>
+              phx-target={@myself}
+            >
+              <span class="icon is-small">
+                <i class="fas fa-trash"></i>
+              </span>
+              <span>
+                Delete Connection
+              </span>
+            </button>
+          </td>
+        </tr>
+      <% end %>
     </tbody>
   </table>
 </section>

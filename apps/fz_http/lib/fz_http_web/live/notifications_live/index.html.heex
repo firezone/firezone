@@ -1,6 +1,7 @@
 <%= render(FzHttpWeb.SharedView, "heading.html",
-           page_subtitle: @page_subtitle,
-           page_title: @page_title) %>
+  page_subtitle: @page_subtitle,
+  page_title: @page_title
+) %>
 
 <section class="section is-main-section">
   <div class="block">
@@ -26,7 +27,8 @@
                 style="width: 15%"
                 id={"notification-time-#{index}"}
                 phx-hook="FormatTimestamp"
-                data-timestamp={notification.timestamp}>
+                data-timestamp={notification.timestamp}
+              >
                 ...
               </td>
               <td class="has-text-centered is-vcentered"><%= notification.user %></td>
@@ -36,7 +38,8 @@
                   title="Dissmiss notification"
                   class="delete is-medium"
                   phx-click="clear_notification"
-                  phx-value-index={index}>
+                  phx-value-index={index}
+                >
                 </button>
               </td>
             </tr>

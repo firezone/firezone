@@ -159,7 +159,7 @@ defmodule FzHttpWeb.UserLive.ShowTest do
       |> element("#add-device-button")
       |> render_click()
 
-      assert_redirected(view, Routes.user_show_path(conn, :new_device, user.id))
+      assert_patched(view, Routes.user_show_path(conn, :new_device, user.id))
     end
 
     test "allows name changes", %{admin_conn: conn, admin_user: user} do

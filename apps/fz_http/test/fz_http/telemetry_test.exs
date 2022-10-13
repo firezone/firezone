@@ -55,20 +55,6 @@ defmodule FzHttp.TelemetryTest do
       assert ping_data[:openid_providers] == 2
     end
 
-    @tag config: {:auto_create_oidc_users, true}
-    test "auto create oidc users enabled" do
-      ping_data = Telemetry.ping_data()
-
-      assert ping_data[:auto_create_oidc_users]
-    end
-
-    @tag config: {:auto_create_oidc_users, false}
-    test "auto create oidc users disabled" do
-      ping_data = Telemetry.ping_data()
-
-      refute ping_data[:auto_create_oidc_users]
-    end
-
     @tag config: {:disable_vpn_on_oidc_error, true}
     test "disable vpn on oidc error enabled" do
       ping_data = Telemetry.ping_data()

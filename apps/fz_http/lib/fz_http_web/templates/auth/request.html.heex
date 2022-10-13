@@ -1,9 +1,9 @@
 <h3 class="is-3 title">Sign In</h3>
 
-<hr>
+<hr />
 
 <div class="block">
-  <%= link "<- Back to sign in methods", to: Routes.root_path(@conn, :index) %>
+  <%= link("<- Back to sign in methods", to: Routes.root_path(@conn, :index)) %>
 </div>
 
 <div class="block">
@@ -11,7 +11,14 @@
     <div class="field">
       <label for="email" class="label">Email</label>
       <div class="control">
-        <input class="input" type="email" name="email" id="email" required value={@conn.params["email"]} />
+        <input
+          class="input"
+          type="email"
+          name="email"
+          id="email"
+          required
+          value={@conn.params["email"]}
+        />
       </div>
     </div>
 
@@ -26,10 +33,13 @@
       <div class="control">
         <div class="level">
           <div class="level-left">
-            <%= submit "Sign In", class: "button" %>
+            <%= submit("Sign In", class: "button") %>
           </div>
           <div class="level-right">
-            <%= link "Forgot password", to: Routes.auth_path(@conn, :reset_password), class: "forgot-password" %>
+            <%= link("Forgot password",
+              to: Routes.auth_path(@conn, :reset_password),
+              class: "forgot-password"
+            ) %>
           </div>
         </div>
       </div>

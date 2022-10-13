@@ -75,6 +75,9 @@ defmodule FzHttp.Telemetry do
     telemetry_module().capture("ping", ping_data())
   end
 
+  defp count(subject) when is_map(subject), do: count(Map.keys(subject))
+  defp count(subject) when is_list(subject), do: length(subject)
+
   # How far back to count handshakes as an active device
   @active_device_window 86_400
   def ping_data do
@@ -83,12 +86,13 @@ defmodule FzHttp.Telemetry do
         devices_active_within_24h: Devices.count_active_within(@active_device_window),
         admin_count: Users.count(role: :admin),
         user_count: Users.count(),
+        in_docker: in_docker?(),
         device_count: Devices.count(),
         max_devices_for_users: Devices.max_count_by_user_id(),
         users_with_mfa: MFA.count_distinct_by_user_id(),
         users_with_mfa_totp: MFA.count_distinct_totp_by_user_id(),
-        openid_providers: length(Conf.get!(:parsed_openid_connect_providers)),
-        auto_create_oidc_users: Conf.get!(:auto_create_oidc_users),
+        openid_providers: count(Conf.get!(:parsed_openid_connect_providers)),
+        saml_providers: count(Conf.get!(:saml_identity_providers)),
         unprivileged_device_management: Conf.get!(:allow_unprivileged_device_management),
         unprivileged_device_configuration: Conf.get!(:allow_unprivileged_device_configuration),
         local_authentication: Conf.get!(:local_auth_enabled),
@@ -97,6 +101,10 @@ defmodule FzHttp.Telemetry do
         external_database: external_database?(Map.new(conf(FzHttp.Repo))),
         logo_type: Conf.logo_type(Conf.get!(:logo))
       ]
+  end
+
+  defp in_docker? do
+    File.exists?("/.dockerenv")
   end
 
   defp common_fields do
