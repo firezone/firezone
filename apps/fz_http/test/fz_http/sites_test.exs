@@ -1,7 +1,9 @@
 defmodule FzHttp.SitesTest do
   use FzHttp.DataCase
 
+  alias FzHttp.Sites.Site
   alias FzHttp.Sites
+  import FzHttp.SitesFixtures
 
   describe "trimmed fields" do
     test "trims expected fields" do
@@ -24,11 +26,23 @@ defmodule FzHttp.SitesTest do
     end
   end
 
+  describe "update_site/2 with name-based dns" do
+    setup do
+      {:ok, site: site_fixture()}
+    end
+
+    @tag attrs: %{dns: "foobar.com"}
+    test "update_site/2 allows hosts for DNS", %{site: site, attrs: attrs} do
+      assert {:ok, _site} = Sites.update_site(site, attrs)
+    end
+
+    @tag attrs: %{dns: "foobar.com, google.com"}
+    test "update_site/2 allows list hosts for DNS", %{site: site, attrs: attrs} do
+      assert {:ok, _site} = Sites.update_site(site, attrs)
+    end
+  end
+
   describe "sites" do
-    alias FzHttp.Sites.Site
-
-    import FzHttp.SitesFixtures
-
     @valid_sites [
       %{
         "dns" => "8.8.8.8",
