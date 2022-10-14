@@ -1,26 +1,24 @@
 ---
 title: Google Workspace
-sidebar_position: 5
+sidebar_position: 3
 ---
 
 Firezone supports Single Sign-On (SSO) using Google Workspace and Cloud Identity
 through the generic OIDC connector. This guide will walk you through how to
 obtain the following config settings required for the integration:
 
-1. `discovery_document_uri`: The
+1. **Config ID**: The provider's config ID. (e.g. `google`)
+1. **Label**: The button label text that shows up on your Firezone login screen. (e.g. `Google`)
+1. **Scope**: [OIDC scopes](https://openid.net/specs/openid-connect-basic-1_0.html#Scopes)
+to obtain from your OIDC provider. This should be set to `openid email profile`
+to provide Firezone with the user's email in the returned claims.
+1. **Response type**: Set to `code`.
+1. **Client ID**: The client ID of the application.
+1. **Client secret**: The client secret of the application.
+1. **Discovery Document URI**: The
 [OpenID Connect provider configuration URI](https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderConfig)
 which returns a JSON document used to construct subsequent requests to this
 OIDC provider.
-1. `client_id`: The client ID of the application.
-1. `client_secret`: The client secret of the application.
-1. `redirect_uri`: Instructs OIDC provider where to redirect after authentication.
-This should be your Firezone `EXTERNAL_URL + /auth/oidc/<provider_key>/callback/`
-(e.g. `https://firezone.example.com/auth/oidc/google/callback/`).
-1. `response_type`: Set to `code`.
-1. `scope`: [OIDC scopes](https://openid.net/specs/openid-connect-basic-1_0.html#Scopes)
-to obtain from your OIDC provider. This should be set to `openid email profile`
-to provide Firezone with the user's email in the returned claims.
-1. `label`: The button label text that shows up on your Firezone login screen.
 
 ![Firezone Google SSO Login](https://user-images.githubusercontent.com/52545545/156853456-1ab3f041-1002-4c79-a266-82acb5802890.gif)
 
@@ -66,7 +64,7 @@ page, click `+ Create Credentials` and select `OAuth client ID`.
 On the OAuth client ID creation screen:
 
 1. Set `Application Type` to `Web application`
-1. Add your Firezone `EXTERNAL_URL + /auth/oidc/google/callback/`
+1. Add your Firezone `EXTERNAL_URL + /auth/oidc/<Config ID>/callback/`
 (e.g. `https://firezone.example.com/auth/oidc/google/callback/`) as an entry to
 Authorized redirect URIs.
 
@@ -79,8 +77,9 @@ These will be used together with the redirect URI in the next step.
 
 ## Integrate with Firezone
 
-Navigate to the `/settings/security` page in the admin portal, click "Add OpenID Connect Provider" and enter details you obtained
-in the steps above.
+Navigate to the `/settings/security` page in the admin portal, click
+"Add OpenID Connect Provider" and enter the details you obtained in the steps
+above.
 
 Enable or disable the **Auto create users** option to automatically create
 an unprivileged user when signing in via this authentication mechanism.

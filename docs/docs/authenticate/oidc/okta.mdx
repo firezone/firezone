@@ -1,26 +1,24 @@
 ---
 title: Okta
-sidebar_position: 3
+sidebar_position: 5
 ---
 
 Firezone supports Single Sign-On (SSO) using Okta
 through the generic OIDC connector. This guide will walk you through how to
 obtain the following config settings required for the integration:
 
-1. `discovery_document_uri`: The
+1. **Config ID**: The provider's config ID. (e.g. `okta`)
+1. **Label**: The button label text that shows up on your Firezone login screen. (e.g. `Okta`)
+1. **Scope**: [OIDC scopes](https://openid.net/specs/openid-connect-basic-1_0.html#Scopes)
+to obtain from your OIDC provider. This should be set to `openid email profile offline_access`
+to provide Firezone with the user's email in the returned claims.
+1. **Response type**: Set to `code`.
+1. **Client ID**: The client ID of the application.
+1. **Client secret**: The client secret of the application.
+1. **Discovery Document URI**: The
 [OpenID Connect provider configuration URI](https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderConfig)
 which returns a JSON document used to construct subsequent requests to this
 OIDC provider.
-1. `client_id`: The client ID of the application.
-1. `client_secret`: The client secret of the application.
-1. `redirect_uri`: Instructs OIDC provider where to redirect after authentication.
-This should be your Firezone `EXTERNAL_URL + /auth/oidc/<provider_key>/callback/`
-(e.g. `https://firezone.example.com/auth/oidc/okta/callback/`).
-1. `response_type`: Set to `code`.
-1. `scope`: [OIDC scopes](https://openid.net/specs/openid-connect-basic-1_0.html#Scopes)
-to obtain from your OIDC provider. This should be set to `openid email profile offline_access`
-to provide Firezone with the user's email in the returned claims.
-1. `label`: The button label text that shows up on your Firezone login screen.
 
 ![Firezone Okta SSO Login](https://user-images.githubusercontent.com/52545545/156855886-5a4a0da7-065c-4ec1-af33-583dff4dbb72.gif)
 
@@ -43,7 +41,7 @@ On the following screen, configure the following settings:
 (save link as).
 1. **Grant Type**: Check the **Refresh Token** box. This ensures Firezone syncs
 with the identity provider and VPN access is terminated once the user is removed.
-1. **Sign-in redirect URIs**: Add your Firezone `EXTERNAL_URL + /auth/oidc/okta/callback/`
+1. **Sign-in redirect URIs**: Add your Firezone `EXTERNAL_URL + /auth/oidc/<Config ID>/callback/`
 (e.g. `https://firezone.example.com/auth/oidc/okta/callback/`) as an entry to
 Authorized redirect URIs.
 1. **Assignments**:
@@ -58,8 +56,9 @@ and **Okta Domain**. These 3 values will be used in Step 2 to configure Firezone
 
 ## Integrate With Firezone
 
-Navigate to the `/settings/security` page in the admin portal, click "Add OpenID Connect Provider" and enter details you obtained
-in the steps above.
+Navigate to the `/settings/security` page in the admin portal, click
+"Add OpenID Connect Provider" and enter the details you obtained in the steps
+above.
 
 Enable or disable the **Auto create users** option to automatically create
 an unprivileged user when signing in via this authentication mechanism.
