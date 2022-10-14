@@ -68,7 +68,7 @@ defmodule FzHttpWeb.AuthController do
          {:ok, _state} <- verify_state(conn, state),
          {:ok, tokens} <- openid_connect.fetch_tokens(provider, params),
          {:ok, claims} <- openid_connect.verify(provider, tokens["id_token"]) do
-      case UserFromAuth.find_or_create(provider, claims) do
+      case UserFromAuth.find_or_create(provider_key, claims) do
         {:ok, user} ->
           # only first-time connect will include refresh token
           with %{"refresh_token" => refresh_token} <- tokens do

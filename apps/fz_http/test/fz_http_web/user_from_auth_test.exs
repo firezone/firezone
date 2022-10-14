@@ -26,7 +26,7 @@ defmodule FzHttpWeb.UserFromAuthTest do
   end
 
   describe "find_or_create/2 via OIDC with auto create enabled" do
-    @tag config: %{"oidc_test" => %{auto_create_users: true}}
+    @tag config: %{"oidc_test" => %{"auto_create_users" => true}}
     test "sign in creates user", %{config: config, email: email} do
       restore_env(:openid_connect_providers, config, &on_exit/1)
 
@@ -38,7 +38,7 @@ defmodule FzHttpWeb.UserFromAuthTest do
   end
 
   describe "find_or_create/2 via OIDC with auto create disabled" do
-    @tag config: %{"oidc_test" => %{auto_create_users: false}}
+    @tag config: %{"oidc_test" => %{"auto_create_users" => false}}
     test "sign in returns error", %{email: email, config: config} do
       restore_env(:openid_connect_providers, config, &on_exit/1)
 
@@ -50,7 +50,7 @@ defmodule FzHttpWeb.UserFromAuthTest do
   end
 
   describe "find_or_create/2 via SAML with auto create enabled" do
-    @tag config: %{"saml_test" => %{auto_create_users: true}}
+    @tag config: %{"saml_test" => %{"auto_create_users" => true}}
     test "sign in creates user", %{config: config, email: email} do
       restore_env(:saml_identity_providers, config, &on_exit/1)
 
@@ -62,7 +62,7 @@ defmodule FzHttpWeb.UserFromAuthTest do
   end
 
   describe "find_or_create/2 via SAML with auto create disabled" do
-    @tag config: %{"saml_test" => %{auto_create_users: false}}
+    @tag config: %{"saml_test" => %{"auto_create_users" => false}}
     test "sign in returns error", %{email: email, config: config} do
       restore_env(:saml_identity_providers, config, &on_exit/1)
 

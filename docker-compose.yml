@@ -1,6 +1,17 @@
 version: '3.7'
 
 services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:19.0.3
+    environment:
+      - KEYCLOAK_ADMIN=admin
+      - KEYCLOAK_ADMIN_PASSWORD=admin
+    command: start-dev
+    ports:
+      - 8080:8080
+    networks:
+      - app
+
   caddy:
     image: caddy:2
     volumes:
@@ -45,12 +56,13 @@ services:
       - net.ipv6.conf.all.forwarding=1
     depends_on:
       - postgres
+      - keycloak
     networks:
       - app
       - isolation
 
   postgres:
-    image: postgres:15rc1
+    image: postgres:15rc2
     volumes:
       - postgres-data:/var/lib/postgresql/data
     environment:
