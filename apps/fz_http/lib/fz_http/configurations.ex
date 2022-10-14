@@ -17,7 +17,7 @@ defmodule FzHttp.Configurations do
   def auto_create_users?(field, provider) do
     get!(field)
     |> Map.get(provider)
-    |> Map.get(:auto_create_users)
+    |> Map.get("auto_create_users")
   end
 
   def change_configuration(%Configuration{} = config \\ get_configuration!()) do
