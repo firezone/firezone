@@ -6,6 +6,8 @@ defmodule FzHttp.OIDC.StartProxy do
 
   alias FzHttp.Configurations, as: Conf
 
+  require Logger
+
   def child_spec(arg) do
     %{id: __MODULE__, start: {__MODULE__, :start_link, [arg]}}
   end
@@ -21,7 +23,17 @@ defmodule FzHttp.OIDC.StartProxy do
 
     if parsed = auth_oidc_env && parse(auth_oidc_env) do
       Conf.Cache.put!(:parsed_openid_connect_providers, parsed)
-      OpenIDConnect.Worker.start_link(parsed)
+      # XXX: This is needed because this call can error out, bringing down
+      # the whole application if the OIDC config was entered incorrectly.
+      # Instead, swallow the Error and print to console.
+      #
+      # This should be fixed when refactoring OIDC.
+      try do
+        OpenIDConnect.Worker.start_link(parsed)
+      rescue
+        e in RuntimeError ->
+          Logger.error("ERROR starting OIDC worker: #{e}")
+      end
     else
       :ignore
     end
