@@ -1,6 +1,6 @@
 # This Dockerfile builds a development image to use for local development work
 
-FROM firezone/elixir:1.14.0-otp-25.1
+FROM firezone/elixir:1.14.1-otp-25.1.1
 
 # Install dev dependencies / convenience tools
 RUN apk add \
