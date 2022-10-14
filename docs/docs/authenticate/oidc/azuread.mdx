@@ -1,26 +1,24 @@
 ---
 title: Azure Active Directory
-sidebar_position: 4
+sidebar_position: 2
 ---
 
 Firezone supports Single Sign-On (SSO) using Azure Active Directory through the generic
 generic OIDC connector. This guide will walk you through how to obtain the following
 config settings required for the integration:
 
-1. `discovery_document_uri`: The
+1. **Config ID**: The provider's config ID. (e.g. `azure`)
+1. **Label**: The button label text that shows up on your Firezone login screen. (e.g. `Azure`)
+1. **Scope**: [OIDC scopes](https://openid.net/specs/openid-connect-basic-1_0.html#Scopes)
+to obtain from your OIDC provider. This should be set to `openid email profile offline_access`
+to provide Firezone with the user's email in the returned claims.
+1. **Response type**: Set to `code`.
+1. **Client ID**: The client ID of the application.
+1. **Client secret**: The client secret of the application.
+1. **Discovery Document URI**: The
 [OpenID Connect provider configuration URI](https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderConfig)
 which returns a JSON document used to construct subsequent requests to this
 OIDC provider.
-1. `client_id`: The client ID of the application.
-1. `client_secret`: The client secret of the application.
-1. `redirect_uri`: Instructs OIDC provider where to redirect after authentication.
-This should be your Firezone `EXTERNAL_URL + /auth/oidc/<provider_key>/callback/`
-(e.g. `https://firezone.example.com/auth/oidc/azure/callback/`).
-1. `response_type`: Set to `code`.
-1. `scope`: [OIDC scopes](https://openid.net/specs/openid-connect-basic-1_0.html#Scopes)
-to obtain from your OIDC provider. This should be set to `openid email profile offline_access`
-to provide Firezone with the user's email in the returned claims.
-1. `label`: The button label text that shows up on your Firezone login screen.
 
 ![Azure SSO](https://user-images.githubusercontent.com/52545545/168922621-1f0f4dea-adfc-4e15-a140-a2f213676103.gif)
 
@@ -32,9 +30,9 @@ Navigate to the Azure Active Directory page on the Azure portal.
 Select the App registrations link under the Manage menu, click
 `New Registration`, and register after entering the following:
 
-1. `Name`: `Firezone`
-1. `Supported account types`: `(Default Directory only - Single tenant)`
-1. `Redirect URI`: This should be your firezone `EXTERNAL_URL + /auth/oidc/azure/callback/`
+1. **Name**: `Firezone`
+1. **Supported account types**: `(Default Directory only - Single tenant)`
+1. **Redirect URI**: This should be your Firezone `EXTERNAL_URL + /auth/oidc/<Config ID>/callback/`
 (e.g. `https://firezone.example.com/auth/oidc/azure/callback/`).
 Make sure you include the trailing slash.
 **This will be the `redirect_uri` value**.
@@ -62,14 +60,15 @@ click `Add a permission`, and select `Microsoft Graph`. Add `email`, `openid`,
 
 ## Integrate With Firezone
 
-Navigate to the `/settings/security` page in the admin portal, click "Add OpenID Connect Provider" and enter details you obtained
-in the steps above.
+Navigate to the `/settings/security` page in the admin portal, click
+"Add OpenID Connect Provider" and enter the details you obtained in the steps
+above.
 
 Enable or disable the **Auto create users** option to automatically create
 an unprivileged user when signing in via this authentication mechanism.
 
-And that's it! The configuration should be updated immediately. You should now see a `Sign in with Azure` button at
-the root Firezone URL.
+And that's it! The configuration should be updated immediately.
+You should now see a `Sign in with Azure` button on the sign in page.
 
 ## Restricting Access to Certain Users
 

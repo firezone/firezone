@@ -1,0 +1,74 @@
+---
+title: Keycloak
+sidebar_position: 4
+---
+
+Firezone supports Single Sign-On (SSO) using Keycloak
+through the generic OIDC provider. This guide will walk you through how to
+obtain the following config settings required for the integration:
+
+1. **Config ID**: The provider's config ID. (e.g. `keycloak`)
+1. **Label**: The button label text that shows up on your Firezone login screen. (e.g. `Keycloak`)
+1. **Scope**: [OIDC scopes](https://openid.net/specs/openid-connect-basic-1_0.html#Scopes)
+to obtain from your OIDC provider. This should be set to `openid email profile offline_access`
+to provide Firezone with the user's email in the returned claims.
+1. **Response type**: Set to `code`.
+1. **Client ID**: The client ID of the application.
+1. **Client secret**: The client secret of the application.
+1. **Discovery Document URI**: The
+[OpenID Connect provider configuration URI](https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderConfig)
+which returns a JSON document used to construct subsequent requests to this
+OIDC provider.
+
+## Obtain Config Settings
+
+In the Keycloak Admin Console, make sure the realm you want to use with Firezone
+is selected.
+
+![Keycloak Realm](https://user-images.githubusercontent.com/69542737/193370148-6557399d-a921-4bfe-82d2-a56e5a9f6322.png)
+
+### Create Firezone Client
+
+Create a new Client for Firezone by navigating to **Clients > Create Client** and
+configure the following:
+
+1. **Client type**: `OpenID Connect`
+1. **Client ID**: `firezone`
+1. **Name**: `Firezone`
+1. Click **Next**.
+
+![Create Firezone Client](https://user-images.githubusercontent.com/69542737/193369057-ec4b8bd4-6520-4482-979f-593b75798998.png)
+
+1. Toggle **Client authentication** to `On` to generate the client secret.
+1. Click **Save**.
+
+![Save Firezone Client](https://user-images.githubusercontent.com/69542737/193372348-832dec80-5745-4806-bfc3-384088c591ec.png)
+
+Click **Access settings** to jump to that section and configure the valid redirect URI:
+
+1. **Valid Redirect URIs**: This should be your Firezone `EXTERNAL_URL + /auth/oidc/<Config ID>/callback/`
+(e.g. `https://firezone.example.com/auth/oidc/keycloak/callback/`).
+1. Click **Add valid redirect URIs**
+
+![Firezone Access Settings](https://user-images.githubusercontent.com/69542737/195937386-efa9be88-8e4c-4180-840e-2c1a86f1ba88.png)
+
+Click the **Credentials** tab and copy the client secret.
+
+![Firezone Client Secret](https://user-images.githubusercontent.com/69542737/193376065-68978de1-69ca-484a-9011-2dd4b0ae99fe.png)
+
+Navigate to the **Realm Settings** page to get the **Discovery Document URI** by
+copying the **OpenID Endpoint Configuration** link at the bottom of the page.
+
+![Keycloak Realm Settings](https://user-images.githubusercontent.com/69542737/193376952-cdcbb4f2-40f4-499b-8053-928208e4ea6a.png)
+
+## Integrate With Firezone
+
+Navigate to the `/settings/security` page in the admin portal, click
+"Add OpenID Connect Provider" and enter the details you obtained in the steps
+above.
+
+Enable or disable the **Auto create users** option to automatically create
+an unprivileged user when signing in via this authentication mechanism.
+
+And that's it! The configuration should be updated immediately.
+You should now see a `Sign in with Keycloak` button on the sign in page.
