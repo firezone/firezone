@@ -11,7 +11,7 @@ defmodule FzHttp.Conf.SAMLConfig do
     field :id, :string
     field :label, :string
     field :metadata, :string
-    field :auto_create_users, :boolean
+    field :auto_create_users, :boolean, default: true
   end
 
   def changeset(data) do

@@ -15,7 +15,7 @@ defmodule FzHttp.Conf.OIDCConfig do
     field :client_id, :string
     field :client_secret, :string
     field :discovery_document_uri, :string
-    field :auto_create_users, :boolean
+    field :auto_create_users, :boolean, default: true
   end
 
   def changeset(data) do
