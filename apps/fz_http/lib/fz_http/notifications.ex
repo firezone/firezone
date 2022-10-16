@@ -4,8 +4,8 @@ defmodule FzHttp.Notifications do
   """
   use GenServer
 
+  @topic "notifications_live"
   alias Phoenix.PubSub
-  import FzHttpWeb.NotificationsLive.Index, only: [topic: 0]
 
   def start_link(opts \\ []) do
     if opts[:name] do
@@ -18,32 +18,42 @@ defmodule FzHttp.Notifications do
   @doc """
   Gets a list of current notifications.
   """
-  def current(pid \\ __MODULE__), do: GenServer.call(pid, :current)
+  def current, do: current(__MODULE__)
+  def current(nil), do: current()
+  def current(pid), do: GenServer.call(pid, :current)
 
   @doc """
   Add a notification.
   """
-  def add(pid \\ __MODULE__, notification), do: GenServer.call(pid, {:add, notification})
+  def add(notification), do: add(__MODULE__, notification)
+  def add(nil, notification), do: add(notification)
+  def add(pid, notification), do: GenServer.call(pid, {:add, notification})
 
   @doc """
   Clear all notifications.
   """
-  def clear_all(pid \\ __MODULE__), do: GenServer.call(pid, :clear_all)
+  def clear_all, do: clear_all(__MODULE__)
+  def clear_all(nil), do: clear_all()
+  def clear_all(pid), do: GenServer.call(pid, :clear_all)
 
   @doc """
   Clear the given notification.
   """
-  def clear(pid \\ __MODULE__, notification), do: GenServer.call(pid, {:clear, notification})
+  def clear(notification), do: clear(__MODULE__, notification)
+  def clear(nil, notification), do: clear(notification)
+  def clear(pid, notification), do: GenServer.call(pid, {:clear, notification})
 
   @doc """
   Clear a notification at the given index.
   """
-  def clear_at(pid \\ __MODULE__, index), do: GenServer.call(pid, {:clear_at, index})
+  def clear_at(index), do: clear_at(__MODULE__, index)
+  def clear_at(nil, index), do: clear_at(index)
+  def clear_at(pid, index), do: GenServer.call(pid, {:clear_at, index})
 
   defp broadcast(notifications) do
     PubSub.broadcast(
       FzHttp.PubSub,
-      topic(),
+      @topic,
       {:notifications, notifications}
     )
   end

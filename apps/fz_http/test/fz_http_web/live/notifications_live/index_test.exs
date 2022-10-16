@@ -5,8 +5,11 @@ defmodule FzHttpWeb.NotificationsLive.IndexTest do
   use FzHttpWeb.ConnCase, async: false
   alias FzHttp.Notifications
 
-  setup do
-    {:ok, test_pid: start_supervised!(Notifications)}
+  setup tags do
+    # Pass the pid to the Notifications views
+    pid = start_supervised!(Notifications)
+    conn = put_session(tags[:admin_conn], :notifications_pid, pid)
+    {:ok, test_pid: pid, admin_conn: conn}
   end
 
   setup [:create_notification, :create_notifications]
@@ -17,10 +20,9 @@ defmodule FzHttpWeb.NotificationsLive.IndexTest do
     notification: notification
   } do
     path = Routes.notifications_index_path(conn, :index)
+    Notifications.add(pid, notification)
 
     {:ok, _view, html} = live(conn, path)
-
-    Notifications.add(pid, notification)
 
     assert html =~ notification.user
   end

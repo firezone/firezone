@@ -6,8 +6,11 @@ defmodule FzHttpWeb.NotificationsLive.BadgeTest do
   use FzHttpWeb.ConnCase, async: false
   alias FzHttp.Notifications
 
-  setup do
-    {:ok, test_pid: start_supervised!(Notifications)}
+  setup tags do
+    # Pass the pid to the Notifications views
+    pid = start_supervised!(Notifications)
+    conn = put_session(tags[:admin_conn], :notifications_pid, pid)
+    {:ok, test_pid: pid, admin_conn: conn}
   end
 
   setup [:create_notifications]
