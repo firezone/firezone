@@ -3,6 +3,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
 
   alias FzHttp.Configurations, as: Conf
   alias FzHttpWeb.SettingLive.Security
+  import FzHttp.SAMLConfigFixtures
 
   describe "authenticated mount" do
     test "loads the active sessions table", %{admin_conn: conn} do
@@ -148,7 +149,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
     setup %{admin_conn: conn} do
       Conf.update_configuration(%{
         openid_connect_providers: %{},
-        saml_identity_providers: %{"test" => %{"metadata" => "<test></test>"}}
+        saml_identity_providers: %{"test" => saml_attrs()}
       })
 
       path = Routes.setting_security_path(conn, :show)
@@ -172,7 +173,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
         |> render_click()
 
       assert html =~ ~s|<p class="modal-card-title">SAML Config</p>|
-      assert html =~ ~s|&amp;amp;amp;lt;test&amp;amp;amp;gt;&amp;amp;amp;lt;/test&amp;amp;amp;gt;|
+      assert html =~ ~s|entityID=&quot;http://localhost:8080/realms/firezone|
     end
 
     test "validate", %{view: view} do
@@ -189,7 +190,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
       assert html =~ ~s|<p class="modal-card-title">SAML Config</p>|
 
       # not updated
-      assert Conf.get!(:saml_identity_providers) == %{"test" => %{"metadata" => "<test></test>"}}
+      assert Conf.get!(:saml_identity_providers) == %{"test" => saml_attrs()}
     end
 
     test "delete", %{view: view} do
