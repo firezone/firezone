@@ -8,15 +8,17 @@ defmodule FzHttpWeb.NotificationsLive.Badge do
   alias FzHttp.Notifications
   alias Phoenix.PubSub
 
-  import FzHttpWeb.NotificationsLive.Index, only: [topic: 0]
+  @topic "notifications_live"
 
   @impl Phoenix.LiveView
-  def mount(_params, _session, socket) do
-    PubSub.subscribe(FzHttp.PubSub, topic())
+  def mount(_params, session, socket) do
+    PubSub.subscribe(FzHttp.PubSub, @topic)
+    pid = session["notifications_pid"]
 
     {:ok,
      socket
-     |> assign(assigns(Notifications.current()))}
+     |> assign(:notifications_pid, pid)
+     |> assign(assigns(Notifications.current(pid)))}
   end
 
   @impl Phoenix.LiveView

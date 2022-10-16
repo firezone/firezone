@@ -2,30 +2,39 @@ defmodule FzHttpWeb.NotificationsLive.IndexTest do
   @moduledoc """
   Test adding and removing notifications from the notifications table.
   """
-  use FzHttpWeb.ConnCase, async: true
+  use FzHttpWeb.ConnCase, async: false
   alias FzHttp.Notifications
 
-  setup do
-    on_exit(fn -> Notifications.clear() end)
+  setup tags do
+    # Pass the pid to the Notifications views
+    pid = start_supervised!(Notifications)
+    conn = put_session(tags[:admin_conn], :notifications_pid, pid)
+    {:ok, test_pid: pid, admin_conn: conn}
   end
 
   setup [:create_notification, :create_notifications]
 
-  test "add notification to the table", %{admin_conn: conn, notification: notification} do
+  test "add notification to the table", %{
+    test_pid: pid,
+    admin_conn: conn,
+    notification: notification
+  } do
     path = Routes.notifications_index_path(conn, :index)
-
-    Notifications.add(notification)
+    Notifications.add(pid, notification)
 
     {:ok, _view, html} = live(conn, path)
 
     assert html =~ notification.user
   end
 
-  test "clear notification from the table", %{admin_conn: conn, notification: notification} do
+  test "clear notification from the table", %{
+    test_pid: pid,
+    admin_conn: conn,
+    notification: notification
+  } do
     path = Routes.notifications_index_path(conn, :index)
+    Notifications.add(pid, notification)
     {:ok, view, _html} = live(conn, path)
-
-    Notifications.add(notification)
 
     view
     |> element(".delete")
@@ -40,14 +49,15 @@ defmodule FzHttpWeb.NotificationsLive.IndexTest do
 
   test "clear notification from the table at index", %{
     admin_conn: conn,
+    test_pid: pid,
     notifications: notifications
   } do
+    for notification <- notifications do
+      Notifications.add(pid, notification)
+    end
+
     path = Routes.notifications_index_path(conn, :index)
     {:ok, view, _html} = live(conn, path)
-
-    for notification <- notifications do
-      Notifications.add(notification)
-    end
 
     index = 2
     {notification, _} = List.pop_at(notifications, index)

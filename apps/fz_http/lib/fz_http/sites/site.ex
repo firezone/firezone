@@ -10,7 +10,6 @@ defmodule FzHttp.Sites.Site do
     only: [
       trim: 2,
       validate_fqdn_or_ip: 2,
-      validate_list_of_ips: 2,
       validate_list_of_ips_or_cidrs: 2,
       validate_no_duplicates: 2
     ]
@@ -56,7 +55,6 @@ defmodule FzHttp.Sites.Site do
     ])
     |> trim(@whitespace_trimmed_fields)
     |> validate_required(:name)
-    |> validate_list_of_ips(:dns)
     |> validate_no_duplicates(:dns)
     |> validate_list_of_ips_or_cidrs(:allowed_ips)
     |> validate_no_duplicates(:allowed_ips)

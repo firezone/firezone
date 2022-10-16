@@ -12,7 +12,6 @@ defmodule FzHttp.Devices.Device do
       trim: 2,
       validate_fqdn_or_ip: 2,
       validate_omitted: 2,
-      validate_list_of_ips: 2,
       validate_no_duplicates: 2,
       validate_list_of_ips_or_cidrs: 2
     ]
@@ -137,7 +136,6 @@ defmodule FzHttp.Devices.Device do
       :mtu
     ])
     |> validate_list_of_ips_or_cidrs(:allowed_ips)
-    |> validate_list_of_ips(:dns)
     |> validate_no_duplicates(:dns)
     |> validate_fqdn_or_ip(:endpoint)
     |> validate_number(:persistent_keepalive,

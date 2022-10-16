@@ -1,7 +1,6 @@
 defmodule FzHttpWeb.UserFromAuthTest do
   use FzHttp.DataCase, async: true
 
-  alias FzHttp.Configurations, as: Conf
   alias FzHttp.Users
   alias FzHttpWeb.UserFromAuth
   alias Ueberauth.Auth
