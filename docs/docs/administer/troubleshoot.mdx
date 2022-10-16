@@ -7,6 +7,23 @@ For any problems that arise, a good first bet is to check the Firezone logs.
 Firezone logs are stored in `/var/log/firezone` and can be viewed with
 `sudo firezone-ctl tail`.
 
+## Application Crash Loop Preventing Config Changes
+
+In cases where the application is crash looping because of corrupt, inaccessible, or
+invalid data in the DB, you can try clearing the affected fields.
+
+For example, to clear OIDC configs:
+
+```text
+psql -d firezone -h 127.0.0.1 -U postgres -c "UPDATE configurations SET openid_connect_providers = '{}'"
+```
+
+Similarly, to clear SAML configs:
+
+```text
+psql -d firezone -h 127.0.0.1 -U postgres -c "UPDATE configurations SET saml_providers = '{}'"
+```
+
 ## Debugging Portal Websocket Connectivity Issues
 
 The portal UI requires a secure websocket connection to function. To facilitate

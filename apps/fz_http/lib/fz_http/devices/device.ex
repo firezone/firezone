@@ -7,7 +7,7 @@ defmodule FzHttp.Devices.Device do
   import Ecto.Changeset
   require Logger
 
-  import FzHttp.SharedValidators,
+  import FzHttp.Validators.Common,
     only: [
       trim: 2,
       validate_fqdn_or_ip: 2,

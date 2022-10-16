@@ -51,7 +51,7 @@ services:
       <<: *default-deploy
 
   postgres:
-    image: postgres:15rc2
+    image: postgres:15
     volumes:
       - /data/firezone/postgres:/var/lib/postgresql/data
     environment:

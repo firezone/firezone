@@ -6,7 +6,7 @@ defmodule FzHttp.Sites.Site do
   use Ecto.Schema
   import Ecto.Changeset
 
-  import FzHttp.SharedValidators,
+  import FzHttp.Validators.Common,
     only: [
       trim: 2,
       validate_fqdn_or_ip: 2,

@@ -1,4 +1,4 @@
-defmodule FzHttp.SharedValidators do
+defmodule FzHttp.Validators.Common do
   @moduledoc """
   Shared validators to use between schemas.
   """
