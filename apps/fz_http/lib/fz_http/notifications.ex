@@ -1,44 +1,59 @@
 defmodule FzHttp.Notifications do
   @moduledoc """
-  Notification state for notifications live view.
+  Notification notifications for notifications live view.
   """
   use GenServer
 
+  @topic "notifications_live"
   alias Phoenix.PubSub
 
-  alias FzHttpWeb.NotificationsLive
-
-  def start_link(_), do: GenServer.start_link(__MODULE__, [], name: __MODULE__)
+  def start_link(opts \\ []) do
+    if opts[:name] do
+      GenServer.start_link(__MODULE__, [], name: opts[:name])
+    else
+      GenServer.start_link(__MODULE__, [])
+    end
+  end
 
   @doc """
   Gets a list of current notifications.
   """
-  def current, do: GenServer.call(__MODULE__, :current)
+  def current, do: current(__MODULE__)
+  def current(nil), do: current()
+  def current(pid), do: GenServer.call(pid, :current)
 
   @doc """
   Add a notification.
   """
-  def add(notification), do: GenServer.call(__MODULE__, {:add, notification})
+  def add(notification), do: add(__MODULE__, notification)
+  def add(nil, notification), do: add(notification)
+  def add(pid, notification), do: GenServer.call(pid, {:add, notification})
 
   @doc """
   Clear all notifications.
   """
-  def clear, do: GenServer.call(__MODULE__, :clear_all)
+  def clear_all, do: clear_all(__MODULE__)
+  def clear_all(nil), do: clear_all()
+  def clear_all(pid), do: GenServer.call(pid, :clear_all)
 
   @doc """
   Clear the given notification.
   """
-  def clear(notification), do: GenServer.call(__MODULE__, {:clear, notification})
+  def clear(notification), do: clear(__MODULE__, notification)
+  def clear(nil, notification), do: clear(notification)
+  def clear(pid, notification), do: GenServer.call(pid, {:clear, notification})
 
   @doc """
   Clear a notification at the given index.
   """
-  def clear_at(index), do: GenServer.call(__MODULE__, {:clear_at, index})
+  def clear_at(index), do: clear_at(__MODULE__, index)
+  def clear_at(nil, index), do: clear_at(index)
+  def clear_at(pid, index), do: GenServer.call(pid, {:clear_at, index})
 
   defp broadcast(notifications) do
     PubSub.broadcast(
       FzHttp.PubSub,
-      NotificationsLive.Index.topic(),
+      @topic,
       {:notifications, notifications}
     )
   end

@@ -195,10 +195,6 @@ defmodule FzHttp.DevicesTest do
       dns: "1.1.1.1, 1.0.0.1, 2606:4700:4700::1111, 2606:4700:4700::1001"
     }
 
-    @invalid_dns_attrs %{
-      dns: "8.8.8.8, 1.1.1, 1.0.0, 1.1.1."
-    }
-
     @duplicate_dns_attrs %{
       dns: "8.8.8.8, 1.1.1.1, 1.1.1.1, ::1, ::1, ::1, ::1, ::1, 8.8.8.8"
     }
@@ -305,6 +301,11 @@ defmodule FzHttp.DevicesTest do
       end
     end
 
+    @tag attrs: %{use_site_dns: false, dns: "foobar.com"}
+    test "allows hosts for DNS", %{attrs: attrs, device: device} do
+      assert {:ok, _device} = Devices.update_device(device, attrs)
+    end
+
     test "prevents updating device with invalid ipv6 endpoint", %{device: device} do
       {:error, changeset} = Devices.update_device(device, @invalid_endpoint_ipv6_attrs)
 
@@ -329,15 +330,6 @@ defmodule FzHttp.DevicesTest do
       assert changeset.errors[:endpoint] == {
                "can't be blank",
                [{:validation, :required}]
-             }
-    end
-
-    test "prevents updating device with invalid dns", %{device: device} do
-      {:error, changeset} = Devices.update_device(device, @invalid_dns_attrs)
-
-      assert changeset.errors[:dns] == {
-               "is invalid: 1.1.1 is not a valid IPv4 / IPv6 address",
-               []
              }
     end
 
