@@ -16,6 +16,7 @@ services:
     image: caddy:2
     volumes:
       - ./.devcontainer/Caddyfile:/etc/caddy/Caddyfile
+      - ./.devcontainer/pki:/data/caddy/pki
     ports:
       - 80:80
       - 443:443
@@ -62,7 +63,7 @@ services:
       - isolation
 
   postgres:
-    image: postgres:15rc2
+    image: postgres:15
     volumes:
       - postgres-data:/var/lib/postgresql/data
     environment:
