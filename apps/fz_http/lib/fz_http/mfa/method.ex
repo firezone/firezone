@@ -5,7 +5,7 @@ defmodule FzHttp.MFA.Method do
 
   use Ecto.Schema
   import Ecto.Changeset
-  import FzHttp.SharedValidators, only: [trim: 2]
+  import FzHttp.Validators.Common, only: [trim: 2]
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @whitespace_trimmed_fields :name

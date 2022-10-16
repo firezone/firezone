@@ -5,6 +5,7 @@ defmodule FzHttp.Conf.SAMLConfig do
   use Ecto.Schema
 
   import Ecto.Changeset
+  import FzHttp.Validators.SAML
 
   @primary_key false
   embedded_schema do
@@ -18,5 +19,6 @@ defmodule FzHttp.Conf.SAMLConfig do
     %__MODULE__{}
     |> cast(data, [:id, :label, :metadata, :auto_create_users])
     |> validate_required([:id, :label, :metadata, :auto_create_users])
+    |> validate_metadata()
   end
 end

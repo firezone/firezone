@@ -5,6 +5,7 @@ defmodule FzHttp.Conf.OIDCConfig do
   use Ecto.Schema
 
   import Ecto.Changeset
+  import FzHttp.Validators.OpenIDConnect
 
   @primary_key false
   embedded_schema do
@@ -43,5 +44,6 @@ defmodule FzHttp.Conf.OIDCConfig do
       :discovery_document_uri,
       :auto_create_users
     ])
+    |> validate_discovery_document_uri()
   end
 end
