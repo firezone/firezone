@@ -113,6 +113,8 @@ firezoneSetup() {
   sed -i "s/ADMIN_EMAIL=_CHANGE_ME_/ADMIN_EMAIL=$1/" .env
   sed -i "s~EXTERNAL_URL=_CHANGE_ME_~EXTERNAL_URL=$2~" .env
   $dc up -d
+  echo 'Waiting for app to boot before creating admin...'
+  sleep 15
   $dc exec firezone bin/create-or-reset-admin
 
   displayLogo
