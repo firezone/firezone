@@ -133,7 +133,7 @@ jobs:
         uses: dawidd6/action-download-artifact@v2
         with:
           commit: ${{ github.sha }}
-          workflow: build.yml
+          workflow: omnibus_build.yml
           workflow_conclusion: success
           name: firezone-${{ matrix.platform }}
 
