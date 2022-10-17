@@ -65,6 +65,8 @@ table {
  * where they end
  */
 .tabs-container {
-  background: rgba(100, 100, 100, 0.2);
+  background: rgba(100, 100, 100, 0.1);
   padding-bottom: 1.5rem;
+  padding-left: 1.5rem;
+  border-radius: 5px;
 }

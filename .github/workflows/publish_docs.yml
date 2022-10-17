@@ -28,6 +28,6 @@ jobs:
           branch: gh-pages
           folder: docs/build
           target-folder: .
-          clean: false
+          clean: true
           clean-exclude: |
             *.*.*/
