@@ -71,13 +71,9 @@ installation process, follow the steps below to install manually.
 1. At a minimum, change the `ADMIN_EMAIL` and `EXTERNAL_URL` variables.
    Optionally modify other secrets as needed.
 1. Bring the services up: `docker compose up -d`
-1. Generate SAML key and cert:
-  ```shell
-  docker-compose run --rm firezone bin/gen-cert
-  ```
 1. Wait about a minute for the services to boot, then create the first admin:
   ```shell
-  docker compose run --rm firezone bin/create-or-reset-admin
+  docker compose exec firezone bin/create-or-reset-admin
   ```
 
 You should now be able to access the Firezone web portal at the `EXTERNAL_URL`
