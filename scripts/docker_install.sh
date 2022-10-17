@@ -1,14 +1,6 @@
 #!/bin/bash
 set -e
 
-osCheck () {
-  os=`uname -s`
-  if [ ! $os = "Linux" ]; then
-    echo "Please ensure you're running this script on Linux and try again."
-    exit
-  fi
-}
-
 dockerCheck () {
   if ! type docker > /dev/null; then
     echo 'docker not found. Please install docker and try again.'
@@ -192,7 +184,6 @@ main() {
   firezoneSetup $adminUser $externalUrl
 }
 
-osCheck
 dockerCheck
 curlCheck
 
