@@ -14,8 +14,7 @@ dockerCheck () {
   fi
 }
 
-curlCheck () {
-  if ! type curl > /dev/null; then
+curlCheck () { if ! type curl > /dev/null; then
     echo 'curl not found. Please install curl to use this script.'
     exit
   fi
@@ -146,7 +145,7 @@ EOF
 
 main() {
   defaultInstallDir=`pwd`
-  defaultExternalUrl="https://$public_ip"
+  defaultExternalUrl="https://$(hostname)"
   adminUser=''
   externalUrl=''
   promptEmail "Enter the administrator email you'd like to use for logging into this Firezone instance: "
@@ -161,7 +160,6 @@ dockerCheck
 curlCheck
 
 telemetry_id=`od -vN "8" -An -tx1 /dev/urandom | tr -d " \n" ; echo`
-public_ip=`curl -m 5 --silent ifconfig.me`
 
 capture "install" "email-not-collected@dummy.domain"
 
