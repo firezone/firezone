@@ -101,7 +101,7 @@ const config = {
             'aria-label': 'GitHub repository',
           },
           {
-            href: 'https://e04kusl9oz5.typeform.com/to/gzzaZZ52#source=docsheader',
+            href: 'https://www.firezone.dev/contact/sales#source=docsheader',
             label: 'Contact sales',
             position: 'right',
             'aria-label': 'Contact sales',
