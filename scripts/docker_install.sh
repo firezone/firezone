@@ -73,31 +73,6 @@ promptContact() {
   esac
 }
 
-wireguardCheck() {
-  if ! test -f /sys/module/wireguard/version; then
-    if test -d /lib/modules/$(uname -r) && test -f `find /lib/modules/$(uname -r) -type f -name 'wireguard.ko'`; then
-      echo "WireGuard kernel module found, but not loaded. Load it now? (Y/n): "
-      read load_wgmod
-      case $load_wgmod in
-        n|N) echo "Load it with 'sudo modprobe wireguard' and run this install script again"; exit;;
-        *) modprobe wireguard
-      esac
-    else
-      echo "Error! WireGuard not detected. Please upgrade your kernel to at least 5.6 or install the WireGuard kernel module."
-      echo "See more at https://www.wireguard.com/install/"
-      exit
-    fi
-  fi
-}
-
-kernelCheck() {
-  major=`uname -r | cut -d'.' -f1`
-  if [ "$major" -lt "5" ]; then
-    echo "Kernel version `uname -r ` is not supported. Please upgrade to 5.0 or higher."
-    exit
-  fi
-}
-
 firezoneSetup() {
   cd $installDir
   curl -fsSL https://raw.githubusercontent.com/firezone/firezone/master/docker-compose.prod.yml -o docker-compose.yml
@@ -174,8 +149,6 @@ main() {
   defaultExternalUrl="https://$public_ip"
   adminUser=''
   externalUrl=''
-  kernelCheck
-  wireguardCheck
   promptEmail "Enter the administrator email you'd like to use for logging into this Firezone instance: "
   promptInstallDir "Enter the desired installation directory ($defaultInstallDir): "
   promptExternalUrl "Enter the external URL that will be used to access this instance ($defaultExternalUrl): "
