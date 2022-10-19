@@ -75,7 +75,7 @@ promptContact() {
 promptACME() {
   read -p 'Would you like to enable automatic SSL cert provisioning? Requires a valid DNS record and port 80 to be reachable. (Y/n): ' acme
   case $acme in
-    n|N) CADDY_OPTS="--internal-certs";;
+    n|N) export CADDY_OPTS="--internal-certs";;
     *)
   esac
 }
