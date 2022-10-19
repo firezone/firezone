@@ -73,12 +73,24 @@ promptContact() {
 }
 
 firezoneSetup() {
+  installDir=${installDir/\~/$HOME}
   cd $installDir
-  curl -fsSL https://raw.githubusercontent.com/firezone/firezone/master/docker-compose.prod.yml -o docker-compose.yml
+  if ! test -f docker-compose.yml; then
+    curl -fsSL https://raw.githubusercontent.com/firezone/firezone/master/docker-compose.prod.yml -o docker-compose.yml
+  fi
+  db_pass=$(od -vN "8" -An -tx1 /dev/urandom | tr -d " \n" ; echo)
   docker run --rm firezone/firezone bin/gen-env > .env
-  sed -i "s/ADMIN_EMAIL=_CHANGE_ME_/ADMIN_EMAIL=$1/" .env
-  sed -i "s~EXTERNAL_URL=_CHANGE_ME_~EXTERNAL_URL=$2~" .env
-  $dc up -d
+  sed -i.bak "s/ADMIN_EMAIL=.*/ADMIN_EMAIL=$1/" .env
+  sed -i.bak "s~EXTERNAL_URL=.*~EXTERNAL_URL=$2~" .env
+  sed -i.bak "s/DATABASE_PASSWORD=.*/DATABASE_PASSWORD=$db_pass/" .env
+  # Set DATABASE_PASSWORD explicitly here in case the user has this var set in their shell
+  DATABASE_PASSWORD=$db_pass $dc up -d postgres
+  echo 'Waiting for DB to boot...'
+  sleep 15
+  echo 'Resetting DB password...'
+  $dc exec postgres psql -U postgres -d firezone -h localhost -c "ALTER ROLE postgres WITH PASSWORD '${db_pass}'"
+  sleep 2
+  $dc up -d firezone caddy
   echo 'Waiting for app to boot before creating admin...'
   sleep 15
   $dc exec firezone bin/create-or-reset-admin
@@ -150,7 +162,7 @@ main() {
   externalUrl=''
   promptEmail "Enter the administrator email you'd like to use for logging into this Firezone instance: "
   promptInstallDir "Enter the desired installation directory ($defaultInstallDir): "
-  promptExternalUrl "Enter the external URL that will be used to access this instance ($defaultExternalUrl): "
+  promptExternalUrl "Enter the external URL that will be used to access this instance. An SSL cert will be automatically provisioned using Let's Encrypt. ($defaultExternalUrl): "
   promptContact
   read -p "Press <ENTER> to install or Ctrl-C to abort."
   firezoneSetup $adminUser $externalUrl
@@ -159,7 +171,7 @@ main() {
 dockerCheck
 curlCheck
 
-telemetry_id=`od -vN "8" -An -tx1 /dev/urandom | tr -d " \n" ; echo`
+telemetry_id=$(od -vN "8" -An -tx1 /dev/urandom | tr -d " \n" ; echo)
 
 capture "install" "email-not-collected@dummy.domain"
 
