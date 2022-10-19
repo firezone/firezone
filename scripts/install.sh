@@ -95,8 +95,9 @@ firezoneSetup() {
   DATABASE_PASSWORD=$db_pass $dc up -d postgres
   echo 'Waiting for DB to boot...'
   sleep 5
+  $dc logs postgres
   echo 'Resetting DB password...'
-  $dc exec postgres psql -p 5432 -U postgres -d firezone -h postgres -c "ALTER ROLE postgres WITH PASSWORD '${db_pass}'"
+  $dc exec postgres psql -p 5432 -U postgres -d firezone -h 127.0.0.1 -c "ALTER ROLE postgres WITH PASSWORD '${db_pass}'"
   $dc up -d firezone caddy
   echo 'Waiting for app to boot before creating admin...'
   sleep 15
