@@ -72,6 +72,14 @@ promptContact() {
   esac
 }
 
+promptACME() {
+  read -p 'Would you like to enable automatic SSL cert provisioning? Requires a valid DNS record and port 80 to be reachable. (Y/n): ' acme
+  case $acme in
+    n|N) export CADDY_OPTS="--internal-certs";;
+    *)
+  esac
+}
+
 firezoneSetup() {
   installDir=${installDir/\~/$HOME}
   cd $installDir
@@ -114,46 +122,33 @@ EOF
 displayLogo() {
 cat << EOF
 
-
-
-
-
-
-                                             ::
-                                              !!:
-                                              .??^
-                                               ~J?^
-                                               :???.
-                                               .??J^
-                                               .??J!
-                                               .??J!
-                                               ^J?J~
-                                               !???:
-                                              .???? ::
-                                              ^J?J! :~:
-                                              7???: :~~
-                                             .???7  ~~~.
-                                             :??J^ :~~^
-                                             :???..~~~:
-           .............                     .?J7 ^~~~        ....
-        ..        ......::....                ~J!.~~~^       ::..
-                         ...:::....            !7^~~~^     .^: .
-                             ...:::....         ~~~~~~:. .:~^ .
-                                ....:::....      .~~~~~~~~~:..
-                                    ...::::....   .::^^^^:...
-                                       .....:::.............
-                                           .......:::.....
-
-
-
-
-
-
-
+                                      ::
+                                       !!:
+                                       .??^
+                                        ~J?^
+                                        :???.
+                                        .??J^
+                                        .??J!
+                                        .??J!
+                                        ^J?J~
+                                        !???:
+                                       .???? ::
+                                       ^J?J! :~:
+                                       7???: :~~
+                                      .???7  ~~~.
+                                      :??J^ :~~^
+                                      :???..~~~:
+    .............                     .?J7 ^~~~        ....
+ ..        ......::....                ~J!.~~~^       ::..
+                  ...:::....            !7^~~~^     .^: .
+                      ...:::....         ~~~~~~:. .:~^ .
+                         ....:::....      .~~~~~~~~~:..
+                             ...::::....   .::^^^^:...
+                                .....:::.............
+                                    .......:::.....
 
 EOF
 }
-
 
 main() {
   defaultInstallDir=`pwd`
@@ -162,7 +157,8 @@ main() {
   externalUrl=''
   promptEmail "Enter the administrator email you'd like to use for logging into this Firezone instance: "
   promptInstallDir "Enter the desired installation directory ($defaultInstallDir): "
-  promptExternalUrl "Enter the external URL that will be used to access this instance. An SSL cert will be automatically provisioned using Let's Encrypt. ($defaultExternalUrl): "
+  promptExternalUrl "Enter the external URL that will be used to access this instance. ($defaultExternalUrl): "
+  promptACME
   promptContact
   read -p "Press <ENTER> to install or Ctrl-C to abort."
   firezoneSetup $adminUser $externalUrl
