@@ -159,6 +159,7 @@ doDumpLoad () {
   $dc exec postgres dropdb -U postgres -h 127.0.0.1 --if-exists $db_name
   $dc exec postgres createdb -U postgres -h 127.0.0.1 $db_name
   $dc exec -T postgres psql -U postgres -h 127.0.0.1 -d $db_name < firezone.sql
+  rm firezone.sql
 }
 
 dumpLoadDb () {
