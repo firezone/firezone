@@ -95,7 +95,7 @@
           </p>
         </div>
 
-        <%= if Conf.get!(:allow_unprivileged_device_configuration) do %>
+        <%= if FzHttpWeb.DeviceView.can_configure_devices?(@current_user) do %>
           <div class="field">
             <%= label(f, :use_site_allowed_ips, "Use Default Allowed IPs", class: "label") %>
             <div class="control">
