@@ -3,6 +3,21 @@ title: Uninstall
 sidebar_position: 5
 ---
 
+Firezone can be uninstalled using the steps below.
+
+:::warning
+This will irreversibly destroy ALL Firezone data and can't be undone.
+:::
+
+<Tabs>
+<TabItem label="Docker" value="docker" default>
+
+For docker-based deployments, simply delete the working directory where
+you installed the Firezone docker files (`$HOME/.firezone` by default).
+
+</TabItem>
+<TabItem label="Omnibus" value="omnibus">
+
 To completely remove Omnibus-based deployments of Firezone run the [uninstall.sh
 script](https://github.com/firezone/firezone/blob/master/scripts/uninstall.sh):
 
@@ -10,8 +25,5 @@ script](https://github.com/firezone/firezone/blob/master/scripts/uninstall.sh):
 sudo /bin/bash -c "$(curl -fsSL https://github.com/firezone/firezone/raw/master/scripts/uninstall.sh)"
 ```
 
-**Warning**: This will irreversibly destroy ALL Firezone data and can't be
-undone.
-
-For docker-based deployments, simply delete the working directory where
-you installed the Firezone docker files (`/data/firezone` by default).
+</TabItem>
+</Tabs>

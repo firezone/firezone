@@ -3,8 +3,8 @@ title: Deploy
 sidebar_position: 2
 ---
 
-Firezone can be deployed on most Linux servers in minutes. Read more
-below to get started.
+Firezone can be deployed on most Docker-supported platforms in about a minute.
+Read more below to get started.
 
 ## Deployment Methods
 
@@ -19,8 +19,8 @@ preferred method of deployment.
 :::note
 Chef Infra Client, the configuration system Chef Omnibus relies on, has been
 [scheduled for End-of-Life in 2024](https://docs.chef.io/versions/). As such,
-Omnibus-based deployments will be deprecated in a future version of Firezone.
-To transition to Docker from Omnibus today, follow our [migration guide
+support for Omnibus-based deployments will be removed in a future version of
+Firezone. To transition to Docker from Omnibus today, follow our [migration guide
 ](../administer/migrate).
 :::
 
@@ -86,13 +86,6 @@ These ports can change based on what you've configured in the configuration file
 See the
 [configuration file reference](../reference/configuration-file)
 for details.
-
-:::warning
-Firezone modifies the kernel netfilter and routing tables. Other
-programs that modify the Linux routing table or firewall may interfere with
-Firezone's operation. For help troubleshooting connectivity issues, see
-[troubleshoot](../administer/troubleshoot).
-:::
 
 ### Resource Requirements
 
