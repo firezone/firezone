@@ -19,9 +19,10 @@ version: '3.7'
 
 services:
   caddy:
+    user: ${UID:-0}:${GID:-0}
     image: caddy:2
     volumes:
-      - ${FZ_INSTALL_DIR:-"."}/caddy:/data/caddy
+      - ${FZ_INSTALL_DIR:-.}/caddy:/data/caddy
     ports:
       - 80:80
       - 443:443
@@ -30,18 +31,19 @@ services:
       <<: *default-deploy
 
   firezone:
+    user: ${UID:-0}:${GID:-0}
     image: firezone/firezone
     ports:
       - 51820:51820/udp
     env_file:
       # This should contain a list of env vars for configuring Firezone.
       # See https://docs.firezone.dev/reference/env-vars for more info.
-      - ${FZ_INSTALL_DIR:-"."}/.env
+      - ${FZ_INSTALL_DIR:-.}/.env
     volumes:
       # IMPORTANT: Persists WireGuard private key and other data. If
       # /var/firezone/private_key exists when Firezone starts, it is
       # used as the WireGuard private. Otherwise, one is generated.
-      - ${FZ_INSTALL_DIR:-"."}/firezone:/var/firezone
+      - ${FZ_INSTALL_DIR:-.}/firezone:/var/firezone
     cap_add:
       # Needed for WireGuard and firewall support.
       - NET_ADMIN
@@ -57,9 +59,10 @@ services:
       <<: *default-deploy
 
   postgres:
+    user: ${UID:-0}:${GID:-0}
     image: postgres:15
     volumes:
-      - ${FZ_INSTALL_DIR:-"."}/postgres:/var/lib/postgresql/data
+      - ${FZ_INSTALL_DIR:-.}/postgres:/var/lib/postgresql/data
     environment:
       POSTGRES_DB: ${DATABASE_NAME:-firezone}
       POSTGRES_USER: ${DATABASE_USER:-postgres}
