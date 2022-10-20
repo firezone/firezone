@@ -36,7 +36,7 @@ services:
     env_file:
       # This should contain a list of env vars for configuring Firezone.
       # See https://docs.firezone.dev/reference/env-vars for more info.
-      - ${FZ_INSTALL_DIR;"."}/.env
+      - ${FZ_INSTALL_DIR:-"."}/.env
     volumes:
       # IMPORTANT: Persists WireGuard private key and other data. If
       # /var/firezone/private_key exists when Firezone starts, it is
