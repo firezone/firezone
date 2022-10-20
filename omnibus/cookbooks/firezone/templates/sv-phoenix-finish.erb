@@ -32,7 +32,7 @@ if [ $1 -eq "1" ]; then
     count=`cat count`
     if [ $count -eq "5" ]; then
       rm -f count
-      echo "Firezone detected a service crash loop. Taking service down. For support please email support@firez.one and include a copy of these crash logs."
+      echo "Firezone detected a service crash loop. Taking service down. For support please email support@firezone.dev and include a copy of these crash logs."
       echo 'd' > supervise/control
     else
       new_count=$((count+1))

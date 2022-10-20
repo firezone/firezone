@@ -3,19 +3,27 @@ set -e
 
 dockerCheck () {
   if ! type docker > /dev/null; then
-    echo 'docker not found. Please install docker and try again.'
+    echo "docker not found. Please install docker and try again."
     exit
   fi
 
   if command -v docker-compose &> /dev/null; then
-    dc='docker-compose'
+    dc="docker-compose"
   else
-    dc='docker compose'
+    dc="docker compose"
+  fi
+
+
+  $dc version | grep -q "v2"
+  if [ $? -ne 0 ]; then
+    echo "Error: Automatic installation is only supported with Docker Compose version 2 or higher."
+    echo "Please upgrade Docker Compose or use the manual installation method: https://docs.firezone.dev/deploy/docker"
+    exit 1
   fi
 }
 
 curlCheck () { if ! type curl > /dev/null; then
-    echo 'curl not found. Please install curl to use this script.'
+    echo "curl not found. Please install curl to use this script."
     exit
   fi
 }
@@ -25,7 +33,7 @@ capture () {
     if [ ! -z "$telemetry_id" ]; then
       curl -s -XPOST \
         -m 5 \
-        -H 'Content-Type: application/json' \
+        -H "Content-Type: application/json" \
         -d "{
           \"api_key\": \"phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK\",
           \"event\": \"$1\",
@@ -45,12 +53,15 @@ promptInstallDir() {
   if [ -z "$installDir" ]; then
     installDir=$defaultInstallDir
   fi
+  if ! test -d $installDir; then
+    mkdir $installDir
+  fi
 }
 
 promptExternalUrl() {
   read -p "$1" externalUrl
   # Remove trailing slash if present
-  externalUrl=$(echo $externalUrl | sed 's:/*$::')
+  externalUrl=$(echo $externalUrl | sed "s:/*$::")
   if [ -z "$externalUrl" ]; then
     externalUrl=$defaultExternalUrl
   fi
@@ -59,49 +70,64 @@ promptExternalUrl() {
 promptEmail() {
   read -p "$1" adminEmail
   case $adminEmail in
-    *@*) adminUser=$adminEmail;;
-    *) promptEmail "Please provide a valid email: "
+    *@*)
+      adminUser=$adminEmail
+      ;;
+    *)
+      promptEmail "Please provide a valid email: "
+      ;;
   esac
 }
 
 promptContact() {
-  read -p 'Could we email you to ask for product feedback? Firezone depends heavily on input from users like you to steer development. (Y/n): ' contact
+  read -p "Could we email you to ask for product feedback? Firezone depends heavily on input from users like you to steer development. (Y/n): " contact
   case $contact in
-    n|N);;
-    *) capture "contactOk" $adminUser
+    n|N)
+      ;;
+    *)
+      capture "contactOk" $adminUser
+      ;;
   esac
 }
 
 promptACME() {
-  read -p 'Would you like to enable automatic SSL cert provisioning? Requires a valid DNS record and port 80 to be reachable. (Y/n): ' acme
+  read -p "Would you like to enable automatic SSL cert provisioning? Requires a valid DNS record and port 80 to be reachable. (Y/n): " acme
   case $acme in
-    n|N) export CADDY_OPTS="--internal-certs";;
+    n|N)
+      export CADDY_OPTS="--internal-certs"
+      ;;
     *)
+      export CADDY_OPTS=""
+      ;;
   esac
 }
 
 firezoneSetup() {
-  installDir=${installDir/\~/$HOME}
-  cd $installDir
-  if ! test -f docker-compose.yml; then
-    curl -fsSL https://raw.githubusercontent.com/firezone/firezone/master/docker-compose.prod.yml -o docker-compose.yml
+  export FZ_INSTALL_DIR=$installDir
+
+  if ! test -f $installDir/docker-compose.yml; then
+    curl -fsSL https://raw.githubusercontent.com/firezone/firezone/master/docker-compose.prod.yml -o $installDir/docker-compose.yml
   fi
   db_pass=$(od -vN "8" -An -tx1 /dev/urandom | tr -d " \n" ; echo)
-  docker run --rm firezone/firezone bin/gen-env > .env
-  sed -i.bak "s/ADMIN_EMAIL=.*/ADMIN_EMAIL=$1/" .env
-  sed -i.bak "s~EXTERNAL_URL=.*~EXTERNAL_URL=$2~" .env
-  sed -i.bak "s/DATABASE_PASSWORD=.*/DATABASE_PASSWORD=$db_pass/" .env
+  docker run --rm firezone/firezone bin/gen-env > "$installDir/.env"
+  sed -i.bak "s/ADMIN_EMAIL=.*/ADMIN_EMAIL=$1/" "$installDir/.env"
+  sed -i.bak "s~EXTERNAL_URL=.*~EXTERNAL_URL=$2~" "$installDir/.env"
+  sed -i.bak "s/DATABASE_PASSWORD=.*/DATABASE_PASSWORD=$db_pass/" "$installDir/.env"
+
+  echo "UID=$(id -u)" >> $installDir/.env
+  echo "GID=$(id -g)" >> $installDir/.env
+
   # Set DATABASE_PASSWORD explicitly here in case the user has this var set in their shell
-  DATABASE_PASSWORD=$db_pass $dc up -d postgres
-  echo 'Waiting for DB to boot...'
+  DATABASE_PASSWORD=$db_pass $dc -f $installDir/docker-compose.yml up -d postgres
+  echo "Waiting for DB to boot..."
   sleep 5
-  $dc logs postgres
-  echo 'Resetting DB password...'
-  $dc exec postgres psql -p 5432 -U postgres -d firezone -h 127.0.0.1 -c "ALTER ROLE postgres WITH PASSWORD '${db_pass}'"
-  $dc up -d firezone caddy
-  echo 'Waiting for app to boot before creating admin...'
+  $dc -f $installDir/docker-compose.yml logs postgres
+  echo "Resetting DB password..."
+  $dc -f $installDir/docker-compose.yml exec postgres psql -p 5432 -U postgres -d firezone -h 127.0.0.1 -c "ALTER ROLE postgres WITH PASSWORD '${db_pass}'"
+  $dc -f $installDir/docker-compose.yml up -d firezone caddy
+  echo "Waiting for app to boot before creating admin..."
   sleep 15
-  $dc exec firezone bin/create-or-reset-admin
+  $dc -f $installDir/docker-compose.yml exec firezone bin/create-or-reset-admin
 
   displayLogo
 
@@ -111,12 +137,10 @@ Installation complete!
 You should now be able to log into the Web UI at $externalUrl with the
 following credentials:
 
-`grep ADMIN_EMAIL .env`
-`grep DEFAULT_ADMIN_PASSWORD .env`
+`grep ADMIN_EMAIL $installDir/.env`
+`grep DEFAULT_ADMIN_PASSWORD $installDir/.env`
 
 EOF
-
-  cd -
 }
 
 displayLogo() {
@@ -151,10 +175,10 @@ EOF
 }
 
 main() {
-  defaultInstallDir=`pwd`
   defaultExternalUrl="https://$(hostname)"
-  adminUser=''
-  externalUrl=''
+  adminUser=""
+  externalUrl=""
+  defaultInstallDir="$HOME/.firezone"
   promptEmail "Enter the administrator email you'd like to use for logging into this Firezone instance: "
   promptInstallDir "Enter the desired installation directory ($defaultInstallDir): "
   promptExternalUrl "Enter the external URL that will be used to access this instance. ($defaultExternalUrl): "
