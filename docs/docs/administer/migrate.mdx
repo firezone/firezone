@@ -30,20 +30,12 @@ for your OS. We recommend using Docker Server for Linux. Docker
 Desktop will work too, but is not preferred for production use cases at this time
 because it rewrites packets under some conditions and may cause unexpected
 issues with Firezone.
-1. Stop Firezone:
-```bash
-sudo firezone-ctl stop
-```
 1. Download and run the migration script:
 ```bash
 sudo -E bash -c "$(curl -fsSL https://github.com/firezone/firezone/raw/master/scripts/docker_migrate.sh)"
 ```
 This will ask you a few questions, then attempt to migrate your installation to
-Docker.
-1. If all goes well, you should now be able to bring the Docker services up:
-```bash
-docker-compose up -d
-```
+Docker. If all goes well, your Firezone instance should be running with Docker, data intact.
 
 ## Rolling Back
 
