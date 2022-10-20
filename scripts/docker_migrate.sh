@@ -36,7 +36,7 @@ dockerCheck () {
     dc='docker compose'
   fi
 
-  $dc version | grep 'v2' 2&>1 > /dev/null
+  $dc version | grep -q "v2"
   if [ $? -ne 0 ]; then
     echo "Error: Automatic migration is only supported with Docker Compose version 2 or higher."
     exit 1
