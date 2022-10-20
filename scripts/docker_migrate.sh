@@ -4,13 +4,6 @@ set -eE
 trap "handler" ERR
 
 handler () {
-  if [ $existingEnv -eq 1 ]; then
-    echo
-    echo "Restoring old .env file..."
-    mv $installDir/.env.bak $installDir/.env
-  else
-    rm $installDir/.env
-  fi
   echo
   echo "An error occurred running this migration. Your existing Firezone installation has not been affected."
   echo
@@ -106,7 +99,6 @@ migrate () {
     echo
     echo "Existing .env detected! Moving to .env.bak and continuing..."
     echo
-    existingEnv=1
     mv $installDir/.env $installDir/.env.bak
   fi
 
