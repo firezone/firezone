@@ -104,8 +104,8 @@ promptACME() {
 firezoneSetup() {
   export FZ_INSTALL_DIR=$installDir
 
-  if ! test -f docker-compose.yml; then
-    curl -fsSL https://raw.githubusercontent.com/firezone/firezone/master/docker-compose.prod.yml -o docker-compose.yml
+  if ! test -f $installDir/docker-compose.yml; then
+    curl -fsSL https://raw.githubusercontent.com/firezone/firezone/master/docker-compose.prod.yml -o $installDir/docker-compose.yml
   fi
   db_pass=$(od -vN "8" -An -tx1 /dev/urandom | tr -d " \n" ; echo)
   docker run --rm firezone/firezone bin/gen-env > "$installDir/.env"
@@ -117,16 +117,16 @@ firezoneSetup() {
   echo "GID=$(id -g)" >> $installDir/.env
 
   # Set DATABASE_PASSWORD explicitly here in case the user has this var set in their shell
-  DATABASE_PASSWORD=$db_pass $dc up -d postgres
+  DATABASE_PASSWORD=$db_pass $dc -f $installDir/docker-compose.yml up -d postgres
   echo "Waiting for DB to boot..."
   sleep 5
-  $dc logs postgres
+  $dc -f $installDir/docker-compose.yml logs postgres
   echo "Resetting DB password..."
-  $dc exec postgres psql -p 5432 -U postgres -d firezone -h 127.0.0.1 -c "ALTER ROLE postgres WITH PASSWORD '${db_pass}'"
-  $dc up -d firezone caddy
+  $dc -f $installDir/docker-compose.yml exec postgres psql -p 5432 -U postgres -d firezone -h 127.0.0.1 -c "ALTER ROLE postgres WITH PASSWORD '${db_pass}'"
+  $dc -f $installDir/docker-compose.yml up -d firezone caddy
   echo "Waiting for app to boot before creating admin..."
   sleep 15
-  $dc exec firezone bin/create-or-reset-admin
+  $dc -f $installDir/docker-compose.yml exec firezone bin/create-or-reset-admin
 
   displayLogo
 
