@@ -37,7 +37,7 @@ Follow our [deploy guide](https://docs.firezone.dev/deploy) to install your self
 Or, if you're on a [supported platform](https://docs.firezone.dev/deploy/supported-platforms), try our one-line install script:
 
 ```bash
-sudo -E bash -c "$(curl -fsSL https://github.com/firezone/firezone/raw/master/scripts/install.sh)"
+bash <(curl -fsSL https://github.com/firezone/firezone/raw/master/scripts/install.sh)
 ```
 
 Using Firezone for your team? Take a look at our [business tier](https://www.firezone.dev/pricing).
@@ -48,8 +48,7 @@ Using Firezone for your team? Take a look at our [business tier](https://www.fir
 
 * **Fast:** Uses WireGuard® to be [3-4 times](https://wireguard.com/performance/) faster than OpenVPN.
 * **SSO Integration:** Authenticate using any identity provider with an OpenID Connect (OIDC) connector.
-* **No dependencies:** All dependencies are bundled thanks to
-[Chef Omnibus](https://github.com/chef/omnibus).
+* **Containerized:** All dependencies are bundled via Docker.
 * **Simple:** Takes minutes to set up. Manage via a simple CLI.
 * **Secure:** Runs unprivileged. HTTPS enforced. Encrypted cookies.
 * **Firewall included:** Uses Linux [nftables](https://netfilter.org) to block unwanted egress traffic.
