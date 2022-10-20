@@ -217,7 +217,7 @@ doBoot () {
   $dc -f $installDir/docker-compose.yml up -d
 }
 
-printS$installDir/uccess () {
+printSuccess () {
   echo "Done! Would you like to stop Omnibus Firezone and start Docker Firezone now?"
   read -p "Proceed? (y/N): " boot
 
@@ -238,7 +238,8 @@ You may also want to disable the systemd unit:
   sudo systemctl disable firezone-runsvdir-start.service
 
 EOF
-    exit;;
+    exit
+    ;;
   esac
 }
 
