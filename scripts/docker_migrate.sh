@@ -174,7 +174,9 @@ dumpLoadDb () {
 }
 
 doBoot () {
-  firezone-ctl stop
+  firezone-ctl stop phoenix
+  firezone-ctl stop wireguard
+  firezone-ctl stop nginx
   firezone-ctl teardown-network
   $dc up -d
 }
