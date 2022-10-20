@@ -1,37 +1,61 @@
 #!/bin/bash
 set -eE
 
-trap 'handler' ERR
+trap "handler" ERR
 
 handler () {
+  if [ $existingEnv -eq 1 ]; then
+    echo
+    echo "Restoring old .env file..."
+    mv .env.bak .env
+  else
+    rm .env
+  fi
   echo
-  echo 'An error occurred running this migration. Your existing Firezone installation has not been affected.'
-  rm .env
+  echo "An error occurred running this migration. Your existing Firezone installation has not been affected."
+  echo
   exit 1
 }
 
 curlCheck () {
   if ! type curl > /dev/null; then
-    echo 'curl not found. Please install curl to use this script.'
+    echo "curl not found. Please install curl to use this script."
     exit 1
   fi
 }
 
 dockerCheck () {
   if ! command -v docker > /dev/null; then
-    echo 'docker not found. Please install docker and try again.'
+    echo "docker not found. Please install docker and try again."
+    exit 1
+  fi
+
+  if command -v docker-compose &> /dev/null; then
+    dc='docker-compose'
+  else
+    dc='docker compose'
+  fi
+
+  $dc version | grep 'v2' 2&>1 > /dev/null
+  if [ $? -ne 0 ]; then
+    echo "Error: Automatic migration is only supported with Docker Compose version 2 or higher."
     exit 1
   fi
 }
 
 prompt () {
-  echo 'This script will copy Omnibus-based Firezone configuration to Docker-based Firezone configuration.'
-  echo 'It operates non-destructively and leaves your current Firezone services running.'
-  read -p 'Proceed? (Y/n): ' migrate
+  echo "This script will copy Omnibus-based Firezone configuration to Docker-based Firezone configuration."
+  echo "It operates non-destructively and leaves your current Firezone services running."
+  read -p "Proceed? (Y/n): " migrate
 
   case $proceed in
-    n|N) echo 'Aborted' ;;
-    *) migrate
+    n|N)
+      echo "Aborted"
+      exit
+      ;;
+    *)
+      migrate
+      ;;
   esac
 }
 
@@ -43,42 +67,51 @@ condIns () {
     val=$(cat $dir/$file)
     val=$(echo $val | sed 's/"/\\"/g')
     if [ $file = "EXTERNAL_URL" ]; then
-      val=$(echo $val | sed 's:/*$::')
+      val=$(echo $val | sed "s:/*$::")
     fi
     echo "$file=\"$val\"" >> .env
   fi
 }
 
-migrate () {
-  env_files=/opt/firezone/service/phoenix/env
-  cwd=`pwd`
-  read -p "Enter the desired installation directory ($cwd): " installDir
+promptInstallDir() {
+  defaultInstallDir="${HOME}/.firezone"
+  read -p "Enter the desired installation directory ($defaultInstallDir): " installDir
   if [ -z "$installDir" ]; then
-    installDir=$cwd
+    installDir=$defaultInstallDir
   fi
+  if ! test -d $installDir; then
+    mkdir $installDir
+  fi
+}
+
+migrate () {
+  promptInstallDir
+  env_files=/opt/firezone/service/phoenix/env
+
   cd $installDir
   if ! test -f docker-compose.yml; then
     curl -fsSL https://raw.githubusercontent.com/firezone/firezone/master/docker-compose.prod.yml -o docker-compose.yml
   fi
 
-  # setup data dir
-  mkdir -p /data/firezone/firezone
-
   # copy tid
-  cp $env_files/TELEMETRY_ID /data/firezone/firezone/.tid
+  cp $env_files/TELEMETRY_ID $installDir/firezone/.tid
 
   # copy private key
-  cp /var/opt/firezone/cache/wg_private_key /data/firezone/firezone/private_key
-  chown root:root /data/firezone/firezone/private_key
-  chmod 0600 /data/firezone/firezone/private_key
+  cp /var/opt/firezone/cache/wg_private_key $installDir/firezone/private_key
+  chown root:root $installDir/firezone/private_key
+  chmod 0600 $installDir/firezone/private_key
 
   # generate .env
   if test -f ".env"; then
-    echo 'Existing .env detected! Remove and try again.'
-    exit 1
+    echo
+    echo "Existing .env detected! Moving to .env.bak and continuing..."
+    echo
+    existingEnv=1
+    mv .env .env.bak
   fi
 
   # BEGIN env vars that matter
+  echo "FZ_INSTALL_DIR=${installDir}" >> .env
   condIns $env_files "EXTERNAL_URL"
   condIns $env_files "ADMIN_EMAIL"
   condIns $env_files "GUARDIAN_SECRET_KEY"
@@ -124,7 +157,6 @@ migrate () {
   condIns $env_files "CONNECTIVITY_CHECKS_ENABLED"
   condIns $env_files "CONNECTIVITY_CHECKS_INTERVAL"
 
-
   # optional vars
   if test -f $env_files/DATABASE_PASSWORD; then
     db_pass=$(cat $env_files/DATABASE_PASSWORD)
@@ -139,20 +171,14 @@ migrate () {
 }
 
 doDumpLoad () {
-  if command -v docker-compose &> /dev/null; then
-    dc='docker-compose'
-  else
-    dc='docker compose'
-  fi
-
-  echo 'Dumping existing database to ./firezone.sql'
+  echo "Dumping existing database to ./firezone.sql"
   db_host=$(cat /opt/firezone/service/phoenix/env/DATABASE_HOST)
   db_port=$(cat /opt/firezone/service/phoenix/env/DATABASE_PORT)
   db_name=$(cat /opt/firezone/service/phoenix/env/DATABASE_NAME)
   db_user=$(cat /opt/firezone/service/phoenix/env/DATABASE_USER)
   /opt/firezone/embedded/bin/pg_dump -h $db_host -p $db_port -d $db_name -U $db_user > firezone.sql
 
-  echo 'Loading existing database into docker...'
+  echo "Loading existing database into docker..."
   DATABASE_PASSWORD=$db_pass $dc up -d postgres
   sleep 5
   $dc exec postgres psql -U postgres -h 127.0.0.1 -c "ALTER ROLE postgres WITH PASSWORD '${db_pass}'"
@@ -163,29 +189,57 @@ doDumpLoad () {
 }
 
 dumpLoadDb () {
-  echo 'Would you like Firezone to attempt to migrate your existing database to Dockerized Postgres too?'
-  echo 'We only recommend this for Firezone installations using the default bundled Postgres.'
-  read -p 'Proceed? (Y/n): ' dumpLoad
+  echo "Would you like Firezone to attempt to migrate your existing database to Dockerized Postgres too?"
+  echo "We only recommend this for Firezone installations using the default bundled Postgres."
+  read -p "Proceed? (Y/n): " dumpLoad
 
   case $dumpLoad in
-    n|N) echo 'Aborted' ;;
-    *) doDumpLoad
+    n|N)
+      echo "Aborted"
+      exit
+      ;;
+    *)
+      doDumpLoad
+      ;;
   esac
 }
 
 doBoot () {
+  echo "Stopping Omnibus Firezone..."
   firezone-ctl stop
+
+  echo "Tearing down network..."
   firezone-ctl teardown-network
+
+  echo "Disabling systemd unit..."
+  systemctl disable firezone-runsvdir-start.service
+
+  echo "Bringing Docker services up..."
   $dc up -d
 }
 
 printSuccess () {
-  echo 'Done! Would you like to stop Omnibus Firezone and start Docker Firezone now?'
-  read -p 'Proceed? (y/N): ' boot
+  echo "Done! Would you like to stop Omnibus Firezone and start Docker Firezone now?"
+  read -p "Proceed? (y/N): " boot
 
   case $boot in
-    y|Y) doBoot ;;
-    *) echo "Aborted. Run 'firezone-ctl stop && firezone-ctl teardown-network && docker-compose up -d' to stop Omnibus Firezone and start Docker Firezone when you're ready."
+    y|Y)
+      doBoot
+      ;;
+    *)
+cat << EOF
+Aborted. Run the following to stop Omnibus Firezone and start Docker Firezone when you're ready.
+
+  sudo firezone-ctl stop
+  sudo firezone-ctl teardown-network
+  docker-compose up -d
+
+You may also want to disable the systemd unit:
+
+  sudo systemctl disable firezone-runsvdir-start.service
+
+EOF
+    exit;;
   esac
 }
 

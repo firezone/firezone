@@ -1,5 +1,11 @@
-# Example compose deployment
-
+# Example compose file for production deployment.
+#
+# Note: This file is meant to serve as a template. Please modify it
+# according to your needs. Read more about Docker Compose:
+#
+# https://docs.docker.com/compose/compose-file/
+#
+#
 x-deploy: &default-deploy
   restart_policy:
     condition: on-failure
@@ -15,7 +21,7 @@ services:
   caddy:
     image: caddy:2
     volumes:
-      - ./caddy:/data/caddy
+      - ${FZ_INSTALL_DIR:-"."}/caddy:/data/caddy
     ports:
       - 80:80
       - 443:443
@@ -35,7 +41,7 @@ services:
       # IMPORTANT: Persists WireGuard private key and other data. If
       # /var/firezone/private_key exists when Firezone starts, it is
       # used as the WireGuard private. Otherwise, one is generated.
-      - ./firezone:/var/firezone
+      - ${FZ_INSTALL_DIR:-"."}/firezone:/var/firezone
     cap_add:
       # Needed for WireGuard and firewall support.
       - NET_ADMIN
@@ -53,7 +59,7 @@ services:
   postgres:
     image: postgres:15
     volumes:
-      - ./postgres:/var/lib/postgresql/data
+      - ${FZ_INSTALL_DIR:-"."}/postgres:/var/lib/postgresql/data
     environment:
       POSTGRES_DB: ${DATABASE_NAME:-firezone}
       POSTGRES_USER: ${DATABASE_USER:-postgres}
