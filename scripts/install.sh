@@ -97,6 +97,7 @@ promptACME() {
       export CADDY_OPTS="--internal-certs"
       ;;
     *)
+      export CADDY_OPTS=""
       ;;
   esac
 }
