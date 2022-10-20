@@ -14,7 +14,7 @@ dockerCheck () {
   fi
 
 
-  $dc version | grep "v2" 2&>1 > /dev/null
+  $dc version | grep -q "v2"
   if [ $? -ne 0 ]; then
     echo "Error: Automatic installation is only supported with Docker Compose version 2 or higher."
     echo "Please upgrade Docker Compose or use the manual installation method: https://docs.firezone.dev/deploy/docker"
@@ -49,7 +49,6 @@ capture () {
 }
 
 promptInstallDir() {
-  defaultInstallDir="${HOME}/.firezone"
   read -p "$1" installDir
   if [ -z "$installDir" ]; then
     installDir=$defaultInstallDir
@@ -103,17 +102,20 @@ promptACME() {
 }
 
 firezoneSetup() {
-  installDir=${installDir/\~/$HOME}
-  cd $installDir
+  export FZ_INSTALL_DIR=$installDir
+
   if ! test -f docker-compose.yml; then
     curl -fsSL https://raw.githubusercontent.com/firezone/firezone/master/docker-compose.prod.yml -o docker-compose.yml
   fi
   db_pass=$(od -vN "8" -An -tx1 /dev/urandom | tr -d " \n" ; echo)
-  docker run --rm firezone/firezone bin/gen-env > .env
-  echo "FZ_INSTALL_DIR=$installDir"
-  sed -i.bak "s/ADMIN_EMAIL=.*/ADMIN_EMAIL=$1/" .env
-  sed -i.bak "s~EXTERNAL_URL=.*~EXTERNAL_URL=$2~" .env
-  sed -i.bak "s/DATABASE_PASSWORD=.*/DATABASE_PASSWORD=$db_pass/" .env
+  docker run --rm firezone/firezone bin/gen-env > "$installDir/.env"
+  sed -i.bak "s/ADMIN_EMAIL=.*/ADMIN_EMAIL=$1/" "$installDir/.env"
+  sed -i.bak "s~EXTERNAL_URL=.*~EXTERNAL_URL=$2~" "$installDir/.env"
+  sed -i.bak "s/DATABASE_PASSWORD=.*/DATABASE_PASSWORD=$db_pass/" "$installDir/.env"
+
+  echo "UID=$(id -u)" >> $installDir/.env
+  echo "GID=$(id -g)" >> $installDir/.env
+
   # Set DATABASE_PASSWORD explicitly here in case the user has this var set in their shell
   DATABASE_PASSWORD=$db_pass $dc up -d postgres
   echo "Waiting for DB to boot..."
@@ -134,12 +136,10 @@ Installation complete!
 You should now be able to log into the Web UI at $externalUrl with the
 following credentials:
 
-`grep ADMIN_EMAIL .env`
-`grep DEFAULT_ADMIN_PASSWORD .env`
+`grep ADMIN_EMAIL $installDir/.env`
+`grep DEFAULT_ADMIN_PASSWORD $installDir/.env`
 
 EOF
-
-  cd -
 }
 
 displayLogo() {
@@ -177,6 +177,7 @@ main() {
   defaultExternalUrl="https://$(hostname)"
   adminUser=""
   externalUrl=""
+  defaultInstallDir="$HOME/.firezone"
   promptEmail "Enter the administrator email you'd like to use for logging into this Firezone instance: "
   promptInstallDir "Enter the desired installation directory ($defaultInstallDir): "
   promptExternalUrl "Enter the external URL that will be used to access this instance. ($defaultExternalUrl): "
