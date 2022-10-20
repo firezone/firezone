@@ -7,9 +7,9 @@ handler () {
   if [ $existingEnv -eq 1 ]; then
     echo
     echo "Restoring old .env file..."
-    mv .env.bak .env
+    mv $installDir/.env.bak $installDir/.env
   else
-    rm .env
+    rm $installDir/.env
   fi
   echo
   echo "An error occurred running this migration. Your existing Firezone installation has not been affected."
@@ -69,7 +69,7 @@ condIns () {
     if [ $file = "EXTERNAL_URL" ]; then
       val=$(echo $val | sed "s:/*$::")
     fi
-    echo "$file=\"$val\"" >> .env
+    echo "$file=\"$val\"" >> $installDir/.env
   fi
 }
 
@@ -85,12 +85,12 @@ promptInstallDir() {
 }
 
 migrate () {
+  export FZ_INSTALL_DIR=$installDir
   promptInstallDir
   env_files=/opt/firezone/service/phoenix/env
 
-  cd $installDir
-  if ! test -f docker-compose.yml; then
-    curl -fsSL https://raw.githubusercontent.com/firezone/firezone/master/docker-compose.prod.yml -o docker-compose.yml
+  if ! test -f $installDir/docker-compose.yml; then
+    curl -fsSL https://raw.githubusercontent.com/firezone/firezone/master/docker-compose.prod.yml -o $installDir/docker-compose.yml
   fi
 
   # copy tid
@@ -102,16 +102,15 @@ migrate () {
   chmod 0600 $installDir/firezone/private_key
 
   # generate .env
-  if test -f ".env"; then
+  if test -f "$installDir/.env"; then
     echo
     echo "Existing .env detected! Moving to .env.bak and continuing..."
     echo
     existingEnv=1
-    mv .env .env.bak
+    mv $installDir/.env $installDir/.env.bak
   fi
 
   # BEGIN env vars that matter
-  echo "FZ_INSTALL_DIR=${installDir}" >> .env
   condIns $env_files "EXTERNAL_URL"
   condIns $env_files "ADMIN_EMAIL"
   condIns $env_files "GUARDIAN_SECRET_KEY"
@@ -122,8 +121,8 @@ migrate () {
   condIns $env_files "COOKIE_ENCRYPTION_SALT"
   condIns $env_files "DATABASE_NAME"
   # These shouldn't change
-  echo "DATABASE_HOST=postgres" >> .env
-  echo "DATABASE_PORT=5432" >> .env
+  echo "DATABASE_HOST=postgres" >> $installDir/.env
+  echo "DATABASE_PORT=5432" >> $installDir/.env
   condIns $env_files "DATABASE_POOL"
   condIns $env_files "DATABASE_SSL"
   condIns $env_files "DATABASE_SSL_OPTS"
@@ -163,9 +162,9 @@ migrate () {
   else
     db_pass=$(/opt/firezone/embedded/bin/openssl rand -base64 12)
   fi
-  echo "DATABASE_PASSWORD=\"${db_pass}\"" >> .env
+  echo "DATABASE_PASSWORD=\"${db_pass}\"" >> $installDir/.env
   if test -f $env_files/DEFAULT_ADMIN_PASSWORD; then
-    echo "DEFAULT_ADMIN_PASSWORD=\"$(cat $env_files/DEFAULT_ADMIN_PASSWORD)\"" >> .env
+    echo "DEFAULT_ADMIN_PASSWORD=\"$(cat $env_files/DEFAULT_ADMIN_PASSWORD)\"" >> $installDir/.env
   fi
   # END env vars that matter
 }
@@ -176,16 +175,16 @@ doDumpLoad () {
   db_port=$(cat /opt/firezone/service/phoenix/env/DATABASE_PORT)
   db_name=$(cat /opt/firezone/service/phoenix/env/DATABASE_NAME)
   db_user=$(cat /opt/firezone/service/phoenix/env/DATABASE_USER)
-  /opt/firezone/embedded/bin/pg_dump -h $db_host -p $db_port -d $db_name -U $db_user > firezone.sql
+  /opt/firezone/embedded/bin/pg_dump -h $db_host -p $db_port -d $db_name -U $db_user > $installDir/firezone_omnibus_backup.sql
 
   echo "Loading existing database into docker..."
-  DATABASE_PASSWORD=$db_pass $dc up -d postgres
+  DATABASE_PASSWORD=$db_pass $dc -f $installDir/docker-compose.yml up -d postgres
   sleep 5
-  $dc exec postgres psql -U postgres -h 127.0.0.1 -c "ALTER ROLE postgres WITH PASSWORD '${db_pass}'"
-  $dc exec postgres dropdb -U postgres -h 127.0.0.1 --if-exists $db_name
-  $dc exec postgres createdb -U postgres -h 127.0.0.1 $db_name
-  $dc exec -T postgres psql -U postgres -h 127.0.0.1 -d $db_name < firezone.sql
-  rm firezone.sql
+  $dc -f $installDir/docker-compose.yml exec postgres psql -U postgres -h 127.0.0.1 -c "ALTER ROLE postgres WITH PASSWORD '${db_pass}'"
+  $dc -f $installDir/docker-compose.yml exec postgres dropdb -U postgres -h 127.0.0.1 --if-exists $db_name
+  $dc -f $installDir/docker-compose.yml exec postgres createdb -U postgres -h 127.0.0.1 $db_name
+  $dc -f $installDir/docker-compose.yml exec -T postgres psql -U postgres -h 127.0.0.1 -d $db_name < $installDir/firezone_omnibus_backup.sql
+  rm $installDir/firezone_omnibus_backup.sql
 }
 
 dumpLoadDb () {
@@ -215,10 +214,10 @@ doBoot () {
   systemctl disable firezone-runsvdir-start.service
 
   echo "Bringing Docker services up..."
-  $dc up -d
+  $dc -f $installDir/docker-compose.yml up -d
 }
 
-printSuccess () {
+printS$installDir/uccess () {
   echo "Done! Would you like to stop Omnibus Firezone and start Docker Firezone now?"
   read -p "Proceed? (y/N): " boot
 
