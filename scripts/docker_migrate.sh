@@ -98,7 +98,7 @@ migrate () {
 
   # copy private key
   cp /var/opt/firezone/cache/wg_private_key $installDir/firezone/private_key
-  chown root:root $installDir/firezone/private_key
+  chown $(id -u):$(id -g) $installDir/firezone/private_key
   chmod 0600 $installDir/firezone/private_key
 
   # generate .env
