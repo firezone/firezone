@@ -87,6 +87,7 @@ migrate () {
   fi
 
   # copy tid
+  mkdir -p $installDir/firezone/
   cp $env_files/TELEMETRY_ID $installDir/firezone/.tid
 
   # copy private key
@@ -162,7 +163,7 @@ migrate () {
 }
 
 doDumpLoad () {
-  echo "Dumping existing database to ./firezone.sql"
+  echo "Dumping existing database to $installDir/firezone_omnibus_backup.sql"
   db_host=$(cat /opt/firezone/service/phoenix/env/DATABASE_HOST)
   db_port=$(cat /opt/firezone/service/phoenix/env/DATABASE_PORT)
   db_name=$(cat /opt/firezone/service/phoenix/env/DATABASE_NAME)
