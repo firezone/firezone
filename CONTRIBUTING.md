@@ -232,7 +232,12 @@ be manually triggered by a reviewer.
 
 ### Use Detailed Commit Messages
 
-This will help tremendously during our release engineering process. E.g.
+This will help tremendously during our release engineering process.
+
+Please use the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/#specification)
+standard to write your commit message.
+
+E.g.
 
 ```bash
 read -r -d '' COMMIT_MSG << EOM
