@@ -40,7 +40,7 @@ Or, if you're on a [supported platform](https://docs.firezone.dev/deploy/docker/
 bash <(curl -fsSL https://github.com/firezone/firezone/raw/master/scripts/install.sh)
 ```
 
-Using Firezone for your team? Take a look at our [business tier](https://www.firezone.dev/pricing).
+Using Firezone in production at your organization? Take a look at our [Enterprise Plan](https://www.firezone.dev/pricing).
 
 ## Features
 
