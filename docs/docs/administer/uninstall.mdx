@@ -12,8 +12,16 @@ This will irreversibly destroy ALL Firezone data and can't be undone.
 <Tabs>
 <TabItem label="Docker" value="docker" default>
 
-For docker-based deployments, simply delete the working directory where
-you installed the Firezone docker files (`$HOME/.firezone` by default).
+For docker-based deployments, simply stop the firezone services, then
+delete the working directory where you installed the Firezone docker
+files (`$HOME/.firezone` by default):
+
+```bash
+# default install dir
+installDir=$HOME/.firezone
+docker compose -f $installDir/docker-compose.yml down -v
+rm -rf $installDir
+```
 
 </TabItem>
 <TabItem label="Omnibus" value="omnibus">
