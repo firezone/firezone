@@ -52,6 +52,18 @@ prompt () {
   esac
 }
 
+promptACME() {
+  read -p "Would you like to enable automatic SSL cert provisioning? Requires a valid DNS record and port 80 to be reachable. (Y/n): " acme
+  case $acme in
+    n|N)
+      caddyOpts="--internal-certs"
+      ;;
+    *)
+      caddyOpts=""
+      ;;
+  esac
+}
+
 condIns () {
   dir=$1
   file=$2
@@ -80,6 +92,10 @@ promptInstallDir() {
 migrate () {
   export FZ_INSTALL_DIR=$installDir
   promptInstallDir
+
+  caddyOpts=""
+  promptACME
+
   env_files=/opt/firezone/service/phoenix/env
 
   if ! test -f $installDir/docker-compose.yml; then
@@ -149,6 +165,9 @@ migrate () {
   condIns $env_files "CONNECTIVITY_CHECKS_ENABLED"
   condIns $env_files "CONNECTIVITY_CHECKS_INTERVAL"
 
+  # Add caddy opts
+  echo "CADDY_OPTS=$caddyOpts" >> $installDir/.env
+
   # optional vars
   if test -f $env_files/DATABASE_PASSWORD; then
     db_pass=$(cat $env_files/DATABASE_PASSWORD)
@@ -168,27 +187,21 @@ doDumpLoad () {
   db_port=$(cat /opt/firezone/service/phoenix/env/DATABASE_PORT)
   db_name=$(cat /opt/firezone/service/phoenix/env/DATABASE_NAME)
   db_user=$(cat /opt/firezone/service/phoenix/env/DATABASE_USER)
+
   /opt/firezone/embedded/bin/pg_dump -h $db_host -p $db_port -d $db_name -U $db_user > $installDir/firezone_omnibus_backup.sql
 
   echo "Loading existing database into docker..."
-  DATABASE_PASSWORD=$db_pass $dc -f $installDir/docker-compose.yml up -d postgres
-  sleep 5
-  $dc -f $installDir/docker-compose.yml exec postgres psql -U postgres -h 127.0.0.1 -c "ALTER ROLE postgres WITH PASSWORD '${db_pass}'"
-  $dc -f $installDir/docker-compose.yml exec postgres dropdb -U postgres -h 127.0.0.1 --if-exists $db_name
-  $dc -f $installDir/docker-compose.yml exec postgres createdb -U postgres -h 127.0.0.1 $db_name
   $dc -f $installDir/docker-compose.yml exec -T postgres psql -U postgres -h 127.0.0.1 -d $db_name < $installDir/firezone_omnibus_backup.sql
   rm $installDir/firezone_omnibus_backup.sql
 }
 
 dumpLoadDb () {
-  echo "Would you like Firezone to attempt to migrate your existing database to Dockerized Postgres too?"
+  echo "Would you like Firezone to attempt to migrate your existing database data to Dockerized Postgres too?"
   echo "We only recommend this for Firezone installations using the default bundled Postgres."
   read -p "Proceed? (Y/n): " dumpLoad
 
   case $dumpLoad in
     n|N)
-      echo "Aborted"
-      exit
       ;;
     *)
       doDumpLoad
@@ -236,8 +249,19 @@ EOF
   esac
 }
 
+bootstrapDb () {
+  echo "Bootstrapping DB..."
+  db_name=$(cat /opt/firezone/service/phoenix/env/DATABASE_NAME)
+  DATABASE_PASSWORD=$db_pass $dc -f $installDir/docker-compose.yml up -d postgres
+  sleep 5
+  $dc -f $installDir/docker-compose.yml exec postgres psql -U postgres -h 127.0.0.1 -c "ALTER ROLE postgres WITH PASSWORD '${db_pass}'"
+  $dc -f $installDir/docker-compose.yml exec postgres dropdb -U postgres -h 127.0.0.1 --if-exists $db_name
+  $dc -f $installDir/docker-compose.yml exec postgres createdb -U postgres -h 127.0.0.1 $db_name
+}
+
 curlCheck
 dockerCheck
 prompt
+bootstrapDb
 dumpLoadDb
 printSuccess
