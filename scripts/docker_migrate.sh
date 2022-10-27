@@ -204,10 +204,10 @@ dumpLoadDb () {
 
 doBoot () {
   echo "Stopping Omnibus Firezone..."
-  firezone-ctl stop
+  sudo firezone-ctl stop
 
   echo "Tearing down network..."
-  firezone-ctl teardown-network
+  sudo firezone-ctl teardown-network
 
   echo "Disabling systemd unit..."
   systemctl disable firezone-runsvdir-start.service
