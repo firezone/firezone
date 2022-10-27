@@ -73,7 +73,7 @@ const config = {
         docs: {
           routeBasePath: '/',
           sidebarPath: require.resolve('./sidebars.js'),
-          editUrl: 'https://github.com/firezone/firezone/tree/master',
+          editUrl: 'https://github.com/firezone/firezone/tree/master/docs',
           docLayoutComponent: "@theme/DocPage",
           docItemComponent: "@theme/ApiItem",
         },

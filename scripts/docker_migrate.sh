@@ -62,7 +62,7 @@ condIns () {
   file=$2
 
   if [ -s "$dir/$file" ]; then
-    val=$(cat $dir/$file)
+    val=$(sudo cat $dir/$file)
     val=$(echo $val | sed 's/"/\\"/g')
     if [ $file = "EXTERNAL_URL" ]; then
       val=$(echo $val | sed "s:/*$::")
@@ -163,23 +163,23 @@ migrate () {
 
   # optional vars
   if test -f $env_files/DATABASE_PASSWORD; then
-    db_pass=$(cat $env_files/DATABASE_PASSWORD)
+    db_pass=$(sudo cat $env_files/DATABASE_PASSWORD)
   else
     db_pass=$(/opt/firezone/embedded/bin/openssl rand -base64 12)
   fi
   echo "DATABASE_PASSWORD=\"${db_pass}\"" >> $installDir/.env
   if test -f $env_files/DEFAULT_ADMIN_PASSWORD; then
-    echo "DEFAULT_ADMIN_PASSWORD=\"$(cat $env_files/DEFAULT_ADMIN_PASSWORD)\"" >> $installDir/.env
+    echo "DEFAULT_ADMIN_PASSWORD=\"$(sudo cat $env_files/DEFAULT_ADMIN_PASSWORD)\"" >> $installDir/.env
   fi
   # END env vars that matter
 }
 
 doDumpLoad () {
   echo "Dumping existing database to $installDir/firezone_omnibus_backup.sql"
-  db_host=$(cat /opt/firezone/service/phoenix/env/DATABASE_HOST)
-  db_port=$(cat /opt/firezone/service/phoenix/env/DATABASE_PORT)
-  db_name=$(cat /opt/firezone/service/phoenix/env/DATABASE_NAME)
-  db_user=$(cat /opt/firezone/service/phoenix/env/DATABASE_USER)
+  db_host=$(sudo cat /opt/firezone/service/phoenix/env/DATABASE_HOST)
+  db_port=$(sudo cat /opt/firezone/service/phoenix/env/DATABASE_PORT)
+  db_name=$(sudo cat /opt/firezone/service/phoenix/env/DATABASE_NAME)
+  db_user=$(sudo cat /opt/firezone/service/phoenix/env/DATABASE_USER)
 
   /opt/firezone/embedded/bin/pg_dump -h $db_host -p $db_port -d $db_name -U $db_user > $installDir/firezone_omnibus_backup.sql
 
@@ -204,10 +204,10 @@ dumpLoadDb () {
 
 doBoot () {
   echo "Stopping Omnibus Firezone..."
-  firezone-ctl stop
+  sudo firezone-ctl stop
 
   echo "Tearing down network..."
-  firezone-ctl teardown-network
+  sudo firezone-ctl teardown-network
 
   echo "Disabling systemd unit..."
   systemctl disable firezone-runsvdir-start.service
@@ -244,7 +244,7 @@ EOF
 
 bootstrapDb () {
   echo "Bootstrapping DB..."
-  db_name=$(cat /opt/firezone/service/phoenix/env/DATABASE_NAME)
+  db_name=$(sudo cat /opt/firezone/service/phoenix/env/DATABASE_NAME)
   DATABASE_PASSWORD=$db_pass $dc -f $installDir/docker-compose.yml up -d postgres
   sleep 5
   $dc -f $installDir/docker-compose.yml exec postgres psql -U postgres -h 127.0.0.1 -c "ALTER ROLE postgres WITH PASSWORD '${db_pass}'"
