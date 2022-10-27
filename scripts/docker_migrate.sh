@@ -1,14 +1,5 @@
 #!/bin/bash
-set -eE
-
-trap "handler" ERR
-
-handler () {
-  echo
-  echo "An error occurred running this migration. Your existing Firezone installation has not been affected."
-  echo
-  exit 1
-}
+set -e
 
 curlCheck () {
   if ! type curl > /dev/null; then
@@ -29,11 +20,13 @@ dockerCheck () {
     dc='docker compose'
   fi
 
+  set +e
   $dc version | grep -q "v2"
   if [ $? -ne 0 ]; then
     echo "Error: Automatic migration is only supported with Docker Compose version 2 or higher."
     exit 1
   fi
+  set -e
 }
 
 prompt () {
