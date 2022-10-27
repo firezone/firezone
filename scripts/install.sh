@@ -95,10 +95,10 @@ promptACME() {
   read -p "Would you like to enable automatic SSL cert provisioning? Requires a valid DNS record and port 80 to be reachable. (Y/n): " acme
   case $acme in
     n|N)
-      export CADDY_OPTS="--internal-certs"
+      caddyOpts="--internal-certs"
       ;;
     *)
-      export CADDY_OPTS=""
+      caddyOpts=""
       ;;
   esac
 }
@@ -114,9 +114,11 @@ firezoneSetup() {
   sed -i.bak "s/ADMIN_EMAIL=.*/ADMIN_EMAIL=$1/" "$installDir/.env"
   sed -i.bak "s~EXTERNAL_URL=.*~EXTERNAL_URL=$2~" "$installDir/.env"
   sed -i.bak "s/DATABASE_PASSWORD=.*/DATABASE_PASSWORD=$db_pass/" "$installDir/.env"
+  echo "CADDY_OPTS=$3" >> "$installDir/.env"
 
-  echo "UID=$(id -u)" >> $installDir/.env
-  echo "GID=$(id -g)" >> $installDir/.env
+  # XXX: This causes perms issues on macOS with postgres
+  # echo "UID=$(id -u)" >> $installDir/.env
+  # echo "GID=$(id -g)" >> $installDir/.env
 
   # Set DATABASE_PASSWORD explicitly here in case the user has this var set in their shell
   DATABASE_PASSWORD=$db_pass $dc -f $installDir/docker-compose.yml up -d postgres
@@ -180,13 +182,14 @@ main() {
   adminUser=""
   externalUrl=""
   defaultInstallDir="$HOME/.firezone"
+  caddyOpts=""
   promptEmail "Enter the administrator email you'd like to use for logging into this Firezone instance: "
   promptInstallDir "Enter the desired installation directory ($defaultInstallDir): "
   promptExternalUrl "Enter the external URL that will be used to access this instance. ($defaultExternalUrl): "
   promptACME
   promptContact
   read -p "Press <ENTER> to install or Ctrl-C to abort."
-  firezoneSetup $adminUser $externalUrl
+  firezoneSetup $adminUser $externalUrl $caddyOpts
 }
 
 dockerCheck

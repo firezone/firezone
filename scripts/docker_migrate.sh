@@ -52,6 +52,18 @@ prompt () {
   esac
 }
 
+promptACME() {
+  read -p "Would you like to enable automatic SSL cert provisioning? Requires a valid DNS record and port 80 to be reachable. (Y/n): " acme
+  case $acme in
+    n|N)
+      caddyOpts="--internal-certs"
+      ;;
+    *)
+      caddyOpts=""
+      ;;
+  esac
+}
+
 condIns () {
   dir=$1
   file=$2
@@ -80,6 +92,10 @@ promptInstallDir() {
 migrate () {
   export FZ_INSTALL_DIR=$installDir
   promptInstallDir
+
+  caddyOpts=""
+  promptACME
+
   env_files=/opt/firezone/service/phoenix/env
 
   if ! test -f $installDir/docker-compose.yml; then
@@ -148,6 +164,9 @@ migrate () {
   condIns $env_files "MAX_DEVICES_PER_USER"
   condIns $env_files "CONNECTIVITY_CHECKS_ENABLED"
   condIns $env_files "CONNECTIVITY_CHECKS_INTERVAL"
+
+  # Add caddy opts
+  echo "CADDY_OPTS=$caddyOpts" >> $installDir/.env
 
   # optional vars
   if test -f $env_files/DATABASE_PASSWORD; then
