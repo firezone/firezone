@@ -26,7 +26,7 @@ Note `PersistentKeepalive` can also be set in on the
 
 Device A
 
-- `AllowedIPs = 10.3.2.2/32`: This is the IP or range of IPs of Device B
+- `AllowedIPs = 10.3.2.3/32`: This is the IP or range of IPs of Device B
 - `PersistentKeepalive = 25` If the device is behind a NAT, this ensures the
   device is able to keep the tunnel alive and continue to receive packets from
   the WireGuard interface. Usually a value of `25` is sufficient, but you may
@@ -34,7 +34,7 @@ Device A
 
 Device B
 
-- `AllowedIPs = 10.3.2.3/32`: This is the IP or range of IPs of Device A
+- `AllowedIPs = 10.3.2.2/32`: This is the IP or range of IPs of Device A
 - `PersistentKeepalive = 25`
 
 ## Admin Case - One to Many Nodes
