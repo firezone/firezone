@@ -1,0 +1,87 @@
+---
+title: Build From Source
+sidebar_position: 1
+---
+
+Building from source allows you to bring Firezone to unsupported platforms.
+
+:::warning
+You're entering unsupported territory. This is not for the faint of heart and
+will require being able to figure out snags you may hit on your own.
+
+If you're very comfortable with your environment of choice, then read on to
+learn how to build Firezone from source.
+:::
+
+:::info
+You will need to setup your own service management for Firezone (eg. `runit`,
+`systemd`, shell scripts). You will also need to install and configure your
+own database (eg. `postgres`) and reverse proxy (eg. `caddy`, `nginx`).
+
+Info about database configuration is [here](../external-database/#configure-firezone-to-connect),
+and info about configuring a reverse proxy is [here](../reverse-proxy/#proxy-requirements).
+:::
+
+# Prerequisites
+
+:::info
+Check the `.tool-versions` file [here](https://github.com/firezone/firezone/blob/master/.tool-versions)
+for the versions we use for Erlang, Elixir, and Node. If your system supports it,
+you can install these using [asdf-vm](https://asdf-vm.com/guide/getting-started.html)
+using a similar `.tool-versions` of your own to match versions. Your system's package
+manager may have them as well.
+:::
+
+**These must be available in the user's path that runs Firezone.**
+
+- [Erlang/OTP](https://www.erlang.org)
+- [Elixir](https://elixir-lang.org)
+- [NodeJS](https://nodejs.org)
+
+# Steps
+
+From your terminal, run these steps to build from the checked out source:
+
+```bash
+git clone https://github.com/firezone/firezone
+cd firezone
+mix local.rebar --force
+mix local.hex --force
+mix deps.get
+mix release
+```
+
+After the release build finishes, you should have a shiny new Firezone instance at
+`<CURRENT_DIR>/_build/dev/rel/firezone`. In the `bin` folder, the `firezone` binary
+can be used to start up Firezone. If you run it without any arguments you should see
+a list of available commands like this:
+
+```bash
+Usage: firezone COMMAND [ARGS]
+
+The known commands are:
+
+    start          Starts the system
+    start_iex      Starts the system with IEx attached
+    daemon         Starts the system as a daemon
+    daemon_iex     Starts the system as a daemon with IEx attached
+    eval "EXPR"    Executes the given expression on a new, non-booted system
+    rpc "EXPR"     Executes the given expression remotely on the running system
+    remote         Connects to the running system via a remote shell
+    restart        Restarts the running system via a remote command
+    stop           Stops the running system via a remote command
+    pid            Prints the operating system PID of the running system via a remote command
+    version        Prints the release name and version to be booted
+```
+
+Now all you need are the database and reverse proxy that you've hopefully setup.
+Once that's done, you can use `firezone start` to start Firezone and run
+`create-or-reset-admin` (in the same `bin` dir) to create the admin user and use
+it to log into Firezone from a web browser to start setting up your brand new
+custom instance that you built by hand with a little bit of elbow grease :)
+
+:::info
+As mentioned at the top, it's recommended to use some sort of service management
+to start and stop Firezone easily without having to manually do it using the
+`firezone` binary directly. But the choice is yours, since you're in control!
+:::
