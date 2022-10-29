@@ -61,7 +61,7 @@ services:
   postgres:
     image: postgres:15
     volumes:
-      - ${FZ_INSTALL_DIR:-.}/postgres:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql/data
     environment:
       POSTGRES_DB: ${DATABASE_NAME:-firezone}
       POSTGRES_USER: ${DATABASE_USER:-postgres}
@@ -70,3 +70,7 @@ services:
       <<: *default-deploy
       update_config:
         order: stop-first
+
+# Postgres needs a named volume to prevent perms issues on non-linux platforms
+volumes:
+  postgres-data:
