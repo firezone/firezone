@@ -143,13 +143,13 @@ jobs:
           mv ./firezone*.deb firezone_${{ github.ref_name }}-${{ matrix.platform }}.deb || true
 
       - name: Check DEB
-        uses: andstor/file-existence-action@v1
+        uses: andstor/file-existence-action@v2
         id: check_deb
         with:
           files: firezone_${{ github.ref_name }}-${{ matrix.platform }}.deb
 
       - name: Check RPM
-        uses: andstor/file-existence-action@v1
+        uses: andstor/file-existence-action@v2
         id: check_rpm
         with:
           files: firezone_${{ github.ref_name }}-${{ matrix.platform }}.rpm
