@@ -80,7 +80,19 @@ installation process, follow the steps below to install manually.
 You should now be able to access the Firezone web portal at the `EXTERNAL_URL`
 variable you defined above.
 
-## Step 3: Install Client Apps
+## Step 3: Enable on Boot (optional)
+
+If you'd like Firezone to start automatically on boot, first ensure Docker is enabled at startup:
+
+```
+sudo systemctl enable docker
+```
+
+Then, make sure your Firezone services have the `restart: always` or `restart: unless-stopped` options
+specified in the `docker-compose.yml` file. This is the default used in the docker-compose.prod.yml
+production template file.
+
+## Step 4: Install Client Apps
 
 Once successfully deployed, users and devices can be added to
 connect to the VPN server:
