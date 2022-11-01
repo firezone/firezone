@@ -28,7 +28,8 @@ dockerCheck () {
   set -e
 }
 
-curlCheck () { if ! type curl > /dev/null; then
+curlCheck () {
+  if ! type curl > /dev/null; then
     echo "curl not found. Please install curl to use this script."
     exit 1
   fi
