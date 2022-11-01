@@ -7,7 +7,7 @@ dockerCheck () {
     exit 1
   fi
 
-  if command -v docker compose &> /dev/null; then
+  if command docker compose &> /dev/null; then
     dc="docker compose"
   else
     if command -v docker-compose &> /dev/null; then
