@@ -40,15 +40,15 @@ manager may have them as well.
 
 # Steps
 
-From your terminal, run these steps to build from the checked out source:
+From your terminal, run these steps to build Firezone:
 
 ```bash
 git clone https://github.com/firezone/firezone
 cd firezone
 mix local.rebar --force
 mix local.hex --force
-mix deps.get
-mix release
+MIX_ENV=prod mix deps.get
+MIX_ENV=prod mix release
 ```
 
 After the release build finishes, you should have a shiny new Firezone instance at
@@ -73,8 +73,9 @@ The known commands are:
     pid            Prints the operating system PID of the running system via a remote command
     version        Prints the release name and version to be booted
 ```
+Most deployment-related configuration is handled with environment variables. You'll probably want to at least set variables related to your reverse proxy and database. See the [ENV var reference](/reference/env-vars/) for an exhaustive list.
 
-Now all you need are the database and reverse proxy that you've hopefully setup.
+Now all you need are the database and reverse proxy that you've previously set up.
 Once that's done, you can use `firezone start` to start Firezone and run
 `create-or-reset-admin` (in the same `bin` dir) to create the admin user and use
 it to log into Firezone from a web browser to start setting up your brand new
