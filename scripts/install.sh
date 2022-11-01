@@ -4,13 +4,18 @@ set -e
 dockerCheck () {
   if ! type docker > /dev/null; then
     echo "docker not found. Please install docker and try again."
-    exit
+    exit 1
   fi
 
-  if command -v docker-compose &> /dev/null; then
-    dc="docker-compose"
-  else
+  if command -v docker compose &> /dev/null; then
     dc="docker compose"
+  else
+    if command -v docker-compose &> /dev/null; then
+      dc="docker-compose"
+    else
+      echo "Error: Docker Compose not found. Please install Docker Compose version 2 or higher."
+      exit 1
+    fi
   fi
 
   set +e
@@ -25,7 +30,7 @@ dockerCheck () {
 
 curlCheck () { if ! type curl > /dev/null; then
     echo "curl not found. Please install curl to use this script."
-    exit
+    exit 1
   fi
 }
 
