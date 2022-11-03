@@ -22,11 +22,8 @@ services:
     image: caddy:2
     volumes:
       - ${FZ_INSTALL_DIR:-.}/caddy:/data/caddy
-    ports:
-      - 80:80
-      - 443:443
-        # See Caddy's documentation for customizing this line
-        # https://caddyserver.com/docs/quick-starts/reverse-proxy
+    # See Caddy's documentation for customizing this line
+    # https://caddyserver.com/docs/quick-starts/reverse-proxy
     command: caddy reverse-proxy ${CADDY_OPTS} --to 172.25.0.100:13000 --from ${EXTERNAL_URL:?err}
     network_mode: "host"
     deploy:
