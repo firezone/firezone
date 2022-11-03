@@ -44,22 +44,22 @@ const config = {
   ],
 
   plugins: [
-    [
-      'docusaurus-plugin-openapi-docs',
-      {
-        id: "apiDocs",
-        docsPluginId: "classic",
-        config: {
-          rest_api: {
-            specPath: "openapi.yaml",
-            outputDir: "docs/reference/REST API",
-            sidebarOptions: {
-              groupPathsBy: "tag",
-            },
-          },
-        },
-      },
-    ],
+    // [
+    //   'docusaurus-plugin-openapi-docs',
+    //   {
+    //     id: "apiDocs",
+    //     docsPluginId: "classic",
+    //     config: {
+    //       rest_api: {
+    //         specPath: "openapi.yaml",
+    //         outputDir: "docs/reference/REST API",
+    //         sidebarOptions: {
+    //           groupPathsBy: "tag",
+    //         },
+    //       },
+    //     },
+    //   },
+    // ],
   ],
 
   themes: [
