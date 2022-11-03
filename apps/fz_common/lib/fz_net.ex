@@ -69,7 +69,6 @@ defmodule FzCommon.FzNet do
   def to_complete_url(str) when is_binary(str) do
     case URI.parse(str) do
       %{host: nil, scheme: nil} -> "https://" <> str
-      %{scheme: nil} -> "https" <> str
       _ -> str
     end
   end
