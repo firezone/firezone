@@ -28,7 +28,7 @@ services:
       - 443:443
         # See Caddy's documentation for customizing this line
         # https://caddyserver.com/docs/quick-starts/reverse-proxy
-    command: caddy reverse-proxy ${CADDY_OPTS} --to firezone:13000 --from ${EXTERNAL_URL:?err}
+    command: caddy reverse-proxy ${CADDY_OPTS:-} --to firezone:13000 --from ${EXTERNAL_URL:?err}
     deploy:
       <<: *default-deploy
 
