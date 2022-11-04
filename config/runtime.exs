@@ -7,8 +7,16 @@ import Config
 
 alias FzCommon.{CLI, FzInteger, FzString, FzKernelVersion, FzNet}
 
-# external_url is important
-external_url = System.get_env("EXTERNAL_URL", "https://localhost") |> FzNet.to_complete_url
+# external_url is important, so fail fast here if we can't parse
+{:ok, external_url} =
+  if config_env() == :prod do
+    System.fetch_env!("EXTERNAL_URL")
+    |> FzNet.to_complete_url()
+  else
+    System.get_env("EXTERNAL_URL", "https://localhost")
+    |> FzNet.to_complete_url()
+  end
+
 config :fz_http, :external_url, external_url
 
 %{host: host, path: path, port: port, scheme: scheme} = URI.parse(external_url)

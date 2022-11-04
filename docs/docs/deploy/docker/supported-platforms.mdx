@@ -6,17 +6,28 @@ sidebar_position: 1
 Firezone currently supports the following platforms for Docker-based
 deployments.
 
-| OS      | Architecture(s) | Runtime        | Status          | Notes                                            |
-| ---     | ---             | ---            | ---             | ---                                              |
-| Linux   | `amd64` `arm64` | Docker Server  | Fully-supported | `wireguard` module needed for kernels &lt; `5.6` |
-| Linux   | `amd64` `arm64` | Docker Desktop | Fully-supported | Not recommended for production deployments.      |
-| macOS   | `amd64` `arm64` | Docker Desktop | Fully-supported | Not recommended for production deployments.      |
-| Windows | `amd64` `arm64` | Docker Desktop | Fully-supported | Not recommended for production deployments.      |
+| OS      | Architecture(s) | Runtime        | Status                  | Notes                                                                                   |
+| ---     | ---             | ---            | ---                     | ---                                                                                     |
+| Linux   | `amd64` `arm64` | Docker Server  | **Fully-supported**     | `wireguard` kernel module needed for kernels &lt; `5.6`.                                |
+| Linux   | `amd64` `arm64` | Docker Desktop | Works, but unsupported. | Not recommended for production deployments. See [caveats](#docker-desktop-caveats).     |
+| macOS   | `amd64` `arm64` | Docker Desktop | Works. but unsupported. | Not recommended for production deployments. See [caveats](#non-linux-platform-caveats). |
+| Windows | `amd64` `arm64` | Docker Desktop | **Untested**            | Not recommended for production deployments. See [caveats](#non-linux-platform-caveats). |
 
-:::info
+## Docker Desktop Caveats
+
 Docker Desktop [rewrites the source address
 ](https://www.docker.com/blog/how-docker-desktop-networking-works-under-the-hood/)
 for packets flowing out of container networks under some conditions. This can
 cause routing loops and other hard to debug connectivity issues with Firezone.
 We recommend **only** using Docker Server for Linux for production deployments.
-:::
+
+## Non-Linux Platform Caveats
+
+Only Docker for Linux supports the host networking mode, so macOS and Windows
+platforms will be able unable to properly attribute client source address
+for HTTP requests. This means any IP-based throttling or logging in your
+chosen proxy (`caddy` by default) will be ineffective, since the source
+IP will always be the Docker-side host IP (typically `172.X.0.1`).
+
+Egress rules operate on the tunneled client IP address and aren't affected
+by this limitation.
