@@ -65,4 +65,16 @@ defmodule FzCommon.FzNet do
   def valid_hostname?(hostname) when is_binary(hostname) do
     String.match?(hostname, @host_regex)
   end
+
+  def to_complete_url(str) when is_binary(str) do
+    case URI.new(str) do
+      {:ok, %{host: nil, scheme: nil}} ->
+        {:ok, "https://" <> str}
+
+      {:ok, _} ->
+        {:ok, str}
+
+      err -> err
+    end
+  end
 end

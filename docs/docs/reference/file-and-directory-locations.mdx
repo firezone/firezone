@@ -10,18 +10,18 @@ your installation.
 <Tabs>
 <TabItem label="Docker" value="docker" default>
 
-| path                               | description                                                                                                               |
-| ---                                | ---                                                                                                                       |
-| `<install_dir>/.env`               | Firezone secrets used for encryption, cookies, and sessions. **Losing this file will result in irrecoverable data loss**. |
-| `<install_dir>/docker-compose.yml` | Docker Compose file used to manage Firezone services.                                                                     |
-| `/data/firezone/firezone`          | Top-level directory containing Firezone-related persisted data                                                            |
-| `/data/firezone/postgres`          | Postgres DB files.                                                                                                        |
-| `/data/firezone/caddy`             | Caddy persisted files.                                                                                                    |
+| Default path                         | Description                                                                                                               |
+| ---                                  | ---                                                                                                                       |
+| `$HOME/.firezone/.env`               | Firezone secrets used for encryption, cookies, and sessions. **Losing this file will result in irrecoverable data loss**. |
+| `$HOME/.firezone/docker-compose.yml` | Docker Compose file used to manage Firezone services.                                                                     |
+| `$HOME/.firezone/firezone`           | Top-level directory containing Firezone-related persisted data                                                            |
+| `$HOME/.firezone/caddy`              | Caddy persisted files.                                                                                                    |
+| Default Docker volume location.      | Postgres DB files.                                                                                                        |
 
 </TabItem>
 <TabItem label="Omnibus" value="omnibus">
 
-| path                                                  | description                                                                                    |
+| Path                                                  | Description                                                                                    |
 | ---                                                   | ---                                                                                            |
 | `/var/opt/firezone`                                   | Top-level directory containing data and generated configuration for Firezone bundled services. |
 | `/opt/firezone`                                       | Top-level directory containing built libraries, binaries and runtime files needed by Firezone. |

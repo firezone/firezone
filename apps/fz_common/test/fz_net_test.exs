@@ -110,4 +110,32 @@ defmodule FzCommon.FzNetTest do
       assert "fd00:3::1" == FzNet.standardized_inet("fd00:3:0000::1")
     end
   end
+
+  describe "to_complete_url/1" do
+    @tag cases: [
+      {"foobar", "https://foobar"},
+      {"google.com", "https://google.com"},
+      {"127.0.0.1", "https://127.0.0.1"},
+      {"8.8.8.8", "https://8.8.8.8"},
+      {"https://[fd00::1]", "https://[fd00::1]"},
+      {"http://foobar", "http://foobar"},
+      {"https://foobar", "https://foobar"}
+    ]
+    test "parses valid string URIs", %{cases: cases} do
+      for {subject, expected} <- cases do
+        assert {:ok, ^expected} = FzNet.to_complete_url(subject)
+      end
+    end
+
+    @tag cases: [
+      "<",
+      "{",
+      "["
+    ]
+    test "returns {:error, _} for invalid URIs", %{cases: cases} do
+      for subject <- cases do
+        assert {:error, _} = FzNet.to_complete_url(subject)
+      end
+    end
+  end
 end
