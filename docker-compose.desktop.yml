@@ -26,9 +26,22 @@ services:
     ports:
       - 80:80
       - 443:443
-        # See Caddy's documentation for customizing this line
-        # https://caddyserver.com/docs/quick-starts/reverse-proxy
-    command: caddy reverse-proxy ${CADDY_OPTS:-} --to firezone:13000 --from ${EXTERNAL_URL:?err}
+    # See Caddy's documentation for customizing the Caddyfile
+    # https://caddyserver.com/docs/quick-starts/reverse-proxy
+    command:
+      - /bin/sh
+      - -c
+      - |
+        cat <<EOF > /etc/caddy/Caddyfile && caddy run --config /etc/caddy/Caddyfile
+
+        https:// {
+          log
+          reverse_proxy * firezone:13000
+          tls internal {
+            on_demand
+          }
+        }
+        EOF
     deploy:
       <<: *default-deploy
 
