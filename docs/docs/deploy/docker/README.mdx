@@ -62,8 +62,13 @@ installation process, follow the steps below to install manually.
 1. Ensure you're on a supported platform and have a recent version of
    [docker-compose](https://docs.docker.com/compose/install/) installed.
 1. Download the docker compose template to a local working directory:
+  **For Linux**:
   ```shell
   curl -fsSL https://raw.githubusercontent.com/firezone/firezone/master/docker-compose.prod.yml -o docker-compose.yml
+  ```
+  **For macOS, Windows (non-production only)**:
+  ```shell
+  curl -fsSL https://raw.githubusercontent.com/firezone/firezone/master/docker-compose.desktop.yml -o docker-compose.yml
   ```
 1. Generate required secrets:
   ```shell
