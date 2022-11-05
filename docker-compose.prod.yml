@@ -24,7 +24,18 @@ services:
       - ${FZ_INSTALL_DIR:-.}/caddy:/data/caddy
     # See Caddy's documentation for customizing this line
     # https://caddyserver.com/docs/quick-starts/reverse-proxy
-    command: caddy reverse-proxy ${CADDY_OPTS:-} --to 172.25.0.100:13000 --from ${EXTERNAL_URL:?err}
+    command:
+      - /bin/sh
+      - -c
+      - |
+        cat <<EOF > /etc/caddy/Caddyfile && caddy run --config /etc/caddy/Caddyfile
+
+        https:// {
+          log
+          reverse_proxy * firezone:13000
+          ${TLS_OPTS:-}
+        }
+        EOF
     network_mode: "host"
     deploy:
       <<: *default-deploy
@@ -55,7 +66,6 @@ services:
       - postgres
     networks:
       firezone-network:
-        ipv4_address: 172.25.0.100
     deploy:
       <<: *default-deploy
 
