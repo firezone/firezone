@@ -101,16 +101,14 @@ promptACME() {
   read -p "Would you like to enable automatic SSL cert provisioning? Requires a valid DNS record and port 80 to be reachable. (Y/n): " acme
   case $acme in
     n|N)
-      tlsOpts="\
-tls internal {
-  on_demand
-}"
+      tlsOpts="tls internal {
+                on_demand
+              }"
       ;;
     *)
-      tlsOpts="\
-tls {
-  on_demand
-}"
+      tlsOpts="tls {
+                on_demand
+              }"
       ;;
   esac
 }
@@ -227,7 +225,7 @@ main() {
   if [ $telemEnabled = "true" ]; then
     capture "install" "email-not-collected@dummy.domain"
   fi
-  firezoneSetup $adminUser $externalUrl $tlsOpts
+  firezoneSetup $adminUser $externalUrl "$tlsOpts"
 }
 
 dockerCheck
