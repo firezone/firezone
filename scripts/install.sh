@@ -227,7 +227,7 @@ main() {
   if [ $telemEnabled = "true" ]; then
     capture "install" "email-not-collected@dummy.domain"
   fi
-  firezoneSetup $adminUser $externalUrl $caddyOpts
+  firezoneSetup $adminUser $externalUrl $tlsOpts
 }
 
 dockerCheck
