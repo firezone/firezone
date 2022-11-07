@@ -39,10 +39,9 @@
             <div class="column">
               <div class="block">
                 <div class="has-text-centered">
-                  <img
-                    src={Routes.static_path(@conn, "/images/logo-text.svg")}
-                    alt="firezone.dev"
-                  />
+                  <%= FzHttpWeb.LogoComponent.render(
+                    FzHttp.Configurations.get_configuration!().logo
+                  ) %>
                 </div>
               </div>
 
