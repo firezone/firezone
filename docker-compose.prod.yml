@@ -32,7 +32,7 @@ services:
 
         https:// {
           log
-          reverse_proxy * firezone:13000
+          reverse_proxy * 172.25.0.100:13000
           ${TLS_OPTS:-}
         }
         EOF
@@ -66,6 +66,7 @@ services:
       - postgres
     networks:
       firezone-network:
+        ipv4_address: 172.25.0.100
     deploy:
       <<: *default-deploy
 
