@@ -1,0 +1,273 @@
+#
+# Copy the contents of this file to studio.asyncapi.com to view the generated
+# output.
+#
+# TODO: Add this to docs when repo goes public.
+
+asyncapi: "2.5.0"
+info:
+  title: Firezone Realtime API
+  version: "1.0.0"
+  contact:
+    name: Firezone
+    url: https://www.firezone.dev/
+  description: |
+    Realtime API documentation for Firezone's control plane.
+
+externalDocs:
+  url: https://docs.firezone.dev/
+
+servers:
+  public:
+    url: wss://firezone.example.com/
+    protocol: wss
+
+channels:
+  /v1/client-ctl:
+    subscribe:
+      summary: Receive control commands for a connected client.
+      message:
+        oneOf:
+          - $ref: "#/components/messages/add_peer"
+          - $ref: "#/components/messages/delete_peer"
+          - $ref: "#/components/messages/init"
+
+  /v1/gateway-ctl:
+    subscribe:
+      summary: Receive control commands for a connected gateway.
+      message:
+        oneOf:
+          - $ref: "#/components/messages/add_rule"
+          - $ref: "#/components/messages/delete_rule"
+          - $ref: "#/components/messages/add_peer"
+          - $ref: "#/components/messages/delete_peer"
+          - $ref: "#/components/messages/init"
+
+components:
+  messages:
+    add_rule:
+      summary: Adds an egress rule to the Gateway.
+      payload:
+        $ref: "#/components/schemas/add_rule"
+      examples:
+        - payload:
+            add_rule:
+              dst: 0.0.0.0/8
+              port_range:
+                range_start: 80
+                range_end: 81
+                protocol: tcp
+              user_uuid: 3118158c-29cb-47d6-adbf-5edd15f1af17
+    delete_rule:
+      summary: Removes an egress rule from the Gateway.
+      payload:
+        $ref: "#/components/schemas/delete_rule"
+      examples:
+        - payload:
+            delete_rule:
+              dst: 0.0.0.0/8
+              port_range:
+                range_start: 80
+                range_end: 81
+                protocol: tcp
+              user_uuid: 3118158c-29cb-47d6-adbf-5edd15f1af17
+    add_peer:
+      summary: Adds a peer to the receiver's WireGuard configuration.
+      payload:
+        $ref: "#/components/schemas/add_peer"
+      examples:
+        - name: Client example
+          payload:
+            add_peer:
+              allowed_ips:
+                - 0.0.0.0/8
+                - 172.16.0.0/16
+              public_key: AxVaJsPC1FSrOM5RpEXg4umTKMxkHkgMy1fl7t1xNyw=
+              preshared_key: LZBIpoLNCkIe56cPM+5pY/hP2pu7SGARvQZEThmuPYM=
+              endpoint: 56.12.11.43:51820
+              persistent_keepalive: 25
+        - name: Gateway example
+          payload:
+            init:
+              default_action: deny
+              interface:
+                address:
+                  - 100.64.11.22/10
+                mtu: 1280
+              peers:
+                - allowed_ips:
+                    - 100.64.11.22/32
+                  public_key: AxVaJsPC1FSrOM5RpEXg4umTKMxkHkgMy1fl7t1xNyw=
+                  preshared_key: LZBIpoLNCkIe56cPM+5pY/hP2pu7SGARvQZEThmuPYM=
+                  user_uuid: 3118158c-29cb-47d6-adbf-5edd15f1af17
+    delete_peer:
+      summary: Removes a peer from the receiver's WireGuard configuration.
+      payload:
+        $ref: "#/components/schemas/delete_peer"
+      examples:
+        - payload:
+            delete_peer:
+              public_key: AxVaJsPC1FSrOM5RpEXg4umTKMxkHkgMy1fl7t1xNyw=
+
+    init:
+      summary: A control command to initialize the client with initial config
+      description: |
+        This command initializes a client with its configuration after successfully connecting the WebSocket.
+      payload:
+        $ref: "#/components/schemas/init"
+      examples:
+        - name: Client example
+          payload:
+            init:
+              interface:
+                address:
+                  - 100.64.11.10/10
+                mtu: 1280
+                dns:
+                  - 1.1.1.1
+              peers:
+                - allowed_ips:
+                    - 0.0.0.0/8
+                    - 172.16.0.0/16
+                  public_key: AxVaJsPC1FSrOM5RpEXg4umTKMxkHkgMy1fl7t1xNyw=
+                  preshared_key: LZBIpoLNCkIe56cPM+5pY/hP2pu7SGARvQZEThmuPYM=
+                  endpoint: 56.12.11.43:51820
+                  persistent_keepalive: 25
+        - name: Gateway example
+          payload:
+            init:
+              default_action: deny
+              interface:
+                address:
+                  - 100.64.11.22/10
+                mtu: 1280
+              peers:
+                - allowed_ips:
+                    - 100.64.11.22/32
+                  public_key: AxVaJsPC1FSrOM5RpEXg4umTKMxkHkgMy1fl7t1xNyw=
+                  preshared_key: LZBIpoLNCkIe56cPM+5pY/hP2pu7SGARvQZEThmuPYM=
+                  user_uuid: 3118158c-29cb-47d6-adbf-5edd15f1af17
+
+  schemas:
+    init:
+      summary: Client / Gateway initialization
+      description: |
+        This message indiciates the client or gateway should reconfigure itself with the contained configuration.
+      properties:
+        init:
+          type: object
+          required:
+            - peers
+            - interface
+          properties:
+            default_action:
+              summary: The default action taken by the gateway for the egress firewall.
+              type: string
+              enum:
+                - deny
+                - allow
+            peers:
+              type: array
+              items:
+                $ref: "#/components/schemas/peer"
+            interface:
+              required:
+                - mtu
+                - address
+              type: object
+              properties:
+                dns:
+                  type: array
+                  items:
+                    type: string
+                mtu:
+                  type: integer
+                listen_port:
+                  type: integer
+                address:
+                  type: array
+                  description: The IPv4 and/or IPv6 address(es) to set on the interface.
+                  items:
+                    type: string
+
+    add_peer:
+      summary: Add a Peer to the WireGuard configuration.
+      $ref: "#/components/schemas/peer"
+
+    delete_peer:
+      summary: Remove a Peer from the WireGuard configuration.
+      required:
+        - public_key
+      properties:
+        public_key:
+          type: string
+
+    add_rule:
+      type: object
+      summary: Add rule
+      description: |
+        A JSON representation of the rule specification.
+      $ref: "#/components/schemas/rule"
+
+    delete_rule:
+      summary: Delete Rule
+      $ref: "#/components/schemas/rule"
+
+    rule:
+      type: object
+      description: |
+        A JSON representation of the rule specification.
+      required:
+        - dst
+      properties:
+        dst:
+          type: string
+        user_uuid:
+          type: number
+        port_range:
+          $ref: "#/components/schemas/port_range"
+
+    peer:
+      type: object
+      required:
+        - public_key
+        - preshared_key
+        - allowed_ips
+      properties:
+        user_uuid:
+          type: number
+          summary: Optional user_uuid used by the Gateway to group this peer's egress rules.
+        endpoint:
+          type: string
+        persistent_keepalive:
+          type: integer
+        public_key:
+          type: string
+        preshared_key:
+          type: string
+        allowed_ips:
+          type: array
+          items:
+            type: string
+          description: |
+            The IPs addresses to send through the tunnel.
+            For connected end-user devices, this will always be a /32 and/or /128.
+            For static tunnels to other gateways (site to site configuration) this can include multiple CIDRs.
+
+    port_range:
+      type: object
+      required:
+        - range_start
+        - range_end
+      properties:
+        range_start:
+          type: number
+          summary: starting port of the range, inclusive.
+        range_end:
+          type: number
+          summary: ending port of the range, inclusive.
+        protocol:
+          type: string
+          enum:
+            - tcp
+            - udp
