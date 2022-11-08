@@ -23,15 +23,6 @@ servers:
     protocol: wss
 
 channels:
-  /v1/client-ctl:
-    subscribe:
-      summary: Receive control commands for a connected client.
-      message:
-        oneOf:
-          - $ref: "#/components/messages/add_peer"
-          - $ref: "#/components/messages/delete_peer"
-          - $ref: "#/components/messages/init"
-
   /v1/gateway-ctl:
     subscribe:
       summary: Receive control commands for a connected gateway.
@@ -76,16 +67,6 @@ components:
       payload:
         $ref: "#/components/schemas/add_peer"
       examples:
-        - name: Client example
-          payload:
-            add_peer:
-              allowed_ips:
-                - 0.0.0.0/8
-                - 172.16.0.0/16
-              public_key: AxVaJsPC1FSrOM5RpEXg4umTKMxkHkgMy1fl7t1xNyw=
-              preshared_key: LZBIpoLNCkIe56cPM+5pY/hP2pu7SGARvQZEThmuPYM=
-              endpoint: 56.12.11.43:51820
-              persistent_keepalive: 25
         - name: Gateway example
           payload:
             init:
@@ -110,29 +91,12 @@ components:
               public_key: AxVaJsPC1FSrOM5RpEXg4umTKMxkHkgMy1fl7t1xNyw=
 
     init:
-      summary: A control command to initialize the client with initial config
+      summary: A control command to initialize the gateway with initial config
       description: |
-        This command initializes a client with its configuration after successfully connecting the WebSocket.
+        This command initializes a gateway with its configuration after successfully connecting the WebSocket.
       payload:
         $ref: "#/components/schemas/init"
       examples:
-        - name: Client example
-          payload:
-            init:
-              interface:
-                address:
-                  - 100.64.11.10/10
-                mtu: 1280
-                dns:
-                  - 1.1.1.1
-              peers:
-                - allowed_ips:
-                    - 0.0.0.0/8
-                    - 172.16.0.0/16
-                  public_key: AxVaJsPC1FSrOM5RpEXg4umTKMxkHkgMy1fl7t1xNyw=
-                  preshared_key: LZBIpoLNCkIe56cPM+5pY/hP2pu7SGARvQZEThmuPYM=
-                  endpoint: 56.12.11.43:51820
-                  persistent_keepalive: 25
         - name: Gateway example
           payload:
             init:
@@ -150,9 +114,9 @@ components:
 
   schemas:
     init:
-      summary: Client / Gateway initialization
+      summary: Gateway initialization
       description: |
-        This message indiciates the client or gateway should reconfigure itself with the contained configuration.
+        This message indiciates the gateway should reconfigure itself with the contained configuration.
       properties:
         init:
           type: object
