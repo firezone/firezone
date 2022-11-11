@@ -52,16 +52,24 @@ defmodule FzHttpWeb.ConnCase do
     authed_conn(:unprivileged)
   end
 
+  defp put_token(conn) do
+    conn
+    |> Plug.Conn.put_session(
+      "guardian_default_token",
+      conn.private.guardian_default_token
+    )
+  end
+
   defp authed_conn(role) do
     user = UsersFixtures.user(%{role: role})
 
-    conn = new_conn() |> FzHttpWeb.Authentication.sign_in(user, %{provider: :identity})
-
-    {user,
-     conn
-     |> Plug.Test.init_test_session(%{
-       "guardian_default_token" => conn.private.guardian_default_token
-     })}
+    {
+      user,
+      new_conn()
+      |> Plug.Test.init_test_session(%{})
+      |> FzHttpWeb.Authentication.sign_in(user, %{provider: :identity})
+      |> put_token()
+    }
   end
 
   setup tags do
