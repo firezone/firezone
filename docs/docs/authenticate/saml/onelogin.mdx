@@ -1,16 +1,21 @@
 ---
 title: OneLogin
-sidebar_position: 1
+sidebar_position: 2
 description: Firezone's WireGuard based remote access platform supports using OneLogin as a single sign-on provider using a SAML 2.0 connector.
 ---
 
-Configure OneLogin as an identity provider using the SAML 2.0
+:::note
+This guide assumes you have complete the prerequisite steps
+outlined [here](/authenticate/saml).
+:::
+
+Configure OneLogin as an identity provider using a SAML 2.0
 connector so users can authenticate with their OneLogin credentials.
 Follow the steps below to activate the integration.
 
 ## Create a SAML connector
 
-On the OneLogin admin portal, add an app under the application tab.
+In the OneLogin admin portal, add an app under the application tab.
 Select `SAML Custom Connector (Advanced)` and provide the appropriate
 configuration settings under the under the configuration tab.
 
@@ -45,7 +50,7 @@ by filling out the following information:
 | Label     | `OneLogin` | Appears on the sign in button for authentication.                                                                                    |
 | Metadata  | see note   | Upload the contents of the SAML metadata document you downloaded in the previous step from OneLogin.                                 |
 
-![SAML identity provider](https://user-images.githubusercontent.com/52545545/201445195-82d621e8-99a2-40fb-860e-9972fb86423e.png)
+![OneLogin SAML](https://user-images.githubusercontent.com/52545545/201445195-82d621e8-99a2-40fb-860e-9972fb86423e.png)
 
 After saving the SAML config, you should see a `Sign in with OneLogin` button
 in your Firezone portal.
