@@ -20,7 +20,7 @@ the Application tab. Select `SAML 2.0` as the authentication method.
 Use the following config values during setup:
 
 | Setting                        | Value                                                                                                                 |
-|--------------------------------|-----------------------------------------------------------------------------------------------------------------------|
+|---                             |---                                                                                                                    |
 | App name                       | `Firezone`                                                                                                            |
 | App logo                       | [save link as](https://user-images.githubusercontent.com/52545545/155907625-a4f6c8c2-3952-488d-b244-3c37400846cf.png) |
 | Single sign on URL             | `https://firezone.company.com/auth/saml/sp/consume/okta`                                                              |
@@ -38,11 +38,11 @@ the fields above, replace `firezone.company.com` with your deployment's external
 In the Firezone portal, add a SAML identity provider under the Security tab
 by filling out the following information:
 
-| Setting   | Value      | Notes                                                                                                                                |
-|-----------|------------|--------------------------------------------------------------------------------------------------------------------------------------|
-| Config ID | `Okta` | Firezone uses this value to construct endpoints required in the SAML authentication flow (e.g., receiving assertions, login requests) |
-| Label     | `Okta` | Appears on the sign in button for authentication.                                                                                    |
-| Metadata  | see note   | Upload the contents of the SAML metadata document you downloaded in the previous step from Okta.                                 |
+| Setting   | Value      | Notes                                                                                                                                 |
+|---        |---         |---                                                                                                                                    |
+| Config ID | `Okta`     | Firezone uses this value to construct endpoints required in the SAML authentication flow (e.g., receiving assertions, login requests) |
+| Label     | `Okta`     | Appears on the sign in button for authentication.                                                                                     |
+| Metadata  | see note   | Upload the contents of the SAML metadata document you downloaded in the previous step from Okta.                                      |
 
 ![Okta SAML](https://user-images.githubusercontent.com/52545545/201447060-e29f46d5-8511-4bdd-9a6e-2c3a38d19de9.png)
 

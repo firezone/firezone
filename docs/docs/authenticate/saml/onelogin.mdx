@@ -22,7 +22,7 @@ configuration settings under the under the configuration tab.
 The following fields should be filled out on this page:
 
 | Setting                | Value                                                                  |
-|------------------------|------------------------------------------------------------------------|
+|---                      |---                                                                     |
 | Audience (EntityID)    | `urn:firezone.dev:firezone-app`                                        |
 | Recipient              | `https://firezone.company.com/auth/saml/sp/consume/onelogin`           |
 | ACS URL Validator      | `^https:\/\/firezone\.company\.com\/auth\/saml\/sp\/consume\/onelogin` |
@@ -43,11 +43,11 @@ found unde the `More Actions` dropdown.
 In the Firezone portal, add a SAML identity provider under the Security tab
 by filling out the following information:
 
-| Setting   | Value      | Notes                                                                                                                                |
-|-----------|------------|--------------------------------------------------------------------------------------------------------------------------------------|
+| Setting   | Value      | Notes                                                                                                                                 |
+|---        |---         |---                                                                                                                                    |
 | Config ID | `onelogin` | Firezone uses this value to construct endpoints required in the SAML authentication flow (e.g., receiving assertions, login requests) |
-| Label     | `OneLogin` | Appears on the sign in button for authentication.                                                                                    |
-| Metadata  | see note   | Upload the contents of the SAML metadata document you downloaded in the previous step from OneLogin.                                 |
+| Label     | `OneLogin` | Appears on the sign in button for authentication.                                                                                     |
+| Metadata  | see note   | Upload the contents of the SAML metadata document you downloaded in the previous step from OneLogin.                                  |
 
 ![OneLogin SAML](https://user-images.githubusercontent.com/52545545/201445195-82d621e8-99a2-40fb-860e-9972fb86423e.png)
 
