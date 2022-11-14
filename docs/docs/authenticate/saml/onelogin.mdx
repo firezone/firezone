@@ -5,7 +5,7 @@ description: Firezone's WireGuard based remote access platform supports using On
 ---
 
 :::note
-This guide assumes you have complete the prerequisite steps
+This guide assumes you have completed the prerequisite steps
 outlined [here](/authenticate/saml).
 :::
 
@@ -33,7 +33,7 @@ The following fields should be filled out on this page:
 | SAML signature element | `Both`                                                                 |
 
 [OneLogin's docs](https://onelogin.service-now.com/support?id=kb_article&sys_id=912bb23edbde7810fe39dde7489619de&kb_category=93e869b0db185340d5505eea4b961934)
-provide a good overview of each field's purpose. In all the fields above replace `firezone.company.com`
+provide a good overview of each field's purpose. In all the fields above, replace `firezone.company.com`
 with your deployment's external URL. 
 
 Once complete, save the changes and download the SAML metadata document
@@ -46,7 +46,7 @@ by filling out the following information:
 
 | Setting   | Value      | Notes                                                                                                                                |
 |-----------|------------|--------------------------------------------------------------------------------------------------------------------------------------|
-| Config ID | `onelogin` | Firezone uses this value to construct endpoints required in the SAML authentication flow (e.g. receiving assertions, login requests) |
+| Config ID | `onelogin` | Firezone uses this value to construct endpoints required in the SAML authentication flow (e.g., receiving assertions, login requests) |
 | Label     | `OneLogin` | Appears on the sign in button for authentication.                                                                                    |
 | Metadata  | see note   | Upload the contents of the SAML metadata document you downloaded in the previous step from OneLogin.                                 |
 
