@@ -45,10 +45,7 @@ config :fz_wall,
   egress_interface: egress_interface,
   cli: fz_wall_cli_module
 
-config :fz_vpn,
-  wireguard_private_key_path: "priv/wg_dev_private_key",
-  wg_adapter:
-    Code.eval_string(System.get_env("FZ_VPN_WG_ADAPTER", "FzVpn.Interface.WGAdapter.Live"))
+config :fz_vpn, wireguard_private_key_path: "priv/wg_dev_private_key"
 
 # Auth
 local_auth_enabled = System.get_env("LOCAL_AUTH_ENABLED") == "true"
