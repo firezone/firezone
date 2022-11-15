@@ -54,7 +54,7 @@ defmodule FzHttp.Release do
     |> Users.update_user_role(role)
   end
 
-  defp repos do
+  def repos do
     Application.fetch_env!(@app, :ecto_repos)
   end
 

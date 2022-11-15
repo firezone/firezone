@@ -7,6 +7,8 @@ defmodule FzHttpWeb.UserController do
   alias FzHttpWeb.Authentication
   use FzHttpWeb, :controller
 
+  require Logger
+
   def delete(conn, _params) do
     user = Authentication.get_current_user(conn)
 
@@ -20,16 +22,10 @@ defmodule FzHttpWeb.UserController do
       {:ok, _user} ->
         FzHttpWeb.Endpoint.broadcast("users_socket:#{user.id}", "disconnect", %{})
 
-        conn
-        |> Authentication.sign_out()
-        |> put_flash(:info, "Account deleted successfully.")
-        |> redirect(to: Routes.root_path(conn, :index))
-
       {:error, msg} ->
-        conn
-        |> Authentication.sign_out()
-        |> put_flash(:error, "Error deleting account: #{msg}")
-        |> redirect(to: Routes.root_path(conn, :index))
+        Logger.error("Error deleting user: #{msg}")
     end
+
+    Authentication.sign_out(conn)
   end
 end

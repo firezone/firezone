@@ -59,8 +59,8 @@ config :fz_http, :openid_connect_providers, """
 {
   "google": {
     "discovery_document_uri": "https://google/.well-known/openid-configuration",
-    "client_id": "CLIENT_ID",
-    "client_secret": "CLIENT_SECRET",
+    "client_id": "google-client-id",
+    "client_secret": "google-client-secret",
     "redirect_uri": "https://firezone.example.com/auth/oidc/google/callback/",
     "response_type": "code",
     "scope": "openid email profile",
@@ -68,8 +68,8 @@ config :fz_http, :openid_connect_providers, """
   },
   "okta": {
     "discovery_document_uri": "https://okta/.well-known/openid-configuration",
-    "client_id": "CLIENT_ID",
-    "client_secret": "CLIENT_SECRET",
+    "client_id": "okta-client-id",
+    "client_secret": "okta-client-secret",
     "redirect_uri": "https://firezone.example.com/auth/oidc/okta/callback/",
     "response_type": "code",
     "scope": "openid email profile offline_access",
@@ -77,8 +77,8 @@ config :fz_http, :openid_connect_providers, """
   },
   "auth0": {
     "discovery_document_uri": "https://auth0/.well-known/openid-configuration",
-    "client_id": "CLIENT_ID",
-    "client_secret": "CLIENT_SECRET",
+    "client_id": "auth0-client-id",
+    "client_secret": "auth0-client-secret",
     "redirect_uri": "https://firezone.example.com/auth/oidc/google/callback/",
     "response_type": "code",
     "scope": "openid email profile",
@@ -86,8 +86,8 @@ config :fz_http, :openid_connect_providers, """
   },
   "azure": {
     "discovery_document_uri": "https://azure/.well-known/openid-configuration",
-    "client_id": "CLIENT_ID",
-    "client_secret": "CLIENT_SECRET",
+    "client_id": "azure-client-id",
+    "client_secret": "azure-client-secret",
     "redirect_uri": "https://firezone.example.com/auth/oidc/okta/callback/",
     "response_type": "code",
     "scope": "openid email profile offline_access",
@@ -95,8 +95,8 @@ config :fz_http, :openid_connect_providers, """
   },
   "onelogin": {
     "discovery_document_uri": "https://onelogin/.well-known/openid-configuration",
-    "client_id": "CLIENT_ID",
-    "client_secret": "CLIENT_SECRET",
+    "client_id": "onelogin-client-id",
+    "client_secret": "onelogin-client-secret",
     "redirect_uri": "https://firezone.example.com/auth/oidc/okta/callback/",
     "response_type": "code",
     "scope": "openid email profile offline_access",
@@ -104,8 +104,8 @@ config :fz_http, :openid_connect_providers, """
   },
   "keycloak": {
     "discovery_document_uri": "https://keycloak/.well-known/openid-configuration",
-    "client_id": "CLIENT_ID",
-    "client_secret": "CLIENT_SECRET",
+    "client_id": "keycloak-client-id",
+    "client_secret": "keycloak-client-secret",
     "redirect_uri": "https://firezone.example.com/auth/oidc/keycloak/callback/",
     "response_type": "code",
     "scope": "openid email profile offline_access",

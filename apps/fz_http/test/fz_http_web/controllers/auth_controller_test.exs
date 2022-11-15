@@ -171,13 +171,11 @@ defmodule FzHttpWeb.AuthControllerTest do
   describe "getting magic link" do
     setup :create_user
 
-    import Swoosh.TestAssertions
+    test "redirects to root path", %{unauthed_conn: conn, user: user} do
+      test_conn = post(conn, Routes.auth_path(conn, :magic_link), %{"email" => user.email})
 
-    test "sends a magic link in email", %{unauthed_conn: conn, user: user} do
-      post(conn, Routes.auth_path(conn, :magic_link), %{"email" => user.email})
-
-      Process.sleep(10)
-      assert_email_sent(subject: "Firezone Magic Link", to: [{"", user.email}])
+      assert redirected_to(test_conn) == Routes.root_path(conn, :index)
+      assert get_flash(test_conn, :info) == "Please check your inbox for the magic link."
     end
   end
 
@@ -222,9 +220,13 @@ defmodule FzHttpWeb.AuthControllerTest do
 
   describe "oidc signout url" do
     @oidc_end_session_uri "https://end-session.url"
-    @params %{"id_token_hint" => "abc", "post_logout_redirect_uri" => "https://localhost", "client_id" => "okta-client-id"}
+    @params %{
+      "id_token_hint" => "abc",
+      "post_logout_redirect_uri" => "https://localhost",
+      "client_id" => "okta-client-id"
+    }
 
-    @tag session: [login_method: "okta"]
+    @tag session: [login_method: "okta", id_token: "abc"]
     test "redirects to oidc end_session_uri", %{admin_conn: conn} do
       # mimics OpenID Connect
       query = URI.encode_query(@params)
