@@ -221,7 +221,8 @@ services:
 
 volumes:
   postgres-data:
-  redis-data:
+  # Disabled due to Authentik being disabled
+  # redis-data:
 
 networks:
   app:
