@@ -1,5 +1,5 @@
 ---
-title: Onelogin
+title: OneLogin
 sidebar_position: 6
 ---
 
@@ -8,7 +8,7 @@ through the generic OIDC connector. This guide will walk you through how to
 obtain the following config settings required for the integration:
 
 1. **Config ID**: The provider's config ID. (e.g. `onelogin`)
-1. **Label**: The button label text that shows up on your Firezone login screen. (e.g. `Onelogin`)
+1. **Label**: The button label text that shows up on your Firezone login screen. (e.g. `OneLogin`)
 1. **Scope**: [OIDC scopes](https://openid.net/specs/openid-connect-basic-1_0.html#Scopes)
 to obtain from your OIDC provider. This should be set to `openid email profile`
 to provide Firezone with the user's email in the returned claims.
@@ -35,7 +35,7 @@ or
 1. **Redirect URI**: Add your Firezone `<EXTERNAL_URL> + /auth/oidc/<Config ID>/callback/`
 (e.g. `https://firezone.example.com/auth/oidc/onelogin/callback/`).
 
-![Onelogin Configuration](https://user-images.githubusercontent.com/52545545/173190108-569e5cb5-e66b-4505-a4c5-fedd22872a04.png)
+![OneLogin Configuration](https://user-images.githubusercontent.com/52545545/173190108-569e5cb5-e66b-4505-a4c5-fedd22872a04.png)
 
 ### Step 2 - Configure the OIDC Application
 
@@ -46,7 +46,7 @@ to **POST**.
 You will find the values for the config settings required by Firezone
 on this page as well.
 
-![Onelogin Config Parameters](https://user-images.githubusercontent.com/52545545/180120191-dfeab4ef-d7f5-4c04-a7b2-7d9338af34e6.png)
+![OneLogin Config Parameters](https://user-images.githubusercontent.com/52545545/180120191-dfeab4ef-d7f5-4c04-a7b2-7d9338af34e6.png)
 
 ## Integrate With Firezone
 
@@ -58,4 +58,4 @@ Enable or disable the **Auto create users** option to automatically create
 an unprivileged user when signing in via this authentication mechanism.
 
 And that's it! The configuration should be updated immediately.
-You should now see a `Sign in with Onelogin` button on the sign in page.
+You should now see a `Sign in with OneLogin` button on the sign in page.
