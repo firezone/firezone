@@ -108,11 +108,7 @@ defmodule FzHttpWeb.AuthController do
 
   def delete(conn, _params) do
     conn
-    |> Authentication.sign_out(fn c ->
-      c
-      |> put_flash(:info, "You are now signed out.")
-      |> redirect(to: Routes.root_path(conn, :index))
-    end)
+    |> Authentication.sign_out()
   end
 
   def reset_password(conn, _params) do
@@ -189,8 +185,8 @@ defmodule FzHttpWeb.AuthController do
 
   defp do_sign_in(conn, user, auth) do
     conn
-    |> configure_session(renew: true)
     |> Authentication.sign_in(user, auth)
+    |> configure_session(renew: true)
     |> put_session(:live_socket_id, "users_socket:#{user.id}")
     |> redirect(to: root_path_for_role(conn, user.role))
   end

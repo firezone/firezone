@@ -17,22 +17,18 @@ The following OIDC providers are known to work well with Firezone:
 | Provider                                                                          | Support Status                 | Notes                                                                                                                                                  |
 | ---                                                                               | ---                            | ---                                                                                                                                                    |
 | [Azure Active Directory](azuread)                                                 | **Fully tested and supported** | Ensure the [`email` claim](https://learn.microsoft.com/en-us/azure/active-directory/develop/active-directory-optional-claims) is present in the token. |
-| [Google Workspace](google)                                                        | **Fully tested and supported** |                                                                                                                                                        |
 | [Okta](okta)                                                                      | **Fully tested and supported** |                                                                                                                                                        |
 | [Onelogin](onelogin)                                                              | **Fully tested and supported** |                                                                                                                                                        |
-| [Auth0](auth0)                                                                    | **Fully tested and supported** |                                                                                                                                                        |
+| [Keycloak](https://www.keycloak.org/)                                             | **Fully tested and supported** |                                                                                                                                                        |
+| [Auth0](auth0)                                                                    | **Fully tested and supported** | Auth0 does not provide an `end_session_uri` in its OIDC discovery document. Signing out of Auth0 from Firezone is not supported.                                                                                                                                                       |
+| [Google Workspace](google)                                                        | **Fully tested and supported** | Google does not provide an `end_session_uri` in its OIDC discovery document. Signing out of Google Workspace from Firezone is not supported.         |
 | [Zitadel](zitadel)                                                                | Untested but known to work     |                                                                                                                                                        |
-| [Keycloak](https://www.keycloak.org/)                                             | Untested but known to work     |                                                                                                                                                        |
 | [Authentik](https://goauthentik.io/)                                              | Untested but known to work     |                                                                                                                                                        |
 
 ## General Instructions
 
-Firezone supports PKCE for OAuth 2.0 -- it's recommend to enable this in your IdP's
-settings whenever available.
-
 If you're using an OIDC provider not listed above, the following OIDC attributes
-are required for the setting up an OIDC provider
-in Firezone:
+are required for setting up an OIDC provider in Firezone:
 
 1. `discovery_document_uri`: The
 [OpenID Connect provider configuration URI](https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderConfig)
@@ -48,3 +44,18 @@ This should be your Firezone `EXTERNAL_URL + /auth/oidc/<provider_key>/callback/
 to obtain from your OIDC provider. At a minimum, Firezone requires the `openid`
 and `email` scopes.
 1. `label`: The button label text displayed on the Firezone portal login page.
+
+### PKCE
+
+Firezone supports Proof Key for Code Exchange (PKCE) for increased login security.
+We recommend you enable PKCE in your IdP's settings whenever available. [Read more
+about PKCE here](https://oauth.net/2/pkce/).
+
+### OIDC Logout URI
+
+The OpenID Connect standard [defines a mechanism](https://openid.net/specs/openid-connect-rpinitiated-1_0.html)
+for a Relying Party (RP) to request that an OpenID Provider log out the End-User.
+
+Unfortunately, not all IdPs support this (e.g. Google, Auth0). For the providers
+that do support this mechanism, Firezone automatically detects the `end_session_uri`
+found in the provider's discovery document and uses that to log out the End-User.

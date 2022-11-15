@@ -70,7 +70,7 @@ defmodule FzHttpWeb.Authentication do
     __MODULE__.Plug.sign_in(conn, user)
   end
 
-  def sign_out(conn, and_then \\ fn c -> c end) do
+  def sign_out(conn) do
     with {:ok, provider_key} <- parse_provider(Plug.Conn.get_session(conn, "login_method")),
          {:ok, provider} <- atomize_provider(provider_key),
          {:ok, client_id} <-
@@ -86,12 +86,14 @@ defmodule FzHttpWeb.Authentication do
            ) do
       conn
       |> __MODULE__.Plug.sign_out()
+      |> Plug.Conn.configure_session(drop: true)
       |> Phoenix.Controller.redirect(external: end_session_uri)
     else
       _ ->
         conn
         |> __MODULE__.Plug.sign_out()
-        |> and_then.()
+        |> Plug.Conn.configure_session(drop: true)
+        |> Phoenix.Controller.redirect(to: Routes.root_path(conn, :index))
     end
   end
 
