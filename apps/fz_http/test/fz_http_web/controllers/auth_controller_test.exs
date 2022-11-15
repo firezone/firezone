@@ -120,6 +120,7 @@ defmodule FzHttpWeb.AuthControllerTest do
 
       test_conn = get(conn, Routes.auth_oidc_path(conn, :callback, "google"), @params)
       assert redirected_to(test_conn) == Routes.user_index_path(test_conn, :index)
+      assert get_session(test_conn, "id_token") == "abc"
     end
 
     @moduletag :capture_log
@@ -221,13 +222,22 @@ defmodule FzHttpWeb.AuthControllerTest do
 
   describe "oidc signout url" do
     @oidc_end_session_uri "https://end-session.url"
+    @params %{"id_token_hint" => "abc", "post_logout_redirect_uri" => "https://localhost", "client_id" => "okta-client-id"}
 
     @tag session: [login_method: "okta"]
     test "redirects to oidc end_session_uri", %{admin_conn: conn} do
-      expect(OpenIDConnect.Mock, :end_session_uri, fn _provider, _ -> @oidc_end_session_uri end)
+      # mimics OpenID Connect
+      query = URI.encode_query(@params)
 
-      conn
-      |> delete(Routes.auth_path(conn, :delete))
+      complete_uri =
+        @oidc_end_session_uri
+        |> URI.merge("?#{query}")
+        |> URI.to_string()
+
+      expect(OpenIDConnect.Mock, :end_session_uri, fn _provider, _params -> complete_uri end)
+
+      test_conn = delete(conn, Routes.auth_path(conn, :delete))
+      assert redirected_to(test_conn) == complete_uri
     end
   end
 

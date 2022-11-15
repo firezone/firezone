@@ -79,7 +79,7 @@ defmodule FzHttpWeb.AuthController do
           end
 
           conn
-          |> put_resp_cookie("id_token", tokens["id_token"])
+          |> put_session("id_token", tokens["id_token"])
           |> maybe_sign_in(user, %{provider: provider})
 
         {:error, reason} ->
