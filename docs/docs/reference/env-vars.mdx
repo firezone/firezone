@@ -4,11 +4,15 @@ sidebar_position: 2
 ---
 
 Most day-to-day config of Firezone can (and should) be done via the
-Web UI.
+Firezone Web UI.
 
 For Docker-based deployments, deployment-related or infrastructure-related
 config of Firezone is done through environment variables passed to the
 Firezone image upon launch.
+
+Read more about configuring Firezone in our [configure guide](/deploy/configure).
+
+## Environment Variable Listing
 
 We recommend setting these in your Docker ENV file (`$HOME/.firezone/.env` by
 default). Required fields in **bold**.
@@ -59,4 +63,4 @@ default). Required fields in **bold**.
 | `WIREGUARD_PERSISTENT_KEEPALIVE` | Default persistent keepalive value used in client configs.                                                                                                                                                            | Integer                                                                                                                                                                    | `0`                                                                              |
 | `WIREGUARD_PORT`                 | Port to listen on for WireGuard connections.                                                                                                                                                                          | Integer                                                                                                                                                                    | `51820`                                                                          |
 | `SECURE_COOKIES`                 | Enable or disable requiring secure cookies. Required for HTTPS.                                                                                                                                                       | Boolean                                                                                                                                                                    | `true`                                                                           |
-| `TELEMETRY_ENABLED`              | Enable / disable product telemetry.                                                                                                                                                                                   |                                                                                                                                                                            | `true`                                                                           |
+| `TELEMETRY_ENABLED`              | Enable / disable product telemetry. Read more about [what that means here](/reference/telemetry).                                                                                                                     |                                                                                                                                                                            | `true`                                                                           |
