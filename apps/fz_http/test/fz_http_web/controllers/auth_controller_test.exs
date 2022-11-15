@@ -219,6 +219,18 @@ defmodule FzHttpWeb.AuthControllerTest do
     end
   end
 
+  describe "oidc signout url" do
+    @oidc_end_session_uri "https://end-session.url"
+
+    @tag session: [login_method: "okta"]
+    test "redirects to oidc end_session_uri", %{admin_conn: conn} do
+      expect(OpenIDConnect.Mock, :end_session_uri, fn _provider, _ -> @oidc_end_session_uri end)
+
+      conn
+      |> delete(Routes.auth_path(conn, :delete))
+    end
+  end
+
   describe "oidc signin url" do
     @oidc_auth_uri "https://auth.url"
 

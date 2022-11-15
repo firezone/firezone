@@ -7,6 +7,12 @@ defmodule FzHttp.Conf.OIDCConfig do
   import Ecto.Changeset
   import FzHttp.Validators.OpenIDConnect
 
+  @reserved_config_ids [
+    "identity",
+    "saml",
+    "magic_link"
+  ]
+
   @primary_key false
   embedded_schema do
     field :id, :string
@@ -44,6 +50,8 @@ defmodule FzHttp.Conf.OIDCConfig do
       :discovery_document_uri,
       :auto_create_users
     ])
+    # Don't allow users to enter reserved config ids
+    |> validate_exclusion(:id, @reserved_config_ids)
     |> validate_discovery_document_uri()
   end
 end

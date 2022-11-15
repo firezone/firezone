@@ -44,7 +44,7 @@ config :fz_http,
   supervision_tree_mode: :test,
   connectivity_checks_interval: 86_400,
   sql_sandbox: true,
-  http_client: FzHttp.MockHttpClient
+  http_client: FzHttp.Mocks.HttpClient
 
 # Print only warnings and errors during test
 config :logger, level: :warn
@@ -67,7 +67,7 @@ config :fz_http, :openid_connect_providers, """
     "label": "OIDC Google"
   },
   "okta": {
-    "discovery_document_uri": "https://<OKTA_DOMAIN>/.well-known/openid-configuration",
+    "discovery_document_uri": "https://common.okta.com/.well-known/openid-configuration",
     "client_id": "CLIENT_ID",
     "client_secret": "CLIENT_SECRET",
     "redirect_uri": "https://firezone.example.com/auth/oidc/okta/callback/",

@@ -5,15 +5,17 @@ defmodule FzHttpWeb.AuthController do
   use FzHttpWeb, :controller
   require Logger
 
-  @oidc_state_key "fz_oidc_state"
-  @oidc_state_valid_duration 300
+  @local_auth_providers [:identity, :magic_link]
 
-  alias FzCommon.FzCrypto
   alias FzHttp.Configurations, as: Conf
   alias FzHttp.Users
   alias FzHttpWeb.Authentication
+  alias FzHttpWeb.OAuth.PKCE
+  alias FzHttpWeb.OIDC.State
   alias FzHttpWeb.Router.Helpers, as: Routes
   alias FzHttpWeb.UserFromAuth
+
+  import FzHttpWeb.OIDC.Helpers
 
   # Uncomment when Helpers.callback_url/1 is fixed
   # alias Ueberauth.Strategy.Helpers
@@ -62,20 +64,23 @@ defmodule FzHttpWeb.AuthController do
   end
 
   def callback(conn, %{"provider" => provider_key, "state" => state} = params) do
-    openid_connect = Application.fetch_env!(:fz_http, :openid_connect)
+    token_params = Map.merge(params, PKCE.token_params(conn))
 
     with {:ok, provider} <- atomize_provider(provider_key),
-         {:ok, _state} <- verify_state(conn, state),
-         {:ok, tokens} <- openid_connect.fetch_tokens(provider, params),
-         {:ok, claims} <- openid_connect.verify(provider, tokens["id_token"]) do
+         :ok <- State.verify_state(conn, state),
+         {:ok, tokens} <- openid_connect().fetch_tokens(provider, token_params),
+         {:ok, claims} <- openid_connect().verify(provider, tokens["id_token"]) do
       case UserFromAuth.find_or_create(provider_key, claims) do
         {:ok, user} ->
           # only first-time connect will include refresh token
+          # XXX: Remove this when SCIM 2.0 is implemented
           with %{"refresh_token" => refresh_token} <- tokens do
             FzHttp.OIDC.create_connection(user.id, provider_key, refresh_token)
           end
 
-          maybe_sign_in(conn, user, %{provider: provider})
+          conn
+          |> put_resp_cookie("id_token", tokens["id_token"])
+          |> maybe_sign_in(user, %{provider: provider})
 
         {:error, reason} ->
           conn
@@ -101,29 +106,13 @@ defmodule FzHttpWeb.AuthController do
     end
   end
 
-  defp atomize_provider(key) do
-    {:ok, String.to_existing_atom(key)}
-  rescue
-    ArgumentError -> {:error, "OIDC Provider not found"}
-  end
-
-  defp verify_state(conn, state) do
-    conn
-    |> fetch_cookies(signed: [@oidc_state_key])
-    |> then(fn
-      %{cookies: %{@oidc_state_key => ^state}} ->
-        {:ok, state}
-
-      _ ->
-        {:error, "Cannot verify state"}
-    end)
-  end
-
   def delete(conn, _params) do
     conn
-    |> Authentication.sign_out()
-    |> put_flash(:info, "You are now signed out.")
-    |> redirect(to: Routes.root_path(conn, :index))
+    |> Authentication.sign_out(fn c ->
+      c
+      |> put_flash(:info, "You are now signed out.")
+      |> redirect(to: Routes.root_path(conn, :index))
+    end)
   end
 
   def reset_password(conn, _params) do
@@ -156,30 +145,36 @@ defmodule FzHttpWeb.AuthController do
     end
   end
 
-  def redirect_oidc_auth_uri(conn, %{"provider" => provider}) do
-    openid_connect = Application.fetch_env!(:fz_http, :openid_connect)
-    state = FzCrypto.rand_string()
+  def redirect_oidc_auth_uri(conn, %{"provider" => provider_key}) do
+    verifier = PKCE.code_verifier()
 
     params = %{
-      state: state,
-      # needed for google
-      access_type: "offline"
+      access_type: :offline,
+      state: State.new(),
+      code_challenge_method: PKCE.code_challenge_method(),
+      code_challenge: PKCE.code_challenge(verifier)
     }
 
-    uri = openid_connect.authorization_uri(String.to_existing_atom(provider), params)
+    with {:ok, provider} <- atomize_provider(provider_key),
+         uri <- openid_connect().authorization_uri(provider, params) do
+      conn
+      |> PKCE.put_cookie(verifier)
+      |> State.put_cookie(params.state)
+      |> redirect(external: uri)
+    else
+      _ ->
+        msg = "OpenIDConnect error: provider #{provider_key} not found in config"
+        Logger.warn(msg)
 
-    conn
-    |> put_resp_cookie(@oidc_state_key, state,
-      max_age: @oidc_state_valid_duration,
-      sign: true,
-      same_site: "Lax",
-      secure: Application.fetch_env!(:fz_http, :cookie_secure)
-    )
-    |> redirect(external: uri)
+        conn
+        |> put_resp_content_type("text/plain")
+        |> send_resp(400, "OIDC Error. Check logs.")
+        |> halt()
+    end
   end
 
   defp maybe_sign_in(conn, user, %{provider: provider} = auth)
-       when provider in [:identity, :magic_link] do
+       when provider in @local_auth_providers do
     if Conf.get!(:local_auth_enabled) do
       do_sign_in(conn, user, auth)
     else
