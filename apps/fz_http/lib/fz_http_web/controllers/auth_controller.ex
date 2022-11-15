@@ -78,6 +78,8 @@ defmodule FzHttpWeb.AuthController do
             FzHttp.OIDC.create_connection(user.id, provider_key, refresh_token)
           end
 
+          dbg(tokens)
+
           conn
           |> put_session("id_token", tokens["id_token"])
           |> maybe_sign_in(user, %{provider: provider})

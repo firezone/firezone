@@ -75,7 +75,7 @@ defmodule FzHttpWeb.Authentication do
          {:ok, provider} <- atomize_provider(provider_key),
          {:ok, client_id} <-
            parse_client_id(Conf.get!(:parsed_openid_connect_providers)[provider]),
-         {:ok, token} <- parse_token(Plug.Conn.get_session(conn, "guardian_default_token")),
+         {:ok, token} <- parse_token(Plug.Conn.get_session(conn, "id_token")),
          {:ok, end_session_uri} <-
            parse_end_session_uri(
              openid_connect().end_session_uri(provider, %{
