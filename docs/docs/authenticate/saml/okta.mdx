@@ -9,9 +9,7 @@ This guide assumes you have completed the prerequisite steps
 outlined [here](/authenticate/saml).
 :::
 
-Configure Okta as an identity provider using a SAML 2.0
-connector so users can authenticate with their Okta credentials.
-Follow the steps below to activate the integration.
+Firezone supports Single Sign-On (SSO) using Okta through the generic SAML 2.0 connector. This guide will walk you through how to configure the integration.
 
 ## Create a SAML connector
 
@@ -40,7 +38,7 @@ by filling out the following information:
 
 | Setting   | Value      | Notes                                                                                                                                 |
 |---        |---         |---                                                                                                                                    |
-| Config ID | `Okta`     | Firezone uses this value to construct endpoints required in the SAML authentication flow (e.g., receiving assertions, login requests) |
+| Config ID | `Okta`     | Firezone uses this value to construct endpoints required in the SAML authentication flow (e.g., receiving assertions, login requests).|
 | Label     | `Okta`     | Appears on the sign in button for authentication.                                                                                     |
 | Metadata  | see note   | Upload the contents of the SAML metadata document you downloaded in the previous step from Okta.                                      |
 

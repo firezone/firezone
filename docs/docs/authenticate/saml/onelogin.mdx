@@ -9,9 +9,7 @@ This guide assumes you have completed the prerequisite steps
 outlined [here](/authenticate/saml).
 :::
 
-Configure OneLogin as an identity provider using a SAML 2.0
-connector so users can authenticate with their OneLogin credentials.
-Follow the steps below to activate the integration.
+Firezone supports Single Sign-On (SSO) using OneLogin through the generic SAML 2.0 connector. This guide will walk you through how to configure the integration.
 
 ## Create a SAML connector
 
@@ -22,7 +20,7 @@ configuration settings under the under the configuration tab.
 The following fields should be filled out on this page:
 
 | Setting                | Value                                                                  |
-|---                      |---                                                                     |
+|---                     |---                                                                     |
 | Audience (EntityID)    | `urn:firezone.dev:firezone-app`                                        |
 | Recipient              | `https://firezone.company.com/auth/saml/sp/consume/onelogin`           |
 | ACS URL Validator      | `^https:\/\/firezone\.company\.com\/auth\/saml\/sp\/consume\/onelogin` |
@@ -45,7 +43,7 @@ by filling out the following information:
 
 | Setting   | Value      | Notes                                                                                                                                 |
 |---        |---         |---                                                                                                                                    |
-| Config ID | `onelogin` | Firezone uses this value to construct endpoints required in the SAML authentication flow (e.g., receiving assertions, login requests) |
+| Config ID | `onelogin` | Firezone uses this value to construct endpoints required in the SAML authentication flow (e.g., receiving assertions, login requests).|
 | Label     | `OneLogin` | Appears on the sign in button for authentication.                                                                                     |
 | Metadata  | see note   | Upload the contents of the SAML metadata document you downloaded in the previous step from OneLogin.                                  |
 
