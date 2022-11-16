@@ -11,7 +11,7 @@ defmodule FzHttpWeb.UserLive.IndexTest do
       devices: _devices,
       users: users
     } do
-      path = Routes.user_index_path(conn, :index)
+      path = ~p"/users"
       {:ok, _view, html} = live(conn, path)
 
       for user <- users do
@@ -24,7 +24,7 @@ defmodule FzHttpWeb.UserLive.IndexTest do
       devices: _devices,
       users: _users
     } do
-      path = Routes.user_index_path(conn, :index)
+      path = ~p"/users"
       {:ok, _view, html} = live(conn, path)
 
       for user <- Users.list_users(:with_device_counts) do
@@ -33,7 +33,7 @@ defmodule FzHttpWeb.UserLive.IndexTest do
     end
 
     test "navigates to user show", %{admin_conn: conn, users: users} do
-      path = Routes.user_index_path(conn, :index)
+      path = ~p"/users"
       {:ok, view, _html} = live(conn, path)
       user = List.first(users)
 
@@ -41,7 +41,7 @@ defmodule FzHttpWeb.UserLive.IndexTest do
       |> element("a", user.email)
       |> render_click()
 
-      assert_redirected(view, Routes.user_show_path(conn, :show, user))
+      assert_redirected(view, ~p"/users/#{user}")
     end
   end
 
@@ -49,8 +49,8 @@ defmodule FzHttpWeb.UserLive.IndexTest do
     setup :create_users
 
     test "redirects to sign in", %{unauthed_conn: conn} do
-      path = Routes.user_index_path(conn, :index)
-      expected_path = Routes.root_path(conn, :index)
+      path = ~p"/users"
+      expected_path = ~p"/"
       assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
     end
   end
@@ -75,7 +75,7 @@ defmodule FzHttpWeb.UserLive.IndexTest do
     }
 
     test "successfully creates user", %{admin_conn: conn} do
-      path = Routes.user_index_path(conn, :new)
+      path = ~p"/users/new"
       {:ok, view, _html} = live(conn, path)
 
       view
@@ -85,11 +85,11 @@ defmodule FzHttpWeb.UserLive.IndexTest do
       {new_path, flash} = assert_redirect(view)
       assert flash["info"] == "User created successfully."
       user = Users.get_user!(email: @valid_user_attrs["user"]["email"])
-      assert new_path == Routes.user_show_path(conn, :show, user)
+      assert new_path == ~p"/users/#{user}"
     end
 
     test "renders errors", %{admin_conn: conn} do
-      path = Routes.user_index_path(conn, :new)
+      path = ~p"/users/new"
       {:ok, view, _html} = live(conn, path)
 
       new_view =
@@ -106,14 +106,14 @@ defmodule FzHttpWeb.UserLive.IndexTest do
     setup :create_users
 
     test "shows the modal", %{admin_conn: conn} do
-      path = Routes.user_index_path(conn, :index)
+      path = ~p"/users"
       {:ok, view, _html} = live(conn, path)
 
       view
       |> element("a", "Add User")
       |> render_click()
 
-      assert_patched(view, Routes.user_index_path(conn, :new))
+      assert_patched(view, ~p"/users")
     end
   end
 end

@@ -8,12 +8,12 @@
     <.live_title>
       <%= assigns[:page_title] || "Firezone" %>
     </.live_title>
-    <link phx-track-static rel="stylesheet" href={Routes.static_path(@conn, "/dist/root.css")} />
+    <link phx-track-static rel="stylesheet" href={~p"/dist/root.css"} />
     <script
       defer
       phx-track-static
       type="text/javascript"
-      src={Routes.static_path(@conn, "/dist/root.js")}
+      src={~p"/dist/root.js"}
     >
     </script>
     <!-- Favicon -->

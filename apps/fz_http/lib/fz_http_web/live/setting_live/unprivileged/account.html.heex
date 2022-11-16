@@ -1,7 +1,7 @@
 <%= if @live_action == :change_password do %>
   <%= live_modal(
     FzHttpWeb.SettingLive.Unprivileged.AccountFormComponent,
-    return_to: Routes.setting_unprivileged_account_path(@socket, :show),
+    return_to: ~p"/user_account",
     title: "Change password",
     id: "account-form-component",
     current_user: @current_user,
@@ -14,11 +14,11 @@
     module={FzHttpWeb.MFA.RegisterComponent}
     id="register-mfa"
     user={@current_user}
-    return_to={Routes.setting_unprivileged_account_path(@socket, :show)}
+    return_to={~p"/user_account"}
   />
 <% end %>
 
-<.link navigate={Routes.device_unprivileged_index_path(@socket, :index)}>
+<.link navigate={~p"/user_devices"}>
   &lt;- Back to devices
 </.link>
 
@@ -40,7 +40,7 @@
       <%= if @local_auth_enabled do %>
         <.link
           replace={true}
-          patch={Routes.setting_unprivileged_account_path(@socket, :change_password)}
+          patch={~p"/user_account/change_password"}
           class="button"
         >
           <span class="icon is-small">
@@ -124,7 +124,7 @@
 
   <.link
     replace={true}
-    patch={Routes.setting_unprivileged_account_path(@socket, :register_mfa)}
+    patch={~p"/user_account/register_mfa"}
     class="button"
   >
     <span class="icon is-small">

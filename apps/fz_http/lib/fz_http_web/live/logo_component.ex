@@ -2,9 +2,7 @@ defmodule FzHttpWeb.LogoComponent do
   @moduledoc """
   Logo component displays default, url and data logo
   """
-  use Phoenix.Component
-
-  alias FzHttpWeb.Router.Helpers, as: Routes
+  use FzHttpWeb, :live_component
 
   def render(%{url: url} = assigns) when is_binary(url) do
     ~H"""
@@ -20,7 +18,7 @@ defmodule FzHttpWeb.LogoComponent do
 
   def render(assigns) do
     ~H"""
-    <img src={Routes.static_path(FzHttpWeb.Endpoint, "/images/logo-text.svg")} alt="firezone.dev">
+    <img src={~p"/images/logo-text.svg"} alt="firezone.dev">
     """
   end
 end

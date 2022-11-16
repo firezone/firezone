@@ -8,7 +8,7 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
     @allow_params %{"rule" => %{"action" => "accept", "destination" => @destination}}
 
     test "adds to allowlist", %{admin_conn: conn} do
-      path = Routes.rule_index_path(conn, :index)
+      path = ~p"/rules"
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -20,7 +20,7 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
     end
 
     test "validation fails", %{admin_conn: conn, rule: _rule} do
-      path = Routes.rule_index_path(conn, :index)
+      path = ~p"/rules"
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -49,7 +49,7 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
     end
 
     test "removes from allowlist", %{admin_conn: conn, rule: rule} do
-      path = Routes.rule_index_path(conn, :index)
+      path = ~p"/rules"
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -68,7 +68,7 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
     @deny_params %{"rule" => %{"action" => "drop", "destination" => @destination}}
 
     test "adds to denylist", %{admin_conn: conn, rule: _rule} do
-      path = Routes.rule_index_path(conn, :index)
+      path = ~p"/rules"
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -80,7 +80,7 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
     end
 
     test "validation fails", %{admin_conn: conn, rule: _rule} do
-      path = Routes.rule_index_path(conn, :index)
+      path = ~p"/rules"
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -97,7 +97,7 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
     end
 
     test "removes from denylist", %{admin_conn: conn, rule: rule} do
-      path = Routes.rule_index_path(conn, :index)
+      path = ~p"/rules"
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -115,7 +115,7 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
     @destination "1.2.3.4"
 
     test "adds allow", %{admin_conn: conn, user: user} do
-      path = Routes.rule_index_path(conn, :index)
+      path = ~p"/rules"
       {:ok, view, _html} = live(conn, path)
 
       params = %{
@@ -138,7 +138,7 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
     end
 
     test "adds deny", %{admin_conn: conn, user: user} do
-      path = Routes.rule_index_path(conn, :index)
+      path = ~p"/rules"
       {:ok, view, _html} = live(conn, path)
 
       params = %{
@@ -168,7 +168,7 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
       {:ok, rule: rule, user: user} =
         create_rule_with_user(%{action: "accept", destination: @destination})
 
-      path = Routes.rule_index_path(conn, :index)
+      path = ~p"/rules"
       {:ok, view, _html} = live(conn, path)
 
       view |> element("a[phx-value-rule_id=#{rule.id}]") |> render_click()
@@ -186,7 +186,7 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
       {:ok, rule: rule, user: user} =
         create_rule_with_user(%{action: "drop", destination: @destination})
 
-      path = Routes.rule_index_path(conn, :index)
+      path = ~p"/rules"
       {:ok, view, _html} = live(conn, path)
 
       view |> element("a[phx-value-rule_id=#{rule.id}]") |> render_click()

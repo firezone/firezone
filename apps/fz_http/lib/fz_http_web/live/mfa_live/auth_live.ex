@@ -42,7 +42,7 @@ defmodule FzHttpWeb.MFALive.Auth do
     <hr>
 
     <div class="block has-text-right">
-      <.link navigate={Routes.mfa_auth_path(@socket, :types)}>
+      <.link navigate={~p"/mfa/auth/types"}>
         Other authenticators -&gt;
       </.link>
     </div>
@@ -69,7 +69,7 @@ defmodule FzHttpWeb.MFALive.Auth do
                     class: "button" %>
               </div>
               <div class="level-right">
-                <%= link(to: Routes.auth_path(@socket, :delete), method: :delete) do %>
+                <%= link(to: ~p"/sign_out", method: :delete) do %>
                   Sign out
                 <% end %>
               </div>
@@ -96,7 +96,7 @@ defmodule FzHttpWeb.MFALive.Auth do
       <ul>
         <%= for method <- @methods do %>
         <li>
-          <.link navigate={Routes.mfa_auth_path(@socket, :auth, method.id)}>
+          <.link navigate={~p"/mfa/auth/#{method.id}"}>
             <%= "[#{method.type}] #{method.name} ->" %>
           </.link>
         </li>
@@ -112,7 +112,7 @@ defmodule FzHttpWeb.MFALive.Auth do
       {:ok, _method} ->
         {:noreply,
          push_redirect(socket,
-           to: root_path_for_role(FzHttpWeb.Endpoint, socket.assigns.current_user.role)
+           to: root_path_for_role(socket.assigns.current_user.role)
          )}
 
       {:error, changeset} ->

@@ -2,14 +2,13 @@ defmodule FzHttpWeb.ControllerHelpers do
   @moduledoc """
   Useful helpers for controllers
   """
+  use FzHttpWeb, :helper
 
-  alias FzHttpWeb.Router.Helpers, as: Routes
-
-  def root_path_for_role(conn, :admin) do
-    Routes.user_index_path(conn, :index)
+  def root_path_for_role(:admin) do
+    ~p"/users"
   end
 
-  def root_path_for_role(conn, :unprivileged) do
-    Routes.device_unprivileged_index_path(conn, :index)
+  def root_path_for_role(:unprivileged) do
+    ~p"/user_devices"
   end
 end

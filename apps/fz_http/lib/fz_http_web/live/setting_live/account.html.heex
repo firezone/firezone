@@ -1,7 +1,7 @@
 <%= if @live_action == :edit do %>
   <%= live_modal(
     FzHttpWeb.SettingLive.AccountFormComponent,
-    return_to: Routes.setting_account_path(@socket, :show),
+    return_to: ~p"/settings/account",
     title: "Edit Account",
     id: "user-#{@current_user.id}",
     user: @current_user,
@@ -15,7 +15,7 @@
     module={FzHttpWeb.MFA.RegisterComponent}
     id="register-mfa"
     user={@current_user}
-    return_to={Routes.setting_account_path(@socket, :show)}
+    return_to={~p"/settings/account"}
   />
 <% end %>
 
@@ -33,7 +33,7 @@
     </div>
 
     <div class="level-right">
-      <.link replace={true} patch={Routes.setting_account_path(@socket, :edit)} class="button">
+      <.link replace={true} patch={~p"/settings/account/edit"} class="button">
         <span class="icon is-small">
           <i class="mdi mdi-pencil"></i>
         </span>
@@ -115,7 +115,7 @@
     <% end %>
   </div>
 
-  <.link replace={true} patch={Routes.setting_account_path(@socket, :register_mfa)} class="button">
+  <.link replace={true} patch={~p"/settings/account/register_mfa"} class="button">
     <span class="icon is-small">
       <i class="mdi mdi-plus"></i>
     </span>
@@ -140,7 +140,7 @@
     Danger Zone
   </h4>
 
-  <%= form_for @changeset, Routes.user_path(@socket, :delete), [id: "delete-account", method: :delete], fn _f -> %>
+  <%= form_for @changeset, ~p"/sign_out", [id: "delete-account", method: :delete], fn _f -> %>
     <%= submit(class: "button is-danger", data: [confirm: "Are you sure?"], disabled: !@allow_delete) do %>
       <span class="icon is-small">
         <i class="fas fa-trash"></i>

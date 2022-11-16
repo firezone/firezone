@@ -22,7 +22,7 @@ defmodule FzHttpWeb.SettingLive.Account do
      |> assign(:methods, MFA.list_methods(socket.assigns.current_user))
      |> assign(:page_title, @page_title)
      |> assign(:page_subtitle, @page_subtitle)
-     |> assign(:rules_path, Routes.rule_index_path(socket, :index))
+     |> assign(:rules_path, ~p"/rules")
      |> assign(
        :metas,
        get_metas(Presence.list(@live_sessions_topic), socket.assigns.current_user.id)

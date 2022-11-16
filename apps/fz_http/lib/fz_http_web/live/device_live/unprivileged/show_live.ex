@@ -28,7 +28,7 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.Show do
       {:ok, _deleted_device} ->
         {:noreply,
          socket
-         |> redirect(to: Routes.device_unprivileged_index_path(socket, :index))}
+         |> redirect(to: ~p"/user_devices")}
 
       {:not_authorized} ->
         {:noreply, not_authorized(socket)}

@@ -10,13 +10,13 @@
     <link
       phx-track-static
       rel="stylesheet"
-      href={Routes.static_path(@conn, "/dist/unprivileged.css")}
+      href={~p"/dist/unprivileged.css"}
     />
     <script
       defer
       phx-track-static
       type="text/javascript"
-      src={Routes.static_path(@conn, "/dist/unprivileged.js")}
+      src={~p"/dist/unprivileged.js"}
     >
     </script>
     <!-- Favicon -->

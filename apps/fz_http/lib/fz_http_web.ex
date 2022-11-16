@@ -25,7 +25,7 @@ defmodule FzHttpWeb do
       import FzHttpWeb.Gettext
       import Phoenix.LiveView.Controller
       import FzHttpWeb.ControllerHelpers
-      alias FzHttpWeb.Router.Helpers, as: Routes
+      alias FzHttp.Configurations, as: Conf
 
       unquote(verified_routes())
     end
@@ -50,7 +50,8 @@ defmodule FzHttpWeb do
       import FzHttpWeb.AuthorizationHelpers
       import FzHttpWeb.Gettext
       import FzHttpWeb.LiveHelpers
-      alias FzHttpWeb.Router.Helpers, as: Routes
+
+      unquote(verified_routes())
 
       def render_common(template, assigns \\ []) do
         render(FzHttpWeb.CommonView, template, assigns)
@@ -108,6 +109,12 @@ defmodule FzHttpWeb do
     end
   end
 
+  def helper do
+    quote do
+      unquote(verified_routes())
+    end
+  end
+
   defp view_helpers do
     quote do
       # Use all HTML functionality (forms, tags, etc)
@@ -124,7 +131,6 @@ defmodule FzHttpWeb do
 
       import FzHttpWeb.ErrorHelpers
       import FzHttpWeb.Gettext
-      alias FzHttpWeb.Router.Helpers, as: Routes
 
       unquote(verified_routes())
     end

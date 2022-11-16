@@ -5,8 +5,7 @@ defmodule FzHttpWeb.Authentication.ErrorHandler do
 
   use FzHttpWeb, :controller
   alias FzHttpWeb.Authentication
-  alias FzHttpWeb.Router.Helpers, as: Routes
-  import FzHttpWeb.ControllerHelpers, only: [root_path_for_role: 2]
+  import FzHttpWeb.ControllerHelpers, only: [root_path_for_role: 1]
   require Logger
 
   @behaviour Guardian.Plug.ErrorHandler
@@ -16,13 +15,14 @@ defmodule FzHttpWeb.Authentication.ErrorHandler do
     user = Authentication.get_current_user(conn)
 
     conn
-    |> redirect(to: root_path_for_role(conn, user.role))
+    |> redirect(to: root_path_for_role(user.role))
   end
 
   @impl Guardian.Plug.ErrorHandler
   def auth_error(conn, {:unauthenticated, _reason}, _opts) do
     conn
-    |> redirect(to: Routes.root_path(conn, :index))
+    |> redirect(to: ~p"/")
+
   end
 
   @impl Guardian.Plug.ErrorHandler

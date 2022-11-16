@@ -13,7 +13,7 @@ defmodule FzHttpWeb.SettingLive.CustomizationTest do
         Conf.Cache.put!(:logo, nil)
       end)
 
-      path = Routes.setting_customization_path(conn, :show)
+      path = ~p"/settings/customization"
       {:ok, view, html} = live(conn, path)
 
       {:ok, view: view, html: html}

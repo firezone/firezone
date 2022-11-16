@@ -9,7 +9,7 @@ defmodule FzHttpWeb.AuthControllerTest do
     test "unauthed: loads the sign in form", %{unauthed_conn: conn} do
       expect(OpenIDConnect.Mock, :authorization_uri, fn _, _ -> "https://auth.url" end)
 
-      test_conn = get(conn, Routes.root_path(conn, :index))
+      test_conn = get(conn, ~p"/")
 
       # Assert that we email, OIDC and Oauth2 buttons provided
       for expected <- [
@@ -22,15 +22,15 @@ defmodule FzHttpWeb.AuthControllerTest do
     end
 
     test "authed as admin: redirects to users page", %{admin_conn: conn} do
-      test_conn = get(conn, Routes.root_path(conn, :index))
+      test_conn = get(conn, ~p"/")
 
-      assert redirected_to(test_conn) == Routes.user_index_path(test_conn, :index)
+      assert redirected_to(test_conn) == ~p"/users"
     end
 
     test "authed as unprivileged: redirects to user_devices page", %{unprivileged_conn: conn} do
-      test_conn = get(conn, Routes.root_path(conn, :index))
+      test_conn = get(conn, ~p"/")
 
-      assert redirected_to(test_conn) == Routes.device_unprivileged_index_path(test_conn, :index)
+      assert redirected_to(test_conn) == ~p"/user_devices"
     end
   end
 
@@ -43,9 +43,9 @@ defmodule FzHttpWeb.AuthControllerTest do
         "password" => "test"
       }
 
-      test_conn = post(conn, Routes.auth_path(conn, :callback, :identity), params)
+      test_conn = post(conn, ~p"/auth/identity/callback", params)
 
-      assert test_conn.request_path == Routes.auth_path(test_conn, :callback, :identity)
+      assert test_conn.request_path == ~p"/auth/identity/callback"
       assert get_flash(test_conn, :error) == "Error signing in: invalid_credentials"
     end
 
@@ -55,9 +55,9 @@ defmodule FzHttpWeb.AuthControllerTest do
         "password" => "invalid"
       }
 
-      test_conn = post(conn, Routes.auth_path(conn, :callback, :identity), params)
+      test_conn = post(conn, ~p"/auth/identity/callback", params)
 
-      assert test_conn.request_path == Routes.auth_path(test_conn, :callback, :identity)
+      assert test_conn.request_path == ~p"/auth/identity/callback"
       assert get_flash(test_conn, :error) == "Error signing in: invalid_credentials"
     end
 
@@ -67,9 +67,9 @@ defmodule FzHttpWeb.AuthControllerTest do
         "password" => "password1234"
       }
 
-      test_conn = post(conn, Routes.auth_path(conn, :callback, :identity), params)
+      test_conn = post(conn, ~p"/auth/identity/callback", params)
 
-      assert redirected_to(test_conn) == Routes.user_index_path(test_conn, :index)
+      assert redirected_to(test_conn) == ~p"/users"
       assert current_user(test_conn).id == user.id
     end
 
@@ -81,7 +81,7 @@ defmodule FzHttpWeb.AuthControllerTest do
 
       restore_env(:local_auth_enabled, false, &on_exit/1)
 
-      test_conn = post(conn, Routes.auth_path(conn, :callback, :identity), params)
+      test_conn = post(conn, ~p"/auth/identity/callback", params)
       assert text_response(test_conn, 401) == "Local auth disabled"
     end
   end
@@ -118,8 +118,8 @@ defmodule FzHttpWeb.AuthControllerTest do
         {:ok, %{"email" => user.email, "sub" => "12345"}}
       end)
 
-      test_conn = get(conn, Routes.auth_oidc_path(conn, :callback, "google"), @params)
-      assert redirected_to(test_conn) == Routes.user_index_path(test_conn, :index)
+      test_conn = get(conn, ~p"/auth/oidc/google/callback", @params)
+      assert redirected_to(test_conn) == ~p"/users"
       assert get_session(test_conn, "id_token") == "abc"
     end
 
@@ -132,13 +132,13 @@ defmodule FzHttpWeb.AuthControllerTest do
         {:error, "Invalid token for user!"}
       end)
 
-      test_conn = get(conn, Routes.auth_oidc_path(conn, :callback, "google"), @params)
+      test_conn = get(conn, ~p"/auth/oidc/google/callback", @params)
       assert get_flash(test_conn, :error) == "OpenIDConnect Error: Invalid token for user!"
     end
 
     test "when a user returns with an invalid state", %{unauthed_conn: conn} do
       test_conn =
-        get(conn, Routes.auth_oidc_path(conn, :callback, "google"), %{
+        get(conn, ~p"/auth/oidc/google/callback", %{
           @params
           | "state" => "not_valid"
         })
@@ -148,7 +148,7 @@ defmodule FzHttpWeb.AuthControllerTest do
 
     @tag max_age: 0
     test "when a user returns with an expired state", %{unauthed_conn: conn} do
-      test_conn = get(conn, Routes.auth_oidc_path(conn, :callback, "google"), @params)
+      test_conn = get(conn, ~p"/auth/oidc/google/callback", @params)
 
       assert get_flash(test_conn, :error) == "OpenIDConnect Error: Cannot verify state"
     end
@@ -158,13 +158,13 @@ defmodule FzHttpWeb.AuthControllerTest do
     setup :create_user
 
     test "user signed in", %{admin_conn: conn} do
-      test_conn = delete(conn, Routes.auth_path(conn, :delete))
-      assert redirected_to(test_conn) == Routes.root_path(test_conn, :index)
+      test_conn = delete(conn, ~p"/sign_out")
+      assert redirected_to(test_conn) == ~p"/"
     end
 
     test "user not signed in", %{unauthed_conn: conn} do
-      test_conn = delete(conn, Routes.auth_path(conn, :delete))
-      assert redirected_to(test_conn) == Routes.root_path(test_conn, :index)
+      test_conn = delete(conn, ~p"/sign_out")
+      assert redirected_to(test_conn) == ~p"/"
     end
   end
 
@@ -172,9 +172,9 @@ defmodule FzHttpWeb.AuthControllerTest do
     setup :create_user
 
     test "redirects to root path", %{unauthed_conn: conn, user: user} do
-      test_conn = post(conn, Routes.auth_path(conn, :magic_link), %{"email" => user.email})
+      test_conn = post(conn, ~p"/auth/magic_link", %{"email" => user.email})
 
-      assert redirected_to(test_conn) == Routes.root_path(conn, :index)
+      assert redirected_to(test_conn) == ~p"/"
       assert get_flash(test_conn, :info) == "Please check your inbox for the magic link."
     end
   end
@@ -188,7 +188,7 @@ defmodule FzHttpWeb.AuthControllerTest do
       assert not is_nil(user.sign_in_token)
       assert not is_nil(user.sign_in_token_created_at)
 
-      get(conn, Routes.auth_path(conn, :magic_sign_in, user.sign_in_token))
+      get(conn, ~p"/auth/magic/#{user.sign_in_token}")
 
       user = Repo.reload!(user)
 
@@ -197,7 +197,7 @@ defmodule FzHttpWeb.AuthControllerTest do
     end
 
     test "user last signed in with magic_link provider", %{unauthed_conn: conn, user: user} do
-      get(conn, Routes.auth_path(conn, :magic_sign_in, user.sign_in_token))
+      get(conn, ~p"/auth/magic/#{user.sign_in_token}")
 
       user = Repo.reload!(user)
 
@@ -205,7 +205,7 @@ defmodule FzHttpWeb.AuthControllerTest do
     end
 
     test "user is signed in", %{unauthed_conn: conn, user: user} do
-      test_conn = get(conn, Routes.auth_path(conn, :magic_sign_in, user.sign_in_token))
+      test_conn = get(conn, ~p"/auth/magic/#{user.sign_in_token}")
 
       assert current_user(test_conn).id == user.id
     end
@@ -213,7 +213,7 @@ defmodule FzHttpWeb.AuthControllerTest do
     test "prevents signing in when local_auth_disabled", %{unauthed_conn: conn, user: user} do
       restore_env(:local_auth_enabled, false, &on_exit/1)
 
-      test_conn = get(conn, Routes.auth_path(conn, :magic_sign_in, user.sign_in_token))
+      test_conn = get(conn, ~p"/magic/auth/#{user.sign_in_token}")
       assert text_response(test_conn, 401) == "Local auth disabled"
     end
   end
@@ -238,7 +238,7 @@ defmodule FzHttpWeb.AuthControllerTest do
 
       expect(OpenIDConnect.Mock, :end_session_uri, fn _provider, _params -> complete_uri end)
 
-      test_conn = delete(conn, Routes.auth_path(conn, :delete))
+      test_conn = delete(conn, ~p"/sign_out")
       assert redirected_to(test_conn) == complete_uri
     end
   end
@@ -253,7 +253,7 @@ defmodule FzHttpWeb.AuthControllerTest do
         end
       end)
 
-      test_conn = get(conn, Routes.auth_oidc_path(conn, :redirect_oidc_auth_uri, "google"))
+      test_conn = get(conn, ~p"/auth/oidc/google")
 
       assert redirected_to(test_conn) == @oidc_auth_uri
     end

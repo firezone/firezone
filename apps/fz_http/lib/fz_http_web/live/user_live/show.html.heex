@@ -1,7 +1,7 @@
 <%= if @live_action == :edit do %>
   <%= live_modal(
     FzHttpWeb.UserLive.FormComponent,
-    return_to: Routes.user_show_path(@socket, :show, @user),
+return_to: ~p"/users/#{@user}",
     title: "Edit #{@user.email}",
     id: "user-form-component",
     user: @user,
@@ -13,7 +13,7 @@
 <%= if @live_action == :new_device do %>
   <%= live_modal(
     FzHttpWeb.DeviceLive.NewFormComponent,
-    return_to: Routes.user_show_path(@socket, :show, @user.id),
+    return_to: ~p"/users/#{@user}",
     title: "Add Device",
     current_user: @current_user,
     target_user_id: @user.id,
@@ -33,7 +33,7 @@
       <h4 class="title is-4">Details</h4>
     </div>
     <div class="level-right">
-      <.link patch={Routes.user_show_path(@socket, :edit, @user)} replace={true} class="button">
+      <.link patch={~p"/users/#{@user}/edit"} replace={true} class="button">
         <span class="icon is-small">
           <i class="mdi mdi-pencil"></i>
         </span>
@@ -70,7 +70,7 @@
   </div>
 
   <.link
-    patch={Routes.user_show_path(@socket, :new_device, @user)}
+    patch={~p"/users/#{@user}/new_device"}
     replace={true}
     id="add-device-button"
     class="button"

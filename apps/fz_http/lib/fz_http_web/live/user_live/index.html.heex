@@ -1,7 +1,7 @@
 <%= if @live_action == :new do %>
   <%= live_modal(
     FzHttpWeb.UserLive.FormComponent,
-    return_to: Routes.user_index_path(@socket, :index),
+    return_to: ~p"/users",
     title: "Add User",
     id: "user-form-component",
     user: nil,
@@ -33,7 +33,7 @@
         <%= for user <- @users do %>
           <tr>
             <td>
-              <.link navigate={Routes.user_show_path(@socket, :show, user)}>
+              <.link navigate={~p"/users/#{user}"}>
                 <%= user.email %>
               </.link>
             </td>
@@ -72,7 +72,7 @@
     </table>
   </div>
 
-  <.link replace={true} patch={Routes.user_index_path(@socket, :new)} class="button">
+  <.link replace={true} patch={~p"/users/new"} class="button">
     Add User
   </.link>
 </section>
