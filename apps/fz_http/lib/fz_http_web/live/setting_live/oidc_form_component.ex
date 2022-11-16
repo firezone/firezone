@@ -25,6 +25,8 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
         </p>
       </div>
 
+      <hr>
+
       <div class="field">
         <%= label f, :label, class: "label" %>
 
@@ -39,6 +41,8 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
           Text to display on the Login button.
         </p>
       </div>
+
+      <hr>
 
       <div class="field">
         <%= label f, :scope, class: "label" %>
@@ -56,6 +60,8 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
         </p>
       </div>
 
+      <hr>
+
       <div class="field">
         <%= label f, :response_type, class: "label" %>
 
@@ -69,6 +75,8 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
         </p>
       </div>
 
+      <hr>
+
       <div class="field">
         <%= label f, :client_id, "Client ID", class: "label" %>
 
@@ -80,6 +88,8 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
           <%= error_tag f, :client_id %>
         </p>
       </div>
+
+      <hr>
 
       <div class="field">
         <%= label f, :client_secret, class: "label" %>
@@ -93,6 +103,8 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
         </p>
       </div>
 
+      <hr>
+
       <div class="field">
         <%= label f, :discovery_document_uri, "Discovery Document URI", class: "label" %>
 
@@ -105,6 +117,8 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
           <%= error_tag f, :discovery_document_uri %>
         </p>
       </div>
+
+      <hr>
 
       <div class="field">
         <%= label f, :redirect_uri, "Redirect URI", class: "label" %>
@@ -123,18 +137,25 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
         </p>
       </div>
 
-      <div class="field">
-        <%= label f, :auto_create_users, class: "label" %>
+      <hr>
 
-        <div class="control">
-          <%= checkbox f, :auto_create_users %>
+      <div class="field">
+        <strong>Auto-create users</strong>
+
+        <div class="level">
+          <div class="level-left">
+            <p class="help">Automatically create users when signing in for the first time.</p>
+            <p class="help is-danger">
+              <%= error_tag f, :auto_create_users %>
+            </p>
+          </div>
+          <div class="level-right">
+            <%= label f, :auto_create_users, class: "switch is-medium" do %>
+              <%= checkbox f, :auto_create_users %>
+              <span class="check"></span>
+            <% end %>
+          </div>
         </div>
-        <p class="help is-danger">
-          <%= error_tag f, :auto_create_users %>
-        </p>
-        <p class="help">
-          Automatically create users when signing in for the first time.
-        </p>
       </div>
     </.form>
     </div>

@@ -180,7 +180,7 @@ services:
       # IMPORTANT: Persists WireGuard private key and other data. If
       # /var/firezone/private_key exists when Firezone starts, it is
       # used as the WireGuard private. Otherwise, one is generated.
-      - /data/firezone/firezone:/var/firezone
+      - ${HOME}/.firezone/firezone:/var/firezone
     environment:
       EXTERNAL_URL: ${EXTERNAL_URL:?err}
       ADMIN_EMAIL: ${ADMIN_EMAIL:?err}
@@ -232,9 +232,9 @@ services:
         ipv4_address: 172.28.0.99
         ipv6_address: 2001:3990:3990::99
   postgres:
-    image: postgres:13
+    image: postgres:15
     volumes:
-      - /data/firezone/postgres:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql/data
     environment:
       # same value as ## DB section above
       POSTGRES_DB: ${DATABASE_NAME:-firezone}
@@ -244,6 +244,10 @@ services:
       <<: *default-deploy
       update_config:
         order: stop-first
+
+# Postgres needs a named volume to prevent perms issues on non-linux platforms
+volumes:
+  postgres-data:
 ```
 
 ### SSL `rules.yml`

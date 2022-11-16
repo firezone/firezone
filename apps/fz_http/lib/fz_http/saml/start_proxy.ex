@@ -22,13 +22,15 @@ defmodule FzHttp.SAML.StartProxy do
   end
 
   def set_service_provider(samly_configs) do
+    entity_id = Application.fetch_env!(:fz_http, :saml_entity_id)
     keyfile = Application.fetch_env!(:fz_http, :saml_keyfile_path)
     certfile = Application.fetch_env!(:fz_http, :saml_certfile_path)
 
+    # Only one service provider definition: us.
     Keyword.put(samly_configs, :service_providers, [
       %{
         id: "firezone",
-        entity_id: "urn:firezone.dev:firezone-app",
+        entity_id: entity_id,
         certfile: certfile,
         keyfile: keyfile
       }
@@ -39,14 +41,19 @@ defmodule FzHttp.SAML.StartProxy do
     external_url = Application.fetch_env!(:fz_http, :external_url)
 
     identity_providers =
-      for {id, setting} <- providers do
+      providers
+      |> Enum.map(fn {id, setting} ->
         %{
           id: id,
           sp_id: "firezone",
-          metadata: setting["metadata"],
-          base_url: Path.join(external_url, "/auth/saml")
+          metadata: Map.get(setting, "metadata"),
+          base_url: Map.get(setting, "base_url", Path.join(external_url, "/auth/saml")),
+          sign_requests: Map.get(setting, "sign_requests", true),
+          sign_metadata: Map.get(setting, "sign_metadata", true),
+          signed_assertion_in_resp: Map.get(setting, "signed_assertion_in_resp", true),
+          signed_envelopes_in_resp: Map.get(setting, "signed_envelopes_in_resp", true)
         }
-      end
+      end)
 
     Keyword.put(samly_configs, :identity_providers, identity_providers)
   end
