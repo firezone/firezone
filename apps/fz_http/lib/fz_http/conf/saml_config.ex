@@ -36,7 +36,12 @@ defmodule FzHttp.Conf.SAMLConfig do
     |> validate_required([
       :id,
       :label,
+      :base_url,
       :metadata,
+      :sign_requests,
+      :sign_metadata,
+      :signed_assertion_in_resp,
+      :signed_envelopes_in_resp,
       :auto_create_users
     ])
     |> validate_metadata()
