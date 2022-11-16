@@ -58,7 +58,7 @@ defmodule FzHttpWeb do
 
   def live_view do
     quote do
-      use Phoenix.LiveView, layout: {FzHttpWeb.LayoutView, :live}
+      use Phoenix.LiveView, layout: {FzHttpWeb.LayoutView, "live.html"}
       import FzHttpWeb.LiveHelpers
       alias FzHttp.Configurations, as: Conf
       alias Phoenix.LiveView.JS

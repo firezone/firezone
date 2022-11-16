@@ -56,7 +56,7 @@ defmodule FzHttp.MixProject do
     [
       {:fz_common, in_umbrella: true},
       {:decimal, "~> 2.0"},
-      {:phoenix, "~> 1.6"},
+      {:phoenix, "~> 1.7.0-rc.0"},
       {:cloak, "~> 1.1"},
       {:cloak_ecto, "~> 1.2"},
       {:excoveralls, "~> 0.14", only: :test},
