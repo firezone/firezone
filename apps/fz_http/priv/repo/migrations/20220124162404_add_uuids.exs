@@ -3,7 +3,7 @@ defmodule FzHttp.Repo.Migrations.AddUuids do
 
   def change do
     execute(
-      "CREATE EXTENSION pgcrypto",
+      "CREATE EXTENSION IF NOT EXISTS pgcrypto",
       "DROP EXTENSION pgcrypto"
     )
 
