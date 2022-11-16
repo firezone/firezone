@@ -44,16 +44,16 @@ to copy-paste the contents of this document into the Firezone portal in the next
 In the Firezone portal, add a SAML identity provider under the Security tab
 by filling out the following information:
 
-| Setting                   | Value           | Notes                                                                                                                                  |
-| ---                       | ---             | ---                                                                                                                                    |
-| Config ID                 | `jumpcloud`     | Firezone uses this value to construct endpoints required in the SAML authentication flow (e.g., receiving assertions, login requests). |
-| Label                     | `Jumpcloud`     | Appears on the sign in button for authentication.                                                                                      |
-| Base URL                  | Leave unchaged. |                                                                                                                                        |
-| Metadata                  | see note        | Copy-paste the contents of the SAML metadata document you downloaded in the previous step from Jumpcloud.                              |
-| Sign assertions           | Checked.        |                                                                                                                                        |
-| Sign metadata             | Checked.        |                                                                                                                                        |
-| Require signed assertions | Checked.        |                                                                                                                                        |
-| Required signed envelopes | **Unchecked.**  |                                                                                                                                        |
+| Setting                   | Value            | Notes                                                                                                                                  |
+| ---                       | ---              | ---                                                                                                                                    |
+| Config ID                 | `jumpcloud`      | Firezone uses this value to construct endpoints required in the SAML authentication flow (e.g., receiving assertions, login requests). |
+| Label                     | `Jumpcloud`      | Appears on the sign in button for authentication.                                                                                      |
+| Base URL                  | Leave unchanged. |                                                                                                                                        |
+| Metadata                  | see note         | Copy-paste the contents of the SAML metadata document you downloaded in the previous step from Jumpcloud.                              |
+| Sign assertions           | Checked.         |                                                                                                                                        |
+| Sign metadata             | Checked.         |                                                                                                                                        |
+| Require signed assertions | Checked.         |                                                                                                                                        |
+| Required signed envelopes | **Unchecked.**   |                                                                                                                                        |
 
 Your Firezone configuration should now resemble the following:
 
