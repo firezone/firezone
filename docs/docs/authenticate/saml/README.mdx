@@ -40,7 +40,7 @@ Set the `SAML_KEY_PATH` and `SAML_CERT_PATH` environment variables to
 the path containing your `saml.key` and `saml.crt` above. If using our [example
 docker compose file](https://github.com/firezone/firezone/blob/master/docker-compose.prod.yml),
 which includes a volume for mapping configuration,
-save these files to `/data/firezone/` on the Docker host and set the
+save these files to `$HOME/.firezone/firezone` on the Docker host and set the
 `SAML_KEY_PATH=/var/firezone/saml.key` and
 `SAML_CERT_PATH=/var/firezone/saml.crt` environment variables for the Firezone
 container.

@@ -10,6 +10,12 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
     ~H"""
     <div>
     <.form let={f} for={@changeset} autocomplete="off" id="oidc-form" phx-target={@myself} phx-submit="save">
+      <p>
+        <a href="https://docs.firezone.dev/authenticate/oidc?utm_source=product&uid=#{Application.fetch_env!(:fz_http, :telemetry_id)}">
+          Read documentation for configuring OIDC.
+        </a>
+      </p>
+
       <div class="field">
         <%= label f, :id, "Config ID", class: "label" %>
 

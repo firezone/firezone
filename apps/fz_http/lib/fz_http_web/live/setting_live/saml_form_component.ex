@@ -10,6 +10,12 @@ defmodule FzHttpWeb.SettingLive.SAMLFormComponent do
     ~H"""
     <div>
     <.form let={f} for={@changeset} autocomplete="off" id="saml-form" phx-target={@myself} phx-submit="save">
+      <p>
+        <a href="https://docs.firezone.dev/authenticate/saml?utm_source=product&uid=#{Application.fetch_env!(:fz_http, :telemetry_id)}">
+          Read documentation for configuring OIDC.
+        </a>
+      </p>
+
       <div class="field">
         <%= label f, :id, "Config ID", class: "label" %>
 
@@ -35,6 +41,18 @@ defmodule FzHttpWeb.SettingLive.SAMLFormComponent do
       </div>
 
       <div class="field">
+        <%= label f, :base_url, "Base URL", class: "label" %>
+
+        <div class="control">
+          <%= text_input f, :base_url,
+              class: "input #{input_error_class(f, :base_url)}" %>
+        </div>
+        <p class="help is-danger">
+          <%= error_tag f, :base_url %>
+        </p>
+      </div>
+
+      <div class="field">
         <%= label f, :metadata, class: "label" %>
 
         <div class="control">
@@ -44,6 +62,50 @@ defmodule FzHttpWeb.SettingLive.SAMLFormComponent do
         </div>
         <p class="help is-danger">
           <%= error_tag f, :metadata %>
+        </p>
+      </div>
+
+      <div class="field">
+        <%= label f, :sign_requests, class: "label" %>
+
+        <div class="control">
+          <%= checkbox f, :sign_requests %>
+        </div>
+        <p class="help is-danger">
+          <%= error_tag f, :sign_requests %>
+        </p>
+      </div>
+
+      <div class="field">
+        <%= label f, :sign_metadata, class: "label" %>
+
+        <div class="control">
+          <%= checkbox f, :sign_metadata %>
+        </div>
+        <p class="help is-danger">
+          <%= error_tag f, :sign_metadata %>
+        </p>
+      </div>
+
+      <div class="field">
+        <%= label f, :signed_assertion_in_resp, "Require response assertions to be signed", class: "label" %>
+
+        <div class="control">
+          <%= checkbox f, :signed_assertion_in_resp %>
+        </div>
+        <p class="help is-danger">
+          <%= error_tag f, :signed_assertion_in_resp %>
+        </p>
+      </div>
+
+      <div class="field">
+        <%= label f, :signed_envelopes_in_resp, "Require response envelopes to be signed", class: "label" %>
+
+        <div class="control">
+          <%= checkbox f, :signed_envelopes_in_resp %>
+        </div>
+        <p class="help is-danger">
+          <%= error_tag f, :signed_envelopes_in_resp %>
         </p>
       </div>
 
@@ -63,10 +125,15 @@ defmodule FzHttpWeb.SettingLive.SAMLFormComponent do
   end
 
   def update(assigns, socket) do
+    external_url = Application.fetch_env!(:fz_http, :external_url)
+
     changeset =
       assigns.providers
       |> Map.get(assigns.provider_id, %{})
-      |> Map.put("id", assigns.provider_id)
+      |> Map.merge(%{
+        "id" => assigns.provider_id,
+        "base_url" => Path.join(external_url, "/auth/saml")
+      })
       |> FzHttp.Conf.SAMLConfig.changeset()
 
     {:ok,

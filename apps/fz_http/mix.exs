@@ -65,6 +65,7 @@ defmodule FzHttp.MixProject do
       {:guardian, "~> 2.0"},
       {:guardian_db, "~> 2.0"},
       {:openid_connect, github: "firezone/openid_connect"},
+      {:esaml, github: "firezone/esaml", override: true},
       {:samly, github: "firezone/samly"},
       {:ueberauth, "~> 0.7"},
       {:ueberauth_identity, "~> 0.4"},
