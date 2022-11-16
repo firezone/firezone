@@ -106,7 +106,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
         |> element("a", "Add OpenID Connect Provider")
         |> render_click()
 
-      assert html =~ ~s|<p class="modal-card-title">OIDC Config</p>|
+      assert html =~ ~s|<p class="modal-card-title">OIDC Configuration</p>|
     end
 
     test "click edit button", %{view: view} do
@@ -115,7 +115,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
         |> element("a", "Edit")
         |> render_click()
 
-      assert html =~ ~s|<p class="modal-card-title">OIDC Config</p>|
+      assert html =~ ~s|<p class="modal-card-title">OIDC Configuration</p>|
       assert html =~ ~s|value="test123"|
     end
 
@@ -130,7 +130,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
         |> render_submit(%{"label" => "updated"})
 
       # stays on the modal
-      assert html =~ ~s|<p class="modal-card-title">OIDC Config</p>|
+      assert html =~ ~s|<p class="modal-card-title">OIDC Configuration</p>|
 
       # not updated
       assert Conf.get!(:openid_connect_providers) == %{"test" => %{"label" => "test123"}}
@@ -163,7 +163,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
         |> element("a", "Add SAML Identity Provider")
         |> render_click()
 
-      assert html =~ ~s|<p class="modal-card-title">SAML Config</p>|
+      assert html =~ ~s|<p class="modal-card-title">SAML Configuration</p>|
     end
 
     test "click edit button", %{view: view} do
@@ -172,7 +172,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
         |> element("a", "Edit")
         |> render_click()
 
-      assert html =~ ~s|<p class="modal-card-title">SAML Config</p>|
+      assert html =~ ~s|<p class="modal-card-title">SAML Configuration</p>|
       assert html =~ ~s|entityID=&quot;http://localhost:8080/realms/firezone|
     end
 
@@ -187,7 +187,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
         |> render_submit(%{"metadata" => "updated"})
 
       # stays on the modal
-      assert html =~ ~s|<p class="modal-card-title">SAML Config</p>|
+      assert html =~ ~s|<p class="modal-card-title">SAML Configuration</p>|
 
       # not updated
       assert Conf.get!(:saml_identity_providers) == %{"test" => saml_attrs()}
