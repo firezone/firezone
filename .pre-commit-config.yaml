@@ -53,4 +53,8 @@ repos:
         exclude: "^omnibus/config/patches/"
       - id: check-merge-conflict
       - id: no-commit-to-branch
-        args: [-b, master, -b, develop]
+        args:
+          - -b
+          - master
+          - --pattern
+          - '^(?!((chore|feat|feature|bug|fix|build|ci|docs|style|refactor|perf|test|revert)\/[a-zA-Z0-9\-]+)$).*'
