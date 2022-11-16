@@ -26,6 +26,8 @@ defmodule FzHttpWeb do
       import Phoenix.LiveView.Controller
       import FzHttpWeb.ControllerHelpers
       alias FzHttpWeb.Router.Helpers, as: Routes
+
+      unquote(verified_routes())
     end
   end
 
@@ -123,6 +125,19 @@ defmodule FzHttpWeb do
       import FzHttpWeb.ErrorHelpers
       import FzHttpWeb.Gettext
       alias FzHttpWeb.Router.Helpers, as: Routes
+
+      unquote(verified_routes())
+    end
+  end
+
+  def static_paths, do: ~w(dist fonts images browserconfig.xml robots.txt)
+
+  def verified_routes do
+    quote do
+      use Phoenix.VerifiedRoutes,
+        endpoint: FzHttpWeb.Endpoint,
+        router: FzHttpWeb.Router,
+        statics: FzHttpWeb.static_paths()
     end
   end
 

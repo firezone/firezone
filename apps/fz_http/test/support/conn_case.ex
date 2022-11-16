@@ -33,6 +33,8 @@ defmodule FzHttpWeb.ConnCase do
       # The default endpoint for testing
       @endpoint FzHttpWeb.Endpoint
 
+      use FzHttpWeb, :verified_routes
+
       def current_user(test_conn) do
         get_session(test_conn)
         |> FzHttpWeb.Authentication.get_current_user()
