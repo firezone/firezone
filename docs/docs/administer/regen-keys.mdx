@@ -63,7 +63,7 @@ Firezone will generate a new one on next start.
 
 ```bash
 docker-compose stop firezone
-sudo mv /data/firezone/private_key /data/firezone/private_key.bak
+sudo mv $HOME/.firezone/firezone/private_key $HOME/.firezone/firezone/private_key.bak
 docker-compose start firezone
 ```
 

@@ -2,7 +2,7 @@
   <%= live_modal(
     FzHttpWeb.SettingLive.OIDCFormComponent,
     return_to: Routes.setting_security_path(@socket, :show),
-    title: "OIDC Config",
+    title: "OIDC Configuration",
     providers: @oidc_configs,
     provider_id: @id,
     id: "oidc-form-component",
@@ -14,7 +14,7 @@
   <%= live_modal(
     FzHttpWeb.SettingLive.SAMLFormComponent,
     return_to: Routes.setting_security_path(@socket, :show),
-    title: "SAML Config",
+    title: "SAML Configuration",
     providers: @saml_configs,
     provider_id: @id,
     id: "saml-form-component",

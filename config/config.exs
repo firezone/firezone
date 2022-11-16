@@ -88,6 +88,7 @@ config :fz_http,
   server_process_opts: [name: {:global, :fz_http_server}],
   openid_connect_providers: "{}",
   saml_identity_providers: %{},
+  saml_entity_id: "urn:firezone.dev:firezone-app",
   saml_certfile_path: "apps/fz_http/priv/cert/saml_selfsigned.pem",
   saml_keyfile_path: "apps/fz_http/priv/cert/saml_selfsigned_key.pem",
   openid_connect: OpenIDConnect
