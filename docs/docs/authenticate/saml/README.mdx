@@ -10,11 +10,11 @@ Firezone supports Single Sign-On (SSO) via SAML 2.0.
 In general, most identity providers that support SAML 2.0 should work with
 Firezone.
 
-| Provider              | Support Status                                                          | Notes                                  |
-| ---                   | ---                                                                     | ---                                    |
-| [Okta](okta)          | **Tested and supported**                                                |                                        |
-| [Onelogin](onelogin)  | **Tested and supported**                                                |                                        |
-| Google Workspace      | **[Known issues](https://github.com/firezone/firezone/issues/1049)**    |                                        |
+| Provider               | Support Status           | Notes                              |
+| ---                    | ---                      | ---                                |
+| [Okta](okta)           | **Tested and supported** |                                    |
+| [Onelogin](onelogin)   | **Tested and supported** |                                    |
+| [Jumpcloud](jumpcloud) | **Tested and supported** | Uncheck `Require signed envelopes` |
 
 Occasionally, providers that don't implement the full SAML 2.0 standard or use
 uncommon configurations may be problematic. If this is the case, [contact us](
@@ -64,5 +64,26 @@ and run `firezone-ctl reconfigure` to pick up the changes.
 ## General Instructions
 
 Once you've configured Firezone with an X.509 certificate and corresponding
-private key as shown above, you'll need to get the SAML Metadata XML document
-from your identity provider.
+private key as shown above, you'll need a few more things to set up a generic
+SAML integration.
+
+Use these general instructions to configure a SAML connector for a provider not listed
+above.
+
+### IdP Metadata Document
+
+You'll need to get the SAML Metadata XML document from your identity provider. In most
+cases this can be downloaded from your IdP's SAML App configuration dashboard.
+
+### ACS URL
+
+Firezone constructs the ACS URL based on the Base URL and Configuration ID entered
+in the Firezone SAML configuration, defaulting to: `EXTERNAL_URL/auth/saml/sp/consume/:config_id`,
+e.g. `https://firezone.company.com/auth/saml/sp/consume/okta`.
+
+### Entity ID
+
+The Firezone Entity ID can be configured with the `SAML_ENTITY_ID` environment variable
+and defaults to `urn:firezone.dev:firezone-app` if not set.
+
+See the [environment variable reference](/reference/env-vars) for more information.

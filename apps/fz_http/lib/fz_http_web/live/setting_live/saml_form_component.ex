@@ -10,12 +10,6 @@ defmodule FzHttpWeb.SettingLive.SAMLFormComponent do
     ~H"""
     <div>
     <.form let={f} for={@changeset} autocomplete="off" id="saml-form" phx-target={@myself} phx-submit="save">
-      <p>
-        <a href="https://docs.firezone.dev/authenticate/saml?utm_source=product&uid=#{Application.fetch_env!(:fz_http, :telemetry_id)}">
-          Read documentation for configuring OIDC.
-        </a>
-      </p>
-
       <div class="field">
         <%= label f, :id, "Config ID", class: "label" %>
 
@@ -26,7 +20,12 @@ defmodule FzHttpWeb.SettingLive.SAMLFormComponent do
         <p class="help is-danger">
           <%= error_tag f, :id %>
         </p>
+        <p class="help">
+          ID used for generating auth URLs.
+        </p>
       </div>
+
+      <hr>
 
       <div class="field">
         <%= label f, :label, class: "label" %>
@@ -38,7 +37,12 @@ defmodule FzHttpWeb.SettingLive.SAMLFormComponent do
         <p class="help is-danger">
           <%= error_tag f, :label %>
         </p>
+        <p class="help">
+          Sign in button text.
+        </p>
       </div>
+
+      <hr>
 
       <div class="field">
         <%= label f, :base_url, "Base URL", class: "label" %>
@@ -50,7 +54,12 @@ defmodule FzHttpWeb.SettingLive.SAMLFormComponent do
         <p class="help is-danger">
           <%= error_tag f, :base_url %>
         </p>
+        <p class="help">
+          Base URL for the ACS URL. in most cases this shouldn't be changed.
+        </p>
       </div>
+
+      <hr>
 
       <div class="field">
         <%= label f, :metadata, class: "label" %>
@@ -63,62 +72,116 @@ defmodule FzHttpWeb.SettingLive.SAMLFormComponent do
         <p class="help is-danger">
           <%= error_tag f, :metadata %>
         </p>
-      </div>
-
-      <div class="field">
-        <%= label f, :sign_requests, class: "label" %>
-
-        <div class="control">
-          <%= checkbox f, :sign_requests %>
-        </div>
-        <p class="help is-danger">
-          <%= error_tag f, :sign_requests %>
+        <p class="help">
+          IdP metadata XML.
         </p>
       </div>
 
-      <div class="field">
-        <%= label f, :sign_metadata, class: "label" %>
-
-        <div class="control">
-          <%= checkbox f, :sign_metadata %>
-        </div>
-        <p class="help is-danger">
-          <%= error_tag f, :sign_metadata %>
-        </p>
-      </div>
+      <hr>
 
       <div class="field">
-        <%= label f, :signed_assertion_in_resp, "Require response assertions to be signed", class: "label" %>
+        <strong>Sign requests</strong>
 
-        <div class="control">
-          <%= checkbox f, :signed_assertion_in_resp %>
+        <div class="level">
+          <div class="level-left">
+            <p class="help">Sign SAML requests with your SAML private key.</p>
+            <p class="help is-danger">
+              <%= error_tag f, :sign_requests %>
+            </p>
+          </div>
+          <div class="level-right">
+            <%= label f, :sign_requests, class: "switch is-medium" do %>
+              <%= checkbox f, :sign_requests %>
+              <span class="check"></span>
+            <% end %>
+          </div>
         </div>
-        <p class="help is-danger">
-          <%= error_tag f, :signed_assertion_in_resp %>
-        </p>
       </div>
+
+      <hr>
 
       <div class="field">
-        <%= label f, :signed_envelopes_in_resp, "Require response envelopes to be signed", class: "label" %>
+        <strong>Sign metadata</strong>
 
-        <div class="control">
-          <%= checkbox f, :signed_envelopes_in_resp %>
+        <div class="level">
+          <div class="level-left">
+            <p class="help">Sign SAML metadata with your SAML private key.</p>
+            <p class="help is-danger">
+              <%= error_tag f, :sign_metadata %>
+            </p>
+          </div>
+          <div class="level-right">
+            <%= label f, :sign_metadata, class: "switch is-medium" do %>
+              <%= checkbox f, :sign_metadata %>
+              <span class="check"></span>
+            <% end %>
+          </div>
         </div>
-        <p class="help is-danger">
-          <%= error_tag f, :signed_envelopes_in_resp %>
-        </p>
       </div>
+
+      <hr>
 
       <div class="field">
-        <%= label f, :auto_create_users, class: "label" %>
+        <strong>Require signed assertions</strong>
 
-        <div class="control">
-          <%= checkbox f, :auto_create_users %>
+        <div class="level">
+          <div class="level-left">
+            <p class="help">Require assertions from your IdP to be signed.</p>
+            <p class="help is-danger">
+              <%= error_tag f, :signed_assertion_in_resp %>
+            </p>
+          </div>
+          <div class="level-right">
+            <%= label f, :signed_assertion_in_resp, class: "switch is-medium" do %>
+              <%= checkbox f, :signed_assertion_in_resp %>
+              <span class="check"></span>
+            <% end %>
+          </div>
         </div>
-        <p class="help is-danger">
-          <%= error_tag f, :auto_create_users %>
-        </p>
       </div>
+
+      <hr>
+
+      <div class="field">
+        <strong>Require signed envelopes</strong>
+
+        <div class="level">
+          <div class="level-left">
+            <p class="help">Require envelopes from your IdP to be signed.</p>
+            <p class="help is-danger">
+              <%= error_tag f, :signed_envelopes_in_resp %>
+            </p>
+          </div>
+          <div class="level-right">
+            <%= label f, :signed_envelopes_in_resp, class: "switch is-medium" do %>
+              <%= checkbox f, :signed_envelopes_in_resp %>
+              <span class="check"></span>
+            <% end %>
+          </div>
+        </div>
+      </div>
+
+      <hr>
+
+      <div class="field">
+        <strong>Auto-create users</strong>
+
+        <div class="level">
+          <div class="level-left">
+            <p class="help">Automatically create users when signing in for the first time.</p>
+            <p class="help is-danger">
+              <%= error_tag f, :auto_create_users %>
+            </p>
+          </div>
+          <div class="level-right">
+            <%= label f, :auto_create_users, class: "switch is-medium" do %>
+              <%= checkbox f, :auto_create_users %>
+              <span class="check"></span>
+            <% end %>
+          </div>
+        </div>
+      </div>
+
     </.form>
     </div>
     """
