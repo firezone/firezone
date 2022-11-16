@@ -1,3 +1,39 @@
+autolabeler:
+  - label: chore
+    title:
+      - '/^chore/i'
+  - label: feature
+    title:
+      - '/^feat/i'
+      - '/^feature/i'
+  - label: bug
+    title:
+      - '/^bug/i'
+      - '/^fix/i'
+  - label: build
+    title:
+      - '/^build/i'
+  - label: ci
+    title:
+      - '/^ci/i'
+  - label: docs
+    title:
+      - '/^doc/i'
+  - label: style
+    title:
+      - '/^style/i'
+  - label: refactor
+    title:
+      - '/^refactor/i'
+  - label: perf
+    title:
+      - '/^perf/i'
+  - label: test
+    title:
+      - '/^test/i'
+  - label: revert
+    title:
+      - '/^revert/i'
 name-template: "$RESOLVED_VERSION"
 tag-template: "$RESOLVED_VERSION"
 categories:
