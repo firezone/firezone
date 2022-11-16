@@ -1,4 +1,4 @@
-defmodule FzHttp.MockHttpClient do
+defmodule FzHttp.Mocks.HttpClient do
   @moduledoc """
   Mocks http requests in place of HTTPoison
   """
@@ -17,7 +17,7 @@ defmodule FzHttp.MockHttpClient do
   @error_sentinel "invalid-url"
   @error_response {:error, %{reason: :nxdomain}}
 
-  def start, do: nil
+  def start, do: :ignore
 
   @doc """
   Simulates a POST. Include @error_sentinel in the request URL to simulate an error.

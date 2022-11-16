@@ -120,6 +120,7 @@ defmodule FzHttpWeb.AuthControllerTest do
 
       test_conn = get(conn, Routes.auth_oidc_path(conn, :callback, "google"), @params)
       assert redirected_to(test_conn) == Routes.user_index_path(test_conn, :index)
+      assert get_session(test_conn, "id_token") == "abc"
     end
 
     @moduletag :capture_log
@@ -170,13 +171,11 @@ defmodule FzHttpWeb.AuthControllerTest do
   describe "getting magic link" do
     setup :create_user
 
-    import Swoosh.TestAssertions
+    test "redirects to root path", %{unauthed_conn: conn, user: user} do
+      test_conn = post(conn, Routes.auth_path(conn, :magic_link), %{"email" => user.email})
 
-    test "sends a magic link in email", %{unauthed_conn: conn, user: user} do
-      post(conn, Routes.auth_path(conn, :magic_link), %{"email" => user.email})
-
-      Process.sleep(10)
-      assert_email_sent(subject: "Firezone Magic Link", to: [{"", user.email}])
+      assert redirected_to(test_conn) == Routes.root_path(conn, :index)
+      assert get_flash(test_conn, :info) == "Please check your inbox for the magic link."
     end
   end
 
@@ -216,6 +215,31 @@ defmodule FzHttpWeb.AuthControllerTest do
 
       test_conn = get(conn, Routes.auth_path(conn, :magic_sign_in, user.sign_in_token))
       assert text_response(test_conn, 401) == "Local auth disabled"
+    end
+  end
+
+  describe "oidc signout url" do
+    @oidc_end_session_uri "https://end-session.url"
+    @params %{
+      "id_token_hint" => "abc",
+      "post_logout_redirect_uri" => "https://localhost",
+      "client_id" => "okta-client-id"
+    }
+
+    @tag session: [login_method: "okta", id_token: "abc"]
+    test "redirects to oidc end_session_uri", %{admin_conn: conn} do
+      # mimics OpenID Connect
+      query = URI.encode_query(@params)
+
+      complete_uri =
+        @oidc_end_session_uri
+        |> URI.merge("?#{query}")
+        |> URI.to_string()
+
+      expect(OpenIDConnect.Mock, :end_session_uri, fn _provider, _params -> complete_uri end)
+
+      test_conn = delete(conn, Routes.auth_path(conn, :delete))
+      assert redirected_to(test_conn) == complete_uri
     end
   end
 

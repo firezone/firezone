@@ -44,7 +44,7 @@ config :fz_http,
   supervision_tree_mode: :test,
   connectivity_checks_interval: 86_400,
   sql_sandbox: true,
-  http_client: FzHttp.MockHttpClient
+  http_client: FzHttp.Mocks.HttpClient
 
 # Print only warnings and errors during test
 config :logger, level: :warn
@@ -58,22 +58,67 @@ config :ueberauth, Ueberauth,
 config :fz_http, :openid_connect_providers, """
 {
   "google": {
-    "discovery_document_uri": "https://accounts.google.com/.well-known/openid-configuration",
-    "client_id": "CLIENT_ID",
-    "client_secret": "CLIENT_SECRET",
+    "discovery_document_uri": "https://google/.well-known/openid-configuration",
+    "client_id": "google-client-id",
+    "client_secret": "google-client-secret",
     "redirect_uri": "https://firezone.example.com/auth/oidc/google/callback/",
     "response_type": "code",
     "scope": "openid email profile",
     "label": "OIDC Google"
   },
   "okta": {
-    "discovery_document_uri": "https://<OKTA_DOMAIN>/.well-known/openid-configuration",
-    "client_id": "CLIENT_ID",
-    "client_secret": "CLIENT_SECRET",
+    "discovery_document_uri": "https://okta/.well-known/openid-configuration",
+    "client_id": "okta-client-id",
+    "client_secret": "okta-client-secret",
     "redirect_uri": "https://firezone.example.com/auth/oidc/okta/callback/",
     "response_type": "code",
     "scope": "openid email profile offline_access",
     "label": "OIDC Okta"
+  },
+  "auth0": {
+    "discovery_document_uri": "https://auth0/.well-known/openid-configuration",
+    "client_id": "auth0-client-id",
+    "client_secret": "auth0-client-secret",
+    "redirect_uri": "https://firezone.example.com/auth/oidc/google/callback/",
+    "response_type": "code",
+    "scope": "openid email profile",
+    "label": "OIDC Google"
+  },
+  "azure": {
+    "discovery_document_uri": "https://azure/.well-known/openid-configuration",
+    "client_id": "azure-client-id",
+    "client_secret": "azure-client-secret",
+    "redirect_uri": "https://firezone.example.com/auth/oidc/okta/callback/",
+    "response_type": "code",
+    "scope": "openid email profile offline_access",
+    "label": "OIDC Okta"
+  },
+  "onelogin": {
+    "discovery_document_uri": "https://onelogin/.well-known/openid-configuration",
+    "client_id": "onelogin-client-id",
+    "client_secret": "onelogin-client-secret",
+    "redirect_uri": "https://firezone.example.com/auth/oidc/okta/callback/",
+    "response_type": "code",
+    "scope": "openid email profile offline_access",
+    "label": "OIDC Okta"
+  },
+  "keycloak": {
+    "discovery_document_uri": "https://keycloak/.well-known/openid-configuration",
+    "client_id": "keycloak-client-id",
+    "client_secret": "keycloak-client-secret",
+    "redirect_uri": "https://firezone.example.com/auth/oidc/keycloak/callback/",
+    "response_type": "code",
+    "scope": "openid email profile offline_access",
+    "label": "Keycloak"
+  },
+  "vault": {
+    "discovery_document_uri": "https://vault/.well-known/openid-configuration",
+    "client_id": "vault-client-id",
+    "client_secret": "vault-client-secret",
+    "redirect_uri": "https://firezone.example.com/auth/oidc/vault/callback/",
+    "response_type": "code",
+    "scope": "openid email profile offline_access",
+    "label": "Vault"
   }
 }
 """

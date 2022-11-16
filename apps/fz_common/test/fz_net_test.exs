@@ -113,14 +113,14 @@ defmodule FzCommon.FzNetTest do
 
   describe "to_complete_url/1" do
     @tag cases: [
-      {"foobar", "https://foobar"},
-      {"google.com", "https://google.com"},
-      {"127.0.0.1", "https://127.0.0.1"},
-      {"8.8.8.8", "https://8.8.8.8"},
-      {"https://[fd00::1]", "https://[fd00::1]"},
-      {"http://foobar", "http://foobar"},
-      {"https://foobar", "https://foobar"}
-    ]
+           {"foobar", "https://foobar"},
+           {"google.com", "https://google.com"},
+           {"127.0.0.1", "https://127.0.0.1"},
+           {"8.8.8.8", "https://8.8.8.8"},
+           {"https://[fd00::1]", "https://[fd00::1]"},
+           {"http://foobar", "http://foobar"},
+           {"https://foobar", "https://foobar"}
+         ]
     test "parses valid string URIs", %{cases: cases} do
       for {subject, expected} <- cases do
         assert {:ok, ^expected} = FzNet.to_complete_url(subject)
@@ -128,10 +128,10 @@ defmodule FzCommon.FzNetTest do
     end
 
     @tag cases: [
-      "<",
-      "{",
-      "["
-    ]
+           "<",
+           "{",
+           "["
+         ]
     test "returns {:error, _} for invalid URIs", %{cases: cases} do
       for subject <- cases do
         assert {:error, _} = FzNet.to_complete_url(subject)

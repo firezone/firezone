@@ -203,7 +203,7 @@
   </table>
 
   <%= live_patch(
-      to: Routes.setting_security_path(@socket, :edit_oidc, "new-provider-#{rand_string(4)}"),
+      to: Routes.setting_security_path(@socket, :edit_oidc, "#{rand_string(8)}"),
       class: "button mb-4") do %>
     Add OpenID Connect Provider
   <% end %>
@@ -248,7 +248,7 @@
   </table>
 
   <%= live_patch(
-      to: Routes.setting_security_path(@socket, :edit_saml, "new-provider-#{rand_string(4)}"),
+      to: Routes.setting_security_path(@socket, :edit_saml, "#{rand_string(8)}"),
       class: "button mb-4") do %>
     Add SAML Identity Provider
   <% end %>

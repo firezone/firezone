@@ -27,6 +27,24 @@ defmodule FzHttp.Validators.Common do
     end)
   end
 
+  def validate_uri(changeset, fields) when is_list(fields) do
+    Enum.reduce(fields, changeset, fn field, accumulated_changeset ->
+      validate_uri(accumulated_changeset, field)
+    end)
+  end
+
+  def validate_uri(changeset, field) when is_atom(field) do
+    validate_change(changeset, field, fn _current_field, value ->
+      case URI.new(value) do
+        {:error, part} ->
+          [{field, "is invalid. Error at #{part}"}]
+
+        _ ->
+          []
+      end
+    end)
+  end
+
   def validate_no_duplicates(changeset, field) when is_atom(field) do
     validate_change(changeset, field, fn _current_field, value ->
       values = split_comma_list(value)

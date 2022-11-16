@@ -39,6 +39,8 @@ On the following screen, configure the following settings:
 1. **App logo**:
 [Firezone logo](https://user-images.githubusercontent.com/52545545/155907625-a4f6c8c2-3952-488d-b244-3c37400846cf.png)
 (save link as).
+1. **Proof Key for Code Exchange (PKCE)**: Check `Require PKCE as additional verification` if you're running Firezone
+0.6.8 or higher. [PKCE](https://oauth.net/2/pkce/) is recommended for increased security whenever possible.
 1. **Grant Type**: Check the **Refresh Token** box. This ensures Firezone syncs
 with the identity provider and VPN access is terminated once the user is removed.
 1. **Sign-in redirect URIs**: Add your Firezone `EXTERNAL_URL + /auth/oidc/<Config ID>/callback/`
