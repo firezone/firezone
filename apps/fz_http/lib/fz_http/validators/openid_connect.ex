@@ -12,6 +12,7 @@ defmodule FzHttp.Validators.OpenIDConnect do
       case OpenIDConnect.update_documents(discovery_document_uri: value) do
         {:ok, _update_result} ->
           []
+
         {:error, :update_documents, reason} ->
           [discovery_document_uri: "is invalid. Reason: #{inspect(reason)}"]
       end

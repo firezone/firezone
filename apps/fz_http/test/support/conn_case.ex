@@ -44,24 +44,37 @@ defmodule FzHttpWeb.ConnCase do
     Phoenix.ConnTest.build_conn()
   end
 
-  def admin_conn do
-    authed_conn(:admin)
+  def admin_conn(tags) do
+    authed_conn(:admin, tags)
   end
 
-  def unprivileged_conn do
-    authed_conn(:unprivileged)
+  def unprivileged_conn(tags) do
+    authed_conn(:unprivileged, tags)
   end
 
-  defp authed_conn(role) do
+  defp authed_conn(role, tags) do
     user = UsersFixtures.user(%{role: role})
 
-    conn = new_conn() |> FzHttpWeb.Authentication.sign_in(user, %{provider: :identity})
+    conn =
+      new_conn()
+      |> Plug.Test.init_test_session(%{})
+      |> FzHttpWeb.Authentication.sign_in(user, %{provider: :identity})
+      |> maybe_put_session(tags)
 
     {user,
      conn
      |> Plug.Test.init_test_session(%{
        "guardian_default_token" => conn.private.guardian_default_token
      })}
+  end
+
+  defp maybe_put_session(conn, %{session: session}) do
+    conn
+    |> Plug.Test.init_test_session(session)
+  end
+
+  defp maybe_put_session(conn, _tags) do
+    conn
   end
 
   setup tags do
@@ -71,8 +84,8 @@ defmodule FzHttpWeb.ConnCase do
       Sandbox.mode(FzHttp.Repo, {:shared, self()})
     end
 
-    {unprivileged_user, unprivileged_conn} = unprivileged_conn()
-    {admin_user, admin_conn} = admin_conn()
+    {unprivileged_user, unprivileged_conn} = unprivileged_conn(tags)
+    {admin_user, admin_conn} = admin_conn(tags)
 
     {:ok,
      unauthed_conn: new_conn(),

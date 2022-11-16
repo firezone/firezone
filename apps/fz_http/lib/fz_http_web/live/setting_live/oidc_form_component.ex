@@ -20,6 +20,9 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
         <p class="help is-danger">
           <%= error_tag f, :id %>
         </p>
+        <p class="help">
+          A unique ID that will be used to generate login URLs for this provider.
+        </p>
       </div>
 
       <div class="field">
@@ -31,6 +34,9 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
         </div>
         <p class="help is-danger">
           <%= error_tag f, :label %>
+        </p>
+        <p class="help">
+          Text to display on the Login button.
         </p>
       </div>
 
@@ -44,6 +50,9 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
         </div>
         <p class="help is-danger">
           <%= error_tag f, :scope %>
+        </p>
+        <p class="help">
+          Space-delimited list of OpenID scopes.
         </p>
       </div>
 
@@ -98,6 +107,23 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
       </div>
 
       <div class="field">
+        <%= label f, :redirect_uri, "Redirect URI", class: "label" %>
+
+        <div class="control">
+          <%= text_input f, :redirect_uri,
+              placeholder: "#{@external_url}/auth/oidc/#{@provider_id || "{CONFIG_ID}"}/callback/",
+              class: "input #{input_error_class(f, :redirect_uri)}" %>
+        </div>
+        <p class="help is-danger">
+          <%= error_tag f, :redirect_uri %>
+        </p>
+        <p class="help">
+          Optionally override the Redirect URI. Must match the redirect URI set in your IdP.
+          In most cases you shouldn't change this.
+        </p>
+      </div>
+
+      <div class="field">
         <%= label f, :auto_create_users, class: "label" %>
 
         <div class="control">
@@ -105,6 +131,9 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
         </div>
         <p class="help is-danger">
           <%= error_tag f, :auto_create_users %>
+        </p>
+        <p class="help">
+          Automatically create users when signing in for the first time.
         </p>
       </div>
     </.form>
@@ -122,6 +151,7 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
     {:ok,
      socket
      |> assign(assigns)
+     |> assign(:external_url, Application.fetch_env!(:fz_http, :external_url))
      |> assign(:changeset, changeset)}
   end
 

@@ -9,15 +9,15 @@ defmodule FzHttp.ReleaseTest do
   alias FzHttp.{Release, Users, Users.User}
 
   describe "migrate/0" do
-    test "calls function" do
-      Release.migrate()
+    test "function runs without error" do
+      assert Release.migrate()
     end
   end
 
   describe "rollback/2" do
     test "calls function" do
-      for repo <- Application.fetch_env!(:fz_http, :ecto_repos) do
-        Release.rollback(repo, "0")
+      for repo <- Release.repos() do
+        assert Release.rollback(repo, "0")
       end
     end
   end

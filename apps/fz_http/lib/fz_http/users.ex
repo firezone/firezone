@@ -228,23 +228,16 @@ defmodule FzHttp.Users do
   def reset_sign_in_token(email) do
     with %User{} = user <- Repo.get_by(User, email: email),
          {:ok, user} <- update_user_sign_in_token(user, sign_in_keys()) do
-      # send email in a separate process so that the time this function takes
-      # doesn't reflect whether a user exists or not
-      Task.start(fn ->
-        # blow up if it failed, it won't affect the request handling process.
-        # we want it to blow up so that it leaves something in the logs.
         Mailer.AuthEmail.magic_link(user) |> Mailer.deliver!()
-      end)
-
       :ok
     else
       nil ->
-        # no user was found, we don't act any differently
         Logger.info("Attempt to reset password of non-existing email: #{email}")
         :ok
 
       {:error, _changeset} ->
         # failed to update user, something wrong internally
+        Logger.error("Could not update user #{email} for magic link.")
         :error
     end
   end

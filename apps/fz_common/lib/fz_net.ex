@@ -74,7 +74,8 @@ defmodule FzCommon.FzNet do
       {:ok, _} ->
         {:ok, str}
 
-      err -> err
+      err ->
+        err
     end
   end
 end

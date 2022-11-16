@@ -6,6 +6,13 @@ defmodule FzHttp.Conf.OIDCConfig do
 
   import Ecto.Changeset
   import FzHttp.Validators.OpenIDConnect
+  import FzHttp.Validators.Common, only: [validate_uri: 2]
+
+  @reserved_config_ids [
+    "identity",
+    "saml",
+    "magic_link"
+  ]
 
   @primary_key false
   embedded_schema do
@@ -16,6 +23,7 @@ defmodule FzHttp.Conf.OIDCConfig do
     field :client_id, :string
     field :client_secret, :string
     field :discovery_document_uri, :string
+    field :redirect_uri, :string
     field :auto_create_users, :boolean, default: true
   end
 
@@ -31,7 +39,8 @@ defmodule FzHttp.Conf.OIDCConfig do
         :client_id,
         :client_secret,
         :discovery_document_uri,
-        :auto_create_users
+        :auto_create_users,
+        :redirect_uri
       ]
     )
     |> validate_required([
@@ -44,6 +53,11 @@ defmodule FzHttp.Conf.OIDCConfig do
       :discovery_document_uri,
       :auto_create_users
     ])
+    # Don't allow users to enter reserved config ids
+    |> validate_exclusion(:id, @reserved_config_ids)
     |> validate_discovery_document_uri()
+    |> validate_uri([
+      :redirect_uri
+    ])
   end
 end

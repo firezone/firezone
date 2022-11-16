@@ -52,7 +52,7 @@ defmodule FzHttp.TelemetryTest do
     test "count openid providers" do
       ping_data = Telemetry.ping_data()
 
-      assert ping_data[:openid_providers] == 2
+      assert ping_data[:openid_providers] == 7
     end
 
     @tag config: {:disable_vpn_on_oidc_error, true}

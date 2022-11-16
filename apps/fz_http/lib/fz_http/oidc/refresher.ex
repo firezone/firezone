@@ -5,6 +5,7 @@ defmodule FzHttp.OIDC.Refresher do
   use GenServer, restart: :temporary
 
   import Ecto.{Changeset, Query}
+  import FzHttpWeb.OIDC.Helpers
   alias FzHttp.Configurations, as: Conf
   alias FzHttp.{OIDC, OIDC.Connection, Repo, Users}
   require Logger
@@ -14,7 +15,11 @@ defmodule FzHttp.OIDC.Refresher do
   end
 
   def init({user_id, delay}) do
-    {:ok, user_id, {:continue, {:delay, delay}}}
+    if enabled?() do
+      {:ok, user_id, {:continue, {:delay, delay}}}
+    else
+      :ignore
+    end
   end
 
   def handle_continue({:delay, delay}, user_id) do
@@ -28,8 +33,8 @@ defmodule FzHttp.OIDC.Refresher do
     {:stop, :shutdown, user_id}
   end
 
-  defp do_refresh(user_id, %{provider: provider, refresh_token: refresh_token} = conn) do
-    provider = String.to_existing_atom(provider)
+  defp do_refresh(user_id, %{provider: provider_key, refresh_token: refresh_token} = conn) do
+    {:ok, provider} = atomize_provider(provider_key)
 
     Logger.info("Refreshing user\##{user_id} @ #{provider}...")
 
@@ -56,7 +61,7 @@ defmodule FzHttp.OIDC.Refresher do
       refresh_response: refresh_response
     })
 
-    with %{error: _} <- refresh_response, true <- Conf.get!(:disable_vpn_on_oidc_error) do
+    with %{error: _} <- refresh_response do
       user = Users.get_user!(user_id)
 
       Logger.info("Disabling user #{user.email} due to OIDC token refresh failure...")
@@ -73,7 +78,7 @@ defmodule FzHttp.OIDC.Refresher do
     end
   end
 
-  defp openid_connect do
-    Application.fetch_env!(:fz_http, :openid_connect)
+  defp enabled? do
+    Conf.get!(:disable_vpn_on_oidc_error)
   end
 end
