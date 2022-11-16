@@ -46,7 +46,7 @@ defmodule FzHttpWeb.AuthControllerTest do
       test_conn = post(conn, ~p"/auth/identity/callback", params)
 
       assert test_conn.request_path == ~p"/auth/identity/callback"
-      assert get_flash(test_conn, :error) == "Error signing in: invalid_credentials"
+      assert Phoenix.Flash.get(test_conn.assigns.flash, :error) == "Error signing in: invalid_credentials"
     end
 
     test "invalid password", %{unauthed_conn: conn, user: user} do
@@ -58,7 +58,7 @@ defmodule FzHttpWeb.AuthControllerTest do
       test_conn = post(conn, ~p"/auth/identity/callback", params)
 
       assert test_conn.request_path == ~p"/auth/identity/callback"
-      assert get_flash(test_conn, :error) == "Error signing in: invalid_credentials"
+      assert Phoenix.Flash.get(test_conn.assigns.flash, :error) == "Error signing in: invalid_credentials"
     end
 
     test "valid params", %{unauthed_conn: conn, user: user} do
@@ -133,7 +133,7 @@ defmodule FzHttpWeb.AuthControllerTest do
       end)
 
       test_conn = get(conn, ~p"/auth/oidc/google/callback", @params)
-      assert get_flash(test_conn, :error) == "OpenIDConnect Error: Invalid token for user!"
+      assert Phoenix.Flash.get(test_conn.assigns.flash, :error) == "OpenIDConnect Error: Invalid token for user!"
     end
 
     test "when a user returns with an invalid state", %{unauthed_conn: conn} do
@@ -143,14 +143,14 @@ defmodule FzHttpWeb.AuthControllerTest do
           | "state" => "not_valid"
         })
 
-      assert get_flash(test_conn, :error) == "OpenIDConnect Error: Cannot verify state"
+      assert Phoenix.Flash.get(test_conn.assigns.flash, :error) == "OpenIDConnect Error: Cannot verify state"
     end
 
     @tag max_age: 0
     test "when a user returns with an expired state", %{unauthed_conn: conn} do
       test_conn = get(conn, ~p"/auth/oidc/google/callback", @params)
 
-      assert get_flash(test_conn, :error) == "OpenIDConnect Error: Cannot verify state"
+      assert Phoenix.Flash.get(test_conn.assigns.flash, :error) == "OpenIDConnect Error: Cannot verify state"
     end
   end
 
@@ -175,7 +175,7 @@ defmodule FzHttpWeb.AuthControllerTest do
       test_conn = post(conn, ~p"/auth/magic_link", %{"email" => user.email})
 
       assert redirected_to(test_conn) == ~p"/"
-      assert get_flash(test_conn, :info) == "Please check your inbox for the magic link."
+      assert Phoenix.Flash.get(test_conn.assigns.flash, :info) == "Please check your inbox for the magic link."
     end
   end
 
@@ -213,7 +213,7 @@ defmodule FzHttpWeb.AuthControllerTest do
     test "prevents signing in when local_auth_disabled", %{unauthed_conn: conn, user: user} do
       restore_env(:local_auth_enabled, false, &on_exit/1)
 
-      test_conn = get(conn, ~p"/magic/auth/#{user.sign_in_token}")
+      test_conn = get(conn, ~p"/auth/magic/#{user.sign_in_token}")
       assert text_response(test_conn, 401) == "Local auth disabled"
     end
   end

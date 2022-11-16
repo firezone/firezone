@@ -113,7 +113,7 @@ defmodule FzHttpWeb.UserLive.IndexTest do
       |> element("a", "Add User")
       |> render_click()
 
-      assert_patched(view, ~p"/users")
+      assert_patched(view, ~p"/users/new")
     end
   end
 end

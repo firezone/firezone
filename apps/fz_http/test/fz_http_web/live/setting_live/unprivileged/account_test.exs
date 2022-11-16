@@ -46,7 +46,7 @@ defmodule FzHttpWeb.SettingLive.Unprivileged.AccountTest do
       |> element("#account-edit")
       |> render_submit(@valid_params)
 
-      flash = assert_redirected(view, ~p"/user_account"
+      flash = assert_redirected(view, ~p"/user_account")
       assert flash["info"] == "Password updated successfully."
     end
 
@@ -59,7 +59,7 @@ defmodule FzHttpWeb.SettingLive.Unprivileged.AccountTest do
         |> element("#account-edit")
         |> render_submit(@invalid_params)
 
-      refute_redirected(view, ~p"/user_account"
+      refute_redirected(view, ~p"/user_account")
       assert test_view =~ "can&#39;t be blank"
     end
 
@@ -73,7 +73,7 @@ defmodule FzHttpWeb.SettingLive.Unprivileged.AccountTest do
 
       Process.sleep(10)
 
-      assert_patched(view, ~p"/user_account"
+      assert_patched(view, ~p"/user_account")
     end
   end
 end

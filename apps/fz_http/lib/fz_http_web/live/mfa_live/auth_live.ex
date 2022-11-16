@@ -42,7 +42,7 @@ defmodule FzHttpWeb.MFALive.Auth do
     <hr>
 
     <div class="block has-text-right">
-      <.link navigate={~p"/mfa/auth/types"}>
+      <.link navigate={~p"/mfa/types"}>
         Other authenticators -&gt;
       </.link>
     </div>

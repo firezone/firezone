@@ -51,7 +51,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
   end
 
   describe "toggles" do
-    setup %{admin_conn: conn, config: config, config_val: config_val} do
+    setup %{config: config, config_val: config_val} do
       Conf.update_configuration(%{config => config_val})
 
       Conf.Cache.init([])
