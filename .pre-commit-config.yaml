@@ -1,22 +1,4 @@
 repos:
-  - repo: https://github.com/compilerla/conventional-pre-commit
-    rev: v2.1.1
-    hooks:
-      - id: conventional-pre-commit
-        stages:
-          - commit-msg
-        args:
-          - fix
-          - feat
-          - build
-          - chore
-          - ci
-          - docs
-          - style
-          - refactor
-          - perf
-          - test
-          - revert
   - repo: local
     hooks:
       # Elixir config
@@ -71,4 +53,8 @@ repos:
         exclude: "^omnibus/config/patches/"
       - id: check-merge-conflict
       - id: no-commit-to-branch
-        args: [-b, master, -b, develop]
+        args:
+          - -b
+          - master
+          - --pattern
+          - '^(?!((chore|feat|feature|bug|fix|build|ci|docs|style|refactor|perf|test|revert)\/[a-zA-Z0-9\-]+)$).*'
