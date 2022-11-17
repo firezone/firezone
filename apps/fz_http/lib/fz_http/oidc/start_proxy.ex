@@ -45,7 +45,8 @@ defmodule FzHttp.OIDC.StartProxy do
           discovery_document_uri: settings["discovery_document_uri"],
           client_id: settings["client_id"],
           client_secret: settings["client_secret"],
-          redirect_uri: settings["redirect_uri"] || "#{external_url}/auth/oidc/#{provider}/callback/",
+          redirect_uri:
+            settings["redirect_uri"] || "#{external_url}/auth/oidc/#{provider}/callback/",
           response_type: settings["response_type"],
           scope: settings["scope"],
           label: settings["label"]

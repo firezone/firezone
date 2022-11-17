@@ -46,7 +46,9 @@ defmodule FzHttpWeb.AuthControllerTest do
       test_conn = post(conn, ~p"/auth/identity/callback", params)
 
       assert test_conn.request_path == ~p"/auth/identity/callback"
-      assert Phoenix.Flash.get(test_conn.assigns.flash, :error) == "Error signing in: invalid_credentials"
+
+      assert Phoenix.Flash.get(test_conn.assigns.flash, :error) ==
+               "Error signing in: invalid_credentials"
     end
 
     test "invalid password", %{unauthed_conn: conn, user: user} do
@@ -58,7 +60,9 @@ defmodule FzHttpWeb.AuthControllerTest do
       test_conn = post(conn, ~p"/auth/identity/callback", params)
 
       assert test_conn.request_path == ~p"/auth/identity/callback"
-      assert Phoenix.Flash.get(test_conn.assigns.flash, :error) == "Error signing in: invalid_credentials"
+
+      assert Phoenix.Flash.get(test_conn.assigns.flash, :error) ==
+               "Error signing in: invalid_credentials"
     end
 
     test "valid params", %{unauthed_conn: conn, user: user} do
@@ -133,7 +137,9 @@ defmodule FzHttpWeb.AuthControllerTest do
       end)
 
       test_conn = get(conn, ~p"/auth/oidc/google/callback", @params)
-      assert Phoenix.Flash.get(test_conn.assigns.flash, :error) == "OpenIDConnect Error: Invalid token for user!"
+
+      assert Phoenix.Flash.get(test_conn.assigns.flash, :error) ==
+               "OpenIDConnect Error: Invalid token for user!"
     end
 
     test "when a user returns with an invalid state", %{unauthed_conn: conn} do
@@ -143,14 +149,16 @@ defmodule FzHttpWeb.AuthControllerTest do
           | "state" => "not_valid"
         })
 
-      assert Phoenix.Flash.get(test_conn.assigns.flash, :error) == "OpenIDConnect Error: Cannot verify state"
+      assert Phoenix.Flash.get(test_conn.assigns.flash, :error) ==
+               "OpenIDConnect Error: Cannot verify state"
     end
 
     @tag max_age: 0
     test "when a user returns with an expired state", %{unauthed_conn: conn} do
       test_conn = get(conn, ~p"/auth/oidc/google/callback", @params)
 
-      assert Phoenix.Flash.get(test_conn.assigns.flash, :error) == "OpenIDConnect Error: Cannot verify state"
+      assert Phoenix.Flash.get(test_conn.assigns.flash, :error) ==
+               "OpenIDConnect Error: Cannot verify state"
     end
   end
 
@@ -175,7 +183,9 @@ defmodule FzHttpWeb.AuthControllerTest do
       test_conn = post(conn, ~p"/auth/magic_link", %{"email" => user.email})
 
       assert redirected_to(test_conn) == ~p"/"
-      assert Phoenix.Flash.get(test_conn.assigns.flash, :info) == "Please check your inbox for the magic link."
+
+      assert Phoenix.Flash.get(test_conn.assigns.flash, :info) ==
+               "Please check your inbox for the magic link."
     end
   end
 

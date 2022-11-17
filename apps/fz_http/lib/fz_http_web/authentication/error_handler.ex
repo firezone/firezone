@@ -22,7 +22,6 @@ defmodule FzHttpWeb.Authentication.ErrorHandler do
   def auth_error(conn, {:unauthenticated, _reason}, _opts) do
     conn
     |> redirect(to: ~p"/")
-
   end
 
   @impl Guardian.Plug.ErrorHandler
