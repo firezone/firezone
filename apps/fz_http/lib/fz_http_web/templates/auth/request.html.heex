@@ -3,7 +3,7 @@
 <hr />
 
 <div class="block">
-  <%= link("<- Back to sign in methods", to: Routes.root_path(@conn, :index)) %>
+  <%= link("<- Back to sign in methods", to: ~p"/") %>
 </div>
 
 <div class="block">
@@ -37,7 +37,7 @@
           </div>
           <div class="level-right">
             <%= link("Forgot password",
-              to: Routes.auth_path(@conn, :reset_password),
+              to: ~p"/auth/reset_password",
               class: "forgot-password"
             ) %>
           </div>

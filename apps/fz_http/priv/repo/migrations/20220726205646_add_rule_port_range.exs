@@ -12,17 +12,21 @@ defmodule FzHttp.Repo.Migrations.AddRulePortRange do
     execute(@create_query, @drop_query)
 
     alter table(:rules) do
-      add :port_range, :int4range, default: nil
-      add :port_type, :port_type_enum, default: nil
+      add(:port_range, :int4range, default: nil)
+      add(:port_type, :port_type_enum, default: nil)
     end
 
-    create constraint("rules", :port_range_needs_type,
-             check: "(port_range IS NULL) = (port_type IS NULL)"
-           )
+    create(
+      constraint("rules", :port_range_needs_type,
+        check: "(port_range IS NULL) = (port_type IS NULL)"
+      )
+    )
 
-    create constraint("rules", :port_range_is_within_valid_values,
-             check: "port_range <@ int4range(1, 65535)"
-           )
+    create(
+      constraint("rules", :port_range_is_within_valid_values,
+        check: "port_range <@ int4range(1, 65535)"
+      )
+    )
 
     execute(
       "ALTER TABLE rules

@@ -12,7 +12,7 @@ defmodule FzHttpWeb.MFALive.AuthTest do
   @redirect_destination "/mfa/auth"
 
   test "redirect request with mfa required", %{admin_conn: conn} do
-    path = Routes.rule_index_path(conn, :index)
+    path = ~p"/rules"
 
     {:error, {:redirect, %{to: redirected_to}}} =
       live(Plug.Conn.put_session(conn, :mfa_required_at, DateTime.utc_now()), path)
@@ -22,7 +22,7 @@ defmodule FzHttpWeb.MFALive.AuthTest do
 
   describe "auth" do
     test "fails with invalid code", %{admin_conn: conn} do
-      path = Routes.mfa_auth_path(conn, :auth)
+      path = ~p"/mfa/auth"
 
       {:ok, view, _html} = live(conn, path)
 
@@ -35,7 +35,7 @@ defmodule FzHttpWeb.MFALive.AuthTest do
       # fails. Need to set it to be something in the past (more than 30s in the past).
       {:ok, method} = MFA.update_method(method, %{last_used_at: ~U[1970-01-01T00:00:00Z]})
 
-      path = Routes.mfa_auth_path(conn, :auth)
+      path = ~p"/mfa/auth"
 
       {:ok, view, _html} = live(conn, path)
 
@@ -46,7 +46,7 @@ defmodule FzHttpWeb.MFALive.AuthTest do
     end
 
     test "navigates to other methods", %{admin_conn: conn} do
-      path = Routes.mfa_auth_path(conn, :auth)
+      path = ~p"/mfa/auth"
 
       {:ok, view, _html} = live(conn, path)
 
@@ -67,7 +67,7 @@ defmodule FzHttpWeb.MFALive.AuthTest do
     end
 
     test "displays all methods", %{admin_conn: conn} do
-      path = Routes.mfa_auth_path(conn, :types)
+      path = ~p"/mfa/types"
 
       {:ok, _view, html} = live(conn, path)
 
@@ -77,7 +77,7 @@ defmodule FzHttpWeb.MFALive.AuthTest do
     end
 
     test "navigates to selected method", %{admin_conn: conn, another_method: method} do
-      path = Routes.mfa_auth_path(conn, :types)
+      path = ~p"/mfa/types"
 
       {:ok, view, _html} = live(conn, path)
 

@@ -11,7 +11,7 @@
     <p>
       <%= link(
         "Sign in with #{config[:label]}",
-        to: Routes.auth_oidc_path(@conn, :redirect_oidc_auth_uri, provider),
+        to: ~p"/auth/oidc/#{provider}",
         class: "button"
       ) %>
     </p>
@@ -31,7 +31,7 @@
     <p>
       <%= link(
         "Sign in with email",
-        to: Routes.auth_path(@conn, :request, "identity"),
+        to: ~p"/auth/identity",
         class: "button"
       ) %>
     </p>

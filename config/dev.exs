@@ -47,6 +47,7 @@ config :fz_wall,
 
 {fz_vpn_mod, _} =
   Code.eval_string(System.get_env("FZ_VPN_WG_ADAPTER", "FzVpn.Interface.WGAdapter.Live"))
+
 config :fz_vpn,
   supervised_children: [FzVpn.Interface.WGAdapter.Sandbox, FzVpn.Server, FzVpn.StatsPushService],
   wireguard_private_key_path: "priv/wg_dev_private_key",

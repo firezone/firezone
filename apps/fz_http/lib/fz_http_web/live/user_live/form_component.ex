@@ -34,7 +34,7 @@ defmodule FzHttpWeb.UserLive.FormComponent do
          socket
          |> assign(:user, user)
          |> put_flash(:info, "User created successfully.")
-         |> push_redirect(to: Routes.user_show_path(socket, :show, user))}
+         |> push_redirect(to: ~p"/users/#{user}")}
 
       {:error, changeset} ->
         {:noreply,

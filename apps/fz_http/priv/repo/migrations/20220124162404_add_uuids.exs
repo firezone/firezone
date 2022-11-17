@@ -22,8 +22,8 @@ defmodule FzHttp.Repo.Migrations.AddUuids do
       "ALTER TABLE users DROP COLUMN uuid"
     )
 
-    create unique_index(:rules, :uuid)
-    create unique_index(:devices, :uuid)
-    create unique_index(:users, :uuid)
+    create(unique_index(:rules, :uuid))
+    create(unique_index(:devices, :uuid))
+    create(unique_index(:users, :uuid))
   end
 end

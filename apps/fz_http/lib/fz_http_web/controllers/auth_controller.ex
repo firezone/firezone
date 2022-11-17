@@ -7,12 +7,10 @@ defmodule FzHttpWeb.AuthController do
 
   @local_auth_providers [:identity, :magic_link]
 
-  alias FzHttp.Configurations, as: Conf
   alias FzHttp.Users
   alias FzHttpWeb.Authentication
   alias FzHttpWeb.OAuth.PKCE
   alias FzHttpWeb.OIDC.State
-  alias FzHttpWeb.Router.Helpers, as: Routes
   alias FzHttpWeb.UserFromAuth
 
   import FzHttpWeb.OIDC.Helpers
@@ -25,7 +23,7 @@ defmodule FzHttpWeb.AuthController do
   def request(conn, _params) do
     # XXX: Helpers.callback_url/1 generates the wrong URL behind nginx.
     # This is a bug in Ueberauth. auth_path is used instead.
-    path = Routes.auth_path(conn, :callback, :identity)
+    path = ~p"/auth/identity/callback"
 
     conn
     |> render("request.html", callback_path: path)
@@ -38,7 +36,7 @@ defmodule FzHttpWeb.AuthController do
 
     conn
     |> put_flash(:error, msg)
-    |> redirect(to: Routes.root_path(conn, :index))
+    |> redirect(to: ~p"/")
   end
 
   def callback(%{assigns: %{ueberauth_auth: auth}} = conn, _params) do
@@ -85,7 +83,7 @@ defmodule FzHttpWeb.AuthController do
         {:error, reason} ->
           conn
           |> put_flash(:error, "Error signing in: #{reason}")
-          |> redirect(to: Routes.root_path(conn, :index))
+          |> redirect(to: ~p"/")
       end
     else
       {:error, reason} ->
@@ -94,7 +92,7 @@ defmodule FzHttpWeb.AuthController do
 
         conn
         |> put_flash(:error, msg)
-        |> redirect(to: Routes.root_path(conn, :index))
+        |> redirect(to: ~p"/")
 
       # Error verifying claims or fetching tokens
       {:error, action, reason} ->
@@ -102,7 +100,7 @@ defmodule FzHttpWeb.AuthController do
 
         conn
         |> put_flash(:error, "Failed when performing this action: #{action}")
-        |> redirect(to: Routes.root_path(conn, :index))
+        |> redirect(to: ~p"/")
     end
   end
 
@@ -120,12 +118,12 @@ defmodule FzHttpWeb.AuthController do
       :ok ->
         conn
         |> put_flash(:info, "Please check your inbox for the magic link.")
-        |> redirect(to: Routes.root_path(conn, :index))
+        |> redirect(to: ~p"/")
 
       :error ->
         conn
         |> put_flash(:warning, "Failed to send magic link email.")
-        |> redirect(to: Routes.auth_path(conn, :reset_password))
+        |> redirect(to: ~p"/auth/reset_password")
     end
   end
 
@@ -137,7 +135,7 @@ defmodule FzHttpWeb.AuthController do
       {:error, _} ->
         conn
         |> put_flash(:error, "The magic link is not valid or has expired.")
-        |> redirect(to: Routes.root_path(conn, :index))
+        |> redirect(to: ~p"/")
     end
   end
 
@@ -188,6 +186,6 @@ defmodule FzHttpWeb.AuthController do
     |> Authentication.sign_in(user, auth)
     |> configure_session(renew: true)
     |> put_session(:live_socket_id, "users_socket:#{user.id}")
-    |> redirect(to: root_path_for_role(conn, user.role))
+    |> redirect(to: root_path_for_role(user.role))
   end
 end

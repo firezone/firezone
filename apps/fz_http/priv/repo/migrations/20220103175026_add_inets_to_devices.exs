@@ -6,22 +6,22 @@ defmodule FzHttp.Repo.Migrations.AddInetsToDevices do
 
   def change do
     alter table(:devices) do
-      add :ipv4, :inet
-      add :ipv6, :inet
+      add(:ipv4, :inet)
+      add(:ipv6, :inet)
     end
 
-    create unique_index(:devices, :ipv4)
-    create unique_index(:devices, :ipv6)
+    create(unique_index(:devices, :ipv4))
+    create(unique_index(:devices, :ipv6))
 
     flush()
 
-    execute """
+    execute("""
     UPDATE devices
     SET ipv4 = ('#{@ipv4_prefix}' || address)::INET, ipv6 = ('#{@ipv6_prefix}' || address)::INET;
-    """
+    """)
 
     alter table(:devices) do
-      remove :address
+      remove(:address)
     end
   end
 end

@@ -19,7 +19,7 @@ defmodule FzHttpWeb.NotificationsLive.IndexTest do
     admin_conn: conn,
     notification: notification
   } do
-    path = Routes.notifications_index_path(conn, :index)
+    path = ~p"/notifications"
     Notifications.add(pid, notification)
 
     {:ok, _view, html} = live(conn, path)
@@ -32,7 +32,7 @@ defmodule FzHttpWeb.NotificationsLive.IndexTest do
     admin_conn: conn,
     notification: notification
   } do
-    path = Routes.notifications_index_path(conn, :index)
+    path = ~p"/notifications"
     Notifications.add(pid, notification)
     {:ok, view, _html} = live(conn, path)
 
@@ -56,7 +56,7 @@ defmodule FzHttpWeb.NotificationsLive.IndexTest do
       Notifications.add(pid, notification)
     end
 
-    path = Routes.notifications_index_path(conn, :index)
+    path = ~p"/notifications"
     {:ok, view, _html} = live(conn, path)
 
     index = 2

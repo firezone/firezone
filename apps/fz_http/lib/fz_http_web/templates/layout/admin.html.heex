@@ -10,13 +10,8 @@
     <.live_title prefix="Firezone • ">
       <%= assigns[:page_title] %>
     </.live_title>
-    <link phx-track-static rel="stylesheet" href={Routes.static_path(@conn, "/dist/admin.css")} />
-    <script
-      defer
-      phx-track-static
-      type="text/javascript"
-      src={Routes.static_path(@conn, "/dist/admin.js")}
-    >
+    <link phx-track-static rel="stylesheet" href={~p"/dist/admin.css"} />
+    <script defer phx-track-static type="text/javascript" src={~p"/dist/admin.js"}>
     </script>
     <!-- Favicon -->
     <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png" />
@@ -51,12 +46,12 @@
                 <span class="icon"><i class="mdi mdi-chevron-down"></i></span>
               </a>
               <div class="navbar-dropdown">
-                <%= link(to: Routes.setting_account_path(@conn, :show), class: "navbar-item") do %>
+                <%= link(to: ~p"/settings/account", class: "navbar-item") do %>
                   <span class="icon"><i class="mdi mdi-account"></i></span>
                   <span>Account Settings</span>
                 <% end %>
                 <hr class="navbar-divider" />
-                <%= link(to: Routes.auth_path(@conn, :delete), method: :delete, class: "navbar-item") do %>
+                <%= link(to: ~p"/sign_out", method: :delete, class: "navbar-item") do %>
                   <span class="icon"><i class="mdi mdi-logout"></i></span>
                   <span>Log Out</span>
                 <% end %>

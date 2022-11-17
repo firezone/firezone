@@ -7,14 +7,14 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
 
   describe "authenticated mount" do
     test "loads the active sessions table", %{admin_conn: conn} do
-      path = Routes.setting_security_path(conn, :show)
+      path = ~p"/settings/security"
       {:ok, _view, html} = live(conn, path)
 
       assert html =~ "<h4 class=\"title is-4\">Authentication</h4>"
     end
 
     test "selects the chosen option", %{admin_conn: conn} do
-      path = Routes.setting_security_path(conn, :show)
+      path = ~p"/settings/security"
       {:ok, _view, html} = live(conn, path)
       assert html =~ ~s|<option selected="selected" value="0">Never</option>|
 
@@ -27,8 +27,8 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
 
   describe "unauthenticated mount" do
     test "redirects to not authorized", %{unauthed_conn: conn} do
-      path = Routes.setting_security_path(conn, :show)
-      expected_path = Routes.root_path(conn, :index)
+      path = ~p"/settings/security"
+      expected_path = ~p"/"
 
       assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
     end
@@ -51,12 +51,12 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
   end
 
   describe "toggles" do
-    setup %{admin_conn: conn, config: config, config_val: config_val} do
+    setup %{config: config, config_val: config_val} do
       Conf.update_configuration(%{config => config_val})
 
       Conf.Cache.init([])
 
-      {:ok, path: Routes.setting_security_path(conn, :show)}
+      {:ok, path: ~p"/settings/security"}
     end
 
     for {t, val} <- [
@@ -95,7 +95,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
         saml_identity_providers: %{}
       })
 
-      path = Routes.setting_security_path(conn, :show)
+      path = ~p"/settings/security"
       {:ok, view, _html} = live(conn, path)
       [view: view]
     end
@@ -152,7 +152,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
         saml_identity_providers: %{"test" => saml_attrs()}
       })
 
-      path = Routes.setting_security_path(conn, :show)
+      path = ~p"/settings/security"
       {:ok, view, _html} = live(conn, path)
       [view: view]
     end

@@ -8,7 +8,7 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
     } do
       {:ok, devices: devices} = create_devices(user_id: user.id)
 
-      path = Routes.device_unprivileged_index_path(conn, :index)
+      path = ~p"/user_devices"
       {:ok, _view, html} = live(conn, path)
 
       for device <- devices do
@@ -19,9 +19,9 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
 
   describe "authenticated but user deleted" do
     test "redirects to not authorized", %{admin_conn: conn} do
-      path = Routes.device_admin_index_path(conn, :index)
+      path = ~p"/devices"
       clear_users()
-      expected_path = Routes.root_path(conn, :index)
+      expected_path = ~p"/"
       assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
     end
   end
@@ -32,14 +32,14 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
     end
 
     test "omits Add Device button", %{unprivileged_conn: conn} do
-      path = Routes.device_unprivileged_index_path(conn, :index)
+      path = ~p"/user_devices"
       {:ok, _view, html} = live(conn, path)
 
       refute html =~ "Add Device"
     end
 
     test "prevents creating a device", %{unprivileged_conn: conn} do
-      path = Routes.device_unprivileged_index_path(conn, :new)
+      path = ~p"/user_devices/new"
       {:ok, view, _html} = live(conn, path)
 
       view
@@ -71,7 +71,7 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
       ipv6
     )
     test "hides the customization fields", %{fields: fields, unprivileged_conn: conn} do
-      path = Routes.device_unprivileged_index_path(conn, :new)
+      path = ~p"/user_devices/new"
       {:ok, _view, html} = live(conn, path)
 
       for field <- fields do
@@ -86,7 +86,7 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
       preshared_key
     )
     test "renders the needed fields", %{fields: fields, unprivileged_conn: conn} do
-      path = Routes.device_unprivileged_index_path(conn, :new)
+      path = ~p"/user_devices/new"
       {:ok, _view, html} = live(conn, path)
 
       for field <- fields do
@@ -98,7 +98,7 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
          error: "ipv4 address pool is exhausted. Increase network size or remove some devices."
     test "Displays base error when IPv4 pool is exhausted",
          %{params: params, unprivileged_conn: conn, error: error} do
-      path = Routes.device_unprivileged_index_path(conn, :new)
+      path = ~p"/user_devices/new"
       {:ok, view, _html} = live(conn, path)
 
       # A pool of size 1 is always exhausted
@@ -113,7 +113,7 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
          error: "ipv6 address pool is exhausted. Increase network size or remove some devices."
     test "Displays base error when IPv6 pool is exhausted",
          %{params: params, unprivileged_conn: conn, error: error} do
-      path = Routes.device_unprivileged_index_path(conn, :new)
+      path = ~p"/user_devices/new"
       {:ok, view, _html} = live(conn, path)
 
       # A pool of size 1 is always exhausted
@@ -127,18 +127,18 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
 
   describe "authenticated/creates device" do
     test "shows new form", %{unprivileged_conn: conn} do
-      path = Routes.device_unprivileged_index_path(conn, :index)
+      path = ~p"/user_devices"
       {:ok, view, _html} = live(conn, path)
 
       view
       |> element("a", "Add Device")
       |> render_click()
 
-      assert_patched(view, Routes.device_unprivileged_index_path(conn, :new))
+      assert_patched(view, ~p"/user_devices/new")
     end
 
     test "creates device", %{unprivileged_conn: conn} do
-      path = Routes.device_unprivileged_index_path(conn, :new)
+      path = ~p"/user_devices/new"
       {:ok, view, _html} = live(conn, path)
 
       new_view =
@@ -152,8 +152,8 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
 
   describe "unauthenticated" do
     test "mount redirects to session path", %{unauthed_conn: conn} do
-      path = Routes.device_admin_index_path(conn, :index)
-      expected_path = Routes.root_path(conn, :index)
+      path = ~p"/user_devices"
+      expected_path = ~p"/"
       assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
     end
   end

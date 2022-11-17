@@ -28,10 +28,11 @@ defmodule FzHttpWeb.ConnCase do
       import Phoenix.ConnTest
       import Phoenix.LiveViewTest
       import FzHttp.TestHelpers
-      alias FzHttpWeb.Router.Helpers, as: Routes
 
       # The default endpoint for testing
       @endpoint FzHttpWeb.Endpoint
+
+      use FzHttpWeb, :verified_routes
 
       def current_user(test_conn) do
         get_session(test_conn)

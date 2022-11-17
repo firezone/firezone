@@ -3,13 +3,13 @@ defmodule FzHttp.Repo.Migrations.CreateSettings do
 
   def change do
     create table(:settings) do
-      add :key, :string
-      add :value, :string
+      add(:key, :string)
+      add(:value, :string)
 
       timestamps(type: :utc_datetime_usec)
     end
 
-    create unique_index(:settings, :key)
+    create(unique_index(:settings, :key))
 
     flush()
 

@@ -3,7 +3,7 @@ defmodule FzHttp.Repo.Migrations.AddSamlIdentityProvidersToConfiguration do
 
   def change do
     alter table(:configurations) do
-      add :saml_identity_providers, :map
+      add(:saml_identity_providers, :map)
     end
   end
 end

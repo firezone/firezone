@@ -228,7 +228,7 @@ defmodule FzHttp.Users do
   def reset_sign_in_token(email) do
     with %User{} = user <- Repo.get_by(User, email: email),
          {:ok, user} <- update_user_sign_in_token(user, sign_in_keys()) do
-        Mailer.AuthEmail.magic_link(user) |> Mailer.deliver!()
+      Mailer.AuthEmail.magic_link(user) |> Mailer.deliver!()
       :ok
     else
       nil ->
