@@ -46,7 +46,7 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
       |> element("#create-device")
       |> render_submit(%{"device" => %{"public_key" => "test-pubkey", "name" => "test-tunnel"}})
 
-      flash = assert_redirected(view, "/")
+      flash = assert_redirect(view, "/")
       assert flash["error"] == "Not authorized."
     end
   end
@@ -134,7 +134,7 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
       |> element("a", "Add Device")
       |> render_click()
 
-      assert_patched(view, ~p"/user_devices/new")
+      assert_patch(view, ~p"/user_devices/new")
     end
 
     test "creates device", %{unprivileged_conn: conn} do

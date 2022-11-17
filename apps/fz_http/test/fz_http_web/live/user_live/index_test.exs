@@ -41,7 +41,7 @@ defmodule FzHttpWeb.UserLive.IndexTest do
       |> element("a", user.email)
       |> render_click()
 
-      assert_redirected(view, ~p"/users/#{user}")
+      assert_redirect(view, ~p"/users/#{user}")
     end
   end
 
@@ -113,7 +113,7 @@ defmodule FzHttpWeb.UserLive.IndexTest do
       |> element("a", "Add User")
       |> render_click()
 
-      assert_patched(view, ~p"/users/new")
+      assert_patch(view, ~p"/users/new")
     end
   end
 end

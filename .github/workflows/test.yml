@@ -1,84 +1,7 @@
 name: Test
-on: [push, pull_request]
+on: [pull_request]
 
 jobs:
-  static-analysis:
-    runs-on: ubuntu-latest
-    env:
-      MIX_ENV: dev
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-        with:
-          node-version: '16'
-          cache: 'npm'
-          cache-dependency-path: '**/package-lock.json'
-      - uses: actions/setup-ruby@v1
-        with:
-          ruby-version: '2.7'
-      - uses: actions/setup-python@v2
-        with:
-          python-version: '3.9'
-      - uses: erlef/setup-beam@v1
-        with:
-          otp-version: '25'
-          elixir-version: '1.14'
-      - uses: actions/cache@v3.0.11
-        name: Setup Elixir cache
-        with:
-          path: |
-            deps
-            _build
-          key: ${{ runner.os }}-mix-otp-25-${{ hashFiles('**/mix.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-mix-otp-25-
-      - uses: actions/cache@v3.0.11
-        name: Setup ruby cache
-        with:
-          path: vendor/bundle
-          key: ${{ runner.os }}-gems-${{ hashFiles('**/Gemfile.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-gems-
-      - uses: actions/cache@v3.0.11
-        name: Setup Python cache
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-      - name: Install Elixir Dependencies
-        run: mix deps.get --only dev
-      - name: Install Ruby Dependencies
-        run: |
-          bundle config path vendor/bundle
-          bundle install --jobs 4 --retry 3
-      - name: Install Python Dependencies
-        run: |
-          pip install -r requirements.txt
-      # Don't cache PLTs based on mix.lock hash, as Dialyzer can incrementally update even old ones
-      # Cache key based on Elixir & Erlang version (also usefull when running in matrix)
-      - name: Restore PLT cache
-        uses: actions/cache@v3.0.11
-        id: plt_cache
-        with:
-          key: |
-            ${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ steps.beam.outputs.otp-version }}-plt
-          restore-keys: |
-            ${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ steps.beam.outputs.otp-version }}-plt
-          path: |
-            priv/plts
-      # Create PLTs if no cache was found
-      - name: Create PLTs
-        if: steps.plt_cache.outputs.cache-hit != 'true'
-        run: mix dialyzer --plt
-      - name: Install node modules
-        run: npm ci --prefix docs/
-      - name: Run pre-commit
-        run: |
-          pre-commit install
-          SKIP=no-commit-to-branch pre-commit run --all-files
-
   unit-test:
     runs-on: ubuntu-latest
     env:
@@ -87,7 +10,7 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     services:
       postgres:
-        image: postgres:13
+        image: postgres:15
         ports:
           - 5432:5432
         env:
@@ -121,9 +44,10 @@ jobs:
             _build
           key: ${{ runner.os }}-mix-otp-25-${{ hashFiles('**/mix.lock') }}
           restore-keys: |
-            ${{ runner.os }}-mix-otp-25
+            ${{ runner.os }}-mix-otp-25-${{ hashFiles('**/mix.lock') }}
+            ${{ runner.os }}-mix-otp-25-
       - name: Install Dependencies
-        run: mix deps.get --only test
+        run: mix deps.get --only $MIX_ENV
       - name: Setup Database
         run: |
           mix ecto.create

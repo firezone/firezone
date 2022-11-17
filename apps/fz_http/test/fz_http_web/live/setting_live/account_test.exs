@@ -41,7 +41,7 @@ defmodule FzHttpWeb.SettingLive.AccountTest do
       |> element("#account-edit")
       |> render_submit(@valid_params)
 
-      flash = assert_redirected(view, ~p"/settings/account")
+      flash = assert_redirect(view, ~p"/settings/account")
       assert flash["info"] == "Account updated successfully."
     end
 
@@ -85,11 +85,7 @@ defmodule FzHttpWeb.SettingLive.AccountTest do
       |> element("button[aria-label=close]")
       |> render_click()
 
-      # Ensure view's messages are flushed... prevents intermittent failures
-      # See https://elixirforum.com/t/testing-liveviews-that-rely-on-pubsub-for-updates/40938/5
-      _ = :sys.get_state(view.pid)
-
-      assert_patched(view, ~p"/settings/account")
+      assert_patch(view, ~p"/settings/account")
     end
   end
 end
