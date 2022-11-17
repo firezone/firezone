@@ -2,11 +2,10 @@ repos:
   - repo: local
     hooks:
       # Elixir config
-      # Randomly started failing
-      # - id: mix-format
-      #   name: 'elixir: mix format'
-      #   entry: mix format --check-formatted
-      #   language: system
+      - id: mix-format
+        name: 'elixir: mix format'
+        entry: mix format --check-formatted
+        language: system
       - id: mix-lint
         name: 'elixir: mix credo'
         entry: mix credo --strict
@@ -57,4 +56,4 @@ repos:
           - -b
           - master
           - --pattern
-          - '^(?!((chore|feat|feature|bug|fix|build|ci|docs|style|refactor|perf|test|revert)\/[a-zA-Z0-9\-]+)$).*'
+          - '^(?!((chore|feat|feature|bug|fix|build|ci|docs|style|refactor|perf|test|revert)\/[a-zA-Z0-9\-\.]+)$).*'

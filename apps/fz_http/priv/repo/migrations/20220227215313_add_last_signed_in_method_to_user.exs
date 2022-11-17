@@ -3,7 +3,7 @@ defmodule FzHttp.Repo.Migrations.AddLastSignedInMethodToUser do
 
   def change do
     alter table(:users) do
-      add :last_signed_in_method, :string
+      add(:last_signed_in_method, :string)
     end
   end
 end

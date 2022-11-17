@@ -34,7 +34,7 @@ defmodule FzHttpWeb.SettingLive.SiteTest do
     }
 
     setup %{admin_conn: conn} do
-      path = Routes.setting_site_path(conn, :show)
+      path = ~p"/settings/site"
       {:ok, view, html} = live(conn, path)
 
       %{html: html, view: view}
@@ -180,8 +180,8 @@ defmodule FzHttpWeb.SettingLive.SiteTest do
   describe "unauthenticated/settings default" do
     @tag :unauthed
     test "mount redirects to session path", %{unauthed_conn: conn} do
-      path = Routes.setting_site_path(conn, :show)
-      expected_path = Routes.root_path(conn, :index)
+      path = ~p"/settings/site"
+      expected_path = ~p"/"
       assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
     end
   end

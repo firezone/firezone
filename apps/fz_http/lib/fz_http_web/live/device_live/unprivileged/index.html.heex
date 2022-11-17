@@ -1,7 +1,7 @@
 <%= if @live_action == :new do %>
   <%= live_modal(
     FzHttpWeb.DeviceLive.NewFormComponent,
-    return_to: Routes.device_unprivileged_index_path(@socket, :index),
+    return_to: ~p"/user_devices",
     title: "Add Device",
     current_user: @current_user,
     target_user_id: @current_user.id,
@@ -43,7 +43,7 @@
           <%= for device <- @devices do %>
             <tr>
               <td>
-                <.link navigate={Routes.device_unprivileged_show_path(@socket, :show, device)}>
+                <.link navigate={~p"/user_devices/#{device}"}>
                   <%= device.name %>
                 </.link>
               </td>
@@ -72,11 +72,7 @@
 
   <%= if FzHttpWeb.DeviceView.can_manage_devices?(@current_user) do %>
     <div class="block">
-      <.link
-        replace={true}
-        patch={Routes.device_unprivileged_index_path(@socket, :new)}
-        class="button"
-      >
+      <.link replace={true} patch={~p"/user_devices/new"} class="button">
         Add Device
       </.link>
     </div>
@@ -108,7 +104,7 @@
               </span>
             </strong>
           </p>
-          <%= link("Reauthenticate", to: Routes.auth_path(@socket, :delete), method: :delete) %> to renew your VPN session.
+          <%= link("Reauthenticate", to: ~p"/sign_out", method: :delete) %> to renew your VPN session.
         <% else %>
           Your VPN session is active indefinitely.
         <% end %>
@@ -121,11 +117,11 @@
           Signed in as <%= @current_user.email %>.
         </p>
         <p>
-          <.link navigate={Routes.setting_unprivileged_account_path(@socket, :show)}>
+          <.link navigate={~p"/user_account"}>
             My Account
           </.link>
           /
-          <%= link(to: Routes.auth_path(@socket, :delete), method: :delete) do %>
+          <%= link(to: ~p"/sign_out", method: :delete) do %>
             Sign out
           <% end %>
         </p>

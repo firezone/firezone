@@ -34,7 +34,7 @@ defmodule FzHttpWeb.DeviceLive.Admin.Show do
       {:ok, _deleted_device} ->
         {:noreply,
          socket
-         |> redirect(to: Routes.device_admin_index_path(socket, :index))}
+         |> redirect(to: ~p"/devices")}
 
       {:error, msg} ->
         {:noreply,

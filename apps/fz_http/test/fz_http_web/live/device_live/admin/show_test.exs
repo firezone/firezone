@@ -6,8 +6,8 @@ defmodule FzHttpWeb.DeviceLive.Admin.ShowTest do
 
     @tag :unauthed
     test "mount redirects to session path", %{unauthed_conn: conn, device: device} do
-      path = Routes.device_admin_show_path(conn, :show, device)
-      expected_path = Routes.root_path(conn, :index)
+      path = ~p"/devices/#{device}"
+      expected_path = ~p"/"
       assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
     end
   end
@@ -16,7 +16,7 @@ defmodule FzHttpWeb.DeviceLive.Admin.ShowTest do
     setup :create_device
 
     test "includes the device details", %{admin_conn: conn, device: device} do
-      path = Routes.device_admin_show_path(conn, :show, device)
+      path = ~p"/devices/#{device}"
       {:ok, _view, html} = live(conn, path)
 
       assert html =~ device.name
@@ -24,7 +24,7 @@ defmodule FzHttpWeb.DeviceLive.Admin.ShowTest do
     end
 
     test "deletes the device", %{admin_conn: conn, device: device} do
-      path = Routes.device_admin_show_path(conn, :show, device)
+      path = ~p"/devices/#{device}"
       {:ok, view, _html} = live(conn, path)
 
       view
@@ -32,7 +32,7 @@ defmodule FzHttpWeb.DeviceLive.Admin.ShowTest do
       |> render_click()
 
       {new_path, _flash} = assert_redirect(view)
-      assert new_path == Routes.device_admin_index_path(conn, :index)
+      assert new_path == ~p"/devices"
     end
   end
 

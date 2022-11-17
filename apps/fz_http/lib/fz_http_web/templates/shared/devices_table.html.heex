@@ -18,14 +18,14 @@
     <%= for device <- @devices do %>
       <tr>
         <td>
-          <.link navigate={Routes.device_admin_show_path(@socket, :show, device)}>
+          <.link navigate={~p"/devices/#{device}"}>
             <%= device.name %>
           </.link>
         </td>
         <%= if @show_user do %>
           <td>
             <%= live_redirect(device.user.email,
-              to: Routes.user_show_path(@socket, :show, device.user)
+              to: ~p"/users/#{device.user}"
             ) %>
           </td>
         <% end %>

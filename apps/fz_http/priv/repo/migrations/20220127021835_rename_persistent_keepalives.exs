@@ -15,9 +15,10 @@ defmodule FzHttp.Repo.Migrations.RenamePersistentKeepalives do
       """
     )
 
-    rename table(:devices), :persistent_keepalives, to: :persistent_keepalive
+    rename(table(:devices), :persistent_keepalives, to: :persistent_keepalive)
 
-    rename table(:devices), :use_default_persistent_keepalives,
+    rename(table(:devices), :use_default_persistent_keepalives,
       to: :use_default_persistent_keepalive
+    )
   end
 end

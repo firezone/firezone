@@ -25,7 +25,9 @@ defmodule FzHttpWeb do
       import FzHttpWeb.Gettext
       import Phoenix.LiveView.Controller
       import FzHttpWeb.ControllerHelpers
-      alias FzHttpWeb.Router.Helpers, as: Routes
+      alias FzHttp.Configurations, as: Conf
+
+      unquote(verified_routes())
     end
   end
 
@@ -36,7 +38,7 @@ defmodule FzHttpWeb do
         namespace: FzHttpWeb
 
       # Import convenience functions from controllers
-      import Phoenix.Controller, only: [get_flash: 1, get_flash: 2, view_module: 1]
+      import Phoenix.Controller, only: [view_module: 1]
 
       # Use all HTML functionality (forms, tags, etc)
       use Phoenix.HTML
@@ -48,7 +50,8 @@ defmodule FzHttpWeb do
       import FzHttpWeb.AuthorizationHelpers
       import FzHttpWeb.Gettext
       import FzHttpWeb.LiveHelpers
-      alias FzHttpWeb.Router.Helpers, as: Routes
+
+      unquote(verified_routes())
 
       def render_common(template, assigns \\ []) do
         render(FzHttpWeb.CommonView, template, assigns)
@@ -106,13 +109,19 @@ defmodule FzHttpWeb do
     end
   end
 
+  def helper do
+    quote do
+      unquote(verified_routes())
+    end
+  end
+
   defp view_helpers do
     quote do
       # Use all HTML functionality (forms, tags, etc)
       use Phoenix.HTML
 
       # Import LiveView helpers (live_render, live_component, live_patch, etc)
-      import Phoenix.LiveView.Helpers
+      import Phoenix.Component
 
       # Import basic rendering functionality (render, render_layout, etc)
       import Phoenix.View
@@ -122,7 +131,19 @@ defmodule FzHttpWeb do
 
       import FzHttpWeb.ErrorHelpers
       import FzHttpWeb.Gettext
-      alias FzHttpWeb.Router.Helpers, as: Routes
+
+      unquote(verified_routes())
+    end
+  end
+
+  def static_paths, do: ~w(dist fonts images browserconfig.xml robots.txt)
+
+  def verified_routes do
+    quote do
+      use Phoenix.VerifiedRoutes,
+        endpoint: FzHttpWeb.Endpoint,
+        router: FzHttpWeb.Router,
+        statics: FzHttpWeb.static_paths()
     end
   end
 

@@ -5,7 +5,6 @@ defmodule FzHttpWeb.OIDCLive.ConnectionsTableComponent do
   use FzHttpWeb, :live_component
 
   alias FzHttp.OIDC
-  alias FzHttpWeb.Router.Helpers, as: Routes
 
   def handle_event("refresh", _payload, socket) do
     DynamicSupervisor.start_child(
@@ -16,7 +15,7 @@ defmodule FzHttpWeb.OIDCLive.ConnectionsTableComponent do
     {:noreply,
      socket
      |> put_flash(:info, "A refresh is underway, please check back in a minute.")
-     |> push_redirect(to: Routes.user_show_path(socket, :show, socket.assigns.user.id))}
+     |> push_redirect(to: ~p"/users/#{socket.assigns.user}")}
   end
 
   def handle_event("delete", %{"id" => id}, socket) do
@@ -26,7 +25,7 @@ defmodule FzHttpWeb.OIDCLive.ConnectionsTableComponent do
     {:noreply,
      socket
      |> put_flash(:info, "The #{conn.provider} connection is deleted.")
-     |> push_redirect(to: Routes.user_show_path(socket, :show, socket.assigns.user.id))}
+     |> push_redirect(to: ~p"/users/#{socket.assigns.user}")}
   end
 
   defp delete_warning(conn) do

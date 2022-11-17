@@ -7,7 +7,7 @@ defmodule FzHttpWeb.Plug.Authorization do
 
   use FzHttpWeb, :controller
 
-  import FzHttpWeb.ControllerHelpers, only: [root_path_for_role: 2]
+  import FzHttpWeb.ControllerHelpers, only: [root_path_for_role: 1]
   alias FzHttpWeb.Authentication
 
   @not_authorized "Not authorized."
@@ -28,7 +28,7 @@ defmodule FzHttpWeb.Plug.Authorization do
     else
       conn
       |> put_flash(:error, @not_authorized)
-      |> redirect(to: root_path_for_role(conn, user.role))
+      |> redirect(to: root_path_for_role(user.role))
       |> halt()
     end
   end

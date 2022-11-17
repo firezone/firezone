@@ -2,14 +2,13 @@ defmodule FzHttpWeb.AuthorizationHelpers do
   @moduledoc """
   Authorization-related helpers
   """
-
+  use FzHttpWeb, :helper
   import Phoenix.LiveView
-  alias FzHttpWeb.Router.Helpers, as: Routes
 
   def not_authorized(socket) do
     socket
     |> put_flash(:error, "Not authorized.")
-    |> redirect(to: Routes.root_path(socket, :index))
+    |> redirect(to: ~p"/")
   end
 
   def has_role?(_, :any) do

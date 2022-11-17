@@ -3,10 +3,10 @@ defmodule FzHttp.Repo.Migrations.RemovePrivateKeys do
 
   def change do
     alter table(:devices) do
-      remove :private_key
-      remove :server_public_key
-      remove :config_token
-      remove :config_token_expires_at
+      remove(:private_key)
+      remove(:server_public_key)
+      remove(:config_token)
+      remove(:config_token_expires_at)
     end
   end
 end

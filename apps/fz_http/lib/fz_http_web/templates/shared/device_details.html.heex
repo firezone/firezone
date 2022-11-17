@@ -4,7 +4,7 @@
       <tr>
         <td><strong>User</strong></td>
         <td>
-          <%= live_redirect(@user.email, to: Routes.user_show_path(@socket, :show, @user)) %>
+          <%= live_redirect(@user.email, to: ~p"/users/#{@user}") %>
         </td>
       </tr>
     <% end %>

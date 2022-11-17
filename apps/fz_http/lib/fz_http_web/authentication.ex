@@ -3,12 +3,12 @@ defmodule FzHttpWeb.Authentication do
   Authentication helpers.
   """
   use Guardian, otp_app: :fz_http
+  use FzHttpWeb, :controller
 
   alias FzHttp.Configurations, as: Conf
   alias FzHttp.Telemetry
   alias FzHttp.Users
   alias FzHttp.Users.User
-  alias FzHttpWeb.Router.Helpers, as: Routes
 
   import FzHttpWeb.OIDC.Helpers
 
@@ -81,7 +81,7 @@ defmodule FzHttpWeb.Authentication do
              openid_connect().end_session_uri(provider, %{
                client_id: client_id,
                id_token_hint: token,
-               post_logout_redirect_uri: Routes.root_url(conn, :index)
+               post_logout_redirect_uri: ~p"/"
              })
            ) do
       conn
@@ -93,7 +93,7 @@ defmodule FzHttpWeb.Authentication do
         conn
         |> __MODULE__.Plug.sign_out()
         |> Plug.Conn.configure_session(drop: true)
-        |> Phoenix.Controller.redirect(to: Routes.root_path(conn, :index))
+        |> Phoenix.Controller.redirect(to: ~p"/")
     end
   end
 

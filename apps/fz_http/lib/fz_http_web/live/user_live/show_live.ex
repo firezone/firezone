@@ -22,7 +22,7 @@ defmodule FzHttpWeb.UserLive.Show do
      |> assign(:connections, connections)
      |> assign(:user, user)
      |> assign(:page_title, "Users")
-     |> assign(:rules_path, Routes.rule_index_path(socket, :index))}
+     |> assign(:rules_path, ~p"/rules")}
   end
 
   @doc """
@@ -54,7 +54,7 @@ defmodule FzHttpWeb.UserLive.Show do
           {:noreply,
            socket
            |> put_flash(:info, "User deleted successfully.")
-           |> push_redirect(to: Routes.user_index_path(socket, :index))}
+           |> push_redirect(to: ~p"/users")}
 
         {:error, changeset} ->
           {:noreply,

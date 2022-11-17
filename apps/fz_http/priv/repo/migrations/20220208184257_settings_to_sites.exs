@@ -3,14 +3,14 @@ defmodule FzHttp.Repo.Migrations.SettingsToSites do
 
   def change do
     create table(:sites, primary_key: false) do
-      add :id, :uuid, primary_key: true
-      add :name, :string
-      add :dns, :string
-      add :allowed_ips, :string
-      add :endpoint, :string
-      add :persistent_keepalive, :integer
-      add :mtu, :integer
-      add :vpn_session_duration, :integer
+      add(:id, :uuid, primary_key: true)
+      add(:name, :string)
+      add(:dns, :string)
+      add(:allowed_ips, :string)
+      add(:endpoint, :string)
+      add(:persistent_keepalive, :integer)
+      add(:mtu, :integer)
+      add(:vpn_session_duration, :integer)
 
       timestamps(type: :utc_datetime_usec)
     end
@@ -82,8 +82,8 @@ defmodule FzHttp.Repo.Migrations.SettingsToSites do
       WHERE sites.name = 'default'
     """)
 
-    drop table(:settings)
+    drop(table(:settings))
 
-    create unique_index(:sites, :name)
+    create(unique_index(:sites, :name))
   end
 end

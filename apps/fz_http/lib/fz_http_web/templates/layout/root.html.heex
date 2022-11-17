@@ -8,13 +8,8 @@
     <.live_title>
       <%= assigns[:page_title] || "Firezone" %>
     </.live_title>
-    <link phx-track-static rel="stylesheet" href={Routes.static_path(@conn, "/dist/root.css")} />
-    <script
-      defer
-      phx-track-static
-      type="text/javascript"
-      src={Routes.static_path(@conn, "/dist/root.js")}
-    >
+    <link phx-track-static rel="stylesheet" href={~p"/dist/root.css"} />
+    <script defer phx-track-static type="text/javascript" src={~p"/dist/root.js"}>
     </script>
     <!-- Favicon -->
     <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png" />

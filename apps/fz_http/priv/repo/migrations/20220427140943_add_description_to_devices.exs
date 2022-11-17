@@ -3,7 +3,7 @@ defmodule FzHttp.Repo.Migrations.AddDescriptionToDevices do
 
   def change do
     alter table(:devices) do
-      add :description, :text
+      add(:description, :text)
     end
   end
 end

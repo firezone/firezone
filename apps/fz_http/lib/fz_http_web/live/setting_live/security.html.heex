@@ -1,7 +1,7 @@
 <%= if @live_action == :edit_oidc do %>
   <%= live_modal(
     FzHttpWeb.SettingLive.OIDCFormComponent,
-    return_to: Routes.setting_security_path(@socket, :show),
+    return_to: ~p"/settings/security",
     title: "OIDC Configuration",
     providers: @oidc_configs,
     provider_id: @id,
@@ -13,7 +13,7 @@
 <%= if @live_action == :edit_saml do %>
   <%= live_modal(
     FzHttpWeb.SettingLive.SAMLFormComponent,
-    return_to: Routes.setting_security_path(@socket, :show),
+    return_to: ~p"/settings/security",
     title: "SAML Configuration",
     providers: @saml_configs,
     provider_id: @id,
@@ -183,7 +183,7 @@
           <td><%= v["discovery_document_uri"] %></td>
           <td><%= v["scope"] %></td>
           <td>
-            <%= live_patch(to: Routes.setting_security_path(@socket, :edit_oidc, k),
+            <%= live_patch(to: ~p"/settings/security/oidc/#{k}/edit",
               class: "button") do %>
               Edit
             <% end %>
@@ -203,7 +203,7 @@
   </table>
 
   <%= live_patch(
-      to: Routes.setting_security_path(@socket, :edit_oidc, "#{rand_string(8)}"),
+      to: ~p"/settings/security/oidc/#{rand_string(8)}/edit",
       class: "button mb-4") do %>
     Add OpenID Connect Provider
   <% end %>
@@ -228,7 +228,7 @@
             <div class="line-clamp"><%= v["metadata"] %></div>
           </td>
           <td>
-            <%= live_patch(to: Routes.setting_security_path(@socket, :edit_saml, k),
+            <%= live_patch(to: ~p"/settings/security/saml/#{k}/edit",
               class: "button") do %>
               Edit
             <% end %>
@@ -248,7 +248,7 @@
   </table>
 
   <%= live_patch(
-      to: Routes.setting_security_path(@socket, :edit_saml, "#{rand_string(8)}"),
+      to: ~p"/settings/security/saml/#{rand_string(8)}/edit",
       class: "button mb-4") do %>
     Add SAML Identity Provider
   <% end %>

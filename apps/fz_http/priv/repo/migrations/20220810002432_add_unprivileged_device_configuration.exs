@@ -3,7 +3,7 @@ defmodule FzHttp.Repo.Migrations.AddUnprivilegedDeviceConfiguration do
 
   def change do
     alter table(:configurations) do
-      add :allow_unprivileged_device_configuration, :boolean
+      add(:allow_unprivileged_device_configuration, :boolean)
     end
   end
 end

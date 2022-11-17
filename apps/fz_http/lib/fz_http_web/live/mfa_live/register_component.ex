@@ -20,17 +20,18 @@ defmodule FzHttpWeb.MFA.RegisterComponent do
     ~H"""
     <div id="register-mfa">
       <%= live_modal(
-          FzHttpWeb.MFA.RegisterStepsComponent.render_step(%{
-            step: @step,
-            changeset: @changeset,
-            parent: @myself,
-            user: @user
-          }),
-          return_to: @return_to,
-          id: "register-mfa-modal",
-          title: "Registering MFA Method",
-          form: "mfa-method-form",
-          button_text: if(@step == :save, do: "Save", else: "Next")) %>
+        FzHttpWeb.MFA.RegisterStepsComponent.render_step(%{
+          step: @step,
+          changeset: @changeset,
+          parent: @myself,
+          user: @user
+        }),
+        return_to: @return_to,
+        id: "register-mfa-modal",
+        title: "Registering MFA Method",
+        form: "mfa-method-form",
+        button_text: if(@step == :save, do: "Save", else: "Next")
+      ) %>
     </div>
     """
   end

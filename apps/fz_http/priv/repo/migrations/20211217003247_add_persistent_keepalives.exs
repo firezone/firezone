@@ -3,8 +3,8 @@ defmodule FzHttp.Repo.Migrations.AddPersistentKeepalives do
 
   def change do
     alter table(:devices) do
-      add :persistent_keepalives, :integer
-      add :use_default_persistent_keepalives, :boolean, null: false, default: true
+      add(:persistent_keepalives, :integer)
+      add(:use_default_persistent_keepalives, :boolean, null: false, default: true)
     end
 
     now = DateTime.utc_now()

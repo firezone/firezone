@@ -5,7 +5,7 @@ defmodule FzHttp.Repo.Migrations.AddDnsServersToDevices do
 
   def change do
     alter table(:devices) do
-      add :dns_servers, :string, default: @default_dns_servers
+      add(:dns_servers, :string, default: @default_dns_servers)
     end
   end
 end

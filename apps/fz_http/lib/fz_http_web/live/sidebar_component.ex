@@ -2,9 +2,7 @@ defmodule FzHttpWeb.SidebarComponent do
   @moduledoc """
   Admin Sidebar
   """
-  use Phoenix.Component
-
-  alias FzHttpWeb.Router.Helpers, as: Routes
+  use FzHttpWeb, :live_component
 
   def render(assigns) do
     ~H"""
@@ -18,19 +16,19 @@ defmodule FzHttpWeb.SidebarComponent do
         <p class="menu-label">Configuration</p>
         <ul class="menu-list">
           <li>
-            <%= live_redirect(to: Routes.user_index_path(FzHttpWeb.Endpoint, :index), class: nav_class(@path, "/users")) do %>
+            <%= live_redirect(to: ~p"/users", class: nav_class(@path, "/users")) do %>
               <span class="icon"><i class="mdi mdi-account-group"></i></span>
               <span class="menu-item-label">Users</span>
             <% end %>
           </li>
           <li>
-            <%= live_redirect(to: Routes.device_admin_index_path(FzHttpWeb.Endpoint, :index), class: nav_class(@path, "/devices")) do %>
+            <%= live_redirect(to: ~p"/devices", class: nav_class(@path, "/devices")) do %>
               <span class="icon"><i class="mdi mdi-laptop"></i></span>
               <span class="menu-item-label">Devices</span>
             <% end %>
           </li>
           <li>
-            <%= live_redirect(to: Routes.rule_index_path(FzHttpWeb.Endpoint, :index), class: nav_class(@path, "/rules")) do %>
+            <%= live_redirect(to: ~p"/rules", class: nav_class(@path, "/rules")) do %>
               <span class="icon"><i class="mdi mdi-traffic-light"></i></span>
               <span class="menu-item-label">Rules</span>
             <% end %>
@@ -39,25 +37,25 @@ defmodule FzHttpWeb.SidebarComponent do
         <p class="menu-label">Settings</p>
         <ul class="menu-list">
           <li>
-            <%= live_redirect(to: Routes.setting_site_path(FzHttpWeb.Endpoint, :show), class: nav_class(@path, "/settings/site")) do %>
+            <%= live_redirect(to: ~p"/settings/site", class: nav_class(@path, "/settings/site")) do %>
               <span class="icon"><i class="mdi mdi-cog"></i></span>
               <span class="menu-item-label">Defaults</span>
             <% end %>
           </li>
           <li>
-            <%= live_redirect(to: Routes.setting_account_path(FzHttpWeb.Endpoint, :show), class: nav_class(@path, "/settings/account")) do %>
+            <%= live_redirect(to: ~p"/settings/account", class: nav_class(@path, "/settings/account")) do %>
               <span class="icon"><i class="mdi mdi-account"></i></span>
               <span class="menu-item-label">Account</span>
             <% end %>
           </li>
           <li>
-            <%= live_redirect(to: Routes.setting_customization_path(FzHttpWeb.Endpoint, :show), class: nav_class(@path, "/settings/customization")) do %>
+            <%= live_redirect(to: ~p"/settings/customization", class: nav_class(@path, "/settings/customization")) do %>
               <span class="icon"><i class="mdi mdi-palette"></i></span>
               <span class="menu-item-label">Customization</span>
             <% end %>
           </li>
           <li>
-            <%= live_redirect(to: Routes.setting_security_path(FzHttpWeb.Endpoint, :show), class: nav_class(@path, "/settings/security")) do %>
+            <%= live_redirect(to: ~p"/settings/security", class: nav_class(@path, "/settings/security")) do %>
               <span class="icon"><i class="mdi mdi-lock"></i></span>
               <span class="menu-item-label">Security</span>
             <% end %>
@@ -66,7 +64,7 @@ defmodule FzHttpWeb.SidebarComponent do
         <p class="menu-label">Diagnostics</p>
         <ul class="menu-list">
           <li>
-            <%= live_redirect(to: Routes.connectivity_check_index_path(FzHttpWeb.Endpoint, :index), class: nav_class(@path, "/diagnostics/connectivity_checks")) do %>
+            <%= live_redirect(to: ~p"/diagnostics/connectivity_checks", class: nav_class(@path, "/diagnostics/connectivity_checks")) do %>
               <span class="icon"><i class="mdi mdi-access-point"></i></span>
               <span class="menu-item-label">WAN Connectivity</span>
             <% end %>

@@ -3,8 +3,8 @@ defmodule FzHttp.Repo.Migrations.AddMtuToDevices do
 
   def change do
     alter table(:devices) do
-      add :use_default_mtu, :boolean, default: true, null: false
-      add :mtu, :integer, default: nil
+      add(:use_default_mtu, :boolean, default: true, null: false)
+      add(:mtu, :integer, default: nil)
     end
 
     now = DateTime.utc_now()

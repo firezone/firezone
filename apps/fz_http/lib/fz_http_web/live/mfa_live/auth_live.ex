@@ -39,23 +39,27 @@ defmodule FzHttpWeb.MFALive.Auth do
       Authenticate with your configured MFA method.
     </p>
 
-    <hr>
+    <hr />
 
     <div class="block has-text-right">
-      <.link navigate={Routes.mfa_auth_path(@socket, :types)}>
+      <.link navigate={~p"/mfa/types"}>
         Other authenticators -&gt;
       </.link>
     </div>
 
     <div class="block">
-      <.form let={f} for={@changeset} id="mfa-method-form" phx-submit="verify">
-
+      <.form :let={f} for={@changeset} id="mfa-method-form" phx-submit="verify">
         <div class="field">
-          <%= label f, :code, class: "label" %>
+          <%= label(f, :code, class: "label") %>
           <div class="control">
-            <%= text_input f, :code, name: "code", placeholder: "123456", required: true, class: "input #{input_error_class(@changeset, :code)}" %>
+            <%= text_input(f, :code,
+              name: "code",
+              placeholder: "123456",
+              required: true,
+              class: "input #{input_error_class(@changeset, :code)}"
+            ) %>
             <p class="help is-danger">
-              <%= error_tag f, :code %>
+              <%= error_tag(f, :code) %>
             </p>
           </div>
         </div>
@@ -64,12 +68,13 @@ defmodule FzHttpWeb.MFALive.Auth do
           <div class="control">
             <div class="level">
               <div class="level-left">
-                <%= submit "Verify",
-                    phx_disable_with: "verifying...",
-                    class: "button" %>
+                <%= submit("Verify",
+                  phx_disable_with: "verifying...",
+                  class: "button"
+                ) %>
               </div>
               <div class="level-right">
-                <%= link(to: Routes.auth_path(@socket, :delete), method: :delete) do %>
+                <%= link(to: ~p"/sign_out", method: :delete) do %>
                   Sign out
                 <% end %>
               </div>
@@ -95,11 +100,11 @@ defmodule FzHttpWeb.MFALive.Auth do
     <div class="block">
       <ul>
         <%= for method <- @methods do %>
-        <li>
-          <.link navigate={Routes.mfa_auth_path(@socket, :auth, method.id)}>
-            <%= "[#{method.type}] #{method.name} ->" %>
-          </.link>
-        </li>
+          <li>
+            <.link navigate={~p"/mfa/auth/#{method.id}"}>
+              <%= "[#{method.type}] #{method.name} ->" %>
+            </.link>
+          </li>
         <% end %>
       </ul>
     </div>
@@ -112,7 +117,7 @@ defmodule FzHttpWeb.MFALive.Auth do
       {:ok, _method} ->
         {:noreply,
          push_redirect(socket,
-           to: root_path_for_role(FzHttpWeb.Endpoint, socket.assigns.current_user.role)
+           to: root_path_for_role(socket.assigns.current_user.role)
          )}
 
       {:error, changeset} ->

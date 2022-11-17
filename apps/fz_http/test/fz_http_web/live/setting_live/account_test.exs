@@ -6,15 +6,15 @@ defmodule FzHttpWeb.SettingLive.AccountTest do
 
   describe "when unauthenticated" do
     test "mount redirects to session path", %{unauthed_conn: conn} do
-      path = Routes.setting_account_path(conn, :show)
-      expected_path = Routes.root_path(conn, :index)
+      path = ~p"/settings/account"
+      expected_path = ~p"/"
       assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
     end
   end
 
   describe "when live_action is show" do
     test "shows account details", %{admin_user: user, admin_conn: conn} do
-      path = Routes.setting_account_path(conn, :show)
+      path = ~p"/settings/account"
       {:ok, _view, html} = live(conn, path)
 
       user = Users.get_user!(user.id)
@@ -34,19 +34,19 @@ defmodule FzHttpWeb.SettingLive.AccountTest do
     end
 
     test "saves email when submitted", %{admin_conn: conn} do
-      path = Routes.setting_account_path(conn, :edit)
+      path = ~p"/settings/account/edit"
       {:ok, view, _html} = live(conn, path)
 
       view
       |> element("#account-edit")
       |> render_submit(@valid_params)
 
-      flash = assert_redirected(view, Routes.setting_account_path(conn, :show))
+      flash = assert_redirected(view, ~p"/settings/account")
       assert flash["info"] == "Account updated successfully."
     end
 
     test "doesn't allow empty email", %{admin_conn: conn} do
-      path = Routes.setting_account_path(conn, :edit)
+      path = ~p"/settings/account/edit"
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -61,12 +61,12 @@ defmodule FzHttpWeb.SettingLive.AccountTest do
           }
         })
 
-      refute_redirected(view, Routes.setting_account_path(conn, :show))
+      refute_redirected(view, ~p"/settings/account")
       assert test_view =~ "can&#39;t be blank"
     end
 
     test "renders validation errors", %{admin_conn: conn} do
-      path = Routes.setting_account_path(conn, :edit)
+      path = ~p"/settings/account/edit"
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -78,7 +78,7 @@ defmodule FzHttpWeb.SettingLive.AccountTest do
     end
 
     test "closes modal", %{admin_conn: conn} do
-      path = Routes.setting_account_path(conn, :edit)
+      path = ~p"/settings/account/edit"
       {:ok, view, _html} = live(conn, path)
 
       view
@@ -89,7 +89,7 @@ defmodule FzHttpWeb.SettingLive.AccountTest do
       # See https://elixirforum.com/t/testing-liveviews-that-rely-on-pubsub-for-updates/40938/5
       _ = :sys.get_state(view.pid)
 
-      assert_patched(view, Routes.setting_account_path(conn, :show))
+      assert_patched(view, ~p"/settings/account")
     end
   end
 end

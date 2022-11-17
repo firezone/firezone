@@ -37,7 +37,7 @@ defmodule FzHttpWeb.Endpoint do
     at: "/",
     from: :fz_http,
     gzip: false,
-    only: ~w(dist fonts images browserconfig.xml robots.txt)
+    only: FzHttpWeb.static_paths()
 
   # Code reloading can be explicitly enabled under the
   # :code_reloader configuration of your endpoint.

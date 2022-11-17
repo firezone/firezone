@@ -1,18 +1,18 @@
-<%= if !is_nil(get_flash(@conn, :info)) or !is_nil(get_flash(@conn, :error)) do %>
+<%= if !is_nil(Phoenix.Flash.get(@flash, :info)) or !is_nil(Phoenix.Flash.get(@flash, :error)) do %>
   <div class="block flash-squeeze">
-    <%= if get_flash(@conn, :info) do %>
+    <%= if Phoenix.Flash.get(@flash, :info) do %>
       <div class="notification is-info">
         <button title="Dismiss notification" class="delete"></button>
         <div class="flash-info">
-          <%= get_flash(@conn, :info) %>
+          <%= Phoenix.Flash.get(@flash, :info) %>
         </div>
       </div>
     <% end %>
-    <%= if get_flash(@conn, :error) do %>
+    <%= if Phoenix.Flash.get(@flash, :error) do %>
       <div class="notification is-danger">
         <button class="delete"></button>
         <div class="flash-error">
-          <%= get_flash(@conn, :error) %>
+          <%= Phoenix.Flash.get(@flash, :error) %>
         </div>
       </div>
     <% end %>

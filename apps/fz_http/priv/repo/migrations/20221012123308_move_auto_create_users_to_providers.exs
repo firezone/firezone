@@ -51,27 +51,27 @@ defmodule FzHttp.Repo.Migrations.MoveAutoCreateUsersToProviders do
     cur_oidc = cur_oidc_create_users() || System.get_env("AUTO_CREATE_OIDC_USERS", "true")
 
     for key <- oid_provider_keys() do
-      execute """
+      execute("""
       UPDATE configurations
       SET openid_connect_providers = jsonb_insert(
         (SELECT openid_connect_providers FROM configurations),
         '{#{key}, auto_create_users}', '#{cur_oidc}'
       ) WHERE 1 = 1;
-      """
+      """)
     end
 
     for key <- saml_provider_keys() do
-      execute """
+      execute("""
       UPDATE configurations
       SET saml_identity_providers = jsonb_insert(
         (SELECT saml_identity_providers FROM configurations),
         '{#{key}, auto_create_users}', 'true'
       ) WHERE 1 = 1;
-      """
+      """)
     end
 
     alter table(:configurations) do
-      remove :auto_create_oidc_users
+      remove(:auto_create_oidc_users)
     end
   end
 end
