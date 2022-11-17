@@ -26,7 +26,7 @@ defmodule FzHttp.Repo.Migrations.AddUserIdToRules do
     ")
 
     execute(
-      "CREATE EXTENSION btree_gist",
+      "CREATE EXTENSION IF NOT EXISTS btree_gist",
       "DROP EXTENSION btree_gist"
     )
 
