@@ -72,11 +72,7 @@
 
   <%= if FzHttpWeb.DeviceView.can_manage_devices?(@current_user) do %>
     <div class="block">
-      <.link
-        replace={true}
-        patch={~p"/user_devices/new"}
-        class="button"
-      >
+      <.link replace={true} patch={~p"/user_devices/new"} class="button">
         Add Device
       </.link>
     </div>

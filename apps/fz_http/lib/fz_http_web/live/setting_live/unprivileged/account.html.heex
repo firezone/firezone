@@ -38,11 +38,7 @@
 
     <div class="level-right">
       <%= if @local_auth_enabled do %>
-        <.link
-          replace={true}
-          patch={~p"/user_account/change_password"}
-          class="button"
-        >
+        <.link replace={true} patch={~p"/user_account/change_password"} class="button">
           <span class="icon is-small">
             <i class="mdi mdi-pencil"></i>
           </span>
@@ -122,11 +118,7 @@
     <% end %>
   </div>
 
-  <.link
-    replace={true}
-    patch={~p"/user_account/register_mfa"}
-    class="button"
-  >
+  <.link replace={true} patch={~p"/user_account/register_mfa"} class="button">
     <span class="icon is-small">
       <i class="mdi mdi-plus"></i>
     </span>

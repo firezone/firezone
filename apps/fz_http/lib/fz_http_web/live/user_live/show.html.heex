@@ -1,7 +1,7 @@
 <%= if @live_action == :edit do %>
   <%= live_modal(
     FzHttpWeb.UserLive.FormComponent,
-return_to: ~p"/users/#{@user}",
+    return_to: ~p"/users/#{@user}",
     title: "Edit #{@user.email}",
     id: "user-form-component",
     user: @user,

@@ -7,17 +7,8 @@
     <.live_title>
       <%= assigns[:page_title] || "Firezone" %>
     </.live_title>
-    <link
-      phx-track-static
-      rel="stylesheet"
-      href={~p"/dist/unprivileged.css"}
-    />
-    <script
-      defer
-      phx-track-static
-      type="text/javascript"
-      src={~p"/dist/unprivileged.js"}
-    >
+    <link phx-track-static rel="stylesheet" href={~p"/dist/unprivileged.css"} />
+    <script defer phx-track-static type="text/javascript" src={~p"/dist/unprivileged.js"}>
     </script>
     <!-- Favicon -->
     <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png" />

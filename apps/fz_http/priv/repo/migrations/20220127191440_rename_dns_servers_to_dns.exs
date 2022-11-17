@@ -15,7 +15,7 @@ defmodule FzHttp.Repo.Migrations.RenameDnsServersToDns do
       """
     )
 
-    rename table(:devices), :dns_servers, to: :dns
-    rename table(:devices), :use_default_dns_servers, to: :use_default_dns
+    rename(table(:devices), :dns_servers, to: :dns)
+    rename(table(:devices), :use_default_dns_servers, to: :use_default_dns)
   end
 end
