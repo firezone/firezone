@@ -159,7 +159,7 @@ defmodule FzHttpWeb.UserLive.ShowTest do
       |> element("#add-device-button")
       |> render_click()
 
-      assert_patched(view, ~p"/users/#{user.id}/new_device")
+      assert_patch(view, ~p"/users/#{user.id}/new_device")
     end
 
     test "allows name changes", %{admin_conn: conn, admin_user: user} do
@@ -436,7 +436,7 @@ defmodule FzHttpWeb.UserLive.ShowTest do
       |> element("button", "Delete Device #{device.name}")
       |> render_click()
 
-      assert_redirected(view, ~p"/devices")
+      assert_redirect(view, ~p"/devices")
     end
   end
 

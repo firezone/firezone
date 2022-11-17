@@ -54,7 +54,7 @@ defmodule FzHttpWeb.MFALive.AuthTest do
       |> element("a[href=\"/mfa/types\"]")
       |> render_click()
 
-      assert_redirected(view, "/mfa/types")
+      assert_redirect(view, "/mfa/types")
     end
   end
 
@@ -85,7 +85,7 @@ defmodule FzHttpWeb.MFALive.AuthTest do
       |> element("a", "Test 2")
       |> render_click()
 
-      assert_redirected(view, "/mfa/auth/#{method.id}")
+      assert_redirect(view, "/mfa/auth/#{method.id}")
     end
   end
 end
