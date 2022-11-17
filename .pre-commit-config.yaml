@@ -2,11 +2,10 @@ repos:
   - repo: local
     hooks:
       # Elixir config
-      # Randomly started failing
-      # - id: mix-format
-      #   name: 'elixir: mix format'
-      #   entry: mix format --check-formatted
-      #   language: system
+      - id: mix-format
+        name: 'elixir: mix format'
+        entry: mix format --check-formatted
+        language: system
       - id: mix-lint
         name: 'elixir: mix credo'
         entry: mix credo --strict
