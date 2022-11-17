@@ -1,15 +1,16 @@
 ---
 title: OneLogin
-sidebar_position: 2
+sidebar_position: 4
 description: Firezone's WireGuard based remote access platform supports using OneLogin as a single sign-on provider using a SAML 2.0 connector.
 ---
 
 :::note
 This guide assumes you have completed the prerequisite steps
-outlined [here](/authenticate/saml).
+(e.g. generate public and private keys) outlined [here](/authenticate/saml#prerequisites).
 :::
 
-Firezone supports Single Sign-On (SSO) using OneLogin through the generic SAML 2.0 connector. This guide will walk you through how to configure the integration.
+Firezone supports Single Sign-On (SSO) using OneLogin through the generic SAML 2.0 connector.
+This guide will walk you through how to configure the integration.
 
 ## Create a SAML connector
 
@@ -19,35 +20,43 @@ configuration settings under the under the configuration tab.
 
 The following fields should be filled out on this page:
 
-| Setting                | Value                                                                  |
-|---                     |---                                                                     |
-| Audience (EntityID)    | `urn:firezone.dev:firezone-app`                                        |
-| Recipient              | `https://firezone.company.com/auth/saml/sp/consume/onelogin`           |
-| ACS URL Validator      | `^https:\/\/firezone\.company\.com\/auth\/saml\/sp\/consume\/onelogin` |
-| ACS URL                | `https://firezone.company.com/auth/saml/sp/consume/onelogin`           |
-| Login URL              | `https://firezone.company.com/auth/saml/auth/signin/onelogin`          |
-| SAML initiator         | `Service Provider`                                                     |
-| SAML signature element | `Both`                                                                 |
+| Setting                | Value                                                                                                                                                                                     |
+|------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Audience (EntityID)    | This should be the same as your Firezone `SAML_ENTITY_ID`, defaults to `urn:firezone.dev:firezone-app`.                                                                                   |
+| Recipient              | This is your Firezone `EXTERNAL_URL/auth/saml/sp/consume/:config_id` (e.g., `https://firezone.company.com/auth/saml/sp/consume/onelogin`).                                                |
+| ACS URL Validator      | This field is regex to ensure OneLogin posts the response to the correct URL. For the sample URL below, we can use `^https:\/\/firezone\.company\.com\/auth\/saml\/sp\/consume\/onelogin` |
+| ACS URL                | This is your Firezone `EXTERNAL_URL/auth/saml/sp/consume/:config_id` (e.g., `https://firezone.company.com/auth/saml/sp/consume/onelogin`).                                                |
+| Login URL              | This is your Firezone `EXTERNAL_URL/auth/saml/auth/signin/:config_id` (e.g., `https://firezone.company.com/auth/saml/sp/consume/onelogin`).                                               |
+| SAML initiator         | Service Provider                                                                                                                                                                          |
+| SAML signature element | Both                                                                                                                                                                                      |
+| Encrypt Assertion      | Checked.                                                                                                                                                                                  |
 
 [OneLogin's docs](https://onelogin.service-now.com/support?id=kb_article&sys_id=912bb23edbde7810fe39dde7489619de&kb_category=93e869b0db185340d5505eea4b961934)
-provide a good overview of each field's purpose. In all the fields above, replace `firezone.company.com`
-with your deployment's external URL.
+provide a good overview of each field's purpose.
+
+![OneLogin Configs](https://user-images.githubusercontent.com/52545545/202557656-07b809db-51ba-4133-ae4c-c45ebf40401b.png)
 
 Once complete, save the changes and download the SAML metadata document
-found unde the `More Actions` dropdown.
+found unde the `More Actions` dropdown. You'll need
+to copy-paste the contents of this document into the Firezone portal in the next step.
 
 ## Add SAML identity provider to Firezone
 
 In the Firezone portal, add a SAML identity provider under the Security tab
 by filling out the following information:
 
-| Setting   | Value      | Notes                                                                                                                                 |
-|---        |---         |---                                                                                                                                    |
-| Config ID | `onelogin` | Firezone uses this value to construct endpoints required in the SAML authentication flow (e.g., receiving assertions, login requests).|
-| Label     | `OneLogin` | Appears on the sign in button for authentication.                                                                                     |
-| Metadata  | see note   | Upload the contents of the SAML metadata document you downloaded in the previous step from OneLogin.                                  |
+| Setting                   | Value            | Notes                                                                                                             |
+|---                        |---               |---                                                                                                                |
+| Config ID                 | `onelogin`       | Used to construct endpoints required in the SAML authentication flow (e.g., receiving assertions, login requests).|
+| Label                     | `OneLogin`       | Appears on the sign in button for authentication.                                                                 |
+| Metadata                  | see note         | Paste the contents of the SAML metadata document you downloaded in the previous step from OneLogin.               |
+| Sign assertions           | Checked.         |                                                                                                                   |
+| Sign metadata             | Checked.         |                                                                                                                   |
+| Require signed assertions | Checked.         |                                                                                                                   |
+| Required signed envelopes | Checked.         |                                                                                                                   |
 
-![OneLogin SAML](https://user-images.githubusercontent.com/52545545/201445195-82d621e8-99a2-40fb-860e-9972fb86423e.png)
+
+![OneLogin SAML](https://user-images.githubusercontent.com/52545545/202556102-5ba29d84-9610-4ffa-a516-6c89ffef4928.png)
 
 After saving the SAML config, you should see a `Sign in with OneLogin` button
 on your Firezone portal sign-in page.
