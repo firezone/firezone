@@ -1,19 +1,20 @@
 ---
-title: Jumpcloud
-sidebar_position: 2
-description: Firezone's WireGuard®-based remote access platform supports using Jumpcloud as a single sign-on provider using a SAML 2.0 connector.
+title: JumpCloud
+sidebar_position: 4
+description: Firezone's WireGuard®-based remote access platform supports using JumpCloud as a single sign-on provider using a SAML 2.0 connector.
 ---
 
 :::note
-This guide assumes you have completed the prerequisite steps outlined [here](/authenticate/saml).
+This guide assumes you have completed the prerequisite steps
+(e.g. generate self-signed X.509 certificates) outlined [here](/authenticate/saml#prerequisites).
 :::
 
-Firezone supports Single Sign-On (SSO) using Jumpcloud through the generic SAML 2.0 connector.
+Firezone supports Single Sign-On (SSO) using JumpCloud through the generic SAML 2.0 connector.
 This guide will walk you through how to configure the integration.
 
 ## Create a SAML connector
 
-In the Jumpcloud admin portal, create a new App under
+In the JumpCloud admin portal, create a new App under
 the SSO tab. At the bottom of the popup window, click `Custom SAML App`.
 
 After entering your desired value for `Display Label`, click the `SSO` tab,
@@ -28,12 +29,13 @@ then use the following configuration values:
 | SAMLSubject NameID Format | Leave at the default.                                                                                                                     |
 | Signature Algorithm       | `RSA-SHA256`                                                                                                                              |
 | Sign Assertion            | **Checked**.                                                                                                                              |
+| Login URL                 | This is your Firezone `EXTERNAL_URL/auth/saml/auth/signin/:config_id`, e.g. `https://firezone.company.com/auth/saml/auth/signin/jumpcloud`|
 
 Leave the rest of the settings unchanged, then click the `activate` button at the bottom-right.
 
-Your Jumpcloud configuration should now resemble the following:
+Your JumpCloud configuration should now resemble the following:
 
-![Jumpcloud SAML](https://user-images.githubusercontent.com/167144/202085625-41a818d4-bc9d-4f77-b2db-43656fa42804.png)
+![JumpCloud SAML](https://user-images.githubusercontent.com/52545545/202558446-128e7484-eda6-429f-b6c1-dbabbf5dc7e3.png)
 
 Now, download the IdP Metadata document by selecting the App you just created
 and then clicking the `export metadata` button in the upper-right. You'll need
@@ -47,9 +49,9 @@ by filling out the following information:
 | Setting                   | Value            | Notes                                                                                                                                  |
 | ---                       | ---              | ---                                                                                                                                    |
 | Config ID                 | `jumpcloud`      | Firezone uses this value to construct endpoints required in the SAML authentication flow (e.g., receiving assertions, login requests). |
-| Label                     | `Jumpcloud`      | Appears on the sign in button for authentication.                                                                                      |
+| Label                     | `JumpCloud`      | Appears on the sign in button for authentication.                                                                                      |
 | Base URL                  | Leave unchanged. |                                                                                                                                        |
-| Metadata                  | see note         | Copy-paste the contents of the SAML metadata document you downloaded in the previous step from Jumpcloud.                              |
+| Metadata                  | see note         | Copy-paste the contents of the SAML metadata document you downloaded in the previous step from JumpCloud.                              |
 | Sign assertions           | Checked.         |                                                                                                                                        |
 | Sign metadata             | Checked.         |                                                                                                                                        |
 | Require signed assertions | Checked.         |                                                                                                                                        |
@@ -57,7 +59,7 @@ by filling out the following information:
 
 Your Firezone configuration should now resemble the following:
 
-![Firezone SAML](https://user-images.githubusercontent.com/167144/202086477-50927200-4315-4c65-865a-33da6157af1b.png)
+![Firezone SAML](https://user-images.githubusercontent.com/52545545/202557853-95246d0e-074c-4d31-ab89-26a3a3a7deda.png)
 
-After saving the SAML config, you should see a `Sign in with Jumpcloud` button
+After saving the SAML config, you should see a `Sign in with JumpCloud` button
 on your Firezone portal sign-in page.
