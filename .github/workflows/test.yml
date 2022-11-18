@@ -28,11 +28,6 @@ jobs:
             net-tools \
             wireguard
       - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-        with:
-          node-version: '16'
-          cache: 'npm'
-          cache-dependency-path: '**/package-lock.json'
       - uses: erlef/setup-beam@v1
         with:
           otp-version: '25'
