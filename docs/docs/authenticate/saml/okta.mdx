@@ -6,7 +6,7 @@ description: Firezone's WireGuard®-based remote access platform supports using 
 
 :::note
 This guide assumes you have completed the prerequisite steps
-outlined [here](/authenticate/saml).
+(e.g. generate self-signed X.509 certificates) outlined [here](/authenticate/saml#prerequisites).
 :::
 
 Firezone supports Single Sign-On (SSO) using Okta through the generic SAML 2.0 connector. This guide will walk you through how to configure the integration.
@@ -17,32 +17,41 @@ In the Okta admin portal, create a new app integration under
 the Application tab. Select `SAML 2.0` as the authentication method.
 Use the following config values during setup:
 
-| Setting                        | Value                                                                                                                 |
-|---                             |---                                                                                                                    |
-| App name                       | `Firezone`                                                                                                            |
-| App logo                       | [save link as](https://user-images.githubusercontent.com/52545545/155907625-a4f6c8c2-3952-488d-b244-3c37400846cf.png) |
-| Single sign on URL             | `https://firezone.company.com/auth/saml/sp/consume/okta`                                                              |
-| Audience (EntityID)            | `urn:firezone.dev:firezone-app`                                                                                       |
-| Name ID format                 | `EmailAddress`                                                                                                        |
-| Application username           | `Email`                                                                                                               |
-| Update application username on | `Create and update`                                                                                                   |
+| Setting                        | Value                                                                                                                                 |
+|--------------------------------|---------------------------------------------------------------------------------------------------------------------------------------|
+| App name                       | Firezone                                                                                                                              |
+| App logo                       | [save link as](https://user-images.githubusercontent.com/52545545/155907625-a4f6c8c2-3952-488d-b244-3c37400846cf.png)                 |
+| Single sign on URL             | This is your Firezone `EXTERNAL_URL/auth/saml/sp/consume/:config_id` (e.g., `https://firezone.company.com/auth/saml/sp/consume/okta`).|
+| Audience (EntityID)            | This should be the same as your Firezone `SAML_ENTITY_ID`, defaults to `urn:firezone.dev:firezone-app`.                               |
+| Name ID format                 | EmailAddress                                                                                                                          |
+| Application username           | Email                                                                                                                                 |
+| Update application username on | Create and update                                                                                                                     |
 
 [Okta's documentation](https://help.okta.com/oie/en-us/Content/Topics/Apps/Apps_App_Integration_Wizard_SAML.htm)
-contains additional details on the purpose of each configuration setting. In all
-the fields above, replace `firezone.company.com` with your deployment's external URL.
+contains additional details on the purpose of each configuration setting.
+
+![Okta SAML](https://user-images.githubusercontent.com/52545545/202565311-e98729cf-c7aa-4f8d-965a-55b076177add.png)
+
+After creating the SAML connector, visit the `View SAML setup instructions` link in
+the Sign On tab to download the metadata document. You'll need
+to copy-paste the contents of this document into the Firezone portal in the next step.
 
 ## Add SAML identity provider to Firezone
 
 In the Firezone portal, add a SAML identity provider under the Security tab
 by filling out the following information:
 
-| Setting   | Value      | Notes                                                                                                                                 |
-|---        |---         |---                                                                                                                                    |
-| Config ID | `Okta`     | Firezone uses this value to construct endpoints required in the SAML authentication flow (e.g., receiving assertions, login requests).|
-| Label     | `Okta`     | Appears on the sign in button for authentication.                                                                                     |
-| Metadata  | see note   | Upload the contents of the SAML metadata document you downloaded in the previous step from Okta.                                      |
+| Setting                   | Value    | Notes                                                                                                              |
+|---------------------------|----------|--------------------------------------------------------------------------------------------------------------------|
+| Config ID                 | Okta     | Used to construct endpoints required in the SAML authentication flow (e.g., receiving assertions, login requests). |
+| Label                     | Okta     | Appears on the sign in button for authentication.                                                                  |
+| Metadata                  | see note | Paste the contents of the SAML metadata document you downloaded in the previous step from Okta.                    |
+| Sign assertions           | Checked. |                                                                                                                    |
+| Sign metadata             | Checked. |                                                                                                                    |
+| Require signed assertions | Checked. |                                                                                                                    |
+| Required signed envelopes | Checked. |                                                                                                                    |
 
-![Okta SAML](https://user-images.githubusercontent.com/52545545/201447060-e29f46d5-8511-4bdd-9a6e-2c3a38d19de9.png)
+![Firezone SAML](https://user-images.githubusercontent.com/52545545/202557861-f7a85df0-d44f-48fd-a980-89e8b0c91503.png)
 
 After saving the SAML config, you should see a `Sign in with Okta` button
 on your Firezone portal sign-in page.
