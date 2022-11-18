@@ -23,8 +23,7 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.Index do
   end
 
   @doc """
-  This is called when modal is closed. Conveniently, allows us to reload
-  devices table.
+  This is called when modal is closed. Conveniently, allows us to reload devices table.
   """
   @impl Phoenix.LiveView
   def handle_params(_params, _url, socket) do

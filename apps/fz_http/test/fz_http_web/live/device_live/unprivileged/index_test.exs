@@ -31,23 +31,18 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
       restore_env(:allow_unprivileged_device_management, false, &on_exit/1)
     end
 
+    test "prevents navigating to /user_devices/new", %{unprivileged_conn: conn} do
+      path = ~p"/user_devices/new"
+      expected_path = ~p"/"
+
+      assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
+    end
+
     test "omits Add Device button", %{unprivileged_conn: conn} do
       path = ~p"/user_devices"
       {:ok, _view, html} = live(conn, path)
 
       refute html =~ "Add Device"
-    end
-
-    test "prevents creating a device", %{unprivileged_conn: conn} do
-      path = ~p"/user_devices/new"
-      {:ok, view, _html} = live(conn, path)
-
-      view
-      |> element("#create-device")
-      |> render_submit(%{"device" => %{"public_key" => "test-pubkey", "name" => "test-tunnel"}})
-
-      flash = assert_redirect(view, "/")
-      assert flash["error"] == "Not authorized."
     end
   end
 
