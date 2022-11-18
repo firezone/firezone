@@ -1,8 +1,8 @@
 # These are used for the dev environment.
 # This should match the versions used in the built product.
 nodejs 16.17.0
-elixir 1.14.1-otp-25
-erlang 25.1.1
+elixir 1.14.2-otp-25
+erlang 25.1.2
 
 # Used for static analysis
 ruby 2.7.6
