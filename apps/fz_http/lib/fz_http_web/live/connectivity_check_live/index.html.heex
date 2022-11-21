@@ -1,10 +1,7 @@
-<%= render(FzHttpWeb.SharedView, "heading.html",
-  page_subtitle: @page_subtitle,
-  page_title: @page_title
-) %>
+<.heading {assigns} />
 
 <section class="section is-main-section">
-  <%= render(FzHttpWeb.SharedView, "flash.html", assigns) %>
+  <.flash {assigns} />
 
   <div class="block">
     <table class="table is-bordered is-hoverable is-striped is-fullwidth">

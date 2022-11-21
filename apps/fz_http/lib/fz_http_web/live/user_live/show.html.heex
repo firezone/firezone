@@ -26,7 +26,7 @@
 <%= render(FzHttpWeb.SharedView, "heading.html", page_title: "Users |> #{@user.email}") %>
 
 <section class="section is-main-section">
-  <%= render(FzHttpWeb.SharedView, "flash.html", assigns) %>
+  <.flash {assigns} />
 
   <div class="level">
     <div class="level-left">

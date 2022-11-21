@@ -70,7 +70,7 @@
     <% end %>
   </div>
 
-  <%= if FzHttpWeb.DeviceView.can_manage_devices?(@current_user) do %>
+  <%= if FzHttpWeb.Layouts.can_manage_devices?(@current_user) do %>
     <div class="block">
       <.link replace={true} patch={~p"/user_devices/new"} class="button">
         Add Device
@@ -104,7 +104,10 @@
               </span>
             </strong>
           </p>
-          <%= link("Reauthenticate", to: ~p"/sign_out", method: :delete) %> to renew your VPN session.
+          <.link href={~p"/sign_out"} method="delete">
+            Reauthenticate
+          </.link>
+          to renew your VPN session.
         <% else %>
           Your VPN session is active indefinitely.
         <% end %>
@@ -121,9 +124,9 @@
             My Account
           </.link>
           /
-          <%= link(to: ~p"/sign_out", method: :delete) do %>
+          <.link method="delete" href={~p"/sign_out"}>
             Sign out
-          <% end %>
+          </.link>
         </p>
         <p>
           For any issues, <a href={"mailto:#{admin_email()}"}>contact your Firezone administrator</a>.

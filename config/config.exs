@@ -117,7 +117,10 @@ config :fz_vpn,
   supervised_children: [FzVpn.Server, FzVpn.StatsPushService]
 
 config :fz_http, FzHttpWeb.Endpoint,
-  render_errors: [view: FzHttpWeb.ErrorView, accepts: ~w(html json)],
+  render_errors: [
+    formats: [html: FzHttpWeb.ErrorHTML, json: FzHttpWeb.ErrorJSON],
+    layout: false
+  ],
   pubsub_server: FzHttp.PubSub
 
 # Configures Elixir's Logger

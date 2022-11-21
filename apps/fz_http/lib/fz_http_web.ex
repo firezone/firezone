@@ -19,7 +19,10 @@ defmodule FzHttpWeb do
 
   def controller do
     quote do
-      use Phoenix.Controller, namespace: FzHttpWeb
+      use Phoenix.Controller,
+        namespace: FzHttpWeb,
+        formats: [:html, :json],
+        layouts: [html: FzHttpWeb.Layouts]
 
       import Plug.Conn
       import FzHttpWeb.Gettext
@@ -59,37 +62,30 @@ defmodule FzHttpWeb do
     end
   end
 
-  def live_view do
+  def live_view_without_layout, do: live_view(nil)
+
+  def live_view(layout \\ :live) do
     quote do
-      use Phoenix.LiveView, layout: {FzHttpWeb.LayoutView, :live}
+      use Phoenix.LiveView,
+        layout: {FzHttpWeb.Layouts, unquote(layout)}
+
       import FzHttpWeb.LiveHelpers
       alias FzHttp.Configurations, as: Conf
       alias Phoenix.LiveView.JS
 
-      unquote(view_helpers())
-    end
-  end
-
-  def live_view_without_layout do
-    quote do
-      use Phoenix.LiveView, layout: nil
-      import FzHttpWeb.LiveHelpers
-      alias FzHttp.Configurations, as: Conf
-      alias Phoenix.LiveView.JS
-
-      unquote(view_helpers())
+      unquote(html_helpers())
     end
   end
 
   def live_component do
     quote do
-      import Phoenix.LiveView
       use Phoenix.LiveComponent
       use Phoenix.Component, global_prefixes: ~w(x-)
+      import Phoenix.LiveView
       import FzHttpWeb.LiveHelpers
       alias FzHttp.Configurations, as: Conf
 
-      unquote(view_helpers())
+      unquote(html_helpers())
     end
   end
 
@@ -115,22 +111,36 @@ defmodule FzHttpWeb do
     end
   end
 
-  defp view_helpers do
+  def html do
+    quote do
+      alias FzHttp.Configurations, as: Conf
+      use Phoenix.Component
+
+      # Import convenience functions from controllers
+      import Phoenix.Controller,
+        only: [get_csrf_token: 0, view_module: 1, view_template: 1]
+
+      # Include general helpers for rendering HTML
+      unquote(html_helpers())
+    end
+  end
+
+  defp html_helpers do
     quote do
       # Use all HTML functionality (forms, tags, etc)
-      use Phoenix.HTML
+      import Phoenix.HTML
 
-      # Import LiveView helpers (live_render, live_component, live_patch, etc)
-      import Phoenix.Component
+      import FzHttpWeb.CoreComponents
 
       # Import basic rendering functionality (render, render_layout, etc)
       import Phoenix.View
 
+      # Use all HTML functionality (forms, tags, etc)
+      use Phoenix.HTML
+
       # Authorization Helpers
       import FzHttpWeb.AuthorizationHelpers
-
       import FzHttpWeb.ErrorHelpers
-      import FzHttpWeb.Gettext
 
       unquote(verified_routes())
     end

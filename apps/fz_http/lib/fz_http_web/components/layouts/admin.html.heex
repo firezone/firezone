@@ -20,10 +20,7 @@
     <meta name="msapplication-config" content="/browserconfig.xml" />
     <meta name="msapplication-TileColor" content="331700" />
     <meta name="theme-color" content="331700" />
-    <%= render(FzHttpWeb.SharedView, "socket_token_headers.html",
-      conn: @conn,
-      current_user: @current_user
-    ) %>
+    <.socket_token_headers {assigns} />
   </head>
   <body>
     <div id="app">
@@ -107,8 +104,8 @@
             </div>
             <div class="level-right">
               <div class="level-item">
-                <a href={"https://github.com/firezone/firezone/tree/#{git_sha()}"}>
-                  Version <%= application_version() %>
+                <a href={"https://github.com/firezone/firezone/tree/#{FzHttpWeb.Layouts.git_sha()}"}>
+                  Version <%= FzHttpWeb.Layouts.application_version() %>
                 </a>
               </div>
               <div class="level-item">

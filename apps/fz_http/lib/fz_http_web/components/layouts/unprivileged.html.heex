@@ -17,10 +17,7 @@
     <meta name="msapplication-config" content="/browserconfig.xml" />
     <meta name="msapplication-TileColor" content="331700" />
     <meta name="theme-color" content="331700" />
-    <%= render(FzHttpWeb.SharedView, "socket_token_headers.html",
-      current_user: @current_user,
-      conn: @conn
-    ) %>
+    <.socket_token_headers {assigns} />
   </head>
   <body>
     <section class="section hero is-fullheight is-error-section">

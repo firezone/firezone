@@ -74,9 +74,9 @@ defmodule FzHttpWeb.MFALive.Auth do
                 ) %>
               </div>
               <div class="level-right">
-                <%= link(to: ~p"/sign_out", method: :delete) do %>
+                <.link href={~p"/sign_out"} method="delete">
                   Sign out
-                <% end %>
+                </.link>
               </div>
             </div>
           </div>
