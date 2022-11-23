@@ -155,6 +155,8 @@ defmodule FzHttp.Devices.Device do
     |> validate_exclusion(:ipv6, [ipv6_address()])
     |> validate_in_network(:ipv4)
     |> validate_in_network(:ipv6)
+    |> validate_single_ip(:ipv4)
+    |> validate_single_ip(:ipv6)
     |> unique_constraint(:public_key)
     |> unique_constraint([:user_id, :name])
   end
@@ -211,6 +213,26 @@ defmodule FzHttp.Devices.Device do
     end
   end
 
+  defp validate_single_ip(%Ecto.Changeset{changes: %{ipv4: %{netmask: 32}}} = changeset, :ipv4),
+    do: changeset
+
+  defp validate_single_ip(%Ecto.Changeset{changes: %{ipv4: %{netmask: nil}}} = changeset, :ipv4),
+    do: changeset
+
+  defp validate_single_ip(%Ecto.Changeset{changes: %{ipv6: %{netmask: 128}}} = changeset, :ipv6),
+    do: changeset
+
+  defp validate_single_ip(%Ecto.Changeset{changes: %{ipv6: %{netmask: nil}}} = changeset, :ipv6),
+    do: changeset
+
+  defp validate_single_ip(%Ecto.Changeset{changes: %{ipv4: %{netmask: _}}} = changeset, :ipv4),
+    do: netmask_error(changeset, :ipv4)
+
+  defp validate_single_ip(%Ecto.Changeset{changes: %{ipv6: %{netmask: _}}} = changeset, :ipv6),
+    do: netmask_error(changeset, :ipv6)
+
+  defp validate_single_ip(changeset, _), do: changeset
+
   defp validate_in_network(%Ecto.Changeset{changes: %{ipv4: ip}} = changeset, :ipv4) do
     net = Application.fetch_env!(:fz_http, :wireguard_ipv4_network)
     add_net_error_if_outside_bounds(changeset, net, ip, :ipv4)
@@ -224,6 +246,14 @@ defmodule FzHttp.Devices.Device do
   end
 
   defp validate_in_network(changeset, :ipv6), do: changeset
+
+  defp netmask_error(changeset, ip_type) do
+    add_error(
+      changeset,
+      ip_type,
+      "Only IPs without netmask are supported, try using the Allowed IPs field for routing within the network"
+    )
+  end
 
   defp add_net_error_if_outside_bounds(changeset, net, ip, ip_type) do
     %{address: address} = ip
