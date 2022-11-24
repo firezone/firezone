@@ -251,6 +251,38 @@ defmodule FzHttp.DevicesTest do
       %{use_site_mtu: true, mtu: 1000}
     ]
 
+    test "updates device with /32 netmask", %{device: device} do
+      ipv4 = "10.3.2.9/32"
+      {:ok, test_device} = Devices.update_device(device, %{ipv4: ipv4})
+      assert "#{test_device.ipv4}" == "10.3.2.9"
+    end
+
+    test "updates device with /128 netmask", %{device: device} do
+      ipv6 = "fd00::3:2:9/128"
+      {:ok, test_device} = Devices.update_device(device, %{ipv6: ipv6})
+      assert "#{test_device.ipv6}" == "fd00::3:2:9"
+    end
+
+    test "prevents updating device with ipv4 netmask", %{device: device} do
+      attrs = %{ipv4: "10.3.2.9/24"}
+      {:error, changeset} = Devices.update_device(device, attrs)
+
+      assert changeset.errors[:ipv4] == {
+               "Only IPs without netmask are supported.",
+               []
+             }
+    end
+
+    test "prevents updating device with ipv6 netmask", %{device: device} do
+      attrs = %{ipv6: "fd00::3:2:9/120"}
+      {:error, changeset} = Devices.update_device(device, attrs)
+
+      assert changeset.errors[:ipv6] == {
+               "Only IPs without netmask are supported.",
+               []
+             }
+    end
+
     test "updates device", %{device: device} do
       {:ok, test_device} = Devices.update_device(device, @attrs)
       assert @attrs = test_device
