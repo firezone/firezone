@@ -24,6 +24,11 @@ repos:
         language: system
         pass_filenames: false
         files: \.ex$
+      - id: codespell
+        name: 'python: codespell'
+        entry: codespell
+        language: system
+        pass_filenames: false
       - id: rubocop
         name: 'ruby: rubocop'
         entry: bundle exec rubocop
