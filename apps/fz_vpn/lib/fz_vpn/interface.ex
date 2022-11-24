@@ -112,7 +112,7 @@ defmodule FzVpn.Interface do
   Remove a peer from an interface.
 
   If successful we return an :ok status. If the peer fails to be removed from
-  the interface, `{:errorr, error_info}` will be logged and returned.
+  the interface, `{:error, error_info}` will be logged and returned.
   """
   def remove_peer(name, public_key) do
     result = wg_adapter().remove_peer(name, public_key)

@@ -18,7 +18,7 @@ defmodule FzHttp.Events do
         Notifications.add(%{
           type: :error,
           message: """
-          #{device.name} was created successfully but an error occured applying its
+          #{device.name} was created successfully but an error occurred applying its
           configuration to the WireGuard interface. Check the logs for more
           information.
           """,
@@ -49,7 +49,7 @@ defmodule FzHttp.Events do
         Notifications.add(%{
           type: :error,
           message: """
-          #{device.name} was deleted successfully but an error occured applying its
+          #{device.name} was deleted successfully but an error occurred applying its
           configuration to the WireGuard interface. Check the logs for more
           information.
           """,

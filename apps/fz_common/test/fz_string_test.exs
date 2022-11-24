@@ -4,7 +4,7 @@ defmodule FzCommon.FzStringTest do
   alias FzCommon.FzString
 
   describe "sanitize_filename/1" do
-    test "santizes sequential spaces" do
+    test "sanitizes sequential spaces" do
       assert "Factory_Device" == FzString.sanitize_filename("Factory     Device")
     end
   end

@@ -197,7 +197,7 @@
           <div class="field">
             <%= label(f, :mtu, "Interface MTU", class: "label") %>
             <p>The WireGuard interface MTU for this Device.</p>
-            <div class="contro">
+            <div class="control">
               <%= text_input(f, :mtu,
                 class: "input #{input_error_class(f, :mtu)}",
                 disabled: @use_site_mtu
