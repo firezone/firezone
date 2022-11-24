@@ -1,6 +1,6 @@
 defmodule FzWall.CLI.Helpers.Sets do
   @moduledoc """
-  Helper module concering nft's named sets
+  Helper module concerning nft's named sets
   """
 
   @actions [:drop, :accept]
