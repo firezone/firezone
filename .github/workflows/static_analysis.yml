@@ -32,7 +32,6 @@ jobs:
             _build
           key: ${{ runner.os }}-mix-otp-25-${{ hashFiles('**/mix.lock') }}
           restore-keys: |
-            ${{ runner.os }}-mix-otp-25-${{ hashFiles('**/mix.lock') }}
             ${{ runner.os }}-mix-otp-25-
       - uses: actions/cache@v3.0.11
         name: Setup ruby cache
