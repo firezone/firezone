@@ -1,8 +1,4 @@
 repos:
-  - repo: https://github.com/codespell-project/codespell
-    rev: v2.2.2
-    hooks:
-      - id: codespell
   - repo: local
     hooks:
       # Elixir config
@@ -28,6 +24,11 @@ repos:
         language: system
         pass_filenames: false
         files: \.ex$
+      - id: codespell
+        name: 'python: codespell'
+        entry: codespell
+        language: system
+        pass_filenames: true
       - id: rubocop
         name: 'ruby: rubocop'
         entry: bundle exec rubocop
