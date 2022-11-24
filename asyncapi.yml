@@ -116,7 +116,7 @@ components:
     init:
       summary: Gateway initialization
       description: |
-        This message indiciates the gateway should reconfigure itself with the contained configuration.
+        This message indicates the gateway should reconfigure itself with the contained configuration.
       properties:
         init:
           type: object

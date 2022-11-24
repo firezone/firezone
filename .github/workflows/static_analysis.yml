@@ -58,7 +58,7 @@ jobs:
         run: |
           pip install -r requirements.txt
       # Don't cache PLTs based on mix.lock hash, as Dialyzer can incrementally update even old ones
-      # Cache key based on Elixir & Erlang version (also usefull when running in matrix)
+      # Cache key based on Elixir & Erlang version (also useful when running in matrix)
       - name: Restore PLT cache
         uses: actions/cache@v3.0.11
         id: plt_cache

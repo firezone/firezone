@@ -1,6 +1,6 @@
 defmodule FzWall.CLI.Helpers.Nft do
   @moduledoc """
-  Helper module concering nft commands
+  Helper module concerning nft commands
   """
   import FzCommon.CLI
   import FzCommon.FzNet, only: [standardized_inet: 1]
