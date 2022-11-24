@@ -8,9 +8,8 @@
 #
 x-deploy: &default-deploy
   restart_policy:
-    condition: on-failure
+    condition: unless-stopped
     delay: 5s
-    max_attempts: 10
     window: 120s
   update_config:
     order: start-first
