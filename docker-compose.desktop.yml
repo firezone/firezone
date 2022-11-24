@@ -9,7 +9,7 @@
 #
 x-deploy: &default-deploy
   restart_policy:
-    condition: unless-stopped
+    condition: on-failure
     delay: 5s
     max_attempts: 10
     window: 120s
