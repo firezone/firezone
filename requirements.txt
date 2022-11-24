@@ -1,1 +1,2 @@
 pre-commit==2.20.0
+codespell==2.2.2
