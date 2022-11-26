@@ -11,7 +11,11 @@ defmodule FzHttp.Users.User do
   import FzHttp.Users.PasswordHelpers
   import FzHttp.Validators.Common, only: [trim: 2]
 
-  alias FzHttp.{Devices.Device, OIDC.Connection}
+  alias FzHttp.{
+    ApiTokens.ApiToken,
+    Devices.Device,
+    OIDC.Connection
+  }
 
   # Fields for which to trim whitespace after cast, before validation
   @whitespace_trimmed_fields :email
@@ -35,6 +39,7 @@ defmodule FzHttp.Users.User do
 
     has_many :devices, Device, on_delete: :delete_all
     has_many :oidc_connections, Connection, on_delete: :delete_all
+    has_many :api_tokens, ApiToken, on_delete: :delete_all
 
     timestamps(type: :utc_datetime_usec)
   end
