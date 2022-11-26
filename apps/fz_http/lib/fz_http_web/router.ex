@@ -180,6 +180,13 @@ defmodule FzHttpWeb.Router do
     end
   end
 
+  scope "/api/v1", FzHttpWeb.API do
+    pipe_through :api
+
+    resources "/configuration", ConfigurationController, singleton: true, only: [:show, :update]
+    resources "/users", UserController, except: [:new, :edit]
+  end
+
   if Mix.env() == :dev do
     import Phoenix.LiveDashboard.Router
 
