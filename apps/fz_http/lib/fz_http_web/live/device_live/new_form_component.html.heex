@@ -93,17 +93,13 @@
           </p>
         </div>
         <div class="field">
-         <%= label(f, :client_platform, "Choose your platform", class: "label") %>
-           <div class="control">
-         <%= for {k, v} <- @post_scripts |> Jason.decode!() |> Enum.map(fn {k, v} -> {String.to_atom(k), v} end) do %>
-             <label class="radio">
-               <%= if "#{k}" == "0" do %>
-                     <%= radio_button(f, :client_platform, "#{k}") %> <%= v["Name"]%>
-                  <%= else %>
-                     <%= radio_button(f, :client_platform, "#{k}")%> <%= v["Name"]%>
-                   <% end %>
-             </label>
-           <% end %>
+          <%= label(f, :client_platform, "Choose your platform", class: "label") %>
+            <div class="control">
+              <%= for {k, v} <- @post_scripts |> Jason.decode!() |> Enum.map(fn {k, v} -> {String.to_atom(k), v} end) do %>
+              <label class="radio">
+                <%= radio_button(f, :client_platform, "#{k}")%> <%= v["Name"]%>
+              </label>
+          <% end %>
            </div>
         </div>
 
