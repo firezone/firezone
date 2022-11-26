@@ -92,6 +92,20 @@
             <%= error_tag(f, :description) %>
           </p>
         </div>
+        <div class="field">
+         <%= label(f, :client_platform, "Choose your platform", class: "label") %>
+           <div class="control">
+         <%= for {k, v} <- @post_scripts |> Jason.decode!() |> Enum.map(fn {k, v} -> {String.to_atom(k), v} end) do %>
+             <label class="radio">
+               <%= if "#{k}" == "0" do %>
+                     <%= radio_button(f, :client_platform, "#{k}") %> <%= v["Name"]%>
+                  <%= else %>
+                     <%= radio_button(f, :client_platform, "#{k}")%> <%= v["Name"]%>
+                   <% end %>
+             </label>
+           <% end %>
+           </div>
+        </div>
 
         <%= if FzHttpWeb.DeviceView.can_configure_devices?(@current_user) do %>
           <div class="field">
@@ -274,7 +288,33 @@
               <%= error_tag(f, :ipv6) %>
             </p>
           </div>
-        <% end %>
+
+          <div class="field">
+            <%= label(f, :use_site_post_script, "Use Default PostUp/PostDown scripts", class: "label") %>
+            <div class="control">
+              <label class="radio">
+                <%= radio_button(f, :use_site_post_scripts, true) %> Yes
+              </label>
+              <label class="radio">
+                <%= radio_button(f, :use_site_post_scripts, false) %> No
+              </label>
+            </div>
+          </div>
+
+          <div class="field">
+            <%= label(f, :post_scripts, "PostUp/PostDown scripts", class: "label") %>
+            <div class="control">
+              <%= textarea(f, :post_scripts,
+                class: "textarea #{input_error_class(f, :post_scripts)}",
+                disabled: @use_site_post_scripts
+              ) %>
+            </div>
+            <p class="help is-danger">
+              <%= error_tag(f, :post_scripts) %>
+            </p>
+          </div>
+
+         <% end %>
 
         <%= if @changeset.action do %>
           <div class="notification is-danger">

@@ -6,7 +6,7 @@ defmodule FzHttp.Sites do
   import Ecto.Query, warn: false
   alias FzHttp.{ConnectivityChecks, Repo, Sites.Site}
 
-  @wg_settings [:allowed_ips, :dns, :endpoint, :persistent_keepalive, :mtu]
+  @wg_settings [:allowed_ips, :dns, :endpoint, :persistent_keepalive, :mtu, :post_scripts]
 
   def new_site(attrs \\ %{}) do
     Site.changeset(%Site{}, attrs)

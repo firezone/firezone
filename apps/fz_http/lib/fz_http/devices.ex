@@ -156,6 +156,8 @@ defmodule FzHttp.Devices do
   def dns(device), do: config(device, :dns)
   def mtu(device), do: config(device, :mtu)
   def persistent_keepalive(device), do: config(device, :persistent_keepalive)
+  def client_platform(device), do: config(device, :client_platform)
+  def post_scripts(device), do: config(device, :post_scripts)
 
   defp config(device, key) do
     if Map.get(device, String.to_atom("use_site_#{key}")) do
@@ -172,6 +174,7 @@ defmodule FzHttp.Devices do
       use_site_endpoint
       use_site_mtu
       use_site_persistent_keepalive
+      use_site_post_scripts
     )a
     |> Map.new(&{&1, get_field(changeset, &1)})
   end
@@ -193,7 +196,7 @@ defmodule FzHttp.Devices do
     PrivateKey = REPLACE_ME
     Address = #{inet(device)}
     #{mtu_config(device)}
-    #{dns_config(device)}
+    #{client_platform_config(device)}
 
     [Peer]
     #{psk_config(device)}
@@ -252,6 +255,56 @@ defmodule FzHttp.Devices do
       ""
     else
       "DNS = #{dns}"
+    end
+  end
+
+  defp postup_scripts_config(device) do
+    post_scripts_get_val(device, "PostUp")
+  end
+
+  defp postdown_scripts_config(device) do
+    post_scripts_get_val(device, "PostDown")
+  end
+
+  defp postoptdns_scripts_config(device) do
+    post_scripts_get_val(device, "OptDNS")
+  end
+
+  defp post_scripts_get_val(device, key) do
+    post_scripts = post_scripts(device)
+    client_platform = client_platform(device)
+    dns = dns(device)
+    if !field_empty?(post_scripts) do
+       for {k, v} <- post_scripts |> Jason.decode!() do
+         if "#{k}" == "#{client_platform}" do
+           """
+           #{v[key]}
+           """
+         else ""
+         end
+       end
+     end
+  end
+
+  defp client_platform_config(device) do
+    try do
+      postup_scripts_config = "#{postup_scripts_config(device)}" |> String.trim()
+      postdown_scripts_config = "#{postdown_scripts_config(device)}" |> String.trim()
+      postoptdns_scripts_config = "#{postoptdns_scripts_config(device)}" |> String.trim()
+      dns = dns_config(device)
+      if "#{postup_scripts_config}" |> field_empty?() && 
+         "#{postoptdns_scripts_config}" |> field_empty?() do
+        "#{dns}"
+      else
+         """
+         #{postup_scripts_config}
+         #{postdown_scripts_config}
+         #{postoptdns_scripts_config}
+         """
+      end
+    rescue 
+      e in Jason.DecodeError -> e
+      "#{post_scripts(device)}"
     end
   end
 

@@ -106,6 +106,43 @@
       </p>
     </div>
 
+    <div class="field">
+      <%= label(f, :post_scripts, "PostUp/PostDown scripts", class: "label") %>
+
+      <div class="control">
+        <%= textarea(
+          f,
+          :post_scripts,
+          placeholder: """
+                       { "0": {
+                           "Name": "Windows 10, 11",
+                           "PostUp": "PostUp = powershell Add-DnsClientNrptRule -NameServers '10.0.0.1'  -DisplayName 'firezoneDNS' -Namespace '.firezone.dev'",
+                           "PostDown": "PostDown = powershell @(Get-DnsClientNrptRule).where{($_.Namespace -like '.railsc.ru')}.Name.foreach{Remove-DnsClientNrptRule -Force -Name $_}"
+                       },
+                       "1": {
+                           "Name": "Linux(with systemd)",
+                           "PostUp": "PostUp = resolvectl dns %i 10.0.0.1 && resolvectl domain %i domain.local && resolvectl default-route %i false"
+                       },
+                       "2": {
+                           "Name": "Other",
+                           "OptDNS": "DNS=10.0.0.1"
+                       },
+                       "3": { "Name": "Default" }
+                       }",
+                       """,
+          class: "textarea #{input_error_class(f, :post_scripts)}"
+        ) %>
+      </div>
+
+      <p class="help is-danger">
+        <%= error_tag(f, :post_scripts) %>
+      </p>
+      <p class="help">
+        List of PostUp/PostDown scrips.
+        Use json format for specifying each platform.
+      </p>
+    </div>
+
     <%= Phoenix.View.render(FzHttpWeb.SharedView, "submit_button.html", []) %>
   </.form>
 </div>

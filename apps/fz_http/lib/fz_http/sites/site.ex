@@ -35,6 +35,7 @@ defmodule FzHttp.Sites.Site do
     field :dns, :string
     field :allowed_ips, :string
     field :endpoint, :string
+    field :post_scripts, :string
     field :persistent_keepalive, :integer
     field :mtu, :integer
     field :vpn_session_duration, :integer
@@ -51,7 +52,8 @@ defmodule FzHttp.Sites.Site do
       :endpoint,
       :persistent_keepalive,
       :mtu,
-      :vpn_session_duration
+      :vpn_session_duration,
+      :post_scripts
     ])
     |> trim(@whitespace_trimmed_fields)
     |> validate_required(:name)

@@ -45,11 +45,14 @@ defmodule FzHttp.Devices.Device do
     field :use_site_endpoint, :boolean, read_after_writes: true, default: true
     field :use_site_mtu, :boolean, read_after_writes: true, default: true
     field :use_site_persistent_keepalive, :boolean, read_after_writes: true, default: true
+    field :use_site_post_scripts, :boolean, read_after_writes: true, default: true
     field :endpoint, :string
     field :mtu, :integer
     field :persistent_keepalive, :integer
+    field :client_platform, :integer, default: 0
     field :allowed_ips, :string
     field :dns, :string
+    field :post_scripts, :string, default: "{}"
     field :remote_ip, EctoNetwork.INET
     field :ipv4, EctoNetwork.INET, read_after_writes: true
     field :ipv6, EctoNetwork.INET, read_after_writes: true
@@ -103,6 +106,7 @@ defmodule FzHttp.Devices.Device do
       :use_site_endpoint,
       :use_site_mtu,
       :use_site_persistent_keepalive,
+      :use_site_post_scripts,
       :allowed_ips,
       :dns,
       :endpoint,
@@ -116,7 +120,9 @@ defmodule FzHttp.Devices.Device do
       :description,
       :public_key,
       :preshared_key,
-      :key_regenerated_at
+      :key_regenerated_at,
+      :post_scripts,
+      :client_platform
     ])
     |> trim(@whitespace_trimmed_fields)
   end
@@ -134,7 +140,8 @@ defmodule FzHttp.Devices.Device do
       :dns,
       :endpoint,
       :persistent_keepalive,
-      :mtu
+      :mtu,
+      :post_scripts
     ])
     |> validate_list_of_ips_or_cidrs(:allowed_ips)
     |> validate_no_duplicates(:dns)
