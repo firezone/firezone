@@ -8,7 +8,7 @@ defmodule FzHttpWeb.AuthController do
   @local_auth_providers [:identity, :magic_link]
 
   alias FzHttp.Users
-  alias FzHttpWeb.Authentication
+  alias FzHttpWeb.Auth.WWW.Authentication
   alias FzHttpWeb.OAuth.PKCE
   alias FzHttpWeb.OIDC.State
   alias FzHttpWeb.UserFromAuth

@@ -4,7 +4,7 @@ defmodule FzHttpWeb.LiveAuth do
   """
 
   use Phoenix.Component
-  alias FzHttpWeb.Authentication
+  alias FzHttpWeb.Auth.WWW.Authentication
   import FzHttpWeb.AuthorizationHelpers
 
   require Logger

@@ -41,8 +41,8 @@ defmodule FzHttpWeb.Router do
     plug Guardian.Plug.EnsureNotAuthenticated
   end
 
-  pipeline :guardian do
-    plug FzHttpWeb.Authentication.Pipeline
+  pipeline :www_auth do
+    plug FzHttpWeb.Auth.WWW.Pipeline
   end
 
   pipeline :samly do
@@ -54,7 +54,7 @@ defmodule FzHttpWeb.Router do
   scope "/auth", FzHttpWeb do
     pipe_through [
       :browser,
-      :guardian,
+      :www_auth,
       :require_unauthenticated
     ]
 
@@ -79,7 +79,7 @@ defmodule FzHttpWeb.Router do
   scope "/", FzHttpWeb do
     pipe_through [
       :browser,
-      :guardian,
+      :www_auth,
       :require_unauthenticated
     ]
 
@@ -89,7 +89,7 @@ defmodule FzHttpWeb.Router do
   scope "/mfa", FzHttpWeb do
     pipe_through([
       :browser,
-      :guardian
+      :www_auth
     ])
 
     live_session(
@@ -107,7 +107,7 @@ defmodule FzHttpWeb.Router do
   scope "/", FzHttpWeb do
     pipe_through [
       :browser,
-      :guardian,
+      :www_auth,
       :require_authenticated
     ]
 
@@ -118,7 +118,7 @@ defmodule FzHttpWeb.Router do
   scope "/", FzHttpWeb do
     pipe_through [
       :browser,
-      :guardian,
+      :www_auth,
       :require_authenticated,
       :require_unprivileged_user
     ]
@@ -143,7 +143,7 @@ defmodule FzHttpWeb.Router do
   scope "/", FzHttpWeb do
     pipe_through [
       :browser,
-      :guardian,
+      :www_auth,
       :require_authenticated,
       :require_admin_user
     ]

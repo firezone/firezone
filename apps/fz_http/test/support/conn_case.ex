@@ -36,7 +36,7 @@ defmodule FzHttpWeb.ConnCase do
 
       def current_user(test_conn) do
         get_session(test_conn)
-        |> FzHttpWeb.Authentication.get_current_user()
+        |> FzHttpWeb.Auth.get_current_user()
       end
     end
   end
@@ -59,7 +59,7 @@ defmodule FzHttpWeb.ConnCase do
     conn =
       new_conn()
       |> Plug.Test.init_test_session(%{})
-      |> FzHttpWeb.Authentication.sign_in(user, %{provider: :identity})
+      |> FzHttpWeb.Auth.sign_in(user, %{provider: :identity})
       |> maybe_put_session(tags)
 
     {user,

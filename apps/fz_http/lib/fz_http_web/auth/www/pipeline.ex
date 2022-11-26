@@ -1,12 +1,12 @@
-defmodule FzHttpWeb.Authentication.Pipeline do
+defmodule FzHttpWeb.Auth.WWW.Pipeline do
   @moduledoc """
-  Plug implementation module for Guardian.
+  WWW Plug implementation module for Guardian.
   """
 
   use Guardian.Plug.Pipeline,
     otp_app: :fz_http,
-    error_handler: FzHttpWeb.Authentication.ErrorHandler,
-    module: FzHttpWeb.Authentication
+    error_handler: FzHttpWeb.Auth.WWW.ErrorHandler,
+    module: FzHttpWeb.Auth.WWW.Authentication
 
   @claims %{"typ" => "access"}
 

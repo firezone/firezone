@@ -1,6 +1,6 @@
-defmodule FzHttpWeb.Authentication do
+defmodule FzHttpWeb.Auth.WWW.Authentication do
   @moduledoc """
-  Authentication helpers.
+  WWW Authentication implementation module for Guardian.
   """
   use Guardian, otp_app: :fz_http
   use FzHttpWeb, :controller
@@ -14,10 +14,12 @@ defmodule FzHttpWeb.Authentication do
 
   @guardian_token_name "guardian_default_token"
 
+  @impl Guardian
   def subject_for_token(resource, _claims) do
     {:ok, to_string(resource.id)}
   end
 
+  @impl Guardian
   def resource_from_claims(%{"sub" => id}) do
     case Users.get_user(id) do
       nil -> {:error, :resource_not_found}
