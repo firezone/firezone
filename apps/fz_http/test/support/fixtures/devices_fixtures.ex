@@ -4,7 +4,10 @@ defmodule FzHttp.DevicesFixtures do
   entities via the `FzHttp.Devices` context.
   """
 
-  alias FzHttp.{Devices, UsersFixtures}
+  alias FzHttp.{
+    Devices,
+    UsersFixtures
+  }
 
   @doc """
   Generate a device.

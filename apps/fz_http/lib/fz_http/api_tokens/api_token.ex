@@ -9,7 +9,6 @@ defmodule FzHttp.ApiTokens.ApiToken do
   alias FzHttp.Users.User
 
   @primary_key {:id, :binary_id, autogenerate: true}
-  @foreign_key_type :binary_id
 
   schema "api_tokens" do
     field :revoked_at, :utc_datetime_usec
@@ -22,6 +21,11 @@ defmodule FzHttp.ApiTokens.ApiToken do
   @doc false
   def changeset(api_token, attrs) do
     api_token
-    |> cast(attrs, [:revoked_at])
+    |> cast(attrs, [
+      :user_id,
+      :revoked_at
+    ])
+    |> validate_required(:user_id)
+    |> assoc_constraint(:user)
   end
 end

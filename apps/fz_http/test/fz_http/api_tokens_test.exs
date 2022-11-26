@@ -7,8 +7,9 @@ defmodule FzHttp.ApiTokensTest do
     alias FzHttp.ApiTokens.ApiToken
 
     import FzHttp.ApiTokensFixtures
+    import FzHttp.UsersFixtures
 
-    @invalid_attrs %{revoked_at: nil}
+    @invalid_attrs %{user_id: nil}
 
     test "list_api_tokens/0 returns all api_tokens" do
       api_token = api_token_fixture()
@@ -21,7 +22,10 @@ defmodule FzHttp.ApiTokensTest do
     end
 
     test "create_api_token/1 with valid data creates a api_token" do
-      valid_attrs = %{revoked_at: ~U[2022-11-25 04:48:00.000000Z]}
+      valid_attrs = %{
+        user_id: user().id,
+        revoked_at: ~U[2022-11-25 04:48:00.000000Z]
+      }
 
       assert {:ok, %ApiToken{} = api_token} = ApiTokens.create_api_token(valid_attrs)
       assert api_token.revoked_at == ~U[2022-11-25 04:48:00.000000Z]
