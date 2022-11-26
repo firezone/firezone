@@ -5,7 +5,11 @@ defmodule FzHttp.Configurations.Configuration do
 
   use Ecto.Schema
   import Ecto.Changeset
-  alias FzHttp.Configurations.Logo
+
+  alias FzHttp.Configurations.{
+    Logo,
+    RevokedToken
+  }
 
   @primary_key {:id, :binary_id, autogenerate: true}
 
@@ -17,6 +21,7 @@ defmodule FzHttp.Configurations.Configuration do
     field :openid_connect_providers, :map
     field :saml_identity_providers, :map
     field :disable_vpn_on_oidc_error, :boolean
+    embeds_many :revoked_tokens, RevokedToken
 
     timestamps(type: :utc_datetime_usec)
   end
@@ -33,5 +38,6 @@ defmodule FzHttp.Configurations.Configuration do
       :disable_vpn_on_oidc_error
     ])
     |> cast_embed(:logo)
+    |> cast_embed(:revoked_tokens)
   end
 end
