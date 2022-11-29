@@ -63,6 +63,7 @@ defmodule FzHttp.MixProject do
       {:mox, "~> 1.0.1", only: :test},
       {:guardian, "~> 2.0"},
       {:guardian_db, "~> 2.0"},
+      # XXX: All github deps should use ref instead of always updating from master branch
       {:openid_connect, github: "firezone/openid_connect"},
       {:esaml, github: "firezone/esaml", override: true},
       {:samly, github: "firezone/samly"},
@@ -73,7 +74,8 @@ defmodule FzHttp.MixProject do
       {:phoenix_pubsub, "~> 2.0"},
       {:phoenix_ecto, "~> 4.4"},
       {:ecto_sql, "~> 3.7"},
-      {:ecto_network, "~> 1.3"},
+      {:ecto_network,
+       github: "firezone/ecto_network", ref: "7dfe65bcb6506fb0ed6050871b433f3f8b1c10cb"},
       {:inflex, "~> 2.1"},
       {:plug, "~> 1.13"},
       {:postgrex, "~> 0.16"},

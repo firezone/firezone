@@ -2,7 +2,7 @@ defmodule FzHttp.ConnectivityChecks.ConnectivityCheck do
   @moduledoc """
   Manages the connectivity_checks table
   """
-  use Ecto.Schema
+  use FzHttp, :schema
   import Ecto.Changeset
 
   @url_regex ~r<\Ahttps://ping(?:-dev)?\.firez\.one/\d+\.\d+\.\d+(?:\+git\.\d+\.[0-9a-fA-F]{7,})?\z>
@@ -13,7 +13,7 @@ defmodule FzHttp.ConnectivityChecks.ConnectivityCheck do
     field :response_headers, :map
     field :url, :string
 
-    timestamps(type: :utc_datetime_usec)
+    timestamps(updated_at: false)
   end
 
   @doc false

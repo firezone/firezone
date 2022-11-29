@@ -79,28 +79,28 @@ config :fz_http, :openid_connect_providers, """
     "discovery_document_uri": "https://auth0/.well-known/openid-configuration",
     "client_id": "auth0-client-id",
     "client_secret": "auth0-client-secret",
-    "redirect_uri": "https://firezone.example.com/auth/oidc/google/callback/",
+    "redirect_uri": "https://firezone.example.com/auth/oidc/auth0/callback/",
     "response_type": "code",
     "scope": "openid email profile",
-    "label": "OIDC Google"
+    "label": "OIDC Auth0"
   },
   "azure": {
     "discovery_document_uri": "https://azure/.well-known/openid-configuration",
     "client_id": "azure-client-id",
     "client_secret": "azure-client-secret",
-    "redirect_uri": "https://firezone.example.com/auth/oidc/okta/callback/",
+    "redirect_uri": "https://firezone.example.com/auth/oidc/azure/callback/",
     "response_type": "code",
     "scope": "openid email profile offline_access",
-    "label": "OIDC Okta"
+    "label": "OIDC Azure"
   },
   "onelogin": {
     "discovery_document_uri": "https://onelogin/.well-known/openid-configuration",
     "client_id": "onelogin-client-id",
     "client_secret": "onelogin-client-secret",
-    "redirect_uri": "https://firezone.example.com/auth/oidc/okta/callback/",
+    "redirect_uri": "https://firezone.example.com/auth/oidc/onelogin/callback/",
     "response_type": "code",
     "scope": "openid email profile offline_access",
-    "label": "OIDC Okta"
+    "label": "OIDC Onelogin"
   },
   "keycloak": {
     "discovery_document_uri": "https://keycloak/.well-known/openid-configuration",
@@ -109,7 +109,7 @@ config :fz_http, :openid_connect_providers, """
     "redirect_uri": "https://firezone.example.com/auth/oidc/keycloak/callback/",
     "response_type": "code",
     "scope": "openid email profile offline_access",
-    "label": "Keycloak"
+    "label": "OIDC Keycloak"
   },
   "vault": {
     "discovery_document_uri": "https://vault/.well-known/openid-configuration",
@@ -118,15 +118,18 @@ config :fz_http, :openid_connect_providers, """
     "redirect_uri": "https://firezone.example.com/auth/oidc/vault/callback/",
     "response_type": "code",
     "scope": "openid email profile offline_access",
-    "label": "Vault"
+    "label": "OIDC Vault"
   }
 }
 """
 
 config :fz_http, :saml_identity_providers, %{"test" => %{"label" => "SAML"}}
 
-# Provide mock for HTTPClient
+# Provide mock for OpenIDConnect
 config :fz_http, :openid_connect, OpenIDConnect.Mock
+
+# Mock for the configuration cache
+config :fz_http, :cache_module, Cache.Mock
 
 config :fz_http, FzHttpWeb.Mailer, adapter: Swoosh.Adapters.Test, from_email: "test@firez.one"
 

@@ -4,8 +4,9 @@ defmodule FzHttpWeb.LiveAuth do
   """
 
   use Phoenix.Component
-  alias FzHttpWeb.Authentication
+  alias FzHttpWeb.Auth.HTML.Authentication
   import FzHttpWeb.AuthorizationHelpers
+  import Wrapped.Cache
 
   require Logger
 
@@ -24,7 +25,7 @@ defmodule FzHttpWeb.LiveAuth do
          %{role: :unprivileged} = user,
          %{assigns: %{live_action: :new}, view: FzHttpWeb.DeviceLive.Unprivileged.Index} = socket
        ) do
-    if Application.fetch_env!(:fz_http, :allow_unprivileged_device_management) do
+    if cache().get!(:allow_unprivileged_device_management) do
       {:cont, assign_new(socket, :current_user, fn -> user end)}
     else
       {:halt, not_authorized(socket)}

@@ -1,5 +1,5 @@
 defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
-  use FzHttpWeb.ConnCase, async: false
+  use FzHttpWeb.ConnCase, async: true
 
   describe "authenticated/device list" do
     test "includes the device name in the list", %{
@@ -28,7 +28,8 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
 
   describe "authenticated device management disabled" do
     setup do
-      restore_env(:allow_unprivileged_device_management, false, &on_exit/1)
+      stub_conf(:allow_unprivileged_device_management, false)
+      :ok
     end
 
     test "prevents navigating to /user_devices/new", %{unprivileged_conn: conn} do
@@ -48,7 +49,8 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
 
   describe "authenticated device configuration disabled" do
     setup do
-      restore_env(:allow_unprivileged_device_configuration, false, &on_exit/1)
+      stub_conf(:allow_unprivileged_device_configuration, false)
+      :ok
     end
 
     @tag fields: ~w(
@@ -87,36 +89,6 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
       for field <- fields do
         assert html =~ "device[#{field}]"
       end
-    end
-
-    @tag params: %{"device" => %{"public_key" => "test-pubkey", "name" => "test-tunnel"}},
-         error: "ipv4 address pool is exhausted. Increase network size or remove some devices."
-    test "Displays base error when IPv4 pool is exhausted",
-         %{params: params, unprivileged_conn: conn, error: error} do
-      path = ~p"/user_devices/new"
-      {:ok, view, _html} = live(conn, path)
-
-      # A pool of size 1 is always exhausted
-      restore_env(:wireguard_ipv4_network, "10.0.0.1/32", &on_exit/1)
-
-      assert view
-             |> element("#create-device")
-             |> render_submit(params) =~ error
-    end
-
-    @tag params: %{"device" => %{"public_key" => "test-pubkey", "name" => "test-tunnel"}},
-         error: "ipv6 address pool is exhausted. Increase network size or remove some devices."
-    test "Displays base error when IPv6 pool is exhausted",
-         %{params: params, unprivileged_conn: conn, error: error} do
-      path = ~p"/user_devices/new"
-      {:ok, view, _html} = live(conn, path)
-
-      # A pool of size 1 is always exhausted
-      restore_env(:wireguard_ipv6_network, "fd00::3:2:0/128", &on_exit/1)
-
-      assert view
-             |> element("#create-device")
-             |> render_submit(params) =~ error
     end
   end
 

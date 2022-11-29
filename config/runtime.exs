@@ -65,6 +65,7 @@ if config_env() == :prod do
   nft_path = System.get_env("NFT_PATH", "nft")
   egress_interface = System.get_env("EGRESS_INTERFACE", "eth0")
   wireguard_ipv4_enabled = FzString.to_boolean(System.get_env("WIREGUARD_IPV4_ENABLED", "true"))
+  wireguard_ipv6_enabled = FzString.to_boolean(System.get_env("WIREGUARD_IPV6_ENABLED", "true"))
 
   wireguard_ipv4_masquerade =
     FzString.to_boolean(System.get_env("WIREGUARD_IPV4_MASQUERADE", "true"))
@@ -72,11 +73,12 @@ if config_env() == :prod do
   wireguard_ipv6_masquerade =
     FzString.to_boolean(System.get_env("WIREGUARD_IPV6_MASQUERADE", "true"))
 
+  # On fresh installs, these should now be populated in the ENV to be 100.64.0.0/10 and fd00::/106
   wireguard_ipv4_network = System.get_env("WIREGUARD_IPV4_NETWORK", "10.3.2.0/24")
   wireguard_ipv4_address = System.get_env("WIREGUARD_IPV4_ADDRESS", "10.3.2.1")
-  wireguard_ipv6_enabled = FzString.to_boolean(System.get_env("WIREGUARD_IPV6_ENABLED", "true"))
   wireguard_ipv6_network = System.get_env("WIREGUARD_IPV6_NETWORK", "fd00::3:2:0/120")
   wireguard_ipv6_address = System.get_env("WIREGUARD_IPV6_ADDRESS", "fd00::3:2:1")
+
   telemetry_enabled = FzString.to_boolean(System.get_env("TELEMETRY_ENABLED", "true"))
 
   disable_vpn_on_oidc_error =
@@ -213,7 +215,12 @@ if config_env() == :prod do
     wireguard_port: wireguard_port
 
   # Guardian configuration
-  config :fz_http, FzHttpWeb.Authentication,
+  # XXX: Use different secret keys here when config / secret generation is refactored
+  config :fz_http, FzHttpWeb.Auth.HTML.Authentication,
+    issuer: "fz_http",
+    secret_key: guardian_secret_key
+
+  config :fz_http, FzHttpWeb.Auth.JSON.Authentication,
     issuer: "fz_http",
     secret_key: guardian_secret_key
 

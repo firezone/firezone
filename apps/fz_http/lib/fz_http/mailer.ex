@@ -18,7 +18,7 @@ defmodule FzHttpWeb.Mailer do
 
   def default_email do
     Email.new()
-    |> Email.from(Application.fetch_env!(:fz_http, FzHttpWeb.Mailer)[:from_email])
+    |> Email.from(FzHttp.Config.fetch_env!(:fz_http, FzHttpWeb.Mailer)[:from_email])
   end
 
   def configs_for(provider) do

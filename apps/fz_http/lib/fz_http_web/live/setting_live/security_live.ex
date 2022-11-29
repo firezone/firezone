@@ -7,7 +7,7 @@ defmodule FzHttpWeb.SettingLive.Security do
   import Ecto.Changeset
   import FzCommon.FzCrypto, only: [rand_string: 1]
 
-  alias FzHttp.Configurations, as: Conf
+  import Wrapped.Cache
   alias FzHttp.{Sites, Sites.Site}
 
   @page_title "Security Settings"
@@ -15,7 +15,7 @@ defmodule FzHttpWeb.SettingLive.Security do
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
-    config_changeset = Conf.change_configuration()
+    config_changeset = FzHttp.Configurations.change_configuration()
 
     {:ok,
      socket
@@ -67,7 +67,7 @@ defmodule FzHttpWeb.SettingLive.Security do
   @impl Phoenix.LiveView
   def handle_event("toggle", %{"config" => config} = params, socket) do
     toggle_value = !!params["value"]
-    {:ok, _conf} = Conf.update_configuration(%{config => toggle_value})
+    {:ok, _conf} = FzHttp.Configurations.update_configuration(%{config => toggle_value})
     {:noreply, socket}
   end
 
@@ -80,7 +80,8 @@ defmodule FzHttpWeb.SettingLive.Security do
     providers =
       get_in(socket.assigns.config_changeset, [Access.key!(:data), Access.key!(field_key)])
 
-    {:ok, conf} = Conf.update_configuration(%{field_key => Map.delete(providers, key)})
+    {:ok, conf} =
+      FzHttp.Configurations.update_configuration(%{field_key => Map.delete(providers, key)})
 
     {:noreply,
      socket

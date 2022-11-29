@@ -11,6 +11,6 @@ defmodule FzHttpWeb.OIDC.Helpers do
   end
 
   def openid_connect do
-    Application.fetch_env!(:fz_http, :openid_connect)
+    FzHttp.Config.fetch_env!(:fz_http, :openid_connect)
   end
 end

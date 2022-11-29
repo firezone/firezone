@@ -2,8 +2,7 @@ defmodule FzHttp.Conf.OIDCConfig do
   @moduledoc """
   OIDC Config virtual schema
   """
-  use Ecto.Schema
-
+  use FzHttp, :schema
   import Ecto.Changeset
   import FzHttp.Validators.OpenIDConnect
   import FzHttp.Validators.Common, only: [validate_uri: 2]

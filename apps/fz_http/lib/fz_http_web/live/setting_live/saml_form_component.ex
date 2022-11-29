@@ -4,8 +4,6 @@ defmodule FzHttpWeb.SettingLive.SAMLFormComponent do
   """
   use FzHttpWeb, :live_component
 
-  alias FzHttp.Configurations, as: Conf
-
   def render(assigns) do
     ~H"""
     <div>
@@ -192,7 +190,7 @@ defmodule FzHttpWeb.SettingLive.SAMLFormComponent do
   end
 
   def update(assigns, socket) do
-    external_url = Application.fetch_env!(:fz_http, :external_url)
+    external_url = FzHttp.Config.fetch_env!(:fz_http, :external_url)
 
     changeset =
       assigns.providers
@@ -232,7 +230,7 @@ defmodule FzHttpWeb.SettingLive.SAMLFormComponent do
                 |> Map.put(id, data)
             }
           end)
-          |> Conf.update_configuration()
+          |> FzHttp.Configurations.update_configuration()
 
         _ ->
           {:error, changeset}

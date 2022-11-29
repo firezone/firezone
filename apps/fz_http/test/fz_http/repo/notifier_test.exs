@@ -89,15 +89,15 @@ defmodule FzHttp.Repo.NotifierTest do
 
       expected_vpn_state = %{
         "1" => %{
-          allowed_ips: "10.3.2.2/32,fd00::3:2:2/128",
-          preshared_key: nil
+          allowed_ips: "#{device.ipv4}/32,#{device.ipv6}/128",
+          preshared_key: device.preshared_key
         }
       }
 
       expected_wall_state = %{
         users: MapSet.new([]),
         rules: MapSet.new([]),
-        devices: MapSet.new([%{ip: "10.3.2.2", ip6: "fd00::3:2:2", user_id: user.id}])
+        devices: MapSet.new([%{ip: "#{device.ipv4}", ip6: "#{device.ipv6}", user_id: user.id}])
       }
 
       assert :sys.get_state(Events.vpn_pid()) == expected_vpn_state
