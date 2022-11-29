@@ -3,16 +3,14 @@ defmodule FzHttpWeb.UserFromAuth do
   Authenticates users.
   """
 
-  alias FzHttp.Configurations, as: Conf
   alias FzHttp.Users
-  alias FzHttpWeb.Authentication
-  alias Ueberauth.Auth
+  alias FzHttpWeb.Auth.HTML.Authentication
 
   def find_or_create(
-        %Auth{
+        %Ueberauth.Auth{
           provider: :identity,
-          info: %Auth.Info{email: email},
-          credentials: %Auth.Credentials{other: %{password: password}}
+          info: %Ueberauth.Auth.Info{email: email},
+          credentials: %Ueberauth.Auth.Credentials{other: %{password: password}}
         } = _auth
       ) do
     Users.get_by_email(email) |> Authentication.authenticate(password)
@@ -35,7 +33,7 @@ defmodule FzHttpWeb.UserFromAuth do
   end
 
   defp maybe_create_user(idp_field, provider_key, email) do
-    if Conf.auto_create_users?(idp_field, provider_key) do
+    if FzHttp.Configurations.auto_create_users?(idp_field, provider_key) do
       Users.create_unprivileged_user(%{email: email})
     else
       {:error, "not found"}

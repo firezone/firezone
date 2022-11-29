@@ -2,23 +2,22 @@ defmodule FzHttp.Configurations.Configuration do
   @moduledoc """
   App global configuration, singleton resource
   """
-
-  use Ecto.Schema
+  use FzHttp, :schema
   import Ecto.Changeset
   alias FzHttp.Configurations.Logo
 
-  @primary_key {:id, :binary_id, autogenerate: true}
-
   schema "configurations" do
-    embeds_one :logo, Logo, on_replace: :update
-    field :local_auth_enabled, :boolean
     field :allow_unprivileged_device_management, :boolean
     field :allow_unprivileged_device_configuration, :boolean
+
+    field :local_auth_enabled, :boolean
     field :openid_connect_providers, :map
     field :saml_identity_providers, :map
     field :disable_vpn_on_oidc_error, :boolean
 
-    timestamps(type: :utc_datetime_usec)
+    embeds_one :logo, Logo, on_replace: :update
+
+    timestamps()
   end
 
   @doc false

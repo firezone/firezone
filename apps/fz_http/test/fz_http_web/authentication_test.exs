@@ -1,7 +1,7 @@
-defmodule FzHttpWeb.AuthenticationTest do
+defmodule FzHttpWeb.AuthTest do
   use FzHttpWeb.ConnCase, async: true
 
-  alias FzHttpWeb.Authentication
+  alias FzHttpWeb.Auth.HTML.Authentication
 
   describe "authenticate/2" do
     setup :create_user

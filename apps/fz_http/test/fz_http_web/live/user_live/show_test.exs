@@ -1,6 +1,5 @@
 defmodule FzHttpWeb.UserLive.ShowTest do
-  # XXX: Setting to true causes deadlocks. Figure out why.
-  use FzHttpWeb.ConnCase, async: false
+  use FzHttpWeb.ConnCase, async: true
 
   alias FzHttp.UsersFixtures
 
@@ -34,12 +33,6 @@ defmodule FzHttpWeb.UserLive.ShowTest do
         "public_key" => "test-pubkey",
         "name" => "new_name",
         "description" => "new_description"
-      }
-    }
-    @invalid_params %{
-      "device" => %{
-        "public_key" => "test-pubkey",
-        "name" => ""
       }
     }
     @allowed_ips "2.2.2.2"
@@ -341,16 +334,18 @@ defmodule FzHttpWeb.UserLive.ShowTest do
       assert html =~ "120"
     end
 
-    test "prevents empty names", %{admin_conn: conn, admin_user: user} do
+    test "generates a name when it's empty", %{admin_conn: conn, admin_user: user} do
       path = ~p"/users/#{user.id}/new_device"
       {:ok, view, _html} = live(conn, path)
+
+      params = Map.put(@valid_params, "name", "")
 
       test_view =
         view
         |> form("#create-device")
-        |> render_submit(@invalid_params)
+        |> render_submit(params)
 
-      assert test_view =~ "can&#39;t be blank"
+      assert test_view =~ "Device added!"
     end
 
     test "on use_site_allowed_ips change", %{admin_conn: conn, admin_user: user} do

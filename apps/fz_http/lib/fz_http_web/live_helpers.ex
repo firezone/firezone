@@ -36,7 +36,7 @@ defmodule FzHttpWeb.LiveHelpers do
   end
 
   def admin_email do
-    Application.fetch_env!(:fz_http, :admin_email)
+    FzHttp.Config.fetch_env!(:fz_http, :admin_email)
   end
 
   def vpn_sessions_expire? do

@@ -1,14 +1,8 @@
 defmodule FzHttp.Devices do
-  @moduledoc """
-  The Devices context.
-  """
-
   import Ecto.Changeset
   import Ecto.Query, warn: false
-
   alias EctoNetwork.INET
   alias FzHttp.{Devices.Device, Devices.DeviceSetting, Repo, Sites, Telemetry, Users, Users.User}
-
   require Logger
 
   def count_active_within(duration_in_secs) when is_integer(duration_in_secs) do
@@ -22,7 +16,7 @@ defmodule FzHttp.Devices do
   end
 
   def count do
-    Repo.one(from d in Device, select: count(d.id))
+    Repo.aggregate(Device, :count)
   end
 
   def max_count_by_user_id do
@@ -52,7 +46,8 @@ defmodule FzHttp.Devices do
   end
 
   def setting_projection(device) do
-    DeviceSetting.parse(device)
+    device
+    |> DeviceSetting.parse()
     |> Map.from_struct()
   end
 
@@ -132,16 +127,7 @@ defmodule FzHttp.Devices do
   end
 
   def new_device(attrs \\ %{}) do
-    change_device(
-      %Device{},
-      Map.merge(
-        %{
-          "name" => Device.new_name(),
-          "preshared_key" => FzCommon.FzCrypto.psk()
-        },
-        attrs
-      )
-    )
+    change_device(%Device{}, attrs)
   end
 
   def allowed_ips(device), do: config(device, :allowed_ips)
@@ -172,7 +158,7 @@ defmodule FzHttp.Devices do
   def as_encoded_config(device), do: Base.encode64(as_config(device))
 
   def as_config(device) do
-    wireguard_port = Application.fetch_env!(:fz_vpn, :wireguard_port)
+    wireguard_port = FzHttp.Config.fetch_env!(:fz_vpn, :wireguard_port)
     server_public_key = Application.get_env(:fz_vpn, :wireguard_public_key)
 
     if is_nil(server_public_key) do
@@ -198,7 +184,23 @@ defmodule FzHttp.Devices do
   end
 
   def decode(nil), do: nil
+  def decode(inet) when is_binary(inet), do: inet
   def decode(inet), do: INET.decode(inet)
+
+  @hash_range 2 ** 16
+  def new_name(name \\ FzCommon.NameGenerator.generate()) do
+    hash =
+      name
+      |> :erlang.phash2(@hash_range)
+      |> Integer.to_string(16)
+      |> String.pad_leading(4, "0")
+
+    if String.length(name) > 15 do
+      String.slice(name, 0..10) <> hash
+    else
+      name
+    end
+  end
 
   defp psk_config(device) do
     if device.preshared_key do
@@ -264,10 +266,10 @@ defmodule FzHttp.Devices do
   defp field_empty?(_), do: false
 
   defp ipv4? do
-    Application.fetch_env!(:fz_http, :wireguard_ipv4_enabled)
+    FzHttp.Config.fetch_env!(:fz_http, :wireguard_ipv4_enabled)
   end
 
   defp ipv6? do
-    Application.fetch_env!(:fz_http, :wireguard_ipv6_enabled)
+    FzHttp.Config.fetch_env!(:fz_http, :wireguard_ipv6_enabled)
   end
 end

@@ -73,8 +73,8 @@
             type="checkbox"
             phx-click="toggle"
             phx-value-config="local_auth_enabled"
-            checked={Conf.get!(:local_auth_enabled)}
-            value={if(!Conf.get!(:local_auth_enabled), do: "on")}
+            checked={cache().get!(:local_auth_enabled)}
+            value={if(!cache().get!(:local_auth_enabled), do: "on")}
           />
           <span class="check"></span>
         </label>
@@ -95,8 +95,8 @@
             type="checkbox"
             phx-click="toggle"
             phx-value-config="allow_unprivileged_device_management"
-            checked={Conf.get!(:allow_unprivileged_device_management)}
-            value={if(!Conf.get!(:allow_unprivileged_device_management), do: "on")}
+            checked={cache().get!(:allow_unprivileged_device_management)}
+            value={if(!cache().get!(:allow_unprivileged_device_management), do: "on")}
           />
           <span class="check"></span>
         </label>
@@ -119,8 +119,8 @@
             type="checkbox"
             phx-click="toggle"
             phx-value-config="allow_unprivileged_device_configuration"
-            checked={Conf.get!(:allow_unprivileged_device_configuration)}
-            value={if(!Conf.get!(:allow_unprivileged_device_configuration), do: "on")}
+            checked={cache().get!(:allow_unprivileged_device_configuration)}
+            value={if(!cache().get!(:allow_unprivileged_device_configuration), do: "on")}
           />
           <span class="check"></span>
         </label>
@@ -132,8 +132,7 @@
 
   <div class="block">
     <p>
-      Single Sign-On can be configured in the main Firezone configuration
-      file. Refer to the
+      Configure OIDC or SAML Single Sign-On below. See the
       <a href="https://docs.firezone.dev/authenticate/">Firezone documentation</a>
       for more details.
     </p>
@@ -152,8 +151,8 @@
             type="checkbox"
             phx-click="toggle"
             phx-value-config="disable_vpn_on_oidc_error"
-            checked={Conf.get!(:disable_vpn_on_oidc_error)}
-            value={if(!Conf.get!(:disable_vpn_on_oidc_error), do: "on")}
+            checked={cache().get!(:disable_vpn_on_oidc_error)}
+            value={if(!cache().get!(:disable_vpn_on_oidc_error), do: "on")}
           />
           <span class="check"></span>
         </label>

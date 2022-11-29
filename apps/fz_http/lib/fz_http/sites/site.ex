@@ -2,20 +2,15 @@ defmodule FzHttp.Sites.Site do
   @moduledoc """
   Represents a VPN / Firewall site and its config.
   """
-
-  use Ecto.Schema
+  use FzHttp, :schema
   import Ecto.Changeset
 
   import FzHttp.Validators.Common,
     only: [
-      trim: 2,
       validate_fqdn_or_ip: 2,
       validate_list_of_ips_or_cidrs: 2,
       validate_no_duplicates: 2
     ]
-
-  @primary_key {:id, :binary_id, autogenerate: true}
-  @foreign_key_type :binary_id
 
   # Postgres max int size is 4 bytes
   @max_pg_integer 2_147_483_647
@@ -28,7 +23,6 @@ defmodule FzHttp.Sites.Site do
   @max_persistent_keepalive 1 * @hour
   @min_vpn_session_duration 0
   @max_vpn_session_duration @max_pg_integer
-  @whitespace_trimmed_fields ~w(name dns allowed_ips endpoint)a
 
   schema "sites" do
     field :name, :string
@@ -39,8 +33,11 @@ defmodule FzHttp.Sites.Site do
     field :mtu, :integer
     field :vpn_session_duration, :integer
 
-    timestamps(type: :utc_datetime_usec)
+    timestamps()
   end
+
+  defp trim(nil), do: nil
+  defp trim(field), do: String.trim(field)
 
   def changeset(site, attrs) do
     site
@@ -53,7 +50,10 @@ defmodule FzHttp.Sites.Site do
       :mtu,
       :vpn_session_duration
     ])
-    |> trim(@whitespace_trimmed_fields)
+    |> update_change(:name, &trim/1)
+    |> update_change(:dns, &trim/1)
+    |> update_change(:allowed_ips, &trim/1)
+    |> update_change(:endpoint, &trim/1)
     |> validate_required(:name)
     |> validate_no_duplicates(:dns)
     |> validate_list_of_ips_or_cidrs(:allowed_ips)

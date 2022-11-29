@@ -4,7 +4,6 @@ defmodule FzHttp.TestHelpers do
   """
 
   alias FzHttp.{
-    Configurations.Cache,
     ConnectivityChecksFixtures,
     DevicesFixtures,
     MFA,
@@ -16,16 +15,15 @@ defmodule FzHttp.TestHelpers do
     UsersFixtures
   }
 
-  def restore_env(key, val, cb), do: restore_env(:fz_http, key, val, cb)
+  import Mox
 
-  def restore_env(app, key, val, cb) do
-    old = Application.fetch_env!(app, key)
-    Application.put_env(app, key, val)
-    Cache.put!(key, val)
-
-    cb.(fn ->
-      Application.put_env(app, key, old)
-      Cache.put!(key, old)
+  def stub_conf(key, val) do
+    stub(Cache.Mock, :get!, fn conf_key ->
+      if key == conf_key do
+        val
+      else
+        FzHttp.Configurations.Cache.get!(conf_key)
+      end
     end)
   end
 
@@ -138,9 +136,7 @@ defmodule FzHttp.TestHelpers do
           DevicesFixtures.device(%{
             name: "device #{num}",
             public_key: "#{num}",
-            user_id: user.id,
-            ipv4: "10.3.2.#{num}",
-            ipv6: "fd00::3:2:#{num}"
+            user_id: user.id
           })
 
         rule = RulesFixtures.rule(%{destination: destination, user_id: user.id})
@@ -168,9 +164,7 @@ defmodule FzHttp.TestHelpers do
       DevicesFixtures.device(%{
         name: "device",
         public_key: "1",
-        user_id: user.id,
-        ipv4: "10.3.2.2",
-        ipv6: "fd00::3:2:2"
+        user_id: user.id
       })
 
     {:ok, rule: rule, user: user, device: device}

@@ -4,25 +4,24 @@ defmodule FzHttp.OIDC.StartProxy do
   (after `FzHttp.Configurations.Cache` has started) and pass to `OpenIDConnect.Worker`
   """
 
-  alias FzHttp.Configurations, as: Conf
-
   require Logger
+  import Actual.Cache
 
   def child_spec(arg) do
     %{id: __MODULE__, start: {__MODULE__, :start_link, [arg]}}
   end
 
   def start_link(:test) do
-    auth_oidc_env = Conf.get!(:openid_connect_providers)
-    Conf.Cache.put!(:parsed_openid_connect_providers, parse(auth_oidc_env))
+    auth_oidc_env = cache().get!(:openid_connect_providers)
+    cache().put!(:parsed_openid_connect_providers, parse(auth_oidc_env))
     :ignore
   end
 
   def start_link(_) do
-    auth_oidc_env = Conf.get!(:openid_connect_providers)
+    auth_oidc_env = cache().get!(:openid_connect_providers)
 
     if parsed = auth_oidc_env && parse(auth_oidc_env) do
-      Conf.Cache.put!(:parsed_openid_connect_providers, parsed)
+      cache().put!(:parsed_openid_connect_providers, parsed)
       OpenIDConnect.Worker.start_link(parsed)
     else
       :ignore
@@ -34,7 +33,7 @@ defmodule FzHttp.OIDC.StartProxy do
   end
 
   defp parse(auth_oidc_config) when is_map(auth_oidc_config) do
-    external_url = Application.fetch_env!(:fz_http, :external_url)
+    external_url = FzHttp.Config.fetch_env!(:fz_http, :external_url)
 
     # Convert Map to something openid_connect expects, atomic keyed configs
     # eg. [provider: [client_id: "CLIENT_ID" ...]]

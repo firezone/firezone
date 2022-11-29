@@ -22,7 +22,7 @@ defmodule FzHttp.Application do
     :ok
   end
 
-  defp children, do: children(Application.fetch_env!(:fz_http, :supervision_tree_mode))
+  defp children, do: children(FzHttp.Config.fetch_env!(:fz_http, :supervision_tree_mode))
 
   defp children(:full) do
     [

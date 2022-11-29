@@ -1,11 +1,11 @@
-defmodule FzHttpWeb.Authentication do
+defmodule FzHttpWeb.Auth.HTML.Authentication do
   @moduledoc """
-  Authentication helpers.
+  HTML Authentication implementation module for Guardian.
   """
   use Guardian, otp_app: :fz_http
   use FzHttpWeb, :controller
 
-  alias FzHttp.Configurations, as: Conf
+  import Wrapped.Cache
   alias FzHttp.Telemetry
   alias FzHttp.Users
   alias FzHttp.Users.User
@@ -14,10 +14,12 @@ defmodule FzHttpWeb.Authentication do
 
   @guardian_token_name "guardian_default_token"
 
+  @impl Guardian
   def subject_for_token(resource, _claims) do
     {:ok, to_string(resource.id)}
   end
 
+  @impl Guardian
   def resource_from_claims(%{"sub" => id}) do
     case Users.get_user(id) do
       nil -> {:error, :resource_not_found}
@@ -74,7 +76,7 @@ defmodule FzHttpWeb.Authentication do
     with {:ok, provider_key} <- parse_provider(Plug.Conn.get_session(conn, "login_method")),
          {:ok, provider} <- atomize_provider(provider_key),
          {:ok, client_id} <-
-           parse_client_id(Conf.get!(:parsed_openid_connect_providers)[provider]),
+           parse_client_id(cache().get!(:parsed_openid_connect_providers)[provider]),
          {:ok, token} <- parse_token(Plug.Conn.get_session(conn, "id_token")),
          {:ok, end_session_uri} <-
            parse_end_session_uri(

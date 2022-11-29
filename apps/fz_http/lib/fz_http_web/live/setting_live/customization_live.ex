@@ -4,16 +4,14 @@ defmodule FzHttpWeb.SettingLive.Customization do
   """
   use FzHttpWeb, :live_view
 
-  alias FzHttp.Configurations, as: Conf
-
   @max_logo_size 1024 ** 2
   @page_title "Customization"
   @page_subtitle "Customize the look and feel of your Firezone web portal."
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
-    logo = Conf.get!(:logo)
-    logo_type = Conf.logo_type(logo)
+    logo = cache().get!(:logo)
+    logo_type = FzHttp.Configurations.logo_type(logo)
 
     {:ok,
      socket
@@ -39,14 +37,14 @@ defmodule FzHttpWeb.SettingLive.Customization do
 
   @impl Phoenix.LiveView
   def handle_event("save", %{"default" => "true"}, socket) do
-    {:ok, config} = Conf.update_configuration(%{logo: nil})
+    {:ok, config} = FzHttp.Configurations.update_configuration(%{logo: nil})
 
     {:noreply, assign(socket, :logo, config.logo)}
   end
 
   @impl Phoenix.LiveView
   def handle_event("save", %{"url" => url}, socket) do
-    {:ok, config} = Conf.update_configuration(%{logo: %{"url" => url}})
+    {:ok, config} = FzHttp.Configurations.update_configuration(%{logo: %{"url" => url}})
 
     {:noreply, assign(socket, :logo, config.logo)}
   end
@@ -61,7 +59,9 @@ defmodule FzHttpWeb.SettingLive.Customization do
 
         # enforce OK, error from update_configuration instead of consume_uploaded_entry
         {:ok, config} =
-          Conf.update_configuration(%{logo: %{"data" => data, "type" => entry.client_type}})
+          FzHttp.Configurations.update_configuration(%{
+            logo: %{"data" => data, "type" => entry.client_type}
+          })
 
         {:ok, config}
       end)

@@ -35,8 +35,8 @@ defmodule FzHttpWeb.Router do
     plug Guardian.Plug.EnsureNotAuthenticated
   end
 
-  pipeline :guardian do
-    plug FzHttpWeb.Authentication.Pipeline
+  pipeline :html_auth do
+    plug FzHttpWeb.Auth.HTML.Pipeline
   end
 
   pipeline :samly do
@@ -48,7 +48,7 @@ defmodule FzHttpWeb.Router do
   scope "/auth", FzHttpWeb do
     pipe_through [
       :browser,
-      :guardian,
+      :html_auth,
       :require_unauthenticated
     ]
 
@@ -73,7 +73,7 @@ defmodule FzHttpWeb.Router do
   scope "/", FzHttpWeb do
     pipe_through [
       :browser,
-      :guardian,
+      :html_auth,
       :require_unauthenticated
     ]
 
@@ -83,7 +83,7 @@ defmodule FzHttpWeb.Router do
   scope "/mfa", FzHttpWeb do
     pipe_through([
       :browser,
-      :guardian
+      :html_auth
     ])
 
     live_session(
@@ -101,7 +101,7 @@ defmodule FzHttpWeb.Router do
   scope "/", FzHttpWeb do
     pipe_through [
       :browser,
-      :guardian,
+      :html_auth,
       :require_authenticated
     ]
 
@@ -112,7 +112,7 @@ defmodule FzHttpWeb.Router do
   scope "/", FzHttpWeb do
     pipe_through [
       :browser,
-      :guardian,
+      :html_auth,
       :require_authenticated,
       :require_unprivileged_user
     ]
@@ -137,7 +137,7 @@ defmodule FzHttpWeb.Router do
   scope "/", FzHttpWeb do
     pipe_through [
       :browser,
-      :guardian,
+      :html_auth,
       :require_authenticated,
       :require_admin_user
     ]
@@ -172,6 +172,15 @@ defmodule FzHttpWeb.Router do
       live "/diagnostics/connectivity_checks", ConnectivityCheckLive.Index, :index
       live "/notifications", NotificationsLive.Index, :index
     end
+  end
+
+  scope "/v1", FzHttpWeb.JSON do
+    pipe_through :api
+
+    resources "/configuration", ConfigurationController, singleton: true, only: [:show, :update]
+    resources "/users", UserController, except: [:new, :edit]
+    resources "/devices", DeviceController, except: [:new, :edit]
+    resources "/rules", RuleController, except: [:new, :edit]
   end
 
   if Mix.env() == :dev do
