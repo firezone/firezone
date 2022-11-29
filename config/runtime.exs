@@ -213,7 +213,12 @@ if config_env() == :prod do
     wireguard_port: wireguard_port
 
   # Guardian configuration
-  config :fz_http, FzHttpWeb.Authentication,
+  # XXX: Use different secret keys here when config / secret generation is refactored
+  config :fz_http, FzHttpWeb.Auth.HTML.Authentication,
+    issuer: "fz_http",
+    secret_key: guardian_secret_key
+
+  config :fz_http, FzHttpWeb.Auth.JSON.Authentication,
     issuer: "fz_http",
     secret_key: guardian_secret_key
 

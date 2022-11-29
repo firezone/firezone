@@ -4,7 +4,7 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
   """
   use FzHttpWeb, :live_component
 
-  alias FzHttp.Configurations, as: Conf
+  import Wrapped.Application
 
   def render(assigns) do
     ~H"""
@@ -179,7 +179,7 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
     {:ok,
      socket
      |> assign(assigns)
-     |> assign(:external_url, Application.fetch_env!(:fz_http, :external_url))
+     |> assign(:external_url, app().fetch_env!(:fz_http, :external_url))
      |> assign(:changeset, changeset)}
   end
 
@@ -206,7 +206,7 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
                 |> Map.put(id, data)
             }
           end)
-          |> Conf.update_configuration()
+          |> FzHttp.Configurations.update_configuration()
 
         _ ->
           {:error, changeset}

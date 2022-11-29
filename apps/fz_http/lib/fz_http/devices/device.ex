@@ -5,6 +5,7 @@ defmodule FzHttp.Devices.Device do
 
   use Ecto.Schema
   import Ecto.Changeset
+  import Wrapped.Application
   require Logger
 
   import FzHttp.Validators.Common,
@@ -123,6 +124,7 @@ defmodule FzHttp.Devices.Device do
 
   defp shared_changeset(changeset) do
     changeset
+    |> assoc_constraint(:user)
     |> validate_required([
       :user_id,
       :name,
@@ -163,9 +165,11 @@ defmodule FzHttp.Devices.Device do
   end
 
   defp validate_max_devices(changeset) do
-    user_id = changeset.changes.user_id || changeset.data.user_id
-    count = Devices.count(user_id)
-    max_devices = Application.fetch_env!(:fz_http, :max_devices_per_user)
+    count =
+      get_field(changeset, :user_id)
+      |> Devices.count()
+
+    max_devices = app().fetch_env!(:fz_http, :max_devices_per_user)
 
     if count >= max_devices do
       add_error(
@@ -199,7 +203,7 @@ defmodule FzHttp.Devices.Device do
   end
 
   defp validate_ipv4_required(changeset) do
-    if Application.fetch_env!(:fz_http, :wireguard_ipv4_enabled) do
+    if app().fetch_env!(:fz_http, :wireguard_ipv4_enabled) do
       validate_required(changeset, :ipv4)
     else
       changeset
@@ -207,7 +211,7 @@ defmodule FzHttp.Devices.Device do
   end
 
   defp validate_ipv6_required(changeset) do
-    if Application.fetch_env!(:fz_http, :wireguard_ipv6_enabled) do
+    if app().fetch_env!(:fz_http, :wireguard_ipv6_enabled) do
       validate_required(changeset, :ipv6)
     else
       changeset
@@ -215,14 +219,14 @@ defmodule FzHttp.Devices.Device do
   end
 
   defp validate_in_network(%Ecto.Changeset{changes: %{ipv4: ip}} = changeset, :ipv4) do
-    net = Application.fetch_env!(:fz_http, :wireguard_ipv4_network)
+    net = app().fetch_env!(:fz_http, :wireguard_ipv4_network)
     add_net_error_if_outside_bounds(changeset, net, ip, :ipv4)
   end
 
   defp validate_in_network(changeset, :ipv4), do: changeset
 
   defp validate_in_network(%Ecto.Changeset{changes: %{ipv6: ip}} = changeset, :ipv6) do
-    net = Application.fetch_env!(:fz_http, :wireguard_ipv6_network)
+    net = app().fetch_env!(:fz_http, :wireguard_ipv6_network)
     add_net_error_if_outside_bounds(changeset, net, ip, :ipv6)
   end
 
@@ -260,7 +264,7 @@ defmodule FzHttp.Devices.Device do
 
   defp ipv4_address do
     {:ok, inet} =
-      Application.fetch_env!(:fz_http, :wireguard_ipv4_address)
+      app().fetch_env!(:fz_http, :wireguard_ipv4_address)
       |> EctoNetwork.INET.cast()
 
     inet
@@ -268,7 +272,7 @@ defmodule FzHttp.Devices.Device do
 
   defp ipv6_address do
     {:ok, inet} =
-      Application.fetch_env!(:fz_http, :wireguard_ipv6_address)
+      app().fetch_env!(:fz_http, :wireguard_ipv6_address)
       |> EctoNetwork.INET.cast()
 
     inet

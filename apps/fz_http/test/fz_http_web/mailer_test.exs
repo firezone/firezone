@@ -53,7 +53,8 @@ defmodule FzHttpWeb.MailerTest do
     end
 
     test "delivery" do
-      SampleEmail.test_heex(0) |> Mailer.deliver!()
+      SampleEmail.test_heex(0)
+      |> Mailer.deliver!()
 
       assert_email_sent(
         subject: "testing",

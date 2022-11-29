@@ -4,7 +4,6 @@ defmodule FzHttp.TestHelpers do
   """
 
   alias FzHttp.{
-    Configurations.Cache,
     ConnectivityChecksFixtures,
     DevicesFixtures,
     MFA,
@@ -16,16 +15,25 @@ defmodule FzHttp.TestHelpers do
     UsersFixtures
   }
 
-  def restore_env(key, val, cb), do: restore_env(:fz_http, key, val, cb)
+  import Mox
 
-  def restore_env(app, key, val, cb) do
-    old = Application.fetch_env!(app, key)
-    Application.put_env(app, key, val)
-    Cache.put!(key, val)
+  def stub_conf(key, val) do
+    stub(Cache.Mock, :get!, fn conf_key ->
+      if key == conf_key do
+        val
+      else
+        FzHttp.Configurations.Cache.get!(conf_key)
+      end
+    end)
+  end
 
-    cb.(fn ->
-      Application.put_env(app, key, old)
-      Cache.put!(key, old)
+  def stub_app_env(stubbed_app \\ :fz_http, key, val) do
+    stub(Application.Mock, :fetch_env!, fn app, conf_key ->
+      if app == stubbed_app && key == conf_key do
+        val
+      else
+        Application.fetch_env!(app, conf_key)
+      end
     end)
   end
 

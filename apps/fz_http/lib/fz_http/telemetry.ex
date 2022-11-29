@@ -4,8 +4,8 @@ defmodule FzHttp.Telemetry do
   """
 
   require Logger
+  import Wrapped.Cache
 
-  alias FzHttp.Configurations, as: Conf
   alias FzHttp.{Devices, MFA, Users}
 
   def add_device do
@@ -91,15 +91,16 @@ defmodule FzHttp.Telemetry do
         max_devices_for_users: Devices.max_count_by_user_id(),
         users_with_mfa: MFA.count_distinct_by_user_id(),
         users_with_mfa_totp: MFA.count_distinct_totp_by_user_id(),
-        openid_providers: count(Conf.get!(:parsed_openid_connect_providers)),
-        saml_providers: count(Conf.get!(:saml_identity_providers)),
-        unprivileged_device_management: Conf.get!(:allow_unprivileged_device_management),
-        unprivileged_device_configuration: Conf.get!(:allow_unprivileged_device_configuration),
-        local_authentication: Conf.get!(:local_auth_enabled),
-        disable_vpn_on_oidc_error: Conf.get!(:disable_vpn_on_oidc_error),
+        openid_providers: count(cache().get!(:parsed_openid_connect_providers)),
+        saml_providers: count(cache().get!(:saml_identity_providers)),
+        unprivileged_device_management: cache().get!(:allow_unprivileged_device_management),
+        unprivileged_device_configuration: cache().get!(:allow_unprivileged_device_configuration),
+        local_authentication: cache().get!(:local_auth_enabled),
+        disable_vpn_on_oidc_error: cache().get!(:disable_vpn_on_oidc_error),
         outbound_email: outbound_email?(),
-        external_database: external_database?(Map.new(conf(FzHttp.Repo))),
-        logo_type: Conf.logo_type(Conf.get!(:logo))
+        external_database:
+          external_database?(Map.new(Wrapped.Application.app().fetch_env!(:fz_http, FzHttp.Repo))),
+        logo_type: FzHttp.Configurations.logo_type(cache().get!(:logo))
       ]
   end
 
@@ -109,7 +110,7 @@ defmodule FzHttp.Telemetry do
 
   defp common_fields do
     [
-      distinct_id: conf(:telemetry_id),
+      distinct_id: Actual.Application.app().fetch_env!(:fz_http, :telemetry_id),
       fqdn: fqdn(),
       version: version(),
       kernel_version: "#{os_type()} #{os_version()}"
@@ -117,18 +118,18 @@ defmodule FzHttp.Telemetry do
   end
 
   defp telemetry_module do
-    Application.fetch_env!(:fz_http, :telemetry_module)
+    Actual.Application.app().fetch_env!(:fz_http, :telemetry_module)
   end
 
   defp fqdn do
     :fz_http
-    |> Application.fetch_env!(FzHttpWeb.Endpoint)
+    |> Actual.Application.app().fetch_env!(FzHttpWeb.Endpoint)
     |> Keyword.get(:url)
     |> Keyword.get(:host)
   end
 
   defp version do
-    Application.spec(:fz_http, :vsn) |> to_string()
+    Actual.Application.app().spec(:fz_http, :vsn) |> to_string()
   end
 
   defp external_database?(repo_conf) when is_map_key(repo_conf, :hostname) do
@@ -146,7 +147,7 @@ defmodule FzHttp.Telemetry do
   end
 
   defp outbound_email? do
-    from_email = conf(FzHttpWeb.Mailer)[:from_email]
+    from_email = Wrapped.Application.app().fetch_env!(:fz_http, FzHttpWeb.Mailer)[:from_email]
 
     !is_nil(from_email)
   end
@@ -169,9 +170,5 @@ defmodule FzHttp.Telemetry do
       _ ->
         "0.0.0"
     end
-  end
-
-  defp conf(key) do
-    Application.fetch_env!(:fz_http, key)
   end
 end

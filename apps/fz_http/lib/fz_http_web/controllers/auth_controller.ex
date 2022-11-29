@@ -8,10 +8,12 @@ defmodule FzHttpWeb.AuthController do
   @local_auth_providers [:identity, :magic_link]
 
   alias FzHttp.Users
-  alias FzHttpWeb.Authentication
+  alias FzHttpWeb.Auth.HTML.Authentication
   alias FzHttpWeb.OAuth.PKCE
   alias FzHttpWeb.OIDC.State
   alias FzHttpWeb.UserFromAuth
+
+  import Wrapped.Cache
 
   import FzHttpWeb.OIDC.Helpers
 
@@ -21,8 +23,6 @@ defmodule FzHttpWeb.AuthController do
   plug Ueberauth
 
   def request(conn, _params) do
-    # XXX: Helpers.callback_url/1 generates the wrong URL behind nginx.
-    # This is a bug in Ueberauth. auth_path is used instead.
     path = ~p"/auth/identity/callback"
 
     conn
@@ -169,7 +169,7 @@ defmodule FzHttpWeb.AuthController do
 
   defp maybe_sign_in(conn, user, %{provider: provider} = auth)
        when provider in @local_auth_providers do
-    if Conf.get!(:local_auth_enabled) do
+    if cache().get!(:local_auth_enabled) do
       do_sign_in(conn, user, auth)
     else
       conn

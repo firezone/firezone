@@ -5,7 +5,8 @@ defmodule FzHttp.Configurations.Cache do
 
   use GenServer, restart: :transient
 
-  alias FzHttp.Configurations, as: Conf
+  alias FzHttp.Configurations
+  import Actual.Application
 
   @name :conf
 
@@ -34,7 +35,7 @@ defmodule FzHttp.Configurations.Cache do
   @impl true
   def init(_) do
     configurations =
-      Conf.get_configuration!()
+      Configurations.get_configuration!()
       |> Map.from_struct()
       |> Map.delete(:id)
 
@@ -42,7 +43,7 @@ defmodule FzHttp.Configurations.Cache do
       # XXX: Remove fallbacks before 1.0?
       v =
         with nil <- v, true <- k not in @no_fallback do
-          Application.fetch_env!(:fz_http, k)
+          app().fetch_env!(:fz_http, k)
         else
           _ -> v
         end

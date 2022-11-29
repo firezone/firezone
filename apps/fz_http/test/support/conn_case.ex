@@ -16,9 +16,10 @@ defmodule FzHttpWeb.ConnCase do
   """
 
   use ExUnit.CaseTemplate
+  use FzHttp.CaseTemplate
 
   alias Ecto.Adapters.SQL.Sandbox
-
+  alias FzHttpWeb.Auth.HTML.Authentication
   alias FzHttp.UsersFixtures
 
   using do
@@ -36,7 +37,7 @@ defmodule FzHttpWeb.ConnCase do
 
       def current_user(test_conn) do
         get_session(test_conn)
-        |> FzHttpWeb.Authentication.get_current_user()
+        |> Authentication.get_current_user()
       end
     end
   end
@@ -59,14 +60,12 @@ defmodule FzHttpWeb.ConnCase do
     conn =
       new_conn()
       |> Plug.Test.init_test_session(%{})
-      |> FzHttpWeb.Authentication.sign_in(user, %{provider: :identity})
+      |> Authentication.sign_in(user, %{provider: :identity})
       |> maybe_put_session(tags)
 
     {user,
      conn
-     |> Plug.Test.init_test_session(%{
-       "guardian_default_token" => conn.private.guardian_default_token
-     })}
+     |> Plug.Conn.put_session("guardian_default_token", conn.private.guardian_default_token)}
   end
 
   defp maybe_put_session(conn, %{session: session}) do

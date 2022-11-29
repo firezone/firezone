@@ -32,7 +32,12 @@ config :posthog,
   api_key: "phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK"
 
 # Guardian configuration
-config :fz_http, FzHttpWeb.Authentication,
+config :fz_http, FzHttpWeb.Auth.HTML.Authentication,
+  issuer: "fz_http",
+  # Generate with mix guardian.gen.secret
+  secret_key: "GApJ4c4a/KJLrBePgTDUk0n67AbjCvI9qdypKZEaJFXl6s9H3uRcIhTt49Fij5UO"
+
+config :fz_http, FzHttpWeb.Auth.JSON.Authentication,
   issuer: "fz_http",
   # Generate with mix guardian.gen.secret
   secret_key: "GApJ4c4a/KJLrBePgTDUk0n67AbjCvI9qdypKZEaJFXl6s9H3uRcIhTt49Fij5UO"
@@ -70,7 +75,9 @@ config :fz_http,
   saml_entity_id: "urn:firezone.dev:firezone-app",
   saml_certfile_path: "apps/fz_http/priv/cert/saml_selfsigned.pem",
   saml_keyfile_path: "apps/fz_http/priv/cert/saml_selfsigned_key.pem",
-  openid_connect: OpenIDConnect
+  openid_connect: OpenIDConnect,
+  application_module: Application,
+  cache_module: FzHttp.Configurations.Cache
 
 config :fz_wall,
   cli: FzWall.CLI.Sandbox,
