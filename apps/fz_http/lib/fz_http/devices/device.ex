@@ -123,6 +123,7 @@ defmodule FzHttp.Devices.Device do
 
   defp shared_changeset(changeset) do
     changeset
+    |> assoc_constraint(:user)
     |> validate_required([
       :user_id,
       :name,

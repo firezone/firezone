@@ -6,7 +6,6 @@ defmodule FzHttp.Configurations.Configuration do
   use Ecto.Schema
   import Ecto.Changeset
   alias FzHttp.Configurations.Logo
-
   @primary_key {:id, :binary_id, autogenerate: true}
 
   schema "configurations" do

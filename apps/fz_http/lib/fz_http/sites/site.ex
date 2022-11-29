@@ -15,7 +15,6 @@ defmodule FzHttp.Sites.Site do
     ]
 
   @primary_key {:id, :binary_id, autogenerate: true}
-  @foreign_key_type :binary_id
 
   # Postgres max int size is 4 bytes
   @max_pg_integer 2_147_483_647
