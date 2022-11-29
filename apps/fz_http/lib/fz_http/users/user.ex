@@ -37,9 +37,9 @@ defmodule FzHttp.Users.User do
     field :password_confirmation, :string, virtual: true
     field :current_password, :string, virtual: true
 
-    has_many :devices, Device, on_delete: :delete_all
-    has_many :oidc_connections, Connection, on_delete: :delete_all
-    has_many :api_tokens, ApiToken, on_delete: :delete_all
+    has_many :devices, Device
+    has_many :oidc_connections, Connection
+    has_many :api_tokens, ApiToken
 
     timestamps(type: :utc_datetime_usec)
   end
