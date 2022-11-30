@@ -20,8 +20,7 @@ defmodule FzHttpWeb.API.ConfigurationView do
         configuration.allow_unprivileged_device_configuration,
       openid_connect_providers: configuration.openid_connect_providers,
       # Add :saml_identity_providers when merged
-      disable_vpn_on_oidc_error: configuration.disable_vpn_on_oidc_error,
-      auto_create_oidc_users: configuration.auto_create_oidc_users
+      disable_vpn_on_oidc_error: configuration.disable_vpn_on_oidc_error
     }
   end
 end

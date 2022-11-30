@@ -180,7 +180,7 @@ defmodule FzHttpWeb.Router do
     end
   end
 
-  scope "/api/v1", FzHttpWeb.API do
+  scope "/v1", FzHttpWeb.API do
     pipe_through :api
 
     resources "/configuration", ConfigurationController, singleton: true, only: [:show, :update]
