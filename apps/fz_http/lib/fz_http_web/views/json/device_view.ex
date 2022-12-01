@@ -1,25 +1,50 @@
 defmodule FzHttpWeb.JSON.DeviceView do
   use FzHttpWeb, :view
 
-  def render("index.json", %{configurations: configurations}) do
-    %{data: render_many(configurations, __MODULE__, "configuration.json")}
+  defimpl Jason.Encoder, for: Postgrex.INET do
+    def encode(%Postgrex.INET{} = struct, opts) do
+      Jason.Encode.string("#{struct}", opts)
+    end
   end
 
-  def render("show.json", %{configuration: configuration}) do
-    %{data: render_one(configuration, __MODULE__, "configuration.json")}
+  @keys_to_render ~w[
+    id
+    rx_bytes
+    tx_bytes
+    uuid
+    name
+    description
+    public_key
+    preshared_key
+    use_site_allowed_ips
+    use_site_dns
+    use_site_endpoint
+    use_site_mtu
+    use_site_persistent_keepalive
+    endpoint
+    mtu
+    persistent_keepalive
+    allowed_ips
+    dns
+    remote_ip
+    ipv4
+    ipv6
+    latest_handshake
+    key_regenerated_at
+    updated_at
+    created_at
+    user_id
+  ]a
+
+  def render("index.json", %{devices: devices}) do
+    %{data: render_many(devices, __MODULE__, "device.json")}
   end
 
-  def render("configuration.json", %{configuration: configuration}) do
-    %{
-      id: configuration.id,
-      logo: configuration.logo,
-      local_auth_enabled: configuration.local_auth_enabled,
-      allow_unprivileged_device_management: configuration.allow_unprivileged_device_management,
-      allow_unprivileged_device_configuration:
-        configuration.allow_unprivileged_device_configuration,
-      openid_connect_providers: configuration.openid_connect_providers,
-      # Add :saml_identity_providers when merged
-      disable_vpn_on_oidc_error: configuration.disable_vpn_on_oidc_error
-    }
+  def render("show.json", %{device: device}) do
+    %{data: render_one(device, __MODULE__, "device.json")}
+  end
+
+  def render("device.json", %{device: device}) do
+    Map.take(device, @keys_to_render)
   end
 end

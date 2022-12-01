@@ -16,14 +16,10 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
     "password" => "test1234"
   }
 
-  setup %{admin_conn: conn} do
-    {:ok, conn: put_req_header(conn, "accept", "application/json")}
-  end
-
   describe "index" do
-    test "lists all users", %{conn: conn} do
+    test "lists all users", %{conn: conn, unprivileged_user: user} do
       conn = get(conn, ~p"/v1/users")
-      assert json_response(conn, 200)["data"]
+      assert json_response(conn, 200)["data"] == [user]
     end
   end
 

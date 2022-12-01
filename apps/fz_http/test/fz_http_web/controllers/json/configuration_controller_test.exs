@@ -1,10 +1,6 @@
 defmodule FzHttpWeb.JSON.ConfigurationControllerTest do
   use FzHttpWeb.APICase
 
-  setup %{admin_conn: conn} do
-    {:ok, conn: put_req_header(conn, "accept", "application/json")}
-  end
-
   describe "show configuration" do
     test "renders configuration", %{conn: conn} do
       conn = get(conn, ~p"/v1/configuration")
