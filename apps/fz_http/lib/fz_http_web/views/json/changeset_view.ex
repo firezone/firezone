@@ -1,4 +1,4 @@
-defmodule FzHttpWeb.ChangesetView do
+defmodule FzHttpWeb.JSON.ChangesetView do
   use FzHttpWeb, :view
 
   @doc """

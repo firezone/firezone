@@ -75,6 +75,12 @@ defmodule FzHttp.Rules do
     result
   end
 
+  def update_rule(%Rule{} = rule, attrs \\ %{}) do
+    rule
+    |> Rule.changeset(attrs)
+    |> Repo.update()
+  end
+
   def delete_rule(%Rule{} = rule) do
     Telemetry.delete_rule()
     Repo.delete(rule)

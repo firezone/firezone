@@ -18,7 +18,7 @@ defmodule FzHttpWeb.ConnCase do
   use ExUnit.CaseTemplate
 
   alias Ecto.Adapters.SQL.Sandbox
-  alias FzHttpWeb.Auth.WWW.Authentication
+  alias FzHttpWeb.Auth.HTML.Authentication
   alias FzHttp.UsersFixtures
 
   using do

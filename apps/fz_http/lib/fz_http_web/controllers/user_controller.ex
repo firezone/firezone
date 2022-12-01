@@ -4,7 +4,7 @@ defmodule FzHttpWeb.UserController do
   """
 
   alias FzHttp.Users
-  alias FzHttpWeb.Auth.WWW.Authentication
+  alias FzHttpWeb.Auth.HTML.Authentication
   use FzHttpWeb, :controller
 
   require Logger

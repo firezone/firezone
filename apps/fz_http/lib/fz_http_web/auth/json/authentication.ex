@@ -1,4 +1,4 @@
-defmodule FzHttpWeb.Auth.API.Authentication do
+defmodule FzHttpWeb.Auth.JSON.Authentication do
   @moduledoc """
   API Authentication implementation module for Guardian.
   """

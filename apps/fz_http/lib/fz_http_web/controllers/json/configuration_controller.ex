@@ -1,10 +1,10 @@
-defmodule FzHttpWeb.API.ConfigurationController do
+defmodule FzHttpWeb.JSON.ConfigurationController do
   use FzHttpWeb, :controller
 
   alias FzHttp.Configurations, as: Conf
   alias FzHttp.Configurations.Configuration
 
-  action_fallback FzHttpWeb.FallbackController
+  action_fallback FzHttpWeb.JSON.FallbackController
 
   def show(conn, _params) do
     configuration = Conf.get_configuration!()

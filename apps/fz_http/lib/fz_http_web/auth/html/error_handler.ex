@@ -1,10 +1,10 @@
-defmodule FzHttpWeb.Auth.WWW.ErrorHandler do
+defmodule FzHttpWeb.Auth.HTML.ErrorHandler do
   @moduledoc """
-  WWW Error Handler module implementation for Guardian.
+  HTML Error Handler module implementation for Guardian.
   """
 
   use FzHttpWeb, :controller
-  alias FzHttpWeb.Auth.WWW.Authentication
+  alias FzHttpWeb.Auth.HTML.Authentication
   import FzHttpWeb.ControllerHelpers, only: [root_path_for_role: 1]
   require Logger
 
@@ -26,7 +26,7 @@ defmodule FzHttpWeb.Auth.WWW.ErrorHandler do
 
   @impl Guardian.Plug.ErrorHandler
   def auth_error(conn, {type, reason}, _opts) do
-    Logger.warn("WWW.ErrorHandler.auth_error. Type: #{type}. Reason: #{reason}.")
+    Logger.warn("HTML.ErrorHandler.auth_error. Type: #{type}. Reason: #{reason}.")
 
     conn
     |> put_resp_content_type("text/plain")

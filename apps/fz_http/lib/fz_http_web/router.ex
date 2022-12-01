@@ -41,8 +41,8 @@ defmodule FzHttpWeb.Router do
     plug Guardian.Plug.EnsureNotAuthenticated
   end
 
-  pipeline :www_auth do
-    plug FzHttpWeb.Auth.WWW.Pipeline
+  pipeline :html_auth do
+    plug FzHttpWeb.Auth.HTML.Pipeline
   end
 
   pipeline :samly do
@@ -54,7 +54,7 @@ defmodule FzHttpWeb.Router do
   scope "/auth", FzHttpWeb do
     pipe_through [
       :browser,
-      :www_auth,
+      :html_auth,
       :require_unauthenticated
     ]
 
@@ -79,7 +79,7 @@ defmodule FzHttpWeb.Router do
   scope "/", FzHttpWeb do
     pipe_through [
       :browser,
-      :www_auth,
+      :html_auth,
       :require_unauthenticated
     ]
 
@@ -89,7 +89,7 @@ defmodule FzHttpWeb.Router do
   scope "/mfa", FzHttpWeb do
     pipe_through([
       :browser,
-      :www_auth
+      :html_auth
     ])
 
     live_session(
@@ -107,7 +107,7 @@ defmodule FzHttpWeb.Router do
   scope "/", FzHttpWeb do
     pipe_through [
       :browser,
-      :www_auth,
+      :html_auth,
       :require_authenticated
     ]
 
@@ -118,7 +118,7 @@ defmodule FzHttpWeb.Router do
   scope "/", FzHttpWeb do
     pipe_through [
       :browser,
-      :www_auth,
+      :html_auth,
       :require_authenticated,
       :require_unprivileged_user
     ]
@@ -143,7 +143,7 @@ defmodule FzHttpWeb.Router do
   scope "/", FzHttpWeb do
     pipe_through [
       :browser,
-      :www_auth,
+      :html_auth,
       :require_authenticated,
       :require_admin_user
     ]
@@ -180,11 +180,13 @@ defmodule FzHttpWeb.Router do
     end
   end
 
-  scope "/v1", FzHttpWeb.API do
+  scope "/v1", FzHttpWeb.JSON do
     pipe_through :api
 
     resources "/configuration", ConfigurationController, singleton: true, only: [:show, :update]
     resources "/users", UserController, except: [:new, :edit]
+    resources "/devices", DeviceController, except: [:new, :edit]
+    resources "/rules", RuleController, except: [:new, :edit]
   end
 
   if Mix.env() == :dev do

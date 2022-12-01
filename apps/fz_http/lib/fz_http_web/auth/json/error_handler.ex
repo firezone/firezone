@@ -1,4 +1,4 @@
-defmodule FzHttpWeb.Auth.API.ErrorHandler do
+defmodule FzHttpWeb.Auth.JSON.ErrorHandler do
   @moduledoc """
   API Error Handler module implementation for Guardian.
   """
@@ -9,7 +9,7 @@ defmodule FzHttpWeb.Auth.API.ErrorHandler do
 
   @impl Guardian.Plug.ErrorHandler
   def auth_error(conn, {type, reason}, _opts) do
-    Logger.warn("API.ErrorHandler.auth_error. Type: #{type}. Reason: #{reason}.")
+    Logger.warn("JSON.ErrorHandler.auth_error. Type: #{type}. Reason: #{reason}.")
 
     conn
     |> put_resp_content_type("application/json")

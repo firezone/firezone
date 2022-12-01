@@ -1,12 +1,12 @@
-defmodule FzHttpWeb.Auth.API.Pipeline do
+defmodule FzHttpWeb.Auth.JSON.Pipeline do
   @moduledoc """
   API Plug implementation module for Guardian.
   """
 
   use Guardian.Plug.Pipeline,
     otp_app: :fz_http,
-    error_handler: FzHttpWeb.Auth.API.ErrorHandler,
-    module: FzHttpWeb.Auth.API.Authentication
+    error_handler: FzHttpWeb.Auth.JSON.ErrorHandler,
+    module: FzHttpWeb.Auth.JSON.Authentication
 
   # 90 days
   @max_age 60 * 60 * 24 * 90

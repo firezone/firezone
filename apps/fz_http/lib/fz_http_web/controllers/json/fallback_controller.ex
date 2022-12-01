@@ -1,4 +1,4 @@
-defmodule FzHttpWeb.FallbackController do
+defmodule FzHttpWeb.JSON.FallbackController do
   @moduledoc """
   Translates controller action results into valid `Plug.Conn` responses.
 
@@ -11,13 +11,13 @@ defmodule FzHttpWeb.FallbackController do
     conn
     |> put_status(:not_found)
     |> put_view(FzHttpWeb.ErrorView)
-    |> render(:"404")
+    |> render("404.json")
   end
 
   def call(conn, {:error, %Ecto.Changeset{valid?: false} = changeset}) do
     conn
     |> put_status(422)
-    |> put_view(FzHttpWeb.ChangesetView)
+    |> put_view(FzHttpWeb.JSON.ChangesetView)
     |> render("error.json", changeset: changeset)
   end
 end

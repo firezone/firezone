@@ -1,13 +1,12 @@
-defmodule FzHttpWeb.API.ConfigurationView do
+defmodule FzHttpWeb.JSON.ConfigurationView do
   use FzHttpWeb, :view
-  alias FzHttpWeb.API.ConfigurationView
 
   def render("index.json", %{configurations: configurations}) do
-    %{data: render_many(configurations, ConfigurationView, "configuration.json")}
+    %{data: render_many(configurations, __MODULE__, "configuration.json")}
   end
 
   def render("show.json", %{configuration: configuration}) do
-    %{data: render_one(configuration, ConfigurationView, "configuration.json")}
+    %{data: render_one(configuration, __MODULE__, "configuration.json")}
   end
 
   def render("configuration.json", %{configuration: configuration}) do

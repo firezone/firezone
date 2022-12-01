@@ -8,7 +8,7 @@ defmodule FzHttpWeb.Plug.Authorization do
   use FzHttpWeb, :controller
 
   import FzHttpWeb.ControllerHelpers, only: [root_path_for_role: 1]
-  alias FzHttpWeb.Auth.WWW.Authentication
+  alias FzHttpWeb.Auth.HTML.Authentication
 
   @not_authorized "Not authorized."
 

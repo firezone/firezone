@@ -1,4 +1,4 @@
-defmodule FzHttpWeb.API.ConfigurationControllerTest do
+defmodule FzHttpWeb.JSON.ConfigurationControllerTest do
   use FzHttpWeb.ConnCase
 
   setup %{admin_conn: conn} do

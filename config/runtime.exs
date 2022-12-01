@@ -219,11 +219,11 @@ if config_env() == :prod do
 
   # Guardian configuration
   # XXX: Use different secret keys here when config / secret generation is refactored
-  config :fz_http, FzHttpWeb.Auth.WWW.Authentication,
+  config :fz_http, FzHttpWeb.Auth.HTML.Authentication,
     issuer: "fz_http",
     secret_key: guardian_secret_key
 
-  config :fz_http, FzHttpWeb.Auth.API.Authentication,
+  config :fz_http, FzHttpWeb.Auth.JSON.Authentication,
     issuer: "fz_http",
     secret_key: guardian_secret_key
 

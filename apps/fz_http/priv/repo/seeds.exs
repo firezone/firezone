@@ -10,7 +10,11 @@
 # We recommend using the bang functions (`insert!`, `update!`
 # and so on) as they will fail if something goes wrong.
 
-alias FzHttp.{Devices, ConnectivityChecks, Users}
+alias FzHttp.{
+  ConnectivityChecks,
+  Devices,
+  Users
+}
 
 {:ok, user} =
   Users.create_admin_user(%{

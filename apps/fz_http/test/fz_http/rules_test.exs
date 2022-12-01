@@ -106,6 +106,40 @@ defmodule FzHttp.RulesTest do
     end
   end
 
+  describe "update_rule/2" do
+    setup [:create_rule]
+
+    @tag params: %{
+           "destination" => "123.123.123.123",
+           "action" => "accept",
+           "port_type" => "udp",
+           "port_range" => [1, 65_000]
+         }
+    test "updates rule with string params", %{rule: rule, params: params} do
+      assert {:ok, rule} = Rules.update_rule(rule, params)
+      assert rule.destination == %Postgrex.INET{address: {123, 123, 123, 123}, netmask: 32}
+      assert rule.action == :accept
+      assert rule.port_type == :udp
+      assert rule.port_range == "1 - 65000"
+    end
+
+    @tag attrs: %{
+           destination: "123.123.123.123",
+           action: "accept",
+           port_type: "udp",
+           port_range: [1, 65_000]
+         }
+    test "updates rule with atom attrs", %{rule: rule, attrs: attrs} do
+      assert {:ok, rule} = Rules.update_rule(rule, attrs)
+      assert rule.destination == %Postgrex.INET{address: {123, 123, 123, 123}, netmask: 32}
+      assert rule.action == :accept
+      assert rule.port_type == :udp
+      assert rule.port_range == "1 - 65000"
+    end
+
+    # XXX: Do we want to allow changing a rule's user_id?
+  end
+
   describe "delete_rule/1" do
     setup [:create_rule]
 

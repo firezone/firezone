@@ -32,12 +32,12 @@ config :posthog,
   api_key: "phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK"
 
 # Guardian configuration
-config :fz_http, FzHttpWeb.Auth.WWW.Authentication,
+config :fz_http, FzHttpWeb.Auth.HTML.Authentication,
   issuer: "fz_http",
   # Generate with mix guardian.gen.secret
   secret_key: "GApJ4c4a/KJLrBePgTDUk0n67AbjCvI9qdypKZEaJFXl6s9H3uRcIhTt49Fij5UO"
 
-config :fz_http, FzHttpWeb.Auth.API.Authentication,
+config :fz_http, FzHttpWeb.Auth.JSON.Authentication,
   issuer: "fz_http",
   # Generate with mix guardian.gen.secret
   secret_key: "GApJ4c4a/KJLrBePgTDUk0n67AbjCvI9qdypKZEaJFXl6s9H3uRcIhTt49Fij5UO"

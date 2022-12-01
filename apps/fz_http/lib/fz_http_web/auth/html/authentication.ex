@@ -1,6 +1,6 @@
-defmodule FzHttpWeb.Auth.WWW.Authentication do
+defmodule FzHttpWeb.Auth.HTML.Authentication do
   @moduledoc """
-  WWW Authentication implementation module for Guardian.
+  HTML Authentication implementation module for Guardian.
   """
   use Guardian, otp_app: :fz_http
   use FzHttpWeb, :controller

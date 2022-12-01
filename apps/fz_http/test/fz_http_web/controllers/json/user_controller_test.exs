@@ -1,4 +1,4 @@
-defmodule FzHttpWeb.API.UserControllerTest do
+defmodule FzHttpWeb.JSON.UserControllerTest do
   use FzHttpWeb.ConnCase
 
   alias FzHttp.Users.User

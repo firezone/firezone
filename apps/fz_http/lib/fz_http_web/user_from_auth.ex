@@ -5,7 +5,7 @@ defmodule FzHttpWeb.UserFromAuth do
 
   alias FzHttp.Configurations, as: Conf
   alias FzHttp.Users
-  alias FzHttpWeb.Auth.WWW.Authentication
+  alias FzHttpWeb.Auth.HTML.Authentication
 
   def find_or_create(
         %Ueberauth.Auth{
