@@ -17,11 +17,15 @@ To upgrade Firezone, follow these steps:
 <Tabs>
 <TabItem label="Docker" value="docker" default>
 
+1. Change to the Firezone installation directory:
+```
+cd $HOME/.firezone
+```
 1. Update docker compose images:
 ```
 docker compose pull
 ```
-2. Re-up the services (**warning: this will restart updated services**):
+1. Re-up the services (**warning: this will restart updated services**):
 ```
 docker compose up -d
 ```
