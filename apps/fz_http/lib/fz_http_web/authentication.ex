@@ -81,7 +81,7 @@ defmodule FzHttpWeb.Authentication do
              openid_connect().end_session_uri(provider, %{
                client_id: client_id,
                id_token_hint: token,
-               post_logout_redirect_uri: ~p"/"
+               post_logout_redirect_uri: url(~p"/")
              })
            ) do
       conn
