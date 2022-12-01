@@ -1,5 +1,5 @@
 defmodule FzHttpWeb.JSON.ConfigurationControllerTest do
-  use FzHttpWeb.ConnCase
+  use FzHttpWeb.APICase
 
   setup %{admin_conn: conn} do
     {:ok, conn: put_req_header(conn, "accept", "application/json")}
@@ -26,7 +26,7 @@ defmodule FzHttpWeb.JSON.ConfigurationControllerTest do
     test "renders errors when data is invalid", %{conn: conn} do
       conn = put(conn, ~p"/v1/configuration", configuration: %{"local_auth_enabled" => 123})
 
-      assert json_response(conn, 422)["errors"] != %{}
+      assert json_response(conn, 422)["errors"] == %{"local_auth_enabled" => ["is invalid"]}
     end
   end
 end
