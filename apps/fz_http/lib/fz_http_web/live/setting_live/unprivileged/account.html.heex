@@ -112,7 +112,7 @@
 
   <div class="block">
     <%= if length(@methods) > 0 do %>
-      <%= render(FzHttpWeb.SharedView, "mfa_methods_table", methods: @methods) %>
+      <%= render(FzHttpWeb.SharedView, "mfa_methods_table.html", methods: @methods) %>
     <% else %>
       <div>No MFA methods added.</div>
     <% end %>
