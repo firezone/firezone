@@ -24,6 +24,12 @@ defmodule FzHttp.Repo.Migrations.CreateGatewayFirewallPolicies do
       )
     )
 
+    create(
+      constraint("gateway_firewall_policies", :port_range_has_optional_protocol,
+        check: "port_range IS NOT NULL AND protocol IS NOT NULL OR protocol IS NULL"
+      )
+    )
+
     execute("""
     CREATE OR REPLACE FUNCTION notify_gateway_firewall_policy_changes()
     RETURNS trigger AS $$
