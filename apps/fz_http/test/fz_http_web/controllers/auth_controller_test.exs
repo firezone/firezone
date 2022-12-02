@@ -15,6 +15,12 @@ defmodule FzHttpWeb.AuthControllerTest do
       for expected <- [
             "Sign in with email",
             "Sign in with OIDC Google",
+            "Sign in with OIDC Okta",
+            "Sign in with OIDC Auth0",
+            "Sign in with OIDC Azure",
+            "Sign in with OIDC Onelogin",
+            "Sign in with OIDC Keycloak",
+            "Sign in with OIDC Vault",
             "Sign in with SAML"
           ] do
         assert html_response(test_conn, 200) =~ expected
