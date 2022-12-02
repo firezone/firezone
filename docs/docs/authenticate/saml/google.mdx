@@ -23,11 +23,11 @@ the Application > Web and mobile apps tab. Use the following config values durin
 | App icon        | [save link as](https://user-images.githubusercontent.com/52545545/202567638-513dba14-ea8c-4da8-8f75-341310f1e456.png)                    |
 | ACS URL         | This is your Firezone `EXTERNAL_URL/auth/saml/sp/consume/:config_id` (e.g., `https://firezone.company.com/auth/saml/sp/consume/google`). |
 | Entity ID       | This should be the same as your Firezone `SAML_ENTITY_ID`, defaults to `urn:firezone.dev:firezone-app`.                                  |
-| Signed response | Checked.                                                                                                                                 |
+| Signed response | Unchecked.                                                                                                                               |
 | Name ID format  | Unspecified                                                                                                                              |
 | Name ID         | Basic Information > Primary email                                                                                                        |
 
-![Google SAML](https://user-images.githubusercontent.com/52545545/202566493-43cfc9c6-3d7f-4636-9cd9-a1a94187491c.png)
+![Google SAML](https://user-images.githubusercontent.com/52545545/205353768-0c8696b2-5fb2-42a7-98fa-9d68b23dfb05.png)
 
 Once complete, save the changes and download the SAML metadata document. You'll need
 to copy-paste the contents of this document into the Firezone portal in the next step.
