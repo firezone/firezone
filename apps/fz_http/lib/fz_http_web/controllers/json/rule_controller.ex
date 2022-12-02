@@ -20,6 +20,7 @@ defmodule FzHttpWeb.JSON.RuleController do
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/v1/rules/#{rule}")
+      |> render("show.json", rule: rule)
     end
   end
 

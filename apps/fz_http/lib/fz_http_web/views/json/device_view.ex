@@ -1,12 +1,6 @@
 defmodule FzHttpWeb.JSON.DeviceView do
   use FzHttpWeb, :view
 
-  defimpl Jason.Encoder, for: Postgrex.INET do
-    def encode(%Postgrex.INET{} = struct, opts) do
-      Jason.Encode.string("#{struct}", opts)
-    end
-  end
-
   @keys_to_render ~w[
     id
     rx_bytes
@@ -32,7 +26,7 @@ defmodule FzHttpWeb.JSON.DeviceView do
     latest_handshake
     key_regenerated_at
     updated_at
-    created_at
+    inserted_at
     user_id
   ]a
 

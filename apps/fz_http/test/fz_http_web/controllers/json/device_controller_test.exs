@@ -31,8 +31,8 @@ defmodule FzHttpWeb.JSON.DeviceControllerTest do
     }
 
     @tag params: @params
-    test "creates device", %{conn: conn, unprivileged_user: user, params: params} do
-      conn = post(conn, ~p"/v1/devices", device: Map.merge(params, %{"user_id" => user.id}))
+    test "creates device", %{conn: conn, unprivileged_user: %{id: id}, params: params} do
+      conn = post(conn, ~p"/v1/devices", device: Map.merge(params, %{"user_id" => id}))
       assert @params = json_response(conn, 201)["data"]
     end
   end
@@ -43,12 +43,11 @@ defmodule FzHttpWeb.JSON.DeviceControllerTest do
     @tag params: %{
            "name" => "json-update-device"
          }
-    test "updates device", %{conn: conn, params: params, device: device} do
-      conn = put(conn, ~p"/v1/devices/#{device}", device: params)
-      id = device.id
+    test "updates device", %{conn: conn, params: params, device: %{id: id}} do
+      conn = put(conn, ~p"/v1/devices/#{id}", device: params)
       assert %{"id" => ^id} = json_response(conn, 200)["data"]
 
-      conn = get(conn, ~p"/v1/devices/#{device}")
+      conn = get(conn, ~p"/v1/devices/#{id}")
 
       assert %{
                "name" => "json-update-device"
@@ -61,7 +60,7 @@ defmodule FzHttpWeb.JSON.DeviceControllerTest do
 
     test "lists devices", %{conn: conn, devices: devices} do
       conn = get(conn, ~p"/v1/devices")
-      assert length(json_response(conn, 200)["data"]) == 5
+      assert length(json_response(conn, 200)["data"]) == length(devices)
     end
   end
 
