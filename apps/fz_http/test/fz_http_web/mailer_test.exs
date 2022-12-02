@@ -1,7 +1,7 @@
-defmodule FzHttp.MailerTest do
+defmodule FzHttpWeb.MailerTest do
   use ExUnit.Case, async: true
 
-  alias FzHttp.Mailer
+  alias FzHttpWeb.Mailer
   import Swoosh.TestAssertions
 
   test "default_email contains from_email" do
@@ -23,7 +23,7 @@ defmodule FzHttp.MailerTest do
   describe "with templates" do
     defmodule SampleEmail do
       use Phoenix.Swoosh,
-        template_root: "test/fz_http/mailer_test",
+        template_root: "test/fz_http_web/mailer_test",
         template_path: "sample_email"
 
       def test_heex(number) do

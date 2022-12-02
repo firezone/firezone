@@ -141,7 +141,7 @@ defmodule FzHttp.TelemetryTest do
 
   describe "email" do
     setup context do
-      restore_env(FzHttp.Mailer, [from_email: context[:from_email]], &on_exit/1)
+      restore_env(FzHttpWeb.Mailer, [from_email: context[:from_email]], &on_exit/1)
     end
 
     @tag from_email: "test@firezone.dev"
