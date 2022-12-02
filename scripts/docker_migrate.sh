@@ -1,32 +1,38 @@
 #!/bin/bash
 set -e
 
-curlCheck () {
-  if ! type curl > /dev/null; then
-    echo "curl not found. Please install curl to use this script."
-    exit 1
-  fi
-}
-
 dockerCheck () {
-  if ! command -v docker > /dev/null; then
+  if ! type docker > /dev/null; then
     echo "docker not found. Please install docker and try again."
     exit 1
   fi
 
-  if command -v docker-compose &> /dev/null; then
-    dc='docker-compose'
+  if command docker compose &> /dev/null; then
+    dc="docker compose"
   else
-    dc='docker compose'
+    if command -v docker-compose &> /dev/null; then
+      dc="docker-compose"
+    else
+      echo "Error: Docker Compose not found. Please install Docker Compose version 2 or higher."
+      exit 1
+    fi
   fi
 
   set +e
   $dc version | grep -q "v2"
   if [ $? -ne 0 ]; then
-    echo "Error: Automatic migration is only supported with Docker Compose version 2 or higher."
+    echo "Error: Automatic installation is only supported with Docker Compose version 2 or higher."
+    echo "Please upgrade Docker Compose or use the manual installation method: https://docs.firezone.dev/deploy/docker"
     exit 1
   fi
   set -e
+}
+
+curlCheck () {
+  if ! type curl > /dev/null; then
+    echo "curl not found. Please install curl to use this script."
+    exit 1
+  fi
 }
 
 prompt () {
@@ -49,10 +55,14 @@ promptACME() {
   read -p "Would you like to enable automatic SSL cert provisioning? Requires a valid DNS record and port 80 to be reachable. (Y/n): " acme
   case $acme in
     n|N)
-      caddyOpts="--internal-certs"
+      tlsOpts="tls internal {
+                on_demand
+              }"
       ;;
     *)
-      caddyOpts=""
+      tlsOpts="tls {
+                on_demand
+              }"
       ;;
   esac
 }
@@ -86,7 +96,7 @@ migrate () {
   export FZ_INSTALL_DIR=$installDir
   promptInstallDir
 
-  caddyOpts=""
+  tlsOpts=""
   promptACME
 
   env_files=/opt/firezone/service/phoenix/env
@@ -159,7 +169,7 @@ migrate () {
   condIns $env_files "CONNECTIVITY_CHECKS_INTERVAL"
 
   # Add caddy opts
-  echo "CADDY_OPTS=$caddyOpts" >> $installDir/.env
+  echo "TLS_OPTS=$tlsOpts" >> $installDir/.env
 
   # optional vars
   if test -f $env_files/DATABASE_PASSWORD; then
