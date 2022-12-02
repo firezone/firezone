@@ -12,7 +12,8 @@ defmodule FzHttp.Repo.Migrations.CreateGatewayFirewallPolicies do
       add(:gateway_id, references(:gateways, on_delete: :delete_all, type: :uuid), null: false)
       add(:user_id, references(:users, column: :uuid, type: :uuid))
       add(:destination, :inet, null: false)
-      add(:port_range, :int4range)
+      add(:port_range_start, :integer)
+      add(:port_range_end, :integer)
       add(:protocol, :protocol_enum)
 
       timestamps(type: :utc_datetime_usec)
@@ -20,13 +21,16 @@ defmodule FzHttp.Repo.Migrations.CreateGatewayFirewallPolicies do
 
     create(
       constraint("gateway_firewall_policies", :port_range_is_within_valid_values,
-        check: "port_range <@ int4range(1, 65535)"
+        check: "int4range(port_range_start, port_range_end) <@ int4range(1, 65535)"
       )
     )
 
     create(
       constraint("gateway_firewall_policies", :port_range_has_optional_protocol,
-        check: "port_range IS NOT NULL AND protocol IS NOT NULL OR protocol IS NULL"
+        check: """
+        port_range_start IS NOT NULL AND port_range_end IS NOT NULL AND protocol is NOT NULL
+        OR protocol IS NULL
+        """
       )
     )
 
@@ -57,7 +61,7 @@ defmodule FzHttp.Repo.Migrations.CreateGatewayFirewallPolicies do
 
     execute("""
     CREATE CONSTRAINT TRIGGER gateway_firewall_policies_changed
-    AFTER INSERT OR DELETE ON gateway_firewall_policies
+    AFTER INSERT OR DELETE OR UPDATE ON gateway_firewall_policies
     DEFERRABLE
     FOR EACH ROW EXECUTE PROCEDURE notify_gateway_firewall_policy_changes()
     """)
