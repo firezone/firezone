@@ -1,9 +1,13 @@
 defmodule FzHttp.DevicesTest do
   # XXX: Update the device IP query to be an insert
   use FzHttp.DataCase, async: false
+  alias FzHttp.Gateways
   alias FzHttp.Devices
   alias FzHttp.DevicesFixtures
   alias FzHttp.Users
+  import FzHttp.GatewaysFixtures, only: [setup_default_gateway: 1]
+
+  setup :setup_default_gateway
 
   describe "trimmed fields" do
     test "trims expected fields" do
@@ -407,7 +411,7 @@ defmodule FzHttp.DevicesTest do
     end
 
     test "prevents updating ipv4 to wireguard address", %{device: device} do
-      ip = Application.fetch_env!(:fz_http, :wireguard_ipv4_address)
+      ip = Gateways.get_gateway!().ipv4_address
       {:error, changeset} = Devices.update_device(device, %{ipv4: ip})
 
       assert changeset.errors[:ipv4] == {
@@ -422,7 +426,7 @@ defmodule FzHttp.DevicesTest do
     test "prevents updating ipv6 to wireguard address", %{device: device} do
       {:error, changeset} =
         Devices.update_device(device, %{
-          ipv6: Application.fetch_env!(:fz_http, :wireguard_ipv6_address)
+          ipv6: Gateways.get_gateway!().ipv6_address
         })
 
       assert changeset.errors[:ipv6] == {
@@ -459,18 +463,6 @@ defmodule FzHttp.DevicesTest do
     end
   end
 
-  describe "to_peer_list/0" do
-    setup [:create_device]
-
-    test "renders all peers", %{device: device} do
-      assert Devices.to_peer_list() |> List.first() == %{
-               preshared_key: nil,
-               public_key: device.public_key,
-               inet: "#{device.ipv4}/32,#{device.ipv6}/128"
-             }
-    end
-  end
-
   describe "Device.new_name/0,1" do
     test "retains name with less than or equal to 15 chars" do
       assert Devices.Device.new_name("12345") == "12345"
@@ -482,18 +474,18 @@ defmodule FzHttp.DevicesTest do
     end
   end
 
-  describe "setting_projection/1" do
+  describe "to_peer/1" do
     setup [:create_rule_with_user_and_device]
 
     test "projects expected fields with device", %{device: device, user: user} do
-      user_id = user.id
+      user_uuid = user.uuid
 
-      assert %{ip: "10.3.2.2", ip6: "fd00::3:2:2", user_id: ^user_id} =
-               Devices.setting_projection(device)
+      assert %{allowed_ips: ["10.3.2.2/32", "fd00::3:2:2/128"], user_uuid: ^user_uuid} =
+               Devices.to_peer(device)
     end
 
     test "projects expected fields with device map", %{device: device, user: user} do
-      user_id = user.id
+      user_uuid = user.uuid
 
       device_map =
         device
@@ -501,18 +493,8 @@ defmodule FzHttp.DevicesTest do
         |> Map.put(:ipv4, FzHttp.Devices.decode(device.ipv4))
         |> Map.put(:ipv6, FzHttp.Devices.decode(device.ipv6))
 
-      assert %{ip: "10.3.2.2", ip6: "fd00::3:2:2", user_id: ^user_id} =
-               Devices.setting_projection(device_map)
-    end
-  end
-
-  describe "as_settings/0" do
-    setup [:create_rules]
-
-    test "Maps rules to projections", %{devices: devices} do
-      expected_devices = Enum.map(devices, &Devices.setting_projection/1) |> MapSet.new()
-
-      assert Devices.as_settings() == expected_devices
+      assert %{allowed_ips: ["10.3.2.2/32", "fd00::3:2:2/128"], user_uuid: ^user_uuid} =
+               Devices.to_peer(device_map)
     end
   end
 end

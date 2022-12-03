@@ -2,6 +2,9 @@ defmodule FzHttpWeb.AuthControllerTest do
   use FzHttpWeb.ConnCase, async: true
 
   import Mox
+  import FzHttp.GatewaysFixtures, only: [setup_default_gateway: 1]
+
+  setup :setup_default_gateway
 
   describe "new" do
     setup [:create_user]

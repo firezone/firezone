@@ -20,8 +20,9 @@ defmodule FzHttp.GatewaysTest do
     test "create_gateway/1 with unique name creates a gateway" do
       attrs = gateway_gen_attrs()
       name = attrs[:name]
+      pub_key = attrs[:public_key]
 
-      assert {:ok, %Gateway{name: ^name}} = Gateways.create_gateway(attrs)
+      assert {:ok, %Gateway{name: ^name, public_key: ^pub_key}} = Gateways.create_gateway(attrs)
     end
 
     test "create_gateway/1 with duplicate name returns an error" do

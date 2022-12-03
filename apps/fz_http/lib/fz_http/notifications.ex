@@ -6,6 +6,7 @@ defmodule FzHttp.Notifications do
 
   @topic "notifications_live"
   alias Phoenix.PubSub
+  alias FzHttp.Users
 
   def start_link(opts \\ []) do
     if opts[:name] do
@@ -21,6 +22,22 @@ defmodule FzHttp.Notifications do
   def current, do: current(__MODULE__)
   def current(nil), do: current()
   def current(pid), do: GenServer.call(pid, :current)
+
+  @doc """
+  Notifies an error to the user
+  """
+  def add_error(:device, event, device) do
+    add(%{
+      type: :error,
+      message: """
+      #{device} was #{event} successfully but an error occurred applying its
+      configuration to the WireGuard interface. Check the logs for more
+      information.
+      """,
+      timestamp: DateTime.utc_now(),
+      user: Users.get_user!(device.user_id).email
+    })
+  end
 
   @doc """
   Add a notification.

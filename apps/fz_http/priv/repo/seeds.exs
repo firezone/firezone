@@ -13,8 +13,11 @@
 alias FzHttp.{
   ConnectivityChecks,
   Devices,
-  Users
+  Users,
+  Gateways
 }
+
+{:ok, _} = Gateways.create_default_gateway()
 
 {:ok, user} =
   Users.create_admin_user(%{

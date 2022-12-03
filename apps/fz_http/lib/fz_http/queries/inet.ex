@@ -2,6 +2,7 @@ defmodule FzHttp.Queries.INET do
   @moduledoc """
   Raw SQL INET queries
   """
+  alias FzHttp.Gateways
 
   # XXX: This needs to be an insert to avoid the deadlocks
   @next_available_ipv4_query """
@@ -65,9 +66,8 @@ defmodule FzHttp.Queries.INET do
   end
 
   defp wireguard_address(type) do
-    address_key = "wireguard_#{type}_address" |> String.to_existing_atom()
-    {:ok, address} = EctoNetwork.INET.cast(Application.fetch_env!(:fz_http, address_key))
-    address
+    address_key = "#{type}_address" |> String.to_existing_atom()
+    Map.get(Gateways.get_gateway!(), address_key)
   end
 
   defp next_available_query(:ipv4) do

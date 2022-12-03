@@ -7,7 +7,7 @@ defmodule FzHttp.Devices do
   import Ecto.Query, warn: false
 
   alias EctoNetwork.INET
-  alias FzHttp.{Devices.Device, Devices.DeviceSetting, Repo, Sites, Telemetry, Users, Users.User}
+  alias FzHttp.{Devices.Device, Repo, Sites, Telemetry, Users.User, Gateways, Events}
 
   require Logger
 
@@ -15,23 +15,25 @@ defmodule FzHttp.Devices do
     cutoff = DateTime.add(DateTime.utc_now(), -1 * duration_in_secs)
 
     Repo.one(
-      from d in Device,
+      from(d in Device,
         select: count(d.id),
         where: d.latest_handshake > ^cutoff
+      )
     )
   end
 
   def count do
-    Repo.one(from d in Device, select: count(d.id))
+    Repo.one(from(d in Device, select: count(d.id)))
   end
 
   def max_count_by_user_id do
     Repo.one(
-      from d in Device,
+      from(d in Device,
         select: fragment("count(*) AS user_count"),
         group_by: d.user_id,
         order_by: fragment("user_count DESC"),
         limit: 1
+      )
     )
   end
 
@@ -42,22 +44,32 @@ defmodule FzHttp.Devices do
   def list_devices(%User{} = user), do: list_devices(user.id)
 
   def list_devices(user_id) do
-    Repo.all(from d in Device, where: d.user_id == ^user_id)
+    Repo.all(from(d in Device, where: d.user_id == ^user_id))
   end
 
   def as_settings do
     Repo.all(from(Device))
-    |> Enum.map(&setting_projection/1)
+    |> Enum.map(&to_peer/1)
     |> MapSet.new()
   end
 
-  def setting_projection(device) do
-    DeviceSetting.parse(device)
-    |> Map.from_struct()
+  def to_peer(%Device{} = device) do
+    device = Repo.preload(device, :user)
+
+    %{
+      allowed_ips: inet(device),
+      user_uuid: device.user.uuid,
+      public_key: device.public_key,
+      preshared_key: device.preshared_key
+    }
+  end
+
+  def to_peer(device) do
+    struct(Device, device) |> to_peer()
   end
 
   def count(user_id) do
-    Repo.one(from d in Device, where: d.user_id == ^user_id, select: count())
+    Repo.one(from(d in Device, where: d.user_id == ^user_id, select: count()))
   end
 
   def get_device!(id), do: Repo.get!(Device, id)
@@ -68,6 +80,7 @@ defmodule FzHttp.Devices do
     |> Repo.insert()
     |> case do
       {:ok, device} ->
+        Events.add(device)
         Telemetry.add_device()
         {:ok, device}
 
@@ -84,17 +97,22 @@ defmodule FzHttp.Devices do
 
   def delete_device(%Device{} = device) do
     Telemetry.delete_device()
-    Repo.delete(device)
+
+    case Repo.delete(device) do
+      {:ok, device} ->
+        Events.delete(device)
+        {:ok, device}
+
+      err ->
+        err
+    end
   end
 
   def change_device(%Device{} = device, attrs \\ %{}) do
     Device.update_changeset(device, attrs)
   end
 
-  @doc """
-  Builds ipv4 / ipv6 config string for a device.
-  """
-  def inet(device) do
+  defp inet(device) do
     ips =
       if ipv6?() do
         ["#{device.ipv6}/128"]
@@ -109,26 +127,7 @@ defmodule FzHttp.Devices do
         ips
       end
 
-    Enum.join(ips, ",")
-  end
-
-  def to_peer_list do
-    vpn_duration = Sites.vpn_duration()
-
-    Repo.all(
-      from d in Device,
-        preload: :user
-    )
-    |> Enum.filter(fn device ->
-      !device.user.disabled_at && !Users.vpn_session_expired?(device.user, vpn_duration)
-    end)
-    |> Enum.map(fn device ->
-      %{
-        public_key: device.public_key,
-        inet: inet(device),
-        preshared_key: device.preshared_key
-      }
-    end)
+    ips
   end
 
   def new_device(attrs \\ %{}) do
@@ -172,19 +171,17 @@ defmodule FzHttp.Devices do
   def as_encoded_config(device), do: Base.encode64(as_config(device))
 
   def as_config(device) do
-    wireguard_port = Application.fetch_env!(:fz_vpn, :wireguard_port)
-    server_public_key = Application.get_env(:fz_vpn, :wireguard_public_key)
+    wireguard_port = get_default_wireguard_port()
+    server_public_key = Gateways.get_gateway!().public_key
 
     if is_nil(server_public_key) do
-      Logger.error(
-        "No server public key found! This will break device config generation. Is fz_vpn alive?"
-      )
+      Logger.error("No server public key found! This will break device config generation.")
     end
 
     """
     [Interface]
     PrivateKey = REPLACE_ME
-    Address = #{inet(device)}
+    Address = #{inet(device) |> Enum.join(",")}
     #{mtu_config(device)}
     #{dns_config(device)}
 
@@ -270,4 +267,6 @@ defmodule FzHttp.Devices do
   defp ipv6? do
     Application.fetch_env!(:fz_http, :wireguard_ipv6_enabled)
   end
+
+  def get_default_wireguard_port, do: Application.fetch_env!(:fz_http, :default_wireguard_port)
 end

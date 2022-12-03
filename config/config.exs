@@ -42,6 +42,11 @@ config :fz_http, FzHttpWeb.Auth.JSON.Authentication,
   # Generate with mix guardian.gen.secret
   secret_key: "GApJ4c4a/KJLrBePgTDUk0n67AbjCvI9qdypKZEaJFXl6s9H3uRcIhTt49Fij5UO"
 
+config :fz_http, FzHttpWeb.Auth.Gateway.Authentication,
+  issuer: "fz_http",
+  # Generate with mix guardian.gen.secret
+  secret_key: "2FEs0hVcvWefd79XxXaj/VX8XqWXhOIzUV93cLNptpbkZ4kIBYSBcdP6V3XW3jSe"
+
 config :fz_http,
   external_trusted_proxies: [],
   private_clients: [],
@@ -53,9 +58,13 @@ config :fz_http,
   wireguard_ipv4_enabled: true,
   wireguard_ipv4_network: "10.3.2.0/24",
   wireguard_ipv4_address: "10.3.2.1",
-  wireguard_ipv6_enabled: true,
+  wireguard_ipv4_masquerade: true,
   wireguard_ipv6_network: "fd00::3:2:0/120",
   wireguard_ipv6_address: "fd00::3:2:1",
+  wireguard_ipv6_masquerade: true,
+  wireguard_ipv6_enabled: true,
+  wireguard_mtu: 1280,
+  default_wireguard_port: 51820,
   max_devices_per_user: 10,
   telemetry_module: FzCommon.Telemetry,
   supervision_tree_mode: :full,
@@ -75,29 +84,11 @@ config :fz_http,
   saml_entity_id: "urn:firezone.dev:firezone-app",
   saml_certfile_path: "apps/fz_http/priv/cert/saml_selfsigned.pem",
   saml_keyfile_path: "apps/fz_http/priv/cert/saml_selfsigned_key.pem",
-  openid_connect: OpenIDConnect
-
-config :fz_wall,
-  cli: FzWall.CLI.Sandbox,
-  wireguard_ipv4_masquerade: true,
-  wireguard_ipv6_masquerade: true,
-  server_process_opts: [name: {:global, :fz_wall_server}],
-  egress_interface: "dummy",
-  wireguard_interface_name: "wg-firezone",
-  port_based_rules_supported: true
+  openid_connect: OpenIDConnect,
+  gateway_registration_token: "kYl25nYBkLF6yCljeu1ccw=="
 
 config :hammer,
   backend: {Hammer.Backend.ETS, [expiry_ms: 60_000 * 60 * 4, cleanup_interval_ms: 60_000 * 10]}
-
-# This will be changed per-env
-config :fz_vpn,
-  wireguard_private_key_path: "priv/wg_dev_private_key",
-  stats_push_service_enabled: true,
-  wireguard_interface_name: "wg-firezone",
-  wireguard_port: 51_820,
-  wg_adapter: FzVpn.Interface.WGAdapter.Live,
-  server_process_opts: [name: {:global, :fz_vpn_server}],
-  supervised_children: [FzVpn.Server, FzVpn.StatsPushService]
 
 config :fz_http, FzHttpWeb.Endpoint,
   render_errors: [view: FzHttpWeb.ErrorView, accepts: ~w(html json)],

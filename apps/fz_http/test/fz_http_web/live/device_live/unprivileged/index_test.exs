@@ -1,5 +1,8 @@
 defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
   use FzHttpWeb.ConnCase, async: false
+  import FzHttp.GatewaysFixtures, only: [setup_default_gateway: 1]
+
+  setup :setup_default_gateway
 
   describe "authenticated/device list" do
     test "includes the device name in the list", %{

@@ -18,7 +18,7 @@ defmodule FzHttp.AllowRules.AllowRule do
     field :protocol, Ecto.Enum, values: [:tcp, :udp]
 
     belongs_to :gateway, Gateway
-    belongs_to :user, User
+    belongs_to :user, User, references: :uuid
 
     timestamps(type: :utc_datetime_usec)
   end

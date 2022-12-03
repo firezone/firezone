@@ -1,5 +1,8 @@
 defmodule FzHttpWeb.JSON.DeviceControllerTest do
   use FzHttpWeb.APICase
+  import FzHttp.GatewaysFixtures, only: [setup_default_gateway: 1]
+
+  setup :setup_default_gateway
 
   describe "show device" do
     setup :create_device

@@ -24,8 +24,6 @@ ENV MIX_ENV="prod"
 COPY mix.exs mix.lock ./
 COPY apps/fz_common/mix.exs ./apps/fz_common/mix.exs
 COPY apps/fz_http/mix.exs ./apps/fz_http/mix.exs
-COPY apps/fz_vpn/mix.exs ./apps/fz_vpn/mix.exs
-COPY apps/fz_wall/mix.exs ./apps/fz_wall/mix.exs
 
 RUN mix deps.get --only $MIX_ENV
 RUN mkdir config
