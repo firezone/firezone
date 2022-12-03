@@ -9,7 +9,7 @@ defmodule FzHttp.TestHelpers do
     MFA,
     NotificationsFixtures,
     Repo,
-    RulesFixtures,
+    AllowRulesFixtures,
     Users,
     Users.User,
     UsersFixtures
@@ -81,23 +81,8 @@ defmodule FzHttp.TestHelpers do
     {:ok, user: user}
   end
 
-  def create_accept_rule(_) do
-    rule = RulesFixtures.rule(%{action: :accept})
-    {:ok, rule: rule}
-  end
-
-  def create_drop_rule(_) do
-    rule = RulesFixtures.rule(%{action: :drop})
-    {:ok, rule: rule}
-  end
-
   def create_rule(_) do
-    rule = RulesFixtures.rule(%{})
-    {:ok, rule: rule}
-  end
-
-  def create_rule_accept(_) do
-    rule = RulesFixtures.rule(%{action: :accept})
+    rule = AllowRulesFixtures.allow_rule(%{})
     {:ok, rule: rule}
   end
 
@@ -109,7 +94,7 @@ defmodule FzHttp.TestHelpers do
       1..5
       |> Enum.map(fn num ->
         destination = "#{num}.#{num}.#{num}.0/24"
-        RulesFixtures.rule(%{destination: destination})
+        AllowRulesFixtures.allow_rule(%{destination: destination})
       end)
 
     {rules_with_users, users_and_devices} =
@@ -124,7 +109,7 @@ defmodule FzHttp.TestHelpers do
             user_id: user.id
           })
 
-        rule = RulesFixtures.rule(%{destination: destination, user_id: user.id})
+        rule = AllowRulesFixtures.allow_rule(%{destination: destination, user_id: user.id})
         {rule, {user, device}}
       end)
       |> Enum.unzip()
@@ -133,7 +118,9 @@ defmodule FzHttp.TestHelpers do
 
     destination = "7.7.7.0/24"
     user = UsersFixtures.user()
-    rule_without_device = RulesFixtures.rule(%{destination: destination, user_id: user.id})
+
+    rule_without_device =
+      AllowRulesFixtures.allow_rule(%{destination: destination, user_id: user.id})
 
     rules = rules ++ [rule_without_device | rules_with_users]
     users = [user | users]
@@ -143,7 +130,7 @@ defmodule FzHttp.TestHelpers do
 
   def create_rule_with_user_and_device(_) do
     user = UsersFixtures.user()
-    rule = RulesFixtures.rule(%{user_id: user.id, destination: "10.20.30.0/24"})
+    rule = AllowRulesFixtures.allow_rule(%{user_id: user.id, destination: "10.20.30.0/24"})
 
     device =
       DevicesFixtures.device(%{
@@ -156,13 +143,14 @@ defmodule FzHttp.TestHelpers do
 
   def create_rule_with_user(opts \\ %{}) do
     user = UsersFixtures.user()
-    rule = RulesFixtures.rule(Map.merge(%{user_id: user.id}, opts))
+    rule = AllowRulesFixtures.allow_rule(Map.merge(%{user_id: user.id}, opts))
 
     {:ok, rule: rule, user: user}
   end
 
   def create_rule_with_ports(opts \\ %{}) do
-    rule = RulesFixtures.rule(Map.merge(%{port_range: "10 - 20", port_type: :udp}, opts))
+    rule =
+      AllowRulesFixtures.allow_rule(Map.merge(%{port_range: "10 - 20", port_type: :udp}, opts))
 
     {:ok, rule: rule}
   end

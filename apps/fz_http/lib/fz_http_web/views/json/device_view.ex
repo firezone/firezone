@@ -4,7 +4,7 @@ defmodule FzHttpWeb.JSON.DeviceView do
   """
   use FzHttpWeb, :view
 
-  alias FzHttp.Devices
+  alias FzHttp.{Devices, Gateways}
 
   def render("index.json", %{devices: devices}) do
     %{data: render_many(devices, __MODULE__, "device.json")}
@@ -44,7 +44,7 @@ defmodule FzHttpWeb.JSON.DeviceView do
     Map.merge(
       Map.take(device, @keys_to_render),
       %{
-        server_public_key: Application.get_env(:fz_vpn, :wireguard_public_key),
+        server_public_key: Gateways.get_gateway!().public_key,
         endpoint: Devices.config(device, :endpoint),
         allowed_ips: Devices.config(device, :allowed_ips),
         dns: Devices.config(device, :dns),

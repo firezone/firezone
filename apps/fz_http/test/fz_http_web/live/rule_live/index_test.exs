@@ -1,11 +1,15 @@
 defmodule FzHttpWeb.RuleLive.IndexTest do
+  alias FzHttp.Gateways
   use FzHttpWeb.ConnCase, async: true
+  import FzHttp.GatewaysFixtures, only: [setup_default_gateway: 1]
+
+  setup :setup_default_gateway
 
   describe "allowlist" do
-    setup :create_accept_rule
+    setup :create_rule
 
     @destination "1.2.3.4"
-    @allow_params %{"rule" => %{"action" => "accept", "destination" => @destination}}
+    @allow_params %{"allow_rule" => %{"destination" => @destination}}
 
     test "adds to allowlist", %{admin_conn: conn} do
       path = ~p"/rules"
@@ -13,7 +17,7 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
 
       test_view =
         view
-        |> form("#accept-form")
+        |> form("#rule-form")
         |> render_submit(@allow_params)
 
       assert test_view =~ @destination
@@ -25,11 +29,10 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
 
       test_view =
         view
-        |> form("#accept-form")
+        |> form("#rule-form")
         |> render_submit(%{
-          "rule" => %{
-            "destination" => "not a valid destination",
-            "action" => "accept"
+          "allow_rule" => %{
+            "destination" => "not a valid destination"
           }
         })
 
@@ -37,11 +40,10 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
 
       valid_view =
         view
-        |> form("#accept-form")
+        |> form("#rule-form")
         |> render_submit(%{
-          "rule" => %{
-            "destination" => "::1",
-            "action" => "accept"
+          "allow_rule" => %{
+            "destination" => "::1"
           }
         })
 
@@ -49,54 +51,6 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
     end
 
     test "removes from allowlist", %{admin_conn: conn, rule: rule} do
-      path = ~p"/rules"
-      {:ok, view, _html} = live(conn, path)
-
-      test_view =
-        view
-        |> element("a[phx-value-rule_id=#{rule.id}]")
-        |> render_click()
-
-      refute test_view =~ "#{rule.destination}"
-    end
-  end
-
-  describe "denylist" do
-    setup :create_drop_rule
-
-    @destination "1.2.3.4"
-    @deny_params %{"rule" => %{"action" => "drop", "destination" => @destination}}
-
-    test "adds to denylist", %{admin_conn: conn, rule: _rule} do
-      path = ~p"/rules"
-      {:ok, view, _html} = live(conn, path)
-
-      test_view =
-        view
-        |> form("#drop-form")
-        |> render_submit(@deny_params)
-
-      assert test_view =~ @destination
-    end
-
-    test "validation fails", %{admin_conn: conn, rule: _rule} do
-      path = ~p"/rules"
-      {:ok, view, _html} = live(conn, path)
-
-      test_view =
-        view
-        |> form("#drop-form")
-        |> render_submit(%{
-          "rule" => %{
-            "destination" => "not a valid destination",
-            "action" => "drop"
-          }
-        })
-
-      assert test_view =~ "is invalid"
-    end
-
-    test "removes from denylist", %{admin_conn: conn, rule: rule} do
       path = ~p"/rules"
       {:ok, view, _html} = live(conn, path)
 
@@ -119,45 +73,22 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
       {:ok, view, _html} = live(conn, path)
 
       params = %{
-        "rule" => %{
-          "action" => "accept",
+        "allow_rule" => %{
           "destination" => @destination,
-          "user_id" => user.id
+          "user_id" => user.id,
+          "gateway_id" => Gateways.get_gateway!().id
         }
       }
 
-      view |> form("#accept-form") |> render_submit(params)
+      view |> form("#rule-form") |> render_submit(params)
 
       accept_table =
         view
-        |> element("#accept-rules")
+        |> element("#rules")
         |> render()
 
       assert accept_table =~ @destination
       assert accept_table =~ user.email
-    end
-
-    test "adds deny", %{admin_conn: conn, user: user} do
-      path = ~p"/rules"
-      {:ok, view, _html} = live(conn, path)
-
-      params = %{
-        "rule" => %{
-          "action" => "drop",
-          "destination" => @destination,
-          "user_id" => user.id
-        }
-      }
-
-      view |> form("#drop-form") |> render_submit(params)
-
-      drop_table =
-        view
-        |> element("#drop-rules")
-        |> render()
-
-      assert drop_table =~ @destination
-      assert drop_table =~ user.email
     end
   end
 
@@ -165,8 +96,7 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
     @destination "1.2.3.4"
 
     test "removes allow", %{admin_conn: conn} do
-      {:ok, rule: rule, user: user} =
-        create_rule_with_user(%{action: "accept", destination: @destination})
+      {:ok, rule: rule, user: user} = create_rule_with_user(%{destination: @destination})
 
       path = ~p"/rules"
       {:ok, view, _html} = live(conn, path)
@@ -175,29 +105,11 @@ defmodule FzHttpWeb.RuleLive.IndexTest do
 
       accept_table =
         view
-        |> element("#accept-rules")
+        |> element("#rules")
         |> render()
 
       refute accept_table =~ @destination
       refute accept_table =~ user.email
-    end
-
-    test "removes deny", %{admin_conn: conn} do
-      {:ok, rule: rule, user: user} =
-        create_rule_with_user(%{action: "drop", destination: @destination})
-
-      path = ~p"/rules"
-      {:ok, view, _html} = live(conn, path)
-
-      view |> element("a[phx-value-rule_id=#{rule.id}]") |> render_click()
-
-      drop_table =
-        view
-        |> element("#drop-rules")
-        |> render()
-
-      refute drop_table =~ @destination
-      refute drop_table =~ user.email
     end
   end
 end

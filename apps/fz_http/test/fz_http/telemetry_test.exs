@@ -2,6 +2,9 @@ defmodule FzHttp.TelemetryTest do
   use FzHttp.DataCase, async: true
 
   alias FzHttp.Telemetry
+  import FzHttp.GatewaysFixtures, only: [setup_default_gateway: 1]
+
+  setup :setup_default_gateway
 
   describe "user" do
     setup :create_user

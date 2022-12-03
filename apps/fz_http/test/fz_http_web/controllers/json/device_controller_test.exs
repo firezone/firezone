@@ -2,6 +2,9 @@ defmodule FzHttpWeb.JSON.DeviceControllerTest do
   use FzHttpWeb.ApiCase, async: true
   import FzHttpWeb.ApiCase
   import FzHttp.DevicesFixtures
+  import FzHttp.GatewaysFixtures, only: [setup_default_gateway: 1]
+
+  setup :setup_default_gateway
 
   @params %{
     "name" => "create-name",

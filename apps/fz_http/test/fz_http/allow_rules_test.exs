@@ -1,6 +1,10 @@
 defmodule FzHttp.AllowRulesTest do
   use FzHttp.DataCase, async: true
 
+  import FzHttp.GatewaysFixtures, only: [setup_default_gateway: 1]
+
+  setup :setup_default_gateway
+
   describe "allow_rules" do
     alias EctoNetwork.INET
     alias FzHttp.{AllowRules, AllowRules.AllowRule}
@@ -20,9 +24,9 @@ defmodule FzHttp.AllowRulesTest do
     end
 
     test "list_allow_rules/1 returns allow rules scoped to a user" do
-      _ = allow_rule(%{user_id: user().uuid})
+      _ = allow_rule(%{user_id: user().id})
       user = user()
-      allow_rule = allow_rule(%{user_id: user.uuid})
+      allow_rule = allow_rule(%{user_id: user.id})
       assert AllowRules.list_allow_rules(user) == [allow_rule]
     end
 

@@ -36,7 +36,6 @@ services:
       - 51820:51820/udp
     environment:
       LOCAL_AUTH_ENABLED: 'true'
-      FZ_WALL_CLI_MODULE: FzWall.CLI.Live
     cap_add:
       - NET_ADMIN
       - SYS_MODULE

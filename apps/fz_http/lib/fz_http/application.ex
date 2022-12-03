@@ -26,10 +26,8 @@ defmodule FzHttp.Application do
 
   defp children(:full) do
     [
-      FzHttp.Server,
       FzHttp.Repo,
       {Postgrex.Notifications, [name: FzHttp.Repo.Notifications] ++ FzHttp.Repo.config()},
-      FzHttp.Repo.Notifier,
       FzHttp.Vault,
       FzHttpWeb.Endpoint,
       {Phoenix.PubSub, name: FzHttp.PubSub},
@@ -47,7 +45,6 @@ defmodule FzHttp.Application do
 
   defp children(:test) do
     [
-      FzHttp.Server,
       FzHttp.Repo,
       FzHttp.Vault,
       FzHttpWeb.Endpoint,
