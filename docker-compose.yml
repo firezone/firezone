@@ -18,8 +18,8 @@ services:
   caddy:
     image: caddy:2
     volumes:
-      - ./.devcontainer/Caddyfile:/etc/caddy/Caddyfile
-      - ./.devcontainer/pki:/data/caddy/pki
+      - ./priv/Caddyfile:/etc/caddy/Caddyfile
+      - ./priv/pki:/data/caddy/pki
     ports:
       - 80:80
       - 443:443
@@ -209,7 +209,7 @@ services:
       - TZ=UTC
       - ALLOWEDIPS="0.0.0.0/0,::/0"
     volumes:
-      - ./.devcontainer/wg0.client.conf:/config/wg0.conf
+      - ./priv/wg0.client.conf:/config/wg0.conf
     cap_add:
       - NET_ADMIN
       - SYS_MODULE

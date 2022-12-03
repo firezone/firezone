@@ -15,8 +15,6 @@ started.
   * [The .env File](#the-env-file)
   * [Bootstrapping](#bootstrapping)
   * [Ensure Everything Works](#ensure-everything-works)
-  * [Running this inside a Devcontainer](#running-this-inside-a-devcontainer)
-    * [Note: Devcontainer on Windows](#note--devcontainer-on-windows)
 * [Reporting Bugs](#reporting-bugs)
 * [Opening a Pull Request](#opening-a-pull-request)
   * [Run Tests](#run-tests)
@@ -88,7 +86,7 @@ machine, and out to the external Internet should work as well.
 ### Local HTTPS
 
 We use Caddy as a development proxy. The `docker-compose.yml` is set up to link
-Caddy's local root cert into your `.devcontainer/pki/authorities/local/` directory.
+Caddy's local root cert into your `priv/pki/authorities/local/` directory.
 
 Simply add the `root.crt` file to your browser and/or OS certificate store in
 order to have working local HTTPS. This file is generated when Caddy launches for
@@ -151,7 +149,7 @@ and sign in with email `firezone@localhost` and password `firezone1234`.
 There is a `client` container in the docker-compose configuration that
 can be used to simulate a WireGuard client connecting to Firezone. It's already
 provisioned in the Firezone development cluster and has a corresponding
-WireGuard configuration located at .devcontainer/wg0.client.conf.
+WireGuard configuration located at `priv/wg0.client.conf`.
 It's attached to the `isolation` Docker network which is isolated from the other
 Firezone Docker services. By connecting to Firezone from the `client`
 container, you can test the WireGuard tunnel is set up correctly by pinging the
@@ -162,29 +160,6 @@ container, you can test the WireGuard tunnel is set up correctly by pinging the
   should return `HELLO` text.
 
 If the above commands indicate success, you should be good to go!
-
-### Running this inside a Devcontainer
-
-You can run this using Github Codespaces or your own devcontainer using Docker.
-
-On GitHub Codespaces, follow the instructions above but pass in your Codespace
-external url:
-
-`EXTERNAL_URL=[your_devcontainer_url] MIX_ENV=dev mix start`
-
-or using the `.env` file
-
-`env $(cat .env | grep -v \# | xargs) mix start`
-
-On Github Codespaces you can find your EXTERNAL_URL by issuing the following
-command in the terminal:
-
-`echo "https://${CODESPACE_NAME}-4000.githubpreview.dev"`
-
-#### Note: Devcontainer on Windows
-
-If you are on Windows, make sure your git config `core.autocrlf` is off. Otherwise,
-the `\r` characters confuse asdf, which in turn fails the devcontainer build.
 
 ## Reporting Bugs
 
