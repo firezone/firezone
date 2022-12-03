@@ -1,9 +1,11 @@
 defmodule FzHttp.DevicesTest do
-  use FzHttp.DataCase, async: true
-
+  use FzHttp.DataCase, async: false
   alias FzHttp.Devices
   alias FzHttp.DevicesFixtures
   alias FzHttp.Users
+  import FzHttp.GatewaysFixtures, only: [setup_default_gateway: 1]
+
+  setup :setup_default_gateway
 
   describe "count/0" do
     setup :create_devices
@@ -286,17 +288,6 @@ defmodule FzHttp.DevicesTest do
     end
   end
 
-  describe "to_peer_list/0" do
-    setup [:create_device]
-
-    test "renders all peers", %{device: device} do
-      assert Devices.to_peer_list() |> List.first() |> Map.delete(:preshared_key) == %{
-               public_key: device.public_key,
-               inet: "#{device.ipv4}/32,#{device.ipv6}/128"
-             }
-    end
-  end
-
   describe "Device.new_name/0,1" do
     test "retains name with less than or equal to 15 chars" do
       assert Devices.new_name("12345") == "12345"
@@ -308,13 +299,15 @@ defmodule FzHttp.DevicesTest do
     end
   end
 
-  describe "setting_projection/1" do
+  describe "to_peer/1" do
     setup [:create_rule_with_user_and_device]
 
     test "projects expected fields with device", %{device: device, user: user} do
       user_id = user.id
 
-      assert %{ip: _, ip6: _, user_id: ^user_id} = Devices.setting_projection(device)
+      ipv4 = "#{device.ipv4}/32"
+      ipv6 = "#{device.ipv6}/128"
+      assert %{allowed_ips: [^ipv4, ^ipv6], user_id: ^user_id} = Devices.to_peer(device)
     end
 
     test "projects expected fields with device map", %{device: device, user: user} do
@@ -326,17 +319,9 @@ defmodule FzHttp.DevicesTest do
         |> Map.put(:ipv4, FzHttp.Devices.decode(device.ipv4))
         |> Map.put(:ipv6, FzHttp.Devices.decode(device.ipv6))
 
-      assert %{ip: _, ip6: _, user_id: ^user_id} = Devices.setting_projection(device_map)
-    end
-  end
-
-  describe "as_settings/0" do
-    setup [:create_rules]
-
-    test "Maps rules to projections", %{devices: devices} do
-      expected_devices = Enum.map(devices, &Devices.setting_projection/1) |> MapSet.new()
-
-      assert Devices.as_settings() == expected_devices
+      ipv4 = "#{device.ipv4}/32"
+      ipv6 = "#{device.ipv6}/128"
+      assert %{allowed_ips: [^ipv4, ^ipv6], user_id: ^user_id} = Devices.to_peer(device_map)
     end
   end
 end

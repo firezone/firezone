@@ -4,91 +4,55 @@ defmodule FzHttpWeb.RuleLive.RuleListComponent do
   """
   use FzHttpWeb, :live_component
 
-  alias FzHttp.Rules
-  alias FzHttp.Users
+  alias FzHttp.{AllowRules, Users, Gateways}
 
   @impl Phoenix.LiveComponent
   def update(assigns, socket) do
     {:ok,
      socket
      |> assign(assigns)
-     |> assign(Rules.defaults())
      |> assign(
-       action: action(assigns.id),
-       rule_list: rule_list(assigns),
+       rule_list: rule_list(),
        users: users(),
-       changeset: Rules.new_rule(),
-       port_rules_supported: Rules.port_rules_supported?()
+       gateway_id: Gateways.get_gateway!().id,
+       changeset: AllowRules.new_rule()
      )}
   end
 
   @impl Phoenix.LiveComponent
-  def handle_event("change", %{"rule" => rule_params}, socket) do
-    changeset = Rules.new_rule(rule_params)
+  def handle_event("change", %{"allow_rule" => rule_params}, socket) do
+    changeset = AllowRules.new_rule(rule_params)
 
     {:noreply,
      socket
-     |> assign(:changeset, changeset)
-     |> assign(Rules.defaults(changeset))}
+     |> assign(:changeset, changeset)}
   end
 
   @impl Phoenix.LiveComponent
-  def handle_event("add_rule", %{"rule" => rule_params}, socket) do
-    if Rules.port_rules_supported?() || Map.get(rule_params, :port_type) == nil do
-      case Rules.create_rule(rule_params) do
-        {:ok, _rule} ->
-          {:noreply,
-           assign(socket, changeset: Rules.new_rule(), rule_list: rule_list(socket.assigns))
-           |> assign(Rules.defaults())}
+  def handle_event("add_rule", %{"allow_rule" => rule_params}, socket) do
+    case AllowRules.create_allow_rule(rule_params) do
+      {:ok, _rule} ->
+        {:noreply, assign(socket, changeset: AllowRules.new_rule(), rule_list: rule_list())}
 
-        {:error, changeset} ->
-          {:noreply, assign(socket, changeset: changeset)}
-      end
-    else
-      # While using the UI this should never happen
-      {:noreply,
-       put_flash(socket, :error, "Couldn't add rule. Port-based rules are not supported.")}
+      {:error, changeset} ->
+        {:noreply, assign(socket, changeset: changeset)}
     end
   end
 
   @impl Phoenix.LiveComponent
   def handle_event("delete_rule", %{"rule_id" => rule_id}, socket) do
-    rule = Rules.get_rule!(rule_id)
+    rule = AllowRules.get_allow_rule!(rule_id)
 
-    if Rules.port_rules_supported?() || rule.port_type == nil do
-      case Rules.delete_rule(rule) do
-        {:ok, _rule} ->
-          {:noreply, assign(socket, rule_list: rule_list(socket.assigns))}
+    case AllowRules.delete_allow_rule(rule) do
+      {:ok, _rule} ->
+        {:noreply, assign(socket, rule_list: rule_list())}
 
-        {:error, msg} ->
-          {:noreply, put_flash(socket, :error, "Couldn't delete rule. #{msg}")}
-      end
-    else
-      # While using the UI this should never happen
-      {:noreply,
-       put_flash(socket, :error, "Couldn't delete rule. Port-based rules are not supported.")}
+      {:error, msg} ->
+        {:noreply, put_flash(socket, :error, "Couldn't delete rule. #{msg}")}
     end
   end
 
-  def action(id) do
-    case id do
-      :allowlist ->
-        :accept
-
-      :denylist ->
-        :drop
-    end
-  end
-
-  defp rule_list(assigns) do
-    case assigns.id do
-      :allowlist ->
-        Rules.allowlist()
-
-      :denylist ->
-        Rules.denylist()
-    end
-  end
+  defp rule_list, do: AllowRules.list_allow_rules()
 
   defp users do
     {:ok, users} = Users.list_users()

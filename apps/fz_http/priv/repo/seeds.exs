@@ -16,8 +16,11 @@ alias FzHttp.{
   Users,
   ApiTokens,
   Rules,
-  MFA
+  MFA,
+  Gateways
 }
+
+{:ok, _} = Gateways.create_default_gateway()
 
 {:ok, unprivileged_user1} =
   Users.create_unprivileged_user(%{

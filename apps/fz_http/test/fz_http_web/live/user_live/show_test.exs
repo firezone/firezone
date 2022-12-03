@@ -2,6 +2,9 @@ defmodule FzHttpWeb.UserLive.ShowTest do
   use FzHttpWeb.ConnCase, async: true
 
   alias FzHttp.UsersFixtures
+  import FzHttp.GatewaysFixtures, only: [setup_default_gateway: 1]
+
+  setup :setup_default_gateway
 
   describe "authenticated show" do
     setup :create_device

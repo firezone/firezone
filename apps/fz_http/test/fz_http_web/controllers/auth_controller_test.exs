@@ -2,6 +2,9 @@ defmodule FzHttpWeb.AuthControllerTest do
   use FzHttpWeb.ConnCase, async: true
   alias FzHttp.ConfigurationsFixtures
   alias FzHttp.Repo
+  import FzHttp.GatewaysFixtures, only: [setup_default_gateway: 1]
+
+  setup :setup_default_gateway
 
   setup do
     {bypass, _openid_connect_providers_attrs} =

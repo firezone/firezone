@@ -25,14 +25,5 @@
         current_user: @current_user
       ) %>
     </div>
-    <div class="tile is-parent">
-      <%= live_component(
-        FzHttpWeb.RuleLive.RuleListComponent,
-        title: "Denylist",
-        header_icon: "mdi mdi-alert-octagon",
-        id: :denylist,
-        current_user: @current_user
-      ) %>
-    </div>
   </div>
 </section>

@@ -26,10 +26,8 @@ defmodule FzHttp.Application do
 
   defp children(:full) do
     [
-      FzHttp.Server,
       FzHttp.Repo,
       {Postgrex.Notifications, [name: FzHttp.Repo.Notifications] ++ FzHttp.Repo.config()},
-      FzHttp.Repo.Notifier,
       FzHttp.Vault,
       {Phoenix.PubSub, name: FzHttp.PubSub},
       {FzHttp.Notifications, name: FzHttp.Notifications},
@@ -46,7 +44,6 @@ defmodule FzHttp.Application do
 
   defp children(:test) do
     [
-      FzHttp.Server,
       FzHttp.Repo,
       FzHttp.Vault,
       {FzHttp.SAML.StartProxy, :test},

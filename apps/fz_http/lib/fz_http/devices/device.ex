@@ -1,11 +1,10 @@
 defmodule FzHttp.Devices.Device do
   @moduledoc """
-  Manages Device things
+  Manages Devic things
   """
   use FzHttp, :schema
   import Ecto.Changeset
-  alias FzHttp.Validator
-  alias FzHttp.Devices
+  alias FzHttp.{Validators.Common, Devices, Gateways}
   require Logger
 
   @description_max_length 2048
@@ -173,13 +172,19 @@ defmodule FzHttp.Devices.Device do
   defp limit_cidr_range(:ipv6, network), do: max(network, 70)
 
   defp ipv4_address do
-    FzHttp.Config.fetch_env!(:fz_http, :wireguard_ipv4_address)
-    |> EctoNetwork.INET.cast()
+    {:ok, inet} =
+      Gateways.get_gateway!().ipv4_address
+      |> EctoNetwork.INET.cast()
+
+    inet
   end
 
   defp ipv6_address do
-    FzHttp.Config.fetch_env!(:fz_http, :wireguard_ipv6_address)
-    |> EctoNetwork.INET.cast()
+    {:ok, inet} =
+      Gateways.get_gateway!().ipv6_address
+      |> EctoNetwork.INET.cast()
+
+    inet
   end
 
   defp validate_max_devices(changeset) do

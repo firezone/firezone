@@ -5,6 +5,8 @@ defmodule FzHttp.GatewaysFixtures do
 
   alias FzHttp.Gateways
 
+  @public_key "VDDVTr/R78C3p6STeSecqfEEltJtGduFajFjXPIA6wI="
+
   @doc """
   Generate a `Gateway`.
   """
@@ -17,11 +19,17 @@ defmodule FzHttp.GatewaysFixtures do
     gateway
   end
 
+  def setup_default_gateway(_) do
+    case Gateways.create_default_gateway(%{public_key: @public_key}) do
+      {:ok, _} -> :ok
+      _ -> :error
+    end
+  end
+
   def gateway_gen_attrs do
     %{
       name: "gateway-#{counter()}",
-      registration_token: FzCommon.FzCrypto.rand_token(),
-      registration_token_created_at: DateTime.utc_now()
+      public_key: @public_key
     }
   end
 

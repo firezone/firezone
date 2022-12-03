@@ -38,9 +38,7 @@ defmodule FirezoneUmbrella.MixProject do
           include_executables_for: [:unix],
           validate_compile_env: false,
           applications: [
-            fz_http: :permanent,
-            fz_wall: :permanent,
-            fz_vpn: :permanent
+            fz_http: :permanent
           ],
           cookie: System.get_env("ERL_COOKIE")
         ]

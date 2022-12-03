@@ -37,7 +37,6 @@ services:
     environment:
       EXTERNAL_URL: ${EXTERNAL_URL:-https://localhost}
       LOCAL_AUTH_ENABLED: 'true'
-      FZ_WALL_CLI_MODULE: FzWall.CLI.Live
     cap_add:
       - NET_ADMIN
       - SYS_MODULE

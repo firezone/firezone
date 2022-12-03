@@ -2,6 +2,9 @@ defmodule FzHttp.Devices.Device.QueryTest do
   use FzHttp.DataCase, async: true
   import FzHttp.Devices.Device.Query
   alias FzHttp.DevicesFixtures
+  import FzHttp.GatewaysFixtures, only: [setup_default_gateway: 1]
+
+  setup :setup_default_gateway
 
   describe "next_available_address/3" do
     test "selects available IPv4 in CIDR range at the offset" do

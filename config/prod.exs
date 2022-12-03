@@ -10,10 +10,6 @@ import Config
 # which you should run after static files are built and
 # before starting your production server.
 
-config :fz_wall,
-  nft_path: "nft",
-  cli: FzWall.CLI.Sandbox
-
 config :fz_http, FzHttpWeb.Endpoint,
   cache_static_manifest: "priv/static/cache_manifest.json",
   # changed by release config

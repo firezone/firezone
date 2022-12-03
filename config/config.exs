@@ -22,6 +22,11 @@ config :fz_http, FzHttpWeb.Auth.JSON.Authentication,
 # Use timestamptz for all timestamp fields
 config :fz_http, FzHttp.Repo, migration_timestamps: [type: :timestamptz]
 
+config :fz_http, FzHttpWeb.Auth.Gateway.Authentication,
+  issuer: "fz_http",
+  # Generate with mix guardian.gen.secret
+  secret_key: "2FEs0hVcvWefd79XxXaj/VX8XqWXhOIzUV93cLNptpbkZ4kIBYSBcdP6V3XW3jSe"
+
 config :fz_http,
   http_client_options: [],
   external_trusted_proxies: [],
@@ -31,9 +36,13 @@ config :fz_http,
   wireguard_ipv4_enabled: true,
   wireguard_ipv4_network: "100.64.0.0/10",
   wireguard_ipv4_address: "100.64.0.1",
-  wireguard_ipv6_enabled: true,
+  wireguard_ipv4_masquerade: true,
   wireguard_ipv6_network: "fd00::/106",
   wireguard_ipv6_address: "fd00::1",
+  wireguard_ipv6_masquerade: true,
+  wireguard_ipv6_enabled: true,
+  wireguard_mtu: 1280,
+  default_wireguard_port: 51820,
   max_devices_per_user: 10,
   telemetry_module: FzCommon.Telemetry,
   supervision_tree_mode: :full,
@@ -50,26 +59,8 @@ config :fz_http,
   server_process_opts: [name: {:global, :fz_http_server}],
   saml_entity_id: "urn:firezone.dev:firezone-app",
   saml_certfile_path: Path.expand("../apps/fz_http/priv/cert/saml_selfsigned.pem", __DIR__),
-  saml_keyfile_path: Path.expand("../apps/fz_http/priv/cert/saml_selfsigned_key.pem", __DIR__)
-
-config :fz_wall,
-  cli: FzWall.CLI.Sandbox,
-  wireguard_ipv4_masquerade: true,
-  wireguard_ipv6_masquerade: true,
-  server_process_opts: [name: {:global, :fz_wall_server}],
-  egress_interface: "dummy",
-  wireguard_interface_name: "wg-firezone",
-  port_based_rules_supported: true
-
-# This will be changed per-env
-config :fz_vpn,
-  wireguard_private_key_path: "priv/wg_dev_private_key",
-  stats_push_service_enabled: true,
-  wireguard_interface_name: "wg-firezone",
-  wireguard_port: 51_820,
-  wg_adapter: FzVpn.Interface.WGAdapter.Live,
-  server_process_opts: [name: {:global, :fz_vpn_server}],
-  supervised_children: [FzVpn.Server, FzVpn.StatsPushService]
+  saml_keyfile_path: Path.expand("../apps/fz_http/priv/cert/saml_selfsigned_key.pem", __DIR__),
+  openid_connect: OpenIDConnect
 
 config :fz_http, FzHttpWeb.Endpoint,
   render_errors: [view: FzHttpWeb.ErrorView, accepts: ~w(html json)],

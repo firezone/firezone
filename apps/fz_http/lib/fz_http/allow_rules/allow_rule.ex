@@ -3,13 +3,10 @@ defmodule FzHttp.AllowRules.AllowRule do
   The `AllowRule` schema.
   """
 
-  use Ecto.Schema
+  use FzHttp, :schema
   import Ecto.Changeset
 
   alias FzHttp.{Gateways.Gateway, Users.User}
-
-  @foreign_key_type Ecto.UUID
-  @primary_key {:id, Ecto.UUID, read_after_writes: true}
 
   schema "allow_rules" do
     field :destination, EctoNetwork.INET

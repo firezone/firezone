@@ -4,6 +4,10 @@ defmodule FzHttp.UsersTest do
   alias FzHttp.DevicesFixtures
   alias FzHttp.Configurations
   alias FzHttp.Users
+  alias FzHttp.{Repo, Users}
+  import FzHttp.GatewaysFixtures, only: [setup_default_gateway: 1]
+
+  setup :setup_default_gateway
 
   describe "count/0" do
     test "returns correct count of all users" do

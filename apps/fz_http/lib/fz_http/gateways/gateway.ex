@@ -3,10 +3,8 @@ defmodule FzHttp.Gateways.Gateway do
   The `Gateway` schema.
   """
 
-  use Ecto.Schema
+  use FzHttp, :schema
   import Ecto.Changeset
-
-  @primary_key {:id, Ecto.UUID, read_after_writes: true}
 
   schema "gateways" do
     field :name, :string
@@ -16,10 +14,8 @@ defmodule FzHttp.Gateways.Gateway do
     field :ipv6_address, EctoNetwork.INET
     field :mtu, :integer, read_after_writes: true
     field :public_key, :string
-    field :registration_token, :string
-    field :registration_token_created_at, :utc_datetime_usec
 
-    timestamps(type: :utc_datetime_usec)
+    timestamps()
   end
 
   def changeset(gateway, attrs) do
@@ -31,11 +27,9 @@ defmodule FzHttp.Gateways.Gateway do
       :ipv4_address,
       :ipv6_address,
       :mtu,
-      :public_key,
-      :registration_token,
-      :registration_token_created_at
+      :public_key
     ])
-    |> validate_required([:name, :registration_token, :registration_token_created_at])
+    |> validate_required(:name)
     |> unique_constraint(:name)
     |> unique_constraint(:ipv4_address)
     |> unique_constraint(:ipv6_address)
