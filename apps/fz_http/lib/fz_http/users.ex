@@ -6,7 +6,12 @@ defmodule FzHttp.Users do
   import Ecto.Changeset
   import Ecto.Query, warn: false
 
-  alias FzHttp.{Devices.Device, Mailer, Repo, Sites.Site, Telemetry, Users.User}
+  alias FzHttp.Devices.Device
+  alias FzHttp.Repo
+  alias FzHttp.Sites.Site
+  alias FzHttp.Telemetry
+  alias FzHttp.Users.User
+  alias FzHttpWeb.Mailer
 
   require Logger
 

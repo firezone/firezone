@@ -102,8 +102,8 @@ if config_env() == :prod do
     provider = System.get_env("OUTBOUND_EMAIL_PROVIDER", "sendmail")
 
     config :fz_http,
-           FzHttp.Mailer,
-           [from_email: from_email] ++ FzHttp.Mailer.configs_for(provider)
+           FzHttpWeb.Mailer,
+           [from_email: from_email] ++ FzHttpWeb.Mailer.configs_for(provider)
   end
 
   # Local auth
