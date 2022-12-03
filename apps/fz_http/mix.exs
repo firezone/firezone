@@ -95,7 +95,8 @@ defmodule FzHttp.MixProject do
       {:telemetry, "~> 1.0"},
       {:plug_cowboy, "~> 2.5"},
       {:credo, "~> 1.5", only: [:dev, :test], runtime: false},
-      {:remote_ip, "~> 1.0"}
+      {:remote_ip, "~> 1.0"},
+      {:guardian_phoenix, "~> 2.0"}
     ]
   end
 

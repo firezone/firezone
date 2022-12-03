@@ -69,6 +69,12 @@ defmodule FzHttpWeb.Router do
     get "/oidc/:provider", AuthController, :redirect_oidc_auth_uri, as: :auth_oidc
   end
 
+  scope "/auth/gateway", FzHttpWeb do
+    pipe_through :api
+
+    get "/token", AuthGatewayController, :request
+  end
+
   scope "/auth/saml" do
     pipe_through :samly
 

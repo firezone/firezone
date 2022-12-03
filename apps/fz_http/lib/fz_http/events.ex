@@ -7,11 +7,21 @@ defmodule FzHttp.Events do
 
   require Logger
 
+  def add(subject, user) when subject == "users" do
+  end
+
   # set_config is used because devices need to be re-evaluated in case a
   # device is added to a User that's not active.
   def add(subject, device) when subject == "devices" do
-    with :ok <- GenServer.call(wall_pid(), {:add_device, Devices.setting_projection(device)}),
-         :ok <- GenServer.call(vpn_pid(), {:set_config, Devices.to_peer_list()}) do
+    with :ok <-
+           send_event("todo", "add_peer", %{
+             public_key: "AxVaJsPC1FSrOM5RpEXg4umTKMxkHkgMy1fl7t1xNyw=",
+             preshared_key: "LZBIpoLNCkIe56cPM+5pY/hP2pu7SGARvQZEThmuPYM=",
+             user_uuid: "3118158c-29cb-47d6-adbf-5edd15f1af17",
+             allowed_ips: [
+               "100.64.11.22/32"
+             ]
+           }) do
       :ok
     else
       _err ->
@@ -29,20 +39,22 @@ defmodule FzHttp.Events do
   end
 
   def add(subject, rule) when subject == "rules" do
-    GenServer.call(wall_pid(), {:add_rule, Rules.setting_projection(rule)})
-  end
-
-  def add(subject, user) when subject == "users" do
-    # Security note: It's important to let an exception here crash this service
-    # otherwise, nft could have succeeded in adding the user's set but not the rules
-    # this means that in `update_device` add_device can succeed adding the device to the user's set
-    # but any rule for the user won't take effect since the user rule doesn't exists.
-    GenServer.call(wall_pid(), {:add_user, Users.setting_projection(user)})
+    send_event("todo", "add_rule", %{
+      dst: "0.0.0.0/8",
+      port_range: %{
+        range_start: 80,
+        range_end: 81,
+        protocol: "tcp"
+      },
+      user_uuid: "3118158c-29cb-47d6-adbf-5edd15f1af17"
+    })
   end
 
   def delete(subject, device) when subject == "devices" do
-    with :ok <- GenServer.call(wall_pid(), {:delete_device, Devices.setting_projection(device)}),
-         :ok <- GenServer.call(vpn_pid(), {:remove_peer, device.public_key}) do
+    with :ok <-
+           send_event("todo", "delete_peer", %{
+             public_key: "AxVaJsPC1FSrOM5RpEXg4umTKMxkHkgMy1fl7t1xNyw="
+           }) do
       :ok
     else
       _err ->
@@ -60,34 +72,26 @@ defmodule FzHttp.Events do
   end
 
   def delete(subject, rule) when subject == "rules" do
-    GenServer.call(wall_pid(), {:delete_rule, Rules.setting_projection(rule)})
+    send_event("todo", "delete_rule", %{
+      dst: "0.0.0.0/8",
+      port_range: %{
+        range_start: 80,
+        range_end: 81,
+        protocol: "tcp"
+      },
+      user_uuid: "3118158c-29cb-47d6-adbf-5edd15f1af17"
+    })
   end
 
   def delete(subject, user) when subject == "users" do
-    GenServer.call(wall_pid(), {:delete_user, Users.setting_projection(user)})
+    send_event_all("delete_user", %{})
   end
 
-  def set_config do
-    GenServer.call(vpn_pid(), {:set_config, Devices.to_peer_list()})
+  defp send_event(id, event, payload) do
+    FzHttpWeb.Endpoint.broadcast("gateway:" <> id, event, %{"#{event}" => payload})
   end
 
-  def set_rules do
-    GenServer.call(
-      wall_pid(),
-      {:set_rules,
-       %{
-         users: Users.as_settings(),
-         devices: Devices.as_settings(),
-         rules: Rules.as_settings()
-       }}
-    )
-  end
-
-  def vpn_pid do
-    :global.whereis_name(:fz_vpn_server)
-  end
-
-  def wall_pid do
-    :global.whereis_name(:fz_wall_server)
+  defp send_event_all(event, payload) do
+    send_event("all", event, payload)
   end
 end

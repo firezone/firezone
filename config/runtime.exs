@@ -227,6 +227,10 @@ if config_env() == :prod do
     issuer: "fz_http",
     secret_key: guardian_secret_key
 
+  config :fz_http, FzHttpWeb.Auth.Gateway.Authentication,
+    issuer: "fz_http",
+    secret_key: guardian_secret_key
+
   config :fz_http,
     saml_entity_id: saml_entity_id,
     saml_certfile_path: saml_certfile_path,
