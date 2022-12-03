@@ -1,8 +1,8 @@
-defmodule FzHttp.Mailer.NoopAdapter do
+defmodule FzHttpWeb.Mailer.NoopAdapter do
   @moduledoc """
   When mailer is not configure, use noop adapter as a drop-in replacement
   so that we don't have to add conditional logic to every single call to
-  `FzHttp.Mailer.deliver/2`.
+  `FzHttpWeb.Mailer.deliver/2`.
   """
 
   use Swoosh.Adapter

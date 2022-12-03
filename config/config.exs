@@ -142,7 +142,7 @@ config :fz_http, FzHttp.Vault,
     }
   ]
 
-config :fz_http, FzHttp.Mailer, adapter: FzHttp.Mailer.NoopAdapter
+config :fz_http, FzHttpWeb.Mailer, adapter: FzHttpWeb.Mailer.NoopAdapter
 
 config :samly, Samly.State, store: Samly.State.Session
 

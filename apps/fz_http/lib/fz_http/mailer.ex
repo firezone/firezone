@@ -1,4 +1,4 @@
-defmodule FzHttp.Mailer do
+defmodule FzHttpWeb.Mailer do
   @moduledoc """
   Outbound Email Sender.
   """
@@ -18,7 +18,7 @@ defmodule FzHttp.Mailer do
 
   def default_email do
     Email.new()
-    |> Email.from(Application.fetch_env!(:fz_http, FzHttp.Mailer)[:from_email])
+    |> Email.from(Application.fetch_env!(:fz_http, FzHttpWeb.Mailer)[:from_email])
   end
 
   def configs_for(provider) do

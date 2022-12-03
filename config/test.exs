@@ -128,7 +128,7 @@ config :fz_http, :saml_identity_providers, %{"test" => %{"label" => "SAML"}}
 # Provide mock for HTTPClient
 config :fz_http, :openid_connect, OpenIDConnect.Mock
 
-config :fz_http, FzHttp.Mailer, adapter: Swoosh.Adapters.Test, from_email: "test@firez.one"
+config :fz_http, FzHttpWeb.Mailer, adapter: Swoosh.Adapters.Test, from_email: "test@firez.one"
 
 config :fz_vpn,
   # XXX: Bump test coverage by adding a stubbed out module for FzVpn.StatsPushService

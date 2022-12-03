@@ -130,4 +130,4 @@ config :fz_http,
   telemetry_module: FzCommon.MockTelemetry,
   local_auth_enabled: local_auth_enabled
 
-config :fz_http, FzHttp.Mailer, adapter: Swoosh.Adapters.Local, from_email: "dev@firez.one"
+config :fz_http, FzHttpWeb.Mailer, adapter: Swoosh.Adapters.Local, from_email: "dev@firez.one"

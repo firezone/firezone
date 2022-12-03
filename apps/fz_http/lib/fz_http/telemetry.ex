@@ -146,7 +146,7 @@ defmodule FzHttp.Telemetry do
   end
 
   defp outbound_email? do
-    from_email = conf(FzHttp.Mailer)[:from_email]
+    from_email = conf(FzHttpWeb.Mailer)[:from_email]
 
     !is_nil(from_email)
   end
