@@ -139,7 +139,7 @@ To start the local development cluster, follow these steps:
 ```
 docker compose build
 docker compose up -d postgres
-docker compose run --rm elixir mix ecto.setup
+docker compose run --rm firezone mix ecto.setup
 docker compose up
 ```
 
