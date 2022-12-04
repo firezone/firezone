@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.CreateGatewayFirewallPolicies do
+defmodule FzHttp.Repo.Migrations.CreateGatewayNetworkPolicies do
   use Ecto.Migration
 
   @create_query "CREATE TYPE protocol_enum AS ENUM ('tcp', 'udp')"
@@ -7,9 +7,16 @@ defmodule FzHttp.Repo.Migrations.CreateGatewayFirewallPolicies do
   def change do
     execute(@create_query, @drop_query)
 
-    create table(:gateway_firewall_policies, primary_key: false) do
+    create table(:gateway_network_policies, primary_key: false) do
       add(:id, :uuid, primary_key: true, default: fragment("gen_random_uuid()"))
       add(:gateway_id, references(:gateways, on_delete: :delete_all, type: :uuid), null: false)
+
+      add(
+        :network_policy_id,
+        references(:network_policies, on_delete: :delete_all, type: :uuid),
+        null: false
+      )
+
       add(:user_id, references(:users, column: :uuid, type: :uuid))
       add(:destination, :inet, null: false)
       add(:port_range_start, :integer)
@@ -19,23 +26,27 @@ defmodule FzHttp.Repo.Migrations.CreateGatewayFirewallPolicies do
       timestamps(type: :utc_datetime_usec)
     end
 
+    create(index(:gateway_network_policies, [:gateway_id]))
+    create(index(:gateway_network_policies, [:network_policy_id]))
+    create(index(:gateway_network_policies, [:user_id]))
+
     create(
-      constraint("gateway_firewall_policies", :port_range_is_within_valid_values,
+      constraint("gateway_network_policies", :port_range_is_within_valid_values,
         check: "int4range(port_range_start, port_range_end) <@ int4range(1, 65535)"
       )
     )
 
     create(
-      constraint("gateway_firewall_policies", :port_range_has_optional_protocol,
+      constraint("gateway_network_policies", :port_range_start_end_match,
         check: """
-        port_range_start IS NOT NULL AND port_range_end IS NOT NULL AND protocol is NOT NULL
-        OR protocol IS NULL
+        port_range_start IS NOT NULL AND port_range_end IS NOT NULL OR
+        protocol IS NULL AND port_range_start IS NULL AND port_range_end IS NULL
         """
       )
     )
 
     execute("""
-    CREATE OR REPLACE FUNCTION notify_gateway_firewall_policy_changes()
+    CREATE OR REPLACE FUNCTION notify_gateway_network_policy_changes()
     RETURNS trigger AS $$
     DECLARE
       row record;
@@ -47,7 +58,7 @@ defmodule FzHttp.Repo.Migrations.CreateGatewayFirewallPolicies do
       END IF;
 
       PERFORM pg_notify(
-        'gateway_firewall_policies_changed',
+        'gateway_network_policies_changed',
         json_build_object(
           'op', TG_OP,
           'row', row_to_json(row)
@@ -60,13 +71,10 @@ defmodule FzHttp.Repo.Migrations.CreateGatewayFirewallPolicies do
     """)
 
     execute("""
-    CREATE CONSTRAINT TRIGGER gateway_firewall_policies_changed
-    AFTER INSERT OR DELETE OR UPDATE ON gateway_firewall_policies
+    CREATE CONSTRAINT TRIGGER gateway_network_policies_changed
+    AFTER INSERT OR DELETE OR UPDATE ON gateway_network_policies
     DEFERRABLE
-    FOR EACH ROW EXECUTE PROCEDURE notify_gateway_firewall_policy_changes()
+    FOR EACH ROW EXECUTE PROCEDURE notify_gateway_network_policy_changes()
     """)
-
-    create(index(:gateway_firewall_policies, [:gateway_id]))
-    create(index(:gateway_firewall_policies, [:user_id]))
   end
 end
