@@ -32,7 +32,10 @@ config :fz_http, FzHttpWeb.Endpoint,
 
 get_egress_interface = fn ->
   egress_interface_cmd = "route | grep '^default' | grep -o '[^ ]*$'"
-  System.cmd("/bin/sh", ["-c", egress_interface_cmd]) |> elem(0) |> String.trim()
+
+  System.cmd("/bin/sh", ["-c", egress_interface_cmd], stderr_to_stdout: true)
+  |> elem(0)
+  |> String.trim()
 end
 
 egress_interface = System.get_env("EGRESS_INTERFACE") || get_egress_interface.()
