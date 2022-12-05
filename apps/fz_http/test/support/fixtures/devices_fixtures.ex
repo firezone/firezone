@@ -15,12 +15,16 @@ defmodule FzHttp.DevicesFixtures do
 
     default_attrs = %{
       user_id: user_id,
-      public_key: "test-pubkey",
-      name: "factory",
+      public_key: "test-pubkey-#{counter()}",
+      name: "factory #{counter()}",
       description: "factory description"
     }
 
     {:ok, device} = Devices.create_device(Map.merge(default_attrs, attrs))
     device
+  end
+
+  defp counter do
+    System.unique_integer([:positive])
   end
 end

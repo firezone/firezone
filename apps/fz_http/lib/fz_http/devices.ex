@@ -63,8 +63,6 @@ defmodule FzHttp.Devices do
   def get_device!(id), do: Repo.get!(Device, id)
 
   def create_device(attrs \\ %{}) do
-    # XXX: insert sometimes fails with deadlock errors, probably because
-    # of the giant SELECT in queries/inet.ex. Find a way to do this more gracefully.
     {:ok, result} =
       Repo.transaction(fn ->
         %Device{}
