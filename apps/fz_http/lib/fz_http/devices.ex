@@ -63,22 +63,17 @@ defmodule FzHttp.Devices do
   def get_device!(id), do: Repo.get!(Device, id)
 
   def create_device(attrs \\ %{}) do
-    {:ok, result} =
-      Repo.transaction(fn ->
-        %Device{}
-        |> Device.create_changeset(attrs)
-        |> Repo.insert()
-      end)
-
-    case result do
-      {:ok, _device} ->
+    attrs
+    |> Device.create_changeset()
+    |> Repo.insert()
+    |> case do
+      {:ok, device} ->
         Telemetry.add_device()
+        {:ok, device}
 
-      _ ->
-        nil
+      {:error, changeset} ->
+        {:error, changeset}
     end
-
-    result
   end
 
   def update_device(%Device{} = device, attrs) do
