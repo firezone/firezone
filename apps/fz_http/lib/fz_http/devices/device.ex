@@ -61,7 +61,7 @@ defmodule FzHttp.Devices.Device do
     timestamps(type: :utc_datetime_usec)
   end
 
-  def create_changeset(device, attrs) do
+  def create_changeset(device \\ %__MODULE__{}, attrs) do
     device
     |> shared_cast(attrs)
     |> put_next_ip(:ipv4)
