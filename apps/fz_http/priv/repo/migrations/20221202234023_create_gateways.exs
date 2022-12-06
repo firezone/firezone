@@ -11,8 +11,7 @@ defmodule FzHttp.Repo.Migrations.CreateGateways do
       add(:ipv6_network, :cidr)
       add(:wireguard_ipv4_address, :inet)
       add(:wireguard_ipv6_address, :inet)
-      add(:wireguard_mtu, :integer)
-      add(:wireguard_dns, :string)
+      add(:wireguard_mtu, :integer, default: 1280, null: false)
       add(:wireguard_public_key, :string)
 
       timestamps(type: :utc_datetime_usec)

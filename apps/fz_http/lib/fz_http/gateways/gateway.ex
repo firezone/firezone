@@ -18,7 +18,7 @@ defmodule FzHttp.Gateways.Gateway do
     field :ipv6_network, EctoNetwork.CIDR
     field :wireguard_ipv4_address, EctoNetwork.INET
     field :wireguard_ipv6_address, EctoNetwork.INET
-    field :wireguard_mtu, :integer
+    field :wireguard_mtu, :integer, read_after_writes: true
     field :wireguard_dns, :string
     field :wireguard_public_key, :string
 
@@ -39,10 +39,9 @@ defmodule FzHttp.Gateways.Gateway do
       :wireguard_ipv4_address,
       :wireguard_ipv6_address,
       :wireguard_mtu,
-      :wireguard_dns,
       :wireguard_public_key
     ])
-    |> validate_required([:site_id, :ipv4_masquerade, :ipv6_masquerade])
+    |> validate_required([:ipv4_masquerade, :ipv6_masquerade])
     |> assoc_constraint(:site)
   end
 end
