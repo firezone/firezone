@@ -172,7 +172,7 @@ defmodule FzHttp.RulesTest do
   describe "as_settings/0" do
     setup [:create_rules]
 
-    test "Maps rules to projections", %{rules: rules} do
+    test "maps rules to projections", %{rules: rules} do
       expected_rules = Enum.map(rules, &Rules.setting_projection/1) |> MapSet.new()
 
       assert Rules.as_settings() == expected_rules

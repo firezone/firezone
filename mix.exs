@@ -70,10 +70,10 @@ defmodule FirezoneUmbrella.MixProject do
 
   defp aliases do
     [
-      "ecto.seed": "run apps/fz_http/priv/repo/seeds.exs",
-      "ecto.setup": ["ecto.create", "ecto.migrate", "ecto.seed"],
-      "ecto.remigrate": ["ecto.drop", "ecto.create", "ecto.migrate"],
+      "ecto.seed": ["ecto.create", "ecto.migrate", "run apps/fz_http/priv/repo/seeds.exs"],
+      "ecto.setup": ["ecto.create", "ecto.migrate"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
+      test: ["ecto.create --quiet", "ecto.migrate", "test"],
       start: ["compile --no-validate-compile-env", "phx.server", "run --no-halt"]
     ]
   end
