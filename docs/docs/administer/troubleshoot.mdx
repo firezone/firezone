@@ -1,11 +1,28 @@
 ---
 title: Troubleshoot
 sidebar_position: 6
+description: Troubleshoot common connectivity and configuration issues with Firezone's WireGuard®-based remote access platform.
 ---
 
 For any problems that arise, a good first bet is to check the Firezone logs.
+
+<Tabs>
+<TabItem value="docker" label="Docker" default>
+
+Each container stores logs as a JSON file on the host machine. These can be shown through the
+`docker logs {CONTAINER}` command. Log files are found at
+`var/lib/docker/containers/{CONTAINER_ID}/{CONTAINER_ID}-json.log`.
+
+See [logs](../logs) for additional details.
+
+</TabItem>
+<TabItem value="omnibus" label="Omnibus">
+
 Firezone logs are stored in `/var/log/firezone` and can be viewed with
 `sudo firezone-ctl tail`.
+
+</TabItem>
+</Tabs>
 
 ## Application Crash Loop Preventing Config Changes
 
