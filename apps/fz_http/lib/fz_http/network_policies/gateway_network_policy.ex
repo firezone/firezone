@@ -10,7 +10,6 @@ defmodule FzHttp.NetworkPolicies.GatewayNetworkPolicy do
   alias FzHttp.NetworkPolicies.NetworkPolicy
 
   @foreign_key_type Ecto.UUID
-  @primary_key false
   @primary_key {:id, Ecto.UUID, read_after_writes: true}
 
   schema "gateway_network_policies" do
