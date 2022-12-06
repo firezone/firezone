@@ -100,7 +100,7 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          sudo scripts/uninstall.sh
+          sudo scripts/omnibus/omnibus-uninstall.sh
           sudo rm -rf /tmp/firezone*
           rm -rf omnibus/pkg/*
 
