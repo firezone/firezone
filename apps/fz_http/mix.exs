@@ -75,7 +75,7 @@ defmodule FzHttp.MixProject do
       {:ecto_sql, "~> 3.7"},
       {:ecto_network, "~> 1.3"},
       {:hammer, "~> 6.0"},
-      {:hammer_plug, "~> 2.1"},
+      {:hammer_plug, "~> 3.0"},
       {:inflex, "~> 2.1"},
       {:plug, "~> 1.13"},
       {:postgrex, "~> 0.16"},
