@@ -4,7 +4,8 @@ sidebar_position: 6
 description: Troubleshoot common connectivity and configuration issues with Firezone's WireGuard®-based remote access platform.
 ---
 
-For any problems that arise, a good first bet is to check the Firezone logs.
+This guide documents common configuration and connectivity issues. For
+any problems that arise, a good first bet is to check the Firezone logs.
 
 <Tabs>
 <TabItem value="docker" label="Docker" default>
@@ -62,9 +63,12 @@ to be in your reverse proxy configuration.
 
 In most cases, you'll find clues in one or more of the following locations:
 
+<Tabs>
+<TabItem value="omnibus" label="Omnibus">
+
 * Your browser's developer tool logs, specifically the `Network` tab.
 * `sudo firezone-ctl tail nginx`
-* `sudo firezoen-ctl tail phoenix`
+* `sudo firezone-ctl tail phoenix`
 
 If the websocket connection is successful, you should see output in the
 `phoenix` service logs similar the following:
@@ -81,6 +85,9 @@ If the websocket connection is successful, you should see output in the
 2022-09-23_15:05:47.35063 15:05:47.350 [info] JOINED notification:session in 636µs
 2022-09-23_15:05:47.35065   Parameters: %{"token" => "SFMyNTY.g2gDYQFuBgB6HeJqgwFiAAFRgA.zSG7pefm-Vgf_zvduxa5E9VK4s8PKqzc0xBDGNx5FQE", "user_agent" => "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:106.0) Gecko/20100101 Firefox/106.0"}
 ```
+
+</TabItem>
+</Tabs>
 
 ## Debugging WireGuard Connectivity Issues
 

@@ -8,7 +8,7 @@ description: Firezone's WireGuard®-based remote access platform stores debug lo
 This guide is written for Docker based deployments of Firezone
 :::
 
-## What does Firezone log?
+## What Firezone Logs
 
 Docker deployments of Firezone consist of 3 running containers:
 
@@ -22,7 +22,7 @@ Each container stores logs as a JSON file on the host machine. These files are f
 `var/lib/docker/containers/{CONTAINER_ID}/{CONTAINER_ID}-json.log` and can be shown through the
 `docker logs {CONTAINER}` command.
 
-## Managing logs
+## Managing and Configuring Logs
 
 By default, Firezone uses the `json-file` logging driver without
 [additional configuration](https://docs.docker.com/config/containers/logging/json-file/). This means
@@ -43,7 +43,7 @@ or
 * Enable log rotation and max file size
 * [Customize log driver output](https://docs.docker.com/config/containers/logging/log_tags/)
 
-## Audit logs
+## Audit Logs
 
 :::note
 Audit logs are in early Beta on the Enterprise plan.
