@@ -52,10 +52,6 @@ defmodule FzHttpWeb do
       import FzHttpWeb.LiveHelpers
 
       unquote(verified_routes())
-
-      def render_common(template, assigns \\ []) do
-        render(FzHttpWeb.CommonView, template, assigns)
-      end
     end
   end
 
