@@ -8,7 +8,8 @@ defmodule FzHttp.Repo.Migrations.AddDefaultsToConfigurations do
       add(:default_client_persistent_keepalive, :integer, null: false, default: 0)
       add(:default_client_allowed_ips, :string, null: false, default: "0.0.0.0/0, ::/0")
       add(:default_client_dns, :string, null: false, default: "1.1.1.1, 1.0.0.1")
-      add(:default_client_endpoint, :string, default: nil) # set by connectivity check
+      # set by connectivity check
+      add(:default_client_endpoint, :string, default: nil)
       add(:ipv4_enabled, :boolean, null: false, default: true)
       add(:ipv6_enabled, :boolean, null: false, default: true)
       add(:ipv4_network, :cidr, null: false, default: fragment("'10.3.2.0/24'::cidr"))
