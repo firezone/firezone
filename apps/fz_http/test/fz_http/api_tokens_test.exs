@@ -16,6 +16,13 @@ defmodule FzHttp.ApiTokensTest do
       assert ApiTokens.list_api_tokens() == [api_token]
     end
 
+    test "list_api_tokens/1 returns api_tokens scoped to a user" do
+      api_token1 = api_token_fixture()
+      api_token2 = api_token_fixture()
+      assert [api_token1] == ApiTokens.list_api_tokens(api_token1.user_id)
+      assert [api_token2] == ApiTokens.list_api_tokens(api_token2.user_id)
+    end
+
     test "get_api_token!/1 returns the api_token with given id" do
       api_token = api_token_fixture()
       assert ApiTokens.get_api_token!(api_token.id) == api_token
@@ -35,29 +42,10 @@ defmodule FzHttp.ApiTokensTest do
       assert {:error, %Ecto.Changeset{}} = ApiTokens.create_api_token(@invalid_attrs)
     end
 
-    test "update_api_token/2 with valid data updates the api_token" do
-      api_token = api_token_fixture()
-      update_attrs = %{revoked_at: ~U[2022-11-26 04:48:00.000000Z]}
+    test "revoke!/1 sets revoked_at to now" do
+      api_token = ApiTokens.revoke!(api_token_fixture())
 
-      assert {:ok, %ApiToken{} = api_token} = ApiTokens.update_api_token(api_token, update_attrs)
-      assert api_token.revoked_at == ~U[2022-11-26 04:48:00.000000Z]
-    end
-
-    test "update_api_token/2 with invalid data returns error changeset" do
-      api_token = api_token_fixture()
-      assert {:error, %Ecto.Changeset{}} = ApiTokens.update_api_token(api_token, @invalid_attrs)
-      assert api_token == ApiTokens.get_api_token!(api_token.id)
-    end
-
-    test "delete_api_token/1 deletes the api_token" do
-      api_token = api_token_fixture()
-      assert {:ok, %ApiToken{}} = ApiTokens.delete_api_token(api_token)
-      assert_raise Ecto.NoResultsError, fn -> ApiTokens.get_api_token!(api_token.id) end
-    end
-
-    test "change_api_token/1 returns a api_token changeset" do
-      api_token = api_token_fixture()
-      assert %Ecto.Changeset{} = ApiTokens.change_api_token(api_token)
+      refute is_nil(api_token.revoked_at)
     end
   end
 end
