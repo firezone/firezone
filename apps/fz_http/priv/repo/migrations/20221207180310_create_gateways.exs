@@ -12,7 +12,7 @@ defmodule FzHttp.Repo.Migrations.CreateGateways do
       add(:mtu, :integer, default: 1280, null: false)
       add(:rules, :map, default: %{}, null: false)
       add(:public_key, :string)
-      add(:reg_token, :string, null: false)
+      add(:registration_token, :string, null: false)
 
       timestamps(type: :utc_datetime_usec)
     end
