@@ -26,21 +26,6 @@ require Logger
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
-git_sha =
-  case System.get_env("GIT_SHA") do
-    nil ->
-      case System.cmd("git", ["rev-parse", "--short", "HEAD"], stderr_to_stdout: true) do
-        {output, 0} ->
-          String.trim(output)
-
-        {_error, _code} ->
-          "deadbeef"
-      end
-
-    str ->
-      str
-  end
-
 # Public API key for telemetry
 config :posthog,
   api_url: "https://telemetry.firez.one",
@@ -78,7 +63,6 @@ config :fz_http,
   connectivity_checks_enabled: true,
   connectivity_checks_interval: 3_600,
   connectivity_checks_url: "https://ping-dev.firez.one/",
-  git_sha: git_sha,
   cookie_secure: true,
   cookie_signing_salt: "Z9eq8iof",
   cookie_encryption_salt: "3A33Dz4C2k",
