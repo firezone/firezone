@@ -5,14 +5,13 @@ defmodule FzHttpWeb.UserFromAuth do
 
   alias FzHttp.Configurations, as: Conf
   alias FzHttp.Users
-  alias FzHttpWeb.Authentication
-  alias Ueberauth.Auth
+  alias FzHttpWeb.Auth.HTML.Authentication
 
   def find_or_create(
-        %Auth{
+        %Ueberauth.Auth{
           provider: :identity,
-          info: %Auth.Info{email: email},
-          credentials: %Auth.Credentials{other: %{password: password}}
+          info: %Ueberauth.Auth.Info{email: email},
+          credentials: %Ueberauth.Auth.Credentials{other: %{password: password}}
         } = _auth
       ) do
     Users.get_by_email(email) |> Authentication.authenticate(password)

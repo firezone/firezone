@@ -1,10 +1,10 @@
-defmodule FzHttpWeb.Authentication.ErrorHandler do
+defmodule FzHttpWeb.Auth.HTML.ErrorHandler do
   @moduledoc """
-  Error Handler module implementation for Guardian.
+  HTML Error Handler module implementation for Guardian.
   """
 
   use FzHttpWeb, :controller
-  alias FzHttpWeb.Authentication
+  alias FzHttpWeb.Auth.HTML.Authentication
   import FzHttpWeb.ControllerHelpers, only: [root_path_for_role: 1]
   require Logger
 
@@ -25,13 +25,8 @@ defmodule FzHttpWeb.Authentication.ErrorHandler do
   end
 
   @impl Guardian.Plug.ErrorHandler
-  def auth_error(conn, {type, reason}, opts) do
-    Logger.warn("""
-      ErrorHandler.auth_error: Could not validate user.
-      Type: #{type}
-      Reason: #{reason}
-      Opts: #{opts}
-    """)
+  def auth_error(conn, {type, reason}, _opts) do
+    Logger.warn("HTML.ErrorHandler.auth_error. Type: #{type}. Reason: #{reason}.")
 
     conn
     |> put_resp_content_type("text/plain")

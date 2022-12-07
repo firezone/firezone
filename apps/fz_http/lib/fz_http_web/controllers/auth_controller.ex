@@ -8,7 +8,7 @@ defmodule FzHttpWeb.AuthController do
   @local_auth_providers [:identity, :magic_link]
 
   alias FzHttp.Users
-  alias FzHttpWeb.Authentication
+  alias FzHttpWeb.Auth.HTML.Authentication
   alias FzHttpWeb.OAuth.PKCE
   alias FzHttpWeb.OIDC.State
   alias FzHttpWeb.UserFromAuth
@@ -21,8 +21,6 @@ defmodule FzHttpWeb.AuthController do
   plug Ueberauth
 
   def request(conn, _params) do
-    # XXX: Helpers.callback_url/1 generates the wrong URL behind nginx.
-    # This is a bug in Ueberauth. auth_path is used instead.
     path = ~p"/auth/identity/callback"
 
     conn
