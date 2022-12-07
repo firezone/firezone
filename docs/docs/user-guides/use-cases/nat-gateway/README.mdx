@@ -12,11 +12,11 @@ This is commonly used in the following scenarios:
   individual device IPs.
 * Masking your device IP or proxying your source IP for privacy or
   security reasons.
+* Restricting SSO authentication to users connected to the VPN
+([see guide](whitelist-sso))
 
 This guide will walk through a simple example restricting access for a
 self-hosted web app to a single whitelisted static IP running Firezone.
-In this example the protected resource and Firezone are
-in separate VPC regions.
 
 This arrangement is commonly done in place of maintaining an IP whitelist for
 multiple end users, which may become labor intensive to manage as the access
@@ -30,6 +30,9 @@ Our goal is to configure VPN traffic to the restricted resource to be routed
 through a Firezone server on an EC2 instance. In this case Firezone is acting as
 a network proxy or NAT gateway to provide a single public egress IP for all the
 devices connected to it.
+
+In this example the protected resource and Firezone are
+in separate VPC regions.
 
 ### Step 1 - Deploy Firezone server
 
@@ -66,7 +69,3 @@ However, if
 [split tunneling](/user-guides/use-cases/split-tunnel/)
 has been enabled, configuration may be required to ensure the destination IP of
 the protected resource is included in the `Allowed IPs`.
-
-### Related Guides
-
-* [Authenticate](/authenticate/)
