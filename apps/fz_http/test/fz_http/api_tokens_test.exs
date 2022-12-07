@@ -42,10 +42,20 @@ defmodule FzHttp.ApiTokensTest do
       assert {:error, %Ecto.Changeset{}} = ApiTokens.create_api_token(@invalid_attrs)
     end
 
-    test "revoke!/1 sets revoked_at to now" do
+    test "revoke!/1 sets revoked_at" do
       api_token = ApiTokens.revoke!(api_token_fixture())
 
       refute is_nil(api_token.revoked_at)
+    end
+
+    test "revoked?/1 returns true for revoked ApiToken" do
+      revoked_api_token = ApiTokens.revoke!(api_token_fixture())
+      api_token = api_token_fixture()
+
+      assert ApiTokens.revoked?(revoked_api_token)
+      assert ApiTokens.revoked?(revoked_api_token.id)
+      refute ApiTokens.revoked?(api_token)
+      refute ApiTokens.revoked?(api_token.id)
     end
   end
 end

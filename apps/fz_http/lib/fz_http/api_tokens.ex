@@ -29,4 +29,16 @@ defmodule FzHttp.ApiTokens do
     |> ApiToken.changeset(%{revoked_at: DateTime.utc_now()})
     |> Repo.update!()
   end
+
+  def revoked?(%ApiToken{} = api_token) do
+    revoked?(api_token.id)
+  end
+
+  def revoked?(id) do
+    Repo.exists?(
+      from a in ApiToken,
+        where: not is_nil(a.revoked_at),
+        where: a.id == ^id
+    )
+  end
 end

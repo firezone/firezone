@@ -19,10 +19,7 @@ defmodule FzHttp.ApiTokensFixtures do
 
     {:ok, api_token} =
       attrs
-      |> Enum.into(%{
-        user_id: user_id,
-        revoked_at: ~U[2022-11-25 04:48:00.000000Z]
-      })
+      |> Enum.into(%{user_id: user_id})
       |> FzHttp.ApiTokens.create_api_token()
 
     api_token

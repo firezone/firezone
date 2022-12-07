@@ -27,6 +27,7 @@ defmodule FzHttp.Application do
   defp children(:full) do
     [
       {Cachex, name: :conf},
+      {Cachex, name: :revoked_api_tokens},
       FzHttp.Server,
       FzHttp.Repo,
       {Postgrex.Notifications, [name: FzHttp.Repo.Notifications] ++ FzHttp.Repo.config()},
