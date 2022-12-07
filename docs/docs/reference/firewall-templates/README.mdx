@@ -6,3 +6,10 @@ sidebar_position: 9
 Firewall templates to secure the Firezone server are available from here. If
 the server is not running any services other than Firezone, the firewall
 template should work as-is.
+
+```mdx-code-block
+import DocCardList from '@theme/DocCardList';
+import {useCurrentSidebarCategory} from '@docusaurus/theme-common';
+
+<DocCardList items={useCurrentSidebarCategory().items}/>
+```
