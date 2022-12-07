@@ -132,6 +132,52 @@ To                         Action      From
 51820/udp (v6)             ALLOW IN    Anywhere (v6)
 ```
 
+## Locked Out of Admin Access
+
+If you are locked out of the admin account for your Firezone instance
+you can re-create your admin user. 
+
+<Tabs>
+<TabItem value="docker" label="Docker">
+
+Run the following command in the
+home directory of your Firezone installation. This is where you can
+find the `docker-compose.yml` and `.env` files.
+
+```shell
+docker compose exec firezone bin/create-or-reset-admin
+```
+
+This will reset the password on admin user using the default password
+found in the `.env` environment file.
+
+</TabItem>
+
+<TabItem value="omnibus" label="Omnibus">
+
+Run the following command to reset the password on the default admin user.
+
+```shell
+firezone-ctl create-or-reset-admin
+```
+
+</TabItem>
+</Tabs>
+
+## Re-enable Local Authentication in CLI
+
+For production deployments, we recommend adding a TOTP-based second factor to admin accounts.
+If you promoted an account authenticated through an identity provider, you can consider
+disabling local authentication for additional security.
+
+If errors occur with your identity provider integration, you can be locked out of
+access to the admin portal. You can un the following query on Firezone's Postgres database
+to re-enable local authentication.
+
+```SQL
+UPDATE configurations SET local_auth_enabled = 't'
+```
+
 ## Need additional help?
 
 Try asking on one of our community-powered support channels:
