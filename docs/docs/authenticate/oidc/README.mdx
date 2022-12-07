@@ -1,11 +1,17 @@
 ---
 title: OpenID Connect
 sidebar_position: 10
+description:
+    Enforce single sign-on wih your identity provider. Integrate
+    providers like Okta, Google, Azure, and JumpCloud using Firezone's
+    OIDC connector.
 ---
+
+# Integrate your identity provider using OIDC
 
 Firezone supports Single Sign-On (SSO) via OpenID Connect (OIDC).
 
-## Provider Support
+## Supported identity providers
 
 In general, most identity providers that offer OIDC support work with Firezone. Some providers
 that only implement the OIDC partially or use uncommon configurations may have
@@ -25,7 +31,7 @@ The following OIDC providers are known to work well with Firezone:
 | [Zitadel](zitadel)                                                                | Untested but known to work     |                                                                                                                                                        |
 | [Authentik](https://goauthentik.io/)                                              | Untested but known to work     |                                                                                                                                                        |
 
-## General Instructions
+## General setup guide
 
 If you're using an OIDC provider not listed above, the following OIDC attributes
 are required for setting up an OIDC provider in Firezone:
@@ -51,7 +57,7 @@ Firezone supports Proof Key for Code Exchange (PKCE) for increased login securit
 We recommend you enable PKCE in your IdP's settings whenever available. [Read more
 about PKCE here](https://oauth.net/2/pkce/).
 
-### OIDC Logout URI
+### OIDC logout URI
 
 The OpenID Connect standard [defines a mechanism](https://openid.net/specs/openid-connect-rpinitiated-1_0.html)
 for a Relying Party (RP) to request that an OpenID Provider log out the End-User.

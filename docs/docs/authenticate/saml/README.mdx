@@ -1,11 +1,17 @@
 ---
 title: SAML 2.0
 sidebar_position: 11
+description:
+    Enforce single sign-on wih your identity provider. Integrate
+    providers like Okta, Google, OneLogin, and JumpCloud using Firezone's
+    SAML 2.0 connector.
 ---
+
+# Integrate your identity provider using SAML 2.0
 
 Firezone supports Single Sign-On (SSO) via SAML 2.0.
 
-## Provider Support
+## Supported identity providers
 
 In general, most identity providers that support SAML 2.0 should work with
 Firezone.
@@ -62,7 +68,7 @@ and run `firezone-ctl reconfigure` to pick up the changes.
   </TabItem>
 </Tabs>
 
-## General Instructions
+## General setup instructions
 
 Once you've configured Firezone with an X.509 certificate and corresponding
 private key as shown above, you'll need a few more things to set up a generic
@@ -71,7 +77,7 @@ SAML integration.
 Use these general instructions to configure a SAML connector for a provider not listed
 above.
 
-### IdP Metadata Document
+### IdP metadata document
 
 You'll need to get the SAML Metadata XML document from your identity provider. In most
 cases this can be downloaded from your IdP's SAML App configuration dashboard.

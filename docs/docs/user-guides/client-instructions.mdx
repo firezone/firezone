@@ -3,7 +3,9 @@ title: Client Instructions
 sidebar_position: 4
 ---
 
-## Install and Setup
+# Client instructions (for Firezone users)
+
+## Install and setup
 
 Follow this guide to establish a VPN session
 through the WireGuard native client.
@@ -64,7 +66,7 @@ click the `Reauthenticate` button, then sign in again.
 
 ![Activate Session](https://user-images.githubusercontent.com/52545545/156859636-fde95fc5-5b9c-4697-9108-2f277ed3fbef.png)
 
-## Linux - Network Manager
+## Linux - Network manager
 
 The following steps can be used on Linux devices to import the WireGuard
 configuration profile using Network Manager CLI (`nmcli`).
@@ -79,7 +81,7 @@ ipv6.method: method "auto" is not supported for WireGuard
 
 :::
 
-### Step 1 - Install the WireGuard Tools
+### Step 1 - Install the WireGuard tools
 
 The WireGuard userspace tools need to be installed. For most Linux
 distributions this will be a package named `wireguard` or `wireguard-tools`.
@@ -151,7 +153,7 @@ nmcli connection down [vpn name]
 If using a GUI, the relevant Network Manager applet can also be used to control
 the connection.
 
-### Auto Connection
+### Auto connection
 
 The VPN connection can be set to automatically connect by setting the `autoconnect`
 option to `yes`:
@@ -166,7 +168,7 @@ To disable the automatic connection set it back to `no`:
 nmcli connection modify [vpn name] connection.autoconnect no
 ```
 
-## Enable Multi-Factor Authentication
+## Enable multi-factor authentication
 
 To enable MFA navigate to `/user_account/register_mfa` in the Firezone portal.
 After generating the QR code, scan using your authenticator app and
