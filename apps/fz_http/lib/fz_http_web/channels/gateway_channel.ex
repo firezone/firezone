@@ -1,9 +1,13 @@
 defmodule FzHttpWeb.Gateway.Channel do
+  @moduledoc """
+  Error handler for halting pipe processing when erroring out when communicating with the gateway
+  """
+
   use FzHttpWeb, :channel
 
   @impl Phoenix.Channel
   def join("gateway:all", _payload, socket) do
-    # XXX: Every gateway is expected to join here 
+    # XXX: Every gateway is expected to join here
     {:ok, socket}
   end
 
@@ -11,8 +15,8 @@ defmodule FzHttpWeb.Gateway.Channel do
   def join("gateway:" <> id, _, socket) do
     # XXX: Here we check for Guardian.Phoenix.Socket.current_claims to check if the gateway has access to the channel
     dbg(id)
-
     send(self(), :after_join)
+
     {:ok, socket}
   end
 

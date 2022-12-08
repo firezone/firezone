@@ -8,7 +8,7 @@ defmodule FzHttpWeb.AuthGatewayController do
 
     case FzHttpWeb.Auth.Gateway.Authentication.encode_and_sign("gateway_id") do
       {:ok, token, claim} -> json(conn, %{token: token, claim: claim})
-      {:err, err} -> json(conn, %{err: err})
+      {:error, err} -> json(conn, %{error: err})
     end
   end
 end

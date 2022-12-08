@@ -1,4 +1,7 @@
 defmodule FzHttpWeb.Auth.Gateway.Authentication do
+  @moduledoc """
+  Authentication for gateway channel
+  """
   use Guardian, otp_app: :fz_http
 
   @impl Guardian

@@ -1,4 +1,8 @@
 defmodule FzHttpWeb.Gateway.Socket do
+  @moduledoc """
+  Socket over which gateway authenticates and communicates with the channel
+  """
+
   use Phoenix.Socket
 
   channel "gateway:*", FzHttpWeb.Gateway.Channel

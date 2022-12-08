@@ -1,4 +1,8 @@
 defmodule FzHttpWeb.Gateway.ErrorHandler do
+  @moduledoc """
+  Error handler for halting pipe processing when erroring out when communicating with the gateway
+  """
+
   def handle_error(conn, {:unauthorized, _reason}) do
     Plug.Conn.send_resp(conn, 403, "Unauthorized Access")
     |> Plug.Conn.halt()
