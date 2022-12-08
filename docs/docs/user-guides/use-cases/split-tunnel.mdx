@@ -40,23 +40,21 @@ interface corresponding to the most specific route first.
 ## Step 2 - Set the DNS (optional)
 
 You can define the DNS used by devices when the WireGuard tunnel
-is active. By default, it is `1.1.1.1, 1.0.0.1`. Visit the `/settings/default`
-to override this value.
+is active. By default, it uses Cloudflare's DNS servers (`1.1.1.1, 1.0.0.1`).
+Visit the `/settings/default` to override this value.
 
-This can be desired if you run a DNS server that resolves internal hosts that
-resolve to private IPs reachable via Firezone.
+For split tunneling, this can be desired if you run a DNS server that
+resolves internal hosts to private IPs reachable via Firezone.
 
 :::note
 If you are using Firezone as a anonymity service or wish to resolve DNS queries
-over the encrypted VPN tunnel, ensure the DNS IPs are included in `AllowedIPs`.
-Failure to do so will result in a
-[DNS leak](https://en.wikipedia.org/wiki/DNS_leak).
+over the encrypted VPN tunnel (recommended), ensure the DNS IPs are included in `AllowedIPs`.
 :::
 
 ## Step 3 - Regenerate the device configurations
 
 To update existing user devices with the new split tunnel configuration,
 users will need to regenerate the configuration files
-and add them to their native WireGuard client.
+and add them to their client app.
 
 See [add device](/user-guides/add-devices/) for instructions.
