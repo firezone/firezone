@@ -73,7 +73,7 @@ defmodule FzHttpWeb.Endpoint do
 
   plug Plug.MethodOverride
   plug Plug.Head
-  plug :session
+  plug(:session)
 
   if HeaderHelpers.proxied?() do
     plug ProxyHeaders
