@@ -1,19 +1,21 @@
 ---
 title: Split Tunnel VPN
 sidebar_position: 1
-description: Configure Firezone to split tunnel traffic destined for certain IP ranges through the WireGuard®-based secure access platform.
+description:
+    Configure Firezone for split tunneling. Route some network traffic
+    from end users through the encrypted WireGuard® tunnel.
 ---
+
+# Set up IP-based split tunneling with Firezone
 
 This guide will describe the steps required to enable split tunneling with
 WireGuard using Firezone so only traffic to defined IP ranges will be routed
 through the VPN.
 
-## Split Tunnel using Firezone
-
 Firezone sets the `Allowed IPs` field so traffic destined for
 specific IPs are encrypted and routed through the gateway.
 
-### Step 1 - Configure AllowedIPs
+## Step 1 - Configure AllowedIPs
 
 AllowedIPs can be set globally on the `/settings/default` page or individually
 for each device during creation. Changes will only apply to new WireGuard
@@ -35,7 +37,7 @@ When deciding where to route a packet, Firezone chooses the egress
 interface corresponding to the most specific route first.
 :::
 
-### Step 2 - Regenerate the WireGuard configuration
+## Step 2 - Regenerate the WireGuard configuration
 
 To update existing user devices with the new split tunnel configuration,
 users will need to regenerate the configuration files
