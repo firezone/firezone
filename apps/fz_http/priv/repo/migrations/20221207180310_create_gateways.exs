@@ -16,6 +16,6 @@ defmodule FzHttp.Repo.Migrations.CreateGateways do
       timestamps(type: :utc_datetime_usec)
     end
 
-    create(unique_index(:gateways, [:name]))
+    create(unique_index(:gateways, :name))
   end
 end
