@@ -95,7 +95,12 @@ Then, make sure your Firezone services have the `restart: always` or `restart: u
 specified in the `docker-compose.yml` file. This is the default used in the docker-compose.prod.yml
 production template file.
 
-## Step 4: Install Client Apps
+## Step 4: Install client apps
+
+:::note
+Firezone currently uses WireGuard's
+[open-source client apps](https://www.wireguard.com/install/).
+:::
 
 Once successfully deployed, users and devices can be added to
 connect to the VPN server:
