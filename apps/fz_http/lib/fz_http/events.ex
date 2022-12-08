@@ -96,4 +96,12 @@ defmodule FzHttp.Events do
   defp send_event_all(event, payload) do
     send_event("all", event, payload)
   end
+
+  def vpn_pid do
+    :global.whereis_name(:fz_vpn_server)
+  end
+
+  def wall_pid do
+    :global.whereis_name(:fz_wall_server)
+  end
 end
