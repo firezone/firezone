@@ -11,8 +11,8 @@ defmodule FzHttp.Repo.Migrations.CreateGateways do
       add(:ipv6_address, :inet, null: false, default: fragment("'fd00::3:2:1'::inet"))
       add(:mtu, :integer, null: false, default: 1280)
       add(:public_key, :string, default: nil)
-      add(:registration_token, :string, default: nil)
-      add(:registration_token_created_at, :utc_datetime_usec, default: nil)
+      add(:registration_token, :string, null: false)
+      add(:registration_token_created_at, :utc_datetime_usec, null: false)
 
       timestamps(type: :utc_datetime_usec)
     end
