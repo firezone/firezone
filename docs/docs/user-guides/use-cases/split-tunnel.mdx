@@ -15,7 +15,7 @@ through the VPN.
 Firezone sets the `Allowed IPs` field so traffic destined for
 specific IPs are encrypted and routed through the gateway.
 
-## Step 1 - Configure AllowedIPs
+## Step 1 - Set AllowedIPs
 
 AllowedIPs can be set globally on the `/settings/default` page or individually
 for each device during creation. Changes will only apply to new WireGuard
@@ -37,7 +37,23 @@ When deciding where to route a packet, Firezone chooses the egress
 interface corresponding to the most specific route first.
 :::
 
-## Step 2 - Regenerate the WireGuard configuration
+## Step 2 - Set the DNS (optional)
+
+You can define the DNS used by devices when the WireGuard tunnel
+is active. By default, it is `1.1.1.1, 1.0.0.1`. Visit the `/settings/default`
+to override this value.
+
+This can be desired if you run a DNS server that resolves internal hosts that
+resolve to private IPs reachable via Firezone.
+
+:::note
+If you are using Firezone as a anonymity service or wish to resolve DNS queries
+over the encrypted VPN tunnel, ensure the DNS IPs are included in `AllowedIPs`.
+Failure to do so will result in a
+[DNS leak](https://en.wikipedia.org/wiki/DNS_leak).
+:::
+
+## Step 3 - Regenerate the device configurations
 
 To update existing user devices with the new split tunnel configuration,
 users will need to regenerate the configuration files
