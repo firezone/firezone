@@ -5,6 +5,7 @@ defmodule FzHttp.Devices do
 
   import Ecto.Changeset
   import Ecto.Query, warn: false
+  import Wrapped.Application
 
   alias EctoNetwork.INET
   alias FzHttp.{Devices.Device, Devices.DeviceSetting, Repo, Sites, Telemetry, Users, Users.User}
@@ -172,7 +173,7 @@ defmodule FzHttp.Devices do
   def as_encoded_config(device), do: Base.encode64(as_config(device))
 
   def as_config(device) do
-    wireguard_port = Application.fetch_env!(:fz_vpn, :wireguard_port)
+    wireguard_port = app().fetch_env!(:fz_vpn, :wireguard_port)
     server_public_key = Application.get_env(:fz_vpn, :wireguard_public_key)
 
     if is_nil(server_public_key) do
@@ -264,10 +265,10 @@ defmodule FzHttp.Devices do
   defp field_empty?(_), do: false
 
   defp ipv4? do
-    Application.fetch_env!(:fz_http, :wireguard_ipv4_enabled)
+    app().fetch_env!(:fz_http, :wireguard_ipv4_enabled)
   end
 
   defp ipv6? do
-    Application.fetch_env!(:fz_http, :wireguard_ipv6_enabled)
+    app().fetch_env!(:fz_http, :wireguard_ipv6_enabled)
   end
 end

@@ -1,6 +1,5 @@
 defmodule FzHttpWeb.UserLive.ShowTest do
-  # XXX: Setting to true causes deadlocks. Figure out why.
-  use FzHttpWeb.ConnCase, async: false
+  use FzHttpWeb.ConnCase, async: true
 
   alias FzHttp.UsersFixtures
 

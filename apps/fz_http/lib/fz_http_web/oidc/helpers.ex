@@ -3,6 +3,8 @@ defmodule FzHttpWeb.OIDC.Helpers do
   Just some, ya know, helpers for OIDC flows.
   """
 
+  import Wrapped.Application
+
   # openid_connect expects providers as keys...
   def atomize_provider(key) do
     {:ok, String.to_existing_atom(key)}
@@ -11,6 +13,6 @@ defmodule FzHttpWeb.OIDC.Helpers do
   end
 
   def openid_connect do
-    Application.fetch_env!(:fz_http, :openid_connect)
+    app().fetch_env!(:fz_http, :openid_connect)
   end
 end

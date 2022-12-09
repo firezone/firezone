@@ -1,4 +1,6 @@
 defmodule FzHttp.Queries.INET do
+  import Wrapped.Application
+
   @moduledoc """
   Raw SQL INET queries
   """
@@ -60,13 +62,13 @@ defmodule FzHttp.Queries.INET do
 
   defp wireguard_network(type) do
     network_key = "wireguard_#{type}_network" |> String.to_existing_atom()
-    {:ok, network} = EctoNetwork.INET.cast(Application.fetch_env!(:fz_http, network_key))
+    {:ok, network} = EctoNetwork.INET.cast(app().fetch_env!(:fz_http, network_key))
     network
   end
 
   defp wireguard_address(type) do
     address_key = "wireguard_#{type}_address" |> String.to_existing_atom()
-    {:ok, address} = EctoNetwork.INET.cast(Application.fetch_env!(:fz_http, address_key))
+    {:ok, address} = EctoNetwork.INET.cast(app().fetch_env!(:fz_http, address_key))
     address
   end
 

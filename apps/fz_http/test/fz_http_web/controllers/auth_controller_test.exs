@@ -89,7 +89,7 @@ defmodule FzHttpWeb.AuthControllerTest do
         "password" => "password1234"
       }
 
-      restore_env(:local_auth_enabled, false, &on_exit/1)
+      stub_conf(:local_auth_enabled, false)
 
       test_conn = post(conn, ~p"/auth/identity/callback", params)
       assert text_response(test_conn, 401) == "Local auth disabled"
@@ -227,7 +227,7 @@ defmodule FzHttpWeb.AuthControllerTest do
     end
 
     test "prevents signing in when local_auth_disabled", %{unauthed_conn: conn, user: user} do
-      restore_env(:local_auth_enabled, false, &on_exit/1)
+      stub_conf(:local_auth_enabled, false)
 
       test_conn = get(conn, ~p"/auth/magic/#{user.sign_in_token}")
       assert text_response(test_conn, 401) == "Local auth disabled"

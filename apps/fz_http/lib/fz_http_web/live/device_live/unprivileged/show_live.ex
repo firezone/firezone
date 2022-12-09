@@ -3,7 +3,8 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.Show do
   Shows a device for an unprivileged user.
   """
   use FzHttpWeb, :live_view
-  alias FzHttp.Configurations, as: Conf
+  import Wrapped.Cache
+  import Wrapped.Application
   alias FzHttp.Devices
   alias FzHttp.Users
 
@@ -43,7 +44,7 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.Show do
   def delete_device(device, socket) do
     if socket.assigns.current_user.id == device.user_id &&
          (has_role?(socket.assigns.current_user, :admin) ||
-            Conf.get!(:allow_unprivileged_device_management)) do
+            cache().get!(:allow_unprivileged_device_management)) do
       Devices.delete_device(device)
     else
       {:not_authorized}
@@ -56,7 +57,7 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.Show do
       user: Users.get_user!(device.user_id),
       page_title: device.name,
       allowed_ips: Devices.allowed_ips(device),
-      port: Application.fetch_env!(:fz_vpn, :wireguard_port),
+      port: app().fetch_env!(:fz_vpn, :wireguard_port),
       dns: Devices.dns(device),
       endpoint: Devices.endpoint(device),
       mtu: Devices.mtu(device),

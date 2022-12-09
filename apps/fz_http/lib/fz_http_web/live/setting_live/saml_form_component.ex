@@ -4,7 +4,7 @@ defmodule FzHttpWeb.SettingLive.SAMLFormComponent do
   """
   use FzHttpWeb, :live_component
 
-  alias FzHttp.Configurations, as: Conf
+  import Wrapped.Application
 
   def render(assigns) do
     ~H"""
@@ -192,7 +192,7 @@ defmodule FzHttpWeb.SettingLive.SAMLFormComponent do
   end
 
   def update(assigns, socket) do
-    external_url = Application.fetch_env!(:fz_http, :external_url)
+    external_url = app().fetch_env!(:fz_http, :external_url)
 
     changeset =
       assigns.providers
@@ -232,7 +232,7 @@ defmodule FzHttpWeb.SettingLive.SAMLFormComponent do
                 |> Map.put(id, data)
             }
           end)
-          |> Conf.update_configuration()
+          |> FzHttp.Configurations.update_configuration()
 
         _ ->
           {:error, changeset}
@@ -240,7 +240,7 @@ defmodule FzHttpWeb.SettingLive.SAMLFormComponent do
 
     case update do
       {:ok, config} ->
-        Application.fetch_env!(:samly, Samly.Provider)
+        app().fetch_env!(:samly, Samly.Provider)
         |> FzHttp.SAML.StartProxy.set_identity_providers(config.saml_identity_providers)
         |> FzHttp.SAML.StartProxy.refresh()
 

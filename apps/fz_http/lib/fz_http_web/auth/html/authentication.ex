@@ -5,7 +5,7 @@ defmodule FzHttpWeb.Auth.HTML.Authentication do
   use Guardian, otp_app: :fz_http
   use FzHttpWeb, :controller
 
-  alias FzHttp.Configurations, as: Conf
+  import Wrapped.Cache
   alias FzHttp.Telemetry
   alias FzHttp.Users
   alias FzHttp.Users.User
@@ -76,7 +76,7 @@ defmodule FzHttpWeb.Auth.HTML.Authentication do
     with {:ok, provider_key} <- parse_provider(Plug.Conn.get_session(conn, "login_method")),
          {:ok, provider} <- atomize_provider(provider_key),
          {:ok, client_id} <-
-           parse_client_id(Conf.get!(:parsed_openid_connect_providers)[provider]),
+           parse_client_id(cache().get!(:parsed_openid_connect_providers)[provider]),
          {:ok, token} <- parse_token(Plug.Conn.get_session(conn, "id_token")),
          {:ok, end_session_uri} <-
            parse_end_session_uri(

@@ -3,6 +3,13 @@ defmodule FzHttp.RulesTest do
 
   alias FzHttp.Rules
 
+  setup do
+    stub_app_env(:wireguard_ipv4_network, "10.3.2.0/24")
+    stub_app_env(:wireguard_ipv6_network, "fd00::3:2:0/120")
+
+    :ok
+  end
+
   describe "list_rules/0" do
     setup [:create_rules]
 

@@ -4,6 +4,7 @@ defmodule FzHttpWeb.Mailer do
   """
 
   use Swoosh.Mailer, otp_app: :fz_http
+  import Actual.Application
 
   alias Swoosh.{Adapters, Email}
 
@@ -18,7 +19,7 @@ defmodule FzHttpWeb.Mailer do
 
   def default_email do
     Email.new()
-    |> Email.from(Application.fetch_env!(:fz_http, FzHttpWeb.Mailer)[:from_email])
+    |> Email.from(app().fetch_env!(:fz_http, FzHttpWeb.Mailer)[:from_email])
   end
 
   def configs_for(provider) do

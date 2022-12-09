@@ -25,7 +25,7 @@ defmodule FzHttpWeb do
       import FzHttpWeb.Gettext
       import Phoenix.LiveView.Controller
       import FzHttpWeb.ControllerHelpers
-      alias FzHttp.Configurations, as: Conf
+      import Wrapped.Cache
 
       unquote(verified_routes())
     end
@@ -59,7 +59,7 @@ defmodule FzHttpWeb do
     quote do
       use Phoenix.LiveView, layout: {FzHttpWeb.LayoutView, :live}
       import FzHttpWeb.LiveHelpers
-      alias FzHttp.Configurations, as: Conf
+      import Wrapped.Cache
       alias Phoenix.LiveView.JS
 
       unquote(view_helpers())
@@ -70,7 +70,7 @@ defmodule FzHttpWeb do
     quote do
       use Phoenix.LiveView, layout: nil
       import FzHttpWeb.LiveHelpers
-      alias FzHttp.Configurations, as: Conf
+      import Wrapped.Cache
       alias Phoenix.LiveView.JS
 
       unquote(view_helpers())
@@ -83,7 +83,7 @@ defmodule FzHttpWeb do
       use Phoenix.LiveComponent
       use Phoenix.Component, global_prefixes: ~w(x-)
       import FzHttpWeb.LiveHelpers
-      alias FzHttp.Configurations, as: Conf
+      import Wrapped.Cache
 
       unquote(view_helpers())
     end

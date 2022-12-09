@@ -4,6 +4,7 @@ defmodule FzHttp.Sites do
   """
 
   import Ecto.Query, warn: false
+  import Wrapped.Application
   alias FzHttp.{ConnectivityChecks, Repo, Sites.Site}
 
   @wg_settings [:allowed_ips, :dns, :endpoint, :persistent_keepalive, :mtu]
@@ -63,14 +64,10 @@ defmodule FzHttp.Sites do
   end
 
   def default(:endpoint) do
-    app_env(:wireguard_endpoint) || ConnectivityChecks.endpoint()
+    app().fetch_env!(:fz_http, :wireguard_endpoint) || ConnectivityChecks.endpoint()
   end
 
   def default(key) do
-    app_env(String.to_atom("wireguard_#{key}"))
-  end
-
-  defp app_env(key) do
-    Application.fetch_env!(:fz_http, key)
+    app().fetch_env!(:fz_http, String.to_existing_atom("wireguard_#{key}"))
   end
 end

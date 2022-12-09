@@ -27,7 +27,7 @@ defmodule FzHttpWeb.UserFromAuthTest do
   describe "find_or_create/2 via OIDC with auto create enabled" do
     @tag config: %{"oidc_test" => %{"auto_create_users" => true}}
     test "sign in creates user", %{config: config, email: email} do
-      restore_env(:openid_connect_providers, config, &on_exit/1)
+      stub_conf(:openid_connect_providers, config)
 
       assert {:ok, result} =
                UserFromAuth.find_or_create("oidc_test", %{"email" => email, "sub" => :noop})
@@ -39,7 +39,7 @@ defmodule FzHttpWeb.UserFromAuthTest do
   describe "find_or_create/2 via OIDC with auto create disabled" do
     @tag config: %{"oidc_test" => %{"auto_create_users" => false}}
     test "sign in returns error", %{email: email, config: config} do
-      restore_env(:openid_connect_providers, config, &on_exit/1)
+      stub_conf(:openid_connect_providers, config)
 
       assert {:error, "not found"} =
                UserFromAuth.find_or_create("oidc_test", %{"email" => email, "sub" => :noop})
@@ -51,7 +51,7 @@ defmodule FzHttpWeb.UserFromAuthTest do
   describe "find_or_create/2 via SAML with auto create enabled" do
     @tag config: %{"saml_test" => %{"auto_create_users" => true}}
     test "sign in creates user", %{config: config, email: email} do
-      restore_env(:saml_identity_providers, config, &on_exit/1)
+      stub_conf(:saml_identity_providers, config)
 
       assert {:ok, result} =
                UserFromAuth.find_or_create(:saml, "saml_test", %{"email" => email, "sub" => :noop})
@@ -63,7 +63,7 @@ defmodule FzHttpWeb.UserFromAuthTest do
   describe "find_or_create/2 via SAML with auto create disabled" do
     @tag config: %{"saml_test" => %{"auto_create_users" => false}}
     test "sign in returns error", %{email: email, config: config} do
-      restore_env(:saml_identity_providers, config, &on_exit/1)
+      stub_conf(:saml_identity_providers, config)
 
       assert {:error, "not found"} =
                UserFromAuth.find_or_create(:saml, "saml_test", %{"email" => email, "sub" => :noop})

@@ -5,17 +5,15 @@ defmodule FzHttp.Configurations do
 
   import Ecto.Query, warn: false
   import Ecto.Changeset
-  alias FzHttp.{Repo, Configurations.Configuration, Configurations.Cache}
-
-  defdelegate get(key), to: FzHttp.Configurations.Cache
-  defdelegate get!(key), to: FzHttp.Configurations.Cache
+  import Wrapped.Cache
+  alias FzHttp.{Repo, Configurations.Configuration}
 
   def get_configuration! do
     Repo.one!(Configuration)
   end
 
   def auto_create_users?(field, provider) do
-    get!(field)
+    cache().get!(field)
     |> Map.get(provider)
     |> Map.get("auto_create_users")
   end
@@ -33,10 +31,10 @@ defmodule FzHttp.Configurations do
       for {k, v} <- changeset.changes do
         case v do
           %Ecto.Changeset{} ->
-            Cache.put!(k, v.changes)
+            cache().put!(k, v.changes)
 
           _ ->
-            Cache.put!(k, v)
+            cache().put!(k, v)
         end
       end
 

@@ -15,6 +15,7 @@ defmodule FzHttp.DataCase do
   """
 
   use ExUnit.CaseTemplate
+  use FzHttp.CaseTemplate
 
   alias Ecto.Adapters.SQL.Sandbox
 

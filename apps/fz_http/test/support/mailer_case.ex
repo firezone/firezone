@@ -3,6 +3,7 @@ defmodule FzHttpWeb.MailerCase do
   A case template for Mailers.
   """
   use ExUnit.CaseTemplate
+  use FzHttp.CaseTemplate
 
   alias Ecto.Adapters.SQL.Sandbox
 

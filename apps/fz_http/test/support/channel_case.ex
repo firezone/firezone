@@ -16,6 +16,7 @@ defmodule FzHttpWeb.ChannelCase do
   """
 
   use ExUnit.CaseTemplate
+  use FzHttp.CaseTemplate
 
   alias Ecto.Adapters.SQL.Sandbox
 

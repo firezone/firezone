@@ -1,6 +1,6 @@
 defmodule FzHttp.DevicesTest do
-  # XXX: Update the device IP query to be an insert
-  use FzHttp.DataCase, async: false
+  use FzHttp.DataCase, async: true
+
   alias FzHttp.Devices
   alias FzHttp.DevicesFixtures
   alias FzHttp.Users
@@ -64,38 +64,15 @@ defmodule FzHttp.DevicesTest do
   describe "create_device/1" do
     setup [:create_user, :create_device]
 
-    setup context do
-      if ipv4_network = context[:ipv4_network] do
-        restore_env(:wireguard_ipv4_network, ipv4_network, &on_exit/1)
-      else
-        context
-      end
-    end
-
-    setup context do
-      if ipv6_network = context[:ipv6_network] do
-        restore_env(:wireguard_ipv6_network, ipv6_network, &on_exit/1)
-      else
-        context
-      end
-    end
-
-    setup context do
-      if max_devices = context[:max_devices] do
-        restore_env(:max_devices_per_user, max_devices, &on_exit/1)
-      else
-        context
-      end
-    end
-
     @device_attrs %{
       name: "dummy",
       public_key: "dummy",
       user_id: nil
     }
 
-    @tag max_devices: 1
     test "prevents creating more than max_devices_per_user", %{device: device} do
+      stub_app_env(:max_devices_per_user, 1)
+
       assert {:error,
               %Ecto.Changeset{
                 errors: [
@@ -124,35 +101,28 @@ defmodule FzHttp.DevicesTest do
       assert String.length(Devices.new_device().changes.preshared_key) == 44
     end
 
-    @tag ipv4_network: "10.3.2.0/30",
-         errors: [
+    @tag errors: [
            ipv4: {"can't be blank", [validation: :required]},
            base:
              {"ipv4 address pool is exhausted. Increase network size or remove some devices.", []}
          ]
-    test "sets error when ipv4 address pool is exhausted", %{
-      ipv4_network: ipv4_network,
-      user: user,
-      errors: errors
-    } do
-      restore_env(:wireguard_ipv4_network, ipv4_network, &on_exit/1)
+    test "sets error when ipv4 address pool is exhausted", %{user: user, errors: errors} do
+      stub_app_env(:wireguard_ipv4_network, "10.3.2.0/30")
 
       {:error, changeset} = Devices.create_device(%{@device_attrs | user_id: user.id})
       assert errors == changeset.errors
     end
 
-    @tag ipv6_network: "fd00::3:2:0/126",
-         errors: [
+    @tag errors: [
            ipv6: {"can't be blank", [validation: :required]},
            base:
              {"ipv6 address pool is exhausted. Increase network size or remove some devices.", []}
          ]
     test "sets error when ipv6 address pool is exhausted", %{
-      ipv6_network: ipv6_network,
       user: user,
       errors: errors
     } do
-      restore_env(:wireguard_ipv6_network, ipv6_network, &on_exit/1)
+      stub_app_env(:wireguard_ipv6_network, "fd00::3:2:0/126")
 
       {:error, changeset} = Devices.create_device(%{@device_attrs | user_id: user.id})
       assert errors == changeset.errors

@@ -1,5 +1,5 @@
 defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
-  use FzHttpWeb.ConnCase, async: false
+  use FzHttpWeb.ConnCase, async: true
 
   describe "authenticated/device list" do
     test "includes the device name in the list", %{
@@ -28,7 +28,8 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
 
   describe "authenticated device management disabled" do
     setup do
-      restore_env(:allow_unprivileged_device_management, false, &on_exit/1)
+      stub_conf(:allow_unprivileged_device_management, false)
+      :ok
     end
 
     test "prevents navigating to /user_devices/new", %{unprivileged_conn: conn} do
@@ -48,7 +49,8 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
 
   describe "authenticated device configuration disabled" do
     setup do
-      restore_env(:allow_unprivileged_device_configuration, false, &on_exit/1)
+      stub_conf(:allow_unprivileged_device_configuration, false)
+      :ok
     end
 
     @tag fields: ~w(
@@ -97,7 +99,7 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
       {:ok, view, _html} = live(conn, path)
 
       # A pool of size 1 is always exhausted
-      restore_env(:wireguard_ipv4_network, "10.0.0.1/32", &on_exit/1)
+      stub_app_env(:wireguard_ipv4_network, "10.0.0.1/32")
 
       assert view
              |> element("#create-device")
@@ -112,7 +114,7 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
       {:ok, view, _html} = live(conn, path)
 
       # A pool of size 1 is always exhausted
-      restore_env(:wireguard_ipv6_network, "fd00::3:2:0/128", &on_exit/1)
+      stub_app_env(:wireguard_ipv6_network, "fd00::3:2:0/128")
 
       assert view
              |> element("#create-device")

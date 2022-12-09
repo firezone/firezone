@@ -125,8 +125,14 @@ config :fz_http, :openid_connect_providers, """
 
 config :fz_http, :saml_identity_providers, %{"test" => %{"label" => "SAML"}}
 
-# Provide mock for HTTPClient
+# Provide mock for OpenIDConnect
 config :fz_http, :openid_connect, OpenIDConnect.Mock
+
+# Provide mock for Application
+config :fz_http, :application_module, Application.Mock
+
+# Mock for the configuration cache
+config :fz_http, :cache_module, Cache.Mock
 
 config :fz_http, FzHttpWeb.Mailer, adapter: Swoosh.Adapters.Test, from_email: "test@firez.one"
 

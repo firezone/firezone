@@ -4,6 +4,7 @@ defmodule FzHttp.Release do
   """
 
   alias FzHttp.{Repo, Users, Users.User}
+  import Wrapped.Application
   import Ecto.Query, only: [from: 2]
   require Logger
 
@@ -55,11 +56,11 @@ defmodule FzHttp.Release do
   end
 
   def repos do
-    Application.fetch_env!(@app, :ecto_repos)
+    app().fetch_env!(@app, :ecto_repos)
   end
 
   defp email do
-    Application.fetch_env!(@app, :admin_email)
+    app().fetch_env!(@app, :admin_email)
   end
 
   defp load_app do
@@ -71,6 +72,6 @@ defmodule FzHttp.Release do
   end
 
   defp default_password do
-    Application.fetch_env!(@app, :default_admin_password)
+    app().fetch_env!(@app, :default_admin_password)
   end
 end

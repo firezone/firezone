@@ -7,6 +7,8 @@ defmodule FzHttp.ConnectivityCheckService do
 
   require Logger
 
+  import Actual.Application
+
   alias FzHttp.ConnectivityChecks
 
   def start_link(_) do
@@ -61,11 +63,11 @@ defmodule FzHttp.ConnectivityCheckService do
   end
 
   defp url do
-    Application.fetch_env!(:fz_http, :connectivity_checks_url) <> version()
+    app().fetch_env!(:fz_http, :connectivity_checks_url) <> version()
   end
 
   defp http_client do
-    Application.fetch_env!(:fz_http, :http_client)
+    app().fetch_env!(:fz_http, :http_client)
   end
 
   defp version do
@@ -73,10 +75,10 @@ defmodule FzHttp.ConnectivityCheckService do
   end
 
   defp interval do
-    Application.fetch_env!(:fz_http, :connectivity_checks_interval) * 1_000
+    app().fetch_env!(:fz_http, :connectivity_checks_interval) * 1_000
   end
 
   defp enabled? do
-    Application.fetch_env!(:fz_http, :connectivity_checks_enabled)
+    app().fetch_env!(:fz_http, :connectivity_checks_enabled)
   end
 end

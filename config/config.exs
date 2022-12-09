@@ -80,7 +80,9 @@ config :fz_http,
   saml_entity_id: "urn:firezone.dev:firezone-app",
   saml_certfile_path: "apps/fz_http/priv/cert/saml_selfsigned.pem",
   saml_keyfile_path: "apps/fz_http/priv/cert/saml_selfsigned_key.pem",
-  openid_connect: OpenIDConnect
+  openid_connect: OpenIDConnect,
+  application_module: Application,
+  cache_module: FzHttp.Configurations.Cache
 
 config :fz_wall,
   cli: FzWall.CLI.Sandbox,

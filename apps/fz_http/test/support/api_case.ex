@@ -4,6 +4,7 @@ defmodule FzHttpWeb.APICase do
   """
 
   use ExUnit.CaseTemplate
+  use FzHttp.CaseTemplate
 
   using do
     quote do

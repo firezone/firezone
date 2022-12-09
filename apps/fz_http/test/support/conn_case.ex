@@ -16,6 +16,7 @@ defmodule FzHttpWeb.ConnCase do
   """
 
   use ExUnit.CaseTemplate
+  use FzHttp.CaseTemplate
 
   alias Ecto.Adapters.SQL.Sandbox
   alias FzHttpWeb.Auth.HTML.Authentication
@@ -64,9 +65,7 @@ defmodule FzHttpWeb.ConnCase do
 
     {user,
      conn
-     |> Plug.Test.init_test_session(%{
-       "guardian_default_token" => conn.private.guardian_default_token
-     })}
+     |> Plug.Conn.put_session("guardian_default_token", conn.private.guardian_default_token)}
   end
 
   defp maybe_put_session(conn, %{session: session}) do
