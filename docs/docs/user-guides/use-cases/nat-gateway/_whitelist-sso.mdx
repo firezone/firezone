@@ -1,5 +1,5 @@
 ---
-title: Restrict SSO to VPN Users
+title: Restrict SSO to Firezone Users
 sidebar_position: 1
 description: Configure your identity provider to whitelist traffic from Firezone's WireGuard® based secure access platform.
 ---
@@ -7,9 +7,8 @@ description: Configure your identity provider to whitelist traffic from Firezone
 # Restrict application authentication to VPN users
 
 Some identity providers support restricting SSO functionality
-to a pre-defined network zone (IP range). You can set this to the IP of
-your Firezone gateway, so authentication is restricted to users
-connected to the VPN.
+Some identity providers support restricting SSO access to a predefined CIDR range or list of IP addresses. You can set this to the IP address of
+your Firezone gateway to restrict SSO to users connected to Firezone.
 
 This adds an additional layer of security to any service that uses
 your identity provider for SSO.
@@ -42,7 +41,7 @@ is being used for Firezone authentication.
 
 With
 [periodic authentication](../../authenticate#enforce-periodic-re-authentication)
-enabled, you may be locked out Okta entirely when your VPN session
+enabled, you may be locked out of Okta entirely when your VPN session
 expires.
 :::
 

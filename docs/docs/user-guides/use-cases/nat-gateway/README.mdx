@@ -20,8 +20,8 @@ This guide will walk through a simple example restricting access for a
 self-hosted web app to a single whitelisted static IP running Firezone.
 
 This is commonly done in place of maintaining an IP whitelist for
-multiple end users, which may become labor-intensive to manage as the
-access list grows.
+multiple team members, which becomes impossible to manage as the
+access list grows and team members' IP addresses change.
 
 ![Architecture](https://user-images.githubusercontent.com/52545545/154868328-688067dd-deca-4548-ac9d-f6ffe7eacf86.png)
 
@@ -32,8 +32,7 @@ through a Firezone server on an EC2 instance. In this case Firezone is acting as
 a network proxy or NAT gateway to provide a single public egress IP for all the
 devices connected to it.
 
-In this example the protected resource and Firezone are
-in separate VPC regions.
+In this example the protected resource and Firezone are in separate VPC regions.
 
 ### Step 1 - Deploy Firezone server
 
@@ -64,7 +63,7 @@ party to allow traffic from the static IP set in Step 1 (in this case `52.202.88
 
 ### Step 3 - Route traffic to the protected resource through the VPN server
 
-By default, all traffic from users will be routed through the VPN server
+By default, all traffic from team members will be routed through Firezone
 and will originate from the static IP set in Step 1 (in this case `52.202.88.54`).
 However, if
 [split tunneling](/user-guides/use-cases/split-tunnel/)
