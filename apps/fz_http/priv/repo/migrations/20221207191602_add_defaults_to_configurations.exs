@@ -4,10 +4,10 @@ defmodule FzHttp.Repo.Migrations.AddDefaultsToConfigurations do
   def change do
     alter table(:configurations) do
       modify(:id, :uuid, default: fragment("gen_random_uuid()"))
-      add(:default_client_mtu, :integer, null: false, default: 1280)
-      add(:default_client_persistent_keepalive, :integer, null: false, default: 0)
-      add(:default_client_allowed_ips, :string, null: false, default: "0.0.0.0/0, ::/0")
-      add(:default_client_dns, :string, null: false, default: "1.1.1.1, 1.0.0.1")
+      add(:default_client_mtu, :integer, default: 1280)
+      add(:default_client_persistent_keepalive, :integer, default: 0)
+      add(:default_client_allowed_ips, :string, default: "0.0.0.0/0, ::/0")
+      add(:default_client_dns, :string, default: "1.1.1.1, 1.0.0.1")
       # set by connectivity check
       add(:default_client_endpoint, :string, default: nil)
       add(:ipv4_enabled, :boolean, null: false, default: true)
