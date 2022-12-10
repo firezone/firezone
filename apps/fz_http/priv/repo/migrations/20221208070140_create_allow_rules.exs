@@ -27,8 +27,8 @@ defmodule FzHttp.Repo.Migrations.CreateAllowRules do
         :allow_rules,
         :port_range_with_optional_protocol,
         check: """
-        port_range_start IS NOT NULL AND port_range_end IS NOT NULL OR
-        protocol IS NULL AND port_range_start IS NULL AND port_range_end IS NULL
+        (port_range_start IS NOT NULL AND port_range_end IS NOT NULL) OR
+        (protocol IS NULL AND port_range_start IS NULL AND port_range_end IS NULL)
         """
       )
     )
@@ -38,8 +38,8 @@ defmodule FzHttp.Repo.Migrations.CreateAllowRules do
         :allow_rules,
         :valid_port_range,
         check: """
-        port_range_start IS NULL AND port_range_end IS NULL OR
-        int4range(port_range_start, port_range_end) <@ int4range(1, 65535)
+        (port_range_start IS NULL AND port_range_end IS NULL) OR
+        (int4range(port_range_start, port_range_end) <@ int4range(1, 65535))
         """
       )
     )
