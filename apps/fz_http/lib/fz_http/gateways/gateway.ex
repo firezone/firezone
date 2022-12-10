@@ -35,7 +35,7 @@ defmodule FzHttp.Gateways.Gateway do
       :registration_token,
       :registration_token_created_at
     ])
-    |> validate_required([:name, :registration_token, :registration_token_created_at])
+    |> validate_required([:registration_token, :registration_token_created_at])
     |> unique_constraint(:name)
   end
 end
