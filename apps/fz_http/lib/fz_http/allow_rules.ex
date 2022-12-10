@@ -4,7 +4,7 @@ defmodule FzHttp.AllowRules do
   """
 
   import Ecto.Query, warn: false
-  alias FzHttp.{AllowRules.AllowRule, Repo}
+  alias FzHttp.{AllowRules.AllowRule, Gateways.Gateway, Repo, Users.User}
 
   def create_allow_rule(attrs \\ %{}) do
     %AllowRule{}
@@ -23,9 +23,15 @@ defmodule FzHttp.AllowRules do
     |> Repo.delete()
   end
 
+  def get_allow_rule!(id), do: Repo.get!(AllowRule, id)
+
   def list_allow_rules, do: Repo.all(AllowRule)
 
-  def list_allow_rules(gateway_id) do
-    Repo.all(from r in AllowRule, where: r.gateway_id == ^gateway_id)
+  def list_allow_rules(%Gateway{} = gateway) do
+    Repo.all(from r in AllowRule, where: r.gateway_id == ^gateway.id)
+  end
+
+  def list_allow_rules(%User{} = user) do
+    Repo.all(from r in AllowRule, where: r.user_id == ^user.uuid)
   end
 end

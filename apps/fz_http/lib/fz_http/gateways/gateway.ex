@@ -1,11 +1,15 @@
 defmodule FzHttp.Gateways.Gateway do
+  @moduledoc """
+  The `Gateway` schema.
+  """
+
   use Ecto.Schema
   import Ecto.Changeset
 
   @primary_key {:id, Ecto.UUID, read_after_writes: true}
 
   schema "gateways" do
-    field :name, :string
+    field :name, :string, read_after_writes: true
     field :ipv4_masquerade, :boolean, read_after_writes: true
     field :ipv6_masquerade, :boolean, read_after_writes: true
     field :ipv4_address, EctoNetwork.INET, read_after_writes: true

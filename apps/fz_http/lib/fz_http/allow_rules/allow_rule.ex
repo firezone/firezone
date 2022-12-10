@@ -1,4 +1,8 @@
 defmodule FzHttp.AllowRules.AllowRule do
+  @moduledoc """
+  The `AllowRule` schema.
+  """
+
   use Ecto.Schema
   import Ecto.Changeset
 
@@ -38,7 +42,7 @@ defmodule FzHttp.AllowRules.AllowRule do
     |> check_constraint(
       :allow_rules,
       name: :valid_port_range,
-      message: "Port range start/end must be within 1 and 65535"
+      message: "Port range start/end must be within 1 and 65,535"
     )
   end
 end

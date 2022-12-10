@@ -4,7 +4,7 @@ defmodule FzHttp.Repo.Migrations.CreateGateways do
   def change do
     create table(:gateways, primary_key: false) do
       add(:id, :uuid, primary_key: true, default: fragment("gen_random_uuid()"))
-      add(:name, :string, null: false)
+      add(:name, :string, null: false, default: "default")
       add(:ipv4_masquerade, :boolean, null: false, default: true)
       add(:ipv6_masquerade, :boolean, null: false, default: true)
       add(:ipv4_address, :inet, null: false, default: fragment("'10.3.2.1'::inet"))
