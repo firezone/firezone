@@ -35,12 +35,12 @@ defmodule FzHttp.Repo.DataMigrations.MoveDefaultsToConfigurations do
 
     # These values may only be defined in the environment
     if key in [
-      "port",
-      "ipv4_enabled",
-      "ipv6_enabled",
-      "ipv4_network",
-      "ipv6_network"
-    ] do
+         "port",
+         "ipv4_enabled",
+         "ipv6_enabled",
+         "ipv4_network",
+         "ipv6_network"
+       ] do
       val
     else
       "COALESCE (subquery.#{key}, '#{val}')"

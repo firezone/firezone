@@ -21,7 +21,8 @@ defmodule FzHttp.Release do
     load_app()
 
     for repo <- repos() do
-      {:ok, _, _} = Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, "data_migrations", :up, all: true))
+      {:ok, _, _} =
+        Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, "data_migrations", :up, all: true))
     end
   end
 
