@@ -83,7 +83,11 @@ defmodule FzHttp.AllowRulesTest do
       assert {:error, %Ecto.Changeset{errors: errors}} =
                AllowRules.create_allow_rule(invalid_port_range)
 
-      assert [allow_rules: {"Port range start and end should be set or unset", _}] = errors
+      assert [
+               allow_rules:
+                 {"A port range needs both start and end. Additionally, a protocol requires a port range.",
+                  _}
+             ] = errors
     end
 
     test "create_allow_rule/1 with invalid port range end returns an error changeset" do
@@ -97,7 +101,7 @@ defmodule FzHttp.AllowRulesTest do
       assert {:error, %Ecto.Changeset{errors: errors}} =
                AllowRules.create_allow_rule(invalid_port_range)
 
-      [allow_rules: {"Port range start and end should be within 1 and 65,535", _}] = errors
+      [allow_rules: {"Port range start and end should be within 1 and 65,535.", _}] = errors
     end
   end
 end
