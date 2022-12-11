@@ -16,6 +16,17 @@ defmodule FzHttp.Configurations.Configuration do
     field :openid_connect_providers, :map
     field :saml_identity_providers, :map
     field :disable_vpn_on_oidc_error, :boolean
+    field :default_client_allowed_ips, :string, read_after_writes: true
+    field :default_client_dns, :string, read_after_writes: true
+    field :default_client_endpoint, :string, read_after_writes: true
+    field :default_client_mtu, :integer, read_after_writes: true
+    field :default_client_persistent_keepalive, :integer, read_after_writes: true
+    field :default_client_port, :integer, read_after_writes: true
+    field :ipv4_enabled, :boolean, read_after_writes: true
+    field :ipv6_enabled, :boolean, read_after_writes: true
+    field :ipv4_network, EctoNetwork.CIDR, read_after_writes: true
+    field :ipv6_network, EctoNetwork.CIDR, read_after_writes: true
+    field :vpn_session_duration, :integer, read_after_writes: true
 
     timestamps(type: :utc_datetime_usec)
   end
@@ -29,7 +40,18 @@ defmodule FzHttp.Configurations.Configuration do
       :allow_unprivileged_device_configuration,
       :openid_connect_providers,
       :saml_identity_providers,
-      :disable_vpn_on_oidc_error
+      :disable_vpn_on_oidc_error,
+      :default_client_allowed_ips,
+      :default_client_dns,
+      :default_client_endpoint,
+      :default_client_mtu,
+      :default_client_persistent_keepalive,
+      :default_client_port,
+      :ipv4_enabled,
+      :ipv6_enabled,
+      :ipv4_network,
+      :ipv6_network,
+      :vpn_session_duration
     ])
     |> cast_embed(:logo)
   end
