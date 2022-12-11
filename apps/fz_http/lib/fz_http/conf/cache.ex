@@ -29,7 +29,10 @@ defmodule FzHttp.Configurations.Cache do
     GenServer.start_link(__MODULE__, [])
   end
 
-  @no_fallback [:logo]
+  @no_fallback [
+    :logo,
+    :default_client_endpoint
+  ]
 
   @impl true
   def init(_) do
