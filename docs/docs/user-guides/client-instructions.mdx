@@ -12,7 +12,7 @@ Follow these instructions if you're an end-user trying to set up your WireGuard 
 Follow this guide to establish a VPN session
 through the WireGuard native client.
 
-### Step 1 - Install the native WireGuard client
+### Step 1: Install the native WireGuard client
 
 Firezone is compatible with the official WireGuard clients found here:
 
@@ -24,7 +24,7 @@ Firezone is compatible with the official WireGuard clients found here:
 For operating systems not listed above see the Official WireGuard site: [
 https://www.wireguard.com/install/](https://www.wireguard.com/install/).
 
-### Step 2 - Download the device config file
+### Step 2: Download the device config file
 
 The device config file can either be obtained from your Firezone administrator
 or self-generated via the Firezone portal.
@@ -35,7 +35,7 @@ administrator. This URL will be specific to your company
 
 ![Firezone Okta SSO Login](https://user-images.githubusercontent.com/52545545/156855886-5a4a0da7-065c-4ec1-af33-583dff4dbb72.gif)
 
-### Step 3 - Add the config to the client
+### Step 3: Enable on boot (optional)
 
 Open the WireGuard client and import the `.conf` file.
 Activate the VPN session by toggling the `Activate` switch.
@@ -52,11 +52,11 @@ follow the steps below. You will need:
 Admin. If your company is using a Single Sign On provider (like Google or Okta),
 the Firezone portal will prompt you to authenticate via that provider.
 
-### Step 1 - Deactivate VPN session
+### Step 1: Deactivate VPN session
 
 ![WireGuard Deactivate](https://user-images.githubusercontent.com/52545545/156859259-a3d386ce-b304-4caa-96e6-a8e7ca96d098.png)
 
-### Step 2 - Re-authenticate
+### Step 2: Re-authenticate
 
 Visit the URL of your Firezone portal and sign in using credentials provided by your
 network admin. If you are already logged into the portal,
@@ -64,11 +64,28 @@ click the `Reauthenticate` button, then sign in again.
 
 ![re-authenticate](https://user-images.githubusercontent.com/52545545/155812962-9b8688c1-00af-41e4-96c3-8fb52f840aed.gif)
 
-### Step 3 - Activate VPN session
+### Step 3: Activate VPN session
 
 ![Activate Session](https://user-images.githubusercontent.com/52545545/156859636-fde95fc5-5b9c-4697-9108-2f277ed3fbef.png)
 
-## Linux - Network manager
+## Client app features
+
+### Automatically enable the VPN (on-demand)
+
+:::note
+Requires admin access.
+:::
+
+On-demand can be set to automatically enable the VPN under certain
+network conditions.
+
+On the Android and iOS mobile apps you can automatically
+enable the VPN on Wi-fi and/or Cellular networks.
+
+On the MacOS and Windows desktop apps you can automatically
+enable the VPN on Wi-fi networks and/or Ethernet connections.
+
+## Linux - Network Manager
 
 The following steps can be used on Linux devices to import the WireGuard
 configuration profile using Network Manager CLI (`nmcli`).
@@ -109,7 +126,7 @@ sudo pacman -S wireguard-tools
 For distributions not listed above see the Official WireGuard site: [
 https://www.wireguard.com/install/](https://www.wireguard.com/install/).
 
-### Step 2 - Download configuration
+### Step 2: Download configuration
 
 The device config file can either be obtained from your Firezone administrator
 or self-generated via the Firezone portal.
@@ -120,7 +137,7 @@ administrator. This URL will be specific to your company
 
 ![Firezone Okta SSO Login](https://user-images.githubusercontent.com/52545545/156855886-5a4a0da7-065c-4ec1-af33-583dff4dbb72.gif)
 
-### Step 3 - Import configuration
+### Step 3: Import configuration
 
 Using `nmcli`, import the downloaded configuration file:
 
@@ -138,7 +155,7 @@ nmcli connection modify [old name] connection.id [new name]
 
 :::
 
-### Step 4 - Connect/disconnect
+### Step 4: Connect/disconnect
 
 To connect to the VPN via the command line:
 
