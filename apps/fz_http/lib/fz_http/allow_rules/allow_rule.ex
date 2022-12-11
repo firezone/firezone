@@ -37,12 +37,12 @@ defmodule FzHttp.AllowRules.AllowRule do
     |> check_constraint(
       :allow_rules,
       name: :port_range_with_optional_protocol,
-      message: "Port range start must have a port range end"
+      message: "Port range start and end should be set or unset"
     )
     |> check_constraint(
       :allow_rules,
       name: :valid_port_range,
-      message: "Port range start/end must be within 1 and 65,535"
+      message: "Port range start and end should be within 1 and 65,535"
     )
   end
 end

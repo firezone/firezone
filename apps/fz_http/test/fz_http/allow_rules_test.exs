@@ -13,12 +13,14 @@ defmodule FzHttp.AllowRulesTest do
     end
 
     test "list_allow_rules/1 returns allow rules scoped to a gateway" do
+      _ = allow_rule(%{gateway_id: gateway().id})
       gateway = gateway(%{name: "gateway"})
       allow_rule = allow_rule(%{gateway_id: gateway.id})
       assert AllowRules.list_allow_rules(gateway) == [allow_rule]
     end
 
     test "list_allow_rules/1 returns allow rules scoped to a user" do
+      _ = allow_rule(%{user_id: user().uuid})
       user = user()
       allow_rule = allow_rule(%{user_id: user.uuid})
       assert AllowRules.list_allow_rules(user) == [allow_rule]
@@ -78,8 +80,10 @@ defmodule FzHttp.AllowRulesTest do
         port_range_end: 2
       }
 
-      assert {:error, %Ecto.Changeset{} = change} =
+      assert {:error, %Ecto.Changeset{errors: errors}} =
                AllowRules.create_allow_rule(invalid_port_range)
+
+      assert [allow_rules: {"Port range start and end should be set or unset", _}] = errors
     end
 
     test "create_allow_rule/1 with invalid port range end returns an error changeset" do
@@ -90,8 +94,10 @@ defmodule FzHttp.AllowRulesTest do
         port_range_end: 65_536
       }
 
-      assert {:error, %Ecto.Changeset{} = change} =
+      assert {:error, %Ecto.Changeset{errors: errors}} =
                AllowRules.create_allow_rule(invalid_port_range)
+
+      [allow_rules: {"Port range start and end should be within 1 and 65,535", _}] = errors
     end
   end
 end

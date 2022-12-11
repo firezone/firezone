@@ -15,7 +15,7 @@ defmodule FzHttp.AllowRulesFixtures do
       Map.get_lazy(
         attrs,
         :gateway_id,
-        fn -> gateway().id end
+        fn -> gateway(%{}).id end
       )
 
     {:ok, allow_rule} =

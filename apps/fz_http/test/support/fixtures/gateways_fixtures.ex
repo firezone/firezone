@@ -3,27 +3,29 @@ defmodule FzHttp.GatewaysFixtures do
   Test helpers for creating gateways with the `FzHttp.Gateways` context.
   """
 
-  alias FzHttp.{Repo, Gateways, Gateways.Gateway}
+  alias FzHttp.Gateways
 
   @doc """
-  Generate a `Gateway`, using "default" name if not specified.
+  Generate a `Gateway`.
   """
   def gateway(attrs \\ %{}) do
-    name = attrs[:name] || "default"
+    {:ok, gateway} =
+      gateway_gen_attrs()
+      |> Map.merge(attrs)
+      |> Gateways.create_gateway()
 
-    case Repo.get_by(Gateway, name: name) do
-      nil ->
-        {:ok, gateway} =
-          Gateways.create_gateway(%{
-            name: name,
-            registration_token: "test_token",
-            registration_token_created_at: DateTime.utc_now()
-          })
+    gateway
+  end
 
-        gateway
+  def gateway_gen_attrs() do
+    %{
+      name: "gateway-#{counter()}",
+      registration_token: FzCommon.FzCrypto.rand_token(),
+      registration_token_created_at: DateTime.utc_now()
+    }
+  end
 
-      %Gateway{} = gateway ->
-        gateway
-    end
+  defp counter do
+    System.unique_integer([:positive])
   end
 end

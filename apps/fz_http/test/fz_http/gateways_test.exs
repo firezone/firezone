@@ -2,52 +2,77 @@ defmodule FzHttp.GatewaysTest do
   use FzHttp.DataCase, async: true
 
   describe "gateways" do
+    alias EctoNetwork.INET
     alias FzHttp.{Gateways, Gateways.Gateway}
 
     import FzHttp.GatewaysFixtures
 
-    test "list_gateways/0 returns all gateways" do
-      gateway = gateway()
-      assert Gateways.list_gateways() == [gateway]
-    end
-
-    test "get_gateway!/0 returns default named gateway" do
-      gateway = gateway()
-      assert Gateways.get_gateway!() == gateway
-      assert "default" == gateway.name
-    end
-
     test "get_gateway!/1 returns gateway by id" do
       gateway = gateway()
-      assert Gateways.get_gateway!(id: gateway.id) == gateway
+      assert gateway == Gateways.get_gateway!(id: gateway.id)
     end
 
     test "get_gateway!/1 returns gateway by name" do
-      gateway = gateway(%{name: "gateway"})
-      assert Gateways.get_gateway!(name: "gateway") == gateway
+      gateway = gateway()
+      assert gateway == Gateways.get_gateway!(name: gateway.name)
     end
 
     test "create_gateway/1 with unique name creates a gateway" do
-      unique_name = %{
-        name: "gateway",
-        registration_token: "test_token",
-        registration_token_created_at: DateTime.utc_now()
-      }
+      attrs = gateway_gen_attrs()
+      name = attrs[:name]
 
-      assert {:ok, %Gateway{} = gateway} = Gateways.create_gateway(unique_name)
-      assert gateway.name == "gateway"
+      assert {:ok, %Gateway{name: ^name}} = Gateways.create_gateway(attrs)
     end
 
-    test "create_gateway/1 with duplicate name returns an error changeset" do
+    test "create_gateway/1 with duplicate name returns an error" do
       _ = gateway(%{name: "gateway"})
 
-      duplicate_name = %{
-        name: "gateway",
-        registration_token: "test_token",
-        registration_token_created_at: DateTime.utc_now()
-      }
+      dupe_name =
+        gateway_gen_attrs()
+        |> Map.merge(%{name: "gateway"})
 
-      assert {:error, %Ecto.Changeset{}} = Gateways.create_gateway(duplicate_name)
+      assert {:error, %Ecto.Changeset{errors: errors}} = Gateways.create_gateway(dupe_name)
+      assert [name: {"has already been taken", _}] = errors
+    end
+
+    test "create_gateway/1 with unique ipv4 creates a gateway" do
+      unique_ipv4 =
+        gateway_gen_attrs()
+        |> Map.merge(%{ipv4_address: "10.10.10.1"})
+
+      assert {:ok, %Gateway{ipv4_address: address}} = Gateways.create_gateway(unique_ipv4)
+      assert INET.decode(address) == "10.10.10.1"
+    end
+
+    test "create_gateway/1 with duplicate ipv4 creates a gateway" do
+      _ = gateway(%{ipv4_address: "10.10.10.1"})
+
+      duplicate_ipv4 =
+        gateway_gen_attrs()
+        |> Map.merge(%{ipv4_address: "10.10.10.1"})
+
+      assert {:error, %Ecto.Changeset{errors: errors}} = Gateways.create_gateway(duplicate_ipv4)
+      assert [ipv4_address: {"has already been taken", _}] = errors
+    end
+
+    test "create_gateway/1 with unique ipv6 creates a gateway" do
+      unique_ipv6 =
+        gateway_gen_attrs()
+        |> Map.merge(%{ipv6_address: "2a03:b0c0:2:f0::2c:2002"})
+
+      assert {:ok, %Gateway{ipv6_address: address}} = Gateways.create_gateway(unique_ipv6)
+      assert INET.decode(address) == "2a03:b0c0:2:f0::2c:2002"
+    end
+
+    test "create_gateway/1 with duplicate ipv6 creates a gateway" do
+      _ = gateway(%{ipv6_address: "2a03:b0c0:2:f0::2c:2002"})
+
+      duplicate_ipv6 =
+        gateway_gen_attrs()
+        |> Map.merge(%{ipv6_address: "2a03:b0c0:2:f0::2c:2002"})
+
+      assert {:error, %Ecto.Changeset{errors: errors}} = Gateways.create_gateway(duplicate_ipv6)
+      assert [ipv6_address: {"has already been taken", _}] = errors
     end
   end
 end

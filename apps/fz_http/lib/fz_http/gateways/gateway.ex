@@ -9,11 +9,11 @@ defmodule FzHttp.Gateways.Gateway do
   @primary_key {:id, Ecto.UUID, read_after_writes: true}
 
   schema "gateways" do
-    field :name, :string, read_after_writes: true
+    field :name, :string
     field :ipv4_masquerade, :boolean, read_after_writes: true
     field :ipv6_masquerade, :boolean, read_after_writes: true
-    field :ipv4_address, EctoNetwork.INET, read_after_writes: true
-    field :ipv6_address, EctoNetwork.INET, read_after_writes: true
+    field :ipv4_address, EctoNetwork.INET
+    field :ipv6_address, EctoNetwork.INET
     field :mtu, :integer, read_after_writes: true
     field :public_key, :string
     field :registration_token, :string
@@ -35,7 +35,9 @@ defmodule FzHttp.Gateways.Gateway do
       :registration_token,
       :registration_token_created_at
     ])
-    |> validate_required([:registration_token, :registration_token_created_at])
+    |> validate_required([:name, :registration_token, :registration_token_created_at])
     |> unique_constraint(:name)
+    |> unique_constraint(:ipv4_address)
+    |> unique_constraint(:ipv6_address)
   end
 end
