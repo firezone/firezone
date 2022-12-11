@@ -23,9 +23,6 @@ defmodule FzHttp.Gateways do
     |> Repo.delete()
   end
 
-  def change_gateway() do
-  end
-
   def get_gateway!(id: id), do: Repo.get!(Gateway, id)
   def get_gateway!(name: name), do: Repo.get_by!(Gateway, name: name)
 end

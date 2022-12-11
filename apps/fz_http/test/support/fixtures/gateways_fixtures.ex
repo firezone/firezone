@@ -17,7 +17,7 @@ defmodule FzHttp.GatewaysFixtures do
     gateway
   end
 
-  def gateway_gen_attrs() do
+  def gateway_gen_attrs do
     %{
       name: "gateway-#{counter()}",
       registration_token: FzCommon.FzCrypto.rand_token(),
