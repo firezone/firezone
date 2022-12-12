@@ -5,15 +5,22 @@ defmodule FzHttp.CaseTemplate do
   """
 
   use ExUnit.CaseTemplate
+  alias Ecto.Adapters.SQL.Sandbox
 
   using do
     quote do
+      setup tags do
+        :ok = Sandbox.checkout(FzHttp.Repo)
+
+        unless tags[:async] do
+          Sandbox.mode(FzHttp.Repo, {:shared, self()})
+        end
+
+        :ok
+      end
+
       setup do
         # Global stub passthrough for functions we're not interested in stubbing
-        Mox.stub(Application.Mock, :fetch_env!, fn app, key ->
-          Application.fetch_env!(app, key)
-        end)
-
         Mox.stub(Cache.Mock, :get!, fn key ->
           FzHttp.Configurations.Cache.get!(key)
         end)

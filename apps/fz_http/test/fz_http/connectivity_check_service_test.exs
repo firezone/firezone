@@ -2,9 +2,10 @@ defmodule FzHttp.ConnectivityCheckServiceTest do
   @moduledoc """
   Tests the ConnectivityCheckService module.
   """
+  use FzHttp.DataCase, async: true
+
   alias Ecto.Adapters.SQL.Sandbox
   alias FzHttp.{ConnectivityChecks, ConnectivityCheckService, Repo}
-  use FzHttp.DataCase, async: true
 
   describe "post_request/0 valid url" do
     @expected_check %{

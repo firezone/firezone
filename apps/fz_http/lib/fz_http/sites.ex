@@ -5,7 +5,6 @@ defmodule FzHttp.Sites do
 
   import Ecto.Query, warn: false
   alias FzHttp.{Repo, Sites.Site}
-  import Wrapped.Application
 
   def new_site(attrs \\ %{}) do
     Site.changeset(%Site{}, attrs)

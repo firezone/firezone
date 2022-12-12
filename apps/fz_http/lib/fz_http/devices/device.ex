@@ -5,33 +5,19 @@ defmodule FzHttp.Devices.Device do
 
   use Ecto.Schema
   import Ecto.Changeset
-  import Wrapped.Application
   require Logger
 
   import FzHttp.Validators.Common,
     only: [
-      trim: 2,
       validate_fqdn_or_ip: 2,
       validate_omitted: 2,
       validate_no_duplicates: 2,
-      validate_no_mask: 2,
       validate_list_of_ips_or_cidrs: 2
     ]
-
-  import FzHttp.Queries.INET
 
   alias FzHttp.{Devices, Users.User}
 
   @description_max_length 2048
-
-  # Fields for which to trim whitespace after cast, before validation
-  @whitespace_trimmed_fields ~w(
-    allowed_ips
-    dns
-    endpoint
-    name
-    description
-  )a
 
   schema "devices" do
     field :rx_bytes, :integer
@@ -62,11 +48,9 @@ defmodule FzHttp.Devices.Device do
     timestamps(type: :utc_datetime_usec)
   end
 
-  def create_changeset(device \\ %__MODULE__{}, attrs) do
-    device
+  def create_changeset(attrs) do
+    %__MODULE__{}
     |> shared_cast(attrs)
-    |> put_next_ip(:ipv4)
-    |> put_next_ip(:ipv6)
     |> shared_changeset()
     |> validate_max_devices()
   end
@@ -75,22 +59,6 @@ defmodule FzHttp.Devices.Device do
     device
     |> shared_cast(attrs)
     |> shared_changeset()
-  end
-
-  @hash_range 2 ** 16
-
-  def new_name(name \\ FzCommon.NameGenerator.generate()) do
-    hash =
-      name
-      |> :erlang.phash2(@hash_range)
-      |> Integer.to_string(16)
-      |> String.pad_leading(4, "0")
-
-    if String.length(name) > 15 do
-      String.slice(name, 0..10) <> hash
-    else
-      name
-    end
   end
 
   defp shared_cast(device, attrs) do
@@ -119,7 +87,11 @@ defmodule FzHttp.Devices.Device do
       :preshared_key,
       :key_regenerated_at
     ])
-    |> trim(@whitespace_trimmed_fields)
+    |> update_change(:allowed_ips, &String.trim/1)
+    |> update_change(:dns, &String.trim/1)
+    |> update_change(:endpoint, &String.trim/1)
+    |> update_change(:name, &String.trim/1)
+    |> update_change(:description, &String.trim/1)
   end
 
   defp shared_changeset(changeset) do
@@ -130,6 +102,14 @@ defmodule FzHttp.Devices.Device do
       :name,
       :public_key
     ])
+    |> validate_required_if_enabled(
+      :ipv4,
+      FzHttp.Config.fetch_env!(:fz_http, :wireguard_ipv4_enabled)
+    )
+    |> validate_required_if_enabled(
+      :ipv6,
+      FzHttp.Config.fetch_env!(:fz_http, :wireguard_ipv6_enabled)
+    )
     |> validate_required_unless_site([:endpoint])
     |> validate_omitted_if_site([
       :allowed_ips,
@@ -150,26 +130,35 @@ defmodule FzHttp.Devices.Device do
       less_than_or_equal_to: 1500
     )
     |> validate_length(:description, max: @description_max_length)
-    |> validate_ipv4_required()
-    |> validate_ipv6_required()
     |> unique_constraint(:ipv4)
     |> unique_constraint(:ipv6)
     |> validate_exclusion(:ipv4, [ipv4_address()])
     |> validate_exclusion(:ipv6, [ipv6_address()])
-    |> validate_in_network(:ipv4)
-    |> validate_in_network(:ipv6)
-    |> validate_no_mask(:ipv4)
-    |> validate_no_mask(:ipv6)
     |> unique_constraint(:public_key)
     |> unique_constraint([:user_id, :name])
   end
+
+  defp ipv4_address do
+    FzHttp.Config.fetch_env!(:fz_http, :wireguard_ipv4_address)
+    |> EctoNetwork.INET.cast()
+  end
+
+  defp ipv6_address do
+    FzHttp.Config.fetch_env!(:fz_http, :wireguard_ipv6_address)
+    |> EctoNetwork.INET.cast()
+  end
+
+  defp validate_required_if_enabled(changeset, field, true),
+    do: validate_required(changeset, field)
+
+  defp validate_required_if_enabled(changeset, _, _), do: changeset
 
   defp validate_max_devices(changeset) do
     count =
       get_field(changeset, :user_id)
       |> Devices.count()
 
-    max_devices = app().fetch_env!(:fz_http, :max_devices_per_user)
+    max_devices = FzHttp.Config.fetch_env!(:fz_http, :max_devices_per_user)
 
     if count >= max_devices do
       add_error(
@@ -200,81 +189,5 @@ defmodule FzHttp.Devices.Device do
       |> String.trim("use_site_")
       |> String.to_atom()
     end)
-  end
-
-  defp validate_ipv4_required(changeset) do
-    if app().fetch_env!(:fz_http, :wireguard_ipv4_enabled) do
-      validate_required(changeset, :ipv4)
-    else
-      changeset
-    end
-  end
-
-  defp validate_ipv6_required(changeset) do
-    if app().fetch_env!(:fz_http, :wireguard_ipv6_enabled) do
-      validate_required(changeset, :ipv6)
-    else
-      changeset
-    end
-  end
-
-  defp validate_in_network(%Ecto.Changeset{changes: %{ipv4: ip}} = changeset, :ipv4) do
-    net = app().fetch_env!(:fz_http, :wireguard_ipv4_network)
-    add_net_error_if_outside_bounds(changeset, net, ip, :ipv4)
-  end
-
-  defp validate_in_network(changeset, :ipv4), do: changeset
-
-  defp validate_in_network(%Ecto.Changeset{changes: %{ipv6: ip}} = changeset, :ipv6) do
-    net = app().fetch_env!(:fz_http, :wireguard_ipv6_network)
-    add_net_error_if_outside_bounds(changeset, net, ip, :ipv6)
-  end
-
-  defp validate_in_network(changeset, :ipv6), do: changeset
-
-  defp add_net_error_if_outside_bounds(changeset, net, ip, ip_type) do
-    %{address: address} = ip
-    cidr = CIDR.parse(net)
-
-    if CIDR.match!(cidr, address) do
-      changeset
-    else
-      add_error(changeset, ip_type, "IP must be contained within network #{net}")
-    end
-  end
-
-  defp put_next_ip(changeset, ip_type) when ip_type in [:ipv4, :ipv6] do
-    case changeset do
-      # Don't put a new ip if the user is trying to assign one manually
-      %Ecto.Changeset{changes: %{^ip_type => _ip}} ->
-        changeset
-
-      _ ->
-        if ip = next_available(ip_type) do
-          put_change(changeset, ip_type, ip)
-        else
-          add_error(
-            changeset,
-            :base,
-            "#{ip_type} address pool is exhausted. Increase network size or remove some devices."
-          )
-        end
-    end
-  end
-
-  defp ipv4_address do
-    {:ok, inet} =
-      app().fetch_env!(:fz_http, :wireguard_ipv4_address)
-      |> EctoNetwork.INET.cast()
-
-    inet
-  end
-
-  defp ipv6_address do
-    {:ok, inet} =
-      app().fetch_env!(:fz_http, :wireguard_ipv6_address)
-      |> EctoNetwork.INET.cast()
-
-    inet
   end
 end

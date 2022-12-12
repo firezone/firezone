@@ -51,11 +51,11 @@ config :fz_http,
   allow_unprivileged_device_configuration: true,
   telemetry_id: "543aae08-5a2b-428d-b704-2956dd3f5a57",
   wireguard_ipv4_enabled: true,
-  wireguard_ipv4_network: "10.3.2.0/24",
-  wireguard_ipv4_address: "10.3.2.1",
+  wireguard_ipv4_network: "100.64.0.0/10",
+  wireguard_ipv4_address: "100.64.0.1",
   wireguard_ipv6_enabled: true,
-  wireguard_ipv6_network: "fd00::3:2:0/120",
-  wireguard_ipv6_address: "fd00::3:2:1",
+  wireguard_ipv6_network: "fd00::/106",
+  wireguard_ipv6_address: "fd00::1",
   max_devices_per_user: 10,
   telemetry_module: FzCommon.Telemetry,
   supervision_tree_mode: :full,
@@ -76,7 +76,6 @@ config :fz_http,
   saml_certfile_path: "apps/fz_http/priv/cert/saml_selfsigned.pem",
   saml_keyfile_path: "apps/fz_http/priv/cert/saml_selfsigned_key.pem",
   openid_connect: OpenIDConnect,
-  application_module: Application,
   cache_module: FzHttp.Configurations.Cache
 
 config :fz_wall,
@@ -107,6 +106,7 @@ config :fz_http, FzHttpWeb.Endpoint,
 
 # Configures Elixir's Logger
 config :logger, :console,
+  level: String.to_atom(System.get_env("LOG_LEVEL", "info")),
   format: "$time $metadata[$level] $message\n",
   metadata: [:request_id, :remote_ip]
 

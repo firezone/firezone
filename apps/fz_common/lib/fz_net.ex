@@ -2,19 +2,11 @@ defmodule FzCommon.FzNet do
   @moduledoc """
   Network utility functions.
   """
-  # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
-  @ip_regex ~r/((^\s*((([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5]))\s*$)|(^\s*((([0-9A-Fa-f]{1,4}:){7}([0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){6}(:[0-9A-Fa-f]{1,4}|((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(([0-9A-Fa-f]{1,4}:){5}(((:[0-9A-Fa-f]{1,4}){1,2})|:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(([0-9A-Fa-f]{1,4}:){4}(((:[0-9A-Fa-f]{1,4}){1,3})|((:[0-9A-Fa-f]{1,4})?:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9A-Fa-f]{1,4}:){3}(((:[0-9A-Fa-f]{1,4}){1,4})|((:[0-9A-Fa-f]{1,4}){0,2}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9A-Fa-f]{1,4}:){2}(((:[0-9A-Fa-f]{1,4}){1,5})|((:[0-9A-Fa-f]{1,4}){0,3}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9A-Fa-f]{1,4}:){1}(((:[0-9A-Fa-f]{1,4}){1,6})|((:[0-9A-Fa-f]{1,4}){0,4}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(:(((:[0-9A-Fa-f]{1,4}){1,7})|((:[0-9A-Fa-f]{1,4}){0,5}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:)))(%.+)?\s*$))/
 
-  @cidr4_regex ~r/^([0-9]{1,3}\.){3}[0-9]{1,3}(\/([0-9]|[1-2][0-9]|3[0-2]))$/
+  import FzCommon.FzRegex
+  alias FzCommon.FzInteger
 
-  # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
-  @cidr6_regex ~r/^s*((([0-9A-Fa-f]{1,4}:){7}([0-9A-Fa-f]{1,4}|:))|(([0-9A-Fa-f]{1,4}:){6}(:[0-9A-Fa-f]{1,4}|((25[0-5]|2[0-4]d|1dd|[1-9]?d)(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3})|:))|(([0-9A-Fa-f]{1,4}:){5}(((:[0-9A-Fa-f]{1,4}){1,2})|:((25[0-5]|2[0-4]d|1dd|[1-9]?d)(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3})|:))|(([0-9A-Fa-f]{1,4}:){4}(((:[0-9A-Fa-f]{1,4}){1,3})|((:[0-9A-Fa-f]{1,4})?:((25[0-5]|2[0-4]d|1dd|[1-9]?d)(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3}))|:))|(([0-9A-Fa-f]{1,4}:){3}(((:[0-9A-Fa-f]{1,4}){1,4})|((:[0-9A-Fa-f]{1,4}){0,2}:((25[0-5]|2[0-4]d|1dd|[1-9]?d)(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3}))|:))|(([0-9A-Fa-f]{1,4}:){2}(((:[0-9A-Fa-f]{1,4}){1,5})|((:[0-9A-Fa-f]{1,4}){0,3}:((25[0-5]|2[0-4]d|1dd|[1-9]?d)(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3}))|:))|(([0-9A-Fa-f]{1,4}:){1}(((:[0-9A-Fa-f]{1,4}){1,6})|((:[0-9A-Fa-f]{1,4}){0,4}:((25[0-5]|2[0-4]d|1dd|[1-9]?d)(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3}))|:))|(:(((:[0-9A-Fa-f]{1,4}){1,7})|((:[0-9A-Fa-f]{1,4}){0,5}:((25[0-5]|2[0-4]d|1dd|[1-9]?d)(.(25[0-5]|2[0-4]d|1dd|[1-9]?d)){3}))|:)))(%.+)?s*(\/([0-9]|[1-9][0-9]|1[0-1][0-9]|12[0-8]))$/
-
-  # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
-  @host_regex ~r/\A(([a-zA-Z0-9](?:[a-zA-Z0-9\-]*[a-zA-Z0-9])?)\.)*([a-zA-Z0-9](?:[a-zA-Z0-9\-]*[a-zA-Z0-9])?)$\Z/
-  @fqdn_regex ~r/\A(?=^.{4,253}$)(^((?!-)[a-zA-Z0-9-]{0,62}[a-zA-Z0-9]\.)+[a-zA-Z]{2,63}$)\z/
-
-  # XXX: Consider using InetCidr for this
+  # XXX: Consider using CIDR for this
   def ip_type(str) when is_binary(str) do
     charlist =
       str
@@ -35,12 +27,33 @@ defmodule FzCommon.FzNet do
     end
   end
 
+  def rand_ip(cidr, type) do
+    parsed = CIDR.parse(cidr)
+    first = FzInteger.from_inet(parsed.first) + 1
+    last = FzInteger.from_inet(parsed.last) - 1
+
+    if first < last do
+      tuple = Enum.random(first..last) |> cast(type)
+      {:ok, %Postgrex.INET{address: tuple, netmask: nil}}
+    else
+      {:error, :range}
+    end
+  end
+
+  defp cast(ip_as_int, :ipv4) do
+    FzInteger.to_inet4(ip_as_int)
+  end
+
+  defp cast(ip_as_int, :ipv6) do
+    FzInteger.to_inet6(ip_as_int)
+  end
+
   def valid_cidr?(cidr) when is_binary(cidr) do
-    String.match?(cidr, @cidr4_regex) or String.match?(cidr, @cidr6_regex)
+    String.match?(cidr, cidr4_regex()) or String.match?(cidr, cidr6_regex())
   end
 
   def valid_ip?(ip) when is_binary(ip) do
-    String.match?(ip, @ip_regex)
+    String.match?(ip, ip_regex())
   end
 
   @doc """
@@ -50,8 +63,8 @@ defmodule FzCommon.FzNet do
     if String.contains?(inet, "/") do
       inet
       # normalize CIDR
-      |> InetCidr.parse(true)
-      |> InetCidr.to_string()
+      |> CIDR.parse()
+      |> to_string()
     else
       {:ok, addr} = inet |> String.to_charlist() |> :inet.parse_address()
       :inet.ntoa(addr) |> List.to_string()
@@ -59,11 +72,11 @@ defmodule FzCommon.FzNet do
   end
 
   def valid_fqdn?(fqdn) when is_binary(fqdn) do
-    String.match?(fqdn, @fqdn_regex)
+    String.match?(fqdn, fqdn_regex())
   end
 
   def valid_hostname?(hostname) when is_binary(hostname) do
-    String.match?(hostname, @host_regex)
+    String.match?(hostname, host_regex())
   end
 
   def to_complete_url(str) when is_binary(str) do

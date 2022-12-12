@@ -128,9 +128,6 @@ config :fz_http, :saml_identity_providers, %{"test" => %{"label" => "SAML"}}
 # Provide mock for OpenIDConnect
 config :fz_http, :openid_connect, OpenIDConnect.Mock
 
-# Provide mock for Application
-config :fz_http, :application_module, Application.Mock
-
 # Mock for the configuration cache
 config :fz_http, :cache_module, Cache.Mock
 

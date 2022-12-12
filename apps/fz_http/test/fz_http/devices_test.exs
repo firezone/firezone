@@ -5,26 +5,13 @@ defmodule FzHttp.DevicesTest do
   alias FzHttp.DevicesFixtures
   alias FzHttp.Users
 
-  describe "trimmed fields" do
-    test "trims expected fields" do
-      changeset =
-        Devices.new_device(%{
-          "allowed_ips" => " foo ",
-          "dns" => " foo ",
-          "endpoint" => " foo ",
-          "name" => " foo ",
-          "description" => " foo "
-        })
+  describe "new_device_defaults/0" do
+    test "creates random ipv4" do
+      assert %Postgrex.INET{netmask: nil} = Devices.new_device_defaults()["ipv4"]
+    end
 
-      assert %Ecto.Changeset{
-               changes: %{
-                 allowed_ips: "foo",
-                 dns: "foo",
-                 endpoint: "foo",
-                 name: "foo",
-                 description: "foo"
-               }
-             } = changeset
+    test "creates random ipv6" do
+      assert %Postgrex.INET{netmask: nil} = Devices.new_device_defaults()["ipv6"]
     end
   end
 
@@ -67,11 +54,13 @@ defmodule FzHttp.DevicesTest do
     @device_attrs %{
       name: "dummy",
       public_key: "dummy",
-      user_id: nil
+      user_id: nil,
+      ipv4: "100.64.0.2",
+      ipv6: "fd00::2"
     }
 
     test "prevents creating more than max_devices_per_user", %{device: device} do
-      stub_app_env(:max_devices_per_user, 1)
+      FzHttp.Config.maybe_put_env_override(:max_devices_per_user, 1)
 
       assert {:error,
               %Ecto.Changeset{
@@ -90,42 +79,15 @@ defmodule FzHttp.DevicesTest do
     end
 
     test "creates devices with default ipv4", %{device: device} do
-      assert device.ipv4 == %Postgrex.INET{address: {10, 3, 2, 2}, netmask: 32}
+      assert %Postgrex.INET{address: {_, _, _, _}, netmask: 32} = device.ipv4
     end
 
     test "creates device with default ipv6", %{device: device} do
-      assert device.ipv6 == %Postgrex.INET{address: {64_768, 0, 0, 0, 0, 3, 2, 2}, netmask: 128}
+      assert %Postgrex.INET{address: {_, _, _, _, _, _, _, _}, netmask: 128} = device.ipv6
     end
 
     test "generates preshared_key" do
       assert String.length(Devices.new_device().changes.preshared_key) == 44
-    end
-
-    @tag errors: [
-           ipv4: {"can't be blank", [validation: :required]},
-           base:
-             {"ipv4 address pool is exhausted. Increase network size or remove some devices.", []}
-         ]
-    test "sets error when ipv4 address pool is exhausted", %{user: user, errors: errors} do
-      stub_app_env(:wireguard_ipv4_network, "10.3.2.0/30")
-
-      {:error, changeset} = Devices.create_device(%{@device_attrs | user_id: user.id})
-      assert errors == changeset.errors
-    end
-
-    @tag errors: [
-           ipv6: {"can't be blank", [validation: :required]},
-           base:
-             {"ipv6 address pool is exhausted. Increase network size or remove some devices.", []}
-         ]
-    test "sets error when ipv6 address pool is exhausted", %{
-      user: user,
-      errors: errors
-    } do
-      stub_app_env(:wireguard_ipv6_network, "fd00::3:2:0/126")
-
-      {:error, changeset} = Devices.create_device(%{@device_attrs | user_id: user.id})
-      assert errors == changeset.errors
     end
   end
 
@@ -220,38 +182,6 @@ defmodule FzHttp.DevicesTest do
       %{use_site_persistent_keepalive: true, persistent_keepalive: 1},
       %{use_site_mtu: true, mtu: 1000}
     ]
-
-    test "updates device with /32 netmask", %{device: device} do
-      ipv4 = "10.3.2.9/32"
-      {:ok, test_device} = Devices.update_device(device, %{ipv4: ipv4})
-      assert "#{test_device.ipv4}" == "10.3.2.9"
-    end
-
-    test "updates device with /128 netmask", %{device: device} do
-      ipv6 = "fd00::3:2:9/128"
-      {:ok, test_device} = Devices.update_device(device, %{ipv6: ipv6})
-      assert "#{test_device.ipv6}" == "fd00::3:2:9"
-    end
-
-    test "prevents updating device with ipv4 netmask", %{device: device} do
-      attrs = %{ipv4: "10.3.2.9/24"}
-      {:error, changeset} = Devices.update_device(device, attrs)
-
-      assert changeset.errors[:ipv4] == {
-               "Only IPs without netmask are supported.",
-               []
-             }
-    end
-
-    test "prevents updating device with ipv6 netmask", %{device: device} do
-      attrs = %{ipv6: "fd00::3:2:9/120"}
-      {:error, changeset} = Devices.update_device(device, attrs)
-
-      assert changeset.errors[:ipv6] == {
-               "Only IPs without netmask are supported.",
-               []
-             }
-    end
 
     test "updates device", %{device: device} do
       {:ok, test_device} = Devices.update_device(device, @attrs)
@@ -357,52 +287,6 @@ defmodule FzHttp.DevicesTest do
                []
              }
     end
-
-    test "prevents updating ipv4 to out of network", %{device: device} do
-      {:error, changeset} = Devices.update_device(device, %{ipv4: "172.16.0.1"})
-
-      assert changeset.errors[:ipv4] == {
-               "IP must be contained within network 10.3.2.0/24",
-               []
-             }
-    end
-
-    test "prevents updating ipv6 to out of network", %{device: device} do
-      {:error, changeset} = Devices.update_device(device, %{ipv6: "fd00::2:1:1"})
-
-      assert changeset.errors[:ipv6] == {
-               "IP must be contained within network fd00::3:2:0/120",
-               []
-             }
-    end
-
-    test "prevents updating ipv4 to wireguard address", %{device: device} do
-      ip = Application.fetch_env!(:fz_http, :wireguard_ipv4_address)
-      {:error, changeset} = Devices.update_device(device, %{ipv4: ip})
-
-      assert changeset.errors[:ipv4] == {
-               "is reserved",
-               [
-                 {:validation, :exclusion},
-                 {:enum, [%Postgrex.INET{address: {10, 3, 2, 1}, netmask: 32}]}
-               ]
-             }
-    end
-
-    test "prevents updating ipv6 to wireguard address", %{device: device} do
-      {:error, changeset} =
-        Devices.update_device(device, %{
-          ipv6: Application.fetch_env!(:fz_http, :wireguard_ipv6_address)
-        })
-
-      assert changeset.errors[:ipv6] == {
-               "is reserved",
-               [
-                 {:validation, :exclusion},
-                 {:enum, [%Postgrex.INET{address: {64_768, 0, 0, 0, 0, 3, 2, 1}, netmask: 128}]}
-               ]
-             }
-    end
   end
 
   describe "delete_device/1" do
@@ -443,12 +327,12 @@ defmodule FzHttp.DevicesTest do
 
   describe "Device.new_name/0,1" do
     test "retains name with less than or equal to 15 chars" do
-      assert Devices.Device.new_name("12345") == "12345"
-      assert Devices.Device.new_name("1234567890ABCDE") == "1234567890ABCDE"
+      assert Devices.new_name("12345") == "12345"
+      assert Devices.new_name("1234567890ABCDE") == "1234567890ABCDE"
     end
 
     test "truncates long names that exceed 15 chars" do
-      assert Devices.Device.new_name("1234567890ABCDEF") == "1234567890A4772"
+      assert Devices.new_name("1234567890ABCDEF") == "1234567890A4772"
     end
   end
 
@@ -458,8 +342,7 @@ defmodule FzHttp.DevicesTest do
     test "projects expected fields with device", %{device: device, user: user} do
       user_id = user.id
 
-      assert %{ip: "10.3.2.2", ip6: "fd00::3:2:2", user_id: ^user_id} =
-               Devices.setting_projection(device)
+      assert %{ip: _, ip6: _, user_id: ^user_id} = Devices.setting_projection(device)
     end
 
     test "projects expected fields with device map", %{device: device, user: user} do
@@ -471,8 +354,7 @@ defmodule FzHttp.DevicesTest do
         |> Map.put(:ipv4, FzHttp.Devices.decode(device.ipv4))
         |> Map.put(:ipv6, FzHttp.Devices.decode(device.ipv6))
 
-      assert %{ip: "10.3.2.2", ip6: "fd00::3:2:2", user_id: ^user_id} =
-               Devices.setting_projection(device_map)
+      assert %{ip: _, ip6: _, user_id: ^user_id} = Devices.setting_projection(device_map)
     end
   end
 

@@ -4,7 +4,6 @@ defmodule FzHttpWeb.DeviceLive.Admin.Show do
   """
   use FzHttpWeb, :live_view
   alias FzHttp.{Devices, Users}
-  import Wrapped.Application
 
   @impl Phoenix.LiveView
   def mount(%{"id" => device_id} = _params, _session, socket) do
@@ -52,7 +51,7 @@ defmodule FzHttpWeb.DeviceLive.Admin.Show do
       allowed_ips: Devices.allowed_ips(device),
       dns: Devices.dns(device),
       endpoint: Devices.endpoint(device),
-      port: app().fetch_env!(:fz_vpn, :wireguard_port),
+      port: FzHttp.Config.fetch_env!(:fz_vpn, :wireguard_port),
       mtu: Devices.mtu(device),
       persistent_keepalive: Devices.persistent_keepalive(device),
       config: Devices.as_config(device)

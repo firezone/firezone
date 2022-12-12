@@ -4,8 +4,6 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
   """
   use FzHttpWeb, :live_component
 
-  import Wrapped.Application
-
   def render(assigns) do
     ~H"""
     <div>
@@ -179,7 +177,7 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
     {:ok,
      socket
      |> assign(assigns)
-     |> assign(:external_url, app().fetch_env!(:fz_http, :external_url))
+     |> assign(:external_url, FzHttp.Config.fetch_env!(:fz_http, :external_url))
      |> assign(:changeset, changeset)}
   end
 

@@ -32,8 +32,6 @@ alias FzHttp.{
     """,
     preshared_key: "C+Tte1echarIObr6rq+nFeYQ1QO5xo5N29ygDjMlpS8=",
     public_key: "pSLWbPiQ2mKh26IG1dMFQQWuAstFJXV91dNk+olzEjA=",
-    ipv4: "10.3.2.6",
-    ipv6: "fd00::3:2:6",
     mtu: 1280,
     persistent_keepalive: 25,
     allowed_ips: "0.0.0.0,::/0",

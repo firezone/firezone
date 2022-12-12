@@ -5,9 +5,9 @@ defmodule FzHttp.Devices do
 
   import Ecto.Changeset
   import Ecto.Query, warn: false
-  import Wrapped.Application
 
   alias EctoNetwork.INET
+  alias FzCommon.FzInteger
   alias FzHttp.{Devices.Device, Devices.DeviceSetting, Repo, Sites, Telemetry, Users, Users.User}
 
   require Logger
@@ -133,16 +133,27 @@ defmodule FzHttp.Devices do
   end
 
   def new_device(attrs \\ %{}) do
-    change_device(
-      %Device{},
-      Map.merge(
-        %{
-          "name" => Device.new_name(),
-          "preshared_key" => FzCommon.FzCrypto.psk()
-        },
-        attrs
-      )
-    )
+    new_attrs =
+      new_device_defaults()
+      |> Map.merge(attrs)
+
+    struct(Device)
+    |> change_device(new_attrs)
+  end
+
+  def new_device_defaults do
+    v4_net = FzHttp.Config.fetch_env!(:fz_http, :wireguard_ipv4_network)
+    v6_net = FzHttp.Config.fetch_env!(:fz_http, :wireguard_ipv6_network)
+
+    with {:ok, ipv4} <- FzCommon.FzNet.rand_ip(v4_net, :ipv4),
+         {:ok, ipv6} <- FzCommon.FzNet.rand_ip(v6_net, :ipv6) do
+      %{
+        "name" => new_name(),
+        "preshared_key" => FzCommon.FzCrypto.psk(),
+        "ipv4" => ipv4,
+        "ipv6" => ipv6
+      }
+    end
   end
 
   def allowed_ips(device), do: config(device, :allowed_ips)
@@ -173,7 +184,7 @@ defmodule FzHttp.Devices do
   def as_encoded_config(device), do: Base.encode64(as_config(device))
 
   def as_config(device) do
-    wireguard_port = app().fetch_env!(:fz_vpn, :wireguard_port)
+    wireguard_port = FzHttp.Config.fetch_env!(:fz_vpn, :wireguard_port)
     server_public_key = Application.get_env(:fz_vpn, :wireguard_public_key)
 
     if is_nil(server_public_key) do
@@ -200,6 +211,35 @@ defmodule FzHttp.Devices do
 
   def decode(nil), do: nil
   def decode(inet), do: INET.decode(inet)
+
+  def used_ips(type) when type in [:ipv4, :ipv6] do
+    used_ips_query(type)
+    |> Repo.all()
+    |> Enum.map(fn inet -> FzInteger.from_inet(inet.address) end)
+  end
+
+  @hash_range 2 ** 16
+  def new_name(name \\ FzCommon.NameGenerator.generate()) do
+    hash =
+      name
+      |> :erlang.phash2(@hash_range)
+      |> Integer.to_string(16)
+      |> String.pad_leading(4, "0")
+
+    if String.length(name) > 15 do
+      String.slice(name, 0..10) <> hash
+    else
+      name
+    end
+  end
+
+  defp used_ips_query(:ipv4) do
+    from(d in Device, select: d.ipv4, order_by: [desc: :ipv4])
+  end
+
+  defp used_ips_query(:ipv6) do
+    from(d in Device, select: d.ipv6, order_by: [desc: :ipv6])
+  end
 
   defp psk_config(device) do
     if device.preshared_key do
@@ -265,10 +305,10 @@ defmodule FzHttp.Devices do
   defp field_empty?(_), do: false
 
   defp ipv4? do
-    app().fetch_env!(:fz_http, :wireguard_ipv4_enabled)
+    FzHttp.Config.fetch_env!(:fz_http, :wireguard_ipv4_enabled)
   end
 
   defp ipv6? do
-    app().fetch_env!(:fz_http, :wireguard_ipv6_enabled)
+    FzHttp.Config.fetch_env!(:fz_http, :wireguard_ipv6_enabled)
   end
 end

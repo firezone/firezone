@@ -6,7 +6,6 @@ defmodule FzHttp.Application do
   use Application
 
   alias FzHttp.Telemetry
-  import Actual.Application
 
   def start(_type, _args) do
     # See https://hexdocs.pm/elixir/Supervisor.html
@@ -23,7 +22,7 @@ defmodule FzHttp.Application do
     :ok
   end
 
-  defp children, do: children(app().fetch_env!(:fz_http, :supervision_tree_mode))
+  defp children, do: children(FzHttp.Config.fetch_env!(:fz_http, :supervision_tree_mode))
 
   defp children(:full) do
     [

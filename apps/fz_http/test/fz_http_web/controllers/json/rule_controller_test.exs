@@ -1,5 +1,5 @@
 defmodule FzHttpWeb.JSON.RuleControllerTest do
-  use FzHttpWeb.APICase
+  use FzHttpWeb.ConnCase, async: true, api: true
 
   @rule_params %{
     "destination" => "5.5.5.5/24",
@@ -11,7 +11,7 @@ defmodule FzHttpWeb.JSON.RuleControllerTest do
   describe "show rule" do
     setup :create_rule
 
-    test "shows rule", %{conn: conn, rule: %{id: id}} do
+    test "shows rule", %{api_conn: conn, rule: %{id: id}} do
       conn = get(conn, ~p"/v1/rules/#{id}")
       assert %{"id" => ^id} = json_response(conn, 200)["data"]
     end
@@ -19,7 +19,7 @@ defmodule FzHttpWeb.JSON.RuleControllerTest do
 
   describe "create rule" do
     @tag params: @rule_params
-    test "creates rule", %{conn: conn, unprivileged_user: user, params: params} do
+    test "creates rule", %{api_conn: conn, unprivileged_user: user, params: params} do
       conn = post(conn, ~p"/v1/rules", rule: Map.merge(params, %{"user_id" => user.id}))
       assert @rule_params = json_response(conn, 201)["data"]
     end
@@ -29,7 +29,7 @@ defmodule FzHttpWeb.JSON.RuleControllerTest do
     setup :create_rule
 
     @tag params: @rule_params
-    test "updates rule", %{conn: conn, params: params, rule: %{id: id}} do
+    test "updates rule", %{api_conn: conn, params: params, rule: %{id: id}} do
       conn = put(conn, ~p"/v1/rules/#{id}", rule: params)
       assert %{"id" => ^id} = json_response(conn, 200)["data"]
 
@@ -42,7 +42,7 @@ defmodule FzHttpWeb.JSON.RuleControllerTest do
   describe "list rules" do
     setup :create_rules
 
-    test "lists rules", %{conn: conn, rules: rules} do
+    test "lists rules", %{api_conn: conn, rules: rules} do
       conn = get(conn, ~p"/v1/rules")
       assert length(json_response(conn, 200)["data"]) == length(rules)
     end
@@ -51,7 +51,7 @@ defmodule FzHttpWeb.JSON.RuleControllerTest do
   describe "delete rule" do
     setup :create_rule
 
-    test "deletes rule", %{conn: conn, rule: rule} do
+    test "deletes rule", %{api_conn: conn, rule: rule} do
       conn = delete(conn, ~p"/v1/rules/#{rule}")
       assert response(conn, 204)
 

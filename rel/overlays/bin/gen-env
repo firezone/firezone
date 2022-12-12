@@ -11,4 +11,15 @@ COOKIE_SIGNING_SALT=$(openssl rand -base64 6)
 COOKIE_ENCRYPTION_SALT=$(openssl rand -base64 6)
 DATABASE_ENCRYPTION_KEY=$(openssl rand -base64 32)
 DATABASE_PASSWORD=$(openssl rand -base64 12)
+
+# The ability to change the IPv4 and IPv6 address pool will be removed
+# in a future Firezone release in order to reduce the possible combinations
+# of network configurations we need to handle.
+#
+# Due to the above, we recommend not changing these unless absolutely
+# necessary.
+WIREGUARD_IPV4_NETWORK=100.64.0.0/10
+WIREGUARD_IPV4_ADDRESS=100.64.0.1
+WIREGUARD_IPV6_NETWORK=fd00::/106
+WIREGUARD_IPV4_ADDRESS=fd00::1
 EOF

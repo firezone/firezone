@@ -4,7 +4,6 @@ defmodule FzHttp.Release do
   """
 
   alias FzHttp.{Repo, Users, Users.User}
-  import Wrapped.Application
   import Ecto.Query, only: [from: 2]
   require Logger
 
@@ -27,16 +26,23 @@ defmodule FzHttp.Release do
   def create_admin_user do
     load_app()
 
-    if Repo.exists?(from u in User, where: u.email == ^email()) do
-      change_password(email(), default_password())
-      reset_role(email(), :admin)
-    else
-      Users.create_admin_user(
-        email: email(),
-        password: default_password(),
-        password_confirmation: default_password()
-      )
-    end
+    reply =
+      if Repo.exists?(from u in User, where: u.email == ^email()) do
+        change_password(email(), default_password())
+        reset_role(email(), :admin)
+      else
+        Users.create_admin_user(
+          email: email(),
+          password: default_password(),
+          password_confirmation: default_password()
+        )
+      end
+
+    # Show the user the new credentials
+    IO.puts(email())
+    IO.puts(default_password())
+
+    reply
   end
 
   def change_password(email, password) do
@@ -56,11 +62,11 @@ defmodule FzHttp.Release do
   end
 
   def repos do
-    app().fetch_env!(@app, :ecto_repos)
+    FzHttp.Config.fetch_env!(@app, :ecto_repos)
   end
 
   defp email do
-    app().fetch_env!(@app, :admin_email)
+    FzHttp.Config.fetch_env!(@app, :admin_email)
   end
 
   defp load_app do
@@ -72,6 +78,6 @@ defmodule FzHttp.Release do
   end
 
   defp default_password do
-    app().fetch_env!(@app, :default_admin_password)
+    FzHttp.Config.fetch_env!(@app, :default_admin_password)
   end
 end

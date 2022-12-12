@@ -111,6 +111,56 @@ defmodule FzCommon.FzNetTest do
     end
   end
 
+  describe "rand_ip/2" do
+    test "returns {:error, :range} for /32" do
+      assert FzNet.rand_ip("100.64.0.0/32", :ipv4) == {:error, :range}
+    end
+
+    test "returns {:error, :range} for /31" do
+      assert FzNet.rand_ip("100.64.0.0/31", :ipv4) == {:error, :range}
+    end
+
+    test "returns either 100.64.0.{1,2} for /30" do
+      {:ok, rip} = FzNet.rand_ip("100.64.0.0/30", :ipv4)
+
+      possibilities =
+        Enum.map([1, 2], fn a -> %Postgrex.INET{address: {100, 64, 0, a}, netmask: nil} end)
+
+      assert Enum.member?(possibilities, rip)
+    end
+
+    test "returns {:error, :range} for /128" do
+      assert FzNet.rand_ip("fd00::/128", :ipv6) == {:error, :range}
+    end
+
+    test "returns {:error, :range} for /127" do
+      assert FzNet.rand_ip("fd00::/127", :ipv6) == {:error, :range}
+    end
+
+    test "returns either fd00::1 or fd00::2 for /126" do
+      {:ok, rip} = FzNet.rand_ip("fd00::/126", :ipv6)
+
+      possibilities =
+        Enum.map([1, 2], fn a ->
+          %Postgrex.INET{address: {64_768, 0, 0, 0, 0, 0, 0, a}, netmask: nil}
+        end)
+
+      assert Enum.member?(possibilities, rip)
+    end
+
+    test "returns random ipv4 in range" do
+      cidr = "100.64.0.0/10"
+      {:ok, rip} = FzNet.rand_ip(cidr, :ipv4)
+      assert CIDR.match(CIDR.parse(cidr), rip.address)
+    end
+
+    test "returns random ipv6 in range" do
+      cidr = "fd00::/106"
+      {:ok, rip} = FzNet.rand_ip(cidr, :ipv6)
+      assert CIDR.match(CIDR.parse(cidr), rip.address)
+    end
+  end
+
   describe "to_complete_url/1" do
     @tag cases: [
            {"foobar", "https://foobar"},
@@ -127,11 +177,7 @@ defmodule FzCommon.FzNetTest do
       end
     end
 
-    @tag cases: [
-           "<",
-           "{",
-           "["
-         ]
+    @tag cases: ["<", "{", "["]
     test "returns {:error, _} for invalid URIs", %{cases: cases} do
       for subject <- cases do
         assert {:error, _} = FzNet.to_complete_url(subject)
