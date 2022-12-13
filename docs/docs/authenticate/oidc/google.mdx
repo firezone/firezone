@@ -10,7 +10,7 @@ obtain the following config settings required for the integration:
 1. **Config ID**: The provider's config ID. (e.g. `google`)
 1. **Label**: The button label text that shows up on your Firezone login screen. (e.g. `Google`)
 1. **Scope**: [OIDC scopes](https://openid.net/specs/openid-connect-basic-1_0.html#Scopes)
-to obtain from your OIDC provider. This should be set to `openid email profile`
+to obtain from your OIDC provider. This should be set to `openid email profile offline_access`
 to provide Firezone with the user's email in the returned claims.
 1. **Response type**: Set to `code`.
 1. **Client ID**: The client ID of the application.
