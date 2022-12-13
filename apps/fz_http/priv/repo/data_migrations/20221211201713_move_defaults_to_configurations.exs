@@ -4,7 +4,7 @@ defmodule FzHttp.Repo.DataMigrations.MoveDefaultsToConfigurations do
   def change do
     execute("""
     UPDATE configurations
-    SET 
+    SET
       default_client_allowed_ips=#{val("allowed_ips", "0.0.0.0/0, ::/0")},
       default_client_dns=#{val("dns", "1.1.1.1, 1.0.0.1")},
       default_client_endpoint=#{val("endpoint", "NULL")},
