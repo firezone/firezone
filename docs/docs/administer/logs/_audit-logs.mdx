@@ -1,0 +1,23 @@
+---
+title: Audit Logs
+sidebar_position: 2
+---
+
+# Audit logs
+
+:::note
+Audit logs are in early Beta on the Enterprise plan.
+[Contact us](https://www.firezone.dev/contact/sales)
+to learn more.
+:::
+
+Firezone maintains two types of logs tied to user identity: configuration logs
+and network activity logs.
+
+Configuration logs track events related to the configuration of Firezone
+itself, either by admins or users. Network activity logs track connections to
+protected resources made by users of your network.
+
+Logged events are recorded as JSON objects and stored in the database. These
+are accessible via a REST API or the Firezone portal, and exportable to CSV
+format.
