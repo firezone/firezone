@@ -22,7 +22,7 @@ defmodule FzHttp.Configurations.Configuration do
     field :default_client_endpoint, :string
     field :default_client_mtu, :integer, default: 1280
     field :default_client_persistent_keepalive, :integer, default: 0
-    field :default_client_port, :integer, default: 51820
+    field :default_client_port, :integer, default: 51_820
     field :ipv4_enabled, :boolean, default: true
     field :ipv6_enabled, :boolean, default: true
     field :ipv4_network, CIDR, default: CIDR.cast("10.3.2.0/24") |> elem(1)
