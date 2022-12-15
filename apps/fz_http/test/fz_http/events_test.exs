@@ -195,16 +195,4 @@ defmodule FzHttp.EventsTest do
                %{users: expected_user_ids, devices: expected_devices, rules: expected_rules}
     end
   end
-
-  describe "vpn_pid/0" do
-    test "uses the correct pid" do
-      assert Events.vpn_pid() == :global.whereis_name(:fz_vpn_server)
-    end
-  end
-
-  describe "wall_pid/0" do
-    test "uses the correct pid" do
-      assert Events.wall_pid() == :global.whereis_name(:fz_wall_server)
-    end
-  end
 end

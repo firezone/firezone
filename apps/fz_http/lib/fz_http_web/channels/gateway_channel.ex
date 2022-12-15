@@ -2,6 +2,7 @@ defmodule FzHttpWeb.Gateway.Channel do
   @moduledoc """
   Error handler for halting pipe processing when erroring out when communicating with the gateway
   """
+  alias FzHttp.Gateways
 
   use FzHttpWeb, :channel
 
@@ -14,7 +15,6 @@ defmodule FzHttpWeb.Gateway.Channel do
   @impl Phoenix.Channel
   def join("gateway:" <> id, _, socket) do
     # XXX: Here we check for Guardian.Phoenix.Socket.current_claims to check if the gateway has access to the channel
-    dbg(id)
     send(self(), :after_join)
 
     {:ok, socket}
@@ -22,25 +22,9 @@ defmodule FzHttpWeb.Gateway.Channel do
 
   @impl Phoenix.Channel
   def handle_info(:after_join, socket) do
-    push(socket, "init", %{
-      init: %{
-        default_action: "deny",
-        interface: %{
-          address: ["100.64.11.22/10"],
-          mtu: 1280
-        },
-        peers: [
-          %{
-            allowed_ips: [
-              "100.64.11.22/32"
-            ],
-            public_key: "AxVaJsPC1FSrOM5RpEXg4umTKMxkHkgMy1fl7t1xyyw=",
-            preshared_key: "LZBIpoLNCkIe56cPM+5pY/hP2pu7SGARvQZEThmuPYM=",
-            user_uuid: "3118158c-29cb-47d6-adbf-5edd15f1af17"
-          }
-        ]
-      }
-    })
+    gateway_config = Gateways.gateway_config(Gateways.get_gateway!())
+
+    push(socket, "init", %{init: gateway_config})
 
     {:noreply, socket}
   end

@@ -25,9 +25,6 @@ config :fz_http, FzHttpWeb.Endpoint,
   url: [host: host, scheme: scheme, port: port, path: path],
   check_origin: ["//127.0.0.1", "//localhost", "//#{host}"]
 
-config :fz_wall,
-  port_based_rules_supported: FzKernelVersion.is_version_greater_than?({5, 6, 8})
-
 # Formerly releases.exs - Only evaluated in production
 if config_env() == :prod do
   # For releases, require that all these are set
@@ -40,10 +37,6 @@ if config_env() == :prod do
   cookie_signing_salt = System.fetch_env!("COOKIE_SIGNING_SALT")
   cookie_encryption_salt = System.fetch_env!("COOKIE_ENCRYPTION_SALT")
   telemetry_id = System.fetch_env!("TELEMETRY_ID")
-
-  # OPTIONAL
-  wireguard_private_key_path =
-    System.get_env("WIREGUARD_PRIVATE_KEY_PATH", "/var/firezone/private_key")
 
   saml_entity_id = System.get_env("SAML_ENTITY_ID", "urn:firezone.dev:firezone-app")
   saml_keyfile_path = System.get_env("SAML_KEYFILE_PATH", "/var/firezone/saml.key")
@@ -60,26 +53,14 @@ if config_env() == :prod do
   phoenix_port = String.to_integer(System.get_env("PHOENIX_PORT", "13000"))
   external_trusted_proxies = Jason.decode!(System.get_env("EXTERNAL_TRUSTED_PROXIES", "[]"))
   private_clients = Jason.decode!(System.get_env("PRIVATE_CLIENTS", "[]"))
-  wireguard_interface_name = System.get_env("WIREGUARD_INTERFACE_NAME", "wg-firezone")
-  wireguard_port = String.to_integer(System.get_env("WIREGUARD_PORT", "51820"))
-  nft_path = System.get_env("NFT_PATH", "nft")
-  egress_interface = System.get_env("EGRESS_INTERFACE", "eth0")
   wireguard_dns = System.get_env("WIREGUARD_DNS", "1.1.1.1, 1.0.0.1")
   wireguard_allowed_ips = System.get_env("WIREGUARD_ALLOWED_IPS", "0.0.0.0/0, ::/0")
   wireguard_persistent_keepalive = System.get_env("WIREGUARD_PERSISTENT_KEEPALIVE", "0")
   wireguard_ipv4_enabled = FzString.to_boolean(System.get_env("WIREGUARD_IPV4_ENABLED", "true"))
 
-  wireguard_ipv4_masquerade =
-    FzString.to_boolean(System.get_env("WIREGUARD_IPV4_MASQUERADE", "true"))
-
-  wireguard_ipv6_masquerade =
-    FzString.to_boolean(System.get_env("WIREGUARD_IPV6_MASQUERADE", "true"))
-
   wireguard_ipv4_network = System.get_env("WIREGUARD_IPV4_NETWORK", "10.3.2.0/24")
-  wireguard_ipv4_address = System.get_env("WIREGUARD_IPV4_ADDRESS", "10.3.2.1")
   wireguard_ipv6_enabled = FzString.to_boolean(System.get_env("WIREGUARD_IPV6_ENABLED", "true"))
   wireguard_ipv6_network = System.get_env("WIREGUARD_IPV6_NETWORK", "fd00::3:2:0/120")
-  wireguard_ipv6_address = System.get_env("WIREGUARD_IPV6_ADDRESS", "fd00::3:2:1")
   wireguard_mtu = System.get_env("WIREGUARD_MTU", "1280")
   wireguard_endpoint = System.get_env("WIREGUARD_ENDPOINT", host)
   telemetry_enabled = FzString.to_boolean(System.get_env("TELEMETRY_ENABLED", "true"))
@@ -204,19 +185,6 @@ if config_env() == :prod do
       signing_salt: live_view_signing_salt
     ]
 
-  config :fz_wall,
-    wireguard_ipv4_masquerade: wireguard_ipv4_masquerade,
-    wireguard_ipv6_masquerade: wireguard_ipv6_masquerade,
-    nft_path: nft_path,
-    egress_interface: egress_interface,
-    wireguard_interface_name: wireguard_interface_name,
-    cli: FzWall.CLI.Live
-
-  config :fz_vpn,
-    wireguard_private_key_path: wireguard_private_key_path,
-    wireguard_interface_name: wireguard_interface_name,
-    wireguard_port: wireguard_port
-
   # Guardian configuration
   # XXX: Use different secret keys here when config / secret generation is refactored
   config :fz_http, FzHttpWeb.Auth.HTML.Authentication,
@@ -250,10 +218,8 @@ if config_env() == :prod do
     wireguard_persistent_keepalive: wireguard_persistent_keepalive,
     wireguard_ipv4_enabled: wireguard_ipv4_enabled,
     wireguard_ipv4_network: wireguard_ipv4_network,
-    wireguard_ipv4_address: wireguard_ipv4_address,
     wireguard_ipv6_enabled: wireguard_ipv6_enabled,
     wireguard_ipv6_network: wireguard_ipv6_network,
-    wireguard_ipv6_address: wireguard_ipv6_address,
     wireguard_mtu: wireguard_mtu,
     wireguard_endpoint: wireguard_endpoint,
     telemetry_module: telemetry_module,

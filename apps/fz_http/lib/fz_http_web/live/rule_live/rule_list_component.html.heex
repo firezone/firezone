@@ -51,8 +51,6 @@
             :port_type,
             port_type_options(),
             prompt: "All protocols",
-            title: if(!@port_rules_supported, do: "Kernel 5.6.9 required for port-based rules."),
-            disabled: !@port_rules_supported
           ) %>
         </div>
         <p class="help is-danger">
@@ -97,11 +95,7 @@
         </thead>
         <tbody>
           <%= for rule <- @rule_list do %>
-            <tr class={
-              if rule.port_range != nil && !@port_rules_supported,
-                do: "has-background-grey",
-                else: ""
-            }>
+            <tr>
               <td class="has-text-left">
                 <dd class="code">
                   <%= rule.destination %>
@@ -122,7 +116,6 @@
                   phx-click="delete_rule"
                   phx-value-rule_id={rule.id}
                   phx-target={@myself}
-                  disabled={!@port_rules_supported && rule.port_range != nil}
                 >
                   Delete
                 </a>
@@ -131,11 +124,6 @@
           <% end %>
           <!-- This can happen when moving the DB to an OS with an older Kernel or on the strange case of a
           kernel downgrade. -->
-          <%= if !@port_rules_supported && Enum.any?(@rule_list, fn rule -> rule.port_range != nil end) do %>
-            <p class="help">
-              Port-based rules are only applied when Linux Kernel is 5.6.9 or greater
-            </p>
-          <% end %>
         </tbody>
       <% end %>
     </table>

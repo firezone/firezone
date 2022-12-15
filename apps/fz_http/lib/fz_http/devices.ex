@@ -6,6 +6,8 @@ defmodule FzHttp.Devices do
   import Ecto.Changeset
   import Ecto.Query, warn: false
 
+  alias FzHttp.Events
+  alias FzHttp.Gateways
   alias EctoNetwork.INET
   alias FzHttp.{Devices.Device, Devices.DeviceSetting, Repo, Sites, Telemetry, Users, Users.User}
 
@@ -15,23 +17,25 @@ defmodule FzHttp.Devices do
     cutoff = DateTime.add(DateTime.utc_now(), -1 * duration_in_secs)
 
     Repo.one(
-      from d in Device,
+      from(d in Device,
         select: count(d.id),
         where: d.latest_handshake > ^cutoff
+      )
     )
   end
 
   def count do
-    Repo.one(from d in Device, select: count(d.id))
+    Repo.one(from(d in Device, select: count(d.id)))
   end
 
   def max_count_by_user_id do
     Repo.one(
-      from d in Device,
+      from(d in Device,
         select: fragment("count(*) AS user_count"),
         group_by: d.user_id,
         order_by: fragment("user_count DESC"),
         limit: 1
+      )
     )
   end
 
@@ -42,22 +46,38 @@ defmodule FzHttp.Devices do
   def list_devices(%User{} = user), do: list_devices(user.id)
 
   def list_devices(user_id) do
-    Repo.all(from d in Device, where: d.user_id == ^user_id)
+    Repo.all(from(d in Device, where: d.user_id == ^user_id))
   end
 
   def as_settings do
     Repo.all(from(Device))
-    |> Enum.map(&setting_projection/1)
+    |> Enum.map(&to_peer/1)
     |> MapSet.new()
   end
 
-  def setting_projection(device) do
-    DeviceSetting.parse(device)
-    |> Map.from_struct()
+  def to_peer(dev) do
+    allowed_ips =
+      [dev.ipv4, dev.ipv6] |> Enum.filter(&(&1 != nil)) |> Enum.map(&add_network_range/1)
+
+    %{
+      allowed_ips: allowed_ips,
+      user_uuid: dev.uuid,
+      public_key: dev.public_key,
+      preshared_key: dev.preshared_key
+    }
+  end
+
+  defp add_network_range(%{address: address, netmask: netmask}),
+    do: "#{:inet.ntoa(address)}/#{netmask}"
+
+  defp add_network_range(addr) when is_binary(addr) do
+    {:ok, addr} = addr |> String.to_charlist() |> :inet.parse_address()
+
+    "#{:inet.ntoa(addr)}/#{tuple_size(addr) * 8}"
   end
 
   def count(user_id) do
-    Repo.one(from d in Device, where: d.user_id == ^user_id, select: count())
+    Repo.one(from(d in Device, where: d.user_id == ^user_id, select: count()))
   end
 
   def get_device!(id), do: Repo.get!(Device, id)
@@ -68,6 +88,7 @@ defmodule FzHttp.Devices do
     |> Repo.insert()
     |> case do
       {:ok, device} ->
+        Events.add("devices", device)
         Telemetry.add_device()
         {:ok, device}
 
@@ -116,8 +137,9 @@ defmodule FzHttp.Devices do
     vpn_duration = Sites.vpn_duration()
 
     Repo.all(
-      from d in Device,
+      from(d in Device,
         preload: :user
+      )
     )
     |> Enum.filter(fn device ->
       !device.user.disabled_at && !Users.vpn_session_expired?(device.user, vpn_duration)
@@ -126,7 +148,7 @@ defmodule FzHttp.Devices do
       %{
         public_key: device.public_key,
         inet: inet(device),
-        preshared_key: device.preshared_key
+        preshared_key: "#{device.preshared_key}"
       }
     end)
   end
@@ -172,8 +194,9 @@ defmodule FzHttp.Devices do
   def as_encoded_config(device), do: Base.encode64(as_config(device))
 
   def as_config(device) do
-    wireguard_port = Application.fetch_env!(:fz_vpn, :wireguard_port)
-    server_public_key = Application.get_env(:fz_vpn, :wireguard_public_key)
+    # XXX: Move the wireguard_port into the gateway
+    wireguard_port = 51820
+    server_public_key = Gateways.get_gateway!().public_key
 
     if is_nil(server_public_key) do
       Logger.error(

@@ -17,23 +17,5 @@ defmodule FzHttp.Repo.Notifier do
     {:ok, state}
   end
 
-  @impl GenServer
-  def handle_info({:notification, _pid, _ref, event, payload}, _state) do
-    subject = String.split(event, "_") |> List.first()
-    data = Jason.decode!(payload, keys: :atoms)
-
-    handle_event(subject, data)
-
-    {:noreply, :event_handled}
-  end
-
   def start_link(opts \\ []), do: GenServer.start_link(__MODULE__, opts)
-
-  def handle_event(subject, %{op: "INSERT"} = data) do
-    Events.add(subject, data.row)
-  end
-
-  def handle_event(subject, %{op: "DELETE"} = data) do
-    Events.delete(subject, data.row)
-  end
 end

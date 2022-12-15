@@ -3,7 +3,8 @@ defmodule FzHttp.Events do
   Handles interfacing with other processes in the system.
   """
 
-  alias FzHttp.{Users, Notifications}
+  alias FzHttp.AllowRules
+  alias FzHttp.{Users, Notifications, Rules, Gateways, Devices}
 
   require Logger
 
@@ -14,14 +15,7 @@ defmodule FzHttp.Events do
   # device is added to a User that's not active.
   def add(subject, device) when subject == "devices" do
     if :ok ==
-         send_event("todo", "add_peer", %{
-           public_key: "AxVaJsPC1FSrOM5RpEXg4umTKMxkHkgMy1fl7t1xNyw=",
-           preshared_key: "LZBIpoLNCkIe56cPM+5pY/hP2pu7SGARvQZEThmuPYM=",
-           user_uuid: "3118158c-29cb-47d6-adbf-5edd15f1af17",
-           allowed_ips: [
-             "100.64.11.22/32"
-           ]
-         }) do
+         send_event("todo", "add_peer", Devices.to_peer(device)) do
       :ok
     else
       Notifications.add(%{
@@ -37,16 +31,8 @@ defmodule FzHttp.Events do
     end
   end
 
-  def add(subject, _rule) when subject == "rules" do
-    send_event("todo", "add_rule", %{
-      dst: "0.0.0.0/8",
-      port_range: %{
-        range_start: 80,
-        range_end: 81,
-        protocol: "tcp"
-      },
-      user_uuid: "3118158c-29cb-47d6-adbf-5edd15f1af17"
-    })
+  def add(subject, rule) when subject == "rules" do
+    send_event("todo", "add_rule", AllowRules.as_setting(rule))
   end
 
   def delete(subject, device) when subject == "devices" do
@@ -69,16 +55,8 @@ defmodule FzHttp.Events do
     end
   end
 
-  def delete(subject, _rule) when subject == "rules" do
-    send_event("todo", "delete_rule", %{
-      dst: "0.0.0.0/8",
-      port_range: %{
-        range_start: 80,
-        range_end: 81,
-        protocol: "tcp"
-      },
-      user_uuid: "3118158c-29cb-47d6-adbf-5edd15f1af17"
-    })
+  def delete(subject, rule) when subject == "rules" do
+    send_event("todo", "delete_rule", AllowRules.as_setting(rule))
   end
 
   def delete(subject, _user) when subject == "users" do
@@ -95,13 +73,5 @@ defmodule FzHttp.Events do
 
   defp send_event_all(event, payload) do
     send_event("all", event, payload)
-  end
-
-  def vpn_pid do
-    :global.whereis_name(:fz_vpn_server)
-  end
-
-  def wall_pid do
-    :global.whereis_name(:fz_wall_server)
   end
 end

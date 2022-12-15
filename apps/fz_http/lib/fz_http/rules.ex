@@ -5,17 +5,7 @@ defmodule FzHttp.Rules do
 
   import Ecto.Query, warn: false
   import Ecto.Changeset
-  alias FzHttp.{Repo, Rules.Rule, Rules.RuleSetting, Telemetry}
-
-  def port_rules_supported?, do: Application.fetch_env!(:fz_wall, :port_based_rules_supported)
-
-  defp scope(port_based_rules) when port_based_rules == true do
-    Rule
-  end
-
-  defp scope(port_based_rules) when port_based_rules == false do
-    from r in Rule, where: is_nil(r.port_type)
-  end
+  alias FzHttp.{Repo, Rules.Rule, Rules.RuleSetting, Telemetry, Events}
 
   def list_rules, do: Repo.all(Rule)
 
@@ -27,9 +17,7 @@ defmodule FzHttp.Rules do
   end
 
   def as_settings do
-    port_rules_supported?()
-    |> scope()
-    |> Repo.all()
+    Repo.all(Rule)
     |> Enum.map(&setting_projection/1)
     |> MapSet.new()
   end
@@ -65,7 +53,8 @@ defmodule FzHttp.Rules do
       |> Repo.insert()
 
     case result do
-      {:ok, _rule} ->
+      {:ok, rule} ->
+        Events.add("rules", rule)
         Telemetry.add_rule()
 
       _ ->
@@ -75,6 +64,15 @@ defmodule FzHttp.Rules do
     result
   end
 
+  def project_rule(rule) do
+    user_uuid = Repo.preload(rule, :user).user.uuid
+
+    %{
+      dst: rule.destination,
+      user_uuid: user_uuid
+    }
+  end
+
   def update_rule(%Rule{} = rule, attrs \\ %{}) do
     rule
     |> Rule.changeset(attrs)
@@ -82,8 +80,14 @@ defmodule FzHttp.Rules do
   end
 
   def delete_rule(%Rule{} = rule) do
-    Telemetry.delete_rule()
-    Repo.delete(rule)
+    case Repo.delete(rule) do
+      {:ok, rule} ->
+        Events.delete("rules", rule)
+        Telemetry.delete_rule()
+
+      _ ->
+        nil
+    end
   end
 
   def allowlist do
