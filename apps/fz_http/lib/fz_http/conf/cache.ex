@@ -31,7 +31,17 @@ defmodule FzHttp.Configurations.Cache do
 
   @no_fallback [
     :logo,
-    :default_client_endpoint
+    :default_client_allowed_ips,
+    :default_client_dns,
+    :default_client_endpoint,
+    :default_client_mtu,
+    :default_client_persistent_keepalive,
+    :default_client_port,
+    :ipv4_enabled,
+    :ipv6_enabled,
+    :ipv4_network,
+    :ipv6_network,
+    :vpn_session_duration
   ]
 
   @impl true

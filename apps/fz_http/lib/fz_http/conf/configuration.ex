@@ -5,6 +5,7 @@ defmodule FzHttp.Configurations.Configuration do
 
   use Ecto.Schema
   import Ecto.Changeset
+  alias EctoNetwork.CIDR
   alias FzHttp.Configurations.Logo
   @primary_key {:id, :binary_id, autogenerate: true}
 
@@ -16,17 +17,17 @@ defmodule FzHttp.Configurations.Configuration do
     field :openid_connect_providers, :map
     field :saml_identity_providers, :map
     field :disable_vpn_on_oidc_error, :boolean
-    field :default_client_allowed_ips, :string, read_after_writes: true
-    field :default_client_dns, :string, read_after_writes: true
-    field :default_client_endpoint, :string, read_after_writes: true
-    field :default_client_mtu, :integer, read_after_writes: true
-    field :default_client_persistent_keepalive, :integer, read_after_writes: true
-    field :default_client_port, :integer, read_after_writes: true
-    field :ipv4_enabled, :boolean, read_after_writes: true
-    field :ipv6_enabled, :boolean, read_after_writes: true
-    field :ipv4_network, EctoNetwork.CIDR, read_after_writes: true
-    field :ipv6_network, EctoNetwork.CIDR, read_after_writes: true
-    field :vpn_session_duration, :integer, read_after_writes: true
+    field :default_client_allowed_ips, :string, default: "0.0.0.0/0, ::/0"
+    field :default_client_dns, :string, default: "1.1.1.1, 1.0.0.1"
+    field :default_client_endpoint, :string
+    field :default_client_mtu, :integer, default: 1280
+    field :default_client_persistent_keepalive, :integer, default: 0
+    field :default_client_port, :integer, default: 51820
+    field :ipv4_enabled, :boolean, default: true
+    field :ipv6_enabled, :boolean, default: true
+    field :ipv4_network, CIDR, default: CIDR.cast("10.3.2.0/24") |> elem(1)
+    field :ipv6_network, CIDR, default: CIDR.cast("fd00::3:2:0/120") |> elem(1)
+    field :vpn_session_duration, :integer, default: 0
 
     timestamps(type: :utc_datetime_usec)
   end

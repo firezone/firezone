@@ -17,18 +17,20 @@ defmodule FzHttp.Release do
     end
   end
 
+  def rollback(repo, version) do
+    load_app()
+    {:ok, _, _} = Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, :down, to: version))
+  end
+
+  # App should be loaded at this point; call with `rpc` not `eval`
   def migrate_data do
     load_app()
 
     for repo <- repos() do
-      {:ok, _, _} =
-        Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, "data_migrations", :up, all: true))
-    end
-  end
+      path = Ecto.Migrator.migrations_path(repo, "data_migrations")
 
-  def rollback(repo, version) do
-    load_app()
-    {:ok, _, _} = Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, :down, to: version))
+      {:ok, _, _} = Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, path, :up, all: true))
+    end
   end
 
   # App should be loaded at this point; call with `rpc` not `eval`
