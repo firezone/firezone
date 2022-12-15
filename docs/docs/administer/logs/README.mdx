@@ -2,8 +2,8 @@
 title: Logs
 sidebar_position: 8
 description:
-     Firezone's WireGuard®-based remote access platform stores debug logs and
-     configuration, and audit logs.
+     Docker deployments of Firezone generate and stores logs to a JSON
+     file on the host machine.
 ---
 
 :::note
@@ -20,7 +20,7 @@ Docker deployments of Firezone consist of 3 running containers.
 | postgres  | Database      |                                               |
 | caddy     | Reverse proxy |                                               |
 
-Each container generates and stores debug logs to a JSON file on the host
+Each container generates and stores logs to a JSON file on the host
 machine. These files can be found at
 `var/lib/docker/containers/{CONTAINER_ID}/{CONTAINER_ID}-json.log`.
 

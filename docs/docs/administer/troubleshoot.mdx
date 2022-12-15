@@ -25,7 +25,7 @@ Firezone logs are stored in `/var/log/firezone` and can be viewed with
 </TabItem>
 </Tabs>
 
-## Application Crash Loop Preventing Config Changes
+## Application crash loop preventing config changes
 
 In cases where the application is crash looping because of corrupt, inaccessible, or
 invalid data in the DB, you can try clearing the affected fields.
@@ -42,7 +42,7 @@ Similarly, to clear SAML configs:
 psql -d firezone -h 127.0.0.1 -U postgres -c "UPDATE configurations SET saml_providers = '{}'"
 ```
 
-## Debugging Portal Websocket Connectivity Issues
+## Debugging portal websocket connectivity issues
 
 The portal UI requires a secure websocket connection to function. To facilitate
 this, the Firezone phoenix service checks the `Host` header for inbound
@@ -89,13 +89,13 @@ If the websocket connection is successful, you should see output in the
 </TabItem>
 </Tabs>
 
-## Debugging WireGuard Connectivity Issues
+## Debugging WireGuard connectivity issues
 
 Most connectivity issues with Firezone are caused by other `iptables` or
 `nftables` rules which interfere with Firezone's operation. If you have rules
 active, you'll need to ensure these don't conflict with the Firezone rules.
 
-### Internet Connectivity Drops when Tunnel is Active
+### Internet connectivity drops when tunnel is active
 
 If your Internet connectivity drops whenever you activate your WireGuard
 tunnel, you should make sure that the `FORWARD` chain allows packets
@@ -132,7 +132,7 @@ To                         Action      From
 51820/udp (v6)             ALLOW IN    Anywhere (v6)
 ```
 
-## Locked Out of Admin Access
+## Locked out of admin access
 
 If you are locked out of the admin account for your Firezone instance
 you can recreate your admin user.
@@ -140,18 +140,18 @@ you can recreate your admin user.
 <Tabs>
 <TabItem value="docker" label="Docker">
 
-    First change directory to your Firezone root, then run the `bin/create-or-reset-admin` script
-    to reset the admin user's password. The password for the user specified by 
-  `ADMIN_EMAIL` 
-    in `$HOME/.firezone/.env` will be reset to the `DEFAULT_ADMIN_PASSWORD` variable.
-  
-    ```shell
-      cd $HOME/.firezone
-      docker compose exec firezone bin/create-or-reset-admin
-    ```
+First change directory to your Firezone root, then run the `bin/create-or-reset-admin` script
+to reset the admin user's password. The password for the user specified by
+`ADMIN_EMAIL`
+in `$HOME/.firezone/.env` will be reset to the `DEFAULT_ADMIN_PASSWORD` variable.
 
-    **Note**: If local authentication is disabled, resetting the admin user's password will not 
-    re-enable it.
+```shell
+  cd $HOME/.firezone
+  docker compose exec firezone bin/create-or-reset-admin
+```
+
+**Note**: If local authentication is disabled, resetting the admin user's
+password will not re-enable it.
 
 </TabItem>
 
@@ -166,17 +166,22 @@ sudo firezone-ctl create-or-reset-admin
 </TabItem>
 </Tabs>
 
-## Re-enable Local Authentication in CLI
+## Re-enable local authentication in CLI
 
-For production deployments, we recommend adding a TOTP-based second factor to admin accounts.
-If you promoted an account authenticated through an identity provider, you can consider
-disabling local authentication for additional security.
+For production deployments, we recommend adding a TOTP-based second factor to
+admin accounts. If you promoted an account authenticated through an identity
+provider, you can consider disabling local authentication for additional
+security.
 
-If issues arise with your identity provider integration, it's possible you could be locked out of the admin portal. To re-enable local authentication so you can log in and resolve the issue, run the following query on the host of your Firezone instance:
+If issues arise with your identity provider integration, it's possible you
+could be locked out of the admin portal. To re-enable local authentication so
+you can log in and resolve the issue, run the following query on the host of
+your Firezone instance:
 
-   ```shell
-   cd $HOME/.firezone
-   docker compose exec postgres psql -U postgres -h 127.0.0.1 -d firezone -c "UPDATE configurations SET local_auth_enabled = 't'"
+```shell
+cd $HOME/.firezone
+docker compose exec postgres psql -U postgres -h 127.0.0.1 -d firezone -c "UPDATE configurations SET local_auth_enabled = 't'"
+```
 
 ## Need additional help?
 
