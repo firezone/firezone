@@ -1,20 +1,6 @@
 version: '3.7'
 
 services:
-  keycloak:
-    image: quay.io/keycloak/keycloak:20.0
-    environment:
-      - KEYCLOAK_ADMIN=admin
-      - KEYCLOAK_ADMIN_PASSWORD=admin
-    volumes:
-      # Persist dev data
-      - ./tmp/keycloak:/opt/keycloak/data
-    command: start-dev
-    ports:
-      - 8080:8080
-    networks:
-      - app
-
   caddy:
     image: caddy:2
     volumes:
@@ -170,6 +156,19 @@ services:
   #     - ./tmp/authentik/certs:/certs
   #     - ./tmp/authentik/custom-templates:/templates
   #
+  # keycloak:
+  #   image: quay.io/keycloak/keycloak:20.0
+  #   environment:
+  #     - KEYCLOAK_ADMIN=admin
+  #     - KEYCLOAK_ADMIN_PASSWORD=admin
+  #   volumes:
+  #     # Persist dev data
+  #     - ./tmp/keycloak:/opt/keycloak/data
+  #   command: start-dev
+  #   ports:
+  #     - 8080:8080
+  #   networks:
+  #     - app
   # redis:
   #   image: docker.io/library/redis:alpine
   #   command: --save 60 1 --loglevel warning
