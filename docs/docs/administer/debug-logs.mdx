@@ -1,16 +1,14 @@
 ---
-title: Logs
+title: Debug Logs
 sidebar_position: 8
 description:
-     Docker deployments of Firezone generate and stores logs to a JSON
+     Docker deployments of Firezone generate and stores debug logs to a JSON
      file on the host machine.
 ---
 
 :::note
 This article is written for Docker based deployments of Firezone.
 :::
-
-## Deployment logs
 
 Docker deployments of Firezone consist of 3 running containers.
 
@@ -38,7 +36,7 @@ changes by admins and network activity by users.
 to learn more.
 :::
 
-### Managing and configuring Docker logs
+## Managing and configuring Docker logs
 
 By default, Firezone uses the `json-file` logging driver without
 [additional configuration](https://docs.docker.com/config/containers/logging/json-file/).
