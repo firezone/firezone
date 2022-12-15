@@ -2,7 +2,7 @@
 title: Debug Logs
 sidebar_position: 8
 description:
-     Docker deployments of Firezone generate and stores debug logs to a JSON
+     Docker deployments of Firezone generate and store debug logs to a JSON
      file on the host machine.
 ---
 
@@ -10,7 +10,7 @@ description:
 This article is written for Docker based deployments of Firezone.
 :::
 
-Docker deployments of Firezone consist of 3 running containers.
+Docker deployments of Firezone consist of 3 running containers:
 
 | Container | Function      | Example logs                                  |
 |-----------|---------------|-----------------------------------------------|
@@ -23,7 +23,7 @@ machine. These files can be found at
 `var/lib/docker/containers/{CONTAINER_ID}/{CONTAINER_ID}-json.log`.
 
 Run the `docker compose logs` command to view the log output from all running
-containers. Note, `docker compose` commands need to run in the Firezone
+containers. Note, `docker compose` commands need to be run in the Firezone
 root directory. This is `$HOME/.firezone` by default.
 
 See additional options of the `docker compose logs` command
