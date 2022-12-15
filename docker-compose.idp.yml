@@ -1,0 +1,103 @@
+version: '3.7' 
+
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:20.0
+    environment:
+      - KEYCLOAK_ADMIN=admin
+      - KEYCLOAK_ADMIN_PASSWORD=admin
+    volumes:
+      # Persist dev data
+      - ./tmp/keycloak:/opt/keycloak/data
+    command: start-dev
+    ports:
+      - 8080:8080
+    networks:
+      - app
+
+  # The following services represent more self-hosted IdPs.
+  # These are much lesser-known and not as trivial to get working
+  # as Keycloak, so leaving them here for someone to possibly play
+  # with later.
+
+  # authentik:
+  #   image: ghcr.io/goauthentik/server:2022.10.1
+  #   command: server
+  #   depends_on:
+  #     redis:
+  #       condition: 'service_healthy'
+  #   environment:
+  #     AUTHENTIK_SECRET_KEY: NQgSe9lPF+rYlQY+aOpR6Wbi2PMPXxsunw5CX1wuqv9vB+nW
+  #     AUTHENTIK_REDIS__HOST: redis
+  #     AUTHENTIK_POSTGRESQL__HOST: postgres
+  #     AUTHENTIK_POSTGRESQL__USER: postgres
+  #     AUTHENTIK_POSTGRESQL__NAME: authentik
+  #     AUTHENTIK_POSTGRESQL__PASSWORD: postgres
+  #     AUTHENTIK_ERROR_REPORTING__ENABLED: true
+  #   volumes:
+  #     - ./tmp/authentik/media:/media
+  #     - ./tmp/authentik/custom-templates:/templates
+  #   ports:
+  #     - 9000:9000
+  #     - 9443:9443
+  #
+  # authentik-worker:
+  #   depends_on:
+  #     redis:
+  #       condition: 'service_healthy'
+  #   image: ghcr.io/goauthentik/server:2022.10.1
+  #   command: worker
+  #   environment:
+  #     AUTHENTIK_SECRET_KEY: NQgSe9lPF+rYlQY+aOpR6Wbi2PMPXxsunw5CX1wuqv9vB+nW
+  #     AUTHENTIK_REDIS__HOST: redis
+  #     AUTHENTIK_POSTGRESQL__HOST: postgres
+  #     AUTHENTIK_POSTGRESQL__USER: postgres
+  #     AUTHENTIK_POSTGRESQL__NAME: authentik
+  #     AUTHENTIK_POSTGRESQL__PASSWORD: postgres
+  #     AUTHENTIK_ERROR_REPORTING__ENABLED: true
+  #   volumes:
+  #     - ./tmp/authentik/media:/media
+  #     - ./tmp/authentik/certs:/certs
+  #     - ./tmp/authentik/custom-templates:/templates
+  #
+  # redis:
+  #   image: docker.io/library/redis:alpine
+  #   command: --save 60 1 --loglevel warning
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+  #     start_period: 20s
+  #     interval: 30s
+  #     retries: 5
+  #     timeout: 3s
+  #   volumes:
+  #     - redis-data:/data
+  #
+  # Only available for amd64 architectures
+  # zitadel:
+  #   networks:
+  #     - app
+  #   image: ghcr.io/zitadel/zitadel:stable
+  #   command: start-from-init --masterkey "MasterkeyNeedsToHave32Characters" --tlsMode disabled
+  #   environment:
+  #     - ZITADEL_DATABASE_COCKROACH_HOST=crdb
+  #     - ZITADEL_EXTERNALSECURE=false
+  #   depends_on:
+  #     crdb:
+  #       condition: 'service_healthy'
+  #   ports:
+  #     - 8081:8080
+  # crdb:
+  #   image: cockroachdb/cockroach:v22.1.3
+  #   command: start-single-node --insecure
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:8080/health?ready=1"]
+  #     interval: '10s'
+  #     timeout: '30s'
+  #     retries: 5
+  #     start_period: '20s'
+  #   ports:
+  #     - 9090:8080
+  #     - 26257:26257
+  #   networks:
+  #     - app
