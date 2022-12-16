@@ -5,7 +5,7 @@ defmodule FzHttp.Rules do
 
   import Ecto.Query, warn: false
   import Ecto.Changeset
-  alias FzHttp.{Repo, Rules.Rule, Rules.RuleSetting, Telemetry, Events}
+  alias FzHttp.{Repo, Rules.Rule, Rules.RuleSetting, Telemetry, Events, Gateways}
 
   def list_rules, do: Repo.all(Rule)
 
@@ -35,6 +35,7 @@ defmodule FzHttp.Rules do
 
   def new_rule(attrs \\ %{}) do
     %Rule{}
+    |> Map.put_new(:gateway_id, Gateways.get_gateway!())
     |> Rule.changeset(attrs)
   end
 

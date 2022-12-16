@@ -4,8 +4,7 @@ defmodule FzHttpWeb.RuleLive.RuleListComponent do
   """
   use FzHttpWeb, :live_component
 
-  alias FzHttp.AllowRules
-  alias FzHttp.Users
+  alias FzHttp.{AllowRules, Users, Gateways}
 
   @impl Phoenix.LiveComponent
   def update(assigns, socket) do
@@ -17,12 +16,13 @@ defmodule FzHttpWeb.RuleLive.RuleListComponent do
        action: action(assigns.id),
        rule_list: rule_list(),
        users: users(),
+       gateway_id: Gateways.get_gateway!().id,
        changeset: AllowRules.new_rule()
      )}
   end
 
   @impl Phoenix.LiveComponent
-  def handle_event("change", %{"rule" => rule_params}, socket) do
+  def handle_event("change", %{"allow_rule" => rule_params}, socket) do
     changeset = AllowRules.new_rule(rule_params)
 
     {:noreply,
@@ -32,7 +32,7 @@ defmodule FzHttpWeb.RuleLive.RuleListComponent do
   end
 
   @impl Phoenix.LiveComponent
-  def handle_event("add_rule", %{"rule" => rule_params}, socket) do
+  def handle_event("add_rule", %{"allow_rule" => rule_params}, socket) do
     case AllowRules.create_allow_rule(rule_params) do
       {:ok, _rule} ->
         {:noreply,

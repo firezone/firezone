@@ -13,14 +13,20 @@ defmodule FzHttp.AllowRules do
       {:ok, rule} ->
         Events.add("rules", rule)
         Telemetry.add_rule()
+        {:ok, rule}
 
-      _ ->
-        nil
+      {:error, changeset} ->
+        dbg(changeset)
+        {:error, changeset}
     end
   end
 
   def as_setting(rule) do
-    user_uuid = Repo.preload(rule, :user).user.uuid
+    user_uuid =
+      case Repo.preload(rule, :user).user do
+        nil -> nil
+        user -> user.uuid
+      end
 
     %{
       dst: rule.destination,
@@ -65,7 +71,7 @@ defmodule FzHttp.AllowRules do
   end
 
   def defaults(changeset) do
-    changeset
+    %{}
   end
 
   def get_allow_rule!(id), do: Repo.get!(AllowRule, id)

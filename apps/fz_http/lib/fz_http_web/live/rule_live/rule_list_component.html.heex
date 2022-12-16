@@ -15,6 +15,7 @@
       phx-submit="add_rule"
     >
       <%= hidden_input(f, :action, value: @action) %>
+      <%= hidden_input(f, :gateway_id, value: @gateway_id) %>
 
       <div class="field">
         <%= label(f, :destination, class: "label") %>
@@ -44,31 +45,43 @@
       </div>
 
       <div class="field">
-        <%= label(f, :port_type, class: "label") %>
+        <%= label(f, :protocol, class: "label") %>
         <div class="select">
           <%= select(
             f,
-            :port_type,
+            :protocol,
             port_type_options(),
             prompt: "All protocols",
           ) %>
         </div>
         <p class="help is-danger">
-          <%= error_tag(f, :port_type) %>
+          <%= error_tag(f, :protocol) %>
         </p>
       </div>
 
       <div class="field">
-        <%= label(f, :port_range, class: "label") %>
+        <%= label(f, :port_range_start, class: "label") %>
         <div class="control">
-          <%= text_input(f, :port_range,
-            class: "input #{input_error_class(f, :port_range)}",
-            placeholder: "23000-24000",
-            disabled: @port_type == nil
+          <%= text_input(f, :port_range_start,
+            class: "input #{input_error_class(f, :port_range_start)}",
+            placeholder: "24000"
           ) %>
         </div>
         <p class="help is-danger">
-          <%= error_tag(f, :port_range) %>
+          <%= error_tag(f, :port_range_start) %>
+        </p>
+      </div>
+
+      <div class="field">
+        <%= label(f, :port_range_end, class: "label") %>
+        <div class="control">
+          <%= text_input(f, :port_range_end,
+            class: "input #{input_error_class(f, :port_range_end)}",
+            placeholder: "25000"
+          ) %>
+        </div>
+        <p class="help is-danger">
+          <%= error_tag(f, :port_range_end) %>
         </p>
       </div>
 
@@ -89,7 +102,8 @@
             <th>Destination</th>
             <th>User Scope</th>
             <th>Port Type</th>
-            <th>Port Range</th>
+            <th>Port Range Start</th>
+            <th>Port Range End</th>
             <th></th>
           </tr>
         </thead>
@@ -105,10 +119,13 @@
                 <%= @users[rule.user_id] %>
               </td>
               <td class="has-text-left">
-                <%= port_type_display(rule.port_type) %>
+                <%= port_type_display(rule.protocol) %>
               </td>
               <td class="has-text-left">
-                <%= if rule.port_range != nil, do: rule.port_range %>
+                <%= if rule.port_range_start != nil, do: rule.port_range_start %>
+              </td>
+              <td class="has-text-left">
+                <%= if rule.port_range_end != nil, do: rule.port_range_end %>
               </td>
               <td class="has-text-right">
                 <a
