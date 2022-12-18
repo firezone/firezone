@@ -1,7 +1,7 @@
 ---
 title: Troubleshoot
 sidebar_position: 6
-description: Troubleshoot common connectivity and configuration issues with Firezone's WireGuard®-based remote access platform.
+description: Troubleshoot common connectivity and configuration issues with Firezone's WireGuard®-based secure access platform.
 ---
 
 This guide documents common configuration and connectivity issues. For
@@ -10,9 +10,9 @@ any problems that arise, a good first bet is to check the Firezone logs.
 <Tabs>
 <TabItem value="docker" label="Docker" default>
 
-Each container stores logs as a JSON file on the host machine. These can be shown through the
+Each container stores logs as a JSON file on the host machine. These can be shown with the
 `docker logs {CONTAINER}` command. Log files are found at
-`var/lib/docker/containers/{CONTAINER_ID}/{CONTAINER_ID}-json.log`.
+`var/lib/docker/containers/{CONTAINER_ID}/{CONTAINER_ID}-json.log` by default.
 
 See [debug logs](../debug-logs) for additional details.
 
@@ -42,7 +42,7 @@ Similarly, to clear SAML configs:
 psql -d firezone -h 127.0.0.1 -U postgres -c "UPDATE configurations SET saml_providers = '{}'"
 ```
 
-## Debugging portal websocket connectivity issues
+## Debugging portal WebSocket connectivity issues
 
 The portal UI requires a secure websocket connection to function. To facilitate
 this, the Firezone phoenix service checks the `Host` header for inbound
@@ -132,10 +132,9 @@ To                         Action      From
 51820/udp (v6)             ALLOW IN    Anywhere (v6)
 ```
 
-## Locked out of admin access
+## Admin login isn't working
 
-If you are locked out of the admin account for your Firezone instance
-you can recreate your admin user.
+If the password for the account with email `ADMIN_EMAIL` isn't working, you can reset it using the process below.
 
 <Tabs>
 <TabItem value="docker" label="Docker">
