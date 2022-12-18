@@ -95,7 +95,38 @@ Then, make sure your Firezone services have the `restart: always` or `restart: u
 specified in the `docker-compose.yml` file. This is the default used in the docker-compose.prod.yml
 production template file.
 
-## Step 4: Install Client Apps
+## Step 4: Enable IPv6 (optional)
+
+By default, Firezone ships with IPv6 connectivity enabled inside the tunnel but not routable
+to the public internet. To enable IPv6 support in Docker-deployed Firezone, follow the steps below.
+
+1. Enable IPv6 support within Docker by adding the following to `/etc/docker/daemon.json`:
+  ```json
+  {
+    "ipv6": true,
+    "ip6tables": true,
+    "experimental": true,
+    "fixed-cidr-v6": "fd00:1::/80"
+  }
+  ```
+  This turns IPv6 NAT and sets up routing for Docker containers in a similar way to how Docker's
+  IPv4 functionality works.
+2. Enable router advertisements on boot for your default egress interface:
+  ```
+  egress=`ip route show default 0.0.0.0/0 | grep -oP '(?<=dev ).*' | cut -f1 -d' ' | tr -d '\n'`
+  sudo echo "net.ipv6.conf.${egress}.accept_ra=2" >> /etc/sysctl.conf
+  ```
+3. Reboot
+
+You should now be able to ping google from with a docker container:
+```
+docker run --rm -t busybox ping6 -c 4 google.com
+```
+
+You shouldn't need to manually add any `iptables` rules to enable IPv6 SNAT/masquerading.
+Firezone handles this for you by default.
+
+## Step 5: Install Client Apps
 
 Once successfully deployed, users and devices can be added to
 connect to the VPN server:

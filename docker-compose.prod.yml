@@ -92,8 +92,10 @@ volumes:
 
 networks:
   firezone-network:
+    enable_ipv6: true
     driver: bridge
     ipam:
       config:
         - subnet: 172.25.0.0/16
         - subnet: 2001:3990:3990::/64
+          gateway: 2001:3990:3990::1
