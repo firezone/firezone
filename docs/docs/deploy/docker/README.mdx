@@ -114,7 +114,7 @@ to the public internet. To enable IPv6 support in Docker-deployed Firezone, foll
 2. Enable router advertisements on boot for your default egress interface:
   ```
   egress=`ip route show default 0.0.0.0/0 | grep -oP '(?<=dev ).*' | cut -f1 -d' ' | tr -d '\n'`
-  sudo echo "net.ipv6.conf.${egress}.accept_ra=2" >> /etc/sysctl.conf
+  sudo bash -c "echo net.ipv6.conf.${egress}.accept_ra=2 >> /etc/sysctl.conf"
   ```
 3. Reboot
 
