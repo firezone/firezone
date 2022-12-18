@@ -37,17 +37,17 @@ When deciding where to route a packet, Firezone chooses the egress
 interface corresponding to the most specific route first.
 :::
 
-## Step 2: Set the DNS (optional)
+## Step 2: Set the DNS server(s) (optional)
 
-You can define the DNS used by devices when the WireGuard tunnel
+You can define the DNS server(s) used by devices when the WireGuard tunnel
 is active. By default, it uses Cloudflare's DNS servers (`1.1.1.1, 1.0.0.1`).
-Visit the `/settings/default` to override this value.
+Visit the `/settings/default` page to override this value.
 
-For split tunneling, this can be desired if you run a DNS server that
+For split tunneling, this may be desired if you run a DNS server that
 resolves internal hosts to private IPs reachable via Firezone.
 
 :::note
-If you are using Firezone as a anonymity service or wish to resolve DNS queries
+If you wish to resolve DNS queries
 over the encrypted VPN tunnel (recommended), ensure the DNS IPs are included in `AllowedIPs`.
 :::
 
