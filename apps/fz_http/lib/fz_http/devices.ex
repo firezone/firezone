@@ -152,7 +152,7 @@ defmodule FzHttp.Devices do
 
   defp config(device, key) do
     if Map.get(device, String.to_atom("use_site_#{key}")) do
-      Map.get(Sites.get_site!(), key)
+      Map.get(Sites.wireguard_defaults(), key)
     else
       Map.get(device, key)
     end

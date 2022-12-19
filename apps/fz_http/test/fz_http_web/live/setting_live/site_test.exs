@@ -41,8 +41,12 @@ defmodule FzHttpWeb.SettingLive.SiteTest do
     end
 
     test "renders current sites", %{html: html} do
-      assert html =~ Sites.get_site!().allowed_ips
-      assert html =~ Sites.get_site!().dns
+      assert html =~
+               (Sites.get_site!().allowed_ips ||
+                  Application.fetch_env!(:fz_http, :wireguard_allowed_ips))
+
+      assert html =~
+               (Sites.get_site!().dns || Application.fetch_env!(:fz_http, :wireguard_dns))
 
       assert html =~ """
              id="site_form_component_endpoint"\
@@ -89,7 +93,7 @@ defmodule FzHttpWeb.SettingLive.SiteTest do
       refute test_view =~ "is invalid"
 
       assert test_view =~ """
-             <input class="input " id="site_form_component_endpoint" name="site[endpoint]" placeholder="firezone.example.com" type="text" value="1.1.1.1"/>\
+             <input class="input " id="site_form_component_endpoint" name="site[endpoint]" placeholder="127.0.0.1" type="text" value="1.1.1.1"/>\
              """
     end
 
@@ -102,7 +106,7 @@ defmodule FzHttpWeb.SettingLive.SiteTest do
       refute test_view =~ "is invalid"
 
       assert test_view =~ """
-             <input class="input " id="site_form_component_persistent_keepalive" name="site[persistent_keepalive]" placeholder="25" type="text" value="1"/>\
+             <input class="input " id="site_form_component_persistent_keepalive" name="site[persistent_keepalive]" placeholder="0" type="text" value="1"/>\
              """
     end
 
@@ -142,7 +146,7 @@ defmodule FzHttpWeb.SettingLive.SiteTest do
       assert test_view =~ "is invalid"
 
       assert test_view =~ """
-             <input class="input is-danger" id="site_form_component_endpoint" name="site[endpoint]" placeholder="firezone.example.com" type="text" value="-foobar"/>\
+             <input class="input is-danger" id="site_form_component_endpoint" name="site[endpoint]" placeholder="127.0.0.1" type="text" value="-foobar"/>\
              """
     end
 
@@ -155,7 +159,7 @@ defmodule FzHttpWeb.SettingLive.SiteTest do
       assert test_view =~ "must be greater than or equal to 0"
 
       assert test_view =~ """
-             <input class="input is-danger" id="site_form_component_persistent_keepalive" name="site[persistent_keepalive]" placeholder="25" type="text" value="-1"/>\
+             <input class="input is-danger" id="site_form_component_persistent_keepalive" name="site[persistent_keepalive]" placeholder="0" type="text" value="-1"/>\
              """
     end
 
