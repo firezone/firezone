@@ -96,13 +96,13 @@ const config = {
         },
         items: [
           {
-            href: 'https://discourse.firez.one/',
+            href: 'https://discourse.firez.one/?utm_source=docs',
             label: 'Ask a Question',
             position: 'right',
             'aria-label': 'GitHub repository',
           },
           {
-            href: 'https://www.firezone.dev/contact/sales#source=docsheader',
+            href: 'https://www.firezone.dev/contact/sales?utm_source=docs',
             label: 'Contact sales',
             position: 'right',
             'aria-label': 'Contact sales',
@@ -123,15 +123,15 @@ const config = {
             items: [
               {
                 label: 'Homepage',
-                href: 'https://firezone.dev',
+                href: 'https://www.firezone.dev/?utm_source=docs',
               },
               {
                 label: 'Pricing',
-                href: 'https://firezone.dev/pricing',
+                href: 'https://www.firezone.dev/pricing?utm_source=docs',
               },
               {
                 label: 'About',
-                href: 'https://firezone.dev/about',
+                href: 'https://www.firezone.dev/about?utm_source=docs',
               },
             ],
           },
@@ -140,19 +140,19 @@ const config = {
             items: [
               {
                 label: 'Support Forums',
-                href: 'https://discourse.firez.one',
+                href: 'https://discourse.firez.one/?utm_source=docs',
               },
               {
                 label: 'Slack',
-                href: 'https://firezone.dev/slack',
+                href: 'https://www.firezone.dev/slack?utm_source=docs',
               },
               {
                 label: 'Github',
-                href: 'https://github.com/firezone/firezone',
+                href: 'https://github.com/firezone/firezone?utm_source=docs',
               },
               {
                 label: 'Twitter',
-                href: 'https://twitter.com/firezonehq',
+                href: 'https://twitter.com/firezonehq?utm_source=docs',
               },
             ],
           },

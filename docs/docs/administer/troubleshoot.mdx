@@ -182,14 +182,6 @@ cd $HOME/.firezone
 docker compose exec postgres psql -U postgres -h 127.0.0.1 -d firezone -c "UPDATE configurations SET local_auth_enabled = 't'"
 ```
 
-## Need additional help?
+import SupportOptions from '@site/src/partials/_support_options.mdx';
 
-Try asking on one of our community-powered support channels:
-
-* [Discussion Forums](https://discourse.firez.one/): ask questions, report bugs,
-and suggest features
-* [Public Slack Group](https://join.slack.com/t/firezone-users/shared_invite/zt-111043zus-j1lP_jP5ohv52FhAayzT6w):
-join discussions, meet other users, and meet the contributors
-
-We highly recommend considering [priority support](https://firezone.dev/pricing)
-if you're deploying Firezone in a production capacity.
+<SupportOptions />

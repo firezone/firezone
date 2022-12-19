@@ -235,5 +235,5 @@ pre-commit run --all-files
 
 ## Asking For Help
 
-If you get stuck, don't hesitate to ask for help on our [mailing list](
-https://discourse.firez.one).
+If you get stuck, don't hesitate to ask for help on our [community forums](
+https://discourse.firez.one/?utm_source=contributing).

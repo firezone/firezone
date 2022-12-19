@@ -58,5 +58,5 @@ echo $bold
 echo 'We rely on feedback from users to steer development.' \
   'Would you mind taking a minute to share product feedback in exchange' \
   'for some Firezone stickers?'
-echo "https://firezone.dev/feedback#source=uninstall-script"
+echo "https://firezone.dev/feedback?utm_source=uninstall"
 echo $normal
