@@ -64,9 +64,6 @@ if config_env() == :prod do
   wireguard_port = String.to_integer(System.get_env("WIREGUARD_PORT", "51820"))
   nft_path = System.get_env("NFT_PATH", "nft")
   egress_interface = System.get_env("EGRESS_INTERFACE", "eth0")
-  wireguard_dns = System.get_env("WIREGUARD_DNS", "1.1.1.1, 1.0.0.1")
-  wireguard_allowed_ips = System.get_env("WIREGUARD_ALLOWED_IPS", "0.0.0.0/0, ::/0")
-  wireguard_persistent_keepalive = System.get_env("WIREGUARD_PERSISTENT_KEEPALIVE", "0")
   wireguard_ipv4_enabled = FzString.to_boolean(System.get_env("WIREGUARD_IPV4_ENABLED", "true"))
 
   wireguard_ipv4_masquerade =
@@ -80,8 +77,6 @@ if config_env() == :prod do
   wireguard_ipv6_enabled = FzString.to_boolean(System.get_env("WIREGUARD_IPV6_ENABLED", "true"))
   wireguard_ipv6_network = System.get_env("WIREGUARD_IPV6_NETWORK", "fd00::3:2:0/120")
   wireguard_ipv6_address = System.get_env("WIREGUARD_IPV6_ADDRESS", "fd00::3:2:1")
-  wireguard_mtu = System.get_env("WIREGUARD_MTU", "1280")
-  wireguard_endpoint = System.get_env("WIREGUARD_ENDPOINT", host)
   telemetry_enabled = FzString.to_boolean(System.get_env("TELEMETRY_ENABLED", "true"))
 
   disable_vpn_on_oidc_error =
@@ -236,17 +231,12 @@ if config_env() == :prod do
     allow_unprivileged_device_configuration: allow_unprivileged_device_configuration,
     max_devices_per_user: max_devices_per_user,
     local_auth_enabled: local_auth_enabled,
-    wireguard_dns: wireguard_dns,
-    wireguard_allowed_ips: wireguard_allowed_ips,
-    wireguard_persistent_keepalive: wireguard_persistent_keepalive,
     wireguard_ipv4_enabled: wireguard_ipv4_enabled,
     wireguard_ipv4_network: wireguard_ipv4_network,
     wireguard_ipv4_address: wireguard_ipv4_address,
     wireguard_ipv6_enabled: wireguard_ipv6_enabled,
     wireguard_ipv6_network: wireguard_ipv6_network,
     wireguard_ipv6_address: wireguard_ipv6_address,
-    wireguard_mtu: wireguard_mtu,
-    wireguard_endpoint: wireguard_endpoint,
     telemetry_module: telemetry_module,
     telemetry_id: telemetry_id,
     connectivity_checks_enabled: connectivity_checks_enabled,
