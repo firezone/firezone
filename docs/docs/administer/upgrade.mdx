@@ -49,6 +49,7 @@ issue](https://github.com/firezone/firezone/issues/new/choose).
 
 ## Upgrading to 0.6.12
 
+### WIREGUARD_* env vars
 Firezone 0.6.12 moves the `WIREGUARD_ALLOWED_IPS`, `WIREGUARD_PERSISTENT_KEEPALIVE`,
 and `WIREGUARD_DNS` environment variables to the `sites` table to be configured in the
 UI at `/settings/site`. If the corresponding value at `/settings/site` was empty, the
@@ -56,6 +57,30 @@ environment variable's value was used to populate the field.
 
 This is a baby step in our quest to move more runtime configuration from environment
 variables to the DB.
+
+### Fix IPv6
+
+0.6.12 fixes IPv6 routing within Docker networks.
+To enable, add IPv6 addresses to your `$HOME/.firezone/docker-compose.yml` by setting the following fields:
+
+```yaml
+services:
+  firezone:
+    networks:
+      firezone-network:
+        ipv6_address: 2001:3990:3990::99
+
+# ...
+networks:
+  firezone-network:
+    ipam:
+      config:
+        - subnet: 2001:3990:3990::/64
+        - gateway: 2001:3990:3990::1
+```
+
+You also need to update the Docker daemon to enable IPv6. See our [IPv6 guide](
+https://docs.firezone.dev/deploy/docker/#step-4-enable-ipv6-optional) for more info.
 
 ## Upgrading from 0.5.x to 0.6.x
 
