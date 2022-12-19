@@ -47,6 +47,16 @@ docker compose up -d
 If you hit any issues, please let us know by [filing an
 issue](https://github.com/firezone/firezone/issues/new/choose).
 
+## Upgrading to 0.6.12
+
+Firezone 0.6.12 moves the `WIREGUARD_ALLOWED_IPS`, `WIREGUARD_PERSISTENT_KEEPALIVE`,
+and `WIREGUARD_DNS` environment variables to the `sites` table to be configured in the
+UI at `/settings/site`. If the corresponding value at `/settings/site` was empty, the
+environment variable's value was used to populate the field.
+
+This is a baby step in our quest to move more runtime configuration from environment
+variables to the DB.
+
 ## Upgrading from 0.5.x to 0.6.x
 
 Firezone 0.6 introduces **Docker support**, SAML 2.0 authentication,
