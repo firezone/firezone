@@ -7,7 +7,7 @@
         <%= textarea(
           f,
           :allowed_ips,
-          placeholder: Sites.default(:allowed_ips),
+          placeholder: "0.0.0.0/0, ::/0",
           class: "textarea #{input_error_class(f, :allowed_ips)}"
         ) %>
       </div>
@@ -31,7 +31,7 @@
         <%= text_input(
           f,
           :dns,
-          placeholder: Sites.default(:dns),
+          placeholder: "1.1.1.1, 1.0.0.1",
           class: "input #{input_error_class(f, :dns)}"
         ) %>
       </div>
@@ -53,7 +53,7 @@
         <%= text_input(
           f,
           :endpoint,
-          placeholder: Sites.default(:endpoint),
+          placeholder: "firezone.example.com",
           class: "input #{input_error_class(f, :endpoint)}"
         ) %>
       </div>
@@ -61,8 +61,8 @@
         <%= error_tag(f, :endpoint) %>
       </p>
       <p class="help">
-        IPv4 or IPv6 address that devices will be configured to connect
-        to. Defaults to this server's public IP if not set.
+        IPv4, IPv6 address, or FQDN that devices will be configured to connect
+        to. Defaults to this server's FQDN.
       </p>
     </div>
 
@@ -73,15 +73,15 @@
         <%= text_input(
           f,
           :persistent_keepalive,
-          placeholder: Sites.default(:persistent_keepalive),
+          placeholder: "25",
           class: "input #{input_error_class(f, :persistent_keepalive)}"
         ) %>
         <p class="help is-danger">
           <%= error_tag(f, :persistent_keepalive) %>
         </p>
         <p class="help">
-          Interval in seconds to send persistent keepalive packets. Most users won't need to change
-          this. Set to 0 or leave blank to disable. Leave this blank if you're unsure what this means.
+          Interval in seconds to send persistent keepalive packets from clients. Most users won't need to change
+          this. Leave this blank to omit this field from generated configs.
         </p>
       </div>
     </div>
@@ -93,7 +93,7 @@
         <%= text_input(
           f,
           :mtu,
-          placeholder: Sites.default(:mtu),
+          placeholder: "1280",
           class: "input #{input_error_class(f, :mtu)}"
         ) %>
       </div>
@@ -101,8 +101,8 @@
         <%= error_tag(f, :mtu) %>
       </p>
       <p class="help">
-        WireGuard interface MTU for devices. Defaults to what's set in the configuration file.
-        Leave this blank if you're unsure what this means.
+        WireGuard interface MTU for client configs. 1280 is a safe bet for most networks.
+        Leave this blank to omit this field from generated configs.
       </p>
     </div>
 
