@@ -75,7 +75,7 @@ defmodule FzHttp.MixProject do
       {:ecto_sql, "~> 3.7"},
       {:ecto_network, "~> 1.3"},
       {:hammer, "~> 6.0"},
-      {:hammer_plug, "~> 2.1"},
+      {:hammer_plug, "~> 3.0"},
       {:inflex, "~> 2.1"},
       {:plug, "~> 1.13"},
       {:postgrex, "~> 0.16"},
@@ -107,14 +107,10 @@ defmodule FzHttp.MixProject do
   # See the documentation for `Mix` for more info on aliases.
   defp aliases do
     [
-      "ecto.seed": "run priv/repo/seeds.exs",
-      "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
+      "ecto.seed": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
+      "ecto.setup": ["ecto.create", "ecto.migrate"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
-      test: [
-        "ecto.create --quiet",
-        "ecto.migrate",
-        "test"
-      ]
+      test: ["ecto.create --quiet", "ecto.migrate", "test"]
     ]
   end
 end

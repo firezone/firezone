@@ -1,7 +1,7 @@
 # macOS cruft
 .DS_Store
 
-.devcontainer/pki/authorities/local/
+priv/pki/authorities/local/
 
 # The directory Mix will write compiled artifacts to.
 /_build/

@@ -50,7 +50,6 @@ dependency 'firezone-cookbooks'
 
 # XXX: Ensure all development resources aren't included
 exclude '.env'
-exclude '.devcontainer'
 exclude '.github'
 exclude '.vagrant'
 exclude '.ci'

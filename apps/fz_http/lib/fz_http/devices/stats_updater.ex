@@ -1,6 +1,7 @@
 defmodule FzHttp.Devices.StatsUpdater do
   @moduledoc """
-  Extracts
+  Extracts WireGuard data about each peer and adds it to
+  the correspond device.
   """
 
   import Ecto.Query, warn: false
@@ -16,7 +17,7 @@ defmodule FzHttp.Devices.StatsUpdater do
           attrs = %{
             rx_bytes: String.to_integer(data.rx_bytes),
             tx_bytes: String.to_integer(data.tx_bytes),
-            remote_ip: remote_ip(data.endpoint),
+            remote_ip: FzCommon.FzNet.endpoint_to_ip(data.endpoint),
             latest_handshake: latest_handshake(data.latest_handshake)
           }
 
@@ -44,12 +45,6 @@ defmodule FzHttp.Devices.StatsUpdater do
           where: d.public_key == ^public_key
       )
     end
-  end
-
-  defp remote_ip(endpoint) do
-    endpoint
-    |> String.split(":")
-    |> Enum.at(0)
   end
 
   defp latest_handshake(epoch) do

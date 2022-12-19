@@ -5,12 +5,21 @@
 # TODO: Add this to docs when repo goes public.
 
 asyncapi: "2.5.0"
+
+tags:
+  - name: gateway
+    description: Realtime API for Firezone Gateway
+
 info:
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
   title: Firezone Realtime API
   version: "1.0.0"
   contact:
     name: Firezone
     url: https://www.firezone.dev/
+    email: async-api@firezone.dev
   description: |
     Realtime API documentation for Firezone's control plane.
 
@@ -19,13 +28,16 @@ externalDocs:
 
 servers:
   public:
-    url: wss://firezone.example.com/
+    url: wss://firezone.example.com
     protocol: wss
 
 channels:
   /v1/gateway-ctl:
     subscribe:
+      operationId: subscribe
       summary: Receive control commands for a connected gateway.
+      description: |
+        The gateway WebSocket channel.
       message:
         oneOf:
           - $ref: "#/components/messages/add_rule"
@@ -69,31 +81,27 @@ components:
       examples:
         - name: Gateway example
           payload:
-            init:
-              default_action: deny
-              interface:
-                address:
-                  - 100.64.11.22/10
-                mtu: 1280
-              peers:
-                - allowed_ips:
-                    - 100.64.11.22/32
-                  public_key: AxVaJsPC1FSrOM5RpEXg4umTKMxkHkgMy1fl7t1xNyw=
-                  preshared_key: LZBIpoLNCkIe56cPM+5pY/hP2pu7SGARvQZEThmuPYM=
-                  user_uuid: 3118158c-29cb-47d6-adbf-5edd15f1af17
+            add_peer:
+              public_key: AxVaJsPC1FSrOM5RpEXg4umTKMxkHkgMy1fl7t1xNyw=
+              preshared_key: LZBIpoLNCkIe56cPM+5pY/hP2pu7SGARvQZEThmuPYM=
+              user_uuid: 3118158c-29cb-47d6-adbf-5edd15f1af17
+              allowed_ips:
+                - 100.64.11.22/32
+
     delete_peer:
       summary: Removes a peer from the receiver's WireGuard configuration.
       payload:
         $ref: "#/components/schemas/delete_peer"
       examples:
-        - payload:
+        - name: Gateway example
+          payload:
             delete_peer:
               public_key: AxVaJsPC1FSrOM5RpEXg4umTKMxkHkgMy1fl7t1xNyw=
 
     init:
-      summary: A control command to initialize the gateway with initial config
+      summary: A control command to initialize the client with initial config
       description: |
-        This command initializes a gateway with its configuration after successfully connecting the WebSocket.
+        This command initializes a client with its configuration after successfully connecting the WebSocket.
       payload:
         $ref: "#/components/schemas/init"
       examples:
@@ -114,6 +122,8 @@ components:
 
   schemas:
     init:
+      required:
+        - init
       summary: Gateway initialization
       description: |
         This message indicates the gateway should reconfigure itself with the contained configuration.
@@ -155,27 +165,45 @@ components:
                     type: string
 
     add_peer:
+      required:
+        - add_peer
       summary: Add a Peer to the WireGuard configuration.
-      $ref: "#/components/schemas/peer"
+      properties:
+        add_peer:
+          $ref: "#/components/schemas/peer"
 
     delete_peer:
       summary: Remove a Peer from the WireGuard configuration.
       required:
-        - public_key
+        - delete_peer
       properties:
-        public_key:
-          type: string
+        delete_peer:
+          type: object
+          required:
+            - public_key
+          properties:
+            public_key:
+              type: string
 
     add_rule:
       type: object
+      required:
+        - add_rule
       summary: Add rule
       description: |
         A JSON representation of the rule specification.
-      $ref: "#/components/schemas/rule"
+      properties:
+        add_rule:
+          $ref: "#/components/schemas/rule"
 
     delete_rule:
+      required:
+        - delete_rule
       summary: Delete Rule
-      $ref: "#/components/schemas/rule"
+      type: object
+      properties:
+        delete_rule:
+          $ref: "#/components/schemas/rule"
 
     rule:
       type: object
@@ -187,7 +215,7 @@ components:
         dst:
           type: string
         user_uuid:
-          type: number
+          type: string
         port_range:
           $ref: "#/components/schemas/port_range"
 
@@ -199,7 +227,7 @@ components:
         - allowed_ips
       properties:
         user_uuid:
-          type: number
+          type: string
           summary: Optional user_uuid used by the Gateway to group this peer's egress rules.
         endpoint:
           type: string

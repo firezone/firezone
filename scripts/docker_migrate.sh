@@ -169,7 +169,7 @@ migrate () {
   condIns $env_files "CONNECTIVITY_CHECKS_INTERVAL"
 
   # Add caddy opts
-  echo "TLS_OPTS=$tlsOpts" >> $installDir/.env
+  echo "TLS_OPTS=\"$tlsOpts\"" >> $installDir/.env
 
   # optional vars
   if test -f $env_files/DATABASE_PASSWORD; then
