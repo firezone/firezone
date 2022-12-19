@@ -1,4 +1,8 @@
 defmodule FzHttp.Repo.Migrations.MoveWireguardOptionalFieldsToSites do
+  @moduledoc """
+  As of this comment and migration, the client configs will no longer be
+  affected by these ENV vars.
+  """
   use Ecto.Migration
 
   def change do
