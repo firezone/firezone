@@ -78,4 +78,11 @@ defmodule FzCommon.FzNet do
         err
     end
   end
+
+  def endpoint_to_ip(endpoint) do
+    endpoint
+    |> String.replace(~r{:\d+$}, "")
+    |> String.trim_leading("[")
+    |> String.trim_trailing("]")
+  end
 end
