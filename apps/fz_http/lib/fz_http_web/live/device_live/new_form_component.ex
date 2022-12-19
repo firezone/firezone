@@ -25,7 +25,9 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
      socket
      |> assign(assigns)
      |> assign(:changeset, changeset)
-     |> assign(Sites.wireguard_defaults())
+     |> assign(
+       Map.take(Sites.get_site!(), [:mtu, :endpoint, :persistent_keepalive, :dns, :allowed_ips])
+     )
      |> assign(Devices.defaults(changeset))}
   end
 
