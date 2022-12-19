@@ -1,0 +1,89 @@
+---
+title: Restrict SSO to Firezone Users
+sidebar_position: 1
+description: Configure your identity provider to whitelist traffic from Firezone's WireGuard®-based secure access platform.
+---
+<!-- 
+XXX: This document is in draft status. Remove this notice when it's published.
+-->
+# Restrict application authentication to VPN users
+
+Some identity providers support restricting SSO functionality
+Some identity providers support restricting SSO access to a predefined CIDR range or list of IP addresses. You can set this to the IP address of
+your Firezone gateway to restrict SSO to users connected to Firezone.
+
+This adds an additional layer of security to any service that uses
+your identity provider for SSO.
+
+We have identified a few common providers that support this
+feature and included basic instructions below on how you can set
+this up. The pre-requisites to this guide are a deployed Firezone
+server with a static IP
+([see NAT Gateway](.../nat-gateway))
+and ensuring traffic to the identity provider's SSO services are
+routed from client devices through the Firezone gateway
+([see Split Tunnel](.../split-tunnel)).
+
+## Okta
+
+Okta supports restricting SSO authentication to a "network zone" on
+a per application basis.
+
+:::note
+If you have split tunneling enabled, ensure the AllowedIPs are
+correctly configured to direct traffic to
+[Okta's IPs](https://help.okta.com/en-us/Content/Topics/Security/ip-address-allow-listing.htm)
+through the Firezone gateway.
+:::
+
+:::caution
+Sign-on policies are assigned on an application level. We advise
+excluding the Firezone application from the IP restriction policy above if Okta
+is being used for Firezone authentication.
+
+With
+[periodic authentication](../../authenticate#enforce-periodic-re-authentication)
+enabled, you may be locked out of Okta entirely when your VPN session
+expires.
+:::
+
+### Create the network zone
+
+_This section is based on Okta's
+[documentation](https://help.okta.com/oie/en-us/Content/Topics/Security/network/create-ip-zone.htm)._
+
+Navigate to **Security > Networks**. Add an **IP Zone** with the
+static IP of the Firezone Gateway in **Gateway IPs**.
+
+![network zone](https://user-images.githubusercontent.com/52545545/193468881-d8945fb3-8a7e-45fc-88e2-9856473894b5.png)
+
+### Create a sign-on policy
+
+_This section is based on Okta's
+[documentation](https://help.okta.com/oie/en-us/Content/Topics/Security/network/add-network-zone-signon-policy.htm)._
+
+Navigate to **Security > Authentication policies**. Create a new
+policy that denies access when a user
+is **NOT** on the network zone defined above.
+
+![sign on policy](https://user-images.githubusercontent.com/52545545/193468882-800e9baf-757f-485f-bb39-a1492a11f612.png)
+
+### Associate sign-on policy to application
+
+Under the **Sign On** tab, set the **Authentication policy** to the
+policy defined above. Do this for applications where authentication
+should be restricted only to users on the VPN.
+
+![associate policy](https://user-images.githubusercontent.com/52545545/193468877-f49412e1-3961-497d-9b8c-f5d003f9857d.png)
+
+### Configure VPN notification (optional)
+
+_This section is based on Okta's
+[documentation](https://help.okta.com/oie/en-us/Content/Topics/Security/network/vpn-notification.htm)._
+
+Optionally configure a notification to alert users why
+their access was denied.
+On the details page of your Okta application, configure the
+**General > VPN Notification** section.
+
+![vpn notification](https://user-images.githubusercontent.com/52545545/193468874-ec3ef643-fb37-456b-8e37-df138125d1c7.png)

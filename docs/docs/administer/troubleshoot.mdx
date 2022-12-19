@@ -1,13 +1,31 @@
 ---
 title: Troubleshoot
 sidebar_position: 6
+description: Troubleshoot common connectivity and configuration issues with Firezone's WireGuard®-based secure access platform.
 ---
 
-For any problems that arise, a good first bet is to check the Firezone logs.
+This guide documents common configuration and connectivity issues. For
+any problems that arise, a good first bet is to check the Firezone logs.
+
+<Tabs>
+<TabItem value="docker" label="Docker" default>
+
+Each container stores logs as a JSON file on the host machine. These can be shown with the
+`docker logs {CONTAINER}` command. Log files are found at
+`var/lib/docker/containers/{CONTAINER_ID}/{CONTAINER_ID}-json.log` by default.
+
+See [debug logs](../debug-logs) for additional details.
+
+</TabItem>
+<TabItem value="omnibus" label="Omnibus">
+
 Firezone logs are stored in `/var/log/firezone` and can be viewed with
 `sudo firezone-ctl tail`.
 
-## Application Crash Loop Preventing Config Changes
+</TabItem>
+</Tabs>
+
+## Application crash loop preventing config changes
 
 In cases where the application is crash looping because of corrupt, inaccessible, or
 invalid data in the DB, you can try clearing the affected fields.
@@ -24,7 +42,7 @@ Similarly, to clear SAML configs:
 psql -d firezone -h 127.0.0.1 -U postgres -c "UPDATE configurations SET saml_providers = '{}'"
 ```
 
-## Debugging Portal Websocket Connectivity Issues
+## Debugging portal WebSocket connectivity issues
 
 The portal UI requires a secure websocket connection to function. To facilitate
 this, the Firezone phoenix service checks the `Host` header for inbound
@@ -45,9 +63,12 @@ to be in your reverse proxy configuration.
 
 In most cases, you'll find clues in one or more of the following locations:
 
+<Tabs>
+<TabItem value="omnibus" label="Omnibus">
+
 * Your browser's developer tool logs, specifically the `Network` tab.
 * `sudo firezone-ctl tail nginx`
-* `sudo firezoen-ctl tail phoenix`
+* `sudo firezone-ctl tail phoenix`
 
 If the websocket connection is successful, you should see output in the
 `phoenix` service logs similar the following:
@@ -65,13 +86,16 @@ If the websocket connection is successful, you should see output in the
 2022-09-23_15:05:47.35065   Parameters: %{"token" => "SFMyNTY.g2gDYQFuBgB6HeJqgwFiAAFRgA.zSG7pefm-Vgf_zvduxa5E9VK4s8PKqzc0xBDGNx5FQE", "user_agent" => "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:106.0) Gecko/20100101 Firefox/106.0"}
 ```
 
-## Debugging WireGuard Connectivity Issues
+</TabItem>
+</Tabs>
+
+## Debugging WireGuard connectivity issues
 
 Most connectivity issues with Firezone are caused by other `iptables` or
 `nftables` rules which interfere with Firezone's operation. If you have rules
 active, you'll need to ensure these don't conflict with the Firezone rules.
 
-### Internet Connectivity Drops when Tunnel is Active
+### Internet connectivity drops when tunnel is active
 
 If your Internet connectivity drops whenever you activate your WireGuard
 tunnel, you should make sure that the `FORWARD` chain allows packets
@@ -106,6 +130,56 @@ To                         Action      From
 80/tcp (v6)                ALLOW IN    Anywhere (v6)
 443/tcp (v6)               ALLOW IN    Anywhere (v6)
 51820/udp (v6)             ALLOW IN    Anywhere (v6)
+```
+
+## Admin login isn't working
+
+If the password for the account with email `ADMIN_EMAIL` isn't working, you can reset it using the process below.
+
+<Tabs>
+<TabItem value="docker" label="Docker">
+
+First change directory to your Firezone root, then run the `bin/create-or-reset-admin` script
+to reset the admin user's password. The password for the user specified by
+`ADMIN_EMAIL`
+in `$HOME/.firezone/.env` will be reset to the `DEFAULT_ADMIN_PASSWORD` variable.
+
+```shell
+  cd $HOME/.firezone
+  docker compose exec firezone bin/create-or-reset-admin
+```
+
+**Note**: If local authentication is disabled, resetting the admin user's
+password will not re-enable it.
+
+</TabItem>
+
+<TabItem value="omnibus" label="Omnibus">
+
+Run the following command to reset the password on the default admin user.
+
+```shell
+sudo firezone-ctl create-or-reset-admin
+```
+
+</TabItem>
+</Tabs>
+
+## Re-enable local authentication in CLI
+
+For production deployments, we recommend adding a TOTP-based second factor to
+admin accounts. If you promoted an account authenticated through an identity
+provider, you can consider disabling local authentication for additional
+security.
+
+If issues arise with your identity provider integration, it's possible you
+could be locked out of the admin portal. To re-enable local authentication so
+you can log in and resolve the issue, run the following query on the host of
+your Firezone instance:
+
+```shell
+cd $HOME/.firezone
+docker compose exec postgres psql -U postgres -h 127.0.0.1 -d firezone -c "UPDATE configurations SET local_auth_enabled = 't'"
 ```
 
 ## Need additional help?

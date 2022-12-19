@@ -1,7 +1,12 @@
 ---
 title: Docker
 sidebar_position: 2
+description:
+  Install Firezone via Docker to manage secure remote
+  access to private networks and resources.
 ---
+
+# Install Firezone with Docker
 
 As of 0.6.0, Docker is now the **preferred method** for
 deploying Firezone. Docker offers a number of benefits over the old
@@ -125,7 +130,12 @@ docker run --rm -t busybox ping6 -c 4 google.com
 You shouldn't need to manually add any `iptables` rules to enable IPv6 SNAT/masquerading for tunneled traffic -- Firezone handles this for you by default on start.
 Firezone handles this for you by default.
 
-## Step 5: Install Client Apps
+## Step 5: Install client apps
+
+:::note
+Firezone currently uses WireGuard's
+[open-source client apps](https://www.wireguard.com/install/).
+:::
 
 Once successfully deployed, users and devices can be added to
 connect to the VPN server:
