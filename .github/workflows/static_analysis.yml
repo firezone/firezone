@@ -16,8 +16,10 @@ jobs:
       - uses: actions/setup-node@v3
         with:
           node-version: '16'
-          cache: 'npm'
-          cache-dependency-path: '**/package-lock.json'
+          cache: 'yarn'
+          cache-dependency-path: |
+            apps/fz_http/assets/package-lock.json
+            docs/yarn.lock
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: '2.7'
@@ -80,7 +82,9 @@ jobs:
         if: steps.plt_cache.outputs.cache-hit != 'true'
         run: mix dialyzer --plt
       - name: Install node modules
-        run: npm ci --prefix docs/
+        run: |
+          cd docs/
+          yarn install --frozen-lockfile
       - name: Run pre-commit
         run: |
           pre-commit install
