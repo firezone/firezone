@@ -147,7 +147,7 @@ firezoneSetup() {
   sed -i.bak "s/DATABASE_PASSWORD=.*/DATABASE_PASSWORD=$db_pass/" "$installDir/.env"
   echo "TLS_OPTS=\"$3\"" >> "$installDir/.env"
   echo "TELEMETRY_ENABLED=$telemEnabled" >> "$installDir/.env"
-  echo "TID=${1:-$telemetry_id}" >> "$installDir/.env"
+  echo "TID=$tid" >> "$installDir/.env"
 
   # XXX: This causes perms issues on macOS with postgres
   # echo "UID=$(id -u)" >> $installDir/.env
@@ -233,5 +233,6 @@ dockerCheck
 curlCheck
 
 telemetry_id=$(od -vN "8" -An -tx1 /dev/urandom | tr -d " \n" ; echo)
+tid=${1:-$telemetry_id}
 
 main
