@@ -17,7 +17,7 @@ defmodule FzHttp.ReleaseTest do
   describe "rollback/2" do
     test "calls function" do
       for repo <- Release.repos() do
-        assert Release.rollback(repo, "0")
+        assert Release.rollback(repo, 0)
       end
     end
   end
