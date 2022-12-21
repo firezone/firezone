@@ -19,7 +19,7 @@ defmodule FzHttp.Devices do
   end
 
   def count do
-    Repo.one(from d in Device, select: count(d.id))
+    Repo.aggregate(Device, :count)
   end
 
   def max_count_by_user_id do
@@ -188,12 +188,6 @@ defmodule FzHttp.Devices do
   def decode(nil), do: nil
   def decode(inet), do: INET.decode(inet)
 
-  def used_ips(type) when type in [:ipv4, :ipv6] do
-    used_ips_query(type)
-    |> Repo.all()
-    |> Enum.map(fn inet -> FzInteger.from_inet(inet.address) end)
-  end
-
   @hash_range 2 ** 16
   def new_name(name \\ FzCommon.NameGenerator.generate()) do
     hash =
@@ -207,14 +201,6 @@ defmodule FzHttp.Devices do
     else
       name
     end
-  end
-
-  defp used_ips_query(:ipv4) do
-    from(d in Device, select: d.ipv4, order_by: [desc: :ipv4])
-  end
-
-  defp used_ips_query(:ipv6) do
-    from(d in Device, select: d.ipv6, order_by: [desc: :ipv6])
   end
 
   defp psk_config(device) do

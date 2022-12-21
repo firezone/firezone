@@ -2,9 +2,7 @@ defmodule FzCommon.FzNet do
   @moduledoc """
   Network utility functions.
   """
-
   import FzCommon.FzRegex
-  alias FzCommon.FzInteger
 
   # XXX: Consider using CIDR for this
   def ip_type(str) when is_binary(str) do
@@ -25,27 +23,6 @@ defmodule FzCommon.FzNet do
           {:error, _} -> "unknown"
         end
     end
-  end
-
-  def rand_ip(cidr, type) do
-    parsed = CIDR.parse(cidr)
-    first = FzInteger.from_inet(parsed.first) + 1
-    last = FzInteger.from_inet(parsed.last) - 1
-
-    if first < last do
-      tuple = Enum.random(first..last) |> cast(type)
-      {:ok, %Postgrex.INET{address: tuple, netmask: nil}}
-    else
-      {:error, :range}
-    end
-  end
-
-  defp cast(ip_as_int, :ipv4) do
-    FzInteger.to_inet4(ip_as_int)
-  end
-
-  defp cast(ip_as_int, :ipv6) do
-    FzInteger.to_inet6(ip_as_int)
   end
 
   def valid_cidr?(cidr) when is_binary(cidr) do

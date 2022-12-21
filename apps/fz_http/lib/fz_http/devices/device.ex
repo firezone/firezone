@@ -140,11 +140,20 @@ defmodule FzHttp.Devices.Device do
   end
 
   defp put_default_ip(changeset, field) do
-    cidr = FzHttp.Config.fetch_env!(:fz_http, :"wireguard_#{field}_network")
+    cidr_string = FzHttp.Config.fetch_env!(:fz_http, :"wireguard_#{field}_network")
+    {:ok, cidr_inet} = EctoNetwork.INET.cast(cidr_string)
+    cidr = CIDR.parse(cidr_string)
+    offset = Enum.random(2..(cidr.hosts - 2))
 
-    case FzCommon.FzNet.rand_ip(cidr, field) do
-      {:ok, ip} -> put_change(changeset, field, ip)
-      {:error, :not_found} -> add_error(changeset, :base, "CIDR #{cidr} is exhausted")
+    {:ok, gateway_address} =
+      FzHttp.Config.fetch_env!(:fz_http, :"wireguard_#{field}_address")
+      |> EctoNetwork.INET.cast()
+
+    Devices.Device.Query.next_available_address(cidr_inet, offset, [gateway_address])
+    |> FzHttp.Repo.one()
+    |> case do
+      nil -> add_error(changeset, :base, "CIDR #{cidr} is exhausted")
+      ip -> put_change(changeset, field, ip)
     end
   end
 

@@ -9,66 +9,6 @@ defmodule FzCommon.FzIntegerTest do
     end
   end
 
-  describe "from_inet4/1" do
-    test "converts {255, 255, 255, 255} to 4,294,967,296" do
-      assert FzInteger.from_inet({255, 255, 255, 255}) == 2 ** 32 - 1
-    end
-
-    test "converts {0, 0, 0, 0} to 0" do
-      assert FzInteger.from_inet({0, 0, 0, 0}) == 0
-    end
-
-    test "converts {1, 1, 1, 1} to 16_843_009" do
-      assert FzInteger.from_inet({1, 1, 1, 1}) == 16_843_009
-    end
-  end
-
-  describe "from_inet6/1" do
-    test "converts {65_535, 65_535, 65_535, 65_535, 65_535, 65_535, 65_535, 65_535} to integer" do
-      assert FzInteger.from_inet({65_535, 65_535, 65_535, 65_535, 65_535, 65_535, 65_535, 65_535}) ==
-               2 ** 128 - 1
-    end
-
-    test "converts {0, 0, 0, 0, 0, 0, 0, 0} to 0" do
-      assert FzInteger.from_inet({0, 0, 0, 0, 0, 0, 0, 0}) == 0
-    end
-
-    test "converts {1, 1, 1, 1, 1, 1, 1, 1} to " do
-      assert FzInteger.from_inet({1, 1, 1, 1, 1, 1, 1, 1}) ==
-               5_192_376_087_906_286_159_508_272_029_171_713
-    end
-  end
-
-  describe "to_inet4/1" do
-    test "converts 2**32 - 1 to {255,255,255,255}" do
-      assert FzInteger.to_inet4(2 ** 32 - 1) == {255, 255, 255, 255}
-    end
-
-    test "converts 0 to {0,0,0,0}" do
-      assert FzInteger.to_inet4(0) == {0, 0, 0, 0}
-    end
-
-    test "converts 16_843_009 to {1,1,1,1}" do
-      assert FzInteger.to_inet4(16_843_009) == {1, 1, 1, 1}
-    end
-  end
-
-  describe "to_inet6/1" do
-    test "converts 2**128 - 1 to {65_535,65_535,65_535,65_535,65_535,65_535,65_535,65_535}" do
-      assert FzInteger.to_inet6(2 ** 128 - 1) ==
-               {65_535, 65_535, 65_535, 65_535, 65_535, 65_535, 65_535, 65_535}
-    end
-
-    test "converts 0 to {0,0,0,0,0,0,0,0,0}" do
-      assert FzInteger.to_inet6(0) == {0, 0, 0, 0, 0, 0, 0, 0}
-    end
-
-    test "converts 1_334_440_654_591_915_542_993_625_911_497_130_241 to {1, 1, 1, 1, 1, 1, 1, 1}" do
-      assert FzInteger.to_inet6(5_192_376_087_906_286_159_508_272_029_171_713) ==
-               {1, 1, 1, 1, 1, 1, 1, 1}
-    end
-  end
-
   describe "clamp/3" do
     test "clamps to min" do
       min = 1
