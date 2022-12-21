@@ -14,14 +14,6 @@ defmodule FzHttp.ReleaseTest do
     end
   end
 
-  describe "rollback/2" do
-    test "calls function" do
-      for repo <- Release.repos() do
-        assert Release.rollback(repo, "0")
-      end
-    end
-  end
-
   describe "create_admin_user/0" do
     test "creates admin when none exists" do
       Release.create_admin_user()

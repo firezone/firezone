@@ -17,11 +17,6 @@ defmodule FzHttp.Release do
     end
   end
 
-  def rollback(repo, version) do
-    load_app()
-    {:ok, _, _} = Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, :down, to: version))
-  end
-
   # App should be loaded at this point; call with `rpc` not `eval`
   def create_admin_user do
     load_app()
