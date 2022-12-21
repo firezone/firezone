@@ -34,11 +34,8 @@
 
 Follow our [deploy guide](https://docs.firezone.dev/deploy) to install your self-hosted instance of Firezone.
 
-Or, if you're on a [supported platform](https://docs.firezone.dev/deploy/docker/supported-platforms), try our one-line install script:
-
-```bash
-bash <(curl -fsSL https://github.com/firezone/firezone/raw/master/scripts/install.sh)
-```
+Or, if you're on a [supported platform](https://docs.firezone.dev/deploy/docker/supported-platforms),
+try our [auto-install script](https://docs.firezone.dev/deploy/docker/#option-1-automatic-install).
 
 Using Firezone in production at your organization? Take a look at our [Enterprise Plan](https://www.firezone.dev/pricing).
 
