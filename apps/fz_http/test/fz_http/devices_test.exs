@@ -5,16 +5,6 @@ defmodule FzHttp.DevicesTest do
   alias FzHttp.DevicesFixtures
   alias FzHttp.Users
 
-  describe "new_device_defaults/0" do
-    test "creates random ipv4" do
-      assert %Postgrex.INET{netmask: nil} = Devices.new_device_defaults()["ipv4"]
-    end
-
-    test "creates random ipv6" do
-      assert %Postgrex.INET{netmask: nil} = Devices.new_device_defaults()["ipv6"]
-    end
-  end
-
   describe "count/0" do
     setup :create_devices
 
@@ -86,8 +76,9 @@ defmodule FzHttp.DevicesTest do
       assert %Postgrex.INET{address: {_, _, _, _, _, _, _, _}, netmask: 128} = device.ipv6
     end
 
-    test "generates preshared_key" do
-      assert String.length(Devices.new_device().changes.preshared_key) == 44
+    test "autogenerates preshared_key", %{user: user} do
+      assert {:ok, device} = Devices.create_device(%{@device_attrs | user_id: user.id})
+      assert byte_size(device.preshared_key) == 44
     end
   end
 
@@ -317,8 +308,7 @@ defmodule FzHttp.DevicesTest do
     setup [:create_device]
 
     test "renders all peers", %{device: device} do
-      assert Devices.to_peer_list() |> List.first() == %{
-               preshared_key: nil,
+      assert Devices.to_peer_list() |> List.first() |> Map.delete(:preshared_key) == %{
                public_key: device.public_key,
                inet: "#{device.ipv4}/32,#{device.ipv6}/128"
              }

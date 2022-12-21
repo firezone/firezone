@@ -2,20 +2,11 @@ defmodule FzHttp.Devices.Device do
   @moduledoc """
   Manages Device things
   """
-
   use Ecto.Schema
   import Ecto.Changeset
-  require Logger
-
-  import FzHttp.Validators.Common,
-    only: [
-      validate_fqdn_or_ip: 2,
-      validate_omitted: 2,
-      validate_no_duplicates: 2,
-      validate_list_of_ips_or_cidrs: 2
-    ]
-
+  alias FzHttp.Validators.Common
   alias FzHttp.{Devices, Users.User}
+  require Logger
 
   @description_max_length 2048
 
@@ -38,8 +29,9 @@ defmodule FzHttp.Devices.Device do
     field :allowed_ips, :string
     field :dns, :string
     field :remote_ip, EctoNetwork.INET
-    field :ipv4, EctoNetwork.INET, read_after_writes: true
-    field :ipv6, EctoNetwork.INET, read_after_writes: true
+    field :ipv4, EctoNetwork.INET
+    field :ipv6, EctoNetwork.INET
+
     field :latest_handshake, :utc_datetime_usec
     field :key_regenerated_at, :utc_datetime_usec, read_after_writes: true
 
@@ -48,79 +40,71 @@ defmodule FzHttp.Devices.Device do
     timestamps(type: :utc_datetime_usec)
   end
 
+  @fields ~w[
+      latest_handshake
+      rx_bytes
+      tx_bytes
+      use_site_allowed_ips
+      use_site_dns
+      use_site_endpoint
+      use_site_mtu
+      use_site_persistent_keepalive
+      allowed_ips
+      dns
+      endpoint
+      mtu
+      persistent_keepalive
+      remote_ip
+      ipv4
+      ipv6
+      user_id
+      name
+      description
+      public_key
+      preshared_key
+      key_regenerated_at
+    ]a
+
+  @required_fields ~w[user_id name public_key]a
+
   def create_changeset(attrs) do
     %__MODULE__{}
-    |> shared_cast(attrs)
-    |> shared_changeset()
+    |> cast(attrs, @fields)
+    |> Common.put_default_value(:name, &FzHttp.Devices.new_name/0)
+    |> Common.put_default_value(:preshared_key, &FzCommon.FzCrypto.psk/0)
+    |> changeset()
     |> validate_max_devices()
+    |> validate_required(@required_fields)
   end
 
   def update_changeset(device, attrs) do
     device
-    |> shared_cast(attrs)
-    |> shared_changeset()
+    |> cast(attrs, @fields)
+    |> changeset()
+    |> validate_required(@required_fields)
   end
 
-  defp shared_cast(device, attrs) do
-    device
-    |> cast(attrs, [
-      :latest_handshake,
-      :rx_bytes,
-      :tx_bytes,
-      :use_site_allowed_ips,
-      :use_site_dns,
-      :use_site_endpoint,
-      :use_site_mtu,
-      :use_site_persistent_keepalive,
-      :allowed_ips,
-      :dns,
-      :endpoint,
-      :mtu,
-      :persistent_keepalive,
-      :remote_ip,
-      :ipv4,
-      :ipv6,
-      :user_id,
-      :name,
-      :description,
-      :public_key,
-      :preshared_key,
-      :key_regenerated_at
-    ])
-    |> update_change(:allowed_ips, &String.trim/1)
-    |> update_change(:dns, &String.trim/1)
-    |> update_change(:endpoint, &String.trim/1)
-    |> update_change(:name, &String.trim/1)
-    |> update_change(:description, &String.trim/1)
-  end
-
-  defp shared_changeset(changeset) do
+  defp changeset(changeset) do
     changeset
+    |> Common.trim_change(:allowed_ips)
+    |> Common.trim_change(:dns)
+    |> Common.trim_change(:endpoint)
+    |> Common.trim_change(:name)
+    |> Common.trim_change(:description)
+    |> validate_length(:description, max: @description_max_length)
+    |> validate_length(:name, min: 1)
     |> assoc_constraint(:user)
-    |> validate_required([
-      :user_id,
-      :name,
-      :public_key
-    ])
-    |> validate_required_if_enabled(
-      :ipv4,
-      FzHttp.Config.fetch_env!(:fz_http, :wireguard_ipv4_enabled)
-    )
-    |> validate_required_if_enabled(
-      :ipv6,
-      FzHttp.Config.fetch_env!(:fz_http, :wireguard_ipv6_enabled)
-    )
     |> validate_required_unless_site([:endpoint])
-    |> validate_omitted_if_site([
-      :allowed_ips,
-      :dns,
-      :endpoint,
-      :persistent_keepalive,
-      :mtu
-    ])
-    |> validate_list_of_ips_or_cidrs(:allowed_ips)
-    |> validate_no_duplicates(:dns)
-    |> validate_fqdn_or_ip(:endpoint)
+    |> validate_omitted_if_site(~w[
+      allowed_ips
+      dns
+      endpoint
+      persistent_keepalive
+      mtu
+    ]a)
+    |> Common.validate_list_of_ips_or_cidrs(:allowed_ips)
+    |> Common.validate_no_duplicates(:dns)
+    |> Common.validate_fqdn_or_ip(:endpoint)
     |> validate_number(:persistent_keepalive,
       greater_than_or_equal_to: 0,
       less_than_or_equal_to: 120
@@ -129,13 +113,39 @@ defmodule FzHttp.Devices.Device do
       greater_than_or_equal_to: 576,
       less_than_or_equal_to: 1500
     )
-    |> validate_length(:description, max: @description_max_length)
+    |> prepare_changes(fn changeset ->
+      changeset
+      |> maybe_put_default_ip(:ipv4)
+      |> maybe_put_default_ip(:ipv6)
+      |> validate_exclusion(:ipv4, [ipv4_address()])
+      |> validate_exclusion(:ipv6, [ipv6_address()])
+    end)
     |> unique_constraint(:ipv4)
     |> unique_constraint(:ipv6)
-    |> validate_exclusion(:ipv4, [ipv4_address()])
-    |> validate_exclusion(:ipv6, [ipv6_address()])
     |> unique_constraint(:public_key)
     |> unique_constraint([:user_id, :name])
+  end
+
+  defp maybe_put_default_ip(changeset, field) do
+    if FzHttp.Config.fetch_env!(:fz_http, :"wireguard_#{field}_enabled") == true do
+      case fetch_field(changeset, field) do
+        {:data, nil} -> put_default_ip(changeset, field)
+        :error -> put_default_ip(changeset, field)
+        _ -> changeset
+      end
+      |> validate_required(field)
+    else
+      changeset
+    end
+  end
+
+  defp put_default_ip(changeset, field) do
+    cidr = FzHttp.Config.fetch_env!(:fz_http, :"wireguard_#{field}_network")
+
+    case FzCommon.FzNet.rand_ip(cidr, field) do
+      {:ok, ip} -> put_change(changeset, field, ip)
+      {:error, :not_found} -> add_error(changeset, :base, "CIDR #{cidr} is exhausted")
+    end
   end
 
   defp ipv4_address do
@@ -147,11 +157,6 @@ defmodule FzHttp.Devices.Device do
     FzHttp.Config.fetch_env!(:fz_http, :wireguard_ipv6_address)
     |> EctoNetwork.INET.cast()
   end
-
-  defp validate_required_if_enabled(changeset, field, true),
-    do: validate_required(changeset, field)
-
-  defp validate_required_if_enabled(changeset, _, _), do: changeset
 
   defp validate_max_devices(changeset) do
     count =
@@ -172,7 +177,10 @@ defmodule FzHttp.Devices.Device do
   end
 
   defp validate_omitted_if_site(changeset, fields) when is_list(fields) do
-    validate_omitted(changeset, filter_site_fields(changeset, fields, use_site: true))
+    Common.validate_omitted(
+      changeset,
+      filter_site_fields(changeset, fields, use_site: true)
+    )
   end
 
   defp validate_required_unless_site(changeset, fields) when is_list(fields) do

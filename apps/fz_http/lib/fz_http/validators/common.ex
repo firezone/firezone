@@ -109,4 +109,26 @@ defmodule FzHttp.Validators.Common do
       []
     end
   end
+
+  @doc """
+  Puts the change if field is not changed or it's value is set to `nil`.
+  """
+  def put_default_value(changeset, _field, nil) do
+    changeset
+  end
+
+  def put_default_value(changeset, field, value) do
+    case fetch_field(changeset, field) do
+      {:data, nil} -> put_change(changeset, field, maybe_apply(value))
+      :error -> put_change(changeset, field, maybe_apply(value))
+      _ -> changeset
+    end
+  end
+
+  defp maybe_apply(fun) when is_function(fun, 0), do: fun.()
+  defp maybe_apply(value), do: value
+
+  def trim_change(changeset, field) do
+    update_change(changeset, field, &String.trim/1)
+  end
 end

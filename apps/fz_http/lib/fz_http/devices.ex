@@ -1,8 +1,4 @@
 defmodule FzHttp.Devices do
-  @moduledoc """
-  The Devices context.
-  """
-
   import Ecto.Changeset
   import Ecto.Query, warn: false
 
@@ -133,27 +129,7 @@ defmodule FzHttp.Devices do
   end
 
   def new_device(attrs \\ %{}) do
-    new_attrs =
-      new_device_defaults()
-      |> Map.merge(attrs)
-
-    struct(Device)
-    |> change_device(new_attrs)
-  end
-
-  def new_device_defaults do
-    v4_net = FzHttp.Config.fetch_env!(:fz_http, :wireguard_ipv4_network)
-    v6_net = FzHttp.Config.fetch_env!(:fz_http, :wireguard_ipv6_network)
-
-    with {:ok, ipv4} <- FzCommon.FzNet.rand_ip(v4_net, :ipv4),
-         {:ok, ipv6} <- FzCommon.FzNet.rand_ip(v6_net, :ipv6) do
-      %{
-        "name" => new_name(),
-        "preshared_key" => FzCommon.FzCrypto.psk(),
-        "ipv4" => ipv4,
-        "ipv6" => ipv6
-      }
-    end
+    change_device(%Device{}, attrs)
   end
 
   def allowed_ips(device), do: config(device, :allowed_ips)
