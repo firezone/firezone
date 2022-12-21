@@ -53,7 +53,7 @@ defmodule FzHttp.Validators.Common do
       error_if(
         dupes,
         &(&1 != []),
-        &{field, "is invalid: duplicate DNS servers are not allowed: #{Enum.join(&1, ", ")}"}
+        &{field, "is invalid: duplicates are not allowed: #{Enum.join(&1, ", ")}"}
       )
     end)
   end
