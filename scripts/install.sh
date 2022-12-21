@@ -37,7 +37,7 @@ curlCheck () {
 
 capture () {
   if type curl > /dev/null; then
-    if [ ! -z "$telemetry_id" ]; then
+    if [ ! -z "$tid" ]; then
       curl -s -XPOST \
         -m 5 \
         -H "Content-Type: application/json" \
@@ -45,7 +45,7 @@ capture () {
           \"api_key\": \"phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK\",
           \"event\": \"$1\",
           \"properties\": {
-            \"distinct_id\": \"$telemetry_id\",
+            \"distinct_id\": \"$tid\",
             \"email\": \"$2\"
           }
         }" \
