@@ -369,7 +369,7 @@ defmodule FzHttp.DevicesTest do
       {:error, changeset} = Devices.update_device(device, @duplicate_dns_attrs)
 
       assert changeset.errors[:dns] == {
-               "is invalid: duplicate DNS servers are not allowed: 1.1.1.1, ::1, 8.8.8.8",
+               "is invalid: duplicates are not allowed: 1.1.1.1, ::1, 8.8.8.8",
                []
              }
     end
