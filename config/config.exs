@@ -14,8 +14,7 @@
 # move said applications out of the umbrella.
 import Config
 
-git_root =
-  System.cmd("git", ["rev-parse", "--show-toplevel"]) |> elem(0) |> String.trim() |> IO.inspect()
+git_root = System.cmd("git", ["rev-parse", "--show-toplevel"]) |> elem(0) |> String.trim()
 
 # Sample configuration:
 #
