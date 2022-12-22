@@ -20,9 +20,7 @@ defmodule FzHttp.DevicesFixtures do
       user_id: user_id,
       public_key: "test-pubkey-#{counter()}",
       name: "factory #{counter()}",
-      description: "factory description",
-      ipv4: "100.64.0.#{rem(counter(), 253)}",
-      ipv6: "fd00::#{rem(counter(), 253)}"
+      description: "factory description"
     }
 
     {:ok, device} = Devices.create_device(Map.merge(default_attrs, attrs))

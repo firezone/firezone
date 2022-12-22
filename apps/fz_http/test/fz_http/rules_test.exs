@@ -124,7 +124,7 @@ defmodule FzHttp.RulesTest do
          }
     test "updates rule with string params", %{rule: rule, params: params} do
       assert {:ok, rule} = Rules.update_rule(rule, params)
-      assert rule.destination == %Postgrex.INET{address: {123, 123, 123, 123}, netmask: 32}
+      assert rule.destination == %Postgrex.INET{address: {123, 123, 123, 123}}
       assert rule.action == :accept
       assert rule.port_type == :udp
       assert rule.port_range == "1 - 65000"
@@ -138,7 +138,7 @@ defmodule FzHttp.RulesTest do
          }
     test "updates rule with atom attrs", %{rule: rule, attrs: attrs} do
       assert {:ok, rule} = Rules.update_rule(rule, attrs)
-      assert rule.destination == %Postgrex.INET{address: {123, 123, 123, 123}, netmask: 32}
+      assert rule.destination == %Postgrex.INET{address: {123, 123, 123, 123}}
       assert rule.action == :accept
       assert rule.port_type == :udp
       assert rule.port_range == "1 - 65000"

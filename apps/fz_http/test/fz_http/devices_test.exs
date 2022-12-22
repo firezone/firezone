@@ -69,11 +69,23 @@ defmodule FzHttp.DevicesTest do
     end
 
     test "creates devices with default ipv4", %{device: device} do
-      assert %Postgrex.INET{address: {_, _, _, _}, netmask: 32} = device.ipv4
+      refute is_nil(device.ipv4)
     end
 
     test "creates device with default ipv6", %{device: device} do
-      assert %Postgrex.INET{address: {_, _, _, _, _, _, _, _}, netmask: 128} = device.ipv6
+      refute is_nil(device.ipv6)
+    end
+
+    test "returns error when device IP can't be assigned due to CIDR pool exhaustion", %{
+      device: device
+    } do
+      FzHttp.Config.maybe_put_env_override(:wireguard_ipv4_network, "10.3.2.0/30")
+      attrs = %{@device_attrs | ipv4: nil, ipv6: nil, user_id: device.user_id}
+
+      assert {:ok, _device} = Devices.create_device(attrs)
+      assert {:error, changeset} = Devices.create_device(attrs)
+      refute changeset.valid?
+      assert "CIDR 10.3.2.0/30 is exhausted" in errors_on(changeset).base
     end
 
     test "autogenerates preshared_key", %{user: user} do

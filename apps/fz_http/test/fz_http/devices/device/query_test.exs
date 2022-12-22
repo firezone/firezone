@@ -84,14 +84,11 @@ defmodule FzHttp.Devices.Device.QueryTest do
 
       spawn(fn ->
         Ecto.Adapters.SQL.Sandbox.unboxed_run(Repo, fn ->
-          {:ok, ip} =
-            Repo.transaction(fn ->
-              ip = Repo.one(queryable)
-              Process.sleep(100)
-              ip
-            end)
-
-          send(test_pid, {:ip, ip})
+          Repo.transaction(fn ->
+            ip = Repo.one(queryable)
+            send(test_pid, {:ip, ip})
+            Process.sleep(200)
+          end)
         end)
       end)
 
