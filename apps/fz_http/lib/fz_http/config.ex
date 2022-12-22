@@ -27,8 +27,7 @@ defmodule FzHttp.Config do
 
       with :error <- fetch_process_value(key),
            :error <- fetch_process_value(get_last_pid_from_pdict_list(:"$ancestors"), key),
-           :error <- fetch_process_value(get_last_pid_from_pdict_list(:"$callers"), key),
-           :error <- fetch_from_any_alive(key) do
+           :error <- fetch_process_value(get_last_pid_from_pdict_list(:"$callers"), key) do
         application_env
       else
         {:ok, override} -> override
@@ -66,17 +65,6 @@ defmodule FzHttp.Config do
       if values = Process.get(stack) do
         List.last(values)
       end
-    end
-
-    defp fetch_from_any_alive(key) do
-      Process.list()
-      |> Enum.filter(&Process.alive?/1)
-      |> Enum.reduce_while(:error, fn pid, _ ->
-        case fetch_process_value(pid, key) do
-          :error -> {:cont, :error}
-          {:ok, value} -> {:halt, {:ok, value}}
-        end
-      end)
     end
   end
 end
