@@ -1,11 +1,8 @@
 defmodule FzHttp.Devices do
   import Ecto.Changeset
   import Ecto.Query, warn: false
-
   alias EctoNetwork.INET
-  alias FzCommon.FzInteger
   alias FzHttp.{Devices.Device, Devices.DeviceSetting, Repo, Sites, Telemetry, Users, Users.User}
-
   require Logger
 
   def count_active_within(duration_in_secs) when is_integer(duration_in_secs) do

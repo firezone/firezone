@@ -120,7 +120,7 @@ defmodule FzHttp.Devices.Device.Query do
     select(queryable, [device: device], device.ipv4)
   end
 
-  defp used_ips_subquery(queryable, %Postgrex.INET{address: address}) do
+  defp used_ips_subquery(queryable, %Postgrex.INET{address: _address}) do
     select(queryable, [device: device], device.ipv6)
   end
 end
