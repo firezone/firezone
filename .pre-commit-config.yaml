@@ -2,6 +2,12 @@ repos:
   - repo: local
     hooks:
       # Elixir config
+      - id: mix-compile
+        name: 'elixir: mix compile'
+        entry: mix compile --force --warnings-as-errors
+        language: system
+        pass_filenames: false
+        files: \.ex$
       - id: mix-format
         name: 'elixir: mix format'
         entry: mix format --check-formatted
@@ -18,12 +24,6 @@ repos:
         language: system
         pass_filenames: false
         files: \.exs*$
-      - id: mix-compile
-        name: 'elixir: mix compile'
-        entry: mix compile --force --warnings-as-errors
-        language: system
-        pass_filenames: false
-        files: \.ex$
       - id: codespell
         name: 'python: codespell'
         entry: codespell

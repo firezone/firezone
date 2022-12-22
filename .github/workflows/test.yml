@@ -36,14 +36,22 @@ jobs:
         with:
           otp-version: '25'
           elixir-version: '1.14'
-      - uses: actions/cache@v3.0.11
+      - uses: actions/cache@v3
+        name: Elixir Deps Cache
+        env:
+          cache-name: cache-elixir-deps
         with:
-          path: |
-            deps
-            _build
-          key: ${{ runner.os }}-${{ github.ref }}-mix-otp-25-${{ hashFiles('**/mix.lock') }}
+          path: deps
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
           restore-keys: |
-            ${{ runner.os }}-${{ github.ref }}-mix-otp-25-${{ hashFiles('**/mix.lock') }}
+            ${{ runner.os }}-${{ env.cache-name }}-
+      - uses: actions/cache@v3
+        name: Elixir Build Cache
+        env:
+          cache-name: cache-elixir-build
+        with:
+          path: _build
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
       - name: Install Dependencies
         run: mix deps.get --only $MIX_ENV
       - name: Setup Database
