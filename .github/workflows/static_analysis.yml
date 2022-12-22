@@ -24,7 +24,8 @@ jobs:
       - uses: actions/setup-python@v2
         with:
           python-version: '3.9'
-      - uses: erlef/setup-beam@v1
+      - id: setup-beam
+        uses: erlef/setup-beam@v1
         with:
           otp-version: '25'
           elixir-version: '1.14'
@@ -67,9 +68,9 @@ jobs:
         id: plt_cache
         with:
           key: |
-            ${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ steps.beam.outputs.otp-version }}-plt
+            ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-plt
           restore-keys: |
-            ${{ runner.os }}-${{ steps.beam.outputs.elixir-version }}-${{ steps.beam.outputs.otp-version }}-plt
+            ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-plt
           path: |
             priv/plts
       # Create PLTs if no cache was found
