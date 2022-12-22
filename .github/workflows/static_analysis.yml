@@ -34,20 +34,12 @@ jobs:
         env:
           cache-name: cache-elixir-deps
         with:
+          # XXX: We've purposefully omitted caching the _build directory here because we
+          # force-recompile in the pre-commit run below in order to catch any compilation warnings.
           path: deps
           key: ${{ github.workflow }}-${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
           restore-keys: |
             ${{ github.workflow }}-${{ runner.os }}-${{ env.cache-name }}-
-      - uses: actions/cache@v3
-        name: Elixir Build Cache
-        env:
-          cache-name: cache-elixir-build
-        with:
-          path: _build
-          key: ${{ github.workflow }}-${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
-          restore-keys: |
-            ${{ github.workflow }}-${{ runner.os }}-${{ env.cache-name }}-
-            ${{ github.workflow }}-${{ runner.os }}-
       - uses: actions/cache@v3.0.11
         name: Setup ruby cache
         with:

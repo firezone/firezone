@@ -42,19 +42,16 @@ jobs:
           cache-name: cache-elixir-deps
         with:
           path: deps
-          key: ${{ github.workflow }}-${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
           restore-keys: |
-            ${{ github.workflow }}-${{ runner.os }}-${{ env.cache-name }}-
+            ${{ runner.os }}-${{ env.cache-name }}-
       - uses: actions/cache@v3
         name: Elixir Build Cache
         env:
           cache-name: cache-elixir-build
         with:
           path: _build
-          key: ${{ github.workflow }}-${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
-          restore-keys: |
-            ${{ github.workflow }}-${{ runner.os }}-${{ env.cache-name }}-
-            ${{ github.workflow }}-${{ runner.os }}-
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
       - name: Install Dependencies
         run: mix deps.get --only $MIX_ENV
       - name: Setup Database
