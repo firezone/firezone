@@ -109,7 +109,7 @@ defmodule FzHttp.Devices.Device.QueryTest do
 
       queryable = next_available_address(cidr, offset, [gateway_ip])
 
-      assert Repo.one(queryable) == %Postgrex.INET{address: {64768, 0, 0, 0, 0, 3, 2, 4}}
+      assert Repo.one(queryable) == %Postgrex.INET{address: {64_768, 0, 0, 0, 0, 3, 2, 4}}
     end
 
     test "selects nothing when IPv6 CIDR range is exhausted" do
