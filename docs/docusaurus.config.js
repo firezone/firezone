@@ -96,13 +96,13 @@ const config = {
         },
         items: [
           {
-            href: 'https://discourse.firez.one/?utm_source=docs',
+            href: 'https://discourse.firez.one/?utm_source=docs.firezone.dev',
             label: 'Ask a Question',
             position: 'right',
             'aria-label': 'GitHub repository',
           },
           {
-            href: 'https://www.firezone.dev/contact/sales?utm_source=docs',
+            href: 'https://www.firezone.dev/contact/sales?utm_source=docs.firezone.dev',
             label: 'Contact sales',
             position: 'right',
             'aria-label': 'Contact sales',
@@ -123,15 +123,15 @@ const config = {
             items: [
               {
                 label: 'Homepage',
-                href: 'https://www.firezone.dev/?utm_source=docs',
+                href: 'https://www.firezone.dev/?utm_source=docs.firezone.dev',
               },
               {
                 label: 'Pricing',
-                href: 'https://www.firezone.dev/pricing?utm_source=docs',
+                href: 'https://www.firezone.dev/pricing?utm_source=docs.firezone.dev',
               },
               {
                 label: 'About',
-                href: 'https://www.firezone.dev/about?utm_source=docs',
+                href: 'https://www.firezone.dev/about?utm_source=docs.firezone.dev',
               },
             ],
           },
@@ -140,19 +140,19 @@ const config = {
             items: [
               {
                 label: 'Support Forums',
-                href: 'https://discourse.firez.one/?utm_source=docs',
+                href: 'https://discourse.firez.one/?utm_source=docs.firezone.dev',
               },
               {
                 label: 'Slack',
-                href: 'https://www.firezone.dev/slack?utm_source=docs',
+                href: 'https://www.firezone.dev/slack?utm_source=docs.firezone.dev',
               },
               {
                 label: 'Github',
-                href: 'https://github.com/firezone/firezone?utm_source=docs',
+                href: 'https://github.com/firezone/firezone?utm_source=docs.firezone.dev',
               },
               {
                 label: 'Twitter',
-                href: 'https://twitter.com/firezonehq?utm_source=docs',
+                href: 'https://twitter.com/firezonehq?utm_source=docs.firezone.dev',
               },
             ],
           },
