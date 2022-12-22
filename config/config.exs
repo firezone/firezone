@@ -14,7 +14,8 @@
 # move said applications out of the umbrella.
 import Config
 
-require Logger
+git_root =
+  System.cmd("git", ["rev-parse", "--show-toplevel"]) |> elem(0) |> String.trim() |> IO.inspect()
 
 # Sample configuration:
 #
@@ -73,8 +74,8 @@ config :fz_http,
   openid_connect_providers: "{}",
   saml_identity_providers: %{},
   saml_entity_id: "urn:firezone.dev:firezone-app",
-  saml_certfile_path: "apps/fz_http/priv/cert/saml_selfsigned.pem",
-  saml_keyfile_path: "apps/fz_http/priv/cert/saml_selfsigned_key.pem",
+  saml_certfile_path: "#{git_root}/apps/fz_http/priv/cert/saml_selfsigned.pem",
+  saml_keyfile_path: "#{git_root}/apps/fz_http/priv/cert/saml_selfsigned_key.pem",
   openid_connect: OpenIDConnect,
   cache_module: FzHttp.Configurations.Cache
 
