@@ -90,7 +90,7 @@ defmodule FzHttp.Repo.NotifierTest do
       expected_vpn_state = %{
         "1" => %{
           allowed_ips: "#{device.ipv4}/32,#{device.ipv6}/128",
-          preshared_key: nil
+          preshared_key: device.preshared_key
         }
       }
 
