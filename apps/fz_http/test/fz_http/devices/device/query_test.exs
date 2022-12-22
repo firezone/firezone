@@ -96,7 +96,7 @@ defmodule FzHttp.Devices.Device.QueryTest do
       end)
 
       ip1 = Repo.one(queryable)
-      assert_receive {:ip, ip2}, 200
+      assert_receive {:ip, ip2}, 500
 
       assert Enum.sort([ip1, ip2]) ==
                Enum.sort([
