@@ -19,6 +19,9 @@ config :fz_http, FzHttpWeb.Auth.JSON.Authentication,
   # Generate with mix guardian.gen.secret
   secret_key: "GApJ4c4a/KJLrBePgTDUk0n67AbjCvI9qdypKZEaJFXl6s9H3uRcIhTt49Fij5UO"
 
+# Use timestamptz for all timestamp fields
+config :fz_http, FzHttp.Repo, migration_timestamps: [type: :timestamptz]
+
 config :fz_http,
   external_trusted_proxies: [],
   private_clients: [],
@@ -50,8 +53,8 @@ config :fz_http,
   openid_connect_providers: "{}",
   saml_identity_providers: %{},
   saml_entity_id: "urn:firezone.dev:firezone-app",
-  saml_certfile_path: "apps/fz_http/priv/cert/saml_selfsigned.pem",
-  saml_keyfile_path: "apps/fz_http/priv/cert/saml_selfsigned_key.pem",
+  saml_certfile_path: Path.expand("../apps/fz_http/priv/cert/saml_selfsigned.pem", __DIR__),
+  saml_keyfile_path: Path.expand("../apps/fz_http/priv/cert/saml_selfsigned_key.pem", __DIR__),
   openid_connect: OpenIDConnect,
   cache_module: FzHttp.Configurations.Cache
 

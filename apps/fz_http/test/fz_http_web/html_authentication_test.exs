@@ -1,4 +1,4 @@
-defmodule FzHttpWeb.AuthTest do
+defmodule FzHttpWeb.HTMLAuthenticationTest do
   use FzHttpWeb.ConnCase, async: true
 
   alias FzHttpWeb.Auth.HTML.Authentication

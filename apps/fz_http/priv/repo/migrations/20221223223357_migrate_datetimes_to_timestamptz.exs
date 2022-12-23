@@ -2,12 +2,6 @@ defmodule FzHttp.Repo.Migrations.MigrateDatetimesToTimestamptz do
   use Ecto.Migration
 
   def change do
-    alter table("api_tokens") do
-      modify(:inserted_at, :timestamptz, from: :utc_datetime_usec)
-      modify(:revoked_at, :timestamptz, from: :utc_datetime_usec)
-      remove(:updated_at, :timestamptz, null: false)
-    end
-
     alter table("configurations") do
       modify(:inserted_at, :timestamptz, from: :utc_datetime_usec)
       modify(:updated_at, :timestamptz, from: :utc_datetime_usec)

@@ -8,6 +8,23 @@ defmodule FzHttp.Telemetry do
 
   alias FzHttp.{Devices, MFA, Users}
 
+  def create_api_token do
+    telemetry_module().capture(
+      "add_api_token",
+      common_fields()
+    )
+  end
+
+  def delete_api_token(api_token) do
+    telemetry_module().capture(
+      "delete_api_token",
+      common_fields() ++
+        [
+          api_token_created_at: api_token.inserted_at
+        ]
+    )
+  end
+
   def add_device do
     telemetry_module().capture(
       "add_device",

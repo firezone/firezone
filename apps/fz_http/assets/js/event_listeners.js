@@ -16,3 +16,23 @@ document.addEventListener('DOMContentLoaded', () => {
     $span.innerHTML = FormatTimestamp($span.dataset.timestamp)
   })
 })
+
+document.addEventListener("firezone:clipcopy", (event) => {
+  if ("clipboard" in navigator) {
+    const text = event.target.textContent
+    navigator.clipboard.writeText(text)
+    const dispatcher = event.detail.dispatcher
+    const span = dispatcher.getElementsByTagName("span")[0]
+    const icon = dispatcher.getElementsByTagName("i")[0]
+
+    span.classList.add("has-text-success")
+    icon.classList.replace("mdi-content-copy", "mdi-check-bold")
+
+    setTimeout(() => {
+      span.classList.remove("has-text-success")
+      icon.classList.replace("mdi-check-bold", "mdi-content-copy")
+    }, 1000)
+  } else {
+    alert("Sorry, your browser does not support clipboard copy.")
+  }
+})

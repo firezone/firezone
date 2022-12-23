@@ -10,6 +10,30 @@
   ) %>
 <% end %>
 
+<%= if @live_action == :new_api_token do %>
+  <%= live_modal(
+    FzHttpWeb.SettingLive.NewApiTokenComponent,
+    return_to: ~p"/settings/account",
+    title: "Add API Token",
+    id: "new_api_token",
+    form: "api-token-form",
+    user: @current_user,
+    changeset: FzHttp.ApiTokens.new_api_token()
+  ) %>
+<% end %>
+
+<%= if @live_action == :show_api_token do %>
+  <%= live_modal(
+    FzHttpWeb.SettingLive.ShowApiTokenComponent,
+    return_to: ~p"/settings/account",
+    title: "API Token #{@api_token_id}",
+    id: "show_api_token",
+    hide_footer_content: true,
+    user: @current_user,
+    api_token_id: @api_token_id
+  ) %>
+<% end %>
+
 <%= if @live_action == :register_mfa do %>
   <.live_component
     module={FzHttpWeb.MFA.RegisterComponent}
@@ -94,6 +118,96 @@
       </tbody>
     </table>
   </div>
+</section>
+
+<section class="section is-main-section">
+  <h4 class="title is-4">
+    API Tokens
+  </h4>
+
+  <div class="block">
+    <p>
+      Manage API tokens.
+      <a href="https://docs.firezone.dev/reference/rest-api/?utm_source=product">
+        Read more about API tokens -&gt;
+      </a>
+    </p>
+  </div>
+
+  <div class="block">
+    <%= if Enum.any?(@api_tokens) do %>
+      <table class="table is-bordered is-hoverable is-striped is-fullwidth">
+        <thead>
+          <tr>
+            <th>Created at</th>
+            <th>Identifier</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <%= for api_token <- @api_tokens do %>
+            <tr>
+              <td
+                data-timestamp={api_token.inserted_at}
+                phx-hook="FormatTimestamp"
+                id={"inserted_at-#{api_token.id}"}
+              >
+                …
+              </td>
+              <td>
+                <.link patch={~p"/settings/account/api_token/#{api_token}"}>
+                  <%= api_token.id %>
+                </.link>
+              </td>
+              <td>
+                <%= if ApiTokens.expired?(api_token) do %>
+                  <span class="icon has-text-danger is-small">
+                    <i class="mdi mdi-close-circle"></i>
+                  </span>
+                  Expired at
+                <% else %>
+                  <span class="icon has-text-success is-small">
+                    <i class="mdi mdi-check-circle"></i>
+                  </span>
+                  Expires at
+                <% end %>
+                <span
+                  data-timestamp={api_token.expires_at}
+                  phx-hook="FormatTimestamp"
+                  id={"expired-at-#{api_token.id}"}
+                >
+                  …
+                </span>
+              </td>
+              <td>
+                <.link
+                  data-confirm="Are you sure?"
+                  phx-click="delete_api_token"
+                  phx-value-id={api_token.id}
+                >
+                  Delete
+                </.link>
+              </td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    <% else %>
+      <p>
+        No API tokens.
+      </p>
+    <% end %>
+  </div>
+
+  <%= if length(@api_tokens) < FzHttp.ApiTokens.ApiToken.max_per_user() do %>
+    <.link patch={~p"/settings/account/api_token"} class="button">
+      <span class="icon is-small">
+        <i class="mdi mdi-plus"></i>
+      </span>
+      <span>Add API Token</span>
+    </.link>
+  <% end %>
 </section>
 
 <section class="section is-main-section">
