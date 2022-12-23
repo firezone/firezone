@@ -33,30 +33,30 @@ defmodule FzHttp.Devices.Device do
   )a
 
   schema "devices" do
-    field(:rx_bytes, :integer)
-    field(:tx_bytes, :integer)
-    field(:uuid, Ecto.UUID, autogenerate: true)
-    field(:name, :string)
-    field(:description, :string)
-    field(:public_key, :string)
-    field(:preshared_key, FzHttp.Encrypted.Binary)
-    field(:use_site_allowed_ips, :boolean, read_after_writes: true, default: true)
-    field(:use_site_dns, :boolean, read_after_writes: true, default: true)
-    field(:use_site_endpoint, :boolean, read_after_writes: true, default: true)
-    field(:use_site_mtu, :boolean, read_after_writes: true, default: true)
-    field(:use_site_persistent_keepalive, :boolean, read_after_writes: true, default: true)
-    field(:endpoint, :string)
-    field(:mtu, :integer)
-    field(:persistent_keepalive, :integer)
-    field(:allowed_ips, :string)
-    field(:dns, :string)
-    field(:remote_ip, EctoNetwork.INET)
-    field(:ipv4, EctoNetwork.INET, read_after_writes: true)
-    field(:ipv6, EctoNetwork.INET, read_after_writes: true)
-    field(:latest_handshake, :utc_datetime_usec)
-    field(:key_regenerated_at, :utc_datetime_usec, read_after_writes: true)
+    field :rx_bytes, :integer
+    field :tx_bytes, :integer
+    field :uuid, Ecto.UUID, autogenerate: true
+    field :name, :string
+    field :description, :string
+    field :public_key, :string
+    field :preshared_key, FzHttp.Encrypted.Binary
+    field :use_site_allowed_ips, :boolean, read_after_writes: true, default: true
+    field :use_site_dns, :boolean, read_after_writes: true, default: true
+    field :use_site_endpoint, :boolean, read_after_writes: true, default: true
+    field :use_site_mtu, :boolean, read_after_writes: true, default: true
+    field :use_site_persistent_keepalive, :boolean, read_after_writes: true, default: true
+    field :endpoint, :string
+    field :mtu, :integer
+    field :persistent_keepalive, :integer
+    field :allowed_ips, :string
+    field :dns, :string
+    field :remote_ip, EctoNetwork.INET
+    field :ipv4, EctoNetwork.INET, read_after_writes: true
+    field :ipv6, EctoNetwork.INET, read_after_writes: true
+    field :latest_handshake, :utc_datetime_usec
+    field :key_regenerated_at, :utc_datetime_usec, read_after_writes: true
 
-    belongs_to(:user, User)
+    belongs_to :user, User
 
     timestamps(type: :utc_datetime_usec)
   end
