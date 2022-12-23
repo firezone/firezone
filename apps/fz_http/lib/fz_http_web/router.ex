@@ -15,9 +15,6 @@ defmodule FzHttpWeb.Router do
     plug :put_root_layout, {FzHttpWeb.LayoutView, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
-
-    # XXX: Make this configurable
-    plug Hammer.Plug, @root_rate_limit
   end
 
   pipeline :api do
