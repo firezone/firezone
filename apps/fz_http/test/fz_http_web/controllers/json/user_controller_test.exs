@@ -21,7 +21,7 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
 
   describe "index" do
     test "lists all users", %{api_conn: conn} do
-      conn = get(conn, ~p"/v1/users")
+      conn = get(conn, ~p"/v0/users")
 
       actual =
         Users.list_users()
@@ -39,10 +39,10 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
 
   describe "create user" do
     test "renders user when data is valid", %{api_conn: conn} do
-      conn = post(conn, ~p"/v1/users", user: @create_attrs)
+      conn = post(conn, ~p"/v0/users", user: @create_attrs)
       assert %{"id" => id} = json_response(conn, 201)["data"]
 
-      conn = get(conn, ~p"/v1/users/#{id}")
+      conn = get(conn, ~p"/v0/users/#{id}")
 
       assert %{
                "id" => ^id
@@ -50,7 +50,7 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
     end
 
     test "renders errors when data is invalid", %{api_conn: conn} do
-      conn = post(conn, ~p"/v1/users", user: @invalid_attrs)
+      conn = post(conn, ~p"/v0/users", user: @invalid_attrs)
       assert json_response(conn, 422)["errors"] != %{}
     end
   end
@@ -60,10 +60,10 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
       api_conn: conn,
       unprivileged_user: %User{id: id} = user
     } do
-      conn = put(conn, ~p"/v1/users/#{user}", user: @update_attrs)
+      conn = put(conn, ~p"/v0/users/#{user}", user: @update_attrs)
       assert %{"id" => ^id} = json_response(conn, 200)["data"]
 
-      conn = get(conn, ~p"/v1/users/#{id}")
+      conn = get(conn, ~p"/v0/users/#{id}")
 
       assert %{
                "id" => ^id
@@ -71,18 +71,18 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
     end
 
     test "renders errors when data is invalid", %{api_conn: conn, unprivileged_user: user} do
-      conn = put(conn, ~p"/v1/users/#{user}", user: @invalid_attrs)
+      conn = put(conn, ~p"/v0/users/#{user}", user: @invalid_attrs)
       assert json_response(conn, 422)["errors"] != %{}
     end
   end
 
   describe "delete user" do
     test "deletes chosen user", %{api_conn: conn, unprivileged_user: user} do
-      conn = delete(conn, ~p"/v1/users/#{user}")
+      conn = delete(conn, ~p"/v0/users/#{user}")
       assert response(conn, 204)
 
       assert_error_sent 404, fn ->
-        get(conn, ~p"/v1/users/#{user}")
+        get(conn, ~p"/v0/users/#{user}")
       end
     end
   end

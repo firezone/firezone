@@ -19,6 +19,10 @@ defmodule FzHttp.Devices do
     Repo.aggregate(Device, :count)
   end
 
+  def count(user_id) do
+    Repo.one(from d in Device, where: d.user_id == ^user_id, select: count())
+  end
+
   def max_count_by_user_id do
     Repo.one(
       from d in Device,
@@ -49,10 +53,6 @@ defmodule FzHttp.Devices do
     device
     |> DeviceSetting.parse()
     |> Map.from_struct()
-  end
-
-  def count(user_id) do
-    Repo.one(from d in Device, where: d.user_id == ^user_id, select: count())
   end
 
   def get_device!(id), do: Repo.get!(Device, id)
