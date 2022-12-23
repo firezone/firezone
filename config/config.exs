@@ -1,27 +1,4 @@
-# This file is responsible for configuring your umbrella
-# and **all applications** and their dependencies with the
-# help of the Config module.
-#
-# *Note*:
-# This configuration is generated on compile time. To configure the application during runtime,
-# use releases.exs. These configuration options are overridden by environment-specific
-# configuration files.
-#
-# Note that all applications in your umbrella share the
-# same configuration and dependencies, which is why they
-# all use the same configuration file. If you want different
-# configurations or dependencies per app, it is best to
-# move said applications out of the umbrella.
 import Config
-
-git_root = System.cmd("git", ["rev-parse", "--show-toplevel"]) |> elem(0) |> String.trim()
-
-# Sample configuration:
-#
-#     config :logger, :console,
-#       level: :info,
-#       format: "$date $time [$level] $metadata$message\n",
-#       metadata: [:user_id]
 
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
@@ -73,8 +50,8 @@ config :fz_http,
   openid_connect_providers: "{}",
   saml_identity_providers: %{},
   saml_entity_id: "urn:firezone.dev:firezone-app",
-  saml_certfile_path: "#{git_root}/apps/fz_http/priv/cert/saml_selfsigned.pem",
-  saml_keyfile_path: "#{git_root}/apps/fz_http/priv/cert/saml_selfsigned_key.pem",
+  saml_certfile_path: "apps/fz_http/priv/cert/saml_selfsigned.pem",
+  saml_keyfile_path: "apps/fz_http/priv/cert/saml_selfsigned_key.pem",
   openid_connect: OpenIDConnect,
   cache_module: FzHttp.Configurations.Cache
 
