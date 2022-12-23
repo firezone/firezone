@@ -152,12 +152,8 @@ defmodule FzHttp.Devices.Device do
     Devices.Device.Query.next_available_address(cidr_inet, offset, [gateway_address])
     |> FzHttp.Repo.one()
     |> case do
-      nil ->
-        FzHttp.Telemetry.cidr_exhausted(cidr)
-        add_error(changeset, :base, "CIDR #{cidr} is exhausted")
-
-      ip ->
-        put_change(changeset, field, ip)
+      nil -> add_error(changeset, :base, "CIDR #{cidr} is exhausted")
+      ip -> put_change(changeset, field, ip)
     end
   end
 
