@@ -41,7 +41,7 @@ defmodule FzHttp.RulesTest do
 
     test "raises error when id does not exist", %{rule: _rule} do
       assert_raise(Ecto.NoResultsError, fn ->
-        Rules.get_rule!(0)
+        Rules.get_rule!(Ecto.UUID.generate())
       end)
     end
   end

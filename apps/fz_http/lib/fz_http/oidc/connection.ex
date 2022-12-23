@@ -2,8 +2,7 @@ defmodule FzHttp.OIDC.Connection do
   @moduledoc """
   OIDC connections
   """
-
-  use Ecto.Schema
+  use FzHttp, :schema
   import Ecto.Changeset
 
   schema "oidc_connections" do
@@ -11,9 +10,10 @@ defmodule FzHttp.OIDC.Connection do
     field :refresh_response, :map
     field :refresh_token, :string
     field :refreshed_at, :utc_datetime_usec
-    field :user_id, :id
 
-    timestamps(type: :utc_datetime_usec)
+    belongs_to :user, FzHttp.Users.User
+
+    timestamps()
   end
 
   @doc false

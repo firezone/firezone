@@ -2,10 +2,10 @@ defmodule FzHttp.Devices.Device do
   @moduledoc """
   Manages Device things
   """
-  use Ecto.Schema
+  use FzHttp, :schema
   import Ecto.Changeset
   alias FzHttp.Validators.Common
-  alias FzHttp.{Devices, Users.User}
+  alias FzHttp.Devices
   require Logger
 
   @description_max_length 2048
@@ -13,7 +13,6 @@ defmodule FzHttp.Devices.Device do
   schema "devices" do
     field :rx_bytes, :integer
     field :tx_bytes, :integer
-    field :uuid, Ecto.UUID, autogenerate: true
     field :name, :string
     field :description, :string
     field :public_key, :string
@@ -35,9 +34,9 @@ defmodule FzHttp.Devices.Device do
     field :latest_handshake, :utc_datetime_usec
     field :key_regenerated_at, :utc_datetime_usec, read_after_writes: true
 
-    belongs_to :user, User
+    belongs_to :user, FzHttp.Users.User
 
-    timestamps(type: :utc_datetime_usec)
+    timestamps()
   end
 
   @fields ~w[

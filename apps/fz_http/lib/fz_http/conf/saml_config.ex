@@ -2,7 +2,7 @@ defmodule FzHttp.Conf.SAMLConfig do
   @moduledoc """
   SAML Config virtual schema
   """
-  use Ecto.Schema
+  use FzHttp, :schema
 
   import Ecto.Changeset
   import FzHttp.Validators.SAML

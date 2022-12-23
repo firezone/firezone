@@ -46,7 +46,8 @@ defmodule FzHttp.Devices do
   end
 
   def setting_projection(device) do
-    DeviceSetting.parse(device)
+    device
+    |> DeviceSetting.parse()
     |> Map.from_struct()
   end
 
@@ -183,6 +184,7 @@ defmodule FzHttp.Devices do
   end
 
   def decode(nil), do: nil
+  def decode(inet) when is_binary(inet), do: inet
   def decode(inet), do: INET.decode(inet)
 
   @hash_range 2 ** 16

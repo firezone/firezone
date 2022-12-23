@@ -2,11 +2,7 @@ defmodule FzHttp.Users.User do
   @moduledoc """
   Represents a User.
   """
-
-  @min_password_length 12
-  @max_password_length 64
-
-  use Ecto.Schema
+  use FzHttp, :schema
   import Ecto.Changeset
   import FzHttp.Users.PasswordHelpers
 
@@ -16,8 +12,10 @@ defmodule FzHttp.Users.User do
     OIDC.Connection
   }
 
+  @min_password_length 12
+  @max_password_length 64
+
   schema "users" do
-    field :uuid, Ecto.UUID, autogenerate: true
     field :role, Ecto.Enum, values: [:unprivileged, :admin], default: :unprivileged
     field :email, :string
     field :last_signed_in_at, :utc_datetime_usec
@@ -37,7 +35,7 @@ defmodule FzHttp.Users.User do
     has_many :oidc_connections, Connection
     has_many :api_tokens, ApiToken
 
-    timestamps(type: :utc_datetime_usec)
+    timestamps()
   end
 
   def create_changeset(user, attrs \\ %{}) do

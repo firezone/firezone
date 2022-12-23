@@ -2,8 +2,7 @@ defmodule FzHttp.Configurations.Logo do
   @moduledoc """
   Embedded Schema for logo
   """
-
-  use Ecto.Schema
+  use FzHttp, :schema
   import Ecto.Changeset
 
   embedded_schema do
