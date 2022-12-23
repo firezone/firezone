@@ -13,7 +13,7 @@ defmodule FzHttp.ConnectivityChecks.ConnectivityCheck do
     field :response_headers, :map
     field :url, :string
 
-    timestamps()
+    timestamps(updated_at: false)
   end
 
   @doc false

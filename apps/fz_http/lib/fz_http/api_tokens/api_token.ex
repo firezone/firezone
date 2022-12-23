@@ -7,11 +7,10 @@ defmodule FzHttp.ApiTokens.ApiToken do
   alias FzHttp.Users.User
 
   schema "api_tokens" do
-    field :revoked_at, :utc_datetime_usec
-
     belongs_to :user, User
 
-    timestamps()
+    field :revoked_at, :utc_datetime_usec
+    timestamps(updated_at: false)
   end
 
   @doc false
