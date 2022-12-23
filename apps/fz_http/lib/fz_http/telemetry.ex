@@ -99,7 +99,7 @@ defmodule FzHttp.Telemetry do
         disable_vpn_on_oidc_error: cache().get!(:disable_vpn_on_oidc_error),
         outbound_email: outbound_email?(),
         external_database:
-          external_database?(Map.new(Wrapped.Application.app().fetch_env!(:fz_http, FzHttp.Repo))),
+          external_database?(Map.new(FzHttp.Config.fetch_env!(:fz_http, FzHttp.Repo))),
         logo_type: FzHttp.Configurations.logo_type(cache().get!(:logo))
       ]
   end
@@ -110,7 +110,7 @@ defmodule FzHttp.Telemetry do
 
   defp common_fields do
     [
-      distinct_id: Actual.Application.app().fetch_env!(:fz_http, :telemetry_id),
+      distinct_id: FzHttp.Config.fetch_env!(:fz_http, :telemetry_id),
       fqdn: fqdn(),
       version: version(),
       kernel_version: "#{os_type()} #{os_version()}"
@@ -118,18 +118,18 @@ defmodule FzHttp.Telemetry do
   end
 
   defp telemetry_module do
-    Actual.Application.app().fetch_env!(:fz_http, :telemetry_module)
+    FzHttp.Config.fetch_env!(:fz_http, :telemetry_module)
   end
 
   defp fqdn do
     :fz_http
-    |> Actual.Application.app().fetch_env!(FzHttpWeb.Endpoint)
+    |> FzHttp.Config.fetch_env!(FzHttpWeb.Endpoint)
     |> Keyword.get(:url)
     |> Keyword.get(:host)
   end
 
   defp version do
-    Actual.Application.app().spec(:fz_http, :vsn) |> to_string()
+    Application.spec(:fz_http, :vsn) |> to_string()
   end
 
   defp external_database?(repo_conf) when is_map_key(repo_conf, :hostname) do
@@ -147,7 +147,7 @@ defmodule FzHttp.Telemetry do
   end
 
   defp outbound_email? do
-    from_email = Wrapped.Application.app().fetch_env!(:fz_http, FzHttpWeb.Mailer)[:from_email]
+    from_email = FzHttp.Config.fetch_env!(:fz_http, FzHttpWeb.Mailer)[:from_email]
 
     !is_nil(from_email)
   end

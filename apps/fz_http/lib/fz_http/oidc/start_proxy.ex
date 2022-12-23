@@ -5,7 +5,6 @@ defmodule FzHttp.OIDC.StartProxy do
   """
 
   require Logger
-  import Actual.Application
   import Actual.Cache
 
   def child_spec(arg) do
@@ -34,7 +33,7 @@ defmodule FzHttp.OIDC.StartProxy do
   end
 
   defp parse(auth_oidc_config) when is_map(auth_oidc_config) do
-    external_url = app().fetch_env!(:fz_http, :external_url)
+    external_url = FzHttp.Config.fetch_env!(:fz_http, :external_url)
 
     # Convert Map to something openid_connect expects, atomic keyed configs
     # eg. [provider: [client_id: "CLIENT_ID" ...]]

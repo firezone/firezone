@@ -3,8 +3,6 @@ defmodule FzHttpWeb.Session do
   Dynamically configures session.
   """
 
-  import Actual.Application
-
   # 4 hours
   @max_cookie_age 14_400
 
@@ -27,14 +25,14 @@ defmodule FzHttpWeb.Session do
   end
 
   defp cookie_secure do
-    app().fetch_env!(:fz_http, :cookie_secure)
+    FzHttp.Config.fetch_env!(:fz_http, :cookie_secure)
   end
 
   defp signing_salt do
-    app().fetch_env!(:fz_http, :cookie_signing_salt)
+    FzHttp.Config.fetch_env!(:fz_http, :cookie_signing_salt)
   end
 
   defp encryption_salt do
-    app().fetch_env!(:fz_http, :cookie_encryption_salt)
+    FzHttp.Config.fetch_env!(:fz_http, :cookie_encryption_salt)
   end
 end

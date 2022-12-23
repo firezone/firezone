@@ -13,20 +13,6 @@ defmodule FzHttp.Validators.Common do
       valid_cidr?: 1
     ]
 
-  defp do_trim(nil), do: nil
-
-  defp do_trim(str) when is_binary(str), do: String.trim(str)
-
-  def trim(changeset, field) when is_atom(field) do
-    trim(changeset, [field])
-  end
-
-  def trim(changeset, fields) when is_list(fields) do
-    Enum.reduce(fields, changeset, fn field, cs ->
-      update_change(cs, field, &do_trim/1)
-    end)
-  end
-
   def validate_uri(changeset, fields) when is_list(fields) do
     Enum.reduce(fields, changeset, fn field, accumulated_changeset ->
       validate_uri(accumulated_changeset, field)
@@ -110,22 +96,6 @@ defmodule FzHttp.Validators.Common do
     end)
   end
 
-  def validate_no_mask(%Ecto.Changeset{changes: %{ipv4: %{netmask: nm}}} = changeset, :ipv4)
-      when nm in [nil, 32],
-      do: changeset
-
-  def validate_no_mask(%Ecto.Changeset{changes: %{ipv6: %{netmask: nm}}} = changeset, :ipv6)
-      when nm in [nil, 128],
-      do: changeset
-
-  def validate_no_mask(%Ecto.Changeset{changes: %{ipv4: %{netmask: _}}} = changeset, :ipv4),
-    do: netmask_error(changeset, :ipv4)
-
-  def validate_no_mask(%Ecto.Changeset{changes: %{ipv6: %{netmask: _}}} = changeset, :ipv6),
-    do: netmask_error(changeset, :ipv6)
-
-  def validate_no_mask(changeset, _), do: changeset
-
   defp split_comma_list(text) do
     text
     |> String.split(",")
@@ -140,11 +110,25 @@ defmodule FzHttp.Validators.Common do
     end
   end
 
-  defp netmask_error(changeset, ip_type) do
-    add_error(
-      changeset,
-      ip_type,
-      "Only IPs without netmask are supported."
-    )
+  @doc """
+  Puts the change if field is not changed or it's value is set to `nil`.
+  """
+  def put_default_value(changeset, _field, nil) do
+    changeset
+  end
+
+  def put_default_value(changeset, field, value) do
+    case fetch_field(changeset, field) do
+      {:data, nil} -> put_change(changeset, field, maybe_apply(value))
+      :error -> put_change(changeset, field, maybe_apply(value))
+      _ -> changeset
+    end
+  end
+
+  defp maybe_apply(fun) when is_function(fun, 0), do: fun.()
+  defp maybe_apply(value), do: value
+
+  def trim_change(changeset, field) do
+    update_change(changeset, field, &String.trim/1)
   end
 end

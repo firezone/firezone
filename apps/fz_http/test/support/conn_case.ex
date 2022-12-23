@@ -18,7 +18,6 @@ defmodule FzHttpWeb.ConnCase do
   use ExUnit.CaseTemplate
   use FzHttp.CaseTemplate
 
-  alias Ecto.Adapters.SQL.Sandbox
   alias FzHttpWeb.Auth.HTML.Authentication
   alias FzHttp.UsersFixtures
 
@@ -46,8 +45,18 @@ defmodule FzHttpWeb.ConnCase do
     Phoenix.ConnTest.build_conn()
   end
 
+  def api_conn do
+    new_conn()
+    |> Plug.Conn.put_req_header("accept", "application/json")
+  end
+
   def admin_conn(tags) do
     authed_conn(:admin, tags)
+  end
+
+  def unprivileged_conn(%{api: true} = tags) do
+    authed_conn(:unprivileged, tags)
+    |> Plug.Conn.put_req_header("accept", "application/json")
   end
 
   def unprivileged_conn(tags) do
@@ -78,16 +87,11 @@ defmodule FzHttpWeb.ConnCase do
   end
 
   setup tags do
-    :ok = Sandbox.checkout(FzHttp.Repo)
-
-    unless tags[:async] do
-      Sandbox.mode(FzHttp.Repo, {:shared, self()})
-    end
-
     {unprivileged_user, unprivileged_conn} = unprivileged_conn(tags)
     {admin_user, admin_conn} = admin_conn(tags)
 
     {:ok,
+     api_conn: api_conn(),
      unauthed_conn: new_conn(),
      admin_user: admin_user,
      unprivileged_user: unprivileged_user,

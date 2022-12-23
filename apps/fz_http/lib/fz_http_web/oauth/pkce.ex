@@ -8,7 +8,6 @@ defmodule FzHttpWeb.OAuth.PKCE do
   @code_challenge_method :S256
 
   import Plug.Conn
-  import Wrapped.Application
 
   def put_cookie(conn, verifier) do
     put_resp_cookie(conn, @pkce_key, verifier, cookie_opts())
@@ -44,7 +43,7 @@ defmodule FzHttpWeb.OAuth.PKCE do
       max_age: @pkce_valid_duration,
       sign: true,
       same_site: "Lax",
-      secure: app().fetch_env!(:fz_http, :cookie_secure)
+      secure: FzHttp.Config.fetch_env!(:fz_http, :cookie_secure)
     ]
   end
 end

@@ -5,10 +5,8 @@ defmodule FzHttp.MFA.Method do
 
   use Ecto.Schema
   import Ecto.Changeset
-  import FzHttp.Validators.Common, only: [trim: 2]
 
   @primary_key {:id, :binary_id, autogenerate: true}
-  @whitespace_trimmed_fields :name
 
   schema "mfa_methods" do
     field :name, :string
@@ -27,7 +25,7 @@ defmodule FzHttp.MFA.Method do
   def changeset(method, attrs) do
     method
     |> cast(attrs, [:name, :type, :credential_id, :payload, :last_used_at, :secret, :code])
-    |> trim(@whitespace_trimmed_fields)
+    |> update_change(:name, &String.trim/1)
     |> cast_payload()
     |> validate_required([:name, :type, :payload])
     |> validate_code()

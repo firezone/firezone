@@ -51,7 +51,7 @@ MIX_ENV=prod mix deps.get
 MIX_ENV=prod mix release
 ```
 
-After the release build finishes, you should have a shiny new Firezone instance at
+After the release build finishes, you should have a shiny new Firezone release artifact in
 `<CURRENT_DIR>/_build/dev/rel/firezone`. In the `bin` folder, the `firezone` binary
 can be used to start up Firezone. If you run it without any arguments you should see
 a list of available commands like this:
@@ -73,7 +73,10 @@ The known commands are:
     pid            Prints the operating system PID of the running system via a remote command
     version        Prints the release name and version to be booted
 ```
-Most deployment-related configuration is handled with environment variables. You'll probably want to at least set variables related to your reverse proxy and database. See the [ENV var reference](/reference/env-vars/) for an exhaustive list.
+
+Most deployment-related configuration is handled with environment variables.
+You'll probably want to at least set variables related to your reverse proxy
+and database. See the [ENV var reference](/reference/env-vars/) for an exhaustive list.
 
 Now all you need are the database and reverse proxy that you've previously set up.
 Once that's done, you can use `firezone start` to start Firezone and run

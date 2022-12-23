@@ -3,13 +3,11 @@ defmodule FzHttpWeb.HeaderHelpers do
   Helper functionalities with regards to headers
   """
 
-  import Actual.Application
-
   @remote_ip_headers ["x-forwarded-for"]
 
-  def external_trusted_proxies, do: app().fetch_env!(:fz_http, :external_trusted_proxies)
+  def external_trusted_proxies, do: FzHttp.Config.fetch_env!(:fz_http, :external_trusted_proxies)
 
-  def clients, do: app().fetch_env!(:fz_http, :private_clients)
+  def clients, do: FzHttp.Config.fetch_env!(:fz_http, :private_clients)
 
   def proxied?, do: not (external_trusted_proxies() == false)
 

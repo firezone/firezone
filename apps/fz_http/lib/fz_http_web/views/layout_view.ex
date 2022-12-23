@@ -1,8 +1,6 @@
 defmodule FzHttpWeb.LayoutView do
   use FzHttpWeb, :view
 
-  import Wrapped.Application
-
   @doc """
   Generate a random feedback email to avoid spam.
   """

@@ -7,7 +7,6 @@ defmodule FzHttpWeb.OIDC.State do
   @oidc_state_valid_duration 300
 
   import Plug.Conn
-  import Wrapped.Application
 
   def put_cookie(conn, state) do
     put_resp_cookie(conn, @oidc_state_key, state, cookie_opts())
@@ -34,7 +33,7 @@ defmodule FzHttpWeb.OIDC.State do
       max_age: @oidc_state_valid_duration,
       sign: true,
       same_site: "Lax",
-      secure: app().fetch_env!(:fz_http, :cookie_secure)
+      secure: FzHttp.Config.fetch_env!(:fz_http, :cookie_secure)
     ]
   end
 end

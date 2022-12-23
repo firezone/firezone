@@ -5,10 +5,9 @@ defmodule FzHttp.Rules do
 
   import Ecto.Query, warn: false
   import Ecto.Changeset
-  import Actual.Application
   alias FzHttp.{Repo, Rules.Rule, Rules.RuleSetting, Telemetry}
 
-  def port_rules_supported?, do: app().fetch_env!(:fz_wall, :port_based_rules_supported)
+  def port_rules_supported?, do: FzHttp.Config.fetch_env!(:fz_wall, :port_based_rules_supported)
 
   defp scope(port_based_rules) when port_based_rules == true do
     Rule

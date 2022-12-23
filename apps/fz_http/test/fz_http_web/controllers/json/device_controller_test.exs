@@ -1,10 +1,10 @@
 defmodule FzHttpWeb.JSON.DeviceControllerTest do
-  use FzHttpWeb.APICase
+  use FzHttpWeb.ConnCase, async: true, api: true
 
   describe "show device" do
     setup :create_device
 
-    test "shows device", %{conn: conn, device: %{id: id}} do
+    test "shows device", %{api_conn: conn, device: %{id: id}} do
       conn = get(conn, ~p"/v1/devices/#{id}")
       assert %{"id" => ^id} = json_response(conn, 200)["data"]
     end
@@ -26,12 +26,12 @@ defmodule FzHttpWeb.JSON.DeviceControllerTest do
       "persistent_keepalive" => 9,
       "allowed_ips" => "0.0.0.0/0, ::/0, 1.1.1.1",
       "dns" => "9.9.9.8",
-      "ipv4" => "10.3.2.100",
-      "ipv6" => "fd00::3:2:e"
+      "ipv4" => "100.64.0.2",
+      "ipv6" => "fd00::2"
     }
 
     @tag params: @params
-    test "creates device", %{conn: conn, unprivileged_user: %{id: id}, params: params} do
+    test "creates device", %{api_conn: conn, unprivileged_user: %{id: id}, params: params} do
       conn = post(conn, ~p"/v1/devices", device: Map.merge(params, %{"user_id" => id}))
       assert @params = json_response(conn, 201)["data"]
     end
@@ -43,7 +43,7 @@ defmodule FzHttpWeb.JSON.DeviceControllerTest do
     @tag params: %{
            "name" => "json-update-device"
          }
-    test "updates device", %{conn: conn, params: params, device: %{id: id}} do
+    test "updates device", %{api_conn: conn, params: params, device: %{id: id}} do
       conn = put(conn, ~p"/v1/devices/#{id}", device: params)
       assert %{"id" => ^id} = json_response(conn, 200)["data"]
 
@@ -58,7 +58,7 @@ defmodule FzHttpWeb.JSON.DeviceControllerTest do
   describe "list devices" do
     setup :create_devices
 
-    test "lists devices", %{conn: conn, devices: devices} do
+    test "lists devices", %{api_conn: conn, devices: devices} do
       conn = get(conn, ~p"/v1/devices")
       assert length(json_response(conn, 200)["data"]) == length(devices)
     end
@@ -67,7 +67,7 @@ defmodule FzHttpWeb.JSON.DeviceControllerTest do
   describe "delete device" do
     setup :create_device
 
-    test "deletes device", %{conn: conn, device: device} do
+    test "deletes device", %{api_conn: conn, device: device} do
       conn = delete(conn, ~p"/v1/devices/#{device}")
       assert response(conn, 204)
 

@@ -9,7 +9,7 @@ defmodule FzHttp.Events do
 
   # set_config is used because devices need to be re-evaluated in case a
   # device is added to a User that's not active.
-  def add(subject, device) when subject == "devices" do
+  def add("devices", device) do
     with :ok <- GenServer.call(wall_pid(), {:add_device, Devices.setting_projection(device)}),
          :ok <- GenServer.call(vpn_pid(), {:set_config, Devices.to_peer_list()}) do
       :ok
@@ -28,11 +28,11 @@ defmodule FzHttp.Events do
     end
   end
 
-  def add(subject, rule) when subject == "rules" do
+  def add("rules", rule) do
     GenServer.call(wall_pid(), {:add_rule, Rules.setting_projection(rule)})
   end
 
-  def add(subject, user) when subject == "users" do
+  def add("users", user) do
     # Security note: It's important to let an exception here crash this service
     # otherwise, nft could have succeeded in adding the user's set but not the rules
     # this means that in `update_device` add_device can succeed adding the device to the user's set
@@ -40,7 +40,7 @@ defmodule FzHttp.Events do
     GenServer.call(wall_pid(), {:add_user, Users.setting_projection(user)})
   end
 
-  def delete(subject, device) when subject == "devices" do
+  def delete("devices", device) do
     with :ok <- GenServer.call(wall_pid(), {:delete_device, Devices.setting_projection(device)}),
          :ok <- GenServer.call(vpn_pid(), {:remove_peer, device.public_key}) do
       :ok
@@ -59,11 +59,11 @@ defmodule FzHttp.Events do
     end
   end
 
-  def delete(subject, rule) when subject == "rules" do
+  def delete("rules", rule) do
     GenServer.call(wall_pid(), {:delete_rule, Rules.setting_projection(rule)})
   end
 
-  def delete(subject, user) when subject == "users" do
+  def delete("users", user) do
     GenServer.call(wall_pid(), {:delete_user, Users.setting_projection(user)})
   end
 

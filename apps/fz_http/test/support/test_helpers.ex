@@ -27,16 +27,6 @@ defmodule FzHttp.TestHelpers do
     end)
   end
 
-  def stub_app_env(stubbed_app \\ :fz_http, key, val) do
-    stub(Application.Mock, :fetch_env!, fn app, conf_key ->
-      if app == stubbed_app && key == conf_key do
-        val
-      else
-        Application.fetch_env!(app, conf_key)
-      end
-    end)
-  end
-
   def clear_users do
     Repo.delete_all(User)
   end
@@ -146,9 +136,7 @@ defmodule FzHttp.TestHelpers do
           DevicesFixtures.device(%{
             name: "device #{num}",
             public_key: "#{num}",
-            user_id: user.id,
-            ipv4: "10.3.2.#{num}",
-            ipv6: "fd00::3:2:#{num}"
+            user_id: user.id
           })
 
         rule = RulesFixtures.rule(%{destination: destination, user_id: user.id})
@@ -176,9 +164,7 @@ defmodule FzHttp.TestHelpers do
       DevicesFixtures.device(%{
         name: "device",
         public_key: "1",
-        user_id: user.id,
-        ipv4: "10.3.2.2",
-        ipv6: "fd00::3:2:2"
+        user_id: user.id
       })
 
     {:ok, rule: rule, user: user, device: device}

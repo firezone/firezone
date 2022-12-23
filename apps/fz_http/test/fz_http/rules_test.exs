@@ -4,8 +4,8 @@ defmodule FzHttp.RulesTest do
   alias FzHttp.Rules
 
   setup do
-    stub_app_env(:wireguard_ipv4_network, "10.3.2.0/24")
-    stub_app_env(:wireguard_ipv6_network, "fd00::3:2:0/120")
+    FzHttp.Config.maybe_put_env_override(:wireguard_ipv4_network, "100.64.0.0/10")
+    FzHttp.Config.maybe_put_env_override(:wireguard_ipv6_network, "fd00::0/106")
 
     :ok
   end
@@ -124,7 +124,7 @@ defmodule FzHttp.RulesTest do
          }
     test "updates rule with string params", %{rule: rule, params: params} do
       assert {:ok, rule} = Rules.update_rule(rule, params)
-      assert rule.destination == %Postgrex.INET{address: {123, 123, 123, 123}, netmask: 32}
+      assert rule.destination == %Postgrex.INET{address: {123, 123, 123, 123}}
       assert rule.action == :accept
       assert rule.port_type == :udp
       assert rule.port_range == "1 - 65000"
@@ -138,7 +138,7 @@ defmodule FzHttp.RulesTest do
          }
     test "updates rule with atom attrs", %{rule: rule, attrs: attrs} do
       assert {:ok, rule} = Rules.update_rule(rule, attrs)
-      assert rule.destination == %Postgrex.INET{address: {123, 123, 123, 123}, netmask: 32}
+      assert rule.destination == %Postgrex.INET{address: {123, 123, 123, 123}}
       assert rule.action == :accept
       assert rule.port_type == :udp
       assert rule.port_range == "1 - 65000"

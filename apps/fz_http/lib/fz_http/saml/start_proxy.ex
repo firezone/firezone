@@ -5,7 +5,6 @@ defmodule FzHttp.SAML.StartProxy do
   """
 
   import Actual.Cache
-  import Actual.Application
 
   def child_spec(arg) do
     %{id: __MODULE__, start: {__MODULE__, :start_link, [arg]}}
@@ -14,7 +13,7 @@ defmodule FzHttp.SAML.StartProxy do
   def start_link(_) do
     samly = Samly.Provider.start_link()
 
-    app().fetch_env!(:samly, Samly.Provider)
+    FzHttp.Config.fetch_env!(:samly, Samly.Provider)
     |> set_service_provider()
     |> set_identity_providers()
     |> refresh()
@@ -23,9 +22,9 @@ defmodule FzHttp.SAML.StartProxy do
   end
 
   def set_service_provider(samly_configs) do
-    entity_id = app().fetch_env!(:fz_http, :saml_entity_id)
-    keyfile = app().fetch_env!(:fz_http, :saml_keyfile_path)
-    certfile = app().fetch_env!(:fz_http, :saml_certfile_path)
+    entity_id = FzHttp.Config.fetch_env!(:fz_http, :saml_entity_id)
+    keyfile = FzHttp.Config.fetch_env!(:fz_http, :saml_keyfile_path)
+    certfile = FzHttp.Config.fetch_env!(:fz_http, :saml_certfile_path)
 
     # Only one service provider definition: us.
     Keyword.put(samly_configs, :service_providers, [
@@ -39,7 +38,7 @@ defmodule FzHttp.SAML.StartProxy do
   end
 
   def set_identity_providers(samly_configs, providers \\ cache().get!(:saml_identity_providers)) do
-    external_url = app().fetch_env!(:fz_http, :external_url)
+    external_url = FzHttp.Config.fetch_env!(:fz_http, :external_url)
 
     identity_providers =
       providers
@@ -60,7 +59,7 @@ defmodule FzHttp.SAML.StartProxy do
   end
 
   def refresh(samly_configs) do
-    app().put_env(:samly, Samly.Provider, samly_configs)
+    Application.put_env(:samly, Samly.Provider, samly_configs)
     Samly.Provider.refresh_providers()
   end
 end

@@ -6,7 +6,6 @@ defmodule FzHttpWeb.LiveHelpers do
   """
   use Phoenix.Component
   alias FzHttp.{Sites, Users}
-  import Wrapped.Application
 
   def live_modal(component, opts) do
     path = Keyword.fetch!(opts, :return_to)
@@ -37,7 +36,7 @@ defmodule FzHttpWeb.LiveHelpers do
   end
 
   def admin_email do
-    app().fetch_env!(:fz_http, :admin_email)
+    FzHttp.Config.fetch_env!(:fz_http, :admin_email)
   end
 
   def vpn_sessions_expire? do
