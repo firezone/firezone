@@ -151,6 +151,8 @@ defmodule FzHttp.Devices do
 
   defp config(device, key) do
     if Map.get(device, String.to_atom("use_site_#{key}")) do
+      dbg(key)
+      dbg(Sites.get_site!())
       Map.get(Sites.get_site!(), key)
     else
       Map.get(device, key)
