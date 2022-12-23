@@ -10,10 +10,9 @@ defmodule FzHttp.Devices do
     cutoff = DateTime.add(DateTime.utc_now(), -1 * duration_in_secs)
 
     Repo.one(
-      from(d in Device,
+      from d in Device,
         select: count(d.id),
         where: d.latest_handshake > ^cutoff
-      )
     )
   end
 
@@ -29,12 +28,11 @@ defmodule FzHttp.Devices do
 
   def max_count_by_user_id do
     Repo.one(
-      from(d in Device,
+      from d in Device,
         select: fragment("count(*) AS user_count"),
         group_by: d.user_id,
         order_by: fragment("user_count DESC"),
         limit: 1
-      )
     )
   end
 
@@ -45,7 +43,7 @@ defmodule FzHttp.Devices do
   def list_devices(%User{} = user), do: list_devices(user.id)
 
   def list_devices(user_id) do
-    Repo.all(from(d in Device, where: d.user_id == ^user_id))
+    Repo.all(from d in Device, where: d.user_id == ^user_id)
   end
 
   def as_settings do

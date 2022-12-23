@@ -65,7 +65,7 @@ defmodule FzHttp.AllowRules do
   def list_allow_rules, do: Repo.all(AllowRule)
 
   def list_allow_rules(%Gateway{} = gateway) do
-    Repo.all(from(r in AllowRule, where: r.gateway_id == ^gateway.id))
+    Repo.all(from r in AllowRule, where: r.gateway_id == ^gateway.id)
   end
 
   def list_allow_rules(%User{} = user) do
