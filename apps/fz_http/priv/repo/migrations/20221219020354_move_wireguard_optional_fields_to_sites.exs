@@ -32,7 +32,7 @@ defmodule FzHttp.Repo.Migrations.MoveWireguardOptionalFieldsToSites do
 
     execute("""
       UPDATE sites
-      SET endpoint = '#{URI.parse(System.get_env("EXTERNAL_URL", "localhost")).host}'
+      SET endpoint = '#{URI.parse(System.get_env("EXTERNAL_URL", "https://localhost/")).host}'
       WHERE endpoint IS NULL
     """)
   end
