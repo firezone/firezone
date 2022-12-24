@@ -7,7 +7,7 @@ seriously and strive to fix all security issues as soon as they're reported.
 
 We'll announce major security issues on our security mailing list located at:
 
-https://discourse.firez.one
+https://discourse.firez.one/?utm_source=security
 
 ## Supported Versions
 
