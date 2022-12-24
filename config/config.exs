@@ -81,9 +81,6 @@ config :fz_wall,
   wireguard_interface_name: "wg-firezone",
   port_based_rules_supported: true
 
-config :hammer,
-  backend: {Hammer.Backend.ETS, [expiry_ms: 60_000 * 60 * 4, cleanup_interval_ms: 60_000 * 10]}
-
 # This will be changed per-env
 config :fz_vpn,
   wireguard_private_key_path: "priv/wg_dev_private_key",
