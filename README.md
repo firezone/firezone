@@ -5,7 +5,7 @@
   <a href="https://github.com/firezone/firezone/releases">
     <img src="https://img.shields.io/github/v/release/firezone/firezone?color=%23999">
   </a>
-  <a href="https://discourse.firez.one">
+  <a href="https://discourse.firez.one/?utm_source=readme">
     <img src="https://img.shields.io/static/v1?logo=discourse&logoColor=959DA5&label=support%20forum&labelColor=333a41&message=join&color=611f69" alt="firezone Discourse" />
   </a>
   <img src="https://img.shields.io/static/v1?logo=github&logoColor=959DA5&label=Test&labelColor=333a41&message=passing&color=3AC358" alt="firezone" />
@@ -22,10 +22,10 @@
   </a>
 </p>
 
-## [Firezone](https://www.firezone.dev) is a self-hosted VPN server and Linux firewall
+## [Firezone](https://www.firezone.dev/?utm_source=readme) is a self-hosted VPN server and Linux firewall
 
 * Manage remote access through an intuitive web interface and CLI utility.
-* [Deploy on your own infrastructure](https://docs.firezone.dev/deploy) to keep control of your network traffic.
+* [Deploy on your own infrastructure](https://docs.firezone.dev/deploy?utm_source=readme) to keep control of your network traffic.
 * Built on [WireGuard®](https://www.wireguard.com/) to be stable, performant, and lightweight.
 
 ![Firezone Architecture](https://user-images.githubusercontent.com/52545545/183804397-ae81ca4e-6972-41f9-80d4-b431a077119d.png)
@@ -34,10 +34,10 @@
 
 Follow our [deploy guide](https://docs.firezone.dev/deploy) to install your self-hosted instance of Firezone.
 
-Or, if you're on a [supported platform](https://docs.firezone.dev/deploy/docker/supported-platforms),
+Or, if you're on a [supported platform](https://docs.firezone.dev/deploy/docker/supported-platforms?utm_source=readme),
 try our [auto-install script](https://docs.firezone.dev/deploy/docker/#option-1-automatic-install).
 
-Using Firezone in production at your organization? Take a look at our [Enterprise Plan](https://www.firezone.dev/pricing).
+Using Firezone in production at your organization? Take a look at our [Enterprise Plan](https://www.firezone.dev/pricing?utm_source=readme).
 
 ## Features
 
@@ -69,7 +69,7 @@ Additional documentation on general usage, troubleshooting, and configuration ca
 If you're looking for help installing, configuring, or using Firezone, check our
 community support options:
 
-1. [Discussion Forums](https://discourse.firez.one/): Ask questions, report
+1. [Discussion Forums](https://discourse.firez.one/?utm_source=readme): Ask questions, report
   bugs, and suggest features.
 1. [Public Slack Group](https://join.slack.com/t/firezone-users/shared_invite/zt-111043zus-j1lP_jP5ohv52FhAayzT6w):
   Join live discussions, meet other users, and get to know the contributors.
@@ -77,7 +77,7 @@ community support options:
   or make a contribution to Firezone.
 
 If you need help deploying or maintaining Firezone for your business, consider
-[contacting us about our paid support plan](https://firezone.dev/contact/sales).
+[contacting us about our paid support plan](https://www.firezone.dev/contact/sales?utm_source=readme).
 
 ## Star History
 

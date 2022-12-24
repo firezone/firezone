@@ -63,6 +63,6 @@ defmodule FzHttpWeb.SettingLive.Account do
 
   defp subscribe_link do
     tid = Application.get_env(:fz_http, :telemetry_id)
-    "https://www.firezone.dev/contact/sales#uid=#{tid}"
+    "https://www.firezone.dev/contact/sales?utm_source=product&uid=#{tid}"
   end
 end
