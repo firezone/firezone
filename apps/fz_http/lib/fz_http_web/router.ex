@@ -5,9 +5,6 @@ defmodule FzHttpWeb.Router do
 
   use FzHttpWeb, :router
 
-  # Limit total requests to 50 per every 10 seconds
-  @root_rate_limit [rate_limit: {"root", 10_000, 50}, by: :ip]
-
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session
@@ -15,9 +12,6 @@ defmodule FzHttpWeb.Router do
     plug :put_root_layout, {FzHttpWeb.LayoutView, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
-
-    # XXX: Make this configurable
-    plug Hammer.Plug, @root_rate_limit
   end
 
   pipeline :api do
