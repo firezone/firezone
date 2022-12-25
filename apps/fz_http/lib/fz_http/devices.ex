@@ -172,7 +172,6 @@ defmodule FzHttp.Devices do
   def as_encoded_config(device), do: Base.encode64(as_config(device))
 
   def as_config(device) do
-    wireguard_port = Application.fetch_env!(:fz_vpn, :wireguard_port)
     server_public_key = Application.get_env(:fz_vpn, :wireguard_public_key)
 
     if is_nil(server_public_key) do
@@ -192,7 +191,7 @@ defmodule FzHttp.Devices do
     #{psk_config(device)}
     PublicKey = #{server_public_key}
     #{allowed_ips_config(device)}
-    Endpoint = #{endpoint(device)}:#{wireguard_port}
+    #{endpoint_config(device)}
     #{persistent_keepalive_config(device)}
     """
   end
@@ -245,6 +244,17 @@ defmodule FzHttp.Devices do
       ""
     else
       "DNS = #{dns}"
+    end
+  end
+
+  defp endpoint_config(device) do
+    ep = endpoint(device)
+    wireguard_port = Application.fetch_env!(:fz_vpn, :wireguard_port)
+
+    if field_empty?(ep) do
+      ""
+    else
+      "Endpoint = #{ep}:#{wireguard_port}"
     end
   end
 
