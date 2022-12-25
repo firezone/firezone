@@ -62,4 +62,9 @@ defmodule FzHttp.SAML.StartProxy do
     Application.put_env(:samly, Samly.Provider, samly_configs)
     Samly.Provider.refresh_providers()
   end
+
+  def restart do
+    :ok = Supervisor.terminate_child(FzHttp.Supervisor, __MODULE__)
+    Supervisor.restart_child(FzHttp.Supervisor, __MODULE__)
+  end
 end

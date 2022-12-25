@@ -176,7 +176,7 @@ defmodule FzHttpWeb.Router do
     end
   end
 
-  scope "/v1", FzHttpWeb.JSON do
+  scope "/v0", FzHttpWeb.JSON do
     pipe_through :api
 
     resources "/configuration", ConfigurationController, singleton: true, only: [:show, :update]

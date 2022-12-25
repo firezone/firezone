@@ -26,22 +26,25 @@ defmodule FzHttp.Configurations do
     config
     |> Configuration.changeset(attrs)
     |> prepare_changes(fn changeset ->
-      # XXX: Move OIDC and SAML restart logic in here after SAML PR is merged
-
-      for {k, v} <- changeset.changes do
-        case v do
-          %Ecto.Changeset{} ->
-            cache().put!(k, v.changes)
-
-          _ ->
-            cache().put!(k, v)
-        end
-      end
-
+      changeset.changes |> Enum.each(&put_cache/1)
       changeset
     end)
     |> Repo.update()
   end
+
+  defp put_cache({:openid_connect_providers = key, val}) do
+    FzHttp.OIDC.StartProxy.restart()
+    cache().put!(key, val)
+  end
+
+  defp put_cache({:saml_identity_providers = key, val}) do
+    FzHttp.SAML.StartProxy.restart()
+    cache().put!(key, val)
+  end
+
+  # nested changeset values
+  defp put_cache({key, %Ecto.Changeset{} = val}), do: cache().put!(key, val.changes)
+  defp put_cache({key, val}), do: cache().put!(key, val)
 
   def logo_types, do: ~w(Default URL Upload)
 

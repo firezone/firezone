@@ -10,9 +10,8 @@ defmodule FzHttpWeb.Auth.JSON.Pipeline do
 
   # 90 days
   @max_age 60 * 60 * 24 * 90
-  @claims %{"typ" => "api"}
 
-  plug Guardian.Plug.VerifyHeader, claims: @claims, max_age: @max_age
+  plug Guardian.Plug.VerifyHeader, max_age: @max_age
   plug Guardian.Plug.EnsureAuthenticated
   plug Guardian.Plug.LoadResource
 end

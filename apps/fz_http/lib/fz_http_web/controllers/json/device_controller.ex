@@ -19,7 +19,7 @@ defmodule FzHttpWeb.JSON.DeviceController do
     with {:ok, device} <- Devices.create_device(device_params) do
       conn
       |> put_status(:created)
-      |> put_resp_header("location", ~p"/v1/devices/#{device}")
+      |> put_resp_header("location", ~p"/v0/devices/#{device}")
       |> render("show.json", device: device)
     end
   end

@@ -237,11 +237,7 @@ defmodule FzHttpWeb.SettingLive.SAMLFormComponent do
       end
 
     case update do
-      {:ok, config} ->
-        Application.fetch_env!(:samly, Samly.Provider)
-        |> FzHttp.SAML.StartProxy.set_identity_providers(config.saml_identity_providers)
-        |> FzHttp.SAML.StartProxy.refresh()
-
+      {:ok, _config} ->
         {:noreply,
          socket
          |> put_flash(:info, "Updated successfully.")

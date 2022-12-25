@@ -28,6 +28,11 @@ defmodule FzHttp.OIDC.StartProxy do
     end
   end
 
+  def restart do
+    :ok = Supervisor.terminate_child(FzHttp.Supervisor, __MODULE__)
+    Supervisor.restart_child(FzHttp.Supervisor, __MODULE__)
+  end
+
   defp parse(auth_oidc_env) when is_binary(auth_oidc_env) do
     auth_oidc_env |> Jason.decode!() |> parse()
   end

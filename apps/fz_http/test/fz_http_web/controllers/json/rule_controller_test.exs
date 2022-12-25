@@ -12,7 +12,7 @@ defmodule FzHttpWeb.JSON.RuleControllerTest do
     setup :create_rule
 
     test "shows rule", %{api_conn: conn, rule: %{id: id}} do
-      conn = get(conn, ~p"/v1/rules/#{id}")
+      conn = get(conn, ~p"/v0/rules/#{id}")
       assert %{"id" => ^id} = json_response(conn, 200)["data"]
     end
   end
@@ -20,7 +20,7 @@ defmodule FzHttpWeb.JSON.RuleControllerTest do
   describe "create rule" do
     @tag params: @rule_params
     test "creates rule", %{api_conn: conn, unprivileged_user: user, params: params} do
-      conn = post(conn, ~p"/v1/rules", rule: Map.merge(params, %{"user_id" => user.id}))
+      conn = post(conn, ~p"/v0/rules", rule: Map.merge(params, %{"user_id" => user.id}))
       assert @rule_params = json_response(conn, 201)["data"]
     end
   end
@@ -30,10 +30,10 @@ defmodule FzHttpWeb.JSON.RuleControllerTest do
 
     @tag params: @rule_params
     test "updates rule", %{api_conn: conn, params: params, rule: %{id: id}} do
-      conn = put(conn, ~p"/v1/rules/#{id}", rule: params)
+      conn = put(conn, ~p"/v0/rules/#{id}", rule: params)
       assert %{"id" => ^id} = json_response(conn, 200)["data"]
 
-      conn = get(conn, ~p"/v1/rules/#{id}")
+      conn = get(conn, ~p"/v0/rules/#{id}")
 
       assert @rule_params = json_response(conn, 200)["data"]
     end
@@ -43,7 +43,7 @@ defmodule FzHttpWeb.JSON.RuleControllerTest do
     setup :create_rules
 
     test "lists rules", %{api_conn: conn, rules: rules} do
-      conn = get(conn, ~p"/v1/rules")
+      conn = get(conn, ~p"/v0/rules")
       assert length(json_response(conn, 200)["data"]) == length(rules)
     end
   end
@@ -52,11 +52,11 @@ defmodule FzHttpWeb.JSON.RuleControllerTest do
     setup :create_rule
 
     test "deletes rule", %{api_conn: conn, rule: rule} do
-      conn = delete(conn, ~p"/v1/rules/#{rule}")
+      conn = delete(conn, ~p"/v0/rules/#{rule}")
       assert response(conn, 204)
 
       assert_error_sent 404, fn ->
-        get(conn, ~p"/v1/rules/#{rule}")
+        get(conn, ~p"/v0/rules/#{rule}")
       end
     end
   end

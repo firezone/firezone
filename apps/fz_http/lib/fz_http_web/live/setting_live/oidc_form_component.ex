@@ -212,9 +212,6 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
 
     case update do
       {:ok, _config} ->
-        :ok = Supervisor.terminate_child(FzHttp.Supervisor, FzHttp.OIDC.StartProxy)
-        {:ok, _pid} = Supervisor.restart_child(FzHttp.Supervisor, FzHttp.OIDC.StartProxy)
-
         {:noreply,
          socket
          |> put_flash(:info, "Updated successfully.")

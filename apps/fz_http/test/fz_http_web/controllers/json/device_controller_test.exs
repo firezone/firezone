@@ -5,7 +5,7 @@ defmodule FzHttpWeb.JSON.DeviceControllerTest do
     setup :create_device
 
     test "shows device", %{api_conn: conn, device: %{id: id}} do
-      conn = get(conn, ~p"/v1/devices/#{id}")
+      conn = get(conn, ~p"/v0/devices/#{id}")
       assert %{"id" => ^id} = json_response(conn, 200)["data"]
     end
   end
@@ -32,7 +32,7 @@ defmodule FzHttpWeb.JSON.DeviceControllerTest do
 
     @tag params: @params
     test "creates device", %{api_conn: conn, unprivileged_user: %{id: id}, params: params} do
-      conn = post(conn, ~p"/v1/devices", device: Map.merge(params, %{"user_id" => id}))
+      conn = post(conn, ~p"/v0/devices", device: Map.merge(params, %{"user_id" => id}))
       assert @params = json_response(conn, 201)["data"]
     end
   end
@@ -44,10 +44,10 @@ defmodule FzHttpWeb.JSON.DeviceControllerTest do
            "name" => "json-update-device"
          }
     test "updates device", %{api_conn: conn, params: params, device: %{id: id}} do
-      conn = put(conn, ~p"/v1/devices/#{id}", device: params)
+      conn = put(conn, ~p"/v0/devices/#{id}", device: params)
       assert %{"id" => ^id} = json_response(conn, 200)["data"]
 
-      conn = get(conn, ~p"/v1/devices/#{id}")
+      conn = get(conn, ~p"/v0/devices/#{id}")
 
       assert %{
                "name" => "json-update-device"
@@ -59,7 +59,7 @@ defmodule FzHttpWeb.JSON.DeviceControllerTest do
     setup :create_devices
 
     test "lists devices", %{api_conn: conn, devices: devices} do
-      conn = get(conn, ~p"/v1/devices")
+      conn = get(conn, ~p"/v0/devices")
       assert length(json_response(conn, 200)["data"]) == length(devices)
     end
   end
@@ -68,11 +68,11 @@ defmodule FzHttpWeb.JSON.DeviceControllerTest do
     setup :create_device
 
     test "deletes device", %{api_conn: conn, device: device} do
-      conn = delete(conn, ~p"/v1/devices/#{device}")
+      conn = delete(conn, ~p"/v0/devices/#{device}")
       assert response(conn, 204)
 
       assert_error_sent 404, fn ->
-        get(conn, ~p"/v1/devices/#{device}")
+        get(conn, ~p"/v0/devices/#{device}")
       end
     end
   end

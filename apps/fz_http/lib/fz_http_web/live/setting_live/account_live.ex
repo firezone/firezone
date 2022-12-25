@@ -21,7 +21,6 @@ defmodule FzHttpWeb.SettingLive.Account do
 
   @impl Phoenix.LiveView
   def mount(params, _session, socket) do
-    dbg(params)
     Endpoint.subscribe(@live_sessions_topic)
 
     {:ok,
