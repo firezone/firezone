@@ -219,21 +219,6 @@ defmodule FzHttp.DevicesTest do
       endpoint: "valid-endpoint.example.com"
     }
 
-    @invalid_endpoint_ipv4_attrs %{
-      use_site_endpoint: false,
-      endpoint: "-265.1.1.1"
-    }
-
-    @invalid_endpoint_ipv6_attrs %{
-      use_site_endpoint: false,
-      endpoint: "deadbeef::1"
-    }
-
-    @invalid_endpoint_host_attrs %{
-      use_site_endpoint: false,
-      endpoint: "can't have this"
-    }
-
     @empty_endpoint_attrs %{
       use_site_endpoint: false,
       endpoint: ""
@@ -308,15 +293,6 @@ defmodule FzHttp.DevicesTest do
       assert @valid_endpoint_host_attrs = test_device
     end
 
-    test "prevents updating device with invalid ipv4 endpoint", %{device: device} do
-      {:error, changeset} = Devices.update_device(device, @invalid_endpoint_ipv4_attrs)
-
-      assert changeset.errors[:endpoint] == {
-               "is invalid: -265.1.1.1 is not a valid FQDN or IPv4 / IPv6 address",
-               []
-             }
-    end
-
     test "prevents updating fields if use_site_", %{device: device} do
       for attrs <- @fields_use_site do
         field =
@@ -336,24 +312,6 @@ defmodule FzHttp.DevicesTest do
     @tag attrs: %{use_site_dns: false, dns: "foobar.com"}
     test "allows hosts for DNS", %{attrs: attrs, device: device} do
       assert {:ok, _device} = Devices.update_device(device, attrs)
-    end
-
-    test "prevents updating device with invalid ipv6 endpoint", %{device: device} do
-      {:error, changeset} = Devices.update_device(device, @invalid_endpoint_ipv6_attrs)
-
-      assert changeset.errors[:endpoint] == {
-               "is invalid: deadbeef::1 is not a valid FQDN or IPv4 / IPv6 address",
-               []
-             }
-    end
-
-    test "prevents updating device with invalid host endpoint", %{device: device} do
-      {:error, changeset} = Devices.update_device(device, @invalid_endpoint_host_attrs)
-
-      assert changeset.errors[:endpoint] == {
-               "is invalid: can't have this is not a valid FQDN or IPv4 / IPv6 address",
-               []
-             }
     end
 
     test "prevents updating device with empty endpoint", %{device: device} do

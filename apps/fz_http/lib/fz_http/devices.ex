@@ -263,11 +263,11 @@ defmodule FzHttp.Devices do
     wireguard_port = Application.fetch_env!(:fz_vpn, :wireguard_port)
     colon_count = endpoint |> String.graphemes() |> Enum.count(&(&1 == ":"))
 
-    if colon_count == 0 or is_nil(Regex.named_captures(@capture_port, endpoint)) do
+    if colon_count == 1 or !is_nil(Regex.named_captures(@capture_port, endpoint)) do
+      endpoint
+    else
       # No port found
       "#{endpoint}:#{wireguard_port}"
-    else
-      endpoint
     end
   end
 
