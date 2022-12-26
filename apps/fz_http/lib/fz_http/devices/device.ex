@@ -17,11 +17,11 @@ defmodule FzHttp.Devices.Device do
     field :description, :string
     field :public_key, :string
     field :preshared_key, FzHttp.Encrypted.Binary
-    field :use_site_allowed_ips, :boolean, read_after_writes: true, default: true
-    field :use_site_dns, :boolean, read_after_writes: true, default: true
-    field :use_site_endpoint, :boolean, read_after_writes: true, default: true
-    field :use_site_mtu, :boolean, read_after_writes: true, default: true
-    field :use_site_persistent_keepalive, :boolean, read_after_writes: true, default: true
+    field :use_default_allowed_ips, :boolean, read_after_writes: true, default: true
+    field :use_default_dns, :boolean, read_after_writes: true, default: true
+    field :use_default_endpoint, :boolean, read_after_writes: true, default: true
+    field :use_default_mtu, :boolean, read_after_writes: true, default: true
+    field :use_default_persistent_keepalive, :boolean, read_after_writes: true, default: true
     field :endpoint, :string
     field :mtu, :integer
     field :persistent_keepalive, :integer
@@ -43,11 +43,11 @@ defmodule FzHttp.Devices.Device do
       latest_handshake
       rx_bytes
       tx_bytes
-      use_site_allowed_ips
-      use_site_dns
-      use_site_endpoint
-      use_site_mtu
-      use_site_persistent_keepalive
+      use_default_allowed_ips
+      use_default_dns
+      use_default_endpoint
+      use_default_mtu
+      use_default_persistent_keepalive
       allowed_ips
       dns
       endpoint
@@ -93,8 +93,8 @@ defmodule FzHttp.Devices.Device do
     |> validate_length(:description, max: @description_max_length)
     |> validate_length(:name, min: 1)
     |> assoc_constraint(:user)
-    |> validate_required_unless_site([:endpoint])
-    |> validate_omitted_if_site(~w[
+    |> validate_required_unless_default([:endpoint])
+    |> validate_omitted_if_default(~w[
       allowed_ips
       dns
       endpoint
@@ -103,7 +103,6 @@ defmodule FzHttp.Devices.Device do
     ]a)
     |> Common.validate_list_of_ips_or_cidrs(:allowed_ips)
     |> Common.validate_no_duplicates(:dns)
-    |> Common.validate_fqdn_or_ip(:endpoint)
     |> validate_number(:persistent_keepalive,
       greater_than_or_equal_to: 0,
       less_than_or_equal_to: 120
@@ -184,25 +183,26 @@ defmodule FzHttp.Devices.Device do
     end
   end
 
-  defp validate_omitted_if_site(changeset, fields) when is_list(fields) do
+  defp validate_omitted_if_default(changeset, fields) when is_list(fields) do
     Common.validate_omitted(
       changeset,
-      filter_site_fields(changeset, fields, use_site: true)
+      filter_default_fields(changeset, fields, use_default: true)
     )
   end
 
-  defp validate_required_unless_site(changeset, fields) when is_list(fields) do
-    validate_required(changeset, filter_site_fields(changeset, fields, use_site: false))
+  defp validate_required_unless_default(changeset, fields) when is_list(fields) do
+    validate_required(changeset, filter_default_fields(changeset, fields, use_default: false))
   end
 
-  defp filter_site_fields(changeset, fields, use_site: use_site) when is_boolean(use_site) do
+  defp filter_default_fields(changeset, fields, use_default: use_default)
+       when is_boolean(use_default) do
     fields
-    |> Enum.map(fn field -> String.to_atom("use_site_#{field}") end)
-    |> Enum.filter(fn site_field -> get_field(changeset, site_field) == use_site end)
+    |> Enum.map(fn field -> String.to_atom("use_default_#{field}") end)
+    |> Enum.filter(fn default_field -> get_field(changeset, default_field) == use_default end)
     |> Enum.map(fn field ->
       field
       |> Atom.to_string()
-      |> String.trim("use_site_")
+      |> String.trim("use_default_")
       |> String.to_atom()
     end)
   end

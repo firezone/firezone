@@ -9,7 +9,8 @@ defmodule FzHttp.Users.User do
   alias FzHttp.{
     ApiTokens.ApiToken,
     Devices.Device,
-    OIDC.Connection
+    OIDC.Connection,
+    Validators.Common
   }
 
   @min_password_length 12
@@ -86,7 +87,7 @@ defmodule FzHttp.Users.User do
   def update_email(user, attrs) do
     user
     |> cast(attrs, [:email])
-    |> update_change(:email, &if(!is_nil(&1), do: String.trim(&1)))
+    |> Common.trim_change(:email)
     |> validate_required([:email])
     |> validate_format(:email, ~r/@/)
   end

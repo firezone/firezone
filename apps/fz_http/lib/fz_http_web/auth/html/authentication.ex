@@ -16,7 +16,7 @@ defmodule FzHttpWeb.Auth.HTML.Authentication do
 
   @impl Guardian
   def subject_for_token(resource, _claims) do
-    {:ok, to_string(resource.id)}
+    {:ok, resource.id}
   end
 
   @impl Guardian

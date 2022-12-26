@@ -18,6 +18,10 @@ defmodule FzHttp.Configurations do
     |> Map.get("auto_create_users")
   end
 
+  def new_configuration(attrs \\ %{}) do
+    Configuration.changeset(%Configuration{}, attrs)
+  end
+
   def change_configuration(%Configuration{} = config \\ get_configuration!()) do
     Configuration.changeset(config, %{})
   end
@@ -51,4 +55,13 @@ defmodule FzHttp.Configurations do
   def logo_type(nil), do: "Default"
   def logo_type(%{url: _url}), do: "URL"
   def logo_type(%{data: _data}), do: "Upload"
+
+  def vpn_sessions_expire? do
+    freq = vpn_duration()
+    freq > 0 && freq < Configuration.max_vpn_session_duration()
+  end
+
+  def vpn_duration do
+    get_configuration!().vpn_session_duration
+  end
 end

@@ -29,7 +29,27 @@ defmodule FzHttp.Configurations.Cache do
     GenServer.start_link(__MODULE__, [])
   end
 
-  @no_fallback [:logo]
+  # List of fields not in Application.env
+  #
+  # Currently only applies to:
+  #
+  # allow_unprivileged_device_management
+  # allow_unprivileged_device_configuration
+  # local_auth_enabled
+  # openid_connect_providers
+  # saml_identity_providers
+  # disable_vpn_on_oidc_error
+  #
+  # XXX: This will be deleted when the Cache is removed.
+  @no_fallback ~w(
+    logo
+    default_client_endpoint
+    default_client_mtu
+    default_client_allowed_ips
+    default_client_dns
+    default_client_persistent_keepalive
+    vpn_session_duration
+  )a
 
   @impl true
   def init(_) do

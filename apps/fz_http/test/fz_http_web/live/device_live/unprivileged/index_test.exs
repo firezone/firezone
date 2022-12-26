@@ -54,15 +54,15 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
     end
 
     @tag fields: ~w(
-      use_site_allowed_ips
+      use_default_allowed_ips
       allowed_ips
-      use_site_dns
+      use_default_dns
       dns
-      use_site_endpoint
+      use_default_endpoint
       endpoint
-      use_site_mtu
+      use_default_mtu
       mtu
-      use_site_persistent_keepalive
+      use_default_persistent_keepalive
       persistent_keepalive
       ipv4
       ipv6

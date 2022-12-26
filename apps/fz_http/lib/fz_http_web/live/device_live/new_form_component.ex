@@ -5,7 +5,6 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
   use FzHttpWeb, :live_component
 
   alias FzHttp.Devices
-  alias FzHttp.Sites
   alias FzHttpWeb.ErrorHelpers
   import Wrapped.Cache
 
@@ -17,17 +16,24 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
      |> assign(:config, nil)}
   end
 
+  @default_fields ~w(
+    default_client_mtu
+    default_client_endpoint
+    default_client_persistent_keepalive
+    default_client_dns
+    default_client_allowed_ips
+  )a
   @impl Phoenix.LiveComponent
   def update(assigns, socket) do
     changeset = new_changeset(socket)
+
+    dbg()
 
     {:ok,
      socket
      |> assign(assigns)
      |> assign(:changeset, changeset)
-     |> assign(
-       Map.take(Sites.get_site!(), [:mtu, :endpoint, :persistent_keepalive, :dns, :allowed_ips])
-     )
+     |> assign(Map.take(FzHttp.Configurations.get_configuration!(), @default_fields))
      |> assign(Devices.defaults(changeset))}
   end
 
@@ -79,7 +85,7 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
   defp authorized_to_create?(socket) do
     has_role?(socket, :admin) ||
       (cache().get!(:allow_unprivileged_device_management) &&
-         to_string(socket.assigns.current_user.id) == to_string(socket.assigns.target_user_id))
+         socket.assigns.current_user.id == socket.assigns.target_user_id)
   end
 
   # update/2 is called twice: on load and then connect.
@@ -87,9 +93,10 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
   # XXX: Clean this up using assign_new/3
   defp new_changeset(socket) do
     if connected?(socket) do
-      Devices.new_device()
+      %{name: FzHttp.Devices.new_name()}
     else
-      Devices.new_device(%{"name" => nil})
+      %{}
     end
+    |> Devices.new_device()
   end
 end

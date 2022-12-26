@@ -1,13 +1,13 @@
-defmodule FzHttpWeb.SettingLive.Site do
+defmodule FzHttpWeb.SettingLive.ClientDefaults do
   @moduledoc """
   Manages the defaults view.
   """
   use FzHttpWeb, :live_view
 
-  alias FzHttp.Sites
+  alias FzHttp.Configurations
 
-  @page_title "Site Settings"
-  @page_subtitle "Configure default WireGuard settings for this site."
+  @page_title "Client Defaults"
+  @page_subtitle "Configure default values for generating WireGuard client configurations."
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
@@ -19,6 +19,6 @@ defmodule FzHttpWeb.SettingLive.Site do
   end
 
   defp changeset do
-    Sites.get_site!() |> Sites.change_site()
+    Configurations.get_configuration!() |> Configurations.change_configuration()
   end
 end

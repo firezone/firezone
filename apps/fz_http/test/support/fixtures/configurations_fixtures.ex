@@ -9,9 +9,13 @@ defmodule FzHttp.ConfigurationsFixtures do
     Repo
   }
 
-  def update_conf(%Configuration{} = conf \\ Configurations.get_configuration!(), attrs) do
-    conf
-    |> Configuration.changeset(attrs)
-    |> Repo.update()
+  @doc "Configurations table holds a singleton record."
+  def configuration(%Configuration{} = conf \\ Configurations.get_configuration!(), attrs) do
+    {:ok, configuration} =
+      conf
+      |> Configuration.changeset(attrs)
+      |> Repo.update()
+
+    configuration
   end
 end

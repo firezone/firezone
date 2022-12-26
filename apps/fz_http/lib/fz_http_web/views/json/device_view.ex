@@ -20,11 +20,11 @@ defmodule FzHttpWeb.JSON.DeviceView do
     description
     public_key
     preshared_key
-    use_site_allowed_ips
-    use_site_dns
-    use_site_endpoint
-    use_site_mtu
-    use_site_persistent_keepalive
+    use_default_allowed_ips
+    use_default_dns
+    use_default_endpoint
+    use_default_mtu
+    use_default_persistent_keepalive
     endpoint
     mtu
     persistent_keepalive

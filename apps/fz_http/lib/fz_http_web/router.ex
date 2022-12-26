@@ -159,7 +159,7 @@ defmodule FzHttpWeb.Router do
       live "/rules", RuleLive.Index, :index
       live "/devices", DeviceLive.Admin.Index, :index
       live "/devices/:id", DeviceLive.Admin.Show, :show
-      live "/settings/site", SettingLive.Site, :show
+      live "/settings/client_defaults", SettingLive.ClientDefaults, :show
 
       live "/settings/security", SettingLive.Security, :show
       live "/settings/security/oidc/:id/edit", SettingLive.Security, :edit_oidc

@@ -1,19 +1,19 @@
 <div class="block">
   <.form :let={f} for={@changeset} id={@id} phx-target={@myself} phx-submit="save">
     <div class="field">
-      <%= label(f, :allowed_ips, "Allowed IPs", class: "label") %>
+      <%= label(f, :default_client_allowed_ips, "Allowed IPs", class: "label") %>
 
       <div class="control">
         <%= textarea(
           f,
-          :allowed_ips,
+          :default_client_allowed_ips,
           placeholder: "0.0.0.0/0, ::/0",
-          class: "textarea #{input_error_class(f, :allowed_ips)}"
+          class: "textarea #{input_error_class(f, :default_client_allowed_ips)}"
         ) %>
       </div>
 
       <p class="help is-danger">
-        <%= error_tag(f, :allowed_ips) %>
+        <%= error_tag(f, :default_client_allowed_ips) %>
       </p>
       <p class="help">
         Configures the default AllowedIPs setting for devices.
@@ -25,40 +25,40 @@
     </div>
 
     <div class="field">
-      <%= label(f, :dns, "DNS Servers", class: "label") %>
+      <%= label(f, :default_client_dns, "DNS Servers", class: "label") %>
 
       <div class="control">
         <%= text_input(
           f,
-          :dns,
+          :default_client_dns,
           placeholder: "1.1.1.1, 1.0.0.1",
-          class: "input #{input_error_class(f, :dns)}"
+          class: "input #{input_error_class(f, :default_client_dns)}"
         ) %>
       </div>
 
       <p class="help is-danger">
-        <%= error_tag(f, :dns) %>
+        <%= error_tag(f, :default_client_dns) %>
       </p>
       <p class="help">
         Comma-separated list of DNS servers to use for devices.
-        Leaving this blank will omit the <code>DNS</code> section in
-        generated device configs.
+        Leave this blank to omit the <code>DNS</code> section from
+        generated configs.
       </p>
     </div>
 
     <div class="field">
-      <%= label(f, :endpoint, "Endpoint", class: "label") %>
+      <%= label(f, :default_client_endpoint, "Endpoint", class: "label") %>
 
       <div class="control">
         <%= text_input(
           f,
-          :endpoint,
+          :default_client_endpoint,
           placeholder: "firezone.example.com",
-          class: "input #{input_error_class(f, :endpoint)}"
+          class: "input #{input_error_class(f, :default_client_endpoint)}"
         ) %>
       </div>
       <p class="help is-danger">
-        <%= error_tag(f, :endpoint) %>
+        <%= error_tag(f, :default_client_endpoint) %>
       </p>
       <p class="help">
         IPv4, IPv6 address, or FQDN that devices will be configured to connect
@@ -67,41 +67,41 @@
     </div>
 
     <div class="field">
-      <%= label(f, :persistent_keepalive, "Persistent Keepalive", class: "label") %>
+      <%= label(f, :default_client_persistent_keepalive, "Persistent Keepalive", class: "label") %>
 
       <div class="control">
         <%= text_input(
           f,
-          :persistent_keepalive,
+          :default_client_persistent_keepalive,
           placeholder: "25",
-          class: "input #{input_error_class(f, :persistent_keepalive)}"
+          class: "input #{input_error_class(f, :default_client_persistent_keepalive)}"
         ) %>
         <p class="help is-danger">
-          <%= error_tag(f, :persistent_keepalive) %>
+          <%= error_tag(f, :default_client_persistent_keepalive) %>
         </p>
         <p class="help">
-          Interval in seconds to send persistent keepalive packets from clients. Most users won't need to change
-          this. Leave this blank to omit this field from generated configs.
+          Interval in seconds to send persistent keepalive packets from devices. Most users won't
+          need to change this. Leave this blank to omit this field from generated configs.
         </p>
       </div>
     </div>
 
     <div class="field">
-      <%= label(f, :mtu, "MTU", class: "label") %>
+      <%= label(f, :default_client_mtu, "MTU", class: "label") %>
 
       <div class="control">
         <%= text_input(
           f,
-          :mtu,
+          :default_client_mtu,
           placeholder: "1280",
-          class: "input #{input_error_class(f, :mtu)}"
+          class: "input #{input_error_class(f, :default_client_mtu)}"
         ) %>
       </div>
       <p class="help is-danger">
-        <%= error_tag(f, :mtu) %>
+        <%= error_tag(f, :default_client_mtu) %>
       </p>
       <p class="help">
-        WireGuard interface MTU for client configs. 1280 is a safe bet for most networks.
+        WireGuard interface MTU for devices. 1280 is a safe bet for most networks.
         Leave this blank to omit this field from generated configs.
       </p>
     </div>

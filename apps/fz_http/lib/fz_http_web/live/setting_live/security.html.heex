@@ -33,7 +33,12 @@
   <h4 class="title is-4">Authentication</h4>
 
   <div class="block">
-    <.form :let={f} for={@site_changeset} phx-change="change" phx-submit="save_site">
+    <.form
+      :let={f}
+      for={@configuration_changeset}
+      phx-change="change"
+      phx-submit="save_configuration"
+    >
       <div class="field">
         <%= label(f, :vpn_session_duration, "Require Authentication For VPN Sessions",
           class: "label"

@@ -1,6 +1,7 @@
 defmodule FzHttpWeb.SettingLive.SecurityTest do
   use FzHttpWeb.ConnCase, async: true
 
+  alias FzHttp.Configurations
   alias FzHttpWeb.SettingLive.Security
   import FzHttp.SAMLConfigFixtures
   import Mox
@@ -18,7 +19,8 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
       {:ok, _view, html} = live(conn, path)
       assert html =~ ~s|<option selected="selected" value="0">Never</option>|
 
-      FzHttp.Sites.get_site!() |> FzHttp.Sites.update_site(%{vpn_session_duration: 3_600})
+      Configurations.get_configuration!()
+      |> Configurations.update_configuration(%{vpn_session_duration: 3_600})
 
       {:ok, _view, html} = live(conn, path)
       assert html =~ ~s|<option selected="selected" value="3600">Every Hour</option>|
@@ -103,7 +105,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
     import FzHttp.ConfigurationsFixtures
 
     setup %{admin_conn: conn} do
-      update_conf(%{
+      configuration(%{
         openid_connect_providers: %{"test" => %{"label" => "test123"}},
         saml_identity_providers: %{}
       })
@@ -166,7 +168,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
 
     setup %{admin_conn: conn} do
       # Security views use the DB config, not cached config, so update DB here for testing
-      update_conf(%{
+      configuration(%{
         openid_connect_providers: %{},
         saml_identity_providers: %{"test" => saml_attrs()}
       })

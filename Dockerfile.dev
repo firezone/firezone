@@ -41,6 +41,7 @@ RUN mix do deps.get, deps.compile, compile
 # Copy more granular, dependency management files first to prevent
 # busting the Docker build cache unnecessarily
 COPY apps/fz_http/assets/package.json /var/app/apps/fz_http/assets/package.json
+COPY apps/fz_http/assets/local_modules /var/app/apps/fz_http/assets/local_modules
 COPY apps/fz_http/assets/package-lock.json /var/app/apps/fz_http/assets/package-lock.json
 RUN npm install --prefix apps/fz_http/assets
 

@@ -52,8 +52,9 @@ issue](https://github.com/firezone/firezone/issues/new/choose).
 ### WIREGUARD_* env vars
 Firezone 0.6.12 moves the `WIREGUARD_ALLOWED_IPS`, `WIREGUARD_PERSISTENT_KEEPALIVE`,
 and `WIREGUARD_DNS` environment variables to the `sites` table to be configured in the
-UI at `/settings/site`. If the corresponding value at `/settings/site` was empty, the
-environment variable's value was used to populate the field.
+UI at `/settings/client_defaults`. If the corresponding value at
+`/settings/client_defaults` was empty, the environment variable's value was used to
+populate the field.
 
 This is a baby step in our quest to move more runtime configuration from environment
 variables to the DB.

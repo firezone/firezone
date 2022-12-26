@@ -115,6 +115,6 @@ defmodule FzHttp.Validators.Common do
   defp maybe_apply(value), do: value
 
   def trim_change(changeset, field) do
-    update_change(changeset, field, &String.trim/1)
+    update_change(changeset, field, &if(!is_nil(&1), do: String.trim(&1)))
   end
 end

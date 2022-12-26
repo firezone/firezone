@@ -96,7 +96,7 @@ defmodule FzHttpWeb.SettingLive.Account do
   end
 
   defp get_metas(presences, user_id) do
-    get_in(presences, [to_string(user_id), :metas]) || []
+    get_in(presences, [user_id, :metas]) || []
   end
 
   defp subscribe_link do

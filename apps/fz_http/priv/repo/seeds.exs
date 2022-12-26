@@ -37,11 +37,11 @@ alias FzHttp.{
     allowed_ips: "0.0.0.0,::/0",
     endpoint: "elixir",
     dns: "127.0.0.11",
-    use_site_allowed_ips: false,
-    use_site_dns: false,
-    use_site_endpoint: false,
-    use_site_mtu: false,
-    use_site_persistent_keepalive: false
+    use_default_allowed_ips: false,
+    use_default_dns: false,
+    use_default_endpoint: false,
+    use_default_mtu: false,
+    use_default_persistent_keepalive: false
   })
 
 {:ok, _device} =

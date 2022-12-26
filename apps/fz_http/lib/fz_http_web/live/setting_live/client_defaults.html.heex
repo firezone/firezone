@@ -6,13 +6,13 @@
 <section class="section is-main-section">
   <%= render(FzHttpWeb.SharedView, "flash.html", assigns) %>
 
-  <h4 class="title is-4">Site Defaults</h4>
+  <h4 class="title is-4">Client Defaults</h4>
 
   <div class="block">
     <%= live_component(
-      FzHttpWeb.SettingLive.SiteFormComponent,
+      FzHttpWeb.SettingLive.ClientDefaultsFormComponent,
       changeset: @changeset,
-      id: :site_form_component
+      id: :client_defaults_form_component
     ) %>
   </div>
 </section>

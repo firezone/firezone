@@ -2,7 +2,17 @@ defmodule FzHttp.Devices do
   import Ecto.Changeset
   import Ecto.Query, warn: false
   alias EctoNetwork.INET
-  alias FzHttp.{Devices.Device, Devices.DeviceSetting, Repo, Sites, Telemetry, Users, Users.User}
+
+  alias FzHttp.{
+    Configurations,
+    Devices.Device,
+    Devices.DeviceSetting,
+    Repo,
+    Telemetry,
+    Users,
+    Users.User
+  }
+
   require Logger
 
   def count_active_within(duration_in_secs) when is_integer(duration_in_secs) do
@@ -108,7 +118,7 @@ defmodule FzHttp.Devices do
   end
 
   def to_peer_list do
-    vpn_duration = Sites.vpn_duration()
+    vpn_duration = Configurations.vpn_duration()
 
     Repo.all(
       from d in Device,
@@ -137,8 +147,8 @@ defmodule FzHttp.Devices do
   def persistent_keepalive(device), do: config(device, :persistent_keepalive)
 
   defp config(device, key) do
-    if Map.get(device, String.to_atom("use_site_#{key}")) do
-      Map.get(Sites.get_site!(), key)
+    if Map.get(device, String.to_atom("use_default_#{key}")) do
+      Map.get(Configurations.get_configuration!(), String.to_atom("default_client_#{key}"))
     else
       Map.get(device, key)
     end
@@ -146,11 +156,11 @@ defmodule FzHttp.Devices do
 
   def defaults(changeset) do
     ~w(
-      use_site_allowed_ips
-      use_site_dns
-      use_site_endpoint
-      use_site_mtu
-      use_site_persistent_keepalive
+      use_default_allowed_ips
+      use_default_dns
+      use_default_endpoint
+      use_default_mtu
+      use_default_persistent_keepalive
     )a
     |> Map.new(&{&1, get_field(changeset, &1)})
   end

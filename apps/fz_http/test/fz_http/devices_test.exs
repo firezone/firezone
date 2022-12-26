@@ -122,11 +122,11 @@ defmodule FzHttp.DevicesTest do
     @attrs %{
       name: "Go hard or go home.",
       allowed_ips: "0.0.0.0",
-      use_site_allowed_ips: false
+      use_default_allowed_ips: false
     }
 
     @valid_dns_attrs %{
-      use_site_dns: false,
+      use_default_dns: false,
       dns: "1.1.1.1, 1.0.0.1, 2606:4700:4700::1111, 2606:4700:4700::1001"
     }
 
@@ -135,27 +135,27 @@ defmodule FzHttp.DevicesTest do
     }
 
     @valid_allowed_ips_attrs %{
-      use_site_allowed_ips: false,
+      use_default_allowed_ips: false,
       allowed_ips: "0.0.0.0/0, ::/0, ::0/0, 192.168.1.0/24"
     }
 
     @valid_endpoint_ipv4_attrs %{
-      use_site_endpoint: false,
+      use_default_endpoint: false,
       endpoint: "5.5.5.5"
     }
 
     @valid_endpoint_ipv6_attrs %{
-      use_site_endpoint: false,
+      use_default_endpoint: false,
       endpoint: "fd00::1"
     }
 
     @valid_endpoint_host_attrs %{
-      use_site_endpoint: false,
+      use_default_endpoint: false,
       endpoint: "valid-endpoint.example.com"
     }
 
     @empty_endpoint_attrs %{
-      use_site_endpoint: false,
+      use_default_endpoint: false,
       endpoint: ""
     }
 
@@ -163,12 +163,12 @@ defmodule FzHttp.DevicesTest do
       allowed_ips: "1.1.1.1, 11, foobar"
     }
 
-    @fields_use_site [
-      %{use_site_allowed_ips: true, allowed_ips: "1.1.1.1"},
-      %{use_site_dns: true, dns: "1.1.1.1"},
-      %{use_site_endpoint: true, endpoint: "1.1.1.1"},
-      %{use_site_persistent_keepalive: true, persistent_keepalive: 1},
-      %{use_site_mtu: true, mtu: 1000}
+    @fields_use_default [
+      %{use_default_allowed_ips: true, allowed_ips: "1.1.1.1"},
+      %{use_default_dns: true, dns: "1.1.1.1"},
+      %{use_default_endpoint: true, endpoint: "1.1.1.1"},
+      %{use_default_persistent_keepalive: true, persistent_keepalive: 1},
+      %{use_default_mtu: true, mtu: 1000}
     ]
 
     test "updates device", %{device: device} do
@@ -196,11 +196,11 @@ defmodule FzHttp.DevicesTest do
       assert @valid_endpoint_host_attrs = test_device
     end
 
-    test "prevents updating fields if use_site_", %{device: device} do
-      for attrs <- @fields_use_site do
+    test "prevents updating fields if use_default_", %{device: device} do
+      for attrs <- @fields_use_default do
         field =
           Map.keys(attrs)
-          |> Enum.filter(fn attr -> !String.starts_with?(Atom.to_string(attr), "use_site_") end)
+          |> Enum.filter(fn attr -> !String.starts_with?(Atom.to_string(attr), "use_default_") end)
           |> List.first()
 
         assert {:error, changeset} = Devices.update_device(device, attrs)
@@ -212,7 +212,7 @@ defmodule FzHttp.DevicesTest do
       end
     end
 
-    @tag attrs: %{use_site_dns: false, dns: "foobar.com"}
+    @tag attrs: %{use_default_dns: false, dns: "foobar.com"}
     test "allows hosts for DNS", %{attrs: attrs, device: device} do
       assert {:ok, _device} = Devices.update_device(device, attrs)
     end

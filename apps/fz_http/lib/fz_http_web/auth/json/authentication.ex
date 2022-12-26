@@ -11,7 +11,7 @@ defmodule FzHttpWeb.Auth.JSON.Authentication do
 
   @impl Guardian
   def subject_for_token(user, _claims) do
-    {:ok, to_string(user.id)}
+    {:ok, user.id}
   end
 
   @impl Guardian

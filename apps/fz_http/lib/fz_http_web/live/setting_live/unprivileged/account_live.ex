@@ -61,6 +61,6 @@ defmodule FzHttpWeb.SettingLive.Unprivileged.Account do
   end
 
   defp get_metas(presences, user_id) do
-    get_in(presences, [to_string(user_id), :metas]) || []
+    get_in(presences, [user_id, :metas]) || []
   end
 end
