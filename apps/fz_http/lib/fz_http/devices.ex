@@ -249,12 +249,25 @@ defmodule FzHttp.Devices do
 
   defp endpoint_config(device) do
     ep = endpoint(device)
-    wireguard_port = Application.fetch_env!(:fz_vpn, :wireguard_port)
 
     if field_empty?(ep) do
       ""
     else
-      "Endpoint = #{ep}:#{wireguard_port}"
+      "Endpoint = #{maybe_add_port(ep)}"
+    end
+  end
+
+  # Finds a port in IPv6-formatted address, e.g. [2001::1]:51820
+  @capture_port ~r/\[.*]:(?<port>[\d]+)/
+  defp maybe_add_port(endpoint) do
+    wireguard_port = Application.fetch_env!(:fz_vpn, :wireguard_port)
+    colon_count = endpoint |> String.graphemes() |> Enum.count(&(&1 == ":"))
+
+    if colon_count == 0 or is_nil(Regex.named_captures(@capture_port, endpoint)) do
+      # No port found
+      "#{endpoint}:#{wireguard_port}"
+    else
+      endpoint
     end
   end
 
