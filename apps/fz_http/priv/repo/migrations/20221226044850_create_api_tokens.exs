@@ -6,7 +6,7 @@ defmodule FzHttp.Repo.Migrations.CreateApiTokens do
       add(:id, :binary_id, primary_key: true)
       add(:expires_at, :timestamptz)
 
-      add(:user_id, references(:users, on_delete: :delete_all), null: false)
+      add(:user_id, references(:users, type: :binary_id, on_delete: :delete_all), null: false)
 
       timestamps(updated_at: false)
     end

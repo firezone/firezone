@@ -35,32 +35,8 @@ defmodule FzHttp.Repo.Migrations.MigratePksToUuid do
     end
 
     ## users
-
     rename(table("users"), :id, to: :id_tmp)
     rename(table("users"), :uuid, to: :id)
-
-    ### api_tokens refs to users
-    rename(table("api_tokens"), :user_id, to: :user_id_tmp)
-
-    execute(
-      "ALTER TABLE api_tokens RENAME CONSTRAINT api_tokens_user_id_fkey TO api_tokens_user_id_tmp_fkey"
-    )
-
-    alter table("api_tokens") do
-      add(:user_id, references(:users, type: :binary_id, on_delete: :delete_all))
-    end
-
-    execute(
-      "UPDATE api_tokens SET user_id = (SELECT users.id FROM users WHERE users.id_tmp = api_tokens.user_id_tmp)"
-    )
-
-    execute("ALTER TABLE api_tokens ALTER COLUMN user_id SET NOT NULL")
-
-    alter table("api_tokens") do
-      remove(:user_id_tmp)
-    end
-
-    create(index(:api_tokens, [:user_id]))
 
     ### devices refs to users
     rename(table("devices"), :user_id, to: :user_id_tmp)

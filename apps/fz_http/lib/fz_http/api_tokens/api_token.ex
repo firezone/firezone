@@ -4,7 +4,6 @@ defmodule FzHttp.ApiTokens.ApiToken do
   """
   use FzHttp, :schema
   import Ecto.Changeset
-  alias FzHttp.Users.User
 
   @max_per_user 10
 
@@ -14,7 +13,7 @@ defmodule FzHttp.ApiTokens.ApiToken do
     # User-friendly way to set expires_at
     field :expires_in, :integer, virtual: true, default: 30
 
-    belongs_to :user, User
+    belongs_to :user, FzHttp.Users.User
 
     timestamps(updated_at: false)
   end
