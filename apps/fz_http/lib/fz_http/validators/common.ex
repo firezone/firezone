@@ -8,8 +8,6 @@ defmodule FzHttp.Validators.Common do
   import FzCommon.FzNet,
     only: [
       valid_ip?: 1,
-      valid_fqdn?: 1,
-      valid_hostname?: 1,
       valid_cidr?: 1
     ]
 
@@ -54,18 +52,6 @@ defmodule FzHttp.Validators.Common do
         dupes,
         &(&1 != []),
         &{field, "is invalid: duplicates are not allowed: #{Enum.join(&1, ", ")}"}
-      )
-    end)
-  end
-
-  def validate_fqdn_or_ip(changeset, field) when is_atom(field) do
-    validate_change(changeset, field, fn _current_field, value ->
-      value
-      |> split_comma_list()
-      |> Enum.find(&(not (valid_ip?(&1) or valid_fqdn?(&1) or valid_hostname?(&1))))
-      |> error_if(
-        &(!is_nil(&1)),
-        &{field, "is invalid: #{&1} is not a valid FQDN or IPv4 / IPv6 address"}
       )
     end)
   end

@@ -9,7 +9,6 @@ defmodule FzHttp.Sites.Site do
   import FzHttp.Validators.Common,
     only: [
       trim: 2,
-      validate_fqdn_or_ip: 2,
       validate_list_of_ips_or_cidrs: 2,
       validate_no_duplicates: 2
     ]
@@ -58,7 +57,6 @@ defmodule FzHttp.Sites.Site do
     |> validate_no_duplicates(:dns)
     |> validate_list_of_ips_or_cidrs(:allowed_ips)
     |> validate_no_duplicates(:allowed_ips)
-    |> validate_fqdn_or_ip(:endpoint)
     |> validate_number(:mtu, greater_than_or_equal_to: @min_mtu, less_than_or_equal_to: @max_mtu)
     |> validate_number(:persistent_keepalive,
       greater_than_or_equal_to: @min_persistent_keepalive,

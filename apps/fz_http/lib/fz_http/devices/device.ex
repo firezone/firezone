@@ -10,7 +10,6 @@ defmodule FzHttp.Devices.Device do
   import FzHttp.Validators.Common,
     only: [
       trim: 2,
-      validate_fqdn_or_ip: 2,
       validate_omitted: 2,
       validate_no_duplicates: 2,
       validate_no_mask: 2,
@@ -138,7 +137,6 @@ defmodule FzHttp.Devices.Device do
     ])
     |> validate_list_of_ips_or_cidrs(:allowed_ips)
     |> validate_no_duplicates(:dns)
-    |> validate_fqdn_or_ip(:endpoint)
     |> validate_number(:persistent_keepalive,
       greater_than_or_equal_to: 0,
       less_than_or_equal_to: 120

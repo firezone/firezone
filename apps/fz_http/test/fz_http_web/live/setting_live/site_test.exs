@@ -23,9 +23,6 @@ defmodule FzHttpWeb.SettingLive.SiteTest do
     @invalid_allowed_ips %{
       "site" => %{"allowed_ips" => "foobar"}
     }
-    @invalid_endpoint %{
-      "site" => %{"endpoint" => "-foobar"}
-    }
     @invalid_persistent_keepalive %{
       "site" => %{"persistent_keepalive" => "-1"}
     }
@@ -130,19 +127,6 @@ defmodule FzHttpWeb.SettingLive.SiteTest do
       assert test_view =~ """
              <textarea class="textarea is-danger" id="site_form_component_allowed_ips" name="site[allowed_ips]" placeholder="0.0.0.0/0, ::/0">
              foobar</textarea>\
-             """
-    end
-
-    test "prevents invalid endpoint", %{view: view} do
-      test_view =
-        view
-        |> element("#site_form_component")
-        |> render_submit(@invalid_endpoint)
-
-      assert test_view =~ "is invalid"
-
-      assert test_view =~ """
-             <input class="input is-danger" id="site_form_component_endpoint" name="site[endpoint]" placeholder="firezone.example.com" type="text" value="-foobar"/>\
              """
     end
 
