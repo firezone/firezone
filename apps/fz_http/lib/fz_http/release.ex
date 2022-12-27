@@ -33,9 +33,8 @@ defmodule FzHttp.Release do
         )
       end
 
-    # Show the user the new credentials
-    IO.puts(email())
-    IO.puts(default_password())
+    # Notify the user
+    IO.puts("Password reset! Check $HOME/.firezone/.env for sign in credentials.")
 
     reply
   end
