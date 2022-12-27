@@ -47,7 +47,7 @@ defmodule FzHttp.ApiTokens do
 
   def delete_api_token(%ApiToken{} = api_token) do
     with {:ok, api_token} <- Repo.delete(api_token) do
-      FzHttp.Telemetry.delete_api_token(api_token)    
+      FzHttp.Telemetry.delete_api_token(api_token)
       {:ok, api_token}
     end
   end
