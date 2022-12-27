@@ -5,15 +5,23 @@ defmodule FzHttp.Configurations do
 
   import Ecto.Query, warn: false
   import Ecto.Changeset
-  import Wrapped.Cache
+
   alias FzHttp.{Repo, Configurations.Configuration}
+
+  def get!(key) do
+    Map.get(get_configuration!(), key)
+  end
+
+  def put!(key, val) do
+    update_configuration(%{key => val})
+  end
 
   def get_configuration! do
     Repo.one!(Configuration)
   end
 
   def auto_create_users?(field, provider) do
-    cache().get!(field)
+    FzHttp.Configurations.get!(field)
     |> Map.get(provider)
     |> Map.get("auto_create_users")
   end
@@ -30,31 +38,29 @@ defmodule FzHttp.Configurations do
     config
     |> Configuration.changeset(attrs)
     |> prepare_changes(fn changeset ->
-      changeset.changes |> Enum.each(&put_cache/1)
+      changeset.changes
+      |> Enum.each(&maybe_restart_auth_provider/1)
+
       changeset
     end)
     |> Repo.update()
   end
 
-  defp put_cache({:openid_connect_providers = key, val}) do
+  defp maybe_restart_auth_provider({:openid_connect_providers, _val}) do
     FzHttp.OIDC.StartProxy.restart()
-    cache().put!(key, val)
   end
 
-  defp put_cache({:saml_identity_providers = key, val}) do
+  defp maybe_restart_auth_provider({:saml_identity_providers, _val}) do
     FzHttp.SAML.StartProxy.restart()
-    cache().put!(key, val)
   end
 
-  # nested changeset values
-  defp put_cache({key, %Ecto.Changeset{} = val}), do: cache().put!(key, val.changes)
-  defp put_cache({key, val}), do: cache().put!(key, val)
+  defp maybe_restart_auth_provider(noop), do: noop
 
   def logo_types, do: ~w(Default URL Upload)
 
   def logo_type(nil), do: "Default"
-  def logo_type(%{url: _url}), do: "URL"
-  def logo_type(%{data: _data}), do: "Upload"
+  def logo_type(%{url: url}) when not is_nil(url), do: "URL"
+  def logo_type(%{data: data}) when not is_nil(data), do: "Upload"
 
   def vpn_sessions_expire? do
     freq = vpn_duration()

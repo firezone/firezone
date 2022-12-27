@@ -55,81 +55,78 @@ config :ueberauth, Ueberauth,
   ]
 
 # OIDC auth for testing
-config :fz_http, :openid_connect_providers, """
-{
-  "google": {
-    "discovery_document_uri": "https://google/.well-known/openid-configuration",
-    "client_id": "google-client-id",
-    "client_secret": "google-client-secret",
-    "redirect_uri": "https://firezone.example.com/auth/oidc/google/callback/",
-    "response_type": "code",
-    "scope": "openid email profile",
-    "label": "OIDC Google"
+# XXX: Can this grow up to be a fixture someday?
+config :fz_http, :openid_connect_providers, %{
+  "google" => %{
+    "discovery_document_uri" => "https://google/.well-known/openid-configuration",
+    "client_id" => "google-client-id",
+    "client_secret" => "google-client-secret",
+    "redirect_uri" => "https://firezone.example.com/auth/oidc/google/callback/",
+    "response_type" => "code",
+    "scope" => "openid email profile",
+    "label" => "OIDC Google"
   },
-  "okta": {
-    "discovery_document_uri": "https://okta/.well-known/openid-configuration",
-    "client_id": "okta-client-id",
-    "client_secret": "okta-client-secret",
-    "redirect_uri": "https://firezone.example.com/auth/oidc/okta/callback/",
-    "response_type": "code",
-    "scope": "openid email profile offline_access",
-    "label": "OIDC Okta"
+  "okta" => %{
+    "discovery_document_uri" => "https://okta/.well-known/openid-configuration",
+    "client_id" => "okta-client-id",
+    "client_secret" => "okta-client-secret",
+    "redirect_uri" => "https://firezone.example.com/auth/oidc/okta/callback/",
+    "response_type" => "code",
+    "scope" => "openid email profile offline_access",
+    "label" => "OIDC Okta"
   },
-  "auth0": {
-    "discovery_document_uri": "https://auth0/.well-known/openid-configuration",
-    "client_id": "auth0-client-id",
-    "client_secret": "auth0-client-secret",
-    "redirect_uri": "https://firezone.example.com/auth/oidc/auth0/callback/",
-    "response_type": "code",
-    "scope": "openid email profile",
-    "label": "OIDC Auth0"
+  "auth0" => %{
+    "discovery_document_uri" => "https://auth0/.well-known/openid-configuration",
+    "client_id" => "auth0-client-id",
+    "client_secret" => "auth0-client-secret",
+    "redirect_uri" => "https://firezone.example.com/auth/oidc/auth0/callback/",
+    "response_type" => "code",
+    "scope" => "openid email profile",
+    "label" => "OIDC Auth0"
   },
-  "azure": {
-    "discovery_document_uri": "https://azure/.well-known/openid-configuration",
-    "client_id": "azure-client-id",
-    "client_secret": "azure-client-secret",
-    "redirect_uri": "https://firezone.example.com/auth/oidc/azure/callback/",
-    "response_type": "code",
-    "scope": "openid email profile offline_access",
-    "label": "OIDC Azure"
+  "azure" => %{
+    "discovery_document_uri" => "https://azure/.well-known/openid-configuration",
+    "client_id" => "azure-client-id",
+    "client_secret" => "azure-client-secret",
+    "redirect_uri" => "https://firezone.example.com/auth/oidc/azure/callback/",
+    "response_type" => "code",
+    "scope" => "openid email profile offline_access",
+    "label" => "OIDC Azure"
   },
-  "onelogin": {
-    "discovery_document_uri": "https://onelogin/.well-known/openid-configuration",
-    "client_id": "onelogin-client-id",
-    "client_secret": "onelogin-client-secret",
-    "redirect_uri": "https://firezone.example.com/auth/oidc/onelogin/callback/",
-    "response_type": "code",
-    "scope": "openid email profile offline_access",
-    "label": "OIDC Onelogin"
+  "onelogin" => %{
+    "discovery_document_uri" => "https://onelogin/.well-known/openid-configuration",
+    "client_id" => "onelogin-client-id",
+    "client_secret" => "onelogin-client-secret",
+    "redirect_uri" => "https://firezone.example.com/auth/oidc/onelogin/callback/",
+    "response_type" => "code",
+    "scope" => "openid email profile offline_access",
+    "label" => "OIDC Onelogin"
   },
-  "keycloak": {
-    "discovery_document_uri": "https://keycloak/.well-known/openid-configuration",
-    "client_id": "keycloak-client-id",
-    "client_secret": "keycloak-client-secret",
-    "redirect_uri": "https://firezone.example.com/auth/oidc/keycloak/callback/",
-    "response_type": "code",
-    "scope": "openid email profile offline_access",
-    "label": "OIDC Keycloak"
+  "keycloak" => %{
+    "discovery_document_uri" => "https://keycloak/.well-known/openid-configuration",
+    "client_id" => "keycloak-client-id",
+    "client_secret" => "keycloak-client-secret",
+    "redirect_uri" => "https://firezone.example.com/auth/oidc/keycloak/callback/",
+    "response_type" => "code",
+    "scope" => "openid email profile offline_access",
+    "label" => "OIDC Keycloak"
   },
-  "vault": {
-    "discovery_document_uri": "https://vault/.well-known/openid-configuration",
-    "client_id": "vault-client-id",
-    "client_secret": "vault-client-secret",
-    "redirect_uri": "https://firezone.example.com/auth/oidc/vault/callback/",
-    "response_type": "code",
-    "scope": "openid email profile offline_access",
-    "label": "OIDC Vault"
+  "vault" => %{
+    "discovery_document_uri" => "https://vault/.well-known/openid-configuration",
+    "client_id" => "vault-client-id",
+    "client_secret" => "vault-client-secret",
+    "redirect_uri" => "https://firezone.example.com/auth/oidc/vault/callback/",
+    "response_type" => "code",
+    "scope" => "openid email profile offline_access",
+    "label" => "OIDC Vault"
   }
 }
-"""
 
+# XXX: Can this grow up to be a fixture someday?
 config :fz_http, :saml_identity_providers, %{"test" => %{"label" => "SAML"}}
 
 # Provide mock for OpenIDConnect
 config :fz_http, :openid_connect, OpenIDConnect.Mock
-
-# Mock for the configuration cache
-config :fz_http, :cache_module, Cache.Mock
 
 config :fz_http, FzHttpWeb.Mailer, adapter: Swoosh.Adapters.Test, from_email: "test@firez.one"
 

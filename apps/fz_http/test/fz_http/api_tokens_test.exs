@@ -28,13 +28,12 @@ defmodule FzHttp.ApiTokensTest do
       assert ApiTokens.get_api_token!(api_token.id) == api_token
     end
 
-    test "create_api_token/1 with valid data creates a api_token" do
+    test "create_user_api_token/2 with valid data creates a api_token" do
       valid_attrs = %{
-        user_id: user().id,
         expires_in: 1
       }
 
-      assert {:ok, %ApiToken{} = api_token} = ApiTokens.create_api_token(valid_attrs)
+      assert {:ok, %ApiToken{} = api_token} = ApiTokens.create_user_api_token(user(), valid_attrs)
 
       # Within 10 seconds
       assert_in_delta DateTime.to_unix(api_token.expires_at),
@@ -42,8 +41,8 @@ defmodule FzHttp.ApiTokensTest do
                       10
     end
 
-    test "create_api_token/1 with invalid data returns error changeset" do
-      assert {:error, %Ecto.Changeset{}} = ApiTokens.create_api_token(@invalid_attrs)
+    test "create_user_api_token/2 with invalid data returns error changeset" do
+      assert {:error, %Ecto.Changeset{}} = ApiTokens.create_user_api_token(user(), @invalid_attrs)
     end
   end
 end

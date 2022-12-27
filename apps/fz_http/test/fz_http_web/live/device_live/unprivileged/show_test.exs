@@ -43,7 +43,7 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.ShowTest do
     } do
       {:ok, device: device} = create_device(user_id: user.id)
 
-      stub_conf(:allow_unprivileged_device_management, false)
+      FzHttp.Configurations.put!(:allow_unprivileged_device_management, false)
 
       path = ~p"/user_devices/#{device}"
       {:ok, _view, html} = live(conn, path)

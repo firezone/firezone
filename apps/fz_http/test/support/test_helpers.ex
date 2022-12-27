@@ -15,18 +15,6 @@ defmodule FzHttp.TestHelpers do
     UsersFixtures
   }
 
-  import Mox
-
-  def stub_conf(key, val) do
-    stub(Cache.Mock, :get!, fn conf_key ->
-      if key == conf_key do
-        val
-      else
-        FzHttp.Configurations.Cache.get!(conf_key)
-      end
-    end)
-  end
-
   def clear_users do
     Repo.delete_all(User)
   end

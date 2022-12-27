@@ -18,19 +18,6 @@ defmodule FzHttp.CaseTemplate do
 
         :ok
       end
-
-      setup do
-        # Global stub passthrough for functions we're not interested in stubbing
-        Mox.stub(Cache.Mock, :get!, fn key ->
-          FzHttp.Configurations.Cache.get!(key)
-        end)
-
-        Mox.stub(Cache.Mock, :put!, fn key, val ->
-          FzHttp.Configurations.Cache.put!(key, val)
-        end)
-
-        :ok
-      end
     end
   end
 end

@@ -1,11 +1,9 @@
 defmodule FzHttpWeb.SettingLive.CustomizationTest do
   use FzHttpWeb.ConnCase, async: true
 
-  import Mox
-
   describe "logo" do
     setup %{admin_conn: conn} = context do
-      stub_conf(:logo, context[:logo])
+      {:ok, _config} = FzHttp.Configurations.put!(:logo, context[:logo])
 
       path = ~p"/settings/customization"
       {:ok, view, html} = live(conn, path)
@@ -48,30 +46,22 @@ defmodule FzHttpWeb.SettingLive.CustomizationTest do
 
     @tag logo: %{url: "test"}
     test "reset to default", %{view: view, html: html} do
-      expect(Cache.Mock, :put!, fn :logo, val ->
-        assert val == nil
-      end)
-
       html =~ ~s|<form id="url-form"|
       view |> element("input[value=Default]") |> render_click()
       view |> element("form") |> render_submit()
+
+      assert FzHttp.Configurations.get!(:logo) == nil
     end
 
     test "change to url", %{view: view, html: html} do
-      expect(Cache.Mock, :put!, fn :logo, val ->
-        assert val == %{url: "new"}
-      end)
-
       html =~ ~s|<form id="default-form"|
       view |> element("input[value=URL]") |> render_click()
       view |> render_submit("save", %{"url" => "new"})
+
+      assert %{url: "new"} = FzHttp.Configurations.get!(:logo)
     end
 
     test "change to upload", %{view: view, html: html} do
-      expect(Cache.Mock, :put!, fn :logo, val ->
-        assert val == %{data: Base.encode64("new"), type: "image/jpeg"}
-      end)
-
       html =~ ~s|<form id="default-form"|
       view |> element("input[value=Upload]") |> render_click()
 
@@ -88,6 +78,9 @@ defmodule FzHttpWeb.SettingLive.CustomizationTest do
       |> render_upload("logo.jpeg")
 
       view |> render_submit("save", %{})
+
+      data = Base.encode64("new")
+      assert %{data: ^data, type: "image/jpeg"} = FzHttp.Configurations.get!(:logo)
     end
   end
 end

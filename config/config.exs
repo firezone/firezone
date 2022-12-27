@@ -25,10 +25,7 @@ config :fz_http, FzHttp.Repo, migration_timestamps: [type: :timestamptz]
 config :fz_http,
   external_trusted_proxies: [],
   private_clients: [],
-  disable_vpn_on_oidc_error: true,
   sandbox: true,
-  allow_unprivileged_device_management: true,
-  allow_unprivileged_device_configuration: true,
   telemetry_id: "543aae08-5a2b-428d-b704-2956dd3f5a57",
   wireguard_ipv4_enabled: true,
   wireguard_ipv4_network: "100.64.0.0/10",
@@ -55,8 +52,7 @@ config :fz_http,
   saml_entity_id: "urn:firezone.dev:firezone-app",
   saml_certfile_path: Path.expand("../apps/fz_http/priv/cert/saml_selfsigned.pem", __DIR__),
   saml_keyfile_path: Path.expand("../apps/fz_http/priv/cert/saml_selfsigned_key.pem", __DIR__),
-  openid_connect: OpenIDConnect,
-  cache_module: FzHttp.Configurations.Cache
+  openid_connect: OpenIDConnect
 
 config :fz_wall,
   cli: FzWall.CLI.Sandbox,

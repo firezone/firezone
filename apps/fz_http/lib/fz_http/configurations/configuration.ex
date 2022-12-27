@@ -50,7 +50,7 @@ defmodule FzHttp.Configurations.Configuration do
     # See https://github.com/firezone/firezone/issues/1236
     field :vpn_session_duration, :integer, read_after_writes: true
 
-    embeds_one :logo, Logo, on_replace: :update
+    embeds_one :logo, Logo, on_replace: :delete
 
     timestamps()
   end

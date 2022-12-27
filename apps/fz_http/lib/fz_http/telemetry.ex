@@ -4,7 +4,6 @@ defmodule FzHttp.Telemetry do
   """
 
   require Logger
-  import Wrapped.Cache
 
   alias FzHttp.{Devices, MFA, Users}
 
@@ -108,16 +107,18 @@ defmodule FzHttp.Telemetry do
         max_devices_for_users: Devices.max_count_by_user_id(),
         users_with_mfa: MFA.count_distinct_by_user_id(),
         users_with_mfa_totp: MFA.count_distinct_totp_by_user_id(),
-        openid_providers: count(cache().get!(:parsed_openid_connect_providers)),
-        saml_providers: count(cache().get!(:saml_identity_providers)),
-        unprivileged_device_management: cache().get!(:allow_unprivileged_device_management),
-        unprivileged_device_configuration: cache().get!(:allow_unprivileged_device_configuration),
-        local_authentication: cache().get!(:local_auth_enabled),
-        disable_vpn_on_oidc_error: cache().get!(:disable_vpn_on_oidc_error),
+        openid_providers: count(FzHttp.Configurations.get!(:openid_connect_providers)),
+        saml_providers: count(FzHttp.Configurations.get!(:saml_identity_providers)),
+        unprivileged_device_management:
+          FzHttp.Configurations.get!(:allow_unprivileged_device_management),
+        unprivileged_device_configuration:
+          FzHttp.Configurations.get!(:allow_unprivileged_device_configuration),
+        local_authentication: FzHttp.Configurations.get!(:local_auth_enabled),
+        disable_vpn_on_oidc_error: FzHttp.Configurations.get!(:disable_vpn_on_oidc_error),
         outbound_email: outbound_email?(),
         external_database:
           external_database?(Map.new(FzHttp.Config.fetch_env!(:fz_http, FzHttp.Repo))),
-        logo_type: FzHttp.Configurations.logo_type(cache().get!(:logo))
+        logo_type: FzHttp.Configurations.logo_type(FzHttp.Configurations.get!(:logo))
       ]
   end
 

@@ -6,7 +6,6 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
 
   alias FzHttp.Devices
   alias FzHttpWeb.ErrorHelpers
-  import Wrapped.Cache
 
   @impl Phoenix.LiveComponent
   def mount(socket) do
@@ -26,8 +25,6 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
   @impl Phoenix.LiveComponent
   def update(assigns, socket) do
     changeset = new_changeset(socket)
-
-    dbg()
 
     {:ok,
      socket
@@ -84,7 +81,7 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
 
   defp authorized_to_create?(socket) do
     has_role?(socket, :admin) ||
-      (cache().get!(:allow_unprivileged_device_management) &&
+      (FzHttp.Configurations.get!(:allow_unprivileged_device_management) &&
          socket.assigns.current_user.id == socket.assigns.target_user_id)
   end
 

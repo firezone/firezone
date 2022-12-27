@@ -10,7 +10,7 @@ defmodule FzHttpWeb.SettingLive.Customization do
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
-    logo = cache().get!(:logo)
+    logo = FzHttp.Configurations.get!(:logo)
     logo_type = FzHttp.Configurations.logo_type(logo)
 
     {:ok,

@@ -1,47 +1,45 @@
 defmodule FzHttp.OIDC.StartProxy do
   @moduledoc """
   This proxy simply gets the relevant config at an appropriate timing
-  (after `FzHttp.Configurations.Cache` has started) and pass to `OpenIDConnect.Worker`
   """
 
   require Logger
-  import Actual.Cache
 
   def child_spec(arg) do
     %{id: __MODULE__, start: {__MODULE__, :start_link, [arg]}}
   end
 
+  # XXX: Remove this grossness when Configurations support test fixtures
   def start_link(:test) do
-    auth_oidc_env = cache().get!(:openid_connect_providers)
-    cache().put!(:parsed_openid_connect_providers, parse(auth_oidc_env))
+    FzHttp.Configurations.put!(
+      :openid_connect_providers,
+      Application.fetch_env!(:fz_http, :openid_connect_providers)
+    )
+
     :ignore
   end
 
   def start_link(_) do
-    auth_oidc_env = cache().get!(:openid_connect_providers)
+    FzHttp.Configurations.get!(:openid_connect_providers)
+    |> parse()
+    |> OpenIDConnect.Worker.start_link()
+  end
 
-    if parsed = auth_oidc_env && parse(auth_oidc_env) do
-      cache().put!(:parsed_openid_connect_providers, parsed)
-      OpenIDConnect.Worker.start_link(parsed)
-    else
-      :ignore
+  # XXX: Remove when configurations support test fixtures
+  if Mix.env() == :test do
+    def restart, do: :ignore
+  else
+    def restart do
+      :ok = Supervisor.terminate_child(FzHttp.Supervisor, __MODULE__)
+      Supervisor.restart_child(FzHttp.Supervisor, __MODULE__)
     end
   end
 
-  def restart do
-    :ok = Supervisor.terminate_child(FzHttp.Supervisor, __MODULE__)
-    Supervisor.restart_child(FzHttp.Supervisor, __MODULE__)
-  end
-
-  defp parse(auth_oidc_env) when is_binary(auth_oidc_env) do
-    auth_oidc_env |> Jason.decode!() |> parse()
-  end
-
+  # Convert the configuration record to something openid_connect expects,
+  # atom-keyed configs eg. [provider: [client_id: "CLIENT_ID" ...]]
   defp parse(auth_oidc_config) when is_map(auth_oidc_config) do
     external_url = FzHttp.Config.fetch_env!(:fz_http, :external_url)
 
-    # Convert Map to something openid_connect expects, atomic keyed configs
-    # eg. [provider: [client_id: "CLIENT_ID" ...]]
     Enum.map(auth_oidc_config, fn {provider, settings} ->
       {
         String.to_atom(provider),

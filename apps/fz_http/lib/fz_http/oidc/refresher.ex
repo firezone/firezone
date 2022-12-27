@@ -6,7 +6,7 @@ defmodule FzHttp.OIDC.Refresher do
 
   import Ecto.{Changeset, Query}
   import FzHttpWeb.OIDC.Helpers
-  import Wrapped.Cache
+
   alias FzHttp.{OIDC, OIDC.Connection, Repo, Users}
   require Logger
 
@@ -79,6 +79,6 @@ defmodule FzHttp.OIDC.Refresher do
   end
 
   defp enabled? do
-    cache().get!(:disable_vpn_on_oidc_error)
+    FzHttp.Configurations.get!(:disable_vpn_on_oidc_error)
   end
 end

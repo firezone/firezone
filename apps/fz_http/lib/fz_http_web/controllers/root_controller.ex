@@ -8,9 +8,9 @@ defmodule FzHttpWeb.RootController do
     conn
     |> render(
       "auth.html",
-      local_enabled: cache().get!(:local_auth_enabled),
-      openid_connect_providers: cache().get!(:parsed_openid_connect_providers),
-      saml_identity_providers: cache().get!(:saml_identity_providers)
+      local_enabled: FzHttp.Configurations.get!(:local_auth_enabled),
+      openid_connect_providers: FzHttp.Configurations.get!(:openid_connect_providers),
+      saml_identity_providers: FzHttp.Configurations.get!(:saml_identity_providers)
     )
   end
 end

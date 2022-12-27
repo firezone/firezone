@@ -18,8 +18,7 @@ defmodule FzHttp.ApiTokensFixtures do
       )
 
     {:ok, api_token} =
-      attrs
-      |> FzHttp.ApiTokens.create_user_api_token(%FzHttp.Users.User{id: user_id})
+      FzHttp.ApiTokens.create_user_api_token(%FzHttp.Users.User{id: user_id}, attrs)
 
     api_token
   end

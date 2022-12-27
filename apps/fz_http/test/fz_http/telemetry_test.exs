@@ -47,7 +47,7 @@ defmodule FzHttp.TelemetryTest do
     end
 
     test "disable vpn on oidc error enabled" do
-      stub_conf(:disable_vpn_on_oidc_error, true)
+      FzHttp.Configurations.put!(:disable_vpn_on_oidc_error, true)
 
       ping_data = Telemetry.ping_data()
 
@@ -55,7 +55,7 @@ defmodule FzHttp.TelemetryTest do
     end
 
     test "disable vpn on oidc error disabled" do
-      stub_conf(:disable_vpn_on_oidc_error, false)
+      FzHttp.Configurations.put!(:disable_vpn_on_oidc_error, false)
 
       ping_data = Telemetry.ping_data()
 
@@ -63,7 +63,7 @@ defmodule FzHttp.TelemetryTest do
     end
 
     test "local authentication enabled" do
-      stub_conf(:local_auth_enabled, true)
+      FzHttp.Configurations.put!(:local_auth_enabled, true)
 
       ping_data = Telemetry.ping_data()
 
@@ -71,7 +71,7 @@ defmodule FzHttp.TelemetryTest do
     end
 
     test "local authentication disabled" do
-      stub_conf(:local_auth_enabled, false)
+      FzHttp.Configurations.put!(:local_auth_enabled, false)
 
       ping_data = Telemetry.ping_data()
 
@@ -79,7 +79,7 @@ defmodule FzHttp.TelemetryTest do
     end
 
     test "unprivileged device management enabled" do
-      stub_conf(:allow_unprivileged_device_management, true)
+      FzHttp.Configurations.put!(:allow_unprivileged_device_management, true)
 
       ping_data = Telemetry.ping_data()
 
@@ -87,7 +87,7 @@ defmodule FzHttp.TelemetryTest do
     end
 
     test "unprivileged device configuration enabled" do
-      stub_conf(:allow_unprivileged_device_configuration, true)
+      FzHttp.Configurations.put!(:allow_unprivileged_device_configuration, true)
 
       ping_data = Telemetry.ping_data()
 
@@ -95,7 +95,7 @@ defmodule FzHttp.TelemetryTest do
     end
 
     test "unprivileged device configuration disabled" do
-      stub_conf(:allow_unprivileged_device_configuration, false)
+      FzHttp.Configurations.put!(:allow_unprivileged_device_configuration, false)
 
       ping_data = Telemetry.ping_data()
 

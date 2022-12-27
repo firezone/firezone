@@ -5,6 +5,9 @@ defmodule FzHttp.Configurations.Logo do
   use FzHttp, :schema
   import Ecto.Changeset
 
+  # Singleton per configuration
+  @primary_key false
+
   embedded_schema do
     field :url, :string
     field :data, :string

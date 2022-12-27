@@ -1,13 +1,19 @@
 defmodule FzHttp.SAML.StartProxy do
   @moduledoc """
   This proxy starts Samly.Provider with proper configs
-  (after `FzHttp.Conf.Cache` has started)
   """
-
-  import Actual.Cache
 
   def child_spec(arg) do
     %{id: __MODULE__, start: {__MODULE__, :start_link, [arg]}}
+  end
+
+  def start_link(:test) do
+    FzHttp.Configurations.put!(
+      :saml_identity_providers,
+      Application.get_env(:fz_http, :saml_identity_providers)
+    )
+
+    start_link(nil)
   end
 
   def start_link(_) do
@@ -37,7 +43,7 @@ defmodule FzHttp.SAML.StartProxy do
     ])
   end
 
-  def set_identity_providers(samly_configs, providers \\ cache().get!(:saml_identity_providers)) do
+  def set_identity_providers(samly_configs, providers \\ init_providers()) do
     external_url = FzHttp.Config.fetch_env!(:fz_http, :external_url)
 
     identity_providers =
@@ -63,8 +69,25 @@ defmodule FzHttp.SAML.StartProxy do
     Samly.Provider.refresh_providers()
   end
 
-  def restart do
-    :ok = Supervisor.terminate_child(FzHttp.Supervisor, __MODULE__)
-    Supervisor.restart_child(FzHttp.Supervisor, __MODULE__)
+  # XXX: This should be removed when the configurations singleton record is removed.
+  #
+  # Needed to prevent the test suite from recursively restarting this module as
+  # it put!()'s mock data
+  if Mix.env() == :test do
+    def restart, do: :ignore
+  else
+    def restart do
+      :ok = Supervisor.terminate_child(FzHttp.Supervisor, __MODULE__)
+      Supervisor.restart_child(FzHttp.Supervisor, __MODULE__)
+    end
+  end
+
+  # Configurations is a singleton record; this makes it hard to test;
+  # This is added to fallback to App Env so we don't have to attempt to change
+  # the singleton record in the test env before this module starts up.
+  #
+  # XXX: Make Configurations fixtures and remove reliance on singleton records
+  defp init_providers do
+    FzHttp.Configurations.get!(:saml_identity_providers)
   end
 end

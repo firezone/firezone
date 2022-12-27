@@ -7,7 +7,6 @@ defmodule FzHttpWeb.SettingLive.Security do
   import Ecto.Changeset
   import FzCommon.FzCrypto, only: [rand_string: 1]
 
-  import Wrapped.Cache
   alias FzHttp.Configurations
 
   @page_title "Security Settings"

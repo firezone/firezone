@@ -4,7 +4,6 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
   alias FzHttp.Configurations
   alias FzHttpWeb.SettingLive.Security
   import FzHttp.SAMLConfigFixtures
-  import Mox
 
   describe "authenticated mount" do
     test "loads the active sessions table", %{admin_conn: conn} do
@@ -56,7 +55,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
     import FzHttp.ConfigurationsFixtures
 
     setup %{conf_key: key, conf_val: val} do
-      stub_conf(key, val)
+      FzHttp.Configurations.put!(key, val)
       {:ok, path: ~p"/settings/security"}
     end
 
@@ -72,11 +71,8 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
         html = view |> element("input[phx-value-config=#{unquote(key)}}]") |> render()
         assert html =~ "checked"
 
-        expect(Cache.Mock, :put!, fn unquote(key), v ->
-          assert v == false
-        end)
-
         view |> element("input[phx-value-config=#{unquote(key)}]") |> render_click()
+        assert FzHttp.Configurations.get!(unquote(key)) == false
       end
     end
 
@@ -92,11 +88,8 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
         html = view |> element("input[phx-value-config=#{unquote(key)}]") |> render()
         refute html =~ "checked"
 
-        expect(Cache.Mock, :put!, fn unquote(key), v ->
-          assert v == true
-        end)
-
         view |> element("input[phx-value-config=#{unquote(key)}]") |> render_click()
+        assert FzHttp.Configurations.get!(unquote(key)) == true
       end
     end
   end
@@ -135,10 +128,6 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
     end
 
     test "validate", %{view: view} do
-      expect(Cache.Mock, :put!, fn :openid_connect_providers, val ->
-        assert val == %{"test" => %{"label" => "test123"}}
-      end)
-
       view
       |> element("a", "Edit")
       |> render_click()
@@ -150,16 +139,18 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
 
       # stays on the modal
       assert html =~ ~s|<p class="modal-card-title">OIDC Configuration</p>|
+
+      assert FzHttp.Configurations.get!(:openid_connect_providers) == %{
+               "test" => %{"label" => "test123"}
+             }
     end
 
     test "delete", %{view: view} do
-      expect(Cache.Mock, :put!, fn :openid_connect_providers, val ->
-        assert val == %{}
-      end)
-
       view
       |> element("button", "Delete")
       |> render_click()
+
+      assert FzHttp.Configurations.get!(:openid_connect_providers) == %{}
     end
   end
 
@@ -198,10 +189,6 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
     end
 
     test "validate", %{view: view} do
-      expect(Cache.Mock, :put!, fn :saml_identity_providers, val ->
-        assert val == %{"test" => saml_attrs()}
-      end)
-
       view
       |> element("a", "Edit")
       |> render_click()
@@ -213,16 +200,15 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
 
       # stays on the modal
       assert html =~ ~s|<p class="modal-card-title">SAML Configuration</p>|
+      assert FzHttp.Configurations.get!(:saml_identity_providers) == %{"test" => saml_attrs()}
     end
 
     test "delete", %{view: view} do
-      expect(Cache.Mock, :put!, fn :saml_identity_providers, val ->
-        assert val == %{}
-      end)
-
       view
       |> element("button", "Delete")
       |> render_click()
+
+      assert FzHttp.Configurations.get!(:saml_identity_providers) == %{}
     end
   end
 end

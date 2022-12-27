@@ -13,8 +13,6 @@ defmodule FzHttpWeb.AuthController do
   alias FzHttpWeb.OIDC.State
   alias FzHttpWeb.UserFromAuth
 
-  import Wrapped.Cache
-
   import FzHttpWeb.OIDC.Helpers
 
   # Uncomment when Helpers.callback_url/1 is fixed
@@ -169,7 +167,7 @@ defmodule FzHttpWeb.AuthController do
 
   defp maybe_sign_in(conn, user, %{provider: provider} = auth)
        when provider in @local_auth_providers do
-    if cache().get!(:local_auth_enabled) do
+    if FzHttp.Configurations.get!(:local_auth_enabled) do
       do_sign_in(conn, user, auth)
     else
       conn

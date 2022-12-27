@@ -5,12 +5,13 @@ defmodule FzHttpWeb.Auth.HTML.Authentication do
   use Guardian, otp_app: :fz_http
   use FzHttpWeb, :controller
 
-  import Wrapped.Cache
   alias FzHttp.Telemetry
   alias FzHttp.Users
   alias FzHttp.Users.User
 
   import FzHttpWeb.OIDC.Helpers
+
+  require Logger
 
   @guardian_token_name "guardian_default_token"
 
@@ -73,10 +74,9 @@ defmodule FzHttpWeb.Auth.HTML.Authentication do
   end
 
   def sign_out(conn) do
-    with {:ok, provider_key} <- parse_provider(Plug.Conn.get_session(conn, "login_method")),
-         {:ok, provider} <- atomize_provider(provider_key),
+    with {:ok, provider} <- parse_provider(Plug.Conn.get_session(conn, "login_method")),
          {:ok, client_id} <-
-           parse_client_id(cache().get!(:parsed_openid_connect_providers)[provider]),
+           parse_client_id(FzHttp.Configurations.get!(:openid_connect_providers)[provider]),
          {:ok, token} <- parse_token(Plug.Conn.get_session(conn, "id_token")),
          {:ok, end_session_uri} <-
            parse_end_session_uri(
@@ -91,7 +91,11 @@ defmodule FzHttpWeb.Auth.HTML.Authentication do
       |> Plug.Conn.configure_session(drop: true)
       |> Phoenix.Controller.redirect(external: end_session_uri)
     else
-      _ ->
+      failure ->
+        Logger.info(
+          "end_session_uri not found in provider config because #{failure}. redirecting to /"
+        )
+
         conn
         |> __MODULE__.Plug.sign_out()
         |> Plug.Conn.configure_session(drop: true)
@@ -104,7 +108,7 @@ defmodule FzHttpWeb.Auth.HTML.Authentication do
   defp parse_provider(p) when is_atom(p), do: {:ok, "#{p}"}
 
   defp parse_client_id(nil), do: {:error, "client_id missing"}
-  defp parse_client_id(c), do: {:ok, c[:client_id]}
+  defp parse_client_id(c), do: {:ok, Map.get(c, "client_id")}
 
   defp parse_token(nil), do: {:error, "token missing"}
   defp parse_token(t), do: {:ok, t}

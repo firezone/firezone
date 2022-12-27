@@ -78,8 +78,8 @@
             type="checkbox"
             phx-click="toggle"
             phx-value-config="local_auth_enabled"
-            checked={cache().get!(:local_auth_enabled)}
-            value={if(!cache().get!(:local_auth_enabled), do: "on")}
+            checked={FzHttp.Configurations.get!(:local_auth_enabled)}
+            value={if(!FzHttp.Configurations.get!(:local_auth_enabled), do: "on")}
           />
           <span class="check"></span>
         </label>
@@ -100,8 +100,10 @@
             type="checkbox"
             phx-click="toggle"
             phx-value-config="allow_unprivileged_device_management"
-            checked={cache().get!(:allow_unprivileged_device_management)}
-            value={if(!cache().get!(:allow_unprivileged_device_management), do: "on")}
+            checked={FzHttp.Configurations.get!(:allow_unprivileged_device_management)}
+            value={
+              if(!FzHttp.Configurations.get!(:allow_unprivileged_device_management), do: "on")
+            }
           />
           <span class="check"></span>
         </label>
@@ -124,8 +126,10 @@
             type="checkbox"
             phx-click="toggle"
             phx-value-config="allow_unprivileged_device_configuration"
-            checked={cache().get!(:allow_unprivileged_device_configuration)}
-            value={if(!cache().get!(:allow_unprivileged_device_configuration), do: "on")}
+            checked={FzHttp.Configurations.get!(:allow_unprivileged_device_configuration)}
+            value={
+              if(!FzHttp.Configurations.get!(:allow_unprivileged_device_configuration), do: "on")
+            }
           />
           <span class="check"></span>
         </label>
@@ -156,8 +160,8 @@
             type="checkbox"
             phx-click="toggle"
             phx-value-config="disable_vpn_on_oidc_error"
-            checked={cache().get!(:disable_vpn_on_oidc_error)}
-            value={if(!cache().get!(:disable_vpn_on_oidc_error), do: "on")}
+            checked={FzHttp.Configurations.get!(:disable_vpn_on_oidc_error)}
+            value={if(!FzHttp.Configurations.get!(:disable_vpn_on_oidc_error), do: "on")}
           />
           <span class="check"></span>
         </label>
