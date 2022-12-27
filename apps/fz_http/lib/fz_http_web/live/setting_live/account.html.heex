@@ -161,7 +161,7 @@
                 </.link>
               </td>
               <td>
-                <%= if ApiTokens.expired?(api_token) do %>
+                <%= if ApiTokens.api_token_expired?(api_token) do %>
                   <span class="icon has-text-danger is-small">
                     <i class="mdi mdi-close-circle"></i>
                   </span>

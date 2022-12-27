@@ -1,16 +1,13 @@
 defmodule FzHttp.ApiTokens.ApiToken do
-  @moduledoc """
-  Stores API Token metadata to check for revocation.
-  """
   use FzHttp, :schema
   import Ecto.Changeset
 
-  @max_per_user 10
+  @max_per_user 25
 
   schema "api_tokens" do
     field :expires_at, :utc_datetime_usec
 
-    # User-friendly way to set expires_at
+    # Developer-friendly way to set expires_at
     field :expires_in, :integer, virtual: true, default: 30
 
     belongs_to :user, FzHttp.Users.User
@@ -18,8 +15,8 @@ defmodule FzHttp.ApiTokens.ApiToken do
     timestamps(updated_at: false)
   end
 
-  def changeset(api_token, attrs, opts \\ []) do
-    api_token
+  def create_changeset(attrs, opts \\ []) do
+    %__MODULE__{}
     |> cast(attrs, ~w[
       user_id
       expires_in
@@ -44,6 +41,9 @@ defmodule FzHttp.ApiTokens.ApiToken do
   end
 
   defp maybe_validate_count_per_user(changeset, max, num) when is_integer(num) and num >= max do
+    # XXX: This suffers from a race condition because the count happens in a separate transaction.
+    # At the moment it's not a big concern. Fixing it would require locking against INSERTs or DELETEs
+    # while counts are happening.
     add_error(changeset, :base, "token limit of #{@max_per_user} reached")
   end
 

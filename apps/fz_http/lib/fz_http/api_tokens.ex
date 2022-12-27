@@ -8,13 +8,9 @@ defmodule FzHttp.ApiTokens do
 
   alias FzHttp.ApiTokens.ApiToken
 
-  def count, do: count(ApiToken)
-  def count(nil), do: nil
-
-  def count(queryable) when is_struct(queryable) or is_atom(queryable),
-    do: Repo.aggregate(queryable, :count)
-
-  def count(user_id), do: count(from(a in ApiToken, where: a.user_id == ^user_id))
+  def count_by_user_id(user_id) do
+    Repo.aggregate(from(a in ApiToken, where: a.user_id == ^user_id), :count)
+  end
 
   def list_api_tokens do
     Repo.all(ApiToken)
@@ -28,20 +24,30 @@ defmodule FzHttp.ApiTokens do
 
   def get_api_token!(id), do: Repo.get!(ApiToken, id)
 
+  def get_unexpired_api_token(api_token_id) do
+    Repo.one(
+      from a in ApiToken,
+        where: a.id == ^api_token_id and fragment("? > now()", a.expires_at)
+    )
+  end
+
   def new_api_token(attrs \\ %{}) do
-    ApiToken.changeset(%ApiToken{}, attrs)
+    ApiToken.create_changeset(attrs)
   end
 
-  def create_api_token(attrs \\ %{}) do
-    FzHttp.Telemetry.create_api_token()
-    user_id = attrs[:user_id] || attrs["user_id"]
+  def create_user_api_token(%FzHttp.Users.User{} = user, attrs) do
+    changeset =
+      attrs
+      |> Enum.into(%{user_id: user.id})
+      |> ApiToken.create_changeset(count_per_user: count_by_user_id(user.id))
 
-    %ApiToken{}
-    |> ApiToken.changeset(attrs, count_per_user: count(user_id))
-    |> Repo.insert()
+    with {:ok, api_token} <- Repo.insert(changeset) do
+      FzHttp.Telemetry.create_api_token()
+      {:ok, api_token}
+    end
   end
 
-  def expired?(%ApiToken{} = api_token) do
+  def api_token_expired?(%ApiToken{} = api_token) do
     DateTime.diff(api_token.expires_at, DateTime.utc_now()) < 0
   end
 

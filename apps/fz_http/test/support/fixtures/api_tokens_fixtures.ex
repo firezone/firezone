@@ -19,8 +19,7 @@ defmodule FzHttp.ApiTokensFixtures do
 
     {:ok, api_token} =
       attrs
-      |> Enum.into(%{user_id: user_id})
-      |> FzHttp.ApiTokens.create_api_token()
+      |> FzHttp.ApiTokens.create_user_api_token(%FzHttp.Users.User{id: user_id})
 
     api_token
   end

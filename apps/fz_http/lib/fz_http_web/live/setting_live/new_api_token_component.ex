@@ -54,7 +54,7 @@ defmodule FzHttpWeb.SettingLive.NewApiTokenComponent do
   def handle_event("save", %{"api_token" => api_token_params}, socket) do
     user = socket.assigns.user
 
-    case ApiTokens.create_api_token(Map.merge(api_token_params, %{"user_id" => user.id})) do
+    case ApiTokens.create_user_api_token(user, api_token_params) do
       {:ok, api_token} ->
         {:noreply,
          socket

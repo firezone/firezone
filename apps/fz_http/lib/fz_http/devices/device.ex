@@ -166,6 +166,9 @@ defmodule FzHttp.Devices.Device do
   end
 
   defp validate_max_devices(changeset) do
+    # XXX: This suffers from a race condition because the count happens in a separate transaction.
+    # At the moment it's not a big concern. Fixing it would require locking against INSERTs or DELETEs
+    # while counts are happening.
     count =
       get_field(changeset, :user_id)
       |> Devices.count()

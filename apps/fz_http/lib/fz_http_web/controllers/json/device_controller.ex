@@ -10,7 +10,6 @@ defmodule FzHttpWeb.JSON.DeviceController do
   alias FzHttp.Devices
 
   def index(conn, _params) do
-    # XXX: Add user-scoped devices
     devices = Devices.list_devices()
     render(conn, "index.json", devices: devices)
   end

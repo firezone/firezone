@@ -16,9 +16,8 @@ defmodule FzHttpWeb.Auth.JSON.Authentication do
 
   @impl Guardian
   def resource_from_claims(%{"jti" => api_token_id}) do
-    with {:ok, api_token} <- ApiTokens.get_api_token(api_token_id),
-         false <- ApiTokens.expired?(api_token),
-         {:ok, user} <- Users.get_user(api_token.user_id) do
+    with %ApiTokens.ApiToken{} = api_token <- ApiTokens.get_unexpired_api_token(api_token_id),
+         %Users.User{} = user <- Users.get_user(api_token.user_id) do
       {:ok, user}
     else
       _ ->
