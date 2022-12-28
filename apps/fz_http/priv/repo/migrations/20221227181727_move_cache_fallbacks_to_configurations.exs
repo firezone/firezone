@@ -34,5 +34,23 @@ defmodule FzHttp.Repo.Migrations.MoveCacheFallbacksToConfigurations do
       UPDATE configurations
       SET allow_unprivileged_device_configuration = '#{allow_unprivileged_device_configuration}' WHERE configurations.allow_unprivileged_device_configuration IS NULL
     """)
+
+    # Set defaults for providers
+    execute("""
+      UPDATE configurations
+      SET openid_connect_providers = '{}'::json
+      WHERE openid_connect_providers IS NULL
+    """)
+
+    execute("""
+      UPDATE configurations
+      SET saml_identity_providers = '{}'::json
+      WHERE saml_identity_providers IS NULL
+    """)
+
+    alter table(:configurations) do
+      modify(:openid_connect_providers, :map, default: %{}, null: false)
+      modify(:saml_identity_providers, :map, default: %{}, null: false)
+    end
   end
 end

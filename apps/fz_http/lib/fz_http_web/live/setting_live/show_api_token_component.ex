@@ -6,14 +6,7 @@ defmodule FzHttpWeb.SettingLive.ShowApiTokenComponent do
 
   def update(assigns, socket) do
     if connected?(socket) do
-      api_token = FzHttp.ApiTokens.get_api_token!(assigns.api_token_id)
-
-      claims = %{
-        "jti" => assigns.api_token_id,
-        "exp" => DateTime.to_unix(api_token.expires_at)
-      }
-
-      {:ok, secret, _claims} = Guardian.encode_and_sign(Authentication, assigns.user, claims)
+      {:ok, secret, _claims} = Authentication.fz_encode_and_sign(assigns.api_token, assigns.user)
 
       {:ok,
        socket
@@ -29,9 +22,9 @@ defmodule FzHttpWeb.SettingLive.ShowApiTokenComponent do
       <%= if assigns[:secret] do %>
         <div class="level">
           <div class="level-left">
-            <p>
-              Use the token below to authenticate to the Firezone REST API:
-            </p>
+            <h6 class="title is-6">
+              API token secret:
+            </h6>
           </div>
           <div class="level-right">
             <button
@@ -47,15 +40,18 @@ defmodule FzHttpWeb.SettingLive.ShowApiTokenComponent do
         <div class="block">
           <pre class="multiline"><code id="api-token-secret"><%= @secret %></code></pre>
         </div>
+        <div class="block">
+          <p><strong>Warning!</strong> This token is sensitive data. Store it somewhere safe.</p>
+        </div>
         <hr />
         <div class="block">
-          <h5 class="title is-5">cURL Example:</h5>
+          <h6 class="title is-6">cURL example:</h6>
           <pre><code><i># List all users</i>
     curl -H 'Content-Type: application/json' \
          -H 'Authorization: Bearer <%= @secret %>' \
-         https://firezone.company.com/v1/users</code></pre>
+         <%= Application.fetch_env!(:fz_http, :external_url) %>/v0/users</code></pre>
         </div>
-        <div class="block">
+        <div class="block has-text-right">
           <a href="https://docs.firezone.dev/reference/rest-api?utm_source=product">
             Explore the REST API docs -&gt;
           </a>

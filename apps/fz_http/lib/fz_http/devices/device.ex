@@ -10,6 +10,9 @@ defmodule FzHttp.Devices.Device do
 
   @description_max_length 2048
 
+  # WireGuard base64-encoded string length
+  @key_length 44
+
   schema "devices" do
     field :rx_bytes, :integer
     field :tx_bytes, :integer
@@ -90,6 +93,10 @@ defmodule FzHttp.Devices.Device do
     |> Common.trim_change(:endpoint)
     |> Common.trim_change(:name)
     |> Common.trim_change(:description)
+    |> Common.validate_base64(:public_key)
+    |> Common.validate_base64(:preshared_key)
+    |> validate_length(:public_key, is: @key_length)
+    |> validate_length(:preshared_key, is: @key_length)
     |> validate_length(:description, max: @description_max_length)
     |> validate_length(:name, min: 1)
     |> assoc_constraint(:user)

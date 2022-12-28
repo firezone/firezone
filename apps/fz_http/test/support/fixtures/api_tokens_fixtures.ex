@@ -7,18 +7,18 @@ defmodule FzHttp.ApiTokensFixtures do
   @doc """
   Generate a api_token.
   """
-  def api_token_fixture(attrs \\ %{}) do
+  def api_token(params \\ %{}) do
     user_id =
       Map.get_lazy(
-        attrs,
-        :user_id,
+        params,
+        "user_id",
         fn ->
           FzHttp.UsersFixtures.user().id
         end
       )
 
     {:ok, api_token} =
-      FzHttp.ApiTokens.create_user_api_token(%FzHttp.Users.User{id: user_id}, attrs)
+      FzHttp.ApiTokens.create_user_api_token(%FzHttp.Users.User{id: user_id}, params)
 
     api_token
   end

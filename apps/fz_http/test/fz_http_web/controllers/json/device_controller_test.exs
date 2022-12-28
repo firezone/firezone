@@ -1,5 +1,6 @@
 defmodule FzHttpWeb.JSON.DeviceControllerTest do
-  use FzHttpWeb.ConnCase, async: true, api: true
+  use FzHttpWeb.ConnCase, async: true
+  @moduletag api: true
 
   describe "show device" do
     setup :create_device
@@ -14,8 +15,8 @@ defmodule FzHttpWeb.JSON.DeviceControllerTest do
     @params %{
       "name" => "create-name",
       "description" => "create-description",
-      "public_key" => "pubkey",
-      "preshared_key" => "psk",
+      "public_key" => "CHqFuS+iL3FTog5F4Ceumqlk0CU4Cl/dyUP/9F9NDnI=",
+      "preshared_key" => "CHqFuS+iL3FTog5F4Ceumqlk0CU4Cl/dyUP/9F9NDnI=",
       "use_default_allowed_ips" => false,
       "use_default_dns" => false,
       "use_default_endpoint" => false,

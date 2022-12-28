@@ -20,8 +20,8 @@ defmodule FzHttpWeb.JSON.UserController do
     end
   end
 
-  def show(conn, %{"id" => id}) do
-    user = Users.get_user!(id)
+  def show(conn, %{"id" => id_or_email}) do
+    user = get_user_by_id_or_email(id_or_email)
     render(conn, "show.json", user: user)
   end
 
@@ -38,6 +38,14 @@ defmodule FzHttpWeb.JSON.UserController do
 
     with {:ok, %User{}} <- Users.delete_user(user) do
       send_resp(conn, :no_content, "")
+    end
+  end
+
+  defp get_user_by_id_or_email(id_or_email) do
+    if String.contains?(id_or_email, "@") do
+      Users.get_by_email!(id_or_email)
+    else
+      Users.get_user!(id_or_email)
     end
   end
 end

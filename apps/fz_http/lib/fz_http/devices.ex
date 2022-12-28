@@ -29,6 +29,8 @@ defmodule FzHttp.Devices do
     Repo.aggregate(Device, :count)
   end
 
+  def count(nil), do: 0
+
   def count(user_id) do
     Repo.one(from d in Device, where: d.user_id == ^user_id, select: count())
   end
@@ -146,7 +148,7 @@ defmodule FzHttp.Devices do
   def mtu(device), do: config(device, :mtu)
   def persistent_keepalive(device), do: config(device, :persistent_keepalive)
 
-  defp config(device, key) do
+  def config(device, key) do
     if Map.get(device, String.to_atom("use_default_#{key}")) do
       Map.get(Configurations.get_configuration!(), String.to_atom("default_client_#{key}"))
     else

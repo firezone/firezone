@@ -1,5 +1,6 @@
 defmodule FzHttpWeb.JSON.RuleControllerTest do
-  use FzHttpWeb.ConnCase, async: true, api: true
+  use FzHttpWeb.ConnCase, async: true
+  @moduletag api: true
 
   @rule_params %{
     "destination" => "5.5.5.5/24",

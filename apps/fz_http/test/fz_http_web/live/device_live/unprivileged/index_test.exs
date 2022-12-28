@@ -111,7 +111,12 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
       new_view =
         view
         |> element("#create-device")
-        |> render_submit(%{"device" => %{"public_key" => "test-pubkey", "name" => "test-tunnel"}})
+        |> render_submit(%{
+          "device" => %{
+            "public_key" => "8IkpsAXiqhqNdc9PJS76YeJjig4lyTBaf8Rm7gTApXk=",
+            "name" => "test-tunnel"
+          }
+        })
 
       assert new_view =~ "Device added!"
     end

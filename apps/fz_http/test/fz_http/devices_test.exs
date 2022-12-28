@@ -43,7 +43,7 @@ defmodule FzHttp.DevicesTest do
 
     @device_attrs %{
       name: "dummy",
-      public_key: "dummy",
+      public_key: "CHqFuS+iL3FTog5F4Ceumqlk0CU4Cl/dyUP/9F9NDnI=",
       user_id: nil,
       ipv4: "100.64.0.2",
       ipv6: "fd00::2"

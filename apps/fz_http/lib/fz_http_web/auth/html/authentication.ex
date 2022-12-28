@@ -91,11 +91,7 @@ defmodule FzHttpWeb.Auth.HTML.Authentication do
       |> Plug.Conn.configure_session(drop: true)
       |> Phoenix.Controller.redirect(external: end_session_uri)
     else
-      failure ->
-        Logger.info(
-          "end_session_uri not found in provider config because #{failure}. redirecting to /"
-        )
-
+      _ ->
         conn
         |> __MODULE__.Plug.sign_out()
         |> Plug.Conn.configure_session(drop: true)

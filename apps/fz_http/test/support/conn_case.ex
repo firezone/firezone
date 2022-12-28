@@ -19,7 +19,11 @@ defmodule FzHttpWeb.ConnCase do
   use FzHttp.CaseTemplate
 
   alias FzHttpWeb.Auth.HTML.Authentication
-  alias FzHttp.UsersFixtures
+
+  alias FzHttp.{
+    ApiTokensFixtures,
+    UsersFixtures
+  }
 
   using do
     quote do
@@ -46,17 +50,17 @@ defmodule FzHttpWeb.ConnCase do
   end
 
   def api_conn do
+    user = UsersFixtures.user()
+    api_token = ApiTokensFixtures.api_token(%{"user_id" => user.id})
+    {:ok, token, _claims} = FzHttpWeb.Auth.JSON.Authentication.fz_encode_and_sign(api_token, user)
+
     new_conn()
     |> Plug.Conn.put_req_header("accept", "application/json")
+    |> Plug.Conn.put_req_header("authorization", "bearer #{token}")
   end
 
   def admin_conn(tags) do
     authed_conn(:admin, tags)
-  end
-
-  def unprivileged_conn(%{api: true} = tags) do
-    authed_conn(:unprivileged, tags)
-    |> Plug.Conn.put_req_header("accept", "application/json")
   end
 
   def unprivileged_conn(tags) do
@@ -90,12 +94,15 @@ defmodule FzHttpWeb.ConnCase do
     {unprivileged_user, unprivileged_conn} = unprivileged_conn(tags)
     {admin_user, admin_conn} = admin_conn(tags)
 
-    {:ok,
-     api_conn: api_conn(),
-     unauthed_conn: new_conn(),
-     admin_user: admin_user,
-     unprivileged_user: unprivileged_user,
-     admin_conn: admin_conn,
-     unprivileged_conn: unprivileged_conn}
+    conns =
+      [
+        unauthed_conn: new_conn(),
+        admin_user: admin_user,
+        unprivileged_user: unprivileged_user,
+        admin_conn: admin_conn,
+        unprivileged_conn: unprivileged_conn
+      ] ++ if tags[:api], do: [api_conn: api_conn()], else: []
+
+    {:ok, conns}
   end
 end

@@ -82,7 +82,7 @@ defmodule FzHttp.RulesTest do
       {:error, changeset} = Rules.create_rule(%{destination: "10.0.0.0/24", port_range: "10-20"})
 
       assert changeset.errors[:port_type] ==
-               {"Please specify a port-range for the given port type",
+               {"port_type must be specified with port_range",
                 [constraint: :check, constraint_name: "port_range_needs_type"]}
     end
 
@@ -90,7 +90,7 @@ defmodule FzHttp.RulesTest do
       {:error, changeset} = Rules.create_rule(%{destination: "10.0.0.0/24", port_type: :tcp})
 
       assert changeset.errors[:port_type] ==
-               {"Please specify a port-range for the given port type",
+               {"port_type must be specified with port_range",
                 [constraint: :check, constraint_name: "port_range_needs_type"]}
     end
 
@@ -99,7 +99,7 @@ defmodule FzHttp.RulesTest do
         Rules.create_rule(%{destination: "10.0.0.0/24", port_type: :tcp, port_range: "10-90000"})
 
       assert changeset.errors[:port_range] ==
-               {"Port is not within valid range",
+               {"port is not within valid range",
                 [constraint: :check, constraint_name: "port_range_is_within_valid_values"]}
     end
 
@@ -108,7 +108,7 @@ defmodule FzHttp.RulesTest do
         Rules.create_rule(%{destination: "10.0.0.0/24", port_type: :tcp, port_range: "20-10"})
 
       assert changeset.errors[:port_range] ==
-               {"Range Error: Lower bound higher than upper bound",
+               {"lower value cannot be higher than upper value",
                 [type: FzHttp.Int4Range, validation: :cast]}
     end
   end

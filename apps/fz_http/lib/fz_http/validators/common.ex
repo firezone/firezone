@@ -66,6 +66,15 @@ defmodule FzHttp.Validators.Common do
     end)
   end
 
+  def validate_base64(changeset, field) do
+    validate_change(changeset, field, fn _cur, value ->
+      case Base.decode64(value) do
+        :error -> [{field, "must be a base64-encoded string"}]
+        {:ok, _decoded} -> []
+      end
+    end)
+  end
+
   def validate_omitted(changeset, fields) when is_list(fields) do
     Enum.reduce(fields, changeset, fn field, accumulated_changeset ->
       validate_omitted(accumulated_changeset, field)

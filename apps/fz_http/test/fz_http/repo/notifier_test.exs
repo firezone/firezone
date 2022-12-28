@@ -88,7 +88,7 @@ defmodule FzHttp.Repo.NotifierTest do
       Notifier.handle_event("devices", %{op: "INSERT", row: device})
 
       expected_vpn_state = %{
-        "1" => %{
+        device.public_key => %{
           allowed_ips: "#{device.ipv4}/32,#{device.ipv6}/128",
           preshared_key: device.preshared_key
         }

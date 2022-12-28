@@ -44,7 +44,7 @@ defmodule FzHttpWeb.SettingLive.Account do
   def handle_params(%{"api_token_id" => api_token_id}, _url, socket) do
     {:noreply,
      socket
-     |> assign(:api_token_id, api_token_id)}
+     |> assign(:api_token, ApiTokens.get_api_token!(api_token_id))}
   end
 
   @impl Phoenix.LiveView

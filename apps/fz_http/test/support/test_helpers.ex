@@ -40,8 +40,7 @@ defmodule FzHttp.TestHelpers do
     device =
       DevicesFixtures.device(%{
         user_id: user_id,
-        name: "other device",
-        public_key: "other-pubkey"
+        name: "other device"
       })
 
     {:ok, other_device: device}
@@ -68,7 +67,6 @@ defmodule FzHttp.TestHelpers do
       Enum.map(1..5, fn num ->
         DevicesFixtures.device(%{
           name: "device #{num}",
-          public_key: "#{num}",
           user_id: user_id
         })
       end)
@@ -123,7 +121,6 @@ defmodule FzHttp.TestHelpers do
         device =
           DevicesFixtures.device(%{
             name: "device #{num}",
-            public_key: "#{num}",
             user_id: user.id
           })
 
@@ -151,7 +148,6 @@ defmodule FzHttp.TestHelpers do
     device =
       DevicesFixtures.device(%{
         name: "device",
-        public_key: "1",
         user_id: user.id
       })
 

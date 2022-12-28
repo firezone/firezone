@@ -16,6 +16,7 @@ defmodule FzHttpWeb.Router do
 
   pipeline :api do
     plug :accepts, ["json"]
+    plug FzHttpWeb.Auth.JSON.Pipeline
   end
 
   pipeline :require_admin_user do

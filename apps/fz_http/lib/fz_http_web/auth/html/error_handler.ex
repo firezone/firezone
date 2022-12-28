@@ -5,7 +5,7 @@ defmodule FzHttpWeb.Auth.HTML.ErrorHandler do
 
   use FzHttpWeb, :controller
   alias FzHttpWeb.Auth.HTML.Authentication
-  import FzHttpWeb.ControllerHelpers, only: [root_path_for_role: 1]
+  import FzHttpWeb.ControllerHelpers, only: [root_path_for_user: 1]
   require Logger
 
   @behaviour Guardian.Plug.ErrorHandler
@@ -15,7 +15,7 @@ defmodule FzHttpWeb.Auth.HTML.ErrorHandler do
     user = Authentication.get_current_user(conn)
 
     conn
-    |> redirect(to: root_path_for_role(user.role))
+    |> redirect(to: root_path_for_user(user))
   end
 
   @impl Guardian.Plug.ErrorHandler

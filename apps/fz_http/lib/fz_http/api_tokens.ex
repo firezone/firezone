@@ -25,9 +25,11 @@ defmodule FzHttp.ApiTokens do
   def get_api_token!(id), do: Repo.get!(ApiToken, id)
 
   def get_unexpired_api_token(api_token_id) do
+    now = DateTime.utc_now()
+
     Repo.one(
       from a in ApiToken,
-        where: a.id == ^api_token_id and fragment("? > now()", a.expires_at)
+        where: a.id == ^api_token_id and a.expires_at >= ^now
     )
   end
 
@@ -35,10 +37,10 @@ defmodule FzHttp.ApiTokens do
     ApiToken.create_changeset(attrs)
   end
 
-  def create_user_api_token(%FzHttp.Users.User{} = user, attrs) do
+  def create_user_api_token(%FzHttp.Users.User{} = user, params) do
     changeset =
-      attrs
-      |> Enum.into(%{user_id: user.id})
+      params
+      |> Enum.into(%{"user_id" => user.id})
       |> ApiToken.create_changeset(count_per_user: count_by_user_id(user.id))
 
     with {:ok, api_token} <- Repo.insert(changeset) do

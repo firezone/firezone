@@ -1,5 +1,6 @@
 defmodule FzHttpWeb.JSON.ConfigurationControllerTest do
-  use FzHttpWeb.ConnCase, async: true, api: true
+  use FzHttpWeb.ConnCase, async: true
+  @moduletag api: true
 
   describe "show configuration" do
     test "renders configuration", %{api_conn: conn} do

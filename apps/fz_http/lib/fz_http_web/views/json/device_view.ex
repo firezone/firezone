@@ -4,6 +4,8 @@ defmodule FzHttpWeb.JSON.DeviceView do
   """
   use FzHttpWeb, :view
 
+  alias FzHttp.Devices
+
   def render("index.json", %{devices: devices}) do
     %{data: render_many(devices, __MODULE__, "device.json")}
   end
@@ -34,12 +36,21 @@ defmodule FzHttpWeb.JSON.DeviceView do
     ipv4
     ipv6
     latest_handshake
-    key_regenerated_at
     updated_at
     inserted_at
     user_id
   ]a
   def render("device.json", %{device: device}) do
-    Map.take(device, @keys_to_render)
+    Map.merge(
+      Map.take(device, @keys_to_render),
+      %{
+        server_public_key: Application.get_env(:fz_vpn, :wireguard_public_key),
+        endpoint: Devices.config(device, :endpoint),
+        allowed_ips: Devices.config(device, :allowed_ips),
+        dns: Devices.config(device, :dns),
+        persistent_keepalive: Devices.config(device, :persistent_keepalive),
+        mtu: Devices.config(device, :mtu)
+      }
+    )
   end
 end

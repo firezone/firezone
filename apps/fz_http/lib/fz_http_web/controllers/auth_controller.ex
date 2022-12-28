@@ -184,6 +184,6 @@ defmodule FzHttpWeb.AuthController do
     |> Authentication.sign_in(user, auth)
     |> configure_session(renew: true)
     |> put_session(:live_socket_id, "users_socket:#{user.id}")
-    |> redirect(to: root_path_for_role(user.role))
+    |> redirect(to: root_path_for_user(user))
   end
 end

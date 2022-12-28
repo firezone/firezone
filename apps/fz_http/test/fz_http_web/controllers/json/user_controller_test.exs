@@ -1,5 +1,6 @@
 defmodule FzHttpWeb.JSON.UserControllerTest do
-  use FzHttpWeb.ConnCase, async: true, api: true
+  use FzHttpWeb.ConnCase, async: true
+  @moduletag api: true
 
   alias FzHttp.{
     Users,

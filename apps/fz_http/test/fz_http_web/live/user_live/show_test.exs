@@ -27,10 +27,12 @@ defmodule FzHttpWeb.UserLive.ShowTest do
   end
 
   describe "authenticated new device" do
+    @test_pubkey "8IkpsAXiqhqNdc9PJS76YeJjig4lyTBaf8Rm7gTApXk="
+
     @device_id_regex ~r/device-(?<device_id>.*)-inserted-at/
     @valid_params %{
       "device" => %{
-        "public_key" => "test-pubkey",
+        "public_key" => @test_pubkey,
         "name" => "new_name",
         "description" => "new_description"
       }
@@ -38,14 +40,14 @@ defmodule FzHttpWeb.UserLive.ShowTest do
     @allowed_ips "2.2.2.2"
     @allowed_ips_change %{
       "device" => %{
-        "public_key" => "test-pubkey",
+        "public_key" => @test_pubkey,
         "use_default_allowed_ips" => "false",
         "allowed_ips" => @allowed_ips
       }
     }
     @allowed_ips_unchanged %{
       "device" => %{
-        "public_key" => "test-pubkey",
+        "public_key" => @test_pubkey,
         "use_default_allowed_ips" => "true",
         "allowed_ips" => @allowed_ips
       }
@@ -53,14 +55,14 @@ defmodule FzHttpWeb.UserLive.ShowTest do
     @dns "8.8.8.8, 8.8.4.4"
     @dns_change %{
       "device" => %{
-        "public_key" => "test-pubkey",
+        "public_key" => @test_pubkey,
         "use_default_dns" => "false",
         "dns" => @dns
       }
     }
     @dns_unchanged %{
       "device" => %{
-        "public_key" => "test-pubkey",
+        "public_key" => @test_pubkey,
         "use_default_dns" => "true",
         "dns" => @dns
       }
@@ -68,73 +70,73 @@ defmodule FzHttpWeb.UserLive.ShowTest do
     @wireguard_endpoint "6.6.6.6"
     @endpoint_change %{
       "device" => %{
-        "public_key" => "test-pubkey",
+        "public_key" => @test_pubkey,
         "use_default_endpoint" => "false",
         "endpoint" => @wireguard_endpoint
       }
     }
     @endpoint_unchanged %{
       "device" => %{
-        "public_key" => "test-pubkey",
+        "public_key" => @test_pubkey,
         "use_default_endpoint" => "true",
         "endpoint" => @wireguard_endpoint
       }
     }
     @mtu_change %{
       "device" => %{
-        "public_key" => "test-pubkey",
+        "public_key" => @test_pubkey,
         "use_default_mtu" => "false",
         "mtu" => "1280"
       }
     }
     @mtu_unchanged %{
       "device" => %{
-        "public_key" => "test-pubkey",
+        "public_key" => @test_pubkey,
         "use_default_mtu" => "true",
         "mtu" => "1280"
       }
     }
     @persistent_keepalive_change %{
       "device" => %{
-        "public_key" => "test-pubkey",
+        "public_key" => @test_pubkey,
         "use_default_persistent_keepalive" => "false",
         "persistent_keepalive" => "120"
       }
     }
     @persistent_keepalive_unchanged %{
       "device" => %{
-        "public_key" => "test-pubkey",
+        "public_key" => @test_pubkey,
         "use_default_persistent_keepalive" => "true",
         "persistent_keepalive" => "5"
       }
     }
     @default_allowed_ips_change %{
       "device" => %{
-        "public_key" => "test-pubkey",
+        "public_key" => @test_pubkey,
         "use_default_allowed_ips" => "false"
       }
     }
     @default_dns_change %{
       "device" => %{
-        "public_key" => "test-pubkey",
+        "public_key" => @test_pubkey,
         "use_default_dns" => "false"
       }
     }
     @default_endpoint_change %{
       "device" => %{
-        "public_key" => "test-pubkey",
+        "public_key" => @test_pubkey,
         "use_default_endpoint" => "false"
       }
     }
     @default_mtu_change %{
       "device" => %{
-        "public_key" => "test-pubkey",
+        "public_key" => @test_pubkey,
         "use_default_mtu" => "false"
       }
     }
     @default_persistent_keepalive_change %{
       "device" => %{
-        "public_key" => "test-pubkey",
+        "public_key" => @test_pubkey,
         "use_default_persistent_keepalive" => "false"
       }
     }

@@ -32,7 +32,7 @@ defmodule FzHttp.EventsTest do
                }
 
       assert :sys.get_state(Events.vpn_pid()) == %{
-               "1" => %{
+               device.public_key => %{
                  allowed_ips: "#{device.ipv4}/32,#{device.ipv6}/128",
                  preshared_key: device.preshared_key
                }

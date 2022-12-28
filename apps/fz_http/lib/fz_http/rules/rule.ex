@@ -5,9 +5,9 @@ defmodule FzHttp.Rules.Rule do
   use FzHttp, :schema
   import Ecto.Changeset
 
-  @exclusion_msg "Destination overlaps with an existing rule"
-  @port_range_msg "Port is not within valid range"
-  @port_type_msg "Please specify a port-range for the given port type"
+  @exclusion_msg "destination overlaps with an existing rule"
+  @port_range_msg "port is not within valid range"
+  @port_type_msg "port_type must be specified with port_range"
 
   schema "rules" do
     field :destination, EctoNetwork.INET, read_after_writes: true
