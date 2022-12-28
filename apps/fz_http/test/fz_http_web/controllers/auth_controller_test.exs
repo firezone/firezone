@@ -43,6 +43,10 @@ defmodule FzHttpWeb.AuthControllerTest do
   describe "create session" do
     setup [:create_user]
 
+    test "GET /auth/identity/callback redirects to /", %{unauthed_conn: conn} do
+      assert redirected_to(get(conn, ~p"/auth/identity/callback")) == ~p"/"
+    end
+
     test "invalid email", %{unauthed_conn: conn} do
       params = %{
         "email" => "invalid@test",

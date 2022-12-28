@@ -102,6 +102,12 @@ defmodule FzHttpWeb.AuthController do
     end
   end
 
+  # This can be called if the user attempts to visit one of the callback redirect URLs
+  # directly.
+  def callback(conn, _params) do
+    redirect(conn, to: ~p"/")
+  end
+
   def delete(conn, _params) do
     conn
     |> Authentication.sign_out()
