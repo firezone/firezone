@@ -44,6 +44,7 @@ Shown below is a table of default ports used by Firezone services.
 For production deployments of Firezone, we recommend you disable local authentication
 altogether by setting `default['firezone']['authentication']['local']['enabled'] = false`
 (Omnibus-based deployments) or `LOCAL_AUTH_ENABLED=false` (Docker-based deployments).
+Local authentication can also be disabled on the `/settings/security` page.
 
 :::caution
 Ensure you've set up a working [OIDC](/authenticate/oidc/) or [SAML](/authenticate/saml/)-based
