@@ -3,7 +3,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
 
   alias FzHttp.Configurations
   alias FzHttpWeb.SettingLive.Security
-  import FzHttp.SAMLConfigFixtures
+  import FzHttp.SAMLIdentityProviderFixtures
 
   describe "authenticated mount" do
     test "loads the active sessions table", %{admin_conn: conn} do

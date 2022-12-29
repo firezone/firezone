@@ -172,7 +172,7 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
       assigns.providers
       |> Map.get(assigns.provider_id, %{})
       |> Map.put("id", assigns.provider_id)
-      |> FzHttp.Conf.OIDCConfig.changeset()
+      |> FzHttp.Configurations.OpenIDConnectProvider.changeset()
 
     {:ok,
      socket
@@ -184,7 +184,7 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
   def handle_event("save", %{"oidc_config" => params}, socket) do
     changeset =
       params
-      |> FzHttp.Conf.OIDCConfig.changeset()
+      |> FzHttp.Configurations.OpenIDConnectProvider.changeset()
       |> Map.put(:action, :validate)
 
     update =

@@ -199,7 +199,7 @@ defmodule FzHttpWeb.SettingLive.SAMLFormComponent do
         "id" => assigns.provider_id,
         "base_url" => Path.join(external_url, "/auth/saml")
       })
-      |> FzHttp.Conf.SAMLConfig.changeset()
+      |> FzHttp.Configurations.SAMLIdentityProvider.changeset()
 
     {:ok,
      socket
@@ -210,7 +210,7 @@ defmodule FzHttpWeb.SettingLive.SAMLFormComponent do
   def handle_event("save", %{"saml_config" => params}, socket) do
     changeset =
       params
-      |> FzHttp.Conf.SAMLConfig.changeset()
+      |> FzHttp.Configurations.SAMLIdentityProvider.changeset()
       |> Map.put(:action, :validate)
 
     update =

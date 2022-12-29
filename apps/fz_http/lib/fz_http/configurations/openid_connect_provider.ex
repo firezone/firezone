@@ -1,11 +1,10 @@
-defmodule FzHttp.Conf.OIDCConfig do
+defmodule FzHttp.Configurations.OpenIDConnectProvider do
   @moduledoc """
   OIDC Config virtual schema
   """
   use FzHttp, :schema
   import Ecto.Changeset
-  import FzHttp.Validators.OpenIDConnect
-  import FzHttp.Validators.Common, only: [validate_uri: 2]
+  alias FzHttp.Validators
 
   @reserved_config_ids [
     "identity",
@@ -54,8 +53,8 @@ defmodule FzHttp.Conf.OIDCConfig do
     ])
     # Don't allow users to enter reserved config ids
     |> validate_exclusion(:id, @reserved_config_ids)
-    |> validate_discovery_document_uri()
-    |> validate_uri([
+    |> Validators.OpenIDConnect.validate_discovery_document_uri()
+    |> Validators.Common.validate_uri([
       :redirect_uri
     ])
   end

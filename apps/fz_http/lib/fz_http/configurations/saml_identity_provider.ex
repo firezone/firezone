@@ -1,11 +1,10 @@
-defmodule FzHttp.Conf.SAMLConfig do
+defmodule FzHttp.Configurations.SAMLIdentityProvider do
   @moduledoc """
   SAML Config virtual schema
   """
   use FzHttp, :schema
-
   import Ecto.Changeset
-  import FzHttp.Validators.SAML
+  alias FzHttp.Validators
 
   @primary_key false
   embedded_schema do
@@ -39,6 +38,6 @@ defmodule FzHttp.Conf.SAMLConfig do
       :metadata,
       :auto_create_users
     ])
-    |> validate_metadata()
+    |> Validators.SAML.validate_metadata()
   end
 end

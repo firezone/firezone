@@ -25,8 +25,6 @@ defmodule FzHttp.Configurations.Configuration do
     field :allow_unprivileged_device_configuration, :boolean
 
     field :local_auth_enabled, :boolean
-    field :openid_connect_providers, :map, read_after_writes: true
-    field :saml_identity_providers, :map, read_after_writes: true
     field :disable_vpn_on_oidc_error, :boolean
 
     # The defaults for these fields are set in the following migration:
@@ -51,6 +49,14 @@ defmodule FzHttp.Configurations.Configuration do
     field :vpn_session_duration, :integer, read_after_writes: true
 
     embeds_one :logo, Logo, on_replace: :delete
+
+    embeds_many :openid_connect_providers,
+                FzHttp.Configurations.OpenIDConnectProvider,
+                on_replace: :delete
+
+    embeds_many :saml_identity_providers,
+                FzHttp.Configurations.SAMLIdentityProvider,
+                on_replace: :delete
 
     timestamps()
   end
