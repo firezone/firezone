@@ -10,11 +10,20 @@ the Firezone portal. Administrators can add users and assign their passwords on
 the `/users` page. See [Add users](/user-guides/add-users/) for more details.
 
 :::note
-For production installations, we highly recommend [enabling TOTP-based MFA](/authenticate/multi-factor/)
-for any accounts using the local authentication method.
+Although local authentication is quick and easy to get started with, you can
+limit attack surface by [disabling local authentication](#disabling-local-authentication)
+altogether
+](/deploy/security-considerations#production-deployments). See our [OIDC](/authenticate/oidc/)
+or [SAML](/authenticate/saml/) guides for details.
 :::
+
+We recommend [enabling TOTP-based MFA](/authenticate/multi-factor/) for any
+accounts that use the local authentication method.
 
 ## Disabling local authentication
 
-If you wish to completely disable local authentication in favor of an SSO-only
-approach, see our [OIDC](/authenticate/oidc/) or [SAML](/authenticate/saml/) guides.
+Local authentication can be enabled or disabled from the `/settings/security` page.
+If you've disabled local authentication and can no longer authenticate to the portal
+to re-enable it, see our [troubleshooting guide
+](/administer/troubleshoot#re-enable-local-authentication-via-cli) for re-enabling
+local authentication from the CLI.
