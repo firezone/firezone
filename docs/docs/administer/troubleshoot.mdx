@@ -167,10 +167,10 @@ sudo firezone-ctl create-or-reset-admin
 
 ## Re-enable local authentication via CLI
 
-For production deployments, we recommend adding a TOTP-based second factor to
-admin accounts. If you promoted an account authenticated through an identity
-provider, you can consider disabling local authentication for additional
-security.
+When using the local authentication method we recommend adding a
+[TOTP-based second factor](/authenticate/multi-factor/) to admin accounts.
+If you've configured an [OIDC](/authenticate/oidc/) or [SAML](/authenticate/saml/)
+provider, you can consider disabling local authentication for additional security.
 
 If issues arise with your identity provider integration, it's possible you
 could be locked out of the admin portal. To re-enable local authentication so
