@@ -4,7 +4,6 @@ defmodule FzHttp.Configurations do
   """
 
   import Ecto.Query, warn: false
-  import Ecto.Changeset
 
   alias FzHttp.{Repo, Configurations.Configuration}
 
@@ -14,7 +13,7 @@ defmodule FzHttp.Configurations do
 
   def put!(key, val) do
     get_configuration!()
-    |> changeset(%{key => val})
+    |> Configuration.changeset(%{key => val})
     |> Repo.update!()
   end
 
@@ -45,30 +44,17 @@ defmodule FzHttp.Configurations do
   end
 
   def update_configuration(%Configuration{} = config \\ get_configuration!(), attrs) do
-    changeset(config, attrs)
-    |> Repo.update()
+    case Repo.update(Configuration.changeset(config, attrs)) do
+      {:ok, configuration} ->
+        {:ok, _pid} = FzHttp.SAML.StartProxy.restart()
+        {:ok, _pid} = FzHttp.OIDC.StartProxy.restart()
+
+        {:ok, configuration}
+
+      error ->
+        error
+    end
   end
-
-  defp changeset(config, attrs) do
-    config
-    |> Configuration.changeset(attrs)
-    |> prepare_changes(fn changeset ->
-      changeset.changes
-      |> Enum.each(&maybe_restart_auth_provider/1)
-
-      changeset
-    end)
-  end
-
-  defp maybe_restart_auth_provider({:openid_connect_providers, _val}) do
-    FzHttp.OIDC.StartProxy.restart()
-  end
-
-  defp maybe_restart_auth_provider({:saml_identity_providers, _val}) do
-    FzHttp.SAML.StartProxy.restart()
-  end
-
-  defp maybe_restart_auth_provider(noop), do: noop
 
   def logo_types, do: ~w(Default URL Upload)
 

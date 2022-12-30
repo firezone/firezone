@@ -12,11 +12,12 @@ defmodule FzHttp.SAML.StartProxy do
   end
 
   def start_link(_) do
+    providers = FzHttp.Configurations.get!(:saml_identity_providers)
     samly = Samly.Provider.start_link()
 
     FzHttp.Config.fetch_env!(:samly, Samly.Provider)
     |> set_service_provider()
-    |> set_identity_providers()
+    |> set_identity_providers(providers)
     |> refresh()
 
     samly
@@ -38,7 +39,7 @@ defmodule FzHttp.SAML.StartProxy do
     ])
   end
 
-  def set_identity_providers(samly_configs, providers \\ init_providers()) do
+  def set_identity_providers(samly_configs, providers) do
     external_url = FzHttp.Config.fetch_env!(:fz_http, :external_url)
 
     identity_providers =
@@ -77,14 +78,5 @@ defmodule FzHttp.SAML.StartProxy do
       :ok = Supervisor.terminate_child(FzHttp.Supervisor, __MODULE__)
       Supervisor.restart_child(FzHttp.Supervisor, __MODULE__)
     end
-  end
-
-  # Configurations is a singleton record; this makes it hard to test;
-  # This is added to fallback to App Env so we don't have to attempt to change
-  # the singleton record in the test env before this module starts up.
-  #
-  # XXX: Make Configurations fixtures and remove reliance on singleton records
-  defp init_providers do
-    FzHttp.Configurations.get!(:saml_identity_providers)
   end
 end

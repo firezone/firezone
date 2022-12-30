@@ -57,24 +57,25 @@ defmodule FzHttpWeb.AuthController do
     end
   end
 
-  def callback(conn, %{"provider" => provider_key, "state" => state} = params) do
+  def callback(conn, %{"provider" => provider_id, "state" => state} = params)
+      when is_binary(provider_id) do
     token_params = Map.merge(params, PKCE.token_params(conn))
 
-    with {:ok, provider} <- atomize_provider(provider_key),
+    with {:ok, provider_id} <- atomize_provider(provider_id),
          :ok <- State.verify_state(conn, state),
-         {:ok, tokens} <- openid_connect().fetch_tokens(provider, token_params),
-         {:ok, claims} <- openid_connect().verify(provider, tokens["id_token"]) do
-      case UserFromAuth.find_or_create(provider_key, claims) do
+         {:ok, tokens} <- openid_connect().fetch_tokens(provider_id, token_params),
+         {:ok, claims} <- openid_connect().verify(provider_id, tokens["id_token"]) do
+      case UserFromAuth.find_or_create(provider_id, claims) do
         {:ok, user} ->
           # only first-time connect will include refresh token
           # XXX: Remove this when SCIM 2.0 is implemented
           with %{"refresh_token" => refresh_token} <- tokens do
-            FzHttp.OIDC.create_connection(user.id, provider_key, refresh_token)
+            FzHttp.OIDC.create_connection(user.id, provider_id, refresh_token)
           end
 
           conn
           |> put_session("id_token", tokens["id_token"])
-          |> maybe_sign_in(user, %{provider: provider})
+          |> maybe_sign_in(user, %{provider: provider_id})
 
         {:error, reason} ->
           conn
@@ -142,7 +143,7 @@ defmodule FzHttpWeb.AuthController do
     end
   end
 
-  def redirect_oidc_auth_uri(conn, %{"provider" => provider_key}) do
+  def redirect_oidc_auth_uri(conn, %{"provider" => provider_id}) when is_binary(provider_id) do
     verifier = PKCE.code_verifier()
 
     params = %{
@@ -152,15 +153,15 @@ defmodule FzHttpWeb.AuthController do
       code_challenge: PKCE.code_challenge(verifier)
     }
 
-    with {:ok, provider} <- atomize_provider(provider_key),
-         uri <- openid_connect().authorization_uri(provider, params) do
+    with {:ok, provider_key} <- atomize_provider(provider_id),
+         uri <- openid_connect().authorization_uri(provider_key, params) do
       conn
       |> PKCE.put_cookie(verifier)
       |> State.put_cookie(params.state)
       |> redirect(external: uri)
     else
       _ ->
-        msg = "OpenIDConnect error: provider #{provider_key} not found in config"
+        msg = "OpenIDConnect error: provider #{provider_id} not found in config"
         Logger.warn(msg)
 
         conn
@@ -170,8 +171,8 @@ defmodule FzHttpWeb.AuthController do
     end
   end
 
-  defp maybe_sign_in(conn, user, %{provider: provider} = auth)
-       when provider in @local_auth_providers do
+  defp maybe_sign_in(conn, user, %{provider: provider_key} = auth)
+       when is_atom(provider_key) and provider_key in @local_auth_providers do
     if FzHttp.Configurations.get!(:local_auth_enabled) do
       do_sign_in(conn, user, auth)
     else

@@ -5,7 +5,9 @@ defmodule FzHttpWeb.OIDC.Helpers do
 
   # openid_connect expects providers as keys...
   def atomize_provider(key) do
-    {:ok, String.to_existing_atom(key)}
+    # XXX: This needs to be an atom due to the underlying library.
+    # Update the library to be a String
+    {:ok, String.to_atom(key)}
   rescue
     ArgumentError -> {:error, "OIDC Provider not found"}
   end

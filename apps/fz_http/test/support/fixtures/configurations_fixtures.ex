@@ -19,7 +19,7 @@ defmodule FzHttp.ConfigurationsFixtures do
     configuration
   end
 
-  def openid_connect_providers_attrs() do
+  def openid_connect_providers_attrs do
     discovery_document_url = discovery_document_server()
 
     [

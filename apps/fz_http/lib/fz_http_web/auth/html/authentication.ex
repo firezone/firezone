@@ -59,35 +59,32 @@ defmodule FzHttpWeb.Auth.HTML.Authentication do
   def sign_in(conn, user, auth) do
     Telemetry.login()
     Users.update_last_signed_in(user, auth)
-    %{provider: provider} = auth
+    %{provider: provider_id} = auth
 
     conn =
-      with :identity <- provider,
+      with :identity <- provider_id,
            true <- FzHttp.MFA.exists?(user) do
         Plug.Conn.put_session(conn, "mfa_required_at", DateTime.utc_now())
       else
         _ -> conn
       end
-      |> Plug.Conn.put_session("login_method", provider)
+      # XXX: OIDC and SAML provider IDs can be strings, so normalize to string here
+      |> Plug.Conn.put_session("login_method", to_string(provider_id))
 
     __MODULE__.Plug.sign_in(conn, user)
   end
 
   def sign_out(conn) do
-    with {:ok, provider} <- parse_provider(Plug.Conn.get_session(conn, "login_method")),
-         {:ok, client_id} <-
-           parse_client_id(
-             FzHttp.Configurations.get_provider_by_id(:openid_connect_providers, provider)
-           ),
-         {:ok, token} <- parse_token(Plug.Conn.get_session(conn, "id_token")),
-         {:ok, end_session_uri} <-
-           parse_end_session_uri(
-             openid_connect().end_session_uri(provider, %{
-               client_id: client_id,
-               id_token_hint: token,
-               post_logout_redirect_uri: url(~p"/")
-             })
-           ) do
+    with provider_id when not is_nil(provider_id) <- Plug.Conn.get_session(conn, "login_method"),
+         provider when not is_nil(provider) <-
+           FzHttp.Configurations.get_provider_by_id(:openid_connect_providers, provider_id),
+         token when not is_nil(token) <- Plug.Conn.get_session(conn, "id_token"),
+         end_session_uri when not is_nil(end_session_uri) <-
+           openid_connect().end_session_uri(String.to_atom(provider_id), %{
+             client_id: provider.client_id,
+             id_token_hint: token,
+             post_logout_redirect_uri: url(~p"/")
+           }) do
       conn
       |> __MODULE__.Plug.sign_out()
       |> Plug.Conn.configure_session(drop: true)
@@ -100,19 +97,6 @@ defmodule FzHttpWeb.Auth.HTML.Authentication do
         |> Phoenix.Controller.redirect(to: ~p"/")
     end
   end
-
-  defp parse_provider(nil), do: {:error, "provider not present"}
-  defp parse_provider(p) when is_binary(p), do: {:ok, p}
-  defp parse_provider(p) when is_atom(p), do: {:ok, "#{p}"}
-
-  defp parse_client_id(nil), do: {:error, "client_id missing"}
-  defp parse_client_id(c), do: {:ok, Map.get(c, "client_id")}
-
-  defp parse_token(nil), do: {:error, "token missing"}
-  defp parse_token(t), do: {:ok, t}
-
-  defp parse_end_session_uri(nil), do: {:error, "end_session_uri missing"}
-  defp parse_end_session_uri(e), do: {:ok, e}
 
   def get_current_user(%Plug.Conn{} = conn) do
     __MODULE__.Plug.current_resource(conn)
