@@ -38,7 +38,7 @@ defmodule FzHttp.OIDC.StartProxy do
 
     Enum.map(auth_oidc_config, fn provider ->
       {
-        String.to_atom(provider.id),
+        provider.id,
         [
           discovery_document_uri: provider.discovery_document_uri,
           client_id: provider.client_id,

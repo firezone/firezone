@@ -33,14 +33,12 @@ defmodule FzHttp.OIDC.Refresher do
     {:stop, :shutdown, user_id}
   end
 
-  defp do_refresh(user_id, %{provider: provider_key, refresh_token: refresh_token} = conn) do
-    {:ok, provider} = atomize_provider(provider_key)
-
-    Logger.info("Refreshing user\##{user_id} @ #{provider}...")
+  defp do_refresh(user_id, %{provider: provider_id, refresh_token: refresh_token} = conn) do
+    Logger.info("Refreshing user\##{user_id} @ #{provider_id}...")
 
     result =
       openid_connect().fetch_tokens(
-        provider,
+        provider_id,
         %{grant_type: "refresh_token", refresh_token: refresh_token}
       )
 

@@ -61,8 +61,7 @@ defmodule FzHttpWeb.AuthController do
       when is_binary(provider_id) do
     token_params = Map.merge(params, PKCE.token_params(conn))
 
-    with {:ok, provider_id} <- atomize_provider(provider_id),
-         :ok <- State.verify_state(conn, state),
+    with :ok <- State.verify_state(conn, state),
          {:ok, tokens} <- openid_connect().fetch_tokens(provider_id, token_params),
          {:ok, claims} <- openid_connect().verify(provider_id, tokens["id_token"]) do
       case UserFromAuth.find_or_create(provider_id, claims) do
@@ -153,22 +152,12 @@ defmodule FzHttpWeb.AuthController do
       code_challenge: PKCE.code_challenge(verifier)
     }
 
-    with {:ok, provider_key} <- atomize_provider(provider_id),
-         uri <- openid_connect().authorization_uri(provider_key, params) do
-      conn
-      |> PKCE.put_cookie(verifier)
-      |> State.put_cookie(params.state)
-      |> redirect(external: uri)
-    else
-      _ ->
-        msg = "OpenIDConnect error: provider #{provider_id} not found in config"
-        Logger.warn(msg)
+    uri = openid_connect().authorization_uri(provider_id, params)
 
-        conn
-        |> put_resp_content_type("text/plain")
-        |> send_resp(400, "OIDC Error. Check logs.")
-        |> halt()
-    end
+    conn
+    |> PKCE.put_cookie(verifier)
+    |> State.put_cookie(params.state)
+    |> redirect(external: uri)
   end
 
   defp maybe_sign_in(conn, user, %{provider: provider_key} = auth)

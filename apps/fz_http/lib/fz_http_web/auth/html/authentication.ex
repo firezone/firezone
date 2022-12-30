@@ -80,7 +80,7 @@ defmodule FzHttpWeb.Auth.HTML.Authentication do
            FzHttp.Configurations.get_provider_by_id(:openid_connect_providers, provider_id),
          token when not is_nil(token) <- Plug.Conn.get_session(conn, "id_token"),
          end_session_uri when not is_nil(end_session_uri) <-
-           openid_connect().end_session_uri(String.to_atom(provider_id), %{
+           openid_connect().end_session_uri(provider_id, %{
              client_id: provider.client_id,
              id_token_hint: token,
              post_logout_redirect_uri: url(~p"/")
