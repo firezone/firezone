@@ -46,8 +46,8 @@ defmodule FzHttp.Configurations do
   def update_configuration(%Configuration{} = config \\ get_configuration!(), attrs) do
     case Repo.update(Configuration.changeset(config, attrs)) do
       {:ok, configuration} ->
-        {:ok, _pid} = FzHttp.SAML.StartProxy.restart()
-        {:ok, _pid} = FzHttp.OIDC.StartProxy.restart()
+        FzHttp.SAML.StartProxy.restart()
+        FzHttp.OIDC.StartProxy.restart()
 
         {:ok, configuration}
 
