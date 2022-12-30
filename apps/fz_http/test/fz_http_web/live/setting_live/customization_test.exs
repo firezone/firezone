@@ -3,7 +3,7 @@ defmodule FzHttpWeb.SettingLive.CustomizationTest do
 
   describe "logo" do
     setup %{admin_conn: conn} = context do
-      {:ok, _config} = FzHttp.Configurations.put!(:logo, context[:logo])
+      FzHttp.Configurations.put!(:logo, context[:logo])
 
       path = ~p"/settings/customization"
       {:ok, view, html} = live(conn, path)

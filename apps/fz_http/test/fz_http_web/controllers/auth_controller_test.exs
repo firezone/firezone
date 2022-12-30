@@ -1,7 +1,20 @@
 defmodule FzHttpWeb.AuthControllerTest do
   use FzHttpWeb.ConnCase, async: true
-
   import Mox
+
+  setup do
+    FzHttp.Configurations.put!(
+      :openid_connect_providers,
+      FzHttp.ConfigurationsFixtures.openid_connect_providers_attrs()
+    )
+
+    FzHttp.Configurations.put!(
+      :saml_identity_providers,
+      [FzHttp.SAMLIdentityProviderFixtures.saml_attrs() |> Map.put("label", "SAML")]
+    )
+
+    %{}
+  end
 
   describe "new" do
     setup [:create_user]
@@ -11,7 +24,7 @@ defmodule FzHttpWeb.AuthControllerTest do
 
       test_conn = get(conn, ~p"/")
 
-      # Assert that we email, OIDC and Oauth2 buttons provided
+      # Assert that we have email, OIDC and Oauth2 buttons provided
       for expected <- [
             "Sign in with email",
             "Sign in with OIDC Google",

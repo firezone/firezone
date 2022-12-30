@@ -171,8 +171,8 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
     changeset =
       assigns.providers
       |> Map.get(assigns.provider_id, %{})
-      |> Map.put("id", assigns.provider_id)
-      |> FzHttp.Configurations.OpenIDConnectProvider.changeset()
+      |> Map.put(:id, assigns.provider_id)
+      |> FzHttp.Configurations.Configuration.OpenIDConnectProvider.changeset()
 
     {:ok,
      socket
@@ -181,30 +181,32 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
      |> assign(:changeset, changeset)}
   end
 
-  def handle_event("save", %{"oidc_config" => params}, socket) do
+  def handle_event("save", %{"open_id_connect_provider" => params}, socket) do
     changeset =
       params
-      |> FzHttp.Configurations.OpenIDConnectProvider.changeset()
+      |> FzHttp.Configurations.Configuration.OpenIDConnectProvider.changeset()
       |> Map.put(:action, :validate)
 
     update =
       case changeset do
         %{valid?: true} ->
-          changeset
-          |> Ecto.Changeset.apply_changes()
-          |> Map.from_struct()
-          |> Map.new(fn {k, v} -> {to_string(k), v} end)
-          |> then(fn data ->
-            {id, data} = Map.pop(data, "id")
+          {:ok, _} =
+            changeset
+            |> Ecto.Changeset.apply_changes()
+            |> Map.from_struct()
+            |> Map.new(fn {k, v} -> {to_string(k), v} end)
+            |> then(fn data ->
+              id = Map.get(data, "id")
 
-            %{
-              openid_connect_providers:
-                socket.assigns.providers
-                |> Map.delete(socket.assigns.provider_id)
-                |> Map.put(id, data)
-            }
-          end)
-          |> FzHttp.Configurations.update_configuration()
+              %{
+                openid_connect_providers:
+                  socket.assigns.providers
+                  |> Map.delete(socket.assigns.provider_id)
+                  |> Map.put(id, data)
+                  |> Map.values()
+              }
+            end)
+            |> FzHttp.Configurations.update_configuration()
 
         _ ->
           {:error, changeset}

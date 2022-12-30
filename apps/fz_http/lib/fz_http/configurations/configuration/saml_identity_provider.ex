@@ -1,4 +1,4 @@
-defmodule FzHttp.Configurations.SAMLIdentityProvider do
+defmodule FzHttp.Configurations.Configuration.SAMLIdentityProvider do
   @moduledoc """
   SAML Config virtual schema
   """
@@ -19,8 +19,8 @@ defmodule FzHttp.Configurations.SAMLIdentityProvider do
     field :auto_create_users, :boolean, default: true
   end
 
-  def changeset(data) do
-    %__MODULE__{}
+  def changeset(struct \\ %__MODULE__{}, data) do
+    struct
     |> cast(data, [
       :id,
       :label,

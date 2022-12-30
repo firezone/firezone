@@ -41,7 +41,6 @@ config :logger, level: :info
 
 config :fz_http,
   sandbox: false,
-  local_auth_enabled: true,
   connectivity_checks_url: "https://ping.firez.one/"
 
 config :ueberauth, Ueberauth,

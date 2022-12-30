@@ -7,21 +7,21 @@
     Please sign in via one of the methods below.
   </p>
 
-  <%= for {provider, config} <- @openid_connect_providers do %>
+  <%= for provider <- @openid_connect_providers do %>
     <p>
       <%= link(
-        "Sign in with #{config["label"]}",
-        to: ~p"/auth/oidc/#{provider}",
+        "Sign in with #{provider.label}",
+        to: ~p"/auth/oidc/#{provider.id}",
         class: "button"
       ) %>
     </p>
   <% end %>
 
-  <%= for {provider, config} <- @saml_identity_providers do %>
+  <%= for provider <- @saml_identity_providers do %>
     <p>
       <%= link(
-        "Sign in with #{config["label"]}",
-        to: "/auth/saml/auth/signin/#{provider}/",
+        "Sign in with #{provider.label}",
+        to: "/auth/saml/auth/signin/#{provider.id}/",
         class: "button"
       ) %>
     </p>

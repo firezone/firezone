@@ -28,9 +28,7 @@ defmodule FzHttpWeb.AuthController do
   end
 
   def callback(%{assigns: %{ueberauth_failure: %{errors: errors}}} = conn, _params) do
-    msg =
-      errors
-      |> Enum.map_join(". ", fn error -> error.message end)
+    msg = Enum.map_join(errors, ". ", fn error -> error.message end)
 
     conn
     |> put_flash(:error, msg)
@@ -104,13 +102,14 @@ defmodule FzHttpWeb.AuthController do
 
   # This can be called if the user attempts to visit one of the callback redirect URLs
   # directly.
-  def callback(conn, _params) do
-    redirect(conn, to: ~p"/")
+  def callback(conn, params) do
+    conn
+    |> put_flash(:error, inspect(params) <> inspect(conn.assigns))
+    |> redirect(to: ~p"/")
   end
 
   def delete(conn, _params) do
-    conn
-    |> Authentication.sign_out()
+    Authentication.sign_out(conn)
   end
 
   def reset_password(conn, _params) do

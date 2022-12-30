@@ -8,11 +8,6 @@ defmodule FzHttp.SAML.StartProxy do
   end
 
   def start_link(:test) do
-    FzHttp.Configurations.put!(
-      :saml_identity_providers,
-      Application.get_env(:fz_http, :saml_identity_providers)
-    )
-
     start_link(nil)
   end
 
@@ -48,16 +43,18 @@ defmodule FzHttp.SAML.StartProxy do
 
     identity_providers =
       providers
-      |> Enum.map(fn {id, setting} ->
+      |> Enum.map(fn provider ->
+        # XXX We should not set default values here, instead they should be part
+        # of the changeset and always valid in database
         %{
-          id: id,
+          id: provider.id,
           sp_id: "firezone",
-          metadata: Map.get(setting, "metadata"),
-          base_url: Map.get(setting, "base_url", Path.join(external_url, "/auth/saml")),
-          sign_requests: Map.get(setting, "sign_requests", true),
-          sign_metadata: Map.get(setting, "sign_metadata", true),
-          signed_assertion_in_resp: Map.get(setting, "signed_assertion_in_resp", true),
-          signed_envelopes_in_resp: Map.get(setting, "signed_envelopes_in_resp", true)
+          metadata: provider.metadata,
+          base_url: provider.base_url || Path.join(external_url, "/auth/saml"),
+          sign_requests: provider.sign_requests || true,
+          sign_metadata: provider.sign_metadata || true,
+          signed_assertion_in_resp: provider.signed_assertion_in_resp || true,
+          signed_envelopes_in_resp: provider.signed_envelopes_in_resp || true
         }
       end)
 

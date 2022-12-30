@@ -76,7 +76,9 @@ defmodule FzHttpWeb.Auth.HTML.Authentication do
   def sign_out(conn) do
     with {:ok, provider} <- parse_provider(Plug.Conn.get_session(conn, "login_method")),
          {:ok, client_id} <-
-           parse_client_id(FzHttp.Configurations.get!(:openid_connect_providers)[provider]),
+           parse_client_id(
+             FzHttp.Configurations.get_provider_by_id(:openid_connect_providers, provider)
+           ),
          {:ok, token} <- parse_token(Plug.Conn.get_session(conn, "id_token")),
          {:ok, end_session_uri} <-
            parse_end_session_uri(

@@ -9,13 +9,7 @@ defmodule FzHttp.OIDC.StartProxy do
     %{id: __MODULE__, start: {__MODULE__, :start_link, [arg]}}
   end
 
-  # XXX: Remove this grossness when Configurations support test fixtures
   def start_link(:test) do
-    FzHttp.Configurations.put!(
-      :openid_connect_providers,
-      Application.fetch_env!(:fz_http, :openid_connect_providers)
-    )
-
     :ignore
   end
 
@@ -37,21 +31,23 @@ defmodule FzHttp.OIDC.StartProxy do
 
   # Convert the configuration record to something openid_connect expects,
   # atom-keyed configs eg. [provider: [client_id: "CLIENT_ID" ...]]
-  defp parse(auth_oidc_config) when is_map(auth_oidc_config) do
+  defp parse(nil), do: []
+
+  defp parse(auth_oidc_config) when is_list(auth_oidc_config) do
     external_url = FzHttp.Config.fetch_env!(:fz_http, :external_url)
 
-    Enum.map(auth_oidc_config, fn {provider, settings} ->
+    Enum.map(auth_oidc_config, fn provider ->
       {
-        String.to_atom(provider),
+        String.to_atom(provider.id),
         [
-          discovery_document_uri: settings["discovery_document_uri"],
-          client_id: settings["client_id"],
-          client_secret: settings["client_secret"],
+          discovery_document_uri: provider.discovery_document_uri,
+          client_id: provider.client_id,
+          client_secret: provider.client_secret,
           redirect_uri:
-            settings["redirect_uri"] || "#{external_url}/auth/oidc/#{provider}/callback/",
-          response_type: settings["response_type"],
-          scope: settings["scope"],
-          label: settings["label"]
+            provider.redirect_uri || "#{external_url}/auth/oidc/#{provider.id}/callback/",
+          response_type: provider.response_type,
+          scope: provider.scope,
+          label: provider.label
         ]
       }
     end)

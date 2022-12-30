@@ -41,6 +41,11 @@ defmodule FzHttp.TelemetryTest do
 
   describe "auth" do
     test "count openid providers" do
+      FzHttp.Configurations.put!(
+        :openid_connect_providers,
+        FzHttp.ConfigurationsFixtures.openid_connect_providers_attrs()
+      )
+
       ping_data = Telemetry.ping_data()
 
       assert ping_data[:openid_providers] == 7

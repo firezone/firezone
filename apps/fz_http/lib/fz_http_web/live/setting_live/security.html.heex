@@ -186,10 +186,10 @@
       <%= for {k, v} <- @oidc_configs do %>
         <tr>
           <td><%= k %></td>
-          <td><%= v["label"] %></td>
-          <td><%= v["client_id"] %></td>
-          <td><%= v["discovery_document_uri"] %></td>
-          <td><%= v["scope"] %></td>
+          <td><%= v.label %></td>
+          <td><%= v.client_id %></td>
+          <td><%= v.discovery_document_uri %></td>
+          <td><%= v.scope %></td>
           <td>
             <%= live_patch(to: ~p"/settings/security/oidc/#{k}/edit",
               class: "button") do %>
@@ -231,9 +231,9 @@
       <%= for {k, v} <- @saml_configs do %>
         <tr>
           <td><%= k %></td>
-          <td><%= v["label"] %></td>
+          <td><%= v.label %></td>
           <td>
-            <div class="line-clamp"><%= v["metadata"] %></div>
+            <div class="line-clamp"><%= v.metadata %></div>
           </td>
           <td>
             <%= live_patch(to: ~p"/settings/security/saml/#{k}/edit",

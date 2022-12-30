@@ -1,4 +1,4 @@
-defmodule FzHttp.Configurations.OpenIDConnectProvider do
+defmodule FzHttp.Configurations.Configuration.OpenIDConnectProvider do
   @moduledoc """
   OIDC Config virtual schema
   """
@@ -25,8 +25,8 @@ defmodule FzHttp.Configurations.OpenIDConnectProvider do
     field :auto_create_users, :boolean, default: true
   end
 
-  def changeset(data) do
-    %__MODULE__{}
+  def changeset(struct \\ %__MODULE__{}, data) do
+    struct
     |> cast(
       data,
       [

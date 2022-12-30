@@ -13,17 +13,27 @@ defmodule FzHttp.Configurations do
   end
 
   def put!(key, val) do
-    update_configuration(%{key => val})
+    get_configuration!()
+    |> changeset(%{key => val})
+    |> Repo.update!()
   end
 
   def get_configuration! do
     Repo.one!(Configuration)
   end
 
-  def auto_create_users?(field, provider) do
+  def get_provider_by_id(field, provider_id) do
     FzHttp.Configurations.get!(field)
-    |> Map.get(provider)
-    |> Map.get("auto_create_users")
+    |> Enum.find(&(&1.id == provider_id))
+  end
+
+  def auto_create_users?(field, provider_id) do
+    FzHttp.Configurations.get!(field)
+    |> Enum.find(&(&1.id == provider_id))
+    |> case do
+      nil -> raise RuntimeError, "Unknown provider #{provider_id}"
+      provider -> provider.auto_create_users
+    end
   end
 
   def new_configuration(attrs \\ %{}) do
@@ -35,6 +45,11 @@ defmodule FzHttp.Configurations do
   end
 
   def update_configuration(%Configuration{} = config \\ get_configuration!(), attrs) do
+    changeset(config, attrs)
+    |> Repo.update()
+  end
+
+  defp changeset(config, attrs) do
     config
     |> Configuration.changeset(attrs)
     |> prepare_changes(fn changeset ->
@@ -43,7 +58,6 @@ defmodule FzHttp.Configurations do
 
       changeset
     end)
-    |> Repo.update()
   end
 
   defp maybe_restart_auth_provider({:openid_connect_providers, _val}) do

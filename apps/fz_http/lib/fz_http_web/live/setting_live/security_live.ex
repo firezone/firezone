@@ -22,11 +22,19 @@ defmodule FzHttpWeb.SettingLive.Security do
      |> assign(:session_duration_options, session_duration_options())
      |> assign(:configuration_changeset, configuration_changeset())
      |> assign(:config_changeset, config_changeset)
-     |> assign(:oidc_configs, config_changeset.data.openid_connect_providers || %{})
-     |> assign(:saml_configs, config_changeset.data.saml_identity_providers || %{})
+     |> assign(:oidc_configs, map_providers(config_changeset.data.openid_connect_providers))
+     |> assign(:saml_configs, map_providers(config_changeset.data.saml_identity_providers))
      |> assign(:field_titles, field_titles(config_changeset))
      |> assign(:page_subtitle, @page_subtitle)
      |> assign(:page_title, @page_title)}
+  end
+
+  defp map_providers(nil), do: %{}
+
+  defp map_providers(providers) when is_list(providers) do
+    for provider <- providers,
+        into: %{},
+        do: {provider.id, Map.from_struct(provider)}
   end
 
   @impl Phoenix.LiveView
@@ -79,9 +87,11 @@ defmodule FzHttpWeb.SettingLive.Security do
     field_key = Map.fetch!(@types, type)
 
     providers =
-      get_in(socket.assigns.config_changeset, [Access.key!(:data), Access.key!(field_key)])
+      socket.assigns.config_changeset
+      |> get_in([Access.key!(:data), Access.key!(field_key)])
+      |> Enum.reject(&(&1.id == key))
 
-    {:ok, conf} = Configurations.update_configuration(%{field_key => Map.delete(providers, key)})
+    {:ok, conf} = Configurations.update_configuration(%{field_key => providers})
 
     {:noreply,
      socket

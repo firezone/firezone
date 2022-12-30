@@ -51,11 +51,11 @@ defmodule FzHttp.Configurations.Configuration do
     embeds_one :logo, Logo, on_replace: :delete
 
     embeds_many :openid_connect_providers,
-                FzHttp.Configurations.OpenIDConnectProvider,
+                FzHttp.Configurations.Configuration.OpenIDConnectProvider,
                 on_replace: :delete
 
     embeds_many :saml_identity_providers,
-                FzHttp.Configurations.SAMLIdentityProvider,
+                FzHttp.Configurations.Configuration.SAMLIdentityProvider,
                 on_replace: :delete
 
     timestamps()
@@ -68,8 +68,6 @@ defmodule FzHttp.Configurations.Configuration do
       local_auth_enabled
       allow_unprivileged_device_management
       allow_unprivileged_device_configuration
-      openid_connect_providers
-      saml_identity_providers
       disable_vpn_on_oidc_error
       default_client_persistent_keepalive
       default_client_mtu
@@ -79,6 +77,12 @@ defmodule FzHttp.Configurations.Configuration do
       vpn_session_duration
     ]a)
     |> cast_embed(:logo)
+    |> cast_embed(:openid_connect_providers,
+      with: {FzHttp.Configurations.Configuration.OpenIDConnectProvider, :changeset, []}
+    )
+    |> cast_embed(:saml_identity_providers,
+      with: {FzHttp.Configurations.Configuration.SAMLIdentityProvider, :changeset, []}
+    )
     |> Common.trim_change(:default_client_dns)
     |> Common.trim_change(:default_client_allowed_ips)
     |> Common.trim_change(:default_client_endpoint)

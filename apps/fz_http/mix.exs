@@ -55,6 +55,7 @@ defmodule FzHttp.MixProject do
   defp deps do
     [
       {:fz_common, in_umbrella: true},
+      {:bypass, "~> 2.1", only: :test},
       {:decimal, "~> 2.0"},
       {:cloak, "~> 1.1"},
       {:cloak_ecto, "~> 1.2"},

@@ -91,9 +91,6 @@ defmodule FzHttp.Telemetry do
     telemetry_module().capture("ping", ping_data())
   end
 
-  defp count(subject) when is_map(subject), do: count(Map.keys(subject))
-  defp count(subject) when is_list(subject), do: length(subject)
-
   # How far back to count handshakes as an active device
   @active_device_window 86_400
   def ping_data do
@@ -107,8 +104,8 @@ defmodule FzHttp.Telemetry do
         max_devices_for_users: Devices.max_count_by_user_id(),
         users_with_mfa: MFA.count_distinct_by_user_id(),
         users_with_mfa_totp: MFA.count_distinct_totp_by_user_id(),
-        openid_providers: count(FzHttp.Configurations.get!(:openid_connect_providers)),
-        saml_providers: count(FzHttp.Configurations.get!(:saml_identity_providers)),
+        openid_providers: length(FzHttp.Configurations.get!(:openid_connect_providers)),
+        saml_providers: length(FzHttp.Configurations.get!(:saml_identity_providers)),
         unprivileged_device_management:
           FzHttp.Configurations.get!(:allow_unprivileged_device_management),
         unprivileged_device_configuration:
