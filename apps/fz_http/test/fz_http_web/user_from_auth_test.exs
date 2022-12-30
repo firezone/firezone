@@ -55,7 +55,7 @@ defmodule FzHttpWeb.UserFromAuthTest do
         [openid_connect_provider]
       )
 
-      assert {:error, "not found"} =
+      assert {:error, "not found and auto_create_users disabled"} =
                UserFromAuth.find_or_create(openid_connect_provider["id"], %{
                  "email" => email,
                  "sub" => :noop
@@ -84,7 +84,7 @@ defmodule FzHttpWeb.UserFromAuthTest do
     test "sign in returns error", %{email: email, config: config} do
       FzHttp.Configurations.put!(:saml_identity_providers, config)
 
-      assert {:error, "not found"} =
+      assert {:error, "not found and auto_create_users disabled"} =
                UserFromAuth.find_or_create(:saml, "test", %{"email" => email, "sub" => :noop})
 
       assert Users.get_by_email(email) == nil
