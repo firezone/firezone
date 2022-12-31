@@ -8,7 +8,7 @@ ARG RUNNER_IMAGE="alpine:${ALPINE_VERSION}"
 FROM ${BUILDER_IMAGE} as builder
 
 # install build dependencies
-RUN apk add nodejs npm build-base git python3
+RUN apk add nodejs yarn build-base git python3
 
 # prepare build dir
 WORKDIR /app
@@ -45,8 +45,8 @@ ENV VERSION=$VERSION
 
 # compile assets
 RUN cd apps/fz_http/assets \
-    && npm install \
-    && npm run deploy \
+    && yarn install --frozen-lockfile \
+    && yarn deploy \
     && cd .. \
     && mix phx.digest
 
