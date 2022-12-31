@@ -282,7 +282,7 @@ defmodule FzHttpWeb.AuthControllerTest do
     test "redirects to oidc auth uri", %{unauthed_conn: conn} do
       expect(OpenIDConnect.Mock, :authorization_uri, fn provider, _ ->
         case provider do
-          :google -> @oidc_auth_uri
+          "google" -> @oidc_auth_uri
         end
       end)
 
