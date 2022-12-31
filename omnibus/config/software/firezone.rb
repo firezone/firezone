@@ -60,8 +60,8 @@ build do
   command 'mix local.rebar --force', env: env
   command 'mix deps.get --only prod', env: env
   command 'mix deps.compile --only prod', env: env
-  command 'npm ci --prefix apps/fz_http/assets --progress=false --no-audit --loglevel=error', env: env
-  command 'npm run --prefix apps/fz_http/assets deploy', env: env
+  command 'cd apps/fz_http/assets && yarn install --frozen-lockfile', env: env
+  command 'cd apps/fz_http/assets && yarn deploy', env: env
   command 'cd apps/fz_http && mix phx.digest', env: env
   command 'mix release', env: env
 
