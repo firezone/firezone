@@ -33,7 +33,12 @@
   <h4 class="title is-4">Authentication</h4>
 
   <div class="block">
-    <.form :let={f} for={@site_changeset} phx-change="change" phx-submit="save_site">
+    <.form
+      :let={f}
+      for={@configuration_changeset}
+      phx-change="change"
+      phx-submit="save_configuration"
+    >
       <div class="field">
         <%= label(f, :vpn_session_duration, "Require Authentication For VPN Sessions",
           class: "label"
@@ -73,8 +78,8 @@
             type="checkbox"
             phx-click="toggle"
             phx-value-config="local_auth_enabled"
-            checked={Conf.get!(:local_auth_enabled)}
-            value={if(!Conf.get!(:local_auth_enabled), do: "on")}
+            checked={FzHttp.Configurations.get!(:local_auth_enabled)}
+            value={if(!FzHttp.Configurations.get!(:local_auth_enabled), do: "on")}
           />
           <span class="check"></span>
         </label>
@@ -95,8 +100,10 @@
             type="checkbox"
             phx-click="toggle"
             phx-value-config="allow_unprivileged_device_management"
-            checked={Conf.get!(:allow_unprivileged_device_management)}
-            value={if(!Conf.get!(:allow_unprivileged_device_management), do: "on")}
+            checked={FzHttp.Configurations.get!(:allow_unprivileged_device_management)}
+            value={
+              if(!FzHttp.Configurations.get!(:allow_unprivileged_device_management), do: "on")
+            }
           />
           <span class="check"></span>
         </label>
@@ -119,8 +126,10 @@
             type="checkbox"
             phx-click="toggle"
             phx-value-config="allow_unprivileged_device_configuration"
-            checked={Conf.get!(:allow_unprivileged_device_configuration)}
-            value={if(!Conf.get!(:allow_unprivileged_device_configuration), do: "on")}
+            checked={FzHttp.Configurations.get!(:allow_unprivileged_device_configuration)}
+            value={
+              if(!FzHttp.Configurations.get!(:allow_unprivileged_device_configuration), do: "on")
+            }
           />
           <span class="check"></span>
         </label>
@@ -132,8 +141,7 @@
 
   <div class="block">
     <p>
-      Single Sign-On can be configured in the main Firezone configuration
-      file. Refer to the
+      Configure OIDC or SAML Single Sign-On below. See the
       <a href="https://docs.firezone.dev/authenticate/">Firezone documentation</a>
       for more details.
     </p>
@@ -152,8 +160,8 @@
             type="checkbox"
             phx-click="toggle"
             phx-value-config="disable_vpn_on_oidc_error"
-            checked={Conf.get!(:disable_vpn_on_oidc_error)}
-            value={if(!Conf.get!(:disable_vpn_on_oidc_error), do: "on")}
+            checked={FzHttp.Configurations.get!(:disable_vpn_on_oidc_error)}
+            value={if(!FzHttp.Configurations.get!(:disable_vpn_on_oidc_error), do: "on")}
           />
           <span class="check"></span>
         </label>
@@ -178,10 +186,10 @@
       <%= for {k, v} <- @oidc_configs do %>
         <tr>
           <td><%= k %></td>
-          <td><%= v["label"] %></td>
-          <td><%= v["client_id"] %></td>
-          <td><%= v["discovery_document_uri"] %></td>
-          <td><%= v["scope"] %></td>
+          <td><%= v.label %></td>
+          <td><%= v.client_id %></td>
+          <td><%= v.discovery_document_uri %></td>
+          <td><%= v.scope %></td>
           <td>
             <%= live_patch(to: ~p"/settings/security/oidc/#{k}/edit",
               class: "button") do %>
@@ -223,9 +231,9 @@
       <%= for {k, v} <- @saml_configs do %>
         <tr>
           <td><%= k %></td>
-          <td><%= v["label"] %></td>
+          <td><%= v.label %></td>
           <td>
-            <div class="line-clamp"><%= v["metadata"] %></div>
+            <div class="line-clamp"><%= v.metadata %></div>
           </td>
           <td>
             <%= live_patch(to: ~p"/settings/security/saml/#{k}/edit",

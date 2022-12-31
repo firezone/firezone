@@ -4,11 +4,13 @@ defmodule FzHttpWeb.ControllerHelpers do
   """
   use FzHttpWeb, :helper
 
-  def root_path_for_role(:admin) do
+  alias FzHttp.Users.User
+
+  def root_path_for_user(%User{role: :admin}) do
     ~p"/users"
   end
 
-  def root_path_for_role(:unprivileged) do
+  def root_path_for_user(%User{role: :unprivileged}) do
     ~p"/user_devices"
   end
 end

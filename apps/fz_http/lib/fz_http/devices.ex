@@ -1,13 +1,17 @@
 defmodule FzHttp.Devices do
-  @moduledoc """
-  The Devices context.
-  """
-
   import Ecto.Changeset
   import Ecto.Query, warn: false
-
   alias EctoNetwork.INET
-  alias FzHttp.{Devices.Device, Devices.DeviceSetting, Repo, Sites, Telemetry, Users, Users.User}
+
+  alias FzHttp.{
+    Configurations,
+    Devices.Device,
+    Devices.DeviceSetting,
+    Repo,
+    Telemetry,
+    Users,
+    Users.User
+  }
 
   require Logger
 
@@ -22,7 +26,13 @@ defmodule FzHttp.Devices do
   end
 
   def count do
-    Repo.one(from d in Device, select: count(d.id))
+    Repo.aggregate(Device, :count)
+  end
+
+  def count(nil), do: 0
+
+  def count(user_id) do
+    Repo.one(from d in Device, where: d.user_id == ^user_id, select: count())
   end
 
   def max_count_by_user_id do
@@ -52,12 +62,9 @@ defmodule FzHttp.Devices do
   end
 
   def setting_projection(device) do
-    DeviceSetting.parse(device)
+    device
+    |> DeviceSetting.parse()
     |> Map.from_struct()
-  end
-
-  def count(user_id) do
-    Repo.one(from d in Device, where: d.user_id == ^user_id, select: count())
   end
 
   def get_device!(id), do: Repo.get!(Device, id)
@@ -113,7 +120,7 @@ defmodule FzHttp.Devices do
   end
 
   def to_peer_list do
-    vpn_duration = Sites.vpn_duration()
+    vpn_duration = Configurations.vpn_duration()
 
     Repo.all(
       from d in Device,
@@ -132,16 +139,7 @@ defmodule FzHttp.Devices do
   end
 
   def new_device(attrs \\ %{}) do
-    change_device(
-      %Device{},
-      Map.merge(
-        %{
-          "name" => Device.new_name(),
-          "preshared_key" => FzCommon.FzCrypto.psk()
-        },
-        attrs
-      )
-    )
+    change_device(%Device{}, attrs)
   end
 
   def allowed_ips(device), do: config(device, :allowed_ips)
@@ -150,9 +148,9 @@ defmodule FzHttp.Devices do
   def mtu(device), do: config(device, :mtu)
   def persistent_keepalive(device), do: config(device, :persistent_keepalive)
 
-  defp config(device, key) do
-    if Map.get(device, String.to_atom("use_site_#{key}")) do
-      Map.get(Sites.get_site!(), key)
+  def config(device, key) do
+    if Map.get(device, String.to_atom("use_default_#{key}")) do
+      Map.get(Configurations.get_configuration!(), String.to_atom("default_client_#{key}"))
     else
       Map.get(device, key)
     end
@@ -160,11 +158,11 @@ defmodule FzHttp.Devices do
 
   def defaults(changeset) do
     ~w(
-      use_site_allowed_ips
-      use_site_dns
-      use_site_endpoint
-      use_site_mtu
-      use_site_persistent_keepalive
+      use_default_allowed_ips
+      use_default_dns
+      use_default_endpoint
+      use_default_mtu
+      use_default_persistent_keepalive
     )a
     |> Map.new(&{&1, get_field(changeset, &1)})
   end
@@ -197,7 +195,23 @@ defmodule FzHttp.Devices do
   end
 
   def decode(nil), do: nil
+  def decode(inet) when is_binary(inet), do: inet
   def decode(inet), do: INET.decode(inet)
+
+  @hash_range 2 ** 16
+  def new_name(name \\ FzCommon.NameGenerator.generate()) do
+    hash =
+      name
+      |> :erlang.phash2(@hash_range)
+      |> Integer.to_string(16)
+      |> String.pad_leading(4, "0")
+
+    if String.length(name) > 15 do
+      String.slice(name, 0..10) <> hash
+    else
+      name
+    end
+  end
 
   defp psk_config(device) do
     if device.preshared_key do
@@ -287,10 +301,10 @@ defmodule FzHttp.Devices do
   defp field_empty?(_), do: false
 
   defp ipv4? do
-    Application.fetch_env!(:fz_http, :wireguard_ipv4_enabled)
+    FzHttp.Config.fetch_env!(:fz_http, :wireguard_ipv4_enabled)
   end
 
   defp ipv6? do
-    Application.fetch_env!(:fz_http, :wireguard_ipv6_enabled)
+    FzHttp.Config.fetch_env!(:fz_http, :wireguard_ipv6_enabled)
   end
 end

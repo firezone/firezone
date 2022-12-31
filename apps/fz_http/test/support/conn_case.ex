@@ -16,10 +16,14 @@ defmodule FzHttpWeb.ConnCase do
   """
 
   use ExUnit.CaseTemplate
+  use FzHttp.CaseTemplate
 
-  alias Ecto.Adapters.SQL.Sandbox
+  alias FzHttpWeb.Auth.HTML.Authentication
 
-  alias FzHttp.UsersFixtures
+  alias FzHttp.{
+    ApiTokensFixtures,
+    UsersFixtures
+  }
 
   using do
     quote do
@@ -36,13 +40,23 @@ defmodule FzHttpWeb.ConnCase do
 
       def current_user(test_conn) do
         get_session(test_conn)
-        |> FzHttpWeb.Authentication.get_current_user()
+        |> Authentication.get_current_user()
       end
     end
   end
 
   def new_conn do
     Phoenix.ConnTest.build_conn()
+  end
+
+  def api_conn do
+    user = UsersFixtures.user()
+    api_token = ApiTokensFixtures.api_token(%{"user_id" => user.id})
+    {:ok, token, _claims} = FzHttpWeb.Auth.JSON.Authentication.fz_encode_and_sign(api_token, user)
+
+    new_conn()
+    |> Plug.Conn.put_req_header("accept", "application/json")
+    |> Plug.Conn.put_req_header("authorization", "bearer #{token}")
   end
 
   def admin_conn(tags) do
@@ -59,14 +73,12 @@ defmodule FzHttpWeb.ConnCase do
     conn =
       new_conn()
       |> Plug.Test.init_test_session(%{})
-      |> FzHttpWeb.Authentication.sign_in(user, %{provider: :identity})
+      |> Authentication.sign_in(user, %{provider: :identity})
       |> maybe_put_session(tags)
 
     {user,
      conn
-     |> Plug.Test.init_test_session(%{
-       "guardian_default_token" => conn.private.guardian_default_token
-     })}
+     |> Plug.Conn.put_session("guardian_default_token", conn.private.guardian_default_token)}
   end
 
   defp maybe_put_session(conn, %{session: session}) do
@@ -79,20 +91,18 @@ defmodule FzHttpWeb.ConnCase do
   end
 
   setup tags do
-    :ok = Sandbox.checkout(FzHttp.Repo)
-
-    unless tags[:async] do
-      Sandbox.mode(FzHttp.Repo, {:shared, self()})
-    end
-
     {unprivileged_user, unprivileged_conn} = unprivileged_conn(tags)
     {admin_user, admin_conn} = admin_conn(tags)
 
-    {:ok,
-     unauthed_conn: new_conn(),
-     admin_user: admin_user,
-     unprivileged_user: unprivileged_user,
-     admin_conn: admin_conn,
-     unprivileged_conn: unprivileged_conn}
+    conns =
+      [
+        unauthed_conn: new_conn(),
+        admin_user: admin_user,
+        unprivileged_user: unprivileged_user,
+        admin_conn: admin_conn,
+        unprivileged_conn: unprivileged_conn
+      ] ++ if tags[:api], do: [api_conn: api_conn()], else: []
+
+    {:ok, conns}
   end
 end

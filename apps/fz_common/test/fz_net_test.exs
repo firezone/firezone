@@ -127,11 +127,7 @@ defmodule FzCommon.FzNetTest do
       end
     end
 
-    @tag cases: [
-           "<",
-           "{",
-           "["
-         ]
+    @tag cases: ["<", "{", "["]
     test "returns {:error, _} for invalid URIs", %{cases: cases} do
       for subject <- cases do
         assert {:error, _} = FzNet.to_complete_url(subject)

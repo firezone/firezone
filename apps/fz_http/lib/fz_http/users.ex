@@ -8,7 +8,6 @@ defmodule FzHttp.Users do
 
   alias FzHttp.Devices.Device
   alias FzHttp.Repo
-  alias FzHttp.Sites.Site
   alias FzHttp.Telemetry
   alias FzHttp.Users.User
   alias FzHttpWeb.Mailer
@@ -55,6 +54,10 @@ defmodule FzHttp.Users do
 
   def get_by_email(email) do
     Repo.get_by(User, email: email)
+  end
+
+  def get_by_email!(email) do
+    Repo.get_by!(User, email: email)
   end
 
   def create_admin_user(attrs) do
@@ -215,7 +218,7 @@ defmodule FzHttp.Users do
   end
 
   def vpn_session_expired?(user, duration) do
-    max = Site.max_vpn_session_duration()
+    max = FzHttp.Configurations.Configuration.max_vpn_session_duration()
 
     case duration do
       0 ->

@@ -5,7 +5,8 @@
       <%= if @show_user do %>
         <th>User</th>
       <% end %>
-      <th>WireGuard IP</th>
+      <th>Tunnel IPv4</th>
+      <th>Tunnel IPv6</th>
       <th>Remote IP</th>
       <th>Latest Handshake</th>
       <th>Transfer</th>
@@ -29,11 +30,8 @@
             ) %>
           </td>
         <% end %>
-        <td class="code">
-          <%= device.ipv4 %>
-          <br />
-          <%= device.ipv6 %>
-        </td>
+        <td class="code"><%= device.ipv4 %></td>
+        <td class="code"><%= device.ipv6 %></td>
         <td class="code">
           <%= device.remote_ip %>
         </td>

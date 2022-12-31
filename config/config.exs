@@ -1,27 +1,4 @@
-# This file is responsible for configuring your umbrella
-# and **all applications** and their dependencies with the
-# help of the Config module.
-#
-# *Note*:
-# This configuration is generated on compile time. To configure the application during runtime,
-# use releases.exs. These configuration options are overridden by environment-specific
-# configuration files.
-#
-# Note that all applications in your umbrella share the
-# same configuration and dependencies, which is why they
-# all use the same configuration file. If you want different
-# configurations or dependencies per app, it is best to
-# move said applications out of the umbrella.
 import Config
-
-require Logger
-
-# Sample configuration:
-#
-#     config :logger, :console,
-#       level: :info,
-#       format: "$date $time [$level] $metadata$message\n",
-#       metadata: [:user_id]
 
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
@@ -32,25 +9,30 @@ config :posthog,
   api_key: "phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK"
 
 # Guardian configuration
-config :fz_http, FzHttpWeb.Authentication,
+config :fz_http, FzHttpWeb.Auth.HTML.Authentication,
   issuer: "fz_http",
   # Generate with mix guardian.gen.secret
   secret_key: "GApJ4c4a/KJLrBePgTDUk0n67AbjCvI9qdypKZEaJFXl6s9H3uRcIhTt49Fij5UO"
 
+config :fz_http, FzHttpWeb.Auth.JSON.Authentication,
+  issuer: "fz_http",
+  # Generate with mix guardian.gen.secret
+  secret_key: "GApJ4c4a/KJLrBePgTDUk0n67AbjCvI9qdypKZEaJFXl6s9H3uRcIhTt49Fij5UO"
+
+# Use timestamptz for all timestamp fields
+config :fz_http, FzHttp.Repo, migration_timestamps: [type: :timestamptz]
+
 config :fz_http,
   external_trusted_proxies: [],
   private_clients: [],
-  disable_vpn_on_oidc_error: true,
   sandbox: true,
-  allow_unprivileged_device_management: true,
-  allow_unprivileged_device_configuration: true,
   telemetry_id: "543aae08-5a2b-428d-b704-2956dd3f5a57",
   wireguard_ipv4_enabled: true,
-  wireguard_ipv4_network: "10.3.2.0/24",
-  wireguard_ipv4_address: "10.3.2.1",
+  wireguard_ipv4_network: "100.64.0.0/10",
+  wireguard_ipv4_address: "100.64.0.1",
   wireguard_ipv6_enabled: true,
-  wireguard_ipv6_network: "fd00::3:2:0/120",
-  wireguard_ipv6_address: "fd00::3:2:1",
+  wireguard_ipv6_network: "fd00::/106",
+  wireguard_ipv6_address: "fd00::1",
   max_devices_per_user: 10,
   telemetry_module: FzCommon.Telemetry,
   supervision_tree_mode: :full,
@@ -65,11 +47,9 @@ config :fz_http,
   admin_email: "firezone@localhost",
   default_admin_password: "firezone1234",
   server_process_opts: [name: {:global, :fz_http_server}],
-  openid_connect_providers: "{}",
-  saml_identity_providers: %{},
   saml_entity_id: "urn:firezone.dev:firezone-app",
-  saml_certfile_path: "apps/fz_http/priv/cert/saml_selfsigned.pem",
-  saml_keyfile_path: "apps/fz_http/priv/cert/saml_selfsigned_key.pem",
+  saml_certfile_path: Path.expand("../apps/fz_http/priv/cert/saml_selfsigned.pem", __DIR__),
+  saml_keyfile_path: Path.expand("../apps/fz_http/priv/cert/saml_selfsigned_key.pem", __DIR__),
   openid_connect: OpenIDConnect
 
 config :fz_wall,
@@ -97,6 +77,7 @@ config :fz_http, FzHttpWeb.Endpoint,
 
 # Configures Elixir's Logger
 config :logger, :console,
+  level: String.to_atom(System.get_env("LOG_LEVEL", "info")),
   format: "$time $metadata[$level] $message\n",
   metadata: [:request_id, :remote_ip]
 

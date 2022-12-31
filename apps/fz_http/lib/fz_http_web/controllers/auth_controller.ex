@@ -8,7 +8,7 @@ defmodule FzHttpWeb.AuthController do
   @local_auth_providers [:identity, :magic_link]
 
   alias FzHttp.Users
-  alias FzHttpWeb.Authentication
+  alias FzHttpWeb.Auth.HTML.Authentication
   alias FzHttpWeb.OAuth.PKCE
   alias FzHttpWeb.OIDC.State
   alias FzHttpWeb.UserFromAuth
@@ -21,8 +21,6 @@ defmodule FzHttpWeb.AuthController do
   plug Ueberauth
 
   def request(conn, _params) do
-    # XXX: Helpers.callback_url/1 generates the wrong URL behind nginx.
-    # This is a bug in Ueberauth. auth_path is used instead.
     path = ~p"/auth/identity/callback"
 
     conn
@@ -30,9 +28,7 @@ defmodule FzHttpWeb.AuthController do
   end
 
   def callback(%{assigns: %{ueberauth_failure: %{errors: errors}}} = conn, _params) do
-    msg =
-      errors
-      |> Enum.map_join(". ", fn error -> error.message end)
+    msg = Enum.map_join(errors, ". ", fn error -> error.message end)
 
     conn
     |> put_flash(:error, msg)
@@ -61,24 +57,24 @@ defmodule FzHttpWeb.AuthController do
     end
   end
 
-  def callback(conn, %{"provider" => provider_key, "state" => state} = params) do
+  def callback(conn, %{"provider" => provider_id, "state" => state} = params)
+      when is_binary(provider_id) do
     token_params = Map.merge(params, PKCE.token_params(conn))
 
-    with {:ok, provider} <- atomize_provider(provider_key),
-         :ok <- State.verify_state(conn, state),
-         {:ok, tokens} <- openid_connect().fetch_tokens(provider, token_params),
-         {:ok, claims} <- openid_connect().verify(provider, tokens["id_token"]) do
-      case UserFromAuth.find_or_create(provider_key, claims) do
+    with :ok <- State.verify_state(conn, state),
+         {:ok, tokens} <- openid_connect().fetch_tokens(provider_id, token_params),
+         {:ok, claims} <- openid_connect().verify(provider_id, tokens["id_token"]) do
+      case UserFromAuth.find_or_create(provider_id, claims) do
         {:ok, user} ->
           # only first-time connect will include refresh token
           # XXX: Remove this when SCIM 2.0 is implemented
           with %{"refresh_token" => refresh_token} <- tokens do
-            FzHttp.OIDC.create_connection(user.id, provider_key, refresh_token)
+            FzHttp.OIDC.create_connection(user.id, provider_id, refresh_token)
           end
 
           conn
           |> put_session("id_token", tokens["id_token"])
-          |> maybe_sign_in(user, %{provider: provider})
+          |> maybe_sign_in(user, %{provider: provider_id})
 
         {:error, reason} ->
           conn
@@ -104,9 +100,16 @@ defmodule FzHttpWeb.AuthController do
     end
   end
 
-  def delete(conn, _params) do
+  # This can be called if the user attempts to visit one of the callback redirect URLs
+  # directly.
+  def callback(conn, params) do
     conn
-    |> Authentication.sign_out()
+    |> put_flash(:error, inspect(params) <> inspect(conn.assigns))
+    |> redirect(to: ~p"/")
+  end
+
+  def delete(conn, _params) do
+    Authentication.sign_out(conn)
   end
 
   def reset_password(conn, _params) do
@@ -139,7 +142,7 @@ defmodule FzHttpWeb.AuthController do
     end
   end
 
-  def redirect_oidc_auth_uri(conn, %{"provider" => provider_key}) do
+  def redirect_oidc_auth_uri(conn, %{"provider" => provider_id}) when is_binary(provider_id) do
     verifier = PKCE.code_verifier()
 
     params = %{
@@ -149,27 +152,17 @@ defmodule FzHttpWeb.AuthController do
       code_challenge: PKCE.code_challenge(verifier)
     }
 
-    with {:ok, provider} <- atomize_provider(provider_key),
-         uri <- openid_connect().authorization_uri(provider, params) do
-      conn
-      |> PKCE.put_cookie(verifier)
-      |> State.put_cookie(params.state)
-      |> redirect(external: uri)
-    else
-      _ ->
-        msg = "OpenIDConnect error: provider #{provider_key} not found in config"
-        Logger.warn(msg)
+    uri = openid_connect().authorization_uri(provider_id, params)
 
-        conn
-        |> put_resp_content_type("text/plain")
-        |> send_resp(400, "OIDC Error. Check logs.")
-        |> halt()
-    end
+    conn
+    |> PKCE.put_cookie(verifier)
+    |> State.put_cookie(params.state)
+    |> redirect(external: uri)
   end
 
-  defp maybe_sign_in(conn, user, %{provider: provider} = auth)
-       when provider in @local_auth_providers do
-    if Conf.get!(:local_auth_enabled) do
+  defp maybe_sign_in(conn, user, %{provider: provider_key} = auth)
+       when is_atom(provider_key) and provider_key in @local_auth_providers do
+    if FzHttp.Configurations.get!(:local_auth_enabled) do
       do_sign_in(conn, user, auth)
     else
       conn
@@ -186,6 +179,6 @@ defmodule FzHttpWeb.AuthController do
     |> Authentication.sign_in(user, auth)
     |> configure_session(renew: true)
     |> put_session(:live_socket_id, "users_socket:#{user.id}")
-    |> redirect(to: root_path_for_role(user.role))
+    |> redirect(to: root_path_for_user(user))
   end
 end

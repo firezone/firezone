@@ -16,8 +16,7 @@ defmodule FzHttpWeb.ChannelCase do
   """
 
   use ExUnit.CaseTemplate
-
-  alias Ecto.Adapters.SQL.Sandbox
+  use FzHttp.CaseTemplate
 
   using do
     quote do
@@ -28,15 +27,5 @@ defmodule FzHttpWeb.ChannelCase do
       # The default endpoint for testing
       @endpoint FzHttpWeb.Endpoint
     end
-  end
-
-  setup tags do
-    :ok = Sandbox.checkout(FzHttp.Repo)
-
-    unless tags[:async] do
-      Sandbox.mode(FzHttp.Repo, {:shared, self()})
-    end
-
-    :ok
   end
 end

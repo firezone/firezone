@@ -4,8 +4,6 @@ defmodule FzHttpWeb.SettingLive.SAMLFormComponent do
   """
   use FzHttpWeb, :live_component
 
-  alias FzHttp.Configurations, as: Conf
-
   def render(assigns) do
     ~H"""
     <div>
@@ -192,16 +190,17 @@ defmodule FzHttpWeb.SettingLive.SAMLFormComponent do
   end
 
   def update(assigns, socket) do
-    external_url = Application.fetch_env!(:fz_http, :external_url)
+    external_url = FzHttp.Config.fetch_env!(:fz_http, :external_url)
 
     changeset =
       assigns.providers
       |> Map.get(assigns.provider_id, %{})
       |> Map.merge(%{
-        "id" => assigns.provider_id,
-        "base_url" => Path.join(external_url, "/auth/saml")
+        id: assigns.provider_id,
+        # XXX this should be part of changeset itself
+        base_url: Path.join(external_url, "/auth/saml")
       })
-      |> FzHttp.Conf.SAMLConfig.changeset()
+      |> FzHttp.Configurations.Configuration.SAMLIdentityProvider.changeset()
 
     {:ok,
      socket
@@ -209,41 +208,39 @@ defmodule FzHttpWeb.SettingLive.SAMLFormComponent do
      |> assign(:changeset, changeset)}
   end
 
-  def handle_event("save", %{"saml_config" => params}, socket) do
+  def handle_event("save", %{"saml_identity_provider" => params}, socket) do
     changeset =
       params
-      |> FzHttp.Conf.SAMLConfig.changeset()
+      |> FzHttp.Configurations.Configuration.SAMLIdentityProvider.changeset()
       |> Map.put(:action, :validate)
 
     update =
       case changeset do
         %{valid?: true} ->
-          changeset
-          |> Ecto.Changeset.apply_changes()
-          |> Map.from_struct()
-          |> Map.new(fn {k, v} -> {to_string(k), v} end)
-          |> then(fn data ->
-            {id, data} = Map.pop(data, "id")
+          {:ok, _} =
+            changeset
+            |> Ecto.Changeset.apply_changes()
+            |> Map.from_struct()
+            |> Map.new(fn {k, v} -> {to_string(k), v} end)
+            |> then(fn data ->
+              id = Map.get(data, "id")
 
-            %{
-              saml_identity_providers:
-                socket.assigns.providers
-                |> Map.delete(socket.assigns.provider_id)
-                |> Map.put(id, data)
-            }
-          end)
-          |> Conf.update_configuration()
+              %{
+                saml_identity_providers:
+                  socket.assigns.providers
+                  |> Map.delete(socket.assigns.provider_id)
+                  |> Map.put(id, data)
+                  |> Map.values()
+              }
+            end)
+            |> FzHttp.Configurations.update_configuration()
 
         _ ->
           {:error, changeset}
       end
 
     case update do
-      {:ok, config} ->
-        Application.fetch_env!(:samly, Samly.Provider)
-        |> FzHttp.SAML.StartProxy.set_identity_providers(config.saml_identity_providers)
-        |> FzHttp.SAML.StartProxy.refresh()
-
+      {:ok, _config} ->
         {:noreply,
          socket
          |> put_flash(:info, "Updated successfully.")

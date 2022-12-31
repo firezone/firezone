@@ -4,20 +4,39 @@ defmodule FzHttp.Configurations do
   """
 
   import Ecto.Query, warn: false
-  import Ecto.Changeset
-  alias FzHttp.{Repo, Configurations.Configuration, Configurations.Cache}
 
-  defdelegate get(key), to: FzHttp.Configurations.Cache
-  defdelegate get!(key), to: FzHttp.Configurations.Cache
+  alias FzHttp.{Repo, Configurations.Configuration}
+
+  def get!(key) do
+    Map.get(get_configuration!(), key)
+  end
+
+  def put!(key, val) do
+    get_configuration!()
+    |> Configuration.changeset(%{key => val})
+    |> Repo.update!()
+  end
 
   def get_configuration! do
     Repo.one!(Configuration)
   end
 
-  def auto_create_users?(field, provider) do
-    get!(field)
-    |> Map.get(provider)
-    |> Map.get("auto_create_users")
+  def get_provider_by_id(field, provider_id) do
+    FzHttp.Configurations.get!(field)
+    |> Enum.find(&(&1.id == provider_id))
+  end
+
+  def auto_create_users?(field, provider_id) do
+    FzHttp.Configurations.get!(field)
+    |> Enum.find(&(&1.id == provider_id))
+    |> case do
+      nil -> raise RuntimeError, "Unknown provider #{provider_id}"
+      provider -> provider.auto_create_users
+    end
+  end
+
+  def new_configuration(attrs \\ %{}) do
+    Configuration.changeset(%Configuration{}, attrs)
   end
 
   def change_configuration(%Configuration{} = config \\ get_configuration!()) do
@@ -25,27 +44,30 @@ defmodule FzHttp.Configurations do
   end
 
   def update_configuration(%Configuration{} = config \\ get_configuration!(), attrs) do
-    config
-    |> Configuration.changeset(attrs)
-    |> prepare_changes(fn changeset ->
-      for {k, v} <- changeset.changes do
-        case v do
-          %Ecto.Changeset{} ->
-            Cache.put!(k, v.changes)
+    case Repo.update(Configuration.changeset(config, attrs)) do
+      {:ok, configuration} ->
+        FzHttp.SAML.StartProxy.restart()
+        FzHttp.OIDC.StartProxy.restart()
 
-          _ ->
-            Cache.put!(k, v)
-        end
-      end
+        {:ok, configuration}
 
-      changeset
-    end)
-    |> Repo.update()
+      error ->
+        error
+    end
   end
 
   def logo_types, do: ~w(Default URL Upload)
 
   def logo_type(nil), do: "Default"
-  def logo_type(%{url: _url}), do: "URL"
-  def logo_type(%{data: _data}), do: "Upload"
+  def logo_type(%{url: url}) when not is_nil(url), do: "URL"
+  def logo_type(%{data: data}) when not is_nil(data), do: "Upload"
+
+  def vpn_sessions_expire? do
+    freq = vpn_duration()
+    freq > 0 && freq < Configuration.max_vpn_session_duration()
+  end
+
+  def vpn_duration do
+    get_configuration!().vpn_session_duration
+  end
 end

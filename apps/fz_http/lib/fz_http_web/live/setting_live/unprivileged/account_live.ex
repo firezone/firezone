@@ -8,7 +8,6 @@ defmodule FzHttpWeb.SettingLive.Unprivileged.Account do
   """
   use FzHttpWeb, :live_view
 
-  alias FzHttp.Configurations, as: Conf
   alias FzHttp.{MFA, Users}
   alias FzHttpWeb.{Endpoint, Presence}
 
@@ -22,7 +21,7 @@ defmodule FzHttpWeb.SettingLive.Unprivileged.Account do
 
     {:ok,
      socket
-     |> assign(:local_auth_enabled, Conf.get!(:local_auth_enabled))
+     |> assign(:local_auth_enabled, FzHttp.Configurations.get!(:local_auth_enabled))
      |> assign(:changeset, Users.change_user(socket.assigns.current_user))
      |> assign(:methods, MFA.list_methods(socket.assigns.current_user))
      |> assign(:page_title, @page_title)
@@ -61,6 +60,6 @@ defmodule FzHttpWeb.SettingLive.Unprivileged.Account do
   end
 
   defp get_metas(presences, user_id) do
-    get_in(presences, [to_string(user_id), :metas]) || []
+    get_in(presences, [user_id, :metas]) || []
   end
 end

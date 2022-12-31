@@ -5,8 +5,24 @@ defmodule FzHttp.Telemetry do
 
   require Logger
 
-  alias FzHttp.Configurations, as: Conf
   alias FzHttp.{Devices, MFA, Users}
+
+  def create_api_token do
+    telemetry_module().capture(
+      "add_api_token",
+      common_fields()
+    )
+  end
+
+  def delete_api_token(api_token) do
+    telemetry_module().capture(
+      "delete_api_token",
+      common_fields() ++
+        [
+          api_token_created_at: api_token.inserted_at
+        ]
+    )
+  end
 
   def add_device do
     telemetry_module().capture(
@@ -75,9 +91,6 @@ defmodule FzHttp.Telemetry do
     telemetry_module().capture("ping", ping_data())
   end
 
-  defp count(subject) when is_map(subject), do: count(Map.keys(subject))
-  defp count(subject) when is_list(subject), do: length(subject)
-
   # How far back to count handshakes as an active device
   @active_device_window 86_400
   def ping_data do
@@ -91,15 +104,18 @@ defmodule FzHttp.Telemetry do
         max_devices_for_users: Devices.max_count_by_user_id(),
         users_with_mfa: MFA.count_distinct_by_user_id(),
         users_with_mfa_totp: MFA.count_distinct_totp_by_user_id(),
-        openid_providers: count(Conf.get!(:parsed_openid_connect_providers)),
-        saml_providers: count(Conf.get!(:saml_identity_providers)),
-        unprivileged_device_management: Conf.get!(:allow_unprivileged_device_management),
-        unprivileged_device_configuration: Conf.get!(:allow_unprivileged_device_configuration),
-        local_authentication: Conf.get!(:local_auth_enabled),
-        disable_vpn_on_oidc_error: Conf.get!(:disable_vpn_on_oidc_error),
+        openid_providers: length(FzHttp.Configurations.get!(:openid_connect_providers)),
+        saml_providers: length(FzHttp.Configurations.get!(:saml_identity_providers)),
+        unprivileged_device_management:
+          FzHttp.Configurations.get!(:allow_unprivileged_device_management),
+        unprivileged_device_configuration:
+          FzHttp.Configurations.get!(:allow_unprivileged_device_configuration),
+        local_authentication: FzHttp.Configurations.get!(:local_auth_enabled),
+        disable_vpn_on_oidc_error: FzHttp.Configurations.get!(:disable_vpn_on_oidc_error),
         outbound_email: outbound_email?(),
-        external_database: external_database?(Map.new(conf(FzHttp.Repo))),
-        logo_type: Conf.logo_type(Conf.get!(:logo))
+        external_database:
+          external_database?(Map.new(FzHttp.Config.fetch_env!(:fz_http, FzHttp.Repo))),
+        logo_type: FzHttp.Configurations.logo_type(FzHttp.Configurations.get!(:logo))
       ]
   end
 
@@ -109,7 +125,7 @@ defmodule FzHttp.Telemetry do
 
   defp common_fields do
     [
-      distinct_id: conf(:telemetry_id),
+      distinct_id: FzHttp.Config.fetch_env!(:fz_http, :telemetry_id),
       fqdn: fqdn(),
       version: version(),
       kernel_version: "#{os_type()} #{os_version()}"
@@ -117,12 +133,12 @@ defmodule FzHttp.Telemetry do
   end
 
   defp telemetry_module do
-    Application.fetch_env!(:fz_http, :telemetry_module)
+    FzHttp.Config.fetch_env!(:fz_http, :telemetry_module)
   end
 
   defp fqdn do
     :fz_http
-    |> Application.fetch_env!(FzHttpWeb.Endpoint)
+    |> FzHttp.Config.fetch_env!(FzHttpWeb.Endpoint)
     |> Keyword.get(:url)
     |> Keyword.get(:host)
   end
@@ -146,7 +162,7 @@ defmodule FzHttp.Telemetry do
   end
 
   defp outbound_email? do
-    from_email = conf(FzHttpWeb.Mailer)[:from_email]
+    from_email = FzHttp.Config.fetch_env!(:fz_http, FzHttpWeb.Mailer)[:from_email]
 
     !is_nil(from_email)
   end
@@ -169,9 +185,5 @@ defmodule FzHttp.Telemetry do
       _ ->
         "0.0.0"
     end
-  end
-
-  defp conf(key) do
-    Application.fetch_env!(:fz_http, key)
   end
 end

@@ -21,16 +21,22 @@ defmodule FzHttp.Release do
   def create_admin_user do
     load_app()
 
-    if Repo.exists?(from u in User, where: u.email == ^email()) do
-      change_password(email(), default_password())
-      reset_role(email(), :admin)
-    else
-      Users.create_admin_user(
-        email: email(),
-        password: default_password(),
-        password_confirmation: default_password()
-      )
-    end
+    reply =
+      if Repo.exists?(from u in User, where: u.email == ^email()) do
+        change_password(email(), default_password())
+        reset_role(email(), :admin)
+      else
+        Users.create_admin_user(
+          email: email(),
+          password: default_password(),
+          password_confirmation: default_password()
+        )
+      end
+
+    # Notify the user
+    IO.puts("Password reset! Check $HOME/.firezone/.env for sign in credentials.")
+
+    reply
   end
 
   def change_password(email, password) do
@@ -50,11 +56,11 @@ defmodule FzHttp.Release do
   end
 
   def repos do
-    Application.fetch_env!(@app, :ecto_repos)
+    FzHttp.Config.fetch_env!(@app, :ecto_repos)
   end
 
   defp email do
-    Application.fetch_env!(@app, :admin_email)
+    FzHttp.Config.fetch_env!(@app, :admin_email)
   end
 
   defp load_app do
@@ -66,6 +72,6 @@ defmodule FzHttp.Release do
   end
 
   defp default_password do
-    Application.fetch_env!(@app, :default_admin_password)
+    FzHttp.Config.fetch_env!(@app, :default_admin_password)
   end
 end

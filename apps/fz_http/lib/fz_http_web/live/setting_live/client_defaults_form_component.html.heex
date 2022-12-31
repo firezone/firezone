@@ -1,0 +1,111 @@
+<div class="block">
+  <.form :let={f} for={@changeset} id={@id} phx-target={@myself} phx-submit="save">
+    <div class="field">
+      <%= label(f, :default_client_allowed_ips, "Allowed IPs", class: "label") %>
+
+      <div class="control">
+        <%= textarea(
+          f,
+          :default_client_allowed_ips,
+          placeholder: "0.0.0.0/0, ::/0",
+          class: "textarea #{input_error_class(f, :default_client_allowed_ips)}"
+        ) %>
+      </div>
+
+      <p class="help is-danger">
+        <%= error_tag(f, :default_client_allowed_ips) %>
+      </p>
+      <p class="help">
+        Configures the default AllowedIPs setting for devices.
+        AllowedIPs determines which destination IPs get routed through
+        Firezone. Specify a comma-separated list of IPs or CIDRs here to achieve split tunneling, or use
+        <code>0.0.0.0/0, ::/0</code>
+        to route all device traffic through this Firezone server.
+      </p>
+    </div>
+
+    <div class="field">
+      <%= label(f, :default_client_dns, "DNS Servers", class: "label") %>
+
+      <div class="control">
+        <%= text_input(
+          f,
+          :default_client_dns,
+          placeholder: "1.1.1.1, 1.0.0.1",
+          class: "input #{input_error_class(f, :default_client_dns)}"
+        ) %>
+      </div>
+
+      <p class="help is-danger">
+        <%= error_tag(f, :default_client_dns) %>
+      </p>
+      <p class="help">
+        Comma-separated list of DNS servers to use for devices.
+        Leave this blank to omit the <code>DNS</code> section from
+        generated configs.
+      </p>
+    </div>
+
+    <div class="field">
+      <%= label(f, :default_client_endpoint, "Endpoint", class: "label") %>
+
+      <div class="control">
+        <%= text_input(
+          f,
+          :default_client_endpoint,
+          placeholder: "firezone.example.com",
+          class: "input #{input_error_class(f, :default_client_endpoint)}"
+        ) %>
+      </div>
+      <p class="help is-danger">
+        <%= error_tag(f, :default_client_endpoint) %>
+      </p>
+      <p class="help">
+        IPv4, IPv6 address, or FQDN that devices will be configured to connect
+        to. Defaults to this server's FQDN.
+      </p>
+    </div>
+
+    <div class="field">
+      <%= label(f, :default_client_persistent_keepalive, "Persistent Keepalive", class: "label") %>
+
+      <div class="control">
+        <%= text_input(
+          f,
+          :default_client_persistent_keepalive,
+          placeholder: "25",
+          class: "input #{input_error_class(f, :default_client_persistent_keepalive)}"
+        ) %>
+        <p class="help is-danger">
+          <%= error_tag(f, :default_client_persistent_keepalive) %>
+        </p>
+        <p class="help">
+          Interval in seconds to send persistent keepalive packets from devices. Most users won't
+          need to change this. Leave this blank to omit this field from generated configs.
+        </p>
+      </div>
+    </div>
+
+    <div class="field">
+      <%= label(f, :default_client_mtu, "MTU", class: "label") %>
+
+      <div class="control">
+        <%= text_input(
+          f,
+          :default_client_mtu,
+          placeholder: "1280",
+          class: "input #{input_error_class(f, :default_client_mtu)}"
+        ) %>
+      </div>
+      <p class="help is-danger">
+        <%= error_tag(f, :default_client_mtu) %>
+      </p>
+      <p class="help">
+        WireGuard interface MTU for devices. 1280 is a safe bet for most networks.
+        Leave this blank to omit this field from generated configs.
+      </p>
+    </div>
+
+    <%= Phoenix.View.render(FzHttpWeb.SharedView, "submit_button.html", []) %>
+  </.form>
+</div>

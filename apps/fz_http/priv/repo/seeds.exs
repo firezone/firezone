@@ -10,7 +10,11 @@
 # We recommend using the bang functions (`insert!`, `update!`
 # and so on) as they will fail if something goes wrong.
 
-alias FzHttp.{Devices, ConnectivityChecks, Users}
+alias FzHttp.{
+  ConnectivityChecks,
+  Devices,
+  Users
+}
 
 {:ok, user} =
   Users.create_admin_user(%{
@@ -28,18 +32,16 @@ alias FzHttp.{Devices, ConnectivityChecks, Users}
     """,
     preshared_key: "C+Tte1echarIObr6rq+nFeYQ1QO5xo5N29ygDjMlpS8=",
     public_key: "pSLWbPiQ2mKh26IG1dMFQQWuAstFJXV91dNk+olzEjA=",
-    ipv4: "10.3.2.6",
-    ipv6: "fd00::3:2:6",
     mtu: 1280,
     persistent_keepalive: 25,
     allowed_ips: "0.0.0.0,::/0",
     endpoint: "elixir",
     dns: "127.0.0.11",
-    use_site_allowed_ips: false,
-    use_site_dns: false,
-    use_site_endpoint: false,
-    use_site_mtu: false,
-    use_site_persistent_keepalive: false
+    use_default_allowed_ips: false,
+    use_default_dns: false,
+    use_default_endpoint: false,
+    use_default_mtu: false,
+    use_default_persistent_keepalive: false
   })
 
 {:ok, _device} =
