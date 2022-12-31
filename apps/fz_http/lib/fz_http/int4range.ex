@@ -5,7 +5,8 @@ defmodule FzHttp.Int4Range do
   # Note: we represent a port range as a string: lower - upper for ease of use
   # with Phoenix LiveView and nftables
   use Ecto.Type
-  @format_error "Range Error: Bad format"
+  @format_error "bad format"
+  @cast_error "lower value cannot be higher than upper value"
 
   def type, do: :int4range
 
@@ -30,7 +31,7 @@ defmodule FzHttp.Int4Range do
   end
 
   def cast([lower, upper]) when upper >= lower, do: {:ok, "#{lower} - #{upper}"}
-  def cast([_, _]), do: {:error, message: "Range Error: Lower bound higher than upper bound"}
+  def cast([_, _]), do: {:error, message: @cast_error}
 
   def load(%Postgrex.Range{
         lower: lower,

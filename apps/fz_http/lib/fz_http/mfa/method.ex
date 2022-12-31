@@ -2,13 +2,8 @@ defmodule FzHttp.MFA.Method do
   @moduledoc """
   Multi Factor Authentication methods
   """
-
-  use Ecto.Schema
+  use FzHttp, :schema
   import Ecto.Changeset
-  import FzHttp.Validators.Common, only: [trim: 2]
-
-  @primary_key {:id, :binary_id, autogenerate: true}
-  @whitespace_trimmed_fields :name
 
   schema "mfa_methods" do
     field :name, :string
@@ -16,18 +11,19 @@ defmodule FzHttp.MFA.Method do
     field :credential_id, :string
     field :last_used_at, :utc_datetime_usec
     field :payload, FzHttp.Encrypted.Map
-    field :user_id, :id
     field :secret, :string, virtual: true
     field :code, :string, virtual: true
 
-    timestamps(type: :utc_datetime_usec)
+    belongs_to :user, FzHttp.Users.User
+
+    timestamps()
   end
 
   @doc false
   def changeset(method, attrs) do
     method
     |> cast(attrs, [:name, :type, :credential_id, :payload, :last_used_at, :secret, :code])
-    |> trim(@whitespace_trimmed_fields)
+    |> update_change(:name, &String.trim/1)
     |> cast_payload()
     |> validate_required([:name, :type, :payload])
     |> validate_code()

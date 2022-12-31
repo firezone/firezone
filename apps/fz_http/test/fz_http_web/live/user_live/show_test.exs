@@ -1,6 +1,5 @@
 defmodule FzHttpWeb.UserLive.ShowTest do
-  # XXX: Setting to true causes deadlocks. Figure out why.
-  use FzHttpWeb.ConnCase, async: false
+  use FzHttpWeb.ConnCase, async: true
 
   alias FzHttp.UsersFixtures
 
@@ -28,121 +27,117 @@ defmodule FzHttpWeb.UserLive.ShowTest do
   end
 
   describe "authenticated new device" do
+    @test_pubkey "8IkpsAXiqhqNdc9PJS76YeJjig4lyTBaf8Rm7gTApXk="
+
     @device_id_regex ~r/device-(?<device_id>.*)-inserted-at/
     @valid_params %{
       "device" => %{
-        "public_key" => "test-pubkey",
+        "public_key" => @test_pubkey,
         "name" => "new_name",
         "description" => "new_description"
-      }
-    }
-    @invalid_params %{
-      "device" => %{
-        "public_key" => "test-pubkey",
-        "name" => ""
       }
     }
     @allowed_ips "2.2.2.2"
     @allowed_ips_change %{
       "device" => %{
-        "public_key" => "test-pubkey",
-        "use_site_allowed_ips" => "false",
+        "public_key" => @test_pubkey,
+        "use_default_allowed_ips" => "false",
         "allowed_ips" => @allowed_ips
       }
     }
     @allowed_ips_unchanged %{
       "device" => %{
-        "public_key" => "test-pubkey",
-        "use_site_allowed_ips" => "true",
+        "public_key" => @test_pubkey,
+        "use_default_allowed_ips" => "true",
         "allowed_ips" => @allowed_ips
       }
     }
     @dns "8.8.8.8, 8.8.4.4"
     @dns_change %{
       "device" => %{
-        "public_key" => "test-pubkey",
-        "use_site_dns" => "false",
+        "public_key" => @test_pubkey,
+        "use_default_dns" => "false",
         "dns" => @dns
       }
     }
     @dns_unchanged %{
       "device" => %{
-        "public_key" => "test-pubkey",
-        "use_site_dns" => "true",
+        "public_key" => @test_pubkey,
+        "use_default_dns" => "true",
         "dns" => @dns
       }
     }
     @wireguard_endpoint "6.6.6.6"
     @endpoint_change %{
       "device" => %{
-        "public_key" => "test-pubkey",
-        "use_site_endpoint" => "false",
+        "public_key" => @test_pubkey,
+        "use_default_endpoint" => "false",
         "endpoint" => @wireguard_endpoint
       }
     }
     @endpoint_unchanged %{
       "device" => %{
-        "public_key" => "test-pubkey",
-        "use_site_endpoint" => "true",
+        "public_key" => @test_pubkey,
+        "use_default_endpoint" => "true",
         "endpoint" => @wireguard_endpoint
       }
     }
     @mtu_change %{
       "device" => %{
-        "public_key" => "test-pubkey",
-        "use_site_mtu" => "false",
+        "public_key" => @test_pubkey,
+        "use_default_mtu" => "false",
         "mtu" => "1280"
       }
     }
     @mtu_unchanged %{
       "device" => %{
-        "public_key" => "test-pubkey",
-        "use_site_mtu" => "true",
+        "public_key" => @test_pubkey,
+        "use_default_mtu" => "true",
         "mtu" => "1280"
       }
     }
     @persistent_keepalive_change %{
       "device" => %{
-        "public_key" => "test-pubkey",
-        "use_site_persistent_keepalive" => "false",
+        "public_key" => @test_pubkey,
+        "use_default_persistent_keepalive" => "false",
         "persistent_keepalive" => "120"
       }
     }
     @persistent_keepalive_unchanged %{
       "device" => %{
-        "public_key" => "test-pubkey",
-        "use_site_persistent_keepalive" => "true",
+        "public_key" => @test_pubkey,
+        "use_default_persistent_keepalive" => "true",
         "persistent_keepalive" => "5"
       }
     }
     @default_allowed_ips_change %{
       "device" => %{
-        "public_key" => "test-pubkey",
-        "use_site_allowed_ips" => "false"
+        "public_key" => @test_pubkey,
+        "use_default_allowed_ips" => "false"
       }
     }
     @default_dns_change %{
       "device" => %{
-        "public_key" => "test-pubkey",
-        "use_site_dns" => "false"
+        "public_key" => @test_pubkey,
+        "use_default_dns" => "false"
       }
     }
     @default_endpoint_change %{
       "device" => %{
-        "public_key" => "test-pubkey",
-        "use_site_endpoint" => "false"
+        "public_key" => @test_pubkey,
+        "use_default_endpoint" => "false"
       }
     }
     @default_mtu_change %{
       "device" => %{
-        "public_key" => "test-pubkey",
-        "use_site_mtu" => "false"
+        "public_key" => @test_pubkey,
+        "use_default_mtu" => "false"
       }
     }
     @default_persistent_keepalive_change %{
       "device" => %{
-        "public_key" => "test-pubkey",
-        "use_site_persistent_keepalive" => "false"
+        "public_key" => @test_pubkey,
+        "use_default_persistent_keepalive" => "false"
       }
     }
 
@@ -175,7 +170,7 @@ defmodule FzHttpWeb.UserLive.ShowTest do
       assert test_view =~ @valid_params["device"]["name"]
     end
 
-    test "prevents allowed_ips changes when use_site_allowed_ips is true", %{
+    test "prevents allowed_ips changes when use_default_allowed_ips is true", %{
       admin_conn: conn,
       admin_user: user
     } do
@@ -190,7 +185,7 @@ defmodule FzHttpWeb.UserLive.ShowTest do
       assert test_view =~ "must not be present"
     end
 
-    test "prevents dns changes when use_site_dns is true", %{
+    test "prevents dns changes when use_default_dns is true", %{
       admin_conn: conn,
       admin_user: user
     } do
@@ -205,7 +200,7 @@ defmodule FzHttpWeb.UserLive.ShowTest do
       assert test_view =~ "must not be present"
     end
 
-    test "prevents endpoint changes when use_site_endpoint is true", %{
+    test "prevents endpoint changes when use_default_endpoint is true", %{
       admin_conn: conn,
       admin_user: user
     } do
@@ -220,7 +215,7 @@ defmodule FzHttpWeb.UserLive.ShowTest do
       assert test_view =~ "must not be present"
     end
 
-    test "prevents mtu changes when use_site_mtu is true", %{
+    test "prevents mtu changes when use_default_mtu is true", %{
       admin_conn: conn,
       admin_user: user
     } do
@@ -235,7 +230,7 @@ defmodule FzHttpWeb.UserLive.ShowTest do
       assert test_view =~ "must not be present"
     end
 
-    test "prevents persistent_keepalive changes when use_site_persistent_keepalive is true",
+    test "prevents persistent_keepalive changes when use_default_persistent_keepalive is true",
          %{
            admin_conn: conn,
            admin_user: user
@@ -341,19 +336,21 @@ defmodule FzHttpWeb.UserLive.ShowTest do
       assert html =~ "120"
     end
 
-    test "prevents empty names", %{admin_conn: conn, admin_user: user} do
+    test "generates a name when it's empty", %{admin_conn: conn, admin_user: user} do
       path = ~p"/users/#{user.id}/new_device"
       {:ok, view, _html} = live(conn, path)
+
+      params = Map.put(@valid_params, "name", "")
 
       test_view =
         view
         |> form("#create-device")
-        |> render_submit(@invalid_params)
+        |> render_submit(params)
 
-      assert test_view =~ "can&#39;t be blank"
+      assert test_view =~ "Device added!"
     end
 
-    test "on use_site_allowed_ips change", %{admin_conn: conn, admin_user: user} do
+    test "on use_default_allowed_ips change", %{admin_conn: conn, admin_user: user} do
       path = ~p"/users/#{user.id}/new_device"
       {:ok, view, _html} = live(conn, path)
 
@@ -368,7 +365,7 @@ defmodule FzHttpWeb.UserLive.ShowTest do
              """
     end
 
-    test "on use_site_dns change", %{admin_conn: conn, admin_user: user} do
+    test "on use_default_dns change", %{admin_conn: conn, admin_user: user} do
       path = ~p"/users/#{user.id}/new_device"
       {:ok, view, _html} = live(conn, path)
 
@@ -382,7 +379,7 @@ defmodule FzHttpWeb.UserLive.ShowTest do
              """
     end
 
-    test "on use_site_endpoint change", %{admin_conn: conn, admin_user: user} do
+    test "on use_default_endpoint change", %{admin_conn: conn, admin_user: user} do
       path = ~p"/users/#{user.id}/new_device"
       {:ok, view, _html} = live(conn, path)
 
@@ -396,7 +393,7 @@ defmodule FzHttpWeb.UserLive.ShowTest do
              """
     end
 
-    test "on use_site_mtu change", %{admin_conn: conn, admin_user: user} do
+    test "on use_default_mtu change", %{admin_conn: conn, admin_user: user} do
       path = ~p"/users/#{user.id}/new_device"
       {:ok, view, _html} = live(conn, path)
 
@@ -410,7 +407,7 @@ defmodule FzHttpWeb.UserLive.ShowTest do
              """
     end
 
-    test "on use_site_persistent_keepalive change", %{admin_conn: conn, admin_user: user} do
+    test "on use_default_persistent_keepalive change", %{admin_conn: conn, admin_user: user} do
       path = ~p"/users/#{user.id}/new_device"
       {:ok, view, _html} = live(conn, path)
 

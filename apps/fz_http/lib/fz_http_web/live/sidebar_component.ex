@@ -37,7 +37,7 @@ defmodule FzHttpWeb.SidebarComponent do
         <p class="menu-label">Settings</p>
         <ul class="menu-list">
           <li>
-            <%= live_redirect(to: ~p"/settings/site", class: nav_class(@path, "/settings/site")) do %>
+            <%= live_redirect(to: ~p"/settings/client_defaults", class: nav_class(@path, "/settings/client_defaults")) do %>
               <span class="icon"><i class="mdi mdi-cog"></i></span>
               <span class="menu-item-label">Defaults</span>
             <% end %>

@@ -25,14 +25,14 @@ defmodule FzHttpWeb.Session do
   end
 
   defp cookie_secure do
-    Application.fetch_env!(:fz_http, :cookie_secure)
+    FzHttp.Config.fetch_env!(:fz_http, :cookie_secure)
   end
 
   defp signing_salt do
-    Application.fetch_env!(:fz_http, :cookie_signing_salt)
+    FzHttp.Config.fetch_env!(:fz_http, :cookie_signing_salt)
   end
 
   defp encryption_salt do
-    Application.fetch_env!(:fz_http, :cookie_encryption_salt)
+    FzHttp.Config.fetch_env!(:fz_http, :cookie_encryption_salt)
   end
 end

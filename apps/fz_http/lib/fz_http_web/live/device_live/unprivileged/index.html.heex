@@ -29,12 +29,13 @@
   </div>
 
   <div class="block">
-    <%= if length(@devices) > 0 do %>
+    <%= unless Enum.empty?(@devices) do %>
       <table class="table is-bordered is-hoverable is-striped is-fullwidth">
         <thead>
           <tr>
             <th>Name</th>
-            <th>Assigned Device IP</th>
+            <th>Tunnel IPv4</th>
+            <th>Tunnel IPv6</th>
             <th>Public key</th>
             <th>Created</th>
           </tr>
@@ -47,10 +48,8 @@
                   <%= device.name %>
                 </.link>
               </td>
-              <td class="code">
-                <span><%= device.ipv4 %></span>
-                <span><%= device.ipv6 %></span>
-              </td>
+              <td class="code"><%= device.ipv4 %></td>
+              <td class="code"><%= device.ipv6 %></td>
               <td class="code"><%= device.public_key %></td>
               <td
                 id={"device-#{device.id}-inserted-at"}

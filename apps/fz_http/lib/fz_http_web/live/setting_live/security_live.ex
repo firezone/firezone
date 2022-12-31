@@ -7,27 +7,34 @@ defmodule FzHttpWeb.SettingLive.Security do
   import Ecto.Changeset
   import FzCommon.FzCrypto, only: [rand_string: 1]
 
-  alias FzHttp.Configurations, as: Conf
-  alias FzHttp.{Sites, Sites.Site}
+  alias FzHttp.Configurations
 
   @page_title "Security Settings"
   @page_subtitle "Configure security-related settings."
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
-    config_changeset = Conf.change_configuration()
+    config_changeset = Configurations.change_configuration()
 
     {:ok,
      socket
      |> assign(:form_changed, false)
      |> assign(:session_duration_options, session_duration_options())
-     |> assign(:site_changeset, site_changeset())
+     |> assign(:configuration_changeset, configuration_changeset())
      |> assign(:config_changeset, config_changeset)
-     |> assign(:oidc_configs, config_changeset.data.openid_connect_providers || %{})
-     |> assign(:saml_configs, config_changeset.data.saml_identity_providers || %{})
+     |> assign(:oidc_configs, map_providers(config_changeset.data.openid_connect_providers))
+     |> assign(:saml_configs, map_providers(config_changeset.data.saml_identity_providers))
      |> assign(:field_titles, field_titles(config_changeset))
      |> assign(:page_subtitle, @page_subtitle)
      |> assign(:page_title, @page_title)}
+  end
+
+  defp map_providers(nil), do: %{}
+
+  defp map_providers(providers) when is_list(providers) do
+    for provider <- providers,
+        into: %{},
+        do: {provider.id, Map.from_struct(provider)}
   end
 
   @impl Phoenix.LiveView
@@ -44,30 +51,32 @@ defmodule FzHttpWeb.SettingLive.Security do
 
   @impl Phoenix.LiveView
   def handle_event(
-        "save_site",
-        %{"site" => %{"vpn_session_duration" => vpn_session_duration}},
+        "save_configuration",
+        %{"configuration" => %{"vpn_session_duration" => vpn_session_duration}},
         socket
       ) do
-    site = Sites.get_site!()
+    configuration = Configurations.get_configuration!()
 
-    case Sites.update_site(site, %{vpn_session_duration: vpn_session_duration}) do
-      {:ok, site} ->
+    case Configurations.update_configuration(configuration, %{
+           vpn_session_duration: vpn_session_duration
+         }) do
+      {:ok, configuration} ->
         {:noreply,
          socket
          |> assign(:form_changed, false)
-         |> assign(:site_changeset, Sites.change_site(site))}
+         |> assign(:configuration_changeset, Configurations.change_configuration(configuration))}
 
-      {:error, site_changeset} ->
+      {:error, configuration_changeset} ->
         {:noreply,
          socket
-         |> assign(:site_changeset, site_changeset)}
+         |> assign(:configuration_changeset, configuration_changeset)}
     end
   end
 
   @impl Phoenix.LiveView
   def handle_event("toggle", %{"config" => config} = params, socket) do
     toggle_value = !!params["value"]
-    {:ok, _conf} = Conf.update_configuration(%{config => toggle_value})
+    {:ok, _conf} = Configurations.update_configuration(%{config => toggle_value})
     {:noreply, socket}
   end
 
@@ -78,9 +87,11 @@ defmodule FzHttpWeb.SettingLive.Security do
     field_key = Map.fetch!(@types, type)
 
     providers =
-      get_in(socket.assigns.config_changeset, [Access.key!(:data), Access.key!(field_key)])
+      socket.assigns.config_changeset
+      |> get_in([Access.key!(:data), Access.key!(field_key)])
+      |> Enum.reject(&(&1.id == key))
 
-    {:ok, conf} = Conf.update_configuration(%{field_key => Map.delete(providers, key)})
+    {:ok, conf} = Configurations.update_configuration(%{field_key => providers})
 
     {:noreply,
      socket
@@ -94,7 +105,7 @@ defmodule FzHttpWeb.SettingLive.Security do
   def session_duration_options do
     [
       Never: 0,
-      Once: Site.max_vpn_session_duration(),
+      Once: FzHttp.Configurations.Configuration.max_vpn_session_duration(),
       "Every Hour": @hour,
       "Every Day": @day,
       "Every Week": 7 * @day,
@@ -103,9 +114,9 @@ defmodule FzHttpWeb.SettingLive.Security do
     ]
   end
 
-  defp site_changeset do
-    Sites.get_site!()
-    |> Sites.change_site()
+  defp configuration_changeset do
+    Configurations.get_configuration!()
+    |> Configurations.change_configuration()
   end
 
   @fields ~w(

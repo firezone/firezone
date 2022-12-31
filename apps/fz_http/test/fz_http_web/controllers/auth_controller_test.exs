@@ -1,7 +1,20 @@
 defmodule FzHttpWeb.AuthControllerTest do
   use FzHttpWeb.ConnCase, async: true
-
   import Mox
+
+  setup do
+    FzHttp.Configurations.put!(
+      :openid_connect_providers,
+      FzHttp.ConfigurationsFixtures.openid_connect_providers_attrs()
+    )
+
+    FzHttp.Configurations.put!(
+      :saml_identity_providers,
+      [FzHttp.SAMLIdentityProviderFixtures.saml_attrs() |> Map.put("label", "SAML")]
+    )
+
+    %{}
+  end
 
   describe "new" do
     setup [:create_user]
@@ -11,10 +24,16 @@ defmodule FzHttpWeb.AuthControllerTest do
 
       test_conn = get(conn, ~p"/")
 
-      # Assert that we email, OIDC and Oauth2 buttons provided
+      # Assert that we have email, OIDC and Oauth2 buttons provided
       for expected <- [
             "Sign in with email",
             "Sign in with OIDC Google",
+            "Sign in with OIDC Okta",
+            "Sign in with OIDC Auth0",
+            "Sign in with OIDC Azure",
+            "Sign in with OIDC Onelogin",
+            "Sign in with OIDC Keycloak",
+            "Sign in with OIDC Vault",
             "Sign in with SAML"
           ] do
         assert html_response(test_conn, 200) =~ expected
@@ -36,6 +55,10 @@ defmodule FzHttpWeb.AuthControllerTest do
 
   describe "create session" do
     setup [:create_user]
+
+    test "GET /auth/identity/callback redirects to /", %{unauthed_conn: conn} do
+      assert redirected_to(get(conn, ~p"/auth/identity/callback")) == ~p"/"
+    end
 
     test "invalid email", %{unauthed_conn: conn} do
       params = %{
@@ -83,7 +106,7 @@ defmodule FzHttpWeb.AuthControllerTest do
         "password" => "password1234"
       }
 
-      restore_env(:local_auth_enabled, false, &on_exit/1)
+      FzHttp.Configurations.put!(:local_auth_enabled, false)
 
       test_conn = post(conn, ~p"/auth/identity/callback", params)
       assert text_response(test_conn, 401) == "Local auth disabled"
@@ -221,7 +244,7 @@ defmodule FzHttpWeb.AuthControllerTest do
     end
 
     test "prevents signing in when local_auth_disabled", %{unauthed_conn: conn, user: user} do
-      restore_env(:local_auth_enabled, false, &on_exit/1)
+      FzHttp.Configurations.put!(:local_auth_enabled, false)
 
       test_conn = get(conn, ~p"/auth/magic/#{user.sign_in_token}")
       assert text_response(test_conn, 401) == "Local auth disabled"
@@ -259,7 +282,7 @@ defmodule FzHttpWeb.AuthControllerTest do
     test "redirects to oidc auth uri", %{unauthed_conn: conn} do
       expect(OpenIDConnect.Mock, :authorization_uri, fn provider, _ ->
         case provider do
-          :google -> @oidc_auth_uri
+          "google" -> @oidc_auth_uri
         end
       end)
 

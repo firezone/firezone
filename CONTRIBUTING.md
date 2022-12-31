@@ -109,27 +109,6 @@ We use [pre-commit](https://pre-commit.com) to catch any static analysis issues
 before code is committed. Install with Homebrew: `brew install pre-commit` or
 pip: `pip install pre-commit`.
 
-### The ENV file
-
-For running tests and developing Firezone outside of Docker, you'll need some
-environment variables present in your shell's env.
-
-See .env.sample an example of what variables you need. We recommend copying this
-file to `.env` and using a dotenv loader to apply this to your current shell
-env.
-
-For example, run the following command to 'source' the environment variables
-from .env on `mix test`:
-
-`env $(cat .env | grep -v \# | xargs) mix test`
-
-This will initialize everything and run the test suite. If you have no
-failures, Firezone should be properly set up 🥳.
-
-At this point you should be able to sign in to
-[http://localhost:4000](http://localhost:4000) with email `firezone@localhost` and
-password `firezone1234`.
-
 ### Bootstrapping
 
 To start the local development cluster, follow these steps:
@@ -137,12 +116,16 @@ To start the local development cluster, follow these steps:
 ```
 docker compose build
 docker compose up -d postgres
-docker compose run --rm firezone mix ecto.setup
+docker compose run --rm firezone mix do ecto.setup, ecto.seed
 docker compose up
 ```
 
 Now you should be able to connect to `https://localhost/`
 and sign in with email `firezone@localhost` and password `firezone1234`.
+
+The [`docker-compose.yml`](docker-compose.yml) file configures the Docker
+development environment. If you make any changes you feel would benefit
+all developers, feel free to open a PR to get them merged!
 
 ### Ensure Everything Works
 

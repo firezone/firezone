@@ -3,6 +3,13 @@ defmodule FzHttp.RulesTest do
 
   alias FzHttp.Rules
 
+  setup do
+    FzHttp.Config.maybe_put_env_override(:wireguard_ipv4_network, "100.64.0.0/10")
+    FzHttp.Config.maybe_put_env_override(:wireguard_ipv6_network, "fd00::0/106")
+
+    :ok
+  end
+
   describe "list_rules/0" do
     setup [:create_rules]
 
@@ -34,7 +41,7 @@ defmodule FzHttp.RulesTest do
 
     test "raises error when id does not exist", %{rule: _rule} do
       assert_raise(Ecto.NoResultsError, fn ->
-        Rules.get_rule!(0)
+        Rules.get_rule!(Ecto.UUID.generate())
       end)
     end
   end
@@ -75,7 +82,7 @@ defmodule FzHttp.RulesTest do
       {:error, changeset} = Rules.create_rule(%{destination: "10.0.0.0/24", port_range: "10-20"})
 
       assert changeset.errors[:port_type] ==
-               {"Please specify a port-range for the given port type",
+               {"port_type must be specified with port_range",
                 [constraint: :check, constraint_name: "port_range_needs_type"]}
     end
 
@@ -83,7 +90,7 @@ defmodule FzHttp.RulesTest do
       {:error, changeset} = Rules.create_rule(%{destination: "10.0.0.0/24", port_type: :tcp})
 
       assert changeset.errors[:port_type] ==
-               {"Please specify a port-range for the given port type",
+               {"port_type must be specified with port_range",
                 [constraint: :check, constraint_name: "port_range_needs_type"]}
     end
 
@@ -92,7 +99,7 @@ defmodule FzHttp.RulesTest do
         Rules.create_rule(%{destination: "10.0.0.0/24", port_type: :tcp, port_range: "10-90000"})
 
       assert changeset.errors[:port_range] ==
-               {"Port is not within valid range",
+               {"port is not within valid range",
                 [constraint: :check, constraint_name: "port_range_is_within_valid_values"]}
     end
 
@@ -101,9 +108,43 @@ defmodule FzHttp.RulesTest do
         Rules.create_rule(%{destination: "10.0.0.0/24", port_type: :tcp, port_range: "20-10"})
 
       assert changeset.errors[:port_range] ==
-               {"Range Error: Lower bound higher than upper bound",
+               {"lower value cannot be higher than upper value",
                 [type: FzHttp.Int4Range, validation: :cast]}
     end
+  end
+
+  describe "update_rule/2" do
+    setup [:create_rule]
+
+    @tag params: %{
+           "destination" => "123.123.123.123",
+           "action" => "accept",
+           "port_type" => "udp",
+           "port_range" => [1, 65_000]
+         }
+    test "updates rule with string params", %{rule: rule, params: params} do
+      assert {:ok, rule} = Rules.update_rule(rule, params)
+      assert rule.destination == %Postgrex.INET{address: {123, 123, 123, 123}}
+      assert rule.action == :accept
+      assert rule.port_type == :udp
+      assert rule.port_range == "1 - 65000"
+    end
+
+    @tag attrs: %{
+           destination: "123.123.123.123",
+           action: "accept",
+           port_type: "udp",
+           port_range: [1, 65_000]
+         }
+    test "updates rule with atom attrs", %{rule: rule, attrs: attrs} do
+      assert {:ok, rule} = Rules.update_rule(rule, attrs)
+      assert rule.destination == %Postgrex.INET{address: {123, 123, 123, 123}}
+      assert rule.action == :accept
+      assert rule.port_type == :udp
+      assert rule.port_range == "1 - 65000"
+    end
+
+    # XXX: Do we want to allow changing a rule's user_id?
   end
 
   describe "delete_rule/1" do

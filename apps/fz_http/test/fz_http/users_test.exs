@@ -78,7 +78,7 @@ defmodule FzHttp.UsersTest do
 
     test "raises Ecto.NoResultsError for missing Users", %{user: _user} do
       assert_raise(Ecto.NoResultsError, fn ->
-        Users.get_user!(0)
+        Users.get_user!(Ecto.UUID.generate())
       end)
     end
   end
@@ -91,7 +91,7 @@ defmodule FzHttp.UsersTest do
     end
 
     test "returns nil if not found" do
-      assert nil == Users.get_user(0)
+      assert nil == Users.get_user(Ecto.UUID.generate())
     end
   end
 

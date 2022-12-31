@@ -1,17 +1,9 @@
 defmodule FzHttpWeb.SettingLive.CustomizationTest do
   use FzHttpWeb.ConnCase, async: true
 
-  alias FzHttp.Configurations, as: Conf
-
   describe "logo" do
     setup %{admin_conn: conn} = context do
-      Conf.update_configuration(%{logo: context[:logo]})
-
-      on_exit(fn ->
-        # this is required because configuration is automatically reset (rolled back)
-        # after each run, but persistent terms are not. we need to manually reset it here.
-        Conf.Cache.put!(:logo, nil)
-      end)
+      FzHttp.Configurations.put!(:logo, context[:logo])
 
       path = ~p"/settings/customization"
       {:ok, view, html} = live(conn, path)
@@ -24,12 +16,12 @@ defmodule FzHttpWeb.SettingLive.CustomizationTest do
       assert html =~ ~s|value="Default" checked|
     end
 
-    @tag logo: %{"url" => "test"}
+    @tag logo: %{url: "test"}
     test "show url", %{html: html} do
       assert html =~ ~s|value="URL" checked|
     end
 
-    @tag logo: %{"data" => "test", "type" => "test"}
+    @tag logo: %{data: "test", type: "test"}
     test "show upload", %{html: html} do
       assert html =~ ~s|value="Upload" checked|
     end
@@ -52,13 +44,13 @@ defmodule FzHttpWeb.SettingLive.CustomizationTest do
              |> render_click() =~ ~s|<form id="upload-form"|
     end
 
-    @tag logo: %{"url" => "test"}
+    @tag logo: %{url: "test"}
     test "reset to default", %{view: view, html: html} do
       html =~ ~s|<form id="url-form"|
       view |> element("input[value=Default]") |> render_click()
       view |> element("form") |> render_submit()
 
-      assert nil == Conf.get!(:logo)
+      assert FzHttp.Configurations.get!(:logo) == nil
     end
 
     test "change to url", %{view: view, html: html} do
@@ -66,7 +58,7 @@ defmodule FzHttpWeb.SettingLive.CustomizationTest do
       view |> element("input[value=URL]") |> render_click()
       view |> render_submit("save", %{"url" => "new"})
 
-      assert %{url: "new"} == Conf.get!(:logo)
+      assert %{url: "new"} = FzHttp.Configurations.get!(:logo)
     end
 
     test "change to upload", %{view: view, html: html} do
@@ -86,7 +78,9 @@ defmodule FzHttpWeb.SettingLive.CustomizationTest do
       |> render_upload("logo.jpeg")
 
       view |> render_submit("save", %{})
-      assert %{data: Base.encode64("new"), type: "image/jpeg"} == Conf.get!(:logo)
+
+      data = Base.encode64("new")
+      assert %{data: ^data, type: "image/jpeg"} = FzHttp.Configurations.get!(:logo)
     end
   end
 end

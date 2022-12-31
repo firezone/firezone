@@ -4,7 +4,10 @@ defmodule FzHttp.DevicesFixtures do
   entities via the `FzHttp.Devices` context.
   """
 
-  alias FzHttp.{Devices, UsersFixtures}
+  alias FzHttp.{
+    Devices,
+    UsersFixtures
+  }
 
   @doc """
   Generate a device.
@@ -15,13 +18,18 @@ defmodule FzHttp.DevicesFixtures do
 
     default_attrs = %{
       user_id: user_id,
-      public_key: "test-pubkey-#{counter()}",
+      public_key: public_key(),
       name: "factory #{counter()}",
       description: "factory description"
     }
 
     {:ok, device} = Devices.create_device(Map.merge(default_attrs, attrs))
     device
+  end
+
+  def public_key do
+    :crypto.strong_rand_bytes(32)
+    |> Base.encode64()
   end
 
   defp counter do

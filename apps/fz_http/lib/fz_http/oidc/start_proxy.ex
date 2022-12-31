@@ -1,10 +1,7 @@
 defmodule FzHttp.OIDC.StartProxy do
   @moduledoc """
   This proxy simply gets the relevant config at an appropriate timing
-  (after `FzHttp.Configurations.Cache` has started) and pass to `OpenIDConnect.Worker`
   """
-
-  alias FzHttp.Configurations, as: Conf
 
   require Logger
 
@@ -13,43 +10,44 @@ defmodule FzHttp.OIDC.StartProxy do
   end
 
   def start_link(:test) do
-    auth_oidc_env = Conf.get!(:openid_connect_providers)
-    Conf.Cache.put!(:parsed_openid_connect_providers, parse(auth_oidc_env))
     :ignore
   end
 
   def start_link(_) do
-    auth_oidc_env = Conf.get!(:openid_connect_providers)
+    FzHttp.Configurations.get!(:openid_connect_providers)
+    |> parse()
+    |> OpenIDConnect.Worker.start_link()
+  end
 
-    if parsed = auth_oidc_env && parse(auth_oidc_env) do
-      Conf.Cache.put!(:parsed_openid_connect_providers, parsed)
-      OpenIDConnect.Worker.start_link(parsed)
-    else
-      :ignore
+  # XXX: Remove when configurations support test fixtures
+  if Mix.env() == :test do
+    def restart, do: :ignore
+  else
+    def restart do
+      :ok = Supervisor.terminate_child(FzHttp.Supervisor, __MODULE__)
+      Supervisor.restart_child(FzHttp.Supervisor, __MODULE__)
     end
   end
 
-  defp parse(auth_oidc_env) when is_binary(auth_oidc_env) do
-    auth_oidc_env |> Jason.decode!() |> parse()
-  end
+  # Convert the configuration record to something openid_connect expects,
+  # atom-keyed configs eg. [provider: [client_id: "CLIENT_ID" ...]]
+  defp parse(nil), do: []
 
-  defp parse(auth_oidc_config) when is_map(auth_oidc_config) do
-    external_url = Application.fetch_env!(:fz_http, :external_url)
+  defp parse(auth_oidc_config) when is_list(auth_oidc_config) do
+    external_url = FzHttp.Config.fetch_env!(:fz_http, :external_url)
 
-    # Convert Map to something openid_connect expects, atomic keyed configs
-    # eg. [provider: [client_id: "CLIENT_ID" ...]]
-    Enum.map(auth_oidc_config, fn {provider, settings} ->
+    Enum.map(auth_oidc_config, fn provider ->
       {
-        String.to_atom(provider),
+        provider.id,
         [
-          discovery_document_uri: settings["discovery_document_uri"],
-          client_id: settings["client_id"],
-          client_secret: settings["client_secret"],
+          discovery_document_uri: provider.discovery_document_uri,
+          client_id: provider.client_id,
+          client_secret: provider.client_secret,
           redirect_uri:
-            settings["redirect_uri"] || "#{external_url}/auth/oidc/#{provider}/callback/",
-          response_type: settings["response_type"],
-          scope: settings["scope"],
-          label: settings["label"]
+            provider.redirect_uri || "#{external_url}/auth/oidc/#{provider.id}/callback/",
+          response_type: provider.response_type,
+          scope: provider.scope,
+          label: provider.label
         ]
       }
     end)

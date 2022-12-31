@@ -1,4 +1,4 @@
-defmodule FzHttp.SAMLConfigFixtures do
+defmodule FzHttp.SAMLIdentityProviderFixtures do
   @moduledoc """
   Fixtures for SAML configs.
   """

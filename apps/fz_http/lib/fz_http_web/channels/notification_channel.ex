@@ -52,7 +52,7 @@ defmodule FzHttpWeb.NotificationChannel do
   end
 
   defp presence_list(socket) do
-    ids_to_show = [Integer.to_string(socket.assigns.current_user.id)]
+    ids_to_show = [socket.assigns.current_user.id]
 
     Presence.list(socket)
     |> Map.take(ids_to_show)

@@ -4,7 +4,6 @@ defmodule FzHttp.TestHelpers do
   """
 
   alias FzHttp.{
-    Configurations.Cache,
     ConnectivityChecksFixtures,
     DevicesFixtures,
     MFA,
@@ -15,19 +14,6 @@ defmodule FzHttp.TestHelpers do
     Users.User,
     UsersFixtures
   }
-
-  def restore_env(key, val, cb), do: restore_env(:fz_http, key, val, cb)
-
-  def restore_env(app, key, val, cb) do
-    old = Application.fetch_env!(app, key)
-    Application.put_env(app, key, val)
-    Cache.put!(key, val)
-
-    cb.(fn ->
-      Application.put_env(app, key, old)
-      Cache.put!(key, old)
-    end)
-  end
 
   def clear_users do
     Repo.delete_all(User)
@@ -54,8 +40,7 @@ defmodule FzHttp.TestHelpers do
     device =
       DevicesFixtures.device(%{
         user_id: user_id,
-        name: "other device",
-        public_key: "other-pubkey"
+        name: "other device"
       })
 
     {:ok, other_device: device}
@@ -82,7 +67,6 @@ defmodule FzHttp.TestHelpers do
       Enum.map(1..5, fn num ->
         DevicesFixtures.device(%{
           name: "device #{num}",
-          public_key: "#{num}",
           user_id: user_id
         })
       end)
@@ -137,10 +121,7 @@ defmodule FzHttp.TestHelpers do
         device =
           DevicesFixtures.device(%{
             name: "device #{num}",
-            public_key: "#{num}",
-            user_id: user.id,
-            ipv4: "10.3.2.#{num}",
-            ipv6: "fd00::3:2:#{num}"
+            user_id: user.id
           })
 
         rule = RulesFixtures.rule(%{destination: destination, user_id: user.id})
@@ -167,10 +148,7 @@ defmodule FzHttp.TestHelpers do
     device =
       DevicesFixtures.device(%{
         name: "device",
-        public_key: "1",
-        user_id: user.id,
-        ipv4: "10.3.2.2",
-        ipv6: "fd00::3:2:2"
+        user_id: user.id
       })
 
     {:ok, rule: rule, user: user, device: device}

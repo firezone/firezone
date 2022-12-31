@@ -1,4 +1,4 @@
-defmodule FzHttp.OIDCConfigFixtures do
+defmodule FzHttp.OpenIDConnectProviderFixtures do
   @moduledoc """
   Fixtures for OIDC configs.
   """

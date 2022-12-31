@@ -15,8 +15,7 @@ defmodule FzHttp.DataCase do
   """
 
   use ExUnit.CaseTemplate
-
-  alias Ecto.Adapters.SQL.Sandbox
+  use FzHttp.CaseTemplate
 
   using do
     quote do
@@ -28,16 +27,6 @@ defmodule FzHttp.DataCase do
       import FzHttp.DataCase
       import FzHttp.TestHelpers
     end
-  end
-
-  setup tags do
-    :ok = Sandbox.checkout(FzHttp.Repo)
-
-    unless tags[:async] do
-      Sandbox.mode(FzHttp.Repo, {:shared, self()})
-    end
-
-    :ok
   end
 
   @doc """

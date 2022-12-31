@@ -2,22 +2,21 @@ defmodule FzHttp.Users.User do
   @moduledoc """
   Represents a User.
   """
+  use FzHttp, :schema
+  import Ecto.Changeset
+  import FzHttp.Users.PasswordHelpers
+
+  alias FzHttp.{
+    ApiTokens.ApiToken,
+    Devices.Device,
+    OIDC.Connection,
+    Validators.Common
+  }
 
   @min_password_length 12
   @max_password_length 64
 
-  use Ecto.Schema
-  import Ecto.Changeset
-  import FzHttp.Users.PasswordHelpers
-  import FzHttp.Validators.Common, only: [trim: 2]
-
-  alias FzHttp.{Devices.Device, OIDC.Connection}
-
-  # Fields for which to trim whitespace after cast, before validation
-  @whitespace_trimmed_fields :email
-
   schema "users" do
-    field :uuid, Ecto.UUID, autogenerate: true
     field :role, Ecto.Enum, values: [:unprivileged, :admin], default: :unprivileged
     field :email, :string
     field :last_signed_in_at, :utc_datetime_usec
@@ -33,10 +32,11 @@ defmodule FzHttp.Users.User do
     field :password_confirmation, :string, virtual: true
     field :current_password, :string, virtual: true
 
-    has_many :devices, Device, on_delete: :delete_all
-    has_many :oidc_connections, Connection, on_delete: :delete_all
+    has_many :devices, Device
+    has_many :oidc_connections, Connection
+    has_many :api_tokens, ApiToken
 
-    timestamps(type: :utc_datetime_usec)
+    timestamps()
   end
 
   def create_changeset(user, attrs \\ %{}) do
@@ -47,7 +47,7 @@ defmodule FzHttp.Users.User do
       :password,
       :password_confirmation
     ])
-    |> trim(@whitespace_trimmed_fields)
+    |> update_change(:email, &String.trim/1)
     |> validate_required([:email])
     |> validate_password_equality()
     |> validate_length(:password, min: @min_password_length, max: @max_password_length)
@@ -87,7 +87,7 @@ defmodule FzHttp.Users.User do
   def update_email(user, attrs) do
     user
     |> cast(attrs, [:email])
-    |> trim(:email)
+    |> Common.trim_change(:email)
     |> validate_required([:email])
     |> validate_format(:email, ~r/@/)
   end

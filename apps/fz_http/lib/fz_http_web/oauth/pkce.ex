@@ -43,7 +43,7 @@ defmodule FzHttpWeb.OAuth.PKCE do
       max_age: @pkce_valid_duration,
       sign: true,
       same_site: "Lax",
-      secure: Application.fetch_env!(:fz_http, :cookie_secure)
+      secure: FzHttp.Config.fetch_env!(:fz_http, :cookie_secure)
     ]
   end
 end

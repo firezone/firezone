@@ -1,5 +1,5 @@
 defmodule FzHttpWeb.DeviceLive.Admin.IndexTest do
-  use FzHttpWeb.ConnCase, async: false
+  use FzHttpWeb.ConnCase, async: true
 
   describe "authenticated/device list" do
     setup :create_devices

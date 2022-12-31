@@ -61,11 +61,11 @@ defmodule FzHttp.ConnectivityCheckService do
   end
 
   defp url do
-    Application.fetch_env!(:fz_http, :connectivity_checks_url) <> version()
+    FzHttp.Config.fetch_env!(:fz_http, :connectivity_checks_url) <> version()
   end
 
   defp http_client do
-    Application.fetch_env!(:fz_http, :http_client)
+    FzHttp.Config.fetch_env!(:fz_http, :http_client)
   end
 
   defp version do
@@ -73,10 +73,10 @@ defmodule FzHttp.ConnectivityCheckService do
   end
 
   defp interval do
-    Application.fetch_env!(:fz_http, :connectivity_checks_interval) * 1_000
+    FzHttp.Config.fetch_env!(:fz_http, :connectivity_checks_interval) * 1_000
   end
 
   defp enabled? do
-    Application.fetch_env!(:fz_http, :connectivity_checks_enabled)
+    FzHttp.Config.fetch_env!(:fz_http, :connectivity_checks_enabled)
   end
 end

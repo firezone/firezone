@@ -19,16 +19,16 @@
       <td><%= @device.description %></td>
     </tr>
 
-    <%= if Application.fetch_env!(:fz_http, :wireguard_ipv4_enabled) do %>
+    <%= if FzHttp.Config.fetch_env!(:fz_http, :wireguard_ipv4_enabled) do %>
       <tr>
-        <td><strong>Interface IPv4</strong></td>
+        <td><strong>Tunnel IPv4</strong></td>
         <td><%= @device.ipv4 %></td>
       </tr>
     <% end %>
 
-    <%= if Application.fetch_env!(:fz_http, :wireguard_ipv6_enabled) do %>
+    <%= if FzHttp.Config.fetch_env!(:fz_http, :wireguard_ipv6_enabled) do %>
       <tr>
-        <td><strong>Interface IPv6</strong></td>
+        <td><strong>Tunnel IPv6</strong></td>
         <td><%= @device.ipv6 %></td>
       </tr>
     <% end %>

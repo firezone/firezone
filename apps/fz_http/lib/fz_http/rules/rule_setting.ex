@@ -2,8 +2,7 @@ defmodule FzHttp.Rules.RuleSetting do
   @moduledoc """
   Rule setting parsed from either a Rule struct or map.
   """
-  use Ecto.Schema
-
+  use FzHttp, :schema
   import Ecto.Changeset
   import FzHttp.Devices, only: [decode: 1]
 
@@ -11,7 +10,7 @@ defmodule FzHttp.Rules.RuleSetting do
   embedded_schema do
     field :action, Ecto.Enum, values: [:drop, :accept]
     field :destination, :string
-    field :user_id, :integer
+    field :user_id, Ecto.UUID
     field :port_type, Ecto.Enum, values: [:tcp, :udp], default: nil
     field :port_range, FzHttp.Int4Range, default: nil
   end

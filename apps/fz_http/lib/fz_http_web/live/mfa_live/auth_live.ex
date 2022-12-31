@@ -117,7 +117,7 @@ defmodule FzHttpWeb.MFALive.Auth do
       {:ok, _method} ->
         {:noreply,
          push_redirect(socket,
-           to: root_path_for_role(socket.assigns.current_user.role)
+           to: root_path_for_user(socket.assigns.current_user)
          )}
 
       {:error, changeset} ->

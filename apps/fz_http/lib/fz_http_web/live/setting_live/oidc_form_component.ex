@@ -4,8 +4,6 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
   """
   use FzHttpWeb, :live_component
 
-  alias FzHttp.Configurations, as: Conf
-
   def render(assigns) do
     ~H"""
     <div>
@@ -173,40 +171,42 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
     changeset =
       assigns.providers
       |> Map.get(assigns.provider_id, %{})
-      |> Map.put("id", assigns.provider_id)
-      |> FzHttp.Conf.OIDCConfig.changeset()
+      |> Map.put(:id, assigns.provider_id)
+      |> FzHttp.Configurations.Configuration.OpenIDConnectProvider.changeset()
 
     {:ok,
      socket
      |> assign(assigns)
-     |> assign(:external_url, Application.fetch_env!(:fz_http, :external_url))
+     |> assign(:external_url, FzHttp.Config.fetch_env!(:fz_http, :external_url))
      |> assign(:changeset, changeset)}
   end
 
-  def handle_event("save", %{"oidc_config" => params}, socket) do
+  def handle_event("save", %{"open_id_connect_provider" => params}, socket) do
     changeset =
       params
-      |> FzHttp.Conf.OIDCConfig.changeset()
+      |> FzHttp.Configurations.Configuration.OpenIDConnectProvider.changeset()
       |> Map.put(:action, :validate)
 
     update =
       case changeset do
         %{valid?: true} ->
-          changeset
-          |> Ecto.Changeset.apply_changes()
-          |> Map.from_struct()
-          |> Map.new(fn {k, v} -> {to_string(k), v} end)
-          |> then(fn data ->
-            {id, data} = Map.pop(data, "id")
+          {:ok, _} =
+            changeset
+            |> Ecto.Changeset.apply_changes()
+            |> Map.from_struct()
+            |> Map.new(fn {k, v} -> {to_string(k), v} end)
+            |> then(fn data ->
+              id = Map.get(data, "id")
 
-            %{
-              openid_connect_providers:
-                socket.assigns.providers
-                |> Map.delete(socket.assigns.provider_id)
-                |> Map.put(id, data)
-            }
-          end)
-          |> Conf.update_configuration()
+              %{
+                openid_connect_providers:
+                  socket.assigns.providers
+                  |> Map.delete(socket.assigns.provider_id)
+                  |> Map.put(id, data)
+                  |> Map.values()
+              }
+            end)
+            |> FzHttp.Configurations.update_configuration()
 
         _ ->
           {:error, changeset}
@@ -214,9 +214,6 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
 
     case update do
       {:ok, _config} ->
-        :ok = Supervisor.terminate_child(FzHttp.Supervisor, FzHttp.OIDC.StartProxy)
-        {:ok, _pid} = Supervisor.restart_child(FzHttp.Supervisor, FzHttp.OIDC.StartProxy)
-
         {:noreply,
          socket
          |> put_flash(:info, "Updated successfully.")

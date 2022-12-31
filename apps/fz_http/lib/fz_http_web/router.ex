@@ -16,6 +16,7 @@ defmodule FzHttpWeb.Router do
 
   pipeline :api do
     plug :accepts, ["json"]
+    plug FzHttpWeb.Auth.JSON.Pipeline
   end
 
   pipeline :require_admin_user do
@@ -35,8 +36,8 @@ defmodule FzHttpWeb.Router do
     plug Guardian.Plug.EnsureNotAuthenticated
   end
 
-  pipeline :guardian do
-    plug FzHttpWeb.Authentication.Pipeline
+  pipeline :html_auth do
+    plug FzHttpWeb.Auth.HTML.Pipeline
   end
 
   pipeline :samly do
@@ -48,7 +49,7 @@ defmodule FzHttpWeb.Router do
   scope "/auth", FzHttpWeb do
     pipe_through [
       :browser,
-      :guardian,
+      :html_auth,
       :require_unauthenticated
     ]
 
@@ -73,7 +74,7 @@ defmodule FzHttpWeb.Router do
   scope "/", FzHttpWeb do
     pipe_through [
       :browser,
-      :guardian,
+      :html_auth,
       :require_unauthenticated
     ]
 
@@ -83,7 +84,7 @@ defmodule FzHttpWeb.Router do
   scope "/mfa", FzHttpWeb do
     pipe_through([
       :browser,
-      :guardian
+      :html_auth
     ])
 
     live_session(
@@ -101,7 +102,7 @@ defmodule FzHttpWeb.Router do
   scope "/", FzHttpWeb do
     pipe_through [
       :browser,
-      :guardian,
+      :html_auth,
       :require_authenticated
     ]
 
@@ -112,7 +113,7 @@ defmodule FzHttpWeb.Router do
   scope "/", FzHttpWeb do
     pipe_through [
       :browser,
-      :guardian,
+      :html_auth,
       :require_authenticated,
       :require_unprivileged_user
     ]
@@ -137,7 +138,7 @@ defmodule FzHttpWeb.Router do
   scope "/", FzHttpWeb do
     pipe_through [
       :browser,
-      :guardian,
+      :html_auth,
       :require_authenticated,
       :require_admin_user
     ]
@@ -159,7 +160,7 @@ defmodule FzHttpWeb.Router do
       live "/rules", RuleLive.Index, :index
       live "/devices", DeviceLive.Admin.Index, :index
       live "/devices/:id", DeviceLive.Admin.Show, :show
-      live "/settings/site", SettingLive.Site, :show
+      live "/settings/client_defaults", SettingLive.ClientDefaults, :show
 
       live "/settings/security", SettingLive.Security, :show
       live "/settings/security/oidc/:id/edit", SettingLive.Security, :edit_oidc
@@ -168,10 +169,21 @@ defmodule FzHttpWeb.Router do
       live "/settings/account", SettingLive.Account, :show
       live "/settings/account/edit", SettingLive.Account, :edit
       live "/settings/account/register_mfa", SettingLive.Account, :register_mfa
+      live "/settings/account/api_token", SettingLive.Account, :new_api_token
+      live "/settings/account/api_token/:api_token_id", SettingLive.Account, :show_api_token
       live "/settings/customization", SettingLive.Customization, :show
       live "/diagnostics/connectivity_checks", ConnectivityCheckLive.Index, :index
       live "/notifications", NotificationsLive.Index, :index
     end
+  end
+
+  scope "/v0", FzHttpWeb.JSON do
+    pipe_through :api
+
+    resources "/configuration", ConfigurationController, singleton: true, only: [:show, :update]
+    resources "/users", UserController, except: [:new, :edit]
+    resources "/devices", DeviceController, except: [:new, :edit]
+    resources "/rules", RuleController, except: [:new, :edit]
   end
 
   if Mix.env() == :dev do

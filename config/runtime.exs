@@ -65,6 +65,7 @@ if config_env() == :prod do
   nft_path = System.get_env("NFT_PATH", "nft")
   egress_interface = System.get_env("EGRESS_INTERFACE", "eth0")
   wireguard_ipv4_enabled = FzString.to_boolean(System.get_env("WIREGUARD_IPV4_ENABLED", "true"))
+  wireguard_ipv6_enabled = FzString.to_boolean(System.get_env("WIREGUARD_IPV6_ENABLED", "true"))
 
   wireguard_ipv4_masquerade =
     FzString.to_boolean(System.get_env("WIREGUARD_IPV4_MASQUERADE", "true"))
@@ -72,23 +73,15 @@ if config_env() == :prod do
   wireguard_ipv6_masquerade =
     FzString.to_boolean(System.get_env("WIREGUARD_IPV6_MASQUERADE", "true"))
 
+  # On fresh installs, these should now be populated in the ENV to be 100.64.0.0/10 and fd00::/106
   wireguard_ipv4_network = System.get_env("WIREGUARD_IPV4_NETWORK", "10.3.2.0/24")
   wireguard_ipv4_address = System.get_env("WIREGUARD_IPV4_ADDRESS", "10.3.2.1")
-  wireguard_ipv6_enabled = FzString.to_boolean(System.get_env("WIREGUARD_IPV6_ENABLED", "true"))
   wireguard_ipv6_network = System.get_env("WIREGUARD_IPV6_NETWORK", "fd00::3:2:0/120")
   wireguard_ipv6_address = System.get_env("WIREGUARD_IPV6_ADDRESS", "fd00::3:2:1")
+
   telemetry_enabled = FzString.to_boolean(System.get_env("TELEMETRY_ENABLED", "true"))
 
-  disable_vpn_on_oidc_error =
-    FzString.to_boolean(System.get_env("DISABLE_VPN_ON_OIDC_ERROR", "false"))
-
   cookie_secure = FzString.to_boolean(System.get_env("SECURE_COOKIES", "true"))
-
-  allow_unprivileged_device_management =
-    FzString.to_boolean(System.get_env("ALLOW_UNPRIVILEGED_DEVICE_MANAGEMENT", "true"))
-
-  allow_unprivileged_device_configuration =
-    FzString.to_boolean(System.get_env("ALLOW_UNPRIVILEGED_DEVICE_CONFIGURATION", "true"))
 
   # Outbound Email
   from_email = System.get_env("OUTBOUND_EMAIL_FROM")
@@ -100,9 +93,6 @@ if config_env() == :prod do
            FzHttpWeb.Mailer,
            [from_email: from_email] ++ FzHttpWeb.Mailer.configs_for(provider)
   end
-
-  # Local auth
-  local_auth_enabled = FzString.to_boolean(System.get_env("LOCAL_AUTH_ENABLED", "true"))
 
   max_devices_per_user =
     System.get_env("MAX_DEVICES_PER_USER", "10")
@@ -213,7 +203,12 @@ if config_env() == :prod do
     wireguard_port: wireguard_port
 
   # Guardian configuration
-  config :fz_http, FzHttpWeb.Authentication,
+  # XXX: Use different secret keys here when config / secret generation is refactored
+  config :fz_http, FzHttpWeb.Auth.HTML.Authentication,
+    issuer: "fz_http",
+    secret_key: guardian_secret_key
+
+  config :fz_http, FzHttpWeb.Auth.JSON.Authentication,
     issuer: "fz_http",
     secret_key: guardian_secret_key
 
@@ -223,14 +218,10 @@ if config_env() == :prod do
     saml_keyfile_path: saml_keyfile_path,
     external_trusted_proxies: external_trusted_proxies,
     private_clients: private_clients,
-    disable_vpn_on_oidc_error: disable_vpn_on_oidc_error,
     cookie_signing_salt: cookie_signing_salt,
     cookie_encryption_salt: cookie_encryption_salt,
     cookie_secure: cookie_secure,
-    allow_unprivileged_device_management: allow_unprivileged_device_management,
-    allow_unprivileged_device_configuration: allow_unprivileged_device_configuration,
     max_devices_per_user: max_devices_per_user,
-    local_auth_enabled: local_auth_enabled,
     wireguard_ipv4_enabled: wireguard_ipv4_enabled,
     wireguard_ipv4_network: wireguard_ipv4_network,
     wireguard_ipv4_address: wireguard_ipv4_address,
@@ -254,19 +245,11 @@ if config_env() == :prod do
         uid_field: :email
       ]}}
 
-  providers =
-    [
-      {local_auth_enabled, identity_strategy}
-    ]
-    |> Enum.filter(fn {key, _val} -> key end)
-    |> Enum.map(fn {_key, val} -> val end)
-
-  config :ueberauth, Ueberauth, providers: providers
-end
-
-# OIDC Auth
-auth_oidc_env = System.get_env("AUTH_OIDC_JSON", "{}")
-
-if config_env() != :test && auth_oidc_env do
-  config :fz_http, :openid_connect_providers, auth_oidc_env
+  # Local auth can be disabled at runtime. We check for that in multiple
+  # places to ensure this strategy is noop'd when local_auth_enabled = false
+  # without having to conditionally reconfigure Ueberauth strategies.
+  #
+  # Local auth is likely to removed in the future, so it's not worth
+  # refactoring this.
+  config :ueberauth, Ueberauth, providers: identity_strategy
 end
