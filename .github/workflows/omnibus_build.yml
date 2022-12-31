@@ -76,6 +76,7 @@ jobs:
           # Needed for building assets later on
           asdf plugin-add nodejs || asdf plugin-update nodejs
           asdf install nodejs
+          npm install --global yarn
 
           # CentOS 7 has path issues when this runs and doesn't have the
           # devtools loaded
