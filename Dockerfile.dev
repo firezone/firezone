@@ -42,7 +42,7 @@ RUN mix do deps.get, deps.compile, compile
 COPY apps/fz_http/assets/package.json /var/app/apps/fz_http/assets/package.json
 COPY apps/fz_http/assets/local_modules /var/app/apps/fz_http/assets/local_modules
 COPY apps/fz_http/assets/yarn.lock /var/app/apps/fz_http/assets/yarn.lock
-RUN cd apps/fz_http/asserts && yarn install
+RUN cd apps/fz_http/assets && yarn install
 
 COPY config /var/app/config
 COPY apps /var/app/apps
