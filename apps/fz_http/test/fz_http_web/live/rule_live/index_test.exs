@@ -1,9 +1,6 @@
 defmodule FzHttpWeb.RuleLive.IndexTest do
   alias FzHttp.Gateways
   use FzHttpWeb.ConnCase, async: true
-  import FzHttp.GatewaysFixtures, only: [setup_default_gateway: 1]
-
-  setup :setup_default_gateway
 
   describe "allowlist" do
     setup :create_rule

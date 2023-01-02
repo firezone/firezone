@@ -3,9 +3,6 @@ defmodule FzHttp.DevicesTest do
   alias FzHttp.Devices
   alias FzHttp.DevicesFixtures
   alias FzHttp.Users
-  import FzHttp.GatewaysFixtures, only: [setup_default_gateway: 1]
-
-  setup :setup_default_gateway
 
   describe "count/0" do
     setup :create_devices

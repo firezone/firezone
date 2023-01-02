@@ -2,9 +2,6 @@ defmodule FzHttpWeb.UserLive.IndexTest do
   use FzHttpWeb.ConnCase, async: true
 
   alias FzHttp.Users
-  import FzHttp.GatewaysFixtures, only: [setup_default_gateway: 1]
-
-  setup :setup_default_gateway
 
   describe "authenticated user list" do
     setup [:create_devices, :create_users]

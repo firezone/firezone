@@ -1,11 +1,8 @@
 defmodule FzHttpWeb.JSON.RuleControllerTest do
   use FzHttpWeb.ApiCase, async: true
-  import FzHttp.GatewaysFixtures, only: [setup_default_gateway: 1]
   import FzHttp.AllowRulesFixtures
   import FzHttpWeb.ApiCase
   alias FzHttp.AllowRules
-
-  setup :setup_default_gateway
 
   @allow_rule_params %{
     "destination" => "1.1.1.1/24",

@@ -16,6 +16,7 @@ defmodule FzHttp.CaseTemplate do
           Sandbox.mode(FzHttp.Repo, {:shared, self()})
         end
 
+        FzHttp.GatewaysFixtures.setup_default_gateway()
         :ok
       end
     end
