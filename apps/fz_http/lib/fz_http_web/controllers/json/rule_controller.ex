@@ -7,8 +7,6 @@ defmodule FzHttpWeb.JSON.RuleController do
 
   action_fallback(FzHttpWeb.JSON.FallbackController)
 
-  alias FzHttp.{AllowRules, Gateways}
-
   def index(conn, _) do
     send_upgrade_notice(conn)
   end
