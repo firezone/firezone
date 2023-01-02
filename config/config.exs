@@ -1,7 +1,9 @@
 import Config
 
 # Use Jason for JSON parsing in Phoenix
-config :phoenix, :json_library, Jason
+config :phoenix,
+  json_library: Jason,
+  filter_parameters: ["passwoerd", "secret"]
 
 # Public API key for telemetry
 config :posthog,
