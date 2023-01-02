@@ -19,7 +19,7 @@ defmodule FzHttp.GatewaysFixtures do
     gateway
   end
 
-  def setup_default_gateway(_) do
+  def setup_default_gateway() do
     case Gateways.create_default_gateway(%{public_key: @public_key}) do
       {:ok, _} -> :ok
       _ -> :error
