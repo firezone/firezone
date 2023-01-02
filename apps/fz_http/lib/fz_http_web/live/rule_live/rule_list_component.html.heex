@@ -118,10 +118,10 @@
                 <%= port_type_display(rule.protocol) %>
               </td>
               <td class="has-text-left">
-                <%= if rule.port_range_start != nil, do: rule.port_range_start %>
+                <%= rule.port_range_start %>
               </td>
               <td class="has-text-left">
-                <%= if rule.port_range_end != nil, do: rule.port_range_end %>
+                <%= rule.port_range_end %>
               </td>
               <td class="has-text-right">
                 <a
@@ -135,8 +135,6 @@
               </td>
             </tr>
           <% end %>
-          <!-- This can happen when moving the DB to an OS with an older Kernel or on the strange case of a
-          kernel downgrade. -->
         </tbody>
       <% end %>
     </table>
