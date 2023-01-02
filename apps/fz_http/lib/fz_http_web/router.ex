@@ -224,6 +224,7 @@ defmodule FzHttpWeb.Router do
     resources "/users", UserController, except: [:new, :edit]
     resources "/devices", DeviceController, except: [:new, :edit]
     resources "/allow_rules", AllowRuleController, except: [:new, :edit, :update]
+    resources "/rules", RuleController, except: [:new, :edit]
   end
 
   scope "/browser", FzHttpWeb do
