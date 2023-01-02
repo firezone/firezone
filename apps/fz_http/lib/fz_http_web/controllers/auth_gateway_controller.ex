@@ -3,7 +3,6 @@ defmodule FzHttpWeb.AuthGatewayController do
   use FzHttpWeb, :controller
   require Logger
 
-  # XXX: Secret is being logged! 😱
   def request(conn, %{"secret" => secret}) do
     case Base.decode64(secret) do
       {:ok, secret} -> validate_and_register(conn, secret)
