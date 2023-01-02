@@ -130,7 +130,7 @@ defmodule FzHttpWeb do
     end
   end
 
-  def static_paths, do: ~w(dist fonts images browserconfig.xml robots.txt)
+  def static_paths, do: ~w(dist fonts images robots.txt)
 
   def verified_routes do
     quote do
