@@ -5,9 +5,6 @@ defmodule FzHttp.DevicesTest do
   alias FzHttp.Devices
   alias FzHttp.DevicesFixtures
   alias FzHttp.Users
-  import FzHttp.GatewaysFixtures, only: [setup_default_gateway: 1]
-
-  setup :setup_default_gateway
 
   describe "trimmed fields" do
     test "trims expected fields" do

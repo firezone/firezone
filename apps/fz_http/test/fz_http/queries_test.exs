@@ -2,9 +2,6 @@ defmodule FzHttp.QueriesTest do
   use FzHttp.DataCase, async: false
 
   alias FzHttp.Queries.INET
-  import FzHttp.GatewaysFixtures, only: [setup_default_gateway: 1]
-
-  setup :setup_default_gateway
 
   describe "next_available/1 when none available" do
     @expected_ipv4 %Postgrex.INET{address: {10, 3, 2, 2}, netmask: nil}

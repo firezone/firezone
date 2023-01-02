@@ -1,8 +1,5 @@
 defmodule FzHttpWeb.DeviceLive.Admin.ShowTest do
   use FzHttpWeb.ConnCase, async: true
-  import FzHttp.GatewaysFixtures, only: [setup_default_gateway: 1]
-
-  setup :setup_default_gateway
 
   describe "unauthenticated" do
     setup :create_device

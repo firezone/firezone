@@ -1,8 +1,5 @@
 defmodule FzHttpWeb.JSON.AllowRuleControllerTest do
   use FzHttpWeb.APICase
-  import FzHttp.GatewaysFixtures, only: [setup_default_gateway: 1]
-
-  setup :setup_default_gateway
 
   @rule_params %{
     "destination" => "5.5.5.5/24"

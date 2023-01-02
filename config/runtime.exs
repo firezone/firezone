@@ -228,7 +228,7 @@ if config_env() == :prod do
     connectivity_checks_interval: connectivity_checks_interval,
     admin_email: admin_email,
     default_admin_password: default_admin_password,
-    gateway_registratioN_token: gateway_registration_token
+    gateway_registration_token: gateway_registration_token
 
   # Configure strategies
   identity_strategy =
