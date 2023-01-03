@@ -4,22 +4,13 @@
   class="has-aside-left has-aside-mobile-transition has-navbar-fixed-top has-aside-expanded"
 >
   <head>
-    <meta charset="utf-8" />
-    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <.live_title prefix="Firezone • ">
       <%= assigns[:page_title] %>
     </.live_title>
-    <link phx-track-static rel="stylesheet" href={~p"/dist/admin.css"} />
-    <script defer phx-track-static type="text/javascript" src={~p"/dist/admin.js"}>
+    <link phx-track-static rel="stylesheet" href={static_path("/dist/admin.css")} />
+    <script defer phx-track-static type="text/javascript" src={static_path("/dist/admin.js")}>
     </script>
-    <!-- Favicon -->
-    <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png" />
-    <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16.png" />
-    <meta name="msapplication-config" content="/browserconfig.xml" />
-    <meta name="msapplication-TileColor" content="331700" />
-    <meta name="theme-color" content="331700" />
+    <%= render(FzHttpWeb.SharedView, "head.html", assigns) %>
     <%= render(FzHttpWeb.SharedView, "socket_token_headers.html",
       conn: @conn,
       current_user: @current_user
@@ -113,8 +104,8 @@
               </div>
               <div class="level-item">
                 <div class="logo">
-                  <a href="https://www.firezone.dev/?utm_source=product">
-                    <img src="/images/logo.svg" alt="firezone.dev" />
+                  <a href="https://www.firezone.dev?utm_source=product">
+                    <img src={static_path("/images/logo.svg")} alt="firezone.dev" />
                   </a>
                 </div>
               </div>

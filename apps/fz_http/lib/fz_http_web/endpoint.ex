@@ -4,6 +4,8 @@ defmodule FzHttpWeb.Endpoint do
   alias FzHttpWeb.HeaderHelpers
   alias FzHttpWeb.Session
 
+  plug FzHttpWeb.Plug.PathPrefix
+
   if Application.compile_env(:fz_http, :sql_sandbox) do
     plug Phoenix.Ecto.SQL.Sandbox
   end

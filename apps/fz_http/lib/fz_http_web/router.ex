@@ -19,6 +19,10 @@ defmodule FzHttpWeb.Router do
     plug FzHttpWeb.Auth.JSON.Pipeline
   end
 
+  pipeline :browser_static do
+    plug :accepts, ["html", "xml"]
+  end
+
   pipeline :require_admin_user do
     plug FzHttpWeb.Plug.Authorization, :admin
   end
@@ -184,6 +188,12 @@ defmodule FzHttpWeb.Router do
     resources "/users", UserController, except: [:new, :edit]
     resources "/devices", DeviceController, except: [:new, :edit]
     resources "/rules", RuleController, except: [:new, :edit]
+  end
+
+  scope "/browser", FzHttpWeb do
+    pipe_through :browser_static
+
+    get "/config.xml", BrowserController, :config
   end
 
   if Mix.env() == :dev do

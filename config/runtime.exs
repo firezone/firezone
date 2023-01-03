@@ -17,9 +17,11 @@ alias FzCommon.{CLI, FzInteger, FzString, FzKernelVersion, FzNet}
     |> FzNet.to_complete_url()
   end
 
-config :fz_http, :external_url, external_url
-
 %{host: host, path: path, port: port, scheme: scheme} = URI.parse(external_url)
+
+config :fz_http,
+  external_url: external_url,
+  path_prefix: path
 
 config :fz_http, FzHttpWeb.Endpoint,
   url: [host: host, scheme: scheme, port: port, path: path],
