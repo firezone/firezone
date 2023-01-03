@@ -6,11 +6,10 @@ export default function InstallBlock() {
   return (
     <BrowserOnly fallback={<div>Loading...</div>}>
       {() => {
-        if (window.posthog && typeof window.posthog.get_distinct_id === "function") {
-          const distinct_id = window.posthog.get_distinct_id()
-        } else {
-          const distinct_id = "posthog-blocked"
-        }
+        const distinct_id =
+          (window.posthog && typeof window.posthog.get_distinct_id === "function")
+            ? window.posthog.get_distinct_id()
+            : "posthog-blocked"
 
         return (
           <CodeBlock language="bash">
