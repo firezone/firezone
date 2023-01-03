@@ -56,6 +56,7 @@ if config_env() == :prod do
   database_ssl = FzString.to_boolean(System.get_env("DATABASE_SSL", "false"))
   database_ssl_opts = Jason.decode!(System.get_env("DATABASE_SSL_OPTS", "{}"))
   database_parameters = Jason.decode!(System.get_env("DATABASE_PARAMETERS", "{}"))
+  http_client_ssl_opts = Jason.decode!(System.get_env("HTTP_CLIENT_SSL_OPTS", "{}"))
   phoenix_listen_address = System.get_env("PHOENIX_LISTEN_ADDRESS", "0.0.0.0")
   phoenix_port = String.to_integer(System.get_env("PHOENIX_PORT", "13000"))
   external_trusted_proxies = Jason.decode!(System.get_env("EXTERNAL_TRUSTED_PROXIES", "[]"))
@@ -118,28 +119,6 @@ if config_env() == :prod do
   # Password is not needed if using bundled PostgreSQL, so use nil if it's not set.
   database_password = System.get_env("DATABASE_PASSWORD")
 
-  # XXX: Using to_atom here because this is trusted input and to_existing_atom
-  # won't work because we won't know the keys ahead of time. Hardcoding supported
-  # ssl_opts as well.
-  map_ssl_opt_val = fn k, v ->
-    case k do
-      "verify" ->
-        # verify expects an atom
-        String.to_atom(v)
-
-      "versions" ->
-        # versions expects a list of atoms
-        Enum.map(v, &String.to_atom(&1))
-
-      _ ->
-        # Everything else is usually a string
-        v
-    end
-  end
-
-  ssl_opts =
-    Keyword.new(database_ssl_opts, fn {k, v} -> {String.to_atom(k), map_ssl_opt_val.(k, v)} end)
-
   parameters = Keyword.new(database_parameters, fn {k, v} -> {String.to_atom(k), v} end)
 
   # Database configuration
@@ -150,7 +129,7 @@ if config_env() == :prod do
     port: database_port,
     pool_size: database_pool,
     ssl: database_ssl,
-    ssl_opts: ssl_opts,
+    ssl_opts: FzCommon.map_ssl_opts(database_ssl_opts),
     parameters: parameters,
     queue_target: 500
   ]
@@ -213,6 +192,7 @@ if config_env() == :prod do
     secret_key: guardian_secret_key
 
   config :fz_http,
+    http_client_options: [ssl: FzCommon.map_ssl_opts(http_client_ssl_opts)],
     saml_entity_id: saml_entity_id,
     saml_certfile_path: saml_certfile_path,
     saml_keyfile_path: saml_keyfile_path,
@@ -234,6 +214,10 @@ if config_env() == :prod do
     connectivity_checks_interval: connectivity_checks_interval,
     admin_email: admin_email,
     default_admin_password: default_admin_password
+
+  # Configure OpenID Connect
+  config :openid_connect,
+    http_client_options: [ssl: FzCommon.map_ssl_opts(http_client_ssl_opts)]
 
   # Configure strategies
   identity_strategy =

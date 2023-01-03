@@ -23,6 +23,7 @@ config :fz_http, FzHttpWeb.Auth.JSON.Authentication,
 config :fz_http, FzHttp.Repo, migration_timestamps: [type: :timestamptz]
 
 config :fz_http,
+  http_client_options: [],
   external_trusted_proxies: [],
   private_clients: [],
   sandbox: true,

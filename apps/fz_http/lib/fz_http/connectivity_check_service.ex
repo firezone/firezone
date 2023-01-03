@@ -34,7 +34,7 @@ defmodule FzHttp.ConnectivityCheckService do
   def post_request(request_url) do
     body = ""
 
-    case http_client().post(request_url, body) do
+    case http_client().post(request_url, body, [], http_client_options()) do
       {:ok, response} ->
         ConnectivityChecks.create_connectivity_check(%{
           response_body: response.body,
@@ -78,5 +78,9 @@ defmodule FzHttp.ConnectivityCheckService do
 
   defp enabled? do
     FzHttp.Config.fetch_env!(:fz_http, :connectivity_checks_enabled)
+  end
+
+  defp http_client_options do
+    Application.fetch_env!(:fz_http, :http_client_options)
   end
 end
