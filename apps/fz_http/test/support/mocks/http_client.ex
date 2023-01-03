@@ -29,4 +29,6 @@ defmodule FzHttp.Mocks.HttpClient do
       @success_response
     end
   end
+
+  def post(url, _, _, _), do: post(url, nil)
 end
