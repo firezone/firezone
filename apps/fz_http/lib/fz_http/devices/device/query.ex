@@ -103,13 +103,19 @@ defmodule FzHttp.Devices.Device.Query do
   end
 
   defp select_not_used_ips(queryable, network_cidr, reserved_ips) do
+    host_as_string = network_cidr.address |> :inet.ntoa() |> List.to_string()
+
     queryable
     |> where(
       [q: q],
       offset_to_ip(q.ip, ^network_cidr) not in subquery(used_ips_subquery(network_cidr))
     )
     |> where([q: q], offset_to_ip(q.ip, ^network_cidr) not in ^reserved_ips)
-    |> where([q: q], acquire_advisory_lock(q.ip) == true)
+    |> where(
+      [q: q],
+      acquire_advisory_lock(fragment("hashtext(?) + ?", ^host_as_string, q.ip)) ==
+        true
+    )
     |> select([q: q], offset_to_ip(q.ip, ^network_cidr))
   end
 
