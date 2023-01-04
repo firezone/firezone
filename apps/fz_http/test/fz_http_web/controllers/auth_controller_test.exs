@@ -71,7 +71,7 @@ defmodule FzHttpWeb.AuthControllerTest do
       assert test_conn.request_path == ~p"/auth/identity/callback"
 
       assert Phoenix.Flash.get(test_conn.assigns.flash, :error) ==
-               "Error signing in: invalid_credentials"
+               "Error signing in: user credentials are invalid or user does not exist"
     end
 
     test "invalid password", %{unauthed_conn: conn, user: user} do
@@ -85,7 +85,7 @@ defmodule FzHttpWeb.AuthControllerTest do
       assert test_conn.request_path == ~p"/auth/identity/callback"
 
       assert Phoenix.Flash.get(test_conn.assigns.flash, :error) ==
-               "Error signing in: invalid_credentials"
+               "Error signing in: user credentials are invalid or user does not exist"
     end
 
     test "valid params", %{unauthed_conn: conn, user: user} do
@@ -221,7 +221,7 @@ defmodule FzHttpWeb.AuthControllerTest do
       assert not is_nil(user.sign_in_token)
       assert not is_nil(user.sign_in_token_created_at)
 
-      get(conn, ~p"/auth/magic/#{user.sign_in_token}")
+      get(conn, ~p"/auth/magic/#{user.id}/#{user.sign_in_token}")
 
       user = Repo.reload!(user)
 
@@ -230,7 +230,7 @@ defmodule FzHttpWeb.AuthControllerTest do
     end
 
     test "user last signed in with magic_link provider", %{unauthed_conn: conn, user: user} do
-      get(conn, ~p"/auth/magic/#{user.sign_in_token}")
+      get(conn, ~p"/auth/magic/#{user.id}/#{user.sign_in_token}")
 
       user = Repo.reload!(user)
 
@@ -238,7 +238,7 @@ defmodule FzHttpWeb.AuthControllerTest do
     end
 
     test "user is signed in", %{unauthed_conn: conn, user: user} do
-      test_conn = get(conn, ~p"/auth/magic/#{user.sign_in_token}")
+      test_conn = get(conn, ~p"/auth/magic/#{user.id}/#{user.sign_in_token}")
 
       assert current_user(test_conn).id == user.id
     end
@@ -246,7 +246,7 @@ defmodule FzHttpWeb.AuthControllerTest do
     test "prevents signing in when local_auth_disabled", %{unauthed_conn: conn, user: user} do
       FzHttp.Configurations.put!(:local_auth_enabled, false)
 
-      test_conn = get(conn, ~p"/auth/magic/#{user.sign_in_token}")
+      test_conn = get(conn, ~p"/auth/magic/#{user.id}/#{user.sign_in_token}")
       assert text_response(test_conn, 401) == "Local auth disabled"
     end
   end

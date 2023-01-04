@@ -6,6 +6,16 @@ defmodule FzHttp.UsersFixtures do
 
   alias FzHttp.{Repo, Users, Users.User}
 
+  def create_user_with_role(attrs \\ %{}, role) do
+    attrs
+    |> Enum.into(%{role: role})
+    |> user()
+  end
+
+  def create_user(attrs \\ %{}) do
+    user(attrs)
+  end
+
   @doc """
   Generate a user specified by email, or generate a new otherwise.
   """
@@ -18,7 +28,6 @@ defmodule FzHttp.UsersFixtures do
           Users.create_user(
             %{
               email: email,
-              role: :admin,
               password: "password1234",
               password_confirmation: "password1234"
             },

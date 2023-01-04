@@ -17,7 +17,7 @@ defmodule FzHttpWeb.SettingLive.AccountTest do
       path = ~p"/settings/account"
       {:ok, _view, html} = live(conn, path)
 
-      user = Users.get_user!(user.id)
+      user = Users.fetch_user_by_id!(user.id)
 
       assert html =~ "Delete Your Account"
       assert html =~ user.email

@@ -1,15 +1,13 @@
-defmodule FzHttp.Validators.Common do
-  @moduledoc """
-  Shared validators to use between schemas.
+defmodule FzHttp.Validator do
+  @doc """
+  A set of changeset helpers and schema extensions to simplify our changesets and make validation more reliable.
   """
-
   import Ecto.Changeset
+  alias FzCommon.FzNet
 
-  import FzCommon.FzNet,
-    only: [
-      valid_ip?: 1,
-      valid_cidr?: 1
-    ]
+  def validate_email(changeset, field) do
+    validate_format(changeset, field, ~r/@/, message: "is invalid email address")
+  end
 
   def validate_uri(changeset, fields) when is_list(fields) do
     Enum.reduce(fields, changeset, fn field, accumulated_changeset ->
@@ -46,7 +44,7 @@ defmodule FzHttp.Validators.Common do
     validate_change(changeset, field, fn _current_field, value ->
       value
       |> split_comma_list()
-      |> Enum.find(&(not valid_ip?(&1)))
+      |> Enum.find(&(not FzNet.valid_ip?(&1)))
       |> error_if(
         &(!is_nil(&1)),
         &{field, "is invalid: #{&1} is not a valid IPv4 / IPv6 address"}
@@ -58,7 +56,7 @@ defmodule FzHttp.Validators.Common do
     validate_change(changeset, field, fn _current_field, value ->
       value
       |> split_comma_list()
-      |> Enum.find(&(not (valid_ip?(&1) or valid_cidr?(&1))))
+      |> Enum.find(&(not (FzNet.valid_ip?(&1) or FzNet.valid_cidr?(&1))))
       |> error_if(
         &(!is_nil(&1)),
         &{field, "is invalid: #{&1} is not a valid IPv4 / IPv6 address or CIDR range"}
@@ -106,6 +104,64 @@ defmodule FzHttp.Validators.Common do
   end
 
   @doc """
+  Takes value from `value_field` and puts it's hash to `hash_field`.
+  """
+  def put_hash(%Ecto.Changeset{} = changeset, value_field, to: hash_field) do
+    with {:ok, value} when is_binary(value) <- fetch_change(changeset, value_field) do
+      put_change(changeset, hash_field, FzCommon.FzCrypto.hash(value))
+    else
+      _ -> changeset
+    end
+  end
+
+  @doc """
+  Validates that value in a given `value_field` equals to hash stored in `hash_field`.
+  """
+  def validate_hash(changeset, value_field, hash_field: hash_field) do
+    with {:data, hash} <- fetch_field(changeset, hash_field) do
+      validate_change(changeset, value_field, fn value_field, token ->
+        if FzCommon.FzCrypto.equal?(token, hash) do
+          []
+        else
+          [{value_field, {"is invalid", [validation: :hash]}}]
+        end
+      end)
+    else
+      {:changes, _hash} ->
+        add_error(changeset, value_field, "can not be verified", validation: :hash)
+
+      :error ->
+        add_error(changeset, value_field, "is already verified", validation: :hash)
+    end
+  end
+
+  def validate_if_true(%Ecto.Changeset{} = changeset, field, callback)
+      when is_function(callback, 1) do
+    case fetch_field(changeset, field) do
+      {_data_or_changes, true} ->
+        callback.(changeset)
+
+      _else ->
+        changeset
+    end
+  end
+
+  @doc """
+  Removes change for a given field and original value from it from `changeset.params`.
+
+  Even though `changeset.params` considered to be a private field it leaks values even
+  after they are removed from a changeset if you `inspect(struct, structs: false)` or
+  just access it directly.
+  """
+  def redact_field(%Ecto.Changeset{} = changeset, field) do
+    changeset = delete_change(changeset, field)
+    %{changeset | params: Map.drop(changeset.params, field_variations(field))}
+  end
+
+  defp field_variations(field) when is_binary(field), do: [field, String.to_existing_atom(field)]
+  defp field_variations(field) when is_atom(field), do: [field, Atom.to_string(field)]
+
+  @doc """
   Puts the change if field is not changed or it's value is set to `nil`.
   """
   def put_default_value(changeset, _field, nil) do
@@ -126,4 +182,13 @@ defmodule FzHttp.Validators.Common do
   def trim_change(changeset, field) do
     update_change(changeset, field, &if(!is_nil(&1), do: String.trim(&1)))
   end
+
+  @doc """
+  Returns `true` when binary representation of Ecto UUID is valid, otherwise - `false`.
+  """
+  def valid_uuid?(binary) when is_binary(binary),
+    do: match?(<<_::64, ?-, _::32, ?-, _::32, ?-, _::32, ?-, _::96>>, binary)
+
+  def valid_uuid?(_binary),
+    do: false
 end

@@ -40,6 +40,14 @@ defmodule FzHttpWeb.AuthController do
       {:ok, user} ->
         maybe_sign_in(conn, user, auth)
 
+      {:error, reason} when reason in [:not_found, :invalid_credentials] ->
+        conn
+        |> put_flash(
+          :error,
+          "Error signing in: user credentials are invalid or user does not exist"
+        )
+        |> request(%{})
+
       {:error, reason} ->
         conn
         |> put_flash(:error, "Error signing in: #{reason}")
@@ -117,25 +125,28 @@ defmodule FzHttpWeb.AuthController do
   end
 
   def magic_link(conn, %{"email" => email}) do
-    case Users.reset_sign_in_token(email) do
-      :ok ->
-        conn
-        |> put_flash(:info, "Please check your inbox for the magic link.")
-        |> redirect(to: ~p"/")
+    with {:ok, user} <- Users.fetch_user_by_email(email),
+         {:ok, user} <- Users.request_sign_in_token(user) do
+      FzHttpWeb.Mailer.AuthEmail.magic_link(user)
+      |> FzHttpWeb.Mailer.deliver!()
 
-      :error ->
+      conn
+      |> put_flash(:info, "Please check your inbox for the magic link.")
+      |> redirect(to: ~p"/")
+    else
+      {:error, :not_found} ->
         conn
         |> put_flash(:warning, "Failed to send magic link email.")
         |> redirect(to: ~p"/auth/reset_password")
     end
   end
 
-  def magic_sign_in(conn, %{"token" => token}) do
-    case Users.consume_sign_in_token(token) do
-      {:ok, user} ->
-        maybe_sign_in(conn, user, %{provider: :magic_link})
-
-      {:error, _} ->
+  def magic_sign_in(conn, %{"user_id" => user_id, "token" => token}) do
+    with {:ok, user} <- Users.fetch_user_by_id(user_id),
+         {:ok, _user} <- Users.consume_sign_in_token(user, token) do
+      maybe_sign_in(conn, user, %{provider: :magic_link})
+    else
+      {:error, _reason} ->
         conn
         |> put_flash(:error, "The magic link is not valid or has expired.")
         |> redirect(to: ~p"/")

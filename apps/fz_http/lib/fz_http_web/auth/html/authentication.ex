@@ -22,9 +22,9 @@ defmodule FzHttpWeb.Auth.HTML.Authentication do
 
   @impl Guardian
   def resource_from_claims(%{"sub" => id}) do
-    case Users.get_user(id) do
-      nil -> {:error, :resource_not_found}
-      user -> {:ok, user}
+    case Users.fetch_user_by_id(id) do
+      {:ok, user} -> {:ok, user}
+      {:error, :not_found} -> {:error, :resource_not_found}
     end
   end
 

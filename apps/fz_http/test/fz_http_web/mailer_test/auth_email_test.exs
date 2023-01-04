@@ -3,25 +3,25 @@ defmodule FzHttpWeb.AuthEmailTest do
 
   alias FzHttp.Users
 
-  describe "reset_sign_in_token/1" do
+  describe "request_sign_in_token/1" do
     setup :create_user
 
     import Swoosh.TestAssertions
 
     test "when email exists sends a magic link", %{user: user} do
-      Users.reset_sign_in_token(user.email)
+      Users.request_sign_in_token(user.email)
 
-      user = Users.get_user!(user.id)
+      user = Users.fetch_user_by_id!(user.id)
 
       assert_email_sent(
         subject: "Firezone Magic Link",
         to: [{"", user.email}],
-        text_body: ~r(#{url(~p"/auth/magic/#{user.sign_in_token}")})
+        text_body: ~r(#{url(~p"/auth/magic/#{user.id}/#{user.sign_in_token}")})
       )
     end
 
     test "when email does not exist logs the attempt" do
-      Users.reset_sign_in_token("foobar@example.com")
+      Users.request_sign_in_token("foobar@example.com")
       refute_email_sent()
     end
   end

@@ -280,9 +280,8 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
 
       assert response(conn, 204)
 
-      assert_error_sent(404, fn ->
-        get(conn, ~p"/v0/users/#{user}")
-      end)
+      conn = get(conn, ~p"/v0/users/#{user}")
+      assert json_response(conn, 404) == %{"error" => "not_found"}
     end
 
     test "renders 404 for user not found" do

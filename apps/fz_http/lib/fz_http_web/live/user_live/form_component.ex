@@ -8,7 +8,7 @@ defmodule FzHttpWeb.UserLive.FormComponent do
 
   @impl Phoenix.LiveComponent
   def update(%{action: :new} = assigns, socket) do
-    changeset = Users.new_user()
+    changeset = Users.change_user()
 
     {:ok,
      socket

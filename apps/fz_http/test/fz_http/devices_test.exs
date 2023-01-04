@@ -108,7 +108,7 @@ defmodule FzHttp.DevicesTest do
     end
 
     test "shows devices scoped to a user", %{device: device} do
-      user = Users.get_user!(device.user_id)
+      user = Users.fetch_user_by_id!(device.user_id)
       assert Devices.list_devices(user) == [device]
     end
   end

@@ -53,7 +53,7 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.Show do
   defp assigns(device) do
     [
       device: device,
-      user: Users.get_user!(device.user_id),
+      user: Users.fetch_user_by_id!(device.user_id),
       page_title: device.name,
       allowed_ips: Devices.allowed_ips(device),
       port: FzHttp.Config.fetch_env!(:fz_vpn, :wireguard_port),

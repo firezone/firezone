@@ -1,101 +1,236 @@
 defmodule FzHttp.UsersTest do
   use FzHttp.DataCase, async: true
-
-  alias FzHttp.{Repo, Users}
+  alias FzHttp.UsersFixtures
+  alias FzHttp.DevicesFixtures
+  alias FzHttp.Users
 
   describe "count/0" do
-    setup :create_user
-
     test "returns correct count of all users" do
+      assert Users.count() == 0
+
+      UsersFixtures.create_user()
       assert Users.count() == 1
+
+      UsersFixtures.create_user()
+      assert Users.count() == 2
     end
   end
 
-  describe "count/1" do
-    setup :create_users
-
-    @tag count: 3
-    test "returns the correct count of admin users" do
-      assert Users.count(role: :admin) == 3
+  describe "count_by_role/0" do
+    test "returns 0 when there are no users" do
+      assert Users.count_by_role(:unprivileged) == 0
+      assert Users.count_by_role(:admin) == 0
     end
 
-    @tag count: 7, role: :unprivileged
-    test "returns the correct count of unprivileged users" do
-      assert Users.count(role: :unprivileged) == 7
-    end
-  end
+    test "returns correct count of admin users" do
+      UsersFixtures.create_user_with_role(:admin)
+      assert Users.count_by_role(:admin) == 1
+      assert Users.count_by_role(:unprivileged) == 0
 
-  describe "trimmed fields" do
-    test "trims expected fields" do
-      changeset =
-        Users.User.create_changeset(struct(Users.User), %{
-          "email" => " foo "
-        })
+      UsersFixtures.create_user_with_role(:unprivileged)
+      assert Users.count_by_role(:admin) == 1
+      assert Users.count_by_role(:unprivileged) == 1
 
-      assert %Ecto.Changeset{
-               changes: %{
-                 email: "foo"
-               }
-             } = changeset
+      for _ <- 1..5, do: UsersFixtures.create_user_with_role(:unprivileged)
+      assert Users.count_by_role(:admin) == 1
+      assert Users.count_by_role(:unprivileged) == 6
     end
   end
 
-  describe "consume_sign_in_token/1 valid token" do
-    setup [:create_user_with_valid_sign_in_token]
+  describe "fetch_user_by_id/1" do
+    test "returns error when user is not found" do
+      assert Users.fetch_user_by_id(Ecto.UUID.generate()) == {:error, :not_found}
+    end
 
-    test "returns user when token is valid", %{user: user} do
-      {:ok, signed_in_user} = Users.consume_sign_in_token(user.sign_in_token)
+    test "returns error when id is not a valid UUIDv4" do
+      assert Users.fetch_user_by_id("foo") == {:error, :not_found}
+    end
 
+    test "returns user" do
+      user = UsersFixtures.create_user()
+      assert {:ok, returned_user} = Users.fetch_user_by_id(user.id)
+      assert returned_user.id == user.id
+    end
+  end
+
+  describe "fetch_user_by_id!/1" do
+    test "raises when user is not found" do
+      assert_raise(Ecto.NoResultsError, fn ->
+        Users.fetch_user_by_id!(Ecto.UUID.generate())
+      end)
+    end
+
+    test "raises when id is not a valid UUIDv4" do
+      assert_raise(Ecto.Query.CastError, fn ->
+        assert Users.fetch_user_by_id!("foo")
+      end)
+    end
+
+    test "returns user" do
+      user = UsersFixtures.create_user()
+      assert returned_user = Users.fetch_user_by_id!(user.id)
+      assert returned_user.id == user.id
+    end
+  end
+
+  describe "fetch_user_by_email/1" do
+    test "returns error when user is not found" do
+      assert Users.fetch_user_by_email("foo@bar") == {:error, :not_found}
+    end
+
+    test "returns user" do
+      user = UsersFixtures.create_user()
+      assert {:ok, returned_user} = Users.fetch_user_by_email(user.email)
+      assert returned_user.id == user.id
+    end
+  end
+
+  describe "fetch_user_by_id_or_email/1" do
+    test "returns error when user is not found" do
+      assert Users.fetch_user_by_id_or_email(Ecto.UUID.generate()) == {:error, :not_found}
+      assert Users.fetch_user_by_id_or_email("foo@bar.com") == {:error, :not_found}
+      assert Users.fetch_user_by_id_or_email("foo") == {:error, :not_found}
+    end
+
+    test "returns user by id" do
+      user = UsersFixtures.create_user()
+      assert {:ok, returned_user} = Users.fetch_user_by_id(user.id)
+      assert returned_user.id == user.id
+    end
+
+    test "returns user by email" do
+      user = UsersFixtures.create_user()
+      assert {:ok, returned_user} = Users.fetch_user_by_email(user.email)
+      assert returned_user.id == user.id
+    end
+  end
+
+  describe "list_users/1" do
+    test "returns empty list when there are not users" do
+      assert Users.list_users() == []
+      assert Users.list_users(hydrate: [:device_count]) == []
+    end
+
+    test "returns list of users in all roles" do
+      user1 = UsersFixtures.create_user_with_role(:admin)
+      user2 = UsersFixtures.create_user_with_role(:unprivileged)
+
+      assert users = Users.list_users()
+      assert length(users) == 2
+      assert Enum.sort(Enum.map(users, & &1.id)) == Enum.sort([user1.id, user2.id])
+    end
+
+    test "hydrates users with device count" do
+      user1 = UsersFixtures.create_user_with_role(:admin)
+      DevicesFixtures.create_device_for_user(user1)
+
+      user2 = UsersFixtures.create_user_with_role(:unprivileged)
+      DevicesFixtures.create_device_for_user(user2)
+      DevicesFixtures.create_device_for_user(user2)
+
+      assert users = Users.list_users(hydrate: [:device_count])
+      assert length(users) == 2
+
+      assert Enum.sort(Enum.map(users, &{&1.id, &1.device_count})) ==
+               Enum.sort([{user1.id, 1}, {user2.id, 2}])
+
+      assert users = Users.list_users(hydrate: [:device_count, :device_count])
+
+      assert Enum.sort(Enum.map(users, &{&1.id, &1.device_count})) ==
+               Enum.sort([{user1.id, 1}, {user2.id, 2}])
+    end
+  end
+
+  describe "request_sign_in_token/1" do
+    test "returns user with updated sign-in token" do
+      user = UsersFixtures.create_user()
+      refute user.sign_in_token_hash
+
+      assert {:ok, user} = Users.request_sign_in_token(user)
+      assert user.sign_in_token
+      assert user.sign_in_token_hash
+      assert user.sign_in_token_created_at
+    end
+  end
+
+  describe "consume_sign_in_token/1" do
+    test "returns user when token is valid" do
+      {:ok, user} =
+        UsersFixtures.create_user()
+        |> Users.request_sign_in_token()
+
+      assert {:ok, signed_in_user} = Users.consume_sign_in_token(user, user.sign_in_token)
       assert signed_in_user.id == user.id
     end
 
-    test "clears the sign in token when consumed", %{user: user} do
-      Users.consume_sign_in_token(user.sign_in_token)
+    test "clears the sign in token when consumed" do
+      {:ok, user} =
+        UsersFixtures.create_user()
+        |> Users.request_sign_in_token()
 
-      assert is_nil(Users.get_user!(user.id).sign_in_token)
-      assert is_nil(Users.get_user!(user.id).sign_in_token_created_at)
+      assert {:ok, user} = Users.consume_sign_in_token(user, user.sign_in_token)
+      assert is_nil(user.sign_in_token)
+      assert is_nil(user.sign_in_token_created_at)
+
+      assert user = Repo.one(Users.User)
+      assert is_nil(user.sign_in_token)
+      assert is_nil(user.sign_in_token_created_at)
+    end
+
+    test "returns error when token doesn't exist" do
+      user = UsersFixtures.create_user()
+
+      assert Users.consume_sign_in_token(user, "foo") == {:error, :no_token}
+    end
+
+    test "token expires in one hour" do
+      about_one_hour_ago =
+        DateTime.utc_now()
+        |> DateTime.add(-1, :hour)
+        |> DateTime.add(30, :second)
+
+      {:ok, user} =
+        UsersFixtures.create_user()
+        |> Users.request_sign_in_token()
+
+      user
+      |> Ecto.Changeset.change(sign_in_token_created_at: about_one_hour_ago)
+      |> Repo.update!()
+
+      assert {:ok, _user} = Users.consume_sign_in_token(user, user.sign_in_token)
+    end
+
+    test "returns error when token is expired" do
+      one_hour_and_one_second_ago =
+        DateTime.utc_now()
+        |> DateTime.add(-1, :hour)
+        |> DateTime.add(-1, :second)
+
+      {:ok, user} =
+        UsersFixtures.create_user()
+        |> Users.request_sign_in_token()
+
+      user =
+        user
+        |> Ecto.Changeset.change(sign_in_token_created_at: one_hour_and_one_second_ago)
+        |> Repo.update!()
+
+      assert Users.consume_sign_in_token(user, user.sign_in_token) == {:error, :token_expired}
     end
   end
 
-  describe "consume_sign_in_token/1 invalid token" do
-    setup [:create_user_with_expired_sign_in_token]
-
-    test "returns {:error, msg} when token doesn't exist", %{user: _user} do
-      assert {:error, "Token invalid."} = Users.consume_sign_in_token("blah")
-    end
-
-    test "returns {:error, msg} when token is expired", %{user: user} do
-      assert {:error, "Token invalid."} = Users.consume_sign_in_token(user.sign_in_token)
-    end
-  end
-
-  describe "get_user!/1" do
-    setup [:create_user]
-
-    test "gets user by id", %{user: user} do
-      assert Users.get_user!(user.id).id == user.id
-    end
-
-    test "raises Ecto.NoResultsError for missing Users", %{user: _user} do
-      assert_raise(Ecto.NoResultsError, fn ->
-        Users.get_user!(Ecto.UUID.generate())
-      end)
-    end
-  end
-
-  describe "get_user/1" do
-    setup [:create_user]
-
-    test "returns user if found", %{user: user} do
-      assert Users.get_user(user.id).id == user.id
-    end
-
-    test "returns nil if not found" do
-      assert nil == Users.get_user(Ecto.UUID.generate())
-    end
-  end
+  ####
 
   describe "create_user/1" do
+    test "returns changeset error when attrs are missing" do
+      assert {:error, changeset} = Users.create_user(%{})
+
+      refute changeset.valid?
+      assert length(changeset.errors) == 1
+
+      assert "can't be blank" in errors_on(changeset).email
+    end
+
     @valid_attrs_map %{
       email: "valid@test",
       password: "password1234",
@@ -162,12 +297,20 @@ defmodule FzHttp.UsersTest do
     end
   end
 
-  describe "sign_in_keys/0" do
-    test "generates sign in token and created at" do
-      params = Users.sign_in_keys()
+  ####
 
-      assert is_binary(params.sign_in_token)
-      assert %DateTime{} = params.sign_in_token_created_at
+  describe "trimmed fields" do
+    test "trims expected fields" do
+      changeset =
+        Users.User.Changeset.create_changeset(%{
+          "email" => " foo "
+        })
+
+      assert %Ecto.Changeset{
+               changes: %{
+                 email: "foo"
+               }
+             } = changeset
     end
   end
 
@@ -275,25 +418,6 @@ defmodule FzHttp.UsersTest do
   describe "update_*" do
     setup :create_user
 
-    @sign_in_token_params %{
-      sign_in_token: "foobar",
-      sign_in_token_created_at: DateTime.utc_now()
-    }
-
-    test "update sign_in_token", %{user: user} do
-      {:ok, new_user} = Users.update_user_sign_in_token(user, @sign_in_token_params)
-
-      assert new_user.sign_in_token == @sign_in_token_params.sign_in_token
-
-      {:ok, new_user} =
-        Users.update_user_sign_in_token(new_user, %{
-          sign_in_token: nil,
-          sign_in_token_created_at: nil
-        })
-
-      assert is_nil(new_user.sign_in_token)
-    end
-
     test "update role", %{user: user} do
       {:ok, user} = Users.update_user_role(user, :admin)
       assert user.role == :admin
@@ -318,7 +442,7 @@ defmodule FzHttp.UsersTest do
       Users.delete_user(user)
 
       assert_raise(Ecto.NoResultsError, fn ->
-        Users.get_user!(user.id)
+        Users.fetch_user_by_id!(user.id)
       end)
     end
   end
@@ -328,12 +452,6 @@ defmodule FzHttp.UsersTest do
 
     test "returns changeset", %{user: user} do
       assert %Ecto.Changeset{} = Users.change_user(user)
-    end
-  end
-
-  describe "new_user/0" do
-    test "returns changeset" do
-      assert %Ecto.Changeset{} = Users.new_user()
     end
   end
 

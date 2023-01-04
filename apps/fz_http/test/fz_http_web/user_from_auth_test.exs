@@ -61,7 +61,7 @@ defmodule FzHttpWeb.UserFromAuthTest do
                  "sub" => :noop
                })
 
-      assert Users.get_by_email(email) == nil
+      assert Users.fetch_user_by_email(email) == {:error, :not_found}
     end
   end
 
@@ -87,7 +87,7 @@ defmodule FzHttpWeb.UserFromAuthTest do
       assert {:error, "user not found and auto_create_users disabled"} =
                UserFromAuth.find_or_create(:saml, "test", %{"email" => email, "sub" => :noop})
 
-      assert Users.get_by_email(email) == nil
+      assert Users.fetch_user_by_email(email) == {:error, :not_found}
     end
   end
 end

@@ -52,7 +52,7 @@ defmodule FzHttpWeb.UserSocket do
       {:ok, user_id} ->
         {:ok,
          socket
-         |> assign(:current_user, Users.get_user!(user_id))
+         |> assign(:current_user, Users.fetch_user_by_id!(user_id))
          |> assign(:remote_ip, ip)}
 
       {:error, reason} ->

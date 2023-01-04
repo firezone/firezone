@@ -12,6 +12,19 @@ defmodule FzHttp do
     end
   end
 
+  def changeset do
+    quote do
+      import Ecto.Changeset
+      import FzHttp.Validator
+    end
+  end
+
+  def query do
+    quote do
+      import Ecto.Query
+    end
+  end
+
   @doc """
   When used, dispatch to the appropriate schema/context/changeset/query/etc.
   """

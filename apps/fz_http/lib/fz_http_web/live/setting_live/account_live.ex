@@ -27,7 +27,7 @@ defmodule FzHttpWeb.SettingLive.Account do
      socket
      |> assign(:api_token_id, params["api_token_id"])
      |> assign(:subscribe_link, subscribe_link())
-     |> assign(:allow_delete, length(Users.list_admins()) > 1)
+     |> assign(:allow_delete, Users.count_by_role(:admin) > 1)
      |> assign(:api_tokens, ApiTokens.list_api_tokens(socket.assigns.current_user.id))
      |> assign(:changeset, Users.change_user(socket.assigns.current_user))
      |> assign(:methods, MFA.list_methods(socket.assigns.current_user))
@@ -51,7 +51,7 @@ defmodule FzHttpWeb.SettingLive.Account do
   def handle_params(_params, _url, socket) do
     {:noreply,
      socket
-     |> assign(:allow_delete, length(Users.list_admins()) > 1)
+     |> assign(:allow_delete, Users.count_by_role(:admin) > 1)
      |> assign(:api_tokens, ApiTokens.list_api_tokens(socket.assigns.current_user.id))}
   end
 

@@ -60,7 +60,7 @@ defmodule FzHttp.OIDC.Refresher do
     })
 
     with %{error: _} <- refresh_response do
-      user = Users.get_user!(user_id)
+      user = Users.fetch_user_by_id!(user_id)
 
       Logger.info("Disabling user #{user.email} due to OIDC token refresh failure...")
 

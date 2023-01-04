@@ -58,14 +58,13 @@ defmodule FzHttp.Release do
       "password_confirmation" => password
     }
 
-    {:ok, _user} =
-      Users.get_user!(email: email)
-      |> Users.admin_update_user(params)
+    {:ok, user} = Users.fetch_user_by_email(email)
+    {:ok, _user} = Users.admin_update_user(user, params)
   end
 
   def reset_role(email, role) do
-    Users.get_user!(email: email)
-    |> Users.update_user_role(role)
+    {:ok, user} = Users.fetch_user_by_email(email)
+    Users.update_user_role(user, role)
   end
 
   def repos do

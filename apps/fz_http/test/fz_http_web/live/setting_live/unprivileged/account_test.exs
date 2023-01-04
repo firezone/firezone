@@ -17,7 +17,7 @@ defmodule FzHttpWeb.SettingLive.Unprivileged.AccountTest do
       path = ~p"/user_account"
       {:ok, _view, html} = live(conn, path)
 
-      user = Users.get_user!(user.id)
+      user = Users.fetch_user_by_id!(user.id)
 
       assert html =~ user.email
     end

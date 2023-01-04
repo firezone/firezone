@@ -4,7 +4,7 @@ defmodule FzHttp.Configurations.Configuration.OpenIDConnectProvider do
   """
   use FzHttp, :schema
   import Ecto.Changeset
-  alias FzHttp.Validators
+  alias FzHttp.Validator
 
   @reserved_config_ids [
     "identity",
@@ -54,9 +54,22 @@ defmodule FzHttp.Configurations.Configuration.OpenIDConnectProvider do
     ])
     # Don't allow users to enter reserved config ids
     |> validate_exclusion(:id, @reserved_config_ids)
-    |> Validators.OpenIDConnect.validate_discovery_document_uri()
-    |> Validators.Common.validate_uri([
+    |> validate_discovery_document_uri()
+    |> Validator.validate_uri([
       :redirect_uri
     ])
+  end
+
+  def validate_discovery_document_uri(changeset) do
+    changeset
+    |> validate_change(:discovery_document_uri, fn :discovery_document_uri, value ->
+      case OpenIDConnect.update_documents(discovery_document_uri: value) do
+        {:ok, _update_result} ->
+          []
+
+        {:error, :update_documents, reason} ->
+          [discovery_document_uri: "is invalid. Reason: #{inspect(reason)}"]
+      end
+    end)
   end
 end

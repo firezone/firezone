@@ -10,21 +10,19 @@ defmodule FzHttpWeb.NotificationChannel do
 
   @impl Phoenix.Channel
   def join("notification:session", %{"user_agent" => user_agent, "token" => token}, socket) do
-    case Phoenix.Token.verify(socket, "channel auth", token, @token_verify_opts) do
-      {:ok, user_id} ->
-        socket =
-          socket
-          |> assign(:current_user, Users.get_user!(user_id))
-          |> assign(:user_agent, user_agent)
+    with {:ok, user_id} <-
+           Phoenix.Token.verify(socket, "channel auth", token, @token_verify_opts),
+         {:ok, user} <- Users.fetch_user_by_id(user_id) do
+      socket =
+        socket
+        |> assign(:current_user, user)
+        |> assign(:user_agent, user_agent)
 
-        send(self(), :after_join)
+      send(self(), :after_join)
 
-        {:ok,
-         socket
-         |> assign(:current_user, Users.get_user!(user_id))}
-
-      {:error, _} ->
-        {:error, %{reason: "unauthorized"}}
+      {:ok, socket}
+    else
+      _ -> {:error, %{reason: "unauthorized"}}
     end
   end
 
