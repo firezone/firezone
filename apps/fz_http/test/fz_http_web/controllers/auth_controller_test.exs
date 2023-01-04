@@ -1,6 +1,7 @@
 defmodule FzHttpWeb.AuthControllerTest do
   use FzHttpWeb.ConnCase, async: true
   import Mox
+  alias FzHttp.Repo
 
   setup do
     FzHttp.Configurations.put!(
@@ -203,19 +204,37 @@ defmodule FzHttpWeb.AuthControllerTest do
     setup :create_user
 
     test "redirects to root path", %{unauthed_conn: conn, user: user} do
+      refute user.sign_in_token
+
       test_conn = post(conn, ~p"/auth/magic_link", %{"email" => user.email})
 
       assert redirected_to(test_conn) == ~p"/"
 
       assert Phoenix.Flash.get(test_conn.assigns.flash, :info) ==
                "Please check your inbox for the magic link."
+
+      user = Repo.get(FzHttp.Users.User, user.id)
+      assert user.sign_in_token_hash
+
+      assert_receive {:email, email}
+
+      assert email.subject == "Firezone Magic Link"
+      assert email.to == [{"", user.email}]
+      assert email.text_body =~ "/auth/magic/#{user.id}/"
+
+      token = String.split(email.assigns.link, "/") |> List.last()
+
+      assert {:ok, _user} = FzHttp.Users.consume_sign_in_token(user, token)
     end
   end
 
   describe "when using magic link" do
     setup :create_user
 
-    alias FzHttp.Repo
+    setup context do
+      {:ok, user} = FzHttp.Users.request_sign_in_token(context.user)
+      Map.put(context, :user, user)
+    end
 
     test "user sign_in_token is cleared", %{unauthed_conn: conn, user: user} do
       assert not is_nil(user.sign_in_token)

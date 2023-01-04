@@ -2,7 +2,7 @@ defmodule FzHttp.Users.User do
   use FzHttp, :schema
 
   schema "users" do
-    field :role, Ecto.Enum, values: [:unprivileged, :admin], default: :unprivileged
+    field :role, Ecto.Enum, values: [:unprivileged, :admin]
     field :email, :string
     field :password_hash, :string
 

@@ -1,10 +1,8 @@
 defmodule FzHttp.Users do
-  import Ecto.Changeset
-  import Ecto.Query, warn: false
-  alias FzHttp.Repo
-  alias FzHttp.Validator
+  alias FzHttp.{Repo, Validator, Configurations}
   alias FzHttp.Telemetry
   alias FzHttp.Users.User
+  require Ecto.Query
 
   def count do
     User.Query.all()
@@ -59,20 +57,6 @@ defmodule FzHttp.Users do
     |> hydrate_fields(rest)
   end
 
-  def create_admin_user(attrs) do
-    create_user_with_role(attrs, :admin)
-  end
-
-  def create_unprivileged_user(attrs) do
-    create_user_with_role(attrs, :unprivileged)
-  end
-
-  defp create_user_with_role(attrs, role) do
-    attrs
-    |> Enum.into(%{})
-    |> create_user(role: role)
-  end
-
   def request_sign_in_token(%User{} = user) do
     user
     |> User.Changeset.generate_sign_in_token()
@@ -99,53 +83,53 @@ defmodule FzHttp.Users do
     end
   end
 
-  ####
-
-  def create_user(attrs, overwrites \\ []) do
-    changeset = User.Changeset.create_changeset(attrs)
-
-    result =
-      overwrites
-      |> Enum.reduce(changeset, fn {k, v}, cs -> put_change(cs, k, v) end)
-      |> Repo.insert()
-
-    case result do
-      {:ok, _user} ->
-        Telemetry.add_user()
-
-      _ ->
-        nil
-    end
-
-    result
+  def create_admin_user(attrs) do
+    create_user(attrs, :admin)
   end
 
+  def create_unprivileged_user(attrs) do
+    create_user(attrs, :unprivileged)
+  end
+
+  def create_user(attrs, role \\ :unprivileged) do
+    User.Changeset.create_changeset(role, attrs)
+    |> insert_user()
+  end
+
+  defp insert_user(%Ecto.Changeset{} = changeset) do
+    with {:ok, user} <- Repo.insert(changeset) do
+      Telemetry.add_user()
+      {:ok, user}
+    end
+  end
+
+  # XXX: This should go down to single function update_user(self, attrs, subject)
+  # where subject will know role of an updater and if he is updating himself.
   def admin_update_user(%User{} = user, attrs) do
     user
-    |> User.Changeset.update_email(attrs)
-    |> User.update_role(attrs)
-    |> User.Changeset.update_password(attrs)
+    |> User.Changeset.update_user_role(attrs)
+    |> User.Changeset.update_user_email(attrs)
+    |> User.Changeset.update_user_password(attrs)
     |> Repo.update()
   end
 
   def admin_update_self(%User{} = user, attrs) do
     user
-    |> User.Changeset.update_email(attrs)
-    |> User.Changeset.update_password(attrs)
     |> User.Changeset.require_current_password(attrs)
+    |> User.Changeset.update_user_email(attrs)
+    |> User.Changeset.update_user_password(attrs)
     |> Repo.update()
   end
 
   def unprivileged_update_self(%User{} = user, attrs) do
     user
-    |> User.Changeset.require_password_change(attrs)
-    |> User.Changeset.update_password(attrs)
+    |> User.Changeset.update_user_password(attrs)
     |> Repo.update()
   end
 
   def update_user_role(%User{} = user, role) do
     user
-    |> User.Changeset.update_role(%{role: role})
+    |> User.Changeset.update_user_role(role)
     |> Repo.update()
   end
 
@@ -154,12 +138,14 @@ defmodule FzHttp.Users do
     Repo.delete(user)
   end
 
+  # XXX: This should return real changeset not just a dummy one listing all the fields
   def change_user(%User{} = user \\ %User{}) do
-    change(user)
+    Ecto.Changeset.change(user)
   end
 
   def as_settings do
-    Repo.all(from u in User, select: %{id: u.id})
+    User.Query.select_id_map()
+    |> Repo.all()
     |> Enum.map(&setting_projection/1)
     |> MapSet.new()
   end
@@ -168,11 +154,11 @@ defmodule FzHttp.Users do
     user.id
   end
 
-  def update_last_signed_in(user, %{provider: provider} = _auth) do
+  def update_last_signed_in(user, %{provider: provider}) do
     method =
       case provider do
         :identity -> "email"
-        m -> to_string(m)
+        other -> to_string(other)
       end
 
     user
@@ -183,27 +169,20 @@ defmodule FzHttp.Users do
     |> Repo.update()
   end
 
-  @doc """
-  Returns DateTime that VPN sessions expire based on last_signed_in_at
-  and the security.require_auth_for_vpn_frequency setting.
-  """
-  def vpn_session_expires_at(user, duration) do
-    DateTime.add(user.last_signed_in_at, duration)
+  def vpn_session_expires_at(user) do
+    DateTime.add(user.last_signed_in_at, Configurations.vpn_duration())
   end
 
-  def vpn_session_expired?(user, duration) do
-    max = FzHttp.Configurations.Configuration.max_vpn_session_duration()
-
-    case duration do
-      0 ->
+  def vpn_session_expired?(user) do
+    cond do
+      is_nil(user.last_signed_in_at) ->
         false
 
-      ^max ->
-        is_nil(user.last_signed_in_at)
+      not Configurations.vpn_sessions_expire?() ->
+        false
 
-      _num ->
-        is_nil(user.last_signed_in_at) ||
-          DateTime.diff(vpn_session_expires_at(user, duration), DateTime.utc_now()) <= 0
+      true ->
+        DateTime.diff(vpn_session_expires_at(user), DateTime.utc_now()) <= 0
     end
   end
 end

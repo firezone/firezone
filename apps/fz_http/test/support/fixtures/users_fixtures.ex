@@ -3,8 +3,15 @@ defmodule FzHttp.UsersFixtures do
   This module defines test helpers for creating
   entities via the `FzHttp.Users` context.
   """
+  alias FzHttp.Users
 
-  alias FzHttp.{Repo, Users, Users.User}
+  def user_attrs(attrs \\ %{}) do
+    Enum.into(attrs, %{
+      email: "test-#{counter()}@test",
+      password: "password1234",
+      password_confirmation: "password1234"
+    })
+  end
 
   def create_user_with_role(attrs \\ %{}, role) do
     attrs
@@ -20,25 +27,10 @@ defmodule FzHttp.UsersFixtures do
   Generate a user specified by email, or generate a new otherwise.
   """
   def user(attrs \\ %{}) do
-    email = attrs[:email] || "test-#{counter()}@test"
-
-    case Repo.get_by(User, email: email) do
-      nil ->
-        {:ok, user} =
-          Users.create_user(
-            %{
-              email: email,
-              password: "password1234",
-              password_confirmation: "password1234"
-            },
-            Enum.into(attrs, %{role: :admin})
-          )
-
-        user
-
-      %User{} = user ->
-        user
-    end
+    attrs = user_attrs(attrs)
+    {role, attrs} = Map.pop(attrs, :role, :admin)
+    {:ok, user} = Users.create_user(attrs, role)
+    user
   end
 
   defp counter do

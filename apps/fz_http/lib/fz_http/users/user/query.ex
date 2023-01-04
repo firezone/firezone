@@ -25,6 +25,11 @@ defmodule FzHttp.Users.User.Query do
     )
   end
 
+  def select_id_map(queryable \\ all()) do
+    queryable
+    |> select([users: users], %{id: users.id})
+  end
+
   def hydrate_device_count(queryable \\ all()) do
     queryable
     |> with_assoc(:devices)

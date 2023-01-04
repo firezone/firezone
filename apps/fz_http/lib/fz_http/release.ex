@@ -34,11 +34,11 @@ defmodule FzHttp.Release do
         change_password(email(), default_password())
         reset_role(email(), :admin)
       else
-        Users.create_admin_user(
+        Users.create_admin_user(%{
           email: email(),
           password: default_password(),
           password_confirmation: default_password()
-        )
+        })
       end
 
     # Notify the user

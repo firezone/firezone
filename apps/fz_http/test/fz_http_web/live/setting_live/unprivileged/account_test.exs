@@ -50,7 +50,7 @@ defmodule FzHttpWeb.SettingLive.Unprivileged.AccountTest do
       assert flash["info"] == "Password updated successfully."
     end
 
-    test "doesn't allow empty password", %{unprivileged_conn: conn} do
+    test "doesn't allow invalid password", %{unprivileged_conn: conn} do
       path = ~p"/user_account/change_password"
       {:ok, view, _html} = live(conn, path)
 
@@ -60,7 +60,7 @@ defmodule FzHttpWeb.SettingLive.Unprivileged.AccountTest do
         |> render_submit(@invalid_params)
 
       refute_redirected(view, ~p"/user_account")
-      assert test_view =~ "can&#39;t be blank"
+      assert test_view =~ "should be at least 12 character(s)"
     end
 
     test "closes modal", %{unprivileged_conn: conn} do

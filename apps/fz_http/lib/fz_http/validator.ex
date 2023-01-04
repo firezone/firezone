@@ -107,7 +107,8 @@ defmodule FzHttp.Validator do
   Takes value from `value_field` and puts it's hash to `hash_field`.
   """
   def put_hash(%Ecto.Changeset{} = changeset, value_field, to: hash_field) do
-    with {:ok, value} when is_binary(value) <- fetch_change(changeset, value_field) do
+    with {:ok, value} when is_binary(value) and value != "" <-
+           fetch_change(changeset, value_field) do
       put_change(changeset, hash_field, FzCommon.FzCrypto.hash(value))
     else
       _ -> changeset
@@ -143,6 +144,15 @@ defmodule FzHttp.Validator do
 
       _else ->
         changeset
+    end
+  end
+
+  def validate_if_changed(%Ecto.Changeset{} = changeset, field, callback)
+      when is_function(callback, 1) do
+    with {:ok, _value} <- fetch_change(changeset, field) do
+      callback.(changeset)
+    else
+      _ -> changeset
     end
   end
 

@@ -74,7 +74,7 @@ defmodule FzHttpWeb.SettingLive.AccountTest do
         |> element("#account-edit")
         |> render_submit(@invalid_params)
 
-      assert test_view =~ "has invalid format"
+      assert test_view =~ "is invalid email address"
     end
 
     test "closes modal", %{admin_conn: conn} do
