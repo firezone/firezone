@@ -168,7 +168,6 @@ defmodule FzHttp.Validator do
     %{changeset | params: Map.drop(changeset.params, field_variations(field))}
   end
 
-  defp field_variations(field) when is_binary(field), do: [field, String.to_existing_atom(field)]
   defp field_variations(field) when is_atom(field), do: [field, Atom.to_string(field)]
 
   @doc """
