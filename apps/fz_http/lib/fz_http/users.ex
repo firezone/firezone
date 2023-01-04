@@ -168,13 +168,6 @@ defmodule FzHttp.Users do
     user.id
   end
 
-  @doc """
-  Fetches all users and groups into an Enumerable that can be used for an HTML form input.
-  """
-  def as_options_for_select do
-    Repo.all(from u in User, select: {u.email, u.id})
-  end
-
   def update_last_signed_in(user, %{provider: provider} = _auth) do
     method =
       case provider do
@@ -188,16 +181,6 @@ defmodule FzHttp.Users do
       last_signed_in_method: method
     })
     |> Repo.update()
-  end
-
-  def enable_vpn_connection(user, %{provider: :identity}), do: user
-  def enable_vpn_connection(user, %{provider: :magic_link}), do: user
-
-  def enable_vpn_connection(user, %{provider: _oidc_provider}) do
-    user
-    |> change()
-    |> put_change(:disabled_at, nil)
-    |> Repo.update!()
   end
 
   @doc """

@@ -455,35 +455,6 @@ defmodule FzHttp.UsersTest do
     end
   end
 
-  describe "enable_vpn_connection/2" do
-    import Ecto.Changeset
-
-    setup :create_user
-
-    setup %{user: user} do
-      user = user |> change |> put_change(:disabled_at, DateTime.utc_now()) |> Repo.update!()
-      {:ok, user: user}
-    end
-
-    @tag role: :unprivileged
-    test "enable via OIDC", %{user: user} do
-      Users.enable_vpn_connection(user, %{provider: :oidc})
-
-      user = Repo.reload(user)
-
-      assert %{disabled_at: nil} = user
-    end
-
-    @tag role: :unprivileged
-    test "no change via password", %{user: user} do
-      Users.enable_vpn_connection(user, %{provider: :identity})
-
-      user = Repo.reload(user)
-
-      assert user.disabled_at
-    end
-  end
-
   describe "setting_projection/1" do
     setup [:create_rule_with_user_and_device]
 
