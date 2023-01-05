@@ -13,7 +13,7 @@ alias FzCommon.{CLI, FzInteger, FzString, FzKernelVersion, FzNet}
     System.fetch_env!("EXTERNAL_URL")
     |> FzNet.to_complete_url()
   else
-    System.get_env("EXTERNAL_URL", "https://localhost")
+    System.get_env("EXTERNAL_URL", "http://localhost:4002")
     |> FzNet.to_complete_url()
   end
 

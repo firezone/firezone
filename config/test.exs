@@ -66,3 +66,7 @@ config :fz_vpn,
 config :argon2_elixir, t_cost: 1, m_cost: 8
 
 config :bureaucrat, :json_library, Jason
+
+config :wallaby,
+  driver: Wallaby.Chrome,
+  screenshot_on_failure: true
