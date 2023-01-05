@@ -4,10 +4,6 @@ defmodule FzHttpWeb.JSON.ConfigurationView do
   """
   use FzHttpWeb, :view
 
-  def render("index.json", %{configurations: configurations}) do
-    %{data: render_many(configurations, __MODULE__, "configuration.json")}
-  end
-
   def render("show.json", %{configuration: configuration}) do
     %{data: render_one(configuration, __MODULE__, "configuration.json")}
   end
