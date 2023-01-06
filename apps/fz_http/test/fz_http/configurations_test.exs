@@ -25,6 +25,7 @@ defmodule FzHttp.ConfigurationsTest do
 
   describe "auto_create_users?/2" do
     import FzHttp.ConfigurationsFixtures
+    import FzHttp.SAMLIdentityProviderFixtures
 
     test "raises if provider_id not found" do
       assert_raise(RuntimeError, "Unknown provider foobar", fn ->
@@ -37,7 +38,7 @@ defmodule FzHttp.ConfigurationsTest do
         saml_identity_providers: [
           %{
             "id" => "test",
-            "metadata" => saml_metadata(),
+            "metadata" => metadata(),
             "auto_create_users" => true,
             "label" => "SAML"
           }
@@ -52,7 +53,7 @@ defmodule FzHttp.ConfigurationsTest do
         saml_identity_providers: [
           %{
             "id" => "test",
-            "metadata" => saml_metadata(),
+            "metadata" => metadata(),
             "auto_create_users" => false,
             "label" => "SAML"
           }

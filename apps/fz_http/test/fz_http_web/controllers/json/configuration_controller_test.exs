@@ -11,7 +11,7 @@ defmodule FzHttpWeb.JSON.ConfigurationControllerTest do
   end
 
   describe "[authed] PUT /v0/configuration" do
-    import FzHttp.ConfigurationsFixtures
+    import FzHttp.SAMLIdentityProviderFixtures
 
     setup _tags, do: {:ok, conn: authed_conn()}
 
@@ -38,7 +38,7 @@ defmodule FzHttpWeb.JSON.ConfigurationControllerTest do
           "id" => "okta",
           "label" => "okta",
           "base_url" => "https://saml",
-          "metadata" => saml_metadata(),
+          "metadata" => metadata(),
           "sign_requests" => false,
           "sign_metadata" => false,
           "signed_assertion_in_resp" => false,
@@ -78,7 +78,7 @@ defmodule FzHttpWeb.JSON.ConfigurationControllerTest do
           "id" => "okta",
           "label" => "okta-label",
           "base_url" => "https://saml-old",
-          "metadata" => saml_metadata(),
+          "metadata" => metadata(),
           "sign_requests" => true,
           "sign_metadata" => true,
           "signed_assertion_in_resp" => true,
