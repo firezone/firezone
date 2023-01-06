@@ -3,7 +3,13 @@ defmodule FzHttp.Release do
   Adds common tasks to the production app because Mix is not available.
   """
 
-  alias FzHttp.{Repo, Users, Users.User}
+  alias FzHttp.{
+    ApiTokens,
+    Repo,
+    Users,
+    Users.User
+  }
+
   import Ecto.Query, only: [from: 2]
   require Logger
 
@@ -34,9 +40,14 @@ defmodule FzHttp.Release do
       end
 
     # Notify the user
-    IO.puts("Password reset! Check $HOME/.firezone/.env for sign in credentials.")
+    IO.puts("password reset to default credentials from env")
 
     reply
+  end
+
+  def create_api_token(device \\ :stdio) do
+    device
+    |> IO.write(default_admin_user() |> mint_jwt())
   end
 
   def change_password(email, password) do
@@ -61,6 +72,19 @@ defmodule FzHttp.Release do
 
   defp email do
     FzHttp.Config.fetch_env!(@app, :admin_email)
+  end
+
+  defp default_admin_user do
+    Users.get_by_email(email())
+  end
+
+  defp mint_jwt(%User{} = user) do
+    {:ok, api_token} = ApiTokens.create_user_api_token(user, %{})
+
+    {:ok, secret, _claims} =
+      FzHttpWeb.Auth.JSON.Authentication.fz_encode_and_sign(api_token, user)
+
+    secret
   end
 
   defp load_app do
