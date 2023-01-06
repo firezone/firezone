@@ -11,195 +11,96 @@ defmodule FzHttpWeb.JSON.ConfigurationControllerTest do
   end
 
   describe "[authed] PUT /v0/configuration" do
+    import FzHttp.ConfigurationsFixtures
+
     setup _tags, do: {:ok, conn: authed_conn()}
 
-    test "updates local_auth_enabled", %{conn: conn} do
-      conn = put(conn, ~p"/v0/configuration", configuration: %{"local_auth_enabled" => true})
+    @first_config %{
+      "local_auth_enabled" => false,
+      "allow_unprivileged_device_management" => false,
+      "allow_unprivileged_device_configuration" => false,
+      "openid_connect_providers" => [
+        %{
+          "id" => "google",
+          "label" => "google",
+          "scope" => "test-scope",
+          "response_type" => "response-type",
+          "client_id" => "test-id",
+          "client_secret" => "test-secret",
+          "discovery_document_uri" =>
+            "https://accounts.google.com/.well-known/openid-configuration",
+          "redirect_uri" => "https://invalid",
+          "auto_create_users" => false
+        }
+      ],
+      "saml_identity_providers" => [
+        %{
+          "id" => "okta",
+          "label" => "okta",
+          "base_url" => "https://saml",
+          "metadata" => saml_metadata(),
+          "sign_requests" => false,
+          "sign_metadata" => false,
+          "signed_assertion_in_resp" => false,
+          "signed_envelopes_in_resp" => false,
+          "auto_create_users" => false
+        }
+      ],
+      "disable_vpn_on_oidc_error" => true,
+      "vpn_session_duration" => 100,
+      "default_client_persistent_keepalive" => 1,
+      "default_client_mtu" => 1100,
+      "default_client_endpoint" => "new-endpoint",
+      "default_client_dns" => "1.1.1.1",
+      "default_client_allowed_ips" => "1.1.1.1,2.2.2.2"
+    }
 
-      assert %{"local_auth_enabled" => true} = json_response(conn, 200)["data"]
-      assert FzHttp.Configurations.get!(:local_auth_enabled) == true
+    @second_config %{
+      "local_auth_enabled" => true,
+      "allow_unprivileged_device_management" => true,
+      "allow_unprivileged_device_configuration" => true,
+      "openid_connect_providers" => [
+        %{
+          "id" => "google",
+          "label" => "google-label",
+          "scope" => "test-scope-2",
+          "response_type" => "response-type-2",
+          "client_id" => "test-id-2",
+          "client_secret" => "test-secret-2",
+          "discovery_document_uri" =>
+            "https://accounts.google.com/.well-known/openid-configuration",
+          "redirect_uri" => "https://invalid-2",
+          "auto_create_users" => true
+        }
+      ],
+      "saml_identity_providers" => [
+        %{
+          "id" => "okta",
+          "label" => "okta-label",
+          "base_url" => "https://saml-old",
+          "metadata" => saml_metadata(),
+          "sign_requests" => true,
+          "sign_metadata" => true,
+          "signed_assertion_in_resp" => true,
+          "signed_envelopes_in_resp" => true,
+          "auto_create_users" => true
+        }
+      ],
+      "disable_vpn_on_oidc_error" => false,
+      "vpn_session_duration" => 1,
+      "default_client_persistent_keepalive" => 25,
+      "default_client_mtu" => 1200,
+      "default_client_endpoint" => "old-endpoint",
+      "default_client_dns" => "4.4.4.4",
+      "default_client_allowed_ips" => "8.8.8.8"
+    }
 
-      conn = put(conn, ~p"/v0/configuration", configuration: %{"local_auth_enabled" => false})
+    test "updates fields when data is valid", %{conn: conn} do
+      conn = put(conn, ~p"/v0/configuration", configuration: @first_config)
+      assert @first_config = json_response(conn, 200)["data"]
 
-      assert %{"local_auth_enabled" => false} = json_response(conn, 200)["data"]
-      assert FzHttp.Configurations.get!(:local_auth_enabled) == false
-    end
-
-    test "updates allow_unprivileged_device_management", %{conn: conn} do
-      conn =
-        put(conn, ~p"/v0/configuration",
-          configuration: %{"allow_unprivileged_device_management" => true}
-        )
-
-      assert %{"allow_unprivileged_device_management" => true} = json_response(conn, 200)["data"]
-      assert FzHttp.Configurations.get!(:allow_unprivileged_device_management) == true
-
-      conn =
-        put(conn, ~p"/v0/configuration",
-          configuration: %{"allow_unprivileged_device_management" => false}
-        )
-
-      assert %{"allow_unprivileged_device_management" => false} = json_response(conn, 200)["data"]
-      assert FzHttp.Configurations.get!(:allow_unprivileged_device_management) == false
-    end
-
-    test "updates allow_unprivileged_device_configuration", %{conn: conn} do
-      conn =
-        put(conn, ~p"/v0/configuration",
-          configuration: %{"allow_unprivileged_device_configuration" => true}
-        )
-
-      assert %{"allow_unprivileged_device_configuration" => true} =
-               json_response(conn, 200)["data"]
-
-      assert FzHttp.Configurations.get!(:allow_unprivileged_device_configuration) == true
-
-      conn =
-        put(conn, ~p"/v0/configuration",
-          configuration: %{"allow_unprivileged_device_configuration" => false}
-        )
-
-      assert %{"allow_unprivileged_device_configuration" => false} =
-               json_response(conn, 200)["data"]
-
-      assert FzHttp.Configurations.get!(:allow_unprivileged_device_configuration) == false
-    end
-
-    test "updates disable_vpn_on_oidc_error", %{conn: conn} do
-      conn =
-        put(conn, ~p"/v0/configuration", configuration: %{"disable_vpn_on_oidc_error" => true})
-
-      assert %{"disable_vpn_on_oidc_error" => true} = json_response(conn, 200)["data"]
-      assert FzHttp.Configurations.get!(:disable_vpn_on_oidc_error) == true
-
-      conn =
-        put(conn, ~p"/v0/configuration", configuration: %{"disable_vpn_on_oidc_error" => false})
-
-      assert %{"disable_vpn_on_oidc_error" => false} = json_response(conn, 200)["data"]
-      assert FzHttp.Configurations.get!(:disable_vpn_on_oidc_error) == false
-    end
-
-    test "updates vpn_session_duration", %{conn: conn} do
-      conn = put(conn, ~p"/v0/configuration", configuration: %{"vpn_session_duration" => 1})
-      assert %{"vpn_session_duration" => 1} = json_response(conn, 200)["data"]
-      assert FzHttp.Configurations.get!(:vpn_session_duration) == 1
-
-      conn = put(conn, ~p"/v0/configuration", configuration: %{"vpn_session_duration" => 0})
-      assert %{"vpn_session_duration" => 0} = json_response(conn, 200)["data"]
-      assert FzHttp.Configurations.get!(:vpn_session_duration) == 0
-    end
-
-    test "updates default_client_persistent_keepalive", %{conn: conn} do
-      conn =
-        put(conn, ~p"/v0/configuration",
-          configuration: %{"default_client_persistent_keepalive" => 1}
-        )
-
-      assert %{"default_client_persistent_keepalive" => 1} = json_response(conn, 200)["data"]
-      assert FzHttp.Configurations.get!(:default_client_persistent_keepalive) == 1
-
-      conn =
-        put(conn, ~p"/v0/configuration",
-          configuration: %{"default_client_persistent_keepalive" => 0}
-        )
-
-      assert %{"default_client_persistent_keepalive" => 0} = json_response(conn, 200)["data"]
-      assert FzHttp.Configurations.get!(:default_client_persistent_keepalive) == 0
-
-      conn =
-        put(conn, ~p"/v0/configuration",
-          configuration: %{"default_client_persistent_keepalive" => nil}
-        )
-
-      assert %{"default_client_persistent_keepalive" => nil} = json_response(conn, 200)["data"]
-      assert FzHttp.Configurations.get!(:default_client_persistent_keepalive) == nil
-    end
-
-    test "updates default_client_mtu", %{conn: conn} do
-      conn = put(conn, ~p"/v0/configuration", configuration: %{"default_client_mtu" => 1100})
-
-      assert %{"default_client_mtu" => 1100} = json_response(conn, 200)["data"]
-      assert FzHttp.Configurations.get!(:default_client_mtu) == 1100
-
-      conn = put(conn, ~p"/v0/configuration", configuration: %{"default_client_mtu" => 1200})
-
-      assert %{"default_client_mtu" => 1200} = json_response(conn, 200)["data"]
-      assert FzHttp.Configurations.get!(:default_client_mtu) == 1200
-
-      conn = put(conn, ~p"/v0/configuration", configuration: %{"default_client_mtu" => nil})
-
-      assert %{"default_client_mtu" => nil} = json_response(conn, 200)["data"]
-      assert FzHttp.Configurations.get!(:default_client_mtu) == nil
-    end
-
-    test "updates default_client_endpoint", %{conn: conn} do
-      conn =
-        put(conn, ~p"/v0/configuration",
-          configuration: %{"default_client_endpoint" => "new-endpoint"}
-        )
-
-      assert %{"default_client_endpoint" => "new-endpoint"} = json_response(conn, 200)["data"]
-      assert FzHttp.Configurations.get!(:default_client_endpoint) == "new-endpoint"
-
-      conn =
-        put(conn, ~p"/v0/configuration",
-          configuration: %{"default_client_endpoint" => "old-endpoint"}
-        )
-
-      assert %{"default_client_endpoint" => "old-endpoint"} = json_response(conn, 200)["data"]
-      assert FzHttp.Configurations.get!(:default_client_endpoint) == "old-endpoint"
-
-      conn = put(conn, ~p"/v0/configuration", configuration: %{"default_client_endpoint" => nil})
-
-      assert %{"default_client_endpoint" => nil} = json_response(conn, 200)["data"]
-      assert FzHttp.Configurations.get!(:default_client_endpoint) == nil
-    end
-
-    test "updates default_client_dns", %{conn: conn} do
-      conn = put(conn, ~p"/v0/configuration", configuration: %{"default_client_dns" => "1.1.1.1"})
-
-      assert %{"default_client_dns" => "1.1.1.1"} = json_response(conn, 200)["data"]
-      assert FzHttp.Configurations.get!(:default_client_dns) == "1.1.1.1"
-
-      conn =
-        put(conn, ~p"/v0/configuration", configuration: %{"default_client_dns" => "dns-as-host"})
-
-      assert %{"default_client_dns" => "dns-as-host"} = json_response(conn, 200)["data"]
-      assert FzHttp.Configurations.get!(:default_client_dns) == "dns-as-host"
-
-      conn = put(conn, ~p"/v0/configuration", configuration: %{"default_client_dns" => nil})
-
-      assert %{"default_client_dns" => nil} = json_response(conn, 200)["data"]
-      assert FzHttp.Configurations.get!(:default_client_dns) == nil
-    end
-
-    # XXX: Allow array input for allowed_ips
-    test "updates default_client_allowed_ips", %{conn: conn} do
-      conn =
-        put(conn, ~p"/v0/configuration",
-          configuration: %{"default_client_allowed_ips" => "0.0.0.0/0,::/0"}
-        )
-
-      assert %{"default_client_allowed_ips" => "0.0.0.0/0,::/0"} =
-               json_response(conn, 200)["data"]
-
-      assert FzHttp.Configurations.get!(:default_client_allowed_ips) == "0.0.0.0/0,::/0"
-
-      conn =
-        put(conn, ~p"/v0/configuration",
-          configuration: %{"default_client_allowed_ips" => "1.1.1.1,2.2.2.2"}
-        )
-
-      assert %{"default_client_allowed_ips" => "1.1.1.1,2.2.2.2"} =
-               json_response(conn, 200)["data"]
-
-      assert FzHttp.Configurations.get!(:default_client_allowed_ips) == "1.1.1.1,2.2.2.2"
-
-      conn =
-        put(conn, ~p"/v0/configuration", configuration: %{"default_client_allowed_ips" => nil})
-
-      assert %{"default_client_allowed_ips" => nil} = json_response(conn, 200)["data"]
-      assert FzHttp.Configurations.get!(:default_client_allowed_ips) == nil
+      conn = put(conn, ~p"/v0/configuration", configuration: @second_config)
+      assert @second_config = json_response(conn, 200)["data"]
     end
 
     test "renders errors when data is invalid", %{conn: conn} do
