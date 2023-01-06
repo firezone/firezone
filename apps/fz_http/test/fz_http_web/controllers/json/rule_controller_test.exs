@@ -15,43 +15,41 @@ defmodule FzHttpWeb.JSON.RuleControllerTest do
     "port_range" => "1 - 65000"
   }
 
-  describe "GET /v0/rules/:id" do
+  describe "[authed] GET /v0/rules/:id" do
+    setup _tags, do: {:ok, conn: authed_conn()}
     setup :create_rule
 
-    test "shows rule", %{authed_conn: conn, rule: %{id: id}} do
+    test "shows rule", %{conn: conn, rule: %{id: id}} do
       conn = get(conn, ~p"/v0/rules/#{id}")
       assert %{"id" => ^id} = json_response(conn, 200)["data"]
     end
 
-    test "renders 401 for missing authorization header", %{unauthed_conn: conn, rule: rule} do
-      conn = get(conn, ~p"/v0/rules/#{rule}")
-      assert json_response(conn, 401)["errors"] == %{"auth" => "unauthenticated"}
-    end
-
-    test "renders 404 for rule not found", %{authed_conn: conn} do
+    test "renders 404 for rule not found", %{conn: conn} do
       assert_error_sent 404, fn ->
         get(conn, ~p"/v0/rules/003da73d-2dd9-4492-8136-3282843545e8")
       end
     end
   end
 
-  describe "POST /v0/rules" do
+  describe "[authed] POST /v0/rules" do
+    setup _tags, do: {:ok, conn: authed_conn()}
+
     @tag params: @accept_rule_params
-    test "creates accept rule when valid", %{authed_conn: conn, params: params} do
+    test "creates accept rule when valid", %{conn: conn, params: params} do
       user = conn.private.guardian_default_resource
       conn = post(conn, ~p"/v0/rules", rule: Map.merge(params, %{"user_id" => user.id}))
       assert @accept_rule_params = json_response(conn, 201)["data"]
     end
 
     @tag params: @drop_rule_params
-    test "creates drop rule when valid", %{authed_conn: conn, params: params} do
+    test "creates drop rule when valid", %{conn: conn, params: params} do
       user = conn.private.guardian_default_resource
       conn = post(conn, ~p"/v0/rules", rule: Map.merge(params, %{"user_id" => user.id}))
       assert @drop_rule_params = json_response(conn, 201)["data"]
     end
 
     @tag params: %{action: :invalid}
-    test "returns errors when invalid", %{authed_conn: conn, params: params} do
+    test "returns errors when invalid", %{conn: conn, params: params} do
       conn = post(conn, ~p"/v0/rules", rule: params)
 
       assert json_response(conn, 422)["errors"] == %{
@@ -59,18 +57,14 @@ defmodule FzHttpWeb.JSON.RuleControllerTest do
                "destination" => ["can't be blank"]
              }
     end
-
-    test "renders 401 for missing authorization header", %{unauthed_conn: conn} do
-      conn = post(conn, ~p"/v0/rules", rule: %{})
-      assert json_response(conn, 401)["errors"] == %{"auth" => "unauthenticated"}
-    end
   end
 
-  describe "PUT /v0/rules/:id" do
+  describe "[authed] PUT /v0/rules/:id" do
     setup :create_rule
+    setup _tags, do: {:ok, conn: authed_conn()}
 
     @tag params: @accept_rule_params
-    test "updates accept rule when valid", %{authed_conn: conn, params: params, rule: %{id: id}} do
+    test "updates accept rule when valid", %{conn: conn, params: params, rule: %{id: id}} do
       conn = put(conn, ~p"/v0/rules/#{id}", rule: params)
       assert %{"id" => ^id} = json_response(conn, 200)["data"]
 
@@ -80,7 +74,7 @@ defmodule FzHttpWeb.JSON.RuleControllerTest do
     end
 
     @tag params: @drop_rule_params
-    test "updates drop rule when valid", %{authed_conn: conn, params: params, rule: %{id: id}} do
+    test "updates drop rule when valid", %{conn: conn, params: params, rule: %{id: id}} do
       conn = put(conn, ~p"/v0/rules/#{id}", rule: params)
       assert %{"id" => ^id} = json_response(conn, 200)["data"]
 
@@ -90,41 +84,33 @@ defmodule FzHttpWeb.JSON.RuleControllerTest do
     end
 
     @tag params: %{action: :invalid}
-    test "returns errors when invalid", %{authed_conn: conn, rule: rule, params: params} do
+    test "returns errors when invalid", %{conn: conn, rule: rule, params: params} do
       conn = put(conn, ~p"/v0/rules/#{rule}", rule: params)
       assert json_response(conn, 422)["errors"] == %{"action" => ["is invalid"]}
     end
 
-    test "renders 401 for missing authorization header", %{unauthed_conn: conn, rule: rule} do
-      conn = put(conn, ~p"/v0/rules/#{rule}", rule: %{})
-      assert json_response(conn, 401)["errors"] == %{"auth" => "unauthenticated"}
-    end
-
-    test "renders 404 for rule not found", %{authed_conn: conn} do
+    test "renders 404 for rule not found", %{conn: conn} do
       assert_error_sent 404, fn ->
         put(conn, ~p"/v0/rules/003da73d-2dd9-4492-8136-3282843545e8", rule: %{})
       end
     end
   end
 
-  describe "GET /v0/rules" do
+  describe "[authed] GET /v0/rules" do
     setup :create_rules
+    setup _tags, do: {:ok, conn: authed_conn()}
 
-    test "lists rules", %{authed_conn: conn, rules: rules} do
+    test "lists rules", %{conn: conn, rules: rules} do
       conn = get(conn, ~p"/v0/rules")
       assert length(json_response(conn, 200)["data"]) == length(rules)
     end
-
-    test "renders 401 for missing authorization header", %{unauthed_conn: conn} do
-      conn = get(conn, ~p"/v0/rules")
-      assert json_response(conn, 401)["errors"] == %{"auth" => "unauthenticated"}
-    end
   end
 
-  describe "DELETE /v0/rules/:id" do
+  describe "[authed] DELETE /v0/rules/:id" do
     setup :create_rule
+    setup _tags, do: {:ok, conn: authed_conn()}
 
-    test "deletes rule", %{authed_conn: conn, rule: rule} do
+    test "deletes rule", %{conn: conn, rule: rule} do
       conn = delete(conn, ~p"/v0/rules/#{rule}")
       assert response(conn, 204)
 
@@ -133,15 +119,59 @@ defmodule FzHttpWeb.JSON.RuleControllerTest do
       end
     end
 
-    test "renders 401 for missing authorization header", %{unauthed_conn: conn, rule: rule} do
-      conn = delete(conn, ~p"/v0/rules/#{rule}")
-      assert json_response(conn, 401)["errors"] == %{"auth" => "unauthenticated"}
-    end
-
-    test "renders 404 for rule not found", %{authed_conn: conn} do
+    test "renders 404 for rule not found", %{conn: conn} do
       assert_error_sent 404, fn ->
         delete(conn, ~p"/v0/rules/003da73d-2dd9-4492-8136-3282843545e8")
       end
+    end
+  end
+
+  describe "[unauthed] GET /v0/rules/:id" do
+    setup _tags, do: {:ok, conn: unauthed_conn()}
+    setup :create_rule
+
+    test "renders 401 for missing authorization header", %{conn: conn, rule: rule} do
+      conn = get(conn, ~p"/v0/rules/#{rule}")
+      assert json_response(conn, 401)["errors"] == %{"auth" => "unauthenticated"}
+    end
+  end
+
+  describe "[unauthed] POST /v0/rules" do
+    setup _tags, do: {:ok, conn: unauthed_conn()}
+
+    test "renders 401 for missing authorization header", %{conn: conn} do
+      conn = post(conn, ~p"/v0/rules", rule: %{})
+      assert json_response(conn, 401)["errors"] == %{"auth" => "unauthenticated"}
+    end
+  end
+
+  describe "[unauthed] GET /v0/rules" do
+    setup :create_rules
+    setup _tags, do: {:ok, conn: unauthed_conn()}
+
+    test "renders 401 for missing authorization header", %{conn: conn} do
+      conn = get(conn, ~p"/v0/rules")
+      assert json_response(conn, 401)["errors"] == %{"auth" => "unauthenticated"}
+    end
+  end
+
+  describe "[unauthed] PUT /v0/rules/:id" do
+    setup :create_rule
+    setup _tags, do: {:ok, conn: unauthed_conn()}
+
+    test "renders 401 for missing authorization header", %{conn: conn, rule: rule} do
+      conn = put(conn, ~p"/v0/rules/#{rule}", rule: %{})
+      assert json_response(conn, 401)["errors"] == %{"auth" => "unauthenticated"}
+    end
+  end
+
+  describe "[unauthed] DELETE /v0/rules/:id" do
+    setup :create_rule
+    setup _tags, do: {:ok, conn: unauthed_conn()}
+
+    test "renders 401 for missing authorization header", %{conn: conn, rule: rule} do
+      conn = delete(conn, ~p"/v0/rules/#{rule}")
+      assert json_response(conn, 401)["errors"] == %{"auth" => "unauthenticated"}
     end
   end
 end

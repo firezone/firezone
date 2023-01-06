@@ -17,11 +17,6 @@ defmodule FzHttpWeb.ApiCase do
   use ExUnit.CaseTemplate
   use FzHttp.CaseTemplate
 
-  alias FzHttp.{
-    ApiTokensFixtures,
-    UsersFixtures
-  }
-
   using do
     quote do
       # Import conveniences for testing with connections
@@ -29,33 +24,38 @@ defmodule FzHttpWeb.ApiCase do
       import Phoenix.ConnTest
       import FzHttp.TestHelpers
 
+      alias FzHttp.{
+        ApiTokensFixtures,
+        UsersFixtures
+      }
+
       use FzHttpWeb, :verified_routes
 
       # The default endpoint for testing
       @endpoint FzHttpWeb.Endpoint
+
+      def new_conn do
+        Phoenix.ConnTest.build_conn()
+      end
+
+      def api_conn do
+        new_conn()
+        |> Plug.Conn.put_req_header("accept", "application/json")
+      end
+
+      def unauthed_conn, do: api_conn()
+
+      def authed_conn do
+        user = UsersFixtures.user(%{role: :admin})
+        api_token = ApiTokensFixtures.api_token(%{"user_id" => user.id})
+
+        {:ok, token, _claims} =
+          FzHttpWeb.Auth.JSON.Authentication.fz_encode_and_sign(api_token, user)
+
+        api_conn()
+        |> Plug.Conn.put_req_header("authorization", "bearer #{token}")
+        |> FzHttpWeb.Auth.JSON.Pipeline.call([])
+      end
     end
-  end
-
-  def new_conn do
-    Phoenix.ConnTest.build_conn()
-  end
-
-  def api_conn do
-    new_conn()
-    |> Plug.Conn.put_req_header("accept", "application/json")
-  end
-
-  def authed_conn do
-    user = UsersFixtures.user(%{role: :admin})
-    api_token = ApiTokensFixtures.api_token(%{"user_id" => user.id})
-    {:ok, token, _claims} = FzHttpWeb.Auth.JSON.Authentication.fz_encode_and_sign(api_token, user)
-
-    api_conn()
-    |> Plug.Conn.put_req_header("authorization", "bearer #{token}")
-    |> FzHttpWeb.Auth.JSON.Pipeline.call([])
-  end
-
-  setup _tags do
-    {:ok, unauthed_conn: api_conn(), authed_conn: authed_conn()}
   end
 end
