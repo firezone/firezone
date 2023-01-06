@@ -1,7 +1,5 @@
 defmodule FzHttpWeb.UserSocket do
   use Phoenix.Socket
-
-  alias FzHttp.Users
   alias FzHttpWeb.HeaderHelpers
 
   @blank_ip_warning """
@@ -31,6 +29,8 @@ defmodule FzHttpWeb.UserSocket do
   # See `Phoenix.Token` documentation for examples in
   # performing token verification on connect.
   def connect(%{"token" => token}, socket, connect_info) do
+    socket = assign(socket, :user_agent, connect_info[:user_agent])
+
     parse_ip(connect_info)
     |> verify_token_and_assign_remote_ip(token, socket)
   end
@@ -50,14 +50,26 @@ defmodule FzHttpWeb.UserSocket do
   defp verify_token_and_assign_remote_ip(ip, token, socket) do
     case Phoenix.Token.verify(socket, "user auth", token, @token_verify_opts) do
       {:ok, user_id} ->
-        {:ok,
-         socket
-         |> assign(:current_user, Users.fetch_user_by_id!(user_id))
-         |> assign(:remote_ip, ip)}
+        socket =
+          socket
+          |> assign(:current_user_id, user_id)
+          |> assign(:remote_ip, ip)
+
+        {:ok, socket}
 
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  # No proxy
+  defp get_ip_address(%{peer_data: %{address: address}, x_headers: []}) do
+    address
+  end
+
+  # Proxied
+  defp get_ip_address(%{x_headers: x_headers}) do
+    RemoteIp.from(x_headers, HeaderHelpers.remote_ip_opts())
   end
 
   # Socket id's are topics that allow you to identify all sockets for a given user:
@@ -71,15 +83,5 @@ defmodule FzHttpWeb.UserSocket do
   #
   # Returning `nil` makes this socket anonymous.
   # def id(_socket), do: nil
-  def id(socket), do: "user_socket:#{socket.assigns.current_user.id}"
-
-  # No proxy
-  defp get_ip_address(%{peer_data: %{address: address}, x_headers: []}) do
-    address
-  end
-
-  # Proxied
-  defp get_ip_address(%{x_headers: x_headers}) do
-    RemoteIp.from(x_headers, HeaderHelpers.remote_ip_opts())
-  end
+  def id(socket), do: "user_socket:#{socket.assigns.current_user_id}"
 end

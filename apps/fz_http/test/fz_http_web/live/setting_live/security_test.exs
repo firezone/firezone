@@ -231,7 +231,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
       assert %FzHttp.Configurations.Configuration.SAMLIdentityProvider{
                auto_create_users: true,
                # XXX this field would be nil if we don't "guess" the url when we load the record in StartServer
-               base_url: "https://localhost/auth/saml",
+               base_url: "http://localhost:4002/auth/saml",
                id: "FAKEID",
                label: "FOO",
                metadata: attrs["metadata"],

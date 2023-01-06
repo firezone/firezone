@@ -10,7 +10,7 @@ defmodule FzHttpWeb.NotificationChannelTest do
 
       socket =
         FzHttpWeb.UserSocket
-        |> socket(user.id, %{remote_ip: "127.0.0.1"})
+        |> socket(user.id, %{remote_ip: "127.0.0.1", user_agent: "test"})
 
       %{
         user: user,
@@ -21,8 +21,7 @@ defmodule FzHttpWeb.NotificationChannelTest do
 
     test "joins channel with valid token", %{token: token, socket: socket, user: user} do
       payload = %{
-        "token" => token,
-        "user_agent" => "test"
+        "token" => token
       }
 
       {:ok, _, test_socket} =
@@ -34,8 +33,7 @@ defmodule FzHttpWeb.NotificationChannelTest do
 
     test "prevents joining with invalid token", %{token: _token, socket: socket, user: _user} do
       payload = %{
-        "token" => "foobar",
-        "user_agent" => "test"
+        "token" => "foobar"
       }
 
       assert {:error, %{reason: "unauthorized"}} ==

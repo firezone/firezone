@@ -2,7 +2,7 @@ defmodule FzHttpWeb.AcceptanceCase do
   use ExUnit.CaseTemplate
 
   using do
-    quote location: :keep do
+    quote do
       # Import conveniences for testing with browser
       use Wallaby.DSL
       use FzHttpWeb, :verified_routes
@@ -94,6 +94,8 @@ defmodule FzHttpWeb.AcceptanceCase do
           quote do
             try do
               unquote(block)
+              # Wallaby.Browser.execute_script(var!(session), "liveSocket.disconnect();")
+              # Process.sleep(100)
               :ok
             rescue
               e ->
@@ -134,8 +136,7 @@ defmodule FzHttpWeb.AcceptanceCase do
     contents = Macro.escape(contents, unquote: true)
     %{module: mod, file: file, line: line} = __CALLER__
 
-    quote location: :keep,
-          bind_quoted: [
+    quote bind_quoted: [
             var: var,
             contents: contents,
             message: message,
