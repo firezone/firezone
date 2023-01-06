@@ -2,10 +2,10 @@ defmodule FzHttpWeb.JSON.RuleControllerTest do
   use FzHttpWeb.ApiCase, async: true
 
   @accept_rule_params %{
-    "destination" => "5.5.5.5/24",
+    "destination" => "1.1.1.1/24",
     "action" => "accept",
-    "port_type" => "tcp",
-    "port_range" => "1 - 65000"
+    "port_type" => "udp",
+    "port_range" => "1 - 2"
   }
 
   @drop_rule_params %{
