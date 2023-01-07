@@ -6,15 +6,11 @@ defmodule FzHttpWeb.NotificationChannel do
   alias FzHttp.Users
   alias FzHttpWeb.Presence
 
-  @token_verify_opts [max_age: 86_400]
-
   @impl Phoenix.Channel
-  def join("notification:session", %{"token" => token}, socket) do
-    FzHttpWeb.Sandbox.allow_channel_sql_sandbox(socket)
+  def join("notification:session", _attrs, socket) do
+    socket = FzHttpWeb.Sandbox.allow_channel_sql_sandbox(socket)
 
-    with {:ok, user_id} <-
-           Phoenix.Token.verify(socket, "channel auth", token, @token_verify_opts),
-         {:ok, user} <- Users.fetch_user_by_id(user_id) do
+    with {:ok, user} <- Users.fetch_user_by_id(socket.assigns.current_user_id) do
       socket = assign(socket, :current_user, user)
       send(self(), :after_join)
       {:ok, socket}

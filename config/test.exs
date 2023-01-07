@@ -54,7 +54,7 @@ config :ueberauth, Ueberauth,
   ]
 
 # Provide mock for OpenIDConnect
-config :fz_http, :openid_connect, OpenIDConnect.Mock
+# config :fz_http, :openid_connect, OpenIDConnect.Mock
 
 config :fz_http, FzHttpWeb.Mailer, adapter: Swoosh.Adapters.Test, from_email: "test@firez.one"
 
@@ -69,4 +69,7 @@ config :bureaucrat, :json_library, Jason
 
 config :wallaby,
   driver: Wallaby.Chrome,
-  screenshot_on_failure: true
+  screenshot_on_failure: true,
+  # XXX: Contribute to Wallaby to make this configurable on the per-process level,
+  # along with buffer to write logs only on process failure
+  js_logger: false

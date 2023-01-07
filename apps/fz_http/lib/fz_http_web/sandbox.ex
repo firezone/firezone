@@ -2,33 +2,38 @@ defmodule FzHttpWeb.Sandbox do
   @moduledoc """
   A set of helpers that allow Phoenix components (Channels and LiveView) to access SQL sandbox in test environment.
   """
-  alias Phoenix.Ecto.SQL.Sandbox
+
+  def allow_channel_sql_sandbox(socket) do
+    if Map.has_key?(socket.assigns, :user_agent) do
+      allow(socket.assigns.user_agent)
+    end
+
+    socket
+  end
+
+  def allow_live_ecto_sandbox(socket) do
+    if Phoenix.LiveView.connected?(socket) do
+      socket
+      |> Phoenix.LiveView.get_connect_info(:user_agent)
+      |> allow()
+    end
+
+    socket
+  end
 
   if Mix.env() in [:test, :dev] do
-    def allow_channel_sql_sandbox(socket) do
-      if Map.has_key?(socket.assigns, :user_agent) do
-        user_agent = socket.assigns.user_agent
-        Sandbox.allow(user_agent, Ecto.Adapters.SQL.Sandbox)
-      else
-        :ok
-      end
-    end
+    defp allow(metadata) do
+      # We notify the test process that there is someone trying to access the sandbox,
+      # so that it can optionally await after test has passed for the sandbox to be
+      # closed gracefully
+      %{owner: owner_pid} = Phoenix.Ecto.SQL.Sandbox.decode_metadata(metadata)
+      send(owner_pid, {:sandbox_access, self()})
 
-    def allow_live_ecto_sandbox(socket) do
-      %{assigns: %{user_agent: user_agent}} =
-        socket =
-        Phoenix.Component.assign_new(socket, :user_agent, fn ->
-          Phoenix.LiveView.get_connect_info(socket, :user_agent)
-        end)
-
-      if Phoenix.LiveView.connected?(socket),
-        do: Sandbox.allow(user_agent, Ecto.Adapters.SQL.Sandbox),
-        else: :ok
-
-      socket
+      Phoenix.Ecto.SQL.Sandbox.allow(metadata, Ecto.Adapters.SQL.Sandbox)
     end
   else
-    def allow_channel_sql_sandbox(_socket), do: :ok
-    def allow_live_ecto_sandbox(socket), do: socket
+    defp allow(_metadata) do
+      :ok
+    end
   end
 end

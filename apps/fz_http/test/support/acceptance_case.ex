@@ -79,6 +79,96 @@ defmodule FzHttpWeb.AcceptanceCase do
     end)
   end
 
+  def fetch_session_cookie(session) do
+    options = FzHttpWeb.Session.options()
+
+    key = Keyword.fetch!(options, :key)
+    encryption_salt = Keyword.fetch!(options, :encryption_salt)
+    signing_salt = Keyword.fetch!(options, :signing_salt)
+    secret_key_base = FzHttpWeb.Endpoint.config(:secret_key_base)
+
+    with {:ok, cookie} <- fetch_cookie(session, key),
+         encryption_key = Plug.Crypto.KeyGenerator.generate(secret_key_base, encryption_salt, []),
+         signing_key = Plug.Crypto.KeyGenerator.generate(secret_key_base, signing_salt, []),
+         {:ok, decrypted} <-
+           Plug.Crypto.MessageEncryptor.decrypt(
+             cookie,
+             encryption_key,
+             signing_key
+           ) do
+      {:ok, Plug.Crypto.non_executable_binary_to_term(decrypted)}
+    end
+  end
+
+  defp fetch_cookie(session, key) do
+    cookies = Wallaby.Browser.cookies(session)
+
+    if cookie = Enum.find(cookies, fn cookie -> Map.get(cookie, "name") == key end) do
+      Map.fetch(cookie, "value")
+    else
+      :error
+    end
+  end
+
+  def assert_unauthenticated(session) do
+    with {:ok, cookie} <- fetch_session_cookie(session) do
+      if token = cookie["guardian_default_token"] do
+        {:ok, claims} = FzHttpWeb.Auth.HTML.Authentication.decode_and_verify(token)
+        flunk("User is authenticated, claims: #{inspect(claims)}")
+      else
+        true
+      end
+    else
+      :error -> :ok
+    end
+  end
+
+  def assert_authenticated(session, user) do
+    with {:ok, cookie} <- fetch_session_cookie(session),
+         {:ok, claims} <-
+           FzHttpWeb.Auth.HTML.Authentication.decode_and_verify(cookie["guardian_default_token"]),
+         {:ok, authenticated_user} <-
+           FzHttpWeb.Auth.HTML.Authentication.resource_from_claims(claims) do
+      assert authenticated_user.id == user.id
+    else
+      :error -> flunk("No session cookie found")
+      other -> flunk("User is not authenticated: #{inspect(other)}")
+    end
+  end
+
+  def shutdown_live_socket(session) do
+    Wallaby.end_session(session)
+    Process.sleep(10)
+    # await_for_sandbox_processes()
+  end
+
+  # defp await_for_sandbox_processes() do
+  #   receive do
+  #     {:sandbox_access, pid} ->
+  #       await_for_process_death(pid)
+  #       await_for_sandbox_processes()
+
+  #     _ ->
+  #       await_for_sandbox_processes()
+  #   after
+  #     10 -> :ok
+  #   end
+  # end
+
+  # defp await_for_process_death(pid, retries_left \\ 5) do
+  #   cond do
+  #     not Process.alive?(pid) ->
+  #       :ok
+
+  #     retries_left > 0 ->
+  #       Process.sleep(10)
+  #       await_for_process_death(pid, retries_left - 1)
+
+  #     true ->
+  #       Process.exit(pid, :kill)
+  #   end
+  # end
+
   @doc """
   This is an extension of ExUnit's `test` macro but:
 
@@ -86,6 +176,9 @@ defmodule FzHttpWeb.AcceptanceCase do
   (to allow you interacting with the browser) if test has `debug: true` tag;
 
   - it takes a screenshot on failure if `debug` tag is not set to `true` or unset.
+
+  Additionally, it will try to await for all the sandboxed processes to finish their work
+  after the test has passed to prevent spamming logs with a lot of crash reports.
   """
   defmacro feature(message, var \\ quote(do: _), contents) do
     contents =
@@ -94,8 +187,7 @@ defmodule FzHttpWeb.AcceptanceCase do
           quote do
             try do
               unquote(block)
-              # Wallaby.Browser.execute_script(var!(session), "liveSocket.disconnect();")
-              # Process.sleep(100)
+              shutdown_live_socket(var!(session))
               :ok
             rescue
               e ->
