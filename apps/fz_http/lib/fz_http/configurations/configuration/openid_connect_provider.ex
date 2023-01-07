@@ -19,6 +19,7 @@ defmodule FzHttp.Configurations.Configuration.OpenIDConnectProvider do
     field :scope, :string, default: "openid email profile"
     field :response_type, :string, default: "code"
     field :client_id, :string
+    # XXX: Store encrypted
     field :client_secret, :string
     field :discovery_document_uri, :string
     field :redirect_uri, :string
