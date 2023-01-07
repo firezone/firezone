@@ -1,5 +1,7 @@
 defmodule FzHttpWeb.JSON.DeviceControllerTest do
   use FzHttpWeb.ApiCase, async: true
+  import FzHttpWeb.ApiCase
+  import FzHttp.DevicesFixtures
 
   @params %{
     "name" => "create-name",
@@ -20,82 +22,96 @@ defmodule FzHttpWeb.JSON.DeviceControllerTest do
     "ipv6" => "fd00::2"
   }
 
-  describe "[authed] GET /v0/devices/:id" do
-    setup :create_device
-    setup _tags, do: {:ok, conn: authed_conn()}
-
-    test "shows device", %{conn: conn, device: %{id: id}} do
-      conn = get(conn, ~p"/v0/devices/#{id}")
+  describe "GET /v0/devices/:id" do
+    test "shows device" do
+      id = device().id
+      conn = get(authed_conn(), ~p"/v0/devices/#{id}")
       assert %{"id" => ^id} = json_response(conn, 200)["data"]
     end
 
-    test "renders 404 for device not found", %{conn: conn} do
+    test "renders 404 for device not found" do
       assert_error_sent 404, fn ->
-        get(conn, ~p"/v0/devices/003da73d-2dd9-4492-8136-3282843545e8")
+        get(authed_conn(), ~p"/v0/devices/003da73d-2dd9-4492-8136-3282843545e8")
       end
+    end
+
+    test "renders 401 for missing authorization header" do
+      device = device()
+      conn = get(unauthed_conn(), ~p"/v0/devices/#{device}")
+      assert json_response(conn, 401)["errors"] == %{"auth" => "unauthenticated"}
     end
   end
 
-  describe "[authed] POST /v0/devices" do
+  describe "POST /v0/devices" do
     import FzHttp.UsersFixtures
-    setup _tags, do: {:ok, conn: authed_conn()}
 
-    @tag params: @params
-    test "creates device for unprivileged user", %{conn: conn, params: params} do
+    test "creates device for unprivileged user" do
       unprivileged_user = user(%{role: :unprivileged})
 
       conn =
-        post(conn, ~p"/v0/devices",
-          device: Map.merge(params, %{"user_id" => unprivileged_user.id})
+        post(authed_conn(), ~p"/v0/devices",
+          device: Map.merge(@params, %{"user_id" => unprivileged_user.id})
         )
 
       assert @params = json_response(conn, 201)["data"]
     end
 
-    @tag params: @params
-    test "creates device for self", %{conn: conn, params: params} do
+    test "creates device for self" do
+      conn = authed_conn()
+
       conn =
         post(conn, ~p"/v0/devices",
-          device: Map.merge(params, %{"user_id" => conn.private.guardian_default_resource.id})
+          device: Map.merge(@params, %{"user_id" => conn.private.guardian_default_resource.id})
         )
 
       assert @params = json_response(conn, 201)["data"]
     end
 
-    @tag params: @params
-    test "creates device for other admin", %{conn: conn, params: params} do
+    test "creates device for other admin" do
       admin_user = user(%{role: :admin})
-      conn = post(conn, ~p"/v0/devices", device: Map.merge(params, %{"user_id" => admin_user.id}))
+
+      conn =
+        post(authed_conn(), ~p"/v0/devices",
+          device: Map.merge(@params, %{"user_id" => admin_user.id})
+        )
+
       assert @params = json_response(conn, 201)["data"]
+    end
+
+    test "renders 401 for missing authorization header" do
+      conn = post(unauthed_conn(), ~p"/v0/devices", device: %{})
+      assert json_response(conn, 401)["errors"] == %{"auth" => "unauthenticated"}
     end
   end
 
   describe "[authed] PUT /v0/devices/:id" do
-    setup :create_device
-    setup _tags, do: {:ok, conn: authed_conn()}
+    test "updates device" do
+      device = device()
 
-    @tag params: @params
-    test "updates device", %{conn: conn, params: params, device: %{id: id}} do
-      conn = put(conn, ~p"/v0/devices/#{id}", device: params)
-      assert %{"id" => ^id} = json_response(conn, 200)["data"]
+      conn = put(authed_conn(), ~p"/v0/devices/#{device}", device: @params)
+      assert @params = json_response(conn, 200)["data"]
 
-      conn = get(conn, ~p"/v0/devices/#{id}")
+      conn = get(conn, ~p"/v0/devices/#{device}")
       assert @params = json_response(conn, 200)["data"]
     end
 
-    test "renders 404 for device not found", %{conn: conn} do
+    test "renders 404 for device not found" do
       assert_error_sent 404, fn ->
-        put(conn, ~p"/v0/devices/003da73d-2dd9-4492-8136-3282843545e8", device: %{})
+        put(authed_conn(), ~p"/v0/devices/003da73d-2dd9-4492-8136-3282843545e8", device: %{})
       end
+    end
+
+    test "renders 401 for missing authorization header" do
+      conn = put(unauthed_conn(), ~p"/v0/devices/#{device()}", device: %{})
+      assert json_response(conn, 401)["errors"] == %{"auth" => "unauthenticated"}
     end
   end
 
-  describe "[authed] GET /v0/devices" do
-    setup :create_devices
-    setup _tags, do: {:ok, conn: authed_conn()}
+  describe "GET /v0/devices" do
+    test "lists all devices" do
+      devices = for _i <- 1..5, do: device()
 
-    test "lists all devices", %{conn: conn, devices: devices} do
-      conn = get(conn, ~p"/v0/devices")
+      conn = get(authed_conn(), ~p"/v0/devices")
 
       assert json_response(conn, 200)["data"]
              |> Enum.map(& &1["id"])
@@ -104,14 +120,18 @@ defmodule FzHttpWeb.JSON.DeviceControllerTest do
                |> Enum.map(& &1.id)
                |> MapSet.new()
     end
+
+    test "renders 401 for missing authorization header" do
+      conn = get(unauthed_conn(), ~p"/v0/devices")
+      assert json_response(conn, 401)["errors"] == %{"auth" => "unauthenticated"}
+    end
   end
 
-  describe "[authed] DELETE /v0/devices/:id" do
-    setup :create_device
-    setup _tags, do: {:ok, conn: authed_conn()}
+  describe "DELETE /v0/devices/:id" do
+    test "deletes device" do
+      device = device()
 
-    test "deletes device", %{conn: conn, device: device} do
-      conn = delete(conn, ~p"/v0/devices/#{device}")
+      conn = delete(authed_conn(), ~p"/v0/devices/#{device}")
       assert response(conn, 204)
 
       assert_error_sent 404, fn ->
@@ -119,57 +139,14 @@ defmodule FzHttpWeb.JSON.DeviceControllerTest do
       end
     end
 
-    test "renders 404 for device not found", %{conn: conn} do
+    test "renders 404 for device not found" do
       assert_error_sent 404, fn ->
-        delete(conn, ~p"/v0/devices/003da73d-2dd9-4492-8136-3282843545e8")
+        delete(authed_conn(), ~p"/v0/devices/003da73d-2dd9-4492-8136-3282843545e8")
       end
     end
-  end
 
-  describe "[unauthed] PUT /v0/devices/:id" do
-    setup :create_device
-    setup _tags, do: {:ok, conn: unauthed_conn()}
-
-    test "renders 401 for missing authorization header", %{conn: conn, device: device} do
-      conn = put(conn, ~p"/v0/devices/#{device}", device: %{})
-      assert json_response(conn, 401)["errors"] == %{"auth" => "unauthenticated"}
-    end
-  end
-
-  describe "[unauthed] GET /v0/devices" do
-    setup _tags, do: {:ok, conn: unauthed_conn()}
-
-    test "renders 401 for missing authorization header", %{conn: conn} do
-      conn = get(conn, ~p"/v0/devices")
-      assert json_response(conn, 401)["errors"] == %{"auth" => "unauthenticated"}
-    end
-  end
-
-  describe "[unauthed] POST /v0/devices" do
-    setup _tags, do: {:ok, conn: unauthed_conn()}
-
-    test "renders 401 for missing authorization header", %{conn: conn} do
-      conn = post(conn, ~p"/v0/devices", device: %{})
-      assert json_response(conn, 401)["errors"] == %{"auth" => "unauthenticated"}
-    end
-  end
-
-  describe "[unauthed] DELETE /v0/devices/:id" do
-    setup :create_device
-    setup _tags, do: {:ok, conn: unauthed_conn()}
-
-    test "renders 401 for missing authorization header", %{conn: conn, device: device} do
-      conn = delete(conn, ~p"/v0/devices/#{device}")
-      assert json_response(conn, 401)["errors"] == %{"auth" => "unauthenticated"}
-    end
-  end
-
-  describe "[unauthed] GET /v0/devices/:id" do
-    setup :create_device
-    setup _tags, do: {:ok, conn: unauthed_conn()}
-
-    test "renders 401 for missing authorization header", %{conn: conn, device: device} do
-      conn = get(conn, ~p"/v0/devices/#{device}")
+    test "renders 401 for missing authorization header" do
+      conn = delete(unauthed_conn(), ~p"/v0/devices/#{device()}")
       assert json_response(conn, 401)["errors"] == %{"auth" => "unauthenticated"}
     end
   end

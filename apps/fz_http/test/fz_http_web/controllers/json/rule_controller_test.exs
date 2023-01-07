@@ -1,5 +1,9 @@
 defmodule FzHttpWeb.JSON.RuleControllerTest do
   use FzHttpWeb.ApiCase, async: true
+  import FzHttp.RulesFixtures
+  import FzHttpWeb.ApiCase
+
+  alias FzHttp.Rules
 
   @accept_rule_params %{
     "destination" => "1.1.1.1/24",
@@ -15,162 +19,144 @@ defmodule FzHttpWeb.JSON.RuleControllerTest do
     "port_range" => "1 - 65000"
   }
 
-  describe "[authed] GET /v0/rules/:id" do
-    setup _tags, do: {:ok, conn: authed_conn()}
-    setup :create_rule
-
-    test "shows rule", %{conn: conn, rule: %{id: id}} do
-      conn = get(conn, ~p"/v0/rules/#{id}")
+  describe "GET /v0/rules/:id" do
+    test "shows rule" do
+      id = rule().id
+      conn = get(authed_conn(), ~p"/v0/rules/#{id}")
       assert %{"id" => ^id} = json_response(conn, 200)["data"]
     end
 
-    test "renders 404 for rule not found", %{conn: conn} do
+    test "renders 404 for rule not found" do
       assert_error_sent 404, fn ->
-        get(conn, ~p"/v0/rules/003da73d-2dd9-4492-8136-3282843545e8")
+        get(authed_conn(), ~p"/v0/rules/003da73d-2dd9-4492-8136-3282843545e8")
       end
+    end
+
+    test "renders 401 for missing authorization header" do
+      rule = rule()
+      conn = get(unauthed_conn(), ~p"/v0/rules/#{rule}")
+      assert json_response(conn, 401)["errors"] == %{"auth" => "unauthenticated"}
     end
   end
 
-  describe "[authed] POST /v0/rules" do
-    setup _tags, do: {:ok, conn: authed_conn()}
-
-    @tag params: @accept_rule_params
-    test "creates accept rule when valid", %{conn: conn, params: params} do
+  describe "POST /v0/rules" do
+    test "creates accept rule when valid" do
+      conn = authed_conn()
       user = conn.private.guardian_default_resource
-      conn = post(conn, ~p"/v0/rules", rule: Map.merge(params, %{"user_id" => user.id}))
+
+      conn =
+        post(conn, ~p"/v0/rules", rule: Map.merge(@accept_rule_params, %{"user_id" => user.id}))
+
       assert @accept_rule_params = json_response(conn, 201)["data"]
     end
 
-    @tag params: @drop_rule_params
-    test "creates drop rule when valid", %{conn: conn, params: params} do
+    test "creates drop rule when valid" do
+      conn = authed_conn()
       user = conn.private.guardian_default_resource
-      conn = post(conn, ~p"/v0/rules", rule: Map.merge(params, %{"user_id" => user.id}))
+
+      conn =
+        post(conn, ~p"/v0/rules", rule: Map.merge(@drop_rule_params, %{"user_id" => user.id}))
+
       assert @drop_rule_params = json_response(conn, 201)["data"]
     end
 
-    @tag params: %{action: :invalid}
-    test "returns errors when invalid", %{conn: conn, params: params} do
-      conn = post(conn, ~p"/v0/rules", rule: params)
+    test "returns errors when invalid" do
+      params = %{"action" => "invalid"}
+      conn = post(authed_conn(), ~p"/v0/rules", rule: params)
 
       assert json_response(conn, 422)["errors"] == %{
                "action" => ["is invalid"],
                "destination" => ["can't be blank"]
              }
     end
+
+    test "renders 401 for missing authorization header" do
+      conn = post(unauthed_conn(), ~p"/v0/rules", rule: %{})
+      assert json_response(conn, 401)["errors"] == %{"auth" => "unauthenticated"}
+    end
   end
 
-  describe "[authed] PUT /v0/rules/:id" do
-    setup :create_rule
-    setup _tags, do: {:ok, conn: authed_conn()}
+  describe "PUT /v0/rules/:id" do
+    test "updates accept rule when valid" do
+      rule = rule()
+      conn = put(authed_conn(), ~p"/v0/rules/#{rule}", rule: @accept_rule_params)
+      assert @accept_rule_params = json_response(conn, 200)["data"]
 
-    @tag params: @accept_rule_params
-    test "updates accept rule when valid", %{conn: conn, params: params, rule: %{id: id}} do
-      conn = put(conn, ~p"/v0/rules/#{id}", rule: params)
-      assert %{"id" => ^id} = json_response(conn, 200)["data"]
-
-      conn = get(conn, ~p"/v0/rules/#{id}")
-
+      conn = get(conn, ~p"/v0/rules/#{rule}")
       assert @accept_rule_params = json_response(conn, 200)["data"]
     end
 
-    @tag params: @drop_rule_params
-    test "updates drop rule when valid", %{conn: conn, params: params, rule: %{id: id}} do
-      conn = put(conn, ~p"/v0/rules/#{id}", rule: params)
-      assert %{"id" => ^id} = json_response(conn, 200)["data"]
+    test "updates drop rule when valid" do
+      rule = rule()
+      conn = put(authed_conn(), ~p"/v0/rules/#{rule}", rule: @drop_rule_params)
+      assert @drop_rule_params = json_response(conn, 200)["data"]
 
-      conn = get(conn, ~p"/v0/rules/#{id}")
-
+      conn = get(authed_conn(), ~p"/v0/rules/#{rule}")
       assert @drop_rule_params = json_response(conn, 200)["data"]
     end
 
-    @tag params: %{action: :invalid}
-    test "returns errors when invalid", %{conn: conn, rule: rule, params: params} do
-      conn = put(conn, ~p"/v0/rules/#{rule}", rule: params)
+    test "returns errors when invalid" do
+      rule = rule()
+      params = %{"action" => "invalid"}
+      conn = put(authed_conn(), ~p"/v0/rules/#{rule}", rule: params)
       assert json_response(conn, 422)["errors"] == %{"action" => ["is invalid"]}
     end
 
-    test "renders 404 for rule not found", %{conn: conn} do
+    test "renders 404 for rule not found" do
       assert_error_sent 404, fn ->
-        put(conn, ~p"/v0/rules/003da73d-2dd9-4492-8136-3282843545e8", rule: %{})
+        put(authed_conn(), ~p"/v0/rules/003da73d-2dd9-4492-8136-3282843545e8", rule: %{})
       end
     end
-  end
 
-  describe "[authed] GET /v0/rules" do
-    setup :create_rules
-    setup _tags, do: {:ok, conn: authed_conn()}
-
-    test "lists rules", %{conn: conn, rules: rules} do
-      conn = get(conn, ~p"/v0/rules")
-      assert length(json_response(conn, 200)["data"]) == length(rules)
+    test "renders 401 for missing authorization header" do
+      conn = put(unauthed_conn(), ~p"/v0/rules/#{rule()}", rule: %{})
+      assert json_response(conn, 401)["errors"] == %{"auth" => "unauthenticated"}
     end
   end
 
-  describe "[authed] DELETE /v0/rules/:id" do
-    setup :create_rule
-    setup _tags, do: {:ok, conn: authed_conn()}
+  describe "GET /v0/rules" do
+    test "lists rules" do
+      for i <- 1..5, do: rule(%{destination: "10.3.2.#{i}"})
+      conn = get(authed_conn(), ~p"/v0/rules")
 
-    test "deletes rule", %{conn: conn, rule: rule} do
-      conn = delete(conn, ~p"/v0/rules/#{rule}")
+      actual =
+        Rules.list_rules()
+        |> Enum.map(& &1.id)
+        |> Enum.sort()
+
+      expected =
+        json_response(conn, 200)["data"]
+        |> Enum.map(& &1["id"])
+        |> Enum.sort()
+
+      assert actual == expected
+    end
+
+    test "renders 401 for missing authorization header" do
+      conn = get(unauthed_conn(), ~p"/v0/rules")
+      assert json_response(conn, 401)["errors"] == %{"auth" => "unauthenticated"}
+    end
+  end
+
+  describe "DELETE /v0/rules/:id" do
+    test "deletes rule" do
+      rule = rule()
+      conn = delete(authed_conn(), ~p"/v0/rules/#{rule}")
       assert response(conn, 204)
 
       assert_error_sent 404, fn ->
-        get(conn, ~p"/v0/rules/#{rule}")
+        get(authed_conn(), ~p"/v0/rules/#{rule}")
       end
     end
 
-    test "renders 404 for rule not found", %{conn: conn} do
+    test "renders 404 for rule not found" do
       assert_error_sent 404, fn ->
-        delete(conn, ~p"/v0/rules/003da73d-2dd9-4492-8136-3282843545e8")
+        delete(authed_conn(), ~p"/v0/rules/003da73d-2dd9-4492-8136-3282843545e8")
       end
     end
-  end
 
-  describe "[unauthed] GET /v0/rules/:id" do
-    setup _tags, do: {:ok, conn: unauthed_conn()}
-    setup :create_rule
-
-    test "renders 401 for missing authorization header", %{conn: conn, rule: rule} do
-      conn = get(conn, ~p"/v0/rules/#{rule}")
-      assert json_response(conn, 401)["errors"] == %{"auth" => "unauthenticated"}
-    end
-  end
-
-  describe "[unauthed] POST /v0/rules" do
-    setup _tags, do: {:ok, conn: unauthed_conn()}
-
-    test "renders 401 for missing authorization header", %{conn: conn} do
-      conn = post(conn, ~p"/v0/rules", rule: %{})
-      assert json_response(conn, 401)["errors"] == %{"auth" => "unauthenticated"}
-    end
-  end
-
-  describe "[unauthed] GET /v0/rules" do
-    setup :create_rules
-    setup _tags, do: {:ok, conn: unauthed_conn()}
-
-    test "renders 401 for missing authorization header", %{conn: conn} do
-      conn = get(conn, ~p"/v0/rules")
-      assert json_response(conn, 401)["errors"] == %{"auth" => "unauthenticated"}
-    end
-  end
-
-  describe "[unauthed] PUT /v0/rules/:id" do
-    setup :create_rule
-    setup _tags, do: {:ok, conn: unauthed_conn()}
-
-    test "renders 401 for missing authorization header", %{conn: conn, rule: rule} do
-      conn = put(conn, ~p"/v0/rules/#{rule}", rule: %{})
-      assert json_response(conn, 401)["errors"] == %{"auth" => "unauthenticated"}
-    end
-  end
-
-  describe "[unauthed] DELETE /v0/rules/:id" do
-    setup :create_rule
-    setup _tags, do: {:ok, conn: unauthed_conn()}
-
-    test "renders 401 for missing authorization header", %{conn: conn, rule: rule} do
-      conn = delete(conn, ~p"/v0/rules/#{rule}")
+    test "renders 401 for missing authorization header" do
+      conn = delete(unauthed_conn(), ~p"/v0/rules/#{rule()}")
       assert json_response(conn, 401)["errors"] == %{"auth" => "unauthenticated"}
     end
   end

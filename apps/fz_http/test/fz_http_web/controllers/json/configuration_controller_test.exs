@@ -1,19 +1,21 @@
 defmodule FzHttpWeb.JSON.ConfigurationControllerTest do
   use FzHttpWeb.ApiCase, async: true
+  import FzHttpWeb.ApiCase
 
-  describe "[authed] GET /v0/configuration" do
-    setup _tags, do: {:ok, conn: authed_conn()}
-
-    test "renders configuration", %{conn: conn} do
-      conn = get(conn, ~p"/v0/configuration")
+  describe "GET /v0/configuration" do
+    test "renders configuration" do
+      conn = get(authed_conn(), ~p"/v0/configuration")
       assert json_response(conn, 200)["data"]
+    end
+
+    test "renders 401 for missing authorization header" do
+      conn = get(unauthed_conn(), ~p"/v0/configuration")
+      assert json_response(conn, 401)["errors"] == %{"auth" => "unauthenticated"}
     end
   end
 
-  describe "[authed] PUT /v0/configuration" do
+  describe "PUT /v0/configuration" do
     import FzHttp.SAMLIdentityProviderFixtures
-
-    setup _tags, do: {:ok, conn: authed_conn()}
 
     @first_config %{
       "local_auth_enabled" => false,
@@ -95,34 +97,23 @@ defmodule FzHttpWeb.JSON.ConfigurationControllerTest do
       "default_client_allowed_ips" => "8.8.8.8"
     }
 
-    test "updates fields when data is valid", %{conn: conn} do
-      conn = put(conn, ~p"/v0/configuration", configuration: @first_config)
+    test "updates fields when data is valid" do
+      conn = put(authed_conn(), ~p"/v0/configuration", configuration: @first_config)
       assert @first_config = json_response(conn, 200)["data"]
 
-      conn = put(conn, ~p"/v0/configuration", configuration: @second_config)
+      conn = put(authed_conn(), ~p"/v0/configuration", configuration: @second_config)
       assert @second_config = json_response(conn, 200)["data"]
     end
 
-    test "renders errors when data is invalid", %{conn: conn} do
-      conn = put(conn, ~p"/v0/configuration", configuration: %{"local_auth_enabled" => 123})
+    test "renders errors when data is invalid" do
+      conn =
+        put(authed_conn(), ~p"/v0/configuration", configuration: %{"local_auth_enabled" => 123})
+
       assert json_response(conn, 422)["errors"] == %{"local_auth_enabled" => ["is invalid"]}
     end
-  end
 
-  describe "[unauthed] GET /v0/configuration" do
-    setup _tags, do: {:ok, conn: unauthed_conn()}
-
-    test "renders 401 for missing authorization header", %{conn: conn} do
-      conn = get(conn, ~p"/v0/configuration")
-      assert json_response(conn, 401)["errors"] == %{"auth" => "unauthenticated"}
-    end
-  end
-
-  describe "[unauthed] PUT /v0/configuration" do
-    setup _tags, do: {:ok, conn: unauthed_conn()}
-
-    test "renders 401 for missing authorization header", %{conn: conn} do
-      conn = put(conn, ~p"/v0/configuration")
+    test "renders 401 for missing authorization header" do
+      conn = put(unauthed_conn(), ~p"/v0/configuration")
       assert json_response(conn, 401)["errors"] == %{"auth" => "unauthenticated"}
     end
   end
