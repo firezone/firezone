@@ -7,6 +7,8 @@ defmodule FzHttpWeb.AcceptanceCase do
       use Wallaby.DSL
       use FzHttpWeb, :verified_routes
       import FzHttpWeb.AcceptanceCase
+      alias FzHttp.Repo
+      alias FzHttpWeb.AcceptanceCase.{Vault, Auth}
 
       # The default endpoint for testing
       @endpoint FzHttpWeb.Endpoint
@@ -77,63 +79,6 @@ defmodule FzHttpWeb.AcceptanceCase do
       filename = time <> "_" <> name <> "(#{i})"
       Wallaby.Browser.take_screenshot(s, name: filename, log: true).screenshots
     end)
-  end
-
-  def fetch_session_cookie(session) do
-    options = FzHttpWeb.Session.options()
-
-    key = Keyword.fetch!(options, :key)
-    encryption_salt = Keyword.fetch!(options, :encryption_salt)
-    signing_salt = Keyword.fetch!(options, :signing_salt)
-    secret_key_base = FzHttpWeb.Endpoint.config(:secret_key_base)
-
-    with {:ok, cookie} <- fetch_cookie(session, key),
-         encryption_key = Plug.Crypto.KeyGenerator.generate(secret_key_base, encryption_salt, []),
-         signing_key = Plug.Crypto.KeyGenerator.generate(secret_key_base, signing_salt, []),
-         {:ok, decrypted} <-
-           Plug.Crypto.MessageEncryptor.decrypt(
-             cookie,
-             encryption_key,
-             signing_key
-           ) do
-      {:ok, Plug.Crypto.non_executable_binary_to_term(decrypted)}
-    end
-  end
-
-  defp fetch_cookie(session, key) do
-    cookies = Wallaby.Browser.cookies(session)
-
-    if cookie = Enum.find(cookies, fn cookie -> Map.get(cookie, "name") == key end) do
-      Map.fetch(cookie, "value")
-    else
-      :error
-    end
-  end
-
-  def assert_unauthenticated(session) do
-    with {:ok, cookie} <- fetch_session_cookie(session) do
-      if token = cookie["guardian_default_token"] do
-        {:ok, claims} = FzHttpWeb.Auth.HTML.Authentication.decode_and_verify(token)
-        flunk("User is authenticated, claims: #{inspect(claims)}")
-      else
-        true
-      end
-    else
-      :error -> :ok
-    end
-  end
-
-  def assert_authenticated(session, user) do
-    with {:ok, cookie} <- fetch_session_cookie(session),
-         {:ok, claims} <-
-           FzHttpWeb.Auth.HTML.Authentication.decode_and_verify(cookie["guardian_default_token"]),
-         {:ok, authenticated_user} <-
-           FzHttpWeb.Auth.HTML.Authentication.resource_from_claims(claims) do
-      assert authenticated_user.id == user.id
-    else
-      :error -> flunk("No session cookie found")
-      other -> flunk("User is not authenticated: #{inspect(other)}")
-    end
   end
 
   def shutdown_live_socket(session) do
