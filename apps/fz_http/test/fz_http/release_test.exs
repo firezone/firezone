@@ -6,7 +6,13 @@ defmodule FzHttp.ReleaseTest do
 
   use FzHttp.DataCase, async: true
 
-  alias FzHttp.{Release, Users, Users.User}
+  alias FzHttp.{
+    ApiTokens,
+    Release,
+    Users,
+    UsersFixtures,
+    Users.User
+  }
 
   describe "migrate/0" do
     test "function runs without error" do
@@ -27,6 +33,19 @@ defmodule FzHttp.ReleaseTest do
       {:ok, second_user} = Release.create_admin_user()
 
       assert second_user.password_hash != new_first_user.password_hash
+    end
+  end
+
+  describe "create_api_token/1" do
+    test "creates api_token_token for default admin user" do
+      admin_user =
+        UsersFixtures.user(%{
+          role: :admin,
+          email: FzHttp.Config.fetch_env!(:fz_http, :admin_email)
+        })
+
+      assert :ok = Release.create_api_token()
+      assert ApiTokens.count_by_user_id(admin_user.id) == 1
     end
   end
 
