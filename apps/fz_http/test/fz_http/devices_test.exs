@@ -13,6 +13,12 @@ defmodule FzHttp.DevicesTest do
     end
   end
 
+  describe "count/1" do
+    test "returns 0" do
+      assert Devices.count(nil) == 0
+    end
+  end
+
   describe "count_active_within/1" do
     @active_within 30
 

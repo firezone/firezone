@@ -106,6 +106,7 @@ defmodule FzHttp.Users do
   def admin_update_user(%User{} = user, attrs) do
     user
     |> User.update_email(attrs)
+    |> User.update_role(attrs)
     |> User.update_password(attrs)
     |> Repo.update()
   end

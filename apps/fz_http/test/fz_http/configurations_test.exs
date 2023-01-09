@@ -23,6 +23,47 @@ defmodule FzHttp.ConfigurationsTest do
     end
   end
 
+  describe "auto_create_users?/2" do
+    import FzHttp.ConfigurationsFixtures
+    import FzHttp.SAMLIdentityProviderFixtures
+
+    test "raises if provider_id not found" do
+      assert_raise(RuntimeError, "Unknown provider foobar", fn ->
+        Configurations.auto_create_users?(:openid_connect_providers, "foobar")
+      end)
+    end
+
+    test "returns true for found provider_id" do
+      configuration(%{
+        saml_identity_providers: [
+          %{
+            "id" => "test",
+            "metadata" => metadata(),
+            "auto_create_users" => true,
+            "label" => "SAML"
+          }
+        ]
+      })
+
+      assert Configurations.auto_create_users?(:saml_identity_providers, "test")
+    end
+
+    test "returns false for found provider_id" do
+      configuration(%{
+        saml_identity_providers: [
+          %{
+            "id" => "test",
+            "metadata" => metadata(),
+            "auto_create_users" => false,
+            "label" => "SAML"
+          }
+        ]
+      })
+
+      refute Configurations.auto_create_users?(:saml_identity_providers, "test")
+    end
+  end
+
   describe "update_configuration/2 with name-based default_client_dns" do
     import FzHttp.ConfigurationsFixtures
 
