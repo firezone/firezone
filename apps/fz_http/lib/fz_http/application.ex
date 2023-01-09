@@ -31,7 +31,6 @@ defmodule FzHttp.Application do
       {Postgrex.Notifications, [name: FzHttp.Repo.Notifications] ++ FzHttp.Repo.config()},
       FzHttp.Repo.Notifier,
       FzHttp.Vault,
-      FzHttpWeb.Endpoint,
       {Phoenix.PubSub, name: FzHttp.PubSub},
       {FzHttp.Notifications, name: FzHttp.Notifications},
       FzHttpWeb.Presence,
@@ -41,7 +40,8 @@ defmodule FzHttp.Application do
       FzHttp.OIDC.StartProxy,
       FzHttp.SAML.StartProxy,
       {DynamicSupervisor, name: FzHttp.RefresherSupervisor, strategy: :one_for_one},
-      FzHttp.OIDC.RefreshManager
+      FzHttp.OIDC.RefreshManager,
+      FzHttpWeb.Endpoint
     ]
   end
 
