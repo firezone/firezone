@@ -23,7 +23,7 @@ defmodule FzHttp.Configurations.Configuration.OpenIDConnectProvider do
     field :client_secret, :string
     field :discovery_document_uri, :string
     field :redirect_uri, :string
-    field :auto_create_users, :boolean, default: true
+    field :auto_create_users, :boolean
   end
 
   def changeset(struct \\ %__MODULE__{}, data) do

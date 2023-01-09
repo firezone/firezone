@@ -15,7 +15,7 @@ defmodule FzHttp.Configurations.Configuration.SAMLIdentityProvider do
     field :sign_metadata, :boolean, default: true
     field :signed_assertion_in_resp, :boolean, default: true
     field :signed_envelopes_in_resp, :boolean, default: true
-    field :auto_create_users, :boolean, default: true
+    field :auto_create_users, :boolean
   end
 
   def changeset(struct \\ %__MODULE__{}, data) do
