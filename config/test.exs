@@ -73,3 +73,8 @@ config :wallaby,
   # XXX: Contribute to Wallaby to make this configurable on the per-process level,
   # along with buffer to write logs only on process failure
   js_logger: false
+
+config :ex_unit,
+  # exclude: if(!System.get_env("CI"), do: [:flaky, :webdriver, :integration]),
+  # formatters: [JUnitFormatter, ExUnit.CLIFormatter],
+  capture_log: true
