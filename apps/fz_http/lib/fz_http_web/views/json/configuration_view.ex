@@ -4,10 +4,6 @@ defmodule FzHttpWeb.JSON.ConfigurationView do
   """
   use FzHttpWeb, :view
 
-  def render("index.json", %{configurations: configurations}) do
-    %{data: render_many(configurations, __MODULE__, "configuration.json")}
-  end
-
   def render("show.json", %{configuration: configuration}) do
     %{data: render_one(configuration, __MODULE__, "configuration.json")}
   end
@@ -18,8 +14,6 @@ defmodule FzHttpWeb.JSON.ConfigurationView do
     local_auth_enabled
     allow_unprivileged_device_management
     allow_unprivileged_device_configuration
-    openid_connect_providers
-    saml_identity_providers
     disable_vpn_on_oidc_error
     vpn_session_duration
     default_client_persistent_keepalive
@@ -31,6 +25,22 @@ defmodule FzHttpWeb.JSON.ConfigurationView do
     updated_at
   ]a
   def render("configuration.json", %{configuration: configuration}) do
-    Map.take(configuration, @keys_to_render)
+    Map.merge(
+      Map.take(configuration, @keys_to_render),
+      %{
+        openid_connect_providers:
+          render_many(
+            configuration.openid_connect_providers,
+            FzHttpWeb.JSON.OpenIDConnectProviderView,
+            "openid_connect_provider.json"
+          ),
+        saml_identity_providers:
+          render_many(
+            configuration.saml_identity_providers,
+            FzHttpWeb.JSON.SAMLIdentityProviderView,
+            "saml_identity_provider.json"
+          )
+      }
+    )
   end
 end

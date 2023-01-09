@@ -62,3 +62,5 @@ config :fz_vpn,
   # XXX: Bump test coverage by adding a stubbed out module for FzVpn.StatsPushService
   supervised_children: [FzVpn.Interface.WGAdapter.Sandbox, FzVpn.Server],
   wg_adapter: FzVpn.Interface.WGAdapter.Sandbox
+
+config :argon2_elixir, t_cost: 1, m_cost: 8

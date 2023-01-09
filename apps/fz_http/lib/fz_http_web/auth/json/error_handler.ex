@@ -13,6 +13,6 @@ defmodule FzHttpWeb.Auth.JSON.ErrorHandler do
 
     conn
     |> put_resp_content_type("application/json")
-    |> send_resp(401, to_string(type))
+    |> send_resp(401, Jason.encode!(%{"errors" => %{"auth" => to_string(type)}}))
   end
 end

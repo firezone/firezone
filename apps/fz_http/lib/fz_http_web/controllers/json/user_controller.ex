@@ -11,8 +11,17 @@ defmodule FzHttpWeb.JSON.UserController do
     render(conn, "index.json", users: users)
   end
 
+  def create(conn, %{"user" => %{"role" => "admin"} = user_params}) do
+    with {:ok, %User{} = user} <- Users.create_admin_user(user_params) do
+      conn
+      |> put_status(:created)
+      |> put_resp_header("location", ~p"/v0/users/#{user}")
+      |> render("show.json", user: user)
+    end
+  end
+
   def create(conn, %{"user" => user_params}) do
-    with {:ok, %User{} = user} <- Users.create_user(user_params) do
+    with {:ok, %User{} = user} <- Users.create_unprivileged_user(user_params) do
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/v0/users/#{user}")
@@ -25,16 +34,16 @@ defmodule FzHttpWeb.JSON.UserController do
     render(conn, "show.json", user: user)
   end
 
-  def update(conn, %{"id" => id, "user" => user_params}) do
-    user = Users.get_user!(id)
+  def update(conn, %{"id" => id_or_email, "user" => user_params}) do
+    user = get_user_by_id_or_email(id_or_email)
 
     with {:ok, %User{} = user} <- Users.admin_update_user(user, user_params) do
       render(conn, "show.json", user: user)
     end
   end
 
-  def delete(conn, %{"id" => id}) do
-    user = Users.get_user!(id)
+  def delete(conn, %{"id" => id_or_email}) do
+    user = get_user_by_id_or_email(id_or_email)
 
     with {:ok, %User{}} <- Users.delete_user(user) do
       send_resp(conn, :no_content, "")
