@@ -47,6 +47,7 @@ docker compose up -d
 If you hit any issues, please let us know by [filing an
 issue](https://github.com/firezone/firezone/issues/new/choose).
 
+<!--
 ## Upgrading to 0.7.x
 
 Firezone 0.7.0 introduces a new REST API that replaces many of the legacy environment
@@ -55,19 +56,26 @@ variables.
 Due to this, If you're running Firezone &lt; 0.6, we recommend updating to the latest
 0.6.x release **before** upgrading to 0.7. This will ensure any environment variables
 are properly parsed and migrated into the DB as runtime `configurations`.
+-->
 
-
-## Upgrading to 0.6.12
+## Upgrading to >= 0.6.12
 
 ### WIREGUARD_* env vars
+
 Firezone 0.6.12 moves the `WIREGUARD_ALLOWED_IPS`, `WIREGUARD_PERSISTENT_KEEPALIVE`,
-and `WIREGUARD_DNS` environment variables to the `sites` table to be configured in the
+and `WIREGUARD_DNS` environment variables to the database to be configured in the
 UI at `/settings/client_defaults`. If the corresponding value at
 `/settings/client_defaults` was empty, the environment variable's value was used to
 populate the field.
 
-This is a baby step in our quest to move more runtime configuration from environment
+This is a small step in our quest to move more runtime configuration from environment
 variables to the DB.
+
+### `AUTH_OIDC_JSON` config
+
+Similar to the `WIREGUARD_*` env vars above, the `AUTH_OIDC_JSON` env var has similarly
+been moved to the database and can be configured at `/settings/site`. <!--In Firezone 0.7 this
+is now configurable via the REST API.-->
 
 ### Fix IPv6
 
