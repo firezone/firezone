@@ -51,7 +51,7 @@
     <%= if @rules_path do %>
       <tr>
         <td><strong>Number of Rules</strong></td>
-        <td><a href={"#{@rules_path}"}><%= FzHttp.AllowRules.count(@user.uuid) %></a></td>
+        <td><a href={"#{@rules_path}"}><%= FzHttp.AllowRules.count_by_user_id(@user.uuid) %></a></td>
       </tr>
     <% end %>
   </tbody>

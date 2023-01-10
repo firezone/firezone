@@ -96,13 +96,9 @@ defmodule FzHttp.Devices do
   def delete_device(%Device{} = device) do
     Telemetry.delete_device()
 
-    case Repo.delete(device) do
-      {:ok, device} ->
-        Events.delete(device)
-        {:ok, device}
-
-      err ->
-        err
+    with {:ok, device} <- Repo.delete(device) do
+      Events.delete(device)
+      {:ok, device}
     end
   end
 

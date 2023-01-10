@@ -7,25 +7,18 @@ defmodule FzHttp.AllowRules do
   alias FzHttp.{AllowRules.AllowRule, Gateways.Gateway, Repo, Users.User, Events, Telemetry}
 
   def create_allow_rule(attrs \\ %{}) do
-    case %AllowRule{}
-         |> AllowRule.changeset(attrs)
-         |> Repo.insert() do
-      {:ok, rule} ->
-        Events.add(rule)
-        Telemetry.add_rule()
-        {:ok, rule}
-
-      error ->
-        error
+    with {:ok, allow_rule} <-
+           %AllowRule{}
+           |> AllowRule.changeset(attrs)
+           |> Repo.insert() do
+      Events.add(allow_rule)
+      Telemetry.add_rule()
+      {:ok, allow_rule}
     end
   end
 
   def as_setting(rule) do
-    user_uuid =
-      case Repo.preload(rule, :user).user do
-        nil -> nil
-        user -> user.uuid
-      end
+    user_uuid = with %User{} = user <- Repo.preload(rule, :user).user, do: user.uuid
 
     %{
       dst: rule.destination,
@@ -50,14 +43,10 @@ defmodule FzHttp.AllowRules do
   defp add_port_settings(_), do: nil
 
   def delete_allow_rule(%AllowRule{} = allow_rule) do
-    case Repo.delete(allow_rule) do
-      {:ok, rule} ->
-        Events.delete(rule)
-        Telemetry.delete_rule()
-        {:ok, rule}
-
-      error ->
-        error
+    with {:ok, allow_rule} <- Repo.delete(allow_rule) do
+      Events.delete(allow_rule)
+      Telemetry.delete_rule()
+      {:ok, allow_rule}
     end
   end
 
@@ -71,14 +60,14 @@ defmodule FzHttp.AllowRules do
   def list_allow_rules, do: Repo.all(AllowRule)
 
   def list_allow_rules(%Gateway{} = gateway) do
-    Repo.all(from r in AllowRule, where: r.gateway_id == ^gateway.id)
+    Repo.all(from(r in AllowRule, where: r.gateway_id == ^gateway.id))
   end
 
   def list_allow_rules(%User{} = user) do
     Repo.all(user_query(user.uuid))
   end
 
-  def count do
+  def count_by_user_id do
     Repo.aggregate(AllowRule, :count)
   end
 
