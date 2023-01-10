@@ -41,6 +41,11 @@ npm-debug.log
 # Dialyxir output
 /priv/plts/
 
+# Gateway ephemeral files
+/priv/gateway-conf/id
+/priv/gateway-conf/logs/
+/priv/gateway-conf/token
+
 # ElixirLS generates an .elixir_ls folder for user settings
 .elixir_ls
 
