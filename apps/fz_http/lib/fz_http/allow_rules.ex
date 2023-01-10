@@ -67,7 +67,7 @@ defmodule FzHttp.AllowRules do
     Repo.all(user_query(user.uuid))
   end
 
-  def count_by_user_id do
+  def count do
     Repo.aggregate(AllowRule, :count)
   end
 
@@ -75,7 +75,7 @@ defmodule FzHttp.AllowRules do
     from(r in AllowRule, where: r.user_id == ^user_uuid)
   end
 
-  def count(user_uuid) do
+  def count_by_user_id(user_uuid) do
     Repo.aggregate(user_query(user_uuid), :count)
   end
 end
