@@ -46,5 +46,13 @@ fi
 
 echo $bold
 echo "Please see our upgrade guide for any version notes that apply:"
-echo "https://docs.firezone.dev/administer/upgrade"
+echo
+echo "=> https://docs.firezone.dev/administer/upgrade/?utm_source=product"
+echo
+echo
+echo "Heads up! Firezone 0.7.x will be the last release to support Omnibus."
+echo "Firezone 0.8 and above will support containerized deployments only."
+echo "Read more about the transition in our migration guide:"
+echo
+echo "=> https://docs.firezone.dev/administer/migrate/?utm_source=product"
 echo $normal
