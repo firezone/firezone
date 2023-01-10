@@ -148,4 +148,16 @@ defmodule FzCommon.FzNetTest do
       assert "2600:1:1:1:1:1:1:1" == FzNet.endpoint_to_ip("[2600:1:1:1:1:1:1:1]:4562")
     end
   end
+
+  describe "inet_to_ip_with_mask/2" do
+    test "with netmask" do
+      assert "10.3.2.1/24" ==
+               "#{FzNet.inet_to_ip_with_mask(%Postgrex.INET{address: {10, 3, 2, 1}, netmask: 24}, "10.3.2.0/24")}"
+    end
+
+    test "without netmask" do
+      assert "10.3.2.1/24" ==
+               "#{FzNet.inet_to_ip_with_mask(%Postgrex.INET{address: {10, 3, 2, 1}, netmask: nil}, "10.3.2.0/24")}"
+    end
+  end
 end

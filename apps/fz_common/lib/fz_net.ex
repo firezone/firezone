@@ -48,6 +48,21 @@ defmodule FzCommon.FzNet do
     end
   end
 
+  def inet_to_ip_with_mask(%{address: address, netmask: netmask} = inet, network) do
+    if netmask != nil do
+      inet
+    else
+      "#{address |> Tuple.to_list() |> Enum.join(".")}/#{get_range!(network)}"
+    end
+  end
+
+  def get_range!(inet) when is_binary(inet) do
+    case String.split(inet, "/") do
+      [_, mask] -> mask
+      _ -> raise "inet given #{inet} doesn't have a range"
+    end
+  end
+
   def valid_fqdn?(fqdn) when is_binary(fqdn) do
     String.match?(fqdn, fqdn_regex())
   end

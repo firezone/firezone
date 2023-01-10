@@ -4,7 +4,8 @@ defmodule FzHttp.Gateways do
   """
 
   import Ecto.Query, warn: false
-  alias FzHttp.{Gateways.Gateway, Repo, Devices}
+  alias FzHttp.{Gateways.Gateway, Repo, Devices, AllowRules}
+  alias FzCommon.FzNet
 
   @default_action :deny
   @default_name "default"
@@ -52,13 +53,23 @@ defmodule FzHttp.Gateways do
   def get_gateway!(name: name), do: Repo.get_by!(Gateway, name: name)
 
   def gateway_config(gateway) do
+    network_v4 = Application.fetch_env!(:fz_http, :wireguard_ipv4_network)
+    network_v6 = Application.fetch_env!(:fz_http, :wireguard_ipv6_network)
+
     interface = %{
-      address: ["#{gateway.ipv4_address}/32", "#{gateway.ipv6_address}/128"],
-      mtu: gateway.mtu
+      address: [
+        "#{FzNet.inet_to_ip_with_mask(gateway.ipv4_address, network_v4)}",
+        "#{FzNet.inet_to_ip_with_mask(gateway.ipv6_address, network_v6)}"
+      ],
+      mtu: gateway.mtu,
+      ipv4_masquerade: gateway.ipv4_masquerade,
+      ipv6_masquerade: gateway.ipv6_masquerade,
+      listen_port: Devices.get_default_wireguard_port()
     }
 
     %{
       default_action: @default_action,
+      rules: AllowRules.list_allow_rules(gateway) |> Enum.map(&AllowRules.as_setting/1),
       interface: interface,
       peers: Devices.as_settings() |> MapSet.to_list()
     }

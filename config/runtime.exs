@@ -62,9 +62,17 @@ if config_env() == :prod do
   gateway_registration_token = System.fetch_env!("GATEWAY_REGISTRATION_TOKEN")
   wireguard_ipv4_network = System.get_env("WIREGUARD_IPV4_NETWORK", "10.3.2.0/24")
   wireguard_ipv4_address = System.get_env("WIREGUARD_IPV4_ADDRESS")
+
+  wireguard_ipv4_masquerade =
+    FzString.to_boolean(System.get_env("WIREGUARD_IPV4_MASQUERADE", "true"))
+
   wireguard_ipv6_enabled = FzString.to_boolean(System.get_env("WIREGUARD_IPV6_ENABLED", "true"))
   wireguard_ipv6_network = System.get_env("WIREGUARD_IPV6_NETWORK", "fd00::3:2:0/120")
   wireguard_ipv6_address = System.get_env("WIREGUARD_IPV6_ADDRESS")
+
+  wireguard_ipv6_masquerade =
+    FzString.to_boolean(System.get_env("WIREGUARD_IPV6_MASQUERADE", "true"))
+
   wireguard_mtu = System.get_env("WIREGUARD_MTU", "1280")
   wireguard_endpoint = System.get_env("WIREGUARD_ENDPOINT", host)
   default_wireguard_port = System.get_env("DEFAULT_WIREGUARD_PORT", 51820)
@@ -197,9 +205,11 @@ if config_env() == :prod do
     wireguard_ipv4_enabled: wireguard_ipv4_enabled,
     wireguard_ipv4_network: wireguard_ipv4_network,
     wireguard_ipv4_address: wireguard_ipv4_address,
+    wireguard_ipv4_masquerade: wireguard_ipv4_masquerade,
     wireguard_ipv6_enabled: wireguard_ipv6_enabled,
     wireguard_ipv6_network: wireguard_ipv6_network,
     wireguard_ipv6_address: wireguard_ipv6_address,
+    wireguard_ipv6_masquerade: wireguard_ipv6_masquerade,
     wireguard_mtu: wireguard_mtu,
     wireguard_endpoint: wireguard_endpoint,
     default_wireguard_port: default_wireguard_port,

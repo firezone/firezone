@@ -140,6 +140,10 @@ components:
               enum:
                 - deny
                 - allow
+            rules:
+              type: array
+              items:
+                $ref: "#/components/schemas/rule"
             peers:
               type: array
               items:
@@ -156,6 +160,10 @@ components:
                     type: string
                 mtu:
                   type: integer
+                ipv4_masquerade:
+                  type: boolean
+                ipv6_masquerade:
+                  type: boolean
                 listen_port:
                   type: integer
                 address:
