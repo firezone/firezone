@@ -3,7 +3,15 @@ import Config
 # Use Jason for JSON parsing in Phoenix
 config :phoenix,
   json_library: Jason,
-  filter_parameters: ["passwoerd", "secret"]
+  filter_parameters: [
+    "password",
+    "secret",
+    "password_confirmation",
+    "current_password",
+    "password_hash",
+    "preshared_key",
+    "private_key"
+  ]
 
 # Public API key for telemetry
 config :posthog,

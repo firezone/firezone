@@ -10,7 +10,7 @@ defmodule FzHttp.Gateways do
   @default_name "default"
 
   def find_or_create_default_gateway(attrs \\ %{}) do
-    if count_gateways() > 0 do
+    if count() > 0 do
       {:ok, get_gateway!()}
     else
       create_default_gateway(attrs)
@@ -66,5 +66,5 @@ defmodule FzHttp.Gateways do
 
   def list_gateways, do: Repo.all(Gateway)
 
-  def count_gateways, do: Repo.aggregate(Gateway, :count, :id)
+  def count, do: Repo.aggregate(Gateway, :count, :id)
 end
