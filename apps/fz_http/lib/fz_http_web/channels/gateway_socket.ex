@@ -9,16 +9,13 @@ defmodule FzHttpWeb.GatewaySocket do
 
   @impl true
   def connect(%{"token" => token}, socket, _connect_info) do
-    case Guardian.Phoenix.Socket.authenticate(
-           socket,
-           FzHttpWeb.Auth.Gateway.Authentication,
-           token
-         ) do
-      {:ok, socket} ->
-        {:ok, socket}
-
-      {:error, reason} ->
-        {:error, {:unauthorized, reason}}
+    with {:error, reason} <-
+           Guardian.Phoenix.Socket.authenticate(
+             socket,
+             FzHttpWeb.Auth.Gateway.Authentication,
+             token
+           ) do
+      {:error, {:unauthorized, reason}}
     end
   end
 
