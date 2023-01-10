@@ -1,4 +1,4 @@
-defmodule FzHttpWeb.JSON.RuleControllerTest do
+defmodule FzHttpWeb.JSON.AllowRuleControllerTest do
   use FzHttpWeb.ApiCase, async: true
   import FzHttp.AllowRulesFixtures
   import FzHttpWeb.ApiCase
