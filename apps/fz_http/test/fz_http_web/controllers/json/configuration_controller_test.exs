@@ -4,7 +4,10 @@ defmodule FzHttpWeb.JSON.ConfigurationControllerTest do
 
   describe "GET /v0/configuration" do
     test "renders configuration" do
-      conn = get(authed_conn(), ~p"/v0/configuration")
+      conn =
+        get(authed_conn(), ~p"/v0/configuration")
+        |> doc()
+
       assert json_response(conn, 200)["data"]
     end
 
@@ -98,7 +101,10 @@ defmodule FzHttpWeb.JSON.ConfigurationControllerTest do
     }
 
     test "updates fields when data is valid" do
-      conn = put(authed_conn(), ~p"/v0/configuration", configuration: @first_config)
+      conn =
+        put(authed_conn(), ~p"/v0/configuration", configuration: @first_config)
+        |> doc()
+
       assert @first_config = json_response(conn, 200)["data"]
 
       conn = put(authed_conn(), ~p"/v0/configuration", configuration: @second_config)

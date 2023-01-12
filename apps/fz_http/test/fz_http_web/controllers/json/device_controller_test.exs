@@ -25,14 +25,18 @@ defmodule FzHttpWeb.JSON.DeviceControllerTest do
   describe "GET /v0/devices/:id" do
     test "shows device" do
       id = device().id
-      conn = get(authed_conn(), ~p"/v0/devices/#{id}")
+
+      conn =
+        get(authed_conn(), ~p"/v0/devices/#{id}")
+        |> doc(title: "GET /v0/devices/{id}")
+
       assert %{"id" => ^id} = json_response(conn, 200)["data"]
     end
 
     test "renders 404 for device not found" do
-      assert_error_sent 404, fn ->
+      assert_error_sent(404, fn ->
         get(authed_conn(), ~p"/v0/devices/003da73d-2dd9-4492-8136-3282843545e8")
-      end
+      end)
     end
 
     test "renders 401 for missing authorization header" do
@@ -52,6 +56,7 @@ defmodule FzHttpWeb.JSON.DeviceControllerTest do
         post(authed_conn(), ~p"/v0/devices",
           device: Map.merge(@params, %{"user_id" => unprivileged_user.id})
         )
+        |> doc()
 
       assert @params = json_response(conn, 201)["data"]
     end
@@ -84,11 +89,14 @@ defmodule FzHttpWeb.JSON.DeviceControllerTest do
     end
   end
 
-  describe "[authed] PUT /v0/devices/:id" do
+  describe "PUT /v0/devices/:id" do
     test "updates device" do
       device = device()
 
-      conn = put(authed_conn(), ~p"/v0/devices/#{device}", device: @params)
+      conn =
+        put(authed_conn(), ~p"/v0/devices/#{device}", device: @params)
+        |> doc(title: "PUT /v0/devices/{id}")
+
       assert @params = json_response(conn, 200)["data"]
 
       conn = get(conn, ~p"/v0/devices/#{device}")
@@ -96,9 +104,9 @@ defmodule FzHttpWeb.JSON.DeviceControllerTest do
     end
 
     test "renders 404 for device not found" do
-      assert_error_sent 404, fn ->
+      assert_error_sent(404, fn ->
         put(authed_conn(), ~p"/v0/devices/003da73d-2dd9-4492-8136-3282843545e8", device: %{})
-      end
+      end)
     end
 
     test "renders 401 for missing authorization header" do
@@ -111,7 +119,9 @@ defmodule FzHttpWeb.JSON.DeviceControllerTest do
     test "lists all devices" do
       devices = for _i <- 1..5, do: device()
 
-      conn = get(authed_conn(), ~p"/v0/devices")
+      conn =
+        get(authed_conn(), ~p"/v0/devices")
+        |> doc()
 
       assert json_response(conn, 200)["data"]
              |> Enum.map(& &1["id"])
@@ -131,18 +141,21 @@ defmodule FzHttpWeb.JSON.DeviceControllerTest do
     test "deletes device" do
       device = device()
 
-      conn = delete(authed_conn(), ~p"/v0/devices/#{device}")
+      conn =
+        delete(authed_conn(), ~p"/v0/devices/#{device}")
+        |> doc(title: "DELETE /v0/devices/{id}")
+
       assert response(conn, 204)
 
-      assert_error_sent 404, fn ->
+      assert_error_sent(404, fn ->
         get(conn, ~p"/v0/devices/#{device}")
-      end
+      end)
     end
 
     test "renders 404 for device not found" do
-      assert_error_sent 404, fn ->
+      assert_error_sent(404, fn ->
         delete(authed_conn(), ~p"/v0/devices/003da73d-2dd9-4492-8136-3282843545e8")
-      end
+      end)
     end
 
     test "renders 401 for missing authorization header" do

@@ -22,14 +22,18 @@ defmodule FzHttpWeb.JSON.RuleControllerTest do
   describe "GET /v0/rules/:id" do
     test "shows rule" do
       id = rule().id
-      conn = get(authed_conn(), ~p"/v0/rules/#{id}")
+
+      conn =
+        get(authed_conn(), ~p"/v0/rules/#{id}")
+        |> doc(title: "GET /v0/rules/{id}")
+
       assert %{"id" => ^id} = json_response(conn, 200)["data"]
     end
 
     test "renders 404 for rule not found" do
-      assert_error_sent 404, fn ->
+      assert_error_sent(404, fn ->
         get(authed_conn(), ~p"/v0/rules/003da73d-2dd9-4492-8136-3282843545e8")
-      end
+      end)
     end
 
     test "renders 401 for missing authorization header" do
@@ -46,6 +50,7 @@ defmodule FzHttpWeb.JSON.RuleControllerTest do
 
       conn =
         post(conn, ~p"/v0/rules", rule: Map.merge(@accept_rule_params, %{"user_id" => user.id}))
+        |> doc()
 
       assert @accept_rule_params = json_response(conn, 201)["data"]
     end
@@ -79,7 +84,11 @@ defmodule FzHttpWeb.JSON.RuleControllerTest do
   describe "PUT /v0/rules/:id" do
     test "updates accept rule when valid" do
       rule = rule()
-      conn = put(authed_conn(), ~p"/v0/rules/#{rule}", rule: @accept_rule_params)
+
+      conn =
+        put(authed_conn(), ~p"/v0/rules/#{rule}", rule: @accept_rule_params)
+        |> doc(title: "PUT /v0/rules/{id}")
+
       assert @accept_rule_params = json_response(conn, 200)["data"]
 
       conn = get(conn, ~p"/v0/rules/#{rule}")
@@ -103,9 +112,9 @@ defmodule FzHttpWeb.JSON.RuleControllerTest do
     end
 
     test "renders 404 for rule not found" do
-      assert_error_sent 404, fn ->
+      assert_error_sent(404, fn ->
         put(authed_conn(), ~p"/v0/rules/003da73d-2dd9-4492-8136-3282843545e8", rule: %{})
-      end
+      end)
     end
 
     test "renders 401 for missing authorization header" do
@@ -117,7 +126,10 @@ defmodule FzHttpWeb.JSON.RuleControllerTest do
   describe "GET /v0/rules" do
     test "lists rules" do
       for i <- 1..5, do: rule(%{destination: "10.3.2.#{i}"})
-      conn = get(authed_conn(), ~p"/v0/rules")
+
+      conn =
+        get(authed_conn(), ~p"/v0/rules")
+        |> doc()
 
       actual =
         Rules.list_rules()
@@ -141,18 +153,22 @@ defmodule FzHttpWeb.JSON.RuleControllerTest do
   describe "DELETE /v0/rules/:id" do
     test "deletes rule" do
       rule = rule()
-      conn = delete(authed_conn(), ~p"/v0/rules/#{rule}")
+
+      conn =
+        delete(authed_conn(), ~p"/v0/rules/#{rule}")
+        |> doc(title: "DELETE /v0/rules/{id}")
+
       assert response(conn, 204)
 
-      assert_error_sent 404, fn ->
+      assert_error_sent(404, fn ->
         get(authed_conn(), ~p"/v0/rules/#{rule}")
-      end
+      end)
     end
 
     test "renders 404 for rule not found" do
-      assert_error_sent 404, fn ->
+      assert_error_sent(404, fn ->
         delete(authed_conn(), ~p"/v0/rules/003da73d-2dd9-4492-8136-3282843545e8")
-      end
+      end)
     end
 
     test "renders 401 for missing authorization header" do

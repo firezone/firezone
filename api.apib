@@ -1,0 +1,1154 @@
+# Firezone API
+This is Firezone documentation.
+
+# Firezone API
+This is Firezone documentation.
+
+
+
+
+## Endpoints
+
+
+
+## Configuration [/v0/configuration]
+### show [GET /v0/configuration]
+
+
++ Request GET /v0/configuration
+    + Headers
+    
+            Authorization: Bearer {api_token}
+
++ Response 200
+
+    + Headers
+    
+            Content-Type: application/json; charset=utf-8
+    + Body
+    
+            {
+              "data": {
+                "allow_unprivileged_device_configuration": true,
+                "allow_unprivileged_device_management": true,
+                "default_client_allowed_ips": "0.0.0.0/0,::/0",
+                "default_client_dns": "1.1.1.1,1.0.0.1",
+                "default_client_endpoint": "localhost:51820",
+                "default_client_mtu": 1280,
+                "default_client_persistent_keepalive": 25,
+                "disable_vpn_on_oidc_error": false,
+                "id": "f23dc476-d737-4497-b97c-9ecefb1944c6",
+                "inserted_at": "2023-01-11T19:25:35.350867Z",
+                "local_auth_enabled": true,
+                "logo": null,
+                "openid_connect_providers": [],
+                "saml_identity_providers": [],
+                "updated_at": "2023-01-11T19:25:35.350867Z",
+                "vpn_session_duration": 0
+              }
+            }
+### update [PUT /v0/configuration]
+
+
++ Request PUT /v0/configuration
+    + Headers
+    
+            Authorization: Bearer {api_token}
+    + Body
+    
+            {
+              "configuration": {
+                "allow_unprivileged_device_configuration": false,
+                "allow_unprivileged_device_management": false,
+                "default_client_allowed_ips": "1.1.1.1,2.2.2.2",
+                "default_client_dns": "1.1.1.1",
+                "default_client_endpoint": "new-endpoint",
+                "default_client_mtu": 1100,
+                "default_client_persistent_keepalive": 1,
+                "disable_vpn_on_oidc_error": true,
+                "local_auth_enabled": false,
+                "openid_connect_providers": [
+                  {
+                    "auto_create_users": false,
+                    "client_id": "test-id",
+                    "client_secret": "test-secret",
+                    "discovery_document_uri": "https://accounts.google.com/.well-known/openid-configuration",
+                    "id": "google",
+                    "label": "google",
+                    "redirect_uri": "https://invalid",
+                    "response_type": "response-type",
+                    "scope": "test-scope"
+                  }
+                ],
+                "saml_identity_providers": [
+                  {
+                    "auto_create_users": false,
+                    "base_url": "https://saml",
+                    "id": "okta",
+                    "label": "okta",
+                    "metadata": "<?xml version=\"1.0\"?>\n<md:EntityDescriptor xmlns=\"urn:oasis:names:tc:SAML:2.0:metadata\" xmlns:md=\"urn:oasis:names:tc:SAML:2.0:metadata\" xmlns:saml=\"urn:oasis:names:tc:SAML:2.0:assertion\" xmlns:ds=\"http://www.w3.org/2000/09/xmldsig#\" entityID=\"http://localhost:8080/realms/firezone\">\n  <md:IDPSSODescriptor WantAuthnRequestsSigned=\"true\" protocolSupportEnumeration=\"urn:oasis:names:tc:SAML:2.0:protocol\">\n    <md:KeyDescriptor use=\"signing\">\n      <ds:KeyInfo>\n        <ds:KeyName>pdSMtx2s3RVVhxg_qJOjHhlZhwZk6JiBMiSm5PEgjkA</ds:KeyName>\n        <ds:X509Data>\n          <ds:X509Certificate>MIICnzCCAYcCBgGD18ZU8TANBgkqhkiG9w0BAQsFADATMREwDwYDVQQDDAhmaXJlem9uZTAeFw0yMjEwMTQxODMyMjJaFw0zMjEwMTQxODM0MDJaMBMxETAPBgNVBAMMCGZpcmV6b25lMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAur5Cb0jrDJbMwr96WWE+z9CjDg0A/uRkaB4loRqkmu3A2fQGsS6CP7F7lQWMJmpzvBgkNtB69toO2sgx1u1fhpIJBZ0uSHF5gnzQAivgVxInvkMKRTRSkpMbhObiDHZnEGI2+Ly+8iV8IvprdrbDgm52u4conam0H1PewUKkHulrVQ+ImFuEWAjKCRSqpUG2F1eRkA0YpqB09x0CZAOOoucwTsBYj/ZAz3dUXhYIENAF7v0ykvzGOCAyOZIn1uYQc7jvWpwoI8qQdL45phj2FLoFlght3tlZV8IG5hsXrE6rg7Ufqvv8xyGltrOMKj/jEFEunagZOUjkypDp36b8cwIDAQABMA0GCSqGSIb3DQEBCwUAA4IBAQBEZKLLr66GB3NxqXGTMl0PvTDNB9GdyShQHaJYjeeUQnEXixjlAVrOq/txEBKjhGUcqyFELoNuwcxxV1iHA5oXhCoqYmnp9T/ftmXPDT3c49PBABHgLJaFOKYTpVx1YjP7mA44X1ijLZmgboIeeFNerVNHIzR9BsxcloQlB0r9QfC14rsuXo6QD3QnaVI8wDgWXQHqpcwLFqvehXdNvMFniRvX2qBNU8E0FPoMaZ1C3n2nssLcVZ+C4ghq6YoAG+wLGY7XE8+v5rnYGDpGpfgr2wdefn6tryFq3PyGqA8ThjARESRRQG9kI/RlNX7qCnP/8/7JQ4wLdfz5C25uhakP</ds:X509Certificate>\n        </ds:X509Data>\n      </ds:KeyInfo>\n    </md:KeyDescriptor>\n    <md:ArtifactResolutionService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:SOAP\" Location=\"http://localhost:8080/realms/firezone/protocol/saml/resolve\" index=\"0\"/>\n    <md:SingleLogoutService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n    <md:SingleLogoutService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n    <md:SingleLogoutService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Artifact\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n    <md:NameIDFormat>urn:oasis:names:tc:SAML:2.0:nameid-format:persistent</md:NameIDFormat>\n    <md:NameIDFormat>urn:oasis:names:tc:SAML:2.0:nameid-format:transient</md:NameIDFormat>\n    <md:NameIDFormat>urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified</md:NameIDFormat>\n    <md:NameIDFormat>urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress</md:NameIDFormat>\n    <md:SingleSignOnService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n    <md:SingleSignOnService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n    <md:SingleSignOnService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:SOAP\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n    <md:SingleSignOnService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Artifact\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n  </md:IDPSSODescriptor>\n</md:EntityDescriptor>\n",
+                    "sign_metadata": false,
+                    "sign_requests": false,
+                    "signed_assertion_in_resp": false,
+                    "signed_envelopes_in_resp": false
+                  }
+                ],
+                "vpn_session_duration": 100
+              }
+            }
+
++ Response 200
+
+    + Headers
+    
+            Content-Type: application/json; charset=utf-8
+    + Body
+    
+            {
+              "data": {
+                "allow_unprivileged_device_configuration": false,
+                "allow_unprivileged_device_management": false,
+                "default_client_allowed_ips": "1.1.1.1,2.2.2.2",
+                "default_client_dns": "1.1.1.1",
+                "default_client_endpoint": "new-endpoint",
+                "default_client_mtu": 1100,
+                "default_client_persistent_keepalive": 1,
+                "disable_vpn_on_oidc_error": true,
+                "id": "f23dc476-d737-4497-b97c-9ecefb1944c6",
+                "inserted_at": "2023-01-11T19:25:35.350867Z",
+                "local_auth_enabled": false,
+                "logo": null,
+                "openid_connect_providers": [
+                  {
+                    "auto_create_users": false,
+                    "client_id": "test-id",
+                    "client_secret": "test-secret",
+                    "discovery_document_uri": "https://accounts.google.com/.well-known/openid-configuration",
+                    "id": "google",
+                    "label": "google",
+                    "redirect_uri": "https://invalid",
+                    "response_type": "response-type",
+                    "scope": "test-scope"
+                  }
+                ],
+                "saml_identity_providers": [
+                  {
+                    "auto_create_users": false,
+                    "base_url": "https://saml",
+                    "id": "okta",
+                    "label": "okta",
+                    "metadata": "<?xml version=\"1.0\"?>\n<md:EntityDescriptor xmlns=\"urn:oasis:names:tc:SAML:2.0:metadata\" xmlns:md=\"urn:oasis:names:tc:SAML:2.0:metadata\" xmlns:saml=\"urn:oasis:names:tc:SAML:2.0:assertion\" xmlns:ds=\"http://www.w3.org/2000/09/xmldsig#\" entityID=\"http://localhost:8080/realms/firezone\">\n  <md:IDPSSODescriptor WantAuthnRequestsSigned=\"true\" protocolSupportEnumeration=\"urn:oasis:names:tc:SAML:2.0:protocol\">\n    <md:KeyDescriptor use=\"signing\">\n      <ds:KeyInfo>\n        <ds:KeyName>pdSMtx2s3RVVhxg_qJOjHhlZhwZk6JiBMiSm5PEgjkA</ds:KeyName>\n        <ds:X509Data>\n          <ds:X509Certificate>MIICnzCCAYcCBgGD18ZU8TANBgkqhkiG9w0BAQsFADATMREwDwYDVQQDDAhmaXJlem9uZTAeFw0yMjEwMTQxODMyMjJaFw0zMjEwMTQxODM0MDJaMBMxETAPBgNVBAMMCGZpcmV6b25lMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAur5Cb0jrDJbMwr96WWE+z9CjDg0A/uRkaB4loRqkmu3A2fQGsS6CP7F7lQWMJmpzvBgkNtB69toO2sgx1u1fhpIJBZ0uSHF5gnzQAivgVxInvkMKRTRSkpMbhObiDHZnEGI2+Ly+8iV8IvprdrbDgm52u4conam0H1PewUKkHulrVQ+ImFuEWAjKCRSqpUG2F1eRkA0YpqB09x0CZAOOoucwTsBYj/ZAz3dUXhYIENAF7v0ykvzGOCAyOZIn1uYQc7jvWpwoI8qQdL45phj2FLoFlght3tlZV8IG5hsXrE6rg7Ufqvv8xyGltrOMKj/jEFEunagZOUjkypDp36b8cwIDAQABMA0GCSqGSIb3DQEBCwUAA4IBAQBEZKLLr66GB3NxqXGTMl0PvTDNB9GdyShQHaJYjeeUQnEXixjlAVrOq/txEBKjhGUcqyFELoNuwcxxV1iHA5oXhCoqYmnp9T/ftmXPDT3c49PBABHgLJaFOKYTpVx1YjP7mA44X1ijLZmgboIeeFNerVNHIzR9BsxcloQlB0r9QfC14rsuXo6QD3QnaVI8wDgWXQHqpcwLFqvehXdNvMFniRvX2qBNU8E0FPoMaZ1C3n2nssLcVZ+C4ghq6YoAG+wLGY7XE8+v5rnYGDpGpfgr2wdefn6tryFq3PyGqA8ThjARESRRQG9kI/RlNX7qCnP/8/7JQ4wLdfz5C25uhakP</ds:X509Certificate>\n        </ds:X509Data>\n      </ds:KeyInfo>\n    </md:KeyDescriptor>\n    <md:ArtifactResolutionService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:SOAP\" Location=\"http://localhost:8080/realms/firezone/protocol/saml/resolve\" index=\"0\"/>\n    <md:SingleLogoutService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n    <md:SingleLogoutService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n    <md:SingleLogoutService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Artifact\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n    <md:NameIDFormat>urn:oasis:names:tc:SAML:2.0:nameid-format:persistent</md:NameIDFormat>\n    <md:NameIDFormat>urn:oasis:names:tc:SAML:2.0:nameid-format:transient</md:NameIDFormat>\n    <md:NameIDFormat>urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified</md:NameIDFormat>\n    <md:NameIDFormat>urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress</md:NameIDFormat>\n    <md:SingleSignOnService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n    <md:SingleSignOnService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n    <md:SingleSignOnService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:SOAP\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n    <md:SingleSignOnService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Artifact\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n  </md:IDPSSODescriptor>\n</md:EntityDescriptor>\n",
+                    "sign_metadata": false,
+                    "sign_requests": false,
+                    "signed_assertion_in_resp": false,
+                    "signed_envelopes_in_resp": false
+                  }
+                ],
+                "updated_at": "2023-01-12T00:16:31.646079Z",
+                "vpn_session_duration": 100
+              }
+            }
+
+## Devices [/v0/devices/bb312ded-9078-453b-8f0c-2d25cbe80f2b]
+
+REST API Controller for Devices.
+
+### show [GET /v0/devices/{id}]
+
++ Parameters
+    + id: `bb312ded-9078-453b-8f0c-2d25cbe80f2b`
+
+
++ Request GET /v0/devices/{id}
+    + Headers
+    
+            Authorization: Bearer {api_token}
+
++ Response 200
+
+    + Headers
+    
+            Content-Type: application/json; charset=utf-8
+    + Body
+    
+            {
+              "data": {
+                "allowed_ips": "0.0.0.0/0,::/0",
+                "description": "factory description",
+                "dns": "1.1.1.1,1.0.0.1",
+                "endpoint": "localhost:51820",
+                "id": "bb312ded-9078-453b-8f0c-2d25cbe80f2b",
+                "inserted_at": "2023-01-12T00:16:30.821118Z",
+                "ipv4": "100.102.36.56",
+                "ipv6": "fd00::2a:5895",
+                "latest_handshake": null,
+                "mtu": 1280,
+                "name": "factory 550",
+                "persistent_keepalive": 25,
+                "preshared_key": "ZKAHvKFnSH6GEoIdY39GDsgj4atuLZI6roMbXeQ5DR0=",
+                "public_key": "BEwXI1eQAbEYax7hLABQdvlAK9xan/lZdjmRyIJBZEM=",
+                "remote_ip": null,
+                "rx_bytes": null,
+                "server_public_key": null,
+                "tx_bytes": null,
+                "updated_at": "2023-01-12T00:16:30.821118Z",
+                "use_default_allowed_ips": true,
+                "use_default_dns": true,
+                "use_default_endpoint": true,
+                "use_default_mtu": true,
+                "use_default_persistent_keepalive": true,
+                "user_id": "422fc531-bca6-4555-b78c-138a5f0a6d4d"
+              }
+            }
+### create [POST /v0/devices]
+
+
++ Request POST /v0/devices
+    + Headers
+    
+            Authorization: Bearer {api_token}
+    + Body
+    
+            {
+              "device": {
+                "allowed_ips": "0.0.0.0/0, ::/0, 1.1.1.1",
+                "description": "create-description",
+                "dns": "9.9.9.8",
+                "endpoint": "9.9.9.9",
+                "ipv4": "100.64.0.2",
+                "ipv6": "fd00::2",
+                "mtu": 999,
+                "name": "create-name",
+                "persistent_keepalive": 9,
+                "preshared_key": "CHqFuS+iL3FTog5F4Ceumqlk0CU4Cl/dyUP/9F9NDnI=",
+                "public_key": "CHqFuS+iL3FTog5F4Ceumqlk0CU4Cl/dyUP/9F9NDnI=",
+                "use_default_allowed_ips": false,
+                "use_default_dns": false,
+                "use_default_endpoint": false,
+                "use_default_mtu": false,
+                "use_default_persistent_keepalive": false,
+                "user_id": "766a6f4d-92da-4741-8441-9321231fa629"
+              }
+            }
+
++ Response 201
+
+    + Headers
+    
+            Content-Type: application/json; charset=utf-8
+            Location: /v0/devices/db138e31-d96b-4fa5-b1ed-74ea429b3515
+    + Body
+    
+            {
+              "data": {
+                "allowed_ips": "0.0.0.0/0, ::/0, 1.1.1.1",
+                "description": "create-description",
+                "dns": "9.9.9.8",
+                "endpoint": "9.9.9.9",
+                "id": "db138e31-d96b-4fa5-b1ed-74ea429b3515",
+                "inserted_at": "2023-01-12T00:16:31.100936Z",
+                "ipv4": "100.64.0.2",
+                "ipv6": "fd00::2",
+                "latest_handshake": null,
+                "mtu": 999,
+                "name": "create-name",
+                "persistent_keepalive": 9,
+                "preshared_key": "CHqFuS+iL3FTog5F4Ceumqlk0CU4Cl/dyUP/9F9NDnI=",
+                "public_key": "CHqFuS+iL3FTog5F4Ceumqlk0CU4Cl/dyUP/9F9NDnI=",
+                "remote_ip": null,
+                "rx_bytes": null,
+                "server_public_key": null,
+                "tx_bytes": null,
+                "updated_at": "2023-01-12T00:16:31.100936Z",
+                "use_default_allowed_ips": false,
+                "use_default_dns": false,
+                "use_default_endpoint": false,
+                "use_default_mtu": false,
+                "use_default_persistent_keepalive": false,
+                "user_id": "766a6f4d-92da-4741-8441-9321231fa629"
+              }
+            }
+### update [PUT /v0/devices/{id}]
+
++ Parameters
+    + id: `9da1def2-3431-4ae7-89a2-a2b71ba1a787`
+
+
++ Request PUT /v0/devices/{id}
+    + Headers
+    
+            Authorization: Bearer {api_token}
+    + Body
+    
+            {
+              "device": {
+                "allowed_ips": "0.0.0.0/0, ::/0, 1.1.1.1",
+                "description": "create-description",
+                "dns": "9.9.9.8",
+                "endpoint": "9.9.9.9",
+                "ipv4": "100.64.0.2",
+                "ipv6": "fd00::2",
+                "mtu": 999,
+                "name": "create-name",
+                "persistent_keepalive": 9,
+                "preshared_key": "CHqFuS+iL3FTog5F4Ceumqlk0CU4Cl/dyUP/9F9NDnI=",
+                "public_key": "CHqFuS+iL3FTog5F4Ceumqlk0CU4Cl/dyUP/9F9NDnI=",
+                "use_default_allowed_ips": false,
+                "use_default_dns": false,
+                "use_default_endpoint": false,
+                "use_default_mtu": false,
+                "use_default_persistent_keepalive": false
+              }
+            }
+
++ Response 200
+
+    + Headers
+    
+            Content-Type: application/json; charset=utf-8
+    + Body
+    
+            {
+              "data": {
+                "allowed_ips": "0.0.0.0/0, ::/0, 1.1.1.1",
+                "description": "create-description",
+                "dns": "9.9.9.8",
+                "endpoint": "9.9.9.9",
+                "id": "9da1def2-3431-4ae7-89a2-a2b71ba1a787",
+                "inserted_at": "2023-01-12T00:16:30.724329Z",
+                "ipv4": "100.64.0.2",
+                "ipv6": "fd00::2",
+                "latest_handshake": null,
+                "mtu": 999,
+                "name": "create-name",
+                "persistent_keepalive": 9,
+                "preshared_key": "CHqFuS+iL3FTog5F4Ceumqlk0CU4Cl/dyUP/9F9NDnI=",
+                "public_key": "CHqFuS+iL3FTog5F4Ceumqlk0CU4Cl/dyUP/9F9NDnI=",
+                "remote_ip": null,
+                "rx_bytes": null,
+                "server_public_key": null,
+                "tx_bytes": null,
+                "updated_at": "2023-01-12T00:16:30.766827Z",
+                "use_default_allowed_ips": false,
+                "use_default_dns": false,
+                "use_default_endpoint": false,
+                "use_default_mtu": false,
+                "use_default_persistent_keepalive": false,
+                "user_id": "41911aeb-ec17-4b77-9642-f1cd0ae4bf29"
+              }
+            }
+### index [GET /v0/devices]
+
+
++ Request GET /v0/devices
+    + Headers
+    
+            Authorization: Bearer {api_token}
+
++ Response 200
+
+    + Headers
+    
+            Content-Type: application/json; charset=utf-8
+    + Body
+    
+            {
+              "data": [
+                {
+                  "allowed_ips": "0.0.0.0/0,::/0",
+                  "description": "factory description",
+                  "dns": "1.1.1.1,1.0.0.1",
+                  "endpoint": "localhost:51820",
+                  "id": "fcf2ab89-ec3d-4783-996b-ca449e691206",
+                  "inserted_at": "2023-01-12T00:16:30.924512Z",
+                  "ipv4": "100.98.99.199",
+                  "ipv6": "fd00::f:c5c7",
+                  "latest_handshake": null,
+                  "mtu": 1280,
+                  "name": "factory 483",
+                  "persistent_keepalive": 25,
+                  "preshared_key": "yF+haal3Fq4YyAGNN1wu1lS6eB8Xi9TgezN5bxtN/5Y=",
+                  "public_key": "H+MJv4qrIQ5of+XZTwt5lqc3csVdOW8VmwrYfO9RFk8=",
+                  "remote_ip": null,
+                  "rx_bytes": null,
+                  "server_public_key": null,
+                  "tx_bytes": null,
+                  "updated_at": "2023-01-12T00:16:30.924512Z",
+                  "use_default_allowed_ips": true,
+                  "use_default_dns": true,
+                  "use_default_endpoint": true,
+                  "use_default_mtu": true,
+                  "use_default_persistent_keepalive": true,
+                  "user_id": "84b483e4-ad06-433a-918d-be77bfcea348"
+                },
+                {
+                  "allowed_ips": "0.0.0.0/0,::/0",
+                  "description": "factory description",
+                  "dns": "1.1.1.1,1.0.0.1",
+                  "endpoint": "localhost:51820",
+                  "id": "c4b02f1c-c83f-4637-92f2-4a4aa604ab83",
+                  "inserted_at": "2023-01-12T00:16:30.935291Z",
+                  "ipv4": "100.120.109.46",
+                  "ipv6": "fd00::18:305e",
+                  "latest_handshake": null,
+                  "mtu": 1280,
+                  "name": "factory 611",
+                  "persistent_keepalive": 25,
+                  "preshared_key": "5VnEm/8rFh4UwxIVQvLQHwmY4n+KRRJAHeTc1j/aAtU=",
+                  "public_key": "VIT5TwzdKt5ixHcvZ5V8vql7lMTZKeDoLyInwyRwodE=",
+                  "remote_ip": null,
+                  "rx_bytes": null,
+                  "server_public_key": null,
+                  "tx_bytes": null,
+                  "updated_at": "2023-01-12T00:16:30.935291Z",
+                  "use_default_allowed_ips": true,
+                  "use_default_dns": true,
+                  "use_default_endpoint": true,
+                  "use_default_mtu": true,
+                  "use_default_persistent_keepalive": true,
+                  "user_id": "1b351c69-5fd7-42ae-b53f-abd5f52960d3"
+                },
+                {
+                  "allowed_ips": "0.0.0.0/0,::/0",
+                  "description": "factory description",
+                  "dns": "1.1.1.1,1.0.0.1",
+                  "endpoint": "localhost:51820",
+                  "id": "df26971e-0e20-4327-81c0-3c45c4070e04",
+                  "inserted_at": "2023-01-12T00:16:30.943767Z",
+                  "ipv4": "100.105.207.40",
+                  "ipv6": "fd00::3:e49e",
+                  "latest_handshake": null,
+                  "mtu": 1280,
+                  "name": "factory 1444",
+                  "persistent_keepalive": 25,
+                  "preshared_key": "jSC41Fz4J1ldf5D8tpNNPP3Spokj/b0fiyxmYrlF7go=",
+                  "public_key": "FRrGzFIXCkMDUf3H66UB4pC9jpToT0w/1Zrr80vhDts=",
+                  "remote_ip": null,
+                  "rx_bytes": null,
+                  "server_public_key": null,
+                  "tx_bytes": null,
+                  "updated_at": "2023-01-12T00:16:30.943767Z",
+                  "use_default_allowed_ips": true,
+                  "use_default_dns": true,
+                  "use_default_endpoint": true,
+                  "use_default_mtu": true,
+                  "use_default_persistent_keepalive": true,
+                  "user_id": "c111545e-684c-4c3b-a2c7-6cad86baca65"
+                },
+                {
+                  "allowed_ips": "0.0.0.0/0,::/0",
+                  "description": "factory description",
+                  "dns": "1.1.1.1,1.0.0.1",
+                  "endpoint": "localhost:51820",
+                  "id": "12b7e421-a245-44e3-acb3-e53e18985332",
+                  "inserted_at": "2023-01-12T00:16:30.952090Z",
+                  "ipv4": "100.75.226.133",
+                  "ipv6": "fd00::2b:da05",
+                  "latest_handshake": null,
+                  "mtu": 1280,
+                  "name": "factory 934",
+                  "persistent_keepalive": 25,
+                  "preshared_key": "YDnizyPj3k8zISNp3PkqSqzRp8ngJ+Q+K+W9XlVnZQI=",
+                  "public_key": "PxIqWJZZ46reYzOrE8yA2RQ/a2EMkfwHLq8k827pHic=",
+                  "remote_ip": null,
+                  "rx_bytes": null,
+                  "server_public_key": null,
+                  "tx_bytes": null,
+                  "updated_at": "2023-01-12T00:16:30.952090Z",
+                  "use_default_allowed_ips": true,
+                  "use_default_dns": true,
+                  "use_default_endpoint": true,
+                  "use_default_mtu": true,
+                  "use_default_persistent_keepalive": true,
+                  "user_id": "0203ee6b-56b1-4a15-805a-afb066b89576"
+                },
+                {
+                  "allowed_ips": "0.0.0.0/0,::/0",
+                  "description": "factory description",
+                  "dns": "1.1.1.1,1.0.0.1",
+                  "endpoint": "localhost:51820",
+                  "id": "6fb2d4ba-de4d-4cf2-a36b-f94b82a6584a",
+                  "inserted_at": "2023-01-12T00:16:30.960283Z",
+                  "ipv4": "100.70.170.152",
+                  "ipv6": "fd00::f:221d",
+                  "latest_handshake": null,
+                  "mtu": 1280,
+                  "name": "factory 999",
+                  "persistent_keepalive": 25,
+                  "preshared_key": "WOwGwDAhZw2vrS6ZOosjX/V5aeR0ZJvhnk8AzINPqCc=",
+                  "public_key": "zkF5+8mSq1lOKyXZRieWJAeMERdS/PHm0hq+LuJhmIo=",
+                  "remote_ip": null,
+                  "rx_bytes": null,
+                  "server_public_key": null,
+                  "tx_bytes": null,
+                  "updated_at": "2023-01-12T00:16:30.960283Z",
+                  "use_default_allowed_ips": true,
+                  "use_default_dns": true,
+                  "use_default_endpoint": true,
+                  "use_default_mtu": true,
+                  "use_default_persistent_keepalive": true,
+                  "user_id": "4a5a1dfe-e1f0-4410-8c3f-6dd03671a9ce"
+                }
+              ]
+            }
+### delete [DELETE /v0/devices/{id}]
+
++ Parameters
+    + id: `e9ec3de2-becb-410a-b0d1-bd78c2ac4918`
+
+
++ Request DELETE /v0/devices/{id}
+    + Headers
+    
+            Authorization: Bearer {api_token}
+
++ Response 204
+
+    + Body
+    
+            
+
+## Rules [/v0/rules/14f6fc2d-e0a5-492b-8994-ed944b6a8af0]
+
+REST API Controller for Rules.
+
+### show [GET /v0/rules/{id}]
+
++ Parameters
+    + id: `14f6fc2d-e0a5-492b-8994-ed944b6a8af0`
+
+
++ Request GET /v0/rules/{id}
+    + Headers
+    
+            Authorization: Bearer {api_token}
+
++ Response 200
+
+    + Headers
+    
+            Content-Type: application/json; charset=utf-8
+    + Body
+    
+            {
+              "data": {
+                "action": "drop",
+                "destination": "10.10.10.0/24",
+                "id": "14f6fc2d-e0a5-492b-8994-ed944b6a8af0",
+                "inserted_at": "2023-01-12T00:16:30.809469Z",
+                "port_range": null,
+                "port_type": null,
+                "updated_at": "2023-01-12T00:16:30.809469Z",
+                "user_id": null
+              }
+            }
+### create [POST /v0/rules]
+
+
++ Request POST /v0/rules
+    + Headers
+    
+            Authorization: Bearer {api_token}
+    + Body
+    
+            {
+              "rule": {
+                "action": "accept",
+                "destination": "1.1.1.1/24",
+                "port_range": "1 - 2",
+                "port_type": "udp",
+                "user_id": "14cc716d-2a54-4dff-90f8-e7a903fc3451"
+              }
+            }
+
++ Response 201
+
+    + Headers
+    
+            Content-Type: application/json; charset=utf-8
+            Location: /v0/rules/964125cc-a576-4910-b4a7-825dc2ed1de0
+    + Body
+    
+            {
+              "data": {
+                "action": "accept",
+                "destination": "1.1.1.1/24",
+                "id": "964125cc-a576-4910-b4a7-825dc2ed1de0",
+                "inserted_at": "2023-01-12T00:16:30.979314Z",
+                "port_range": "1 - 2",
+                "port_type": "udp",
+                "updated_at": "2023-01-12T00:16:30.979314Z",
+                "user_id": "14cc716d-2a54-4dff-90f8-e7a903fc3451"
+              }
+            }
+### update [PUT /v0/rules/{id}]
+
++ Parameters
+    + id: `267f7475-4940-466a-bdba-b5d3466fb2aa`
+
+
++ Request PUT /v0/rules/{id}
+    + Headers
+    
+            Authorization: Bearer {api_token}
+    + Body
+    
+            {
+              "rule": {
+                "action": "accept",
+                "destination": "1.1.1.1/24",
+                "port_range": "1 - 2",
+                "port_type": "udp"
+              }
+            }
+
++ Response 200
+
+    + Headers
+    
+            Content-Type: application/json; charset=utf-8
+    + Body
+    
+            {
+              "data": {
+                "action": "accept",
+                "destination": "1.1.1.1/24",
+                "id": "267f7475-4940-466a-bdba-b5d3466fb2aa",
+                "inserted_at": "2023-01-12T00:16:30.716962Z",
+                "port_range": "1 - 2",
+                "port_type": "udp",
+                "updated_at": "2023-01-12T00:16:30.737038Z",
+                "user_id": null
+              }
+            }
+### index [GET /v0/rules]
+
+
++ Request GET /v0/rules
+    + Headers
+    
+            Authorization: Bearer {api_token}
+
++ Response 200
+
+    + Headers
+    
+            Content-Type: application/json; charset=utf-8
+    + Body
+    
+            {
+              "data": [
+                {
+                  "action": "drop",
+                  "destination": "10.3.2.1",
+                  "id": "68160b0e-1b2e-4465-a3f5-d103634b3b97",
+                  "inserted_at": "2023-01-12T00:16:30.833457Z",
+                  "port_range": null,
+                  "port_type": null,
+                  "updated_at": "2023-01-12T00:16:30.833457Z",
+                  "user_id": null
+                },
+                {
+                  "action": "drop",
+                  "destination": "10.3.2.2",
+                  "id": "26602169-4ad3-415e-9bb3-96a8e04f3c62",
+                  "inserted_at": "2023-01-12T00:16:30.837862Z",
+                  "port_range": null,
+                  "port_type": null,
+                  "updated_at": "2023-01-12T00:16:30.837862Z",
+                  "user_id": null
+                },
+                {
+                  "action": "drop",
+                  "destination": "10.3.2.3",
+                  "id": "b1627ae0-b52b-4e38-ac3c-2c79747c585f",
+                  "inserted_at": "2023-01-12T00:16:30.839635Z",
+                  "port_range": null,
+                  "port_type": null,
+                  "updated_at": "2023-01-12T00:16:30.839635Z",
+                  "user_id": null
+                },
+                {
+                  "action": "drop",
+                  "destination": "10.3.2.4",
+                  "id": "9e18c493-18cd-482e-a52c-44ca85e9badd",
+                  "inserted_at": "2023-01-12T00:16:30.840788Z",
+                  "port_range": null,
+                  "port_type": null,
+                  "updated_at": "2023-01-12T00:16:30.840788Z",
+                  "user_id": null
+                },
+                {
+                  "action": "drop",
+                  "destination": "10.3.2.5",
+                  "id": "c21545db-001f-4974-bb0e-d12c3c1f1ffe",
+                  "inserted_at": "2023-01-12T00:16:30.841954Z",
+                  "port_range": null,
+                  "port_type": null,
+                  "updated_at": "2023-01-12T00:16:30.841954Z",
+                  "user_id": null
+                }
+              ]
+            }
+### delete [DELETE /v0/rules/{id}]
+
++ Parameters
+    + id: `838b7e86-98f1-47fa-ab4e-27564af25d00`
+
+
++ Request DELETE /v0/rules/{id}
+    + Headers
+    
+            Authorization: Bearer {api_token}
+
++ Response 204
+
+    + Body
+    
+            
+
+## Users [/v0/users]
+
+This endpoint allows you to provision Users.
+
+*Auto-Create Users from OpenID or SAML providers*
+
+You can set Configuration option `auto_create_users` to `true` to automatically create users
+from OpenID or SAML providers. Use it with care as anyone with access to the provider will be
+able to log-in to Firezone.
+
+If `auto_create_users` is `false`, then you need to provision users with `password` attribute,
+otherwise they will have no means to log in.
+
+### index [GET /v0/users]
+
+
++ Request GET /v0/users
+    + Headers
+    
+            Authorization: Bearer {api_token}
+
++ Response 200
+
+    + Headers
+    
+            Content-Type: application/json; charset=utf-8
+    + Body
+    
+            {
+              "data": [
+                {
+                  "disabled_at": null,
+                  "email": "test-966@test",
+                  "id": "2e7b5bd0-b124-4ac5-b622-12391ca5f71d",
+                  "inserted_at": "2023-01-12T00:16:30.974320Z",
+                  "last_signed_in_at": null,
+                  "last_signed_in_method": null,
+                  "role": "admin",
+                  "updated_at": "2023-01-12T00:16:30.974320Z"
+                },
+                {
+                  "disabled_at": null,
+                  "email": "test-546@test",
+                  "id": "cb55d52d-082b-468e-a855-68682beccf79",
+                  "inserted_at": "2023-01-12T00:16:30.978399Z",
+                  "last_signed_in_at": null,
+                  "last_signed_in_method": null,
+                  "role": "admin",
+                  "updated_at": "2023-01-12T00:16:30.978399Z"
+                },
+                {
+                  "disabled_at": null,
+                  "email": "test-578@test",
+                  "id": "8a569113-7faf-4567-9e32-35576ede1835",
+                  "inserted_at": "2023-01-12T00:16:30.980897Z",
+                  "last_signed_in_at": null,
+                  "last_signed_in_method": null,
+                  "role": "admin",
+                  "updated_at": "2023-01-12T00:16:30.980897Z"
+                },
+                {
+                  "disabled_at": null,
+                  "email": "test-610@test",
+                  "id": "077b70f6-61f8-4d80-b630-6712daacea3a",
+                  "inserted_at": "2023-01-12T00:16:30.983153Z",
+                  "last_signed_in_at": null,
+                  "last_signed_in_method": null,
+                  "role": "admin",
+                  "updated_at": "2023-01-12T00:16:30.983153Z"
+                }
+              ]
+            }
+### Create a User [POST /v0/users]
+
+Please see `Auto-Create Users from OpenID or SAML providers` for more details
+on `password` field usage.
+
+
+
++ Request Provision an admin OpenID User
+    + Headers
+    
+            Authorization: Bearer {api_token}
+    
+    + Attributes (object)
+    
+        + user (object, required)
+            + role: `admin` (enum, optional) - User role.
+                - `admin` (string)
+                - `unprivileged` (string)
+            + email: `foo@example.com` (string, optional) - Email which will be used to identify the user.
+            + password: `FOO123bar123` (string, optional) - A password that can be used for login-password authentication. It can be empty if you want to pre-create a user that will use OpenID to authenticate.
+            + password_confirmation: `FOO123bar123` (string, optional) - Password confirmation is required when `password` is set.
+
+
+    + Body
+    
+            {
+              "user": {
+                "email": "new-user@test",
+                "role": "admin"
+              }
+            }
+
++ Response 201
+
+    + Headers
+    
+            Content-Type: application/json; charset=utf-8
+            Location: /v0/users/9c9524d5-4dce-4616-a6ec-5acbf982a68b
+    + Body
+    
+            {
+              "data": {
+                "disabled_at": null,
+                "email": "new-user@test",
+                "id": "9c9524d5-4dce-4616-a6ec-5acbf982a68b",
+                "inserted_at": "2023-01-12T00:16:30.592718Z",
+                "last_signed_in_at": null,
+                "last_signed_in_method": null,
+                "role": "admin",
+                "updated_at": "2023-01-12T00:16:30.592718Z"
+              }
+            }
+
+
++ Request Provision an unprivileged OpenID User
+    + Headers
+    
+            Authorization: Bearer {api_token}
+    
+    + Attributes (object)
+    
+        + user (object, required)
+            + role: `admin` (enum, optional) - User role.
+                - `admin` (string)
+                - `unprivileged` (string)
+            + email: `foo@example.com` (string, optional) - Email which will be used to identify the user.
+            + password: `FOO123bar123` (string, optional) - A password that can be used for login-password authentication. It can be empty if you want to pre-create a user that will use OpenID to authenticate.
+            + password_confirmation: `FOO123bar123` (string, optional) - Password confirmation is required when `password` is set.
+
+
+    + Body
+    
+            {
+              "user": {
+                "email": "new-user@test",
+                "role": "unprivileged"
+              }
+            }
+
++ Response 201
+
+    + Headers
+    
+            Content-Type: application/json; charset=utf-8
+            Location: /v0/users/82dceabb-a9dd-4568-a17f-840098b8b79d
+    + Body
+    
+            {
+              "data": {
+                "disabled_at": null,
+                "email": "new-user@test",
+                "id": "82dceabb-a9dd-4568-a17f-840098b8b79d",
+                "inserted_at": "2023-01-12T00:16:31.195442Z",
+                "last_signed_in_at": null,
+                "last_signed_in_method": null,
+                "role": "unprivileged",
+                "updated_at": "2023-01-12T00:16:31.195442Z"
+              }
+            }
+
+
++ Request POST /v0/users
+    + Headers
+    
+            Authorization: Bearer {api_token}
+    
+    + Attributes (object)
+    
+        + user (object, required)
+            + role: `admin` (enum, optional) - User role.
+                - `admin` (string)
+                - `unprivileged` (string)
+            + email: `foo@example.com` (string, optional) - Email which will be used to identify the user.
+            + password: `FOO123bar123` (string, optional) - A password that can be used for login-password authentication. It can be empty if you want to pre-create a user that will use OpenID to authenticate.
+            + password_confirmation: `FOO123bar123` (string, optional) - Password confirmation is required when `password` is set.
+
+
+    + Body
+    
+            {
+              "user": {
+                "email": "new-user@test",
+                "password": "test1234test",
+                "password_confirmation": "test1234test",
+                "role": "unprivileged"
+              }
+            }
+
++ Response 201
+
+    + Headers
+    
+            Content-Type: application/json; charset=utf-8
+            Location: /v0/users/8127eddb-1317-4477-baf2-8acd308301c1
+    + Body
+    
+            {
+              "data": {
+                "disabled_at": null,
+                "email": "new-user@test",
+                "id": "8127eddb-1317-4477-baf2-8acd308301c1",
+                "inserted_at": "2023-01-12T00:16:31.126678Z",
+                "last_signed_in_at": null,
+                "last_signed_in_method": null,
+                "role": "unprivileged",
+                "updated_at": "2023-01-12T00:16:31.126678Z"
+              }
+            }
+
+
++ Request Error due to invalid parameters
+    + Headers
+    
+            Authorization: Bearer {api_token}
+    
+    + Attributes (object)
+    
+        + user (object, required)
+            + role: `admin` (enum, optional) - User role.
+                - `admin` (string)
+                - `unprivileged` (string)
+            + email: `foo@example.com` (string, optional) - Email which will be used to identify the user.
+            + password: `FOO123bar123` (string, optional) - A password that can be used for login-password authentication. It can be empty if you want to pre-create a user that will use OpenID to authenticate.
+            + password_confirmation: `FOO123bar123` (string, optional) - Password confirmation is required when `password` is set.
+
+
+    + Body
+    
+            {
+              "user": {
+                "email": "test@test.com",
+                "password": "test1234"
+              }
+            }
+
++ Response 422
+
+    + Headers
+    
+            Content-Type: application/json; charset=utf-8
+    + Body
+    
+            {
+              "errors": {
+                "password": [
+                  "should be at least 12 character(s)",
+                  "does not match password confirmation."
+                ]
+              }
+            }
+### Update a User [PUT /v0/users/{id}]
+
+Please see `Auto-Create Users from OpenID or SAML providers` for more details
+on `password` field usage.
+
+
++ Parameters
+    + id: `31264f47-a467-4007-8a3a-def5dec1565b`
+
+
++ Request Update by ID
+    + Headers
+    
+            Authorization: Bearer {api_token}
+    
+    + Attributes (object)
+    
+        + user (object, required)
+            + role: `admin` (enum, optional) - User role.
+                - `admin` (string)
+                - `unprivileged` (string)
+            + email: `foo@example.com` (string, optional) - Email which will be used to identify the user.
+            + password: `FOO123bar123` (string, optional) - A password that can be used for login-password authentication. It can be empty if you want to pre-create a user that will use OpenID to authenticate.
+            + password_confirmation: `FOO123bar123` (string, optional) - Password confirmation is required when `password` is set.
+
+
+    + Body
+    
+            {
+              "user": {}
+            }
+
++ Response 200
+
+    + Headers
+    
+            Content-Type: application/json; charset=utf-8
+    + Body
+    
+            {
+              "data": {
+                "disabled_at": null,
+                "email": "test-357@test",
+                "id": "31264f47-a467-4007-8a3a-def5dec1565b",
+                "inserted_at": "2023-01-12T00:16:31.164225Z",
+                "last_signed_in_at": null,
+                "last_signed_in_method": null,
+                "role": "unprivileged",
+                "updated_at": "2023-01-12T00:16:31.164225Z"
+              }
+            }
+
+
++ Request Update by email
+    + Headers
+    
+            Authorization: Bearer {api_token}
+    
+    + Attributes (object)
+    
+        + user (object, required)
+            + role: `admin` (enum, optional) - User role.
+                - `admin` (string)
+                - `unprivileged` (string)
+            + email: `foo@example.com` (string, optional) - Email which will be used to identify the user.
+            + password: `FOO123bar123` (string, optional) - A password that can be used for login-password authentication. It can be empty if you want to pre-create a user that will use OpenID to authenticate.
+            + password_confirmation: `FOO123bar123` (string, optional) - Password confirmation is required when `password` is set.
+
+
+    + Body
+    
+            {
+              "user": {}
+            }
+
++ Response 200
+
+    + Headers
+    
+            Content-Type: application/json; charset=utf-8
+    + Body
+    
+            {
+              "data": {
+                "disabled_at": null,
+                "email": "test-261@test",
+                "id": "c5e4a689-3061-4fbe-a90b-0232cfc38079",
+                "inserted_at": "2023-01-12T00:16:31.145039Z",
+                "last_signed_in_at": null,
+                "last_signed_in_method": null,
+                "role": "unprivileged",
+                "updated_at": "2023-01-12T00:16:31.145039Z"
+              }
+            }
+### show [GET /v0/users/test-1123%40test]
+
++ Parameters
+    + id: `test-1123@test`
+
+
++ Request GET /v0/users/{email}
+An email can be used instead of ID.
+
+    + Headers
+    
+            Authorization: Bearer {api_token}
+
++ Response 200
+
+    + Headers
+    
+            Content-Type: application/json; charset=utf-8
+    + Body
+    
+            {
+              "data": {
+                "disabled_at": null,
+                "email": "test-1123@test",
+                "id": "ace50535-6926-42f0-bb67-6553a0c626a6",
+                "inserted_at": "2023-01-12T00:16:31.131046Z",
+                "last_signed_in_at": null,
+                "last_signed_in_method": null,
+                "role": "admin",
+                "updated_at": "2023-01-12T00:16:31.131046Z"
+              }
+            }
+
+
++ Request GET /v0/users/{id}
+    + Headers
+    
+            Authorization: Bearer {api_token}
+
++ Response 200
+
+    + Headers
+    
+            Content-Type: application/json; charset=utf-8
+    + Body
+    
+            {
+              "data": {
+                "disabled_at": null,
+                "email": "test-1062@test",
+                "id": "f360dc25-bd94-4723-9e8a-177ab6248dee",
+                "inserted_at": "2023-01-12T00:16:30.998560Z",
+                "last_signed_in_at": null,
+                "last_signed_in_method": null,
+                "role": "admin",
+                "updated_at": "2023-01-12T00:16:30.998560Z"
+              }
+            }
+### delete [DELETE /v0/users/test-866%40test]
+
++ Parameters
+    + id: `test-866@test`
+
+
++ Request DELETE /v0/users/{email}
+An email can be used instead of ID.
+
+    + Headers
+    
+            Authorization: Bearer {api_token}
+
++ Response 204
+
+    + Body
+    
+            
+
+
++ Request DELETE /v0/users/{id}
+    + Headers
+    
+            Authorization: Bearer {api_token}
+
++ Response 204
+
+    + Body
+    
+            
+

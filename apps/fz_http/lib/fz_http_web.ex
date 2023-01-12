@@ -25,6 +25,7 @@ defmodule FzHttpWeb do
       import FzHttpWeb.Gettext
       import Phoenix.LiveView.Controller
       import FzHttpWeb.ControllerHelpers
+      import FzHttpWeb.DocHelpers
 
       unquote(verified_routes())
     end
