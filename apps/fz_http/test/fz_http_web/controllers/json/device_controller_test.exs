@@ -28,7 +28,7 @@ defmodule FzHttpWeb.JSON.DeviceControllerTest do
 
       conn =
         get(authed_conn(), ~p"/v0/devices/#{id}")
-        |> doc(title: "GET /v0/devices/{id}")
+        |> doc()
 
       assert %{"id" => ^id} = json_response(conn, 200)["data"]
     end
@@ -95,7 +95,7 @@ defmodule FzHttpWeb.JSON.DeviceControllerTest do
 
       conn =
         put(authed_conn(), ~p"/v0/devices/#{device}", device: @params)
-        |> doc(title: "PUT /v0/devices/{id}")
+        |> doc()
 
       assert @params = json_response(conn, 200)["data"]
 
@@ -143,7 +143,7 @@ defmodule FzHttpWeb.JSON.DeviceControllerTest do
 
       conn =
         delete(authed_conn(), ~p"/v0/devices/#{device}")
-        |> doc(title: "DELETE /v0/devices/{id}")
+        |> doc()
 
       assert response(conn, 204)
 

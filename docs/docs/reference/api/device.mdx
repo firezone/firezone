@@ -1,0 +1,396 @@
+---
+group: Devices
+---
+
+
+REST API Controller for Devices.
+
+## API Documentation
+### GET /v0/devices
+`GET /v0/devices`
+
+
+
+#### Example
+**Request**
+##### Headers
+| Name | Value | Description |
+| ---- | ----- | ----------- |
+| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
+**Response**
+##### Headers
+| Name | Value |
+| ---- | ----- |
+| Content-Type | application/json; charset=utf-8 |
+##### Body
+```json
+{
+  "data": [
+    {
+      "allowed_ips": "0.0.0.0/0,::/0",
+      "description": "factory description",
+      "dns": "1.1.1.1,1.0.0.1",
+      "endpoint": "localhost:51820",
+      "id": "e2bc9667-d3db-42a7-943c-92814d03e4e1",
+      "inserted_at": "2023-01-12T21:13:29.647277Z",
+      "ipv4": "100.67.56.157",
+      "ipv6": "fd00::32:df51",
+      "latest_handshake": null,
+      "mtu": 1280,
+      "name": "factory 1188",
+      "persistent_keepalive": 25,
+      "preshared_key": "Em8Z3eCMwqKdAaWMNzkNRElMuMqzCGvuei0yEdawLjw=",
+      "public_key": "pvPVnLP+f1KdadoWeIfTcPA+AAMkorpcLeLwwSPYvUo=",
+      "remote_ip": null,
+      "rx_bytes": null,
+      "server_public_key": null,
+      "tx_bytes": null,
+      "updated_at": "2023-01-12T21:13:29.647277Z",
+      "use_default_allowed_ips": true,
+      "use_default_dns": true,
+      "use_default_endpoint": true,
+      "use_default_mtu": true,
+      "use_default_persistent_keepalive": true,
+      "user_id": "267801fb-5c6a-4ad8-8079-4bbeec57af7f"
+    },
+    {
+      "allowed_ips": "0.0.0.0/0,::/0",
+      "description": "factory description",
+      "dns": "1.1.1.1,1.0.0.1",
+      "endpoint": "localhost:51820",
+      "id": "fa566062-3ddf-455e-96a2-ff70b47b3f0e",
+      "inserted_at": "2023-01-12T21:13:29.656470Z",
+      "ipv4": "100.119.163.236",
+      "ipv6": "fd00::c:ef6c",
+      "latest_handshake": null,
+      "mtu": 1280,
+      "name": "factory 1858",
+      "persistent_keepalive": 25,
+      "preshared_key": "v2KA6GZNTK4bVNo9PQkDeaYmh6qY8p5nhcfl+Hla/Ps=",
+      "public_key": "+bq1dest5NmuxjXS8Rw59qXzaxlHfwOIC+rpPC820jk=",
+      "remote_ip": null,
+      "rx_bytes": null,
+      "server_public_key": null,
+      "tx_bytes": null,
+      "updated_at": "2023-01-12T21:13:29.656470Z",
+      "use_default_allowed_ips": true,
+      "use_default_dns": true,
+      "use_default_endpoint": true,
+      "use_default_mtu": true,
+      "use_default_persistent_keepalive": true,
+      "user_id": "4d8c8181-4a25-4903-910b-7b2e596e82b1"
+    },
+    {
+      "allowed_ips": "0.0.0.0/0,::/0",
+      "description": "factory description",
+      "dns": "1.1.1.1,1.0.0.1",
+      "endpoint": "localhost:51820",
+      "id": "f7effc2e-4599-406a-99af-3e7b57a0bc6a",
+      "inserted_at": "2023-01-12T21:13:29.664821Z",
+      "ipv4": "100.74.135.121",
+      "ipv6": "fd00::27:8151",
+      "latest_handshake": null,
+      "mtu": 1280,
+      "name": "factory 1922",
+      "persistent_keepalive": 25,
+      "preshared_key": "JeZ/nKldcuL2HSUJNKuakrNcdSpWwkctekIY2GofB5I=",
+      "public_key": "NohDkjhAepWZTa/ugwUEPebI3qYTyz5ji1SvGmQ/oyU=",
+      "remote_ip": null,
+      "rx_bytes": null,
+      "server_public_key": null,
+      "tx_bytes": null,
+      "updated_at": "2023-01-12T21:13:29.664821Z",
+      "use_default_allowed_ips": true,
+      "use_default_dns": true,
+      "use_default_endpoint": true,
+      "use_default_mtu": true,
+      "use_default_persistent_keepalive": true,
+      "user_id": "5c1ee546-d923-403b-b682-4a12504f2942"
+    },
+    {
+      "allowed_ips": "0.0.0.0/0,::/0",
+      "description": "factory description",
+      "dns": "1.1.1.1,1.0.0.1",
+      "endpoint": "localhost:51820",
+      "id": "9e4e50ba-d262-4d6a-ac8f-7337261db323",
+      "inserted_at": "2023-01-12T21:13:29.672592Z",
+      "ipv4": "100.91.232.66",
+      "ipv6": "fd00::1f:e818",
+      "latest_handshake": null,
+      "mtu": 1280,
+      "name": "factory 2018",
+      "persistent_keepalive": 25,
+      "preshared_key": "fak3SGUjiwrHbiVz6v35LfPCQSI9LHiNzIb7XdRXr/E=",
+      "public_key": "gBKjBiDmu7u3b8KDJ0YRqKbVmOSwUFrr9EIlgLA+AyI=",
+      "remote_ip": null,
+      "rx_bytes": null,
+      "server_public_key": null,
+      "tx_bytes": null,
+      "updated_at": "2023-01-12T21:13:29.672592Z",
+      "use_default_allowed_ips": true,
+      "use_default_dns": true,
+      "use_default_endpoint": true,
+      "use_default_mtu": true,
+      "use_default_persistent_keepalive": true,
+      "user_id": "4741f450-0ab9-4d08-89fb-0b712944fd9e"
+    },
+    {
+      "allowed_ips": "0.0.0.0/0,::/0",
+      "description": "factory description",
+      "dns": "1.1.1.1,1.0.0.1",
+      "endpoint": "localhost:51820",
+      "id": "a49b35e9-e117-494d-91b4-4186755d90b7",
+      "inserted_at": "2023-01-12T21:13:29.679896Z",
+      "ipv4": "100.111.19.110",
+      "ipv6": "fd00::21:a02f",
+      "latest_handshake": null,
+      "mtu": 1280,
+      "name": "factory 2082",
+      "persistent_keepalive": 25,
+      "preshared_key": "MpKjRdtxQ1if8zH0BVqwelQW0xtlQFjEuB7TrRKWuyQ=",
+      "public_key": "JOoNk6bdL0ToUcQsGySAo+uwb1IWvYJega31Xm7XIpk=",
+      "remote_ip": null,
+      "rx_bytes": null,
+      "server_public_key": null,
+      "tx_bytes": null,
+      "updated_at": "2023-01-12T21:13:29.679896Z",
+      "use_default_allowed_ips": true,
+      "use_default_dns": true,
+      "use_default_endpoint": true,
+      "use_default_mtu": true,
+      "use_default_persistent_keepalive": true,
+      "user_id": "2ad2993c-dd59-46b5-aa1c-dc202aa36d1a"
+    }
+  ]
+}
+```
+
+### POST /v0/devices
+`POST /v0/devices`
+
+
+
+#### Example
+**Request**
+##### Headers
+| Name | Value | Description |
+| ---- | ----- | ----------- |
+| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
+##### Body
+```json
+{
+  "device": {
+    "allowed_ips": "0.0.0.0/0, ::/0, 1.1.1.1",
+    "description": "create-description",
+    "dns": "9.9.9.8",
+    "endpoint": "9.9.9.9",
+    "ipv4": "100.64.0.2",
+    "ipv6": "fd00::2",
+    "mtu": 999,
+    "name": "create-name",
+    "persistent_keepalive": 9,
+    "preshared_key": "CHqFuS+iL3FTog5F4Ceumqlk0CU4Cl/dyUP/9F9NDnI=",
+    "public_key": "CHqFuS+iL3FTog5F4Ceumqlk0CU4Cl/dyUP/9F9NDnI=",
+    "use_default_allowed_ips": false,
+    "use_default_dns": false,
+    "use_default_endpoint": false,
+    "use_default_mtu": false,
+    "use_default_persistent_keepalive": false,
+    "user_id": "6c9f140b-7071-4695-ad52-6c8a613b1e13"
+  }
+}
+```
+
+**Response**
+##### Headers
+| Name | Value |
+| ---- | ----- |
+| Content-Type | application/json; charset=utf-8 |
+| Location | /v0/devices/8cda968d-16bc-48fd-9342-d6a1d374456c |
+##### Body
+```json
+{
+  "data": {
+    "allowed_ips": "0.0.0.0/0, ::/0, 1.1.1.1",
+    "description": "create-description",
+    "dns": "9.9.9.8",
+    "endpoint": "9.9.9.9",
+    "id": "8cda968d-16bc-48fd-9342-d6a1d374456c",
+    "inserted_at": "2023-01-12T21:13:29.734454Z",
+    "ipv4": "100.64.0.2",
+    "ipv6": "fd00::2",
+    "latest_handshake": null,
+    "mtu": 999,
+    "name": "create-name",
+    "persistent_keepalive": 9,
+    "preshared_key": "CHqFuS+iL3FTog5F4Ceumqlk0CU4Cl/dyUP/9F9NDnI=",
+    "public_key": "CHqFuS+iL3FTog5F4Ceumqlk0CU4Cl/dyUP/9F9NDnI=",
+    "remote_ip": null,
+    "rx_bytes": null,
+    "server_public_key": null,
+    "tx_bytes": null,
+    "updated_at": "2023-01-12T21:13:29.734454Z",
+    "use_default_allowed_ips": false,
+    "use_default_dns": false,
+    "use_default_endpoint": false,
+    "use_default_mtu": false,
+    "use_default_persistent_keepalive": false,
+    "user_id": "6c9f140b-7071-4695-ad52-6c8a613b1e13"
+  }
+}
+```
+
+### GET /v0/devices/{id}
+`GET /v0/devices/{id}`
+
+
+
+#### Example
+**Request**
+##### URI Parameters
+| Name | Value | Description |
+| ---- | ----- | ----------- |
+| id | 65010e99-5983-473a-8b10-c22623283168 | |
+##### Headers
+| Name | Value | Description |
+| ---- | ----- | ----------- |
+| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
+**Response**
+##### Headers
+| Name | Value |
+| ---- | ----- |
+| Content-Type | application/json; charset=utf-8 |
+##### Body
+```json
+{
+  "data": {
+    "allowed_ips": "0.0.0.0/0,::/0",
+    "description": "factory description",
+    "dns": "1.1.1.1,1.0.0.1",
+    "endpoint": "localhost:51820",
+    "id": "65010e99-5983-473a-8b10-c22623283168",
+    "inserted_at": "2023-01-12T21:13:29.830287Z",
+    "ipv4": "100.106.249.110",
+    "ipv6": "fd00::10:ae5d",
+    "latest_handshake": null,
+    "mtu": 1280,
+    "name": "factory 1094",
+    "persistent_keepalive": 25,
+    "preshared_key": "4C0vWjrxwxfc/B+V2pwHVWAJ4WzK5TfYHzuboANP0u8=",
+    "public_key": "Ex1GPFdFzz/uYTjvzfQrlWfXRmvmw/8WQGzLo3Y0aYg=",
+    "remote_ip": null,
+    "rx_bytes": null,
+    "server_public_key": null,
+    "tx_bytes": null,
+    "updated_at": "2023-01-12T21:13:29.830287Z",
+    "use_default_allowed_ips": true,
+    "use_default_dns": true,
+    "use_default_endpoint": true,
+    "use_default_mtu": true,
+    "use_default_persistent_keepalive": true,
+    "user_id": "91d03142-edf1-4528-a87d-a6e0a773fcb7"
+  }
+}
+```
+
+### PATCH /v0/devices/{id}
+`PATCH /v0/devices/{id}`
+
+
+
+#### Example
+**Request**
+##### URI Parameters
+| Name | Value | Description |
+| ---- | ----- | ----------- |
+| id | 5d5c9dfb-6a2e-4316-aef1-b43b1d4ef122 | |
+##### Headers
+| Name | Value | Description |
+| ---- | ----- | ----------- |
+| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
+##### Body
+```json
+{
+  "device": {
+    "allowed_ips": "0.0.0.0/0, ::/0, 1.1.1.1",
+    "description": "create-description",
+    "dns": "9.9.9.8",
+    "endpoint": "9.9.9.9",
+    "ipv4": "100.64.0.2",
+    "ipv6": "fd00::2",
+    "mtu": 999,
+    "name": "create-name",
+    "persistent_keepalive": 9,
+    "preshared_key": "CHqFuS+iL3FTog5F4Ceumqlk0CU4Cl/dyUP/9F9NDnI=",
+    "public_key": "CHqFuS+iL3FTog5F4Ceumqlk0CU4Cl/dyUP/9F9NDnI=",
+    "use_default_allowed_ips": false,
+    "use_default_dns": false,
+    "use_default_endpoint": false,
+    "use_default_mtu": false,
+    "use_default_persistent_keepalive": false
+  }
+}
+```
+
+**Response**
+##### Headers
+| Name | Value |
+| ---- | ----- |
+| Content-Type | application/json; charset=utf-8 |
+##### Body
+```json
+{
+  "data": {
+    "allowed_ips": "0.0.0.0/0, ::/0, 1.1.1.1",
+    "description": "create-description",
+    "dns": "9.9.9.8",
+    "endpoint": "9.9.9.9",
+    "id": "5d5c9dfb-6a2e-4316-aef1-b43b1d4ef122",
+    "inserted_at": "2023-01-12T21:13:29.610329Z",
+    "ipv4": "100.64.0.2",
+    "ipv6": "fd00::2",
+    "latest_handshake": null,
+    "mtu": 999,
+    "name": "create-name",
+    "persistent_keepalive": 9,
+    "preshared_key": "CHqFuS+iL3FTog5F4Ceumqlk0CU4Cl/dyUP/9F9NDnI=",
+    "public_key": "CHqFuS+iL3FTog5F4Ceumqlk0CU4Cl/dyUP/9F9NDnI=",
+    "remote_ip": null,
+    "rx_bytes": null,
+    "server_public_key": null,
+    "tx_bytes": null,
+    "updated_at": "2023-01-12T21:13:29.627783Z",
+    "use_default_allowed_ips": false,
+    "use_default_dns": false,
+    "use_default_endpoint": false,
+    "use_default_mtu": false,
+    "use_default_persistent_keepalive": false,
+    "user_id": "e8f086f3-0d4b-486f-a869-a3d762be581c"
+  }
+}
+```
+
+### DELETE /v0/devices/{id}
+`DELETE /v0/devices/{id}`
+
+
+
+#### Example
+**Request**
+##### URI Parameters
+| Name | Value | Description |
+| ---- | ----- | ----------- |
+| id | 19917fff-0834-4257-bfb4-7644757342f5 | |
+##### Headers
+| Name | Value | Description |
+| ---- | ----- | ----------- |
+| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
+**Response**
+##### Headers
+| Name | Value |
+| ---- | ----- |
+##### Body
+```
+
+```
+

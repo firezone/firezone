@@ -1,0 +1,401 @@
+---
+title: Users
+sidebar_position: 2
+toc_max_heading_level: 4
+---
+
+
+This endpoint allows you to provision Users.
+
+## Auto-Create Users from OpenID or SAML providers
+
+You can set Configuration option `auto_create_users` to `true` to automatically create users
+from OpenID or SAML providers. Use it with care as anyone with access to the provider will be
+able to log-in to Firezone.
+
+If `auto_create_users` is `false`, then you need to provision users with `password` attribute,
+otherwise they will have no means to log in.
+
+## API Documentation
+### List All Users
+`GET /v0/users`
+
+
+
+#### Example
+**Request**
+##### Headers
+| Name | Value | Description |
+| ---- | ----- | ----------- |
+| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
+**Response**
+##### Headers
+| Name | Value |
+| ---- | ----- |
+| Content-Type | application/json; charset=utf-8 |
+##### Body
+```json
+{
+  "data": [
+    {
+      "disabled_at": null,
+      "email": "test-1315@test",
+      "id": "71aa1231-04eb-4e2c-83b6-897a6fb81061",
+      "inserted_at": "2023-01-12T21:13:29.886459Z",
+      "last_signed_in_at": null,
+      "last_signed_in_method": null,
+      "role": "admin",
+      "updated_at": "2023-01-12T21:13:29.886459Z"
+    },
+    {
+      "disabled_at": null,
+      "email": "test-1347@test",
+      "id": "18592625-dc8d-4c06-9c1e-984cddd94028",
+      "inserted_at": "2023-01-12T21:13:29.890001Z",
+      "last_signed_in_at": null,
+      "last_signed_in_method": null,
+      "role": "admin",
+      "updated_at": "2023-01-12T21:13:29.890001Z"
+    },
+    {
+      "disabled_at": null,
+      "email": "test-1379@test",
+      "id": "1328e93b-40b1-40cd-a92c-1bf2b0859090",
+      "inserted_at": "2023-01-12T21:13:29.892110Z",
+      "last_signed_in_at": null,
+      "last_signed_in_method": null,
+      "role": "admin",
+      "updated_at": "2023-01-12T21:13:29.892110Z"
+    },
+    {
+      "disabled_at": null,
+      "email": "test-1411@test",
+      "id": "ec818b66-8594-4150-abf5-5763a95bd65b",
+      "inserted_at": "2023-01-12T21:13:29.894143Z",
+      "last_signed_in_at": null,
+      "last_signed_in_method": null,
+      "role": "admin",
+      "updated_at": "2023-01-12T21:13:29.894143Z"
+    }
+  ]
+}
+```
+
+### Create a User
+`POST /v0/users`
+
+
+Please see `Auto-Create Users from OpenID or SAML providers` for more details
+on `password` field usage.
+
+#### Example
+**Request**
+##### Headers
+| Name | Value | Description |
+| ---- | ----- | ----------- |
+| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
+##### Body
+```json
+{
+  "user": {
+    "email": "new-user@test",
+    "password": "test1234test",
+    "password_confirmation": "test1234test",
+    "role": "unprivileged"
+  }
+}
+```
+
+**Response**
+##### Headers
+| Name | Value |
+| ---- | ----- |
+| Content-Type | application/json; charset=utf-8 |
+| Location | /v0/users/6769030e-8028-4977-80a7-784212a44773 |
+##### Body
+```json
+{
+  "data": {
+    "disabled_at": null,
+    "email": "new-user@test",
+    "id": "6769030e-8028-4977-80a7-784212a44773",
+    "inserted_at": "2023-01-12T21:13:29.646239Z",
+    "last_signed_in_at": null,
+    "last_signed_in_method": null,
+    "role": "unprivileged",
+    "updated_at": "2023-01-12T21:13:29.646239Z"
+  }
+}
+```
+
+#### Provision an unprivileged OpenID User
+**Request**
+##### Headers
+| Name | Value | Description |
+| ---- | ----- | ----------- |
+| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
+##### Body
+```json
+{
+  "user": {
+    "email": "new-user@test",
+    "role": "unprivileged"
+  }
+}
+```
+
+**Response**
+##### Headers
+| Name | Value |
+| ---- | ----- |
+| Content-Type | application/json; charset=utf-8 |
+| Location | /v0/users/0ac91655-3d95-48bf-be86-2d458eef8818 |
+##### Body
+```json
+{
+  "data": {
+    "disabled_at": null,
+    "email": "new-user@test",
+    "id": "0ac91655-3d95-48bf-be86-2d458eef8818",
+    "inserted_at": "2023-01-12T21:13:29.759517Z",
+    "last_signed_in_at": null,
+    "last_signed_in_method": null,
+    "role": "unprivileged",
+    "updated_at": "2023-01-12T21:13:29.759517Z"
+  }
+}
+```
+
+#### Provision an admin OpenID User
+**Request**
+##### Headers
+| Name | Value | Description |
+| ---- | ----- | ----------- |
+| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
+##### Body
+```json
+{
+  "user": {
+    "email": "new-user@test",
+    "role": "admin"
+  }
+}
+```
+
+**Response**
+##### Headers
+| Name | Value |
+| ---- | ----- |
+| Content-Type | application/json; charset=utf-8 |
+| Location | /v0/users/cdc0bfe7-5630-40ef-8475-607a77bb4f37 |
+##### Body
+```json
+{
+  "data": {
+    "disabled_at": null,
+    "email": "new-user@test",
+    "id": "cdc0bfe7-5630-40ef-8475-607a77bb4f37",
+    "inserted_at": "2023-01-12T21:13:29.880051Z",
+    "last_signed_in_at": null,
+    "last_signed_in_method": null,
+    "role": "admin",
+    "updated_at": "2023-01-12T21:13:29.880051Z"
+  }
+}
+```
+
+#### Error due to invalid parameters
+**Request**
+##### Headers
+| Name | Value | Description |
+| ---- | ----- | ----------- |
+| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
+##### Body
+```json
+{
+  "user": {
+    "email": "test@test.com",
+    "password": "test1234"
+  }
+}
+```
+
+**Response**
+##### Headers
+| Name | Value |
+| ---- | ----- |
+| Content-Type | application/json; charset=utf-8 |
+##### Body
+```json
+{
+  "errors": {
+    "password": [
+      "should be at least 12 character(s)",
+      "does not match password confirmation."
+    ]
+  }
+}
+```
+
+### GET /v0/users/{id}
+`GET /v0/users/{id}`
+
+
+
+#### An email can be used instead of ID.
+**Request**
+##### URI Parameters
+| Name | Value | Description |
+| ---- | ----- | ----------- |
+| id | test-771@test | |
+##### Headers
+| Name | Value | Description |
+| ---- | ----- | ----------- |
+| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
+**Response**
+##### Headers
+| Name | Value |
+| ---- | ----- |
+| Content-Type | application/json; charset=utf-8 |
+##### Body
+```json
+{
+  "data": {
+    "disabled_at": null,
+    "email": "test-771@test",
+    "id": "38214c3e-4878-4d49-ac9a-c551c7dc112e",
+    "inserted_at": "2023-01-12T21:13:29.596962Z",
+    "last_signed_in_at": null,
+    "last_signed_in_method": null,
+    "role": "admin",
+    "updated_at": "2023-01-12T21:13:29.596962Z"
+  }
+}
+```
+
+### Update a User
+`PATCH /v0/users/{id}`
+
+
+Please see `Auto-Create Users from OpenID or SAML providers` for more details
+on `password` field usage.
+
+#### Update by email
+**Request**
+##### URI Parameters
+| Name | Value | Description |
+| ---- | ----- | ----------- |
+| id | test-326@test | |
+##### Headers
+| Name | Value | Description |
+| ---- | ----- | ----------- |
+| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
+##### Body
+```json
+{
+  "user": {}
+}
+```
+
+**Response**
+##### Headers
+| Name | Value |
+| ---- | ----- |
+| Content-Type | application/json; charset=utf-8 |
+##### Body
+```json
+{
+  "data": {
+    "disabled_at": null,
+    "email": "test-326@test",
+    "id": "ebfd6bd0-fd79-45b5-8519-1b18016772a4",
+    "inserted_at": "2023-01-12T21:13:29.578176Z",
+    "last_signed_in_at": null,
+    "last_signed_in_method": null,
+    "role": "unprivileged",
+    "updated_at": "2023-01-12T21:13:29.578176Z"
+  }
+}
+```
+
+#### Update by ID
+**Request**
+##### URI Parameters
+| Name | Value | Description |
+| ---- | ----- | ----------- |
+| id | 10981915-ef16-4967-a7b3-76c3e43698f5 | |
+##### Headers
+| Name | Value | Description |
+| ---- | ----- | ----------- |
+| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
+##### Body
+```json
+{
+  "user": {}
+}
+```
+
+**Response**
+##### Headers
+| Name | Value |
+| ---- | ----- |
+| Content-Type | application/json; charset=utf-8 |
+##### Body
+```json
+{
+  "data": {
+    "disabled_at": null,
+    "email": "test-2306@test",
+    "id": "10981915-ef16-4967-a7b3-76c3e43698f5",
+    "inserted_at": "2023-01-12T21:13:29.706659Z",
+    "last_signed_in_at": null,
+    "last_signed_in_method": null,
+    "role": "unprivileged",
+    "updated_at": "2023-01-12T21:13:29.706659Z"
+  }
+}
+```
+
+### DELETE /v0/users/{id}
+`DELETE /v0/users/{id}`
+
+
+
+#### Example
+**Request**
+##### URI Parameters
+| Name | Value | Description |
+| ---- | ----- | ----------- |
+| id | 840eb4ba-5fbb-4d33-8e7f-10a8dfd7ab2f | |
+##### Headers
+| Name | Value | Description |
+| ---- | ----- | ----------- |
+| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
+**Response**
+##### Headers
+| Name | Value |
+| ---- | ----- |
+##### Body
+```
+
+```
+
+#### An email can be used instead of ID.
+**Request**
+##### URI Parameters
+| Name | Value | Description |
+| ---- | ----- | ----------- |
+| id | test-901@test | |
+##### Headers
+| Name | Value | Description |
+| ---- | ----- | ----------- |
+| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
+**Response**
+##### Headers
+| Name | Value |
+| ---- | ----- |
+##### Body
+```
+
+```
+

@@ -1,0 +1,236 @@
+---
+group: Rules
+---
+
+
+REST API Controller for Rules.
+
+## API Documentation
+### GET /v0/rules
+`GET /v0/rules`
+
+
+
+#### Example
+**Request**
+##### Headers
+| Name | Value | Description |
+| ---- | ----- | ----------- |
+| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
+**Response**
+##### Headers
+| Name | Value |
+| ---- | ----- |
+| Content-Type | application/json; charset=utf-8 |
+##### Body
+```json
+{
+  "data": [
+    {
+      "action": "drop",
+      "destination": "10.3.2.1",
+      "id": "ce1fbecc-7e22-4c7d-af5d-bba5ed088f0d",
+      "inserted_at": "2023-01-12T21:13:29.313094Z",
+      "port_range": null,
+      "port_type": null,
+      "updated_at": "2023-01-12T21:13:29.313094Z",
+      "user_id": null
+    },
+    {
+      "action": "drop",
+      "destination": "10.3.2.2",
+      "id": "b89e15e2-dcf5-4f1e-b4bf-4b6ea2a548b2",
+      "inserted_at": "2023-01-12T21:13:29.340437Z",
+      "port_range": null,
+      "port_type": null,
+      "updated_at": "2023-01-12T21:13:29.340437Z",
+      "user_id": null
+    },
+    {
+      "action": "drop",
+      "destination": "10.3.2.3",
+      "id": "e7096f58-f3d6-44d6-8fc1-1eaf7cd00f70",
+      "inserted_at": "2023-01-12T21:13:29.343134Z",
+      "port_range": null,
+      "port_type": null,
+      "updated_at": "2023-01-12T21:13:29.343134Z",
+      "user_id": null
+    },
+    {
+      "action": "drop",
+      "destination": "10.3.2.4",
+      "id": "6362cb93-eb8e-4d63-983b-e61da54bc696",
+      "inserted_at": "2023-01-12T21:13:29.344736Z",
+      "port_range": null,
+      "port_type": null,
+      "updated_at": "2023-01-12T21:13:29.344736Z",
+      "user_id": null
+    },
+    {
+      "action": "drop",
+      "destination": "10.3.2.5",
+      "id": "50a1b4e7-4063-4c8b-8c0a-e7aa05d852f8",
+      "inserted_at": "2023-01-12T21:13:29.346149Z",
+      "port_range": null,
+      "port_type": null,
+      "updated_at": "2023-01-12T21:13:29.346149Z",
+      "user_id": null
+    }
+  ]
+}
+```
+
+### POST /v0/rules
+`POST /v0/rules`
+
+
+
+#### Example
+**Request**
+##### Headers
+| Name | Value | Description |
+| ---- | ----- | ----------- |
+| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
+##### Body
+```json
+{
+  "rule": {
+    "action": "accept",
+    "destination": "1.1.1.1/24",
+    "port_range": "1 - 2",
+    "port_type": "udp",
+    "user_id": "87106e23-499d-426a-b618-261346ee3d8a"
+  }
+}
+```
+
+**Response**
+##### Headers
+| Name | Value |
+| ---- | ----- |
+| Content-Type | application/json; charset=utf-8 |
+| Location | /v0/rules/66bb9591-69da-4313-baa6-10a74cf3e4cb |
+##### Body
+```json
+{
+  "data": {
+    "action": "accept",
+    "destination": "1.1.1.1/24",
+    "id": "66bb9591-69da-4313-baa6-10a74cf3e4cb",
+    "inserted_at": "2023-01-12T21:13:29.576509Z",
+    "port_range": "1 - 2",
+    "port_type": "udp",
+    "updated_at": "2023-01-12T21:13:29.576509Z",
+    "user_id": "87106e23-499d-426a-b618-261346ee3d8a"
+  }
+}
+```
+
+### GET /v0/rules/{id}
+`GET /v0/rules/{id}`
+
+
+
+#### Example
+**Request**
+##### URI Parameters
+| Name | Value | Description |
+| ---- | ----- | ----------- |
+| id | 9257d50b-34e5-463d-874d-b06d2b286b3f | |
+##### Headers
+| Name | Value | Description |
+| ---- | ----- | ----------- |
+| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
+**Response**
+##### Headers
+| Name | Value |
+| ---- | ----- |
+| Content-Type | application/json; charset=utf-8 |
+##### Body
+```json
+{
+  "data": {
+    "action": "drop",
+    "destination": "10.10.10.0/24",
+    "id": "9257d50b-34e5-463d-874d-b06d2b286b3f",
+    "inserted_at": "2023-01-12T21:13:29.664855Z",
+    "port_range": null,
+    "port_type": null,
+    "updated_at": "2023-01-12T21:13:29.664855Z",
+    "user_id": null
+  }
+}
+```
+
+### PATCH /v0/rules/{id}
+`PATCH /v0/rules/{id}`
+
+
+
+#### Example
+**Request**
+##### URI Parameters
+| Name | Value | Description |
+| ---- | ----- | ----------- |
+| id | 0593ec20-af3c-45ac-94a3-58ea46b7ac5e | |
+##### Headers
+| Name | Value | Description |
+| ---- | ----- | ----------- |
+| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
+##### Body
+```json
+{
+  "rule": {
+    "action": "accept",
+    "destination": "1.1.1.1/24",
+    "port_range": "1 - 2",
+    "port_type": "udp"
+  }
+}
+```
+
+**Response**
+##### Headers
+| Name | Value |
+| ---- | ----- |
+| Content-Type | application/json; charset=utf-8 |
+##### Body
+```json
+{
+  "data": {
+    "action": "accept",
+    "destination": "1.1.1.1/24",
+    "id": "0593ec20-af3c-45ac-94a3-58ea46b7ac5e",
+    "inserted_at": "2023-01-12T21:13:29.511269Z",
+    "port_range": "1 - 2",
+    "port_type": "udp",
+    "updated_at": "2023-01-12T21:13:29.536110Z",
+    "user_id": null
+  }
+}
+```
+
+### DELETE /v0/rules/{id}
+`DELETE /v0/rules/{id}`
+
+
+
+#### Example
+**Request**
+##### URI Parameters
+| Name | Value | Description |
+| ---- | ----- | ----------- |
+| id | 51599cd7-f5af-4d10-9a24-c80e2f30c002 | |
+##### Headers
+| Name | Value | Description |
+| ---- | ----- | ----------- |
+| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
+**Response**
+##### Headers
+| Name | Value |
+| ---- | ----- |
+##### Body
+```
+
+```
+

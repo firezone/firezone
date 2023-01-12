@@ -1,8 +1,9 @@
 defmodule FzHttpWeb.JSON.UserController do
+  @moduledoc api_doc: [title: "Users", sidebar_position: 2, toc_max_heading_level: 4]
   @moduledoc """
   This endpoint allows you to provision Users.
 
-  *Auto-Create Users from OpenID or SAML providers*
+  ## Auto-Create Users from OpenID or SAML providers
 
   You can set Configuration option `auto_create_users` to `true` to automatically create users
   from OpenID or SAML providers. Use it with care as anyone with access to the provider will be
@@ -11,14 +12,13 @@ defmodule FzHttpWeb.JSON.UserController do
   If `auto_create_users` is `false`, then you need to provision users with `password` attribute,
   otherwise they will have no means to log in.
   """
-  @moduledoc api_doc: [group: "Users"]
   use FzHttpWeb, :controller
   alias FzHttp.Users
   alias FzHttp.Users.User
 
   action_fallback(FzHttpWeb.JSON.FallbackController)
 
-  @doc api_doc: [summary: "List All Users"]
+  @doc api_doc: [action: "List All Users"]
   def index(conn, _params) do
     users = Users.list_users()
     render(conn, "index.json", users: users)

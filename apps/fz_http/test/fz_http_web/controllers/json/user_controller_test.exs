@@ -67,7 +67,7 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
 
       conn =
         post(authed_conn(), ~p"/v0/users", user: params)
-        |> doc(title: "Provision an unprivileged OpenID User")
+        |> doc(example_description: "Provision an unprivileged OpenID User")
 
       assert json_response(conn, 201)["data"]["role"] == "unprivileged"
     end
@@ -77,7 +77,7 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
 
       conn =
         post(authed_conn(), ~p"/v0/users", user: params)
-        |> doc(title: "Provision an admin OpenID User")
+        |> doc(example_description: "Provision an admin OpenID User")
 
       assert json_response(conn, 201)["data"]["role"] == "admin"
     end
@@ -96,7 +96,7 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
     test "renders errors when data is invalid" do
       conn =
         post(authed_conn(), ~p"/v0/users", user: @invalid_attrs)
-        |> doc(title: "Error due to invalid parameters")
+        |> doc(example_description: "Error due to invalid parameters")
 
       assert json_response(conn, 422)["errors"] == %{
                "password" => [
@@ -118,7 +118,7 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
 
       conn =
         put(authed_conn(), ~p"/v0/users/#{user.email}", user: %{})
-        |> doc(title: "Update by email")
+        |> doc(example_description: "Update by email")
 
       assert json_response(conn, 200)["data"]["id"] == user.id
     end
@@ -128,7 +128,7 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
 
       conn =
         put(authed_conn(), ~p"/v0/users/#{user}", user: %{})
-        |> doc(title: "Update by ID")
+        |> doc(example_description: "Update by ID")
 
       assert json_response(conn, 200)["data"]["id"] == user.id
     end
@@ -228,9 +228,7 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
       conn = authed_conn()
       user = conn.private.guardian_default_resource
 
-      conn =
-        get(conn, ~p"/v0/users/#{user}")
-        |> doc(title: "GET /v0/users/{id}")
+      conn = get(conn, ~p"/v0/users/#{user}")
 
       assert json_response(conn, 200)["data"]["id"] == user.id
     end
@@ -241,7 +239,7 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
 
       conn =
         get(conn, ~p"/v0/users/#{user.email}")
-        |> doc(title: "GET /v0/users/{email}", subtitle: "An email can be used instead of ID.")
+        |> doc(example_description: "An email can be used instead of ID.")
 
       assert json_response(conn, 200)["data"]["id"] == user.id
     end
@@ -264,7 +262,7 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
 
       conn =
         delete(authed_conn(), ~p"/v0/users/#{user}")
-        |> doc(title: "DELETE /v0/users/{id}")
+        |> doc()
 
       assert response(conn, 204)
 
@@ -278,7 +276,7 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
 
       conn =
         delete(authed_conn(), ~p"/v0/users/#{user.email}")
-        |> doc(title: "DELETE /v0/users/{email}", subtitle: "An email can be used instead of ID.")
+        |> doc(example_description: "An email can be used instead of ID.")
 
       assert response(conn, 204)
 

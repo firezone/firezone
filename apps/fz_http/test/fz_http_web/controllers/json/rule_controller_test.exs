@@ -25,7 +25,7 @@ defmodule FzHttpWeb.JSON.RuleControllerTest do
 
       conn =
         get(authed_conn(), ~p"/v0/rules/#{id}")
-        |> doc(title: "GET /v0/rules/{id}")
+        |> doc()
 
       assert %{"id" => ^id} = json_response(conn, 200)["data"]
     end
@@ -87,7 +87,7 @@ defmodule FzHttpWeb.JSON.RuleControllerTest do
 
       conn =
         put(authed_conn(), ~p"/v0/rules/#{rule}", rule: @accept_rule_params)
-        |> doc(title: "PUT /v0/rules/{id}")
+        |> doc()
 
       assert @accept_rule_params = json_response(conn, 200)["data"]
 
@@ -156,7 +156,7 @@ defmodule FzHttpWeb.JSON.RuleControllerTest do
 
       conn =
         delete(authed_conn(), ~p"/v0/rules/#{rule}")
-        |> doc(title: "DELETE /v0/rules/{id}")
+        |> doc()
 
       assert response(conn, 204)
 
