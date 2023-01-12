@@ -1,0 +1,1289 @@
+{
+  "components": {
+    "securitySchemes": {
+      "api_key": {
+        "bearerFormat": "JWT",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "contact": {
+      "name": "Firezone Issue Tracker",
+      "url": "https://github.com/firezone/firezone/issues"
+    },
+    "license": {
+      "name": "Apache License 2.0",
+      "url": "https://github.com/firezone/firezone/blob/master/LICENSE"
+    },
+    "title": "Firezone API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.0.0",
+  "paths": {
+    "/v0/configuration": {
+      "get": {
+        "description": null,
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "example": {
+                    "value": {
+                      "data": {
+                        "allow_unprivileged_device_configuration": true,
+                        "allow_unprivileged_device_management": true,
+                        "default_client_allowed_ips": "0.0.0.0/0,::/0",
+                        "default_client_dns": "1.1.1.1,1.0.0.1",
+                        "default_client_endpoint": "localhost:51820",
+                        "default_client_mtu": 1280,
+                        "default_client_persistent_keepalive": 25,
+                        "disable_vpn_on_oidc_error": false,
+                        "id": "f23dc476-d737-4497-b97c-9ecefb1944c6",
+                        "inserted_at": "2023-01-11T19:25:35.350867Z",
+                        "local_auth_enabled": true,
+                        "logo": null,
+                        "openid_connect_providers": [],
+                        "saml_identity_providers": [],
+                        "updated_at": "2023-01-11T19:25:35.350867Z",
+                        "vpn_session_duration": 0
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "Description",
+            "headers": {
+              "content-type": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Get Configuration"
+      },
+      "patch": {
+        "description": null,
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "configuration": {
+                  "allow_unprivileged_device_configuration": false,
+                  "allow_unprivileged_device_management": false,
+                  "default_client_allowed_ips": "1.1.1.1,2.2.2.2",
+                  "default_client_dns": "1.1.1.1",
+                  "default_client_endpoint": "new-endpoint",
+                  "default_client_mtu": 1100,
+                  "default_client_persistent_keepalive": 1,
+                  "disable_vpn_on_oidc_error": true,
+                  "local_auth_enabled": false,
+                  "openid_connect_providers": [
+                    {
+                      "auto_create_users": false,
+                      "client_id": "test-id",
+                      "client_secret": "test-secret",
+                      "discovery_document_uri": "https://accounts.google.com/.well-known/openid-configuration",
+                      "id": "google",
+                      "label": "google",
+                      "redirect_uri": "https://invalid",
+                      "response_type": "response-type",
+                      "scope": "test-scope"
+                    }
+                  ],
+                  "saml_identity_providers": [
+                    {
+                      "auto_create_users": false,
+                      "base_url": "https://saml",
+                      "id": "okta",
+                      "label": "okta",
+                      "metadata": "<?xml version=\"1.0\"?>\n<md:EntityDescriptor xmlns=\"urn:oasis:names:tc:SAML:2.0:metadata\" xmlns:md=\"urn:oasis:names:tc:SAML:2.0:metadata\" xmlns:saml=\"urn:oasis:names:tc:SAML:2.0:assertion\" xmlns:ds=\"http://www.w3.org/2000/09/xmldsig#\" entityID=\"http://localhost:8080/realms/firezone\">\n  <md:IDPSSODescriptor WantAuthnRequestsSigned=\"true\" protocolSupportEnumeration=\"urn:oasis:names:tc:SAML:2.0:protocol\">\n    <md:KeyDescriptor use=\"signing\">\n      <ds:KeyInfo>\n        <ds:KeyName>pdSMtx2s3RVVhxg_qJOjHhlZhwZk6JiBMiSm5PEgjkA</ds:KeyName>\n        <ds:X509Data>\n          <ds:X509Certificate>MIICnzCCAYcCBgGD18ZU8TANBgkqhkiG9w0BAQsFADATMREwDwYDVQQDDAhmaXJlem9uZTAeFw0yMjEwMTQxODMyMjJaFw0zMjEwMTQxODM0MDJaMBMxETAPBgNVBAMMCGZpcmV6b25lMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAur5Cb0jrDJbMwr96WWE+z9CjDg0A/uRkaB4loRqkmu3A2fQGsS6CP7F7lQWMJmpzvBgkNtB69toO2sgx1u1fhpIJBZ0uSHF5gnzQAivgVxInvkMKRTRSkpMbhObiDHZnEGI2+Ly+8iV8IvprdrbDgm52u4conam0H1PewUKkHulrVQ+ImFuEWAjKCRSqpUG2F1eRkA0YpqB09x0CZAOOoucwTsBYj/ZAz3dUXhYIENAF7v0ykvzGOCAyOZIn1uYQc7jvWpwoI8qQdL45phj2FLoFlght3tlZV8IG5hsXrE6rg7Ufqvv8xyGltrOMKj/jEFEunagZOUjkypDp36b8cwIDAQABMA0GCSqGSIb3DQEBCwUAA4IBAQBEZKLLr66GB3NxqXGTMl0PvTDNB9GdyShQHaJYjeeUQnEXixjlAVrOq/txEBKjhGUcqyFELoNuwcxxV1iHA5oXhCoqYmnp9T/ftmXPDT3c49PBABHgLJaFOKYTpVx1YjP7mA44X1ijLZmgboIeeFNerVNHIzR9BsxcloQlB0r9QfC14rsuXo6QD3QnaVI8wDgWXQHqpcwLFqvehXdNvMFniRvX2qBNU8E0FPoMaZ1C3n2nssLcVZ+C4ghq6YoAG+wLGY7XE8+v5rnYGDpGpfgr2wdefn6tryFq3PyGqA8ThjARESRRQG9kI/RlNX7qCnP/8/7JQ4wLdfz5C25uhakP</ds:X509Certificate>\n        </ds:X509Data>\n      </ds:KeyInfo>\n    </md:KeyDescriptor>\n    <md:ArtifactResolutionService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:SOAP\" Location=\"http://localhost:8080/realms/firezone/protocol/saml/resolve\" index=\"0\"/>\n    <md:SingleLogoutService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n    <md:SingleLogoutService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n    <md:SingleLogoutService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Artifact\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n    <md:NameIDFormat>urn:oasis:names:tc:SAML:2.0:nameid-format:persistent</md:NameIDFormat>\n    <md:NameIDFormat>urn:oasis:names:tc:SAML:2.0:nameid-format:transient</md:NameIDFormat>\n    <md:NameIDFormat>urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified</md:NameIDFormat>\n    <md:NameIDFormat>urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress</md:NameIDFormat>\n    <md:SingleSignOnService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n    <md:SingleSignOnService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n    <md:SingleSignOnService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:SOAP\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n    <md:SingleSignOnService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Artifact\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n  </md:IDPSSODescriptor>\n</md:EntityDescriptor>\n",
+                      "sign_metadata": false,
+                      "sign_requests": false,
+                      "signed_assertion_in_resp": false,
+                      "signed_envelopes_in_resp": false
+                    }
+                  ],
+                  "vpn_session_duration": 100
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "example": {
+                    "value": {
+                      "data": {
+                        "allow_unprivileged_device_configuration": false,
+                        "allow_unprivileged_device_management": false,
+                        "default_client_allowed_ips": "1.1.1.1,2.2.2.2",
+                        "default_client_dns": "1.1.1.1",
+                        "default_client_endpoint": "new-endpoint",
+                        "default_client_mtu": 1100,
+                        "default_client_persistent_keepalive": 1,
+                        "disable_vpn_on_oidc_error": true,
+                        "id": "f23dc476-d737-4497-b97c-9ecefb1944c6",
+                        "inserted_at": "2023-01-11T19:25:35.350867Z",
+                        "local_auth_enabled": false,
+                        "logo": null,
+                        "openid_connect_providers": [
+                          {
+                            "auto_create_users": false,
+                            "client_id": "test-id",
+                            "client_secret": "test-secret",
+                            "discovery_document_uri": "https://accounts.google.com/.well-known/openid-configuration",
+                            "id": "google",
+                            "label": "google",
+                            "redirect_uri": "https://invalid",
+                            "response_type": "response-type",
+                            "scope": "test-scope"
+                          }
+                        ],
+                        "saml_identity_providers": [
+                          {
+                            "auto_create_users": false,
+                            "base_url": "https://saml",
+                            "id": "okta",
+                            "label": "okta",
+                            "metadata": "<?xml version=\"1.0\"?>\n<md:EntityDescriptor xmlns=\"urn:oasis:names:tc:SAML:2.0:metadata\" xmlns:md=\"urn:oasis:names:tc:SAML:2.0:metadata\" xmlns:saml=\"urn:oasis:names:tc:SAML:2.0:assertion\" xmlns:ds=\"http://www.w3.org/2000/09/xmldsig#\" entityID=\"http://localhost:8080/realms/firezone\">\n  <md:IDPSSODescriptor WantAuthnRequestsSigned=\"true\" protocolSupportEnumeration=\"urn:oasis:names:tc:SAML:2.0:protocol\">\n    <md:KeyDescriptor use=\"signing\">\n      <ds:KeyInfo>\n        <ds:KeyName>pdSMtx2s3RVVhxg_qJOjHhlZhwZk6JiBMiSm5PEgjkA</ds:KeyName>\n        <ds:X509Data>\n          <ds:X509Certificate>MIICnzCCAYcCBgGD18ZU8TANBgkqhkiG9w0BAQsFADATMREwDwYDVQQDDAhmaXJlem9uZTAeFw0yMjEwMTQxODMyMjJaFw0zMjEwMTQxODM0MDJaMBMxETAPBgNVBAMMCGZpcmV6b25lMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAur5Cb0jrDJbMwr96WWE+z9CjDg0A/uRkaB4loRqkmu3A2fQGsS6CP7F7lQWMJmpzvBgkNtB69toO2sgx1u1fhpIJBZ0uSHF5gnzQAivgVxInvkMKRTRSkpMbhObiDHZnEGI2+Ly+8iV8IvprdrbDgm52u4conam0H1PewUKkHulrVQ+ImFuEWAjKCRSqpUG2F1eRkA0YpqB09x0CZAOOoucwTsBYj/ZAz3dUXhYIENAF7v0ykvzGOCAyOZIn1uYQc7jvWpwoI8qQdL45phj2FLoFlght3tlZV8IG5hsXrE6rg7Ufqvv8xyGltrOMKj/jEFEunagZOUjkypDp36b8cwIDAQABMA0GCSqGSIb3DQEBCwUAA4IBAQBEZKLLr66GB3NxqXGTMl0PvTDNB9GdyShQHaJYjeeUQnEXixjlAVrOq/txEBKjhGUcqyFELoNuwcxxV1iHA5oXhCoqYmnp9T/ftmXPDT3c49PBABHgLJaFOKYTpVx1YjP7mA44X1ijLZmgboIeeFNerVNHIzR9BsxcloQlB0r9QfC14rsuXo6QD3QnaVI8wDgWXQHqpcwLFqvehXdNvMFniRvX2qBNU8E0FPoMaZ1C3n2nssLcVZ+C4ghq6YoAG+wLGY7XE8+v5rnYGDpGpfgr2wdefn6tryFq3PyGqA8ThjARESRRQG9kI/RlNX7qCnP/8/7JQ4wLdfz5C25uhakP</ds:X509Certificate>\n        </ds:X509Data>\n      </ds:KeyInfo>\n    </md:KeyDescriptor>\n    <md:ArtifactResolutionService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:SOAP\" Location=\"http://localhost:8080/realms/firezone/protocol/saml/resolve\" index=\"0\"/>\n    <md:SingleLogoutService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n    <md:SingleLogoutService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n    <md:SingleLogoutService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Artifact\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n    <md:NameIDFormat>urn:oasis:names:tc:SAML:2.0:nameid-format:persistent</md:NameIDFormat>\n    <md:NameIDFormat>urn:oasis:names:tc:SAML:2.0:nameid-format:transient</md:NameIDFormat>\n    <md:NameIDFormat>urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified</md:NameIDFormat>\n    <md:NameIDFormat>urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress</md:NameIDFormat>\n    <md:SingleSignOnService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n    <md:SingleSignOnService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n    <md:SingleSignOnService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:SOAP\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n    <md:SingleSignOnService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Artifact\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n  </md:IDPSSODescriptor>\n</md:EntityDescriptor>\n",
+                            "sign_metadata": false,
+                            "sign_requests": false,
+                            "signed_assertion_in_resp": false,
+                            "signed_envelopes_in_resp": false
+                          }
+                        ],
+                        "updated_at": "2023-01-12T08:24:27.001667Z",
+                        "vpn_session_duration": 100
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "Description",
+            "headers": {
+              "content-type": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Update Configuration"
+      }
+    },
+    "/v0/devices": {
+      "get": {
+        "description": null,
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "example": {
+                    "value": {
+                      "data": [
+                        {
+                          "allowed_ips": "0.0.0.0/0,::/0",
+                          "description": "factory description",
+                          "dns": "1.1.1.1,1.0.0.1",
+                          "endpoint": "localhost:51820",
+                          "id": "08c034bf-8f41-42da-a724-b096b4e92f33",
+                          "inserted_at": "2023-01-12T08:24:26.236591Z",
+                          "ipv4": "100.105.38.110",
+                          "ipv6": "fd00::c:b4a9",
+                          "latest_handshake": null,
+                          "mtu": 1280,
+                          "name": "factory 1666",
+                          "persistent_keepalive": 25,
+                          "preshared_key": "pxY7LUnnM7afEgAsEOpeNm7N9tZxRmvoOhya3TP/u1c=",
+                          "public_key": "ARvZLQOqEi95AbNvbqQS5NbRfcCnbzncxBjYLTCOVZQ=",
+                          "remote_ip": null,
+                          "rx_bytes": null,
+                          "server_public_key": null,
+                          "tx_bytes": null,
+                          "updated_at": "2023-01-12T08:24:26.236591Z",
+                          "use_default_allowed_ips": true,
+                          "use_default_dns": true,
+                          "use_default_endpoint": true,
+                          "use_default_mtu": true,
+                          "use_default_persistent_keepalive": true,
+                          "user_id": "679e6a96-3d6d-4c33-9160-7fe1a6ebaf57"
+                        },
+                        {
+                          "allowed_ips": "0.0.0.0/0,::/0",
+                          "description": "factory description",
+                          "dns": "1.1.1.1,1.0.0.1",
+                          "endpoint": "localhost:51820",
+                          "id": "060eb23b-949d-417a-9d40-d9ef52b9df20",
+                          "inserted_at": "2023-01-12T08:24:26.246358Z",
+                          "ipv4": "100.97.85.206",
+                          "ipv6": "fd00::a:dff2",
+                          "latest_handshake": null,
+                          "mtu": 1280,
+                          "name": "factory 165",
+                          "persistent_keepalive": 25,
+                          "preshared_key": "4dwy2gs7dOFZknCk6an1SVA+nQefDMcuII8cTfoNG74=",
+                          "public_key": "C7Iq6N2CKqvtnK7xOPhn7EO60D/mWv9KCxcoM+hH2uY=",
+                          "remote_ip": null,
+                          "rx_bytes": null,
+                          "server_public_key": null,
+                          "tx_bytes": null,
+                          "updated_at": "2023-01-12T08:24:26.246358Z",
+                          "use_default_allowed_ips": true,
+                          "use_default_dns": true,
+                          "use_default_endpoint": true,
+                          "use_default_mtu": true,
+                          "use_default_persistent_keepalive": true,
+                          "user_id": "08723d9c-65e2-432a-8544-8796f914b12a"
+                        },
+                        {
+                          "allowed_ips": "0.0.0.0/0,::/0",
+                          "description": "factory description",
+                          "dns": "1.1.1.1,1.0.0.1",
+                          "endpoint": "localhost:51820",
+                          "id": "b672aad6-f515-4e45-a688-fb915dd2de04",
+                          "inserted_at": "2023-01-12T08:24:26.254958Z",
+                          "ipv4": "100.81.3.139",
+                          "ipv6": "fd00::1c:3a15",
+                          "latest_handshake": null,
+                          "mtu": 1280,
+                          "name": "factory 1730",
+                          "persistent_keepalive": 25,
+                          "preshared_key": "XK+r6PB0wNTyeXrDhhvTSix5WCQAbqE1TEaOkW8YTxs=",
+                          "public_key": "a/nsE3EBWegzWq3LS/R1wkLOUiQ+Gw5g/bkXnJAOTEY=",
+                          "remote_ip": null,
+                          "rx_bytes": null,
+                          "server_public_key": null,
+                          "tx_bytes": null,
+                          "updated_at": "2023-01-12T08:24:26.254958Z",
+                          "use_default_allowed_ips": true,
+                          "use_default_dns": true,
+                          "use_default_endpoint": true,
+                          "use_default_mtu": true,
+                          "use_default_persistent_keepalive": true,
+                          "user_id": "a3451130-43ea-4916-8191-f525f8cd38aa"
+                        },
+                        {
+                          "allowed_ips": "0.0.0.0/0,::/0",
+                          "description": "factory description",
+                          "dns": "1.1.1.1,1.0.0.1",
+                          "endpoint": "localhost:51820",
+                          "id": "760f7224-7174-44d8-a606-56bf77d31cd8",
+                          "inserted_at": "2023-01-12T08:24:26.264764Z",
+                          "ipv4": "100.78.58.195",
+                          "ipv6": "fd00::4:ba81",
+                          "latest_handshake": null,
+                          "mtu": 1280,
+                          "name": "factory 325",
+                          "persistent_keepalive": 25,
+                          "preshared_key": "LYPHbdipNvZGbOA2nk/eLGlfTbFYcqUUzZGByiZjuho=",
+                          "public_key": "sGZZrYkhx6M6bUru064/2FgZiaYZQayxbvifAyVlzms=",
+                          "remote_ip": null,
+                          "rx_bytes": null,
+                          "server_public_key": null,
+                          "tx_bytes": null,
+                          "updated_at": "2023-01-12T08:24:26.264764Z",
+                          "use_default_allowed_ips": true,
+                          "use_default_dns": true,
+                          "use_default_endpoint": true,
+                          "use_default_mtu": true,
+                          "use_default_persistent_keepalive": true,
+                          "user_id": "f2bdd1c8-a09e-40d2-a3fc-848e6dd3a83f"
+                        },
+                        {
+                          "allowed_ips": "0.0.0.0/0,::/0",
+                          "description": "factory description",
+                          "dns": "1.1.1.1,1.0.0.1",
+                          "endpoint": "localhost:51820",
+                          "id": "4219e876-f0a3-4b12-81af-6057f747dd48",
+                          "inserted_at": "2023-01-12T08:24:26.273973Z",
+                          "ipv4": "100.108.181.243",
+                          "ipv6": "fd00::6:77d9",
+                          "latest_handshake": null,
+                          "mtu": 1280,
+                          "name": "factory 389",
+                          "persistent_keepalive": 25,
+                          "preshared_key": "ttsomwCMoLwtQeXNCq3O8j1CDj67gZb7pcsjPSjpig8=",
+                          "public_key": "ax3o+c6KD2VIlWK41Fq3U4ea4WrIQrfNhFWbI6Mkt3c=",
+                          "remote_ip": null,
+                          "rx_bytes": null,
+                          "server_public_key": null,
+                          "tx_bytes": null,
+                          "updated_at": "2023-01-12T08:24:26.273973Z",
+                          "use_default_allowed_ips": true,
+                          "use_default_dns": true,
+                          "use_default_endpoint": true,
+                          "use_default_mtu": true,
+                          "use_default_persistent_keepalive": true,
+                          "user_id": "31e5007a-8b86-47fe-8b3a-f8b20bdbdc29"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            "description": "Description",
+            "headers": {
+              "content-type": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "List all Devices"
+      },
+      "post": {
+        "description": null,
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "device": {
+                  "allowed_ips": "0.0.0.0/0, ::/0, 1.1.1.1",
+                  "description": "create-description",
+                  "dns": "9.9.9.8",
+                  "endpoint": "9.9.9.9",
+                  "ipv4": "100.64.0.2",
+                  "ipv6": "fd00::2",
+                  "mtu": 999,
+                  "name": "create-name",
+                  "persistent_keepalive": 9,
+                  "preshared_key": "CHqFuS+iL3FTog5F4Ceumqlk0CU4Cl/dyUP/9F9NDnI=",
+                  "public_key": "CHqFuS+iL3FTog5F4Ceumqlk0CU4Cl/dyUP/9F9NDnI=",
+                  "use_default_allowed_ips": false,
+                  "use_default_dns": false,
+                  "use_default_endpoint": false,
+                  "use_default_mtu": false,
+                  "use_default_persistent_keepalive": false,
+                  "user_id": "5e6dcc89-3f2f-4016-bf9c-d229045dee59"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "example": {
+                    "value": {
+                      "data": {
+                        "allowed_ips": "0.0.0.0/0, ::/0, 1.1.1.1",
+                        "description": "create-description",
+                        "dns": "9.9.9.8",
+                        "endpoint": "9.9.9.9",
+                        "id": "5d4fff64-3be7-40e7-ae5e-9955e87f7e0b",
+                        "inserted_at": "2023-01-12T08:24:26.332820Z",
+                        "ipv4": "100.64.0.2",
+                        "ipv6": "fd00::2",
+                        "latest_handshake": null,
+                        "mtu": 999,
+                        "name": "create-name",
+                        "persistent_keepalive": 9,
+                        "preshared_key": "CHqFuS+iL3FTog5F4Ceumqlk0CU4Cl/dyUP/9F9NDnI=",
+                        "public_key": "CHqFuS+iL3FTog5F4Ceumqlk0CU4Cl/dyUP/9F9NDnI=",
+                        "remote_ip": null,
+                        "rx_bytes": null,
+                        "server_public_key": null,
+                        "tx_bytes": null,
+                        "updated_at": "2023-01-12T08:24:26.332820Z",
+                        "use_default_allowed_ips": false,
+                        "use_default_dns": false,
+                        "use_default_endpoint": false,
+                        "use_default_mtu": false,
+                        "use_default_persistent_keepalive": false,
+                        "user_id": "5e6dcc89-3f2f-4016-bf9c-d229045dee59"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "Description",
+            "headers": {
+              "content-type": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Create a Device"
+      }
+    },
+    "/v0/devices/{id}": {
+      "delete": {
+        "description": null,
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {}
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "example": {
+                    "value": ""
+                  }
+                }
+              }
+            },
+            "description": "DELETE /v0/devices/{id}",
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Delete a Device"
+      },
+      "get": {
+        "description": null,
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "example": {
+                    "value": {
+                      "data": {
+                        "allowed_ips": "0.0.0.0/0,::/0",
+                        "description": "factory description",
+                        "dns": "1.1.1.1,1.0.0.1",
+                        "endpoint": "localhost:51820",
+                        "id": "65f1e5b7-fa8a-454c-b94e-0fe1ab66c9ce",
+                        "inserted_at": "2023-01-12T08:24:26.050357Z",
+                        "ipv4": "100.78.162.159",
+                        "ipv6": "fd00::3f:8e58",
+                        "latest_handshake": null,
+                        "mtu": 1280,
+                        "name": "factory 490",
+                        "persistent_keepalive": 25,
+                        "preshared_key": "liMQNqXUZwDHfLNIwTkQZ2ETQcRiggRaHkKVo8TO/t0=",
+                        "public_key": "H4h75JFBXqlhaWh7/TyCqv2yPOszfk9CyI0qASO7L3E=",
+                        "remote_ip": null,
+                        "rx_bytes": null,
+                        "server_public_key": null,
+                        "tx_bytes": null,
+                        "updated_at": "2023-01-12T08:24:26.050357Z",
+                        "use_default_allowed_ips": true,
+                        "use_default_dns": true,
+                        "use_default_endpoint": true,
+                        "use_default_mtu": true,
+                        "use_default_persistent_keepalive": true,
+                        "user_id": "5b2c53ea-446d-47c2-8104-88106f3d12c3"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "GET /v0/devices/{id}",
+            "headers": {
+              "content-type": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Get Device by ID"
+      },
+      "patch": {
+        "description": null,
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "device": {
+                  "allowed_ips": "0.0.0.0/0, ::/0, 1.1.1.1",
+                  "description": "create-description",
+                  "dns": "9.9.9.8",
+                  "endpoint": "9.9.9.9",
+                  "ipv4": "100.64.0.2",
+                  "ipv6": "fd00::2",
+                  "mtu": 999,
+                  "name": "create-name",
+                  "persistent_keepalive": 9,
+                  "preshared_key": "CHqFuS+iL3FTog5F4Ceumqlk0CU4Cl/dyUP/9F9NDnI=",
+                  "public_key": "CHqFuS+iL3FTog5F4Ceumqlk0CU4Cl/dyUP/9F9NDnI=",
+                  "use_default_allowed_ips": false,
+                  "use_default_dns": false,
+                  "use_default_endpoint": false,
+                  "use_default_mtu": false,
+                  "use_default_persistent_keepalive": false
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "example": {
+                    "value": {
+                      "data": {
+                        "allowed_ips": "0.0.0.0/0, ::/0, 1.1.1.1",
+                        "description": "create-description",
+                        "dns": "9.9.9.8",
+                        "endpoint": "9.9.9.9",
+                        "id": "1da2e226-93f3-49c2-a92b-de35ba0be35a",
+                        "inserted_at": "2023-01-12T08:24:26.398222Z",
+                        "ipv4": "100.64.0.2",
+                        "ipv6": "fd00::2",
+                        "latest_handshake": null,
+                        "mtu": 999,
+                        "name": "create-name",
+                        "persistent_keepalive": 9,
+                        "preshared_key": "CHqFuS+iL3FTog5F4Ceumqlk0CU4Cl/dyUP/9F9NDnI=",
+                        "public_key": "CHqFuS+iL3FTog5F4Ceumqlk0CU4Cl/dyUP/9F9NDnI=",
+                        "remote_ip": null,
+                        "rx_bytes": null,
+                        "server_public_key": null,
+                        "tx_bytes": null,
+                        "updated_at": "2023-01-12T08:24:26.433007Z",
+                        "use_default_allowed_ips": false,
+                        "use_default_dns": false,
+                        "use_default_endpoint": false,
+                        "use_default_mtu": false,
+                        "use_default_persistent_keepalive": false,
+                        "user_id": "06cb385a-2c82-4bde-b95a-be85a1ac8d42"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "PUT /v0/devices/{id}",
+            "headers": {
+              "content-type": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Update a Device"
+      }
+    },
+    "/v0/rules": {
+      "get": {
+        "description": null,
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "example": {
+                    "value": {
+                      "data": [
+                        {
+                          "action": "drop",
+                          "destination": "10.3.2.1",
+                          "id": "fe4997fa-92f2-4507-bc1d-5691a7b52382",
+                          "inserted_at": "2023-01-12T08:24:26.208112Z",
+                          "port_range": null,
+                          "port_type": null,
+                          "updated_at": "2023-01-12T08:24:26.208112Z",
+                          "user_id": null
+                        },
+                        {
+                          "action": "drop",
+                          "destination": "10.3.2.2",
+                          "id": "e46a1893-372a-49c4-96de-20d58acb3776",
+                          "inserted_at": "2023-01-12T08:24:26.211500Z",
+                          "port_range": null,
+                          "port_type": null,
+                          "updated_at": "2023-01-12T08:24:26.211500Z",
+                          "user_id": null
+                        },
+                        {
+                          "action": "drop",
+                          "destination": "10.3.2.3",
+                          "id": "b85ab11d-bd9f-4460-aebc-d6d86bcac171",
+                          "inserted_at": "2023-01-12T08:24:26.212310Z",
+                          "port_range": null,
+                          "port_type": null,
+                          "updated_at": "2023-01-12T08:24:26.212310Z",
+                          "user_id": null
+                        },
+                        {
+                          "action": "drop",
+                          "destination": "10.3.2.4",
+                          "id": "b0ec4943-f4e9-47dd-b798-cab91fcb197f",
+                          "inserted_at": "2023-01-12T08:24:26.213251Z",
+                          "port_range": null,
+                          "port_type": null,
+                          "updated_at": "2023-01-12T08:24:26.213251Z",
+                          "user_id": null
+                        },
+                        {
+                          "action": "drop",
+                          "destination": "10.3.2.5",
+                          "id": "4b33045f-f138-426d-a4c7-8f36d0bca9cb",
+                          "inserted_at": "2023-01-12T08:24:26.214270Z",
+                          "port_range": null,
+                          "port_type": null,
+                          "updated_at": "2023-01-12T08:24:26.214270Z",
+                          "user_id": null
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            "description": "Description",
+            "headers": {
+              "content-type": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "List all Rules"
+      },
+      "post": {
+        "description": null,
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "rule": {
+                  "action": "accept",
+                  "destination": "1.1.1.1/24",
+                  "port_range": "1 - 2",
+                  "port_type": "udp",
+                  "user_id": "7d931e84-be95-4207-b5cc-fba13a69f472"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "example": {
+                    "value": {
+                      "data": {
+                        "action": "accept",
+                        "destination": "1.1.1.1/24",
+                        "id": "bced25f3-6e87-4128-9867-4c7e67952ce0",
+                        "inserted_at": "2023-01-12T08:24:26.296564Z",
+                        "port_range": "1 - 2",
+                        "port_type": "udp",
+                        "updated_at": "2023-01-12T08:24:26.296564Z",
+                        "user_id": "7d931e84-be95-4207-b5cc-fba13a69f472"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "Description",
+            "headers": {
+              "content-type": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Create a Rule"
+      }
+    },
+    "/v0/rules/{id}": {
+      "delete": {
+        "description": null,
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {}
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "example": {
+                    "value": ""
+                  }
+                }
+              }
+            },
+            "description": "DELETE /v0/rules/{id}",
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Delete a Rule"
+      },
+      "get": {
+        "description": null,
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "example": {
+                    "value": {
+                      "data": {
+                        "action": "drop",
+                        "destination": "10.10.10.0/24",
+                        "id": "9d04a307-7bbd-4fae-8980-1f12999d4879",
+                        "inserted_at": "2023-01-12T08:24:25.992194Z",
+                        "port_range": null,
+                        "port_type": null,
+                        "updated_at": "2023-01-12T08:24:25.992194Z",
+                        "user_id": null
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "GET /v0/rules/{id}",
+            "headers": {
+              "content-type": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Get Rule by ID"
+      },
+      "patch": {
+        "description": null,
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "rule": {
+                  "action": "accept",
+                  "destination": "1.1.1.1/24",
+                  "port_range": "1 - 2",
+                  "port_type": "udp"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "example": {
+                    "value": {
+                      "data": {
+                        "action": "accept",
+                        "destination": "1.1.1.1/24",
+                        "id": "6dbbacab-541e-4526-b487-d0598ddb5dd9",
+                        "inserted_at": "2023-01-12T08:24:26.330964Z",
+                        "port_range": "1 - 2",
+                        "port_type": "udp",
+                        "updated_at": "2023-01-12T08:24:26.357527Z",
+                        "user_id": null
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "PUT /v0/rules/{id}",
+            "headers": {
+              "content-type": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Update a Rule"
+      }
+    },
+    "/v0/users": {
+      "get": {
+        "description": null,
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "example": {
+                    "value": {
+                      "data": [
+                        {
+                          "disabled_at": null,
+                          "email": "test-200@test",
+                          "id": "380dd655-bbf8-4709-afe2-965d9c9c6e21",
+                          "inserted_at": "2023-01-12T08:24:25.950803Z",
+                          "last_signed_in_at": null,
+                          "last_signed_in_method": null,
+                          "role": "admin",
+                          "updated_at": "2023-01-12T08:24:25.950803Z"
+                        },
+                        {
+                          "disabled_at": null,
+                          "email": "test-362@test",
+                          "id": "48165ff6-ac75-4e1f-8809-0960b23fb1a3",
+                          "inserted_at": "2023-01-12T08:24:25.954988Z",
+                          "last_signed_in_at": null,
+                          "last_signed_in_method": null,
+                          "role": "admin",
+                          "updated_at": "2023-01-12T08:24:25.954988Z"
+                        },
+                        {
+                          "disabled_at": null,
+                          "email": "test-394@test",
+                          "id": "6f6e2002-8a51-4c99-810f-9560e7886a3a",
+                          "inserted_at": "2023-01-12T08:24:25.957296Z",
+                          "last_signed_in_at": null,
+                          "last_signed_in_method": null,
+                          "role": "admin",
+                          "updated_at": "2023-01-12T08:24:25.957296Z"
+                        },
+                        {
+                          "disabled_at": null,
+                          "email": "test-297@test",
+                          "id": "6eb65444-b0df-422d-b5fe-c1fb481d9bce",
+                          "inserted_at": "2023-01-12T08:24:25.959893Z",
+                          "last_signed_in_at": null,
+                          "last_signed_in_method": null,
+                          "role": "admin",
+                          "updated_at": "2023-01-12T08:24:25.959893Z"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            "description": "Description",
+            "headers": {
+              "content-type": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "List All Users"
+      },
+      "post": {
+        "description": "Please see `Auto-Create Users from OpenID or SAML providers` for more details\non `password` field usage.\n",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "user": {
+                  "email": "new-user@test",
+                  "password": "test1234test",
+                  "password_confirmation": "test1234test",
+                  "role": "unprivileged"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "example": {
+                    "value": {
+                      "data": {
+                        "disabled_at": null,
+                        "email": "new-user@test",
+                        "id": "bf863196-1db2-47ce-aac1-d5e38ffb3853",
+                        "inserted_at": "2023-01-12T08:24:25.929020Z",
+                        "last_signed_in_at": null,
+                        "last_signed_in_method": null,
+                        "role": "admin",
+                        "updated_at": "2023-01-12T08:24:25.929020Z"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "Provision an admin OpenID User",
+            "headers": {
+              "content-type": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "example": {
+                    "value": {
+                      "errors": {
+                        "password": [
+                          "should be at least 12 character(s)",
+                          "does not match password confirmation."
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "Error due to invalid parameters",
+            "headers": {
+              "content-type": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "create"
+      }
+    },
+    "/v0/users/{id}": {
+      "delete": {
+        "description": null,
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {}
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "example": {
+                    "value": ""
+                  }
+                }
+              }
+            },
+            "description": "DELETE /v0/users/{email}",
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Delete a User"
+      },
+      "get": {
+        "description": null,
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "example": {
+                    "value": {
+                      "data": {
+                        "disabled_at": null,
+                        "email": "test-1636@test",
+                        "id": "10e022cc-7cf2-4011-b5e8-d67c5d1c0c0a",
+                        "inserted_at": "2023-01-12T08:24:26.403030Z",
+                        "last_signed_in_at": null,
+                        "last_signed_in_method": null,
+                        "role": "admin",
+                        "updated_at": "2023-01-12T08:24:26.403030Z"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "GET /v0/users/{email}",
+            "headers": {
+              "content-type": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "Get User by ID or Email"
+      },
+      "patch": {
+        "description": "Please see `Auto-Create Users from OpenID or SAML providers` for more details\non `password` field usage.\n",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "user": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "example": {
+                    "value": {
+                      "data": {
+                        "disabled_at": null,
+                        "email": "test-359@test",
+                        "id": "72a52098-aa86-45eb-a313-0d45fda7e3e8",
+                        "inserted_at": "2023-01-12T08:24:26.172679Z",
+                        "last_signed_in_at": null,
+                        "last_signed_in_method": null,
+                        "role": "unprivileged",
+                        "updated_at": "2023-01-12T08:24:26.172679Z"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "description": "Update by ID",
+            "headers": {
+              "content-type": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ],
+        "summary": "update"
+      }
+    }
+  }
+}

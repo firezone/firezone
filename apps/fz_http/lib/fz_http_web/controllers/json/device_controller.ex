@@ -6,17 +6,17 @@ defmodule FzHttpWeb.JSON.DeviceController do
 
   use FzHttpWeb, :controller
 
-  action_fallback FzHttpWeb.JSON.FallbackController
+  action_fallback(FzHttpWeb.JSON.FallbackController)
 
   alias FzHttp.Devices
 
-  @doc api_doc: [action: "List all Devices"]
+  @doc api_doc: [summary: "List all Devices"]
   def index(conn, _params) do
     devices = Devices.list_devices()
     render(conn, "index.json", devices: devices)
   end
 
-  @doc api_doc: [action: "Create a Device"]
+  @doc api_doc: [summary: "Create a Device"]
   def create(conn, %{"device" => device_params}) do
     with {:ok, device} <- Devices.create_device(device_params) do
       conn
@@ -26,13 +26,13 @@ defmodule FzHttpWeb.JSON.DeviceController do
     end
   end
 
-  @doc api_doc: [action: "Get Device by ID"]
+  @doc api_doc: [summary: "Get Device by ID"]
   def show(conn, %{"id" => id}) do
     device = Devices.get_device!(id)
     render(conn, "show.json", device: device)
   end
 
-  @doc api_doc: [action: "Update a Device"]
+  @doc api_doc: [summary: "Update a Device"]
   def update(conn, %{"id" => id, "device" => device_params}) do
     device = Devices.get_device!(id)
 
@@ -41,7 +41,7 @@ defmodule FzHttpWeb.JSON.DeviceController do
     end
   end
 
-  @doc api_doc: [action: "Delete a Device"]
+  @doc api_doc: [summary: "Delete a Device"]
   def delete(conn, %{"id" => id}) do
     device = Devices.get_device!(id)
 

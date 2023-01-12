@@ -16,9 +16,9 @@ defmodule FzHttpWeb.JSON.UserController do
   alias FzHttp.Users
   alias FzHttp.Users.User
 
-  action_fallback FzHttpWeb.JSON.FallbackController
+  action_fallback(FzHttpWeb.JSON.FallbackController)
 
-  @doc api_doc: [action: "List All Users"]
+  @doc api_doc: [summary: "List All Users"]
   def index(conn, _params) do
     users = Users.list_users()
     render(conn, "index.json", users: users)
@@ -71,7 +71,7 @@ defmodule FzHttpWeb.JSON.UserController do
     end
   end
 
-  @doc api_doc: [action: "Get User by ID or Email"]
+  @doc api_doc: [summary: "Get User by ID or Email"]
   def show(conn, %{"id" => id_or_email}) do
     user = get_user_by_id_or_email(id_or_email)
     render(conn, "show.json", user: user)
@@ -114,7 +114,7 @@ defmodule FzHttpWeb.JSON.UserController do
     end
   end
 
-  @doc api_doc: [action: "Delete a User"]
+  @doc api_doc: [summary: "Delete a User"]
   def delete(conn, %{"id" => id_or_email}) do
     user = get_user_by_id_or_email(id_or_email)
 
