@@ -143,7 +143,7 @@ services:
     depends_on:
       firezone:
         condition: 'service_healthy'
-    image: gateway:latest
+    image: firezone-gateway:latest
     privileged: true
     volumes:
       - ./priv/gateway-conf/:/app/gateway-conf/
@@ -153,7 +153,7 @@ services:
     networks:
       - app
       - isolation
-    command: /bin/sh -c "firezoned --conf-dir ./gateway-conf register http://firezone:13000/auth/gateway/token/kYl25nYBkLF6yCljeu1ccw== && firezoned --conf-dir ./gateway-conf start ws://firezone:13000/gateway/websocket"
+    command: /bin/sh -c "gateway --conf-dir ./gateway-conf register http://firezone:13000/auth/gateway/token/kYl25nYBkLF6yCljeu1ccw== && gateway --conf-dir ./gateway-conf start ws://firezone:13000/gateway/websocket"
 
 volumes:
   postgres-data:
