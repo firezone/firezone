@@ -83,7 +83,7 @@ defmodule Firezone.ApiBlueprintWriter do
       doc_function == function
     end)
     |> case do
-      {_, _, _, md, %{api_doc: api_doc_opts}} when is_map(md) ->
+      {_, _, _, md, %{api_doc: api_doc_opts}} ->
         api_doc_opts ++ [function_doc: doc(md)]
 
       _other ->
