@@ -1,14 +1,7 @@
 # Firezone API
 This is Firezone documentation.
 
-# Firezone API
-This is Firezone documentation.
-
-
-
-
-## Endpoints
-
+# API Documentation
 
 
 ## Configuration [/v0/configuration]
@@ -144,19 +137,19 @@ This is Firezone documentation.
                     "signed_envelopes_in_resp": false
                   }
                 ],
-                "updated_at": "2023-01-12T00:22:36.771535Z",
+                "updated_at": "2023-01-12T00:26:29.559090Z",
                 "vpn_session_duration": 100
               }
             }
 
-## Devices [/v0/devices/fd698a34-f78f-45d8-8758-624aee4f3013]
+## Devices [/v0/devices/e43891d7-fe0f-42c3-a498-07bd8906ec8f]
 
 REST API Controller for Devices.
 
 ### show [GET /v0/devices/{id}]
 
 + Parameters
-    + id: `fd698a34-f78f-45d8-8758-624aee4f3013`
+    + id: `e43891d7-fe0f-42c3-a498-07bd8906ec8f`
 
 
 + Request GET /v0/devices/{id}
@@ -177,27 +170,27 @@ REST API Controller for Devices.
                 "description": "factory description",
                 "dns": "1.1.1.1,1.0.0.1",
                 "endpoint": "localhost:51820",
-                "id": "fd698a34-f78f-45d8-8758-624aee4f3013",
-                "inserted_at": "2023-01-12T00:22:35.880390Z",
-                "ipv4": "100.69.38.35",
-                "ipv6": "fd00::14:56c7",
+                "id": "e43891d7-fe0f-42c3-a498-07bd8906ec8f",
+                "inserted_at": "2023-01-12T00:26:28.915725Z",
+                "ipv4": "100.91.239.219",
+                "ipv6": "fd00::1f:df9d",
                 "latest_handshake": null,
                 "mtu": 1280,
-                "name": "factory 1124",
+                "name": "factory 2434",
                 "persistent_keepalive": 25,
-                "preshared_key": "KH5TvPXtsQpRZgEQ9lyNdOaDKCIIxjyRm+sMwTAFWlo=",
-                "public_key": "eV70TShcvb7EfEiaoB3pBvF3u6YPgu86gqPfz3qKwiY=",
+                "preshared_key": "H8gGr+Cx+cExDqHDbX4ELNwB/iIAPavdF06dF36F5NI=",
+                "public_key": "FUUmEcsA5MLO+L9uapmIejlDEr2okpHN60W+iTeXuAA=",
                 "remote_ip": null,
                 "rx_bytes": null,
                 "server_public_key": null,
                 "tx_bytes": null,
-                "updated_at": "2023-01-12T00:22:35.880390Z",
+                "updated_at": "2023-01-12T00:26:28.915725Z",
                 "use_default_allowed_ips": true,
                 "use_default_dns": true,
                 "use_default_endpoint": true,
                 "use_default_mtu": true,
                 "use_default_persistent_keepalive": true,
-                "user_id": "41cf981c-ed35-4cd6-b9cf-208ac0339ed6"
+                "user_id": "e5761b53-0752-44ee-83bb-75aed350d546"
               }
             }
 ### create [POST /v0/devices]
@@ -227,7 +220,7 @@ REST API Controller for Devices.
                 "use_default_endpoint": false,
                 "use_default_mtu": false,
                 "use_default_persistent_keepalive": false,
-                "user_id": "8aae006d-6e14-41a6-a9bf-a41e419c28d6"
+                "user_id": "138f8de9-feaa-4f5b-9bb0-39dcd8e2f00a"
               }
             }
 
@@ -236,7 +229,7 @@ REST API Controller for Devices.
     + Headers
     
             Content-Type: application/json; charset=utf-8
-            Location: /v0/devices/ad05642c-088f-4051-bd58-4697dc958aa7
+            Location: /v0/devices/2619d0e5-9c91-4fd5-a9b4-ffb911359033
     + Body
     
             {
@@ -245,8 +238,8 @@ REST API Controller for Devices.
                 "description": "create-description",
                 "dns": "9.9.9.8",
                 "endpoint": "9.9.9.9",
-                "id": "ad05642c-088f-4051-bd58-4697dc958aa7",
-                "inserted_at": "2023-01-12T00:22:36.184765Z",
+                "id": "2619d0e5-9c91-4fd5-a9b4-ffb911359033",
+                "inserted_at": "2023-01-12T00:26:28.752045Z",
                 "ipv4": "100.64.0.2",
                 "ipv6": "fd00::2",
                 "latest_handshake": null,
@@ -259,19 +252,19 @@ REST API Controller for Devices.
                 "rx_bytes": null,
                 "server_public_key": null,
                 "tx_bytes": null,
-                "updated_at": "2023-01-12T00:22:36.184765Z",
+                "updated_at": "2023-01-12T00:26:28.752045Z",
                 "use_default_allowed_ips": false,
                 "use_default_dns": false,
                 "use_default_endpoint": false,
                 "use_default_mtu": false,
                 "use_default_persistent_keepalive": false,
-                "user_id": "8aae006d-6e14-41a6-a9bf-a41e419c28d6"
+                "user_id": "138f8de9-feaa-4f5b-9bb0-39dcd8e2f00a"
               }
             }
 ### update [PUT /v0/devices/{id}]
 
 + Parameters
-    + id: `19498704-ffde-434f-8941-2569bf31f0bf`
+    + id: `ad8c4660-246f-439e-94ed-1775123a76eb`
 
 
 + Request PUT /v0/devices/{id}
@@ -314,8 +307,8 @@ REST API Controller for Devices.
                 "description": "create-description",
                 "dns": "9.9.9.8",
                 "endpoint": "9.9.9.9",
-                "id": "19498704-ffde-434f-8941-2569bf31f0bf",
-                "inserted_at": "2023-01-12T00:22:36.142277Z",
+                "id": "ad8c4660-246f-439e-94ed-1775123a76eb",
+                "inserted_at": "2023-01-12T00:26:28.967117Z",
                 "ipv4": "100.64.0.2",
                 "ipv6": "fd00::2",
                 "latest_handshake": null,
@@ -328,13 +321,13 @@ REST API Controller for Devices.
                 "rx_bytes": null,
                 "server_public_key": null,
                 "tx_bytes": null,
-                "updated_at": "2023-01-12T00:22:36.158063Z",
+                "updated_at": "2023-01-12T00:26:28.982777Z",
                 "use_default_allowed_ips": false,
                 "use_default_dns": false,
                 "use_default_endpoint": false,
                 "use_default_mtu": false,
                 "use_default_persistent_keepalive": false,
-                "user_id": "b9bf6744-9a5c-4a6c-9dad-5718dbcf5a63"
+                "user_id": "4095da17-06a5-4132-9a17-ea4d6baf9374"
               }
             }
 ### index [GET /v0/devices]
@@ -359,142 +352,142 @@ REST API Controller for Devices.
                   "description": "factory description",
                   "dns": "1.1.1.1,1.0.0.1",
                   "endpoint": "localhost:51820",
-                  "id": "b9d4e49e-8c67-44ed-b312-d1c996c662cf",
-                  "inserted_at": "2023-01-12T00:22:35.923608Z",
-                  "ipv4": "100.84.100.231",
-                  "ipv6": "fd00::4:52c2",
+                  "id": "9192e2b7-7278-4b39-8abd-587f620aa00c",
+                  "inserted_at": "2023-01-12T00:26:28.812825Z",
+                  "ipv4": "100.98.247.48",
+                  "ipv6": "fd00::4:159f",
                   "latest_handshake": null,
                   "mtu": 1280,
-                  "name": "factory 547",
+                  "name": "factory 744",
                   "persistent_keepalive": 25,
-                  "preshared_key": "b+YB6axYXbILu/aUgb2OiLw7h8Pe6W/mWIfTfEdV4Y4=",
-                  "public_key": "wMvOAHMa5L7ZnikzMK36MtIC2cIpZENmdgOknzoC5Bs=",
+                  "preshared_key": "k9+eP/MYAReMN+aajmJ2kb4WoFG03n60C+Ce71LlFz4=",
+                  "public_key": "3aJ8TzmiPO3aFqTycbIPBj7XJs4MdQZeSdGvr9f2Vzg=",
                   "remote_ip": null,
                   "rx_bytes": null,
                   "server_public_key": null,
                   "tx_bytes": null,
-                  "updated_at": "2023-01-12T00:22:35.923608Z",
+                  "updated_at": "2023-01-12T00:26:28.812825Z",
                   "use_default_allowed_ips": true,
                   "use_default_dns": true,
                   "use_default_endpoint": true,
                   "use_default_mtu": true,
                   "use_default_persistent_keepalive": true,
-                  "user_id": "c97ad888-e073-4b55-924c-d58823a8bbd8"
+                  "user_id": "b2d82f59-193d-4330-b8b9-76eb1de896e2"
                 },
                 {
                   "allowed_ips": "0.0.0.0/0,::/0",
                   "description": "factory description",
                   "dns": "1.1.1.1,1.0.0.1",
                   "endpoint": "localhost:51820",
-                  "id": "2fedb025-9471-4f3e-9b04-02e660c24138",
-                  "inserted_at": "2023-01-12T00:22:35.932965Z",
-                  "ipv4": "100.118.242.191",
-                  "ipv6": "fd00::3f:cfb7",
+                  "id": "4743f5dc-fb3e-4031-9f05-f89af3343b8b",
+                  "inserted_at": "2023-01-12T00:26:28.821182Z",
+                  "ipv4": "100.116.233.135",
+                  "ipv6": "fd00::7:ba62",
                   "latest_handshake": null,
                   "mtu": 1280,
-                  "name": "factory 611",
+                  "name": "factory 840",
                   "persistent_keepalive": 25,
-                  "preshared_key": "nYX9k84Azg7uTHEYKR4ouooikN49JT3xEGa4nQ2M+D8=",
-                  "public_key": "P81f5ltPhKtZcMma2/NeCv7pMTao7SItCfzGXgd92fY=",
+                  "preshared_key": "Hjf8K6P3stQTCuJuTd6JHNrnlQgKDc7givD+ywanD9E=",
+                  "public_key": "Ukve3NX5pNd+g+BskhsaJjDaDu+8AH5fgZieW2pHppk=",
                   "remote_ip": null,
                   "rx_bytes": null,
                   "server_public_key": null,
                   "tx_bytes": null,
-                  "updated_at": "2023-01-12T00:22:35.932965Z",
+                  "updated_at": "2023-01-12T00:26:28.821182Z",
                   "use_default_allowed_ips": true,
                   "use_default_dns": true,
                   "use_default_endpoint": true,
                   "use_default_mtu": true,
                   "use_default_persistent_keepalive": true,
-                  "user_id": "5e77ff31-4174-46b7-b4c0-d2415acf0f3f"
+                  "user_id": "042237f7-a162-4bd2-b922-4921d2b7006f"
                 },
                 {
                   "allowed_ips": "0.0.0.0/0,::/0",
                   "description": "factory description",
                   "dns": "1.1.1.1,1.0.0.1",
                   "endpoint": "localhost:51820",
-                  "id": "fdae80c7-1163-4fbb-93eb-df0fe20b97ed",
-                  "inserted_at": "2023-01-12T00:22:35.940545Z",
-                  "ipv4": "100.64.202.162",
-                  "ipv6": "fd00::35:1470",
+                  "id": "9d7b7a70-5173-4fdc-9674-ef4b57343866",
+                  "inserted_at": "2023-01-12T00:26:28.829714Z",
+                  "ipv4": "100.81.35.42",
+                  "ipv6": "fd00::38:9b37",
                   "latest_handshake": null,
                   "mtu": 1280,
-                  "name": "factory 675",
+                  "name": "factory 2018",
                   "persistent_keepalive": 25,
-                  "preshared_key": "xj5BGsSN3TRTFube/kxq0laFCWeOg+RKIU/xj+rMH4A=",
-                  "public_key": "ObldDKlYzVRTQ2o6hT/62LkqHp28szbxx2Pc2YyugIg=",
+                  "preshared_key": "t2rwhJFXEsYCrjSbngHsWvfnV+3yY128Q5gzcdmC+Do=",
+                  "public_key": "JEph3YlcKBJlGf6dcxsqQB+GRjzfen3dshGEdWDEoFA=",
                   "remote_ip": null,
                   "rx_bytes": null,
                   "server_public_key": null,
                   "tx_bytes": null,
-                  "updated_at": "2023-01-12T00:22:35.940545Z",
+                  "updated_at": "2023-01-12T00:26:28.829714Z",
                   "use_default_allowed_ips": true,
                   "use_default_dns": true,
                   "use_default_endpoint": true,
                   "use_default_mtu": true,
                   "use_default_persistent_keepalive": true,
-                  "user_id": "22d63bf9-8b22-40cc-bcd4-bdf1860ec769"
+                  "user_id": "dd16767c-aded-4128-bfcd-ea19355156dc"
                 },
                 {
                   "allowed_ips": "0.0.0.0/0,::/0",
                   "description": "factory description",
                   "dns": "1.1.1.1,1.0.0.1",
                   "endpoint": "localhost:51820",
-                  "id": "d5b923cc-5b21-4321-bd4f-c6c473e6bbdf",
-                  "inserted_at": "2023-01-12T00:22:35.947203Z",
-                  "ipv4": "100.97.100.109",
-                  "ipv6": "fd00::1f:9463",
+                  "id": "0c6f2564-7fa4-4aac-ae24-a51b533e93fb",
+                  "inserted_at": "2023-01-12T00:26:28.837385Z",
+                  "ipv4": "100.90.198.88",
+                  "ipv6": "fd00::36:201d",
                   "latest_handshake": null,
                   "mtu": 1280,
-                  "name": "factory 739",
+                  "name": "factory 2403",
                   "persistent_keepalive": 25,
-                  "preshared_key": "OqpX19imoSnC2/tWX3JDKmdAuCVeLX7kUV+deyXcy/k=",
-                  "public_key": "hOY8YvqyhDIgEiCcCIMb3nCLLbLecDHNB3aIIzOB+Hc=",
+                  "preshared_key": "tYFRiue8+c1eCPMC84cNkjNtaHrNOATb3Mhbv0ArDnQ=",
+                  "public_key": "xptMrmxIZiJNsUKRpIIzRRz/8EycOksJj4ihmJwC5bA=",
                   "remote_ip": null,
                   "rx_bytes": null,
                   "server_public_key": null,
                   "tx_bytes": null,
-                  "updated_at": "2023-01-12T00:22:35.947203Z",
+                  "updated_at": "2023-01-12T00:26:28.837385Z",
                   "use_default_allowed_ips": true,
                   "use_default_dns": true,
                   "use_default_endpoint": true,
                   "use_default_mtu": true,
                   "use_default_persistent_keepalive": true,
-                  "user_id": "74f07f29-e2be-4873-980f-db196114aa88"
+                  "user_id": "c765617b-2ebc-4ecb-8904-f733de2e8863"
                 },
                 {
                   "allowed_ips": "0.0.0.0/0,::/0",
                   "description": "factory description",
                   "dns": "1.1.1.1,1.0.0.1",
                   "endpoint": "localhost:51820",
-                  "id": "632412b8-6184-438b-afcf-8a0bf831eed3",
-                  "inserted_at": "2023-01-12T00:22:35.956495Z",
-                  "ipv4": "100.92.100.106",
-                  "ipv6": "fd00::26:43af",
+                  "id": "5d120aee-3082-47de-82cb-9ca33b9a1cae",
+                  "inserted_at": "2023-01-12T00:26:28.844879Z",
+                  "ipv4": "100.78.165.174",
+                  "ipv6": "fd00::3e:7217",
                   "latest_handshake": null,
                   "mtu": 1280,
-                  "name": "factory 803",
+                  "name": "factory 2467",
                   "persistent_keepalive": 25,
-                  "preshared_key": "1MbRt4swFWSnF6VrQm4PejzNHsjVcDfv/e1ypiGiq9g=",
-                  "public_key": "bxkzKhkHrvWnQoMp5jjy2vI3bPiJ7NEwONhkNkHgiJA=",
+                  "preshared_key": "82EaPtlC4jomhjtbNEbGYFAtB8gqZx/VRziuFJ0hTy4=",
+                  "public_key": "bQ5o4mio8PvtgvnwGKtTRbdQ9nNbAMqrb97rLK4YlUk=",
                   "remote_ip": null,
                   "rx_bytes": null,
                   "server_public_key": null,
                   "tx_bytes": null,
-                  "updated_at": "2023-01-12T00:22:35.956495Z",
+                  "updated_at": "2023-01-12T00:26:28.844879Z",
                   "use_default_allowed_ips": true,
                   "use_default_dns": true,
                   "use_default_endpoint": true,
                   "use_default_mtu": true,
                   "use_default_persistent_keepalive": true,
-                  "user_id": "72738666-b784-4bfd-9a01-91c454d80686"
+                  "user_id": "6f050eb0-eb4a-4fa3-a6eb-dd125a5b17ba"
                 }
               ]
             }
 ### delete [DELETE /v0/devices/{id}]
 
 + Parameters
-    + id: `4a31c349-a22a-4c9a-b82c-4ee0e56a2cde`
+    + id: `33e3aa7a-a34c-45ff-847a-c069f9e1a924`
 
 
 + Request DELETE /v0/devices/{id}
@@ -508,14 +501,14 @@ REST API Controller for Devices.
     
             
 
-## Rules [/v0/rules/56469430-25a3-4333-aeae-e90d303a3c77]
+## Rules [/v0/rules/a6aa60f4-08de-4db6-9363-1f3b7451e440]
 
 REST API Controller for Rules.
 
 ### show [GET /v0/rules/{id}]
 
 + Parameters
-    + id: `56469430-25a3-4333-aeae-e90d303a3c77`
+    + id: `a6aa60f4-08de-4db6-9363-1f3b7451e440`
 
 
 + Request GET /v0/rules/{id}
@@ -534,11 +527,11 @@ REST API Controller for Rules.
               "data": {
                 "action": "drop",
                 "destination": "10.10.10.0/24",
-                "id": "56469430-25a3-4333-aeae-e90d303a3c77",
-                "inserted_at": "2023-01-12T00:22:35.826337Z",
+                "id": "a6aa60f4-08de-4db6-9363-1f3b7451e440",
+                "inserted_at": "2023-01-12T00:26:28.778421Z",
                 "port_range": null,
                 "port_type": null,
-                "updated_at": "2023-01-12T00:22:35.826337Z",
+                "updated_at": "2023-01-12T00:26:28.778421Z",
                 "user_id": null
               }
             }
@@ -557,7 +550,7 @@ REST API Controller for Rules.
                 "destination": "1.1.1.1/24",
                 "port_range": "1 - 2",
                 "port_type": "udp",
-                "user_id": "133d1d29-fff7-4645-81a1-8d92c08e5eb8"
+                "user_id": "58553dcf-b9fc-4f4b-ab47-7820fc20a22e"
               }
             }
 
@@ -566,25 +559,25 @@ REST API Controller for Rules.
     + Headers
     
             Content-Type: application/json; charset=utf-8
-            Location: /v0/rules/8330f7e4-3f94-4c0f-a330-62c20d7e4000
+            Location: /v0/rules/5618f70b-f578-4080-9d7b-e85bd0cd27db
     + Body
     
             {
               "data": {
                 "action": "accept",
                 "destination": "1.1.1.1/24",
-                "id": "8330f7e4-3f94-4c0f-a330-62c20d7e4000",
-                "inserted_at": "2023-01-12T00:22:36.075186Z",
+                "id": "5618f70b-f578-4080-9d7b-e85bd0cd27db",
+                "inserted_at": "2023-01-12T00:26:28.688993Z",
                 "port_range": "1 - 2",
                 "port_type": "udp",
-                "updated_at": "2023-01-12T00:22:36.075186Z",
-                "user_id": "133d1d29-fff7-4645-81a1-8d92c08e5eb8"
+                "updated_at": "2023-01-12T00:26:28.688993Z",
+                "user_id": "58553dcf-b9fc-4f4b-ab47-7820fc20a22e"
               }
             }
 ### update [PUT /v0/rules/{id}]
 
 + Parameters
-    + id: `025f4ed9-3869-4476-88e0-2a35efa7dab9`
+    + id: `9d414b9c-d54f-4aa4-96ce-37dad072d2fc`
 
 
 + Request PUT /v0/rules/{id}
@@ -613,11 +606,11 @@ REST API Controller for Rules.
               "data": {
                 "action": "accept",
                 "destination": "1.1.1.1/24",
-                "id": "025f4ed9-3869-4476-88e0-2a35efa7dab9",
-                "inserted_at": "2023-01-12T00:22:36.006795Z",
+                "id": "9d414b9c-d54f-4aa4-96ce-37dad072d2fc",
+                "inserted_at": "2023-01-12T00:26:28.801888Z",
                 "port_range": "1 - 2",
                 "port_type": "udp",
-                "updated_at": "2023-01-12T00:22:36.026942Z",
+                "updated_at": "2023-01-12T00:26:28.821498Z",
                 "user_id": null
               }
             }
@@ -641,51 +634,51 @@ REST API Controller for Rules.
                 {
                   "action": "drop",
                   "destination": "10.3.2.1",
-                  "id": "e5ed0ee0-71c3-4e76-b47d-e1c7111d70a1",
-                  "inserted_at": "2023-01-12T00:22:35.954591Z",
+                  "id": "9332b19e-0661-4011-8458-ca7638ddffe3",
+                  "inserted_at": "2023-01-12T00:26:28.692624Z",
                   "port_range": null,
                   "port_type": null,
-                  "updated_at": "2023-01-12T00:22:35.954591Z",
+                  "updated_at": "2023-01-12T00:26:28.692624Z",
                   "user_id": null
                 },
                 {
                   "action": "drop",
                   "destination": "10.3.2.2",
-                  "id": "5de4aadf-cad2-4992-890b-cc56d1c28549",
-                  "inserted_at": "2023-01-12T00:22:35.957886Z",
+                  "id": "40ef15a0-19d9-4202-8978-928ed066eff7",
+                  "inserted_at": "2023-01-12T00:26:28.695861Z",
                   "port_range": null,
                   "port_type": null,
-                  "updated_at": "2023-01-12T00:22:35.957886Z",
+                  "updated_at": "2023-01-12T00:26:28.695861Z",
                   "user_id": null
                 },
                 {
                   "action": "drop",
                   "destination": "10.3.2.3",
-                  "id": "034de5d0-304a-4dae-9210-bcf89b6301a6",
-                  "inserted_at": "2023-01-12T00:22:35.958872Z",
+                  "id": "bed0c1b7-18ad-4aa6-88d6-10ab47fb4fb7",
+                  "inserted_at": "2023-01-12T00:26:28.696694Z",
                   "port_range": null,
                   "port_type": null,
-                  "updated_at": "2023-01-12T00:22:35.958872Z",
+                  "updated_at": "2023-01-12T00:26:28.696694Z",
                   "user_id": null
                 },
                 {
                   "action": "drop",
                   "destination": "10.3.2.4",
-                  "id": "32b458e0-c9db-4f58-9115-1f021618c995",
-                  "inserted_at": "2023-01-12T00:22:35.959913Z",
+                  "id": "efc34927-ea93-4992-b6b6-5193afb3c0f6",
+                  "inserted_at": "2023-01-12T00:26:28.697761Z",
                   "port_range": null,
                   "port_type": null,
-                  "updated_at": "2023-01-12T00:22:35.959913Z",
+                  "updated_at": "2023-01-12T00:26:28.697761Z",
                   "user_id": null
                 },
                 {
                   "action": "drop",
                   "destination": "10.3.2.5",
-                  "id": "ccbdd70d-c327-4458-883f-4302c6b05b27",
-                  "inserted_at": "2023-01-12T00:22:35.960978Z",
+                  "id": "67d9db58-f38d-4168-aa77-569932f71f50",
+                  "inserted_at": "2023-01-12T00:26:28.699060Z",
                   "port_range": null,
                   "port_type": null,
-                  "updated_at": "2023-01-12T00:22:35.960978Z",
+                  "updated_at": "2023-01-12T00:26:28.699060Z",
                   "user_id": null
                 }
               ]
@@ -693,7 +686,7 @@ REST API Controller for Rules.
 ### delete [DELETE /v0/rules/{id}]
 
 + Parameters
-    + id: `26dd6962-ffd4-4719-8a82-f941f6cbc470`
+    + id: `12cacd2a-28e1-4417-ae52-07f98a4c3984`
 
 
 + Request DELETE /v0/rules/{id}
@@ -739,43 +732,43 @@ otherwise they will have no means to log in.
               "data": [
                 {
                   "disabled_at": null,
-                  "email": "test-483@test",
-                  "id": "163a548b-ce85-4ab2-9a6e-df18427dc590",
-                  "inserted_at": "2023-01-12T00:22:35.784148Z",
+                  "email": "test-2659@test",
+                  "id": "e04bb3df-9e09-4c15-b1e2-11122a7176d6",
+                  "inserted_at": "2023-01-12T00:26:28.865001Z",
                   "last_signed_in_at": null,
                   "last_signed_in_method": null,
                   "role": "admin",
-                  "updated_at": "2023-01-12T00:22:35.784148Z"
+                  "updated_at": "2023-01-12T00:26:28.865001Z"
                 },
                 {
                   "disabled_at": null,
-                  "email": "test-519@test",
-                  "id": "3a0f4251-6c46-410c-baf0-cc3ab6c69830",
-                  "inserted_at": "2023-01-12T00:22:35.788117Z",
+                  "email": "test-743@test",
+                  "id": "a4653371-f554-4e69-9816-3a3f4a256494",
+                  "inserted_at": "2023-01-12T00:26:28.869238Z",
                   "last_signed_in_at": null,
                   "last_signed_in_method": null,
                   "role": "admin",
-                  "updated_at": "2023-01-12T00:22:35.788117Z"
+                  "updated_at": "2023-01-12T00:26:28.869238Z"
                 },
                 {
                   "disabled_at": null,
-                  "email": "test-551@test",
-                  "id": "1cd4617e-0ef2-4717-a391-45be34044cc5",
-                  "inserted_at": "2023-01-12T00:22:35.790756Z",
+                  "email": "test-775@test",
+                  "id": "0c57e83e-7ed0-4055-b88b-bc973407981f",
+                  "inserted_at": "2023-01-12T00:26:28.871312Z",
                   "last_signed_in_at": null,
                   "last_signed_in_method": null,
                   "role": "admin",
-                  "updated_at": "2023-01-12T00:22:35.790756Z"
+                  "updated_at": "2023-01-12T00:26:28.871312Z"
                 },
                 {
                   "disabled_at": null,
-                  "email": "test-583@test",
-                  "id": "e6b2535a-a08b-409d-b151-568d95c7024e",
-                  "inserted_at": "2023-01-12T00:22:35.792867Z",
+                  "email": "test-2723@test",
+                  "id": "4ddb6089-55e7-4d29-be1a-87d59fc70c9a",
+                  "inserted_at": "2023-01-12T00:26:28.873236Z",
                   "last_signed_in_at": null,
                   "last_signed_in_method": null,
                   "role": "admin",
-                  "updated_at": "2023-01-12T00:22:35.792867Z"
+                  "updated_at": "2023-01-12T00:26:28.873236Z"
                 }
               ]
             }
@@ -816,19 +809,19 @@ on `password` field usage.
     + Headers
     
             Content-Type: application/json; charset=utf-8
-            Location: /v0/users/7eb08d0b-d4fb-4e5f-a62f-b06936952c53
+            Location: /v0/users/15ecf5f7-0a92-4b51-9072-58c487ee05f2
     + Body
     
             {
               "data": {
                 "disabled_at": null,
                 "email": "new-user@test",
-                "id": "7eb08d0b-d4fb-4e5f-a62f-b06936952c53",
-                "inserted_at": "2023-01-12T00:22:35.759452Z",
+                "id": "15ecf5f7-0a92-4b51-9072-58c487ee05f2",
+                "inserted_at": "2023-01-12T00:26:28.994234Z",
                 "last_signed_in_at": null,
                 "last_signed_in_method": null,
                 "role": "admin",
-                "updated_at": "2023-01-12T00:22:35.759452Z"
+                "updated_at": "2023-01-12T00:26:28.994234Z"
               }
             }
 
@@ -863,19 +856,19 @@ on `password` field usage.
     + Headers
     
             Content-Type: application/json; charset=utf-8
-            Location: /v0/users/26714ef5-18b9-425e-a48b-7c61a308355d
+            Location: /v0/users/4eb38814-e02e-4d3c-ab5d-0594c6bb7d81
     + Body
     
             {
               "data": {
                 "disabled_at": null,
                 "email": "new-user@test",
-                "id": "26714ef5-18b9-425e-a48b-7c61a308355d",
-                "inserted_at": "2023-01-12T00:22:36.275615Z",
+                "id": "4eb38814-e02e-4d3c-ab5d-0594c6bb7d81",
+                "inserted_at": "2023-01-12T00:26:28.730578Z",
                 "last_signed_in_at": null,
                 "last_signed_in_method": null,
                 "role": "unprivileged",
-                "updated_at": "2023-01-12T00:22:36.275615Z"
+                "updated_at": "2023-01-12T00:26:28.730578Z"
               }
             }
 
@@ -912,19 +905,19 @@ on `password` field usage.
     + Headers
     
             Content-Type: application/json; charset=utf-8
-            Location: /v0/users/f0768de9-bbe2-4dba-9f4c-921b2fb245b2
+            Location: /v0/users/26ef81b5-266f-4a72-9bb2-c2219a1c25bb
     + Body
     
             {
               "data": {
                 "disabled_at": null,
                 "email": "new-user@test",
-                "id": "f0768de9-bbe2-4dba-9f4c-921b2fb245b2",
-                "inserted_at": "2023-01-12T00:22:36.157440Z",
+                "id": "26ef81b5-266f-4a72-9bb2-c2219a1c25bb",
+                "inserted_at": "2023-01-12T00:26:28.916708Z",
                 "last_signed_in_at": null,
                 "last_signed_in_method": null,
                 "role": "unprivileged",
-                "updated_at": "2023-01-12T00:22:36.157440Z"
+                "updated_at": "2023-01-12T00:26:28.916708Z"
               }
             }
 
@@ -976,7 +969,7 @@ on `password` field usage.
 
 
 + Parameters
-    + id: `d8b89e52-c30a-4c4d-8561-8ab282b19a6a`
+    + id: `58427c64-c83b-4c19-a71f-0d464f3cae52`
 
 
 + Request Update by ID
@@ -1011,13 +1004,13 @@ on `password` field usage.
             {
               "data": {
                 "disabled_at": null,
-                "email": "test-2020@test",
-                "id": "d8b89e52-c30a-4c4d-8561-8ab282b19a6a",
-                "inserted_at": "2023-01-12T00:22:36.296189Z",
+                "email": "test-198@test",
+                "id": "58427c64-c83b-4c19-a71f-0d464f3cae52",
+                "inserted_at": "2023-01-12T00:26:28.963449Z",
                 "last_signed_in_at": null,
                 "last_signed_in_method": null,
                 "role": "unprivileged",
-                "updated_at": "2023-01-12T00:22:36.296189Z"
+                "updated_at": "2023-01-12T00:26:28.963449Z"
               }
             }
 
@@ -1054,19 +1047,19 @@ on `password` field usage.
             {
               "data": {
                 "disabled_at": null,
-                "email": "test-871@test",
-                "id": "39ea6ae6-22cd-4dd5-91d1-594ab3032c2a",
-                "inserted_at": "2023-01-12T00:22:36.280266Z",
+                "email": "test-1666@test",
+                "id": "ef098a07-829c-405f-a2e4-2a106bbacd8c",
+                "inserted_at": "2023-01-12T00:26:28.654749Z",
                 "last_signed_in_at": null,
                 "last_signed_in_method": null,
                 "role": "unprivileged",
-                "updated_at": "2023-01-12T00:22:36.280266Z"
+                "updated_at": "2023-01-12T00:26:28.654749Z"
               }
             }
-### show [GET /v0/users/test-586%40test]
+### show [GET /v0/users/test-1762%40test]
 
 + Parameters
-    + id: `test-586@test`
+    + id: `test-1762@test`
 
 
 + Request GET /v0/users/{email}
@@ -1086,13 +1079,13 @@ An email can be used instead of ID.
             {
               "data": {
                 "disabled_at": null,
-                "email": "test-586@test",
-                "id": "e5ec60fc-30b2-41c4-a1b1-2fb17a5a56e1",
-                "inserted_at": "2023-01-12T00:22:36.211749Z",
+                "email": "test-1762@test",
+                "id": "5f24beed-1875-4599-8a6c-c3fc93af1b64",
+                "inserted_at": "2023-01-12T00:26:28.681454Z",
                 "last_signed_in_at": null,
                 "last_signed_in_method": null,
                 "role": "admin",
-                "updated_at": "2023-01-12T00:22:36.211749Z"
+                "updated_at": "2023-01-12T00:26:28.681454Z"
               }
             }
 
@@ -1112,19 +1105,19 @@ An email can be used instead of ID.
             {
               "data": {
                 "disabled_at": null,
-                "email": "test-1668@test",
-                "id": "40e8995f-1ced-4fde-a7ba-2aff8c7cb48b",
-                "inserted_at": "2023-01-12T00:22:36.016055Z",
+                "email": "test-231@test",
+                "id": "a8277d7f-9a52-4912-904e-fd4eb22c68ec",
+                "inserted_at": "2023-01-12T00:26:28.637201Z",
                 "last_signed_in_at": null,
                 "last_signed_in_method": null,
                 "role": "admin",
-                "updated_at": "2023-01-12T00:22:36.016055Z"
+                "updated_at": "2023-01-12T00:26:28.637201Z"
               }
             }
-### delete [DELETE /v0/users/test-1346%40test]
+### delete [DELETE /v0/users/test-2851%40test]
 
 + Parameters
-    + id: `test-1346@test`
+    + id: `test-2851@test`
 
 
 + Request DELETE /v0/users/{email}

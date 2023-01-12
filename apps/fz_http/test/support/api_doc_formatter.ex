@@ -11,15 +11,16 @@ defmodule Firezone.ApiBlueprintWriter do
   @keep_resp_headers ["content-type", "location"]
 
   def write(records, path) do
+    file = File.open!(path, [:write, :utf8])
+
     records =
       records
       |> filter_records()
       |> assign_doc_attributes()
+      |> group_records()
 
-    file = File.open!(path, [:write, :utf8])
-    records = group_records(records)
     puts(file, "# #{@title}\n#{@description}")
-    write_intro(path, file)
+    puts(file, "# API Documentation\n")
     write_api_doc(records, file)
   end
 
@@ -87,30 +88,6 @@ defmodule Firezone.ApiBlueprintWriter do
 
       _other ->
         []
-    end
-  end
-
-  defp write_intro(path, file) do
-    intro_file_path =
-      [
-        # /path/to/API.md -> /path/to/API_INTRO.md
-        String.replace(path, ~r/\.md$/i, "_INTRO\\0"),
-        # /path/to/api.md -> /path/to/api_intro.md
-        String.replace(path, ~r/\.md$/i, "_intro\\0"),
-        # /path/to/API -> /path/to/API_INTRO
-        "#{path}_INTRO",
-        # /path/to/api -> /path/to/api_intro
-        "#{path}_intro"
-      ]
-      # which one exists?
-      |> Enum.find(nil, &File.exists?/1)
-
-    if intro_file_path do
-      file
-      |> puts(File.read!(intro_file_path))
-      |> puts("\n\n## Endpoints\n\n")
-    else
-      puts(file, "# API Documentation\n")
     end
   end
 
