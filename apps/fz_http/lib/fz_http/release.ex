@@ -23,9 +23,11 @@ defmodule FzHttp.Release do
     end
   end
 
-  # App should be loaded at this point; call with `rpc` not `eval`
   def create_admin_user do
     load_app()
+
+    # The whole app needs to be started to run actual DB queries
+    Application.ensure_all_started(@app)
 
     reply =
       if Repo.exists?(from u in User, where: u.email == ^email()) do
@@ -40,7 +42,7 @@ defmodule FzHttp.Release do
       end
 
     # Notify the user
-    IO.puts("password reset to default credentials from env")
+    Logger.info("Password for user specified by ADMIN_EMAIL reset to DEFAULT_ADMIN_PASSWORD!")
 
     reply
   end
