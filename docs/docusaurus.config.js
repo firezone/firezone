@@ -51,7 +51,7 @@ const config = {
         docsPluginId: "classic",
         config: {
           rest_api: {
-            specPath: "openapi.yaml",
+            specPath: "../api.json",
             outputDir: "docs/reference/REST API",
             sidebarOptions: {
               groupPathsBy: "tag",

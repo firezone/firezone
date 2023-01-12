@@ -132,9 +132,12 @@ defmodule Firezone.ApiBlueprintWriter do
     # parameters = Keyword.get(assigns, :parameters, [])
 
     responses =
-      for conn <- conns, into: %{} do
-        {conn.status, build_response(conn, module_api_doc, assigns)}
-      end
+      conns
+      |> Enum.group_by(& &1.status)
+      |> Enum.map(fn {status, conns} ->
+        {status, build_response(conns, module_api_doc, assigns)}
+      end)
+      |> Enum.into(%{})
 
     header_params =
       for {key, _value} <- conn.req_headers, key in @keep_req_headers do
@@ -161,26 +164,27 @@ defmodule Firezone.ApiBlueprintWriter do
         }
       end)
 
-    request_body_map =
-      if verb == :get do
-        %{}
-      else
-        %{requestBody: %{content: %{"application/json" => %{example: conn.body_params}}}}
+    request_body =
+      unless verb == :get or verb == :delete do
+        %{
+          required: true,
+          content: %{"application/json" => %{example: conn.body_params}}
+        }
       end
 
     %{
       summary: summary,
-      description: description,
       parameters: header_params ++ uri_params,
       security: [
         %{api_key: []}
       ],
       responses: responses
     }
-    |> Map.merge(request_body_map)
+    |> put_if_not_nil(:description, description)
+    |> put_if_not_nil(:requestBody, request_body)
   end
 
-  defp build_response(conn, _module_api_doc, _assigns) do
+  defp build_response([conn | _], _module_api_doc, _assigns) do
     resp_headers =
       for {key, _value} <- conn.resp_headers, key in @keep_resp_headers, into: %{} do
         {key, %{schema: %{type: "string"}}}
@@ -223,6 +227,9 @@ defmodule Firezone.ApiBlueprintWriter do
     end)
     |> Enum.join("-")
   end
+
+  defp put_if_not_nil(map, _key, nil), do: map
+  defp put_if_not_nil(map, key, value), do: Map.put(map, key, value)
 
   ####
 

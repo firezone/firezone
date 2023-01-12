@@ -24,7 +24,6 @@
   "paths": {
     "/v0/configuration": {
       "get": {
-        "description": null,
         "parameters": [],
         "responses": {
           "200": {
@@ -74,12 +73,13 @@
         "summary": "Get Configuration"
       },
       "patch": {
-        "description": null,
         "parameters": [],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
-              "example": {
+              "examples": {
+                "value": {
                 "configuration": {
                   "allow_unprivileged_device_configuration": false,
                   "allow_unprivileged_device_management": false,
@@ -118,6 +118,7 @@
                   ],
                   "vpn_session_duration": 100
                 }
+              }
               }
             }
           }
@@ -168,7 +169,7 @@
                             "signed_envelopes_in_resp": false
                           }
                         ],
-                        "updated_at": "2023-01-12T08:24:27.001667Z",
+                        "updated_at": "2023-01-12T17:45:01.036884Z",
                         "vpn_session_duration": 100
                       }
                     }
@@ -196,7 +197,6 @@
     },
     "/v0/devices": {
       "get": {
-        "description": null,
         "parameters": [],
         "responses": {
           "200": {
@@ -211,135 +211,135 @@
                           "description": "factory description",
                           "dns": "1.1.1.1,1.0.0.1",
                           "endpoint": "localhost:51820",
-                          "id": "08c034bf-8f41-42da-a724-b096b4e92f33",
-                          "inserted_at": "2023-01-12T08:24:26.236591Z",
-                          "ipv4": "100.105.38.110",
-                          "ipv6": "fd00::c:b4a9",
+                          "id": "deb2b02f-ff33-4acf-9adf-01ec3815c9d1",
+                          "inserted_at": "2023-01-12T17:44:59.755229Z",
+                          "ipv4": "100.68.188.34",
+                          "ipv6": "fd00::3e:f667",
                           "latest_handshake": null,
                           "mtu": 1280,
-                          "name": "factory 1666",
+                          "name": "factory 71",
                           "persistent_keepalive": 25,
-                          "preshared_key": "pxY7LUnnM7afEgAsEOpeNm7N9tZxRmvoOhya3TP/u1c=",
-                          "public_key": "ARvZLQOqEi95AbNvbqQS5NbRfcCnbzncxBjYLTCOVZQ=",
+                          "preshared_key": "I7QVFomVuZLOzVZ3DLKCTSv63B9T66LQc88HN10+nXw=",
+                          "public_key": "FUT0WhnQT3kThVv7Beve8SQIJ1czwk1UZSUVQZj7Hw0=",
                           "remote_ip": null,
                           "rx_bytes": null,
                           "server_public_key": null,
                           "tx_bytes": null,
-                          "updated_at": "2023-01-12T08:24:26.236591Z",
+                          "updated_at": "2023-01-12T17:44:59.755229Z",
                           "use_default_allowed_ips": true,
                           "use_default_dns": true,
                           "use_default_endpoint": true,
                           "use_default_mtu": true,
                           "use_default_persistent_keepalive": true,
-                          "user_id": "679e6a96-3d6d-4c33-9160-7fe1a6ebaf57"
+                          "user_id": "24a957e1-4a0d-4557-94e6-2f591141514c"
                         },
                         {
                           "allowed_ips": "0.0.0.0/0,::/0",
                           "description": "factory description",
                           "dns": "1.1.1.1,1.0.0.1",
                           "endpoint": "localhost:51820",
-                          "id": "060eb23b-949d-417a-9d40-d9ef52b9df20",
-                          "inserted_at": "2023-01-12T08:24:26.246358Z",
-                          "ipv4": "100.97.85.206",
-                          "ipv6": "fd00::a:dff2",
+                          "id": "8618b8b7-d7b5-4f1c-a806-a0c2049eb4ca",
+                          "inserted_at": "2023-01-12T17:44:59.795407Z",
+                          "ipv4": "100.83.197.217",
+                          "ipv6": "fd00::36:b743",
                           "latest_handshake": null,
                           "mtu": 1280,
-                          "name": "factory 165",
+                          "name": "factory 199",
                           "persistent_keepalive": 25,
-                          "preshared_key": "4dwy2gs7dOFZknCk6an1SVA+nQefDMcuII8cTfoNG74=",
-                          "public_key": "C7Iq6N2CKqvtnK7xOPhn7EO60D/mWv9KCxcoM+hH2uY=",
+                          "preshared_key": "oKY7n4ipX9vdfVj2/nvT6Rxp58s28GJPhcLQEoQrQ/U=",
+                          "public_key": "0LhfEChrVmrpMUrn+o0KUJNQEGwpago7P8zsZIDdULg=",
                           "remote_ip": null,
                           "rx_bytes": null,
                           "server_public_key": null,
                           "tx_bytes": null,
-                          "updated_at": "2023-01-12T08:24:26.246358Z",
+                          "updated_at": "2023-01-12T17:44:59.795407Z",
                           "use_default_allowed_ips": true,
                           "use_default_dns": true,
                           "use_default_endpoint": true,
                           "use_default_mtu": true,
                           "use_default_persistent_keepalive": true,
-                          "user_id": "08723d9c-65e2-432a-8544-8796f914b12a"
+                          "user_id": "5c2cd820-6595-43f4-b7f6-d54e73b5c732"
                         },
                         {
                           "allowed_ips": "0.0.0.0/0,::/0",
                           "description": "factory description",
                           "dns": "1.1.1.1,1.0.0.1",
                           "endpoint": "localhost:51820",
-                          "id": "b672aad6-f515-4e45-a688-fb915dd2de04",
-                          "inserted_at": "2023-01-12T08:24:26.254958Z",
-                          "ipv4": "100.81.3.139",
-                          "ipv6": "fd00::1c:3a15",
+                          "id": "777e4bf2-c3da-44df-a9c0-569580184bc1",
+                          "inserted_at": "2023-01-12T17:44:59.810358Z",
+                          "ipv4": "100.122.74.140",
+                          "ipv6": "fd00::1:c667",
                           "latest_handshake": null,
                           "mtu": 1280,
-                          "name": "factory 1730",
+                          "name": "factory 263",
                           "persistent_keepalive": 25,
-                          "preshared_key": "XK+r6PB0wNTyeXrDhhvTSix5WCQAbqE1TEaOkW8YTxs=",
-                          "public_key": "a/nsE3EBWegzWq3LS/R1wkLOUiQ+Gw5g/bkXnJAOTEY=",
+                          "preshared_key": "0XTVIaxcFDe51L2PfmhV0TTc4p9Lgh2+ppFm2Hhs4uE=",
+                          "public_key": "qg+3Gw4e0s4r4qv4wWOqkfrEhVxIvxC8L7YNgBhz+Wo=",
                           "remote_ip": null,
                           "rx_bytes": null,
                           "server_public_key": null,
                           "tx_bytes": null,
-                          "updated_at": "2023-01-12T08:24:26.254958Z",
+                          "updated_at": "2023-01-12T17:44:59.810358Z",
                           "use_default_allowed_ips": true,
                           "use_default_dns": true,
                           "use_default_endpoint": true,
                           "use_default_mtu": true,
                           "use_default_persistent_keepalive": true,
-                          "user_id": "a3451130-43ea-4916-8191-f525f8cd38aa"
+                          "user_id": "42f40915-92bf-4364-8637-667091659f7f"
                         },
                         {
                           "allowed_ips": "0.0.0.0/0,::/0",
                           "description": "factory description",
                           "dns": "1.1.1.1,1.0.0.1",
                           "endpoint": "localhost:51820",
-                          "id": "760f7224-7174-44d8-a606-56bf77d31cd8",
-                          "inserted_at": "2023-01-12T08:24:26.264764Z",
-                          "ipv4": "100.78.58.195",
-                          "ipv6": "fd00::4:ba81",
+                          "id": "fe7f3b81-907c-4931-80d9-366b4e6349ec",
+                          "inserted_at": "2023-01-12T17:44:59.819234Z",
+                          "ipv4": "100.94.107.36",
+                          "ipv6": "fd00::24:2d68",
                           "latest_handshake": null,
                           "mtu": 1280,
-                          "name": "factory 325",
+                          "name": "factory 327",
                           "persistent_keepalive": 25,
-                          "preshared_key": "LYPHbdipNvZGbOA2nk/eLGlfTbFYcqUUzZGByiZjuho=",
-                          "public_key": "sGZZrYkhx6M6bUru064/2FgZiaYZQayxbvifAyVlzms=",
+                          "preshared_key": "17IOEenYZgAdcUpbh0e7OoKOkm2+h1uXxG8dY6WfxZA=",
+                          "public_key": "HRuVvyELyBv6u+kubDf/oP9TJV1Xm0T4ptG4JVD3ZUA=",
                           "remote_ip": null,
                           "rx_bytes": null,
                           "server_public_key": null,
                           "tx_bytes": null,
-                          "updated_at": "2023-01-12T08:24:26.264764Z",
+                          "updated_at": "2023-01-12T17:44:59.819234Z",
                           "use_default_allowed_ips": true,
                           "use_default_dns": true,
                           "use_default_endpoint": true,
                           "use_default_mtu": true,
                           "use_default_persistent_keepalive": true,
-                          "user_id": "f2bdd1c8-a09e-40d2-a3fc-848e6dd3a83f"
+                          "user_id": "59b7dccb-5ad0-40cb-b3e3-2675bd1a4143"
                         },
                         {
                           "allowed_ips": "0.0.0.0/0,::/0",
                           "description": "factory description",
                           "dns": "1.1.1.1,1.0.0.1",
                           "endpoint": "localhost:51820",
-                          "id": "4219e876-f0a3-4b12-81af-6057f747dd48",
-                          "inserted_at": "2023-01-12T08:24:26.273973Z",
-                          "ipv4": "100.108.181.243",
-                          "ipv6": "fd00::6:77d9",
+                          "id": "5bed1a9a-b5fc-4dca-a1bf-a6292f2a7259",
+                          "inserted_at": "2023-01-12T17:44:59.828630Z",
+                          "ipv4": "100.79.36.205",
+                          "ipv6": "fd00::a:ae8f",
                           "latest_handshake": null,
                           "mtu": 1280,
-                          "name": "factory 389",
+                          "name": "factory 391",
                           "persistent_keepalive": 25,
-                          "preshared_key": "ttsomwCMoLwtQeXNCq3O8j1CDj67gZb7pcsjPSjpig8=",
-                          "public_key": "ax3o+c6KD2VIlWK41Fq3U4ea4WrIQrfNhFWbI6Mkt3c=",
+                          "preshared_key": "FRtadn+cqMQnqkVuuyyD4euhO5D2OKYMOUuTz3oP+rc=",
+                          "public_key": "Yi6veLjBCjYxelMVoHwwwiG8T3pD3zMJ2+DtamadoHQ=",
                           "remote_ip": null,
                           "rx_bytes": null,
                           "server_public_key": null,
                           "tx_bytes": null,
-                          "updated_at": "2023-01-12T08:24:26.273973Z",
+                          "updated_at": "2023-01-12T17:44:59.828630Z",
                           "use_default_allowed_ips": true,
                           "use_default_dns": true,
                           "use_default_endpoint": true,
                           "use_default_mtu": true,
                           "use_default_persistent_keepalive": true,
-                          "user_id": "31e5007a-8b86-47fe-8b3a-f8b20bdbdc29"
+                          "user_id": "8e7ae701-59e1-4f5e-991f-99cb338c4ef9"
                         }
                       ]
                     }
@@ -365,7 +365,6 @@
         "summary": "List all Devices"
       },
       "post": {
-        "description": null,
         "parameters": [],
         "requestBody": {
           "content": {
@@ -388,7 +387,7 @@
                   "use_default_endpoint": false,
                   "use_default_mtu": false,
                   "use_default_persistent_keepalive": false,
-                  "user_id": "5e6dcc89-3f2f-4016-bf9c-d229045dee59"
+                  "user_id": "2e42d2d2-7854-459f-ba57-8276815f4b2c"
                 }
               }
             }
@@ -406,8 +405,8 @@
                         "description": "create-description",
                         "dns": "9.9.9.8",
                         "endpoint": "9.9.9.9",
-                        "id": "5d4fff64-3be7-40e7-ae5e-9955e87f7e0b",
-                        "inserted_at": "2023-01-12T08:24:26.332820Z",
+                        "id": "1062dfa4-2efd-4d77-989f-dffcf8ffc68f",
+                        "inserted_at": "2023-01-12T17:45:00.043628Z",
                         "ipv4": "100.64.0.2",
                         "ipv6": "fd00::2",
                         "latest_handshake": null,
@@ -420,13 +419,13 @@
                         "rx_bytes": null,
                         "server_public_key": null,
                         "tx_bytes": null,
-                        "updated_at": "2023-01-12T08:24:26.332820Z",
+                        "updated_at": "2023-01-12T17:45:00.043628Z",
                         "use_default_allowed_ips": false,
                         "use_default_dns": false,
                         "use_default_endpoint": false,
                         "use_default_mtu": false,
                         "use_default_persistent_keepalive": false,
-                        "user_id": "5e6dcc89-3f2f-4016-bf9c-d229045dee59"
+                        "user_id": "2e42d2d2-7854-459f-ba57-8276815f4b2c"
                       }
                     }
                   }
@@ -458,7 +457,6 @@
     },
     "/v0/devices/{id}": {
       "delete": {
-        "description": null,
         "parameters": [
           {
             "in": "path",
@@ -469,13 +467,6 @@
             }
           }
         ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "example": {}
-            }
-          }
-        },
         "responses": {
           "204": {
             "content": {
@@ -499,7 +490,6 @@
         "summary": "Delete a Device"
       },
       "get": {
-        "description": null,
         "parameters": [
           {
             "in": "path",
@@ -522,27 +512,27 @@
                         "description": "factory description",
                         "dns": "1.1.1.1,1.0.0.1",
                         "endpoint": "localhost:51820",
-                        "id": "65f1e5b7-fa8a-454c-b94e-0fe1ab66c9ce",
-                        "inserted_at": "2023-01-12T08:24:26.050357Z",
-                        "ipv4": "100.78.162.159",
-                        "ipv6": "fd00::3f:8e58",
+                        "id": "5ae93880-2c00-4762-8753-a25d04140631",
+                        "inserted_at": "2023-01-12T17:45:00.075730Z",
+                        "ipv4": "100.127.231.112",
+                        "ipv6": "fd00::39:c09e",
                         "latest_handshake": null,
                         "mtu": 1280,
-                        "name": "factory 490",
+                        "name": "factory 1063",
                         "persistent_keepalive": 25,
-                        "preshared_key": "liMQNqXUZwDHfLNIwTkQZ2ETQcRiggRaHkKVo8TO/t0=",
-                        "public_key": "H4h75JFBXqlhaWh7/TyCqv2yPOszfk9CyI0qASO7L3E=",
+                        "preshared_key": "iIQC32VPesC1mudnFwoyY/2sLfzi+19aWOacp12bQpU=",
+                        "public_key": "a4r81StxzfMBHs+VIY8yXZ84Nj0EKAFrgA3ep+VdTnU=",
                         "remote_ip": null,
                         "rx_bytes": null,
                         "server_public_key": null,
                         "tx_bytes": null,
-                        "updated_at": "2023-01-12T08:24:26.050357Z",
+                        "updated_at": "2023-01-12T17:45:00.075730Z",
                         "use_default_allowed_ips": true,
                         "use_default_dns": true,
                         "use_default_endpoint": true,
                         "use_default_mtu": true,
                         "use_default_persistent_keepalive": true,
-                        "user_id": "5b2c53ea-446d-47c2-8104-88106f3d12c3"
+                        "user_id": "2394a88f-7125-4937-a327-deca382c4a81"
                       }
                     }
                   }
@@ -567,7 +557,6 @@
         "summary": "Get Device by ID"
       },
       "patch": {
-        "description": null,
         "parameters": [
           {
             "in": "path",
@@ -616,8 +605,8 @@
                         "description": "create-description",
                         "dns": "9.9.9.8",
                         "endpoint": "9.9.9.9",
-                        "id": "1da2e226-93f3-49c2-a92b-de35ba0be35a",
-                        "inserted_at": "2023-01-12T08:24:26.398222Z",
+                        "id": "a1fc16bf-ba65-4eb6-b026-c8b15716577e",
+                        "inserted_at": "2023-01-12T17:45:00.142891Z",
                         "ipv4": "100.64.0.2",
                         "ipv6": "fd00::2",
                         "latest_handshake": null,
@@ -630,13 +619,13 @@
                         "rx_bytes": null,
                         "server_public_key": null,
                         "tx_bytes": null,
-                        "updated_at": "2023-01-12T08:24:26.433007Z",
+                        "updated_at": "2023-01-12T17:45:00.163533Z",
                         "use_default_allowed_ips": false,
                         "use_default_dns": false,
                         "use_default_endpoint": false,
                         "use_default_mtu": false,
                         "use_default_persistent_keepalive": false,
-                        "user_id": "06cb385a-2c82-4bde-b95a-be85a1ac8d42"
+                        "user_id": "ca5bb11f-46e2-4bbb-ac72-abe15855c58b"
                       }
                     }
                   }
@@ -663,7 +652,6 @@
     },
     "/v0/rules": {
       "get": {
-        "description": null,
         "parameters": [],
         "responses": {
           "200": {
@@ -676,51 +664,51 @@
                         {
                           "action": "drop",
                           "destination": "10.3.2.1",
-                          "id": "fe4997fa-92f2-4507-bc1d-5691a7b52382",
-                          "inserted_at": "2023-01-12T08:24:26.208112Z",
+                          "id": "5bbd3f17-1e3e-4c6a-b9f3-126a7bb76cb3",
+                          "inserted_at": "2023-01-12T17:45:00.228581Z",
                           "port_range": null,
                           "port_type": null,
-                          "updated_at": "2023-01-12T08:24:26.208112Z",
+                          "updated_at": "2023-01-12T17:45:00.228581Z",
                           "user_id": null
                         },
                         {
                           "action": "drop",
                           "destination": "10.3.2.2",
-                          "id": "e46a1893-372a-49c4-96de-20d58acb3776",
-                          "inserted_at": "2023-01-12T08:24:26.211500Z",
+                          "id": "e270eb78-1403-44df-89db-295d24f21f41",
+                          "inserted_at": "2023-01-12T17:45:00.232416Z",
                           "port_range": null,
                           "port_type": null,
-                          "updated_at": "2023-01-12T08:24:26.211500Z",
+                          "updated_at": "2023-01-12T17:45:00.232416Z",
                           "user_id": null
                         },
                         {
                           "action": "drop",
                           "destination": "10.3.2.3",
-                          "id": "b85ab11d-bd9f-4460-aebc-d6d86bcac171",
-                          "inserted_at": "2023-01-12T08:24:26.212310Z",
+                          "id": "6ca0a6e4-613b-4afc-a18f-305b20f6d753",
+                          "inserted_at": "2023-01-12T17:45:00.233329Z",
                           "port_range": null,
                           "port_type": null,
-                          "updated_at": "2023-01-12T08:24:26.212310Z",
+                          "updated_at": "2023-01-12T17:45:00.233329Z",
                           "user_id": null
                         },
                         {
                           "action": "drop",
                           "destination": "10.3.2.4",
-                          "id": "b0ec4943-f4e9-47dd-b798-cab91fcb197f",
-                          "inserted_at": "2023-01-12T08:24:26.213251Z",
+                          "id": "54da51ad-318b-4b7f-b5fe-cee802ff55c3",
+                          "inserted_at": "2023-01-12T17:45:00.234299Z",
                           "port_range": null,
                           "port_type": null,
-                          "updated_at": "2023-01-12T08:24:26.213251Z",
+                          "updated_at": "2023-01-12T17:45:00.234299Z",
                           "user_id": null
                         },
                         {
                           "action": "drop",
                           "destination": "10.3.2.5",
-                          "id": "4b33045f-f138-426d-a4c7-8f36d0bca9cb",
-                          "inserted_at": "2023-01-12T08:24:26.214270Z",
+                          "id": "362e78f7-363e-4c24-aaaa-02cfe6e982e7",
+                          "inserted_at": "2023-01-12T17:45:00.235206Z",
                           "port_range": null,
                           "port_type": null,
-                          "updated_at": "2023-01-12T08:24:26.214270Z",
+                          "updated_at": "2023-01-12T17:45:00.235206Z",
                           "user_id": null
                         }
                       ]
@@ -747,7 +735,6 @@
         "summary": "List all Rules"
       },
       "post": {
-        "description": null,
         "parameters": [],
         "requestBody": {
           "content": {
@@ -758,7 +745,7 @@
                   "destination": "1.1.1.1/24",
                   "port_range": "1 - 2",
                   "port_type": "udp",
-                  "user_id": "7d931e84-be95-4207-b5cc-fba13a69f472"
+                  "user_id": "03b979d4-6d8e-40e1-8844-b2f897adbf3f"
                 }
               }
             }
@@ -774,12 +761,12 @@
                       "data": {
                         "action": "accept",
                         "destination": "1.1.1.1/24",
-                        "id": "bced25f3-6e87-4128-9867-4c7e67952ce0",
-                        "inserted_at": "2023-01-12T08:24:26.296564Z",
+                        "id": "6bc56d06-aed3-416c-9c8a-15088cb06703",
+                        "inserted_at": "2023-01-12T17:45:00.128929Z",
                         "port_range": "1 - 2",
                         "port_type": "udp",
-                        "updated_at": "2023-01-12T08:24:26.296564Z",
-                        "user_id": "7d931e84-be95-4207-b5cc-fba13a69f472"
+                        "updated_at": "2023-01-12T17:45:00.128929Z",
+                        "user_id": "03b979d4-6d8e-40e1-8844-b2f897adbf3f"
                       }
                     }
                   }
@@ -811,7 +798,6 @@
     },
     "/v0/rules/{id}": {
       "delete": {
-        "description": null,
         "parameters": [
           {
             "in": "path",
@@ -822,13 +808,6 @@
             }
           }
         ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "example": {}
-            }
-          }
-        },
         "responses": {
           "204": {
             "content": {
@@ -852,7 +831,6 @@
         "summary": "Delete a Rule"
       },
       "get": {
-        "description": null,
         "parameters": [
           {
             "in": "path",
@@ -873,11 +851,11 @@
                       "data": {
                         "action": "drop",
                         "destination": "10.10.10.0/24",
-                        "id": "9d04a307-7bbd-4fae-8980-1f12999d4879",
-                        "inserted_at": "2023-01-12T08:24:25.992194Z",
+                        "id": "9e46fcf8-0051-42d1-848c-bbeff74e8602",
+                        "inserted_at": "2023-01-12T17:45:00.133792Z",
                         "port_range": null,
                         "port_type": null,
-                        "updated_at": "2023-01-12T08:24:25.992194Z",
+                        "updated_at": "2023-01-12T17:45:00.133792Z",
                         "user_id": null
                       }
                     }
@@ -903,7 +881,6 @@
         "summary": "Get Rule by ID"
       },
       "patch": {
-        "description": null,
         "parameters": [
           {
             "in": "path",
@@ -938,11 +915,11 @@
                       "data": {
                         "action": "accept",
                         "destination": "1.1.1.1/24",
-                        "id": "6dbbacab-541e-4526-b487-d0598ddb5dd9",
-                        "inserted_at": "2023-01-12T08:24:26.330964Z",
+                        "id": "5d4ca314-6055-442a-847d-88e0ed8627d9",
+                        "inserted_at": "2023-01-12T17:45:00.171376Z",
                         "port_range": "1 - 2",
                         "port_type": "udp",
-                        "updated_at": "2023-01-12T08:24:26.357527Z",
+                        "updated_at": "2023-01-12T17:45:00.193861Z",
                         "user_id": null
                       }
                     }
@@ -970,7 +947,6 @@
     },
     "/v0/users": {
       "get": {
-        "description": null,
         "parameters": [],
         "responses": {
           "200": {
@@ -982,43 +958,43 @@
                       "data": [
                         {
                           "disabled_at": null,
-                          "email": "test-200@test",
-                          "id": "380dd655-bbf8-4709-afe2-965d9c9c6e21",
-                          "inserted_at": "2023-01-12T08:24:25.950803Z",
+                          "email": "test-520@test",
+                          "id": "db0a3fd8-b234-4aa5-a17d-22d20ba5df84",
+                          "inserted_at": "2023-01-12T17:45:00.118062Z",
                           "last_signed_in_at": null,
                           "last_signed_in_method": null,
                           "role": "admin",
-                          "updated_at": "2023-01-12T08:24:25.950803Z"
+                          "updated_at": "2023-01-12T17:45:00.118062Z"
                         },
                         {
                           "disabled_at": null,
-                          "email": "test-362@test",
-                          "id": "48165ff6-ac75-4e1f-8809-0960b23fb1a3",
-                          "inserted_at": "2023-01-12T08:24:25.954988Z",
+                          "email": "test-676@test",
+                          "id": "e0f1eb46-0713-4d3b-9c4a-47fb060b830d",
+                          "inserted_at": "2023-01-12T17:45:00.122193Z",
                           "last_signed_in_at": null,
                           "last_signed_in_method": null,
                           "role": "admin",
-                          "updated_at": "2023-01-12T08:24:25.954988Z"
+                          "updated_at": "2023-01-12T17:45:00.122193Z"
                         },
                         {
                           "disabled_at": null,
-                          "email": "test-394@test",
-                          "id": "6f6e2002-8a51-4c99-810f-9560e7886a3a",
-                          "inserted_at": "2023-01-12T08:24:25.957296Z",
+                          "email": "test-708@test",
+                          "id": "2dad7e49-8bc1-4282-a4fc-5f40f110da87",
+                          "inserted_at": "2023-01-12T17:45:00.125436Z",
                           "last_signed_in_at": null,
                           "last_signed_in_method": null,
                           "role": "admin",
-                          "updated_at": "2023-01-12T08:24:25.957296Z"
+                          "updated_at": "2023-01-12T17:45:00.125436Z"
                         },
                         {
                           "disabled_at": null,
-                          "email": "test-297@test",
-                          "id": "6eb65444-b0df-422d-b5fe-c1fb481d9bce",
-                          "inserted_at": "2023-01-12T08:24:25.959893Z",
+                          "email": "test-740@test",
+                          "id": "80dafc14-de87-4c6f-8075-f9e339a11f47",
+                          "inserted_at": "2023-01-12T17:45:00.129606Z",
                           "last_signed_in_at": null,
                           "last_signed_in_method": null,
                           "role": "admin",
-                          "updated_at": "2023-01-12T08:24:25.959893Z"
+                          "updated_at": "2023-01-12T17:45:00.129606Z"
                         }
                       ]
                     }
@@ -1070,19 +1046,19 @@
                       "data": {
                         "disabled_at": null,
                         "email": "new-user@test",
-                        "id": "bf863196-1db2-47ce-aac1-d5e38ffb3853",
-                        "inserted_at": "2023-01-12T08:24:25.929020Z",
+                        "id": "4d168b64-212d-4866-b9b3-8fc2ba2da772",
+                        "inserted_at": "2023-01-12T17:45:00.333276Z",
                         "last_signed_in_at": null,
                         "last_signed_in_method": null,
-                        "role": "admin",
-                        "updated_at": "2023-01-12T08:24:25.929020Z"
+                        "role": "unprivileged",
+                        "updated_at": "2023-01-12T17:45:00.333276Z"
                       }
                     }
                   }
                 }
               }
             },
-            "description": "Provision an admin OpenID User",
+            "description": "Description",
             "headers": {
               "content-type": {
                 "schema": {
@@ -1133,7 +1109,6 @@
     },
     "/v0/users/{id}": {
       "delete": {
-        "description": null,
         "parameters": [
           {
             "in": "path",
@@ -1144,13 +1119,6 @@
             }
           }
         ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "example": {}
-            }
-          }
-        },
         "responses": {
           "204": {
             "content": {
@@ -1162,7 +1130,7 @@
                 }
               }
             },
-            "description": "DELETE /v0/users/{email}",
+            "description": "DELETE /v0/users/{id}",
             "headers": {}
           }
         },
@@ -1174,7 +1142,6 @@
         "summary": "Delete a User"
       },
       "get": {
-        "description": null,
         "parameters": [
           {
             "in": "path",
@@ -1194,20 +1161,20 @@
                     "value": {
                       "data": {
                         "disabled_at": null,
-                        "email": "test-1636@test",
-                        "id": "10e022cc-7cf2-4011-b5e8-d67c5d1c0c0a",
-                        "inserted_at": "2023-01-12T08:24:26.403030Z",
+                        "email": "test-962@test",
+                        "id": "1c92359d-ef97-46fd-925a-e6383139cc63",
+                        "inserted_at": "2023-01-12T17:45:00.458446Z",
                         "last_signed_in_at": null,
                         "last_signed_in_method": null,
                         "role": "admin",
-                        "updated_at": "2023-01-12T08:24:26.403030Z"
+                        "updated_at": "2023-01-12T17:45:00.458446Z"
                       }
                     }
                   }
                 }
               }
             },
-            "description": "GET /v0/users/{email}",
+            "description": "GET /v0/users/{id}",
             "headers": {
               "content-type": {
                 "schema": {
@@ -1254,20 +1221,20 @@
                     "value": {
                       "data": {
                         "disabled_at": null,
-                        "email": "test-359@test",
-                        "id": "72a52098-aa86-45eb-a313-0d45fda7e3e8",
-                        "inserted_at": "2023-01-12T08:24:26.172679Z",
+                        "email": "test-1767@test",
+                        "id": "6d9f0e66-a7ad-4c89-a7c1-ab639e04f40c",
+                        "inserted_at": "2023-01-12T17:45:00.437331Z",
                         "last_signed_in_at": null,
                         "last_signed_in_method": null,
                         "role": "unprivileged",
-                        "updated_at": "2023-01-12T08:24:26.172679Z"
+                        "updated_at": "2023-01-12T17:45:00.437331Z"
                       }
                     }
                   }
                 }
               }
             },
-            "description": "Update by ID",
+            "description": "Update by email",
             "headers": {
               "content-type": {
                 "schema": {
