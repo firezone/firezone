@@ -1,3 +1,3 @@
 #!/bin/sh
 cd -P -- "$(dirname -- "$0")"
-exec ./firezone rpc FzHttp.Release.create_admin_user
+exec ./firezone eval FzHttp.Release.create_admin_user
