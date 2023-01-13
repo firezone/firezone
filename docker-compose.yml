@@ -32,8 +32,6 @@ services:
       # doesn't match the platform under which Docker Engine is running. e.g.
       # WSL, Docker for Mac, etc.
       - /var/app/apps/fz_http/assets/node_modules
-    ports:
-      - 51820:51820/udp
     environment:
       LOCAL_AUTH_ENABLED: 'true'
     cap_add:
@@ -127,6 +125,11 @@ services:
         condition: 'service_healthy'
     image: firezone-gateway:latest
     privileged: true
+    ports:
+      - 51820:51820/udp
+    environment:
+      - FZ_SECRET=kYl25nYBkLF6yCljeu1ccw==
+      - GATEWAY_LOG=trace
     volumes:
       - ./priv/gateway-conf/:/app/gateway-conf/
     sysctls:
@@ -135,7 +138,7 @@ services:
     networks:
       - app
       - isolation
-    command: /bin/sh -c "gateway --conf-dir ./gateway-conf register http://firezone:13000/auth/gateway/token/kYl25nYBkLF6yCljeu1ccw== && gateway --conf-dir ./gateway-conf start ws://firezone:13000/gateway/websocket"
+    command: /bin/sh -c "gateway --conf-dir ./gateway-conf ws://firezone:13000"
 
 volumes:
   postgres-data:

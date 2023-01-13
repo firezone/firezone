@@ -60,7 +60,7 @@ components:
                 range_start: 80
                 range_end: 81
                 protocol: tcp
-              user_uuid: 3118158c-29cb-47d6-adbf-5edd15f1af17
+              user_id: 3118158c-29cb-47d6-adbf-5edd15f1af17
     delete_rule:
       summary: Removes an egress rule from the Gateway.
       payload:
@@ -73,7 +73,7 @@ components:
                 range_start: 80
                 range_end: 81
                 protocol: tcp
-              user_uuid: 3118158c-29cb-47d6-adbf-5edd15f1af17
+              user_id: 3118158c-29cb-47d6-adbf-5edd15f1af17
     add_peer:
       summary: Adds a peer to the receiver's WireGuard configuration.
       payload:
@@ -84,7 +84,7 @@ components:
             add_peer:
               public_key: AxVaJsPC1FSrOM5RpEXg4umTKMxkHkgMy1fl7t1xNyw=
               preshared_key: LZBIpoLNCkIe56cPM+5pY/hP2pu7SGARvQZEThmuPYM=
-              user_uuid: 3118158c-29cb-47d6-adbf-5edd15f1af17
+              user_id: 3118158c-29cb-47d6-adbf-5edd15f1af17
               allowed_ips:
                 - 100.64.11.22/32
 
@@ -118,7 +118,7 @@ components:
                     - 100.64.11.22/32
                   public_key: AxVaJsPC1FSrOM5RpEXg4umTKMxkHkgMy1fl7t1xNyw=
                   preshared_key: LZBIpoLNCkIe56cPM+5pY/hP2pu7SGARvQZEThmuPYM=
-                  user_uuid: 3118158c-29cb-47d6-adbf-5edd15f1af17
+                  user_id: 3118158c-29cb-47d6-adbf-5edd15f1af17
 
   schemas:
     init:
@@ -222,7 +222,7 @@ components:
       properties:
         dst:
           type: string
-        user_uuid:
+        user_id:
           type: string
         port_range:
           $ref: "#/components/schemas/port_range"
@@ -234,9 +234,9 @@ components:
         - preshared_key
         - allowed_ips
       properties:
-        user_uuid:
+        user_id:
           type: string
-          summary: Optional user_uuid used by the Gateway to group this peer's egress rules.
+          summary: Optional user_id used by the Gateway to group this peer's egress rules.
         endpoint:
           type: string
         persistent_keepalive:

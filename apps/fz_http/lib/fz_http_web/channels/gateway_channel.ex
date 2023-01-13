@@ -9,33 +9,24 @@ defmodule FzHttpWeb.GatewayChannel do
   require Logger
 
   @impl Phoenix.Channel
-  def join("gateway:all", _payload, socket) do
-    {:ok, socket}
-  end
-
-  @impl Phoenix.Channel
-  def join("gateway:" <> id, payload, socket) do
+  def join("gateway", payload, socket) do
     case Map.fetch(payload, "public_key") do
-      {:ok, pub_key} -> handle_join(id, pub_key, socket)
+      {:ok, pub_key} -> handle_join(pub_key, socket)
       :error -> {:error, %{reason: "must provide your current public key to join the channel"}}
     end
   end
 
-  defp handle_join(id, pub_key, socket) do
-    gateway = Guardian.Phoenix.Socket.current_resource(socket)
+  defp handle_join(pub_key, socket) do
+    gateway = socket.assigns.gateway
 
-    if gateway.id == id do
-      if gateway.public_key != nil && gateway.public_key != pub_key do
-        Logger.error("Public key has changed, old devices won't be able to connect")
-      end
-
-      Gateways.update_gateway(gateway, %{public_key: pub_key})
-
-      send(self(), :after_join)
-      {:ok, socket}
-    else
-      {:error, %{reason: "Channel id doesn't match token's id"}}
+    if gateway.public_key != nil && gateway.public_key != pub_key do
+      Logger.error("Public key has changed, old devices won't be able to connect")
     end
+
+    Gateways.update_gateway(gateway, %{public_key: pub_key})
+
+    send(self(), :after_join)
+    {:ok, socket}
   end
 
   @impl Phoenix.Channel
