@@ -1,8 +1,8 @@
 defmodule FzHttpWeb.JSON.RuleController do
+  @moduledoc api_doc: [title: "Rules", group: "Rules"]
   @moduledoc """
-  REST API Controller for Rules.
+  This endpoint allows an adminisrator to manage Rules.
   """
-  @moduledoc api_doc: [group: "Rules"]
   use FzHttpWeb, :controller
 
   action_fallback(FzHttpWeb.JSON.FallbackController)

@@ -1,5 +1,8 @@
 defmodule FzHttpWeb.JSON.ConfigurationController do
-  @moduledoc api_doc: [group: "Configuration"]
+  @moduledoc api_doc: [title: "Configurations", group: "Configuration"]
+  @moduledoc """
+  This endpoint allows an administrator to manage Configurations.
+  """
   use FzHttpWeb, :controller
 
   alias FzHttp.{Configurations.Configuration, Configurations}

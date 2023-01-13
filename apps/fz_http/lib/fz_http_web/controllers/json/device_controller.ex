@@ -1,8 +1,8 @@
 defmodule FzHttpWeb.JSON.DeviceController do
+  @moduledoc api_doc: [title: "Devices", group: "Devices"]
   @moduledoc """
-  REST API Controller for Devices.
+  This endpoint allows an administrator to manage Devices.
   """
-  @moduledoc api_doc: [group: "Devices"]
 
   use FzHttpWeb, :controller
 

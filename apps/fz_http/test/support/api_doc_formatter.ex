@@ -45,12 +45,7 @@ defmodule Firezone.DocusaurusWriter do
         {path, verb} = fetch_route!(routes, controller, action)
         {function_doc, function_assigns} = get_function_docs(function_docs, action)
 
-        title =
-          if action_assign = function_assigns[:action] do
-            "#{action_assign} [`#{verb} #{path}`]"
-          else
-            "#{verb} #{path}"
-          end
+        title = maybe_wrap(function_assigns[:action], "#{verb} #{path}")
 
         w!(file, "### #{title}")
         w!(file, "\n")
@@ -62,6 +57,9 @@ defmodule Firezone.DocusaurusWriter do
       end)
     end)
   end
+
+  defp maybe_wrap(nil, title), do: title
+  defp maybe_wrap(action_assign, title), do: "#{action_assign} [`#{title}`]"
 
   defp docusaurus_header(assigns) do
     assigns

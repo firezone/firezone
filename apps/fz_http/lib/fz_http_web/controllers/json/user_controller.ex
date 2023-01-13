@@ -1,7 +1,7 @@
 defmodule FzHttpWeb.JSON.UserController do
   @moduledoc api_doc: [title: "Users", sidebar_position: 2, toc_max_heading_level: 4]
   @moduledoc """
-  This endpoint allows you to provision Users.
+  This endpoint allows an administrator to manage Users.
 
   ## Auto-Create Users from OpenID or SAML providers
 
@@ -18,23 +18,26 @@ defmodule FzHttpWeb.JSON.UserController do
 
   action_fallback(FzHttpWeb.JSON.FallbackController)
 
-  @doc api_doc: [action: "List All Users"]
+  @doc api_doc: [action: "List all Users"]
   def index(conn, _params) do
     users = Users.list_users()
     render(conn, "index.json", users: users)
   end
 
   @doc """
-  Allows to create a new User.
+  Create a new User.
 
   This endpoint is useful in two cases:
 
-    1. When "Password Authentication" is enabled (which is discouraged) it allows to pre-provision users with their passwords;
-    2. When "Auto-Create Users" is disabled it allows to pre-provision users with their emails (there is no need to set a password for them),
-    effectively whitelisting who can login using OpenID or SAML provider.
+    1. When [Local Authentication](/authenticate/local-auth/) is enabled (discouraged in
+      production deployments), it allows an administrator to provision users with their passwords;
+    2. When `auto_create_users` in the associated OpenID or SAML configuration is disabled,
+      it allows an administrator to provision users with their emails beforehand, effectively
+      whitelisting specific users for authentication.
 
-  If "Auto-Create Users" is enabled there is no need to pre-create users, they will be created automatically
-  when they log in for the first time using OpenID or SAML provider.
+  If `auto_create_users` is `true` in the associated OpenID or SAML configuration, there is no need
+  to provision users; they will be created automatically when they log in for the first time using
+  the associated OpenID or SAML provider.
 
   #### User Attributes
 
