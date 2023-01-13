@@ -2,8 +2,6 @@ defmodule Firezone.DocusaurusWriter do
   @keep_req_headers ["authorization"]
   @keep_resp_headers ["content-type", "location"]
 
-  @authorization_ref "See [\"Authorization\"](../authorization) section"
-
   def write(conns, path) do
     File.mkdir_p!(path)
     routes = Phoenix.Router.routes(List.first(conns).private.phoenix_router)
@@ -47,16 +45,20 @@ defmodule Firezone.DocusaurusWriter do
         {path, verb} = fetch_route!(routes, controller, action)
         {function_doc, function_assigns} = get_function_docs(function_docs, action)
 
-        title = function_assigns[:action] || "#{verb} #{path}"
+        title =
+          if action_assign = function_assigns[:action] do
+            "#{action_assign} [`#{verb} #{path}`]"
+          else
+            "#{verb} #{path}"
+          end
 
         w!(file, "### #{title}")
-        w!(file, "`#{verb} #{path}`")
         w!(file, "\n")
         w!(file, function_doc)
 
         uri_params = build_uri_params(path)
 
-        write_examples(file, conns, uri_params)
+        write_examples(file, conns, path, uri_params)
       end)
     end)
   end
@@ -122,98 +124,82 @@ defmodule Firezone.DocusaurusWriter do
     end)
   end
 
-  defp write_examples(file, conns, uri_params) do
+  defp write_examples(file, conns, path, uri_params) do
     conns
     |> Enum.sort_by(& &1.status)
     |> Enum.each(fn conn ->
       example_description = conn.assigns.bureaucrat_opts[:example_description] || "Example"
       w!(file, "#### #{example_description}")
-      w!(file, "**Request**")
 
       w_req_uri_params!(file, conn, uri_params)
-      w_req_headers!(file, conn)
-      w_req_body!(file, conn.body_params)
 
-      w!(file, "**Response**")
+      w!(
+        file,
+        """
+        ```bash
+        $ curl -i \\
+          -X #{conn.method} "https://{firezone_host}#{path}" \\
+          -H 'Content-Type: application/json' \\
+        """
+        |> String.trim_trailing()
+      )
 
-      w_resp_headers!(file, conn)
-      w_resp_body!(file, conn.resp_body)
+      maybe_w!(file, b_req_headers(conn))
+      maybe_w!(file, b_req_body(conn.body_params))
+
+      w!(file, "")
+
+      w!(file, "HTTP/1.1 #{conn.status}")
+      maybe_w!(file, b_resp_headers(conn))
+      maybe_w!(file, b_resp_body(conn.resp_body))
+      w!(file, "```")
     end)
   end
 
   defp w_req_uri_params!(_file, _conn, []), do: :ok
 
   defp w_req_uri_params!(file, conn, params) do
-    w!(file, "##### URI Parameters")
-    w!(file, "| Name | Value | Description |")
-    w!(file, "| ---- | ----- | ----------- |")
+    w!(file, "**URI Parameters:**\n")
 
     Enum.each(params, fn param ->
-      w!(file, "| #{param} | #{conn.params[param]} | |")
+      w!(file, i(1, "- `#{param}`: `#{conn.params[param]}`"))
     end)
   end
 
-  defp w_req_headers!(file, conn) do
-    w!(file, "##### Headers")
-
-    w!(file, "| Name | Value | Description |")
-    w!(file, "| ---- | ----- | ----------- |")
-
+  defp b_req_headers(conn) do
     for {key, value} <- conn.req_headers, key in @keep_req_headers do
       case {key, value} do
         {"authorization", "bearer " <> _} ->
-          w!(file, "| Authorization | Bearer {api_token} | #{@authorization_ref} |")
+          i(1, "-H 'Authorization: Bearer {api_token}' \\")
 
         {key, value} ->
-          w!(file, "| #{camelize_header_key(key)} | #{value} | |")
+          i(1, "-H '#{camelize_header_key(key)}: #{value}' \\")
       end
     end
+    |> Enum.join("\n")
   end
 
-  defp w_req_body!(_file, params) when params == %{}, do: :ok
+  defp b_req_body(params) when params == %{}, do: ""
 
-  defp w_req_body!(file, params) do
-    w!(file, "##### Body")
-
-    w!(file, """
-    ```json
-    #{Jason.encode!(params, pretty: true)}
-    ```
-    """)
+  defp b_req_body(params) do
+    i(1, "--data-binary @- << EOF\n#{Jason.encode!(params, pretty: true)}'\nEOF")
   end
 
-  defp w_resp_headers!(file, conn) do
-    w!(file, "##### Headers")
-
-    w!(file, "| Name | Value |")
-    w!(file, "| ---- | ----- |")
-
+  defp b_resp_headers(conn) do
     for {key, value} <- conn.resp_headers, key in @keep_resp_headers do
-      w!(file, "| #{camelize_header_key(key)} | #{value} |")
+      "#{camelize_header_key(key)}: #{value}"
     end
+    |> Enum.join("\n")
   end
 
-  defp w_resp_body!(file, resp_body) do
-    w!(file, "##### Body")
+  defp b_resp_body(resp_body) do
+    case Jason.decode(resp_body) do
+      {:ok, map} ->
+        "\n" <> Jason.encode!(map, pretty: true)
 
-    w =
-      case Jason.decode(resp_body) do
-        {:ok, map} ->
-          """
-          ```json
-          #{Jason.encode!(map, pretty: true)}
-          ```
-          """
-
-        _error ->
-          """
-          ```
-          #{resp_body}
-          ```
-          """
-      end
-
-    w!(file, w)
+      _error ->
+        resp_body
+    end
   end
 
   defp camelize_header_key(key) do
@@ -224,6 +210,14 @@ defmodule Firezone.DocusaurusWriter do
       other -> other
     end)
   end
+
+  defp i(level, text) do
+    String.duplicate("  ", level) <> text
+  end
+
+  defp maybe_w!(_file, ""), do: :ok
+  defp maybe_w!(_file, nil), do: :ok
+  defp maybe_w!(file, text), do: w!(file, text)
 
   defp w!(file, content) do
     IO.puts(file, content)
