@@ -76,7 +76,10 @@ defmodule FzHttp.Release do
   end
 
   defp default_admin_user do
-    Users.get_by_email(email())
+    case Users.fetch_user_by_email(email()) do
+      {:ok, user} -> user
+      {:error, :not_found} -> nil
+    end
   end
 
   defp mint_jwt(%User{} = user) do

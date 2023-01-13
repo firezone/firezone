@@ -99,10 +99,8 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
         |> doc(example_description: "Error due to invalid parameters")
 
       assert json_response(conn, 422)["errors"] == %{
-               "password" => [
-                 "should be at least 12 character(s)",
-                 "does not match password confirmation."
-               ]
+               "password" => ["should be at least 12 character(s)"],
+               "password_confirmation" => ["can't be blank"]
              }
     end
 
@@ -139,7 +137,7 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
       params = %{"password" => "update-password", "password_confirmation" => "update-password"}
       conn = put(authed_conn(), ~p"/v0/users/#{user}", user: params)
 
-      assert Users.get_user!(json_response(conn, 200)["data"]["id"]).password_hash !=
+      assert Users.fetch_user_by_id!(json_response(conn, 200)["data"]["id"]).password_hash !=
                old_hash
     end
 
@@ -163,7 +161,7 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
       params = %{"password" => "update-password", "password_confirmation" => "update-password"}
       conn = put(authed_conn(), ~p"/v0/users/#{user}", user: params)
 
-      assert Users.get_user!(json_response(conn, 200)["data"]["id"]).password_hash !=
+      assert Users.fetch_user_by_id!(json_response(conn, 200)["data"]["id"]).password_hash !=
                old_hash
     end
 
@@ -207,14 +205,14 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
       conn = put(conn, ~p"/v0/users/#{user}", user: @invalid_attrs)
 
       assert json_response(conn, 422)["errors"] == %{
-               "password" => ["should be at least 12 character(s)"]
+               "password" => ["should be at least 12 character(s)"],
+               "password_confirmation" => ["can't be blank"]
              }
     end
 
     test "renders 404 for user not found" do
-      assert_error_sent(404, fn ->
-        put(authed_conn(), ~p"/v0/users/003da73d-2dd9-4492-8136-3282843545e8", user: %{})
-      end)
+      conn = put(authed_conn(), ~p"/v0/users/#{Ecto.UUID.generate()}", user: %{})
+      assert json_response(conn, 404) == %{"error" => "not_found"}
     end
 
     test "renders 401 for missing authorization header" do
@@ -245,9 +243,8 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
     end
 
     test "renders 404 for user not found" do
-      assert_error_sent(404, fn ->
-        get(authed_conn(), ~p"/v0/users/003da73d-2dd9-4492-8136-3282843545e8")
-      end)
+      conn = get(authed_conn(), ~p"/v0/users/003da73d-2dd9-4492-8136-3282843545e8")
+      assert json_response(conn, 404) == %{"error" => "not_found"}
     end
 
     test "renders 401 for missing authorization header" do
@@ -266,9 +263,8 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
 
       assert response(conn, 204)
 
-      assert_error_sent(404, fn ->
-        get(conn, ~p"/v0/users/#{user}")
-      end)
+      conn = get(conn, ~p"/v0/users/#{user}")
+      assert json_response(conn, 404) == %{"error" => "not_found"}
     end
 
     test "deletes user by email" do
@@ -285,9 +281,8 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
     end
 
     test "renders 404 for user not found" do
-      assert_error_sent(404, fn ->
-        delete(authed_conn(), ~p"/v0/users/003da73d-2dd9-4492-8136-3282843545e8")
-      end)
+      conn = delete(authed_conn(), ~p"/v0/users/003da73d-2dd9-4492-8136-3282843545e8")
+      assert json_response(conn, 404) == %{"error" => "not_found"}
     end
 
     test "renders 401 for missing authorization header" do

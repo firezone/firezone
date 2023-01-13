@@ -129,7 +129,7 @@ defmodule FzHttp.Users do
 
   def update_user_role(%User{} = user, role) do
     user
-    |> User.Changeset.update_user_role(role)
+    |> User.Changeset.update_user_role(%{role: role})
     |> Repo.update()
   end
 

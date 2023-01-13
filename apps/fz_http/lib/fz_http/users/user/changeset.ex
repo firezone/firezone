@@ -29,9 +29,9 @@ defmodule FzHttp.Users.User.Changeset do
     |> validate_if_changed(:email, &change_email_changeset/1)
   end
 
-  def update_user_role(user, role) do
+  def update_user_role(user, attrs) do
     user
-    |> cast(%{role: role}, [:role])
+    |> cast(attrs, [:role])
     |> validate_required([:role])
   end
 

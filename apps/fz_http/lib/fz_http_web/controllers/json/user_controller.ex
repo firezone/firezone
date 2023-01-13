@@ -49,7 +49,7 @@ defmodule FzHttpWeb.JSON.UserController do
   """
   @doc api_doc: [action: "Create a User"]
   def create(conn, %{"user" => %{"role" => "admin"} = user_params}) do
-    with {:ok, %User{} = user} <- Users.create_admin_user(user_params) do
+    with {:ok, %Users.User{} = user} <- Users.create_admin_user(user_params) do
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/v0/users/#{user}")
@@ -86,7 +86,7 @@ defmodule FzHttpWeb.JSON.UserController do
 
   @doc api_doc: [summary: "Delete a User"]
   def delete(conn, %{"id" => id_or_email}) do
-    with {:ok, %Users.User{} = user} <- Users.fetch_user_by_id_or_email(id),
+    with {:ok, %Users.User{} = user} <- Users.fetch_user_by_id_or_email(id_or_email),
          {:ok, %Users.User{}} <- Users.delete_user(user) do
       conn
       |> put_resp_content_type("application/json")
