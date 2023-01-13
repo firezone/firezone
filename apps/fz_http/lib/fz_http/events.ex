@@ -6,7 +6,6 @@ defmodule FzHttp.Events do
   alias FzHttp.{
     Notifications,
     AllowRules,
-    Gateways,
     Devices,
     Devices.Device,
     AllowRules.AllowRule
@@ -18,7 +17,7 @@ defmodule FzHttp.Events do
   # device is added to a User that's not active.
   def add(%Device{} = device) do
     if :ok ==
-         send_event(get_gateway_id(), "add_peer", Devices.to_peer(device)) do
+         send_event("add_peer", Devices.to_peer(device)) do
       :ok
     else
       Notifications.add_error(:device, :added, device)
@@ -26,12 +25,12 @@ defmodule FzHttp.Events do
   end
 
   def add(%AllowRule{} = rule) do
-    send_event(get_gateway_id(), "add_rule", AllowRules.as_setting(rule))
+    send_event("add_rule", AllowRules.as_setting(rule))
   end
 
   def delete(%Device{} = device) do
     if :ok ==
-         send_event(get_gateway_id(), "delete_peer", %{
+         send_event("delete_peer", %{
            public_key: device.public_key
          }) do
       :ok
@@ -41,16 +40,14 @@ defmodule FzHttp.Events do
   end
 
   def delete(%AllowRule{} = rule) do
-    send_event(get_gateway_id(), "delete_rule", AllowRules.as_setting(rule))
+    send_event("delete_rule", AllowRules.as_setting(rule))
   end
 
   def set_config do
     # XXX: Actually do something when sessions expire
   end
 
-  defp send_event(id, event, payload) do
-    FzHttpWeb.Endpoint.broadcast("gateway:" <> id, event, %{"#{event}" => payload})
+  defp send_event(event, payload) do
+    FzHttpWeb.Endpoint.broadcast("gateway", event, %{"#{event}" => payload})
   end
-
-  defp get_gateway_id, do: Gateways.get_gateway!().id
 end

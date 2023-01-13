@@ -8,6 +8,11 @@ defmodule FzHttpWeb.GatewayErrorHandler do
     |> Plug.Conn.halt()
   end
 
+  def handle_error(conn, {:gateway, reason}) do
+    Plug.Conn.send_resp(conn, 500, "Couldn't find or create gateway: #{reason}")
+    |> Plug.Conn.halt()
+  end
+
   def handle_error(conn, _reason) do
     Plug.Conn.send_resp(conn, 500, "Internal Server Error")
     |> Plug.Conn.halt()
