@@ -32,7 +32,6 @@ defmodule FzCommon.MixProject do
   defp deps do
     [
       {:file_size, "~> 3.0.1"},
-      {:posthog, "~> 0.1"},
       {:cidr, github: "firezone/cidr-elixir"},
       {:posthog, "~> 0.1"},
       {:argon2_elixir, "~> 2.0"}
