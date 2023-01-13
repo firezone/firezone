@@ -7,4 +7,4 @@ Bureaucrat.start(
 )
 
 Ecto.Adapters.SQL.Sandbox.mode(FzHttp.Repo, :manual)
-ExUnit.start(formatters: [ExUnit.CLIFormatter, Bureaucrat.Formatter])
+ExUnit.start(formatters: [ExUnit.CLIFormatter, JUnitFormatter, Bureaucrat.Formatter])

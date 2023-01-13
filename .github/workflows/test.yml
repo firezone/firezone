@@ -69,6 +69,15 @@ jobs:
         run: |
           # XXX: This can fail when coveralls is down
           mix coveralls.github --umbrella
+      - name: Test Report
+        env:
+          MIX_ENV: test
+        uses: dorny/test-reporter@v1
+        if: success() || failure()   
+        with:
+          name: Elixir Test Report
+          path: _build/test/lib/*/test-junit-report.xml
+          reporter: java-junit
       - name: Save Screenshots
         uses: actions/upload-artifact@v3
         with:
