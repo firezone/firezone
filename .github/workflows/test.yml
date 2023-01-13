@@ -61,6 +61,10 @@ jobs:
           key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
       - name: Install Dependencies
         run: mix deps.get --only $MIX_ENV
+      - name: Compile Dependencies
+        run: mix deps.compile --skip-umbrella-children
+      - name: Compile Application
+        run: mix compile
       - name: Setup Database
         run: |
           mix ecto.create
@@ -77,7 +81,7 @@ jobs:
           path: apps/fz_http/screenshots
       - name: Test Report
         uses: dorny/test-reporter@v1
-        if: success() || failure()   
+        if: success() || failure()
         with:
           name: Elixir Test Report
           path: _build/test/lib/*/test-junit-report.xml
