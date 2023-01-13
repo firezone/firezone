@@ -58,4 +58,11 @@ defmodule FzHttp.Application do
       FzHttpWeb.Presence
     ]
   end
+
+  defp children(:database) do
+    [
+      FzHttp.Repo,
+      FzHttp.Vault
+    ]
+  end
 end

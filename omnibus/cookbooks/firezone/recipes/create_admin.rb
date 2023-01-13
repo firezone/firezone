@@ -21,7 +21,7 @@
 include_recipe 'firezone::config'
 
 execute 'create_admin' do
-  command 'bin/firezone rpc "FzHttp.Release.create_admin_user"'
+  command 'bin/firezone eval "FzHttp.Release.create_admin_user"'
   cwd node['firezone']['app_directory']
   environment(Firezone::Config.app_env(node))
   user node['firezone']['user']
