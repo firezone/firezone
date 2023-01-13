@@ -96,18 +96,18 @@ defmodule FzHttpWeb.AcceptanceCase do
         error ->
           case error do
             {:error, {:not_found, results}} ->
-              query = %Query{query | result: results}
+              query = %Wallaby.Query{query | result: results}
 
-              raise ExpectationNotMetError,
-                    Query.ErrorMessage.message(query, :not_found)
+              raise Wallaby.ExpectationNotMetError,
+                    Wallaby.Query.ErrorMessage.message(query, :not_found)
 
             {:error, e} ->
-              raise Wallaby.QueryError,
-                    Query.ErrorMessage.message(query, e)
+              raise Wallaby.Wallaby.QueryError,
+                    Wallaby.Query.ErrorMessage.message(query, e)
 
             _ ->
               raise Wallaby.ExpectationNotMetError,
-                    "Wallaby has encountered an internal error: #{inspect(error)} with session: #{inspect(parent)}"
+                    "Wallaby has encountered an internal error: #{inspect(error)} with session: #{inspect(session)}"
           end
       end
 
