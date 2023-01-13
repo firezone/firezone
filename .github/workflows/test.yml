@@ -69,3 +69,8 @@ jobs:
         run: |
           # XXX: This can fail when coveralls is down
           mix coveralls.github --umbrella
+      - name: Save Screenshots
+        uses: actions/upload-artifact@v3
+        with:
+          name: screenshots
+          path: apps/fz_http/screenshots
