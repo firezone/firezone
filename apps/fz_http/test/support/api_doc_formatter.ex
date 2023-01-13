@@ -63,10 +63,9 @@ defmodule Firezone.DocusaurusWriter do
 
   defp docusaurus_header(assigns) do
     assigns
-    |> Enum.map(fn {key, value} ->
+    |> Enum.map_join("\n", fn {key, value} ->
       "#{key}: #{value}"
     end)
-    |> Enum.join("\n")
   end
 
   defp fetch_route!(routes, controller, controller_action) do
@@ -220,11 +219,10 @@ defmodule Firezone.DocusaurusWriter do
   defp camelize_header_key(key) do
     key
     |> String.split("-")
-    |> Enum.map(fn
+    |> Enum.map_join("-", fn
       <<first::utf8, rest::binary>> -> String.upcase(<<first::utf8>>) <> rest
       other -> other
     end)
-    |> Enum.join("-")
   end
 
   defp w!(file, content) do
