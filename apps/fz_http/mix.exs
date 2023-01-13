@@ -88,7 +88,6 @@ defmodule FzHttp.MixProject do
       {:remote_ip, "~> 1.0"},
       # XXX: Drop it, it's not maintained anymore
       {:httpoison, "~> 1.8"},
-      {:jason, "~> 1.2"},
       # XXX: Change this when hex package is updated
       {:cidr, github: "firezone/cidr-elixir"},
       {:telemetry, "~> 1.0"},
@@ -97,8 +96,6 @@ defmodule FzHttp.MixProject do
 
       # Test and dev deps
       {:bypass, "~> 2.1", only: :test},
-      {:excoveralls, "~> 0.14", only: :test},
-      {:credo, "~> 1.5", only: [:dev, :test], runtime: false},
       {:wallaby, "~> 0.30.0", only: :test},
       {:bureaucrat, "~> 0.2.9", only: :test}
     ]
