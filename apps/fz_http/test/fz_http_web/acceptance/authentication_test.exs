@@ -112,6 +112,22 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
       |> assert_error_flash("Error signing in: user not found and auto_create_users disabled")
       |> Auth.assert_unauthenticated()
     end
+
+    feature "allows to use OIDC when password auth is disabled", %{session: session} do
+      user_attrs = UsersFixtures.user_attrs()
+
+      oidc_login = "firezone-2"
+      oidc_password = "firezone1234_oidc"
+
+      :ok = Vault.setup_oidc_provider(@endpoint.url, %{"auto_create_users" => false})
+      :ok = Vault.upsert_user(oidc_login, user_attrs.email, oidc_password)
+
+      FzHttp.Configurations.put!(:local_auth_enabled, false)
+
+      session = visit(session, ~p"/")
+      assert find(session, Query.css(".input", count: 0))
+      assert_el(session, Query.text("Please sign in via one of the methods below."))
+    end
   end
 
   describe "MFA" do
@@ -291,8 +307,6 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
       |> assert_el(Query.css("[href=\"/mfa/auth/#{method.id}\"]"))
     end
   end
-
-  # TODO: OIDC password auth is disabled
 
   describe "sign out" do
     feature "signs out unprivileged user", %{session: session} do
