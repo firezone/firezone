@@ -41,7 +41,7 @@ jobs:
       - run: |
           export DISPLAY=:99
           chromedriver --url-base=/wd/hub &
-          sudo Xvfb -ac :99 -screen 0 1280x1024x24 > /dev/null 2>&1 & 
+          sudo Xvfb -ac :99 -screen 0 1280x1024x24 > /dev/null 2>&1 &
       - name: Install package dependencies
         run: |
           sudo apt-get install -q -y \
@@ -91,7 +91,7 @@ jobs:
       - name: Install Node Dependencies
         run: |
           cd apps/fz_http/assets
-          yarn install --frozen-lockfile 
+          yarn install --frozen-lockfile
       - name: Build Assets
         run: |
           cd apps/fz_http/assets
