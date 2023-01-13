@@ -47,16 +47,21 @@ docker compose up -d
 If you hit any issues, please let us know by [filing an
 issue](https://github.com/firezone/firezone/issues/new/choose).
 
-<!--
 ## Upgrading to 0.7.x
 
-Firezone 0.7.0 introduces a new REST API that replaces many of the legacy environment
-variables.
+Firezone 0.7.0 introduces a new [REST API](/references/api/) that allows administrators
+to automate much of the day to day configuration of Firezone.
 
-Due to this, If you're running Firezone &lt; 0.6, we recommend updating to the latest
+The REST API `/v0/configuration` endpoint supersedes some of the previous environment
+variables used for WireGuard server configuration.
+
+If you're running Firezone &lt; 0.6, we recommend updating to the latest
 0.6.x release **before** upgrading to 0.7. This will ensure any environment variables
 are properly parsed and migrated into the DB as runtime `configurations`.
--->
+
+**Note**: Omnibus deployments are deprecated in 0.7.x and will be removed in Firezone
+0.8 and above. We recommend [migrating your installation](/administer/migrate/) to
+Docker if you haven't done so already.
 
 ## Upgrading to >= 0.6.12
 
