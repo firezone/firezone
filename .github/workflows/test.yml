@@ -59,12 +59,34 @@ jobs:
         with:
           path: _build
           key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
+      - uses: actions/cache@v3
+        name: Yarn Deps Cache
+        env:
+          cache-name: cache-yarn-build
+        with:
+          path: apps/fz_http/assets/node_modules
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/yarn.lock') }}
+      - uses: actions/cache@v3
+        name: Assets Cache
+        env:
+          cache-name: cache-assets-build
+        with:
+          path: apps/fz_http/priv/static/dist
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/yarn.lock') }}
       - name: Install Dependencies
         run: mix deps.get --only $MIX_ENV
       - name: Compile Dependencies
         run: mix deps.compile --skip-umbrella-children
       - name: Compile Application
         run: mix compile
+      - name: Install Node Dependencies
+        run: |
+          cd apps/fz_http/assets
+          yarn install --frozen-lockfile 
+      - name: Build Assets
+        run: |
+          cd apps/fz_http/assets
+          yarn deploy
       - name: Setup Database
         run: |
           mix ecto.create
