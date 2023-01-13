@@ -26,6 +26,13 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
+      - uses: nanasess/setup-chromedriver@v1
+        with:
+          chromedriver-version: '108.0.5359.71'
+      - run: |
+          export DISPLAY=:99
+          chromedriver --url-base=/wd/hub &
+          sudo Xvfb -ac :99 -screen 0 1280x1024x24 > /dev/null 2>&1 & 
       - name: Install package dependencies
         run: |
           sudo apt-get install -q -y \
