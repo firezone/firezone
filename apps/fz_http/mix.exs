@@ -97,7 +97,8 @@ defmodule FzHttp.MixProject do
       # Test and dev deps
       {:bypass, "~> 2.1", only: :test},
       {:wallaby, "~> 0.30.0", only: :test},
-      {:bureaucrat, "~> 0.2.9", only: :test}
+      {:bureaucrat, "~> 0.2.9", only: :test},
+      {:floki, "~> 0.34.0"}
     ]
   end
 

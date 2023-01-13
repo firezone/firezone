@@ -11,7 +11,7 @@ defmodule FzHttp.Application do
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
     Telemetry.fz_http_started()
-    opts = [strategy: :one_for_one, name: FzHttp.Supervisor]
+    opts = [strategy: :one_for_one, name: __MODULE__.Supervisor]
     Supervisor.start_link(children(), opts)
   end
 
