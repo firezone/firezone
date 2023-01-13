@@ -37,7 +37,6 @@ defmodule FzHttp.Application do
       FzHttp.ConnectivityCheckService,
       FzHttp.TelemetryPingService,
       FzHttp.VpnSessionScheduler,
-      FzHttp.OIDC.StartProxy,
       FzHttp.SAML.StartProxy,
       {DynamicSupervisor, name: FzHttp.RefresherSupervisor, strategy: :one_for_one},
       FzHttp.OIDC.RefreshManager,
@@ -50,12 +49,11 @@ defmodule FzHttp.Application do
       FzHttp.Server,
       FzHttp.Repo,
       FzHttp.Vault,
-      FzHttpWeb.Endpoint,
-      {FzHttp.OIDC.StartProxy, :test},
       {FzHttp.SAML.StartProxy, :test},
       {Phoenix.PubSub, name: FzHttp.PubSub},
       {FzHttp.Notifications, name: FzHttp.Notifications},
-      FzHttpWeb.Presence
+      FzHttpWeb.Presence,
+      FzHttpWeb.Endpoint
     ]
   end
 end

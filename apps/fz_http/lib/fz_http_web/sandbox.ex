@@ -23,11 +23,12 @@ defmodule FzHttpWeb.Sandbox do
 
   if Mix.env() in [:test, :dev] do
     defp allow(metadata) do
-      # We notify the test process that there is someone trying to access the sandbox,
-      # so that it can optionally await after test has passed for the sandbox to be
-      # closed gracefully
-      %{owner: owner_pid} = Phoenix.Ecto.SQL.Sandbox.decode_metadata(metadata)
-      send(owner_pid, {:sandbox_access, self()})
+      # # We notify the test process that there is someone trying to access the sandbox,
+      # # so that it can optionally await after test has passed for the sandbox to be
+      # # closed gracefully
+      # TODO: this can crash, need to match on return
+      #  %{owner: owner_pid} = Phoenix.Ecto.SQL.Sandbox.decode_metadata(metadata)
+      # send(owner_pid, {:sandbox_access, self()})
 
       Phoenix.Ecto.SQL.Sandbox.allow(metadata, Ecto.Adapters.SQL.Sandbox)
     end

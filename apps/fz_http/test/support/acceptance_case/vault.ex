@@ -24,7 +24,7 @@ defmodule FzHttpWeb.AcceptanceCase.Vault do
     :ok
   end
 
-  def setup_oidc_provider(endpoint_url) do
+  def setup_oidc_provider(endpoint_url, attrs_overrides \\ %{"auto_create_users" => true}) do
     :ok =
       request(:put, "identity/oidc/client/firezone", %{
         assignments: "allow_all",
@@ -62,11 +62,9 @@ defmodule FzHttpWeb.AcceptanceCase.Vault do
           "scope" => "openid email offline_access",
           "label" => "OIDC Vault"
         }
+        |> Map.merge(attrs_overrides)
       ]
     )
-
-    # XXX: Test and prod env should not be so different during app startup
-    FzHttp.OIDC.StartProxy.start_link(:prod)
 
     :ok
   end

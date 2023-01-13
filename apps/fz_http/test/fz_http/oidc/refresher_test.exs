@@ -1,57 +1,44 @@
 defmodule FzHttp.OIDC.RefresherTest do
   use FzHttp.DataCase, async: true
-
-  import Mox
-
   alias FzHttp.{OIDC.Refresher, Repo}
 
   setup :create_user
 
   setup %{user: user} do
+    {bypass, [provider_attrs]} = FzHttp.ConfigurationsFixtures.start_openid_providers(["google"])
+
     conn =
       Repo.insert!(%FzHttp.OIDC.Connection{
         user_id: user.id,
-        provider: "test",
+        provider: "google",
         refresh_token: "REFRESH_TOKEN"
       })
 
-    {:ok, conn: conn}
+    {:ok, conn: conn, bypass: bypass, provider_attrs: provider_attrs}
   end
 
   describe "refresh failed" do
-    setup do
-      expect(OpenIDConnect.Mock, :fetch_tokens, fn _, _ ->
-        {:error, :fetch_tokens, "TEST_ERROR"}
-      end)
+    test "disable user", %{user: user, conn: conn, bypass: bypass} do
+      FzHttp.ConfigurationsFixtures.expect_refresh_token_failure(bypass)
 
-      :ok
-    end
-
-    test "disable user", %{user: user, conn: conn} do
-      Refresher.refresh(user.id)
+      assert Refresher.refresh(user.id) == {:stop, :shutdown, user.id}
       user = Repo.reload(user)
-      conn = Repo.reload(conn)
-
       assert user.disabled_at
+
+      conn = Repo.reload(conn)
       assert %{"error" => _} = conn.refresh_response
     end
   end
 
   describe "refresh succeeded" do
-    setup do
-      expect(OpenIDConnect.Mock, :fetch_tokens, fn _, _ ->
-        {:ok, %{data: "success"}}
-      end)
+    test "does not change user", %{user: user, conn: conn, bypass: bypass} do
+      FzHttp.ConfigurationsFixtures.expect_refresh_token(bypass)
 
-      :ok
-    end
-
-    test "does not change user", %{user: user, conn: conn} do
-      Refresher.refresh(user.id)
+      assert Refresher.refresh(user.id) == {:stop, :shutdown, user.id}
       user = Repo.reload(user)
-      conn = Repo.reload(conn)
-
       refute user.disabled_at
+
+      conn = Repo.reload(conn)
       refute match?(%{"error" => _}, conn.refresh_response)
     end
   end

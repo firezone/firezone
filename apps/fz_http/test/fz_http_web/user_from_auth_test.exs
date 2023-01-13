@@ -26,16 +26,12 @@ defmodule FzHttpWeb.UserFromAuthTest do
 
   describe "find_or_create/2 via OIDC with auto create enabled" do
     test "sign in creates user", %{email: email} do
-      openid_connect_provider =
-        List.first(FzHttp.ConfigurationsFixtures.openid_connect_providers_attrs())
-
-      FzHttp.Configurations.put!(
-        :openid_connect_providers,
-        [openid_connect_provider]
-      )
+      FzHttp.ConfigurationsFixtures.start_openid_providers(["google"], %{
+        "auto_create_users" => true
+      })
 
       assert {:ok, result} =
-               UserFromAuth.find_or_create(openid_connect_provider["id"], %{
+               UserFromAuth.find_or_create("google", %{
                  "email" => email,
                  "sub" => :noop
                })
@@ -46,17 +42,19 @@ defmodule FzHttpWeb.UserFromAuthTest do
 
   describe "find_or_create/2 via OIDC with auto create disabled" do
     test "sign in returns error", %{email: email} do
-      openid_connect_provider =
-        List.first(FzHttp.ConfigurationsFixtures.openid_connect_providers_attrs())
-        |> Map.put("auto_create_users", false)
+      {_bypass, [openid_connect_provider_attrs]} =
+        FzHttp.ConfigurationsFixtures.start_openid_providers(["google"])
+
+      openid_connect_provider_attrs =
+        Map.put(openid_connect_provider_attrs, "auto_create_users", false)
 
       FzHttp.Configurations.put!(
         :openid_connect_providers,
-        [openid_connect_provider]
+        [openid_connect_provider_attrs]
       )
 
       assert {:error, "user not found and auto_create_users disabled"} =
-               UserFromAuth.find_or_create(openid_connect_provider["id"], %{
+               UserFromAuth.find_or_create(openid_connect_provider_attrs["id"], %{
                  "email" => email,
                  "sub" => :noop
                })

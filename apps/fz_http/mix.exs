@@ -75,8 +75,8 @@ defmodule FzHttp.MixProject do
       # Auth-related deps
       {:guardian, "~> 2.0"},
       {:guardian_db, "~> 2.0"},
+      {:openid_connect, github: "firezone/openid_connect", branch: "andrew/rewrite"},
       # XXX: All github deps should use ref instead of always updating from master branch
-      {:openid_connect, github: "firezone/openid_connect"},
       {:esaml, github: "firezone/esaml", override: true},
       {:samly, github: "firezone/samly"},
       {:ueberauth, "~> 0.7"},
@@ -92,11 +92,12 @@ defmodule FzHttp.MixProject do
       # XXX: Change this when hex package is updated
       {:cidr, github: "firezone/cidr-elixir"},
       {:telemetry, "~> 1.0"},
+      # Used in Swoosh SMTP adapter
+      {:gen_smtp, "~> 1.0"},
 
       # Test and dev deps
       {:bypass, "~> 2.1", only: :test},
       {:excoveralls, "~> 0.14", only: :test},
-      {:mox, "~> 1.0.1", only: :test},
       {:credo, "~> 1.5", only: [:dev, :test], runtime: false},
       {:wallaby, "~> 0.30.0", only: :test},
       {:bureaucrat, "~> 0.2.9", only: :test}

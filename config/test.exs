@@ -53,9 +53,6 @@ config :ueberauth, Ueberauth,
     identity: {Ueberauth.Strategy.Identity, [callback_methods: ["POST"], uid_field: :email]}
   ]
 
-# Provide mock for OpenIDConnect
-# config :fz_http, :openid_connect, OpenIDConnect.Mock
-
 config :fz_http, FzHttpWeb.Mailer, adapter: Swoosh.Adapters.Test, from_email: "test@firez.one"
 
 config :fz_vpn,
@@ -74,7 +71,7 @@ config :wallaby,
   # along with buffer to write logs only on process failure
   js_logger: false
 
-config :ex_unit,
-  # exclude: if(!System.get_env("CI"), do: [:flaky, :webdriver, :integration]),
-  # formatters: [JUnitFormatter, ExUnit.CLIFormatter],
-  capture_log: true
+# config :ex_unit,
+#   # exclude: if(!System.get_env("CI"), do: [:flaky, :webdriver, :integration]),
+#   # formatters: [JUnitFormatter, ExUnit.CLIFormatter],
+#   capture_log: true

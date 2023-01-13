@@ -4,14 +4,10 @@ defmodule FzHttpWeb.Auth.HTML.Authentication do
   """
   use Guardian, otp_app: :fz_http
   use FzHttpWeb, :controller
-
+  alias FzHttp.Configurations
   alias FzHttp.Telemetry
   alias FzHttp.Users
   alias FzHttp.Users.User
-
-  import FzHttpWeb.OIDC.Helpers
-
-  require Logger
 
   @guardian_token_name "guardian_default_token"
 
@@ -76,12 +72,10 @@ defmodule FzHttpWeb.Auth.HTML.Authentication do
 
   def sign_out(conn) do
     with provider_id when not is_nil(provider_id) <- Plug.Conn.get_session(conn, "login_method"),
-         provider when not is_nil(provider) <-
-           FzHttp.Configurations.get_provider_by_id(:openid_connect_providers, provider_id),
          token when not is_nil(token) <- Plug.Conn.get_session(conn, "id_token"),
-         end_session_uri when not is_nil(end_session_uri) <-
-           openid_connect().end_session_uri(provider_id, %{
-             client_id: provider.client_id,
+         {:ok, config} <- Configurations.fetch_oidc_provider_config(provider_id),
+         {:ok, end_session_uri} <-
+           OpenIDConnect.end_session_uri(config, %{
              id_token_hint: token,
              post_logout_redirect_uri: url(~p"/")
            }) do

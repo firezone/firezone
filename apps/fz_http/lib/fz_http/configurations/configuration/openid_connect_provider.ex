@@ -63,11 +63,11 @@ defmodule FzHttp.Configurations.Configuration.OpenIDConnectProvider do
   def validate_discovery_document_uri(changeset) do
     changeset
     |> validate_change(:discovery_document_uri, fn :discovery_document_uri, value ->
-      case OpenIDConnect.update_documents(discovery_document_uri: value) do
+      case OpenIDConnect.Document.fetch_document(value) do
         {:ok, _update_result} ->
           []
 
-        {:error, :update_documents, reason} ->
+        {:error, reason} ->
           [discovery_document_uri: "is invalid. Reason: #{inspect(reason)}"]
       end
     end)

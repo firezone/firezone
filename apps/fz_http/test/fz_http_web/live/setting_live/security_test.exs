@@ -106,7 +106,8 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
             "client_id" => "foo",
             "client_secret" => "bar",
             "discovery_document_uri" =>
-              "https://common.auth0.com/.well-known/openid-configuration"
+              "https://common.auth0.com/.well-known/openid-configuration",
+            "auto_create_users" => false
           }
         ],
         saml_identity_providers: []
@@ -159,7 +160,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
                  discovery_document_uri:
                    "https://common.auth0.com/.well-known/openid-configuration",
                  redirect_uri: nil,
-                 auto_create_users: true
+                 auto_create_users: false
                }
              ]
     end
@@ -229,7 +230,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
       assert length(saml_identity_providers) == 2
 
       assert %FzHttp.Configurations.Configuration.SAMLIdentityProvider{
-               auto_create_users: true,
+               auto_create_users: false,
                # XXX this field would be nil if we don't "guess" the url when we load the record in StartServer
                base_url: "http://localhost:4002/auth/saml",
                id: "FAKEID",

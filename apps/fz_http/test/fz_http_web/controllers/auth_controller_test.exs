@@ -1,28 +1,32 @@
 defmodule FzHttpWeb.AuthControllerTest do
   use FzHttpWeb.ConnCase, async: true
-  import Mox
+  alias FzHttp.ConfigurationsFixtures
   alias FzHttp.Repo
 
   setup do
-    FzHttp.Configurations.put!(
-      :openid_connect_providers,
-      FzHttp.ConfigurationsFixtures.openid_connect_providers_attrs()
-    )
+    {bypass, _openid_connect_providers_attrs} =
+      ConfigurationsFixtures.start_openid_providers([
+        "google",
+        "okta",
+        "auth0",
+        "azure",
+        "onelogin",
+        "keycloak",
+        "vault"
+      ])
 
     FzHttp.Configurations.put!(
       :saml_identity_providers,
       [FzHttp.SAMLIdentityProviderFixtures.saml_attrs() |> Map.put("label", "SAML")]
     )
 
-    %{}
+    %{bypass: bypass}
   end
 
   describe "new" do
     setup [:create_user]
 
     test "unauthed: loads the sign in form", %{unauthed_conn: conn} do
-      expect(OpenIDConnect.Mock, :authorization_uri, fn _, _ -> "https://auth.url" end)
-
       test_conn = get(conn, ~p"/")
 
       # Assert that we have email, OIDC and Oauth2 buttons provided
@@ -139,31 +143,46 @@ defmodule FzHttpWeb.AuthControllerTest do
       {:ok, unauthed_conn: put_req_cookie(conn, "fz_oidc_state", signed_state)}
     end
 
-    test "when a user returns with a valid claim", %{unauthed_conn: conn, user: user} do
-      expect(OpenIDConnect.Mock, :fetch_tokens, fn _, _ -> {:ok, %{"id_token" => "abc"}} end)
+    test "when a user returns with a valid claim", %{
+      unauthed_conn: conn,
+      user: user,
+      bypass: bypass
+    } do
+      jwk = ConfigurationsFixtures.jwks_attrs()
 
-      expect(OpenIDConnect.Mock, :verify, fn _, _ ->
-        {:ok, %{"email" => user.email, "sub" => "12345"}}
-      end)
+      claims = %{"email" => user.email, "sub" => user.id}
+
+      {_alg, token} =
+        jwk
+        |> JOSE.JWK.from()
+        |> JOSE.JWS.sign(Jason.encode!(claims), %{"alg" => "RS256"})
+        |> JOSE.JWS.compact()
+
+      ConfigurationsFixtures.expect_refresh_token(bypass, %{"id_token" => token})
 
       test_conn = get(conn, ~p"/auth/oidc/google/callback", @params)
       assert redirected_to(test_conn) == ~p"/users"
-      assert get_session(test_conn, "id_token") == "abc"
+
+      assert get_session(test_conn, "id_token")
     end
 
-    @moduletag :capture_log
+    test "when a user returns with an invalid claim", %{unauthed_conn: conn, bypass: bypass} do
+      jwk = ConfigurationsFixtures.jwks_attrs()
 
-    test "when a user returns with an invalid claim", %{unauthed_conn: conn} do
-      expect(OpenIDConnect.Mock, :fetch_tokens, fn _, _ -> {:ok, %{}} end)
+      claims = %{"email" => "foo@example.com", "sub" => Ecto.UUID.generate()}
 
-      expect(OpenIDConnect.Mock, :verify, fn _, _ ->
-        {:error, "Invalid token for user!"}
-      end)
+      {_alg, token} =
+        jwk
+        |> JOSE.JWK.from()
+        |> JOSE.JWS.sign(Jason.encode!(claims), %{"alg" => "RS256"})
+        |> JOSE.JWS.compact()
+
+      ConfigurationsFixtures.expect_refresh_token(bypass, %{"id_token" => token})
 
       test_conn = get(conn, ~p"/auth/oidc/google/callback", @params)
 
       assert Phoenix.Flash.get(test_conn.assigns.flash, :error) ==
-               "OpenIDConnect Error: Invalid token for user!"
+               "Error signing in: user not found and auto_create_users disabled"
     end
 
     test "when a user returns with an invalid state", %{unauthed_conn: conn} do
@@ -271,24 +290,19 @@ defmodule FzHttpWeb.AuthControllerTest do
   end
 
   describe "oidc signout url" do
-    @oidc_end_session_uri "https://end-session.url"
-    @params %{
-      "id_token_hint" => "abc",
-      "post_logout_redirect_uri" => "https://localhost",
-      "client_id" => "okta-client-id"
-    }
-
     @tag session: [login_method: "okta", id_token: "abc"]
     test "redirects to oidc end_session_uri", %{admin_conn: conn} do
-      # mimics OpenID Connect
-      query = URI.encode_query(@params)
+      query =
+        URI.encode_query(%{
+          "id_token_hint" => "abc",
+          "post_logout_redirect_uri" => "http://localhost:4002/",
+          "client_id" => "okta-client-id"
+        })
 
       complete_uri =
-        @oidc_end_session_uri
+        "https://example.com"
         |> URI.merge("?#{query}")
         |> URI.to_string()
-
-      expect(OpenIDConnect.Mock, :end_session_uri, fn _provider, _params -> complete_uri end)
 
       test_conn = delete(conn, ~p"/sign_out")
       assert redirected_to(test_conn) == complete_uri
@@ -296,18 +310,11 @@ defmodule FzHttpWeb.AuthControllerTest do
   end
 
   describe "oidc signin url" do
-    @oidc_auth_uri "https://auth.url"
-
-    test "redirects to oidc auth uri", %{unauthed_conn: conn} do
-      expect(OpenIDConnect.Mock, :authorization_uri, fn provider, _ ->
-        case provider do
-          "google" -> @oidc_auth_uri
-        end
-      end)
-
+    test "redirects to oidc auth uri", %{unauthed_conn: conn, bypass: bypass} do
       test_conn = get(conn, ~p"/auth/oidc/google")
 
-      assert redirected_to(test_conn) == @oidc_auth_uri
+      bypass_url = "http://localhost:#{bypass.port}/authorize"
+      assert String.starts_with?(redirected_to(test_conn), bypass_url)
     end
   end
 end
