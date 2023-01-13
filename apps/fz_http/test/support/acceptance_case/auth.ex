@@ -33,15 +33,6 @@ defmodule FzHttpWeb.AcceptanceCase.Auth do
   end
 
   def authenticate(session, %FzHttp.Users.User{} = user) do
-    # {:ok,
-    #  %{
-    #    "_csrf_token" => "SmfeMnyVD2hTXxJbrydDtX_Y",
-    #    "guardian_default_token" =>
-    #      "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJmel9odHRwIiwiZXhwIjoxNjc1NTM4NTU1LCJpYXQiOjE2NzMxMTkzNTUsImlzcyI6ImZ6X2h0dHAiLCJqdGkiOiJmNTRmNDkwMC01NzA0LTRkM2UtOThhMC1kN2UzNzVkYWVhMjkiLCJuYmYiOjE2NzMxMTkzNTQsInN1YiI6IjZhZGNiMWUyLWExZGItNGMxNS04ZGVhLWIyODE5MzQ2OGJiMiIsInR5cCI6ImFjY2VzcyJ9.XN685nGWelW0nLS38lEwEHiCRzBvKvuw3bC4j6ApKyY1iFeXkmUDPiO1CfM3-mVUttrO7qpcjKnWrfRUq9WC_A",
-    #    "live_socket_id" => "users_socket:6adcb1e2-a1db-4c15-8dea-b28193468bb2",
-    #    "login_method" => "identity"
-    #  }}
-
     options = FzHttpWeb.Session.options()
 
     key = Keyword.fetch!(options, :key)
@@ -49,7 +40,7 @@ defmodule FzHttpWeb.AcceptanceCase.Auth do
     signing_salt = Keyword.fetch!(options, :signing_salt)
     secret_key_base = FzHttpWeb.Endpoint.config(:secret_key_base)
 
-    with {:ok, token, _claims} = FzHttpWeb.Auth.HTML.Authentication.encode_and_sign(user) do
+    with {:ok, token, _claims} <- FzHttpWeb.Auth.HTML.Authentication.encode_and_sign(user) do
       encryption_key = Plug.Crypto.KeyGenerator.generate(secret_key_base, encryption_salt, [])
       signing_key = Plug.Crypto.KeyGenerator.generate(secret_key_base, signing_salt, [])
 
