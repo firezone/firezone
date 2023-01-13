@@ -53,31 +53,26 @@ defmodule FzHttpWeb.Acceptance.UnprivilegedUserTest do
     } do
       user = UsersFixtures.create_user_with_role(:unprivileged)
 
-      session =
-        session
-        |> visit(~p"/")
-        |> Auth.authenticate(user)
-        |> visit(~p"/user_devices")
-        |> assert_el(Query.text("Your Devices"))
-        |> click(Query.link("My Account"))
-        |> assert_el(Query.text("Account Settings"))
-        |> click(Query.link("Change Password"))
-        # TODO: abstract form helper out: take a submit button and fields,
-        # then always assert form is visible, that we know all elements of it,
-        # and than submit button is visible before we fill it out
-        |> assert_el(Query.text("Enter new password below."))
-        |> fill_in(Query.fillable_field("user[password]"), with: "foo")
-        |> fill_in(Query.fillable_field("user[password_confirmation]"), with: "")
-        |> click(Query.button("Save"))
-        |> assert_el(Query.text("should be at least 12 character(s)"))
-        |> assert_el(Query.text("does not match confirmation"))
-
-      # Make sure form only contains two inputs
-      find(session, Query.css(".input", count: 2))
-
       session
-      |> fill_in(Query.fillable_field("user[password]"), with: "new_password")
-      |> fill_in(Query.fillable_field("user[password_confirmation]"), with: "new_password")
+      |> visit(~p"/")
+      |> Auth.authenticate(user)
+      |> visit(~p"/user_devices")
+      |> assert_el(Query.text("Your Devices"))
+      |> click(Query.link("My Account"))
+      |> assert_el(Query.text("Account Settings"))
+      |> click(Query.link("Change Password"))
+      |> assert_el(Query.text("Enter new password below."))
+      |> fill_form(%{
+        "user[password]" => "foo",
+        "user[password_confirmation]" => ""
+      })
+      |> click(Query.button("Save"))
+      |> assert_el(Query.text("should be at least 12 character(s)"))
+      |> assert_el(Query.text("does not match confirmation"))
+      |> fill_form(%{
+        "user[password]" => "new_password",
+        "user[password_confirmation]" => "new_password"
+      })
       |> click(Query.button("Save"))
       |> assert_el(Query.text("Password updated successfully"))
 

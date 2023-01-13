@@ -5,11 +5,7 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
   describe "using login and password" do
     feature "renders error on invalid login or password", %{session: session} do
       session
-      |> visit(~p"/")
-      |> click(Query.link("Sign in with email"))
-      |> fill_in(Query.fillable_field("Email"), with: "foo@bar.com")
-      |> fill_in(Query.fillable_field("Password"), with: "firezone1234")
-      |> click(Query.button("Sign In"))
+      |> password_login_flow("foo@bar.com", "firezone1234")
       |> assert_error_flash(
         "Error signing in: user credentials are invalid or user does not exist"
       )
@@ -19,11 +15,7 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
       user = UsersFixtures.create_user()
 
       session
-      |> visit(~p"/")
-      |> click(Query.link("Sign in with email"))
-      |> fill_in(Query.fillable_field("Email"), with: user.email)
-      |> fill_in(Query.fillable_field("Password"), with: "firezone1234")
-      |> click(Query.button("Sign In"))
+      |> password_login_flow(user.email, "firezone1234")
       |> assert_error_flash(
         "Error signing in: user credentials are invalid or user does not exist"
       )
@@ -34,18 +26,11 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
       password = "firezone1234"
       user = UsersFixtures.create_user(password: password, password_confirmation: password)
 
-      session =
-        session
-        |> visit(~p"/")
-        |> click(Query.link("Sign in with email"))
-        |> fill_in(Query.fillable_field("Email"), with: user.email)
-        |> fill_in(Query.fillable_field("Password"), with: password)
-        |> click(Query.button("Sign In"))
-        |> assert_el(Query.css(".is-user-name span"))
-
-      assert current_path(session) == "/users"
-
-      Auth.assert_authenticated(session, user)
+      session
+      |> password_login_flow(user.email, password)
+      |> assert_el(Query.css(".is-user-name span"))
+      |> assert_path("/users")
+      |> Auth.assert_authenticated(user)
     end
 
     feature "redirects to /user_devices after successful log in as unprivileged user", %{
@@ -59,18 +44,11 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
           :unprivileged
         )
 
-      session =
-        session
-        |> visit(~p"/")
-        |> click(Query.link("Sign in with email"))
-        |> fill_in(Query.fillable_field("Email"), with: user.email)
-        |> fill_in(Query.fillable_field("Password"), with: password)
-        |> click(Query.button("Sign In"))
-        |> assert_el(Query.text("Your Devices"))
-
-      assert current_path(session) == "/user_devices"
-
-      Auth.assert_authenticated(session, user)
+      session
+      |> password_login_flow(user.email, password)
+      |> assert_el(Query.text("Your Devices"))
+      |> assert_path("/user_devices")
+      |> Auth.assert_authenticated(user)
     end
   end
 
@@ -83,18 +61,12 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
       :ok = Vault.setup_oidc_provider(@endpoint.url, %{"auto_create_users" => true})
       :ok = Vault.upsert_user(oidc_login, attrs.email, oidc_password)
 
-      session =
-        session
-        |> visit(~p"/")
-        |> click(Query.link("OIDC Vault"))
-        |> assert_text("Method")
-        |> fill_in(Query.css("#select-ember40"), with: "userpass")
-        |> fill_in(Query.fillable_field("username"), with: oidc_login)
-        |> fill_in(Query.fillable_field("password"), with: oidc_password)
-        |> click(Query.button("Sign In"))
-        |> assert_el(Query.text("Your Devices"))
-
-      assert current_path(session) == "/user_devices"
+      session
+      |> visit(~p"/")
+      |> click(Query.link("OIDC Vault"))
+      |> Vault.userpass_flow(oidc_login, oidc_password)
+      |> assert_el(Query.text("Your Devices"))
+      |> assert_path("/user_devices")
 
       assert user = FzHttp.Repo.one(FzHttp.Users.User)
       assert user.email == attrs.email
@@ -111,18 +83,12 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
       :ok = Vault.setup_oidc_provider(@endpoint.url, %{"auto_create_users" => false})
       :ok = Vault.upsert_user(oidc_login, user.email, oidc_password)
 
-      session =
-        session
-        |> visit(~p"/")
-        |> click(Query.link("OIDC Vault"))
-        |> assert_text("Method")
-        |> fill_in(Query.css("#select-ember40"), with: "userpass")
-        |> fill_in(Query.fillable_field("username"), with: oidc_login)
-        |> fill_in(Query.fillable_field("password"), with: oidc_password)
-        |> click(Query.button("Sign In"))
-        |> find(Query.text("Users", count: 2), fn _ -> :ok end)
-
-      assert current_path(session) == "/users"
+      session
+      |> visit(~p"/")
+      |> click(Query.link("OIDC Vault"))
+      |> Vault.userpass_flow(oidc_login, oidc_password)
+      |> find(Query.text("Users", count: 2), fn _ -> :ok end)
+      |> assert_path("/users")
 
       assert user = FzHttp.Repo.one(FzHttp.Users.User)
       assert user.email == user.email
@@ -142,11 +108,7 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
       session
       |> visit(~p"/")
       |> click(Query.link("OIDC Vault"))
-      |> assert_text("Method")
-      |> fill_in(Query.css("#select-ember40"), with: "userpass")
-      |> fill_in(Query.fillable_field("username"), with: oidc_login)
-      |> fill_in(Query.fillable_field("password"), with: oidc_password)
-      |> click(Query.button("Sign In"))
+      |> Vault.userpass_flow(oidc_login, oidc_password)
       |> assert_error_flash("Error signing in: user not found and auto_create_users disabled")
       |> Auth.assert_unauthenticated()
     end
@@ -166,7 +128,7 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
       |> click(Query.link("My Account"))
       |> assert_el(Query.text("Account Settings"))
       |> click(Query.link("Add MFA Method"))
-      |> mfa_flow()
+      |> mfa_create_flow()
     end
 
     feature "allows admin user to add MFA method", %{
@@ -182,7 +144,7 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
       |> click(Query.link("Account Settings"))
       |> assert_el(Query.text("Multi Factor Authentication"))
       |> click(Query.link("Add MFA Method"))
-      |> mfa_flow()
+      |> mfa_create_flow()
     end
 
     feature "MFA code is requested on unprivileged user login", %{session: session} do
@@ -213,24 +175,12 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
       # fails. Need to set it to be something in the past (more than 30s in the past).
       {:ok, _method} = FzHttp.MFA.update_method(method, %{last_used_at: ~U[1970-01-01T00:00:00Z]})
 
-      session =
-        session
-        |> visit(~p"/")
-        |> click(Query.link("Sign in with email"))
-        |> fill_in(Query.fillable_field("Email"), with: user.email)
-        |> fill_in(Query.fillable_field("Password"), with: password)
-        |> click(Query.button("Sign In"))
-        |> assert_el(Query.text("Multi-factor Authentication"))
-        |> fill_in(Query.fillable_field("code"), with: "111111")
-        |> click(Query.button("Verify"))
-        |> assert_el(Query.text("is not valid"))
-        |> fill_in(Query.fillable_field("code"), with: verification_code)
-        |> click(Query.button("Verify"))
-        |> assert_el(Query.text("Your Devices"))
-
-      assert current_path(session) == "/user_devices"
-
-      Auth.assert_authenticated(session, user)
+      session
+      |> password_login_flow(user.email, password)
+      |> mfa_login_flow(verification_code)
+      |> assert_el(Query.text("Your Devices"))
+      |> assert_path("/user_devices")
+      |> Auth.assert_authenticated(user)
     end
 
     feature "MFA code is requested on admin user login", %{session: session} do
@@ -261,24 +211,12 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
       # fails. Need to set it to be something in the past (more than 30s in the past).
       {:ok, _method} = FzHttp.MFA.update_method(method, %{last_used_at: ~U[1970-01-01T00:00:00Z]})
 
-      session =
-        session
-        |> visit(~p"/")
-        |> click(Query.link("Sign in with email"))
-        |> fill_in(Query.fillable_field("Email"), with: user.email)
-        |> fill_in(Query.fillable_field("Password"), with: password)
-        |> click(Query.button("Sign In"))
-        |> assert_el(Query.text("Multi-factor Authentication"))
-        |> fill_in(Query.fillable_field("code"), with: "111111")
-        |> click(Query.button("Verify"))
-        |> assert_el(Query.text("is not valid"))
-        |> fill_in(Query.fillable_field("code"), with: verification_code)
-        |> click(Query.button("Verify"))
-        |> assert_el(Query.css(".is-user-name span"))
-
-      assert current_path(session) == "/users"
-
-      Auth.assert_authenticated(session, user)
+      session
+      |> password_login_flow(user.email, password)
+      |> mfa_login_flow(verification_code)
+      |> assert_el(Query.css(".is-user-name span"))
+      |> assert_path("/users")
+      |> Auth.assert_authenticated(user)
     end
 
     feature "user can sign out during MFA flow", %{session: session} do
@@ -309,19 +247,13 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
       # fails. Need to set it to be something in the past (more than 30s in the past).
       {:ok, _method} = FzHttp.MFA.update_method(method, %{last_used_at: ~U[1970-01-01T00:00:00Z]})
 
-      session =
-        session
-        |> visit(~p"/")
-        |> click(Query.link("Sign in with email"))
-        |> fill_in(Query.fillable_field("Email"), with: user.email)
-        |> fill_in(Query.fillable_field("Password"), with: password)
-        |> click(Query.button("Sign In"))
-        |> assert_el(Query.text("Multi-factor Authentication"))
-        |> click(Query.css("[data-to=\"/sign_out\"]"))
-        |> assert_el(Query.text("Sign In"))
-        |> Auth.assert_unauthenticated()
-
-      assert current_path(session) == "/"
+      session
+      |> password_login_flow(user.email, password)
+      |> assert_el(Query.text("Multi-factor Authentication"))
+      |> click(Query.css("[data-to=\"/sign_out\"]"))
+      |> assert_el(Query.text("Sign In"))
+      |> Auth.assert_unauthenticated()
+      |> assert_path("/")
     end
 
     feature "user can see other methods during MFA flow", %{session: session} do
@@ -353,47 +285,41 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
       {:ok, _method} = FzHttp.MFA.update_method(method, %{last_used_at: ~U[1970-01-01T00:00:00Z]})
 
       session
-      |> visit(~p"/")
-      |> click(Query.link("Sign in with email"))
-      |> fill_in(Query.fillable_field("Email"), with: user.email)
-      |> fill_in(Query.fillable_field("Password"), with: password)
-      |> click(Query.button("Sign In"))
+      |> password_login_flow(user.email, password)
       |> assert_el(Query.text("Multi-factor Authentication"))
       |> click(Query.css("[href=\"/mfa/types\"]"))
       |> assert_el(Query.css("[href=\"/mfa/auth/#{method.id}\"]"))
     end
   end
 
+  # TODO: OIDC password auth is disabled
+
   describe "sign out" do
     feature "signs out unprivileged user", %{session: session} do
       user = UsersFixtures.create_user_with_role(:unprivileged)
 
-      session =
-        session
-        |> visit(~p"/")
-        |> Auth.authenticate(user)
-        |> visit(~p"/user_devices")
-        |> click(Query.link("Sign out"))
-        |> assert_el(Query.text("Sign In"))
-        |> Auth.assert_unauthenticated()
-
-      assert current_path(session) == "/"
+      session
+      |> visit(~p"/")
+      |> Auth.authenticate(user)
+      |> visit(~p"/user_devices")
+      |> click(Query.link("Sign out"))
+      |> assert_el(Query.text("Sign In"))
+      |> Auth.assert_unauthenticated()
+      |> assert_path("/")
     end
 
     feature "signs out admin user", %{session: session} do
       user = UsersFixtures.create_user_with_role(:admin)
 
-      session =
-        session
-        |> visit(~p"/")
-        |> Auth.authenticate(user)
-        |> visit(~p"/users")
-        |> hover(Query.css(".is-user-name span"))
-        |> click(Query.link("Log Out"))
-        |> assert_el(Query.text("Sign In"))
-        |> Auth.assert_unauthenticated()
-
-      assert current_path(session) == "/"
+      session
+      |> visit(~p"/")
+      |> Auth.authenticate(user)
+      |> visit(~p"/users")
+      |> hover(Query.css(".is-user-name span"))
+      |> click(Query.link("Log Out"))
+      |> assert_el(Query.text("Sign In"))
+      |> Auth.assert_unauthenticated()
+      |> assert_path("/")
     end
   end
 
@@ -402,7 +328,28 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
     session
   end
 
-  defp mfa_flow(session) do
+  defp password_login_flow(session, email, password) do
+    session
+    |> visit(~p"/")
+    |> click(Query.link("Sign in with email"))
+    |> fill_form(%{
+      "Email" => email,
+      "Password" => password
+    })
+    |> click(Query.button("Sign In"))
+  end
+
+  defp mfa_login_flow(session, verification_code) do
+    session
+    |> assert_el(Query.text("Multi-factor Authentication"))
+    |> fill_form(%{"code" => "111111"})
+    |> click(Query.button("Verify"))
+    |> assert_el(Query.text("is not valid"))
+    |> fill_form(%{"code" => verification_code})
+    |> click(Query.button("Verify"))
+  end
+
+  defp mfa_create_flow(session) do
     assert selected?(session, Query.radio_button("mfa-method-totp"))
 
     session =

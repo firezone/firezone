@@ -1,4 +1,6 @@
 defmodule FzHttpWeb.AcceptanceCase.Vault do
+  use Wallaby.DSL
+
   @vault_root_token "firezone"
   @vault_endpoint "http://127.0.0.1:8200"
 
@@ -67,6 +69,15 @@ defmodule FzHttpWeb.AcceptanceCase.Vault do
     )
 
     :ok
+  end
+
+  def userpass_flow(session, oidc_login, oidc_password) do
+    session
+    |> assert_text("Method")
+    |> fill_in(Query.css("#select-ember40"), with: "userpass")
+    |> fill_in(Query.fillable_field("username"), with: oidc_login)
+    |> fill_in(Query.fillable_field("password"), with: oidc_password)
+    |> click(Query.button("Sign In"))
   end
 
   defp request(method, path, params_or_body \\ nil) do

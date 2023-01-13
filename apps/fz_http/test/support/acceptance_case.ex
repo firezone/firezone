@@ -1,5 +1,6 @@
 defmodule FzHttpWeb.AcceptanceCase do
   use ExUnit.CaseTemplate
+  alias Wallaby.Query
   import Wallaby.Browser
 
   using do
@@ -78,13 +79,13 @@ defmodule FzHttpWeb.AcceptanceCase do
     |> Enum.with_index(1)
     |> Enum.flat_map(fn {s, i} ->
       filename = time <> "_" <> name <> "(#{i})"
-      Wallaby.Browser.take_screenshot(s, name: filename, log: true).screenshots
+      take_screenshot(s, name: filename, log: true).screenshots
     end)
   end
 
   def assert_el(session, query, started_at \\ nil)
 
-  def assert_el(session, %Wallaby.Query{} = query, started_at) do
+  def assert_el(session, %Query{} = query, started_at) do
     now = :erlang.monotonic_time(:milli_seconds)
     started_at = started_at || now
 
@@ -96,14 +97,14 @@ defmodule FzHttpWeb.AcceptanceCase do
         error ->
           case error do
             {:error, {:not_found, results}} ->
-              query = %Wallaby.Query{query | result: results}
+              query = %Query{query | result: results}
 
               raise Wallaby.ExpectationNotMetError,
-                    Wallaby.Query.ErrorMessage.message(query, :not_found)
+                    Query.ErrorMessage.message(query, :not_found)
 
             {:error, e} ->
-              raise Wallaby.Wallaby.QueryError,
-                    Wallaby.Query.ErrorMessage.message(query, e)
+              raise Wallaby.QueryError,
+                    Query.ErrorMessage.message(query, e)
 
             _ ->
               raise Wallaby.ExpectationNotMetError,
@@ -120,7 +121,7 @@ defmodule FzHttpWeb.AcceptanceCase do
       ] ->
         time_spent = now - started_at
 
-        if time_spent > :timer.seconds(7) do
+        if time_spent > :timer.seconds(15) do
           reraise(e, __STACKTRACE__)
         else
           floor(time_spent / 10)
@@ -130,6 +131,25 @@ defmodule FzHttpWeb.AcceptanceCase do
           assert_el(session, query, started_at)
         end
     end
+  end
+
+  def fill_form(session, %{} = elements) do
+    # Wait for form to be rendered
+    {form_el, _opts} = Enum.at(elements, 0)
+    session = assert_el(session, Query.fillable_field(form_el))
+
+    # Make sure test covers all form fields
+    assert find(session, Query.css(".input", count: Enum.count(elements))),
+           "You need to set values for all form elements"
+
+    Enum.reduce(elements, session, fn {field, value}, session ->
+      fill_in(session, Query.fillable_field(field), with: value)
+    end)
+  end
+
+  def assert_path(session, path) do
+    assert current_path(session) == path
+    session
   end
 
   def shutdown_live_socket(session) do
