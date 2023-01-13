@@ -1,0 +1,21 @@
+---
+title: REST API
+sidebar_position: 10
+---
+
+Welcome to Firezone REST API v0 documentation.
+
+## Getting started
+
+To get started with the REST API, you'll first need an API token.
+This can be generated in the UI at `/settings/account` or via the CLI
+with `docker compose -f $HOME/.firezone/docker-compose.yml exec firezone bin/create-api-token`
+on your live Firezone instance.
+
+
+```mdx-code-block
+import DocCardList from '@theme/DocCardList';
+import {useCurrentSidebarCategory} from '@docusaurus/theme-common';
+
+<DocCardList items={useCurrentSidebarCategory().items}/>
+```
