@@ -79,7 +79,7 @@ installation process, follow the steps below to install manually.
    Optionally modify other secrets as needed.
 1. Create the first admin:
   ```shell
-  docker compose exec firezone bin/create-or-reset-admin
+  docker compose run --rm firezone bin/create-or-reset-admin
   ```
 1. Bring the services up: `docker compose up -d`
 
