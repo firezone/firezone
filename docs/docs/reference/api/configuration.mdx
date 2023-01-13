@@ -6,23 +6,19 @@ group: Configuration
 
 ## API Documentation
 ### GET /v0/configuration
-`GET /v0/configuration`
 
 
 
 #### Example
-**Request**
-##### Headers
-| Name | Value | Description |
-| ---- | ----- | ----------- |
-| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
-**Response**
-##### Headers
-| Name | Value |
-| ---- | ----- |
-| Content-Type | application/json; charset=utf-8 |
-##### Body
-```json
+```bash
+$ curl -i \
+  -X GET "https://{firezone_host}/v0/configuration" \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer {api_token}' \
+
+HTTP/1.1 200
+Content-Type: application/json; charset=utf-8
+
 {
   "data": {
     "allow_unprivileged_device_configuration": true,
@@ -44,20 +40,17 @@ group: Configuration
   }
 }
 ```
-
 ### PATCH /v0/configuration
-`PATCH /v0/configuration`
 
 
 
 #### Example
-**Request**
-##### Headers
-| Name | Value | Description |
-| ---- | ----- | ----------- |
-| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
-##### Body
-```json
+```bash
+$ curl -i \
+  -X PUT "https://{firezone_host}/v0/configuration" \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer {api_token}' \
+  --data-binary @- << EOF
 {
   "configuration": {
     "allow_unprivileged_device_configuration": false,
@@ -97,16 +90,12 @@ group: Configuration
     ],
     "vpn_session_duration": 100
   }
-}
-```
+}'
+EOF
 
-**Response**
-##### Headers
-| Name | Value |
-| ---- | ----- |
-| Content-Type | application/json; charset=utf-8 |
-##### Body
-```json
+HTTP/1.1 200
+Content-Type: application/json; charset=utf-8
+
 {
   "data": {
     "allow_unprivileged_device_configuration": false,
@@ -147,7 +136,7 @@ group: Configuration
         "signed_envelopes_in_resp": false
       }
     ],
-    "updated_at": "2023-01-12T21:13:30.406654Z",
+    "updated_at": "2023-01-13T02:25:24.159827Z",
     "vpn_session_duration": 100
   }
 }

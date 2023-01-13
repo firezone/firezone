@@ -7,178 +7,157 @@ REST API Controller for Rules.
 
 ## API Documentation
 ### GET /v0/rules
-`GET /v0/rules`
 
 
 
 #### Example
-**Request**
-##### Headers
-| Name | Value | Description |
-| ---- | ----- | ----------- |
-| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
-**Response**
-##### Headers
-| Name | Value |
-| ---- | ----- |
-| Content-Type | application/json; charset=utf-8 |
-##### Body
-```json
+```bash
+$ curl -i \
+  -X GET "https://{firezone_host}/v0/rules" \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer {api_token}' \
+
+HTTP/1.1 200
+Content-Type: application/json; charset=utf-8
+
 {
   "data": [
     {
       "action": "drop",
       "destination": "10.3.2.1",
-      "id": "ce1fbecc-7e22-4c7d-af5d-bba5ed088f0d",
-      "inserted_at": "2023-01-12T21:13:29.313094Z",
+      "id": "e64110b2-ae93-4d55-ae16-26a877f593cd",
+      "inserted_at": "2023-01-13T02:25:23.425509Z",
       "port_range": null,
       "port_type": null,
-      "updated_at": "2023-01-12T21:13:29.313094Z",
+      "updated_at": "2023-01-13T02:25:23.425509Z",
       "user_id": null
     },
     {
       "action": "drop",
       "destination": "10.3.2.2",
-      "id": "b89e15e2-dcf5-4f1e-b4bf-4b6ea2a548b2",
-      "inserted_at": "2023-01-12T21:13:29.340437Z",
+      "id": "3af7dfa3-0cd4-4eaf-89d1-6e0ccb55890d",
+      "inserted_at": "2023-01-13T02:25:23.428614Z",
       "port_range": null,
       "port_type": null,
-      "updated_at": "2023-01-12T21:13:29.340437Z",
+      "updated_at": "2023-01-13T02:25:23.428614Z",
       "user_id": null
     },
     {
       "action": "drop",
       "destination": "10.3.2.3",
-      "id": "e7096f58-f3d6-44d6-8fc1-1eaf7cd00f70",
-      "inserted_at": "2023-01-12T21:13:29.343134Z",
+      "id": "25b492de-08ec-4ba0-a026-9bda43e2c22d",
+      "inserted_at": "2023-01-13T02:25:23.429631Z",
       "port_range": null,
       "port_type": null,
-      "updated_at": "2023-01-12T21:13:29.343134Z",
+      "updated_at": "2023-01-13T02:25:23.429631Z",
       "user_id": null
     },
     {
       "action": "drop",
       "destination": "10.3.2.4",
-      "id": "6362cb93-eb8e-4d63-983b-e61da54bc696",
-      "inserted_at": "2023-01-12T21:13:29.344736Z",
+      "id": "ff9ed213-af4f-4dc3-8492-587ae049b3ac",
+      "inserted_at": "2023-01-13T02:25:23.430594Z",
       "port_range": null,
       "port_type": null,
-      "updated_at": "2023-01-12T21:13:29.344736Z",
+      "updated_at": "2023-01-13T02:25:23.430594Z",
       "user_id": null
     },
     {
       "action": "drop",
       "destination": "10.3.2.5",
-      "id": "50a1b4e7-4063-4c8b-8c0a-e7aa05d852f8",
-      "inserted_at": "2023-01-12T21:13:29.346149Z",
+      "id": "c984f77e-08ad-4bb6-a0cd-c779cd2e80ea",
+      "inserted_at": "2023-01-13T02:25:23.431483Z",
       "port_range": null,
       "port_type": null,
-      "updated_at": "2023-01-12T21:13:29.346149Z",
+      "updated_at": "2023-01-13T02:25:23.431483Z",
       "user_id": null
     }
   ]
 }
 ```
-
 ### POST /v0/rules
-`POST /v0/rules`
 
 
 
 #### Example
-**Request**
-##### Headers
-| Name | Value | Description |
-| ---- | ----- | ----------- |
-| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
-##### Body
-```json
+```bash
+$ curl -i \
+  -X POST "https://{firezone_host}/v0/rules" \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer {api_token}' \
+  --data-binary @- << EOF
 {
   "rule": {
     "action": "accept",
     "destination": "1.1.1.1/24",
     "port_range": "1 - 2",
     "port_type": "udp",
-    "user_id": "87106e23-499d-426a-b618-261346ee3d8a"
+    "user_id": "fafd8813-f2a8-4218-b3d7-ceda23fba5e9"
   }
-}
-```
+}'
+EOF
 
-**Response**
-##### Headers
-| Name | Value |
-| ---- | ----- |
-| Content-Type | application/json; charset=utf-8 |
-| Location | /v0/rules/66bb9591-69da-4313-baa6-10a74cf3e4cb |
-##### Body
-```json
+HTTP/1.1 201
+Content-Type: application/json; charset=utf-8
+Location: /v0/rules/603d2c0f-f5ce-4d62-ac4b-210607af7b2b
+
 {
   "data": {
     "action": "accept",
     "destination": "1.1.1.1/24",
-    "id": "66bb9591-69da-4313-baa6-10a74cf3e4cb",
-    "inserted_at": "2023-01-12T21:13:29.576509Z",
+    "id": "603d2c0f-f5ce-4d62-ac4b-210607af7b2b",
+    "inserted_at": "2023-01-13T02:25:23.280377Z",
     "port_range": "1 - 2",
     "port_type": "udp",
-    "updated_at": "2023-01-12T21:13:29.576509Z",
-    "user_id": "87106e23-499d-426a-b618-261346ee3d8a"
+    "updated_at": "2023-01-13T02:25:23.280377Z",
+    "user_id": "fafd8813-f2a8-4218-b3d7-ceda23fba5e9"
   }
 }
 ```
-
 ### GET /v0/rules/{id}
-`GET /v0/rules/{id}`
 
 
 
 #### Example
-**Request**
-##### URI Parameters
-| Name | Value | Description |
-| ---- | ----- | ----------- |
-| id | 9257d50b-34e5-463d-874d-b06d2b286b3f | |
-##### Headers
-| Name | Value | Description |
-| ---- | ----- | ----------- |
-| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
-**Response**
-##### Headers
-| Name | Value |
-| ---- | ----- |
-| Content-Type | application/json; charset=utf-8 |
-##### Body
-```json
+**URI Parameters:**
+
+  - `id`: `4a4bd727-cf26-4d37-81dd-a9944146f617`
+```bash
+$ curl -i \
+  -X GET "https://{firezone_host}/v0/rules/{id}" \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer {api_token}' \
+
+HTTP/1.1 200
+Content-Type: application/json; charset=utf-8
+
 {
   "data": {
     "action": "drop",
     "destination": "10.10.10.0/24",
-    "id": "9257d50b-34e5-463d-874d-b06d2b286b3f",
-    "inserted_at": "2023-01-12T21:13:29.664855Z",
+    "id": "4a4bd727-cf26-4d37-81dd-a9944146f617",
+    "inserted_at": "2023-01-13T02:25:23.335017Z",
     "port_range": null,
     "port_type": null,
-    "updated_at": "2023-01-12T21:13:29.664855Z",
+    "updated_at": "2023-01-13T02:25:23.335017Z",
     "user_id": null
   }
 }
 ```
-
 ### PATCH /v0/rules/{id}
-`PATCH /v0/rules/{id}`
 
 
 
 #### Example
-**Request**
-##### URI Parameters
-| Name | Value | Description |
-| ---- | ----- | ----------- |
-| id | 0593ec20-af3c-45ac-94a3-58ea46b7ac5e | |
-##### Headers
-| Name | Value | Description |
-| ---- | ----- | ----------- |
-| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
-##### Body
-```json
+**URI Parameters:**
+
+  - `id`: `03ac5660-de2c-45d5-9bea-31148bdf7ae1`
+```bash
+$ curl -i \
+  -X PUT "https://{firezone_host}/v0/rules/{id}" \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer {api_token}' \
+  --data-binary @- << EOF
 {
   "rule": {
     "action": "accept",
@@ -186,50 +165,38 @@ REST API Controller for Rules.
     "port_range": "1 - 2",
     "port_type": "udp"
   }
-}
-```
+}'
+EOF
 
-**Response**
-##### Headers
-| Name | Value |
-| ---- | ----- |
-| Content-Type | application/json; charset=utf-8 |
-##### Body
-```json
+HTTP/1.1 200
+Content-Type: application/json; charset=utf-8
+
 {
   "data": {
     "action": "accept",
     "destination": "1.1.1.1/24",
-    "id": "0593ec20-af3c-45ac-94a3-58ea46b7ac5e",
-    "inserted_at": "2023-01-12T21:13:29.511269Z",
+    "id": "03ac5660-de2c-45d5-9bea-31148bdf7ae1",
+    "inserted_at": "2023-01-13T02:25:23.305390Z",
     "port_range": "1 - 2",
     "port_type": "udp",
-    "updated_at": "2023-01-12T21:13:29.536110Z",
+    "updated_at": "2023-01-13T02:25:23.321122Z",
     "user_id": null
   }
 }
 ```
-
 ### DELETE /v0/rules/{id}
-`DELETE /v0/rules/{id}`
 
 
 
 #### Example
-**Request**
-##### URI Parameters
-| Name | Value | Description |
-| ---- | ----- | ----------- |
-| id | 51599cd7-f5af-4d10-9a24-c80e2f30c002 | |
-##### Headers
-| Name | Value | Description |
-| ---- | ----- | ----------- |
-| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
-**Response**
-##### Headers
-| Name | Value |
-| ---- | ----- |
-##### Body
-```
+**URI Parameters:**
 
+  - `id`: `7fe32196-09e6-4314-bb2e-4f5982630a3a`
+```bash
+$ curl -i \
+  -X DELETE "https://{firezone_host}/v0/rules/{id}" \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer {api_token}' \
+
+HTTP/1.1 204
 ```

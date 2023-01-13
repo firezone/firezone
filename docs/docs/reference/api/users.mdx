@@ -17,85 +17,78 @@ If `auto_create_users` is `false`, then you need to provision users with `passwo
 otherwise they will have no means to log in.
 
 ## API Documentation
-### List All Users
-`GET /v0/users`
+### List All Users [`GET /v0/users`]
 
 
 
 #### Example
-**Request**
-##### Headers
-| Name | Value | Description |
-| ---- | ----- | ----------- |
-| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
-**Response**
-##### Headers
-| Name | Value |
-| ---- | ----- |
-| Content-Type | application/json; charset=utf-8 |
-##### Body
-```json
+```bash
+$ curl -i \
+  -X GET "https://{firezone_host}/v0/users" \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer {api_token}' \
+
+HTTP/1.1 200
+Content-Type: application/json; charset=utf-8
+
 {
   "data": [
     {
       "disabled_at": null,
-      "email": "test-1315@test",
-      "id": "71aa1231-04eb-4e2c-83b6-897a6fb81061",
-      "inserted_at": "2023-01-12T21:13:29.886459Z",
+      "email": "test-678@test",
+      "id": "7f18908d-5218-42b9-a02d-5106f1e2ace3",
+      "inserted_at": "2023-01-13T02:25:23.474697Z",
       "last_signed_in_at": null,
       "last_signed_in_method": null,
       "role": "admin",
-      "updated_at": "2023-01-12T21:13:29.886459Z"
+      "updated_at": "2023-01-13T02:25:23.474697Z"
     },
     {
       "disabled_at": null,
-      "email": "test-1347@test",
-      "id": "18592625-dc8d-4c06-9c1e-984cddd94028",
-      "inserted_at": "2023-01-12T21:13:29.890001Z",
+      "email": "test-679@test",
+      "id": "1e1d69f7-801a-44d6-965d-eb4759d93c5a",
+      "inserted_at": "2023-01-13T02:25:23.478294Z",
       "last_signed_in_at": null,
       "last_signed_in_method": null,
       "role": "admin",
-      "updated_at": "2023-01-12T21:13:29.890001Z"
+      "updated_at": "2023-01-13T02:25:23.478294Z"
     },
     {
       "disabled_at": null,
-      "email": "test-1379@test",
-      "id": "1328e93b-40b1-40cd-a92c-1bf2b0859090",
-      "inserted_at": "2023-01-12T21:13:29.892110Z",
+      "email": "test-710@test",
+      "id": "0a855566-deec-4dad-a400-c12e55f71a61",
+      "inserted_at": "2023-01-13T02:25:23.480429Z",
       "last_signed_in_at": null,
       "last_signed_in_method": null,
       "role": "admin",
-      "updated_at": "2023-01-12T21:13:29.892110Z"
+      "updated_at": "2023-01-13T02:25:23.480429Z"
     },
     {
       "disabled_at": null,
-      "email": "test-1411@test",
-      "id": "ec818b66-8594-4150-abf5-5763a95bd65b",
-      "inserted_at": "2023-01-12T21:13:29.894143Z",
+      "email": "test-742@test",
+      "id": "9f2caba3-0c6e-400c-b589-b069fd749eb5",
+      "inserted_at": "2023-01-13T02:25:23.482448Z",
       "last_signed_in_at": null,
       "last_signed_in_method": null,
       "role": "admin",
-      "updated_at": "2023-01-12T21:13:29.894143Z"
+      "updated_at": "2023-01-13T02:25:23.482448Z"
     }
   ]
 }
 ```
-
-### Create a User
-`POST /v0/users`
+### Create a User [`POST /v0/users`]
 
 
 Please see `Auto-Create Users from OpenID or SAML providers` for more details
 on `password` field usage.
 
 #### Example
-**Request**
-##### Headers
-| Name | Value | Description |
-| ---- | ----- | ----------- |
-| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
-##### Body
-```json
+```bash
+$ curl -i \
+  -X POST "https://{firezone_host}/v0/users" \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer {api_token}' \
+  --data-binary @- << EOF
 {
   "user": {
     "email": "new-user@test",
@@ -103,130 +96,108 @@ on `password` field usage.
     "password_confirmation": "test1234test",
     "role": "unprivileged"
   }
-}
-```
+}'
+EOF
 
-**Response**
-##### Headers
-| Name | Value |
-| ---- | ----- |
-| Content-Type | application/json; charset=utf-8 |
-| Location | /v0/users/6769030e-8028-4977-80a7-784212a44773 |
-##### Body
-```json
+HTTP/1.1 201
+Content-Type: application/json; charset=utf-8
+Location: /v0/users/029210a7-c85f-4166-ae01-66473ebbe913
+
 {
   "data": {
     "disabled_at": null,
     "email": "new-user@test",
-    "id": "6769030e-8028-4977-80a7-784212a44773",
-    "inserted_at": "2023-01-12T21:13:29.646239Z",
+    "id": "029210a7-c85f-4166-ae01-66473ebbe913",
+    "inserted_at": "2023-01-13T02:25:23.366585Z",
     "last_signed_in_at": null,
     "last_signed_in_method": null,
     "role": "unprivileged",
-    "updated_at": "2023-01-12T21:13:29.646239Z"
+    "updated_at": "2023-01-13T02:25:23.366585Z"
   }
 }
 ```
-
 #### Provision an unprivileged OpenID User
-**Request**
-##### Headers
-| Name | Value | Description |
-| ---- | ----- | ----------- |
-| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
-##### Body
-```json
+```bash
+$ curl -i \
+  -X POST "https://{firezone_host}/v0/users" \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer {api_token}' \
+  --data-binary @- << EOF
 {
   "user": {
     "email": "new-user@test",
     "role": "unprivileged"
   }
-}
-```
+}'
+EOF
 
-**Response**
-##### Headers
-| Name | Value |
-| ---- | ----- |
-| Content-Type | application/json; charset=utf-8 |
-| Location | /v0/users/0ac91655-3d95-48bf-be86-2d458eef8818 |
-##### Body
-```json
+HTTP/1.1 201
+Content-Type: application/json; charset=utf-8
+Location: /v0/users/b5e26803-cbd1-4839-a217-1504990de13c
+
 {
   "data": {
     "disabled_at": null,
     "email": "new-user@test",
-    "id": "0ac91655-3d95-48bf-be86-2d458eef8818",
-    "inserted_at": "2023-01-12T21:13:29.759517Z",
+    "id": "b5e26803-cbd1-4839-a217-1504990de13c",
+    "inserted_at": "2023-01-13T02:25:23.305637Z",
     "last_signed_in_at": null,
     "last_signed_in_method": null,
     "role": "unprivileged",
-    "updated_at": "2023-01-12T21:13:29.759517Z"
+    "updated_at": "2023-01-13T02:25:23.305637Z"
   }
 }
 ```
-
 #### Provision an admin OpenID User
-**Request**
-##### Headers
-| Name | Value | Description |
-| ---- | ----- | ----------- |
-| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
-##### Body
-```json
+```bash
+$ curl -i \
+  -X POST "https://{firezone_host}/v0/users" \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer {api_token}' \
+  --data-binary @- << EOF
 {
   "user": {
     "email": "new-user@test",
     "role": "admin"
   }
-}
-```
+}'
+EOF
 
-**Response**
-##### Headers
-| Name | Value |
-| ---- | ----- |
-| Content-Type | application/json; charset=utf-8 |
-| Location | /v0/users/cdc0bfe7-5630-40ef-8475-607a77bb4f37 |
-##### Body
-```json
+HTTP/1.1 201
+Content-Type: application/json; charset=utf-8
+Location: /v0/users/11d401ac-0312-4b51-8618-76752fd6d9db
+
 {
   "data": {
     "disabled_at": null,
     "email": "new-user@test",
-    "id": "cdc0bfe7-5630-40ef-8475-607a77bb4f37",
-    "inserted_at": "2023-01-12T21:13:29.880051Z",
+    "id": "11d401ac-0312-4b51-8618-76752fd6d9db",
+    "inserted_at": "2023-01-13T02:25:23.557377Z",
     "last_signed_in_at": null,
     "last_signed_in_method": null,
     "role": "admin",
-    "updated_at": "2023-01-12T21:13:29.880051Z"
+    "updated_at": "2023-01-13T02:25:23.557377Z"
   }
 }
 ```
-
 #### Error due to invalid parameters
-**Request**
-##### Headers
-| Name | Value | Description |
-| ---- | ----- | ----------- |
-| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
-##### Body
-```json
+```bash
+$ curl -i \
+  -X POST "https://{firezone_host}/v0/users" \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer {api_token}' \
+  --data-binary @- << EOF
 {
   "user": {
     "email": "test@test.com",
     "password": "test1234"
   }
-}
-```
+}'
+EOF
 
-**Response**
-##### Headers
-| Name | Value |
-| ---- | ----- |
-| Content-Type | application/json; charset=utf-8 |
-##### Body
-```json
+HTTP/1.1 422
+Content-Type: application/json; charset=utf-8
+
 {
   "errors": {
     "password": [
@@ -236,165 +207,129 @@ on `password` field usage.
   }
 }
 ```
-
 ### GET /v0/users/{id}
-`GET /v0/users/{id}`
 
 
 
 #### An email can be used instead of ID.
-**Request**
-##### URI Parameters
-| Name | Value | Description |
-| ---- | ----- | ----------- |
-| id | test-771@test | |
-##### Headers
-| Name | Value | Description |
-| ---- | ----- | ----------- |
-| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
-**Response**
-##### Headers
-| Name | Value |
-| ---- | ----- |
-| Content-Type | application/json; charset=utf-8 |
-##### Body
-```json
+**URI Parameters:**
+
+  - `id`: `test-326@test`
+```bash
+$ curl -i \
+  -X GET "https://{firezone_host}/v0/users/{id}" \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer {api_token}' \
+
+HTTP/1.1 200
+Content-Type: application/json; charset=utf-8
+
 {
   "data": {
     "disabled_at": null,
-    "email": "test-771@test",
-    "id": "38214c3e-4878-4d49-ac9a-c551c7dc112e",
-    "inserted_at": "2023-01-12T21:13:29.596962Z",
+    "email": "test-326@test",
+    "id": "56c887e8-ddd6-4c61-8bfc-5b3044582abd",
+    "inserted_at": "2023-01-13T02:25:23.390889Z",
     "last_signed_in_at": null,
     "last_signed_in_method": null,
     "role": "admin",
-    "updated_at": "2023-01-12T21:13:29.596962Z"
+    "updated_at": "2023-01-13T02:25:23.390889Z"
   }
 }
 ```
-
-### Update a User
-`PATCH /v0/users/{id}`
+### Update a User [`PATCH /v0/users/{id}`]
 
 
 Please see `Auto-Create Users from OpenID or SAML providers` for more details
 on `password` field usage.
 
 #### Update by email
-**Request**
-##### URI Parameters
-| Name | Value | Description |
-| ---- | ----- | ----------- |
-| id | test-326@test | |
-##### Headers
-| Name | Value | Description |
-| ---- | ----- | ----------- |
-| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
-##### Body
-```json
+**URI Parameters:**
+
+  - `id`: `test-774@test`
+```bash
+$ curl -i \
+  -X PUT "https://{firezone_host}/v0/users/{id}" \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer {api_token}' \
+  --data-binary @- << EOF
 {
   "user": {}
-}
-```
+}'
+EOF
 
-**Response**
-##### Headers
-| Name | Value |
-| ---- | ----- |
-| Content-Type | application/json; charset=utf-8 |
-##### Body
-```json
+HTTP/1.1 200
+Content-Type: application/json; charset=utf-8
+
 {
   "data": {
     "disabled_at": null,
-    "email": "test-326@test",
-    "id": "ebfd6bd0-fd79-45b5-8519-1b18016772a4",
-    "inserted_at": "2023-01-12T21:13:29.578176Z",
+    "email": "test-774@test",
+    "id": "d3e9efe4-f33b-4226-b3b0-c06bc1c9e555",
+    "inserted_at": "2023-01-13T02:25:23.514957Z",
     "last_signed_in_at": null,
     "last_signed_in_method": null,
     "role": "unprivileged",
-    "updated_at": "2023-01-12T21:13:29.578176Z"
+    "updated_at": "2023-01-13T02:25:23.514957Z"
   }
 }
 ```
-
 #### Update by ID
-**Request**
-##### URI Parameters
-| Name | Value | Description |
-| ---- | ----- | ----------- |
-| id | 10981915-ef16-4967-a7b3-76c3e43698f5 | |
-##### Headers
-| Name | Value | Description |
-| ---- | ----- | ----------- |
-| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
-##### Body
-```json
+**URI Parameters:**
+
+  - `id`: `278c14cb-cb5e-4227-9dc4-e93e4a7391de`
+```bash
+$ curl -i \
+  -X PUT "https://{firezone_host}/v0/users/{id}" \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer {api_token}' \
+  --data-binary @- << EOF
 {
   "user": {}
-}
-```
+}'
+EOF
 
-**Response**
-##### Headers
-| Name | Value |
-| ---- | ----- |
-| Content-Type | application/json; charset=utf-8 |
-##### Body
-```json
+HTTP/1.1 200
+Content-Type: application/json; charset=utf-8
+
 {
   "data": {
     "disabled_at": null,
-    "email": "test-2306@test",
-    "id": "10981915-ef16-4967-a7b3-76c3e43698f5",
-    "inserted_at": "2023-01-12T21:13:29.706659Z",
+    "email": "test-745@test",
+    "id": "278c14cb-cb5e-4227-9dc4-e93e4a7391de",
+    "inserted_at": "2023-01-13T02:25:23.579838Z",
     "last_signed_in_at": null,
     "last_signed_in_method": null,
     "role": "unprivileged",
-    "updated_at": "2023-01-12T21:13:29.706659Z"
+    "updated_at": "2023-01-13T02:25:23.579838Z"
   }
 }
 ```
-
 ### DELETE /v0/users/{id}
-`DELETE /v0/users/{id}`
 
 
 
 #### Example
-**Request**
-##### URI Parameters
-| Name | Value | Description |
-| ---- | ----- | ----------- |
-| id | 840eb4ba-5fbb-4d33-8e7f-10a8dfd7ab2f | |
-##### Headers
-| Name | Value | Description |
-| ---- | ----- | ----------- |
-| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
-**Response**
-##### Headers
-| Name | Value |
-| ---- | ----- |
-##### Body
-```
+**URI Parameters:**
 
-```
+  - `id`: `4b8bc40b-f17d-4e94-8032-0d2407c4d62b`
+```bash
+$ curl -i \
+  -X DELETE "https://{firezone_host}/v0/users/{id}" \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer {api_token}' \
 
+HTTP/1.1 204
+```
 #### An email can be used instead of ID.
-**Request**
-##### URI Parameters
-| Name | Value | Description |
-| ---- | ----- | ----------- |
-| id | test-901@test | |
-##### Headers
-| Name | Value | Description |
-| ---- | ----- | ----------- |
-| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
-**Response**
-##### Headers
-| Name | Value |
-| ---- | ----- |
-##### Body
-```
+**URI Parameters:**
 
+  - `id`: `test-1410@test`
+```bash
+$ curl -i \
+  -X DELETE "https://{firezone_host}/v0/users/{id}" \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer {api_token}' \
+
+HTTP/1.1 204
 ```

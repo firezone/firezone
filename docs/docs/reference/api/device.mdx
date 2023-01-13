@@ -7,23 +7,19 @@ REST API Controller for Devices.
 
 ## API Documentation
 ### GET /v0/devices
-`GET /v0/devices`
 
 
 
 #### Example
-**Request**
-##### Headers
-| Name | Value | Description |
-| ---- | ----- | ----------- |
-| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
-**Response**
-##### Headers
-| Name | Value |
-| ---- | ----- |
-| Content-Type | application/json; charset=utf-8 |
-##### Body
-```json
+```bash
+$ curl -i \
+  -X GET "https://{firezone_host}/v0/devices" \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer {api_token}' \
+
+HTTP/1.1 200
+Content-Type: application/json; charset=utf-8
+
 {
   "data": [
     {
@@ -31,153 +27,150 @@ REST API Controller for Devices.
       "description": "factory description",
       "dns": "1.1.1.1,1.0.0.1",
       "endpoint": "localhost:51820",
-      "id": "e2bc9667-d3db-42a7-943c-92814d03e4e1",
-      "inserted_at": "2023-01-12T21:13:29.647277Z",
-      "ipv4": "100.67.56.157",
-      "ipv6": "fd00::32:df51",
+      "id": "8bce78a6-58b0-46e5-aee8-9db0d5731e90",
+      "inserted_at": "2023-01-13T02:25:23.257995Z",
+      "ipv4": "100.64.215.240",
+      "ipv6": "fd00::2f:7c81",
       "latest_handshake": null,
       "mtu": 1280,
-      "name": "factory 1188",
+      "name": "factory 259",
       "persistent_keepalive": 25,
-      "preshared_key": "Em8Z3eCMwqKdAaWMNzkNRElMuMqzCGvuei0yEdawLjw=",
-      "public_key": "pvPVnLP+f1KdadoWeIfTcPA+AAMkorpcLeLwwSPYvUo=",
+      "preshared_key": "t4lcao+oAcYAHCUXIH2Ha9ltaD2wbpFv1KAdxJCrqYM=",
+      "public_key": "kV9/Q8sSPiJPdXpbNa11tKA5bJl1vHX6mCILRAwFoa0=",
       "remote_ip": null,
       "rx_bytes": null,
       "server_public_key": null,
       "tx_bytes": null,
-      "updated_at": "2023-01-12T21:13:29.647277Z",
+      "updated_at": "2023-01-13T02:25:23.257995Z",
       "use_default_allowed_ips": true,
       "use_default_dns": true,
       "use_default_endpoint": true,
       "use_default_mtu": true,
       "use_default_persistent_keepalive": true,
-      "user_id": "267801fb-5c6a-4ad8-8079-4bbeec57af7f"
+      "user_id": "1e34be49-307d-4427-8543-4679a44034e2"
     },
     {
       "allowed_ips": "0.0.0.0/0,::/0",
       "description": "factory description",
       "dns": "1.1.1.1,1.0.0.1",
       "endpoint": "localhost:51820",
-      "id": "fa566062-3ddf-455e-96a2-ff70b47b3f0e",
-      "inserted_at": "2023-01-12T21:13:29.656470Z",
-      "ipv4": "100.119.163.236",
-      "ipv6": "fd00::c:ef6c",
+      "id": "09306918-f590-451d-ad56-a3c78b8545c9",
+      "inserted_at": "2023-01-13T02:25:23.265925Z",
+      "ipv4": "100.99.11.47",
+      "ipv6": "fd00::3f:56be",
       "latest_handshake": null,
       "mtu": 1280,
-      "name": "factory 1858",
+      "name": "factory 900",
       "persistent_keepalive": 25,
-      "preshared_key": "v2KA6GZNTK4bVNo9PQkDeaYmh6qY8p5nhcfl+Hla/Ps=",
-      "public_key": "+bq1dest5NmuxjXS8Rw59qXzaxlHfwOIC+rpPC820jk=",
+      "preshared_key": "1ZEmPZmhA3NTbReLey953DXgbsQ4bikQpZxN9r2JFJc=",
+      "public_key": "gRezl9yfstwVzkFs+/+bPH2+e35C6h5m5dkum/BghqU=",
       "remote_ip": null,
       "rx_bytes": null,
       "server_public_key": null,
       "tx_bytes": null,
-      "updated_at": "2023-01-12T21:13:29.656470Z",
+      "updated_at": "2023-01-13T02:25:23.265925Z",
       "use_default_allowed_ips": true,
       "use_default_dns": true,
       "use_default_endpoint": true,
       "use_default_mtu": true,
       "use_default_persistent_keepalive": true,
-      "user_id": "4d8c8181-4a25-4903-910b-7b2e596e82b1"
+      "user_id": "e367d2e3-a832-41b6-a2ff-8b21801ab5d9"
     },
     {
       "allowed_ips": "0.0.0.0/0,::/0",
       "description": "factory description",
       "dns": "1.1.1.1,1.0.0.1",
       "endpoint": "localhost:51820",
-      "id": "f7effc2e-4599-406a-99af-3e7b57a0bc6a",
-      "inserted_at": "2023-01-12T21:13:29.664821Z",
-      "ipv4": "100.74.135.121",
-      "ipv6": "fd00::27:8151",
+      "id": "1cd66057-30f9-4dc3-bd06-bc558bac1d99",
+      "inserted_at": "2023-01-13T02:25:23.273405Z",
+      "ipv4": "100.80.211.244",
+      "ipv6": "fd00::19:d46a",
       "latest_handshake": null,
       "mtu": 1280,
-      "name": "factory 1922",
+      "name": "factory 1506",
       "persistent_keepalive": 25,
-      "preshared_key": "JeZ/nKldcuL2HSUJNKuakrNcdSpWwkctekIY2GofB5I=",
-      "public_key": "NohDkjhAepWZTa/ugwUEPebI3qYTyz5ji1SvGmQ/oyU=",
+      "preshared_key": "8sedEPFSAWIGSoAtgqtW9ZSbYtjMuufMR7UGV3AIUVk=",
+      "public_key": "e7XpD8H1lyX3nDKoX5RuBWGIHiVQhRbyPc9u814+9iI=",
       "remote_ip": null,
       "rx_bytes": null,
       "server_public_key": null,
       "tx_bytes": null,
-      "updated_at": "2023-01-12T21:13:29.664821Z",
+      "updated_at": "2023-01-13T02:25:23.273405Z",
       "use_default_allowed_ips": true,
       "use_default_dns": true,
       "use_default_endpoint": true,
       "use_default_mtu": true,
       "use_default_persistent_keepalive": true,
-      "user_id": "5c1ee546-d923-403b-b682-4a12504f2942"
+      "user_id": "a9fac145-fc09-41af-9472-a96eec2d4955"
     },
     {
       "allowed_ips": "0.0.0.0/0,::/0",
       "description": "factory description",
       "dns": "1.1.1.1,1.0.0.1",
       "endpoint": "localhost:51820",
-      "id": "9e4e50ba-d262-4d6a-ac8f-7337261db323",
-      "inserted_at": "2023-01-12T21:13:29.672592Z",
-      "ipv4": "100.91.232.66",
-      "ipv6": "fd00::1f:e818",
+      "id": "79a94805-2df1-4cb0-abd2-310f60dd651e",
+      "inserted_at": "2023-01-13T02:25:23.280893Z",
+      "ipv4": "100.89.39.210",
+      "ipv6": "fd00::36:b13e",
       "latest_handshake": null,
       "mtu": 1280,
-      "name": "factory 2018",
+      "name": "factory 1570",
       "persistent_keepalive": 25,
-      "preshared_key": "fak3SGUjiwrHbiVz6v35LfPCQSI9LHiNzIb7XdRXr/E=",
-      "public_key": "gBKjBiDmu7u3b8KDJ0YRqKbVmOSwUFrr9EIlgLA+AyI=",
+      "preshared_key": "0VOjo5//0y7s/mnpiIqqBO+1I5FUI0+r63WeOy2UCyQ=",
+      "public_key": "Wzia66e/GTQaKp460rlVdeD3dihEOBc05wtLvQQ6jDk=",
       "remote_ip": null,
       "rx_bytes": null,
       "server_public_key": null,
       "tx_bytes": null,
-      "updated_at": "2023-01-12T21:13:29.672592Z",
+      "updated_at": "2023-01-13T02:25:23.280893Z",
       "use_default_allowed_ips": true,
       "use_default_dns": true,
       "use_default_endpoint": true,
       "use_default_mtu": true,
       "use_default_persistent_keepalive": true,
-      "user_id": "4741f450-0ab9-4d08-89fb-0b712944fd9e"
+      "user_id": "dc8840bb-e43a-476c-91ff-31fae3e5e1f5"
     },
     {
       "allowed_ips": "0.0.0.0/0,::/0",
       "description": "factory description",
       "dns": "1.1.1.1,1.0.0.1",
       "endpoint": "localhost:51820",
-      "id": "a49b35e9-e117-494d-91b4-4186755d90b7",
-      "inserted_at": "2023-01-12T21:13:29.679896Z",
-      "ipv4": "100.111.19.110",
-      "ipv6": "fd00::21:a02f",
+      "id": "03ff73fa-1422-4f2d-83c8-9286cf266c1e",
+      "inserted_at": "2023-01-13T02:25:23.287716Z",
+      "ipv4": "100.114.49.65",
+      "ipv6": "fd00::c:73ca",
       "latest_handshake": null,
       "mtu": 1280,
-      "name": "factory 2082",
+      "name": "factory 490",
       "persistent_keepalive": 25,
-      "preshared_key": "MpKjRdtxQ1if8zH0BVqwelQW0xtlQFjEuB7TrRKWuyQ=",
-      "public_key": "JOoNk6bdL0ToUcQsGySAo+uwb1IWvYJega31Xm7XIpk=",
+      "preshared_key": "wrAxswb83ZZMzKWqpV9EDfZRoREb5rIZ39GyRgzQrfg=",
+      "public_key": "p6+dVUz70x3nXS1FzhXNg6Yn6eUF/qh2VGnXFPfmEjk=",
       "remote_ip": null,
       "rx_bytes": null,
       "server_public_key": null,
       "tx_bytes": null,
-      "updated_at": "2023-01-12T21:13:29.679896Z",
+      "updated_at": "2023-01-13T02:25:23.287716Z",
       "use_default_allowed_ips": true,
       "use_default_dns": true,
       "use_default_endpoint": true,
       "use_default_mtu": true,
       "use_default_persistent_keepalive": true,
-      "user_id": "2ad2993c-dd59-46b5-aa1c-dc202aa36d1a"
+      "user_id": "8514a403-f37c-40a9-8c5b-aabdcf1086f5"
     }
   ]
 }
 ```
-
 ### POST /v0/devices
-`POST /v0/devices`
 
 
 
 #### Example
-**Request**
-##### Headers
-| Name | Value | Description |
-| ---- | ----- | ----------- |
-| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
-##### Body
-```json
+```bash
+$ curl -i \
+  -X POST "https://{firezone_host}/v0/devices" \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer {api_token}' \
+  --data-binary @- << EOF
 {
   "device": {
     "allowed_ips": "0.0.0.0/0, ::/0, 1.1.1.1",
@@ -196,27 +189,23 @@ REST API Controller for Devices.
     "use_default_endpoint": false,
     "use_default_mtu": false,
     "use_default_persistent_keepalive": false,
-    "user_id": "6c9f140b-7071-4695-ad52-6c8a613b1e13"
+    "user_id": "f5535663-c932-4dde-a5ed-61ca2a9d50c0"
   }
-}
-```
+}'
+EOF
 
-**Response**
-##### Headers
-| Name | Value |
-| ---- | ----- |
-| Content-Type | application/json; charset=utf-8 |
-| Location | /v0/devices/8cda968d-16bc-48fd-9342-d6a1d374456c |
-##### Body
-```json
+HTTP/1.1 201
+Content-Type: application/json; charset=utf-8
+Location: /v0/devices/a3d7aba6-b95e-47c4-b197-a902d01f05db
+
 {
   "data": {
     "allowed_ips": "0.0.0.0/0, ::/0, 1.1.1.1",
     "description": "create-description",
     "dns": "9.9.9.8",
     "endpoint": "9.9.9.9",
-    "id": "8cda968d-16bc-48fd-9342-d6a1d374456c",
-    "inserted_at": "2023-01-12T21:13:29.734454Z",
+    "id": "a3d7aba6-b95e-47c4-b197-a902d01f05db",
+    "inserted_at": "2023-01-13T02:25:23.363650Z",
     "ipv4": "100.64.0.2",
     "ipv6": "fd00::2",
     "latest_handshake": null,
@@ -229,87 +218,77 @@ REST API Controller for Devices.
     "rx_bytes": null,
     "server_public_key": null,
     "tx_bytes": null,
-    "updated_at": "2023-01-12T21:13:29.734454Z",
+    "updated_at": "2023-01-13T02:25:23.363650Z",
     "use_default_allowed_ips": false,
     "use_default_dns": false,
     "use_default_endpoint": false,
     "use_default_mtu": false,
     "use_default_persistent_keepalive": false,
-    "user_id": "6c9f140b-7071-4695-ad52-6c8a613b1e13"
+    "user_id": "f5535663-c932-4dde-a5ed-61ca2a9d50c0"
   }
 }
 ```
-
 ### GET /v0/devices/{id}
-`GET /v0/devices/{id}`
 
 
 
 #### Example
-**Request**
-##### URI Parameters
-| Name | Value | Description |
-| ---- | ----- | ----------- |
-| id | 65010e99-5983-473a-8b10-c22623283168 | |
-##### Headers
-| Name | Value | Description |
-| ---- | ----- | ----------- |
-| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
-**Response**
-##### Headers
-| Name | Value |
-| ---- | ----- |
-| Content-Type | application/json; charset=utf-8 |
-##### Body
-```json
+**URI Parameters:**
+
+  - `id`: `b708aed3-8025-49a9-94a6-08d734ee91ed`
+```bash
+$ curl -i \
+  -X GET "https://{firezone_host}/v0/devices/{id}" \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer {api_token}' \
+
+HTTP/1.1 200
+Content-Type: application/json; charset=utf-8
+
 {
   "data": {
     "allowed_ips": "0.0.0.0/0,::/0",
     "description": "factory description",
     "dns": "1.1.1.1,1.0.0.1",
     "endpoint": "localhost:51820",
-    "id": "65010e99-5983-473a-8b10-c22623283168",
-    "inserted_at": "2023-01-12T21:13:29.830287Z",
-    "ipv4": "100.106.249.110",
-    "ipv6": "fd00::10:ae5d",
+    "id": "b708aed3-8025-49a9-94a6-08d734ee91ed",
+    "inserted_at": "2023-01-13T02:25:23.425953Z",
+    "ipv4": "100.103.222.78",
+    "ipv6": "fd00::3b:fb73",
     "latest_handshake": null,
     "mtu": 1280,
-    "name": "factory 1094",
+    "name": "factory 486",
     "persistent_keepalive": 25,
-    "preshared_key": "4C0vWjrxwxfc/B+V2pwHVWAJ4WzK5TfYHzuboANP0u8=",
-    "public_key": "Ex1GPFdFzz/uYTjvzfQrlWfXRmvmw/8WQGzLo3Y0aYg=",
+    "preshared_key": "W5jKtxfF00cN3OfECAnZBzm5brUcUiD/pWU+Ahn8mPs=",
+    "public_key": "0zkj5McyedDDiu87NUNmPFfxalISs0z11ubgVLfYrNQ=",
     "remote_ip": null,
     "rx_bytes": null,
     "server_public_key": null,
     "tx_bytes": null,
-    "updated_at": "2023-01-12T21:13:29.830287Z",
+    "updated_at": "2023-01-13T02:25:23.425953Z",
     "use_default_allowed_ips": true,
     "use_default_dns": true,
     "use_default_endpoint": true,
     "use_default_mtu": true,
     "use_default_persistent_keepalive": true,
-    "user_id": "91d03142-edf1-4528-a87d-a6e0a773fcb7"
+    "user_id": "4bc0b139-7de5-4ae8-836e-a03272fdd260"
   }
 }
 ```
-
 ### PATCH /v0/devices/{id}
-`PATCH /v0/devices/{id}`
 
 
 
 #### Example
-**Request**
-##### URI Parameters
-| Name | Value | Description |
-| ---- | ----- | ----------- |
-| id | 5d5c9dfb-6a2e-4316-aef1-b43b1d4ef122 | |
-##### Headers
-| Name | Value | Description |
-| ---- | ----- | ----------- |
-| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
-##### Body
-```json
+**URI Parameters:**
+
+  - `id`: `77d8956c-eed2-4763-8aab-01ae3e3db9a5`
+```bash
+$ curl -i \
+  -X PUT "https://{firezone_host}/v0/devices/{id}" \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer {api_token}' \
+  --data-binary @- << EOF
 {
   "device": {
     "allowed_ips": "0.0.0.0/0, ::/0, 1.1.1.1",
@@ -329,24 +308,20 @@ REST API Controller for Devices.
     "use_default_mtu": false,
     "use_default_persistent_keepalive": false
   }
-}
-```
+}'
+EOF
 
-**Response**
-##### Headers
-| Name | Value |
-| ---- | ----- |
-| Content-Type | application/json; charset=utf-8 |
-##### Body
-```json
+HTTP/1.1 200
+Content-Type: application/json; charset=utf-8
+
 {
   "data": {
     "allowed_ips": "0.0.0.0/0, ::/0, 1.1.1.1",
     "description": "create-description",
     "dns": "9.9.9.8",
     "endpoint": "9.9.9.9",
-    "id": "5d5c9dfb-6a2e-4316-aef1-b43b1d4ef122",
-    "inserted_at": "2023-01-12T21:13:29.610329Z",
+    "id": "77d8956c-eed2-4763-8aab-01ae3e3db9a5",
+    "inserted_at": "2023-01-13T02:25:23.393602Z",
     "ipv4": "100.64.0.2",
     "ipv6": "fd00::2",
     "latest_handshake": null,
@@ -359,37 +334,29 @@ REST API Controller for Devices.
     "rx_bytes": null,
     "server_public_key": null,
     "tx_bytes": null,
-    "updated_at": "2023-01-12T21:13:29.627783Z",
+    "updated_at": "2023-01-13T02:25:23.408338Z",
     "use_default_allowed_ips": false,
     "use_default_dns": false,
     "use_default_endpoint": false,
     "use_default_mtu": false,
     "use_default_persistent_keepalive": false,
-    "user_id": "e8f086f3-0d4b-486f-a869-a3d762be581c"
+    "user_id": "155b1fee-d2c9-4934-a709-2c34b168fe47"
   }
 }
 ```
-
 ### DELETE /v0/devices/{id}
-`DELETE /v0/devices/{id}`
 
 
 
 #### Example
-**Request**
-##### URI Parameters
-| Name | Value | Description |
-| ---- | ----- | ----------- |
-| id | 19917fff-0834-4257-bfb4-7644757342f5 | |
-##### Headers
-| Name | Value | Description |
-| ---- | ----- | ----------- |
-| Authorization | Bearer {api_token} | See ["Authorization"](../authorization) section |
-**Response**
-##### Headers
-| Name | Value |
-| ---- | ----- |
-##### Body
-```
+**URI Parameters:**
 
+  - `id`: `f62c9846-7f0d-40b6-8555-c94c34d4f87c`
+```bash
+$ curl -i \
+  -X DELETE "https://{firezone_host}/v0/devices/{id}" \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer {api_token}' \
+
+HTTP/1.1 204
 ```
