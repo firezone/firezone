@@ -64,3 +64,5 @@ config :fz_vpn,
   wg_adapter: FzVpn.Interface.WGAdapter.Sandbox
 
 config :argon2_elixir, t_cost: 1, m_cost: 8
+
+config :bureaucrat, :json_library, Jason

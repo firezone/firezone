@@ -20,9 +20,11 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
 
   describe "GET /v0/users" do
     test "lists all users" do
-      for _i <- 1..5, do: user()
+      for _i <- 1..3, do: user()
 
-      conn = get(authed_conn(), ~p"/v0/users")
+      conn =
+        get(authed_conn(), ~p"/v0/users")
+        |> doc()
 
       actual =
         Users.list_users()
@@ -39,20 +41,44 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
 
     test "renders 401 for missing authorization header" do
       conn = get(unauthed_conn(), ~p"/v0/users")
+
       assert json_response(conn, 401)["errors"] == %{"auth" => "unauthenticated"}
     end
   end
 
   describe "POST /v0/users" do
+    test "can create unprivileged user with password" do
+      params = %{
+        "email" => "new-user@test",
+        "role" => "unprivileged",
+        "password" => "test1234test",
+        "password_confirmation" => "test1234test"
+      }
+
+      conn =
+        post(authed_conn(), ~p"/v0/users", user: params)
+        |> doc()
+
+      assert json_response(conn, 201)["data"]["role"] == "unprivileged"
+    end
+
     test "can create unprivileged user" do
       params = %{"email" => "new-user@test", "role" => "unprivileged"}
-      conn = post(authed_conn(), ~p"/v0/users", user: params)
+
+      conn =
+        post(authed_conn(), ~p"/v0/users", user: params)
+        |> doc(example_description: "Provision an unprivileged OpenID User")
+
       assert json_response(conn, 201)["data"]["role"] == "unprivileged"
     end
 
     test "can create admin user" do
       params = %{"email" => "new-user@test", "role" => "admin"}
-      conn = post(authed_conn(), ~p"/v0/users", user: params)
+
+      conn =
+        post(authed_conn(), ~p"/v0/users", user: params)
+        |> doc(example_description: "Provision an admin OpenID User")
+
       assert json_response(conn, 201)["data"]["role"] == "admin"
     end
 
@@ -68,7 +94,9 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
     end
 
     test "renders errors when data is invalid" do
-      conn = post(authed_conn(), ~p"/v0/users", user: @invalid_attrs)
+      conn =
+        post(authed_conn(), ~p"/v0/users", user: @invalid_attrs)
+        |> doc(example_description: "Error due to invalid parameters")
 
       assert json_response(conn, 422)["errors"] == %{
                "password" => [
@@ -84,16 +112,24 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
     end
   end
 
-  describe "PUT /v0/users/:id" do
+  describe "PUT /v0/users/:id_or_email" do
     test "returns user that was updated via email" do
       user = user(%{role: :unprivileged})
-      conn = put(authed_conn(), ~p"/v0/users/#{user.email}", user: %{})
+
+      conn =
+        put(authed_conn(), ~p"/v0/users/#{user.email}", user: %{})
+        |> doc(example_description: "Update by email")
+
       assert json_response(conn, 200)["data"]["id"] == user.id
     end
 
     test "returns user that was updated via id" do
       user = user(%{role: :unprivileged})
-      conn = put(authed_conn(), ~p"/v0/users/#{user}", user: %{})
+
+      conn =
+        put(authed_conn(), ~p"/v0/users/#{user}", user: %{})
+        |> doc(example_description: "Update by ID")
+
       assert json_response(conn, 200)["data"]["id"] == user.id
     end
 
@@ -149,7 +185,9 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
     test "can update own role" do
       conn = authed_conn()
       user = conn.private.guardian_default_resource
+
       conn = put(conn, ~p"/v0/users/#{user}", user: %{role: :unprivileged})
+
       assert json_response(conn, 200)["data"]["role"] == "unprivileged"
     end
 
@@ -174,9 +212,9 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
     end
 
     test "renders 404 for user not found" do
-      assert_error_sent 404, fn ->
+      assert_error_sent(404, fn ->
         put(authed_conn(), ~p"/v0/users/003da73d-2dd9-4492-8136-3282843545e8", user: %{})
-      end
+      end)
     end
 
     test "renders 401 for missing authorization header" do
@@ -189,21 +227,27 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
     test "gets user by id" do
       conn = authed_conn()
       user = conn.private.guardian_default_resource
+
       conn = get(conn, ~p"/v0/users/#{user}")
+
       assert json_response(conn, 200)["data"]["id"] == user.id
     end
 
     test "gets user by email" do
       conn = authed_conn()
       user = conn.private.guardian_default_resource
-      conn = get(conn, ~p"/v0/users/#{user.email}")
+
+      conn =
+        get(conn, ~p"/v0/users/#{user.email}")
+        |> doc(example_description: "An email can be used instead of ID.")
+
       assert json_response(conn, 200)["data"]["id"] == user.id
     end
 
     test "renders 404 for user not found" do
-      assert_error_sent 404, fn ->
+      assert_error_sent(404, fn ->
         get(authed_conn(), ~p"/v0/users/003da73d-2dd9-4492-8136-3282843545e8")
-      end
+      end)
     end
 
     test "renders 401 for missing authorization header" do
@@ -215,28 +259,36 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
   describe "DELETE /v0/users/:id" do
     test "deletes user by id" do
       user = user(%{role: :unprivileged})
-      conn = delete(authed_conn(), ~p"/v0/users/#{user}")
+
+      conn =
+        delete(authed_conn(), ~p"/v0/users/#{user}")
+        |> doc()
+
       assert response(conn, 204)
 
-      assert_error_sent 404, fn ->
+      assert_error_sent(404, fn ->
         get(conn, ~p"/v0/users/#{user}")
-      end
+      end)
     end
 
     test "deletes user by email" do
       user = user(%{role: :unprivileged})
-      conn = delete(authed_conn(), ~p"/v0/users/#{user.email}")
+
+      conn =
+        delete(authed_conn(), ~p"/v0/users/#{user.email}")
+        |> doc(example_description: "An email can be used instead of ID.")
+
       assert response(conn, 204)
 
-      assert_error_sent 404, fn ->
+      assert_error_sent(404, fn ->
         get(conn, ~p"/v0/users/#{user}")
-      end
+      end)
     end
 
     test "renders 404 for user not found" do
-      assert_error_sent 404, fn ->
+      assert_error_sent(404, fn ->
         delete(authed_conn(), ~p"/v0/users/003da73d-2dd9-4492-8136-3282843545e8")
-      end
+      end)
     end
 
     test "renders 401 for missing authorization header" do

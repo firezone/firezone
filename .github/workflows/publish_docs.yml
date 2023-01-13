@@ -17,13 +17,10 @@ jobs:
           node-version: 16
           cache: 'yarn'
           cache-dependency-path: docs/yarn.lock
+      # XXX: Add API docs generation here
       - run: |
           cd docs/
           yarn install --frozen-lockfile
-
-          # Uncomment below when REST API docs are done
-          # yarn run docusaurus gen-api-docs rest_api
-
           yarn build
       - name: Publish Latest Docs
         uses: JamesIves/github-pages-deploy-action@v4.4.1

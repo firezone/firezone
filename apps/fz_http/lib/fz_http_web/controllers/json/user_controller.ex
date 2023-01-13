@@ -1,16 +1,54 @@
 defmodule FzHttpWeb.JSON.UserController do
-  use FzHttpWeb, :controller
+  @moduledoc api_doc: [title: "Users", sidebar_position: 2, toc_max_heading_level: 4]
+  @moduledoc """
+  This endpoint allows an administrator to manage Users.
 
+  ## Auto-Create Users from OpenID or SAML providers
+
+  You can set Configuration option `auto_create_users` to `true` to automatically create users
+  from OpenID or SAML providers. Use it with care as anyone with access to the provider will be
+  able to log-in to Firezone.
+
+  If `auto_create_users` is `false`, then you need to provision users with `password` attribute,
+  otherwise they will have no means to log in.
+  """
+  use FzHttpWeb, :controller
   alias FzHttp.Users
   alias FzHttp.Users.User
 
-  action_fallback FzHttpWeb.JSON.FallbackController
+  action_fallback(FzHttpWeb.JSON.FallbackController)
 
+  @doc api_doc: [action: "List all Users"]
   def index(conn, _params) do
     users = Users.list_users()
     render(conn, "index.json", users: users)
   end
 
+  @doc """
+  Create a new User.
+
+  This endpoint is useful in two cases:
+
+    1. When [Local Authentication](/authenticate/local-auth/) is enabled (discouraged in
+      production deployments), it allows an administrator to provision users with their passwords;
+    2. When `auto_create_users` in the associated OpenID or SAML configuration is disabled,
+      it allows an administrator to provision users with their emails beforehand, effectively
+      whitelisting specific users for authentication.
+
+  If `auto_create_users` is `true` in the associated OpenID or SAML configuration, there is no need
+  to provision users; they will be created automatically when they log in for the first time using
+  the associated OpenID or SAML provider.
+
+  #### User Attributes
+
+  | Attribute | Type | Required | Description |
+  | --------- | ---- | -------- | ----------- |
+  | `role` | `admin` or `unprivileged` (default) | No | User role. |
+  | `email` | `string` | Yes | Email which will be used to identify the user. |
+  | `password` | `string` | No | A password that can be used for login-password authentication. |
+  | `password_confirmation` | `string` | -> | Is required when the `password` is set. |
+  """
+  @doc api_doc: [action: "Create a User"]
   def create(conn, %{"user" => %{"role" => "admin"} = user_params}) do
     with {:ok, %User{} = user} <- Users.create_admin_user(user_params) do
       conn
@@ -29,11 +67,16 @@ defmodule FzHttpWeb.JSON.UserController do
     end
   end
 
+  @doc api_doc: [summary: "Get User by ID or Email"]
   def show(conn, %{"id" => id_or_email}) do
     user = get_user_by_id_or_email(id_or_email)
     render(conn, "show.json", user: user)
   end
 
+  @doc """
+  For details please see [Create a User](#create-a-user-post-v0users) section.
+  """
+  @doc api_doc: [action: "Update a User"]
   def update(conn, %{"id" => id_or_email, "user" => user_params}) do
     user = get_user_by_id_or_email(id_or_email)
 
@@ -42,6 +85,7 @@ defmodule FzHttpWeb.JSON.UserController do
     end
   end
 
+  @doc api_doc: [summary: "Delete a User"]
   def delete(conn, %{"id" => id_or_email}) do
     user = get_user_by_id_or_email(id_or_email)
 
