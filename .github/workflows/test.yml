@@ -25,6 +25,15 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      vault:
+        image: vault:1.12.2
+        env:
+          VAULT_ADDR: 'http://127.0.0.1:8200'
+          VAULT_DEV_ROOT_TOKEN_ID: 'firezone'
+        ports:
+          - 8200:8200/tcp
+        options:
+          --cap-add=IPC_LOCK
     steps:
       - uses: nanasess/setup-chromedriver@v1
         with:
