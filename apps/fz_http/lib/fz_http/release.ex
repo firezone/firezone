@@ -24,10 +24,7 @@ defmodule FzHttp.Release do
   end
 
   def create_admin_user do
-    load_app()
-
-    # The whole app needs to be started to run actual DB queries
-    Application.ensure_all_started(@app)
+    boot_database_app()
 
     reply =
       if Repo.exists?(from u in User, where: u.email == ^email()) do
@@ -48,6 +45,8 @@ defmodule FzHttp.Release do
   end
 
   def create_api_token(device \\ :stdio) do
+    boot_database_app()
+
     device
     |> IO.write(default_admin_user() |> mint_jwt())
   end
@@ -76,6 +75,10 @@ defmodule FzHttp.Release do
     FzHttp.Config.fetch_env!(@app, :admin_email)
   end
 
+  defp set_supervision_tree_mode(mode) do
+    Application.put_env(@app, :supervision_tree_mode, mode)
+  end
+
   defp default_admin_user do
     Users.get_by_email(email())
   end
@@ -89,12 +92,22 @@ defmodule FzHttp.Release do
     secret
   end
 
+  defp boot_database_app do
+    load_app()
+    set_supervision_tree_mode(:database)
+    start_app()
+  end
+
   defp load_app do
     Application.load(@app)
 
     # Fixes ssl startup when connecting to SSL DBs.
     # See https://elixirforum.com/t/ssl-connection-cannot-be-established-using-elixir-releases/25444/5
     Application.ensure_all_started(:ssl)
+  end
+
+  defp start_app do
+    Application.ensure_all_started(@app)
   end
 
   defp default_password do

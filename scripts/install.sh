@@ -161,7 +161,7 @@ firezoneSetup() {
   echo "Resetting DB password..."
   $dc -f $installDir/docker-compose.yml exec postgres psql -p 5432 -U postgres -d firezone -h 127.0.0.1 -c "ALTER ROLE postgres WITH PASSWORD '${db_pass}'"
   echo "Creating admin..."
-  $dc -f $installDir/docker-compose.yml exec firezone bin/create-or-reset-admin
+  $dc -f $installDir/docker-compose.yml run --rm firezone bin/create-or-reset-admin
   echo "Upping firezone services..."
   $dc -f $installDir/docker-compose.yml up -d firezone caddy
 
