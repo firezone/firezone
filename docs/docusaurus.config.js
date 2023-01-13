@@ -43,28 +43,9 @@ const config = {
     }
   ],
 
-  plugins: [
-    [
-      'docusaurus-plugin-openapi-docs',
-      {
-        id: "apiDocs",
-        docsPluginId: "classic",
-        config: {
-          rest_api: {
-            specPath: "openapi.yaml",
-            outputDir: "docs/reference/REST API",
-            sidebarOptions: {
-              groupPathsBy: "tag",
-            },
-          },
-        },
-      },
-    ],
-  ],
+  plugins: [],
 
-  themes: [
-    "docusaurus-theme-openapi-docs",
-  ],
+  themes: [],
 
   presets: [
     [
@@ -75,8 +56,7 @@ const config = {
           routeBasePath: '/',
           sidebarPath: require.resolve('./sidebars.js'),
           editUrl: 'https://github.com/firezone/firezone/tree/master/docs',
-          docLayoutComponent: "@theme/DocPage",
-          docItemComponent: "@theme/ApiItem",
+          docLayoutComponent: "@theme/DocPage"
         },
         theme: {
           customCss: require.resolve('./src/css/custom.css'),

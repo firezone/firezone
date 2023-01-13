@@ -28,6 +28,7 @@ defmodule FzHttpWeb.ApiCase do
       import Plug.Conn
       import Phoenix.ConnTest
       import FzHttp.TestHelpers
+      import Bureaucrat.Helpers
 
       use FzHttpWeb, :verified_routes
 
