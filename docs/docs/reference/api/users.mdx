@@ -35,43 +35,43 @@ Content-Type: application/json; charset=utf-8
   "data": [
     {
       "disabled_at": null,
-      "email": "test-678@test",
-      "id": "7f18908d-5218-42b9-a02d-5106f1e2ace3",
-      "inserted_at": "2023-01-13T02:25:23.474697Z",
+      "email": "test-1287@test",
+      "id": "cb8e9a14-d80f-4d72-98c7-310ab065d549",
+      "inserted_at": "2023-01-13T02:57:22.634898Z",
       "last_signed_in_at": null,
       "last_signed_in_method": null,
       "role": "admin",
-      "updated_at": "2023-01-13T02:25:23.474697Z"
+      "updated_at": "2023-01-13T02:57:22.634898Z"
     },
     {
       "disabled_at": null,
-      "email": "test-679@test",
-      "id": "1e1d69f7-801a-44d6-965d-eb4759d93c5a",
-      "inserted_at": "2023-01-13T02:25:23.478294Z",
+      "email": "test-1157@test",
+      "id": "d6d09e0f-48a4-41d5-a179-9ccdb102c0c1",
+      "inserted_at": "2023-01-13T02:57:22.638434Z",
       "last_signed_in_at": null,
       "last_signed_in_method": null,
       "role": "admin",
-      "updated_at": "2023-01-13T02:25:23.478294Z"
+      "updated_at": "2023-01-13T02:57:22.638434Z"
     },
     {
       "disabled_at": null,
-      "email": "test-710@test",
-      "id": "0a855566-deec-4dad-a400-c12e55f71a61",
-      "inserted_at": "2023-01-13T02:25:23.480429Z",
+      "email": "test-298@test",
+      "id": "0193173e-7126-4726-b221-93b82c506e33",
+      "inserted_at": "2023-01-13T02:57:22.640582Z",
       "last_signed_in_at": null,
       "last_signed_in_method": null,
       "role": "admin",
-      "updated_at": "2023-01-13T02:25:23.480429Z"
+      "updated_at": "2023-01-13T02:57:22.640582Z"
     },
     {
       "disabled_at": null,
-      "email": "test-742@test",
-      "id": "9f2caba3-0c6e-400c-b589-b069fd749eb5",
-      "inserted_at": "2023-01-13T02:25:23.482448Z",
+      "email": "test-330@test",
+      "id": "f451204b-27a2-4821-bce3-7209cb6ae433",
+      "inserted_at": "2023-01-13T02:57:22.642916Z",
       "last_signed_in_at": null,
       "last_signed_in_method": null,
       "role": "admin",
-      "updated_at": "2023-01-13T02:25:23.482448Z"
+      "updated_at": "2023-01-13T02:57:22.642916Z"
     }
   ]
 }
@@ -79,8 +79,25 @@ Content-Type: application/json; charset=utf-8
 ### Create a User [`POST /v0/users`]
 
 
-Please see `Auto-Create Users from OpenID or SAML providers` for more details
-on `password` field usage.
+Allows to create a new User.
+
+This endpoint is useful in two cases:
+
+  1. When "Password Authentication" is enabled (which is discouraged) it allows to pre-provision users with their passwords;
+  2. When "Auto-Create Users" is disabled it allows to pre-provision users with their emails (there is no need to set a password for them),
+  effectively whitelisting who can login using OpenID or SAML provider.
+
+If "Auto-Create Users" is enabled there is no need to pre-create users, they will be created automatically
+when they log in for the first time using OpenID or SAML provider.
+
+#### User Attributes
+
+| Attribute | Type | Required | Description |
+| --------- | ---- | -------- | ----------- |
+| `role` | `admin` or `unprivileged` (default) | No | User role. |
+| `email` | `string` | Yes | Email which will be used to identify the user. |
+| `password` | `string` | No | A password that can be used for login-password authentication. |
+| `password_confirmation` | `string` | -> | Is required when the `password` is set. |
 
 #### Example
 ```bash
@@ -101,18 +118,18 @@ EOF
 
 HTTP/1.1 201
 Content-Type: application/json; charset=utf-8
-Location: /v0/users/029210a7-c85f-4166-ae01-66473ebbe913
+Location: /v0/users/d71bbd05-545f-4bdd-98b0-dcb34fd8c7c3
 
 {
   "data": {
     "disabled_at": null,
     "email": "new-user@test",
-    "id": "029210a7-c85f-4166-ae01-66473ebbe913",
-    "inserted_at": "2023-01-13T02:25:23.366585Z",
+    "id": "d71bbd05-545f-4bdd-98b0-dcb34fd8c7c3",
+    "inserted_at": "2023-01-13T02:57:22.538713Z",
     "last_signed_in_at": null,
     "last_signed_in_method": null,
     "role": "unprivileged",
-    "updated_at": "2023-01-13T02:25:23.366585Z"
+    "updated_at": "2023-01-13T02:57:22.538713Z"
   }
 }
 ```
@@ -133,18 +150,18 @@ EOF
 
 HTTP/1.1 201
 Content-Type: application/json; charset=utf-8
-Location: /v0/users/b5e26803-cbd1-4839-a217-1504990de13c
+Location: /v0/users/f589c9e1-0243-402e-9df9-8d5608ed2628
 
 {
   "data": {
     "disabled_at": null,
     "email": "new-user@test",
-    "id": "b5e26803-cbd1-4839-a217-1504990de13c",
-    "inserted_at": "2023-01-13T02:25:23.305637Z",
+    "id": "f589c9e1-0243-402e-9df9-8d5608ed2628",
+    "inserted_at": "2023-01-13T02:57:22.424554Z",
     "last_signed_in_at": null,
     "last_signed_in_method": null,
     "role": "unprivileged",
-    "updated_at": "2023-01-13T02:25:23.305637Z"
+    "updated_at": "2023-01-13T02:57:22.424554Z"
   }
 }
 ```
@@ -165,18 +182,18 @@ EOF
 
 HTTP/1.1 201
 Content-Type: application/json; charset=utf-8
-Location: /v0/users/11d401ac-0312-4b51-8618-76752fd6d9db
+Location: /v0/users/be59dfb5-6283-4a11-a8dc-b5e4e87ac620
 
 {
   "data": {
     "disabled_at": null,
     "email": "new-user@test",
-    "id": "11d401ac-0312-4b51-8618-76752fd6d9db",
-    "inserted_at": "2023-01-13T02:25:23.557377Z",
+    "id": "be59dfb5-6283-4a11-a8dc-b5e4e87ac620",
+    "inserted_at": "2023-01-13T02:57:22.472756Z",
     "last_signed_in_at": null,
     "last_signed_in_method": null,
     "role": "admin",
-    "updated_at": "2023-01-13T02:25:23.557377Z"
+    "updated_at": "2023-01-13T02:57:22.472756Z"
   }
 }
 ```
@@ -214,7 +231,7 @@ Content-Type: application/json; charset=utf-8
 #### An email can be used instead of ID.
 **URI Parameters:**
 
-  - `id`: `test-326@test`
+  - `id`: `test-1763@test`
 ```bash
 $ curl -i \
   -X GET "https://{firezone_host}/v0/users/{id}" \
@@ -227,26 +244,25 @@ Content-Type: application/json; charset=utf-8
 {
   "data": {
     "disabled_at": null,
-    "email": "test-326@test",
-    "id": "56c887e8-ddd6-4c61-8bfc-5b3044582abd",
-    "inserted_at": "2023-01-13T02:25:23.390889Z",
+    "email": "test-1763@test",
+    "id": "d95533a6-f87e-4546-9f77-4fbe44785687",
+    "inserted_at": "2023-01-13T02:57:22.400755Z",
     "last_signed_in_at": null,
     "last_signed_in_method": null,
     "role": "admin",
-    "updated_at": "2023-01-13T02:25:23.390889Z"
+    "updated_at": "2023-01-13T02:57:22.400755Z"
   }
 }
 ```
 ### Update a User [`PATCH /v0/users/{id}`]
 
 
-Please see `Auto-Create Users from OpenID or SAML providers` for more details
-on `password` field usage.
+For details please see [Create a User](#create-a-user-post-v0users) section.
 
 #### Update by email
 **URI Parameters:**
 
-  - `id`: `test-774@test`
+  - `id`: `test-1189@test`
 ```bash
 $ curl -i \
   -X PUT "https://{firezone_host}/v0/users/{id}" \
@@ -264,20 +280,20 @@ Content-Type: application/json; charset=utf-8
 {
   "data": {
     "disabled_at": null,
-    "email": "test-774@test",
-    "id": "d3e9efe4-f33b-4226-b3b0-c06bc1c9e555",
-    "inserted_at": "2023-01-13T02:25:23.514957Z",
+    "email": "test-1189@test",
+    "id": "1cd29756-b0db-4325-932b-9af52bff4463",
+    "inserted_at": "2023-01-13T02:57:22.659218Z",
     "last_signed_in_at": null,
     "last_signed_in_method": null,
     "role": "unprivileged",
-    "updated_at": "2023-01-13T02:25:23.514957Z"
+    "updated_at": "2023-01-13T02:57:22.659218Z"
   }
 }
 ```
 #### Update by ID
 **URI Parameters:**
 
-  - `id`: `278c14cb-cb5e-4227-9dc4-e93e4a7391de`
+  - `id`: `97611e18-de3b-4aa5-9555-de9aed58aa3b`
 ```bash
 $ curl -i \
   -X PUT "https://{firezone_host}/v0/users/{id}" \
@@ -295,13 +311,13 @@ Content-Type: application/json; charset=utf-8
 {
   "data": {
     "disabled_at": null,
-    "email": "test-745@test",
-    "id": "278c14cb-cb5e-4227-9dc4-e93e4a7391de",
-    "inserted_at": "2023-01-13T02:25:23.579838Z",
+    "email": "test-997@test",
+    "id": "97611e18-de3b-4aa5-9555-de9aed58aa3b",
+    "inserted_at": "2023-01-13T02:57:22.617150Z",
     "last_signed_in_at": null,
     "last_signed_in_method": null,
     "role": "unprivileged",
-    "updated_at": "2023-01-13T02:25:23.579838Z"
+    "updated_at": "2023-01-13T02:57:22.617150Z"
   }
 }
 ```
@@ -312,7 +328,7 @@ Content-Type: application/json; charset=utf-8
 #### Example
 **URI Parameters:**
 
-  - `id`: `4b8bc40b-f17d-4e94-8032-0d2407c4d62b`
+  - `id`: `036e2422-e093-47be-b7f2-b8d1eceb43e6`
 ```bash
 $ curl -i \
   -X DELETE "https://{firezone_host}/v0/users/{id}" \
@@ -324,7 +340,7 @@ HTTP/1.1 204
 #### An email can be used instead of ID.
 **URI Parameters:**
 
-  - `id`: `test-1410@test`
+  - `id`: `test-2210@test`
 ```bash
 $ curl -i \
   -X DELETE "https://{firezone_host}/v0/users/{id}" \

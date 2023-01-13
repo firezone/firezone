@@ -25,34 +25,27 @@ defmodule FzHttpWeb.JSON.UserController do
   end
 
   @doc """
-  Please see `Auto-Create Users from OpenID or SAML providers` for more details
-  on `password` field usage.
+  Allows to create a new User.
+
+  This endpoint is useful in two cases:
+
+    1. When "Password Authentication" is enabled (which is discouraged) it allows to pre-provision users with their passwords;
+    2. When "Auto-Create Users" is disabled it allows to pre-provision users with their emails (there is no need to set a password for them),
+    effectively whitelisting who can login using OpenID or SAML provider.
+
+  If "Auto-Create Users" is enabled there is no need to pre-create users, they will be created automatically
+  when they log in for the first time using OpenID or SAML provider.
+
+  #### User Attributes
+
+  | Attribute | Type | Required | Description |
+  | --------- | ---- | -------- | ----------- |
+  | `role` | `admin` or `unprivileged` (default) | No | User role. |
+  | `email` | `string` | Yes | Email which will be used to identify the user. |
+  | `password` | `string` | No | A password that can be used for login-password authentication. |
+  | `password_confirmation` | `string` | -> | Is required when the `password` is set. |
   """
-  @doc api_doc: [
-         action: "Create a User",
-         action_params: [
-           group("user", [
-             attr("role", enum_type("string", ["admin", "unprivileged"]),
-               required: false,
-               description: "User role."
-             ),
-             attr("email", type("string", "foo@example.com"),
-               required: true,
-               description: "Email which will be used to identify the user."
-             ),
-             attr("password", type("string", "FOO123bar123"),
-               required: false,
-               description:
-                 "A password that can be used for login-password authentication. " <>
-                   "It can be empty if you want to pre-create a user that will use OpenID to authenticate."
-             ),
-             attr("password_confirmation", type("string", "FOO123bar123"),
-               required: false,
-               description: "Password confirmation is required when `password` is set."
-             )
-           ])
-         ]
-       ]
+  @doc api_doc: [action: "Create a User"]
   def create(conn, %{"user" => %{"role" => "admin"} = user_params}) do
     with {:ok, %User{} = user} <- Users.create_admin_user(user_params) do
       conn
@@ -78,34 +71,9 @@ defmodule FzHttpWeb.JSON.UserController do
   end
 
   @doc """
-  Please see `Auto-Create Users from OpenID or SAML providers` for more details
-  on `password` field usage.
+  For details please see [Create a User](#create-a-user-post-v0users) section.
   """
-  @doc api_doc: [
-         action: "Update a User",
-         action_params: [
-           group("user", [
-             attr("role", enum_type("string", ["admin", "unprivileged"]),
-               required: false,
-               description: "User role."
-             ),
-             attr("email", type("string", "foo@example.com"),
-               required: true,
-               description: "Email which will be used to identify the user."
-             ),
-             attr("password", type("string", "FOO123bar123"),
-               required: false,
-               description:
-                 "A password that can be used for login-password authentication. " <>
-                   "It can be empty if you want to pre-create a user that will use OpenID to authenticate."
-             ),
-             attr("password_confirmation", type("string", "FOO123bar123"),
-               required: false,
-               description: "Password confirmation is required when `password` is set."
-             )
-           ])
-         ]
-       ]
+  @doc api_doc: [action: "Update a User"]
   def update(conn, %{"id" => id_or_email, "user" => user_params}) do
     user = get_user_by_id_or_email(id_or_email)
 
