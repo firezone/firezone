@@ -2,20 +2,24 @@ defmodule FzHttpWeb.GatewaySocket do
   @moduledoc """
   Socket over which gateway authenticates and communicates with the channel
   """
+  alias FzHttp.Gateways
 
   use Phoenix.Socket
 
-  channel "gateway:*", FzHttpWeb.GatewayChannel
+  channel("gateway", FzHttpWeb.GatewayChannel)
 
   @impl true
-  def connect(%{"token" => token}, socket, _connect_info) do
-    with {:error, reason} <-
-           Guardian.Phoenix.Socket.authenticate(
-             socket,
-             FzHttpWeb.Auth.Gateway.Authentication,
-             token
-           ) do
-      {:error, {:unauthorized, reason}}
+  def connect(%{"secret" => secret}, socket, _connect_info) do
+    if authorized?(secret) do
+      case Gateways.find_or_create_default_gateway() do
+        {:ok, gateway} ->
+          {:ok, assign(socket, :gateway, gateway)}
+
+        {:error, err} ->
+          {:error, {:gateway, err}}
+      end
+    else
+      {:error, {:unauthorized, "invalid token"}}
     end
   end
 
@@ -30,5 +34,19 @@ defmodule FzHttpWeb.GatewaySocket do
   end
 
   @impl true
-  def id(socket), do: "gateway_socket:#{Guardian.Phoenix.Socket.current_resource(socket).id}"
+  def id(socket), do: "gateway_socket:#{socket.assigns.gateway.id}"
+
+  defp authorized?(secret) do
+    case Base.decode64(secret) do
+      {:ok, secret} -> check_secret(secret)
+      :error -> false
+    end
+  end
+
+  defp check_secret(secret) do
+    :crypto.hash_equals(
+      secret,
+      Base.decode64!(Application.fetch_env!(:fz_http, :gateway_registration_token))
+    )
+  end
 end
