@@ -41,7 +41,7 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
         |> fill_in(Query.fillable_field("Email"), with: user.email)
         |> fill_in(Query.fillable_field("Password"), with: password)
         |> click(Query.button("Sign In"))
-        |> assert_has(Query.css(".is-user-name span"))
+        |> assert_el(Query.css(".is-user-name span"))
 
       assert current_path(session) == "/users"
 
@@ -66,7 +66,7 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
         |> fill_in(Query.fillable_field("Email"), with: user.email)
         |> fill_in(Query.fillable_field("Password"), with: password)
         |> click(Query.button("Sign In"))
-        |> assert_has(Query.text("Your Devices"))
+        |> assert_el(Query.text("Your Devices"))
 
       assert current_path(session) == "/user_devices"
 
@@ -92,7 +92,7 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
         |> fill_in(Query.fillable_field("username"), with: oidc_login)
         |> fill_in(Query.fillable_field("password"), with: oidc_password)
         |> click(Query.button("Sign In"))
-        |> assert_has(Query.text("Your Devices"))
+        |> assert_el(Query.text("Your Devices"))
 
       assert current_path(session) == "/user_devices"
 
@@ -162,9 +162,9 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
       |> visit(~p"/")
       |> Auth.authenticate(user)
       |> visit(~p"/user_devices")
-      |> assert_has(Query.text("Your Devices"))
+      |> assert_el(Query.text("Your Devices"))
       |> click(Query.link("My Account"))
-      |> assert_has(Query.text("Account Settings"))
+      |> assert_el(Query.text("Account Settings"))
       |> click(Query.link("Add MFA Method"))
       |> mfa_flow()
     end
@@ -180,7 +180,7 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
       |> visit(~p"/users")
       |> hover(Query.css(".is-user-name span"))
       |> click(Query.link("Account Settings"))
-      |> assert_has(Query.text("Multi Factor Authentication"))
+      |> assert_el(Query.text("Multi Factor Authentication"))
       |> click(Query.link("Add MFA Method"))
       |> mfa_flow()
     end
@@ -220,13 +220,13 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
         |> fill_in(Query.fillable_field("Email"), with: user.email)
         |> fill_in(Query.fillable_field("Password"), with: password)
         |> click(Query.button("Sign In"))
-        |> assert_has(Query.text("Multi-factor Authentication"))
+        |> assert_el(Query.text("Multi-factor Authentication"))
         |> fill_in(Query.fillable_field("code"), with: "111111")
         |> click(Query.button("Verify"))
-        |> assert_has(Query.text("is not valid"))
+        |> assert_el(Query.text("is not valid"))
         |> fill_in(Query.fillable_field("code"), with: verification_code)
         |> click(Query.button("Verify"))
-        |> assert_has(Query.text("Your Devices"))
+        |> assert_el(Query.text("Your Devices"))
 
       assert current_path(session) == "/user_devices"
 
@@ -268,13 +268,13 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
         |> fill_in(Query.fillable_field("Email"), with: user.email)
         |> fill_in(Query.fillable_field("Password"), with: password)
         |> click(Query.button("Sign In"))
-        |> assert_has(Query.text("Multi-factor Authentication"))
+        |> assert_el(Query.text("Multi-factor Authentication"))
         |> fill_in(Query.fillable_field("code"), with: "111111")
         |> click(Query.button("Verify"))
-        |> assert_has(Query.text("is not valid"))
+        |> assert_el(Query.text("is not valid"))
         |> fill_in(Query.fillable_field("code"), with: verification_code)
         |> click(Query.button("Verify"))
-        |> assert_has(Query.css(".is-user-name span"))
+        |> assert_el(Query.css(".is-user-name span"))
 
       assert current_path(session) == "/users"
 
@@ -316,9 +316,9 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
         |> fill_in(Query.fillable_field("Email"), with: user.email)
         |> fill_in(Query.fillable_field("Password"), with: password)
         |> click(Query.button("Sign In"))
-        |> assert_has(Query.text("Multi-factor Authentication"))
+        |> assert_el(Query.text("Multi-factor Authentication"))
         |> click(Query.css("[data-to=\"/sign_out\"]"))
-        |> assert_has(Query.text("Sign In"))
+        |> assert_el(Query.text("Sign In"))
         |> Auth.assert_unauthenticated()
 
       assert current_path(session) == "/"
@@ -358,9 +358,9 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
       |> fill_in(Query.fillable_field("Email"), with: user.email)
       |> fill_in(Query.fillable_field("Password"), with: password)
       |> click(Query.button("Sign In"))
-      |> assert_has(Query.text("Multi-factor Authentication"))
+      |> assert_el(Query.text("Multi-factor Authentication"))
       |> click(Query.css("[href=\"/mfa/types\"]"))
-      |> assert_has(Query.css("[href=\"/mfa/auth/#{method.id}\"]"))
+      |> assert_el(Query.css("[href=\"/mfa/auth/#{method.id}\"]"))
     end
   end
 
@@ -374,7 +374,7 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
         |> Auth.authenticate(user)
         |> visit(~p"/user_devices")
         |> click(Query.link("Sign out"))
-        |> assert_has(Query.text("Sign In"))
+        |> assert_el(Query.text("Sign In"))
         |> Auth.assert_unauthenticated()
 
       assert current_path(session) == "/"
@@ -390,7 +390,7 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
         |> visit(~p"/users")
         |> hover(Query.css(".is-user-name span"))
         |> click(Query.link("Log Out"))
-        |> assert_has(Query.text("Sign In"))
+        |> assert_el(Query.text("Sign In"))
         |> Auth.assert_unauthenticated()
 
       assert current_path(session) == "/"
@@ -408,7 +408,7 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
     session =
       session
       |> click(Query.button("Next"))
-      |> assert_has(Query.text("Register Authenticator"))
+      |> assert_el(Query.text("Register Authenticator"))
       |> fill_in(Query.fillable_field("name"), with: "My MFA Name")
 
     secret =
@@ -418,15 +418,15 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
 
     session
     |> click(Query.button("Next"))
-    |> assert_has(Query.text("Verify Code"))
+    |> assert_el(Query.text("Verify Code"))
     |> fill_in(Query.fillable_field("code"), with: "123456")
     |> click(Query.button("Next"))
-    |> assert_has(Query.css("input.is-danger"))
+    |> assert_el(Query.css("input.is-danger"))
     |> fill_in(Query.fillable_field("code"), with: NimbleTOTP.verification_code(secret))
     |> click(Query.button("Next"))
-    |> assert_has(Query.text("Confirm to save this Authentication method."))
+    |> assert_el(Query.text("Confirm to save this Authentication method."))
     |> click(Query.button("Save"))
-    |> assert_has(Query.text("MFA method added!"))
+    |> assert_el(Query.text("MFA method added!"))
 
     assert mfa_method = Repo.one(FzHttp.MFA.Method)
     assert mfa_method.name == "My MFA Name"

@@ -13,11 +13,12 @@ defmodule FzHttpWeb.Acceptance.UnprivilegedUserTest do
         |> visit(~p"/")
         |> Auth.authenticate(user)
         |> visit(~p"/user_devices")
-        |> assert_has(Query.text("Your Devices"))
+        |> assert_el(Query.text("Your Devices"))
         |> click(Query.link("Add Device"))
+        |> assert_el(Query.button("Generate Configuration"))
         |> fill_in(Query.fillable_field("device[description]"), with: "Dummy description")
         |> click(Query.button("Generate Configuration"))
-        |> assert_has(Query.text("Device added!"))
+        |> assert_el(Query.text("Device added!"))
     end
 
     feature "allows user to delete a device", %{
@@ -31,16 +32,16 @@ defmodule FzHttpWeb.Acceptance.UnprivilegedUserTest do
         |> visit(~p"/")
         |> Auth.authenticate(user)
         |> visit(~p"/user_devices")
-        |> assert_has(Query.text("Your Devices"))
-        |> assert_has(Query.text(device.public_key))
+        |> assert_el(Query.text("Your Devices"))
+        |> assert_el(Query.text(device.public_key))
         |> click(Query.link(device.name))
-        |> assert_has(Query.text(device.description))
+        |> assert_el(Query.text(device.description))
 
       accept_confirm(session, fn session ->
         click(session, Query.button("Delete Device #{device.name}"))
       end)
 
-      assert_has(session, Query.text("No devices to show."))
+      assert_el(session, Query.text("No devices to show."))
 
       assert Repo.one(FzHttp.Devices.Device) == nil
     end
@@ -57,16 +58,19 @@ defmodule FzHttpWeb.Acceptance.UnprivilegedUserTest do
         |> visit(~p"/")
         |> Auth.authenticate(user)
         |> visit(~p"/user_devices")
-        |> assert_has(Query.text("Your Devices"))
+        |> assert_el(Query.text("Your Devices"))
         |> click(Query.link("My Account"))
-        |> assert_has(Query.text("Account Settings"))
+        |> assert_el(Query.text("Account Settings"))
         |> click(Query.link("Change Password"))
-        |> assert_has(Query.text("Enter new password below."))
+        # TODO: abstract form helper out: take a submit button and fields,
+        # then always assert form is visible, that we know all elements of it,
+        # and than submit button is visible before we fill it out
+        |> assert_el(Query.text("Enter new password below."))
         |> fill_in(Query.fillable_field("user[password]"), with: "foo")
         |> fill_in(Query.fillable_field("user[password_confirmation]"), with: "")
         |> click(Query.button("Save"))
-        |> assert_has(Query.text("should be at least 12 character(s)"))
-        |> assert_has(Query.text("does not match confirmation"))
+        |> assert_el(Query.text("should be at least 12 character(s)"))
+        |> assert_el(Query.text("does not match confirmation"))
 
       # Make sure form only contains two inputs
       find(session, Query.css(".input", count: 2))
@@ -75,7 +79,7 @@ defmodule FzHttpWeb.Acceptance.UnprivilegedUserTest do
       |> fill_in(Query.fillable_field("user[password]"), with: "new_password")
       |> fill_in(Query.fillable_field("user[password_confirmation]"), with: "new_password")
       |> click(Query.button("Save"))
-      |> assert_has(Query.text("Password updated successfully"))
+      |> assert_el(Query.text("Password updated successfully"))
 
       assert Repo.one(FzHttp.Users.User).password_hash != user.password_hash
     end

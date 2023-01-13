@@ -1,5 +1,6 @@
 defmodule FzHttpWeb.AcceptanceCase do
   use ExUnit.CaseTemplate
+  import Wallaby.Browser
 
   using do
     quote do
@@ -81,6 +82,56 @@ defmodule FzHttpWeb.AcceptanceCase do
     end)
   end
 
+  def assert_el(session, query, started_at \\ nil)
+
+  def assert_el(session, %Wallaby.Query{} = query, started_at) do
+    now = :erlang.monotonic_time(:milli_seconds)
+    started_at = started_at || now
+
+    try do
+      case execute_query(session, query) do
+        {:ok, _query_result} ->
+          session
+
+        error ->
+          case error do
+            {:error, {:not_found, results}} ->
+              query = %Query{query | result: results}
+
+              raise ExpectationNotMetError,
+                    Query.ErrorMessage.message(query, :not_found)
+
+            {:error, e} ->
+              raise Wallaby.QueryError,
+                    Query.ErrorMessage.message(query, e)
+
+            _ ->
+              raise Wallaby.ExpectationNotMetError,
+                    "Wallaby has encountered an internal error: #{inspect(error)} with session: #{inspect(parent)}"
+          end
+      end
+
+      assert_has(session, query)
+    rescue
+      e in [
+        Wallaby.ExpectationNotMetError,
+        Wallaby.StaleReferenceError,
+        Wallaby.QueryError
+      ] ->
+        time_spent = now - started_at
+
+        if time_spent > :timer.seconds(7) do
+          reraise(e, __STACKTRACE__)
+        else
+          floor(time_spent / 10)
+          |> max(100)
+          |> :timer.sleep()
+
+          assert_el(session, query, started_at)
+        end
+    end
+  end
+
   def shutdown_live_socket(session) do
     Wallaby.end_session(session)
     Process.sleep(10)
@@ -132,6 +183,7 @@ defmodule FzHttpWeb.AcceptanceCase do
           quote do
             try do
               unquote(block)
+              if var!(debug?) == true, do: Process.sleep(30_000)
               shutdown_live_socket(var!(session))
               :ok
             rescue
