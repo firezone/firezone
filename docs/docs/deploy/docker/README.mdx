@@ -77,6 +77,10 @@ installation process, follow the steps below to install manually.
   ```
 1. At a minimum, change the `ADMIN_EMAIL` and `EXTERNAL_URL` variables.
    Optionally modify other secrets as needed.
+1. Migrate the database:
+  ```shell
+  docker compose run --rm firezone bin/migrate
+  ```
 1. Create the first admin:
   ```shell
   docker compose run --rm firezone bin/create-or-reset-admin
