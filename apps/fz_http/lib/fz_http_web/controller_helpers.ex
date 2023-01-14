@@ -6,6 +6,10 @@ defmodule FzHttpWeb.ControllerHelpers do
 
   alias FzHttp.Users.User
 
+  def root_path_for_user(nil) do
+    ~p"/"
+  end
+
   def root_path_for_user(%User{role: :admin}) do
     ~p"/users"
   end
