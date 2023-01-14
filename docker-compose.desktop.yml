@@ -68,8 +68,35 @@ services:
       - net.ipv6.conf.all.forwarding=1
     depends_on:
       - postgres
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f localhost:13000"]
+      start_period: 20s
+      interval: 30s
+      retries: 5
+      timeout: 5s
     deploy:
       <<: *default-deploy
+
+  gateway:
+    depends_on:
+      firezone:
+        condition: 'service_healthy'
+    image: firezone-gateway:latest
+    privileged: true
+    env_file:
+      - ${FZ_INSTALL_DIR:-.}/.env
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=0
+      - net.ipv4.conf.all.src_valid_mark=1
+    volumes:
+      # IMPORTANT: Persists WireGuard private key and other data. If
+      # /var/firezone/private_key exists when Firezone starts, it is
+      # used as the WireGuard private. Otherwise, one is generated.
+      - ${FZ_INSTALL_DIR:-.}/gateway-conf:/var/gateway-conf:rw
+    command: >
+      /bin/sh -c "
+      gateway --secret $GATEWAY_REGISTRATION_TOKEN --conf-dir /var/gateway-conf ws://firezone:13000
+      "
 
   postgres:
     image: postgres:15
