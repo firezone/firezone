@@ -94,22 +94,19 @@ defmodule FzHttpWeb.AcceptanceCase do
         {:ok, _query_result} ->
           session
 
-        error ->
-          case error do
-            {:error, {:not_found, results}} ->
-              query = %Query{query | result: results}
+        {:error, {:not_found, results}} ->
+          query = %Query{query | result: results}
 
-              raise Wallaby.ExpectationNotMetError,
-                    Query.ErrorMessage.message(query, :not_found)
+          raise Wallaby.ExpectationNotMetError,
+                Query.ErrorMessage.message(query, :not_found)
 
-            {:error, e} ->
-              raise Wallaby.QueryError,
-                    Query.ErrorMessage.message(query, e)
+        {:error, e} ->
+          raise Wallaby.QueryError,
+                Query.ErrorMessage.message(query, e)
 
-            _ ->
-              raise Wallaby.ExpectationNotMetError,
-                    "Wallaby has encountered an internal error: #{inspect(error)} with session: #{inspect(session)}"
-          end
+        _ ->
+          raise Wallaby.ExpectationNotMetError,
+                "Wallaby has encountered an internal error: #{inspect(error)} with session: #{inspect(session)}"
       end
 
       assert_has(session, query)
@@ -120,13 +117,7 @@ defmodule FzHttpWeb.AcceptanceCase do
         Wallaby.QueryError
       ] ->
         time_spent = now - started_at
-
-        max_wait_seconds =
-          if env = System.get_env("E2E_MAX_WAIT_SECONDS") do
-            String.to_integer(env)
-          else
-            5
-          end
+        max_wait_seconds = fetch_max_wait_seconds!()
 
         if time_spent > :timer.seconds(max_wait_seconds) do
           reraise(e, __STACKTRACE__)
@@ -137,6 +128,14 @@ defmodule FzHttpWeb.AcceptanceCase do
 
           assert_el(session, query, started_at)
         end
+    end
+  end
+
+  defp fetch_max_wait_seconds! do
+    if env = System.get_env("E2E_MAX_WAIT_SECONDS") do
+      String.to_integer(env)
+    else
+      5
     end
   end
 
