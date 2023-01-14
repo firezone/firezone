@@ -101,6 +101,8 @@ jobs:
           mix ecto.create
           mix ecto.migrate
       - name: Run Tests and Upload Coverage Report
+        env:
+          E2E_MAX_WAIT_SECONDS: 20
         run: |
           # XXX: This can fail when coveralls is down
           mix coveralls.github --umbrella

@@ -34,8 +34,8 @@ defmodule FzHttpWeb.Acceptance.UnprivilegedUserTest do
         Query.css("#create-device_use_default_persistent_keepalive_false"),
         :selected
       )
-      |> fill_in(Query.fillable_field("device[allowed_ips]"), with: "127.0.0.1")
       |> fill_form(%{
+        "device[allowed_ips]" => "127.0.0.1",
         "device[name]" => "big-head-007",
         "device[description]" => "Dummy description",
         "device[dns]" => "1.1.1.1,2.2.2.2",

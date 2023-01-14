@@ -121,6 +121,13 @@ defmodule FzHttpWeb.AcceptanceCase do
       ] ->
         time_spent = now - started_at
 
+        max_wait_seconds =
+          if env = System.get_env("E2E_MAX_WAIT_SECONDS") do
+            String.to_integer(env)
+          else
+            5
+          end
+
         if time_spent > :timer.seconds(15) do
           reraise(e, __STACKTRACE__)
         else
@@ -141,11 +148,14 @@ defmodule FzHttpWeb.AcceptanceCase do
     # Make sure test covers all form fields
     element_names =
       session
-      |> find(Query.css(".input", count: :any))
+      |> find(Query.css(".input,.textarea", count: :any))
       |> Enum.map(&Wallaby.Element.attr(&1, "name"))
 
     unless Enum.count(fields) == length(element_names) do
-      flunk("Expected 2 elements, got #{length(element_names)}: #{inspect(element_names)}")
+      flunk(
+        "Expected #{Enum.count(fields)} elements, " <>
+          "got #{length(element_names)}: #{inspect(element_names)}"
+      )
     end
 
     Enum.reduce(fields, session, fn {field, value}, session ->
