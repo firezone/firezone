@@ -14,7 +14,6 @@ defmodule FzHttp.Users.User do
     field :sign_in_token_created_at, :utc_datetime_usec
 
     # Virtual fields
-    field :current_password, :string, virtual: true, redact: true
     field :password, :string, virtual: true, redact: true
     field :password_confirmation, :string, virtual: true, redact: true
 

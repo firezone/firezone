@@ -27,8 +27,7 @@ defmodule FzHttpWeb.SettingLive.Unprivileged.AccountTest do
     @valid_params %{
       "user" => %{
         "password" => "newpassword1234",
-        "password_confirmation" => "newpassword1234",
-        "current_password" => "password1234"
+        "password_confirmation" => "newpassword1234"
       }
     }
     @invalid_params %{"user" => %{"password" => "foobar"}}

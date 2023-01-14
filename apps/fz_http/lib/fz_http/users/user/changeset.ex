@@ -62,15 +62,6 @@ defmodule FzHttp.Users.User.Changeset do
     |> put_change(:sign_in_token_created_at, DateTime.utc_now())
   end
 
-  def require_current_password(user, attrs) do
-    user
-    |> cast(attrs, [:current_password])
-    |> validate_required([:current_password])
-    |> validate_hash(:current_password, hash_field: :password_hash)
-  end
-
-  ####
-
   def update_last_signed_in(user, attrs) do
     cast(user, attrs, [:last_signed_in_method, :last_signed_in_at])
   end

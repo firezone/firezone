@@ -303,7 +303,6 @@ defmodule FzHttp.UsersTest do
 
       assert FzCommon.FzCrypto.equal?(attrs.password, user.password_hash)
       assert is_nil(user.password)
-      assert is_nil(user.current_password)
       assert is_nil(user.password_confirmation)
 
       assert is_nil(user.last_signed_in_at)
@@ -397,102 +396,6 @@ defmodule FzHttp.UsersTest do
       }
 
       assert {:ok, updated_user} = Users.admin_update_user(user, attrs)
-      assert updated_user.password_hash == user.password_hash
-    end
-  end
-
-  describe "admin_update_self/2" do
-    test "returns error on empty attrs" do
-      user = UsersFixtures.create_user()
-      assert {:error, changeset} = Users.admin_update_self(user, %{})
-
-      assert errors_on(changeset) == %{current_password: ["can't be blank"]}
-    end
-
-    test "requires current password to change the password" do
-      user = UsersFixtures.create_user()
-
-      attrs =
-        UsersFixtures.user_attrs()
-        |> Map.take([:password, :password_confirmation])
-
-      assert {:error, changeset} = Users.admin_update_self(user, attrs)
-      assert "can't be blank" in errors_on(changeset).current_password
-
-      attrs = Map.put(attrs, :current_password, "foo")
-
-      assert {:error, changeset} = Users.admin_update_self(user, attrs)
-      assert "is invalid" in errors_on(changeset).current_password
-    end
-
-    test "allows changing user password" do
-      password = "password1234"
-      user = UsersFixtures.create_user(%{password: password})
-
-      attrs =
-        UsersFixtures.user_attrs()
-        |> Map.take([:password, :password_confirmation])
-        |> Map.put(:current_password, password)
-
-      assert {:ok, updated_user} = Users.admin_update_self(user, attrs)
-
-      assert updated_user.password_hash != user.password_hash
-    end
-
-    test "allows changing user email" do
-      password = "password1234"
-      user = UsersFixtures.create_user(%{password: password})
-
-      attrs =
-        UsersFixtures.user_attrs()
-        |> Map.take([:email])
-
-      assert {:error, changeset} = Users.admin_update_self(user, attrs)
-      assert "can't be blank" in errors_on(changeset).current_password
-
-      attrs = Map.put(attrs, :current_password, password)
-
-      assert {:ok, updated_user} = Users.admin_update_self(user, attrs)
-
-      assert updated_user.email == attrs.email
-      assert updated_user.email != user.email
-    end
-
-    # XXX: This doesn't feel right as the outcome is a completely new user
-    test "allows changing both email and password" do
-      password = "password1234"
-      user = UsersFixtures.create_user(%{password: password})
-
-      attrs =
-        UsersFixtures.user_attrs()
-        |> Map.put(:current_password, password)
-
-      assert {:ok, updated_user} = Users.admin_update_self(user, attrs)
-
-      assert updated_user.password_hash != user.password_hash
-      assert updated_user.email != user.email
-    end
-
-    test "does not allow to clear the password" do
-      password = "password1234"
-      user = UsersFixtures.create_user(%{password: password})
-
-      attrs = %{
-        "password" => nil,
-        "password_hash" => nil,
-        "current_password" => password
-      }
-
-      assert {:ok, updated_user} = Users.admin_update_self(user, attrs)
-      assert updated_user.password_hash == user.password_hash
-
-      attrs = %{
-        "password" => "",
-        "password_hash" => "",
-        "current_password" => password
-      }
-
-      assert {:ok, updated_user} = Users.admin_update_self(user, attrs)
       assert updated_user.password_hash == user.password_hash
     end
   end
