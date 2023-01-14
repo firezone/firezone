@@ -44,8 +44,8 @@ if config_env() == :prod do
 
   # OPTIONAL
 
-  # telemetry env var name was renamed
-  telemetry_id = System.get_env("TELEMETRY_ID", System.get_env("TID", "unknown"))
+  # telemetry env var name was renamed; use newer one if exists
+  telemetry_id = System.get_env("TID", System.get_env("TELEMETRY_ID", "unknown"))
   telemetry_enabled = FzString.to_boolean(System.get_env("TELEMETRY_ENABLED", "true"))
 
   wireguard_private_key_path =
