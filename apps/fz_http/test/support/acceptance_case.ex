@@ -128,7 +128,7 @@ defmodule FzHttpWeb.AcceptanceCase do
             5
           end
 
-        if time_spent > :timer.seconds(15) do
+        if time_spent > :timer.seconds(max_wait_seconds) do
           reraise(e, __STACKTRACE__)
         else
           floor(time_spent / 10)
