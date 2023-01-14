@@ -15,6 +15,7 @@ defmodule FzHttpWeb.AcceptanceCase do
       # The default endpoint for testing
       @endpoint FzHttpWeb.Endpoint
       @moduletag :acceptance
+      @moduletag timeout: 120_000
 
       setup tags do
         Application.put_env(:wallaby, :base_url, @endpoint.url)
@@ -40,10 +41,18 @@ defmodule FzHttpWeb.AcceptanceCase do
     metadata = Phoenix.Ecto.SQL.Sandbox.metadata_for(FzHttp.Repo, self())
     {:ok, session} = start_session(headless?, metadata)
 
+    user_agent =
+      Wallaby.Metadata.append(
+        "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2228.0 Safari/537.36",
+        metadata
+      )
+
     %{
+      timeout: if(tags[:debug] == true, do: :infinity, else: 120_000),
       session: session,
       debug?: tags[:debug] == true,
-      sql_sandbox_metadata: metadata
+      sql_sandbox_metadata: metadata,
+      user_agent: user_agent
     }
   end
 
@@ -135,7 +144,7 @@ defmodule FzHttpWeb.AcceptanceCase do
     if env = System.get_env("E2E_MAX_WAIT_SECONDS") do
       String.to_integer(env)
     else
-      5
+      2
     end
   end
 
@@ -218,7 +227,7 @@ defmodule FzHttpWeb.AcceptanceCase do
           quote do
             try do
               unquote(block)
-              if var!(debug?) == true, do: Process.sleep(30_000)
+              if var!(debug?) == true, do: Process.sleep(360_000)
               shutdown_live_socket(var!(session))
               :ok
             rescue

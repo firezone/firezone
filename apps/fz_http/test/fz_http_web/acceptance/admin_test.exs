@@ -203,8 +203,87 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
   # end
 
   describe "api tokens" do
-    # create and use token using curl
-    # see created token secret
-    # delete token
+    feature "create, use using curl and delete API tokens", %{
+      session: session,
+      user: user,
+      user_agent: user_agent
+    } do
+      session =
+        session
+        |> visit(~p"/settings/account")
+        |> assert_el(Query.text("API Tokens"))
+        |> assert_el(Query.text("No API tokens."))
+        |> click(Query.css("[href=\"/settings/account/api_token\"]"))
+        |> assert_el(Query.text("Add API Token", minimum: 1))
+        |> fill_form(%{
+          "api_token[expires_in]" => 1
+        })
+        |> click(Query.button("Save"))
+        |> assert_el(Query.text("API token secret:"))
+
+      api_token_secret = text(session, Query.css("#api-token-secret"))
+      curl_example = text(session, Query.css("#api-usage-example"))
+      curl_example = String.replace(curl_example, ~r/^.*curl/is, "curl")
+
+      assert String.contains?(curl_example, api_token_secret)
+      assert api_token = Repo.one(FzHttp.ApiTokens.ApiToken)
+      assert api_token.user_id == user.id
+
+      args =
+        curl_example
+        |> String.trim_leading("curl ")
+        |> String.replace("\\\n", "")
+        |> String.replace(~r/[ ]+/, " ")
+        |> String.replace("'", "")
+        |> String.split(" ")
+        |> curl_args([])
+
+      args = ["-s", "-H", "User-Agent:#{user_agent}"] ++ args
+      {resp, _} = System.cmd("curl", args, stderr_to_stdout: true)
+
+      assert %{"data" => [%{"id" => user_id}]} = Jason.decode!(resp)
+      assert user_id == user.id
+
+      session =
+        session
+        |> click(Query.css("button[aria-label=\"close\"]"))
+        |> assert_el(Query.text("API Tokens"))
+        |> assert_el(Query.link("Delete"))
+        |> click(Query.link(api_token.id))
+        |> assert_el(Query.text("API token secret:"))
+        |> click(Query.css("button[aria-label=\"close\"]"))
+        |> assert_el(Query.link("Delete"))
+
+      accept_confirm(session, fn session ->
+        click(session, Query.link("Delete"))
+      end)
+
+      assert_el(session, Query.text("No API tokens."))
+
+      assert is_nil(Repo.one(FzHttp.ApiTokens.ApiToken))
+    end
+  end
+
+  defp curl_args([], acc) do
+    acc
+  end
+
+  defp curl_args(["-H", header, "Bearer", token | rest], acc) do
+    acc = acc ++ ["-H", "#{header}Bearer #{token}"]
+    curl_args(rest, acc)
+  end
+
+  defp curl_args(["-H", header, value | rest], acc) do
+    acc = acc ++ ["-H", "#{header}#{value}"]
+    curl_args(rest, acc)
+  end
+
+  defp curl_args(["http" <> _ = url | rest], acc) do
+    acc = acc ++ [url]
+    curl_args(rest, acc)
+  end
+
+  defp curl_args([other | rest], acc) do
+    curl_args(rest, acc ++ [other])
   end
 end
