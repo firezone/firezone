@@ -133,16 +133,22 @@ defmodule FzHttpWeb.AcceptanceCase do
     end
   end
 
-  def fill_form(session, %{} = elements) do
+  def fill_form(session, %{} = fields) do
     # Wait for form to be rendered
-    {form_el, _opts} = Enum.at(elements, 0)
+    {form_el, _opts} = Enum.at(fields, 0)
     session = assert_el(session, Query.fillable_field(form_el))
 
     # Make sure test covers all form fields
-    assert find(session, Query.css(".input", count: Enum.count(elements))),
-           "You need to set values for all form elements"
+    element_names =
+      session
+      |> find(Query.css(".input", count: :any))
+      |> Enum.map(&Wallaby.Element.attr(&1, "name"))
 
-    Enum.reduce(elements, session, fn {field, value}, session ->
+    unless Enum.count(fields) == length(element_names) do
+      flunk("Expected 2 elements, got #{length(element_names)}: #{inspect(element_names)}")
+    end
+
+    Enum.reduce(fields, session, fn {field, value}, session ->
       fill_in(session, Query.fillable_field(field), with: value)
     end)
   end

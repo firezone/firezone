@@ -16,18 +16,85 @@ defmodule FzHttpWeb.Acceptance.UnprivilegedUserTest do
       |> Map.put(:user, user)
     end
 
+    feature "allows user to add and configure a device", %{
+      session: session
+    } do
+      FzHttp.Configurations.put!(:allow_unprivileged_device_configuration, true)
+
+      session
+      |> visit(~p"/user_devices")
+      |> assert_el(Query.text("Your Devices"))
+      |> click(Query.link("Add Device"))
+      |> assert_el(Query.button("Generate Configuration"))
+      |> set_value(Query.css("#create-device_use_default_allowed_ips_false"), :selected)
+      |> set_value(Query.css("#create-device_use_default_dns_false"), :selected)
+      |> set_value(Query.css("#create-device_use_default_endpoint_false"), :selected)
+      |> set_value(Query.css("#create-device_use_default_mtu_false"), :selected)
+      |> set_value(
+        Query.css("#create-device_use_default_persistent_keepalive_false"),
+        :selected
+      )
+      |> fill_in(Query.fillable_field("device[allowed_ips]"), with: "127.0.0.1")
+      |> fill_form(%{
+        "device[name]" => "big-head-007",
+        "device[description]" => "Dummy description",
+        "device[dns]" => "1.1.1.1,2.2.2.2",
+        "device[endpoint]" => "example.com:51820",
+        "device[mtu]" => "1400",
+        "device[persistent_keepalive]" => "10",
+        "device[ipv4]" => "10.10.11.1",
+        "device[ipv6]" => "fd00::1e:3f96"
+      })
+      |> fill_in(Query.fillable_field("device[description]"), with: "Dummy description")
+      |> click(Query.button("Generate Configuration"))
+      |> assert_el(Query.text("Device added!"))
+      |> click(Query.css("button[phx-click=\"close\"]"))
+      |> assert_el(Query.text("big-head-007"))
+
+      assert device = Repo.one(FzHttp.Devices.Device)
+      assert device.name == "big-head-007"
+      assert device.description == "Dummy description"
+      assert device.allowed_ips == "127.0.0.1"
+      assert device.dns == "1.1.1.1,2.2.2.2"
+      assert device.endpoint == "example.com:51820"
+      assert device.mtu == 1400
+      assert device.persistent_keepalive == 10
+      assert device.ipv4 == %Postgrex.INET{address: {10, 10, 11, 1}}
+      assert device.ipv6 == %Postgrex.INET{address: {64768, 0, 0, 0, 0, 0, 30, 16278}}
+    end
+
     feature "allows user to add a device", %{
       session: session
     } do
-      session =
-        session
-        |> visit(~p"/user_devices")
-        |> assert_el(Query.text("Your Devices"))
-        |> click(Query.link("Add Device"))
-        |> assert_el(Query.button("Generate Configuration"))
-        |> fill_in(Query.fillable_field("device[description]"), with: "Dummy description")
-        |> click(Query.button("Generate Configuration"))
-        |> assert_el(Query.text("Device added!"))
+      FzHttp.Configurations.put!(:allow_unprivileged_device_configuration, false)
+
+      session
+      |> visit(~p"/user_devices")
+      |> assert_el(Query.text("Your Devices"))
+      |> click(Query.link("Add Device"))
+      |> assert_el(Query.button("Generate Configuration"))
+      |> fill_form(%{
+        "device[name]" => "big-hand-007",
+        "device[description]" => "Dummy description"
+      })
+      |> fill_in(Query.fillable_field("device[description]"), with: "Dummy description")
+      |> click(Query.button("Generate Configuration"))
+      |> assert_el(Query.text("Device added!"))
+      |> click(Query.css("button[phx-click=\"close\"]"))
+      |> assert_el(Query.text("big-hand-007"))
+
+      assert device = Repo.one(FzHttp.Devices.Device)
+      assert device.name == "big-hand-007"
+      assert device.description == "Dummy description"
+    end
+
+    feature "does not allow adding devices", %{session: session} do
+      FzHttp.Configurations.put!(:allow_unprivileged_device_management, false)
+
+      session
+      |> visit(~p"/user_devices")
+      |> assert_el(Query.text("Your Devices"))
+      |> refute_has(Query.link("Add Device"))
     end
 
     feature "allows user to delete a device", %{
