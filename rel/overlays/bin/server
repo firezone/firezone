@@ -34,10 +34,7 @@ add_routes()
 
 setup_telemetry() {
   [ -f /var/firezone/.tid ] || cat /proc/sys/kernel/random/uuid > /var/firezone/.tid
-  telem_id=$(cat /var/firezone/.tid)
-
-  # Try to use $TID from install script, otherwise fallback to old .tid
-  export TELEMETRY_ID=${TID:-$telem_id}
+  export TELEMETRY_ID=$(cat /var/firezone/.tid)
 }
 
 gen_cert() {
