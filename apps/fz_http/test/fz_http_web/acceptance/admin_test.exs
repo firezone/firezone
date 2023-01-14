@@ -163,44 +163,81 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
     # remove SAML provider
   end
 
-  # describe "profile" do
-  #   feature "allows to change password", %{
-  #     session: session
-  #   } do
-  #     user = UsersFixtures.create_user_with_role(:admin)
+  describe "profile" do
+    @tag :debug
+    feature "edit profile", %{
+      session: session,
+      user: user
+    } do
+      session
+      |> visit(~p"/")
+      |> Auth.authenticate(user)
+      |> visit(~p"/settings/account")
+      |> assert_el(Query.link("Change Email or Password"))
+      |> click(Query.link("Change Email or Password"))
+      |> assert_el(Query.text("Edit Account"))
+      |> fill_form(%{
+        "user[email]" => "foo",
+        "user[password]" => "123",
+        "user[password_confirmation]" => "1234"
+      })
+      |> click(Query.button("Save"))
+      |> assert_el(Query.text("is invalid email address"))
+      |> assert_el(Query.text("should be at least 12 character(s)"))
+      |> assert_el(Query.text("does not match confirmation"))
+      |> fill_form(%{
+        "user[email]" => "foo@xample.com",
+        "user[password]" => "mynewpassword",
+        "user[password_confirmation]" => "mynewpassword"
+      })
+      |> click(Query.button("Save"))
+      |> assert_el(Query.text("Account updated successfully."))
 
-  #     session =
-  #       session
-  #       |> visit(~p"/")
-  #       |> Auth.authenticate(user)
-  #       |> visit(~p"/user_devices")
-  #       |> assert_el(Query.text("Your Devices"))
-  #       |> click(Query.link("My Account"))
-  #       |> assert_el(Query.text("Account Settings"))
-  #       |> click(Query.link("Change Password"))
-  #       |> assert_el(Query.text("Enter new password below."))
-  #       |> fill_in(Query.fillable_field("user[password]"), with: "foo")
-  #       |> fill_in(Query.fillable_field("user[password_confirmation]"), with: "")
-  #       |> click(Query.button("Save"))
-  #       |> assert_el(Query.text("should be at least 12 character(s)"))
-  #       |> assert_el(Query.text("does not match confirmation"))
+      assert updated_user = Repo.one(FzHttp.Users.User)
+      assert updated_user.password_hash != user.password_hash
+      assert updated_user.email == "foo@xample.com"
+    end
 
-  #     # Make sure form only contains two inputs
-  #     find(session, Query.css(".input", count: 2))
+    feature "can see active user sessions", %{
+      session: session,
+      user: user,
+      user_agent: user_agent
+    } do
+      session
+      |> visit(~p"/")
+      |> Auth.authenticate(user)
+      |> visit(~p"/settings/account")
+      |> assert_el(Query.text("Active Sessions"))
+      |> assert_el(Query.text(user_agent))
+    end
 
-  #     session
-  #     |> fill_in(Query.fillable_field("user[password]"), with: "new_password")
-  #     |> fill_in(Query.fillable_field("user[password_confirmation]"), with: "new_password")
-  #     |> click(Query.button("Save"))
-  #     |> assert_el(Query.text("Password updated successfully"))
+    feature "can delete own account if there are other admins", %{session: session, user: user} do
+      session =
+        session
+        |> visit(~p"/")
+        |> Auth.authenticate(user)
+        |> visit(~p"/settings/account")
+        |> assert_el(Query.text("Danger Zone"))
 
-  #     assert Repo.one(FzHttp.Users.User).password_hash != user.password_hash
-  #   end
-  # change email
-  # see active session
-  # delete own account
+      assert attr(session, Query.button("Delete Your Account"), "disabled") ==
+               "true"
 
-  # end
+      UsersFixtures.create_user_with_role(:admin)
+
+      session =
+        session
+        |> visit(~p"/settings/account")
+        |> assert_el(Query.text("Danger Zone"))
+
+      accept_confirm(session, fn session ->
+        click(session, Query.button("Delete Your Account"))
+      end)
+
+      session
+      |> Auth.assert_unauthenticated()
+      |> assert_path("/")
+    end
+  end
 
   describe "api tokens" do
     feature "create, use using curl and delete API tokens", %{
