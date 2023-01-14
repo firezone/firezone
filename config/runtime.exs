@@ -41,9 +41,13 @@ if config_env() == :prod do
   live_view_signing_salt = System.fetch_env!("LIVE_VIEW_SIGNING_SALT")
   cookie_signing_salt = System.fetch_env!("COOKIE_SIGNING_SALT")
   cookie_encryption_salt = System.fetch_env!("COOKIE_ENCRYPTION_SALT")
-  telemetry_id = System.fetch_env!("TELEMETRY_ID")
 
   # OPTIONAL
+
+  # telemetry env var name was renamed; use newer one if exists
+  telemetry_id = System.get_env("TID", System.get_env("TELEMETRY_ID", "unknown"))
+  telemetry_enabled = FzString.to_boolean(System.get_env("TELEMETRY_ENABLED", "true"))
+
   wireguard_private_key_path =
     System.get_env("WIREGUARD_PRIVATE_KEY_PATH", "/var/firezone/private_key")
 
@@ -81,8 +85,6 @@ if config_env() == :prod do
   wireguard_ipv4_address = System.get_env("WIREGUARD_IPV4_ADDRESS", "10.3.2.1")
   wireguard_ipv6_network = System.get_env("WIREGUARD_IPV6_NETWORK", "fd00::3:2:0/120")
   wireguard_ipv6_address = System.get_env("WIREGUARD_IPV6_ADDRESS", "fd00::3:2:1")
-
-  telemetry_enabled = FzString.to_boolean(System.get_env("TELEMETRY_ENABLED", "true"))
 
   cookie_secure = FzString.to_boolean(System.get_env("SECURE_COOKIES", "true"))
 
