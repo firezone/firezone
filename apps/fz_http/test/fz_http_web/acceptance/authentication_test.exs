@@ -131,7 +131,7 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
   end
 
   describe "MFA" do
-    feature "allows unprivileged user to add MFA method", %{
+    feature "allows unprivileged user to add and remove MFA method", %{
       session: session
     } do
       user = UsersFixtures.create_user_with_role(:unprivileged)
@@ -145,9 +145,10 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
       |> assert_el(Query.text("Account Settings"))
       |> click(Query.link("Add MFA Method"))
       |> mfa_create_flow()
+      |> remove_mfa_flow()
     end
 
-    feature "allows admin user to add MFA method", %{
+    feature "allows admin user to add and remove MFA method", %{
       session: session
     } do
       user = UsersFixtures.create_user_with_role(:admin)
@@ -161,6 +162,7 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
       |> assert_el(Query.text("Multi Factor Authentication"))
       |> click(Query.link("Add MFA Method"))
       |> mfa_create_flow()
+      |> remove_mfa_flow()
     end
 
     feature "MFA code is requested on unprivileged user login", %{session: session} do
@@ -377,20 +379,36 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
       |> String.replace(" ", "")
       |> Base.decode32!()
 
-    session
-    |> click(Query.button("Next"))
-    |> assert_el(Query.text("Verify Code"))
-    |> fill_in(Query.fillable_field("code"), with: "123456")
-    |> click(Query.button("Next"))
-    |> assert_el(Query.css("input.is-danger"))
-    |> fill_in(Query.fillable_field("code"), with: NimbleTOTP.verification_code(secret))
-    |> click(Query.button("Next"))
-    |> assert_el(Query.text("Confirm to save this Authentication method."))
-    |> click(Query.button("Save"))
-    |> assert_el(Query.text("MFA method added!"))
+    session =
+      session
+      |> click(Query.button("Next"))
+      |> assert_el(Query.text("Verify Code"))
+      |> fill_in(Query.fillable_field("code"), with: "123456")
+      |> click(Query.button("Next"))
+      |> assert_el(Query.css("input.is-danger"))
+      |> fill_in(Query.fillable_field("code"), with: NimbleTOTP.verification_code(secret))
+      |> click(Query.button("Next"))
+      |> assert_el(Query.text("Confirm to save this Authentication method."))
+      |> click(Query.button("Save"))
+      |> assert_el(Query.text("MFA method added!"))
 
     assert mfa_method = Repo.one(FzHttp.MFA.Method)
     assert mfa_method.name == "My MFA Name"
     assert mfa_method.payload["secret"] == Base.encode64(secret)
+
+    session
+  end
+
+  defp remove_mfa_flow(session) do
+    session =
+      session
+      |> assert_el(Query.text("Multi Factor Authentication"))
+
+    accept_confirm(session, fn session ->
+      click(session, Query.css("[phx-click=\"delete_authenticator\"]"))
+    end)
+
+    session
+    |> assert_el(Query.text("No MFA methods added."))
   end
 end

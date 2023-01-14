@@ -3,15 +3,24 @@ defmodule FzHttpWeb.Acceptance.UnprivilegedUserTest do
   alias FzHttp.{UsersFixtures, DevicesFixtures}
 
   describe "device management" do
-    feature "allows user to add a device", %{
-      session: session
-    } do
+    setup tags do
       user = UsersFixtures.create_user_with_role(:unprivileged)
 
       session =
-        session
+        tags.session
         |> visit(~p"/")
         |> Auth.authenticate(user)
+
+      tags
+      |> Map.put(:session, session)
+      |> Map.put(:user, user)
+    end
+
+    feature "allows user to add a device", %{
+      session: session
+    } do
+      session =
+        session
         |> visit(~p"/user_devices")
         |> assert_el(Query.text("Your Devices"))
         |> click(Query.link("Add Device"))
@@ -22,15 +31,13 @@ defmodule FzHttpWeb.Acceptance.UnprivilegedUserTest do
     end
 
     feature "allows user to delete a device", %{
-      session: session
+      session: session,
+      user: user
     } do
-      user = UsersFixtures.create_user_with_role(:unprivileged)
       device = DevicesFixtures.create_device_for_user(user)
 
       session =
         session
-        |> visit(~p"/")
-        |> Auth.authenticate(user)
         |> visit(~p"/user_devices")
         |> assert_el(Query.text("Your Devices"))
         |> assert_el(Query.text(device.public_key))
@@ -48,14 +55,24 @@ defmodule FzHttpWeb.Acceptance.UnprivilegedUserTest do
   end
 
   describe "profile" do
-    feature "allows to change password", %{
-      session: session
-    } do
+    setup tags do
       user = UsersFixtures.create_user_with_role(:unprivileged)
 
+      session =
+        tags.session
+        |> visit(~p"/")
+        |> Auth.authenticate(user)
+
+      tags
+      |> Map.put(:session, session)
+      |> Map.put(:user, user)
+    end
+
+    feature "allows to change password", %{
+      session: session,
+      user: user
+    } do
       session
-      |> visit(~p"/")
-      |> Auth.authenticate(user)
       |> visit(~p"/user_devices")
       |> assert_el(Query.text("Your Devices"))
       |> click(Query.link("My Account"))
