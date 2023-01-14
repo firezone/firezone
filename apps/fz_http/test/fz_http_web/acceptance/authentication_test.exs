@@ -232,7 +232,7 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
       session
       |> password_login_flow(user.email, password)
       |> mfa_login_flow(verification_code)
-      |> assert_el(Query.css(".is-user-name span"))
+      |> assert_el(Query.css(".is-user-name"))
       |> assert_path("/users")
       |> Auth.assert_authenticated(user)
     end

@@ -104,7 +104,7 @@ defmodule FzHttpWeb.AcceptanceCase do
           raise Wallaby.QueryError,
                 Query.ErrorMessage.message(query, e)
 
-        _ ->
+        error ->
           raise Wallaby.ExpectationNotMetError,
                 "Wallaby has encountered an internal error: #{inspect(error)} with session: #{inspect(session)}"
       end
