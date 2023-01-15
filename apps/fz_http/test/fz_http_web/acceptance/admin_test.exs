@@ -100,10 +100,36 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
   end
 
   describe "rules" do
-    # create new allow rule
-    # create new allow rule for a specific user
-    # create new TCP allow rule for a given port range
-    # delete allow rules
+    feature "manage allow rules", %{session: session, user: user} do
+      session =
+        session
+        |> visit(~p"/rules")
+        |> assert_has(Query.text("Egress Rules"))
+        |> find(Query.css("#accept-form"), fn parent ->
+          parent
+          |> set_value(Query.select("rule[port_type]"), "tcp")
+          |> set_value(Query.select("rule[user_id]"), user.email)
+          |> fill_form(%{
+            "rule[destination]" => "8.8.4.4",
+            "rule[port_range]" => "1-8000"
+          })
+          |> click(Query.button("Add"))
+        end)
+        |> assert_has(Query.text("8.8.4.4"))
+        |> assert_has(Query.link("Delete"))
+
+      assert rule = Repo.one(FzHttp.Rules.Rule)
+      assert rule.destination == %Postgrex.INET{address: {8, 8, 4, 4}}
+      assert rule.port_range == "1 - 8000"
+      assert rule.port_type == :tcp
+
+      click(session, Query.link("Delete"))
+
+      # XXX: We need to show a confirmation dialog on delete,
+      # and message once record was saved or deleted.
+      Process.sleep(100)
+      assert is_nil(Repo.one(FzHttp.Rules.Rule))
+    end
   end
 
   describe "settings" do
