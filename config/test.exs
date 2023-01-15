@@ -73,4 +73,5 @@ config :wallaby,
 
 config :ex_unit,
   formatters: [JUnitFormatter, ExUnit.CLIFormatter],
-  capture_log: true
+  capture_log: true,
+  exclude: [:acceptance]
