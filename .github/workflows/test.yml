@@ -176,9 +176,10 @@ jobs:
           mix ecto.migrate
       - name: Run Tests and Upload Coverage Report
         env:
+          MIX_TEST_PARTITION: ${{ matrix.MIX_TEST_PARTITION }}
           E2E_MAX_WAIT_SECONDS: 20
         run: |
-          mix test --only acceptance:true --partitions=${{ matrix.MIX_TEST_PARTITIONS }}
+          mix test --only acceptance:true --partitions=${{ env.MIX_TEST_PARTITIONS }}
       - name: Save Screenshots
         if: success() || failure()
         uses: actions/upload-artifact@v3
