@@ -148,30 +148,193 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
   end
 
   describe "security" do
-    # enforce VPN session authentication
-    # enable and disable local auth
-    # allow unprivileged device management
-    # allow unprivileged device configuration
-    # enable and disable auto disable VPN
+    feature "change security settings", %{
+      session: session
+    } do
+      assert configuration = FzHttp.Configurations.get_configuration!()
+      assert configuration.local_auth_enabled == true
+      assert configuration.allow_unprivileged_device_management == true
+      assert configuration.allow_unprivileged_device_configuration == true
+      assert configuration.disable_vpn_on_oidc_error == false
 
-    # add new OIDC provider
-    # edit OIDC provider
-    # remove OIDC provider
+      session
+      |> visit(~p"/settings/security")
+      |> assert_el(Query.text("Security Settings"))
+      |> toggle("local_auth_enabled")
+      |> toggle("allow_unprivileged_device_management")
+      |> toggle("allow_unprivileged_device_configuration")
+      |> toggle("disable_vpn_on_oidc_error")
+      |> assert_el(Query.text("Security Settings"))
 
-    # add new SAML provider
-    # edit SAML provider
-    # remove SAML provider
+      assert configuration = FzHttp.Configurations.get_configuration!()
+      assert configuration.local_auth_enabled == false
+      assert configuration.allow_unprivileged_device_management == false
+      assert configuration.allow_unprivileged_device_configuration == false
+      assert configuration.disable_vpn_on_oidc_error == true
+    end
+
+    feature "change required authentication timeout", %{session: session} do
+      assert configuration = FzHttp.Configurations.get_configuration!()
+      assert configuration.vpn_session_duration == 0
+
+      session
+      |> visit(~p"/settings/security")
+      |> assert_el(Query.text("Security Settings"))
+      |> find(Query.select("configuration[vpn_session_duration]"), fn select ->
+        click(select, Query.option("Every Week"))
+      end)
+      |> click(Query.css("[type=\"submit\""))
+      |> assert_el(Query.text("Security Settings"))
+
+      # XXX: We need to show a flash that settings are saved
+      Process.sleep(200)
+
+      assert configuration = FzHttp.Configurations.get_configuration!()
+      assert configuration.vpn_session_duration == 604_800
+    end
+
+    feature "manage OpenIDConnect providers", %{session: session} do
+      {_bypass, uri} = FzHttp.ConfigurationsFixtures.discovery_document_server()
+
+      # Create
+      session =
+        session
+        |> visit(~p"/settings/security")
+        |> assert_el(Query.text("Security Settings"))
+        |> click(Query.link("Add OpenID Connect Provider"))
+        |> assert_el(Query.text("OIDC Configuration"))
+        |> fill_in(Query.fillable_field("open_id_connect_provider[id]"), with: "oidc-foo-bar")
+        |> fill_in(Query.fillable_field("open_id_connect_provider[label]"), with: "Firebook")
+        |> fill_in(Query.fillable_field("open_id_connect_provider[scope]"),
+          with: "openid email eyes_color"
+        )
+        |> fill_in(Query.fillable_field("open_id_connect_provider[client_id]"), with: "CLIENT_ID")
+        |> fill_in(Query.fillable_field("open_id_connect_provider[client_secret]"),
+          with: "CLIENT_SECRET"
+        )
+        |> fill_in(Query.fillable_field("open_id_connect_provider[discovery_document_uri]"),
+          with: uri
+        )
+        |> fill_in(Query.fillable_field("open_id_connect_provider[redirect_uri]"),
+          with: "http://localhost/redirect"
+        )
+        |> toggle("open_id_connect_provider[auto_create_users]")
+        |> click(Query.css("button[form=\"oidc-form\"]"))
+        |> assert_el(Query.text("Updated successfully."))
+        |> assert_el(Query.text("oidc-foo-bar"))
+        |> assert_el(Query.text("Firebook"))
+
+      assert [open_id_connect_provider] = FzHttp.Configurations.get!(:openid_connect_providers)
+
+      assert open_id_connect_provider ==
+               %FzHttp.Configurations.Configuration.OpenIDConnectProvider{
+                 id: "oidc-foo-bar",
+                 label: "Firebook",
+                 scope: "openid email eyes_color",
+                 response_type: "code",
+                 client_id: "CLIENT_ID",
+                 client_secret: "CLIENT_SECRET",
+                 discovery_document_uri: uri,
+                 redirect_uri: "http://localhost/redirect",
+                 auto_create_users: true
+               }
+
+      # Edit
+      session =
+        session
+        |> click(Query.link("Edit"))
+        |> assert_el(Query.text("OIDC Configuration"))
+        |> fill_in(Query.fillable_field("open_id_connect_provider[label]"), with: "Metabook")
+        |> click(Query.css("button[form=\"oidc-form\"]"))
+        |> assert_el(Query.text("Updated successfully."))
+        |> assert_el(Query.text("Metabook"))
+
+      assert [open_id_connect_provider] = FzHttp.Configurations.get!(:openid_connect_providers)
+      assert open_id_connect_provider.label == "Metabook"
+
+      # Delete
+      accept_confirm(session, fn session ->
+        click(session, Query.button("Delete"))
+      end)
+
+      assert_el(session, Query.text("Updated successfully."))
+
+      assert FzHttp.Configurations.get!(:openid_connect_providers) == []
+    end
+
+    feature "manage SAML providers", %{session: session} do
+      saml_metadata = FzHttp.SAMLIdentityProviderFixtures.metadata()
+
+      # Create
+      session =
+        session
+        |> visit(~p"/settings/security")
+        |> assert_el(Query.text("Security Settings"))
+        |> click(Query.link("Add SAML Identity Provider"))
+        |> assert_el(Query.text("SAML Configuration"))
+        |> toggle("saml_identity_provider[sign_requests]")
+        |> toggle("saml_identity_provider[sign_metadata]")
+        |> toggle("saml_identity_provider[signed_assertion_in_resp]")
+        |> toggle("saml_identity_provider[signed_envelopes_in_resp]")
+        |> toggle("saml_identity_provider[auto_create_users]")
+        |> fill_in(Query.fillable_field("saml_identity_provider[id]"), with: "foo-bar-buz")
+        |> fill_in(Query.fillable_field("saml_identity_provider[label]"), with: "Sneaky ID")
+        |> fill_in(Query.fillable_field("saml_identity_provider[base_url]"),
+          with: "http://localhost:4002/autX/saml#foo"
+        )
+        |> fill_in(Query.fillable_field("saml_identity_provider[metadata]"),
+          with: saml_metadata
+        )
+        |> click(Query.css("button[form=\"saml-form\"]"))
+        |> assert_el(Query.text("Updated successfully."))
+        |> assert_el(Query.text("foo-bar-buz"))
+        |> assert_el(Query.text("Sneaky ID"))
+
+      assert [saml_identity_provider] = FzHttp.Configurations.get!(:saml_identity_providers)
+
+      assert saml_identity_provider ==
+               %FzHttp.Configurations.Configuration.SAMLIdentityProvider{
+                 id: "foo-bar-buz",
+                 label: "Sneaky ID",
+                 base_url: "http://localhost:4002/autX/saml#foo",
+                 metadata: saml_metadata,
+                 sign_requests: false,
+                 sign_metadata: false,
+                 signed_assertion_in_resp: false,
+                 signed_envelopes_in_resp: false,
+                 auto_create_users: true
+               }
+
+      # Edit
+      session =
+        session
+        |> click(Query.link("Edit"))
+        |> assert_el(Query.text("SAML Configuration"))
+        |> fill_in(Query.fillable_field("saml_identity_provider[label]"), with: "Sneaky XID")
+        |> click(Query.css("button[form=\"saml-form\"]"))
+        |> assert_el(Query.text("Updated successfully."))
+        |> assert_el(Query.text("Sneaky XID"))
+
+      assert [saml_identity_provider] = FzHttp.Configurations.get!(:saml_identity_providers)
+      assert saml_identity_provider.label == "Sneaky XID"
+
+      # Delete
+      accept_confirm(session, fn session ->
+        click(session, Query.button("Delete"))
+      end)
+
+      assert_el(session, Query.text("Updated successfully."))
+
+      assert FzHttp.Configurations.get!(:saml_identity_providers) == []
+    end
   end
 
   describe "profile" do
-    @tag :debug
     feature "edit profile", %{
       session: session,
       user: user
     } do
       session
-      |> visit(~p"/")
-      |> Auth.authenticate(user)
       |> visit(~p"/settings/account")
       |> assert_el(Query.link("Change Email or Password"))
       |> click(Query.link("Change Email or Password"))
@@ -200,22 +363,17 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
 
     feature "can see active user sessions", %{
       session: session,
-      user: user,
       user_agent: user_agent
     } do
       session
-      |> visit(~p"/")
-      |> Auth.authenticate(user)
       |> visit(~p"/settings/account")
       |> assert_el(Query.text("Active Sessions"))
       |> assert_el(Query.text(user_agent))
     end
 
-    feature "can delete own account if there are other admins", %{session: session, user: user} do
+    feature "can delete own account if there are other admins", %{session: session} do
       session =
         session
-        |> visit(~p"/")
-        |> Auth.authenticate(user)
         |> visit(~p"/settings/account")
         |> assert_el(Query.text("Danger Zone"))
 

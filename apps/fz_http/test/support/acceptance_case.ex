@@ -156,7 +156,7 @@ defmodule FzHttpWeb.AcceptanceCase do
     # Make sure test covers all form fields
     element_names =
       session
-      |> find(Query.css(".input,.textarea", count: :any))
+      |> find(Query.css(".input,.textarea", visible: true, count: :any))
       |> Enum.map(&Wallaby.Element.attr(&1, "name"))
 
     unless Enum.count(fields) == length(element_names) do
@@ -169,6 +169,19 @@ defmodule FzHttpWeb.AcceptanceCase do
     Enum.reduce(fields, session, fn {field, value}, session ->
       fill_in(session, Query.fillable_field(field), with: value)
     end)
+  end
+
+  def toggle(session, selector) do
+    selector = ~s|document.querySelector("input[name=\\\"#{selector}\\\"]").click()|
+
+    # For some reason Wallaby can't click on checkboxes,
+    # probably because they have absolute positioning
+    session = execute_script(session, selector)
+
+    # If we don't sleep animations won't be finished on form submit
+    Process.sleep(50)
+
+    session
   end
 
   def assert_path(session, path) do
