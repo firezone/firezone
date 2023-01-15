@@ -17,20 +17,183 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
   end
 
   describe "user management" do
-    # create new user without password
-    # create new local authenticated user
-    # see user details (Last Signed In, Number of Devices, Number of Rules, etc, Devices list)
-    # disable user VPN connection
-    # promote unprivileged user to admin
-    # demote admin to unprivileged user
-    # delete user
-    # change user email
-    # change user password
-    # add device to user
+    feature "create new unprivileged users without password", %{session: session, user: user} do
+      attrs = UsersFixtures.user_attrs()
+
+      session
+      |> visit(~p"/users/new")
+      |> assert_el(Query.text("Add User", minimum: 1))
+      |> fill_in(Query.fillable_field("user[email]"), with: "xxx")
+      |> click(Query.button("Save"))
+      |> assert_el(Query.text("is invalid email address"))
+      |> fill_in(Query.fillable_field("user[email]"), with: user.email)
+      |> click(Query.button("Save"))
+      |> assert_el(Query.text("has already been taken"))
+      |> fill_in(Query.fillable_field("user[email]"), with: attrs.email)
+      |> click(Query.button("Save"))
+      |> assert_el(Query.text("User created successfully."))
+      |> assert_el(Query.text(attrs.email, minimum: 1))
+
+      assert Repo.get_by(FzHttp.Users.User, email: attrs.email)
+    end
+
+    feature "create new unprivileged users with password auth", %{session: session, user: user} do
+      attrs = UsersFixtures.user_attrs()
+
+      session
+      |> visit(~p"/users/new")
+      |> assert_el(Query.text("Add User", minimum: 1))
+      |> fill_form(%{
+        "user[email]" => "xxx",
+        "user[password]" => "yyy",
+        "user[password_confirmation]" => "zzz"
+      })
+      |> click(Query.button("Save"))
+      |> assert_el(Query.text("is invalid email address"))
+      |> assert_el(Query.text("should be at least 12 character(s)"))
+      |> assert_el(Query.text("does not match confirmation"))
+      |> fill_form(%{
+        "user[email]" => user.email,
+        "user[password]" => "firezone1234",
+        "user[password_confirmation]" => "firezone1234"
+      })
+      |> click(Query.button("Save"))
+      |> assert_el(Query.text("has already been taken"))
+      # XXX: for some reason form rests when email has already been taken
+      |> fill_form(%{
+        "user[email]" => attrs.email,
+        "user[password]" => attrs.password,
+        "user[password_confirmation]" => attrs.password_confirmation
+      })
+      |> click(Query.button("Save"))
+      |> assert_el(Query.text("User created successfully."))
+      |> assert_el(Query.text("unprivileged", minimum: 1))
+      |> assert_el(Query.text(attrs.email, minimum: 1))
+
+      assert user = Repo.get_by(FzHttp.Users.User, email: attrs.email)
+      assert user.role == :unprivileged
+      assert FzCommon.FzCrypto.equal?(attrs.password, user.password_hash)
+    end
+
+    feature "change user email and password", %{session: session} do
+      user = UsersFixtures.create_user_with_role(:admin)
+
+      session
+      |> visit(~p"/users/#{user.id}")
+      |> assert_el(Query.link("Change Email or Password"))
+      |> click(Query.link("Change Email or Password"))
+      |> assert_el(Query.text("Change user email or enter new password below."))
+      |> fill_form(%{
+        "user[email]" => "foo",
+        "user[password]" => "123",
+        "user[password_confirmation]" => "1234"
+      })
+      |> click(Query.button("Save"))
+      |> assert_el(Query.text("is invalid email address"))
+      |> assert_el(Query.text("should be at least 12 character(s)"))
+      |> assert_el(Query.text("does not match confirmation"))
+      |> fill_form(%{
+        "user[email]" => "foo@xample.com",
+        "user[password]" => "mynewpassword",
+        "user[password_confirmation]" => "mynewpassword"
+      })
+      |> click(Query.button("Save"))
+      |> assert_el(Query.text("User updated successfully."))
+
+      assert updated_user = Repo.get(FzHttp.Users.User, user.id)
+      assert updated_user.password_hash != user.password_hash
+      assert updated_user.email == "foo@xample.com"
+    end
+
+    feature "promote and demote users", %{session: session} do
+      user = UsersFixtures.create_user_with_role(:admin)
+
+      session =
+        session
+        |> visit(~p"/users/#{user.id}")
+        |> assert_el(Query.link("Change Email or Password"))
+
+      accept_confirm(session, fn session ->
+        session
+        |> click(Query.button("demote"))
+        |> assert_el(Query.text("User updated successfully."))
+      end)
+
+      assert updated_user = Repo.get(FzHttp.Users.User, user.id)
+      assert updated_user.role == :unprivileged
+
+      accept_confirm(session, fn session ->
+        session
+        |> click(Query.button("promote"))
+        |> assert_el(Query.text("User updated successfully."))
+      end)
+
+      assert updated_user = Repo.get(FzHttp.Users.User, user.id)
+      assert updated_user.role == :admin
+    end
+
+    feature "disable and enable user VPN connection", %{session: session} do
+      user = UsersFixtures.create_user_with_role(:admin)
+
+      session =
+        session
+        |> visit(~p"/users/#{user.id}")
+        |> assert_el(Query.link("Change Email or Password"))
+
+      accept_confirm(session, fn session ->
+        session
+        |> toggle("toggle_disabled_at")
+      end)
+
+      # XXX: We need to show some kind of message when status changed
+      Process.sleep(100)
+
+      assert updated_user = Repo.get(FzHttp.Users.User, user.id)
+      assert updated_user.disabled_at
+
+      accept_confirm(session, fn session ->
+        session
+        |> toggle("toggle_disabled_at")
+      end)
+
+      Process.sleep(100)
+
+      assert updated_user = Repo.get(FzHttp.Users.User, user.id)
+      refute updated_user.disabled_at
+    end
+
+    feature "delete user", %{session: session, user: user} do
+      unprivileged_user = UsersFixtures.create_user_with_role(:unprivileged)
+
+      session =
+        session
+        |> visit(~p"/users/#{user.id}")
+        |> assert_el(Query.button("Delete User"))
+
+      accept_confirm(session, fn session ->
+        click(session, Query.button("Delete User"))
+      end)
+
+      assert_el(session, Query.text("Use the account section to delete your account."))
+
+      assert Repo.get(FzHttp.Users.User, user.id)
+
+      session
+      |> visit(~p"/users/#{unprivileged_user.id}")
+      |> assert_el(Query.button("Delete User"))
+
+      accept_confirm(session, fn session ->
+        click(session, Query.button("Delete User"))
+      end)
+
+      assert_el(session, Query.text("User deleted successfully."))
+
+      refute Repo.get(FzHttp.Users.User, unprivileged_user.id)
+    end
   end
 
   describe "device management" do
-    feature "can add devices", %{session: session} do
+    feature "can add devices for users", %{session: session} do
       user = UsersFixtures.create_user_with_role(:unprivileged)
 
       session
