@@ -120,14 +120,12 @@ defmodule FzHttp.Devices do
   end
 
   def to_peer_list do
-    vpn_duration = Configurations.vpn_duration()
-
     Repo.all(
       from d in Device,
         preload: :user
     )
     |> Enum.filter(fn device ->
-      !device.user.disabled_at && !Users.vpn_session_expired?(device.user, vpn_duration)
+      !device.user.disabled_at && !Users.vpn_session_expired?(device.user)
     end)
     |> Enum.map(fn device ->
       %{

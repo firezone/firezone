@@ -14,7 +14,6 @@ defmodule FzHttpWeb.JSON.UserController do
   """
   use FzHttpWeb, :controller
   alias FzHttp.Users
-  alias FzHttp.Users.User
 
   action_fallback(FzHttpWeb.JSON.FallbackController)
 
@@ -50,7 +49,7 @@ defmodule FzHttpWeb.JSON.UserController do
   """
   @doc api_doc: [action: "Create a User"]
   def create(conn, %{"user" => %{"role" => "admin"} = user_params}) do
-    with {:ok, %User{} = user} <- Users.create_admin_user(user_params) do
+    with {:ok, %Users.User{} = user} <- Users.create_admin_user(user_params) do
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/v0/users/#{user}")
@@ -59,7 +58,7 @@ defmodule FzHttpWeb.JSON.UserController do
   end
 
   def create(conn, %{"user" => user_params}) do
-    with {:ok, %User{} = user} <- Users.create_unprivileged_user(user_params) do
+    with {:ok, %Users.User{} = user} <- Users.create_unprivileged_user(user_params) do
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/v0/users/#{user}")
@@ -69,8 +68,9 @@ defmodule FzHttpWeb.JSON.UserController do
 
   @doc api_doc: [summary: "Get User by ID or Email"]
   def show(conn, %{"id" => id_or_email}) do
-    user = get_user_by_id_or_email(id_or_email)
-    render(conn, "show.json", user: user)
+    with {:ok, %Users.User{} = user} <- Users.fetch_user_by_id_or_email(id_or_email) do
+      render(conn, "show.json", user: user)
+    end
   end
 
   @doc """
@@ -78,27 +78,19 @@ defmodule FzHttpWeb.JSON.UserController do
   """
   @doc api_doc: [action: "Update a User"]
   def update(conn, %{"id" => id_or_email, "user" => user_params}) do
-    user = get_user_by_id_or_email(id_or_email)
-
-    with {:ok, %User{} = user} <- Users.admin_update_user(user, user_params) do
+    with {:ok, %Users.User{} = user} <- Users.fetch_user_by_id_or_email(id_or_email),
+         {:ok, %Users.User{} = user} <- Users.admin_update_user(user, user_params) do
       render(conn, "show.json", user: user)
     end
   end
 
   @doc api_doc: [summary: "Delete a User"]
   def delete(conn, %{"id" => id_or_email}) do
-    user = get_user_by_id_or_email(id_or_email)
-
-    with {:ok, %User{}} <- Users.delete_user(user) do
-      send_resp(conn, :no_content, "")
-    end
-  end
-
-  defp get_user_by_id_or_email(id_or_email) do
-    if String.contains?(id_or_email, "@") do
-      Users.get_by_email!(id_or_email)
-    else
-      Users.get_user!(id_or_email)
+    with {:ok, %Users.User{} = user} <- Users.fetch_user_by_id_or_email(id_or_email),
+         {:ok, %Users.User{}} <- Users.delete_user(user) do
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(:no_content, "")
     end
   end
 end

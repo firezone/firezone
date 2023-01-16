@@ -19,7 +19,8 @@ defmodule FzHttpWeb.MFA.RegisterStepsComponent do
       <div class="control">
         <div>
           <label class="radio">
-            <input type="radio" name="type" value="totp" checked /> Time-Based One-Time Password
+            <input type="radio" name="type" value="totp" id="mfa-method-totp" checked />
+            Time-Based One-Time Password
           </label>
         </div>
         <!-- Coming Soon

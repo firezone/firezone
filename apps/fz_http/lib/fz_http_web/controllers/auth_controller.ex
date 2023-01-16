@@ -3,17 +3,15 @@ defmodule FzHttpWeb.AuthController do
   Implements the CRUD for a Session
   """
   use FzHttpWeb, :controller
-  require Logger
-
-  @local_auth_providers [:identity, :magic_link]
-
   alias FzHttp.Users
+  alias FzHttp.Configurations
   alias FzHttpWeb.Auth.HTML.Authentication
   alias FzHttpWeb.OAuth.PKCE
   alias FzHttpWeb.OIDC.State
   alias FzHttpWeb.UserFromAuth
+  require Logger
 
-  import FzHttpWeb.OIDC.Helpers
+  @local_auth_providers [:identity, :magic_link]
 
   # Uncomment when Helpers.callback_url/1 is fixed
   # alias Ueberauth.Strategy.Helpers
@@ -40,6 +38,14 @@ defmodule FzHttpWeb.AuthController do
       {:ok, user} ->
         maybe_sign_in(conn, user, auth)
 
+      {:error, reason} when reason in [:not_found, :invalid_credentials] ->
+        conn
+        |> put_flash(
+          :error,
+          "Error signing in: user credentials are invalid or user does not exist"
+        )
+        |> request(%{})
+
       {:error, reason} ->
         conn
         |> put_flash(:error, "Error signing in: #{reason}")
@@ -62,8 +68,9 @@ defmodule FzHttpWeb.AuthController do
     token_params = Map.merge(params, PKCE.token_params(conn))
 
     with :ok <- State.verify_state(conn, state),
-         {:ok, tokens} <- openid_connect().fetch_tokens(provider_id, token_params),
-         {:ok, claims} <- openid_connect().verify(provider_id, tokens["id_token"]) do
+         {:ok, config} <- Configurations.fetch_oidc_provider_config(provider_id),
+         {:ok, tokens} <- OpenIDConnect.fetch_tokens(config, token_params),
+         {:ok, claims} <- OpenIDConnect.verify(config, tokens["id_token"]) do
       case UserFromAuth.find_or_create(provider_id, claims) do
         {:ok, user} ->
           # only first-time connect will include refresh token
@@ -117,25 +124,28 @@ defmodule FzHttpWeb.AuthController do
   end
 
   def magic_link(conn, %{"email" => email}) do
-    case Users.reset_sign_in_token(email) do
-      :ok ->
-        conn
-        |> put_flash(:info, "Please check your inbox for the magic link.")
-        |> redirect(to: ~p"/")
+    with {:ok, user} <- Users.fetch_user_by_email(email),
+         {:ok, user} <- Users.request_sign_in_token(user) do
+      FzHttpWeb.Mailer.AuthEmail.magic_link(user)
+      |> FzHttpWeb.Mailer.deliver!()
 
-      :error ->
+      conn
+      |> put_flash(:info, "Please check your inbox for the magic link.")
+      |> redirect(to: ~p"/")
+    else
+      {:error, :not_found} ->
         conn
         |> put_flash(:warning, "Failed to send magic link email.")
         |> redirect(to: ~p"/auth/reset_password")
     end
   end
 
-  def magic_sign_in(conn, %{"token" => token}) do
-    case Users.consume_sign_in_token(token) do
-      {:ok, user} ->
-        maybe_sign_in(conn, user, %{provider: :magic_link})
-
-      {:error, _} ->
+  def magic_sign_in(conn, %{"user_id" => user_id, "token" => token}) do
+    with {:ok, user} <- Users.fetch_user_by_id(user_id),
+         {:ok, _user} <- Users.consume_sign_in_token(user, token) do
+      maybe_sign_in(conn, user, %{provider: :magic_link})
+    else
+      {:error, _reason} ->
         conn
         |> put_flash(:error, "The magic link is not valid or has expired.")
         |> redirect(to: ~p"/")
@@ -152,12 +162,23 @@ defmodule FzHttpWeb.AuthController do
       code_challenge: PKCE.code_challenge(verifier)
     }
 
-    uri = openid_connect().authorization_uri(provider_id, params)
+    with {:ok, config} <- Configurations.fetch_oidc_provider_config(provider_id),
+         {:ok, uri} <- OpenIDConnect.authorization_uri(config, params) do
+      conn
+      |> PKCE.put_cookie(verifier)
+      |> State.put_cookie(params.state)
+      |> redirect(external: uri)
+    else
+      {:error, :not_found} ->
+        {:error, :not_found}
 
-    conn
-    |> PKCE.put_cookie(verifier)
-    |> State.put_cookie(params.state)
-    |> redirect(external: uri)
+      {:error, reason} ->
+        Logger.error("Can not redirect user to OIDC auth uri", reason: inspect(reason))
+
+        conn
+        |> put_flash(:error, "Error while processing OpenID request.")
+        |> redirect(to: ~p"/")
+    end
   end
 
   defp maybe_sign_in(conn, user, %{provider: provider_key} = auth)

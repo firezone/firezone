@@ -20,8 +20,7 @@ const channelToken = document
   .getAttribute("content")
 const notificationChannel =
   userSocket.channel("notification:session", {
-    token: channelToken,
-    user_agent: window.navigator.userAgent
+    token: channelToken
   })
 
 // LiveView setup
@@ -71,3 +70,4 @@ notificationChannel.join()
 // >> liveSocket.enableLatencySim(1000)
 
 window.liveSocket = liveSocket
+window.userSocket = userSocket

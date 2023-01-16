@@ -33,7 +33,7 @@ defmodule FzHttpWeb.UserControllerTest do
 
     test "returns 404", %{admin_user: user, admin_conn: conn} do
       user.id
-      |> Users.get_user!()
+      |> Users.fetch_user_by_id!()
       |> Users.delete_user()
 
       assert_raise(Ecto.StaleEntryError, fn ->

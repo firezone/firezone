@@ -23,8 +23,9 @@ defmodule FzHttp.ReleaseTest do
   describe "create_admin_user/0" do
     test "creates admin when none exists" do
       Release.create_admin_user()
-      user = Users.get_user!(email: Application.fetch_env!(:fz_http, :admin_email))
-      assert %User{} = user
+
+      assert {:ok, %User{}} =
+               Users.fetch_user_by_email(Application.fetch_env!(:fz_http, :admin_email))
     end
 
     test "reset admin password when user exists" do
@@ -54,7 +55,7 @@ defmodule FzHttp.ReleaseTest do
 
     test "changes password", %{user: user} do
       Release.change_password(user.email, "this password should be different")
-      new_user = Users.get_user!(email: user.email)
+      assert {:ok, new_user} = Users.fetch_user_by_email(user.email)
 
       assert new_user.password_hash != user.password_hash
     end

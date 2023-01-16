@@ -13,7 +13,7 @@ defmodule FzHttpWeb.UserController do
     user = Authentication.get_current_user(conn)
 
     with %{role: :admin} <- user do
-      unless length(Users.list_admins()) > 1 do
+      unless Users.count_by_role(:admin) > 1 do
         raise "Cannot delete one last admin"
       end
     end

@@ -23,7 +23,7 @@ defmodule FzHttp.Events do
           information.
           """,
           timestamp: DateTime.utc_now(),
-          user: Users.get_user!(device.user_id).email
+          user: Users.fetch_user_by_id!(device.user_id).email
         })
     end
   end
@@ -54,7 +54,7 @@ defmodule FzHttp.Events do
           information.
           """,
           timestamp: DateTime.utc_now(),
-          user: Users.get_user!(device.user_id).email
+          user: Users.fetch_user_by_id!(device.user_id).email
         })
     end
   end

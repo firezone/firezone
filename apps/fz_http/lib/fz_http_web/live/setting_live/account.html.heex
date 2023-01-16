@@ -255,7 +255,7 @@
   </h4>
 
   <%= form_for @changeset, ~p"/sign_out", [id: "delete-account", method: :delete], fn _f -> %>
-    <%= submit(class: "button is-danger", data: [confirm: "Are you sure?"], disabled: !@allow_delete) do %>
+    <%= submit(class: "button is-danger", data: if(@allow_delete, do: [confirm: "Are you sure?"], else: []), disabled: !@allow_delete) do %>
       <span class="icon is-small">
         <i class="fas fa-trash"></i>
       </span>

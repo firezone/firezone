@@ -607,7 +607,7 @@ defmodule FzHttpWeb.UserLive.ShowTest do
         |> element("form#user-form")
         |> render_submit(@invalid_attrs)
 
-      assert test_view =~ "has invalid format"
+      assert test_view =~ "is invalid email address"
       assert test_view =~ "should be at least 12 character(s)"
     end
   end

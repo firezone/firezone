@@ -46,7 +46,7 @@ defmodule FzHttpWeb.SettingLive.ShowApiTokenComponent do
         <hr />
         <div class="block">
           <h6 class="title is-6">cURL example:</h6>
-          <pre><code><i># List all users</i>
+          <pre><code id="api-usage-example"><i># List all users</i>
     curl -H 'Content-Type: application/json' \
          -H 'Authorization: Bearer <%= @secret %>' \
          <%= Application.fetch_env!(:fz_http, :external_url) %>/v0/users</code></pre>

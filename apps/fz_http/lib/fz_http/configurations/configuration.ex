@@ -7,7 +7,7 @@ defmodule FzHttp.Configurations.Configuration do
 
   alias FzHttp.{
     Configurations.Logo,
-    Validators.Common
+    Validator
   }
 
   @min_mtu 576
@@ -83,12 +83,12 @@ defmodule FzHttp.Configurations.Configuration do
     |> cast_embed(:saml_identity_providers,
       with: {FzHttp.Configurations.Configuration.SAMLIdentityProvider, :changeset, []}
     )
-    |> Common.trim_change(:default_client_dns)
-    |> Common.trim_change(:default_client_allowed_ips)
-    |> Common.trim_change(:default_client_endpoint)
-    |> Common.validate_no_duplicates(:default_client_dns)
-    |> Common.validate_list_of_ips_or_cidrs(:default_client_allowed_ips)
-    |> Common.validate_no_duplicates(:default_client_allowed_ips)
+    |> Validator.trim_change(:default_client_dns)
+    |> Validator.trim_change(:default_client_allowed_ips)
+    |> Validator.trim_change(:default_client_endpoint)
+    |> Validator.validate_no_duplicates(:default_client_dns)
+    |> Validator.validate_list_of_ips_or_cidrs(:default_client_allowed_ips)
+    |> Validator.validate_no_duplicates(:default_client_allowed_ips)
     |> validate_number(:default_client_mtu,
       greater_than_or_equal_to: @min_mtu,
       less_than_or_equal_to: @max_mtu

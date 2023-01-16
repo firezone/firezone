@@ -41,10 +41,15 @@ defmodule FzHttp.TelemetryTest do
 
   describe "auth" do
     test "count openid providers" do
-      FzHttp.Configurations.put!(
-        :openid_connect_providers,
-        FzHttp.ConfigurationsFixtures.openid_connect_providers_attrs()
-      )
+      FzHttp.ConfigurationsFixtures.start_openid_providers([
+        "google",
+        "okta",
+        "auth0",
+        "azure",
+        "onelogin",
+        "keycloak",
+        "vault"
+      ])
 
       ping_data = Telemetry.ping_data()
 

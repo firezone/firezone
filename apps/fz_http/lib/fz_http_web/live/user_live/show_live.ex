@@ -11,7 +11,7 @@ defmodule FzHttpWeb.UserLive.Show do
   @impl Phoenix.LiveView
 
   def mount(%{"id" => user_id} = _params, _session, socket) do
-    user = Users.get_user!(user_id)
+    user = Users.fetch_user_by_id!(user_id)
     devices = Devices.list_devices(user)
     connections = OIDC.list_connections(user)
 
@@ -30,7 +30,7 @@ defmodule FzHttpWeb.UserLive.Show do
   """
   @impl Phoenix.LiveView
   def handle_params(%{"id" => user_id} = _params, _url, socket) do
-    user = Users.get_user!(user_id)
+    user = Users.fetch_user_by_id!(user_id)
     devices = Devices.list_devices(user.id)
 
     {:noreply,
@@ -45,7 +45,7 @@ defmodule FzHttpWeb.UserLive.Show do
        socket
        |> put_flash(:error, "Use the account section to delete your account.")}
     else
-      user = Users.get_user!(user_id)
+      user = Users.fetch_user_by_id!(user_id)
 
       case Users.delete_user(user) do
         {:ok, _} ->
@@ -74,7 +74,7 @@ defmodule FzHttpWeb.UserLive.Show do
        socket
        |> put_flash(:error, "Changing your own role is not supported.")}
     else
-      user = Users.get_user!(user_id)
+      user = Users.fetch_user_by_id!(user_id)
 
       role =
         case action do

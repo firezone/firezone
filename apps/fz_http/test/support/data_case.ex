@@ -13,7 +13,6 @@ defmodule FzHttp.DataCase do
   by setting `use FzHttp.DataCase, async: true`, although
   this option is not recommended for other databases.
   """
-
   use ExUnit.CaseTemplate
   use FzHttp.CaseTemplate
 
@@ -23,8 +22,10 @@ defmodule FzHttp.DataCase do
 
       import Ecto
       import Ecto.Changeset
+      # XXX: Remove this import
       import Ecto.Query
       import FzHttp.DataCase
+      # XXX: Remove this import
       import FzHttp.TestHelpers
     end
   end

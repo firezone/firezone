@@ -4,7 +4,7 @@ defmodule FzHttp.Devices.Device do
   """
   use FzHttp, :schema
   import Ecto.Changeset
-  alias FzHttp.Validators.Common
+  alias FzHttp.Validator
   alias FzHttp.Devices
   require Logger
 
@@ -72,8 +72,8 @@ defmodule FzHttp.Devices.Device do
   def create_changeset(attrs) do
     %__MODULE__{}
     |> cast(attrs, @fields)
-    |> Common.put_default_value(:name, &FzHttp.Devices.new_name/0)
-    |> Common.put_default_value(:preshared_key, &FzCommon.FzCrypto.psk/0)
+    |> Validator.put_default_value(:name, &FzHttp.Devices.new_name/0)
+    |> Validator.put_default_value(:preshared_key, &FzCommon.FzCrypto.psk/0)
     |> changeset()
     |> validate_max_devices()
     |> validate_required(@required_fields)
@@ -88,13 +88,13 @@ defmodule FzHttp.Devices.Device do
 
   defp changeset(changeset) do
     changeset
-    |> Common.trim_change(:allowed_ips)
-    |> Common.trim_change(:dns)
-    |> Common.trim_change(:endpoint)
-    |> Common.trim_change(:name)
-    |> Common.trim_change(:description)
-    |> Common.validate_base64(:public_key)
-    |> Common.validate_base64(:preshared_key)
+    |> Validator.trim_change(:allowed_ips)
+    |> Validator.trim_change(:dns)
+    |> Validator.trim_change(:endpoint)
+    |> Validator.trim_change(:name)
+    |> Validator.trim_change(:description)
+    |> Validator.validate_base64(:public_key)
+    |> Validator.validate_base64(:preshared_key)
     |> validate_length(:public_key, is: @key_length)
     |> validate_length(:preshared_key, is: @key_length)
     |> validate_length(:description, max: @description_max_length)
@@ -108,8 +108,8 @@ defmodule FzHttp.Devices.Device do
       persistent_keepalive
       mtu
     ]a)
-    |> Common.validate_list_of_ips_or_cidrs(:allowed_ips)
-    |> Common.validate_no_duplicates(:dns)
+    |> Validator.validate_list_of_ips_or_cidrs(:allowed_ips)
+    |> Validator.validate_no_duplicates(:dns)
     |> validate_number(:persistent_keepalive,
       greater_than_or_equal_to: 0,
       less_than_or_equal_to: 120
@@ -194,7 +194,7 @@ defmodule FzHttp.Devices.Device do
   end
 
   defp validate_omitted_if_default(changeset, fields) when is_list(fields) do
-    Common.validate_omitted(
+    Validator.validate_omitted(
       changeset,
       filter_default_fields(changeset, fields, use_default: true)
     )

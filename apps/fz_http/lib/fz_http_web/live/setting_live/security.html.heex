@@ -77,6 +77,7 @@
           <input
             type="checkbox"
             phx-click="toggle"
+            name="local_auth_enabled"
             phx-value-config="local_auth_enabled"
             checked={FzHttp.Configurations.get!(:local_auth_enabled)}
             value={if(!FzHttp.Configurations.get!(:local_auth_enabled), do: "on")}
@@ -99,6 +100,7 @@
           <input
             type="checkbox"
             phx-click="toggle"
+            name="allow_unprivileged_device_management"
             phx-value-config="allow_unprivileged_device_management"
             checked={FzHttp.Configurations.get!(:allow_unprivileged_device_management)}
             value={
@@ -125,6 +127,7 @@
           <input
             type="checkbox"
             phx-click="toggle"
+            name="allow_unprivileged_device_configuration"
             phx-value-config="allow_unprivileged_device_configuration"
             checked={FzHttp.Configurations.get!(:allow_unprivileged_device_configuration)}
             value={
@@ -159,6 +162,7 @@
           <input
             type="checkbox"
             phx-click="toggle"
+            name="disable_vpn_on_oidc_error"
             phx-value-config="disable_vpn_on_oidc_error"
             checked={FzHttp.Configurations.get!(:disable_vpn_on_oidc_error)}
             value={if(!FzHttp.Configurations.get!(:disable_vpn_on_oidc_error), do: "on")}

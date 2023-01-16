@@ -54,11 +54,147 @@ jobs:
           key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
       - name: Install Dependencies
         run: mix deps.get --only $MIX_ENV
+      - name: Compile Dependencies
+        run: mix deps.compile --skip-umbrella-children
+      - name: Compile Application
+        run: mix compile
       - name: Setup Database
         run: |
           mix ecto.create
           mix ecto.migrate
       - name: Run Tests and Upload Coverage Report
+        env:
+          E2E_MAX_WAIT_SECONDS: 20
         run: |
           # XXX: This can fail when coveralls is down
           mix coveralls.github --umbrella
+      - name: Test Report
+        uses: dorny/test-reporter@v1
+        if: success() || failure()
+        with:
+          name: Elixir Unit Test Report
+          path: _build/test/lib/*/test-junit-report.xml
+          reporter: java-junit
+  acceptance-test:
+    runs-on: ubuntu-latest
+    env:
+      MIX_ENV: test
+      POSTGRES_HOST: localhost
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      MIX_TEST_PARTITIONS: 4
+    strategy:
+      fail-fast: false
+      matrix:
+        MIX_TEST_PARTITION: [1, 2, 3, 4]
+    services:
+      postgres:
+        image: postgres:15
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      vault:
+        image: vault:1.12.2
+        env:
+          VAULT_ADDR: 'http://127.0.0.1:8200'
+          VAULT_DEV_ROOT_TOKEN_ID: 'firezone'
+        ports:
+          - 8200:8200/tcp
+        options:
+          --cap-add=IPC_LOCK
+    steps:
+      - uses: nanasess/setup-chromedriver@v1
+        with:
+          chromedriver-version: '108.0.5359.71'
+      - run: |
+          export DISPLAY=:99
+          chromedriver --url-base=/wd/hub &
+          sudo Xvfb -ac :99 -screen 0 1280x1024x24 > /dev/null 2>&1 &
+      - name: Install package dependencies
+        run: |
+          sudo apt-get install -q -y \
+            net-tools \
+            wireguard
+      - uses: actions/checkout@v3
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: '25'
+          elixir-version: '1.14'
+      - uses: actions/cache@v3
+        name: Elixir Deps Cache
+        env:
+          cache-name: cache-elixir-deps
+        with:
+          path: deps
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ env.cache-name }}-
+      - uses: actions/cache@v3
+        name: Elixir Build Cache
+        env:
+          cache-name: cache-elixir-build
+        with:
+          path: _build
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
+      - uses: actions/cache@v3
+        name: Yarn Deps Cache
+        env:
+          cache-name: cache-yarn-build
+        with:
+          path: apps/fz_http/assets/node_modules
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/yarn.lock') }}
+      - uses: actions/cache@v3
+        name: Assets Cache
+        env:
+          cache-name: cache-assets-build
+        with:
+          path: apps/fz_http/priv/static/dist
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/yarn.lock') }}
+      - name: Install Dependencies
+        run: mix deps.get --only $MIX_ENV
+      - name: Compile Dependencies
+        run: mix deps.compile --skip-umbrella-children
+      - name: Compile Application
+        run: mix compile
+      - name: Install Node Dependencies
+        run: |
+          cd apps/fz_http/assets
+          yarn install --frozen-lockfile
+      - name: Build Assets
+        run: |
+          cd apps/fz_http/assets
+          yarn deploy
+      - name: Setup Database
+        run: |
+          mix ecto.create
+          mix ecto.migrate
+      - name: Run Tests and Upload Coverage Report
+        env:
+          MIX_TEST_PARTITION: ${{ matrix.MIX_TEST_PARTITION }}
+          E2E_MAX_WAIT_SECONDS: 20
+        run: |
+          mix test --only acceptance:true \
+                   --partitions=${{ env.MIX_TEST_PARTITIONS }} \
+                   --no-compile \
+                   --no-archives-check \
+                   --no-deps-check \
+              || mix test --failed
+      - name: Save Screenshots
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: screenshots
+          path: apps/fz_http/screenshots
+      - name: Test Report
+        uses: dorny/test-reporter@v1
+        if: success() || failure()
+        with:
+          name: Elixir Acceptance Test Report
+          path: _build/test/lib/*/test-junit-report.xml
+          reporter: java-junit

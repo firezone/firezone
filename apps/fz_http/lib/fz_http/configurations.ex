@@ -11,19 +11,42 @@ defmodule FzHttp.Configurations do
     Map.get(get_configuration!(), key)
   end
 
+  def fetch_oidc_provider_config(provider_id) do
+    get!(:openid_connect_providers)
+    |> Enum.find(&(&1.id == provider_id))
+    |> case do
+      nil ->
+        {:error, :not_found}
+
+      provider ->
+        external_url = FzHttp.Config.fetch_env!(:fz_http, :external_url)
+
+        {:ok,
+         %{
+           discovery_document_uri: provider.discovery_document_uri,
+           client_id: provider.client_id,
+           client_secret: provider.client_secret,
+           redirect_uri:
+             provider.redirect_uri || "#{external_url}/auth/oidc/#{provider.id}/callback/",
+           response_type: provider.response_type,
+           scope: provider.scope
+         }}
+    end
+  end
+
   def put!(key, val) do
-    get_configuration!()
-    |> Configuration.changeset(%{key => val})
-    |> Repo.update!()
+    configuration =
+      get_configuration!()
+      |> Configuration.changeset(%{key => val})
+      |> Repo.update!()
+
+    FzHttp.SAML.StartProxy.restart()
+
+    configuration
   end
 
   def get_configuration! do
     Repo.one!(Configuration)
-  end
-
-  def get_provider_by_id(field, provider_id) do
-    FzHttp.Configurations.get!(field)
-    |> Enum.find(&(&1.id == provider_id))
   end
 
   def auto_create_users?(field, provider_id) do
@@ -47,7 +70,6 @@ defmodule FzHttp.Configurations do
     case Repo.update(Configuration.changeset(config, attrs)) do
       {:ok, configuration} ->
         FzHttp.SAML.StartProxy.restart()
-        FzHttp.OIDC.StartProxy.restart()
 
         {:ok, configuration}
 

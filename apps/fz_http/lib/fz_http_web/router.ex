@@ -59,7 +59,7 @@ defmodule FzHttpWeb.Router do
 
     get "/reset_password", AuthController, :reset_password
     post "/magic_link", AuthController, :magic_link
-    get "/magic/:token", AuthController, :magic_sign_in
+    get "/magic/:user_id/:token", AuthController, :magic_sign_in
 
     get "/:provider", AuthController, :request
     get "/:provider/callback", AuthController, :callback
@@ -93,7 +93,11 @@ defmodule FzHttpWeb.Router do
 
     live_session(
       :authenticated,
-      on_mount: [{FzHttpWeb.LiveAuth, :any}, {FzHttpWeb.LiveNav, nil}],
+      on_mount: [
+        FzHttpWeb.Hooks.AllowEctoSandbox,
+        {FzHttpWeb.LiveAuth, :any},
+        {FzHttpWeb.LiveNav, nil}
+      ],
       root_layout: {FzHttpWeb.LayoutView, :root}
     ) do
       live "/auth", MFALive.Auth, :auth
@@ -125,7 +129,12 @@ defmodule FzHttpWeb.Router do
     # Unprivileged Live routes
     live_session(
       :unprivileged,
-      on_mount: [{FzHttpWeb.LiveAuth, :unprivileged}, {FzHttpWeb.LiveNav, nil}, FzHttpWeb.LiveMFA],
+      on_mount: [
+        FzHttpWeb.Hooks.AllowEctoSandbox,
+        {FzHttpWeb.LiveAuth, :unprivileged},
+        {FzHttpWeb.LiveNav, nil},
+        FzHttpWeb.LiveMFA
+      ],
       root_layout: {FzHttpWeb.LayoutView, :unprivileged}
     ) do
       live "/user_devices", DeviceLive.Unprivileged.Index, :index
@@ -153,7 +162,12 @@ defmodule FzHttpWeb.Router do
     # Admin Live routes
     live_session(
       :admin,
-      on_mount: [{FzHttpWeb.LiveAuth, :admin}, FzHttpWeb.LiveNav, FzHttpWeb.LiveMFA],
+      on_mount: [
+        FzHttpWeb.Hooks.AllowEctoSandbox,
+        {FzHttpWeb.LiveAuth, :admin},
+        FzHttpWeb.LiveNav,
+        FzHttpWeb.LiveMFA
+      ],
       root_layout: {FzHttpWeb.LayoutView, :admin}
     ) do
       live "/users", UserLive.Index, :index

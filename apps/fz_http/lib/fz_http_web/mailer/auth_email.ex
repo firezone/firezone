@@ -15,7 +15,7 @@ defmodule FzHttpWeb.Mailer.AuthEmail do
     |> subject("Firezone Magic Link")
     |> to(user.email)
     |> render_body(:magic_link,
-      link: url(~p"/auth/magic/#{user.sign_in_token}")
+      link: url(~p"/auth/magic/#{user.id}/#{user.sign_in_token}")
     )
   end
 end
