@@ -53,11 +53,11 @@ defmodule FzHttp.MixProject do
       # Phoenix/Plug deps
       {:plug, "~> 1.13"},
       {:plug_cowboy, "~> 2.5"},
-      {:phoenix, "~> 1.7.0-rc.1", override: true},
+      {:phoenix, "~> 1.7.0-rc.2", override: true},
       {:phoenix_ecto, "~> 4.4"},
       {:phoenix_html, "~> 3.2"},
       {:phoenix_pubsub, "~> 2.0"},
-      {:phoenix_live_view, "~> 0.18.3"},
+      {:phoenix_live_view, "~> 0.18.8"},
       {:phoenix_live_dashboard, "~> 0.7.2"},
       {:phoenix_live_reload, "~> 1.3", only: :dev},
       {:phoenix_swoosh, "~> 1.0"},
