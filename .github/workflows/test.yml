@@ -186,7 +186,7 @@ jobs:
                    --no-deps-check \
               || mix test --failed
       - name: Save Screenshots
-        if: success() || failure()
+        if: always()
         uses: actions/upload-artifact@v3
         with:
           name: screenshots
