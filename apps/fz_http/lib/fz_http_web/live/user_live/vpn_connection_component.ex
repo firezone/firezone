@@ -14,6 +14,7 @@ defmodule FzHttpWeb.UserLive.VPNConnectionComponent do
       <input
         type="checkbox"
         phx-target={@myself}
+        name="toggle_disabled_at"
         phx-click="toggle_disabled_at"
         data-confirm="Are you sure? This may affect this user's internet connectivity."
         disabled={assigns[:disabled]}

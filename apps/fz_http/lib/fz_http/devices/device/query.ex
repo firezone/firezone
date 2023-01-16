@@ -1,5 +1,5 @@
 defmodule FzHttp.Devices.Device.Query do
-  import Ecto.Query
+  use FzHttp, :query
 
   @doc """
   Returns IP address at given integer offset relative to start of CIDR range.
@@ -40,7 +40,7 @@ defmodule FzHttp.Devices.Device.Query do
   end
 
   def all do
-    from(device in FzHttp.Devices.Device, as: :device)
+    from(device in FzHttp.Devices.Device, as: :devices)
   end
 
   @doc """
@@ -103,13 +103,19 @@ defmodule FzHttp.Devices.Device.Query do
   end
 
   defp select_not_used_ips(queryable, network_cidr, reserved_ips) do
+    host_as_string = network_cidr.address |> :inet.ntoa() |> List.to_string()
+
     queryable
     |> where(
       [q: q],
       offset_to_ip(q.ip, ^network_cidr) not in subquery(used_ips_subquery(network_cidr))
     )
     |> where([q: q], offset_to_ip(q.ip, ^network_cidr) not in ^reserved_ips)
-    |> where([q: q], acquire_advisory_lock(q.ip) == true)
+    |> where(
+      [q: q],
+      acquire_advisory_lock(fragment("hashtext(?) + ?", ^host_as_string, q.ip)) ==
+        true
+    )
     |> select([q: q], offset_to_ip(q.ip, ^network_cidr))
   end
 
@@ -117,10 +123,10 @@ defmodule FzHttp.Devices.Device.Query do
 
   defp used_ips_subquery(queryable, %Postgrex.INET{address: address})
        when tuple_size(address) == 4 do
-    select(queryable, [device: device], device.ipv4)
+    select(queryable, [devices: devices], devices.ipv4)
   end
 
   defp used_ips_subquery(queryable, %Postgrex.INET{address: _address}) do
-    select(queryable, [device: device], device.ipv6)
+    select(queryable, [devices: devices], devices.ipv6)
   end
 end

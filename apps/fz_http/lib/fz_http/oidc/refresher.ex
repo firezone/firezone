@@ -3,11 +3,8 @@ defmodule FzHttp.OIDC.Refresher do
   Worker module for refreshing OIDC connections
   """
   use GenServer, restart: :temporary
-
   import Ecto.{Changeset, Query}
-  import FzHttpWeb.OIDC.Helpers
-
-  alias FzHttp.{OIDC, OIDC.Connection, Repo, Users}
+  alias FzHttp.{Configurations, OIDC, OIDC.Connection, Repo, Users}
   require Logger
 
   def start_link(init_opts) do
@@ -36,22 +33,16 @@ defmodule FzHttp.OIDC.Refresher do
   defp do_refresh(user_id, %{provider: provider_id, refresh_token: refresh_token} = conn) do
     Logger.info("Refreshing user\##{user_id} @ #{provider_id}...")
 
-    result =
-      openid_connect().fetch_tokens(
-        provider_id,
-        %{grant_type: "refresh_token", refresh_token: refresh_token}
-      )
-
     refresh_response =
-      case result do
-        {:ok, refreshed} ->
-          refreshed
-
-        {:error, :fetch_tokens, %{body: body}} ->
-          %{error: body}
-
-        _ ->
-          %{error: "unknown error"}
+      with {:ok, config} <- Configurations.fetch_oidc_provider_config(provider_id),
+           {:ok, tokens} <-
+             OpenIDConnect.fetch_tokens(config, %{
+               grant_type: "refresh_token",
+               refresh_token: refresh_token
+             }) do
+        tokens
+      else
+        {:error, reason} -> %{error: inspect(reason)}
       end
 
     OIDC.update_connection(conn, %{
@@ -60,7 +51,7 @@ defmodule FzHttp.OIDC.Refresher do
     })
 
     with %{error: _} <- refresh_response do
-      user = Users.get_user!(user_id)
+      user = Users.fetch_user_by_id!(user_id)
 
       Logger.info("Disabling user #{user.email} due to OIDC token refresh failure...")
 

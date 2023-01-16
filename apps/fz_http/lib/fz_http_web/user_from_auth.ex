@@ -13,22 +13,26 @@ defmodule FzHttpWeb.UserFromAuth do
           credentials: %Ueberauth.Auth.Credentials{other: %{password: password}}
         } = _auth
       ) do
-    Users.get_by_email(email) |> Authentication.authenticate(password)
+    with {:ok, user} <- Users.fetch_user_by_email(email) do
+      Authentication.authenticate(user, password)
+    end
   end
 
   # SAML
   def find_or_create(:saml, provider_id, %{"email" => email}) do
-    case Users.get_by_email(email) do
-      nil -> maybe_create_user(:saml_identity_providers, provider_id, email)
-      user -> {:ok, user}
+    with {:ok, user} <- Users.fetch_user_by_email(email) do
+      {:ok, user}
+    else
+      {:error, :not_found} -> maybe_create_user(:saml_identity_providers, provider_id, email)
     end
   end
 
   # OIDC
   def find_or_create(provider_id, %{"email" => email, "sub" => _sub}) do
-    case Users.get_by_email(email) do
-      nil -> maybe_create_user(:openid_connect_providers, provider_id, email)
-      user -> {:ok, user}
+    with {:ok, user} <- Users.fetch_user_by_email(email) do
+      {:ok, user}
+    else
+      {:error, :not_found} -> maybe_create_user(:openid_connect_providers, provider_id, email)
     end
   end
 

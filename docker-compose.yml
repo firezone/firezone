@@ -74,7 +74,8 @@ services:
   vault:
     image: vault
     environment:
-      - VAULT_ADDR=0.0.0.0:8200
+      VAULT_ADDR: 'http://127.0.0.1:8200'
+      VAULT_DEV_ROOT_TOKEN_ID: 'firezone'
     ports:
       - 8200:8200/tcp
     cap_add:

@@ -44,11 +44,11 @@ defmodule FzHttpWeb.LiveHelpers do
   end
 
   def vpn_expires_at(user) do
-    Users.vpn_session_expires_at(user, Configurations.vpn_duration())
+    Users.vpn_session_expires_at(user)
   end
 
   def vpn_expired?(user) do
-    Users.vpn_session_expired?(user, Configurations.vpn_duration())
+    Users.vpn_session_expired?(user)
   end
 
   defp status_digit(response_code) when is_integer(response_code) do

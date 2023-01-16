@@ -10,7 +10,6 @@ defmodule FzHttp.TestHelpers do
     NotificationsFixtures,
     Repo,
     RulesFixtures,
-    Users,
     Users.User,
     UsersFixtures
   }
@@ -168,7 +167,7 @@ defmodule FzHttp.TestHelpers do
   end
 
   def create_user_with_valid_sign_in_token(_) do
-    {:ok, user: %User{} = UsersFixtures.user(Users.sign_in_keys())}
+    {:ok, user: %User{}} = UsersFixtures.user()
   end
 
   def create_user_with_expired_sign_in_token(_) do

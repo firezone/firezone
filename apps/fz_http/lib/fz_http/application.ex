@@ -11,7 +11,7 @@ defmodule FzHttp.Application do
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
     Telemetry.fz_http_started()
-    opts = [strategy: :one_for_one, name: FzHttp.Supervisor]
+    opts = [strategy: :one_for_one, name: __MODULE__.Supervisor]
     Supervisor.start_link(children(), opts)
   end
 
@@ -31,17 +31,16 @@ defmodule FzHttp.Application do
       {Postgrex.Notifications, [name: FzHttp.Repo.Notifications] ++ FzHttp.Repo.config()},
       FzHttp.Repo.Notifier,
       FzHttp.Vault,
-      FzHttpWeb.Endpoint,
       {Phoenix.PubSub, name: FzHttp.PubSub},
       {FzHttp.Notifications, name: FzHttp.Notifications},
       FzHttpWeb.Presence,
       FzHttp.ConnectivityCheckService,
       FzHttp.TelemetryPingService,
       FzHttp.VpnSessionScheduler,
-      FzHttp.OIDC.StartProxy,
       FzHttp.SAML.StartProxy,
       {DynamicSupervisor, name: FzHttp.RefresherSupervisor, strategy: :one_for_one},
-      FzHttp.OIDC.RefreshManager
+      FzHttp.OIDC.RefreshManager,
+      FzHttpWeb.Endpoint
     ]
   end
 
@@ -50,12 +49,11 @@ defmodule FzHttp.Application do
       FzHttp.Server,
       FzHttp.Repo,
       FzHttp.Vault,
-      FzHttpWeb.Endpoint,
-      {FzHttp.OIDC.StartProxy, :test},
       {FzHttp.SAML.StartProxy, :test},
       {Phoenix.PubSub, name: FzHttp.PubSub},
       {FzHttp.Notifications, name: FzHttp.Notifications},
-      FzHttpWeb.Presence
+      FzHttpWeb.Presence,
+      FzHttpWeb.Endpoint
     ]
   end
 

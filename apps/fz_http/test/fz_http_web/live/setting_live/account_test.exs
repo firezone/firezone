@@ -17,7 +17,7 @@ defmodule FzHttpWeb.SettingLive.AccountTest do
       path = ~p"/settings/account"
       {:ok, _view, html} = live(conn, path)
 
-      user = Users.get_user!(user.id)
+      user = Users.fetch_user_by_id!(user.id)
 
       assert html =~ "Delete Your Account"
       assert html =~ user.email
@@ -25,7 +25,7 @@ defmodule FzHttpWeb.SettingLive.AccountTest do
   end
 
   describe "when live_action is edit" do
-    @valid_params %{"user" => %{"email" => "foobar@test", "current_password" => "password1234"}}
+    @valid_params %{"user" => %{"email" => "foobar@test"}}
     @invalid_params %{"user" => %{"email" => "foobar"}}
 
     test "loads the form" do
@@ -55,7 +55,6 @@ defmodule FzHttpWeb.SettingLive.AccountTest do
         |> render_submit(%{
           "user" => %{
             "email" => "",
-            "current_password" => "",
             "password" => "",
             "password_confirmation" => ""
           }
@@ -74,7 +73,7 @@ defmodule FzHttpWeb.SettingLive.AccountTest do
         |> element("#account-edit")
         |> render_submit(@invalid_params)
 
-      assert test_view =~ "has invalid format"
+      assert test_view =~ "is invalid email address"
     end
 
     test "closes modal", %{admin_conn: conn} do

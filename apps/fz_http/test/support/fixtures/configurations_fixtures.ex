@@ -19,9 +19,25 @@ defmodule FzHttp.ConfigurationsFixtures do
     configuration
   end
 
-  def openid_connect_providers_attrs do
-    discovery_document_url = discovery_document_server()
+  def start_openid_providers(provider_names, overrides \\ %{}) do
+    {bypass, discovery_document_url} = discovery_document_server()
 
+    openid_connect_providers_attrs =
+      discovery_document_url
+      |> openid_connect_providers_attrs()
+      |> Enum.filter(&(&1["id"] in provider_names))
+      |> Enum.map(fn config ->
+        config
+        |> Enum.into(%{})
+        |> Map.merge(overrides)
+      end)
+
+    Configurations.put!(:openid_connect_providers, openid_connect_providers_attrs)
+
+    {bypass, openid_connect_providers_attrs}
+  end
+
+  defp openid_connect_providers_attrs(discovery_document_url) do
     [
       %{
         "id" => "google",
@@ -31,7 +47,8 @@ defmodule FzHttp.ConfigurationsFixtures do
         "redirect_uri" => "https://firezone.example.com/auth/oidc/google/callback/",
         "response_type" => "code",
         "scope" => "openid email profile",
-        "label" => "OIDC Google"
+        "label" => "OIDC Google",
+        "auto_create_users" => false
       },
       %{
         "id" => "okta",
@@ -41,7 +58,8 @@ defmodule FzHttp.ConfigurationsFixtures do
         "redirect_uri" => "https://firezone.example.com/auth/oidc/okta/callback/",
         "response_type" => "code",
         "scope" => "openid email profile offline_access",
-        "label" => "OIDC Okta"
+        "label" => "OIDC Okta",
+        "auto_create_users" => false
       },
       %{
         "id" => "auth0",
@@ -51,7 +69,8 @@ defmodule FzHttp.ConfigurationsFixtures do
         "redirect_uri" => "https://firezone.example.com/auth/oidc/auth0/callback/",
         "response_type" => "code",
         "scope" => "openid email profile",
-        "label" => "OIDC Auth0"
+        "label" => "OIDC Auth0",
+        "auto_create_users" => false
       },
       %{
         "id" => "azure",
@@ -61,7 +80,8 @@ defmodule FzHttp.ConfigurationsFixtures do
         "redirect_uri" => "https://firezone.example.com/auth/oidc/azure/callback/",
         "response_type" => "code",
         "scope" => "openid email profile offline_access",
-        "label" => "OIDC Azure"
+        "label" => "OIDC Azure",
+        "auto_create_users" => false
       },
       %{
         "id" => "onelogin",
@@ -71,7 +91,8 @@ defmodule FzHttp.ConfigurationsFixtures do
         "redirect_uri" => "https://firezone.example.com/auth/oidc/onelogin/callback/",
         "response_type" => "code",
         "scope" => "openid email profile offline_access",
-        "label" => "OIDC Onelogin"
+        "label" => "OIDC Onelogin",
+        "auto_create_users" => false
       },
       %{
         "id" => "keycloak",
@@ -81,7 +102,8 @@ defmodule FzHttp.ConfigurationsFixtures do
         "redirect_uri" => "https://firezone.example.com/auth/oidc/keycloak/callback/",
         "response_type" => "code",
         "scope" => "openid email profile offline_access",
-        "label" => "OIDC Keycloak"
+        "label" => "OIDC Keycloak",
+        "auto_create_users" => false
       },
       %{
         "id" => "vault",
@@ -91,25 +113,79 @@ defmodule FzHttp.ConfigurationsFixtures do
         "redirect_uri" => "https://firezone.example.com/auth/oidc/vault/callback/",
         "response_type" => "code",
         "scope" => "openid email profile offline_access",
-        "label" => "OIDC Vault"
+        "label" => "OIDC Vault",
+        "auto_create_users" => false
       }
     ]
   end
 
+  def jwks_attrs do
+    %{
+      "alg" => "RS256",
+      "d" =>
+        "X8TM24Zqbiha9geYYk_vZpANu16IadJLJLJ7ucTc3JaMbK8NCYNcHMoXKnNYPFxmq-UWAEIwh-2" <>
+          "txOiOxuChVrblpfyE4SBJio1T0AUcCwmm8U6G-CsSHMMzWTt2dMTnArHjdyAIgOVRW5SVzhTT" <>
+          "taf4JY-47S-fbcJ7g0hmBbVih5i1sE2fad4I4qFHT-YFU_pnUHbteR6GQuRW4r03Eon8Aje6a" <>
+          "l2AxcYnfF8_cSOIOpkDgGavTtGYhhZPi2jZ7kPm6QGkNW5CyfEq5PGB6JOihw-XIFiiMzYgx0" <>
+          "52rnzoqALoLheXrI0By4kgHSmcqOOmq7aiOff45rlSbpsR",
+      "e" => "AQAB",
+      "kid" => "example@firezone.dev",
+      "kty" => "RSA",
+      "n" =>
+        "qlKll8no4lPYXNSuTTnacpFHiXwPOv_htCYvIXmiR7CWhiiOHQqj7KWXIW7TGxyoLVIyeRM4mwv" <>
+          "kLI-UgsSMYdEKTT0j7Ydjrr0zCunPu5Gxr2yOmcRaszAzGxJL5DwpA0V40RqMlm5OuwdqS4To" <>
+          "_p9LlLxzMF6RZe1OqslV5RZ4Y8FmrWq6BV98eIziEHL0IKdsAIrrOYkkcLDdQeMNuTp_yNB8X" <>
+          "l2TdWSdsbRomrs2dCtCqZcXTsy2EXDceHvYhgAB33nh_w17WLrZQwMM-7kJk36Kk54jZd7i80" <>
+          "AJf_s_plXn1mEh-L5IAL1vg3a9EOMFUl-lPiGqc3td_ykH",
+      "use" => "sig"
+    }
+  end
+
+  def expect_refresh_token(bypass, attrs \\ %{}) do
+    test_pid = self()
+
+    Bypass.expect(bypass, "POST", "/oauth/token", fn conn ->
+      conn = fetch_conn_params(conn)
+      send(test_pid, {:request, conn})
+      Plug.Conn.resp(conn, 200, Jason.encode!(attrs))
+    end)
+  end
+
+  def expect_refresh_token_failure(bypass, attrs \\ %{}) do
+    test_pid = self()
+
+    Bypass.expect(bypass, "POST", "/oauth/token", fn conn ->
+      conn = fetch_conn_params(conn)
+      send(test_pid, {:request, conn})
+      Plug.Conn.resp(conn, 401, Jason.encode!(attrs))
+    end)
+  end
+
   def discovery_document_server do
     bypass = Bypass.open()
+    endpoint = "http://localhost:#{bypass.port}"
+    test_pid = self()
+
+    Bypass.expect(bypass, "GET", "/.well-known/jwks.json", fn conn ->
+      attrs = %{"keys" => [jwks_attrs()]}
+      Plug.Conn.resp(conn, 200, Jason.encode!(attrs))
+    end)
 
     Bypass.expect(bypass, "GET", "/.well-known/openid-configuration", fn conn ->
+      conn = fetch_conn_params(conn)
+      send(test_pid, {:request, conn})
+
       attrs = %{
-        "issuer" => "https://common.auth0.com/",
-        "authorization_endpoint" => "https://common.auth0.com/authorize",
-        "token_endpoint" => "https://common.auth0.com/oauth/token",
-        "device_authorization_endpoint" => "https://common.auth0.com/oauth/device/code",
-        "userinfo_endpoint" => "https://common.auth0.com/userinfo",
-        "mfa_challenge_endpoint" => "https://common.auth0.com/mfa/challenge",
-        "jwks_uri" => "https://common.auth0.com/.well-known/jwks.json",
-        "registration_endpoint" => "https://common.auth0.com/oidc/register",
-        "revocation_endpoint" => "https://common.auth0.com/oauth/revoke",
+        "issuer" => "#{endpoint}/",
+        "authorization_endpoint" => "#{endpoint}/authorize",
+        "token_endpoint" => "#{endpoint}/oauth/token",
+        "device_authorization_endpoint" => "#{endpoint}/oauth/device/code",
+        "userinfo_endpoint" => "#{endpoint}/userinfo",
+        "mfa_challenge_endpoint" => "#{endpoint}/mfa/challenge",
+        "jwks_uri" => "#{endpoint}/.well-known/jwks.json",
+        "registration_endpoint" => "#{endpoint}/oidc/register",
+        "revocation_endpoint" => "#{endpoint}/oauth/revoke",
+        "end_session_endpoint" => "https://example.com",
         "scopes_supported" => [
           "openid",
           "profile",
@@ -180,7 +256,15 @@ defmodule FzHttp.ConfigurationsFixtures do
       Plug.Conn.resp(conn, 200, Jason.encode!(attrs))
     end)
 
-    "http://localhost:#{bypass.port}/.well-known/openid-configuration"
+    {bypass, "#{endpoint}/.well-known/openid-configuration"}
+  end
+
+  def fetch_conn_params(conn) do
+    opts = Plug.Parsers.init(parsers: [:urlencoded, :json], pass: ["*/*"], json_decoder: Jason)
+
+    conn
+    |> Plug.Conn.fetch_query_params()
+    |> Plug.Parsers.call(opts)
   end
 
   def saml_identity_providers_attrs do

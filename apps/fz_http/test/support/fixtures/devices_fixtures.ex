@@ -9,6 +9,19 @@ defmodule FzHttp.DevicesFixtures do
     UsersFixtures
   }
 
+  def create_device_for_user(user, attrs \\ %{}) do
+    attrs =
+      Enum.into(attrs, %{
+        user_id: user.id,
+        public_key: public_key(),
+        name: "factory #{counter()}",
+        description: "factory description"
+      })
+
+    {:ok, device} = Devices.create_device(attrs)
+    device
+  end
+
   @doc """
   Generate a device.
   """

@@ -31,11 +31,11 @@ defmodule FzHttp.Release do
         change_password(email(), default_password())
         reset_role(email(), :admin)
       else
-        Users.create_admin_user(
+        Users.create_admin_user(%{
           email: email(),
           password: default_password(),
           password_confirmation: default_password()
-        )
+        })
       end
 
     # Notify the user
@@ -57,14 +57,13 @@ defmodule FzHttp.Release do
       "password_confirmation" => password
     }
 
-    {:ok, _user} =
-      Users.get_user!(email: email)
-      |> Users.admin_update_user(params)
+    {:ok, user} = Users.fetch_user_by_email(email)
+    {:ok, _user} = Users.admin_update_user(user, params)
   end
 
   def reset_role(email, role) do
-    Users.get_user!(email: email)
-    |> Users.update_user_role(role)
+    {:ok, user} = Users.fetch_user_by_email(email)
+    Users.update_user_role(user, role)
   end
 
   def repos do
@@ -80,7 +79,10 @@ defmodule FzHttp.Release do
   end
 
   defp default_admin_user do
-    Users.get_by_email(email())
+    case Users.fetch_user_by_email(email()) do
+      {:ok, user} -> user
+      {:error, :not_found} -> nil
+    end
   end
 
   defp mint_jwt(%User{} = user) do

@@ -4,7 +4,6 @@ defmodule FzHttp.Configurations.Configuration.SAMLIdentityProvider do
   """
   use FzHttp, :schema
   import Ecto.Changeset
-  alias FzHttp.Validators
 
   @primary_key false
   embedded_schema do
@@ -16,7 +15,7 @@ defmodule FzHttp.Configurations.Configuration.SAMLIdentityProvider do
     field :sign_metadata, :boolean, default: true
     field :signed_assertion_in_resp, :boolean, default: true
     field :signed_envelopes_in_resp, :boolean, default: true
-    field :auto_create_users, :boolean, default: true
+    field :auto_create_users, :boolean
   end
 
   def changeset(struct \\ %__MODULE__{}, data) do
@@ -38,6 +37,19 @@ defmodule FzHttp.Configurations.Configuration.SAMLIdentityProvider do
       :metadata,
       :auto_create_users
     ])
-    |> Validators.SAML.validate_metadata()
+    |> validate_metadata()
+  end
+
+  def validate_metadata(changeset) do
+    changeset
+    |> validate_change(:metadata, fn :metadata, value ->
+      try do
+        Samly.IdpData.from_xml(value, %Samly.IdpData{})
+        []
+      catch
+        :exit, e ->
+          [metadata: "is invalid. Details: #{inspect(e)}."]
+      end
+    end)
   end
 end

@@ -83,7 +83,7 @@
           # Priority values are: `low, normal, high, higher`
           #
           {Credo.Check.Design.AliasUsage,
-           [priority: :low, if_nested_deeper_than: 2, if_called_more_often_than: 2]},
+           [priority: :low, if_nested_deeper_than: 5, if_called_more_often_than: 6]},
           # You can also customize the exit_status of each check.
           # If you don't want TODO comments to cause `mix credo` to fail, just
           # set this value to 0 (zero).
@@ -112,7 +112,6 @@
           {Credo.Check.Readability.TrailingWhiteSpace, []},
           {Credo.Check.Readability.UnnecessaryAliasExpansion, []},
           {Credo.Check.Readability.VariableNames, []},
-          {Credo.Check.Readability.WithSingleClause, []},
 
           #
           ## Refactoring Opportunities

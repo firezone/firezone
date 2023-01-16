@@ -27,7 +27,7 @@ defmodule FzHttpWeb.UserLive.IndexTest do
       path = ~p"/users"
       {:ok, _view, html} = live(conn, path)
 
-      for user <- Users.list_users(:with_device_counts) do
+      for user <- Users.list_users(hydrate: [:device_count]) do
         assert html =~ "<td id=\"user-#{user.id}-device-count\">#{user.device_count}</td>"
       end
     end
@@ -84,7 +84,7 @@ defmodule FzHttpWeb.UserLive.IndexTest do
 
       {new_path, flash} = assert_redirect(view)
       assert flash["info"] == "User created successfully."
-      user = Users.get_user!(email: @valid_user_attrs["user"]["email"])
+      assert {:ok, user} = Users.fetch_user_by_email(@valid_user_attrs["user"]["email"])
       assert new_path == ~p"/users/#{user}"
     end
 
@@ -97,7 +97,7 @@ defmodule FzHttpWeb.UserLive.IndexTest do
         |> element("form#user-form")
         |> render_submit(@invalid_user_attrs)
 
-      assert new_view =~ "has invalid format"
+      assert new_view =~ "is invalid email address"
       assert new_view =~ "should be at least 12 character(s)"
     end
   end

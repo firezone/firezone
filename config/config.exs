@@ -50,8 +50,7 @@ config :fz_http,
   server_process_opts: [name: {:global, :fz_http_server}],
   saml_entity_id: "urn:firezone.dev:firezone-app",
   saml_certfile_path: Path.expand("../apps/fz_http/priv/cert/saml_selfsigned.pem", __DIR__),
-  saml_keyfile_path: Path.expand("../apps/fz_http/priv/cert/saml_selfsigned_key.pem", __DIR__),
-  openid_connect: OpenIDConnect
+  saml_keyfile_path: Path.expand("../apps/fz_http/priv/cert/saml_selfsigned_key.pem", __DIR__)
 
 config :fz_wall,
   cli: FzWall.CLI.Sandbox,

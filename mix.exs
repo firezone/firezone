@@ -55,16 +55,19 @@ defmodule FirezoneUmbrella.MixProject do
   # Run "mix help deps" for examples and options.
   defp deps do
     [
+      # Shared deps
       {:jason, "~> 1.2"},
-      {:posthog, "~> 0.1"},
-      # for formatting Heex
-      {:phoenix, "~> 1.7.0-rc.0", override: true},
-      {:phoenix_live_view, "~> 0.18.3"},
-      {:phoenix_live_dashboard, "~> 0.7.2"},
-      {:ex_doc, "~> 0.24", only: :dev, runtime: false},
+
+      # Shared test deps
       {:excoveralls, "~> 0.14", only: :test},
+      {:credo, "~> 1.5", only: [:dev, :test], runtime: false},
       {:mix_test_watch, "~> 1.0", only: :dev, runtime: false},
-      {:dialyxir, "~> 1.1", only: [:dev], runtime: false}
+      {:dialyxir, "~> 1.1", only: [:dev], runtime: false},
+      {:junit_formatter, "~> 3.3", only: [:test]},
+
+      # Formatter doesn't track dependencies of children applications
+      {:phoenix, "~> 1.7.0-rc.1", override: true},
+      {:phoenix_live_view, "~> 0.18.3"}
     ]
   end
 
