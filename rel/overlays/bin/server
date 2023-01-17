@@ -13,10 +13,10 @@ setup_interface()
 {
   ip link add ${WIREGUARD_INTERFACE_NAME} type wireguard
 
-  if [ $WIREGUARD_IPV4_ENABLED = "true" ]; then
+  if [ "$WIREGUARD_IPV4_ENABLED" = "true" ]; then
     ip address replace ${WIREGUARD_IPV4_ADDRESS} dev ${WIREGUARD_INTERFACE_NAME}
   fi
-  if [ $WIREGUARD_IPV6_ENABLED = "true" ]; then
+  if [ "$WIREGUARD_IPV6_ENABLED" = "true" ]; then
     ip -6 address replace ${WIREGUARD_IPV6_ADDRESS} dev ${WIREGUARD_INTERFACE_NAME}
   fi
   ip link set mtu ${WIREGUARD_MTU} up dev ${WIREGUARD_INTERFACE_NAME}
@@ -24,10 +24,10 @@ setup_interface()
 
 add_routes()
 {
-  if [ $WIREGUARD_IPV4_ENABLED = "true" ]; then
+  if [ "$WIREGUARD_IPV4_ENABLED" = "true" ]; then
     ip route add ${WIREGUARD_IPV4_NETWORK} dev ${WIREGUARD_INTERFACE_NAME}
   fi
-  if [ $WIREGUARD_IPV6_ENABLED = "true" ]; then
+  if [ "$WIREGUARD_IPV6_ENABLED" = "true" ]; then
     ip -6 route add ${WIREGUARD_IPV6_NETWORK} dev ${WIREGUARD_INTERFACE_NAME}
   fi
 }
@@ -61,7 +61,7 @@ setup_telemetry
 
 cd -P -- "$(dirname -- "$0")"
 ./firezone eval FzHttp.Release.migrate
-if [ $RESET_ADMIN_ON_BOOT = "true" ]; then
+if [ "$RESET_ADMIN_ON_BOOT" = "true" ]; then
   ./firezone eval FzHttp.Release.create_admin_user
 fi
 exec ./firezone start
