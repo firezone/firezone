@@ -10,7 +10,7 @@ defmodule FzHttp.Repo.Migrations.FixSitesNullableFields do
     endpoint =
       System.get_env(
         "WIREGUARD_ENDPOINT",
-        URI.parse(System.get_env("EXTERNAL_URL", "https://localhost/")).host
+        host()
       ) <> ":" <> System.get_env("WIREGUARD_PORT", "51820")
 
     execute("""
@@ -42,5 +42,29 @@ defmodule FzHttp.Repo.Migrations.FixSitesNullableFields do
       SET endpoint = '#{endpoint}'
       WHERE endpoint IS NULL
     """)
+  end
+
+  defp host do
+    external_url_var = System.get_env("EXTERNAL_URL")
+    substitute = "https://localhost/"
+
+    external_url =
+      if String.length(external_url_var) == 0 || is_nil(external_url_var) do
+        Logger.warn("EXTERNAL_URL is empty! Using #{substitute} as basis for WIREGUARD_ENDPOINT.").substitute
+      else
+        external_url_var
+      end
+
+    parsed_host = URI.parse(external_url).host
+
+    if is_nil(parsed_host) do
+      Logger.warn(
+        "EXTERNAL_URL doesn't seem to contain a valid URL. Assuming https://#{external_url}."
+      )
+
+      external_url
+    else
+      parsed_host
+    end
   end
 end
