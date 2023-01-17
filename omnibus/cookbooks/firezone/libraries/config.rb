@@ -264,8 +264,8 @@ class Firezone
         # the <= 0.4.4 to >= 0.4.5 version boundary.
         'WIREGUARD_PRIVATE_KEY_PATH' => "#{node['firezone']['var_directory']}/cache/wg_private_key",
 
-        'SAML_KEYFILE_PATH' => "#{node['firezone']['ssl']['directory']}/saml_keyfile.pem",
-        'SAML_CERTFILE_PATH' => "#{node['firezone']['ssl']['directory']}/saml_certfile.pem",
+        'SAML_KEYFILE_PATH' => "#{node['firezone']['ssl']['directory']}/saml.key",
+        'SAML_CERTFILE_PATH' => "#{node['firezone']['ssl']['directory']}/saml.crt",
 
         # Auth
         'LOCAL_AUTH_ENABLED' => attributes['authentication']['local']['enabled'].to_s,
