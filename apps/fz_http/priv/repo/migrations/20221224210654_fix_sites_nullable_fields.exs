@@ -1,6 +1,8 @@
 defmodule FzHttp.Repo.Migrations.FixSitesNullableFields do
   use Ecto.Migration
 
+  require Logger
+
   def change do
     dns = System.get_env("WIREGUARD_DNS", "1.1.1.1,1.0.0.1")
     mtu = System.get_env("WIREGUARD_MTU", "1280")
@@ -49,7 +51,7 @@ defmodule FzHttp.Repo.Migrations.FixSitesNullableFields do
     substitute = "https://localhost/"
 
     external_url =
-      if String.length(external_url_var) == 0 || is_nil(external_url_var) do
+      if is_nil(external_url_var) || String.length(external_url_var) == 0 do
         Logger.warn("EXTERNAL_URL is empty! Using #{substitute} as basis for WireGuard endpoint.")
         substitute
       else
