@@ -50,7 +50,8 @@ defmodule FzHttp.Repo.Migrations.FixSitesNullableFields do
 
     external_url =
       if String.length(external_url_var) == 0 || is_nil(external_url_var) do
-        Logger.warn("EXTERNAL_URL is empty! Using #{substitute} as basis for WIREGUARD_ENDPOINT.").substitute
+        Logger.warn("EXTERNAL_URL is empty! Using #{substitute} as basis for WireGuard endpoint.")
+        substitute
       else
         external_url_var
       end
