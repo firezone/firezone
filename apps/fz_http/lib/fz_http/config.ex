@@ -25,17 +25,11 @@ defmodule FzHttp.Config do
     def fetch_env!(app, key) do
       application_env = Application.fetch_env!(app, key)
 
-      with :error <- fetch_process_value(key_function(app, key)),
-           :error <-
-             fetch_process_value(
-               get_last_pid_from_pdict_list(:"$ancestors"),
-               key_function(app, key)
-             ),
-           :error <-
-             fetch_process_value(
-               get_last_pid_from_pdict_list(:"$callers"),
-               key_function(app, key)
-             ) do
+      pdict_key = key_function(app, key)
+      
+      with :error <- fetch_process_value(pdict_key),
+           :error <- fetch_process_value(get_last_pid_from_pdict_list(:"$ancestors"), pdict_key),
+           :error <- fetch_process_value(get_last_pid_from_pdict_list(:"$callers"), pdict_key) do
         application_env
       else
         {:ok, override} -> override
