@@ -295,7 +295,7 @@ defmodule FzHttpWeb.AuthControllerTest do
       query =
         URI.encode_query(%{
           "id_token_hint" => "abc",
-          "post_logout_redirect_uri" => "http://localhost:4002/",
+          "post_logout_redirect_uri" => FzHttp.Config.fetch_env!(:fz_http, :external_url) <> "/",
           "client_id" => "okta-client-id"
         })
 

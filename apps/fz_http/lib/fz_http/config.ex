@@ -5,11 +5,11 @@ defmodule FzHttp.Config do
   """
 
   if Mix.env() != :test do
-    def maybe_put_env_override(_key, _value), do: :ok
-    def fetch_env!(app, key), do: Application.fetch_env!(app, key)
+    defdelegate put_env(app, key, value), to: Application
+    defdelegate fetch_env!(app, key), to: Application
   else
-    def maybe_put_env_override(key, value) do
-      _ = Process.put(key, value)
+    def put_env(app \\ :fz_http, key, value) do
+      Process.put(key_function(app, key), value)
       :ok
     end
 
@@ -25,9 +25,17 @@ defmodule FzHttp.Config do
     def fetch_env!(app, key) do
       application_env = Application.fetch_env!(app, key)
 
-      with :error <- fetch_process_value(key),
-           :error <- fetch_process_value(get_last_pid_from_pdict_list(:"$ancestors"), key),
-           :error <- fetch_process_value(get_last_pid_from_pdict_list(:"$callers"), key) do
+      with :error <- fetch_process_value(key_function(app, key)),
+           :error <-
+             fetch_process_value(
+               get_last_pid_from_pdict_list(:"$ancestors"),
+               key_function(app, key)
+             ),
+           :error <-
+             fetch_process_value(
+               get_last_pid_from_pdict_list(:"$callers"),
+               key_function(app, key)
+             ) do
         application_env
       else
         {:ok, override} -> override
@@ -67,4 +75,7 @@ defmodule FzHttp.Config do
       end
     end
   end
+
+  # String.to_atom/1 is only used in test env
+  defp key_function(app, key), do: String.to_atom("#{app}-#{key}")
 end
