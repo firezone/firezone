@@ -191,7 +191,7 @@ doDumpLoad () {
   db_name=$(sudo cat /opt/firezone/service/phoenix/env/DATABASE_NAME)
   db_user=$(sudo cat /opt/firezone/service/phoenix/env/DATABASE_USER)
 
-  /opt/firezone/embedded/bin/pg_dump -h $db_host -p $db_port -d $db_name -U $db_user > $installDir/firezone_omnibus_backup.sql
+  /opt/firezone/embedded/bin/pg_dump -O -h $db_host -p $db_port -d $db_name -U $db_user > $installDir/firezone_omnibus_backup.sql
 
   echo "Loading existing database into docker..."
   $dc -f $installDir/docker-compose.yml exec -T postgres psql -U postgres -h 127.0.0.1 -d $db_name < $installDir/firezone_omnibus_backup.sql
