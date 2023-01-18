@@ -26,7 +26,7 @@ defmodule FzHttp.Config do
       application_env = Application.fetch_env!(app, key)
 
       pdict_key = key_function(app, key)
-      
+
       with :error <- fetch_process_value(pdict_key),
            :error <- fetch_process_value(get_last_pid_from_pdict_list(:"$ancestors"), pdict_key),
            :error <- fetch_process_value(get_last_pid_from_pdict_list(:"$callers"), pdict_key) do
@@ -68,8 +68,8 @@ defmodule FzHttp.Config do
         List.last(values)
       end
     end
-  end
 
-  # String.to_atom/1 is only used in test env
-  defp key_function(app, key), do: String.to_atom("#{app}-#{key}")
+    # String.to_atom/1 is only used in test env
+    defp key_function(app, key), do: String.to_atom("#{app}-#{key}")
+  end
 end
