@@ -56,7 +56,7 @@ defmodule FzHttp.DevicesTest do
     }
 
     test "prevents creating more than max_devices_per_user", %{device: device} do
-      FzHttp.Config.maybe_put_env_override(:max_devices_per_user, 1)
+      FzHttp.Config.put_env(:max_devices_per_user, 1)
 
       assert {:error,
               %Ecto.Changeset{
@@ -85,7 +85,7 @@ defmodule FzHttp.DevicesTest do
     test "returns error when device IP can't be assigned due to CIDR pool exhaustion", %{
       device: device
     } do
-      FzHttp.Config.maybe_put_env_override(:wireguard_ipv4_network, "10.3.2.0/30")
+      FzHttp.Config.put_env(:wireguard_ipv4_network, "10.3.2.0/30")
       attrs = %{@device_attrs | ipv4: nil, ipv6: nil, user_id: device.user_id}
 
       assert {:ok, _device} = Devices.create_device(attrs)

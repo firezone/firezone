@@ -11,17 +11,17 @@ defmodule FzHttpWeb.Plug.PathPrefixTest do
 
   describe "call/2" do
     test "does nothing when path prefix is not configured" do
-      FzHttp.Config.maybe_put_env_override(:path_prefix, nil)
+      FzHttp.Config.put_env(:path_prefix, nil)
       conn = conn(:get, "/")
       assert call(conn, []) == conn
 
-      FzHttp.Config.maybe_put_env_override(:path_prefix, "/")
+      FzHttp.Config.put_env(:path_prefix, "/")
       conn = conn(:get, "/foo")
       assert call(conn, []) == conn
     end
 
     test "removes prefix from conn.request_path" do
-      FzHttp.Config.maybe_put_env_override(:path_prefix, "/vpn/")
+      FzHttp.Config.put_env(:path_prefix, "/vpn/")
       conn = conn(:get, "/vpn/foo")
       assert returned_conn = call(conn, [])
       assert returned_conn.request_path == "/foo"
@@ -30,7 +30,7 @@ defmodule FzHttpWeb.Plug.PathPrefixTest do
     end
 
     test "removes prefix from conn.path_info" do
-      FzHttp.Config.maybe_put_env_override(:path_prefix, "/vpn/")
+      FzHttp.Config.put_env(:path_prefix, "/vpn/")
       conn = conn(:get, "/vpn/foo")
       assert returned_conn = call(conn, [])
       assert returned_conn.path_info == ["foo"]
@@ -39,7 +39,7 @@ defmodule FzHttpWeb.Plug.PathPrefixTest do
     end
 
     test "redirects users from not prefixed path" do
-      FzHttp.Config.maybe_put_env_override(:path_prefix, "/vpn/")
+      FzHttp.Config.put_env(:path_prefix, "/vpn/")
 
       conn = conn(:get, "/foo")
       assert returned_conn = call(conn, [])

@@ -52,10 +52,10 @@ defmodule FzHttp.SAML.StartProxy do
           sp_id: "firezone",
           metadata: provider.metadata,
           base_url: provider.base_url || Path.join(external_url, "/auth/saml"),
-          sign_requests: provider.sign_requests || true,
-          sign_metadata: provider.sign_metadata || true,
-          signed_assertion_in_resp: provider.signed_assertion_in_resp || true,
-          signed_envelopes_in_resp: provider.signed_envelopes_in_resp || true
+          sign_requests: provider.sign_requests,
+          sign_metadata: provider.sign_metadata,
+          signed_assertion_in_resp: provider.signed_assertion_in_resp,
+          signed_envelopes_in_resp: provider.signed_envelopes_in_resp
         }
       end)
 
@@ -63,7 +63,7 @@ defmodule FzHttp.SAML.StartProxy do
   end
 
   def refresh(samly_configs) do
-    Application.put_env(:samly, Samly.Provider, samly_configs)
+    FzHttp.Config.put_env(:samly, Samly.Provider, samly_configs)
     Samly.Provider.refresh_providers()
   end
 

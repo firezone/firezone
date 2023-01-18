@@ -494,6 +494,21 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
                  auto_create_users: true
                }
 
+      assert FzHttp.Config.fetch_env!(:samly, Samly.Provider) == [
+               identity_providers: [
+                 %{
+                   base_url: "http://localhost:4002/autX/saml#foo",
+                   id: "foo-bar-buz",
+                   metadata: saml_metadata,
+                   sign_metadata: false,
+                   sign_requests: false,
+                   signed_assertion_in_resp: false,
+                   signed_envelopes_in_resp: false,
+                   sp_id: "firezone"
+                 }
+               ]
+             ]
+
       # Edit
       session =
         session
