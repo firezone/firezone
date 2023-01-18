@@ -67,11 +67,17 @@ defmodule FzWall.CLI.Live do
   end
 
   @doc """
-  Adds device ip to the user's sets.
+  Adds device ip(s) to the user's sets, omitting missing IPs.
   """
   def add_device(device) do
     list_dev_sets(device.user_id)
-    |> Enum.each(fn set_spec -> add_elem(set_spec.name, device[set_spec.ip_type]) end)
+    |> Enum.filter(fn set_spec ->
+      # Only call add_elem/2 for IPs that are present
+      device[set_spec.ip_type]
+    end)
+    |> Enum.each(fn set_spec ->
+      add_elem(set_spec.name, device[set_spec.ip_type])
+    end)
   end
 
   @doc """
