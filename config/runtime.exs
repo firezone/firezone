@@ -7,6 +7,8 @@ import Config
 
 alias FzCommon.{CLI, FzInteger, FzString, FzKernelVersion, FzNet}
 
+require Logger
+
 # external_url is important, so fail fast here if we can't parse
 {:ok, external_url} =
   if config_env() == :prod do
@@ -89,14 +91,24 @@ if config_env() == :prod do
   cookie_secure = FzString.to_boolean(System.get_env("SECURE_COOKIES", "true"))
 
   # Outbound Email
-  from_email = System.get_env("OUTBOUND_EMAIL_FROM")
+  outbound_config_env = System.get_env("OUTBOUND_EMAIL_CONFIGS", "{}")
 
-  if from_email do
-    provider = System.get_env("OUTBOUND_EMAIL_PROVIDER", "sendmail")
+  with {:ok, configs} <- Jason.decode(outbound_config_env) do
+    mailer =
+      FzHttp.Configurations.Mailer.changeset(%{
+        "from" => System.get_env("OUTBOUND_EMAIL_FROM"),
+        "provider" => System.get_env("OUTBOUND_EMAIL_PROVIDER", "sendmail"),
+        "configs" => configs
+      })
 
-    config :fz_http,
-           FzHttpWeb.Mailer,
-           [from_email: from_email] ++ FzHttpWeb.Mailer.configs_for(provider)
+    if mailer.valid? do
+      config :fz_http, FzHttpWeb.Mailer, FzHttpWeb.Mailer.from_configuration(mailer)
+    else
+      Logger.warn("Outbound email not configured. Disabling! Details: #{mailer.errors}")
+    end
+  else
+    {:error, error} ->
+      raise "OUTBOUND_EMAIL_CONFIGS not a valid JSON-encoded string. Error: #{error}"
   end
 
   max_devices_per_user =

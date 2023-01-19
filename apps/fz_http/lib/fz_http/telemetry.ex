@@ -162,9 +162,7 @@ defmodule FzHttp.Telemetry do
   end
 
   defp outbound_email? do
-    from_email = FzHttp.Config.fetch_env!(:fz_http, FzHttpWeb.Mailer)[:from_email]
-
-    !is_nil(from_email)
+    not is_nil(FzHttp.Config.fetch_env!(:fz_http, FzHttpWeb.Mailer)[:from_email])
   end
 
   defp os_type do

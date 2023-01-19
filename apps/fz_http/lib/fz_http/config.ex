@@ -7,6 +7,7 @@ defmodule FzHttp.Config do
   if Mix.env() != :test do
     defdelegate put_env(app, key, value), to: Application
     defdelegate fetch_env!(app, key), to: Application
+    defdelegate get_env(app, key, default \\ nil), to: Application
   else
     def put_env(app \\ :fz_http, key, value) do
       Process.put(key_function(app, key), value)
@@ -23,10 +24,16 @@ defmodule FzHttp.Config do
     in test environment (eg. to send those requests to Bypass).
     """
     def fetch_env!(app, key) do
-      application_env = Application.fetch_env!(app, key)
+      key_function(app, key)
+      |> fetch_nearest_value(Application.fetch_env!(app, key))
+    end
 
-      pdict_key = key_function(app, key)
+    def get_env(app, key, default \\ nil) do
+      key_function(app, key)
+      |> fetch_nearest_value(Application.get_env(app, key, default))
+    end
 
+    defp fetch_nearest_value(pdict_key, application_env) do
       with :error <- fetch_process_value(pdict_key),
            :error <- fetch_process_value(get_last_pid_from_pdict_list(:"$ancestors"), pdict_key),
            :error <- fetch_process_value(get_last_pid_from_pdict_list(:"$callers"), pdict_key) do

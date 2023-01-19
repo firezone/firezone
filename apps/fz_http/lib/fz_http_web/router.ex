@@ -57,8 +57,11 @@ defmodule FzHttpWeb.Router do
       :require_unauthenticated
     ]
 
-    get "/reset_password", AuthController, :reset_password
-    post "/magic_link", AuthController, :magic_link
+    if FzHttp.Config.get_env(:fz_http, FzHttpWeb.Mailer) do
+      get "/reset_password", AuthController, :reset_password
+      post "/magic_link", AuthController, :magic_link
+    end
+
     get "/magic/:user_id/:token", AuthController, :magic_sign_in
 
     get "/:provider", AuthController, :request
