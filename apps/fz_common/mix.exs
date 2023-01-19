@@ -34,7 +34,9 @@ defmodule FzCommon.MixProject do
       {:file_size, "~> 3.0.1"},
       {:cidr, github: "firezone/cidr-elixir"},
       {:posthog, "~> 0.1"},
-      {:argon2_elixir, "~> 2.0"}
+      {:argon2_elixir, "~> 2.0"},
+      {:ecto_network,
+       github: "firezone/ecto_network", ref: "7dfe65bcb6506fb0ed6050871b433f3f8b1c10cb"}
     ]
   end
 end
