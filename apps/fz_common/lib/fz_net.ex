@@ -52,7 +52,7 @@ defmodule FzCommon.FzNet do
     if netmask != nil do
       inet
     else
-      "#{address |> Tuple.to_list() |> Enum.join(".")}/#{get_range!(network)}"
+      "#{:inet.ntoa(address)}/#{get_range!(network)}"
     end
   end
 

@@ -42,9 +42,8 @@ npm-debug.log
 /priv/plts/
 
 # Gateway ephemeral files
-/priv/gateway-conf/id
-/priv/gateway-conf/logs/
-/priv/gateway-conf/token
+/priv/gateway-conf/
+!/priv/gateway-conf/priv
 
 # ElixirLS generates an .elixir_ls folder for user settings
 .elixir_ls

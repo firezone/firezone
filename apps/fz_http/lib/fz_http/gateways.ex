@@ -53,8 +53,8 @@ defmodule FzHttp.Gateways do
   def get_gateway!(name: name), do: Repo.get_by!(Gateway, name: name)
 
   def gateway_config(gateway) do
-    network_v4 = Application.fetch_env!(:fz_http, :wireguard_ipv4_network)
-    network_v6 = Application.fetch_env!(:fz_http, :wireguard_ipv6_network)
+    network_v4 = FzHttp.Config.fetch_env!(:fz_http, :wireguard_ipv4_network)
+    network_v6 = FzHttp.Config.fetch_env!(:fz_http, :wireguard_ipv6_network)
 
     interface = %{
       address: [
@@ -64,7 +64,7 @@ defmodule FzHttp.Gateways do
       mtu: gateway.mtu,
       ipv4_masquerade: gateway.ipv4_masquerade,
       ipv6_masquerade: gateway.ipv6_masquerade,
-      listen_port: Devices.get_default_wireguard_port()
+      listen_port: FzHttp.Config.fetch_env!(:fz_http, :default_wireguard_port)
     }
 
     %{
