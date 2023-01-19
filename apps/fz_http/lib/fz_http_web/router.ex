@@ -210,7 +210,7 @@ defmodule FzHttpWeb.Router do
     get "/config.xml", BrowserController, :config
   end
 
-  if Mix.env() == :dev do
+  if Mix.env() in [:dev, :test] do
     import Phoenix.LiveDashboard.Router
 
     scope "/dev" do

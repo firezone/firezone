@@ -50,6 +50,52 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
       |> assert_path("/user_devices")
       |> Auth.assert_authenticated(user)
     end
+
+    feature "can not reset password using email email", %{session: session} do
+      UsersFixtures.create_user_with_role(:unprivileged)
+
+      session
+      |> visit(~p"/")
+      |> assert_el(Query.link("Sign in with email"))
+      |> click(Query.link("Sign in with email"))
+      |> assert_el(Query.link("Forgot password"))
+      |> click(Query.link("Forgot password"))
+      |> assert_el(Query.text("Reset Password"))
+      |> fill_form(%{"email" => "foo@bar.com"})
+      |> click(Query.button("Send"))
+      |> assert_el(Query.text("Reset Password"))
+      |> visit(~p"/dev/mailbox")
+      |> assert_el(Query.text("Empty mailbox..."))
+    end
+
+    feature "can reset password using email link", %{session: session} do
+      user = UsersFixtures.create_user_with_role(:unprivileged)
+
+      session =
+        session
+        |> visit(~p"/")
+        |> assert_el(Query.link("Sign in with email"))
+        |> click(Query.link("Sign in with email"))
+        |> assert_el(Query.link("Forgot password"))
+        |> click(Query.link("Forgot password"))
+        |> assert_el(Query.text("Reset Password"))
+        |> fill_form(%{
+          "email" => user.email
+        })
+        |> click(Query.button("Send"))
+        |> assert_el(Query.text("Please check your inbox for the magic link."))
+        |> visit(~p"/dev/mailbox")
+        |> click(Query.link("Firezone Magic Link"))
+        |> assert_el(Query.text("HTML body preview:"))
+
+      email_text = text(session, Query.css(".body-text"))
+      [link] = Regex.run(~r|http://localhost[^ ]*|, email_text)
+
+      session
+      |> visit(link)
+      |> assert_el(Query.text("Your Devices"))
+      |> assert_el(Query.text("Signed in as #{user.email}."))
+    end
   end
 
   describe "using OIDC provider" do
@@ -347,7 +393,9 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
   defp password_login_flow(session, email, password) do
     session
     |> visit(~p"/")
+    |> assert_el(Query.link("Sign in with email"))
     |> click(Query.link("Sign in with email"))
+    |> assert_el(Query.text("Sign In"))
     |> fill_form(%{
       "Email" => email,
       "Password" => password
