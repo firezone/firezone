@@ -53,7 +53,9 @@ config :ueberauth, Ueberauth,
     identity: {Ueberauth.Strategy.Identity, [callback_methods: ["POST"], uid_field: :email]}
   ]
 
-config :fz_http, FzHttpWeb.Mailer, adapter: Swoosh.Adapters.Test, from_email: "test@firez.one"
+config :fz_http, FzHttpWeb.Mailer,
+  adapter: FzHttpWeb.MailerTestAdapter,
+  from_email: "test@firez.one"
 
 config :fz_vpn,
   # XXX: Bump test coverage by adding a stubbed out module for FzVpn.StatsPushService
