@@ -91,7 +91,9 @@ defmodule FzHttpWeb.RuleLive.RuleListComponent do
   end
 
   defp users do
-    Users.list_users()
+    {:ok, users} = Users.list_users()
+
+    users
     |> Stream.map(&{&1.id, &1.email})
     |> Map.new()
   end

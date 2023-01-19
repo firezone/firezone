@@ -5,6 +5,14 @@ defmodule FzHttp.Validator do
   import Ecto.Changeset
   alias FzCommon.FzNet
 
+  def changed?(changeset, field) do
+    Map.has_key?(changeset.changes, field)
+  end
+
+  def has_errors?(changeset, field) do
+    Keyword.has_key?(changeset.errors, field)
+  end
+
   def validate_email(changeset, field) do
     validate_format(changeset, field, ~r/@/, message: "is invalid email address")
   end

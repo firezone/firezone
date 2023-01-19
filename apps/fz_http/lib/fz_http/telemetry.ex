@@ -102,8 +102,8 @@ defmodule FzHttp.Telemetry do
         in_docker: in_docker?(),
         device_count: Devices.count(),
         max_devices_for_users: Devices.max_count_by_user_id(),
-        users_with_mfa: MFA.count_distinct_by_user_id(),
-        users_with_mfa_totp: MFA.count_distinct_totp_by_user_id(),
+        users_with_mfa: MFA.count_users_with_method(),
+        users_with_mfa_totp: MFA.count_users_with_totp_method(),
         openid_providers: length(FzHttp.Configurations.get!(:openid_connect_providers)),
         saml_providers: length(FzHttp.Configurations.get!(:saml_identity_providers)),
         unprivileged_device_management:

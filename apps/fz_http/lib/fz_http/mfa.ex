@@ -1,69 +1,71 @@
 defmodule FzHttp.MFA do
-  @moduledoc """
-  The Multi Factor Authentication context.
-  """
+  alias FzHttp.{Repo, Validator}
+  alias FzHttp.Users
+  alias FzHttp.MFA.Method
 
-  import Ecto.Query, warn: false
-
-  alias FzHttp.{MFA.Method, Repo, Users.User}
-
-  def count_distinct_by_user_id do
-    Repo.one(from m in Method, select: count(m.user_id, :distinct))
+  def count_users_with_method do
+    Method.Query.select_distinct_user_ids_count()
+    |> Repo.one()
   end
 
-  def count_distinct_totp_by_user_id do
-    Repo.one(from m in Method, select: count(m.user_id, :distinct), where: [type: :totp])
+  def count_users_with_totp_method do
+    Method.Query.select_distinct_user_ids_count()
+    |> Method.Query.by_type(:totp)
+    |> Repo.one()
   end
 
-  def exists?(%User{id: id}) do
-    Repo.exists?(from Method, where: [user_id: ^id])
+  def fetch_method_by_id(id) do
+    if Validator.valid_uuid?(id) do
+      Method.Query.by_id(id)
+      |> Repo.fetch()
+    else
+      {:error, :not_found}
+    end
   end
 
-  def list_methods(%User{id: id}) do
-    Repo.all(from Method, where: [user_id: ^id], order_by: [desc: :last_used_at])
+  def fetch_last_used_method_by_user_id(user_id) do
+    if Validator.valid_uuid?(user_id) do
+      Method.Query.by_user_id(user_id)
+      |> Method.Query.order_by_last_usage()
+      |> Method.Query.with_limit(1)
+      |> Repo.fetch()
+    else
+      {:error, :not_found}
+    end
   end
 
-  def most_recent_method(%User{id: id}) do
-    Repo.one(from Method, where: [user_id: ^id], order_by: [desc: :last_used_at], limit: 1)
+  def list_methods_for_user(%Users.User{id: user_id}) do
+    Method.Query.by_user_id(user_id)
+    |> Method.Query.order_by_last_usage()
+    |> Repo.list()
   end
 
-  def get_method!(credential_id: id) do
-    Repo.get_by!(Method, credential_id: id)
-  end
-
-  def get_method!(id) do
-    Repo.get!(Method, id)
-  end
-
-  def get_method(credential_id: id) do
-    Repo.get_by(Method, credential_id: id)
-  end
-
-  def get_method(id) do
-    Repo.get(Method, id)
+  def create_method_changeset(attrs \\ %{}, user_id) do
+    Method.Changeset.create_changeset(user_id, attrs)
   end
 
   def create_method(attrs, user_id) do
-    %Method{user_id: user_id}
-    |> Method.changeset(attrs)
+    create_method_changeset(attrs, user_id)
     |> Repo.insert()
   end
 
-  def update_method(%Method{} = method, attrs) do
-    method
-    |> Method.changeset(attrs)
+  def use_method_changeset(method, attrs \\ %{}) do
+    Method.Changeset.use_code_changeset(method, attrs)
+  end
+
+  def use_method(%Method{} = method, attrs) do
+    use_method_changeset(method, attrs)
     |> Repo.update()
   end
 
-  def new_method(attrs \\ %{}) do
-    Method.changeset(%Method{}, attrs)
-  end
-
-  def change_method(method, attrs \\ %{}) do
-    Method.changeset(method, attrs)
-  end
-
-  def delete_method(method) do
-    Repo.delete(method)
+  def delete_method_by_id(method_id, %Users.User{} = user) do
+    with {:ok, method} <- fetch_method_by_id(method_id),
+         # A user can only delete his/her own MFA method!
+         true <- method.user_id == user.id do
+      {:ok, Repo.delete!(method)}
+    else
+      {:error, :not_found} -> {:error, :not_found}
+      false -> {:error, :not_found}
+    end
   end
 end

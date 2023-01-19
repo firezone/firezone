@@ -47,7 +47,8 @@ defmodule FzHttpWeb.AcceptanceCase.Auth do
       cookie =
         %{
           "guardian_default_token" => token,
-          "login_method" => "identity"
+          "login_method" => "identity",
+          "logged_in_at" => DateTime.utc_now()
         }
         |> :erlang.term_to_binary()
 

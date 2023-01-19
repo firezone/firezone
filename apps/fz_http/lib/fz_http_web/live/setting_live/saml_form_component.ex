@@ -212,7 +212,7 @@ defmodule FzHttpWeb.SettingLive.SAMLFormComponent do
     changeset =
       params
       |> FzHttp.Configurations.Configuration.SAMLIdentityProvider.changeset()
-      |> Map.put(:action, :validate)
+      |> render_changeset_errors()
 
     update =
       case changeset do

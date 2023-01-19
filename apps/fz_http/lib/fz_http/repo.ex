@@ -22,4 +22,11 @@ defmodule FzHttp.Repo do
   Alias of `Ecto.Repo.one!/2` added for naming convenience.
   """
   def fetch!(queryable, opts \\ []), do: __MODULE__.one!(queryable, opts)
+
+  @doc """
+  Similar to `Ecto.Repo.all/2`, fetches all results from the query but return a tuple.
+  """
+  def list(queryable, opts \\ []) do
+    {:ok, __MODULE__.all(queryable, opts)}
+  end
 end

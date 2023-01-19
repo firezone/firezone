@@ -185,7 +185,7 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
     changeset =
       params
       |> FzHttp.Configurations.Configuration.OpenIDConnectProvider.changeset()
-      |> Map.put(:action, :validate)
+      |> render_changeset_errors()
 
     update =
       case changeset do

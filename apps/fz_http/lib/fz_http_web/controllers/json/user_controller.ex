@@ -19,8 +19,9 @@ defmodule FzHttpWeb.JSON.UserController do
 
   @doc api_doc: [action: "List all Users"]
   def index(conn, _params) do
-    users = Users.list_users()
-    render(conn, "index.json", users: users)
+    with {:ok, users} <- Users.list_users() do
+      render(conn, "index.json", users: users)
+    end
   end
 
   @doc """

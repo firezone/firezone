@@ -1,6 +1,7 @@
 defmodule FzHttpWeb.Acceptance.AuthenticationTest do
   use FzHttpWeb.AcceptanceCase, async: true
   alias FzHttp.UsersFixtures
+  alias FzHttp.MFAFixtures
 
   describe "using login and password" do
     feature "renders error on invalid login or password", %{session: session} do
@@ -177,21 +178,12 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
       secret = NimbleTOTP.secret()
       verification_code = NimbleTOTP.verification_code(secret)
 
-      {:ok, method} =
-        FzHttp.MFA.create_method(
-          %{
-            name: "Test",
-            type: :totp,
-            secret: Base.encode64(secret),
-            code: verification_code
-          },
-          user.id
-        )
-
-      # Newly created method has a very recent last_used_at timestamp,
-      # It being used in NimbleTOTP.valid?(code, since: last_used_at) always
-      # fails. Need to set it to be something in the past (more than 30s in the past).
-      {:ok, _method} = FzHttp.MFA.update_method(method, %{last_used_at: ~U[1970-01-01T00:00:00Z]})
+      MFAFixtures.create_totp_method(%{
+        payload: %{"secret" => Base.encode64(secret)},
+        code: verification_code,
+        user: user
+      })
+      |> MFAFixtures.rotate_totp_method_key()
 
       session
       |> password_login_flow(user.email, password)
@@ -213,21 +205,12 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
       secret = NimbleTOTP.secret()
       verification_code = NimbleTOTP.verification_code(secret)
 
-      {:ok, method} =
-        FzHttp.MFA.create_method(
-          %{
-            name: "Test",
-            type: :totp,
-            secret: Base.encode64(secret),
-            code: verification_code
-          },
-          user.id
-        )
-
-      # Newly created method has a very recent last_used_at timestamp,
-      # It being used in NimbleTOTP.valid?(code, since: last_used_at) always
-      # fails. Need to set it to be something in the past (more than 30s in the past).
-      {:ok, _method} = FzHttp.MFA.update_method(method, %{last_used_at: ~U[1970-01-01T00:00:00Z]})
+      MFAFixtures.create_totp_method(%{
+        payload: %{"secret" => Base.encode64(secret)},
+        code: verification_code,
+        user: user
+      })
+      |> MFAFixtures.rotate_totp_method_key()
 
       session
       |> password_login_flow(user.email, password)
@@ -249,21 +232,12 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
       secret = NimbleTOTP.secret()
       verification_code = NimbleTOTP.verification_code(secret)
 
-      {:ok, method} =
-        FzHttp.MFA.create_method(
-          %{
-            name: "Test",
-            type: :totp,
-            secret: Base.encode64(secret),
-            code: verification_code
-          },
-          user.id
-        )
-
-      # Newly created method has a very recent last_used_at timestamp,
-      # It being used in NimbleTOTP.valid?(code, since: last_used_at) always
-      # fails. Need to set it to be something in the past (more than 30s in the past).
-      {:ok, _method} = FzHttp.MFA.update_method(method, %{last_used_at: ~U[1970-01-01T00:00:00Z]})
+      MFAFixtures.create_totp_method(%{
+        payload: %{"secret" => Base.encode64(secret)},
+        code: verification_code,
+        user: user
+      })
+      |> MFAFixtures.rotate_totp_method_key()
 
       session
       |> password_login_flow(user.email, password)
@@ -286,21 +260,13 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
       secret = NimbleTOTP.secret()
       verification_code = NimbleTOTP.verification_code(secret)
 
-      {:ok, method} =
-        FzHttp.MFA.create_method(
-          %{
-            name: "Test",
-            type: :totp,
-            secret: Base.encode64(secret),
-            code: verification_code
-          },
-          user.id
-        )
-
-      # Newly created method has a very recent last_used_at timestamp,
-      # It being used in NimbleTOTP.valid?(code, since: last_used_at) always
-      # fails. Need to set it to be something in the past (more than 30s in the past).
-      {:ok, _method} = FzHttp.MFA.update_method(method, %{last_used_at: ~U[1970-01-01T00:00:00Z]})
+      method =
+        MFAFixtures.create_totp_method(%{
+          payload: %{"secret" => Base.encode64(secret)},
+          code: verification_code,
+          user: user
+        })
+        |> MFAFixtures.rotate_totp_method_key()
 
       session
       |> password_login_flow(user.email, password)
@@ -360,7 +326,7 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
     |> assert_el(Query.text("Multi-factor Authentication"))
     |> fill_form(%{"code" => "111111"})
     |> click(Query.button("Verify"))
-    |> assert_el(Query.text("is not valid"))
+    |> assert_el(Query.text("is invalid"))
     |> fill_form(%{"code" => verification_code})
     |> click(Query.button("Verify"))
   end
@@ -386,6 +352,7 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
       |> fill_in(Query.fillable_field("code"), with: "123456")
       |> click(Query.button("Next"))
       |> assert_el(Query.css("input.is-danger"))
+      |> assert_el(Query.text("is invalid"))
       |> fill_in(Query.fillable_field("code"), with: NimbleTOTP.verification_code(secret))
       |> click(Query.button("Next"))
       |> assert_el(Query.text("Confirm to save this Authentication method."))
