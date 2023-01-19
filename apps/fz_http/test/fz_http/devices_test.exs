@@ -83,7 +83,7 @@ defmodule FzHttp.DevicesTest do
     end
 
     test "soft limit max network range for IPv6", %{device: device} do
-      FzHttp.Config.maybe_put_env_override(:wireguard_ipv6_network, "fd00::/20")
+      FzHttp.Config.put_env(:wireguard_ipv6_network, "fd00::/20")
       attrs = %{@device_attrs | ipv4: nil, ipv6: nil, user_id: device.user_id}
       assert {:ok, _device} = Devices.create_device(attrs)
     end
