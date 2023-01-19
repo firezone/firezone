@@ -50,16 +50,10 @@ defmodule FzCommon.FzNet do
 
   def inet_to_ip_with_mask(%{address: address, netmask: netmask} = inet, network) do
     if netmask != nil do
-      inet
+      "#{inet}"
     else
-      "#{:inet.ntoa(address)}/#{get_range!(network)}"
-    end
-  end
-
-  def get_range!(inet) when is_binary(inet) do
-    case String.split(inet, "/") do
-      [_, mask] -> mask
-      _ -> raise "inet given #{inet} doesn't have a range"
+      {:ok, %{netmask: netmask}} = EctoNetwork.INET.cast(network)
+      "#{:inet.ntoa(address)}/#{netmask}"
     end
   end
 

@@ -34,7 +34,9 @@ defmodule FzCommon.MixProject do
       {:file_size, "~> 3.0.1"},
       {:posthog, "~> 0.1"},
       {:jason, "~> 1.2"},
-      {:cidr, github: "firezone/cidr-elixir"}
+      {:cidr, github: "firezone/cidr-elixir"},
+      {:ecto_network,
+       github: "firezone/ecto_network", ref: "7dfe65bcb6506fb0ed6050871b433f3f8b1c10cb"}
       # {:dep_from_hexpm, "~> 0.3.0"},
       # {:dep_from_git, git: "https://github.com/elixir-lang/my_dep.git", tag: "0.1.0"},
       # {:sibling_app_in_umbrella, in_umbrella: true}
