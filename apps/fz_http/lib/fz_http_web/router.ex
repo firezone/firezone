@@ -36,7 +36,6 @@ defmodule FzHttpWeb.Router do
   end
 
   pipeline :require_unauthenticated do
-    plug FzHttpWeb.Plug.Authorization, :test
     plug Guardian.Plug.EnsureNotAuthenticated
   end
 
@@ -44,37 +43,50 @@ defmodule FzHttpWeb.Router do
     plug FzHttpWeb.Auth.HTML.Pipeline
   end
 
+  pipeline :require_local_auth do
+    plug FzHttpWeb.Plug.RequireLocalAuthentication
+  end
+
   pipeline :samly do
     plug :fetch_session
     plug FzHttpWeb.Plug.SamlyTargetUrl
   end
 
-  # Ueberauth routes
-  scope "/auth", FzHttpWeb do
+  # OIDC auth routes
+  scope "/auth/oidc", FzHttpWeb do
     pipe_through [
       :browser,
       :html_auth,
       :require_unauthenticated
     ]
 
-    if FzHttp.Config.get_env(:fz_http, FzHttpWeb.Mailer) do
-      get "/reset_password", AuthController, :reset_password
-      post "/magic_link", AuthController, :magic_link
-    end
+    get "/:provider/callback", AuthController, :callback, as: :auth_oidc
+    get "/:provider", AuthController, :redirect_oidc_auth_uri, as: :auth_oidc
+  end
 
+  # SAML auth routes
+  scope "/auth/saml" do
+    pipe_through :samly
+
+    forward "/", Samly.Router
+  end
+
+  # Local auth routes
+  scope "/auth", FzHttpWeb do
+    pipe_through [
+      :browser,
+      :html_auth,
+      :require_unauthenticated,
+      :require_local_auth
+    ]
+
+    get "/reset_password", AuthController, :reset_password
+    post "/magic_link", AuthController, :magic_link
     get "/magic/:user_id/:token", AuthController, :magic_sign_in
 
     get "/:provider", AuthController, :request
     get "/:provider/callback", AuthController, :callback
     post "/:provider/callback", AuthController, :callback
-    get "/oidc/:provider/callback", AuthController, :callback, as: :auth_oidc
-    get "/oidc/:provider", AuthController, :redirect_oidc_auth_uri, as: :auth_oidc
-  end
-
-  scope "/auth/saml" do
-    pipe_through :samly
-
-    forward "/", Samly.Router
   end
 
   # Unauthenticated routes

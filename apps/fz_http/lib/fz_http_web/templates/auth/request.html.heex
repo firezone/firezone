@@ -36,7 +36,7 @@
             <%= submit("Sign In", class: "button") %>
           </div>
           <div class="level-right">
-            <%= if FzHttp.Config.get_env(:fz_http, FzHttpWeb.Mailer) do %>
+            <%= if FzHttpWeb.Mailer.active?() do %>
               <%= link("Forgot password",
                 to: ~p"/auth/reset_password",
                 class: "forgot-password"

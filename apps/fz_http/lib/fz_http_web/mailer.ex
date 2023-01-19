@@ -16,6 +16,10 @@ defmodule FzHttpWeb.Mailer do
     "sendmail" => Adapters.Sendmail
   }
 
+  def active? do
+    not is_nil(FzHttp.Config.fetch_env!(:fz_http, FzHttpWeb.Mailer)[:from_email])
+  end
+
   def default_email do
     # Fail hard if email not configured
     from_email =
