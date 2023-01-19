@@ -125,7 +125,7 @@ defmodule FzHttp.MFATest do
       user = UsersFixtures.create_user()
 
       attrs = %{
-        type: :unsecure,
+        type: :insecure,
         payload: %{},
         code: 10
       }
