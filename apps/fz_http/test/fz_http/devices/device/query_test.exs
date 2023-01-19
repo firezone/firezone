@@ -140,7 +140,7 @@ defmodule FzHttp.Devices.Device.QueryTest do
       queryable = next_available_address(cidr, offset, [gateway_ip])
 
       assert Repo.one(queryable) == %Postgrex.INET{
-               address: {64_768, 0, 0, 0, 32767, 65535, 65535, 65534}
+               address: {64_768, 0, 0, 0, 32_767, 65_535, 65_535, 65_534}
              }
     end
 
