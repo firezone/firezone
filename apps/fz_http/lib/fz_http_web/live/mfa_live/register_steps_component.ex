@@ -11,7 +11,7 @@ defmodule FzHttpWeb.MFA.RegisterStepsComponent do
 
   def pick_type(assigns) do
     ~H"""
-    <form id="mfa-method-form" phx-target={@parent} phx-submit="next" phx_change="validate">
+    <form id="mfa-method-form" phx-target={@parent} phx-submit="next">
       <h4>Choose authenticator type</h4>
       <hr />
 
@@ -51,7 +51,7 @@ defmodule FzHttpWeb.MFA.RegisterStepsComponent do
       |> Map.put(:secret_base32_encoded, Base.encode32(assigns.secret))
 
     ~H"""
-    <form id="mfa-method-form" phx-target={@parent} phx-submit="next" phx_change="validate">
+    <form id="mfa-method-form" phx-target={@parent} phx-submit="next">
       <h4>Register Authenticator</h4>
       <hr />
 
@@ -94,7 +94,7 @@ defmodule FzHttpWeb.MFA.RegisterStepsComponent do
 
   def verify(assigns) do
     ~H"""
-    <form id="mfa-method-form" phx-target={@parent} phx-submit="next" phx_change="validate">
+    <form id="mfa-method-form" phx-target={@parent} phx-submit="next">
       <h4>Verify Code</h4>
       <hr />
 
