@@ -149,7 +149,10 @@ defmodule FzHttp.TelemetryTest do
 
   describe "email" do
     test "outbound set" do
-      FzHttp.Config.put_env(:fz_http, FzHttpWeb.Mailer, from_email: "test@firezone.dev")
+      FzHttp.Config.put_env(:fz_http, FzHttpWeb.Mailer,
+        adapter: Swoosh.Adapters.NoopAdapter,
+        from_email: "test@firezone.dev"
+      )
 
       ping_data = Telemetry.ping_data()
 
@@ -157,7 +160,10 @@ defmodule FzHttp.TelemetryTest do
     end
 
     test "outbound unset" do
-      FzHttp.Config.put_env(:fz_http, FzHttpWeb.Mailer, from_email: nil)
+      FzHttp.Config.put_env(:fz_http, FzHttpWeb.Mailer,
+        adapter: SwooshAdapters.NoopAdapter,
+        from_email: nil
+      )
 
       ping_data = Telemetry.ping_data()
 
