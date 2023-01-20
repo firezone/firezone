@@ -112,6 +112,38 @@ defmodule FzHttp.Devices.Device.QueryTest do
       assert Repo.one(queryable) == %Postgrex.INET{address: {64_768, 0, 0, 0, 0, 3, 3, 4}}
     end
 
+    test "selects available IPv6 at end of CIDR range" do
+      cidr = string_to_inet("fd00::/106")
+      gateway_ip = string_to_inet("fd00::3:3:3")
+      offset = 4_194_304
+
+      queryable = next_available_address(cidr, offset, [gateway_ip])
+
+      assert Repo.one(queryable) == %Postgrex.INET{address: {64_768, 0, 0, 0, 0, 0, 63, 65_535}}
+    end
+
+    test "works when offset is out of IPv6 CIDR range" do
+      cidr = string_to_inet("fd00::/106")
+      gateway_ip = string_to_inet("fd00::3:3:3")
+      offset = 4_194_305
+
+      queryable = next_available_address(cidr, offset, [gateway_ip])
+
+      assert Repo.one(queryable) == %Postgrex.INET{address: {64_768, 0, 0, 0, 0, 0, 64, 0}}
+    end
+
+    test "works when netmask allows a large number of devices" do
+      cidr = string_to_inet("fd00::/70")
+      gateway_ip = string_to_inet("fd00::3:3:3")
+      offset = 9_223_372_036_854_775_807
+
+      queryable = next_available_address(cidr, offset, [gateway_ip])
+
+      assert Repo.one(queryable) == %Postgrex.INET{
+               address: {64_768, 0, 0, 0, 32_767, 65_535, 65_535, 65_534}
+             }
+    end
+
     test "selects nothing when IPv6 CIDR range is exhausted" do
       cidr = string_to_inet("fd00::3:2:0/126")
       gateway_ip = string_to_inet("fd00::3:2:1")
