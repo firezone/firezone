@@ -1,6 +1,6 @@
 defmodule FzHttp.Devices.Device do
   @moduledoc """
-  Manages Devic things
+  Manages Device things
   """
   use FzHttp, :schema
   import Ecto.Changeset
