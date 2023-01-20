@@ -28,19 +28,38 @@ Firezone logs are stored in `/var/log/firezone` and can be viewed with
 ## Application crash loop preventing config changes
 
 In cases where the application is crash looping because of corrupt, inaccessible, or
-invalid data in the DB, you can try clearing the affected fields.
+invalid OIDC or SAML configuration in the DB, you can try clearing the affected fields.
 
 For example, to clear OIDC configs:
 
+<Tabs>
+<TabItem value="docker" label="Docker" default>
+
 ```text
-psql -d firezone -h 127.0.0.1 -U postgres -c "UPDATE configurations SET openid_connect_providers = '{}'"
+psql -d firezone -h 127.0.0.1 -U postgres -c "UPDATE configurations SET openid_connect_providers = '[]'"
 ```
 
 Similarly, to clear SAML configs:
 
 ```text
-psql -d firezone -h 127.0.0.1 -U postgres -c "UPDATE configurations SET saml_providers = '{}'"
+psql -d firezone -h 127.0.0.1 -U postgres -c "UPDATE configurations SET saml_identity_providers = '[]'"
 ```
+
+</TabItem>
+<TabItem value="omnibus" label="Omnibus">
+
+```text
+/opt/firezone/embedded/bin/psql -d $DATABASE_NAME -h $DATABASE_HOST -U $DATABASE_USER -c "UPDATE configurations SET openid_connect_providers = '[]'"
+```
+
+Similarly, to clear SAML configs:
+
+```text
+/opt/firezone/embedded/bin/psql -d $DATABASE_NAME -h $DATABASE_HOST -U $DATABASE_USER -c "UPDATE configurations SET saml_identity_providers = '[]'"
+```
+
+</TabItem>
+</Tabs>
 
 ## Debugging portal WebSocket connectivity issues
 
