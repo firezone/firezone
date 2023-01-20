@@ -2,9 +2,7 @@ defmodule FzHttp.Configurations do
   @moduledoc """
   The Conf context for app configurations.
   """
-
   import Ecto.Query, warn: false
-
   alias FzHttp.{Repo, Configurations.Configuration}
 
   def get!(key) do

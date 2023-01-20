@@ -48,6 +48,84 @@ defmodule FzHttp.Validator do
     end)
   end
 
+  def validate_fqdn(changeset, field, opts \\ []) do
+    allow_port = Keyword.get(opts, :allow_port, false)
+
+    validate_change(changeset, field, fn _current_field, value ->
+      {fqdn, port} = split_port(value)
+      fqdn_validation_errors = fqdn_validation_errors(field, fqdn)
+      port_validation_errors = port_validation_errors(field, port, allow_port)
+      fqdn_validation_errors ++ port_validation_errors
+    end)
+  end
+
+  defp fqdn_validation_errors(field, fqdn) do
+    if FzNet.valid_fqdn?(fqdn) do
+      []
+    else
+      [{field, "#{fqdn} is not a valid FQDN"}]
+    end
+  end
+
+  def validate_ip(changeset, field, opts \\ []) do
+    allow_port = Keyword.get(opts, :allow_port, false)
+    types = Keyword.get(opts, :types, [:ipv4, :ipv6])
+
+    validate_change(changeset, field, fn _current_field, value ->
+      {ip, port} = split_port(value)
+      ip_validation_errors = ip_validation_errors(field, ip, types)
+      port_validation_errors = port_validation_errors(field, port, allow_port)
+      ip_validation_errors ++ port_validation_errors
+    end)
+  end
+
+  defp split_port(value) do
+    case String.split(value, ":", parts: 2) do
+      [prefix, port] ->
+        case Integer.parse(port) do
+          {port, ""} ->
+            {prefix, port}
+
+          _ ->
+            {value, nil}
+        end
+
+      [value] ->
+        {value, nil}
+    end
+  end
+
+  defp ip_validation_errors(field, value, types) do
+    # TODO: validate separate types
+    if FzNet.valid_ip?(value) do
+      []
+    else
+      [{field, "#{value} is not a valid IPv4 / IPv6 address"}]
+    end
+  end
+
+  defp port_validation_errors(_field, nil, _allow?),
+    do: []
+
+  defp port_validation_errors(field, _port, false),
+    do: [{field, "setting port is not allowed"}]
+
+  defp port_validation_errors(field, port, _allow?) when 0 < port and port <= 65_535,
+    do: []
+
+  defp port_validation_errors(field, _port, _allow?),
+    do: [{field, "port is not a number between 0 and 65535"}]
+
+  def validate_cidr(changeset, field, _opts \\ []) do
+    validate_change(changeset, field, fn _current_field, value ->
+      if FzNet.valid_cidr?(value) do
+        []
+      else
+        [{field, "#{value} is not a valid CIDR range"}]
+      end
+    end)
+  end
+
   def validate_list_of_ips(changeset, field) when is_atom(field) do
     validate_change(changeset, field, fn _current_field, value ->
       value
