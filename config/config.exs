@@ -5,8 +5,8 @@ config :phoenix, :json_library, Jason
 
 # Public API key for telemetry
 config :posthog,
-  api_url: "https://telemetry.firez.one",
-  api_key: "phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK"
+  api_url: "https://t.firez.one",
+  api_key: "phc_xnIRwzHSaI6c81ukilv09w2TRWUJIRo4VCxshvl7znY"
 
 # Guardian configuration
 config :fz_http, FzHttpWeb.Auth.HTML.Authentication,
