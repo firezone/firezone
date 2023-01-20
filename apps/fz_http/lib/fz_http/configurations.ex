@@ -40,7 +40,7 @@ defmodule FzHttp.Configurations do
       |> Configuration.changeset(%{key => val})
       |> Repo.update!()
 
-    FzHttp.SAML.StartProxy.restart()
+    FzHttp.SAML.StartProxy.refresh(configuration.saml_identity_providers)
 
     configuration
   end
@@ -69,7 +69,7 @@ defmodule FzHttp.Configurations do
   def update_configuration(%Configuration{} = config \\ get_configuration!(), attrs) do
     case Repo.update(Configuration.changeset(config, attrs)) do
       {:ok, configuration} ->
-        FzHttp.SAML.StartProxy.restart()
+        FzHttp.SAML.StartProxy.refresh(configuration.saml_identity_providers)
 
         {:ok, configuration}
 

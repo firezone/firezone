@@ -12,13 +12,9 @@ defmodule FzHttp.SAML.StartProxy do
   end
 
   def start_link(_) do
-    providers = FzHttp.Configurations.get!(:saml_identity_providers)
     samly = Samly.Provider.start_link()
 
-    FzHttp.Config.fetch_env!(:samly, Samly.Provider)
-    |> set_service_provider()
-    |> set_identity_providers(providers)
-    |> refresh()
+    refresh()
 
     samly
   end
@@ -40,18 +36,14 @@ defmodule FzHttp.SAML.StartProxy do
   end
 
   def set_identity_providers(samly_configs, providers) do
-    external_url = FzHttp.Config.fetch_env!(:fz_http, :external_url)
-
     identity_providers =
       providers
       |> Enum.map(fn provider ->
-        # XXX We should not set default values here, instead they should be part
-        # of the changeset and always valid in database
         %{
           id: provider.id,
           sp_id: "firezone",
           metadata: provider.metadata,
-          base_url: provider.base_url || Path.join(external_url, "/auth/saml"),
+          base_url: provider.base_url,
           sign_requests: provider.sign_requests,
           sign_metadata: provider.sign_metadata,
           signed_assertion_in_resp: provider.signed_assertion_in_resp,
@@ -62,21 +54,13 @@ defmodule FzHttp.SAML.StartProxy do
     Keyword.put(samly_configs, :identity_providers, identity_providers)
   end
 
-  def refresh(samly_configs) do
+  def refresh(providers \\ FzHttp.Configurations.get!(:saml_identity_providers)) do
+    samly_configs =
+      FzHttp.Config.fetch_env!(:samly, Samly.Provider)
+      |> set_service_provider()
+      |> set_identity_providers(providers)
+
     FzHttp.Config.put_env(:samly, Samly.Provider, samly_configs)
     Samly.Provider.refresh_providers()
-  end
-
-  # XXX: This should be removed when the configurations singleton record is removed.
-  #
-  # Needed to prevent the test suite from recursively restarting this module as
-  # it put!()'s mock data
-  if Mix.env() == :test do
-    def restart, do: :ignore
-  else
-    def restart do
-      :ok = Supervisor.terminate_child(FzHttp.Supervisor, __MODULE__)
-      Supervisor.restart_child(FzHttp.Supervisor, __MODULE__)
-    end
   end
 end

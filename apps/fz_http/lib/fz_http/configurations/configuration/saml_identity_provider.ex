@@ -31,12 +31,14 @@ defmodule FzHttp.Configurations.Configuration.SAMLIdentityProvider do
       :signed_envelopes_in_resp,
       :auto_create_users
     ])
+    |> gen_default_base_url()
     |> validate_required([
       :id,
       :label,
       :metadata,
       :auto_create_users
     ])
+    |> FzHttp.Validator.validate_uri(:base_url)
     |> validate_metadata()
   end
 
@@ -51,5 +53,14 @@ defmodule FzHttp.Configurations.Configuration.SAMLIdentityProvider do
           [metadata: "is invalid. Details: #{inspect(e)}."]
       end
     end)
+  end
+
+  defp gen_default_base_url(changeset) do
+    default_base_url =
+      FzHttp.Config.fetch_env!(:fz_http, :external_url)
+      |> Path.join("/auth/saml")
+
+    base_url = get_change(changeset, :base_url, default_base_url)
+    put_change(changeset, :base_url, base_url)
   end
 end

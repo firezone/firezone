@@ -35,6 +35,7 @@ services:
     ports:
       - 51820:51820/udp
     environment:
+      EXTERNAL_URL: ${EXTERNAL_URL:-https://localhost}
       LOCAL_AUTH_ENABLED: 'true'
       FZ_WALL_CLI_MODULE: FzWall.CLI.Live
     cap_add:

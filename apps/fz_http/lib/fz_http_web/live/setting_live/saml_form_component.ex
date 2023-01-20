@@ -190,16 +190,10 @@ defmodule FzHttpWeb.SettingLive.SAMLFormComponent do
   end
 
   def update(assigns, socket) do
-    external_url = FzHttp.Config.fetch_env!(:fz_http, :external_url)
-
     changeset =
       assigns.providers
       |> Map.get(assigns.provider_id, %{})
-      |> Map.merge(%{
-        id: assigns.provider_id,
-        # XXX this should be part of changeset itself
-        base_url: Path.join(external_url, "/auth/saml")
-      })
+      |> Map.merge(%{id: assigns.provider_id})
       |> FzHttp.Configurations.Configuration.SAMLIdentityProvider.changeset()
 
     {:ok,

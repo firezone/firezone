@@ -286,7 +286,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
       assert FzHttp.Configurations.get!(:saml_identity_providers) == [
                %FzHttp.Configurations.Configuration.SAMLIdentityProvider{
                  auto_create_users: true,
-                 base_url: nil,
+                 base_url: "#{FzHttp.Config.fetch_env!(:fz_http, :external_url)}/auth/saml",
                  id: attrs["id"],
                  label: attrs["label"],
                  metadata: attrs["metadata"],
