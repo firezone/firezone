@@ -36,18 +36,14 @@ defmodule FzHttp.SAML.StartProxy do
   end
 
   def set_identity_providers(samly_configs, providers) do
-    external_url = FzHttp.Config.fetch_env!(:fz_http, :external_url)
-
     identity_providers =
       providers
       |> Enum.map(fn provider ->
-        # XXX We should not set default values here, instead they should be part
-        # of the changeset and always valid in database
         %{
           id: provider.id,
           sp_id: "firezone",
           metadata: provider.metadata,
-          base_url: provider.base_url || Path.join(external_url, "/auth/saml"),
+          base_url: provider.base_url,
           sign_requests: provider.sign_requests,
           sign_metadata: provider.sign_metadata,
           signed_assertion_in_resp: provider.signed_assertion_in_resp,
