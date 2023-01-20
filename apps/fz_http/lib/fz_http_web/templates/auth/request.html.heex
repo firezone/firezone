@@ -36,12 +36,10 @@
             <%= submit("Sign In", class: "button") %>
           </div>
           <div class="level-right">
-            <%= if FzHttpWeb.Mailer.active?() do %>
-              <%= link("Forgot password",
-                to: ~p"/auth/reset_password",
-                class: "forgot-password"
-              ) %>
-            <% end %>
+            <%= link("Forgot password",
+              to: ~p"/auth/reset_password",
+              class: "forgot-password"
+            ) %>
           </div>
         </div>
       </div>
