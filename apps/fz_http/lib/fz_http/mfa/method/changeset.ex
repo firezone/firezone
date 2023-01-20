@@ -49,6 +49,9 @@ defmodule FzHttp.MFA.Method.Changeset do
       {:data, nil} ->
         changeset
 
+      {:data, %{}} ->
+        add_error(changeset, :payload, "is invalid")
+
       {:changes, %{}} ->
         changeset
         |> add_error(:payload, "is invalid")
