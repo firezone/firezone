@@ -9,7 +9,7 @@ defmodule FzHttpWeb.Plug.RequireLocalAuthentication do
     else
       conn
       |> put_resp_content_type("text/plain")
-      |> send_resp(401, "Local auth disabled")
+      |> send_resp(404, "Local auth disabled")
       |> halt()
     end
   end
