@@ -2,7 +2,6 @@ defmodule FzHttpWeb.ErrorHelpers do
   @moduledoc """
   Conveniences for translating and building error messages.
   """
-
   use Phoenix.HTML
   import Ecto.Changeset, only: [traverse_errors: 2]
 
@@ -25,7 +24,10 @@ defmodule FzHttpWeb.ErrorHelpers do
     values = Keyword.get_values(form.errors, field)
 
     Enum.map(values, fn error ->
-      content_tag(:span, translate_error(error), class: "help-block")
+      content_tag(:span, translate_error(error),
+        class: "help-block"
+        # XXX: data: [phx_error_for: input_id(form, field)]
+      )
     end)
   end
 

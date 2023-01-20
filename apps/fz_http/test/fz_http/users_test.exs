@@ -114,15 +114,15 @@ defmodule FzHttp.UsersTest do
 
   describe "list_users/1" do
     test "returns empty list when there are not users" do
-      assert Users.list_users() == []
-      assert Users.list_users(hydrate: [:device_count]) == []
+      assert Users.list_users() == {:ok, []}
+      assert Users.list_users(hydrate: [:device_count]) == {:ok, []}
     end
 
     test "returns list of users in all roles" do
       user1 = UsersFixtures.create_user_with_role(:admin)
       user2 = UsersFixtures.create_user_with_role(:unprivileged)
 
-      assert users = Users.list_users()
+      assert {:ok, users} = Users.list_users()
       assert length(users) == 2
       assert Enum.sort(Enum.map(users, & &1.id)) == Enum.sort([user1.id, user2.id])
     end
@@ -135,13 +135,13 @@ defmodule FzHttp.UsersTest do
       DevicesFixtures.create_device_for_user(user2)
       DevicesFixtures.create_device_for_user(user2)
 
-      assert users = Users.list_users(hydrate: [:device_count])
+      assert {:ok, users} = Users.list_users(hydrate: [:device_count])
       assert length(users) == 2
 
       assert Enum.sort(Enum.map(users, &{&1.id, &1.device_count})) ==
                Enum.sort([{user1.id, 1}, {user2.id, 2}])
 
-      assert users = Users.list_users(hydrate: [:device_count, :device_count])
+      assert {:ok, users} = Users.list_users(hydrate: [:device_count, :device_count])
 
       assert Enum.sort(Enum.map(users, &{&1.id, &1.device_count})) ==
                Enum.sort([{user1.id, 1}, {user2.id, 2}])
@@ -227,7 +227,7 @@ defmodule FzHttp.UsersTest do
   end
 
   describe "create_user/2" do
-    test "returns changeset error when attrs are missing" do
+    test "returns changeset error when required attrs are missing" do
       assert {:error, changeset} = Users.create_user(%{})
       refute changeset.valid?
 
@@ -326,11 +326,9 @@ defmodule FzHttp.UsersTest do
 
     test "trims email" do
       attrs = UsersFixtures.user_attrs()
+      updated_attrs = Map.put(attrs, :email, " #{attrs.email} ")
 
-      assert {:ok, user} =
-               attrs
-               |> Map.put(:email, " #{attrs.email} ")
-               |> Users.create_user()
+      assert {:ok, user} = Users.create_user(updated_attrs)
 
       assert user.email == attrs.email
     end

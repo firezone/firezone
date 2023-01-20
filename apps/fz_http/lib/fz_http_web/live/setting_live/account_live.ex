@@ -22,22 +22,25 @@ defmodule FzHttpWeb.SettingLive.Account do
   @impl Phoenix.LiveView
   def mount(params, _session, socket) do
     Endpoint.subscribe(@live_sessions_topic)
+    {:ok, methods} = MFA.list_methods_for_user(socket.assigns.current_user)
 
-    {:ok,
-     socket
-     |> assign(:api_token_id, params["api_token_id"])
-     |> assign(:subscribe_link, subscribe_link())
-     |> assign(:allow_delete, Users.count_by_role(:admin) > 1)
-     |> assign(:api_tokens, ApiTokens.list_api_tokens(socket.assigns.current_user.id))
-     |> assign(:changeset, Users.change_user(socket.assigns.current_user))
-     |> assign(:methods, MFA.list_methods(socket.assigns.current_user))
-     |> assign(:page_title, @page_title)
-     |> assign(:page_subtitle, @page_subtitle)
-     |> assign(:rules_path, ~p"/rules")
-     |> assign(
-       :metas,
-       get_metas(Presence.list(@live_sessions_topic), socket.assigns.current_user.id)
-     )}
+    socket =
+      socket
+      |> assign(:api_token_id, params["api_token_id"])
+      |> assign(:subscribe_link, subscribe_link())
+      |> assign(:allow_delete, Users.count_by_role(:admin) > 1)
+      |> assign(:api_tokens, ApiTokens.list_api_tokens(socket.assigns.current_user.id))
+      |> assign(:changeset, Users.change_user(socket.assigns.current_user))
+      |> assign(:methods, methods)
+      |> assign(:page_title, @page_title)
+      |> assign(:page_subtitle, @page_subtitle)
+      |> assign(:rules_path, ~p"/rules")
+      |> assign(
+        :metas,
+        get_metas(Presence.list(@live_sessions_topic), socket.assigns.current_user.id)
+      )
+
+    {:ok, socket}
   end
 
   @impl Phoenix.LiveView
@@ -70,16 +73,17 @@ defmodule FzHttpWeb.SettingLive.Account do
 
   @impl Phoenix.LiveView
   def handle_event("delete_authenticator", %{"id" => id}, socket) do
-    method = MFA.get_method!(id)
+    with {:ok, _method} <- MFA.delete_method_by_id(id, socket.assigns.current_user) do
+      {:ok, methods} = MFA.list_methods_for_user(socket.assigns.current_user)
+      {:noreply, assign(socket, :methods, methods)}
+    else
+      {:error, :not_found} ->
+        {:ok, methods} = MFA.list_methods_for_user(socket.assigns.current_user)
+        {:noreply, assign(socket, :methods, methods)}
 
-    # A user can only delete his/her own MFA method!
-    if method.user_id == socket.assigns.current_user.id do
-      {:ok, _deleted} = MFA.delete_method(method)
+      false ->
+        {:noreply, socket}
     end
-
-    {:noreply,
-     socket
-     |> assign(:methods, MFA.list_methods(socket.assigns.current_user))}
   end
 
   @impl Phoenix.LiveView

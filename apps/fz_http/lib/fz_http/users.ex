@@ -46,7 +46,7 @@ defmodule FzHttp.Users do
 
     User.Query.all()
     |> hydrate_fields(hydrate)
-    |> Repo.all()
+    |> Repo.list()
   end
 
   defp hydrate_fields(queryable, []), do: queryable

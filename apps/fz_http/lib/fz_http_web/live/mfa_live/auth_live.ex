@@ -3,7 +3,6 @@ defmodule FzHttpWeb.MFALive.Auth do
   Handles MFA LiveViews.
   """
   use FzHttpWeb, :live_view
-
   import FzHttpWeb.ControllerHelpers
   alias FzHttp.MFA
 
@@ -11,23 +10,29 @@ defmodule FzHttpWeb.MFALive.Auth do
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
-    {:ok, socket |> assign(:page_title, @page_title)}
+    {:ok, assign(socket, :page_title, @page_title)}
   end
 
   @impl Phoenix.LiveView
+  def handle_params(_params, _uri, %{assigns: %{live_action: :types}} = socket) do
+    {:ok, methods} = MFA.list_methods_for_user(socket.assigns.current_user)
+    socket = assign(socket, :methods, methods)
+    {:noreply, socket}
+  end
+
   def handle_params(%{"id" => id}, _uri, socket) do
-    changeset = id |> MFA.get_method!() |> MFA.change_method()
-    {:noreply, assign(socket, :changeset, changeset)}
-  end
+    with {:ok, method} <- MFA.fetch_method_by_id(id) do
+      changeset = MFA.use_method_changeset(method)
 
-  @impl Phoenix.LiveView
-  def handle_params(_params, _uri, socket) do
-    changeset =
-      socket.assigns.current_user
-      |> MFA.most_recent_method()
-      |> MFA.change_method()
+      socket =
+        socket
+        |> assign(:changeset, changeset)
+        |> assign(:method, method)
 
-    {:noreply, assign(socket, :changeset, changeset)}
+      {:noreply, socket}
+    else
+      {:error, :not_found} -> {:halt, redirect(socket, to: ~p"/")}
+    end
   end
 
   @impl Phoenix.LiveView
@@ -88,8 +93,6 @@ defmodule FzHttpWeb.MFALive.Auth do
 
   @impl Phoenix.LiveView
   def render(%{live_action: :types} = assigns) do
-    assigns = Map.put(assigns, :methods, MFA.list_methods(assigns.current_user))
-
     ~H"""
     <h3 class="is-3 title"><%= @page_title %></h3>
 
@@ -112,16 +115,16 @@ defmodule FzHttpWeb.MFALive.Auth do
   end
 
   @impl Phoenix.LiveView
-  def handle_event("verify", %{"code" => code}, socket) do
-    case MFA.update_method(socket.assigns.changeset.data, %{code: code}) do
+  def handle_event("verify", attrs, socket) do
+    case MFA.use_method(socket.assigns.method, attrs) do
       {:ok, _method} ->
-        {:noreply,
-         push_redirect(socket,
-           to: root_path_for_user(socket.assigns.current_user)
-         )}
+        root_path_for_user = root_path_for_user(socket.assigns.current_user)
+        socket = push_redirect(socket, to: root_path_for_user)
+        {:noreply, socket}
 
       {:error, changeset} ->
-        {:noreply, assign(socket, :changeset, changeset)}
+        socket = assign(socket, :changeset, changeset)
+        {:noreply, socket}
     end
   end
 end

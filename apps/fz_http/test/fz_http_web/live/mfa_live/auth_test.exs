@@ -1,28 +1,25 @@
 defmodule FzHttpWeb.MFALive.AuthTest do
   use FzHttpWeb.ConnCase, async: true
-
-  alias FzHttp.MFA
+  alias FzHttp.MFAFixtures
 
   setup %{admin_user: admin} do
-    {:ok, method} = create_method(admin)
+    method = MFAFixtures.create_totp_method(user: admin)
 
-    {:ok, method: method}
+    %{method: method}
   end
 
-  @redirect_destination "/mfa/auth"
-
-  test "redirect request with mfa required", %{admin_conn: conn} do
+  test "redirect request with mfa required", %{admin_conn: conn, method: method} do
     path = ~p"/rules"
 
     {:error, {:redirect, %{to: redirected_to}}} =
-      live(Plug.Conn.put_session(conn, :mfa_required_at, DateTime.utc_now()), path)
+      live(Plug.Conn.put_session(conn, :logged_in_at, DateTime.utc_now()), path)
 
-    assert redirected_to =~ @redirect_destination
+    assert redirected_to =~ "/mfa/auth/#{method.id}"
   end
 
   describe "auth" do
-    test "fails with invalid code", %{admin_conn: conn} do
-      path = ~p"/mfa/auth"
+    test "fails with invalid code", %{admin_conn: conn, method: method} do
+      path = ~p"/mfa/auth/#{method.id}"
 
       {:ok, view, _html} = live(conn, path)
 
@@ -30,12 +27,9 @@ defmodule FzHttpWeb.MFALive.AuthTest do
     end
 
     test "redirects with good code", %{admin_conn: conn, method: method} do
-      # Newly created method has a very recent last_used_at timestamp,
-      # It being used in NimbleTOTP.valid?(code, since: last_used_at) always
-      # fails. Need to set it to be something in the past (more than 30s in the past).
-      {:ok, method} = MFA.update_method(method, %{last_used_at: ~U[1970-01-01T00:00:00Z]})
+      method = MFAFixtures.rotate_totp_method_key(method)
 
-      path = ~p"/mfa/auth"
+      path = ~p"/mfa/auth/#{method.id}"
 
       {:ok, view, _html} = live(conn, path)
 
@@ -45,8 +39,8 @@ defmodule FzHttpWeb.MFALive.AuthTest do
       assert_redirect(view)
     end
 
-    test "navigates to other methods", %{admin_conn: conn} do
-      path = ~p"/mfa/auth"
+    test "navigates to other methods", %{admin_conn: conn, method: method} do
+      path = ~p"/mfa/auth/#{method.id}"
 
       {:ok, view, _html} = live(conn, path)
 
@@ -60,10 +54,10 @@ defmodule FzHttpWeb.MFALive.AuthTest do
 
   describe "types" do
     setup %{admin_user: admin} do
-      {:ok, _method} = create_method(admin, name: "Test 1")
-      {:ok, method} = create_method(admin, name: "Test 2")
+      MFAFixtures.create_totp_method(user: admin, name: "Test 1")
+      method = MFAFixtures.create_totp_method(user: admin, name: "Test 2")
 
-      {:ok, another_method: method}
+      %{another_method: method}
     end
 
     test "displays all methods", %{admin_conn: conn} do

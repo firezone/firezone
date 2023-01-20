@@ -10,11 +10,15 @@ defmodule FzHttpWeb.UserLive.Index do
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
-    {:ok,
-     socket
-     |> assign(:users, Users.list_users(hydrate: [:device_count]))
-     |> assign(:changeset, Users.change_user())
-     |> assign(:page_title, @page_title)}
+    with {:ok, users} <- Users.list_users(hydrate: [:device_count]) do
+      socket =
+        socket
+        |> assign(:users, users)
+        |> assign(:changeset, Users.change_user())
+        |> assign(:page_title, @page_title)
+
+      {:ok, socket}
+    end
   end
 
   @impl Phoenix.LiveView
