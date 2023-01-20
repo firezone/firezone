@@ -14,9 +14,9 @@ def capture
 
   return unless telemetry_id
 
-  uri = URI('https://telemetry.firez.one/capture/')
+  uri = URI('https://t.firez.one/capture/')
   data = {
-    api_key: 'phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK',
+    api_key: 'phc_xnIRwzHSaI6c81ukilv09w2TRWUJIRo4VCxshvl7znY',
     event: 'firezone-ctl force-cert-renewal',
     properties: {
       distinct_id: telemetry_id
