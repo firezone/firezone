@@ -28,6 +28,7 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
 
       actual =
         Users.list_users()
+        |> elem(1)
         |> Enum.map(fn u -> u.id end)
         |> Enum.sort()
 

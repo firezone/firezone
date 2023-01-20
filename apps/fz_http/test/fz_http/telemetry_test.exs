@@ -1,7 +1,7 @@
 defmodule FzHttp.TelemetryTest do
   use FzHttp.DataCase, async: true
-
   alias FzHttp.Telemetry
+  alias FzHttp.MFAFixtures
 
   describe "user" do
     setup :create_user
@@ -14,12 +14,12 @@ defmodule FzHttp.TelemetryTest do
 
     test "count mfa", %{user: user} do
       {:ok, [user: other_user]} = create_user(%{})
-      {:ok, _method} = create_method(user, type: :totp)
-      {:ok, _method} = create_method(other_user, type: :portable)
+      MFAFixtures.create_totp_method(user: user)
+      MFAFixtures.create_totp_method(user: other_user)
       ping_data = Telemetry.ping_data()
 
       assert ping_data[:users_with_mfa] == 2
-      assert ping_data[:users_with_mfa_totp] == 1
+      assert ping_data[:users_with_mfa_totp] == 2
     end
   end
 

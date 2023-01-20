@@ -57,17 +57,10 @@ defmodule FzHttpWeb.Auth.HTML.Authentication do
     Users.update_last_signed_in(user, auth)
     %{provider: provider_id} = auth
 
-    conn =
-      with :identity <- provider_id,
-           true <- FzHttp.MFA.exists?(user) do
-        Plug.Conn.put_session(conn, "mfa_required_at", DateTime.utc_now())
-      else
-        _ -> conn
-      end
-      # XXX: OIDC and SAML provider IDs can be strings, so normalize to string here
-      |> Plug.Conn.put_session("login_method", to_string(provider_id))
-
-    __MODULE__.Plug.sign_in(conn, user)
+    conn
+    |> Plug.Conn.put_session("login_method", provider_id)
+    |> Plug.Conn.put_session("logged_in_at", DateTime.utc_now())
+    |> __MODULE__.Plug.sign_in(user)
   end
 
   def sign_out(conn) do

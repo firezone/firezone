@@ -92,7 +92,8 @@ Hooks.RenderConfig = {
   updated: renderConfig
 }
 Hooks.RenderQR = {
-  mounted: renderQR
+  mounted: renderQR,
+  updated: renderQR
 }
 Hooks.GenerateKeyPair = {
   mounted: generateKeyPair

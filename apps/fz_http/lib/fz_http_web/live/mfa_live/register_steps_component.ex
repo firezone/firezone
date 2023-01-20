@@ -3,11 +3,10 @@ defmodule FzHttpWeb.MFA.RegisterStepsComponent do
   MFA registration steps
   """
   use Phoenix.Component
-
   import FzHttpWeb.ErrorHelpers
 
   def render_step(assigns) do
-    apply(__MODULE__, assigns[:step], [assigns])
+    apply(__MODULE__, assigns.step, [assigns])
   end
 
   def pick_type(assigns) do
@@ -43,30 +42,18 @@ defmodule FzHttpWeb.MFA.RegisterStepsComponent do
   end
 
   def register(assigns) do
-    secret = NimbleTOTP.secret()
+    otpauth_uri =
+      NimbleTOTP.otpauth_uri("Firezone:#{assigns.user.email}", assigns.secret, issuer: "Firezone")
 
     assigns =
-      Map.merge(
-        assigns,
-        %{
-          secret: secret,
-          secret_base32_encoded: Base.encode32(secret),
-          secret_base64_encoded: Base.encode64(secret),
-          uri:
-            NimbleTOTP.otpauth_uri(
-              "Firezone:#{assigns[:user].email}",
-              secret,
-              issuer: "Firezone"
-            )
-        }
-      )
+      assigns
+      |> Map.put(:uri, otpauth_uri)
+      |> Map.put(:secret_base32_encoded, Base.encode32(assigns.secret))
 
     ~H"""
     <form id="mfa-method-form" phx-target={@parent} phx-submit="next">
       <h4>Register Authenticator</h4>
       <hr />
-
-      <input value={@secret_base64_encoded} type="hidden" name="secret" />
 
       <div class="has-text-centered">
         <canvas data-qrdata={@uri} id="register-totp" phx-hook="RenderQR" />
@@ -87,13 +74,16 @@ defmodule FzHttpWeb.MFA.RegisterStepsComponent do
           <div class="field">
             <p class="control">
               <input
-                class="input"
+                class={"input #{input_error_class(@changeset, :name)}"}
                 type="text"
                 name="name"
-                placeholder="Name"
-                value="My Authenticator"
+                value={Map.get(@changeset.changes, :name, "My Authenticator")}
+                placeholder="name"
                 required
               />
+            </p>
+            <p class="help is-danger">
+              <%= error_tag(@changeset, :name) %>
             </p>
           </div>
         </div>
@@ -122,6 +112,9 @@ defmodule FzHttpWeb.MFA.RegisterStepsComponent do
                 placeholder="123456"
                 required
               />
+            </p>
+            <p class="help is-danger">
+              <%= error_tag(@changeset, :code) %>
             </p>
           </div>
         </div>

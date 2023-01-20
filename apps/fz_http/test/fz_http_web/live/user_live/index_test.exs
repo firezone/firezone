@@ -26,8 +26,9 @@ defmodule FzHttpWeb.UserLive.IndexTest do
     } do
       path = ~p"/users"
       {:ok, _view, html} = live(conn, path)
+      {:ok, users} = Users.list_users(hydrate: [:device_count])
 
-      for user <- Users.list_users(hydrate: [:device_count]) do
+      for user <- users do
         assert html =~ "<td id=\"user-#{user.id}-device-count\">#{user.device_count}</td>"
       end
     end
