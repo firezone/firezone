@@ -12,13 +12,9 @@ defmodule FzHttp.SAML.StartProxy do
   end
 
   def start_link(_) do
-    providers = FzHttp.Configurations.get!(:saml_identity_providers)
     samly = Samly.Provider.start_link()
 
-    FzHttp.Config.fetch_env!(:samly, Samly.Provider)
-    |> set_service_provider()
-    |> set_identity_providers(providers)
-    |> refresh()
+    refresh()
 
     samly
   end
@@ -62,13 +58,13 @@ defmodule FzHttp.SAML.StartProxy do
     Keyword.put(samly_configs, :identity_providers, identity_providers)
   end
 
-  def refresh(samly_configs) do
+  def refresh(providers \\ FzHttp.Configurations.get!(:saml_identity_providers)) do
+    samly_configs =
+      FzHttp.Config.fetch_env!(:samly, Samly.Provider)
+      |> set_service_provider()
+      |> set_identity_providers(providers)
+
     FzHttp.Config.put_env(:samly, Samly.Provider, samly_configs)
     Samly.Provider.refresh_providers()
-  end
-
-  def restart do
-    :ok = Supervisor.terminate_child(FzHttp.Application.Supervisor, __MODULE__)
-    Supervisor.restart_child(FzHttp.Application.Supervisor, __MODULE__)
   end
 end
