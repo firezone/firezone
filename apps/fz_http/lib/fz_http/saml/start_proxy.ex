@@ -67,16 +67,8 @@ defmodule FzHttp.SAML.StartProxy do
     Samly.Provider.refresh_providers()
   end
 
-  # XXX: This should be removed when the configurations singleton record is removed.
-  #
-  # Needed to prevent the test suite from recursively restarting this module as
-  # it put!()'s mock data
-  if Mix.env() == :test do
-    def restart, do: :ignore
-  else
-    def restart do
-      :ok = Supervisor.terminate_child(FzHttp.Supervisor, __MODULE__)
-      Supervisor.restart_child(FzHttp.Supervisor, __MODULE__)
-    end
+  def restart do
+    :ok = Supervisor.terminate_child(FzHttp.Application.Supervisor, __MODULE__)
+    Supervisor.restart_child(FzHttp.Application.Supervisor, __MODULE__)
   end
 end
