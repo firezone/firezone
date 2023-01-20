@@ -478,6 +478,7 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
         |> assert_el(Query.text("Updated successfully."))
         |> assert_el(Query.text("foo-bar-buz"))
         |> assert_el(Query.text("Sneaky ID"))
+        |> assert_el(Query.text("http://localhost:4002/autX/saml#foo"))
 
       assert [saml_identity_provider] = FzHttp.Configurations.get!(:saml_identity_providers)
 
