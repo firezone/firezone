@@ -11,8 +11,6 @@ defmodule FzHttpWeb.AuthController do
   alias FzHttpWeb.UserFromAuth
   require Logger
 
-  @local_auth_providers [:identity, :magic_link]
-
   # Uncomment when Helpers.callback_url/1 is fixed
   # alias Ueberauth.Strategy.Helpers
 
@@ -36,7 +34,7 @@ defmodule FzHttpWeb.AuthController do
   def callback(%{assigns: %{ueberauth_auth: auth}} = conn, _params) do
     case UserFromAuth.find_or_create(auth) do
       {:ok, user} ->
-        maybe_sign_in(conn, user, auth)
+        do_sign_in(conn, user, auth)
 
       {:error, reason} when reason in [:not_found, :invalid_credentials] ->
         conn
@@ -59,7 +57,7 @@ defmodule FzHttpWeb.AuthController do
 
     with {:ok, user} <-
            UserFromAuth.find_or_create(:saml, idp, %{"email" => assertion.subject.name}) do
-      maybe_sign_in(conn, user, %{provider: idp})
+      do_sign_in(conn, user, %{provider: idp})
     end
   end
 
@@ -81,7 +79,7 @@ defmodule FzHttpWeb.AuthController do
 
           conn
           |> put_session("id_token", tokens["id_token"])
-          |> maybe_sign_in(user, %{provider: provider_id})
+          |> do_sign_in(user, %{provider: provider_id})
 
         {:error, reason} ->
           conn
@@ -143,7 +141,7 @@ defmodule FzHttpWeb.AuthController do
   def magic_sign_in(conn, %{"user_id" => user_id, "token" => token}) do
     with {:ok, user} <- Users.fetch_user_by_id(user_id),
          {:ok, _user} <- Users.consume_sign_in_token(user, token) do
-      maybe_sign_in(conn, user, %{provider: :magic_link})
+      do_sign_in(conn, user, %{provider: :magic_link})
     else
       {:error, _reason} ->
         conn
@@ -180,20 +178,6 @@ defmodule FzHttpWeb.AuthController do
         |> redirect(to: ~p"/")
     end
   end
-
-  defp maybe_sign_in(conn, user, %{provider: provider_key} = auth)
-       when is_atom(provider_key) and provider_key in @local_auth_providers do
-    if FzHttp.Configurations.get!(:local_auth_enabled) do
-      do_sign_in(conn, user, auth)
-    else
-      conn
-      |> put_resp_content_type("text/plain")
-      |> send_resp(401, "Local auth disabled")
-      |> halt()
-    end
-  end
-
-  defp maybe_sign_in(conn, user, auth), do: do_sign_in(conn, user, auth)
 
   defp do_sign_in(conn, user, auth) do
     conn
