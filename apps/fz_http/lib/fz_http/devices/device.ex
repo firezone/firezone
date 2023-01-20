@@ -145,7 +145,7 @@ defmodule FzHttp.Devices.Device do
   end
 
   defp put_default_ip(changeset, field) do
-    cidr_string = FzHttp.Config.fetch_env!(:fz_http, :"wireguard_#{field}_network")
+    cidr_string = wireguard_network(field)
     {:ok, cidr_inet} = EctoNetwork.INET.cast(cidr_string)
     cidr = CIDR.parse(cidr_string)
     offset = Enum.random(2..(cidr.hosts - 2))
@@ -161,6 +161,16 @@ defmodule FzHttp.Devices.Device do
       ip -> put_change(changeset, field, ip)
     end
   end
+
+  defp wireguard_network(field) do
+    cidr_string = FzHttp.Config.fetch_env!(:fz_http, :"wireguard_#{field}_network")
+    [inet, network] = String.split(cidr_string, "/")
+    network = String.to_integer(network)
+    "#{inet}/#{limit_cidr_range(field, network)}"
+  end
+
+  defp limit_cidr_range(:ipv4, network), do: network
+  defp limit_cidr_range(:ipv6, network), do: max(network, 70)
 
   defp ipv4_address do
     FzHttp.Config.fetch_env!(:fz_http, :wireguard_ipv4_address)
