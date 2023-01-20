@@ -104,7 +104,7 @@ if config_env() == :prod do
     if mailer.valid? do
       config :fz_http, FzHttpWeb.Mailer, FzHttpWeb.Mailer.from_configuration(mailer)
     else
-      Logger.warn("Outbound email not configured. Disabling! Details: #{mailer.errors}")
+      Logger.warn("Outbound email not configured. Disabling! Details: #{inspect(mailer.errors)}")
     end
   else
     {:error, error} ->
