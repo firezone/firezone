@@ -20,7 +20,7 @@ capture () {
               \"distinct_id\": \"$telemetry_id\"
             }
           }" \
-          https://telemetry.firez.one/capture/ > /dev/null
+          https://t.firez.one/capture/ > /dev/null
       fi
     fi
   fi

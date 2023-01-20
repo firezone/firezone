@@ -18,7 +18,7 @@ def capture
 
   return unless telemetry_id
 
-  uri = URI('https://telemetry.firez.one/capture/')
+  uri = URI('https://t.firez.one/capture/')
   data = {
     api_key: 'phc_xnIRwzHSaI6c81ukilv09w2TRWUJIRo4VCxshvl7znY',
     event: 'firezone-ctl create-or-reset-admin',
