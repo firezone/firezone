@@ -65,6 +65,22 @@ defmodule FzHttpWeb.AuthControllerTest do
       assert redirected_to(get(conn, ~p"/auth/identity/callback")) == ~p"/"
     end
 
+    test "GET /auth/identity omits forgot password link when local_auth disabled", %{
+      unauthed_conn: conn
+    } do
+      FzHttp.Configurations.put!(:local_auth_enabled, false)
+      test_conn = get(conn, ~p"/auth/identity")
+
+      assert text_response(test_conn, 404) == "Local auth disabled"
+    end
+
+    test "when local_auth is disabled responds with 404", %{unauthed_conn: conn} do
+      FzHttp.Configurations.put!(:local_auth_enabled, false)
+      test_conn = post(conn, ~p"/auth/identity/callback", %{})
+
+      assert text_response(test_conn, 404) == "Local auth disabled"
+    end
+
     test "invalid email", %{unauthed_conn: conn} do
       params = %{
         "email" => "invalid@test",
@@ -114,7 +130,16 @@ defmodule FzHttpWeb.AuthControllerTest do
       FzHttp.Configurations.put!(:local_auth_enabled, false)
 
       test_conn = post(conn, ~p"/auth/identity/callback", params)
-      assert text_response(test_conn, 401) == "Local auth disabled"
+      assert text_response(test_conn, 404) == "Local auth disabled"
+    end
+  end
+
+  describe "GET /auth/reset_password" do
+    test "protects route when local_auth is disabled", %{unauthed_conn: conn} do
+      FzHttp.Configurations.put!(:local_auth_enabled, false)
+      test_conn = get(conn, ~p"/auth/reset_password")
+
+      assert text_response(test_conn, 404) == "Local auth disabled"
     end
   end
 
@@ -285,7 +310,7 @@ defmodule FzHttpWeb.AuthControllerTest do
       FzHttp.Configurations.put!(:local_auth_enabled, false)
 
       test_conn = get(conn, ~p"/auth/magic/#{user.id}/#{user.sign_in_token}")
-      assert text_response(test_conn, 401) == "Local auth disabled"
+      assert text_response(test_conn, 404) == "Local auth disabled"
     end
   end
 
