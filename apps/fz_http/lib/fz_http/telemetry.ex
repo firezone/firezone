@@ -112,7 +112,7 @@ defmodule FzHttp.Telemetry do
           FzHttp.Configurations.get!(:allow_unprivileged_device_configuration),
         local_authentication: FzHttp.Configurations.get!(:local_auth_enabled),
         disable_vpn_on_oidc_error: FzHttp.Configurations.get!(:disable_vpn_on_oidc_error),
-        outbound_email: outbound_email?(),
+        outbound_email: FzHttpWeb.Mailer.active?(),
         external_database:
           external_database?(Map.new(FzHttp.Config.fetch_env!(:fz_http, FzHttp.Repo))),
         logo_type: FzHttp.Configurations.logo_type(FzHttp.Configurations.get!(:logo))
@@ -159,10 +159,6 @@ defmodule FzHttp.Telemetry do
 
   defp is_external_db?(host) do
     host != "localhost" && host != "127.0.0.1"
-  end
-
-  defp outbound_email? do
-    not is_nil(FzHttp.Config.fetch_env!(:fz_http, FzHttpWeb.Mailer)[:from_email])
   end
 
   defp os_type do

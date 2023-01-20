@@ -17,7 +17,8 @@ defmodule FzHttpWeb.Mailer do
   }
 
   def active? do
-    not is_nil(FzHttp.Config.fetch_env!(:fz_http, FzHttpWeb.Mailer)[:from_email])
+    mailer_config = FzHttp.Config.fetch_env!(:fz_http, FzHttpWeb.Mailer)
+    mailer_config[:from_email] && mailer_config[:adapter]
   end
 
   def default_email do
