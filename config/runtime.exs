@@ -94,17 +94,20 @@ if config_env() == :prod do
   outbound_config_env = System.get_env("OUTBOUND_EMAIL_CONFIGS", "{}")
 
   with {:ok, configs} <- Jason.decode(outbound_config_env) do
-    mailer =
+    changeset =
       FzHttp.Configurations.Mailer.changeset(%{
         "from" => System.get_env("OUTBOUND_EMAIL_FROM"),
         "provider" => System.get_env("OUTBOUND_EMAIL_PROVIDER", "sendmail"),
         "configs" => configs
       })
 
-    if mailer.valid? do
+    if changeset.valid? do
+      mailer = Ecto.Changeset.apply_changes(changeset)
       config :fz_http, FzHttpWeb.Mailer, FzHttpWeb.Mailer.from_configuration(mailer)
     else
-      Logger.warn("Outbound email not configured. Disabling! Details: #{inspect(mailer.errors)}")
+      Logger.warn(
+        "Outbound email not configured. Disabling! Details: #{inspect(changeset.errors)}"
+      )
     end
   else
     {:error, error} ->
