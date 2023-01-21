@@ -224,6 +224,7 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
       |> click(Query.button("Generate Configuration"))
       |> assert_el(Query.text("Device added!"))
       |> click(Query.css("button[phx-click=\"close\"]"))
+      |> assert_path(~p"/users/#{user.id}")
       |> assert_el(Query.link("Add Device"))
       |> assert_el(Query.link("big-leg-007"))
 
@@ -647,11 +648,13 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
       session =
         session
         |> click(Query.css("button[aria-label=\"close\"]"))
+        |> assert_path(~p"/settings/account")
         |> assert_el(Query.text("API Tokens"))
         |> assert_el(Query.link("Delete"))
         |> click(Query.link(api_token.id))
         |> assert_el(Query.text("API token secret:"))
         |> click(Query.css("button[aria-label=\"close\"]"))
+        |> assert_path(~p"/settings/account")
         |> assert_el(Query.link("Delete"))
 
       accept_confirm(session, fn session ->

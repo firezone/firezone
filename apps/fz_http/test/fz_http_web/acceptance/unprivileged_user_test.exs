@@ -50,6 +50,7 @@ defmodule FzHttpWeb.Acceptance.UnprivilegedUserTest do
       |> assert_el(Query.text("Device added!"))
       |> click(Query.css("button[phx-click=\"close\"]"))
       |> assert_el(Query.text("big-head-007"))
+      |> assert_path(~p"/user_devices")
 
       assert device = Repo.one(FzHttp.Devices.Device)
       assert device.name == "big-head-007"
@@ -82,6 +83,7 @@ defmodule FzHttpWeb.Acceptance.UnprivilegedUserTest do
       |> assert_el(Query.text("Device added!"))
       |> click(Query.css("button[phx-click=\"close\"]"))
       |> assert_el(Query.text("big-hand-007"))
+      |> assert_path(~p"/user_devices")
 
       assert device = Repo.one(FzHttp.Devices.Device)
       assert device.name == "big-hand-007"
