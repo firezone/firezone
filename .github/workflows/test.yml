@@ -225,7 +225,7 @@ jobs:
         with:
           branch: andrew/ci-improvements
           name: seeded-db-dump
-          path: apps/fz_http/priv/repo/structure.sql
+          path: apps/fz_http/priv/repo/
           search_artifacts: true
           if_no_artifact_found: fail
       - name: Create Database
