@@ -5,7 +5,6 @@ defmodule FzHttp.Config do
   """
 
   if Mix.env() != :test do
-    defdelegate put_env_override(app, key, value), to: Application
     defdelegate fetch_env!(app, key), to: Application
   else
     def put_env_override(app \\ :fz_http, key, value) do
