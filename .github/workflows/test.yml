@@ -247,7 +247,7 @@ jobs:
           name: seeded-db-dump
           path: apps/fz_http/priv/repo/structure.sql
       - name: Run Seed
-        run: mix run priv/repo/seeds.exs
+        run: mix ecto.seed
   acceptance-test:
     runs-on: ubuntu-latest
     env:
