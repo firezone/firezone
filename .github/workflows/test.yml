@@ -237,7 +237,7 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: |
-          mix ecto.restore
+          mix ecto.load
       - name: Run new migrations
         run: |
           mix ecto.migrate
