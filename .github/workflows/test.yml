@@ -233,8 +233,15 @@ jobs:
           mix ecto.create
       - name: Restore DB dump
         if: "!contains(github.ref, 'main')"
+        env:
+          PGPASSWORD: postgres
         run: |
-          mix ecto.load
+          psql -d firezone_dev \
+            -h host -U username
+            -vON_ERROR_STOP=1 \
+            --single-transaction \
+            --echo-all \
+            --file apps/fz_http/priv/repo/structure.sql
       - name: Run new migrations
         run: |
           mix ecto.migrate
