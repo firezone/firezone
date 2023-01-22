@@ -29,7 +29,8 @@ defmodule FzHttp.Config do
 
       with :error <- fetch_process_value(pdict_key),
            :error <- fetch_process_value(get_last_pid_from_pdict_list(:"$ancestors"), pdict_key),
-           :error <- fetch_process_value(get_last_pid_from_pdict_list(:"$callers"), pdict_key) do
+           :error <- fetch_process_value(get_last_pid_from_pdict_list(:"$callers"), pdict_key),
+           :error <- fetch_process_value(FzHttp.Application.Supervisor, pdict_key) do
         application_env
       else
         {:ok, override} -> override
