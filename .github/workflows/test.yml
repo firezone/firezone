@@ -228,13 +228,15 @@ jobs:
           path: apps/fz_http/priv/repo/structure.sql
           search_artifacts: true
           if_no_artifact_found: fail
+      - name: Create Database
+        run: |
+          mix ecto.create
       - name: Restore DB dump
         if: "!contains(github.ref, 'main')"
         run: |
           mix ecto.load
-      - name: Setup Database
+      - name: Run new migrations
         run: |
-          mix ecto.create
           mix ecto.migrate
       - name: Dump DB
         if: "contains(github.ref, 'main')"
