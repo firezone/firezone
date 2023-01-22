@@ -300,7 +300,6 @@ jobs:
       - uses: nanasess/setup-chromedriver@v1
       - run: |
           export DISPLAY=:99
-          chromedriver --url-base=/wd/hub &
           sudo Xvfb -ac :99 -screen 0 1280x1024x24 > /dev/null 2>&1 &
       - name: Install package dependencies
         run: |
@@ -370,8 +369,9 @@ jobs:
                    --no-compile \
                    --no-archives-check \
                    --no-deps-check \
-                   chromedriver --url-base=/wd/hub &
+              || pkill -f chromedriver \
               || mix test --only acceptance:true --failed \
+              || pkill -f chromedriver \
               || mix test --only acceptance:true --failed
       - name: Save Screenshots
         if: always()
