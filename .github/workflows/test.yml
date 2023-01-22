@@ -67,7 +67,7 @@ jobs:
           E2E_MAX_WAIT_SECONDS: 20
         run: |
           # XXX: This can fail when coveralls is down
-          mix coveralls.github --umbrella
+          mix coveralls.github --umbrella --warnings-as-errors
       - name: Test Report
         uses: dorny/test-reporter@v1
         if: success() || failure()
@@ -214,16 +214,16 @@ jobs:
           key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
       - name: Install Dependencies
         run: mix deps.get --only $MIX_ENV
-      - name: Compile Dependencies
-        run: mix deps.compile --skip-umbrella-children
-      - name: Compile Application
+      - name: Compile
         run: mix compile
       - name: Download main branch DB dump
         id: download-artifact
         uses: dawidd6/action-download-artifact@v2
         if: "!contains(github.ref, 'main')"
         with:
+          # TODO: change branch name
           branch: andrew/ci-improvements
+          # TODO: remove seeded-
           name: seeded-db-dump
           path: apps/fz_http/priv/repo/
           search_artifacts: true
@@ -285,8 +285,6 @@ jobs:
           --cap-add=IPC_LOCK
     steps:
       - uses: nanasess/setup-chromedriver@v1
-        with:
-          chromedriver-version: '108.0.5359.71'
       - run: |
           export DISPLAY=:99
           chromedriver --url-base=/wd/hub &
