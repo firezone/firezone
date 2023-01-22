@@ -185,7 +185,8 @@ jobs:
         run: |
           sudo apt-get install -q -y \
             net-tools \
-            wireguard
+            wireguard \
+            postgresql-client
       - uses: actions/checkout@v3
       - uses: erlef/setup-beam@v1
         with:
