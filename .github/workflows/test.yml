@@ -167,6 +167,7 @@ jobs:
       MIX_ENV: dev
       POSTGRES_HOST: localhost
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      FZ_VPN_WG_ADAPTER: FzVpn.Interface.WGAdapter.Sandbox
     services:
       postgres:
         image: postgres:15
@@ -225,6 +226,7 @@ jobs:
           branch: andrew/ci-improvements
           name: structure
           path: apps/fz_http/priv/repo/structure.sql
+          search_artifacts: true
           if_no_artifact_found: fail
       - name: Restore DB dump
         if: "!contains(github.ref, 'main')"
