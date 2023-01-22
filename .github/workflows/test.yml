@@ -243,7 +243,11 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: |
-          pg_dump firezone_dev --file apps/fz_http/priv/repo/structure.sql --no-acl --no-owner
+          pg_dump firezone_dev \
+            -U postgres -h localhost \
+            --file apps/fz_http/priv/repo/structure.sql \
+            --no-acl \
+            --no-owner
       - name: Upload main branch DB dump
         # if: "contains(github.ref, 'main')"
         uses: actions/upload-artifact@v3
