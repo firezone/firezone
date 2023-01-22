@@ -39,7 +39,7 @@ jobs:
       - uses: actions/cache@v3
         name: Elixir Deps Cache
         env:
-          cache-name: cache-elixir-deps
+          cache-name: cache-elixir-deps-${{ env.MIX_ENV }}
         with:
           path: deps
           key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
@@ -48,7 +48,7 @@ jobs:
       - uses: actions/cache@v3
         name: Elixir Build Cache
         env:
-          cache-name: cache-elixir-build
+          cache-name: cache-elixir-build-${{ env.MIX_ENV }}
         with:
           path: _build
           key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
@@ -75,6 +75,170 @@ jobs:
           name: Elixir Unit Test Report
           path: _build/test/lib/*/test-junit-report.xml
           reporter: java-junit
+  type-check:
+    runs-on: ubuntu-latest
+    env:
+      MIX_ENV: dev
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: '25'
+          elixir-version: '1.14'
+      - uses: actions/cache@v3
+        name: Elixir Deps Cache
+        env:
+          cache-name: cache-elixir-deps-${{ env.MIX_ENV }}
+        with:
+          path: deps
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ env.cache-name }}-
+      - uses: actions/cache@v3
+        name: Elixir Build Cache
+        env:
+          cache-name: cache-elixir-build-${{ env.MIX_ENV }}
+        with:
+          path: _build
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
+      - name: Install Dependencies
+        run: mix deps.get --only $MIX_ENV
+      - name: Compile Dependencies
+        run: mix deps.compile --skip-umbrella-children
+      - name: Compile Application
+        run: mix compile
+      # Don't cache PLTs based on mix.lock hash, as Dialyzer can incrementally update even old ones
+      # Cache key based on Elixir & Erlang version (also useful when running in matrix)
+      - name: Restore PLT cache
+        uses: actions/cache@v3
+        env:
+          cache-name: cache-erlang-plt-${{ env.MIX_ENV }}
+        with:
+          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-plt
+          restore-keys: |
+            ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-plt
+          path: priv/plts
+      - name: Create PLTs
+        if: steps.plt_cache.outputs.cache-hit != 'true'
+        run: mix dialyzer --plt
+      - name: Run Dialyzer
+        run: mix dialyzer --format dialyxir
+  static-analysis:
+    runs-on: ubuntu-latest
+    env:
+      MIX_ENV: test
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: '25'
+          elixir-version: '1.14'
+      - uses: actions/cache@v3
+        name: Elixir Deps Cache
+        env:
+          cache-name: cache-elixir-deps-${{ env.MIX_ENV }}
+        with:
+          path: deps
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ env.cache-name }}-
+      - uses: actions/cache@v3
+        name: Elixir Build Cache
+        env:
+          cache-name: cache-elixir-build-${{ env.MIX_ENV }}
+        with:
+          path: _build
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
+      - name: Install Dependencies
+        run: mix deps.get --only $MIX_ENV
+      - name: Compile Dependencies
+        run: mix deps.compile --skip-umbrella-children
+      - name: Compile Application
+        run: mix compile --force --warnings-as-errors
+      - name: Check Formatting
+        run: mix format --check-formatted
+      - name: Run Credo
+        run: mix credo --strict
+  migrations-and-seed-test:
+    runs-on: ubuntu-latest
+    env:
+      MIX_ENV: dev
+      POSTGRES_HOST: localhost
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    services:
+      postgres:
+        image: postgres:15
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Install package dependencies
+        run: |
+          sudo apt-get install -q -y \
+            net-tools \
+            wireguard
+      - uses: actions/checkout@v3
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: '25'
+          elixir-version: '1.14'
+      - uses: actions/cache@v3
+        name: Elixir Deps Cache
+        env:
+          cache-name: cache-elixir-deps-${{ env.MIX_ENV }}-${{ env.MIX_ENV }}
+        with:
+          path: deps
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ env.cache-name }}-
+      - uses: actions/cache@v3
+        name: Elixir Build Cache
+        env:
+          cache-name: cache-elixir-build-${{ env.MIX_ENV }}
+        with:
+          path: _build
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
+      - name: Install Dependencies
+        run: mix deps.get --only $MIX_ENV
+      - name: Compile Dependencies
+        run: mix deps.compile --skip-umbrella-children
+      - name: Compile Application
+        run: mix compile
+      - name: Download main branch DB dump
+        uses: actions/download-artifact@v3
+        if: "!contains(github.ref, 'main')"
+        with:
+          name: structure
+          path: apps/fz_http/priv/repo
+      - name: Restore DB dump
+        if: "!contains(github.ref, 'main')"
+        run: |
+          mix ecto.load
+      - name: Setup Database
+        run: |
+          mix ecto.create
+          mix ecto.migrate
+      - name: Dump DB
+        if: "contains(github.ref, 'main')"
+        run: |
+          mix ecto.dump
+      - name: Upload main branch DB dump
+        if: "contains(github.ref, 'main')"
+        uses: actions/upload-artifact@v2
+        with:
+          name: structure
+          path: apps/fz_http/priv/repo
+      - name: Run Seed
+        run: mix run priv/repo/seeds.exs
   acceptance-test:
     runs-on: ubuntu-latest
     env:
@@ -129,7 +293,7 @@ jobs:
       - uses: actions/cache@v3
         name: Elixir Deps Cache
         env:
-          cache-name: cache-elixir-deps
+          cache-name: cache-elixir-deps-${{ env.MIX_ENV }}-${{ env.MIX_ENV }}
         with:
           path: deps
           key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
@@ -138,21 +302,21 @@ jobs:
       - uses: actions/cache@v3
         name: Elixir Build Cache
         env:
-          cache-name: cache-elixir-build
+          cache-name: cache-elixir-build-${{ env.MIX_ENV }}
         with:
           path: _build
           key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
       - uses: actions/cache@v3
         name: Yarn Deps Cache
         env:
-          cache-name: cache-yarn-build
+          cache-name: cache-yarn-build-${{ env.MIX_ENV }}
         with:
           path: apps/fz_http/assets/node_modules
           key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/yarn.lock') }}
       - uses: actions/cache@v3
         name: Assets Cache
         env:
-          cache-name: cache-assets-build
+          cache-name: cache-assets-build-${{ env.MIX_ENV }}
         with:
           path: apps/fz_http/priv/static/dist
           key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/yarn.lock') }}
