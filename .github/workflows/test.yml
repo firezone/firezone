@@ -359,10 +359,10 @@ jobs:
         run: |
           mix ecto.create
           mix ecto.migrate
-      - name: Run Tests and Upload Coverage Report
+      - name: Run Acceptance Tests
         env:
           MIX_TEST_PARTITION: ${{ matrix.MIX_TEST_PARTITION }}
-          E2E_MAX_WAIT_SECONDS: 20
+          E2E_MAX_WAIT_SECONDS: 5
         run: |
           mix test --only acceptance:true \
                    --partitions=${{ env.MIX_TEST_PARTITIONS }} \
