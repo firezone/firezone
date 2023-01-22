@@ -357,7 +357,7 @@ jobs:
                    --no-compile \
                    --no-archives-check \
                    --no-deps-check \
-              || mix test --failed
+              || mix test --only acceptance:true --failed
       - name: Save Screenshots
         if: always()
         uses: actions/upload-artifact@v3
