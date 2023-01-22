@@ -189,8 +189,7 @@ jobs:
           sudo apt-get install -q -y \
             net-tools \
             wireguard \
-            postgresql-client \ 
-            inotify-tools
+            postgresql-client
       - uses: actions/checkout@v3
       - uses: erlef/setup-beam@v1
         with:
