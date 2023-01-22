@@ -233,7 +233,7 @@ jobs:
           mix ecto.dump
       - name: Upload main branch DB dump
         if: "contains(github.ref, 'main')"
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: structure
           path: apps/fz_http/priv/repo
