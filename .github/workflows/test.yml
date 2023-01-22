@@ -216,34 +216,36 @@ jobs:
         run: mix deps.get --only $MIX_ENV
       - name: Compile
         run: mix compile
-      - name: Download main branch DB dump
-        id: download-artifact
-        uses: dawidd6/action-download-artifact@v2
-        if: "!contains(github.ref, 'main')"
-        with:
-          # TODO: change branch name
-          branch: andrew/ci-improvements
-          # TODO: remove seeded-
-          name: seeded-db-dump
-          path: apps/fz_http/priv/repo/
-          search_artifacts: true
-          if_no_artifact_found: fail
+      # - name: Download main branch DB dump
+      #   id: download-artifact
+      #   uses: dawidd6/action-download-artifact@v2
+      #   if: "!contains(github.ref, 'main')"
+      #   with:
+      #     # TODO: change branch name
+      #     branch: andrew/ci-improvements
+      #     # TODO: remove seeded-
+      #     name: seeded-db-dump
+      #     path: apps/fz_http/priv/repo/
+      #     search_artifacts: true
+      #     if_no_artifact_found: fail
       - name: Create Database
         run: |
           mix ecto.create
-      - name: Restore DB dump
-        if: "!contains(github.ref, 'main')"
-        run: |
-          mix ecto.load
+      # - name: Restore DB dump
+      #   if: "!contains(github.ref, 'main')"
+      #   run: |
+      #     mix ecto.load
       - name: Run new migrations
         run: |
           mix ecto.migrate
       - name: Dump DB
-        if: "contains(github.ref, 'main')"
+        # if: "contains(github.ref, 'main')"
+        env:
+          PGPASSWORD: postgres
         run: |
-          mix ecto.dump
+          pg_dump firezone_dev --file apps/fz_http/priv/repo/structure.sql --no-acl --no-owner
       - name: Upload main branch DB dump
-        if: "contains(github.ref, 'main')"
+        # if: "contains(github.ref, 'main')"
         uses: actions/upload-artifact@v3
         with:
           name: seeded-db-dump
