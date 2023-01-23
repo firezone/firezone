@@ -83,7 +83,7 @@ services:
       - IPC_LOCK
     networks:
       - app
-  
+
   saml-idp:
     # This is a container with this PR merged: https://github.com/kristophjunge/docker-test-saml-idp/pull/27
     image: vihangk1/docker-test-saml-idp:latest
