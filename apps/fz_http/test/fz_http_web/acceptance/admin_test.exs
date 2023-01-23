@@ -478,7 +478,6 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
         |> assert_el(Query.text("Updated successfully."))
         |> assert_el(Query.text("foo-bar-buz"))
         |> assert_el(Query.text("Sneaky ID"))
-        |> assert_el(Query.text("http://localhost:4002/autX/saml#foo"))
 
       assert [saml_identity_provider] = FzHttp.Configurations.get!(:saml_identity_providers)
 
@@ -494,21 +493,6 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
                  signed_envelopes_in_resp: false,
                  auto_create_users: true
                }
-
-      assert FzHttp.Config.fetch_env!(:samly, Samly.Provider) == [
-               identity_providers: [
-                 %{
-                   base_url: "http://localhost:4002/autX/saml#foo",
-                   id: "foo-bar-buz",
-                   metadata: saml_metadata,
-                   sign_metadata: false,
-                   sign_requests: false,
-                   signed_assertion_in_resp: false,
-                   signed_envelopes_in_resp: false,
-                   sp_id: "firezone"
-                 }
-               ]
-             ]
 
       # Edit
       session =

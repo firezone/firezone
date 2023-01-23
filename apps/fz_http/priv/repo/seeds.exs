@@ -13,8 +13,47 @@
 alias FzHttp.{
   ConnectivityChecks,
   Devices,
-  Users
+  Users,
+  ApiTokens,
+  Rules,
+  MFA
 }
+
+{:ok, unprivileged_user1} =
+  Users.create_unprivileged_user(%{
+    email: "firezone-unprivileged-1@localhost"
+  })
+
+{:ok, _device} =
+  Devices.create_device(%{
+    user_id: unprivileged_user1.id,
+    name: "My Device",
+    description: "foo bar",
+    preshared_key: "27eCDMVRVFfMVS5Rfnn9n7as4M6MemGY/oghmdrwX2E=",
+    public_key: "4Fo+SBnDJ6hi8qzPt3nWLwgjCVwvpjHL35qJeatKwEc=",
+    remote_ip: %Postgrex.INET{address: {127, 5, 0, 1}},
+    rx_bytes: 123_917_823,
+    tx_bytes: 1_934_475_211_087_234
+  })
+
+{:ok, mfa_user} =
+  Users.create_unprivileged_user(%{
+    email: "firezone-mfa@localhost",
+    password: "firezone1234",
+    password_confirmation: "firezone1234"
+  })
+
+secret = NimbleTOTP.secret()
+
+MFA.create_method(
+  %{
+    name: "Google Authenticator",
+    type: :totp,
+    payload: %{"secret" => Base.encode64(secret)},
+    code: NimbleTOTP.verification_code(secret)
+  },
+  mfa_user.id
+)
 
 {:ok, user} =
   Users.create_admin_user(%{
@@ -22,6 +61,10 @@ alias FzHttp.{
     password: "firezone1234",
     password_confirmation: "firezone1234"
   })
+
+{:ok, _api_token} = ApiTokens.create_user_api_token(user, %{"expires_in" => 5})
+{:ok, _api_token} = ApiTokens.create_user_api_token(user, %{"expires_in" => 30})
+{:ok, _api_token} = ApiTokens.create_user_api_token(user, %{"expires_in" => 1})
 
 {:ok, _device} =
   Devices.create_device(%{
@@ -150,3 +193,30 @@ alias FzHttp.{
     response_code: 400,
     url: "https://ping-dev.firez.one/0.20.0"
   })
+
+Rules.create_rule(%{
+  destination: "10.0.0.0/24",
+  port_type: :tcp,
+  port_range: "100-200"
+})
+
+Rules.create_rule(%{
+  destination: "1.2.3.4"
+})
+
+FzHttp.Configurations.put!(
+  :openid_connect_providers,
+  [
+    %{
+      "id" => "vault",
+      "discovery_document_uri" => "https://common.auth0.com/.well-known/openid-configuration",
+      "client_id" => "CLIENT_ID",
+      "client_secret" => "CLIENT_SECRET",
+      "redirect_uri" => "http://localhost:13000/auth/oidc/vault/callback/",
+      "response_type" => "code",
+      "scope" => "openid email offline_access",
+      "label" => "OIDC Vault",
+      "auto_create_users" => true
+    }
+  ]
+)
