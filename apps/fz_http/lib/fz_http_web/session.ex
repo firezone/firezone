@@ -29,7 +29,12 @@ defmodule FzHttpWeb.Session do
   end
 
   defp signing_salt do
-    FzHttp.Config.fetch_env!(:fz_http, :cookie_signing_salt)
+    [vsn | _] =
+      Application.spec(:fz_http, :vsn)
+      |> to_string()
+      |> String.split("+")
+
+    FzHttp.Config.fetch_env!(:fz_http, :cookie_signing_salt) <> vsn
   end
 
   defp encryption_salt do

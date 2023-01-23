@@ -65,8 +65,9 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
       |> fill_form(%{"email" => "foo@bar.com"})
       |> click(Query.button("Send"))
       |> assert_el(Query.text("Reset Password"))
-      |> visit(~p"/dev/mailbox")
-      |> assert_el(Query.text("Empty mailbox..."))
+
+      emails = Swoosh.Adapters.Local.Storage.Memory.all()
+      refute Enum.find(emails, &(&1.to == "foo@bar.com"))
     end
 
     feature "can reset password using email link", %{session: session} do
