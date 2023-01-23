@@ -23,14 +23,13 @@ defmodule FzHttpWeb.SettingLive.Account do
   def mount(params, _session, socket) do
     Endpoint.subscribe(@live_sessions_topic)
     {:ok, methods} = MFA.list_methods_for_user(socket.assigns.current_user)
-    {:ok, api_tokens} = ApiTokens.list_api_tokens_by_user_id(socket.assigns.current_user.id)
 
     socket =
       socket
       |> assign(:api_token_id, params["api_token_id"])
       |> assign(:subscribe_link, subscribe_link())
       |> assign(:allow_delete, Users.count_by_role(:admin) > 1)
-      |> assign(:api_tokens, api_tokens)
+      |> assign(:api_tokens, ApiTokens.list_api_tokens(socket.assigns.current_user.id))
       |> assign(:changeset, Users.change_user(socket.assigns.current_user))
       |> assign(:methods, methods)
       |> assign(:page_title, @page_title)
@@ -46,32 +45,30 @@ defmodule FzHttpWeb.SettingLive.Account do
 
   @impl Phoenix.LiveView
   def handle_params(%{"api_token_id" => api_token_id}, _url, socket) do
-    {:ok, api_token} = ApiTokens.fetch_unexpired_api_token_by_id(api_token_id)
-    {:noreply, assign(socket, :api_token, api_token)}
+    {:noreply,
+     socket
+     |> assign(:api_token, ApiTokens.get_api_token!(api_token_id))}
   end
 
   @impl Phoenix.LiveView
   def handle_params(_params, _url, socket) do
-    {:ok, api_tokens} = ApiTokens.list_api_tokens_by_user_id(socket.assigns.current_user.id)
-
-    socket =
-      socket
-      |> assign(:allow_delete, Users.count_by_role(:admin) > 1)
-      |> assign(:api_tokens, api_tokens)
-
-    {:noreply, socket}
+    {:noreply,
+     socket
+     |> assign(:allow_delete, Users.count_by_role(:admin) > 1)
+     |> assign(:api_tokens, ApiTokens.list_api_tokens(socket.assigns.current_user.id))}
   end
 
   @impl Phoenix.LiveView
   def handle_event("delete_api_token", %{"id" => id}, socket) do
-    case ApiTokens.delete_api_token_by_id(id, socket.assigns.current_user) do
-      {:ok, _api_token} ->
-        {:ok, api_tokens} = ApiTokens.list_api_tokens_by_user_id(socket.assigns.current_user.id)
-        {:noreply, assign(socket, :api_tokens, api_tokens)}
+    api_token = ApiTokens.get_api_token!(id)
 
-      {:error, :not_found} ->
-        {:noreply, socket}
+    if api_token.user_id == socket.assigns.current_user.id do
+      {:ok, _deleted} = ApiTokens.delete_api_token(api_token)
     end
+
+    {:noreply,
+     socket
+     |> assign(:api_tokens, ApiTokens.list_api_tokens(socket.assigns.current_user.id))}
   end
 
   @impl Phoenix.LiveView

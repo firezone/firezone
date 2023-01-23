@@ -1,21 +1,25 @@
 defmodule FzHttp.ApiTokensFixtures do
-  alias FzHttp.UsersFixtures
+  @moduledoc """
+  This module defines test helpers for creating
+  entities via the `FzHttp.ApiTokens` context.
+  """
 
-  def api_token_attrs(attrs \\ %{}) do
-    Enum.into(attrs, %{})
-  end
+  @doc """
+  Generate a api_token.
+  """
+  def api_token(params \\ %{}) do
+    user_id =
+      Map.get_lazy(
+        params,
+        "user_id",
+        fn ->
+          FzHttp.UsersFixtures.user().id
+        end
+      )
 
-  def create_api_token(attrs \\ %{}) do
-    attrs = api_token_attrs(attrs)
-    {user, attrs} = Map.pop_lazy(attrs, :user, fn -> UsersFixtures.user() end)
-    {:ok, api_token} = FzHttp.ApiTokens.create_user_api_token(user, attrs)
+    {:ok, api_token} =
+      FzHttp.ApiTokens.create_user_api_token(%FzHttp.Users.User{id: user_id}, params)
+
     api_token
-  end
-
-  def expire_api_token(api_token) do
-    one_second_ago = DateTime.utc_now() |> DateTime.add(-1, :second)
-
-    Ecto.Changeset.change(api_token, expires_at: one_second_ago)
-    |> FzHttp.Repo.update!()
   end
 end

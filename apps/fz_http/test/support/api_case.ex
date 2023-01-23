@@ -50,7 +50,7 @@ defmodule FzHttpWeb.ApiCase do
 
   def authed_conn do
     user = UsersFixtures.user(%{role: :admin})
-    api_token = ApiTokensFixtures.create_api_token(user: user)
+    api_token = ApiTokensFixtures.api_token(%{"user_id" => user.id})
 
     {:ok, token, _claims} = FzHttpWeb.Auth.JSON.Authentication.fz_encode_and_sign(api_token, user)
 

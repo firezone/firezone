@@ -200,7 +200,7 @@
     <% end %>
   </div>
 
-  <%= if length(@api_tokens) < FzHttp.ApiTokens.ApiToken.Changeset.max_per_user() do %>
+  <%= if length(@api_tokens) < FzHttp.ApiTokens.ApiToken.max_per_user() do %>
     <.link patch={~p"/settings/account/api_token"} class="button">
       <span class="icon is-small">
         <i class="mdi mdi-plus"></i>
