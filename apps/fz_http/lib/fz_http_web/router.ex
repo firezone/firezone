@@ -70,6 +70,7 @@ defmodule FzHttpWeb.Router do
     post "/:provider/callback", AuthController, :callback
   end
 
+  # XXX: Those routes conflict with the ones above, we must change them in 1.0
   # OIDC auth routes
   scope "/auth/oidc", FzHttpWeb do
     pipe_through [
