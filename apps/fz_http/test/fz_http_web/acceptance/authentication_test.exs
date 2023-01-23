@@ -100,7 +100,38 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
     end
   end
 
-  describe "using OIDC provider" do
+  describe "using SAML provider" do
+    feature "creates a user when auto_create_users is true", %{session: session} do
+      :ok = SimpleSAML.setup_saml_provider()
+
+      session
+      |> visit(~p"/")
+      |> assert_el(Query.text("Sign In", minimum: 1))
+      |> click(Query.link("Sign in with test-saml-idp"))
+      |> assert_el(Query.link("Enter your username and password"))
+      |> fill_in(Query.fillable_field("username"), with: "user1")
+      |> fill_in(Query.fillable_field("password"), with: "user1pass")
+      |> click(Query.button("Login"))
+      |> assert_el(Query.text("Your Devices"))
+    end
+
+    feature "does not create new users when auto_create_users is false", %{session: session} do
+      FzHttp.Configurations.put!(:local_auth_enabled, false)
+      :ok = SimpleSAML.setup_saml_provider(%{"auto_create_users" => false})
+
+      session
+      |> visit(~p"/")
+      |> assert_el(Query.text("Sign In", minimum: 1))
+      |> click(Query.link("Sign in with test-saml-idp"))
+      |> assert_el(Query.link("Enter your username and password"))
+      |> fill_in(Query.fillable_field("username"), with: "user1")
+      |> fill_in(Query.fillable_field("password"), with: "user1pass")
+      |> click(Query.button("Login"))
+      |> assert_el(Query.text("Local auth disabled"))
+    end
+  end
+
+  describe "using OpenID Connect provider" do
     feature "creates a user when auto_create_users is true", %{session: session} do
       oidc_login = "firezone-1"
       oidc_password = "firezone1234_oidc"
@@ -111,6 +142,7 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
 
       session
       |> visit(~p"/")
+      |> assert_el(Query.text("Sign In", minimum: 1))
       |> click(Query.link("OIDC Vault"))
       |> Vault.userpass_flow(oidc_login, oidc_password)
       |> assert_el(Query.text("Your Devices"))
@@ -133,6 +165,7 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
 
       session
       |> visit(~p"/")
+      |> assert_el(Query.text("Sign In", minimum: 1))
       |> click(Query.link("OIDC Vault"))
       |> Vault.userpass_flow(oidc_login, oidc_password)
       |> find(Query.text("Users", count: 2), fn _ -> :ok end)
@@ -155,6 +188,7 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
 
       session
       |> visit(~p"/")
+      |> assert_el(Query.text("Sign In", minimum: 1))
       |> click(Query.link("OIDC Vault"))
       |> Vault.userpass_flow(oidc_login, oidc_password)
       |> assert_error_flash("Error signing in: user not found and auto_create_users disabled")

@@ -5,6 +5,12 @@ defmodule FzHttp.Configurations.Configuration.SAMLIdentityProvider do
   use FzHttp, :schema
   import Ecto.Changeset
 
+  @reserved_config_ids [
+    "identity",
+    "saml",
+    "magic_link"
+  ]
+
   @primary_key false
   embedded_schema do
     field :id, :string
@@ -40,6 +46,8 @@ defmodule FzHttp.Configurations.Configuration.SAMLIdentityProvider do
     ])
     |> FzHttp.Validator.validate_uri(:base_url)
     |> validate_metadata()
+    # Don't allow users to enter reserved config ids
+    |> validate_exclusion(:id, @reserved_config_ids)
   end
 
   def validate_metadata(changeset) do
