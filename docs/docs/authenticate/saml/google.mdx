@@ -42,16 +42,15 @@ to copy-paste the contents of this document into the Firezone portal in the next
 In the Firezone portal, add a SAML identity provider under the Security tab
 by filling out the following information:
 
-| Setting                     | Value            | Notes                                                                                                                                       |
-| --------------------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------    |
-| Config ID                   | google           | Firezone uses this value to construct endpoints required in the SAML authentication flow (e.g., receiving assertions, login requests).      |
-| Label                       | Google           | Appears on the sign in button for authentication.                                                                                           |
-| Metadata                    | see note         | Paste the contents of the SAML metadata document you downloaded in the previous step from Google.                                           |
-| Sign assertions             | Checked.         |                                                                                                                                             |
-| Sign metadata               | Checked.         |                                                                                                                                             |
-| Require signed assertions   | Checked.         |                                                                                                                                             |
-| Required signed envelopes   | **Unchecked.**   |                                                                                                                                             |
-| Auto create users           | Default `false`  | Enable this setting to automatically create users when signing in with this connector for the first time. Disable to manually create users. |
+| Setting                   | Value          | Notes                                                                                                                                  |
+|---------------------------|----------------|----------------------------------------------------------------------------------------------------------------------------------------|
+| Config ID                 | google         | Firezone uses this value to construct endpoints required in the SAML authentication flow (e.g., receiving assertions, login requests). |
+| Label                     | Google         | Appears on the sign in button for authentication.                                                                                      |
+| Metadata                  | see note       | Paste the contents of the SAML metadata document you downloaded in the previous step from Google.                                      |
+| Sign assertions           | Checked.       |                                                                                                                                        |
+| Sign metadata             | Checked.       |                                                                                                                                        |
+| Require signed assertions | Checked.       |                                                                                                                                        |
+| Required signed envelopes | **Unchecked.** |                                                                                                                                        |
 
 ![Firezone SAML](https://user-images.githubusercontent.com/52545545/202566502-3a06694b-249e-4330-9f6b-39004eb36406.png)
 
