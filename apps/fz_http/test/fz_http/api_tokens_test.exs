@@ -28,6 +28,17 @@ defmodule FzHttp.ApiTokensTest do
       assert ApiTokens.get_api_token!(api_token.id) == api_token
     end
 
+    test "fetch_unexpired_api_token_by_id/2 fetches the unexpired token" do
+      api_token = api_token()
+      assert {:ok, ^api_token} = ApiTokens.fetch_unexpired_api_token_by_id(api_token.id)
+    end
+
+    test "fetch_unexpired_api_token_by_id/2 returns {:error, :not_found} for expired token" do
+      api_token = api_token(%{"expires_in" => 1})
+      now = DateTime.add(DateTime.utc_now(), 3, :day)
+      assert {:error, :not_found} = ApiTokens.fetch_unexpired_api_token_by_id(api_token.id, now)
+    end
+
     test "create_user_api_token/2 with valid data creates a api_token" do
       valid_params = %{
         "expires_in" => 1

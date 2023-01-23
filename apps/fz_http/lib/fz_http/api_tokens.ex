@@ -24,13 +24,9 @@ defmodule FzHttp.ApiTokens do
 
   def get_api_token!(id), do: Repo.get!(ApiToken, id)
 
-  def get_unexpired_api_token(api_token_id) do
-    now = DateTime.utc_now()
-
-    Repo.one(
-      from a in ApiToken,
-        where: a.id == ^api_token_id and a.expires_at >= ^now
-    )
+  def fetch_unexpired_api_token_by_id(api_token_id, now \\ DateTime.utc_now()) do
+    from(a in ApiToken, where: a.id == ^api_token_id and a.expires_at >= ^now)
+    |> Repo.fetch()
   end
 
   def new_api_token(attrs \\ %{}) do
