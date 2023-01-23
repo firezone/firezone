@@ -60,7 +60,7 @@ defmodule FzHttp.SAML.StartProxy do
       |> set_service_provider()
       |> set_identity_providers(providers)
 
-    FzHttp.Config.put_env(:samly, Samly.Provider, samly_configs)
+    Application.put_env(:samly, Samly.Provider, samly_configs)
     Samly.Provider.refresh_providers()
   end
 end

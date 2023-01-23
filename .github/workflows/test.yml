@@ -39,7 +39,7 @@ jobs:
       - uses: actions/cache@v3
         name: Elixir Deps Cache
         env:
-          cache-name: cache-elixir-deps
+          cache-name: cache-elixir-deps-${{ env.MIX_ENV }}
         with:
           path: deps
           key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
@@ -48,7 +48,7 @@ jobs:
       - uses: actions/cache@v3
         name: Elixir Build Cache
         env:
-          cache-name: cache-elixir-build
+          cache-name: cache-elixir-build-${{ env.MIX_ENV }}
         with:
           path: _build
           key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
@@ -67,7 +67,7 @@ jobs:
           E2E_MAX_WAIT_SECONDS: 20
         run: |
           # XXX: This can fail when coveralls is down
-          mix coveralls.github --umbrella
+          mix coveralls.github --umbrella --warnings-as-errors
       - name: Test Report
         uses: dorny/test-reporter@v1
         if: success() || failure()
@@ -75,6 +75,188 @@ jobs:
           name: Elixir Unit Test Report
           path: _build/test/lib/*/test-junit-report.xml
           reporter: java-junit
+  type-check:
+    runs-on: ubuntu-latest
+    env:
+      MIX_ENV: dev
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: '25'
+          elixir-version: '1.14'
+      - uses: actions/cache@v3
+        name: Elixir Deps Cache
+        env:
+          cache-name: cache-elixir-deps-${{ env.MIX_ENV }}
+        with:
+          path: deps
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ env.cache-name }}-
+      - uses: actions/cache@v3
+        name: Elixir Build Cache
+        env:
+          cache-name: cache-elixir-build-${{ env.MIX_ENV }}
+        with:
+          path: _build
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
+      - name: Install Dependencies
+        run: mix deps.get --only $MIX_ENV
+      - name: Compile Dependencies
+        run: mix deps.compile --skip-umbrella-children
+      - name: Compile Application
+        run: mix compile
+      # Don't cache PLTs based on mix.lock hash, as Dialyzer can incrementally update even old ones
+      # Cache key based on Elixir & Erlang version (also useful when running in matrix)
+      - name: Restore PLT cache
+        uses: actions/cache@v3
+        env:
+          cache-name: cache-erlang-plt-${{ env.MIX_ENV }}
+        with:
+          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-plt
+          restore-keys: |
+            ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-plt
+          path: priv/plts
+      - name: Create PLTs
+        if: steps.plt_cache.outputs.cache-hit != 'true'
+        run: mix dialyzer --plt
+      - name: Run Dialyzer
+        run: mix dialyzer --format dialyxir
+  static-analysis:
+    runs-on: ubuntu-latest
+    env:
+      MIX_ENV: test
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: '25'
+          elixir-version: '1.14'
+      - uses: actions/cache@v3
+        name: Elixir Deps Cache
+        env:
+          cache-name: cache-elixir-deps-${{ env.MIX_ENV }}
+        with:
+          path: deps
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ env.cache-name }}-
+      - uses: actions/cache@v3
+        name: Elixir Build Cache
+        env:
+          cache-name: cache-elixir-build-${{ env.MIX_ENV }}
+        with:
+          path: _build
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
+      - name: Install Dependencies
+        run: mix deps.get --only $MIX_ENV
+      - name: Compile Dependencies
+        run: mix deps.compile --skip-umbrella-children
+      - name: Compile Application
+        run: mix compile --force --warnings-as-errors
+      - name: Check Formatting
+        run: mix format --check-formatted
+      - name: Run Credo
+        run: mix credo --strict
+  migrations-and-seed-test:
+    runs-on: ubuntu-latest
+    env:
+      MIX_ENV: dev
+      POSTGRES_HOST: localhost
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      FZ_VPN_WG_ADAPTER: FzVpn.Interface.WGAdapter.Sandbox
+    services:
+      postgres:
+        image: postgres:15
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Install package dependencies
+        run: |
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          wget -qO- https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo tee /etc/apt/trusted.gpg.d/pgdg.asc &>/dev/null
+          sudo apt update
+          sudo apt-get install -q -y \
+            net-tools \
+            wireguard \
+            postgresql-client
+      - uses: actions/checkout@v3
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: '25'
+          elixir-version: '1.14'
+      - uses: actions/cache@v3
+        name: Elixir Deps Cache
+        env:
+          cache-name: cache-elixir-deps-${{ env.MIX_ENV }}-${{ env.MIX_ENV }}
+        with:
+          path: deps
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ env.cache-name }}-
+      - uses: actions/cache@v3
+        name: Elixir Build Cache
+        env:
+          cache-name: cache-elixir-build-${{ env.MIX_ENV }}
+        with:
+          path: _build
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
+      - name: Install Dependencies
+        run: mix deps.get --only $MIX_ENV
+      - name: Compile
+        run: mix compile
+      - name: Download master branch DB dump
+        id: download-artifact
+        uses: dawidd6/action-download-artifact@v2
+        if: "!contains(github.ref, 'master')"
+        with:
+          branch: master
+          name: db-dump
+          path: apps/fz_http/priv/repo/
+          search_artifacts: true
+          workflow_conclusion: completed
+          if_no_artifact_found: fail
+      - name: Create Database
+        run: |
+          mix ecto.create
+      - name: Restore DB dump
+        if: "!contains(github.ref, 'master')"
+        env:
+          PGPASSWORD: postgres
+        run: |
+          mix ecto.load
+      - name: Run new migrations
+        run: |
+          mix ecto.migrate
+      - name: Dump DB
+        if: "contains(github.ref, 'master')"
+        env:
+          PGPASSWORD: postgres
+        run: |
+          pg_dump firezone_dev \
+            -U postgres -h localhost \
+            --file apps/fz_http/priv/repo/structure.sql \
+            --no-acl \
+            --no-owner
+      - name: Upload master branch DB dump
+        if: "contains(github.ref, 'master')"
+        uses: actions/upload-artifact@v3
+        with:
+          name: db-dump
+          path: apps/fz_http/priv/repo/structure.sql
+      - name: Run Seed
+        run: mix ecto.seed
   acceptance-test:
     runs-on: ubuntu-latest
     env:
@@ -110,11 +292,8 @@ jobs:
           --cap-add=IPC_LOCK
     steps:
       - uses: nanasess/setup-chromedriver@v1
-        with:
-          chromedriver-version: '108.0.5359.71'
       - run: |
           export DISPLAY=:99
-          chromedriver --url-base=/wd/hub &
           sudo Xvfb -ac :99 -screen 0 1280x1024x24 > /dev/null 2>&1 &
       - name: Install package dependencies
         run: |
@@ -129,7 +308,7 @@ jobs:
       - uses: actions/cache@v3
         name: Elixir Deps Cache
         env:
-          cache-name: cache-elixir-deps
+          cache-name: cache-elixir-deps-${{ env.MIX_ENV }}-${{ env.MIX_ENV }}
         with:
           path: deps
           key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
@@ -138,21 +317,21 @@ jobs:
       - uses: actions/cache@v3
         name: Elixir Build Cache
         env:
-          cache-name: cache-elixir-build
+          cache-name: cache-elixir-build-${{ env.MIX_ENV }}
         with:
           path: _build
           key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
       - uses: actions/cache@v3
         name: Yarn Deps Cache
         env:
-          cache-name: cache-yarn-build
+          cache-name: cache-yarn-build-${{ env.MIX_ENV }}
         with:
           path: apps/fz_http/assets/node_modules
           key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/yarn.lock') }}
       - uses: actions/cache@v3
         name: Assets Cache
         env:
-          cache-name: cache-assets-build
+          cache-name: cache-assets-build-${{ env.MIX_ENV }}
         with:
           path: apps/fz_http/priv/static/dist
           key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/yarn.lock') }}
@@ -174,17 +353,20 @@ jobs:
         run: |
           mix ecto.create
           mix ecto.migrate
-      - name: Run Tests and Upload Coverage Report
+      - name: Run Acceptance Tests
         env:
           MIX_TEST_PARTITION: ${{ matrix.MIX_TEST_PARTITION }}
-          E2E_MAX_WAIT_SECONDS: 20
+          E2E_MAX_WAIT_SECONDS: 5
         run: |
           mix test --only acceptance:true \
                    --partitions=${{ env.MIX_TEST_PARTITIONS }} \
                    --no-compile \
                    --no-archives-check \
                    --no-deps-check \
-              || mix test --failed
+              || pkill -f chromedriver \
+              || mix test --only acceptance:true --failed \
+              || pkill -f chromedriver \
+              || mix test --only acceptance:true --failed
       - name: Save Screenshots
         if: always()
         uses: actions/upload-artifact@v3
