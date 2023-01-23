@@ -149,7 +149,9 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
 
           <div class="level">
             <div class="level-left">
-              <p class="help">Automatically create users when signing in for the first time.</p>
+              <p class="help">
+                Automatically provision users when signing in for the first time.
+              </p>
               <p class="help is-danger">
                 <%= error_tag(f, :auto_create_users) %>
               </p>

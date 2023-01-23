@@ -1,47 +1,49 @@
 defmodule FzHttp.ApiTokens do
-  @moduledoc """
-  The ApiTokens context.
-  """
-
-  import Ecto.Query, warn: false
-  alias FzHttp.Repo
-
+  alias FzHttp.{Repo, Validator}
+  alias FzHttp.Users
   alias FzHttp.ApiTokens.ApiToken
 
   def count_by_user_id(user_id) do
-    Repo.aggregate(from(a in ApiToken, where: a.user_id == ^user_id), :count)
+    ApiToken.Query.by_user_id(user_id)
+    |> Repo.aggregate(:count)
   end
 
   def list_api_tokens do
-    Repo.all(ApiToken)
+    ApiToken.Query.all()
+    |> Repo.list()
   end
 
-  def list_api_tokens(user_id) do
-    Repo.all(from a in ApiToken, where: a.user_id == ^user_id)
+  def list_api_tokens_by_user_id(user_id) do
+    ApiToken.Query.by_user_id(user_id)
+    |> Repo.list()
   end
 
-  def get_api_token(id), do: Repo.get(ApiToken, id)
+  def fetch_api_token_by_id(id) do
+    if Validator.valid_uuid?(id) do
+      ApiToken.Query.by_id(id)
+      |> Repo.fetch()
+    else
+      {:error, :not_found}
+    end
+  end
 
-  def get_api_token!(id), do: Repo.get!(ApiToken, id)
-
-  def get_unexpired_api_token(api_token_id) do
-    now = DateTime.utc_now()
-
-    Repo.one(
-      from a in ApiToken,
-        where: a.id == ^api_token_id and a.expires_at >= ^now
-    )
+  def fetch_unexpired_api_token_by_id(id) do
+    if Validator.valid_uuid?(id) do
+      ApiToken.Query.by_id(id)
+      |> ApiToken.Query.not_expired()
+      |> Repo.fetch()
+    else
+      {:error, :not_found}
+    end
   end
 
   def new_api_token(attrs \\ %{}) do
-    ApiToken.create_changeset(attrs)
+    ApiToken.Changeset.changeset(attrs)
   end
 
   def create_user_api_token(%FzHttp.Users.User{} = user, params) do
-    changeset =
-      params
-      |> Enum.into(%{"user_id" => user.id})
-      |> ApiToken.create_changeset(count_per_user: count_by_user_id(user.id))
+    count_by_user_id = count_by_user_id(user.id)
+    changeset = ApiToken.Changeset.create_changeset(user, params, max: count_by_user_id)
 
     with {:ok, api_token} <- Repo.insert(changeset) do
       FzHttp.Telemetry.create_api_token()
@@ -53,10 +55,14 @@ defmodule FzHttp.ApiTokens do
     DateTime.diff(api_token.expires_at, DateTime.utc_now()) < 0
   end
 
-  def delete_api_token(%ApiToken{} = api_token) do
-    with {:ok, api_token} <- Repo.delete(api_token) do
-      FzHttp.Telemetry.delete_api_token(api_token)
-      {:ok, api_token}
+  def delete_api_token_by_id(api_token_id, %Users.User{} = user) do
+    with {:ok, api_token} <- fetch_api_token_by_id(api_token_id),
+         # A user can only delete his/her own MFA method!
+         true <- api_token.user_id == user.id do
+      {:ok, Repo.delete!(api_token)}
+    else
+      {:error, :not_found} -> {:error, :not_found}
+      false -> {:error, :not_found}
     end
   end
 end
