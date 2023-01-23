@@ -52,6 +52,25 @@ defmodule FzHttpWeb.Router do
     plug FzHttpWeb.Plug.SamlyTargetUrl
   end
 
+  # Local auth routes
+  scope "/auth", FzHttpWeb do
+    pipe_through [
+      :browser,
+      :html_auth,
+      :require_unauthenticated,
+      :require_local_auth
+    ]
+
+    get "/reset_password", AuthController, :reset_password
+    post "/magic_link", AuthController, :magic_link
+    get "/magic/:user_id/:token", AuthController, :magic_sign_in
+
+    get "/:provider", AuthController, :request
+    get "/:provider/callback", AuthController, :callback
+    post "/:provider/callback", AuthController, :callback
+  end
+
+  # XXX: Those routes conflict with the ones above, we must change them in 1.0
   # OIDC auth routes
   scope "/auth/oidc", FzHttpWeb do
     pipe_through [
@@ -69,24 +88,6 @@ defmodule FzHttpWeb.Router do
     pipe_through :samly
 
     forward "/", Samly.Router
-  end
-
-  # Local auth routes
-  scope "/auth", FzHttpWeb do
-    pipe_through [
-      :browser,
-      :html_auth,
-      :require_unauthenticated,
-      :require_local_auth
-    ]
-
-    get "/reset_password", AuthController, :reset_password
-    post "/magic_link", AuthController, :magic_link
-    get "/magic/:user_id/:token", AuthController, :magic_sign_in
-
-    get "/:provider", AuthController, :request
-    get "/:provider/callback", AuthController, :callback
-    post "/:provider/callback", AuthController, :callback
   end
 
   # Unauthenticated routes

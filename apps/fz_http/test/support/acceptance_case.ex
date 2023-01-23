@@ -10,7 +10,7 @@ defmodule FzHttpWeb.AcceptanceCase do
       use FzHttpWeb, :verified_routes
       import FzHttpWeb.AcceptanceCase
       alias FzHttp.Repo
-      alias FzHttpWeb.AcceptanceCase.{Vault, Auth}
+      alias FzHttpWeb.AcceptanceCase.{Vault, SimpleSAML, Auth}
 
       # The default endpoint for testing
       @endpoint FzHttpWeb.Endpoint

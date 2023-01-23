@@ -58,6 +58,17 @@ defmodule FzHttpWeb.AuthController do
     with {:ok, user} <-
            UserFromAuth.find_or_create(:saml, idp, %{"email" => assertion.subject.name}) do
       do_sign_in(conn, user, %{provider: idp})
+    else
+      {:error, %{errors: [email: {"is invalid email address", _metadata}]}} ->
+        conn
+        |> put_flash(
+          :error,
+          "SAML provider did not return a valid email address in `name` assertion"
+        )
+        |> redirect(to: ~p"/")
+
+      other ->
+        other
     end
   end
 
