@@ -71,7 +71,8 @@ config :wallaby,
   screenshot_on_failure: true,
   # XXX: Contribute to Wallaby to make this configurable on the per-process level,
   # along with buffer to write logs only on process failure
-  js_logger: false
+  js_logger: false,
+  hackney_options: [timeout: 10_000, recv_timeout: 10_000]
 
 config :ex_unit,
   formatters: [JUnitFormatter, ExUnit.CLIFormatter],

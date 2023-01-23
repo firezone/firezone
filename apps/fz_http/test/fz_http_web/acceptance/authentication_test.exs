@@ -361,7 +361,7 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
     |> visit(~p"/")
     |> assert_el(Query.link("Sign in with email"))
     |> click(Query.link("Sign in with email"))
-    |> assert_el(Query.text("Sign In"))
+    |> assert_el(Query.text("Sign In", minimum: 1))
     |> fill_form(%{
       "Email" => email,
       "Password" => password

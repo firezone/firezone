@@ -115,7 +115,7 @@ defmodule FzHttp.TelemetryTest do
 
   describe "database" do
     test "local hostname" do
-      FzHttp.Config.put_env(:fz_http, FzHttp.Repo, hostname: "localhost")
+      FzHttp.Config.put_env_override(:fz_http, FzHttp.Repo, hostname: "localhost")
 
       ping_data = Telemetry.ping_data()
 
@@ -123,7 +123,7 @@ defmodule FzHttp.TelemetryTest do
     end
 
     test "local url" do
-      FzHttp.Config.put_env(:fz_http, FzHttp.Repo, url: "postgres://127.0.0.1")
+      FzHttp.Config.put_env_override(:fz_http, FzHttp.Repo, url: "postgres://127.0.0.1")
 
       ping_data = Telemetry.ping_data()
 
@@ -131,7 +131,7 @@ defmodule FzHttp.TelemetryTest do
     end
 
     test "external hostname" do
-      FzHttp.Config.put_env(:fz_http, FzHttp.Repo, hostname: "firezone.dev")
+      FzHttp.Config.put_env_override(:fz_http, FzHttp.Repo, hostname: "firezone.dev")
 
       ping_data = Telemetry.ping_data()
 
@@ -139,7 +139,7 @@ defmodule FzHttp.TelemetryTest do
     end
 
     test "external url" do
-      FzHttp.Config.put_env(:fz_http, FzHttp.Repo, url: "postgres://firezone.dev")
+      FzHttp.Config.put_env_override(:fz_http, FzHttp.Repo, url: "postgres://firezone.dev")
 
       ping_data = Telemetry.ping_data()
 
@@ -149,7 +149,7 @@ defmodule FzHttp.TelemetryTest do
 
   describe "email" do
     test "outbound set" do
-      FzHttp.Config.put_env(:fz_http, FzHttpWeb.Mailer,
+      FzHttp.Config.put_env_override(:fz_http, FzHttpWeb.Mailer,
         adapter: Swoosh.Adapters.NoopAdapter,
         from_email: "test@firezone.dev"
       )
@@ -160,7 +160,7 @@ defmodule FzHttp.TelemetryTest do
     end
 
     test "outbound unset" do
-      FzHttp.Config.put_env(:fz_http, FzHttpWeb.Mailer,
+      FzHttp.Config.put_env_override(:fz_http, FzHttpWeb.Mailer,
         adapter: SwooshAdapters.NoopAdapter,
         from_email: nil
       )
