@@ -19,6 +19,10 @@ version: '3.7'
 services:
   caddy:
     image: caddy:2
+    env_file:
+      # This should contain a list of env vars for configuring Firezone.
+      # See https://docs.firezone.dev/reference/env-vars for more info.
+      - ${FZ_INSTALL_DIR:-.}/.env
     volumes:
       - ${FZ_INSTALL_DIR:-.}/caddy:/data/caddy
     # See Caddy's documentation for customizing this line
@@ -31,7 +35,7 @@ services:
 
         https:// {
           log
-          reverse_proxy * 172.25.0.100:13000
+          reverse_proxy * 172.25.0.100:${PHOENIX_PORT:-13000}
           ${TLS_OPTS:-}
         }
         EOF
@@ -42,7 +46,7 @@ services:
   firezone:
     image: firezone/firezone
     ports:
-      - 51820:51820/udp
+      - 51820:${WIREGUARD_PORT:-51820}/udp
     env_file:
       # This should contain a list of env vars for configuring Firezone.
       # See https://docs.firezone.dev/reference/env-vars for more info.
