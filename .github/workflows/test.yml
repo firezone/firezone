@@ -290,6 +290,18 @@ jobs:
           - 8200:8200/tcp
         options:
           --cap-add=IPC_LOCK
+      saml-idp:
+        image: vihangk1/docker-test-saml-idp:latest
+        env:
+          SIMPLESAMLPHP_SP_ENTITY_ID: 'urn:firezone.dev:firezone-app'
+          SIMPLESAMLPHP_SP_ASSERTION_CONSUMER_SERVICE: 'http://localhost:4002/auth/saml/sp/consume/mysamlidp'
+          SIMPLESAMLPHP_SP_SINGLE_LOGOUT_SERVICE: 'http://localhost:4002/auth/saml/sp/logout/mysamlidp'
+          SIMPLESAMLPHP_SP_NAME_ID_FORMAT: 'urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress'
+          SIMPLESAMLPHP_SP_NAME_ID_ATTRIBUTE: 'email'
+          SIMPLESAMLPHP_IDP_AUTH: 'example-userpass'
+        ports:
+          - 8400:8080/tcp
+          - 8443:8443/tcp
     steps:
       - uses: nanasess/setup-chromedriver@v1
       - run: |
