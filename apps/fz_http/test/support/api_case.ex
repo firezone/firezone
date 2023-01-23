@@ -27,6 +27,7 @@ defmodule FzHttpWeb.ApiCase do
       # Import conveniences for testing with connections
       import Plug.Conn
       import Phoenix.ConnTest
+      import FzHttpWeb.ApiCase
       import FzHttp.TestHelpers
       import Bureaucrat.Helpers
 

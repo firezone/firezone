@@ -10,7 +10,6 @@ defmodule FzHttpWeb.JSON.ConfigurationView do
 
   @keys_to_render ~w[
     id
-    logo
     local_auth_enabled
     allow_unprivileged_device_management
     allow_unprivileged_device_configuration
@@ -39,8 +38,17 @@ defmodule FzHttpWeb.JSON.ConfigurationView do
             configuration.saml_identity_providers,
             FzHttpWeb.JSON.SAMLIdentityProviderView,
             "saml_identity_provider.json"
-          )
+          ),
+        logo: render("logo.json", %{logo: configuration.logo})
       }
     )
+  end
+
+  def render("logo.json", %{logo: nil}) do
+    %{}
+  end
+
+  def render("logo.json", %{logo: logo}) do
+    Map.take(logo, ~w[url data type]a)
   end
 end
