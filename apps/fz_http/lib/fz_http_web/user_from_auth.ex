@@ -6,6 +6,7 @@ defmodule FzHttpWeb.UserFromAuth do
   alias FzHttp.Users
   alias FzHttpWeb.Auth.HTML.Authentication
 
+  # Local auth
   def find_or_create(
         %Ueberauth.Auth{
           provider: :identity,

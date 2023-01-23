@@ -27,6 +27,7 @@ defmodule FzHttpWeb.ApiCase do
       # Import conveniences for testing with connections
       import Plug.Conn
       import Phoenix.ConnTest
+      import FzHttpWeb.ApiCase
       import FzHttp.TestHelpers
       import Bureaucrat.Helpers
 
@@ -50,7 +51,7 @@ defmodule FzHttpWeb.ApiCase do
 
   def authed_conn do
     user = UsersFixtures.user(%{role: :admin})
-    api_token = ApiTokensFixtures.api_token(%{"user_id" => user.id})
+    api_token = ApiTokensFixtures.create_api_token(user: user)
 
     {:ok, token, _claims} = FzHttpWeb.Auth.JSON.Authentication.fz_encode_and_sign(api_token, user)
 

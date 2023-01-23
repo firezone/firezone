@@ -7,7 +7,6 @@ defmodule FzHttp.Configurations.Logo do
 
   # Singleton per configuration
   @primary_key false
-
   embedded_schema do
     field :url, :string
     field :data, :string

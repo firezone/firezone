@@ -226,6 +226,7 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
       |> click(Query.css("button[phx-click=\"close\"]"))
       |> assert_el(Query.link("Add Device"))
       |> assert_el(Query.link("big-leg-007"))
+      |> assert_path(~p"/users/#{user.id}")
 
       assert device = Repo.one(FzHttp.Devices.Device)
       assert device.name == "big-leg-007"
@@ -637,6 +638,7 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
         |> assert_el(Query.text("API token secret:"))
         |> click(Query.css("button[aria-label=\"close\"]"))
         |> assert_el(Query.link("Delete"))
+        |> assert_path(~p"/settings/account")
 
       accept_confirm(session, fn session ->
         click(session, Query.link("Delete"))
