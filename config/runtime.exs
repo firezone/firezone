@@ -236,7 +236,7 @@ if config_env() == :prod do
 
   # Configure OpenID Connect
   config :openid_connect,
-    http_client_options: [ssl: FzCommon.map_ssl_opts(http_client_ssl_opts)]
+    finch_transport_opts: FzCommon.map_ssl_opts(http_client_ssl_opts)
 
   # Configure strategies
   identity_strategy =
