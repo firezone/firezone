@@ -1,7 +1,6 @@
 defmodule FzHttp.Config.Definitions do
   alias FzHttp.Configurations
-  alias FzHttp.Validator
-  import Ecto.Changeset
+  alias FzHttp.Config.{Resolver, Validator}
 
   # @doc_sections [
   #   {"WebServer", [:external_url]},
@@ -43,6 +42,19 @@ defmodule FzHttp.Config.Definitions do
   # {"logo"},
   # {"openid_connect_providers"},
   # {"saml_identity_providers"}
+
+  # Maybe
+  # DATABASE_NAME
+  # DATABASE_USER
+  # DATABASE_HOST
+  # DATABASE_PORT
+  # DATABASE_POOL
+  # DATABASE_SSL
+  # DATABASE_SSL_OPTS
+  # DATABASE_PARAMETERS
+  # DATABASE_PASSWORD
+
+  # TODO: everything that doesn't have default is required
 
   @configuration [
     {:external_url, {:uri, []},
@@ -171,58 +183,14 @@ defmodule FzHttp.Config.Definitions do
 
   defp build_config_item({key, type, opts}, env_configurations, db_configurations) do
     {resolve_opts, opts} = Keyword.split(opts, [:legacy_keys, :default])
-    {validate_opts, opts} = Keyword.split(opts, [:legacy_keys, :default])
-    {source, value} = resolve_value(key, env_configurations, db_configurations, resolve_opts)
+    {validate_opts, opts} = Keyword.split(opts, [:required])
+
+    {source, value} =
+      Resolver.resolve_value(key, env_configurations, db_configurations, resolve_opts)
+
     value = cast_value(value, type)
-    validation_errors = validate_value(source, key, value, type, validate_opts)
-    {key, value, validation_errors, opts}
-  end
-
-  defp resolve_value(key, env_configurations, db_configurations, opts) do
-    with :error <- resolve_env_value(env_configurations, key, opts),
-         :error <- resolve_db_value(db_configurations, key),
-         :error <- resolve_default_value(opts) do
-      {:none, nil}
-    else
-      {:ok, {source, value}} -> {source, value}
-    end
-  end
-
-  defp resolve_env_value(env_configurations, key, opts) do
-    legacy_keys =
-      opts
-      |> Keyword.get(:legacy_keys, [])
-      |> Enum.flat_map(fn
-        {:env, key, _removed_at} -> [key]
-        _other -> []
-      end)
-
-    Enum.find_value([key] ++ legacy_keys, :error, fn key ->
-      key =
-        key
-        |> to_string()
-        |> String.upcase()
-
-      case Map.fetch(env_configurations, key) do
-        {:ok, value} -> {:ok, {{:env, key}, value}}
-        :error -> nil
-      end
-    end)
-  end
-
-  defp resolve_db_value(db_configurations, key) do
-    case Map.fetch(db_configurations, key) do
-      {:ok, value} -> {:ok, {:db, value}}
-      :error -> :error
-    end
-  end
-
-  defp resolve_default_value(opts) do
-    with {:ok, value} <- Keyword.fetch(opts, :default) do
-      # TODO: replace patterns
-      value = String.replace(value, "${external_url.host}", "localhost")
-      {:ok, {:default, value}}
-    end
+    validation_errors = Validator.validate_value(key, value, type, validate_opts)
+    {key, {source, value}, validation_errors, opts}
   end
 
   defp cast_value("true", {:boolean, []}), do: true
@@ -237,110 +205,4 @@ defmodule FzHttp.Config.Definitions do
     do: value |> String.split(separator) |> cast_value(type)
 
   defp cast_value(value, _type), do: value
-
-  defp validate_value(_source, key, value, type, validate_opts) do
-    validate_value_changeset(key, value, type)
-    |> maybe_validate_required(key, validate_opts)
-  end
-
-  defp validate_value_changeset(key, value, {:boolean, []}) do
-    {%{}, %{key => :boolean}}
-    |> cast(%{key => value}, [key])
-  end
-
-  defp validate_value_changeset(key, value, {:string, opts}) do
-    {%{}, %{key => :string}}
-    |> cast(%{key => value}, [key])
-    |> validate_length(key, opts)
-  end
-
-  defp validate_value_changeset(key, value, {:integer, opts}) do
-    {%{}, %{key => :integer}}
-    |> cast(%{key => value}, [key])
-    |> validate_number(key, opts)
-  end
-
-  defp validate_value_changeset(key, value, {:uri, []}) do
-    {%{}, %{key => :string}}
-    |> cast(%{key => value}, [key])
-    |> Validator.validate_uri(key)
-  end
-
-  defp validate_value_changeset(key, value, {:email, []}) do
-    {%{}, %{key => :string}}
-    |> cast(%{key => value}, [key])
-    |> Validator.validate_email(key)
-  end
-
-  defp validate_value_changeset(key, value, {:base64_string, []}) do
-    {%{}, %{key => :string}}
-    |> cast(%{key => value}, [key])
-    |> Validator.validate_base64(key)
-  end
-
-  defp validate_value_changeset(key, value, {:host, opts}) do
-    {%{}, %{key => :string}}
-    |> cast(%{key => value}, [key])
-    |> Validator.validate_fqdn(key, opts)
-  end
-
-  defp validate_value_changeset(key, value, {:ip, opts}) do
-    {%{}, %{key => :string}}
-    |> cast(%{key => value}, [key])
-    |> Validator.validate_ip(key, opts)
-  end
-
-  defp validate_value_changeset(key, value, {:cidr, opts}) do
-    {%{}, %{key => :string}}
-    |> cast(%{key => value}, [key])
-    |> Validator.validate_ip(key, opts)
-  end
-
-  defp validate_value_changeset(key, value, {:password, []}) do
-    {%{}, %{key => :string}}
-    |> cast(%{key => value}, [key])
-    |> validate_length(key, min: 5)
-  end
-
-  defp validate_value_changeset(key, value, {:list, _separator, type}) do
-    Enum.map(value, fn value ->
-      validate_value_changeset(key, value, type)
-    end)
-  end
-
-  defp validate_value_changeset(key, value, {:one_of, validations}) do
-    changesets =
-      Enum.map(validations, fn validation ->
-        validate_value_changeset(key, value, validation)
-      end)
-
-    Enum.find(changesets, & &1.valid?)
-    |> case do
-      nil ->
-        errors = Enum.flat_map(changesets, & &1.errors)
-        %{List.first(changesets) | errors: errors}
-
-      valid_changeset ->
-        valid_changeset
-    end
-
-    if Enum.any?(changesets, & &1.valid?) do
-      %{key => value}
-    else
-      %{key => {:error, "invalid value"}}
-    end
-
-    {%{}, %{key => :string}}
-    |> cast(%{key => value}, [key])
-    |> validate_length(key, min: 5)
-  end
-
-  # TODO: add %Ecto.Changeset{} = changeset match
-  defp maybe_validate_required(changeset, key, validate_opts) do
-    if Keyword.get(validate_opts, :required, false) do
-      validate_required(changeset, key)
-    else
-      changeset
-    end
-  end
 end
