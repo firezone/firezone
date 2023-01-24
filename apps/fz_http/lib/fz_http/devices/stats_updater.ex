@@ -15,10 +15,10 @@ defmodule FzHttp.Devices.StatsUpdater do
 
         device ->
           attrs = %{
-            rx_bytes: String.to_integer(data.rx_bytes),
-            tx_bytes: String.to_integer(data.tx_bytes),
-            remote_ip: FzCommon.FzNet.endpoint_to_ip(data.endpoint),
-            latest_handshake: latest_handshake(data.latest_handshake)
+            rx_bytes: data["rx_bytes"],
+            tx_bytes: data["tx_bytes"],
+            remote_ip: data["endpoint"],
+            latest_handshake: latest_handshake(data["handshake_age"])
           }
 
           {resp, _} =
@@ -48,8 +48,11 @@ defmodule FzHttp.Devices.StatsUpdater do
   end
 
   defp latest_handshake(epoch) do
-    epoch
-    |> String.to_integer()
-    |> DateTime.from_unix!()
+    if epoch != nil do
+      epoch
+      |> DateTime.from_unix!()
+    else
+      nil
+    end
   end
 end
