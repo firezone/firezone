@@ -40,7 +40,7 @@ defmodule FzHttpWeb.GatewayChannel do
 
   @impl Phoenix.Channel
   def handle_in("stats", stats, socket) do
-    dbg(stats)
+    FzHttp.Devices.StatsUpdater.update(stats)
     {:noreply, socket}
   end
 end
