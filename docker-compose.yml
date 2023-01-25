@@ -129,6 +129,7 @@ services:
       - 51820:51820/udp
     environment:
       - FZ_SECRET=kYl25nYBkLF6yCljeu1ccw==
+      - FZ_URL=ws://firezone:13000
       - GATEWAY_LOG=trace
     volumes:
       - ./priv/gateway-conf/:/app/gateway-conf/
@@ -138,7 +139,7 @@ services:
     networks:
       - app
       - isolation
-    command: /bin/sh -c "gateway --conf-dir ./gateway-conf ws://firezone:13000"
+    command: /bin/sh -c "gateway --conf-dir ./gateway-conf"
 
 volumes:
   postgres-data:

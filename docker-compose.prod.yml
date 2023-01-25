@@ -100,6 +100,10 @@ services:
     privileged: true
     env_file:
       - ${FZ_INSTALL_DIR:-.}/.env
+    environment:
+      # TODO: wg key migration
+      FZ_SECRET: ${GATEWAY_REGISTRATION_TOKEN}
+      FZ_URL: ws://firezone:13000
     sysctls:
       - net.ipv6.conf.all.disable_ipv6=0
       - net.ipv4.conf.all.src_valid_mark=1
@@ -110,10 +114,7 @@ services:
       - ${FZ_INSTALL_DIR:-.}/gateway-conf:/var/gateway-conf:rw
     networks:
       - firezone-network
-    command: >
-      /bin/sh -c "
-      gateway --secret $GATEWAY_REGISTRATION_TOKEN --conf-dir /var/gateway-conf ws://firezone:13000
-      "
+    command: /bin/sh -c "gateway --conf-dir /var/gateway-conf"
 
 # Postgres needs a named volume to prevent perms issues on non-linux platforms
 volumes:

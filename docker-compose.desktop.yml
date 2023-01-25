@@ -85,6 +85,10 @@ services:
     privileged: true
     env_file:
       - ${FZ_INSTALL_DIR:-.}/.env
+    environment:
+      # TODO: wg key migration
+      FZ_SECRET: ${GATEWAY_REGISTRATION_TOKEN}
+      FZ_URL: ws://firezone:13000
     sysctls:
       - net.ipv6.conf.all.disable_ipv6=0
       - net.ipv4.conf.all.src_valid_mark=1
@@ -93,10 +97,9 @@ services:
       # /var/firezone/private_key exists when Firezone starts, it is
       # used as the WireGuard private. Otherwise, one is generated.
       - ${FZ_INSTALL_DIR:-.}/gateway-conf:/var/gateway-conf:rw
-    command: >
-      /bin/sh -c "
-      gateway --secret $GATEWAY_REGISTRATION_TOKEN --conf-dir /var/gateway-conf ws://firezone:13000
-      "
+    networks:
+      - firezone-network
+    command: /bin/sh -c "gateway --conf-dir /var/gateway-conf"
 
   postgres:
     image: postgres:15
