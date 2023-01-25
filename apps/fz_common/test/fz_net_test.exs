@@ -135,6 +135,20 @@ defmodule FzCommon.FzNetTest do
     end
   end
 
+  describe "endpoint_to_ip/1" do
+    test "IPv4" do
+      assert "192.168.1.1" == FzNet.endpoint_to_ip("192.168.1.1:4562")
+    end
+
+    test "short IPv6s" do
+      assert "2600::1" == FzNet.endpoint_to_ip("[2600::1]:4562")
+    end
+
+    test "expanded IPv6s" do
+      assert "2600:1:1:1:1:1:1:1" == FzNet.endpoint_to_ip("[2600:1:1:1:1:1:1:1]:4562")
+    end
+  end
+
   describe "inet_to_ip_with_mask/2" do
     test "with netmask" do
       assert FzNet.inet_to_ip_with_mask(
