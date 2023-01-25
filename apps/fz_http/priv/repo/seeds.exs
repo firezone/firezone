@@ -32,6 +32,10 @@ alias FzHttp.{
     preshared_key: "27eCDMVRVFfMVS5Rfnn9n7as4M6MemGY/oghmdrwX2E=",
     public_key: "4Fo+SBnDJ6hi8qzPt3nWLwgjCVwvpjHL35qJeatKwEc=",
     remote_ip: %Postgrex.INET{address: {127, 5, 0, 1}},
+    dns: "8.8.8.8,8.8.4.4",
+    allowed_ips: "0.0.0.0/0,::/0,1.1.1.1",
+    use_default_allowed_ips: false,
+    use_default_dns: false,
     rx_bytes: 123_917_823,
     tx_bytes: 1_934_475_211_087_234
   })
@@ -203,6 +207,9 @@ Rules.create_rule(%{
 Rules.create_rule(%{
   destination: "1.2.3.4"
 })
+
+FzHttp.Configurations.put!(:default_client_dns, "4.3.2.1,1.2.3.4")
+FzHttp.Configurations.put!(:default_client_allowed_ips, "10.0.0.1/20,::/0,1.1.1.1")
 
 FzHttp.Configurations.put!(
   :openid_connect_providers,
