@@ -16,7 +16,7 @@ def capture
 
   uri = URI('https://t.firez.one/capture/')
   data = {
-    api_key: 'phc_xnIRwzHSaI6c81ukilv09w2TRWUJIRo4VCxshvl7znY',
+    api_key: 'phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK',
     event: 'firezone-ctl stop-cert-renewal',
     properties: {
       distinct_id: telemetry_id
