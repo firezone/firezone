@@ -1,10 +1,8 @@
 defmodule FzHttp.Config.Definitions do
   use FzHttp.Config.Definition
-  alias FzHttp.Configurations
   alias FzHttp.Types
-  alias FzHttp.Config.{Resolver, Caster, Validator}
 
-  # @doc_sections [
+  # def doc_sections, do: [
   #   {"WebServer", [:external_url]},
   #   {"Admin Setup",
   #    "Options responsible for initial admin provisioning and resetting the admin password.",
@@ -56,8 +54,6 @@ defmodule FzHttp.Config.Definitions do
   # DATABASE_PARAMETERS
   # DATABASE_PASSWORD
 
-  # TODO: everything that doesn't have default is required
-
   @doc """
   The external URL the web UI will be accessible at.
 
@@ -66,10 +62,7 @@ defmodule FzHttp.Config.Definitions do
   You can add a path suffix if you want to serve firezone from a non-root path,
   eg: `https://firezone.mycorp.com/vpn`.
   """
-  defconfig(:external_url, :string,
-    required: true,
-    changeset: &FzHttp.Validator.validate_uri/2
-  )
+  defconfig(:external_url, :string, changeset: &FzHttp.Validator.validate_uri/2)
 
   @doc """
   Primary administrator email.
@@ -93,50 +86,32 @@ defmodule FzHttp.Config.Definitions do
   @doc """
   Secret key used for signing JWTs.
   """
-  defconfig(:guardian_secret_key, :string,
-    required: true,
-    changeset: &FzHttp.Validator.validate_base64/2
-  )
+  defconfig(:guardian_secret_key, :string, changeset: &FzHttp.Validator.validate_base64/2)
 
   @doc """
   Secret key used for encrypting sensitive data in the database.
   """
-  defconfig(:database_encryption_key, :string,
-    required: true,
-    changeset: &FzHttp.Validator.validate_base64/2
-  )
+  defconfig(:database_encryption_key, :string, changeset: &FzHttp.Validator.validate_base64/2)
 
   @doc """
   Primary secret key base for the Phoenix application.
   """
-  defconfig(:secret_key_base, :string,
-    required: true,
-    changeset: &FzHttp.Validator.validate_base64/2
-  )
+  defconfig(:secret_key_base, :string, changeset: &FzHttp.Validator.validate_base64/2)
 
   @doc """
   Signing salt for Phoenix LiveView connection tokens.
   """
-  defconfig(:live_view_signing_salt, :string,
-    required: true,
-    changeset: &FzHttp.Validator.validate_base64/2
-  )
+  defconfig(:live_view_signing_salt, :string, changeset: &FzHttp.Validator.validate_base64/2)
 
   @doc """
   Encryption salt for cookies issued by the Phoenix web application.
   """
-  defconfig(:cookie_signing_salt, :string,
-    required: true,
-    changeset: &FzHttp.Validator.validate_base64/2
-  )
+  defconfig(:cookie_signing_salt, :string, changeset: &FzHttp.Validator.validate_base64/2)
 
   @doc """
   Signing salt for cookies issued by the Phoenix web application.
   """
-  defconfig(:cookie_encryption_salt, :string,
-    required: true,
-    changeset: &FzHttp.Validator.validate_base64/2
-  )
+  defconfig(:cookie_encryption_salt, :string, changeset: &FzHttp.Validator.validate_base64/2)
 
   @doc false
   defconfig(:telemetry_id, :string,
@@ -240,29 +215,5 @@ defmodule FzHttp.Config.Definitions do
     end
   )
 
-  def build_config do
-    db_configurations = Configurations.get_configuration!()
-    env_configurations = System.get_env()
-
-    configs()
-    |> Enum.map(&build_config_item(&1, env_configurations, db_configurations))
-  end
-
-  defp build_config_item(key, env_configurations, db_configurations) do
-    {type, opts} = apply(__MODULE__, key, [])
-
-    {resolve_opts, opts} = Keyword.split(opts, [:legacy_keys, :default, :required])
-    {validate_opts, opts} = Keyword.split(opts, [:changeset])
-
-    if opts != [] do
-      raise ArgumentError, "unknown options #{inspect(opts)} for configuration #{inspect(key)}"
-    end
-
-    {source, value} =
-      Resolver.resolve_value!(key, env_configurations, db_configurations, resolve_opts)
-
-    value = Caster.cast(value, type)
-
-    {key, source, Validator.validate(key, value, type, validate_opts)}
-  end
+  defconfig(:foo, {:array, ",", Types.IP}, default: "XXO")
 end

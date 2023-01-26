@@ -1,8 +1,55 @@
 defmodule FzHttp.Config do
-  @moduledoc """
-  This module provides set of helper functions that are useful when reading application runtime configuration overrides
-  in test environment.
-  """
+  alias FzHttp.Configurations
+  alias FzHttp.Config.{Definitions, Resolver, Caster, Validator, Errors}
+
+  def validate_runtime_config do
+    db_configurations = Configurations.get_configuration!()
+    env_configurations = System.get_env()
+
+    Definitions.configs()
+    |> Enum.reduce([""], fn key, reports ->
+      {key, source, info} =
+        build_config_item(Definitions, key, env_configurations, db_configurations)
+
+      values =
+        info
+        |> List.wrap()
+        |> Enum.map(&elem(&1, 0))
+
+      errors =
+        info
+        |> List.wrap()
+        |> Enum.flat_map(&elem(&1, 1))
+        |> Enum.uniq()
+
+      if errors == [] do
+        reports
+      else
+        reports ++ [Errors.report_errors(key, source, values, errors)]
+      end
+    end)
+    |> Enum.join("\n\n\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n\n")
+    |> raise()
+  end
+
+  defp build_config_item(module, key, env_configurations, db_configurations) do
+    {type, opts} = apply(module, key, [])
+    {resolve_opts, opts} = Keyword.split(opts, [:legacy_keys, :default])
+    {validate_opts, opts} = Keyword.split(opts, [:changeset])
+    {required?, opts} = Keyword.pop(opts, :required, true)
+
+    if opts != [], do: Errors.invalid_spec(key, opts)
+
+    case Resolver.resolve(key, env_configurations, db_configurations, resolve_opts) do
+      {:not_found, value} ->
+        errors = if required?, do: [{"is required", validation: :required}], else: []
+        {key, :not_found, {value, errors}}
+
+      {source, value} ->
+        value = Caster.cast(value, type)
+        {key, source, Validator.validate(key, value, type, validate_opts)}
+    end
+  end
 
   if Mix.env() != :test do
     defdelegate fetch_env!(app, key), to: Application
@@ -68,7 +115,6 @@ defmodule FzHttp.Config do
       end
     end
 
-    # String.to_atom/1 is only used in test env
     defp key_function(app, key), do: String.to_atom("#{app}-#{key}")
   end
 end

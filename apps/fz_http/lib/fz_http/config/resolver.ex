@@ -1,12 +1,10 @@
 defmodule FzHttp.Config.Resolver do
   alias FzHttp.Config.Errors
 
-  def resolve_value!(key, env_configurations, db_configurations, opts) do
+  def resolve(key, env_configurations, db_configurations, opts) do
     with :error <- resolve_env_value(env_configurations, key, opts),
          :error <- resolve_db_value(db_configurations, key),
          :error <- resolve_default_value(opts) do
-      # TODO: move to parent function to aggregate and report all missing values
-      maybe_raise_on_missing_value!(key, db_configurations, opts)
       {:not_found, nil}
     else
       {:ok, {source, value}} -> {source, value}
@@ -69,12 +67,6 @@ defmodule FzHttp.Config.Resolver do
   defp resolve_default_value(opts) do
     with {:ok, value} <- Keyword.fetch(opts, :default) do
       {:ok, {:default, value}}
-    end
-  end
-
-  defp maybe_raise_on_missing_value!(key, db_configurations, opts) do
-    if Keyword.get(opts, :required, false) do
-      Errors.missing_required_config(key, db_configurations)
     end
   end
 end
