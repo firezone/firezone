@@ -1,6 +1,8 @@
 defmodule FzHttp.Config.Definitions do
+  use FzHttp.Config.Definition
   alias FzHttp.Configurations
-  alias FzHttp.Config.{Resolver, Validator}
+  alias FzHttp.Types
+  alias FzHttp.Config.{Resolver, Caster, Validator}
 
   # @doc_sections [
   #   {"WebServer", [:external_url]},
@@ -56,153 +58,211 @@ defmodule FzHttp.Config.Definitions do
 
   # TODO: everything that doesn't have default is required
 
-  @configuration [
-    {:external_url, {:uri, []},
-     required: true,
-     doc: """
-     The external URL the web UI will be accessible at.
+  @doc """
+  The external URL the web UI will be accessible at.
 
-     Must be a valid and public FQDN for ACME SSL issuance to function.
+  Must be a valid and public FQDN for ACME SSL issuance to function.
 
-     You can add a path suffix if you want to serve firezone from a non-root path,
-     eg: `https://firezone.mycorp.com/vpn`.
-     """},
-    {:default_admin_email, {:email, []},
-     required: false,
-     legacy_keys: [{:env, "ADMIN_EMAIL", "0.9"}],
-     doc: """
-     Primary administrator email.
-     """},
-    {:default_admin_password, {:password, []},
-     required: false,
-     doc: """
-     Default password that will be used for creating or resetting the primary administrator account.
-     """},
-    {:guardian_secret_key, {:base64_string, []},
-     required: true,
-     doc: """
-     Secret key used for signing JWTs.
-     """},
-    {:database_encryption_key, {:base64_string, []},
-     required: true,
-     doc: """
-     Secret key used for encrypting sensitive data in the database.
-     """},
-    {:secret_key_base, {:base64_string, []},
-     required: true,
-     doc: """
-     Primary secret key base for the Phoenix application.
-     """},
-    {:live_view_signing_salt, {:base64_string, []},
-     required: true,
-     doc: """
-     Signing salt for Phoenix LiveView connection tokens.
-     """},
-    {:cookie_signing_salt, {:base64_string, []},
-     required: true,
-     doc: """
-     Encryption salt for cookies issued by the Phoenix web application.
-     """},
-    {:cookie_encryption_salt, {:base64_string, []},
-     required: true,
-     doc: """
-     Signing salt for cookies issued by the Phoenix web application.
-     """},
-    {:telemetry_id, {:string, []},
-     default: "unknown", legacy_keys: [{:env, "TID", "0.9"}], doc: false},
-    {:allow_unprivileged_device_management, {:boolean, []},
-     default: true,
-     doc: """
-     Enable or disable management of devices on unprivileged accounts.
-     """},
-    {:allow_unprivileged_device_configuration, {:boolean, []},
-     default: true,
-     doc: """
-     Enable or disable configuration of device network settings for unprivileged users.
-     """},
-    {:local_auth_enabled, {:boolean, []},
-     default: true,
-     doc: """
-     Enable or disable the local authentication method for all users.
-     """},
-    {:disable_vpn_on_oidc_error, {:boolean, []},
-     default: false,
-     doc: """
-     Enable or disable auto disabling VPN connection on OIDC refresh error.
-     """},
-    {:default_client_persistent_keepalive,
-     {:integer, greater_than_or_equal_to: 0, less_than_or_equal_to: 120},
-     default: 25,
-     doc: """
-     Interval for WireGuard [persistent keepalive](https://www.wireguard.com/quickstart/#nat-and-firewall-traversal-persistence).
+  You can add a path suffix if you want to serve firezone from a non-root path,
+  eg: `https://firezone.mycorp.com/vpn`.
+  """
+  defconfig(:external_url, :string,
+    required: true,
+    changeset: &FzHttp.Validator.validate_uri/2
+  )
 
-     If you experience NAT or firewall traversal problems, you can enable this to send a keepalive packet every 25 seconds.
-     Otherwise, keep it disabled with a 0 default value.
-     """},
-    {:default_client_mtu, {:integer, greater_than_or_equal_to: 576, less_than_or_equal_to: 1500},
-     default: 1280,
-     doc: """
-     WireGuard interface MTU for devices. 1280 is a safe bet for most networks.
-     Leave this blank to omit this field from generated configs.
-     """},
-    {:default_client_endpoint,
-     {:one_of, [{:host, [allow_port: true]}, {:ip, [allow_port: true]}]},
-     default: "${external_url.host}:${wireguard_port}",
-     doc: """
-     IPv4, IPv6 address, or FQDN that devices will be configured to connect to. Defaults to this server's FQDN.
-     """},
-    {:default_client_dns, {:list, ",", {:ip, [types: [:ipv4]]}},
-     docs: """
-     Comma-separated list of DNS servers to use for devices.
-     Leave this blank to omit the <code>DNS</code> section from
-     generated configs.
-     """},
-    {:default_client_allowed_ips, {:list, ",", {:one_of, [{:cidr, []}, {:ip, []}]}},
-     default: "0.0.0.0/0,::/0",
-     doc: """
-     Configures the default AllowedIPs setting for devices.
-     AllowedIPs determines which destination IPs get routed through
-     Firezone. Specify a comma-separated list of IPs or CIDRs here to achieve split tunneling, or use
-     <code>0.0.0.0/0, ::/0</code>
-     to route all device traffic through this Firezone server.
-     """},
-    {:vpn_session_duration,
-     {:integer, greater_than_or_equal_to: 0, less_than_or_equal_to: 2_147_483_647},
-     doc: """
-     Optionally require users to periodically authenticate to the Firezone web UI in order to keep their VPN sessions active.
-     """}
-  ]
+  @doc """
+  Primary administrator email.
+  """
+  defconfig(:default_admin_email, :string,
+    required: false,
+    legacy_keys: [{:env, "ADMIN_EMAIL", "0.9"}],
+    changeset: &FzHttp.Validator.validate_email/2
+  )
 
-  def build_config(spec \\ @configuration) do
+  @doc """
+  Default password that will be used for creating or resetting the primary administrator account.
+  """
+  defconfig(:default_admin_password, :string,
+    required: false,
+    changeset: fn changeset, key ->
+      Ecto.Changeset.validate_length(changeset, key, min: 5)
+    end
+  )
+
+  @doc """
+  Secret key used for signing JWTs.
+  """
+  defconfig(:guardian_secret_key, :string,
+    required: true,
+    changeset: &FzHttp.Validator.validate_base64/2
+  )
+
+  @doc """
+  Secret key used for encrypting sensitive data in the database.
+  """
+  defconfig(:database_encryption_key, :string,
+    required: true,
+    changeset: &FzHttp.Validator.validate_base64/2
+  )
+
+  @doc """
+  Primary secret key base for the Phoenix application.
+  """
+  defconfig(:secret_key_base, :string,
+    required: true,
+    changeset: &FzHttp.Validator.validate_base64/2
+  )
+
+  @doc """
+  Signing salt for Phoenix LiveView connection tokens.
+  """
+  defconfig(:live_view_signing_salt, :string,
+    required: true,
+    changeset: &FzHttp.Validator.validate_base64/2
+  )
+
+  @doc """
+  Encryption salt for cookies issued by the Phoenix web application.
+  """
+  defconfig(:cookie_signing_salt, :string,
+    required: true,
+    changeset: &FzHttp.Validator.validate_base64/2
+  )
+
+  @doc """
+  Signing salt for cookies issued by the Phoenix web application.
+  """
+  defconfig(:cookie_encryption_salt, :string,
+    required: true,
+    changeset: &FzHttp.Validator.validate_base64/2
+  )
+
+  @doc false
+  defconfig(:telemetry_id, :string,
+    default: "unknown",
+    legacy_keys: [{:env, "TID", nil}]
+  )
+
+  @doc """
+  Enable or disable management of devices on unprivileged accounts.
+  """
+  defconfig(:allow_unprivileged_device_management, :boolean, default: true)
+
+  @doc """
+  Enable or disable configuration of device network settings for unprivileged users.
+  """
+  defconfig(:allow_unprivileged_device_configuration, :boolean, default: true)
+
+  @doc """
+  Enable or disable the local authentication method for all users.
+  """
+  defconfig(:local_auth_enabled, :boolean, default: true)
+
+  @doc """
+  Enable or disable auto disabling VPN connection on OIDC refresh error.
+  """
+  defconfig(:disable_vpn_on_oidc_error, :boolean, default: false)
+
+  @doc """
+  Interval for WireGuard [persistent keepalive](https://www.wireguard.com/quickstart/#nat-and-firewall-traversal-persistence).
+
+  If you experience NAT or firewall traversal problems, you can enable this to send a keepalive packet every 25 seconds.
+  Otherwise, keep it disabled with a 0 default value.
+  """
+  defconfig(:default_client_persistent_keepalive, :integer,
+    default: 25,
+    changeset: fn changeset, key ->
+      Ecto.Changeset.validate_number(changeset, key,
+        greater_than_or_equal_to: 0,
+        less_than_or_equal_to: 120
+      )
+    end
+  )
+
+  @doc """
+  WireGuard interface MTU for devices. 1280 is a safe bet for most networks.
+  Leave this blank to omit this field from generated configs.
+  """
+  defconfig(:default_client_mtu, :integer,
+    default: 1280,
+    changeset: fn changeset, key ->
+      Ecto.Changeset.validate_number(changeset, key,
+        greater_than_or_equal_to: 576,
+        less_than_or_equal_to: 1500
+      )
+    end
+  )
+
+  @doc """
+  IPv4, IPv6 address, or FQDN that devices will be configured to connect to. Defaults to this server's FQDN.
+  """
+  defconfig(:default_client_endpoint, {:one_of, [Types.IPPort, :string]},
+    changeset: fn
+      Types.IPPort, changeset, _key ->
+        changeset
+
+      :string, changeset, key ->
+        FzHttp.Validator.validate_fqdn(changeset, key, allow_port: true)
+    end
+  )
+
+  @doc """
+  Comma-separated list of DNS servers to use for devices.
+
+  Leave this blank to omit the <code>DNS</code> section from
+  generated configs.
+  """
+  defconfig(:default_client_dns, {:array, ",", Types.IP})
+
+  @doc """
+  Configures the default AllowedIPs setting for devices.
+
+  AllowedIPs determines which destination IPs get routed through Firezone.
+
+  Specify a comma-separated list of IPs or CIDRs here to achieve split tunneling, or use
+  <code>0.0.0.0/0, ::/0</code> to route all device traffic through this Firezone server.
+  """
+  defconfig(:default_client_allowed_ips, {:array, ",", {:one_of, [Types.CIDR, Types.IP]}},
+    default: "0.0.0.0/0,::/0"
+  )
+
+  @doc """
+  Optionally require users to periodically authenticate to the Firezone web UI in order to keep their VPN sessions active.
+  """
+  defconfig(:vpn_session_duration, :integer,
+    default: 0,
+    changeset: fn changeset, key ->
+      Ecto.Changeset.validate_number(changeset, key,
+        greater_than_or_equal_to: 0,
+        less_than_or_equal_to: 2_147_483_647
+      )
+    end
+  )
+
+  def build_config do
     db_configurations = Configurations.get_configuration!()
     env_configurations = System.get_env()
 
-    spec
+    configs()
     |> Enum.map(&build_config_item(&1, env_configurations, db_configurations))
   end
 
-  defp build_config_item({key, type, opts}, env_configurations, db_configurations) do
-    {resolve_opts, opts} = Keyword.split(opts, [:legacy_keys, :default])
-    {validate_opts, opts} = Keyword.split(opts, [:required])
+  defp build_config_item(key, env_configurations, db_configurations) do
+    {type, opts} = apply(__MODULE__, key, [])
+
+    {resolve_opts, opts} = Keyword.split(opts, [:legacy_keys, :default, :required])
+    {validate_opts, opts} = Keyword.split(opts, [:changeset])
+
+    if opts != [] do
+      raise ArgumentError, "unknown options #{inspect(opts)} for configuration #{inspect(key)}"
+    end
 
     {source, value} =
-      Resolver.resolve_value(key, env_configurations, db_configurations, resolve_opts)
+      Resolver.resolve_value!(key, env_configurations, db_configurations, resolve_opts)
 
-    value = cast_value(value, type)
-    validation_errors = Validator.validate_value(key, value, type, validate_opts)
-    {key, {source, value}, validation_errors, opts}
+    value = Caster.cast(value, type)
+
+    {key, source, Validator.validate(key, value, type, validate_opts)}
   end
-
-  defp cast_value("true", {:boolean, []}), do: true
-  defp cast_value("false", {:boolean, []}), do: false
-  defp cast_value("", {:boolean, []}), do: nil
-
-  defp cast_value(value, {:integer, []}) when is_binary(value), do: String.to_integer(value)
-  defp cast_value(value, {:integer, []}) when is_number(value), do: value
-  defp cast_value(nil, {:integer, []}), do: nil
-
-  defp cast_value(value, {:list, separator, type}) when is_binary(value),
-    do: value |> String.split(separator) |> cast_value(type)
-
-  defp cast_value(value, _type), do: value
 end

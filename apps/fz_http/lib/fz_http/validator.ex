@@ -67,18 +67,6 @@ defmodule FzHttp.Validator do
     end
   end
 
-  def validate_ip(changeset, field, opts \\ []) do
-    allow_port = Keyword.get(opts, :allow_port, false)
-    types = Keyword.get(opts, :types, [:ipv4, :ipv6])
-
-    validate_change(changeset, field, fn _current_field, value ->
-      {ip, port} = split_port(value)
-      ip_validation_errors = ip_validation_errors(field, ip, types)
-      port_validation_errors = port_validation_errors(field, port, allow_port)
-      ip_validation_errors ++ port_validation_errors
-    end)
-  end
-
   defp split_port(value) do
     case String.split(value, ":", parts: 2) do
       [prefix, port] ->
@@ -95,15 +83,6 @@ defmodule FzHttp.Validator do
     end
   end
 
-  defp ip_validation_errors(field, value, types) do
-    # TODO: validate separate types
-    if FzNet.valid_ip?(value) do
-      []
-    else
-      [{field, "#{value} is not a valid IPv4 / IPv6 address"}]
-    end
-  end
-
   defp port_validation_errors(_field, nil, _allow?),
     do: []
 
@@ -115,6 +94,28 @@ defmodule FzHttp.Validator do
 
   defp port_validation_errors(field, _port, _allow?),
     do: [{field, "port is not a number between 0 and 65535"}]
+
+  def validate_ip_type_inclusion(changeset, field, types) do
+    validate_change(changeset, field, fn _current_field, %{address: address} ->
+      type = if tuple_size(address) == 4, do: :ipv4, else: :ipv6
+
+      if type in types do
+        []
+      else
+        [{field, "is not a supported IP type"}]
+      end
+    end)
+  end
+
+  def required_ip_port(changeset, field) do
+    validate_change(changeset, field, fn _current_field, %{address: address, port: port} ->
+      if port do
+        []
+      else
+        [{field, "is required"}]
+      end
+    end)
+  end
 
   def validate_cidr(changeset, field, _opts \\ []) do
     validate_change(changeset, field, fn _current_field, value ->
