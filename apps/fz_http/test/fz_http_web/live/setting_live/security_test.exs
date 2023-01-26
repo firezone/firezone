@@ -1,9 +1,9 @@
 defmodule FzHttpWeb.SettingLive.SecurityTest do
   use FzHttpWeb.ConnCase, async: true
-
   alias FzHttp.Configurations
   alias FzHttpWeb.SettingLive.Security
   import FzHttp.SAMLIdentityProviderFixtures
+  import FzHttp.ConfigurationsFixtures
 
   describe "authenticated mount" do
     test "loads the active sessions table", %{admin_conn: conn} do
@@ -52,8 +52,6 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
   end
 
   describe "toggles" do
-    import FzHttp.ConfigurationsFixtures
-
     setup %{conf_key: key, conf_val: val} do
       FzHttp.Configurations.put!(key, val)
       {:ok, path: ~p"/settings/security"}
@@ -95,8 +93,6 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
   end
 
   describe "oidc configuration" do
-    import FzHttp.ConfigurationsFixtures
-
     setup %{admin_conn: conn} do
       configuration(%{
         openid_connect_providers: [
@@ -105,6 +101,15 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
             "label" => "test123",
             "client_id" => "foo",
             "client_secret" => "bar",
+            "discovery_document_uri" =>
+              "https://common.auth0.com/.well-known/openid-configuration",
+            "auto_create_users" => false
+          },
+          %{
+            "id" => "test2",
+            "label" => "test2",
+            "client_id" => "foo2",
+            "client_secret" => "bar2",
             "discovery_document_uri" =>
               "https://common.auth0.com/.well-known/openid-configuration",
             "auto_create_users" => false
@@ -130,7 +135,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
     test "click edit button", %{view: view} do
       html =
         view
-        |> element("a", "Edit")
+        |> element("a[href=\"/settings/security/oidc/test/edit\"]", "Edit")
         |> render_click()
 
       assert html =~ ~s|<p class="modal-card-title">OIDC Configuration</p>|
@@ -139,35 +144,44 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
 
     test "validate", %{view: view} do
       view
-      |> element("a", "Edit")
+      |> element("a[href=\"/settings/security/oidc/test/edit\"]", "Edit")
       |> render_click()
 
       return =
         view
         |> form("#oidc-form")
-        |> render_submit(%{"label" => "updated"})
+        |> render_submit(%{
+          open_id_connect_provider: %{
+            label: "updated"
+          }
+        })
 
       assert {:error, {:redirect, _}} = return
 
-      assert FzHttp.Configurations.get!(:openid_connect_providers) == [
-               %FzHttp.Configurations.Configuration.OpenIDConnectProvider{
-                 id: "test",
-                 label: "test123",
-                 scope: "openid email profile",
-                 response_type: "code",
-                 client_id: "foo",
-                 client_secret: "bar",
-                 discovery_document_uri:
-                   "https://common.auth0.com/.well-known/openid-configuration",
-                 redirect_uri: nil,
-                 auto_create_users: false
-               }
-             ]
+      assert %FzHttp.Configurations.Configuration.OpenIDConnectProvider{
+               id: "test",
+               label: "updated",
+               scope: "openid email profile",
+               response_type: "code",
+               client_id: "foo",
+               client_secret: "bar",
+               discovery_document_uri:
+                 "https://common.auth0.com/.well-known/openid-configuration",
+               redirect_uri: nil,
+               auto_create_users: false
+             } in FzHttp.Configurations.get!(:openid_connect_providers)
     end
 
     test "delete", %{view: view} do
       view
-      |> element("button", "Delete")
+      |> element("button[phx-value-key=\"test\"]", "Delete")
+      |> render_click()
+
+      openid_connect_providers = FzHttp.Configurations.get!(:openid_connect_providers)
+      assert Enum.map(openid_connect_providers, & &1.id) == ["test2"]
+
+      view
+      |> element("button[phx-value-key=\"test2\"]", "Delete")
       |> render_click()
 
       assert FzHttp.Configurations.get!(:openid_connect_providers) == []
@@ -175,13 +189,14 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
   end
 
   describe "saml configuration" do
-    import FzHttp.ConfigurationsFixtures
-
     setup %{admin_conn: conn} do
       # Security views use the DB config, not cached config, so update DB here for testing
+      saml_attrs1 = saml_attrs()
+      saml_attrs2 = saml_attrs() |> Map.put("id", "test2") |> Map.put("label", "test2")
+
       configuration(%{
         openid_connect_providers: [],
-        saml_identity_providers: [saml_attrs()]
+        saml_identity_providers: [saml_attrs1, saml_attrs2]
       })
 
       path = ~p"/settings/security"
@@ -227,7 +242,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
 
       saml_identity_providers = FzHttp.Configurations.get!(:saml_identity_providers)
 
-      assert length(saml_identity_providers) == 2
+      assert length(saml_identity_providers) == 3
 
       assert %FzHttp.Configurations.Configuration.SAMLIdentityProvider{
                auto_create_users: false,
@@ -246,33 +261,43 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
     test "edit", %{view: view} do
       html =
         view
-        |> element("a", "Edit")
+        |> element("a[href=\"/settings/security/saml/test/edit\"]", "Edit")
         |> render_click()
 
       assert html =~ ~s|<p class="modal-card-title">SAML Configuration</p>|
       assert html =~ ~s|entityID=&quot;http://localhost:8080/realms/firezone|
+      assert html =~ ~s|<input class="input " id="saml-form_label"|
 
-      html =
+      redirect =
         view
-        |> form("#saml-form", %{
-          saml_identity_provider: %{
-            label: "just-changed"
+        |> form("#saml-form")
+        |> render_submit(%{
+          "saml_identity_provider" => %{
+            id: "new_id",
+            label: "new_label",
+            base_url: "http://example.com/realms/firezone",
+            metadata: saml_attrs()["metadata"]
           }
         })
-        |> render_submit()
 
-      assert html =~ "value=\"just-changed\""
+      assert {:error, {:redirect, %{flash: _, to: "/settings/security"}}} = redirect
 
-      # XXX this test fails, figure out why
-      # assert [saml_identity_provider] = FzHttp.Configurations.get!(:saml_identity_providers)
-      # assert saml_identity_provider.label == "changed"
+      assert saml_identity_provider =
+               FzHttp.Configurations.get!(:saml_identity_providers)
+               |> Enum.find(fn saml_identity_provider ->
+                 saml_identity_provider.id == "new_id"
+               end)
+
+      assert saml_identity_provider.id == "new_id"
+      assert saml_identity_provider.label == "new_label"
+      assert saml_identity_provider.base_url == "http://example.com/realms/firezone"
     end
 
     test "validate", %{view: view} do
       attrs = saml_attrs()
 
       view
-      |> element("a", "Edit")
+      |> element("a[href=\"/settings/security/saml/test/edit\"]", "Edit")
       |> render_click()
 
       html =
@@ -283,22 +308,27 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
       # stays on the modal
       assert html =~ ~s|<p class="modal-card-title">SAML Configuration</p>|
 
-      assert FzHttp.Configurations.get!(:saml_identity_providers) == [
-               %FzHttp.Configurations.Configuration.SAMLIdentityProvider{
-                 auto_create_users: true,
-                 base_url: "#{FzHttp.Config.fetch_env!(:fz_http, :external_url)}/auth/saml",
-                 id: attrs["id"],
-                 label: attrs["label"],
-                 metadata: attrs["metadata"],
-                 sign_metadata: true,
-                 sign_requests: true,
-                 signed_assertion_in_resp: true,
-                 signed_envelopes_in_resp: true
-               }
-             ]
+      assert %FzHttp.Configurations.Configuration.SAMLIdentityProvider{
+               auto_create_users: true,
+               base_url: "#{FzHttp.Config.fetch_env!(:fz_http, :external_url)}/auth/saml",
+               id: attrs["id"],
+               label: attrs["label"],
+               metadata: attrs["metadata"],
+               sign_metadata: true,
+               sign_requests: true,
+               signed_assertion_in_resp: true,
+               signed_envelopes_in_resp: true
+             } in FzHttp.Configurations.get!(:saml_identity_providers)
     end
 
     test "delete", %{view: view} do
+      view
+      |> element("button[phx-value-key=\"test\"]", "Delete")
+      |> render_click()
+
+      saml_identity_providers = FzHttp.Configurations.get!(:saml_identity_providers)
+      assert Enum.map(saml_identity_providers, & &1.id) == ["test2"]
+
       view
       |> element("button", "Delete")
       |> render_click()

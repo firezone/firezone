@@ -87,16 +87,20 @@ defmodule FzHttpWeb.SettingLive.Security do
     field_key = Map.fetch!(@types, type)
 
     providers =
-      socket.assigns.config_changeset
-      |> get_in([Access.key!(:data), Access.key!(field_key)])
+      socket.assigns.config_changeset.data
+      |> Map.fetch!(field_key)
       |> Enum.reject(&(&1.id == key))
+      |> Enum.map(&Map.from_struct/1)
 
-    {:ok, conf} = Configurations.update_configuration(%{field_key => providers})
+    {:ok, configuration} = Configurations.update_configuration(%{field_key => providers})
 
-    {:noreply,
-     socket
-     |> assign(String.to_existing_atom("#{type}_configs"), get_in(conf, [Access.key!(field_key)]))
-     |> assign(:config_changeset, change(conf))}
+    socket =
+      socket
+      |> assign(:config_changeset, Configurations.change_configuration(configuration))
+      |> assign(:oidc_configs, map_providers(configuration.openid_connect_providers))
+      |> assign(:saml_configs, map_providers(configuration.saml_identity_providers))
+
+    {:noreply, socket}
   end
 
   @hour 3_600

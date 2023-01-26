@@ -3,6 +3,7 @@ defmodule FzHttpWeb.SettingLive.SAMLFormComponent do
   Form for SAML configs
   """
   use FzHttpWeb, :live_component
+  alias FzHttp.Configurations
 
   def render(assigns) do
     ~H"""
@@ -196,54 +197,49 @@ defmodule FzHttpWeb.SettingLive.SAMLFormComponent do
       assigns.providers
       |> Map.get(assigns.provider_id, %{})
       |> Map.merge(%{id: assigns.provider_id})
-      |> FzHttp.Configurations.Configuration.SAMLIdentityProvider.changeset()
+      |> Configurations.Configuration.SAMLIdentityProvider.create_changeset()
 
-    {:ok,
-     socket
-     |> assign(assigns)
-     |> assign(:changeset, changeset)}
+    socket =
+      socket
+      |> assign(assigns)
+      |> assign(:changeset, changeset)
+
+    {:ok, socket}
   end
 
   def handle_event("save", %{"saml_identity_provider" => params}, socket) do
-    changeset =
-      params
-      |> FzHttp.Configurations.Configuration.SAMLIdentityProvider.changeset()
-      |> render_changeset_errors()
+    create_changeset = Configurations.Configuration.SAMLIdentityProvider.create_changeset(params)
 
-    update =
-      case changeset do
-        %{valid?: true} ->
-          {:ok, _} =
-            changeset
-            |> Ecto.Changeset.apply_changes()
-            |> Map.from_struct()
-            |> Map.new(fn {k, v} -> {to_string(k), v} end)
-            |> then(fn data ->
-              id = Map.get(data, "id")
+    if create_changeset.valid? do
+      new_attrs =
+        create_changeset
+        |> Ecto.Changeset.apply_changes()
+        |> Map.from_struct()
 
-              %{
-                saml_identity_providers:
-                  socket.assigns.providers
-                  |> Map.delete(socket.assigns.provider_id)
-                  |> Map.put(id, data)
-                  |> Map.values()
-              }
-            end)
-            |> FzHttp.Configurations.update_configuration()
+      new_attrs =
+        socket.assigns.providers
+        |> Map.get(socket.assigns.provider_id, %{})
+        |> Map.merge(new_attrs)
 
-        _ ->
-          {:error, changeset}
-      end
+      providers =
+        socket.assigns.providers
+        |> Map.delete(socket.assigns.provider_id)
+        |> Map.values()
 
-    case update do
-      {:ok, _config} ->
-        {:noreply,
-         socket
-         |> put_flash(:info, "Updated successfully.")
-         |> redirect(to: socket.assigns.return_to)}
+      {:ok, _changeset} =
+        FzHttp.Configurations.update_configuration(%{
+          saml_identity_providers: providers ++ [new_attrs]
+        })
 
-      {:error, changeset} ->
-        {:noreply, assign(socket, :changeset, changeset)}
+      socket =
+        socket
+        |> put_flash(:info, "Updated successfully.")
+        |> redirect(to: socket.assigns.return_to)
+
+      {:noreply, socket}
+    else
+      socket = assign(socket, :changeset, render_changeset_errors(create_changeset))
+      {:noreply, socket}
     end
   end
 end
