@@ -9,6 +9,10 @@ defmodule FzHttp.ConnectivityCheckService do
 
   alias FzHttp.ConnectivityChecks
 
+  # Wait a minute before sending the first ping to avoid event spamming when
+  # a container is stuck in a reboot loop.
+  @initial_delay 60 * 1_000
+
   def start_link(_) do
     http_client().start()
     GenServer.start_link(__MODULE__, %{})
@@ -17,7 +21,7 @@ defmodule FzHttp.ConnectivityCheckService do
   @impl GenServer
   def init(state) do
     if enabled?() do
-      :timer.send_interval(interval(), :perform)
+      :timer.send_after(@initial_delay, :perform)
     end
 
     {:ok, state}
@@ -26,6 +30,7 @@ defmodule FzHttp.ConnectivityCheckService do
   # XXX: Consider passing state here to implement exponential backoff in case of errors.
   @impl GenServer
   def handle_info(:perform, _state) do
+    :timer.send_interval(interval(), :perform)
     {:noreply, post_request()}
   end
 

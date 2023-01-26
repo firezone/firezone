@@ -8,7 +8,7 @@ defmodule FzHttpWeb.UserSocket do
   https://docs.firezone.dev/deploy/reverse-proxies?utm_source=code \
   """
 
-  # 4 hour channel tokens
+  # 1 day channel tokens
   @token_verify_opts [max_age: 86_400]
 
   require Logger

@@ -41,7 +41,7 @@ config :fz_http,
   mock_events_module_errors: false,
   telemetry_module: FzCommon.MockTelemetry,
   supervision_tree_mode: :test,
-  connectivity_checks_interval: 86_400,
+  connectivity_checks_interval: 43_200,
   sql_sandbox: true,
   http_client: FzHttp.Mocks.HttpClient
 
