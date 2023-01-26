@@ -79,13 +79,13 @@ installation process, follow the steps below to install manually.
    Optionally modify other secrets as needed.
 1. Migrate the database:
   ```shell
-  docker compose run --rm firezone bin/migrate
+  docker-compose run --rm firezone bin/migrate
   ```
 1. Create the first admin:
   ```shell
-  docker compose run --rm firezone bin/create-or-reset-admin
+  docker-compose run --rm firezone bin/create-or-reset-admin
   ```
-1. Bring the services up: `docker compose up -d`
+1. Bring the services up: `docker-compose up -d`
 
 You should now be able to access the Firezone web portal at the `EXTERNAL_URL`
 variable you defined above.
