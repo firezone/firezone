@@ -6,7 +6,7 @@ config :phoenix, :json_library, Jason
 # Public API key for telemetry
 config :posthog,
   api_url: "https://t.firez.one",
-  api_key: "phc_xnIRwzHSaI6c81ukilv09w2TRWUJIRo4VCxshvl7znY"
+  api_key: "phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK"
 
 # Guardian configuration
 config :fz_http, FzHttpWeb.Auth.HTML.Authentication,
@@ -39,7 +39,7 @@ config :fz_http,
   supervision_tree_mode: :full,
   http_client: HTTPoison,
   connectivity_checks_enabled: true,
-  connectivity_checks_interval: 3_600,
+  connectivity_checks_interval: 43_200,
   connectivity_checks_url: "https://ping-dev.firez.one/",
   cookie_secure: true,
   cookie_signing_salt: "Z9eq8iof",

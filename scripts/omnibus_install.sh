@@ -23,7 +23,7 @@ capture () {
         -m 5 \
         -H 'Content-Type: application/json' \
         -d "{
-          \"api_key\": \"phc_xnIRwzHSaI6c81ukilv09w2TRWUJIRo4VCxshvl7znY\",
+          \"api_key\": \"phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK\",
           \"event\": \"$1\",
           \"properties\": {
             \"distinct_id\": \"$telemetry_id\",

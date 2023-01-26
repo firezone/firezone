@@ -131,7 +131,7 @@ if config_env() == :prod do
       System.get_env("CI") != "true"
 
   connectivity_checks_interval =
-    System.get_env("CONNECTIVITY_CHECKS_INTERVAL", "3600")
+    System.get_env("CONNECTIVITY_CHECKS_INTERVAL", "43200")
     |> String.to_integer()
     |> FzInteger.clamp(60, 86_400)
 
