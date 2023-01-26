@@ -152,12 +152,13 @@ defmodule FzCommon.FzNetTest do
 
     test "ipv6 with netmask" do
       assert "fd00::1/120" ==
-               "#{FzNet.inet_to_ip_with_mask(%Postgrex.INET{address: {0xfd00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01}, netmask: 120}, "fd00::/120")}"
+               "#{FzNet.inet_to_ip_with_mask(%Postgrex.INET{address: {0xFD00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01}, netmask: 120},
+               "fd00::/120")}"
     end
 
     test "ipv6 without netmask" do
       assert "fd00::1/120" ==
-               "#{FzNet.inet_to_ip_with_mask(%Postgrex.INET{address: {0xfd00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01}, netmask: nil}, "fd00::/120")}"
+               "#{FzNet.inet_to_ip_with_mask(%Postgrex.INET{address: {0xFD00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01}, netmask: nil}, "fd00::/120")}"
     end
   end
 end
