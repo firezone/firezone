@@ -64,7 +64,7 @@ defmodule FzHttpWeb.Acceptance.UnprivilegedUserTest do
       assert device.ipv6 == %Postgrex.INET{address: {64_768, 0, 0, 0, 0, 0, 30, 16_278}}
     end
 
-    feature "allows user to add a device", %{
+    feature "allows user to add a device, download config and close the modal", %{
       session: session
     } do
       FzHttp.Configurations.put!(:allow_unprivileged_device_configuration, false)
@@ -81,6 +81,7 @@ defmodule FzHttpWeb.Acceptance.UnprivilegedUserTest do
       |> fill_in(Query.fillable_field("device[description]"), with: "Dummy description")
       |> click(Query.button("Generate Configuration"))
       |> assert_el(Query.text("Device added!"))
+      |> click(Query.css("#download-config"))
       |> click(Query.css("button[phx-click=\"close\"]"))
       |> assert_el(Query.text("big-hand-007"))
       |> assert_path(~p"/user_devices")
