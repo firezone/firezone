@@ -45,6 +45,9 @@ const renderDownloadButton = function (config, deviceName) {
   let button = document.getElementById("download-config")
   button.setAttribute("href", "data:text/plain;charset=utf-8," + encodeURIComponent(config))
   button.setAttribute("download", deviceName + ".conf")
+  button.addEventListener('click', (event) => {
+    event.stopPropagation()
+  })
   button.classList.remove("is-hidden")
 }
 

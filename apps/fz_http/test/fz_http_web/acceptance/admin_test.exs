@@ -223,6 +223,7 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
       })
       |> click(Query.button("Generate Configuration"))
       |> assert_el(Query.text("Device added!"))
+      |> click(Query.css("#download-config"))
       |> click(Query.css("button[phx-click=\"close\"]"))
       |> assert_el(Query.link("Add Device"))
       |> assert_el(Query.link("big-leg-007"))
