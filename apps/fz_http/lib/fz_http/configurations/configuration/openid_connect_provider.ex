@@ -26,10 +26,14 @@ defmodule FzHttp.Configurations.Configuration.OpenIDConnectProvider do
     field :auto_create_users, :boolean
   end
 
-  def changeset(struct \\ %__MODULE__{}, data) do
+  def create_changeset(attrs) do
+    changeset(%__MODULE__{}, attrs)
+  end
+
+  def changeset(struct, attrs) do
     struct
     |> cast(
-      data,
+      attrs,
       [
         :id,
         :label,
