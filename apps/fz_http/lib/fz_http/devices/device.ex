@@ -4,7 +4,7 @@ defmodule FzHttp.Devices.Device do
   """
   use FzHttp, :schema
   import Ecto.Changeset
-  alias FzHttp.{Validators.Common, Devices, Gateways}
+  alias FzHttp.{Devices, Gateways, Validator}
   require Logger
 
   @description_max_length 2048

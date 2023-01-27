@@ -15,7 +15,7 @@ alias FzHttp.{
   Devices,
   Users,
   ApiTokens,
-  Rules,
+  AllowRules,
   MFA,
   Gateways
 }
@@ -201,13 +201,14 @@ MFA.create_method(
     url: "https://ping-dev.firez.one/0.20.0"
   })
 
-Rules.create_rule(%{
+AllowRules.create_allow_rule(%{
   destination: "10.0.0.0/24",
-  port_type: :tcp,
-  port_range: "100-200"
+  protocol: :tcp,
+  port_range_start: 100,
+  port_range_end: 200
 })
 
-Rules.create_rule(%{
+AllowRules.create_allow_rule(%{
   destination: "1.2.3.4"
 })
 
