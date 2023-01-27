@@ -20,7 +20,13 @@ require Logger
   end
 
 # We use the gateway_registration_token in both dev and prod enviroment
-gateway_registration_token = System.fetch_env!("GATEWAY_REGISTRATION_TOKEN")
+# We also don't want to use a default when it's missing for prod
+gateway_registration_token =
+  if config_env() == :prod do
+    System.fetch_env!("GATEWAY_REGISTRATION_TOKEN")
+  else
+    System.get_env("GATEWAY_REGISTRATION_TOKEN", "kYl25nYBkLF6yCljeu1ccw==")
+  end
 
 %{host: host, path: path, port: port, scheme: scheme} = URI.parse(external_url)
 
