@@ -19,7 +19,7 @@ defmodule FzHttp.Repo.Migrations.MoveSitesFieldsToConfigurations do
       add(:default_client_persistent_keepalive, :integer)
       add(:default_client_endpoint, :string)
       add(:default_client_dns, :string)
-      add(:default_client_allowed_ips, :string)
+      add(:default_client_allowed_ips, :text)
 
       # XXX: Note this is different than the WIREGUARD_MTU env var which
       # configures the server interface MTU.
