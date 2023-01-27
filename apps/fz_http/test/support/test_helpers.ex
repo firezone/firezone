@@ -8,7 +8,6 @@ defmodule FzHttp.TestHelpers do
     DevicesFixtures,
     NotificationsFixtures,
     Repo,
-    RulesFixtures,
     AllowRulesFixtures,
     Users.User,
     UsersFixtures
