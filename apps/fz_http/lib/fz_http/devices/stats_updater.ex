@@ -31,20 +31,11 @@ defmodule FzHttp.Devices.StatsUpdater do
     end
   end
 
-  # XXX: Come up with a better way to update devices in Sandbox mode
   defp device_to_update(public_key) do
-    if FzHttp.Config.fetch_env!(:fz_http, :sandbox) do
-      Repo.one(
-        from Device,
-          order_by: fragment("RANDOM()"),
-          limit: 1
-      )
-    else
-      Repo.one(
-        from d in Device,
-          where: d.public_key == ^public_key
-      )
-    end
+    Repo.one(
+      from d in Device,
+        where: d.public_key == ^public_key
+    )
   end
 
   defp latest_handshake(epoch) do
