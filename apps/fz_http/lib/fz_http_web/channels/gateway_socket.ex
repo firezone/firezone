@@ -46,7 +46,7 @@ defmodule FzHttpWeb.GatewaySocket do
   defp check_secret(secret) do
     :crypto.hash_equals(
       secret,
-      Base.decode64!(Application.fetch_env!(:fz_http, :gateway_registration_token))
+      Base.decode64!(FzHttp.Config.fetch_env!(:fz_http, :gateway_registration_token))
     )
   end
 end

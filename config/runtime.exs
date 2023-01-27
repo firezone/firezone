@@ -19,11 +19,15 @@ require Logger
     |> FzNet.to_complete_url()
   end
 
+# We use the gateway_registration_token in both dev and prod enviroment
+gateway_registration_token = System.fetch_env!("GATEWAY_REGISTRATION_TOKEN")
+
 %{host: host, path: path, port: port, scheme: scheme} = URI.parse(external_url)
 
 config :fz_http,
   external_url: external_url,
-  path_prefix: path
+  path_prefix: path,
+  gateway_registration_token: gateway_registration_token
 
 config :fz_http, FzHttpWeb.Endpoint,
   url: [host: host, scheme: scheme, port: port, path: path],
@@ -59,7 +63,6 @@ if config_env() == :prod do
   external_trusted_proxies = Jason.decode!(System.get_env("EXTERNAL_TRUSTED_PROXIES", "[]"))
   private_clients = Jason.decode!(System.get_env("PRIVATE_CLIENTS", "[]"))
   wireguard_ipv4_enabled = FzString.to_boolean(System.get_env("WIREGUARD_IPV4_ENABLED", "true"))
-  gateway_registration_token = System.fetch_env!("GATEWAY_REGISTRATION_TOKEN")
   wireguard_ipv4_network = System.get_env("WIREGUARD_IPV4_NETWORK", "10.3.2.0/24")
   wireguard_ipv4_address = System.get_env("WIREGUARD_IPV4_ADDRESS")
 
@@ -218,8 +221,7 @@ if config_env() == :prod do
     connectivity_checks_enabled: connectivity_checks_enabled,
     connectivity_checks_interval: connectivity_checks_interval,
     admin_email: admin_email,
-    default_admin_password: default_admin_password,
-    gateway_registration_token: gateway_registration_token
+    default_admin_password: default_admin_password
 
   # Configure OpenID Connect
   config :openid_connect,
