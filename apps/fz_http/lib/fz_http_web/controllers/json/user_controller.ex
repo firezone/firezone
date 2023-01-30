@@ -11,6 +11,11 @@ defmodule FzHttpWeb.JSON.UserController do
 
   If `auto_create_users` is `false`, then you need to provision users with `password` attribute,
   otherwise they will have no means to log in.
+
+  ## Disabling users
+
+  Even though API returns `disabled_at` attribute, currently, it's not possible to disable users via API,
+  since this field is only for internal use by automatic user disabling mechanism on OIDC/SAML errors.
   """
   use FzHttpWeb, :controller
   alias FzHttp.Users
