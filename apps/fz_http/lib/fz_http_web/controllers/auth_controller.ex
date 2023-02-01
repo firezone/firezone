@@ -51,28 +51,15 @@ defmodule FzHttpWeb.AuthController do
     end
   end
 
-  def callback(conn, %{"provider" => "saml"}) do
-    key = {idp, _} = get_session(conn, "samly_assertion_key")
-    assertion = %Samly.Assertion{} = Samly.State.get_assertion(conn, key)
-
-    with {:ok, user} <-
-           UserFromAuth.find_or_create(:saml, idp, %{"email" => assertion.subject.name}) do
-      do_sign_in(conn, user, %{provider: idp})
-    else
-      {:error, %{errors: [email: {"is invalid email address", _metadata}]}} ->
-        conn
-        |> put_flash(
-          :error,
-          "SAML provider did not return a valid email address in `name` assertion"
-        )
-        |> redirect(to: ~p"/")
-
-      other ->
-        other
-    end
+  # This can be called if the user attempts to visit one of the callback redirect URLs
+  # directly.
+  def callback(conn, params) do
+    conn
+    |> put_flash(:error, inspect(params) <> inspect(conn.assigns))
+    |> redirect(to: ~p"/")
   end
 
-  def callback(conn, %{"provider" => provider_id, "state" => state} = params)
+  def oidc_callback(conn, %{"provider" => provider_id, "state" => state} = params)
       when is_binary(provider_id) do
     token_params = Map.merge(params, PKCE.token_params(conn))
 
@@ -116,12 +103,30 @@ defmodule FzHttpWeb.AuthController do
     end
   end
 
-  # This can be called if the user attempts to visit one of the callback redirect URLs
-  # directly.
-  def callback(conn, params) do
-    conn
-    |> put_flash(:error, inspect(params) <> inspect(conn.assigns))
-    |> redirect(to: ~p"/")
+  def saml_callback(conn, _params) do
+    key = {idp, _} = get_session(conn, "samly_assertion_key")
+    assertion = %Samly.Assertion{} = Samly.State.get_assertion(conn, key)
+
+    with {:ok, user} <-
+           UserFromAuth.find_or_create(:saml, idp, %{"email" => assertion.subject.name}) do
+      do_sign_in(conn, user, %{provider: idp})
+    else
+      {:error, %{errors: [email: {"is invalid email address", _metadata}]}} ->
+        conn
+        |> put_flash(
+          :error,
+          "SAML provider did not return a valid email address in `name` assertion"
+        )
+        |> redirect(to: ~p"/")
+
+      {:error, reason} when is_binary(reason) ->
+        conn
+        |> put_flash(:error, reason)
+        |> redirect(to: ~p"/")
+
+      other ->
+        other
+    end
   end
 
   def delete(conn, _params) do
