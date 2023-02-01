@@ -65,27 +65,41 @@ defmodule FzHttpWeb.Router do
     post "/magic_link", AuthController, :magic_link
     get "/magic/:user_id/:token", AuthController, :magic_sign_in
 
-    get "/:provider", AuthController, :request
-    get "/:provider/callback", AuthController, :callback
-    post "/:provider/callback", AuthController, :callback
+    get "/identity", AuthController, :request
+    get "/identity/callback", AuthController, :callback
+    post "/identity/callback", AuthController, :callback
   end
 
-  # XXX: Those routes conflict with the ones above, we must change them in 1.0
   # OIDC auth routes
-  scope "/auth/oidc", FzHttpWeb do
-    pipe_through [
-      :browser,
-      :html_auth,
-      :require_unauthenticated
-    ]
+  scope "/auth", FzHttpWeb do
+    scope "/oidc" do
+      pipe_through [
+        :browser,
+        :require_unauthenticated
+      ]
 
-    get "/:provider/callback", AuthController, :callback, as: :auth_oidc
-    get "/:provider", AuthController, :redirect_oidc_auth_uri, as: :auth_oidc
+      get "/", AuthController, :request
+      get "/:provider/callback", AuthController, :oidc_callback
+      get "/:provider", AuthController, :redirect_oidc_auth_uri
+    end
   end
 
   # SAML auth routes
+  scope "/auth/saml", FzHttpWeb do
+    pipe_through [
+      :browser,
+      :require_unauthenticated
+    ]
+
+    get "/", AuthController, :request
+    get "/callback", AuthController, :saml_callback
+  end
+
   scope "/auth/saml" do
-    pipe_through :samly
+    pipe_through [
+      :samly,
+      :require_unauthenticated
+    ]
 
     forward "/", Samly.Router
   end

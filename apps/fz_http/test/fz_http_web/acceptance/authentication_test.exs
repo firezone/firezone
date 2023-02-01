@@ -127,7 +127,7 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
       |> fill_in(Query.fillable_field("username"), with: "user1")
       |> fill_in(Query.fillable_field("password"), with: "user1pass")
       |> click(Query.button("Login"))
-      |> assert_el(Query.text("Local auth disabled"))
+      |> assert_el(Query.text("user not found and auto_create_users disabled"))
     end
   end
 
