@@ -146,7 +146,7 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
       end)
 
       # XXX: We need to show some kind of message when status changed
-      Process.sleep(100)
+      Process.sleep(200)
 
       assert updated_user = Repo.get(FzHttp.Users.User, user.id)
       assert updated_user.disabled_at
@@ -156,7 +156,7 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
         |> toggle("toggle_disabled_at")
       end)
 
-      Process.sleep(100)
+      Process.sleep(200)
 
       assert updated_user = Repo.get(FzHttp.Users.User, user.id)
       refute updated_user.disabled_at
@@ -292,7 +292,7 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
 
       # XXX: We need to show a confirmation dialog on delete,
       # and message once record was saved or deleted.
-      Process.sleep(100)
+      Process.sleep(200)
       assert is_nil(Repo.one(FzHttp.Rules.Rule))
     end
   end
