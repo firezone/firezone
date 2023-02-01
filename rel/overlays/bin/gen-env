@@ -1,6 +1,7 @@
 #!/bin/sh
 
 cat <<-EOF
+VERSION=latest
 EXTERNAL_URL=_CHANGE_ME_
 ADMIN_EMAIL=_CHANGE_ME_
 DEFAULT_ADMIN_PASSWORD=$(openssl rand -base64 12)
