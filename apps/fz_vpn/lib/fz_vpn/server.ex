@@ -10,7 +10,7 @@ defmodule FzVpn.Server do
   alias FzVpn.Keypair
 
   @process_opts Application.compile_env(:fz_vpn, :server_process_opts, [])
-  @init_timeout 1_000
+  @init_timeout 10_000
 
   def start_link(_) do
     GenServer.start_link(__MODULE__, %{}, @process_opts)
