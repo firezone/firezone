@@ -35,19 +35,17 @@ services:
 
         https:// {
           log
-          reverse_proxy * firezone:13000
-          tls internal {
-            on_demand
-          }
+          reverse_proxy * 172.25.0.100:${PHOENIX_PORT:-13000}
+          ${TLS_OPTS:-}
         }
         EOF
     deploy:
       <<: *default-deploy
 
   firezone:
-    image: firezone/firezone
+    image: firezone/firezone:${VERSION:-latest}
     ports:
-      - 51820:51820/udp
+      - ${WIREGUARD_PORT:-51820}:${WIREGUARD_PORT:-51820}/udp
     env_file:
       # This should contain a list of env vars for configuring Firezone.
       # See https://docs.firezone.dev/reference/env-vars for more info.
