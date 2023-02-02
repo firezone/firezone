@@ -19,10 +19,6 @@ version: '3.7'
 services:
   caddy:
     image: caddy:2
-    env_file:
-      # This should contain a list of env vars for configuring Firezone.
-      # See https://docs.firezone.dev/reference/env-vars for more info.
-      - ${FZ_INSTALL_DIR:-.}/.env
     volumes:
       - ${FZ_INSTALL_DIR:-.}/caddy:/data/caddy
     # See Caddy's documentation for customizing this line
