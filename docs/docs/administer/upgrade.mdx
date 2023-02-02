@@ -12,16 +12,20 @@ relevant [files and folders](/reference/file-and-directory-locations/)
 before upgrading in case anything goes wrong.
 :::
 
-To upgrade Firezone, follow these steps:
+Follow the steps below to upgrade Firezone, adjusting for any :
 
 <Tabs>
 <TabItem label="Docker" value="docker" default>
 
-1. Change to the Firezone installation directory:
+1. Change to your Firezone installation directory, by default `$HOME/.firezone`:
 ```
 cd $HOME/.firezone
 ```
-1. Update docker compose images:
+1. If your `.env` file has a `VERSION` variable, update it to the desired version.
+By default `latest` is assumed if not set. This variable is read in newer versions
+of the docker-compose.yml template to populate the `image:` key for the `firezone`
+service.
+1. Update service images:
 ```
 docker compose pull
 ```
