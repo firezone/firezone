@@ -167,6 +167,13 @@ migrate () {
   condIns $env_files "MAX_DEVICES_PER_USER"
   condIns $env_files "CONNECTIVITY_CHECKS_ENABLED"
   condIns $env_files "CONNECTIVITY_CHECKS_INTERVAL"
+  condIns $env_files "SAML_CERTFILE_PATH"
+  condIns $env_files "SAML_KEYFILE_PATH"
+  condIns $env_files "PHOENIX_PORT"
+
+  # Add version for docker-compose.yml to pick up
+  LATEST_VERSION=$(curl -fsSL https://api.github.com/repos/firezone/firezone/releases/latest | grep -w tag_name | cut -d '"' -f 4)
+  sed -i.bak "s~VERSION=.*~VERSION=${LATEST_VERSION}~" "$installDir/.env"
 
   # Add caddy opts
   echo "TLS_OPTS=\"$tlsOpts\"" >> $installDir/.env

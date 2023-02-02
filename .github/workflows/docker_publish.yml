@@ -25,10 +25,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Get minor version of ref
+        env:
+          VERSION: ${{ github.ref_name }}
+        id: get-minor
+        run: echo "::set-output name=fragment::${VERSION%.*}"
+
       - name: Copy image from Github (staging) to Docker (production)
         uses: akhilerm/tag-push-action@v2.1.0
         with:
           src: ${{ env.GITHUB_REGISTRY }}/${{ env.IMAGE_NAME}}:${{ github.ref_name }}
           dst: |
             ${{ env.DOCKERHUB_REGISTRY }}/${{ env.IMAGE_NAME}}:latest
+            ${{ env.DOCKERHUB_REGISTRY }}/${{ env.IMAGE_NAME}}:${{ steps.get-minor.outputs.fragment }}
             ${{ env.DOCKERHUB_REGISTRY }}/${{ env.IMAGE_NAME}}:${{ github.ref_name }}
