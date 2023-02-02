@@ -13,7 +13,7 @@ defmodule FzHttp.ConfigurationsFixtures do
   def configuration(%Configuration{} = conf \\ Configurations.get_configuration!(), attrs) do
     {:ok, configuration} =
       conf
-      |> Configuration.changeset(attrs)
+      |> Configuration.Changeset.changeset(attrs)
       |> Repo.update()
 
     configuration

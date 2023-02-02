@@ -35,7 +35,7 @@ defmodule FzHttp.Configurations do
   def put!(key, val) do
     configuration =
       get_configuration!()
-      |> Configuration.changeset(%{key => val})
+      |> Configuration.Changeset.changeset(%{key => val})
       |> Repo.update!()
 
     FzHttp.SAML.StartProxy.refresh(configuration.saml_identity_providers)
@@ -57,15 +57,15 @@ defmodule FzHttp.Configurations do
   end
 
   def new_configuration(attrs \\ %{}) do
-    Configuration.changeset(%Configuration{}, attrs)
+    Configuration.Changeset.changeset(%Configuration{}, attrs)
   end
 
   def change_configuration(%Configuration{} = config \\ get_configuration!()) do
-    Configuration.changeset(config, %{})
+    Configuration.Changeset.changeset(config, %{})
   end
 
   def update_configuration(%Configuration{} = config \\ get_configuration!(), attrs) do
-    case Repo.update(Configuration.changeset(config, attrs)) do
+    case Repo.update(Configuration.Changeset.changeset(config, attrs)) do
       {:ok, configuration} ->
         FzHttp.SAML.StartProxy.refresh(configuration.saml_identity_providers)
 
@@ -84,7 +84,7 @@ defmodule FzHttp.Configurations do
 
   def vpn_sessions_expire? do
     freq = vpn_duration()
-    freq > 0 && freq < Configuration.max_vpn_session_duration()
+    freq > 0 && freq < Configuration.Changeset.max_vpn_session_duration()
   end
 
   def vpn_duration do

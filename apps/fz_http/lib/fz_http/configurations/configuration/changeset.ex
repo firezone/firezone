@@ -32,12 +32,12 @@ defmodule FzHttp.Configurations.Configuration.Changeset do
     |> cast_embed(:saml_identity_providers,
       with: {FzHttp.Configurations.Configuration.SAMLIdentityProvider, :changeset, []}
     )
-    |> Validator.trim_change(:default_client_dns)
-    |> Validator.trim_change(:default_client_allowed_ips)
-    |> Validator.trim_change(:default_client_endpoint)
-    |> Validator.validate_no_duplicates(:default_client_dns)
-    |> Validator.validate_list_of_ips_or_cidrs(:default_client_allowed_ips)
-    |> Validator.validate_no_duplicates(:default_client_allowed_ips)
+    |> trim_change(:default_client_dns)
+    |> trim_change(:default_client_allowed_ips)
+    |> trim_change(:default_client_endpoint)
+    |> validate_no_duplicates(:default_client_dns)
+    |> validate_list_of_ips_or_cidrs(:default_client_allowed_ips)
+    |> validate_no_duplicates(:default_client_allowed_ips)
     |> validate_number(:default_client_mtu,
       greater_than_or_equal_to: @min_mtu,
       less_than_or_equal_to: @max_mtu

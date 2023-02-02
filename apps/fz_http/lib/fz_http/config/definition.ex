@@ -21,10 +21,12 @@ defmodule FzHttp.Config.Definition do
     iex> MyConfig.fetch_doc(:my_key)
     {:ok, "My config key"}
   """
+  alias FzHttp.Config.Errors
 
   defmacro __using__(_opts) do
     quote do
       import FzHttp.Config.Definition
+      import FzHttp.Config, only: [compile_config!: 1]
 
       # Accumulator keeps the list of defined config keys
       Module.register_attribute(__MODULE__, :configs, accumulate: true)
@@ -65,9 +67,19 @@ defmodule FzHttp.Config.Definition do
   """
   defmacro defconfig(key, type, opts \\ []) do
     quote do
-      @configs unquote(key)
+      @configs {__MODULE__, unquote(key)}
       def unquote(key)(), do: {unquote(type), unquote(opts)}
     end
+  end
+
+  def fetch_spec_and_opts!(module, key) do
+    {type, opts} = apply(module, key, [])
+    {resolve_opts, opts} = Keyword.split(opts, [:legacy_keys, :default])
+    {validate_opts, opts} = Keyword.split(opts, [:changeset])
+
+    if opts != [], do: Errors.invalid_spec(key, opts)
+
+    {type, {resolve_opts, validate_opts}}
   end
 
   @doc """

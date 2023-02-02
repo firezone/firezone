@@ -13,7 +13,7 @@ defmodule FzHttp.Types.IP do
     with {:ok, address} <- FzHttp.Types.IPPort.cast_address(binary) do
       {:ok, %Postgrex.INET{address: address, netmask: nil}}
     else
-      {:error, _reason} -> :error
+      {:error, _reason} -> {:error, message: "is invalid IP address"}
     end
   end
 

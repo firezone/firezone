@@ -16,8 +16,7 @@ defmodule FzHttp.Types.CIDR do
          {:ok, netmask} <- cast_netmask(binary_netmask) do
       {:ok, %Postgrex.INET{address: address, netmask: netmask}}
     else
-      :error -> :error
-      {:error, _reason} -> :error
+      _error -> {:error, message: "is invalid CIDR"}
     end
   end
 

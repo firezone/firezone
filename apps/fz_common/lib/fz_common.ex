@@ -28,5 +28,6 @@ defmodule FzCommon do
   defp map_values("verify", v), do: String.to_atom(v)
   defp map_values("versions", v), do: Enum.map(v, &String.to_charlist/1)
   defp map_values("cacertfile", v), do: String.to_charlist(v)
+  defp map_values("server_name_indication", v), do: String.to_charlist(v)
   defp map_values(k, _v), do: raise(ArgumentError, message: "unsupported key #{k} in ssl opts")
 end

@@ -15,8 +15,7 @@ defmodule FzHttp.Types.IPPort do
          {:ok, port} <- cast_port(binary_port) do
       {:ok, %__MODULE__{address: address, port: port}}
     else
-      :error -> :error
-      {:error, _reason} -> :error
+      _error -> {:error, message: "is invalid IP address with a port"}
     end
   end
 

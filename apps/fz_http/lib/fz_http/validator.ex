@@ -89,7 +89,7 @@ defmodule FzHttp.Validator do
   defp port_validation_errors(field, _port, false),
     do: [{field, "setting port is not allowed"}]
 
-  defp port_validation_errors(field, port, _allow?) when 0 < port and port <= 65_535,
+  defp port_validation_errors(_field, port, _allow?) when 0 < port and port <= 65_535,
     do: []
 
   defp port_validation_errors(field, _port, _allow?),
@@ -107,8 +107,8 @@ defmodule FzHttp.Validator do
     end)
   end
 
-  def required_ip_port(changeset, field) do
-    validate_change(changeset, field, fn _current_field, %{address: address, port: port} ->
+  def validate_ip_port_required(changeset, field) do
+    validate_change(changeset, field, fn _current_field, %{port: port} ->
       if port do
         []
       else
@@ -188,6 +188,27 @@ defmodule FzHttp.Validator do
     else
       []
     end
+  end
+
+  def validate_file(changeset, field, opts \\ []) do
+    validate_change(changeset, field, fn _current_field, value ->
+      extensions = Keyword.get(opts, :extensions, [])
+
+      cond do
+        not File.exists?(value) ->
+          [{field, "file does not exist"}]
+
+        extensions != [] and Path.extname(value) not in extensions ->
+          [
+            {field,
+             "file extension is not supported, got #{Path.extname(value)}, " <>
+               "expected one of #{inspect(extensions)}"}
+          ]
+
+        true ->
+          []
+      end
+    end)
   end
 
   @doc """

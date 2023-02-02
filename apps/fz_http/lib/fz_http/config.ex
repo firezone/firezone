@@ -1,64 +1,118 @@
 defmodule FzHttp.Config do
   alias FzHttp.Configurations
-  alias FzHttp.Config.{Definitions, Resolver, Caster, Validator, Errors}
+  alias FzHttp.Config.{Definition, Definitions, Resolver, Caster, Validator, Errors}
 
-  def validate_runtime_config do
-    db_configurations = Configurations.get_configuration!()
-    env_configurations = System.get_env()
+  @doc """
+  Resolves the configuration value and validates it according to the given definition module.
 
-    Definitions.configs()
-    |> Enum.reduce([""], fn key, reports ->
-      {key, source, info} =
-        build_config_item(Definitions, key, env_configurations, db_configurations)
+  Notice: in test environment it will also resolve a value from process dictionary if it's set,
+  allowing for easy overriding of configuration values in async tests.
+  """
+  @spec fetch_config(
+          module(),
+          key :: atom(),
+          db_configurations :: map(),
+          env_configurations :: map()
+        ) ::
+          {:ok, term()} | {:error, {[String.t()], metadata: term()}}
+  def fetch_config(module, key, %{} = db_configurations, %{} = env_configurations)
+      when is_atom(module) and is_atom(key) do
+    {type, {resolve_opts, validate_opts}} = Definition.fetch_spec_and_opts!(module, key)
 
-      values =
-        info
-        |> List.wrap()
-        |> Enum.map(&elem(&1, 0))
-
-      errors =
-        info
-        |> List.wrap()
-        |> Enum.flat_map(&elem(&1, 1))
-        |> Enum.uniq()
-
-      if errors == [] do
-        reports
-      else
-        reports ++ [Errors.report_errors(key, source, values, errors)]
-      end
-    end)
-    |> Enum.join("\n\n\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n\n")
-    |> raise()
-  end
-
-  defp build_config_item(module, key, env_configurations, db_configurations) do
-    {type, opts} = apply(module, key, [])
-    {resolve_opts, opts} = Keyword.split(opts, [:legacy_keys, :default])
-    {validate_opts, opts} = Keyword.split(opts, [:changeset])
-    {required?, opts} = Keyword.pop(opts, :required, true)
-
-    if opts != [], do: Errors.invalid_spec(key, opts)
-
-    case Resolver.resolve(key, env_configurations, db_configurations, resolve_opts) do
-      {:not_found, value} ->
-        errors = if required?, do: [{"is required", validation: :required}], else: []
-        {key, :not_found, {value, errors}}
-
-      {source, value} ->
-        value = Caster.cast(value, type)
-        {key, source, Validator.validate(key, value, type, validate_opts)}
+    with {:ok, {source, value}} <-
+           resolve_value(module, key, env_configurations, db_configurations, resolve_opts),
+         {:ok, value} <- cast_value(module, key, source, value, type),
+         {:ok, value} <- validate_value(module, key, source, value, type, validate_opts) do
+      {:ok, value}
     end
   end
 
+  defp resolve_value(module, key, env_configurations, db_configurations, opts) do
+    with :error <- Resolver.resolve(key, env_configurations, db_configurations, opts) do
+      {:error, {{nil, ["is required"]}, module: module, key: key, source: :not_found}}
+    end
+  end
+
+  defp cast_value(module, key, source, value, type) do
+    case Caster.cast(value, type) do
+      {:ok, value} ->
+        {:ok, value}
+
+      {:error, %Jason.DecodeError{} = decode_error} ->
+        reason = Jason.DecodeError.message(decode_error)
+        {:error, {{value, [reason]}, module: module, key: key, source: source}}
+
+      {:error, reason} ->
+        {:error, {{value, [reason]}, module: module, key: key, source: source}}
+    end
+  end
+
+  defp validate_value(module, key, source, value, type, opts) do
+    case Validator.validate(key, value, type, opts) do
+      {:ok, value} ->
+        {:ok, value}
+
+      {:error, values_and_errors} ->
+        {:error, {values_and_errors, module: module, key: key, source: source}}
+    end
+  end
+
+  def fetch_config(key) do
+    db_config = Configurations.get_configuration!()
+    env_config = System.get_env()
+    fetch_config(Definitions, key, db_config, env_config)
+  end
+
+  def fetch_config!(key) do
+    with {:error, reason} <- fetch_config(key) do
+      Errors.raise_error!(reason)
+    end
+  end
+
+  @doc """
+  Similar to `compile_config/2` but raises an error if the configuration is invalid.
+
+  This function does not resolve values from the database because it's intended use is during
+  compilation and before application boot (in `config/runtime.exs`).
+
+  If you need to resolve values from the database, use `fetch_config/1` or `fetch_config!/1`.
+  """
+  def compile_config!(module \\ Definitions, key, env_configurations \\ System.get_env()) do
+    case fetch_config(module, key, %{}, env_configurations) do
+      {:ok, value} ->
+        value
+
+      {:error, reason} ->
+        Errors.raise_error!(reason)
+    end
+  end
+
+  def validate_runtime_config(
+        module \\ Definitions,
+        db_config \\ Configurations.get_configuration!(),
+        env_config \\ System.get_env()
+      ) do
+    module.configs()
+    |> Enum.flat_map(fn {module, key} ->
+      case fetch_config(module, key, db_config, env_config) do
+        {:ok, _value} -> []
+        {:error, reason} -> [reason]
+      end
+    end)
+    |> case do
+      [] -> :ok
+      errors -> Errors.raise_error!(errors)
+    end
+  end
+
+  if Mix.env() == :test do
+    defdelegate put_env_override(app \\ :fz_http, key, value), to: Resolver
+  end
+
+  # TODO: remove this
   if Mix.env() != :test do
     defdelegate fetch_env!(app, key), to: Application
   else
-    def put_env_override(app \\ :fz_http, key, value) do
-      Process.put(key_function(app, key), value)
-      :ok
-    end
-
     @doc """
     Attempts to override application env configuration from one of 3 sources (in this exact order):
       * takes it from process dictionary of a current process;

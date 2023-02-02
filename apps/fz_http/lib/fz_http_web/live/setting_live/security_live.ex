@@ -109,7 +109,7 @@ defmodule FzHttpWeb.SettingLive.Security do
   def session_duration_options do
     [
       Never: 0,
-      Once: FzHttp.Configurations.Configuration.max_vpn_session_duration(),
+      Once: FzHttp.Configurations.Configuration.Changeset.max_vpn_session_duration(),
       "Every Hour": @hour,
       "Every Day": @day,
       "Every Week": 7 * @day,
