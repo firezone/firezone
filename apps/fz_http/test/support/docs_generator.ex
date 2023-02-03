@@ -83,6 +83,7 @@ defmodule DocsGenerator do
   defp doc_env(doc) do
     doc
     |> String.trim()
+    |> String.replace("\n  * `", "<br />  - `")
     |> String.replace("```json", "```")
     |> String.replace("\n\n", "<br /> <br />")
     |> String.replace("\n", " ")
