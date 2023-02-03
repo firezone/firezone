@@ -230,6 +230,31 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
       |> remove_mfa_flow()
     end
 
+    feature "returns error when MFA method name is already taken", %{
+      session: session
+    } do
+      user = UsersFixtures.create_user_with_role(:unprivileged)
+
+      session =
+        session
+        |> visit(~p"/")
+        |> Auth.authenticate(user)
+        |> visit(~p"/user_devices")
+        |> assert_el(Query.text("Your Devices"))
+        |> click(Query.link("My Account"))
+        |> assert_el(Query.text("Account Settings"))
+        |> click(Query.link("Add MFA Method"))
+        |> click(Query.button("Next"))
+        |> assert_el(Query.text("Register Authenticator"))
+
+      MFAFixtures.create_totp_method(name: "My MFA Name", user: user)
+
+      session
+      |> fill_in(Query.fillable_field("name"), with: "My MFA Name")
+      |> click(Query.button("Next"))
+      |> assert_el(Query.text("has already been taken"))
+    end
+
     feature "allows admin user to add and remove MFA method", %{
       session: session
     } do
