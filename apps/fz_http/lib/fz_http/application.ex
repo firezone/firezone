@@ -2,8 +2,16 @@ defmodule FzHttp.Application do
   use Application
 
   def start(_type, _args) do
-    opts = [strategy: :one_for_one, name: __MODULE__.Supervisor]
-    Supervisor.start_link(children(), opts)
+    supervision_tree_mode = FzHttp.Config.fetch_env!(:fz_http, :supervision_tree_mode)
+
+    result =
+      supervision_tree_mode
+      |> children()
+      |> Supervisor.start_link(strategy: :one_for_one, name: __MODULE__.Supervisor)
+
+    :ok = after_start(supervision_tree_mode)
+
+    result
   end
 
   # Tell Phoenix to update the endpoint configuration
@@ -12,8 +20,6 @@ defmodule FzHttp.Application do
     FzHttpWeb.Endpoint.config_change(changed, removed)
     :ok
   end
-
-  defp children, do: children(FzHttp.Config.fetch_env!(:fz_http, :supervision_tree_mode))
 
   defp children(:full) do
     [
@@ -53,5 +59,13 @@ defmodule FzHttp.Application do
       FzHttp.Repo,
       FzHttp.Vault
     ]
+  end
+
+  defp after_start(:full) do
+    FzHttp.Config.validate_runtime_config!()
+  end
+
+  defp after_start(_other) do
+    :ok
   end
 end

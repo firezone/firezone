@@ -573,35 +573,45 @@ defmodule FzHttp.Config.Definitions do
     {:parameterized, Ecto.Enum,
      Ecto.Enum.init(
        values: [
-         smtp: Swoosh.Adapters.SMTP,
-         mailgun: Swoosh.Adapters.Mailgun,
-         mandrill: Swoosh.Adapters.Mandrill,
-         sendgrid: Swoosh.Adapters.Sendgrid,
-         post_mark: Swoosh.Adapters.Postmark,
-         sendmail: Swoosh.Adapters.Sendmail,
-         "Swoosh.Adapters.AmazonSES": Swoosh.Adapters.AmazonSES,
-         "Swoosh.Adapters.CustomerIO": Swoosh.Adapters.CustomerIO,
-         "Swoosh.Adapters.Dyn": Swoosh.Adapters.Dyn,
-         "Swoosh.Adapters.ExAwsAmazonSES": Swoosh.Adapters.ExAwsAmazonSES,
-         "Swoosh.Adapters.Gmail": Swoosh.Adapters.Gmail,
-         "Swoosh.Adapters.MailPace": Swoosh.Adapters.MailPace,
-         "Swoosh.Adapters.Mailgun": Swoosh.Adapters.Mailgun,
-         "Swoosh.Adapters.Mailjet": Swoosh.Adapters.Mailjet,
-         "Swoosh.Adapters.Mandrill": Swoosh.Adapters.Mandrill,
-         "Swoosh.Adapters.Postmark": Swoosh.Adapters.Postmark,
-         "Swoosh.Adapters.ProtonBridge": Swoosh.Adapters.ProtonBridge,
-         "Swoosh.Adapters.SMTP": Swoosh.Adapters.SMTP,
-         "Swoosh.Adapters.SMTP2GO": Swoosh.Adapters.SMTP2GO,
-         "Swoosh.Adapters.Sendgrid": Swoosh.Adapters.Sendgrid,
-         "Swoosh.Adapters.Sendinblue": Swoosh.Adapters.Sendinblue,
-         "Swoosh.Adapters.Sendmail": Swoosh.Adapters.Sendmail,
-         "Swoosh.Adapters.SocketLabs": Swoosh.Adapters.SocketLabs,
-         "Swoosh.Adapters.SparkPost": Swoosh.Adapters.SparkPost,
-         "FzHttpWeb.Mailer.NoopAdapter": FzHttpWeb.Mailer.NoopAdapter
+         Swoosh.Adapters.AmazonSES,
+         Swoosh.Adapters.CustomerIO,
+         Swoosh.Adapters.Dyn,
+         Swoosh.Adapters.ExAwsAmazonSES,
+         Swoosh.Adapters.Gmail,
+         Swoosh.Adapters.MailPace,
+         Swoosh.Adapters.Mailgun,
+         Swoosh.Adapters.Mailjet,
+         Swoosh.Adapters.Mandrill,
+         Swoosh.Adapters.Postmark,
+         Swoosh.Adapters.ProtonBridge,
+         Swoosh.Adapters.SMTP,
+         Swoosh.Adapters.SMTP2GO,
+         Swoosh.Adapters.Sendgrid,
+         Swoosh.Adapters.Sendinblue,
+         Swoosh.Adapters.Sendmail,
+         Swoosh.Adapters.SocketLabs,
+         Swoosh.Adapters.SparkPost,
+         FzHttpWeb.Mailer.NoopAdapter,
+         # Legacy options
+         :smtp,
+         :mailgun,
+         :mandrill,
+         :sendgrid,
+         :post_mark,
+         :sendmail
        ]
      )},
     default: FzHttpWeb.Mailer.NoopAdapter,
-    legacy_keys: [{:env, "OUTBOUND_EMAIL_PROVIDER", "0.9"}]
+    legacy_keys: [{:env, "OUTBOUND_EMAIL_PROVIDER", "0.9"}],
+    dump: fn
+      :smtp -> Swoosh.Adapters.SMTP
+      :mailgun -> Swoosh.Adapters.Mailgun
+      :mandrill -> Swoosh.Adapters.Mandrill
+      :sendgrid -> Swoosh.Adapters.Sendgrid
+      :post_mark -> Swoosh.Adapters.Postmark
+      :sendmail -> Swoosh.Adapters.Sendmail
+      other -> other
+    end
   )
 
   defconfig(:outbound_email_adapter_opts, :map,
