@@ -10,7 +10,7 @@ defmodule FzHttp.MFA.Method.Changeset do
     |> validate_required(@create_fields)
     |> validate_length(:name, min: 1, max: 255)
     |> trim_change(:name)
-    |> unique_constraint(:name)
+    |> unique_constraint(:name, name: :mfa_methods_user_id_name_index)
     |> assoc_constraint(:user)
     |> changeset()
   end
