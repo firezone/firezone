@@ -11,6 +11,7 @@ defmodule FzHttp.MFA.Method.Changeset do
     |> validate_length(:name, min: 1, max: 255)
     |> trim_change(:name)
     |> unique_constraint(:name, name: :mfa_methods_user_id_name_index)
+    |> unsafe_validate_unique([:name, :user_id], FzHttp.Repo)
     |> assoc_constraint(:user)
     |> changeset()
   end
