@@ -77,7 +77,7 @@ defmodule FzHttp.Config.Validator do
       |> apply_validations(callback, type, key)
 
     if changeset.valid? do
-      {:ok, Map.fetch!(changeset.changes, key)}
+      {:ok, Map.get(changeset.changes, key)}
     else
       {:error, {Map.get(changeset.changes, key, value), errors(changeset)}}
     end

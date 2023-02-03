@@ -1,5 +1,6 @@
 defmodule FzHttp.Config.Definitions do
   use FzHttp.Config.Definition
+  alias FzHttp.Config.Dumper
   alias FzHttp.Types
   alias FzHttp.Configurations.Configuration
 
@@ -107,13 +108,13 @@ defmodule FzHttp.Config.Definitions do
   @doc """
   User that will be used to access the PostgreSQL database.
   """
-  defconfig(:database_user, :string, default: "postgres")
+  defconfig(:database_user, :string, default: "postgres", sensitive: true)
 
   @doc """
   Password that will be used to access the PostgreSQL database.
   """
   # TODO: add a :sensitive option and helper to dump all non-sensitive configs
-  defconfig(:database_password, :string)
+  defconfig(:database_password, :string, sensitive: true)
 
   @doc """
   Size of the connection pool to the PostgreSQL database.
@@ -149,32 +150,12 @@ defmodule FzHttp.Config.Definitions do
   """
   defconfig(:database_ssl_opts, :map,
     default: %{},
-    changeset: fn changeset, _key ->
-      %{
-        changeset
-        | changes: %{
-            changeset.changes
-            | database_ssl_opts: FzCommon.map_ssl_opts(changeset.changes.database_ssl_opts)
-          }
-      }
-    end
+    dump: &Dumper.dump_ssl_opts/1
   )
 
   defconfig(:database_parameters, :map,
     default: %{application_name: "firezone-#{Application.spec(:fz_http, :vsn)}"},
-    # TODO: add an option to dump value
-    changeset: fn changeset, _key ->
-      %{
-        changeset
-        | changes: %{
-            changeset.changes
-            | database_parameters:
-                Keyword.new(changeset.changes.database_parameters, fn {k, v} ->
-                  {String.to_atom(k), v}
-                end)
-          }
-      }
-    end
+    dump: &Dumper.keyword/1
   )
 
   ##############################################
@@ -186,6 +167,7 @@ defmodule FzHttp.Config.Definitions do
   """
   defconfig(:default_admin_email, :string,
     default: nil,
+    sensitive: true,
     legacy_keys: [{:env, "ADMIN_EMAIL", "0.9"}],
     changeset: &FzHttp.Validator.validate_email/2
   )
@@ -195,6 +177,7 @@ defmodule FzHttp.Config.Definitions do
   """
   defconfig(:default_admin_password, :string,
     default: nil,
+    sensitive: true,
     changeset: fn changeset, key ->
       Ecto.Changeset.validate_length(changeset, key, min: 5)
     end
@@ -207,32 +190,50 @@ defmodule FzHttp.Config.Definitions do
   @doc """
   Secret key used for signing JWTs.
   """
-  defconfig(:guardian_secret_key, :string, changeset: &FzHttp.Validator.validate_base64/2)
+  defconfig(:guardian_secret_key, :string,
+    sensitive: true,
+    changeset: &FzHttp.Validator.validate_base64/2
+  )
 
   @doc """
   Secret key used for encrypting sensitive data in the database.
   """
-  defconfig(:database_encryption_key, :string, changeset: &FzHttp.Validator.validate_base64/2)
+  defconfig(:database_encryption_key, :string,
+    sensitive: true,
+    changeset: &FzHttp.Validator.validate_base64/2
+  )
 
   @doc """
   Primary secret key base for the Phoenix application.
   """
-  defconfig(:secret_key_base, :string, changeset: &FzHttp.Validator.validate_base64/2)
+  defconfig(:secret_key_base, :string,
+    sensitive: true,
+    changeset: &FzHttp.Validator.validate_base64/2
+  )
 
   @doc """
   Signing salt for Phoenix LiveView connection tokens.
   """
-  defconfig(:live_view_signing_salt, :string, changeset: &FzHttp.Validator.validate_base64/2)
+  defconfig(:live_view_signing_salt, :string,
+    sensitive: true,
+    changeset: &FzHttp.Validator.validate_base64/2
+  )
 
   @doc """
   Encryption salt for cookies issued by the Phoenix web application.
   """
-  defconfig(:cookie_signing_salt, :string, changeset: &FzHttp.Validator.validate_base64/2)
+  defconfig(:cookie_signing_salt, :string,
+    sensitive: true,
+    changeset: &FzHttp.Validator.validate_base64/2
+  )
 
   @doc """
   Signing salt for cookies issued by the Phoenix web application.
   """
-  defconfig(:cookie_encryption_salt, :string, changeset: &FzHttp.Validator.validate_base64/2)
+  defconfig(:cookie_encryption_salt, :string,
+    sensitive: true,
+    changeset: &FzHttp.Validator.validate_base64/2
+  )
 
   ##############################################
   ## Devices
@@ -543,15 +544,7 @@ defmodule FzHttp.Config.Definitions do
 
   defconfig(:http_client_ssl_opts, :map,
     default: %{},
-    changeset: fn changeset, _key ->
-      %{
-        changeset
-        | changes: %{
-            changeset.changes
-            | http_client_ssl_opts: FzCommon.map_ssl_opts(changeset.changes.http_client_ssl_opts)
-          }
-      }
-    end
+    dump: &Dumper.dump_ssl_opts/1
   )
 
   ##############################################
@@ -566,6 +559,7 @@ defmodule FzHttp.Config.Definitions do
       external_uri = URI.parse(compile_config!(:external_url))
       "firezone@#{external_uri.host}"
     end,
+    sensitive: true,
     changeset: &FzHttp.Validator.validate_email/2
   )
 
@@ -612,17 +606,9 @@ defmodule FzHttp.Config.Definitions do
 
   defconfig(:outbound_email_adapter_opts, :map,
     default: %{},
+    sensitive: true,
     legacy_keys: [{:env, "OUTBOUND_EMAIL_CONFIGS", "0.9"}],
-    changeset: fn changeset, _key ->
-      %{
-        changeset
-        | changes: %{
-            changeset.changes
-            | outbound_email_adapter_opts:
-                Keyword.new(changeset.changes.outbound_email_adapter_opts)
-          }
-      }
-    end
+    dump: &Dumper.keyword/1
   )
 
   ##############################################

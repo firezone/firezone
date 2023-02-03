@@ -17,13 +17,18 @@ defmodule FzHttp.Config do
           {:ok, term()} | {:error, {[String.t()], metadata: term()}}
   def fetch_config(module, key, %{} = db_configurations, %{} = env_configurations)
       when is_atom(module) and is_atom(key) do
-    {type, {resolve_opts, validate_opts}} = Definition.fetch_spec_and_opts!(module, key)
+    {type, {resolve_opts, validate_opts, dump_opts, _debug_opts}} =
+      Definition.fetch_spec_and_opts!(module, key)
 
     with {:ok, {source, value}} <-
            resolve_value(module, key, env_configurations, db_configurations, resolve_opts),
          {:ok, value} <- cast_value(module, key, source, value, type),
          {:ok, value} <- validate_value(module, key, source, value, type, validate_opts) do
-      {:ok, value}
+      if dump_cb = Keyword.get(dump_opts, :dump) do
+        {:ok, dump_cb.(value)}
+      else
+        {:ok, value}
+      end
     end
   end
 
@@ -87,7 +92,7 @@ defmodule FzHttp.Config do
     end
   end
 
-  def validate_runtime_config(
+  def validate_runtime_config!(
         module \\ Definitions,
         db_config \\ Configurations.get_configuration!(),
         env_config \\ System.get_env()
@@ -105,7 +110,6 @@ defmodule FzHttp.Config do
     end
   end
 
-  # TODO: remove this
   if Mix.env() != :test do
     defdelegate fetch_env!(app, key), to: Application
   else

@@ -1,4 +1,5 @@
 defmodule FzHttp.Config.Errors do
+  alias FzHttp.Config.Definition
   require Logger
 
   @env_doc_url "https://docs.firezone.dev/reference/env-vars/#environment-variable-listing"
@@ -32,7 +33,7 @@ defmodule FzHttp.Config.Errors do
     [
       "Invalid configuration for '#{key}' retrieved from #{source(source)}.",
       "Errors:",
-      format_errors(values_and_errors),
+      format_errors(module, key, values_and_errors),
       format_doc(module, key)
     ]
     |> Enum.reject(&is_nil/1)
@@ -51,14 +52,22 @@ defmodule FzHttp.Config.Errors do
   defp source({:db, key}), do: "database configuration #{key}"
   defp source(:default), do: "default value"
 
-  defp format_errors(values_and_errors) do
+  defp format_errors(module, key, values_and_errors) do
+    {_type, {_resolve_opts, _validate_opts, _dump_opts, debug_opts}} =
+      Definition.fetch_spec_and_opts!(module, key)
+
+    sensitive? = Keyword.get(debug_opts, :sensitive, false)
+
     values_and_errors
     |> List.wrap()
     |> Enum.map(fn {value, errors} ->
-      " - `#{inspect(value)}`: #{Enum.join(errors, ", ")}"
+      " - `#{format_value(sensitive?, value)}`: #{Enum.join(errors, ", ")}"
     end)
     |> Enum.join("\n")
   end
+
+  defp format_value(true, _value), do: "**SENSITIVE-VALUE-REDACTED**"
+  defp format_value(false, value), do: inspect(value)
 
   defp format_doc(module, key) do
     case module.fetch_doc(key) do

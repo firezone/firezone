@@ -15,6 +15,9 @@ defmodule FzHttp.Config.Resolver do
     with :error <- fetch_env(env_configurations, key),
          :error <- fetch_legacy_env(env_configurations, key, legacy_keys) do
       :error
+    else
+      {:ok, {_source, nil}} -> :error
+      {:ok, value} -> {:ok, value}
     end
   end
 

@@ -1,8 +1,4 @@
-defmodule FzCommon do
-  @moduledoc """
-  Documentation for `FzCommon`.
-  """
-
+defmodule FzHttp.Config.Dumper do
   @doc ~S"""
   Maps JSON-decoded ssl opts to pass to Erlang's ssl module. Most users
   don't need to override many, if any, SSL opts. Most commonly this is
@@ -10,16 +6,16 @@ defmodule FzCommon do
 
   ## Examples:
 
-      iex> FzCommon.map_ssl_opts(%{"verify" => "verify_none", "versions" => ["tlsv1.3"]})
+      iex> FzCommon.dump_ssl_opts(%{"verify" => "verify_none", "versions" => ["tlsv1.3"]})
       [verify: :verify_none, versions: ['tlsv1.3']]
 
-      iex> FzCommon.map_ssl_opts(%{"keep_secrets" => true})
+      iex> FzCommon.dump_ssl_opts(%{"keep_secrets" => true})
       ** (ArgumentError) unsupported key keep_secrets in ssl opts
 
-      iex> FzCommon.map_ssl_opts(%{"cacertfile" => "/tmp/cacerts.pem"})
+      iex> FzCommon.dump_ssl_opts(%{"cacertfile" => "/tmp/cacerts.pem"})
       [cacertfile: '/tmp/cacerts.pem']
   """
-  def map_ssl_opts(decoded_json) do
+  def dump_ssl_opts(decoded_json) do
     Keyword.new(decoded_json, fn {k, v} ->
       {String.to_atom(k), map_values(k, v)}
     end)
@@ -30,4 +26,10 @@ defmodule FzCommon do
   defp map_values("cacertfile", v), do: String.to_charlist(v)
   defp map_values("server_name_indication", v), do: String.to_charlist(v)
   defp map_values(k, _v), do: raise(ArgumentError, message: "unsupported key #{k} in ssl opts")
+
+  def keyword(enum) do
+    Keyword.new(enum, fn {k, v} ->
+      {String.to_atom(k), v}
+    end)
+  end
 end

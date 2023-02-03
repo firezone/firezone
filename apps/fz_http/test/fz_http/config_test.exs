@@ -51,14 +51,31 @@ defmodule FzHttp.ConfigTest do
     )
 
     defconfig(:json_array, {:array, :map})
-    defconfig(:json, :map)
+
+    defconfig(:json, :map,
+      dump: fn value ->
+        for {k, v} <- value, do: {String.to_atom(k), v}
+      end
+    )
 
     defconfig(:boolean, :boolean)
+
+    defconfig(:sensitive, :map, default: %{}, sensitive: true)
   end
 
   describe "fetch_config/4" do
     test "returns error when required config is not set" do
       assert fetch_config(Test, :required, %{}, %{}) ==
+               {:error,
+                {{nil, ["is required"]}, [module: Test, key: :required, source: :not_found]}}
+    end
+
+    test "does not allow to explicitly set required config to nil" do
+      assert fetch_config(Test, :required, %{required: nil}, %{}) ==
+               {:error,
+                {{nil, ["is required"]}, [module: Test, key: :required, source: :not_found]}}
+
+      assert fetch_config(Test, :required, %{}, %{"REQUIRED" => nil}) ==
                {:error,
                 {{nil, ["is required"]}, [module: Test, key: :required, source: :not_found]}}
     end
@@ -112,7 +129,7 @@ defmodule FzHttp.ConfigTest do
       json = Jason.encode!(%{foo: :bar})
 
       assert fetch_config(Test, :json, %{}, %{"JSON" => json}) ==
-               {:ok, %{"foo" => "bar"}}
+               {:ok, foo: "bar"}
 
       json = Jason.encode!([%{foo: :bar}])
 
@@ -124,6 +141,20 @@ defmodule FzHttp.ConfigTest do
 
       assert fetch_config(Test, :boolean, %{}, %{"BOOLEAN" => "true"}) ==
                {:ok, true}
+    end
+
+    test "applies dump function" do
+      json = Jason.encode!(%{foo: :bar})
+
+      assert fetch_config(Test, :json, %{}, %{"JSON" => json}) ==
+               {:ok, foo: "bar"}
+    end
+
+    test "does not apply dump function on invalid values" do
+      assert fetch_config(Test, :json, %{}, %{"JSON" => "foo"}) ==
+               {:error,
+                {{"foo", ["unexpected byte at position 0: 0x66 (\"f\")"]},
+                 [module: FzHttp.ConfigTest.Test, key: :json, source: {:env, "JSON"}]}}
     end
 
     test "returns error when type can not be casted" do
@@ -149,7 +180,7 @@ defmodule FzHttp.ConfigTest do
       json = Jason.encode!(%{foo: :bar})
 
       assert fetch_config(Test, :json, %{}, %{"JSON" => json}) ==
-               {:ok, %{"foo" => "bar"}}
+               {:ok, foo: "bar"}
 
       json = Jason.encode!([%{foo: :bar}])
 
@@ -254,9 +285,23 @@ defmodule FzHttp.ConfigTest do
         compile_config!(Test, :array, %{"ARRAY" => "1,-1,0,2,-100,-2"})
       end
     end
+
+    test "does not print sensitive values" do
+      message = """
+      Invalid configuration for 'sensitive' retrieved from environment variable SENSITIVE.
+
+      Errors:
+
+       - `**SENSITIVE-VALUE-REDACTED**`: unexpected byte at position 0: 0x66 ("f")\
+      """
+
+      assert_raise RuntimeError, message, fn ->
+        compile_config!(Test, :sensitive, %{"SENSITIVE" => "foo"})
+      end
+    end
   end
 
-  describe "validate_runtime_config/0" do
+  describe "validate_runtime_config!/0" do
     test "raises error on invalid values" do
       message = """
       Found 8 configuration errors:
@@ -364,7 +409,7 @@ defmodule FzHttp.ConfigTest do
       """
 
       assert_raise RuntimeError, message, fn ->
-        validate_runtime_config(Test, %{}, %{})
+        validate_runtime_config!(Test, %{}, %{})
       end
     end
 
@@ -380,7 +425,7 @@ defmodule FzHttp.ConfigTest do
         "INVALID_WITH_VALIDATION" => "2"
       }
 
-      assert validate_runtime_config(Test, %{}, env_config) == :ok
+      assert validate_runtime_config!(Test, %{}, env_config) == :ok
     end
   end
 end

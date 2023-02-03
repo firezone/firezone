@@ -25,11 +25,21 @@ defmodule FzHttp.Config.DefinitionTest do
         )
       end
     )
+
+    defconfig(:sensitive, :string, sensitive: true)
+
+    defconfig(:with_dump, :map,
+      dump: fn value ->
+        for {k, v} <- value, do: {k, v}
+      end
+    )
   end
 
   describe "__using__/1" do
     test "inserts a function which returns list of defined configs" do
       assert Definitions.configs() == [
+               {Definitions, :with_dump},
+               {Definitions, :sensitive},
                {Definitions, :with_validation},
                {Definitions, :with_legacy_key},
                {Definitions, :optional},
@@ -57,16 +67,21 @@ defmodule FzHttp.Config.DefinitionTest do
 
   describe "fetch_spec_and_opts!/2" do
     test "returns spec and opts for a given config definition" do
-      assert fetch_spec_and_opts!(Definitions, :required) == {Types.IP, {[], []}}
+      assert fetch_spec_and_opts!(Definitions, :required) == {Types.IP, {[], [], [], []}}
 
       assert fetch_spec_and_opts!(Definitions, :optional) ==
-               {Types.IP, {[default: "0.0.0.0"], []}}
+               {Types.IP, {[default: "0.0.0.0"], [], [], []}}
 
       assert fetch_spec_and_opts!(Definitions, :with_legacy_key) ==
-               {:string, {[legacy_keys: [{:env, "FOO", "100.0"}]], []}}
+               {:string, {[legacy_keys: [{:env, "FOO", "100.0"}]], [], [], []}}
 
-      assert {:integer, {[], [{:changeset, _cb}]}} =
+      assert {:integer, {[], [{:changeset, _cb}], [], []}} =
                fetch_spec_and_opts!(Definitions, :with_validation)
+
+      assert {:map, {[], [], [{:dump, _cb}], []}} = fetch_spec_and_opts!(Definitions, :with_dump)
+
+      assert {:string, {[], [], [], [sensitive: true]}} =
+               fetch_spec_and_opts!(Definitions, :sensitive)
     end
 
     test "raises on invalid opts" do

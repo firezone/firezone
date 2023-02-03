@@ -36,9 +36,12 @@ defmodule FzHttp.Config.Definition do
           | (type :: term(), changeset :: Ecto.Changeset.t(), key :: atom() ->
                Ecto.Changeset.t())
 
+  @type dump_callback :: (value :: term() -> term())
+
   @type opts :: [
           default: term,
           sensitive: boolean(),
+          dump: dump_callback(),
           legacy_keys: [legacy_key()],
           changeset: changeset_callback()
         ]
@@ -97,10 +100,12 @@ defmodule FzHttp.Config.Definition do
     {type, opts} = apply(module, key, [])
     {resolve_opts, opts} = Keyword.split(opts, [:legacy_keys, :default])
     {validate_opts, opts} = Keyword.split(opts, [:changeset])
+    {debug_opts, opts} = Keyword.split(opts, [:sensitive])
+    {dump_opts, opts} = Keyword.split(opts, [:dump])
 
     if opts != [], do: Errors.invalid_spec(key, opts)
 
-    {type, {resolve_opts, validate_opts}}
+    {type, {resolve_opts, validate_opts, dump_opts, debug_opts}}
   end
 
   @doc """
