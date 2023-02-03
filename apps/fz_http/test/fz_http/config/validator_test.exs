@@ -51,7 +51,7 @@ defmodule FzHttp.Config.ValidatorTest do
                 [
                   %FzHttp.Configurations.Configuration.SAMLIdentityProvider{
                     auto_create_users: attrs["auto_create_users"],
-                    base_url: "http://localhost:4002/auth/saml",
+                    base_url: "http://localhost:13000/auth/saml",
                     id: attrs["id"],
                     label: attrs["label"],
                     metadata: attrs["metadata"]

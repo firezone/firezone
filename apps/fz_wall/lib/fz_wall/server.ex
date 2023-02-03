@@ -2,15 +2,13 @@ defmodule FzWall.Server do
   @moduledoc """
   Functions for applying firewall rules.
   """
-
   use GenServer
   import FzWall.CLI
 
-  @process_opts Application.compile_env(:fz_wall, :server_process_opts, [])
   @init_timeout 1_000
 
   def start_link(_) do
-    GenServer.start_link(__MODULE__, %{}, @process_opts)
+    GenServer.start_link(__MODULE__, %{}, name: {:global, :fz_wall_server})
   end
 
   @impl GenServer

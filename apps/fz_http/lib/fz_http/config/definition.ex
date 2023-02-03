@@ -23,6 +23,26 @@ defmodule FzHttp.Config.Definition do
   """
   alias FzHttp.Config.Errors
 
+  @type type ::
+          Ecto.Type.t()
+          | {:array, type()}
+          | {:array, separator :: String.t(), type()}
+          | {:one_of, type()}
+
+  @type legacy_key :: {:env, var_name :: String.t(), removed_at :: String.t()}
+
+  @type changeset_callback ::
+          (changeset :: Ecto.Changeset.t(), key :: atom() -> Ecto.Changeset.t())
+          | (type :: term(), changeset :: Ecto.Changeset.t(), key :: atom() ->
+               Ecto.Changeset.t())
+
+  @type opts :: [
+          default: term,
+          sensitive: boolean(),
+          legacy_keys: [legacy_key()],
+          changeset: changeset_callback()
+        ]
+
   defmacro __using__(_opts) do
     quote do
       import FzHttp.Config.Definition
@@ -68,6 +88,7 @@ defmodule FzHttp.Config.Definition do
   defmacro defconfig(key, type, opts \\ []) do
     quote do
       @configs {__MODULE__, unquote(key)}
+      @spec unquote(key)() :: {FzHttp.Config.Definition.type(), FzHttp.Config.Definition.opts()}
       def unquote(key)(), do: {unquote(type), unquote(opts)}
     end
   end

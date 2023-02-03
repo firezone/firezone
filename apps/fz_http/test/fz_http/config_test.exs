@@ -1,7 +1,6 @@
 defmodule FzHttp.ConfigTest do
   use ExUnit.Case, async: true
   import FzHttp.Config
-  alias FzHttp.Config.Definitions
 
   defmodule Test do
     use FzHttp.Config.Definition
@@ -11,7 +10,10 @@ defmodule FzHttp.ConfigTest do
 
     defconfig(:optional, Types.IP, default: "0.0.0.0")
 
-    defconfig(:optional_generated, Types.IP, default: fn -> "1.1.1.1" end)
+    defconfig(:optional_generated, Types.IP,
+      legacy_keys: [{:env, "OGID", "1.0"}],
+      default: fn -> "1.1.1.1" end
+    )
 
     defconfig(:one_of, {:one_of, [:string, :integer]},
       changeset: fn
@@ -156,34 +158,29 @@ defmodule FzHttp.ConfigTest do
     end
 
     test "returns value for a given config using resolver precedence" do
-      key = :telemetry_id
+      key = :optional_generated
 
       # Generated default value
-      assert fetch_config(Definitions, key, %{}, %{}) ==
-               {:ok, "-Gokg9p8U8UY_SsCu2aDf3pzcGAkK7y-hC3hpHdRSv8"}
+      assert fetch_config(Test, key, %{}, %{}) == {:ok, %Postgrex.INET{address: {1, 1, 1, 1}}}
 
       # DB value overrides default
-      db = %{telemetry_id: "2"}
-      assert fetch_config(Definitions, key, db, %{}) == {:ok, "2"}
+      db = %{optional_generated: "2.2.2.2"}
+      assert fetch_config(Test, key, db, %{}) == {:ok, %Postgrex.INET{address: {2, 2, 2, 2}}}
 
       # Legacy env overrides DB
-      env = %{"TID" => "1"}
-      assert fetch_config(Definitions, key, db, env) == {:ok, "1"}
+      env = %{"OGID" => "3.3.3.3"}
+      assert fetch_config(Test, key, db, env) == {:ok, %Postgrex.INET{address: {3, 3, 3, 3}}}
 
       # Env overrides legacy env
-      env = Map.merge(env, %{"TELEMETRY_ID" => "3"})
-      assert fetch_config(Definitions, key, db, env) == {:ok, "3"}
-
-      # Application env override
-      put_env_override(:fz_http, :telemetry_id, "4")
-      assert fetch_config(Definitions, key, db, env) == {:ok, "4"}
+      env = Map.merge(env, %{"OPTIONAL_GENERATED" => "4.4.4.4"})
+      assert fetch_config(Test, key, db, env) == {:ok, %Postgrex.INET{address: {4, 4, 4, 4}}}
     end
   end
 
   describe "compile_config!/1" do
     test "returns config value" do
-      assert compile_config!(:telemetry_id) ==
-               "-Gokg9p8U8UY_SsCu2aDf3pzcGAkK7y-hC3hpHdRSv8"
+      assert compile_config!(Test, :optional_generated) ==
+               %Postgrex.INET{address: {1, 1, 1, 1}, netmask: nil}
     end
 
     test "raises an error when value is missing" do

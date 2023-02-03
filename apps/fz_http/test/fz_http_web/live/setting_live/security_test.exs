@@ -247,7 +247,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
       assert %FzHttp.Configurations.Configuration.SAMLIdentityProvider{
                auto_create_users: false,
                # XXX this field would be nil if we don't "guess" the url when we load the record in StartProxy
-               base_url: "#{FzHttp.Config.fetch_env!(:fz_http, :external_url)}/auth/saml",
+               base_url: "#{FzHttp.Config.fetch_env!(:fz_http, :external_url)}auth/saml",
                id: "FAKEID",
                label: "FOO",
                metadata: attrs["metadata"],
@@ -310,7 +310,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
 
       assert %FzHttp.Configurations.Configuration.SAMLIdentityProvider{
                auto_create_users: true,
-               base_url: "#{FzHttp.Config.fetch_env!(:fz_http, :external_url)}/auth/saml",
+               base_url: "#{FzHttp.Config.fetch_env!(:fz_http, :external_url)}auth/saml",
                id: attrs["id"],
                label: attrs["label"],
                metadata: attrs["metadata"],

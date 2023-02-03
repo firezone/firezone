@@ -35,6 +35,7 @@ defmodule FzHttp.Config.Definitions do
   You can add a path suffix if you want to serve firezone from a non-root path,
   eg: `https://firezone.mycorp.com/vpn`.
   """
+  # TODO: normalize url too (make sure all URI parts are present)
   defconfig(:external_url, :string, changeset: &FzHttp.Validator.validate_uri/2)
 
   @doc """
@@ -111,6 +112,7 @@ defmodule FzHttp.Config.Definitions do
   @doc """
   Password that will be used to access the PostgreSQL database.
   """
+  # TODO: add a :sensitive option and helper to dump all non-sensitive configs
   defconfig(:database_password, :string)
 
   @doc """
@@ -159,7 +161,20 @@ defmodule FzHttp.Config.Definitions do
   )
 
   defconfig(:database_parameters, :map,
-    default: %{application_name: "firezone-#{Application.spec(:fz_http, :vsn)}"}
+    default: %{application_name: "firezone-#{Application.spec(:fz_http, :vsn)}"},
+    # TODO: add an option to dump value
+    changeset: fn changeset, _key ->
+      %{
+        changeset
+        | changes: %{
+            changeset.changes
+            | database_parameters:
+                Keyword.new(changeset.changes.database_parameters, fn {k, v} ->
+                  {String.to_atom(k), v}
+                end)
+          }
+      }
+    end
   )
 
   ##############################################
@@ -319,7 +334,15 @@ defmodule FzHttp.Config.Definitions do
   ## Limits
   ##############################################
 
-  defconfig(:max_devices_per_user, :integer, default: 10)
+  defconfig(:max_devices_per_user, :integer,
+    default: 10,
+    changeset: fn changeset, key ->
+      Ecto.Changeset.validate_number(changeset, key,
+        greater_than_or_equal_to: 0,
+        less_than_or_equal_to: 100
+      )
+    end
+  )
 
   ##############################################
   ## Userpass / SAML / OIDC authentication
@@ -447,11 +470,18 @@ defmodule FzHttp.Config.Definitions do
   """
   defconfig(:connectivity_checks_enabled, :boolean, default: true)
 
-  @spec connectivity_checks_interval :: {:integer, [{:default, 3600}, ...]}
   @doc """
   Periodicity in seconds to check for egress connectivity.
   """
-  defconfig(:connectivity_checks_interval, :integer, default: 3600)
+  defconfig(:connectivity_checks_interval, :integer,
+    default: 3600,
+    changeset: fn changeset, key ->
+      Ecto.Changeset.validate_number(changeset, key,
+        greater_than_or_equal_to: 60,
+        less_than_or_equal_to: 86_400
+      )
+    end
+  )
 
   ##############################################
   ## WireGuard
@@ -465,11 +495,6 @@ defmodule FzHttp.Config.Definitions do
         less_than_or_equal_to: 65_535
       )
     end
-  )
-
-  defconfig(:wireguard_egress_interface, :string,
-    legacy_keys: [{:env, "EGRESS_INTERFACE", "0.8"}],
-    default: "eth0"
   )
 
   defconfig(:wireguard_ipv4_enabled, :boolean, default: true)
@@ -502,6 +527,15 @@ defmodule FzHttp.Config.Definitions do
     default: "/var/firezone/private_key"
     # changeset: &FzHttp.Validator.validate_file(&1, &2)
   )
+
+  defconfig(:wireguard_interface_name, :string, default: "wg-firezone")
+
+  defconfig(:gateway_egress_interface, :string,
+    legacy_keys: [{:env, "EGRESS_INTERFACE", "0.8"}],
+    default: "eth0"
+  )
+
+  defconfig(:gateway_nft_path, :string, default: "nft")
 
   ##############################################
   ## HTTP Client Settings
@@ -545,25 +579,31 @@ defmodule FzHttp.Config.Definitions do
     {:parameterized, Ecto.Enum,
      Ecto.Enum.init(
        values: [
-         Swoosh.Adapters.AmazonSES,
-         Swoosh.Adapters.CustomerIO,
-         Swoosh.Adapters.Dyn,
-         Swoosh.Adapters.ExAwsAmazonSES,
-         Swoosh.Adapters.Gmail,
-         Swoosh.Adapters.MailPace,
-         Swoosh.Adapters.Mailgun,
-         Swoosh.Adapters.Mailjet,
-         Swoosh.Adapters.Mandrill,
-         Swoosh.Adapters.Postmark,
-         Swoosh.Adapters.ProtonBridge,
-         Swoosh.Adapters.SMTP,
-         Swoosh.Adapters.SMTP2GO,
-         Swoosh.Adapters.Sendgrid,
-         Swoosh.Adapters.Sendinblue,
-         Swoosh.Adapters.Sendmail,
-         Swoosh.Adapters.SocketLabs,
-         Swoosh.Adapters.SparkPost,
-         FzHttpWeb.Mailer.NoopAdapter
+         smtp: Swoosh.Adapters.SMTP,
+         mailgun: Swoosh.Adapters.Mailgun,
+         mandrill: Swoosh.Adapters.Mandrill,
+         sendgrid: Swoosh.Adapters.Sendgrid,
+         post_mark: Swoosh.Adapters.Postmark,
+         sendmail: Swoosh.Adapters.Sendmail,
+         "Swoosh.Adapters.AmazonSES": Swoosh.Adapters.AmazonSES,
+         "Swoosh.Adapters.CustomerIO": Swoosh.Adapters.CustomerIO,
+         "Swoosh.Adapters.Dyn": Swoosh.Adapters.Dyn,
+         "Swoosh.Adapters.ExAwsAmazonSES": Swoosh.Adapters.ExAwsAmazonSES,
+         "Swoosh.Adapters.Gmail": Swoosh.Adapters.Gmail,
+         "Swoosh.Adapters.MailPace": Swoosh.Adapters.MailPace,
+         "Swoosh.Adapters.Mailgun": Swoosh.Adapters.Mailgun,
+         "Swoosh.Adapters.Mailjet": Swoosh.Adapters.Mailjet,
+         "Swoosh.Adapters.Mandrill": Swoosh.Adapters.Mandrill,
+         "Swoosh.Adapters.Postmark": Swoosh.Adapters.Postmark,
+         "Swoosh.Adapters.ProtonBridge": Swoosh.Adapters.ProtonBridge,
+         "Swoosh.Adapters.SMTP": Swoosh.Adapters.SMTP,
+         "Swoosh.Adapters.SMTP2GO": Swoosh.Adapters.SMTP2GO,
+         "Swoosh.Adapters.Sendgrid": Swoosh.Adapters.Sendgrid,
+         "Swoosh.Adapters.Sendinblue": Swoosh.Adapters.Sendinblue,
+         "Swoosh.Adapters.Sendmail": Swoosh.Adapters.Sendmail,
+         "Swoosh.Adapters.SocketLabs": Swoosh.Adapters.SocketLabs,
+         "Swoosh.Adapters.SparkPost": Swoosh.Adapters.SparkPost,
+         "FzHttpWeb.Mailer.NoopAdapter": FzHttpWeb.Mailer.NoopAdapter
        ]
      )},
     default: FzHttpWeb.Mailer.NoopAdapter,
@@ -572,7 +612,17 @@ defmodule FzHttp.Config.Definitions do
 
   defconfig(:outbound_email_adapter_opts, :map,
     default: %{},
-    legacy_keys: [{:env, "OUTBOUND_EMAIL_CONFIGS", "0.9"}]
+    legacy_keys: [{:env, "OUTBOUND_EMAIL_CONFIGS", "0.9"}],
+    changeset: fn changeset, _key ->
+      %{
+        changeset
+        | changes: %{
+            changeset.changes
+            | outbound_email_adapter_opts:
+                Keyword.new(changeset.changes.outbound_email_adapter_opts)
+          }
+      }
+    end
   )
 
   ##############################################

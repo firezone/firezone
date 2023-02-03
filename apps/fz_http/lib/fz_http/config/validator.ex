@@ -33,7 +33,7 @@ defmodule FzHttp.Config.Validator do
     |> Enum.reduce_while({:error, []}, fn type, {:error, errors} ->
       case validate(key, value, type, opts) do
         {:ok, value} -> {:halt, {:ok, value}}
-        {:error, {_value, type_errors}} -> {:cont, {:error, errors ++ type_errors}}
+        {:error, {_value, type_errors}} -> {:cont, {:error, type_errors ++ errors}}
       end
     end)
     |> case do

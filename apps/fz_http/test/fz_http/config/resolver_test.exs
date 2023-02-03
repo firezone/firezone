@@ -43,13 +43,6 @@ defmodule FzHttp.Config.ResolverTest do
                {:ok, {{:db, :default_client_dns}, "1.2.3.4"}}
     end
 
-    test "returns variable from application environment" do
-      Application.put_env(:fz_http, __MODULE__, "bar")
-
-      assert resolve(__MODULE__, %{}, %{}, []) ==
-               {:ok, {{:app_env, __MODULE__}, "bar"}}
-    end
-
     test "precedence" do
       key = :my_key
       env = %{"FOO" => "3.3.2.2"}
@@ -74,10 +67,6 @@ defmodule FzHttp.Config.ResolverTest do
       # Env overrides legacy env
       env = Map.merge(env, %{"MY_KEY" => "2.7.2.8"})
       assert resolve(key, env, db, opts) == {:ok, {{:env, "MY_KEY"}, "2.7.2.8"}}
-
-      # App env overrides env
-      Application.put_env(:fz_http, key, "8.8.8.8")
-      assert resolve(key, env, db, opts) == {:ok, {{:app_env, key}, "8.8.8.8"}}
     end
   end
 end

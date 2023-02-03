@@ -36,13 +36,12 @@ defmodule FzHttp.MixProject do
       extra_applications: [
         :logger,
         :runtime_tools
-      ],
-      registered: [:fz_http_server]
+      ]
     ]
   end
 
   # Specifies which paths to compile per environment.
-  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(:test), do: ["test/support", "lib"]
   defp elixirc_paths(_), do: ["lib"]
 
   defp deps do

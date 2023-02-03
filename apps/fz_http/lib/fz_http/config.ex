@@ -105,14 +105,15 @@ defmodule FzHttp.Config do
     end
   end
 
-  if Mix.env() == :test do
-    defdelegate put_env_override(app \\ :fz_http, key, value), to: Resolver
-  end
-
   # TODO: remove this
   if Mix.env() != :test do
     defdelegate fetch_env!(app, key), to: Application
   else
+    def put_env_override(app \\ :fz_http, key, value) do
+      Process.put(key_function(app, key), value)
+      :ok
+    end
+
     @doc """
     Attempts to override application env configuration from one of 3 sources (in this exact order):
       * takes it from process dictionary of a current process;
