@@ -2,8 +2,8 @@
 Path.join(File.cwd!(), "screenshots") |> File.rm_rf!()
 
 Bureaucrat.start(
-  writer: Firezone.DocusaurusWriter,
-  default_path: "../../www/docs/reference/rest-api"
+  writer: DocsGenerator,
+  default_path: "../../www/docs/docs/reference/rest-api"
 )
 
 Ecto.Adapters.SQL.Sandbox.mode(FzHttp.Repo, :manual)

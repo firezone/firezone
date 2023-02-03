@@ -1,19 +1,77 @@
 defmodule FzHttp.Config.Definitions do
+  @moduledoc """
+  Most day-to-day config of Firezone can be done via the Firezone Web UI,
+  but for zero-touch deployments we allow to override most of configuration options
+  using environment variables.
+
+  Read more about configuring Firezone in our [configure guide](/deploy/configure).
+
+  ## Errors
+
+  Firezone will not boot if the configuration is invalid, providing a detailed error message
+  and a link to the documentation for the configuration key with samples how to set it.
+
+  ## Naming
+
+  If environment variables are used, the configuration key must be uppercased.
+  The database variables are the same as the configuration keys.
+
+  ## Precedence
+
+  The configuration precedence is as follows:
+
+  1. Environment variables
+  2. Database values
+  3. Default values
+
+  It means that if environment variable is set, it will be used, regardless of the database value,
+  and UI to edit database value will be disabled.
+  """
   use FzHttp.Config.Definition
   alias FzHttp.Config.Dumper
   alias FzHttp.Types
   alias FzHttp.Configurations.Configuration
 
-  def doc_sections,
-    do: [
-      {"WebServer", [:external_url]},
-      {"Admin Setup",
-       "Options responsible for initial admin provisioning and resetting the admin password.",
+  def doc_sections do
+    [
+      {"WebServer",
        [
+         :external_url,
+         :phoenix_secure_cookies,
+         :phoenix_listen_address,
+         :phoenix_http_port,
+         :phoenix_external_trusted_proxies,
+         :phoenix_private_clients
+       ]},
+      {"Database",
+       [
+         :database_host,
+         :database_port,
+         :database_name,
+         :database_user,
+         :database_password,
+         :database_pool_size,
+         :database_ssl_enabled,
+         :database_ssl_opts,
+         :database_parameters
+       ]},
+      {"Admin Setup",
+       """
+       Options responsible for initial admin provisioning and resetting the admin password.
+
+       For more details see [troubleshooting guide](/administer/troubleshoot/#admin-login-isnt-working).
+       """,
+       [
+         :reset_admin_on_boot,
          :default_admin_email,
          :default_admin_password
        ]},
-      {"Secrets",
+      {"Secrets and Encryption",
+       """
+       Your secrets should be generated during installation automatically and persisted to `.env` file.
+
+       All secrets should be a **base64-encoded string**.
+       """,
        [
          :guardian_secret_key,
          :database_encryption_key,
@@ -21,8 +79,66 @@ defmodule FzHttp.Config.Definitions do
          :live_view_signing_salt,
          :cookie_signing_salt,
          :cookie_encryption_salt
+       ]},
+      {"Devices",
+       [
+         :allow_unprivileged_device_management,
+         :allow_unprivileged_device_configuration,
+         :vpn_session_duration,
+         :default_client_persistent_keepalive,
+         :default_client_mtu,
+         :default_client_endpoint,
+         :default_client_dns,
+         :default_client_allowed_ips
+       ]},
+      # {"Limits",
+      #  [
+      #    :max_devices_per_user
+      #  ]},
+      {"Authorization",
+       [
+         :local_auth_enabled,
+         :disable_vpn_on_oidc_error,
+         :saml_entity_id,
+         :saml_keyfile_path,
+         :saml_certfile_path,
+         :openid_connect_providers,
+         :saml_identity_providers
+       ]},
+      {"WireGuard",
+       [
+         :wireguard_port,
+         :wireguard_ipv4_enabled,
+         :wireguard_ipv4_masquerade,
+         :wireguard_ipv4_network,
+         :wireguard_ipv4_address,
+         :wireguard_ipv6_enabled,
+         :wireguard_ipv6_masquerade,
+         :wireguard_ipv6_network,
+         :wireguard_ipv6_address,
+         :wireguard_private_key_path,
+         :wireguard_interface_name,
+         :gateway_egress_interface,
+         :gateway_nft_path
+       ]},
+      {"Outbound Emails",
+       [
+         :outbound_email_from,
+         :outbound_email_adapter,
+         :outbound_email_adapter_opts
+       ]},
+      {"Connectivity Checks",
+       [
+         :connectivity_checks_enabled,
+         :connectivity_checks_interval
+       ]},
+      {"Telemetry",
+       [
+         :telemetry_enabled,
+         :telemetry_id
        ]}
     ]
+  end
 
   ##############################################
   ## Web Server
@@ -52,7 +168,7 @@ defmodule FzHttp.Config.Definitions do
   @doc """
   Internal port to listen on for the Phoenix web server.
   """
-  defconfig(:phoenix_port, :integer,
+  defconfig(:phoenix_http_port, :integer,
     default: 13000,
     changeset: fn changeset, key ->
       Ecto.Changeset.validate_number(changeset, key,
@@ -161,6 +277,14 @@ defmodule FzHttp.Config.Definitions do
   ##############################################
   ## Admin Setup
   ##############################################
+
+  @doc """
+  Set this variable to `true` to create or reset the admin password every time Firezone
+  starts. By default, the admin password is only set when Firezone is installed.
+
+  Note: This **will not** change the status of local authentication.
+  """
+  defconfig(:reset_admin_on_boot, :boolean, default: false)
 
   @doc """
   Primary administrator email.
@@ -349,6 +473,7 @@ defmodule FzHttp.Config.Definitions do
   ## Userpass / SAML / OIDC authentication
   ##############################################
 
+  # TODO: make it a list of enabled auth methods (userpass, magic_link, saml, oidc, etc.)
   @doc """
   Enable or disable the local authentication method for all users.
   """
@@ -385,21 +510,21 @@ defmodule FzHttp.Config.Definitions do
 
   For example:
 
-      [
-        {
-          "auto_create_users": false,
-
-          "id": "google",
-          "label": "google",
-          "client_id": "test-id",
-          "client_secret": "test-secret",
-          "discovery_document_uri": "https://accounts.google.com/.well-known/openid-configuration",
-          "redirect_uri": "https://invalid",
-          "response_type": "response-type",
-          "scope": "oauth email profile"
-        }
-      ]
-
+  ```json
+  [
+    {
+      "auto_create_users": false,
+      "id": "google",
+      "label": "google",
+      "client_id": "test-id",
+      "client_secret": "test-secret",
+      "discovery_document_uri": "https://accounts.google.com/.well-known/openid-configuration",
+      "redirect_uri": "https://invalid",
+      "response_type": "response-type",
+      "scope": "oauth email profile"
+    }
+  ]
+  ```
 
   For more details see https://docs.firezone.dev/authenticate/oidc/.
   """
@@ -417,22 +542,23 @@ defmodule FzHttp.Config.Definitions do
 
   For example:
 
-    [
-      {
-        "auto_create_users": false,
+  ```json
+  [
+    {
+      "auto_create_users": false,
+      "base_url": "https://saml",
+      "id": "okta",
+      "label": "okta",
+      "metadata": "<?xml version="1.0"?>...",
+      "sign_metadata": false,
+      "sign_requests": false,
+      "signed_assertion_in_resp": false,
+      "signed_envelopes_in_resp": false
+    }
+  ]
+  ```
 
-        "base_url": "https://saml",
-        "id": "okta",
-        "label": "okta",
-        "metadata": "<?xml version="1.0"?>...",
-        "sign_metadata": false,
-        "sign_requests": false,
-        "signed_assertion_in_resp": false,
-        "signed_envelopes_in_resp": false
-      }
-    ]
-
-  For more details see https://docs.firezone.dev/reference/saml/.
+  For more details see https://docs.firezone.dev/authenticate/saml/.
   """
   defconfig(:saml_identity_providers, {:array, {:embed, Configuration.SAMLIdentityProvider}},
     default: [],
@@ -488,6 +614,9 @@ defmodule FzHttp.Config.Definitions do
   ## WireGuard
   ##############################################
 
+  @doc """
+  A port on which WireGuard will listen for incoming connections.
+  """
   defconfig(:wireguard_port, :integer,
     default: 51820,
     changeset: fn changeset, key ->
@@ -498,6 +627,9 @@ defmodule FzHttp.Config.Definitions do
     end
   )
 
+  @doc """
+  Enable or disable IPv4 support for WireGuard.
+  """
   defconfig(:wireguard_ipv4_enabled, :boolean, default: true)
   defconfig(:wireguard_ipv4_masquerade, :boolean, default: true)
 
@@ -511,6 +643,9 @@ defmodule FzHttp.Config.Definitions do
     changeset: &FzHttp.Validator.validate_ip_type_inclusion(&1, &2, [:ipv4])
   )
 
+  @doc """
+  Enable or disable IPv6 support for WireGuard.
+  """
   defconfig(:wireguard_ipv6_enabled, :boolean, default: true)
   defconfig(:wireguard_ipv6_masquerade, :boolean, default: true)
 
@@ -564,9 +699,7 @@ defmodule FzHttp.Config.Definitions do
   )
 
   @doc """
-  Method to use for sending outbound email. If not set, will default to `sendmail`.
-
-  See the list of [Swoosh Adapters](https://github.com/swoosh/swoosh#adapters).
+  Method to use for sending outbound email.
   """
   defconfig(
     :outbound_email_adapter,
@@ -592,7 +725,7 @@ defmodule FzHttp.Config.Definitions do
          Swoosh.Adapters.SocketLabs,
          Swoosh.Adapters.SparkPost,
          FzHttpWeb.Mailer.NoopAdapter,
-         # Legacy options
+         # Legacy options should be removed in 0.8
          :smtp,
          :mailgun,
          :mandrill,
@@ -614,6 +747,9 @@ defmodule FzHttp.Config.Definitions do
     end
   )
 
+  @doc """
+  Adapter configuration, for list of options see [Swoosh Adapters](https://github.com/swoosh/swoosh#adapters).
+  """
   defconfig(:outbound_email_adapter_opts, :map,
     default: %{},
     sensitive: true,

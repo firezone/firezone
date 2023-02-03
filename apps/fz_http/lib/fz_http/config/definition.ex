@@ -108,6 +108,12 @@ defmodule FzHttp.Config.Definition do
     {type, {resolve_opts, validate_opts, dump_opts, debug_opts}}
   end
 
+  def fetch_doc(module) do
+    with {:docs_v1, _, _, _, module_doc, _, _function_docs} <- Code.fetch_docs(module) do
+      fetch_en_doc(module_doc)
+    end
+  end
+
   @doc """
   Returns EN documentation chunk of a given function in a module.
   """
