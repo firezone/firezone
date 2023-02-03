@@ -160,6 +160,15 @@ defmodule FzHttp.MFATest do
       assert "has already been taken" in errors_on(changeset).name
     end
 
+    test "does not return error when other user has the same name" do
+      user = UsersFixtures.create_user()
+      other_user = UsersFixtures.create_user()
+
+      attrs = MFAFixtures.totp_method_attrs()
+      assert {:ok, _user} = MFA.create_method(attrs, user.id)
+      assert {:ok, _user} = MFA.create_method(attrs, other_user.id)
+    end
+
     test "creates a TOTP MFA method" do
       user = UsersFixtures.create_user()
       attrs = MFAFixtures.totp_method_attrs()
