@@ -6,33 +6,48 @@ sidebar_position: 2
 # Migrate from Omnibus to Docker
 
 Chef Infra Client, the configuration system Chef Omnibus relies on, has been
-[scheduled for End-of-Life in 2024](https://docs.chef.io/versions/#supported-commercial-distributions).
-As such, Omnibus-based deployments
-will be deprecated in a future version of Firezone.
+[scheduled for End-of-Life in 2024](https://docs.chef.io/versions/).
+Firezone 0.7 will be the last version to offer Omnibus-based deployments.
+Users are encouraged to migrate to a Docker-based deployment of Firezone using
+this guide.
+
+Existing Omnibus-based deployments of Firezone will continue to function as-is,
+but no officially supported RedHat or Debian packages will be published for
+Firezone 0.8 and above.
+
+See this [GitHub issue tracking discussion
+](https://github.com/firezone/firezone/issues/) for more details.
 
 Follow this guide to migrate from an Omnibus-based deployment to a Docker-based
 deployment. In most cases this can be done with minimal downtime and without
 requiring you to regenerate WireGuard configurations for each device.
 
+Heavily customized deployments (such as those using an external database or
+custom reverse proxy) will likely need extra troubleshooting and manual
+steps taken to perform a successful migration.
+
+Take a look at the [migration script source
+](https://github.com/firezone/firezone/blob/master/scripts/docker_migrate.sh)
+to get a detailed idea of the steps involved.
+
 Estimated time to complete: **2 hours**.
 
-## Steps to Migrate
+## Steps to migrate
 
 1. **Back up** your server. This ensures you have a working state to roll back to
-in case anything goes wrong. At a _bare minimum_ you'll want to back up the
+in case anything goes terribly wrong. At a _bare minimum_ you'll want to back up the
 [file and directories Firezone uses
 ](/reference/file-and-directory-locations/), but we recommend taking a full
-snapshot if possible.
+snapshot of your VPS if possible.
 1. Ensure you're running the latest version of Firezone. See our [upgrade guide
 ](/administer/upgrade/) if not.
 1. Install the latest version of [**Docker**
 ](https://docs.docker.com/engine/install/) and [Docker Compose
 ](https://docs.docker.com/compose/install/linux/#install-compose)
 for your OS. **Docker Compose version 2 or higher is required**.
-We recommend using Docker Server for Linux. Docker
-Desktop will work too, but is not preferred for production use cases at this time
-because it rewrites packets under some conditions and may cause unexpected
-issues with Firezone.
+We recommend using Docker Server for Linux. Docker Desktop will work too, but is not
+preferred for production use cases at this time because it rewrites packets under
+some conditions and may cause unexpected issues with Firezone.
 1. Download and run the migration script:
 ```bash
 bash <(curl -fsSL https://github.com/firezone/firezone/raw/master/scripts/docker_migrate.sh)
@@ -40,7 +55,7 @@ bash <(curl -fsSL https://github.com/firezone/firezone/raw/master/scripts/docker
 This will ask you a few questions, then attempt to migrate your installation to
 Docker. If all goes well, your Firezone instance should be running with Docker, data intact.
 
-## Rolling Back
+## Rolling back
 
 If anything goes wrong, you can abort the migration by simply bringing the Docker
 services down and the Omnibus ones back up:

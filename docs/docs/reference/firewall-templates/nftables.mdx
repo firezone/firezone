@@ -5,7 +5,7 @@ sidebar_position: 1
 
 The following nftables firewall template can be used to secure the server
 running Firezone. The template does make some assumptions; you may need to
-adjust the rules to suite your use case:
+adjust the rules to suit your use case:
 
 * The WireGuard interface is named `wg-firezone`. If this is not correct,
 change the `DEV_WIREGUARD` variable to match the
@@ -30,7 +30,7 @@ default port change the `WIREGUARD_PORT` variable.
 from the rules to drop traffic and are rate limited. Removing the relevant
 logging rules will not affect traffic.
 
-#### Firezone Managed Rules
+## Firezone-managed rules
 
 Firezone configures its own nftables rules to permit/reject traffic to destinations
 configured in the web interface and to handle outbound NAT for client traffic.
@@ -44,7 +44,7 @@ To work around this restart the `phoenix` service:
 firezone-ctl restart phoenix
 ```
 
-#### Base Firewall Template
+## Base firewall template
 
 ```shell
 #!/usr/sbin/nft -f
@@ -316,7 +316,7 @@ table inet nat {
 }
 ```
 
-#### Usage
+## Usage
 
 The firewall should be stored in the relevant location for the Linux distribution
 that is running. For Debian/Ubuntu this is `/etc/nftables.conf` and for RHEL this
