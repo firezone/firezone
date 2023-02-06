@@ -6,8 +6,8 @@ defmodule DocsGenerator do
 
   def write(conns, path) do
     write_config_doc!(FzHttp.Config.Definitions, "../../docs/docs/reference/env-vars.mdx")
-    # File.mkdir_p!(path)
-    # write_api_doc!(conns, path)
+    File.mkdir_p!(path)
+    write_api_doc!(conns, path)
   end
 
   def write_config_doc!(module, file_path) do
