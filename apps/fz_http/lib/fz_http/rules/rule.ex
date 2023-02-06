@@ -1,7 +1,4 @@
 defmodule FzHttp.Rules.Rule do
-  @moduledoc """
-  Not really sure what to write here. I'll update this later.
-  """
   use FzHttp, :schema
   import Ecto.Changeset
 
@@ -10,7 +7,7 @@ defmodule FzHttp.Rules.Rule do
   @port_type_msg "port_type must be specified with port_range"
 
   schema "rules" do
-    field :destination, EctoNetwork.INET, read_after_writes: true
+    field :destination, FzHttp.Types.INET, read_after_writes: true
     field :action, Ecto.Enum, values: [:drop, :accept], default: :drop
     field :port_type, Ecto.Enum, values: [:tcp, :udp], default: nil
     field :port_range, FzHttp.Int4Range, default: nil

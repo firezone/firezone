@@ -75,7 +75,7 @@ defmodule FzHttp.RulesTest do
       {:error, changeset} = Rules.create_rule(%{destination: "10.0 0.0/24"})
 
       assert changeset.errors[:destination] ==
-               {"is invalid", [type: EctoNetwork.INET, validation: :cast]}
+               {"is invalid", [type: FzHttp.Types.INET, validation: :cast]}
     end
 
     test "prevents invalid port_range: no port_type" do

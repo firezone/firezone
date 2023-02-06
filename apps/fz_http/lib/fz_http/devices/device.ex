@@ -30,9 +30,9 @@ defmodule FzHttp.Devices.Device do
     field :persistent_keepalive, :integer
     field :allowed_ips, :string
     field :dns, :string
-    field :remote_ip, EctoNetwork.INET
-    field :ipv4, EctoNetwork.INET
-    field :ipv6, EctoNetwork.INET
+    field :remote_ip, FzHttp.Types.IP
+    field :ipv4, FzHttp.Types.IP
+    field :ipv6, FzHttp.Types.IP
 
     field :latest_handshake, :utc_datetime_usec
     field :key_regenerated_at, :utc_datetime_usec, read_after_writes: true
@@ -146,13 +146,13 @@ defmodule FzHttp.Devices.Device do
 
   defp put_default_ip(changeset, field) do
     cidr_string = wireguard_network(field)
-    {:ok, cidr_inet} = EctoNetwork.INET.cast(cidr_string)
+    {:ok, cidr_inet} = FzHttp.Types.CIDR.cast(cidr_string)
     cidr = CIDR.parse(cidr_string)
     offset = Enum.random(2..(cidr.hosts - 2))
 
     {:ok, gateway_address} =
       FzHttp.Config.fetch_env!(:fz_http, :"wireguard_#{field}_address")
-      |> EctoNetwork.INET.cast()
+      |> FzHttp.Types.IP.cast()
 
     Devices.Device.Query.next_available_address(cidr_inet, offset, [gateway_address])
     |> FzHttp.Repo.one()
@@ -174,12 +174,12 @@ defmodule FzHttp.Devices.Device do
 
   defp ipv4_address do
     FzHttp.Config.fetch_env!(:fz_http, :wireguard_ipv4_address)
-    |> EctoNetwork.INET.cast()
+    |> FzHttp.Types.IP.cast()
   end
 
   defp ipv6_address do
     FzHttp.Config.fetch_env!(:fz_http, :wireguard_ipv6_address)
-    |> EctoNetwork.INET.cast()
+    |> FzHttp.Types.IP.cast()
   end
 
   defp validate_max_devices(changeset) do

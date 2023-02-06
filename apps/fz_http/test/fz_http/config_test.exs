@@ -100,7 +100,7 @@ defmodule FzHttp.ConfigTest do
 
       assert fetch_config(Test, :required, %{required: "a.b.c.d"}, %{}) ==
                {:error,
-                {{"a.b.c.d", ["is invalid IP address"]},
+                {{"a.b.c.d", ["is invalid"]},
                  [
                    module: FzHttp.ConfigTest.Test,
                    key: :required,
@@ -252,7 +252,7 @@ defmodule FzHttp.ConfigTest do
 
       Errors:
 
-       - `\"a.b.c.d\"`: is invalid IP address\
+       - `\"a.b.c.d\"`: is invalid\
       """
 
       assert_raise RuntimeError, message, fn ->

@@ -1,4 +1,7 @@
-defmodule FzHttp.Types.CIDR do
+defmodule FzHttp.Types.INET do
+  @moduledoc """
+  INET is an implementation for native PostgreSQL `inet` type which can hold either CIDR or an IP address.
+  """
   @behaviour Ecto.Type
 
   def type, do: :inet
@@ -25,9 +28,9 @@ defmodule FzHttp.Types.CIDR do
   defp parse_binary(binary) do
     binary = String.trim(binary)
 
-    with [binary_address, binary_netmask] <- String.split(binary, "/", parts: 2) do
-      {:ok, {binary_address, binary_netmask}}
-    else
+    case String.split(binary, "/", parts: 2) do
+      [binary_address, binary_netmask] -> {:ok, {binary_address, binary_netmask}}
+      [binary_address] -> {:ok, {binary_address, nil}}
       _other -> :error
     end
   end
@@ -38,7 +41,7 @@ defmodule FzHttp.Types.CIDR do
     |> :inet.parse_address()
   end
 
-  defp cast_netmask(nil), do: :error
+  defp cast_netmask(nil), do: {:ok, nil}
 
   defp cast_netmask(binary) when is_binary(binary) do
     case Integer.parse(binary) do
@@ -53,5 +56,11 @@ defmodule FzHttp.Types.CIDR do
   def load(%Postgrex.INET{} = inet), do: {:ok, inet}
   def load(_), do: :error
 
-  def to_string(%Postgrex.INET{} = inet), do: FzHttp.Types.CIDR.to_string(inet)
+  def to_string(%Postgrex.INET{address: address, netmask: nil}) do
+    "#{:inet.ntoa(address)}"
+  end
+
+  def to_string(%Postgrex.INET{address: address, netmask: netmask}) do
+    "#{:inet.ntoa(address)}/#{netmask}"
+  end
 end

@@ -20,6 +20,8 @@ config :fz_http, FzHttp.Repo,
   database: "firezone_dev",
   show_sensitive_data_on_connection_error: true,
   pool_size: 10,
+  queue_target: 100,
+  queue_interval: 2000,
   migration_timestamps: [type: :timestamptz]
 
 config :fz_http,

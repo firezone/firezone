@@ -66,8 +66,6 @@ defmodule FzHttp.MixProject do
       {:postgrex, "~> 0.16"},
       {:decimal, "~> 2.0"},
       {:ecto_sql, "~> 3.7"},
-      {:ecto_network,
-       github: "firezone/ecto_network", ref: "7dfe65bcb6506fb0ed6050871b433f3f8b1c10cb"},
       {:cloak, "~> 1.1"},
       {:cloak_ecto, "~> 1.2"},
 

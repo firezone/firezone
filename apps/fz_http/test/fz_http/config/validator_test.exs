@@ -33,7 +33,8 @@ defmodule FzHttp.Config.ValidatorTest do
                {:ok, %Postgrex.INET{address: {127, 0, 0, 1}, netmask: 24}}
 
       assert validate(:key, "invalid", type, []) ==
-               {:error, {"invalid", ["is invalid IP address", "is invalid CIDR"]}}
+               {:error,
+                {"invalid", ["must be one of: Elixir.FzHttp.Types.IP, Elixir.FzHttp.Types.CIDR"]}}
 
       type = {:array, {:one_of, [:integer, :boolean]}}
 

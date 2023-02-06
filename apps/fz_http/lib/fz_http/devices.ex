@@ -1,7 +1,6 @@
 defmodule FzHttp.Devices do
   import Ecto.Changeset
   import Ecto.Query, warn: false
-  alias EctoNetwork.INET
 
   alias FzHttp.{
     Configurations,
@@ -194,7 +193,7 @@ defmodule FzHttp.Devices do
 
   def decode(nil), do: nil
   def decode(inet) when is_binary(inet), do: inet
-  def decode(inet), do: INET.decode(inet)
+  def decode(inet), do: FzHttp.Types.INET.to_string(inet)
 
   @hash_range 2 ** 16
   def new_name(name \\ FzCommon.NameGenerator.generate()) do
