@@ -16,15 +16,21 @@ defmodule FzHttp.TelemetryPingService do
   @impl GenServer
   def init(state) do
     # Send ping after 1 minute
-    :timer.send_after(@initial_delay, :perform)
+    :timer.send_after(@initial_delay, :init_timer)
     {:ok, state}
+  end
+
+  @impl GenServer
+  def handle_info(:init_timer, state) do
+    Telemetry.ping()
+    # Continue pinging twice a day
+    :timer.send_interval(@interval * 1_000, :perform)
+    {:noreply, state}
   end
 
   @impl GenServer
   def handle_info(:perform, state) do
     Telemetry.ping()
-    # Continue pinging twice a day
-    :timer.send_interval(@interval * 1_000, :perform)
     {:noreply, state}
   end
 end
