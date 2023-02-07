@@ -31,3 +31,33 @@ your installation.
 
 </TabItem>
 </Tabs>
+
+## Backup and restore
+
+Backing up Firezone primarily consists of backing up the appropriate files and directories
+listed above and restoring them with the same permissions as before.
+
+<Tabs>
+<TabItem label="Docker" value="docker" default>
+
+For Docker-based deployments, this will consist of backing up the `$HOME/.firezone`
+directory along with the Postgres data directory, typically located at
+`/var/lib/docker/volumes/firezone_postgres-data` if you're using the default
+Docker compose template.
+
+To restore, copy the files back to the original location. Be sure to
+restore any other configuration as appropriate, such as any configuration
+in `/etc/docker` or enabling on boot with `systemctl enable docker`.
+
+</TabItem>
+<TabItem label="Omnibus" value="omnibus">
+
+For **Omnibus-based** deployments, we recommend running a `firezone-ctl reconfigure`
+after restoring the files and directories just to ensure everything is in a
+consistent state.
+
+</TabItem>
+</Tabs>
+
+import SupportOptions from '@site/src/partials/_support_options.mdx';
+<SupportOptions />
