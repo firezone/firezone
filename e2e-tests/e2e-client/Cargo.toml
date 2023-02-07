@@ -1,0 +1,16 @@
+[package]
+name = "e2e-client"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.68"
+futures-util = { version = "0.3.26", features = ["sink"] }
+serde_json = "1.0.91"
+tokio = { version = "1.25.0", features = ["full"] }
+tokio-tungstenite = "0.18.0"
+tracing = "0.1.37"
+tracing-subscriber = "0.3.16"
+control-types = { path = "../control-types" }

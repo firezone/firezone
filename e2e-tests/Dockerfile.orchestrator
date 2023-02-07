@@ -1,0 +1,7 @@
+FROM rust:latest
+WORKDIR /usr/e2e
+COPY . .
+ARG CARGO_HOME=/usr/e2e/.cargo
+RUN cargo build -r -p e2e-orchestrator && \
+	cp ./target/release/e2e-orchestrator /usr/bin
+CMD ["e2e-orchestrator"]

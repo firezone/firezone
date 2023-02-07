@@ -106,14 +106,14 @@ defmodule FzHttp.Devices do
   defp inet(device) do
     ips =
       if ipv6?() do
-        ["#{device.ipv6}/128"]
+        ["#{device.ipv6}"]
       else
         []
       end
 
     ips =
       if ipv4?() do
-        ["#{device.ipv4}/32" | ips]
+        ["#{device.ipv4}" | ips]
       else
         ips
       end

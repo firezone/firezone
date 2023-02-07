@@ -1,0 +1,15 @@
+FROM rust:latest
+WORKDIR /usr/e2e
+COPY . .
+ARG CARGO_HOME=./.cargo
+RUN apt-get update && \
+	apt-get install -y lsof && \
+	rm -Rf \
+		/tmp/* \
+		/var/lib/apt/lists/* \
+		/var/tmp/* && \
+	cargo build -r -p e2e-client && \
+	cp ./target/release/e2e-client /usr/bin
+HEALTHCHECK --start-period=20s --interval=10s --retries=5 --timeout=5s \
+	CMD lsof -n -P -a -i:9090 -sTCP:listen
+CMD ["e2e-client"]

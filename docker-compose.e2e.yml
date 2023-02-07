@@ -1,0 +1,264 @@
+version: '3.7'
+
+services:
+  caddy:
+    image: caddy:2
+    volumes:
+      - ./priv/Caddyfile:/etc/caddy/Caddyfile
+      - ./priv/pki:/data/caddy/pki
+    ports:
+      - 80:80
+      - 443:443
+    networks:
+      app:
+        ipv4_address: 172.28.0.99
+        ipv6_address: 2001:3990:3990::99
+
+  firezone:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      args:
+        DATABASE_URL: postgresql://postgres:postgres@postgres:5432/firezone_dev
+    image: firezone_dev
+    volumes:
+      - ./priv:/var/app/priv
+      - ./apps:/var/app/apps
+      - ./config:/var/app/config
+      - ./mix.exs:/var/app/mix.exs
+      - ./mix.lock:/var/app/mix.lock
+      # Mask the following build directories to keep compiled binaries isolated
+      # from the local project. This is needed when the Docker Host platform
+      # doesn't match the platform under which Docker Engine is running. e.g.
+      # WSL, Docker for Mac, etc.
+      - /var/app/apps/fz_http/assets/node_modules
+    environment:
+      LOCAL_AUTH_ENABLED: 'true'
+      ADMIN_EMAIL: 'firezone@localhost'
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=0
+      - net.ipv4.ip_forward=1
+      - net.ipv6.conf.all.forwarding=1
+    depends_on:
+      postgres:
+        condition: 'service_healthy'
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f localhost:13000"]
+      start_period: 20s
+      interval: 30s
+      retries: 5
+      timeout: 5s
+    networks:
+      - app
+      - isolation
+
+  postgres:
+    image: postgres:15
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: firezone_dev
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+      start_period: 20s
+      interval: 30s
+      retries: 5
+      timeout: 5s
+    ports:
+      - 5432:5432
+    networks:
+      - app
+
+  # Vault can act as an OIDC IdP as well
+  vault:
+    image: vault
+    environment:
+      - VAULT_ADDR=0.0.0.0:8200
+    ports:
+      - 8200:8200/tcp
+    cap_add:
+      - IPC_LOCK
+    networks:
+      - app
+
+  # Unfortunately the Linux VM kernel for Docker Desktop is not compiled with
+  # Dynamic Debug enabled, so we're unable to enable WireGuard debug logging.
+  # Since WireGuard is designed to be silent by default, this basically does
+  # nothing.
+  # wireguard-log:
+  #   image: ubuntu:jammy
+  #   # cap SYSLOG was enough for reading but privilege is required for tailing
+  #   privileged: true
+  #   command: >
+  #     bash -c '
+  #     mount -t debugfs none /sys/kernel/debug
+  #     && echo module wireguard +p > /sys/kernel/debug/dynamic_debug/control
+  #     && dmesg -wT | grep wireguard:'
+
+  e2e_external_1:
+    depends_on:
+      - gateway
+    build:
+      context: ./e2e-tests
+      dockerfile: Dockerfile.external
+    image: e2e-external-client
+    environment:
+      - CONTROL_ADDRESS=0.0.0.0:9090
+      - RUST_LOG=debug
+    networks:
+      external:
+        ipv4_address: 172.18.0.3
+        ipv6_address: 2001:3990:3992::3
+
+  e2e_external_2:
+    depends_on:
+      - gateway
+    build:
+      context: ./e2e-tests
+      dockerfile: Dockerfile.external
+    image: e2e-external-client
+    environment:
+      - CONTROL_ADDRESS=0.0.0.0:9090
+      - RUST_LOG=debug
+    networks:
+      external:
+        ipv4_address: 172.18.0.4
+        ipv6_address: 2001:3990:3992::4
+    
+  e2e_internal_1:
+    depends_on:
+      - e2e_external_1
+      - e2e_external_2
+    build:
+      context: ./e2e-tests
+      dockerfile: Dockerfile.client
+    image: e2e-client
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+      - ALLOWEDIPS="0.0.0.0/0,::/0"
+      - CONTROL_ADDRESS=0.0.0.0:9090
+      - S6_KEEP_ENV=1
+      - RUST_LOG=debug
+    volumes:
+      - ./priv/wg0.client.conf:/config/wg0.conf
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=0
+      - net.ipv4.conf.all.src_valid_mark=1
+    networks:
+      - isolation
+
+  e2e_internal_2:
+    depends_on:
+      - e2e_external_1
+      - e2e_external_2
+    build:
+      context: ./e2e-tests
+      dockerfile: Dockerfile.client
+    image: e2e-client
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+      - ALLOWEDIPS="0.0.0.0/0,::/0"
+      - CONTROL_ADDRESS=0.0.0.0:9090
+      # We force s6 to keep the enviroment variables for all children
+      # including our process.
+      # There is another cleaner way to do this:
+      # using with-contenv provided utility by s6-overlay
+      # but it needs some setup (using an scrip instead of directly executing the thing)
+      # ref: https://github.com/just-containers/s6-overlay#container-environment 
+      - S6_KEEP_ENV=1
+      - RUST_LOG=debug
+    volumes:
+      - ./priv/wg1.client.conf:/config/wg0.conf
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=0
+      - net.ipv4.conf.all.src_valid_mark=1
+    networks:
+      - isolation
+
+  e2e_orchestrator:
+    depends_on:
+      e2e_internal_1:
+        condition: 'service_healthy'
+      e2e_internal_2:
+        condition: 'service_healthy'
+    build:
+      context: ./e2e-tests
+      dockerfile: Dockerfile.orchestrator
+    image: e2e-orchestrator
+    volumes:
+      - ./priv/e2e-test-env-descriptor.json:/config/env-descriptor.json
+    environment:
+      - API_TOKEN=${API_TOKEN}
+      - FZ_URL=http://firezone:13000
+      - TEST_ENV_PATH=/config/env-descriptor.json
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=0
+      - net.ipv4.conf.all.src_valid_mark=1
+    networks:
+      - isolation
+      - app
+      - external
+
+  gateway:
+    depends_on:
+      firezone:
+        condition: 'service_healthy'
+    image: firezone-gateway:latest
+    privileged: true
+    ports:
+      - 51820:51820/udp
+    environment:
+      - FZ_SECRET=kYl25nYBkLF6yCljeu1ccw==
+      - FZ_URL=ws://firezone:13000
+    volumes:
+      - ./priv/gateway-conf/:/app/gateway-conf/
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=0
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv4.ip_forward=1
+      - net.ipv6.conf.all.forwarding=1
+    networks:
+      - app
+      - isolation
+      - external
+    command: /bin/sh -c "gateway --conf-dir ./gateway-conf"
+
+volumes:
+  postgres-data:
+  # Disabled due to Authentik being disabled
+  # redis-data:
+
+networks:
+  app:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+        - subnet: 2001:3990:3990::/64
+  isolation:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 172.19.0.0/16
+        - subnet: 2001:3990:3991::/64
+  external:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 172.18.0.0/16
+        - subnet: 2001:3990:3992::/64

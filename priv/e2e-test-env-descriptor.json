@@ -1,0 +1,66 @@
+{
+  "internals": [
+    {
+      "name": "e2e_internal_1",
+      "control_url": "ws://e2e_internal_1:9090",
+      "device": {
+        "public_key": "pSLWbPiQ2mKh26IG1dMFQQWuAstFJXV91dNk+olzEjA=",
+        "preshared_key": "C+Tte1echarIObr6rq+nFeYQ1QO5xo5N29ygDjMlpS8=",
+        "endpoint": "gateway:51820",
+        "allowed_ips": "0.0.0.0/0,::/0",
+        "persistent_keepalive": 25,
+        "ipv4": "100.64.100.1",
+        "ipv6": "fd00::6/128",
+        "mtu": 1280,
+        "dns": "127.0.0.11",
+        "use_default_allowed_ips": false,
+        "use_default_dns": false,
+        "use_default_endpoint": false,
+        "use_default_mtu": false,
+        "use_default_persistent_keepalive": false
+      }
+    },    
+    {
+      "name": "e2e_internal_2",
+      "control_url": "ws://e2e_internal_2:9090",
+      "device": {
+        "public_key": "sQlrKsEbjsSoWkme/Zq70TXiSFZ1RBUR1Q+TcA2pGXI=",
+        "preshared_key": "C+Tte1echarIObr6rq+nFeYQ1QO5xo5N29ygDjMlpS8=",
+        "endpoint": "gateway:51820",
+        "allowed_ips": "0.0.0.0/0,::/0",
+        "persistent_keepalive": 25,
+        "ipv4": "100.64.100.2/32",
+        "ipv6": "fd00::7/128",
+        "mtu": 1280,
+        "dns": "127.0.0.11",
+        "use_default_allowed_ips": false,
+        "use_default_dns": false,
+        "use_default_endpoint": false,
+        "use_default_mtu": false,
+        "use_default_persistent_keepalive": false
+      }
+    }
+  ],
+  "externals": [
+    {
+      "name": "e2e_external_1",
+      "control_url": "ws://e2e_external_1:9090",
+      "ipv4": "172.18.0.3:1234",
+      "ipv6": "[2001:3990:3992::3]:1234"
+    },
+    {
+      "name": "e2e_external_2",
+      "control_url": "ws://e2e_external_2:9090",
+      "ipv4": "172.18.0.4:1239",
+      "ipv6": "[2001:3990:3992::4]:1239"
+    }
+  ],
+  "externals_network": {
+    "ipv4": "172.18.0.0/16",
+    "ipv6": "2001:3990:3992::0/96",
+    "ports": {
+      "min": 1000,
+      "max": 2000
+    }
+  }
+}

@@ -1,0 +1,23 @@
+[package]
+name = "e2e-orchestrator"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+reqwest = { version = "0.11.14", features = ["rustls-tls-native-roots", "json"] }
+tokio = { version = "1.24.2", features = ["rt", "rt-multi-thread", "macros"] }
+serde_json = "1.0.91"
+serde = { version = "1.0.152", features = ["derive"] }
+uuid = { version = "1.2.2", features = ["v4", "serde"] }
+ipnet = { version = "2.7.1", features = ["serde"] }
+anyhow = "1.0.68"
+control-types = { path = "../control-types" }
+tokio-tungstenite = "0.18.0"
+futures-util = { version = "0.3.26", features = ["sink"] }
+url = { version = "2.3.1", features = ["serde"] }
+tracing = "0.1.37"
+tracing-subscriber = "0.3.16"
+async-trait = "0.1.64"
+rand = "0.8.5"

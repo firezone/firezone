@@ -1,0 +1,2 @@
+[workspace]
+members = ["e2e-orchestrator", "e2e-client", "control-types"]
