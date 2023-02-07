@@ -2,9 +2,9 @@
 title: SAML 2.0
 sidebar_position: 11
 description:
-    Enforce single sign-on with your identity provider. Integrate
-    providers like Okta, Google, OneLogin, and JumpCloud using Firezone's
-    SAML 2.0 connector.
+  Enforce single sign-on with your identity provider. Integrate
+  providers like Okta, Google, OneLogin, and JumpCloud using Firezone's
+  SAML 2.0 connector.
 ---
 
 # Integrate your identity provider using SAML 2.0
@@ -27,36 +27,37 @@ Occasionally, providers that don't implement the full SAML 2.0 standard or use
 uncommon configurations may be problematic. If this is the case, [contact us](
 https://www.firezone.dev/contact/sales?utm_source=docs.firezone.dev) about a custom integration.
 
-## Prerequisites
+## Custom SAML cert and keyfile
 
-Before using SAML 2.0 in Firezone, you'll first need to generate a set of
-private and public keys using the RSA or DSA algorithms along with an X.509
-certificate that contains the public key. This can be generated with `openssl`
-using the following one-liner:
+SAML 2.0 requires a set of private and public keys using the RSA or
+DSA algorithms along with an X.509 certificate that contains the public key.
 
-```text
+Firezone automatically generates these for on both Docker and Omnibus-based
+deployments. If you'd like to use your own cert and key, however, you can generate
+them with `openssl`:
+
+```
 openssl req -x509 -sha256 -nodes -days 365 -newkey rsa:2048 -keyout saml.key -out saml.crt
 ```
 
-Now, configure your Firezone portal to use these:
+Then use them with your Firezone installation:
 
 <Tabs>
-  <TabItem value="docker" label="Docker" default>
+<TabItem value="docker" label="Docker" default>
 
-Set the `SAML_KEY_PATH` and `SAML_CERT_PATH` environment variables to
+Set the `SAML_KEYFILE_PATH` and `SAML_CERTFILE_PATH` environment variables to
 the path containing your `saml.key` and `saml.crt` above. If using our [example
 docker compose file](https://github.com/firezone/firezone/blob/master/docker-compose.prod.yml),
 which includes a volume for mapping configuration,
 save these files to `$HOME/.firezone/firezone` on the Docker host and set the
-`SAML_KEY_PATH=/var/firezone/saml.key` and
-`SAML_CERT_PATH=/var/firezone/saml.crt` environment variables for the Firezone
+`SAML_KEYFILE_PATH=/var/firezone/saml.key` and
+`SAML_CERTFILE_PATH=/var/firezone/saml.crt` environment variables for the Firezone
 container.
 
-  </TabItem>
-  <TabItem value="omnibus" label="Omnibus">
+</TabItem>
+<TabItem value="omnibus" label="Omnibus">
 
-Set the following attributes in your `/etc/firezone/firezone.rb`
-configuration file:
+Set the following attributes in your `/etc/firezone/firezone.rb` configuration file:
 
 ```ruby
 default['firezone']['authentication']['saml']['key'] = '/path/to/your/saml.key'
@@ -65,7 +66,7 @@ default['firezone']['authentication']['saml']['cert'] = '/path/to/your/saml.crt'
 
 and run `firezone-ctl reconfigure` to pick up the changes.
 
-  </TabItem>
+</TabItem>
 </Tabs>
 
 ## General setup instructions
@@ -73,9 +74,6 @@ and run `firezone-ctl reconfigure` to pick up the changes.
 Once you've configured Firezone with an X.509 certificate and corresponding
 private key as shown above, you'll need a few more things to set up a generic
 SAML integration.
-
-Use these general instructions to configure a SAML connector for a provider not listed
-above.
 
 ### IdP metadata document
 

@@ -2,6 +2,8 @@ defmodule FzHttpWeb.JSON.ConfigurationController do
   @moduledoc api_doc: [title: "Configurations", group: "Configuration"]
   @moduledoc """
   This endpoint allows an administrator to manage Configurations.
+
+  Updates here can be applied at runtime with little to no downtime of affected services.
   """
   use FzHttpWeb, :controller
 

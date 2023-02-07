@@ -2,9 +2,9 @@
 title: Google Workspace
 sidebar_position: 3
 description:
-    Enforce 2FA/MFA for users of Firezone's WireGuard®-based
-    secure access platform. This guide walks through integrating Google Workspace
-    for single sign-on using OpenID Connect (OIDC).
+  Enforce 2FA/MFA for users of Firezone's WireGuard®-based
+  secure access platform. This guide walks through integrating Google Workspace
+  for single sign-on using OpenID Connect (OIDC).
 ---
 
 # Enable SSO with Google Workspace (OIDC)
@@ -28,9 +28,7 @@ OIDC provider.
 
 ![Firezone Google SSO Login](https://user-images.githubusercontent.com/52545545/156853456-1ab3f041-1002-4c79-a266-82acb5802890.gif)
 
-## Obtain Config Settings
-
-### Step 1 - OAuth Config Screen
+## Step 1: Configure OAuth consent screen
 
 If this is the first time you are creating a new OAuth client ID, you will
 be asked to configure a consent screen.
@@ -56,7 +54,7 @@ On the next step add the following scopes:
 
 ![OAuth Consent Scopes](https://user-images.githubusercontent.com/52545545/168910904-57e86d71-b8ae-4b11-8b9c-bf8a19127065.png)
 
-### Step 2 - Create OAuth Client IDs
+## Step 2: Create OAuth client
 
 _This section is based off Google's own documentation on
 [setting up OAuth 2.0](https://support.google.com/cloud/answer/6158849)._
@@ -81,7 +79,7 @@ These will be used together with the redirect URI in the next step.
 
 ![Copy Client ID and Secret](https://user-images.githubusercontent.com/52545545/168913326-10e694d2-cda0-4ed3-b401-2406b36af7c0.png)
 
-## Integrate with Firezone
+## Step 3: Integrate with Firezone
 
 Navigate to the `/settings/security` page in the admin portal, click
 "Add OpenID Connect Provider" and enter the details you obtained in the steps

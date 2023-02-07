@@ -2,9 +2,9 @@
 title: Azure Active Directory
 sidebar_position: 2
 description:
-    Enforce 2FA/MFA for users of Firezone's WireGuard®-based
-    secure access platform. This guide walks through integrating Azure AD
-    for single sign-on using OpenID Connect (OIDC).
+  Enforce 2FA/MFA for users of Firezone's WireGuard®-based
+  secure access platform. This guide walks through integrating Azure AD
+  for single sign-on using OpenID Connect (OIDC).
 ---
 
 # Enable SSO with Azure Active Directory (OIDC)
@@ -28,7 +28,7 @@ OIDC provider.
 
 ![Azure SSO](https://user-images.githubusercontent.com/52545545/168922621-1f0f4dea-adfc-4e15-a140-a2f213676103.gif)
 
-## Obtain Config Settings
+## Step 1: Obtain configuration parameters
 
 _This guide is adapted from the [Azure Active Directory documentation](https://docs.microsoft.com/en-us/azure/active-directory/fundamentals/auth-oidc)._
 
@@ -64,7 +64,7 @@ click `Add a permission`, and select `Microsoft Graph`. Add `email`, `openid`,
 
 ![Permissions](https://user-images.githubusercontent.com/52545545/171556138-26de489b-7de5-4b53-91dc-dc8058f0f901.png)
 
-## Integrate With Firezone
+## Step 2: Integrate with Firezone
 
 Navigate to the `/settings/security` page in the admin portal, click
 "Add OpenID Connect Provider" and enter the details you obtained in the steps
@@ -76,7 +76,7 @@ an unprivileged user when signing in via this authentication mechanism.
 And that's it! The configuration should be updated immediately.
 You should now see a `Sign in with Azure` button on the sign in page.
 
-## Restricting Access to Certain Users
+## Step 3 (optional): Restrict access to specific users
 
 Azure AD allows admins to restrict OAuth application access to a subset of users
 within your organization. See Microsoft's

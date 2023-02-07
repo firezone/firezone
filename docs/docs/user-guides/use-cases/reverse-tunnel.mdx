@@ -1,7 +1,8 @@
 ---
 title: Reverse Tunnel
 sidebar_position: 2
-description: Configure Firezone as a relay to connect two or more devices.
+description:
+  Configure Firezone as a relay to connect two or more devices.
 ---
 
 This guide will walk through using Firezone as a relay to connect
@@ -9,7 +10,7 @@ two devices. A typical use case for this configuration is to enable an
 administrator to access a server, container, or machine that is normally
 behind a NAT or firewall.
 
-## General Case - Node to Node
+## General case: node to node
 
 This example demonstrates a simple scenario where a tunnel is established
 between Device A and Device B.
@@ -38,7 +39,7 @@ Device B
 - `AllowedIPs = 10.3.2.2/32`: This is the IP or range of IPs of Device A
 - `PersistentKeepalive = 25`
 
-## Admin Case - One to Many Nodes
+## Admin case: one to many nodes
 
 This example demonstrates a scenario where Device A can communicate
 bi-directionally with Devices B through D. This configuration could represent an
@@ -78,6 +79,6 @@ Device D
 - `AllowedIPs = 10.3.2.2/32`: This is the IP or range of IPs of Device A
 - `PersistentKeepalive = 25`
 
-### Related Guides
+## Related guides
 
 - [NAT Gateway](/user-guides/use-cases/nat-gateway/)
