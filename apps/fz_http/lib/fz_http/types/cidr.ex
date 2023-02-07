@@ -1,4 +1,7 @@
 defmodule FzHttp.Types.CIDR do
+  @moduledoc """
+  Ecto type implementation for CIDR's based on `Postgrex.INET` type, it required netmask to be always set.
+  """
   @behaviour Ecto.Type
 
   def type, do: :inet
@@ -38,8 +41,6 @@ defmodule FzHttp.Types.CIDR do
     |> :inet.parse_address()
   end
 
-  defp cast_netmask(nil), do: :error
-
   defp cast_netmask(binary) when is_binary(binary) do
     case Integer.parse(binary) do
       {netmask, ""} -> {:ok, netmask}
@@ -53,5 +54,5 @@ defmodule FzHttp.Types.CIDR do
   def load(%Postgrex.INET{} = inet), do: {:ok, inet}
   def load(_), do: :error
 
-  def to_string(%Postgrex.INET{} = inet), do: FzHttp.Types.CIDR.to_string(inet)
+  def to_string(%Postgrex.INET{} = inet), do: FzHttp.Types.INET.to_string(inet)
 end

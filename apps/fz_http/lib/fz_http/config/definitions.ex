@@ -473,7 +473,8 @@ defmodule FzHttp.Config.Definitions do
   ## Userpass / SAML / OIDC authentication
   ##############################################
 
-  # TODO: make it a list of enabled auth methods (userpass, magic_link, saml, oidc, etc.)
+  # TODO: make it a list of enabled auth methods (userpass, magic_link, saml, oidc, etc.),
+  # at least one should be always active
   @doc """
   Enable or disable the local authentication method for all users.
   """
@@ -750,6 +751,8 @@ defmodule FzHttp.Config.Definitions do
   @doc """
   Adapter configuration, for list of options see [Swoosh Adapters](https://github.com/swoosh/swoosh#adapters).
   """
+  # TODO: map legacy keys here,
+  # https://discourse.firez.one/t/smtp-is-it-possible/257/2
   defconfig(:outbound_email_adapter_opts, :map,
     default: %{},
     sensitive: true,

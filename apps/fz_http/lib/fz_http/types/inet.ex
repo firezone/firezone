@@ -1,6 +1,7 @@
 defmodule FzHttp.Types.INET do
   @moduledoc """
-  INET is an implementation for native PostgreSQL `inet` type which can hold either CIDR or an IP address.
+  INET is an implementation for native PostgreSQL `inet` type which can hold
+  either a CIDR (IP with a netmask) or just an IP address (with empty netmask).
   """
   @behaviour Ecto.Type
 
@@ -62,5 +63,9 @@ defmodule FzHttp.Types.INET do
 
   def to_string(%Postgrex.INET{address: address, netmask: netmask}) do
     "#{:inet.ntoa(address)}/#{netmask}"
+  end
+
+  def to_string(inet) when is_binary(inet) do
+    inet
   end
 end

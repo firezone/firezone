@@ -8,15 +8,13 @@ defmodule FzHttp.ConfigurationsTest do
     test "trims expected fields" do
       changeset =
         Configurations.new_configuration(%{
-          "default_client_allowed_ips" => " foo ",
-          "default_client_dns" => " foo ",
+          "default_client_dns" => [" foo "],
           "default_client_endpoint" => " foo "
         })
 
       assert %Ecto.Changeset{
                changes: %{
-                 default_client_allowed_ips: "foo",
-                 default_client_dns: "foo",
+                 default_client_dns: ["foo"],
                  default_client_endpoint: "foo"
                }
              } = changeset
@@ -71,7 +69,7 @@ defmodule FzHttp.ConfigurationsTest do
       {:ok, configuration: configuration(%{})}
     end
 
-    @tag attrs: %{default_client_dns: "foobar.com"}
+    @tag attrs: %{default_client_dns: ["foobar.com"]}
     test "update_configuration/2 allows hosts for DNS", %{
       configuration: configuration,
       attrs: attrs
@@ -79,7 +77,7 @@ defmodule FzHttp.ConfigurationsTest do
       assert {:ok, _configuration} = Configurations.update_configuration(configuration, attrs)
     end
 
-    @tag attrs: %{default_client_dns: "foobar.com, google.com"}
+    @tag attrs: %{default_client_dns: ["foobar.com", "google.com"]}
     test "update_configuration/2 allows list hosts for DNS", %{
       configuration: configuration,
       attrs: attrs
@@ -93,15 +91,15 @@ defmodule FzHttp.ConfigurationsTest do
 
     @valid_configurations [
       %{
-        "default_client_dns" => "8.8.8.8",
-        "default_client_allowed_ips" => "::/0",
+        "default_client_dns" => ["8.8.8.8"],
+        "default_client_allowed_ips" => ["::/0"],
         "default_client_endpoint" => "172.10.10.10",
         "default_client_persistent_keepalive" => "20",
         "default_client_mtu" => "1280"
       },
       %{
-        "default_client_dns" => "8.8.8.8",
-        "default_client_allowed_ips" => "::/0",
+        "default_client_dns" => ["8.8.8.8"],
+        "default_client_allowed_ips" => ["::/0"],
         "default_client_endpoint" => "foobar.example.com",
         "default_client_persistent_keepalive" => "15",
         "default_client_mtu" => "1280"

@@ -9,6 +9,8 @@ defmodule FzHttp.Types.IPPort do
 
   def equal?(left, right), do: left == right
 
+  def cast(%__MODULE__{} = ip_port), do: ip_port
+
   def cast(binary) when is_binary(binary) do
     with {:ok, {binary_address, binary_port}} <- parse_binary(binary),
          {:ok, address} <- cast_address(binary_address),
@@ -47,7 +49,7 @@ defmodule FzHttp.Types.IPPort do
   end
 
   def dump(%__MODULE__{} = ip) do
-    address = ip.address |> :inet.ntoa() |> to_string()
+    address = ip.address |> :inet.ntoa() |> List.to_string()
     {:ok, "#{address}:#{ip.port}"}
   end
 
@@ -58,4 +60,13 @@ defmodule FzHttp.Types.IPPort do
   end
 
   def load(_), do: :error
+
+  def to_string(%__MODULE__{address: ip, port: nil}) do
+    ip |> :inet.ntoa() |> List.to_string()
+  end
+
+  def to_string(%__MODULE__{address: ip, port: port}) do
+    ip = ip |> :inet.ntoa() |> List.to_string()
+    "#{ip}:#{port}"
+  end
 end

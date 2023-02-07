@@ -69,8 +69,8 @@ defmodule FzHttpWeb.JSON.ConfigurationControllerTest do
         "default_client_persistent_keepalive" => 1,
         "default_client_mtu" => 1100,
         "default_client_endpoint" => "new-endpoint",
-        "default_client_dns" => "1.1.1.1",
-        "default_client_allowed_ips" => "1.1.1.1,2.2.2.2"
+        "default_client_dns" => ["1.1.1.1"],
+        "default_client_allowed_ips" => ["1.1.1.1", "2.2.2.2"]
       }
 
       conn =
@@ -119,8 +119,8 @@ defmodule FzHttpWeb.JSON.ConfigurationControllerTest do
         "default_client_persistent_keepalive" => 25,
         "default_client_mtu" => 1200,
         "default_client_endpoint" => "old-endpoint",
-        "default_client_dns" => "4.4.4.4",
-        "default_client_allowed_ips" => "8.8.8.8"
+        "default_client_dns" => ["4.4.4.4"],
+        "default_client_allowed_ips" => ["8.8.8.8"]
       }
 
       conn = put(authed_conn(), ~p"/v0/configuration", configuration: attrs)

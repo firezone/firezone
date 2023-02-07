@@ -61,12 +61,12 @@
 
     <tr>
       <td><strong>Allowed IPs</strong></td>
-      <td><%= @allowed_ips || "None" %></td>
+      <td><%= list_to_string(@allowed_ips) || "None" %></td>
     </tr>
 
     <tr>
       <td><strong>DNS Servers</strong></td>
-      <td><%= @dns || "None" %></td>
+      <td><%= list_to_string(@dns) || "None" %></td>
     </tr>
 
     <tr>

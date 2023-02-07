@@ -208,8 +208,8 @@ Rules.create_rule(%{
   destination: "1.2.3.4"
 })
 
-FzHttp.Configurations.put!(:default_client_dns, "4.3.2.1,1.2.3.4")
-FzHttp.Configurations.put!(:default_client_allowed_ips, "10.0.0.1/20,::/0,1.1.1.1")
+FzHttp.Configurations.put!(:default_client_dns, ["4.3.2.1", "1.2.3.4"])
+FzHttp.Configurations.put!(:default_client_allowed_ips, ["10.0.0.1/20", "::/0", "1.1.1.1"])
 
 FzHttp.Configurations.put!(
   :openid_connect_providers,

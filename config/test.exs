@@ -34,7 +34,7 @@ config :fz_vpn,
 ###############################
 config :fz_http, FzHttpWeb.Mailer, adapter: FzHttpWeb.MailerTestAdapter
 
-config :logger, level: :info
+config :logger, level: :warn
 
 config :argon2_elixir, t_cost: 1, m_cost: 8
 

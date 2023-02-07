@@ -28,9 +28,10 @@ defmodule FzHttp.Devices.Device do
     field :endpoint, :string
     field :mtu, :integer
     field :persistent_keepalive, :integer
-    field :allowed_ips, :string
-    field :dns, :string
+    field :allowed_ips, {:array, FzHttp.Types.INET}, default: []
+    field :dns, {:array, :string}, default: []
     field :remote_ip, FzHttp.Types.IP
+    # TODO: make it a parametrized type and add ipv4/6 type parameter
     field :ipv4, FzHttp.Types.IP
     field :ipv6, FzHttp.Types.IP
 
@@ -88,7 +89,6 @@ defmodule FzHttp.Devices.Device do
 
   defp changeset(changeset) do
     changeset
-    |> Validator.trim_change(:allowed_ips)
     |> Validator.trim_change(:dns)
     |> Validator.trim_change(:endpoint)
     |> Validator.trim_change(:name)
@@ -108,7 +108,6 @@ defmodule FzHttp.Devices.Device do
       persistent_keepalive
       mtu
     ]a)
-    |> Validator.validate_list_of_ips_or_cidrs(:allowed_ips)
     |> Validator.validate_no_duplicates(:dns)
     |> validate_number(:persistent_keepalive,
       greater_than_or_equal_to: 0,

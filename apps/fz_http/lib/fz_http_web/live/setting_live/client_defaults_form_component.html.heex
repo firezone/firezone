@@ -8,7 +8,8 @@
           f,
           :default_client_allowed_ips,
           placeholder: "0.0.0.0/0, ::/0",
-          class: "textarea #{input_error_class(f, :default_client_allowed_ips)}"
+          class: "textarea #{input_error_class(f, :default_client_allowed_ips)}",
+          value: list_value(f, :default_client_allowed_ips)
         ) %>
       </div>
 
@@ -32,7 +33,8 @@
           f,
           :default_client_dns,
           placeholder: "1.1.1.1, 1.0.0.1",
-          class: "input #{input_error_class(f, :default_client_dns)}"
+          class: "input #{input_error_class(f, :default_client_dns)}",
+          value: list_value(f, :default_client_dns)
         ) %>
       </div>
 

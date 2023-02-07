@@ -36,7 +36,11 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
 
   @impl Phoenix.LiveComponent
   def handle_event("change", %{"device" => device_params}, socket) do
-    changeset = Devices.new_device(device_params)
+    changeset =
+      device_params
+      |> Map.update("dns", nil, &binary_to_list/1)
+      |> Map.update("allowed_ips", nil, &binary_to_list/1)
+      |> Devices.new_device()
 
     {:noreply,
      socket
@@ -49,6 +53,8 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
     result =
       device_params
       |> Map.put("user_id", socket.assigns.target_user_id)
+      |> Map.update("dns", nil, &binary_to_list/1)
+      |> Map.update("allowed_ips", nil, &binary_to_list/1)
       |> create_device(socket)
 
     case result do
@@ -96,4 +102,10 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
     end
     |> Devices.new_device()
   end
+
+  defp binary_to_list(binary) when is_binary(binary),
+    do: binary |> String.trim() |> String.split(",")
+
+  defp binary_to_list(list) when is_list(list),
+    do: list
 end

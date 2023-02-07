@@ -5,10 +5,10 @@ defmodule FzHttpWeb.SettingLive.ClientDefaultsTest do
 
   describe "authenticated/client_defaults" do
     @valid_allowed_ips %{
-      "configuration" => %{"default_client_allowed_ips" => "1.1.1.1"}
+      "configuration" => %{"default_client_allowed_ips" => ["1.1.1.1"]}
     }
     @valid_dns %{
-      "configuration" => %{"default_client_dns" => "1.1.1.1"}
+      "configuration" => %{"default_client_dns" => ["1.1.1.1"]}
     }
     @valid_endpoint %{
       "configuration" => %{"default_client_endpoint" => "1.1.1.1"}
@@ -20,9 +20,6 @@ defmodule FzHttpWeb.SettingLive.ClientDefaultsTest do
       "configuration" => %{"default_client_mtu" => "1000"}
     }
 
-    @invalid_allowed_ips %{
-      "configuration" => %{"default_client_allowed_ips" => "foobar"}
-    }
     @invalid_persistent_keepalive %{
       "configuration" => %{"default_client_persistent_keepalive" => "-1"}
     }
@@ -38,8 +35,13 @@ defmodule FzHttpWeb.SettingLive.ClientDefaultsTest do
     end
 
     test "renders current configuration", %{html: html} do
-      assert html =~ Configurations.get_configuration!().default_client_allowed_ips
-      assert html =~ Configurations.get_configuration!().default_client_dns
+      for allowed_ips <- Configurations.get_configuration!().default_client_allowed_ips do
+        assert html =~ to_string(allowed_ips)
+      end
+
+      for dns <- Configurations.get_configuration!().default_client_dns do
+        assert html =~ to_string(dns)
+      end
 
       assert html =~ """
              id="client_defaults_form_component_default_client_endpoint"\
@@ -120,14 +122,24 @@ defmodule FzHttpWeb.SettingLive.ClientDefaultsTest do
       test_view =
         view
         |> element("#client_defaults_form_component")
-        |> render_submit(@invalid_allowed_ips)
+        |> render_submit(%{
+          "configuration" => %{"default_client_allowed_ips" => "foobar"}
+        })
 
       assert test_view =~ "is invalid"
 
-      assert test_view =~ """
-             <textarea class="textarea is-danger" id="client_defaults_form_component_default_client_allowed_ips" name="configuration[default_client_allowed_ips]" placeholder="0.0.0.0/0, ::/0">
-             foobar</textarea>\
-             """
+      assert Floki.find(
+               test_view,
+               "#client_defaults_form_component_default_client_allowed_ips"
+             ) == [
+               {"textarea",
+                [
+                  {"class", "textarea is-danger"},
+                  {"id", "client_defaults_form_component_default_client_allowed_ips"},
+                  {"name", "configuration[default_client_allowed_ips]"},
+                  {"placeholder", "0.0.0.0/0, ::/0"}
+                ], ["\nfoobar"]}
+             ]
     end
 
     test "prevents invalid persistent_keepalive", %{view: view} do

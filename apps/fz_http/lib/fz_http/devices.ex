@@ -229,12 +229,12 @@ defmodule FzHttp.Devices do
   end
 
   defp allowed_ips_config(device) do
-    a = allowed_ips(device)
+    allowed_ips = allowed_ips(device)
 
-    if field_empty?(a) do
+    if field_empty?(allowed_ips) do
       ""
     else
-      "AllowedIPs = #{a}"
+      "AllowedIPs = #{Enum.join(allowed_ips, ",")}"
     end
   end
 
@@ -254,7 +254,7 @@ defmodule FzHttp.Devices do
     if field_empty?(dns) do
       ""
     else
-      "DNS = #{dns}"
+      "DNS = #{Enum.join(dns, ",")}"
     end
   end
 
@@ -283,8 +283,8 @@ defmodule FzHttp.Devices do
   end
 
   defp field_empty?(nil), do: true
-
   defp field_empty?(0), do: true
+  defp field_empty?([]), do: true
 
   defp field_empty?(field) when is_binary(field) do
     len =

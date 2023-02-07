@@ -36,15 +36,19 @@ defmodule FzHttp.Validator do
   end
 
   def validate_no_duplicates(changeset, field) when is_atom(field) do
-    validate_change(changeset, field, fn _current_field, value ->
-      values = split_comma_list(value)
-      dupes = Enum.uniq(values -- Enum.uniq(values))
-
-      error_if(
-        dupes,
-        &(&1 != []),
-        &{field, "is invalid: duplicates are not allowed: #{Enum.join(&1, ", ")}"}
-      )
+    validate_change(changeset, field, fn _current_field, list when is_list(list) ->
+      list
+      |> Enum.reduce_while({true, MapSet.new()}, fn value, {true, acc} ->
+        if MapSet.member?(acc, value) do
+          {:halt, {false, acc}}
+        else
+          {:cont, {true, MapSet.put(acc, value)}}
+        end
+      end)
+      |> case do
+        {true, _map_set} -> []
+        {false, _map_set} -> [{field, "should not contain duplicates"}]
+      end
     end)
   end
 
@@ -127,30 +131,6 @@ defmodule FzHttp.Validator do
     end)
   end
 
-  def validate_list_of_ips(changeset, field) when is_atom(field) do
-    validate_change(changeset, field, fn _current_field, value ->
-      value
-      |> split_comma_list()
-      |> Enum.find(&(not FzNet.valid_ip?(&1)))
-      |> error_if(
-        &(!is_nil(&1)),
-        &{field, "is invalid: #{&1} is not a valid IPv4 / IPv6 address"}
-      )
-    end)
-  end
-
-  def validate_list_of_ips_or_cidrs(changeset, field) when is_atom(field) do
-    validate_change(changeset, field, fn _current_field, value ->
-      value
-      |> split_comma_list()
-      |> Enum.find(&(not (FzNet.valid_ip?(&1) or FzNet.valid_cidr?(&1))))
-      |> error_if(
-        &(!is_nil(&1)),
-        &{field, "is invalid: #{&1} is not a valid IPv4 / IPv6 address or CIDR range"}
-      )
-    end)
-  end
-
   def validate_base64(changeset, field) do
     validate_change(changeset, field, fn _cur, value ->
       case Base.decode64(value) do
@@ -167,12 +147,10 @@ defmodule FzHttp.Validator do
   end
 
   def validate_omitted(changeset, field) when is_atom(field) do
-    validate_change(changeset, field, fn _current_field, value ->
-      if is_nil(value) do
-        []
-      else
-        [{field, "must not be present"}]
-      end
+    validate_change(changeset, field, fn
+      _field, nil -> []
+      _field, [] -> []
+      field, _value -> [{field, "must not be present"}]
     end)
   end
 
@@ -297,7 +275,11 @@ defmodule FzHttp.Validator do
   defp maybe_apply(value), do: value
 
   def trim_change(changeset, field) do
-    update_change(changeset, field, &if(!is_nil(&1), do: String.trim(&1)))
+    update_change(changeset, field, fn
+      nil -> nil
+      changes when is_list(changes) -> Enum.map(changes, &String.trim/1)
+      change -> String.trim(change)
+    end)
   end
 
   @doc """

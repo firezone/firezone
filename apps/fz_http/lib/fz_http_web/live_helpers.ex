@@ -71,4 +71,11 @@ defmodule FzHttpWeb.LiveHelpers do
   def render_changeset_errors(%Ecto.Changeset{} = changeset) do
     %{changeset | action: :validate}
   end
+
+  def list_value(form, field) do
+    case Phoenix.HTML.Form.input_value(form, field) do
+      value when is_list(value) -> Enum.join(value, ", ")
+      value -> value
+    end
+  end
 end

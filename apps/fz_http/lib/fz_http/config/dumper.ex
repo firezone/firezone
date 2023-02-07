@@ -28,8 +28,9 @@ defmodule FzHttp.Config.Dumper do
   defp map_values(k, _v), do: raise(ArgumentError, message: "unsupported key #{k} in ssl opts")
 
   def keyword(enum) do
-    Keyword.new(enum, fn {k, v} ->
-      {String.to_atom(k), v}
+    Keyword.new(enum, fn
+      {k, v} when is_binary(k) -> {String.to_atom(k), v}
+      {k, v} when is_atom(k) -> {k, v}
     end)
   end
 end
