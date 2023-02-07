@@ -12,9 +12,10 @@ There are two types of configuration in Firezone:
 * [Deployment configuration](#deployment-configuration): Deployment or
   infrastructure-related configuration relevant to running Firezone on-prem.
 
-## Runtime Configuration
+## Runtime configuration
 
-Most day-to-day configuration of Firezone can be done via the Web UI.
+Most day-to-day configuration of Firezone can be done via the Web UI or
+[REST API](/reference/rest-api/configurations).
 This type of configuration can be expected to be changed **with no downtime**
 in a production deployment.
 
@@ -22,7 +23,7 @@ We're actively working to move more configuration variables to
 this type of configuration, so expect more ENV vars to transition to runtime
 configuration in the future.
 
-## Deployment Configuration
+## Deployment configuration
 
 Deployment-related and infrastructure configuration require restarting Firezone
 services after change.

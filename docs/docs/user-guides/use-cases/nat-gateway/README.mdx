@@ -25,7 +25,7 @@ access list grows and team members' IP addresses change.
 
 ![Architecture](https://user-images.githubusercontent.com/52545545/154868328-688067dd-deca-4548-ac9d-f6ffe7eacf86.png)
 
-## AWS Example
+## AWS example
 
 Our goal is to configure VPN traffic to the restricted resource to be routed
 through a Firezone server on an EC2 instance. In this case Firezone is acting as
@@ -49,7 +49,7 @@ In this case, the IP is `52.202.88.54`.
 
 ![Allocate Elastic IP](https://user-images.githubusercontent.com/52545545/154821256-9335703b-a120-4a9d-b9f5-bbca673cef63.png)
 
-### Step 2 - Restrict access to the protected resource
+### Step 2: Restrict access to the protected resource
 
 In this example, the protected resource is a self-hosted web app. Access to the
 web app is restricted to only requests from `52.202.88.54`.

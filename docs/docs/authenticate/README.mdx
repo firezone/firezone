@@ -37,33 +37,23 @@ Open a [Github issue](https://github.com/firezone/firezone/issues)
 to request documentation or submit a pull request to add documentation for your
 provider.
 
-### The OIDC Redirect URL
+### The OIDC redirect URI
 
 For each OIDC provider a corresponding URL is created for redirecting to
-the configured provider's sign-in URL. The URL format is `https://firezone.example.com/auth/oidc/PROVIDER`
-where `PROVIDER` is the OIDC key for that particular provider.
+the configured provider's sign-in URL. The URL format is `https://firezone.example.com/auth/oidc/CONFIG_ID`
+where `CONFIG_ID` is the OIDC Config ID for that particular provider.
 
-For example, the OIDC config below
+For example, the OIDC config below:
 
-```json
-{
-  "google": {
-    "client_id": "...",
-    "...": "..."
-  },
-  "okta": {
-    "client_id": "...",
-    "...": "..."
-  }
-}
-```
+<center>
+  <img width="509" alt="config-oidc" src="https://user-images.githubusercontent.com/167144/216438674-a2b64b3b-2ed6-43dc-b554-de9c055dc741.png"/>
+</center>
 
-would generate the following URLs:
+would generate the following OIDC login URL:
 
 * `https://firezone.example.com/auth/oidc/google`
-* `https://firezone.example.com/auth/oidc/okta`
 
-These URLs could then be distributed to end users for direct navigation to
+This URL could then be distributed to end users for direct navigation to
 the identity provider's login portal for authentication to Firezone.
 
 ## Enforce periodic re-authentication

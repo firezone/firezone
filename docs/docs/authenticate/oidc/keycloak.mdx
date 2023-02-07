@@ -2,9 +2,9 @@
 title: Keycloak
 sidebar_position: 4
 description:
-    Enforce 2FA/MFA for users of Firezone's WireGuard®-based
-    secure access platform. This guide walks through integrating Keycloak
-    for single sign-on using OpenID Connect (OIDC).
+  Enforce 2FA/MFA for users of Firezone's WireGuard®-based
+  secure access platform. This guide walks through integrating Keycloak
+  for single sign-on using OpenID Connect (OIDC).
 ---
 
 # Enable SSO with Keycloak (OIDC)
@@ -26,14 +26,14 @@ to provide Firezone with the user's email in the returned claims.
 which returns a JSON document used to construct subsequent requests to this
 OIDC provider.
 
-## Obtain Config Settings
+## Step 1: Obtain configuration parameters
 
 In the Keycloak Admin Console, make sure the realm you want to use with Firezone
 is selected.
 
 ![Keycloak Realm](https://user-images.githubusercontent.com/69542737/193370148-6557399d-a921-4bfe-82d2-a56e5a9f6322.png)
 
-### Create Firezone Client
+### Create Firezone OAuth client
 
 Create a new Client for Firezone by navigating to **Clients > Create Client** and
 configure the following:
@@ -67,7 +67,7 @@ copying the **OpenID Endpoint Configuration** link at the bottom of the page.
 
 ![Keycloak Realm Settings](https://user-images.githubusercontent.com/69542737/193376952-cdcbb4f2-40f4-499b-8053-928208e4ea6a.png)
 
-## Integrate With Firezone
+## Step 2: Integrate with Firezone
 
 Navigate to the `/settings/security` page in the admin portal, click
 "Add OpenID Connect Provider" and enter the details you obtained in the steps

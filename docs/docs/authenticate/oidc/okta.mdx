@@ -2,9 +2,9 @@
 title: Okta
 sidebar_position: 5
 description:
-    Enforce 2FA/MFA for users of Firezone's WireGuard®-based
-    secure access platform. This guide walks through integrating Okta
-    for single sign-on using OpenID Connect (OIDC).
+  Enforce 2FA/MFA for users of Firezone's WireGuard®-based
+  secure access platform. This guide walks through integrating Okta
+  for single sign-on using OpenID Connect (OIDC).
 ---
 
 # Enable SSO with Okta (OIDC)
@@ -28,7 +28,7 @@ OIDC provider.
 
 ![Firezone Okta SSO Login](https://user-images.githubusercontent.com/52545545/156855886-5a4a0da7-065c-4ec1-af33-583dff4dbb72.gif)
 
-## Step 1 - Create Okta App Integration
+## Step 1: Create Okta app integration
 
 _This section of the guide is based on
 [Okta's documentation](https://help.okta.com/en/prod/Content/Topics/Apps/Apps_App_Integration_Wizard_OIDC.htm)._
@@ -62,7 +62,7 @@ and **Okta Domain**. These 3 values will be used in Step 2 to configure Firezone
 
 ![Okta credentials](https://user-images.githubusercontent.com/52545545/172768856-8a373d56-1362-4fc3-a747-3c84f0e76dae.png)
 
-## Integrate With Firezone
+## Step 2: Integrate with Firezone
 
 Navigate to the `/settings/security` page in the admin portal, click
 "Add OpenID Connect Provider" and enter the details you obtained in the steps
@@ -74,7 +74,7 @@ an unprivileged user when signing in via this authentication mechanism.
 And that's it! The configuration should be updated immediately.
 You should now see a `Sign in with Okta` button on the sign in page.
 
-## Restricting Access to Certain Users in Okta
+## Step 3 (optional): Restrict Access to specific users
 
 Okta can limit the users with access to the Firezone app. To do this,
 go to the Assignments tab of the Firezone App Integration in your Okta

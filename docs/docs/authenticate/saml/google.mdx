@@ -2,22 +2,17 @@
 title: Google Workspace
 sidebar_position: 2
 description:
-    Enforce 2FA/MFA using Google Workspace for users of Firezone's WireGuard®-based
-    secure access platform. This guide walks through integrating Google Workspace
-    for single sign-on using the SAML 2.0 connector.
+  Enforce 2FA/MFA using Google Workspace for users of Firezone's WireGuard®-based
+  secure access platform. This guide walks through integrating Google Workspace
+  for single sign-on using the SAML 2.0 connector.
 ---
 
 # Enable SSO with Google Workspace (SAML 2.0)
 
-:::note
-This guide assumes you have completed the prerequisite steps
-(e.g. generate self-signed X.509 certificates) outlined [here](/authenticate/saml#prerequisites).
-:::
-
 Firezone supports Single Sign-On (SSO) using Google through the generic SAML 2.0
 connector. This guide will walk you through how to configure the integration.
 
-## Create a SAML connector
+## Step 1: Create a SAML connector
 
 In the Google Workspace admin portal, create a new SAML app under
 the Application > Web and mobile apps tab. Use the following config values during setup:
@@ -37,7 +32,7 @@ the Application > Web and mobile apps tab. Use the following config values durin
 Once complete, save the changes and download the SAML metadata document. You'll need
 to copy-paste the contents of this document into the Firezone portal in the next step.
 
-## Add SAML identity provider to Firezone
+## Step 2: Add SAML identity provider to Firezone
 
 In the Firezone portal, add a SAML identity provider under the Security tab
 by filling out the following information:

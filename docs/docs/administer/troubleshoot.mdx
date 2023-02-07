@@ -61,13 +61,9 @@ Similarly, to clear SAML configs:
 </TabItem>
 </Tabs>
 
-## Debugging portal WebSocket connectivity issues
+## Debugging WebSocket connectivity issues
 
-The portal UI requires a secure websocket connection to function. To facilitate
-this, the Firezone phoenix service checks the `Host` header for inbound
-websocket connections and only permits the connection if it matches the host
-portion of your `default['firezone']['external_url']` variable.
-
+The Web UI requires a secure websocket connection to function.
 If a secure websocket connection can't be established, you'll see a red dot
 indicator in the upper-right portion of the Firezone web UI and a corresponding
 message when you hover over it:
@@ -77,8 +73,10 @@ Secure websocket not connected! ...
 ```
 
 If you're accessing Firezone using the same URL defined in your
-`default['firezone']['external_url']` variable from above, the issue is likely
-to be in your reverse proxy configuration.
+`EXTERNAL_URL` variable from above, the issue is likely to be in your reverse
+proxy configuration. Ensure your reverse proxy has WebSocket support enabled
+for Firezone. If you're using the default Caddy reverse proxy, WebSocket
+is enabled and configured automatically.
 
 In most cases, you'll find clues in one or more of the following locations:
 
@@ -153,12 +151,14 @@ To                         Action      From
 
 ## Admin login isn't working
 
-If the password for the account with email `ADMIN_EMAIL` isn't working, you can reset it using the process below.
+If the password for the account with email `ADMIN_EMAIL` isn't working, you can
+reset it using the process below.
 
 <Tabs>
-<TabItem value="docker" label="Docker">
+<TabItem value="docker" label="Docker" default>
 
-First change directory to your Firezone root, then run the `bin/create-or-reset-admin` script
+First change directory to your Firezone installation directory
+(`$HOME/.firezone` by default), then run the `bin/create-or-reset-admin` script
 to reset the admin user's password. The password for the user specified by
 `ADMIN_EMAIL`
 in `$HOME/.firezone/.env` will be reset to the `DEFAULT_ADMIN_PASSWORD` variable.
@@ -172,7 +172,6 @@ docker compose exec firezone bin/create-or-reset-admin
 password will not re-enable it.
 
 </TabItem>
-
 <TabItem value="omnibus" label="Omnibus">
 
 Run the following command to reset the password on the default admin user.
@@ -186,15 +185,16 @@ sudo firezone-ctl create-or-reset-admin
 
 ## Re-enable local authentication via CLI
 
-When using the local authentication method we recommend adding a
-[TOTP-based second factor](/authenticate/multi-factor/) to admin accounts.
 If you've configured an [OIDC](/authenticate/oidc/) or [SAML](/authenticate/saml/)
 provider, you can consider disabling local authentication for additional security.
 
-If issues arise with your identity provider integration, it's possible you
+If, however, issues arise with your identity provider integration, it's possible you
 could be locked out of the admin portal. To re-enable local authentication so
-you can log in and resolve the issue, run the following query on the host of
-your Firezone instance:
+you can log in and resolve the issue, you can temporarily re-enable local authentication
+via the [REST API](/reference/rest-api/configurations).
+
+If that's not an option, you can re-enable local authentication by
+running the following commands on the host of your Firezone instance:
 
 ```shell
 cd $HOME/.firezone
@@ -202,5 +202,4 @@ docker compose exec postgres psql -U postgres -h 127.0.0.1 -d firezone -c "UPDAT
 ```
 
 import SupportOptions from '@site/src/partials/_support_options.mdx';
-
 <SupportOptions />

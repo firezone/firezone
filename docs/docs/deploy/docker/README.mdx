@@ -41,11 +41,11 @@ pointing to this instance. See [Prepare to Deploy](../#prepare-to-deploy)
 if you haven't done this already.
 :::
 
-## Step 2: Install Server
+## Step 2: Install server
 
 After prerequisites are satisfied, you're ready to install the Firezone Server.
 
-### Option 1: Automatic Install
+### Option 1: Automatic install
 
 The easiest way to deploy Firezone with Docker is the automatic install script:
 
@@ -57,40 +57,40 @@ and then print instructions for accessing the Web UI.
 
 Firezone files will be installed in `$HOME/.firezone` by default.
 
-### Option 2: Manual Install
+### Option 2: Manual install
 
 If the automatic install fails, or you'd just like more control over the
 installation process, follow the steps below to install manually.
 
 1. Download the docker compose template to a local working directory:
-  **For Linux**:
-  ```shell
-  curl -fsSL https://raw.githubusercontent.com/firezone/firezone/master/docker-compose.prod.yml -o docker-compose.yml
-  ```
-  **For macOS, Windows (non-production only)**:
-  ```shell
-  curl -fsSL https://raw.githubusercontent.com/firezone/firezone/master/docker-compose.desktop.yml -o docker-compose.yml
-  ```
+**For Linux**:
+```
+curl -fsSL https://raw.githubusercontent.com/firezone/firezone/master/docker-compose.prod.yml -o docker-compose.yml
+```
+**For macOS, Windows (non-production only)**:
+```
+curl -fsSL https://raw.githubusercontent.com/firezone/firezone/master/docker-compose.desktop.yml -o docker-compose.yml
+```
 1. Generate required secrets:
-  ```shell
-  docker run --rm firezone/firezone bin/gen-env > .env
-  ```
+```
+docker run --rm firezone/firezone bin/gen-env > .env
+```
 1. At a minimum, change the `ADMIN_EMAIL` and `EXTERNAL_URL` variables.
-   Optionally modify other secrets as needed.
+Optionally modify other secrets as needed.
 1. Migrate the database:
-  ```shell
-  docker compose run --rm firezone bin/migrate
-  ```
+```
+docker compose run --rm firezone bin/migrate
+```
 1. Create the first admin:
-  ```shell
-  docker compose run --rm firezone bin/create-or-reset-admin
-  ```
+```
+docker compose run --rm firezone bin/create-or-reset-admin
+```
 1. Bring the services up: `docker compose up -d`
 
 You should now be able to access the Firezone web portal at the `EXTERNAL_URL`
 variable you defined above.
 
-## Step 3: Enable on Boot (optional)
+## Step 3 (optional): Enable on boot
 
 If you'd like Firezone to start automatically on boot, first ensure Docker is enabled at startup:
 
@@ -102,26 +102,26 @@ Then, make sure your Firezone services have the `restart: always` or `restart: u
 specified in the `docker-compose.yml` file. This is the default used in the docker-compose.prod.yml
 production template file.
 
-## Step 4: Enable IPv6 (optional)
+## Step 4 (optional): Enable IPv6
 
 By default, Firezone ships with IPv6 connectivity enabled inside the tunnel but not routable
 to the public internet. To enable IPv6 support in Docker-deployed Firezone, follow the steps below.
 
 1. Enable IPv6 support within Docker by adding the following to `/etc/docker/daemon.json`:
-  ```json
-  {
-    "ipv6": true,
-    "ip6tables": true,
-    "experimental": true,
-    “fixed-cidr-v6”: “2001:db8:1::/64”
-  }
-  ```
+```json
+{
+  "ipv6": true,
+  "ip6tables": true,
+  "experimental": true,
+  "fixed-cidr-v6": "2001:db8:1::/64"
+}
+```
   This enables IPv6 NAT and configures IPv6 forwarding for Docker containers.
 1. Enable router advertisements on boot for your default egress interface:
-  ```
-  egress=`ip route show default 0.0.0.0/0 | grep -oP '(?<=dev ).*' | cut -f1 -d' ' | tr -d '\n'`
-  sudo bash -c "echo net.ipv6.conf.${egress}.accept_ra=2 >> /etc/sysctl.conf"
-  ```
+```
+egress=`ip route show default 0.0.0.0/0 | grep -oP '(?<=dev ).*' | cut -f1 -d' ' | tr -d '\n'`
+sudo bash -c "echo net.ipv6.conf.${egress}.accept_ra=2 >> /etc/sysctl.conf"
+```
 1. Reboot
 
 You should now be able to ping google from within a docker container:

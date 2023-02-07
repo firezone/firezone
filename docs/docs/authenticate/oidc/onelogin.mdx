@@ -2,9 +2,9 @@
 title: OneLogin
 sidebar_position: 6
 description:
-    Enforce 2FA/MFA for users of Firezone's WireGuard®-based
-    secure access platform. This guide walks through integrating OneLogin
-    for single sign-on using OpenID Connect (OIDC).
+  Enforce 2FA/MFA for users of Firezone's WireGuard®-based
+  secure access platform. This guide walks through integrating OneLogin
+  for single sign-on using OpenID Connect (OIDC).
 ---
 
 # Enable SSO with OneLogin (OIDC)
@@ -26,9 +26,7 @@ to provide Firezone with the user's email in the returned claims.
 which returns a JSON document used to construct subsequent requests to this
 OIDC provider.
 
-## Obtain Config Settings
-
-### Step 1 - Configure Custom Connector
+## Step 1: Create custom connector
 
 Create a new OIDC connector by visiting **Appliances > Custom Connectors**.
 
@@ -43,7 +41,7 @@ or
 
 ![OneLogin Configuration](https://user-images.githubusercontent.com/52545545/173190108-569e5cb5-e66b-4505-a4c5-fedd22872a04.png)
 
-### Step 2 - Configure the OIDC Application
+## Step 2: Obtain configuration parameters
 
 Next, click **Add App to Connector** to create an OIDC application.
 Visit the **SSO** tab, then change the token endpoint authentication method
@@ -54,7 +52,7 @@ on this page as well.
 
 ![OneLogin Config Parameters](https://user-images.githubusercontent.com/52545545/180120191-dfeab4ef-d7f5-4c04-a7b2-7d9338af34e6.png)
 
-## Integrate With Firezone
+## Step 3: Integrate with Firezone
 
 Navigate to the `/settings/security` page in the admin portal, click
 "Add OpenID Connect Provider" and enter the details you obtained in the steps

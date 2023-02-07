@@ -13,7 +13,7 @@ deployments.
 | macOS   | `amd64` `arm64` | Docker Desktop | Works. but unsupported. | Not recommended for production deployments. See [caveats](#non-linux-platform-caveats). |
 | Windows | `amd64` `arm64` | Docker Desktop | **Untested**            | Not recommended for production deployments. See [caveats](#non-linux-platform-caveats). |
 
-## Docker Desktop Caveats
+## Docker Desktop caveats
 
 Docker Desktop [rewrites the source address
 ](https://www.docker.com/blog/how-docker-desktop-networking-works-under-the-hood/)
@@ -21,7 +21,7 @@ for packets flowing out of container networks under some conditions. This can
 cause routing loops and other hard to debug connectivity issues with Firezone.
 We recommend **only** using Docker Server for Linux for production deployments.
 
-## Non-Linux Platform Caveats
+## Non-Linux platform caveats
 
 Only Docker for Linux supports the host networking mode, so macOS and Windows
 platforms will be able unable to properly attribute client source address

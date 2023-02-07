@@ -8,28 +8,10 @@ description:
 
 # Deploy Firezone
 
-Firezone can be deployed on most Docker-supported platforms in about a minute.
+Firezone can be deployed on most Docker-supported platforms in a couple of minutes.
 Read more below to get started.
 
-## Deployment methods
-
-You have two options for deploying Firezone:
-
-1. [Docker](docker) (recommended)
-1. [Omnibus](omnibus)
-
-Docker is the easiest way to install, manage, and upgrade Firezone and is the
-preferred method of deployment.
-
-:::note
-Chef Infra Client, the configuration system Chef Omnibus relies on, has been
-[scheduled for End-of-Life in 2024](https://docs.chef.io/versions/). As such,
-support for Omnibus-based deployments will be removed in a future version of
-Firezone. To transition to Docker from Omnibus today, follow our [migration guide
-](../administer/migrate).
-:::
-
-## Prepare to deploy
+## Step 1: Prepare to deploy
 
 Regardless of which deployment method you choose, you'll need to follow the
 preparation steps below before deploying Firezone to production.
@@ -105,3 +87,21 @@ debug and results in strange, unpredictable failure modes.
 For the VPN tunnels themselves, Firezone uses in-kernel WireGuard, so its
 performance should be very good. 1 vCPU should be more than enough to saturate
 a 1 Gbps link.
+
+## Step 2: Deploy
+
+You have two options for deploying Firezone:
+
+1. [Docker](docker) (recommended)
+1. [Omnibus](omnibus)
+
+Docker is the easiest way to install, manage, and upgrade Firezone and is the
+preferred method of deployment.
+
+:::warning
+Chef Infra Client, the configuration system Chef Omnibus relies on, has been
+[scheduled for End-of-Life in 2024](https://docs.chef.io/versions/). As such,
+support for Omnibus-based deployments will be removed starting with Firezone 0.8.
+Firezone. To transition to Docker from Omnibus today, follow our [migration guide
+](../administer/migrate).
+:::
