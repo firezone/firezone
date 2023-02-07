@@ -55,7 +55,7 @@ jobs:
       # Push to GHCR; our registry for testing / dev builds. Publish will
       # make these public via Docker Hub in the docker_publish workflow.
       - name: Build and push Docker image
-        uses: docker/build-push-action@v3
+        uses: docker/build-push-action@v4
         with:
           platforms: linux/amd64,linux/arm64
           build-args: |
