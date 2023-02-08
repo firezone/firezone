@@ -21,16 +21,21 @@ defmodule FzHttp.ConnectivityCheckService do
   @impl GenServer
   def init(state) do
     if enabled?() do
-      :timer.send_after(@initial_delay, :perform)
+      :timer.send_after(@initial_delay, :init_timer)
     end
 
     {:ok, state}
   end
 
+  @impl GenServer
+  def handle_info(:init_timer, _state) do
+    :timer.send_interval(interval(), :perform)
+    {:noreply, post_request()}
+  end
+
   # XXX: Consider passing state here to implement exponential backoff in case of errors.
   @impl GenServer
   def handle_info(:perform, _state) do
-    :timer.send_interval(interval(), :perform)
     {:noreply, post_request()}
   end
 
