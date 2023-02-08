@@ -1,5 +1,6 @@
 defmodule FzHttp.Configurations.Configuration.Changeset do
   use FzHttp, :changeset
+  import FzHttp.Config, only: [config_changeset: 2]
 
   @min_mtu 576
   @max_mtu 1500
@@ -33,7 +34,9 @@ defmodule FzHttp.Configurations.Configuration.Changeset do
       with: {FzHttp.Configurations.Configuration.SAMLIdentityProvider, :changeset, []}
     )
     |> trim_change(:default_client_dns)
+    |> config_changeset(:default_client_dns)
     |> trim_change(:default_client_endpoint)
+    |> config_changeset(:default_client_endpoint)
     |> validate_no_duplicates(:default_client_dns)
     |> validate_no_duplicates(:default_client_allowed_ips)
     |> validate_number(:default_client_mtu,

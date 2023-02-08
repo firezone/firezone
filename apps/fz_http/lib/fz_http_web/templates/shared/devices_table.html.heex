@@ -43,8 +43,8 @@
           …
         </td>
         <td class="code">
-          <%= FzCommon.FzInteger.to_human_bytes(device.rx_bytes) %> received <br />
-          <%= FzCommon.FzInteger.to_human_bytes(device.tx_bytes) %> sent
+          <%= to_human_bytes(device.rx_bytes) %> received <br />
+          <%= to_human_bytes(device.tx_bytes) %> sent
         </td>
         <td class="code"><%= device.public_key %></td>
         <td

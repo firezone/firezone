@@ -438,10 +438,16 @@ defmodule FzHttp.Config.Definitions do
   @doc """
   Comma-separated list of DNS servers to use for devices.
 
-  Leave this blank to omit the <code>DNS</code> section from
-  generated configs.
+  It can be either an IP address or a FQDN if you intend to use a DNS-over-TLS server.
+
+  Leave this blank to omit the `DNS` section from generated configs.
   """
-  defconfig(:default_client_dns, {:array, ",", Types.IP})
+  defconfig(:default_client_dns, {:array, ",", {:one_of, [Types.IP, :string]}},
+    changeset: fn
+      Types.IP, changeset, _key -> changeset
+      :string, changeset, key -> FzHttp.Validator.validate_fqdn(changeset, key)
+    end
+  )
 
   @doc """
   Configures the default AllowedIPs setting for devices.
@@ -449,7 +455,7 @@ defmodule FzHttp.Config.Definitions do
   AllowedIPs determines which destination IPs get routed through Firezone.
 
   Specify a comma-separated list of IPs or CIDRs here to achieve split tunneling, or use
-  <code>0.0.0.0/0, ::/0</code> to route all device traffic through this Firezone server.
+  `0.0.0.0/0, ::/0` to route all device traffic through this Firezone server.
   """
   defconfig(:default_client_allowed_ips, {:array, ",", {:one_of, [Types.CIDR, Types.IP]}},
     default: "0.0.0.0/0,::/0"

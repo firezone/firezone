@@ -11,12 +11,12 @@ defmodule FzHttp.Types.CIDR do
   def equal?(left, right), do: left == right
 
   def cast(%Postgrex.INET{} = struct), do: {:ok, struct}
-  def cast(tuple) when is_tuple(tuple), do: cast(%Postgrex.INET{address: tuple})
 
   def cast(binary) when is_binary(binary) do
     with {:ok, {binary_address, binary_netmask}} <- parse_binary(binary),
          {:ok, address} <- cast_address(binary_address),
-         {:ok, netmask} <- cast_netmask(binary_netmask) do
+         {:ok, netmask} <- cast_netmask(binary_netmask),
+         :ok <- validate_netmask(address, netmask) do
       {:ok, %Postgrex.INET{address: address, netmask: netmask}}
     else
       _error -> {:error, message: "is invalid"}
@@ -47,6 +47,16 @@ defmodule FzHttp.Types.CIDR do
       _other -> :error
     end
   end
+
+  defp validate_netmask(address, netmask)
+       when tuple_size(address) == 4 and 0 <= netmask and netmask <= 32,
+       do: :ok
+
+  defp validate_netmask(address, netmask)
+       when tuple_size(address) == 8 and 0 <= netmask and netmask <= 128,
+       do: :ok
+
+  defp validate_netmask(_address, _netmask), do: :error
 
   def dump(%Postgrex.INET{} = inet), do: {:ok, inet}
   def dump(_), do: :error

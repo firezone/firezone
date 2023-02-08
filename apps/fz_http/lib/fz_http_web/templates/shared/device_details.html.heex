@@ -51,12 +51,12 @@
 
     <tr>
       <td><strong>Received</strong></td>
-      <td><%= FzCommon.FzInteger.to_human_bytes(@device.rx_bytes) %></td>
+      <td><%= to_human_bytes(@device.rx_bytes) %></td>
     </tr>
 
     <tr>
       <td><strong>Sent</strong></td>
-      <td><%= FzCommon.FzInteger.to_human_bytes(@device.tx_bytes) %></td>
+      <td><%= to_human_bytes(@device.tx_bytes) %></td>
     </tr>
 
     <tr>

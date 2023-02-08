@@ -61,6 +61,7 @@ defmodule FzHttp.MixProject do
       {:phoenix_live_reload, "~> 1.3", only: :dev},
       {:phoenix_swoosh, "~> 1.0"},
       {:gettext, "~> 0.18"},
+      {:file_size, "~> 3.0.1"},
 
       # Ecto-related deps
       {:postgrex, "~> 0.16"},

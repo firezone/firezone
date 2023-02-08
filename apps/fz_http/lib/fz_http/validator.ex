@@ -3,7 +3,6 @@ defmodule FzHttp.Validator do
   A set of changeset helpers and schema extensions to simplify our changesets and make validation more reliable.
   """
   import Ecto.Changeset
-  alias FzCommon.FzNet
 
   def changed?(changeset, field) do
     Map.has_key?(changeset.changes, field)
@@ -64,7 +63,7 @@ defmodule FzHttp.Validator do
   end
 
   defp fqdn_validation_errors(field, fqdn) do
-    if FzNet.valid_fqdn?(fqdn) do
+    if Regex.match?(~r/^([a-zA-Z0-9._-])+$/i, fqdn) do
       []
     else
       [{field, "#{fqdn} is not a valid FQDN"}]
@@ -123,10 +122,12 @@ defmodule FzHttp.Validator do
 
   def validate_cidr(changeset, field, _opts \\ []) do
     validate_change(changeset, field, fn _current_field, value ->
-      if FzNet.valid_cidr?(value) do
-        []
-      else
-        [{field, "#{value} is not a valid CIDR range"}]
+      case FzHttp.Types.CIDR.cast(value) do
+        {:ok, _cidr} ->
+          []
+
+        {:error, _reason} ->
+          [{field, "is not a valid CIDR range"}]
       end
     end)
   end
@@ -152,20 +153,6 @@ defmodule FzHttp.Validator do
       _field, [] -> []
       field, _value -> [{field, "must not be present"}]
     end)
-  end
-
-  defp split_comma_list(text) do
-    text
-    |> String.split(",")
-    |> Enum.map(&String.trim/1)
-  end
-
-  defp error_if(value, is_error, error) do
-    if is_error.(value) do
-      [error.(value)]
-    else
-      []
-    end
   end
 
   def validate_file(changeset, field, opts \\ []) do

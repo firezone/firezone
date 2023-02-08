@@ -1,6 +1,7 @@
 defmodule FzHttp.ConfigurationsTest do
   use FzHttp.DataCase
-
+  import FzHttp.ConfigurationsFixtures
+  import FzHttp.SAMLIdentityProviderFixtures
   alias FzHttp.Configurations.Configuration
   alias FzHttp.Configurations
 
@@ -22,9 +23,6 @@ defmodule FzHttp.ConfigurationsTest do
   end
 
   describe "auto_create_users?/2" do
-    import FzHttp.ConfigurationsFixtures
-    import FzHttp.SAMLIdentityProviderFixtures
-
     test "raises if provider_id not found" do
       assert_raise(RuntimeError, "Unknown provider foobar", fn ->
         Configurations.auto_create_users?(:openid_connect_providers, "foobar")
@@ -63,32 +61,20 @@ defmodule FzHttp.ConfigurationsTest do
   end
 
   describe "update_configuration/2 with name-based default_client_dns" do
-    import FzHttp.ConfigurationsFixtures
-
-    setup do
-      {:ok, configuration: configuration(%{})}
-    end
-
-    @tag attrs: %{default_client_dns: ["foobar.com"]}
-    test "update_configuration/2 allows hosts for DNS", %{
-      configuration: configuration,
-      attrs: attrs
-    } do
+    test "update_configuration/2 allows hosts for DNS" do
+      configuration = configuration(%{})
+      attrs = %{default_client_dns: ["foobar.com"]}
       assert {:ok, _configuration} = Configurations.update_configuration(configuration, attrs)
     end
 
-    @tag attrs: %{default_client_dns: ["foobar.com", "google.com"]}
-    test "update_configuration/2 allows list hosts for DNS", %{
-      configuration: configuration,
-      attrs: attrs
-    } do
+    test "update_configuration/2 allows list hosts for DNS" do
+      configuration = configuration(%{})
+      attrs = %{default_client_dns: ["foobar.com", "google.com"]}
       assert {:ok, _configuration} = Configurations.update_configuration(configuration, attrs)
     end
   end
 
   describe "configurations" do
-    import FzHttp.ConfigurationsFixtures
-
     @valid_configurations [
       %{
         "default_client_dns" => ["8.8.8.8"],
