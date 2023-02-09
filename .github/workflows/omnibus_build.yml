@@ -21,7 +21,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-package-test:
-    # Doesn't really need, but don't run this stage when iterating over docs
+    # Doesn't really need, but don't run this stage when iterating over website
     needs: draft-release
     env:
       TELEMETRY_ENABLED: 'false'

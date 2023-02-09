@@ -11,7 +11,7 @@ kernelCheck() {
     echo "################################################################################"
     echo "# ERROR: Kernel version `uname -r` is not supported. Firezone requires         #"
     echo "# kernel >= 5 or higher. See our listed of supported platforms for more        #"
-    echo "# information: https://docs.firez.one/docs/deploy/supported-platforms/         #"
+    echo "# information: https://docs.firezone.dev/deploy/supported-platforms/         #"
     echo "################################################################################"
     exit
   fi
