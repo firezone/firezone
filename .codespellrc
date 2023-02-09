@@ -1,3 +1,3 @@
 [codespell]
-skip = ./docs/docs/reference/api/*.mdx,./erl_crash.dump,./apps/fz_http/erl_crash.dump,./cover,./vendor,./omnibus,*.json,yarn.lock,seeds.exs,./**/node_modules,./deps,./priv/static,./priv/plts,./**/priv/static,./.git,./docs/build,./_build
+skip = ./www/docs/reference/api/*.mdx,./erl_crash.dump,./apps/fz_http/erl_crash.dump,./cover,./vendor,./omnibus,*.json,yarn.lock,seeds.exs,./**/node_modules,./deps,./priv/static,./priv/plts,./**/priv/static,./.git,./www/build,./_build
 ignore-words-list = keypair,keypairs,iif,statics,wee

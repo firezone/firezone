@@ -1,11 +1,11 @@
-name: Publish Docs
+name: Publish Website
 on:
   workflow_dispatch:
   release:
     types: [published]
 
 jobs:
-  publish-docs:
+  publish-website:
     name: Build Docusaurus 🐲
     runs-on: ubuntu-latest
     steps:
@@ -16,17 +16,17 @@ jobs:
         with:
           node-version: 16
           cache: 'yarn'
-          cache-dependency-path: docs/yarn.lock
+          cache-dependency-path: www/yarn.lock
       # XXX: Add API docs generation here
       - run: |
-          cd docs/
+          cd www/
           yarn install --frozen-lockfile
           yarn build
-      - name: Publish Latest Docs
+      - name: Publish Latest Website
         uses: JamesIves/github-pages-deploy-action@v4.4.1
         with:
           branch: gh-pages
-          folder: docs/build
+          folder: www/build
           target-folder: .
           clean: true
           clean-exclude: |

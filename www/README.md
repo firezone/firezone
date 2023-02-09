@@ -30,4 +30,4 @@ served using any static contents hosting service.
 ## Deployment
 
 Deployment happens automatically when a new version is published. See the
-`publish_docs` CI workflow.
+`publish_www` CI workflow.

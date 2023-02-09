@@ -19,7 +19,7 @@ jobs:
           cache: 'yarn'
           cache-dependency-path: |
             apps/fz_http/assets/package-lock.json
-            docs/yarn.lock
+            www/yarn.lock
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: '2.7'
@@ -83,7 +83,7 @@ jobs:
         run: mix dialyzer --plt
       - name: Install node modules
         run: |
-          cd docs/
+          cd www/
           yarn install --frozen-lockfile
       - name: Run pre-commit
         run: |
