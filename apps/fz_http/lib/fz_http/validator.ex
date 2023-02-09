@@ -110,16 +110,6 @@ defmodule FzHttp.Validator do
     end)
   end
 
-  def validate_ip_port_required(changeset, field) do
-    validate_change(changeset, field, fn _current_field, %{port: port} ->
-      if port do
-        []
-      else
-        [{field, "is required"}]
-      end
-    end)
-  end
-
   def validate_cidr(changeset, field, _opts \\ []) do
     validate_change(changeset, field, fn _current_field, value ->
       case FzHttp.Types.CIDR.cast(value) do

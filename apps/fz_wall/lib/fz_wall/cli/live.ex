@@ -5,11 +5,8 @@ defmodule FzWall.CLI.Live do
   Rules operate on the nftables forward chain to deny outgoing packets to
   specified IP addresses, ports, and protocols from Firezone device IPs.
   """
-
   import FzWall.CLI.Helpers.Sets
   import FzWall.CLI.Helpers.Nft
-  import FzCommon.FzNet, only: [ip_type: 1]
-  require Logger
 
   @doc """
   Setup

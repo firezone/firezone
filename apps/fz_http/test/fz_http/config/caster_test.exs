@@ -12,7 +12,7 @@ defmodule FzHttp.Config.CasterTest do
     end
 
     test "casts a binary to an array of embeds" do
-      assert cast("[{\"foo\": \"bar\"}]", {:array, :embed}) == {:ok, [%{"foo" => "bar"}]}
+      assert cast("[{\"foo\": \"bar\"}]", {:json_array, :embed}) == {:ok, [%{"foo" => "bar"}]}
     end
 
     test "casts a binary to a map" do
@@ -35,7 +35,7 @@ defmodule FzHttp.Config.CasterTest do
       assert cast(1, :boolean) == {:ok, 1}
       assert cast(1, {:array, ",", :integer}) == {:ok, 1}
       assert cast(1, :embed) == {:ok, 1}
-      assert cast(1, {:array, :embed}) == {:ok, 1}
+      assert cast(1, {:json_array, :embed}) == {:ok, 1}
       assert cast(1, :map) == {:ok, 1}
     end
 
@@ -52,7 +52,7 @@ defmodule FzHttp.Config.CasterTest do
       assert cast("invalid json", :embed) ==
                {:error, %Jason.DecodeError{position: 0, token: nil, data: "invalid json"}}
 
-      assert cast("invalid json", {:array, :embed}) ==
+      assert cast("invalid json", {:json_array, :embed}) ==
                {:error, %Jason.DecodeError{position: 0, token: nil, data: "invalid json"}}
     end
   end

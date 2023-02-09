@@ -5,15 +5,28 @@ defmodule FzHttp.Config.ValidatorTest do
 
   describe "validate/4" do
     test "validates an array of integers" do
-      assert validate(:key, "1,2,3", {:array, ",", :integer}, []) ==
+      assert validate(:key, "1,2,3", {:array, "x", :integer}, []) ==
                {:error, {"1,2,3", ["must be an array"]}}
 
-      assert validate(:key, "1,2,3", {:array, :integer}, []) ==
+      assert validate(:key, "1,2,3", {:json_array, :integer}, []) ==
                {:error, {"1,2,3", ["must be an array"]}}
 
       assert validate(:key, ~w"1 2 3", {:array, ",", :integer}, []) == {:ok, [1, 2, 3]}
 
       assert validate(:key, ~w"1 2 3", {:array, :integer}, []) == {:ok, [1, 2, 3]}
+    end
+
+    test "validates arrays" do
+      type = {:array, "x", :integer, validate_unique: true, validate_length: [min: 1, max: 3]}
+
+      assert validate(:key, [], type, []) ==
+               {:error, {[], ["should be at least 1 item(s)"]}}
+
+      assert validate(:key, [1, 2, 3, 4], type, []) ==
+               {:error, {[1, 2, 3, 4], ["should be at most 3 item(s)"]}}
+
+      assert validate(:key, [1, 2, 1], type, []) ==
+               {:error, [{1, ["should not contain duplicates"]}]}
     end
 
     test "validates one of types" do
@@ -36,14 +49,14 @@ defmodule FzHttp.Config.ValidatorTest do
                {:error,
                 {"invalid", ["must be one of: Elixir.FzHttp.Types.IP, Elixir.FzHttp.Types.CIDR"]}}
 
-      type = {:array, {:one_of, [:integer, :boolean]}}
+      type = {:json_array, {:one_of, [:integer, :boolean]}}
 
       assert validate(:key, [1, true, "invalid"], type, []) ==
                {:error, [{"invalid", ["must be one of: integer, boolean"]}]}
     end
 
     test "validates embeds" do
-      type = {:array, {:embed, FzHttp.Configurations.Configuration.SAMLIdentityProvider}}
+      type = {:json_array, {:embed, FzHttp.Configurations.Configuration.SAMLIdentityProvider}}
 
       attrs = FzHttp.SAMLIdentityProviderFixtures.saml_attrs()
 

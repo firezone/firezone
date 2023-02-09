@@ -22,7 +22,9 @@ defmodule FzHttp.Config.Caster do
 
   def cast(json, :embed) when is_binary(json), do: Jason.decode(json)
   def cast(json, :map) when is_binary(json), do: Jason.decode(json)
-  def cast(json, {:array, _term}) when is_binary(json), do: Jason.decode(json)
+  def cast(json, {:map, _term}) when is_binary(json), do: Jason.decode(json)
+  def cast(json, :json_array) when is_binary(json), do: Jason.decode(json)
+  def cast(json, {:json_array, _term}) when is_binary(json), do: Jason.decode(json)
 
   def cast("true", :boolean), do: {:ok, true}
   def cast("false", :boolean), do: {:ok, false}

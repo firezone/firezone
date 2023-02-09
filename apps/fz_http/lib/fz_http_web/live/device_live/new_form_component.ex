@@ -50,17 +50,12 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
 
   @impl Phoenix.LiveComponent
   def handle_event("save", %{"device" => device_params}, socket) do
-    result =
-      device_params
-      |> Map.put("user_id", socket.assigns.target_user_id)
-      |> Map.update("dns", nil, &binary_to_list/1)
-      |> Map.update("allowed_ips", nil, &binary_to_list/1)
-      |> create_device(socket)
-
-    case result do
-      :not_authorized ->
-        {:noreply, not_authorized(socket)}
-
+    device_params
+    |> Map.put("user_id", socket.assigns.target_user_id)
+    |> Map.update("dns", nil, &binary_to_list/1)
+    |> Map.update("allowed_ips", nil, &binary_to_list/1)
+    |> create_device(socket)
+    |> case do
       {:ok, device} ->
         send_update(FzHttpWeb.ModalComponent, id: :modal, hide_footer_content: true)
 
@@ -68,6 +63,9 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
          socket
          |> assign(:device, device)
          |> assign(:config, Devices.as_encoded_config(device))}
+
+      :not_authorized ->
+        {:noreply, not_authorized(socket)}
 
       {:error, changeset} ->
         {:noreply,

@@ -293,7 +293,11 @@ defmodule FzHttp.Config.Definitions do
     default: nil,
     sensitive: true,
     legacy_keys: [{:env, "ADMIN_EMAIL", "0.9"}],
-    changeset: &FzHttp.Validator.validate_email/2
+    changeset: fn changeset, key ->
+      changeset
+      |> FzHttp.Validator.trim_change(key)
+      |> FzHttp.Validator.validate_email(key)
+    end
   )
 
   @doc """
@@ -431,7 +435,9 @@ defmodule FzHttp.Config.Definitions do
         changeset
 
       :string, changeset, key ->
-        FzHttp.Validator.validate_fqdn(changeset, key, allow_port: true)
+        changeset
+        |> FzHttp.Validator.trim_change(key)
+        |> FzHttp.Validator.validate_fqdn(key, allow_port: true)
     end
   )
 
@@ -442,10 +448,17 @@ defmodule FzHttp.Config.Definitions do
 
   Leave this blank to omit the `DNS` section from generated configs.
   """
-  defconfig(:default_client_dns, {:array, ",", {:one_of, [Types.IP, :string]}},
+  defconfig(
+    :default_client_dns,
+    {:array, ",", {:one_of, [Types.IP, :string]}, validate_unique: true},
     changeset: fn
-      Types.IP, changeset, _key -> changeset
-      :string, changeset, key -> FzHttp.Validator.validate_fqdn(changeset, key)
+      Types.IP, changeset, _key ->
+        changeset
+
+      :string, changeset, key ->
+        changeset
+        |> FzHttp.Validator.trim_change(key)
+        |> FzHttp.Validator.validate_fqdn(key)
     end
   )
 
@@ -457,8 +470,10 @@ defmodule FzHttp.Config.Definitions do
   Specify a comma-separated list of IPs or CIDRs here to achieve split tunneling, or use
   `0.0.0.0/0, ::/0` to route all device traffic through this Firezone server.
   """
-  defconfig(:default_client_allowed_ips, {:array, ",", {:one_of, [Types.CIDR, Types.IP]}},
-    default: "0.0.0.0/0,::/0"
+  defconfig(
+    :default_client_allowed_ips,
+    {:array, ",", {:one_of, [Types.CIDR, Types.IP]}, validate_unique: true},
+    default: "0.0.0.0/0, ::/0"
   )
 
   ##############################################
@@ -535,7 +550,9 @@ defmodule FzHttp.Config.Definitions do
 
   For more details see https://docs.firezone.dev/authenticate/oidc/.
   """
-  defconfig(:openid_connect_providers, {:array, {:embed, Configuration.OpenIDConnectProvider}},
+  defconfig(
+    :openid_connect_providers,
+    {:json_array, {:embed, Configuration.OpenIDConnectProvider}},
     default: [],
     changeset: fn changeset, key ->
       Ecto.Changeset.cast_embed(changeset, key,
@@ -567,7 +584,7 @@ defmodule FzHttp.Config.Definitions do
 
   For more details see https://docs.firezone.dev/authenticate/saml/.
   """
-  defconfig(:saml_identity_providers, {:array, {:embed, Configuration.SAMLIdentityProvider}},
+  defconfig(:saml_identity_providers, {:json_array, {:embed, Configuration.SAMLIdentityProvider}},
     default: [],
     changeset: fn changeset, key ->
       Ecto.Changeset.cast_embed(changeset, key,
@@ -702,7 +719,11 @@ defmodule FzHttp.Config.Definitions do
       "firezone@#{external_uri.host}"
     end,
     sensitive: true,
-    changeset: &FzHttp.Validator.validate_email/2
+    changeset: fn changeset, key ->
+      changeset
+      |> FzHttp.Validator.trim_change(key)
+      |> FzHttp.Validator.validate_email(key)
+    end
   )
 
   @doc """

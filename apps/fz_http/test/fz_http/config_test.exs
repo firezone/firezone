@@ -50,7 +50,7 @@ defmodule FzHttp.ConfigTest do
       end
     )
 
-    defconfig(:json_array, {:array, :map})
+    defconfig(:json_array, {:json_array, :map})
 
     defconfig(:json, :map,
       dump: fn value ->

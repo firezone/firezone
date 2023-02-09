@@ -151,7 +151,6 @@ defmodule FzHttp.DevicesTest do
       allowed_ips: [
         %Postgrex.INET{address: {0, 0, 0, 0}, netmask: 0},
         %Postgrex.INET{address: {0, 0, 0, 0, 0, 0, 0, 0}, netmask: 0},
-        %Postgrex.INET{address: {0, 0, 0, 0, 0, 0, 0, 0}, netmask: 0},
         %Postgrex.INET{address: {192, 168, 1, 0}, netmask: 24}
       ]
     }
@@ -159,11 +158,6 @@ defmodule FzHttp.DevicesTest do
     @valid_endpoint_ipv4_attrs %{
       use_default_endpoint: false,
       endpoint: "5.5.5.5"
-    }
-
-    @valid_endpoint_ipv6_attrs %{
-      use_default_endpoint: false,
-      endpoint: "fd00::1"
     }
 
     @valid_endpoint_host_attrs %{
@@ -204,8 +198,23 @@ defmodule FzHttp.DevicesTest do
     end
 
     test "updates device with valid ipv6 endpoint", %{device: device} do
-      {:ok, test_device} = Devices.update_device(device, @valid_endpoint_ipv6_attrs)
-      assert @valid_endpoint_ipv6_attrs = test_device
+      attrs = %{
+        use_default_endpoint: false,
+        endpoint: "fd00::1"
+      }
+
+      {:ok, test_device} = Devices.update_device(device, attrs)
+      assert test_device.use_default_endpoint == attrs.use_default_endpoint
+      assert test_device.endpoint == attrs.endpoint
+
+      attrs = %{
+        use_default_endpoint: false,
+        endpoint: "[fd00::1]:8080"
+      }
+
+      {:ok, test_device} = Devices.update_device(device, attrs)
+      assert test_device.use_default_endpoint == attrs.use_default_endpoint
+      assert test_device.endpoint == attrs.endpoint
     end
 
     test "updates device with valid host endpoint", %{device: device} do
@@ -245,7 +254,7 @@ defmodule FzHttp.DevicesTest do
 
     test "prevents assigning duplicate DNS servers", %{device: device} do
       {:error, changeset} = Devices.update_device(device, @duplicate_dns_attrs)
-      assert changeset.errors[:dns] == {"should not contain duplicates", []}
+      assert "should not contain duplicates" in errors_on(changeset).dns
     end
 
     test "updates device with valid allowed_ips", %{device: device} do

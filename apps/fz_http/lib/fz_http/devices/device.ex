@@ -4,9 +4,9 @@ defmodule FzHttp.Devices.Device do
   """
   use FzHttp, :schema
   import Ecto.Changeset
+  import FzHttp.Config, only: [config_changeset: 3]
   alias FzHttp.Validator
   alias FzHttp.Devices
-  require Logger
 
   @description_max_length 2048
 
@@ -93,6 +93,11 @@ defmodule FzHttp.Devices.Device do
     |> Validator.trim_change(:endpoint)
     |> Validator.trim_change(:name)
     |> Validator.trim_change(:description)
+    |> config_changeset(:allowed_ips, :default_client_allowed_ips)
+    |> config_changeset(:dns, :default_client_dns)
+    |> config_changeset(:endpoint, :default_client_endpoint)
+    |> config_changeset(:persistent_keepalive, :default_client_persistent_keepalive)
+    |> config_changeset(:mtu, :default_client_mtu)
     |> Validator.validate_base64(:public_key)
     |> Validator.validate_base64(:preshared_key)
     |> validate_length(:public_key, is: @key_length)
@@ -108,15 +113,6 @@ defmodule FzHttp.Devices.Device do
       persistent_keepalive
       mtu
     ]a)
-    |> Validator.validate_no_duplicates(:dns)
-    |> validate_number(:persistent_keepalive,
-      greater_than_or_equal_to: 0,
-      less_than_or_equal_to: 120
-    )
-    |> validate_number(:mtu,
-      greater_than_or_equal_to: 576,
-      less_than_or_equal_to: 1500
-    )
     |> prepare_changes(fn changeset ->
       changeset
       |> maybe_put_default_ip(:ipv4)

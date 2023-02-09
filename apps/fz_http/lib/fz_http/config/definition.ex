@@ -23,10 +23,14 @@ defmodule FzHttp.Config.Definition do
   """
   alias FzHttp.Config.Errors
 
+  @type array_opts :: [{:validate_unique, boolean()} | {:validate_length, Keyword.t()}]
+
   @type type ::
           Ecto.Type.t()
-          | {:array, type()}
+          | {:json_array, type()}
+          | {:json_array, type(), array_opts()}
           | {:array, separator :: String.t(), type()}
+          | {:array, separator :: String.t(), type(), array_opts()}
           | {:one_of, type()}
 
   @type legacy_key :: {:env, var_name :: String.t(), removed_at :: String.t()}

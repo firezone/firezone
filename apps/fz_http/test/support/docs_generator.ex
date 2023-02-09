@@ -153,7 +153,7 @@ defmodule DocsGenerator do
     {"one of #{types}", default}
   end
 
-  defp type_and_default({:array, _}, default),
+  defp type_and_default({:json_array, _}, default),
     do: {"JSON-encoded list", "`" <> Jason.encode!(default) <> "`"}
 
   defp type_and_default({:array, separator, type}, default) do

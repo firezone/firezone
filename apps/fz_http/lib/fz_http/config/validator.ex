@@ -1,31 +1,20 @@
 defmodule FzHttp.Config.Validator do
   import Ecto.Changeset
 
-  def validate(key, values, {:array, _separator, type}, opts) do
-    validate(key, values, {:array, type}, opts)
+  def validate(key, values, {:array, _separator, type, array_opts}, opts) do
+    validate_array(key, values, type, array_opts, opts)
   end
 
-  def validate(key, values, {:array, type}, opts) do
-    if is_list(values) do
-      values
-      |> Enum.map(&validate(key, &1, type, opts))
-      |> Enum.reduce({true, [], []}, fn
-        {:ok, value}, {valid?, values, errors} ->
-          {valid?, [value] ++ values, errors}
+  def validate(key, values, {:array, separator, type}, opts) do
+    validate(key, values, {:array, separator, type, []}, opts)
+  end
 
-        {:error, {value, error}}, {_valid?, values, errors} ->
-          {false, values, [{value, error}] ++ errors}
-      end)
-      |> case do
-        {true, values, []} ->
-          {:ok, Enum.reverse(values)}
+  def validate(key, values, {:json_array, type, array_opts}, opts) do
+    validate_array(key, values, type, array_opts, opts)
+  end
 
-        {false, _values, values_and_errors} ->
-          {:error, values_and_errors}
-      end
-    else
-      {:error, {values, ["must be an array"]}}
-    end
+  def validate(key, values, {:json_array, type}, opts) do
+    validate(key, values, {:json_array, type, []}, opts)
   end
 
   def validate(key, value, {:one_of, types}, opts) do
@@ -81,6 +70,67 @@ defmodule FzHttp.Config.Validator do
     else
       {:error, {Map.get(changeset.changes, key, value), errors(changeset)}}
     end
+  end
+
+  defp validate_array(_key, nil, _type, _array_opts, _opts) do
+    {:ok, nil}
+  end
+
+  defp validate_array(key, values, type, array_opts, opts) when is_list(values) do
+    {validate_unique, array_opts} = Keyword.pop(array_opts, :validate_unique, false)
+    {validate_length, []} = Keyword.pop(array_opts, :validate_length, [])
+
+    values
+    |> Enum.map(&validate(key, &1, type, opts))
+    |> Enum.reduce({true, [], []}, fn
+      {:ok, value}, {valid?, values, errors} ->
+        cond do
+          validate_unique == true and value in values ->
+            {false, values, [{value, ["should not contain duplicates"]}] ++ errors}
+
+          true ->
+            {valid?, [value] ++ values, errors}
+        end
+
+      {:error, {value, error}}, {_valid?, values, errors} ->
+        {false, values, [{value, error}] ++ errors}
+    end)
+    |> case do
+      {true, values, []} ->
+        min = Keyword.get(validate_length, :min)
+        max = Keyword.get(validate_length, :max)
+        is = Keyword.get(validate_length, :is)
+
+        values
+        |> Enum.reverse()
+        |> validate_array_length(min, max, is)
+
+      {false, _values, values_and_errors} ->
+        {:error, values_and_errors}
+    end
+  end
+
+  defp validate_array(_key, values, _type, _array_opts, _opts) do
+    {:error, {values, ["must be an array"]}}
+  end
+
+  defp validate_array_length(values, min, _max, _is)
+       when not is_nil(min) and length(values) < min do
+    {:error, {values, ["should be at least #{min} item(s)"]}}
+  end
+
+  defp validate_array_length(values, _min, max, _is)
+       when not is_nil(max) and length(values) > max do
+    {:error, {values, ["should be at most #{max} item(s)"]}}
+  end
+
+  defp validate_array_length(values, _min, _max, is)
+       when not is_nil(is) and length(values) != is do
+    {:error, {values, ["should be #{is} item(s)"]}}
+  end
+
+  defp validate_array_length(values, _min, _max, _is) do
+    {:ok, values}
   end
 
   defp apply_validations(changeset, callback, _type, key) when is_function(callback, 2) do
