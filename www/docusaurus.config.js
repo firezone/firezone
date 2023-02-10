@@ -7,7 +7,7 @@ const darkCodeTheme = require('prism-react-renderer/themes/dracula');
 /** @type {import('@docusaurus/types').Config} */
 const config = {
   title: 'Firezone',
-  tagline: 'Open-source VPN server and Linux firewall built on WireGuard®',
+  tagline: 'Open-source secure remote access built on WireGuard®',
   url: 'https://docs.firezone.dev',
   baseUrl: '/',
   onBrokenLinks: 'throw',
@@ -52,7 +52,7 @@ const config = {
       'classic',
       /** @type {import('@docusaurus/preset-classic').Options} */
       ({
-        root: {
+        pages: {
           routeBasePath: '/',
         },
         docs: {
@@ -78,12 +78,22 @@ const config = {
     /** @type {import('@docusaurus/preset-classic').ThemeConfig} */
     ({
       navbar: {
-        title: 'Documentation',
+        title: 'Firezone',
         logo: {
           alt: 'Firezone Logo',
           src: 'img/logo.svg',
         },
         items: [
+          {
+            href: '/docs',
+            label: 'Documentation',
+            position: 'left'
+          },
+          {
+            href: '/blog',
+            label: 'Blog',
+            position: 'left'
+          },
           {
             href: 'https://discourse.firez.one/?utm_source=docs.firezone.dev',
             label: 'Ask a Question',
