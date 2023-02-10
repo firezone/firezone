@@ -95,6 +95,11 @@ const config = {
             position: 'left'
           },
           {
+            href: '/pricing',
+            label: 'Pricing',
+            position: 'left'
+          },
+          {
             href: 'https://discourse.firez.one/?utm_source=docs.firezone.dev',
             label: 'Ask a Question',
             position: 'right',
