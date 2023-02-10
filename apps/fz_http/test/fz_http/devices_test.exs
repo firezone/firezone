@@ -313,8 +313,8 @@ defmodule FzHttp.DevicesTest do
       device_map =
         device
         |> Map.from_struct()
-        |> Map.put(:ipv4, FzHttp.Devices.decode(device.ipv4))
-        |> Map.put(:ipv6, FzHttp.Devices.decode(device.ipv6))
+        |> Map.put(:ipv4, device.ipv4)
+        |> Map.put(:ipv6, device.ipv6)
 
       ipv4 = "#{device.ipv4}/32"
       ipv6 = "#{device.ipv6}/128"
