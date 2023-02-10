@@ -36,7 +36,7 @@ impl Node {
         }
 
         Err(anyhow!(
-            "Websocket connection ended and no response was recieved"
+            "Websocket connection ended and no response was received"
         ))
     }
 

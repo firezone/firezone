@@ -104,7 +104,7 @@ services:
       external:
         ipv4_address: 172.18.0.4
         ipv6_address: 2001:3990:3992::4
-    
+
   e2e_internal_1:
     depends_on:
       - e2e_external_1
@@ -146,12 +146,12 @@ services:
       - TZ=UTC
       - ALLOWEDIPS="0.0.0.0/0,::/0"
       - CONTROL_ADDRESS=0.0.0.0:9090
-      # We force s6 to keep the enviroment variables for all children
+      # We force s6 to keep the environment variables for all children
       # including our process.
       # There is another cleaner way to do this:
       # using with-contenv provided utility by s6-overlay
-      # but it needs some setup (using an scrip instead of directly executing the thing)
-      # ref: https://github.com/just-containers/s6-overlay#container-environment 
+      # but it needs some setup (using an script instead of directly executing the thing)
+      # ref: https://github.com/just-containers/s6-overlay#container-environment
       - S6_KEEP_ENV=1
       - RUST_LOG=debug
     volumes:

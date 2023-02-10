@@ -19,7 +19,7 @@ require Logger
     |> FzNet.to_complete_url()
   end
 
-# We use the gateway_registration_token in both dev and prod enviroment
+# We use the gateway_registration_token in both dev and prod environment
 # We also don't want to use a default when it's missing for prod
 gateway_registration_token =
   if config_env() == :prod do

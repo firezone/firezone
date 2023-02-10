@@ -30,7 +30,7 @@ async fn main() -> Result<()> {
                     tracing::error!("Error while execute command {e}");
                 }
             }
-            Err(e) => tracing::error!("Error when accepting new conection: {e}"),
+            Err(e) => tracing::error!("Error when accepting new connection: {e}"),
         }
     }
 }
@@ -72,14 +72,14 @@ async fn control(stream: TcpStream) -> Result<()> {
             tx.send(
                 serde_json::from_str::<Command>(
                     &cmd.into_text()
-                        .expect("Recieved unexpected non-text message"),
+                        .expect("Received unexpected non-text message"),
                 )
-                .expect("Recieved unexpected non-command")
+                .expect("Received unexpected non-command")
                 .execute_command()
                 .await,
             )
             .await
-            .expect("Reciever is gone");
+            .expect("Receiver is gone");
         }));
     }
 

@@ -26,7 +26,7 @@ pub struct TestSetup<T> {
     // the mutex is just for the compiler to believe we don't mutate
     // (not going to use unsafecell or something unsafe here <_<)
     // Note the Mutex is tokio's 'coz it's going to be held across await points
-    // but this is actually not necessary since we will use this synchroniously
+    // but this is actually not necessary since we will use this synchronously
     internal_nodes: Vec<Arc<Mutex<InternalNodeWithDesc>>>,
     external_nodes: Vec<Arc<Mutex<ExternalNodeWithDesc>>>,
     unused_internal_nodes: Vec<Arc<Mutex<InternalNodeWithDesc>>>,

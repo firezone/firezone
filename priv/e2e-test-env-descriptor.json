@@ -19,7 +19,7 @@
         "use_default_mtu": false,
         "use_default_persistent_keepalive": false
       }
-    },    
+    },
     {
       "name": "e2e_internal_2",
       "control_url": "ws://e2e_internal_2:9090",

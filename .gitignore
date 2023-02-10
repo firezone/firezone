@@ -73,7 +73,7 @@ apps/fz_http/priv/wg_dev_private_key
 # To speedup e2e-tests docker build you can build locally first
 # using CARGO_HOME=./.cargo cargo build from e2e-tests directory
 # this will build .cargo cache that will be read by the dockerfiles
-e2e-tests/.cargo 
+e2e-tests/.cargo
 
 # Target for rust workspaces
 target/
