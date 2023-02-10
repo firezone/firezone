@@ -43,29 +43,6 @@ alias FzHttp.{
     tx_bytes: 1_934_475_211_087_234
   })
 
-{:ok, _device} =
-  Devices.create_device(%{
-    user_id: unprivileged_user1.id,
-    name: "wireguard-client-2",
-    description: """
-    Test device corresponding to the client configuration used in the wireguard-client container
-    """,
-    preshared_key: "C+Tte1echarIObr6rq+nFeYQ1QO5xo5N29ygDjMlpS8=",
-    public_key: "sQlrKsEbjsSoWkme/Zq70TXiSFZ1RBUR1Q+TcA2pGXI=",
-    ipv4: "100.64.100.2/32",
-    ipv6: "fd00::7/128",
-    mtu: 1280,
-    persistent_keepalive: 25,
-    allowed_ips: "0.0.0.0,::/0",
-    endpoint: "gateway",
-    dns: "127.0.0.11",
-    use_default_allowed_ips: false,
-    use_default_dns: false,
-    use_default_endpoint: false,
-    use_default_mtu: false,
-    use_default_persistent_keepalive: false
-  })
-
 {:ok, mfa_user} =
   Users.create_unprivileged_user(%{
     email: "firezone-mfa@localhost",
