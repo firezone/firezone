@@ -1,19 +1,6 @@
 version: '3.7'
 
 services:
-  caddy:
-    image: caddy:2
-    volumes:
-      - ./priv/Caddyfile:/etc/caddy/Caddyfile
-      - ./priv/pki:/data/caddy/pki
-    ports:
-      - 80:80
-      - 443:443
-    networks:
-      app:
-        ipv4_address: 172.28.0.99
-        ipv6_address: 2001:3990:3990::99
-
   firezone:
     build:
       context: .
@@ -71,18 +58,6 @@ services:
       timeout: 5s
     ports:
       - 5432:5432
-    networks:
-      - app
-
-  # Vault can act as an OIDC IdP as well
-  vault:
-    image: vault
-    environment:
-      - VAULT_ADDR=0.0.0.0:8200
-    ports:
-      - 8200:8200/tcp
-    cap_add:
-      - IPC_LOCK
     networks:
       - app
 

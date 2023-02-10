@@ -17,7 +17,7 @@ const API_TOKEN: &str = "API_TOKEN";
 const URL: &str = "FZ_URL";
 const TEST_ENV_PATH: &str = "TEST_ENV_PATH";
 const ADMIN_MAIL: &str = "firezone@localhost";
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Debug)]
 pub struct TestSetup<T> {

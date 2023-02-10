@@ -7,7 +7,7 @@ use thiserror::Error;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream, UdpSocket};
 
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -104,7 +104,13 @@ pub async fn send(send: &SendParams) -> CommResult {
             stream.shutdown().await?;
         }
         Protocol::Udp => {
-            let sock = UdpSocket::bind("0.0.0.0:0").await?;
+            let bind = {
+                match send.address {
+                    SocketAddr::V4(_) => "0.0.0.0:0",
+                    SocketAddr::V6(_) => "[::]:0",
+                }
+            };
+            let sock = UdpSocket::bind(bind).await?;
             sock.send_to(&send.message, send.address).await?;
         }
     }
