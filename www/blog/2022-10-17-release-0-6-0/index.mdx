@@ -1,0 +1,121 @@
+---
+slug: release-0-6-0
+title: Release 0.6.0
+authors: [jamil]
+tags: [release, docker, saml]
+---
+
+## Firezone 0.6 Released!
+
+Today, I'm excited to announce we've closed the [first public issue
+](https://github.com/firezone/firezone/issues/260) on our GitHub repository,
+more than a year after it was originally opened: Containerization support!
+We're also releasing preliminary support for SAML 2.0 identity providers
+like Okta and OneLogin.
+
+### Docker Support
+
+Docker is now the preferred method for deploying Firezone. Our [
+automatic install script](https://raw.githubusercontent.com/firezone/firezone/master/scripts/docker_install.sh)
+now uses Docker by default, and we even have a new [Docker migration script
+](https://raw.githubusercontent.com/firezone/firezone/master/scripts/docker_migrate.sh)
+that will non-destructively migrate your Omnibus-based Firezone installation
+to a Docker-based one with minimal downtime.
+
+#### How to Deploy
+
+You can now deploy Firezone complete with valid SSL certificates and a
+provisioned administrator in just a couple minutes:
+
+<AsciinemaPlayer src="https://asciinema.org/a/530197.cast" autoplay={true} rows={30} idleTimeLimit={3} preload={true} />
+
+This also means Firezone runs on any platform that supports Docker,
+like my Mac in the video above. The automatic install script will _probably_
+barf on Windows, though. In that case, try the
+[manual install method](https://docs.firezone.dev/deploy/docker/#option-2-manual-install)!
+
+#### Why Docker?
+
+Docker offers a number of benefits over the old Omnibus-based method of deploying
+Firezone:
+
+- **Simpler, more robust upgrades**: In most cases, simply pull the latest `firezone/firezone`
+  image and restart the container.
+- **Simpler configuration**: Most day-to-day configuration of Firezone can now
+  be done in the web UI instead of the `/etc/firezone/firezone.rb` configuration
+  file. All other configuration variables can be specified as ENV vars to the
+  Firezone container.
+- **Smaller footprint**: The Firezone image weighs in at a couple dozen
+  megabytes versus hundreds of megabytes for the Omnibus package.
+- **Portability**: Firezone now runs on any platform that supports Docker.
+- **Security**: Containerization providers better security isolation than
+  simply running as an unprivileged local user.
+
+It also makes it easier to build and test Firezone. CI pipelines rejoice!
+No more 4-hour long compiles and intermittent build failures.
+
+#### What about Omnibus?
+
+[Chef Omnibus](https://github.com/chef/omnibus) is a Ruby-based build system
+designed to make building and distributing complex software easier. You define
+your dependencies as source tarballs, configure options, and platform-specific
+build flags, and Omnibus automatically fetches, builds, and links all your
+dependencies automagically, emitting an OS-native installer artifact when
+complete.
+
+Omnibus was a popular choice for distributing self-hosted software before
+Docker was popular -- GitLab and Mattermost are two popular self-hosted products
+that still support Omnibus-based deployments today. It's still used in many
+cases where Docker can't be used (on the *BSDs, for example).
+
+But, since Omnibus is [effectively EOL in 2024](https://docs.chef.io/versions/)
+due to its reliance on Chef Infra Client, we've decided to deprioritize
+reliance on it, and dedicate those resources to containerized deployments
+instead.
+
+**Note**: Beginning with 0.6, Omnibus support in Firezone is **deprecated**.
+We'll be removing support for it completely in a future Firezone release.
+
+#### How to migrate from Omnibus to Docker
+
+We've written an in-depth migration guide to migrate your instance from Omnibus
+to Docker:
+
+https://docs.firezone.dev/administer/migrate
+
+Most instances will migrate without issue. If you're running Firezone in production
+for your team or business, [contact us](https://www.firezone.dev/contact/sales)
+so we can better understand how we can help with your migration.
+
+### SAML 2.0
+
+Also in 0.6 is preliminary support for SAML 2.0 authentication. You'll need the
+IdP Metadata XML document to set it up. In most cases the identity provider
+will provide it for you. If not, you should be able to build it manually or
+using a tool such as
+[this nifty online IdP builder](https://www.samltool.com/idp_metadata.php).
+
+
+In general we recommend using OpenID Connect integration over SAML whenever possible.
+It's simpler, tends to be implemented more consistently across identity providers,
+and much easier to debug when things go wrong.
+
+Speaking of OIDC, 0.6 also introduces a couple improvements to make integrating
+your identity provider a more pleasant experience:
+
+* `auto_create_oidc_users` is now a per-provider configuration setting. Enable or disable
+  autocreation of users when logging into Firezone via that provider.
+* New web form for entering OIDC details, with improved validation and error checking:
+
+<center>
+  <img
+    width="500"
+    src="https://user-images.githubusercontent.com/167144/196735853-b2c8d505-285f-40ac-9d73-4b568358c5c3.png"
+    alt="OIDC Form" />
+</center>
+
+#### IdP not supported?
+
+If your IdP isn't supported or you'd like to learn about your options for
+custom integrations, [contact us](https://www.firezone.dev/contact/sales) to
+learn more about our Business plan features.

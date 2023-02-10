@@ -52,11 +52,20 @@ const config = {
       'classic',
       /** @type {import('@docusaurus/preset-classic').Options} */
       ({
-        docs: {
+        root: {
           routeBasePath: '/',
+        },
+        docs: {
+          routeBasePath: '/docs',
           sidebarPath: require.resolve('./sidebars.js'),
-          editUrl: 'https://github.com/firezone/firezone/tree/master/www',
+          editUrl: 'https://github.com/firezone/firezone/tree/master/www/docs',
           docLayoutComponent: "@theme/DocPage"
+        },
+        blog: {
+          routeBasePath: '/blog',
+          blogSidebarTitle: 'All posts',
+          blogSidebarCount: 'ALL',
+          showReadingTime: true,
         },
         theme: {
           customCss: require.resolve('./src/css/custom.css'),

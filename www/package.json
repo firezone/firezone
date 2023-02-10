@@ -11,7 +11,8 @@
     "clear": "docusaurus clear",
     "serve": "docusaurus serve",
     "write-translations": "docusaurus write-translations",
-    "write-heading-ids": "docusaurus write-heading-ids"
+    "write-heading-ids": "docusaurus write-heading-ids",
+    "typecheck": "tsc"
   },
   "dependencies": {
     "@docusaurus/core": "^2.1.0",
@@ -26,7 +27,17 @@
   },
   "devDependencies": {
     "@docusaurus/module-type-aliases": "2.1.0",
-    "css-minimizer-webpack-plugin": "4.1.0"
+    "css-minimizer-webpack-plugin": "4.1.0",
+    "@tsconfig/docusaurus": "^1.0.5",
+    "asciinema-player": "^3.0.1",
+    "remark-cli": "^11.0.0",
+    "remark-lint": "^9.1.1",
+    "remark-lint-list-item-indent": "^3.1.1",
+    "remark-mdx": "^2.1.5",
+    "remark-preset-lint-consistent": "^5.1.1",
+    "remark-preset-lint-markdown-style-guide": "^5.1.2",
+    "remark-preset-lint-recommended": "^6.1.2",
+    "typescript": "^4.7.4"
   },
   "browserslist": {
     "production": [
