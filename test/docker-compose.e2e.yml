@@ -3,17 +3,17 @@ version: '3.7'
 services:
   firezone:
     build:
-      context: .
+      context: ..
       dockerfile: Dockerfile.dev
       args:
         DATABASE_URL: postgresql://postgres:postgres@postgres:5432/firezone_dev
     image: firezone_dev
     volumes:
-      - ./priv:/var/app/priv
-      - ./apps:/var/app/apps
-      - ./config:/var/app/config
-      - ./mix.exs:/var/app/mix.exs
-      - ./mix.lock:/var/app/mix.lock
+      - ${PWD}/../priv:/var/app/priv
+      - ${PWD}/../apps:/var/app/apps
+      - ${PWD}/../config:/var/app/config
+      - ${PWD}/../mix.exs:/var/app/mix.exs
+      - ${PWD}/../mix.lock:/var/app/mix.lock
       # Mask the following build directories to keep compiled binaries isolated
       # from the local project. This is needed when the Docker Host platform
       # doesn't match the platform under which Docker Engine is running. e.g.
@@ -45,7 +45,7 @@ services:
   postgres:
     image: postgres:15
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - ${PWD}/../postgres-data:/var/lib/postgresql/data
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -61,25 +61,11 @@ services:
     networks:
       - app
 
-  # Unfortunately the Linux VM kernel for Docker Desktop is not compiled with
-  # Dynamic Debug enabled, so we're unable to enable WireGuard debug logging.
-  # Since WireGuard is designed to be silent by default, this basically does
-  # nothing.
-  # wireguard-log:
-  #   image: ubuntu:jammy
-  #   # cap SYSLOG was enough for reading but privilege is required for tailing
-  #   privileged: true
-  #   command: >
-  #     bash -c '
-  #     mount -t debugfs none /sys/kernel/debug
-  #     && echo module wireguard +p > /sys/kernel/debug/dynamic_debug/control
-  #     && dmesg -wT | grep wireguard:'
-
   e2e_external_1:
     depends_on:
       - gateway
     build:
-      context: ./e2e-tests
+      context: ./e2e
       dockerfile: Dockerfile.external
     image: e2e-external-client
     environment:
@@ -94,7 +80,7 @@ services:
     depends_on:
       - gateway
     build:
-      context: ./e2e-tests
+      context: ./e2e
       dockerfile: Dockerfile.external
     image: e2e-external-client
     environment:
@@ -110,7 +96,7 @@ services:
       - e2e_external_1
       - e2e_external_2
     build:
-      context: ./e2e-tests
+      context: ./e2e
       dockerfile: Dockerfile.client
     image: e2e-client
     environment:
@@ -122,7 +108,7 @@ services:
       - S6_KEEP_ENV=1
       - RUST_LOG=debug
     volumes:
-      - ./priv/wg0.client.conf:/config/wg0.conf
+      - ${PWD}/../priv/wg0.client.conf:/config/wg0.conf
     cap_add:
       - NET_ADMIN
       - SYS_MODULE
@@ -137,7 +123,7 @@ services:
       - e2e_external_1
       - e2e_external_2
     build:
-      context: ./e2e-tests
+      context: ./e2e
       dockerfile: Dockerfile.client
     image: e2e-client
     environment:
@@ -155,7 +141,7 @@ services:
       - S6_KEEP_ENV=1
       - RUST_LOG=debug
     volumes:
-      - ./priv/wg1.client.conf:/config/wg0.conf
+      - ${PWD}/../priv/wg1.client.conf:/config/wg0.conf
     cap_add:
       - NET_ADMIN
       - SYS_MODULE
@@ -172,11 +158,11 @@ services:
       e2e_internal_2:
         condition: 'service_healthy'
     build:
-      context: ./e2e-tests
+      context: ./e2e
       dockerfile: Dockerfile.orchestrator
     image: e2e-orchestrator
     volumes:
-      - ./priv/e2e-test-env-descriptor.json:/config/env-descriptor.json
+      - ${PWD}/../priv/e2e-test-env-descriptor.json:/config/env-descriptor.json
     environment:
       - API_TOKEN=${API_TOKEN}
       - FZ_URL=http://firezone:13000
@@ -201,7 +187,7 @@ services:
       - FZ_SECRET=kYl25nYBkLF6yCljeu1ccw==
       - FZ_URL=ws://firezone:13000
     volumes:
-      - ./priv/gateway-conf/:/app/gateway-conf/
+      - ${PWD}/../priv/gateway-conf/:/app/gateway-conf/
     sysctls:
       - net.ipv6.conf.all.disable_ipv6=0
       - net.ipv4.conf.all.src_valid_mark=1
@@ -215,8 +201,6 @@ services:
 
 volumes:
   postgres-data:
-  # Disabled due to Authentik being disabled
-  # redis-data:
 
 networks:
   app:
