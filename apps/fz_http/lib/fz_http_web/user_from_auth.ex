@@ -2,8 +2,7 @@ defmodule FzHttpWeb.UserFromAuth do
   @moduledoc """
   Authenticates users.
   """
-
-  alias FzHttp.Users
+  alias FzHttp.{Auth, Users}
   alias FzHttpWeb.Auth.HTML.Authentication
 
   # Local auth
@@ -38,7 +37,7 @@ defmodule FzHttpWeb.UserFromAuth do
   end
 
   defp maybe_create_user(idp_field, provider_id, email) do
-    if FzHttp.Configurations.auto_create_users?(idp_field, provider_id) do
+    if Auth.auto_create_users?(idp_field, provider_id) do
       Users.create_unprivileged_user(%{email: email})
     else
       {:error, "user not found and auto_create_users disabled"}

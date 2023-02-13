@@ -2,7 +2,7 @@ defmodule FzHttp.UsersTest do
   use FzHttp.DataCase, async: true
   alias FzHttp.UsersFixtures
   alias FzHttp.DevicesFixtures
-  alias FzHttp.Configurations
+  alias FzHttp.Config
   alias FzHttp.Users
 
   describe "count/0" do
@@ -524,7 +524,7 @@ defmodule FzHttp.UsersTest do
   describe "vpn_session_expires_at/1" do
     test "returns expiration datetime of VPN session" do
       now = DateTime.utc_now()
-      Configurations.put!(:vpn_session_duration, 30)
+      Config.put_config!(:vpn_session_duration, 30)
 
       user =
         UsersFixtures.create_user()
@@ -537,13 +537,13 @@ defmodule FzHttp.UsersTest do
 
   describe "vpn_session_expired?/1" do
     test "returns false when user did not sign in" do
-      Configurations.put!(:vpn_session_duration, 30)
+      Config.put_config!(:vpn_session_duration, 30)
       user = UsersFixtures.create_user()
       assert Users.vpn_session_expired?(user) == false
     end
 
     test "returns false when VPN session is not expired" do
-      Configurations.put!(:vpn_session_duration, 30)
+      Config.put_config!(:vpn_session_duration, 30)
       user = UsersFixtures.create_user()
 
       user =
@@ -555,7 +555,7 @@ defmodule FzHttp.UsersTest do
     end
 
     test "returns true when VPN session is expired" do
-      Configurations.put!(:vpn_session_duration, 30)
+      Config.put_config!(:vpn_session_duration, 30)
       user = UsersFixtures.create_user()
 
       user =
@@ -567,7 +567,7 @@ defmodule FzHttp.UsersTest do
     end
 
     test "returns false when VPN session never expires" do
-      Configurations.put!(:vpn_session_duration, 0)
+      Config.put_config!(:vpn_session_duration, 0)
       user = UsersFixtures.create_user()
 
       user =

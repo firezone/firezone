@@ -1,19 +1,14 @@
-defmodule FzHttp.ConfigurationsFixtures do
+defmodule FzHttp.ConfigFixtures do
   @moduledoc """
   Allows for easily updating configuration in tests.
   """
+  alias FzHttp.Repo
+  alias FzHttp.Config
 
-  alias FzHttp.{
-    Configurations,
-    Configurations.Configuration,
-    Repo
-  }
-
-  @doc "Configurations table holds a singleton record."
-  def configuration(%Configuration{} = conf \\ Configurations.get_configuration!(), attrs) do
+  def configuration(%Config.Configuration{} = conf \\ Config.fetch_db_config!(), attrs) do
     {:ok, configuration} =
       conf
-      |> Configuration.Changeset.changeset(attrs)
+      |> Config.Configuration.Changeset.changeset(attrs)
       |> Repo.update()
 
     configuration
@@ -32,7 +27,7 @@ defmodule FzHttp.ConfigurationsFixtures do
         |> Map.merge(overrides)
       end)
 
-    Configurations.put!(:openid_connect_providers, openid_connect_providers_attrs)
+    Config.put_config!(:openid_connect_providers, openid_connect_providers_attrs)
 
     {bypass, openid_connect_providers_attrs}
   end

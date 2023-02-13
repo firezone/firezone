@@ -1,11 +1,11 @@
 defmodule FzHttpWeb.AuthControllerTest do
   use FzHttpWeb.ConnCase, async: true
-  alias FzHttp.ConfigurationsFixtures
+  alias FzHttp.ConfigFixtures
   alias FzHttp.Repo
 
   setup do
     {bypass, _openid_connect_providers_attrs} =
-      ConfigurationsFixtures.start_openid_providers([
+      ConfigFixtures.start_openid_providers([
         "google",
         "okta",
         "auth0",
@@ -15,7 +15,7 @@ defmodule FzHttpWeb.AuthControllerTest do
         "vault"
       ])
 
-    FzHttp.Configurations.put!(
+    FzHttp.Config.put_config!(
       :saml_identity_providers,
       [FzHttp.SAMLIdentityProviderFixtures.saml_attrs() |> Map.put("label", "SAML")]
     )
@@ -68,14 +68,14 @@ defmodule FzHttpWeb.AuthControllerTest do
     test "GET /auth/identity omits forgot password link when local_auth disabled", %{
       unauthed_conn: conn
     } do
-      FzHttp.Configurations.put!(:local_auth_enabled, false)
+      FzHttp.Config.put_config!(:local_auth_enabled, false)
       test_conn = get(conn, ~p"/auth/identity")
 
       assert text_response(test_conn, 404) == "Local auth disabled"
     end
 
     test "when local_auth is disabled responds with 404", %{unauthed_conn: conn} do
-      FzHttp.Configurations.put!(:local_auth_enabled, false)
+      FzHttp.Config.put_config!(:local_auth_enabled, false)
       test_conn = post(conn, ~p"/auth/identity/callback", %{})
 
       assert text_response(test_conn, 404) == "Local auth disabled"
@@ -127,7 +127,7 @@ defmodule FzHttpWeb.AuthControllerTest do
         "password" => "password1234"
       }
 
-      FzHttp.Configurations.put!(:local_auth_enabled, false)
+      FzHttp.Config.put_config!(:local_auth_enabled, false)
 
       test_conn = post(conn, ~p"/auth/identity/callback", params)
       assert text_response(test_conn, 404) == "Local auth disabled"
@@ -136,7 +136,7 @@ defmodule FzHttpWeb.AuthControllerTest do
 
   describe "GET /auth/reset_password" do
     test "protects route when local_auth is disabled", %{unauthed_conn: conn} do
-      FzHttp.Configurations.put!(:local_auth_enabled, false)
+      FzHttp.Config.put_config!(:local_auth_enabled, false)
       test_conn = get(conn, ~p"/auth/reset_password")
 
       assert text_response(test_conn, 404) == "Local auth disabled"
@@ -173,7 +173,7 @@ defmodule FzHttpWeb.AuthControllerTest do
       user: user,
       bypass: bypass
     } do
-      jwk = ConfigurationsFixtures.jwks_attrs()
+      jwk = ConfigFixtures.jwks_attrs()
 
       claims = %{"email" => user.email, "sub" => user.id}
 
@@ -183,7 +183,7 @@ defmodule FzHttpWeb.AuthControllerTest do
         |> JOSE.JWS.sign(Jason.encode!(claims), %{"alg" => "RS256"})
         |> JOSE.JWS.compact()
 
-      ConfigurationsFixtures.expect_refresh_token(bypass, %{"id_token" => token})
+      ConfigFixtures.expect_refresh_token(bypass, %{"id_token" => token})
 
       test_conn = get(conn, ~p"/auth/oidc/google/callback", @params)
       assert redirected_to(test_conn) == ~p"/users"
@@ -192,7 +192,7 @@ defmodule FzHttpWeb.AuthControllerTest do
     end
 
     test "when a user returns with an invalid claim", %{unauthed_conn: conn, bypass: bypass} do
-      jwk = ConfigurationsFixtures.jwks_attrs()
+      jwk = ConfigFixtures.jwks_attrs()
 
       claims = %{"email" => "foo@example.com", "sub" => Ecto.UUID.generate()}
 
@@ -202,7 +202,7 @@ defmodule FzHttpWeb.AuthControllerTest do
         |> JOSE.JWS.sign(Jason.encode!(claims), %{"alg" => "RS256"})
         |> JOSE.JWS.compact()
 
-      ConfigurationsFixtures.expect_refresh_token(bypass, %{"id_token" => token})
+      ConfigFixtures.expect_refresh_token(bypass, %{"id_token" => token})
 
       test_conn = get(conn, ~p"/auth/oidc/google/callback", @params)
 
@@ -307,7 +307,7 @@ defmodule FzHttpWeb.AuthControllerTest do
     end
 
     test "prevents signing in when local_auth_disabled", %{unauthed_conn: conn, user: user} do
-      FzHttp.Configurations.put!(:local_auth_enabled, false)
+      FzHttp.Config.put_config!(:local_auth_enabled, false)
 
       test_conn = get(conn, ~p"/auth/magic/#{user.id}/#{user.sign_in_token}")
       assert text_response(test_conn, 404) == "Local auth disabled"

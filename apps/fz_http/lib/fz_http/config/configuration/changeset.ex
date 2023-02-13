@@ -1,4 +1,4 @@
-defmodule FzHttp.Configurations.Configuration.Changeset do
+defmodule FzHttp.Config.Configuration.Changeset do
   use FzHttp, :changeset
   import FzHttp.Config, only: [config_changeset: 2]
 
@@ -32,10 +32,10 @@ defmodule FzHttp.Configurations.Configuration.Changeset do
       |> cast(attrs, @fields)
       |> cast_embed(:logo)
       |> cast_embed(:openid_connect_providers,
-        with: {FzHttp.Configurations.Configuration.OpenIDConnectProvider, :changeset, []}
+        with: {FzHttp.Config.Configuration.OpenIDConnectProvider, :changeset, []}
       )
       |> cast_embed(:saml_identity_providers,
-        with: {FzHttp.Configurations.Configuration.SAMLIdentityProvider, :changeset, []}
+        with: {FzHttp.Config.Configuration.SAMLIdentityProvider, :changeset, []}
       )
       |> trim_change(:default_client_dns)
       |> trim_change(:default_client_endpoint)

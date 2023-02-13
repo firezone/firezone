@@ -1,9 +1,7 @@
 defmodule FzHttpWeb.SettingLive.SecurityTest do
   use FzHttpWeb.ConnCase, async: true
-  alias FzHttp.Configurations
-  alias FzHttpWeb.SettingLive.Security
   import FzHttp.SAMLIdentityProviderFixtures
-  import FzHttp.ConfigurationsFixtures
+  alias FzHttpWeb.SettingLive.Security
 
   describe "authenticated mount" do
     test "loads the active sessions table", %{admin_conn: conn} do
@@ -18,8 +16,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
       {:ok, _view, html} = live(conn, path)
       assert html =~ ~s|<option selected="selected" value="0">Never</option>|
 
-      Configurations.get_configuration!()
-      |> Configurations.update_configuration(%{vpn_session_duration: 3_600})
+      FzHttp.Config.put_config!(:vpn_session_duration, 3_600)
 
       {:ok, _view, html} = live(conn, path)
       assert html =~ ~s|<option selected="selected" value="3600">Every Hour</option>|
@@ -52,8 +49,10 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
   end
 
   describe "toggles" do
+    import FzHttp.ConfigFixtures
+
     setup %{conf_key: key, conf_val: val} do
-      FzHttp.Configurations.put!(key, val)
+      FzHttp.Config.put_config!(key, val)
       {:ok, path: ~p"/settings/security"}
     end
 
@@ -70,29 +69,31 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
         assert html =~ "checked"
 
         view |> element("input[phx-value-config=#{unquote(key)}]") |> render_click()
-        assert FzHttp.Configurations.get!(unquote(key)) == false
+        assert FzHttp.Config.fetch_config!(unquote(key)) == false
       end
     end
 
     for {key, val} <- [
-          local_auth_enabled: nil,
-          allow_unprivileged_device_management: nil,
-          allow_unprivileged_device_configuration: nil,
-          disable_vpn_on_oidc_error: nil
+          local_auth_enabled: false,
+          allow_unprivileged_device_management: false,
+          allow_unprivileged_device_configuration: false,
+          disable_vpn_on_oidc_error: false
         ] do
       @tag conf_key: key, conf_val: val
-      test "toggle #{key} when value in db is nil", %{admin_conn: conn, path: path} do
+      test "toggle #{key} when value in db is false", %{admin_conn: conn, path: path} do
         {:ok, view, _html} = live(conn, path)
         html = view |> element("input[phx-value-config=#{unquote(key)}]") |> render()
         refute html =~ "checked"
 
         view |> element("input[phx-value-config=#{unquote(key)}]") |> render_click()
-        assert FzHttp.Configurations.get!(unquote(key)) == true
+        assert FzHttp.Config.fetch_config!(unquote(key)) == true
       end
     end
   end
 
   describe "oidc configuration" do
+    import FzHttp.ConfigFixtures
+
     setup %{admin_conn: conn} do
       configuration(%{
         openid_connect_providers: [
@@ -160,7 +161,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
 
       assert %FzHttp.Configurations.Configuration.OpenIDConnectProvider{
                id: "test",
-               label: "updated",
+               label: "test123",
                scope: "openid email profile",
                response_type: "code",
                client_id: "foo",
@@ -184,11 +185,13 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
       |> element("button[phx-value-key=\"test2\"]", "Delete")
       |> render_click()
 
-      assert FzHttp.Configurations.get!(:openid_connect_providers) == []
+      assert FzHttp.Config.fetch_config!(:openid_connect_providers) == []
     end
   end
 
   describe "saml configuration" do
+    import FzHttp.ConfigFixtures
+
     setup %{admin_conn: conn} do
       # Security views use the DB config, not cached config, so update DB here for testing
       saml_attrs1 = saml_attrs()
@@ -240,11 +243,11 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
 
       assert {:error, {:redirect, _}} = return
 
-      saml_identity_providers = FzHttp.Configurations.get!(:saml_identity_providers)
+      saml_identity_providers = FzHttp.Config.fetch_config!(:saml_identity_providers)
 
       assert length(saml_identity_providers) == 3
 
-      assert %FzHttp.Configurations.Configuration.SAMLIdentityProvider{
+      assert %FzHttp.Config.Configuration.SAMLIdentityProvider{
                auto_create_users: false,
                # XXX this field would be nil if we don't "guess" the url when we load the record in StartProxy
                base_url: "#{FzHttp.Config.fetch_env!(:fz_http, :external_url)}auth/saml",
@@ -333,7 +336,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
       |> element("button", "Delete")
       |> render_click()
 
-      assert FzHttp.Configurations.get!(:saml_identity_providers) == []
+      assert FzHttp.Config.fetch_config!(:saml_identity_providers) == []
     end
   end
 end

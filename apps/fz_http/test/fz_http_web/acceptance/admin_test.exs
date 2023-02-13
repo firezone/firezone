@@ -145,21 +145,20 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
         |> toggle("toggle_disabled_at")
       end)
 
-      # XXX: We need to show some kind of message when status changed
-      Process.sleep(200)
-
-      assert updated_user = Repo.get(FzHttp.Users.User, user.id)
-      assert updated_user.disabled_at
+      wait_for(fn ->
+        assert updated_user = Repo.get(FzHttp.Users.User, user.id)
+        refute is_nil(updated_user.disabled_at)
+      end)
 
       accept_confirm(session, fn session ->
         session
         |> toggle("toggle_disabled_at")
       end)
 
-      Process.sleep(200)
-
-      assert updated_user = Repo.get(FzHttp.Users.User, user.id)
-      refute updated_user.disabled_at
+      wait_for(fn ->
+        assert updated_user = Repo.get(FzHttp.Users.User, user.id)
+        assert is_nil(updated_user.disabled_at)
+      end)
     end
 
     feature "delete user", %{session: session, user: user} do
@@ -232,8 +231,8 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
       assert device = Repo.one(FzHttp.Devices.Device)
       assert device.name == "big-leg-007"
       assert device.description == "Dummy description"
-      assert device.allowed_ips == "127.0.0.1"
-      assert device.dns == "1.1.1.1,2.2.2.2"
+      assert device.allowed_ips == [%Postgrex.INET{address: {127, 0, 0, 1}, netmask: nil}]
+      assert device.dns == ["1.1.1.1", "2.2.2.2"]
       assert device.endpoint == "example.com:51820"
       assert device.mtu == 1400
       assert device.persistent_keepalive == 10
@@ -292,8 +291,9 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
 
       # XXX: We need to show a confirmation dialog on delete,
       # and message once record was saved or deleted.
-      Process.sleep(200)
-      assert is_nil(Repo.one(FzHttp.Rules.Rule))
+      wait_for(fn ->
+        assert is_nil(Repo.one(FzHttp.Rules.Rule))
+      end)
     end
   end
 
@@ -314,12 +314,16 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
       |> visit(~p"/settings/client_defaults")
       |> assert_el(Query.text("Client Defaults", count: 2))
 
-      assert configuration = FzHttp.Configurations.get_configuration!()
+      assert configuration = FzHttp.Config.fetch_db_config!()
       assert configuration.default_client_persistent_keepalive == 10
       assert configuration.default_client_mtu == 1234
       assert configuration.default_client_endpoint == "example.com:8123"
-      assert configuration.default_client_dns == "1.1.1.1,2.2.2.2"
-      assert configuration.default_client_allowed_ips == "192.0.0.0/0,::/0"
+      assert configuration.default_client_dns == ["1.1.1.1", "2.2.2.2"]
+
+      assert configuration.default_client_allowed_ips == [
+               %Postgrex.INET{address: {192, 0, 0, 0}, netmask: 0},
+               %Postgrex.INET{address: {0, 0, 0, 0, 0, 0, 0, 0}, netmask: 0}
+             ]
     end
   end
 
@@ -333,16 +337,17 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
       |> click(Query.button("Save"))
       |> assert_el(Query.css("img[src=\"https://http.cat/200\"]"))
 
-      assert configuration = FzHttp.Configurations.get_configuration!()
+      assert configuration = FzHttp.Config.fetch_db_config!()
       assert configuration.logo.url == "https://http.cat/200"
     end
   end
 
   describe "security" do
+    @tag :debug
     feature "change security settings", %{
       session: session
     } do
-      assert configuration = FzHttp.Configurations.get_configuration!()
+      assert configuration = FzHttp.Config.fetch_db_config!()
       assert configuration.local_auth_enabled == true
       assert configuration.allow_unprivileged_device_management == true
       assert configuration.allow_unprivileged_device_configuration == true
@@ -357,7 +362,7 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
       |> toggle("disable_vpn_on_oidc_error")
       |> assert_el(Query.text("Security Settings"))
 
-      assert configuration = FzHttp.Configurations.get_configuration!()
+      assert configuration = FzHttp.Config.fetch_db_config!()
       assert configuration.local_auth_enabled == false
       assert configuration.allow_unprivileged_device_management == false
       assert configuration.allow_unprivileged_device_configuration == false
@@ -365,7 +370,7 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
     end
 
     feature "change required authentication timeout", %{session: session} do
-      assert configuration = FzHttp.Configurations.get_configuration!()
+      assert configuration = FzHttp.Config.fetch_db_config!()
       assert configuration.vpn_session_duration == 0
 
       session
@@ -378,14 +383,14 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
       |> assert_el(Query.text("Security Settings"))
 
       # XXX: We need to show a flash that settings are saved
-      Process.sleep(200)
-
-      assert configuration = FzHttp.Configurations.get_configuration!()
-      assert configuration.vpn_session_duration == 604_800
+      wait_for(fn ->
+        assert configuration = FzHttp.Config.fetch_db_config!()
+        assert configuration.vpn_session_duration == 604_800
+      end)
     end
 
     feature "manage OpenIDConnect providers", %{session: session} do
-      {_bypass, uri} = FzHttp.ConfigurationsFixtures.discovery_document_server()
+      {_bypass, uri} = FzHttp.ConfigFixtures.discovery_document_server()
 
       # Create
       session =
@@ -415,10 +420,10 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
         |> assert_el(Query.text("oidc-foo-bar"))
         |> assert_el(Query.text("Firebook"))
 
-      assert [open_id_connect_provider] = FzHttp.Configurations.get!(:openid_connect_providers)
+      assert [open_id_connect_provider] = FzHttp.Config.fetch_config!(:openid_connect_providers)
 
       assert open_id_connect_provider ==
-               %FzHttp.Configurations.Configuration.OpenIDConnectProvider{
+               %FzHttp.Config.Configuration.OpenIDConnectProvider{
                  id: "oidc-foo-bar",
                  label: "Firebook",
                  scope: "openid email eyes_color",
@@ -440,7 +445,7 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
         |> assert_el(Query.text("Updated successfully."))
         |> assert_el(Query.text("Metabook"))
 
-      assert [open_id_connect_provider] = FzHttp.Configurations.get!(:openid_connect_providers)
+      assert [open_id_connect_provider] = FzHttp.Config.fetch_config!(:openid_connect_providers)
       assert open_id_connect_provider.label == "Metabook"
 
       # Delete
@@ -450,7 +455,7 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
 
       assert_el(session, Query.text("Updated successfully."))
 
-      assert FzHttp.Configurations.get!(:openid_connect_providers) == []
+      assert FzHttp.Config.fetch_config!(:openid_connect_providers) == []
     end
 
     feature "manage SAML providers", %{session: session} do
@@ -481,10 +486,10 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
         |> assert_el(Query.text("foo-bar-buz"))
         |> assert_el(Query.text("Sneaky ID"))
 
-      assert [saml_identity_provider] = FzHttp.Configurations.get!(:saml_identity_providers)
+      assert [saml_identity_provider] = FzHttp.Config.fetch_config!(:saml_identity_providers)
 
       assert saml_identity_provider ==
-               %FzHttp.Configurations.Configuration.SAMLIdentityProvider{
+               %FzHttp.Config.Configuration.SAMLIdentityProvider{
                  id: "foo-bar-buz",
                  label: "Sneaky ID",
                  base_url: "http://localhost:4002/autX/saml#foo",
@@ -506,7 +511,7 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
         |> assert_el(Query.text("Updated successfully."))
         |> assert_el(Query.text("Sneaky XID"))
 
-      assert [saml_identity_provider] = FzHttp.Configurations.get!(:saml_identity_providers)
+      assert [saml_identity_provider] = FzHttp.Config.fetch_config!(:saml_identity_providers)
       assert saml_identity_provider.label == "Sneaky XID"
 
       # Delete
@@ -516,7 +521,7 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
 
       assert_el(session, Query.text("Updated successfully."))
 
-      assert FzHttp.Configurations.get!(:saml_identity_providers) == []
+      assert FzHttp.Config.fetch_config!(:saml_identity_providers) == []
     end
   end
 

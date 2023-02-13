@@ -175,7 +175,7 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
       assigns.providers
       |> Map.get(assigns.provider_id, %{})
       |> Map.put(:id, assigns.provider_id)
-      |> Configurations.Configuration.OpenIDConnectProvider.create_changeset()
+      |> FzHttp.Config.Configuration.OpenIDConnectProvider.create_changeset()
 
     socket =
       socket

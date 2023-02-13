@@ -30,7 +30,7 @@ defmodule FzHttp.Config.Definitions do
   use FzHttp.Config.Definition
   alias FzHttp.Config.Dumper
   alias FzHttp.Types
-  alias FzHttp.Configurations.Configuration
+  alias FzHttp.Config.{Configuration, Logo}
 
   def doc_sections do
     [
@@ -236,7 +236,7 @@ defmodule FzHttp.Config.Definitions do
   Size of the connection pool to the PostgreSQL database.
   """
   defconfig(:database_pool_size, :integer,
-    default: 10,
+    default: fn -> :erlang.system_info(:logical_processors_available) * 2 end,
     legacy_keys: [{:env, "DATABASE_POOL", "0.9"}]
   )
 
@@ -794,12 +794,12 @@ defmodule FzHttp.Config.Definitions do
   @doc """
   The path to a logo image file to replace default Firezone logo.
   """
-  defconfig(:logo_path, :string,
+  defconfig(:logo, {:embed, Logo},
     default: nil,
     changeset: fn changeset, key ->
-      FzHttp.Validator.validate_file(changeset, key,
-        extensions: ~w".jpg .jpeg .png .gif .webp .avif .svg .tiff"
-      )
+      # TODO: copy file at path to data
+      dbg(changeset.params)
+      Ecto.Changeset.cast_embed(changeset, key, with: {Logo, :changeset, []})
     end
   )
 end

@@ -13,25 +13,33 @@
       Use a logo at least 300px wide with a 7:2 ratio for best results. GIF, JPEG, PNG, SVG, TIFF,
       WebP and AVIF images are supported.
     </p>
+    <%= if has_override?(@logo_source) do %>
+      <p>
+        The logo was overridden by the <code>LOGO</code>
+        environment variable, you can not change it in the UI.
+      </p>
+    <% end %>
   </div>
 
   <div class="block">
-    <div class="field">
-      <div class="control">
-        <%= for type <- FzHttp.Configurations.logo_types do %>
-          <label class="radio">
-            <input
-              type="radio"
-              name="logo"
-              value={type}
-              checked={type == @logo_type}
-              phx-click={JS.push("choose", value: %{type: type})}
-            />
-            <span><%= type %></span>
-          </label>
-        <% end %>
+    <%= unless has_override?(@logo_source) do %>
+      <div class="field">
+        <div class="control">
+          <%= for type <- FzHttp.Config.Logo.__types__() do %>
+            <label class="radio">
+              <input
+                type="radio"
+                name="logo"
+                value={type}
+                checked={type == @logo_type}
+                phx-click={JS.push("choose", value: %{type: type})}
+              />
+              <span><%= type %></span>
+            </label>
+          <% end %>
+        </div>
       </div>
-    </div>
+    <% end %>
 
     <div class="column p-0 is-two-thirds-tablet is-half-desktop is-one-third-widescreen">
       <%= if @logo_type == "Default" do %>
@@ -41,44 +49,46 @@
       <% end %>
     </div>
 
-    <%= if @logo_type == "Default" do %>
-      <form id="default-form" phx-submit="save">
-        <input type="hidden" name="default" value="true" />
-        <button class="button" type="submit">Save</button>
-      </form>
-    <% end %>
+    <%= unless has_override?(@logo_source) do %>
+      <%= if @logo_type == "Default" do %>
+        <form id="default-form" phx-submit="save">
+          <input type="hidden" name="default" value="true" />
+          <button class="button" type="submit">Save</button>
+        </form>
+      <% end %>
 
-    <%= if @logo_type == "URL" do %>
-      <form id="url-form" phx-submit="save">
-        <div class="field has-addons">
-          <div class="control">
-            <input
-              class="input"
-              type="url"
-              name="url"
-              placeholder="https://my.logo.com/logo.jpg"
-              required
-            />
+      <%= if @logo_type == "URL" do %>
+        <form id="url-form" phx-submit="save">
+          <div class="field has-addons">
+            <div class="control">
+              <input
+                class="input"
+                type="url"
+                name="url"
+                placeholder="https://my.logo.com/logo.jpg"
+                required
+              />
+            </div>
+            <div class="control">
+              <button class="button" type="submit">Save</button>
+            </div>
           </div>
-          <div class="control">
-            <button class="button" type="submit">Save</button>
-          </div>
-        </div>
-      </form>
-    <% end %>
+        </form>
+      <% end %>
 
-    <%= if @logo_type == "Upload" do %>
-      <form id="upload-form" phx-submit="save" phx-change="validate">
-        <%= for entry <- @uploads.logo.entries do %>
-          <%= for err <- upload_errors(@uploads.logo, entry) do %>
-            <p class="notification is-warning"><%= error_to_string(err) %></p>
+      <%= if @logo_type == "Upload" do %>
+        <form id="upload-form" phx-submit="save" phx-change="validate">
+          <%= for entry <- @uploads.logo.entries do %>
+            <%= for err <- upload_errors(@uploads.logo, entry) do %>
+              <p class="notification is-warning"><%= error_to_string(err) %></p>
+            <% end %>
           <% end %>
-        <% end %>
 
-        <%= live_file_input(@uploads.logo, class: "button", required: true) %>
+          <%= live_file_input(@uploads.logo, class: "button", required: true) %>
 
-        <button class="button" type="submit">Upload</button>
-      </form>
+          <button class="button" type="submit">Upload</button>
+        </form>
+      <% end %>
     <% end %>
   </div>
 </section>

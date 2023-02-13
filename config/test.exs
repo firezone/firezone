@@ -13,9 +13,12 @@ config :fz_http, sql_sandbox: true
 
 config :fz_http, FzHttp.Repo,
   database: "firezone_test#{partition_suffix}",
-  pool: Ecto.Adapters.SQL.Sandbox
+  pool: Ecto.Adapters.SQL.Sandbox,
+  queue_target: 1000
 
-config :fz_http, FzHttpWeb.Endpoint, http: [port: 4002]
+config :fz_http, FzHttpWeb.Endpoint,
+  http: [port: 13000],
+  server: true
 
 config :fz_http,
   http_client: FzHttp.Mocks.HttpClient

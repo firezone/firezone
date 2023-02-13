@@ -4,7 +4,7 @@ defmodule FzHttpWeb.AuthController do
   """
   use FzHttpWeb, :controller
   alias FzHttp.Users
-  alias FzHttp.Configurations
+  alias FzHttp.Auth
   alias FzHttpWeb.Auth.HTML.Authentication
   alias FzHttpWeb.OAuth.PKCE
   alias FzHttpWeb.OIDC.State
@@ -64,7 +64,7 @@ defmodule FzHttpWeb.AuthController do
     token_params = Map.merge(params, PKCE.token_params(conn))
 
     with :ok <- State.verify_state(conn, state),
-         {:ok, config} <- Configurations.fetch_oidc_provider_config(provider_id),
+         {:ok, config} <- Auth.fetch_oidc_provider_config(provider_id),
          {:ok, tokens} <- OpenIDConnect.fetch_tokens(config, token_params),
          {:ok, claims} <- OpenIDConnect.verify(config, tokens["id_token"]) do
       case UserFromAuth.find_or_create(provider_id, claims) do
@@ -169,7 +169,7 @@ defmodule FzHttpWeb.AuthController do
       code_challenge: PKCE.code_challenge(verifier)
     }
 
-    with {:ok, config} <- Configurations.fetch_oidc_provider_config(provider_id),
+    with {:ok, config} <- Auth.fetch_oidc_provider_config(provider_id),
          {:ok, uri} <- OpenIDConnect.authorization_uri(config, params) do
       conn
       |> PKCE.put_cookie(verifier)

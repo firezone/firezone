@@ -26,9 +26,7 @@
             <div class="column">
               <div class="block">
                 <div class="has-text-centered">
-                  <%= FzHttpWeb.LogoComponent.render(
-                    FzHttp.Configurations.get_configuration!().logo
-                  ) %>
+                  <%= FzHttpWeb.LogoComponent.render(FzHttp.Config.fetch_config!(:logo)) %>
                 </div>
               </div>
 

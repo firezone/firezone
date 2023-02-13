@@ -197,7 +197,7 @@ defmodule FzHttpWeb.SettingLive.SAMLFormComponent do
       assigns.providers
       |> Map.get(assigns.provider_id, %{})
       |> Map.merge(%{id: assigns.provider_id})
-      |> Configurations.Configuration.SAMLIdentityProvider.create_changeset()
+      |> FzHttp.Config.Configuration.SAMLIdentityProvider.create_changeset()
 
     socket =
       socket

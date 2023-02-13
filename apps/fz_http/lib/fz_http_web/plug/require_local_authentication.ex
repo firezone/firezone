@@ -4,7 +4,7 @@ defmodule FzHttpWeb.Plug.RequireLocalAuthentication do
   def init(opts), do: opts
 
   def call(conn, _opts) do
-    if FzHttp.Configurations.get!(:local_auth_enabled) do
+    if FzHttp.Config.fetch_config!(:local_auth_enabled) do
       conn
     else
       conn

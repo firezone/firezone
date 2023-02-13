@@ -1,7 +1,7 @@
 defmodule FzHttpWeb.SettingLive.ClientDefaultsTest do
   use FzHttpWeb.ConnCase, async: true
 
-  alias FzHttp.Configurations
+  alias FzHttp.Config
 
   describe "authenticated/client_defaults" do
     @valid_allowed_ips %{
@@ -35,11 +35,11 @@ defmodule FzHttpWeb.SettingLive.ClientDefaultsTest do
     end
 
     test "renders current configuration", %{html: html} do
-      for allowed_ips <- Configurations.get_configuration!().default_client_allowed_ips do
+      for allowed_ips <- Config.fetch_config!(:default_client_allowed_ips) do
         assert html =~ to_string(allowed_ips)
       end
 
-      for dns <- Configurations.get_configuration!().default_client_dns do
+      for dns <- Config.fetch_config!(:default_client_dns) do
         assert html =~ to_string(dns)
       end
 

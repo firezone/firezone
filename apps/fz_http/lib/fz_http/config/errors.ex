@@ -110,7 +110,7 @@ defmodule FzHttp.Config.Errors do
   end
 
   defp db_example(key) do
-    if key in FzHttp.Configurations.Configuration.__schema__(:fields) do
+    if key in FzHttp.Config.Configuration.__schema__(:fields) do
       """
       ### Using database
 

@@ -6,6 +6,10 @@ defmodule FzHttp.Config.Caster do
   to cast a binary needs to be casted this way,
   """
 
+  def cast(value, {:array, separator, type, _opts}) do
+    cast(value, {:array, separator, type})
+  end
+
   def cast(value, {:array, separator, type}) when is_binary(value) do
     value
     |> String.split(separator)
@@ -21,6 +25,7 @@ defmodule FzHttp.Config.Caster do
   end
 
   def cast(json, :embed) when is_binary(json), do: Jason.decode(json)
+  def cast(json, {:embed, _schema}) when is_binary(json), do: Jason.decode(json)
   def cast(json, :map) when is_binary(json), do: Jason.decode(json)
   def cast(json, {:map, _term}) when is_binary(json), do: Jason.decode(json)
   def cast(json, :json_array) when is_binary(json), do: Jason.decode(json)

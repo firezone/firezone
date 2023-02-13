@@ -27,6 +27,7 @@ defmodule FzHttp.Config.Definition do
 
   @type type ::
           Ecto.Type.t()
+          | {:embed, Ecto.Schema.t()}
           | {:json_array, type()}
           | {:json_array, type(), array_opts()}
           | {:array, separator :: String.t(), type()}

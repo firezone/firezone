@@ -3,6 +3,7 @@ defmodule FzHttpWeb.SettingLive.Customization do
   Manages the app customizations.
   """
   use FzHttpWeb, :live_view
+  alias FzHttp.Config
 
   @max_logo_size 1024 ** 2
   @page_title "Customization"
@@ -10,20 +11,25 @@ defmodule FzHttpWeb.SettingLive.Customization do
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
-    logo = FzHttp.Configurations.get!(:logo)
-    logo_type = FzHttp.Configurations.logo_type(logo)
+    {source, logo} = FzHttp.Config.fetch_source_and_config!(:logo)
+    logo_type = FzHttp.Config.Logo.type(logo)
 
-    {:ok,
-     socket
-     |> assign(:page_title, @page_title)
-     |> assign(:page_subtitle, @page_subtitle)
-     |> assign(:logo, logo)
-     |> assign(:logo_type, logo_type)
-     |> allow_upload(:logo,
-       accept: ~w(.jpg .jpeg .png .gif .webp .avif .svg .tiff),
-       max_file_size: @max_logo_size
-     )}
+    socket =
+      socket
+      |> assign(:page_title, @page_title)
+      |> assign(:page_subtitle, @page_subtitle)
+      |> assign(:logo, logo)
+      |> assign(:logo_source, source)
+      |> assign(:logo_type, logo_type)
+      |> allow_upload(:logo,
+        accept: ~w(.jpg .jpeg .png .gif .webp .avif .svg .tiff),
+        max_file_size: @max_logo_size
+      )
+
+    {:ok, socket}
   end
+
+  def has_override?({source, _source_key}), do: source not in [:db, :default]
 
   @impl Phoenix.LiveView
   def handle_event("choose", %{"type" => type}, socket) do
@@ -37,15 +43,13 @@ defmodule FzHttpWeb.SettingLive.Customization do
 
   @impl Phoenix.LiveView
   def handle_event("save", %{"default" => "true"}, socket) do
-    {:ok, config} = FzHttp.Configurations.update_configuration(%{logo: nil})
-
+    config = Config.put_config!(:logo, nil)
     {:noreply, assign(socket, :logo, config.logo)}
   end
 
   @impl Phoenix.LiveView
   def handle_event("save", %{"url" => url}, socket) do
-    {:ok, config} = FzHttp.Configurations.update_configuration(%{logo: %{"url" => url}})
-
+    config = Config.put_config!(:logo, %{"url" => url})
     {:noreply, assign(socket, :logo, config.logo)}
   end
 
@@ -56,13 +60,7 @@ defmodule FzHttpWeb.SettingLive.Customization do
     config =
       consume_uploaded_entry(socket, entry, fn %{path: path} ->
         data = path |> File.read!() |> Base.encode64()
-
-        # enforce OK, error from update_configuration instead of consume_uploaded_entry
-        {:ok, config} =
-          FzHttp.Configurations.update_configuration(%{
-            logo: %{"data" => data, "type" => entry.client_type}
-          })
-
+        config = FzHttp.Config.put_config!(:logo, %{"data" => data, "type" => entry.client_type})
         {:ok, config}
       end)
 

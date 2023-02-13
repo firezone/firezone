@@ -15,22 +15,25 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
      |> assign(:config, nil)}
   end
 
-  @default_fields ~w(
-    default_client_mtu
-    default_client_endpoint
-    default_client_persistent_keepalive
-    default_client_dns
-    default_client_allowed_ips
-  )a
   @impl Phoenix.LiveComponent
   def update(assigns, socket) do
     changeset = new_changeset(socket)
+
+    config =
+      FzHttp.Config.fetch_source_and_configs!(~w(
+        default_client_mtu
+        default_client_endpoint
+        default_client_persistent_keepalive
+        default_client_dns
+        default_client_allowed_ips
+      )a)
+      |> Enum.into(%{}, fn {k, {_s, v}} -> {k, v} end)
 
     {:ok,
      socket
      |> assign(assigns)
      |> assign(:changeset, changeset)
-     |> assign(Map.take(FzHttp.Configurations.get_configuration!(), @default_fields))
+     |> assign(config)
      |> assign(Devices.defaults(changeset))}
   end
 
@@ -85,7 +88,7 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
 
   defp authorized_to_create?(socket) do
     has_role?(socket, :admin) ||
-      (FzHttp.Configurations.get!(:allow_unprivileged_device_management) &&
+      (FzHttp.Config.fetch_config!(:allow_unprivileged_device_management) &&
          socket.assigns.current_user.id == socket.assigns.target_user_id)
   end
 

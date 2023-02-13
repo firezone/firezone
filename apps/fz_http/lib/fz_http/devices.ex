@@ -3,7 +3,7 @@ defmodule FzHttp.Devices do
   import Ecto.Query, warn: false
 
   alias FzHttp.{
-    Configurations,
+    Config,
     Devices.Device,
     Devices.DeviceSetting,
     Repo,
@@ -145,9 +145,11 @@ defmodule FzHttp.Devices do
   def mtu(device), do: config(device, :mtu)
   def persistent_keepalive(device), do: config(device, :persistent_keepalive)
 
+  # XXX: This is an A* query which is executed for every config key,
+  # we can load all configs in a batch instead
   def config(device, key) do
     if Map.get(device, String.to_atom("use_default_#{key}")) do
-      Map.get(Configurations.get_configuration!(), String.to_atom("default_client_#{key}"))
+      Map.get(Config.fetch_db_config!(), String.to_atom("default_client_#{key}"))
     else
       Map.get(device, key)
     end

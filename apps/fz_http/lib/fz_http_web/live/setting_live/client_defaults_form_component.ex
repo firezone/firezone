@@ -3,14 +3,24 @@ defmodule FzHttpWeb.SettingLive.ClientDefaultsFormComponent do
   Handles updating client defaults form.
   """
   use FzHttpWeb, :live_component
+  alias FzHttp.Config
 
-  alias FzHttp.Configurations
+  @configs ~w[
+    default_client_allowed_ips
+    default_client_dns
+    default_client_endpoint
+    default_client_persistent_keepalive
+    default_client_mtu
+  ]a
 
   @impl Phoenix.LiveComponent
   def update(assigns, socket) do
-    {:ok,
-     socket
-     |> assign(assigns)}
+    socket =
+      socket
+      |> assign(assigns)
+      |> assign(:configs, FzHttp.Config.fetch_source_and_configs!(@configs))
+
+    {:ok, socket}
   end
 
   @impl Phoenix.LiveComponent
@@ -20,19 +30,20 @@ defmodule FzHttpWeb.SettingLive.ClientDefaultsFormComponent do
       |> Map.update("default_client_dns", nil, &binary_to_list/1)
       |> Map.update("default_client_allowed_ips", nil, &binary_to_list/1)
 
-    configuration = Configurations.get_configuration!()
+    configuration = Config.fetch_db_config!()
 
-    case Configurations.update_configuration(configuration, configuration_params) do
-      {:ok, configuration} ->
-        {:noreply,
-         socket
-         |> assign(:changeset, Configurations.change_configuration(configuration))}
+    socket =
+      case Config.update_config(configuration, configuration_params) do
+        {:ok, configuration} ->
+          socket
+          |> assign(:changeset, Config.change_config(configuration))
 
-      {:error, changeset} ->
-        {:noreply,
-         socket
-         |> assign(:changeset, changeset)}
-    end
+        {:error, changeset} ->
+          socket
+          |> assign(:changeset, changeset)
+      end
+
+    {:noreply, socket}
   end
 
   defp binary_to_list(binary) when is_binary(binary),
@@ -40,4 +51,20 @@ defmodule FzHttpWeb.SettingLive.ClientDefaultsFormComponent do
 
   defp binary_to_list(list) when is_list(list),
     do: list
+
+  def config_has_override?({{source, _source_key}, _key}) do
+    source not in [:db, :default]
+  end
+
+  def config_has_override?({_source, _key}) do
+    false
+  end
+
+  def config_value({_source, value}) do
+    value
+  end
+
+  def config_override_source({{:env, source_key}, _value}) do
+    "environment variable #{source_key}"
+  end
 end

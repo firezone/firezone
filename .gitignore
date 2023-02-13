@@ -65,3 +65,4 @@ apps/fz_http/screenshots
 
 # Auto generated private key
 apps/fz_http/priv/wg_dev_private_key
+apps/fz_http/priv/static/uploads

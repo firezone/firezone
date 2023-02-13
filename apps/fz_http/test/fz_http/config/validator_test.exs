@@ -56,14 +56,14 @@ defmodule FzHttp.Config.ValidatorTest do
     end
 
     test "validates embeds" do
-      type = {:json_array, {:embed, FzHttp.Configurations.Configuration.SAMLIdentityProvider}}
+      type = {:json_array, {:embed, FzHttp.Config.Configuration.SAMLIdentityProvider}}
 
       attrs = FzHttp.SAMLIdentityProviderFixtures.saml_attrs()
 
       assert validate(:key, [attrs], type, []) ==
                {:ok,
                 [
-                  %FzHttp.Configurations.Configuration.SAMLIdentityProvider{
+                  %FzHttp.Config.Configuration.SAMLIdentityProvider{
                     auto_create_users: attrs["auto_create_users"],
                     base_url: "http://localhost:13000/auth/saml",
                     id: attrs["id"],

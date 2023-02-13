@@ -1,4 +1,4 @@
-defmodule FzHttp.Configurations.Configuration.OpenIDConnectProvider do
+defmodule FzHttp.Config.Configuration.OpenIDConnectProvider do
   @moduledoc """
   OIDC Config virtual schema
   """

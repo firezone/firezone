@@ -1,6 +1,15 @@
 defmodule FzHttp.Config.Resolver do
   alias FzHttp.Config.Errors
 
+  @type source :: {:env, atom()} | {:db, atom()} | :default
+
+  @spec resolve(
+          key :: atom(),
+          env_configurations :: map(),
+          db_configurations :: map(),
+          opts :: [{:legacy_keys, [FzHttp.Config.Definition.legacy_key()]}]
+        ) ::
+          {:ok, {source :: source(), value :: term()}} | :error
   def resolve(key, env_configurations, db_configurations, opts) do
     with :error <- resolve_env_value(env_configurations, key, opts),
          :error <- resolve_db_value(db_configurations, key),
@@ -17,7 +26,7 @@ defmodule FzHttp.Config.Resolver do
       :error
     else
       {:ok, {_source, nil}} -> :error
-      {:ok, value} -> {:ok, value}
+      {:ok, source_and_value} -> {:ok, source_and_value}
     end
   end
 

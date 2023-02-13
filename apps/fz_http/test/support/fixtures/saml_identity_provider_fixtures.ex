@@ -1,7 +1,5 @@
 defmodule FzHttp.SAMLIdentityProviderFixtures do
-  @moduledoc """
-  Fixtures for SAML configs.
-  """
+  # TODO: This module should be removed in favor of ConfigFixtures
 
   @metadata """
   <?xml version="1.0"?>

@@ -33,6 +33,7 @@
   <h4 class="title is-4">Authentication</h4>
 
   <div class="block">
+    <% vpn_session_duration = Map.fetch!(@configs, :vpn_session_duration) %>
     <.form
       :let={f}
       for={@configuration_changeset}
@@ -46,31 +47,48 @@
         <div class="field has-addons">
           <p class="control">
             <span class="select">
-              <%= select(f, :vpn_session_duration, @session_duration_options, class: "input") %>
+              <%= select(f, :vpn_session_duration, session_duration_options(vpn_session_duration),
+                class: "input",
+                disabled: config_has_override?(vpn_session_duration),
+                selected: config_value(vpn_session_duration)
+              ) %>
             </span>
           </p>
           <p class="control">
             <%= submit("Save",
-              disabled: !@form_changed,
+              disabled: !(@form_changed and !config_has_override?(vpn_session_duration)),
               phx_disable_with: "Saving...",
               class: "button is-primary"
             ) %>
           </p>
         </div>
         <p class="help">
-          Optionally require users to periodically authenticate to the Firezone
-          web UI in order to keep their VPN sessions active.
+          <%= if config_has_override?(vpn_session_duration) do %>
+            This field was overriden using <%= config_override_source(vpn_session_duration) %>, you can not change it in UI.
+          <% else %>
+            Optionally require users to periodically authenticate to the Firezone
+            web UI in order to keep their VPN sessions active.
+          <% end %>
         </p>
       </div>
     </.form>
   </div>
 
-  <div class="block" title={@field_titles.local_auth_enabled}>
+  <div class="block">
+    <% local_auth_enabled = Map.fetch!(@configs, :local_auth_enabled) %>
     <strong>Local Auth</strong>
 
     <div class="level">
       <div class="level-left">
-        <p>Enable or disable authentication with email and password.</p>
+        <p>
+          Enable or disable authentication with email and password.
+          <%= if config_has_override?(local_auth_enabled) do %>
+            <br />
+            <i>
+              This value is overriden using <%= config_override_source(local_auth_enabled) %>, you can not change it in UI.
+            </i>
+          <% end %>
+        </p>
       </div>
       <div class="level-right">
         <label class="switch is-medium">
@@ -79,8 +97,9 @@
             phx-click="toggle"
             name="local_auth_enabled"
             phx-value-config="local_auth_enabled"
-            checked={FzHttp.Configurations.get!(:local_auth_enabled)}
-            value={if(!FzHttp.Configurations.get!(:local_auth_enabled), do: "on")}
+            disabled={config_has_override?(local_auth_enabled)}
+            checked={config_value(local_auth_enabled)}
+            value={config_toggle_status(local_auth_enabled)}
           />
           <span class="check"></span>
         </label>
@@ -88,12 +107,24 @@
     </div>
   </div>
 
-  <div class="block" title={@field_titles.allow_unprivileged_device_management}>
+  <div class="block">
+    <% allow_unprivileged_device_management =
+      Map.fetch!(@configs, :allow_unprivileged_device_management) %>
     <strong>Allow unprivileged device management</strong>
 
     <div class="level">
       <div class="level-left">
-        <p>Enable or disable management of devices on unprivileged accounts.</p>
+        <p>
+          Enable or disable management of devices on unprivileged accounts.
+          <%= if config_has_override?(allow_unprivileged_device_management) do %>
+            <br />
+            <i>
+              This value is overriden using <%= config_override_source(
+                allow_unprivileged_device_management
+              ) %>, you can not change it in UI.
+            </i>
+          <% end %>
+        </p>
       </div>
       <div class="level-right">
         <label class="switch is-medium">
@@ -102,10 +133,9 @@
             phx-click="toggle"
             name="allow_unprivileged_device_management"
             phx-value-config="allow_unprivileged_device_management"
-            checked={FzHttp.Configurations.get!(:allow_unprivileged_device_management)}
-            value={
-              if(!FzHttp.Configurations.get!(:allow_unprivileged_device_management), do: "on")
-            }
+            disabled={config_has_override?(allow_unprivileged_device_management)}
+            checked={config_value(allow_unprivileged_device_management)}
+            value={config_toggle_status(allow_unprivileged_device_management)}
           />
           <span class="check"></span>
         </label>
@@ -113,13 +143,23 @@
     </div>
   </div>
 
-  <div class="block" title={@field_titles.allow_unprivileged_device_configuration}>
+  <div class="block">
+    <% allow_unprivileged_device_configuration =
+      Map.fetch!(@configs, :allow_unprivileged_device_configuration) %>
     <strong>Allow unprivileged device configuration</strong>
 
     <div class="level">
       <div class="level-left">
         <p>
           Enable or disable configuration of device network settings for unprivileged users.
+          <%= if config_has_override?(allow_unprivileged_device_configuration) do %>
+            <br />
+            <i>
+              This value is overriden using <%= config_override_source(
+                allow_unprivileged_device_configuration
+              ) %>, you can not change it in UI.
+            </i>
+          <% end %>
         </p>
       </div>
       <div class="level-right">
@@ -129,10 +169,9 @@
             phx-click="toggle"
             name="allow_unprivileged_device_configuration"
             phx-value-config="allow_unprivileged_device_configuration"
-            checked={FzHttp.Configurations.get!(:allow_unprivileged_device_configuration)}
-            value={
-              if(!FzHttp.Configurations.get!(:allow_unprivileged_device_configuration), do: "on")
-            }
+            disabled={config_has_override?(allow_unprivileged_device_configuration)}
+            checked={config_value(allow_unprivileged_device_configuration)}
+            value={config_toggle_status(allow_unprivileged_device_configuration)}
           />
           <span class="check"></span>
         </label>
@@ -150,12 +189,19 @@
     </p>
   </div>
 
-  <div class="block" title={@field_titles.disable_vpn_on_oidc_error}>
+  <div class="block">
+    <% disable_vpn_on_oidc_error = Map.fetch!(@configs, :disable_vpn_on_oidc_error) %>
     <strong>Auto disable VPN</strong>
 
     <div class="level">
       <div class="level-left">
         <p>Enable or disable auto disabling VPN connection on OIDC refresh error.</p>
+        <%= if config_has_override?(disable_vpn_on_oidc_error) do %>
+          <br />
+          <i>
+            This value is overriden using <%= config_override_source(disable_vpn_on_oidc_error) %>, you can not change it in UI.
+          </i>
+        <% end %>
       </div>
       <div class="level-right">
         <label class="switch is-medium">
@@ -164,8 +210,9 @@
             phx-click="toggle"
             name="disable_vpn_on_oidc_error"
             phx-value-config="disable_vpn_on_oidc_error"
-            checked={FzHttp.Configurations.get!(:disable_vpn_on_oidc_error)}
-            value={if(!FzHttp.Configurations.get!(:disable_vpn_on_oidc_error), do: "on")}
+            disabled={config_has_override?(disable_vpn_on_oidc_error)}
+            checked={config_value(disable_vpn_on_oidc_error)}
+            value={config_toggle_status(disable_vpn_on_oidc_error)}
           />
           <span class="check"></span>
         </label>
@@ -174,6 +221,17 @@
   </div>
 
   <label class="label">OpenID Connect providers configuration</label>
+  <% openid_connect_providers = Map.fetch!(@configs, :openid_connect_providers) %>
+
+  <%= if config_has_override?(openid_connect_providers) do %>
+    <i>
+      <p>
+        You can not add new change providers because this value is overriden using <%= config_override_source(
+          openid_connect_providers
+        ) %>.
+      </p>
+    </i>
+  <% end %>
 
   <table class="table is-bordered is-hoverable is-striped is-fullwidth">
     <thead>
@@ -183,44 +241,63 @@
         <th>Client ID</th>
         <th>Discovery URI</th>
         <th>Scope</th>
-        <th></th>
+        <%= unless config_has_override?(openid_connect_providers) do %>
+          <th></th>
+        <% end %>
       </tr>
     </thead>
     <tbody>
-      <%= for {k, v} <- @oidc_configs do %>
+      <%= for provider <- config_value(openid_connect_providers) do %>
         <tr>
-          <td><%= k %></td>
-          <td><%= v.label %></td>
-          <td><%= v.client_id %></td>
-          <td><%= v.discovery_document_uri %></td>
-          <td><%= v.scope %></td>
-          <td>
-            <%= live_patch(to: ~p"/settings/security/oidc/#{k}/edit",
+          <td><%= provider.id %></td>
+          <td><%= provider.label %></td>
+          <td><%= provider.client_id %></td>
+          <td><%= provider.discovery_document_uri %></td>
+          <td><%= provider.scope %></td>
+          <%= unless config_has_override?(openid_connect_providers) do %>
+            <td>
+              <%= live_patch(to: ~p"/settings/security/oidc/#{provider.id}/edit",
               class: "button") do %>
-              Edit
-            <% end %>
-            <button
-              class="button is-danger"
-              phx-click="delete"
-              phx-value-key={k}
-              phx-value-type="oidc"
-              data-confirm={"Are you sure about deleting OIDC config #{k}?"}
-            >
-              Delete
-            </button>
-          </td>
+                Edit
+              <% end %>
+              <button
+                class="button is-danger"
+                phx-click="delete"
+                phx-value-key={provider.id}
+                phx-value-type="openid_connect_providers"
+                disabled={config_has_override?(openid_connect_providers)}
+                data-confirm={"Are you sure about deleting OIDC config #{provider.name}?"}
+              >
+                Delete
+              </button>
+            </td>
+          <% end %>
         </tr>
       <% end %>
     </tbody>
   </table>
 
-  <%= live_patch(
+  <%= unless config_has_override?(openid_connect_providers) do %>
+    <%= live_patch(
       to: ~p"/settings/security/oidc/#{rand_string(8)}/edit",
       class: "button mb-4") do %>
-    Add OpenID Connect Provider
+      Add OpenID Connect Provider
+    <% end %>
   <% end %>
 
   <label class="label">SAML identity providers configuration</label>
+
+  <% saml_identity_providers = Map.fetch!(@configs, :saml_identity_providers) %>
+
+  <%= if config_has_override?(saml_identity_providers) do %>
+    <p>
+      <i>
+        You can not add new change providers because this value is overriden using <%= config_override_source(
+          saml_identity_providers
+        ) %>.
+      </i>
+    </p>
+  <% end %>
 
   <table class="table is-bordered is-hoverable is-striped is-fullwidth">
     <thead>
@@ -228,40 +305,47 @@
         <th>Config ID</th>
         <th>label</th>
         <th>Metadata</th>
-        <th></th>
+        <%= unless config_has_override?(saml_identity_providers) do %>
+          <th></th>
+        <% end %>
       </tr>
     </thead>
     <tbody>
-      <%= for {k, v} <- @saml_configs do %>
+      <%= for provider <- config_value(saml_identity_providers) do %>
         <tr>
-          <td><%= k %></td>
-          <td><%= v.label %></td>
+          <td><%= provider.id %></td>
+          <td><%= provider.label %></td>
           <td>
-            <div class="line-clamp"><%= v.metadata %></div>
+            <div class="line-clamp"><%= provider.metadata %></div>
           </td>
-          <td>
-            <%= live_patch(to: ~p"/settings/security/saml/#{k}/edit",
+          <%= unless config_has_override?(saml_identity_providers) do %>
+            <td>
+              <%= live_patch(to: ~p"/settings/security/saml/#{provider.id}/edit",
               class: "button") do %>
-              Edit
-            <% end %>
-            <button
-              class="button is-danger"
-              phx-click="delete"
-              phx-value-key={k}
-              phx-value-type="saml"
-              data-confirm={"Are you sure about deleting SAML config #{k}?"}
-            >
-              Delete
-            </button>
-          </td>
+                Edit
+              <% end %>
+              <button
+                class="button is-danger"
+                phx-click="delete"
+                phx-value-key={provider.id}
+                phx-value-type="saml_identity_providers"
+                disabled={config_has_override?(saml_identity_providers)}
+                data-confirm={"Are you sure about deleting SAML config #{provider.name}?"}
+              >
+                Delete
+              </button>
+            </td>
+          <% end %>
         </tr>
       <% end %>
     </tbody>
   </table>
 
-  <%= live_patch(
+  <%= unless config_has_override?(saml_identity_providers) do %>
+    <%= live_patch(
       to: ~p"/settings/security/saml/#{rand_string(8)}/edit",
       class: "button mb-4") do %>
-    Add SAML Identity Provider
+      Add SAML Identity Provider
+    <% end %>
   <% end %>
 </section>

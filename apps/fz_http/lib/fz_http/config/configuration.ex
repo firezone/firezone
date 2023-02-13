@@ -1,6 +1,6 @@
-defmodule FzHttp.Configurations.Configuration do
+defmodule FzHttp.Config.Configuration do
   use FzHttp, :schema
-  alias FzHttp.Configurations.Logo
+  alias FzHttp.Config.Logo
 
   schema "configurations" do
     field :allow_unprivileged_device_management, :boolean
@@ -33,11 +33,11 @@ defmodule FzHttp.Configurations.Configuration do
     embeds_one :logo, Logo, on_replace: :delete
 
     embeds_many :openid_connect_providers,
-                FzHttp.Configurations.Configuration.OpenIDConnectProvider,
+                FzHttp.Config.Configuration.OpenIDConnectProvider,
                 on_replace: :delete
 
     embeds_many :saml_identity_providers,
-                FzHttp.Configurations.Configuration.SAMLIdentityProvider,
+                FzHttp.Config.Configuration.SAMLIdentityProvider,
                 on_replace: :delete
 
     timestamps()

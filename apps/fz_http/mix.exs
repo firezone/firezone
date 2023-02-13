@@ -102,6 +102,7 @@ defmodule FzHttp.MixProject do
 
   defp aliases do
     [
+      "assets.build": ["cmd cd assets && yarn install --frozen-lockfile && node esbuild.js prod"],
       "ecto.seed": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.setup": ["ecto.create", "ecto.migrate"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],

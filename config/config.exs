@@ -19,9 +19,9 @@ config :fz_http, FzHttp.Repo,
   password: "postgres",
   database: "firezone_dev",
   show_sensitive_data_on_connection_error: true,
-  pool_size: 10,
-  queue_target: 100,
-  queue_interval: 2000,
+  pool_size: :erlang.system_info(:logical_processors_available) * 2,
+  queue_target: 500,
+  queue_interval: 1000,
   migration_timestamps: [type: :timestamptz]
 
 config :fz_http,

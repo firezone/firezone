@@ -32,8 +32,12 @@ alias FzHttp.{
     preshared_key: "27eCDMVRVFfMVS5Rfnn9n7as4M6MemGY/oghmdrwX2E=",
     public_key: "4Fo+SBnDJ6hi8qzPt3nWLwgjCVwvpjHL35qJeatKwEc=",
     remote_ip: %Postgrex.INET{address: {127, 5, 0, 1}},
-    dns: "8.8.8.8,8.8.4.4",
-    allowed_ips: "0.0.0.0/0,::/0,1.1.1.1",
+    dns: ["8.8.8.8", "8.8.4.4"],
+    allowed_ips: [
+      %Postgrex.INET{address: {0, 0, 0, 0}, netmask: 0},
+      %Postgrex.INET{address: {0, 0, 0, 0, 0, 0, 0, 0}, netmask: 0},
+      %Postgrex.INET{address: {1, 1, 1, 1}}
+    ],
     use_default_allowed_ips: false,
     use_default_dns: false,
     rx_bytes: 123_917_823,
@@ -81,9 +85,12 @@ MFA.create_method(
     public_key: "pSLWbPiQ2mKh26IG1dMFQQWuAstFJXV91dNk+olzEjA=",
     mtu: 1280,
     persistent_keepalive: 25,
-    allowed_ips: "0.0.0.0,::/0",
+    allowed_ips: [
+      %Postgrex.INET{address: {0, 0, 0, 0}, netmask: 0},
+      %Postgrex.INET{address: {0, 0, 0, 0, 0, 0, 0, 0}, netmask: 0}
+    ],
     endpoint: "elixir",
-    dns: "127.0.0.11",
+    dns: ["127.0.0.11"],
     use_default_allowed_ips: false,
     use_default_dns: false,
     use_default_endpoint: false,
@@ -208,10 +215,18 @@ Rules.create_rule(%{
   destination: "1.2.3.4"
 })
 
-FzHttp.Configurations.put!(:default_client_dns, ["4.3.2.1", "1.2.3.4"])
-FzHttp.Configurations.put!(:default_client_allowed_ips, ["10.0.0.1/20", "::/0", "1.1.1.1"])
+FzHttp.Config.put_config!(:default_client_dns, ["4.3.2.1", "1.2.3.4"])
 
-FzHttp.Configurations.put!(
+FzHttp.Config.put_config!(
+  :default_client_allowed_ips,
+  [
+    %Postgrex.INET{address: {10, 0, 0, 1}, netmask: 20},
+    %Postgrex.INET{address: {0, 0, 0, 0, 0, 0, 0, 0}, netmask: 0},
+    %Postgrex.INET{address: {1, 1, 1, 1}}
+  ]
+)
+
+FzHttp.Config.put_config!(
   :openid_connect_providers,
   [
     %{

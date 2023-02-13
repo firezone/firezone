@@ -12,7 +12,7 @@ defmodule FzHttpWeb.JSON.ConfigurationControllerTest do
     end
 
     test "renders logotype" do
-      FzHttp.Configurations.put!(:logo, %{"url" => "https://example.com/logo.png"})
+      FzHttp.Config.put_config!(:logo, %{"url" => "https://example.com/logo.png"})
 
       conn = get(authed_conn(), ~p"/v0/configuration")
 

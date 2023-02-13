@@ -1,6 +1,7 @@
 <div class="block">
   <.form :let={f} for={@changeset} id={@id} phx-target={@myself} phx-submit="save">
     <div class="field">
+      <% default_client_allowed_ips = Map.fetch!(@configs, :default_client_allowed_ips) %>
       <%= label(f, :default_client_allowed_ips, "Allowed IPs", class: "label") %>
 
       <div class="control">
@@ -9,7 +10,13 @@
           :default_client_allowed_ips,
           placeholder: "0.0.0.0/0, ::/0",
           class: "textarea #{input_error_class(f, :default_client_allowed_ips)}",
-          value: list_value(f, :default_client_allowed_ips)
+          disabled: config_has_override?(default_client_allowed_ips),
+          value:
+            if config_has_override?(default_client_allowed_ips) do
+              "Set in #{config_override_source(default_client_allowed_ips)}: #{Enum.join(config_value(default_client_allowed_ips), ", ")}"
+            else
+              list_value(f, :default_client_allowed_ips)
+            end
         ) %>
       </div>
 
@@ -26,6 +33,7 @@
     </div>
 
     <div class="field">
+      <% default_client_dns = Map.fetch!(@configs, :default_client_dns) %>
       <%= label(f, :default_client_dns, "DNS Servers", class: "label") %>
 
       <div class="control">
@@ -34,7 +42,13 @@
           :default_client_dns,
           placeholder: "1.1.1.1, 1.0.0.1",
           class: "input #{input_error_class(f, :default_client_dns)}",
-          value: list_value(f, :default_client_dns)
+          disabled: config_has_override?(default_client_dns),
+          value:
+            if config_has_override?(default_client_dns) do
+              "Set in #{config_override_source(default_client_dns)}: #{Enum.join(config_value(default_client_dns), ", ")}"
+            else
+              list_value(f, :default_client_dns)
+            end
         ) %>
       </div>
 
@@ -49,6 +63,7 @@
     </div>
 
     <div class="field">
+      <% default_client_endpoint = Map.fetch!(@configs, :default_client_endpoint) %>
       <%= label(f, :default_client_endpoint, "Endpoint", class: "label") %>
 
       <div class="control">
@@ -56,7 +71,14 @@
           f,
           :default_client_endpoint,
           placeholder: "firezone.example.com",
-          class: "input #{input_error_class(f, :default_client_endpoint)}"
+          class: "input #{input_error_class(f, :default_client_endpoint)}",
+          disabled: config_has_override?(default_client_endpoint),
+          value:
+            if config_has_override?(default_client_endpoint) do
+              "Set in #{config_override_source(default_client_endpoint)}: #{config_value(default_client_endpoint)}"
+            else
+              input_value(f, :default_client_endpoint)
+            end
         ) %>
       </div>
       <p class="help is-danger">
@@ -69,6 +91,8 @@
     </div>
 
     <div class="field">
+      <% default_client_persistent_keepalive =
+        Map.fetch!(@configs, :default_client_persistent_keepalive) %>
       <%= label(f, :default_client_persistent_keepalive, "Persistent Keepalive", class: "label") %>
 
       <div class="control">
@@ -76,7 +100,14 @@
           f,
           :default_client_persistent_keepalive,
           placeholder: "25",
-          class: "input #{input_error_class(f, :default_client_persistent_keepalive)}"
+          class: "input #{input_error_class(f, :default_client_persistent_keepalive)}",
+          disabled: config_has_override?(default_client_persistent_keepalive),
+          value:
+            if config_has_override?(default_client_persistent_keepalive) do
+              "Set in #{config_override_source(default_client_persistent_keepalive)}: #{config_value(default_client_persistent_keepalive)}"
+            else
+              input_value(f, :default_client_persistent_keepalive)
+            end
         ) %>
         <p class="help is-danger">
           <%= error_tag(f, :default_client_persistent_keepalive) %>
@@ -89,6 +120,7 @@
     </div>
 
     <div class="field">
+      <% default_client_mtu = Map.fetch!(@configs, :default_client_mtu) %>
       <%= label(f, :default_client_mtu, "MTU", class: "label") %>
 
       <div class="control">
@@ -96,7 +128,14 @@
           f,
           :default_client_mtu,
           placeholder: "1280",
-          class: "input #{input_error_class(f, :default_client_mtu)}"
+          class: "input #{input_error_class(f, :default_client_mtu)}",
+          disabled: config_has_override?(default_client_mtu),
+          value:
+            if config_has_override?(default_client_mtu) do
+              "Set in #{config_override_source(default_client_mtu)}: #{config_value(default_client_mtu)}"
+            else
+              input_value(f, :default_client_mtu)
+            end
         ) %>
       </div>
       <p class="help is-danger">

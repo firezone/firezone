@@ -37,7 +37,7 @@ defmodule FzHttp.Config.ResolverTest do
 
     test "returns variable from database" do
       env_configurations = %{}
-      db_configurations = %FzHttp.Configurations.Configuration{default_client_dns: "1.2.3.4"}
+      db_configurations = %FzHttp.Config.Configuration{default_client_dns: "1.2.3.4"}
 
       assert resolve(:default_client_dns, env_configurations, db_configurations, []) ==
                {:ok, {{:db, :default_client_dns}, "1.2.3.4"}}
