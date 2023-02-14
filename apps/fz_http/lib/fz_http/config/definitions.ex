@@ -797,8 +797,6 @@ defmodule FzHttp.Config.Definitions do
   defconfig(:logo, {:embed, Logo},
     default: nil,
     changeset: fn changeset, key ->
-      # TODO: copy file at path to data
-      dbg(changeset.params)
       Ecto.Changeset.cast_embed(changeset, key, with: {Logo, :changeset, []})
     end
   )

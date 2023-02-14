@@ -3,7 +3,6 @@ defmodule FzHttpWeb.SettingLive.Security do
   Manages security LiveView
   """
   use FzHttpWeb, :live_view
-  import Ecto.Changeset
   import FzCommon.FzCrypto, only: [rand_string: 1]
   alias FzHttp.Config
 
@@ -87,7 +86,7 @@ defmodule FzHttpWeb.SettingLive.Security do
 
     providers =
       Config.fetch_db_config!()
-      |> Keyword.fetch!(field_key)
+      |> Map.fetch!(field_key)
       |> Enum.reject(&(&1.id == key))
       |> Enum.map(&Map.from_struct/1)
 
@@ -97,12 +96,15 @@ defmodule FzHttpWeb.SettingLive.Security do
     {:noreply, assign(socket, :configs, configs)}
   end
 
-  def config_has_override?({{source, _source_key}, _key}) do
-    source not in [:db, :default]
-  end
+  def config_has_override?({{source, _source_key}, _key}), do: source not in [:db]
+  def config_has_override?({_source, _key}), do: false
 
   def config_value({_source, value}) do
     value
+  end
+
+  def get_provider(providers, id) do
+    Enum.find(providers, &(&1.id == id))
   end
 
   def config_toggle_status({_source, value}) do

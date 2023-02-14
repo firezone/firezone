@@ -29,7 +29,8 @@ defmodule FzHttpWeb.SettingLive.Customization do
     {:ok, socket}
   end
 
-  def has_override?({source, _source_key}), do: source not in [:db, :default]
+  def has_override?({source, _source_key}), do: source not in [:db]
+  def has_override?(_source), do: false
 
   @impl Phoenix.LiveView
   def handle_event("choose", %{"type" => type}, socket) do

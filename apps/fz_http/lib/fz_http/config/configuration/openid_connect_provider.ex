@@ -62,6 +62,9 @@ defmodule FzHttp.Config.Configuration.OpenIDConnectProvider do
     |> Validator.validate_uri([
       :redirect_uri
     ])
+    |> validate_inclusion(:response_type, ~w[code])
+    |> validate_format(:scope, ~r/openid/, message: "must include openid scope")
+    |> validate_format(:scope, ~r/email/, message: "must include email scope")
   end
 
   def validate_discovery_document_uri(changeset) do

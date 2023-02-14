@@ -53,7 +53,7 @@ defmodule FzHttpWeb.SettingLive.ClientDefaultsFormComponent do
     do: list
 
   def config_has_override?({{source, _source_key}, _key}) do
-    source not in [:db, :default]
+    source not in [:db]
   end
 
   def config_has_override?({_source, _key}) do

@@ -43,6 +43,27 @@ defmodule FzHttp.Config.Configuration.Changeset do
     Enum.reduce(@fields, changeset, fn field, changeset ->
       config_changeset(changeset, field)
     end)
+    |> ensure_no_overridden_changes()
+  end
+
+  defp ensure_no_overridden_changes(changeset) do
+    changed_keys = Map.keys(changeset.changes)
+    configs = FzHttp.Config.fetch_source_and_configs!(changed_keys)
+
+    Enum.reduce(changed_keys, changeset, fn key, changeset ->
+      case Map.fetch!(configs, key) do
+        {{:env, source_key}, _value} ->
+          add_error(
+            changeset,
+            key,
+            "can not be changed in UI, " <>
+              "it is overridden by #{source_key} environment variable"
+          )
+
+        _other ->
+          changeset
+      end
+    end)
   end
 
   def max_vpn_session_duration, do: @max_vpn_session_duration

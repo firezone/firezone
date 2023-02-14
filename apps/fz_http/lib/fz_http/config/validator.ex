@@ -1,6 +1,10 @@
 defmodule FzHttp.Config.Validator do
   import Ecto.Changeset
 
+  def validate(_key, nil, _type, _opts) do
+    {:ok, nil}
+  end
+
   def validate(key, values, {:array, _separator, type, array_opts}, opts) do
     validate_array(key, values, type, array_opts, opts)
   end

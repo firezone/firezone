@@ -1,10 +1,12 @@
+<% openid_connect_providers = Map.fetch!(@configs, :openid_connect_providers) %>
+<% saml_identity_providers = Map.fetch!(@configs, :saml_identity_providers) %>
+
 <%= if @live_action == :edit_oidc do %>
   <%= live_modal(
     FzHttpWeb.SettingLive.OIDCFormComponent,
     return_to: ~p"/settings/security",
     title: "OIDC Configuration",
-    providers: @oidc_configs,
-    provider_id: @id,
+    provider: get_provider(config_value(openid_connect_providers), @id) || %{id: @id},
     id: "oidc-form-component",
     form: "oidc-form"
   ) %>
@@ -15,8 +17,7 @@
     FzHttpWeb.SettingLive.SAMLFormComponent,
     return_to: ~p"/settings/security",
     title: "SAML Configuration",
-    providers: @saml_configs,
-    provider_id: @id,
+    provider: get_provider(config_value(saml_identity_providers), @id) || %{id: @id},
     id: "saml-form-component",
     form: "saml-form"
   ) %>
@@ -221,7 +222,6 @@
   </div>
 
   <label class="label">OpenID Connect providers configuration</label>
-  <% openid_connect_providers = Map.fetch!(@configs, :openid_connect_providers) %>
 
   <%= if config_has_override?(openid_connect_providers) do %>
     <i>
@@ -266,7 +266,7 @@
                 phx-value-key={provider.id}
                 phx-value-type="openid_connect_providers"
                 disabled={config_has_override?(openid_connect_providers)}
-                data-confirm={"Are you sure about deleting OIDC config #{provider.name}?"}
+                data-confirm={"Are you sure about deleting OIDC config #{provider.label}?"}
               >
                 Delete
               </button>
@@ -286,8 +286,6 @@
   <% end %>
 
   <label class="label">SAML identity providers configuration</label>
-
-  <% saml_identity_providers = Map.fetch!(@configs, :saml_identity_providers) %>
 
   <%= if config_has_override?(saml_identity_providers) do %>
     <p>
@@ -330,7 +328,7 @@
                 phx-value-key={provider.id}
                 phx-value-type="saml_identity_providers"
                 disabled={config_has_override?(saml_identity_providers)}
-                data-confirm={"Are you sure about deleting SAML config #{provider.name}?"}
+                data-confirm={"Are you sure about deleting SAML config #{provider.label}?"}
               >
                 Delete
               </button>

@@ -27,12 +27,14 @@ defmodule FzHttpWeb.ErrorHelpers do
   def error_tag(form, field) do
     values = Keyword.get_values(form.errors, field)
 
-    Enum.map(values, fn error ->
+    values
+    |> Enum.map(fn error ->
       content_tag(:span, translate_error(error),
         class: "help-block"
         # XXX: data: [phx_error_for: input_id(form, field)]
       )
     end)
+    |> Enum.intersperse(", ")
   end
 
   @doc """

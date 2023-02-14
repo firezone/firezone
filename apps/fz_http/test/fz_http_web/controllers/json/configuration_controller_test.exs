@@ -41,8 +41,8 @@ defmodule FzHttpWeb.JSON.ConfigurationControllerTest do
           %{
             "id" => "google",
             "label" => "google",
-            "scope" => "test-scope",
-            "response_type" => "response-type",
+            "scope" => "email openid",
+            "response_type" => "code",
             "client_id" => "test-id",
             "client_secret" => "test-secret",
             "discovery_document_uri" =>
@@ -91,8 +91,8 @@ defmodule FzHttpWeb.JSON.ConfigurationControllerTest do
           %{
             "id" => "google",
             "label" => "google-label",
-            "scope" => "test-scope-2",
-            "response_type" => "response-type-2",
+            "scope" => "email openid",
+            "response_type" => "code",
             "client_id" => "test-id-2",
             "client_secret" => "test-secret-2",
             "discovery_document_uri" =>
