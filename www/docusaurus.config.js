@@ -6,7 +6,7 @@ const darkCodeTheme = require('prism-react-renderer/themes/dracula');
 
 /** @type {import('@docusaurus/types').Config} */
 const config = {
-  title: 'Firezone',
+  title: 'firezone',
   tagline: 'Open-source secure remote access built on WireGuard®',
   url: 'https://docs.firezone.dev',
   baseUrl: '/',
@@ -78,7 +78,7 @@ const config = {
     /** @type {import('@docusaurus/preset-classic').ThemeConfig} */
     ({
       navbar: {
-        title: 'Firezone',
+        title: 'firezone',
         logo: {
           alt: 'Firezone Logo',
           src: 'img/logo.svg',
@@ -100,20 +100,14 @@ const config = {
             position: 'left'
           },
           {
-            href: 'https://discourse.firez.one/?utm_source=docs.firezone.dev',
-            label: 'Ask a Question',
-            position: 'right',
-            'aria-label': 'GitHub repository',
-          },
-          {
-            href: 'https://www.firezone.dev/contact/sales?utm_source=docs.firezone.dev',
+            href: '/sales',
             label: 'Contact sales',
             position: 'right',
             'aria-label': 'Contact sales',
           },
           {
+            html: '<img alt="GitHub Repo stars" src="https://img.shields.io/github/stars/firezone/firezone?label=Stars&amp;style=social" style="margin-top: 6px;" height="24">',
             href: 'https://github.com/firezone/firezone',
-            className: 'header-github-link',
             position: 'right',
             'aria-label': 'GitHub repository',
           },
@@ -126,16 +120,12 @@ const config = {
             title: 'Company',
             items: [
               {
-                label: 'Homepage',
-                href: 'https://www.firezone.dev/?utm_source=docs.firezone.dev',
+                label: 'Home',
+                href: '/',
               },
               {
                 label: 'Pricing',
-                href: 'https://www.firezone.dev/pricing?utm_source=docs.firezone.dev',
-              },
-              {
-                label: 'About',
-                href: 'https://www.firezone.dev/about?utm_source=docs.firezone.dev',
+                href: '/pricing',
               },
             ],
           },

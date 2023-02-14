@@ -27,9 +27,9 @@
   },
   "devDependencies": {
     "@docusaurus/module-type-aliases": "2.1.0",
-    "css-minimizer-webpack-plugin": "4.1.0",
     "@tsconfig/docusaurus": "^1.0.5",
     "asciinema-player": "^3.0.1",
+    "css-minimizer-webpack-plugin": "4.1.0",
     "remark-cli": "^11.0.0",
     "remark-lint": "^9.1.1",
     "remark-lint-list-item-indent": "^3.1.1",
