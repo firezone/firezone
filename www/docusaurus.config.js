@@ -40,6 +40,11 @@ const config = {
     {
       src: '/js/posthog.js',
       async: true
+    },
+    {
+      src: '//js.hs-scripts.com/23723443.js',
+      async: true,
+      defer: true
     }
   ],
 

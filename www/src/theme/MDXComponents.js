@@ -1,6 +1,7 @@
 // Import the original mapper
 import MDXComponents from "@theme-original/MDXComponents";
 import AsciinemaPlayer from '@site/src/components/AsciinemaPlayer';
+import HubspotForm from '@site/src/components/HubspotForm';
 import InstallBlock from "@site/src/components/InstallBlock";
 import AccentBlock from "@site/src/components/AccentBlock";
 import Feedback from "@site/src/components/Feedback";
@@ -14,6 +15,7 @@ export default {
   // Map the "highlight" tag to our <Highlight /> component!
   // `Highlight` will receive all props that were passed to `highlight` in MDX
   AsciinemaPlayer: AsciinemaPlayer,
+  HubspotForm: HubspotForm,
   InstallBlock: InstallBlock,
   accentblock: AccentBlock,
   feedback: Feedback,
