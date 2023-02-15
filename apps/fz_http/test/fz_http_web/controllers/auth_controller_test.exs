@@ -218,7 +218,7 @@ defmodule FzHttpWeb.AuthControllerTest do
         })
 
       assert Phoenix.Flash.get(test_conn.assigns.flash, :error) ==
-               "OpenIDConnect Error: Cannot verify state"
+               "An OpenIDConnect error occurred. Details: \"Cannot verify state\""
     end
 
     @tag max_age: 0
@@ -226,7 +226,7 @@ defmodule FzHttpWeb.AuthControllerTest do
       test_conn = get(conn, ~p"/auth/oidc/google/callback", @params)
 
       assert Phoenix.Flash.get(test_conn.assigns.flash, :error) ==
-               "OpenIDConnect Error: Cannot verify state"
+               "An OpenIDConnect error occurred. Details: \"Cannot verify state\""
     end
   end
 

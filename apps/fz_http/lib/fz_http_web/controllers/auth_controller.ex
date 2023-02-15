@@ -85,20 +85,13 @@ defmodule FzHttpWeb.AuthController do
           |> redirect(to: ~p"/")
       end
     else
-      {:error, reason} ->
-        msg = "OpenIDConnect Error: #{reason}"
-        Logger.warn(msg)
+      # Error verifying state, claims or fetching tokens
+      {:error, error} ->
+        msg = "An OpenIDConnect error occurred. Details: #{inspect(error)}"
+        Logger.error(msg)
 
         conn
         |> put_flash(:error, msg)
-        |> redirect(to: ~p"/")
-
-      # Error verifying claims or fetching tokens
-      {:error, action, reason} ->
-        Logger.warn("OpenIDConnect Error during #{action}: #{inspect(reason)}")
-
-        conn
-        |> put_flash(:error, "Failed when performing this action: #{action}")
         |> redirect(to: ~p"/")
     end
   end
