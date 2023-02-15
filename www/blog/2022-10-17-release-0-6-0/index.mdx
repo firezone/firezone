@@ -27,12 +27,18 @@ to a Docker-based one with minimal downtime.
 You can now deploy Firezone complete with valid SSL certificates and a
 provisioned administrator in just a couple minutes:
 
-<AsciinemaPlayer src="https://asciinema.org/a/530197.cast" autoplay={true} rows={30} idleTimeLimit={3} preload={true} />
+<AsciinemaPlayer
+  src="https://asciinema.org/a/530197.cast"
+  autoplay={true}
+  rows={30}
+  idleTimeLimit={3}
+  preload={true}
+/>
 
 This also means Firezone runs on any platform that supports Docker,
 like my Mac in the video above. The automatic install script will _probably_
 barf on Windows, though. In that case, try the
-[manual install method](https://docs.firezone.dev/deploy/docker/#option-2-manual-install)!
+[manual install method](/docs/deploy/docker/#option-2-manual-install)!
 
 #### Why Docker?
 
@@ -66,7 +72,7 @@ complete.
 Omnibus was a popular choice for distributing self-hosted software before
 Docker was popular -- GitLab and Mattermost are two popular self-hosted products
 that still support Omnibus-based deployments today. It's still used in many
-cases where Docker can't be used (on the *BSDs, for example).
+cases where Docker can't be used (on the \*BSDs, for example).
 
 But, since Omnibus is [effectively EOL in 2024](https://docs.chef.io/versions/)
 due to its reliance on Chef Infra Client, we've decided to deprioritize
@@ -95,7 +101,6 @@ will provide it for you. If not, you should be able to build it manually or
 using a tool such as
 [this nifty online IdP builder](https://www.samltool.com/idp_metadata.php).
 
-
 In general we recommend using OpenID Connect integration over SAML whenever possible.
 It's simpler, tends to be implemented more consistently across identity providers,
 and much easier to debug when things go wrong.
@@ -103,15 +108,16 @@ and much easier to debug when things go wrong.
 Speaking of OIDC, 0.6 also introduces a couple improvements to make integrating
 your identity provider a more pleasant experience:
 
-* `auto_create_oidc_users` is now a per-provider configuration setting. Enable or disable
+- `auto_create_oidc_users` is now a per-provider configuration setting. Enable or disable
   autocreation of users when logging into Firezone via that provider.
-* New web form for entering OIDC details, with improved validation and error checking:
+- New web form for entering OIDC details, with improved validation and error checking:
 
 <center>
   <img
     width="500"
     src="https://user-images.githubusercontent.com/167144/196735853-b2c8d505-285f-40ac-9d73-4b568358c5c3.png"
-    alt="OIDC Form" />
+    alt="OIDC Form"
+  />
 </center>
 
 #### IdP not supported?
