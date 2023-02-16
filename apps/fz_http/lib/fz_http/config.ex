@@ -1,67 +1,13 @@
 defmodule FzHttp.Config do
   alias FzHttp.Repo
+  alias FzHttp.Config.{Definition, Definitions, Validator, Errors, Resolver, Fetcher}
   alias FzHttp.Config.{Configuration}
-  alias FzHttp.Config.{Definition, Definitions, Resolver, Caster, Validator, Errors}
-
-  @spec fetch_source_and_config(
-          module(),
-          key :: atom(),
-          db_configurations :: map(),
-          env_configurations :: map()
-        ) ::
-          {:ok, Resolver.source(), term()} | {:error, {[String.t()], metadata: term()}}
-  def fetch_source_and_config(module, key, %{} = db_configurations, %{} = env_configurations)
-      when is_atom(module) and is_atom(key) do
-    {type, {resolve_opts, validate_opts, dump_opts, _debug_opts}} =
-      Definition.fetch_spec_and_opts!(module, key)
-
-    with {:ok, {source, value}} <-
-           resolve_value(module, key, env_configurations, db_configurations, resolve_opts),
-         {:ok, value} <- cast_value(module, key, source, value, type),
-         {:ok, value} <- validate_value(module, key, source, value, type, validate_opts) do
-      if dump_cb = Keyword.get(dump_opts, :dump) do
-        {:ok, source, dump_cb.(value)}
-      else
-        {:ok, source, value}
-      end
-    end
-  end
-
-  defp resolve_value(module, key, env_configurations, db_configurations, opts) do
-    with :error <- Resolver.resolve(key, env_configurations, db_configurations, opts) do
-      {:error, {{nil, ["is required"]}, module: module, key: key, source: :not_found}}
-    end
-  end
-
-  defp cast_value(module, key, source, value, type) do
-    case Caster.cast(value, type) do
-      {:ok, value} ->
-        {:ok, value}
-
-      {:error, %Jason.DecodeError{} = decode_error} ->
-        reason = Jason.DecodeError.message(decode_error)
-        {:error, {{value, [reason]}, module: module, key: key, source: source}}
-
-      {:error, reason} ->
-        {:error, {{value, [reason]}, module: module, key: key, source: source}}
-    end
-  end
-
-  defp validate_value(module, key, source, value, type, opts) do
-    case Validator.validate(key, value, type, opts) do
-      {:ok, value} ->
-        {:ok, value}
-
-      {:error, values_and_errors} ->
-        {:error, {values_and_errors, module: module, key: key, source: source}}
-    end
-  end
 
   def fetch_source_and_config!(key) do
-    db_config = fetch_db_config!()
+    db_config = maybe_fetch_db_config!(key)
     env_config = System.get_env()
 
-    case fetch_source_and_config(Definitions, key, db_config, env_config) do
+    case Fetcher.fetch_source_and_config(Definitions, key, db_config, env_config) do
       {:ok, source, config} ->
         {source, config}
 
@@ -71,11 +17,11 @@ defmodule FzHttp.Config do
   end
 
   def fetch_source_and_configs!(keys) when is_list(keys) do
-    db_config = fetch_db_config!()
+    db_config = maybe_fetch_db_config!(keys)
     env_config = System.get_env()
 
     for key <- keys, into: %{} do
-      case fetch_source_and_config(Definitions, key, db_config, env_config) do
+      case Fetcher.fetch_source_and_config(Definitions, key, db_config, env_config) do
         {:ok, source, config} ->
           {key, {source, config}}
 
@@ -92,7 +38,7 @@ defmodule FzHttp.Config do
     env_config = System.get_env()
 
     with {:ok, _source, config} <-
-           fetch_source_and_config(Definitions, key, db_config, env_config) do
+           Fetcher.fetch_source_and_config(Definitions, key, db_config, env_config) do
       {:ok, config}
     end
   end
@@ -107,7 +53,14 @@ defmodule FzHttp.Config do
     end
   end
 
-  # TODO: should be moved to Resolver?
+  defp maybe_fetch_db_config!(keys) when is_list(keys) do
+    if Enum.any?(keys, &(&1 in FzHttp.Config.Configuration.__schema__(:fields))) do
+      fetch_db_config!()
+    else
+      %{}
+    end
+  end
+
   defp maybe_fetch_db_config!(key) do
     if key in FzHttp.Config.Configuration.__schema__(:fields) do
       fetch_db_config!()
@@ -148,7 +101,7 @@ defmodule FzHttp.Config do
   If you need to resolve values from the database, use `fetch_config/1` or `fetch_config!/1`.
   """
   def compile_config!(module \\ Definitions, key, env_configurations \\ System.get_env()) do
-    case fetch_source_and_config(module, key, %{}, env_configurations) do
+    case Fetcher.fetch_source_and_config(module, key, %{}, env_configurations) do
       {:ok, _source, value} ->
         value
 
@@ -164,7 +117,7 @@ defmodule FzHttp.Config do
       ) do
     module.configs()
     |> Enum.flat_map(fn {module, key} ->
-      case fetch_source_and_config(module, key, db_config, env_config) do
+      case Fetcher.fetch_source_and_config(module, key, db_config, env_config) do
         {:ok, _source, _value} -> []
         {:error, reason} -> [reason]
       end
@@ -205,7 +158,12 @@ defmodule FzHttp.Config do
     defdelegate fetch_env!(app, key), to: Application
   else
     def put_env_override(app \\ :fz_http, key, value) do
-      Process.put(key_function(app, key), value)
+      Process.put(pdict_key_function(app, key), value)
+      :ok
+    end
+
+    def put_system_env_override(key, value) do
+      Process.put({Resolver, key}, {:env, value})
       :ok
     end
 
@@ -221,50 +179,17 @@ defmodule FzHttp.Config do
     def fetch_env!(app, key) do
       application_env = Application.fetch_env!(app, key)
 
-      pdict_key = key_function(app, key)
+      pdict_key_function(app, key)
+      |> Resolver.fetch_process_env()
+      |> case do
+        {:ok, override} ->
+          override
 
-      with :error <- fetch_process_value(pdict_key),
-           :error <- fetch_process_value(get_last_pid_from_pdict_list(:"$ancestors"), pdict_key),
-           :error <- fetch_process_value(get_last_pid_from_pdict_list(:"$callers"), pdict_key) do
-        application_env
-      else
-        {:ok, override} -> override
+        :error ->
+          application_env
       end
     end
 
-    defp fetch_process_value(key) do
-      case Process.get(key) do
-        nil -> :error
-        value -> {:ok, value}
-      end
-    end
-
-    defp fetch_process_value(nil, _key) do
-      :error
-    end
-
-    defp fetch_process_value(atom, key) when is_atom(atom) do
-      atom
-      |> Process.whereis()
-      |> fetch_process_value(key)
-    end
-
-    defp fetch_process_value(pid, key) do
-      case :erlang.process_info(pid, :dictionary) do
-        {:dictionary, pdict} ->
-          Keyword.fetch(pdict, key)
-
-        _other ->
-          :error
-      end
-    end
-
-    defp get_last_pid_from_pdict_list(stack) do
-      if values = Process.get(stack) do
-        List.last(values)
-      end
-    end
-
-    defp key_function(app, key), do: String.to_atom("#{app}-#{key}")
+    defp pdict_key_function(app, key), do: {app, key}
   end
 end

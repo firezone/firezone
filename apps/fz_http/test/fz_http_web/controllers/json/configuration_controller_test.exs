@@ -139,6 +139,26 @@ defmodule FzHttpWeb.JSON.ConfigurationControllerTest do
       assert json_response(conn, 422)["errors"] == %{"local_auth_enabled" => ["is invalid"]}
     end
 
+    test "renders error when trying to override a value with environment override" do
+      FzHttp.Config.put_system_env_override(:local_auth_enabled, true)
+
+      attrs = %{
+        "local_auth_enabled" => false
+      }
+
+      conn =
+        put(authed_conn(), ~p"/v0/configuration", configuration: attrs)
+        |> doc()
+
+      assert json_response(conn, 422) == %{
+               "errors" => %{
+                 "local_auth_enabled" => [
+                   "can not be changed in UI, it is overridden by LOCAL_AUTH_ENABLED environment variable"
+                 ]
+               }
+             }
+    end
+
     test "renders 401 for missing authorization header" do
       conn = put(unauthed_conn(), ~p"/v0/configuration")
       assert json_response(conn, 401)["errors"] == %{"auth" => "unauthenticated"}
