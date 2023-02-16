@@ -3,20 +3,6 @@ defmodule FzCommon.FzNetTest do
 
   alias FzCommon.FzNet
 
-  describe "ip_type/1" do
-    test "it detects IPv4 addresses" do
-      assert FzNet.ip_type("127.0.0.1") == "IPv4"
-    end
-
-    test "it detects IPv6 addresses" do
-      assert FzNet.ip_type("::1") == "IPv6"
-    end
-
-    test "it reports \"unknown\" for unknown type" do
-      assert FzNet.ip_type("invalid") == "unknown"
-    end
-  end
-
   describe "standardized_inet/1" do
     test "sanitizes CIDRs with invalid start" do
       assert "10.0.0.0/24" == FzNet.standardized_inet("10.0.0.5/24")

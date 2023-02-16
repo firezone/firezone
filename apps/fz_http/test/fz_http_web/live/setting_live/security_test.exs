@@ -168,9 +168,9 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
 
       assert {:error, {:redirect, _}} = return
 
-      assert %FzHttp.Configurations.Configuration.OpenIDConnectProvider{
+      assert %FzHttp.Config.Configuration.OpenIDConnectProvider{
                id: "test",
-               label: "test123",
+               label: "updated",
                scope: "openid email profile",
                response_type: "code",
                client_id: "foo",
@@ -179,7 +179,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
                  "https://common.auth0.com/.well-known/openid-configuration",
                redirect_uri: nil,
                auto_create_users: false
-             } in FzHttp.Configurations.get!(:openid_connect_providers)
+             } in FzHttp.Config.fetch_config!(:openid_connect_providers)
     end
 
     test "delete", %{view: view} do
@@ -187,7 +187,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
       |> element("button[phx-value-key=\"test\"]", "Delete")
       |> render_click()
 
-      openid_connect_providers = FzHttp.Configurations.get!(:openid_connect_providers)
+      openid_connect_providers = FzHttp.Config.fetch_config!(:openid_connect_providers)
       assert Enum.map(openid_connect_providers, & &1.id) == ["test2"]
 
       view
@@ -295,7 +295,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
       assert {:error, {:redirect, %{flash: _, to: "/settings/security"}}} = redirect
 
       assert saml_identity_provider =
-               FzHttp.Configurations.get!(:saml_identity_providers)
+               FzHttp.Config.fetch_config!(:saml_identity_providers)
                |> Enum.find(fn saml_identity_provider ->
                  saml_identity_provider.id == "new_id"
                end)
@@ -320,7 +320,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
       # stays on the modal
       assert html =~ ~s|<p class="modal-card-title">SAML Configuration</p>|
 
-      assert %FzHttp.Configurations.Configuration.SAMLIdentityProvider{
+      assert %FzHttp.Config.Configuration.SAMLIdentityProvider{
                auto_create_users: true,
                base_url: "#{FzHttp.Config.fetch_env!(:fz_http, :external_url)}auth/saml",
                id: attrs["id"],
@@ -330,7 +330,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
                sign_requests: true,
                signed_assertion_in_resp: true,
                signed_envelopes_in_resp: true
-             } in FzHttp.Configurations.get!(:saml_identity_providers)
+             } in FzHttp.Config.fetch_config!(:saml_identity_providers)
     end
 
     test "delete", %{view: view} do
@@ -338,7 +338,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
       |> element("button[phx-value-key=\"test\"]", "Delete")
       |> render_click()
 
-      saml_identity_providers = FzHttp.Configurations.get!(:saml_identity_providers)
+      saml_identity_providers = FzHttp.Config.fetch_config!(:saml_identity_providers)
       assert Enum.map(saml_identity_providers, & &1.id) == ["test2"]
 
       view

@@ -58,9 +58,13 @@ defmodule FzHttp.Config.ValidatorTest do
     test "validates embeds" do
       type = {:json_array, {:embed, FzHttp.Config.Configuration.SAMLIdentityProvider}}
 
+      opts = [
+        changeset: {FzHttp.Config.Configuration.SAMLIdentityProvider, :create_changeset, []}
+      ]
+
       attrs = FzHttp.SAMLIdentityProviderFixtures.saml_attrs()
 
-      assert validate(:key, [attrs], type, []) ==
+      assert validate(:key, [attrs], type, opts) ==
                {:ok,
                 [
                   %FzHttp.Config.Configuration.SAMLIdentityProvider{
@@ -72,7 +76,7 @@ defmodule FzHttp.Config.ValidatorTest do
                   }
                 ]}
 
-      assert validate(:key, [%{"id" => "saml"}], type, []) ==
+      assert validate(:key, [%{"id" => "saml"}], type, opts) ==
                {:error,
                 [
                   {%{"id" => "saml"},

@@ -3,7 +3,6 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
   Form for OIDC configs
   """
   use FzHttpWeb, :live_component
-  alias FzHttp.Configurations
 
   def render(assigns) do
     ~H"""

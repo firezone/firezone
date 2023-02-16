@@ -73,7 +73,7 @@ defmodule FzHttp.Config.Resolver do
       end
     end
   else
-    def fetch_process_env(app, key), do: :error
+    def fetch_process_env(_pdict_key), do: :error
   end
 
   defp resolve_env_value(env_configurations, key, opts) do

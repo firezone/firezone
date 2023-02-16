@@ -554,11 +554,7 @@ defmodule FzHttp.Config.Definitions do
     :openid_connect_providers,
     {:json_array, {:embed, Configuration.OpenIDConnectProvider}},
     default: [],
-    changeset: fn changeset, key ->
-      Ecto.Changeset.cast_embed(changeset, key,
-        with: {Configuration.OpenIDConnectProvider, :changeset, []}
-      )
-    end
+    changeset: {Configuration.OpenIDConnectProvider, :create_changeset, []}
   )
 
   @doc """
@@ -586,11 +582,7 @@ defmodule FzHttp.Config.Definitions do
   """
   defconfig(:saml_identity_providers, {:json_array, {:embed, Configuration.SAMLIdentityProvider}},
     default: [],
-    changeset: fn changeset, key ->
-      Ecto.Changeset.cast_embed(changeset, key,
-        with: {Configuration.SAMLIdentityProvider, :changeset, []}
-      )
-    end
+    changeset: {Configuration.SAMLIdentityProvider, :create_changeset, []}
   )
 
   ##############################################
@@ -796,8 +788,6 @@ defmodule FzHttp.Config.Definitions do
   """
   defconfig(:logo, {:embed, Logo},
     default: nil,
-    changeset: fn changeset, key ->
-      Ecto.Changeset.cast_embed(changeset, key, with: {Logo, :changeset, []})
-    end
+    changeset: {Logo, :changeset, []}
   )
 end

@@ -38,8 +38,8 @@ defmodule FzHttp.Config.Definition do
 
   @type changeset_callback ::
           (changeset :: Ecto.Changeset.t(), key :: atom() -> Ecto.Changeset.t())
-          | (type :: term(), changeset :: Ecto.Changeset.t(), key :: atom() ->
-               Ecto.Changeset.t())
+          | (type :: term(), changeset :: Ecto.Changeset.t(), key :: atom() -> Ecto.Changeset.t())
+          | {module(), atom(), [term()]}
 
   @type dump_callback :: (value :: term() -> term())
 

@@ -48,15 +48,11 @@ defmodule FzHttp.Config.Validator do
   end
 
   def validate(key, value, {:embed, type}, opts) do
-    _callback = Keyword.get(opts, :changeset, fn changeset, _key -> changeset end)
+    {callback_module, callback_fun, callback_args} =
+      Keyword.get(opts, :changeset, {type, :changeset, []})
 
-    changeset =
-      value
-      |> Map.delete(:__struct__)
-      |> type.changeset()
-
-    # TODO: we already called a changeset function
-    # |> apply_validations(callback, type, key)
+    args = [Map.delete(value, :__struct__)] ++ callback_args
+    changeset = apply(callback_module, callback_fun, args)
 
     if changeset.valid? do
       {:ok, apply_changes(changeset)}
