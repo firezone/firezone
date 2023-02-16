@@ -1,7 +1,7 @@
 defmodule FzHttp.Config do
   alias FzHttp.Repo
   alias FzHttp.Config.{Definition, Definitions, Validator, Errors, Resolver, Fetcher}
-  alias FzHttp.Config.{Configuration}
+  alias FzHttp.Config.Configuration
 
   def fetch_source_and_config!(key) do
     db_config = maybe_fetch_db_config!(key)

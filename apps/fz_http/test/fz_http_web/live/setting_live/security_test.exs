@@ -37,22 +37,22 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
       assert Security.session_duration_options({{:db, :foo}, 3_600}) == [
                {"Never", 0},
                {"Once", 2_147_483_647},
-               {"Every Hour", 3600},
-               {"Every Day", 86400},
+               {"Every Hour", 3_600},
+               {"Every Day", 86_400},
                {"Every Week", 604_800},
                {"Every 30 Days", 2_592_000},
                {"Every 90 Days", 7_776_000}
              ]
 
-      assert Security.session_duration_options({{:env, "FOO"}, 1234}) == [
+      assert Security.session_duration_options({{:env, "FOO"}, 1_234}) == [
                {"Never", 0},
                {"Once", 2_147_483_647},
-               {"Every Hour", 3600},
-               {"Every Day", 86400},
+               {"Every Hour", 3_600},
+               {"Every Day", 86_400},
                {"Every Week", 604_800},
                {"Every 30 Days", 2_592_000},
                {"Every 90 Days", 7_776_000},
-               {"Every 1234 seconds", 1234}
+               {"Every 1234 seconds", 1_234}
              ]
     end
   end

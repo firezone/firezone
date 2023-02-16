@@ -106,8 +106,7 @@ defmodule DocsGenerator do
       |> Kernel.--([:smtp, :mailgun, :mandrill, :sendgrid, :post_mark, :sendmail])
       |> Enum.map(&to_string/1)
       |> Enum.map(&String.trim_leading(&1, "Elixir."))
-      |> Enum.map(&"`#{&1}`")
-      |> Enum.join(", ")
+      |> Enum.map_join(", ", &"`#{&1}`")
 
     default =
       default
@@ -147,8 +146,7 @@ defmodule DocsGenerator do
       |> Enum.map(&type_and_default(&1, default))
       |> Enum.map(&elem(&1, 0))
       |> Enum.map(&to_string/1)
-      |> Enum.map(&"`#{&1}`")
-      |> Enum.join(", ")
+      |> Enum.map_join(", ", &"`#{&1}`")
 
     {"one of #{types}", default}
   end

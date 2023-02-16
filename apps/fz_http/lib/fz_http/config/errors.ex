@@ -60,10 +60,9 @@ defmodule FzHttp.Config.Errors do
 
     values_and_errors
     |> List.wrap()
-    |> Enum.map(fn {value, errors} ->
+    |> Enum.map_join("\n", fn {value, errors} ->
       " - `#{format_value(sensitive?, value)}`: #{Enum.join(errors, ", ")}"
     end)
-    |> Enum.join("\n")
   end
 
   defp format_value(true, _value), do: "**SENSITIVE-VALUE-REDACTED**"

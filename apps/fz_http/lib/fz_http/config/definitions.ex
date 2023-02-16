@@ -169,7 +169,7 @@ defmodule FzHttp.Config.Definitions do
   Internal port to listen on for the Phoenix web server.
   """
   defconfig(:phoenix_http_port, :integer,
-    default: 13000,
+    default: 13_000,
     changeset: fn changeset, key ->
       Ecto.Changeset.validate_number(changeset, key,
         greater_than: 0,

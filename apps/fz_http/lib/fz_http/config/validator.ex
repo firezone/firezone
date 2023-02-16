@@ -88,12 +88,10 @@ defmodule FzHttp.Config.Validator do
     |> Enum.map(&validate(key, &1, type, opts))
     |> Enum.reduce({true, [], []}, fn
       {:ok, value}, {valid?, values, errors} ->
-        cond do
-          validate_unique == true and value in values ->
-            {false, values, [{value, ["should not contain duplicates"]}] ++ errors}
-
-          true ->
-            {valid?, [value] ++ values, errors}
+        if validate_unique == true and value in values do
+          {false, values, [{value, ["should not contain duplicates"]}] ++ errors}
+        else
+          {valid?, [value] ++ values, errors}
         end
 
       {:error, {value, error}}, {_valid?, values, errors} ->

@@ -8,15 +8,15 @@ defmodule FzHttp.Config.CasterTest do
     end
 
     test "casts a binary to an embed" do
-      assert cast("{\"foo\": \"bar\"}", :embed) == {:ok, %{"foo" => "bar"}}
+      assert cast(~s|{"foo": "bar"}|, :embed) == {:ok, %{"foo" => "bar"}}
     end
 
     test "casts a binary to an array of embeds" do
-      assert cast("[{\"foo\": \"bar\"}]", {:json_array, :embed}) == {:ok, [%{"foo" => "bar"}]}
+      assert cast(~s|[{"foo": "bar"}]|, {:json_array, :embed}) == {:ok, [%{"foo" => "bar"}]}
     end
 
     test "casts a binary to a map" do
-      assert cast("{\"foo\": \"bar\"}", :map) == {:ok, %{"foo" => "bar"}}
+      assert cast(~s|{"foo": "bar"}|, :map) == {:ok, %{"foo" => "bar"}}
     end
 
     test "casts a binary to boolean" do

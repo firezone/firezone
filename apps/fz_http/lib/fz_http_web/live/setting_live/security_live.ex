@@ -128,14 +128,14 @@ defmodule FzHttpWeb.SettingLive.Security do
 
     values = Enum.map(options, fn {_, value} -> value end)
 
-    if config_value(vpn_session_duration) not in values do
+    if config_value(vpn_session_duration) in values do
+      options
+    else
       options ++
         [
           {"Every #{config_value(vpn_session_duration)} seconds",
            config_value(vpn_session_duration)}
         ]
-    else
-      options
     end
   end
 
