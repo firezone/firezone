@@ -145,7 +145,14 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
           </p>
           <p class="help">
             Optionally override the Redirect URI. Must match the redirect URI set in your IdP.
-            In most cases you shouldn't change this.
+            In most cases you shouldn't change this. By default
+            <code>
+              <%= Path.join(
+                @external_url,
+                "auth/oidc/#{input_value(f, :id) || "{CONFIG_ID}"}/callback/"
+              ) %>
+            </code>
+            is used.
           </p>
         </div>
 
