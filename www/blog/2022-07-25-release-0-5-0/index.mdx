@@ -1,0 +1,138 @@
+---
+slug: release-0-5-0
+title: Release 0.5.0
+authors: [jamil]
+tags: [release, beta, acme, reverse proxy, docs]
+---
+
+## Firezone 0.5 Released!
+
+As the first post on our new blog, we thought it'd be fitting to kick things
+off with a release announcement. So without further ado, we're excited to
+announce: Firezone [0.5.0 is
+here](https://github.com/firezone/firezone/releases)!  It's packed with new
+features, bug fixes, and other improvements — more on that below.
+
+But first, we'd like to clarify our plan for plan for pricing.
+
+### Free as in… forever?
+
+One question we often get asked is, how much does Firezone cost? Well, now
+we're able to offer some clarification around pricing. **Starting with 0.5.0,
+Firezone will be entering public beta.** What's that mean for you? Two things:
+
+- We'll be experimenting with different tiers and pricing structures based on
+  an open-core business model. We plan to **always** have a version of the
+  product free to use, forever. See our [new pricing
+  page](https://firezone.dev/pricing) for more information.
+- **Edit**: The Beta program is now closed. Thanks to all who participated!
+  ~~Anyone participating in the public beta program **will receive a license key good
+  for up to one year of** Firezone Team or Business. It's our way of saying
+  thanks for being an early adopter and joining the program.~~
+
+Now that that's out of the way, let's talk about all the new features in
+0.5.0!
+
+### User-scoped egress rules
+
+Rules can now optionally receive a user scope, limiting the rule's application
+only to devices owned by that user. This allows you to selectively allow or
+deny traffic from a particular user to an IP, set of IPs, or CIDR range.
+
+### Auto-renewed, ECDSA-backed, ACME-powered SSL certificates
+
+One of our most-requested features is now available — Firezone 0.5.0 supports
+ACME SSL certificate renewal backed by Let's Encrypt's new ECDSA key type.
+Other providers and key types are available too. See all ACME configuration
+options in our [configuration file
+reference](/docs/reference/configuration-file/).
+
+**Note**: ACME is disabled by default to remain compatible with existing
+Firezone installations. To enable, set the following in your config file:
+
+```
+default['firezone']['ssl']['acme']['enabled'] = true
+```
+
+### BYORP: Bring Your Own Reverse Proxy
+
+Want to disable Nginx and deploy Firezone under your own reverse proxy or HTTP
+load balancer? Well, now you can! We've documented the required headers and
+other configuration necessary to make this happen. [Check the
+docs](/docs/deploy/advanced/reverse-proxy) for some configuration
+examples for popular proxies. In short:
+
+Set the
+`default['firezone']['phoenix']['external_trusted_proxies']`
+configuration variable to a comma-separated list containing the proxies
+you'd like to receive forwarded requests from. If your proxy uses an
+[RFC1918 address](https://en.wikipedia.org/wiki/Private_network), add its
+IP to `default['firezone']['phoenix']['private_clients']` instead of
+`default['firezone']['phoenix']['external_trusted_proxies']`.
+Update your proxy's configuration to point to Firezone, making sure to set
+the `X-Forwarded-For` header and enable WebSocket connection upgrades.
+
+**Note:** ACME support is tied to Nginx. If you disable the bundled
+Firezone Nginx service, you'll need to provide your own SSL certificates
+(or configure ACME renewal manually).
+
+**Additional note:** If you go this route, you'll need to terminate SSL
+yourself — Firezone sets the secure attribute on all cookies and thus
+requires the downstream proxy to terminate SSL.
+
+### Runtime configuration available in the UI
+
+Some Firezone configuration settings are now configurable in the product UI
+under the Security settings. This will override anything you have set in the
+config file. Moving runtime configuration into the application itself brings us
+a step closer to Docker-based deployments (coming Soon™).
+
+### New and improved documentation
+
+Our docs have been migrated from Jekyll to [Docusaurus](https://docusaurus.io).
+Aside from all the Formatting is improved, user guides are updated and many
+pages have been edited for clarify and further detail. As an added bonus, our
+docs are feature improved search thanks to the powerful search functionality
+provided by [DocSearch by Algolia](https://docsearch.algolia.com/).
+Contributions welcome!
+
+### Red Hat and Debian package repositories
+
+If you're on one of our [supported
+distros](/docs/deploy/omnibus/supported-platforms/) (or its
+derivatives), the one-line install script will automatically install Firezone
+from our package repository and track further updates from there. This means
+your Firezone installation can be managed like any other package on your system
+and will be marked for upgrades by the same apt and yum tools you're already
+familiar with. Be sure to check the [upgrade
+notes](/docs/administer/upgrade/) prior to each
+upgrade in case there are any backwards-incompatible changes or manual steps
+involved.
+
+If you've got an existing installation and still want to add our package
+repository for easier package management, just follow the [relevant
+section](/docs/deploy/omnibus) in the manual
+install guide.
+
+### Smaller package sizes
+
+Speaking of packages, we've done a bit of work reducing the size of our Omnibus
+release package. The Nodejs, Python, Erlang, and Elixir runtimes have all been
+removed, reducing the package size by 50% and total installed size by even
+more. There's still lots of work to be done to be done here —  we expect
+package sizes to be reduced even further moving forward.
+
+### Custom landing page logo
+
+In the first round of what we hope to be the start of a full-featured
+customization experience, it's now possible to change the landing page logo.
+Upload an image up to 1 MB or specify a URL to an image your end users will see
+when landing at your Firezone portal.
+
+## Conclusion
+
+That's all we've got for now. If you'd like to spin up Firezone to try it out,
+head to the [deploy guide](/docs/deploy) in our docs.
+
+If you're interested in using Firezone in production for your Team or Business,
+[contact us](/sales) about our Business tier.

@@ -1,8 +1,7 @@
 ---
 title: SAML 2.0
 sidebar_position: 11
-description:
-  Enforce single sign-on with your identity provider. Integrate
+description: Enforce single sign-on with your identity provider. Integrate
   providers like Okta, Google, OneLogin, and JumpCloud using Firezone's
   SAML 2.0 connector.
 ---
@@ -17,15 +16,14 @@ In general, most identity providers that support SAML 2.0 should work with
 Firezone.
 
 | Provider                   | Support Status           | Notes                              |
-| ---                        | ---                      | ---                                |
+| -------------------------- | ------------------------ | ---------------------------------- |
 | [Okta](okta)               | **Tested and supported** |                                    |
 | [Google Workspace](google) | **Tested and supported** | Uncheck `Require signed envelopes` |
 | [OneLogin](onelogin)       | **Tested and supported** |                                    |
 | [JumpCloud](jumpcloud)     | **Tested and supported** | Uncheck `Require signed envelopes` |
 
 Occasionally, providers that don't implement the full SAML 2.0 standard or use
-uncommon configurations may be problematic. If this is the case, [contact us](
-https://www.firezone.dev/contact/sales?utm_source=docs.firezone.dev) about a custom integration.
+uncommon configurations may be problematic. If this is the case, [contact us](/sales) about a custom integration.
 
 ## Custom SAML cert and keyfile
 
@@ -91,4 +89,4 @@ e.g. `https://firezone.company.com/auth/saml/sp/consume/okta`.
 The Firezone Entity ID can be configured with the `SAML_ENTITY_ID` environment variable
 and defaults to `urn:firezone.dev:firezone-app` if not set.
 
-See the [environment variable reference](/reference/env-vars) for more information.
+See the [environment variable reference](/docs/reference/env-vars) for more information.

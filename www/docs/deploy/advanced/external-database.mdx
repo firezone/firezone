@@ -26,7 +26,7 @@ if possible.
 
 :::info
 Need help deploying or maintaining Firezone with an external database? Consider
-[contacting us about our Enterprise Plan](https://www.firezone.dev/contact/sales?utm_source=docs.firezone.dev) for
+[contacting us about our Enterprise Plan](/sales) for
 recommended configurations, white-glove deployment assistance, and more.
 :::
 
@@ -39,7 +39,7 @@ The Firezone Docker image uses the following environment
 variables to connect to the DB (fields in bold required):
 
 | Name                          | Description                                                                                                                                                                                                           | Format                | Default                              |
-| ---                           | ---                                                                                                                                                                                                                   | ---                   | ---                                  |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- | ------------------------------------ |
 | **`DATABASE_ENCRYPTION_KEY`** | The base64-encoded symmetric encryption key used to encrypt and decrypt sensitive fields.                                                                                                                             | base64-encoded String | None -- must be generated on install |
 | `DATABASE_HOST`               | Database host                                                                                                                                                                                                         | IP or hostname        | `postgres`                           |
 | `DATABASE_PORT`               | Database port                                                                                                                                                                                                         | Integer               | `5432`                               |
@@ -52,7 +52,7 @@ variables to connect to the DB (fields in bold required):
 | `DATABASE_PARAMETERS`         | Map of parameters to send to the `:parameters` option when connecting to the database. See [Ecto.Adapters.Postgres documentation](https://hexdocs.pm/ecto_sql/Ecto.Adapters.Postgres.html#module-connection-options). | JSON-encoded String   | `{}`                                 |
 
 For more information, see the [environment variable reference
-](/reference/env-vars/).
+](/docs/reference/env-vars/).
 
 :::note
 The official `postgres` docker image can be configured by setting
@@ -67,7 +67,7 @@ The following configuration options are used to configure the bundled Postgres
 for Omnibus-based deployments:
 
 | Config Key                                      | Description                                                                                                                                                                                                            | Default                                            |
-| ---                                             | ---                                                                                                                                                                                                                    | ---                                                |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
 | `default['firezone']['database']['user']`       | Specifies the username Firezone will use to connect to the DB.                                                                                                                                                         | `node['firezone']['postgresql']['username']`       |
 | `default['firezone']['database']['password']`   | If using an external DB, specifies the password Firezone will use to connect to the DB.                                                                                                                                | `'change_me'`                                      |
 | `default['firezone']['database']['name']`       | Database that Firezone will use. Will be created if it doesn't exist.                                                                                                                                                  | `'firezone'`                                       |
@@ -80,7 +80,7 @@ for Omnibus-based deployments:
 | `default['firezone']['database']['extensions']` | Database extensions to enable.                                                                                                                                                                                         | `{ 'plpgsql' => true, 'pg_trgm' => true }`         |
 
 For more details, see the [configuration file reference
-](/reference/configuration-file/).
+](/docs/reference/configuration-file/).
 
   </TabItem>
 </Tabs>
