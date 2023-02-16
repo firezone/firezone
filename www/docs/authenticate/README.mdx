@@ -11,7 +11,7 @@ Firezone supports the following authentication methods:
 
 :::note
 If your Identity Provider doesn't work with the methods listed above,
-[contact us](https://www.firezone.dev/contact/sales?utm_source=docs.firezone.dev) about custom integrations.
+[contact us](/sales) about custom integrations.
 :::
 
 ## Integrate an SSO provider
@@ -19,14 +19,14 @@ If your Identity Provider doesn't work with the methods listed above,
 We've included instructions on how to set up Firezone with several popular
 identity providers using our Generic OIDC integration:
 
-* [Okta](oidc/okta)
-* [Azure Active Directory](oidc/azuread)
-* [Google](oidc/google)
-* [Onelogin](oidc/onelogin)
-* [JumpCloud](saml/jumpcloud)
-* [Keycloak](oidc/keycloak)
-* [Zitadel](oidc/zitadel)
-* [Auth0](oidc/auth0)
+- [Okta](oidc/okta)
+- [Azure Active Directory](oidc/azuread)
+- [Google](oidc/google)
+- [Onelogin](oidc/onelogin)
+- [JumpCloud](saml/jumpcloud)
+- [Keycloak](oidc/keycloak)
+- [Zitadel](oidc/zitadel)
+- [Auth0](oidc/auth0)
 
 If your identity provider is not listed above, but has a generic OIDC or SAML
 connector, please consult their documentation to find instructions on obtaining
@@ -46,12 +46,16 @@ where `CONFIG_ID` is the OIDC Config ID for that particular provider.
 For example, the OIDC config below:
 
 <center>
-  <img width="509" alt="config-oidc" src="https://user-images.githubusercontent.com/167144/216438674-a2b64b3b-2ed6-43dc-b554-de9c055dc741.png"/>
+  <img
+    width="509"
+    alt="config-oidc"
+    src="https://user-images.githubusercontent.com/167144/216438674-a2b64b3b-2ed6-43dc-b554-de9c055dc741.png"
+  />
 </center>
 
 would generate the following OIDC login URL:
 
-* `https://firezone.example.com/auth/oidc/google`
+- `https://firezone.example.com/auth/oidc/google`
 
 This URL could then be distributed to end users for direct navigation to
 the identity provider's login portal for authentication to Firezone.
@@ -80,10 +84,10 @@ See detailed Client Instructions on how to re-authenticate your session
 A user's connection status is shown on the Users page under the table column
 `VPN Connection`. The connection statuses are:
 
-* ENABLED - The connection is enabled.
-* DISABLED - The connection is disabled by an administrator or OIDC refresh failure.
-* EXPIRED - The connection is disabled due to authentication expiration or a user
-has not signed in for the first time.
+- ENABLED - The connection is enabled.
+- DISABLED - The connection is disabled by an administrator or OIDC refresh failure.
+- EXPIRED - The connection is disabled due to authentication expiration or a user
+  has not signed in for the first time.
 
-import SupportOptions from '@site/src/partials/_support_options.mdx';
-<SupportOptions />
+import SupportOptions from "@site/src/partials/_support_options.mdx";
+<SupportOptions />;

@@ -35,23 +35,25 @@ Estimated time to complete: **2 hours**.
 ## Steps to migrate
 
 1. **Back up** your server. This ensures you have a working state to roll back to
-in case anything goes terribly wrong. At a _bare minimum_ you'll want to back up the
-[file and directories Firezone uses
-](/reference/file-and-directory-locations/), but we recommend taking a full
-snapshot of your VPS if possible.
+   in case anything goes terribly wrong. At a _bare minimum_ you'll want to back up the
+   [file and directories Firezone uses
+   ](/docs/reference/file-and-directory-locations/), but we recommend taking a full
+   snapshot of your VPS if possible.
 1. Ensure you're running the latest version of Firezone. See our [upgrade guide
-](/administer/upgrade/) if not.
+   ](/docs/administer/upgrade/) if not.
 1. Install the latest version of [**Docker**
-](https://docs.docker.com/engine/install/) and [Docker Compose
-](https://docs.docker.com/compose/install/linux/#install-compose)
-for your OS. **Docker Compose version 2 or higher is required**.
-We recommend using Docker Server for Linux. Docker Desktop will work too, but is not
-preferred for production use cases at this time because it rewrites packets under
-some conditions and may cause unexpected issues with Firezone.
+   ](https://docs.docker.com/engine/install/) and [Docker Compose
+   ](https://docs.docker.com/compose/install/linux/#install-compose)
+   for your OS. **Docker Compose version 2 or higher is required**.
+   We recommend using Docker Server for Linux. Docker Desktop will work too, but is not
+   preferred for production use cases at this time because it rewrites packets under
+   some conditions and may cause unexpected issues with Firezone.
 1. Download and run the migration script:
+
 ```bash
 bash <(curl -fsSL https://github.com/firezone/firezone/raw/master/scripts/docker_migrate.sh)
 ```
+
 This will ask you a few questions, then attempt to migrate your installation to
 Docker. If all goes well, your Firezone instance should be running with Docker, data intact.
 
@@ -65,9 +67,8 @@ docker-compose down
 sudo firezone-ctl start
 ```
 
-If you've found a bug, please [open a GitHub issue](
-https://github.com/firezone/firezone/issues) with the error output and
+If you've found a bug, please [open a GitHub issue](https://github.com/firezone/firezone/issues) with the error output and
 any steps needed to reproduce.
 
-import SupportOptions from '@site/src/partials/_support_options.mdx';
-<SupportOptions />
+import SupportOptions from "@site/src/partials/_support_options.mdx";
+<SupportOptions />;

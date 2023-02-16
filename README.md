@@ -77,7 +77,7 @@ community support options:
   or make a contribution to Firezone.
 
 If you need help deploying or maintaining Firezone for your business, consider
-[contacting us about our paid support plan](https://www.firezone.dev/contact/sales?utm_source=readme).
+[contacting us about our paid support plan](https://www.firezone.dev/sales?utm_source=readme).
 
 ## Star History
 

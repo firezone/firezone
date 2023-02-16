@@ -17,7 +17,7 @@ running Firezone instance will **most likely** result in data loss when restored
 you have been warned.
 
 After stopping Firezone, backing up Firezone is mostly a matter of copying the relevant
-[files and directories](/reference/file-and-directory-locations/) to a location of your
+[files and directories](/docs/reference/file-and-directory-locations/) to a location of your
 choosing.
 
 See the steps below for specific examples for Docker and Omnibus.
@@ -33,11 +33,14 @@ directory along with the Postgres data directory, typically located at
 Docker compose template.
 
 1. Stop Firezone (warning: this **will** disconnect any users connected to the VPN):
+
 ```
 docker compose -f $HOME/.firezone/docker-compose.yml down
 ```
+
 2. Copy relevant files and folders. If your made any customizations to `/etc/docker/daemon.json`
-(for example, for IPv6 support), be sure to include that in the backup as well.
+   (for example, for IPv6 support), be sure to include that in the backup as well.
+
 ```
 tar -zcvfp $HOME/firezone-back-$(date +'%F-%H-%M').tgz $HOME/.firezone /var/lib/docker/volumes/firezone_postgres-data
 ```
@@ -47,10 +50,13 @@ A backup file named `firezone-back-TIMESTAMP.tgz` will then be stored in `$HOME/
 ### Restore
 
 1. Copy the files back to their original location:
+
 ```
 tar -zxvfp /path/to/firezone-back.tgz -C / --numeric-owner
 ```
+
 2. Optionally, enable Docker to boot on startup:
+
 ```
 systemctl enable docker
 ```
@@ -61,10 +67,13 @@ systemctl enable docker
 ### Backup
 
 1. Stop Firezone (warning: this **will** disconnect any users connected to the VPN):
+
 ```
 firezone-ctl stop
 ```
+
 2. Copy relevant files and folders:
+
 ```
 tar -zcvfp $HOME/firezone-back-$(date +'%F-%H-%M').tgz /var/opt/firezone /opt/firezone /usr/bin/firezone-ctl /etc/systemd/system/firezone-runsvdir-start.service /etc/firezone
 ```
@@ -74,10 +83,13 @@ A backup file named `firezone-back-TIMESTAMP.tgz` will then be stored in `$HOME/
 ### Restore
 
 1. Copy the files back to their original location:
+
 ```
 tar -zxvfp /path/to/firezone-back.tgz -C / --numeric-owner
 ```
+
 2. Reconfigure Firezone to ensure configuration is applied to the host system:
+
 ```
 firezone-ctl reconfigure
 ```
@@ -85,5 +97,5 @@ firezone-ctl reconfigure
 </TabItem>
 </Tabs>
 
-import SupportOptions from '@site/src/partials/_support_options.mdx';
-<SupportOptions />
+import SupportOptions from "@site/src/partials/_support_options.mdx";
+<SupportOptions />;
