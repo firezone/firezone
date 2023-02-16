@@ -8,7 +8,7 @@ down the web UI.
 
 :::info
 Automatic rollbacks are still under development. We recommend backing up
-relevant [files and folders](/reference/file-and-directory-locations/)
+relevant [files and folders](/docs/reference/file-and-directory-locations/)
 before upgrading in case anything goes wrong.
 :::
 
@@ -18,18 +18,23 @@ Follow the steps below to upgrade Firezone:
 <TabItem label="Docker" value="docker" default>
 
 1. Change to your Firezone installation directory, by default `$HOME/.firezone`:
+
 ```
 cd $HOME/.firezone
 ```
+
 1. If your `.env` file has a `VERSION` variable, update it to the desired version.
-By default `latest` is assumed if not set. This variable is read in newer versions
-of the docker-compose.yml template to populate the `image:` key for the `firezone`
-service.
+   By default `latest` is assumed if not set. This variable is read in newer versions
+   of the docker-compose.yml template to populate the `image:` key for the `firezone`
+   service.
 1. Update service images:
+
 ```
 docker compose pull
 ```
+
 1. Re-up the services (**warning: this will restart updated services**):
+
 ```
 docker compose up -d
 ```
@@ -38,9 +43,11 @@ docker compose up -d
 <TabItem label="Omnibus" value="omnibus">
 
 1. If not setup already, install our package repository based on your distro's
-  package format:
-  - [deb packages](https://cloudsmith.io/~firezone/repos/firezone/setup/#formats-deb)
-  - [rpm packages](https://cloudsmith.io/~firezone/repos/firezone/setup/#formats-rpm)
+   package format:
+
+- [deb packages](https://cloudsmith.io/~firezone/repos/firezone/setup/#formats-deb)
+- [rpm packages](https://cloudsmith.io/~firezone/repos/firezone/setup/#formats-rpm)
+
 1. Upgrade the `firezone` package using your distro's package manager.
 1. Run `firezone-ctl reconfigure` to pick up the new changes.
 1. Run `firezone-ctl restart` to restart services.
@@ -53,7 +60,7 @@ issue](https://github.com/firezone/firezone/issues/new/choose).
 
 ## Upgrading to 0.7.x
 
-Firezone 0.7.0 introduces a new [REST API](/reference/rest-api/) that allows administrators
+Firezone 0.7.0 introduces a new [REST API](/docs/reference/rest-api/) that allows administrators
 to automate much of the day to day configuration of Firezone.
 
 The REST API `/v0/configuration` endpoint supersedes some of the previous environment
@@ -64,12 +71,12 @@ If you're running Firezone &lt; 0.6, we recommend updating to the latest
 are properly parsed and migrated into the DB as runtime `configurations`.
 
 **Note**: Omnibus deployments are deprecated in 0.7.x and will be removed in Firezone
-0.8 and above. We recommend [migrating your installation](/administer/migrate/) to
+0.8 and above. We recommend [migrating your installation](/docs/administer/migrate/) to
 Docker if you haven't done so already.
 
 ## Upgrading to >= 0.6.12
 
-### WIREGUARD_* env vars
+### WIREGUARD\_\* env vars
 
 Firezone 0.6.12 moves the `WIREGUARD_ALLOWED_IPS`, `WIREGUARD_PERSISTENT_KEEPALIVE`,
 and `WIREGUARD_DNS` environment variables to the database to be configured in the
@@ -84,7 +91,7 @@ variables to the DB.
 
 Similar to the `WIREGUARD_*` env vars above, the `AUTH_OIDC_JSON` env var has similarly
 been moved to the database and can be configured at `/settings/site`. In Firezone 0.7 this
-is now configurable via the [REST API](/reference/rest-api/configurations) as well.
+is now configurable via the [REST API](/docs/reference/rest-api/configurations) as well.
 
 ### Fix IPv6
 
@@ -107,8 +114,7 @@ networks:
         - gateway: 2001:3990:3990::1
 ```
 
-You also need to update the Docker daemon to enable IPv6. See our [IPv6 guide](
-https://docs.firezone.dev/deploy/docker/#step-4-enable-ipv6-optional) for more info.
+You also need to update the Docker daemon to enable IPv6. See our [IPv6 guide](/docs/deploy/docker/#step-4-enable-ipv6-optional) for more info.
 
 ## Upgrading from 0.5.x to 0.6.x
 
@@ -118,13 +124,13 @@ more granular user provisioning options, and a slew of minor improvements and bu
 ### Migrate to Docker
 
 Docker is now the preferred way to deploy and manage Firezone. See the [migration
-guide](/administer/migrate/) to migrate today. In most cases this can be done in a few minutes
+guide](/docs/administer/migrate/) to migrate today. In most cases this can be done in a few minutes
 using our automatic migration script.
 
 ### Update Configuration
 
 Some configuration variables have recently moved to the DB in order to be configurable
-at runtime. Check the [configure guide](/deploy/configure/) for more information.
+at runtime. Check the [configure guide](/docs/deploy/configure/) for more information.
 
 ## Upgrading from < 0.5.0 to >= 0.5.0
 
@@ -140,7 +146,7 @@ by setting `default['firezone']['nginx']['enabled'] = false` and pointing your
 reverse proxy directly to the Phoenix app on port 13000 (by default).
 
 Read more about setting up a custom reverse proxy
-[here](/deploy/advanced/reverse-proxy/).
+[here](/docs/deploy/advanced/reverse-proxy/).
 
 ### ACME protocol support
 
@@ -186,7 +192,7 @@ default['firezone']['authentication']['google']['client_secret']
 default['firezone']['authentication']['google']['redirect_uri']
 ```
 
-Then, follow the instructions [here](/authenticate/oidc/google/) to configure Google
+Then, follow the instructions [here](/docs/authenticate/oidc/google/) to configure Google
 as an OIDC provider.
 
 #### Existing Okta OAuth configuration
@@ -201,7 +207,7 @@ default['firezone']['authentication']['okta']['client_secret']
 default['firezone']['authentication']['okta']['site']
 ```
 
-Then, follow the instructions [here](/authenticate/oidc/okta/) to configure Okta as
+Then, follow the instructions [here](/docs/authenticate/oidc/okta/) to configure Okta as
 an OIDC provider.
 
 ## Upgrading from 0.3.x to >= 0.3.16
@@ -230,17 +236,17 @@ users authenticated through your OIDC provider.
 
 If this does not work, you will need to delete your existing OAuth app
 and repeat the OIDC setup steps to
-[create a new app integration](/authenticate/oidc/) .
+[create a new app integration](/docs/authenticate/oidc/) .
 
 ### I have an existing OAuth integration
 
 Prior to 0.3.11, Firezone used pre-configured OAuth2 providers. Follow the
-instructions [here](/authenticate/oidc/) to migrate to OIDC.
+instructions [here](/docs/authenticate/oidc/) to migrate to OIDC.
 
 ### I have not integrated an identity provider
 
 No action needed. You can follow the instructions
-[here](/authenticate/oidc)
+[here](/docs/authenticate/oidc)
 to enable SSO through an OIDC provider.
 
 ## Upgrading from 0.3.1 to >= 0.3.2
@@ -252,7 +258,7 @@ default to `https://` + the FQDN of your server.
 
 Reminder, the configuration file can be found at `/etc/firezone/firezone.rb`.
 For an exhaustive list of configuration variables and their descriptions, see the
-[configuration file reference](/reference/configuration-file).
+[configuration file reference](/docs/reference/configuration-file).
 
 ## Upgrading from 0.2.x to 0.3.x
 

@@ -143,7 +143,7 @@ const config = {
               },
               {
                 label: "Slack",
-                href: "https://www.firezone.dev/slack?utm_source=docs.firezone.dev",
+                href: "https://join.slack.com/t/firezone-users/shared_invite/zt-19jd956j4-rWcCqiKMh~ikPGsUFbvZiA",
               },
               {
                 label: "Github",

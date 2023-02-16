@@ -11,7 +11,7 @@ description:
 
 :::note
 This guide assumes you have completed the prerequisite steps
-(e.g. generate self-signed X.509 certificates) outlined [here](/authenticate/saml#prerequisites).
+(e.g. generate self-signed X.509 certificates) outlined [here](/docs/authenticate/saml#prerequisites).
 :::
 
 Firezone supports Single Sign-On (SSO) using OneLogin through the generic SAML 2.0 connector.
@@ -26,7 +26,7 @@ configuration settings under the under the configuration tab.
 The following fields should be filled out on this page:
 
 | Setting                | Value                                                                                                                                                                                     |
-|------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Audience (EntityID)    | This should be the same as your Firezone `SAML_ENTITY_ID`, defaults to `urn:firezone.dev:firezone-app`.                                                                                   |
 | Recipient              | This is your Firezone `EXTERNAL_URL/auth/saml/sp/consume/:config_id` (e.g., `https://firezone.company.com/auth/saml/sp/consume/onelogin`).                                                |
 | ACS URL Validator      | This field is regex to ensure OneLogin posts the response to the correct URL. For the sample URL below, we can use `^https:\/\/firezone\.company\.com\/auth\/saml\/sp\/consume\/onelogin` |
@@ -51,7 +51,7 @@ In the Firezone portal, add a SAML identity provider under the Security tab
 by filling out the following information:
 
 | Setting                   | Value           | Notes                                                                                                                                       |
-| ---                       | ---             | ---                                                                                                                                         |
+| ------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | Config ID                 | `onelogin`      | Used to construct endpoints required in the SAML authentication flow (e.g., receiving assertions, login requests).                          |
 | Label                     | `OneLogin`      | Appears on the sign in button for authentication.                                                                                           |
 | Metadata                  | see note        | Paste the contents of the SAML metadata document you downloaded in the previous step from OneLogin.                                         |

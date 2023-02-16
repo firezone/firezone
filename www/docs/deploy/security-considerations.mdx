@@ -18,7 +18,7 @@ Shown below is a table of default ports used by Firezone services.
 <TabItem label="Docker" value="docker" default>
 
 | Service    | Port        | Listen address | Description                                                                   |
-| ------     | ---------   | -------        | ---------                                                                     |
+| ---------- | ----------- | -------------- | ----------------------------------------------------------------------------- |
 | Caddy      | `443/tcp`   | `all`          | Public HTTPS port for administering Firezone and facilitating authentication. |
 | Caddy      | `80/tcp`    | `all`          | Public HTTP port used for ACME. Disabled when ACME is disabled.               |
 | WireGuard  | `51820/udp` | `all`          | Public WireGuard port used for VPN sessions.                                  |
@@ -29,7 +29,7 @@ Shown below is a table of default ports used by Firezone services.
 <TabItem label="Omnibus" value="omnibus">
 
 | Service    | Port        | Listen address | Description                                                                   |
-| ------     | ---------   | -------        | ---------                                                                     |
+| ---------- | ----------- | -------------- | ----------------------------------------------------------------------------- |
 | Nginx      | `443/tcp`   | `all`          | Public HTTPS port for administering Firezone and facilitating authentication. |
 | Nginx      | `80/tcp`    | `all`          | Public HTTP port used for ACME. Disabled when ACME is disabled.               |
 | WireGuard  | `51820/udp` | `all`          | Public WireGuard port used for VPN sessions.                                  |
@@ -47,7 +47,7 @@ altogether by setting `default['firezone']['authentication']['local']['enabled']
 Local authentication can also be disabled on the `/settings/security` page.
 
 :::caution
-Ensure you've set up a working [OIDC](/authenticate/oidc/) or [SAML](/authenticate/saml/)-based
+Ensure you've set up a working [OIDC](/docs/authenticate/oidc/) or [SAML](/docs/authenticate/saml/)-based
 authentication provider before disabling the local authentication method.
 :::
 

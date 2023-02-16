@@ -83,9 +83,9 @@ In most cases, you'll find clues in one or more of the following locations:
 <Tabs>
 <TabItem value="omnibus" label="Omnibus">
 
-* Your browser's developer tool logs, specifically the `Network` tab.
-* `sudo firezone-ctl tail nginx`
-* `sudo firezone-ctl tail phoenix`
+- Your browser's developer tool logs, specifically the `Network` tab.
+- `sudo firezone-ctl tail nginx`
+- `sudo firezone-ctl tail phoenix`
 
 If the websocket connection is successful, you should see output in the
 `phoenix` service logs similar the following:
@@ -185,13 +185,13 @@ sudo firezone-ctl create-or-reset-admin
 
 ## Re-enable local authentication via CLI
 
-If you've configured an [OIDC](/authenticate/oidc/) or [SAML](/authenticate/saml/)
+If you've configured an [OIDC](/docs/authenticate/oidc/) or [SAML](/docs/authenticate/saml/)
 provider, you can consider disabling local authentication for additional security.
 
 If, however, issues arise with your identity provider integration, it's possible you
 could be locked out of the admin portal. To re-enable local authentication so
 you can log in and resolve the issue, you can temporarily re-enable local authentication
-via the [REST API](/reference/rest-api/configurations).
+via the [REST API](/docs/reference/rest-api/configurations).
 
 If that's not an option, you can re-enable local authentication by
 running the following commands on the host of your Firezone instance:
@@ -201,5 +201,5 @@ cd $HOME/.firezone
 docker compose exec postgres psql -U postgres -h 127.0.0.1 -d firezone -c "UPDATE configurations SET local_auth_enabled = 't'"
 ```
 
-import SupportOptions from '@site/src/partials/_support_options.mdx';
-<SupportOptions />
+import SupportOptions from "@site/src/partials/_support_options.mdx";
+<SupportOptions />;

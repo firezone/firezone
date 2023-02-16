@@ -1,8 +1,7 @@
 ---
 title: Okta
 sidebar_position: 1
-description:
-  Enforce 2FA/MFA using Okta for users of Firezone's WireGuard®-based
+description: Enforce 2FA/MFA using Okta for users of Firezone's WireGuard®-based
   secure access platform. This guide walks through integrating Okta
   for single sign-on using the SAML 2.0 connector.
 ---
@@ -11,7 +10,7 @@ description:
 
 :::note
 This guide assumes you have completed the prerequisite steps
-(e.g. generate self-signed X.509 certificates) outlined [here](/authenticate/saml#prerequisites).
+(e.g. generate self-signed X.509 certificates) outlined [here](/docs/authenticate/saml#prerequisites).
 :::
 
 Firezone supports Single Sign-On (SSO) using Okta through the generic SAML 2.0 connector. This guide will walk you through how to configure the integration.
@@ -22,15 +21,15 @@ In the Okta admin portal, create a new app integration under
 the Application tab. Select `SAML 2.0` as the authentication method.
 Use the following config values during setup:
 
-| Setting                        | Value                                                                                                                                 |
-|--------------------------------|---------------------------------------------------------------------------------------------------------------------------------------|
-| App name                       | Firezone                                                                                                                              |
-| App logo                       | [save link as](https://user-images.githubusercontent.com/52545545/155907625-a4f6c8c2-3952-488d-b244-3c37400846cf.png)                 |
-| Single sign on URL             | This is your Firezone `EXTERNAL_URL/auth/saml/sp/consume/:config_id` (e.g., `https://firezone.company.com/auth/saml/sp/consume/okta`).|
-| Audience (EntityID)            | This should be the same as your Firezone `SAML_ENTITY_ID`, defaults to `urn:firezone.dev:firezone-app`.                               |
-| Name ID format                 | EmailAddress                                                                                                                          |
-| Application username           | Email                                                                                                                                 |
-| Update application username on | Create and update                                                                                                                     |
+| Setting                        | Value                                                                                                                                  |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| App name                       | Firezone                                                                                                                               |
+| App logo                       | [save link as](https://user-images.githubusercontent.com/52545545/155907625-a4f6c8c2-3952-488d-b244-3c37400846cf.png)                  |
+| Single sign on URL             | This is your Firezone `EXTERNAL_URL/auth/saml/sp/consume/:config_id` (e.g., `https://firezone.company.com/auth/saml/sp/consume/okta`). |
+| Audience (EntityID)            | This should be the same as your Firezone `SAML_ENTITY_ID`, defaults to `urn:firezone.dev:firezone-app`.                                |
+| Name ID format                 | EmailAddress                                                                                                                           |
+| Application username           | Email                                                                                                                                  |
+| Update application username on | Create and update                                                                                                                      |
 
 [Okta's documentation](https://help.okta.com/oie/en-us/Content/Topics/Apps/Apps_App_Integration_Wizard_SAML.htm)
 contains additional details on the purpose of each configuration setting.
@@ -46,16 +45,16 @@ to copy-paste the contents of this document into the Firezone portal in the next
 In the Firezone portal, add a SAML identity provider under the Security tab
 by filling out the following information:
 
-| Setting                     | Value           | Notes                                                                                                                                       |
-| --------------------------- | ----------      | --------------------------------------------------------------------------------------------------------------------                        |
-| Config ID                   | Okta            | Used to construct endpoints required in the SAML authentication flow (e.g., receiving assertions, login requests).                          |
-| Label                       | Okta            | Appears on the sign in button for authentication.                                                                                           |
-| Metadata                    | see note        | Paste the contents of the SAML metadata document you downloaded in the previous step from Okta.                                             |
-| Sign assertions             | Checked.        |                                                                                                                                             |
-| Sign metadata               | Checked.        |                                                                                                                                             |
-| Require signed assertions   | Checked.        |                                                                                                                                             |
-| Required signed envelopes   | Checked.        |                                                                                                                                             |
-| Auto create users           | Default `false` | Enable this setting to automatically create users when signing in with this connector for the first time. Disable to manually create users. |
+| Setting                   | Value           | Notes                                                                                                                                       |
+| ------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Config ID                 | Okta            | Used to construct endpoints required in the SAML authentication flow (e.g., receiving assertions, login requests).                          |
+| Label                     | Okta            | Appears on the sign in button for authentication.                                                                                           |
+| Metadata                  | see note        | Paste the contents of the SAML metadata document you downloaded in the previous step from Okta.                                             |
+| Sign assertions           | Checked.        |                                                                                                                                             |
+| Sign metadata             | Checked.        |                                                                                                                                             |
+| Require signed assertions | Checked.        |                                                                                                                                             |
+| Required signed envelopes | Checked.        |                                                                                                                                             |
+| Auto create users         | Default `false` | Enable this setting to automatically create users when signing in with this connector for the first time. Disable to manually create users. |
 
 ![Firezone SAML](https://user-images.githubusercontent.com/52545545/202557861-f7a85df0-d44f-48fd-a980-89e8b0c91503.png)
 

@@ -13,7 +13,7 @@ This article is written for Docker based deployments of Firezone.
 Docker deployments of Firezone consist of 3 running containers:
 
 | Container | Function      | Example logs                                  |
-|-----------|---------------|-----------------------------------------------|
+| --------- | ------------- | --------------------------------------------- |
 | firezone  | Web portal    | HTTP requests received and responses provided |
 | postgres  | Database      |                                               |
 | caddy     | Reverse proxy |                                               |
@@ -32,7 +32,7 @@ See additional options of the `docker compose logs` command
 :::note
 Audit logs are in early Beta on the Enterprise plan. These track configuration
 changes by admins and network activity by users.
-[Contact us](https://www.firezone.dev/sales?utm_source=docs.firezone.dev)
+[Contact us](/sales)
 to learn more.
 :::
 
@@ -51,11 +51,11 @@ to collect information from running containers and services.
 
 Examples of popular plugins, configurations, and use cases are:
 
-* Export container logs to your SIEM or observability platform (i.e.
-[Splunk](https://docs.docker.com/config/containers/logging/splunk/)
-or
-[Google Cloud Logging](https://docs.docker.com/config/containers/logging/gcplogs/)
-)
-* Enable log rotation and max file size.
-* [Customize log driver output](https://docs.docker.com/config/containers/logging/log_tags/)
-with tags.
+- Export container logs to your SIEM or observability platform (i.e.
+  [Splunk](https://docs.docker.com/config/containers/logging/splunk/)
+  or
+  [Google Cloud Logging](https://docs.docker.com/config/containers/logging/gcplogs/)
+  )
+- Enable log rotation and max file size.
+- [Customize log driver output](https://docs.docker.com/config/containers/logging/log_tags/)
+  with tags.
