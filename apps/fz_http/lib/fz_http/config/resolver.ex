@@ -31,6 +31,7 @@ defmodule FzHttp.Config.Resolver do
     end
   end
 
+  @dialyzer {:nowarn_function, fetch_process_env: 1}
   if Mix.env() == :test do
     def fetch_process_env(pdict_key) do
       with :error <- fetch_process_value(pdict_key),
