@@ -1,0 +1,1 @@
+"use strict";(self.webpackChunkfirezone_docs=self.webpackChunkfirezone_docs||[]).push([[7667],{9815:e=>{e.exports=JSON.parse('{"label":"company","permalink":"/blog/tags/company","allTagsPath":"/blog/tags","count":1}')}}]);

@@ -1,0 +1,1 @@
+"use strict";(self.webpackChunkfirezone_docs=self.webpackChunkfirezone_docs||[]).push([[2852],{6566:e=>{e.exports=JSON.parse('{"permalink":"/blog/tags/acme","page":1,"postsPerPage":10,"totalPages":1,"totalCount":1,"blogDescription":"Blog","blogTitle":"Blog"}')}}]);

@@ -1,0 +1,1 @@
+"use strict";(self.webpackChunkfirezone_docs=self.webpackChunkfirezone_docs||[]).push([[1241],{9095:s=>{s.exports=JSON.parse('{"label":"saml","permalink":"/blog/tags/saml","allTagsPath":"/blog/tags","count":1}')}}]);
