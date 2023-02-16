@@ -139,23 +139,33 @@ defmodule FzHttp.Devices do
     change_device(%Device{}, attrs)
   end
 
-  def allowed_ips(device), do: config(device, :allowed_ips)
-  def endpoint(device), do: config(device, :endpoint)
-  def dns(device), do: config(device, :dns)
-  def mtu(device), do: config(device, :mtu)
-  def persistent_keepalive(device), do: config(device, :persistent_keepalive)
+  def allowed_ips(device, defaults), do: config(device, defaults, :allowed_ips)
+  def endpoint(device, defaults), do: config(device, defaults, :endpoint)
+  def dns(device, defaults), do: config(device, defaults, :dns)
+  def mtu(device, defaults), do: config(device, defaults, :mtu)
+  def persistent_keepalive(device, defaults), do: config(device, defaults, :persistent_keepalive)
 
   # XXX: This is an A* query which is executed for every config key,
   # we can load all configs in a batch instead
-  def config(device, key) do
+  def config(device, defaults, key) do
     if Map.get(device, String.to_atom("use_default_#{key}")) do
-      Map.get(Config.fetch_db_config!(), String.to_atom("default_client_#{key}"))
+      Map.fetch!(defaults, String.to_atom("default_client_#{key}"))
     else
       Map.get(device, key)
     end
   end
 
-  def defaults(changeset) do
+  def defaults do
+    Config.fetch_configs!([
+      :default_client_allowed_ips,
+      :default_client_endpoint,
+      :default_client_dns,
+      :default_client_mtu,
+      :default_client_persistent_keepalive
+    ])
+  end
+
+  def use_default_fields(changeset) do
     ~w(
       use_default_allowed_ips
       use_default_dns
@@ -170,6 +180,7 @@ defmodule FzHttp.Devices do
 
   def as_config(device) do
     server_public_key = Application.get_env(:fz_vpn, :wireguard_public_key)
+    defaults = defaults()
 
     if is_nil(server_public_key) do
       Logger.error(
@@ -181,15 +192,15 @@ defmodule FzHttp.Devices do
     [Interface]
     PrivateKey = REPLACE_ME
     Address = #{inet(device)}
-    #{mtu_config(device)}
-    #{dns_config(device)}
+    #{mtu_config(device, defaults)}
+    #{dns_config(device, defaults)}
 
     [Peer]
     #{psk_config(device)}
     PublicKey = #{server_public_key}
-    #{allowed_ips_config(device)}
-    #{endpoint_config(device)}
-    #{persistent_keepalive_config(device)}
+    #{allowed_ips_config(device, defaults)}
+    #{endpoint_config(device, defaults)}
+    #{persistent_keepalive_config(device, defaults)}
     """
   end
 
@@ -220,8 +231,8 @@ defmodule FzHttp.Devices do
     end
   end
 
-  defp mtu_config(device) do
-    m = mtu(device)
+  defp mtu_config(device, defaults) do
+    m = mtu(device, defaults)
 
     if field_empty?(m) do
       ""
@@ -230,8 +241,8 @@ defmodule FzHttp.Devices do
     end
   end
 
-  defp allowed_ips_config(device) do
-    allowed_ips = allowed_ips(device)
+  defp allowed_ips_config(device, defaults) do
+    allowed_ips = allowed_ips(device, defaults)
 
     if field_empty?(allowed_ips) do
       ""
@@ -240,8 +251,8 @@ defmodule FzHttp.Devices do
     end
   end
 
-  defp persistent_keepalive_config(device) do
-    pk = persistent_keepalive(device)
+  defp persistent_keepalive_config(device, defaults) do
+    pk = persistent_keepalive(device, defaults)
 
     if field_empty?(pk) do
       ""
@@ -250,8 +261,8 @@ defmodule FzHttp.Devices do
     end
   end
 
-  defp dns_config(device) when is_struct(device) do
-    dns = dns(device)
+  defp dns_config(device, defaults) when is_struct(device) do
+    dns = dns(device, defaults)
 
     if field_empty?(dns) do
       ""
@@ -260,8 +271,8 @@ defmodule FzHttp.Devices do
     end
   end
 
-  defp endpoint_config(device) do
-    ep = endpoint(device)
+  defp endpoint_config(device, defaults) do
+    ep = endpoint(device, defaults)
 
     if field_empty?(ep) do
       ""
@@ -273,7 +284,7 @@ defmodule FzHttp.Devices do
   # Finds a port in IPv6-formatted address, e.g. [2001::1]:51820
   @capture_port ~r/\[.*]:(?<port>[\d]+)/
   defp maybe_add_port(endpoint) do
-    wireguard_port = Application.fetch_env!(:fz_vpn, :wireguard_port)
+    wireguard_port = Config.fetch_env!(:fz_vpn, :wireguard_port)
     colon_count = endpoint |> String.graphemes() |> Enum.count(&(&1 == ":"))
 
     if colon_count == 1 or !is_nil(Regex.named_captures(@capture_port, endpoint)) do
@@ -300,10 +311,10 @@ defmodule FzHttp.Devices do
   defp field_empty?(_), do: false
 
   defp ipv4? do
-    FzHttp.Config.fetch_env!(:fz_http, :wireguard_ipv4_enabled)
+    Config.fetch_env!(:fz_http, :wireguard_ipv4_enabled)
   end
 
   defp ipv6? do
-    FzHttp.Config.fetch_env!(:fz_http, :wireguard_ipv6_enabled)
+    Config.fetch_env!(:fz_http, :wireguard_ipv6_enabled)
   end
 end

@@ -34,7 +34,7 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
      |> assign(assigns)
      |> assign(:changeset, changeset)
      |> assign(config)
-     |> assign(Devices.defaults(changeset))}
+     |> assign(Devices.use_default_fields(changeset))}
   end
 
   @impl Phoenix.LiveComponent
@@ -48,7 +48,7 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
     {:noreply,
      socket
      |> assign(:changeset, changeset)
-     |> assign(Devices.defaults(changeset))}
+     |> assign(Devices.use_default_fields(changeset))}
   end
 
   @impl Phoenix.LiveComponent

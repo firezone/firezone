@@ -53,6 +53,12 @@ defmodule FzHttp.Config do
     end
   end
 
+  def fetch_configs!(keys) do
+    for {key, {_source, value}} <- fetch_source_and_configs!(keys), into: %{} do
+      {key, value}
+    end
+  end
+
   defp maybe_fetch_db_config!(keys) when is_list(keys) do
     if Enum.any?(keys, &(&1 in FzHttp.Config.Configuration.__schema__(:fields))) do
       fetch_db_config!()

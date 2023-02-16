@@ -6,12 +6,12 @@ defmodule FzHttpWeb.JSON.DeviceView do
 
   alias FzHttp.Devices
 
-  def render("index.json", %{devices: devices}) do
-    %{data: render_many(devices, __MODULE__, "device.json")}
+  def render("index.json", %{devices: devices, defaults: defaults}) do
+    %{data: render_many(devices, __MODULE__, "device.json", defaults: defaults)}
   end
 
-  def render("show.json", %{device: device}) do
-    %{data: render_one(device, __MODULE__, "device.json")}
+  def render("show.json", %{device: device, defaults: defaults}) do
+    %{data: render_one(device, __MODULE__, "device.json", defaults: defaults)}
   end
 
   @keys_to_render ~w[
@@ -40,16 +40,16 @@ defmodule FzHttpWeb.JSON.DeviceView do
     inserted_at
     user_id
   ]a
-  def render("device.json", %{device: device}) do
+  def render("device.json", %{device: device, defaults: defaults}) do
     Map.merge(
       Map.take(device, @keys_to_render),
       %{
         server_public_key: Application.get_env(:fz_vpn, :wireguard_public_key),
-        endpoint: Devices.config(device, :endpoint),
-        allowed_ips: Devices.config(device, :allowed_ips),
-        dns: Devices.config(device, :dns),
-        persistent_keepalive: Devices.config(device, :persistent_keepalive),
-        mtu: Devices.config(device, :mtu)
+        endpoint: Devices.endpoint(device, defaults),
+        allowed_ips: Devices.allowed_ips(device, defaults),
+        dns: Devices.dns(device, defaults),
+        persistent_keepalive: Devices.persistent_keepalive(device, defaults),
+        mtu: Devices.mtu(device, defaults)
       }
     )
   end

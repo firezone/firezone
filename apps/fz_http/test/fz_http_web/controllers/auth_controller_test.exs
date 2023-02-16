@@ -158,7 +158,7 @@ defmodule FzHttpWeb.AuthControllerTest do
     setup %{unauthed_conn: conn} = context do
       signed_state =
         Plug.Crypto.sign(
-          Application.fetch_env!(:fz_http, FzHttpWeb.Endpoint)[:secret_key_base],
+          FzHttp.Config.fetch_env!(:fz_http, FzHttpWeb.Endpoint)[:secret_key_base],
           @key <> "_cookie",
           @state,
           key: Plug.Keys,
