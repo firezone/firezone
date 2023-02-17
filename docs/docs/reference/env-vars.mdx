@@ -51,7 +51,7 @@ default). Required fields in **bold**.
 | DATABASE_NAME | Name of the PostgreSQL database. | string | firezone |
 | DATABASE_USER | User that will be used to access the PostgreSQL database. | string | postgres |
 | **DATABASE_PASSWORD** | Password that will be used to access the PostgreSQL database. | string |  |
-| DATABASE_POOL_SIZE | Size of the connection pool to the PostgreSQL database. | integer | 10 |
+| DATABASE_POOL_SIZE | Size of the connection pool to the PostgreSQL database. | integer | generated |
 | DATABASE_SSL_ENABLED | Whether to connect to the database over SSL.<br /> <br />If this field is set to `true`, the `database_ssl_opts` config must be set too with at least `cacertfile` option present. | boolean | false |
 | DATABASE_SSL_OPTS | SSL options for connecting to the PostgreSQL database.<br /> <br />Typically, to enabled SSL you want following options: <br />  - `cacertfile` - path to the CA certificate file;<br />  - `verify` - set to `verify_peer` to verify the server certificate;<br />  - `fail_if_no_peer_cert` - set to `true` to require the server to present a certificate;<br />  - `server_name_indication` - specify the hostname to be used in TLS Server Name Indication extension.<br /> <br />See [Ecto.Adapters.Postgres documentation](https://hexdocs.pm/ecto_sql/Ecto.Adapters.Postgres.html#module-connection-options). For list of all supported options, see the [`ssl`](http://erlang.org/doc/man/ssl.html#type-tls_client_option) module documentation. | JSON-encoded map | `{}` |
 
@@ -91,9 +91,9 @@ All secrets should be a **base64-encoded string**.
 | VPN_SESSION_DURATION | Optionally require users to periodically authenticate to the Firezone web UI in order to keep their VPN sessions active. | integer | 0 |
 | DEFAULT_CLIENT_PERSISTENT_KEEPALIVE | Interval for WireGuard [persistent keepalive](https://www.wireguard.com/quickstart/#nat-and-firewall-traversal-persistence).<br /> <br />If you experience NAT or firewall traversal problems, you can enable this to send a keepalive packet every 25 seconds. Otherwise, keep it disabled with a 0 default value. | integer | 25 |
 | DEFAULT_CLIENT_MTU | WireGuard interface MTU for devices. 1280 is a safe bet for most networks. Leave this blank to omit this field from generated configs. | integer | 1280 |
-| DEFAULT_CLIENT_ENDPOINT | IPv4, IPv6 address, or FQDN that devices will be configured to connect to. Defaults to this server's FQDN. | one of `IP with port`, `string` | generated from other env vars |
-| **DEFAULT_CLIENT_DNS** | Comma-separated list of DNS servers to use for devices.<br /> <br />Leave this blank to omit the <code>DNS</code> section from generated configs. | a list of IP separated by `,` |  |
-| DEFAULT_CLIENT_ALLOWED_IPS | Configures the default AllowedIPs setting for devices.<br /> <br />AllowedIPs determines which destination IPs get routed through Firezone.<br /> <br />Specify a comma-separated list of IPs or CIDRs here to achieve split tunneling, or use <code>0.0.0.0/0, ::/0</code> to route all device traffic through this Firezone server. | a list of one of `CIDR`, `IP` separated by `,` | 0.0.0.0/0,::/0 |
+| DEFAULT_CLIENT_ENDPOINT | IPv4, IPv6 address, or FQDN that devices will be configured to connect to. Defaults to this server's FQDN. | one of `IP with port`, `string` | generated |
+| **DEFAULT_CLIENT_DNS** | Comma-separated list of DNS servers to use for devices.<br /> <br />It can be either an IP address or a FQDN if you intend to use a DNS-over-TLS server.<br /> <br />Leave this blank to omit the `DNS` section from generated configs. | {:array, ",", {:one_of, [FzHttp.Types.IP, :string]}, [validate_unique: true]} | `` |
+| DEFAULT_CLIENT_ALLOWED_IPS | Configures the default AllowedIPs setting for devices.<br /> <br />AllowedIPs determines which destination IPs get routed through Firezone.<br /> <br />Specify a comma-separated list of IPs or CIDRs here to achieve split tunneling, or use `0.0.0.0/0, ::/0` to route all device traffic through this Firezone server. | {:array, ",", {:one_of, [FzHttp.Types.CIDR, FzHttp.Types.IP]}, [validate_unique: true]} | `0.0.0.0/0, ::/0` |
 
 ### Authorization
 
@@ -119,7 +119,7 @@ All secrets should be a **base64-encoded string**.
 
 | Env Key | Description      | Format | Default |
 | ------  | ---------------  | ------ | ------- |
-| OUTBOUND_EMAIL_FROM | From address to use for sending outbound emails. If not set, sending email will be disabled (default). | string | generated from other env vars |
+| OUTBOUND_EMAIL_FROM | From address to use for sending outbound emails. If not set, sending email will be disabled (default). | string | generated |
 | OUTBOUND_EMAIL_ADAPTER | Method to use for sending outbound email. | One of `Swoosh.Adapters.AmazonSES`, `Swoosh.Adapters.CustomerIO`, `Swoosh.Adapters.Dyn`, `Swoosh.Adapters.ExAwsAmazonSES`, `Swoosh.Adapters.Gmail`, `Swoosh.Adapters.MailPace`, `Swoosh.Adapters.Mailgun`, `Swoosh.Adapters.Mailjet`, `Swoosh.Adapters.Mandrill`, `Swoosh.Adapters.Postmark`, `Swoosh.Adapters.ProtonBridge`, `Swoosh.Adapters.SMTP`, `Swoosh.Adapters.SMTP2GO`, `Swoosh.Adapters.Sendgrid`, `Swoosh.Adapters.Sendinblue`, `Swoosh.Adapters.Sendmail`, `Swoosh.Adapters.SocketLabs`, `Swoosh.Adapters.SparkPost`, `FzHttpWeb.Mailer.NoopAdapter` | `FzHttpWeb.Mailer.NoopAdapter` |
 | OUTBOUND_EMAIL_ADAPTER_OPTS | Adapter configuration, for list of options see [Swoosh Adapters](https://github.com/swoosh/swoosh#adapters). | JSON-encoded map | `{}` |
 
@@ -140,5 +140,5 @@ All secrets should be a **base64-encoded string**.
 
 | Env Key | Description      | Format | Default |
 | ------  | ---------------  | ------ | ------- |
-| LOGO_PATH | The path to a logo image file to replace default Firezone logo. | string |  |
+| LOGO | The path to a logo image file to replace default Firezone logo. | {:embed, FzHttp.Config.Logo} | `` |
 

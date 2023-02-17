@@ -4,6 +4,7 @@ sidebar_position: 2
 toc_max_heading_level: 4
 ---
 
+
 This endpoint allows an administrator to manage Users.
 
 ## Auto-Create Users from OpenID or SAML providers
@@ -15,12 +16,17 @@ able to log-in to Firezone.
 If `auto_create_users` is `false`, then you need to provision users with `password` attribute,
 otherwise they will have no means to log in.
 
-## API Documentation
+## Disabling users
 
+Even though API returns `disabled_at` attribute, currently, it's not possible to disable users via API,
+since this field is only for internal use by automatic user disabling mechanism on OIDC/SAML errors.
+
+## API Documentation
 ### List all Users [`GET /v0/users`]
 
-#### Example
 
+
+#### Example
 ```bash
 $ curl -i \
   -X GET "https://{firezone_host}/v0/users" \
@@ -34,59 +40,59 @@ Content-Type: application/json; charset=utf-8
   "data": [
     {
       "disabled_at": null,
-      "email": "test-2886@test",
-      "id": "9f0ce70d-d9e6-4610-ad3b-e5758318c016",
-      "inserted_at": "2023-01-13T06:30:47.076850Z",
+      "email": "test-3560@test",
+      "id": "915810cd-365a-4bf1-b88e-8a73606e8a09",
+      "inserted_at": "2023-02-17T17:18:00.981776Z",
       "last_signed_in_at": null,
       "last_signed_in_method": null,
       "role": "admin",
-      "updated_at": "2023-01-13T06:30:47.076850Z"
+      "updated_at": "2023-02-17T17:18:00.981776Z"
     },
     {
       "disabled_at": null,
-      "email": "test-2918@test",
-      "id": "36479416-7099-46f9-b9b9-3ad4411eef7d",
-      "inserted_at": "2023-01-13T06:30:47.079115Z",
+      "email": "test-3014@test",
+      "id": "ae8b4561-86da-4e98-909a-fc0252d28984",
+      "inserted_at": "2023-02-17T17:18:00.983117Z",
       "last_signed_in_at": null,
       "last_signed_in_method": null,
       "role": "admin",
-      "updated_at": "2023-01-13T06:30:47.079115Z"
+      "updated_at": "2023-02-17T17:18:00.983117Z"
     },
     {
       "disabled_at": null,
-      "email": "test-3045@test",
-      "id": "232c2358-5132-4fc7-8e42-cd8464fcae02",
-      "inserted_at": "2023-01-13T06:30:47.081138Z",
+      "email": "test-1899@test",
+      "id": "bbbae023-0a9b-4d78-9499-5014fc8cf167",
+      "inserted_at": "2023-02-17T17:18:00.984574Z",
       "last_signed_in_at": null,
       "last_signed_in_method": null,
       "role": "admin",
-      "updated_at": "2023-01-13T06:30:47.081138Z"
+      "updated_at": "2023-02-17T17:18:00.984574Z"
     },
     {
       "disabled_at": null,
-      "email": "test-2950@test",
-      "id": "b15b274b-751e-4ca6-9c3e-3a798299ec86",
-      "inserted_at": "2023-01-13T06:30:47.083059Z",
+      "email": "test-1931@test",
+      "id": "f6d13031-d215-4c0d-9f6f-875f2b67ed74",
+      "inserted_at": "2023-02-17T17:18:00.985893Z",
       "last_signed_in_at": null,
       "last_signed_in_method": null,
       "role": "admin",
-      "updated_at": "2023-01-13T06:30:47.083059Z"
+      "updated_at": "2023-02-17T17:18:00.985893Z"
     }
   ]
 }
 ```
-
 ### Create a User [`POST /v0/users`]
+
 
 Create a new User.
 
 This endpoint is useful in two cases:
 
-1. When [Local Authentication](/docs/authenticate/local-auth/) is enabled (discouraged in
-   production deployments), it allows an administrator to provision users with their passwords;
-2. When `auto_create_users` in the associated OpenID or SAML configuration is disabled,
-   it allows an administrator to provision users with their emails beforehand, effectively
-   whitelisting specific users for authentication.
+  1. When [Local Authentication](/authenticate/local-auth/) is enabled (discouraged in
+    production deployments), it allows an administrator to provision users with their passwords;
+  2. When `auto_create_users` in the associated OpenID or SAML configuration is disabled,
+    it allows an administrator to provision users with their emails beforehand, effectively
+    whitelisting specific users for authentication.
 
 If `auto_create_users` is `true` in the associated OpenID or SAML configuration, there is no need
 to provision users; they will be created automatically when they log in for the first time using
@@ -94,15 +100,14 @@ the associated OpenID or SAML provider.
 
 #### User Attributes
 
-| Attribute               | Type                                | Required | Description                                                    |
-| ----------------------- | ----------------------------------- | -------- | -------------------------------------------------------------- |
-| `role`                  | `admin` or `unprivileged` (default) | No       | User role.                                                     |
-| `email`                 | `string`                            | Yes      | Email which will be used to identify the user.                 |
-| `password`              | `string`                            | No       | A password that can be used for login-password authentication. |
-| `password_confirmation` | `string`                            | ->       | Is required when the `password` is set.                        |
+| Attribute | Type | Required | Description |
+| --------- | ---- | -------- | ----------- |
+| `role` | `admin` or `unprivileged` (default) | No | User role. |
+| `email` | `string` | Yes | Email which will be used to identify the user. |
+| `password` | `string` | No | A password that can be used for login-password authentication. |
+| `password_confirmation` | `string` | -> | Is required when the `password` is set. |
 
 #### Example
-
 ```bash
 $ curl -i \
   -X POST "https://{firezone_host}/v0/users" \
@@ -121,24 +126,22 @@ EOF
 
 HTTP/1.1 201
 Content-Type: application/json; charset=utf-8
-Location: /v0/users/86616e3e-13f0-4177-bc8e-1a0e588f0be8
+Location: /v0/users/d687e27c-dae5-4796-9651-6fc9d9469039
 
 {
   "data": {
     "disabled_at": null,
     "email": "new-user@test",
-    "id": "86616e3e-13f0-4177-bc8e-1a0e588f0be8",
-    "inserted_at": "2023-01-13T06:30:47.047550Z",
+    "id": "d687e27c-dae5-4796-9651-6fc9d9469039",
+    "inserted_at": "2023-02-17T17:18:00.706129Z",
     "last_signed_in_at": null,
     "last_signed_in_method": null,
     "role": "unprivileged",
-    "updated_at": "2023-01-13T06:30:47.047550Z"
+    "updated_at": "2023-02-17T17:18:00.706129Z"
   }
 }
 ```
-
 #### Provision an unprivileged OpenID User
-
 ```bash
 $ curl -i \
   -X POST "https://{firezone_host}/v0/users" \
@@ -155,24 +158,22 @@ EOF
 
 HTTP/1.1 201
 Content-Type: application/json; charset=utf-8
-Location: /v0/users/6e7962a7-c183-4afb-8569-9001bdfd0d87
+Location: /v0/users/12a8bc95-a6cd-4898-b08b-799303fc8260
 
 {
   "data": {
     "disabled_at": null,
     "email": "new-user@test",
-    "id": "6e7962a7-c183-4afb-8569-9001bdfd0d87",
-    "inserted_at": "2023-01-13T06:30:47.282412Z",
+    "id": "12a8bc95-a6cd-4898-b08b-799303fc8260",
+    "inserted_at": "2023-02-17T17:18:00.902793Z",
     "last_signed_in_at": null,
     "last_signed_in_method": null,
     "role": "unprivileged",
-    "updated_at": "2023-01-13T06:30:47.282412Z"
+    "updated_at": "2023-02-17T17:18:00.902793Z"
   }
 }
 ```
-
 #### Provision an admin OpenID User
-
 ```bash
 $ curl -i \
   -X POST "https://{firezone_host}/v0/users" \
@@ -189,24 +190,22 @@ EOF
 
 HTTP/1.1 201
 Content-Type: application/json; charset=utf-8
-Location: /v0/users/dedc4dcc-0f65-4110-ad7f-9c354e36e5e5
+Location: /v0/users/e6d6d5e8-551d-4453-a1a2-b529618e71a4
 
 {
   "data": {
     "disabled_at": null,
     "email": "new-user@test",
-    "id": "dedc4dcc-0f65-4110-ad7f-9c354e36e5e5",
-    "inserted_at": "2023-01-13T06:30:47.166645Z",
+    "id": "e6d6d5e8-551d-4453-a1a2-b529618e71a4",
+    "inserted_at": "2023-02-17T17:18:00.844771Z",
     "last_signed_in_at": null,
     "last_signed_in_method": null,
     "role": "admin",
-    "updated_at": "2023-01-13T06:30:47.166645Z"
+    "updated_at": "2023-02-17T17:18:00.844771Z"
   }
 }
 ```
-
 #### Error due to invalid parameters
-
 ```bash
 $ curl -i \
   -X POST "https://{firezone_host}/v0/users" \
@@ -227,21 +226,22 @@ Content-Type: application/json; charset=utf-8
 {
   "errors": {
     "password": [
-      "should be at least 12 character(s)",
-      "does not match password confirmation."
+      "should be at least 12 character(s)"
+    ],
+    "password_confirmation": [
+      "can't be blank"
     ]
   }
 }
 ```
-
 ### GET /v0/users/{id}
 
-#### An email can be used instead of ID.
 
+
+#### An email can be used instead of ID.
 **URI Parameters:**
 
-- `id`: `test-1481@test`
-
+  - `id`: `test-2729@test`
 ```bash
 $ curl -i \
   -X GET "https://{firezone_host}/v0/users/{id}" \
@@ -254,27 +254,25 @@ Content-Type: application/json; charset=utf-8
 {
   "data": {
     "disabled_at": null,
-    "email": "test-1481@test",
-    "id": "b19a929d-fd84-4f11-a799-23416c8efaf8",
-    "inserted_at": "2023-01-13T06:30:47.050304Z",
+    "email": "test-2729@test",
+    "id": "657ce751-1116-4c09-ab95-d32ebb174a86",
+    "inserted_at": "2023-02-17T17:18:00.814955Z",
     "last_signed_in_at": null,
     "last_signed_in_method": null,
     "role": "admin",
-    "updated_at": "2023-01-13T06:30:47.050304Z"
+    "updated_at": "2023-02-17T17:18:00.814955Z"
   }
 }
 ```
-
 ### Update a User [`PATCH /v0/users/{id}`]
+
 
 For details please see [Create a User](#create-a-user-post-v0users) section.
 
 #### Update by email
-
 **URI Parameters:**
 
-- `id`: `test-3618@test`
-
+  - `id`: `test-709@test`
 ```bash
 $ curl -i \
   -X PUT "https://{firezone_host}/v0/users/{id}" \
@@ -292,23 +290,20 @@ Content-Type: application/json; charset=utf-8
 {
   "data": {
     "disabled_at": null,
-    "email": "test-3618@test",
-    "id": "54d4de57-21f3-4adc-a9a9-a3ee642da76e",
-    "inserted_at": "2023-01-13T06:30:47.285730Z",
+    "email": "test-709@test",
+    "id": "36ee9c15-0163-4449-847d-22ef2ece3fa8",
+    "inserted_at": "2023-02-17T17:17:59.511192Z",
     "last_signed_in_at": null,
     "last_signed_in_method": null,
     "role": "unprivileged",
-    "updated_at": "2023-01-13T06:30:47.285730Z"
+    "updated_at": "2023-02-17T17:17:59.511192Z"
   }
 }
 ```
-
 #### Update by ID
-
 **URI Parameters:**
 
-- `id`: `8dd4eff5-3d2f-4868-94cd-73abb6f130dc`
-
+  - `id`: `edaac8af-1878-411e-9c65-25a907497694`
 ```bash
 $ curl -i \
   -X PUT "https://{firezone_host}/v0/users/{id}" \
@@ -326,25 +321,24 @@ Content-Type: application/json; charset=utf-8
 {
   "data": {
     "disabled_at": null,
-    "email": "test-3235@test",
-    "id": "8dd4eff5-3d2f-4868-94cd-73abb6f130dc",
-    "inserted_at": "2023-01-13T06:30:47.265280Z",
+    "email": "test-3013@test",
+    "id": "edaac8af-1878-411e-9c65-25a907497694",
+    "inserted_at": "2023-02-17T17:18:00.906754Z",
     "last_signed_in_at": null,
     "last_signed_in_method": null,
     "role": "unprivileged",
-    "updated_at": "2023-01-13T06:30:47.265280Z"
+    "updated_at": "2023-02-17T17:18:00.906754Z"
   }
 }
 ```
-
 ### DELETE /v0/users/{id}
 
+
+
 #### Example
-
 **URI Parameters:**
 
-- `id`: `fc0b513f-bd4b-4015-ac71-29b59c678a20`
-
+  - `id`: `16a2119d-1db6-4b22-a336-2c1cb6e72984`
 ```bash
 $ curl -i \
   -X DELETE "https://{firezone_host}/v0/users/{id}" \
@@ -352,14 +346,12 @@ $ curl -i \
   -H 'Authorization: Bearer {api_token}' \
 
 HTTP/1.1 204
+Content-Type: application/json; charset=utf-8
 ```
-
 #### An email can be used instead of ID.
-
 **URI Parameters:**
 
-- `id`: `test-3816@test`
-
+  - `id`: `test-3943@test`
 ```bash
 $ curl -i \
   -X DELETE "https://{firezone_host}/v0/users/{id}" \
@@ -367,4 +359,5 @@ $ curl -i \
   -H 'Authorization: Bearer {api_token}' \
 
 HTTP/1.1 204
+Content-Type: application/json; charset=utf-8
 ```

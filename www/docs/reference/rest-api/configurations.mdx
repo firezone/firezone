@@ -6,6 +6,8 @@ group: Configuration
 
 This endpoint allows an administrator to manage Configurations.
 
+Updates here can be applied at runtime with little to no downtime of affected services.
+
 ## API Documentation
 ### GET /v0/configuration
 
@@ -25,19 +27,25 @@ Content-Type: application/json; charset=utf-8
   "data": {
     "allow_unprivileged_device_configuration": true,
     "allow_unprivileged_device_management": true,
-    "default_client_allowed_ips": "0.0.0.0/0,::/0",
-    "default_client_dns": "1.1.1.1,1.0.0.1",
+    "default_client_allowed_ips": [
+      "0.0.0.0/0",
+      "::/0"
+    ],
+    "default_client_dns": [
+      "1.1.1.1",
+      "1.0.0.1"
+    ],
     "default_client_endpoint": "localhost:51820",
     "default_client_mtu": 1280,
     "default_client_persistent_keepalive": 25,
     "disable_vpn_on_oidc_error": false,
-    "id": "8f17e873-de8a-4264-8567-39e450870306",
-    "inserted_at": "2023-01-13T06:00:43.178729Z",
+    "id": "1c5b3594-1309-4779-b01d-cd21bee561b8",
+    "inserted_at": "2023-02-16T17:31:21.614660Z",
     "local_auth_enabled": true,
-    "logo": null,
+    "logo": {},
     "openid_connect_providers": [],
     "saml_identity_providers": [],
-    "updated_at": "2023-01-13T06:00:43.178729Z",
+    "updated_at": "2023-02-16T17:31:21.614660Z",
     "vpn_session_duration": 0
   }
 }
@@ -57,8 +65,13 @@ $ curl -i \
   "configuration": {
     "allow_unprivileged_device_configuration": false,
     "allow_unprivileged_device_management": false,
-    "default_client_allowed_ips": "1.1.1.1,2.2.2.2",
-    "default_client_dns": "1.1.1.1",
+    "default_client_allowed_ips": [
+      "1.1.1.1",
+      "2.2.2.2"
+    ],
+    "default_client_dns": [
+      "1.1.1.1"
+    ],
     "default_client_endpoint": "new-endpoint",
     "default_client_mtu": 1100,
     "default_client_persistent_keepalive": 1,
@@ -73,8 +86,8 @@ $ curl -i \
         "id": "google",
         "label": "google",
         "redirect_uri": "https://invalid",
-        "response_type": "response-type",
-        "scope": "test-scope"
+        "response_type": "code",
+        "scope": "email openid"
       }
     ],
     "saml_identity_providers": [
@@ -83,7 +96,7 @@ $ curl -i \
         "base_url": "https://saml",
         "id": "okta",
         "label": "okta",
-        "metadata": "<?xml version=\"1.0\"?>\n<md:EntityDescriptor xmlns=\"urn:oasis:names:tc:SAML:2.0:metadata\" xmlns:md=\"urn:oasis:names:tc:SAML:2.0:metadata\" xmlns:saml=\"urn:oasis:names:tc:SAML:2.0:assertion\" xmlns:ds=\"http://www.w3.org/2000/09/xmldsig#\" entityID=\"http://localhost:8080/realms/firezone\">\n  <md:IDPSSODescriptor WantAuthnRequestsSigned=\"true\" protocolSupportEnumeration=\"urn:oasis:names:tc:SAML:2.0:protocol\">\n    <md:KeyDescriptor use=\"signing\">\n      <ds:KeyInfo>\n        <ds:KeyName>pdSMtx2s3RVVhxg_qJOjHhlZhwZk6JiBMiSm5PEgjkA</ds:KeyName>\n        <ds:X509Data>\n          <ds:X509Certificate>MIICnzCCAYcCBgGD18ZU8TANBgkqhkiG9w0BAQsFADATMREwDwYDVQQDDAhmaXJlem9uZTAeFw0yMjEwMTQxODMyMjJaFw0zMjEwMTQxODM0MDJaMBMxETAPBgNVBAMMCGZpcmV6b25lMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAur5Cb0jrDJbMwr96WWE+z9CjDg0A/uRkaB4loRqkmu3A2fQGsS6CP7F7lQWMJmpzvBgkNtB69toO2sgx1u1fhpIJBZ0uSHF5gnzQAivgVxInvkMKRTRSkpMbhObiDHZnEGI2+Ly+8iV8IvprdrbDgm52u4conam0H1PewUKkHulrVQ+ImFuEWAjKCRSqpUG2F1eRkA0YpqB09x0CZAOOoucwTsBYj/ZAz3dUXhYIENAF7v0ykvzGOCAyOZIn1uYQc7jvWpwoI8qQdL45phj2FLoFlght3tlZV8IG5hsXrE6rg7Ufqvv8xyGltrOMKj/jEFEunagZOUjkypDp36b8cwIDAQABMA0GCSqGSIb3DQEBCwUAA4IBAQBEZKLLr66GB3NxqXGTMl0PvTDNB9GdyShQHaJYjeeUQnEXixjlAVrOq/txEBKjhGUcqyFELoNuwcxxV1iHA5oXhCoqYmnp9T/ftmXPDT3c49PBABHgLJaFOKYTpVx1YjP7mA44X1ijLZmgboIeeFNerVNHIzR9BsxcloQlB0r9QfC14rsuXo6QD3QnaVI8wDgWXQHqpcwLFqvehXdNvMFniRvX2qBNU8E0FPoMaZ1C3n2nssLcVZ+C4ghq6YoAG+wLGY7XE8+v5rnYGDpGpfgr2wdefn6tryFq3PyGqA8ThjARESRRQG9kI/RlNX7qCnP/8/7JQ4wLdfz5C25uhakP</ds:X509Certificate>\n        </ds:X509Data>\n      </ds:KeyInfo>\n    </md:KeyDescriptor>\n    <md:ArtifactResolutionService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:SOAP\" Location=\"http://localhost:8080/realms/firezone/protocol/saml/resolve\" index=\"0\"/>\n    <md:SingleLogoutService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n    <md:SingleLogoutService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n    <md:SingleLogoutService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Artifact\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n    <md:NameIDFormat>urn:oasis:names:tc:SAML:2.0:nameid-format:persistent</md:NameIDFormat>\n    <md:NameIDFormat>urn:oasis:names:tc:SAML:2.0:nameid-format:transient</md:NameIDFormat>\n    <md:NameIDFormat>urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified</md:NameIDFormat>\n    <md:NameIDFormat>urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress</md:NameIDFormat>\n    <md:SingleSignOnService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n    <md:SingleSignOnService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n    <md:SingleSignOnService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:SOAP\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n    <md:SingleSignOnService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Artifact\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n  </md:IDPSSODescriptor>\n</md:EntityDescriptor>\n",
+        "metadata": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<md:EntityDescriptor entityID=\"http://www.okta.com/exk6ff6p62kFjUR3X5d7\"\n  xmlns:md=\"urn:oasis:names:tc:SAML:2.0:metadata\">\n  <md:IDPSSODescriptor WantAuthnRequestsSigned=\"false\" protocolSupportEnumeration=\"urn:oasis:names:tc:SAML:2.0:protocol\">\n    <md:KeyDescriptor use=\"signing\">\n      <ds:KeyInfo\n        xmlns:ds=\"http://www.w3.org/2000/09/xmldsig#\">\n        <ds:X509Data>\n          <ds:X509Certificate>MIIDqDCCApCgAwIBAgIGAYMaIfiKMA0GCSqGSIb3DQEBCwUAMIGUMQswCQYDVQQGEwJVUzETMBEG\nA1UECAwKQ2FsaWZvcm5pYTEWMBQGA1UEBwwNU2FuIEZyYW5jaXNjbzENMAsGA1UECgwET2t0YTEU\nMBIGA1UECwwLU1NPUHJvdmlkZXIxFTATBgNVBAMMDGRldi04Mzg1OTk1NTEcMBoGCSqGSIb3DQEJ\nARYNaW5mb0Bva3RhLmNvbTAeFw0yMjA5MDcyMjQ1MTdaFw0zMjA5MDcyMjQ2MTdaMIGUMQswCQYD\nVQQGEwJVUzETMBEGA1UECAwKQ2FsaWZvcm5pYTEWMBQGA1UEBwwNU2FuIEZyYW5jaXNjbzENMAsG\nA1UECgwET2t0YTEUMBIGA1UECwwLU1NPUHJvdmlkZXIxFTATBgNVBAMMDGRldi04Mzg1OTk1NTEc\nMBoGCSqGSIb3DQEJARYNaW5mb0Bva3RhLmNvbTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoC\nggEBAOmj276L3kHm57hNGYTocT6NS4mffPbcvsA2UuKIWfmpV8HLTcmS+NahLtuN841OnRnTn+2p\nfjlwa1mwJhCODbF3dcVYOkGTPUC4y2nvf1Xas6M7+0O2WIfrzdX/OOUs/ROMnB/O/MpBwMR2SQh6\nQ3V+9v8g3K9yfMvcifDbl6g9fTliDzqV7I9xF5eJykl+iCAKNaQgp3cO6TaIa5u2ZKtRAdzwnuJC\nBXMyzaoNs/vfnwzuFtzWP1PSS1Roan+8AMwkYA6BCr1YRIqZ0GSkr/qexFCTZdq0UnSN78fY6CCM\nRFw5wU0WM9nEpbWzkBBWsYHeTLo5JqR/mZukfjlPDlcCAwEAATANBgkqhkiG9w0BAQsFAAOCAQEA\nlUhwzCSnuqt4wlHxJONN4kxUBG8bPnjHxob6jBKK+onFDuSVWZ+7LZw67blz6xdxvlOLaQLi1fK2\nFifehbc7KbRLckcgNgg7Y8qfUKdP0/nS0JlyAvlnICQqaHTHwhIzQqTHtTZeeIJHtpWOX/OPRI0S\nbkygh2qjF8bYn3sX8bGNUQL8iiMxFnvwGrXaErPqlRqFJbWQDBXD+nYDIBw7WN3Jyb0Ydin2zrlh\ngp3Qooi0TnAir3ncw/UF/+sivCgd+6nX7HkbZtipkMbg7ZByyD9xrOQG2JXrP6PyzGCPwnGMt9pL\niiVMepeLNqKZ3UvhrR1uRN0KWu7lduIRhxldLA==</ds:X509Certificate>\n        </ds:X509Data>\n      </ds:KeyInfo>\n    </md:KeyDescriptor>\n    <md:NameIDFormat>urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified</md:NameIDFormat>\n    <md:NameIDFormat>urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress</md:NameIDFormat>\n    <md:SingleSignOnService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST\" Location=\"https://dev-83859955.okta.com/app/dev-83859955_firezonesaml_1/exk6ff6p62kFjUR3X5d7/sso/saml\"/>\n    <md:SingleSignOnService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect\" Location=\"https://dev-83859955.okta.com/app/dev-83859955_firezonesaml_1/exk6ff6p62kFjUR3X5d7/sso/saml\"/>\n  </md:IDPSSODescriptor>\n</md:EntityDescriptor>\n",
         "sign_metadata": false,
         "sign_requests": false,
         "signed_assertion_in_resp": false,
@@ -102,16 +115,21 @@ Content-Type: application/json; charset=utf-8
   "data": {
     "allow_unprivileged_device_configuration": false,
     "allow_unprivileged_device_management": false,
-    "default_client_allowed_ips": "1.1.1.1,2.2.2.2",
-    "default_client_dns": "1.1.1.1",
+    "default_client_allowed_ips": [
+      "1.1.1.1",
+      "2.2.2.2"
+    ],
+    "default_client_dns": [
+      "1.1.1.1"
+    ],
     "default_client_endpoint": "new-endpoint",
     "default_client_mtu": 1100,
     "default_client_persistent_keepalive": 1,
     "disable_vpn_on_oidc_error": true,
-    "id": "8f17e873-de8a-4264-8567-39e450870306",
-    "inserted_at": "2023-01-13T06:00:43.178729Z",
+    "id": "1c5b3594-1309-4779-b01d-cd21bee561b8",
+    "inserted_at": "2023-02-16T17:31:21.614660Z",
     "local_auth_enabled": false,
-    "logo": null,
+    "logo": {},
     "openid_connect_providers": [
       {
         "auto_create_users": false,
@@ -121,8 +139,8 @@ Content-Type: application/json; charset=utf-8
         "id": "google",
         "label": "google",
         "redirect_uri": "https://invalid",
-        "response_type": "response-type",
-        "scope": "test-scope"
+        "response_type": "code",
+        "scope": "email openid"
       }
     ],
     "saml_identity_providers": [
@@ -131,14 +149,14 @@ Content-Type: application/json; charset=utf-8
         "base_url": "https://saml",
         "id": "okta",
         "label": "okta",
-        "metadata": "<?xml version=\"1.0\"?>\n<md:EntityDescriptor xmlns=\"urn:oasis:names:tc:SAML:2.0:metadata\" xmlns:md=\"urn:oasis:names:tc:SAML:2.0:metadata\" xmlns:saml=\"urn:oasis:names:tc:SAML:2.0:assertion\" xmlns:ds=\"http://www.w3.org/2000/09/xmldsig#\" entityID=\"http://localhost:8080/realms/firezone\">\n  <md:IDPSSODescriptor WantAuthnRequestsSigned=\"true\" protocolSupportEnumeration=\"urn:oasis:names:tc:SAML:2.0:protocol\">\n    <md:KeyDescriptor use=\"signing\">\n      <ds:KeyInfo>\n        <ds:KeyName>pdSMtx2s3RVVhxg_qJOjHhlZhwZk6JiBMiSm5PEgjkA</ds:KeyName>\n        <ds:X509Data>\n          <ds:X509Certificate>MIICnzCCAYcCBgGD18ZU8TANBgkqhkiG9w0BAQsFADATMREwDwYDVQQDDAhmaXJlem9uZTAeFw0yMjEwMTQxODMyMjJaFw0zMjEwMTQxODM0MDJaMBMxETAPBgNVBAMMCGZpcmV6b25lMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAur5Cb0jrDJbMwr96WWE+z9CjDg0A/uRkaB4loRqkmu3A2fQGsS6CP7F7lQWMJmpzvBgkNtB69toO2sgx1u1fhpIJBZ0uSHF5gnzQAivgVxInvkMKRTRSkpMbhObiDHZnEGI2+Ly+8iV8IvprdrbDgm52u4conam0H1PewUKkHulrVQ+ImFuEWAjKCRSqpUG2F1eRkA0YpqB09x0CZAOOoucwTsBYj/ZAz3dUXhYIENAF7v0ykvzGOCAyOZIn1uYQc7jvWpwoI8qQdL45phj2FLoFlght3tlZV8IG5hsXrE6rg7Ufqvv8xyGltrOMKj/jEFEunagZOUjkypDp36b8cwIDAQABMA0GCSqGSIb3DQEBCwUAA4IBAQBEZKLLr66GB3NxqXGTMl0PvTDNB9GdyShQHaJYjeeUQnEXixjlAVrOq/txEBKjhGUcqyFELoNuwcxxV1iHA5oXhCoqYmnp9T/ftmXPDT3c49PBABHgLJaFOKYTpVx1YjP7mA44X1ijLZmgboIeeFNerVNHIzR9BsxcloQlB0r9QfC14rsuXo6QD3QnaVI8wDgWXQHqpcwLFqvehXdNvMFniRvX2qBNU8E0FPoMaZ1C3n2nssLcVZ+C4ghq6YoAG+wLGY7XE8+v5rnYGDpGpfgr2wdefn6tryFq3PyGqA8ThjARESRRQG9kI/RlNX7qCnP/8/7JQ4wLdfz5C25uhakP</ds:X509Certificate>\n        </ds:X509Data>\n      </ds:KeyInfo>\n    </md:KeyDescriptor>\n    <md:ArtifactResolutionService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:SOAP\" Location=\"http://localhost:8080/realms/firezone/protocol/saml/resolve\" index=\"0\"/>\n    <md:SingleLogoutService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n    <md:SingleLogoutService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n    <md:SingleLogoutService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Artifact\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n    <md:NameIDFormat>urn:oasis:names:tc:SAML:2.0:nameid-format:persistent</md:NameIDFormat>\n    <md:NameIDFormat>urn:oasis:names:tc:SAML:2.0:nameid-format:transient</md:NameIDFormat>\n    <md:NameIDFormat>urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified</md:NameIDFormat>\n    <md:NameIDFormat>urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress</md:NameIDFormat>\n    <md:SingleSignOnService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n    <md:SingleSignOnService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n    <md:SingleSignOnService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:SOAP\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n    <md:SingleSignOnService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Artifact\" Location=\"http://localhost:8080/realms/firezone/protocol/saml\"/>\n  </md:IDPSSODescriptor>\n</md:EntityDescriptor>\n",
+        "metadata": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<md:EntityDescriptor entityID=\"http://www.okta.com/exk6ff6p62kFjUR3X5d7\"\n  xmlns:md=\"urn:oasis:names:tc:SAML:2.0:metadata\">\n  <md:IDPSSODescriptor WantAuthnRequestsSigned=\"false\" protocolSupportEnumeration=\"urn:oasis:names:tc:SAML:2.0:protocol\">\n    <md:KeyDescriptor use=\"signing\">\n      <ds:KeyInfo\n        xmlns:ds=\"http://www.w3.org/2000/09/xmldsig#\">\n        <ds:X509Data>\n          <ds:X509Certificate>MIIDqDCCApCgAwIBAgIGAYMaIfiKMA0GCSqGSIb3DQEBCwUAMIGUMQswCQYDVQQGEwJVUzETMBEG\nA1UECAwKQ2FsaWZvcm5pYTEWMBQGA1UEBwwNU2FuIEZyYW5jaXNjbzENMAsGA1UECgwET2t0YTEU\nMBIGA1UECwwLU1NPUHJvdmlkZXIxFTATBgNVBAMMDGRldi04Mzg1OTk1NTEcMBoGCSqGSIb3DQEJ\nARYNaW5mb0Bva3RhLmNvbTAeFw0yMjA5MDcyMjQ1MTdaFw0zMjA5MDcyMjQ2MTdaMIGUMQswCQYD\nVQQGEwJVUzETMBEGA1UECAwKQ2FsaWZvcm5pYTEWMBQGA1UEBwwNU2FuIEZyYW5jaXNjbzENMAsG\nA1UECgwET2t0YTEUMBIGA1UECwwLU1NPUHJvdmlkZXIxFTATBgNVBAMMDGRldi04Mzg1OTk1NTEc\nMBoGCSqGSIb3DQEJARYNaW5mb0Bva3RhLmNvbTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoC\nggEBAOmj276L3kHm57hNGYTocT6NS4mffPbcvsA2UuKIWfmpV8HLTcmS+NahLtuN841OnRnTn+2p\nfjlwa1mwJhCODbF3dcVYOkGTPUC4y2nvf1Xas6M7+0O2WIfrzdX/OOUs/ROMnB/O/MpBwMR2SQh6\nQ3V+9v8g3K9yfMvcifDbl6g9fTliDzqV7I9xF5eJykl+iCAKNaQgp3cO6TaIa5u2ZKtRAdzwnuJC\nBXMyzaoNs/vfnwzuFtzWP1PSS1Roan+8AMwkYA6BCr1YRIqZ0GSkr/qexFCTZdq0UnSN78fY6CCM\nRFw5wU0WM9nEpbWzkBBWsYHeTLo5JqR/mZukfjlPDlcCAwEAATANBgkqhkiG9w0BAQsFAAOCAQEA\nlUhwzCSnuqt4wlHxJONN4kxUBG8bPnjHxob6jBKK+onFDuSVWZ+7LZw67blz6xdxvlOLaQLi1fK2\nFifehbc7KbRLckcgNgg7Y8qfUKdP0/nS0JlyAvlnICQqaHTHwhIzQqTHtTZeeIJHtpWOX/OPRI0S\nbkygh2qjF8bYn3sX8bGNUQL8iiMxFnvwGrXaErPqlRqFJbWQDBXD+nYDIBw7WN3Jyb0Ydin2zrlh\ngp3Qooi0TnAir3ncw/UF/+sivCgd+6nX7HkbZtipkMbg7ZByyD9xrOQG2JXrP6PyzGCPwnGMt9pL\niiVMepeLNqKZ3UvhrR1uRN0KWu7lduIRhxldLA==</ds:X509Certificate>\n        </ds:X509Data>\n      </ds:KeyInfo>\n    </md:KeyDescriptor>\n    <md:NameIDFormat>urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified</md:NameIDFormat>\n    <md:NameIDFormat>urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress</md:NameIDFormat>\n    <md:SingleSignOnService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST\" Location=\"https://dev-83859955.okta.com/app/dev-83859955_firezonesaml_1/exk6ff6p62kFjUR3X5d7/sso/saml\"/>\n    <md:SingleSignOnService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect\" Location=\"https://dev-83859955.okta.com/app/dev-83859955_firezonesaml_1/exk6ff6p62kFjUR3X5d7/sso/saml\"/>\n  </md:IDPSSODescriptor>\n</md:EntityDescriptor>\n",
         "sign_metadata": false,
         "sign_requests": false,
         "signed_assertion_in_resp": false,
         "signed_envelopes_in_resp": false
       }
     ],
-    "updated_at": "2023-01-13T06:30:47.529652Z",
+    "updated_at": "2023-02-17T17:18:02.229934Z",
     "vpn_session_duration": 100
   }
 }
