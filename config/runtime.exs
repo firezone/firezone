@@ -1,5 +1,3 @@
-# TODO: probably we don't want to resolve Application environment in Resolve,
-# because then it will just read previously defined values in runtime.exs
 import Config
 
 if Mix.env() == :prod do

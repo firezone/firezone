@@ -1,6 +1,6 @@
 defmodule FzHttpWeb.SettingLive.SecurityTest do
   use FzHttpWeb.ConnCase, async: true
-  import FzHttp.SAMLIdentityProviderFixtures
+  alias FzHttp.ConfigFixtures
   alias FzHttpWeb.SettingLive.Security
 
   describe "authenticated mount" do
@@ -58,8 +58,6 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
   end
 
   describe "toggles" do
-    import FzHttp.ConfigFixtures
-
     setup %{conf_key: key, conf_val: val} do
       FzHttp.Config.put_config!(key, val)
       {:ok, path: ~p"/settings/security"}
@@ -101,10 +99,8 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
   end
 
   describe "oidc configuration" do
-    import FzHttp.ConfigFixtures
-
     setup %{admin_conn: conn} do
-      configuration(%{
+      ConfigFixtures.configuration(%{
         openid_connect_providers: [
           %{
             "id" => "test",
@@ -199,14 +195,14 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
   end
 
   describe "saml configuration" do
-    import FzHttp.ConfigFixtures
-
     setup %{admin_conn: conn} do
       # Security views use the DB config, not cached config, so update DB here for testing
-      saml_attrs1 = saml_attrs()
-      saml_attrs2 = saml_attrs() |> Map.put("id", "test2") |> Map.put("label", "test2")
+      saml_attrs1 = ConfigFixtures.saml_identity_providers_attrs()
 
-      configuration(%{
+      saml_attrs2 =
+        ConfigFixtures.saml_identity_providers_attrs(%{"id" => "test2", "label" => "test2"})
+
+      ConfigFixtures.configuration(%{
         openid_connect_providers: [],
         saml_identity_providers: [saml_attrs1, saml_attrs2]
       })
@@ -237,7 +233,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
       assert html =~ "{:fatal, {:expected_element_start_tag,"
       assert html =~ "can&#39;t be blank"
 
-      attrs = saml_attrs()
+      attrs = ConfigFixtures.saml_identity_providers_attrs()
 
       return =
         view
@@ -277,7 +273,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
         |> render_click()
 
       assert html =~ ~s|<p class="modal-card-title">SAML Configuration</p>|
-      assert html =~ ~s|entityID=&quot;http://localhost:8080/realms/firezone|
+      assert html =~ ~s|entityID=&quot;|
       assert html =~ ~s|<input class="input " id="saml-form_label"|
 
       redirect =
@@ -288,7 +284,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
             id: "new_id",
             label: "new_label",
             base_url: "http://example.com/realms/firezone",
-            metadata: saml_attrs()["metadata"]
+            metadata: ConfigFixtures.saml_metadata()
           }
         })
 
@@ -306,7 +302,7 @@ defmodule FzHttpWeb.SettingLive.SecurityTest do
     end
 
     test "validate", %{view: view} do
-      attrs = saml_attrs()
+      attrs = ConfigFixtures.saml_identity_providers_attrs()
 
       view
       |> element("a[href=\"/settings/security/saml/test/edit\"]", "Edit")

@@ -64,7 +64,7 @@ defmodule FzHttpWeb.UserFromAuthTest do
   end
 
   describe "find_or_create/2 via SAML with auto create enabled" do
-    @tag config: [FzHttp.SAMLIdentityProviderFixtures.saml_attrs()]
+    @tag config: [FzHttp.ConfigFixtures.saml_identity_providers_attrs()]
     test "sign in creates user", %{config: config, email: email} do
       FzHttp.Config.put_config!(:saml_identity_providers, config)
 
@@ -77,7 +77,7 @@ defmodule FzHttpWeb.UserFromAuthTest do
 
   describe "find_or_create/2 via SAML with auto create disabled" do
     @tag config: [
-           FzHttp.SAMLIdentityProviderFixtures.saml_attrs() |> Map.put("auto_create_users", false)
+           FzHttp.ConfigFixtures.saml_identity_providers_attrs(%{"auto_create_users" => false})
          ]
     test "sign in returns error", %{email: email, config: config} do
       FzHttp.Config.put_config!(:saml_identity_providers, config)

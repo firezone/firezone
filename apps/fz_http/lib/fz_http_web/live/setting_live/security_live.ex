@@ -28,7 +28,6 @@ defmodule FzHttpWeb.SettingLive.Security do
       socket
       |> assign(:page_title, @page_title)
       |> assign(:page_subtitle, @page_subtitle)
-      # TODO: just use changeset.changes == %{}
       |> assign(:form_changed, false)
       |> assign(:configuration_changeset, configuration_changeset())
       |> assign(:configs, FzHttp.Config.fetch_source_and_configs!(@configs))
@@ -42,21 +41,14 @@ defmodule FzHttpWeb.SettingLive.Security do
   end
 
   @impl Phoenix.LiveView
-  def handle_event("change", _params, socket) do
-    {:noreply, assign(socket, :form_changed, true)}
+  def handle_event("change", %{"configuration" => attrs}, socket) do
+    changeset = configuration_changeset(attrs)
+    {:noreply, assign(socket, :form_changed, changeset.changes != %{})}
   end
 
   @impl Phoenix.LiveView
-  def handle_event(
-        "save_configuration",
-        %{"configuration" => %{"vpn_session_duration" => vpn_session_duration}},
-        socket
-      ) do
+  def handle_event("save_configuration", %{"configuration" => attrs}, socket) do
     configuration = Config.fetch_db_config!()
-
-    attrs = %{
-      vpn_session_duration: vpn_session_duration
-    }
 
     socket =
       case Config.update_config(configuration, attrs) do
@@ -139,8 +131,8 @@ defmodule FzHttpWeb.SettingLive.Security do
     end
   end
 
-  defp configuration_changeset do
+  defp configuration_changeset(attrs \\ %{}) do
     Config.fetch_db_config!()
-    |> Config.change_config()
+    |> Config.change_config(attrs)
   end
 end

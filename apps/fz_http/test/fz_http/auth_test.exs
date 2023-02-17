@@ -2,7 +2,6 @@ defmodule FzHttp.AuthTest do
   use FzHttp.DataCase
   import FzHttp.Auth
   alias FzHttp.ConfigFixtures
-  alias FzHttp.SAMLIdentityProviderFixtures
 
   describe "fetch_oidc_provider_config/1" do
   end
@@ -19,7 +18,7 @@ defmodule FzHttp.AuthTest do
         saml_identity_providers: [
           %{
             "id" => "test",
-            "metadata" => SAMLIdentityProviderFixtures.metadata(),
+            "metadata" => ConfigFixtures.saml_metadata(),
             "auto_create_users" => true,
             "label" => "SAML"
           }
@@ -34,7 +33,7 @@ defmodule FzHttp.AuthTest do
         saml_identity_providers: [
           %{
             "id" => "test",
-            "metadata" => SAMLIdentityProviderFixtures.metadata(),
+            "metadata" => ConfigFixtures.saml_metadata(),
             "auto_create_users" => false,
             "label" => "SAML"
           }

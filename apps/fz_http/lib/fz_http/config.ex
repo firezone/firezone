@@ -1,6 +1,6 @@
 defmodule FzHttp.Config do
   alias FzHttp.Repo
-  alias FzHttp.Config.{Definition, Definitions, Validator, Errors, Resolver, Fetcher}
+  alias FzHttp.Config.{Definition, Definitions, Validator, Errors, Fetcher}
   alias FzHttp.Config.Configuration
 
   def fetch_source_and_config!(key) do
@@ -31,7 +31,6 @@ defmodule FzHttp.Config do
     end
   end
 
-  # TODO: there is no need to validate when we fetch it
   def fetch_config(key) do
     # TODO: we can pass a callback to fetch configs instead
     db_config = maybe_fetch_db_config!(key)
@@ -75,12 +74,12 @@ defmodule FzHttp.Config do
     end
   end
 
-  def fetch_db_config!() do
+  def fetch_db_config! do
     Repo.one!(Configuration)
   end
 
-  def change_config(%Configuration{} = config \\ fetch_db_config!()) do
-    Configuration.Changeset.changeset(config, %{})
+  def change_config(%Configuration{} = config \\ fetch_db_config!(), attrs \\ %{}) do
+    Configuration.Changeset.changeset(config, attrs)
   end
 
   def update_config(%Configuration{} = config, attrs) do
@@ -169,7 +168,7 @@ defmodule FzHttp.Config do
     end
 
     def put_system_env_override(key, value) do
-      Process.put({Resolver, key}, {:env, value})
+      Process.put({FzHttp.Config.Resolver, key}, {:env, value})
       :ok
     end
 
@@ -186,7 +185,7 @@ defmodule FzHttp.Config do
       application_env = Application.fetch_env!(app, key)
 
       pdict_key_function(app, key)
-      |> Resolver.fetch_process_env()
+      |> FzHttp.Config.Resolver.fetch_process_env()
       |> case do
         {:ok, override} ->
           override

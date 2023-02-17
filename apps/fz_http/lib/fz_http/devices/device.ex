@@ -31,7 +31,6 @@ defmodule FzHttp.Devices.Device do
     field :allowed_ips, {:array, FzHttp.Types.INET}, default: []
     field :dns, {:array, :string}, default: []
     field :remote_ip, FzHttp.Types.IP
-    # TODO: make it a parametrized type and add ipv4/6 type parameter
     field :ipv4, FzHttp.Types.IP
     field :ipv6, FzHttp.Types.IP
 

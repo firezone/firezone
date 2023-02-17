@@ -62,7 +62,7 @@ defmodule FzHttp.Config.ValidatorTest do
         changeset: {FzHttp.Config.Configuration.SAMLIdentityProvider, :create_changeset, []}
       ]
 
-      attrs = FzHttp.SAMLIdentityProviderFixtures.saml_attrs()
+      attrs = FzHttp.ConfigFixtures.saml_identity_providers_attrs()
 
       assert validate(:key, [attrs], type, opts) ==
                {:ok,

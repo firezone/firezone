@@ -27,7 +27,7 @@ defmodule FzHttp.Config.CasterTest do
 
     test "casts a binary to integer" do
       assert cast("1", :integer) == {:ok, 1}
-      assert cast("12345", :integer) == {:ok, 12345}
+      assert cast("12345", :integer) == {:ok, 12_345}
     end
 
     test "keeps original non-binary value even if doesn't match the type" do

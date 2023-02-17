@@ -262,10 +262,13 @@ defmodule FzHttp.ConfigFixtures do
     |> Plug.Parsers.call(opts)
   end
 
-  def saml_identity_providers_attrs do
-    [
-      %{"id" => "test", "label" => "SAML"}
-    ]
+  def saml_identity_providers_attrs(attrs \\ %{}) do
+    Enum.into(attrs, %{
+      "metadata" => saml_metadata(),
+      "label" => "test",
+      "id" => "test",
+      "auto_create_users" => true
+    })
   end
 
   def saml_metadata do

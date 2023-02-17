@@ -90,7 +90,7 @@ defmodule DocsGenerator do
   end
 
   defp type_and_default(type, default) when is_function(default),
-    do: type_and_default(type, "generated from other env vars")
+    do: type_and_default(type, "generated")
 
   defp type_and_default(type, nil),
     do: type_and_default(type, "")

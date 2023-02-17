@@ -343,7 +343,6 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
   end
 
   describe "security" do
-    @tag :debug
     feature "change security settings", %{
       session: session
     } do
@@ -459,7 +458,7 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
     end
 
     feature "manage SAML providers", %{session: session} do
-      saml_metadata = FzHttp.SAMLIdentityProviderFixtures.metadata()
+      saml_metadata = FzHttp.ConfigFixtures.saml_metadata()
 
       # Create
       session =

@@ -152,8 +152,13 @@ defmodule FzHttp.Config.Definitions do
   You can add a path suffix if you want to serve firezone from a non-root path,
   eg: `https://firezone.mycorp.com/vpn`.
   """
-  # TODO: normalize url too (make sure all URI parts are present)
-  defconfig(:external_url, :string, changeset: &FzHttp.Validator.validate_uri/2)
+  defconfig(:external_url, :string,
+    changeset: fn changeset, key ->
+      changeset
+      |> FzHttp.Validator.validate_uri(key)
+      |> FzHttp.Validator.normalize_url(key)
+    end
+  )
 
   @doc """
   Enable or disable requiring secure cookies. Required for HTTPS.
@@ -229,7 +234,6 @@ defmodule FzHttp.Config.Definitions do
   @doc """
   Password that will be used to access the PostgreSQL database.
   """
-  # TODO: add a :sensitive option and helper to dump all non-sensitive configs
   defconfig(:database_password, :string, sensitive: true)
 
   @doc """
@@ -494,11 +498,11 @@ defmodule FzHttp.Config.Definitions do
   ## Userpass / SAML / OIDC authentication
   ##############################################
 
-  # TODO: make it a list of enabled auth methods (userpass, magic_link, saml, oidc, etc.),
-  # at least one should be always active
   @doc """
   Enable or disable the local authentication method for all users.
   """
+  # XXX: This should be replaced with auth_methods config which accepts a list
+  # of enabled methods.
   defconfig(:local_auth_enabled, :boolean, default: true)
 
   @doc """
@@ -634,7 +638,7 @@ defmodule FzHttp.Config.Definitions do
   A port on which WireGuard will listen for incoming connections.
   """
   defconfig(:wireguard_port, :integer,
-    default: 51820,
+    default: 51_820,
     changeset: fn changeset, key ->
       Ecto.Changeset.validate_number(changeset, key,
         greater_than: 0,
@@ -676,8 +680,8 @@ defmodule FzHttp.Config.Definitions do
   )
 
   defconfig(:wireguard_private_key_path, :string,
-    default: "/var/firezone/private_key"
-    # changeset: &FzHttp.Validator.validate_file(&1, &2)
+    default: "/var/firezone/private_key",
+    changeset: &FzHttp.Validator.validate_file(&1, &2)
   )
 
   defconfig(:wireguard_interface_name, :string, default: "wg-firezone")
@@ -745,7 +749,7 @@ defmodule FzHttp.Config.Definitions do
          Swoosh.Adapters.SocketLabs,
          Swoosh.Adapters.SparkPost,
          FzHttpWeb.Mailer.NoopAdapter,
-         # Legacy options should be removed in 0.8
+         # DEPRECATED: Legacy options should be removed in 0.8
          :smtp,
          :mailgun,
          :mandrill,
@@ -770,13 +774,20 @@ defmodule FzHttp.Config.Definitions do
   @doc """
   Adapter configuration, for list of options see [Swoosh Adapters](https://github.com/swoosh/swoosh#adapters).
   """
-  # TODO: map legacy keys here,
-  # https://discourse.firez.one/t/smtp-is-it-possible/257/2
   defconfig(:outbound_email_adapter_opts, :map,
     default: %{},
     sensitive: true,
     legacy_keys: [{:env, "OUTBOUND_EMAIL_CONFIGS", "0.9"}],
-    dump: &Dumper.keyword/1
+    dump: fn
+      # DEPRECATED: Legacy options should be removed in 0.8
+      %{"smtp" => value} -> Dumper.keyword(value)
+      %{"mailgun" => value} -> Dumper.keyword(value)
+      %{"mandrill" => value} -> Dumper.keyword(value)
+      %{"sendgrid" => value} -> Dumper.keyword(value)
+      %{"post_mark" => value} -> Dumper.keyword(value)
+      %{"sendmail" => value} -> Dumper.keyword(value)
+      value -> Dumper.keyword(value)
+    end
   )
 
   ##############################################

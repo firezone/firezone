@@ -17,7 +17,7 @@ defmodule FzHttpWeb.AuthControllerTest do
 
     FzHttp.Config.put_config!(
       :saml_identity_providers,
-      [FzHttp.SAMLIdentityProviderFixtures.saml_attrs() |> Map.put("label", "SAML")]
+      [FzHttp.ConfigFixtures.saml_identity_providers_attrs(%{"label" => "SAML"})]
     )
 
     %{bypass: bypass}

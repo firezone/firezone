@@ -16,22 +16,43 @@ defmodule FzHttp.Validator do
     validate_format(changeset, field, ~r/@/, message: "is invalid email address")
   end
 
-  def validate_uri(changeset, fields) when is_list(fields) do
-    Enum.reduce(fields, changeset, fn field, accumulated_changeset ->
-      validate_uri(accumulated_changeset, field)
+  def validate_uri(changeset, field, opts \\ []) when is_atom(field) do
+    valid_schemes = Keyword.get(opts, :schemes, ~w[http https])
+
+    validate_change(changeset, field, fn _current_field, value ->
+      case URI.new(value) do
+        {:ok, %URI{} = uri} ->
+          cond do
+            uri.host == nil ->
+              [{field, "does not contain host"}]
+
+            uri.scheme == nil ->
+              [{field, "does not contain a scheme"}]
+
+            uri.scheme not in valid_schemes ->
+              [{field, "only #{Enum.join(valid_schemes, ", ")} schemes are supported"}]
+
+            true ->
+              []
+          end
+
+        {:error, part} ->
+          [{field, "is invalid. Error at #{part}"}]
+      end
     end)
   end
 
-  def validate_uri(changeset, field) when is_atom(field) do
-    validate_change(changeset, field, fn _current_field, value ->
-      case URI.new(value) do
-        {:error, part} ->
-          [{field, "is invalid. Error at #{part}"}]
-
-        _ ->
-          []
-      end
-    end)
+  def normalize_url(changeset, field) do
+    with {:ok, value} <- fetch_change(changeset, field) do
+      uri = URI.parse(value)
+      scheme = uri.scheme || "https"
+      port = URI.default_port(scheme)
+      path = uri.path || "/"
+      put_change(changeset, field, %{uri | scheme: scheme, port: port, path: path})
+    else
+      :error ->
+        changeset
+    end
   end
 
   def validate_no_duplicates(changeset, field) when is_atom(field) do

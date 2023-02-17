@@ -1,6 +1,6 @@
 defmodule FzHttpWeb.JSON.ConfigurationControllerTest do
   use FzHttpWeb.ApiCase, async: true
-  alias FzHttp.SAMLIdentityProviderFixtures
+  alias FzHttp.ConfigFixtures
 
   describe "GET /v0/configuration" do
     test "renders configuration" do
@@ -56,7 +56,7 @@ defmodule FzHttpWeb.JSON.ConfigurationControllerTest do
             "id" => "okta",
             "label" => "okta",
             "base_url" => "https://saml",
-            "metadata" => SAMLIdentityProviderFixtures.metadata(),
+            "metadata" => ConfigFixtures.saml_metadata(),
             "sign_requests" => false,
             "sign_metadata" => false,
             "signed_assertion_in_resp" => false,
@@ -106,7 +106,7 @@ defmodule FzHttpWeb.JSON.ConfigurationControllerTest do
             "id" => "okta",
             "label" => "okta-label",
             "base_url" => "https://saml-old",
-            "metadata" => SAMLIdentityProviderFixtures.metadata(),
+            "metadata" => ConfigFixtures.saml_metadata(),
             "sign_requests" => true,
             "sign_metadata" => true,
             "signed_assertion_in_resp" => true,
@@ -146,9 +146,7 @@ defmodule FzHttpWeb.JSON.ConfigurationControllerTest do
         "local_auth_enabled" => false
       }
 
-      conn =
-        put(authed_conn(), ~p"/v0/configuration", configuration: attrs)
-        |> doc()
+      conn = put(authed_conn(), ~p"/v0/configuration", configuration: attrs)
 
       assert json_response(conn, 422) == %{
                "errors" => %{
