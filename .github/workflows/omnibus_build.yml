@@ -7,7 +7,7 @@ on:
   push:
     branches:
       - master
-      - 'build/**'
+      - "build/**"
 
 jobs:
   draft-release:
@@ -24,7 +24,7 @@ jobs:
     # Doesn't really need, but don't run this stage when iterating over website
     needs: draft-release
     env:
-      TELEMETRY_ENABLED: 'false'
+      TELEMETRY_ENABLED: "false"
       TERMINFO: /usr/lib/terminfo
     runs-on: ${{ matrix.platform }}
     strategy:
@@ -68,6 +68,11 @@ jobs:
           echo "removing lock file in case last run sucked"
           sudo rm -f /opt/runner/omnibus-local/cache/git_cache/opt/firezone/index.lock
 
+          # Load newer git on CentOS 7
+          if test -f /opt/rh/rh-git227/enable; then
+            . /opt/rh/rh-git227/enable
+          fi
+
           . $HOME/.asdf/asdf.sh
           asdf update
           asdf plugin-add ruby || asdf plugin-update ruby
@@ -83,6 +88,7 @@ jobs:
           if test -f /opt/rh/devtoolset-9/enable; then
             . /opt/rh/devtoolset-9/enable
           fi
+
           gem install bundler
           cd omnibus
           bundle install --binstubs
