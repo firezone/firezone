@@ -1,7 +1,7 @@
 # Couple rules:
 #
 # 1. This file should contain all supported application environment variables,
-# even if they are overriden in `runtime.exs`, because it's the main source of
+# even if they are overridden in `runtime.exs`, because it's the main source of
 # truth and self-documentation.
 #
 # 2. The configurations here should be as close to `dev` environment as possible,

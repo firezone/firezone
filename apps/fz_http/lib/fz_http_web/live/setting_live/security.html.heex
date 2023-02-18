@@ -65,7 +65,7 @@
         </div>
         <p class="help">
           <%= if config_has_override?(vpn_session_duration) do %>
-            This field was overriden using <%= config_override_source(vpn_session_duration) %>, you can not change it in UI.
+            This field was overridden using <%= config_override_source(vpn_session_duration) %>, you can not change it in UI.
           <% else %>
             Optionally require users to periodically authenticate to the Firezone
             web UI in order to keep their VPN sessions active.
@@ -86,7 +86,7 @@
           <%= if config_has_override?(local_auth_enabled) do %>
             <br />
             <i>
-              This value is overriden using <%= config_override_source(local_auth_enabled) %>, you can not change it in UI.
+              This value is overridden using <%= config_override_source(local_auth_enabled) %>, you can not change it in UI.
             </i>
           <% end %>
         </p>
@@ -120,7 +120,7 @@
           <%= if config_has_override?(allow_unprivileged_device_management) do %>
             <br />
             <i>
-              This value is overriden using <%= config_override_source(
+              This value is overridden using <%= config_override_source(
                 allow_unprivileged_device_management
               ) %>, you can not change it in UI.
             </i>
@@ -156,7 +156,7 @@
           <%= if config_has_override?(allow_unprivileged_device_configuration) do %>
             <br />
             <i>
-              This value is overriden using <%= config_override_source(
+              This value is overridden using <%= config_override_source(
                 allow_unprivileged_device_configuration
               ) %>, you can not change it in UI.
             </i>
@@ -200,7 +200,7 @@
         <%= if config_has_override?(disable_vpn_on_oidc_error) do %>
           <br />
           <i>
-            This value is overriden using <%= config_override_source(disable_vpn_on_oidc_error) %>, you can not change it in UI.
+            This value is overridden using <%= config_override_source(disable_vpn_on_oidc_error) %>, you can not change it in UI.
           </i>
         <% end %>
       </div>
@@ -226,7 +226,7 @@
   <%= if config_has_override?(openid_connect_providers) do %>
     <i>
       <p>
-        You can not add new change providers because this value is overriden using <%= config_override_source(
+        You can not add new change providers because this value is overridden using <%= config_override_source(
           openid_connect_providers
         ) %>.
       </p>
@@ -290,7 +290,7 @@
   <%= if config_has_override?(saml_identity_providers) do %>
     <p>
       <i>
-        You can not add new change providers because this value is overriden using <%= config_override_source(
+        You can not add new change providers because this value is overridden using <%= config_override_source(
           saml_identity_providers
         ) %>.
       </i>
