@@ -102,7 +102,7 @@ defmodule DocsGenerator do
     values =
       opts.mappings
       |> Keyword.keys()
-      # XXX: We remove legacy keys here to prevent people from using it in new installs
+      # DEPRECATION 0.8: We remove legacy keys here to prevent people from using it in new installs
       |> Kernel.--([:smtp, :mailgun, :mandrill, :sendgrid, :post_mark, :sendmail])
       |> Enum.map(&to_string/1)
       |> Enum.map(&String.trim_leading(&1, "Elixir."))

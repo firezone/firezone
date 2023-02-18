@@ -153,6 +153,7 @@ defmodule FzHttp.Config.Definitions do
   eg: `https://firezone.mycorp.com/vpn`.
   """
   defconfig(:external_url, :string,
+    default: "xxx",
     changeset: fn changeset, key ->
       changeset
       |> FzHttp.Validator.validate_uri(key)
@@ -455,6 +456,7 @@ defmodule FzHttp.Config.Definitions do
   defconfig(
     :default_client_dns,
     {:array, ",", {:one_of, [Types.IP, :string]}, validate_unique: true},
+    default: [],
     changeset: fn
       Types.IP, changeset, _key ->
         changeset
@@ -621,7 +623,7 @@ defmodule FzHttp.Config.Definitions do
   Periodicity in seconds to check for egress connectivity.
   """
   defconfig(:connectivity_checks_interval, :integer,
-    default: 3600,
+    default: 43_200,
     changeset: fn changeset, key ->
       Ecto.Changeset.validate_number(changeset, key,
         greater_than_or_equal_to: 60,

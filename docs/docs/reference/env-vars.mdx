@@ -36,7 +36,7 @@ default). Required fields in **bold**.
 
 | Env Key | Description      | Format | Default |
 | ------  | ---------------  | ------ | ------- |
-| **EXTERNAL_URL** | The external URL the web UI will be accessible at.<br /> <br />Must be a valid and public FQDN for ACME SSL issuance to function.<br /> <br />You can add a path suffix if you want to serve firezone from a non-root path, eg: `https://firezone.mycorp.com/vpn`. | string |  |
+| EXTERNAL_URL | The external URL the web UI will be accessible at.<br /> <br />Must be a valid and public FQDN for ACME SSL issuance to function.<br /> <br />You can add a path suffix if you want to serve firezone from a non-root path, eg: `https://firezone.mycorp.com/vpn`. | string | xxx |
 | PHOENIX_SECURE_COOKIES | Enable or disable requiring secure cookies. Required for HTTPS. | boolean | true |
 | PHOENIX_HTTP_PORT | Internal port to listen on for the Phoenix web server. | integer | 13000 |
 | PHOENIX_EXTERNAL_TRUSTED_PROXIES | List of trusted reverse proxies.<br /> <br />This is used to determine the correct IP address of the client when the application is behind a reverse proxy by skipping a trusted proxy IP from a list of possible source IPs. | a list of one of `IP`, `CIDR` separated by `,` | [] |
@@ -92,7 +92,7 @@ All secrets should be a **base64-encoded string**.
 | DEFAULT_CLIENT_PERSISTENT_KEEPALIVE | Interval for WireGuard [persistent keepalive](https://www.wireguard.com/quickstart/#nat-and-firewall-traversal-persistence).<br /> <br />If you experience NAT or firewall traversal problems, you can enable this to send a keepalive packet every 25 seconds. Otherwise, keep it disabled with a 0 default value. | integer | 25 |
 | DEFAULT_CLIENT_MTU | WireGuard interface MTU for devices. 1280 is a safe bet for most networks. Leave this blank to omit this field from generated configs. | integer | 1280 |
 | DEFAULT_CLIENT_ENDPOINT | IPv4, IPv6 address, or FQDN that devices will be configured to connect to. Defaults to this server's FQDN. | one of `IP with port`, `string` | generated |
-| **DEFAULT_CLIENT_DNS** | Comma-separated list of DNS servers to use for devices.<br /> <br />It can be either an IP address or a FQDN if you intend to use a DNS-over-TLS server.<br /> <br />Leave this blank to omit the `DNS` section from generated configs. | {:array, ",", {:one_of, [FzHttp.Types.IP, :string]}, [validate_unique: true]} | `` |
+| DEFAULT_CLIENT_DNS | Comma-separated list of DNS servers to use for devices.<br /> <br />It can be either an IP address or a FQDN if you intend to use a DNS-over-TLS server.<br /> <br />Leave this blank to omit the `DNS` section from generated configs. | {:array, ",", {:one_of, [FzHttp.Types.IP, :string]}, [validate_unique: true]} | `[]` |
 | DEFAULT_CLIENT_ALLOWED_IPS | Configures the default AllowedIPs setting for devices.<br /> <br />AllowedIPs determines which destination IPs get routed through Firezone.<br /> <br />Specify a comma-separated list of IPs or CIDRs here to achieve split tunneling, or use `0.0.0.0/0, ::/0` to route all device traffic through this Firezone server. | {:array, ",", {:one_of, [FzHttp.Types.CIDR, FzHttp.Types.IP]}, [validate_unique: true]} | `0.0.0.0/0, ::/0` |
 
 ### Authorization
@@ -128,7 +128,7 @@ All secrets should be a **base64-encoded string**.
 | Env Key | Description      | Format | Default |
 | ------  | ---------------  | ------ | ------- |
 | CONNECTIVITY_CHECKS_ENABLED | Enable / disable periodic checking for egress connectivity. Determines the instance's public IP to populate `Endpoint` fields. | boolean | true |
-| CONNECTIVITY_CHECKS_INTERVAL | Periodicity in seconds to check for egress connectivity. | integer | 3600 |
+| CONNECTIVITY_CHECKS_INTERVAL | Periodicity in seconds to check for egress connectivity. | integer | 43200 |
 
 ### Telemetry
 
