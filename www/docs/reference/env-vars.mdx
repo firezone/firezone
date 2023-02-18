@@ -36,7 +36,7 @@ default). Required fields in **bold**.
 
 | Env Key | Description      | Format | Default |
 | ------  | ---------------  | ------ | ------- |
-| EXTERNAL_URL | The external URL the web UI will be accessible at.<br /> <br />Must be a valid and public FQDN for ACME SSL issuance to function.<br /> <br />You can add a path suffix if you want to serve firezone from a non-root path, eg: `https://firezone.mycorp.com/vpn`. | string | xxx |
+| **EXTERNAL_URL** | The external URL the web UI will be accessible at.<br /> <br />Must be a valid and public FQDN for ACME SSL issuance to function.<br /> <br />You can add a path suffix if you want to serve firezone from a non-root path, eg: `https://firezone.mycorp.com/vpn`. | string |  |
 | PHOENIX_SECURE_COOKIES | Enable or disable requiring secure cookies. Required for HTTPS. | boolean | true |
 | PHOENIX_HTTP_PORT | Internal port to listen on for the Phoenix web server. | integer | 13000 |
 | PHOENIX_EXTERNAL_TRUSTED_PROXIES | List of trusted reverse proxies.<br /> <br />This is used to determine the correct IP address of the client when the application is behind a reverse proxy by skipping a trusted proxy IP from a list of possible source IPs. | a list of one of `IP`, `CIDR` separated by `,` | [] |

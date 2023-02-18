@@ -153,7 +153,6 @@ defmodule FzHttp.Config.Definitions do
   eg: `https://firezone.mycorp.com/vpn`.
   """
   defconfig(:external_url, :string,
-    default: "xxx",
     changeset: fn changeset, key ->
       changeset
       |> FzHttp.Validator.validate_uri(key)
