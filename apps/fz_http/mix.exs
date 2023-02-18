@@ -52,7 +52,7 @@ defmodule FzHttp.MixProject do
       # Phoenix/Plug deps
       {:plug, "~> 1.13"},
       {:plug_cowboy, "~> 2.5"},
-      {:phoenix, "~> 1.7.0-rc.2", override: true},
+      {:phoenix, "~> 1.7.0-rc.3", override: true},
       {:phoenix_ecto, "~> 4.4"},
       {:phoenix_html, "~> 3.2"},
       {:phoenix_pubsub, "~> 2.0"},
