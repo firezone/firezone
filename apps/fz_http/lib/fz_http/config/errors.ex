@@ -2,7 +2,7 @@ defmodule FzHttp.Config.Errors do
   alias FzHttp.Config.Definition
   require Logger
 
-  @env_doc_url "https://docs.firezone.dev/reference/env-vars/#environment-variable-listing"
+  @env_doc_url "https://www.firezone.dev/docs/reference/env-vars/#environment-variable-listing"
 
   def raise_error!(errors) do
     errors

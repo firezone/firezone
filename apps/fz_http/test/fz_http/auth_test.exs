@@ -3,6 +3,7 @@ defmodule FzHttp.AuthTest do
   import FzHttp.Auth
   alias FzHttp.ConfigFixtures
 
+  # TODO
   describe "fetch_oidc_provider_config/1" do
   end
 

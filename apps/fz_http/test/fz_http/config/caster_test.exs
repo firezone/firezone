@@ -40,11 +40,11 @@ defmodule FzHttp.Config.CasterTest do
     end
 
     test "raises when integer is not valid" do
-      assert cast("invalid integer", :integer) == {:error, "can not be cast to an integer"}
+      assert cast("invalid integer", :integer) == {:error, "cannot be cast to an integer"}
 
       assert cast("123invalid integer", :integer) ==
                {:error,
-                "can not be cast to an integer, " <>
+                "cannot be cast to an integer, " <>
                   "got a reminder invalid integer after an integer value 123"}
     end
 

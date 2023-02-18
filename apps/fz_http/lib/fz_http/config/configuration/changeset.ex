@@ -56,7 +56,7 @@ defmodule FzHttp.Config.Configuration.Changeset do
           add_error(
             changeset,
             key,
-            "can not be changed in UI, " <>
+            "cannot be changed; " <>
               "it is overridden by #{source_key} environment variable"
           )
 

@@ -157,10 +157,10 @@ defmodule FzHttp.Config.FetcherTest do
                  [module: __MODULE__.Test, key: :json, source: {:env, "JSON"}]}}
     end
 
-    test "returns error when type can not be casted" do
+    test "returns error when type can't be casted" do
       assert fetch_source_and_config(Test, :integer, %{}, %{"INTEGER" => "X"}) ==
                {:error,
-                {{"X", ["can not be cast to an integer"]},
+                {{"X", ["cannot be cast to an integer"]},
                  [
                    module: __MODULE__.Test,
                    key: :integer,
@@ -170,7 +170,7 @@ defmodule FzHttp.Config.FetcherTest do
       assert fetch_source_and_config(Test, :integer, %{}, %{"INTEGER" => "123a"}) ==
                {:error,
                 {{"123a",
-                  ["can not be cast to an integer, got a reminder a after an integer value 123"]},
+                  ["cannot be cast to an integer, got a reminder a after an integer value 123"]},
                  [
                    module: __MODULE__.Test,
                    key: :integer,

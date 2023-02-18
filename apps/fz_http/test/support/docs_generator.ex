@@ -5,7 +5,7 @@ defmodule DocsGenerator do
   @keep_resp_headers ["content-type", "location"]
 
   def write(conns, path) do
-    write_config_doc!(FzHttp.Config.Definitions, "../../docs/docs/reference/env-vars.mdx")
+    write_config_doc!(FzHttp.Config.Definitions, "../../www/docs/reference/env-vars.mdx")
     File.mkdir_p!(path)
     write_api_doc!(conns, path)
   end

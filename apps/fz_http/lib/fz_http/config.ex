@@ -93,7 +93,7 @@ defmodule FzHttp.Config do
     with {:ok, config} <- update_config(fetch_db_config!(), %{key => value}) do
       config
     else
-      {:error, reason} -> raise "can not update config: #{inspect(reason)}"
+      {:error, reason} -> raise "cannot update config: #{inspect(reason)}"
     end
   end
 

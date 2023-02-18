@@ -213,7 +213,7 @@ defmodule FzHttp.Validator do
       end)
     else
       {:changes, _hash} ->
-        add_error(changeset, value_field, "can not be verified", validation: :hash)
+        add_error(changeset, value_field, "can't be verified", validation: :hash)
 
       :error ->
         add_error(changeset, value_field, "is already verified", validation: :hash)

@@ -180,7 +180,7 @@ defmodule FzHttpWeb.AuthController do
         {:error, :not_found}
 
       {:error, reason} ->
-        Logger.error("Can not redirect user to OIDC auth uri", reason: inspect(reason))
+        Logger.error("Cannot redirect user to OIDC auth uri", reason: inspect(reason))
 
         conn
         |> put_flash(:error, "Error while processing OpenID request.")

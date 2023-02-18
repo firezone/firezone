@@ -85,13 +85,13 @@ defmodule FzHttp.ConfigTest do
       end
     end
 
-    test "raises an error when value can not be casted" do
+    test "raises an error when value cannot be casted" do
       message = """
       Invalid configuration for 'integer' retrieved from environment variable INTEGER.
 
       Errors:
 
-       - `"123a"`: can not be cast to an integer, got a reminder a after an integer value 123\
+       - `"123a"`: cannot be cast to an integer, got a reminder a after an integer value 123\
       """
 
       assert_raise RuntimeError, message, fn ->
@@ -296,6 +296,7 @@ defmodule FzHttp.ConfigTest do
   #   end
   # end
 
+  # TODO
   # describe "configurations" do
   #   @valid_configurations [
   #     %{

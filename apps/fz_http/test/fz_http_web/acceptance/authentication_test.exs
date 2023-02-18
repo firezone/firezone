@@ -52,7 +52,7 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
       |> Auth.assert_authenticated(user)
     end
 
-    feature "can not reset password using invalid email", %{session: session} do
+    feature "can't reset password using invalid email", %{session: session} do
       UsersFixtures.create_user_with_role(:unprivileged)
 
       session

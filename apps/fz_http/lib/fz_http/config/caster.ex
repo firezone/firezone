@@ -42,11 +42,11 @@ defmodule FzHttp.Config.Caster do
 
       {value, remainder} ->
         {:error,
-         "can not be cast to an integer, " <>
+         "cannot be cast to an integer, " <>
            "got a reminder #{remainder} after an integer value #{value}"}
 
       :error ->
-        {:error, "can not be cast to an integer"}
+        {:error, "cannot be cast to an integer"}
     end
   end
 

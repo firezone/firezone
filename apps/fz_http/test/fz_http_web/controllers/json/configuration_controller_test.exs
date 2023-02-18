@@ -151,7 +151,7 @@ defmodule FzHttpWeb.JSON.ConfigurationControllerTest do
       assert json_response(conn, 422) == %{
                "errors" => %{
                  "local_auth_enabled" => [
-                   "can not be changed in UI, it is overridden by LOCAL_AUTH_ENABLED environment variable"
+                   "cannot be changed; it is overridden by LOCAL_AUTH_ENABLED environment variable"
                  ]
                }
              }

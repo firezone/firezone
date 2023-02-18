@@ -45,7 +45,7 @@ services:
       - ${WIREGUARD_PORT:-51820}:${WIREGUARD_PORT:-51820}/udp
     env_file:
       # This should contain a list of env vars for configuring Firezone.
-      # See https://docs.firezone.dev/reference/env-vars for more info.
+      # See https://www.firezone.dev/docs/reference/env-vars for more info.
       - ${FZ_INSTALL_DIR:-.}/.env
     volumes:
       # IMPORTANT: Persists WireGuard private key and other data. If
