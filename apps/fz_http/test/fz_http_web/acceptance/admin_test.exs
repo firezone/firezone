@@ -475,7 +475,7 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
         |> fill_in(Query.fillable_field("saml_identity_provider[id]"), with: "foo-bar-buz")
         |> fill_in(Query.fillable_field("saml_identity_provider[label]"), with: "Sneaky ID")
         |> fill_in(Query.fillable_field("saml_identity_provider[base_url]"),
-          with: "http://localhost:4002/autX/saml#foo"
+          with: "http://localhost:13000/autX/saml#foo"
         )
         |> fill_in(Query.fillable_field("saml_identity_provider[metadata]"),
           with: saml_metadata
@@ -491,7 +491,7 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
                %FzHttp.Config.Configuration.SAMLIdentityProvider{
                  id: "foo-bar-buz",
                  label: "Sneaky ID",
-                 base_url: "http://localhost:4002/autX/saml#foo",
+                 base_url: "http://localhost:13000/autX/saml#foo",
                  metadata: saml_metadata,
                  sign_requests: false,
                  sign_metadata: false,
