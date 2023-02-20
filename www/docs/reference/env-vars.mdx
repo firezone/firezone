@@ -32,6 +32,7 @@ and UI to edit database value will be disabled.
 ## Environment Variable Listing
 We recommend setting these in your Docker ENV file (`$HOME/.firezone/.env` by
 default). Required fields in **bold**.
+
 ### WebServer
 
 | Env Key | Description      | Format | Default |
@@ -141,4 +142,3 @@ All secrets should be a **base64-encoded string**.
 | Env Key | Description      | Format | Default |
 | ------  | ---------------  | ------ | ------- |
 | LOGO | The path to a logo image file to replace default Firezone logo. | {:embed, FzHttp.Config.Logo} | `` |
-

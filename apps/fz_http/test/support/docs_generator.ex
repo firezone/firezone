@@ -51,6 +51,7 @@ defmodule DocsGenerator do
   defp w_env_vars!(_file, _module, _header, _description, []), do: :ok
 
   defp w_env_vars!(file, module, header, description, keys) do
+    w!(file, "")
     w!(file, "### #{header}")
     if description, do: w!(file, description)
 
@@ -76,8 +77,6 @@ defmodule DocsGenerator do
         w!(file, "| #{key} | #{doc} | #{type} | #{default} |")
       end
     end
-
-    w!(file, "")
   end
 
   defp doc_env(doc) do
