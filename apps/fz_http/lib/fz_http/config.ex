@@ -74,6 +74,43 @@ defmodule FzHttp.Config do
     end
   end
 
+  @doc """
+  Similar to `compile_config/2` but raises an error if the configuration is invalid.
+
+  This function does not resolve values from the database because it's intended use is during
+  compilation and before application boot (in `config/runtime.exs`).
+
+  If you need to resolve values from the database, use `fetch_config/1` or `fetch_config!/1`.
+  """
+  def compile_config!(module \\ Definitions, key, env_configurations \\ System.get_env()) do
+    case Fetcher.fetch_source_and_config(module, key, %{}, env_configurations) do
+      {:ok, _source, value} ->
+        value
+
+      {:error, reason} ->
+        Errors.raise_error!(reason)
+    end
+  end
+
+  # TODO: maybe we should load configs in mi
+  def validate_runtime_config!(
+        module \\ Definitions,
+        db_config \\ fetch_db_config!(),
+        env_config \\ System.get_env()
+      ) do
+    module.configs()
+    |> Enum.flat_map(fn {module, key} ->
+      case Fetcher.fetch_source_and_config(module, key, db_config, env_config) do
+        {:ok, _source, _value} -> []
+        {:error, reason} -> [reason]
+      end
+    end)
+    |> case do
+      [] -> :ok
+      errors -> Errors.raise_error!(errors)
+    end
+  end
+
   def fetch_db_config! do
     Repo.one!(Configuration)
   end
@@ -94,42 +131,6 @@ defmodule FzHttp.Config do
       config
     else
       {:error, reason} -> raise "cannot update config: #{inspect(reason)}"
-    end
-  end
-
-  @doc """
-  Similar to `compile_config/2` but raises an error if the configuration is invalid.
-
-  This function does not resolve values from the database because it's intended use is during
-  compilation and before application boot (in `config/runtime.exs`).
-
-  If you need to resolve values from the database, use `fetch_config/1` or `fetch_config!/1`.
-  """
-  def compile_config!(module \\ Definitions, key, env_configurations \\ System.get_env()) do
-    case Fetcher.fetch_source_and_config(module, key, %{}, env_configurations) do
-      {:ok, _source, value} ->
-        value
-
-      {:error, reason} ->
-        Errors.raise_error!(reason)
-    end
-  end
-
-  def validate_runtime_config!(
-        module \\ Definitions,
-        db_config \\ fetch_db_config!(),
-        env_config \\ System.get_env()
-      ) do
-    module.configs()
-    |> Enum.flat_map(fn {module, key} ->
-      case Fetcher.fetch_source_and_config(module, key, db_config, env_config) do
-        {:ok, _source, _value} -> []
-        {:error, reason} -> [reason]
-      end
-    end)
-    |> case do
-      [] -> :ok
-      errors -> Errors.raise_error!(errors)
     end
   end
 

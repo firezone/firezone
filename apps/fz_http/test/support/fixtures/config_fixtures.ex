@@ -32,6 +32,20 @@ defmodule FzHttp.ConfigFixtures do
     {bypass, openid_connect_providers_attrs}
   end
 
+  def openid_connect_provider_attrs(overrides \\ %{}) do
+    Enum.into(overrides, %{
+      "id" => "google",
+      "discovery_document_uri" => "https://firezone.example.com/.well-known/openid-configuration",
+      "client_id" => "google-client-id",
+      "client_secret" => "google-client-secret",
+      "redirect_uri" => "https://firezone.example.com/auth/oidc/google/callback/",
+      "response_type" => "code",
+      "scope" => "openid email profile",
+      "label" => "OIDC Google",
+      "auto_create_users" => false
+    })
+  end
+
   defp openid_connect_providers_attrs(discovery_document_url) do
     [
       %{

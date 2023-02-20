@@ -1,5 +1,5 @@
 defmodule FzHttp.ConfigTest do
-  use ExUnit.Case, async: true
+  use FzHttp.DataCase, async: true
   import FzHttp.Config
 
   defmodule Test do
@@ -59,6 +59,161 @@ defmodule FzHttp.ConfigTest do
     defconfig(:boolean, :boolean)
 
     defconfig(:sensitive, :map, default: %{}, sensitive: true)
+  end
+
+  describe "fetch_source_and_config!/1" do
+    test "returns source and config value" do
+      assert fetch_source_and_config!(:default_client_mtu) ==
+               {{:db, :default_client_mtu}, 1280}
+    end
+
+    test "raises an error when value is missing" do
+      message = """
+      Missing required configuration value for 'external_url'.
+
+      ## How to fix?
+
+      ### Using environment variables
+
+      You can set this configuration via environment variable by adding it to `.env` file:
+
+          EXTERNAL_URL=YOUR_VALUE
+
+
+      ## Documentation
+
+      The external URL the web UI will be accessible at.
+
+      Must be a valid and public FQDN for ACME SSL issuance to function.
+
+      You can add a path suffix if you want to serve firezone from a non-root path,
+      eg: `https://firezone.mycorp.com/vpn`.
+
+
+      You can find more information on configuration here: https://www.firezone.dev/docs/reference/env-vars/#environment-variable-listing
+      """
+
+      assert_raise RuntimeError, message, fn ->
+        fetch_source_and_config!(:external_url)
+      end
+    end
+  end
+
+  describe "fetch_source_and_configs!/1" do
+    test "returns source and config values" do
+      assert fetch_source_and_configs!([:default_client_mtu, :default_client_dns]) ==
+               %{
+                 default_client_dns:
+                   {{:db, :default_client_dns},
+                    [
+                      %Postgrex.INET{address: {1, 1, 1, 1}, netmask: nil},
+                      %Postgrex.INET{address: {1, 0, 0, 1}, netmask: nil}
+                    ]},
+                 default_client_mtu: {{:db, :default_client_mtu}, 1280}
+               }
+    end
+
+    test "raises an error when value is missing" do
+      message = """
+      Missing required configuration value for 'external_url'.
+
+      ## How to fix?
+
+      ### Using environment variables
+
+      You can set this configuration via environment variable by adding it to `.env` file:
+
+          EXTERNAL_URL=YOUR_VALUE
+
+
+      ## Documentation
+
+      The external URL the web UI will be accessible at.
+
+      Must be a valid and public FQDN for ACME SSL issuance to function.
+
+      You can add a path suffix if you want to serve firezone from a non-root path,
+      eg: `https://firezone.mycorp.com/vpn`.
+
+
+      You can find more information on configuration here: https://www.firezone.dev/docs/reference/env-vars/#environment-variable-listing
+      """
+
+      assert_raise RuntimeError, message, fn ->
+        fetch_source_and_configs!([:external_url])
+      end
+    end
+  end
+
+  describe "fetch_config/1" do
+    test "returns config value" do
+      assert fetch_config(:default_client_mtu) ==
+               {:ok, 1280}
+    end
+
+    test "returns error when value is missing" do
+      assert fetch_config(:external_url) ==
+               {:error,
+                {{nil, ["is required"]},
+                 [module: FzHttp.Config.Definitions, key: :external_url, source: :not_found]}}
+    end
+  end
+
+  describe "fetch_config!/1" do
+    test "returns config value" do
+      assert fetch_config!(:default_client_mtu) ==
+               1280
+    end
+
+    test "raises when value is missing" do
+      assert_raise RuntimeError, fn ->
+        fetch_config!(:external_url)
+      end
+    end
+  end
+
+  describe "fetch_configs!/1" do
+    test "returns source and config values" do
+      assert fetch_configs!([:default_client_mtu, :default_client_dns]) ==
+               %{
+                 default_client_dns: [
+                   %Postgrex.INET{address: {1, 1, 1, 1}, netmask: nil},
+                   %Postgrex.INET{address: {1, 0, 0, 1}, netmask: nil}
+                 ],
+                 default_client_mtu: 1280
+               }
+    end
+
+    test "raises an error when value is missing" do
+      message = """
+      Missing required configuration value for 'external_url'.
+
+      ## How to fix?
+
+      ### Using environment variables
+
+      You can set this configuration via environment variable by adding it to `.env` file:
+
+          EXTERNAL_URL=YOUR_VALUE
+
+
+      ## Documentation
+
+      The external URL the web UI will be accessible at.
+
+      Must be a valid and public FQDN for ACME SSL issuance to function.
+
+      You can add a path suffix if you want to serve firezone from a non-root path,
+      eg: `https://firezone.mycorp.com/vpn`.
+
+
+      You can find more information on configuration here: https://www.firezone.dev/docs/reference/env-vars/#environment-variable-listing
+      """
+
+      assert_raise RuntimeError, message, fn ->
+        fetch_configs!([:external_url])
+      end
+    end
   end
 
   describe "compile_config!/1" do
@@ -282,94 +437,104 @@ defmodule FzHttp.ConfigTest do
     end
   end
 
-  # describe "update_configuration/2 with name-based default_client_dns" do
-  #   test "update_configuration/2 allows hosts for DNS" do
-  #     configuration = configuration(%{})
-  #     attrs = %{default_client_dns: ["foobar.com"]}
-  #     assert {:ok, _configuration} = update_configuration(configuration, attrs)
-  #   end
+  describe "fetch_db_config!" do
+    test "returns config from db table" do
+      assert fetch_db_config!() == Repo.one(FzHttp.Config.Configuration)
+    end
+  end
 
-  #   test "update_configuration/2 allows list hosts for DNS" do
-  #     configuration = configuration(%{})
-  #     attrs = %{default_client_dns: ["foobar.com", "google.com"]}
-  #     assert {:ok, _configuration} = update_configuration(configuration, attrs)
-  #   end
-  # end
+  describe "change_config/2" do
+    test "returns config changeset" do
+      assert %Ecto.Changeset{} = change_config()
+    end
+  end
 
-  # TODO
-  # describe "configurations" do
-  #   @valid_configurations [
-  #     %{
-  #       "default_client_dns" => ["8.8.8.8"],
-  #       "default_client_allowed_ips" => ["::/0"],
-  #       "default_client_endpoint" => "172.10.10.10",
-  #       "default_client_persistent_keepalive" => "20",
-  #       "default_client_mtu" => "1280"
-  #     },
-  #     %{
-  #       "default_client_dns" => ["8.8.8.8"],
-  #       "default_client_allowed_ips" => ["::/0"],
-  #       "default_client_endpoint" => "foobar.example.com",
-  #       "default_client_persistent_keepalive" => "15",
-  #       "default_client_mtu" => "1280"
-  #     }
-  #   ]
-  #   @invalid_configuration %{
-  #     "default_client_dns" => "foobar",
-  #     "default_client_allowed_ips" => "foobar",
-  #     "default_client_endpoint" => "foobar",
-  #     "default_client_persistent_keepalive" => "-120",
-  #     "default_client_mtu" => "1501"
-  #   }
+  describe "update_config/2" do
+    test "returns error when changeset is invalid" do
+      config = Repo.one(FzHttp.Config.Configuration)
 
-  #   test "get_configuration/1 returns the configuration" do
-  #     configuration = configuration(%{})
-  #     assert get_configuration!() == configuration
-  #   end
+      attrs = %{
+        local_auth_enabled: 1,
+        allow_unprivileged_device_management: 1,
+        allow_unprivileged_device_configuration: 1,
+        disable_vpn_on_oidc_error: 1,
+        default_client_persistent_keepalive: -1,
+        default_client_mtu: -1,
+        default_client_endpoint: "123",
+        default_client_dns: ["!!!"],
+        default_client_allowed_ips: ["!"],
+        vpn_session_duration: -1
+      }
 
-  #   test "update_configuration/2 with valid data updates the configuration via provided configuration" do
-  #     configuration = get_configuration!()
+      assert {:error, changeset} = update_config(config, attrs)
 
-  #     for attrs <- @valid_configurations do
-  #       assert {:ok, %Configuration{}} = update_configuration(configuration, attrs)
-  #     end
-  #   end
+      assert errors_on(changeset) == %{
+               default_client_mtu: ["must be greater than or equal to 576"],
+               allow_unprivileged_device_configuration: ["is invalid"],
+               allow_unprivileged_device_management: ["is invalid"],
+               default_client_allowed_ips: ["is invalid"],
+               default_client_dns: [
+                 "!!! is not a valid FQDN",
+                 "must be one of: Elixir.FzHttp.Types.IP, string"
+               ],
+               default_client_persistent_keepalive: ["must be greater than or equal to 0"],
+               disable_vpn_on_oidc_error: ["is invalid"],
+               local_auth_enabled: ["is invalid"],
+               vpn_session_duration: ["must be greater than or equal to 0"]
+             }
+    end
 
-  #   test "update_configuration/2 with invalid data returns error changeset" do
-  #     configuration = get_configuration!()
+    test "returns error when trying to change overridden value" do
+      put_system_env_override(:local_auth_enabled, false)
 
-  #     assert {:error, %Ecto.Changeset{}} =
-  #              update_configuration(configuration, @invalid_configuration)
+      config = Repo.one(FzHttp.Config.Configuration)
 
-  #     configuration = get_configuration!()
+      attrs = %{
+        local_auth_enabled: false
+      }
 
-  #     refute configuration.default_client_dns == "foobar"
-  #     refute configuration.default_client_allowed_ips == "foobar"
-  #     refute configuration.default_client_endpoint == "foobar"
-  #     refute configuration.default_client_persistent_keepalive == -120
-  #     refute configuration.default_client_mtu == 1501
-  #   end
+      assert {:error, changeset} = update_config(config, attrs)
 
-  #   test "change_configuration/1 returns a configuration changeset" do
-  #     configuration = configuration(%{})
-  #     assert %Ecto.Changeset{} = change_configuration(configuration)
-  #   end
-  # end
+      assert errors_on(changeset) ==
+               %{
+                 local_auth_enabled: [
+                   "cannot be changed; it is overridden by LOCAL_AUTH_ENABLED environment variable"
+                 ]
+               }
+    end
 
-  # describe "trimmed fields" do
-  #   test "trims expected fields" do
-  #     changeset =
-  #       change_configuration(%Configuration{}, %{
-  #         "default_client_dns" => [" foo "],
-  #         "default_client_endpoint" => " foo "
-  #       })
+    test "trims binary fields" do
+      config = Repo.one(FzHttp.Config.Configuration)
 
-  #     assert %Ecto.Changeset{
-  #              changes: %{
-  #                default_client_dns: ["foo"],
-  #                default_client_endpoint: "foo"
-  #              }
-  #            } = changeset
-  #   end
-  # end
+      attrs = %{
+        default_client_dns: ["   foobar.com", "google.com   "],
+        default_client_endpoint: "   127.0.0.1    "
+      }
+
+      assert {:ok, config} = update_config(config, attrs)
+      assert config.default_client_dns == ["foobar.com", "google.com"]
+      assert config.default_client_endpoint == "127.0.0.1"
+    end
+
+    test "changes database config value" do
+      config = Repo.one(FzHttp.Config.Configuration)
+      attrs = %{default_client_dns: ["foobar.com", "google.com"]}
+      assert {:ok, config} = update_config(config, attrs)
+      assert config.default_client_dns == attrs.default_client_dns
+    end
+  end
+
+  describe "put_config!/2" do
+    test "updates config field in a database" do
+      assert config = put_config!(:default_client_endpoint, " 127.0.0.1")
+      assert config.default_client_endpoint == "127.0.0.1"
+      assert Repo.one(FzHttp.Config.Configuration).default_client_endpoint == "127.0.0.1"
+    end
+
+    test "raises when config field is not valid" do
+      assert_raise RuntimeError, fn ->
+        put_config!(:default_client_endpoint, "!!!")
+      end
+    end
+  end
 end
