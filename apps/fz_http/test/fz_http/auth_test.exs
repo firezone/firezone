@@ -3,7 +3,6 @@ defmodule FzHttp.AuthTest do
   import FzHttp.Auth
   alias FzHttp.ConfigFixtures
 
-  # TODO
   describe "fetch_oidc_provider_config/1" do
     test "returns error when provider does not exist" do
       assert fetch_oidc_provider_config(Ecto.UUID.generate()) == {:error, :not_found}

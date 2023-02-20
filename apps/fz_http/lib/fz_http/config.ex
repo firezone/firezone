@@ -32,7 +32,6 @@ defmodule FzHttp.Config do
   end
 
   def fetch_config(key) do
-    # TODO: we can pass a callback to fetch configs instead
     db_config = maybe_fetch_db_config!(key)
     env_config = System.get_env()
 
@@ -92,7 +91,6 @@ defmodule FzHttp.Config do
     end
   end
 
-  # TODO: maybe we should load configs in mi
   def validate_runtime_config!(
         module \\ Definitions,
         db_config \\ fetch_db_config!(),

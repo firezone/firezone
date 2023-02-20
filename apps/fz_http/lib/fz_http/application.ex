@@ -9,7 +9,7 @@ defmodule FzHttp.Application do
       |> children()
       |> Supervisor.start_link(strategy: :one_for_one, name: __MODULE__.Supervisor)
 
-    :ok = after_start(supervision_tree_mode)
+    :ok = after_start()
 
     result
   end
@@ -61,11 +61,13 @@ defmodule FzHttp.Application do
     ]
   end
 
-  defp after_start(:full) do
-    FzHttp.Config.validate_runtime_config!()
-  end
-
-  defp after_start(_other) do
-    :ok
+  if Mix.env() == :prod do
+    defp after_start do
+      FzHttp.Config.validate_runtime_config!()
+    end
+  else
+    defp after_start do
+      :ok
+    end
   end
 end
