@@ -48,6 +48,7 @@ config :fz_wall,
 ###############################
 
 config :fz_vpn,
+  wg_adapter: FzVpn.Interface.WGAdapter.Sandbox,
   supervised_children: [FzVpn.Interface.WGAdapter.Sandbox, FzVpn.Server, FzVpn.StatsPushService]
 
 ###############################
