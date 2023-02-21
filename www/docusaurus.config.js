@@ -167,7 +167,7 @@ const config = {
         // The application ID provided by Algolia
         appId: "XXPZ9QVGFB",
 
-        start_urls: ["https://www.firezone.dev/"],
+        start_urls: ["https://www.firezone.dev/docs"],
 
         sitemap_urls: ["https://www.firezone.dev/sitemap.xml"],
 
