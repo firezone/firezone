@@ -234,7 +234,7 @@ defmodule FzHttp.Config.Definitions do
   @doc """
   Password that will be used to access the PostgreSQL database.
   """
-  defconfig(:database_password, :string, sensitive: true)
+  defconfig(:database_password, :string, default: nil, sensitive: true)
 
   @doc """
   Size of the connection pool to the PostgreSQL database.

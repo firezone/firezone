@@ -51,7 +51,7 @@ default). Required fields in **bold**.
 | DATABASE_PORT | PostgreSQL port. | integer | 5432 |
 | DATABASE_NAME | Name of the PostgreSQL database. | string | firezone |
 | DATABASE_USER | User that will be used to access the PostgreSQL database. | string | postgres |
-| **DATABASE_PASSWORD** | Password that will be used to access the PostgreSQL database. | string |  |
+| DATABASE_PASSWORD | Password that will be used to access the PostgreSQL database. | string |  |
 | DATABASE_POOL_SIZE | Size of the connection pool to the PostgreSQL database. | integer | generated |
 | DATABASE_SSL_ENABLED | Whether to connect to the database over SSL.<br /> <br />If this field is set to `true`, the `database_ssl_opts` config must be set too with at least `cacertfile` option present. | boolean | false |
 | DATABASE_SSL_OPTS | SSL options for connecting to the PostgreSQL database.<br /> <br />Typically, to enabled SSL you want following options: <br />  - `cacertfile` - path to the CA certificate file;<br />  - `verify` - set to `verify_peer` to verify the server certificate;<br />  - `fail_if_no_peer_cert` - set to `true` to require the server to present a certificate;<br />  - `server_name_indication` - specify the hostname to be used in TLS Server Name Indication extension.<br /> <br />See [Ecto.Adapters.Postgres documentation](https://hexdocs.pm/ecto_sql/Ecto.Adapters.Postgres.html#module-connection-options). For list of all supported options, see the [`ssl`](http://erlang.org/doc/man/ssl.html#type-tls_client_option) module documentation. | JSON-encoded map | `{}` |
@@ -103,8 +103,8 @@ All secrets should be a **base64-encoded string**.
 | LOCAL_AUTH_ENABLED | Enable or disable the local authentication method for all users. | boolean | true |
 | DISABLE_VPN_ON_OIDC_ERROR | Enable or disable auto disabling VPN connection on OIDC refresh error. | boolean | false |
 | SAML_ENTITY_ID | Entity ID for SAML authentication. | string | urn:firezone.dev:firezone-app |
-| SAML_KEYFILE_PATH | Path to the SAML keyfile inside the container. | string | /var/firezone/saml.key |
-| SAML_CERTFILE_PATH | Path to the SAML certificate file inside the container. | string | /var/firezone/saml.crt |
+| SAML_KEYFILE_PATH | Path to the SAML keyfile inside the container. Should be either a PEM or DER-encoded private key, with file extension `.pem` or `.key`. | string | /var/firezone/saml.key |
+| SAML_CERTFILE_PATH | Path to the SAML certificate file inside the container. Should be either a PEM or DER-encoded certificate, with file extension `.crt` or `.pem`. | string | /var/firezone/saml.crt |
 | OPENID_CONNECT_PROVIDERS | List of OpenID Connect identity providers configurations.<br /> <br />For example:<br /> <br />``` [   {     "auto_create_users": false,     "id": "google",     "label": "google",     "client_id": "test-id",     "client_secret": "test-secret",     "discovery_document_uri": "https://accounts.google.com/.well-known/openid-configuration",     "redirect_uri": "https://invalid",     "response_type": "response-type",     "scope": "oauth email profile"   } ] ```<br /> <br />For more details see https://docs.firezone.dev/authenticate/oidc/. | JSON-encoded list | `"[]"` |
 | SAML_IDENTITY_PROVIDERS | List of SAML identity providers configurations.<br /> <br />For example:<br /> <br />``` [   {     "auto_create_users": false,     "base_url": "https://saml",     "id": "okta",     "label": "okta",     "metadata": "<?xml version="1.0"?>...",     "sign_metadata": false,     "sign_requests": false,     "signed_assertion_in_resp": false,     "signed_envelopes_in_resp": false   } ] ```<br /> <br />For more details see https://docs.firezone.dev/authenticate/saml/. | JSON-encoded list | `"[]"` |
 
