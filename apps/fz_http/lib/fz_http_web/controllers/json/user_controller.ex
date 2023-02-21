@@ -34,7 +34,7 @@ defmodule FzHttpWeb.JSON.UserController do
 
   This endpoint is useful in two cases:
 
-    1. When [Local Authentication](/authenticate/local-auth/) is enabled (discouraged in
+    1. When [Local Authentication](/docs/authenticate/local-auth/) is enabled (discouraged in
       production deployments), it allows an administrator to provision users with their passwords;
     2. When `auto_create_users` in the associated OpenID or SAML configuration is disabled,
       it allows an administrator to provision users with their emails beforehand, effectively
