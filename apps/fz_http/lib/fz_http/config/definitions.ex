@@ -190,7 +190,7 @@ defmodule FzHttp.Config.Definitions do
   application is behind a reverse proxy by skipping a trusted proxy IP
   from a list of possible source IPs.
   """
-  defconfig(:phoenix_external_trusted_proxies, {:array, ",", {:one_of, [Types.IP, Types.CIDR]}},
+  defconfig(:phoenix_external_trusted_proxies, {:json_array, {:one_of, [Types.IP, Types.CIDR]}},
     default: [],
     legacy_keys: [{:env, "EXTERNAL_TRUSTED_PROXIES", "0.9"}]
   )
