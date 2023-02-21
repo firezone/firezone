@@ -202,7 +202,7 @@ defmodule FzHttp.Config.Definitions do
   application is behind a reverse proxy by picking a trusted client IP
   from a list of possible source IPs.
   """
-  defconfig(:phoenix_private_clients, {:array, ",", {:one_of, [Types.IP, Types.CIDR]}},
+  defconfig(:phoenix_private_clients, {:json_array, {:one_of, [Types.IP, Types.CIDR]}},
     default: [],
     legacy_keys: [{:env, "PRIVATE_CLIENTS", "0.9"}]
   )
