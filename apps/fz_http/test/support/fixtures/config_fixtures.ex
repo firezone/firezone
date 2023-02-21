@@ -1,19 +1,14 @@
-defmodule FzHttp.ConfigurationsFixtures do
+defmodule FzHttp.ConfigFixtures do
   @moduledoc """
   Allows for easily updating configuration in tests.
   """
+  alias FzHttp.Repo
+  alias FzHttp.Config
 
-  alias FzHttp.{
-    Configurations,
-    Configurations.Configuration,
-    Repo
-  }
-
-  @doc "Configurations table holds a singleton record."
-  def configuration(%Configuration{} = conf \\ Configurations.get_configuration!(), attrs) do
+  def configuration(%Config.Configuration{} = conf \\ Config.fetch_db_config!(), attrs) do
     {:ok, configuration} =
       conf
-      |> Configuration.changeset(attrs)
+      |> Config.Configuration.Changeset.changeset(attrs)
       |> Repo.update()
 
     configuration
@@ -32,9 +27,23 @@ defmodule FzHttp.ConfigurationsFixtures do
         |> Map.merge(overrides)
       end)
 
-    Configurations.put!(:openid_connect_providers, openid_connect_providers_attrs)
+    Config.put_config!(:openid_connect_providers, openid_connect_providers_attrs)
 
     {bypass, openid_connect_providers_attrs}
+  end
+
+  def openid_connect_provider_attrs(overrides \\ %{}) do
+    Enum.into(overrides, %{
+      "id" => "google",
+      "discovery_document_uri" => "https://firezone.example.com/.well-known/openid-configuration",
+      "client_id" => "google-client-id",
+      "client_secret" => "google-client-secret",
+      "redirect_uri" => "https://firezone.example.com/auth/oidc/google/callback/",
+      "response_type" => "code",
+      "scope" => "openid email profile",
+      "label" => "OIDC Google",
+      "auto_create_users" => false
+    })
   end
 
   defp openid_connect_providers_attrs(discovery_document_url) do
@@ -267,10 +276,13 @@ defmodule FzHttp.ConfigurationsFixtures do
     |> Plug.Parsers.call(opts)
   end
 
-  def saml_identity_providers_attrs do
-    [
-      %{"id" => "test", "label" => "SAML"}
-    ]
+  def saml_identity_providers_attrs(attrs \\ %{}) do
+    Enum.into(attrs, %{
+      "metadata" => saml_metadata(),
+      "label" => "test",
+      "id" => "test",
+      "auto_create_users" => true
+    })
   end
 
   def saml_metadata do

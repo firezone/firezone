@@ -2,19 +2,8 @@ defmodule FzHttpWeb.Mailer do
   @moduledoc """
   Outbound Email Sender.
   """
-
   use Swoosh.Mailer, otp_app: :fz_http
-
-  alias Swoosh.{Adapters, Email}
-
-  @provider_mapping %{
-    "smtp" => Adapters.SMTP,
-    "mailgun" => Adapters.Mailgun,
-    "mandrill" => Adapters.Mandrill,
-    "sendgrid" => Adapters.Sendgrid,
-    "post_mark" => Adapters.Postmark,
-    "sendmail" => Adapters.Sendmail
-  }
+  alias Swoosh.Email
 
   def active? do
     mailer_config = FzHttp.Config.fetch_env!(:fz_http, FzHttpWeb.Mailer)
@@ -29,16 +18,5 @@ defmodule FzHttpWeb.Mailer do
 
     Email.new()
     |> Email.from(from_email)
-  end
-
-  def from_configuration(%FzHttp.Configurations.Mailer{} = mailer) do
-    from_email = mailer.from
-    config = Map.fetch!(mailer.configs, mailer.provider)
-    adapter = Map.fetch!(@provider_mapping, mailer.provider)
-
-    [
-      from_email: from_email,
-      adapter: adapter
-    ] ++ Enum.map(config, fn {k, v} -> {String.to_atom(k), v} end)
   end
 end

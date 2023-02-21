@@ -1,6 +1,6 @@
 defmodule FzHttpWeb.JSON.ConfigurationControllerTest do
   use FzHttpWeb.ApiCase, async: true
-  alias FzHttp.SAMLIdentityProviderFixtures
+  alias FzHttp.ConfigFixtures
 
   describe "GET /v0/configuration" do
     test "renders configuration" do
@@ -12,7 +12,7 @@ defmodule FzHttpWeb.JSON.ConfigurationControllerTest do
     end
 
     test "renders logotype" do
-      FzHttp.Configurations.put!(:logo, %{"url" => "https://example.com/logo.png"})
+      FzHttp.Config.put_config!(:logo, %{"url" => "https://example.com/logo.png"})
 
       conn = get(authed_conn(), ~p"/v0/configuration")
 
@@ -41,8 +41,8 @@ defmodule FzHttpWeb.JSON.ConfigurationControllerTest do
           %{
             "id" => "google",
             "label" => "google",
-            "scope" => "test-scope",
-            "response_type" => "response-type",
+            "scope" => "email openid",
+            "response_type" => "code",
             "client_id" => "test-id",
             "client_secret" => "test-secret",
             "discovery_document_uri" =>
@@ -56,7 +56,7 @@ defmodule FzHttpWeb.JSON.ConfigurationControllerTest do
             "id" => "okta",
             "label" => "okta",
             "base_url" => "https://saml",
-            "metadata" => SAMLIdentityProviderFixtures.metadata(),
+            "metadata" => ConfigFixtures.saml_metadata(),
             "sign_requests" => false,
             "sign_metadata" => false,
             "signed_assertion_in_resp" => false,
@@ -69,8 +69,8 @@ defmodule FzHttpWeb.JSON.ConfigurationControllerTest do
         "default_client_persistent_keepalive" => 1,
         "default_client_mtu" => 1100,
         "default_client_endpoint" => "new-endpoint",
-        "default_client_dns" => "1.1.1.1",
-        "default_client_allowed_ips" => "1.1.1.1,2.2.2.2"
+        "default_client_dns" => ["1.1.1.1"],
+        "default_client_allowed_ips" => ["1.1.1.1", "2.2.2.2"]
       }
 
       conn =
@@ -91,8 +91,8 @@ defmodule FzHttpWeb.JSON.ConfigurationControllerTest do
           %{
             "id" => "google",
             "label" => "google-label",
-            "scope" => "test-scope-2",
-            "response_type" => "response-type-2",
+            "scope" => "email openid",
+            "response_type" => "code",
             "client_id" => "test-id-2",
             "client_secret" => "test-secret-2",
             "discovery_document_uri" =>
@@ -106,7 +106,7 @@ defmodule FzHttpWeb.JSON.ConfigurationControllerTest do
             "id" => "okta",
             "label" => "okta-label",
             "base_url" => "https://saml-old",
-            "metadata" => SAMLIdentityProviderFixtures.metadata(),
+            "metadata" => ConfigFixtures.saml_metadata(),
             "sign_requests" => true,
             "sign_metadata" => true,
             "signed_assertion_in_resp" => true,
@@ -119,8 +119,8 @@ defmodule FzHttpWeb.JSON.ConfigurationControllerTest do
         "default_client_persistent_keepalive" => 25,
         "default_client_mtu" => 1200,
         "default_client_endpoint" => "old-endpoint",
-        "default_client_dns" => "4.4.4.4",
-        "default_client_allowed_ips" => "8.8.8.8"
+        "default_client_dns" => ["4.4.4.4"],
+        "default_client_allowed_ips" => ["8.8.8.8"]
       }
 
       conn = put(authed_conn(), ~p"/v0/configuration", configuration: attrs)
@@ -137,6 +137,24 @@ defmodule FzHttpWeb.JSON.ConfigurationControllerTest do
         put(authed_conn(), ~p"/v0/configuration", configuration: %{"local_auth_enabled" => 123})
 
       assert json_response(conn, 422)["errors"] == %{"local_auth_enabled" => ["is invalid"]}
+    end
+
+    test "renders error when trying to override a value with environment override" do
+      FzHttp.Config.put_system_env_override(:local_auth_enabled, true)
+
+      attrs = %{
+        "local_auth_enabled" => false
+      }
+
+      conn = put(authed_conn(), ~p"/v0/configuration", configuration: attrs)
+
+      assert json_response(conn, 422) == %{
+               "errors" => %{
+                 "local_auth_enabled" => [
+                   "cannot be changed; it is overridden by LOCAL_AUTH_ENABLED environment variable"
+                 ]
+               }
+             }
     end
 
     test "renders 401 for missing authorization header" do

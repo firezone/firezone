@@ -23,7 +23,7 @@ defmodule FzHttpWeb.SettingLive.Unprivileged.Account do
 
     socket =
       socket
-      |> assign(:local_auth_enabled, FzHttp.Configurations.get!(:local_auth_enabled))
+      |> assign(:local_auth_enabled, FzHttp.Config.fetch_config!(:local_auth_enabled))
       |> assign(:changeset, Users.change_user(socket.assigns.current_user))
       |> assign(:methods, methods)
       |> assign(:page_title, @page_title)

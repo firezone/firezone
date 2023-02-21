@@ -94,6 +94,25 @@ defmodule FzHttp.Telemetry do
   # How far back to count handshakes as an active device
   @active_device_window 86_400
   def ping_data do
+    %{
+      openid_connect_providers: {_, openid_connect_providers},
+      saml_identity_providers: {_, saml_identity_providers},
+      allow_unprivileged_device_management: allow_unprivileged_device_management,
+      allow_unprivileged_device_configuration: {_, allow_unprivileged_device_configuration},
+      local_auth_enabled: {_, local_auth_enabled},
+      disable_vpn_on_oidc_error: {_, disable_vpn_on_oidc_error},
+      logo: {_, logo}
+    } =
+      FzHttp.Config.fetch_source_and_configs!([
+        :openid_connect_providers,
+        :saml_identity_providers,
+        :allow_unprivileged_device_management,
+        :allow_unprivileged_device_configuration,
+        :local_auth_enabled,
+        :disable_vpn_on_oidc_error,
+        :logo
+      ])
+
     common_fields() ++
       [
         devices_active_within_24h: Devices.count_active_within(@active_device_window),
@@ -104,18 +123,16 @@ defmodule FzHttp.Telemetry do
         max_devices_for_users: Devices.max_count_by_user_id(),
         users_with_mfa: MFA.count_users_with_method(),
         users_with_mfa_totp: MFA.count_users_with_totp_method(),
-        openid_providers: length(FzHttp.Configurations.get!(:openid_connect_providers)),
-        saml_providers: length(FzHttp.Configurations.get!(:saml_identity_providers)),
-        unprivileged_device_management:
-          FzHttp.Configurations.get!(:allow_unprivileged_device_management),
-        unprivileged_device_configuration:
-          FzHttp.Configurations.get!(:allow_unprivileged_device_configuration),
-        local_authentication: FzHttp.Configurations.get!(:local_auth_enabled),
-        disable_vpn_on_oidc_error: FzHttp.Configurations.get!(:disable_vpn_on_oidc_error),
+        openid_providers: length(openid_connect_providers),
+        saml_providers: length(saml_identity_providers),
+        unprivileged_device_management: allow_unprivileged_device_management,
+        unprivileged_device_configuration: allow_unprivileged_device_configuration,
+        local_authentication: local_auth_enabled,
+        disable_vpn_on_oidc_error: disable_vpn_on_oidc_error,
         outbound_email: FzHttpWeb.Mailer.active?(),
         external_database:
           external_database?(Map.new(FzHttp.Config.fetch_env!(:fz_http, FzHttp.Repo))),
-        logo_type: FzHttp.Configurations.logo_type(FzHttp.Configurations.get!(:logo))
+        logo_type: FzHttp.Config.Logo.type(logo)
       ]
   end
 

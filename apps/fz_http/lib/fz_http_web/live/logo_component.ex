@@ -3,10 +3,17 @@ defmodule FzHttpWeb.LogoComponent do
   Logo component displays default, url and data logo
   """
   use FzHttpWeb, :live_component
+  import FzHttpWeb.Endpoint, only: [static_path: 1]
 
   def render(%{url: url} = assigns) when is_binary(url) do
     ~H"""
     <img src={@url} alt="Firezone App Logo" />
+    """
+  end
+
+  def render(%{file: file} = assigns) when is_binary(file) do
+    ~H"""
+    <img src={static_path("/uploads/logo/" <> @file)} alt="Firezone App Logo" />
     """
   end
 

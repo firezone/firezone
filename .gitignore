@@ -63,5 +63,9 @@ npm-debug.log
 # Test screenshots
 apps/fz_http/screenshots
 
+# WG configs generated in acceptance tests
+*.conf
+
 # Auto generated private key
 apps/fz_http/priv/wg_dev_private_key
+apps/fz_http/priv/static/uploads

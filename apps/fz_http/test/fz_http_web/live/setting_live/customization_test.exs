@@ -3,7 +3,7 @@ defmodule FzHttpWeb.SettingLive.CustomizationTest do
 
   describe "logo" do
     setup %{admin_conn: conn} = context do
-      FzHttp.Configurations.put!(:logo, context[:logo])
+      FzHttp.Config.put_config!(:logo, context[:logo])
 
       path = ~p"/settings/customization"
       {:ok, view, html} = live(conn, path)
@@ -50,7 +50,7 @@ defmodule FzHttpWeb.SettingLive.CustomizationTest do
       view |> element("input[value=Default]") |> render_click()
       view |> element("form") |> render_submit()
 
-      assert FzHttp.Configurations.get!(:logo) == nil
+      assert FzHttp.Config.fetch_config!(:logo) == nil
     end
 
     test "change to url", %{view: view, html: html} do
@@ -58,7 +58,7 @@ defmodule FzHttpWeb.SettingLive.CustomizationTest do
       view |> element("input[value=URL]") |> render_click()
       view |> render_submit("save", %{"url" => "new"})
 
-      assert %{url: "new"} = FzHttp.Configurations.get!(:logo)
+      assert %{url: "new"} = FzHttp.Config.fetch_config!(:logo)
     end
 
     test "change to upload", %{view: view, html: html} do
@@ -80,7 +80,7 @@ defmodule FzHttpWeb.SettingLive.CustomizationTest do
       view |> render_submit("save", %{})
 
       data = Base.encode64("new")
-      assert %{data: ^data, type: "image/jpeg"} = FzHttp.Configurations.get!(:logo)
+      assert %{data: ^data, type: "image/jpeg"} = FzHttp.Config.fetch_config!(:logo)
     end
   end
 end

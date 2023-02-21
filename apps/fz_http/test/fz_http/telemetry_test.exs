@@ -41,7 +41,7 @@ defmodule FzHttp.TelemetryTest do
 
   describe "auth" do
     test "count openid providers" do
-      FzHttp.ConfigurationsFixtures.start_openid_providers([
+      FzHttp.ConfigFixtures.start_openid_providers([
         "google",
         "okta",
         "auth0",
@@ -57,7 +57,7 @@ defmodule FzHttp.TelemetryTest do
     end
 
     test "disable vpn on oidc error enabled" do
-      FzHttp.Configurations.put!(:disable_vpn_on_oidc_error, true)
+      FzHttp.Config.put_config!(:disable_vpn_on_oidc_error, true)
 
       ping_data = Telemetry.ping_data()
 
@@ -65,7 +65,7 @@ defmodule FzHttp.TelemetryTest do
     end
 
     test "disable vpn on oidc error disabled" do
-      FzHttp.Configurations.put!(:disable_vpn_on_oidc_error, false)
+      FzHttp.Config.put_config!(:disable_vpn_on_oidc_error, false)
 
       ping_data = Telemetry.ping_data()
 
@@ -73,7 +73,7 @@ defmodule FzHttp.TelemetryTest do
     end
 
     test "local authentication enabled" do
-      FzHttp.Configurations.put!(:local_auth_enabled, true)
+      FzHttp.Config.put_config!(:local_auth_enabled, true)
 
       ping_data = Telemetry.ping_data()
 
@@ -81,7 +81,7 @@ defmodule FzHttp.TelemetryTest do
     end
 
     test "local authentication disabled" do
-      FzHttp.Configurations.put!(:local_auth_enabled, false)
+      FzHttp.Config.put_config!(:local_auth_enabled, false)
 
       ping_data = Telemetry.ping_data()
 
@@ -89,7 +89,7 @@ defmodule FzHttp.TelemetryTest do
     end
 
     test "unprivileged device management enabled" do
-      FzHttp.Configurations.put!(:allow_unprivileged_device_management, true)
+      FzHttp.Config.put_config!(:allow_unprivileged_device_management, true)
 
       ping_data = Telemetry.ping_data()
 
@@ -97,7 +97,7 @@ defmodule FzHttp.TelemetryTest do
     end
 
     test "unprivileged device configuration enabled" do
-      FzHttp.Configurations.put!(:allow_unprivileged_device_configuration, true)
+      FzHttp.Config.put_config!(:allow_unprivileged_device_configuration, true)
 
       ping_data = Telemetry.ping_data()
 
@@ -105,7 +105,7 @@ defmodule FzHttp.TelemetryTest do
     end
 
     test "unprivileged device configuration disabled" do
-      FzHttp.Configurations.put!(:allow_unprivileged_device_configuration, false)
+      FzHttp.Config.put_config!(:allow_unprivileged_device_configuration, false)
 
       ping_data = Telemetry.ping_data()
 

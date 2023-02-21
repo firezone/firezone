@@ -1,5 +1,5 @@
 defmodule FzHttp.Users do
-  alias FzHttp.{Repo, Validator, Configurations}
+  alias FzHttp.{Repo, Validator, Config}
   alias FzHttp.Telemetry
   alias FzHttp.Users.User
   require Ecto.Query
@@ -162,7 +162,7 @@ defmodule FzHttp.Users do
   end
 
   def vpn_session_expires_at(user) do
-    DateTime.add(user.last_signed_in_at, Configurations.vpn_duration())
+    DateTime.add(user.last_signed_in_at, Config.fetch_config!(:vpn_session_duration))
   end
 
   def vpn_session_expired?(user) do
@@ -170,7 +170,7 @@ defmodule FzHttp.Users do
       is_nil(user.last_signed_in_at) ->
         false
 
-      not Configurations.vpn_sessions_expire?() ->
+      not Config.vpn_sessions_expire?() ->
         false
 
       true ->

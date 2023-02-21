@@ -1,5 +1,5 @@
 defmodule FzHttp.ApiTokensTest do
-  use FzHttp.DataCase
+  use FzHttp.DataCase, async: true
   alias FzHttp.ApiTokensFixtures
   alias FzHttp.UsersFixtures
   alias FzHttp.ApiTokens

@@ -6,6 +6,8 @@ defmodule FzHttp.EventsTest do
 
   alias FzHttp.{Devices, Events}
 
+  @moduletag :acceptance
+
   # XXX: Not needed with start_supervised!
   setup do
     on_exit(fn ->

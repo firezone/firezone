@@ -13,23 +13,27 @@ defmodule FzHttpWeb.JSON.DeviceController do
   @doc api_doc: [summary: "List all Devices"]
   def index(conn, _params) do
     devices = Devices.list_devices()
-    render(conn, "index.json", devices: devices)
+    defaults = Devices.defaults()
+    render(conn, "index.json", devices: devices, defaults: defaults)
   end
 
   @doc api_doc: [summary: "Create a Device"]
   def create(conn, %{"device" => device_params}) do
     with {:ok, device} <- Devices.create_device(device_params) do
+      defaults = Devices.defaults()
+
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/v0/devices/#{device}")
-      |> render("show.json", device: device)
+      |> render("show.json", device: device, defaults: defaults)
     end
   end
 
   @doc api_doc: [summary: "Get Device by ID"]
   def show(conn, %{"id" => id}) do
     device = Devices.get_device!(id)
-    render(conn, "show.json", device: device)
+    defaults = Devices.defaults()
+    render(conn, "show.json", device: device, defaults: defaults)
   end
 
   @doc api_doc: [summary: "Update a Device"]
@@ -37,7 +41,8 @@ defmodule FzHttpWeb.JSON.DeviceController do
     device = Devices.get_device!(id)
 
     with {:ok, device} <- Devices.update_device(device, device_params) do
-      render(conn, "show.json", device: device)
+      defaults = Devices.defaults()
+      render(conn, "show.json", device: device, defaults: defaults)
     end
   end
 

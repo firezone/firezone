@@ -26,7 +26,7 @@ defmodule FzHttpWeb.UserFromAuthTest do
 
   describe "find_or_create/2 via OIDC with auto create enabled" do
     test "sign in creates user", %{email: email} do
-      FzHttp.ConfigurationsFixtures.start_openid_providers(["google"], %{
+      FzHttp.ConfigFixtures.start_openid_providers(["google"], %{
         "auto_create_users" => true
       })
 
@@ -43,12 +43,12 @@ defmodule FzHttpWeb.UserFromAuthTest do
   describe "find_or_create/2 via OIDC with auto create disabled" do
     test "sign in returns error", %{email: email} do
       {_bypass, [openid_connect_provider_attrs]} =
-        FzHttp.ConfigurationsFixtures.start_openid_providers(["google"])
+        FzHttp.ConfigFixtures.start_openid_providers(["google"])
 
       openid_connect_provider_attrs =
         Map.put(openid_connect_provider_attrs, "auto_create_users", false)
 
-      FzHttp.Configurations.put!(
+      FzHttp.Config.put_config!(
         :openid_connect_providers,
         [openid_connect_provider_attrs]
       )
@@ -64,9 +64,9 @@ defmodule FzHttpWeb.UserFromAuthTest do
   end
 
   describe "find_or_create/2 via SAML with auto create enabled" do
-    @tag config: [FzHttp.SAMLIdentityProviderFixtures.saml_attrs()]
+    @tag config: [FzHttp.ConfigFixtures.saml_identity_providers_attrs()]
     test "sign in creates user", %{config: config, email: email} do
-      FzHttp.Configurations.put!(:saml_identity_providers, config)
+      FzHttp.Config.put_config!(:saml_identity_providers, config)
 
       assert {:ok, result} =
                UserFromAuth.find_or_create(:saml, "test", %{"email" => email, "sub" => :noop})
@@ -77,10 +77,10 @@ defmodule FzHttpWeb.UserFromAuthTest do
 
   describe "find_or_create/2 via SAML with auto create disabled" do
     @tag config: [
-           FzHttp.SAMLIdentityProviderFixtures.saml_attrs() |> Map.put("auto_create_users", false)
+           FzHttp.ConfigFixtures.saml_identity_providers_attrs(%{"auto_create_users" => false})
          ]
     test "sign in returns error", %{email: email, config: config} do
-      FzHttp.Configurations.put!(:saml_identity_providers, config)
+      FzHttp.Config.put_config!(:saml_identity_providers, config)
 
       assert {:error, "user not found and auto_create_users disabled"} =
                UserFromAuth.find_or_create(:saml, "test", %{"email" => email, "sub" => :noop})

@@ -16,8 +16,8 @@ defmodule FzHttpWeb.JSON.DeviceControllerTest do
     "endpoint" => "9.9.9.9",
     "mtu" => 999,
     "persistent_keepalive" => 9,
-    "allowed_ips" => "0.0.0.0/0, ::/0, 1.1.1.1",
-    "dns" => "9.9.9.8",
+    "allowed_ips" => ["0.0.0.0/0", "::/0", "1.1.1.1"],
+    "dns" => ["9.9.9.8"],
     "ipv4" => "100.64.0.2",
     "ipv6" => "fd00::2"
   }

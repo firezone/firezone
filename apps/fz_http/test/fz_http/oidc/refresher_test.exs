@@ -5,7 +5,7 @@ defmodule FzHttp.OIDC.RefresherTest do
   setup :create_user
 
   setup %{user: user} do
-    {bypass, [provider_attrs]} = FzHttp.ConfigurationsFixtures.start_openid_providers(["google"])
+    {bypass, [provider_attrs]} = FzHttp.ConfigFixtures.start_openid_providers(["google"])
 
     conn =
       Repo.insert!(%FzHttp.OIDC.Connection{
@@ -19,7 +19,7 @@ defmodule FzHttp.OIDC.RefresherTest do
 
   describe "refresh failed" do
     test "disable user", %{user: user, conn: conn, bypass: bypass} do
-      FzHttp.ConfigurationsFixtures.expect_refresh_token_failure(bypass)
+      FzHttp.ConfigFixtures.expect_refresh_token_failure(bypass)
 
       assert Refresher.refresh(user.id) == {:stop, :shutdown, user.id}
       user = Repo.reload(user)
@@ -32,7 +32,7 @@ defmodule FzHttp.OIDC.RefresherTest do
 
   describe "refresh succeeded" do
     test "does not change user", %{user: user, conn: conn, bypass: bypass} do
-      FzHttp.ConfigurationsFixtures.expect_refresh_token(bypass)
+      FzHttp.ConfigFixtures.expect_refresh_token(bypass)
 
       assert Refresher.refresh(user.id) == {:stop, :shutdown, user.id}
       user = Repo.reload(user)

@@ -54,7 +54,7 @@ defmodule FzHttp.SAML.StartProxy do
     Keyword.put(samly_configs, :identity_providers, identity_providers)
   end
 
-  def refresh(providers \\ FzHttp.Configurations.get!(:saml_identity_providers)) do
+  def refresh(providers \\ FzHttp.Config.fetch_config!(:saml_identity_providers)) do
     samly_configs =
       FzHttp.Config.fetch_env!(:samly, Samly.Provider)
       |> set_service_provider()

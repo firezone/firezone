@@ -56,10 +56,10 @@ defmodule FzHttp.MFA.Method.Changeset do
       {:changes, %{}} ->
         changeset
         |> add_error(:payload, "is invalid")
-        |> add_error(:code, "can not be verified")
+        |> add_error(:code, "cannot be verified")
 
       :error ->
-        add_error(changeset, :code, "can not be verified")
+        add_error(changeset, :code, "cannot be verified")
 
       false ->
         add_error(changeset, :code, "is invalid")

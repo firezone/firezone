@@ -3,7 +3,6 @@ defmodule FzHttpWeb.SettingLive.SAMLFormComponent do
   Form for SAML configs
   """
   use FzHttpWeb, :live_component
-  alias FzHttp.Configurations
 
   def render(assigns) do
     ~H"""
@@ -194,10 +193,9 @@ defmodule FzHttpWeb.SettingLive.SAMLFormComponent do
 
   def update(assigns, socket) do
     changeset =
-      assigns.providers
-      |> Map.get(assigns.provider_id, %{})
-      |> Map.merge(%{id: assigns.provider_id})
-      |> Configurations.Configuration.SAMLIdentityProvider.create_changeset()
+      assigns.provider
+      |> Map.delete(:__struct__)
+      |> FzHttp.Config.Configuration.SAMLIdentityProvider.create_changeset()
 
     socket =
       socket
@@ -208,28 +206,18 @@ defmodule FzHttpWeb.SettingLive.SAMLFormComponent do
   end
 
   def handle_event("save", %{"saml_identity_provider" => params}, socket) do
-    create_changeset = Configurations.Configuration.SAMLIdentityProvider.create_changeset(params)
+    changeset = FzHttp.Config.Configuration.SAMLIdentityProvider.create_changeset(params)
 
-    if create_changeset.valid? do
-      new_attrs =
-        create_changeset
-        |> Ecto.Changeset.apply_changes()
-        |> Map.from_struct()
+    if changeset.valid? do
+      attrs = Ecto.Changeset.apply_changes(changeset)
 
-      new_attrs =
-        socket.assigns.providers
-        |> Map.get(socket.assigns.provider_id, %{})
-        |> Map.merge(new_attrs)
+      saml_identity_providers =
+        FzHttp.Config.fetch_config!(:saml_identity_providers)
+        |> Enum.reject(&(&1.id == socket.assigns.provider.id))
+        |> Kernel.++([attrs])
+        |> Enum.map(&Map.from_struct/1)
 
-      providers =
-        socket.assigns.providers
-        |> Map.delete(socket.assigns.provider_id)
-        |> Map.values()
-
-      {:ok, _changeset} =
-        FzHttp.Configurations.update_configuration(%{
-          saml_identity_providers: providers ++ [new_attrs]
-        })
+      FzHttp.Config.put_config!(:saml_identity_providers, saml_identity_providers)
 
       socket =
         socket
@@ -238,7 +226,10 @@ defmodule FzHttpWeb.SettingLive.SAMLFormComponent do
 
       {:noreply, socket}
     else
-      socket = assign(socket, :changeset, render_changeset_errors(create_changeset))
+      socket =
+        socket
+        |> assign(:changeset, render_changeset_errors(changeset))
+
       {:noreply, socket}
     end
   end

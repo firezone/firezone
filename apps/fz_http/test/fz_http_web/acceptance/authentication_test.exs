@@ -52,7 +52,7 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
       |> Auth.assert_authenticated(user)
     end
 
-    feature "can not reset password using invalid email", %{session: session} do
+    feature "can't reset password using invalid email", %{session: session} do
       UsersFixtures.create_user_with_role(:unprivileged)
 
       session
@@ -116,7 +116,7 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
     end
 
     feature "does not create new users when auto_create_users is false", %{session: session} do
-      FzHttp.Configurations.put!(:local_auth_enabled, false)
+      FzHttp.Config.put_config!(:local_auth_enabled, false)
       :ok = SimpleSAML.setup_saml_provider(%{"auto_create_users" => false})
 
       session
@@ -204,7 +204,7 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
       :ok = Vault.setup_oidc_provider(@endpoint.url, %{"auto_create_users" => false})
       :ok = Vault.upsert_user(oidc_login, user_attrs.email, oidc_password)
 
-      FzHttp.Configurations.put!(:local_auth_enabled, false)
+      FzHttp.Config.put_config!(:local_auth_enabled, false)
 
       session = visit(session, ~p"/")
       assert find(session, Query.css(".input", count: 0))

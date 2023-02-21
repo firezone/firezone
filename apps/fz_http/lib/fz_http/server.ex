@@ -2,16 +2,12 @@ defmodule FzHttp.Server do
   @moduledoc """
   Functions for other processes to interact with the FzHttp application
   """
-
   use GenServer
-
   alias FzHttp.{Devices, Devices.StatsUpdater, Rules, Users}
-
-  @process_opts Application.compile_env(:fz_http, :server_process_opts, [])
 
   def start_link(_) do
     # We're not storing state, simply providing an API
-    GenServer.start_link(__MODULE__, nil, @process_opts)
+    GenServer.start_link(__MODULE__, nil, name: {:global, :fz_http_server})
   end
 
   @impl GenServer

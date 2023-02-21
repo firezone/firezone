@@ -50,7 +50,7 @@ defmodule FzHttpWeb.AcceptanceCase.Vault do
 
     {:ok, {200, params}} = request(:get, "identity/oidc/client/firezone")
 
-    FzHttp.Configurations.put!(
+    FzHttp.Config.put_config!(
       :openid_connect_providers,
       [
         %{

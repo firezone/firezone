@@ -3,7 +3,6 @@ defmodule FzHttp.Validator do
   A set of changeset helpers and schema extensions to simplify our changesets and make validation more reliable.
   """
   import Ecto.Changeset
-  alias FzCommon.FzNet
 
   def changed?(changeset, field) do
     Map.has_key?(changeset.changes, field)
@@ -17,58 +16,130 @@ defmodule FzHttp.Validator do
     validate_format(changeset, field, ~r/@/, message: "is invalid email address")
   end
 
-  def validate_uri(changeset, fields) when is_list(fields) do
-    Enum.reduce(fields, changeset, fn field, accumulated_changeset ->
-      validate_uri(accumulated_changeset, field)
-    end)
-  end
+  def validate_uri(changeset, field, opts \\ []) when is_atom(field) do
+    valid_schemes = Keyword.get(opts, :schemes, ~w[http https])
 
-  def validate_uri(changeset, field) when is_atom(field) do
     validate_change(changeset, field, fn _current_field, value ->
       case URI.new(value) do
+        {:ok, %URI{} = uri} ->
+          cond do
+            uri.host == nil ->
+              [{field, "does not contain host"}]
+
+            uri.scheme == nil ->
+              [{field, "does not contain a scheme"}]
+
+            uri.scheme not in valid_schemes ->
+              [{field, "only #{Enum.join(valid_schemes, ", ")} schemes are supported"}]
+
+            true ->
+              []
+          end
+
         {:error, part} ->
           [{field, "is invalid. Error at #{part}"}]
-
-        _ ->
-          []
       end
     end)
   end
 
+  def normalize_url(changeset, field) do
+    with {:ok, value} <- fetch_change(changeset, field) do
+      uri = URI.parse(value)
+      scheme = uri.scheme || "https"
+      port = URI.default_port(scheme)
+      path = uri.path || "/"
+      put_change(changeset, field, %{uri | scheme: scheme, port: port, path: path})
+    else
+      :error ->
+        changeset
+    end
+  end
+
   def validate_no_duplicates(changeset, field) when is_atom(field) do
-    validate_change(changeset, field, fn _current_field, value ->
-      values = split_comma_list(value)
-      dupes = Enum.uniq(values -- Enum.uniq(values))
-
-      error_if(
-        dupes,
-        &(&1 != []),
-        &{field, "is invalid: duplicates are not allowed: #{Enum.join(&1, ", ")}"}
-      )
+    validate_change(changeset, field, fn _current_field, list when is_list(list) ->
+      list
+      |> Enum.reduce_while({true, MapSet.new()}, fn value, {true, acc} ->
+        if MapSet.member?(acc, value) do
+          {:halt, {false, acc}}
+        else
+          {:cont, {true, MapSet.put(acc, value)}}
+        end
+      end)
+      |> case do
+        {true, _map_set} -> []
+        {false, _map_set} -> [{field, "should not contain duplicates"}]
+      end
     end)
   end
 
-  def validate_list_of_ips(changeset, field) when is_atom(field) do
+  def validate_fqdn(changeset, field, opts \\ []) do
+    allow_port = Keyword.get(opts, :allow_port, false)
+
     validate_change(changeset, field, fn _current_field, value ->
-      value
-      |> split_comma_list()
-      |> Enum.find(&(not FzNet.valid_ip?(&1)))
-      |> error_if(
-        &(!is_nil(&1)),
-        &{field, "is invalid: #{&1} is not a valid IPv4 / IPv6 address"}
-      )
+      {fqdn, port} = split_port(value)
+      fqdn_validation_errors = fqdn_validation_errors(field, fqdn)
+      port_validation_errors = port_validation_errors(field, port, allow_port)
+      fqdn_validation_errors ++ port_validation_errors
     end)
   end
 
-  def validate_list_of_ips_or_cidrs(changeset, field) when is_atom(field) do
+  defp fqdn_validation_errors(field, fqdn) do
+    if Regex.match?(~r/^([a-zA-Z0-9._-])+$/i, fqdn) do
+      []
+    else
+      [{field, "#{fqdn} is not a valid FQDN"}]
+    end
+  end
+
+  defp split_port(value) do
+    case String.split(value, ":", parts: 2) do
+      [prefix, port] ->
+        case Integer.parse(port) do
+          {port, ""} ->
+            {prefix, port}
+
+          _ ->
+            {value, nil}
+        end
+
+      [value] ->
+        {value, nil}
+    end
+  end
+
+  defp port_validation_errors(_field, nil, _allow?),
+    do: []
+
+  defp port_validation_errors(field, _port, false),
+    do: [{field, "setting port is not allowed"}]
+
+  defp port_validation_errors(_field, port, _allow?) when 0 < port and port <= 65_535,
+    do: []
+
+  defp port_validation_errors(field, _port, _allow?),
+    do: [{field, "port is not a number between 0 and 65535"}]
+
+  def validate_ip_type_inclusion(changeset, field, types) do
+    validate_change(changeset, field, fn _current_field, %{address: address} ->
+      type = if tuple_size(address) == 4, do: :ipv4, else: :ipv6
+
+      if type in types do
+        []
+      else
+        [{field, "is not a supported IP type"}]
+      end
+    end)
+  end
+
+  def validate_cidr(changeset, field, _opts \\ []) do
     validate_change(changeset, field, fn _current_field, value ->
-      value
-      |> split_comma_list()
-      |> Enum.find(&(not (FzNet.valid_ip?(&1) or FzNet.valid_cidr?(&1))))
-      |> error_if(
-        &(!is_nil(&1)),
-        &{field, "is invalid: #{&1} is not a valid IPv4 / IPv6 address or CIDR range"}
-      )
+      case FzHttp.Types.CIDR.cast(value) do
+        {:ok, _cidr} ->
+          []
+
+        {:error, _reason} ->
+          [{field, "is not a valid CIDR range"}]
+      end
     end)
   end
 
@@ -88,27 +159,32 @@ defmodule FzHttp.Validator do
   end
 
   def validate_omitted(changeset, field) when is_atom(field) do
-    validate_change(changeset, field, fn _current_field, value ->
-      if is_nil(value) do
-        []
-      else
-        [{field, "must not be present"}]
-      end
+    validate_change(changeset, field, fn
+      _field, nil -> []
+      _field, [] -> []
+      field, _value -> [{field, "must not be present"}]
     end)
   end
 
-  defp split_comma_list(text) do
-    text
-    |> String.split(",")
-    |> Enum.map(&String.trim/1)
-  end
+  def validate_file(changeset, field, opts \\ []) do
+    validate_change(changeset, field, fn _current_field, value ->
+      extensions = Keyword.get(opts, :extensions, [])
 
-  defp error_if(value, is_error, error) do
-    if is_error.(value) do
-      [error.(value)]
-    else
-      []
-    end
+      cond do
+        not File.exists?(value) ->
+          [{field, "file does not exist"}]
+
+        extensions != [] and Path.extname(value) not in extensions ->
+          [
+            {field,
+             "file extension is not supported, got #{Path.extname(value)}, " <>
+               "expected one of #{inspect(extensions)}"}
+          ]
+
+        true ->
+          []
+      end
+    end)
   end
 
   @doc """
@@ -137,7 +213,7 @@ defmodule FzHttp.Validator do
       end)
     else
       {:changes, _hash} ->
-        add_error(changeset, value_field, "can not be verified", validation: :hash)
+        add_error(changeset, value_field, "can't be verified", validation: :hash)
 
       :error ->
         add_error(changeset, value_field, "is already verified", validation: :hash)
@@ -197,7 +273,11 @@ defmodule FzHttp.Validator do
   defp maybe_apply(value), do: value
 
   def trim_change(changeset, field) do
-    update_change(changeset, field, &if(!is_nil(&1), do: String.trim(&1)))
+    update_change(changeset, field, fn
+      nil -> nil
+      changes when is_list(changes) -> Enum.map(changes, &String.trim/1)
+      change -> String.trim(change)
+    end)
   end
 
   @doc """

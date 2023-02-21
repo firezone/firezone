@@ -3,9 +3,8 @@ defmodule FzHttpWeb.ProxyHeaders do
   Loads proxy-related headers when it corresponds using runtime config
   """
   alias FzHttpWeb.HeaderHelpers
-  @behaviour Plug
 
-  require Logger
+  @behaviour Plug
 
   def init(opts), do: opts
 

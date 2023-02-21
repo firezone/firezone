@@ -91,6 +91,6 @@ defmodule FzHttp.ConnectivityCheckService do
   end
 
   defp http_client_options do
-    Application.fetch_env!(:fz_http, :http_client_options)
+    FzHttp.Config.fetch_env!(:fz_http, :http_client_options)
   end
 end

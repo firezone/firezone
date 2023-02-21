@@ -3,7 +3,6 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
   Form for OIDC configs
   """
   use FzHttpWeb, :live_component
-  alias FzHttp.Configurations
 
   def render(assigns) do
     ~H"""
@@ -61,7 +60,9 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
             <%= error_tag(f, :scope) %>
           </p>
           <p class="help">
-            Space-delimited list of OpenID scopes.
+            Space-delimited list of OpenID scopes. <code>openid</code>
+            and <code>email</code>
+            are required in order for Firezone to work.
           </p>
         </div>
 
@@ -73,6 +74,7 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
           <div class="control">
             <%= text_input(f, :response_type,
               disabled: true,
+              placeholder: "code",
               class: "input #{input_error_class(f, :response_type)}"
             ) %>
           </div>
@@ -130,7 +132,11 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
 
           <div class="control">
             <%= text_input(f, :redirect_uri,
-              placeholder: "#{@external_url}/auth/oidc/#{@provider_id || "{CONFIG_ID}"}/callback/",
+              placeholder:
+                Path.join(
+                  @external_url,
+                  "auth/oidc/#{input_value(f, :id) || "{CONFIG_ID}"}/callback/"
+                ),
               class: "input #{input_error_class(f, :redirect_uri)}"
             ) %>
           </div>
@@ -139,7 +145,14 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
           </p>
           <p class="help">
             Optionally override the Redirect URI. Must match the redirect URI set in your IdP.
-            In most cases you shouldn't change this.
+            In most cases you shouldn't change this. By default
+            <code>
+              <%= Path.join(
+                @external_url,
+                "auth/oidc/#{input_value(f, :id) || "{CONFIG_ID}"}/callback/"
+              ) %>
+            </code>
+            is used.
           </p>
         </div>
 
@@ -172,10 +185,9 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
 
   def update(assigns, socket) do
     changeset =
-      assigns.providers
-      |> Map.get(assigns.provider_id, %{})
-      |> Map.put(:id, assigns.provider_id)
-      |> Configurations.Configuration.OpenIDConnectProvider.create_changeset()
+      assigns.provider
+      |> Map.delete(:__struct__)
+      |> FzHttp.Config.Configuration.OpenIDConnectProvider.create_changeset()
 
     socket =
       socket
@@ -187,28 +199,18 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
   end
 
   def handle_event("save", %{"open_id_connect_provider" => params}, socket) do
-    create_changeset = Configurations.Configuration.OpenIDConnectProvider.create_changeset(params)
+    changeset = FzHttp.Config.Configuration.OpenIDConnectProvider.create_changeset(params)
 
-    if create_changeset.valid? do
-      new_attrs =
-        create_changeset
-        |> Ecto.Changeset.apply_changes()
-        |> Map.from_struct()
+    if changeset.valid? do
+      attrs = Ecto.Changeset.apply_changes(changeset)
 
-      new_attrs =
-        socket.assigns.providers
-        |> Map.get(socket.assigns.provider_id, %{})
-        |> Map.merge(new_attrs)
+      openid_connect_providers =
+        FzHttp.Config.fetch_config!(:openid_connect_providers)
+        |> Enum.reject(&(&1.id == socket.assigns.provider.id))
+        |> Kernel.++([attrs])
+        |> Enum.map(&Map.from_struct/1)
 
-      providers =
-        socket.assigns.providers
-        |> Map.delete(socket.assigns.provider_id)
-        |> Map.values()
-
-      {:ok, _changeset} =
-        FzHttp.Configurations.update_configuration(%{
-          openid_connect_providers: providers ++ [new_attrs]
-        })
+      FzHttp.Config.put_config!(:openid_connect_providers, openid_connect_providers)
 
       socket =
         socket
@@ -217,7 +219,7 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
 
       {:noreply, socket}
     else
-      socket = assign(socket, :changeset, render_changeset_errors(create_changeset))
+      socket = assign(socket, :changeset, render_changeset_errors(changeset))
       {:noreply, socket}
     end
   end

@@ -2,7 +2,7 @@
 Path.join(File.cwd!(), "screenshots") |> File.rm_rf!()
 
 Bureaucrat.start(
-  writer: Firezone.DocusaurusWriter,
+  writer: DocsGenerator,
   default_path: "../../www/docs/reference/rest-api"
 )
 

@@ -49,7 +49,7 @@ defmodule FzHttpWeb.SettingLive.ShowApiTokenComponent do
           <pre><code id="api-usage-example"><i># List all users</i>
     curl -H 'Content-Type: application/json' \
          -H 'Authorization: Bearer <%= @secret %>' \
-         <%= Application.fetch_env!(:fz_http, :external_url) %>/v0/users</code></pre>
+         <%= FzHttp.Config.fetch_env!(:fz_http, :external_url) %>/v0/users</code></pre>
         </div>
         <div class="block has-text-right">
           <a href="https://docs.firezone.dev/reference/rest-api?utm_source=product">
