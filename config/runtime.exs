@@ -1,6 +1,6 @@
 import Config
 
-if Mix.env() == :prod do
+if config_env() == :prod do
   import FzHttp.Config, only: [compile_config!: 1]
 
   config :fz_http, FzHttp.Repo,
@@ -64,7 +64,11 @@ if Mix.env() == :prod do
 
   config :fz_http,
     telemetry_id: compile_config!(:telemetry_id),
-    telemetry_module: compile_config!(:telemetry_module)
+    telemetry_module:
+      if(compile_config!(:telemetry_enabled) == true,
+        do: FzCommon.Telemetry,
+        else: FzCommon.MockTelemetry
+      )
 
   config :fz_http,
     cookie_secure: compile_config!(:phoenix_secure_cookies),

@@ -73,6 +73,9 @@ defmodule FzHttp.Config.Errors do
       {:error, :module_not_found} ->
         nil
 
+      {:error, :chunk_not_found} ->
+        nil
+
       :error ->
         nil
 

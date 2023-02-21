@@ -517,15 +517,17 @@ defmodule FzHttp.Config.Definitions do
   defconfig(:saml_entity_id, :string, default: "urn:firezone.dev:firezone-app")
 
   @doc """
-  Path to the SAML keyfile inside the container.
+  Path to the SAML keyfile inside the container. Should be either a PEM or DER-encoded private key,
+  with file extension `.pem` or `.key`.
   """
   defconfig(:saml_keyfile_path, :string,
     default: "/var/firezone/saml.key",
-    changeset: &FzHttp.Validator.validate_file(&1, &2, extensions: ~w[.crt .pem])
+    changeset: &FzHttp.Validator.validate_file(&1, &2, extensions: ~w[.pem .key])
   )
 
   @doc """
-  Path to the SAML certificate file inside the container.
+  Path to the SAML certificate file inside the container. Should be either a PEM or DER-encoded certificate,
+  with file extension `.crt` or `.pem`.
   """
   defconfig(:saml_certfile_path, :string,
     default: "/var/firezone/saml.crt",
