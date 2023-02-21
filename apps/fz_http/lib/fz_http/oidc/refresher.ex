@@ -4,7 +4,7 @@ defmodule FzHttp.OIDC.Refresher do
   """
   use GenServer, restart: :temporary
   import Ecto.{Changeset, Query}
-  alias FzHttp.{Configurations, OIDC, OIDC.Connection, Repo, Users}
+  alias FzHttp.{Auth, OIDC, OIDC.Connection, Repo, Users}
   require Logger
 
   def start_link(init_opts) do
@@ -34,7 +34,7 @@ defmodule FzHttp.OIDC.Refresher do
     Logger.info("Refreshing user\##{user_id} @ #{provider_id}...")
 
     refresh_response =
-      with {:ok, config} <- Configurations.fetch_oidc_provider_config(provider_id),
+      with {:ok, config} <- Auth.fetch_oidc_provider_config(provider_id),
            {:ok, tokens} <-
              OpenIDConnect.fetch_tokens(config, %{
                grant_type: "refresh_token",
@@ -68,6 +68,6 @@ defmodule FzHttp.OIDC.Refresher do
   end
 
   defp enabled? do
-    FzHttp.Configurations.get!(:disable_vpn_on_oidc_error)
+    FzHttp.Config.fetch_config!(:disable_vpn_on_oidc_error)
   end
 end

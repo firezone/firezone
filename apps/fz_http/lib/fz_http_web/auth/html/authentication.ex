@@ -4,7 +4,7 @@ defmodule FzHttpWeb.Auth.HTML.Authentication do
   """
   use Guardian, otp_app: :fz_http
   use FzHttpWeb, :controller
-  alias FzHttp.Configurations
+  alias FzHttp.Auth
   alias FzHttp.Telemetry
   alias FzHttp.Users
   alias FzHttp.Users.User
@@ -66,7 +66,7 @@ defmodule FzHttpWeb.Auth.HTML.Authentication do
   def sign_out(conn) do
     with provider_id when not is_nil(provider_id) <- Plug.Conn.get_session(conn, "login_method"),
          token when not is_nil(token) <- Plug.Conn.get_session(conn, "id_token"),
-         {:ok, config} <- Configurations.fetch_oidc_provider_config(provider_id),
+         {:ok, config} <- Auth.fetch_oidc_provider_config(provider_id),
          {:ok, end_session_uri} <-
            OpenIDConnect.end_session_uri(config, %{
              id_token_hint: token,

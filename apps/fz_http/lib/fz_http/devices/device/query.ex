@@ -72,7 +72,7 @@ defmodule FzHttp.Devices.Device.Query do
   # Although sequences can work with inet types, we iterate over the sequence using an
   # offset relative to start of the given CIDR range.
   #
-  # This way is chosen because IPv6 can not be cast to bigint, so by using it directly
+  # This way is chosen because IPv6 cannot be cast to bigint, so by using it directly
   # we won't be able to increment/decrement it while building a sequence.
   #
   # At the same time offset will fit to bigint even for largest CIDR ranges that Firezone supports.

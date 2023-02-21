@@ -28,7 +28,7 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
 
   describe "authenticated device management disabled" do
     setup do
-      FzHttp.Configurations.put!(:allow_unprivileged_device_management, false)
+      FzHttp.Config.put_config!(:allow_unprivileged_device_management, false)
       :ok
     end
 
@@ -49,7 +49,7 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
 
   describe "authenticated device configuration disabled" do
     setup do
-      FzHttp.Configurations.put!(:allow_unprivileged_device_configuration, false)
+      FzHttp.Config.put_config!(:allow_unprivileged_device_configuration, false)
       :ok
     end
 

@@ -5,7 +5,7 @@ defmodule FzHttpWeb.LiveHelpers do
   https://bernheisel.com/blog/phoenix-liveview-and-views
   """
   use Phoenix.Component
-  alias FzHttp.{Configurations, Users}
+  alias FzHttp.{Config, Users}
 
   def live_modal(component, opts) do
     path = Keyword.fetch!(opts, :return_to)
@@ -40,7 +40,7 @@ defmodule FzHttpWeb.LiveHelpers do
   end
 
   def vpn_sessions_expire? do
-    Configurations.vpn_sessions_expire?()
+    Config.vpn_sessions_expire?()
   end
 
   def vpn_expires_at(user) do
@@ -70,5 +70,12 @@ defmodule FzHttpWeb.LiveHelpers do
 
   def render_changeset_errors(%Ecto.Changeset{} = changeset) do
     %{changeset | action: :validate}
+  end
+
+  def list_value(form, field) do
+    case Phoenix.HTML.Form.input_value(form, field) do
+      value when is_list(value) -> Enum.join(value, ", ")
+      value -> value
+    end
   end
 end

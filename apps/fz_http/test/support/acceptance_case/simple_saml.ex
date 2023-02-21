@@ -10,7 +10,7 @@ defmodule FzHttpWeb.AcceptanceCase.SimpleSAML do
   def setup_saml_provider(attrs_overrides \\ %{}) do
     metadata = fetch_metadata!(@endpoint)
 
-    FzHttp.Configurations.put!(:saml_identity_providers, [
+    FzHttp.Config.put_config!(:saml_identity_providers, [
       %{
         "id" => "mysamlidp",
         "label" => "test-saml-idp",

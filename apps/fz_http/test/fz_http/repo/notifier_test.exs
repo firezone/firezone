@@ -4,6 +4,8 @@ defmodule FzHttp.Repo.NotifierTest do
   alias FzHttp.Repo.Notifier
   alias FzHttp.Events
 
+  @moduletag :acceptance
+
   setup do
     on_exit(fn ->
       :sys.replace_state(Events.vpn_pid(), fn _state -> %{} end)

@@ -36,13 +36,12 @@ defmodule FzHttp.MixProject do
       extra_applications: [
         :logger,
         :runtime_tools
-      ],
-      registered: [:fz_http_server]
+      ]
     ]
   end
 
   # Specifies which paths to compile per environment.
-  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(:test), do: ["test/support", "lib"]
   defp elixirc_paths(_), do: ["lib"]
 
   defp deps do
@@ -62,13 +61,12 @@ defmodule FzHttp.MixProject do
       {:phoenix_live_reload, "~> 1.3", only: :dev},
       {:phoenix_swoosh, "~> 1.0"},
       {:gettext, "~> 0.18"},
+      {:file_size, "~> 3.0.1"},
 
       # Ecto-related deps
       {:postgrex, "~> 0.16"},
       {:decimal, "~> 2.0"},
       {:ecto_sql, "~> 3.7"},
-      {:ecto_network,
-       github: "firezone/ecto_network", ref: "7dfe65bcb6506fb0ed6050871b433f3f8b1c10cb"},
       {:cloak, "~> 1.1"},
       {:cloak_ecto, "~> 1.2"},
 
@@ -104,6 +102,7 @@ defmodule FzHttp.MixProject do
 
   defp aliases do
     [
+      "assets.build": ["cmd cd assets && yarn install --frozen-lockfile && node esbuild.js prod"],
       "ecto.seed": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.setup": ["ecto.create", "ecto.migrate"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],

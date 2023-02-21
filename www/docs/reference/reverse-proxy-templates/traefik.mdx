@@ -75,7 +75,7 @@ services:
       - 51820:51820/udp
     env_file:
       # This should contain a list of env vars for configuring Firezone.
-      # See https://docs.firezone.dev/reference/env-vars for more info.
+      # See https://www.firezone.dev/docs/reference/env-vars for more info.
       - ${FZ_INSTALL_DIR:-.}/.env
     volumes:
       # IMPORTANT: Persists WireGuard private key and other data. If
@@ -133,14 +133,14 @@ http:
   routers:
     test:
       entryPoints:
-              - "web"
+        - "web"
       service: test
       rule: "Host(`44.200.42.78`)"
   services:
     test:
       loadBalancer:
         servers:
-        - url: "http://firezone:13000"
+          - url: "http://firezone:13000"
 ```
 
 Now you should be able to start the Traefik proxy with `docker compose up`.
@@ -152,7 +152,7 @@ This configuration uses Firezone's auto-generated self-signed certificates.
 ### SSL `docker-compose.yml`
 
 ```yaml
-version: '3'
+version: "3"
 
 x-deploy: &default-deploy
   restart_policy:
@@ -193,7 +193,7 @@ services:
       DATABASE_ENCRYPTION_KEY: ${DATABASE_ENCRYPTION_KEY:?err}
 
       # Ensure this includes the traefik service IP.
-      EXTERAL_TRUSTED_PROXIES: ['']
+      EXTERAL_TRUSTED_PROXIES: [""]
     networks:
       - app
     cap_add:
@@ -212,13 +212,13 @@ services:
     image: traefik:v2.8
     # Enables the web UI and tells Traefik to listen to docker
     command:
-    - "--providers.docker"
-    - "--providers.file.filename=rules.yml"
-    - "--entrypoints.web.address=:443"
-    - "--entrypoints.web.forwardedHeaders.insecure"
-    - "--log.level=DEBUG"
+      - "--providers.docker"
+      - "--providers.file.filename=rules.yml"
+      - "--entrypoints.web.address=:443"
+      - "--entrypoints.web.forwardedHeaders.insecure"
+      - "--log.level=DEBUG"
     extra_hosts:
-    - "host.docker.internal:host-gateway"
+      - "host.docker.internal:host-gateway"
     ports:
       # The HTTP port
       - "443:443"
@@ -265,7 +265,7 @@ http:
     test:
       loadBalancer:
         servers:
-        - url: "http://firezone:13000"
+          - url: "http://firezone:13000"
 tls:
   stores:
     default:

@@ -8,24 +8,6 @@ defmodule FzHttpWeb.MailerTest do
     assert Mailer.default_email().from == {"", "test@firez.one"}
   end
 
-  test "from_configuration/1" do
-    attrs = %{
-      "from" => "foo@localhost",
-      "provider" => "smtp",
-      "configs" => %{"smtp" => %{"config_key" => "config_value"}}
-    }
-
-    mailer =
-      FzHttp.Configurations.Mailer.changeset(attrs)
-      |> Ecto.Changeset.apply_changes()
-
-    assert Mailer.from_configuration(mailer) == [
-             from_email: "foo@localhost",
-             adapter: Swoosh.Adapters.SMTP,
-             config_key: "config_value"
-           ]
-  end
-
   describe "with templates" do
     defmodule SampleEmail do
       use Phoenix.Swoosh,

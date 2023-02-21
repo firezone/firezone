@@ -19,7 +19,7 @@ defmodule FzHttpWeb.Acceptance.UnprivilegedUserTest do
     feature "allows user to add and configure a device", %{
       session: session
     } do
-      FzHttp.Configurations.put!(:allow_unprivileged_device_configuration, true)
+      FzHttp.Config.put_config!(:allow_unprivileged_device_configuration, true)
 
       session
       |> visit(~p"/user_devices")
@@ -55,8 +55,8 @@ defmodule FzHttpWeb.Acceptance.UnprivilegedUserTest do
       assert device = Repo.one(FzHttp.Devices.Device)
       assert device.name == "big-head-007"
       assert device.description == "Dummy description"
-      assert device.allowed_ips == "127.0.0.1"
-      assert device.dns == "1.1.1.1,2.2.2.2"
+      assert device.allowed_ips == [%Postgrex.INET{address: {127, 0, 0, 1}, netmask: nil}]
+      assert device.dns == ["1.1.1.1", "2.2.2.2"]
       assert device.endpoint == "example.com:51820"
       assert device.mtu == 1400
       assert device.persistent_keepalive == 10
@@ -67,7 +67,7 @@ defmodule FzHttpWeb.Acceptance.UnprivilegedUserTest do
     feature "allows user to add a device, download config and close the modal", %{
       session: session
     } do
-      FzHttp.Configurations.put!(:allow_unprivileged_device_configuration, false)
+      FzHttp.Config.put_config!(:allow_unprivileged_device_configuration, false)
 
       session
       |> visit(~p"/user_devices")
@@ -92,7 +92,7 @@ defmodule FzHttpWeb.Acceptance.UnprivilegedUserTest do
     end
 
     feature "does not allow adding devices", %{session: session} do
-      FzHttp.Configurations.put!(:allow_unprivileged_device_management, false)
+      FzHttp.Config.put_config!(:allow_unprivileged_device_management, false)
 
       session
       |> visit(~p"/user_devices")

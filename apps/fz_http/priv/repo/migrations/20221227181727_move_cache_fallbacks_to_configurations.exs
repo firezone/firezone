@@ -1,19 +1,16 @@
 defmodule FzHttp.Repo.Migrations.MoveCacheFallbacksToConfigurations do
   use Ecto.Migration
 
-  alias FzCommon.FzString
-
   def change do
-    local_auth_enabled = FzString.to_boolean(System.get_env("LOCAL_AUTH_ENABLED", "true"))
+    local_auth_enabled = to_boolean(System.get_env("LOCAL_AUTH_ENABLED", "true"))
 
-    disable_vpn_on_oidc_error =
-      FzString.to_boolean(System.get_env("DISABLE_VPN_ON_OIDC_ERROR", "false"))
+    disable_vpn_on_oidc_error = to_boolean(System.get_env("DISABLE_VPN_ON_OIDC_ERROR", "false"))
 
     allow_unprivileged_device_management =
-      FzString.to_boolean(System.get_env("ALLOW_UNPRIVILEGED_DEVICE_MANAGEMENT", "true"))
+      to_boolean(System.get_env("ALLOW_UNPRIVILEGED_DEVICE_MANAGEMENT", "true"))
 
     allow_unprivileged_device_configuration =
-      FzString.to_boolean(System.get_env("ALLOW_UNPRIVILEGED_DEVICE_CONFIGURATION", "true"))
+      to_boolean(System.get_env("ALLOW_UNPRIVILEGED_DEVICE_CONFIGURATION", "true"))
 
     execute("""
       UPDATE configurations
@@ -52,5 +49,21 @@ defmodule FzHttp.Repo.Migrations.MoveCacheFallbacksToConfigurations do
       modify(:openid_connect_providers, :map, default: %{}, null: false)
       modify(:saml_identity_providers, :map, default: %{}, null: false)
     end
+  end
+
+  def to_boolean(str) when is_binary(str) do
+    as_bool(String.downcase(str))
+  end
+
+  defp as_bool("true") do
+    true
+  end
+
+  defp as_bool("false") do
+    false
+  end
+
+  defp as_bool(unknown) do
+    raise "Unknown boolean: string #{unknown} not one of ['true', 'false']."
   end
 end

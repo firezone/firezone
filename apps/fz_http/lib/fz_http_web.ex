@@ -68,7 +68,7 @@ defmodule FzHttpWeb do
 
   def live_view_without_layout do
     quote do
-      use Phoenix.LiveView, layout: nil
+      use Phoenix.LiveView
       import FzHttpWeb.LiveHelpers
 
       alias Phoenix.LiveView.JS
@@ -131,7 +131,7 @@ defmodule FzHttpWeb do
     end
   end
 
-  def static_paths, do: ~w(dist fonts images robots.txt)
+  def static_paths, do: ~w(dist fonts images uploads robots.txt)
 
   def verified_routes do
     quote do

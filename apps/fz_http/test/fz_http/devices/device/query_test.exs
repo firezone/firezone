@@ -5,8 +5,8 @@ defmodule FzHttp.Devices.Device.QueryTest do
 
   describe "next_available_address/3" do
     test "selects available IPv4 in CIDR range at the offset" do
-      cidr = string_to_inet("10.3.2.0/29")
-      gateway_ip = string_to_inet("10.3.2.0")
+      cidr = string_to_cidr("10.3.2.0/29")
+      gateway_ip = string_to_ip("10.3.2.0")
       offset = 3
 
       queryable = next_available_address(cidr, offset, [gateway_ip])
@@ -15,8 +15,8 @@ defmodule FzHttp.Devices.Device.QueryTest do
     end
 
     test "skips addresses taken by the gateway" do
-      cidr = string_to_inet("10.3.3.0/29")
-      gateway_ip = string_to_inet("10.3.3.3")
+      cidr = string_to_cidr("10.3.3.0/29")
+      gateway_ip = string_to_ip("10.3.3.3")
       offset = 3
 
       queryable = next_available_address(cidr, offset, [gateway_ip])
@@ -25,8 +25,8 @@ defmodule FzHttp.Devices.Device.QueryTest do
     end
 
     test "forward scans available address after offset it it's assigned to a device" do
-      cidr = string_to_inet("10.3.4.0/29")
-      gateway_ip = string_to_inet("10.3.4.0")
+      cidr = string_to_cidr("10.3.4.0/29")
+      gateway_ip = string_to_ip("10.3.4.0")
       offset = 3
 
       queryable = next_available_address(cidr, offset, [gateway_ip])
@@ -40,8 +40,8 @@ defmodule FzHttp.Devices.Device.QueryTest do
     end
 
     test "backward scans available address if forward scan found not available IPs" do
-      cidr = string_to_inet("10.3.5.0/29")
-      gateway_ip = string_to_inet("10.3.5.0")
+      cidr = string_to_cidr("10.3.5.0/29")
+      gateway_ip = string_to_ip("10.3.5.0")
       offset = 5
 
       queryable = next_available_address(cidr, offset, [gateway_ip])
@@ -57,8 +57,8 @@ defmodule FzHttp.Devices.Device.QueryTest do
     end
 
     test "selects nothing when CIDR range is exhausted" do
-      cidr = string_to_inet("10.3.6.0/30")
-      gateway_ip = string_to_inet("10.3.6.1")
+      cidr = string_to_cidr("10.3.6.0/30")
+      gateway_ip = string_to_ip("10.3.6.1")
       offset = 1
 
       DevicesFixtures.device(%{ipv4: "10.3.6.2"})
@@ -74,8 +74,8 @@ defmodule FzHttp.Devices.Device.QueryTest do
     end
 
     test "prevents two concurrent transactions from acquiring the same address" do
-      cidr = string_to_inet("10.3.7.0/29")
-      gateway_ip = string_to_inet("10.3.7.3")
+      cidr = string_to_cidr("10.3.7.0/29")
+      gateway_ip = string_to_ip("10.3.7.3")
       offset = 3
 
       queryable = next_available_address(cidr, offset, [gateway_ip])
@@ -103,8 +103,8 @@ defmodule FzHttp.Devices.Device.QueryTest do
     end
 
     test "selects available IPv6 in CIDR range at the offset" do
-      cidr = string_to_inet("fd00::3:3:0/120")
-      gateway_ip = string_to_inet("fd00::3:3:3")
+      cidr = string_to_cidr("fd00::3:3:0/120")
+      gateway_ip = string_to_ip("fd00::3:3:3")
       offset = 3
 
       queryable = next_available_address(cidr, offset, [gateway_ip])
@@ -113,8 +113,8 @@ defmodule FzHttp.Devices.Device.QueryTest do
     end
 
     test "selects available IPv6 at end of CIDR range" do
-      cidr = string_to_inet("fd00::/106")
-      gateway_ip = string_to_inet("fd00::3:3:3")
+      cidr = string_to_cidr("fd00::/106")
+      gateway_ip = string_to_ip("fd00::3:3:3")
       offset = 4_194_304
 
       queryable = next_available_address(cidr, offset, [gateway_ip])
@@ -123,8 +123,8 @@ defmodule FzHttp.Devices.Device.QueryTest do
     end
 
     test "works when offset is out of IPv6 CIDR range" do
-      cidr = string_to_inet("fd00::/106")
-      gateway_ip = string_to_inet("fd00::3:3:3")
+      cidr = string_to_cidr("fd00::/106")
+      gateway_ip = string_to_ip("fd00::3:3:3")
       offset = 4_194_305
 
       queryable = next_available_address(cidr, offset, [gateway_ip])
@@ -133,8 +133,8 @@ defmodule FzHttp.Devices.Device.QueryTest do
     end
 
     test "works when netmask allows a large number of devices" do
-      cidr = string_to_inet("fd00::/70")
-      gateway_ip = string_to_inet("fd00::3:3:3")
+      cidr = string_to_cidr("fd00::/70")
+      gateway_ip = string_to_ip("fd00::3:3:3")
       offset = 9_223_372_036_854_775_807
 
       queryable = next_available_address(cidr, offset, [gateway_ip])
@@ -145,8 +145,8 @@ defmodule FzHttp.Devices.Device.QueryTest do
     end
 
     test "selects nothing when IPv6 CIDR range is exhausted" do
-      cidr = string_to_inet("fd00::3:2:0/126")
-      gateway_ip = string_to_inet("fd00::3:2:1")
+      cidr = string_to_cidr("fd00::3:2:0/126")
+      gateway_ip = string_to_ip("fd00::3:2:1")
       offset = 3
 
       DevicesFixtures.device(%{ipv6: "fd00::3:2:2"})
@@ -156,8 +156,13 @@ defmodule FzHttp.Devices.Device.QueryTest do
     end
   end
 
-  defp string_to_inet(string) do
-    {:ok, inet} = EctoNetwork.INET.cast(string)
+  defp string_to_cidr(string) do
+    {:ok, inet} = FzHttp.Types.CIDR.cast(string)
+    inet
+  end
+
+  defp string_to_ip(string) do
+    {:ok, inet} = FzHttp.Types.IP.cast(string)
     inet
   end
 end

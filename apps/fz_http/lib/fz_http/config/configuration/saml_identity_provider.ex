@@ -1,4 +1,4 @@
-defmodule FzHttp.Configurations.Configuration.SAMLIdentityProvider do
+defmodule FzHttp.Config.Configuration.SAMLIdentityProvider do
   @moduledoc """
   SAML Config virtual schema
   """

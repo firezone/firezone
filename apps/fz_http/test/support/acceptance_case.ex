@@ -144,6 +144,29 @@ defmodule FzHttpWeb.AcceptanceCase do
     end
   end
 
+  def wait_for(assertion_callback, started_at \\ nil) do
+    now = :erlang.monotonic_time(:milli_seconds)
+    started_at = started_at || now
+
+    try do
+      assertion_callback.()
+    rescue
+      e in [ExUnit.AssertionError] ->
+        time_spent = now - started_at
+        max_wait_seconds = fetch_max_wait_seconds!()
+
+        if time_spent > :timer.seconds(max_wait_seconds) do
+          reraise(e, __STACKTRACE__)
+        else
+          floor(time_spent / 10)
+          |> max(100)
+          |> :timer.sleep()
+
+          wait_for(assertion_callback, started_at)
+        end
+    end
+  end
+
   def fill_form(session, %{} = fields) do
     # Wait for form to be rendered
     {form_el, _opts} = Enum.at(fields, 0)
@@ -246,7 +269,7 @@ defmodule FzHttpWeb.AcceptanceCase do
                     IO.puts(
                       IO.ANSI.red() <>
                         "Warning! This test runs in browser-debug mode, " <>
-                        "it sleep the test process on failure for 50 seconds." <> IO.ANSI.reset()
+                        "it will sleep the test process for infinity." <> IO.ANSI.reset()
                     )
 
                     IO.puts("")
@@ -254,7 +277,7 @@ defmodule FzHttpWeb.AcceptanceCase do
                     IO.puts("Exception was rescued:")
                     IO.puts(Exception.format(:error, e, __STACKTRACE__))
                     IO.puts(IO.ANSI.reset())
-                    Process.sleep(:timer.seconds(50))
+                    Process.sleep(:infinity)
 
                   Wallaby.screenshot_on_failure?() ->
                     unquote(__MODULE__).take_screenshot(unquote(message))

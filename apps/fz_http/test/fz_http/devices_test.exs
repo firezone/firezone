@@ -133,32 +133,31 @@ defmodule FzHttp.DevicesTest do
 
     @attrs %{
       name: "Go hard or go home.",
-      allowed_ips: "0.0.0.0",
+      allowed_ips: [%Postgrex.INET{address: {0, 0, 0, 0}, netmask: nil}],
       use_default_allowed_ips: false
     }
 
     @valid_dns_attrs %{
       use_default_dns: false,
-      dns: "1.1.1.1, 1.0.0.1, 2606:4700:4700::1111, 2606:4700:4700::1001"
+      dns: ["1.1.1.1", "1.0.0.1", "2606:4700:4700::1111", "2606:4700:4700::1001"]
     }
 
     @duplicate_dns_attrs %{
-      dns: "8.8.8.8, 1.1.1.1, 1.1.1.1, ::1, ::1, ::1, ::1, ::1, 8.8.8.8"
+      dns: ["8.8.8.8", "1.1.1.1", "1.1.1.1", "::1", "::1", "::1", "::1", "::1", "8.8.8.8"]
     }
 
     @valid_allowed_ips_attrs %{
       use_default_allowed_ips: false,
-      allowed_ips: "0.0.0.0/0, ::/0, ::0/0, 192.168.1.0/24"
+      allowed_ips: [
+        %Postgrex.INET{address: {0, 0, 0, 0}, netmask: 0},
+        %Postgrex.INET{address: {0, 0, 0, 0, 0, 0, 0, 0}, netmask: 0},
+        %Postgrex.INET{address: {192, 168, 1, 0}, netmask: 24}
+      ]
     }
 
     @valid_endpoint_ipv4_attrs %{
       use_default_endpoint: false,
       endpoint: "5.5.5.5"
-    }
-
-    @valid_endpoint_ipv6_attrs %{
-      use_default_endpoint: false,
-      endpoint: "fd00::1"
     }
 
     @valid_endpoint_host_attrs %{
@@ -172,12 +171,12 @@ defmodule FzHttp.DevicesTest do
     }
 
     @invalid_allowed_ips_attrs %{
-      allowed_ips: "1.1.1.1, 11, foobar"
+      allowed_ips: ["1.1.1.1", "11", "foobar"]
     }
 
     @fields_use_default [
-      %{use_default_allowed_ips: true, allowed_ips: "1.1.1.1"},
-      %{use_default_dns: true, dns: "1.1.1.1"},
+      %{use_default_allowed_ips: true, allowed_ips: ["1.1.1.1"]},
+      %{use_default_dns: true, dns: ["1.1.1.1"]},
       %{use_default_endpoint: true, endpoint: "1.1.1.1"},
       %{use_default_persistent_keepalive: true, persistent_keepalive: 1},
       %{use_default_mtu: true, mtu: 1000}
@@ -199,8 +198,23 @@ defmodule FzHttp.DevicesTest do
     end
 
     test "updates device with valid ipv6 endpoint", %{device: device} do
-      {:ok, test_device} = Devices.update_device(device, @valid_endpoint_ipv6_attrs)
-      assert @valid_endpoint_ipv6_attrs = test_device
+      attrs = %{
+        use_default_endpoint: false,
+        endpoint: "fd00::1"
+      }
+
+      {:ok, test_device} = Devices.update_device(device, attrs)
+      assert test_device.use_default_endpoint == attrs.use_default_endpoint
+      assert test_device.endpoint == attrs.endpoint
+
+      attrs = %{
+        use_default_endpoint: false,
+        endpoint: "[fd00::1]:8080"
+      }
+
+      {:ok, test_device} = Devices.update_device(device, attrs)
+      assert test_device.use_default_endpoint == attrs.use_default_endpoint
+      assert test_device.endpoint == attrs.endpoint
     end
 
     test "updates device with valid host endpoint", %{device: device} do
@@ -224,7 +238,7 @@ defmodule FzHttp.DevicesTest do
       end
     end
 
-    @tag attrs: %{use_default_dns: false, dns: "foobar.com"}
+    @tag attrs: %{use_default_dns: false, dns: ["foobar.com"]}
     test "allows hosts for DNS", %{attrs: attrs, device: device} do
       assert {:ok, _device} = Devices.update_device(device, attrs)
     end
@@ -240,11 +254,7 @@ defmodule FzHttp.DevicesTest do
 
     test "prevents assigning duplicate DNS servers", %{device: device} do
       {:error, changeset} = Devices.update_device(device, @duplicate_dns_attrs)
-
-      assert changeset.errors[:dns] == {
-               "is invalid: duplicates are not allowed: 1.1.1.1, ::1, 8.8.8.8",
-               []
-             }
+      assert "should not contain duplicates" in errors_on(changeset).dns
     end
 
     test "updates device with valid allowed_ips", %{device: device} do
@@ -255,10 +265,8 @@ defmodule FzHttp.DevicesTest do
     test "prevents updating device with invalid allowed_ips", %{device: device} do
       {:error, changeset} = Devices.update_device(device, @invalid_allowed_ips_attrs)
 
-      assert changeset.errors[:allowed_ips] == {
-               "is invalid: 11 is not a valid IPv4 / IPv6 address or CIDR range",
-               []
-             }
+      assert changeset.errors[:allowed_ips] ==
+               {"is invalid", [{:type, {:array, FzHttp.Types.INET}}, {:validation, :cast}]}
     end
   end
 

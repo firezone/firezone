@@ -49,3 +49,18 @@ pre {
   max-width: 600px;
   overflow: hidden;
 }
+
+.switch {
+  &:hover input[type=checkbox]:disabled+.check {
+    background: rgba(181, 181, 181, 1);
+  }
+
+  &:hover input[type=checkbox]:checked:disabled+.check {
+    background: rgba(94, 0, 214, 1);
+  }
+
+  input[type=checkbox]:disabled+.check {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}

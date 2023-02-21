@@ -40,6 +40,11 @@ defmodule FzHttpWeb.ConnCase do
     end
   end
 
+  # def assert_element(html, selector) do
+  #   elements = Floki.find(html, selector)
+
+  # end
+
   def new_conn do
     Phoenix.ConnTest.build_conn()
   end

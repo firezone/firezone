@@ -43,7 +43,7 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.Show do
   def delete_device(device, socket) do
     if socket.assigns.current_user.id == device.user_id &&
          (has_role?(socket.assigns.current_user, :admin) ||
-            FzHttp.Configurations.get!(:allow_unprivileged_device_management)) do
+            FzHttp.Config.fetch_config!(:allow_unprivileged_device_management)) do
       Devices.delete_device(device)
     else
       {:not_authorized}
@@ -51,16 +51,18 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.Show do
   end
 
   defp assigns(device) do
+    defaults = Devices.defaults()
+
     [
       device: device,
       user: Users.fetch_user_by_id!(device.user_id),
       page_title: device.name,
-      allowed_ips: Devices.allowed_ips(device),
+      allowed_ips: Devices.allowed_ips(device, defaults),
       port: FzHttp.Config.fetch_env!(:fz_vpn, :wireguard_port),
-      dns: Devices.dns(device),
-      endpoint: Devices.endpoint(device),
-      mtu: Devices.mtu(device),
-      persistent_keepalive: Devices.persistent_keepalive(device),
+      dns: Devices.dns(device, defaults),
+      endpoint: Devices.endpoint(device, defaults),
+      mtu: Devices.mtu(device, defaults),
+      persistent_keepalive: Devices.persistent_keepalive(device, defaults),
       config: Devices.as_config(device)
     ]
   end

@@ -44,16 +44,18 @@ defmodule FzHttpWeb.DeviceLive.Admin.Show do
   end
 
   defp assigns(device) do
+    defaults = Devices.defaults()
+
     [
       device: device,
       user: Users.fetch_user_by_id!(device.user_id),
       page_title: device.name,
-      allowed_ips: Devices.allowed_ips(device),
-      dns: Devices.dns(device),
-      endpoint: Devices.endpoint(device),
+      allowed_ips: Devices.allowed_ips(device, defaults),
+      dns: Devices.dns(device, defaults),
+      endpoint: Devices.endpoint(device, defaults),
       port: FzHttp.Config.fetch_env!(:fz_vpn, :wireguard_port),
-      mtu: Devices.mtu(device),
-      persistent_keepalive: Devices.persistent_keepalive(device),
+      mtu: Devices.mtu(device, defaults),
+      persistent_keepalive: Devices.persistent_keepalive(device, defaults),
       config: Devices.as_config(device)
     ]
   end

@@ -5,11 +5,8 @@ defmodule FzWall.CLI.Live do
   Rules operate on the nftables forward chain to deny outgoing packets to
   specified IP addresses, ports, and protocols from Firezone device IPs.
   """
-
   import FzWall.CLI.Helpers.Sets
   import FzWall.CLI.Helpers.Nft
-  import FzCommon.FzNet, only: [ip_type: 1]
-  require Logger
 
   @doc """
   Setup
@@ -149,10 +146,9 @@ defmodule FzWall.CLI.Live do
   end
 
   defp proto(ip) do
-    case ip_type("#{ip}") do
-      "IPv4" -> :ip
-      "IPv6" -> :ip6
-      "unknown" -> raise "Unknown protocol."
+    case FzHttp.Types.IP.cast(ip) do
+      {:ok, %{address: address}} when tuple_size(address) == 4 -> :ip
+      {:ok, %{address: address}} when tuple_size(address) == 6 -> :ip6
     end
   end
 

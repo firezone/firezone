@@ -37,7 +37,7 @@ defmodule FzHttpWeb.UserLive.ShowTest do
         "description" => "new_description"
       }
     }
-    @allowed_ips "2.2.2.2"
+    @allowed_ips ["2.2.2.2"]
     @allowed_ips_change %{
       "device" => %{
         "public_key" => @test_pubkey,
@@ -52,7 +52,7 @@ defmodule FzHttpWeb.UserLive.ShowTest do
         "allowed_ips" => @allowed_ips
       }
     }
-    @dns "8.8.8.8, 8.8.4.4"
+    @dns ["8.8.8.8", "8.8.4.4"]
     @dns_change %{
       "device" => %{
         "public_key" => @test_pubkey,
@@ -261,7 +261,10 @@ defmodule FzHttpWeb.UserLive.ShowTest do
       {:ok, _view, html} = live(conn, path)
       path = ~p"/devices/#{device_id(html)}"
       {:ok, _view, html} = live(conn, path)
-      assert html =~ @allowed_ips
+
+      for allowed_ip <- @allowed_ips do
+        assert html =~ allowed_ip
+      end
     end
 
     test "allows dns changes", %{admin_conn: conn, admin_user: user} do
@@ -279,7 +282,10 @@ defmodule FzHttpWeb.UserLive.ShowTest do
       {:ok, _view, html} = live(conn, path)
       path = ~p"/devices/#{device_id(html)}"
       {:ok, _view, html} = live(conn, path)
-      assert html =~ @dns
+
+      for dns <- @dns do
+        assert html =~ dns
+      end
     end
 
     test "allows endpoint changes", %{admin_conn: conn, admin_user: user} do

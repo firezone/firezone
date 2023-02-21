@@ -4,9 +4,9 @@ defmodule FzHttp.Devices.Device do
   """
   use FzHttp, :schema
   import Ecto.Changeset
+  import FzHttp.Config, only: [config_changeset: 3]
   alias FzHttp.Validator
   alias FzHttp.Devices
-  require Logger
 
   @description_max_length 2048
 
@@ -28,11 +28,11 @@ defmodule FzHttp.Devices.Device do
     field :endpoint, :string
     field :mtu, :integer
     field :persistent_keepalive, :integer
-    field :allowed_ips, :string
-    field :dns, :string
-    field :remote_ip, EctoNetwork.INET
-    field :ipv4, EctoNetwork.INET
-    field :ipv6, EctoNetwork.INET
+    field :allowed_ips, {:array, FzHttp.Types.INET}, default: []
+    field :dns, {:array, :string}, default: []
+    field :remote_ip, FzHttp.Types.IP
+    field :ipv4, FzHttp.Types.IP
+    field :ipv6, FzHttp.Types.IP
 
     field :latest_handshake, :utc_datetime_usec
     field :key_regenerated_at, :utc_datetime_usec, read_after_writes: true
@@ -88,11 +88,15 @@ defmodule FzHttp.Devices.Device do
 
   defp changeset(changeset) do
     changeset
-    |> Validator.trim_change(:allowed_ips)
     |> Validator.trim_change(:dns)
     |> Validator.trim_change(:endpoint)
     |> Validator.trim_change(:name)
     |> Validator.trim_change(:description)
+    |> config_changeset(:allowed_ips, :default_client_allowed_ips)
+    |> config_changeset(:dns, :default_client_dns)
+    |> config_changeset(:endpoint, :default_client_endpoint)
+    |> config_changeset(:persistent_keepalive, :default_client_persistent_keepalive)
+    |> config_changeset(:mtu, :default_client_mtu)
     |> Validator.validate_base64(:public_key)
     |> Validator.validate_base64(:preshared_key)
     |> validate_length(:public_key, is: @key_length)
@@ -108,16 +112,6 @@ defmodule FzHttp.Devices.Device do
       persistent_keepalive
       mtu
     ]a)
-    |> Validator.validate_list_of_ips_or_cidrs(:allowed_ips)
-    |> Validator.validate_no_duplicates(:dns)
-    |> validate_number(:persistent_keepalive,
-      greater_than_or_equal_to: 0,
-      less_than_or_equal_to: 120
-    )
-    |> validate_number(:mtu,
-      greater_than_or_equal_to: 576,
-      less_than_or_equal_to: 1500
-    )
     |> prepare_changes(fn changeset ->
       changeset
       |> maybe_put_default_ip(:ipv4)
@@ -146,13 +140,13 @@ defmodule FzHttp.Devices.Device do
 
   defp put_default_ip(changeset, field) do
     cidr_string = wireguard_network(field)
-    {:ok, cidr_inet} = EctoNetwork.INET.cast(cidr_string)
+    {:ok, cidr_inet} = FzHttp.Types.CIDR.cast(cidr_string)
     cidr = CIDR.parse(cidr_string)
     offset = Enum.random(2..(cidr.hosts - 2))
 
     {:ok, gateway_address} =
       FzHttp.Config.fetch_env!(:fz_http, :"wireguard_#{field}_address")
-      |> EctoNetwork.INET.cast()
+      |> FzHttp.Types.IP.cast()
 
     Devices.Device.Query.next_available_address(cidr_inet, offset, [gateway_address])
     |> FzHttp.Repo.one()
@@ -174,12 +168,12 @@ defmodule FzHttp.Devices.Device do
 
   defp ipv4_address do
     FzHttp.Config.fetch_env!(:fz_http, :wireguard_ipv4_address)
-    |> EctoNetwork.INET.cast()
+    |> FzHttp.Types.IP.cast()
   end
 
   defp ipv6_address do
     FzHttp.Config.fetch_env!(:fz_http, :wireguard_ipv6_address)
-    |> EctoNetwork.INET.cast()
+    |> FzHttp.Types.IP.cast()
   end
 
   defp validate_max_devices(changeset) do
