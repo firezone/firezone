@@ -9,12 +9,12 @@ defmodule FzHttpWeb.HeaderHelpers do
 
   def clients, do: FzHttp.Config.fetch_env!(:fz_http, :private_clients)
 
-  def proxied?, do: not (external_trusted_proxies() == false)
+  def proxied?, do: external_trusted_proxies() != []
 
   def remote_ip_opts do
     [
       headers: @remote_ip_headers,
-      proxies: external_trusted_proxies(),
+      proxies: Enum.join(external_trusted_proxies(), ", "),
       clients: clients()
     ]
   end
