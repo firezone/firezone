@@ -24,7 +24,7 @@ defmodule FzHttp.Repo.Migrations.ChangeDnsAndAllowedIpsToInetArray do
     execute("""
     UPDATE configurations
     SET default_client_dns = string_to_array(trim(both ' ' from regexp_replace(default_client_dns_string, '\s*,\s*', ',')), ','),
-        default_client_allowed_ips = string_to_array(default_client_allowed_ips_string, ',')::inet[]
+        default_client_allowed_ips = string_to_array(trim(both ' ' from regexp_replace(default_client_allowed_ips_string, '\s*,\s*', ',')), ',')::inet[]
     """)
 
     execute("""
