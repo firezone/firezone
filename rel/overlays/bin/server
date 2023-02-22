@@ -1,6 +1,6 @@
 #!/bin/sh
 
-source ./bootstrap
+source "$(dirname -- "$0")/bootstrap"
 
 ./firezone eval FzHttp.Release.migrate
 
