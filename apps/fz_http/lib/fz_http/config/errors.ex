@@ -92,7 +92,7 @@ defmodule FzHttp.Config.Errors do
 
   def legacy_key_used(key, legacy_key, removed_at) do
     Logger.warn(
-      "A legacy configuration option '#{legacy_key}' is used and it will be removed in v#{removed_at}." <>
+      "A legacy configuration option '#{legacy_key}' is used and it will be removed in v#{removed_at}. " <>
         "Please use '#{key}' configuration option instead."
     )
   end
