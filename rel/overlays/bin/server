@@ -1,3 +1,11 @@
 #!/bin/sh
+
 source ./bootstrap
+
+./firezone eval FzHttp.Release.migrate
+
+if [ "$RESET_ADMIN_ON_BOOT" = "true" ]; then
+  ./firezone eval FzHttp.Release.create_admin_user
+fi
+
 exec ./firezone start
