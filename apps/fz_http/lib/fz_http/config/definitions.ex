@@ -694,7 +694,7 @@ defmodule FzHttp.Config.Definitions do
     default: "eth0"
   )
 
-  defconfig(:gateway_nft_path, :string, default: "nft")
+  defconfig(:gateway_nft_path, :string, default: "nft", legacy_keys: [{:env, "NFT_PATH", "0.8"}])
 
   ##############################################
   ## HTTP Client Settings
