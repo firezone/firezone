@@ -2,6 +2,15 @@
 set -ex
 # This script should be run from the app root
 
+function print_logs() {
+  sudo cat /var/log/firezone/nginx/current
+  sudo cat /var/log/firezone/postgresql/current
+  sudo cat /var/log/firezone/phoenix/current
+  sudo cat /var/log/firezone/wireguard/current
+}
+
+trap print_logs EXIT
+
 # Disable telemetry
 sudo mkdir -p /opt/firezone/
 sudo touch /opt/firezone/.disable-telemetry
@@ -36,10 +45,7 @@ sudo -E firezone-ctl reconfigure
 sleep 5
 
 # Helpful for debugging
-sudo cat /var/log/firezone/nginx/current
-sudo cat /var/log/firezone/postgresql/current
-sudo cat /var/log/firezone/phoenix/current
-sudo cat /var/log/firezone/wireguard/current
+print_logs
 
 # Create admin; requires application to be up
 sudo -E firezone-ctl create-or-reset-admin
