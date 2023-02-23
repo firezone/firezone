@@ -5,13 +5,13 @@ defmodule FzHttpWeb.HeaderHelpersTest do
   describe "remote_ip_opts/0" do
     test "returns a list of options for remote_ip/2" do
       FzHttp.Config.put_env_override(:fz_http, :external_trusted_proxies, [
-        "127.0.0.1",
-        "10.10.10.0/16"
+        %Postgrex.INET{address: {127, 0, 0, 1}, netmask: nil},
+        %Postgrex.INET{address: {10, 10, 10, 0}, netmask: 16}
       ])
 
       assert remote_ip_opts() == [
                headers: ["x-forwarded-for"],
-               proxies: "127.0.0.1, 10.10.10.0/16",
+               proxies: ["127.0.0.1", "10.10.10.0/16"],
                clients: ["172.28.0.0/16"]
              ]
     end
