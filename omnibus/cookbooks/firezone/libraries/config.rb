@@ -225,7 +225,8 @@ class Firezone
         'DATABASE_PARAMETERS' => attributes['database']['parameters'].to_json,
         'PHOENIX_LISTEN_ADDRESS' => attributes['phoenix']['listen_address'].to_s,
         'PHOENIX_HTTP_PORT' => attributes['phoenix']['port'].to_s,
-        'PHOENIX_EXTERNAL_TRUSTED_PROXIES' => Chef::JSONCompat.to_json(attributes['phoenix']['external_trusted_proxies']),
+        'PHOENIX_EXTERNAL_TRUSTED_PROXIES' =>
+          Chef::JSONCompat.to_json(attributes['phoenix']['external_trusted_proxies']),
         'PHOENIX_PRIVATE_CLIENTS' => Chef::JSONCompat.to_json(attributes['phoenix']['private_clients']),
         'EXTERNAL_URL' => attributes['external_url'] || fqdn_url,
         'DEFAULT_ADMIN_EMAIL' => attributes['admin_email'],
