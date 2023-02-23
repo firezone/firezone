@@ -10,7 +10,10 @@ defmodule FzHttpWeb.HeaderHelpers do
     |> Enum.map(&to_string/1)
   end
 
-  def clients, do: FzHttp.Config.fetch_env!(:fz_http, :private_clients)
+  def clients do
+    FzHttp.Config.fetch_env!(:fz_http, :private_clients)
+    |> Enum.map(&to_string/1)
+  end
 
   def proxied?, do: external_trusted_proxies() != []
 
