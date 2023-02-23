@@ -10,7 +10,7 @@ defmodule FzHttp.RulesTest do
     })
 
     FzHttp.Config.put_env_override(:wireguard_ipv6_network, %Postgrex.INET{
-      address: {64768, 0, 0, 0, 0, 0, 0, 0},
+      address: {64_768, 0, 0, 0, 0, 0, 0, 0},
       netmask: 106
     })
 
