@@ -26,22 +26,33 @@ defmodule FzHttp.Release do
   def create_admin_user do
     boot_database_app()
 
-    reply =
-      if Repo.exists?(from u in User, where: u.email == ^email()) do
-        change_password(email(), default_password())
-        reset_role(email(), :admin)
+    if Repo.exists?(from u in User, where: u.email == ^email()) do
+      change_password(email(), default_password())
+      {:ok, user} = reset_role(email(), :admin)
+
+      # Notify the user
+      Logger.info("Password for user specified by ADMIN_EMAIL reset to DEFAULT_ADMIN_PASSWORD!")
+
+      {:ok, user}
+    else
+      with {:ok, user} <-
+             Users.create_admin_user(%{
+               email: email(),
+               password: default_password(),
+               password_confirmation: default_password()
+             }) do
+        # Notify the user
+        Logger.info(
+          "An admin user specified by ADMIN_EMAIL is created with a DEFAULT_ADMIN_PASSWORD!"
+        )
+
+        {:ok, user}
       else
-        Users.create_admin_user(%{
-          email: email(),
-          password: default_password(),
-          password_confirmation: default_password()
-        })
+        {:error, changeset} ->
+          Logger.error("Failed to create admin user: #{inspect(changeset.errors)}")
+          {:error, changeset}
       end
-
-    # Notify the user
-    Logger.info("Password for user specified by ADMIN_EMAIL reset to DEFAULT_ADMIN_PASSWORD!")
-
-    reply
+    end
   end
 
   def create_api_token(device \\ :stdio) do

@@ -83,7 +83,8 @@ defmodule FzHttp.DevicesTest do
     end
 
     test "soft limit max network range for IPv6", %{device: device} do
-      FzHttp.Config.put_env_override(:wireguard_ipv6_network, "fd00::/20")
+      {:ok, cidr} = FzHttp.Types.CIDR.cast("fd00::/20")
+      FzHttp.Config.put_env_override(:wireguard_ipv6_network, cidr)
       attrs = %{@device_attrs | ipv4: nil, ipv6: nil, user_id: device.user_id}
       assert {:ok, _device} = Devices.create_device(attrs)
     end
@@ -91,7 +92,8 @@ defmodule FzHttp.DevicesTest do
     test "returns error when device IP can't be assigned due to CIDR pool exhaustion", %{
       device: device
     } do
-      FzHttp.Config.put_env_override(:wireguard_ipv4_network, "10.3.2.0/30")
+      {:ok, cidr} = FzHttp.Types.CIDR.cast("10.3.2.0/30")
+      FzHttp.Config.put_env_override(:wireguard_ipv4_network, cidr)
       attrs = %{@device_attrs | ipv4: nil, ipv6: nil, user_id: device.user_id}
 
       assert {:ok, _device} = Devices.create_device(attrs)

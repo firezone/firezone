@@ -157,14 +157,13 @@ defmodule FzHttp.Devices.Device do
   end
 
   defp wireguard_network(field) do
-    cidr_string = FzHttp.Config.fetch_env!(:fz_http, :"wireguard_#{field}_network")
-    [inet, network] = String.split(cidr_string, "/")
-    network = String.to_integer(network)
-    "#{inet}/#{limit_cidr_range(field, network)}"
+    cidr = FzHttp.Config.fetch_env!(:fz_http, :"wireguard_#{field}_network")
+    cidr = %{cidr | netmask: limit_cidr_netmask(field, cidr.netmask)}
+    FzHttp.Types.CIDR.to_string(cidr)
   end
 
-  defp limit_cidr_range(:ipv4, network), do: network
-  defp limit_cidr_range(:ipv6, network), do: max(network, 70)
+  defp limit_cidr_netmask(:ipv4, network), do: network
+  defp limit_cidr_netmask(:ipv6, network), do: max(network, 70)
 
   defp ipv4_address do
     FzHttp.Config.fetch_env!(:fz_http, :wireguard_ipv4_address)

@@ -1,3 +1,4 @@
 #!/bin/sh
+set -e
 source "$(dirname -- "$0")/bootstrap"
 exec ./firezone eval FzHttp.Release.create_api_token

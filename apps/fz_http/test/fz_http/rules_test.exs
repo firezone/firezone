@@ -4,8 +4,15 @@ defmodule FzHttp.RulesTest do
   alias FzHttp.Rules
 
   setup do
-    FzHttp.Config.put_env_override(:wireguard_ipv4_network, "100.64.0.0/10")
-    FzHttp.Config.put_env_override(:wireguard_ipv6_network, "fd00::0/106")
+    FzHttp.Config.put_env_override(:wireguard_ipv4_network, %Postgrex.INET{
+      address: {100, 64, 0, 0},
+      netmask: 10
+    })
+
+    FzHttp.Config.put_env_override(:wireguard_ipv6_network, %Postgrex.INET{
+      address: {64_768, 0, 0, 0, 0, 0, 0, 0},
+      netmask: 106
+    })
 
     :ok
   end

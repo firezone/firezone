@@ -157,7 +157,6 @@ defmodule FzHttp.Config.Definitions do
       changeset
       |> FzHttp.Validator.validate_uri(key)
       |> FzHttp.Validator.normalize_url(key)
-      |> to_string()
     end
   )
 
@@ -684,8 +683,10 @@ defmodule FzHttp.Config.Definitions do
   )
 
   defconfig(:wireguard_private_key_path, :string,
-    default: "/var/firezone/private_key",
-    changeset: &FzHttp.Validator.validate_file(&1, &2)
+    default: "/var/firezone/private_key"
+    # We don't check if the file exists, because it is generated on
+    # the first boot.
+    # changeset: &FzHttp.Validator.validate_file(&1, &2)
   )
 
   defconfig(:wireguard_interface_name, :string, default: "wg-firezone")
