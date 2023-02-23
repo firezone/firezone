@@ -59,7 +59,7 @@ reliance on it, and dedicate those resources to containerized deployments
 instead.</p><p><strong>Note</strong>: Beginning with 0.6, Omnibus support in Firezone is <strong>deprecated</strong>.
 We'll be removing support for it completely in a future Firezone release.</p><h4 class="anchor anchorWithStickyNavbar_LWe7" id="how-to-migrate-from-omnibus-to-docker">How to migrate from Omnibus to Docker<a href="#how-to-migrate-from-omnibus-to-docker" class="hash-link" aria-label="Direct link to How to migrate from Omnibus to Docker" title="Direct link to How to migrate from Omnibus to Docker">​</a></h4><p>We've written an in-depth migration guide to migrate your instance from Omnibus
 to Docker:</p><p><a href="https://www.firezone.dev/docs/administer/migrate" target="_blank" rel="noopener noreferrer">https://www.firezone.dev/docs/administer/migrate</a></p><p>Most instances will migrate without issue. If you're running Firezone in production
-for your team or business, <a href="/sales/">contact us</a>
+for your team or business, <a href="/contact/support/">contact us</a>
 so we can better understand how we can help with your migration.</p><h3 class="anchor anchorWithStickyNavbar_LWe7" id="saml-20">SAML 2.0<a href="#saml-20" class="hash-link" aria-label="Direct link to SAML 2.0" title="Direct link to SAML 2.0">​</a></h3><p>Also in 0.6 is preliminary support for SAML 2.0 authentication. You'll need the
 IdP Metadata XML document to set it up. In most cases the identity provider
 will provide it for you. If not, you should be able to build it manually or
@@ -69,8 +69,7 @@ It's simpler, tends to be implemented more consistently across identity provider
 and much easier to debug when things go wrong.</p><p>Speaking of OIDC, 0.6 also introduces a couple improvements to make integrating
 your identity provider a more pleasant experience:</p><ul><li><code>auto_create_oidc_users</code> is now a per-provider configuration setting. Enable or disable
 autocreation of users when logging into Firezone via that provider.</li><li>New web form for entering OIDC details, with improved validation and error checking:</li></ul><center><img loading="lazy" width="500" src="https://user-images.githubusercontent.com/167144/196735853-b2c8d505-285f-40ac-9d73-4b568358c5c3.png" alt="OIDC Form" class="img_ev3q"></center><h4 class="anchor anchorWithStickyNavbar_LWe7" id="idp-not-supported">IdP not supported?<a href="#idp-not-supported" class="hash-link" aria-label="Direct link to IdP not supported?" title="Direct link to IdP not supported?">​</a></h4><p>If your IdP isn't supported or you'd like to learn about your options for
-custom integrations, <a href="/sales/">contact us</a> to
-learn more about our Business plan features.</p>]]></content:encoded>
+custom integrations, <a href="/contact/support/">contact us</a> to learn more about custom integrations.</p>]]></content:encoded>
             <category>release</category>
             <category>docker</category>
             <category>saml</category>
@@ -85,16 +84,7 @@ learn more about our Business plan features.</p>]]></content:encoded>
 off with a release announcement. So without further ado, we're excited to
 announce: Firezone <a href="https://github.com/firezone/firezone/releases" target="_blank" rel="noopener noreferrer">0.5.0 is
 here</a>! &nbsp;It's packed with new
-features, bug fixes, and other improvements — more on that below.</p><p>But first, we'd like to clarify our plan for plan for pricing.</p><h3 class="anchor anchorWithStickyNavbar_LWe7" id="free-as-in-forever">Free as in… forever?<a href="#free-as-in-forever" class="hash-link" aria-label="Direct link to Free as in… forever?" title="Direct link to Free as in… forever?">​</a></h3><p>One question we often get asked is, how much does Firezone cost? Well, now
-we're able to offer some clarification around pricing. <strong>Starting with 0.5.0,
-Firezone will be entering public beta.</strong> What's that mean for you? Two things:</p><ul><li>We'll be experimenting with different tiers and pricing structures based on
-an open-core business model. We plan to <strong>always</strong> have a version of the
-product free to use, forever. See our <a href="https://firezone.dev/pricing" target="_blank" rel="noopener noreferrer">new pricing
-page</a> for more information.</li><li><strong>Edit</strong>: The Beta program is now closed. Thanks to all who participated!
-<del>Anyone participating in the public beta program <strong>will receive a license key good
-for up to one year of</strong> Firezone Team or Business. It's our way of saying
-thanks for being an early adopter and joining the program.</del></li></ul><p>Now that that's out of the way, let's talk about all the new features in
-0.5.0!</p><h3 class="anchor anchorWithStickyNavbar_LWe7" id="user-scoped-egress-rules">User-scoped egress rules<a href="#user-scoped-egress-rules" class="hash-link" aria-label="Direct link to User-scoped egress rules" title="Direct link to User-scoped egress rules">​</a></h3><p>Rules can now optionally receive a user scope, limiting the rule's application
+features, bug fixes, and other improvements — more on that below.</p><h3 class="anchor anchorWithStickyNavbar_LWe7" id="user-scoped-egress-rules">User-scoped egress rules<a href="#user-scoped-egress-rules" class="hash-link" aria-label="Direct link to User-scoped egress rules" title="Direct link to User-scoped egress rules">​</a></h3><p>Rules can now optionally receive a user scope, limiting the rule's application
 only to devices owned by that user. This allows you to selectively allow or
 deny traffic from a particular user to an IP, set of IPs, or CIDR range.</p><h3 class="anchor anchorWithStickyNavbar_LWe7" id="auto-renewed-ecdsa-backed-acme-powered-ssl-certificates">Auto-renewed, ECDSA-backed, ACME-powered SSL certificates<a href="#auto-renewed-ecdsa-backed-acme-powered-ssl-certificates" class="hash-link" aria-label="Direct link to Auto-renewed, ECDSA-backed, ACME-powered SSL certificates" title="Direct link to Auto-renewed, ECDSA-backed, ACME-powered SSL certificates">​</a></h3><p>One of our most-requested features is now available — Firezone 0.5.0 supports
 ACME SSL certificate renewal backed by Let's Encrypt's new ECDSA key type.
@@ -145,8 +135,7 @@ package sizes to be reduced even further moving forward.</p><h3 class="anchor an
 customization experience, it's now possible to change the landing page logo.
 Upload an image up to 1 MB or specify a URL to an image your end users will see
 when landing at your Firezone portal.</p><h2 class="anchor anchorWithStickyNavbar_LWe7" id="conclusion">Conclusion<a href="#conclusion" class="hash-link" aria-label="Direct link to Conclusion" title="Direct link to Conclusion">​</a></h2><p>That's all we've got for now. If you'd like to spin up Firezone to try it out,
-head to the <a href="/docs/deploy/">deploy guide</a> in our docs.</p><p>If you're interested in using Firezone in production for your Team or Business,
-<a href="/sales/">contact us</a> about our Business tier.</p>]]></content:encoded>
+head to the <a href="/docs/deploy/">deploy guide</a> in our docs.</p>]]></content:encoded>
             <category>release</category>
             <category>beta</category>
             <category>acme</category>
