@@ -212,8 +212,8 @@ class Firezone
 
       # NOTE: All these variables must be Strings
       env = {
-        'EGRESS_INTERFACE' => attributes['egress_interface'],
-        'NFT_PATH' => "#{attributes['install_directory']}/embedded/sbin/nft",
+        'GATEWAY_EGRESS_INTERFACE' => attributes['egress_interface'],
+        'GATEWAY_NFT_PATH' => "#{attributes['install_directory']}/embedded/sbin/nft",
         'MIX_ENV' => 'prod',
         'DATABASE_NAME' => attributes['database']['name'],
         'DATABASE_USER' => attributes['database']['user'],
@@ -224,16 +224,16 @@ class Firezone
         'DATABASE_SSL_OPTS' => attributes['database']['ssl_opts'].to_json,
         'DATABASE_PARAMETERS' => attributes['database']['parameters'].to_json,
         'PHOENIX_LISTEN_ADDRESS' => attributes['phoenix']['listen_address'].to_s,
-        'PHOENIX_PORT' => attributes['phoenix']['port'].to_s,
-        'EXTERNAL_TRUSTED_PROXIES' => Chef::JSONCompat.to_json(attributes['phoenix']['external_trusted_proxies']),
-        'PRIVATE_CLIENTS' => Chef::JSONCompat.to_json(attributes['phoenix']['private_clients']),
+        'PHOENIX_HTTP_PORT' => attributes['phoenix']['port'].to_s,
+        'PHOENIX_EXTERNAL_TRUSTED_PROXIES' => Chef::JSONCompat.to_json(attributes['phoenix']['external_trusted_proxies']),
+        'PHOENIX_PRIVATE_CLIENTS' => Chef::JSONCompat.to_json(attributes['phoenix']['private_clients']),
         'EXTERNAL_URL' => attributes['external_url'] || fqdn_url,
-        'ADMIN_EMAIL' => attributes['admin_email'],
+        'DEFAULT_ADMIN_EMAIL' => attributes['admin_email'],
         'WIREGUARD_INTERFACE_NAME' => attributes['wireguard']['interface_name'],
         'WIREGUARD_PORT' => attributes['wireguard']['port'].to_s,
         'WIREGUARD_MTU' => attributes['wireguard']['mtu'].to_s,
-        'WIREGUARD_ENDPOINT' => attributes['wireguard']['endpoint'].to_s,
-        'WIREGUARD_DNS' => attributes['wireguard']['dns'].to_s,
+        'DEFAULT_CLIENT_ENDPOINT' => attributes['wireguard']['endpoint'].to_s,
+        'DEFAULT_CLIENT_DNS' => attributes['wireguard']['dns'].to_s,
         'WIREGUARD_ALLOWED_IPS' => attributes['wireguard']['allowed_ips'].to_s,
         'WIREGUARD_PERSISTENT_KEEPALIVE' => attributes['wireguard']['persistent_keepalive'].to_s,
         'WIREGUARD_IPV4_ENABLED' => attributes['wireguard']['ipv4']['enabled'].to_s,
@@ -256,8 +256,8 @@ class Firezone
         'CONNECTIVITY_CHECKS_INTERVAL' => attributes['connectivity_checks']['interval'].to_s,
 
         # Outbound Emails
-        'OUTBOUND_EMAIL_PROVIDER' => attributes['outbound_email']['provider'],
-        'OUTBOUND_EMAIL_CONFIGS' => attributes['outbound_email']['configs'].to_json,
+        'OUTBOUND_EMAIL_ADAPTER' => attributes['outbound_email']['provider'],
+        'OUTBOUND_EMAIL_ADAPTER_OPTS' => attributes['outbound_email']['configs'].to_json,
         'OUTBOUND_EMAIL_FROM' => attributes['outbound_email']['from'],
 
         # XXX: Remove this in the future when we're fairly sure that users won't upgrade across
@@ -271,10 +271,11 @@ class Firezone
         'LOCAL_AUTH_ENABLED' => attributes['authentication']['local']['enabled'].to_s,
 
         'DISABLE_VPN_ON_OIDC_ERROR' => attributes['authentication']['disable_vpn_on_oidc_error'].to_s,
-        'AUTO_CREATE_OIDC_USERS' => attributes['authentication']['auto_create_oidc_users'].to_s,
 
         # OpenID Connect auth settings are serialized to json for consumption by fz_http
-        'AUTH_OIDC_JSON' => attributes['authentication']['oidc'].to_json,
+        'OPENID_CONNECT_PROVIDERS' => attributes['authentication']['oidc'].to_json,
+        # SAML auth settings are serialized to json for consumption by fz_http
+        'SAML_IDENTITY_PROVIDERS' => attributes['authentication']['saml'].to_json,
 
         # secrets
         'GUARDIAN_SECRET_KEY' => attributes['guardian_secret_key'],
