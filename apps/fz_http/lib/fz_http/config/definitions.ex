@@ -157,7 +157,6 @@ defmodule FzHttp.Config.Definitions do
       changeset
       |> FzHttp.Validator.validate_uri(key)
       |> FzHttp.Validator.normalize_url(key)
-      |> to_string()
     end
   )
 

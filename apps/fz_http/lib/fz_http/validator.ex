@@ -48,7 +48,7 @@ defmodule FzHttp.Validator do
       scheme = uri.scheme || "https"
       port = URI.default_port(scheme)
       path = uri.path || "/"
-      put_change(changeset, field, %{uri | scheme: scheme, port: port, path: path})
+      put_change(changeset, field, to_string(%{uri | scheme: scheme, port: port, path: path}))
     else
       :error ->
         changeset
