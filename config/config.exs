@@ -44,11 +44,19 @@ config :fz_http, FzHttpWeb.Endpoint,
 
 config :fz_http,
   wireguard_ipv4_enabled: true,
-  wireguard_ipv4_network: "100.64.0.0/10",
-  wireguard_ipv4_address: "100.64.0.1",
+  wireguard_ipv4_network: %{__struct__: Postgrex.INET, address: {100, 64, 0, 0}, netmask: 10},
+  wireguard_ipv4_address: %{__struct__: Postgrex.INET, address: {100, 64, 0, 1}, netmask: nil},
   wireguard_ipv6_enabled: true,
-  wireguard_ipv6_network: "fd00::/106",
-  wireguard_ipv6_address: "fd00::1"
+  wireguard_ipv6_network: %{
+    __struct__: Postgrex.INET,
+    address: {64768, 0, 0, 0, 0, 0, 0, 0},
+    netmask: 106
+  },
+  wireguard_ipv6_address: %{
+    __struct__: Postgrex.INET,
+    address: {64768, 0, 0, 0, 0, 0, 0, 1},
+    netmask: nil
+  }
 
 config :fz_http,
   saml_entity_id: "urn:firezone.dev:firezone-app",
@@ -57,7 +65,7 @@ config :fz_http,
 
 config :fz_http,
   external_trusted_proxies: [],
-  private_clients: ["172.28.0.0/16"]
+  private_clients: [%{__struct__: Postgrex.INET, address: {172, 28, 0, 0}, netmask: 16}]
 
 config :fz_http,
   telemetry_id: "firezone-dev",
