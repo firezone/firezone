@@ -92,6 +92,10 @@ defmodule FzHttp.MixProject do
       # Used in Swoosh SMTP adapter
       {:gen_smtp, "~> 1.0"},
 
+      # Runtime debugging
+      {:recon, "~> 2.5"},
+      {:observer_cli, "~> 1.7"},
+
       # Test and dev deps
       {:bypass, "~> 2.1", only: :test},
       {:wallaby, "~> 0.30.0", only: :test},
