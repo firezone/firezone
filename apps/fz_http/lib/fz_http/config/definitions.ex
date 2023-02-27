@@ -190,7 +190,7 @@ defmodule FzHttp.Config.Definitions do
   application is behind a reverse proxy by skipping a trusted proxy IP
   from a list of possible source IPs.
   """
-  defconfig(:phoenix_external_trusted_proxies, {:array, ",", {:one_of, [Types.IP, Types.CIDR]}},
+  defconfig(:phoenix_external_trusted_proxies, {:json_array, {:one_of, [Types.IP, Types.CIDR]}},
     default: [],
     legacy_keys: [{:env, "EXTERNAL_TRUSTED_PROXIES", "0.9"}]
   )
@@ -202,7 +202,7 @@ defmodule FzHttp.Config.Definitions do
   application is behind a reverse proxy by picking a trusted client IP
   from a list of possible source IPs.
   """
-  defconfig(:phoenix_private_clients, {:array, ",", {:one_of, [Types.IP, Types.CIDR]}},
+  defconfig(:phoenix_private_clients, {:json_array, {:one_of, [Types.IP, Types.CIDR]}},
     default: [],
     legacy_keys: [{:env, "PRIVATE_CLIENTS", "0.9"}]
   )
@@ -234,7 +234,7 @@ defmodule FzHttp.Config.Definitions do
   @doc """
   Password that will be used to access the PostgreSQL database.
   """
-  defconfig(:database_password, :string, sensitive: true)
+  defconfig(:database_password, :string, default: nil, sensitive: true)
 
   @doc """
   Size of the connection pool to the PostgreSQL database.
@@ -683,8 +683,10 @@ defmodule FzHttp.Config.Definitions do
   )
 
   defconfig(:wireguard_private_key_path, :string,
-    default: "/var/firezone/private_key",
-    changeset: &FzHttp.Validator.validate_file(&1, &2)
+    default: "/var/firezone/private_key"
+    # We don't check if the file exists, because it is generated on
+    # the first boot.
+    # changeset: &FzHttp.Validator.validate_file(&1, &2)
   )
 
   defconfig(:wireguard_interface_name, :string, default: "wg-firezone")
@@ -694,7 +696,7 @@ defmodule FzHttp.Config.Definitions do
     default: "eth0"
   )
 
-  defconfig(:gateway_nft_path, :string, default: "nft")
+  defconfig(:gateway_nft_path, :string, default: "nft", legacy_keys: [{:env, "NFT_PATH", "0.8"}])
 
   ##############################################
   ## HTTP Client Settings

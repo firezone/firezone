@@ -138,17 +138,17 @@ defmodule FzWall.CLI.Live do
     end)
   end
 
-  # xxx: here we could add multiple devices/rules in a single nft call
+  # XXX: here we could add multiple devices/rules in a single nft call
   def restore(%{users: users, devices: devices, rules: rules}) do
     Enum.each(users, &add_user/1)
     Enum.each(devices, &add_device/1)
     Enum.each(rules, &add_rule/1)
   end
 
-  defp proto(ip) do
-    case FzHttp.Types.IP.cast(ip) do
+  def proto(inet_str) do
+    case FzHttp.Types.INET.cast(inet_str) do
       {:ok, %{address: address}} when tuple_size(address) == 4 -> :ip
-      {:ok, %{address: address}} when tuple_size(address) == 6 -> :ip6
+      {:ok, %{address: address}} when tuple_size(address) == 8 -> :ip6
     end
   end
 
