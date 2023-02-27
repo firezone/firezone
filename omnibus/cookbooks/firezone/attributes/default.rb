@@ -117,11 +117,6 @@ default['firezone']['sysvinit_id'] = 'SUP'
 # Local email/password authentication is enabled by default
 default['firezone']['authentication']['local']['enabled'] = true
 
-# Automatically create users siging in from OIDC for the first time. Disable this
-# and manually create them (leaving their password blank) if you wish to only
-# allow existing certain existing users to sign in.
-default['firezone']['authentication']['auto_create_oidc_users'] = true
-
 # OIDC Authentication
 #
 # Firezone can disable a user's VPN if there's any error detected trying
@@ -135,15 +130,16 @@ default['firezone']['authentication']['disable_vpn_on_oidc_error'] = false
 # Any OpenID Connect provider can be used here.
 # Multiple OIDC configs can be added to the same Firezone instance.
 # This is an example using Google and Okta as an SSO identity provider.
-# default['firezone']['authentication']['oidc'] = {
-#   google: {
+# default['firezone']['authentication']['oidc'] = [
+#   {
 #     discovery_document_uri: "https://accounts.google.com/.well-known/openid-configuration",
 #     client_id: "<GOOGLE_CLIENT_ID>",
 #     client_secret: "<GOOGLE_CLIENT_SECRET>",
 #     redirect_uri: "https://firezone.example.com/auth/oidc/google/callback/",
 #     response_type: "code",
 #     scope: "openid email profile",
-#     label: "Google"
+#     label: "Google",
+#     auto_create_users: true
 #   },
 #   okta: {
 #     discovery_document_uri: "https://<OKTA_DOMAIN>/.well-known/openid-configuration",
@@ -152,10 +148,30 @@ default['firezone']['authentication']['disable_vpn_on_oidc_error'] = false
 #     redirect_uri: "https://firezone.example.com/auth/oidc/okta/callback/",
 #     response_type: "code",
 #     scope: "openid email profile offline_access",
-#     label: "Okta"
+#     label: "Okta",
+#     auto_create_users: true
 #   }
-# }
-default['firezone']['authentication']['oidc'] = {}
+# ]
+default['firezone']['authentication']['oidc'] = []
+
+# SAML Authentication providers
+#
+# Example adding an OKTA provider:
+#
+# default['firezone']['authentication']['saml'] = [
+#   {
+#     "auto_create_users": false,
+#     "base_url": "https://saml",
+#     "id": "okta",
+#     "label": "okta",
+#     "metadata": "<?xml version="1.0"?>...",
+#     "sign_metadata": false,
+#     "sign_requests": false,
+#     "signed_assertion_in_resp": false,
+#     "signed_envelopes_in_resp": false
+#   }
+# ]
+default['firezone']['authentication']['saml'] = []
 
 # ## Custom Reverse Proxy
 #

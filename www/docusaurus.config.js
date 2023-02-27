@@ -63,7 +63,7 @@ const config = {
         docs: {
           routeBasePath: "/docs",
           sidebarPath: require.resolve("./sidebars.js"),
-          editUrl: "https://github.com/firezone/firezone/tree/master/www/docs",
+          editUrl: "https://github.com/firezone/firezone/blob/master/www/",
           docLayoutComponent: "@theme/DocPage",
         },
         blog: {
@@ -99,16 +99,16 @@ const config = {
             label: "Blog",
             position: "left",
           },
+          // {
+          //   href: "/pricing",
+          //   label: "Pricing",
+          //   position: "left",
+          // },
           {
-            href: "/pricing",
-            label: "Pricing",
-            position: "left",
-          },
-          {
-            href: "/sales",
-            label: "Contact sales",
+            href: "/contact/support",
+            label: "Contact support",
             position: "right",
-            "aria-label": "Contact sales",
+            "aria-label": "Contact support",
           },
           {
             html: '<img alt="GitHub Repo stars" src="https://img.shields.io/github/stars/firezone/firezone?label=Stars&amp;style=social" style="margin-top: 6px;" height="24">',
@@ -128,10 +128,10 @@ const config = {
                 label: "Home",
                 href: "/",
               },
-              {
-                label: "Pricing",
-                href: "/pricing",
-              },
+              // {
+              //   label: "Pricing",
+              //   href: "/pricing",
+              // },
             ],
           },
           {
@@ -167,7 +167,7 @@ const config = {
         // The application ID provided by Algolia
         appId: "XXPZ9QVGFB",
 
-        start_urls: ["https://www.firezone.dev/"],
+        start_urls: ["https://www.firezone.dev/docs"],
 
         sitemap_urls: ["https://www.firezone.dev/sitemap.xml"],
 
