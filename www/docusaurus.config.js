@@ -193,6 +193,14 @@ const config = {
             "wireguard, vpn, firewall, remote access, network, documentation",
         },
       ],
+      announcementBar: {
+        id: 'firezone_cloud',
+        content:
+          '🔥 Firezone Cloud is fully managed and simpler to maintain. <a target="_blank" href="https://e04kusl9oz5.typeform.com/to/mayJjA0u">Join the waitlist.</a>',
+        backgroundColor: '#3400c2',
+        textColor: '#fff',
+        isCloseable: true,
+      },
     }),
 };
 
