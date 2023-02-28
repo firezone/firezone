@@ -24,6 +24,7 @@ defmodule DocsGenerator do
     )
 
     w!(file, "---")
+    w!(file, "")
 
     with {:ok, doc} <- Definition.fetch_doc(module) do
       w!(file, doc)
