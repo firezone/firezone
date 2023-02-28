@@ -184,6 +184,20 @@ defmodule FzHttp.Config.Definitions do
   )
 
   @doc """
+  Allows to override Cowboy HTTP server options.
+
+  Keep in mind though changing those limits can pose a security risk. Other times,
+  browsers and proxies along the way may have equally strict limits, which means
+  the request will still fail or the URL will be pruned.
+
+  You can see all supported options at https://ninenines.eu/docs/en/cowboy/2.5/manual/cowboy_http/.
+  """
+  defconfig(:phoenix_http_protocol_options, :map,
+    default: [],
+    dump: &Dumper.keyword/1
+  )
+
+  @doc """
   List of trusted reverse proxies.
 
   This is used to determine the correct IP address of the client when the
