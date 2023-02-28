@@ -194,7 +194,7 @@ defmodule FzHttp.Config.Definitions do
   You can see all supported options at https://ninenines.eu/docs/en/cowboy/2.5/manual/cowboy_http/.
   """
   defconfig(:phoenix_http_protocol_options, :map,
-    default: [],
+    default: %{},
     dump: &Dumper.keyword/1
   )
 
