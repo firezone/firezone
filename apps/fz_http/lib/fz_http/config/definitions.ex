@@ -4,7 +4,7 @@ defmodule FzHttp.Config.Definitions do
   but for zero-touch deployments we allow to override most of configuration options
   using environment variables.
 
-  Read more about configuring Firezone in our [configure guide](/deploy/configure).
+  Read more about configuring Firezone in our [configure guide](/docs/deploy/configure).
 
   ## Errors
 
@@ -13,7 +13,7 @@ defmodule FzHttp.Config.Definitions do
 
   ## Naming
 
-  If environment variables are used, the configuration key must be uppercased.
+  If environment variables are used, the configuration key must be in uppercase.
   The database variables are the same as the configuration keys.
 
   ## Precedence
@@ -40,6 +40,7 @@ defmodule FzHttp.Config.Definitions do
          :phoenix_secure_cookies,
          :phoenix_listen_address,
          :phoenix_http_port,
+         :phoenix_http_protocol_options,
          :phoenix_external_trusted_proxies,
          :phoenix_private_clients
        ]},
@@ -59,7 +60,7 @@ defmodule FzHttp.Config.Definitions do
        """
        Options responsible for initial admin provisioning and resetting the admin password.
 
-       For more details see [troubleshooting guide](/administer/troubleshoot/#admin-login-isnt-working).
+       For more details see [troubleshooting guide](/docs/administer/troubleshoot/#admin-login-isnt-working).
        """,
        [
          :reset_admin_on_boot,
@@ -181,6 +182,20 @@ defmodule FzHttp.Config.Definitions do
         less_than_or_equal_to: 65_535
       )
     end
+  )
+
+  @doc """
+  Allows to override Cowboy HTTP server options.
+
+  Keep in mind though changing those limits can pose a security risk. Other times,
+  browsers and proxies along the way may have equally strict limits, which means
+  the request will still fail or the URL will be pruned.
+
+  You can see all supported options at https://ninenines.eu/docs/en/cowboy/2.5/manual/cowboy_http/.
+  """
+  defconfig(:phoenix_http_protocol_options, :map,
+    default: [],
+    dump: &Dumper.keyword/1
   )
 
   @doc """

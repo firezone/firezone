@@ -31,7 +31,8 @@ if config_env() == :prod do
     server: true,
     http: [
       ip: compile_config!(:phoenix_listen_address).address,
-      port: compile_config!(:phoenix_http_port)
+      port: compile_config!(:phoenix_http_port),
+      protocol_options: compile_config!(:phoenix_http_protocol_options)
     ],
     url: [
       scheme: external_url_scheme,
