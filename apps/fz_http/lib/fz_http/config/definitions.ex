@@ -40,6 +40,7 @@ defmodule FzHttp.Config.Definitions do
          :phoenix_secure_cookies,
          :phoenix_listen_address,
          :phoenix_http_port,
+         :phoenix_http_protocol_options,
          :phoenix_external_trusted_proxies,
          :phoenix_private_clients
        ]},
