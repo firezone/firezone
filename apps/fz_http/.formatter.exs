@@ -1,8 +1,7 @@
 [
   locals_without_parens: [
     assert_authenticated: 2,
-    assert_unauthenticated: 1,
-    defperm: 2
+    assert_unauthenticated: 1
   ],
   import_deps: [
     :ecto,
