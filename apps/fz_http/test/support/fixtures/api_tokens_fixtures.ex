@@ -1,5 +1,6 @@
 defmodule FzHttp.ApiTokensFixtures do
   alias FzHttp.UsersFixtures
+  alias FzHttp.SubjectFixtures
 
   def api_token_attrs(attrs \\ %{}) do
     Enum.into(attrs, %{})
@@ -8,7 +9,8 @@ defmodule FzHttp.ApiTokensFixtures do
   def create_api_token(attrs \\ %{}) do
     attrs = api_token_attrs(attrs)
     {user, attrs} = Map.pop_lazy(attrs, :user, fn -> UsersFixtures.user() end)
-    {:ok, api_token} = FzHttp.ApiTokens.create_user_api_token(user, attrs)
+    subject = SubjectFixtures.subject(user)
+    {:ok, api_token} = FzHttp.ApiTokens.create_api_token(attrs, subject)
     api_token
   end
 

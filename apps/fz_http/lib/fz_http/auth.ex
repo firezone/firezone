@@ -1,5 +1,53 @@
 defmodule FzHttp.Auth do
   alias FzHttp.Config
+  alias FzHttp.Users
+  alias FzHttp.Auth.{Subject, Context, Permission, Roles}
+
+  def has_permission?(
+        %Subject{permissions: granted_permissions},
+        %Permission{} = required_permission
+      ) do
+    Enum.member?(granted_permissions, required_permission)
+  end
+
+  def ensure_has_permissions(%Subject{} = subject, required_permissions) do
+    required_permissions
+    |> List.wrap()
+    |> Enum.reject(fn %Permission{} = requested_permission ->
+      has_permission?(subject, requested_permission)
+    end)
+    |> Enum.uniq()
+    |> case do
+      [] -> :ok
+      missing_permissions -> {:error, {:unauthorized, missing_permissions: missing_permissions}}
+    end
+  end
+
+  def actor_is?(%Subject{} = subject, actor_type) do
+    Subject.actor_type(subject) == actor_type
+  end
+
+  def ensure_actor(%Subject{} = subject, actor_type) do
+    if actor_is?(subject, actor_type) do
+      :ok
+    else
+      {:error, {:unauthorized, actor_is_not_a: actor_type}}
+    end
+  end
+
+  def fetch_user_role!(%Users.User{} = user) do
+    Roles.role(user.role)
+  end
+
+  def fetch_subject!(%Users.User{} = user, remote_ip, user_agent) do
+    role = fetch_user_role!(user)
+
+    %Subject{
+      actor: {:user, user},
+      permissions: role.permissions,
+      context: %Context{remote_ip: remote_ip, user_agent: user_agent}
+    }
+  end
 
   def fetch_oidc_provider_config(provider_id) do
     with {:ok, provider} <- fetch_provider(:openid_connect_providers, provider_id) do
