@@ -325,6 +325,28 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
                %Postgrex.INET{address: {0, 0, 0, 0, 0, 0, 0, 0}, netmask: 0}
              ]
     end
+
+    feature "can use IP with a port in default client endpoint and host in DNS", %{
+      session: session
+    } do
+      session
+      |> visit(~p"/settings/client_defaults")
+      |> assert_el(Query.text("Client Defaults", count: 2))
+      |> fill_in(Query.fillable_field("configuration[default_client_dns]"),
+        with: "dns.example.com"
+      )
+      |> fill_in(Query.fillable_field("configuration[default_client_endpoint]"),
+        with: "1.2.3.4:8123"
+      )
+      |> click(Query.button("Save"))
+      # XXX: We need to show a flash that settings are saved
+      |> visit(~p"/settings/client_defaults")
+      |> assert_el(Query.text("Client Defaults", count: 2))
+
+      assert configuration = FzHttp.Config.fetch_db_config!()
+      assert configuration.default_client_endpoint == "1.2.3.4:8123"
+      assert configuration.default_client_dns == ["dns.example.com"]
+    end
   end
 
   describe "customization" do

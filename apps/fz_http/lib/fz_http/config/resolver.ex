@@ -61,10 +61,9 @@ defmodule FzHttp.Config.Resolver do
     defp fetch_process_value(pid, key) do
       with {:dictionary, pdict} <- :erlang.process_info(pid, :dictionary),
            {^key, value} <- List.keyfind(pdict, key, 0) do
-        value
+        {:ok, value}
       else
-        _other ->
-          :error
+        _other -> :error
       end
     end
 
