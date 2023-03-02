@@ -281,7 +281,7 @@ defmodule FzHttp.Devices do
     end
   end
 
-  defp maybe_add_port(%FzHttp.Types.IPPort{address: address, port: nil} = ip_port) do
+  defp maybe_add_port(%FzHttp.Types.IPPort{port: nil} = ip_port) do
     wireguard_port = Config.fetch_env!(:fz_vpn, :wireguard_port)
     FzHttp.Types.IPPort.to_string(%{ip_port | port: wireguard_port})
   end
