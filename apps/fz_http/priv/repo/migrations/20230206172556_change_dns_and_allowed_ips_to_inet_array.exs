@@ -23,14 +23,14 @@ defmodule FzHttp.Repo.Migrations.ChangeDnsAndAllowedIpsToInetArray do
 
     execute("""
     UPDATE configurations
-    SET default_client_dns = string_to_array(trim(both ' ' from regexp_replace(default_client_dns_string, '\s*,\s*', ',')), ','),
-        default_client_allowed_ips = string_to_array(trim(both ' ' from regexp_replace(default_client_allowed_ips_string, '\s*,\s*', ',')), ',')::inet[]
+    SET default_client_dns = string_to_array(replace(default_client_dns_string, ' ', ''), ','),
+        default_client_allowed_ips = string_to_array(replace(default_client_allowed_ips_string, ' ', ''), ',')::inet[]
     """)
 
     execute("""
     UPDATE devices
-    SET dns = string_to_array(dns_string, ','),
-        allowed_ips = string_to_array(trim(both ' ' from regexp_replace(allowed_ips_string, '\s*,\s*', ',')), ',')::inet[]
+    SET dns = string_to_array(replace(dns_string, ' ', ''), ','),
+        allowed_ips = string_to_array(replace(allowed_ips_string, ' ', ''), ',')::inet[]
     """)
 
     alter table(:configurations) do
