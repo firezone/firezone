@@ -281,6 +281,15 @@ defmodule FzHttp.Devices do
     end
   end
 
+  defp maybe_add_port(%FzHttp.Types.IPPort{address: address, port: nil} = ip_port) do
+    wireguard_port = Config.fetch_env!(:fz_vpn, :wireguard_port)
+    FzHttp.Types.IPPort.to_string(%{ip_port | port: wireguard_port})
+  end
+
+  defp maybe_add_port(%FzHttp.Types.IPPort{} = ip_port) do
+    FzHttp.Types.IPPort.to_string(ip_port)
+  end
+
   # Finds a port in IPv6-formatted address, e.g. [2001::1]:51820
   @capture_port ~r/\[.*]:(?<port>[\d]+)/
   defp maybe_add_port(endpoint) do
@@ -296,6 +305,7 @@ defmodule FzHttp.Devices do
   end
 
   defp field_empty?(nil), do: true
+  defp field_empty?(""), do: true
   defp field_empty?(0), do: true
   defp field_empty?([]), do: true
 
