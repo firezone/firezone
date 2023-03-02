@@ -5,12 +5,10 @@ defmodule FzHttp.Repo.Migrations.TrimDNSFields do
     execute("""
     UPDATE devices
     SET dns = string_to_array(
-                trim(
-                  both ' ' from regexp_replace(
-                    array_to_string(dns, ','),
-                    '\s*,\s*',
-                    ','
-                  )
+                replace(
+                  array_to_string(dns, ','),
+                  ' ',
+                  ''
                 ),
                 ','
               )
@@ -19,12 +17,10 @@ defmodule FzHttp.Repo.Migrations.TrimDNSFields do
     execute("""
     UPDATE configurations
     SET default_client_dns = string_to_array(
-                trim(
-                  both ' ' from regexp_replace(
-                    array_to_string(default_client_dns, ','),
-                    '\s*,\s*',
-                    ','
-                  )
+                replace(
+                  array_to_string(default_client_dns, ','),
+                  ' ',
+                  ''
                 ),
                 ','
               )
