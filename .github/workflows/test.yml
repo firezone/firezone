@@ -70,7 +70,7 @@ jobs:
           mix coveralls.github --umbrella --warnings-as-errors
       - name: Test Report
         uses: dorny/test-reporter@v1
-        if: success() || failure()
+        if: ${{ github.event.pull_request.head.repo.full_name == github.repository && (success() || failure()) }}
         with:
           name: Elixir Unit Test Report
           path: _build/test/lib/*/test-junit-report.xml
@@ -380,14 +380,14 @@ jobs:
               || pkill -f chromedriver \
               || mix test --only acceptance:true --failed
       - name: Save Screenshots
-        if: always()
+        if: ${{ github.event.pull_request.head.repo.full_name == github.repository && always() }}
         uses: actions/upload-artifact@v3
         with:
           name: screenshots
           path: apps/fz_http/screenshots
       - name: Test Report
         uses: dorny/test-reporter@v1
-        if: success() || failure()
+        if: ${{ github.event.pull_request.head.repo.full_name == github.repository && (success() || failure()) }}
         with:
           name: Elixir Acceptance Test Report
           path: _build/test/lib/*/test-junit-report.xml
