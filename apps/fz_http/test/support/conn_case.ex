@@ -27,6 +27,7 @@ defmodule FzHttpWeb.ConnCase do
       import Phoenix.ConnTest
       import Phoenix.LiveViewTest
       import FzHttp.TestHelpers
+      import FzHttpWeb.ConnCase
 
       # The default endpoint for testing
       @endpoint FzHttpWeb.Endpoint
