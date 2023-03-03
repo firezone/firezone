@@ -11,6 +11,10 @@
 
 setup_interface()
 {
+  if [ ! -d "/sys/class/net/${WIREGUARD_INTERFACE_NAME}" ]; then
+    ip link add ${WIREGUARD_INTERFACE_NAME} type wireguard
+  fi
+
   ip link add ${WIREGUARD_INTERFACE_NAME} type wireguard
 
   if [ "$WIREGUARD_IPV4_ENABLED" = "true" ]; then
