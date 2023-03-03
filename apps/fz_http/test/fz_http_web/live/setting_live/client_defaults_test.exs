@@ -31,7 +31,7 @@ defmodule FzHttpWeb.SettingLive.ClientDefaultsTest do
       path = ~p"/settings/client_defaults"
       {:ok, view, html} = live(conn, path)
 
-      %{html: html, view: view}
+      %{conn: conn, html: html, view: view}
     end
 
     test "renders current configuration", %{html: html} do
@@ -90,6 +90,32 @@ defmodule FzHttpWeb.SettingLive.ClientDefaultsTest do
       assert test_view =~ """
              <input class="input " id="client_defaults_form_component_default_client_endpoint" name="configuration[default_client_endpoint]" placeholder="firezone.example.com" type="text" value="1.1.1.1"/>\
              """
+    end
+
+    test "blocks overridden default client endpoint" do
+      FzHttp.Config.put_system_env_override(:default_client_endpoint, "1.2.3.4:1234")
+
+      {_admin_user, conn} = admin_conn(%{})
+      {:ok, view, _html} = live(conn, ~p"/settings/client_defaults")
+
+      test_view =
+        view
+        |> element("#client_defaults_form_component")
+        |> render()
+
+      assert Floki.find(test_view, "#client_defaults_form_component_default_client_endpoint") ==
+               [
+                 {"input",
+                  [
+                    {"class", "input "},
+                    {"disabled", "disabled"},
+                    {"id", "client_defaults_form_component_default_client_endpoint"},
+                    {"name", "configuration[default_client_endpoint]"},
+                    {"placeholder", "firezone.example.com"},
+                    {"type", "text"},
+                    {"value", "Set in environment variable DEFAULT_CLIENT_ENDPOINT: 1.2.3.4:1234"}
+                  ], []}
+               ]
     end
 
     test "updates default client persistent_keepalive", %{view: view} do
