@@ -20,8 +20,7 @@ config :fz_http, FzHttpWeb.Endpoint,
   http: [port: 13000],
   server: true
 
-config :fz_http,
-  http_client: FzHttp.Mocks.HttpClient
+config :fz_http, FzHttp.ConnectivityChecks, enabled: false
 
 ###############################
 ##### FZ VPN configs ##########

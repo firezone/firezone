@@ -76,10 +76,10 @@ if config_env() == :prod do
     cookie_signing_salt: compile_config!(:cookie_signing_salt),
     cookie_encryption_salt: compile_config!(:cookie_encryption_salt)
 
-  config :fz_http,
+  config :fz_http, FzHttp.ConnectivityChecks,
     http_client_options: compile_config!(:http_client_ssl_opts),
-    connectivity_checks_enabled: compile_config!(:connectivity_checks_enabled),
-    connectivity_checks_interval: compile_config!(:connectivity_checks_interval)
+    enabled: compile_config!(:connectivity_checks_enabled),
+    interval: compile_config!(:connectivity_checks_interval)
 
   config :fz_http,
     admin_email: compile_config!(:default_admin_email),

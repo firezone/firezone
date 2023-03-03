@@ -31,13 +31,13 @@ defmodule FzHttp.Application do
       {Phoenix.PubSub, name: FzHttp.PubSub},
       {FzHttp.Notifications, name: FzHttp.Notifications},
       FzHttpWeb.Presence,
-      FzHttp.ConnectivityCheckService,
       FzHttp.TelemetryPingService,
       FzHttp.VpnSessionScheduler,
       FzHttp.SAML.StartProxy,
       {DynamicSupervisor, name: FzHttp.RefresherSupervisor, strategy: :one_for_one},
       FzHttp.OIDC.RefreshManager,
-      FzHttpWeb.Endpoint
+      FzHttpWeb.Endpoint,
+      FzHttp.ConnectivityChecks
     ]
   end
 
@@ -50,7 +50,8 @@ defmodule FzHttp.Application do
       {Phoenix.PubSub, name: FzHttp.PubSub},
       {FzHttp.Notifications, name: FzHttp.Notifications},
       FzHttpWeb.Presence,
-      FzHttpWeb.Endpoint
+      FzHttpWeb.Endpoint,
+      FzHttp.ConnectivityChecks
     ]
   end
 

@@ -9,7 +9,7 @@ defmodule FzHttp.ApiTokensFixtures do
   def create_api_token(attrs \\ %{}) do
     attrs = api_token_attrs(attrs)
     {user, attrs} = Map.pop_lazy(attrs, :user, fn -> UsersFixtures.user() end)
-    subject = SubjectFixtures.subject(user)
+    subject = SubjectFixtures.create_subject(user)
     {:ok, api_token} = FzHttp.ApiTokens.create_api_token(attrs, subject)
     api_token
   end

@@ -2,7 +2,7 @@ defmodule FzHttp.SubjectFixtures do
   alias FzHttp.Auth
   alias FzHttp.UsersFixtures
 
-  def subject(user \\ UsersFixtures.user()) do
+  def create_subject(user \\ UsersFixtures.user()) do
     FzHttp.Auth.fetch_subject!(user, {127, 0, 0, 1}, "DummyAgent (1.0.0)")
   end
 

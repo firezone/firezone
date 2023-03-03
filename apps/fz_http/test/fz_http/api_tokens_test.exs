@@ -8,7 +8,7 @@ defmodule FzHttp.ApiTokensTest do
 
   setup do
     user = UsersFixtures.create_user_with_role(:admin)
-    subject = SubjectFixtures.subject(user)
+    subject = SubjectFixtures.create_subject(user)
 
     %{user: user, subject: subject}
   end

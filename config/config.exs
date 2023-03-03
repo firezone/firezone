@@ -76,12 +76,11 @@ config :fz_http,
   cookie_signing_salt: "WjllcThpb2Y=",
   cookie_encryption_salt: "M0EzM0R6NEMyaw=="
 
-config :fz_http,
-  http_client: HTTPoison,
+config :fz_http, FzHttp.ConnectivityChecks,
   http_client_options: [],
-  connectivity_checks_enabled: true,
-  connectivity_checks_interval: 43_200,
-  connectivity_checks_url: "https://ping-dev.firez.one/"
+  enabled: true,
+  interval: 43_200,
+  url: "https://ping-dev.firez.one/"
 
 config :fz_http,
   admin_email: "firezone@localhost",

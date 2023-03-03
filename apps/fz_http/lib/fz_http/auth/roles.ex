@@ -13,7 +13,8 @@ defmodule FzHttp.Auth.Roles do
       name: :admin,
       permissions:
         permissions([
-          all_permissions_from(FzHttp.ApiTokens.Authorizer)
+          all_permissions_from(FzHttp.ApiTokens.Authorizer),
+          all_permissions_from(FzHttp.ConnectivityChecks.Authorizer)
         ])
     }
   end
