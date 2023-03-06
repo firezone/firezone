@@ -116,7 +116,7 @@ defmodule FzHttp.RulesTest do
 
       assert changeset.errors[:port_range] ==
                {"lower value cannot be higher than upper value",
-                [type: FzHttp.Int4Range, validation: :cast]}
+                [type: FzHttp.Types.Int4Range, validation: :cast]}
     end
   end
 

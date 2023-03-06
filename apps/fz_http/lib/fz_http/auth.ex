@@ -23,6 +23,7 @@ defmodule FzHttp.Auth do
     end
   end
 
+  # TODO: clean unused funs after refactoring
   def actor_is?(%Subject{} = subject, actor_type) do
     Subject.actor_type(subject) == actor_type
   end

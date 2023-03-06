@@ -18,9 +18,10 @@ defmodule FzHttp.Devices do
     cutoff = DateTime.add(DateTime.utc_now(), -1 * duration_in_secs)
 
     Repo.one(
-      from d in Device,
+      from(d in Device,
         select: count(d.id),
         where: d.latest_handshake > ^cutoff
+      )
     )
   end
 
@@ -31,16 +32,17 @@ defmodule FzHttp.Devices do
   def count(nil), do: 0
 
   def count(user_id) do
-    Repo.one(from d in Device, where: d.user_id == ^user_id, select: count())
+    Repo.one(from(d in Device, where: d.user_id == ^user_id, select: count()))
   end
 
   def max_count_by_user_id do
     Repo.one(
-      from d in Device,
+      from(d in Device,
         select: fragment("count(*) AS user_count"),
         group_by: d.user_id,
         order_by: fragment("user_count DESC"),
         limit: 1
+      )
     )
   end
 
@@ -51,7 +53,7 @@ defmodule FzHttp.Devices do
   def list_devices(%User{} = user), do: list_devices(user.id)
 
   def list_devices(user_id) do
-    Repo.all(from d in Device, where: d.user_id == ^user_id)
+    Repo.all(from(d in Device, where: d.user_id == ^user_id))
   end
 
   def as_settings do
@@ -120,8 +122,9 @@ defmodule FzHttp.Devices do
 
   def to_peer_list do
     Repo.all(
-      from d in Device,
+      from(d in Device,
         preload: :user
+      )
     )
     |> Enum.filter(fn device ->
       !device.user.disabled_at && !Users.vpn_session_expired?(device.user)
@@ -209,7 +212,7 @@ defmodule FzHttp.Devices do
   def decode(inet), do: FzHttp.Types.INET.to_string(inet)
 
   @hash_range 2 ** 16
-  def new_name(name \\ FzCommon.NameGenerator.generate()) do
+  def new_name(name \\ FzHttp.NameGenerator.generate()) do
     hash =
       name
       |> :erlang.phash2(@hash_range)

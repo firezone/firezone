@@ -63,13 +63,9 @@ if config_env() == :prod do
     external_trusted_proxies: compile_config!(:phoenix_external_trusted_proxies),
     private_clients: compile_config!(:phoenix_private_clients)
 
-  config :fz_http,
-    telemetry_id: compile_config!(:telemetry_id),
-    telemetry_module:
-      if(compile_config!(:telemetry_enabled) == true,
-        do: FzCommon.Telemetry,
-        else: FzCommon.MockTelemetry
-      )
+  config :fz_http, FzHttp.Telemetry,
+    enabled: compile_config!(:telemetry_enabled),
+    id: compile_config!(:telemetry_id)
 
   config :fz_http,
     cookie_secure: compile_config!(:phoenix_secure_cookies),

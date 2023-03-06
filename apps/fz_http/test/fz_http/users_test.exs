@@ -301,7 +301,7 @@ defmodule FzHttp.UsersTest do
       assert user.role == :unprivileged
       assert user.email == attrs.email
 
-      assert FzCommon.FzCrypto.equal?(attrs.password, user.password_hash)
+      assert FzHttp.Crypto.equal?(attrs.password, user.password_hash)
       assert is_nil(user.password)
       assert is_nil(user.password_confirmation)
 

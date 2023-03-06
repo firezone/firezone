@@ -2,20 +2,35 @@ defmodule FzHttp.Telemetry do
   @moduledoc """
   Functions for various telemetry events.
   """
-
+  use Supervisor
+  alias FzHttp.{Devices, MFA, Users}
+  alias FzHttp.Telemetry.{Timer, PostHog}
   require Logger
 
-  alias FzHttp.{Devices, MFA, Users}
+  def start_link(opts) do
+    Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
+  end
+
+  def init(_opts) do
+    config = FzHttp.Config.fetch_env!(:fz_http, FzHttp.Telemetry)
+
+    if Keyword.fetch!(config, :enabled) == true do
+      children = [Timer]
+      Supervisor.init(children, strategy: :one_for_one)
+    else
+      :ignore
+    end
+  end
 
   def create_api_token do
-    telemetry_module().capture(
+    PostHog.capture(
       "add_api_token",
       common_fields()
     )
   end
 
   def delete_api_token(api_token) do
-    telemetry_module().capture(
+    PostHog.capture(
       "delete_api_token",
       common_fields() ++
         [
@@ -25,70 +40,70 @@ defmodule FzHttp.Telemetry do
   end
 
   def add_device do
-    telemetry_module().capture(
+    PostHog.capture(
       "add_device",
       common_fields()
     )
   end
 
   def add_user do
-    telemetry_module().capture(
+    PostHog.capture(
       "add_user",
       common_fields()
     )
   end
 
   def add_rule do
-    telemetry_module().capture(
+    PostHog.capture(
       "add_rule",
       common_fields()
     )
   end
 
   def delete_device do
-    telemetry_module().capture(
+    PostHog.capture(
       "delete_device",
       common_fields()
     )
   end
 
   def delete_user do
-    telemetry_module().capture(
+    PostHog.capture(
       "delete_user",
       common_fields()
     )
   end
 
   def delete_rule do
-    telemetry_module().capture(
+    PostHog.capture(
       "delete_rule",
       common_fields()
     )
   end
 
   def login do
-    telemetry_module().capture(
+    PostHog.capture(
       "login",
       common_fields()
     )
   end
 
   def disable_user do
-    telemetry_module().capture(
+    PostHog.capture(
       "disable_user",
       common_fields()
     )
   end
 
   def fz_http_started do
-    telemetry_module().capture(
+    PostHog.capture(
       "fz_http_started",
       common_fields()
     )
   end
 
   def ping do
-    telemetry_module().capture("ping", ping_data())
+    PostHog.capture("ping", ping_data())
   end
 
   # How far back to count handshakes as an active device
@@ -142,15 +157,16 @@ defmodule FzHttp.Telemetry do
 
   defp common_fields do
     [
-      distinct_id: FzHttp.Config.fetch_env!(:fz_http, :telemetry_id),
+      distinct_id: id(),
       fqdn: fqdn(),
       version: version(),
       kernel_version: "#{os_type()} #{os_version()}"
     ]
   end
 
-  defp telemetry_module do
-    FzHttp.Config.fetch_env!(:fz_http, :telemetry_module)
+  def id do
+    FzHttp.Config.fetch_env!(:fz_http, __MODULE__)
+    |> Keyword.fetch!(:id)
   end
 
   defp fqdn do

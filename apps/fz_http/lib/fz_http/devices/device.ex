@@ -14,30 +14,30 @@ defmodule FzHttp.Devices.Device do
   @key_length 44
 
   schema "devices" do
-    field :rx_bytes, :integer
-    field :tx_bytes, :integer
-    field :name, :string
-    field :description, :string
-    field :public_key, :string
-    field :preshared_key, FzHttp.Encrypted.Binary
-    field :use_default_allowed_ips, :boolean, read_after_writes: true, default: true
-    field :use_default_dns, :boolean, read_after_writes: true, default: true
-    field :use_default_endpoint, :boolean, read_after_writes: true, default: true
-    field :use_default_mtu, :boolean, read_after_writes: true, default: true
-    field :use_default_persistent_keepalive, :boolean, read_after_writes: true, default: true
-    field :endpoint, :string
-    field :mtu, :integer
-    field :persistent_keepalive, :integer
-    field :allowed_ips, {:array, FzHttp.Types.INET}, default: []
-    field :dns, {:array, :string}, default: []
-    field :remote_ip, FzHttp.Types.IP
-    field :ipv4, FzHttp.Types.IP
-    field :ipv6, FzHttp.Types.IP
+    field(:rx_bytes, :integer)
+    field(:tx_bytes, :integer)
+    field(:name, :string)
+    field(:description, :string)
+    field(:public_key, :string)
+    field(:preshared_key, FzHttp.Encrypted.Binary)
+    field(:use_default_allowed_ips, :boolean, read_after_writes: true, default: true)
+    field(:use_default_dns, :boolean, read_after_writes: true, default: true)
+    field(:use_default_endpoint, :boolean, read_after_writes: true, default: true)
+    field(:use_default_mtu, :boolean, read_after_writes: true, default: true)
+    field(:use_default_persistent_keepalive, :boolean, read_after_writes: true, default: true)
+    field(:endpoint, :string)
+    field(:mtu, :integer)
+    field(:persistent_keepalive, :integer)
+    field(:allowed_ips, {:array, FzHttp.Types.INET}, default: [])
+    field(:dns, {:array, :string}, default: [])
+    field(:remote_ip, FzHttp.Types.IP)
+    field(:ipv4, FzHttp.Types.IP)
+    field(:ipv6, FzHttp.Types.IP)
 
-    field :latest_handshake, :utc_datetime_usec
-    field :key_regenerated_at, :utc_datetime_usec, read_after_writes: true
+    field(:latest_handshake, :utc_datetime_usec)
+    field(:key_regenerated_at, :utc_datetime_usec, read_after_writes: true)
 
-    belongs_to :user, FzHttp.Users.User
+    belongs_to(:user, FzHttp.Users.User)
 
     timestamps()
   end
@@ -73,7 +73,7 @@ defmodule FzHttp.Devices.Device do
     %__MODULE__{}
     |> cast(attrs, @fields)
     |> Validator.put_default_value(:name, &FzHttp.Devices.new_name/0)
-    |> Validator.put_default_value(:preshared_key, &FzCommon.FzCrypto.psk/0)
+    |> Validator.put_default_value(:preshared_key, &FzHttp.Crypto.psk/0)
     |> changeset()
     |> validate_max_devices()
     |> validate_required(@required_fields)

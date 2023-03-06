@@ -1,8 +1,4 @@
-defmodule FzCommon.CLI do
-  @moduledoc """
-  Handles low-level CLI facilities.
-  """
-
+defmodule FzWall.Shell do
   require Logger
 
   def bash(cmd) do

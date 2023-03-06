@@ -57,7 +57,7 @@ defmodule FzHttp.Users.User.Changeset do
   def generate_sign_in_token(%Users.User{} = user) do
     user
     |> change()
-    |> put_change(:sign_in_token, FzCommon.FzCrypto.rand_string())
+    |> put_change(:sign_in_token, FzHttp.Crypto.rand_string())
     |> put_hash(:sign_in_token, to: :sign_in_token_hash)
     |> put_change(:sign_in_token_created_at, DateTime.utc_now())
   end

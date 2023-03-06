@@ -68,7 +68,7 @@ defmodule FzHttp.Users do
   end
 
   def consume_sign_in_token(%User{} = user, token) when is_binary(token) do
-    if FzCommon.FzCrypto.equal?(token, user.sign_in_token_hash) do
+    if FzHttp.Crypto.equal?(token, user.sign_in_token_hash) do
       User.Query.by_id(user.id)
       |> User.Query.where_sign_in_token_is_not_expired()
       |> Ecto.Query.update(set: [sign_in_token_hash: nil, sign_in_token_created_at: nil])

@@ -67,9 +67,9 @@ config :fz_http,
   external_trusted_proxies: [],
   private_clients: [%{__struct__: Postgrex.INET, address: {172, 28, 0, 0}, netmask: 16}]
 
-config :fz_http,
-  telemetry_id: "firezone-dev",
-  telemetry_module: FzCommon.MockTelemetry
+config :fz_http, FzHttp.Telemetry,
+  enabled: true,
+  id: "firezone-dev"
 
 config :fz_http,
   cookie_secure: false,

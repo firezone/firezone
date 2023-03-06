@@ -17,7 +17,7 @@ defmodule FzHttp.Devices.StatsUpdater do
           attrs = %{
             rx_bytes: String.to_integer(data.rx_bytes),
             tx_bytes: String.to_integer(data.tx_bytes),
-            remote_ip: FzCommon.FzNet.endpoint_to_ip(data.endpoint),
+            remote_ip: endpoint_to_ip(data.endpoint),
             latest_handshake: latest_handshake(data.latest_handshake)
           }
 
@@ -33,8 +33,9 @@ defmodule FzHttp.Devices.StatsUpdater do
 
   defp device_to_update(public_key) do
     Repo.one(
-      from d in Device,
+      from(d in Device,
         where: d.public_key == ^public_key
+      )
     )
   end
 
@@ -42,5 +43,12 @@ defmodule FzHttp.Devices.StatsUpdater do
     epoch
     |> String.to_integer()
     |> DateTime.from_unix!()
+  end
+
+  def endpoint_to_ip(endpoint) do
+    endpoint
+    |> String.replace(~r{:\d+$}, "")
+    |> String.trim_leading("[")
+    |> String.trim_trailing("]")
   end
 end

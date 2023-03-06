@@ -1,8 +1,4 @@
-defmodule FzCommon.Telemetry do
-  @moduledoc """
-  Wrapper for Posthog.
-  """
-
+defmodule FzHttp.Telemetry.PostHog do
   require Logger
 
   def capture(event, metadata) do

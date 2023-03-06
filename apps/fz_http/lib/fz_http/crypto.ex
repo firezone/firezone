@@ -1,4 +1,4 @@
-defmodule FzCommon.FzCrypto do
+defmodule FzHttp.Crypto do
   @wg_psk_length 32
 
   def psk do

@@ -7,12 +7,12 @@ defmodule FzHttp.Rules.Rule do
   @port_type_msg "port_type must be specified with port_range"
 
   schema "rules" do
-    field :destination, FzHttp.Types.INET, read_after_writes: true
-    field :action, Ecto.Enum, values: [:drop, :accept], default: :drop
-    field :port_type, Ecto.Enum, values: [:tcp, :udp], default: nil
-    field :port_range, FzHttp.Int4Range, default: nil
+    field(:destination, FzHttp.Types.INET, read_after_writes: true)
+    field(:action, Ecto.Enum, values: [:drop, :accept], default: :drop)
+    field(:port_type, Ecto.Enum, values: [:tcp, :udp], default: nil)
+    field(:port_range, FzHttp.Types.Int4Range, default: nil)
 
-    belongs_to :user, FzHttp.Users.User
+    belongs_to(:user, FzHttp.Users.User)
 
     timestamps()
   end

@@ -8,11 +8,11 @@ defmodule FzHttp.Rules.RuleSetting do
 
   @primary_key false
   embedded_schema do
-    field :action, Ecto.Enum, values: [:drop, :accept]
-    field :destination, :string
-    field :user_id, Ecto.UUID
-    field :port_type, Ecto.Enum, values: [:tcp, :udp], default: nil
-    field :port_range, FzHttp.Int4Range, default: nil
+    field(:action, Ecto.Enum, values: [:drop, :accept])
+    field(:destination, :string)
+    field(:user_id, Ecto.UUID)
+    field(:port_type, Ecto.Enum, values: [:tcp, :udp], default: nil)
+    field(:port_range, FzHttp.Types.Int4Range, default: nil)
   end
 
   def parse(rule) when is_struct(rule) do

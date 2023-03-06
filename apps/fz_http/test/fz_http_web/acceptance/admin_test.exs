@@ -72,7 +72,7 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
 
       assert user = Repo.get_by(FzHttp.Users.User, email: attrs.email)
       assert user.role == :unprivileged
-      assert FzCommon.FzCrypto.equal?(attrs.password, user.password_hash)
+      assert FzHttp.Crypto.equal?(attrs.password, user.password_hash)
     end
 
     feature "change user email and password", %{session: session} do

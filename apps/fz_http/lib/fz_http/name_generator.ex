@@ -1,8 +1,4 @@
-defmodule FzCommon.NameGenerator do
-  @moduledoc """
-  Generates random human-readable name
-  """
-
+defmodule FzHttp.NameGenerator do
   @adjectives ~w(
     abandoned able absolute adorable adventurous academic acceptable acclaimed accomplished
     accurate aching acidic acrobatic active actual adept admirable admired adolescent adorable

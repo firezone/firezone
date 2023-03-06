@@ -1,9 +1,10 @@
-defmodule FzHttp.Int4Range do
+defmodule FzHttp.Types.Int4Range do
   @moduledoc """
-  Ecto type for Postgres' Int4Range type
+  Ecto type for Postgres' Int4Range type.any()
+
+  It's used tp represent a port range as a string: lower-upper for ease of use
+  with Phoenix LiveView and nftables.
   """
-  # Note: we represent a port range as a string: lower - upper for ease of use
-  # with Phoenix LiveView and nftables
   use Ecto.Type
   @format_error "bad format"
   @cast_error "lower value cannot be higher than upper value"

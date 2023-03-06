@@ -21,6 +21,7 @@ defmodule FzHttp.Application do
     :ok
   end
 
+  # TODO: get rid off this
   defp children(:full) do
     [
       FzHttp.Server,
@@ -31,13 +32,13 @@ defmodule FzHttp.Application do
       {Phoenix.PubSub, name: FzHttp.PubSub},
       {FzHttp.Notifications, name: FzHttp.Notifications},
       FzHttpWeb.Presence,
-      FzHttp.TelemetryPingService,
       FzHttp.VpnSessionScheduler,
       FzHttp.SAML.StartProxy,
       {DynamicSupervisor, name: FzHttp.RefresherSupervisor, strategy: :one_for_one},
       FzHttp.OIDC.RefreshManager,
       FzHttpWeb.Endpoint,
-      FzHttp.ConnectivityChecks
+      FzHttp.ConnectivityChecks,
+      FzHttp.Telemetry
     ]
   end
 
@@ -51,7 +52,8 @@ defmodule FzHttp.Application do
       {FzHttp.Notifications, name: FzHttp.Notifications},
       FzHttpWeb.Presence,
       FzHttpWeb.Endpoint,
-      FzHttp.ConnectivityChecks
+      FzHttp.ConnectivityChecks,
+      FzHttp.Telemetry
     ]
   end
 

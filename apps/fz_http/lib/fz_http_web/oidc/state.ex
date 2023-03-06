@@ -25,7 +25,7 @@ defmodule FzHttpWeb.OIDC.State do
   end
 
   def new do
-    FzCommon.FzCrypto.rand_string()
+    FzHttp.Crypto.rand_string()
   end
 
   defp cookie_opts do

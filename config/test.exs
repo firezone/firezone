@@ -20,6 +20,8 @@ config :fz_http, FzHttpWeb.Endpoint,
   http: [port: 13000],
   server: true
 
+config :fz_http, FzHttp.Telemetry, enabled: false
+
 config :fz_http, FzHttp.ConnectivityChecks, enabled: false
 
 ###############################

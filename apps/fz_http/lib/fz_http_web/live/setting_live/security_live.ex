@@ -3,7 +3,7 @@ defmodule FzHttpWeb.SettingLive.Security do
   Manages security LiveView
   """
   use FzHttpWeb, :live_view
-  import FzCommon.FzCrypto, only: [rand_string: 1]
+  import FzHttp.Crypto, only: [rand_string: 1]
   alias FzHttp.Config
 
   @page_title "Security Settings"
