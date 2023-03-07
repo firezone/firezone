@@ -24,7 +24,7 @@ defmodule FzHttp.Validator do
         {:ok, %URI{} = uri} ->
           cond do
             uri.host == nil ->
-              [{field, "does not contain host"}]
+              [{field, "does not contain a scheme or a host"}]
 
             uri.scheme == nil ->
               [{field, "does not contain a scheme"}]
@@ -43,16 +43,17 @@ defmodule FzHttp.Validator do
   end
 
   def normalize_url(changeset, field) do
-    with {:ok, value} <- fetch_change(changeset, field) do
+    with {:ok, value} <- fetch_change(changeset, field),
+         false <- has_errors?(changeset, field) do
       uri = URI.parse(value)
       scheme = uri.scheme || "https"
       port = URI.default_port(scheme)
       path = uri.path || "/"
-      uri_string = URI.to_string(%{uri | scheme: scheme, port: port, path: path})
+      uri = %{uri | scheme: scheme, port: port, path: path}
+      uri_string = URI.to_string(uri)
       put_change(changeset, field, uri_string)
     else
-      :error ->
-        changeset
+      _ -> changeset
     end
   end
 
