@@ -67,6 +67,17 @@ defmodule FzHttp.ConfigTest do
         |> FzHttp.Validator.normalize_url(key)
       end
     )
+
+    defconfig(
+      :enum,
+      {:parameterized, Ecto.Enum, Ecto.Enum.init(values: [:value1, :value2, __MODULE__])},
+      default: :value1,
+      dump: fn
+        :value1 -> :foo
+        :value2 -> __MODULE__
+        other -> other
+      end
+    )
   end
 
   describe "fetch_source_and_config!/1" do
@@ -326,6 +337,28 @@ defmodule FzHttp.ConfigTest do
       assert_raise RuntimeError, message, fn ->
         compile_config!(Test, :sensitive, %{"SENSITIVE" => "foo"})
       end
+    end
+
+    test "returns error on invalid enum values" do
+      message = """
+      Invalid configuration for 'enum' retrieved from environment variable ENUM.
+
+      Errors:
+
+       - `"foo"`: is invalid\
+      """
+
+      assert_raise RuntimeError, message, fn ->
+        compile_config!(Test, :enum, %{"ENUM" => "foo"})
+      end
+    end
+
+    test "casts module name enums" do
+      assert compile_config!(Test, :enum, %{"ENUM" => "value1"}) == :foo
+      assert compile_config!(Test, :enum, %{"ENUM" => "value2"}) == FzHttp.ConfigTest.Test
+
+      assert compile_config!(Test, :enum, %{"ENUM" => "Elixir.FzHttp.ConfigTest.Test"}) ==
+               FzHttp.ConfigTest.Test
     end
   end
 
