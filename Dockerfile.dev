@@ -4,28 +4,36 @@ FROM firezone/elixir:1.14.3-otp-25.2.1
 
 # Install dev dependencies / convenience tools
 RUN apk add \
-yarn \
-build-base \
-git \
-python3 \
-curl \
-net-tools \
-iproute2 \
-nftables \
-inotify-tools \
-ca-certificates \
-sudo \
-nodejs
+    yarn \
+    build-base \
+    git \
+    python3 \
+    curl \
+    net-tools \
+    iproute2 \
+    nftables \
+    inotify-tools \
+    ca-certificates \
+    sudo \
+    nodejs
 
 WORKDIR /var/app
 
 ARG GIT_SHA=DEV
 ARG MIX_ENV=dev
-ARG DATABASE_URL
+ARG DATABASE_HOST
+ARG DATABASE_PORT
+ARG DATABASE_NAME
+ARG DATABASE_USER
+ARG DATABASE_PASSWORD
 
 ENV GIT_SHA=$GIT_SHA
 ENV MIX_ENV=$MIX_ENV
-ENV DATABASE_URL=$DATABASE_URL
+ENV DATABASE_HOST=$DATABASE_HOST
+ENV DATABASE_PORT=$DATABASE_PORT
+ENV DATABASE_NAME=$DATABASE_NAME
+ENV DATABASE_USER=$DATABASE_USER
+ENV DATABASE_PASSWORD=$DATABASE_PASSWORD
 
 RUN mix local.hex --force && mix local.rebar --force
 

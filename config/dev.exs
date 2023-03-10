@@ -1,5 +1,12 @@
 import Config
 
+config :fz_http, FzHttp.Repo,
+  database: System.get_env("DATABASE_NAME", "firezone_dev"),
+  username: System.get_env("DATABASE_USER", "postgres"),
+  hostname: System.get_env("DATABASE_HOST", "localhost"),
+  port: String.to_integer(System.get_env("DATABASE_PORT", "5432")),
+  password: System.get_env("DATABASE_PASSWORD", "postgres")
+
 config :fz_http, FzHttpWeb.Endpoint,
   http: [port: 13000],
   debug_errors: true,

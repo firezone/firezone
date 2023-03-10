@@ -19,7 +19,11 @@ services:
       context: .
       dockerfile: Dockerfile.dev
       args:
-        DATABASE_URL: postgresql://postgres:postgres@postgres:5432/firezone_dev
+        DATABASE_HOST: postgres
+        DATABASE_PORT: 5432
+        DATABASE_NAME: firezone_dev
+        DATABASE_USER: postgres
+        DATABASE_PASSWORD: postgres
     image: firezone_dev
     volumes:
       - ./priv:/var/app/priv
