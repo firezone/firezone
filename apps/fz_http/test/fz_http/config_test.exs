@@ -59,6 +59,25 @@ defmodule FzHttp.ConfigTest do
     defconfig(:boolean, :boolean)
 
     defconfig(:sensitive, :map, default: %{}, sensitive: true)
+
+    defconfig(:url, :string,
+      changeset: fn changeset, key ->
+        changeset
+        |> FzHttp.Validator.validate_uri(key)
+        |> FzHttp.Validator.normalize_url(key)
+      end
+    )
+
+    defconfig(
+      :enum,
+      {:parameterized, Ecto.Enum, Ecto.Enum.init(values: [:value1, :value2, __MODULE__])},
+      default: :value1,
+      dump: fn
+        :value1 -> :foo
+        :value2 -> __MODULE__
+        other -> other
+      end
+    )
   end
 
   describe "fetch_source_and_config!/1" do
@@ -292,6 +311,18 @@ defmodule FzHttp.ConfigTest do
       assert_raise RuntimeError, message, fn ->
         compile_config!(Test, :array, %{"ARRAY" => "1,-1,0,2,-100,-2"})
       end
+
+      message = """
+      Invalid configuration for 'url' retrieved from environment variable URL.
+
+      Errors:
+
+       - `"foo.bar/baz"`: does not contain a scheme or a host\
+      """
+
+      assert_raise RuntimeError, message, fn ->
+        compile_config!(Test, :url, %{"URL" => "foo.bar/baz"})
+      end
     end
 
     test "does not print sensitive values" do
@@ -307,12 +338,48 @@ defmodule FzHttp.ConfigTest do
         compile_config!(Test, :sensitive, %{"SENSITIVE" => "foo"})
       end
     end
+
+    test "returns error on invalid enum values" do
+      message = """
+      Invalid configuration for 'enum' retrieved from environment variable ENUM.
+
+      Errors:
+
+       - `"foo"`: is invalid\
+      """
+
+      assert_raise RuntimeError, message, fn ->
+        compile_config!(Test, :enum, %{"ENUM" => "foo"})
+      end
+    end
+
+    test "casts module name enums" do
+      assert compile_config!(Test, :enum, %{"ENUM" => "value1"}) == :foo
+      assert compile_config!(Test, :enum, %{"ENUM" => "value2"}) == FzHttp.ConfigTest.Test
+
+      assert compile_config!(Test, :enum, %{"ENUM" => "Elixir.FzHttp.ConfigTest.Test"}) ==
+               FzHttp.ConfigTest.Test
+    end
   end
 
   describe "validate_runtime_config!/0" do
     test "raises error on invalid values" do
       message = """
-      Found 8 configuration errors:
+      Found 9 configuration errors:
+
+
+      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+      Missing required configuration value for 'url'.
+
+      ## How to fix?
+
+      ### Using environment variables
+
+      You can set this configuration via environment variable by adding it to `.env` file:
+
+          URL=YOUR_VALUE
+
 
 
       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -430,7 +497,8 @@ defmodule FzHttp.ConfigTest do
         "INTEGER" => "123",
         "ONE_OF" => "a",
         "REQUIRED" => "1.1.1.1",
-        "INVALID_WITH_VALIDATION" => "2"
+        "INVALID_WITH_VALIDATION" => "2",
+        "URL" => "http://example.com"
       }
 
       assert validate_runtime_config!(Test, %{}, env_config) == :ok
