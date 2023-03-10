@@ -1,8 +1,7 @@
 ---
 title: Azure Active Directory
 sidebar_position: 2
-description:
-  Enforce 2FA/MFA for users of Firezone's WireGuard®-based
+description: Enforce 2FA/MFA for users of Firezone's WireGuard®-based
   secure access platform. This guide walks through integrating Azure AD
   for single sign-on using OpenID Connect (OIDC).
 ---
@@ -16,15 +15,15 @@ config settings required for the integration:
 1. **Config ID**: The provider's config ID. (e.g. `azure`)
 1. **Label**: The button label text that shows up on your Firezone login screen. (e.g. `Azure`)
 1. **Scope**: [OIDC scopes](https://openid.net/specs/openid-connect-basic-1_0.html#Scopes)
-to obtain from your OIDC provider. This should be set to `openid email profile offline_access`
-to provide Firezone with the user's email in the returned claims.
+   to obtain from your OIDC provider. This should be set to `openid email profile offline_access`
+   to provide Firezone with the user's email in the returned claims.
 1. **Response type**: Set to `code`.
 1. **Client ID**: The client ID of the application.
 1. **Client secret**: The client secret of the application.
 1. **Discovery Document URI**: The
-[OpenID Connect provider configuration URI](https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderConfig)
-which returns a JSON document used to construct subsequent requests to this
-OIDC provider.
+   [OpenID Connect provider configuration URI](https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderConfig)
+   which returns a JSON document used to construct subsequent requests to this
+   OIDC provider.
 
 ![Azure SSO](https://user-images.githubusercontent.com/52545545/168922621-1f0f4dea-adfc-4e15-a140-a2f213676103.gif)
 
@@ -39,9 +38,8 @@ Select the App registrations link under the Manage menu, click
 1. **Name**: `Firezone`
 1. **Supported account types**: `(Default Directory only - Single tenant)`
 1. **Redirect URI**: This should be your Firezone `EXTERNAL_URL + /auth/oidc/<Config ID>/callback/`
-(e.g. `https://firezone.example.com/auth/oidc/azure/callback/`).
-Make sure you include the trailing slash.
-**This will be the `redirect_uri` value**.
+   (e.g. `https://firezone.example.com/auth/oidc/azure/callback/`). **Make sure you include the trailing slash both
+   when saving the provider in Firezone and in Azure AD (`redirect_uri` field on the see screenshot below).**
 
 ![App Registration](https://user-images.githubusercontent.com/52545545/168722092-716c8448-4dc4-4d7a-a25c-1af701a57744.png)
 
