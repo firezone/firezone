@@ -1,6 +1,8 @@
 #!/bin/sh
 
 : "${WIREGUARD_INTERFACE_NAME:=wg-firezone}"
+# Note: we keep legacy default values for those variables to avoid breaking existing deployments,
+# but they will go away in the 0.8.0 release.
 : "${WIREGUARD_IPV4_ADDRESS:=10.3.2.1}"
 : "${WIREGUARD_IPV4_ENABLED:=true}"
 : "${WIREGUARD_IPV4_NETWORK:=10.3.2.0/24}"
@@ -14,8 +16,6 @@ setup_interface()
   if [ ! -d "/sys/class/net/${WIREGUARD_INTERFACE_NAME}" ]; then
     ip link add ${WIREGUARD_INTERFACE_NAME} type wireguard
   fi
-
-  ip link add ${WIREGUARD_INTERFACE_NAME} type wireguard
 
   if [ "$WIREGUARD_IPV4_ENABLED" = "true" ]; then
     ip address replace ${WIREGUARD_IPV4_ADDRESS} dev ${WIREGUARD_INTERFACE_NAME}
