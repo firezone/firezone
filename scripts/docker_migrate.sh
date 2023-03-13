@@ -124,7 +124,7 @@ migrate () {
 
   # BEGIN env vars that matter
   condIns $env_files "EXTERNAL_URL"
-  condIns $env_files "ADMIN_EMAIL"
+  condIns $env_files "DEFAULT_ADMIN_EMAIL"
   condIns $env_files "GUARDIAN_SECRET_KEY"
   condIns $env_files "DATABASE_ENCRYPTION_KEY"
   condIns $env_files "SECRET_KEY_BASE"
