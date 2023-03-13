@@ -183,7 +183,7 @@ services:
       - ${HOME}/.firezone/firezone:/var/firezone
     environment:
       EXTERNAL_URL: ${EXTERNAL_URL:?err}
-      ADMIN_EMAIL: ${ADMIN_EMAIL:?err}
+      DEFAULT_ADMIN_EMAIL: ${DEFAULT_ADMIN_EMAIL:?err}
       DEFAULT_ADMIN_PASSWORD: ${DEFAULT_ADMIN_PASSWORD:?err}
       GUARDIAN_SECRET_KEY: ${GUARDIAN_SECRET_KEY:?err}
       SECRET_KEY_BASE: ${SECRET_KEY_BASE:?err}

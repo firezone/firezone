@@ -1,8 +1,7 @@
 ---
 title: Docker
 sidebar_position: 2
-description:
-  Install Firezone via Docker to manage secure remote
+description: Install Firezone via Docker to manage secure remote
   access to private networks and resources.
 ---
 
@@ -26,14 +25,14 @@ deploying Firezone. Docker offers a number of benefits over the old
 
 ## Step 1: Prerequisites
 
-* Ensure you're on a [supported platform](supported-platforms) with [
+- Ensure you're on a [supported platform](supported-platforms) with [
   docker-compose](https://docs.docker.com/compose/install/) **version 2
   or higher** installed.
-* Ensure port forwarding is enabled on your firewall.
+- Ensure port forwarding is enabled on your firewall.
   The default Firezone configuration requires the following ports to be open:
-  * `80/tcp` (optional): For automatically issuing SSL certificates.
-  * `443/tcp`: To access the web UI.
-  * `51820/udp`: VPN traffic listen port.
+  - `80/tcp` (optional): For automatically issuing SSL certificates.
+  - `443/tcp`: To access the web UI.
+  - `51820/udp`: VPN traffic listen port.
 
 :::caution
 Before deploying Firezone in **production**, you'll need a valid DNS record
@@ -63,28 +62,38 @@ If the automatic install fails, or you'd just like more control over the
 installation process, follow the steps below to install manually.
 
 1. Download the docker compose template to a local working directory:
-**For Linux**:
+   **For Linux**:
+
 ```
 curl -fsSL https://raw.githubusercontent.com/firezone/firezone/master/docker-compose.prod.yml -o docker-compose.yml
 ```
+
 **For macOS, Windows (non-production only)**:
+
 ```
 curl -fsSL https://raw.githubusercontent.com/firezone/firezone/master/docker-compose.desktop.yml -o docker-compose.yml
 ```
+
 1. Generate required secrets:
+
 ```
 docker run --rm firezone/firezone bin/gen-env > .env
 ```
-1. At a minimum, change the `ADMIN_EMAIL` and `EXTERNAL_URL` variables.
-Optionally modify other secrets as needed.
+
+1. At a minimum, change the `DEFAULT_ADMIN_EMAIL` and `EXTERNAL_URL` variables.
+   Optionally modify other secrets as needed.
 1. Migrate the database:
+
 ```
 docker compose run --rm firezone bin/migrate
 ```
+
 1. Create the first admin:
+
 ```
 docker compose run --rm firezone bin/create-or-reset-admin
 ```
+
 1. Bring the services up: `docker compose up -d`
 
 You should now be able to access the Firezone web portal at the `EXTERNAL_URL`
@@ -108,6 +117,7 @@ By default, Firezone ships with IPv6 connectivity enabled inside the tunnel but 
 to the public internet. To enable IPv6 support in Docker-deployed Firezone, follow the steps below.
 
 1. Enable IPv6 support within Docker by adding the following to `/etc/docker/daemon.json`:
+
 ```json
 {
   "ipv6": true,
@@ -116,15 +126,20 @@ to the public internet. To enable IPv6 support in Docker-deployed Firezone, foll
   "fixed-cidr-v6": "2001:db8:1::/64"
 }
 ```
-  This enables IPv6 NAT and configures IPv6 forwarding for Docker containers.
+
+This enables IPv6 NAT and configures IPv6 forwarding for Docker containers.
+
 1. Enable router advertisements on boot for your default egress interface:
+
 ```
 egress=`ip route show default 0.0.0.0/0 | grep -oP '(?<=dev ).*' | cut -f1 -d' ' | tr -d '\n'`
 sudo bash -c "echo net.ipv6.conf.${egress}.accept_ra=2 >> /etc/sysctl.conf"
 ```
+
 1. Reboot
 
 You should now be able to ping google from within a docker container:
+
 ```
 docker run --rm -t busybox ping6 -c 4 google.com
 ```
@@ -142,24 +157,24 @@ Firezone currently uses WireGuard's
 Once successfully deployed, users and devices can be added to
 connect to the VPN server:
 
-* [Add Users](../../user-guides/add-users):
-Add users to grant them access to your network.
-* [Client Instructions](../../user-guides/client-instructions):
-Instructions to establish a VPN session.
+- [Add Users](../../user-guides/add-users):
+  Add users to grant them access to your network.
+- [Client Instructions](../../user-guides/client-instructions):
+  Instructions to establish a VPN session.
 
-import SupportOptions from '@site/src/partials/_support_options.mdx';
-<SupportOptions />
+import SupportOptions from "@site/src/partials/_support_options.mdx";
+<SupportOptions />;
 
 ## Post Setup
 
 Congrats! You have completed the setup, but there's a lot more you can do with
 Firezone:
 
-* [Integrate your identity provider](../../authenticate/)
+- [Integrate your identity provider](../../authenticate/)
   for authenticating clients
-* Using Firezone as a NAT gateway to
+- Using Firezone as a NAT gateway to
   [establish a static IP for your team](../../user-guides/use-cases/nat-gateway)
-* Create tunnels between multiple peers with
+- Create tunnels between multiple peers with
   [reverse tunnels](../../user-guides/use-cases/reverse-tunnel)
-* Only route certain traffic through Firezone with
+- Only route certain traffic through Firezone with
   [split tunneling](../../user-guides/use-cases/split-tunnel)

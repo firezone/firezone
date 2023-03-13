@@ -142,7 +142,7 @@ firezoneSetup() {
   fi
   db_pass=$(od -vN "8" -An -tx1 /dev/urandom | tr -d " \n" ; echo)
   docker run --rm firezone/firezone bin/gen-env > "$installDir/.env"
-  sed -i.bak "s/ADMIN_EMAIL=.*/ADMIN_EMAIL=$1/" "$installDir/.env"
+  sed -i.bak "s/DEFAULT_ADMIN_EMAIL=.*/DEFAULT_ADMIN_EMAIL=$1/" "$installDir/.env"
   sed -i.bak "s~EXTERNAL_URL=.*~EXTERNAL_URL=$2~" "$installDir/.env"
   sed -i.bak "s/DATABASE_PASSWORD=.*/DATABASE_PASSWORD=$db_pass/" "$installDir/.env"
   echo "TLS_OPTS=\"$3\"" >> "$installDir/.env"
@@ -178,7 +178,7 @@ Installation complete!
 You should now be able to log into the Web UI at $externalUrl with the
 following credentials:
 
-`grep ADMIN_EMAIL $installDir/.env`
+`grep DEFAULT_ADMIN_EMAIL $installDir/.env`
 `grep DEFAULT_ADMIN_PASSWORD $installDir/.env`
 
 EOF
