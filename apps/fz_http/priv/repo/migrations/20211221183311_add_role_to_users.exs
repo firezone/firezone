@@ -14,7 +14,7 @@ defmodule FzHttp.Repo.Migrations.AddRoleToUsers do
     # Make existing admin the admin if exists. Admin is most likely the first created user.
     flush()
 
-    admin_email = System.get_env("ADMIN_EMAIL")
+    admin_email = System.get_env("ADMIN_EMAIL") || System.get_env("DEFAULT_ADMIN_EMAIL")
 
     if admin_email do
       execute("UPDATE users SET role = 'admin' WHERE email = '#{admin_email}'")

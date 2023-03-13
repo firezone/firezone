@@ -26,12 +26,14 @@ defmodule FzHttp.Release do
   def create_admin_user do
     boot_database_app()
 
-    if Repo.exists?(from u in User, where: u.email == ^email()) do
+    if Repo.exists?(from(u in User, where: u.email == ^email())) do
       change_password(email(), default_password())
       {:ok, user} = reset_role(email(), :admin)
 
       # Notify the user
-      Logger.info("Password for user specified by ADMIN_EMAIL reset to DEFAULT_ADMIN_PASSWORD!")
+      Logger.info(
+        "Password for user specified by DEFAULT_ADMIN_EMAIL reset to DEFAULT_ADMIN_PASSWORD!"
+      )
 
       {:ok, user}
     else
@@ -43,7 +45,7 @@ defmodule FzHttp.Release do
              }) do
         # Notify the user
         Logger.info(
-          "An admin user specified by ADMIN_EMAIL is created with a DEFAULT_ADMIN_PASSWORD!"
+          "An admin user specified by DEFAULT_ADMIN_EMAIL is created with a DEFAULT_ADMIN_PASSWORD!"
         )
 
         {:ok, user}

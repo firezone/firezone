@@ -151,7 +151,7 @@ To                         Action      From
 
 ## Admin login isn't working
 
-If the password for the account with email `ADMIN_EMAIL` isn't working, you can
+If the password for the account with email `DEFAULT_ADMIN_EMAIL` isn't working, you can
 reset it using the process below.
 
 <Tabs>
@@ -160,7 +160,7 @@ reset it using the process below.
 First change directory to your Firezone installation directory
 (`$HOME/.firezone` by default), then run the `bin/create-or-reset-admin` script
 to reset the admin user's password. The password for the user specified by
-`ADMIN_EMAIL`
+`DEFAULT_ADMIN_EMAIL`
 in `$HOME/.firezone/.env` will be reset to the `DEFAULT_ADMIN_PASSWORD` variable.
 
 ```shell
