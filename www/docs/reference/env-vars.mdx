@@ -97,6 +97,7 @@ All secrets should be a **base64-encoded string**.
 | DEFAULT_CLIENT_ENDPOINT | IPv4, IPv6 address, or FQDN that devices will be configured to connect to. Defaults to this server's FQDN. | one of `IP with port`, `string` | generated |
 | DEFAULT_CLIENT_DNS | Comma-separated list of DNS servers to use for devices.<br /> <br />It can be either an IP address or a FQDN if you intend to use a DNS-over-TLS server.<br /> <br />Leave this blank to omit the `DNS` section from generated configs. | {:array, ",", {:one_of, [FzHttp.Types.IP, :string]}, [validate_unique: true]} | `[]` |
 | DEFAULT_CLIENT_ALLOWED_IPS | Configures the default AllowedIPs setting for devices.<br /> <br />AllowedIPs determines which destination IPs get routed through Firezone.<br /> <br />Specify a comma-separated list of IPs or CIDRs here to achieve split tunneling, or use `0.0.0.0/0, ::/0` to route all device traffic through this Firezone server. | {:array, ",", {:one_of, [FzHttp.Types.CIDR, FzHttp.Types.IP]}, [validate_unique: true]} | `0.0.0.0/0, ::/0` |
+| MAX_DEVICES_PER_USER | Maximum number of devices a user can have. | integer | 0 |
 
 ### Authorization
 
@@ -115,8 +116,14 @@ All secrets should be a **base64-encoded string**.
 | Env Key | Description      | Format | Default |
 | ------  | ---------------  | ------ | ------- |
 | WIREGUARD_PORT | A port on which WireGuard will listen for incoming connections. | integer | 51820 |
+| WIREGUARD_IPV4_ADDRESS | WireGuard interface IPv4 address. Must be within WireGuard address pool. | string | 10.3.2.1 |
+| WIREGUARD_IPV4_NETWORK | WireGuard network IPv4 address pool. | string | 10.3.2.0/24 |
 | WIREGUARD_IPV4_ENABLED | Enable or disable IPv4 support for WireGuard. | boolean | true |
+| WIREGUARD_IPV4_MASQUERADE | boolean | true |
+| WIREGUARD_IPV6_ADDRESS | WireGuard interface IPv6 address. Must be within IPv6 address pool. | string | fd00::3:2:1 |
+| WIREGUARD_IPV6_NETWORK | WireGuard network IPv6 address pool. | string | fd00::3:2:0/120 |
 | WIREGUARD_IPV6_ENABLED | Enable or disable IPv6 support for WireGuard. | boolean | true |
+| WIREGUARD_IPV6_MASQUERADE | boolean | true |
 
 ### Outbound Emails
 
