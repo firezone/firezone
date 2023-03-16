@@ -14,7 +14,8 @@ defmodule FzHttp.Auth.Roles do
       permissions:
         permissions([
           all_permissions_from(FzHttp.ApiTokens.Authorizer),
-          all_permissions_from(FzHttp.ConnectivityChecks.Authorizer)
+          all_permissions_from(FzHttp.ConnectivityChecks.Authorizer),
+          all_permissions_from(FzHttp.Devices.Authorizer)
         ])
     }
   end
@@ -23,10 +24,22 @@ defmodule FzHttp.Auth.Roles do
     %Role{
       name: :unprivileged,
       permissions:
-        permissions([
-          FzHttp.ApiTokens.Authorizer.view_api_tokens_permission(),
-          FzHttp.ApiTokens.Authorizer.manage_owned_api_tokens_permission()
-        ])
+        permissions(
+          [
+            FzHttp.ApiTokens.Authorizer.view_api_tokens_permission(),
+            FzHttp.ApiTokens.Authorizer.manage_owned_api_tokens_permission(),
+            FzHttp.Devices.Authorizer.view_devices_permission()
+          ] ++
+            if FzHttp.Config.fetch_config!(:allow_unprivileged_device_management) do
+              [
+                FzHttp.Devices.Authorizer.create_own_devices_permission(),
+                FzHttp.Devices.Authorizer.update_owned_devices_permission(),
+                FzHttp.Devices.Authorizer.delete_owned_devices_permission()
+              ]
+            else
+              []
+            end
+        )
     }
   end
 

@@ -25,7 +25,7 @@ defmodule FzHttp.OIDC.Refresher do
   end
 
   def refresh(user_id) do
-    connections = Repo.all(from Connection, where: [user_id: ^user_id])
+    connections = Repo.all(from(Connection, where: [user_id: ^user_id]))
     Enum.each(connections, &do_refresh(user_id, &1))
     {:stop, :shutdown, user_id}
   end
@@ -58,6 +58,7 @@ defmodule FzHttp.OIDC.Refresher do
       user
       |> change()
       |> put_change(:disabled_at, DateTime.utc_now())
+      # TODO: this should be in Users context
       |> prepare_changes(fn changeset ->
         FzHttp.Telemetry.disable_user()
         FzHttpWeb.Endpoint.broadcast("users_socket:#{user.id}", "disconnect", %{})

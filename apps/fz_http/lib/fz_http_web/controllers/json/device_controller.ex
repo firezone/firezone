@@ -31,16 +31,17 @@ defmodule FzHttpWeb.JSON.DeviceController do
 
   @doc api_doc: [summary: "Get Device by ID"]
   def show(conn, %{"id" => id}) do
-    device = Devices.get_device!(id)
-    defaults = Devices.defaults()
-    render(conn, "show.json", device: device, defaults: defaults)
+    with {:ok, device} <- Devices.fetch_device_by_id(id) do
+      defaults = Devices.defaults()
+      render(conn, "show.json", device: device, defaults: defaults)
+    end
   end
 
   @doc api_doc: [summary: "Update a Device"]
   def update(conn, %{"id" => id, "device" => device_params}) do
-    device = Devices.get_device!(id)
-
-    with {:ok, device} <- Devices.update_device(device, device_params) do
+    # TODO: subject
+    with {:ok, device} <- Devices.fetch_device_by_id(id),
+         {:ok, device} <- Devices.update_device(device, device_params) do
       defaults = Devices.defaults()
       render(conn, "show.json", device: device, defaults: defaults)
     end
@@ -48,9 +49,9 @@ defmodule FzHttpWeb.JSON.DeviceController do
 
   @doc api_doc: [summary: "Delete a Device"]
   def delete(conn, %{"id" => id}) do
-    device = Devices.get_device!(id)
-
-    with {:ok, _device} <- Devices.delete_device(device) do
+    # TODO: subject
+    with {:ok, device} <- Devices.fetch_device_by_id(id),
+         {:ok, _device} <- Devices.delete_device(device) do
       send_resp(conn, :no_content, "")
     end
   end

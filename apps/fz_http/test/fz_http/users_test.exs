@@ -129,11 +129,11 @@ defmodule FzHttp.UsersTest do
 
     test "hydrates users with device count" do
       user1 = UsersFixtures.create_user_with_role(:admin)
-      DevicesFixtures.create_device_for_user(user1)
+      DevicesFixtures.create_device(user: user1)
 
       user2 = UsersFixtures.create_user_with_role(:unprivileged)
-      DevicesFixtures.create_device_for_user(user2)
-      DevicesFixtures.create_device_for_user(user2)
+      DevicesFixtures.create_device(user: user2)
+      DevicesFixtures.create_device(user: user2)
 
       assert {:ok, users} = Users.list_users(hydrate: [:device_count])
       assert length(users) == 2

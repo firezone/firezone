@@ -24,19 +24,24 @@ defmodule FzHttp.Application do
   # TODO: get rid off this
   defp children(:full) do
     [
-      FzHttp.Server,
+      # Infrastructure services
       FzHttp.Repo,
-      {Postgrex.Notifications, [name: FzHttp.Repo.Notifications] ++ FzHttp.Repo.config()},
-      FzHttp.Repo.Notifier,
       FzHttp.Vault,
       {Phoenix.PubSub, name: FzHttp.PubSub},
       {FzHttp.Notifications, name: FzHttp.Notifications},
       FzHttpWeb.Presence,
+
+      # Application
+      # {Postgrex.Notifications, [name: FzHttp.Repo.Notifications] ++ FzHttp.Repo.config()},
+      # FzHttp.Repo.Notifier,
+      FzHttp.Server,
       FzHttp.VpnSessionScheduler,
       FzHttp.SAML.StartProxy,
       {DynamicSupervisor, name: FzHttp.RefresherSupervisor, strategy: :one_for_one},
       FzHttp.OIDC.RefreshManager,
       FzHttpWeb.Endpoint,
+
+      # Observability
       FzHttp.ConnectivityChecks,
       FzHttp.Telemetry
     ]
@@ -44,14 +49,19 @@ defmodule FzHttp.Application do
 
   defp children(:test) do
     [
-      FzHttp.Server,
+      # Infrastructure services
       FzHttp.Repo,
       FzHttp.Vault,
-      {FzHttp.SAML.StartProxy, :test},
       {Phoenix.PubSub, name: FzHttp.PubSub},
       {FzHttp.Notifications, name: FzHttp.Notifications},
       FzHttpWeb.Presence,
+
+      # Application
+      FzHttp.Server,
+      FzHttp.SAML.StartProxy,
       FzHttpWeb.Endpoint,
+
+      # Observability
       FzHttp.ConnectivityChecks,
       FzHttp.Telemetry
     ]

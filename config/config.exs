@@ -26,6 +26,7 @@ config :fz_http, FzHttp.Repo,
 
 config :fz_http,
   external_url: "http://localhost:13000/",
+  # TODO: use endpoint path instead?
   path_prefix: "/"
 
 config :fz_http, FzHttpWeb.Endpoint,
@@ -58,10 +59,10 @@ config :fz_http,
     netmask: nil
   }
 
-config :fz_http,
-  saml_entity_id: "urn:firezone.dev:firezone-app",
-  saml_certfile_path: Path.expand("../apps/fz_http/priv/cert/saml_selfsigned.pem", __DIR__),
-  saml_keyfile_path: Path.expand("../apps/fz_http/priv/cert/saml_selfsigned_key.pem", __DIR__)
+config :fz_http, FzHttp.SAML,
+  entity_id: "urn:firezone.dev:firezone-app",
+  certfile_path: Path.expand("../apps/fz_http/priv/cert/saml_selfsigned.pem", __DIR__),
+  keyfile_path: Path.expand("../apps/fz_http/priv/cert/saml_selfsigned_key.pem", __DIR__)
 
 config :fz_http,
   external_trusted_proxies: [],

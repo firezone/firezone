@@ -34,7 +34,7 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
      |> assign(assigns)
      |> assign(:changeset, changeset)
      |> assign(config)
-     |> assign(Devices.use_default_fields(changeset))}
+     |> assign(use_default_fields(changeset))}
   end
 
   @impl Phoenix.LiveComponent
@@ -48,7 +48,7 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
     {:noreply,
      socket
      |> assign(:changeset, changeset)
-     |> assign(Devices.use_default_fields(changeset))}
+     |> assign(use_default_fields(changeset))}
   end
 
   @impl Phoenix.LiveComponent
@@ -78,6 +78,17 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
     end
   end
 
+  defp use_default_fields(changeset) do
+    ~w(
+      use_default_allowed_ips
+      use_default_dns
+      use_default_endpoint
+      use_default_mtu
+      use_default_persistent_keepalive
+    )a
+    |> Map.new(&{&1, Ecto.Changeset.get_field(changeset, &1)})
+  end
+
   defp create_device(params, socket) do
     if authorized_to_create?(socket) do
       Devices.create_device(params)
@@ -97,7 +108,7 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
   # XXX: Clean this up using assign_new/3
   defp new_changeset(socket) do
     if connected?(socket) do
-      %{name: FzHttp.Devices.new_name()}
+      %{name: FzHttp.Devices.generate_name()}
     else
       %{}
     end

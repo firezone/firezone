@@ -68,14 +68,19 @@ defmodule FzHttp.ApiTokens do
   end
 
   def create_api_token(params, %Auth.Subject{} = subject) do
-    {:user, user} = subject.actor
+    with :ok <-
+           Auth.ensure_has_permissions(
+             subject,
+             Authorizer.manage_owned_api_tokens_permission()
+           ) do
+      {:user, user} = subject.actor
+      count_by_user_id = count_by_user_id(user.id)
+      changeset = ApiToken.Changeset.create_changeset(user, params, max: count_by_user_id)
 
-    count_by_user_id = count_by_user_id(user.id)
-    changeset = ApiToken.Changeset.create_changeset(user, params, max: count_by_user_id)
-
-    with {:ok, api_token} <- Repo.insert(changeset) do
-      FzHttp.Telemetry.create_api_token()
-      {:ok, api_token}
+      with {:ok, api_token} <- Repo.insert(changeset) do
+        FzHttp.Telemetry.create_api_token()
+        {:ok, api_token}
+      end
     end
   end
 

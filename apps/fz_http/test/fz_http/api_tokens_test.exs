@@ -270,11 +270,11 @@ defmodule FzHttp.ApiTokensTest do
 
   describe "create_api_token/2" do
     test "creates an api_token", %{user: user, subject: subject} do
-      valid_params = %{
+      attrs = %{
         "expires_in" => 1
       }
 
-      assert {:ok, %ApiToken{} = api_token} = create_api_token(valid_params, subject)
+      assert {:ok, %ApiToken{} = api_token} = create_api_token(attrs, subject)
 
       # Within 10 seconds
       assert_in_delta DateTime.to_unix(api_token.expires_at),
@@ -286,11 +286,27 @@ defmodule FzHttp.ApiTokensTest do
     end
 
     test "returns changeset error on invalid data", %{subject: subject} do
-      assert {:error, %Ecto.Changeset{} = changeset} =
-               create_api_token(%{"expires_in" => 0}, subject)
+      attrs = %{
+        "expires_in" => 0
+      }
+
+      assert {:error, %Ecto.Changeset{} = changeset} = create_api_token(attrs, subject)
 
       assert changeset.valid? == false
       assert errors_on(changeset) == %{expires_in: ["must be greater than or equal to 1"]}
+    end
+
+    test "returns error when subject has no permission to create api tokens", %{subject: subject} do
+      attrs = %{
+        "expires_in" => 0
+      }
+
+      subject = SubjectFixtures.remove_permissions(subject)
+
+      assert create_api_token(attrs, subject) ==
+               {:error,
+                {:unauthorized,
+                 [missing_permissions: [Authorizer.manage_owned_api_tokens_permission()]]}}
     end
   end
 

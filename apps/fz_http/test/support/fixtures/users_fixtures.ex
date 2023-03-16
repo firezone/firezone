@@ -1,8 +1,5 @@
 defmodule FzHttp.UsersFixtures do
-  @moduledoc """
-  This module defines test helpers for creating
-  entities via the `FzHttp.Users` context.
-  """
+  alias FzHttp.Repo
   alias FzHttp.Users
 
   def user_attrs(attrs \\ %{}) do
@@ -23,14 +20,21 @@ defmodule FzHttp.UsersFixtures do
     user(attrs)
   end
 
-  @doc """
-  Generate a user specified by email, or generate a new otherwise.
-  """
   def user(attrs \\ %{}) do
     attrs = user_attrs(attrs)
     {role, attrs} = Map.pop(attrs, :role, :admin)
     {:ok, user} = Users.create_user(attrs, role)
     user
+  end
+
+  def update(user, updates) do
+    user
+    |> Ecto.Changeset.change(Map.new(updates))
+    |> Repo.update!()
+  end
+
+  def disable(user) do
+    update(user, %{disabled_at: DateTime.utc_now()})
   end
 
   defp counter do

@@ -155,7 +155,7 @@ defmodule FzHttp.Config do
 
   def vpn_sessions_expire? do
     freq = fetch_config!(:vpn_session_duration)
-    freq > 0 && freq < Configuration.Changeset.max_vpn_session_duration()
+    0 < freq && freq < Configuration.Changeset.max_vpn_session_duration()
   end
 
   if Mix.env() != :test do
@@ -166,7 +166,7 @@ defmodule FzHttp.Config do
       :ok
     end
 
-    def put_system_env_override(key, value) do
+    def put_system_env_override(key, value) when is_atom(key) do
       Process.put({FzHttp.Config.Resolver, key}, {:env, value})
       :ok
     end

@@ -7,14 +7,12 @@ defmodule FzHttpWeb.DeviceLive.Admin.Show do
 
   @impl Phoenix.LiveView
   def mount(%{"id" => device_id} = _params, _session, socket) do
-    device = Devices.get_device!(device_id)
-
-    if device.user_id == socket.assigns.current_user.id || has_role?(socket, :admin) do
-      {:ok,
-       socket
-       |> assign(assigns(device))}
+    # TODO: subject
+    with {:ok, device} <- Devices.fetch_device_by_id(device_id) do
+      {:ok, assign(socket, assigns(device))}
     else
-      {:ok, not_authorized(socket)}
+      {:error, :not_found} ->
+        {:ok, not_authorized(socket)}
     end
   end
 

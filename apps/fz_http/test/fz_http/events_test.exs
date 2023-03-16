@@ -175,8 +175,8 @@ defmodule FzHttp.EventsTest do
               # XXX: Ideally we could hardcode the expected ips here as not to depend on the `decode` implementation
               # However, we can't know user_id in advance, perhaps we can test the user_id part and ip parts separately
               user_id: device.user_id,
-              ip: FzHttp.Devices.decode(device.ipv4),
-              ip6: FzHttp.Devices.decode(device.ipv6)
+              ip: to_string(device.ipv4),
+              ip6: to_string(device.ipv6)
             }
           end)
         )
@@ -186,7 +186,7 @@ defmodule FzHttp.EventsTest do
           Enum.map(expected_rules, fn rule ->
             %{
               user_id: rule.user_id,
-              destination: FzHttp.Devices.decode(rule.destination),
+              destination: to_string(rule.destination),
               action: rule.action,
               port_range: nil,
               port_type: nil

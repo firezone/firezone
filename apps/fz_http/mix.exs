@@ -81,8 +81,6 @@ defmodule FzHttp.MixProject do
 
       # Other deps
       {:remote_ip, "~> 1.0"},
-      # XXX: Change this when hex package is updated
-      {:cidr, github: "firezone/cidr-elixir"},
       {:telemetry, "~> 1.0"},
       # Used in Swoosh SMTP adapter
       {:gen_smtp, "~> 1.0"},

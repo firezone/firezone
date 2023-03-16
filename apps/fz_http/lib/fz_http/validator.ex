@@ -146,6 +146,16 @@ defmodule FzHttp.Validator do
     end)
   end
 
+  def validate_in_cidr(changeset, ip_field, cidr) do
+    validate_change(changeset, ip_field, fn _ip_field, ip ->
+      if FzHttp.Types.CIDR.contains?(cidr, ip) do
+        []
+      else
+        [{ip_field, "is not in the CIDR #{cidr}"}]
+      end
+    end)
+  end
+
   def validate_cidr(changeset, field, _opts \\ []) do
     validate_change(changeset, field, fn _current_field, value ->
       case FzHttp.Types.CIDR.cast(value) do

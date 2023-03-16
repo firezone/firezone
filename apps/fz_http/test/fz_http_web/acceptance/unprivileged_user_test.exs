@@ -104,7 +104,7 @@ defmodule FzHttpWeb.Acceptance.UnprivilegedUserTest do
       session: session,
       user: user
     } do
-      device = DevicesFixtures.create_device_for_user(user)
+      device = DevicesFixtures.create_device(user: user)
 
       session =
         session

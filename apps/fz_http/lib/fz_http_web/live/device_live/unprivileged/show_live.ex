@@ -9,14 +9,12 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.Show do
 
   @impl Phoenix.LiveView
   def mount(%{"id" => device_id} = _params, _session, socket) do
-    device = Devices.get_device!(device_id)
-
-    if authorized?(device, socket) do
-      {:ok,
-       socket
-       |> assign(assigns(device))}
+    # TODO: subject
+    with {:ok, device} <- Devices.fetch_device_by_id(device_id) do
+      {:ok, assign(socket, assigns(device))}
     else
-      {:ok, not_authorized(socket)}
+      {:error, :not_found} ->
+        {:ok, not_authorized(socket)}
     end
   end
 
@@ -65,9 +63,5 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.Show do
       persistent_keepalive: Devices.persistent_keepalive(device, defaults),
       config: Devices.as_config(device)
     ]
-  end
-
-  defp authorized?(device, socket) do
-    "#{device.user_id}" == "#{socket.assigns.current_user.id}" || has_role?(socket, :admin)
   end
 end

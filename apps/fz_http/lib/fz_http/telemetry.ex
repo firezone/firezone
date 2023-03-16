@@ -23,10 +23,7 @@ defmodule FzHttp.Telemetry do
   end
 
   def create_api_token do
-    PostHog.capture(
-      "add_api_token",
-      common_fields()
-    )
+    PostHog.capture("add_api_token", common_fields())
   end
 
   def delete_api_token(api_token) do
@@ -40,66 +37,39 @@ defmodule FzHttp.Telemetry do
   end
 
   def add_device do
-    PostHog.capture(
-      "add_device",
-      common_fields()
-    )
+    PostHog.capture("add_device", common_fields())
   end
 
   def add_user do
-    PostHog.capture(
-      "add_user",
-      common_fields()
-    )
+    PostHog.capture("add_user", common_fields())
   end
 
   def add_rule do
-    PostHog.capture(
-      "add_rule",
-      common_fields()
-    )
+    PostHog.capture("add_rule", common_fields())
   end
 
   def delete_device do
-    PostHog.capture(
-      "delete_device",
-      common_fields()
-    )
+    PostHog.capture("delete_device", common_fields())
   end
 
   def delete_user do
-    PostHog.capture(
-      "delete_user",
-      common_fields()
-    )
+    PostHog.capture("delete_user", common_fields())
   end
 
   def delete_rule do
-    PostHog.capture(
-      "delete_rule",
-      common_fields()
-    )
+    PostHog.capture("delete_rule", common_fields())
   end
 
   def login do
-    PostHog.capture(
-      "login",
-      common_fields()
-    )
+    PostHog.capture("login", common_fields())
   end
 
   def disable_user do
-    PostHog.capture(
-      "disable_user",
-      common_fields()
-    )
+    PostHog.capture("disable_user", common_fields())
   end
 
   def fz_http_started do
-    PostHog.capture(
-      "fz_http_started",
-      common_fields()
-    )
+    PostHog.capture("fz_http_started", common_fields())
   end
 
   def ping do

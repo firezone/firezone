@@ -20,9 +20,10 @@ defmodule FzHttp.SAML.StartProxy do
   end
 
   def set_service_provider(samly_configs) do
-    entity_id = FzHttp.Config.fetch_env!(:fz_http, :saml_entity_id)
-    keyfile = FzHttp.Config.fetch_env!(:fz_http, :saml_keyfile_path)
-    certfile = FzHttp.Config.fetch_env!(:fz_http, :saml_certfile_path)
+    config = FzHttp.Config.fetch_env!(:fz_http, FzHttp.SAML)
+    entity_id = Keyword.fetch!(config, :entity_id)
+    keyfile = Keyword.fetch!(config, :keyfile_path)
+    certfile = Keyword.fetch!(config, :certfile_path)
 
     # Only one service provider definition: us.
     Keyword.put(samly_configs, :service_providers, [
