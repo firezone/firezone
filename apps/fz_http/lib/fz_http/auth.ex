@@ -8,7 +8,7 @@ defmodule FzHttp.Auth do
           provider.redirect_uri
         else
           external_url = FzHttp.Config.fetch_env!(:fz_http, :external_url)
-          Path.join(external_url, "auth/oidc/#{provider.id}/callback/")
+          "#{external_url}auth/oidc/#{provider.id}/callback/"
         end
 
       {:ok,

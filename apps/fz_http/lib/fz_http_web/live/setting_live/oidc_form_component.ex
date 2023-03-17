@@ -132,11 +132,7 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
 
           <div class="control">
             <%= text_input(f, :redirect_uri,
-              placeholder:
-                Path.join(
-                  @external_url,
-                  "auth/oidc/#{input_value(f, :id) || "{CONFIG_ID}"}/callback/"
-                ),
+              placeholder: "#{@external_url}auth/oidc/#{input_value(f, :id) || "{CONFIG_ID}"}/callback/",
               class: "input #{input_error_class(f, :redirect_uri)}"
             ) %>
           </div>
