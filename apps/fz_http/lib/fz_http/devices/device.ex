@@ -23,8 +23,6 @@ defmodule FzHttp.Devices.Device do
     field(:ipv6, FzHttp.Types.IP)
 
     field(:latest_handshake, :utc_datetime_usec)
-    # REMOVEME
-    field(:key_regenerated_at, :utc_datetime_usec, read_after_writes: true)
 
     belongs_to(:user, FzHttp.Users.User)
 
