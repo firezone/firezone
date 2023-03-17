@@ -85,7 +85,7 @@ defmodule FzHttp.DevicesTest do
       assert length(devices) == 2
     end
 
-    test "returns error when subject has no permission to view api tokens", %{
+    test "returns error when subject has no permission to manage devices", %{
       unprivileged_subject: subject
     } do
       subject = SubjectFixtures.remove_permissions(subject)
@@ -93,7 +93,15 @@ defmodule FzHttp.DevicesTest do
       assert list_devices(subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Devices.Authorizer.view_devices_permission()]]}}
+                 [
+                   missing_permissions: [
+                     {:one_of,
+                      [
+                        Devices.Authorizer.manage_devices_permission(),
+                        Devices.Authorizer.manage_own_devices_permission()
+                      ]}
+                   ]
+                 ]}}
     end
   end
 
@@ -258,7 +266,7 @@ defmodule FzHttp.DevicesTest do
       assert create_device_for_user(other_user, attrs, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Devices.Authorizer.create_devices_permission()]]}}
+                 [missing_permissions: [Devices.Authorizer.manage_devices_permission()]]}}
     end
 
     test "prevents creating more than max_devices_per_user", %{
@@ -449,14 +457,14 @@ defmodule FzHttp.DevicesTest do
       assert create_device_for_user(user, %{}, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Devices.Authorizer.create_own_devices_permission()]]}}
+                 [missing_permissions: [Devices.Authorizer.manage_own_devices_permission()]]}}
 
       unprivileged_user = UsersFixtures.create_user_with_role(:unprivileged)
 
       assert create_device_for_user(unprivileged_user, %{}, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Devices.Authorizer.create_devices_permission()]]}}
+                 [missing_permissions: [Devices.Authorizer.manage_devices_permission()]]}}
     end
   end
 
@@ -502,7 +510,7 @@ defmodule FzHttp.DevicesTest do
       assert update_device(device, attrs, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Devices.Authorizer.update_devices_permission()]]}}
+                 [missing_permissions: [Devices.Authorizer.manage_devices_permission()]]}}
     end
 
     test "does not allow to reset required fields to empty values", %{
@@ -559,14 +567,14 @@ defmodule FzHttp.DevicesTest do
       assert update_device(device, %{}, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Devices.Authorizer.update_owned_devices_permission()]]}}
+                 [missing_permissions: [Devices.Authorizer.manage_own_devices_permission()]]}}
 
       device = DevicesFixtures.create_device()
 
       assert update_device(device, %{}, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Devices.Authorizer.update_devices_permission()]]}}
+                 [missing_permissions: [Devices.Authorizer.manage_devices_permission()]]}}
     end
   end
 
@@ -654,7 +662,7 @@ defmodule FzHttp.DevicesTest do
       assert delete_device(device, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Devices.Authorizer.delete_devices_permission()]]}}
+                 [missing_permissions: [Devices.Authorizer.manage_devices_permission()]]}}
 
       assert Repo.aggregate(Devices.Device, :count) == 1
     end
@@ -670,14 +678,14 @@ defmodule FzHttp.DevicesTest do
       assert delete_device(device, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Devices.Authorizer.delete_owned_devices_permission()]]}}
+                 [missing_permissions: [Devices.Authorizer.manage_own_devices_permission()]]}}
 
       device = DevicesFixtures.create_device()
 
       assert delete_device(device, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Devices.Authorizer.delete_devices_permission()]]}}
+                 [missing_permissions: [Devices.Authorizer.manage_devices_permission()]]}}
     end
   end
 

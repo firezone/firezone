@@ -10,11 +10,20 @@ defmodule FzHttp.Auth do
     Enum.member?(granted_permissions, required_permission)
   end
 
+  def has_permission?(
+        %Subject{} = subject,
+        {:one_of, required_permissions}
+      ) do
+    Enum.any?(required_permissions, fn required_permission ->
+      has_permission?(subject, required_permission)
+    end)
+  end
+
   def ensure_has_permissions(%Subject{} = subject, required_permissions) do
     required_permissions
     |> List.wrap()
-    |> Enum.reject(fn %Permission{} = requested_permission ->
-      has_permission?(subject, requested_permission)
+    |> Enum.reject(fn required_permission ->
+      has_permission?(subject, required_permission)
     end)
     |> Enum.uniq()
     |> case do

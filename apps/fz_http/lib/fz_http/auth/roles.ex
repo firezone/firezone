@@ -25,20 +25,11 @@ defmodule FzHttp.Auth.Roles do
       name: :unprivileged,
       permissions:
         permissions(
-          [
-            FzHttp.ApiTokens.Authorizer.view_api_tokens_permission(),
-            FzHttp.ApiTokens.Authorizer.manage_owned_api_tokens_permission(),
-            FzHttp.Devices.Authorizer.view_devices_permission()
-          ] ++
-            if FzHttp.Config.fetch_config!(:allow_unprivileged_device_management) do
-              [
-                FzHttp.Devices.Authorizer.create_own_devices_permission(),
-                FzHttp.Devices.Authorizer.update_owned_devices_permission(),
-                FzHttp.Devices.Authorizer.delete_owned_devices_permission()
-              ]
-            else
-              []
-            end
+          if FzHttp.Config.fetch_config!(:allow_unprivileged_device_management) do
+            [
+              FzHttp.Devices.Authorizer.manage_own_devices_permission()
+            ]
+          end
         )
     }
   end
@@ -46,6 +37,7 @@ defmodule FzHttp.Auth.Roles do
   defp permissions(permissions) do
     permissions
     |> List.flatten()
+    |> Enum.reject(&is_nil/1)
     |> MapSet.new()
   end
 

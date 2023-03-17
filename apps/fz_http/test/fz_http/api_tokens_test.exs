@@ -39,9 +39,7 @@ defmodule FzHttp.ApiTokensTest do
       subject =
         subject
         |> SubjectFixtures.remove_permissions()
-        |> SubjectFixtures.add_permission(Authorizer.view_api_tokens_permission())
-
-      # |> SubjectFixtures.add_permission(Authorizer.manage_owned_api_tokens_permission())
+        |> SubjectFixtures.add_permission(Authorizer.manage_own_api_tokens_permission())
 
       ApiTokensFixtures.create_api_token()
       assert list_api_tokens(subject) == {:ok, []}
@@ -51,7 +49,7 @@ defmodule FzHttp.ApiTokensTest do
       subject =
         subject
         |> SubjectFixtures.remove_permissions()
-        |> SubjectFixtures.add_permission(Authorizer.view_api_tokens_permission())
+        |> SubjectFixtures.add_permission(Authorizer.manage_own_api_tokens_permission())
         |> SubjectFixtures.add_permission(Authorizer.manage_api_tokens_permission())
 
       api_token = ApiTokensFixtures.create_api_token()
@@ -73,7 +71,16 @@ defmodule FzHttp.ApiTokensTest do
 
       assert list_api_tokens(subject) ==
                {:error,
-                {:unauthorized, [missing_permissions: [Authorizer.view_api_tokens_permission()]]}}
+                {:unauthorized,
+                 [
+                   missing_permissions: [
+                     {:one_of,
+                      [
+                        Authorizer.manage_api_tokens_permission(),
+                        Authorizer.manage_own_api_tokens_permission()
+                      ]}
+                   ]
+                 ]}}
     end
   end
 
@@ -86,14 +93,14 @@ defmodule FzHttp.ApiTokensTest do
       subject =
         subject
         |> SubjectFixtures.remove_permissions()
-        |> SubjectFixtures.add_permission(Authorizer.view_api_tokens_permission())
+        |> SubjectFixtures.add_permission(Authorizer.manage_own_api_tokens_permission())
         |> SubjectFixtures.add_permission(Authorizer.manage_api_tokens_permission())
 
       assert list_api_tokens_by_user_id(api_token.user_id, subject) ==
                {:ok, [api_token]}
     end
 
-    test "does not return api token that belongs to another user with manage_owned permission", %{
+    test "does not return api token that belongs to another user with manage_own permission", %{
       subject: subject
     } do
       api_token = ApiTokensFixtures.create_api_token()
@@ -101,8 +108,7 @@ defmodule FzHttp.ApiTokensTest do
       subject =
         subject
         |> SubjectFixtures.remove_permissions()
-        |> SubjectFixtures.add_permission(Authorizer.view_api_tokens_permission())
-        |> SubjectFixtures.add_permission(Authorizer.manage_owned_api_tokens_permission())
+        |> SubjectFixtures.add_permission(Authorizer.manage_own_api_tokens_permission())
 
       assert list_api_tokens_by_user_id(api_token.user_id, subject) == {:ok, []}
     end
@@ -128,7 +134,16 @@ defmodule FzHttp.ApiTokensTest do
 
       assert list_api_tokens_by_user_id(Ecto.UUID.generate(), subject) ==
                {:error,
-                {:unauthorized, [missing_permissions: [Authorizer.view_api_tokens_permission()]]}}
+                {:unauthorized,
+                 [
+                   missing_permissions: [
+                     {:one_of,
+                      [
+                        Authorizer.manage_api_tokens_permission(),
+                        Authorizer.manage_own_api_tokens_permission()
+                      ]}
+                   ]
+                 ]}}
     end
   end
 
@@ -150,13 +165,13 @@ defmodule FzHttp.ApiTokensTest do
       subject =
         subject
         |> SubjectFixtures.remove_permissions()
-        |> SubjectFixtures.add_permission(Authorizer.view_api_tokens_permission())
+        |> SubjectFixtures.add_permission(Authorizer.manage_own_api_tokens_permission())
         |> SubjectFixtures.add_permission(Authorizer.manage_api_tokens_permission())
 
       assert fetch_api_token_by_id(api_token.id, subject) == {:ok, api_token}
     end
 
-    test "does not return api token that belongs to another user with manage_owned permission", %{
+    test "does not return api token that belongs to another user with manage_own permission", %{
       subject: subject
     } do
       api_token = ApiTokensFixtures.create_api_token()
@@ -164,8 +179,7 @@ defmodule FzHttp.ApiTokensTest do
       subject =
         subject
         |> SubjectFixtures.remove_permissions()
-        |> SubjectFixtures.add_permission(Authorizer.view_api_tokens_permission())
-        |> SubjectFixtures.add_permission(Authorizer.manage_owned_api_tokens_permission())
+        |> SubjectFixtures.add_permission(Authorizer.manage_own_api_tokens_permission())
 
       assert fetch_api_token_by_id(api_token.id, subject) == {:error, :not_found}
     end
@@ -180,7 +194,16 @@ defmodule FzHttp.ApiTokensTest do
 
       assert fetch_api_token_by_id(Ecto.UUID.generate(), subject) ==
                {:error,
-                {:unauthorized, [missing_permissions: [Authorizer.view_api_tokens_permission()]]}}
+                {:unauthorized,
+                 [
+                   missing_permissions: [
+                     {:one_of,
+                      [
+                        Authorizer.manage_api_tokens_permission(),
+                        Authorizer.manage_own_api_tokens_permission()
+                      ]}
+                   ]
+                 ]}}
     end
   end
 
@@ -211,13 +234,13 @@ defmodule FzHttp.ApiTokensTest do
       subject =
         subject
         |> SubjectFixtures.remove_permissions()
-        |> SubjectFixtures.add_permission(Authorizer.view_api_tokens_permission())
+        |> SubjectFixtures.add_permission(Authorizer.manage_own_api_tokens_permission())
         |> SubjectFixtures.add_permission(Authorizer.manage_api_tokens_permission())
 
       assert fetch_unexpired_api_token_by_id(api_token.id, subject) == {:ok, api_token}
     end
 
-    test "does not return api token that belongs to another user with manage_owned permission", %{
+    test "does not return api token that belongs to another user with manage_own permission", %{
       subject: subject
     } do
       api_token = ApiTokensFixtures.create_api_token()
@@ -225,8 +248,7 @@ defmodule FzHttp.ApiTokensTest do
       subject =
         subject
         |> SubjectFixtures.remove_permissions()
-        |> SubjectFixtures.add_permission(Authorizer.view_api_tokens_permission())
-        |> SubjectFixtures.add_permission(Authorizer.manage_owned_api_tokens_permission())
+        |> SubjectFixtures.add_permission(Authorizer.manage_own_api_tokens_permission())
 
       assert fetch_unexpired_api_token_by_id(api_token.id, subject) ==
                {:error, :not_found}
@@ -242,7 +264,16 @@ defmodule FzHttp.ApiTokensTest do
 
       assert fetch_unexpired_api_token_by_id(Ecto.UUID.generate(), subject) ==
                {:error,
-                {:unauthorized, [missing_permissions: [Authorizer.view_api_tokens_permission()]]}}
+                {:unauthorized,
+                 [
+                   missing_permissions: [
+                     {:one_of,
+                      [
+                        Authorizer.manage_api_tokens_permission(),
+                        Authorizer.manage_own_api_tokens_permission()
+                      ]}
+                   ]
+                 ]}}
     end
   end
 
@@ -306,7 +337,7 @@ defmodule FzHttp.ApiTokensTest do
       assert create_api_token(attrs, subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Authorizer.manage_owned_api_tokens_permission()]]}}
+                 [missing_permissions: [Authorizer.manage_own_api_tokens_permission()]]}}
     end
   end
 
@@ -343,7 +374,7 @@ defmodule FzHttp.ApiTokensTest do
       subject =
         subject
         |> SubjectFixtures.remove_permissions()
-        |> SubjectFixtures.add_permission(Authorizer.view_api_tokens_permission())
+        |> SubjectFixtures.add_permission(Authorizer.manage_own_api_tokens_permission())
         |> SubjectFixtures.add_permission(Authorizer.manage_api_tokens_permission())
 
       assert {:ok, deleted_api_token} = delete_api_token_by_id(api_token.id, subject)
@@ -352,7 +383,7 @@ defmodule FzHttp.ApiTokensTest do
       refute Repo.one(ApiToken)
     end
 
-    test "does not delete api token that belongs to another user with manage_owned permission",
+    test "does not delete api token that belongs to another user with manage_own permission",
          %{
            subject: subject
          } do
@@ -361,8 +392,7 @@ defmodule FzHttp.ApiTokensTest do
       subject =
         subject
         |> SubjectFixtures.remove_permissions()
-        |> SubjectFixtures.add_permission(Authorizer.view_api_tokens_permission())
-        |> SubjectFixtures.add_permission(Authorizer.manage_owned_api_tokens_permission())
+        |> SubjectFixtures.add_permission(Authorizer.manage_own_api_tokens_permission())
 
       assert delete_api_token_by_id(api_token.id, subject) ==
                {:error, :not_found}
@@ -376,7 +406,7 @@ defmodule FzHttp.ApiTokensTest do
       subject =
         subject
         |> SubjectFixtures.remove_permissions()
-        |> SubjectFixtures.add_permission(Authorizer.view_api_tokens_permission())
+        |> SubjectFixtures.add_permission(Authorizer.manage_own_api_tokens_permission())
 
       assert delete_api_token_by_id(api_token.id, subject) ==
                {:error, :not_found}
@@ -391,7 +421,16 @@ defmodule FzHttp.ApiTokensTest do
 
       assert delete_api_token_by_id(Ecto.UUID.generate(), subject) ==
                {:error,
-                {:unauthorized, [missing_permissions: [Authorizer.view_api_tokens_permission()]]}}
+                {:unauthorized,
+                 [
+                   missing_permissions: [
+                     {:one_of,
+                      [
+                        Authorizer.manage_api_tokens_permission(),
+                        Authorizer.manage_own_api_tokens_permission()
+                      ]}
+                   ]
+                 ]}}
     end
   end
 end

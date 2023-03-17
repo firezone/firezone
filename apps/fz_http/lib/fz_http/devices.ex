@@ -24,7 +24,14 @@ defmodule FzHttp.Devices do
   end
 
   def fetch_device_by_id(id, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.view_devices_permission()) do
+    required_permissions =
+      {:one_of,
+       [
+         Authorizer.manage_devices_permission(),
+         Authorizer.manage_own_devices_permission()
+       ]}
+
+    with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
       Device.Query.by_id(id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch()
@@ -37,7 +44,14 @@ defmodule FzHttp.Devices do
   end
 
   def list_devices(%Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.view_devices_permission()) do
+    required_permissions =
+      {:one_of,
+       [
+         Authorizer.manage_devices_permission(),
+         Authorizer.manage_own_devices_permission()
+       ]}
+
+    with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
       Device.Query.all()
       |> Authorizer.for_subject(subject)
       |> Repo.list()
@@ -49,7 +63,14 @@ defmodule FzHttp.Devices do
   end
 
   def list_devices_by_user_id(user_id, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.view_devices_permission()) do
+    required_permissions =
+      {:one_of,
+       [
+         Authorizer.manage_devices_permission(),
+         Authorizer.manage_own_devices_permission()
+       ]}
+
+    with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
       Device.Query.by_user_id(user_id)
       |> Authorizer.for_subject(subject)
       |> Repo.list()
@@ -72,10 +93,10 @@ defmodule FzHttp.Devices do
     required_permissions =
       case subject.actor do
         {:user, %{id: ^user_id}} ->
-          Authorizer.create_own_devices_permission()
+          Authorizer.manage_own_devices_permission()
 
         _other ->
-          Authorizer.create_devices_permission()
+          Authorizer.manage_devices_permission()
       end
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
@@ -103,10 +124,10 @@ defmodule FzHttp.Devices do
     required_permissions =
       case subject.actor do
         {:user, %{id: ^user_id}} ->
-          Authorizer.update_owned_devices_permission()
+          Authorizer.manage_own_devices_permission()
 
         _other ->
-          Authorizer.update_devices_permission()
+          Authorizer.manage_devices_permission()
       end
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
@@ -126,10 +147,10 @@ defmodule FzHttp.Devices do
     required_permissions =
       case subject.actor do
         {:user, %{id: ^user_id}} ->
-          Authorizer.delete_owned_devices_permission()
+          Authorizer.manage_own_devices_permission()
 
         _other ->
-          Authorizer.delete_devices_permission()
+          Authorizer.manage_devices_permission()
       end
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do

@@ -9,7 +9,14 @@ defmodule FzHttp.ApiTokens do
   end
 
   def list_api_tokens(%Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.view_api_tokens_permission()) do
+    required_permissions =
+      {:one_of,
+       [
+         Authorizer.manage_api_tokens_permission(),
+         Authorizer.manage_own_api_tokens_permission()
+       ]}
+
+    with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
       ApiToken.Query.all()
       |> Authorizer.for_subject(subject)
       |> Repo.list()
@@ -17,8 +24,15 @@ defmodule FzHttp.ApiTokens do
   end
 
   def list_api_tokens_by_user_id(user_id, %Auth.Subject{} = subject) do
+    required_permissions =
+      {:one_of,
+       [
+         Authorizer.manage_api_tokens_permission(),
+         Authorizer.manage_own_api_tokens_permission()
+       ]}
+
     with true <- Validator.valid_uuid?(user_id),
-         :ok <- Auth.ensure_has_permissions(subject, Authorizer.view_api_tokens_permission()) do
+         :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
       ApiToken.Query.by_user_id(user_id)
       |> Authorizer.for_subject(subject)
       |> Repo.list()
@@ -29,8 +43,15 @@ defmodule FzHttp.ApiTokens do
   end
 
   def fetch_api_token_by_id(id, %Auth.Subject{} = subject) do
+    required_permissions =
+      {:one_of,
+       [
+         Authorizer.manage_api_tokens_permission(),
+         Authorizer.manage_own_api_tokens_permission()
+       ]}
+
     with true <- Validator.valid_uuid?(id),
-         :ok <- Auth.ensure_has_permissions(subject, Authorizer.view_api_tokens_permission()) do
+         :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
       ApiToken.Query.by_id(id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch()
@@ -41,8 +62,15 @@ defmodule FzHttp.ApiTokens do
   end
 
   def fetch_unexpired_api_token_by_id(id, %Auth.Subject{} = subject) do
+    required_permissions =
+      {:one_of,
+       [
+         Authorizer.manage_api_tokens_permission(),
+         Authorizer.manage_own_api_tokens_permission()
+       ]}
+
     with true <- Validator.valid_uuid?(id),
-         :ok <- Auth.ensure_has_permissions(subject, Authorizer.view_api_tokens_permission()) do
+         :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
       ApiToken.Query.by_id(id)
       |> Authorizer.for_subject(subject)
       |> ApiToken.Query.not_expired()
@@ -71,7 +99,7 @@ defmodule FzHttp.ApiTokens do
     with :ok <-
            Auth.ensure_has_permissions(
              subject,
-             Authorizer.manage_owned_api_tokens_permission()
+             Authorizer.manage_own_api_tokens_permission()
            ) do
       {:user, user} = subject.actor
       count_by_user_id = count_by_user_id(user.id)
