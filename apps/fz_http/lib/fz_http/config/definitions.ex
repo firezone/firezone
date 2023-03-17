@@ -156,7 +156,7 @@ defmodule FzHttp.Config.Definitions do
   defconfig(:external_url, :string,
     changeset: fn changeset, key ->
       changeset
-      |> FzHttp.Validator.validate_uri(key)
+      |> FzHttp.Validator.validate_uri(key, require_trailing_slash: true)
       |> FzHttp.Validator.normalize_url(key)
     end
   )

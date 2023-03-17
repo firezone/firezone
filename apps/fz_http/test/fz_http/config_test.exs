@@ -162,6 +162,34 @@ defmodule FzHttp.ConfigTest do
         fetch_source_and_configs!([:external_url])
       end
     end
+
+    test "raises an error when value is invalid" do
+      put_system_env_override(:external_url, "https://example.com/vpn")
+
+      message = """
+      Invalid configuration for 'external_url' retrieved from environment variable EXTERNAL_URL.
+
+      Errors:
+
+       - `"https://example.com/vpn"`: does not end with a trailing slash
+
+      ## Documentation
+
+      The external URL the web UI will be accessible at.
+
+      Must be a valid and public FQDN for ACME SSL issuance to function.
+
+      You can add a path suffix if you want to serve firezone from a non-root path,
+      eg: `https://firezone.mycorp.com/vpn`.
+
+
+      You can find more information on configuration here: https://www.firezone.dev/docs/reference/env-vars/#environment-variable-listing
+      """
+
+      assert_raise RuntimeError, message, fn ->
+        fetch_source_and_configs!([:external_url])
+      end
+    end
   end
 
   describe "fetch_config/1" do

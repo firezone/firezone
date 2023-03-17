@@ -133,10 +133,7 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
           <div class="control">
             <%= text_input(f, :redirect_uri,
               placeholder:
-                Path.join(
-                  @external_url,
-                  "auth/oidc/#{input_value(f, :id) || "{CONFIG_ID}"}/callback/"
-                ),
+                "#{@external_url}auth/oidc/#{input_value(f, :id) || "{CONFIG_ID}"}/callback/",
               class: "input #{input_error_class(f, :redirect_uri)}"
             ) %>
           </div>
@@ -147,10 +144,7 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
             Optionally override the Redirect URI. Must match the redirect URI set in your IdP.
             In most cases you shouldn't change this. By default
             <code>
-              <%= Path.join(
-                @external_url,
-                "auth/oidc/#{input_value(f, :id) || "{CONFIG_ID}"}/callback/"
-              ) %>
+              <%= "#{@external_url}auth/oidc/#{input_value(f, :id) || "{CONFIG_ID}"}/callback/" %>
             </code>
             is used.
           </p>

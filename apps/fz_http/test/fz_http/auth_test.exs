@@ -36,7 +36,7 @@ defmodule FzHttp.AuthTest do
                   client_id: attrs["client_id"],
                   client_secret: attrs["client_secret"],
                   discovery_document_uri: attrs["discovery_document_uri"],
-                  redirect_uri: "http://foo.bar.com//auth/oidc/google/callback/",
+                  redirect_uri: "http://foo.bar.com/auth/oidc/google/callback/",
                   response_type: attrs["response_type"],
                   scope: attrs["scope"]
                 }}
