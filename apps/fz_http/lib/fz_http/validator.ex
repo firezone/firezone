@@ -18,6 +18,7 @@ defmodule FzHttp.Validator do
 
   def validate_uri(changeset, field, opts \\ []) when is_atom(field) do
     valid_schemes = Keyword.get(opts, :schemes, ~w[http https])
+    require_trailing_slash? = Keyword.get(opts, :require_trailing_slash, false)
 
     validate_change(changeset, field, fn _current_field, value ->
       case URI.new(value) do
@@ -31,6 +32,10 @@ defmodule FzHttp.Validator do
 
             uri.scheme not in valid_schemes ->
               [{field, "only #{Enum.join(valid_schemes, ", ")} schemes are supported"}]
+
+            require_trailing_slash? and not is_nil(uri.path) and
+                not String.ends_with?(uri.path, "/") ->
+              [{field, "does not end with a trailing slash"}]
 
             true ->
               []
@@ -48,12 +53,20 @@ defmodule FzHttp.Validator do
       uri = URI.parse(value)
       scheme = uri.scheme || "https"
       port = URI.default_port(scheme)
-      path = uri.path || "/"
+      path = maybe_add_trailing_slash(uri.path || "/")
       uri = %{uri | scheme: scheme, port: port, path: path}
       uri_string = URI.to_string(uri)
       put_change(changeset, field, uri_string)
     else
       _ -> changeset
+    end
+  end
+
+  defp maybe_add_trailing_slash(value) do
+    if String.ends_with?(value, "/") do
+      value
+    else
+      value <> "/"
     end
   end
 
