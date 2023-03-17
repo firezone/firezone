@@ -3,8 +3,13 @@ defmodule FzHttp.Auth do
 
   def fetch_oidc_provider_config(provider_id) do
     with {:ok, provider} <- fetch_provider(:openid_connect_providers, provider_id) do
-      external_url = FzHttp.Config.fetch_env!(:fz_http, :external_url)
-      redirect_uri = provider.redirect_uri || "#{external_url}/auth/oidc/#{provider.id}/callback/"
+      redirect_uri =
+        if provider.redirect_uri do
+          provider.redirect_uri
+        else
+          external_url = FzHttp.Config.fetch_env!(:fz_http, :external_url)
+          Path.join(external_url, "auth/oidc/#{provider.id}/callback/")
+        end
 
       {:ok,
        %{
