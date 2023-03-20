@@ -9,7 +9,9 @@ defmodule FzHttpWeb.Auth.JSON.ErrorHandler do
 
   @impl Guardian.Plug.ErrorHandler
   def auth_error(conn, {type, reason}, _opts) do
-    Logger.info("API auth error. Type: #{type}. Reason: #{reason}.")
+    Logger.info("API auth error. Type: #{type}. Reason: #{reason}.",
+      request_id: Keyword.get(Logger.metadata(), :request_id)
+    )
 
     conn
     |> put_resp_content_type("application/json")

@@ -31,7 +31,9 @@ defmodule FzHttp.OIDC.Refresher do
   end
 
   defp do_refresh(user_id, %{provider: provider_id, refresh_token: refresh_token} = conn) do
-    Logger.info("Refreshing user\##{user_id} @ #{provider_id}...")
+    Logger.info("Refreshing user\##{user_id} @ #{provider_id}...",
+      request_id: Keyword.get(Logger.metadata(), :request_id)
+    )
 
     refresh_response =
       with {:ok, config} <- Auth.fetch_oidc_provider_config(provider_id),
@@ -53,7 +55,9 @@ defmodule FzHttp.OIDC.Refresher do
     with %{error: _} <- refresh_response do
       user = Users.fetch_user_by_id!(user_id)
 
-      Logger.info("Disabling user #{user.email} due to OIDC token refresh failure...")
+      Logger.info("Disabling user #{user.email} due to OIDC token refresh failure...",
+        request_id: Keyword.get(Logger.metadata(), :request_id)
+      )
 
       user
       |> change()

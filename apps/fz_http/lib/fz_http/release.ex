@@ -32,7 +32,8 @@ defmodule FzHttp.Release do
 
       # Notify the user
       Logger.info(
-        "Password for user specified by DEFAULT_ADMIN_EMAIL reset to DEFAULT_ADMIN_PASSWORD!"
+        "Password for user specified by DEFAULT_ADMIN_EMAIL reset to DEFAULT_ADMIN_PASSWORD!",
+        request_id: Keyword.get(Logger.metadata(), :request_id)
       )
 
       {:ok, user}
@@ -45,7 +46,8 @@ defmodule FzHttp.Release do
              }) do
         # Notify the user
         Logger.info(
-          "An admin user specified by DEFAULT_ADMIN_EMAIL is created with a DEFAULT_ADMIN_PASSWORD!"
+          "An admin user specified by DEFAULT_ADMIN_EMAIL is created with a DEFAULT_ADMIN_PASSWORD!",
+          request_id: Keyword.get(Logger.metadata(), :request_id)
         )
 
         {:ok, user}

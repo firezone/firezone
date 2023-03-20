@@ -6,6 +6,8 @@ defmodule FzHttpWeb.Endpoint do
 
   plug FzHttpWeb.Plug.PathPrefix
 
+  plug LoggerJSON.Plug
+
   if Application.compile_env(:fz_http, :sql_sandbox) do
     plug Phoenix.Ecto.SQL.Sandbox
   end

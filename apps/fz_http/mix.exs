@@ -91,6 +91,8 @@ defmodule FzHttp.MixProject do
       {:telemetry, "~> 1.0"},
       # Used in Swoosh SMTP adapter
       {:gen_smtp, "~> 1.0"},
+      # LoggerJSON
+      {:logger_json, "~> 5.1"},
 
       # Runtime debugging
       {:recon, "~> 2.5"},

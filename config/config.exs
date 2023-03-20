@@ -126,7 +126,16 @@ config :fz_vpn,
 config :logger, :console,
   level: String.to_atom(System.get_env("LOG_LEVEL", "info")),
   format: "$time $metadata[$level] $message\n",
-  metadata: :all
+  metadata: [:request_id, :remote_ip, :request_url],
+  backends: [LoggerJSON]
+
+config :logger_json, :backend,
+  metadata: :all,
+  json_encoder: Jason,
+  formatter: System.get_env("LOGGER_JSON_FORMAT")
+
+config :fz_http, FzHttp.Repo,
+  loggers: [{LoggerJSON.Ecto, :log, String.to_atom(System.get_env("LOG_LEVEL", "info"))}]
 
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason

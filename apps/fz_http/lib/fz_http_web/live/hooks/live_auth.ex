@@ -14,7 +14,10 @@ defmodule FzHttpWeb.LiveAuth do
   end
 
   defp do_on_mount(_role, nil, socket) do
-    Logger.warn("Could not get_current_user from session in LiveAuth.on_mount/4.")
+    Logger.warn("Could not get_current_user from session in LiveAuth.on_mount/4.",
+      request_id: Keyword.get(Logger.metadata(), :request_id)
+    )
+
     {:halt, not_authorized(socket)}
   end
 

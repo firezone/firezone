@@ -88,7 +88,7 @@ defmodule FzHttpWeb.AuthController do
       # Error verifying state, claims or fetching tokens
       {:error, error} ->
         msg = "An OpenIDConnect error occurred. Details: #{inspect(error)}"
-        Logger.error(msg)
+        Logger.error(msg, request_id: Keyword.get(Logger.metadata(), :request_id))
 
         conn
         |> put_flash(:error, msg)
@@ -180,7 +180,9 @@ defmodule FzHttpWeb.AuthController do
         {:error, :not_found}
 
       {:error, reason} ->
-        Logger.error("Cannot redirect user to OIDC auth uri", reason: inspect(reason))
+        Logger.error("Cannot redirect user to OIDC auth uri. Reason:  #{inspect(reason)}",
+          request_id: Keyword.get(Logger.metadata(), :request_id)
+        )
 
         conn
         |> put_flash(:error, "Error while processing OpenID request.")

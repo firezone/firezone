@@ -93,7 +93,8 @@ defmodule FzHttp.Config.Errors do
   def legacy_key_used(key, legacy_key, removed_at) do
     Logger.warn(
       "A legacy configuration option '#{legacy_key}' is used and it will be removed in v#{removed_at}. " <>
-        "Please use '#{FzHttp.Config.Resolver.env_key(key)}' configuration option instead."
+        "Please use '#{FzHttp.Config.Resolver.env_key(key)}' configuration option instead.",
+      request_id: Keyword.get(Logger.metadata(), :request_id)
     )
   end
 

@@ -23,7 +23,9 @@ defmodule FzHttpWeb.UserController do
         FzHttpWeb.Endpoint.broadcast("users_socket:#{user.id}", "disconnect", %{})
 
       {:error, msg} ->
-        Logger.error("Error deleting user: #{msg}")
+        Logger.error("Error deleting user: #{msg}",
+          request_id: Keyword.get(Logger.metadata(), :request_id)
+        )
     end
 
     Authentication.sign_out(conn)

@@ -11,7 +11,10 @@ defmodule FzHttpWeb.Mailer.NoopAdapter do
 
   @impl true
   def deliver(email, _opts) do
-    Logger.info("Mailer is not configured, dropping email: #{inspect(email)}")
+    Logger.info("Mailer is not configured, dropping email: #{inspect(email)}",
+      request_id: Keyword.get(Logger.metadata(), :request_id)
+    )
+
     {:ok, %{}}
   end
 end

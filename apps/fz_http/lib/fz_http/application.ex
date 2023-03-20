@@ -2,6 +2,13 @@ defmodule FzHttp.Application do
   use Application
 
   def start(_type, _args) do
+    :telemetry.attach(
+      "logger-json-ecto",
+      [:fz_http, :repo, :query],
+      &LoggerJSON.Ecto.telemetry_logging_handler/4,
+      String.to_atom(System.get_env("LOG_LEVEL", "info"))
+    )
+
     supervision_tree_mode = FzHttp.Config.fetch_env!(:fz_http, :supervision_tree_mode)
 
     result =

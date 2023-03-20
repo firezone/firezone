@@ -26,7 +26,9 @@ defmodule FzHttpWeb.Auth.HTML.ErrorHandler do
 
   @impl Guardian.Plug.ErrorHandler
   def auth_error(conn, {type, reason}, _opts) do
-    Logger.info("Web auth error. Type: #{type}. Reason: #{reason}.")
+    Logger.info("Web auth error. Type: #{type}. Reason: #{reason}.",
+      request_id: Keyword.get(Logger.metadata(), :request_id)
+    )
 
     conn
     |> put_resp_content_type("text/plain")

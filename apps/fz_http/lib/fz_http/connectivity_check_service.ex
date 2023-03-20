@@ -56,9 +56,13 @@ defmodule FzHttp.ConnectivityCheckService do
         response
 
       {:error, error} ->
-        Logger.error("""
-        An unexpected error occurred while performing a Firezone connectivity check to #{request_url}. Reason: #{error.reason}
-        """)
+        Logger.error(
+          """
+          An unexpected error occurred while performing a Firezone connectivity check to #{request_url}. Reason: #{error.reason}
+          """,
+          request_id: Keyword.get(Logger.metadata(), :request_id),
+          request_url: request_url
+        )
 
         error
     end

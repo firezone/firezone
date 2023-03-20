@@ -184,7 +184,8 @@ defmodule FzHttp.Devices do
 
     if is_nil(server_public_key) do
       Logger.error(
-        "No server public key found! This will break device config generation. Is fz_vpn alive?"
+        "No server public key found! This will break device config generation. Is fz_vpn alive?",
+        request_id: Keyword.get(Logger.metadata(), :request_id)
       )
     end
 

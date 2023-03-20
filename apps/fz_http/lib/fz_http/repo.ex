@@ -3,6 +3,8 @@ defmodule FzHttp.Repo do
     otp_app: :fz_http,
     adapter: Ecto.Adapters.Postgres
 
+  require Logger
+
   @doc """
   Similar to `Ecto.Repo.one/2`, fetches a single result from the query.
 
