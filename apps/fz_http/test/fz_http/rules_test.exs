@@ -24,19 +24,32 @@ defmodule FzHttp.RulesTest do
     }
   end
 
-  describe "count_by_user_id/1" do
-    test "returns 0 if user does not exist" do
-      assert count_by_user_id(Ecto.UUID.generate()) == 0
+  describe "fetch_count_by_user_id/1" do
+    test "returns 0 if user does not exist", %{subject: subject} do
+      assert fetch_count_by_user_id(Ecto.UUID.generate(), subject) == {:ok, 0}
     end
 
-    test "returns count of rules for a user", %{user: user} do
+    test "returns count of rules for a user", %{user: user, subject: subject} do
       rule = RulesFixtures.create_rule(user: user)
-      assert count_by_user_id(rule.user_id) == 1
+      assert fetch_count_by_user_id(rule.user_id, subject) == {:ok, 1}
     end
 
-    test "doesn't returns rules not tied to a user", %{user: user} do
+    test "doesn't returns rules not tied to a user", %{user: user, subject: subject} do
       RulesFixtures.create_rule()
-      assert count_by_user_id(user.id) == 0
+      assert fetch_count_by_user_id(user.id, subject) == {:ok, 0}
+    end
+
+    test "counts only subject-owned rules when subject has no manage permission", %{
+      user: user,
+      subject: subject
+    } do
+      subject = SubjectFixtures.remove_permissions(subject)
+
+      RulesFixtures.create_rule()
+      assert fetch_count_by_user_id(user.id, subject) == {:ok, 0}
+
+      RulesFixtures.create_rule(user: user)
+      assert fetch_count_by_user_id(user.id, subject) == {:ok, 1}
     end
   end
 
