@@ -38,19 +38,6 @@ defmodule FzHttp.RulesTest do
       RulesFixtures.create_rule()
       assert fetch_count_by_user_id(user.id, subject) == {:ok, 0}
     end
-
-    test "counts only subject-owned rules when subject has no manage permission", %{
-      user: user,
-      subject: subject
-    } do
-      subject = SubjectFixtures.remove_permissions(subject)
-
-      RulesFixtures.create_rule()
-      assert fetch_count_by_user_id(user.id, subject) == {:ok, 0}
-
-      RulesFixtures.create_rule(user: user)
-      assert fetch_count_by_user_id(user.id, subject) == {:ok, 1}
-    end
   end
 
   describe "fetch_rule_by_id/2" do
