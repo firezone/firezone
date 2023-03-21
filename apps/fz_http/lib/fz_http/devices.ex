@@ -1,5 +1,5 @@
 defmodule FzHttp.Devices do
-  alias FzHttp.{Repo, Config, Auth}
+  alias FzHttp.{Repo, Config, Auth, Validator}
   alias FzHttp.{Users, Telemetry}
   alias FzHttp.Devices.{Device, Authorizer}
 
@@ -31,10 +31,14 @@ defmodule FzHttp.Devices do
          Authorizer.manage_own_devices_permission()
        ]}
 
-    with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
+    with :ok <- Auth.ensure_has_permissions(subject, required_permissions),
+         true <- Validator.valid_uuid?(id) do
       Device.Query.by_id(id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch()
+    else
+      false -> {:error, :not_found}
+      other -> other
     end
   end
 

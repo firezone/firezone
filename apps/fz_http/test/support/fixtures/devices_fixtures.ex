@@ -33,16 +33,6 @@ defmodule FzHttp.DevicesFixtures do
     device
   end
 
-  # TODO: REMOVEME
-  def device(attrs \\ %{}) do
-    {:ok, device} =
-      attrs
-      |> device_attrs()
-      |> Devices.create_device()
-
-    device
-  end
-
   def public_key do
     :crypto.strong_rand_bytes(32)
     |> Base.encode64()

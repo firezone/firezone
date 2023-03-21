@@ -1,8 +1,8 @@
 defmodule FzHttp.DevicesTest do
   use FzHttp.DataCase, async: true
+  import FzHttp.Devices
   alias FzHttp.{UsersFixtures, SubjectFixtures, DevicesFixtures}
   alias FzHttp.Devices
-  import FzHttp.Devices
 
   setup do
     unprivileged_user = UsersFixtures.create_user_with_role(:unprivileged)
@@ -54,6 +54,67 @@ defmodule FzHttp.DevicesTest do
       DevicesFixtures.create_device(latest_handshake: latest_handshake)
 
       assert count_active_within(30) == 0
+    end
+  end
+
+  describe "fetch_device_by_id/2" do
+    test "returns error when UUID is invalid", %{unprivileged_subject: subject} do
+      assert fetch_device_by_id("foo", subject) == {:error, :not_found}
+    end
+
+    test "returns device by id", %{unprivileged_user: user, unprivileged_subject: subject} do
+      device = DevicesFixtures.create_device(user: user)
+      assert fetch_device_by_id(device.id, subject) == {:ok, device}
+    end
+
+    test "returns device that belongs to another user with manage permission", %{
+      unprivileged_subject: subject
+    } do
+      device = DevicesFixtures.create_device()
+
+      subject =
+        subject
+        |> SubjectFixtures.remove_permissions()
+        |> SubjectFixtures.add_permission(Devices.Authorizer.manage_devices_permission())
+
+      assert fetch_device_by_id(device.id, subject) == {:ok, device}
+    end
+
+    test "does not return device that belongs to another user with manage_own permission", %{
+      unprivileged_subject: subject
+    } do
+      device = DevicesFixtures.create_device()
+
+      subject =
+        subject
+        |> SubjectFixtures.remove_permissions()
+        |> SubjectFixtures.add_permission(Devices.Authorizer.manage_own_devices_permission())
+
+      assert fetch_device_by_id(device.id, subject) == {:error, :not_found}
+    end
+
+    test "returns error when device does not exist", %{unprivileged_subject: subject} do
+      assert fetch_device_by_id(Ecto.UUID.generate(), subject) ==
+               {:error, :not_found}
+    end
+
+    test "returns error when subject has no permission to view devices", %{
+      unprivileged_subject: subject
+    } do
+      subject = SubjectFixtures.remove_permissions(subject)
+
+      assert fetch_device_by_id(Ecto.UUID.generate(), subject) ==
+               {:error,
+                {:unauthorized,
+                 [
+                   missing_permissions: [
+                     {:one_of,
+                      [
+                        Devices.Authorizer.manage_devices_permission(),
+                        Devices.Authorizer.manage_own_devices_permission()
+                      ]}
+                   ]
+                 ]}}
     end
   end
 
