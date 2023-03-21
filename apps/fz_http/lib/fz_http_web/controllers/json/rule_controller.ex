@@ -28,24 +28,22 @@ defmodule FzHttpWeb.JSON.RuleController do
 
   @doc api_doc: [summary: "Get Rule by ID"]
   def show(conn, %{"id" => id}) do
-    rule = Rules.get_rule!(id)
-    render(conn, "show.json", rule: rule)
+    with {:ok, rule} <- Rules.fetch_rule_by_id(id) do
+      render(conn, "show.json", rule: rule)
+    end
   end
 
   @doc api_doc: [summary: "Update a Rule"]
   def update(conn, %{"id" => id, "rule" => rule_params}) do
-    rule = Rules.get_rule!(id)
-
-    with {:ok, rule} <- Rules.update_rule(rule, rule_params) do
+    with {:ok, rule} <- Rules.fetch_rule_by_id(id),
+         {:ok, rule} <- Rules.update_rule(rule, rule_params) do
       render(conn, "show.json", rule: rule)
     end
   end
 
   @doc api_doc: [summary: "Delete a Rule"]
   def delete(conn, %{"id" => id}) do
-    rule = Rules.get_rule!(id)
-
-    with {:ok, _rule} <- Rules.delete_rule(rule) do
+    with {:ok, rule} <- Rules.fetch_rule_by_id(id), {:ok, _rule} <- Rules.delete_rule(rule) do
       send_resp(conn, :no_content, "")
     end
   end

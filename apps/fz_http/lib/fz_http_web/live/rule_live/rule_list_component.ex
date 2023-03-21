@@ -12,7 +12,7 @@ defmodule FzHttpWeb.RuleLive.RuleListComponent do
     {:ok,
      socket
      |> assign(assigns)
-     |> assign(Rules.defaults())
+     #  |> assign(Rules.defaults())
      |> assign(
        action: action(assigns.id),
        rule_list: rule_list(assigns),
@@ -26,10 +26,12 @@ defmodule FzHttpWeb.RuleLive.RuleListComponent do
   def handle_event("change", %{"rule" => rule_params}, socket) do
     changeset = Rules.new_rule(rule_params)
 
-    {:noreply,
-     socket
-     |> assign(:changeset, changeset)
-     |> assign(Rules.defaults(changeset))}
+    {
+      :noreply,
+      socket
+      |> assign(:changeset, changeset)
+      #  |> assign(Rules.defaults(changeset))
+    }
   end
 
   @impl Phoenix.LiveComponent
@@ -37,9 +39,11 @@ defmodule FzHttpWeb.RuleLive.RuleListComponent do
     if Rules.port_rules_supported?() || Map.get(rule_params, :port_type) == nil do
       case Rules.create_rule(rule_params) do
         {:ok, _rule} ->
-          {:noreply,
-           assign(socket, changeset: Rules.new_rule(), rule_list: rule_list(socket.assigns))
-           |> assign(Rules.defaults())}
+          {
+            :noreply,
+            assign(socket, changeset: Rules.new_rule(), rule_list: rule_list(socket.assigns))
+            #  |> assign(Rules.defaults())
+          }
 
         {:error, changeset} ->
           {:noreply, assign(socket, changeset: changeset)}
