@@ -1,6 +1,7 @@
 defmodule FzHttp.UsersFixtures do
   alias FzHttp.Repo
   alias FzHttp.Users
+  alias FzHttp.SubjectFixtures
 
   def user_attrs(attrs \\ %{}) do
     Enum.into(attrs, %{
@@ -13,17 +14,23 @@ defmodule FzHttp.UsersFixtures do
   def create_user_with_role(attrs \\ %{}, role) do
     attrs
     |> Enum.into(%{role: role})
-    |> user()
+    |> create_user()
   end
 
   def create_user(attrs \\ %{}) do
-    user(attrs)
-  end
-
-  def user(attrs \\ %{}) do
-    attrs = user_attrs(attrs)
     {role, attrs} = Map.pop(attrs, :role, :admin)
-    {:ok, user} = Users.create_user(attrs, role)
+
+    {subject, attrs} =
+      Map.pop_lazy(attrs, :subject, fn ->
+        SubjectFixtures.new()
+        |> SubjectFixtures.set_permissions([
+          Users.Authorizer.manage_users_permission()
+        ])
+      end)
+
+    attrs = user_attrs(attrs)
+
+    {:ok, user} = Users.create_user(role, attrs, subject)
     user
   end
 

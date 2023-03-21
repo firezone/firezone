@@ -22,11 +22,7 @@ defmodule FzHttp.DataCase do
 
       import Ecto
       import Ecto.Changeset
-      # XXX: Remove this import
-      import Ecto.Query
       import FzHttp.DataCase
-      # XXX: Remove this import
-      import FzHttp.TestHelpers
     end
   end
 
