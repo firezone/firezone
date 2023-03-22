@@ -11,10 +11,10 @@ defmodule FzHttp.UsersTest do
     test "returns correct count of all users" do
       assert count() == 0
 
-      UsersFixtures.create_user()
+      UsersFixtures.create_user_with_role(:unprivileged)
       assert count() == 1
 
-      UsersFixtures.create_user()
+      UsersFixtures.create_user_with_role(:admin)
       assert count() == 2
     end
   end
@@ -71,7 +71,7 @@ defmodule FzHttp.UsersTest do
     end
 
     test "returns user" do
-      user = UsersFixtures.create_user()
+      user = UsersFixtures.create_user_with_role(:admin)
       subject = SubjectFixtures.create_subject()
       assert {:ok, returned_user} = fetch_user_by_id(user.id, subject)
       assert returned_user.id == user.id
@@ -98,7 +98,7 @@ defmodule FzHttp.UsersTest do
     end
 
     test "returns user" do
-      user = UsersFixtures.create_user()
+      user = UsersFixtures.create_user_with_role(:admin)
       assert {:ok, returned_user} = fetch_user_by_id(user.id)
       assert returned_user.id == user.id
     end
@@ -118,7 +118,7 @@ defmodule FzHttp.UsersTest do
     end
 
     test "returns user" do
-      user = UsersFixtures.create_user()
+      user = UsersFixtures.create_user_with_role(:admin)
       assert returned_user = fetch_user_by_id!(user.id)
       assert returned_user.id == user.id
     end
@@ -130,13 +130,13 @@ defmodule FzHttp.UsersTest do
     end
 
     test "returns user" do
-      user = UsersFixtures.create_user()
+      user = UsersFixtures.create_user_with_role(:admin)
       assert {:ok, returned_user} = fetch_user_by_email(user.email)
       assert returned_user.id == user.id
     end
 
     test "email is not case sensitive" do
-      user = UsersFixtures.create_user()
+      user = UsersFixtures.create_user_with_role(:admin)
       assert {:ok, user} = fetch_user_by_email(String.upcase(user.email))
       assert {:ok, ^user} = fetch_user_by_email(String.downcase(user.email))
     end
@@ -155,13 +155,13 @@ defmodule FzHttp.UsersTest do
     end
 
     test "returns user by id", %{subject: subject} do
-      user = UsersFixtures.create_user()
+      user = UsersFixtures.create_user_with_role(:admin)
       assert {:ok, returned_user} = fetch_user_by_id_or_email(user.id, subject)
       assert returned_user.id == user.id
     end
 
     test "returns user by email", %{subject: subject} do
-      user = UsersFixtures.create_user()
+      user = UsersFixtures.create_user_with_role(:admin)
       assert {:ok, returned_user} = fetch_user_by_id_or_email(user.email, subject)
       assert returned_user.id == user.id
     end
@@ -233,7 +233,7 @@ defmodule FzHttp.UsersTest do
 
   describe "request_sign_in_token/1" do
     test "returns user with updated sign-in token" do
-      user = UsersFixtures.create_user()
+      user = UsersFixtures.create_user_with_role(:admin)
       refute user.sign_in_token_hash
 
       assert {:ok, user} = request_sign_in_token(user)
@@ -246,7 +246,7 @@ defmodule FzHttp.UsersTest do
   describe "consume_sign_in_token/1" do
     test "returns user when token is valid" do
       {:ok, user} =
-        UsersFixtures.create_user()
+        UsersFixtures.create_user_with_role(:admin)
         |> request_sign_in_token()
 
       assert {:ok, signed_in_user} = consume_sign_in_token(user, user.sign_in_token)
@@ -255,7 +255,7 @@ defmodule FzHttp.UsersTest do
 
     test "clears the sign in token when consumed" do
       {:ok, user} =
-        UsersFixtures.create_user()
+        UsersFixtures.create_user_with_role(:admin)
         |> request_sign_in_token()
 
       assert {:ok, user} = consume_sign_in_token(user, user.sign_in_token)
@@ -268,7 +268,7 @@ defmodule FzHttp.UsersTest do
     end
 
     test "returns error when token doesn't exist" do
-      user = UsersFixtures.create_user()
+      user = UsersFixtures.create_user_with_role(:admin)
 
       assert consume_sign_in_token(user, "foo") == {:error, :no_token}
     end
@@ -280,7 +280,7 @@ defmodule FzHttp.UsersTest do
         |> DateTime.add(30, :second)
 
       {:ok, user} =
-        UsersFixtures.create_user()
+        UsersFixtures.create_user_with_role(:admin)
         |> request_sign_in_token()
 
       user
@@ -297,7 +297,7 @@ defmodule FzHttp.UsersTest do
         |> DateTime.add(-1, :second)
 
       {:ok, user} =
-        UsersFixtures.create_user()
+        UsersFixtures.create_user_with_role(:admin)
         |> request_sign_in_token()
 
       user =
@@ -449,7 +449,7 @@ defmodule FzHttp.UsersTest do
 
   describe "change_user/1" do
     test "returns changeset" do
-      user = UsersFixtures.create_user()
+      user = UsersFixtures.create_user_with_role(:admin)
       assert %Ecto.Changeset{} = change_user(user)
     end
   end
@@ -476,7 +476,7 @@ defmodule FzHttp.UsersTest do
     end
 
     test "allows admin to change user password", %{subject: subject} do
-      user = UsersFixtures.create_user()
+      user = UsersFixtures.create_user_with_role(:admin)
 
       attrs =
         UsersFixtures.user_attrs()
@@ -511,13 +511,13 @@ defmodule FzHttp.UsersTest do
     end
 
     test "allows admin to change user role", %{subject: subject} do
-      user = UsersFixtures.create_user()
+      user = UsersFixtures.create_user_with_role(:admin)
       assert {:ok, %{role: :unprivileged}} = update_user(user, %{role: :unprivileged}, subject)
       assert {:ok, %{role: :admin}} = update_user(user, %{role: :admin}, subject)
     end
 
     test "raises on invalid role", %{subject: subject} do
-      user = UsersFixtures.create_user()
+      user = UsersFixtures.create_user_with_role(:admin)
 
       assert {:error, changeset} = update_user(user, %{role: :foo}, subject)
       assert errors_on(changeset) == %{role: ["is invalid"]}
@@ -525,7 +525,7 @@ defmodule FzHttp.UsersTest do
 
     test "does not allow to clear the password", %{subject: subject} do
       password = "password1234"
-      user = UsersFixtures.create_user(%{password: password})
+      user = UsersFixtures.create_user_with_role(:admin, %{password: password})
 
       attrs = %{
         "password" => nil,
@@ -580,7 +580,7 @@ defmodule FzHttp.UsersTest do
 
     test "does not allow to clear the password" do
       password = "password1234"
-      user = UsersFixtures.create_user(%{password: password})
+      user = UsersFixtures.create_user_with_role(:admin, %{password: password})
       subject = SubjectFixtures.create_subject(user)
 
       attrs = %{
@@ -645,7 +645,7 @@ defmodule FzHttp.UsersTest do
 
   describe "delete_user/1" do
     test "deletes a user" do
-      user = UsersFixtures.create_user()
+      user = UsersFixtures.create_user_with_role(:admin)
       subject = SubjectFixtures.create_subject(user)
 
       assert {:ok, _user} = delete_user(user, subject)
@@ -653,7 +653,7 @@ defmodule FzHttp.UsersTest do
     end
 
     test "returns error when subject can not delete users" do
-      user = UsersFixtures.create_user()
+      user = UsersFixtures.create_user_with_role(:admin)
 
       subject =
         user
@@ -669,12 +669,12 @@ defmodule FzHttp.UsersTest do
 
   describe "setting_projection/1" do
     test "projects expected fields with user" do
-      user = UsersFixtures.create_user()
+      user = UsersFixtures.create_user_with_role(:admin)
       assert user.id == setting_projection(user)
     end
 
     test "projects expected fields with user map" do
-      user = UsersFixtures.create_user()
+      user = UsersFixtures.create_user_with_role(:admin)
       user_map = Map.from_struct(user)
       assert user.id == setting_projection(user_map)
     end
@@ -686,8 +686,8 @@ defmodule FzHttp.UsersTest do
 
       expected_settings =
         [
-          UsersFixtures.create_user(),
-          UsersFixtures.create_user()
+          UsersFixtures.create_user_with_role(:admin),
+          UsersFixtures.create_user_with_role(:admin)
         ]
         |> Enum.map(&setting_projection/1)
         |> MapSet.new()
@@ -698,7 +698,7 @@ defmodule FzHttp.UsersTest do
 
   describe "update_last_signed_in/2" do
     test "updates last_signed_in_* fields" do
-      user = UsersFixtures.create_user()
+      user = UsersFixtures.create_user_with_role(:admin)
 
       assert {:ok, user} = update_last_signed_in(user, %{provider: :test})
       assert user.last_signed_in_method == "test"
@@ -714,7 +714,7 @@ defmodule FzHttp.UsersTest do
       Config.put_config!(:vpn_session_duration, 30)
 
       user =
-        UsersFixtures.create_user()
+        UsersFixtures.create_user_with_role(:admin)
         |> change(%{last_signed_in_at: now})
         |> Repo.update!()
 
@@ -725,13 +725,13 @@ defmodule FzHttp.UsersTest do
   describe "vpn_session_expired?/1" do
     test "returns false when user did not sign in" do
       Config.put_config!(:vpn_session_duration, 30)
-      user = UsersFixtures.create_user()
+      user = UsersFixtures.create_user_with_role(:admin)
       assert vpn_session_expired?(user) == false
     end
 
     test "returns false when VPN session is not expired" do
       Config.put_config!(:vpn_session_duration, 30)
-      user = UsersFixtures.create_user()
+      user = UsersFixtures.create_user_with_role(:admin)
 
       user =
         user
@@ -743,7 +743,7 @@ defmodule FzHttp.UsersTest do
 
     test "returns true when VPN session is expired" do
       Config.put_config!(:vpn_session_duration, 30)
-      user = UsersFixtures.create_user()
+      user = UsersFixtures.create_user_with_role(:admin)
 
       user =
         user
@@ -755,7 +755,7 @@ defmodule FzHttp.UsersTest do
 
     test "returns false when VPN session never expires" do
       Config.put_config!(:vpn_session_duration, 0)
-      user = UsersFixtures.create_user()
+      user = UsersFixtures.create_user_with_role(:admin)
 
       user =
         user

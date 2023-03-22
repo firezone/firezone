@@ -3,34 +3,28 @@ defmodule FzHttp.Auth.Roles do
 
   def list_roles do
     [
-      role(:admin),
-      role(:unprivileged)
+      build(:admin),
+      build(:unprivileged)
     ]
   end
 
-  def role(:admin) do
-    %Role{
-      name: :admin,
-      permissions:
-        permissions([
-          all_permissions_from(FzHttp.ApiTokens.Authorizer),
-          all_permissions_from(FzHttp.ConnectivityChecks.Authorizer),
-          all_permissions_from(FzHttp.Devices.Authorizer)
-        ])
-    }
+  defp list_authorizers do
+    [
+      FzHttp.ApiTokens.Authorizer,
+      FzHttp.ConnectivityChecks.Authorizer,
+      FzHttp.Devices.Authorizer,
+      FzHttp.Rules.Authorizer,
+      FzHttp.Users.Authorizer
+    ]
   end
 
-  def role(:unprivileged) do
+  def build(role) do
     %Role{
-      name: :unprivileged,
+      name: role,
       permissions:
-        permissions(
-          if FzHttp.Config.fetch_config!(:allow_unprivileged_device_management) do
-            [
-              FzHttp.Devices.Authorizer.manage_own_devices_permission()
-            ]
-          end
-        )
+        list_authorizers()
+        |> Enum.map(&fetch_permissions_for_role(&1, role))
+        |> permissions()
     }
   end
 
@@ -41,7 +35,7 @@ defmodule FzHttp.Auth.Roles do
     |> MapSet.new()
   end
 
-  defp all_permissions_from(authorizer) do
-    authorizer.list_permissions()
+  defp fetch_permissions_for_role(authorizer, role) do
+    authorizer.list_permissions_for_role(role)
   end
 end

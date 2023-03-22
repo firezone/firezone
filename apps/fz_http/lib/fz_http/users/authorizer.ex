@@ -6,11 +6,21 @@ defmodule FzHttp.Users.Authorizer do
   def edit_own_profile_permission, do: build(User, :edit_own_profile)
 
   @impl FzHttp.Auth.Authorizer
-  def list_permissions do
+  def list_permissions_for_role(:admin) do
     [
       manage_users_permission(),
       edit_own_profile_permission()
     ]
+  end
+
+  def list_permissions_for_role(:unprivileged) do
+    [
+      edit_own_profile_permission()
+    ]
+  end
+
+  def list_permissions_for_role(_role) do
+    []
   end
 
   @impl FzHttp.Auth.Authorizer

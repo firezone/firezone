@@ -5,10 +5,14 @@ defmodule FzHttp.Rules.Authorizer do
   def manage_rules_permission, do: build(Rule, :manage)
 
   @impl FzHttp.Auth.Authorizer
-  def list_permissions do
+  def list_permissions_for_role(:admin) do
     [
       manage_rules_permission()
     ]
+  end
+
+  def list_permissions_for_role(_) do
+    []
   end
 
   @impl FzHttp.Auth.Authorizer

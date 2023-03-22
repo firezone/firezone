@@ -20,7 +20,8 @@ defmodule FzHttp.Devices do
 
   def count_maximum_for_a_user do
     Device.Query.group_by_user_id()
-    |> Repo.aggregate(:max)
+    |> Device.Query.select_max_count()
+    |> Repo.one()
   end
 
   def fetch_device_by_id(id, %Auth.Subject{} = subject) do

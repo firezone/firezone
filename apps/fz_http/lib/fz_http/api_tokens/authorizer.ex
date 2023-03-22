@@ -6,11 +6,15 @@ defmodule FzHttp.ApiTokens.Authorizer do
   def manage_api_tokens_permission, do: build(ApiToken, :manage)
 
   @impl FzHttp.Auth.Authorizer
-  def list_permissions do
+  def list_permissions_for_role(:admin) do
     [
       manage_own_api_tokens_permission(),
       manage_api_tokens_permission()
     ]
+  end
+
+  def list_permissions_for_role(_role) do
+    []
   end
 
   @impl FzHttp.Auth.Authorizer

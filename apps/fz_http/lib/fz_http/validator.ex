@@ -8,6 +8,14 @@ defmodule FzHttp.Validator do
     Map.has_key?(changeset.changes, field)
   end
 
+  def empty?(changeset, field) do
+    case fetch_field(changeset, field) do
+      :error -> true
+      {_data_or_changes, nil} -> true
+      {_data_or_changes, _value} -> false
+    end
+  end
+
   def has_errors?(changeset, field) do
     Keyword.has_key?(changeset.errors, field)
   end
@@ -262,6 +270,14 @@ defmodule FzHttp.Validator do
       callback.(changeset)
     else
       _ -> changeset
+    end
+  end
+
+  def validate_required_group(%Ecto.Changeset{} = changeset, fields) do
+    if Enum.any?(fields, &(not empty?(changeset, &1))) do
+      validate_required(changeset, fields)
+    else
+      changeset
     end
   end
 

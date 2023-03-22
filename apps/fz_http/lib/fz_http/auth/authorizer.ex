@@ -7,7 +7,7 @@ defmodule FzHttp.Auth.Authorizer do
   defmacro __using__(_opts) do
     quote do
       import FzHttp.Auth.Authorizer
-      import FzHttp.Auth, only: [has_permission?: 2, actor_is?: 2]
+      import FzHttp.Auth, only: [has_permission?: 2]
       alias FzHttp.Auth.Subject
 
       @behaviour FzHttp.Auth.Authorizer
@@ -18,7 +18,7 @@ defmodule FzHttp.Auth.Authorizer do
   Returns list of all permissions defined by implementation module,
   which is used to simplify role management.
   """
-  @callback list_permissions() :: [FzHttp.Auth.Permission.t()]
+  @callback list_permissions_for_role(FzHttp.Auth.Role.name()) :: [FzHttp.Auth.Permission.t()]
 
   @doc """
   Optional helper which allows to filter queryable based on subject permissions.

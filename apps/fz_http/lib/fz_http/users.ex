@@ -8,6 +8,11 @@ defmodule FzHttp.Users do
     |> Repo.aggregate(:count)
   end
 
+  def count_by_role(role) do
+    User.Query.by_role(role)
+    |> Repo.aggregate(:count)
+  end
+
   def fetch_count_by_role(role, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_users_permission()) do
       User.Query.by_role(role)
@@ -96,9 +101,15 @@ defmodule FzHttp.Users do
   end
 
   def create_user(role, attrs, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_users_permission()),
-         changeset = User.Changeset.create_changeset(role, attrs),
-         {:ok, user} <- Repo.insert(changeset) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_users_permission()) do
+      create_user(role, attrs)
+    end
+  end
+
+  def create_user(role, attrs) do
+    changeset = User.Changeset.create_changeset(role, attrs)
+
+    with {:ok, user} <- Repo.insert(changeset) do
       Telemetry.add_user()
       {:ok, user}
     end
@@ -117,6 +128,15 @@ defmodule FzHttp.Users do
       |> User.Changeset.update_user_role(attrs)
       |> Repo.update()
     end
+  end
+
+  def update_user(%User{} = user, attrs) do
+    user
+    |> User.Changeset.update_user_role(attrs)
+    |> User.Changeset.update_user_email(attrs)
+    |> User.Changeset.update_user_password(attrs)
+    |> User.Changeset.update_user_role(attrs)
+    |> Repo.update()
   end
 
   def update_self(attrs, %Auth.Subject{actor: {:user, %User{} = user}} = subject) do

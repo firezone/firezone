@@ -7,12 +7,27 @@ defmodule FzHttp.Devices.Authorizer do
   def configure_devices_permission, do: build(Device, :configure)
 
   @impl FzHttp.Auth.Authorizer
-  def list_permissions do
+
+  def list_permissions_for_role(:admin) do
     [
       manage_own_devices_permission(),
       manage_devices_permission(),
       configure_devices_permission()
     ]
+  end
+
+  def list_permissions_for_role(:unprivileged) do
+    if FzHttp.Config.fetch_config!(:allow_unprivileged_device_management) do
+      [
+        FzHttp.Devices.Authorizer.manage_own_devices_permission()
+      ]
+    else
+      []
+    end
+  end
+
+  def list_permissions_for_role(_) do
+    []
   end
 
   @impl FzHttp.Auth.Authorizer

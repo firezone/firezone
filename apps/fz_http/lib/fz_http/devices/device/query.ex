@@ -46,6 +46,13 @@ defmodule FzHttp.Devices.Device.Query do
     |> group_by([devices: devices], devices.user_id)
   end
 
+  def select_max_count(queryable \\ all()) do
+    queryable
+    |> select([devices: devices], count())
+    |> order_by([devices: devices], desc: count())
+    |> limit(1)
+  end
+
   def with_preloaded_user(queryable \\ all()) do
     with_named_binding(queryable, :user, fn queryable, binding ->
       queryable
