@@ -48,7 +48,10 @@ defmodule FzHttp.Auth.SAML.StartProxy do
           sign_requests: provider.sign_requests,
           sign_metadata: provider.sign_metadata,
           signed_assertion_in_resp: provider.signed_assertion_in_resp,
-          signed_envelopes_in_resp: provider.signed_envelopes_in_resp
+          signed_envelopes_in_resp: provider.signed_envelopes_in_resp,
+          allow_idp_initiated_flow: provider.allow_idp_initiated_flow,
+          allowed_target_urls: provider.allowed_target_urls,
+          nameid_format: provider.nameid_format
         }
       end)
 

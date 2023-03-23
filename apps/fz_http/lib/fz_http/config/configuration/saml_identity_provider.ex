@@ -22,6 +22,9 @@ defmodule FzHttp.Config.Configuration.SAMLIdentityProvider do
     field :signed_assertion_in_resp, :boolean, default: true
     field :signed_envelopes_in_resp, :boolean, default: true
     field :auto_create_users, :boolean
+    field :allow_idp_initiated_flow, :boolean, default: false
+    field :allowed_target_urls, {:array, :string}, default: []
+    field :nameid_format, :string
   end
 
   def create_changeset(attrs) do
@@ -39,7 +42,10 @@ defmodule FzHttp.Config.Configuration.SAMLIdentityProvider do
       :sign_metadata,
       :signed_assertion_in_resp,
       :signed_envelopes_in_resp,
-      :auto_create_users
+      :auto_create_users,
+      :allow_idp_initiated_flow,
+      :allowed_target_urls,
+      :nameid_format
     ])
     |> gen_default_base_url()
     |> validate_required([

@@ -38,6 +38,7 @@ services:
       - /var/app/apps/fz_http/assets/node_modules
     ports:
       - 51820:51820/udp
+      - 13000:13000
     environment:
       EXTERNAL_URL: ${EXTERNAL_URL:-https://localhost}
       LOCAL_AUTH_ENABLED: 'true'
