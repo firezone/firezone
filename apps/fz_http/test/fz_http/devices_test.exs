@@ -170,14 +170,25 @@ defmodule FzHttp.DevicesTest do
     test "returns changeset with default values" do
       assert %Ecto.Changeset{data: %FzHttp.Devices.Device{}} = changeset = new_device()
 
-      assert assert changeset.changes == %{}
+      assert Map.keys(changeset.changes) == [:name, :preshared_key]
     end
 
     test "returns changeset with given changes" do
-      assert changeset = new_device(%{"name" => "foo", "use_default_mtu" => false})
+      attrs = %{
+        "name" => "foo",
+        "use_default_mtu" => false,
+        "preshared_key" => "dtpJtrq8w8AA84jUKUqlFCqYcAKGPjYwy9XRFaNSH1k="
+      }
+
+      assert changeset = new_device(attrs)
+
       assert %Ecto.Changeset{data: %FzHttp.Devices.Device{}} = changeset
 
-      assert assert changeset.changes == %{name: "foo", use_default_mtu: false}
+      assert changeset.changes == %{
+               name: attrs["name"],
+               use_default_mtu: attrs["use_default_mtu"],
+               preshared_key: attrs["preshared_key"]
+             }
     end
   end
 
@@ -188,7 +199,7 @@ defmodule FzHttp.DevicesTest do
       assert changeset = change_device(device, %{"name" => "foo", "use_default_mtu" => false})
       assert %Ecto.Changeset{data: %FzHttp.Devices.Device{}} = changeset
 
-      assert assert changeset.changes == %{name: "foo", use_default_mtu: false}
+      assert changeset.changes == %{name: "foo", use_default_mtu: false}
     end
   end
 

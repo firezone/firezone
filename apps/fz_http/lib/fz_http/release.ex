@@ -90,7 +90,7 @@ defmodule FzHttp.Release do
 
   defp mint_jwt(%Users.User{} = user) do
     {:ok, api_token} = ApiTokens.create_api_token(user, %{})
-    {:ok, secret, _claims} = FzHttpWeb.Auth.JSON.Authentication.encode_and_sign(api_token)
+    {:ok, secret, _claims} = FzHttpWeb.Auth.JSON.Authentication.fz_encode_and_sign(api_token)
     secret
   end
 

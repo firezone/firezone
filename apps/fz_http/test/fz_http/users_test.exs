@@ -651,10 +651,11 @@ defmodule FzHttp.UsersTest do
   describe "delete_user/1" do
     test "deletes a user" do
       user = UsersFixtures.create_user_with_role(:admin)
+      UsersFixtures.create_user_with_role(:admin)
       subject = SubjectFixtures.create_subject(user)
 
       assert {:ok, _user} = delete_user(user, subject)
-      assert is_nil(Repo.one(Users.User))
+      assert is_nil(Repo.get(Users.User, user.id))
     end
 
     test "returns error when subject can not delete users" do

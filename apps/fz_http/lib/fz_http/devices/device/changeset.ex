@@ -28,6 +28,7 @@ defmodule FzHttp.Devices.Device.Changeset do
   def create_changeset(%Users.User{} = user, attrs) do
     create_changeset(attrs)
     |> put_change(:user_id, user.id)
+    |> validate_max_devices(user)
   end
 
   def create_changeset(attrs) do
@@ -48,7 +49,6 @@ defmodule FzHttp.Devices.Device.Changeset do
     |> unique_constraint(:ipv4)
     |> unique_constraint(:ipv6)
     |> unique_constraint(:public_key)
-    |> validate_max_devices()
     |> validate_required(@required_fields)
   end
 
@@ -146,16 +146,11 @@ defmodule FzHttp.Devices.Device.Changeset do
     |> FzHttp.Types.IP.cast()
   end
 
-  defp validate_max_devices(changeset) do
+  defp validate_max_devices(changeset, user) do
     # XXX: This suffers from a race condition because the count happens in a separate transaction.
     # At the moment it's not a big concern. Fixing it would require locking against INSERTs or DELETEs
     # while counts are happening.
-    count =
-      case get_field(changeset, :user_id) do
-        nil -> 0
-        user_id -> Devices.count_by_user_id(user_id)
-      end
-
+    count = Devices.count_by_user_id(user.id)
     max_devices = FzHttp.Config.fetch_env!(:fz_http, :max_devices_per_user)
 
     if count >= max_devices do
