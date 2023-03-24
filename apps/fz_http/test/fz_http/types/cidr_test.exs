@@ -89,12 +89,12 @@ defmodule FzHttp.Types.CIDRTest do
 
       assert contains?(
                %Postgrex.INET{address: {1, 2, 3, 4, 5, 6, 7, 8}, netmask: 64},
-               %Postgrex.INET{address: {1, 2, 3, 4, 65535, 100, 65535, 65535}}
+               %Postgrex.INET{address: {1, 2, 3, 4, 65_535, 100, 65_535, 65_535}}
              )
 
       assert contains?(
                %Postgrex.INET{address: {1, 2, 3, 4, 5, 6, 7, 8}, netmask: 64},
-               %Postgrex.INET{address: {1, 2, 3, 4, 65535, 65535, 65535, 65535}}
+               %Postgrex.INET{address: {1, 2, 3, 4, 65_535, 65_535, 65_535, 65_535}}
              )
 
       refute contains?(

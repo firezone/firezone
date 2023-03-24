@@ -373,7 +373,7 @@ defmodule FzHttp.DevicesTest do
       {:ok, cidr} = FzHttp.Types.CIDR.cast("fd00::/20")
       FzHttp.Config.put_env_override(:wireguard_ipv6_network, cidr)
       assert {:ok, device} = create_device_for_user(user, attrs, subject)
-      assert %Postgrex.INET{address: {64768, 0, 0, 0, _, _, _, _}, netmask: nil} = device.ipv6
+      assert %Postgrex.INET{address: {64_768, 0, 0, 0, _, _, _, _}, netmask: nil} = device.ipv6
     end
 
     test "returns error when device IP can't be assigned due to CIDR pool exhaustion", %{

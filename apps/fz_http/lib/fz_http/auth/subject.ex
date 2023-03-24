@@ -2,8 +2,8 @@ defmodule FzHttp.Auth.Subject do
   alias FzHttp.Auth.{Permission, Context}
 
   @type actor ::
-          {:user, FzHttp.Users.User.t()}
-          | {:api_token, FzHttp.ApiTokens.ApiToken.t()}
+          {:user, %FzHttp.Users.User{}}
+          | {:api_token, %FzHttp.ApiTokens.ApiToken{}}
           | :system
 
   @type permission :: Permission.t()
