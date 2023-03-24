@@ -190,7 +190,7 @@ MFA.create_method(
   })
 
 {:ok, _connectivity_check} =
-  ConnectivityCheck.Changeset.create_changeset(%{
+  ConnectivityChecks.ConnectivityCheck.Changeset.create_changeset(%{
     response_headers: %{"Content-Type" => "text/plain"},
     response_body: "127.0.0.1",
     response_code: 200,
@@ -199,7 +199,7 @@ MFA.create_method(
   |> Repo.insert()
 
 {:ok, _connectivity_check} =
-  ConnectivityCheck.Changeset.create_changeset(%{
+  ConnectivityChecks.ConnectivityCheck.Changeset.create_changeset(%{
     response_headers: %{"Content-Type" => "text/plain"},
     response_body: "127.0.0.1",
     response_code: 400,

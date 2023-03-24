@@ -60,9 +60,15 @@ defmodule FzHttp.Rules do
   end
 
   def create_rule(attrs, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_rules_permission()),
-         changeset = Rule.Changeset.create_changeset(attrs),
-         {:ok, rule} <- Repo.insert(changeset) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_rules_permission()) do
+      create_rule(attrs)
+    end
+  end
+
+  def create_rule(attrs) do
+    changeset = Rule.Changeset.create_changeset(attrs)
+
+    with {:ok, rule} <- Repo.insert(changeset) do
       Telemetry.add_rule()
       {:ok, rule}
     end
