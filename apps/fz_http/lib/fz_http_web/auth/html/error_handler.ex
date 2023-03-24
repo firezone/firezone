@@ -12,7 +12,7 @@ defmodule FzHttpWeb.Auth.HTML.ErrorHandler do
 
   @impl Guardian.Plug.ErrorHandler
   def auth_error(conn, {:already_authenticated, _reason}, _opts) do
-    user = Authentication.get_current_user(conn)
+    {:user, user} = Authentication.get_current_subject(conn).actor
 
     conn
     |> redirect(to: root_path_for_user(user))

@@ -3,6 +3,7 @@ defmodule FzHttpWeb.SettingLive.SAMLFormComponent do
   Form for SAML configs
   """
   use FzHttpWeb, :live_component
+  alias FzHttp.Config
 
   def render(assigns) do
     ~H"""
@@ -211,13 +212,20 @@ defmodule FzHttpWeb.SettingLive.SAMLFormComponent do
     if changeset.valid? do
       attrs = Ecto.Changeset.apply_changes(changeset)
 
+      config = Config.fetch_db_config!()
+
       saml_identity_providers =
-        FzHttp.Config.fetch_config!(:saml_identity_providers)
+        config.saml_identity_providers
         |> Enum.reject(&(&1.id == socket.assigns.provider.id))
         |> Kernel.++([attrs])
         |> Enum.map(&Map.from_struct/1)
 
-      FzHttp.Config.put_config!(:saml_identity_providers, saml_identity_providers)
+      {:ok, _config} =
+        Config.update_config(
+          config,
+          %{saml_identity_providers: saml_identity_providers},
+          socket.assigns.subject
+        )
 
       socket =
         socket

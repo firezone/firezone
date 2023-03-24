@@ -1,5 +1,6 @@
 defmodule FzHttp.Users.User.Changeset do
   use FzHttp, :changeset
+  alias FzHttp.Auth
   alias FzHttp.Users
 
   @min_password_length 12
@@ -27,6 +28,17 @@ defmodule FzHttp.Users.User.Changeset do
     user
     |> cast(attrs, [:email])
     |> validate_if_changed(:email, &change_email_changeset/1)
+  end
+
+  def update_user_role(user, attrs, %Auth.Subject{actor: {:user, subject_user}}) do
+    update_user_role(user, attrs)
+    |> validate_if_changed(:role, fn changeset ->
+      if subject_user.id == fetch_field!(changeset, :id) do
+        add_error(changeset, :role, "You cannot change your own role")
+      else
+        changeset
+      end
+    end)
   end
 
   def update_user_role(user, attrs) do

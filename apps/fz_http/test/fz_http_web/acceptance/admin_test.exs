@@ -241,8 +241,8 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
     end
 
     feature "can see devices, their details and delete them", %{session: session} do
-      device1 = DevicesFixtures.device()
-      device2 = DevicesFixtures.device()
+      device1 = DevicesFixtures.create_device()
+      device2 = DevicesFixtures.create_device()
 
       session =
         session

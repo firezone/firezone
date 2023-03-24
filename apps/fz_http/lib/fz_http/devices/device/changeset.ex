@@ -26,9 +26,13 @@ defmodule FzHttp.Devices.Device.Changeset do
   @key_length 44
 
   def create_changeset(%Users.User{} = user, attrs) do
+    create_changeset(attrs)
+    |> put_change(:user_id, user.id)
+  end
+
+  def create_changeset(attrs) do
     %Devices.Device{}
     |> cast(attrs, @create_fields)
-    |> put_change(:user_id, user.id)
     |> put_default_value(:name, &FzHttp.Devices.generate_name/0)
     |> put_default_value(:preshared_key, &FzHttp.Crypto.psk/0)
     |> changeset()

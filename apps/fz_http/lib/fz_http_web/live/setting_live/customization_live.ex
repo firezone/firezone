@@ -44,13 +44,19 @@ defmodule FzHttpWeb.SettingLive.Customization do
 
   @impl Phoenix.LiveView
   def handle_event("save", %{"default" => "true"}, socket) do
-    config = Config.put_config!(:logo, nil)
+    {:ok, config} =
+      Config.fetch_db_config!()
+      |> Config.update_config(%{logo: nil}, socket.assigns.subject)
+
     {:noreply, assign(socket, :logo, config.logo)}
   end
 
   @impl Phoenix.LiveView
   def handle_event("save", %{"url" => url}, socket) do
-    config = Config.put_config!(:logo, %{"url" => url})
+    {:ok, config} =
+      Config.fetch_db_config!()
+      |> Config.update_config(%{logo: %{"url" => url}}, socket.assigns.subject)
+
     {:noreply, assign(socket, :logo, config.logo)}
   end
 
@@ -60,8 +66,18 @@ defmodule FzHttpWeb.SettingLive.Customization do
 
     config =
       consume_uploaded_entry(socket, entry, fn %{path: path} ->
-        data = path |> File.read!() |> Base.encode64()
-        config = FzHttp.Config.put_config!(:logo, %{"data" => data, "type" => entry.client_type})
+        data =
+          path
+          |> File.read!()
+          |> Base.encode64()
+
+        {:ok, config} =
+          Config.fetch_db_config!()
+          |> Config.update_config(
+            %{logo: %{"data" => data, "type" => entry.client_type}},
+            socket.assigns.subject
+          )
+
         {:ok, config}
       end)
 

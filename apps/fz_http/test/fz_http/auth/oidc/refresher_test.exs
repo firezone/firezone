@@ -1,20 +1,20 @@
-defmodule FzHttp.OIDC.RefresherTest do
+defmodule FzHttp.Auth.OIDC.RefresherTest do
   use FzHttp.DataCase, async: true
-  alias FzHttp.{OIDC.Refresher, Repo}
+  alias FzHttp.Auth.OIDC.Refresher
+  alias FzHttp.UsersFixtures
 
-  setup :create_user
-
-  setup %{user: user} do
+  setup do
+    user = UsersFixtures.create_user_with_role(:admin)
     {bypass, [provider_attrs]} = FzHttp.ConfigFixtures.start_openid_providers(["google"])
 
     conn =
-      Repo.insert!(%FzHttp.OIDC.Connection{
+      Repo.insert!(%FzHttp.Auth.OIDC.Connection{
         user_id: user.id,
         provider: "google",
         refresh_token: "REFRESH_TOKEN"
       })
 
-    {:ok, conn: conn, bypass: bypass, provider_attrs: provider_attrs}
+    %{user: user, conn: conn, bypass: bypass, provider_attrs: provider_attrs}
   end
 
   describe "refresh failed" do

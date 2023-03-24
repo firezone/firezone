@@ -1,10 +1,10 @@
-defmodule FzHttp.OIDC.Refresher do
+defmodule FzHttp.Auth.OIDC.Refresher do
   @moduledoc """
   Worker module for refreshing OIDC connections
   """
   use GenServer, restart: :temporary
   import Ecto.{Changeset, Query}
-  alias FzHttp.{Auth, OIDC, OIDC.Connection, Repo, Users}
+  alias FzHttp.{Auth, Auth.OIDC, Auth.OIDC.Connection, Repo, Users}
   require Logger
 
   def start_link(init_opts) do

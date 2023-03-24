@@ -363,6 +363,24 @@ defmodule FzHttp.RulesTest do
       assert rule.user_id == user.id
     end
 
+    test "ignores port-based rule fields when they are not supported", %{
+      subject: subject
+    } do
+      FzHttp.Config.put_env_override(:fz_wall, :port_based_rules_supported, false)
+
+      attrs = %{
+        action: :drop,
+        destination: "255.0.0.1",
+        port_type: :foo,
+        port_range: "foo"
+      }
+
+      assert {:ok, rule} = create_rule(attrs, subject)
+
+      assert is_nil(rule.port_type)
+      assert is_nil(rule.port_range)
+    end
+
     test "returns error when subject has no permission to create devices", %{
       subject: subject
     } do

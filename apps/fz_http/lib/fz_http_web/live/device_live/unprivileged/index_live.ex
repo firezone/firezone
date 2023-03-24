@@ -14,12 +14,20 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.Index do
   def mount(_params, _session, socket) do
     user = socket.assigns.current_user
 
-    {:ok,
-     socket
-     |> assign(:devices, Devices.list_devices(user.id))
-     |> assign(:user, user)
-     |> assign(:page_subtitle, @page_subtitle)
-     |> assign(:page_title, @page_title)}
+    with {:ok, devices} <- Devices.list_devices_for_user(user, socket.assigns.subject) do
+      socket =
+        socket
+        |> assign(:devices, devices)
+        # TODO: remove duplicate assign, current_user is already there
+        |> assign(:user, user)
+        |> assign(:page_subtitle, @page_subtitle)
+        |> assign(:page_title, @page_title)
+
+      {:ok, socket}
+    else
+      {:error, {:unauthorized, _context}} ->
+        {:ok, not_authorized(socket)}
+    end
   end
 
   @doc """
@@ -27,10 +35,13 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.Index do
   """
   @impl Phoenix.LiveView
   def handle_params(_params, _url, socket) do
-    user_id = socket.assigns.current_user.id
+    {:ok, devices} =
+      Devices.list_devices_for_user(socket.assigns.current_user, socket.assigns.subject)
 
-    {:noreply,
-     socket
-     |> assign(:devices, Devices.list_devices(user_id))}
+    socket =
+      socket
+      |> assign(:devices, devices)
+
+    {:noreply, socket}
   end
 end

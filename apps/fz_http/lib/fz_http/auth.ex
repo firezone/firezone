@@ -1,7 +1,23 @@
 defmodule FzHttp.Auth do
+  use Supervisor
+  alias FzHttp.Repo
   alias FzHttp.Config
-  alias FzHttp.Users
+  alias FzHttp.{Users, ApiTokens}
   alias FzHttp.Auth.{Subject, Context, Permission, Roles}
+
+  def start_link(opts) do
+    Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
+  end
+
+  def init(_opts) do
+    children = [
+      FzHttp.Auth.SAML.StartProxy,
+      {DynamicSupervisor, name: FzHttp.RefresherSupervisor, strategy: :one_for_one},
+      FzHttp.Auth.OIDC.RefreshManager
+    ]
+
+    Supervisor.init(children, strategy: :one_for_one)
+  end
 
   def has_permission?(
         %Subject{permissions: granted_permissions},
@@ -19,6 +35,10 @@ defmodule FzHttp.Auth do
     end)
   end
 
+  def has_permissions?(%Subject{} = subject, required_permissions) do
+    ensure_has_permissions(subject, required_permissions) == :ok
+  end
+
   def ensure_has_permissions(%Subject{} = subject, required_permissions) do
     required_permissions
     |> List.wrap()
@@ -32,21 +52,8 @@ defmodule FzHttp.Auth do
     end
   end
 
-  # TODO: clean unused funs after refactoring
-  def actor_is?(%Subject{} = subject, actor_type) do
-    Subject.actor_type(subject) == actor_type
-  end
-
-  def ensure_actor(%Subject{} = subject, actor_type) do
-    if actor_is?(subject, actor_type) do
-      :ok
-    else
-      {:error, {:unauthorized, actor_is_not_a: actor_type}}
-    end
-  end
-
   def fetch_user_role!(%Users.User{} = user) do
-    Roles.role(user.role)
+    Roles.build(user.role)
   end
 
   def fetch_subject!(%Users.User{} = user, remote_ip, user_agent) do
@@ -54,6 +61,18 @@ defmodule FzHttp.Auth do
 
     %Subject{
       actor: {:user, user},
+      permissions: role.permissions,
+      context: %Context{remote_ip: remote_ip, user_agent: user_agent}
+    }
+  end
+
+  def fetch_subject!(%ApiTokens.ApiToken{} = api_token, remote_ip, user_agent) do
+    api_token = Repo.preload(api_token, :user)
+    role = fetch_user_role!(api_token.user)
+
+    # XXX: Once we build audit logging here we need to build a different kind of subject
+    %Subject{
+      actor: {:user, api_token.user},
       permissions: role.permissions,
       context: %Context{remote_ip: remote_ip, user_agent: user_agent}
     }

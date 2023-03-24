@@ -9,6 +9,10 @@ defmodule FzHttp.Devices.Device.Query do
     where(queryable, [devices: devices], devices.id == ^id)
   end
 
+  def by_public_key(queryable \\ all(), public_key) do
+    where(queryable, [devices: devices], devices.public_key == ^public_key)
+  end
+
   def by_user_id(queryable \\ all(), user_id) do
     where(queryable, [devices: devices], devices.user_id == ^user_id)
   end

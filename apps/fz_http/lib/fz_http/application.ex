@@ -32,13 +32,11 @@ defmodule FzHttp.Application do
       FzHttpWeb.Presence,
 
       # Application
-      # {Postgrex.Notifications, [name: FzHttp.Repo.Notifications] ++ FzHttp.Repo.config()},
-      # FzHttp.Repo.Notifier,
+      {Postgrex.Notifications, [name: FzHttp.Repo.Notifications] ++ FzHttp.Repo.config()},
+      FzHttp.Repo.Notifier,
       FzHttp.Server,
       FzHttp.VpnSessionScheduler,
-      FzHttp.SAML.StartProxy,
-      {DynamicSupervisor, name: FzHttp.RefresherSupervisor, strategy: :one_for_one},
-      FzHttp.OIDC.RefreshManager,
+      FzHttp.Auth,
       FzHttpWeb.Endpoint,
 
       # Observability
@@ -58,7 +56,7 @@ defmodule FzHttp.Application do
 
       # Application
       FzHttp.Server,
-      FzHttp.SAML.StartProxy,
+      FzHttp.Auth,
       FzHttpWeb.Endpoint,
 
       # Observability

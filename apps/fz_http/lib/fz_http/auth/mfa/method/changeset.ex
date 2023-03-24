@@ -1,6 +1,6 @@
-defmodule FzHttp.MFA.Method.Changeset do
+defmodule FzHttp.Auth.MFA.Method.Changeset do
   use FzHttp, :changeset
-  alias FzHttp.MFA.Method
+  alias FzHttp.Auth.MFA.Method
 
   @create_fields [:name, :type, :payload, :code]
 

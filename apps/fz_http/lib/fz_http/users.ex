@@ -122,10 +122,9 @@ defmodule FzHttp.Users do
   def update_user(%User{} = user, attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_users_permission()) do
       user
-      |> User.Changeset.update_user_role(attrs)
+      |> User.Changeset.update_user_role(attrs, subject)
       |> User.Changeset.update_user_email(attrs)
       |> User.Changeset.update_user_password(attrs)
-      |> User.Changeset.update_user_role(attrs)
       |> Repo.update()
     end
   end
@@ -135,7 +134,6 @@ defmodule FzHttp.Users do
     |> User.Changeset.update_user_role(attrs)
     |> User.Changeset.update_user_email(attrs)
     |> User.Changeset.update_user_password(attrs)
-    |> User.Changeset.update_user_role(attrs)
     |> Repo.update()
   end
 
@@ -148,10 +146,28 @@ defmodule FzHttp.Users do
   end
 
   def delete_user(%User{} = user, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_users_permission()) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_users_permission()),
+         :ok <- ensure_not_last_admin(user) do
       Telemetry.delete_user()
-      Repo.delete(user)
+      Repo.delete(user, stale_error_field: :id)
     end
+  end
+
+  defp ensure_not_last_admin(%User{role: :admin, id: id}) do
+    remaining_admins_count =
+      User.Query.by_role(:admin)
+      |> User.Query.by_id({:not, id})
+      |> Repo.aggregate(:count)
+
+    if remaining_admins_count >= 1 do
+      :ok
+    else
+      {:error, :cant_delete_the_last_admin}
+    end
+  end
+
+  defp ensure_not_last_admin(%User{}) do
+    :ok
   end
 
   def setting_projection(user) do

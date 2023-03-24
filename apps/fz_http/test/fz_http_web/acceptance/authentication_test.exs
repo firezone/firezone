@@ -13,7 +13,7 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
     end
 
     feature "renders error on invalid password", %{session: session} do
-      user = UsersFixtures.create_user()
+      user = UsersFixtures.create_user_with_role(:admin)
 
       session
       |> password_login_flow(user.email, "firezone1234")
@@ -25,7 +25,12 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
 
     feature "redirects to /users after successful log in as admin", %{session: session} do
       password = "firezone1234"
-      user = UsersFixtures.create_user(password: password, password_confirmation: password)
+
+      user =
+        UsersFixtures.create_user_with_role(:admin,
+          password: password,
+          password_confirmation: password
+        )
 
       session
       |> password_login_flow(user.email, password)
@@ -155,7 +160,7 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
     end
 
     feature "authenticates existing user", %{session: session} do
-      user = UsersFixtures.create_user()
+      user = UsersFixtures.create_user_with_role(:admin)
 
       oidc_login = "firezone-2"
       oidc_password = "firezone1234_oidc"
@@ -467,7 +472,7 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
       |> click(Query.button("Save"))
       |> assert_el(Query.text("MFA method added!"))
 
-    assert mfa_method = Repo.one(FzHttp.MFA.Method)
+    assert mfa_method = Repo.one(FzHttp.Auth.MFA.Method)
     assert mfa_method.name == "My MFA Name"
     assert mfa_method.payload["secret"] == Base.encode64(secret)
 

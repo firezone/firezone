@@ -1,23 +1,23 @@
-defmodule FzHttp.MFATest do
+defmodule FzHttp.Auth.MFATest do
   use FzHttp.DataCase, async: true
   alias FzHttp.UsersFixtures
   alias FzHttp.MFAFixtures
-  alias FzHttp.MFA
+  alias FzHttp.Auth.MFA
 
-  describe "count_users_with_method/0" do
+  describe "count_users_with_mfa_enabled/0" do
     test "returns 0 when there are no methods" do
-      assert MFA.count_users_with_method() == 0
+      assert MFA.count_users_with_mfa_enabled() == 0
     end
 
     test "returns count of users with at least one method" do
       MFAFixtures.create_totp_method()
       MFAFixtures.create_totp_method()
 
-      user = UsersFixtures.create_user()
+      user = UsersFixtures.create_user_with_role(:admin)
       MFAFixtures.create_totp_method(user: user)
       MFAFixtures.create_totp_method(user: user)
 
-      assert MFA.count_users_with_method() == 3
+      assert MFA.count_users_with_mfa_enabled() == 3
     end
   end
 
@@ -48,7 +48,7 @@ defmodule FzHttp.MFATest do
     end
 
     test "returns method by user id" do
-      user = UsersFixtures.create_user()
+      user = UsersFixtures.create_user_with_role(:admin)
       method = MFAFixtures.create_totp_method(user: user)
       assert {:ok, returned_method} = MFA.fetch_last_used_method_by_user_id(user.id)
       assert returned_method.id == method.id
@@ -57,18 +57,18 @@ defmodule FzHttp.MFATest do
 
   describe "list_methods_for_user/1" do
     test "returns empty list when there are no methods" do
-      user = UsersFixtures.create_user()
+      user = UsersFixtures.create_user_with_role(:admin)
       assert MFA.list_methods_for_user(user) == {:ok, []}
     end
 
     test "returns empty list when user has no methods" do
       MFAFixtures.create_totp_method()
-      user = UsersFixtures.create_user()
+      user = UsersFixtures.create_user_with_role(:admin)
       assert MFA.list_methods_for_user(user) == {:ok, []}
     end
 
     test "returns methods for user" do
-      user = UsersFixtures.create_user()
+      user = UsersFixtures.create_user_with_role(:admin)
       method1 = MFAFixtures.create_totp_method(user: user)
       method2 = MFAFixtures.create_totp_method(user: user)
 
@@ -81,17 +81,17 @@ defmodule FzHttp.MFATest do
 
   describe "delete_method_by_id/2" do
     test "returns error when method is not found" do
-      user = UsersFixtures.create_user()
+      user = UsersFixtures.create_user_with_role(:admin)
       assert MFA.delete_method_by_id(Ecto.UUID.generate(), user) == {:error, :not_found}
     end
 
     test "returns error when id is not a valid UUIDv4" do
-      user = UsersFixtures.create_user()
+      user = UsersFixtures.create_user_with_role(:admin)
       assert MFA.delete_method_by_id("foo", user) == {:error, :not_found}
     end
 
     test "deletes method by id" do
-      user = UsersFixtures.create_user()
+      user = UsersFixtures.create_user_with_role(:admin)
       method = MFAFixtures.create_totp_method(user: user)
       assert {:ok, deleted_method} = MFA.delete_method_by_id(method.id, user)
       assert deleted_method.id == method.id
@@ -100,7 +100,7 @@ defmodule FzHttp.MFATest do
 
     test "does not allow to delete method that belongs to other user" do
       method = MFAFixtures.create_totp_method()
-      user = UsersFixtures.create_user()
+      user = UsersFixtures.create_user_with_role(:admin)
       assert MFA.delete_method_by_id(method.id, user) == {:error, :not_found}
       assert Repo.one(MFA.Method)
     end
@@ -108,7 +108,7 @@ defmodule FzHttp.MFATest do
 
   describe "create_method/2" do
     test "returns changeset error when required attrs are missing" do
-      user = UsersFixtures.create_user()
+      user = UsersFixtures.create_user_with_role(:admin)
 
       assert {:error, changeset} = MFA.create_method(%{}, user.id)
       refute changeset.valid?
@@ -122,7 +122,7 @@ defmodule FzHttp.MFATest do
     end
 
     test "returns error on invalid attrs" do
-      user = UsersFixtures.create_user()
+      user = UsersFixtures.create_user_with_role(:admin)
 
       attrs = %{
         type: :insecure,
@@ -151,7 +151,7 @@ defmodule FzHttp.MFATest do
     end
 
     test "returns error when name is already taken" do
-      user = UsersFixtures.create_user()
+      user = UsersFixtures.create_user_with_role(:admin)
 
       attrs = MFAFixtures.totp_method_attrs()
       assert {:ok, _user} = MFA.create_method(attrs, user.id)
@@ -161,8 +161,8 @@ defmodule FzHttp.MFATest do
     end
 
     test "does not return error when other user has the same name" do
-      user = UsersFixtures.create_user()
-      other_user = UsersFixtures.create_user()
+      user = UsersFixtures.create_user_with_role(:admin)
+      other_user = UsersFixtures.create_user_with_role(:admin)
 
       attrs = MFAFixtures.totp_method_attrs()
       assert {:ok, _user} = MFA.create_method(attrs, user.id)
@@ -170,7 +170,7 @@ defmodule FzHttp.MFATest do
     end
 
     test "creates a TOTP MFA method" do
-      user = UsersFixtures.create_user()
+      user = UsersFixtures.create_user_with_role(:admin)
       attrs = MFAFixtures.totp_method_attrs()
       assert {:ok, method} = MFA.create_method(attrs, user.id)
 
@@ -182,7 +182,7 @@ defmodule FzHttp.MFATest do
     end
 
     test "trims name" do
-      user = UsersFixtures.create_user()
+      user = UsersFixtures.create_user_with_role(:admin)
 
       attrs = MFAFixtures.totp_method_attrs()
       updated_attrs = Map.put(attrs, :name, " #{attrs.name} ")

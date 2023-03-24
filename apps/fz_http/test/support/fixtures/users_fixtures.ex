@@ -11,14 +11,8 @@ defmodule FzHttp.UsersFixtures do
     })
   end
 
-  def create_user_with_role(attrs \\ %{}, role) do
-    attrs
-    |> Enum.into(%{role: role})
-    |> create_user()
-  end
-
-  def create_user(attrs \\ %{}) do
-    {role, attrs} = Map.pop(attrs, :role, :admin)
+  def create_user_with_role(role, attrs \\ %{}) do
+    attrs = Enum.into(attrs, %{})
 
     {subject, attrs} =
       Map.pop_lazy(attrs, :subject, fn ->

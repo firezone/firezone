@@ -10,6 +10,7 @@ defmodule FzHttp.Auth.Roles do
 
   defp list_authorizers do
     [
+      FzHttp.Config.Authorizer,
       FzHttp.ApiTokens.Authorizer,
       FzHttp.ConnectivityChecks.Authorizer,
       FzHttp.Devices.Authorizer,

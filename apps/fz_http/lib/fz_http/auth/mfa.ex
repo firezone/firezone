@@ -1,9 +1,10 @@
-defmodule FzHttp.MFA do
+# TODO: add subjects
+defmodule FzHttp.Auth.MFA do
   alias FzHttp.{Repo, Validator}
   alias FzHttp.Users
-  alias FzHttp.MFA.Method
+  alias FzHttp.Auth.MFA.Method
 
-  def count_users_with_method do
+  def count_users_with_mfa_enabled do
     Method.Query.select_distinct_user_ids_count()
     |> Repo.one()
   end

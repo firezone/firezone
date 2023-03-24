@@ -6,7 +6,7 @@ defmodule FzHttpWeb.SettingLive.Account do
 
   alias FzHttp.{
     ApiTokens,
-    MFA,
+    Auth.MFA,
     Users
   }
 
@@ -23,7 +23,9 @@ defmodule FzHttpWeb.SettingLive.Account do
   def mount(params, _session, socket) do
     Endpoint.subscribe(@live_sessions_topic)
     {:ok, methods} = MFA.list_methods_for_user(socket.assigns.current_user)
-    {:ok, api_tokens} = ApiTokens.list_api_tokens_by_user_id(socket.assigns.current_user.id)
+
+    {:ok, api_tokens} =
+      ApiTokens.list_api_tokens_by_user_id(socket.assigns.current_user.id, socket.assigns.subject)
 
     socket =
       socket
@@ -52,7 +54,8 @@ defmodule FzHttpWeb.SettingLive.Account do
 
   @impl Phoenix.LiveView
   def handle_params(_params, _url, socket) do
-    {:ok, api_tokens} = ApiTokens.list_api_tokens_by_user_id(socket.assigns.current_user.id)
+    {:ok, api_tokens} =
+      ApiTokens.list_api_tokens_by_user_id(socket.assigns.current_user.id, socket.assigns.subject)
 
     socket =
       socket
@@ -66,7 +69,12 @@ defmodule FzHttpWeb.SettingLive.Account do
   def handle_event("delete_api_token", %{"id" => id}, socket) do
     case ApiTokens.delete_api_token_by_id(id, socket.assigns.current_user) do
       {:ok, _api_token} ->
-        {:ok, api_tokens} = ApiTokens.list_api_tokens_by_user_id(socket.assigns.current_user.id)
+        {:ok, api_tokens} =
+          ApiTokens.list_api_tokens_by_user_id(
+            socket.assigns.current_user.id,
+            socket.assigns.subject
+          )
+
         {:noreply, assign(socket, :api_tokens, api_tokens)}
 
       {:error, :not_found} ->

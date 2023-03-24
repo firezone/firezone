@@ -1,4 +1,4 @@
-defmodule FzHttp.MFA.Method do
+defmodule FzHttp.Auth.MFA.Method do
   use FzHttp, :schema
 
   schema "mfa_methods" do

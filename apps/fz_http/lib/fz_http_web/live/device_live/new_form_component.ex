@@ -3,7 +3,6 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
   Handles device form.
   """
   use FzHttpWeb, :live_component
-
   alias FzHttp.Devices
   alias FzHttpWeb.ErrorHelpers
 
@@ -17,7 +16,7 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
 
   @impl Phoenix.LiveComponent
   def update(assigns, socket) do
-    changeset = new_changeset(socket)
+    changeset = Devices.new_device()
 
     config =
       FzHttp.Config.fetch_source_and_configs!(~w(
@@ -29,12 +28,14 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
       )a)
       |> Enum.into(%{}, fn {k, {_s, v}} -> {k, v} end)
 
-    {:ok,
-     socket
-     |> assign(assigns)
-     |> assign(:changeset, changeset)
-     |> assign(config)
-     |> assign(use_default_fields(changeset))}
+    socket =
+      socket
+      |> assign(assigns)
+      |> assign(config)
+      |> assign_new(:changeset, fn -> changeset end)
+      |> assign(use_default_fields(changeset))
+
+    {:ok, socket}
   end
 
   @impl Phoenix.LiveComponent
@@ -45,16 +46,17 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
       |> Map.update("allowed_ips", nil, &binary_to_list/1)
       |> Devices.new_device()
 
-    {:noreply,
-     socket
-     |> assign(:changeset, changeset)
-     |> assign(use_default_fields(changeset))}
+    socket =
+      socket
+      |> assign(:changeset, changeset)
+      |> assign(use_default_fields(changeset))
+
+    {:noreply, socket}
   end
 
   @impl Phoenix.LiveComponent
   def handle_event("save", %{"device" => device_params}, socket) do
     device_params
-    |> Map.put("user_id", socket.assigns.target_user_id)
     |> Map.update("dns", nil, &binary_to_list/1)
     |> Map.update("allowed_ips", nil, &binary_to_list/1)
     |> create_device(socket)
@@ -62,12 +64,17 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
       {:ok, device} ->
         send_update(FzHttpWeb.ModalComponent, id: :modal, hide_footer_content: true)
 
-        {:noreply,
-         socket
-         |> assign(:device, device)
-         |> assign(:config, Devices.as_encoded_config(device))}
+        socket =
+          socket
+          |> assign(:device, device)
+          |> assign(
+            :config,
+            FzHttpWeb.WireguardConfigView.render("base64_device.conf", %{device: device})
+          )
 
-      :not_authorized ->
+        {:noreply, socket}
+
+      {:error, {:unauthorized, _context}} ->
         {:noreply, not_authorized(socket)}
 
       {:error, changeset} ->
@@ -89,30 +96,8 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
     |> Map.new(&{&1, Ecto.Changeset.get_field(changeset, &1)})
   end
 
-  defp create_device(params, socket) do
-    if authorized_to_create?(socket) do
-      Devices.create_device(params)
-    else
-      :not_authorized
-    end
-  end
-
-  defp authorized_to_create?(socket) do
-    has_role?(socket, :admin) ||
-      (FzHttp.Config.fetch_config!(:allow_unprivileged_device_management) &&
-         socket.assigns.current_user.id == socket.assigns.target_user_id)
-  end
-
-  # update/2 is called twice: on load and then connect.
-  # Use blank name the first time to prevent flashing two different names in the form.
-  # XXX: Clean this up using assign_new/3
-  defp new_changeset(socket) do
-    if connected?(socket) do
-      %{name: FzHttp.Devices.generate_name()}
-    else
-      %{}
-    end
-    |> Devices.new_device()
+  defp create_device(attrs, socket) do
+    Devices.create_device_for_user(socket.assigns.user, attrs, socket.assigns.subject)
   end
 
   defp binary_to_list(binary) when is_binary(binary),

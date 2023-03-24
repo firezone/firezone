@@ -3,7 +3,7 @@ defmodule FzHttp.EventsTest do
   XXX: Use start_supervised! somehow here to allow async tests.
   """
   use FzHttp.DataCase, async: false
-
+  import FzHttp.TestHelpers
   alias FzHttp.{Devices, Events}
 
   @moduletag :acceptance

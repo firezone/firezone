@@ -11,22 +11,28 @@
 # and so on) as they will fail if something goes wrong.
 
 alias FzHttp.{
+  Repo,
   ConnectivityChecks,
   Devices,
   Users,
   ApiTokens,
   Rules,
-  MFA
+  Auth.MFA
 }
 
+create_device = fn user, attrs ->
+  Devices.Device.Changeset.create_changeset(user, attrs)
+  |> Devices.Device.Changeset.configure_changeset(attrs)
+  |> Repo.insert()
+end
+
 {:ok, unprivileged_user1} =
-  Users.create_unprivileged_user(%{
+  Users.create_user(:unprivileged, %{
     email: "firezone-unprivileged-1@localhost"
   })
 
 {:ok, _device} =
-  Devices.create_device(%{
-    user_id: unprivileged_user1.id,
+  create_device.(unprivileged_user1, %{
     name: "My Device",
     description: "foo bar",
     preshared_key: "27eCDMVRVFfMVS5Rfnn9n7as4M6MemGY/oghmdrwX2E=",
@@ -45,7 +51,7 @@ alias FzHttp.{
   })
 
 {:ok, mfa_user} =
-  Users.create_unprivileged_user(%{
+  Users.create_user(:unprivileged, %{
     email: "firezone-mfa@localhost",
     password: "firezone1234",
     password_confirmation: "firezone1234"
@@ -64,19 +70,18 @@ MFA.create_method(
 )
 
 {:ok, user} =
-  Users.create_admin_user(%{
+  Users.create_user(:admin, %{
     email: "firezone@localhost",
     password: "firezone1234",
     password_confirmation: "firezone1234"
   })
 
-{:ok, _api_token} = ApiTokens.create_user_api_token(user, %{"expires_in" => 5})
-{:ok, _api_token} = ApiTokens.create_user_api_token(user, %{"expires_in" => 30})
-{:ok, _api_token} = ApiTokens.create_user_api_token(user, %{"expires_in" => 1})
+{:ok, _api_token} = ApiTokens.create_api_token(user, %{"expires_in" => 5})
+{:ok, _api_token} = ApiTokens.create_api_token(user, %{"expires_in" => 30})
+{:ok, _api_token} = ApiTokens.create_api_token(user, %{"expires_in" => 1})
 
 {:ok, _device} =
-  Devices.create_device(%{
-    user_id: user.id,
+  create_device.(user, %{
     name: "wireguard-client",
     description: """
     Test device corresponding to the client configuration used in the wireguard-client container
@@ -99,8 +104,7 @@ MFA.create_method(
   })
 
 {:ok, _device} =
-  Devices.create_device(%{
-    user_id: user.id,
+  create_device.(user, %{
     name: "Factory Device 3",
     description: "foo 3",
     preshared_key: "23eCDMVRVFfMVS5Rfnn9n7as4M6MemGY/oghmdrwX2E=",
@@ -111,8 +115,7 @@ MFA.create_method(
   })
 
 {:ok, _device} =
-  Devices.create_device(%{
-    user_id: user.id,
+  create_device.(user, %{
     name: "Factory Device 5",
     description: "foo 3",
     preshared_key: "23eCDMVRbFfMVS5Rfnn9n7as4M6MemGY/oghmdrwX2E=",
@@ -123,8 +126,7 @@ MFA.create_method(
   })
 
 {:ok, _device} =
-  Devices.create_device(%{
-    user_id: user.id,
+  create_device.(user, %{
     name: "Factory Device 4",
     description: "foo 3",
     preshared_key: "2yeCDMVRVFfMVS5Rfnn9n7as4M6MemGY/oghmdrwX2E=",
@@ -135,15 +137,14 @@ MFA.create_method(
   })
 
 {:ok, user} =
-  Users.create_admin_user(%{
+  Users.create_user(:admin, %{
     email: "firezone2@localhost",
     password: "firezone1234",
     password_confirmation: "firezone1234"
   })
 
 {:ok, _device} =
-  Devices.create_device(%{
-    user_id: user.id,
+  create_device.(user, %{
     name: "Factory Device 2",
     description: "foo 2",
     preshared_key: "27eCDMVRVFfMVS5Rfnn9n7as4M6MemGY/oghmdrwX2E=",
@@ -154,8 +155,7 @@ MFA.create_method(
   })
 
 {:ok, _device} =
-  Devices.create_device(%{
-    user_id: user.id,
+  create_device.(user, %{
     name: "Factory Device",
     description: """
     Lorem ipsum dolor sit amet, consectetuer adipiscing elit. Aenean commodo ligula eget dolor. A\
@@ -190,20 +190,22 @@ MFA.create_method(
   })
 
 {:ok, _connectivity_check} =
-  ConnectivityChecks.create_connectivity_check(%{
+  ConnectivityCheck.Changeset.create_changeset(%{
     response_headers: %{"Content-Type" => "text/plain"},
     response_body: "127.0.0.1",
     response_code: 200,
     url: "https://ping-dev.firez.one/0.1.19"
   })
+  |> Repo.insert()
 
 {:ok, _connectivity_check} =
-  ConnectivityChecks.create_connectivity_check(%{
+  ConnectivityCheck.Changeset.create_changeset(%{
     response_headers: %{"Content-Type" => "text/plain"},
     response_body: "127.0.0.1",
     response_code: 400,
     url: "https://ping-dev.firez.one/0.20.0"
   })
+  |> Repo.insert()
 
 Rules.create_rule(%{
   destination: "10.0.0.0/24",

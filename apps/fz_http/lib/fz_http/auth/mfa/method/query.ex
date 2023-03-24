@@ -1,8 +1,8 @@
-defmodule FzHttp.MFA.Method.Query do
+defmodule FzHttp.Auth.MFA.Method.Query do
   use FzHttp, :query
 
   def all do
-    from(users in FzHttp.MFA.Method, as: :methods)
+    from(users in FzHttp.Auth.MFA.Method, as: :methods)
   end
 
   def by_id(queryable \\ all(), id) do

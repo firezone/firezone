@@ -83,11 +83,13 @@ defmodule FzHttp.Devices do
   end
 
   def new_device(attrs \\ %{}) do
-    change_device(%Device{}, attrs)
+    Device.Changeset.create_changeset(attrs)
+    |> Device.Changeset.configure_changeset(attrs)
   end
 
   def change_device(%Device{} = device, attrs \\ %{}) do
     Device.Changeset.update_changeset(device, attrs)
+    |> Device.Changeset.configure_changeset(attrs)
   end
 
   def create_device_for_user(
@@ -249,7 +251,4 @@ defmodule FzHttp.Devices do
       :default_client_persistent_keepalive
     ])
   end
-
-  # TODO: fix me in web
-  # def as_encoded_config(device), do: Base.encode64(as_config(device))
 end

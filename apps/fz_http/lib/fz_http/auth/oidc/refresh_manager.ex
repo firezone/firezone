@@ -1,4 +1,4 @@
-defmodule FzHttp.OIDC.RefreshManager do
+defmodule FzHttp.Auth.OIDC.RefreshManager do
   @moduledoc """
   Manager module for refreshing OIDC connections
   """
@@ -47,7 +47,7 @@ defmodule FzHttp.OIDC.RefreshManager do
 
     DynamicSupervisor.start_child(
       FzHttp.RefresherSupervisor,
-      {FzHttp.OIDC.Refresher, {id, delay_after_spawn}}
+      {FzHttp.Auth.OIDC.Refresher, {id, delay_after_spawn}}
     )
   end
 end

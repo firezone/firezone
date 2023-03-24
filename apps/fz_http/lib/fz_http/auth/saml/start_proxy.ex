@@ -1,4 +1,4 @@
-defmodule FzHttp.SAML.StartProxy do
+defmodule FzHttp.Auth.SAML.StartProxy do
   @moduledoc """
   This proxy starts Samly.Provider with proper configs
   """

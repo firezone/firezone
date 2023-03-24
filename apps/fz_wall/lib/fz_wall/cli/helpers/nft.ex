@@ -3,7 +3,6 @@ defmodule FzWall.CLI.Helpers.Nft do
   Helper module concerning nft commands
   """
   import FzWall.Shell
-  import FzCommon.FzNet, only: [standardized_inet: 1]
   require Logger
   @table_name "firezone"
   @main_chain "forward"

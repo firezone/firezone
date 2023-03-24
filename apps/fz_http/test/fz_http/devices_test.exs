@@ -118,7 +118,7 @@ defmodule FzHttp.DevicesTest do
     end
   end
 
-  describe "list_devices/0" do
+  describe "list_devices/1" do
     test "returns empty list when there are no devices", %{admin_subject: subject} do
       assert list_devices(subject) == {:ok, []}
     end
@@ -166,7 +166,7 @@ defmodule FzHttp.DevicesTest do
     end
   end
 
-  describe "new_device/1" do
+  describe "new_device/0" do
     test "returns changeset with default values" do
       assert %Ecto.Changeset{data: %FzHttp.Devices.Device{}} = changeset = new_device()
 
@@ -174,10 +174,10 @@ defmodule FzHttp.DevicesTest do
     end
 
     test "returns changeset with given changes" do
-      assert changeset = new_device(%{"name" => "foo"})
+      assert changeset = new_device(%{"name" => "foo", "use_default_mtu" => false})
       assert %Ecto.Changeset{data: %FzHttp.Devices.Device{}} = changeset
 
-      assert assert changeset.changes == %{name: "foo"}
+      assert assert changeset.changes == %{name: "foo", use_default_mtu: false}
     end
   end
 
@@ -185,10 +185,10 @@ defmodule FzHttp.DevicesTest do
     test "returns changeset with given changes", %{admin_user: user} do
       device = DevicesFixtures.create_device(user: user)
 
-      assert changeset = change_device(device, %{"name" => "foo"})
+      assert changeset = change_device(device, %{"name" => "foo", "use_default_mtu" => false})
       assert %Ecto.Changeset{data: %FzHttp.Devices.Device{}} = changeset
 
-      assert assert changeset.changes == %{name: "foo"}
+      assert assert changeset.changes == %{name: "foo", use_default_mtu: false}
     end
   end
 

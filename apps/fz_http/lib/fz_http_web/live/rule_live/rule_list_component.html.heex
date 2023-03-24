@@ -66,7 +66,7 @@
           <%= text_input(f, :port_range,
             class: "input #{input_error_class(f, :port_range)}",
             placeholder: "23000-24000",
-            disabled: @port_type == nil
+            disabled: not FzHttp.Validator.empty?(@changeset, :port_type)
           ) %>
         </div>
         <p class="help is-danger">

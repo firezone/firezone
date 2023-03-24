@@ -19,7 +19,7 @@ defmodule FzHttp.ApiTokensTest do
     end
 
     test "returns the number of api_tokens for a user" do
-      user = UsersFixtures.create_user()
+      user = UsersFixtures.create_user_with_role(:admin)
       assert count_by_user_id(user.id) == 0
 
       ApiTokensFixtures.create_api_token(user: user)

@@ -1,7 +1,13 @@
 defmodule FzHttpWeb.WireguardConfigView do
   use FzHttpWeb, :view
+  alias FzHttp.Config
   alias FzHttp.Devices
   require Logger
+
+  def render("base64_device.conf", %{device: device}) do
+    render("device.conf", %{device: device})
+    |> Base.encode64()
+  end
 
   def render("device.conf", %{device: device}) do
     server_public_key = Application.get_env(:fz_vpn, :wireguard_public_key)

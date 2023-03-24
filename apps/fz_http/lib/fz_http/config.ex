@@ -1,5 +1,6 @@
 defmodule FzHttp.Config do
-  alias FzHttp.Repo
+  alias FzHttp.{Repo, Auth}
+  alias FzHttp.Config.Authorizer
   alias FzHttp.Config.{Definition, Definitions, Validator, Errors, Fetcher}
   alias FzHttp.Config.Configuration
 
@@ -113,13 +114,27 @@ defmodule FzHttp.Config do
     Repo.one!(Configuration)
   end
 
+  def fetch_db_config(%Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.configure_permission()) do
+      {:ok, fetch_db_config!()}
+    end
+  end
+
   def change_config(%Configuration{} = config \\ fetch_db_config!(), attrs \\ %{}) do
     Configuration.Changeset.changeset(config, attrs)
   end
 
+  def update_config(%Configuration{} = config, attrs, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.configure_permission()) do
+      update_config(config, attrs)
+    end
+  end
+
   def update_config(%Configuration{} = config, attrs) do
-    with {:ok, config} <- Repo.update(Configuration.Changeset.changeset(config, attrs)) do
-      FzHttp.SAML.StartProxy.refresh(config.saml_identity_providers)
+    changeset = Configuration.Changeset.changeset(config, attrs)
+
+    with {:ok, config} <- Repo.update(changeset) do
+      FzHttp.Auth.SAML.StartProxy.refresh(config.saml_identity_providers)
       {:ok, config}
     end
   end

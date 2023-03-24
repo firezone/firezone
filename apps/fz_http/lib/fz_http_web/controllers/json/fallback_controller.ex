@@ -14,6 +14,20 @@ defmodule FzHttpWeb.JSON.FallbackController do
     |> render("404.json")
   end
 
+  def call(conn, {:error, :unauthorized}) do
+    conn
+    |> put_status(:unauthorized)
+    |> put_view(FzHttpWeb.ErrorView)
+    |> render("401.json")
+  end
+
+  def call(conn, {:error, {:unauthorized, _context}}) do
+    conn
+    |> put_status(:unauthorized)
+    |> put_view(FzHttpWeb.ErrorView)
+    |> render("401.json")
+  end
+
   def call(conn, {:error, :internal_server_error}) do
     conn
     |> put_status(:internal_server_error)

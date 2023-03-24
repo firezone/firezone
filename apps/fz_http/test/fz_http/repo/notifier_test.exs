@@ -1,6 +1,6 @@
 defmodule FzHttp.Repo.NotifierTest do
   use FzHttp.DataCase, async: false
-
+  import FzHttp.TestHelpers
   alias FzHttp.Repo.Notifier
   alias FzHttp.Events
 

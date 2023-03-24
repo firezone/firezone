@@ -67,7 +67,10 @@ defmodule FzHttpWeb.SettingLive.Security do
 
   @impl Phoenix.LiveView
   def handle_event("toggle", %{"config" => key} = params, socket) do
-    Config.put_config!(key, !!params["value"])
+    {:ok, _config} =
+      Config.fetch_db_config!()
+      |> Config.update_config(%{key => !!params["value"]}, socket.assigns.subject)
+
     configs = FzHttp.Config.fetch_source_and_configs!(@configs)
     {:noreply, assign(socket, :configs, configs)}
   end
@@ -76,13 +79,17 @@ defmodule FzHttpWeb.SettingLive.Security do
   def handle_event("delete", %{"type" => type, "key" => key}, socket) do
     field_key = String.to_existing_atom(type)
 
+    config = Config.fetch_db_config!()
+
     providers =
-      Config.fetch_db_config!()
+      config
       |> Map.fetch!(field_key)
       |> Enum.reject(&(&1.id == key))
       |> Enum.map(&Map.from_struct/1)
 
-    Config.put_config!(field_key, providers)
+    {:ok, _config} =
+      Config.update_config(config, %{field_key => providers}, socket.assigns.subject)
+
     configs = FzHttp.Config.fetch_source_and_configs!(@configs)
 
     {:noreply, assign(socket, :configs, configs)}

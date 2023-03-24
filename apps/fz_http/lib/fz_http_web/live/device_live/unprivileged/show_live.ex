@@ -9,10 +9,12 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.Show do
 
   @impl Phoenix.LiveView
   def mount(%{"id" => device_id} = _params, _session, socket) do
-    # TODO: subject
-    with {:ok, device} <- Devices.fetch_device_by_id(device_id) do
+    with {:ok, device} <- Devices.fetch_device_by_id(device_id, socket.assigns.subject) do
       {:ok, assign(socket, assigns(device))}
     else
+      {:error, {:unauthorized, _}} ->
+        {:ok, not_authorized(socket)}
+
       {:error, :not_found} ->
         {:ok, not_authorized(socket)}
     end
@@ -39,10 +41,11 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.Show do
   end
 
   def delete_device(device, socket) do
+    # TODO: remove this
     if socket.assigns.current_user.id == device.user_id &&
          (has_role?(socket.assigns.current_user, :admin) ||
             FzHttp.Config.fetch_config!(:allow_unprivileged_device_management)) do
-      Devices.delete_device(device)
+      Devices.delete_device(device, socket.assigns.subject)
     else
       {:not_authorized}
     end
@@ -55,13 +58,13 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.Show do
       device: device,
       user: Users.fetch_user_by_id!(device.user_id),
       page_title: device.name,
-      allowed_ips: Devices.allowed_ips(device, defaults),
+      allowed_ips: Devices.get_allowed_ips(device, defaults),
       port: FzHttp.Config.fetch_env!(:fz_vpn, :wireguard_port),
-      dns: Devices.dns(device, defaults),
-      endpoint: Devices.endpoint(device, defaults),
-      mtu: Devices.mtu(device, defaults),
-      persistent_keepalive: Devices.persistent_keepalive(device, defaults),
-      config: Devices.as_config(device)
+      dns: Devices.get_dns(device, defaults),
+      endpoint: Devices.get_endpoint(device, defaults),
+      mtu: Devices.get_mtu(device, defaults),
+      persistent_keepalive: Devices.get_persistent_keepalive(device, defaults),
+      config: FzHttpWeb.WireguardConfigView.render("device.conf", %{device: device})
     ]
   end
 end

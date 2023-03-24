@@ -3,7 +3,7 @@ defmodule FzHttp.Telemetry do
   Functions for various telemetry events.
   """
   use Supervisor
-  alias FzHttp.{Devices, MFA, Users}
+  alias FzHttp.{Devices, Auth.MFA, Users}
   alias FzHttp.Telemetry.{Timer, PostHog}
   require Logger
 
@@ -24,6 +24,7 @@ defmodule FzHttp.Telemetry do
 
   def create_api_token do
     PostHog.capture("add_api_token", common_fields())
+    :ok
   end
 
   def delete_api_token(api_token) do
@@ -34,46 +35,58 @@ defmodule FzHttp.Telemetry do
           api_token_created_at: api_token.inserted_at
         ]
     )
+
+    :ok
   end
 
   def add_device do
     PostHog.capture("add_device", common_fields())
+    :ok
   end
 
   def add_user do
     PostHog.capture("add_user", common_fields())
+    :ok
   end
 
   def add_rule do
     PostHog.capture("add_rule", common_fields())
+    :ok
   end
 
   def delete_device do
     PostHog.capture("delete_device", common_fields())
+    :ok
   end
 
   def delete_user do
     PostHog.capture("delete_user", common_fields())
+    :ok
   end
 
   def delete_rule do
     PostHog.capture("delete_rule", common_fields())
+    :ok
   end
 
   def login do
     PostHog.capture("login", common_fields())
+    :ok
   end
 
   def disable_user do
     PostHog.capture("disable_user", common_fields())
+    :ok
   end
 
   def fz_http_started do
     PostHog.capture("fz_http_started", common_fields())
+    :ok
   end
 
   def ping do
     PostHog.capture("ping", ping_data())
+    :ok
   end
 
   # How far back to count handshakes as an active device
@@ -82,7 +95,7 @@ defmodule FzHttp.Telemetry do
     %{
       openid_connect_providers: {_, openid_connect_providers},
       saml_identity_providers: {_, saml_identity_providers},
-      allow_unprivileged_device_management: allow_unprivileged_device_management,
+      allow_unprivileged_device_management: {_, allow_unprivileged_device_management},
       allow_unprivileged_device_configuration: {_, allow_unprivileged_device_configuration},
       local_auth_enabled: {_, local_auth_enabled},
       disable_vpn_on_oidc_error: {_, disable_vpn_on_oidc_error},
@@ -105,8 +118,8 @@ defmodule FzHttp.Telemetry do
         user_count: Users.count(),
         in_docker: in_docker?(),
         device_count: Devices.count(),
-        max_devices_for_users: Devices.max_count_by_user_id(),
-        users_with_mfa: MFA.count_users_with_method(),
+        max_devices_for_users: Devices.count_maximum_for_a_user(),
+        users_with_mfa: MFA.count_users_with_mfa_enabled(),
         users_with_mfa_totp: MFA.count_users_with_totp_method(),
         openid_providers: length(openid_connect_providers),
         saml_providers: length(saml_identity_providers),

@@ -93,7 +93,6 @@ defmodule FzHttp.Rules do
     }
   end
 
-  # XXX: we should grey out existing rules with port based conditions in UI if they are not supported
   def port_rules_supported?, do: FzHttp.Config.fetch_env!(:fz_wall, :port_based_rules_supported)
 
   def as_settings do

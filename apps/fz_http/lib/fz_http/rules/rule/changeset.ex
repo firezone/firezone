@@ -7,6 +7,7 @@ defmodule FzHttp.Rules.Rule.Changeset do
   @port_type_msg "port_type must be specified with port_range"
 
   @fields ~w[action destination port_type port_range user_id]a
+  @port_based_fields ~w[port_type port_range]a
   @required_fields ~w[action destination]a
 
   def create_changeset(attrs) do
@@ -14,8 +15,15 @@ defmodule FzHttp.Rules.Rule.Changeset do
   end
 
   def update_changeset(rule, attrs) do
+    fields =
+      if FzHttp.Rules.port_rules_supported?() do
+        @fields
+      else
+        @fields -- @port_based_fields
+      end
+
     rule
-    |> cast(attrs, @fields)
+    |> cast(attrs, fields)
     |> validate_required(@required_fields)
     |> validate_required_group(~w[port_range port_type]a)
     |> check_constraint(:port_range,

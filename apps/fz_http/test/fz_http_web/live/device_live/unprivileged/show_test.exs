@@ -37,7 +37,7 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.ShowTest do
   end
 
   describe "authenticated; device management disabled" do
-    test "prevents deleting a device; doesn't show button", %{
+    test "prevents deleting a device", %{
       unprivileged_user: user,
       unprivileged_conn: conn
     } do
@@ -46,24 +46,9 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.ShowTest do
       FzHttp.Config.put_config!(:allow_unprivileged_device_management, false)
 
       path = ~p"/user_devices/#{device}"
-      {:ok, _view, html} = live(conn, path)
+      expected_path = ~p"/"
 
-      refute html =~ "Delete Device"
+      assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
     end
   end
-
-  # XXX: Revisit this when RBAC is more fleshed out. Admins can now view other admins' devices.
-  # describe "authenticated as other user" do
-  #   setup [:create_device, :create_other_user_device]
-  #
-  #   test "mount redirects to session path", %{
-  #     admin_conn: conn,
-  #     device: _device,
-  #     other_device: other_device
-  #   } do
-  #     path = Routes.device_admin_show_path(conn, :show, other_device)
-  #     expected_path = Routes.auth_path(conn, :request)
-  #     assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
-  #   end
-  # end
 end

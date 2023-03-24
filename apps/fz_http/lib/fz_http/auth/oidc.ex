@@ -1,11 +1,9 @@
-defmodule FzHttp.OIDC do
+defmodule FzHttp.Auth.OIDC do
   @moduledoc """
   The OIDC context.
   """
-
   import Ecto.Query, warn: false
-
-  alias FzHttp.{OIDC.Connection, Repo, Users.User}
+  alias FzHttp.{Auth.OIDC.Connection, Repo, Users.User}
 
   def list_connections(%User{id: id}) do
     Repo.all(from(Connection, where: [user_id: ^id]))
@@ -29,7 +27,7 @@ defmodule FzHttp.OIDC do
 
   def create_connection(user_id, provider, refresh_token) do
     %Connection{user_id: user_id}
-    |> Connection.changeset(%{provider: provider, refresh_token: refresh_token})
+    |> Connection.Changeset.changeset(%{provider: provider, refresh_token: refresh_token})
     |> Repo.insert(
       conflict_target: [:user_id, :provider],
       on_conflict: {:replace, [:refresh_token]}
@@ -38,7 +36,7 @@ defmodule FzHttp.OIDC do
 
   def update_connection(%Connection{} = connection, attrs) do
     connection
-    |> Connection.changeset(attrs)
+    |> Connection.Changeset.changeset(attrs)
     |> Repo.update()
   end
 

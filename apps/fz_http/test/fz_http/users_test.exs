@@ -516,6 +516,11 @@ defmodule FzHttp.UsersTest do
       assert {:ok, %{role: :admin}} = update_user(user, %{role: :admin}, subject)
     end
 
+    test "doesn't allow admin to change own role", %{admin_user: user, subject: subject} do
+      assert {:error, changeset} = update_user(user, %{role: :unprivileged}, subject)
+      assert "You cannot change your own role" in errors_on(changeset).role
+    end
+
     test "raises on invalid role", %{subject: subject} do
       user = UsersFixtures.create_user_with_role(:admin)
 

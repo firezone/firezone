@@ -1,23 +1,21 @@
 defmodule FzHttpWeb.UserFromAuthTest do
   use FzHttp.DataCase, async: true
-
-  alias FzHttp.Users
+  alias FzHttp.UsersFixtures
   alias FzHttpWeb.UserFromAuth
+  alias FzHttp.Users
   alias Ueberauth.Auth
 
   @moduletag email: "sso@test"
 
   describe "find_or_create/1 via identity provider" do
-    setup :create_user
+    test "sign in via identity provider" do
+      user = UsersFixtures.create_user_with_role(:unprivileged)
 
-    @password "password1234"
-
-    test "sign in via identity provider", %{user: user} do
       assert {:ok, result} =
                UserFromAuth.find_or_create(%Auth{
                  provider: :identity,
                  info: %Auth.Info{email: user.email},
-                 credentials: %Auth.Credentials{other: %{password: @password}}
+                 credentials: %Auth.Credentials{other: %{password: "password1234"}}
                })
 
       assert result.email == user.email
