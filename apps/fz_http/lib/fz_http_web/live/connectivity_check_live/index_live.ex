@@ -18,10 +18,12 @@ defmodule FzHttpWeb.ConnectivityCheckLive.Index do
     connectivity_checks =
       ConnectivityChecks.list_connectivity_checks(socket.assigns.subject, limit: 20)
 
-    {:ok,
-     socket
-     |> assign(:connectivity_checks, connectivity_checks)
-     |> assign(:page_subtitle, @page_subtitle)
-     |> assign(:page_title, @page_title)}
+    socket =
+      socket
+      |> assign(:connectivity_checks, connectivity_checks)
+      |> assign(:page_subtitle, @page_subtitle)
+      |> assign(:page_title, @page_title)
+
+    {:ok, socket}
   end
 end

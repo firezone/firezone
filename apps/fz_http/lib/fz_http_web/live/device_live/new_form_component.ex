@@ -8,10 +8,12 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
 
   @impl Phoenix.LiveComponent
   def mount(socket) do
-    {:ok,
-     socket
-     |> assign(:device, nil)
-     |> assign(:config, nil)}
+    socket =
+      socket
+      |> assign(:device, nil)
+      |> assign(:config, nil)
+
+    {:ok, socket}
   end
 
   @impl Phoenix.LiveComponent

@@ -29,7 +29,7 @@ defmodule FzHttp.Devices do
       {:one_of,
        [
          Authorizer.manage_devices_permission(),
-         Authorizer.manage_own_devices_permission()
+         Authorizer.view_own_devices_permission()
        ]}
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions),
@@ -53,7 +53,7 @@ defmodule FzHttp.Devices do
       {:one_of,
        [
          Authorizer.manage_devices_permission(),
-         Authorizer.manage_own_devices_permission()
+         Authorizer.view_own_devices_permission()
        ]}
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
@@ -72,7 +72,7 @@ defmodule FzHttp.Devices do
       {:one_of,
        [
          Authorizer.manage_devices_permission(),
-         Authorizer.manage_own_devices_permission()
+         Authorizer.view_own_devices_permission()
        ]}
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do

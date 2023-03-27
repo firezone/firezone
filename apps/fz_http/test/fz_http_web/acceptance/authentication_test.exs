@@ -46,8 +46,9 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
 
       user =
         UsersFixtures.create_user_with_role(
-          [password: password, password_confirmation: password],
-          :unprivileged
+          :unprivileged,
+          password: password,
+          password_confirmation: password
         )
 
       session
@@ -282,8 +283,9 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
 
       user =
         UsersFixtures.create_user_with_role(
-          [password: password, password_confirmation: password],
-          :unprivileged
+          :unprivileged,
+          password: password,
+          password_confirmation: password
         )
 
       secret = NimbleTOTP.secret()
@@ -309,8 +311,9 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
 
       user =
         UsersFixtures.create_user_with_role(
-          [password: password, password_confirmation: password],
-          :admin
+          :admin,
+          password: password,
+          password_confirmation: password
         )
 
       secret = NimbleTOTP.secret()
@@ -336,8 +339,9 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
 
       user =
         UsersFixtures.create_user_with_role(
-          [password: password, password_confirmation: password],
-          :admin
+          :admin,
+          password: password,
+          password_confirmation: password
         )
 
       secret = NimbleTOTP.secret()
@@ -364,8 +368,9 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
 
       user =
         UsersFixtures.create_user_with_role(
-          [password: password, password_confirmation: password],
-          :admin
+          :admin,
+          password: password,
+          password_confirmation: password
         )
 
       secret = NimbleTOTP.secret()

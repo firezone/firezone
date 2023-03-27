@@ -67,7 +67,7 @@ defmodule FzHttpWeb.SettingLive.Account do
 
   @impl Phoenix.LiveView
   def handle_event("delete_api_token", %{"id" => id}, socket) do
-    case ApiTokens.delete_api_token_by_id(id, socket.assigns.current_user) do
+    case ApiTokens.delete_api_token_by_id(id, socket.assigns.subject) do
       {:ok, _api_token} ->
         {:ok, api_tokens} =
           ApiTokens.list_api_tokens_by_user_id(

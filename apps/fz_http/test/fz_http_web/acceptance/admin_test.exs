@@ -217,7 +217,7 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
         "device[endpoint]" => "example.com:51820",
         "device[mtu]" => "1400",
         "device[persistent_keepalive]" => "10",
-        "device[ipv4]" => "10.10.11.1",
+        "device[ipv4]" => "100.64.255.110",
         "device[ipv6]" => "fd00::1e:3f96"
       })
       |> click(Query.button("Generate Configuration"))
@@ -236,7 +236,7 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
       assert device.endpoint == "example.com:51820"
       assert device.mtu == 1400
       assert device.persistent_keepalive == 10
-      assert device.ipv4 == %Postgrex.INET{address: {10, 10, 11, 1}}
+      assert device.ipv4 == %Postgrex.INET{address: {100, 64, 255, 100}}
       assert device.ipv6 == %Postgrex.INET{address: {64_768, 0, 0, 0, 0, 0, 30, 16_278}}
     end
 

@@ -42,7 +42,7 @@ defmodule FzHttpWeb.Acceptance.UnprivilegedUserTest do
         "device[endpoint]" => "example.com:51820",
         "device[mtu]" => "1400",
         "device[persistent_keepalive]" => "10",
-        "device[ipv4]" => "10.10.11.1",
+        "device[ipv4]" => "100.64.255.100",
         "device[ipv6]" => "fd00::1e:3f96"
       })
       |> fill_in(Query.fillable_field("device[description]"), with: "Dummy description")
@@ -60,7 +60,7 @@ defmodule FzHttpWeb.Acceptance.UnprivilegedUserTest do
       assert device.endpoint == "example.com:51820"
       assert device.mtu == 1400
       assert device.persistent_keepalive == 10
-      assert device.ipv4 == %Postgrex.INET{address: {10, 10, 11, 1}}
+      assert device.ipv4 == %Postgrex.INET{address: {100, 64, 255, 100}}
       assert device.ipv6 == %Postgrex.INET{address: {64_768, 0, 0, 0, 0, 0, 30, 16_278}}
     end
 
@@ -78,7 +78,6 @@ defmodule FzHttpWeb.Acceptance.UnprivilegedUserTest do
         "device[name]" => "big-hand-007",
         "device[description]" => "Dummy description"
       })
-      |> fill_in(Query.fillable_field("device[description]"), with: "Dummy description")
       |> click(Query.button("Generate Configuration"))
       |> assert_el(Query.text("Device added!"))
       |> click(Query.css("#download-config"))

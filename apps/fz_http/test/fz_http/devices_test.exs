@@ -88,7 +88,21 @@ defmodule FzHttp.DevicesTest do
       subject =
         subject
         |> SubjectFixtures.remove_permissions()
+        |> SubjectFixtures.add_permission(Devices.Authorizer.view_own_devices_permission())
         |> SubjectFixtures.add_permission(Devices.Authorizer.manage_own_devices_permission())
+
+      assert fetch_device_by_id(device.id, subject) == {:error, :not_found}
+    end
+
+    test "does not return device that belongs to another user with view_own permission", %{
+      unprivileged_subject: subject
+    } do
+      device = DevicesFixtures.create_device()
+
+      subject =
+        subject
+        |> SubjectFixtures.remove_permissions()
+        |> SubjectFixtures.add_permission(Devices.Authorizer.view_own_devices_permission())
 
       assert fetch_device_by_id(device.id, subject) == {:error, :not_found}
     end
@@ -111,7 +125,7 @@ defmodule FzHttp.DevicesTest do
                      {:one_of,
                       [
                         Devices.Authorizer.manage_devices_permission(),
-                        Devices.Authorizer.manage_own_devices_permission()
+                        Devices.Authorizer.view_own_devices_permission()
                       ]}
                    ]
                  ]}}
@@ -159,7 +173,7 @@ defmodule FzHttp.DevicesTest do
                      {:one_of,
                       [
                         Devices.Authorizer.manage_devices_permission(),
-                        Devices.Authorizer.manage_own_devices_permission()
+                        Devices.Authorizer.view_own_devices_permission()
                       ]}
                    ]
                  ]}}
@@ -306,10 +320,12 @@ defmodule FzHttp.DevicesTest do
     end
 
     test "ignores configuration attrs when there are no configure permission", %{
-      unprivileged_user: user,
-      unprivileged_subject: subject
+      unprivileged_user: user
     } do
+      FzHttp.Config.put_system_env_override(:allow_unprivileged_device_configuration, false)
       FzHttp.Config.put_env_override(:max_devices_per_user, 100)
+
+      subject = SubjectFixtures.create_subject(user)
 
       fields =
         Devices.Device.__schema__(:fields) --

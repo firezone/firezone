@@ -22,12 +22,4 @@ defmodule FzHttp.Rules.Authorizer do
         queryable
     end
   end
-
-  # TODO: part of behaviour?
-  def ensure_can_manage(%Subject{} = subject, %Rule{} = _rule) do
-    cond do
-      has_permission?(subject, manage_rules_permission()) ->
-        :ok
-    end
-  end
 end
