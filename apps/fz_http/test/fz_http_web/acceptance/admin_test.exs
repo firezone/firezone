@@ -236,7 +236,7 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
       assert device.endpoint == "example.com:51820"
       assert device.mtu == 1400
       assert device.persistent_keepalive == 10
-      assert device.ipv4 == %Postgrex.INET{address: {100, 64, 255, 100}}
+      assert device.ipv4 == %Postgrex.INET{address: {100, 64, 255, 110}}
       assert device.ipv6 == %Postgrex.INET{address: {64_768, 0, 0, 0, 0, 0, 30, 16_278}}
     end
 
