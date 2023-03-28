@@ -19,12 +19,15 @@ defmodule FzHttpWeb.JSON.UserController do
   """
   use FzHttpWeb, :controller
   alias FzHttp.Users
+  alias FzHttpWeb.Auth.JSON.Authentication
 
   action_fallback(FzHttpWeb.JSON.FallbackController)
 
   @doc api_doc: [action: "List all Users"]
-  def index(conn, _params) do
-    with {:ok, users} <- Users.list_users() do
+  def index(conn, _attrs) do
+    subject = Authentication.get_current_subject(conn)
+
+    with {:ok, users} <- Users.list_users(subject) do
       render(conn, "index.json", users: users)
     end
   end
@@ -54,8 +57,10 @@ defmodule FzHttpWeb.JSON.UserController do
   | `password_confirmation` | `string` | -> | Is required when the `password` is set. |
   """
   @doc api_doc: [action: "Create a User"]
-  def create(conn, %{"user" => %{"role" => "admin"} = user_params}) do
-    with {:ok, %Users.User{} = user} <- Users.create_admin_user(user_params) do
+  def create(conn, %{"user" => %{"role" => "admin"} = attrs}) do
+    subject = Authentication.get_current_subject(conn)
+
+    with {:ok, %Users.User{} = user} <- Users.create_user(:admin, attrs, subject) do
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/v0/users/#{user}")
@@ -63,8 +68,10 @@ defmodule FzHttpWeb.JSON.UserController do
     end
   end
 
-  def create(conn, %{"user" => user_params}) do
-    with {:ok, %Users.User{} = user} <- Users.create_unprivileged_user(user_params) do
+  def create(conn, %{"user" => attrs}) do
+    subject = Authentication.get_current_subject(conn)
+
+    with {:ok, %Users.User{} = user} <- Users.create_user(:unprivileged, attrs, subject) do
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/v0/users/#{user}")
@@ -74,7 +81,10 @@ defmodule FzHttpWeb.JSON.UserController do
 
   @doc api_doc: [summary: "Get User by ID or Email"]
   def show(conn, %{"id" => id_or_email}) do
-    with {:ok, %Users.User{} = user} <- Users.fetch_user_by_id_or_email(id_or_email) do
+    subject = Authentication.get_current_subject(conn)
+
+    with {:ok, %Users.User{} = user} <-
+           Users.fetch_user_by_id_or_email(id_or_email, subject) do
       render(conn, "show.json", user: user)
     end
   end
@@ -83,17 +93,21 @@ defmodule FzHttpWeb.JSON.UserController do
   For details please see [Create a User](#create-a-user-post-v0users) section.
   """
   @doc api_doc: [action: "Update a User"]
-  def update(conn, %{"id" => id_or_email, "user" => user_params}) do
-    with {:ok, %Users.User{} = user} <- Users.fetch_user_by_id_or_email(id_or_email),
-         {:ok, %Users.User{} = user} <- Users.admin_update_user(user, user_params) do
+  def update(conn, %{"id" => id_or_email, "user" => attrs}) do
+    subject = Authentication.get_current_subject(conn)
+
+    with {:ok, %Users.User{} = user} <- Users.fetch_user_by_id_or_email(id_or_email, subject),
+         {:ok, %Users.User{} = user} <- Users.update_user(user, attrs, subject) do
       render(conn, "show.json", user: user)
     end
   end
 
   @doc api_doc: [summary: "Delete a User"]
   def delete(conn, %{"id" => id_or_email}) do
-    with {:ok, %Users.User{} = user} <- Users.fetch_user_by_id_or_email(id_or_email),
-         {:ok, %Users.User{}} <- Users.delete_user(user) do
+    subject = Authentication.get_current_subject(conn)
+
+    with {:ok, %Users.User{} = user} <- Users.fetch_user_by_id_or_email(id_or_email, subject),
+         {:ok, %Users.User{}} <- Users.delete_user(user, subject) do
       conn
       |> put_resp_content_type("application/json")
       |> send_resp(:no_content, "")

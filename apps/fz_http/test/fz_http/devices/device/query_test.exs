@@ -6,6 +6,7 @@ defmodule FzHttp.Devices.Device.QueryTest do
   describe "next_available_address/3" do
     test "selects available IPv4 in CIDR range at the offset" do
       cidr = string_to_cidr("10.3.2.0/29")
+      FzHttp.Config.put_env_override(:wireguard_ipv4_network, cidr)
       gateway_ip = string_to_ip("10.3.2.0")
       offset = 3
 
@@ -16,6 +17,7 @@ defmodule FzHttp.Devices.Device.QueryTest do
 
     test "skips addresses taken by the gateway" do
       cidr = string_to_cidr("10.3.3.0/29")
+      FzHttp.Config.put_env_override(:wireguard_ipv4_network, cidr)
       gateway_ip = string_to_ip("10.3.3.3")
       offset = 3
 
@@ -26,46 +28,49 @@ defmodule FzHttp.Devices.Device.QueryTest do
 
     test "forward scans available address after offset it it's assigned to a device" do
       cidr = string_to_cidr("10.3.4.0/29")
+      FzHttp.Config.put_env_override(:wireguard_ipv4_network, cidr)
       gateway_ip = string_to_ip("10.3.4.0")
       offset = 3
 
       queryable = next_available_address(cidr, offset, [gateway_ip])
 
-      DevicesFixtures.device(%{ipv4: "10.3.4.3"})
-      DevicesFixtures.device(%{ipv4: "10.3.4.4"})
+      DevicesFixtures.create_device(%{ipv4: "10.3.4.3"})
+      DevicesFixtures.create_device(%{ipv4: "10.3.4.4"})
       assert Repo.one(queryable) == %Postgrex.INET{address: {10, 3, 4, 5}}
 
-      DevicesFixtures.device(%{ipv4: "10.3.4.5"})
+      DevicesFixtures.create_device(%{ipv4: "10.3.4.5"})
       assert Repo.one(queryable) == %Postgrex.INET{address: {10, 3, 4, 6}}
     end
 
     test "backward scans available address if forward scan found not available IPs" do
       cidr = string_to_cidr("10.3.5.0/29")
+      FzHttp.Config.put_env_override(:wireguard_ipv4_network, cidr)
       gateway_ip = string_to_ip("10.3.5.0")
       offset = 5
 
       queryable = next_available_address(cidr, offset, [gateway_ip])
 
-      DevicesFixtures.device(%{ipv4: "10.3.5.5"})
-      DevicesFixtures.device(%{ipv4: "10.3.5.6"})
+      DevicesFixtures.create_device(%{ipv4: "10.3.5.5"})
+      DevicesFixtures.create_device(%{ipv4: "10.3.5.6"})
       # Notice: end of range is 10.3.5.7
       # but it's a broadcast address that we don't allow to assign
       assert Repo.one(queryable) == %Postgrex.INET{address: {10, 3, 5, 4}}
 
-      DevicesFixtures.device(%{ipv4: "10.3.5.4"})
+      DevicesFixtures.create_device(%{ipv4: "10.3.5.4"})
       assert Repo.one(queryable) == %Postgrex.INET{address: {10, 3, 5, 3}}
     end
 
     test "selects nothing when CIDR range is exhausted" do
       cidr = string_to_cidr("10.3.6.0/30")
+      FzHttp.Config.put_env_override(:wireguard_ipv4_network, cidr)
       gateway_ip = string_to_ip("10.3.6.1")
       offset = 1
 
-      DevicesFixtures.device(%{ipv4: "10.3.6.2"})
+      DevicesFixtures.create_device(%{ipv4: "10.3.6.2"})
       queryable = next_available_address(cidr, offset, [gateway_ip])
       assert is_nil(Repo.one(queryable))
 
-      DevicesFixtures.device(%{ipv4: "10.3.6.1"})
+      DevicesFixtures.create_device(%{ipv4: "10.3.6.1"})
       queryable = next_available_address(cidr, offset, [])
       assert is_nil(Repo.one(queryable))
 
@@ -75,6 +80,7 @@ defmodule FzHttp.Devices.Device.QueryTest do
 
     test "prevents two concurrent transactions from acquiring the same address" do
       cidr = string_to_cidr("10.3.7.0/29")
+      FzHttp.Config.put_env_override(:wireguard_ipv4_network, cidr)
       gateway_ip = string_to_ip("10.3.7.3")
       offset = 3
 
@@ -104,6 +110,7 @@ defmodule FzHttp.Devices.Device.QueryTest do
 
     test "selects available IPv6 in CIDR range at the offset" do
       cidr = string_to_cidr("fd00::3:3:0/120")
+      FzHttp.Config.put_env_override(:wireguard_ipv6_network, cidr)
       gateway_ip = string_to_ip("fd00::3:3:3")
       offset = 3
 
@@ -114,6 +121,7 @@ defmodule FzHttp.Devices.Device.QueryTest do
 
     test "selects available IPv6 at end of CIDR range" do
       cidr = string_to_cidr("fd00::/106")
+      FzHttp.Config.put_env_override(:wireguard_ipv6_network, cidr)
       gateway_ip = string_to_ip("fd00::3:3:3")
       offset = 4_194_304
 
@@ -124,6 +132,7 @@ defmodule FzHttp.Devices.Device.QueryTest do
 
     test "works when offset is out of IPv6 CIDR range" do
       cidr = string_to_cidr("fd00::/106")
+      FzHttp.Config.put_env_override(:wireguard_ipv6_network, cidr)
       gateway_ip = string_to_ip("fd00::3:3:3")
       offset = 4_194_305
 
@@ -134,6 +143,7 @@ defmodule FzHttp.Devices.Device.QueryTest do
 
     test "works when netmask allows a large number of devices" do
       cidr = string_to_cidr("fd00::/70")
+      FzHttp.Config.put_env_override(:wireguard_ipv6_network, cidr)
       gateway_ip = string_to_ip("fd00::3:3:3")
       offset = 9_223_372_036_854_775_807
 
@@ -146,10 +156,11 @@ defmodule FzHttp.Devices.Device.QueryTest do
 
     test "selects nothing when IPv6 CIDR range is exhausted" do
       cidr = string_to_cidr("fd00::3:2:0/126")
+      FzHttp.Config.put_env_override(:wireguard_ipv6_network, cidr)
       gateway_ip = string_to_ip("fd00::3:2:1")
       offset = 3
 
-      DevicesFixtures.device(%{ipv6: "fd00::3:2:2"})
+      DevicesFixtures.create_device(%{ipv6: "fd00::3:2:2"})
 
       queryable = next_available_address(cidr, offset, [gateway_ip])
       assert is_nil(Repo.one(queryable))

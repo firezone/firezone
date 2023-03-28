@@ -11,6 +11,7 @@
   <div class="block">
     <%= live_component(
       FzHttpWeb.SettingLive.ClientDefaultsFormComponent,
+      subject: @subject,
       changeset: @changeset,
       id: :client_defaults_form_component
     ) %>

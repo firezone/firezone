@@ -38,13 +38,6 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
 
       assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
     end
-
-    test "omits Add Device button", %{unprivileged_conn: conn} do
-      path = ~p"/user_devices"
-      {:ok, _view, html} = live(conn, path)
-
-      refute html =~ "Add Device"
-    end
   end
 
   describe "authenticated device configuration disabled" do

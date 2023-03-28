@@ -4,10 +4,11 @@
     return_to: ~p"/user_devices",
     title: "Add Device",
     current_user: @current_user,
-    target_user_id: @current_user.id,
+    user: @current_user,
     id: "create-device-component",
     form: "create-device",
-    button_text: "Generate Configuration"
+    button_text: "Generate Configuration",
+    subject: @subject
   ) %>
 <% end %>
 
@@ -69,7 +70,7 @@
     <% end %>
   </div>
 
-  <%= if FzHttpWeb.DeviceView.can_manage_devices?(@current_user) do %>
+  <%= if FzHttp.Devices.authorize_user_device_management(@current_user.id, @subject) == :ok do %>
     <div class="block">
       <.link replace={true} patch={~p"/user_devices/new"} class="button">
         Add Device

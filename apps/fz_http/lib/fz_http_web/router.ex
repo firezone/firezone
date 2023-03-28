@@ -23,14 +23,6 @@ defmodule FzHttpWeb.Router do
     plug :accepts, ["html", "xml"]
   end
 
-  pipeline :require_admin_user do
-    plug FzHttpWeb.Plug.Authorization, :admin
-  end
-
-  pipeline :require_unprivileged_user do
-    plug FzHttpWeb.Plug.Authorization, :unprivileged
-  end
-
   pipeline :require_authenticated do
     plug Guardian.Plug.EnsureAuthenticated
   end
@@ -145,16 +137,7 @@ defmodule FzHttpWeb.Router do
     ]
 
     delete "/sign_out", AuthController, :delete
-  end
-
-  # Authenticated Unprivileged routes
-  scope "/", FzHttpWeb do
-    pipe_through [
-      :browser,
-      :html_auth,
-      :require_authenticated,
-      :require_unprivileged_user
-    ]
+    delete "/user", UserController, :delete
 
     # Unprivileged Live routes
     live_session(
@@ -175,19 +158,6 @@ defmodule FzHttpWeb.Router do
       live "/user_account/change_password", SettingLive.Unprivileged.Account, :change_password
       live "/user_account/register_mfa", SettingLive.Unprivileged.Account, :register_mfa
     end
-  end
-
-  # Authenticated Admin routes
-  scope "/", FzHttpWeb do
-    pipe_through [
-      :browser,
-      :html_auth,
-      :require_authenticated,
-      :require_admin_user
-    ]
-
-    # Admins can delete themselves synchronously
-    delete "/user", UserController, :delete
 
     # Admin Live routes
     live_session(

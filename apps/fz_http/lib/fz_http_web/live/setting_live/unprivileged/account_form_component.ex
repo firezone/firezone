@@ -15,8 +15,8 @@ defmodule FzHttpWeb.SettingLive.Unprivileged.AccountFormComponent do
      |> assign(:changeset, changeset)}
   end
 
-  def handle_event("save", %{"user" => user_params}, socket) do
-    case Users.unprivileged_update_self(socket.assigns.current_user, user_params) do
+  def handle_event("save", %{"user" => attrs}, socket) do
+    case Users.update_self(attrs, socket.assigns.subject) do
       {:ok, _user} ->
         {:noreply,
          socket

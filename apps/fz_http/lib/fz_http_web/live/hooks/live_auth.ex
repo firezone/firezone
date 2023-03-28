@@ -2,38 +2,47 @@ defmodule FzHttpWeb.LiveAuth do
   @moduledoc """
   Handles loading default assigns and authorizing.
   """
-
-  use Phoenix.Component
-  alias FzHttpWeb.Auth.HTML.Authentication
+  import Phoenix.Component
   import FzHttpWeb.AuthorizationHelpers
-
+  alias FzHttpWeb.Auth.HTML.Authentication
+  alias FzHttp.Auth
   require Logger
 
-  def on_mount(role, _params, session, socket) do
-    do_on_mount(role, Authentication.get_current_user(session), socket)
-  end
+  def on_mount(role, _params, conn, socket) do
+    case Authentication.get_current_subject(conn) do
+      %Auth.Subject{actor: {:user, user}} = subject ->
+        socket
+        |> assign_new(:subject, fn -> subject end)
+        |> assign_new(:current_user, fn -> user end)
+        |> authorize_role(role)
 
-  defp do_on_mount(_role, nil, socket) do
-    Logger.warn("Could not get_current_user from session in LiveAuth.on_mount/4.")
-    {:halt, not_authorized(socket)}
-  end
-
-  # XXX: A hack for now, will be going away with client apps
-  defp do_on_mount(
-         :unprivileged,
-         %{role: :unprivileged} = user,
-         %{assigns: %{live_action: :new}, view: FzHttpWeb.DeviceLive.Unprivileged.Index} = socket
-       ) do
-    if FzHttp.Config.fetch_config!(:allow_unprivileged_device_management) do
-      {:cont, assign_new(socket, :current_user, fn -> user end)}
-    else
-      {:halt, not_authorized(socket)}
+      nil ->
+        Logger.warn("Could not get_current_subject from session in LiveAuth.on_mount/4.")
+        {:halt, not_authorized(socket)}
     end
   end
 
-  defp do_on_mount(role, user, socket) do
-    socket
-    |> assign_new(:current_user, fn -> user end)
-    |> authorize_role(role)
+  def has_role?(_, :any) do
+    true
+  end
+
+  def has_role?(%Phoenix.LiveView.Socket{} = socket, role) do
+    socket.assigns.current_user && socket.assigns.current_user.role == role
+  end
+
+  def has_role?(%FzHttp.Users.User{} = user, role) do
+    user.role == role
+  end
+
+  def has_role?(_, _) do
+    false
+  end
+
+  defp authorize_role(socket, role) do
+    if has_role?(socket, role) do
+      {:cont, socket}
+    else
+      {:halt, not_authorized(socket)}
+    end
   end
 end

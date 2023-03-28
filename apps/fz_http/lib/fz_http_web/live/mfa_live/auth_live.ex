@@ -4,7 +4,7 @@ defmodule FzHttpWeb.MFALive.Auth do
   """
   use FzHttpWeb, :live_view
   import FzHttpWeb.ControllerHelpers
-  alias FzHttp.MFA
+  alias FzHttp.Auth.MFA
 
   @page_title "Multi-factor Authentication"
 

@@ -7,21 +7,26 @@ defmodule FzHttpWeb.JSON.ConfigurationController do
   """
   use FzHttpWeb, :controller
   alias FzHttp.Config
+  alias FzHttpWeb.Auth.JSON.Authentication
 
   action_fallback(FzHttpWeb.JSON.FallbackController)
 
   @doc api_doc: [summary: "Get Configuration"]
   def show(conn, _params) do
-    configuration = Config.fetch_db_config!()
-    render(conn, "show.json", configuration: configuration)
+    subject = Authentication.get_current_subject(conn)
+
+    with {:ok, configuration} <- Config.fetch_db_config(subject) do
+      render(conn, "show.json", configuration: configuration)
+    end
   end
 
   @doc api_doc: [summary: "Update Configuration"]
   def update(conn, %{"configuration" => params}) do
+    subject = Authentication.get_current_subject(conn)
     configuration = Config.fetch_db_config!()
 
     with {:ok, %Config.Configuration{} = configuration} <-
-           Config.update_config(configuration, params) do
+           Config.update_config(configuration, params, subject) do
       render(conn, "show.json", configuration: configuration)
     end
   end

@@ -3,13 +3,12 @@ defmodule FzHttpWeb.OIDCLive.ConnectionsTableComponent do
   OIDC Connections table
   """
   use FzHttpWeb, :live_component
-
-  alias FzHttp.OIDC
+  alias FzHttp.Auth.OIDC
 
   def handle_event("refresh", _payload, socket) do
     DynamicSupervisor.start_child(
       FzHttp.RefresherSupervisor,
-      {FzHttp.OIDC.Refresher, {socket.assigns.user.id, 1000}}
+      {FzHttp.Auth.OIDC.Refresher, {socket.assigns.user.id, 1000}}
     )
 
     {:noreply,

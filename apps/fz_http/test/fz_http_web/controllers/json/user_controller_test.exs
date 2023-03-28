@@ -1,8 +1,7 @@
 defmodule FzHttpWeb.JSON.UserControllerTest do
   use FzHttpWeb.ApiCase, async: true
   import FzHttpWeb.ApiCase
-  import FzHttp.UsersFixtures
-
+  alias FzHttp.UsersFixtures
   alias FzHttp.Users
 
   @create_attrs %{
@@ -20,15 +19,14 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
 
   describe "GET /v0/users" do
     test "lists all users" do
-      for _i <- 1..3, do: user()
+      for _i <- 1..3, do: UsersFixtures.create_user_with_role(:admin)
 
       conn =
         get(authed_conn(), ~p"/v0/users")
         |> doc()
 
       actual =
-        Users.list_users()
-        |> elem(1)
+        Repo.all(Users.User)
         |> Enum.map(fn u -> u.id end)
         |> Enum.sort()
 
@@ -113,7 +111,7 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
 
   describe "PUT /v0/users/:id_or_email" do
     test "returns user that was updated via email" do
-      user = user(%{role: :unprivileged})
+      user = UsersFixtures.create_user_with_role(:unprivileged)
 
       conn =
         put(authed_conn(), ~p"/v0/users/#{user.email}", user: %{})
@@ -123,7 +121,7 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
     end
 
     test "returns user that was updated via id" do
-      user = user(%{role: :unprivileged})
+      user = UsersFixtures.create_user_with_role(:unprivileged)
 
       conn =
         put(authed_conn(), ~p"/v0/users/#{user}", user: %{})
@@ -133,7 +131,7 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
     end
 
     test "can update other unprivileged user's password" do
-      user = user(%{role: :unprivileged})
+      user = UsersFixtures.create_user_with_role(:unprivileged)
       old_hash = user.password_hash
       params = %{"password" => "update-password", "password_confirmation" => "update-password"}
       conn = put(authed_conn(), ~p"/v0/users/#{user}", user: params)
@@ -143,21 +141,21 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
     end
 
     test "can update other unprivileged user's role" do
-      user = user(%{role: :unprivileged})
+      user = UsersFixtures.create_user_with_role(:unprivileged)
       params = %{role: :admin}
       conn = put(authed_conn(), ~p"/v0/users/#{user}", user: params)
       assert json_response(conn, 200)["data"]["role"] == "admin"
     end
 
     test "can update other unprivileged user's email" do
-      user = user(%{role: :unprivileged})
+      user = UsersFixtures.create_user_with_role(:unprivileged)
       params = %{email: "new-email@test"}
       conn = put(authed_conn(), ~p"/v0/users/#{user}", user: params)
       assert json_response(conn, 200)["data"]["email"] == "new-email@test"
     end
 
     test "can update other admin user's password" do
-      user = user(%{role: :admin})
+      user = UsersFixtures.create_user_with_role(:admin)
       old_hash = user.password_hash
       params = %{"password" => "update-password", "password_confirmation" => "update-password"}
       conn = put(authed_conn(), ~p"/v0/users/#{user}", user: params)
@@ -167,32 +165,33 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
     end
 
     test "can update other admin user's role" do
-      user = user(%{role: :admin})
+      user = UsersFixtures.create_user_with_role(:admin)
       params = %{role: :unprivileged}
       conn = put(authed_conn(), ~p"/v0/users/#{user}", user: params)
       assert json_response(conn, 200)["data"]["role"] == "unprivileged"
     end
 
     test "can update other admin user's email" do
-      user = user(%{role: :admin})
+      user = UsersFixtures.create_user_with_role(:admin)
       params = %{email: "new-email@test"}
       conn = put(authed_conn(), ~p"/v0/users/#{user}", user: params)
       assert json_response(conn, 200)["data"]["email"] == "new-email@test"
     end
 
-    # XXX: Consider disallowing demoting self
-    test "can update own role" do
+    test "can not update own role" do
       conn = authed_conn()
-      user = conn.private.guardian_default_resource
+      {:user, user} = conn.private.guardian_default_resource.actor
 
       conn = put(conn, ~p"/v0/users/#{user}", user: %{role: :unprivileged})
 
-      assert json_response(conn, 200)["data"]["role"] == "unprivileged"
+      assert json_response(conn, 422)["errors"] == %{
+               "role" => ["You cannot change your own role"]
+             }
     end
 
     test "renders user when data is valid" do
       conn = authed_conn()
-      user = conn.private.guardian_default_resource
+      {:user, user} = conn.private.guardian_default_resource.actor
       conn = put(conn, ~p"/v0/users/#{user}", user: @update_attrs)
       assert @update_attrs = json_response(conn, 200)["data"]
 
@@ -202,7 +201,7 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
 
     test "renders errors when data is invalid" do
       conn = authed_conn()
-      user = conn.private.guardian_default_resource
+      {:user, user} = conn.private.guardian_default_resource.actor
       conn = put(conn, ~p"/v0/users/#{user}", user: @invalid_attrs)
 
       assert json_response(conn, 422)["errors"] == %{
@@ -225,7 +224,7 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
   describe "GET /v0/users/:id" do
     test "gets user by id" do
       conn = authed_conn()
-      user = conn.private.guardian_default_resource
+      {:user, user} = conn.private.guardian_default_resource.actor
 
       conn = get(conn, ~p"/v0/users/#{user}")
 
@@ -234,7 +233,7 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
 
     test "gets user by email" do
       conn = authed_conn()
-      user = conn.private.guardian_default_resource
+      {:user, user} = conn.private.guardian_default_resource.actor
 
       conn =
         get(conn, ~p"/v0/users/#{user.email}")
@@ -256,7 +255,7 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
 
   describe "DELETE /v0/users/:id" do
     test "deletes user by id" do
-      user = user(%{role: :unprivileged})
+      user = UsersFixtures.create_user_with_role(:unprivileged)
 
       conn =
         delete(authed_conn(), ~p"/v0/users/#{user}")
@@ -269,7 +268,7 @@ defmodule FzHttpWeb.JSON.UserControllerTest do
     end
 
     test "deletes user by email" do
-      user = user(%{role: :unprivileged})
+      user = UsersFixtures.create_user_with_role(:unprivileged)
 
       conn =
         delete(authed_conn(), ~p"/v0/users/#{user.email}")

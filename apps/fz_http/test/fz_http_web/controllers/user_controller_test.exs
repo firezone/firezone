@@ -1,52 +1,42 @@
 defmodule FzHttpWeb.UserControllerTest do
   use FzHttpWeb.ConnCase, async: true
+  alias FzHttp.UsersFixtures
 
-  alias FzHttp.{Users, UsersFixtures}
+  describe "delete/2" do
+    test "deletes the admin user if there is at least one additional admin", %{
+      admin_user: user,
+      admin_conn: conn
+    } do
+      UsersFixtures.create_user_with_role(:admin)
 
-  setup do
-    {:ok, extra_admin: UsersFixtures.user()}
-  end
+      conn = delete(conn, ~p"/user")
+      assert redirected_to(conn) == ~p"/"
 
-  describe "when user signed in" do
-    test "deletes the user", %{admin_conn: conn} do
-      test_conn = delete(conn, ~p"/user")
-
-      assert redirected_to(test_conn) == ~p"/"
+      refute Repo.get(FzHttp.Users.User, user.id)
     end
 
-    test "prevents deletion if no extra admin", %{admin_conn: conn, extra_admin: extra_admin} do
-      Users.delete_user(extra_admin)
+    test "returns 404 when user is already deleted", %{admin_user: user, admin_conn: conn} do
+      UsersFixtures.create_user_with_role(:admin)
 
-      assert_raise(RuntimeError, fn ->
-        delete(conn, ~p"/user")
-      end)
-    end
-  end
+      Repo.delete!(user)
 
-  describe "when user is already deleted" do
-    setup do
-      # this allows there to be 2 admins left after the main test admin is
-      # deleted, so that the deletion doesn't raise
-      _yet_another_admin = UsersFixtures.user()
-      :ok
+      conn = delete(conn, ~p"/user")
+      assert json_response(conn, 404) == %{"error" => "not_found"}
     end
 
-    test "returns 404", %{admin_user: user, admin_conn: conn} do
-      user.id
-      |> Users.fetch_user_by_id!()
-      |> Users.delete_user()
-
-      assert_raise(Ecto.StaleEntryError, fn ->
-        delete(conn, ~p"/user")
-      end)
+    test "returns error if the last admin is deleted", %{admin_conn: conn} do
+      conn = delete(conn, ~p"/user")
+      assert json_response(conn, 422) == %{"error" => "Can't delete the last admin user."}
     end
-  end
 
-  describe "when user not signed in" do
-    test "delete redirects to sign in", %{unauthed_conn: conn} do
-      test_conn = delete(conn, ~p"/user")
+    test "returns error for unauthorized users", %{unauthed_conn: conn} do
+      conn = delete(conn, ~p"/user")
+      assert redirected_to(conn) == ~p"/"
+    end
 
-      assert redirected_to(test_conn) == ~p"/"
+    test "returns error for unprivileged users", %{unprivileged_conn: conn} do
+      conn = delete(conn, ~p"/user")
+      assert json_response(conn, 404) == %{"error" => "not_found"}
     end
   end
 end

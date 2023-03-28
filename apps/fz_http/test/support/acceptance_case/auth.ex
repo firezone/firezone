@@ -33,6 +33,11 @@ defmodule FzHttpWeb.AcceptanceCase.Auth do
   end
 
   def authenticate(session, %FzHttp.Users.User{} = user) do
+    subject = FzHttp.Auth.fetch_subject!(user, "127.0.0.1", "AcceptanceCase")
+    authenticate(session, subject)
+  end
+
+  def authenticate(session, %FzHttp.Auth.Subject{} = subject) do
     options = FzHttpWeb.Session.options()
 
     key = Keyword.fetch!(options, :key)
@@ -40,7 +45,7 @@ defmodule FzHttpWeb.AcceptanceCase.Auth do
     signing_salt = Keyword.fetch!(options, :signing_salt)
     secret_key_base = FzHttpWeb.Endpoint.config(:secret_key_base)
 
-    with {:ok, token, _claims} <- FzHttpWeb.Auth.HTML.Authentication.encode_and_sign(user) do
+    with {:ok, token, _claims} <- FzHttpWeb.Auth.HTML.Authentication.encode_and_sign(subject) do
       encryption_key = Plug.Crypto.KeyGenerator.generate(secret_key_base, encryption_salt, [])
       signing_key = Plug.Crypto.KeyGenerator.generate(secret_key_base, signing_salt, [])
 
@@ -80,9 +85,9 @@ defmodule FzHttpWeb.AcceptanceCase.Auth do
     with {:ok, cookie} <- fetch_session_cookie(session),
          {:ok, claims} <-
            FzHttpWeb.Auth.HTML.Authentication.decode_and_verify(cookie["guardian_default_token"]),
-         {:ok, authenticated_user} <-
+         {:ok, subject} <-
            FzHttpWeb.Auth.HTML.Authentication.resource_from_claims(claims) do
-      assert authenticated_user.id == user.id
+      assert elem(subject.actor, 1).id == user.id
       session
     else
       :error -> flunk("No session cookie found")

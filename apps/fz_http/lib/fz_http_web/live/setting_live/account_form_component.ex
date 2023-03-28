@@ -18,7 +18,7 @@ defmodule FzHttpWeb.SettingLive.AccountFormComponent do
   def handle_event("save", %{"user" => user_params}, socket) do
     user = socket.assigns.user
 
-    case Users.admin_update_user(user, user_params) do
+    case Users.update_user(user, user_params) do
       {:ok, _user} ->
         {:noreply,
          socket

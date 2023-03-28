@@ -1,6 +1,70 @@
 defmodule FzHttp.Devices.Device.Query do
   use FzHttp, :query
 
+  def all do
+    from(devices in FzHttp.Devices.Device, as: :devices)
+  end
+
+  def by_id(queryable \\ all(), id) do
+    where(queryable, [devices: devices], devices.id == ^id)
+  end
+
+  def by_public_key(queryable \\ all(), public_key) do
+    where(queryable, [devices: devices], devices.public_key == ^public_key)
+  end
+
+  def by_user_id(queryable \\ all(), user_id) do
+    where(queryable, [devices: devices], devices.user_id == ^user_id)
+  end
+
+  def by_latest_handshake_seconds_ago(queryable \\ all(), seconds_ago) do
+    where(
+      queryable,
+      [devices: devices],
+      devices.latest_handshake > from_now(-1 * ^seconds_ago, "second")
+    )
+  end
+
+  def only_active(queryable \\ all()) do
+    dynamic =
+      if FzHttp.Config.vpn_sessions_expire?() do
+        vpn_session_duration = FzHttp.Config.fetch_config!(:vpn_session_duration)
+
+        dynamic(
+          [user: user],
+          is_nil(user.last_signed_in_at) or
+            user.last_signed_in_at < from_now(^vpn_session_duration, "second")
+        )
+      else
+        true
+      end
+
+    queryable
+    |> with_preloaded_user()
+    |> where([user: user], is_nil(user.disabled_at))
+    |> where([user: user], ^dynamic)
+  end
+
+  def group_by_user_id(queryable \\ all()) do
+    queryable
+    |> group_by([devices: devices], devices.user_id)
+  end
+
+  def select_max_count(queryable \\ all()) do
+    queryable
+    |> select([devices: devices], count())
+    |> order_by([devices: devices], desc: count())
+    |> limit(1)
+  end
+
+  def with_preloaded_user(queryable \\ all()) do
+    with_named_binding(queryable, :user, fn queryable, binding ->
+      queryable
+      |> join(:inner, [devices: devices], user in assoc(devices, ^binding), as: ^binding)
+      |> preload([devices: devices, user: user], user: user)
+    end)
+  end
+
   @doc """
   Returns IP address at given integer offset relative to start of CIDR range.
   """
@@ -37,10 +101,6 @@ defmodule FzHttp.Devices.Device.Query do
         unquote(field)
       )
     end
-  end
-
-  def all do
-    from(device in FzHttp.Devices.Device, as: :devices)
   end
 
   @doc """

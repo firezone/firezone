@@ -1,6 +1,6 @@
 <table class="table is-bordered is-hoverable is-striped is-fullwidth">
   <tbody>
-    <%= if has_role?(@current_user, :admin) do %>
+    <%= if FzHttpWeb.LiveAuth.has_role?(@current_user, :admin) do %>
       <tr>
         <td><strong>User</strong></td>
         <td>

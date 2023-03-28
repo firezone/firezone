@@ -1,5 +1,6 @@
 defmodule FzHttp.NotificationsTest do
   use FzHttp.DataCase, async: true
+  import FzHttp.TestHelpers
   alias FzHttp.Notifications
 
   setup do

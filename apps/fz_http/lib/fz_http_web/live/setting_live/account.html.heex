@@ -5,6 +5,7 @@
     title: "Edit Account",
     id: "user-#{@current_user.id}",
     user: @current_user,
+    subject: @subject,
     action: @live_action,
     form: "account-edit"
   ) %>
@@ -18,6 +19,7 @@
     id: "new_api_token",
     form: "api-token-form",
     user: @current_user,
+    subject: @subject,
     changeset: FzHttp.ApiTokens.new_api_token()
   ) %>
 <% end %>
@@ -30,6 +32,7 @@
     id: "show_api_token",
     hide_footer_content: true,
     user: @current_user,
+    subject: @subject,
     api_token: @api_token
   ) %>
 <% end %>
@@ -40,6 +43,7 @@
     id="register-mfa"
     user={@current_user}
     return_to={~p"/settings/account"}
+    subject={@subject}
   />
 <% end %>
 
@@ -68,7 +72,8 @@
 
   <%= render(FzHttpWeb.SharedView, "user_details.html",
     user: @current_user,
-    rules_path: @rules_path
+    rules_path: @rules_path,
+    subject: @subject
   ) %>
 </section>
 

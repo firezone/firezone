@@ -6,7 +6,7 @@ defmodule FzHttpWeb.NotificationChannelTest do
 
   describe "channel join" do
     setup _tags do
-      user = UsersFixtures.user()
+      user = UsersFixtures.create_user_with_role(:admin)
 
       socket =
         FzHttpWeb.UserSocket

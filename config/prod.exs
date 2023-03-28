@@ -11,7 +11,6 @@ config :fz_http, FzHttp.Repo,
   show_sensitive_data_on_connection_error: false
 
 config :fz_http,
-  http_client: HTTPoison,
   connectivity_checks_url: "https://ping.firez.one/"
 
 ###############################

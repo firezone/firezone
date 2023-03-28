@@ -8,6 +8,14 @@ defmodule FzHttp.Validator do
     Map.has_key?(changeset.changes, field)
   end
 
+  def empty?(changeset, field) do
+    case fetch_field(changeset, field) do
+      :error -> true
+      {_data_or_changes, nil} -> true
+      {_data_or_changes, _value} -> false
+    end
+  end
+
   def has_errors?(changeset, field) do
     Keyword.has_key?(changeset.errors, field)
   end
@@ -146,6 +154,16 @@ defmodule FzHttp.Validator do
     end)
   end
 
+  def validate_in_cidr(changeset, ip_field, cidr) do
+    validate_change(changeset, ip_field, fn _ip_field, ip ->
+      if FzHttp.Types.CIDR.contains?(cidr, ip) do
+        []
+      else
+        [{ip_field, "is not in the CIDR #{cidr}"}]
+      end
+    end)
+  end
+
   def validate_cidr(changeset, field, _opts \\ []) do
     validate_change(changeset, field, fn _current_field, value ->
       case FzHttp.Types.CIDR.cast(value) do
@@ -208,7 +226,7 @@ defmodule FzHttp.Validator do
   def put_hash(%Ecto.Changeset{} = changeset, value_field, to: hash_field) do
     with {:ok, value} when is_binary(value) and value != "" <-
            fetch_change(changeset, value_field) do
-      put_change(changeset, hash_field, FzCommon.FzCrypto.hash(value))
+      put_change(changeset, hash_field, FzHttp.Crypto.hash(value))
     else
       _ -> changeset
     end
@@ -220,7 +238,7 @@ defmodule FzHttp.Validator do
   def validate_hash(changeset, value_field, hash_field: hash_field) do
     with {:data, hash} <- fetch_field(changeset, hash_field) do
       validate_change(changeset, value_field, fn value_field, token ->
-        if FzCommon.FzCrypto.equal?(token, hash) do
+        if FzHttp.Crypto.equal?(token, hash) do
           []
         else
           [{value_field, {"is invalid", [validation: :hash]}}]
@@ -252,6 +270,14 @@ defmodule FzHttp.Validator do
       callback.(changeset)
     else
       _ -> changeset
+    end
+  end
+
+  def validate_required_group(%Ecto.Changeset{} = changeset, fields) do
+    if Enum.any?(fields, &(not empty?(changeset, &1))) do
+      validate_required(changeset, fields)
+    else
+      changeset
     end
   end
 

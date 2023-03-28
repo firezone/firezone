@@ -1,98 +1,78 @@
 defmodule FzHttp.ConnectivityChecksTest do
   use FzHttp.DataCase, async: true
-
+  alias FzHttp.SubjectFixtures
+  alias FzHttp.ConnectivityChecksFixtures
   alias FzHttp.ConnectivityChecks
+  import FzHttp.ConnectivityChecks
 
-  describe "connectivity_checks" do
-    alias FzHttp.ConnectivityChecks.ConnectivityCheck
+  setup do
+    subject = SubjectFixtures.create_subject()
 
-    import FzHttp.ConnectivityChecksFixtures
+    %{subject: subject}
+  end
 
-    @invalid_attrs %{response_body: nil, response_code: nil, response_headers: nil, url: nil}
-
-    test "list_connectivity_checks/0 returns all connectivity_checks" do
-      connectivity_check = connectivity_check_fixture()
-      assert ConnectivityChecks.list_connectivity_checks() == [connectivity_check]
+  describe "list_connectivity_checks/1" do
+    test "returns empty list when no connectivity_checks", %{subject: subject} do
+      assert list_connectivity_checks(subject) == []
     end
 
-    test "list_connectivity_checks/1 applies limit" do
-      connectivity_check_fixture()
-      connectivity_check = connectivity_check_fixture()
-      assert ConnectivityChecks.list_connectivity_checks(limit: 1) == [connectivity_check]
-    end
-
-    test "get_connectivity_check!/1 returns the connectivity_check with given id" do
-      connectivity_check = connectivity_check_fixture()
-
-      assert ConnectivityChecks.get_connectivity_check!(connectivity_check.id) ==
-               connectivity_check
-    end
-
-    test "create_connectivity_check/1 with valid data creates a connectivity_check" do
-      valid_attrs = %{
-        response_body: "some response_body",
-        response_code: 500,
-        response_headers: %{"updated_response" => "headers"},
-        url: "https://ping-dev.firez.one/1.1.1"
-      }
-
-      assert {:ok, %ConnectivityCheck{} = connectivity_check} =
-               ConnectivityChecks.create_connectivity_check(valid_attrs)
-
-      assert connectivity_check.response_body == "some response_body"
-      assert connectivity_check.response_code == 500
-      assert connectivity_check.response_headers == %{"updated_response" => "headers"}
-      assert connectivity_check.url == "https://ping-dev.firez.one/1.1.1"
-    end
-
-    test "create_connectivity_check/1 with invalid data returns error changeset" do
-      assert {:error, %Ecto.Changeset{}} =
-               ConnectivityChecks.create_connectivity_check(@invalid_attrs)
-    end
-
-    test "update_connectivity_check/2 with valid data updates the connectivity_check" do
-      connectivity_check = connectivity_check_fixture()
-
-      update_attrs = %{
-        response_body: "some updated response_body",
-        response_code: 500,
-        response_headers: %{"updated" => "response headers"},
-        url: "https://ping-dev.firez.one/6.6.6"
-      }
-
-      assert {:ok, %ConnectivityCheck{} = connectivity_check} =
-               ConnectivityChecks.update_connectivity_check(connectivity_check, update_attrs)
-
-      assert connectivity_check.response_body == "some updated response_body"
-      assert connectivity_check.response_code == 500
-      assert connectivity_check.response_headers == %{"updated" => "response headers"}
-      assert connectivity_check.url == "https://ping-dev.firez.one/6.6.6"
-    end
-
-    test "update_connectivity_check/2 with invalid data returns error changeset" do
-      connectivity_check = connectivity_check_fixture()
-
-      assert {:error, %Ecto.Changeset{}} =
-               ConnectivityChecks.update_connectivity_check(connectivity_check, @invalid_attrs)
-
-      assert connectivity_check ==
-               ConnectivityChecks.get_connectivity_check!(connectivity_check.id)
-    end
-
-    test "delete_connectivity_check/1 deletes the connectivity_check" do
-      connectivity_check = connectivity_check_fixture()
-
-      assert {:ok, %ConnectivityCheck{}} =
-               ConnectivityChecks.delete_connectivity_check(connectivity_check)
-
-      assert_raise Ecto.NoResultsError, fn ->
-        ConnectivityChecks.get_connectivity_check!(connectivity_check.id)
+    test "list_connectivity_checks/0 returns up to 100 connectivity_checks", %{subject: subject} do
+      for _ <- 1..101 do
+        ConnectivityChecksFixtures.create_connectivity_check()
       end
+
+      assert length(list_connectivity_checks(subject)) == 100
     end
 
-    test "change_connectivity_check/1 returns a connectivity_check changeset" do
-      connectivity_check = connectivity_check_fixture()
-      assert %Ecto.Changeset{} = ConnectivityChecks.change_connectivity_check(connectivity_check)
+    test "list_connectivity_checks/1 allows to change the limit", %{subject: subject} do
+      ConnectivityChecksFixtures.create_connectivity_check()
+      connectivity_check = ConnectivityChecksFixtures.create_connectivity_check()
+      assert list_connectivity_checks(subject, limit: 1) == [connectivity_check]
+    end
+
+    test "returns error when subject has no permission", %{subject: subject} do
+      subject = SubjectFixtures.remove_permissions(subject)
+
+      assert list_connectivity_checks(subject) ==
+               {:error,
+                {:unauthorized,
+                 [
+                   missing_permissions: [
+                     ConnectivityChecks.Authorizer.view_connectivity_checks_permission()
+                   ]
+                 ]}}
+    end
+  end
+
+  describe "check_connectivity/1" do
+    test "creates a connectivity check if request is successful" do
+      bypass = Bypass.open()
+
+      Bypass.expect(bypass, fn conn ->
+        conn
+        |> Plug.Conn.put_resp_header("foo", "bar")
+        |> Plug.Conn.resp(200, "X")
+      end)
+
+      request = Finch.build(:post, "http://localhost:#{bypass.port}/")
+
+      assert {:ok, connectivity_check} = check_connectivity(request)
+      assert connectivity_check.response_code == 200
+      assert connectivity_check.response_body == "X"
+      assert %{"foo" => "bar"} = connectivity_check.response_headers
+
+      assert Repo.one(ConnectivityChecks.ConnectivityCheck)
+    end
+
+    test "returns error when request fails" do
+      bypass = Bypass.open()
+      Bypass.down(bypass)
+
+      request = Finch.build(:post, "http://localhost:#{bypass.port}/")
+
+      assert {:error, reason} = check_connectivity(request)
+      assert reason == %Mint.TransportError{reason: :econnrefused}
+      refute Repo.one(ConnectivityChecks.ConnectivityCheck)
     end
   end
 end

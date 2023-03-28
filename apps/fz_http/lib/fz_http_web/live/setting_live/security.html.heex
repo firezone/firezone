@@ -4,6 +4,7 @@
 <%= if @live_action == :edit_oidc do %>
   <%= live_modal(
     FzHttpWeb.SettingLive.OIDCFormComponent,
+    subject: @subject,
     return_to: ~p"/settings/security",
     title: "OIDC Configuration",
     provider: get_provider(config_value(openid_connect_providers), @id) || %{id: @id},
@@ -15,6 +16,7 @@
 <%= if @live_action == :edit_saml do %>
   <%= live_modal(
     FzHttpWeb.SettingLive.SAMLFormComponent,
+    subject: @subject,
     return_to: ~p"/settings/security",
     title: "SAML Configuration",
     provider: get_provider(config_value(saml_identity_providers), @id) || %{id: @id},

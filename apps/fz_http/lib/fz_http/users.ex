@@ -1,7 +1,6 @@
 defmodule FzHttp.Users do
-  alias FzHttp.{Repo, Validator, Config}
-  alias FzHttp.Telemetry
-  alias FzHttp.Users.User
+  alias FzHttp.{Repo, Auth, Validator, Config, Telemetry}
+  alias FzHttp.Users.{Authorizer, User}
   require Ecto.Query
 
   def count do
@@ -12,6 +11,20 @@ defmodule FzHttp.Users do
   def count_by_role(role) do
     User.Query.by_role(role)
     |> Repo.aggregate(:count)
+  end
+
+  def fetch_count_by_role(role, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_users_permission()) do
+      User.Query.by_role(role)
+      |> Authorizer.for_subject(subject)
+      |> Repo.aggregate(:count)
+    end
+  end
+
+  def fetch_user_by_id(id, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_users_permission()) do
+      fetch_user_by_id(id)
+    end
   end
 
   def fetch_user_by_id(id) do
@@ -33,20 +46,24 @@ defmodule FzHttp.Users do
     |> Repo.fetch()
   end
 
-  def fetch_user_by_id_or_email(id_or_email) do
-    if Validator.valid_uuid?(id_or_email) do
-      fetch_user_by_id(id_or_email)
-    else
-      fetch_user_by_email(id_or_email)
+  def fetch_user_by_id_or_email(id_or_email, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_users_permission()) do
+      if Validator.valid_uuid?(id_or_email) do
+        fetch_user_by_id(id_or_email)
+      else
+        fetch_user_by_email(id_or_email)
+      end
     end
   end
 
-  def list_users(opts \\ []) do
-    {hydrate, _opts} = Keyword.pop(opts, :hydrate, [])
+  def list_users(%Auth.Subject{} = subject, opts \\ []) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_users_permission()) do
+      {hydrate, _opts} = Keyword.pop(opts, :hydrate, [])
 
-    User.Query.all()
-    |> hydrate_fields(hydrate)
-    |> Repo.list()
+      User.Query.all()
+      |> hydrate_fields(hydrate)
+      |> Repo.list()
+    end
   end
 
   defp hydrate_fields(queryable, []), do: queryable
@@ -68,7 +85,7 @@ defmodule FzHttp.Users do
   end
 
   def consume_sign_in_token(%User{} = user, token) when is_binary(token) do
-    if FzCommon.FzCrypto.equal?(token, user.sign_in_token_hash) do
+    if FzHttp.Crypto.equal?(token, user.sign_in_token_hash) do
       User.Query.by_id(user.id)
       |> User.Query.where_sign_in_token_is_not_expired()
       |> Ecto.Query.update(set: [sign_in_token_hash: nil, sign_in_token_created_at: nil])
@@ -83,29 +100,36 @@ defmodule FzHttp.Users do
     end
   end
 
-  def create_admin_user(attrs) do
-    create_user(attrs, :admin)
+  def create_user(role, attrs, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_users_permission()) do
+      create_user(role, attrs)
+    end
   end
 
-  def create_unprivileged_user(attrs) do
-    create_user(attrs, :unprivileged)
-  end
+  def create_user(role, attrs) do
+    changeset = User.Changeset.create_changeset(role, attrs)
 
-  def create_user(attrs, role \\ :unprivileged) do
-    User.Changeset.create_changeset(role, attrs)
-    |> insert_user()
-  end
-
-  defp insert_user(%Ecto.Changeset{} = changeset) do
     with {:ok, user} <- Repo.insert(changeset) do
       Telemetry.add_user()
       {:ok, user}
     end
   end
 
-  # XXX: This should go down to single function update_user(self, attrs, subject)
-  # where subject will know role of an updater and if he is updating himself.
-  def admin_update_user(%User{} = user, attrs) do
+  def change_user(%User{} = user \\ %User{}) do
+    Ecto.Changeset.change(user)
+  end
+
+  def update_user(%User{} = user, attrs, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_users_permission()) do
+      user
+      |> User.Changeset.update_user_role(attrs, subject)
+      |> User.Changeset.update_user_email(attrs)
+      |> User.Changeset.update_user_password(attrs)
+      |> Repo.update()
+    end
+  end
+
+  def update_user(%User{} = user, attrs) do
     user
     |> User.Changeset.update_user_role(attrs)
     |> User.Changeset.update_user_email(attrs)
@@ -113,26 +137,56 @@ defmodule FzHttp.Users do
     |> Repo.update()
   end
 
-  def unprivileged_update_self(%User{} = user, attrs) do
+  def update_self(attrs, %Auth.Subject{actor: {:user, %User{} = user}} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.edit_own_profile_permission()) do
+      user
+      |> User.Changeset.update_user_password(attrs)
+      |> Repo.update()
+    end
+  end
+
+  def disable_user(%User{} = user) do
     user
-    |> User.Changeset.update_user_password(attrs)
+    |> User.Changeset.disable_user()
     |> Repo.update()
+    |> case do
+      {:ok, user} ->
+        FzHttp.Telemetry.disable_user()
+        FzHttpWeb.Endpoint.broadcast("users_socket:#{user.id}", "disconnect", %{})
+        {:ok, user}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
-  def update_user_role(%User{} = user, role) do
-    user
-    |> User.Changeset.update_user_role(%{role: role})
-    |> Repo.update()
+  def delete_user(%User{} = user, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_users_permission()),
+         :ok <- ensure_not_last_admin(user) do
+      Telemetry.delete_user()
+      Repo.delete(user, stale_error_field: :id)
+    end
   end
 
-  def delete_user(%User{} = user) do
-    Telemetry.delete_user()
-    Repo.delete(user)
+  defp ensure_not_last_admin(%User{role: :admin, id: id}) do
+    remaining_admins_count =
+      User.Query.by_role(:admin)
+      |> User.Query.by_id({:not, id})
+      |> Repo.aggregate(:count)
+
+    if remaining_admins_count >= 1 do
+      :ok
+    else
+      {:error, :cant_delete_the_last_admin}
+    end
   end
 
-  # XXX: This should return real changeset not just a dummy one listing all the fields
-  def change_user(%User{} = user \\ %User{}) do
-    Ecto.Changeset.change(user)
+  defp ensure_not_last_admin(%User{}) do
+    :ok
+  end
+
+  def setting_projection(user) do
+    user.id
   end
 
   def as_settings do
@@ -140,10 +194,6 @@ defmodule FzHttp.Users do
     |> Repo.all()
     |> Enum.map(&setting_projection/1)
     |> MapSet.new()
-  end
-
-  def setting_projection(user) do
-    user.id
   end
 
   def update_last_signed_in(user, %{provider: provider}) do

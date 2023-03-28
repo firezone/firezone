@@ -151,7 +151,7 @@ defmodule FzHttp.Config.Definitions do
   Must be a valid and public FQDN for ACME SSL issuance to function.
 
   You can add a path suffix if you want to serve firezone from a non-root path,
-  eg: `https://firezone.mycorp.com/vpn`.
+  eg: `https://firezone.mycorp.com/vpn/`.
   """
   defconfig(:external_url, :string,
     changeset: fn changeset, key ->

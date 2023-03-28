@@ -37,7 +37,6 @@ ENV DATABASE_PASSWORD=$DATABASE_PASSWORD
 
 RUN mix local.hex --force && mix local.rebar --force
 
-COPY apps/fz_common/mix.exs /var/app/apps/fz_common/mix.exs
 COPY apps/fz_http/mix.exs /var/app/apps/fz_http/mix.exs
 COPY apps/fz_vpn/mix.exs /var/app/apps/fz_vpn/mix.exs
 COPY apps/fz_wall/mix.exs /var/app/apps/fz_wall/mix.exs

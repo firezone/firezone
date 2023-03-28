@@ -1,25 +1,55 @@
 defmodule FzHttp.RulesFixtures do
-  @moduledoc """
-  This module defines test helpers for creating
-  entities via the `FzHttp.Rules` context.
-  """
-
+  alias FzHttp.UsersFixtures
+  alias FzHttp.SubjectFixtures
   alias FzHttp.Rules
 
-  def rule4(attrs \\ %{}) do
-    rule(attrs)
+  defp rule_attrs(attrs, default) do
+    attrs = Enum.into(attrs, default)
+
+    if user = Map.get(attrs, :user) do
+      Map.put(attrs, :user_id, user.id)
+    else
+      attrs
+    end
   end
 
-  def rule6(attrs \\ %{}) do
-    rule(Map.merge(attrs, %{destination: "::/0"}))
+  def ipv4_rule_attrs(attrs \\ %{}) do
+    rule_attrs(attrs, %{destination: "10.10.10.0/24"})
   end
 
-  def rule(attrs \\ %{}) do
-    default_attrs = %{
-      destination: "10.10.10.0/24"
-    }
+  def create_rule(attrs \\ %{}) do
+    create_ipv4_rule(attrs)
+  end
 
-    {:ok, rule} = Rules.create_rule(Map.merge(default_attrs, attrs))
+  def create_ipv4_rule(attrs \\ %{}) do
+    attrs = ipv4_rule_attrs(attrs)
+
+    {subject, attrs} =
+      Map.pop_lazy(attrs, :subject, fn ->
+        UsersFixtures.create_user_with_role(:admin)
+        |> SubjectFixtures.create_subject()
+      end)
+
+    {:ok, rule} = Rules.create_rule(attrs, subject)
+
+    rule
+  end
+
+  def ipv6_rule_attrs(attrs \\ %{}) do
+    rule_attrs(attrs, %{destination: "::/0"})
+  end
+
+  def create_ipv6_rule(attrs \\ %{}) do
+    attrs = ipv6_rule_attrs(attrs)
+
+    {subject, attrs} =
+      Map.pop_lazy(attrs, :subject, fn ->
+        UsersFixtures.create_user_with_role(:admin)
+        |> SubjectFixtures.create_subject()
+      end)
+
+    {:ok, rule} = Rules.create_rule(attrs, subject)
+
     rule
   end
 end

@@ -1,25 +1,20 @@
 defmodule FzHttp.ConnectivityChecksFixtures do
-  @moduledoc """
-  This module defines test helpers for creating
-  entities via the `FzHttp.ConnectivityChecks` context.
-  """
-
+  alias FzHttp.Repo
   alias FzHttp.ConnectivityChecks
 
-  @doc """
-  Generate a connectivity_check.
-  """
-  def connectivity_check_fixture(attrs \\ %{}) do
-    {:ok, connectivity_check} =
-      attrs
-      |> Enum.into(%{
-        response_body: "some response_body",
-        response_code: 142,
-        response_headers: %{"Content-Type" => "text/plain"},
-        url: "https://ping-dev.firez.one/0.0.0+git.0.deadbeef0"
-      })
-      |> ConnectivityChecks.create_connectivity_check()
+  def connectivity_check_attrs(attrs \\ []) do
+    Enum.into(attrs, %{
+      response_body: "some response_body",
+      response_code: 142,
+      response_headers: %{"Content-Type" => "text/plain"},
+      url: "https://ping-dev.firez.one/0.0.0+git.0.deadbeef0"
+    })
+  end
 
-    connectivity_check
+  def create_connectivity_check(attrs \\ []) do
+    attrs
+    |> connectivity_check_attrs()
+    |> ConnectivityChecks.ConnectivityCheck.Changeset.create_changeset()
+    |> Repo.insert!()
   end
 end

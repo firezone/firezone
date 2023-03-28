@@ -6,13 +6,13 @@ defmodule FzHttp.Config.Dumper do
 
   ## Examples:
 
-      iex> FzCommon.dump_ssl_opts(%{"verify" => "verify_none", "versions" => ["tlsv1.3"]})
+      iex> dump_ssl_opts(%{"verify" => "verify_none", "versions" => ["tlsv1.3"]})
       [verify: :verify_none, versions: ['tlsv1.3']]
 
-      iex> FzCommon.dump_ssl_opts(%{"keep_secrets" => true})
+      iex> dump_ssl_opts(%{"keep_secrets" => true})
       ** (ArgumentError) unsupported key keep_secrets in ssl opts
 
-      iex> FzCommon.dump_ssl_opts(%{"cacertfile" => "/tmp/cacerts.pem"})
+      iex> dump_ssl_opts(%{"cacertfile" => "/tmp/cacerts.pem"})
       [cacertfile: '/tmp/cacerts.pem']
   """
   def dump_ssl_opts(decoded_json) do

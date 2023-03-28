@@ -51,10 +51,10 @@ defmodule FzHttpWeb.SettingLive.NewApiTokenComponent do
     """
   end
 
-  def handle_event("save", %{"api_token" => api_token_params}, socket) do
-    user = socket.assigns.user
+  def handle_event("save", %{"api_token" => attrs}, socket) do
+    subject = socket.assigns.subject
 
-    case ApiTokens.create_user_api_token(user, api_token_params) do
+    case ApiTokens.create_api_token(attrs, subject) do
       {:ok, api_token} ->
         {:noreply,
          socket

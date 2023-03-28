@@ -21,7 +21,7 @@ defmodule FzHttp.Users.User do
     field :device_count, :integer, virtual: true
 
     has_many :devices, FzHttp.Devices.Device
-    has_many :oidc_connections, FzHttp.OIDC.Connection
+    has_many :oidc_connections, FzHttp.Auth.OIDC.Connection
     has_many :api_tokens, FzHttp.ApiTokens.ApiToken
 
     field :disabled_at, :utc_datetime_usec

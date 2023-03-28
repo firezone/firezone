@@ -1,30 +1,105 @@
 defmodule FzHttp.Rules do
-  @moduledoc """
-  The Rules context.
-  """
+  alias FzHttp.{Repo, Auth, Validator, Telemetry}
+  alias FzHttp.Rules.{Authorizer, Rule}
 
-  import Ecto.Query, warn: false
-  import Ecto.Changeset
-  alias FzHttp.{Repo, Rules.Rule, Rules.RuleSetting, Telemetry}
+  def fetch_count_by_user_id(user_id, %Auth.Subject{} = subject) do
+    if Validator.valid_uuid?(user_id) do
+      queryable =
+        Rule.Query.by_user_id(user_id)
+        |> Authorizer.for_subject(subject)
+
+      {:ok, Repo.aggregate(queryable, :count)}
+    else
+      {:ok, 0}
+    end
+  end
+
+  def fetch_rule_by_id(id, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_rules_permission()),
+         true <- Validator.valid_uuid?(id) do
+      Rule.Query.by_id(id)
+      |> Authorizer.for_subject(subject)
+      |> Repo.fetch()
+    else
+      false -> {:error, :not_found}
+      other -> other
+    end
+  end
+
+  def fetch_rule_by_id!(id) do
+    Rule.Query.by_id(id)
+    |> Repo.one!()
+  end
+
+  def list_rules(%Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_rules_permission()) do
+      Rule.Query.all()
+      |> Authorizer.for_subject(subject)
+      |> Repo.list()
+    end
+  end
+
+  def list_rules_by_user_id(user_id, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_rules_permission()),
+         true <- Validator.valid_uuid?(user_id) do
+      Rule.Query.by_user_id(user_id)
+      |> Authorizer.for_subject(subject)
+      |> Repo.list()
+    else
+      false -> {:ok, []}
+      other -> other
+    end
+  end
+
+  def new_rule(attrs \\ %{}) do
+    Rule.Changeset.create_changeset(attrs)
+  end
+
+  def change_rule(%Rule{} = rule, attrs \\ %{}) do
+    Rule.Changeset.update_changeset(rule, attrs)
+  end
+
+  def create_rule(attrs, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_rules_permission()) do
+      create_rule(attrs)
+    end
+  end
+
+  def create_rule(attrs) do
+    changeset = Rule.Changeset.create_changeset(attrs)
+
+    with {:ok, rule} <- Repo.insert(changeset) do
+      Telemetry.add_rule()
+      {:ok, rule}
+    end
+  end
+
+  def update_rule(%Rule{} = rule, attrs, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_rules_permission()) do
+      rule
+      |> Rule.Changeset.update_changeset(attrs)
+      |> Repo.update()
+    end
+  end
+
+  def delete_rule(%Rule{} = rule, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_rules_permission()) do
+      Telemetry.delete_rule()
+      Repo.delete(rule)
+    end
+  end
+
+  def setting_projection(rule_or_map) do
+    %{
+      destination: to_string(rule_or_map.destination),
+      action: rule_or_map.action,
+      user_id: rule_or_map.user_id,
+      port_type: rule_or_map.port_type,
+      port_range: rule_or_map.port_range
+    }
+  end
 
   def port_rules_supported?, do: FzHttp.Config.fetch_env!(:fz_wall, :port_based_rules_supported)
-
-  defp scope(port_based_rules) when port_based_rules == true do
-    Rule
-  end
-
-  defp scope(port_based_rules) when port_based_rules == false do
-    from r in Rule, where: is_nil(r.port_type)
-  end
-
-  def list_rules, do: Repo.all(Rule)
-
-  def list_rules(user_id) do
-    Repo.all(
-      from r in Rule,
-        where: r.user_id == ^user_id
-    )
-  end
 
   def as_settings do
     port_rules_supported?()
@@ -34,69 +109,16 @@ defmodule FzHttp.Rules do
     |> MapSet.new()
   end
 
-  def setting_projection(rule) do
-    RuleSetting.parse(rule)
-    |> Map.from_struct()
-  end
-
-  def count(user_id) do
-    Repo.one(from r in Rule, where: r.user_id == ^user_id, select: count())
-  end
-
-  def get_rule!(id), do: Repo.get!(Rule, id)
-
-  def new_rule(attrs \\ %{}) do
-    %Rule{}
-    |> Rule.changeset(attrs)
-  end
-
-  def defaults(changeset) do
-    %{port_type: get_field(changeset, :port_type)}
-  end
-
-  def defaults do
-    defaults(new_rule())
-  end
-
-  def create_rule(attrs \\ %{}) do
-    result =
-      attrs
-      |> new_rule()
-      |> Repo.insert()
-
-    case result do
-      {:ok, _rule} ->
-        Telemetry.add_rule()
-
-      _ ->
-        nil
-    end
-
-    result
-  end
-
-  def update_rule(%Rule{} = rule, attrs \\ %{}) do
-    rule
-    |> Rule.changeset(attrs)
-    |> Repo.update()
-  end
-
-  def delete_rule(%Rule{} = rule) do
-    Telemetry.delete_rule()
-    Repo.delete(rule)
-  end
+  defp scope(true), do: Rule.Query.all()
+  defp scope(false), do: Rule.Query.by_empty_port_type()
 
   def allowlist do
-    Repo.all(
-      from r in Rule,
-        where: r.action == :accept
-    )
+    Rule.Query.by_action(:accept)
+    |> Repo.all()
   end
 
   def denylist do
-    Repo.all(
-      from r in Rule,
-        where: r.action == :drop
-    )
+    Rule.Query.by_action(:drop)
+    |> Repo.all()
   end
 end

@@ -3,6 +3,7 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
   Form for OIDC configs
   """
   use FzHttpWeb, :live_component
+  alias FzHttp.Config
 
   def render(assigns) do
     ~H"""
@@ -198,13 +199,20 @@ defmodule FzHttpWeb.SettingLive.OIDCFormComponent do
     if changeset.valid? do
       attrs = Ecto.Changeset.apply_changes(changeset)
 
+      config = Config.fetch_db_config!()
+
       openid_connect_providers =
-        FzHttp.Config.fetch_config!(:openid_connect_providers)
+        config.openid_connect_providers
         |> Enum.reject(&(&1.id == socket.assigns.provider.id))
         |> Kernel.++([attrs])
         |> Enum.map(&Map.from_struct/1)
 
-      FzHttp.Config.put_config!(:openid_connect_providers, openid_connect_providers)
+      {:ok, _config} =
+        Config.update_config(
+          config,
+          %{openid_connect_providers: openid_connect_providers},
+          socket.assigns.subject
+        )
 
       socket =
         socket

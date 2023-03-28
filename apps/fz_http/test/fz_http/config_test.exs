@@ -106,7 +106,7 @@ defmodule FzHttp.ConfigTest do
       Must be a valid and public FQDN for ACME SSL issuance to function.
 
       You can add a path suffix if you want to serve firezone from a non-root path,
-      eg: `https://firezone.mycorp.com/vpn`.
+      eg: `https://firezone.mycorp.com/vpn/`.
 
 
       You can find more information on configuration here: https://www.firezone.dev/docs/reference/env-vars/#environment-variable-listing
@@ -152,7 +152,7 @@ defmodule FzHttp.ConfigTest do
       Must be a valid and public FQDN for ACME SSL issuance to function.
 
       You can add a path suffix if you want to serve firezone from a non-root path,
-      eg: `https://firezone.mycorp.com/vpn`.
+      eg: `https://firezone.mycorp.com/vpn/`.
 
 
       You can find more information on configuration here: https://www.firezone.dev/docs/reference/env-vars/#environment-variable-listing
@@ -180,7 +180,7 @@ defmodule FzHttp.ConfigTest do
       Must be a valid and public FQDN for ACME SSL issuance to function.
 
       You can add a path suffix if you want to serve firezone from a non-root path,
-      eg: `https://firezone.mycorp.com/vpn`.
+      eg: `https://firezone.mycorp.com/vpn/`.
 
 
       You can find more information on configuration here: https://www.firezone.dev/docs/reference/env-vars/#environment-variable-listing
@@ -251,7 +251,7 @@ defmodule FzHttp.ConfigTest do
       Must be a valid and public FQDN for ACME SSL issuance to function.
 
       You can add a path suffix if you want to serve firezone from a non-root path,
-      eg: `https://firezone.mycorp.com/vpn`.
+      eg: `https://firezone.mycorp.com/vpn/`.
 
 
       You can find more information on configuration here: https://www.firezone.dev/docs/reference/env-vars/#environment-variable-listing

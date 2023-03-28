@@ -1,6 +1,6 @@
 defmodule FzHttp.MFAFixtures do
   alias FzHttp.Repo
-  alias FzHttp.MFA
+  alias FzHttp.Auth.MFA
   alias FzHttp.UsersFixtures
 
   def totp_method_attrs(attrs \\ %{}) do
@@ -19,7 +19,7 @@ defmodule FzHttp.MFAFixtures do
 
     {user, attrs} =
       Map.pop_lazy(attrs, :user, fn ->
-        UsersFixtures.create_user()
+        UsersFixtures.create_user_with_role(:admin)
       end)
 
     attrs = totp_method_attrs(attrs)

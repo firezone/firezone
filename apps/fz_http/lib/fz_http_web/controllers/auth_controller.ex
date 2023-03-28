@@ -72,7 +72,7 @@ defmodule FzHttpWeb.AuthController do
           # only first-time connect will include refresh token
           # XXX: Remove this when SCIM 2.0 is implemented
           with %{"refresh_token" => refresh_token} <- tokens do
-            FzHttp.OIDC.create_connection(user.id, provider_id, refresh_token)
+            FzHttp.Auth.OIDC.create_connection(user.id, provider_id, refresh_token)
           end
 
           conn

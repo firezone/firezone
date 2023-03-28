@@ -6,7 +6,7 @@ defmodule FzHttpWeb.SettingLive.ShowApiTokenComponent do
 
   def update(assigns, socket) do
     if connected?(socket) do
-      {:ok, secret, _claims} = Authentication.fz_encode_and_sign(assigns.api_token, assigns.user)
+      {:ok, secret, _claims} = Authentication.fz_encode_and_sign(assigns.api_token)
 
       {:ok,
        socket

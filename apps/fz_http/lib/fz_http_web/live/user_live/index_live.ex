@@ -10,7 +10,7 @@ defmodule FzHttpWeb.UserLive.Index do
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
-    with {:ok, users} <- Users.list_users(hydrate: [:device_count]) do
+    with {:ok, users} <- Users.list_users(socket.assigns.subject, hydrate: [:device_count]) do
       socket =
         socket
         |> assign(:users, users)

@@ -54,32 +54,28 @@ if config_env() == :prod do
     wireguard_ipv6_network: compile_config!(:wireguard_ipv6_network),
     wireguard_ipv6_address: compile_config!(:wireguard_ipv6_address)
 
-  config :fz_http,
-    saml_entity_id: compile_config!(:saml_entity_id),
-    saml_certfile_path: compile_config!(:saml_certfile_path),
-    saml_keyfile_path: compile_config!(:saml_keyfile_path)
+  config :fz_http, FzHttp.SAML,
+    entity_id: compile_config!(:saml_entity_id),
+    certfile_path: compile_config!(:saml_certfile_path),
+    keyfile_path: compile_config!(:saml_keyfile_path)
 
   config :fz_http,
     external_trusted_proxies: compile_config!(:phoenix_external_trusted_proxies),
     private_clients: compile_config!(:phoenix_private_clients)
 
-  config :fz_http,
-    telemetry_id: compile_config!(:telemetry_id),
-    telemetry_module:
-      if(compile_config!(:telemetry_enabled) == true,
-        do: FzCommon.Telemetry,
-        else: FzCommon.MockTelemetry
-      )
+  config :fz_http, FzHttp.Telemetry,
+    enabled: compile_config!(:telemetry_enabled),
+    id: compile_config!(:telemetry_id)
 
   config :fz_http,
     cookie_secure: compile_config!(:phoenix_secure_cookies),
     cookie_signing_salt: compile_config!(:cookie_signing_salt),
     cookie_encryption_salt: compile_config!(:cookie_encryption_salt)
 
-  config :fz_http,
+  config :fz_http, FzHttp.ConnectivityChecks,
     http_client_options: compile_config!(:http_client_ssl_opts),
-    connectivity_checks_enabled: compile_config!(:connectivity_checks_enabled),
-    connectivity_checks_interval: compile_config!(:connectivity_checks_interval)
+    enabled: compile_config!(:connectivity_checks_enabled),
+    interval: compile_config!(:connectivity_checks_interval)
 
   config :fz_http,
     admin_email: compile_config!(:default_admin_email),
