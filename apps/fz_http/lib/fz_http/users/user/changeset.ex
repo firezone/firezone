@@ -47,6 +47,12 @@ defmodule FzHttp.Users.User.Changeset do
     |> validate_required([:role])
   end
 
+  def disable_user(user) do
+    user
+    |> change()
+    |> put_change(:disabled_at, DateTime.utc_now())
+  end
+
   defp change_email_changeset(%Ecto.Changeset{} = changeset) do
     changeset
     |> trim_change(:email)

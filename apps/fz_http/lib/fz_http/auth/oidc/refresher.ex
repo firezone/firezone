@@ -3,7 +3,6 @@ defmodule FzHttp.Auth.OIDC.Refresher do
   Worker module for refreshing OIDC connections
   """
   use GenServer, restart: :temporary
-  import Ecto.{Changeset, Query}
   alias FzHttp.{Auth, Auth.OIDC, Auth.OIDC.Connection, Repo, Users}
   require Logger
 
@@ -25,8 +24,10 @@ defmodule FzHttp.Auth.OIDC.Refresher do
   end
 
   def refresh(user_id) do
-    connections = Repo.all(from(Connection, where: [user_id: ^user_id]))
-    Enum.each(connections, &do_refresh(user_id, &1))
+    Connection.Query.by_id(user_id)
+    |> Repo.all()
+    |> Enum.each(&do_refresh(user_id, &1))
+
     {:stop, :shutdown, user_id}
   end
 
@@ -52,19 +53,9 @@ defmodule FzHttp.Auth.OIDC.Refresher do
 
     with %{error: _} <- refresh_response do
       user = Users.fetch_user_by_id!(user_id)
-
       Logger.info("Disabling user #{user.email} due to OIDC token refresh failure...")
-
+      {:ok, user} = Users.disable_user(user)
       user
-      |> change()
-      |> put_change(:disabled_at, DateTime.utc_now())
-      # TODO: this should be in Users context
-      |> prepare_changes(fn changeset ->
-        FzHttp.Telemetry.disable_user()
-        FzHttpWeb.Endpoint.broadcast("users_socket:#{user.id}", "disconnect", %{})
-        changeset
-      end)
-      |> Repo.update!()
     end
   end
 

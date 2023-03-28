@@ -92,25 +92,12 @@ defmodule FzHttp.Devices do
     |> Device.Changeset.configure_changeset(attrs)
   end
 
-  def create_device_for_user(
-        %Users.User{id: user_id} = user,
-        attrs \\ %{},
-        %Auth.Subject{} = subject
-      ) do
-    required_permissions =
-      case subject.actor do
-        {:user, %{id: ^user_id}} ->
-          Authorizer.manage_own_devices_permission()
-
-        _other ->
-          Authorizer.manage_devices_permission()
-      end
-
-    with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
+  def create_device_for_user(%Users.User{} = user, attrs \\ %{}, %Auth.Subject{} = subject) do
+    with :ok <- authorize_user_device_management(user.id, subject) do
       changeset = Device.Changeset.create_changeset(user, attrs)
 
       changeset =
-        if Auth.has_permission?(subject, Authorizer.configure_devices_permission()) do
+        if authorize_device_configuration(subject) == :ok do
           Device.Changeset.configure_changeset(changeset, attrs)
         else
           changeset
@@ -127,7 +114,11 @@ defmodule FzHttp.Devices do
     end
   end
 
-  def update_device(%Device{user_id: user_id} = device, attrs, %Auth.Subject{} = subject) do
+  def authorize_device_configuration(subject) do
+    Auth.ensure_has_permissions(subject, Authorizer.configure_devices_permission())
+  end
+
+  def authorize_user_device_management(user_id, %Auth.Subject{} = subject) do
     required_permissions =
       case subject.actor do
         {:user, %{id: ^user_id}} ->
@@ -137,7 +128,11 @@ defmodule FzHttp.Devices do
           Authorizer.manage_devices_permission()
       end
 
-    with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
+    Auth.ensure_has_permissions(subject, required_permissions)
+  end
+
+  def update_device(%Device{} = device, attrs, %Auth.Subject{} = subject) do
+    with :ok <- authorize_user_device_management(device.user_id, subject) do
       device
       |> Device.Changeset.update_changeset(attrs)
       |> Repo.update()
@@ -150,17 +145,8 @@ defmodule FzHttp.Devices do
     |> Repo.update()
   end
 
-  def delete_device(%Device{user_id: user_id} = device, %Auth.Subject{} = subject) do
-    required_permissions =
-      case subject.actor do
-        {:user, %{id: ^user_id}} ->
-          Authorizer.manage_own_devices_permission()
-
-        _other ->
-          Authorizer.manage_devices_permission()
-      end
-
-    with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
+  def delete_device(%Device{} = device, %Auth.Subject{} = subject) do
+    with :ok <- authorize_user_device_management(device.user_id, subject) do
       Telemetry.delete_device()
       Repo.delete(device)
     end

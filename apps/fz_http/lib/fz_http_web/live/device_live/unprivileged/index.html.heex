@@ -70,7 +70,7 @@
     <% end %>
   </div>
 
-  <%= if FzHttpWeb.DeviceView.can_manage_devices?(@current_user) do %>
+  <%= if FzHttp.Devices.authorize_user_device_management(@current_user.id, @subject) == :ok do %>
     <div class="block">
       <.link replace={true} patch={~p"/user_devices/new"} class="button">
         Add Device

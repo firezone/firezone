@@ -9,7 +9,6 @@ defmodule FzHttp.SubjectFixtures do
     }
   end
 
-  # TODO: this can be replaced with new/1
   def create_subject(user \\ UsersFixtures.create_user_with_role(:admin)) do
     FzHttp.Auth.fetch_subject!(user, {127, 0, 0, 1}, "DummyAgent (1.0.0)")
   end

@@ -42,11 +42,15 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
 
   @impl Phoenix.LiveComponent
   def handle_event("change", %{"device" => device_params}, socket) do
-    changeset =
+    attrs =
       device_params
       |> Map.update("dns", nil, &binary_to_list/1)
       |> Map.update("allowed_ips", nil, &binary_to_list/1)
-      |> Devices.new_device()
+
+    # Note: change_device is used here because when you type in at some point
+    # the input can be empty while you typing, which will immediately put back
+    # an new default value from the changeset.
+    changeset = Devices.change_device(%Devices.Device{}, attrs)
 
     socket =
       socket
@@ -66,13 +70,13 @@ defmodule FzHttpWeb.DeviceLive.NewFormComponent do
       {:ok, device} ->
         send_update(FzHttpWeb.ModalComponent, id: :modal, hide_footer_content: true)
 
+        device_config =
+          FzHttpWeb.WireguardConfigView.render("base64_device.conf", %{device: device})
+
         socket =
           socket
           |> assign(:device, device)
-          |> assign(
-            :config,
-            FzHttpWeb.WireguardConfigView.render("base64_device.conf", %{device: device})
-          )
+          |> assign(:config, device_config)
 
         {:noreply, socket}
 

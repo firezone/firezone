@@ -21,7 +21,7 @@ defmodule FzHttp.Application do
     :ok
   end
 
-  # TODO: get rid off this
+  # XXX: get rid off this
   defp children(:full) do
     [
       # Infrastructure services

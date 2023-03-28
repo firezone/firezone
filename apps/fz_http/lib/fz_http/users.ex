@@ -145,6 +145,21 @@ defmodule FzHttp.Users do
     end
   end
 
+  def disable_user(%User{} = user) do
+    user
+    |> User.Changeset.disable_user()
+    |> Repo.update()
+    |> case do
+      {:ok, user} ->
+        FzHttp.Telemetry.disable_user()
+        FzHttpWeb.Endpoint.broadcast("users_socket:#{user.id}", "disconnect", %{})
+        {:ok, user}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
   def delete_user(%User{} = user, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_users_permission()),
          :ok <- ensure_not_last_admin(user) do

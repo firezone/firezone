@@ -12,14 +12,11 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.Index do
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
-    user = socket.assigns.current_user
-
-    with {:ok, devices} <- Devices.list_devices_for_user(user, socket.assigns.subject) do
+    with {:ok, devices} <-
+           Devices.list_devices_for_user(socket.assigns.current_user, socket.assigns.subject) do
       socket =
         socket
         |> assign(:devices, devices)
-        # TODO: remove duplicate assign, current_user is already there
-        |> assign(:user, user)
         |> assign(:page_subtitle, @page_subtitle)
         |> assign(:page_title, @page_title)
 

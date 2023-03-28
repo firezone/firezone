@@ -93,7 +93,7 @@
           </p>
         </div>
 
-        <%= if FzHttpWeb.DeviceView.can_configure_devices?(@current_user) do %>
+        <%= if FzHttp.Devices.authorize_device_configuration(@subject) == :ok do %>
           <div class="field">
             <%= label(f, :use_default_allowed_ips, "Use Default Allowed IPs", class: "label") %>
             <div class="control">

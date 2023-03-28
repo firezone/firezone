@@ -30,14 +30,13 @@ defmodule FzHttpWeb.DeviceLive.Admin.Show do
   def handle_event("delete_device", _params, socket) do
     case Devices.delete_device(socket.assigns.device, socket.assigns.subject) do
       {:ok, _deleted_device} ->
-        {:noreply,
-         socket
-         |> redirect(to: ~p"/devices")}
+        {:noreply, redirect(socket, to: ~p"/devices")}
+
+      {:error, {:unauthorized, _context}} ->
+        {:noreply, not_authorized(socket)}
 
       {:error, msg} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, "Error deleting device: #{msg}")}
+        {:noreply, put_flash(socket, :error, "Error deleting device: #{msg}")}
     end
   end
 

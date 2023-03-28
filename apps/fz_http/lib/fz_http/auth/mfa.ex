@@ -1,4 +1,3 @@
-# TODO: add subjects
 defmodule FzHttp.Auth.MFA do
   alias FzHttp.{Repo, Validator}
   alias FzHttp.Users

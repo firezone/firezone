@@ -45,7 +45,6 @@ defmodule FzHttpWeb.Acceptance.UnprivilegedUserTest do
         "device[ipv4]" => "100.64.255.100",
         "device[ipv6]" => "fd00::1e:3f96"
       })
-      |> fill_in(Query.fillable_field("device[description]"), with: "Dummy description")
       |> click(Query.button("Generate Configuration"))
       |> assert_el(Query.text("Device added!"))
       |> click(Query.css("button[phx-click=\"close\"]"))
