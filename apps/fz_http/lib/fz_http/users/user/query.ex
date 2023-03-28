@@ -5,7 +5,13 @@ defmodule FzHttp.Users.User.Query do
     from(users in FzHttp.Users.User, as: :users)
   end
 
-  def by_id(queryable \\ all(), id) do
+  def by_id(queryable \\ all(), id)
+
+  def by_id(queryable, {:not, id}) do
+    where(queryable, [users: users], users.id != ^id)
+  end
+
+  def by_id(queryable, id) do
     where(queryable, [users: users], users.id == ^id)
   end
 

@@ -13,7 +13,8 @@ defmodule FzHttpWeb.Auth.JSON.AuthenticationTest do
   end
 
   test "renders error when api token resource is invalid" do
-    user = UsersFixtures.user(%{role: :admin})
+    user = UsersFixtures.create_user_with_role(:admin)
+    subject = FzHttp.Auth.fetch_subject!(user, "127.0.0.1", "AuthTest")
 
     claims = %{
       "api" => Ecto.UUID.generate(),
@@ -21,7 +22,7 @@ defmodule FzHttpWeb.Auth.JSON.AuthenticationTest do
     }
 
     {:ok, token, _claims} =
-      Guardian.encode_and_sign(FzHttpWeb.Auth.JSON.Authentication, user, claims)
+      Guardian.encode_and_sign(FzHttpWeb.Auth.JSON.Authentication, subject, claims)
 
     conn =
       api_conn()

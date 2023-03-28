@@ -8,7 +8,7 @@ defmodule FzHttpWeb.SettingLive.Unprivileged.Account do
   """
   use FzHttpWeb, :live_view
 
-  alias FzHttp.{MFA, Users}
+  alias FzHttp.{Auth.MFA, Users}
   alias FzHttpWeb.{Endpoint, Presence}
 
   @live_sessions_topic "notification:session"

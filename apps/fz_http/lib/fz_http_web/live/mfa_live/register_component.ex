@@ -3,7 +3,7 @@ defmodule FzHttpWeb.MFA.RegisterComponent do
   MFA registration container
   """
   use FzHttpWeb, :live_component
-  alias FzHttp.MFA
+  alias FzHttp.Auth.MFA
 
   @steps [
     {:pick_type, fields: ~w[type]a},

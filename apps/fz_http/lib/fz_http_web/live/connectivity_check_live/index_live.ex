@@ -15,12 +15,15 @@ defmodule FzHttpWeb.ConnectivityCheckLive.Index do
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
-    connectivity_checks = ConnectivityChecks.list_connectivity_checks(limit: 20)
+    connectivity_checks =
+      ConnectivityChecks.list_connectivity_checks(socket.assigns.subject, limit: 20)
 
-    {:ok,
-     socket
-     |> assign(:connectivity_checks, connectivity_checks)
-     |> assign(:page_subtitle, @page_subtitle)
-     |> assign(:page_title, @page_title)}
+    socket =
+      socket
+      |> assign(:connectivity_checks, connectivity_checks)
+      |> assign(:page_subtitle, @page_subtitle)
+      |> assign(:page_title, @page_title)
+
+    {:ok, socket}
   end
 end

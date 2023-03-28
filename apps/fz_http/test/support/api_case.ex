@@ -24,14 +24,15 @@ defmodule FzHttpWeb.ApiCase do
 
   using do
     quote do
+      use FzHttpWeb, :verified_routes
       # Import conveniences for testing with connections
       import Plug.Conn
       import Phoenix.ConnTest
       import FzHttpWeb.ApiCase
       import FzHttp.TestHelpers
       import Bureaucrat.Helpers
-
-      use FzHttpWeb, :verified_routes
+      import FzHttpWeb.ApiCase
+      alias FzHttp.Repo
 
       # The default endpoint for testing
       @endpoint FzHttpWeb.Endpoint
@@ -50,10 +51,10 @@ defmodule FzHttpWeb.ApiCase do
   def unauthed_conn, do: api_conn()
 
   def authed_conn do
-    user = UsersFixtures.user(%{role: :admin})
+    user = UsersFixtures.create_user_with_role(:admin)
     api_token = ApiTokensFixtures.create_api_token(user: user)
 
-    {:ok, token, _claims} = FzHttpWeb.Auth.JSON.Authentication.fz_encode_and_sign(api_token, user)
+    {:ok, token, _claims} = FzHttpWeb.Auth.JSON.Authentication.fz_encode_and_sign(api_token)
 
     api_conn()
     |> Plug.Conn.put_req_header("authorization", "bearer #{token}")

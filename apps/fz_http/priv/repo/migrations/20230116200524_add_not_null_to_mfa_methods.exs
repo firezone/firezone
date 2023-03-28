@@ -12,7 +12,7 @@ defmodule FzHttp.Repo.Migrations.AddNotNullToMfaMethods do
     # will be unable to decrypt it and will get an error:
     #
     #   ** (ArgumentError) cannot load `"..."`as type FzHttp.Encrypted.Map
-    #   for field :payload in %FzHttp.MFA.Method{...}
+    #   for field :payload in %FzHttp.Auth.MFA.Method{...}
     execute("""
     UPDATE mfa_methods
     SET payload = '#{Base.encode64(:crypto.strong_rand_bytes(32))}'

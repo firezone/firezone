@@ -6,6 +6,7 @@
     id: "user-form-component",
     user: @user,
     current_user: @current_user,
+    subject: @subject,
     action: @live_action,
     form: "user-form"
   ) %>
@@ -16,7 +17,8 @@
     return_to: ~p"/users/#{@user}",
     title: "Add Device",
     current_user: @current_user,
-    target_user_id: @user.id,
+    subject: @subject,
+    user: @user,
     id: "create-device-component",
     form: "create-device",
     button_text: "Generate Configuration"
@@ -42,7 +44,11 @@
     </div>
   </div>
 
-  <%= render(FzHttpWeb.SharedView, "user_details.html", user: @user, rules_path: @rules_path) %>
+  <%= render(FzHttpWeb.SharedView, "user_details.html",
+    user: @user,
+    rules_path: @rules_path,
+    subject: @subject
+  ) %>
 </section>
 
 <%= if length(@connections) > 0 do %>

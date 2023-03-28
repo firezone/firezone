@@ -26,6 +26,7 @@ config :fz_http, FzHttp.Repo,
 
 config :fz_http,
   external_url: "http://localhost:13000/",
+  # TODO: use endpoint path instead?
   path_prefix: "/"
 
 config :fz_http, FzHttpWeb.Endpoint,
@@ -58,30 +59,29 @@ config :fz_http,
     netmask: nil
   }
 
-config :fz_http,
-  saml_entity_id: "urn:firezone.dev:firezone-app",
-  saml_certfile_path: Path.expand("../apps/fz_http/priv/cert/saml_selfsigned.pem", __DIR__),
-  saml_keyfile_path: Path.expand("../apps/fz_http/priv/cert/saml_selfsigned_key.pem", __DIR__)
+config :fz_http, FzHttp.SAML,
+  entity_id: "urn:firezone.dev:firezone-app",
+  certfile_path: Path.expand("../apps/fz_http/priv/cert/saml_selfsigned.pem", __DIR__),
+  keyfile_path: Path.expand("../apps/fz_http/priv/cert/saml_selfsigned_key.pem", __DIR__)
 
 config :fz_http,
   external_trusted_proxies: [],
   private_clients: [%{__struct__: Postgrex.INET, address: {172, 28, 0, 0}, netmask: 16}]
 
-config :fz_http,
-  telemetry_id: "firezone-dev",
-  telemetry_module: FzCommon.MockTelemetry
+config :fz_http, FzHttp.Telemetry,
+  enabled: true,
+  id: "firezone-dev"
 
 config :fz_http,
   cookie_secure: false,
   cookie_signing_salt: "WjllcThpb2Y=",
   cookie_encryption_salt: "M0EzM0R6NEMyaw=="
 
-config :fz_http,
-  http_client: HTTPoison,
+config :fz_http, FzHttp.ConnectivityChecks,
   http_client_options: [],
-  connectivity_checks_enabled: true,
-  connectivity_checks_interval: 43_200,
-  connectivity_checks_url: "https://ping-dev.firez.one/"
+  enabled: true,
+  interval: 43_200,
+  url: "https://ping-dev.firez.one/"
 
 config :fz_http,
   admin_email: "firezone@localhost",

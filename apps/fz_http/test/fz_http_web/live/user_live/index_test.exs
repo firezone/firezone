@@ -1,6 +1,6 @@
 defmodule FzHttpWeb.UserLive.IndexTest do
   use FzHttpWeb.ConnCase, async: true
-
+  alias FzHttp.SubjectFixtures
   alias FzHttp.Users
 
   describe "authenticated user list" do
@@ -20,13 +20,15 @@ defmodule FzHttpWeb.UserLive.IndexTest do
     end
 
     test "includes device_counts in the list", %{
+      admin_user: user,
       admin_conn: conn,
       devices: _devices,
       users: _users
     } do
       path = ~p"/users"
       {:ok, _view, html} = live(conn, path)
-      {:ok, users} = Users.list_users(hydrate: [:device_count])
+      subject = SubjectFixtures.create_subject(user)
+      {:ok, users} = Users.list_users(subject, hydrate: [:device_count])
 
       for user <- users do
         assert html =~ "<td id=\"user-#{user.id}-device-count\">#{user.device_count}</td>"

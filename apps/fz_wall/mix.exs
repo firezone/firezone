@@ -40,7 +40,7 @@ defmodule FzWall.MixProject do
   defp deps do
     [
       {:fz_http, in_umbrella: true},
-      {:fz_common, in_umbrella: true}
+      {:cidr, github: "firezone/cidr-elixir"}
     ]
   end
 end

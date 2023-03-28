@@ -45,14 +45,18 @@
 
     <tr>
       <td><strong>Number of Devices</strong></td>
-      <td><%= FzHttp.Devices.count(@user.id) %></td>
+      <td><%= FzHttp.Devices.count_by_user_id(@user.id) %></td>
     </tr>
 
     <%= if @rules_path do %>
-      <tr>
-        <td><strong>Number of Rules</strong></td>
-        <td><a href={"#{@rules_path}"}><%= FzHttp.Rules.count(@user.id) %></a></td>
-      </tr>
+      <%= with {:ok, rules_count} <- FzHttp.Rules.fetch_count_by_user_id(@user.id, @subject) do %>
+        <tr>
+          <td><strong>Number of Rules</strong></td>
+          <td>
+            <a href={"#{@rules_path}"}><%= rules_count %></a>
+          </td>
+        </tr>
+      <% end %>
     <% end %>
   </tbody>
 </table>

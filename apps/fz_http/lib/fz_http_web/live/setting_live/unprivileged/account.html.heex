@@ -5,6 +5,7 @@
     title: "Change password",
     id: "account-form-component",
     current_user: @current_user,
+    subject: @subject,
     form: "account-edit"
   ) %>
 <% end %>
@@ -48,7 +49,11 @@
     </div>
   </div>
 
-  <%= render(FzHttpWeb.SharedView, "user_details.html", user: @current_user, rules_path: nil) %>
+  <%= render(FzHttpWeb.SharedView, "user_details.html",
+    user: @current_user,
+    rules_path: nil,
+    subject: @subject
+  ) %>
 </section>
 
 <section class="section is-main-section">
