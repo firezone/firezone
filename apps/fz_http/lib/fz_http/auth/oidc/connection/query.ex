@@ -8,4 +8,8 @@ defmodule FzHttp.Auth.OIDC.Connection.Query do
   def by_id(queryable \\ all(), id) do
     where(queryable, [connection: connection], connection.id == ^id)
   end
+
+  def by_user_id(queryable \\ all(), user_id) do
+    where(queryable, [connection: connection], connection.user_id == ^user_id)
+  end
 end

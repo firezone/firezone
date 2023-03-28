@@ -118,6 +118,10 @@ defmodule FzHttp.Devices do
     Auth.ensure_has_permissions(subject, Authorizer.configure_devices_permission())
   end
 
+  def authorize_user_device_management(%Users.User{} = user, %Auth.Subject{} = subject) do
+    authorize_user_device_management(user.id, subject)
+  end
+
   def authorize_user_device_management(user_id, %Auth.Subject{} = subject) do
     required_permissions =
       case subject.actor do

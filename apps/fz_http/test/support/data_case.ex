@@ -18,11 +18,10 @@ defmodule FzHttp.DataCase do
 
   using do
     quote do
-      alias FzHttp.Repo
-
       import Ecto
       import Ecto.Changeset
       import FzHttp.DataCase
+      alias FzHttp.Repo
     end
   end
 

@@ -50,7 +50,7 @@ defmodule FzHttp.Users.User.Changeset do
   def disable_user(user) do
     user
     |> change()
-    |> put_change(:disabled_at, DateTime.utc_now())
+    |> put_default_value(:disabled_at, DateTime.utc_now())
   end
 
   defp change_email_changeset(%Ecto.Changeset{} = changeset) do

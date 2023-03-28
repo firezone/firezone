@@ -41,7 +41,7 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.ShowTest do
       unprivileged_user: user,
       unprivileged_conn: conn
     } do
-      {:ok, device: device} = create_device(user_id: user.id)
+      {:ok, device: device} = create_device(user: user)
 
       FzHttp.Config.put_config!(:allow_unprivileged_device_management, false)
 

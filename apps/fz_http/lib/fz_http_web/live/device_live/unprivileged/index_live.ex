@@ -12,7 +12,8 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.Index do
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
-    with {:ok, devices} <-
+    with :ok <- authorize_socket_action(socket),
+         {:ok, devices} <-
            Devices.list_devices_for_user(socket.assigns.current_user, socket.assigns.subject) do
       socket =
         socket
@@ -25,6 +26,14 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.Index do
       {:error, {:unauthorized, _context}} ->
         {:ok, not_authorized(socket)}
     end
+  end
+
+  defp authorize_socket_action(%{assigns: %{live_action: :new}} = socket) do
+    Devices.authorize_user_device_management(socket.assigns.current_user, socket.assigns.subject)
+  end
+
+  defp authorize_socket_action(_socket) do
+    :ok
   end
 
   @doc """

@@ -24,14 +24,14 @@ defmodule FzHttp.Auth.OIDC.Refresher do
   end
 
   def refresh(user_id) do
-    Connection.Query.by_id(user_id)
+    Connection.Query.by_user_id(user_id)
     |> Repo.all()
-    |> Enum.each(&do_refresh(user_id, &1))
+    |> Enum.each(&do_refresh(&1, user_id))
 
     {:stop, :shutdown, user_id}
   end
 
-  defp do_refresh(user_id, %{provider: provider_id, refresh_token: refresh_token} = conn) do
+  defp do_refresh(%{provider: provider_id, refresh_token: refresh_token} = conn, user_id) do
     Logger.info("Refreshing user\##{user_id} @ #{provider_id}...")
 
     refresh_response =

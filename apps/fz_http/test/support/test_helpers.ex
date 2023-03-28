@@ -99,55 +99,15 @@ defmodule FzHttp.TestHelpers do
     {:ok, rule: rule}
   end
 
-  @doc """
-  XXX: Mimic a more realistic setup.
-  """
-  def create_rules(_) do
-    rules =
-      1..5
-      |> Enum.map(fn num ->
-        destination = "#{num}.#{num}.#{num}.0/24"
-        RulesFixtures.create_rule(%{destination: destination})
-      end)
-
-    {rules_with_users, users_and_devices} =
-      4..6
-      |> Enum.map(fn num ->
-        user = UsersFixtures.create_user_with_role(:admin)
-        destination = "#{num}.#{num}.#{num}.0/24"
-
-        device =
-          DevicesFixtures.create_device(%{
-            name: "device #{num}",
-            user: user
-          })
-
-        rule = RulesFixtures.create_rule(%{destination: destination, user_id: user.id})
-        {rule, {user, device}}
-      end)
-      |> Enum.unzip()
-
-    {users, devices} = Enum.unzip(users_and_devices)
-
-    destination = "7.7.7.0/24"
-    user = UsersFixtures.create_user_with_role(:admin)
-    rule_without_device = RulesFixtures.create_rule(%{destination: destination, user_id: user.id})
-
-    rules = rules ++ [rule_without_device | rules_with_users]
-    users = [user | users]
-
-    {:ok, %{rules: rules, users: users, devices: devices}}
-  end
-
   def create_rule_with_user_and_device(_) do
     user = UsersFixtures.create_user_with_role(:admin)
-    rule = RulesFixtures.create_rule(%{user_id: user.id, destination: "10.20.30.0/24"})
+    rule = RulesFixtures.create_rule(user_id: user.id, destination: "10.20.30.0/24")
 
     device =
-      DevicesFixtures.create_device(%{
-        name: "device",
-        user_id: user.id
-      })
+      DevicesFixtures.create_device(
+        user: user,
+        name: "device"
+      )
 
     {:ok, rule: rule, user: user, device: device}
   end

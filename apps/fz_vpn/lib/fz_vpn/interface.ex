@@ -194,6 +194,7 @@ defmodule FzVpn.Interface do
   end
 
   defp allowed_ips_to_str([]), do: "(none)"
+  defp allowed_ips_to_str(allowed_ips) when is_binary(allowed_ips), do: allowed_ips
   defp allowed_ips_to_str(allowed_ips), do: Enum.join(allowed_ips, ",")
 
   defp latest_handshake_to_str(t) when is_nil(t), do: "0"

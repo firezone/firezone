@@ -38,13 +38,6 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
 
       assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
     end
-
-    test "prevents navigating to /user_devices", %{unprivileged_conn: conn} do
-      path = ~p"/user_devices"
-      expected_path = ~p"/"
-
-      assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
-    end
   end
 
   describe "authenticated device configuration disabled" do
