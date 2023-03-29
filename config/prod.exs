@@ -10,8 +10,7 @@ config :fz_http, FzHttp.Repo,
   pool_size: 10,
   show_sensitive_data_on_connection_error: false
 
-config :fz_http,
-  connectivity_checks_url: "https://ping.firez.one/"
+config :fz_http, FzHttp.ConnectivityChecks, url: "https://ping.firez.one/"
 
 ###############################
 ##### FZ VPN configs ##########
