@@ -26,51 +26,51 @@ Content-Type: application/json; charset=utf-8
     {
       "action": "drop",
       "destination": "10.3.2.1",
-      "id": "db5a18ef-a033-48fb-a318-af054c8d3ace",
-      "inserted_at": "2023-02-21T19:42:16.822620Z",
+      "id": "2a136a17-4d29-4d8b-a6d4-f35ee3051105",
+      "inserted_at": "2023-03-29T15:11:47.482818Z",
       "port_range": null,
       "port_type": null,
-      "updated_at": "2023-02-21T19:42:16.822620Z",
+      "updated_at": "2023-03-29T15:11:47.482818Z",
       "user_id": null
     },
     {
       "action": "drop",
       "destination": "10.3.2.2",
-      "id": "2b02c33b-4589-4912-bf38-44bc3853a611",
-      "inserted_at": "2023-02-21T19:42:16.824085Z",
+      "id": "7a4961bf-6b2b-4217-b87b-ffd1deb448ac",
+      "inserted_at": "2023-03-29T15:11:47.483506Z",
       "port_range": null,
       "port_type": null,
-      "updated_at": "2023-02-21T19:42:16.824085Z",
+      "updated_at": "2023-03-29T15:11:47.483506Z",
       "user_id": null
     },
     {
       "action": "drop",
       "destination": "10.3.2.3",
-      "id": "2b93d655-f870-4c2e-942d-529234f58289",
-      "inserted_at": "2023-02-21T19:42:16.825104Z",
+      "id": "6dffbc74-ec58-43ca-8700-d0c572baa198",
+      "inserted_at": "2023-03-29T15:11:47.484107Z",
       "port_range": null,
       "port_type": null,
-      "updated_at": "2023-02-21T19:42:16.825104Z",
+      "updated_at": "2023-03-29T15:11:47.484107Z",
       "user_id": null
     },
     {
       "action": "drop",
       "destination": "10.3.2.4",
-      "id": "fb74d75b-6ce3-420b-9d15-532832110c58",
-      "inserted_at": "2023-02-21T19:42:16.826185Z",
+      "id": "9bba129d-cdad-4efe-8296-b78ba50f3ef4",
+      "inserted_at": "2023-03-29T15:11:47.484759Z",
       "port_range": null,
       "port_type": null,
-      "updated_at": "2023-02-21T19:42:16.826185Z",
+      "updated_at": "2023-03-29T15:11:47.484759Z",
       "user_id": null
     },
     {
       "action": "drop",
       "destination": "10.3.2.5",
-      "id": "392cee84-07ef-4ecd-9c9f-b916e2aff155",
-      "inserted_at": "2023-02-21T19:42:16.827016Z",
+      "id": "df142fde-922c-4a6d-a8e4-0b145a875624",
+      "inserted_at": "2023-03-29T15:11:47.485540Z",
       "port_range": null,
       "port_type": null,
-      "updated_at": "2023-02-21T19:42:16.827016Z",
+      "updated_at": "2023-03-29T15:11:47.485540Z",
       "user_id": null
     }
   ]
@@ -93,25 +93,25 @@ $ curl -i \
     "destination": "1.1.1.1/24",
     "port_range": "1 - 2",
     "port_type": "udp",
-    "user_id": "a80e866c-bee5-4dfd-adc0-3847b67b9d56"
+    "user_id": "def4dacc-6367-4320-a0fb-4675b9b571cf"
   }
 }'
 EOF
 
 HTTP/1.1 201
 Content-Type: application/json; charset=utf-8
-Location: /v0/rules/c9a8a01e-d852-49c0-bcdb-5ea5f70ad932
+Location: /v0/rules/c52efbe6-5ed0-4514-97df-93f6013dd52b
 
 {
   "data": {
     "action": "accept",
     "destination": "1.1.1.1/24",
-    "id": "c9a8a01e-d852-49c0-bcdb-5ea5f70ad932",
-    "inserted_at": "2023-02-21T19:42:16.853089Z",
+    "id": "c52efbe6-5ed0-4514-97df-93f6013dd52b",
+    "inserted_at": "2023-03-29T15:11:47.185000Z",
     "port_range": "1 - 2",
     "port_type": "udp",
-    "updated_at": "2023-02-21T19:42:16.853089Z",
-    "user_id": "a80e866c-bee5-4dfd-adc0-3847b67b9d56"
+    "updated_at": "2023-03-29T15:11:47.185000Z",
+    "user_id": "def4dacc-6367-4320-a0fb-4675b9b571cf"
   }
 }
 ```
@@ -122,7 +122,7 @@ Location: /v0/rules/c9a8a01e-d852-49c0-bcdb-5ea5f70ad932
 #### Example
 **URI Parameters:**
 
-  - `id`: `cf77ba9e-604d-408d-a444-4fcee57662d3`
+  - `id`: `dd39b339-2ac4-4c83-96e5-9b29516dd85e`
 ```bash
 $ curl -i \
   -X GET "https://{firezone_host}/v0/rules/{id}" \
@@ -136,11 +136,11 @@ Content-Type: application/json; charset=utf-8
   "data": {
     "action": "drop",
     "destination": "10.10.10.0/24",
-    "id": "cf77ba9e-604d-408d-a444-4fcee57662d3",
-    "inserted_at": "2023-02-21T19:42:16.881405Z",
+    "id": "dd39b339-2ac4-4c83-96e5-9b29516dd85e",
+    "inserted_at": "2023-03-29T15:11:47.447659Z",
     "port_range": null,
     "port_type": null,
-    "updated_at": "2023-02-21T19:42:16.881405Z",
+    "updated_at": "2023-03-29T15:11:47.447659Z",
     "user_id": null
   }
 }
@@ -152,7 +152,7 @@ Content-Type: application/json; charset=utf-8
 #### Example
 **URI Parameters:**
 
-  - `id`: `21275ade-d14e-4421-8cdf-49bca4d84d63`
+  - `id`: `720fdab6-32af-4487-bce5-e72fa76be829`
 ```bash
 $ curl -i \
   -X PUT "https://{firezone_host}/v0/rules/{id}" \
@@ -176,11 +176,11 @@ Content-Type: application/json; charset=utf-8
   "data": {
     "action": "accept",
     "destination": "1.1.1.1/24",
-    "id": "21275ade-d14e-4421-8cdf-49bca4d84d63",
-    "inserted_at": "2023-02-21T19:42:16.786969Z",
+    "id": "720fdab6-32af-4487-bce5-e72fa76be829",
+    "inserted_at": "2023-03-29T15:11:47.243306Z",
     "port_range": "1 - 2",
     "port_type": "udp",
-    "updated_at": "2023-02-21T19:42:16.795630Z",
+    "updated_at": "2023-03-29T15:11:47.251589Z",
     "user_id": null
   }
 }
@@ -192,7 +192,7 @@ Content-Type: application/json; charset=utf-8
 #### Example
 **URI Parameters:**
 
-  - `id`: `526b66e7-6433-4607-af87-9046a3c801e9`
+  - `id`: `f5f10a6e-cfdd-47ea-ae23-264195b3503c`
 ```bash
 $ curl -i \
   -X DELETE "https://{firezone_host}/v0/rules/{id}" \

@@ -367,7 +367,7 @@ defmodule FzHttp.Config.Definitions do
   )
 
   @doc """
-  Encryption salt for cookies issued by the Phoenix web application.
+  Signing salt for cookies issued by the Phoenix web application.
   """
   defconfig(:cookie_signing_salt, :string,
     sensitive: true,
@@ -375,7 +375,7 @@ defmodule FzHttp.Config.Definitions do
   )
 
   @doc """
-  Signing salt for cookies issued by the Phoenix web application.
+  Encryption salt for cookies issued by the Phoenix web application.
   """
   defconfig(:cookie_encryption_salt, :string,
     sensitive: true,
