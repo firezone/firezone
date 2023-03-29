@@ -1,7 +1,6 @@
 defmodule FzHttpWeb.JSON.DeviceControllerTest do
   use FzHttpWeb.ApiCase, async: true
-  import FzHttpWeb.ApiCase
-  import FzHttp.DevicesFixtures
+  alias FzHttp.{DevicesFixtures, UsersFixtures}
 
   @params %{
     "name" => "create-name",
@@ -24,7 +23,7 @@ defmodule FzHttpWeb.JSON.DeviceControllerTest do
 
   describe "GET /v0/devices/:id" do
     test "shows device" do
-      id = device().id
+      id = DevicesFixtures.create_device().id
 
       conn =
         get(authed_conn(), ~p"/v0/devices/#{id}")
@@ -34,23 +33,21 @@ defmodule FzHttpWeb.JSON.DeviceControllerTest do
     end
 
     test "renders 404 for device not found" do
-      assert_error_sent(404, fn ->
-        get(authed_conn(), ~p"/v0/devices/003da73d-2dd9-4492-8136-3282843545e8")
-      end)
+      conn = get(authed_conn(), ~p"/v0/devices/003da73d-2dd9-4492-8136-3282843545e8")
+
+      assert json_response(conn, 404) == %{"error" => "not_found"}
     end
 
     test "renders 401 for missing authorization header" do
-      device = device()
+      device = DevicesFixtures.create_device()
       conn = get(unauthed_conn(), ~p"/v0/devices/#{device}")
       assert json_response(conn, 401)["errors"] == %{"auth" => "unauthenticated"}
     end
   end
 
   describe "POST /v0/devices" do
-    import FzHttp.UsersFixtures
-
     test "creates device for unprivileged user" do
-      unprivileged_user = user(%{role: :unprivileged})
+      unprivileged_user = UsersFixtures.create_user_with_role(:unprivileged)
 
       conn =
         post(authed_conn(), ~p"/v0/devices",
@@ -63,17 +60,13 @@ defmodule FzHttpWeb.JSON.DeviceControllerTest do
 
     test "creates device for self" do
       conn = authed_conn()
-
-      conn =
-        post(conn, ~p"/v0/devices",
-          device: Map.merge(@params, %{"user_id" => conn.private.guardian_default_resource.id})
-        )
-
+      {:user, user} = conn.private.guardian_default_resource.actor
+      conn = post(conn, ~p"/v0/devices", device: Map.merge(@params, %{"user_id" => user.id}))
       assert @params = json_response(conn, 201)["data"]
     end
 
     test "creates device for other admin" do
-      admin_user = user(%{role: :admin})
+      admin_user = UsersFixtures.create_user_with_role(:admin)
 
       conn =
         post(authed_conn(), ~p"/v0/devices",
@@ -91,33 +84,37 @@ defmodule FzHttpWeb.JSON.DeviceControllerTest do
 
   describe "PUT /v0/devices/:id" do
     test "updates device" do
-      device = device()
+      device = DevicesFixtures.create_device()
+
+      update_attrs = %{
+        "name" => "update-name",
+        "description" => "update-description"
+      }
 
       conn =
-        put(authed_conn(), ~p"/v0/devices/#{device}", device: @params)
+        put(authed_conn(), ~p"/v0/devices/#{device}", device: update_attrs)
         |> doc()
 
-      assert @params = json_response(conn, 200)["data"]
-
-      conn = get(conn, ~p"/v0/devices/#{device}")
-      assert @params = json_response(conn, 200)["data"]
+      assert device = json_response(conn, 200)["data"]
+      assert device["name"] == update_attrs["name"]
+      assert device["description"] == update_attrs["description"]
     end
 
     test "renders 404 for device not found" do
-      assert_error_sent(404, fn ->
-        put(authed_conn(), ~p"/v0/devices/003da73d-2dd9-4492-8136-3282843545e8", device: %{})
-      end)
+      conn = put(authed_conn(), ~p"/v0/devices/003da73d-2dd9-4492-8136-3282843545e8", device: %{})
+
+      assert json_response(conn, 404) == %{"error" => "not_found"}
     end
 
     test "renders 401 for missing authorization header" do
-      conn = put(unauthed_conn(), ~p"/v0/devices/#{device()}", device: %{})
+      conn = put(unauthed_conn(), ~p"/v0/devices/#{DevicesFixtures.create_device()}", device: %{})
       assert json_response(conn, 401)["errors"] == %{"auth" => "unauthenticated"}
     end
   end
 
   describe "GET /v0/devices" do
     test "lists all devices" do
-      devices = for _i <- 1..5, do: device()
+      devices = for _i <- 1..5, do: DevicesFixtures.create_device()
 
       conn =
         get(authed_conn(), ~p"/v0/devices")
@@ -139,7 +136,7 @@ defmodule FzHttpWeb.JSON.DeviceControllerTest do
 
   describe "DELETE /v0/devices/:id" do
     test "deletes device" do
-      device = device()
+      device = DevicesFixtures.create_device()
 
       conn =
         delete(authed_conn(), ~p"/v0/devices/#{device}")
@@ -147,19 +144,19 @@ defmodule FzHttpWeb.JSON.DeviceControllerTest do
 
       assert response(conn, 204)
 
-      assert_error_sent(404, fn ->
-        get(conn, ~p"/v0/devices/#{device}")
-      end)
+      conn = get(conn, ~p"/v0/devices/#{device}")
+
+      assert json_response(conn, 404) == %{"error" => "not_found"}
     end
 
     test "renders 404 for device not found" do
-      assert_error_sent(404, fn ->
-        delete(authed_conn(), ~p"/v0/devices/003da73d-2dd9-4492-8136-3282843545e8")
-      end)
+      conn = delete(authed_conn(), ~p"/v0/devices/003da73d-2dd9-4492-8136-3282843545e8")
+
+      assert json_response(conn, 404) == %{"error" => "not_found"}
     end
 
     test "renders 401 for missing authorization header" do
-      conn = delete(unauthed_conn(), ~p"/v0/devices/#{device()}")
+      conn = delete(unauthed_conn(), ~p"/v0/devices/#{DevicesFixtures.create_device()}")
       assert json_response(conn, 401)["errors"] == %{"auth" => "unauthenticated"}
     end
   end

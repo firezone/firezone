@@ -38,7 +38,7 @@ default). Required fields in **bold**.
 
 | Env Key | Description      | Format | Default |
 | ------  | ---------------  | ------ | ------- |
-| **EXTERNAL_URL** | The external URL the web UI will be accessible at.<br /> <br />Must be a valid and public FQDN for ACME SSL issuance to function.<br /> <br />You can add a path suffix if you want to serve firezone from a non-root path, eg: `https://firezone.mycorp.com/vpn`. | string |  |
+| **EXTERNAL_URL** | The external URL the web UI will be accessible at.<br /> <br />Must be a valid and public FQDN for ACME SSL issuance to function.<br /> <br />You can add a path suffix if you want to serve firezone from a non-root path, eg: `https://firezone.mycorp.com/vpn/`. | string |  |
 | PHOENIX_SECURE_COOKIES | Enable or disable requiring secure cookies. Required for HTTPS. | boolean | true |
 | PHOENIX_HTTP_PORT | Internal port to listen on for the Phoenix web server. | integer | 13000 |
 | PHOENIX_HTTP_PROTOCOL_OPTIONS | Allows to override Cowboy HTTP server options.<br /> <br />Keep in mind though changing those limits can pose a security risk. Other times, browsers and proxies along the way may have equally strict limits, which means the request will still fail or the URL will be pruned.<br /> <br />You can see all supported options at https://ninenines.eu/docs/en/cowboy/2.5/manual/cowboy_http/. | JSON-encoded map | `{}` |
@@ -82,8 +82,8 @@ All secrets should be a **base64-encoded string**.
 | **DATABASE_ENCRYPTION_KEY** | Secret key used for encrypting sensitive data in the database. | string |  |
 | **SECRET_KEY_BASE** | Primary secret key base for the Phoenix application. | string |  |
 | **LIVE_VIEW_SIGNING_SALT** | Signing salt for Phoenix LiveView connection tokens. | string |  |
-| **COOKIE_SIGNING_SALT** | Encryption salt for cookies issued by the Phoenix web application. | string |  |
-| **COOKIE_ENCRYPTION_SALT** | Signing salt for cookies issued by the Phoenix web application. | string |  |
+| **COOKIE_SIGNING_SALT** | Signing salt for cookies issued by the Phoenix web application. | string |  |
+| **COOKIE_ENCRYPTION_SALT** | Encryption salt for cookies issued by the Phoenix web application. | string |  |
 
 ### Devices
 

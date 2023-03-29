@@ -5,7 +5,7 @@ defmodule FzHttpWeb.LiveMFA do
   use Phoenix.Component
   use FzHttpWeb, :helper
   import Phoenix.LiveView
-  alias FzHttp.MFA
+  alias FzHttp.Auth.MFA
 
   def on_mount(_arg, _params, %{"logged_in_at" => logged_in_at}, socket) do
     with {:ok, mfa} <- MFA.fetch_last_used_method_by_user_id(socket.assigns.current_user.id),

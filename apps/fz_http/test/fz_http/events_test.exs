@@ -3,10 +3,9 @@ defmodule FzHttp.EventsTest do
   XXX: Use start_supervised! somehow here to allow async tests.
   """
   use FzHttp.DataCase, async: false
-
+  import FzHttp.TestHelpers
+  alias FzHttp.{UsersFixtures, RulesFixtures, DevicesFixtures, SubjectFixtures}
   alias FzHttp.{Devices, Events}
-
-  @moduletag :acceptance
 
   # XXX: Not needed with start_supervised!
   setup do
@@ -20,9 +19,15 @@ defmodule FzHttp.EventsTest do
   end
 
   describe "add_device/1" do
-    setup [:create_rule_with_user_and_device]
+    test "adds device to wall and vpn state" do
+      user = UsersFixtures.create_user_with_role(:admin)
 
-    test "adds device to wall and vpn state", %{device: device, user: user} do
+      device =
+        DevicesFixtures.create_device(
+          user: user,
+          name: "device"
+        )
+
       :ok = Events.add("devices", device)
 
       assert :sys.get_state(Events.wall_pid()) ==
@@ -157,7 +162,51 @@ defmodule FzHttp.EventsTest do
   end
 
   describe "set_rules/0" do
-    setup [:create_rules]
+    setup do
+      user = UsersFixtures.create_user_with_role(:admin)
+      subject = SubjectFixtures.create_subject(user)
+
+      rules =
+        1..5
+        |> Enum.map(fn num ->
+          RulesFixtures.create_rule(destination: "#{num}.#{num}.#{num}.0/24", subject: subject)
+        end)
+
+      {rules_with_users, users_and_devices} =
+        7..9
+        |> Enum.map(fn num ->
+          user = UsersFixtures.create_user_with_role(:admin)
+
+          rule =
+            RulesFixtures.create_rule(
+              subject: subject,
+              user_id: user.id,
+              destination: "#{num}.#{num}.#{num}.0/24"
+            )
+
+          device =
+            DevicesFixtures.create_device(
+              user: user,
+              subject: subject,
+              name: "device #{num}"
+            )
+
+          {rule, {user, device}}
+        end)
+        |> Enum.unzip()
+
+      {users, devices} = Enum.unzip(users_and_devices)
+
+      destination = "7.7.7.0/24"
+
+      rule_without_device =
+        RulesFixtures.create_rule(subject: subject, user_id: user.id, destination: destination)
+
+      rules = rules ++ [rule_without_device] ++ rules_with_users
+      users = [user] ++ users
+
+      %{rules: rules, users: users, devices: devices}
+    end
 
     test "sets rules", %{
       rules: expected_rules,
@@ -175,8 +224,8 @@ defmodule FzHttp.EventsTest do
               # XXX: Ideally we could hardcode the expected ips here as not to depend on the `decode` implementation
               # However, we can't know user_id in advance, perhaps we can test the user_id part and ip parts separately
               user_id: device.user_id,
-              ip: FzHttp.Devices.decode(device.ipv4),
-              ip6: FzHttp.Devices.decode(device.ipv6)
+              ip: to_string(device.ipv4),
+              ip6: to_string(device.ipv6)
             }
           end)
         )
@@ -186,7 +235,7 @@ defmodule FzHttp.EventsTest do
           Enum.map(expected_rules, fn rule ->
             %{
               user_id: rule.user_id,
-              destination: FzHttp.Devices.decode(rule.destination),
+              destination: to_string(rule.destination),
               action: rule.action,
               port_range: nil,
               port_type: nil

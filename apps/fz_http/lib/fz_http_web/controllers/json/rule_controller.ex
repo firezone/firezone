@@ -4,21 +4,25 @@ defmodule FzHttpWeb.JSON.RuleController do
   This endpoint allows an adminisrator to manage Rules.
   """
   use FzHttpWeb, :controller
+  alias FzHttp.Rules
+  alias FzHttpWeb.Auth.JSON.Authentication
 
   action_fallback(FzHttpWeb.JSON.FallbackController)
 
-  alias FzHttp.Rules
-
   @doc api_doc: [summary: "List all Rules"]
   def index(conn, _params) do
-    # XXX: Add user-scoped rules
-    rules = Rules.list_rules()
-    render(conn, "index.json", rules: rules)
+    subject = Authentication.get_current_subject(conn)
+
+    with {:ok, rules} <- Rules.list_rules(subject) do
+      render(conn, "index.json", rules: rules)
+    end
   end
 
   @doc api_doc: [summary: "Create a Rule"]
-  def create(conn, %{"rule" => rule_params}) do
-    with {:ok, rule} <- Rules.create_rule(rule_params) do
+  def create(conn, %{"rule" => attrs}) do
+    subject = Authentication.get_current_subject(conn)
+
+    with {:ok, rule} <- Rules.create_rule(attrs, subject) do
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/v0/rules/#{rule}")
@@ -28,24 +32,29 @@ defmodule FzHttpWeb.JSON.RuleController do
 
   @doc api_doc: [summary: "Get Rule by ID"]
   def show(conn, %{"id" => id}) do
-    rule = Rules.get_rule!(id)
-    render(conn, "show.json", rule: rule)
+    subject = Authentication.get_current_subject(conn)
+
+    with {:ok, rule} <- Rules.fetch_rule_by_id(id, subject) do
+      render(conn, "show.json", rule: rule)
+    end
   end
 
   @doc api_doc: [summary: "Update a Rule"]
-  def update(conn, %{"id" => id, "rule" => rule_params}) do
-    rule = Rules.get_rule!(id)
+  def update(conn, %{"id" => id, "rule" => attrs}) do
+    subject = Authentication.get_current_subject(conn)
 
-    with {:ok, rule} <- Rules.update_rule(rule, rule_params) do
+    with {:ok, rule} <- Rules.fetch_rule_by_id(id, subject),
+         {:ok, rule} <- Rules.update_rule(rule, attrs, subject) do
       render(conn, "show.json", rule: rule)
     end
   end
 
   @doc api_doc: [summary: "Delete a Rule"]
   def delete(conn, %{"id" => id}) do
-    rule = Rules.get_rule!(id)
+    subject = Authentication.get_current_subject(conn)
 
-    with {:ok, _rule} <- Rules.delete_rule(rule) do
+    with {:ok, rule} <- Rules.fetch_rule_by_id(id, subject),
+         {:ok, _rule} <- Rules.delete_rule(rule, subject) do
       send_resp(conn, :no_content, "")
     end
   end

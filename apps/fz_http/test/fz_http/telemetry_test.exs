@@ -1,5 +1,6 @@
 defmodule FzHttp.TelemetryTest do
   use FzHttp.DataCase, async: true
+  import FzHttp.TestHelpers
   alias FzHttp.Telemetry
   alias FzHttp.MFAFixtures
 

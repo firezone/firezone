@@ -2,8 +2,7 @@ defmodule FzWall.CLI.Helpers.Nft do
   @moduledoc """
   Helper module concerning nft commands
   """
-  import FzCommon.CLI
-  import FzCommon.FzNet, only: [standardized_inet: 1]
+  import FzWall.Shell
   require Logger
   @table_name "firezone"
   @main_chain "forward"
@@ -272,5 +271,20 @@ defmodule FzWall.CLI.Helpers.Nft do
 
   def get_elem(ip, proto, ports) do
     "#{standardized_inet(ip)} . #{proto} . #{ports}"
+  end
+
+  @doc """
+  Standardize IP addresses and CIDR ranges so that they can be condensed / shortened.
+  """
+  def standardized_inet(inet) when is_binary(inet) do
+    if String.contains?(inet, "/") do
+      inet
+      # normalize CIDR
+      |> CIDR.parse()
+      |> to_string()
+    else
+      {:ok, addr} = inet |> String.to_charlist() |> :inet.parse_address()
+      :inet.ntoa(addr) |> List.to_string()
+    end
   end
 end
