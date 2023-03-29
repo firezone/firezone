@@ -8,16 +8,16 @@ proxy as a reverse proxy for Firezone.
 
 In these examples, we assume Traefik is deployed using Docker on the same host
 as Firezone. For this to work, you'll need to make sure
-`EXTERNAL_TRUSTED_PROXIES` is set to include the Docker address of the Traefik
-service.
+`PHOENIX_EXTERNAL_TRUSTED_PROXIES` is set to include the Docker address of the
+Traefik service.
 
 ## Without SSL termination
 
 Since Firezone requires HTTPS for the web portal, please bear in mind a
 downstream proxy will need to terminate SSL connections in this scenario.
 
-Use the following `docker-compose.yml` and `rules.yml` files as a starting
-point for your own Firezone config:
+Use the following `docker-compose.yml` and `rules.yml` files as a starting point
+for your own Firezone config:
 
 ### `docker-compose.yml`
 
@@ -193,7 +193,7 @@ services:
       DATABASE_ENCRYPTION_KEY: ${DATABASE_ENCRYPTION_KEY:?err}
 
       # Ensure this includes the traefik service IP.
-      EXTERAL_TRUSTED_PROXIES: [""]
+      PHOENIX_EXTERNAL_TRUSTED_PROXIES: [""]
     networks:
       - app
     cap_add:
