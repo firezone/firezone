@@ -487,8 +487,8 @@ defmodule FzHttpWeb.UserLive.ShowTest do
 
   describe "user role" do
     setup do
-      admin_user = UsersFixtures.user(role: :admin)
-      unprivileged_user = UsersFixtures.user(role: :unprivileged)
+      admin_user = UsersFixtures.create_user_with_role(:admin)
+      unprivileged_user = UsersFixtures.create_user_with_role(:unprivileged)
       {:ok, other_admin_user: admin_user, unprivileged_user: unprivileged_user}
     end
 
@@ -527,7 +527,7 @@ defmodule FzHttpWeb.UserLive.ShowTest do
         |> element("button", "demote")
         |> render_click()
 
-      assert test_view =~ "not supported"
+      assert test_view =~ "You cannot change your own role"
       assert test_view =~ "<td>admin</td>"
     end
   end

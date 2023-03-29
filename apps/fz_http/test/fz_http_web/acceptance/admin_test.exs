@@ -72,7 +72,7 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
 
       assert user = Repo.get_by(FzHttp.Users.User, email: attrs.email)
       assert user.role == :unprivileged
-      assert FzCommon.FzCrypto.equal?(attrs.password, user.password_hash)
+      assert FzHttp.Crypto.equal?(attrs.password, user.password_hash)
     end
 
     feature "change user email and password", %{session: session} do
@@ -217,7 +217,7 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
         "device[endpoint]" => "example.com:51820",
         "device[mtu]" => "1400",
         "device[persistent_keepalive]" => "10",
-        "device[ipv4]" => "10.10.11.1",
+        "device[ipv4]" => "100.64.255.110",
         "device[ipv6]" => "fd00::1e:3f96"
       })
       |> click(Query.button("Generate Configuration"))
@@ -236,13 +236,13 @@ defmodule FzHttpWeb.Acceptance.AdminTest do
       assert device.endpoint == "example.com:51820"
       assert device.mtu == 1400
       assert device.persistent_keepalive == 10
-      assert device.ipv4 == %Postgrex.INET{address: {10, 10, 11, 1}}
+      assert device.ipv4 == %Postgrex.INET{address: {100, 64, 255, 110}}
       assert device.ipv6 == %Postgrex.INET{address: {64_768, 0, 0, 0, 0, 0, 30, 16_278}}
     end
 
     feature "can see devices, their details and delete them", %{session: session} do
-      device1 = DevicesFixtures.device()
-      device2 = DevicesFixtures.device()
+      device1 = DevicesFixtures.create_device()
+      device2 = DevicesFixtures.create_device()
 
       session =
         session

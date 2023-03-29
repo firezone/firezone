@@ -46,9 +46,6 @@ defmodule FzHttp.MixProject do
 
   defp deps do
     [
-      # Umbrella deps
-      {:fz_common, in_umbrella: true},
-
       # Phoenix/Plug deps
       {:plug, "~> 1.13"},
       {:plug_cowboy, "~> 2.5"},
@@ -84,13 +81,10 @@ defmodule FzHttp.MixProject do
 
       # Other deps
       {:remote_ip, "~> 1.0"},
-      # XXX: Drop it, it's not maintained anymore
-      {:httpoison, "~> 1.8"},
-      # XXX: Change this when hex package is updated
-      {:cidr, github: "firezone/cidr-elixir"},
       {:telemetry, "~> 1.0"},
       # Used in Swoosh SMTP adapter
       {:gen_smtp, "~> 1.0"},
+      {:posthog, "~> 0.1"},
 
       # Runtime debugging
       {:recon, "~> 2.5"},

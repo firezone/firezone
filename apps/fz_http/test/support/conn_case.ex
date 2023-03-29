@@ -23,6 +23,7 @@ defmodule FzHttpWeb.ConnCase do
   using do
     quote do
       # Import conveniences for testing with connections
+      alias FzHttp.Repo
       import Plug.Conn
       import Phoenix.ConnTest
       import Phoenix.LiveViewTest
@@ -35,16 +36,15 @@ defmodule FzHttpWeb.ConnCase do
       use FzHttpWeb, :verified_routes
 
       def current_user(test_conn) do
-        get_session(test_conn)
-        |> Authentication.get_current_user()
+        %{actor: {:user, user}} =
+          test_conn
+          |> get_session()
+          |> Authentication.get_current_subject()
+
+        user
       end
     end
   end
-
-  # def assert_element(html, selector) do
-  #   elements = Floki.find(html, selector)
-
-  # end
 
   def new_conn do
     Phoenix.ConnTest.build_conn()
@@ -59,7 +59,7 @@ defmodule FzHttpWeb.ConnCase do
   end
 
   defp authed_conn(role, tags) do
-    user = UsersFixtures.user(%{role: role})
+    user = UsersFixtures.create_user_with_role(role)
 
     conn =
       new_conn()

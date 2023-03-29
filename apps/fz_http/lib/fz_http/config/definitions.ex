@@ -151,7 +151,7 @@ defmodule FzHttp.Config.Definitions do
   Must be a valid and public FQDN for ACME SSL issuance to function.
 
   You can add a path suffix if you want to serve firezone from a non-root path,
-  eg: `https://firezone.mycorp.com/vpn`.
+  eg: `https://firezone.mycorp.com/vpn/`.
   """
   defconfig(:external_url, :string,
     changeset: fn changeset, key ->
@@ -367,7 +367,7 @@ defmodule FzHttp.Config.Definitions do
   )
 
   @doc """
-  Encryption salt for cookies issued by the Phoenix web application.
+  Signing salt for cookies issued by the Phoenix web application.
   """
   defconfig(:cookie_signing_salt, :string,
     sensitive: true,
@@ -375,7 +375,7 @@ defmodule FzHttp.Config.Definitions do
   )
 
   @doc """
-  Signing salt for cookies issued by the Phoenix web application.
+  Encryption salt for cookies issued by the Phoenix web application.
   """
   defconfig(:cookie_encryption_salt, :string,
     sensitive: true,

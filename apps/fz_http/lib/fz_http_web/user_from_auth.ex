@@ -38,7 +38,7 @@ defmodule FzHttpWeb.UserFromAuth do
 
   defp maybe_create_user(idp_field, provider_id, email) do
     if Auth.auto_create_users?(idp_field, provider_id) do
-      Users.create_unprivileged_user(%{email: email})
+      Users.create_user(:unprivileged, %{email: email})
     else
       {:error, "user not found and auto_create_users disabled"}
     end

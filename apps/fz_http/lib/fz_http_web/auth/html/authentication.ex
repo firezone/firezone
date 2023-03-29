@@ -12,14 +12,17 @@ defmodule FzHttpWeb.Auth.HTML.Authentication do
   @guardian_token_name "guardian_default_token"
 
   @impl Guardian
-  def subject_for_token(resource, _claims) do
-    {:ok, resource.id}
+  def subject_for_token(%Auth.Subject{actor: {:user, user}}, _claims) do
+    {:ok, user.id}
   end
 
   @impl Guardian
   def resource_from_claims(%{"sub" => id}) do
-    case Users.fetch_user_by_id(id) do
-      {:ok, user} -> {:ok, user}
+    with {:ok, user} <- Users.fetch_user_by_id(id) do
+      # XXX: Guardian doesn't allow us to access the conn params here
+      subject = Auth.fetch_subject!(user, nil, nil)
+      {:ok, subject}
+    else
       {:error, :not_found} -> {:error, :resource_not_found}
     end
   end
@@ -55,12 +58,13 @@ defmodule FzHttpWeb.Auth.HTML.Authentication do
   def sign_in(conn, user, auth) do
     Telemetry.login()
     Users.update_last_signed_in(user, auth)
+    subject = Auth.fetch_subject!(user, nil, nil)
     %{provider: provider_id} = auth
 
     conn
     |> Plug.Conn.put_session("login_method", provider_id)
     |> Plug.Conn.put_session("logged_in_at", DateTime.utc_now())
-    |> __MODULE__.Plug.sign_in(user)
+    |> __MODULE__.Plug.sign_in(subject)
   end
 
   def sign_out(conn) do
@@ -85,11 +89,11 @@ defmodule FzHttpWeb.Auth.HTML.Authentication do
     end
   end
 
-  def get_current_user(%Plug.Conn{} = conn) do
+  def get_current_subject(%Plug.Conn{} = conn) do
     __MODULE__.Plug.current_resource(conn)
   end
 
-  def get_current_user(%{@guardian_token_name => token} = _session) do
+  def get_current_subject(%{@guardian_token_name => token} = _session) do
     case Guardian.resource_from_token(__MODULE__, token) do
       {:ok, resource, _claims} ->
         resource

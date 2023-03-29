@@ -45,11 +45,11 @@ defmodule FzHttpWeb.JSON.DeviceView do
       Map.take(device, @keys_to_render),
       %{
         server_public_key: Application.get_env(:fz_vpn, :wireguard_public_key),
-        endpoint: Devices.endpoint(device, defaults),
-        allowed_ips: Devices.allowed_ips(device, defaults),
-        dns: Devices.dns(device, defaults),
-        persistent_keepalive: Devices.persistent_keepalive(device, defaults),
-        mtu: Devices.mtu(device, defaults)
+        endpoint: Devices.get_endpoint(device, defaults),
+        allowed_ips: Devices.get_allowed_ips(device, defaults),
+        dns: Devices.get_dns(device, defaults),
+        persistent_keepalive: Devices.get_persistent_keepalive(device, defaults),
+        mtu: Devices.get_mtu(device, defaults)
       }
     )
   end
