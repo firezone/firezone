@@ -13,14 +13,14 @@ config :fz_http, FzHttpWeb.Endpoint,
   code_reloader: true,
   check_origin: ["//127.0.0.1", "//localhost"],
   watchers: [
-    node: ["esbuild.js", "dev", cd: Path.expand("../apps/fz_http/assets", __DIR__)]
+    node: ["esbuild.js", "dev", cd: Path.expand("../apps/web/assets", __DIR__)]
   ],
   live_reload: [
     patterns: [
-      ~r"apps/fz_http/priv/static/.*(js|css|png|jpeg|jpg|gif|svg)$",
-      ~r"apps/fz_http/priv/gettext/.*(po)$",
-      ~r"apps/fz_http/lib/fz_http_web/(live|views)/.*(ex)$",
-      ~r"apps/fz_http/lib/fz_http_web/templates/.*(eex)$"
+      ~r"apps/web/priv/static/.*(js|css|png|jpeg|jpg|gif|svg)$",
+      ~r"apps/web/priv/gettext/.*(po)$",
+      ~r"apps/web/lib/web_web/(live|views)/.*(ex)$",
+      ~r"apps/web/lib/web_web/templates/.*(eex)$"
     ]
   ]
 

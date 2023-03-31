@@ -61,11 +61,13 @@ npm-debug.log
 /*.rpm
 
 # Test screenshots
-apps/fz_http/screenshots
+apps/*/screenshots
 
 # WG configs generated in acceptance tests
 *.conf
 
 # Auto generated private key
-apps/fz_http/priv/wg_dev_private_key
-apps/fz_http/priv/static/uploads
+apps/web/priv/wg_dev_private_key
+
+# Uploads
+apps/web/priv/static/uploads

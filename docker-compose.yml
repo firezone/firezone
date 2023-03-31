@@ -35,7 +35,7 @@ services:
       # from the local project. This is needed when the Docker Host platform
       # doesn't match the platform under which Docker Engine is running. e.g.
       # WSL, Docker for Mac, etc.
-      - /var/app/apps/fz_http/assets/node_modules
+      - /var/app/apps/web/assets/node_modules
     ports:
       - 51820:51820/udp
     environment:

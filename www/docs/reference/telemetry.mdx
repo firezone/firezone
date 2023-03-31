@@ -87,14 +87,4 @@ Set the `TELEMETRY_ENABLED` environment variable to `false` and
 restart the `firezone` container.
 
   </TabItem>
-  <TabItem value="omnibus" label="Omnibus">
-
-Set the following configuration option to `false` in `/etc/firezone/firezone.rb`
-and run `sudo firezone-ctl reconfigure` to pick up the changes.
-
-```ruby
-default['firezone']['telemetry']['enabled'] = false
-```
-
-  </TabItem>
 </Tabs>

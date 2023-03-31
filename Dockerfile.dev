@@ -37,23 +37,23 @@ ENV DATABASE_PASSWORD=$DATABASE_PASSWORD
 
 RUN mix local.hex --force && mix local.rebar --force
 
-COPY apps/fz_http/mix.exs /var/app/apps/fz_http/mix.exs
-COPY apps/fz_vpn/mix.exs /var/app/apps/fz_vpn/mix.exs
-COPY apps/fz_wall/mix.exs /var/app/apps/fz_wall/mix.exs
+COPY apps/domain/mix.exs /var/app/apps/web/mix.exs
+COPY apps/web/mix.exs /var/app/apps/web/mix.exs
+COPY apps/api/mix.exs /var/app/apps/api/mix.exs
 COPY mix.exs /var/app/mix.exs
 COPY mix.lock /var/app/mix.lock
 RUN mix do deps.get, deps.compile, compile
 
 # Copy more granular, dependency management files first to prevent
 # busting the Docker build cache unnecessarily
-COPY apps/fz_http/assets/package.json /var/app/apps/fz_http/assets/package.json
-COPY apps/fz_http/assets/local_modules /var/app/apps/fz_http/assets/local_modules
-COPY apps/fz_http/assets/yarn.lock /var/app/apps/fz_http/assets/yarn.lock
-RUN cd apps/fz_http/assets && yarn install
+COPY apps/web/assets/package.json /var/app/apps/web/assets/package.json
+COPY apps/web/assets/local_modules /var/app/apps/web/assets/local_modules
+COPY apps/web/assets/yarn.lock /var/app/apps/web/assets/yarn.lock
+RUN cd apps/web/assets && yarn install
 
 COPY config /var/app/config
 COPY apps /var/app/apps
-RUN cd apps/fz_http && mix phx.gen.cert
+RUN cd apps/web && mix phx.gen.cert
 
 COPY scripts/dev_start.sh /var/app/dev_start.sh
 
