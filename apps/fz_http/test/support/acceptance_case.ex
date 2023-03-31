@@ -208,6 +208,11 @@ defmodule FzHttpWeb.AcceptanceCase do
     session
   end
 
+  def assert_url(session, url) do
+    assert current_url(session) =~ url
+    session
+  end
+
   def shutdown_live_socket(session) do
     Wallaby.end_session(session)
     Process.sleep(10)

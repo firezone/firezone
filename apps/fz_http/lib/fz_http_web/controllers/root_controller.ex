@@ -4,7 +4,7 @@ defmodule FzHttpWeb.RootController do
   """
   use FzHttpWeb, :controller
 
-  def index(conn, _params) do
+  def index(conn, params) do
     %{
       local_auth_enabled: {_, local_auth_enabled},
       openid_connect_providers: {_, openid_connect_providers},
@@ -19,6 +19,7 @@ defmodule FzHttpWeb.RootController do
     conn
     |> render(
       "auth.html",
+      client_params: Map.take(params, ~w[client_platform client_state]),
       local_enabled: local_auth_enabled,
       openid_connect_providers: openid_connect_providers,
       saml_identity_providers: saml_identity_providers

@@ -121,6 +121,20 @@ defmodule FzHttpWeb.AuthControllerTest do
       assert current_user(test_conn).id == user.id
     end
 
+    test "valid params for client apps", %{unauthed_conn: conn, user: user} do
+      params = %{
+        "email" => user.email,
+        "password" => "password1234",
+        "client_platform" => "ios",
+        "client_state" => "APP_STATE"
+      }
+
+      conn = post(conn, ~p"/auth/identity/callback", params)
+      token = Guardian.Plug.current_token(conn)
+      assert redirected_to(conn) == "firezone://auth?client_state=APP_STATE&token=#{token}"
+      assert current_user(conn).id == user.id
+    end
+
     test "prevents signing in when local_auth_disabled", %{unauthed_conn: conn, user: user} do
       params = %{
         "email" => user.email,
@@ -143,11 +157,57 @@ defmodule FzHttpWeb.AuthControllerTest do
     end
   end
 
+  describe "redirect_oidc_auth_uri/2" do
+    test "returns an OIDC auth URI", %{unauthed_conn: conn} do
+      conn = get(conn, ~p"/auth/oidc/google")
+      redirect_url = redirected_to(conn)
+
+      assert %URI{
+               fragment: nil,
+               host: "localhost",
+               path: "/authorize",
+               query: query,
+               scheme: "http",
+               userinfo: nil
+             } = URI.parse(redirect_url)
+
+      assert %{
+               "access_type" => "offline",
+               "client_id" => "google-client-id",
+               "code_challenge" => _,
+               "code_challenge_method" => "S256",
+               "redirect_uri" => "https://firezone.example.com/auth/oidc/google/callback/",
+               "response_type" => "code",
+               "scope" => "openid email profile",
+               "state" => _
+             } = URI.decode_query(query)
+    end
+
+    test "persists client params in OIDC state", %{unauthed_conn: conn} do
+      params = %{
+        "client_platform" => "ios",
+        "client_state" => "APP_STATE"
+      }
+
+      conn = get(conn, ~p"/auth/oidc/google", params)
+
+      state =
+        conn
+        |> redirected_to()
+        |> URI.parse()
+        |> Map.get(:query)
+        |> URI.decode_query()
+        |> Map.fetch!("state")
+
+      assert FzHttpWeb.OIDC.State.fetch_and_verify_state(conn, state) == {:ok, params}
+    end
+  end
+
   describe "creating session from OpenID Connect" do
     setup :create_user
 
     @key "fz_oidc_state"
-    @state "test"
+    @state FzHttpWeb.OIDC.State.new()
 
     @params %{
       "code" => "MyFaketoken",
@@ -189,6 +249,55 @@ defmodule FzHttpWeb.AuthControllerTest do
       assert redirected_to(test_conn) == ~p"/users"
 
       assert get_session(test_conn, "id_token")
+    end
+
+    test "when a user returns with a valid claim for client app", %{
+      unauthed_conn: conn,
+      user: user,
+      bypass: bypass
+    } do
+      jwk = ConfigFixtures.jwks_attrs()
+
+      claims = %{"email" => user.email, "sub" => user.id}
+
+      {_alg, token} =
+        jwk
+        |> JOSE.JWK.from()
+        |> JOSE.JWS.sign(Jason.encode!(claims), %{"alg" => "RS256"})
+        |> JOSE.JWS.compact()
+
+      ConfigFixtures.expect_refresh_token(bypass, %{"id_token" => token})
+
+      params = %{
+        "client_platform" => "ios",
+        "client_state" => "APP_STATE"
+      }
+
+      oidc_state = FzHttpWeb.OIDC.State.new(params)
+
+      signed_state =
+        Plug.Crypto.sign(
+          FzHttp.Config.fetch_env!(:fz_http, FzHttpWeb.Endpoint)[:secret_key_base],
+          @key <> "_cookie",
+          oidc_state,
+          key: Plug.Keys,
+          max_age: 300
+        )
+
+      conn =
+        conn
+        |> put_req_cookie("fz_oidc_state", signed_state)
+        |> get(~p"/auth/oidc/google/callback", %{
+          "code" => "MyFaketoken",
+          "provider" => "google",
+          "state" => oidc_state
+        })
+
+      token = Guardian.Plug.current_token(conn)
+      assert redirected_to(conn) == "firezone://auth?client_state=APP_STATE&token=#{token}"
+      assert current_user(conn).id == user.id
+
+      assert get_session(conn, "id_token")
     end
 
     test "when a user returns with an invalid claim", %{unauthed_conn: conn, bypass: bypass} do

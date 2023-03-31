@@ -104,6 +104,32 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
       |> assert_el(Query.text("Your Devices"))
       |> assert_el(Query.text("Signed in as #{user.email}."))
     end
+
+    feature "redirects to deep link after userpass flow for client apps", %{session: session} do
+      password = "firezone1234"
+
+      user =
+        UsersFixtures.create_user_with_role(:admin,
+          password: password,
+          password_confirmation: password
+        )
+
+      session
+      |> visit(~p"/?client_platform=ios&client_state=APP_STATE")
+      |> assert_el(Query.link("Sign in with email"))
+      |> click(Query.link("Sign in with email"))
+      |> assert_el(Query.text("Sign In", minimum: 1))
+      |> assert_url("identity?client_platform=ios&client_state=APP_STATE")
+      |> fill_form(%{
+        "Email" => user.email,
+        "Password" => password
+      })
+      |> click(Query.button("Sign In"))
+      |> Auth.assert_authenticated(user)
+
+      # XXX: there is no way how we can test a handler in ChromeDriver,
+      # it will just write an error to the console
+    end
   end
 
   describe "using SAML provider" do
@@ -215,6 +241,26 @@ defmodule FzHttpWeb.Acceptance.AuthenticationTest do
       session = visit(session, ~p"/")
       assert find(session, Query.css(".input", count: 0))
       assert_el(session, Query.text("Please sign in via one of the methods below."))
+    end
+
+    feature "redirects to deep link after OIDC flow for client apps", %{session: session} do
+      user = UsersFixtures.create_user_with_role(:admin)
+
+      oidc_login = "firezone-2"
+      oidc_password = "firezone1234_oidc"
+
+      :ok = Vault.setup_oidc_provider(@endpoint.url, %{"auto_create_users" => false})
+      :ok = Vault.upsert_user(oidc_login, user.email, oidc_password)
+
+      session
+      |> visit(~p"/?client_platform=ios&client_state=APP_STATE")
+      |> assert_el(Query.text("Sign In", minimum: 1))
+      |> click(Query.link("OIDC Vault"))
+      |> Vault.userpass_flow(oidc_login, oidc_password)
+      |> assert_path("/ui/vault/auth")
+
+      # XXX: there is no way how we can test a handler in ChromeDriver,
+      # it will just write an error to the console
     end
   end
 

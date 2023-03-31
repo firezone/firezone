@@ -11,7 +11,7 @@
     <p>
       <%= link(
         "Sign in with #{provider.label}",
-        to: ~p"/auth/oidc/#{provider.id}",
+        to: ~p"/auth/oidc/#{provider.id}?#{@client_params}",
         class: "button"
       ) %>
     </p>
@@ -31,7 +31,7 @@
     <p>
       <%= link(
         "Sign in with email",
-        to: ~p"/auth/identity",
+        to: ~p"/auth/identity?#{@client_params}",
         class: "button"
       ) %>
     </p>

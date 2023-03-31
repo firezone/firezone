@@ -16,8 +16,8 @@ defmodule FzHttpWeb.AuthController do
 
   plug Ueberauth
 
-  def request(conn, _params) do
-    path = ~p"/auth/identity/callback"
+  def request(conn, params) do
+    path = ~p"/auth/identity/callback?#{Map.take(params, ~w[client_platform client_state])}"
 
     conn
     |> render("request.html", callback_path: path)
@@ -63,7 +63,7 @@ defmodule FzHttpWeb.AuthController do
       when is_binary(provider_id) do
     token_params = Map.merge(params, PKCE.token_params(conn))
 
-    with :ok <- State.verify_state(conn, state),
+    with {:ok, client_params} <- State.fetch_and_verify_state(conn, state),
          {:ok, config} <- Auth.fetch_oidc_provider_config(provider_id),
          {:ok, tokens} <- OpenIDConnect.fetch_tokens(config, token_params),
          {:ok, claims} <- OpenIDConnect.verify(config, tokens["id_token"]) do
@@ -75,7 +75,7 @@ defmodule FzHttpWeb.AuthController do
             FzHttp.Auth.OIDC.create_connection(user.id, provider_id, refresh_token)
           end
 
-          conn
+          %{conn | params: Map.merge(conn.params, client_params)}
           |> put_session("id_token", tokens["id_token"])
           |> do_sign_in(user, %{provider: provider_id})
 
@@ -162,9 +162,14 @@ defmodule FzHttpWeb.AuthController do
   def redirect_oidc_auth_uri(conn, %{"provider" => provider_id}) when is_binary(provider_id) do
     verifier = PKCE.code_verifier()
 
+    state =
+      conn.params
+      |> Map.take(["client_platform", "client_state"])
+      |> State.new()
+
     params = %{
       access_type: :offline,
-      state: State.new(),
+      state: state,
       code_challenge_method: PKCE.code_challenge_method(),
       code_challenge: PKCE.code_challenge(verifier)
     }
@@ -189,10 +194,25 @@ defmodule FzHttpWeb.AuthController do
   end
 
   defp do_sign_in(conn, user, auth) do
-    conn
-    |> Authentication.sign_in(user, auth)
-    |> configure_session(renew: true)
-    |> put_session(:live_socket_id, "users_socket:#{user.id}")
-    |> redirect(to: root_path_for_user(user))
+    conn =
+      conn
+      |> Authentication.sign_in(user, auth)
+      |> configure_session(renew: true)
+      |> put_session(:live_socket_id, "users_socket:#{user.id}")
+
+    redirect(conn, post_login_redirect_url(conn, user))
+  end
+
+  defp post_login_redirect_url(
+         %{params: %{"client_platform" => _platform, "client_state" => client_state}} = conn,
+         _user
+       ) do
+    token = Guardian.Plug.current_token(conn)
+    query = URI.encode_query(%{"client_state" => client_state, "token" => token})
+    [external: "firezone://auth?#{query}"]
+  end
+
+  defp post_login_redirect_url(_conn, user) do
+    [to: root_path_for_user(user)]
   end
 end

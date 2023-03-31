@@ -12,20 +12,31 @@ defmodule FzHttpWeb.OIDC.State do
     put_resp_cookie(conn, @oidc_state_key, state, cookie_opts())
   end
 
-  def verify_state(conn, state) do
+  def fetch_and_verify_state(conn, state) do
     conn
     |> fetch_cookies(signed: [@oidc_state_key])
     |> then(fn
       %{cookies: %{@oidc_state_key => ^state}} ->
-        :ok
+        client_params =
+          state
+          |> Base.decode64!(padding: false)
+          |> :erlang.binary_to_term([:safe])
+          |> Map.get(:client_params, %{})
+
+        {:ok, client_params}
 
       _ ->
         {:error, "Cannot verify state"}
     end)
   end
 
-  def new do
-    FzHttp.Crypto.rand_string()
+  def new(client_params \\ %{}) do
+    %{
+      state: FzHttp.Crypto.rand_string(),
+      client_params: client_params
+    }
+    |> :erlang.term_to_binary()
+    |> Base.url_encode64(padding: false)
   end
 
   defp cookie_opts do
