@@ -46,23 +46,6 @@ it's available on port 80/tcp and the DNS record for the server is valid.
 See the [Docker deployment guide](docker) for more info.
 
 </TabItem>
-<TabItem value="omnibus" label="Omnibus">
-
-For Omnibus-based deployments, ACME is disabled by default to maintain
-compatibility with existing installations.
-
-To enable ACME, ensure the following conditions are met:
-
-* `80/tcp` is allow inbound
-* The bundled Firezone `nginx` service is enabled and functioning
-* You have a valid DNS record assigned to this instance's public IP
-* The following 3 settings are configured in the [configuration file](../reference/configuration-file):
-  * `default['firezone']['external_url']`: The FQDN for the server.
-  * `default['firezone']['ssl']['email_address']`: The email that will be used
-    for the issued certificates.
-  * `default['firezone']['ssl']['acme']['enabled']`: Set this to true to enable it.
-
-</TabItem>
 </Tabs>
 
 ### Open required firewall ports

@@ -29,12 +29,6 @@ repos:
         entry: codespell
         language: system
         pass_filenames: false
-      - id: rubocop
-        name: 'ruby: rubocop'
-        entry: bundle exec rubocop
-        language: system
-        pass_filenames: false
-        files: \.rb$
       - id: markdownlint
         name: 'nodejs: markdownlint'
         entry: ./docs/node_modules/markdownlint-cli/markdownlint.js
@@ -52,9 +46,7 @@ repos:
       - id: check-yaml
       - id: check-merge-conflict
       - id: end-of-file-fixer
-        exclude: "^omnibus/config/patches/"
       - id: trailing-whitespace
-        exclude: "^omnibus/config/patches/"
       - id: check-merge-conflict
       - id: no-commit-to-branch
         args:

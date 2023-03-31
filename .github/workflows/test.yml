@@ -167,7 +167,6 @@ jobs:
       MIX_ENV: dev
       POSTGRES_HOST: localhost
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      FZ_VPN_WG_ADAPTER: FzVpn.Interface.WGAdapter.Sandbox
     services:
       postgres:
         image: postgres:15
@@ -223,7 +222,7 @@ jobs:
         with:
           branch: master
           name: db-dump
-          path: apps/fz_http/priv/repo/
+          path: apps/web/priv/repo/
           search_artifacts: true
           workflow_conclusion: completed
           if_no_artifact_found: fail
@@ -246,7 +245,7 @@ jobs:
         run: |
           pg_dump firezone_dev \
             -U postgres -h localhost \
-            --file apps/fz_http/priv/repo/structure.sql \
+            --file apps/web/priv/repo/structure.sql \
             --no-acl \
             --no-owner
       - name: Upload master branch DB dump
@@ -254,7 +253,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: db-dump
-          path: apps/fz_http/priv/repo/structure.sql
+          path: apps/web/priv/repo/structure.sql
       - name: Run Seed
         run: mix ecto.seed
   acceptance-test:
@@ -338,14 +337,14 @@ jobs:
         env:
           cache-name: cache-yarn-build-${{ env.MIX_ENV }}
         with:
-          path: apps/fz_http/assets/node_modules
+          path: apps/web/assets/node_modules
           key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/yarn.lock') }}
       - uses: actions/cache@v3
         name: Assets Cache
         env:
           cache-name: cache-assets-build-${{ env.MIX_ENV }}
         with:
-          path: apps/fz_http/priv/static/dist
+          path: apps/web/priv/static/dist
           key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/yarn.lock') }}
       - name: Install Dependencies
         run: mix deps.get --only $MIX_ENV
@@ -355,11 +354,11 @@ jobs:
         run: mix compile
       - name: Install Node Dependencies
         run: |
-          cd apps/fz_http/assets
+          cd apps/web/assets
           yarn install --frozen-lockfile
       - name: Build Assets
         run: |
-          cd apps/fz_http/assets
+          cd apps/web/assets
           yarn deploy
       - name: Setup Database
         run: |
@@ -384,7 +383,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: screenshots
-          path: apps/fz_http/screenshots
+          path: apps/web/screenshots
       - name: Test Report
         uses: dorny/test-reporter@v1
         if: ${{ github.event.pull_request.head.repo.full_name == github.repository && (success() || failure()) }}

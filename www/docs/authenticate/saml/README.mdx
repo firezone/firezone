@@ -54,18 +54,6 @@ save these files to `$HOME/.firezone/firezone` on the Docker host and set the
 container.
 
 </TabItem>
-<TabItem value="omnibus" label="Omnibus">
-
-Set the following attributes in your `/etc/firezone/firezone.rb` configuration file:
-
-```ruby
-default['firezone']['authentication']['saml']['key'] = '/path/to/your/saml.key'
-default['firezone']['authentication']['saml']['cert'] = '/path/to/your/saml.crt'
-```
-
-and run `firezone-ctl reconfigure` to pick up the changes.
-
-</TabItem>
 </Tabs>
 
 ## General setup instructions

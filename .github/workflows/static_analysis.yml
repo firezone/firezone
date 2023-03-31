@@ -18,11 +18,8 @@ jobs:
           node-version: '16'
           cache: 'yarn'
           cache-dependency-path: |
-            apps/fz_http/assets/package-lock.json
+            apps/web/assets/package-lock.json
             www/yarn.lock
-      - uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: '2.7'
       - uses: actions/setup-python@v2
         with:
           python-version: '3.9'
@@ -43,13 +40,6 @@ jobs:
           restore-keys: |
             ${{ github.workflow }}-${{ runner.os }}-${{ env.cache-name }}-
       - uses: actions/cache@v3.0.11
-        name: Setup ruby cache
-        with:
-          path: vendor/bundle
-          key: ${{ runner.os }}-gems-${{ hashFiles('**/Gemfile.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-gems-
-      - uses: actions/cache@v3.0.11
         name: Setup Python cache
         with:
           path: ~/.cache/pip
@@ -58,10 +48,6 @@ jobs:
             ${{ runner.os }}-pip-
       - name: Install Elixir Dependencies
         run: mix deps.get --only $MIX_ENV
-      - name: Install Ruby Dependencies
-        run: |
-          bundle config path vendor/bundle
-          bundle install --jobs 4 --retry 3
       - name: Install Python Dependencies
         run: |
           pip install -r requirements.txt

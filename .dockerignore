@@ -1,6 +1,6 @@
-apps/fz_http/assets/node_modules
-apps/fz_http/priv/static/dist
-apps/fz_http/priv/cert
+apps/web/assets/node_modules
+apps/web/priv/static/dist
+apps/web/priv/cert
 _build
 **/cover
 docs

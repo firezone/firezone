@@ -24,7 +24,7 @@ defmodule FirezoneUmbrella.MixProject do
         "coveralls.html": :test
       ],
       docs: [
-        logo: "apps/fz_http/assets/static/images/logo.svg",
+        logo: "apps/web/assets/static/images/logo.svg",
         extras: ["README.md", "SECURITY.md", "CONTRIBUTING.md"]
       ],
       deps: deps(),
@@ -38,9 +38,9 @@ defmodule FirezoneUmbrella.MixProject do
           include_executables_for: [:unix],
           validate_compile_env: false,
           applications: [
-            fz_http: :permanent,
-            fz_wall: :permanent,
-            fz_vpn: :permanent
+            domain: :permanent,
+            web: :permanent,
+            api: :permanent
           ],
           cookie: System.get_env("ERL_COOKIE")
         ]
@@ -73,7 +73,7 @@ defmodule FirezoneUmbrella.MixProject do
 
   defp aliases do
     [
-      "ecto.seed": ["ecto.create", "ecto.migrate", "run apps/fz_http/priv/repo/seeds.exs"],
+      "ecto.seed": ["ecto.create", "ecto.migrate", "run apps/web/priv/repo/seeds.exs"],
       "ecto.setup": ["ecto.create", "ecto.migrate"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       test: ["ecto.create --quiet", "ecto.migrate", "test"],

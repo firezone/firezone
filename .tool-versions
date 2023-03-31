@@ -5,5 +5,4 @@ elixir 1.14.3-otp-25
 erlang 25.2.1
 
 # Used for static analysis
-ruby 2.7.6
 python 3.9.13

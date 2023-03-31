@@ -22,9 +22,9 @@ ENV MIX_ENV="prod"
 
 # install mix dependencies
 COPY mix.exs mix.lock ./
-COPY apps/fz_http/mix.exs ./apps/fz_http/mix.exs
-COPY apps/fz_vpn/mix.exs ./apps/fz_vpn/mix.exs
-COPY apps/fz_wall/mix.exs ./apps/fz_wall/mix.exs
+COPY apps/domain/mix.exs ./apps/domain/mix.exs
+COPY apps/web/mix.exs ./apps/web/mix.exs
+COPY apps/api/mix.exs ./apps/api/mix.exs
 
 RUN mix deps.get --only $MIX_ENV
 RUN mkdir config
@@ -38,12 +38,12 @@ RUN mix deps.compile
 COPY priv priv
 COPY apps apps
 
-# mix phx.digest triggers fz_http compilation, need version to be set here
+# mix phx.digest triggers web compilation, need version to be set here
 ARG VERSION=0.0.0-docker
 ENV VERSION=$VERSION
 
 # compile assets
-RUN cd apps/fz_http/assets \
+RUN cd apps/web/assets \
     && yarn install --frozen-lockfile \
     && yarn deploy \
     && cd .. \

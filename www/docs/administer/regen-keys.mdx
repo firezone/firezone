@@ -40,14 +40,6 @@ Now, move desired env vars from `.env.bak` back to `.env`, keeping
 the new secrets intact.
 
 </TabItem>
-<TabItem value="omnibus" label="Omnibus">
-
-```bash
-mv /etc/firezone/secrets.json /etc/firezone/secrets.bak.json
-sudo firezone-ctl reconfigure
-```
-
-</TabItem>
 </Tabs>
 
 ## Regenerate WireGuard private key
@@ -69,15 +61,6 @@ cd $HOME/.firezone
 docker-compose stop firezone
 sudo mv firezone/private_key firezone/private_key.bak
 docker-compose start firezone
-```
-
-</TabItem>
-<TabItem value="omnibus" label="Omnibus">
-
-```bash
-sudo firezone-ctl stop phoenix
-sudo mv /var/opt/firezone/cache/wg_private_key /var/opt/firezone/cache/wg_private_key.bak
-sudo firezone-ctl start phoenix
 ```
 
 </TabItem>

@@ -1,8 +1,0 @@
-#!/bin/sh
-exec 2>&1
-exec <%= node['runit']['chpst_bin'] %> \
-       -P \
-       -U <%= node['firezone']['postgresql']['username'] %> \
-       -u <%= node['firezone']['postgresql']['username'] %> \
-     <%= node['firezone']['install_directory']%>/embedded/bin/postgres \
-     -D <%= node['firezone']['postgresql']['data_directory'] %> <%= '> /dev/null 2>&1' unless node['firezone']['logging']['enabled'] %>

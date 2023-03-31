@@ -17,12 +17,6 @@ Each container stores logs as a JSON file on the host machine. These can be show
 See [debug logs](../debug-logs) for additional details.
 
 </TabItem>
-<TabItem value="omnibus" label="Omnibus">
-
-Firezone logs are stored in `/var/log/firezone` and can be viewed with
-`sudo firezone-ctl tail`.
-
-</TabItem>
 </Tabs>
 
 ## Application crash loop preventing config changes
@@ -43,19 +37,6 @@ Similarly, to clear SAML configs:
 
 ```text
 psql -d firezone -h 127.0.0.1 -U postgres -c "UPDATE configurations SET saml_identity_providers = '[]'"
-```
-
-</TabItem>
-<TabItem value="omnibus" label="Omnibus">
-
-```text
-/opt/firezone/embedded/bin/psql -d $DATABASE_NAME -h $DATABASE_HOST -U $DATABASE_USER -c "UPDATE configurations SET openid_connect_providers = '[]'"
-```
-
-Similarly, to clear SAML configs:
-
-```text
-/opt/firezone/embedded/bin/psql -d $DATABASE_NAME -h $DATABASE_HOST -U $DATABASE_USER -c "UPDATE configurations SET saml_identity_providers = '[]'"
 ```
 
 </TabItem>
@@ -80,31 +61,7 @@ is enabled and configured automatically.
 
 In most cases, you'll find clues in one or more of the following locations:
 
-<Tabs>
-<TabItem value="omnibus" label="Omnibus">
-
-- Your browser's developer tool logs, specifically the `Network` tab.
-- `sudo firezone-ctl tail nginx`
-- `sudo firezone-ctl tail phoenix`
-
-If the websocket connection is successful, you should see output in the
-`phoenix` service logs similar the following:
-
-```text
-2022-09-23_15:05:47.29158 15:05:47.291 [info] CONNECTED TO Phoenix.LiveView.Socket in 24µs
-2022-09-23_15:05:47.29160   Transport: :websocket
-2022-09-23_15:05:47.29160   Serializer: Phoenix.Socket.V2.JSONSerializer
-2022-09-23_15:05:47.29161   Parameters: %{"_csrf_token" => "XFEFCHQ2fRQABQwtKQdCJDlFAzEcCCJvn7LqDsMXE4eGZtsBzuwVRCJ6", "_mounts" => "0", "_track_static" => %{"0" => "https://demo.firez.one/dist/admin-02fabe0f543c64122dbf5bc5b3451e51.css?vsn=d", "1" => "https://demo.firez.one/dist/admin-04e75c78295062c2c07af61be50248b0.js?vsn=d"}, "vsn" => "2.0.0"}
-2022-09-23_15:05:47.33655 15:05:47.336 [info] CONNECTED TO FzHttpWeb.UserSocket in 430µs
-2022-09-23_15:05:47.33657   Transport: :websocket
-2022-09-23_15:05:47.33658   Serializer: Phoenix.Socket.V2.JSONSerializer
-2022-09-23_15:05:47.33658   Parameters: %{"token" => "SFMyNTY.g2gDYQFuBgB6HeJqgwFiAAFRgA.qKoC2bi9DubPkE0tfaRSPERWUFyQQPQV5n4nFKVppxc", "vsn" => "2.0.0"}
-2022-09-23_15:05:47.35063 15:05:47.350 [info] JOINED notification:session in 636µs
-2022-09-23_15:05:47.35065   Parameters: %{"token" => "SFMyNTY.g2gDYQFuBgB6HeJqgwFiAAFRgA.zSG7pefm-Vgf_zvduxa5E9VK4s8PKqzc0xBDGNx5FQE", "user_agent" => "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:106.0) Gecko/20100101 Firefox/106.0"}
-```
-
-</TabItem>
-</Tabs>
+<Tabs></Tabs>
 
 ## Debugging WireGuard connectivity issues
 
@@ -170,15 +127,6 @@ docker compose exec firezone bin/create-or-reset-admin
 
 **Note**: If local authentication is disabled, resetting the admin user's
 password will not re-enable it.
-
-</TabItem>
-<TabItem value="omnibus" label="Omnibus">
-
-Run the following command to reset the password on the default admin user.
-
-```shell
-sudo firezone-ctl create-or-reset-admin
-```
 
 </TabItem>
 </Tabs>
