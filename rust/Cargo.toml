@@ -1,0 +1,23 @@
+[workspace]
+members = [
+  "relay",
+  "phoenix-channel",
+  "connlib/clients/android",
+  "connlib/clients/apple",
+  "connlib/clients/headless",
+  "connlib/libs/tunnel",
+  "connlib/libs/client",
+  "connlib/libs/gateway",
+  "connlib/libs/common",
+  "connlib/gateway",
+]
+
+[workspace.dependencies]
+boringtun = { git = "https://github.com/firezone/boringtun", branch = "master", default-features = false }
+chrono = { version = "0.4", default-features = false, features = ["std", "clock", "oldtime", "serde"] }
+swift-bridge = "0.1.52"
+
+# Patched to use https://github.com/rust-lang/cc-rs/pull/708
+# (the `patch` section can't be used for build deps...)
+[patch.crates-io]
+ring = { git = "https://github.com/firezone/ring", branch = "v0.16.20-cc-fix" }

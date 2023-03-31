@@ -1,0 +1,29 @@
+# Customize flags given to the VM: http://erlang.org/doc/man/erl.html
+# -mode/-name/-sname/-setcookie are configured via env vars, do not set them here
+
+# Number of dirty schedulers doing IO work (file, sockets, and others)
+#
+# Interacting with the file system usually goes through the async pool.
+# Increasing the pool increasing boot time but it will
+# likely increase performance for the plug static layer.
++SDio 20
+
+# Double the default maximum ports value
+# +Q 131072
+
+# Bind shedulers to CPU's (good when there are no other processes in OS that bind to processors)
+# +stbt db
+
+# Disable schedulers compaction of load (don't disable schedulers that is out of work)
+#
+# This is good for latency and also will keep our Google sustainable load discount higher.
+# +scl false
+
+# Enable port parallelism (good for parallelism, bad for latency)
+# +spp true
+
+# Doubles the distribution buffer busy limit (good for latency, increases memory consumption)
+# +zdbbl 2048
+
+# Tweak GC to run more often
+#-env ERL_FULLSWEEP_AFTER 10

@@ -1,0 +1,173 @@
+name: Rust
+on:
+  merge_group:
+    types: [checks_requested]
+  pull_request:
+    paths:
+      - "rust/**"
+      - ".github/workflows/rust.yml"
+  workflow_call:
+  workflow_dispatch:
+
+# Cancel old workflow runs if new code is pushed
+concurrency:
+  group: "rust-${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: ./rust
+
+jobs:
+  rust_draft-release:
+    runs-on: ubuntu-latest
+    outputs:
+      tag_name: ${{ steps.release_drafter.outputs.tag_name }}
+    steps:
+      - uses: release-drafter/release-drafter@v5
+        with:
+          commitish: cloud
+        id: release_drafter
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  rust_test:
+    strategy:
+      fail-fast: false
+      matrix:
+        runs-on:
+          - ubuntu-20.04
+          - ubuntu-22.04
+          - macos-11
+          - macos-12
+          - windows-2019
+          - windows-2022
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@v3
+
+      # This implicitly triggers installation of the toolchain in the `rust-toolchain.toml` file.
+      # If we don't do this here, our cache action will compute a cache key based on the Rust version shipped on GitHub's runner which might differ from the one we use.
+      - run: rustup show
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ./rust
+          key: v2
+          prefix-key: rust-${{ matrix.runs-on }}
+          save-if: ${{ github.ref == 'refs/heads/cloud' }}
+
+      # TODO: Building *ring* from git requires us to install additional tools;
+      # once we're not using a forked *ring* these 2 steps can be removed.
+      - if: ${{ contains(matrix.runs-on, 'windows') }}
+        name: Install *ring* build tools
+        run: |
+          git clone `
+            --branch windows `
+            --depth 1 `
+            https://github.com/briansmith/ring-toolchain `
+            target/tools/windows
+      # The repo above is for a newer version of the *ring* build script which
+      # expects different paths; instead of going through the trouble of
+      # copying the older installation script let's just move the exe.
+      - if: ${{ contains(matrix.runs-on, 'windows') }}
+        name: Move *ring* build tools
+        run: |
+          mv target/tools/windows/nasm/nasm.exe target/tools/nasm.exe
+
+      - run: cargo fmt -- --check
+      - run: cargo doc --all-features --no-deps --document-private-items
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+      - run: cargo clippy --all-targets --all-features -- -D warnings
+      - run: cargo test --all-features
+
+  rust_build-android:
+    needs:
+      - rust_draft-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v3
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ./rust
+      - name: Update toolchain
+        run: rustup show
+      - uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+          cache: gradle
+      - name: Validate Gradle wrapper
+        uses: gradle/wrapper-validation-action@v1
+      - name: Assemble Release
+        uses: gradle/gradle-build-action@v2
+        with:
+          arguments: build assembleRelease
+          build-root-directory: rust/connlib/clients/android
+      - name: Move artifact
+        run: |
+          mv ./connlib/clients/android/lib/build/outputs/aar/lib-release.aar ./connlib-${{ needs.draft-release.outputs.tag_name }}.aar
+      - uses: actions/upload-artifact@v3
+        with:
+          name: connlib-android
+          path: |
+            ./rust/connlib-${{ needs.draft-release.outputs.tag_name }}.aar
+
+  rust_build-apple:
+    needs:
+      - rust_draft-release
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v3
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ./rust
+      - name: Update toolchain
+        run: rustup show
+      - name: Setup lipo
+        run: cargo install cargo-lipo
+      - uses: actions/cache@v3
+        with:
+          path: apple/.build
+          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+      - name: Build Connlib.xcframework.zip
+        env:
+          CONFIGURATION: Release
+          PROJECT_DIR: .
+        working-directory: ./rust/connlib/clients/apple
+        run: |
+          # build-xcframework.sh calls build-rust.sh indirectly via `xcodebuild`, but it pollutes the environment
+          # to the point that it causes the `ring` build to fail for the aarch64-apple-darwin target. So, explicitly
+          # build first. See https://github.com/briansmith/ring/issues/1332
+          ./build-rust.sh
+          ./build-xcframework.sh
+          mv Connlib.xcframework.zip ../../../../Connlib-${{ needs.draft-release.outputs.tag_name }}.xcframework.zip
+          mv Connlib.xcframework.zip.checksum.txt ../../../../Connlib-${{ needs.draft-release.outputs.tag_name }}.xcframework.zip.checksum.txt
+      - uses: actions/upload-artifact@v3
+        with:
+          name: connlib-apple
+          path: |
+            ./Connlib-${{ needs.draft-release.outputs.tag_name }}.xcframework.zip
+            ./Connlib-${{ needs.draft-release.outputs.tag_name }}.xcframework.zip.checksum.txt
+
+  rust_cross-compile-relay: # cross is separate from test because cross-compiling yields different artifacts and we cannot reuse the cache.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      # This implicitly triggers installation of the toolchain in the `rust-toolchain.toml` file.
+      # If we don't do this here, our cache action will compute a cache key based on the Rust version shipped on GitHub's runner which might differ from the one we use.
+      - run: rustup show
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ./rust
+      - run: sudo apt-get install -y musl-tools
+      - run: cargo build --bin relay --target x86_64-unknown-linux-musl

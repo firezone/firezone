@@ -1,61 +1,7 @@
-version: '3.7'
+version: '3.8'
 
 services:
-  caddy:
-    image: caddy:2
-    volumes:
-      - ./priv/Caddyfile:/etc/caddy/Caddyfile
-      - ./priv/pki:/data/caddy/pki
-    ports:
-      - 80:80
-      - 443:443
-    networks:
-      app:
-        ipv4_address: 172.28.0.99
-        ipv6_address: 2001:3990:3990::99
-
-  firezone:
-    build:
-      context: .
-      dockerfile: Dockerfile.dev
-      args:
-        DATABASE_HOST: postgres
-        DATABASE_PORT: 5432
-        DATABASE_NAME: firezone_dev
-        DATABASE_USER: postgres
-        DATABASE_PASSWORD: postgres
-    image: firezone_dev
-    volumes:
-      - ./priv:/var/app/priv
-      - ./apps:/var/app/apps
-      - ./config:/var/app/config
-      - ./mix.exs:/var/app/mix.exs
-      - ./mix.lock:/var/app/mix.lock
-      # Mask the following build directories to keep compiled binaries isolated
-      # from the local project. This is needed when the Docker Host platform
-      # doesn't match the platform under which Docker Engine is running. e.g.
-      # WSL, Docker for Mac, etc.
-      - /var/app/apps/fz_http/assets/node_modules
-    ports:
-      - 51820:51820/udp
-    environment:
-      EXTERNAL_URL: ${EXTERNAL_URL:-https://localhost}
-      LOCAL_AUTH_ENABLED: 'true'
-      FZ_WALL_CLI_MODULE: FzWall.CLI.Live
-    cap_add:
-      - NET_ADMIN
-      - SYS_MODULE
-    sysctls:
-      - net.ipv6.conf.all.disable_ipv6=0
-      - net.ipv4.ip_forward=1
-      - net.ipv6.conf.all.forwarding=1
-    depends_on:
-      postgres:
-        condition: 'service_healthy'
-    networks:
-      - app
-      - isolation
-
+  # Dependencies
   postgres:
     image: postgres:15
     volumes:
@@ -65,7 +11,11 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: firezone_dev
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"
+        ]
       start_period: 20s
       interval: 30s
       retries: 5
@@ -75,79 +25,330 @@ services:
     networks:
       - app
 
-  # Vault can act as an OIDC IdP as well
   vault:
-    image: vault
+    image: vault:1.13.3
     environment:
       VAULT_ADDR: 'http://127.0.0.1:8200'
       VAULT_DEV_ROOT_TOKEN_ID: 'firezone'
+      VAULT_LOG_LEVEL: 'debug'
     ports:
       - 8200:8200/tcp
     cap_add:
       - IPC_LOCK
     networks:
       - app
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--spider",
+          "--proxy",
+          "off",
+          "http://127.0.0.1:8200/v1/sys/health?standbyok=true"
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
 
-  saml-idp:
-    # This is a container with this PR merged: https://github.com/kristophjunge/docker-test-saml-idp/pull/27
-    image: vihangk1/docker-test-saml-idp:latest
-    environment:
-      SIMPLESAMLPHP_SP_ENTITY_ID: 'urn:firezone.dev:firezone-app'
-      SIMPLESAMLPHP_SP_ASSERTION_CONSUMER_SERVICE: 'http://localhost:13000/auth/saml/sp/consume/mysamlidp'
-      SIMPLESAMLPHP_SP_SINGLE_LOGOUT_SERVICE: 'http://localhost:13000/auth/saml/sp/logout/mysamlidp'
-      SIMPLESAMLPHP_SP_NAME_ID_FORMAT: 'urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress'
-      SIMPLESAMLPHP_SP_NAME_ID_ATTRIBUTE: 'email'
-      SIMPLESAMLPHP_IDP_AUTH: 'example-userpass'
+  # Firezone Components
+  web:
+    build:
+      context: elixir
+      args:
+        APPLICATION_NAME: web
+    image: firezone_web_dev
+    hostname: web.cluster.local
     ports:
-      - 8400:8080/tcp
-      - 8443:8443/tcp
+      - 8080:8080/tcp
+    environment:
+      # Web Server
+      EXTERNAL_URL: http://localhost:8080/
+      PHOENIX_HTTP_WEB_PORT: "8080"
+      PHOENIX_SECURE_COOKIES: false
+      # Erlang
+      ERLANG_DISTRIBUTION_PORT: 9000
+      ERLANG_CLUSTER_ADAPTER: "Elixir.Cluster.Strategy.Epmd"
+      ERLANG_CLUSTER_ADAPTER_CONFIG: '{"hosts":["api@api.cluster.local","web@web.cluster.local"]}'
+      RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
+      RELEASE_HOSTNAME: "web.cluster.local"
+      RELEASE_NAME: "web"
+      # Database
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: firezone_dev
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: postgres
+      # Auth
+      AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token"
+      # Secrets
+      AUTH_TOKEN_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
+      AUTH_TOKEN_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      RELAYS_AUTH_TOKEN_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
+      RELAYS_AUTH_TOKEN_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      GATEWAYS_AUTH_TOKEN_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
+      GATEWAYS_AUTH_TOKEN_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      SECRET_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
+      LIVE_VIEW_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      COOKIE_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      COOKIE_ENCRYPTION_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      # Telemetry
+      TELEMETRY_ENABLED: "false"
+      # Debugging
+      LOG_LEVEL: "debug"
+      # Emails
+      OUTBOUND_EMAIL_FROM: "public-noreply@firez.one"
+      OUTBOUND_EMAIL_ADAPTER: "Elixir.Swoosh.Adapters.Postmark"
+      ## Warning: The token is for the blackhole Postmark server created in a separate isolated account,
+      ## that WILL NOT send any actual emails, but you can see and debug them in the Postmark dashboard.
+      OUTBOUND_EMAIL_ADAPTER_OPTS: "{\"api_key\":\"7da7d1cd-111c-44a7-b5ac-4027b9d230e5\"}"
+      # Seeds
+      STATIC_SEEDS: "true"
+      # Client info
+      USER_AGENT: "iOS/12.5 (iPhone) connlib/0.7.412"
+    depends_on:
+      vault:
+        condition: 'service_healthy'
+      postgres:
+        condition: 'service_healthy'
     networks:
       - app
 
-  # Unfortunately the Linux VM kernel for Docker Desktop is not compiled with
-  # Dynamic Debug enabled, so we're unable to enable WireGuard debug logging.
-  # Since WireGuard is designed to be silent by default, this basically does
-  # nothing.
-  # wireguard-log:
-  #   image: ubuntu:jammy
-  #   # cap SYSLOG was enough for reading but privilege is required for tailing
-  #   privileged: true
-  #   command: >
-  #     bash -c '
-  #     mount -t debugfs none /sys/kernel/debug
-  #     && echo module wireguard +p > /sys/kernel/debug/dynamic_debug/control
-  #     && dmesg -wT | grep wireguard:'
-
   client:
-    depends_on:
-      - firezone
-    image: linuxserver/wireguard:latest
     environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=UTC
-      - ALLOWEDIPS="0.0.0.0/0,::/0"
-    volumes:
-      - ./priv/wg0.client.conf:/config/wg0.conf
+      FZ_URL: "ws://api:8081/"
+      FZ_SECRET: "SFMyNTY.g2gDaANkAAhpZGVudGl0eW0AAAAkN2RhN2QxY2QtMTExYy00NGE3LWI1YWMtNDAyN2I5ZDIzMGU1bQAAACAZ_F7tY7RZcWcaeGbwM9H9EBDdj2U4QPu2sBzD8Z_7R24GAMH8mfqIAWIB4TOA.2IZ089fjvNLoCsirq2PwNTfMHXf3285F6YcNquk6niU"
+      RUST_LOG: headless=trace,firezone_client_connlib=trace,firezone_tunnel=trace,libs_common=trace,warn
+    build:
+      context: rust
+      dockerfile: Dockerfile.dev
+      args:
+        PACKAGE: headless
+    image: firezone-headless
     cap_add:
       - NET_ADMIN
-      - SYS_MODULE
     sysctls:
       - net.ipv6.conf.all.disable_ipv6=0
-      - net.ipv4.conf.all.src_valid_mark=1
+    devices:
+      - "/dev/net/tun:/dev/net/tun"
+    depends_on:
+      api:
+        condition: 'service_healthy'
     networks:
-      - isolation
+      app:
+        ipv4_address: 172.28.0.100
 
-volumes:
-  postgres-data:
-  # Disabled due to Authentik being disabled
-  # redis-data:
+  gateway:
+    environment:
+      FZ_URL: "ws://api:8081/"
+      FZ_SECRET: "SFMyNTY.g2gDaAJtAAAAJDNjZWYwNTY2LWFkZmQtNDhmZS1hMGYxLTU4MDY3OTYwOGY2Zm0AAABAamp0enhSRkpQWkdCYy1vQ1o5RHkyRndqd2FIWE1BVWRwenVScjJzUnJvcHg3NS16bmhfeHBfNWJUNU9uby1yYm4GAFvAb_mIAWIAAVGA.1DaY3H3fKzW5sqcciJqlHyG0uFctzOewofsVRGS7NrQ"
+      RUST_LOG: gateway=trace,firezone_gateway_connlib=trace,firezone_tunnel=trace,libs_common=trace,warn
+      ENABLE_MASQUERADE: 1
+    build:
+      context: rust
+      dockerfile: Dockerfile.dev
+      args:
+        PACKAGE: gateway
+    image: firezone-gateway
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv4.ip_forward=1
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv6.conf.all.disable_ipv6=0
+    devices:
+      - "/dev/net/tun:/dev/net/tun"
+    depends_on:
+      api:
+        condition: 'service_healthy'
+    networks:
+      - app
+      - resources
+
+  resource:
+    image: alpine:3.18
+    command: tail -f /dev/null
+    networks:
+      resources:
+        ipv4_address: 172.20.0.100
+
+  relay:
+    environment:
+      PUBLIC_IP4_ADDR: 172.28.0.101
+      LISTEN_IP4_ADDR: 172.28.0.101
+      PORTAL_WS_URL: "ws://api:8081/"
+      PORTAL_TOKEN: "SFMyNTY.g2gDaAJtAAAAJDcyODZiNTNkLTA3M2UtNGM0MS05ZmYxLWNjODQ1MWRhZDI5OW0AAABARVg3N0dhMEhLSlVWTGdjcE1yTjZIYXRkR25mdkFEWVFyUmpVV1d5VHFxdDdCYVVkRVUzbzktRmJCbFJkSU5JS24GAJZ5vfiIAWIAAVGA.F1J6PxmFwmlSYtsUnkw2Z7IjpMkB1oS7wxtzQBqlFFM"
+      RUST_LOG: "debug"
+      RUST_BACKTRACE: 1
+    build:
+      context: rust
+      dockerfile: Dockerfile.dev
+      args:
+        PACKAGE: relay
+    image: firezone-relay
+    healthcheck:
+      test: [ "CMD-SHELL", "lsof -i UDP | grep relay" ]
+      start_period: 20s
+      interval: 30s
+      retries: 5
+      timeout: 5s
+    depends_on:
+      api:
+        condition: 'service_healthy'
+    networks:
+      app:
+        ipv4_address: 172.28.0.101
+    command: "--allow-insecure-ws"
+
+  api:
+    build:
+      context: elixir
+      args:
+        APPLICATION_NAME: api
+    image: firezone_api_dev
+    hostname: api.cluster.local
+    ports:
+      - 8081:8081/tcp
+    environment:
+      # Web Server
+      EXTERNAL_URL: http://localhost:8081/
+      PHOENIX_HTTP_API_PORT: "8081"
+      PHOENIX_SECURE_COOKIES: false
+      # Erlang
+      ERLANG_DISTRIBUTION_PORT: 9000
+      ERLANG_CLUSTER_ADAPTER: "Elixir.Cluster.Strategy.Epmd"
+      ERLANG_CLUSTER_ADAPTER_CONFIG: '{"hosts":["api@api.cluster.local","web@web.cluster.local"]}'
+      RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
+      RELEASE_HOSTNAME: "api.cluster.local"
+      RELEASE_NAME: "api"
+      # Database
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: firezone_dev
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: postgres
+      # Auth
+      AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token"
+      # Secrets
+      AUTH_TOKEN_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
+      AUTH_TOKEN_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      RELAYS_AUTH_TOKEN_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
+      RELAYS_AUTH_TOKEN_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      GATEWAYS_AUTH_TOKEN_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
+      GATEWAYS_AUTH_TOKEN_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      SECRET_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
+      LIVE_VIEW_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      COOKIE_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      COOKIE_ENCRYPTION_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      # Telemetry
+      TELEMETRY_ENABLED: "false"
+      # Debugging
+      LOG_LEVEL: "debug"
+      # Emails
+      OUTBOUND_EMAIL_FROM: "public-noreply@firez.one"
+      OUTBOUND_EMAIL_ADAPTER: "Elixir.Swoosh.Adapters.Postmark"
+      ## Warning: The token is for the blackhole Postmark server created in a separate isolated account,
+      ## that WILL NOT send any actual emails, but you can see and debug them in the Postmark dashboard.
+      OUTBOUND_EMAIL_ADAPTER_OPTS: "{\"api_key\":\"7da7d1cd-111c-44a7-b5ac-4027b9d230e5\"}"
+      # Seeds
+      STATIC_SEEDS: "true"
+    depends_on:
+      vault:
+        condition: 'service_healthy'
+      postgres:
+        condition: 'service_healthy'
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f localhost:8081/healthz" ]
+      start_period: 20s
+      interval: 30s
+      retries: 5
+      timeout: 5s
+    networks:
+      - app
+
+  # This is a service container which allows to run mix tasks for local development
+  # without having to install Elixir and Erlang on the host machine.
+  elixir:
+    build:
+      context: elixir
+      target: builder
+      args:
+        APPLICATION_NAME: api
+    image: firezone_local_dev
+    hostname: elixir
+    volumes:
+      - elixir-build-cache:/app/_build
+      - ./elixir/apps:/app/apps
+      - ./elixir/config:/app/config
+      - ./elixir/priv:/app/priv
+      - ./elixir/rel:/app/rel
+      - ./elixir/mix.exs:/app/mix.exs
+      - ./elixir/mix.lock:/app/mix.lock
+      - assets-build-cache:/app/apps/web/assets/node_modules
+    environment:
+      # Web Server
+      EXTERNAL_URL: http://localhost:8081/
+      # Erlang
+      ERLANG_DISTRIBUTION_PORT: 9000
+      ERLANG_CLUSTER_ADAPTER: "Elixir.Domain.Cluster.Local"
+      ERLANG_CLUSTER_ADAPTER_CONFIG: '{}'
+      RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
+      RELEASE_HOSTNAME: "mix.cluster.local"
+      RELEASE_NAME: "mix"
+      # Database
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: firezone_dev
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: postgres
+      # Auth
+      AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token"
+      # Secrets
+      AUTH_TOKEN_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
+      AUTH_TOKEN_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      RELAYS_AUTH_TOKEN_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
+      RELAYS_AUTH_TOKEN_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      GATEWAYS_AUTH_TOKEN_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
+      GATEWAYS_AUTH_TOKEN_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      SECRET_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
+      LIVE_VIEW_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      COOKIE_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      COOKIE_ENCRYPTION_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      # Telemetry
+      TELEMETRY_ENABLED: "false"
+      # Higher log level not to make seeds output too verbose
+      LOG_LEVEL: "info"
+      # Emails
+      OUTBOUND_EMAIL_FROM: "public-noreply@firez.one"
+      OUTBOUND_EMAIL_ADAPTER: "Elixir.Swoosh.Adapters.Postmark"
+      ## Warning: The token is for the blackhole Postmark server created in a separate isolated account,
+      ## that WILL NOT send any actual emails, but you can see and debug them in the Postmark dashboard.
+      OUTBOUND_EMAIL_ADAPTER_OPTS: "{\"api_key\":\"7da7d1cd-111c-44a7-b5ac-4027b9d230e5\"}"
+      # Mix env should be set to prod to use secrets declared above,
+      # otherwise seeds will generate invalid tokens
+      MIX_ENV: "prod"
+      # Seeds
+      STATIC_SEEDS: "true"
+    depends_on:
+      postgres:
+        condition: 'service_healthy'
+    networks:
+      - app
 
 networks:
+  resources:
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
   app:
     enable_ipv6: true
     ipam:
       config:
         - subnet: 172.28.0.0/16
         - subnet: 2001:3990:3990::/64
-  isolation:
+
+volumes:
+  postgres-data:
+  elixir-build-cache:
+  assets-build-cache:

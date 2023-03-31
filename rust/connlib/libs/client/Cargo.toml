@@ -1,0 +1,20 @@
+[package]
+name = "firezone-client-connlib"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+mock = ["libs-common/mock"]
+
+[dependencies]
+tokio = { version = "1.27", default-features = false, features = ["sync"] }
+tracing = { version = "0.1", default-features = false, features = ["std", "attributes"] }
+async-trait = { version = "0.1", default-features = false }
+libs-common = { path = "../common" }
+firezone-tunnel = { path = "../tunnel" }
+serde = { version = "1.0", default-features = false, features = ["std", "derive"] }
+boringtun = { workspace = true }
+
+[dev-dependencies]
+serde_json = { version = "1.0", default-features = false, features = ["std"] }
+chrono = { workspace = true }

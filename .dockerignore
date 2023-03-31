@@ -1,8 +1,19 @@
-apps/fz_http/assets/node_modules
-apps/fz_http/priv/static/dist
-apps/fz_http/priv/cert
-_build
-**/cover
+# Documentation
 docs
+
+# Website
+www
+
+# MacOS
 .DS_Store
+
+# Git
 .git
+.gitignore
+.gitmodules
+.github
+
+# Terraform
+.terraform
+*.tfstate.backup
+terraform.tfstate.d

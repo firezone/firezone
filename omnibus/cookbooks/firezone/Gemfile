@@ -1,7 +1,0 @@
-# frozen_string_literal: true
-
-source 'https://rubygems.org'
-
-gem 'berkshelf'
-gem 'chef', '~> 17.10.0'
-gem 'chef-bin', '~> 17.10.0'

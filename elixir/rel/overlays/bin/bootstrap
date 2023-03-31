@@ -1,0 +1,12 @@
+#!/bin/sh
+
+mkdir -p /var/firezone
+
+setup_telemetry() {
+  [ -f /var/firezone/.tid ] || cat /proc/sys/kernel/random/uuid > /var/firezone/.tid
+  export TELEMETRY_ID=$(cat /var/firezone/.tid)
+}
+
+setup_telemetry
+
+cd -P -- "$(dirname -- "$0")"
