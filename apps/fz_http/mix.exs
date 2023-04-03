@@ -77,7 +77,7 @@ defmodule FzHttp.MixProject do
       {:ueberauth, "~> 0.7"},
       {:ueberauth_identity, "~> 0.4"},
       {:argon2_elixir, "~> 2.0"},
-      {:nimble_totp, "~> 0.2"},
+      {:nimble_totp, "~> 1.0"},
 
       # Other deps
       {:remote_ip, "~> 1.0"},
