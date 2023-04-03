@@ -76,7 +76,7 @@ defmodule FzHttp.MixProject do
       {:samly, github: "firezone/samly"},
       {:ueberauth, "~> 0.7"},
       {:ueberauth_identity, "~> 0.4"},
-      {:argon2_elixir, "~> 2.0"},
+      {:argon2_elixir, "~> 3.1"},
       {:nimble_totp, "~> 0.2"},
 
       # Other deps
