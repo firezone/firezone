@@ -13,7 +13,7 @@ import Config
 ###############################
 
 config :domain, ecto_repos: [Domain.Repo]
-config :web, ecto_repos: [Domain.Repo]
+config :domain, generators: [binary_id: true]
 
 config :domain, sql_sandbox: false
 
@@ -67,6 +67,9 @@ config :domain,
 ##### Web #####################
 ###############################
 
+config :web, ecto_repos: [Domain.Repo]
+config :web, generators: [binary_id: true]
+
 config :web,
   external_url: "http://localhost:13000/",
   # TODO: use endpoint path instead?
@@ -99,6 +102,32 @@ config :web,
 config :web,
   external_trusted_proxies: [],
   private_clients: [%{__struct__: Postgrex.INET, address: {172, 28, 0, 0}, netmask: 16}]
+
+###############################
+##### API #####################
+###############################
+
+config :api, ecto_repos: [Domain.Repo]
+config :api, generators: [binary_id: true]
+
+config :api, ApiWeb.Endpoint,
+  url: [
+    scheme: "http",
+    host: "localhost",
+    port: 13001,
+    path: nil
+  ],
+  render_errors: [
+    formats: [json: API.ErrorJSON],
+    layout: false
+  ],
+  secret_key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5SD",
+  pubsub_server: Domain.PubSub
+
+config :api,
+  cookie_secure: false,
+  cookie_signing_salt: "WjllcThpb2Y=",
+  cookie_encryption_salt: "M0EzM0R6NEMyaw=="
 
 ###############################
 ##### Third-party configs #####

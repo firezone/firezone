@@ -93,6 +93,31 @@ if config_env() == :prod do
     cookie_encryption_salt: compile_config!(:cookie_encryption_salt)
 
   ###############################
+  ##### Web #####################
+  ###############################
+
+  config :web, Web.Endpoint,
+    server: true,
+    http: [
+      ip: compile_config!(:phoenix_listen_address).address,
+      port: compile_config!(:phoenix_http_port),
+      protocol_options: compile_config!(:phoenix_http_protocol_options)
+    ],
+    url: [
+      scheme: external_url_scheme,
+      host: external_url_host,
+      port: external_url_port,
+      path: external_url_path
+    ],
+    secret_key_base: compile_config!(:secret_key_base),
+    check_origin: ["//127.0.0.1", "//localhost", "//api.#{external_url_host}"]
+
+  config :api,
+    cookie_secure: compile_config!(:phoenix_secure_cookies),
+    cookie_signing_salt: compile_config!(:cookie_signing_salt),
+    cookie_encryption_salt: compile_config!(:cookie_encryption_salt)
+
+  ###############################
   ##### Third-party configs #####
   ###############################
 
