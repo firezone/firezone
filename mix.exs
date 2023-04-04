@@ -69,7 +69,7 @@ defmodule Firezone.MixProject do
 
   defp aliases do
     [
-      "ecto.seed": ["ecto.create", "ecto.migrate", "run apps/web/priv/repo/seeds.exs"],
+      "ecto.seed": ["ecto.create", "ecto.migrate", "run apps/domain/priv/repo/seeds.exs"],
       "ecto.setup": ["ecto.create", "ecto.migrate"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       test: ["ecto.create --quiet", "ecto.migrate", "test"],
