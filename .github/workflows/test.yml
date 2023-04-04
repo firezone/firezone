@@ -222,7 +222,7 @@ jobs:
         with:
           branch: master
           name: db-dump
-          path: apps/web/priv/repo/
+          path: apps/domain/priv/repo/
           search_artifacts: true
           workflow_conclusion: completed
           if_no_artifact_found: fail
@@ -245,7 +245,7 @@ jobs:
         run: |
           pg_dump firezone_dev \
             -U postgres -h localhost \
-            --file apps/web/priv/repo/structure.sql \
+            --file apps/domain/priv/repo/structure.sql \
             --no-acl \
             --no-owner
       - name: Upload master branch DB dump
@@ -253,7 +253,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: db-dump
-          path: apps/web/priv/repo/structure.sql
+          path: apps/domain/priv/repo/structure.sql
       - name: Run Seed
         run: mix ecto.seed
   acceptance-test:
