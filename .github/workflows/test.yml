@@ -34,8 +34,8 @@ jobs:
       - uses: actions/checkout@v3
       - uses: erlef/setup-beam@v1
         with:
-          otp-version: '25'
-          elixir-version: '1.14'
+          otp-version: "25"
+          elixir-version: "1.14"
       - uses: actions/cache@v3
         name: Elixir Deps Cache
         env:
@@ -84,8 +84,8 @@ jobs:
       - uses: actions/checkout@v3
       - uses: erlef/setup-beam@v1
         with:
-          otp-version: '25'
-          elixir-version: '1.14'
+          otp-version: "25"
+          elixir-version: "1.14"
       - uses: actions/cache@v3
         name: Elixir Deps Cache
         env:
@@ -133,8 +133,8 @@ jobs:
       - uses: actions/checkout@v3
       - uses: erlef/setup-beam@v1
         with:
-          otp-version: '25'
-          elixir-version: '1.14'
+          otp-version: "25"
+          elixir-version: "1.14"
       - uses: actions/cache@v3
         name: Elixir Deps Cache
         env:
@@ -193,8 +193,8 @@ jobs:
       - uses: actions/checkout@v3
       - uses: erlef/setup-beam@v1
         with:
-          otp-version: '25'
-          elixir-version: '1.14'
+          otp-version: "25"
+          elixir-version: "1.14"
       - uses: actions/cache@v3
         name: Elixir Deps Cache
         env:
@@ -283,21 +283,20 @@ jobs:
       vault:
         image: vault:1.12.2
         env:
-          VAULT_ADDR: 'http://127.0.0.1:8200'
-          VAULT_DEV_ROOT_TOKEN_ID: 'firezone'
+          VAULT_ADDR: "http://127.0.0.1:8200"
+          VAULT_DEV_ROOT_TOKEN_ID: "firezone"
         ports:
           - 8200:8200/tcp
-        options:
-          --cap-add=IPC_LOCK
+        options: --cap-add=IPC_LOCK
       saml-idp:
         image: vihangk1/docker-test-saml-idp:latest
         env:
-          SIMPLESAMLPHP_SP_ENTITY_ID: 'urn:firezone.dev:firezone-app'
-          SIMPLESAMLPHP_SP_ASSERTION_CONSUMER_SERVICE: 'http://localhost:13000/auth/saml/sp/consume/mysamlidp'
-          SIMPLESAMLPHP_SP_SINGLE_LOGOUT_SERVICE: 'http://localhost:13000/auth/saml/sp/logout/mysamlidp'
-          SIMPLESAMLPHP_SP_NAME_ID_FORMAT: 'urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress'
-          SIMPLESAMLPHP_SP_NAME_ID_ATTRIBUTE: 'email'
-          SIMPLESAMLPHP_IDP_AUTH: 'example-userpass'
+          SIMPLESAMLPHP_SP_ENTITY_ID: "urn:firezone.dev:firezone-app"
+          SIMPLESAMLPHP_SP_ASSERTION_CONSUMER_SERVICE: "http://localhost:13000/auth/saml/sp/consume/mysamlidp"
+          SIMPLESAMLPHP_SP_SINGLE_LOGOUT_SERVICE: "http://localhost:13000/auth/saml/sp/logout/mysamlidp"
+          SIMPLESAMLPHP_SP_NAME_ID_FORMAT: "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"
+          SIMPLESAMLPHP_SP_NAME_ID_ATTRIBUTE: "email"
+          SIMPLESAMLPHP_IDP_AUTH: "example-userpass"
         ports:
           - 8400:8080/tcp
           - 8443:8443/tcp
@@ -314,8 +313,8 @@ jobs:
       - uses: actions/checkout@v3
       - uses: erlef/setup-beam@v1
         with:
-          otp-version: '25'
-          elixir-version: '1.14'
+          otp-version: "25"
+          elixir-version: "1.14"
       - uses: actions/cache@v3
         name: Elixir Deps Cache
         env:
@@ -391,3 +390,31 @@ jobs:
           name: Elixir Acceptance Test Report
           path: _build/test/lib/*/test-junit-report.xml
           reporter: java-junit
+  container-build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    needs:
+      - unit-test
+      - acceptance-test
+    env:
+      REGISTRY: ghcr.io
+      IMAGE_NAME: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          platforms: linux/amd64
+          build-args: |
+            VERSION=${{ github.sha }}
+          file: Dockerfile.prod
+          context: .
+          push: false
+          tags: ${{ github.ref_type }}-${{ github.ref_name }}
+      # TODO: add a sanity check to make sure the image is actually built
+      # and can be started
