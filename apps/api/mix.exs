@@ -1,5 +1,4 @@
 defmodule API.MixProject do
-  alias Mix.Dep.Umbrella
   use Mix.Project
 
   def project do

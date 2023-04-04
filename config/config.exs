@@ -110,7 +110,7 @@ config :web,
 config :api, ecto_repos: [Domain.Repo]
 config :api, generators: [binary_id: true]
 
-config :api, ApiWeb.Endpoint,
+config :api, API.Endpoint,
   url: [
     scheme: "http",
     host: "localhost",

@@ -59,6 +59,8 @@ defmodule API.Telemetry do
     ]
   end
 
+  # XXX: We might want to contribute initial_timeout to telemetry_poller
+  # so that we can remove out custom gen_servers that do long polling.
   defp periodic_measurements do
     [
       # A module, function and arguments to be invoked periodically.

@@ -75,8 +75,7 @@ if config_env() == :prod do
     secret_key_base: compile_config!(:secret_key_base),
     live_view: [
       signing_salt: compile_config!(:live_view_signing_salt)
-    ],
-    check_origin: ["//127.0.0.1", "//localhost", "//#{external_url_host}"]
+    ]
 
   config :web, Web.SAML,
     entity_id: compile_config!(:saml_entity_id),
@@ -109,8 +108,7 @@ if config_env() == :prod do
       port: external_url_port,
       path: external_url_path
     ],
-    secret_key_base: compile_config!(:secret_key_base),
-    check_origin: ["//127.0.0.1", "//localhost", "//api.#{external_url_host}"]
+    secret_key_base: compile_config!(:secret_key_base)
 
   config :api,
     cookie_secure: compile_config!(:phoenix_secure_cookies),
