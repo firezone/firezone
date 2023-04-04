@@ -31,6 +31,14 @@ config :web, Web.Endpoint,
   server: true
 
 ###############################
+##### API #####################
+###############################
+
+config :api, API.Endpoint,
+  http: [port: 13001],
+  server: true
+
+###############################
 ##### Third-party configs #####
 ###############################
 config :web, Web.Mailer, adapter: Web.MailerTestAdapter

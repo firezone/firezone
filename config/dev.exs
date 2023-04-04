@@ -15,6 +15,8 @@ config :domain, Domain.Repo,
 ##### Web #####################
 ###############################
 
+config :web, dev_routes: true
+
 config :web, Web.Endpoint,
   http: [port: 13000],
   debug_errors: true,
@@ -31,6 +33,19 @@ config :web, Web.Endpoint,
       ~r"apps/web/lib/web_web/templates/.*(eex)$"
     ]
   ]
+
+###############################
+##### API #####################
+###############################
+
+config :api, dev_routes: true
+
+config :api, Web.Endpoint,
+  http: [port: 13001],
+  debug_errors: true,
+  code_reloader: true,
+  check_origin: ["//127.0.0.1", "//localhost"],
+  watchers: []
 
 ###############################
 ##### Third-party configs #####
