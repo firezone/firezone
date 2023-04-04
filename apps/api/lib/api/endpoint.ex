@@ -22,17 +22,4 @@ defmodule API.Endpoint do
     websocket: true,
     longpoll: false,
     connect_info: [:user_agent, :peer_data, :x_headers]
-
-  # plug Plug.Parsers,
-  #   parsers: [:urlencoded, :multipart, :json],
-  #   pass: ["*/*"],
-  #   json_decoder: Phoenix.json_library()
-
-  # plug Plug.MethodOverride
-  # plug Plug.Head
-
-  # # TODO: probably we don't need a session here at all
-  # plug Plug.Session, API.Session.options()
-
-  # plug API.Router
 end
