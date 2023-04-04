@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.RemoveDevicesKeyRegeneratedAt do
+defmodule Domain.Repo.Migrations.RemoveDevicesKeyRegeneratedAt do
   use Ecto.Migration
 
   def change do

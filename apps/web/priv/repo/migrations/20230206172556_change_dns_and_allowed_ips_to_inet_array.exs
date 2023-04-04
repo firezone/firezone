@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.ChangeDnsAndAllowedIpsToInetArray do
+defmodule Domain.Repo.Migrations.ChangeDnsAndAllowedIpsToInetArray do
   use Ecto.Migration
 
   def change do

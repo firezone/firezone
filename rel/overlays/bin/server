@@ -2,10 +2,10 @@
 set -e
 source "$(dirname -- "$0")/bootstrap"
 
-./firezone eval FzHttp.Release.migrate
+./firezone eval Domain.Release.migrate
 
 if [ "$RESET_ADMIN_ON_BOOT" = "true" ]; then
-  ./firezone eval FzHttp.Release.create_admin_user
+  ./firezone eval Domain.Release.create_admin_user
 fi
 
 exec ./firezone start

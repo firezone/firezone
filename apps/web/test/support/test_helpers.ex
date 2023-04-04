@@ -1,9 +1,10 @@
-defmodule FzHttp.TestHelpers do
+# Removeme
+defmodule Web.TestHelpers do
   @moduledoc """
   Test setup helpers
   """
 
-  alias FzHttp.{
+  alias Domain.{
     ConnectivityChecksFixtures,
     DevicesFixtures,
     NotificationsFixtures,

@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.UpdateOnDeleteBehavior do
+defmodule Domain.Repo.Migrations.UpdateOnDeleteBehavior do
   use Ecto.Migration
 
   def change do

@@ -1,0 +1,28 @@
+<section class="section is-main-section">
+  <%= render(Web.SharedView, "flash.html", assigns) %>
+
+  <h4 class="title is-4">Details</h4>
+
+  <%= render(Web.SharedView, "device_details.html", assigns) %>
+</section>
+
+<%= if Domain.Devices.authorize_user_device_management(@current_user.id, @subject) == :ok do %>
+  <section class="section is-main-section">
+    <h4 class="title is-4">
+      Danger Zone
+    </h4>
+
+    <button
+      class="button is-danger"
+      id="delete-device-button"
+      phx-click="delete_device"
+      phx-value-device_id={@device.id}
+      data-confirm="Are you sure? This will immediately disconnect this device and remove all associated data."
+    >
+      <span class="icon is-small">
+        <i class="fas fa-trash"></i>
+      </span>
+      <span>Delete Device <%= @device.name %></span>
+    </button>
+  </section>
+<% end %>

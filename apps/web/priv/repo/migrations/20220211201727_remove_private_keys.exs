@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.RemovePrivateKeys do
+defmodule Domain.Repo.Migrations.RemovePrivateKeys do
   use Ecto.Migration
 
   def change do

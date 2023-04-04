@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.CreateRules do
+defmodule Domain.Repo.Migrations.CreateRules do
   use Ecto.Migration
 
   @create_query "CREATE TYPE action_enum AS ENUM ('drop', 'accept')"

@@ -1,4 +1,4 @@
-defmodule FzHttpWeb.MailerTestAdapter do
+defmodule Web.MailerTestAdapter do
   use Swoosh.Adapter
 
   @impl true

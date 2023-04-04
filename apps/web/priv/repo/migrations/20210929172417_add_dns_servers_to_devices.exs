@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.AddDnsServersToDevices do
+defmodule Domain.Repo.Migrations.AddDnsServersToDevices do
   use Ecto.Migration
 
   @default_dns_servers "1.1.1.1, 1.0.0.1"

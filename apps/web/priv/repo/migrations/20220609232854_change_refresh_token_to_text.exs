@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.ChangeRefreshTokenToText do
+defmodule Domain.Repo.Migrations.ChangeRefreshTokenToText do
   use Ecto.Migration
 
   def change do

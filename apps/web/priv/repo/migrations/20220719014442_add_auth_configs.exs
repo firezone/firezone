@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.AddAuthConfigs do
+defmodule Domain.Repo.Migrations.AddAuthConfigs do
   use Ecto.Migration
 
   def change do

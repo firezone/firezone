@@ -1,21 +1,21 @@
-defmodule FzHttpWeb.MailerCase do
+defmodule Web.MailerCase do
   @moduledoc """
   A case template for Mailers.
   """
   use ExUnit.CaseTemplate
-  use FzHttp.CaseTemplate
+  use Domain.CaseTemplate
 
   using do
     quote do
-      alias FzHttp.Repo
+      alias Domain.Repo
 
       import Ecto
       import Ecto.Changeset
       import Ecto.Query
-      import FzHttp.DataCase
-      import FzHttp.TestHelpers
+      import Domain.DataCase
+      import Domain.TestHelpers
 
-      use FzHttpWeb, :verified_routes
+      use Web, :verified_routes
     end
   end
 end

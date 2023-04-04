@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.AddConfigTokenToDevices do
+defmodule Domain.Repo.Migrations.AddConfigTokenToDevices do
   use Ecto.Migration
 
   def change do

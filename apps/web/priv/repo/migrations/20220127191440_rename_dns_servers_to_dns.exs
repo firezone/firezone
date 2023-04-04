@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.RenameDnsServersToDns do
+defmodule Domain.Repo.Migrations.RenameDnsServersToDns do
   use Ecto.Migration
 
   def change do

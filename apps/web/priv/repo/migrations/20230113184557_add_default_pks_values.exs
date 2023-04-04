@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.AddDefaultPksValues do
+defmodule Domain.Repo.Migrations.AddDefaultPksValues do
   use Ecto.Migration
 
   def change do

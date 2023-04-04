@@ -1,4 +1,4 @@
-defmodule FzHttpWeb.AcceptanceCase do
+defmodule Web.AcceptanceCase do
   use ExUnit.CaseTemplate
   alias Wallaby.Query
   import Wallaby.Browser
@@ -7,13 +7,13 @@ defmodule FzHttpWeb.AcceptanceCase do
     quote do
       # Import conveniences for testing with browser
       use Wallaby.DSL
-      use FzHttpWeb, :verified_routes
-      import FzHttpWeb.AcceptanceCase
-      alias FzHttp.Repo
-      alias FzHttpWeb.AcceptanceCase.{Vault, SimpleSAML, Auth}
+      use Web, :verified_routes
+      import Web.AcceptanceCase
+      alias Domain.Repo
+      alias Web.AcceptanceCase.{Vault, SimpleSAML, Auth}
 
       # The default endpoint for testing
-      @endpoint FzHttpWeb.Endpoint
+      @endpoint Web.Endpoint
       @moduletag :acceptance
       @moduletag timeout: 120_000
 
@@ -25,10 +25,10 @@ defmodule FzHttpWeb.AcceptanceCase do
   end
 
   setup tags do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(FzHttp.Repo)
+    :ok = Ecto.Adapters.SQL.Sandbox.checkout(Domain.Repo)
 
     unless tags[:async] do
-      Ecto.Adapters.SQL.Sandbox.mode(FzHttp.Repo, {:shared, self()})
+      Ecto.Adapters.SQL.Sandbox.mode(Domain.Repo, {:shared, self()})
     end
 
     headless? =
@@ -38,7 +38,7 @@ defmodule FzHttpWeb.AcceptanceCase do
         true
       end
 
-    metadata = Phoenix.Ecto.SQL.Sandbox.metadata_for(FzHttp.Repo, self())
+    metadata = Phoenix.Ecto.SQL.Sandbox.metadata_for(Domain.Repo, self())
     {:ok, session} = start_session(headless?, metadata)
 
     user_agent =

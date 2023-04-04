@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.TrimDNSFields do
+defmodule Domain.Repo.Migrations.TrimDNSFields do
   use Ecto.Migration
 
   def change do

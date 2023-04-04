@@ -8,12 +8,14 @@
 # to prevent having too many overrides in other files.
 import Config
 
-config :fz_http, supervision_tree_mode: :full
+###############################
+##### Domain ##################
+###############################
 
-config :fz_http, ecto_repos: [FzHttp.Repo]
-config :fz_http, sql_sandbox: false
+config :domain, ecto_repos: [Domain.Repo]
+config :domain, sql_sandbox: false
 
-config :fz_http, FzHttp.Repo,
+config :domain, Domain.Repo,
   hostname: "localhost",
   username: "postgres",
   password: "postgres",
@@ -22,28 +24,10 @@ config :fz_http, FzHttp.Repo,
   pool_size: :erlang.system_info(:logical_processors_available) * 2,
   queue_target: 500,
   queue_interval: 1000,
-  migration_timestamps: [type: :timestamptz]
+  migration_timestamps: [type: :timestamptz],
+  start_apps_before_migration: [:ssl]
 
-config :fz_http,
-  external_url: "http://localhost:13000/",
-  # TODO: use endpoint path instead?
-  path_prefix: "/"
-
-config :fz_http, FzHttpWeb.Endpoint,
-  url: [
-    scheme: "http",
-    host: "localhost",
-    port: 13000,
-    path: nil
-  ],
-  render_errors: [view: FzHttpWeb.ErrorView, accepts: ~w(html json)],
-  pubsub_server: FzHttp.PubSub,
-  secret_key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5SD",
-  live_view: [
-    signing_salt: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDejX"
-  ]
-
-config :fz_http,
+config :domain,
   wireguard_ipv4_enabled: true,
   wireguard_ipv4_network: %{__struct__: Postgrex.INET, address: {100, 64, 0, 0}, netmask: 10},
   wireguard_ipv4_address: %{__struct__: Postgrex.INET, address: {100, 64, 0, 1}, netmask: nil},
@@ -57,67 +41,62 @@ config :fz_http,
     __struct__: Postgrex.INET,
     address: {64768, 0, 0, 0, 0, 0, 0, 1},
     netmask: nil
-  }
+  },
+  wireguard_port: 51_820
 
-config :fz_http, FzHttp.SAML,
-  entity_id: "urn:firezone.dev:firezone-app",
-  certfile_path: Path.expand("../apps/fz_http/priv/cert/saml_selfsigned.pem", __DIR__),
-  keyfile_path: Path.expand("../apps/fz_http/priv/cert/saml_selfsigned_key.pem", __DIR__)
-
-config :fz_http,
-  external_trusted_proxies: [],
-  private_clients: [%{__struct__: Postgrex.INET, address: {172, 28, 0, 0}, netmask: 16}]
-
-config :fz_http, FzHttp.Telemetry,
+config :domain, Domain.Telemetry,
   enabled: true,
   id: "firezone-dev"
 
-config :fz_http,
-  cookie_secure: false,
-  cookie_signing_salt: "WjllcThpb2Y=",
-  cookie_encryption_salt: "M0EzM0R6NEMyaw=="
-
-config :fz_http, FzHttp.ConnectivityChecks,
+config :domain, Domain.ConnectivityChecks,
   http_client_options: [],
   enabled: true,
   interval: 43_200,
   url: "https://ping-dev.firez.one/"
 
-config :fz_http,
+config :domain,
   admin_email: "firezone@localhost",
   default_admin_password: "firezone1234"
 
-config :fz_http,
+config :domain,
   max_devices_per_user: 10
 
 ###############################
-##### FZ Firewall configs #####
+##### Web #####################
 ###############################
 
-config :fz_wall, cli: FzWall.CLI.Sandbox
+config :web,
+  external_url: "http://localhost:13000/",
+  # TODO: use endpoint path instead?
+  path_prefix: "/"
 
-config :fz_wall,
-  wireguard_ipv4_masquerade: true,
-  wireguard_ipv6_masquerade: true,
-  wireguard_interface_name: "wg-firezone",
-  nft_path: "nft",
-  egress_interface: "dummy"
+config :web, Web.Endpoint,
+  url: [
+    scheme: "http",
+    host: "localhost",
+    port: 13000,
+    path: nil
+  ],
+  render_errors: [view: Web.ErrorView, accepts: ~w(html json)],
+  pubsub_server: Domain.PubSub,
+  secret_key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5SD",
+  live_view: [
+    signing_salt: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDejX"
+  ]
 
-config :fz_wall,
-  port_based_rules_supported: true
+config :web, Web.SAML,
+  entity_id: "urn:firezone.dev:firezone-app",
+  certfile_path: Path.expand("../apps/web/priv/cert/saml_selfsigned.pem", __DIR__),
+  keyfile_path: Path.expand("../apps/web/priv/cert/saml_selfsigned_key.pem", __DIR__)
 
-###############################
-##### FZ VPN configs ##########
-###############################
+config :web,
+  cookie_secure: false,
+  cookie_signing_salt: "WjllcThpb2Y=",
+  cookie_encryption_salt: "M0EzM0R6NEMyaw=="
 
-# This will be changed per-env
-config :fz_vpn,
-  wireguard_private_key_path: "priv/wg_dev_private_key",
-  stats_push_service_enabled: true,
-  wireguard_interface_name: "wg-firezone",
-  wireguard_port: 51_820,
-  wg_adapter: FzVpn.Interface.WGAdapter.Live,
-  supervised_children: [FzVpn.Server, FzVpn.StatsPushService]
+config :web,
+  external_trusted_proxies: [],
+  private_clients: [%{__struct__: Postgrex.INET, address: {172, 28, 0, 0}, netmask: 16}]
 
 ###############################
 ##### Third-party configs #####
@@ -142,18 +121,18 @@ config :ueberauth, Ueberauth,
   ]
 
 # Guardian configuration
-config :fz_http, FzHttpWeb.Auth.HTML.Authentication,
-  issuer: "fz_http",
+config :web, Web.Auth.HTML.Authentication,
+  issuer: "web",
   # Generate with mix guardian.gen.secret
   secret_key: "GApJ4c4a/KJLrBePgTDUk0n67AbjCvI9qdypKZEaJFXl6s9H3uRcIhTt49Fij5UO"
 
-config :fz_http, FzHttpWeb.Auth.JSON.Authentication,
-  issuer: "fz_http",
+config :web, Web.Auth.JSON.Authentication,
+  issuer: "web",
   # Generate with mix guardian.gen.secret
   secret_key: "GApJ4c4a/KJLrBePgTDUk0n67AbjCvI9qdypKZEaJFXl6s9H3uRcIhTt49Fij5UO"
 
 # Configures the vault
-config :fz_http, FzHttp.Vault,
+config :domain, Domain.Vault,
   ciphers: [
     default: {
       Cloak.Ciphers.AES.GCM,
@@ -169,8 +148,8 @@ config :fz_http, FzHttp.Vault,
     }
   ]
 
-config :fz_http, FzHttpWeb.Mailer,
-  adapter: FzHttpWeb.Mailer.NoopAdapter,
+config :web, Web.Mailer,
+  adapter: Web.Mailer.NoopAdapter,
   from_email: "test@firez.one"
 
 config :samly, Samly.State, store: Samly.State.Session

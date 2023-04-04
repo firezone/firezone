@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.AddRulePortRange do
+defmodule Domain.Repo.Migrations.AddRulePortRange do
   use Ecto.Migration
 
   @create_query "CREATE TYPE port_type_enum AS ENUM ('tcp', 'udp')"

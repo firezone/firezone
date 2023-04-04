@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.AddNotNullToMfaMethods do
+defmodule Domain.Repo.Migrations.AddNotNullToMfaMethods do
   use Ecto.Migration
 
   def change do
@@ -11,8 +11,8 @@ defmodule FzHttp.Repo.Migrations.AddNotNullToMfaMethods do
     # Installations that have empty payload fields (which means MFA doesn't work for them)
     # will be unable to decrypt it and will get an error:
     #
-    #   ** (ArgumentError) cannot load `"..."`as type FzHttp.Encrypted.Map
-    #   for field :payload in %FzHttp.Auth.MFA.Method{...}
+    #   ** (ArgumentError) cannot load `"..."`as type Domain.Encrypted.Map
+    #   for field :payload in %Domain.Auth.MFA.Method{...}
     execute("""
     UPDATE mfa_methods
     SET payload = '#{Base.encode64(:crypto.strong_rand_bytes(32))}'

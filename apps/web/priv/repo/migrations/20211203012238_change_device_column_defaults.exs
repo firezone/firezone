@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.ChangeDeviceColumnDefaults do
+defmodule Domain.Repo.Migrations.ChangeDeviceColumnDefaults do
   @moduledoc """
   Removes the device defaults in favor of using values from the
   settings table.

@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.AddUserIdToRules do
+defmodule Domain.Repo.Migrations.AddUserIdToRules do
   use Ecto.Migration
 
   def change do

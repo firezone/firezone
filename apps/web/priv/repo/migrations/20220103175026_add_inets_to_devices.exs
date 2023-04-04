@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.AddInetsToDevices do
+defmodule Domain.Repo.Migrations.AddInetsToDevices do
   use Ecto.Migration
 
   @ipv4_prefix "10.3.2."

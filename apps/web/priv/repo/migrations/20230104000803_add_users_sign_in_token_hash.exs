@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.AddUsersSignInTokenHash do
+defmodule Domain.Repo.Migrations.AddUsersSignInTokenHash do
   use Ecto.Migration
 
   def change do

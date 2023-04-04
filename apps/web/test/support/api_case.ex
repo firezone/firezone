@@ -1,4 +1,4 @@
-defmodule FzHttpWeb.ApiCase do
+defmodule Web.ApiCase do
   @moduledoc """
   This module defines the test case to be used by
   tests that require setting up a connection.
@@ -11,31 +11,31 @@ defmodule FzHttpWeb.ApiCase do
   we enable the SQL sandbox, so changes done to the database
   are reverted at the end of every test. If you are using
   PostgreSQL, you can even run database tests asynchronously
-  by setting `use FzHttpWeb.ConnCase, async: true`, although
+  by setting `use Web.ConnCase, async: true`, although
   this option is not recommended for other databases.
   """
   use ExUnit.CaseTemplate
-  use FzHttp.CaseTemplate
+  use Domain.CaseTemplate
 
-  alias FzHttp.{
+  alias Domain.{
     ApiTokensFixtures,
     UsersFixtures
   }
 
   using do
     quote do
-      use FzHttpWeb, :verified_routes
+      use Web, :verified_routes
       # Import conveniences for testing with connections
       import Plug.Conn
       import Phoenix.ConnTest
-      import FzHttpWeb.ApiCase
-      import FzHttp.TestHelpers
+      import Web.ApiCase
+      import Domain.TestHelpers
       import Bureaucrat.Helpers
-      import FzHttpWeb.ApiCase
-      alias FzHttp.Repo
+      import Web.ApiCase
+      alias Domain.Repo
 
       # The default endpoint for testing
-      @endpoint FzHttpWeb.Endpoint
+      @endpoint Web.Endpoint
     end
   end
 
@@ -54,10 +54,10 @@ defmodule FzHttpWeb.ApiCase do
     user = UsersFixtures.create_user_with_role(:admin)
     api_token = ApiTokensFixtures.create_api_token(user: user)
 
-    {:ok, token, _claims} = FzHttpWeb.Auth.JSON.Authentication.fz_encode_and_sign(api_token)
+    {:ok, token, _claims} = Web.Auth.JSON.Authentication.fz_encode_and_sign(api_token)
 
     api_conn()
     |> Plug.Conn.put_req_header("authorization", "bearer #{token}")
-    |> FzHttpWeb.Auth.JSON.Pipeline.call([])
+    |> Web.Auth.JSON.Pipeline.call([])
   end
 end

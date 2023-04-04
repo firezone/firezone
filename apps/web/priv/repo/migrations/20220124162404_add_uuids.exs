@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.AddUuids do
+defmodule Domain.Repo.Migrations.AddUuids do
   use Ecto.Migration
 
   def change do

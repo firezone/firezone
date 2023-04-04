@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.ChangeMfaMethodsUniqueIndex do
+defmodule Domain.Repo.Migrations.ChangeMfaMethodsUniqueIndex do
   use Ecto.Migration
 
   def change do

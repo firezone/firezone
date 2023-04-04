@@ -1,4 +1,4 @@
-defmodule FzHttpWeb.AcceptanceCase.Vault do
+defmodule Web.AcceptanceCase.Vault do
   use Wallaby.DSL
 
   @vault_root_token "firezone"
@@ -50,7 +50,7 @@ defmodule FzHttpWeb.AcceptanceCase.Vault do
 
     {:ok, {200, params}} = request(:get, "identity/oidc/client/firezone")
 
-    FzHttp.Config.put_config!(
+    Domain.Config.put_config!(
       :openid_connect_providers,
       [
         %{

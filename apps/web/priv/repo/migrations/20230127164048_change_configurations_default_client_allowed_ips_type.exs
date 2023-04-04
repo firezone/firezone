@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.ChangeConfigurationsDefaultClientAllowedIpsType do
+defmodule Domain.Repo.Migrations.ChangeConfigurationsDefaultClientAllowedIpsType do
   use Ecto.Migration
 
   def change do

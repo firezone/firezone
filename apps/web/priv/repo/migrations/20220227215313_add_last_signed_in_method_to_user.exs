@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.AddLastSignedInMethodToUser do
+defmodule Domain.Repo.Migrations.AddLastSignedInMethodToUser do
   use Ecto.Migration
 
   def change do

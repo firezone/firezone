@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.CreateApiTokens do
+defmodule Domain.Repo.Migrations.CreateApiTokens do
   use Ecto.Migration
 
   def change do

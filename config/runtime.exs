@@ -1,9 +1,13 @@
 import Config
 
 if config_env() == :prod do
-  import FzHttp.Config, only: [compile_config!: 1]
+  import Domain.Config, only: [compile_config!: 1]
 
-  config :fz_http, FzHttp.Repo,
+  ###############################
+  ##### Domain ##################
+  ###############################
+
+  config :domain, Domain.Repo,
     database: compile_config!(:database_name),
     username: compile_config!(:database_user),
     hostname: compile_config!(:database_host),
@@ -23,11 +27,39 @@ if config_env() == :prod do
     path: external_url_path
   } = URI.parse(external_url)
 
-  config :fz_http,
+  config :domain,
+    wireguard_ipv4_enabled: compile_config!(:wireguard_ipv4_enabled),
+    wireguard_ipv4_network: compile_config!(:wireguard_ipv4_network),
+    wireguard_ipv4_address: compile_config!(:wireguard_ipv4_address),
+    wireguard_ipv6_enabled: compile_config!(:wireguard_ipv6_enabled),
+    wireguard_ipv6_network: compile_config!(:wireguard_ipv6_network),
+    wireguard_ipv6_address: compile_config!(:wireguard_ipv6_address)
+
+  config :domain, Domain.Telemetry,
+    enabled: compile_config!(:telemetry_enabled),
+    id: compile_config!(:telemetry_id)
+
+  config :domain, Domain.ConnectivityChecks,
+    http_client_options: compile_config!(:http_client_ssl_opts),
+    enabled: compile_config!(:connectivity_checks_enabled),
+    interval: compile_config!(:connectivity_checks_interval)
+
+  config :domain,
+    admin_email: compile_config!(:default_admin_email),
+    default_admin_password: compile_config!(:default_admin_password)
+
+  config :domain,
+    max_devices_per_user: compile_config!(:max_devices_per_user)
+
+  ###############################
+  ##### Web #####################
+  ###############################
+
+  config :web,
     external_url: external_url,
     path_prefix: external_url_path
 
-  config :fz_http, FzHttpWeb.Endpoint,
+  config :web, Web.Endpoint,
     server: true,
     http: [
       ip: compile_config!(:phoenix_listen_address).address,
@@ -46,84 +78,29 @@ if config_env() == :prod do
     ],
     check_origin: ["//127.0.0.1", "//localhost", "//#{external_url_host}"]
 
-  config :fz_http,
-    wireguard_ipv4_enabled: compile_config!(:wireguard_ipv4_enabled),
-    wireguard_ipv4_network: compile_config!(:wireguard_ipv4_network),
-    wireguard_ipv4_address: compile_config!(:wireguard_ipv4_address),
-    wireguard_ipv6_enabled: compile_config!(:wireguard_ipv6_enabled),
-    wireguard_ipv6_network: compile_config!(:wireguard_ipv6_network),
-    wireguard_ipv6_address: compile_config!(:wireguard_ipv6_address)
-
-  config :fz_http, FzHttp.SAML,
+  config :web, Web.SAML,
     entity_id: compile_config!(:saml_entity_id),
     certfile_path: compile_config!(:saml_certfile_path),
     keyfile_path: compile_config!(:saml_keyfile_path)
 
-  config :fz_http,
+  config :web,
     external_trusted_proxies: compile_config!(:phoenix_external_trusted_proxies),
     private_clients: compile_config!(:phoenix_private_clients)
 
-  config :fz_http, FzHttp.Telemetry,
-    enabled: compile_config!(:telemetry_enabled),
-    id: compile_config!(:telemetry_id)
-
-  config :fz_http,
+  config :web,
     cookie_secure: compile_config!(:phoenix_secure_cookies),
     cookie_signing_salt: compile_config!(:cookie_signing_salt),
     cookie_encryption_salt: compile_config!(:cookie_encryption_salt)
-
-  config :fz_http, FzHttp.ConnectivityChecks,
-    http_client_options: compile_config!(:http_client_ssl_opts),
-    enabled: compile_config!(:connectivity_checks_enabled),
-    interval: compile_config!(:connectivity_checks_interval)
-
-  config :fz_http,
-    admin_email: compile_config!(:default_admin_email),
-    default_admin_password: compile_config!(:default_admin_password)
-
-  config :fz_http,
-    max_devices_per_user: compile_config!(:max_devices_per_user)
-
-  ###############################
-  ##### FZ Firewall configs #####
-  ###############################
-
-  config :fz_wall, cli: FzWall.CLI.Live
-
-  config :fz_wall,
-    wireguard_ipv4_masquerade: compile_config!(:wireguard_ipv4_masquerade),
-    wireguard_ipv6_masquerade: compile_config!(:wireguard_ipv6_masquerade),
-    wireguard_interface_name: compile_config!(:wireguard_interface_name),
-    nft_path: compile_config!(:gateway_nft_path),
-    egress_interface: compile_config!(:gateway_egress_interface)
-
-  config :fz_wall,
-    port_based_rules_supported:
-      :os.version()
-      |> Tuple.to_list()
-      |> Enum.join(".")
-      |> Version.match?("> 5.6.8")
-
-  ###############################
-  ##### FZ VPN configs ##########
-  ###############################
-
-  config :fz_vpn,
-    wireguard_private_key_path: compile_config!(:wireguard_private_key_path),
-    wireguard_interface_name: compile_config!(:wireguard_interface_name),
-    wireguard_port: compile_config!(:wireguard_port)
 
   ###############################
   ##### Third-party configs #####
   ###############################
 
-  config :fz_http, FzHttpWeb.Auth.HTML.Authentication,
-    secret_key: compile_config!(:guardian_secret_key)
+  config :web, Web.Auth.HTML.Authentication, secret_key: compile_config!(:guardian_secret_key)
 
-  config :fz_http, FzHttpWeb.Auth.JSON.Authentication,
-    secret_key: compile_config!(:guardian_secret_key)
+  config :web, Web.Auth.JSON.Authentication, secret_key: compile_config!(:guardian_secret_key)
 
-  config :fz_http, FzHttp.Vault,
+  config :domain, Domain.Vault,
     ciphers: [
       default: {
         Cloak.Ciphers.AES.GCM,
@@ -151,8 +128,8 @@ if config_env() == :prod do
          uid_field: :email}
     ]
 
-  config :fz_http,
-         FzHttpWeb.Mailer,
+  config :web,
+         Web.Mailer,
          [
            adapter: compile_config!(:outbound_email_adapter),
            from_email: compile_config!(:outbound_email_from)

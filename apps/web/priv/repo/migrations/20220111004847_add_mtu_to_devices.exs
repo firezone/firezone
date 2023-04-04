@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.AddMtuToDevices do
+defmodule Domain.Repo.Migrations.AddMtuToDevices do
   use Ecto.Migration
 
   def change do

@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.OrderConnectivityChecksInsertedAtIndex do
+defmodule Domain.Repo.Migrations.OrderConnectivityChecksInsertedAtIndex do
   use Ecto.Migration
 
   def change do

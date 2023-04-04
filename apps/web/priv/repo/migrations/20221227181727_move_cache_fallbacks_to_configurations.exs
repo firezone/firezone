@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.MoveCacheFallbacksToConfigurations do
+defmodule Domain.Repo.Migrations.MoveCacheFallbacksToConfigurations do
   use Ecto.Migration
 
   def change do

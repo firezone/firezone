@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.MigrateDatetimesToTimestamptz do
+defmodule Domain.Repo.Migrations.MigrateDatetimesToTimestamptz do
   use Ecto.Migration
 
   def change do

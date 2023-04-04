@@ -6,5 +6,5 @@ Bureaucrat.start(
   default_path: "../../www/docs/reference/rest-api"
 )
 
-Ecto.Adapters.SQL.Sandbox.mode(FzHttp.Repo, :manual)
+Ecto.Adapters.SQL.Sandbox.mode(Domain.Repo, :manual)
 ExUnit.start(formatters: [ExUnit.CLIFormatter, JUnitFormatter, Bureaucrat.Formatter])

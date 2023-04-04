@@ -1,0 +1,38 @@
+<%= render(Web.SharedView, "heading.html",
+  page_subtitle: @page_subtitle,
+  page_title: @page_title
+) %>
+
+<section class="section is-main-section">
+  <div class="block">
+    <p>
+      <span class="icon">
+        <i class="mdi mdi-information-outline"></i>
+      </span>
+      Rules apply to all devices by default. User-scoped rules apply only to
+      devices belonging to that particular user.
+    </p>
+  </div>
+
+  <%= render(Web.SharedView, "flash.html", assigns) %>
+  <div class="tile is-ancestor">
+    <div class="tile is-parent">
+      <%= live_component(
+        Web.RuleLive.RuleListComponent,
+        title: "Allowlist",
+        header_icon: "mdi mdi-arrow-decision-outline",
+        id: :allowlist,
+        subject: @subject
+      ) %>
+    </div>
+    <div class="tile is-parent">
+      <%= live_component(
+        Web.RuleLive.RuleListComponent,
+        title: "Denylist",
+        header_icon: "mdi mdi-alert-octagon",
+        id: :denylist,
+        subject: @subject
+      ) %>
+    </div>
+  </div>
+</section>

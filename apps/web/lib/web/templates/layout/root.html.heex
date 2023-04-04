@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <%= csrf_meta_tag() %>
+    <.live_title>
+      <%= assigns[:page_title] || "Firezone" %>
+    </.live_title>
+    <link phx-track-static rel="stylesheet" href={static_path("/dist/root.css")} />
+    <script defer phx-track-static type="text/javascript" src={static_path("/dist/root.js")}>
+    </script>
+    <%= render(Web.SharedView, "head.html", assigns) %>
+    <!-- CSRF -->
+    <%= csrf_meta_tag() %>
+  </head>
+  <body>
+    <section class="section hero is-fullheight is-error-section">
+      <div id="app" class="hero-body">
+        <div class="container">
+          <div class="columns is-centered">
+            <div class="column is-two-thirds-tablet is-half-desktop is-one-third-widescreen">
+              <div class="block">
+                <div class="has-text-centered">
+                  <%= Web.LogoComponent.render(Domain.Config.fetch_config!(:logo)) %>
+                </div>
+              </div>
+              <%= @inner_content %>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </body>
+</html>

@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.ChangeUsersEmailToCitext do
+defmodule Domain.Repo.Migrations.ChangeUsersEmailToCitext do
   use Ecto.Migration
 
   def change do
