@@ -13,6 +13,8 @@ import Config
 ###############################
 
 config :domain, ecto_repos: [Domain.Repo]
+config :web, ecto_repos: [Domain.Repo]
+
 config :domain, sql_sandbox: false
 
 config :domain, Domain.Repo,
