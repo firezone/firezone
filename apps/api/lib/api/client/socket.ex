@@ -8,8 +8,17 @@ defmodule API.Client.Socket do
   ## Authentication
 
   @impl true
-  def connect(_params, socket, _connect_info) do
-    {:ok, socket}
+  def connect(%{"token" => token, "id" => external_id}, socket, connect_info) do
+    %{user_agent: user_agent, peer_data: peer_data} = connect_info
+
+    with {:ok, subject} <- Auth.fetch_subject_by_token(token),
+         {:ok, client} <- Clients.upsert_client(external_id, user_agent, peer_data, subject) do
+      {:ok, socket}
+    end
+  end
+
+  def connect(_params, _socket, _connect_info) do
+    {:error, :invalid}
   end
 
   @impl true

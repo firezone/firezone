@@ -11,7 +11,7 @@ defmodule API.Client.Channel do
   @impl true
   def handle_info(:after_join, socket) do
     {:ok, _} =
-      Presence.track(socket, socket.assigns.user.id, %{
+      Presence.track(socket, socket.assigns.client.id, %{
         online_at: System.system_time(:second)
       })
 

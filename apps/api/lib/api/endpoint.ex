@@ -8,18 +8,7 @@ defmodule API.Endpoint do
   plug Plug.RequestId
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
 
-  socket "/gateway", API.Gateway.Socket,
-    websocket: true,
-    longpoll: false,
-    connect_info: [:user_agent, :peer_data, :x_headers]
-
-  socket "/client", API.Client.Socket,
-    websocket: true,
-    longpoll: false,
-    connect_info: [:user_agent, :peer_data, :x_headers]
-
-  socket "/relay", API.Relay.Socket,
-    websocket: true,
-    longpoll: false,
-    connect_info: [:user_agent, :peer_data, :x_headers]
+  socket "/gateway", API.Gateway.Socket, API.Sockets.options()
+  socket "/client", API.Client.Socket, API.Sockets.options()
+  socket "/relay", API.Relay.Socket, API.Sockets.options()
 end

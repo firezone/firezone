@@ -11,7 +11,7 @@ defmodule API.Relay.Channel do
   @impl true
   def handle_info(:after_join, socket) do
     {:ok, _} =
-      Presence.track(socket, socket.assigns.user.id, %{
+      Presence.track(socket, socket.assigns.relay.id, %{
         online_at: System.system_time(:second)
       })
 
