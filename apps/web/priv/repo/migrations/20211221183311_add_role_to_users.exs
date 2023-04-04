@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.AddRoleToUsers do
+defmodule Domain.Repo.Migrations.AddRoleToUsers do
   use Ecto.Migration
 
   @create_query "CREATE TYPE role_enum AS ENUM ('unprivileged', 'admin')"

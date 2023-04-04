@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.AddRequireAuthForVpnSetting do
+defmodule Domain.Repo.Migrations.AddRequireAuthForVpnSetting do
   use Ecto.Migration
 
   @setting_key "security.require_auth_for_vpn_frequency"

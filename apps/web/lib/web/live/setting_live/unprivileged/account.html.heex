@@ -1,0 +1,132 @@
+<%= if @live_action == :change_password do %>
+  <%= live_modal(
+    Web.SettingLive.Unprivileged.AccountFormComponent,
+    return_to: ~p"/user_account",
+    title: "Change password",
+    id: "account-form-component",
+    current_user: @current_user,
+    subject: @subject,
+    form: "account-edit"
+  ) %>
+<% end %>
+
+<%= if @live_action == :register_mfa do %>
+  <.live_component
+    module={Web.MFA.RegisterComponent}
+    id="register-mfa"
+    user={@current_user}
+    return_to={~p"/user_account"}
+  />
+<% end %>
+
+<.link navigate={~p"/user_devices"}>
+  &lt;- Back to devices
+</.link>
+
+<%= render(Web.SharedView, "heading.html", page_title: @page_title) %>
+
+<section class="section is-main-section">
+  <%= render(Web.SharedView, "flash.html", assigns) %>
+
+  <div class="block">
+    <%= @page_subtitle %>
+  </div>
+
+  <div class="level">
+    <div class="level-left">
+      <h4 class="title is-4">Details</h4>
+    </div>
+
+    <div class="level-right">
+      <%= if @local_auth_enabled do %>
+        <.link replace={true} patch={~p"/user_account/change_password"} class="button">
+          <span class="icon is-small">
+            <i class="mdi mdi-pencil"></i>
+          </span>
+          <span>Change Password</span>
+        </.link>
+      <% end %>
+    </div>
+  </div>
+
+  <%= render(Web.SharedView, "user_details.html",
+    user: @current_user,
+    rules_path: nil,
+    subject: @subject
+  ) %>
+</section>
+
+<section class="section is-main-section">
+  <h4 class="title is-4">
+    Active Sessions
+  </h4>
+
+  <div class="block">
+    <p>
+      Your active Firezone web sessions. Each row corresponds to an open browser
+      tab connected to Firezone.
+    </p>
+  </div>
+
+  <div class="block">
+    <table class="table is-bordered is-hoverable is-striped is-fullwidth">
+      <thead>
+        <tr>
+          <th>Came Online</th>
+          <th>Last Signed In</th>
+          <th>Remote IP</th>
+          <th>User Agent</th>
+        </tr>
+      </thead>
+      <tbody>
+        <%= for {meta, index} <- Enum.with_index(@metas) do %>
+          <tr>
+            <td
+              data-timestamp={meta.online_at}
+              phx-hook="FormatTimestamp"
+              id={"meta-#{index}-online-at"}
+            >
+              …
+            </td>
+            <td
+              data-timestamp={meta.last_signed_in_at}
+              phx-hook="FormatTimestamp"
+              id={"meta-#{index}-last-signed-in-at"}
+            >
+              …
+            </td>
+            <td><%= meta.remote_ip || "-" %></td>
+            <td><%= meta.user_agent %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="section is-main-section">
+  <h4 class="title is-4">
+    Multi Factor Authentication
+  </h4>
+
+  <div class="block">
+    <p>
+      Your MFA methods are invoked when you login with email and password.
+    </p>
+  </div>
+
+  <div class="block">
+    <%= if length(@methods) > 0 do %>
+      <%= render(Web.SharedView, "mfa_methods_table.html", methods: @methods) %>
+    <% else %>
+      <div>No MFA methods added.</div>
+    <% end %>
+  </div>
+
+  <.link replace={true} patch={~p"/user_account/register_mfa"} class="button">
+    <span class="icon is-small">
+      <i class="mdi mdi-plus"></i>
+    </span>
+    <span>Add MFA Method</span>
+  </.link>
+</section>

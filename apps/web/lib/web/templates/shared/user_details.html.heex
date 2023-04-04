@@ -1,0 +1,62 @@
+<table class="table is-bordered is-hoverable is-striped is-fullwidth">
+  <tbody>
+    <tr>
+      <td><strong>Email</strong></td>
+      <td><%= @user.email %></td>
+    </tr>
+
+    <tr>
+      <td><strong>Role</strong></td>
+      <td><%= @user.role %></td>
+    </tr>
+
+    <tr>
+      <td><strong>Last Signed In</strong></td>
+      <td
+        id="last-signed-in-at"
+        data-timestamp={@user.last_signed_in_at}
+        phx-hook="FormatTimestamp"
+      >
+        …
+      </td>
+    </tr>
+
+    <tr>
+      <td><strong>Created</strong></td>
+      <td
+        id={"user-#{@user.id}-created-at"}
+        data-timestamp={@user.inserted_at}
+        phx-hook="FormatTimestamp"
+      >
+        …
+      </td>
+    </tr>
+
+    <tr>
+      <td><strong>Updated</strong></td>
+      <td
+        id={"user-#{@user.id}-updated-at"}
+        data-timestamp={@user.updated_at}
+        phx-hook="FormatTimestamp"
+      >
+        …
+      </td>
+    </tr>
+
+    <tr>
+      <td><strong>Number of Devices</strong></td>
+      <td><%= Domain.Devices.count_by_user_id(@user.id) %></td>
+    </tr>
+
+    <%= if @rules_path do %>
+      <%= with {:ok, rules_count} <- Domain.Rules.fetch_count_by_user_id(@user.id, @subject) do %>
+        <tr>
+          <td><strong>Number of Rules</strong></td>
+          <td>
+            <a href={"#{@rules_path}"}><%= rules_count %></a>
+          </td>
+        </tr>
+      <% end %>
+    <% end %>
+  </tbody>
+</table>

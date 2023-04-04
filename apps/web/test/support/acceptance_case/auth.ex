@@ -1,13 +1,13 @@
-defmodule FzHttpWeb.AcceptanceCase.Auth do
+defmodule Web.AcceptanceCase.Auth do
   import ExUnit.Assertions
 
   def fetch_session_cookie(session) do
-    options = FzHttpWeb.Session.options()
+    options = Web.Session.options()
 
     key = Keyword.fetch!(options, :key)
     encryption_salt = Keyword.fetch!(options, :encryption_salt)
     signing_salt = Keyword.fetch!(options, :signing_salt)
-    secret_key_base = FzHttpWeb.Endpoint.config(:secret_key_base)
+    secret_key_base = Web.Endpoint.config(:secret_key_base)
 
     with {:ok, cookie} <- fetch_cookie(session, key),
          encryption_key = Plug.Crypto.KeyGenerator.generate(secret_key_base, encryption_salt, []),
@@ -32,20 +32,20 @@ defmodule FzHttpWeb.AcceptanceCase.Auth do
     end
   end
 
-  def authenticate(session, %FzHttp.Users.User{} = user) do
-    subject = FzHttp.Auth.fetch_subject!(user, "127.0.0.1", "AcceptanceCase")
+  def authenticate(session, %Domain.Users.User{} = user) do
+    subject = Domain.Auth.fetch_subject!(user, "127.0.0.1", "AcceptanceCase")
     authenticate(session, subject)
   end
 
-  def authenticate(session, %FzHttp.Auth.Subject{} = subject) do
-    options = FzHttpWeb.Session.options()
+  def authenticate(session, %Domain.Auth.Subject{} = subject) do
+    options = Web.Session.options()
 
     key = Keyword.fetch!(options, :key)
     encryption_salt = Keyword.fetch!(options, :encryption_salt)
     signing_salt = Keyword.fetch!(options, :signing_salt)
-    secret_key_base = FzHttpWeb.Endpoint.config(:secret_key_base)
+    secret_key_base = Web.Endpoint.config(:secret_key_base)
 
-    with {:ok, token, _claims} <- FzHttpWeb.Auth.HTML.Authentication.encode_and_sign(subject) do
+    with {:ok, token, _claims} <- Web.Auth.HTML.Authentication.encode_and_sign(subject) do
       encryption_key = Plug.Crypto.KeyGenerator.generate(secret_key_base, encryption_salt, [])
       signing_key = Plug.Crypto.KeyGenerator.generate(secret_key_base, signing_salt, [])
 
@@ -71,7 +71,7 @@ defmodule FzHttpWeb.AcceptanceCase.Auth do
   def assert_unauthenticated(session) do
     with {:ok, cookie} <- fetch_session_cookie(session) do
       if token = cookie["guardian_default_token"] do
-        {:ok, claims} = FzHttpWeb.Auth.HTML.Authentication.decode_and_verify(token)
+        {:ok, claims} = Web.Auth.HTML.Authentication.decode_and_verify(token)
         flunk("User is authenticated, claims: #{inspect(claims)}")
       else
         session
@@ -84,9 +84,9 @@ defmodule FzHttpWeb.AcceptanceCase.Auth do
   def assert_authenticated(session, user) do
     with {:ok, cookie} <- fetch_session_cookie(session),
          {:ok, claims} <-
-           FzHttpWeb.Auth.HTML.Authentication.decode_and_verify(cookie["guardian_default_token"]),
+           Web.Auth.HTML.Authentication.decode_and_verify(cookie["guardian_default_token"]),
          {:ok, subject} <-
-           FzHttpWeb.Auth.HTML.Authentication.resource_from_claims(claims) do
+           Web.Auth.HTML.Authentication.resource_from_claims(claims) do
       assert elem(subject.actor, 1).id == user.id
       session
     else

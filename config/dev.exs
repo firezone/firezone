@@ -1,13 +1,21 @@
 import Config
 
-config :fz_http, FzHttp.Repo,
+###############################
+##### Domain ##################
+###############################
+
+config :domain, Domain.Repo,
   database: System.get_env("DATABASE_NAME", "firezone_dev"),
   username: System.get_env("DATABASE_USER", "postgres"),
   hostname: System.get_env("DATABASE_HOST", "localhost"),
   port: String.to_integer(System.get_env("DATABASE_PORT", "5432")),
   password: System.get_env("DATABASE_PASSWORD", "postgres")
 
-config :fz_http, FzHttpWeb.Endpoint,
+###############################
+##### Web #####################
+###############################
+
+config :web, Web.Endpoint,
   http: [port: 13000],
   debug_errors: true,
   code_reloader: true,
@@ -25,40 +33,6 @@ config :fz_http, FzHttpWeb.Endpoint,
   ]
 
 ###############################
-##### FZ Firewall configs #####
-###############################
-
-get_egress_interface = fn ->
-  egress_interface_cmd =
-    case :os.type() do
-      {:unix, :darwin} -> "netstat -rn -finet | grep '^default' | awk '{print $NF;}'"
-      {_os_family, _os_name} -> "route | grep '^default' | grep -o '[^ ]*$'"
-    end
-
-  System.cmd("/bin/sh", ["-c", egress_interface_cmd], stderr_to_stdout: true)
-  |> elem(0)
-  |> String.trim()
-end
-
-egress_interface = System.get_env("EGRESS_INTERFACE") || get_egress_interface.()
-
-{fz_wall_cli_module, _} =
-  Code.eval_string(System.get_env("FZ_WALL_CLI_MODULE", "FzWall.CLI.Sandbox"))
-
-config :fz_wall,
-  nft_path: System.get_env("NFT_PATH", "nft"),
-  egress_interface: egress_interface,
-  cli: fz_wall_cli_module
-
-###############################
-##### FZ VPN configs ##########
-###############################
-
-config :fz_vpn,
-  wg_adapter: FzVpn.Interface.WGAdapter.Sandbox,
-  supervised_children: [FzVpn.Interface.WGAdapter.Sandbox, FzVpn.Server, FzVpn.StatsPushService]
-
-###############################
 ##### Third-party configs #####
 ###############################
 
@@ -72,4 +46,4 @@ config :phoenix, :stacktrace_depth, 20
 # Initialize plugs at runtime for faster development compilation
 config :phoenix, :plug_init_mode, :runtime
 
-config :fz_http, FzHttpWeb.Mailer, adapter: Swoosh.Adapters.Local
+config :web, Web.Mailer, adapter: Swoosh.Adapters.Local

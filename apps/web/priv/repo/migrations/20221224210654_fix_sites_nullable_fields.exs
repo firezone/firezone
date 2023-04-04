@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.FixSitesNullableFields do
+defmodule Domain.Repo.Migrations.FixSitesNullableFields do
   use Ecto.Migration
 
   require Logger

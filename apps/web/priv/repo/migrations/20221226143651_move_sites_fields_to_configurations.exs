@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.MoveSitesFieldsToConfigurations do
+defmodule Domain.Repo.Migrations.MoveSitesFieldsToConfigurations do
   use Ecto.Migration
 
   @doc """

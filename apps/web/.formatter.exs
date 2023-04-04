@@ -4,7 +4,6 @@
     assert_unauthenticated: 1
   ],
   import_deps: [
-    :ecto,
     :phoenix,
     :phoenix_live_view
   ],

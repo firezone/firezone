@@ -1,4 +1,4 @@
-defmodule FzHttpWeb.AcceptanceCase.SimpleSAML do
+defmodule Web.AcceptanceCase.SimpleSAML do
   @endpoint "http://localhost:8400"
 
   def fetch_metadata!(endpoint) do
@@ -10,7 +10,7 @@ defmodule FzHttpWeb.AcceptanceCase.SimpleSAML do
   def setup_saml_provider(attrs_overrides \\ %{}) do
     metadata = fetch_metadata!(@endpoint)
 
-    FzHttp.Config.put_config!(:saml_identity_providers, [
+    Domain.Config.put_config!(:saml_identity_providers, [
       %{
         "id" => "mysamlidp",
         "label" => "test-saml-idp",

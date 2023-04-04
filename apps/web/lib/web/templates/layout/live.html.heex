@@ -1,0 +1,7 @@
+<%= if @path do %>
+  <Web.SidebarComponent.render path={@path} />
+<% end %>
+
+<div>
+  <%= @inner_content %>
+</div>

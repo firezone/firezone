@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.AddPskToDevices do
+defmodule Domain.Repo.Migrations.AddPskToDevices do
   use Ecto.Migration
 
   def change do

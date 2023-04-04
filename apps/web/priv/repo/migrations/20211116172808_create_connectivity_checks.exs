@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.CreateConnectivityChecks do
+defmodule Domain.Repo.Migrations.CreateConnectivityChecks do
   use Ecto.Migration
 
   def change do

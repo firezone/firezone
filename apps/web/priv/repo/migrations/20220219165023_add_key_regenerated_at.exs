@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.AddKeyRegeneratedAt do
+defmodule Domain.Repo.Migrations.AddKeyRegeneratedAt do
   use Ecto.Migration
 
   def change do

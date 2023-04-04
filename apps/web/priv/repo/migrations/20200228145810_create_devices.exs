@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.CreateDevices do
+defmodule Domain.Repo.Migrations.CreateDevices do
   use Ecto.Migration
 
   @default_allowed_ips "0.0.0.0/0,::/0"

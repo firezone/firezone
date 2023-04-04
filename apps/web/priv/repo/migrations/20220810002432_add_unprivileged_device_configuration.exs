@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.AddUnprivilegedDeviceConfiguration do
+defmodule Domain.Repo.Migrations.AddUnprivilegedDeviceConfiguration do
   use Ecto.Migration
 
   def change do

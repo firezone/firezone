@@ -1,0 +1,32 @@
+<div>
+  <.form
+    :let={f}
+    for={@changeset}
+    x-autocomplete="off"
+    id="account-edit"
+    phx-target={@myself}
+    phx-submit="save"
+  >
+    <div class="block">
+      <p>Enter new password below.</p>
+    </div>
+
+    <%= render(
+      Web.SharedView,
+      "password_field.html",
+      context: f,
+      field: :password,
+      autocomplete: "new-password",
+      label: "Password"
+    ) %>
+
+    <%= render(
+      Web.SharedView,
+      "password_field.html",
+      context: f,
+      field: :password_confirmation,
+      autocomplete: "new-password",
+      label: "Password Confirmation"
+    ) %>
+  </.form>
+</div>

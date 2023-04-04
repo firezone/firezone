@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.CreateMfaMethods do
+defmodule Domain.Repo.Migrations.CreateMfaMethods do
   use Ecto.Migration
 
   @create_query "CREATE TYPE mfa_type_enum AS ENUM ('totp', 'native', 'portable')"

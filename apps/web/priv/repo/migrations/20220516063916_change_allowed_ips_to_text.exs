@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.ChangeAllowedIpsToText do
+defmodule Domain.Repo.Migrations.ChangeAllowedIpsToText do
   use Ecto.Migration
 
   def up do

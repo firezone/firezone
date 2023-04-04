@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.AddDeviceRuleUserNotifyTriggers do
+defmodule Domain.Repo.Migrations.AddDeviceRuleUserNotifyTriggers do
   use Ecto.Migration
 
   def change do

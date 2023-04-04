@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.CreateOidcConnections do
+defmodule Domain.Repo.Migrations.CreateOidcConnections do
   use Ecto.Migration
 
   def change do

@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.RenameUseSiteToUseDefault do
+defmodule Domain.Repo.Migrations.RenameUseSiteToUseDefault do
   use Ecto.Migration
 
   def change do

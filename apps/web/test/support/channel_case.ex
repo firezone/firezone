@@ -1,4 +1,4 @@
-defmodule FzHttpWeb.ChannelCase do
+defmodule Web.ChannelCase do
   @moduledoc """
   This module defines the test case to be used by
   channel tests.
@@ -11,21 +11,21 @@ defmodule FzHttpWeb.ChannelCase do
   we enable the SQL sandbox, so changes done to the database
   are reverted at the end of every test. If you are using
   PostgreSQL, you can even run database tests asynchronously
-  by setting `use FzHttpWeb.ChannelCase, async: true`, although
+  by setting `use Web.ChannelCase, async: true`, although
   this option is not recommended for other databases.
   """
 
   use ExUnit.CaseTemplate
-  use FzHttp.CaseTemplate
+  use Domain.CaseTemplate
 
   using do
     quote do
       # Import conveniences for testing with channels
       import Phoenix.ChannelTest
-      import FzHttp.TestHelpers
+      import Domain.TestHelpers
 
       # The default endpoint for testing
-      @endpoint FzHttpWeb.Endpoint
+      @endpoint Web.Endpoint
     end
   end
 end

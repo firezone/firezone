@@ -1,11 +1,11 @@
 defmodule DocsGenerator do
-  alias FzHttp.Config.Definition
+  alias Domain.Config.Definition
 
   @keep_req_headers ["authorization"]
   @keep_resp_headers ["content-type", "location"]
 
   def write(conns, path) do
-    write_config_doc!(FzHttp.Config.Definitions, "../../www/docs/reference/env-vars.mdx")
+    write_config_doc!(Domain.Config.Definitions, "../../www/docs/reference/env-vars.mdx")
     File.mkdir_p!(path)
     write_api_doc!(conns, path)
   end
@@ -68,7 +68,7 @@ defmodule DocsGenerator do
         default = Keyword.get(resolve_opts, :default)
         required? = if Keyword.has_key?(resolve_opts, :default), do: false, else: true
 
-        key = FzHttp.Config.Resolver.env_key(key)
+        key = Domain.Config.Resolver.env_key(key)
         key = if required?, do: "**#{key}**", else: key
 
         doc = doc_env(doc)
@@ -114,13 +114,13 @@ defmodule DocsGenerator do
     {"One of #{values}", "`#{default}`"}
   end
 
-  defp type_and_default(FzHttp.Types.CIDR, default),
+  defp type_and_default(Domain.Types.CIDR, default),
     do: {"CIDR", default}
 
-  defp type_and_default(FzHttp.Types.IP, default),
+  defp type_and_default(Domain.Types.IP, default),
     do: {"IP", default}
 
-  defp type_and_default(FzHttp.Types.IPPort, default),
+  defp type_and_default(Domain.Types.IPPort, default),
     do: {"IP with port", default}
 
   defp type_and_default(:integer, default),

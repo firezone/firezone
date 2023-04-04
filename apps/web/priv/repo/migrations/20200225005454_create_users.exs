@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.CreateUsers do
+defmodule Domain.Repo.Migrations.CreateUsers do
   use Ecto.Migration
 
   def change do

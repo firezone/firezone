@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.AddSamlIdentityProvidersToConfiguration do
+defmodule Domain.Repo.Migrations.AddSamlIdentityProvidersToConfiguration do
   use Ecto.Migration
 
   def change do

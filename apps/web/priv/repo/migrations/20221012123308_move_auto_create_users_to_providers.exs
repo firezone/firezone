@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.MoveAutoCreateUsersToProviders do
+defmodule Domain.Repo.Migrations.MoveAutoCreateUsersToProviders do
   @moduledoc """
   I know this migration is hacky, but doing this in pure SQL is non-trivial
   for my level of Postgres-fu, so this will have to do.
@@ -23,7 +23,7 @@ defmodule FzHttp.Repo.Migrations.MoveAutoCreateUsersToProviders do
   #   }
   # ]
   defp oid_provider_keys do
-    FzHttp.Repo.all(from("configurations", select: [:openid_connect_providers]))
+    Domain.Repo.all(from("configurations", select: [:openid_connect_providers]))
     # only one configuration at this point
     |> List.first()
     |> Map.get(:openid_connect_providers)
@@ -31,7 +31,7 @@ defmodule FzHttp.Repo.Migrations.MoveAutoCreateUsersToProviders do
   end
 
   defp saml_provider_keys do
-    FzHttp.Repo.all(from("configurations", select: [:saml_identity_providers]))
+    Domain.Repo.all(from("configurations", select: [:saml_identity_providers]))
     # only one configuration at this point
     |> List.first()
     |> Map.get(:saml_identity_providers)
@@ -42,7 +42,7 @@ defmodule FzHttp.Repo.Migrations.MoveAutoCreateUsersToProviders do
   defp keys(map), do: Map.keys(map)
 
   defp cur_oidc_create_users do
-    FzHttp.Repo.all(from("configurations", select: [:auto_create_oidc_users]))
+    Domain.Repo.all(from("configurations", select: [:auto_create_oidc_users]))
     |> List.first()
     |> Map.get(:auto_create_oidc_users)
   end

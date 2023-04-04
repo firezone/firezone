@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.AddPersistentKeepalives do
+defmodule Domain.Repo.Migrations.AddPersistentKeepalives do
   use Ecto.Migration
 
   def change do

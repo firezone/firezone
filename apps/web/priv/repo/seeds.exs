@@ -5,12 +5,12 @@
 # Inside the script, you can read and write to any of your
 # repositories directly:
 #
-#     FzHttp.Repo.insert!(%FzHttp.SomeSchema{})
+#     Domain.Repo.insert!(%Domain.SomeSchema{})
 #
 # We recommend using the bang functions (`insert!`, `update!`
 # and so on) as they will fail if something goes wrong.
 
-alias FzHttp.{
+alias Domain.{
   Repo,
   ConnectivityChecks,
   Devices,
@@ -217,9 +217,9 @@ Rules.create_rule(%{
   destination: "1.2.3.4"
 })
 
-FzHttp.Config.put_config!(:default_client_dns, ["4.3.2.1", "1.2.3.4"])
+Domain.Config.put_config!(:default_client_dns, ["4.3.2.1", "1.2.3.4"])
 
-FzHttp.Config.put_config!(
+Domain.Config.put_config!(
   :default_client_allowed_ips,
   [
     %Postgrex.INET{address: {10, 0, 0, 1}, netmask: 20},
@@ -228,7 +228,7 @@ FzHttp.Config.put_config!(
   ]
 )
 
-FzHttp.Config.put_config!(
+Domain.Config.put_config!(
   :openid_connect_providers,
   [
     %{

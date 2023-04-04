@@ -1,6 +1,8 @@
 import Config
 
-config :fz_http, supervision_tree_mode: :test
+###############################
+##### Domain ##################
+###############################
 
 partition_suffix =
   if partition = System.get_env("MIX_TEST_PARTITION") do
@@ -9,34 +11,29 @@ partition_suffix =
     ""
   end
 
-config :fz_http, sql_sandbox: true
+config :domain, sql_sandbox: true
 
-config :fz_http, FzHttp.Repo,
+config :domain, Domain.Repo,
   database: "firezone_test#{partition_suffix}",
   pool: Ecto.Adapters.SQL.Sandbox,
   queue_target: 1000
 
-config :fz_http, FzHttpWeb.Endpoint,
+config :domain, Domain.Telemetry, enabled: false
+
+config :domain, Domain.ConnectivityChecks, enabled: false
+
+###############################
+##### Web #####################
+###############################
+
+config :web, Web.Endpoint,
   http: [port: 13000],
   server: true
-
-config :fz_http, FzHttp.Telemetry, enabled: false
-
-config :fz_http, FzHttp.ConnectivityChecks, enabled: false
-
-###############################
-##### FZ VPN configs ##########
-###############################
-
-config :fz_vpn,
-  # XXX: Bump test coverage by adding a stubbed out module for FzVpn.StatsPushService
-  supervised_children: [FzVpn.Interface.WGAdapter.Sandbox, FzVpn.Server],
-  wg_adapter: FzVpn.Interface.WGAdapter.Sandbox
 
 ###############################
 ##### Third-party configs #####
 ###############################
-config :fz_http, FzHttpWeb.Mailer, adapter: FzHttpWeb.MailerTestAdapter
+config :web, Web.Mailer, adapter: Web.MailerTestAdapter
 
 config :logger, level: :warn
 

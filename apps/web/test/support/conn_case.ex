@@ -1,4 +1,4 @@
-defmodule FzHttpWeb.ConnCase do
+defmodule Web.ConnCase do
   @moduledoc """
   This module defines the test case to be used by
   tests that require setting up a connection.
@@ -11,29 +11,29 @@ defmodule FzHttpWeb.ConnCase do
   we enable the SQL sandbox, so changes done to the database
   are reverted at the end of every test. If you are using
   PostgreSQL, you can even run database tests asynchronously
-  by setting `use FzHttpWeb.ConnCase, async: true`, although
+  by setting `use Web.ConnCase, async: true`, although
   this option is not recommended for other databases.
   """
   use ExUnit.CaseTemplate
-  use FzHttp.CaseTemplate
+  use Domain.CaseTemplate
 
-  alias FzHttp.UsersFixtures
-  alias FzHttpWeb.Auth.HTML.Authentication
+  alias Domain.UsersFixtures
+  alias Web.Auth.HTML.Authentication
 
   using do
     quote do
       # Import conveniences for testing with connections
-      alias FzHttp.Repo
+      alias Domain.Repo
       import Plug.Conn
       import Phoenix.ConnTest
       import Phoenix.LiveViewTest
-      import FzHttp.TestHelpers
-      import FzHttpWeb.ConnCase
+      import Domain.TestHelpers
+      import Web.ConnCase
 
       # The default endpoint for testing
-      @endpoint FzHttpWeb.Endpoint
+      @endpoint Web.Endpoint
 
-      use FzHttpWeb, :verified_routes
+      use Web, :verified_routes
 
       def current_user(test_conn) do
         %{actor: {:user, user}} =

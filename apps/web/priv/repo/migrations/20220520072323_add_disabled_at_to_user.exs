@@ -1,4 +1,4 @@
-defmodule FzHttp.Repo.Migrations.AddDisabledAtToUser do
+defmodule Domain.Repo.Migrations.AddDisabledAtToUser do
   use Ecto.Migration
 
   def change do
