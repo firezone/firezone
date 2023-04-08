@@ -1,1 +1,0 @@
-"use strict";(self.webpackChunkfirezone_docs=self.webpackChunkfirezone_docs||[]).push([[6490],{863:e=>{e.exports=JSON.parse('{"permalink":"/blog/tags/off-site","page":1,"postsPerPage":10,"totalPages":1,"totalCount":1,"blogDescription":"Blog","blogTitle":"Blog"}')}}]);
