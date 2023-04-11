@@ -63,6 +63,8 @@ defmodule Domain.MixProject do
       {:nimble_totp, "~> 0.2"},
 
       # Other deps
+      # This is needed for protocol consolidation to work
+      {:phoenix, "~> 1.7", runtime: false},
       {:telemetry, "~> 1.0"},
       {:posthog, "~> 0.1"},
 

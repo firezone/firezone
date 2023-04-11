@@ -13,6 +13,7 @@ defmodule API.ChannelCase do
       # Import conveniences for testing with channels
       import Phoenix.ChannelTest
       import API.ChannelCase
+      alias Domain.Repo
 
       # The default endpoint for testing
       @endpoint API.Endpoint

@@ -1,3 +1,4 @@
+# TODO: AuthFixtures - name module after context name
 defmodule Domain.SubjectFixtures do
   alias Domain.Auth
   alias Domain.UsersFixtures
@@ -10,7 +11,7 @@ defmodule Domain.SubjectFixtures do
   end
 
   def create_subject(user \\ UsersFixtures.create_user_with_role(:admin)) do
-    Domain.Auth.fetch_subject!(user, {127, 0, 0, 1}, "DummyAgent (1.0.0)")
+    Domain.Auth.fetch_subject!(user, {100, 64, 100, 58}, "iOS/12.5 (iPhone) connlib/0.7.412")
   end
 
   def remove_permissions(%Auth.Subject{} = subject) do

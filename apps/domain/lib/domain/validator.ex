@@ -282,6 +282,20 @@ defmodule Domain.Validator do
   end
 
   @doc """
+  Applies a validation function for every elements of the list.
+
+  The validation function should take two arguments: field name and element value,
+  and return the same structure as `validate_change/3`.
+  """
+  def validate_list_elements(%Ecto.Changeset{} = changeset, field, callback) do
+    validate_change(changeset, field, fn _field, values ->
+      values
+      |> Enum.flat_map(&callback.(field, &1))
+      |> Enum.uniq()
+    end)
+  end
+
+  @doc """
   Removes change for a given field and original value from it from `changeset.params`.
 
   Even though `changeset.params` considered to be a private field it leaks values even
@@ -304,14 +318,15 @@ defmodule Domain.Validator do
 
   def put_default_value(changeset, field, value) do
     case fetch_field(changeset, field) do
-      {:data, nil} -> put_change(changeset, field, maybe_apply(value))
-      :error -> put_change(changeset, field, maybe_apply(value))
+      {:data, nil} -> put_change(changeset, field, maybe_apply(changeset, value))
+      :error -> put_change(changeset, field, maybe_apply(changeset, value))
       _ -> changeset
     end
   end
 
-  defp maybe_apply(fun) when is_function(fun, 0), do: fun.()
-  defp maybe_apply(value), do: value
+  defp maybe_apply(_changeset, fun) when is_function(fun, 0), do: fun.()
+  defp maybe_apply(changeset, fun) when is_function(fun, 1), do: fun.(changeset)
+  defp maybe_apply(_changeset, value), do: value
 
   def trim_change(changeset, field) do
     update_change(changeset, field, fn

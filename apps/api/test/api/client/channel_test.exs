@@ -19,6 +19,10 @@ defmodule API.Client.ChannelTest do
     assert is_number(online_at)
   end
 
+  test "sends list of resources after join" do
+    assert_push "resources", %{resources: []}
+  end
+
   # test "ping replies with status ok", %{socket: socket} do
   #   ref = push(socket, "ping", %{"hello" => "there"})
   #   assert_reply ref, :ok, %{"hello" => "there"}

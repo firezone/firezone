@@ -16,27 +16,10 @@ defmodule API.Sockets do
     ]
   end
 
+  @spec handle_error(Plug.Conn.t(), :invalid | :rate_limit | :unauthenticated) :: Plug.Conn.t()
   def handle_error(conn, :unauthenticated), do: Plug.Conn.send_resp(conn, 403, "Forbidden")
   def handle_error(conn, :invalid), do: Plug.Conn.send_resp(conn, 422, "Unprocessable Entity")
   def handle_error(conn, :rate_limit), do: Plug.Conn.send_resp(conn, 429, "Too many requests")
-
-  defp parse_ip(connect_info) do
-    case get_ip_address(connect_info) do
-      ip when ip in ["", nil] ->
-        :x_forward_for_header_issue
-
-      ip when is_tuple(ip) ->
-        :inet.ntoa(ip) |> List.to_string()
-    end
-  end
-
-  defp get_ip_address(%{peer_data: %{address: address}, x_headers: []}) do
-    address
-  end
-
-  defp get_ip_address(%{x_headers: x_headers}) do
-    RemoteIp.from(x_headers, HeaderHelpers.remote_ip_opts())
-  end
 
   # if Mix.env() == :test do
   #     defp maybe_allow_sandbox_access(%{user_agent: user_agent}) do
