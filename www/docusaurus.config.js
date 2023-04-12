@@ -48,7 +48,19 @@ const config = {
     },
   ],
 
-  plugins: [],
+  plugins: [
+    [
+      '@docusaurus/plugin-client-redirects',
+      {
+        redirects: [
+          {
+            to: '/contact/newsletter',
+            from: '/sales',
+          },
+        ],
+      },
+    ],
+  ],
 
   themes: [],
 
