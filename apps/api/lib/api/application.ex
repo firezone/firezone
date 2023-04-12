@@ -4,9 +4,6 @@ defmodule API.Application do
   @impl true
   def start(_type, _args) do
     children = [
-      API.Client.Presence,
-      API.Gateway.Presence,
-      API.Relay.Presence,
       API.Telemetry,
       API.Endpoint
     ]

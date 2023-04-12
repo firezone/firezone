@@ -1,6 +1,6 @@
 defmodule API.Gateway.Channel do
   use API, :channel
-  alias API.Gateway.Presence
+  alias Domain.Gateways.Presence
 
   @impl true
   def join("gateway", _payload, socket) do

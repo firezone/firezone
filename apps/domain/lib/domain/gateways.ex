@@ -1,7 +1,20 @@
 defmodule Domain.Gateways do
+  use Supervisor
   alias Domain.{Repo, Auth, Validator}
   alias Domain.{Users}
   alias Domain.Gateways.{Authorizer, Gateway, Group, Token}
+
+  def start_link(opts) do
+    Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
+  end
+
+  def init(_opts) do
+    children = [
+      Domain.Gateways.Presence
+    ]
+
+    Supervisor.init(children, strategy: :one_for_one)
+  end
 
   def fetch_group_by_id(id, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()),

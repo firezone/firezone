@@ -1,7 +1,20 @@
 defmodule Domain.Clients do
+  use Supervisor
   alias Domain.{Repo, Auth, Validator}
   alias Domain.{Users}
   alias Domain.Clients.{Client, Authorizer}
+
+  def start_link(opts) do
+    Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
+  end
+
+  def init(_opts) do
+    children = [
+      Domain.Clients.Presence
+    ]
+
+    Supervisor.init(children, strategy: :one_for_one)
+  end
 
   def count do
     Client.Query.all()

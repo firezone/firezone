@@ -20,6 +20,9 @@ defmodule Domain.Application do
       # Application
       {Domain.Notifications, name: Domain.Notifications},
       # Domain.Auth,
+      Domain.Relays,
+      Domain.Gateways,
+      Domain.Clients,
 
       # Observability
       Domain.ConnectivityChecks,

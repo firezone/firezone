@@ -1,6 +1,6 @@
 defmodule API.Client.Channel do
   use API, :channel
-  alias API.Client.Presence
+  alias Domain.Clients.Presence
 
   # TODO: we need to self-terminate channel once the user token is set to expire, preventing
   # users from holding infinite session for if they want to keep websocket open for a while
