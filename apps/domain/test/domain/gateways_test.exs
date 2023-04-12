@@ -262,6 +262,22 @@ defmodule Domain.GatewaysTest do
       assert deleted.deleted_at
     end
 
+    test "deletes all tokens when group is deleted", %{subject: subject} do
+      group = GatewaysFixtures.create_group()
+      GatewaysFixtures.create_token(group: group)
+      GatewaysFixtures.create_token()
+
+      assert {:ok, deleted} = delete_group(group, subject)
+      assert deleted.deleted_at
+
+      tokens =
+        Gateways.Token
+        |> Repo.all()
+        |> Enum.filter(fn token -> token.group_id == group.id end)
+
+      assert Enum.all?(tokens, & &1.deleted_at)
+    end
+
     test "returns error when subject has no permission to delete groups", %{
       subject: subject
     } do

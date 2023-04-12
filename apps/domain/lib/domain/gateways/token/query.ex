@@ -9,4 +9,8 @@ defmodule Domain.Gateways.Token.Query do
   def by_id(queryable \\ all(), id) do
     where(queryable, [token: token], token.id == ^id)
   end
+
+  def by_group_id(queryable \\ all(), group_id) do
+    where(queryable, [token: token], token.group_id == ^group_id)
+  end
 end

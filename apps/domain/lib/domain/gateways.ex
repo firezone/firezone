@@ -68,7 +68,20 @@ defmodule Domain.Gateways do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()) do
       Group.Query.by_id(group.id)
       |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(with: &Group.Changeset.delete_changeset/1)
+      |> Repo.fetch_and_update(
+        with: fn group ->
+          :ok =
+            Token.Query.by_group_id(group.id)
+            |> Repo.all()
+            |> Enum.each(fn token ->
+              Token.Changeset.delete_changeset(token)
+              |> Repo.update!()
+            end)
+
+          group
+          |> Group.Changeset.delete_changeset()
+        end
+      )
     end
   end
 

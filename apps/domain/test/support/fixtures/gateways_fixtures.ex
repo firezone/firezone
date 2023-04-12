@@ -3,6 +3,7 @@ defmodule Domain.GatewaysFixtures do
   This module defines test helpers for creating
   entities via the `Domain.Gateways` context.
   """
+  alias Domain.Repo
   alias Domain.Gateways
   alias Domain.UsersFixtures
   alias Domain.SubjectFixtures
@@ -39,9 +40,19 @@ defmodule Domain.GatewaysFixtures do
 
   def create_token(attrs \\ %{}) do
     attrs = Enum.into(attrs, %{})
-    {group_attrs, _attrs} = Map.pop(attrs, :group, [])
-    group = create_group(group_attrs)
-    hd(group.tokens)
+
+    group =
+      case Map.pop(attrs, :group, %{}) do
+        {%Gateways.Group{} = group, _attrs} ->
+          group
+
+        {group_attrs, _attrs} ->
+          create_group(group_attrs)
+      end
+
+    Gateways.Token.Changeset.create_changeset()
+    |> Ecto.Changeset.put_change(:group_id, group.id)
+    |> Repo.insert!()
   end
 
   def gateway_attrs(attrs \\ %{}) do
