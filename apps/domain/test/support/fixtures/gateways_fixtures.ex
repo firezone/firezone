@@ -49,7 +49,8 @@ defmodule Domain.GatewaysFixtures do
       external_id: Ecto.UUID.generate(),
       name_suffix: "gw-#{Domain.Crypto.rand_string(5)}",
       public_key: public_key(),
-      tokens: [%{}]
+      last_seen_user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
+      last_seen_remote_ip: %Postgrex.INET{address: {189, 172, 73, 153}}
     })
   end
 
@@ -68,15 +69,9 @@ defmodule Domain.GatewaysFixtures do
         hd(group.tokens)
       end)
 
-    {subject, attrs} =
-      Map.pop_lazy(attrs, :subject, fn ->
-        UsersFixtures.create_user_with_role(:admin)
-        |> SubjectFixtures.create_subject()
-      end)
-
     attrs = gateway_attrs(attrs)
 
-    {:ok, gateway} = Gateways.upsert_gateway(token, attrs, subject)
+    {:ok, gateway} = Gateways.upsert_gateway(token, attrs)
     gateway
   end
 

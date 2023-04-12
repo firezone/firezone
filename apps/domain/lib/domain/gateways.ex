@@ -53,9 +53,21 @@ defmodule Domain.Gateways do
 
   def delete_group(%Group{} = group, %Auth.Subject{actor: {:user, %Users.User{}}} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()) do
-      group
-      |> Group.Changeset.delete_changeset()
-      |> Repo.update()
+      Group.Query.by_id(group.id)
+      |> Authorizer.for_subject(subject)
+      |> Repo.fetch_and_update(with: &Group.Changeset.delete_changeset/1)
+    end
+  end
+
+  def fetch_token_by_id_and_secret(id, secret) do
+    queryable = Token.Query.by_id(id)
+
+    with true <- Validator.valid_uuid?(id),
+         {:ok, token} <- Repo.fetch(queryable),
+         true <- Domain.Crypto.equal?(secret, token.hash) do
+      {:ok, token}
+    else
+      _other -> {:error, :not_found}
     end
   end
 
@@ -91,32 +103,25 @@ defmodule Domain.Gateways do
     Gateway.Changeset.update_changeset(gateway, attrs)
   end
 
-  def upsert_gateway(
-        %Token{} = token,
-        attrs \\ %{},
-        %Auth.Subject{actor: {:user, %Users.User{}}} = subject
-      ) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()) do
-      token = Repo.preload(token, :group)
-      changeset = Gateway.Changeset.upsert_changeset(token, subject.context, attrs)
+  def upsert_gateway(%Token{} = token, attrs) do
+    changeset = Gateway.Changeset.upsert_changeset(token, attrs)
 
-      Ecto.Multi.new()
-      |> Ecto.Multi.insert(:gateway, changeset,
-        conflict_target: Gateway.Changeset.upsert_conflict_target(),
-        on_conflict: Gateway.Changeset.upsert_on_conflict(),
-        returning: true
-      )
-      |> resolve_address_multi(:ipv4)
-      |> resolve_address_multi(:ipv6)
-      |> Ecto.Multi.update(:gateway_with_address, fn
-        %{gateway: %Gateway{} = gateway, ipv4: ipv4, ipv6: ipv6} ->
-          Gateway.Changeset.finalize_upsert_changeset(gateway, ipv4, ipv6)
-      end)
-      |> Repo.transaction()
-      |> case do
-        {:ok, %{gateway_with_address: gateway}} -> {:ok, gateway}
-        {:error, :gateway, changeset, _effects_so_far} -> {:error, changeset}
-      end
+    Ecto.Multi.new()
+    |> Ecto.Multi.insert(:gateway, changeset,
+      conflict_target: Gateway.Changeset.upsert_conflict_target(),
+      on_conflict: Gateway.Changeset.upsert_on_conflict(),
+      returning: true
+    )
+    |> resolve_address_multi(:ipv4)
+    |> resolve_address_multi(:ipv6)
+    |> Ecto.Multi.update(:gateway_with_address, fn
+      %{gateway: %Gateway{} = gateway, ipv4: ipv4, ipv6: ipv6} ->
+        Gateway.Changeset.finalize_upsert_changeset(gateway, ipv4, ipv6)
+    end)
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{gateway_with_address: gateway}} -> {:ok, gateway}
+      {:error, :gateway, changeset, _effects_so_far} -> {:error, changeset}
     end
   end
 

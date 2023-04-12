@@ -167,12 +167,133 @@ defmodule Domain.GatewaysTest do
   describe "change_group/1" do
     test "returns changeset with given changes" do
       group = GatewaysFixtures.create_group()
-      group_attrs = GatewaysFixtures.group_attrs()
+
+      group_attrs =
+        GatewaysFixtures.group_attrs()
+        |> Map.delete(:tokens)
 
       assert changeset = change_group(group, group_attrs)
-      assert %Ecto.Changeset{data: %Domain.Gateways.Gateway{}} = changeset
+      assert changeset.valid?
+      assert changeset.changes == %{name_prefix: group_attrs.name_prefix, tags: group_attrs.tags}
+    end
+  end
 
-      assert changeset.changes == %{name_prefix: group_attrs.name_prefix}
+  describe "update_group/3" do
+    test "does not allow to reset required fields to empty values", %{
+      subject: subject
+    } do
+      group = GatewaysFixtures.create_group()
+      attrs = %{name_prefix: nil}
+
+      assert {:error, changeset} = update_group(group, attrs, subject)
+
+      assert errors_on(changeset) == %{name_prefix: ["can't be blank"]}
+    end
+
+    test "returns error on invalid attrs", %{subject: subject} do
+      group = GatewaysFixtures.create_group()
+
+      attrs = %{
+        name_prefix: String.duplicate("A", 65),
+        tags: Enum.map(1..129, &Integer.to_string/1)
+      }
+
+      assert {:error, changeset} = update_group(group, attrs, subject)
+
+      assert errors_on(changeset) == %{
+               name_prefix: ["should be at most 64 character(s)"],
+               tags: ["should have at most 128 item(s)"]
+             }
+
+      attrs = %{tags: ["A", "B", "A"]}
+      assert {:error, changeset} = update_group(group, attrs, subject)
+      assert "should not contain duplicates" in errors_on(changeset).tags
+
+      attrs = %{tags: [String.duplicate("A", 65)]}
+      assert {:error, changeset} = update_group(group, attrs, subject)
+      assert "should be at most 64 characters long" in errors_on(changeset).tags
+
+      GatewaysFixtures.create_group(name_prefix: "foo")
+      attrs = %{name_prefix: "foo"}
+      assert {:error, changeset} = update_group(group, attrs, subject)
+      assert "has already been taken" in errors_on(changeset).name_prefix
+    end
+
+    test "updates a group", %{subject: subject} do
+      group = GatewaysFixtures.create_group()
+
+      attrs = %{
+        name_prefix: "foo",
+        tags: ["bar"]
+      }
+
+      assert {:ok, group} = update_group(group, attrs, subject)
+      assert group.name_prefix == "foo"
+      assert group.tags == ["bar"]
+    end
+
+    test "returns error when subject has no permission to manage groups", %{
+      subject: subject
+    } do
+      group = GatewaysFixtures.create_group()
+
+      subject = SubjectFixtures.remove_permissions(subject)
+
+      assert update_group(group, %{}, subject) ==
+               {:error,
+                {:unauthorized,
+                 [missing_permissions: [Gateways.Authorizer.manage_gateways_permission()]]}}
+    end
+  end
+
+  describe "delete_group/2" do
+    test "returns error on state conflict", %{subject: subject} do
+      group = GatewaysFixtures.create_group()
+
+      assert {:ok, deleted} = delete_group(group, subject)
+      assert delete_group(deleted, subject) == {:error, :not_found}
+      assert delete_group(group, subject) == {:error, :not_found}
+    end
+
+    test "deletes groups", %{subject: subject} do
+      group = GatewaysFixtures.create_group()
+
+      assert {:ok, deleted} = delete_group(group, subject)
+      assert deleted.deleted_at
+    end
+
+    test "returns error when subject has no permission to delete groups", %{
+      subject: subject
+    } do
+      group = GatewaysFixtures.create_group()
+
+      subject = SubjectFixtures.remove_permissions(subject)
+
+      assert delete_group(group, subject) ==
+               {:error,
+                {:unauthorized,
+                 [missing_permissions: [Gateways.Authorizer.manage_gateways_permission()]]}}
+    end
+  end
+
+  describe "fetch_token_by_id_and_secret/2" do
+    test "returns token when secret is valid" do
+      token = GatewaysFixtures.create_token()
+
+      assert fetch_token_by_id_and_secret(token.id, token.value) == {:ok, %{token | value: nil}}
+    end
+
+    test "returns error when id is invalid" do
+      assert fetch_token_by_id_and_secret("foo", "bar") == {:error, :not_found}
+    end
+
+    test "returns error when id is not found" do
+      assert fetch_token_by_id_and_secret(Ecto.UUID.generate(), "bar") == {:error, :not_found}
+    end
+
+    test "returns error when secret is invalid" do
+      token = GatewaysFixtures.create_token()
+      assert fetch_token_by_id_and_secret(token.id, "bar") == {:error, :not_found}
     end
   end
 
@@ -278,7 +399,6 @@ defmodule Domain.GatewaysTest do
     end
 
     test "returns errors on invalid attrs", %{
-      subject: subject,
       token: token
     } do
       attrs = %{
@@ -286,26 +406,28 @@ defmodule Domain.GatewaysTest do
         public_key: "x",
         preshared_key: "x",
         ipv4: "1.1.1.256",
-        ipv6: "fd01::10000"
+        ipv6: "fd01::10000",
+        last_seen_user_agent: "foo",
+        last_seen_remote_ip: {256, 0, 0, 0}
       }
 
-      assert {:error, changeset} = upsert_gateway(token, attrs, subject)
+      assert {:error, changeset} = upsert_gateway(token, attrs)
 
       assert errors_on(changeset) == %{
                public_key: ["should be 44 character(s)", "must be a base64-encoded string"],
-               external_id: ["can't be blank"]
+               external_id: ["can't be blank"],
+               last_seen_user_agent: ["is invalid"]
              }
     end
 
     test "allows creating gateway with just required attributes", %{
-      subject: subject,
       token: token
     } do
       attrs =
         GatewaysFixtures.gateway_attrs()
         |> Map.delete(:name)
 
-      assert {:ok, gateway} = upsert_gateway(token, attrs, subject)
+      assert {:ok, gateway} = upsert_gateway(token, attrs)
 
       assert gateway.name_suffix
       assert gateway.public_key == attrs.public_key
@@ -316,36 +438,32 @@ defmodule Domain.GatewaysTest do
       refute is_nil(gateway.ipv4)
       refute is_nil(gateway.ipv6)
 
-      assert gateway.last_seen_remote_ip == %Postgrex.INET{address: subject.context.remote_ip}
-      assert gateway.last_seen_user_agent == subject.context.user_agent
+      assert gateway.last_seen_remote_ip == attrs.last_seen_remote_ip
+      assert gateway.last_seen_user_agent == attrs.last_seen_user_agent
       assert gateway.last_seen_version == "0.7.412"
       assert gateway.last_seen_at
     end
 
     test "updates gateway when it already exists", %{
-      subject: subject,
       token: token
     } do
-      gateway = GatewaysFixtures.create_gateway(subject: subject, token: token)
-      attrs = GatewaysFixtures.gateway_attrs(external_id: gateway.external_id)
+      gateway = GatewaysFixtures.create_gateway(token: token)
 
-      subject = %{
-        subject
-        | context: %Domain.Auth.Context{
-            subject.context
-            | remote_ip: {100, 64, 100, 101},
-              user_agent: "iOS/12.5 (iPhone) connlib/0.7.411"
-          }
-      }
+      attrs =
+        GatewaysFixtures.gateway_attrs(
+          external_id: gateway.external_id,
+          last_seen_remote_ip: {100, 64, 100, 101},
+          last_seen_user_agent: "iOS/12.5 (iPhone) connlib/0.7.411"
+        )
 
-      assert {:ok, updated_gateway} = upsert_gateway(token, attrs, subject)
+      assert {:ok, updated_gateway} = upsert_gateway(token, attrs)
 
       assert Repo.aggregate(Gateways.Gateway, :count, :id) == 1
 
       assert updated_gateway.name_suffix
-      assert updated_gateway.last_seen_remote_ip.address == subject.context.remote_ip
+      assert updated_gateway.last_seen_remote_ip.address == attrs.last_seen_remote_ip
       assert updated_gateway.last_seen_remote_ip != gateway.last_seen_remote_ip
-      assert updated_gateway.last_seen_user_agent == subject.context.user_agent
+      assert updated_gateway.last_seen_user_agent == attrs.last_seen_user_agent
       assert updated_gateway.last_seen_user_agent != gateway.last_seen_user_agent
       assert updated_gateway.last_seen_version == "0.7.411"
       assert updated_gateway.last_seen_at
@@ -361,10 +479,9 @@ defmodule Domain.GatewaysTest do
     end
 
     test "does not reserve additional addresses on update", %{
-      subject: subject,
       token: token
     } do
-      gateway = GatewaysFixtures.create_gateway(subject: subject, token: token)
+      gateway = GatewaysFixtures.create_gateway(token: token)
 
       attrs =
         GatewaysFixtures.gateway_attrs(
@@ -373,7 +490,7 @@ defmodule Domain.GatewaysTest do
           last_seen_remote_ip: %Postgrex.INET{address: {100, 64, 100, 100}}
         )
 
-      assert {:ok, updated_gateway} = upsert_gateway(token, attrs, subject)
+      assert {:ok, updated_gateway} = upsert_gateway(token, attrs)
 
       addresses =
         Domain.Network.Address
@@ -388,11 +505,10 @@ defmodule Domain.GatewaysTest do
     end
 
     test "does not allow to reuse IP addresses", %{
-      subject: subject,
       token: token
     } do
       attrs = GatewaysFixtures.gateway_attrs()
-      assert {:ok, gateway} = upsert_gateway(token, attrs, subject)
+      assert {:ok, gateway} = upsert_gateway(token, attrs)
 
       addresses =
         Domain.Network.Address
@@ -408,18 +524,6 @@ defmodule Domain.GatewaysTest do
       assert_raise Ecto.ConstraintError, fn ->
         NetworkFixtures.create_address(address: gateway.ipv4)
       end
-    end
-
-    test "returns error when subject has no permission to create gateways", %{
-      subject: subject,
-      token: token
-    } do
-      subject = SubjectFixtures.remove_permissions(subject)
-
-      assert upsert_gateway(token, %{}, subject) ==
-               {:error,
-                {:unauthorized,
-                 [missing_permissions: [Gateways.Authorizer.manage_gateways_permission()]]}}
     end
   end
 

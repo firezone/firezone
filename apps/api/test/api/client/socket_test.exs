@@ -15,15 +15,16 @@ defmodule API.Client.SocketTest do
       assert connect(Socket, %{}, @connect_info) == {:error, :invalid}
     end
 
+    test "returns error when token is invalid" do
+      attrs = connect_attrs(token: "foo")
+      assert connect(Socket, attrs, @connect_info) == {:error, :invalid}
+    end
+
     test "creates a new client" do
       subject = SubjectFixtures.create_subject()
       token = Auth.create_auth_token(subject)
 
-      attrs =
-        ClientsFixtures.client_attrs()
-        |> Map.take(~w[external_id public_key preshared_key]a)
-        |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)
-        |> Map.put("token", token)
+      attrs = connect_attrs(token: token)
 
       assert {:ok, socket} = connect(Socket, attrs, @connect_info)
       assert client = Map.fetch!(socket.assigns, :client)
@@ -41,19 +42,12 @@ defmodule API.Client.SocketTest do
       existing_client = ClientsFixtures.create_client(subject: subject)
       token = Auth.create_auth_token(subject)
 
-      attrs =
-        ClientsFixtures.client_attrs()
-        |> Map.take(~w[external_id public_key preshared_key]a)
-        |> Enum.into(%{}, fn {k, v} -> {k, to_string(v)} end)
-        |> Map.put("token", token)
-        |> Map.put("external_id", existing_client.external_id)
+      attrs = connect_attrs(token: token, external_id: existing_client.external_id)
 
       assert {:ok, socket} = connect(Socket, attrs, @connect_info)
       assert client = Repo.one(Domain.Clients.Client)
       assert client.id == socket.assigns.client.id
     end
-
-    # TODO: add tests for ip resolving
   end
 
   describe "id/1" do
@@ -63,5 +57,12 @@ defmodule API.Client.SocketTest do
 
       assert id(socket) == "client:#{client.id}"
     end
+  end
+
+  defp connect_attrs(attrs) do
+    ClientsFixtures.client_attrs()
+    |> Map.take(~w[external_id public_key preshared_key]a)
+    |> Map.merge(Enum.into(attrs, %{}))
+    |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)
   end
 end

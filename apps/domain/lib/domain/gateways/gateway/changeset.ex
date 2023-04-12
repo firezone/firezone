@@ -1,9 +1,10 @@
 defmodule Domain.Gateways.Gateway.Changeset do
   use Domain, :changeset
-  alias Domain.{Version, Auth}
+  alias Domain.Version
   alias Domain.Gateways
 
-  @upsert_fields ~w[external_id name_suffix public_key ]a
+  @upsert_fields ~w[external_id name_suffix public_key
+                    last_seen_user_agent last_seen_remote_ip]a
   @conflict_replace_fields ~w[public_key
                               last_seen_user_agent last_seen_remote_ip
                               last_seen_version last_seen_at]a
@@ -18,12 +19,10 @@ defmodule Domain.Gateways.Gateway.Changeset do
 
   def upsert_on_conflict, do: {:replace, @conflict_replace_fields}
 
-  def upsert_changeset(%Gateways.Token{} = token, %Auth.Context{} = context, attrs) do
+  def upsert_changeset(%Gateways.Token{} = token, attrs) do
     %Gateways.Gateway{}
     |> cast(attrs, @upsert_fields)
     |> put_default_value(:name_suffix, fn -> Domain.Crypto.rand_string(5) end)
-    |> put_change(:last_seen_user_agent, context.user_agent)
-    |> put_change(:last_seen_remote_ip, %Postgrex.INET{address: context.remote_ip})
     |> changeset()
     |> validate_required(@required_fields)
     |> validate_base64(:public_key)
