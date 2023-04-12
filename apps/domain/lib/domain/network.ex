@@ -7,14 +7,15 @@ defmodule Domain.Network do
     ipv6: %Postgrex.INET{address: {64768, 0, 0, 0, 0, 0, 0, 0}, netmask: 106}
   }
 
-  def fetch_next_available_address!(type) do
+  def fetch_next_available_address!(type, opts \\ []) do
     unless Repo.in_transaction?() do
       raise "fetch_next_available_address/1 must be called inside a transaction"
     end
 
-    cidr = Map.fetch!(@cidrs, type)
+    cidrs = Keyword.get(opts, :cidrs, @cidrs)
+    cidr = Map.fetch!(cidrs, type)
     hosts = Domain.Types.CIDR.count_hosts(cidr)
-    offset = Enum.random(2..(hosts - 2))
+    offset = Enum.random(2..max(2, hosts - 2))
 
     address =
       Address.Query.next_available_address(cidr, offset)
