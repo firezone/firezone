@@ -22,7 +22,7 @@ defmodule Domain.Gateways.Token.Changeset do
   def delete_changeset(%Gateways.Token{} = token) do
     token
     |> change()
-    |> put_change(:deleted_at, DateTime.utc_now())
+    |> put_default_value(:deleted_at, DateTime.utc_now())
     |> put_change(:hash, nil)
     |> check_constraint(:hash, name: :hash_not_null, message: "must be blank")
   end

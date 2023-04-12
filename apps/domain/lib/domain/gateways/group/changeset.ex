@@ -32,6 +32,6 @@ defmodule Domain.Gateways.Group.Changeset do
   def delete_changeset(%Gateways.Group{} = group) do
     group
     |> change()
-    |> put_change(:deleted_at, DateTime.utc_now())
+    |> put_default_value(:deleted_at, DateTime.utc_now())
   end
 end

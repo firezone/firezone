@@ -52,7 +52,7 @@ defmodule Domain.Gateways.Gateway.Changeset do
   def delete_changeset(%Gateways.Gateway{} = gateway) do
     gateway
     |> change()
-    |> put_change(:deleted_at, DateTime.utc_now())
+    |> put_default_value(:deleted_at, DateTime.utc_now())
   end
 
   defp changeset(changeset) do
