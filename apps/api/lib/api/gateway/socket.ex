@@ -33,7 +33,7 @@ defmodule API.Gateway.Socket do
 
     with {:ok, {id, secret}} <-
            Plug.Crypto.verify(key_base, salt, encrypted_secret, max_age: max_age),
-         {:ok, token} <- Gateways.fetch_token_by_id_and_secret(id, secret),
+         {:ok, token} <- Gateways.use_token_by_id_and_secret(id, secret),
          {:ok, gateway} <- Gateways.upsert_gateway(token, attrs) do
       socket =
         socket

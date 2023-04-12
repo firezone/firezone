@@ -8,7 +8,7 @@ defmodule Domain.Gateways.Group.Changeset do
     group
     |> cast(attrs, @fields)
     |> trim_change(:name_prefix)
-    |> put_default_value(:name_prefix, &Domain.Gateways.generate_name/0)
+    |> put_default_value(:name_prefix, &Domain.NameGenerator.generate/0)
     |> validate_length(:name_prefix, min: 1, max: 64)
     |> validate_length(:tags, min: 0, max: 128)
     |> validate_no_duplicates(:tags)

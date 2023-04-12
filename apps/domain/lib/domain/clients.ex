@@ -148,18 +148,4 @@ defmodule Domain.Clients do
 
     Auth.ensure_has_permissions(subject, required_permissions)
   end
-
-  def generate_name(name \\ Domain.NameGenerator.generate()) do
-    hash =
-      name
-      |> :erlang.phash2(2 ** 16)
-      |> Integer.to_string(16)
-      |> String.pad_leading(4, "0")
-
-    if String.length(name) > 15 do
-      String.slice(name, 0..10) <> hash
-    else
-      name
-    end
-  end
 end

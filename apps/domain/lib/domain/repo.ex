@@ -46,7 +46,10 @@ defmodule Domain.Repo do
       with {:ok, schema} <- fetch(queryable, opts) do
         schema
         |> changeset_fun.()
-        |> update(opts)
+        |> case do
+          %Ecto.Changeset{} = changeset -> update(changeset, opts)
+          reason -> {:error, reason}
+        end
       end
     end)
     |> case do

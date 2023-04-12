@@ -12,7 +12,11 @@ defmodule Domain.Gateways.Token.Changeset do
   end
 
   def use_changeset(%Gateways.Token{} = token) do
-    delete_changeset(token)
+    # TODO: While we don't have token rotation implemented, the tokens are all multi-use
+    # delete_changeset(token)
+
+    token
+    |> change()
   end
 
   def delete_changeset(%Gateways.Token{} = token) do

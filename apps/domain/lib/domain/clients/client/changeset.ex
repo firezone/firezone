@@ -21,7 +21,7 @@ defmodule Domain.Clients.Client.Changeset do
   def upsert_changeset(%Users.User{} = user, %Auth.Context{} = context, attrs) do
     %Clients.Client{}
     |> cast(attrs, @upsert_fields)
-    |> put_default_value(:name, &Domain.Clients.generate_name/0)
+    |> put_default_value(:name, &generate_name/0)
     |> put_change(:user_id, user.id)
     |> put_change(:last_seen_user_agent, context.user_agent)
     |> put_change(:last_seen_remote_ip, %Postgrex.INET{address: context.remote_ip})
@@ -67,7 +67,7 @@ defmodule Domain.Clients.Client.Changeset do
     |> unique_constraint(:external_id)
   end
 
-  def put_client_version(changeset) do
+  defp put_client_version(changeset) do
     with {_data_or_changes, user_agent} when not is_nil(user_agent) <-
            fetch_field(changeset, :last_seen_user_agent),
          {:ok, version} <- Version.fetch_version(user_agent) do
@@ -75,6 +75,22 @@ defmodule Domain.Clients.Client.Changeset do
     else
       {:error, :invalid_user_agent} -> add_error(changeset, :last_seen_user_agent, "is invalid")
       _ -> changeset
+    end
+  end
+
+  defp generate_name do
+    name = Domain.NameGenerator.generate()
+
+    hash =
+      name
+      |> :erlang.phash2(2 ** 16)
+      |> Integer.to_string(16)
+      |> String.pad_leading(4, "0")
+
+    if String.length(name) > 15 do
+      String.slice(name, 0..10) <> hash
+    else
+      name
     end
   end
 end

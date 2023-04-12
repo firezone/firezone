@@ -276,24 +276,35 @@ defmodule Domain.GatewaysTest do
     end
   end
 
-  describe "fetch_token_by_id_and_secret/2" do
+  describe "use_token_by_id_and_secret/2" do
     test "returns token when secret is valid" do
       token = GatewaysFixtures.create_token()
-
-      assert fetch_token_by_id_and_secret(token.id, token.value) == {:ok, %{token | value: nil}}
+      assert {:ok, token} = use_token_by_id_and_secret(token.id, token.value)
+      assert is_nil(token.value)
+      # TODO: While we don't have token rotation implemented, the tokens are all multi-use
+      # assert is_nil(token.hash)
+      # refute is_nil(token.deleted_at)
     end
 
+    # TODO: While we don't have token rotation implemented, the tokens are all multi-use
+    # test "returns error when secret was already used" do
+    #   token = GatewaysFixtures.create_token()
+
+    #   assert {:ok, _token} = use_token_by_id_and_secret(token.id, token.value)
+    #   assert use_token_by_id_and_secret(token.id, token.value) == {:error, :not_found}
+    # end
+
     test "returns error when id is invalid" do
-      assert fetch_token_by_id_and_secret("foo", "bar") == {:error, :not_found}
+      assert use_token_by_id_and_secret("foo", "bar") == {:error, :not_found}
     end
 
     test "returns error when id is not found" do
-      assert fetch_token_by_id_and_secret(Ecto.UUID.generate(), "bar") == {:error, :not_found}
+      assert use_token_by_id_and_secret(Ecto.UUID.generate(), "bar") == {:error, :not_found}
     end
 
     test "returns error when secret is invalid" do
       token = GatewaysFixtures.create_token()
-      assert fetch_token_by_id_and_secret(token.id, "bar") == {:error, :not_found}
+      assert use_token_by_id_and_secret(token.id, "bar") == {:error, :not_found}
     end
   end
 
@@ -617,17 +628,6 @@ defmodule Domain.GatewaysTest do
                {:error,
                 {:unauthorized,
                  [missing_permissions: [Gateways.Authorizer.manage_gateways_permission()]]}}
-    end
-  end
-
-  describe "generate_name/1" do
-    test "retains name with less than or equal to 15 chars" do
-      assert generate_name("12345") == "12345"
-      assert generate_name("1234567890ABCDE") == "1234567890ABCDE"
-    end
-
-    test "truncates long names that exceed 15 chars" do
-      assert generate_name("1234567890ABCDEF") == "1234567890A4772"
     end
   end
 end

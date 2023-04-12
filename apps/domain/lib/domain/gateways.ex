@@ -59,15 +59,20 @@ defmodule Domain.Gateways do
     end
   end
 
-  def fetch_token_by_id_and_secret(id, secret) do
-    queryable = Token.Query.by_id(id)
-
-    with true <- Validator.valid_uuid?(id),
-         {:ok, token} <- Repo.fetch(queryable),
-         true <- Domain.Crypto.equal?(secret, token.hash) do
-      {:ok, token}
+  def use_token_by_id_and_secret(id, secret) do
+    if Validator.valid_uuid?(id) do
+      Token.Query.by_id(id)
+      |> Repo.fetch_and_update(
+        with: fn token ->
+          if Domain.Crypto.equal?(secret, token.hash) do
+            Token.Changeset.use_changeset(token)
+          else
+            :not_found
+          end
+        end
+      )
     else
-      _other -> {:error, :not_found}
+      {:error, :not_found}
     end
   end
 
@@ -148,20 +153,6 @@ defmodule Domain.Gateways do
       Gateway.Query.by_id(gateway.id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(with: &Gateway.Changeset.delete_changeset/1)
-    end
-  end
-
-  def generate_name(name \\ Domain.NameGenerator.generate()) do
-    hash =
-      name
-      |> :erlang.phash2(2 ** 16)
-      |> Integer.to_string(16)
-      |> String.pad_leading(4, "0")
-
-    if String.length(name) > 15 do
-      String.slice(name, 0..10) <> hash
-    else
-      name
     end
   end
 end
