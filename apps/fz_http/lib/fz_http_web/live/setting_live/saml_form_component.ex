@@ -187,6 +187,61 @@ defmodule FzHttpWeb.SettingLive.SAMLFormComponent do
             </div>
           </div>
         </div>
+
+        <hr />
+
+        <div class="field">
+          <strong>Allow IDP initiated flow</strong>
+
+          <div class="level">
+            <div class="level-left">
+              <p class="help">
+                Allow users to start login flow from IDS (ex. AWS SSO).
+              </p>
+              <p class="help is-danger">
+                <%= error_tag(f, :allow_idp_initiated_flow) %>
+              </p>
+            </div>
+            <div class="level-right">
+              <%= label f, :allow_idp_initiated_flow, class: "switch is-medium" do %>
+                <%= checkbox(f, :allow_idp_initiated_flow) %>
+                <span class="check"></span>
+              <% end %>
+            </div>
+          </div>
+        </div>
+
+        <hr />
+
+        <div class="field">
+          <%= label(f, :allowed_target_urls, "Allowed target URLs", class: "label") %>
+
+          <div class="control">
+            <%= text_input(f, :allowed_target_urls, class: "input #{input_error_class(f, :allowed_target_urls)}") %>
+          </div>
+          <p class="help is-danger">
+            <%= error_tag(f, :allowed_target_urls) %>
+          </p>
+          <p class="help">
+            The URL to redirect the user after completing the SSO flow is sent from IDP in auth response as relay_state.
+          </p>
+        </div>
+
+        <hr />
+
+        <div class="field">
+          <%= label(f, :nameid_format, "NameID format", class: "label") %>
+
+          <div class="control">
+            <%= text_input(f, :nameid_format, class: "input #{input_error_class(f, :nameid_format)}") %>
+          </div>
+          <p class="help is-danger">
+            <%= error_tag(f, :nameid_format) %>
+          </p>
+          <p class="help">
+          Use the string value when you need to specify a non-standard/custom nameid format supported by your IdP.
+          </p>
+        </div>
       </.form>
     </div>
     """

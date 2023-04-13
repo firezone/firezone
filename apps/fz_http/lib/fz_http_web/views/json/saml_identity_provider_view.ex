@@ -11,6 +11,9 @@ defmodule FzHttpWeb.JSON.SAMLIdentityProviderView do
     signed_assertion_in_resp
     signed_envelopes_in_resp
     auto_create_users
+    allow_idp_initiated_flow
+    allowed_target_urls
+    nameid_format
   ]a
   def render("saml_identity_provider.json", %{saml_identity_provider: saml_identity_provider}) do
     Map.take(saml_identity_provider, @keys_to_render)
