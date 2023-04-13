@@ -53,7 +53,8 @@ defmodule Domain.MixProject do
       {:cloak, "~> 1.1"},
       {:cloak_ecto, "~> 1.2"},
 
-      # PubSub
+      # PubSub and Presence
+      {:phoenix, "~> 1.7", runtime: false},
       {:phoenix_pubsub, "~> 2.0"},
 
       # Auth-related deps
@@ -63,8 +64,6 @@ defmodule Domain.MixProject do
       {:nimble_totp, "~> 0.2"},
 
       # Other deps
-      # This is needed for protocol consolidation to work
-      {:phoenix, "~> 1.7", runtime: false},
       {:telemetry, "~> 1.0"},
       {:posthog, "~> 0.1"},
 

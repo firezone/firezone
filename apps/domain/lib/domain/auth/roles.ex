@@ -16,6 +16,7 @@ defmodule Domain.Auth.Roles do
       Domain.Devices.Authorizer,
       Domain.Clients.Authorizer,
       Domain.Gateways.Authorizer,
+      Domain.Relays.Authorizer,
       Domain.Rules.Authorizer,
       Domain.Users.Authorizer
     ]

@@ -33,6 +33,7 @@ defmodule Domain.Gateways.Gateway.Changeset do
     |> put_gateway_version()
     |> put_change(:group_id, token.group_id)
     |> put_change(:token_id, token.id)
+    |> assoc_constraint(:token)
   end
 
   def finalize_upsert_changeset(%Gateways.Gateway{} = gateway, ipv4, ipv6) do

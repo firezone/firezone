@@ -431,9 +431,6 @@ defmodule Domain.GatewaysTest do
       attrs = %{
         external_id: nil,
         public_key: "x",
-        preshared_key: "x",
-        ipv4: "1.1.1.256",
-        ipv6: "fd01::10000",
         last_seen_user_agent: "foo",
         last_seen_remote_ip: {256, 0, 0, 0}
       }

@@ -3,9 +3,9 @@ defmodule API.ChannelCase do
   use Domain.CaseTemplate
 
   @presences [
-    API.Client.Presence,
-    API.Gateway.Presence,
-    API.Relay.Presence
+    Domain.Clients.Presence,
+    Domain.Gateways.Presence,
+    Domain.Relays.Presence
   ]
 
   using do

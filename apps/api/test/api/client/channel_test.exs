@@ -1,8 +1,9 @@
 defmodule API.Client.ChannelTest do
   use API.ChannelCase
+  alias Domain.ClientsFixtures
 
   setup do
-    client = %{id: Ecto.UUID.generate()}
+    client = ClientsFixtures.create_client()
 
     {:ok, _reply, socket} =
       API.Client.Socket
@@ -13,7 +14,7 @@ defmodule API.Client.ChannelTest do
   end
 
   test "tracks presence after join", %{client: client, socket: socket} do
-    presence = API.Client.Presence.list(socket)
+    presence = Domain.Clients.Presence.list(socket)
 
     assert %{metas: [%{online_at: online_at, phx_ref: _ref}]} = Map.fetch!(presence, client.id)
     assert is_number(online_at)
@@ -22,19 +23,4 @@ defmodule API.Client.ChannelTest do
   test "sends list of resources after join" do
     assert_push "resources", %{resources: []}
   end
-
-  # test "ping replies with status ok", %{socket: socket} do
-  #   ref = push(socket, "ping", %{"hello" => "there"})
-  #   assert_reply ref, :ok, %{"hello" => "there"}
-  # end
-
-  # test "shout broadcasts to client:lobby", %{socket: socket} do
-  #   push(socket, "shout", %{"hello" => "all"})
-  #   assert_broadcast "shout", %{"hello" => "all"}
-  # end
-
-  # test "broadcasts are pushed to the client", %{socket: socket} do
-  #   broadcast_from!(socket, "broadcast", %{"some" => "data"})
-  #   assert_push "broadcast", %{"some" => "data"}
-  # end
 end

@@ -27,7 +27,7 @@ defmodule API.Gateway.Socket do
 
     attrs =
       attrs
-      |> Map.take(~w[external_id name_suffix public_key last_seen_user_agent last_seen_remote_ip])
+      |> Map.take(~w[external_id name_suffix public_key])
       |> Map.put("last_seen_user_agent", user_agent)
       |> Map.put("last_seen_remote_ip", remote_ip)
 

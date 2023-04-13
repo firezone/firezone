@@ -139,6 +139,11 @@ config :api, API.Gateway.Socket,
   salt: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDejX",
   max_age: 30 * 60
 
+config :api, API.Relay.Socket,
+  key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5SD",
+  salt: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDejX",
+  max_age: 30 * 60
+
 ###############################
 ##### Third-party configs #####
 ###############################

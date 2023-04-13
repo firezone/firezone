@@ -2,7 +2,7 @@ defmodule Domain.Gateways do
   use Supervisor
   alias Domain.{Repo, Auth, Validator}
   alias Domain.{Users}
-  alias Domain.Gateways.{Authorizer, Gateway, Group, Token}
+  alias Domain.Gateways.{Authorizer, Gateway, Group, Token, Presence}
 
   def start_link(opts) do
     Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
@@ -10,7 +10,7 @@ defmodule Domain.Gateways do
 
   def init(_opts) do
     children = [
-      Domain.Gateways.Presence
+      Presence
     ]
 
     Supervisor.init(children, strategy: :one_for_one)
@@ -180,5 +180,14 @@ defmodule Domain.Gateways do
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(with: &Gateway.Changeset.delete_changeset/1)
     end
+  end
+
+  def connect_gateway(%Gateway{} = gateway, socket) do
+    {:ok, _} =
+      Presence.track(socket, gateway.id, %{
+        online_at: System.system_time(:second)
+      })
+
+    :ok
   end
 end

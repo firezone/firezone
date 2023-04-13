@@ -1,6 +1,6 @@
 defmodule API.Relay.Channel do
   use API, :channel
-  alias Domain.Relays.Presence
+  alias Domain.Relays
 
   @impl true
   def join("relay", %{"stamp_secret" => stamp_secret}, socket) do
@@ -10,12 +10,7 @@ defmodule API.Relay.Channel do
 
   @impl true
   def handle_info({:after_join, stamp_secret}, socket) do
-    {:ok, _} =
-      Presence.track(socket, socket.assigns.relay.id, %{
-        online_at: System.system_time(:second),
-        stamp_secret: stamp_secret
-      })
-
+    :ok = Relays.connect_relay(socket.assigns.relay, stamp_secret, socket)
     {:noreply, socket}
   end
 end

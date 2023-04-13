@@ -2,7 +2,7 @@ defmodule Domain.Clients do
   use Supervisor
   alias Domain.{Repo, Auth, Validator}
   alias Domain.{Users}
-  alias Domain.Clients.{Client, Authorizer}
+  alias Domain.Clients.{Client, Authorizer, Presence}
 
   def start_link(opts) do
     Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
@@ -10,7 +10,7 @@ defmodule Domain.Clients do
 
   def init(_opts) do
     children = [
-      Domain.Clients.Presence
+      Presence
     ]
 
     Supervisor.init(children, strategy: :one_for_one)
@@ -160,5 +160,14 @@ defmodule Domain.Clients do
       end
 
     Auth.ensure_has_permissions(subject, required_permissions)
+  end
+
+  def connect_client(%Client{} = client, socket) do
+    {:ok, _} =
+      Presence.track(socket, client.id, %{
+        online_at: System.system_time(:second)
+      })
+
+    :ok
   end
 end
