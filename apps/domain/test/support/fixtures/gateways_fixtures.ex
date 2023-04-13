@@ -1,12 +1,7 @@
 defmodule Domain.GatewaysFixtures do
-  @moduledoc """
-  This module defines test helpers for creating
-  entities via the `Domain.Gateways` context.
-  """
   alias Domain.Repo
   alias Domain.Gateways
-  alias Domain.UsersFixtures
-  alias Domain.SubjectFixtures
+  alias Domain.{UsersFixtures, SubjectFixtures}
 
   def group_attrs(attrs \\ %{}) do
     Enum.into(attrs, %{

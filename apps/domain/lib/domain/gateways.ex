@@ -161,7 +161,7 @@ defmodule Domain.Gateways do
       if address = Map.get(gateway, type) do
         {:ok, address}
       else
-        {:ok, Domain.Network.fetch_next_available_address!(type)}
+        {:ok, Domain.Network.fetch_next_available_address!(gateway.account_id, type)}
       end
     end)
   end

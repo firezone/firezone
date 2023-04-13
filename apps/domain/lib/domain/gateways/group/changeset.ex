@@ -1,8 +1,19 @@
 defmodule Domain.Gateways.Group.Changeset do
   use Domain, :changeset
+  alias Domain.Accounts
   alias Domain.Gateways
 
   @fields ~w[name_prefix tags]a
+
+  def create_changeset(%Accounts.Account{} = account, attrs) do
+    %Gateways.Group{}
+    |> changeset(attrs)
+    |> put_change(:account_id, account.id)
+  end
+
+  def update_changeset(%Gateways.Group{} = group, attrs) do
+    changeset(group, attrs)
+  end
 
   def changeset(%Gateways.Group{} = group \\ %Gateways.Group{}, attrs) do
     group

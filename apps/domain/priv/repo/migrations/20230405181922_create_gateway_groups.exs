@@ -9,16 +9,21 @@ defmodule Domain.Repo.Migrations.CreateGatewayGroups do
 
       add(:tags, {:array, :string}, null: false, default: [])
 
+      add(:account_id, references(:accounts, type: :binary_id), null: false)
+
       add(:deleted_at, :utc_datetime_usec)
       timestamps(type: :utc_datetime_usec)
     end
 
     # Used to match by tags
-    # XXX: Should be per account in future.
     execute("CREATE INDEX gateway_group_tags_idx on gateway_groups USING GIN (tags)")
 
     # Used to enforce unique names
-    # XXX: Should be per account in future.
-    create(index(:gateway_groups, [:name_prefix], unique: true, where: "deleted_at IS NULL"))
+    create(
+      index(:gateway_groups, [:account_id, :name_prefix],
+        unique: true,
+        where: "deleted_at IS NULL"
+      )
+    )
   end
 end

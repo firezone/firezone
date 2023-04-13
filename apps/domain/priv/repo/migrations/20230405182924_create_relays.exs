@@ -13,6 +13,7 @@ defmodule Domain.Repo.Migrations.CreateRelays do
       add(:last_seen_version, :string, null: false)
       add(:last_seen_at, :utc_datetime_usec, null: false)
 
+      add(:account_id, references(:accounts, type: :binary_id))
       add(:token_id, references(:relay_tokens, type: :binary_id), null: false)
       add(:group_id, references(:relay_groups, type: :binary_id), null: false)
 
@@ -21,8 +22,12 @@ defmodule Domain.Repo.Migrations.CreateRelays do
     end
 
     # Used to enforce unique IPv4 and IPv6 addresses.
-    # XXX: Should be per account in future.
-    create(index(:relays, [:group_id, :ipv4], unique: true, where: "deleted_at IS NULL"))
-    create(index(:relays, [:group_id, :ipv6], unique: true, where: "deleted_at IS NULL"))
+    create(
+      index(:relays, [:account_id, :group_id, :ipv4], unique: true, where: "deleted_at IS NULL")
+    )
+
+    create(
+      index(:relays, [:account_id, :group_id, :ipv6], unique: true, where: "deleted_at IS NULL")
+    )
   end
 end

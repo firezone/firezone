@@ -14,6 +14,10 @@ defmodule Domain.Gateways.Gateway.Query do
     where(queryable, [gateways: gateways], gateways.user_id == ^user_id)
   end
 
+  def by_account_id(queryable \\ all(), account_id) do
+    where(queryable, [gateways: gateways], gateways.account_id == ^account_id)
+  end
+
   def returning_all(queryable \\ all()) do
     select(queryable, [gateways: gateways], gateways)
   end

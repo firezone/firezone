@@ -1,5 +1,6 @@
 defmodule Domain.Users do
   alias Domain.{Repo, Auth, Validator, Config, Telemetry}
+  alias Domain.Accounts
   alias Domain.Users.{Authorizer, User}
   require Ecto.Query
 
@@ -100,14 +101,14 @@ defmodule Domain.Users do
     end
   end
 
-  def create_user(role, attrs, %Auth.Subject{} = subject) do
+  def create_user(%Accounts.Account{} = account, role, attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_users_permission()) do
-      create_user(role, attrs)
+      create_user(account, role, attrs)
     end
   end
 
-  def create_user(role, attrs) do
-    changeset = User.Changeset.create_changeset(role, attrs)
+  def create_user(%Accounts.Account{} = account, role, attrs) when is_atom(role) do
+    changeset = User.Changeset.create_changeset(account, role, attrs)
 
     with {:ok, user} <- Repo.insert(changeset) do
       Telemetry.add_user()

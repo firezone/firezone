@@ -23,6 +23,7 @@ defmodule Domain.Relays.Relay.Changeset do
     |> unique_constraint(:ipv6)
     |> put_change(:last_seen_at, DateTime.utc_now())
     |> put_relay_version()
+    |> put_change(:account_id, token.account_id)
     |> put_change(:group_id, token.group_id)
     |> put_change(:token_id, token.id)
     |> assoc_constraint(:token)

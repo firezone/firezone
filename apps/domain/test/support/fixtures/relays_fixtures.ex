@@ -1,12 +1,7 @@
 defmodule Domain.RelaysFixtures do
-  @moduledoc """
-  This module defines test helpers for creating
-  entities via the `Domain.Relays` context.
-  """
   alias Domain.Repo
   alias Domain.Relays
-  alias Domain.UsersFixtures
-  alias Domain.SubjectFixtures
+  alias Domain.{UsersFixtures, SubjectFixtures}
 
   def group_attrs(attrs \\ %{}) do
     Enum.into(attrs, %{

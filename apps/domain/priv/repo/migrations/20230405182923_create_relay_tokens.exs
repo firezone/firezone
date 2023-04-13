@@ -6,6 +6,7 @@ defmodule Domain.Repo.Migrations.CreateRelayTokens do
       add(:id, :uuid, primary_key: true)
       add(:hash, :string)
 
+      add(:account_id, references(:accounts, type: :binary_id), null: false)
       add(:group_id, references(:relay_groups, type: :binary_id), null: false)
 
       add(:deleted_at, :utc_datetime_usec)
@@ -21,6 +22,6 @@ defmodule Domain.Repo.Migrations.CreateRelayTokens do
       )
     )
 
-    create(index(:relay_tokens, [:id], unique: true, where: "deleted_at IS NULL"))
+    create(index(:relay_tokens, [:account_id], unique: true, where: "deleted_at IS NULL"))
   end
 end

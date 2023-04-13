@@ -20,7 +20,7 @@ defmodule Domain.Relays.Authorizer do
   def for_subject(queryable, %Subject{} = subject) when is_user(subject) do
     cond do
       has_permission?(subject, manage_relays_permission()) ->
-        queryable
+        Relay.Query.by_account_id(subject.account.id)
     end
   end
 end

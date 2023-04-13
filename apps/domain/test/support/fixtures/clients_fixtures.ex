@@ -1,11 +1,6 @@
 defmodule Domain.ClientsFixtures do
-  @moduledoc """
-  This module defines test helpers for creating
-  entities via the `Domain.Clients` context.
-  """
   alias Domain.Clients
-  alias Domain.UsersFixtures
-  alias Domain.SubjectFixtures
+  alias Domain.{UsersFixtures, SubjectFixtures}
 
   def client_attrs(attrs \\ %{}) do
     Enum.into(attrs, %{

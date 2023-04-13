@@ -1,10 +1,21 @@
 defmodule Domain.Relays.Group.Changeset do
   use Domain, :changeset
+  alias Domain.Accounts
   alias Domain.Relays
 
   @fields ~w[name]a
 
-  def changeset(%Relays.Group{} = group \\ %Relays.Group{}, attrs) do
+  def create_changeset(%Accounts.Account{} = account, attrs) do
+    %Relays.Group{}
+    |> changeset(attrs)
+    |> put_change(:account_id, account.id)
+  end
+
+  def update_changeset(%Relays.Group{} = group, attrs) do
+    changeset(group, attrs)
+  end
+
+  defp changeset(group, attrs) do
     group
     |> cast(attrs, @fields)
     |> trim_change(:name)

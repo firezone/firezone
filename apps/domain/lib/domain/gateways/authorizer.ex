@@ -20,7 +20,7 @@ defmodule Domain.Gateways.Authorizer do
   def for_subject(queryable, %Subject{} = subject) when is_user(subject) do
     cond do
       has_permission?(subject, manage_gateways_permission()) ->
-        queryable
+        Gateway.Query.by_account_id(queryable, subject.account.id)
     end
   end
 end

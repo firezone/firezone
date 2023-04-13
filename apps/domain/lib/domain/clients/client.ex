@@ -17,6 +17,7 @@ defmodule Domain.Clients.Client do
     field :last_seen_version, :string
     field :last_seen_at, :utc_datetime_usec
 
+    belongs_to :account, Domain.Accounts.Account
     belongs_to :user, Domain.Users.User
 
     field :deleted_at, :utc_datetime_usec

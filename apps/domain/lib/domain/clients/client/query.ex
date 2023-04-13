@@ -14,6 +14,10 @@ defmodule Domain.Clients.Client.Query do
     where(queryable, [clients: clients], clients.user_id == ^user_id)
   end
 
+  def by_account_id(queryable \\ all(), account_id) do
+    where(queryable, [clients: clients], clients.account_id == ^account_id)
+  end
+
   def returning_all(queryable \\ all()) do
     select(queryable, [clients: clients], clients)
   end

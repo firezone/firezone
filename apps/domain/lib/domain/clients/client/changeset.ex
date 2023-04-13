@@ -14,7 +14,7 @@ defmodule Domain.Clients.Client.Changeset do
   @key_length 44
 
   def upsert_conflict_target,
-    do: {:unsafe_fragment, ~s/(user_id, external_id) WHERE deleted_at IS NULL/}
+    do: {:unsafe_fragment, ~s/(account_id, user_id, external_id) WHERE deleted_at IS NULL/}
 
   def upsert_on_conflict, do: {:replace, @conflict_replace_fields}
 
@@ -23,6 +23,7 @@ defmodule Domain.Clients.Client.Changeset do
     |> cast(attrs, @upsert_fields)
     |> put_default_value(:name, &generate_name/0)
     |> put_change(:user_id, user.id)
+    |> put_change(:account_id, user.account_id)
     |> put_change(:last_seen_user_agent, context.user_agent)
     |> put_change(:last_seen_remote_ip, %Postgrex.INET{address: context.remote_ip})
     |> changeset()

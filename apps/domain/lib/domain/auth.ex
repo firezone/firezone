@@ -2,7 +2,7 @@ defmodule Domain.Auth do
   use Supervisor
   alias Domain.Repo
   alias Domain.Config
-  alias Domain.{Users, Clients, ApiTokens}
+  alias Domain.{Users, ApiTokens}
   alias Domain.Auth.{Subject, Context, Permission, Roles}
 
   def start_link(opts) do
@@ -57,35 +57,26 @@ defmodule Domain.Auth do
   end
 
   def fetch_subject!(%Users.User{} = user, remote_ip, user_agent) do
+    user = Repo.preload(user, :account)
     role = fetch_user_role!(user)
 
     %Subject{
       actor: {:user, user},
       permissions: role.permissions,
+      account: user.account,
       context: %Context{remote_ip: remote_ip, user_agent: user_agent}
     }
   end
 
   def fetch_subject!(%ApiTokens.ApiToken{} = api_token, remote_ip, user_agent) do
-    api_token = Repo.preload(api_token, :user)
+    api_token = Repo.preload(api_token, user: [:account])
     role = fetch_user_role!(api_token.user)
 
     # XXX: Once we build audit logging here we need to build a different kind of subject
     %Subject{
       actor: {:user, api_token.user},
       permissions: role.permissions,
-      context: %Context{remote_ip: remote_ip, user_agent: user_agent}
-    }
-  end
-
-  def fetch_subject!(%Clients.Client{} = client, remote_ip, user_agent) do
-    client = Repo.preload(client, :user)
-    role = fetch_user_role!(client.user)
-
-    # XXX: Once we build audit logging here we need to build a different kind of subject
-    %Subject{
-      actor: {:client, client},
-      permissions: role.permissions,
+      account: api_token.user.account,
       context: %Context{remote_ip: remote_ip, user_agent: user_agent}
     }
   end
@@ -105,7 +96,6 @@ defmodule Domain.Auth do
   end
 
   defp token_body(%Subject{actor: {:user, user}}), do: {:user, user.id}
-  defp token_body(%Subject{actor: {:client, client}}), do: {:client, client.id}
 
   def consume_auth_token(token, remote_ip, user_agent) do
     config = fetch_config!()
@@ -115,6 +105,7 @@ defmodule Domain.Auth do
 
     case Plug.Crypto.verify(key_base, salt, token, max_age: max_age) do
       {:ok, {:user, user_id}} ->
+        # TODO: we might want to check that user is active in future
         user = Users.fetch_user_by_id!(user_id)
         role = fetch_user_role!(user)
 

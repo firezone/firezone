@@ -124,7 +124,7 @@ defmodule Domain.Clients do
       if address = Map.get(client, type) do
         {:ok, address}
       else
-        {:ok, Domain.Network.fetch_next_available_address!(type)}
+        {:ok, Domain.Network.fetch_next_available_address!(client.account_id, type)}
       end
     end)
   end

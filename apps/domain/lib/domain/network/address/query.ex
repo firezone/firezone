@@ -5,6 +5,10 @@ defmodule Domain.Network.Address.Query do
     from(addresses in Domain.Network.Address, as: :addresses)
   end
 
+  def by_account_id(queryable \\ all(), account_id) do
+    where(queryable, [addresses: addresses], addresses.account_id == ^account_id)
+  end
+
   @doc """
   Returns IP address at given integer offset relative to start of CIDR range.
   """
@@ -56,14 +60,14 @@ defmodule Domain.Network.Address.Query do
   We also exclude first (X.X.X.0) and last (broadcast) address in a CIDR from a search range,
   to prevent issues with legacy firewalls that consider them "class C" space network addresses.
   """
-  def next_available_address(network_cidr, offset) do
+  def next_available_address(account_id, network_cidr, offset) do
     forward_search_queryable =
       series_from_offset_inclusive_to_end_of_cidr(network_cidr, offset)
-      |> select_not_used_ips(network_cidr)
+      |> select_not_used_ips(account_id, network_cidr)
 
     reverse_search_queryable =
       series_from_start_of_cidr_to_offset_exclusive(network_cidr, offset)
-      |> select_not_used_ips(network_cidr)
+      |> select_not_used_ips(account_id, network_cidr)
 
     union_all(forward_search_queryable, ^reverse_search_queryable)
     |> limit(1)
@@ -102,13 +106,15 @@ defmodule Domain.Network.Address.Query do
     )
   end
 
-  defp select_not_used_ips(queryable, network_cidr) do
+  defp select_not_used_ips(queryable, account_id, network_cidr) do
     host_as_string = network_cidr.address |> :inet.ntoa() |> List.to_string()
 
     queryable
     |> where(
       [q: q],
-      offset_to_ip(q.ip, ^network_cidr) not in subquery(used_ips_subquery(network_cidr))
+      offset_to_ip(q.ip, ^network_cidr) not in subquery(
+        used_ips_subquery(account_id, network_cidr)
+      )
     )
     |> where(
       [q: q],
@@ -118,9 +124,10 @@ defmodule Domain.Network.Address.Query do
     |> select([q: q], offset_to_ip(q.ip, ^network_cidr))
   end
 
-  defp used_ips_subquery(queryable \\ all(), cidr) do
+  defp used_ips_subquery(queryable \\ all(), account_id, cidr) do
     queryable
     |> by_type(type(cidr))
+    |> by_account_id(account_id)
     |> select([addresses: addresses], addresses.address)
   end
 

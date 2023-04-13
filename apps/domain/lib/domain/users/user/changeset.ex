@@ -1,12 +1,12 @@
 defmodule Domain.Users.User.Changeset do
   use Domain, :changeset
-  alias Domain.Auth
+  alias Domain.{Accounts, Auth}
   alias Domain.Users
 
   @min_password_length 12
   @max_password_length 64
 
-  def create_changeset(role, attrs) when is_atom(role) do
+  def create_changeset(%Accounts.Account{} = account, role, attrs) when is_atom(role) do
     %Users.User{}
     |> cast(attrs, ~w[
       email
@@ -14,6 +14,7 @@ defmodule Domain.Users.User.Changeset do
       password_confirmation
     ]a)
     |> put_change(:role, role)
+    |> put_change(:account_id, account.id)
     |> change_email_changeset()
     |> validate_if_changed(:password, &change_password_changeset/1)
   end

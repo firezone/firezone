@@ -5,6 +5,7 @@ defmodule Domain.Relays.Token do
     field :value, :string, virtual: true
     field :hash, :string
 
+    belongs_to :account, Domain.Accounts.Account
     belongs_to :group, Domain.Relays.Group
 
     field :deleted_at, :utc_datetime_usec

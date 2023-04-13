@@ -7,7 +7,7 @@ defmodule Domain.Network do
     ipv6: %Postgrex.INET{address: {64768, 0, 0, 0, 0, 0, 0, 0}, netmask: 106}
   }
 
-  def fetch_next_available_address!(type, opts \\ []) do
+  def fetch_next_available_address!(account_id, type, opts \\ []) do
     unless Repo.in_transaction?() do
       raise "fetch_next_available_address/1 must be called inside a transaction"
     end
@@ -18,9 +18,9 @@ defmodule Domain.Network do
     offset = Enum.random(2..max(2, hosts - 2))
 
     address =
-      Address.Query.next_available_address(cidr, offset)
+      Address.Query.next_available_address(account_id, cidr, offset)
       |> Domain.Repo.one!()
-      |> Address.Changeset.create_changeset()
+      |> Address.Changeset.create_changeset(account_id)
       |> Repo.insert!()
 
     address.address
