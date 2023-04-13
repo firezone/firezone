@@ -595,7 +595,10 @@ defmodule FzHttp.Config.Definitions do
       "sign_metadata": false,
       "sign_requests": false,
       "signed_assertion_in_resp": false,
-      "signed_envelopes_in_resp": false
+      "signed_envelopes_in_resp": false,
+      "allow_idp_initiated_flow": false,
+      "allowed_target_urls": ["/auth/saml/callback"],
+      "nameid_format": null
     }
   ]
   ```
