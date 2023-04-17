@@ -1,14 +1,16 @@
 defmodule Domain.RelaysTest do
   use Domain.DataCase, async: true
   import Domain.Relays
-  alias Domain.{UsersFixtures, SubjectFixtures, RelaysFixtures}
+  alias Domain.{AccountsFixtures, UsersFixtures, SubjectFixtures, RelaysFixtures}
   alias Domain.Relays
 
   setup do
-    user = UsersFixtures.create_user_with_role(:admin)
+    account = AccountsFixtures.create_account()
+    user = UsersFixtures.create_user_with_role(:admin, account: account)
     subject = SubjectFixtures.create_subject(user)
 
     %{
+      account: account,
       user: user,
       subject: subject
     }
@@ -19,26 +21,35 @@ defmodule Domain.RelaysTest do
       assert fetch_group_by_id("foo", subject) == {:error, :not_found}
     end
 
+    test "does not return groups from other accounts", %{
+      subject: subject
+    } do
+      group = RelaysFixtures.create_group()
+      assert fetch_group_by_id(group.id, subject) == {:error, :not_found}
+    end
+
     test "does not return deleted groups", %{
+      account: account,
       subject: subject
     } do
       group =
-        RelaysFixtures.create_group()
+        RelaysFixtures.create_group(account: account)
         |> RelaysFixtures.delete_group()
 
       assert fetch_group_by_id(group.id, subject) == {:error, :not_found}
     end
 
-    test "returns group by id", %{subject: subject} do
-      group = RelaysFixtures.create_group()
+    test "returns group by id", %{account: account, subject: subject} do
+      group = RelaysFixtures.create_group(account: account)
       assert {:ok, fetched_group} = fetch_group_by_id(group.id, subject)
       assert fetched_group.id == group.id
     end
 
     test "returns group that belongs to another user", %{
+      account: account,
       subject: subject
     } do
-      group = RelaysFixtures.create_group()
+      group = RelaysFixtures.create_group(account: account)
       assert {:ok, fetched_group} = fetch_group_by_id(group.id, subject)
       assert fetched_group.id == group.id
     end
@@ -65,19 +76,29 @@ defmodule Domain.RelaysTest do
       assert list_groups(subject) == {:ok, []}
     end
 
-    test "does not list deleted groups", %{
+    test "does not list groups from other accounts", %{
       subject: subject
     } do
       RelaysFixtures.create_group()
+      assert list_groups(subject) == {:ok, []}
+    end
+
+    test "does not list deleted groups", %{
+      account: account,
+      subject: subject
+    } do
+      RelaysFixtures.create_group(account: account)
       |> RelaysFixtures.delete_group()
 
       assert list_groups(subject) == {:ok, []}
     end
 
     test "returns all groups", %{
+      account: account,
       subject: subject
     } do
-      RelaysFixtures.create_group()
+      RelaysFixtures.create_group(account: account)
+      RelaysFixtures.create_group(account: account)
       RelaysFixtures.create_group()
 
       assert {:ok, groups} = list_groups(subject)
@@ -110,7 +131,7 @@ defmodule Domain.RelaysTest do
       assert errors_on(changeset) == %{tokens: ["can't be blank"]}
     end
 
-    test "returns error on invalid attrs", %{subject: subject} do
+    test "returns error on invalid attrs", %{account: account, subject: subject} do
       attrs = %{
         name: String.duplicate("A", 65)
       }
@@ -122,7 +143,7 @@ defmodule Domain.RelaysTest do
                name: ["should be at most 64 character(s)"]
              }
 
-      RelaysFixtures.create_group(name: "foo")
+      RelaysFixtures.create_group(account: account, name: "foo")
       attrs = %{name: "foo", tokens: [%{}]}
       assert {:error, changeset} = create_group(attrs, subject)
       assert "has already been taken" in errors_on(changeset).name
@@ -178,8 +199,8 @@ defmodule Domain.RelaysTest do
       assert errors_on(changeset) == %{name: ["can't be blank"]}
     end
 
-    test "returns error on invalid attrs", %{subject: subject} do
-      group = RelaysFixtures.create_group()
+    test "returns error on invalid attrs", %{account: account, subject: subject} do
+      group = RelaysFixtures.create_group(account: account)
 
       attrs = %{
         name: String.duplicate("A", 65)
@@ -191,14 +212,14 @@ defmodule Domain.RelaysTest do
                name: ["should be at most 64 character(s)"]
              }
 
-      RelaysFixtures.create_group(name: "foo")
+      RelaysFixtures.create_group(account: account, name: "foo")
       attrs = %{name: "foo"}
       assert {:error, changeset} = update_group(group, attrs, subject)
       assert "has already been taken" in errors_on(changeset).name
     end
 
-    test "updates a group", %{subject: subject} do
-      group = RelaysFixtures.create_group()
+    test "updates a group", %{account: account, subject: subject} do
+      group = RelaysFixtures.create_group(account: account)
 
       attrs = %{
         name: "foo"
@@ -209,9 +230,10 @@ defmodule Domain.RelaysTest do
     end
 
     test "returns error when subject has no permission to manage groups", %{
+      account: account,
       subject: subject
     } do
-      group = RelaysFixtures.create_group()
+      group = RelaysFixtures.create_group(account: account)
 
       subject = SubjectFixtures.remove_permissions(subject)
 
@@ -223,25 +245,25 @@ defmodule Domain.RelaysTest do
   end
 
   describe "delete_group/2" do
-    test "returns error on state conflict", %{subject: subject} do
-      group = RelaysFixtures.create_group()
+    test "returns error on state conflict", %{account: account, subject: subject} do
+      group = RelaysFixtures.create_group(account: account)
 
       assert {:ok, deleted} = delete_group(group, subject)
       assert delete_group(deleted, subject) == {:error, :not_found}
       assert delete_group(group, subject) == {:error, :not_found}
     end
 
-    test "deletes groups", %{subject: subject} do
-      group = RelaysFixtures.create_group()
+    test "deletes groups", %{account: account, subject: subject} do
+      group = RelaysFixtures.create_group(account: account)
 
       assert {:ok, deleted} = delete_group(group, subject)
       assert deleted.deleted_at
     end
 
-    test "deletes all tokens when group is deleted", %{subject: subject} do
-      group = RelaysFixtures.create_group()
+    test "deletes all tokens when group is deleted", %{account: account, subject: subject} do
+      group = RelaysFixtures.create_group(account: account)
       RelaysFixtures.create_token(group: group)
-      RelaysFixtures.create_token()
+      RelaysFixtures.create_token(group: [account: account])
 
       assert {:ok, deleted} = delete_group(group, subject)
       assert deleted.deleted_at
@@ -305,25 +327,34 @@ defmodule Domain.RelaysTest do
       assert fetch_relay_by_id("foo", subject) == {:error, :not_found}
     end
 
+    test "does not return relays from other accounts", %{
+      subject: subject
+    } do
+      relay = RelaysFixtures.create_relay()
+      assert fetch_relay_by_id(relay.id, subject) == {:error, :not_found}
+    end
+
     test "does not return deleted relays", %{
+      account: account,
       subject: subject
     } do
       relay =
-        RelaysFixtures.create_relay()
+        RelaysFixtures.create_relay(account: account)
         |> RelaysFixtures.delete_relay()
 
       assert fetch_relay_by_id(relay.id, subject) == {:error, :not_found}
     end
 
-    test "returns relay by id", %{subject: subject} do
-      relay = RelaysFixtures.create_relay()
+    test "returns relay by id", %{account: account, subject: subject} do
+      relay = RelaysFixtures.create_relay(account: account)
       assert fetch_relay_by_id(relay.id, subject) == {:ok, relay}
     end
 
     test "returns relay that belongs to another user", %{
+      account: account,
       subject: subject
     } do
-      relay = RelaysFixtures.create_relay()
+      relay = RelaysFixtures.create_relay(account: account)
       assert fetch_relay_by_id(relay.id, subject) == {:ok, relay}
     end
 
@@ -359,9 +390,11 @@ defmodule Domain.RelaysTest do
     end
 
     test "returns all relays", %{
+      account: account,
       subject: subject
     } do
-      RelaysFixtures.create_relay()
+      RelaysFixtures.create_relay(account: account)
+      RelaysFixtures.create_relay(account: account)
       RelaysFixtures.create_relay()
 
       assert {:ok, relays} = list_relays(subject)
@@ -382,7 +415,7 @@ defmodule Domain.RelaysTest do
 
   describe "upsert_relay/3" do
     setup context do
-      token = RelaysFixtures.create_token()
+      token = RelaysFixtures.create_token(account: context.account)
 
       context
       |> Map.put(:token, token)
@@ -466,16 +499,16 @@ defmodule Domain.RelaysTest do
   end
 
   describe "delete_relay/2" do
-    test "returns error on state conflict", %{subject: subject} do
-      relay = RelaysFixtures.create_relay()
+    test "returns error on state conflict", %{account: account, subject: subject} do
+      relay = RelaysFixtures.create_relay(account: account)
 
       assert {:ok, deleted} = delete_relay(relay, subject)
       assert delete_relay(deleted, subject) == {:error, :not_found}
       assert delete_relay(relay, subject) == {:error, :not_found}
     end
 
-    test "deletes relays", %{subject: subject} do
-      relay = RelaysFixtures.create_relay()
+    test "deletes relays", %{account: account, subject: subject} do
+      relay = RelaysFixtures.create_relay(account: account)
 
       assert {:ok, deleted} = delete_relay(relay, subject)
       assert deleted.deleted_at

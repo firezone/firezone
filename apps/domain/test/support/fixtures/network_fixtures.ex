@@ -4,7 +4,7 @@ defmodule Domain.NetworkFixtures do
   alias Domain.AccountsFixtures
 
   def address_attrs(attrs \\ %{}) do
-    attrs = Enum.into(attrs, %{address: nil, type: nil})
+    attrs = Enum.into(attrs, %{account_id: nil, address: nil, type: nil})
 
     {account, attrs} =
       Map.pop_lazy(attrs, :account, fn ->

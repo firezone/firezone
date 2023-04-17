@@ -1,14 +1,17 @@
 defmodule Domain.GatewaysTest do
   use Domain.DataCase, async: true
   import Domain.Gateways
+  alias Domain.AccountsFixtures
   alias Domain.{NetworkFixtures, UsersFixtures, SubjectFixtures, GatewaysFixtures}
   alias Domain.Gateways
 
   setup do
-    user = UsersFixtures.create_user_with_role(:admin)
+    account = AccountsFixtures.create_account()
+    user = UsersFixtures.create_user_with_role(:admin, account: account)
     subject = SubjectFixtures.create_subject(user)
 
     %{
+      account: account,
       user: user,
       subject: subject
     }
@@ -19,26 +22,35 @@ defmodule Domain.GatewaysTest do
       assert fetch_group_by_id("foo", subject) == {:error, :not_found}
     end
 
+    test "does not return groups from other accounts", %{
+      subject: subject
+    } do
+      group = GatewaysFixtures.create_group()
+      assert fetch_group_by_id(group.id, subject) == {:error, :not_found}
+    end
+
     test "does not return deleted groups", %{
+      account: account,
       subject: subject
     } do
       group =
-        GatewaysFixtures.create_group()
+        GatewaysFixtures.create_group(account: account)
         |> GatewaysFixtures.delete_group()
 
       assert fetch_group_by_id(group.id, subject) == {:error, :not_found}
     end
 
-    test "returns group by id", %{subject: subject} do
-      group = GatewaysFixtures.create_group()
+    test "returns group by id", %{account: account, subject: subject} do
+      group = GatewaysFixtures.create_group(account: account)
       assert {:ok, fetched_group} = fetch_group_by_id(group.id, subject)
       assert fetched_group.id == group.id
     end
 
     test "returns group that belongs to another user", %{
+      account: account,
       subject: subject
     } do
-      group = GatewaysFixtures.create_group()
+      group = GatewaysFixtures.create_group(account: account)
       assert {:ok, fetched_group} = fetch_group_by_id(group.id, subject)
       assert fetched_group.id == group.id
     end
@@ -65,19 +77,29 @@ defmodule Domain.GatewaysTest do
       assert list_groups(subject) == {:ok, []}
     end
 
-    test "does not list deleted groups", %{
+    test "does not list groups from other accounts", %{
       subject: subject
     } do
       GatewaysFixtures.create_group()
+      assert list_groups(subject) == {:ok, []}
+    end
+
+    test "does not list deleted groups", %{
+      account: account,
+      subject: subject
+    } do
+      GatewaysFixtures.create_group(account: account)
       |> GatewaysFixtures.delete_group()
 
       assert list_groups(subject) == {:ok, []}
     end
 
     test "returns all groups", %{
+      account: account,
       subject: subject
     } do
-      GatewaysFixtures.create_group()
+      GatewaysFixtures.create_group(account: account)
+      GatewaysFixtures.create_group(account: account)
       GatewaysFixtures.create_group()
 
       assert {:ok, groups} = list_groups(subject)
@@ -110,7 +132,7 @@ defmodule Domain.GatewaysTest do
       assert errors_on(changeset) == %{tokens: ["can't be blank"]}
     end
 
-    test "returns error on invalid attrs", %{subject: subject} do
+    test "returns error on invalid attrs", %{account: account, subject: subject} do
       attrs = %{
         name_prefix: String.duplicate("A", 65),
         tags: Enum.map(1..129, &Integer.to_string/1)
@@ -132,7 +154,7 @@ defmodule Domain.GatewaysTest do
       assert {:error, changeset} = create_group(attrs, subject)
       assert "should be at most 64 characters long" in errors_on(changeset).tags
 
-      GatewaysFixtures.create_group(name_prefix: "foo")
+      GatewaysFixtures.create_group(account: account, name_prefix: "foo")
       attrs = %{name_prefix: "foo", tokens: [%{}]}
       assert {:error, changeset} = create_group(attrs, subject)
       assert "has already been taken" in errors_on(changeset).name_prefix
@@ -190,8 +212,8 @@ defmodule Domain.GatewaysTest do
       assert errors_on(changeset) == %{name_prefix: ["can't be blank"]}
     end
 
-    test "returns error on invalid attrs", %{subject: subject} do
-      group = GatewaysFixtures.create_group()
+    test "returns error on invalid attrs", %{account: account, subject: subject} do
+      group = GatewaysFixtures.create_group(account: account)
 
       attrs = %{
         name_prefix: String.duplicate("A", 65),
@@ -213,14 +235,14 @@ defmodule Domain.GatewaysTest do
       assert {:error, changeset} = update_group(group, attrs, subject)
       assert "should be at most 64 characters long" in errors_on(changeset).tags
 
-      GatewaysFixtures.create_group(name_prefix: "foo")
+      GatewaysFixtures.create_group(account: account, name_prefix: "foo")
       attrs = %{name_prefix: "foo"}
       assert {:error, changeset} = update_group(group, attrs, subject)
       assert "has already been taken" in errors_on(changeset).name_prefix
     end
 
-    test "updates a group", %{subject: subject} do
-      group = GatewaysFixtures.create_group()
+    test "updates a group", %{account: account, subject: subject} do
+      group = GatewaysFixtures.create_group(account: account)
 
       attrs = %{
         name_prefix: "foo",
@@ -233,9 +255,10 @@ defmodule Domain.GatewaysTest do
     end
 
     test "returns error when subject has no permission to manage groups", %{
+      account: account,
       subject: subject
     } do
-      group = GatewaysFixtures.create_group()
+      group = GatewaysFixtures.create_group(account: account)
 
       subject = SubjectFixtures.remove_permissions(subject)
 
@@ -247,25 +270,25 @@ defmodule Domain.GatewaysTest do
   end
 
   describe "delete_group/2" do
-    test "returns error on state conflict", %{subject: subject} do
-      group = GatewaysFixtures.create_group()
+    test "returns error on state conflict", %{account: account, subject: subject} do
+      group = GatewaysFixtures.create_group(account: account)
 
       assert {:ok, deleted} = delete_group(group, subject)
       assert delete_group(deleted, subject) == {:error, :not_found}
       assert delete_group(group, subject) == {:error, :not_found}
     end
 
-    test "deletes groups", %{subject: subject} do
-      group = GatewaysFixtures.create_group()
+    test "deletes groups", %{account: account, subject: subject} do
+      group = GatewaysFixtures.create_group(account: account)
 
       assert {:ok, deleted} = delete_group(group, subject)
       assert deleted.deleted_at
     end
 
-    test "deletes all tokens when group is deleted", %{subject: subject} do
-      group = GatewaysFixtures.create_group()
+    test "deletes all tokens when group is deleted", %{account: account, subject: subject} do
+      group = GatewaysFixtures.create_group(account: account)
       GatewaysFixtures.create_token(group: group)
-      GatewaysFixtures.create_token()
+      GatewaysFixtures.create_token(group: [account: account])
 
       assert {:ok, deleted} = delete_group(group, subject)
       assert deleted.deleted_at
@@ -329,25 +352,34 @@ defmodule Domain.GatewaysTest do
       assert fetch_gateway_by_id("foo", subject) == {:error, :not_found}
     end
 
+    test "does not return gateways from other accounts", %{
+      subject: subject
+    } do
+      gateway = GatewaysFixtures.create_gateway()
+      assert fetch_gateway_by_id(gateway.id, subject) == {:error, :not_found}
+    end
+
     test "does not return deleted gateways", %{
+      account: account,
       subject: subject
     } do
       gateway =
-        GatewaysFixtures.create_gateway()
+        GatewaysFixtures.create_gateway(account: account)
         |> GatewaysFixtures.delete_gateway()
 
       assert fetch_gateway_by_id(gateway.id, subject) == {:error, :not_found}
     end
 
-    test "returns gateway by id", %{subject: subject} do
-      gateway = GatewaysFixtures.create_gateway()
+    test "returns gateway by id", %{account: account, subject: subject} do
+      gateway = GatewaysFixtures.create_gateway(account: account)
       assert fetch_gateway_by_id(gateway.id, subject) == {:ok, gateway}
     end
 
     test "returns gateway that belongs to another user", %{
+      account: account,
       subject: subject
     } do
-      gateway = GatewaysFixtures.create_gateway()
+      gateway = GatewaysFixtures.create_gateway(account: account)
       assert fetch_gateway_by_id(gateway.id, subject) == {:ok, gateway}
     end
 
@@ -383,9 +415,11 @@ defmodule Domain.GatewaysTest do
     end
 
     test "returns all gateways", %{
+      account: account,
       subject: subject
     } do
-      GatewaysFixtures.create_gateway()
+      GatewaysFixtures.create_gateway(account: account)
+      GatewaysFixtures.create_gateway(account: account)
       GatewaysFixtures.create_gateway()
 
       assert {:ok, gateways} = list_gateways(subject)
@@ -418,7 +452,7 @@ defmodule Domain.GatewaysTest do
 
   describe "upsert_gateway/3" do
     setup context do
-      token = GatewaysFixtures.create_token()
+      token = GatewaysFixtures.create_token(account: context.account)
 
       context
       |> Map.put(:token, token)
@@ -529,6 +563,7 @@ defmodule Domain.GatewaysTest do
     end
 
     test "does not allow to reuse IP addresses", %{
+      account: account,
       token: token
     } do
       attrs = GatewaysFixtures.gateway_attrs()
@@ -546,14 +581,14 @@ defmodule Domain.GatewaysTest do
       assert %{address: gateway.ipv6, type: :ipv6} in addresses
 
       assert_raise Ecto.ConstraintError, fn ->
-        NetworkFixtures.create_address(address: gateway.ipv4)
+        NetworkFixtures.create_address(account: account, address: gateway.ipv4)
       end
     end
   end
 
   describe "update_gateway/3" do
-    test "updates gateways", %{subject: subject} do
-      gateway = GatewaysFixtures.create_gateway()
+    test "updates gateways", %{account: account, subject: subject} do
+      gateway = GatewaysFixtures.create_gateway(account: account)
       attrs = %{name_suffix: "Foo"}
 
       assert {:ok, gateway} = update_gateway(gateway, attrs, subject)
@@ -562,9 +597,10 @@ defmodule Domain.GatewaysTest do
     end
 
     test "does not allow to reset required fields to empty values", %{
+      account: account,
       subject: subject
     } do
-      gateway = GatewaysFixtures.create_gateway()
+      gateway = GatewaysFixtures.create_gateway(account: account)
       attrs = %{name_suffix: nil}
 
       assert {:error, changeset} = update_gateway(gateway, attrs, subject)
@@ -572,8 +608,8 @@ defmodule Domain.GatewaysTest do
       assert errors_on(changeset) == %{name_suffix: ["can't be blank"]}
     end
 
-    test "returns error on invalid attrs", %{subject: subject} do
-      gateway = GatewaysFixtures.create_gateway()
+    test "returns error on invalid attrs", %{account: account, subject: subject} do
+      gateway = GatewaysFixtures.create_gateway(account: account)
 
       attrs = %{
         name_suffix: String.duplicate("a", 256)
@@ -587,9 +623,10 @@ defmodule Domain.GatewaysTest do
     end
 
     test "ignores updates for any field except name", %{
+      account: account,
       subject: subject
     } do
-      gateway = GatewaysFixtures.create_gateway()
+      gateway = GatewaysFixtures.create_gateway(account: account)
 
       fields = Gateways.Gateway.__schema__(:fields) -- [:name_suffix]
       value = -1
@@ -615,16 +652,16 @@ defmodule Domain.GatewaysTest do
   end
 
   describe "delete_gateway/2" do
-    test "returns error on state conflict", %{subject: subject} do
-      gateway = GatewaysFixtures.create_gateway()
+    test "returns error on state conflict", %{account: account, subject: subject} do
+      gateway = GatewaysFixtures.create_gateway(account: account)
 
       assert {:ok, deleted} = delete_gateway(gateway, subject)
       assert delete_gateway(deleted, subject) == {:error, :not_found}
       assert delete_gateway(gateway, subject) == {:error, :not_found}
     end
 
-    test "deletes gateways", %{subject: subject} do
-      gateway = GatewaysFixtures.create_gateway()
+    test "deletes gateways", %{account: account, subject: subject} do
+      gateway = GatewaysFixtures.create_gateway(account: account)
 
       assert {:ok, deleted} = delete_gateway(gateway, subject)
       assert deleted.deleted_at

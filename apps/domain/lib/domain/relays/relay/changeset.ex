@@ -11,7 +11,7 @@ defmodule Domain.Relays.Relay.Changeset do
   @required_fields @upsert_fields
 
   def upsert_conflict_target,
-    do: {:unsafe_fragment, ~s/(group_id, ipv4) WHERE deleted_at IS NULL/}
+    do: {:unsafe_fragment, ~s/(account_id, ipv4) WHERE deleted_at IS NULL/}
 
   def upsert_on_conflict, do: {:replace, @conflict_replace_fields}
 

@@ -6,7 +6,7 @@ defmodule Domain.Gateways.Group.Changeset do
   @fields ~w[name_prefix tags]a
 
   def create_changeset(%Accounts.Account{} = account, attrs) do
-    %Gateways.Group{}
+    %Gateways.Group{account: account}
     |> changeset(attrs)
     |> put_change(:account_id, account.id)
   end
@@ -15,7 +15,7 @@ defmodule Domain.Gateways.Group.Changeset do
     changeset(group, attrs)
   end
 
-  def changeset(%Gateways.Group{} = group \\ %Gateways.Group{}, attrs) do
+  defp changeset(%Gateways.Group{} = group, attrs) do
     group
     |> cast(attrs, @fields)
     |> trim_change(:name_prefix)
@@ -31,10 +31,10 @@ defmodule Domain.Gateways.Group.Changeset do
       end
     end)
     |> validate_required(@fields)
-    |> unique_constraint([:name_prefix])
+    |> unique_constraint(:name_prefix, name: :gateway_groups_account_id_name_prefix_index)
     |> cast_assoc(:tokens,
       with: fn _token, _attrs ->
-        Domain.Gateways.Token.Changeset.create_changeset()
+        Domain.Gateways.Token.Changeset.create_changeset(group.account)
       end,
       required: true
     )

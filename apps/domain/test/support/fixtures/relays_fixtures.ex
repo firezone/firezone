@@ -1,7 +1,7 @@
 defmodule Domain.RelaysFixtures do
   alias Domain.Repo
   alias Domain.Relays
-  alias Domain.{UsersFixtures, SubjectFixtures}
+  alias Domain.{AccountsFixtures, UsersFixtures, SubjectFixtures}
 
   def group_attrs(attrs \\ %{}) do
     Enum.into(attrs, %{
@@ -13,9 +13,14 @@ defmodule Domain.RelaysFixtures do
   def create_group(attrs \\ %{}) do
     attrs = Enum.into(attrs, %{})
 
+    {account, attrs} =
+      Map.pop_lazy(attrs, :account, fn ->
+        AccountsFixtures.create_account()
+      end)
+
     {subject, attrs} =
       Map.pop_lazy(attrs, :subject, fn ->
-        UsersFixtures.create_user_with_role(:admin)
+        UsersFixtures.create_user_with_role(:admin, account: account)
         |> SubjectFixtures.create_subject()
       end)
 
@@ -26,7 +31,8 @@ defmodule Domain.RelaysFixtures do
   end
 
   def delete_group(group) do
-    admin = UsersFixtures.create_user_with_role(:admin)
+    group = Repo.preload(group, :account)
+    admin = UsersFixtures.create_user_with_role(:admin, account: group.account)
     subject = SubjectFixtures.create_subject(admin)
     {:ok, group} = Relays.delete_group(group, subject)
     group
@@ -35,16 +41,22 @@ defmodule Domain.RelaysFixtures do
   def create_token(attrs \\ %{}) do
     attrs = Enum.into(attrs, %{})
 
+    {account, attrs} =
+      Map.pop_lazy(attrs, :account, fn ->
+        AccountsFixtures.create_account()
+      end)
+
     group =
       case Map.pop(attrs, :group, %{}) do
         {%Relays.Group{} = group, _attrs} ->
           group
 
         {group_attrs, _attrs} ->
+          group_attrs = Enum.into(group_attrs, %{account: account})
           create_group(group_attrs)
       end
 
-    Relays.Token.Changeset.create_changeset()
+    Relays.Token.Changeset.create_changeset(account)
     |> Ecto.Changeset.put_change(:group_id, group.id)
     |> Repo.insert!()
   end
@@ -63,12 +75,21 @@ defmodule Domain.RelaysFixtures do
   def create_relay(attrs \\ %{}) do
     attrs = Enum.into(attrs, %{})
 
-    {group_attrs, _attrs} = Map.pop(attrs, :group, [])
+    {account, attrs} =
+      Map.pop_lazy(attrs, :account, fn ->
+        AccountsFixtures.create_account()
+      end)
 
     {group, attrs} =
-      Map.pop_lazy(attrs, :group, fn ->
-        create_group(group_attrs)
-      end)
+      case Map.pop(attrs, :group, %{}) do
+        {%Relays.Group{} = group, attrs} ->
+          {group, attrs}
+
+        {group_attrs, attrs} ->
+          group_attrs = Enum.into(group_attrs, %{account: account})
+          group = create_group(group_attrs)
+          {group, attrs}
+      end
 
     {token, attrs} =
       Map.pop_lazy(attrs, :token, fn ->
@@ -82,7 +103,8 @@ defmodule Domain.RelaysFixtures do
   end
 
   def delete_relay(relay) do
-    admin = UsersFixtures.create_user_with_role(:admin)
+    relay = Repo.preload(relay, :account)
+    admin = UsersFixtures.create_user_with_role(:admin, account: relay.account)
     subject = SubjectFixtures.create_subject(admin)
     {:ok, relay} = Relays.delete_relay(relay, subject)
     relay

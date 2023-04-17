@@ -1,7 +1,6 @@
 defmodule Domain.Relays do
   use Supervisor
   alias Domain.{Repo, Auth, Validator}
-  alias Domain.{Users}
   alias Domain.Relays.{Authorizer, Relay, Group, Token, Presence}
 
   def start_link(opts) do
@@ -40,31 +39,30 @@ defmodule Domain.Relays do
     change_group(%Group{}, attrs)
   end
 
-  def create_group(attrs \\ %{}, %Auth.Subject{actor: {:user, %Users.User{}}} = subject) do
+  def create_group(attrs \\ %{}, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()) do
-      attrs
-      |> Group.Changeset.changeset()
+      subject.account
+      |> Group.Changeset.create_changeset(attrs)
       |> Repo.insert()
     end
   end
 
   def change_group(%Group{} = group, attrs \\ %{}) do
-    Group.Changeset.changeset(group, attrs)
+    group
+    |> Repo.preload(:account)
+    |> Group.Changeset.update_changeset(attrs)
   end
 
-  def update_group(
-        %Group{} = group,
-        attrs \\ %{},
-        %Auth.Subject{actor: {:user, %Users.User{}}} = subject
-      ) do
+  def update_group(%Group{} = group, attrs \\ %{}, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()) do
       group
-      |> Group.Changeset.changeset(attrs)
+      |> Repo.preload(:account)
+      |> Group.Changeset.update_changeset(attrs)
       |> Repo.update()
     end
   end
 
-  def delete_group(%Group{} = group, %Auth.Subject{actor: {:user, %Users.User{}}} = subject) do
+  def delete_group(%Group{} = group, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()) do
       Group.Query.by_id(group.id)
       |> Authorizer.for_subject(subject)

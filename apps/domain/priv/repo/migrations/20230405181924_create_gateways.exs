@@ -15,8 +15,7 @@ defmodule Domain.Repo.Migrations.CreateGateways do
         references(:network_addresses,
           column: :address,
           type: :inet,
-          with: [account_id: :account_id],
-          match: :full
+          with: [account_id: :account_id]
         )
       )
 
@@ -25,8 +24,7 @@ defmodule Domain.Repo.Migrations.CreateGateways do
         references(:network_addresses,
           column: :address,
           type: :inet,
-          with: [account_id: :account_id],
-          match: :full
+          with: [account_id: :account_id]
         )
       )
 

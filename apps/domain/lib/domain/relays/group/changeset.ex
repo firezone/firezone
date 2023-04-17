@@ -6,7 +6,7 @@ defmodule Domain.Relays.Group.Changeset do
   @fields ~w[name]a
 
   def create_changeset(%Accounts.Account{} = account, attrs) do
-    %Relays.Group{}
+    %Relays.Group{account: account}
     |> changeset(attrs)
     |> put_change(:account_id, account.id)
   end
@@ -22,10 +22,10 @@ defmodule Domain.Relays.Group.Changeset do
     |> put_default_value(:name, &Domain.NameGenerator.generate/0)
     |> validate_length(:name, min: 1, max: 64)
     |> validate_required(@fields)
-    |> unique_constraint([:name])
+    |> unique_constraint(:name, name: :relay_groups_account_id_name_index)
     |> cast_assoc(:tokens,
       with: fn _token, _attrs ->
-        Domain.Relays.Token.Changeset.create_changeset()
+        Domain.Relays.Token.Changeset.create_changeset(group.account)
       end,
       required: true
     )

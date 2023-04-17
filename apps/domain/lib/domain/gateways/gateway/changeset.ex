@@ -15,7 +15,7 @@ defmodule Domain.Gateways.Gateway.Changeset do
   @key_length 44
 
   def upsert_conflict_target,
-    do: {:unsafe_fragment, ~s/(group_id, external_id) WHERE deleted_at IS NULL/}
+    do: {:unsafe_fragment, ~s/(account_id, group_id, external_id) WHERE deleted_at IS NULL/}
 
   def upsert_on_conflict, do: {:replace, @conflict_replace_fields}
 
@@ -31,6 +31,7 @@ defmodule Domain.Gateways.Gateway.Changeset do
     |> unique_constraint(:ipv6)
     |> put_change(:last_seen_at, DateTime.utc_now())
     |> put_gateway_version()
+    |> put_change(:account_id, token.account_id)
     |> put_change(:group_id, token.group_id)
     |> put_change(:token_id, token.id)
     |> assoc_constraint(:token)

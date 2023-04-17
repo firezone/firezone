@@ -1,17 +1,20 @@
 defmodule Domain.ClientsTest do
   use Domain.DataCase, async: true
   import Domain.Clients
+  alias Domain.AccountsFixtures
   alias Domain.{NetworkFixtures, UsersFixtures, SubjectFixtures, ClientsFixtures}
   alias Domain.Clients
 
   setup do
-    unprivileged_user = UsersFixtures.create_user_with_role(:unprivileged)
+    account = AccountsFixtures.create_account()
+    unprivileged_user = UsersFixtures.create_user_with_role(:unprivileged, account: account)
     unprivileged_subject = SubjectFixtures.create_subject(unprivileged_user)
 
-    admin_user = UsersFixtures.create_user_with_role(:admin)
+    admin_user = UsersFixtures.create_user_with_role(:admin, account: account)
     admin_subject = SubjectFixtures.create_subject(admin_user)
 
     %{
+      account: account,
       unprivileged_user: unprivileged_user,
       unprivileged_subject: unprivileged_subject,
       admin_user: admin_user,
@@ -19,12 +22,14 @@ defmodule Domain.ClientsTest do
     }
   end
 
-  describe "count/0" do
-    test "counts clients" do
+  describe "count_by_account_id/0" do
+    test "counts clients for an account", %{account: account} do
+      ClientsFixtures.create_client(account: account)
+      ClientsFixtures.create_client(account: account)
+      ClientsFixtures.create_client(account: account)
       ClientsFixtures.create_client()
-      ClientsFixtures.create_client()
-      ClientsFixtures.create_client()
-      assert count() == 3
+
+      assert count_by_account_id(account.id) == 3
     end
   end
 
@@ -61,6 +66,20 @@ defmodule Domain.ClientsTest do
     end
 
     test "returns client that belongs to another user with manage permission", %{
+      account: account,
+      unprivileged_subject: subject
+    } do
+      client = ClientsFixtures.create_client(account: account)
+
+      subject =
+        subject
+        |> SubjectFixtures.remove_permissions()
+        |> SubjectFixtures.add_permission(Clients.Authorizer.manage_clients_permission())
+
+      assert fetch_client_by_id(client.id, subject) == {:ok, client}
+    end
+
+    test "does not returns client that belongs to another account with manage permission", %{
       unprivileged_subject: subject
     } do
       client = ClientsFixtures.create_client()
@@ -70,7 +89,7 @@ defmodule Domain.ClientsTest do
         |> SubjectFixtures.remove_permissions()
         |> SubjectFixtures.add_permission(Clients.Authorizer.manage_clients_permission())
 
-      assert fetch_client_by_id(client.id, subject) == {:ok, client}
+      assert fetch_client_by_id(client.id, subject) == {:error, :not_found}
     end
 
     test "does not return client that belongs to another user with manage_own permission", %{
@@ -122,6 +141,14 @@ defmodule Domain.ClientsTest do
     } do
       ClientsFixtures.create_client(user: user)
       |> ClientsFixtures.delete_client()
+
+      assert list_clients(subject) == {:ok, []}
+    end
+
+    test "does not list  clients in other accounts", %{
+      unprivileged_subject: subject
+    } do
+      ClientsFixtures.create_client()
 
       assert list_clients(subject) == {:ok, []}
     end
@@ -192,6 +219,17 @@ defmodule Domain.ClientsTest do
       |> ClientsFixtures.delete_client()
 
       assert list_clients_by_user_id(user.id, subject) == {:ok, []}
+    end
+
+    test "does not deleted clients for users in other accounts", %{
+      unprivileged_subject: unprivileged_subject,
+      admin_subject: admin_subject
+    } do
+      user = UsersFixtures.create_user_with_role(:unprivileged)
+      ClientsFixtures.create_client(user: user)
+
+      assert list_clients_by_user_id(user.id, unprivileged_subject) == {:ok, []}
+      assert list_clients_by_user_id(user.id, admin_subject) == {:ok, []}
     end
 
     test "shows only clients owned by a user for unprivileged subject", %{
@@ -287,6 +325,7 @@ defmodule Domain.ClientsTest do
       assert client.preshared_key == attrs.preshared_key
 
       assert client.user_id == user.id
+      assert client.account_id == user.account_id
 
       refute is_nil(client.ipv4)
       refute is_nil(client.ipv6)
@@ -371,9 +410,10 @@ defmodule Domain.ClientsTest do
     end
 
     test "does not allow to reuse IP addresses", %{
+      account: account,
       admin_subject: subject
     } do
-      attrs = ClientsFixtures.client_attrs()
+      attrs = ClientsFixtures.client_attrs(account: account)
       assert {:ok, client} = upsert_client(attrs, subject)
 
       addresses =
@@ -388,8 +428,19 @@ defmodule Domain.ClientsTest do
       assert %{address: client.ipv6, type: :ipv6} in addresses
 
       assert_raise Ecto.ConstraintError, fn ->
-        NetworkFixtures.create_address(address: client.ipv4)
+        NetworkFixtures.create_address(address: client.ipv4, account: account)
       end
+    end
+
+    test "ip addresses are unique per account", %{
+      account: account,
+      admin_subject: subject
+    } do
+      attrs = ClientsFixtures.client_attrs(account: account)
+      assert {:ok, client} = upsert_client(attrs, subject)
+
+      assert %Domain.Network.Address{} = NetworkFixtures.create_address(address: client.ipv4)
+      assert %Domain.Network.Address{} = NetworkFixtures.create_address(address: client.ipv6)
     end
 
     test "returns error when subject has no permission to create clients", %{
@@ -415,9 +466,10 @@ defmodule Domain.ClientsTest do
     end
 
     test "allows admin user to update other users clients", %{
+      account: account,
       admin_subject: subject
     } do
-      client = ClientsFixtures.create_client()
+      client = ClientsFixtures.create_client(account: account)
       attrs = %{name: "new name"}
 
       assert {:ok, client} = update_client(client, attrs, subject)
@@ -438,15 +490,25 @@ defmodule Domain.ClientsTest do
     end
 
     test "does not allow unprivileged user to update other users clients", %{
+      account: account,
       unprivileged_subject: subject
     } do
-      client = ClientsFixtures.create_client()
+      client = ClientsFixtures.create_client(account: account)
       attrs = %{name: "new name"}
 
       assert update_client(client, attrs, subject) ==
                {:error,
                 {:unauthorized,
                  [missing_permissions: [Clients.Authorizer.manage_clients_permission()]]}}
+    end
+
+    test "does not allow admin user to update clients in other accounts", %{
+      admin_subject: subject
+    } do
+      client = ClientsFixtures.create_client()
+      attrs = %{name: "new name"}
+
+      assert update_client(client, attrs, subject) == {:error, :not_found}
     end
 
     test "does not allow to reset required fields to empty values", %{
@@ -538,6 +600,14 @@ defmodule Domain.ClientsTest do
       assert deleted.deleted_at
     end
 
+    test "admin can not delete clients in other accounts", %{
+      admin_subject: subject
+    } do
+      client = ClientsFixtures.create_client()
+
+      assert delete_client(client, subject) == {:error, :not_found}
+    end
+
     test "unprivileged can delete own clients", %{
       unprivileged_user: user,
       unprivileged_subject: subject
@@ -549,6 +619,7 @@ defmodule Domain.ClientsTest do
     end
 
     test "unprivileged can not delete other people clients", %{
+      account: account,
       unprivileged_subject: subject
     } do
       client = ClientsFixtures.create_client()
@@ -558,7 +629,14 @@ defmodule Domain.ClientsTest do
                 {:unauthorized,
                  [missing_permissions: [Clients.Authorizer.manage_clients_permission()]]}}
 
-      assert Repo.aggregate(Clients.Client, :count) == 1
+      client = ClientsFixtures.create_client(account: account)
+
+      assert delete_client(client, subject) ==
+               {:error,
+                {:unauthorized,
+                 [missing_permissions: [Clients.Authorizer.manage_clients_permission()]]}}
+
+      assert Repo.aggregate(Clients.Client, :count) == 2
     end
 
     test "returns error when subject has no permission to delete clients", %{

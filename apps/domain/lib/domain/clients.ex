@@ -16,8 +16,8 @@ defmodule Domain.Clients do
     Supervisor.init(children, strategy: :one_for_one)
   end
 
-  def count do
-    Client.Query.all()
+  def count_by_account_id(account_id) do
+    Client.Query.by_account_id(account_id)
     |> Repo.aggregate(:count)
   end
 

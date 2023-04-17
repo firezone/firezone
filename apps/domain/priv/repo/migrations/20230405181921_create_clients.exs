@@ -17,7 +17,6 @@ defmodule Domain.Repo.Migrations.CreateClients do
           column: :address,
           type: :inet,
           with: [account_id: :account_id]
-          # match: :full
         )
       )
 
@@ -27,7 +26,6 @@ defmodule Domain.Repo.Migrations.CreateClients do
           column: :address,
           type: :inet,
           with: [account_id: :account_id]
-          # match: :full
         )
       )
 
