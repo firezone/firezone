@@ -57,6 +57,7 @@ defmodule FirezoneUmbrella.MixProject do
     [
       # Shared deps
       {:jason, "~> 1.2"},
+      {:sobelow, "~> 0.8.2", only: [:dev], runtime: false},
 
       # Shared test deps
       {:excoveralls, "~> 0.14", only: :test},

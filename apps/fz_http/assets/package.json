@@ -8,7 +8,8 @@
   "license": "Apache-2.0",
   "scripts": {
     "deploy": "node esbuild.js prod",
-    "watch": "node esbuild.js dev"
+    "watch": "node esbuild.js dev",
+    "audit": "improved-yarn-audit"
   },
   "engines": {
     "node": ">= 14.0.0"
