@@ -25,7 +25,12 @@ defmodule FirezoneUmbrella.MixProject do
       ],
       docs: [
         logo: "apps/fz_http/assets/static/images/logo.svg",
-        extras: ["README.md", "SECURITY.md", "CONTRIBUTING.md"]
+        extras: ["README.md", "SECURITY.md", "CONTRIBUTING.md"],
+        output: "doc/",
+        exclude: [
+          private: true,
+          #private module ...
+        ]
       ],
       deps: deps(),
       dialyzer: [
@@ -64,6 +69,7 @@ defmodule FirezoneUmbrella.MixProject do
       {:mix_test_watch, "~> 1.0", only: :dev, runtime: false},
       {:dialyxir, "~> 1.1", only: [:dev], runtime: false},
       {:junit_formatter, "~> 3.3", only: [:test]},
+      {:ex_doc, "~> 0.24", only: :dev, runtime: false},
 
       # Formatter doesn't track dependencies of children applications
       {:phoenix, "~> 1.7.0"},

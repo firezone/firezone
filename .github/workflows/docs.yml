@@ -1,0 +1,36 @@
+name: Publish Docs
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Install Elixir
+      run: |
+        sudo apt update
+        sudo apt install -y esl-erlang elixir
+
+    - name: Install dependencies
+      run: mix deps.get
+
+    - name: Generate Docs
+      run: mix docs
+
+    - name: Publish Docs
+      run: |
+        mkdir -p docs
+        mv doc/* docs/
+        
+        git add docs/
+        git commit -m "Generate API docs"
+        git remote set-url origin https://${{ GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+       
+        git push origin main
