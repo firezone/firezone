@@ -56,3 +56,6 @@ config :ex_unit,
   formatters: [JUnitFormatter, ExUnit.CLIFormatter],
   capture_log: true,
   exclude: [:acceptance]
+
+# Prevent excoveralls from failing in Github CI with {:error, :checkout_timeout}
+config :hackney, max_connections: 1_000
