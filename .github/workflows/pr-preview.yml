@@ -1,0 +1,44 @@
+name: PR Preview
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - labeled
+      - unlabeled
+
+jobs:
+  check_labels:
+    name: Check labels
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for required labels
+        uses: andymckay/labeler@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          labels: |
+            size
+            priority
+            value
+            area
+            kind
+
+      - name: Check for unapproved labels
+        run: |
+          labels=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+          -H "Accept: application/vnd.github.v3+json" \
+          https://api.github.com/repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER/labels \
+          | jq -r '.[].name')
+          required_labels=("size" "priority" "value" "area" "kind")
+          for label in $required_labels
+          do
+            if ! echo $labels | grep -q $label; then
+              echo "::error::Missing label '$label'"
+              exit 1
+            fi
+          done
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.pull_request.number }}
