@@ -281,6 +281,21 @@ defmodule Domain.Validator do
     end
   end
 
+  def validate_required_one_of(%Ecto.Changeset{} = changeset, fields) do
+    if Enum.any?(fields, &(not empty?(changeset, &1))) do
+      changeset
+    else
+      Enum.reduce(
+        fields,
+        changeset,
+        &add_error(&2, &1, "one of these fields must be present: #{Enum.join(fields, ", ")}",
+          validation: :one_of,
+          one_of: fields
+        )
+      )
+    end
+  end
+
   @doc """
   Applies a validation function for every elements of the list.
 
