@@ -5,7 +5,7 @@ defmodule Domain.Repo.Migrations.CreateRelays do
     create table(:relays, primary_key: false) do
       add(:id, :uuid, primary_key: true)
 
-      add(:ipv4, :inet, null: false)
+      add(:ipv4, :inet)
       add(:ipv6, :inet)
 
       add(:last_seen_user_agent, :string, null: false)
@@ -21,8 +21,25 @@ defmodule Domain.Repo.Migrations.CreateRelays do
       timestamps(type: :utc_datetime_usec)
     end
 
+    execute("""
+    CREATE UNIQUE INDEX relays_unique_addresses_idx
+    ON relays (account_id, COALESCE(ipv4, ipv6))
+    WHERE deleted_at IS NULL
+    """)
+
     # Used to enforce unique IPv4 and IPv6 addresses.
-    create(index(:relays, [:account_id, :ipv4], unique: true, where: "deleted_at IS NULL"))
-    create(index(:relays, [:account_id, :ipv6], unique: true, where: "deleted_at IS NULL"))
+    create(
+      index(:relays, [:account_id, :ipv4],
+        unique: true,
+        where: "deleted_at IS NULL AND ipv4 IS NOT NULL"
+      )
+    )
+
+    create(
+      index(:relays, [:account_id, :ipv6],
+        unique: true,
+        where: "deleted_at IS NULL AND ipv6 IS NOT NULL"
+      )
+    )
   end
 end

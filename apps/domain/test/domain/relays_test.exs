@@ -435,8 +435,8 @@ defmodule Domain.RelaysTest do
       assert {:error, changeset} = upsert_relay(token, attrs)
 
       assert errors_on(changeset) == %{
-               ipv4: ["is invalid"],
-               ipv6: ["is invalid"],
+               ipv4: ["one of these fields must be present: ipv4, ipv6", "is invalid"],
+               ipv6: ["one of these fields must be present: ipv4, ipv6", "is invalid"],
                last_seen_user_agent: ["is invalid"]
              }
     end
@@ -462,6 +462,19 @@ defmodule Domain.RelaysTest do
       assert relay.last_seen_at
 
       assert Repo.aggregate(Domain.Network.Address, :count) == 0
+    end
+
+    test "allows creating ipv6-only relays", %{
+      token: token
+    } do
+      attrs =
+        RelaysFixtures.relay_attrs()
+        |> Map.drop([:name, :ipv4])
+
+      assert {:ok, _relay} = upsert_relay(token, attrs)
+      assert {:ok, _relay} = upsert_relay(token, attrs)
+
+      assert Repo.one(Relays.Relay)
     end
 
     test "updates relay when it already exists", %{

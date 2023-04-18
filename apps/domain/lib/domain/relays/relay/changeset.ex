@@ -8,19 +8,19 @@ defmodule Domain.Relays.Relay.Changeset do
   @conflict_replace_fields ~w[ipv4 ipv6
                               last_seen_user_agent last_seen_remote_ip
                               last_seen_version last_seen_at]a
-  @required_fields @upsert_fields
 
   def upsert_conflict_target,
-    do: {:unsafe_fragment, ~s/(account_id, ipv4) WHERE deleted_at IS NULL/}
+    do: {:unsafe_fragment, ~s/(account_id, COALESCE(ipv4, ipv6)) WHERE deleted_at IS NULL/}
 
   def upsert_on_conflict, do: {:replace, @conflict_replace_fields}
 
   def upsert_changeset(%Relays.Token{} = token, attrs) do
     %Relays.Relay{}
     |> cast(attrs, @upsert_fields)
-    |> validate_required(@required_fields)
-    |> unique_constraint(:ipv4)
-    |> unique_constraint(:ipv6)
+    |> validate_required(~w[last_seen_user_agent last_seen_remote_ip]a)
+    |> validate_required_one_of(~w[ipv4 ipv6]a)
+    |> unique_constraint(:ipv4, name: :relays_account_id_ipv4_index)
+    |> unique_constraint(:ipv6, name: :relays_account_id_ipv6_index)
     |> put_change(:last_seen_at, DateTime.utc_now())
     |> put_relay_version()
     |> put_change(:account_id, token.account_id)
