@@ -22,6 +22,6 @@ defmodule Domain.Repo.Migrations.CreateGatewayTokens do
       )
     )
 
-    create(index(:gateway_tokens, [:account_id], where: "deleted_at IS NULL"))
+    create(index(:gateway_tokens, [:group_id], where: "deleted_at IS NULL"))
   end
 end

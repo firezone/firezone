@@ -22,6 +22,6 @@ defmodule Domain.Repo.Migrations.CreateRelayTokens do
       )
     )
 
-    create(index(:relay_tokens, [:account_id], where: "deleted_at IS NULL"))
+    create(index(:relay_tokens, [:group_id], where: "deleted_at IS NULL"))
   end
 end
