@@ -44,7 +44,6 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.Show do
       user: Users.fetch_user_by_id!(device.user_id),
       page_title: device.name,
       allowed_ips: Devices.get_allowed_ips(device, defaults),
-      port: FzHttp.Config.fetch_env!(:fz_vpn, :wireguard_port),
       dns: Devices.get_dns(device, defaults),
       endpoint: Devices.get_endpoint(device, defaults),
       mtu: Devices.get_mtu(device, defaults),
