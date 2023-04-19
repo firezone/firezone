@@ -50,7 +50,6 @@ defmodule FzHttpWeb.DeviceLive.Admin.Show do
       allowed_ips: Devices.get_allowed_ips(device, defaults),
       dns: Devices.get_dns(device, defaults),
       endpoint: Devices.get_endpoint(device, defaults),
-      port: FzHttp.Config.fetch_env!(:fz_vpn, :wireguard_port),
       mtu: Devices.get_mtu(device, defaults),
       persistent_keepalive: Devices.get_persistent_keepalive(device, defaults),
       config: FzHttpWeb.WireguardConfigView.render("device.conf", %{device: device})
