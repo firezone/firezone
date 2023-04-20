@@ -353,9 +353,11 @@ jobs:
         run: mix compile
       - name: Install Front-End Dependencies
         run: |
+          cd apps/web
           mix assets.setup
       - name: Build Assets
         run: |
+          cd apps/web
           mix assets.build
       - name: Setup Database
         run: |
