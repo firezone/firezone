@@ -351,14 +351,12 @@ jobs:
         run: mix deps.compile --skip-umbrella-children
       - name: Compile Application
         run: mix compile
-      - name: Install Node Dependencies
+      - name: Install Front-End Dependencies
         run: |
-          cd apps/web/assets
-          yarn install --frozen-lockfile
+          mix assets.setup
       - name: Build Assets
         run: |
-          cd apps/web/assets
-          yarn deploy
+          mix assets.build
       - name: Setup Database
         run: |
           mix ecto.create
