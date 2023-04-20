@@ -58,7 +58,7 @@ defmodule Domain.Config.Configuration.SAMLIdentityProvider do
     changeset
     |> validate_change(:metadata, fn :metadata, value ->
       try do
-        Samly.IdpData.from_xml(value, %Samly.IdpData{})
+        # Samly.IdpData.from_xml(value, %Samly.IdpData{})
         []
       catch
         :exit, e ->

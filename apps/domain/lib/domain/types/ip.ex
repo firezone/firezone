@@ -11,6 +11,8 @@ defmodule Domain.Types.IP do
 
   def equal?(left, right), do: left == right
 
+  def cast(tuple) when tuple_size(tuple) == 4, do: {:ok, %Postgrex.INET{address: tuple}}
+  def cast(tuple) when tuple_size(tuple) == 8, do: {:ok, %Postgrex.INET{address: tuple}}
   def cast(%Postgrex.INET{} = inet), do: {:ok, inet}
 
   def cast(binary) when is_binary(binary) do

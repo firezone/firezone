@@ -1,8 +1,4 @@
 defmodule Domain.DevicesFixtures do
-  @moduledoc """
-  This module defines test helpers for creating
-  entities via the `Domain.Devices` context.
-  """
   alias Domain.Devices
   alias Domain.UsersFixtures
   alias Domain.SubjectFixtures

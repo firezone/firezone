@@ -1,5 +1,5 @@
-defmodule API.Client.Presence do
+defmodule Domain.Gateways.Presence do
   use Phoenix.Presence,
-    otp_app: :api,
+    otp_app: :domain,
     pubsub_server: Domain.PubSub
 end

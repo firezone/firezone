@@ -1,29 +1,22 @@
 defmodule API.Gateway.ChannelTest do
   use API.ChannelCase
+  alias Domain.GatewaysFixtures
 
   setup do
-    gateway = %{id: Ecto.UUID.generate()}
+    gateway = GatewaysFixtures.create_gateway()
 
     {:ok, _, socket} =
       API.Gateway.Socket
       |> socket("gateway:#{gateway.id}", %{gateway: gateway})
       |> subscribe_and_join(API.Gateway.Channel, "gateway")
 
-    %{socket: socket}
+    %{gateway: gateway, socket: socket}
   end
 
-  # test "ping replies with status ok", %{socket: socket} do
-  #   ref = push(socket, "ping", %{"hello" => "there"})
-  #   assert_reply ref, :ok, %{"hello" => "there"}
-  # end
+  test "tracks presence after join", %{gateway: gateway, socket: socket} do
+    presence = Domain.Gateways.Presence.list(socket)
 
-  # test "shout broadcasts to client:lobby", %{socket: socket} do
-  #   push(socket, "shout", %{"hello" => "all"})
-  #   assert_broadcast "shout", %{"hello" => "all"}
-  # end
-
-  # test "broadcasts are pushed to the client", %{socket: socket} do
-  #   broadcast_from!(socket, "broadcast", %{"some" => "data"})
-  #   assert_push "broadcast", %{"some" => "data"}
-  # end
+    assert %{metas: [%{online_at: online_at, phx_ref: _ref}]} = Map.fetch!(presence, gateway.id)
+    assert is_number(online_at)
+  end
 end

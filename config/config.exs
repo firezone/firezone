@@ -63,6 +63,11 @@ config :domain,
 config :domain,
   max_devices_per_user: 10
 
+config :domain, Domain.Auth,
+  key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5SD",
+  salt: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDejX",
+  max_age: 30 * 60
+
 ###############################
 ##### Web #####################
 ###############################
@@ -128,6 +133,16 @@ config :api,
   cookie_secure: false,
   cookie_signing_salt: "WjllcThpb2Y=",
   cookie_encryption_salt: "M0EzM0R6NEMyaw=="
+
+config :api, API.Gateway.Socket,
+  key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5SD",
+  salt: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDejX",
+  max_age: 30 * 60
+
+config :api, API.Relay.Socket,
+  key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5SD",
+  salt: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDejX",
+  max_age: 30 * 60
 
 ###############################
 ##### Third-party configs #####

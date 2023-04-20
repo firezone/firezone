@@ -1,5 +1,6 @@
 defmodule API.Client.Socket do
   use Phoenix.Socket
+  alias Domain.{Auth, Clients}
 
   ## Channels
 
@@ -8,11 +9,18 @@ defmodule API.Client.Socket do
   ## Authentication
 
   @impl true
-  def connect(%{"token" => token, "id" => external_id}, socket, connect_info) do
-    %{user_agent: user_agent, peer_data: peer_data} = connect_info
+  def connect(%{"token" => token} = attrs, socket, connect_info) do
+    %{user_agent: user_agent, peer_data: %{address: remote_ip}} = connect_info
 
-    with {:ok, subject} <- Auth.fetch_subject_by_token(token),
-         {:ok, client} <- Clients.upsert_client(external_id, user_agent, peer_data, subject) do
+    # TODO: we want to scope tokens for specific use cases, so token generated in auth flow
+    # should be only good for websockets, but not to be put in a browser cookie
+    with {:ok, subject} <- Auth.consume_auth_token(token, remote_ip, user_agent),
+         {:ok, client} <- Clients.upsert_client(attrs, subject) do
+      socket =
+        socket
+        |> assign(:subject, subject)
+        |> assign(:client, client)
+
       {:ok, socket}
     end
   end

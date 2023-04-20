@@ -24,6 +24,8 @@ defmodule Domain.Users.User do
     has_many :oidc_connections, Domain.Auth.OIDC.Connection
     has_many :api_tokens, Domain.ApiTokens.ApiToken
 
+    belongs_to :account, Domain.Accounts.Account
+
     field :disabled_at, :utc_datetime_usec
     timestamps()
   end

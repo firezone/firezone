@@ -11,11 +11,13 @@ defmodule Domain.Auth.Subject do
   @type t :: %__MODULE__{
           actor: actor(),
           permissions: MapSet.t(permission),
+          account: %Domain.Accounts.Account{},
           context: Context.t()
         }
 
   defstruct actor: nil,
             permissions: MapSet.new(),
+            account: nil,
             context: %Context{}
 
   def actor_type(%__MODULE__{actor: {actor_type, _}}), do: actor_type

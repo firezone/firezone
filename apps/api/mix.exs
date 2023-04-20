@@ -55,7 +55,8 @@ defmodule API.MixProject do
       {:telemetry_poller, "~> 1.0"},
 
       # Other deps
-      {:jason, "~> 1.2"}
+      {:jason, "~> 1.2"},
+      {:remote_ip, "~> 1.1"}
 
       # Test deps
     ]

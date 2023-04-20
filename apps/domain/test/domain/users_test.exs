@@ -312,19 +312,27 @@ defmodule Domain.UsersTest do
   describe "create_user/3" do
     setup do
       subject = SubjectFixtures.create_subject()
-      %{subject: subject}
+      %{subject: subject, account: subject.account}
     end
 
-    test "returns changeset error when required attrs are missing", %{subject: subject} do
-      assert {:error, changeset} = create_user(:unprivileged, %{}, subject)
+    test "returns changeset error when required attrs are missing", %{
+      subject: subject,
+      account: account
+    } do
+      assert {:error, changeset} = create_user(account, :unprivileged, %{}, subject)
       refute changeset.valid?
 
       assert errors_on(changeset) == %{email: ["can't be blank"]}
     end
 
-    test "returns error on invalid attrs", %{subject: subject} do
+    test "returns error on invalid attrs", %{subject: subject, account: account} do
       assert {:error, changeset} =
-               create_user(:unprivileged, %{email: "invalid_email", password: "short"}, subject)
+               create_user(
+                 account,
+                 :unprivileged,
+                 %{email: "invalid_email", password: "short"},
+                 subject
+               )
 
       refute changeset.valid?
 
@@ -336,6 +344,7 @@ defmodule Domain.UsersTest do
 
       assert {:error, changeset} =
                create_user(
+                 account,
                  :unprivileged,
                  %{email: "invalid_email", password: String.duplicate("A", 65)},
                  subject
@@ -345,16 +354,20 @@ defmodule Domain.UsersTest do
       assert "should be at most 64 character(s)" in errors_on(changeset).password
 
       assert {:error, changeset} =
-               create_user(:unprivileged, %{email: String.duplicate(" ", 18)}, subject)
+               create_user(account, :unprivileged, %{email: String.duplicate(" ", 18)}, subject)
 
       refute changeset.valid?
 
       assert "can't be blank" in errors_on(changeset).email
     end
 
-    test "requires password confirmation to match the password", %{subject: subject} do
+    test "requires password confirmation to match the password", %{
+      subject: subject,
+      account: account
+    } do
       assert {:error, changeset} =
                create_user(
+                 account,
                  :unprivileged,
                  %{password: "foo", password_confirmation: "bar"},
                  subject
@@ -364,6 +377,7 @@ defmodule Domain.UsersTest do
 
       assert {:error, changeset} =
                create_user(
+                 account,
                  :unprivileged,
                  %{
                    password: "password1234",
@@ -375,33 +389,33 @@ defmodule Domain.UsersTest do
       refute Map.has_key?(errors_on(changeset), :password_confirmation)
     end
 
-    test "returns error when email is already taken", %{subject: subject} do
+    test "returns error when email is already taken", %{subject: subject, account: account} do
       attrs = UsersFixtures.user_attrs()
-      assert {:ok, _user} = create_user(:unprivileged, attrs, subject)
-      assert {:error, changeset} = create_user(:unprivileged, attrs, subject)
+      assert {:ok, _user} = create_user(account, :unprivileged, attrs, subject)
+      assert {:error, changeset} = create_user(account, :unprivileged, attrs, subject)
       refute changeset.valid?
       assert "has already been taken" in errors_on(changeset).email
     end
 
-    test "returns error when role is invalid", %{subject: subject} do
+    test "returns error when role is invalid", %{subject: subject, account: account} do
       attrs = UsersFixtures.user_attrs()
 
       assert_raise Ecto.ChangeError, fn ->
-        create_user(:foo, attrs, subject)
+        create_user(account, :foo, attrs, subject)
       end
     end
 
-    test "creates a user in given role", %{subject: subject} do
+    test "creates a user in given role", %{subject: subject, account: account} do
       for role <- [:admin, :unprivileged] do
         attrs = UsersFixtures.user_attrs()
-        assert {:ok, user} = create_user(role, attrs, subject)
+        assert {:ok, user} = create_user(account, role, attrs, subject)
         assert user.role == role
       end
     end
 
-    test "creates an unprivileged user", %{subject: subject} do
+    test "creates an unprivileged user", %{subject: subject, account: account} do
       attrs = UsersFixtures.user_attrs()
-      assert {:ok, user} = create_user(:unprivileged, attrs, subject)
+      assert {:ok, user} = create_user(account, :unprivileged, attrs, subject)
       assert user.role == :unprivileged
       assert user.email == attrs.email
 
@@ -416,31 +430,31 @@ defmodule Domain.UsersTest do
       assert is_nil(user.sign_in_token_created_at)
     end
 
-    test "allows creating a user without password", %{subject: subject} do
+    test "allows creating a user without password", %{subject: subject, account: account} do
       email = UsersFixtures.user_attrs().email
       attrs = %{email: email, password: nil, password_confirmation: nil}
-      assert {:ok, user} = create_user(:unprivileged, attrs, subject)
+      assert {:ok, user} = create_user(account, :unprivileged, attrs, subject)
       assert is_nil(user.password_hash)
 
       email = UsersFixtures.user_attrs().email
       attrs = %{email: email, password: "", password_confirmation: ""}
-      assert {:ok, user} = create_user(:unprivileged, attrs, subject)
+      assert {:ok, user} = create_user(account, :unprivileged, attrs, subject)
       assert is_nil(user.password_hash)
     end
 
-    test "trims email", %{subject: subject} do
+    test "trims email", %{subject: subject, account: account} do
       attrs = UsersFixtures.user_attrs()
       updated_attrs = Map.put(attrs, :email, " #{attrs.email} ")
 
-      assert {:ok, user} = create_user(:unprivileged, updated_attrs, subject)
+      assert {:ok, user} = create_user(account, :unprivileged, updated_attrs, subject)
 
       assert user.email == attrs.email
     end
 
-    test "returns error when subject can not create users", %{subject: subject} do
+    test "returns error when subject can not create users", %{subject: subject, account: account} do
       subject = SubjectFixtures.remove_permissions(subject)
 
-      assert create_user(:foo, %{}, subject) ==
+      assert create_user(account, :foo, %{}, subject) ==
                {:error,
                 {:unauthorized,
                  [missing_permissions: [Users.Authorizer.manage_users_permission()]]}}

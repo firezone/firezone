@@ -57,25 +57,72 @@ defmodule Domain.Auth do
   end
 
   def fetch_subject!(%Users.User{} = user, remote_ip, user_agent) do
+    user = Repo.preload(user, :account)
     role = fetch_user_role!(user)
 
     %Subject{
       actor: {:user, user},
       permissions: role.permissions,
+      account: user.account,
       context: %Context{remote_ip: remote_ip, user_agent: user_agent}
     }
   end
 
   def fetch_subject!(%ApiTokens.ApiToken{} = api_token, remote_ip, user_agent) do
-    api_token = Repo.preload(api_token, :user)
+    api_token = Repo.preload(api_token, user: [:account])
     role = fetch_user_role!(api_token.user)
 
     # XXX: Once we build audit logging here we need to build a different kind of subject
     %Subject{
       actor: {:user, api_token.user},
       permissions: role.permissions,
+      account: api_token.user.account,
       context: %Context{remote_ip: remote_ip, user_agent: user_agent}
     }
+  end
+
+  # def sign_in(:userpass, login, password): do, {:ok, session_token}
+  # def sign_in(:api_token, token)
+  # def sign_in(:user_token, token)
+  # def sign_in(:oidc, provider, token)
+  # def sign_in(:saml, provider, token)
+
+  # TODO: for some tokens we want to save remote_ip and invalidate them when the IP changes
+  def create_auth_token(%Subject{} = subject) do
+    config = fetch_config!()
+    key_base = Keyword.fetch!(config, :key_base)
+    salt = Keyword.fetch!(config, :salt)
+    Plug.Crypto.sign(key_base, salt, token_body(subject))
+  end
+
+  defp token_body(%Subject{actor: {:user, user}}), do: {:user, user.id}
+
+  def consume_auth_token(token, remote_ip, user_agent) do
+    config = fetch_config!()
+    key_base = Keyword.fetch!(config, :key_base)
+    salt = Keyword.fetch!(config, :salt)
+    max_age = Keyword.fetch!(config, :max_age)
+
+    case Plug.Crypto.verify(key_base, salt, token, max_age: max_age) do
+      {:ok, {:user, user_id}} ->
+        # TODO: we might want to check that user is active in future
+        user = Users.fetch_user_by_id!(user_id)
+        role = fetch_user_role!(user)
+
+        {:ok,
+         %Subject{
+           actor: {:user, user},
+           permissions: role.permissions,
+           context: %Context{remote_ip: remote_ip, user_agent: user_agent}
+         }}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp fetch_config! do
+    Config.fetch_env!(:domain, __MODULE__)
   end
 
   def fetch_oidc_provider_config(provider_id) do
