@@ -1,5 +1,6 @@
 defmodule Web.AcceptanceCase do
   use ExUnit.CaseTemplate
+  use Domain.CaseTemplate
   alias Wallaby.Query
   import Wallaby.Browser
 

@@ -1,9 +1,0 @@
-Magic sign-in link
-
-Dear Firezone user,
-
-Here is the magic sign-in link: <%= @link %> ,
-please copy this link and open it in your browser.
-
-It is valid for 1 hour.
-If you didn't request for this, you can safely discard this email.

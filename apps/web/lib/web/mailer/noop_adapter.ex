@@ -4,9 +4,7 @@ defmodule Web.Mailer.NoopAdapter do
   so that we don't have to add conditional logic to every single call to
   `Web.Mailer.deliver/2`.
   """
-
   use Swoosh.Adapter
-
   require Logger
 
   @impl true
