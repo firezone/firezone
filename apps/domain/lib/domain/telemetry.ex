@@ -127,7 +127,7 @@ defmodule Domain.Telemetry do
         unprivileged_device_configuration: allow_unprivileged_device_configuration,
         local_authentication: local_auth_enabled,
         disable_vpn_on_oidc_error: disable_vpn_on_oidc_error,
-        outbound_email: Web.Mailer.active?(),
+        # outbound_email: Web.Mailer.active?(),
         external_database:
           external_database?(Map.new(Domain.Config.fetch_env!(:domain, Domain.Repo))),
         logo_type: Domain.Config.Logo.type(logo)

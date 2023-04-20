@@ -102,6 +102,7 @@ if config_env() == :prod do
       port: compile_config!(:phoenix_http_port),
       protocol_options: compile_config!(:phoenix_http_protocol_options)
     ],
+    # TODO: force_ssl: [rewrite_on: [:x_forwarded_proto], hsts: true],
     url: [
       scheme: external_url_scheme,
       host: external_url_host,

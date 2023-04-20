@@ -53,7 +53,8 @@ defmodule Domain.MixProject do
       {:cloak, "~> 1.1"},
       {:cloak_ecto, "~> 1.2"},
 
-      # PubSub
+      # PubSub and Presence
+      {:phoenix, "~> 1.7", runtime: false},
       {:phoenix_pubsub, "~> 2.0"},
 
       # Auth-related deps
