@@ -91,14 +91,14 @@ const config = {
         items: [
           {
             href: "/docs",
-            label: "Documentation",
+            label: "Docs",
             position: "left",
           },
-          {
-            href: "/blog",
-            label: "Blog",
-            position: "left",
-          },
+          //{
+           // href: "https://discourse.firez.one/?utm_source=docs.firezone.dev",
+           // label: "Support",
+           // position: "left",
+         // },
           // {
           //   href: "/pricing",
           //   label: "Pricing",
@@ -106,8 +106,8 @@ const config = {
           // },
           {
             href: "/contact/support",
-            label: "Contact support",
-            position: "right",
+            label: "Contact",
+            position: "left",
             "aria-label": "Contact support",
           },
           {
@@ -119,6 +119,13 @@ const config = {
         ],
       },
       footer: {
+        logo: {
+          alt: "Firezone Logo",
+          src: "img/logo.svg",
+          href: 'https://www.firezone.dev',
+          width: 160,
+          height:50,
+        },
         style: "light",
         links: [
           {
@@ -135,10 +142,27 @@ const config = {
             ],
           },
           {
+            title: "Resources",
+            items: [
+              {
+                label: "Docs",
+                href: "/docs",
+              },
+              {
+                label: "Blog",
+                href: "/blog",
+              },
+              {
+                label: "Contact",
+                href: "/contact/support",
+              },
+            ],
+          },
+          {
             title: "Community",
             items: [
               {
-                label: "Support Forums",
+                label: "Discourse",
                 href: "https://discourse.firez.one/?utm_source=docs.firezone.dev",
               },
               {
@@ -153,10 +177,14 @@ const config = {
                 label: "Twitter",
                 href: "https://twitter.com/firezonehq?utm_source=docs.firezone.dev",
               },
+              {
+                label: "LinkedIn",
+                href: "https://www.linkedin.com/company/firezonehq/",
+              },
             ],
           },
         ],
-        copyright: `Copyright © ${new Date().getFullYear()} Firezone, Inc.`,
+        copyright: `Copyright © ${new Date().getFullYear()} Firezone, Inc. Wireguard® is a registered trademark of Jason A. Donenfeld.`,
       },
       prism: {
         theme: lightCodeTheme,
