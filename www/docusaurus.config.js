@@ -142,7 +142,7 @@ const config = {
           src: "img/logo.svg",
           href: 'https://www.firezone.dev',
           width: 160,
-          height:50,
+          height: 50,
         },
         style: "light",
         links: [
