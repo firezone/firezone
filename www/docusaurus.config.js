@@ -202,7 +202,7 @@ const config = {
             ],
           },
         ],
-        copyright: `Copyright © ${new Date().getFullYear()} Firezone, Inc. Wireguard® is a registered trademark of Jason A. Donenfeld.`,
+        copyright: `Copyright © ${new Date().getFullYear()} Firezone, Inc. WireGuard® is a registered trademark of Jason A. Donenfeld.`,
       },
       prism: {
         theme: lightCodeTheme,
