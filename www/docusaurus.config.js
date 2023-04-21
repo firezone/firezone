@@ -48,7 +48,19 @@ const config = {
     },
   ],
 
-  plugins: [],
+  plugins: [
+    [
+      '@docusaurus/plugin-client-redirects',
+      {
+        redirects: [
+          {
+            to: '/contact/newsletter',
+            from: '/sales',
+          },
+        ],
+      },
+    ],
+  ],
 
   themes: [],
 
@@ -109,6 +121,12 @@ const config = {
             label: "Contact",
             position: "left",
             "aria-label": "Contact support",
+          },
+          {
+            href: "/contact/newsletter",
+            label: "Newsletter",
+            position: "right",
+            "aria-label": "Newsletter",
           },
           {
             html: '<img alt="GitHub Repo stars" src="https://img.shields.io/github/stars/firezone/firezone?label=Stars&amp;style=social" style="margin-top: 6px;" height="24">',

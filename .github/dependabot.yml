@@ -9,6 +9,8 @@ updates:
     directory: "/" # Location of package manifests
     schedule:
       interval: "weekly"
+    # Only allow security updates
+    open-pull-requests-limit: 0
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
