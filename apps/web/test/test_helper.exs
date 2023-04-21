@@ -2,7 +2,7 @@
 Path.join(File.cwd!(), "screenshots") |> File.rm_rf!()
 
 Bureaucrat.start(
-  writer: DocsGenerator,
+  writer: Web.Documentation.Generator,
   default_path: "../../www/docs/reference/rest-api"
 )
 

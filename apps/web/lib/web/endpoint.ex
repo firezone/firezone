@@ -1,22 +1,5 @@
 defmodule Web.Endpoint do
   use Phoenix.Endpoint, otp_app: :web
-  alias Web.ProxyHeaders
-  alias Web.HeaderHelpers
-  alias Web.Session
-
-  plug Web.Plug.PathPrefix
-
-  if Application.compile_env(:web, :sql_sandbox) do
-    plug Phoenix.Ecto.SQL.Sandbox
-  end
-
-  socket "/socket", Web.UserSocket,
-    websocket: [
-      connect_info: [:user_agent, :peer_data, :x_headers, :uri],
-      # XXX: channel token should prevent CSWH but double check
-      check_origin: false
-    ],
-    longpoll: false
 
   socket "/live", Phoenix.LiveView.Socket,
     websocket: [
@@ -25,10 +8,8 @@ defmodule Web.Endpoint do
         :peer_data,
         :x_headers,
         :uri,
-        session: {Session, :options, []}
-      ],
-      # XXX: csrf token should prevent CSWH but double check
-      check_origin: false
+        session: {Web.Session, :options, []}
+      ]
     ],
     longpoll: false
 
@@ -45,19 +26,17 @@ defmodule Web.Endpoint do
   # Code reloading can be explicitly enabled under the
   # :code_reloader configuration of your endpoint.
   if code_reloading? do
-    socket "/phoenix/live_reload/socket", Phoenix.LiveReloader.Socket,
-      websocket: [
-        connect_info: [
-          session: {Session, :options, []}
-        ],
-        # XXX: csrf token should prevent CSWH but double check
-        check_origin: false
-      ]
+    socket "/phoenix/live_reload/socket", Phoenix.LiveReloader.Socket
 
     plug Phoenix.LiveReloader
     plug Phoenix.CodeReloader
     plug Phoenix.Ecto.CheckRepoStatus, otp_app: :domain
   end
+
+  plug RemoteIp,
+    headers: ["x-forwarded-for"],
+    proxies: {__MODULE__, :external_trusted_proxies, []},
+    clients: {__MODULE__, :clients, []}
 
   plug Plug.RequestId
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
@@ -69,15 +48,19 @@ defmodule Web.Endpoint do
 
   plug Plug.MethodOverride
   plug Plug.Head
-  plug(:session)
 
-  if HeaderHelpers.proxied?() do
-    plug ProxyHeaders
-  end
+  # TODO: ensure that phoenix configured to resolve opts at runtime
+  plug Plug.Session, Web.Session.options()
 
   plug Web.Router
 
-  defp session(conn, _opts) do
-    Plug.Session.call(conn, Plug.Session.init(Session.options()))
+  def external_trusted_proxies do
+    Domain.Config.fetch_env!(:web, :external_trusted_proxies)
+    |> Enum.map(&to_string/1)
+  end
+
+  def clients do
+    Domain.Config.fetch_env!(:web, :private_clients)
+    |> Enum.map(&to_string/1)
   end
 end

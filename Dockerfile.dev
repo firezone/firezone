@@ -47,7 +47,6 @@ RUN mix do deps.get, deps.compile, compile
 # Copy more granular, dependency management files first to prevent
 # busting the Docker build cache unnecessarily
 COPY apps/web/assets/package.json /var/app/apps/web/assets/package.json
-COPY apps/web/assets/local_modules /var/app/apps/web/assets/local_modules
 COPY apps/web/assets/yarn.lock /var/app/apps/web/assets/yarn.lock
 RUN cd apps/web/assets && yarn install
 

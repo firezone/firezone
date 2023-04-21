@@ -1,8 +1,4 @@
 defmodule Web.Session do
-  @moduledoc """
-  Dynamically configures session.
-  """
-
   # 4 hours
   @max_cookie_age 14_400
 
@@ -21,7 +17,11 @@ defmodule Web.Session do
 
   def options do
     @session_options ++
-      [secure: cookie_secure(), signing_salt: signing_salt(), encryption_salt: encryption_salt()]
+      [
+        secure: cookie_secure(),
+        signing_salt: signing_salt(),
+        encryption_salt: encryption_salt()
+      ]
   end
 
   defp cookie_secure do

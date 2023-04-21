@@ -13,7 +13,7 @@ import Config
 ###############################
 
 config :domain, ecto_repos: [Domain.Repo]
-config :domain, generators: [binary_id: true]
+config :domain, generators: [binary_id: true, context_app: :domain]
 
 config :domain, sql_sandbox: false
 
@@ -73,7 +73,7 @@ config :domain, Domain.Auth,
 ###############################
 
 config :web, ecto_repos: [Domain.Repo]
-config :web, generators: [binary_id: true]
+config :web, generators: [binary_id: true, context_app: :domain]
 
 config :web,
   external_url: "http://localhost:13000/",
@@ -87,7 +87,10 @@ config :web, Web.Endpoint,
     port: 13000,
     path: nil
   ],
-  render_errors: [view: Web.ErrorView, accepts: ~w(html json)],
+  render_errors: [
+    formats: [html: Web.ErrorHTML, json: Web.ErrorJSON],
+    layout: false
+  ],
   pubsub_server: Domain.PubSub,
   secret_key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5SD",
   live_view: [
@@ -113,7 +116,7 @@ config :web,
 ###############################
 
 config :api, ecto_repos: [Domain.Repo]
-config :api, generators: [binary_id: true]
+config :api, generators: [binary_id: true, context_app: :domain]
 
 config :api, API.Endpoint,
   url: [
@@ -161,22 +164,6 @@ config :posthog,
   api_url: "https://t.firez.one",
   api_key: "phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK"
 
-config :ueberauth, Ueberauth,
-  providers: [
-    identity: {Ueberauth.Strategy.Identity, callback_methods: ["POST"], uid_field: :email}
-  ]
-
-# Guardian configuration
-config :web, Web.Auth.HTML.Authentication,
-  issuer: "web",
-  # Generate with mix guardian.gen.secret
-  secret_key: "GApJ4c4a/KJLrBePgTDUk0n67AbjCvI9qdypKZEaJFXl6s9H3uRcIhTt49Fij5UO"
-
-config :web, Web.Auth.JSON.Authentication,
-  issuer: "web",
-  # Generate with mix guardian.gen.secret
-  secret_key: "GApJ4c4a/KJLrBePgTDUk0n67AbjCvI9qdypKZEaJFXl6s9H3uRcIhTt49Fij5UO"
-
 # Configures the vault
 config :domain, Domain.Vault,
   ciphers: [
@@ -204,6 +191,27 @@ config :samly, Samly.Provider,
   idp_id_from: :path_segment,
   service_providers: [],
   identity_providers: []
+
+config :esbuild,
+  version: "0.14.41",
+  default: [
+    args:
+      ~w(js/app.js --bundle --target=es2017 --outdir=../priv/static/assets --external:/fonts/* --external:/images/*),
+    cd: Path.expand("../apps/web/assets", __DIR__),
+    env: %{"NODE_PATH" => Path.expand("../deps", __DIR__)}
+  ]
+
+# Configure tailwind (the version is required)
+config :tailwind,
+  version: "3.2.4",
+  default: [
+    args: ~w(
+      --config=tailwind.config.js
+      --input=css/app.css
+      --output=../priv/static/assets/app.css
+    ),
+    cd: Path.expand("../apps/web/assets", __DIR__)
+  ]
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
