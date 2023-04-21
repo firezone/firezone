@@ -7,6 +7,7 @@ defmodule Domain.Clients.Client do
     field :name, :string
 
     field :public_key, :string
+    # REMOVEME
     field :preshared_key, Domain.Encrypted.Binary
 
     field :ipv4, Domain.Types.IP
