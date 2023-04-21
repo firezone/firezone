@@ -19,18 +19,18 @@ config :web, dev_routes: true
 
 config :web, Web.Endpoint,
   http: [port: 13000],
-  debug_errors: true,
   code_reloader: true,
+  debug_errors: true,
   check_origin: ["//127.0.0.1", "//localhost"],
   watchers: [
-    node: ["esbuild.js", "dev", cd: Path.expand("../apps/web/assets", __DIR__)]
+    esbuild: {Esbuild, :install_and_run, [:default, ~w(--sourcemap=inline --watch)]},
+    tailwind: {Tailwind, :install_and_run, [:default, ~w(--watch)]}
   ],
   live_reload: [
     patterns: [
       ~r"apps/web/priv/static/.*(js|css|png|jpeg|jpg|gif|svg)$",
       ~r"apps/web/priv/gettext/.*(po)$",
-      ~r"apps/web/lib/web_web/(live|views)/.*(ex)$",
-      ~r"apps/web/lib/web_web/templates/.*(eex)$"
+      ~r"apps/web/lib/web/.*(ex|eex|heex)$"
     ]
   ]
 

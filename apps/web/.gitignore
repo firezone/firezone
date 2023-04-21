@@ -1,6 +1,3 @@
-# macOS cruft
-.DS_Store
-
 # The directory Mix will write compiled artifacts to.
 /_build/
 
@@ -22,18 +19,19 @@ erl_crash.dump
 # Also ignore archive artifacts (built via "mix archive.build").
 *.ez
 
+# Temporary files, for example, from tests.
+/tmp/
+
 # Ignore package tarball (built via "mix hex.build").
-cloudfire-*.tar
+web-*.tar
 
-# If NPM crashes, it generates a log, let's ignore it too.
+# Ignore assets that are produced by build tools.
+/priv/static/assets/
+
+# Ignore digested assets cache.
+/priv/static/cache_manifest.json
+
+# In case you use Node.js/npm, you want to ignore these.
 npm-debug.log
-
-# The directory NPM downloads your dependencies sources to.
 /assets/node_modules/
-/assets/lib/node_modules/
-/assets/bin/
 
-# Since we are building assets from assets/,
-# we ignore priv/static. You may want to comment
-# this depending on your deployment strategy.
-/priv/static/dist/

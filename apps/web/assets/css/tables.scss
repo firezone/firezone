@@ -1,8 +1,0 @@
-$widths: (1, 2, 3, 4, 5, 6, 7);
-
-@each $width in $widths {
-  $i: index($widths, $width);
-  .table thead th.is-#{$i} {
-    width: #{$width}em !important;
-	}
-}

@@ -1,7 +1,4 @@
 defmodule Web.Mailer do
-  @moduledoc """
-  Outbound Email Sender.
-  """
   use Swoosh.Mailer, otp_app: :web
   alias Swoosh.Email
 

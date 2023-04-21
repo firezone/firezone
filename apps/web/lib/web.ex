@@ -1,96 +1,29 @@
 defmodule Web do
   @moduledoc """
   The entrypoint for defining your web interface, such
-  as controllers, views, channels and so on.
+  as controllers, components, channels, and so on.
 
   This can be used in your application as:
 
       use Web, :controller
-      use Web, :view
+      use Web, :html
 
-  The definitions below will be executed for every view,
-  controller, etc, so keep them short and clean, focused
+  The definitions below will be executed for every controller,
+  component, etc, so keep them short and clean, focused
   on imports, uses and aliases.
 
   Do NOT define functions inside the quoted expressions
-  below. Instead, define any helper function in modules
-  and import those modules here.
+  below. Instead, define additional modules and import
+  those modules here.
   """
 
-  def controller do
-    quote do
-      use Phoenix.Controller, namespace: Web
-
-      import Plug.Conn
-      import Web.Gettext
-      import Phoenix.LiveView.Controller
-      import Web.ControllerHelpers
-      import Web.DocHelpers
-
-      unquote(verified_routes())
-    end
-  end
-
-  def view do
-    quote do
-      use Phoenix.View,
-        root: "lib/web/templates",
-        namespace: Web
-
-      # Import convenience functions from controllers
-      import Phoenix.Controller, only: [view_module: 1]
-
-      # Use all HTML functionality (forms, tags, etc)
-      use Phoenix.HTML
-
-      # Use all LiveView functionality
-      use Phoenix.Component, global_prefixes: ~w(x-)
-
-      import Web.ErrorHelpers
-      import Web.AuthorizationHelpers
-      import Web.Gettext
-      import Web.LiveHelpers
-
-      unquote(verified_routes())
-    end
-  end
-
-  def live_view do
-    quote do
-      use Phoenix.LiveView, layout: {Web.LayoutView, :live}
-      import Web.LiveHelpers
-
-      alias Phoenix.LiveView.JS
-
-      unquote(view_helpers())
-    end
-  end
-
-  def live_view_without_layout do
-    quote do
-      use Phoenix.LiveView
-      import Web.LiveHelpers
-
-      alias Phoenix.LiveView.JS
-
-      unquote(view_helpers())
-    end
-  end
-
-  def live_component do
-    quote do
-      import Phoenix.LiveView
-      use Phoenix.LiveComponent
-      use Phoenix.Component, global_prefixes: ~w(x-)
-      import Web.LiveHelpers
-
-      unquote(view_helpers())
-    end
-  end
+  def static_paths, do: ~w(assets fonts images favicon.ico robots.txt)
 
   def router do
     quote do
-      use Phoenix.Router
+      use Phoenix.Router, helpers: false
+
+      # Import common connection and controller functions to use in pipelines
       import Plug.Conn
       import Phoenix.Controller
       import Phoenix.LiveView.Router
@@ -100,38 +33,68 @@ defmodule Web do
   def channel do
     quote do
       use Phoenix.Channel
-      import Web.Gettext
     end
   end
 
-  def helper do
+  def controller do
     quote do
-      unquote(verified_routes())
-    end
-  end
+      use Phoenix.Controller,
+        formats: [:html, :json],
+        layouts: [html: Web.Layouts]
 
-  defp view_helpers do
-    quote do
-      # Use all HTML functionality (forms, tags, etc)
-      use Phoenix.HTML
-
-      # Import LiveView helpers (live_render, live_component, live_patch, etc)
-      import Phoenix.Component
-
-      # Import basic rendering functionality (render, render_layout, etc)
-      import Phoenix.View
-
-      # Authorization Helpers
-      import Web.AuthorizationHelpers
-
-      import Web.ErrorHelpers
+      import Plug.Conn
       import Web.Gettext
+      import Web.ControllerDocumentation
 
       unquote(verified_routes())
     end
   end
 
-  def static_paths, do: ~w(dist fonts images uploads robots.txt)
+  def live_view do
+    quote do
+      use Phoenix.LiveView,
+        layout: {Web.Layouts, :app}
+
+      unquote(html_helpers())
+    end
+  end
+
+  def live_component do
+    quote do
+      use Phoenix.LiveComponent
+
+      unquote(html_helpers())
+    end
+  end
+
+  def html do
+    quote do
+      use Phoenix.Component
+
+      # Import convenience functions from controllers
+      import Phoenix.Controller,
+        only: [get_csrf_token: 0, view_module: 1, view_template: 1]
+
+      # Include general helpers for rendering HTML
+      unquote(html_helpers())
+    end
+  end
+
+  defp html_helpers do
+    quote do
+      # HTML escaping functionality
+      import Phoenix.HTML
+      # Core UI components and translation
+      import Web.CoreComponents
+      import Web.Gettext
+
+      # Shortcut for generating JS commands
+      alias Phoenix.LiveView.JS
+
+      # Routes generation with the ~p sigil
+      unquote(verified_routes())
+    end
+  end
 
   def verified_routes do
     quote do
