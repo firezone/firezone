@@ -140,7 +140,7 @@ const config = {
         logo: {
           alt: "Firezone Logo",
           src: "img/logo.svg",
-          href: 'https://www.firezone.dev',
+          href: "https://www.firezone.dev",
           width: 160,
           height: 50,
         },
