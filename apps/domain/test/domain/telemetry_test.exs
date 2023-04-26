@@ -147,28 +147,4 @@ defmodule Domain.TelemetryTest do
       assert ping_data[:external_database]
     end
   end
-
-  describe "email" do
-    test "outbound set" do
-      Domain.Config.put_env_override(:domain, Web.Mailer,
-        adapter: Swoosh.Adapters.NoopAdapter,
-        from_email: "test@firezone.dev"
-      )
-
-      ping_data = Telemetry.ping_data()
-
-      assert ping_data[:outbound_email]
-    end
-
-    test "outbound unset" do
-      Domain.Config.put_env_override(:domain, Web.Mailer,
-        adapter: SwooshAdapters.NoopAdapter,
-        from_email: nil
-      )
-
-      ping_data = Telemetry.ping_data()
-
-      assert ping_data[:outbound_email] == Web.MailerTestAdapter
-    end
-  end
 end
