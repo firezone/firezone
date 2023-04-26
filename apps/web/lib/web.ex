@@ -39,7 +39,7 @@ defmodule Web do
   def controller do
     quote do
       use Phoenix.Controller,
-        formats: [:html, :json],
+        formats: [:html, :json, :xml],
         layouts: [html: Web.Layouts]
 
       import Plug.Conn
@@ -63,6 +63,19 @@ defmodule Web do
     quote do
       use Phoenix.LiveComponent
 
+      unquote(html_helpers())
+    end
+  end
+
+  def xml do
+    quote do
+      import Phoenix.Template, only: [embed_templates: 1]
+
+      # Import convenience functions from controllers
+      import Phoenix.Controller,
+        only: [get_csrf_token: 0, view_module: 1, view_template: 1]
+
+      # Include general helpers for rendering HTML
       unquote(html_helpers())
     end
   end
