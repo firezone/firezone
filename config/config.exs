@@ -88,7 +88,11 @@ config :web, Web.Endpoint,
     path: nil
   ],
   render_errors: [
-    formats: [html: Web.ErrorHTML, json: Web.ErrorJSON],
+    formats: [
+      html: Web.ErrorHTML,
+      json: Web.ErrorJSON,
+      xml: Web.ErrorXML
+    ],
     layout: false
   ],
   pubsub_server: Domain.PubSub,
@@ -96,6 +100,10 @@ config :web, Web.Endpoint,
   live_view: [
     signing_salt: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDejX"
   ]
+
+config :mime, :types, %{
+  "application/xml" => ["xml"]
+}
 
 config :web, Web.SAML,
   entity_id: "urn:firezone.dev:firezone-app",
