@@ -94,6 +94,14 @@ const config = {
   themeConfig:
     /** @type {import('@docusaurus/preset-classic').ThemeConfig} */
     ({
+      announcementBar: {
+        id: 'support_us',
+        content:
+          'Firezone 1.0 is coming! <a target="_blank" rel="noopener noreferrer" href="/beta/signup">Sign up for early access.</a>',
+        backgroundColor: '#fafbfc',
+        textColor: '#091E42',
+        isCloseable: false,
+      },
       navbar: {
         title: "firezone",
         logo: {
@@ -122,6 +130,11 @@ const config = {
             position: "left",
             "aria-label": "Contact support",
           },
+          // {
+           // href: "/beta/signup",
+           // label: "Beta",
+          // position: "left",
+          //},
           {
             href: "/contact/newsletter",
             label: "Newsletter",
@@ -153,6 +166,22 @@ const config = {
                 label: "Home",
                 href: "/",
               },
+                {
+                  label: "Jobs (We're hiring!)",
+                  href: "https://www.ycombinator.com/companies/firezone",
+                },
+                // {
+                  // label: "Beta",
+                  // href: "/beta/signup",
+                // },
+               // {
+               //   label: "Terms",
+               //   href: "/terms",
+               // },
+               // {
+               //   label: "Privacy",
+               //   href: "/privacy",
+               // },
               // {
               //   label: "Pricing",
               //   href: "/pricing",
