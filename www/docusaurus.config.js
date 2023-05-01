@@ -97,7 +97,7 @@ const config = {
       /*announcementBar: {
         id: 'support_us',
         content:
-          'Firezone 1.0 is coming! <a target="_blank" rel="noopener noreferrer" href="/beta/signup">Sign up for early access.</a>',
+          'Firezone 1.0 is coming! <a target="_blank" rel="noopener noreferrer" href="/1.0/signup">Sign up for early access.</a>',
         backgroundColor: '#fafbfc',
         textColor: '#091E42',
         isCloseable: false,
@@ -153,7 +153,7 @@ const config = {
         logo: {
           alt: "Firezone Logo",
           src: "img/logo.svg",
-          href: "https://www.firezone.dev",
+          href: "/",
           width: 160,
           height: 50,
         },
