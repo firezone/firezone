@@ -175,7 +175,7 @@ defmodule FzHttpWeb.AuthControllerTest do
     } do
       jwk = ConfigFixtures.jwks_attrs()
 
-      claims = %{"email" => user.email, "sub" => user.id}
+      claims = %{"email" => user.email, "sub" => user.id, "aud" => "google"}
 
       {_alg, token} =
         jwk
@@ -194,7 +194,7 @@ defmodule FzHttpWeb.AuthControllerTest do
     test "when a user returns with an invalid claim", %{unauthed_conn: conn, bypass: bypass} do
       jwk = ConfigFixtures.jwks_attrs()
 
-      claims = %{"email" => "foo@example.com", "sub" => Ecto.UUID.generate()}
+      claims = %{"email" => "foo@example.com", "sub" => Ecto.UUID.generate(), "aud" => "google"}
 
       {_alg, token} =
         jwk
