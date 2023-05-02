@@ -1,9 +1,10 @@
 ---
 title: OpenID Connect
 sidebar_position: 10
-description: Setup single sign-on with your identity provider. Integrate
-  providers like Okta, Google, Azure, and JumpCloud using Firezone's
-  OpenID Connect (OIDC) connector.
+description:
+  Setup single sign-on with your identity provider. Integrate providers like
+  Okta, Google, Azure, and JumpCloud using Firezone's OpenID Connect (OIDC)
+  connector.
 ---
 
 # Integrate your identity provider using OIDC
@@ -12,10 +13,10 @@ Firezone supports Single Sign-On (SSO) via OpenID Connect (OIDC).
 
 ## Supported identity providers
 
-In general, most identity providers that offer OIDC support work with Firezone. Some providers
-that only implement the OIDC partially or use uncommon configurations may have
-issues, however. If your identity provider falls into this category, [contact us
-](/contact/support) about a custom integration.
+In general, most identity providers that offer OIDC support work with Firezone.
+Some providers that only implement the OIDC partially or use uncommon
+configurations may have issues, however. If your identity provider falls into
+this category, [contact us ](/contact/sales) about a custom integration.
 
 The following OIDC providers are known to work well with Firezone:
 
@@ -41,26 +42,31 @@ are required for setting up an OIDC provider in Firezone:
    OIDC provider. Some providers refer to this as the "well-known URL".
 1. `client_id`: The client ID of the application.
 1. `client_secret`: The client secret of the application.
-1. `redirect_uri`: Instructs OIDC provider where to redirect after authentication.
-   This should be your Firezone `EXTERNAL_URL + /auth/oidc/<provider_key>/callback/`
-   (e.g. `https://firezone.example.com/auth/oidc/google/callback/`).
+1. `redirect_uri`: Instructs OIDC provider where to redirect after
+   authentication. This should be your Firezone
+   `EXTERNAL_URL + /auth/oidc/<provider_key>/callback/` (e.g.
+   `https://firezone.example.com/auth/oidc/google/callback/`).
 1. `response_type`: Set to `code`.
-1. `scope`: [OIDC scopes](https://openid.net/specs/openid-connect-basic-1_0.html#Scopes)
-   to obtain from your OIDC provider. At a minimum, Firezone requires the `openid`
-   and `email` scopes.
+1. `scope`:
+   [OIDC scopes](https://openid.net/specs/openid-connect-basic-1_0.html#Scopes)
+   to obtain from your OIDC provider. At a minimum, Firezone requires the
+   `openid` and `email` scopes.
 1. `label`: The button label text displayed on the Firezone portal login page.
 
 ### PKCE
 
-Firezone supports Proof Key for Code Exchange (PKCE) for increased login security.
-We recommend you enable PKCE in your IdP's settings whenever available. [Read more
-about PKCE here](https://oauth.net/2/pkce/).
+Firezone supports Proof Key for Code Exchange (PKCE) for increased login
+security. We recommend you enable PKCE in your IdP's settings whenever
+available. [Read more about PKCE here](https://oauth.net/2/pkce/).
 
 ### OIDC logout URI
 
-The OpenID Connect standard [defines a mechanism](https://openid.net/specs/openid-connect-rpinitiated-1_0.html)
-for a Relying Party (RP) to request that an OpenID Provider log out the End-User.
+The OpenID Connect standard
+[defines a mechanism](https://openid.net/specs/openid-connect-rpinitiated-1_0.html)
+for a Relying Party (RP) to request that an OpenID Provider log out the
+End-User.
 
 Unfortunately, not all IdPs support this (e.g. Google, Auth0). For the providers
-that do support this mechanism, Firezone automatically detects the `end_session_uri`
-found in the provider's discovery document and uses that to log out the End-User.
+that do support this mechanism, Firezone automatically detects the
+`end_session_uri` found in the provider's discovery document and uses that to
+log out the End-User.
