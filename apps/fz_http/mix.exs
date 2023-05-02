@@ -70,7 +70,7 @@ defmodule FzHttp.MixProject do
       # Auth-related deps
       {:guardian, "~> 2.0"},
       {:guardian_db, "~> 2.0"},
-      {:openid_connect, github: "firezone/openid_connect", branch: "andrew/rewrite"},
+      {:openid_connect, github: "firezone/openid_connect"},
       # XXX: All github deps should use ref instead of always updating from master branch
       {:esaml, github: "firezone/esaml", override: true},
       {:samly, github: "firezone/samly"},

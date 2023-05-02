@@ -94,6 +94,14 @@ const config = {
   themeConfig:
     /** @type {import('@docusaurus/preset-classic').ThemeConfig} */
     ({
+      /*announcementBar: {
+        id: 'support_us',
+        content:
+          'Firezone 1.0 is coming! <a target="_blank" rel="noopener noreferrer" href="/1.0/signup">Sign up for early access.</a>',
+        backgroundColor: '#fafbfc',
+        textColor: '#091E42',
+        isCloseable: false,
+      },*/
       navbar: {
         title: "firezone",
         logo: {
@@ -103,14 +111,14 @@ const config = {
         items: [
           {
             href: "/docs",
-            label: "Documentation",
+            label: "Docs",
             position: "left",
           },
-          {
-            href: "/blog",
-            label: "Blog",
-            position: "left",
-          },
+          //{
+           // href: "https://discourse.firez.one/?utm_source=docs.firezone.dev",
+           // label: "Support",
+           // position: "left",
+         // },
           // {
           //   href: "/pricing",
           //   label: "Pricing",
@@ -118,10 +126,15 @@ const config = {
           // },
           {
             href: "/contact/support",
-            label: "Contact support",
-            position: "right",
+            label: "Contact",
+            position: "left",
             "aria-label": "Contact support",
           },
+          // {
+           // href: "/1.0/signup",
+           // label: "1.0",
+          // position: "left",
+          //},
           {
             href: "/contact/newsletter",
             label: "Newsletter",
@@ -137,6 +150,13 @@ const config = {
         ],
       },
       footer: {
+        logo: {
+          alt: "Firezone Logo",
+          src: "img/logo.svg",
+          href: "/",
+          width: 160,
+          height: 50,
+        },
         style: "light",
         links: [
           {
@@ -146,6 +166,22 @@ const config = {
                 label: "Home",
                 href: "/",
               },
+                {
+                  label: "Jobs (We're hiring!)",
+                  href: "https://www.ycombinator.com/companies/firezone",
+                },
+                // {
+                  // label: "1.0",
+                  // href: "/1.0/signup",
+                // },
+               // {
+               //   label: "Terms",
+               //   href: "/terms",
+               // },
+               // {
+               //   label: "Privacy",
+               //   href: "/privacy",
+               // },
               // {
               //   label: "Pricing",
               //   href: "/pricing",
@@ -153,10 +189,27 @@ const config = {
             ],
           },
           {
+            title: "Resources",
+            items: [
+              {
+                label: "Docs",
+                href: "/docs",
+              },
+              {
+                label: "Blog",
+                href: "/blog",
+              },
+              {
+                label: "Contact",
+                href: "/contact/support",
+              },
+            ],
+          },
+          {
             title: "Community",
             items: [
               {
-                label: "Support Forums",
+                label: "Discourse",
                 href: "https://discourse.firez.one/?utm_source=docs.firezone.dev",
               },
               {
@@ -171,10 +224,14 @@ const config = {
                 label: "Twitter",
                 href: "https://twitter.com/firezonehq?utm_source=docs.firezone.dev",
               },
+              {
+                label: "LinkedIn",
+                href: "https://www.linkedin.com/company/firezonehq/",
+              },
             ],
           },
         ],
-        copyright: `Copyright © ${new Date().getFullYear()} Firezone, Inc.`,
+        copyright: `Copyright © ${new Date().getFullYear()} Firezone, Inc. WireGuard® is a registered trademark of Jason A. Donenfeld.`,
       },
       prism: {
         theme: lightCodeTheme,
