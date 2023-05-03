@@ -44,7 +44,7 @@ defmodule Web.CoreComponents do
   slot :subtitle
   slot :confirm
   slot :cancel
-
+  
   def modal(assigns) do
     ~H"""
     <div

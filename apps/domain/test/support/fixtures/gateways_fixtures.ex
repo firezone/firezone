@@ -2,7 +2,7 @@ defmodule Domain.GatewaysFixtures do
   alias Domain.AccountsFixtures
   alias Domain.Repo
   alias Domain.Gateways
-  alias Domain.{AccountsFixtures, UsersFixtures, SubjectFixtures}
+  alias Domain.{AccountsFixtures, ActorsFixtures, AuthFixtures}
 
   def group_attrs(attrs \\ %{}) do
     Enum.into(attrs, %{
@@ -22,8 +22,8 @@ defmodule Domain.GatewaysFixtures do
 
     {subject, attrs} =
       Map.pop_lazy(attrs, :subject, fn ->
-        UsersFixtures.create_user_with_role(:admin, account: account)
-        |> SubjectFixtures.create_subject()
+        ActorsFixtures.create_actor(role: :admin, account: account)
+        |> AuthFixtures.create_subject()
       end)
 
     attrs = group_attrs(attrs)
@@ -34,8 +34,8 @@ defmodule Domain.GatewaysFixtures do
 
   def delete_group(group) do
     group = Repo.preload(group, :account)
-    admin = UsersFixtures.create_user_with_role(:admin, account: group.account)
-    subject = SubjectFixtures.create_subject(admin)
+    admin = ActorsFixtures.create_actor(role: :admin, account: group.account)
+    subject = AuthFixtures.create_subject(admin)
     {:ok, group} = Gateways.delete_group(group, subject)
     group
   end
@@ -68,7 +68,7 @@ defmodule Domain.GatewaysFixtures do
       external_id: Ecto.UUID.generate(),
       name_suffix: "gw-#{Domain.Crypto.rand_string(5)}",
       public_key: public_key(),
-      last_seen_user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
+      last_seen_actor_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
       last_seen_remote_ip: %Postgrex.INET{address: {189, 172, 73, 153}}
     })
   end
@@ -105,8 +105,8 @@ defmodule Domain.GatewaysFixtures do
 
   def delete_gateway(gateway) do
     gateway = Repo.preload(gateway, :account)
-    admin = UsersFixtures.create_user_with_role(:admin, account: gateway.account)
-    subject = SubjectFixtures.create_subject(admin)
+    admin = ActorsFixtures.create_actor(role: :admin, account: gateway.account)
+    subject = AuthFixtures.create_subject(admin)
     {:ok, gateway} = Gateways.delete_gateway(gateway, subject)
     gateway
   end

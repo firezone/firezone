@@ -1,6 +1,5 @@
 defmodule Domain.ApiTokensFixtures do
-  alias Domain.UsersFixtures
-  alias Domain.SubjectFixtures
+  alias Domain.{AccountsFixtures, ActorsFixtures, AuthFixtures}
 
   def api_token_attrs(attrs \\ %{}) do
     Enum.into(attrs, %{})
@@ -9,12 +8,17 @@ defmodule Domain.ApiTokensFixtures do
   def create_api_token(attrs \\ %{}) do
     attrs = api_token_attrs(attrs)
 
-    {user, attrs} =
-      Map.pop_lazy(attrs, :user, fn ->
-        UsersFixtures.create_user_with_role(:admin)
+    {account, attrs} =
+      Map.pop_lazy(attrs, :account, fn ->
+        AccountsFixtures.create_account()
       end)
 
-    subject = SubjectFixtures.create_subject(user)
+    {actor, attrs} =
+      Map.pop_lazy(attrs, :actor, fn ->
+        ActorsFixtures.create_actor(role: :admin, account: account)
+      end)
+
+    subject = AuthFixtures.create_subject(actor)
     {:ok, api_token} = Domain.ApiTokens.create_api_token(attrs, subject)
     api_token
   end

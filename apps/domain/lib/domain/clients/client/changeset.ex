@@ -1,6 +1,6 @@
 defmodule Domain.Clients.Client.Changeset do
   use Domain, :changeset
-  alias Domain.{Version, Auth, Users}
+  alias Domain.{Version, Auth, Actors}
   alias Domain.Clients
 
   @upsert_fields ~w[external_id name public_key preshared_key]a
@@ -14,16 +14,16 @@ defmodule Domain.Clients.Client.Changeset do
   @key_length 44
 
   def upsert_conflict_target,
-    do: {:unsafe_fragment, ~s/(account_id, user_id, external_id) WHERE deleted_at IS NULL/}
+    do: {:unsafe_fragment, ~s/(account_id, actor_id, external_id) WHERE deleted_at IS NULL/}
 
   def upsert_on_conflict, do: {:replace, @conflict_replace_fields}
 
-  def upsert_changeset(%Users.User{} = user, %Auth.Context{} = context, attrs) do
+  def upsert_changeset(%Actors.Actor{} = actor, %Auth.Context{} = context, attrs) do
     %Clients.Client{}
     |> cast(attrs, @upsert_fields)
     |> put_default_value(:name, &generate_name/0)
-    |> put_change(:user_id, user.id)
-    |> put_change(:account_id, user.account_id)
+    |> put_change(:actor_id, actor.id)
+    |> put_change(:account_id, actor.account_id)
     |> put_change(:last_seen_user_agent, context.user_agent)
     |> put_change(:last_seen_remote_ip, %Postgrex.INET{address: context.remote_ip})
     |> changeset()
@@ -62,9 +62,9 @@ defmodule Domain.Clients.Client.Changeset do
     changeset
     |> trim_change(:name)
     |> validate_length(:name, min: 1, max: 255)
-    |> assoc_constraint(:user)
-    |> unique_constraint([:user_id, :name])
-    |> unique_constraint([:user_id, :public_key])
+    |> assoc_constraint(:actor)
+    |> unique_constraint([:actor_id, :name])
+    |> unique_constraint([:actor_id, :public_key])
     |> unique_constraint(:external_id)
   end
 

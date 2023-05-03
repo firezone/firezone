@@ -6,7 +6,7 @@ defmodule Domain.Auth.Authorizer do
 
   defmacro __using__(_opts) do
     quote do
-      import Domain.Auth.Authorizer
+      import Domain.Auth.Authorizer, only: [build: 2, is_user: 1, is_api_token: 1]
       import Domain.Auth, only: [has_permission?: 2]
       alias Domain.Auth.Subject
 
@@ -33,9 +33,29 @@ defmodule Domain.Auth.Authorizer do
 
   defguard is_user(subject)
            when is_struct(subject, Domain.Auth.Subject) and
-                  elem(subject.actor, 0) == :user
+                  subject.actor.type == :user
 
   defguard is_api_token(subject)
            when is_struct(subject, Domain.Auth.Subject) and
-                  elem(subject.actor, 0) == :api_token
+                  subject.actor.type == :api_token
+
+  # TODO: is this the best place for this?
+  def manage_providers_permission, do: build(Domain.Auth.Provider, :manage)
+
+  def list_permissions_for_role(:admin) do
+    [
+      manage_providers_permission()
+    ]
+  end
+
+  def list_permissions_for_role(_role) do
+    []
+  end
+
+  def for_subject(queryable, %Domain.Auth.Subject{} = subject) when is_user(subject) do
+    cond do
+      Domain.Auth.has_permission?(subject, manage_providers_permission()) ->
+        Domain.Auth.Provider.Query.by_account_id(queryable, subject.account.id)
+    end
+  end
 end

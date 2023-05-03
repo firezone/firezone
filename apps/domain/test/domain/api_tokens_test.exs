@@ -3,30 +3,30 @@ defmodule Domain.ApiTokensTest do
   import Domain.ApiTokens
   alias Domain.ApiTokens.{ApiToken, Authorizer}
   alias Domain.ApiTokensFixtures
-  alias Domain.SubjectFixtures
-  alias Domain.UsersFixtures
+  alias Domain.AuthFixtures
+  alias Domain.ActorsFixtures
 
   setup do
-    user = UsersFixtures.create_user_with_role(:admin)
-    subject = SubjectFixtures.create_subject(user)
+    actor = ActorsFixtures.create_actor(role: :admin)
+    subject = AuthFixtures.create_subject(actor)
 
-    %{user: user, subject: subject}
+    %{actor: actor, subject: subject}
   end
 
-  describe "count_by_user_id/1" do
-    test "returns 0 when no user exist" do
-      assert count_by_user_id(Ecto.UUID.generate()) == 0
+  describe "count_by_actor_id/1" do
+    test "returns 0 when no actor exist" do
+      assert count_by_actor_id(Ecto.UUID.generate()) == 0
     end
 
-    test "returns the number of api_tokens for a user" do
-      user = UsersFixtures.create_user_with_role(:admin)
-      assert count_by_user_id(user.id) == 0
+    test "returns the number of api_tokens for a actor" do
+      actor = ActorsFixtures.create_actor(role: :admin)
+      assert count_by_actor_id(actor.id) == 0
 
-      ApiTokensFixtures.create_api_token(user: user)
-      assert count_by_user_id(user.id) == 1
+      ApiTokensFixtures.create_api_token(actor: actor)
+      assert count_by_actor_id(actor.id) == 1
 
-      ApiTokensFixtures.create_api_token(user: user)
-      assert count_by_user_id(user.id) == 2
+      ApiTokensFixtures.create_api_token(actor: actor)
+      assert count_by_actor_id(actor.id) == 2
     end
   end
 
@@ -35,39 +35,39 @@ defmodule Domain.ApiTokensTest do
       assert list_api_tokens(subject) == {:ok, []}
     end
 
-    test "does not return api tokens when user has no access to them", %{subject: subject} do
+    test "does not return api tokens when actor has no access to them", %{subject: subject} do
       subject =
         subject
-        |> SubjectFixtures.remove_permissions()
-        |> SubjectFixtures.add_permission(Authorizer.manage_own_api_tokens_permission())
+        |> AuthFixtures.remove_permissions()
+        |> AuthFixtures.add_permission(Authorizer.manage_own_api_tokens_permission())
 
       ApiTokensFixtures.create_api_token()
       assert list_api_tokens(subject) == {:ok, []}
     end
 
-    test "returns other user api tokens when subject has manage permission", %{subject: subject} do
+    test "returns other actor api tokens when subject has manage permission", %{subject: subject} do
       subject =
         subject
-        |> SubjectFixtures.remove_permissions()
-        |> SubjectFixtures.add_permission(Authorizer.manage_own_api_tokens_permission())
-        |> SubjectFixtures.add_permission(Authorizer.manage_api_tokens_permission())
+        |> AuthFixtures.remove_permissions()
+        |> AuthFixtures.add_permission(Authorizer.manage_own_api_tokens_permission())
+        |> AuthFixtures.add_permission(Authorizer.manage_api_tokens_permission())
 
       api_token = ApiTokensFixtures.create_api_token()
 
       assert list_api_tokens(subject) == {:ok, [api_token]}
     end
 
-    test "returns all api tokens for a user", %{user: user, subject: subject} do
-      api_token = ApiTokensFixtures.create_api_token(user: user)
+    test "returns all api tokens for a actor", %{actor: actor, subject: subject} do
+      api_token = ApiTokensFixtures.create_api_token(actor: actor)
       assert list_api_tokens(subject) == {:ok, [api_token]}
 
-      ApiTokensFixtures.create_api_token(user: user)
+      ApiTokensFixtures.create_api_token(actor: actor)
       assert {:ok, api_tokens} = list_api_tokens(subject)
       assert length(api_tokens) == 2
     end
 
     test "returns error when subject has no permission to view api tokens", %{subject: subject} do
-      subject = SubjectFixtures.remove_permissions(subject)
+      subject = AuthFixtures.remove_permissions(subject)
 
       assert list_api_tokens(subject) ==
                {:error,
@@ -84,55 +84,55 @@ defmodule Domain.ApiTokensTest do
     end
   end
 
-  describe "list_api_tokens_by_user_id/2" do
-    test "returns api token that belongs to another user with manage permission", %{
+  describe "list_api_tokens_by_actor_id/2" do
+    test "returns api token that belongs to another actor with manage permission", %{
       subject: subject
     } do
       api_token = ApiTokensFixtures.create_api_token()
 
       subject =
         subject
-        |> SubjectFixtures.remove_permissions()
-        |> SubjectFixtures.add_permission(Authorizer.manage_own_api_tokens_permission())
-        |> SubjectFixtures.add_permission(Authorizer.manage_api_tokens_permission())
+        |> AuthFixtures.remove_permissions()
+        |> AuthFixtures.add_permission(Authorizer.manage_own_api_tokens_permission())
+        |> AuthFixtures.add_permission(Authorizer.manage_api_tokens_permission())
 
-      assert list_api_tokens_by_user_id(api_token.user_id, subject) ==
+      assert list_api_tokens_by_actor_id(api_token.actor_id, subject) ==
                {:ok, [api_token]}
     end
 
-    test "does not return api token that belongs to another user with manage_own permission", %{
+    test "does not return api token that belongs to another actor with manage_own permission", %{
       subject: subject
     } do
       api_token = ApiTokensFixtures.create_api_token()
 
       subject =
         subject
-        |> SubjectFixtures.remove_permissions()
-        |> SubjectFixtures.add_permission(Authorizer.manage_own_api_tokens_permission())
+        |> AuthFixtures.remove_permissions()
+        |> AuthFixtures.add_permission(Authorizer.manage_own_api_tokens_permission())
 
-      assert list_api_tokens_by_user_id(api_token.user_id, subject) == {:ok, []}
+      assert list_api_tokens_by_actor_id(api_token.actor_id, subject) == {:ok, []}
     end
 
-    test "returns api tokens scoped to a user", %{user: user, subject: subject} do
-      ApiTokensFixtures.create_api_token(user: user)
-      ApiTokensFixtures.create_api_token(user: user)
+    test "returns api tokens scoped to a actor", %{actor: actor, subject: subject} do
+      ApiTokensFixtures.create_api_token(actor: actor)
+      ApiTokensFixtures.create_api_token(actor: actor)
 
-      assert {:ok, api_tokens} = list_api_tokens_by_user_id(user.id, subject)
+      assert {:ok, api_tokens} = list_api_tokens_by_actor_id(actor.id, subject)
       assert length(api_tokens) == 2
     end
 
     test "returns error when api token does not exist", %{subject: subject} do
-      assert list_api_tokens_by_user_id(Ecto.UUID.generate(), subject) == {:ok, []}
+      assert list_api_tokens_by_actor_id(Ecto.UUID.generate(), subject) == {:ok, []}
     end
 
-    test "returns error when user ID is not a valid UUID", %{subject: subject} do
-      assert list_api_tokens_by_user_id("foo", subject) == {:ok, []}
+    test "returns error when actor ID is not a valid UUID", %{subject: subject} do
+      assert list_api_tokens_by_actor_id("foo", subject) == {:ok, []}
     end
 
     test "returns error when subject has no permission to view api tokens", %{subject: subject} do
-      subject = SubjectFixtures.remove_permissions(subject)
+      subject = AuthFixtures.remove_permissions(subject)
 
-      assert list_api_tokens_by_user_id(Ecto.UUID.generate(), subject) ==
+      assert list_api_tokens_by_actor_id(Ecto.UUID.generate(), subject) ==
                {:error,
                 {:unauthorized,
                  [
@@ -152,34 +152,34 @@ defmodule Domain.ApiTokensTest do
       assert fetch_api_token_by_id("foo", subject) == {:error, :not_found}
     end
 
-    test "returns api token by id", %{user: user, subject: subject} do
-      api_token = ApiTokensFixtures.create_api_token(user: user)
+    test "returns api token by id", %{actor: actor, subject: subject} do
+      api_token = ApiTokensFixtures.create_api_token(actor: actor)
       assert fetch_api_token_by_id(api_token.id, subject) == {:ok, api_token}
     end
 
-    test "returns api token that belongs to another user with manage permission", %{
+    test "returns api token that belongs to another actor with manage permission", %{
       subject: subject
     } do
       api_token = ApiTokensFixtures.create_api_token()
 
       subject =
         subject
-        |> SubjectFixtures.remove_permissions()
-        |> SubjectFixtures.add_permission(Authorizer.manage_own_api_tokens_permission())
-        |> SubjectFixtures.add_permission(Authorizer.manage_api_tokens_permission())
+        |> AuthFixtures.remove_permissions()
+        |> AuthFixtures.add_permission(Authorizer.manage_own_api_tokens_permission())
+        |> AuthFixtures.add_permission(Authorizer.manage_api_tokens_permission())
 
       assert fetch_api_token_by_id(api_token.id, subject) == {:ok, api_token}
     end
 
-    test "does not return api token that belongs to another user with manage_own permission", %{
+    test "does not return api token that belongs to another actor with manage_own permission", %{
       subject: subject
     } do
       api_token = ApiTokensFixtures.create_api_token()
 
       subject =
         subject
-        |> SubjectFixtures.remove_permissions()
-        |> SubjectFixtures.add_permission(Authorizer.manage_own_api_tokens_permission())
+        |> AuthFixtures.remove_permissions()
+        |> AuthFixtures.add_permission(Authorizer.manage_own_api_tokens_permission())
 
       assert fetch_api_token_by_id(api_token.id, subject) == {:error, :not_found}
     end
@@ -190,7 +190,7 @@ defmodule Domain.ApiTokensTest do
     end
 
     test "returns error when subject has no permission to view api tokens", %{subject: subject} do
-      subject = SubjectFixtures.remove_permissions(subject)
+      subject = AuthFixtures.remove_permissions(subject)
 
       assert fetch_api_token_by_id(Ecto.UUID.generate(), subject) ==
                {:error,
@@ -212,43 +212,43 @@ defmodule Domain.ApiTokensTest do
       assert fetch_unexpired_api_token_by_id("foo", subject) == {:error, :not_found}
     end
 
-    test "returns api token by id", %{user: user, subject: subject} do
-      api_token = ApiTokensFixtures.create_api_token(user: user)
+    test "returns api token by id", %{actor: actor, subject: subject} do
+      api_token = ApiTokensFixtures.create_api_token(actor: actor)
       assert fetch_unexpired_api_token_by_id(api_token.id, subject) == {:ok, api_token}
     end
 
-    test "returns error for expired token", %{user: user, subject: subject} do
+    test "returns error for expired token", %{actor: actor, subject: subject} do
       api_token =
-        ApiTokensFixtures.create_api_token(user: user, expires_in: 1)
+        ApiTokensFixtures.create_api_token(actor: actor, expires_in: 1)
         |> ApiTokensFixtures.expire_api_token()
 
       assert fetch_unexpired_api_token_by_id(api_token.id, subject) ==
                {:error, :not_found}
     end
 
-    test "returns api token that belongs to another user with manage permission", %{
+    test "returns api token that belongs to another actor with manage permission", %{
       subject: subject
     } do
       api_token = ApiTokensFixtures.create_api_token()
 
       subject =
         subject
-        |> SubjectFixtures.remove_permissions()
-        |> SubjectFixtures.add_permission(Authorizer.manage_own_api_tokens_permission())
-        |> SubjectFixtures.add_permission(Authorizer.manage_api_tokens_permission())
+        |> AuthFixtures.remove_permissions()
+        |> AuthFixtures.add_permission(Authorizer.manage_own_api_tokens_permission())
+        |> AuthFixtures.add_permission(Authorizer.manage_api_tokens_permission())
 
       assert fetch_unexpired_api_token_by_id(api_token.id, subject) == {:ok, api_token}
     end
 
-    test "does not return api token that belongs to another user with manage_own permission", %{
+    test "does not return api token that belongs to another actor with manage_own permission", %{
       subject: subject
     } do
       api_token = ApiTokensFixtures.create_api_token()
 
       subject =
         subject
-        |> SubjectFixtures.remove_permissions()
-        |> SubjectFixtures.add_permission(Authorizer.manage_own_api_tokens_permission())
+        |> AuthFixtures.remove_permissions()
+        |> AuthFixtures.add_permission(Authorizer.manage_own_api_tokens_permission())
 
       assert fetch_unexpired_api_token_by_id(api_token.id, subject) ==
                {:error, :not_found}
@@ -260,7 +260,7 @@ defmodule Domain.ApiTokensTest do
     end
 
     test "returns error when subject has no permission to view api tokens", %{subject: subject} do
-      subject = SubjectFixtures.remove_permissions(subject)
+      subject = AuthFixtures.remove_permissions(subject)
 
       assert fetch_unexpired_api_token_by_id(Ecto.UUID.generate(), subject) ==
                {:error,
@@ -300,7 +300,7 @@ defmodule Domain.ApiTokensTest do
   end
 
   describe "create_api_token/2" do
-    test "creates an api_token", %{user: user, subject: subject} do
+    test "creates an api_token", %{actor: actor, subject: subject} do
       attrs = %{
         "expires_in" => 1
       }
@@ -312,7 +312,7 @@ defmodule Domain.ApiTokensTest do
                       DateTime.to_unix(DateTime.add(DateTime.utc_now(), 1, :day)),
                       10
 
-      assert api_token.user_id == user.id
+      assert api_token.actor_id == actor.id
       assert api_token.expires_in == 1
     end
 
@@ -332,7 +332,7 @@ defmodule Domain.ApiTokensTest do
         "expires_in" => 0
       }
 
-      subject = SubjectFixtures.remove_permissions(subject)
+      subject = AuthFixtures.remove_permissions(subject)
 
       assert create_api_token(attrs, subject) ==
                {:error,
@@ -357,8 +357,11 @@ defmodule Domain.ApiTokensTest do
   end
 
   describe "delete_api_token_by_id/1" do
-    test "deletes the api token that belongs to a subject user", %{user: user, subject: subject} do
-      api_token = ApiTokensFixtures.create_api_token(user: user)
+    test "deletes the api token that belongs to a subject actor", %{
+      actor: actor,
+      subject: subject
+    } do
+      api_token = ApiTokensFixtures.create_api_token(actor: actor)
 
       assert {:ok, deleted_api_token} = delete_api_token_by_id(api_token.id, subject)
 
@@ -366,16 +369,16 @@ defmodule Domain.ApiTokensTest do
       refute Repo.one(ApiToken)
     end
 
-    test "deletes api token that belongs to another user with manage permission", %{
+    test "deletes api token that belongs to another actor with manage permission", %{
       subject: subject
     } do
       api_token = ApiTokensFixtures.create_api_token()
 
       subject =
         subject
-        |> SubjectFixtures.remove_permissions()
-        |> SubjectFixtures.add_permission(Authorizer.manage_own_api_tokens_permission())
-        |> SubjectFixtures.add_permission(Authorizer.manage_api_tokens_permission())
+        |> AuthFixtures.remove_permissions()
+        |> AuthFixtures.add_permission(Authorizer.manage_own_api_tokens_permission())
+        |> AuthFixtures.add_permission(Authorizer.manage_api_tokens_permission())
 
       assert {:ok, deleted_api_token} = delete_api_token_by_id(api_token.id, subject)
 
@@ -383,7 +386,7 @@ defmodule Domain.ApiTokensTest do
       refute Repo.one(ApiToken)
     end
 
-    test "does not delete api token that belongs to another user with manage_own permission",
+    test "does not delete api token that belongs to another actor with manage_own permission",
          %{
            subject: subject
          } do
@@ -391,22 +394,22 @@ defmodule Domain.ApiTokensTest do
 
       subject =
         subject
-        |> SubjectFixtures.remove_permissions()
-        |> SubjectFixtures.add_permission(Authorizer.manage_own_api_tokens_permission())
+        |> AuthFixtures.remove_permissions()
+        |> AuthFixtures.add_permission(Authorizer.manage_own_api_tokens_permission())
 
       assert delete_api_token_by_id(api_token.id, subject) ==
                {:error, :not_found}
     end
 
-    test "does not delete api token that belongs to another user with just view permission", %{
+    test "does not delete api token that belongs to another actor with just view permission", %{
       subject: subject
     } do
       api_token = ApiTokensFixtures.create_api_token()
 
       subject =
         subject
-        |> SubjectFixtures.remove_permissions()
-        |> SubjectFixtures.add_permission(Authorizer.manage_own_api_tokens_permission())
+        |> AuthFixtures.remove_permissions()
+        |> AuthFixtures.add_permission(Authorizer.manage_own_api_tokens_permission())
 
       assert delete_api_token_by_id(api_token.id, subject) ==
                {:error, :not_found}
@@ -417,7 +420,7 @@ defmodule Domain.ApiTokensTest do
     end
 
     test "returns error when subject can not view api tokens", %{subject: subject} do
-      subject = SubjectFixtures.remove_permissions(subject)
+      subject = AuthFixtures.remove_permissions(subject)
 
       assert delete_api_token_by_id(Ecto.UUID.generate(), subject) ==
                {:error,

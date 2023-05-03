@@ -1,11 +1,11 @@
 defmodule Domain.ApiTokens do
   alias Domain.{Repo, Validator, Auth}
-  alias Domain.Users
+  alias Domain.Actors
   alias Domain.ApiTokens.Authorizer
   alias Domain.ApiTokens.ApiToken
 
-  def count_by_user_id(user_id) do
-    ApiToken.Query.by_user_id(user_id)
+  def count_by_actor_id(actor_id) do
+    ApiToken.Query.by_actor_id(actor_id)
     |> Repo.aggregate(:count)
   end
 
@@ -24,7 +24,7 @@ defmodule Domain.ApiTokens do
     end
   end
 
-  def list_api_tokens_by_user_id(user_id, %Auth.Subject{} = subject) do
+  def list_api_tokens_by_actor_id(actor_id, %Auth.Subject{} = subject) do
     required_permissions =
       {:one_of,
        [
@@ -32,9 +32,9 @@ defmodule Domain.ApiTokens do
          Authorizer.manage_own_api_tokens_permission()
        ]}
 
-    with true <- Validator.valid_uuid?(user_id),
+    with true <- Validator.valid_uuid?(actor_id),
          :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
-      ApiToken.Query.by_user_id(user_id)
+      ApiToken.Query.by_actor_id(actor_id)
       |> Authorizer.for_subject(subject)
       |> Repo.list()
     else
@@ -102,14 +102,14 @@ defmodule Domain.ApiTokens do
              subject,
              Authorizer.manage_own_api_tokens_permission()
            ) do
-      {:user, user} = subject.actor
-      create_api_token(user, attrs)
+      {:actor, actor} = subject.actor
+      create_api_token(actor, attrs)
     end
   end
 
-  def create_api_token(%Users.User{} = user, attrs) do
-    count_by_user_id = count_by_user_id(user.id)
-    changeset = ApiToken.Changeset.create_changeset(user, attrs, max: count_by_user_id)
+  def create_api_token(%Actors.Actor{} = actor, attrs) do
+    count_by_actor_id = count_by_actor_id(actor.id)
+    changeset = ApiToken.Changeset.create_changeset(actor, attrs, max: count_by_actor_id)
 
     with {:ok, api_token} <- Repo.insert(changeset) do
       Domain.Telemetry.create_api_token()

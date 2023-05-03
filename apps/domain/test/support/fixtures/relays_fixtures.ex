@@ -1,7 +1,7 @@
 defmodule Domain.RelaysFixtures do
   alias Domain.Repo
   alias Domain.Relays
-  alias Domain.{AccountsFixtures, UsersFixtures, SubjectFixtures}
+  alias Domain.{AccountsFixtures, ActorsFixtures, AuthFixtures}
 
   def group_attrs(attrs \\ %{}) do
     Enum.into(attrs, %{
@@ -20,8 +20,8 @@ defmodule Domain.RelaysFixtures do
 
     {subject, attrs} =
       Map.pop_lazy(attrs, :subject, fn ->
-        UsersFixtures.create_user_with_role(:admin, account: account)
-        |> SubjectFixtures.create_subject()
+        ActorsFixtures.create_actor(role: :admin, account: account)
+        |> AuthFixtures.create_subject()
       end)
 
     attrs = group_attrs(attrs)
@@ -32,8 +32,8 @@ defmodule Domain.RelaysFixtures do
 
   def delete_group(group) do
     group = Repo.preload(group, :account)
-    admin = UsersFixtures.create_user_with_role(:admin, account: group.account)
-    subject = SubjectFixtures.create_subject(admin)
+    admin = ActorsFixtures.create_actor(role: :admin, account: group.account)
+    subject = AuthFixtures.create_subject(admin)
     {:ok, group} = Relays.delete_group(group, subject)
     group
   end
@@ -67,7 +67,7 @@ defmodule Domain.RelaysFixtures do
     Enum.into(attrs, %{
       ipv4: ipv4,
       ipv6: random_ipv6(),
-      last_seen_user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
+      last_seen_actor_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
       last_seen_remote_ip: ipv4
     })
   end
@@ -104,8 +104,8 @@ defmodule Domain.RelaysFixtures do
 
   def delete_relay(relay) do
     relay = Repo.preload(relay, :account)
-    admin = UsersFixtures.create_user_with_role(:admin, account: relay.account)
-    subject = SubjectFixtures.create_subject(admin)
+    admin = ActorsFixtures.create_actor(role: :admin, account: relay.account)
+    subject = AuthFixtures.create_subject(admin)
     {:ok, relay} = Relays.delete_relay(relay, subject)
     relay
   end

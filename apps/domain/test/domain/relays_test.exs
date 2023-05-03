@@ -1,17 +1,17 @@
 defmodule Domain.RelaysTest do
   use Domain.DataCase, async: true
   import Domain.Relays
-  alias Domain.{AccountsFixtures, UsersFixtures, SubjectFixtures, RelaysFixtures}
+  alias Domain.{AccountsFixtures, ActorsFixtures, AuthFixtures, RelaysFixtures}
   alias Domain.Relays
 
   setup do
     account = AccountsFixtures.create_account()
-    user = UsersFixtures.create_user_with_role(:admin, account: account)
-    subject = SubjectFixtures.create_subject(user)
+    actor = ActorsFixtures.create_actor(role: :admin, account: account)
+    subject = AuthFixtures.create_subject(actor)
 
     %{
       account: account,
-      user: user,
+      actor: actor,
       subject: subject
     }
   end
@@ -45,7 +45,7 @@ defmodule Domain.RelaysTest do
       assert fetched_group.id == group.id
     end
 
-    test "returns group that belongs to another user", %{
+    test "returns group that belongs to another actor", %{
       account: account,
       subject: subject
     } do
@@ -62,7 +62,7 @@ defmodule Domain.RelaysTest do
     test "returns error when subject has no permission to view groups", %{
       subject: subject
     } do
-      subject = SubjectFixtures.remove_permissions(subject)
+      subject = AuthFixtures.remove_permissions(subject)
 
       assert fetch_group_by_id(Ecto.UUID.generate(), subject) ==
                {:error,
@@ -108,7 +108,7 @@ defmodule Domain.RelaysTest do
     test "returns error when subject has no permission to manage groups", %{
       subject: subject
     } do
-      subject = SubjectFixtures.remove_permissions(subject)
+      subject = AuthFixtures.remove_permissions(subject)
 
       assert list_groups(subject) ==
                {:error,
@@ -164,7 +164,7 @@ defmodule Domain.RelaysTest do
     test "returns error when subject has no permission to manage groups", %{
       subject: subject
     } do
-      subject = SubjectFixtures.remove_permissions(subject)
+      subject = AuthFixtures.remove_permissions(subject)
 
       assert create_group(%{}, subject) ==
                {:error,
@@ -235,7 +235,7 @@ defmodule Domain.RelaysTest do
     } do
       group = RelaysFixtures.create_group(account: account)
 
-      subject = SubjectFixtures.remove_permissions(subject)
+      subject = AuthFixtures.remove_permissions(subject)
 
       assert update_group(group, %{}, subject) ==
                {:error,
@@ -281,7 +281,7 @@ defmodule Domain.RelaysTest do
     } do
       group = RelaysFixtures.create_group()
 
-      subject = SubjectFixtures.remove_permissions(subject)
+      subject = AuthFixtures.remove_permissions(subject)
 
       assert delete_group(group, subject) ==
                {:error,
@@ -350,7 +350,7 @@ defmodule Domain.RelaysTest do
       assert fetch_relay_by_id(relay.id, subject) == {:ok, relay}
     end
 
-    test "returns relay that belongs to another user", %{
+    test "returns relay that belongs to another actor", %{
       account: account,
       subject: subject
     } do
@@ -366,7 +366,7 @@ defmodule Domain.RelaysTest do
     test "returns error when subject has no permission to view relays", %{
       subject: subject
     } do
-      subject = SubjectFixtures.remove_permissions(subject)
+      subject = AuthFixtures.remove_permissions(subject)
 
       assert fetch_relay_by_id(Ecto.UUID.generate(), subject) ==
                {:error,
@@ -404,7 +404,7 @@ defmodule Domain.RelaysTest do
     test "returns error when subject has no permission to manage relays", %{
       subject: subject
     } do
-      subject = SubjectFixtures.remove_permissions(subject)
+      subject = AuthFixtures.remove_permissions(subject)
 
       assert list_relays(subject) ==
                {:error,
@@ -532,7 +532,7 @@ defmodule Domain.RelaysTest do
     } do
       relay = RelaysFixtures.create_relay()
 
-      subject = SubjectFixtures.remove_permissions(subject)
+      subject = AuthFixtures.remove_permissions(subject)
 
       assert delete_relay(relay, subject) ==
                {:error,

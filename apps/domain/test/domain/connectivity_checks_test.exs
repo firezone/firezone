@@ -1,12 +1,12 @@
 defmodule Domain.ConnectivityChecksTest do
   use Domain.DataCase, async: true
-  alias Domain.SubjectFixtures
+  alias Domain.AuthFixtures
   alias Domain.ConnectivityChecksFixtures
   alias Domain.ConnectivityChecks
   import Domain.ConnectivityChecks
 
   setup do
-    subject = SubjectFixtures.create_subject()
+    subject = AuthFixtures.create_subject()
 
     %{subject: subject}
   end
@@ -31,7 +31,7 @@ defmodule Domain.ConnectivityChecksTest do
     end
 
     test "returns error when subject has no permission", %{subject: subject} do
-      subject = SubjectFixtures.remove_permissions(subject)
+      subject = AuthFixtures.remove_permissions(subject)
 
       assert list_connectivity_checks(subject) ==
                {:error,

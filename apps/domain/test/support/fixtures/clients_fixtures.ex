@@ -1,7 +1,7 @@
 defmodule Domain.ClientsFixtures do
   alias Domain.Repo
   alias Domain.Clients
-  alias Domain.{AccountsFixtures, UsersFixtures, SubjectFixtures}
+  alias Domain.{AccountsFixtures, ActorsFixtures, AuthFixtures}
 
   def client_attrs(attrs \\ %{}) do
     Enum.into(attrs, %{
@@ -20,14 +20,14 @@ defmodule Domain.ClientsFixtures do
         AccountsFixtures.create_account()
       end)
 
-    {user, attrs} =
-      Map.pop_lazy(attrs, :user, fn ->
-        UsersFixtures.create_user_with_role(:unprivileged, account: account)
+    {actor, attrs} =
+      Map.pop_lazy(attrs, :actor, fn ->
+        ActorsFixtures.create_actor(role: :unprivileged, account: account)
       end)
 
     {subject, attrs} =
       Map.pop_lazy(attrs, :subject, fn ->
-        SubjectFixtures.create_subject(user)
+        AuthFixtures.create_subject(actor)
       end)
 
     attrs = client_attrs(attrs)
@@ -38,8 +38,8 @@ defmodule Domain.ClientsFixtures do
 
   def delete_client(client) do
     client = Repo.preload(client, :account)
-    admin = UsersFixtures.create_user_with_role(:admin, account: client.account)
-    subject = SubjectFixtures.create_subject(admin)
+    admin = ActorsFixtures.create_actor(role: :admin, account: client.account)
+    subject = AuthFixtures.create_subject(admin)
     {:ok, client} = Clients.delete_client(client, subject)
     client
   end

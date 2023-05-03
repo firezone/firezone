@@ -2,17 +2,17 @@ defmodule Domain.GatewaysTest do
   use Domain.DataCase, async: true
   import Domain.Gateways
   alias Domain.AccountsFixtures
-  alias Domain.{NetworkFixtures, UsersFixtures, SubjectFixtures, GatewaysFixtures}
+  alias Domain.{NetworkFixtures, ActorsFixtures, AuthFixtures, GatewaysFixtures}
   alias Domain.Gateways
 
   setup do
     account = AccountsFixtures.create_account()
-    user = UsersFixtures.create_user_with_role(:admin, account: account)
-    subject = SubjectFixtures.create_subject(user)
+    actor = ActorsFixtures.create_actor(role: :admin, account: account)
+    subject = AuthFixtures.create_subject(actor)
 
     %{
       account: account,
-      user: user,
+      actor: actor,
       subject: subject
     }
   end
@@ -46,7 +46,7 @@ defmodule Domain.GatewaysTest do
       assert fetched_group.id == group.id
     end
 
-    test "returns group that belongs to another user", %{
+    test "returns group that belongs to another actor", %{
       account: account,
       subject: subject
     } do
@@ -63,7 +63,7 @@ defmodule Domain.GatewaysTest do
     test "returns error when subject has no permission to view groups", %{
       subject: subject
     } do
-      subject = SubjectFixtures.remove_permissions(subject)
+      subject = AuthFixtures.remove_permissions(subject)
 
       assert fetch_group_by_id(Ecto.UUID.generate(), subject) ==
                {:error,
@@ -109,7 +109,7 @@ defmodule Domain.GatewaysTest do
     test "returns error when subject has no permission to manage groups", %{
       subject: subject
     } do
-      subject = SubjectFixtures.remove_permissions(subject)
+      subject = AuthFixtures.remove_permissions(subject)
 
       assert list_groups(subject) ==
                {:error,
@@ -177,7 +177,7 @@ defmodule Domain.GatewaysTest do
     test "returns error when subject has no permission to manage groups", %{
       subject: subject
     } do
-      subject = SubjectFixtures.remove_permissions(subject)
+      subject = AuthFixtures.remove_permissions(subject)
 
       assert create_group(%{}, subject) ==
                {:error,
@@ -260,7 +260,7 @@ defmodule Domain.GatewaysTest do
     } do
       group = GatewaysFixtures.create_group(account: account)
 
-      subject = SubjectFixtures.remove_permissions(subject)
+      subject = AuthFixtures.remove_permissions(subject)
 
       assert update_group(group, %{}, subject) ==
                {:error,
@@ -306,7 +306,7 @@ defmodule Domain.GatewaysTest do
     } do
       group = GatewaysFixtures.create_group()
 
-      subject = SubjectFixtures.remove_permissions(subject)
+      subject = AuthFixtures.remove_permissions(subject)
 
       assert delete_group(group, subject) ==
                {:error,
@@ -375,7 +375,7 @@ defmodule Domain.GatewaysTest do
       assert fetch_gateway_by_id(gateway.id, subject) == {:ok, gateway}
     end
 
-    test "returns gateway that belongs to another user", %{
+    test "returns gateway that belongs to another actor", %{
       account: account,
       subject: subject
     } do
@@ -391,7 +391,7 @@ defmodule Domain.GatewaysTest do
     test "returns error when subject has no permission to view gateways", %{
       subject: subject
     } do
-      subject = SubjectFixtures.remove_permissions(subject)
+      subject = AuthFixtures.remove_permissions(subject)
 
       assert fetch_gateway_by_id(Ecto.UUID.generate(), subject) ==
                {:error,
@@ -429,7 +429,7 @@ defmodule Domain.GatewaysTest do
     test "returns error when subject has no permission to manage gateways", %{
       subject: subject
     } do
-      subject = SubjectFixtures.remove_permissions(subject)
+      subject = AuthFixtures.remove_permissions(subject)
 
       assert list_gateways(subject) ==
                {:error,
@@ -465,7 +465,7 @@ defmodule Domain.GatewaysTest do
       attrs = %{
         external_id: nil,
         public_key: "x",
-        last_seen_user_agent: "foo",
+        last_seen_actor_agent: "foo",
         last_seen_remote_ip: {256, 0, 0, 0}
       }
 
@@ -474,7 +474,7 @@ defmodule Domain.GatewaysTest do
       assert errors_on(changeset) == %{
                public_key: ["should be 44 character(s)", "must be a base64-encoded string"],
                external_id: ["can't be blank"],
-               last_seen_user_agent: ["is invalid"]
+               last_seen_actor_agent: ["is invalid"]
              }
     end
 
@@ -497,7 +497,7 @@ defmodule Domain.GatewaysTest do
       refute is_nil(gateway.ipv6)
 
       assert gateway.last_seen_remote_ip == attrs.last_seen_remote_ip
-      assert gateway.last_seen_user_agent == attrs.last_seen_user_agent
+      assert gateway.last_seen_actor_agent == attrs.last_seen_actor_agent
       assert gateway.last_seen_version == "0.7.412"
       assert gateway.last_seen_at
     end
@@ -511,7 +511,7 @@ defmodule Domain.GatewaysTest do
         GatewaysFixtures.gateway_attrs(
           external_id: gateway.external_id,
           last_seen_remote_ip: {100, 64, 100, 101},
-          last_seen_user_agent: "iOS/12.5 (iPhone) connlib/0.7.411"
+          last_seen_actor_agent: "iOS/12.5 (iPhone) connlib/0.7.411"
         )
 
       assert {:ok, updated_gateway} = upsert_gateway(token, attrs)
@@ -521,8 +521,8 @@ defmodule Domain.GatewaysTest do
       assert updated_gateway.name_suffix
       assert updated_gateway.last_seen_remote_ip.address == attrs.last_seen_remote_ip
       assert updated_gateway.last_seen_remote_ip != gateway.last_seen_remote_ip
-      assert updated_gateway.last_seen_user_agent == attrs.last_seen_user_agent
-      assert updated_gateway.last_seen_user_agent != gateway.last_seen_user_agent
+      assert updated_gateway.last_seen_actor_agent == attrs.last_seen_actor_agent
+      assert updated_gateway.last_seen_actor_agent != gateway.last_seen_actor_agent
       assert updated_gateway.last_seen_version == "0.7.411"
       assert updated_gateway.last_seen_at
       assert updated_gateway.last_seen_at != gateway.last_seen_at
@@ -544,7 +544,7 @@ defmodule Domain.GatewaysTest do
       attrs =
         GatewaysFixtures.gateway_attrs(
           external_id: gateway.external_id,
-          last_seen_user_agent: "iOS/12.5 (iPhone) connlib/0.7.411",
+          last_seen_actor_agent: "iOS/12.5 (iPhone) connlib/0.7.411",
           last_seen_remote_ip: %Postgrex.INET{address: {100, 64, 100, 100}}
         )
 
@@ -642,7 +642,7 @@ defmodule Domain.GatewaysTest do
     } do
       gateway = GatewaysFixtures.create_gateway()
 
-      subject = SubjectFixtures.remove_permissions(subject)
+      subject = AuthFixtures.remove_permissions(subject)
 
       assert update_gateway(gateway, %{}, subject) ==
                {:error,
@@ -672,7 +672,7 @@ defmodule Domain.GatewaysTest do
     } do
       gateway = GatewaysFixtures.create_gateway()
 
-      subject = SubjectFixtures.remove_permissions(subject)
+      subject = AuthFixtures.remove_permissions(subject)
 
       assert delete_gateway(gateway, subject) ==
                {:error,

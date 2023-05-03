@@ -35,9 +35,9 @@ defmodule Domain.ApiTokens.Authorizer do
         :ok
 
       has_permission?(subject, manage_own_api_tokens_permission()) ->
-        {:user, %{id: user_id}} = subject.actor
+        %{type: :user, id: actor_id} = subject.actor
 
-        if api_token.user_id == user_id do
+        if api_token.actor_id == actor_id do
           :ok
         else
           {:error, :unauthorized}

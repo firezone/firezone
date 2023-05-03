@@ -3,7 +3,6 @@ defmodule Domain.Telemetry do
   Functions for various telemetry events.
   """
   use Supervisor
-  alias Domain.{Devices, Auth.MFA, Users}
   alias Domain.Telemetry.{Timer, PostHog}
   require Logger
 
@@ -44,8 +43,8 @@ defmodule Domain.Telemetry do
     :ok
   end
 
-  def add_user do
-    PostHog.capture("add_user", common_fields())
+  def add_actor do
+    PostHog.capture("add_actor", common_fields())
     :ok
   end
 
@@ -59,8 +58,8 @@ defmodule Domain.Telemetry do
     :ok
   end
 
-  def delete_user do
-    PostHog.capture("delete_user", common_fields())
+  def delete_actor do
+    PostHog.capture("delete_actor", common_fields())
     :ok
   end
 
@@ -74,8 +73,13 @@ defmodule Domain.Telemetry do
     :ok
   end
 
-  def disable_user do
-    PostHog.capture("disable_user", common_fields())
+  def enable_actor do
+    PostHog.capture("enable_actor", common_fields())
+    :ok
+  end
+
+  def disable_actor do
+    PostHog.capture("disable_actor", common_fields())
     :ok
   end
 
@@ -90,7 +94,7 @@ defmodule Domain.Telemetry do
   end
 
   # How far back to count handshakes as an active device
-  @active_device_window 86_400
+  # @active_device_window 86_400
   def ping_data do
     %{
       openid_connect_providers: {_, openid_connect_providers},
@@ -113,14 +117,14 @@ defmodule Domain.Telemetry do
 
     common_fields() ++
       [
-        devices_active_within_24h: Devices.count_active_within(@active_device_window),
-        admin_count: Users.count_by_role(:admin),
-        user_count: Users.count(),
+        # devices_active_within_24h: Devices.count_active_within(@active_device_window),
+        # admin_count: Users.count_by_role(:admin),
+        # actor_count: Users.count(),
         in_docker: in_docker?(),
-        device_count: Devices.count(),
-        max_devices_for_users: Devices.count_maximum_for_a_user(),
-        users_with_mfa: MFA.count_users_with_mfa_enabled(),
-        users_with_mfa_totp: MFA.count_users_with_totp_method(),
+        # device_count: Devices.count(),
+        # max_devices_for_actors: Devices.count_maximum_for_a_actor(),
+        # actors_with_mfa: MFA.count_actors_with_mfa_enabled(),
+        # actors_with_mfa_totp: MFA.count_actors_with_totp_method(),
         openid_providers: length(openid_connect_providers),
         saml_providers: length(saml_identity_providers),
         unprivileged_device_management: allow_unprivileged_device_management,

@@ -769,33 +769,17 @@ defmodule Domain.Config.Definitions do
          Swoosh.Adapters.Sendmail,
          Swoosh.Adapters.SocketLabs,
          Swoosh.Adapters.SparkPost,
-         Web.Mailer.NoopAdapter,
-         # DEPRECATED: Legacy options should be removed in 0.8
-         :smtp,
-         :mailgun,
-         :mandrill,
-         :sendgrid,
-         :post_mark,
-         :sendmail
+         Web.Mailer.NoopAdapter
        ]
      )},
-    default: Web.Mailer.NoopAdapter,
-    legacy_keys: [{:env, "OUTBOUND_EMAIL_PROVIDER", "0.9"}],
-    dump: fn
-      :smtp -> Swoosh.Adapters.SMTP
-      :mailgun -> Swoosh.Adapters.Mailgun
-      :mandrill -> Swoosh.Adapters.Mandrill
-      :sendgrid -> Swoosh.Adapters.Sendgrid
-      :post_mark -> Swoosh.Adapters.Postmark
-      :sendmail -> Swoosh.Adapters.Sendmail
-      other -> other
-    end
+    default: Web.Mailer.NoopAdapter
   )
 
   @doc """
   Adapter configuration, for list of options see [Swoosh Adapters](https://github.com/swoosh/swoosh#adapters).
   """
   defconfig(:outbound_email_adapter_opts, :map,
+    # TODO: validate opts are present if adapter is not NOOP one
     default: %{},
     sensitive: true,
     legacy_keys: [{:env, "OUTBOUND_EMAIL_CONFIGS", "0.9"}],

@@ -2,7 +2,7 @@ defmodule Domain.Auth.Subject do
   alias Domain.Auth.{Permission, Context}
 
   @type actor ::
-          {:user, %Domain.Users.User{}}
+          %Domain.Actors.Actor{}
           | {:api_token, %Domain.ApiTokens.ApiToken{}}
           | :system
 

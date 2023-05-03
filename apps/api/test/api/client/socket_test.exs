@@ -3,7 +3,7 @@ defmodule API.Client.SocketTest do
   import API.Client.Socket, only: [id: 1]
   alias API.Client.Socket
   alias Domain.Auth
-  alias Domain.{SubjectFixtures, ClientsFixtures}
+  alias Domain.{AuthFixtures, ClientsFixtures}
 
   @connect_info %{
     user_agent: "iOS/12.7 (iPhone) connlib/0.1.1",
@@ -21,7 +21,7 @@ defmodule API.Client.SocketTest do
     end
 
     test "creates a new client" do
-      subject = SubjectFixtures.create_subject()
+      subject = AuthFixtures.create_subject()
       token = Auth.create_auth_token(subject)
 
       attrs = connect_attrs(token: token)
@@ -38,7 +38,7 @@ defmodule API.Client.SocketTest do
     end
 
     test "updates existing client" do
-      subject = SubjectFixtures.create_subject()
+      subject = AuthFixtures.create_subject()
       existing_client = ClientsFixtures.create_client(subject: subject)
       token = Auth.create_auth_token(subject)
 
