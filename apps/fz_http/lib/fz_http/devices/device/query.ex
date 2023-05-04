@@ -34,7 +34,8 @@ defmodule FzHttp.Devices.Device.Query do
         dynamic(
           [user: user],
           is_nil(user.last_signed_in_at) or
-          fragment("? + ?::interval", user.last_signed_in_at, ^vpn_session_interval) > fragment("now()")
+            fragment("? + ?::interval", user.last_signed_in_at, ^vpn_session_interval) >
+              fragment("now()")
         )
       else
         true
