@@ -853,13 +853,17 @@ defmodule FzHttp.DevicesTest do
     end
 
     test "does not render peers for users with expired VPN session" do
-      FzHttp.Config.put_system_env_override(:vpn_session_duration, 1)
-      two_seconds_in_future = DateTime.utc_now() |> DateTime.add(2, :second)
+      FzHttp.Config.put_system_env_override(:vpn_session_duration, 5)
+      ten_seconds_in_past = DateTime.utc_now() |> DateTime.add(-10, :second)
       user = UsersFixtures.create_user_with_role(:unprivileged)
       DevicesFixtures.create_device(user: user)
 
-      user = UsersFixtures.update(user, last_signed_in_at: two_seconds_in_future)
+      user = UsersFixtures.update(user, last_signed_in_at: ten_seconds_in_past)
       assert to_peer_list() == []
+
+      three_seconds_in_past = DateTime.utc_now() |> DateTime.add(-3, :second)
+      user = UsersFixtures.update(user, last_signed_in_at: three_seconds_in_past)
+      assert length(to_peer_list()) == 1
 
       UsersFixtures.update(user, last_signed_in_at: nil)
       assert length(to_peer_list()) == 1

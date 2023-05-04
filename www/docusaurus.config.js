@@ -125,10 +125,10 @@ const config = {
           //   position: "left",
           // },
           {
-            href: "/contact/support",
+            href: "/contact/sales",
             label: "Contact",
             position: "left",
-            "aria-label": "Contact support",
+            "aria-label": "Using Firezone for your business? Contact us to learn more.",
           },
           // {
            // href: "/1.0/signup",
@@ -201,7 +201,7 @@ const config = {
               },
               {
                 label: "Contact",
-                href: "/contact/support",
+                href: "/contact/sales",
               },
             ],
           },
