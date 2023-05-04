@@ -98,6 +98,12 @@ All secrets should be a **base64-encoded string**.
 | DEFAULT_CLIENT_DNS | Comma-separated list of DNS servers to use for devices.<br /> <br />It can be either an IP address or a FQDN if you intend to use a DNS-over-TLS server.<br /> <br />Leave this blank to omit the `DNS` section from generated configs. | {:array, ",", {:one_of, [FzHttp.Types.IP, :string]}, [validate_unique: true]} | `[]` |
 | DEFAULT_CLIENT_ALLOWED_IPS | Configures the default AllowedIPs setting for devices.<br /> <br />AllowedIPs determines which destination IPs get routed through Firezone.<br /> <br />Specify a comma-separated list of IPs or CIDRs here to achieve split tunneling, or use `0.0.0.0/0, ::/0` to route all device traffic through this Firezone server. | {:array, ",", {:one_of, [FzHttp.Types.CIDR, FzHttp.Types.IP]}, [validate_unique: true]} | `0.0.0.0/0, ::/0` |
 
+### Limits
+
+| Env Key | Description      | Format | Default |
+| ------  | ---------------  | ------ | ------- |
+| MAX_DEVICES_PER_USER | Changes how many devices a user can have at a time. | integer | 10 |
+
 ### Authorization
 
 | Env Key | Description      | Format | Default |

@@ -92,10 +92,10 @@ defmodule FzHttp.Config.Definitions do
          :default_client_dns,
          :default_client_allowed_ips
        ]},
-      # {"Limits",
-      #  [
-      #    :max_devices_per_user
-      #  ]},
+      {"Limits",
+       [
+         :max_devices_per_user
+       ]},
       {"Authorization",
        [
          :local_auth_enabled,
@@ -500,6 +500,9 @@ defmodule FzHttp.Config.Definitions do
   ## Limits
   ##############################################
 
+  @doc """
+  Changes how many devices a user can have at a time.
+  """
   defconfig(:max_devices_per_user, :integer,
     default: 10,
     changeset: fn changeset, key ->
