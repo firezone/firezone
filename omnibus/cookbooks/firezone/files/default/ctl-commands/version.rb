@@ -22,6 +22,6 @@ add_command_under_category 'version', 'general', 'Display current version of Fir
   puts version
 rescue Errno::ENOENT => e
   puts 'Error determining version!'
-  puts e.message.to_s
+  puts e.message
   exit(1)
 end
