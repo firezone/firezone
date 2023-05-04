@@ -29,11 +29,13 @@ defmodule FzHttp.Devices.Device.Query do
     dynamic =
       if FzHttp.Config.vpn_sessions_expire?() do
         vpn_session_duration = FzHttp.Config.fetch_config!(:vpn_session_duration)
+        vpn_session_interval = %Postgrex.Interval{days: 0, months: 0, secs: vpn_session_duration}
 
         dynamic(
           [user: user],
           is_nil(user.last_signed_in_at) or
-            user.last_signed_in_at < from_now(^vpn_session_duration, "second")
+            fragment("? + ?::interval", user.last_signed_in_at, ^vpn_session_interval) >
+              fragment("now()")
         )
       else
         true
