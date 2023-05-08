@@ -1,0 +1,7 @@
+{
+  "dependencies": {
+    "@fontsource/source-sans-pro": "^4.5.11",
+    "flowbite": "^1.6.5",
+    "yarn": "^1.22.19"
+  }
+}
