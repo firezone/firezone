@@ -5,3 +5,7 @@ edition = "2021"
 
 [dependencies]
 tokio = { version = "1.28.0", features = ["macros", "rt-multi-thread"] }
+nom = "7.1.3"
+
+[dev-dependencies]
+hex-literal = "0.4.1"
