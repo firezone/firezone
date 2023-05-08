@@ -1,6 +1,6 @@
 defmodule Domain.Clients.Client.Changeset do
   use Domain, :changeset
-  alias Domain.{Version, Auth, Actors}
+  alias Domain.{Version, Auth}
   alias Domain.Clients
 
   @upsert_fields ~w[external_id name public_key preshared_key]a
@@ -18,12 +18,13 @@ defmodule Domain.Clients.Client.Changeset do
 
   def upsert_on_conflict, do: {:replace, @conflict_replace_fields}
 
-  def upsert_changeset(%Actors.Actor{} = actor, %Auth.Context{} = context, attrs) do
+  def upsert_changeset(%Auth.Identity{} = identity, %Auth.Context{} = context, attrs) do
     %Clients.Client{}
     |> cast(attrs, @upsert_fields)
     |> put_default_value(:name, &generate_name/0)
-    |> put_change(:actor_id, actor.id)
-    |> put_change(:account_id, actor.account_id)
+    |> put_change(:identity_id, identity.id)
+    |> put_change(:actor_id, identity.actor_id)
+    |> put_change(:account_id, identity.account_id)
     |> put_change(:last_seen_user_agent, context.user_agent)
     |> put_change(:last_seen_remote_ip, %Postgrex.INET{address: context.remote_ip})
     |> changeset()

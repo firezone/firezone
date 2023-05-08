@@ -16,6 +16,7 @@ defmodule Domain.Repo.Migrations.RemoveUsers do
     alter table(:clients) do
       remove(:user_id, references(:users, type: :binary_id), null: false)
       add(:actor_id, references(:actors, type: :binary_id), null: false)
+      add(:identity_id, references(:auth_identities, type: :binary_id), null: false)
     end
 
     create(

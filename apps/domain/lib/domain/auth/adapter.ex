@@ -24,5 +24,5 @@ defmodule Domain.Auth.Adapter do
   # TODO
   # @callback sync(%Provider{}) :: {:ok, users :: [map], groups :: [map]}
 
-  @callback sign_in(attrs :: map) :: {:ok, user :: map} | {:error, reason :: any}
+  # @callback sign_in(attrs :: map) :: {:ok, user :: map} | {:error, reason :: any}
 end

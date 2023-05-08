@@ -3,7 +3,8 @@ defmodule Domain.AuthTest do
   import Domain.Auth
   alias Domain.ActorsFixtures
   alias Domain.Auth
-  alias Domain.{AccountsFixtures, AuthFixtures, ConfigFixtures}
+  alias Domain.Auth.Authorizer
+  alias Domain.{AccountsFixtures, AuthFixtures}
 
   describe "create_provider/2" do
     setup do
@@ -81,15 +82,18 @@ defmodule Domain.AuthTest do
 
       assert create_provider(account, %{}, subject) ==
                {:error,
-                {:unauthorized,
-                 [missing_permissions: [Auth.Authorizer.manage_providers_permission()]]}}
+                {:unauthorized, [missing_permissions: [Authorizer.manage_providers_permission()]]}}
     end
 
     test "returns error when subject tries to create an account in another account", %{
-      account: account
+      account: other_account
     } do
-      subject = AuthFixtures.create_subject()
-      assert create_provider(account, %{}, subject) == {:error, :unauthorized}
+      account = AccountsFixtures.create_account()
+      actor = ActorsFixtures.create_actor(account: account, role: :admin)
+      identity = AuthFixtures.create_identity(account: account, actor: actor)
+      subject = AuthFixtures.create_subject(identity)
+
+      assert create_provider(other_account, %{}, subject) == {:error, :unauthorized}
     end
   end
 
@@ -98,7 +102,8 @@ defmodule Domain.AuthTest do
       account = AccountsFixtures.create_account()
       provider = AuthFixtures.create_email_provider(account: account)
       actor = ActorsFixtures.create_actor(role: :admin, account: account, provider: provider)
-      subject = AuthFixtures.create_subject(actor)
+      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
+      subject = AuthFixtures.create_subject(identity)
 
       %{
         account: account,
@@ -161,7 +166,9 @@ defmodule Domain.AuthTest do
 
           account = AccountsFixtures.create_account()
           actor = ActorsFixtures.create_actor(account: account)
-          subject = AuthFixtures.create_subject(actor)
+
+          identity = AuthFixtures.create_identity(account: account, actor: actor)
+          subject = AuthFixtures.create_subject(identity)
 
           provider_one = AuthFixtures.create_email_provider(account: account)
           provider_two = AuthFixtures.create_email_provider(account: account)
@@ -203,8 +210,7 @@ defmodule Domain.AuthTest do
 
       assert disable_provider(provider, subject) ==
                {:error,
-                {:unauthorized,
-                 [missing_permissions: [Auth.Authorizer.manage_providers_permission()]]}}
+                {:unauthorized, [missing_permissions: [Authorizer.manage_providers_permission()]]}}
     end
   end
 
@@ -212,7 +218,8 @@ defmodule Domain.AuthTest do
     setup do
       account = AccountsFixtures.create_account()
       actor = ActorsFixtures.create_actor(role: :admin, account: account)
-      subject = AuthFixtures.create_subject(actor)
+      identity = AuthFixtures.create_identity(account: account, actor: actor)
+      subject = AuthFixtures.create_subject(identity)
 
       provider = AuthFixtures.create_email_provider(account: account)
       {:ok, provider} = disable_provider(provider, subject)
@@ -260,8 +267,7 @@ defmodule Domain.AuthTest do
 
       assert enable_provider(provider, subject) ==
                {:error,
-                {:unauthorized,
-                 [missing_permissions: [Auth.Authorizer.manage_providers_permission()]]}}
+                {:unauthorized, [missing_permissions: [Authorizer.manage_providers_permission()]]}}
     end
   end
 
@@ -270,7 +276,8 @@ defmodule Domain.AuthTest do
       account = AccountsFixtures.create_account()
       provider = AuthFixtures.create_email_provider(account: account)
       actor = ActorsFixtures.create_actor(role: :admin, account: account, provider: provider)
-      subject = AuthFixtures.create_subject(actor)
+      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
+      subject = AuthFixtures.create_subject(identity)
 
       %{
         account: account,
@@ -333,7 +340,9 @@ defmodule Domain.AuthTest do
 
           account = AccountsFixtures.create_account()
           actor = ActorsFixtures.create_actor(account: account)
-          subject = AuthFixtures.create_subject(actor)
+
+          identity = AuthFixtures.create_identity(account: account, actor: actor)
+          subject = AuthFixtures.create_subject(identity)
 
           provider_one = AuthFixtures.create_email_provider(account: account)
           provider_two = AuthFixtures.create_email_provider(account: account)
@@ -375,27 +384,363 @@ defmodule Domain.AuthTest do
 
       assert delete_provider(provider, subject) ==
                {:error,
-                {:unauthorized,
-                 [missing_permissions: [Auth.Authorizer.manage_providers_permission()]]}}
+                {:unauthorized, [missing_permissions: [Authorizer.manage_providers_permission()]]}}
     end
   end
 
-  describe "link_identity/3" do
+  describe "fetch_identity_by_id/1" do
+    test "returns error when identity does not exist" do
+      assert fetch_identity_by_id(Ecto.UUID.generate()) == {:error, :not_found}
+    end
+
+    test "returns identity" do
+      identity = AuthFixtures.create_identity()
+      assert {:ok, fetched_identity} = fetch_identity_by_id(identity.id)
+      assert fetched_identity.id == identity.id
+    end
+  end
+
+  describe "create_identity/3" do
     test "creates an identity" do
       account = AccountsFixtures.create_account()
       provider = AuthFixtures.create_email_provider(account: account)
       provider_identifier = AuthFixtures.random_provider_identifier(provider)
       actor = ActorsFixtures.create_actor(role: :admin, account: account, provider: provider)
 
-      assert {:ok, identity} = link_identity(actor, provider, provider_identifier)
+      assert {:ok, identity} = create_identity(actor, provider, provider_identifier)
 
       assert identity.provider_id == provider.id
       assert identity.provider_identifier == provider_identifier
       assert identity.actor_id == actor.id
-      assert identity.provider_state == %{}
-      assert identity.provider_virtual_state == %{}
+      assert %{sign_in_token_created_at: _, sign_in_token_hash: _} = identity.provider_state
+      assert %{sign_in_token: _} = identity.provider_virtual_state
       assert identity.account_id == provider.account_id
       assert is_nil(identity.deleted_at)
+    end
+  end
+
+  describe "delete_identity/2" do
+    setup do
+      account = AccountsFixtures.create_account()
+      provider = AuthFixtures.create_email_provider(account: account)
+      actor = ActorsFixtures.create_actor(role: :admin, account: account, provider: provider)
+      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
+      subject = AuthFixtures.create_subject(identity)
+
+      %{
+        account: account,
+        actor: actor,
+        subject: subject,
+        provider: provider
+      }
+    end
+
+    test "deletes the identity that belongs to a subject actor", %{
+      account: account,
+      provider: provider,
+      actor: actor,
+      subject: subject
+    } do
+      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
+
+      assert {:ok, deleted_identity} = delete_identity(identity, subject)
+
+      assert deleted_identity.id == identity.id
+      assert deleted_identity.deleted_at
+
+      assert Repo.get(Auth.Identity, identity.id).deleted_at
+    end
+
+    test "deletes identity that belongs to another actor with manage permission", %{
+      account: account,
+      provider: provider,
+      subject: subject
+    } do
+      identity = AuthFixtures.create_identity(account: account, provider: provider)
+
+      subject =
+        subject
+        |> AuthFixtures.remove_permissions()
+        |> AuthFixtures.add_permission(Authorizer.manage_own_identities_permission())
+        |> AuthFixtures.add_permission(Authorizer.manage_identities_permission())
+
+      assert {:ok, deleted_identity} = delete_identity(identity, subject)
+
+      assert deleted_identity.id == identity.id
+      assert deleted_identity.deleted_at
+
+      assert Repo.get(Auth.Identity, identity.id).deleted_at
+    end
+
+    test "does not delete identity that belongs to another actor with manage_own permission", %{
+      subject: subject
+    } do
+      identity = AuthFixtures.create_identity()
+
+      subject =
+        subject
+        |> AuthFixtures.remove_permissions()
+        |> AuthFixtures.add_permission(Authorizer.manage_own_identities_permission())
+
+      assert delete_identity(identity, subject) == {:error, :not_found}
+    end
+
+    test "does not delete identity that belongs to another actor with just view permission", %{
+      subject: subject
+    } do
+      identity = AuthFixtures.create_identity()
+
+      subject =
+        subject
+        |> AuthFixtures.remove_permissions()
+        |> AuthFixtures.add_permission(Authorizer.manage_own_identities_permission())
+
+      assert delete_identity(identity, subject) == {:error, :not_found}
+    end
+
+    test "returns error when identity does not exist", %{
+      account: account,
+      provider: provider,
+      actor: actor,
+      subject: subject
+    } do
+      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
+
+      assert {:ok, _identity} = delete_identity(identity, subject)
+      assert delete_identity(identity, subject) == {:error, :not_found}
+    end
+
+    test "returns error when subject can not view identities", %{subject: subject} do
+      identity = AuthFixtures.create_identity()
+
+      subject = AuthFixtures.remove_permissions(subject)
+
+      assert delete_identity(identity, subject) ==
+               {:error,
+                {:unauthorized,
+                 [
+                   missing_permissions: [
+                     {:one_of,
+                      [
+                        Authorizer.manage_identities_permission(),
+                        Authorizer.manage_own_identities_permission()
+                      ]}
+                   ]
+                 ]}}
+    end
+  end
+
+  describe "sign_in/5" do
+    setup do
+      account = AccountsFixtures.create_account()
+      provider = AuthFixtures.create_email_provider(account: account)
+      user_agent = AuthFixtures.user_agent()
+      remote_ip = AuthFixtures.remote_ip()
+
+      %{
+        account: account,
+        provider: provider,
+        user_agent: user_agent,
+        remote_ip: remote_ip
+      }
+    end
+
+    test "returns error when provider_identifier does not exist", %{
+      provider: provider,
+      user_agent: user_agent,
+      remote_ip: remote_ip
+    } do
+      secret = "foo"
+
+      assert sign_in(provider, Ecto.UUID.generate(), secret, user_agent, remote_ip) ==
+               {:error, :unauthorized}
+    end
+
+    test "returns error when secret is invalid", %{
+      account: account,
+      provider: provider,
+      user_agent: user_agent,
+      remote_ip: remote_ip
+    } do
+      identity = AuthFixtures.create_identity(account: account, provider: provider)
+      secret = "foo"
+
+      assert sign_in(provider, identity.provider_identifier, secret, user_agent, remote_ip) ==
+               {:error, :unauthorized}
+    end
+
+    test "returns subject on success", %{
+      account: account,
+      provider: provider,
+      user_agent: user_agent,
+      remote_ip: remote_ip
+    } do
+      identity = AuthFixtures.create_identity(account: account, provider: provider)
+      secret = identity.provider_virtual_state.sign_in_token
+
+      assert {:ok, %Auth.Subject{} = subject} =
+               sign_in(provider, identity.provider_identifier, secret, user_agent, remote_ip)
+
+      assert subject.account.id == account.id
+      assert subject.actor.id == identity.actor_id
+      assert subject.identity.id == identity.id
+      assert subject.context.remote_ip == remote_ip
+      assert subject.context.user_agent == user_agent
+    end
+
+    test "returns error when provider is disabled", %{
+      account: account,
+      provider: provider,
+      user_agent: user_agent,
+      remote_ip: remote_ip
+    } do
+      actor = ActorsFixtures.create_actor(role: :admin, account: account)
+      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
+      subject = AuthFixtures.create_subject(identity)
+      {:ok, _provider} = disable_provider(provider, subject)
+
+      identity = AuthFixtures.create_identity(account: account, provider: provider)
+      secret = identity.provider_virtual_state.sign_in_token
+
+      assert sign_in(provider, identity.provider_identifier, secret, user_agent, remote_ip) ==
+               {:error, :unauthorized}
+    end
+
+    test "returns error when provider is deleted", %{
+      account: account,
+      provider: provider,
+      user_agent: user_agent,
+      remote_ip: remote_ip
+    } do
+      actor = ActorsFixtures.create_actor(role: :admin, account: account)
+      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
+      subject = AuthFixtures.create_subject(identity)
+      {:ok, _provider} = delete_provider(provider, subject)
+
+      identity = AuthFixtures.create_identity(account: account, provider: provider)
+      secret = identity.provider_virtual_state.sign_in_token
+
+      assert sign_in(provider, identity.provider_identifier, secret, user_agent, remote_ip) ==
+               {:error, :unauthorized}
+    end
+
+    test "updates last signed in fields for identity on success", %{
+      account: account,
+      provider: provider,
+      user_agent: user_agent,
+      remote_ip: remote_ip
+    } do
+      identity = AuthFixtures.create_identity(account: account, provider: provider)
+      secret = identity.provider_virtual_state.sign_in_token
+
+      assert {:ok, _subject} =
+               sign_in(provider, identity.provider_identifier, secret, user_agent, remote_ip)
+
+      assert updated_identity = Repo.one(Auth.Identity)
+      assert updated_identity.last_seen_at != identity.last_seen_at
+      assert updated_identity.last_seen_remote_ip != identity.last_seen_remote_ip
+      assert updated_identity.last_seen_user_agent != identity.last_seen_user_agent
+    end
+  end
+
+  describe "sign_in/3" do
+    setup do
+      account = AccountsFixtures.create_account()
+      provider = AuthFixtures.create_email_provider(account: account)
+      user_agent = AuthFixtures.user_agent()
+      remote_ip = AuthFixtures.remote_ip()
+
+      identity =
+        AuthFixtures.create_identity(
+          account: account,
+          provider: provider,
+          user_agent: user_agent,
+          remote_ip: remote_ip
+        )
+
+      subject = AuthFixtures.create_subject(identity)
+
+      %{
+        account: account,
+        provider: provider,
+        identity: identity,
+        subject: subject,
+        user_agent: user_agent,
+        remote_ip: remote_ip
+      }
+    end
+
+    test "returns error when token is invalid", %{user_agent: user_agent, remote_ip: remote_ip} do
+      assert sign_in(Ecto.UUID.generate(), user_agent, remote_ip) ==
+               {:error, :unauthorized}
+    end
+
+    test "returns subject on success", %{
+      subject: subject,
+      user_agent: user_agent,
+      remote_ip: remote_ip
+    } do
+      {:ok, token} = create_session_token_from_subject(subject)
+
+      assert {:ok, reconstructed_subject} = sign_in(token, user_agent, remote_ip)
+      assert reconstructed_subject.identity.id == subject.identity.id
+      assert reconstructed_subject.actor.id == subject.actor.id
+      assert reconstructed_subject.account.id == subject.account.id
+      assert reconstructed_subject.permissions == subject.permissions
+      assert reconstructed_subject.context == subject.context
+    end
+
+    test "updates last signed in fields for identity on success", %{
+      identity: identity,
+      subject: subject,
+      user_agent: user_agent,
+      remote_ip: remote_ip
+    } do
+      {:ok, token} = create_session_token_from_subject(subject)
+
+      assert {:ok, _subject} = sign_in(token, user_agent, remote_ip)
+
+      assert updated_identity = Repo.one(Auth.Identity)
+      assert updated_identity.last_seen_at != identity.last_seen_at
+      assert updated_identity.last_seen_remote_ip != identity.last_seen_remote_ip
+      assert updated_identity.last_seen_user_agent != identity.last_seen_user_agent
+    end
+
+    test "returns error when token is created with a different remote ip", %{
+      subject: subject,
+      user_agent: user_agent
+    } do
+      {:ok, token} = create_session_token_from_subject(subject)
+      assert sign_in(token, user_agent, {127, 0, 0, 1}) == {:error, :unauthorized}
+    end
+
+    test "returns error when token is created with a different user agent", %{
+      subject: subject,
+      remote_ip: remote_ip
+    } do
+      user_agent = "iOS/12.6 (iPhone) connlib/0.7.412"
+      {:ok, token} = create_session_token_from_subject(subject)
+      assert sign_in(token, user_agent, remote_ip) == {:error, :unauthorized}
+    end
+
+    test "returns error when token is created for a deleted identity", %{
+      identity: identity,
+      subject: subject,
+      user_agent: user_agent,
+      remote_ip: remote_ip
+    } do
+      {:ok, _identity} = delete_identity(identity, subject)
+
+      {:ok, token} = create_session_token_from_subject(subject)
+      assert sign_in(token, user_agent, remote_ip) == {:error, :unauthorized}
+    end
+  end
+
+  describe "create_session_token_from_subject/1" do
+    test "returns valid session token for a given subject" do
+      identity = AuthFixtures.create_identity()
+      subject = AuthFixtures.create_subject(identity)
+      assert {:ok, _token} = create_session_token_from_subject(subject)
     end
   end
 
@@ -403,7 +748,8 @@ defmodule Domain.AuthTest do
     setup do
       account = AccountsFixtures.create_account()
       actor = ActorsFixtures.create_actor(role: :admin, account: account)
-      subject = AuthFixtures.build_subject(actor)
+      identity = AuthFixtures.create_identity(account: account, actor: actor)
+      subject = AuthFixtures.create_subject(identity)
 
       %{account: account, actor: actor, subject: subject}
     end
@@ -411,16 +757,16 @@ defmodule Domain.AuthTest do
     test "returns true when subject has given permission", %{subject: subject} do
       subject =
         AuthFixtures.set_permissions(subject, [
-          Auth.Authorizer.manage_providers_permission()
+          Authorizer.manage_providers_permission()
         ])
 
-      assert has_permission?(subject, Auth.Authorizer.manage_providers_permission())
+      assert has_permission?(subject, Authorizer.manage_providers_permission())
     end
 
     test "returns true when subject has one of given permission", %{subject: subject} do
       subject =
         AuthFixtures.set_permissions(subject, [
-          Auth.Authorizer.manage_providers_permission()
+          Authorizer.manage_providers_permission()
         ])
 
       assert has_permission?(
@@ -428,14 +774,14 @@ defmodule Domain.AuthTest do
                {:one_of,
                 [
                   %Auth.Permission{resource: :boo, action: :bar},
-                  Auth.Authorizer.manage_providers_permission()
+                  Authorizer.manage_providers_permission()
                 ]}
              )
     end
 
     test "returns false when subject has no given permission", %{subject: subject} do
       subject = AuthFixtures.set_permissions(subject, [])
-      refute has_permission?(subject, Auth.Authorizer.manage_providers_permission())
+      refute has_permission?(subject, Authorizer.manage_providers_permission())
     end
   end
 
@@ -446,11 +792,24 @@ defmodule Domain.AuthTest do
     end
   end
 
+  describe "ensure_type/2" do
+    test "returns :ok if subject actor has given type" do
+      subject = AuthFixtures.create_subject()
+      assert ensure_type(subject, subject.actor.type) == :ok
+    end
+
+    test "returns error if subject actor has given type" do
+      subject = AuthFixtures.create_subject()
+      assert ensure_type(subject, :foo) == {:error, :unauthorized}
+    end
+  end
+
   describe "ensure_has_access_to/2" do
     setup do
       account = AccountsFixtures.create_account()
       actor = ActorsFixtures.create_actor(role: :admin, account: account)
-      subject = AuthFixtures.create_subject(actor)
+      identity = AuthFixtures.create_identity(account: account, actor: actor)
+      subject = AuthFixtures.create_subject(identity)
 
       %{
         account: account,
@@ -479,7 +838,8 @@ defmodule Domain.AuthTest do
     setup do
       account = AccountsFixtures.create_account()
       actor = ActorsFixtures.create_actor(role: :admin, account: account)
-      subject = AuthFixtures.create_subject(actor)
+      identity = AuthFixtures.create_identity(account: account, actor: actor)
+      subject = AuthFixtures.create_subject(identity)
 
       %{
         account: account,
@@ -493,12 +853,12 @@ defmodule Domain.AuthTest do
     } do
       subject = AuthFixtures.set_permissions(subject, [])
 
-      required_permissions = [Auth.Authorizer.manage_providers_permission()]
+      required_permissions = [Authorizer.manage_providers_permission()]
 
       assert ensure_has_permissions(subject, required_permissions) ==
                {:error, {:unauthorized, [missing_permissions: required_permissions]}}
 
-      required_permissions = [{:one_of, [Auth.Authorizer.manage_providers_permission()]}]
+      required_permissions = [{:one_of, [Authorizer.manage_providers_permission()]}]
 
       assert ensure_has_permissions(subject, required_permissions) ==
                {:error, {:unauthorized, [missing_permissions: required_permissions]}}
@@ -509,96 +869,96 @@ defmodule Domain.AuthTest do
     } do
       subject =
         AuthFixtures.set_permissions(subject, [
-          Auth.Authorizer.manage_providers_permission()
+          Authorizer.manage_providers_permission()
         ])
 
-      assert ensure_has_permissions(subject, [Auth.Authorizer.manage_providers_permission()]) ==
+      assert ensure_has_permissions(subject, [Authorizer.manage_providers_permission()]) ==
                :ok
 
       assert ensure_has_permissions(
                subject,
-               [{:one_of, [Auth.Authorizer.manage_providers_permission()]}]
+               [{:one_of, [Authorizer.manage_providers_permission()]}]
              ) == :ok
     end
   end
 
   ##############################################
 
-  describe "fetch_oidc_provider_config/1" do
-    test "returns error when provider does not exist" do
-      assert fetch_oidc_provider_config(Ecto.UUID.generate()) == {:error, :not_found}
-      assert fetch_oidc_provider_config("foo") == {:error, :not_found}
-    end
+  # describe "fetch_oidc_provider_config/1" do
+  #   test "returns error when provider does not exist" do
+  #     assert fetch_oidc_provider_config(Ecto.UUID.generate()) == {:error, :not_found}
+  #     assert fetch_oidc_provider_config("foo") == {:error, :not_found}
+  #   end
 
-    test "returns openid connect provider" do
-      {_bypass, [attrs]} = ConfigFixtures.start_openid_providers(["google"])
+  #   test "returns openid connect provider" do
+  #     {_bypass, [attrs]} = ConfigFixtures.start_openid_providers(["google"])
 
-      assert fetch_oidc_provider_config(attrs["id"]) ==
-               {:ok,
-                %{
-                  client_id: attrs["client_id"],
-                  client_secret: attrs["client_secret"],
-                  discovery_document_uri: attrs["discovery_document_uri"],
-                  redirect_uri: attrs["redirect_uri"],
-                  response_type: attrs["response_type"],
-                  scope: attrs["scope"]
-                }}
-    end
+  #     assert fetch_oidc_provider_config(attrs["id"]) ==
+  #              {:ok,
+  #               %{
+  #                 client_id: attrs["client_id"],
+  #                 client_secret: attrs["client_secret"],
+  #                 discovery_document_uri: attrs["discovery_document_uri"],
+  #                 redirect_uri: attrs["redirect_uri"],
+  #                 response_type: attrs["response_type"],
+  #                 scope: attrs["scope"]
+  #               }}
+  #   end
 
-    test "puts default redirect_uri" do
-      Domain.Config.put_env_override(:web, :external_url, "http://foo.bar.com/")
+  #   test "puts default redirect_uri" do
+  #     Domain.Config.put_env_override(:web, :external_url, "http://foo.bar.com/")
 
-      {_bypass, [attrs]} =
-        ConfigFixtures.start_openid_providers(["google"], %{"redirect_uri" => nil})
+  #     {_bypass, [attrs]} =
+  #       ConfigFixtures.start_openid_providers(["google"], %{"redirect_uri" => nil})
 
-      assert fetch_oidc_provider_config(attrs["id"]) ==
-               {:ok,
-                %{
-                  client_id: attrs["client_id"],
-                  client_secret: attrs["client_secret"],
-                  discovery_document_uri: attrs["discovery_document_uri"],
-                  redirect_uri: "http://foo.bar.com/auth/oidc/google/callback/",
-                  response_type: attrs["response_type"],
-                  scope: attrs["scope"]
-                }}
-    end
-  end
+  #     assert fetch_oidc_provider_config(attrs["id"]) ==
+  #              {:ok,
+  #               %{
+  #                 client_id: attrs["client_id"],
+  #                 client_secret: attrs["client_secret"],
+  #                 discovery_document_uri: attrs["discovery_document_uri"],
+  #                 redirect_uri: "http://foo.bar.com/auth/oidc/google/callback/",
+  #                 response_type: attrs["response_type"],
+  #                 scope: attrs["scope"]
+  #               }}
+  #   end
+  # end
 
-  describe "auto_create_users?/2" do
-    test "raises if provider_id not found" do
-      assert_raise(RuntimeError, "Unknown provider foobar", fn ->
-        auto_create_users?(:openid_connect_providers, "foobar")
-      end)
-    end
+  # describe "auto_create_users?/2" do
+  #   test "raises if provider_id not found" do
+  #     assert_raise(RuntimeError, "Unknown provider foobar", fn ->
+  #       auto_create_users?(:openid_connect_providers, "foobar")
+  #     end)
+  #   end
 
-    test "returns true if auto_create_users is true" do
-      ConfigFixtures.configuration(%{
-        saml_identity_providers: [
-          %{
-            "id" => "test",
-            "metadata" => ConfigFixtures.saml_metadata(),
-            "auto_create_users" => true,
-            "label" => "SAML"
-          }
-        ]
-      })
+  #   test "returns true if auto_create_users is true" do
+  #     ConfigFixtures.configuration(%{
+  #       saml_identity_providers: [
+  #         %{
+  #           "id" => "test",
+  #           "metadata" => ConfigFixtures.saml_metadata(),
+  #           "auto_create_users" => true,
+  #           "label" => "SAML"
+  #         }
+  #       ]
+  #     })
 
-      assert auto_create_users?(:saml_identity_providers, "test")
-    end
+  #     assert auto_create_users?(:saml_identity_providers, "test")
+  #   end
 
-    test "returns false if auto_create_users is false" do
-      ConfigFixtures.configuration(%{
-        saml_identity_providers: [
-          %{
-            "id" => "test",
-            "metadata" => ConfigFixtures.saml_metadata(),
-            "auto_create_users" => false,
-            "label" => "SAML"
-          }
-        ]
-      })
+  #   test "returns false if auto_create_users is false" do
+  #     ConfigFixtures.configuration(%{
+  #       saml_identity_providers: [
+  #         %{
+  #           "id" => "test",
+  #           "metadata" => ConfigFixtures.saml_metadata(),
+  #           "auto_create_users" => false,
+  #           "label" => "SAML"
+  #         }
+  #       ]
+  #     })
 
-      refute auto_create_users?(:saml_identity_providers, "test")
-    end
-  end
+  #     refute auto_create_users?(:saml_identity_providers, "test")
+  #   end
+  # end
 end

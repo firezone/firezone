@@ -29,4 +29,12 @@ defmodule Domain.Clients.Client.Query do
       |> preload([clients: clients, actor: actor], actor: actor)
     end)
   end
+
+  def with_preloaded_identity(queryable \\ all()) do
+    with_named_binding(queryable, :identity, fn queryable, binding ->
+      queryable
+      |> join(:inner, [clients: clients], identity in assoc(clients, ^binding), as: ^binding)
+      |> preload([clients: clients, identity: identity], identity: identity)
+    end)
+  end
 end

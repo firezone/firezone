@@ -3,7 +3,7 @@ defmodule Domain.Auth.Identity.Changeset do
   alias Domain.Actors
   alias Domain.Auth.{Adapters, Identity, Provider}
 
-  def create_changeset(
+  def create(
         %Actors.Actor{account_id: account_id} = actor,
         %Provider{account_id: account_id} = provider,
         provider_identifier
@@ -23,35 +23,22 @@ defmodule Domain.Auth.Identity.Changeset do
     )
   end
 
-  def provider_state_changeset(
-        %Identity{} = identity,
-        %Ecto.Changeset{} = state_changeset,
-        virtual_state \\ %{}
-      ) do
-    case apply_action(state_changeset, :validate) do
-      {:ok, data} ->
-        identity
-        |> change()
-        |> put_change(:provider_state, data)
-        |> put_change(:provider_virtual_state, virtual_state)
-
-      {:error, _} ->
-        identity
-        |> change()
-        |> add_error(:provider_state, "is invalid")
-        |> put_change(:provider_virtual_state, %{})
-    end
+  def update_provider_state(identity_or_changeset, %{} = state, virtual_state \\ %{}) do
+    identity_or_changeset
+    |> change()
+    |> put_change(:provider_state, state)
+    |> put_change(:provider_virtual_state, virtual_state)
   end
 
-  def sign_in_changeset(%Identity{} = identity, user_agent, remote_ip) do
-    identity
+  def sign_in(identity_or_changeset, user_agent, remote_ip) do
+    identity_or_changeset
     |> change()
     |> put_change(:last_seen_user_agent, user_agent)
-    |> put_change(:last_seen_remote_ip, remote_ip)
+    |> put_change(:last_seen_remote_ip, %Postgrex.INET{address: remote_ip})
     |> put_change(:last_seen_at, DateTime.utc_now())
   end
 
-  def delete_changeset(%Identity{} = identity) do
+  def delete_identity(%Identity{} = identity) do
     identity
     |> change()
     |> put_change(:provider_state, %{})

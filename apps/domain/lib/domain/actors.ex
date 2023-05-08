@@ -72,7 +72,7 @@ defmodule Domain.Actors do
     Ecto.Multi.new()
     |> Ecto.Multi.insert(:actor, Actor.Changeset.create_changeset(provider, attrs))
     |> Ecto.Multi.run(:identity, fn _repo, %{actor: actor} ->
-      Auth.link_identity(actor, provider, provider_identifier)
+      Auth.create_identity(actor, provider, provider_identifier)
     end)
     |> Repo.transaction()
     |> case do

@@ -1,15 +1,11 @@
 defmodule Domain.AuthFixtures do
+  alias Domain.Repo
   alias Domain.Auth
   alias Domain.AccountsFixtures
   alias Domain.ActorsFixtures
 
-  def build_subject(actor \\ nil, account \\ AccountsFixtures.create_account()) do
-    %Auth.Subject{
-      actor: actor,
-      account: account,
-      permissions: MapSet.new()
-    }
-  end
+  def remote_ip, do: {100, 64, 100, 58}
+  def user_agent, do: "iOS/12.5 (iPhone) connlib/0.7.412"
 
   def random_provider_identifier(%Domain.Auth.Provider{adapter: :email, name: name}) do
     "user-#{counter()}@#{String.downcase(name)}.com"
@@ -37,8 +33,49 @@ defmodule Domain.AuthFixtures do
     provider
   end
 
-  def create_subject(actor \\ ActorsFixtures.create_actor(role: :admin)) do
-    Domain.Auth.fetch_subject!(actor, {100, 64, 100, 58}, "iOS/12.5 (iPhone) connlib/0.7.412")
+  def create_identity(attrs \\ %{}) do
+    attrs = Enum.into(attrs, %{})
+
+    {account, attrs} =
+      Map.pop_lazy(attrs, :account, fn ->
+        AccountsFixtures.create_account()
+      end)
+
+    {provider, attrs} =
+      Map.pop_lazy(attrs, :provider, fn ->
+        create_email_provider(account: account)
+      end)
+
+    {provider_identifier, attrs} =
+      Map.pop_lazy(attrs, :provider_identifier, fn ->
+        random_provider_identifier(provider)
+      end)
+
+    {actor, _attrs} =
+      Map.pop_lazy(attrs, :actor, fn ->
+        ActorsFixtures.create_actor(
+          account: account,
+          provider: provider,
+          provider_identifier: provider_identifier
+        )
+      end)
+
+    {:ok, identity} = Auth.create_identity(actor, provider, provider_identifier)
+    identity
+  end
+
+  def create_subject(actor \\ create_identity())
+
+  def create_subject(%Auth.Identity{} = identity) do
+    identity = Repo.preload(identity, [:account, :actor])
+
+    %Auth.Subject{
+      identity: identity,
+      actor: identity.actor,
+      permissions: Auth.Roles.build(identity.actor.role).permissions,
+      account: identity.account,
+      context: %Auth.Context{remote_ip: remote_ip(), user_agent: user_agent()}
+    }
   end
 
   def remove_permissions(%Auth.Subject{} = subject) do

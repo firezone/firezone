@@ -25,7 +25,7 @@ defmodule Domain.Clients.Authorizer do
   end
 
   @impl Domain.Auth.Authorizer
-  def for_subject(queryable, %Subject{} = subject) when is_user(subject) do
+  def for_subject(queryable, %Subject{} = subject) do
     cond do
       has_permission?(subject, manage_clients_permission()) ->
         Client.Query.by_account_id(queryable, subject.account.id)

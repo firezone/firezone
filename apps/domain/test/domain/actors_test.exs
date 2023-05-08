@@ -122,7 +122,7 @@ defmodule Domain.ActorsTest do
   describe "list_actors/2" do
     test "returns empty list when there are not actors" do
       subject =
-        AuthFixtures.build_subject()
+        %Auth.Subject{permissions: MapSet.new()}
         |> AuthFixtures.set_permissions([
           Actors.Authorizer.manage_actors_permission()
         ])

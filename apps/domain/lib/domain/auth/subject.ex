@@ -1,25 +1,23 @@
 defmodule Domain.Auth.Subject do
-  alias Domain.Auth.{Permission, Context}
+  alias Domain.Actors
+  alias Domain.Auth.{Permission, Context, Identity}
 
-  @type actor ::
-          %Domain.Actors.Actor{}
-          | {:api_token, %Domain.ApiTokens.ApiToken{}}
-          | :system
-
+  @type identity :: %Identity{}
+  @type actor :: %Actors.Actor{}
   @type permission :: Permission.t()
 
   @type t :: %__MODULE__{
+          identity: identity(),
           actor: actor(),
           permissions: MapSet.t(permission),
           account: %Domain.Accounts.Account{},
           context: Context.t()
         }
 
-  defstruct actor: nil,
+  @enforce_keys [:identity, :actor, :permissions, :account, :context]
+  defstruct identity: nil,
+            actor: nil,
             permissions: MapSet.new(),
             account: nil,
             context: %Context{}
-
-  def actor_type(%__MODULE__{actor: {actor_type, _}}), do: actor_type
-  def actor_type(%__MODULE__{actor: actor_type}), do: actor_type
 end

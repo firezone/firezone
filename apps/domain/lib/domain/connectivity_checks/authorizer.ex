@@ -16,7 +16,7 @@ defmodule Domain.ConnectivityChecks.Authorizer do
   end
 
   @impl Domain.Auth.Authorizer
-  def for_subject(queryable, %Subject{} = subject) when is_user(subject) do
+  def for_subject(queryable, %Subject{} = _subject) do
     queryable
   end
 end

@@ -23,15 +23,10 @@ defmodule Domain.ActorsFixtures do
         AuthFixtures.create_email_provider(account: account)
       end)
 
-    {provider_identifier, attrs} =
-      Map.pop_lazy(attrs, :provider_identifier, fn ->
-        AuthFixtures.random_provider_identifier(provider)
-      end)
-
     attrs = actor_attrs(attrs)
 
-    {:ok, actor} = Actors.create_actor(provider, provider_identifier, attrs)
-    actor
+    Actors.Actor.Changeset.create_changeset(provider, attrs)
+    |> Repo.insert!()
   end
 
   def update(actor, updates) do

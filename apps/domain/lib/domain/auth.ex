@@ -2,7 +2,7 @@ defmodule Domain.Auth do
   use Supervisor
   alias Domain.Repo
   alias Domain.Config
-  alias Domain.{Accounts, Actors, ApiTokens}
+  alias Domain.{Accounts, Actors}
   alias Domain.Auth.{Authorizer, Subject, Context, Permission, Roles, Role, Identity}
   alias Domain.Auth.{Adapters, Provider}
 
@@ -35,7 +35,7 @@ defmodule Domain.Auth do
   def disable_provider(%Provider{} = provider, %Subject{} = subject) do
     with :ok <- ensure_has_permissions(subject, Authorizer.manage_providers_permission()) do
       Provider.Query.by_id(provider.id)
-      |> Authorizer.for_subject(subject)
+      |> Authorizer.for_subject(Provider, subject)
       |> Repo.fetch_and_update(
         with: fn provider ->
           if other_active_providers_exist?(provider) do
@@ -51,7 +51,7 @@ defmodule Domain.Auth do
   def enable_provider(%Provider{} = provider, %Subject{} = subject) do
     with :ok <- ensure_has_permissions(subject, Authorizer.manage_providers_permission()) do
       Provider.Query.by_id(provider.id)
-      |> Authorizer.for_subject(subject)
+      |> Authorizer.for_subject(Provider, subject)
       |> Repo.fetch_and_update(with: &Provider.Changeset.enable_provider/1)
     end
   end
@@ -59,7 +59,7 @@ defmodule Domain.Auth do
   def delete_provider(%Provider{} = provider, %Subject{} = subject) do
     with :ok <- ensure_has_permissions(subject, Authorizer.manage_providers_permission()) do
       Provider.Query.by_id(provider.id)
-      |> Authorizer.for_subject(subject)
+      |> Authorizer.for_subject(Provider, subject)
       |> Repo.fetch_and_update(
         with: fn provider ->
           if other_active_providers_exist?(provider) do
@@ -82,9 +82,129 @@ defmodule Domain.Auth do
 
   # Identities
 
-  def link_identity(%Actors.Actor{} = actor, %Provider{} = provider, provider_identifier) do
-    Identity.Changeset.create_changeset(actor, provider, provider_identifier)
+  def fetch_identity_by_id(id) do
+    Identity.Query.by_id(id)
+    |> Repo.fetch()
+  end
+
+  def fetch_identity_by_id!(id) do
+    Identity.Query.by_id(id)
+    |> Repo.fetch!()
+  end
+
+  def create_identity(%Actors.Actor{} = actor, %Provider{} = provider, provider_identifier) do
+    Identity.Changeset.create(actor, provider, provider_identifier)
     |> Repo.insert()
+  end
+
+  def delete_identity(%Identity{} = identity, %Subject{} = subject) do
+    required_permissions =
+      {:one_of,
+       [
+         Authorizer.manage_identities_permission(),
+         Authorizer.manage_own_identities_permission()
+       ]}
+
+    with :ok <- ensure_has_permissions(subject, required_permissions) do
+      Identity.Query.by_id(identity.id)
+      |> Authorizer.for_subject(Identity, subject)
+      |> Repo.fetch_and_update(with: &Identity.Changeset.delete_identity/1)
+    end
+  end
+
+  # Sign Up / In / Off
+
+  def sign_in(%Provider{} = provider, provider_identifier, secret, user_agent, remote_ip) do
+    with {:ok, identity} <-
+           fetch_identity_by_provider_and_identifier(provider, provider_identifier),
+         {:ok, identity} <-
+           Adapters.verify_secret(provider, identity, secret) do
+      {:ok, build_subject(identity, user_agent, remote_ip)}
+    else
+      {:error, :not_found} -> {:error, :unauthorized}
+      {:error, :invalid_token} -> {:error, :unauthorized}
+      {:error, :expired_token} -> {:error, :unauthorized}
+    end
+  end
+
+  def sign_in(session_token, user_agent, remote_ip) do
+    with {:ok, identity_id} <- verify_session_token(session_token, user_agent, remote_ip),
+         {:ok, identity} <- fetch_identity_by_id(identity_id) do
+      {:ok, build_subject(identity, user_agent, remote_ip)}
+    else
+      {:error, :not_found} -> {:error, :unauthorized}
+      {:error, :invalid_token} -> {:error, :unauthorized}
+      {:error, :expired_token} -> {:error, :unauthorized}
+      {:error, :unauthorized_browser} -> {:error, :unauthorized}
+    end
+  end
+
+  defp fetch_identity_by_provider_and_identifier(%Provider{} = provider, provider_identifier) do
+    Identity.Query.by_provider_id(provider.id)
+    |> Identity.Query.by_provider_identifier(provider_identifier)
+    |> Repo.fetch()
+  end
+
+  defp build_subject(%Identity{} = identity, user_agent, remote_ip)
+       when is_binary(user_agent) and is_tuple(remote_ip) do
+    identity =
+      identity
+      |> Identity.Changeset.sign_in(user_agent, remote_ip)
+      |> Repo.update!()
+
+    identity_with_preloads = Repo.preload(identity, [:account, :actor])
+    permissions = fetch_role_permissions!(identity_with_preloads.actor.role)
+
+    %Subject{
+      identity: identity,
+      actor: identity_with_preloads.actor,
+      permissions: permissions,
+      account: identity_with_preloads.account,
+      context: %Context{remote_ip: remote_ip, user_agent: user_agent}
+    }
+  end
+
+  # TODO:  change password, email, etc?
+
+  # Session
+
+  def create_session_token_from_subject(%Subject{} = subject) do
+    config = fetch_config!()
+    key_base = Keyword.fetch!(config, :key_base)
+    salt = Keyword.fetch!(config, :salt)
+    payload = session_token_payload(subject)
+    {:ok, Plug.Crypto.sign(key_base, salt, payload)}
+  end
+
+  defp session_token_payload(%Subject{identity: %Identity{} = identity, context: context}),
+    do: {:identity, identity.id, session_context_payload(context.remote_ip, context.user_agent)}
+
+  defp session_context_payload(remote_ip, user_agent)
+       when is_tuple(remote_ip) and is_binary(user_agent) do
+    :crypto.hash(:sha256, :erlang.term_to_binary({remote_ip, user_agent}))
+  end
+
+  defp verify_session_token(token, user_agent, remote_ip) do
+    config = fetch_config!()
+    key_base = Keyword.fetch!(config, :key_base)
+    salt = Keyword.fetch!(config, :salt)
+    max_age = Keyword.fetch!(config, :max_age)
+
+    context_payload = session_context_payload(remote_ip, user_agent)
+
+    case Plug.Crypto.verify(key_base, salt, token, max_age: max_age) do
+      {:ok, {:identity, identity_id, ^context_payload}} ->
+        {:ok, identity_id}
+
+      {:ok, {_type, _id, _context_payload}} ->
+        {:error, :unauthorized_browser}
+
+      {:error, :invalid} ->
+        {:error, :invalid_token}
+
+      {:error, :expired} ->
+        {:error, :expired_token}
+    end
   end
 
   # Permissions
@@ -114,6 +234,9 @@ defmodule Domain.Auth do
 
   # Authorization
 
+  def ensure_type(%Subject{actor: %{type: type}}, type), do: :ok
+  def ensure_type(%Subject{actor: %{}}, _type), do: {:error, :unauthorized}
+
   def ensure_has_access_to(%Subject{} = subject, %Provider{} = provider) do
     if subject.account.id == provider.account_id do
       :ok
@@ -136,75 +259,6 @@ defmodule Domain.Auth do
   end
 
   ############
-
-  def fetch_subject!(%Actors.Actor{} = actor, remote_ip, user_agent) do
-    actor = Repo.preload(actor, :account)
-    role = fetch_actor_role!(actor)
-
-    %Subject{
-      actor: actor,
-      permissions: role.permissions,
-      account: actor.account,
-      context: %Context{remote_ip: remote_ip, user_agent: user_agent}
-    }
-  end
-
-  def fetch_subject!(%ApiTokens.ApiToken{} = api_token, remote_ip, user_agent) do
-    api_token = Repo.preload(api_token, user: [:account])
-    role = fetch_actor_role!(api_token.user)
-
-    # XXX: Once we build audit logging here we need to build a different kind of subject
-    %Subject{
-      actor: {:user, api_token.user},
-      permissions: role.permissions,
-      account: api_token.user.account,
-      context: %Context{remote_ip: remote_ip, user_agent: user_agent}
-    }
-  end
-
-  defp fetch_actor_role!(%Actors.Actor{} = user) do
-    Roles.build(user.role)
-  end
-
-  # def sign_in(:userpass, login, password): do, {:ok, session_token}
-  # def sign_in(:api_token, token)
-  # def sign_in(:user_token, token)
-  # def sign_in(:oidc, provider, token)
-  # def sign_in(:saml, provider, token)
-
-  # TODO: for some tokens we want to save remote_ip and invalidate them when the IP changes
-  def create_auth_token(%Subject{} = subject) do
-    config = fetch_config!()
-    key_base = Keyword.fetch!(config, :key_base)
-    salt = Keyword.fetch!(config, :salt)
-    Plug.Crypto.sign(key_base, salt, token_body(subject))
-  end
-
-  defp token_body(%Subject{actor: {:user, user}}), do: {:user, user.id}
-
-  def consume_auth_token(token, remote_ip, user_agent) do
-    config = fetch_config!()
-    key_base = Keyword.fetch!(config, :key_base)
-    salt = Keyword.fetch!(config, :salt)
-    max_age = Keyword.fetch!(config, :max_age)
-
-    case Plug.Crypto.verify(key_base, salt, token, max_age: max_age) do
-      {:ok, {:user, user_id}} ->
-        # TODO: we might want to check that user is active in future
-        user = Actors.fetch_user_by_id!(user_id)
-        role = fetch_actor_role!(user)
-
-        {:ok,
-         %Subject{
-           actor: {:user, user},
-           permissions: role.permissions,
-           context: %Context{remote_ip: remote_ip, user_agent: user_agent}
-         }}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
 
   defp fetch_config! do
     Config.fetch_env!(:domain, __MODULE__)

@@ -24,7 +24,7 @@ defmodule Domain.Actors.Authorizer do
   end
 
   @impl Domain.Auth.Authorizer
-  def for_subject(queryable, %Subject{} = subject) when is_user(subject) do
+  def for_subject(queryable, %Subject{} = subject) do
     cond do
       has_permission?(subject, manage_actors_permission()) ->
         Actor.Query.by_account_id(queryable, subject.account.id)
