@@ -2,12 +2,12 @@ name: Rust CI
 on:
   pull_request:
     paths:
-      - 'relay/**'
+      - 'rust/**'
   push:
     branches:
       - master
     paths:
-        - 'relay/**'
+        - 'rust/**'
 
 # Cancel old workflow runs if new code is pushed
 concurrency:
@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./relay
+        working-directory: ./rust
     steps:
       - uses: actions/checkout@v2
       - run: cargo fmt -- --check
