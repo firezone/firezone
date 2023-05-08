@@ -22,6 +22,7 @@ jobs:
         working-directory: ./rust
     steps:
       - uses: actions/checkout@v2
+      - uses: Swatinem/rust-cache@v2
       - run: cargo fmt -- --check
       - run: cargo clippy -- -D warnings
       - run: cargo test
