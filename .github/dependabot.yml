@@ -22,6 +22,6 @@ updates:
     schedule:
       interval: "weekly"
   - package-ecosystem: "cargo"
-    directory: "relay/"
+    directory: "rust/"
     schedule:
       interval: "weekly"
