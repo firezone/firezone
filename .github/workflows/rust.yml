@@ -7,7 +7,7 @@ on:
     branches:
       - master
     paths:
-        - 'rust/**'
+      - 'rust/**'
 
 # Cancel old workflow runs if new code is pushed
 concurrency:
