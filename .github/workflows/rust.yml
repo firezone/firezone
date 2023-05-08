@@ -9,6 +9,11 @@ on:
     paths:
         - 'relay/**'
 
+# Cancel old workflow runs if new code is pushed
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
