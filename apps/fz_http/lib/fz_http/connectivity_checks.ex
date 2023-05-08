@@ -22,7 +22,7 @@ defmodule FzHttp.ConnectivityChecks do
         application_version = Application.spec(:fz_http, :vsn) |> to_string()
         connectivity_checks_url = Keyword.fetch!(config, :url)
 
-        request = Finch.build(:get, connectivity_checks_url <> application_version)
+        request = Finch.build(:post, connectivity_checks_url <> application_version)
 
         [{Poller, request}]
       else
