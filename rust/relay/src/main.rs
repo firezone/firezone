@@ -1,4 +1,7 @@
+mod attributes;
+
 use anyhow::Result;
+use attributes::Attribute;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
 use std::net::SocketAddr;
 use stun_codec::{rfc5389, Message, MessageClass, MessageDecoder, MessageEncoder};
@@ -17,8 +20,8 @@ async fn main() -> Result<()> {
 
     tracing::info!("Listening on: {addr}", addr = socket.local_addr()?);
 
-    let mut decoder = MessageDecoder::<rfc5389::Attribute>::new();
-    let mut encoder = MessageEncoder::<rfc5389::Attribute>::new();
+    let mut decoder = MessageDecoder::<Attribute>::new();
+    let mut encoder = MessageEncoder::<Attribute>::new();
 
     let mut buf = [0u8; MAX_UDP_SIZE];
 
@@ -39,10 +42,7 @@ async fn main() -> Result<()> {
     }
 }
 
-fn handle_message(
-    message: Message<rfc5389::Attribute>,
-    sender: SocketAddr,
-) -> Option<Message<rfc5389::Attribute>> {
+fn handle_message(message: Message<Attribute>, sender: SocketAddr) -> Option<Message<Attribute>> {
     let message = match (message.class(), message.method()) {
         (MessageClass::Request, rfc5389::methods::BINDING) => {
             tracing::info!("Received STUN binding request from: {sender}");
