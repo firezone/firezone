@@ -26,55 +26,78 @@ impl Server {
             tracing::trace!("received broken STUN message from {sender}");
             return Ok(None);
         };
-        let Some(response) = self.handle_message(message, sender) else {
+
+        tracing::trace!("Received message {message:?} from {sender}");
+
+        let Some((recipient, response)) = self.handle_message(message, sender) else {
             return Ok(None);
         };
+
         let bytes = self.encoder.encode_into_bytes(response)?;
 
-        Ok(Some((bytes, sender)))
+        Ok(Some((bytes, recipient)))
     }
 
     fn handle_message(
         &mut self,
         message: Message<Attribute>,
         sender: SocketAddr,
-    ) -> Option<Message<Attribute>> {
-        tracing::trace!("Received STUN message {message:?} from {sender}");
+    ) -> Option<(SocketAddr, Message<Attribute>)> {
+        if message.class() == MessageClass::Request && message.method() == BINDING {
+            return Some(self.handle_binding_request(message, sender));
+        }
 
-        let message = match (message.class(), message.method()) {
-            (MessageClass::Request, BINDING) => {
-                tracing::debug!("Received STUN binding request from: {sender}");
+        if message.class() == MessageClass::Request && message.method() == ALLOCATE {
+            return self.handle_allocate_request(message, sender);
+        }
 
-                let mut message = Message::new(
-                    MessageClass::SuccessResponse,
-                    BINDING,
-                    message.transaction_id(),
-                );
-                message.add_attribute(XorMappedAddress::new(sender).into());
+        tracing::debug!(
+            "Unhandled message of type {:?} and method {:?} from {}",
+            message.class(),
+            message.method(),
+            sender
+        );
 
-                message
-            }
-            (MessageClass::Request, ALLOCATE) => {
-                tracing::debug!("Received TURN allocate request from: {sender}");
+        None
+    }
 
-                let Some(_mi) = message.get_attribute::<MessageIntegrity>() else {
-                    tracing::debug!("Turning down allocate request from {sender} because it is not authenticated");
+    fn handle_binding_request(
+        &self,
+        message: Message<Attribute>,
+        sender: SocketAddr,
+    ) -> (SocketAddr, Message<Attribute>) {
+        tracing::debug!("Received STUN binding request from: {sender}");
 
-                    let mut message = Message::new(
-                        MessageClass::ErrorResponse,
-                        ALLOCATE,
-                        message.transaction_id(),
-                    );
-                    message.add_attribute(ErrorCode::from(Unauthorized).into());
+        let mut message = Message::new(
+            MessageClass::SuccessResponse,
+            BINDING,
+            message.transaction_id(),
+        );
+        message.add_attribute(XorMappedAddress::new(sender).into());
 
-                    return Some(message);
-                };
+        (sender, message)
+    }
 
-                return None;
-            }
-            _ => return None,
+    fn handle_allocate_request(
+        &self,
+        message: Message<Attribute>,
+        sender: SocketAddr,
+    ) -> Option<(SocketAddr, Message<Attribute>)> {
+        tracing::debug!("Received TURN allocate request from: {sender}");
+
+        let Some(_mi) = message.get_attribute::<MessageIntegrity>() else {
+            tracing::debug!("Turning down allocate request from {sender} because it is not authenticated");
+
+            let mut message = Message::new(
+                MessageClass::ErrorResponse,
+                ALLOCATE,
+                message.transaction_id(),
+            );
+            message.add_attribute(ErrorCode::from(Unauthorized).into());
+
+            return Some((sender, message));
         };
 
-        Some(message)
+        None
     }
 }
