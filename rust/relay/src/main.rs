@@ -3,8 +3,11 @@ mod attributes;
 use anyhow::Result;
 use attributes::Attribute;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
+use rfc5389::attributes::XorMappedAddress;
 use std::net::SocketAddr;
-use stun_codec::{rfc5389, Message, MessageClass, MessageDecoder, MessageEncoder};
+use stun_codec::{
+    rfc5389, rfc5389::methods::BINDING, Message, MessageClass, MessageDecoder, MessageEncoder,
+};
 use tokio::net::UdpSocket;
 use tracing::level_filters::LevelFilter;
 
@@ -44,15 +47,15 @@ async fn main() -> Result<()> {
 
 fn handle_message(message: Message<Attribute>, sender: SocketAddr) -> Option<Message<Attribute>> {
     let message = match (message.class(), message.method()) {
-        (MessageClass::Request, rfc5389::methods::BINDING) => {
+        (MessageClass::Request, BINDING) => {
             tracing::info!("Received STUN binding request from: {sender}");
 
             let mut message = Message::new(
                 MessageClass::SuccessResponse,
-                rfc5389::methods::BINDING,
+                BINDING,
                 message.transaction_id(),
             );
-            message.add_attribute(rfc5389::attributes::XorMappedAddress::new(sender).into());
+            message.add_attribute(XorMappedAddress::new(sender).into());
 
             message
         }
