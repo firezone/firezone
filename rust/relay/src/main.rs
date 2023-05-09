@@ -30,6 +30,7 @@ async fn main() -> Result<()> {
     let mut buf = [0u8; MAX_UDP_SIZE];
 
     loop {
+        // TODO: Listen for websocket commands here and update the server state accordingly.
         let (recv_len, sender) = socket.recv_from(&mut buf).await?;
 
         match server.handle_received_bytes(&buf[..recv_len], sender) {
