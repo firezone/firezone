@@ -27,12 +27,10 @@ async fn main() -> Result<()> {
 
                 message
             }
-            Err(nom::Err::Incomplete(_)) => {
-                break;
-            }
+            Err(nom::Err::Incomplete(_)) => continue,
             Err(e) => {
                 tracing::trace!("Received invalid STUN message: {e:?}");
-                break;
+                continue;
             }
         };
 
@@ -45,6 +43,4 @@ async fn main() -> Result<()> {
             )
             .await?;
     }
-
-    Ok(())
 }
