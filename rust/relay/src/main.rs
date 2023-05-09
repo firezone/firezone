@@ -1,4 +1,7 @@
 use anyhow::Result;
+use bytecodec::{DecodeExt as _, EncodeExt as _};
+use std::net::SocketAddr;
+use stun_codec::{rfc5389, Message, MessageClass, MessageDecoder, MessageEncoder};
 use tokio::net::UdpSocket;
 use tracing::level_filters::LevelFilter;
 
@@ -14,38 +17,47 @@ async fn main() -> Result<()> {
 
     tracing::info!("Listening on: {addr}", addr = socket.local_addr()?);
 
+    let mut decoder = MessageDecoder::<rfc5389::Attribute>::new();
+    let mut encoder = MessageEncoder::<rfc5389::Attribute>::new();
+
     let mut buf = [0u8; MAX_UDP_SIZE];
 
     loop {
         let (recv_len, sender) = socket.recv_from(&mut buf).await?;
 
-        let message = match relay::stun::parse_binding_request(&buf[..recv_len]) {
-            Ok((input, message)) => {
-                if !input.is_empty() {
-                    tracing::warn!(
-                        "Received STUN message with trailing data that will be discarded"
-                    );
-                }
-
-                message
-            }
-            // TODO: I think `Incomplete` can never happen:
-            // 1. STUN messages always fit into a single UDP datagram
-            // 2. We can never receive less than a single UDP datagram
-            Err(nom::Err::Incomplete(_)) => continue,
-            Err(e) => {
-                tracing::trace!("Received invalid STUN message: {e:?}");
-                continue;
-            }
+        let Ok(Ok(message)) = decoder.decode_from_bytes(&buf[..recv_len]) else {
+            continue;
         };
 
-        tracing::info!("Received STUN binding request from: {sender}");
+        let Some(response) = handle_message(message, sender) else {
+            continue;
+        };
 
         socket
-            .send_to(
-                &relay::stun::write_binding_response(message.transaction_id, sender),
-                sender,
-            )
+            .send_to(&encoder.encode_into_bytes(response)?, sender)
             .await?;
     }
+}
+
+fn handle_message(
+    message: Message<rfc5389::Attribute>,
+    sender: SocketAddr,
+) -> Option<Message<rfc5389::Attribute>> {
+    let message = match (message.class(), message.method()) {
+        (MessageClass::Request, rfc5389::methods::BINDING) => {
+            tracing::info!("Received STUN binding request from: {sender}");
+
+            let mut message = Message::new(
+                MessageClass::SuccessResponse,
+                rfc5389::methods::BINDING,
+                message.transaction_id(),
+            );
+            message.add_attribute(rfc5389::attributes::XorMappedAddress::new(sender).into());
+
+            message
+        }
+        _ => return None,
+    };
+
+    Some(message)
 }
