@@ -15,6 +15,7 @@ pub struct Server {
 }
 
 impl Server {
+    // TODO: Fuzz this interface.
     pub fn handle_received_bytes(
         &mut self,
         bytes: &[u8],
