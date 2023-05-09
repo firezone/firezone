@@ -29,6 +29,9 @@ async fn main() -> Result<()> {
 
                 message
             }
+            // TODO: I think `Incomplete` can never happen:
+            // 1. STUN messages always fit into a single UDP datagram
+            // 2. We can never receive less than a single UDP datagram
             Err(nom::Err::Incomplete(_)) => continue,
             Err(e) => {
                 tracing::trace!("Received invalid STUN message: {e:?}");
