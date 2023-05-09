@@ -1,10 +1,7 @@
-mod attributes;
 mod server;
 
 use anyhow::Result;
-
 use server::Server;
-
 use tokio::net::UdpSocket;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;

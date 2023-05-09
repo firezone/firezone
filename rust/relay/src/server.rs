@@ -1,4 +1,3 @@
-use crate::attributes::Attribute;
 use anyhow::Result;
 use bytecodec::{DecodeExt, EncodeExt};
 use std::net::SocketAddr;
@@ -101,3 +100,11 @@ impl Server {
         None
     }
 }
+
+// Define an enum of all attributes that we care about for our server.
+stun_codec::define_attribute_enums!(
+    Attribute,
+    AttributeDecoder,
+    AttributeEncoder,
+    [MessageIntegrity, XorMappedAddress, ErrorCode]
+);
