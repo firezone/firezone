@@ -2,6 +2,8 @@ use anyhow::Result;
 use tokio::net::UdpSocket;
 use tracing::level_filters::LevelFilter;
 
+const MAX_UDP_SIZE: usize = 65536;
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -12,7 +14,7 @@ async fn main() -> Result<()> {
 
     tracing::info!("Listening on: {addr}", addr = socket.local_addr()?);
 
-    let mut buf = [0u8; 1024];
+    let mut buf = [0u8; MAX_UDP_SIZE];
 
     loop {
         let (recv_len, sender) = socket.recv_from(&mut buf).await?;
