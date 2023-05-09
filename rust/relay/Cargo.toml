@@ -13,3 +13,4 @@ bytes = "1.4.0"
 
 [dev-dependencies]
 hex-literal = "0.4.1"
+hex = "0.4.3"
