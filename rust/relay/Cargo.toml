@@ -7,6 +7,6 @@ edition = "2021"
 tokio = { version = "1.28.0", features = ["macros", "rt-multi-thread", "net"] }
 anyhow = "1.0.71"
 tracing = { version = "0.1.37", features = ["log"] }
-tracing-subscriber = "0.3"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 stun_codec = "0.3.1"
 bytecodec = "0.4.15"

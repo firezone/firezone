@@ -7,13 +7,18 @@ use server::Server;
 
 use tokio::net::UdpSocket;
 use tracing::level_filters::LevelFilter;
+use tracing_subscriber::EnvFilter;
 
 const MAX_UDP_SIZE: usize = 65536;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
-        .with_max_level(LevelFilter::INFO)
+        .with_env_filter(
+            EnvFilter::builder()
+                .with_default_directive(LevelFilter::INFO.into())
+                .from_env_lossy(),
+        )
         .init();
 
     let socket = UdpSocket::bind("0.0.0.0:3478").await?;
