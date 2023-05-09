@@ -1,4 +1,5 @@
 defmodule Domain.Auth.Adapters.Email do
+  use Supervisor
   alias Domain.Repo
   alias Domain.Config
   alias Domain.Auth.{Identity, Provider, Adapter}
@@ -8,21 +9,42 @@ defmodule Domain.Auth.Adapters.Email do
   @sign_in_token_expiration_seconds 15 * 60
 
   @impl true
-  def ensure_provisioned(%Provider{} = provider) do
-    # TODO: validate email settings are present and correct to enable the provider
-    {:ok, provider}
+  def init(_init_arg) do
+    children = []
+
+    Supervisor.init(children, strategy: :one_for_one)
   end
 
   @impl true
-  def ensure_deprovisioned(%Provider{} = provider) do
-    {:ok, provider}
+  def identity_changeset(%Provider{} = provider, %Ecto.Changeset{} = changeset) do
+    {state, virtual_state} = identity_create_state(provider)
+
+    changeset
+    |> Domain.Validator.trim_change(:provider_identifier)
+    |> Domain.Validator.validate_email(:provider_identifier)
+    |> Ecto.Changeset.put_change(:provider_state, state)
+    |> Ecto.Changeset.put_change(:provider_virtual_state, virtual_state)
   end
 
-  def validate(%Provider{} = _provider, %Ecto.Changeset{} = changeset) do
-    Domain.Validator.validate_email(changeset, :provider_identifier)
+  @impl true
+  def ensure_provisioned(%Ecto.Changeset{} = changeset) do
+    # XXX: Re-enable this when web app will start handling email delivery again,
+    # we will need to verify that it's configured.
+    # email_disabled? = Config.fetch_config!(:outbound_email_adapter) == Domain.Mailer.NoopAdapter
+
+    # if email_disabled? do
+    #   Ecto.Changeset.add_error(changeset, :adapter, "email adapter is not configured")
+    # else
+    changeset
+    # end
   end
 
-  def identity_create_state(%Provider{} = _provider) do
+  @impl true
+  def ensure_deprovisioned(%Ecto.Changeset{} = changeset) do
+    changeset
+  end
+
+  defp identity_create_state(%Provider{} = _provider) do
     sign_in_token = Domain.Crypto.rand_string()
 
     {
@@ -36,11 +58,7 @@ defmodule Domain.Auth.Adapters.Email do
     }
   end
 
-  # def fetch_provider_by_email(email) do
-  #   Actor.Query.by_email(email)
-  #   |> Repo.fetch()
-  # end
-
+  # XXX: Send actual email here once web has templates
   def request_sign_in_token(%Identity{} = identity) do
     identity = Repo.preload(identity, :provider)
     {state, virtual_state} = identity_create_state(identity.provider)
@@ -60,16 +78,16 @@ defmodule Domain.Auth.Adapters.Email do
 
         cond do
           is_nil(sign_in_token_hash) ->
-            :invalid_token
+            :invalid_secret
 
           is_nil(sign_in_token_created_at) ->
-            :invalid_token
+            :invalid_secret
 
           sign_in_token_expired?(sign_in_token_created_at) ->
-            :expired_token
+            :expired_secret
 
           not Domain.Crypto.equal?(token, sign_in_token_hash) ->
-            :invalid_token
+            :invalid_secret
 
           true ->
             Identity.Changeset.update_provider_state(identity, %{}, %{})

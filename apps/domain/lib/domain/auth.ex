@@ -29,6 +29,7 @@ defmodule Domain.Auth do
 
   def create_provider(%Accounts.Account{} = account, attrs) do
     Provider.Changeset.create_changeset(account, attrs)
+    |> Adapters.ensure_provisioned()
     |> Repo.insert()
   end
 
@@ -63,7 +64,9 @@ defmodule Domain.Auth do
       |> Repo.fetch_and_update(
         with: fn provider ->
           if other_active_providers_exist?(provider) do
-            Provider.Changeset.delete_provider(provider)
+            provider
+            |> Provider.Changeset.delete_provider()
+            |> Adapters.ensure_deprovisioned()
           else
             :cant_delete_the_last_provider
           end
@@ -94,6 +97,7 @@ defmodule Domain.Auth do
 
   def create_identity(%Actors.Actor{} = actor, %Provider{} = provider, provider_identifier) do
     Identity.Changeset.create(actor, provider, provider_identifier)
+    |> Adapters.identity_changeset(provider)
     |> Repo.insert()
   end
 
@@ -116,6 +120,7 @@ defmodule Domain.Auth do
       end)
       |> Ecto.Multi.insert(:new_identity, fn %{identity: identity} ->
         Identity.Changeset.create(identity.actor, identity.provider, provider_identifier)
+        |> Adapters.identity_changeset(identity.provider)
       end)
       |> Ecto.Multi.update(:deleted_identity, fn %{identity: identity} ->
         Identity.Changeset.delete_identity(identity)
@@ -156,8 +161,8 @@ defmodule Domain.Auth do
       {:ok, build_subject(identity, user_agent, remote_ip)}
     else
       {:error, :not_found} -> {:error, :unauthorized}
-      {:error, :invalid_token} -> {:error, :unauthorized}
-      {:error, :expired_token} -> {:error, :unauthorized}
+      {:error, :invalid_secret} -> {:error, :unauthorized}
+      {:error, :expired_secret} -> {:error, :unauthorized}
     end
   end
 
@@ -239,6 +244,10 @@ defmodule Domain.Auth do
     end
   end
 
+  defp fetch_config! do
+    Config.fetch_env!(:domain, __MODULE__)
+  end
+
   # Permissions
 
   def has_permission?(
@@ -291,10 +300,6 @@ defmodule Domain.Auth do
   end
 
   ############
-
-  defp fetch_config! do
-    Config.fetch_env!(:domain, __MODULE__)
-  end
 
   def fetch_oidc_provider_config(provider_id) do
     with {:ok, provider} <- fetch_provider(:openid_connect_providers, provider_id) do

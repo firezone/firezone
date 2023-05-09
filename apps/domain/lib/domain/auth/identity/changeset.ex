@@ -8,21 +8,16 @@ defmodule Domain.Auth.Identity.Changeset do
         %Provider{account_id: account_id} = provider,
         provider_identifier
       ) do
-    {provider_state, provider_virtual_state} = Adapters.identity_create_state(provider)
-
     %Identity{}
     |> change()
     |> put_change(:actor_id, actor.id)
     |> put_change(:provider_id, provider.id)
     |> put_change(:account_id, account_id)
     |> put_change(:provider_identifier, provider_identifier)
-    |> put_change(:provider_state, provider_state)
-    |> put_change(:provider_virtual_state, provider_virtual_state)
     |> unique_constraint(:provider_identifier,
       name: :auth_identities_provider_id_provider_identifier_index
     )
     |> validate_required(:provider_identifier)
-    |> Adapters.validate(provider)
   end
 
   def update_provider_state(identity_or_changeset, %{} = state, virtual_state \\ %{}) do
@@ -47,16 +42,4 @@ defmodule Domain.Auth.Identity.Changeset do
     |> put_change(:provider_virtual_state, %{})
     |> put_default_value(:deleted_at, DateTime.utc_now())
   end
-
-  # test "returns error when provider identifier is already taken", %{
-  #   account: account,
-  #   provider: provider,
-  #   provider_identifier: provider_identifier
-  # } do
-  #   attrs = ActorsFixtures.actor_attrs(role: :unprivileged)
-  #   assert {:ok, _actor} = create_actor(account, provider, provider_identifier, attrs)
-  #   assert {:error, changeset} = create_actor(account, provider, provider_identifier, attrs)
-  #   refute changeset.valid?
-  #   assert "has already been taken" in errors_on(changeset).provider_identifier
-  # end
 end

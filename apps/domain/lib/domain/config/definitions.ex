@@ -769,10 +769,10 @@ defmodule Domain.Config.Definitions do
          Swoosh.Adapters.Sendmail,
          Swoosh.Adapters.SocketLabs,
          Swoosh.Adapters.SparkPost,
-         Web.Mailer.NoopAdapter
+         Domain.Mailer.NoopAdapter
        ]
      )},
-    default: Web.Mailer.NoopAdapter
+    default: Domain.Mailer.NoopAdapter
   )
 
   @doc """

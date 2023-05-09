@@ -12,8 +12,6 @@ defmodule Domain.Auth.Provider.Changeset do
     |> put_change(:account_id, account.id)
     |> validate_length(:name, min: 1, max: 255)
     |> validate_required(@required_fields)
-
-    # TODO: validate adapter_config using behaviour callback
   end
 
   def disable_provider(%Provider{} = provider) do
