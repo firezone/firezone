@@ -42,7 +42,7 @@ impl Server {
 
         let message = match (message.class(), message.method()) {
             (MessageClass::Request, BINDING) => {
-                tracing::info!("Received STUN binding request from: {sender}");
+                tracing::debug!("Received STUN binding request from: {sender}");
 
                 let mut message = Message::new(
                     MessageClass::SuccessResponse,
@@ -54,7 +54,11 @@ impl Server {
                 message
             }
             (MessageClass::Request, ALLOCATE) => {
+                tracing::debug!("Received TURN allocate request from: {sender}");
+
                 let Some(_mi) = message.get_attribute::<MessageIntegrity>() else {
+                    tracing::debug!("Turning down allocate request from {sender} because it is not authenticated");
+
                     let mut message = Message::new(
                         MessageClass::ErrorResponse,
                         ALLOCATE,
