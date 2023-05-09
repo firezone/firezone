@@ -38,6 +38,8 @@ impl Server {
         message: Message<Attribute>,
         sender: SocketAddr,
     ) -> Option<Message<Attribute>> {
+        tracing::trace!("Received STUN message {message:?} from {sender}");
+
         let message = match (message.class(), message.method()) {
             (MessageClass::Request, BINDING) => {
                 tracing::info!("Received STUN binding request from: {sender}");
