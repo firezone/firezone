@@ -21,6 +21,8 @@ defmodule Domain.Auth.Identity.Changeset do
     |> unique_constraint(:provider_identifier,
       name: :auth_identities_provider_id_provider_identifier_index
     )
+    |> validate_required(:provider_identifier)
+    |> Adapters.validate(provider)
   end
 
   def update_provider_state(identity_or_changeset, %{} = state, virtual_state \\ %{}) do
@@ -43,7 +45,7 @@ defmodule Domain.Auth.Identity.Changeset do
     |> change()
     |> put_change(:provider_state, %{})
     |> put_change(:provider_virtual_state, %{})
-    |> put_change(:deleted_at, DateTime.utc_now())
+    |> put_default_value(:deleted_at, DateTime.utc_now())
   end
 
   # test "returns error when provider identifier is already taken", %{

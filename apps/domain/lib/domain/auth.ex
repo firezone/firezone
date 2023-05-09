@@ -97,6 +97,40 @@ defmodule Domain.Auth do
     |> Repo.insert()
   end
 
+  def replace_identity(%Identity{} = identity, provider_identifier, %Subject{} = subject) do
+    required_permissions =
+      {:one_of,
+       [
+         Authorizer.manage_identities_permission(),
+         Authorizer.manage_own_identities_permission()
+       ]}
+
+    with :ok <- ensure_has_permissions(subject, required_permissions) do
+      Ecto.Multi.new()
+      |> Ecto.Multi.run(:identity, fn _repo, _effects_so_far ->
+        Identity.Query.by_id(identity.id)
+        |> Identity.Query.lock()
+        |> Identity.Query.with_preloaded_assoc(:inner, :actor)
+        |> Identity.Query.with_preloaded_assoc(:inner, :provider)
+        |> Repo.fetch()
+      end)
+      |> Ecto.Multi.insert(:new_identity, fn %{identity: identity} ->
+        Identity.Changeset.create(identity.actor, identity.provider, provider_identifier)
+      end)
+      |> Ecto.Multi.update(:deleted_identity, fn %{identity: identity} ->
+        Identity.Changeset.delete_identity(identity)
+      end)
+      |> Repo.transaction()
+      |> case do
+        {:ok, %{new_identity: identity}} ->
+          {:ok, identity}
+
+        {:error, _step, error_or_changeset, _effects_so_far} ->
+          {:error, error_or_changeset}
+      end
+    end
+  end
+
   def delete_identity(%Identity{} = identity, %Subject{} = subject) do
     required_permissions =
       {:one_of,
@@ -163,8 +197,6 @@ defmodule Domain.Auth do
       context: %Context{remote_ip: remote_ip, user_agent: user_agent}
     }
   end
-
-  # TODO:  change password, email, etc?
 
   # Session
 

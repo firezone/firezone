@@ -18,6 +18,10 @@ defmodule Domain.Auth.Adapters.Email do
     {:ok, provider}
   end
 
+  def validate(%Provider{} = _provider, %Ecto.Changeset{} = changeset) do
+    Domain.Validator.validate_email(changeset, :provider_identifier)
+  end
+
   def identity_create_state(%Provider{} = _provider) do
     sign_in_token = Domain.Crypto.rand_string()
 

@@ -30,6 +30,11 @@ defmodule Domain.Auth.Adapters do
     adapter.ensure_deprovisioned(provider)
   end
 
+  def validate(%Ecto.Changeset{} = changeset, %Provider{} = provider) do
+    adapter = fetch_adapter!(provider)
+    adapter.validate(provider, changeset)
+  end
+
   def identity_create_state(%Provider{} = provider) do
     adapter = fetch_adapter!(provider)
     adapter.identity_create_state(provider)

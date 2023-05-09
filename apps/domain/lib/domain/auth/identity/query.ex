@@ -1,6 +1,5 @@
 defmodule Domain.Auth.Identity.Query do
   use Domain, :query
-  import Domain.Auth, only: [has_permission?: 2]
 
   def all do
     from(identities in Domain.Auth.Identity, as: :identities)
@@ -42,6 +41,16 @@ defmodule Domain.Auth.Identity.Query do
       [identities: identities],
       identities.provider_identifier == ^provider_identifier
     )
+  end
+
+  def lock(queryable \\ all()) do
+    lock(queryable, "FOR UPDATE")
+  end
+
+  def with_preloaded_assoc(queryable \\ all(), type \\ :left, assoc) do
+    queryable
+    |> with_assoc(type, assoc)
+    |> preload([{^assoc, assoc}], [{^assoc, assoc}])
   end
 
   def with_assoc(queryable \\ all(), type \\ :left, assoc) do

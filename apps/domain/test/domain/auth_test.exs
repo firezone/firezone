@@ -417,6 +417,99 @@ defmodule Domain.AuthTest do
       assert identity.account_id == provider.account_id
       assert is_nil(identity.deleted_at)
     end
+
+    test "returns error when identifier is invalid" do
+      account = AccountsFixtures.create_account()
+      provider = AuthFixtures.create_email_provider(account: account)
+      actor = ActorsFixtures.create_actor(role: :admin, account: account, provider: provider)
+
+      provider_identifier = Ecto.UUID.generate()
+      assert {:error, changeset} = create_identity(actor, provider, provider_identifier)
+      assert errors_on(changeset) == %{provider_identifier: ["is invalid email address"]}
+
+      provider_identifier = nil
+      assert {:error, changeset} = create_identity(actor, provider, provider_identifier)
+      assert errors_on(changeset) == %{provider_identifier: ["can't be blank"]}
+    end
+  end
+
+  describe "replace_identity/3" do
+    setup do
+      account = AccountsFixtures.create_account()
+      provider = AuthFixtures.create_email_provider(account: account)
+      actor = ActorsFixtures.create_actor(role: :admin, account: account, provider: provider)
+      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
+      subject = AuthFixtures.create_subject(identity)
+
+      %{
+        account: account,
+        actor: actor,
+        identity: identity,
+        subject: subject,
+        provider: provider
+      }
+    end
+
+    test "returns error when identity is deleted", %{identity: identity, subject: subject} do
+      {:ok, _identity} = delete_identity(identity, subject)
+
+      assert replace_identity(identity, Ecto.UUID.generate(), subject) == {:error, :not_found}
+    end
+
+    test "replaces existing identity with a new one", %{
+      identity: identity,
+      subject: subject
+    } do
+      provider_identifier = Ecto.UUID.generate()
+      assert {:error, changeset} = replace_identity(identity, provider_identifier, subject)
+      assert errors_on(changeset) == %{provider_identifier: ["is invalid email address"]}
+
+      provider_identifier = nil
+      assert {:error, changeset} = replace_identity(identity, provider_identifier, subject)
+      assert errors_on(changeset) == %{provider_identifier: ["can't be blank"]}
+
+      refute Repo.get(Auth.Identity, identity.id).deleted_at
+    end
+
+    test "returns error when provider_identifier is invalid", %{
+      identity: identity,
+      provider: provider,
+      subject: subject
+    } do
+      provider_identifier = AuthFixtures.random_provider_identifier(provider)
+
+      assert {:ok, new_identity} = replace_identity(identity, provider_identifier, subject)
+
+      assert new_identity.provider_identifier == provider_identifier
+      assert new_identity.provider_id == identity.provider_id
+      assert new_identity.actor_id == identity.actor_id
+      assert %{sign_in_token_created_at: _, sign_in_token_hash: _} = new_identity.provider_state
+      assert %{sign_in_token: _} = new_identity.provider_virtual_state
+      assert new_identity.account_id == identity.account_id
+      assert is_nil(new_identity.deleted_at)
+
+      assert Repo.get(Auth.Identity, identity.id).deleted_at
+    end
+
+    test "returns error when subject can not delete identities", %{
+      identity: identity,
+      subject: subject
+    } do
+      subject = AuthFixtures.remove_permissions(subject)
+
+      assert replace_identity(identity, Ecto.UUID.generate(), subject) ==
+               {:error,
+                {:unauthorized,
+                 [
+                   missing_permissions: [
+                     {:one_of,
+                      [
+                        Authorizer.manage_identities_permission(),
+                        Authorizer.manage_own_identities_permission()
+                      ]}
+                   ]
+                 ]}}
+    end
   end
 
   describe "delete_identity/2" do
@@ -510,7 +603,7 @@ defmodule Domain.AuthTest do
       assert delete_identity(identity, subject) == {:error, :not_found}
     end
 
-    test "returns error when subject can not view identities", %{subject: subject} do
+    test "returns error when subject can not delete identities", %{subject: subject} do
       identity = AuthFixtures.create_identity()
 
       subject = AuthFixtures.remove_permissions(subject)
