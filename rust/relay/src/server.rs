@@ -15,7 +15,7 @@ pub struct Server {
 }
 
 impl Server {
-    // TODO: Fuzz this interface.
+    /// Process the bytes received from one node and optionally return bytes to send back to the same or a different node.
     pub fn handle_received_bytes(
         &mut self,
         bytes: &[u8],
