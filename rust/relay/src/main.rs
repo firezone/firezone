@@ -21,8 +21,9 @@ async fn main() -> Result<()> {
         )
         .init();
 
-    let ip4_socket = UdpSocket::bind("0.0.0.0:3478").await?;
+    let socket = UdpSocket::bind("0.0.0.0:3478").await?;
 
+    // TODO: Either configure or resolve our public addresses.
     let mut server = Server::new(
         SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 3478),
         SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 3478, 0, 0),
@@ -34,7 +35,7 @@ async fn main() -> Result<()> {
 
     loop {
         // TODO: Listen for websocket commands here and update the server state accordingly.
-        let (recv_len, sender) = ip4_socket.recv_from(&mut buf).await?;
+        let (recv_len, sender) = socket.recv_from(&mut buf).await?;
 
         if tracing::enabled!(target: "wire", Level::TRACE) {
             let hex_bytes = hex::encode(&buf[..recv_len]);
@@ -53,7 +54,7 @@ async fn main() -> Result<()> {
                         tracing::trace!(target: "wire", r#"Output::SendMessage("{recipient}","{}")"#, hex_bytes);
                     }
 
-                    ip4_socket.send_to(&payload, recipient).await?;
+                    socket.send_to(&payload, recipient).await?;
                 }
                 Command::AllocateAddresses { .. } => {
                     tracing::warn!("Allocating addresses is not yet implemented")
