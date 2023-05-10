@@ -1,25 +1,55 @@
 use anyhow::Result;
 use bytecodec::{DecodeExt, EncodeExt};
-use std::net::SocketAddr;
+use std::fmt;
+use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6};
 use stun_codec::rfc5389::attributes::{ErrorCode, MessageIntegrity, XorMappedAddress};
 use stun_codec::rfc5389::methods::BINDING;
 use stun_codec::rfc5766::methods::ALLOCATE;
 use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder};
 
 /// A sans-IO STUN & TURN server.
-#[derive(Default)]
-pub struct Server {
+///
+/// A server is bound to a particular address kind (either IPv4 or IPv6).
+/// If you listen on both interfaces, you should create two instances of [`Server`].
+pub struct Server<TAddressKind> {
     decoder: MessageDecoder<Attribute>,
     encoder: MessageEncoder<Attribute>,
+
+    #[allow(dead_code)]
+    local_address: TAddressKind,
 }
 
-impl Server {
+impl Server<SocketAddrV4> {
+    pub fn new_ip4_server(local_address: SocketAddrV4) -> Self {
+        Self {
+            decoder: Default::default(),
+            encoder: Default::default(),
+            local_address,
+        }
+    }
+}
+
+impl Server<SocketAddrV6> {
+    #[allow(dead_code)]
+    pub fn new_ip6_server(local_address: SocketAddrV6) -> Self {
+        Self {
+            decoder: Default::default(),
+            encoder: Default::default(),
+            local_address,
+        }
+    }
+}
+
+impl<TAddressKind> Server<TAddressKind>
+where
+    TAddressKind: fmt::Display + Into<SocketAddr> + Copy,
+{
     /// Process the bytes received from one node and optionally return bytes to send back to the same or a different node.
     pub fn handle_received_bytes(
         &mut self,
         bytes: &[u8],
-        sender: SocketAddr,
-    ) -> Result<Option<(Vec<u8>, SocketAddr)>> {
+        sender: TAddressKind,
+    ) -> Result<Option<(Vec<u8>, TAddressKind)>> {
         let Ok(message) = self.decoder.decode_from_bytes(bytes)? else {
             tracing::trace!("received broken STUN message from {sender}");
             return Ok(None);
@@ -39,8 +69,8 @@ impl Server {
     fn handle_message(
         &mut self,
         message: Message<Attribute>,
-        sender: SocketAddr,
-    ) -> Option<(SocketAddr, Message<Attribute>)> {
+        sender: TAddressKind,
+    ) -> Option<(TAddressKind, Message<Attribute>)> {
         if message.class() == MessageClass::Request && message.method() == BINDING {
             return Some(self.handle_binding_request(message, sender));
         }
@@ -62,8 +92,8 @@ impl Server {
     fn handle_binding_request(
         &self,
         message: Message<Attribute>,
-        sender: SocketAddr,
-    ) -> (SocketAddr, Message<Attribute>) {
+        sender: TAddressKind,
+    ) -> (TAddressKind, Message<Attribute>) {
         tracing::debug!("Received STUN binding request from: {sender}");
 
         let mut message = Message::new(
@@ -71,7 +101,7 @@ impl Server {
             BINDING,
             message.transaction_id(),
         );
-        message.add_attribute(XorMappedAddress::new(sender).into());
+        message.add_attribute(XorMappedAddress::new(sender.into()).into());
 
         (sender, message)
     }
@@ -79,8 +109,8 @@ impl Server {
     fn handle_allocate_request(
         &self,
         _message: Message<Attribute>,
-        sender: SocketAddr,
-    ) -> Option<(SocketAddr, Message<Attribute>)> {
+        sender: TAddressKind,
+    ) -> Option<(TAddressKind, Message<Attribute>)> {
         tracing::debug!("Received TURN allocate request from: {sender}");
 
         None

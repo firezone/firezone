@@ -1,6 +1,7 @@
 mod server;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
+use relay::SocketAddrExt;
 use server::Server;
 use tokio::net::UdpSocket;
 use tracing::level_filters::LevelFilter;
@@ -20,10 +21,15 @@ async fn main() -> Result<()> {
         .init();
 
     let socket = UdpSocket::bind("0.0.0.0:3478").await?;
+    let local_addr = socket.local_addr()?;
 
-    tracing::info!("Listening on: {addr}", addr = socket.local_addr()?);
+    tracing::info!("Listening on: {local_addr}");
 
-    let mut server = Server::default();
+    let mut server = Server::new_ip4_server(
+        local_addr
+            .try_into_v4_socket()
+            .context("Server is not listening on IPv4")?,
+    );
 
     let mut buf = [0u8; MAX_UDP_SIZE];
 
@@ -36,7 +42,7 @@ async fn main() -> Result<()> {
             tracing::trace!(target: "wire", r#"Input("{sender}","{}")"#, hex_bytes);
         }
 
-        match server.handle_received_bytes(&buf[..recv_len], sender) {
+        match server.handle_received_bytes(&buf[..recv_len], sender.try_into_v4_socket().unwrap()) {
             Ok(Some((response, recipient))) => {
                 if tracing::enabled!(target: "wire", Level::TRACE) {
                     let hex_bytes = hex::encode(&response);
