@@ -1,5 +1,6 @@
 mod server;
 
+use crate::server::Event;
 use anyhow::{Context, Result};
 use relay::SocketAddrExt;
 use server::Server;
@@ -42,18 +43,22 @@ async fn main() -> Result<()> {
             tracing::trace!(target: "wire", r#"Input("{sender}","{}")"#, hex_bytes);
         }
 
-        match server.handle_received_bytes(&buf[..recv_len], sender.try_into_v4_socket().unwrap()) {
-            Ok(Some((response, recipient))) => {
-                if tracing::enabled!(target: "wire", Level::TRACE) {
-                    let hex_bytes = hex::encode(&response);
-                    tracing::trace!(target: "wire", r#"Output("{recipient}","{}")"#, hex_bytes);
-                }
+        if let Err(e) =
+            server.handle_received_bytes(&buf[..recv_len], sender.try_into_v4_socket().unwrap())
+        {
+            tracing::debug!("Failed to handle datagram from {sender}: {e}")
+        }
 
-                socket.send_to(&response, recipient).await?;
-            }
-            Ok(None) => {}
-            Err(e) => {
-                tracing::debug!("Failed to handle datagram from {sender}: {e}")
+        while let Some(event) = server.next_event() {
+            match event {
+                Event::SendMessage { payload, recipient } => {
+                    if tracing::enabled!(target: "wire", Level::TRACE) {
+                        let hex_bytes = hex::encode(&payload);
+                        tracing::trace!(target: "wire", r#"Output("{recipient}","{}")"#, hex_bytes);
+                    }
+
+                    socket.send_to(&payload, recipient).await?;
+                }
             }
         }
     }

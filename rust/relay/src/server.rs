@@ -1,7 +1,7 @@
 use anyhow::Result;
 use bytecodec::{DecodeExt, EncodeExt};
 use rand::Rng;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::hash::Hash;
 use std::net::SocketAddr;
@@ -30,6 +30,15 @@ pub struct Server<TAddressKind> {
     allocations: HashMap<TAddressKind, Allocation>,
 
     used_ports: HashSet<u16>,
+
+    pending_events: VecDeque<Event<TAddressKind>>,
+}
+
+pub enum Event<TAddressKind> {
+    SendMessage {
+        payload: Vec<u8>,
+        recipient: TAddressKind,
+    },
 }
 
 /// See <https://www.rfc-editor.org/rfc/rfc8656#name-requested-transport>
@@ -59,31 +68,40 @@ where
             local_address,
             allocations: Default::default(),
             used_ports: Default::default(),
+            pending_events: Default::default(),
         }
     }
 
     /// Process the bytes received from one node and optionally return bytes to send back to the same or a different node.
-    pub fn handle_received_bytes(
-        &mut self,
-        bytes: &[u8],
-        sender: TAddressKind,
-    ) -> Result<Option<(Vec<u8>, TAddressKind)>> {
+    ///
+    /// After calling this method, you should call [`next_event`] until it returns `None`.
+    pub fn handle_received_bytes(&mut self, bytes: &[u8], sender: TAddressKind) -> Result<()> {
         let Ok(message) = self.decoder.decode_from_bytes(bytes)? else {
             tracing::trace!("received broken STUN message from {sender}");
-            return Ok(None);
+            return Ok(());
         };
 
         tracing::trace!("Received message {message:?} from {sender}");
 
         let Some((recipient, response)) = self.handle_message(message, sender) else {
-            return Ok(None);
+            return Ok(());
         };
 
         tracing::trace!("Sending message {response:?} to {recipient}");
 
         let bytes = self.encoder.encode_into_bytes(response)?;
 
-        Ok(Some((bytes, recipient)))
+        self.pending_events.push_back(Event::SendMessage {
+            payload: bytes,
+            recipient,
+        });
+
+        Ok(())
+    }
+
+    /// Return the next event to be processed.
+    pub fn next_event(&mut self) -> Option<Event<TAddressKind>> {
+        self.pending_events.pop_front()
     }
 
     fn handle_message(
@@ -167,14 +185,13 @@ where
 
         let relay_address = self.new_relay_address();
 
-        self.allocations.insert(
-            sender,
-            Allocation {
-                relay_address: relay_address,
-            },
-        );
+        self.allocations
+            .insert(sender, Allocation { relay_address });
 
-        tracing::info!("Created new allocation for {sender} with address {relay_address} and lifetime {}s", effective_lifetime.lifetime().as_secs());
+        tracing::info!(
+            "Created new allocation for {sender} with address {relay_address} and lifetime {}s",
+            effective_lifetime.lifetime().as_secs()
+        );
 
         let mut message = Message::new(
             MessageClass::SuccessResponse,
