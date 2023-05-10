@@ -1,4 +1,4 @@
-use relay::server::{Event, Server};
+use relay::server::{Command, Server};
 use std::net::SocketAddrV4;
 
 #[test]
@@ -22,13 +22,13 @@ fn run_regression_test(pairs: &[(Input, &[Output])]) {
         let input = hex::decode(input).unwrap();
         let from = from.parse().unwrap();
 
-        server.handle_received_bytes(&input, from).unwrap();
+        server.handle_client_input(&input, from).unwrap();
 
         for expected_output in *output {
-            let actual_output = server.next_event().unwrap();
+            let actual_output = server.next_command().unwrap();
 
             match (expected_output, actual_output) {
-                (Output::SendMessage((to, bytes)), Event::SendMessage { payload, recipient }) => {
+                (Output::SendMessage((to, bytes)), Command::SendMessage { payload, recipient }) => {
                     assert_eq!(*bytes, hex::encode(payload));
                     assert_eq!(recipient, to.parse().unwrap());
                 }
@@ -36,7 +36,7 @@ fn run_regression_test(pairs: &[(Input, &[Output])]) {
             }
         }
 
-        assert!(server.next_event().is_none())
+        assert!(server.next_command().is_none())
     }
 }
 

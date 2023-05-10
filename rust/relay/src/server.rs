@@ -30,15 +30,21 @@ pub struct Server<TAddressKind> {
     allocations: HashMap<TAddressKind, Allocation<TAddressKind>>,
 
     used_ports: HashSet<u16>,
-    pending_events: VecDeque<Event<TAddressKind>>,
+    pending_commands: VecDeque<Command<TAddressKind>>,
     next_allocation_id: AllocationId,
 }
 
-pub enum Event<TAddressKind> {
+/// The commands returned from a [`Server`].
+///
+/// The [`Server`] itself is sans-IO, meaning it is the caller responsibility to cause the side-effects described by these commands.
+pub enum Command<TAddressKind> {
     SendMessage {
         payload: Vec<u8>,
         recipient: TAddressKind,
     },
+    /// Reserve the given port for the given duration.
+    ///
+    /// Any incoming data should be handed to the [`Server`] via [`Server::handle_relay_input`].
     AllocateAddress {
         id: AllocationId,
         socket: TAddressKind,
@@ -86,15 +92,15 @@ where
             local_address,
             allocations: Default::default(),
             used_ports: Default::default(),
-            pending_events: Default::default(),
+            pending_commands: Default::default(),
             next_allocation_id: AllocationId(1),
         }
     }
 
-    /// Process the bytes received from one node and optionally return bytes to send back to the same or a different node.
+    /// Process the bytes received from a client and optionally return bytes to send back to the same or a different node.
     ///
     /// After calling this method, you should call [`next_event`] until it returns `None`.
-    pub fn handle_received_bytes(&mut self, bytes: &[u8], sender: TAddressKind) -> Result<()> {
+    pub fn handle_client_input(&mut self, bytes: &[u8], sender: TAddressKind) -> Result<()> {
         let Ok(message) = self.decoder.decode_from_bytes(bytes)? else {
             tracing::trace!("received broken STUN message from {sender}");
             return Ok(());
@@ -107,9 +113,22 @@ where
         Ok(())
     }
 
-    /// Return the next event to be processed.
-    pub fn next_event(&mut self) -> Option<Event<TAddressKind>> {
-        self.pending_events.pop_front()
+    /// Process the bytes received from an allocation.
+    #[allow(dead_code)]
+    pub fn handle_relay_input(
+        &mut self,
+        _bytes: &[u8],
+        _sender: TAddressKind,
+        _allocation_id: AllocationId,
+    ) -> Result<()> {
+        // TODO: Implement
+
+        Ok(())
+    }
+
+    /// Return the next command to be processed.
+    pub fn next_command(&mut self) -> Option<Command<TAddressKind>> {
+        self.pending_commands.pop_front()
     }
 
     fn handle_message(&mut self, message: Message<Attribute>, sender: TAddressKind) {
@@ -194,7 +213,7 @@ where
         message.add_attribute(XorMappedAddress::new(sender.into()).into());
         message.add_attribute(effective_lifetime.clone().into());
 
-        self.pending_events.push_back(Event::AllocateAddress {
+        self.pending_commands.push_back(Command::AllocateAddress {
             id: allocation.id,
             socket: allocation.relay_address,
             expiry_in: effective_lifetime.lifetime(),
@@ -244,7 +263,7 @@ where
             return;
         };
 
-        self.pending_events.push_back(Event::SendMessage {
+        self.pending_commands.push_back(Command::SendMessage {
             payload: bytes,
             recipient,
         });

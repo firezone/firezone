@@ -1,6 +1,6 @@
 mod server;
 
-use crate::server::Event;
+use crate::server::Command;
 use anyhow::{Context, Result};
 use relay::SocketAddrExt;
 use server::Server;
@@ -44,14 +44,14 @@ async fn main() -> Result<()> {
         }
 
         if let Err(e) =
-            server.handle_received_bytes(&buf[..recv_len], sender.try_into_v4_socket().unwrap())
+            server.handle_client_input(&buf[..recv_len], sender.try_into_v4_socket().unwrap())
         {
             tracing::debug!("Failed to handle datagram from {sender}: {e}")
         }
 
-        while let Some(event) = server.next_event() {
+        while let Some(event) = server.next_command() {
             match event {
-                Event::SendMessage { payload, recipient } => {
+                Command::SendMessage { payload, recipient } => {
                     if tracing::enabled!(target: "wire", Level::TRACE) {
                         let hex_bytes = hex::encode(&payload);
                         tracing::trace!(target: "wire", r#"Output("{recipient}","{}")"#, hex_bytes);
@@ -59,7 +59,7 @@ async fn main() -> Result<()> {
 
                     socket.send_to(&payload, recipient).await?;
                 }
-                Event::AllocateAddress { .. } => {
+                Command::AllocateAddress { .. } => {
                     unimplemented!()
                 }
             }
