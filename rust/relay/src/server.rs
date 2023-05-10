@@ -109,7 +109,7 @@ impl<R> Server<R>
 where
     R: Rng,
 {
-    /// Process the bytes received from a client and optionally return bytes to send back to the same or a different node.
+    /// Process the bytes received from a client.
     ///
     /// After calling this method, you should call [`next_event`] until it returns `None`.
     pub fn handle_client_input(&mut self, bytes: &[u8], sender: SocketAddr) -> Result<()> {
@@ -138,7 +138,7 @@ where
         Ok(())
     }
 
-    /// Return the next command to be processed.
+    /// Return the next command to be executed.
     pub fn next_command(&mut self) -> Option<Command> {
         self.pending_commands.pop_front()
     }
