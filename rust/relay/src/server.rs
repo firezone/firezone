@@ -45,6 +45,7 @@ pub enum Command<TAddressKind> {
     /// Reserve the given port for the given duration.
     ///
     /// Any incoming data should be handed to the [`Server`] via [`Server::handle_relay_input`].
+    /// The caller MUST deallocate the port after the given duration unless it is refreshed.
     AllocateAddress {
         id: AllocationId,
         socket: TAddressKind,
