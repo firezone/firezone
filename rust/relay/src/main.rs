@@ -50,13 +50,13 @@ async fn main() -> Result<()> {
                 Command::SendMessage { payload, recipient } => {
                     if tracing::enabled!(target: "wire", Level::TRACE) {
                         let hex_bytes = hex::encode(&payload);
-                        tracing::trace!(target: "wire", r#"Output("{recipient}","{}")"#, hex_bytes);
+                        tracing::trace!(target: "wire", r#"Output::SendMessage("{recipient}","{}")"#, hex_bytes);
                     }
 
                     ip4_socket.send_to(&payload, recipient).await?;
                 }
                 Command::AllocateAddresses { .. } => {
-                    unimplemented!()
+                    tracing::warn!("Allocating addresses is not yet implemented")
                 }
             }
         }

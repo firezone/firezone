@@ -1,9 +1,11 @@
 use anyhow::Result;
 use bytecodec::{DecodeExt, EncodeExt};
+use rand::rngs::mock::StepRng;
+use rand::rngs::ThreadRng;
 use rand::Rng;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::Hash;
-use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6};
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::time::Duration;
 use stun_codec::rfc5389::attributes::{ErrorCode, MessageIntegrity, XorMappedAddress};
 use stun_codec::rfc5389::errors::BadRequest;
@@ -19,7 +21,7 @@ use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder, Transact
 /// If you listen on both interfaces or several ports, you should create multiple instances of [`Server`].
 ///
 /// It also assumes it has complete ownership over the port range 49152 - 65535.
-pub struct Server {
+pub struct Server<R = ThreadRng> {
     decoder: MessageDecoder<Attribute>,
     encoder: MessageEncoder<Attribute>,
 
@@ -32,11 +34,14 @@ pub struct Server {
     used_ports: HashSet<u16>,
     pending_commands: VecDeque<Command>,
     next_allocation_id: AllocationId,
+
+    rng: R,
 }
 
 /// The commands returned from a [`Server`].
 ///
 /// The [`Server`] itself is sans-IO, meaning it is the caller responsibility to cause the side-effects described by these commands.
+#[derive(Debug)]
 pub enum Command {
     SendMessage {
         payload: Vec<u8>,
@@ -54,7 +59,7 @@ pub enum Command {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct AllocationId(u64);
 
 impl AllocationId {
@@ -94,9 +99,15 @@ impl Server {
             used_ports: Default::default(),
             pending_commands: Default::default(),
             next_allocation_id: AllocationId(1),
+            rng: rand::thread_rng(),
         }
     }
+}
 
+impl<R> Server<R>
+where
+    R: Rng,
+{
     /// Process the bytes received from a client and optionally return bytes to send back to the same or a different node.
     ///
     /// After calling this method, you should call [`next_event`] until it returns `None`.
@@ -247,7 +258,7 @@ impl Server {
         );
 
         let port = loop {
-            let candidate = rand::thread_rng().gen_range(49152..65535);
+            let candidate = self.rng.gen_range(49152..65535);
 
             if !self.used_ports.contains(&candidate) {
                 self.used_ports.insert(candidate);
@@ -284,6 +295,28 @@ impl Server {
             payload: bytes,
             recipient,
         });
+    }
+}
+
+impl Server<StepRng> {
+    #[allow(dead_code)]
+    pub fn test() -> Self {
+        let local_ip4_address = Ipv4Addr::new(35, 124, 91, 37);
+        let local_ip6_address = Ipv6Addr::new(
+            0x2600, 0x1f18, 0x0f96, 0xe710, 0x2a51, 0x0e8f, 0x7303, 0x6942,
+        );
+
+        Self {
+            decoder: Default::default(),
+            encoder: Default::default(),
+            local_ip4_address: SocketAddrV4::new(local_ip4_address, 3478),
+            local_ip6_address: SocketAddrV6::new(local_ip6_address, 3478, 0, 0),
+            allocations: HashMap::new(),
+            used_ports: HashSet::new(),
+            next_allocation_id: AllocationId::default(),
+            pending_commands: VecDeque::new(),
+            rng: StepRng::new(0, 0),
+        }
     }
 }
 
