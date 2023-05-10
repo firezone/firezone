@@ -1,5 +1,5 @@
 use relay::server::{Command, Server};
-use std::net::SocketAddrV4;
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
 
 #[test]
 fn stun_binding_request() {
@@ -16,7 +16,10 @@ fn stun_binding_request() {
 }
 
 fn run_regression_test(pairs: &[(Input, &[Output])]) {
-    let mut server = Server::new("0.0.0.0:0".parse::<SocketAddrV4>().unwrap());
+    let mut server = Server::new(
+        SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0),
+        SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0),
+    );
 
     for (Input(from, input), output) in pairs {
         let input = hex::decode(input).unwrap();

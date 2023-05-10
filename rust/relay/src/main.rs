@@ -4,6 +4,7 @@ use crate::server::Command;
 use anyhow::{Context, Result};
 use relay::SocketAddrExt;
 use server::Server;
+use std::net::{Ipv4Addr, Ipv6Addr};
 use tokio::net::UdpSocket;
 use tracing::level_filters::LevelFilter;
 use tracing::Level;
@@ -21,31 +22,35 @@ async fn main() -> Result<()> {
         )
         .init();
 
-    let socket = UdpSocket::bind("0.0.0.0:3478").await?;
-    let local_addr = socket.local_addr()?;
+    let ip4_socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 3478)).await?;
+    let ip6_socket = UdpSocket::bind((Ipv6Addr::UNSPECIFIED, 3478)).await?;
+    let local_ip4_addr = ip4_socket.local_addr()?;
+    let local_ip6_addr = ip6_socket.local_addr()?;
 
-    tracing::info!("Listening on: {local_addr}");
+    tracing::info!("Listening on: {local_ip4_addr}");
+    tracing::info!("Listening on: {local_ip6_addr}");
 
     let mut server = Server::new(
-        local_addr
+        local_ip4_addr
             .try_into_v4_socket()
             .context("Server is not listening on IPv4")?,
+        local_ip6_addr
+            .try_into_v6_socket()
+            .context("Server is not listening on IPv6")?,
     );
 
     let mut buf = [0u8; MAX_UDP_SIZE];
 
     loop {
         // TODO: Listen for websocket commands here and update the server state accordingly.
-        let (recv_len, sender) = socket.recv_from(&mut buf).await?;
+        let (recv_len, sender) = ip4_socket.recv_from(&mut buf).await?;
 
         if tracing::enabled!(target: "wire", Level::TRACE) {
             let hex_bytes = hex::encode(&buf[..recv_len]);
             tracing::trace!(target: "wire", r#"Input("{sender}","{}")"#, hex_bytes);
         }
 
-        if let Err(e) =
-            server.handle_client_input(&buf[..recv_len], sender.try_into_v4_socket().unwrap())
-        {
+        if let Err(e) = server.handle_client_input(&buf[..recv_len], sender) {
             tracing::debug!("Failed to handle datagram from {sender}: {e}")
         }
 
@@ -57,9 +62,9 @@ async fn main() -> Result<()> {
                         tracing::trace!(target: "wire", r#"Output("{recipient}","{}")"#, hex_bytes);
                     }
 
-                    socket.send_to(&payload, recipient).await?;
+                    ip4_socket.send_to(&payload, recipient).await?;
                 }
-                Command::AllocateAddress { .. } => {
+                Command::AllocateAddresses { .. } => {
                     unimplemented!()
                 }
             }

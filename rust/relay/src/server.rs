@@ -2,7 +2,6 @@ use anyhow::Result;
 use bytecodec::{DecodeExt, EncodeExt};
 use rand::Rng;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::fmt;
 use std::hash::Hash;
 use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::time::Duration;
@@ -20,35 +19,37 @@ use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder, Transact
 /// If you listen on both interfaces or several ports, you should create multiple instances of [`Server`].
 ///
 /// It also assumes it has complete ownership over the port range 49152 - 65535.
-pub struct Server<TAddressKind> {
+pub struct Server {
     decoder: MessageDecoder<Attribute>,
     encoder: MessageEncoder<Attribute>,
 
-    local_address: TAddressKind,
+    local_ip4_address: SocketAddrV4,
+    local_ip6_address: SocketAddrV6,
 
     /// All client allocations, indexed by client's socket address.
-    allocations: HashMap<TAddressKind, Allocation<TAddressKind>>,
+    allocations: HashMap<SocketAddr, Allocation>,
 
     used_ports: HashSet<u16>,
-    pending_commands: VecDeque<Command<TAddressKind>>,
+    pending_commands: VecDeque<Command>,
     next_allocation_id: AllocationId,
 }
 
 /// The commands returned from a [`Server`].
 ///
 /// The [`Server`] itself is sans-IO, meaning it is the caller responsibility to cause the side-effects described by these commands.
-pub enum Command<TAddressKind> {
+pub enum Command {
     SendMessage {
         payload: Vec<u8>,
-        recipient: TAddressKind,
+        recipient: SocketAddr,
     },
     /// Reserve the given port for the given duration.
     ///
     /// Any incoming data should be handed to the [`Server`] via [`Server::handle_relay_input`].
     /// The caller MUST deallocate the port after the given duration unless it is refreshed.
-    AllocateAddress {
+    AllocateAddresses {
         id: AllocationId,
-        socket: TAddressKind,
+        ip4: SocketAddrV4,
+        ip6: SocketAddrV6,
         expiry_in: Duration,
     },
 }
@@ -80,17 +81,13 @@ const MAX_ALLOCATION_LIFETIME: Duration = Duration::from_secs(3600);
 /// TODO: This has been chosen at random by Thomas. Revisit if it makes sense.
 const DEFAULT_ALLOCATION_LIFETIME: Duration = Duration::from_secs(600);
 
-impl<TAddressKind> Server<TAddressKind>
-where
-    TAddressKind: fmt::Display + Into<SocketAddr> + Copy + Eq + Hash + WithNewPort,
-{
-    pub fn new(local_address: TAddressKind) -> Self {
-        // TODO: Verify that local_address isn't a multicast address.
-
+impl Server {
+    pub fn new(local_ip4_address: SocketAddrV4, local_ip6_address: SocketAddrV6) -> Self {
         Self {
             decoder: Default::default(),
             encoder: Default::default(),
-            local_address,
+            local_ip4_address,
+            local_ip6_address,
             allocations: Default::default(),
             used_ports: Default::default(),
             pending_commands: Default::default(),
@@ -101,7 +98,7 @@ where
     /// Process the bytes received from a client and optionally return bytes to send back to the same or a different node.
     ///
     /// After calling this method, you should call [`next_event`] until it returns `None`.
-    pub fn handle_client_input(&mut self, bytes: &[u8], sender: TAddressKind) -> Result<()> {
+    pub fn handle_client_input(&mut self, bytes: &[u8], sender: SocketAddr) -> Result<()> {
         let Ok(message) = self.decoder.decode_from_bytes(bytes)? else {
             tracing::trace!("received broken STUN message from {sender}");
             return Ok(());
@@ -119,7 +116,7 @@ where
     pub fn handle_relay_input(
         &mut self,
         _bytes: &[u8],
-        _sender: TAddressKind,
+        _sender: SocketAddr,
         _allocation_id: AllocationId,
     ) -> Result<()> {
         // TODO: Implement
@@ -128,11 +125,11 @@ where
     }
 
     /// Return the next command to be processed.
-    pub fn next_command(&mut self) -> Option<Command<TAddressKind>> {
+    pub fn next_command(&mut self) -> Option<Command> {
         self.pending_commands.pop_front()
     }
 
-    fn handle_message(&mut self, message: Message<Attribute>, sender: TAddressKind) {
+    fn handle_message(&mut self, message: Message<Attribute>, sender: SocketAddr) {
         if message.class() == MessageClass::Request && message.method() == BINDING {
             tracing::debug!("Received STUN binding request from: {sender}");
 
@@ -160,13 +157,13 @@ where
         );
     }
 
-    fn handle_binding_request(&mut self, message: Message<Attribute>, sender: TAddressKind) {
+    fn handle_binding_request(&mut self, message: Message<Attribute>, sender: SocketAddr) {
         let mut message = Message::new(
             MessageClass::SuccessResponse,
             BINDING,
             message.transaction_id(),
         );
-        message.add_attribute(XorMappedAddress::new(sender.into()).into());
+        message.add_attribute(XorMappedAddress::new(sender).into());
 
         self.send_message(message, sender);
     }
@@ -177,7 +174,7 @@ where
     fn handle_allocate_request(
         &mut self,
         message: Message<Attribute>,
-        sender: TAddressKind,
+        sender: SocketAddr,
     ) -> Result<(), ErrorCode> {
         if self.allocations.contains_key(&sender) {
             return Err(AllocationMismatch.into());
@@ -210,20 +207,27 @@ where
             message.transaction_id(),
         );
 
-        message.add_attribute(XorRelayAddress::new(allocation.relay_address.into()).into());
-        message.add_attribute(XorMappedAddress::new(sender.into()).into());
+        message.add_attribute(XorRelayAddress::new(allocation.ip4_relay_address.into()).into());
+        message.add_attribute(XorRelayAddress::new(allocation.ip6_relay_address.into()).into());
+        message.add_attribute(XorMappedAddress::new(sender).into());
         message.add_attribute(effective_lifetime.clone().into());
 
-        self.pending_commands.push_back(Command::AllocateAddress {
+        self.pending_commands.push_back(Command::AllocateAddresses {
             id: allocation.id,
-            socket: allocation.relay_address,
+            ip4: allocation.ip4_relay_address,
+            ip6: allocation.ip6_relay_address,
             expiry_in: effective_lifetime.lifetime(),
         });
         self.send_message(message, sender);
 
         tracing::info!(
             "Created new allocation for {sender} with address {} and lifetime {}s",
-            allocation.relay_address,
+            allocation.ip4_relay_address,
+            effective_lifetime.lifetime().as_secs()
+        );
+        tracing::info!(
+            "Created new allocation for {sender} with address {} and lifetime {}s",
+            allocation.ip6_relay_address,
             effective_lifetime.lifetime().as_secs()
         );
 
@@ -232,7 +236,7 @@ where
         Ok(())
     }
 
-    fn create_new_allocation(&mut self) -> Allocation<TAddressKind> {
+    fn create_new_allocation(&mut self) -> Allocation {
         // First, find an unused port.
 
         assert!(
@@ -250,15 +254,25 @@ where
         };
 
         // Second, take the local address of the server as a prototype.
-        let relay_address = self.local_address.with_new_port(port);
+        let ip4_relay_address = SocketAddrV4::new(*self.local_ip4_address.ip(), port);
+        let ip6_relay_address = SocketAddrV6::new(
+            *self.local_ip6_address.ip(),
+            port,
+            self.local_ip6_address.flowinfo(),
+            self.local_ip6_address.scope_id(),
+        );
 
         // Third, grab a new allocation ID.
         let id = self.next_allocation_id.next();
 
-        Allocation { id, relay_address }
+        Allocation {
+            id,
+            ip4_relay_address,
+            ip6_relay_address,
+        }
     }
 
-    fn send_message(&mut self, message: Message<Attribute>, recipient: TAddressKind) {
+    fn send_message(&mut self, message: Message<Attribute>, recipient: SocketAddr) {
         let Ok(bytes) = self.encoder.encode_into_bytes(message) else {
             debug_assert!(false, "Encoding should never fail");
             return;
@@ -272,12 +286,14 @@ where
 }
 
 /// Represents an allocation of a client.
-struct Allocation<TAddressKind> {
+///
+/// Data arriving on any of the relay addresses will be forwarded to the client iff there is an active data channel.
+struct Allocation {
     id: AllocationId,
-    /// The relay address of this allocation.
-    ///
-    /// Data arriving on this address will be forwarded to the client iff there is an active data channel.
-    relay_address: TAddressKind,
+    /// The IPv4 relay address of this allocation.
+    ip4_relay_address: SocketAddrV4,
+    /// The IPv6 relay address of this allocation.
+    ip6_relay_address: SocketAddrV6,
 }
 
 /// Computes the effective lifetime of an allocation.
@@ -299,22 +315,6 @@ fn allocate_error_response(
     message.add_attribute(error_code.into());
 
     message
-}
-
-pub trait WithNewPort {
-    fn with_new_port(&self, port: u16) -> Self;
-}
-
-impl WithNewPort for SocketAddrV4 {
-    fn with_new_port(&self, port: u16) -> Self {
-        SocketAddrV4::new(*self.ip(), port)
-    }
-}
-
-impl WithNewPort for SocketAddrV6 {
-    fn with_new_port(&self, port: u16) -> Self {
-        SocketAddrV6::new(*self.ip(), port, self.flowinfo(), self.scope_id())
-    }
 }
 
 // Define an enum of all attributes that we care about for our server.
