@@ -17,10 +17,11 @@ use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder, Transact
 
 /// A sans-IO STUN & TURN server.
 ///
-/// A server is bound to a particular address kind (either IPv4 or IPv6).
-/// If you listen on both interfaces or several ports, you should create multiple instances of [`Server`].
+/// A [`Server`] is bound to pair of IPv4 and IPv6 addresses and assumes to only operate on UDP.
+/// Thus, 3 out of the 5 components of a "5-tuple" are unique to an instance of [`Server`] and
+/// we can index data simply by the sender's [`SocketAddr`].
 ///
-/// It also assumes it has complete ownership over the port range 49152 - 65535.
+/// Additionally, we assume to have complete ownership over the port range 49152 - 65535.
 pub struct Server<R = ThreadRng> {
     decoder: MessageDecoder<Attribute>,
     encoder: MessageEncoder<Attribute>,
