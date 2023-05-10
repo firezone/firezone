@@ -83,6 +83,8 @@ const DEFAULT_ALLOCATION_LIFETIME: Duration = Duration::from_secs(600);
 
 impl Server {
     pub fn new(local_ip4_address: SocketAddrV4, local_ip6_address: SocketAddrV6) -> Self {
+        // TODO: Validate that local IPs aren't multicast / loopback etc.
+
         Self {
             decoder: Default::default(),
             encoder: Default::default(),
