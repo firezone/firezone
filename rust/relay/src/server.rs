@@ -4,7 +4,7 @@ use rand::Rng;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::hash::Hash;
-use std::net::SocketAddr;
+use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::time::Duration;
 use stun_codec::rfc5389::attributes::{ErrorCode, MessageIntegrity, XorMappedAddress};
 use stun_codec::rfc5389::errors::BadRequest;
@@ -27,11 +27,11 @@ pub struct Server<TAddressKind> {
     local_address: TAddressKind,
 
     /// All client allocations, indexed by client's socket address.
-    allocations: HashMap<TAddressKind, Allocation>,
+    allocations: HashMap<TAddressKind, Allocation<TAddressKind>>,
 
     used_ports: HashSet<u16>,
-
     pending_events: VecDeque<Event<TAddressKind>>,
+    next_allocation_id: AllocationId,
 }
 
 pub enum Event<TAddressKind> {
@@ -39,6 +39,24 @@ pub enum Event<TAddressKind> {
         payload: Vec<u8>,
         recipient: TAddressKind,
     },
+    AllocateAddress {
+        id: AllocationId,
+        socket: TAddressKind,
+        expiry_in: Duration,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct AllocationId(u64);
+
+impl AllocationId {
+    fn next(&mut self) -> Self {
+        let id = self.0;
+
+        self.0 += 1;
+
+        AllocationId(id)
+    }
 }
 
 /// See <https://www.rfc-editor.org/rfc/rfc8656#name-requested-transport>
@@ -57,7 +75,7 @@ const DEFAULT_ALLOCATION_LIFETIME: Duration = Duration::from_secs(600);
 
 impl<TAddressKind> Server<TAddressKind>
 where
-    TAddressKind: fmt::Display + Into<SocketAddr> + Copy + Eq + Hash,
+    TAddressKind: fmt::Display + Into<SocketAddr> + Copy + Eq + Hash + WithNewPort,
 {
     pub fn new(local_address: TAddressKind) -> Self {
         // TODO: Verify that local_address isn't a multicast address.
@@ -69,6 +87,7 @@ where
             allocations: Default::default(),
             used_ports: Default::default(),
             pending_events: Default::default(),
+            next_allocation_id: AllocationId(1),
         }
     }
 
@@ -163,15 +182,7 @@ where
         // TODO: Do we need to handle DONT-FRAGMENT?
         // TODO: Do we need to handle EVEN/ODD-PORT?
 
-        let relay_address = self.new_relay_address();
-
-        self.allocations
-            .insert(sender, Allocation { relay_address });
-
-        tracing::info!(
-            "Created new allocation for {sender} with address {relay_address} and lifetime {}s",
-            effective_lifetime.lifetime().as_secs()
-        );
+        let allocation = self.create_new_allocation();
 
         let mut message = Message::new(
             MessageClass::SuccessResponse,
@@ -179,16 +190,29 @@ where
             message.transaction_id(),
         );
 
-        message.add_attribute(XorRelayAddress::new(relay_address).into());
+        message.add_attribute(XorRelayAddress::new(allocation.relay_address.into()).into());
         message.add_attribute(XorMappedAddress::new(sender.into()).into());
-        message.add_attribute(effective_lifetime.into());
+        message.add_attribute(effective_lifetime.clone().into());
 
+        self.pending_events.push_back(Event::AllocateAddress {
+            id: allocation.id,
+            socket: allocation.relay_address,
+            expiry_in: effective_lifetime.lifetime(),
+        });
         self.send_message(message, sender);
+
+        tracing::info!(
+            "Created new allocation for {sender} with address {} and lifetime {}s",
+            allocation.relay_address,
+            effective_lifetime.lifetime().as_secs()
+        );
+
+        self.allocations.insert(sender, allocation);
 
         Ok(())
     }
 
-    fn new_relay_address(&mut self) -> SocketAddr {
+    fn create_new_allocation(&mut self) -> Allocation<TAddressKind> {
         // First, find an unused port.
 
         assert!(
@@ -206,12 +230,12 @@ where
         };
 
         // Second, take the local address of the server as a prototype.
-        let mut prototype = self.local_address.into();
+        let relay_address = self.local_address.with_new_port(port);
 
-        // Change the port to the newly allocated one.
-        prototype.set_port(port);
+        // Third, grab a new allocation ID.
+        let id = self.next_allocation_id.next();
 
-        prototype
+        Allocation { id, relay_address }
     }
 
     fn send_message(&mut self, message: Message<Attribute>, recipient: TAddressKind) {
@@ -228,11 +252,12 @@ where
 }
 
 /// Represents an allocation of a client.
-struct Allocation {
+struct Allocation<TAddressKind> {
+    id: AllocationId,
     /// The relay address of this allocation.
     ///
     /// Data arriving on this address will be forwarded to the client iff there is an active data channel.
-    relay_address: SocketAddr,
+    relay_address: TAddressKind,
 }
 
 /// Computes the effective lifetime of an allocation.
@@ -254,6 +279,22 @@ fn allocate_error_response(
     message.add_attribute(error_code.into());
 
     message
+}
+
+pub trait WithNewPort {
+    fn with_new_port(&self, port: u16) -> Self;
+}
+
+impl WithNewPort for SocketAddrV4 {
+    fn with_new_port(&self, port: u16) -> Self {
+        SocketAddrV4::new(*self.ip(), port)
+    }
+}
+
+impl WithNewPort for SocketAddrV6 {
+    fn with_new_port(&self, port: u16) -> Self {
+        SocketAddrV6::new(*self.ip(), port, self.flowinfo(), self.scope_id())
+    }
 }
 
 // Define an enum of all attributes that we care about for our server.

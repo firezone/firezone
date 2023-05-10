@@ -59,6 +59,9 @@ async fn main() -> Result<()> {
 
                     socket.send_to(&payload, recipient).await?;
                 }
+                Event::AllocateAddress { .. } => {
+                    unimplemented!()
+                }
             }
         }
     }

@@ -32,6 +32,7 @@ fn run_regression_test(pairs: &[(Input, &[Output])]) {
                     assert_eq!(*bytes, hex::encode(payload));
                     assert_eq!(recipient, to.parse().unwrap());
                 }
+                _ => unimplemented!(),
             }
         }
 
