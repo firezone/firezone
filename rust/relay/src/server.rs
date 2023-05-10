@@ -48,7 +48,7 @@ pub enum Command {
         payload: Vec<u8>,
         recipient: SocketAddr,
     },
-    /// Reserve the given port for the given duration.
+    /// Listen for traffic on the provided IP addresses.
     ///
     /// Any incoming data should be handed to the [`Server`] via [`Server::handle_relay_input`].
     /// The caller MUST deallocate the port after the given duration unless it is refreshed.
