@@ -2,7 +2,6 @@ use anyhow::Result;
 use bytecodec::{DecodeExt, EncodeExt};
 use std::net::SocketAddr;
 use stun_codec::rfc5389::attributes::{ErrorCode, MessageIntegrity, XorMappedAddress};
-use stun_codec::rfc5389::errors::Unauthorized;
 use stun_codec::rfc5389::methods::BINDING;
 use stun_codec::rfc5766::methods::ALLOCATE;
 use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder};
@@ -79,23 +78,10 @@ impl Server {
 
     fn handle_allocate_request(
         &self,
-        message: Message<Attribute>,
+        _message: Message<Attribute>,
         sender: SocketAddr,
     ) -> Option<(SocketAddr, Message<Attribute>)> {
         tracing::debug!("Received TURN allocate request from: {sender}");
-
-        let Some(_mi) = message.get_attribute::<MessageIntegrity>() else {
-            tracing::debug!("Turning down allocate request from {sender} because it is not authenticated");
-
-            let mut message = Message::new(
-                MessageClass::ErrorResponse,
-                ALLOCATE,
-                message.transaction_id(),
-            );
-            message.add_attribute(ErrorCode::from(Unauthorized).into());
-
-            return Some((sender, message));
-        };
 
         None
     }
