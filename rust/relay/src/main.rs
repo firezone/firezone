@@ -25,7 +25,7 @@ async fn main() -> Result<()> {
 
     tracing::info!("Listening on: {local_addr}");
 
-    let mut server = Server::new_ip4_server(
+    let mut server = Server::new(
         local_addr
             .try_into_v4_socket()
             .context("Server is not listening on IPv4")?,

@@ -1,7 +1,7 @@
 use anyhow::Result;
 use bytecodec::{DecodeExt, EncodeExt};
 use std::fmt;
-use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6};
+use std::net::SocketAddr;
 use stun_codec::rfc5389::attributes::{ErrorCode, MessageIntegrity, XorMappedAddress};
 use stun_codec::rfc5389::methods::BINDING;
 use stun_codec::rfc5766::methods::ALLOCATE;
@@ -19,31 +19,18 @@ pub struct Server<TAddressKind> {
     local_address: TAddressKind,
 }
 
-impl Server<SocketAddrV4> {
-    pub fn new_ip4_server(local_address: SocketAddrV4) -> Self {
-        Self {
-            decoder: Default::default(),
-            encoder: Default::default(),
-            local_address,
-        }
-    }
-}
-
-impl Server<SocketAddrV6> {
-    #[allow(dead_code)]
-    pub fn new_ip6_server(local_address: SocketAddrV6) -> Self {
-        Self {
-            decoder: Default::default(),
-            encoder: Default::default(),
-            local_address,
-        }
-    }
-}
-
 impl<TAddressKind> Server<TAddressKind>
 where
     TAddressKind: fmt::Display + Into<SocketAddr> + Copy,
 {
+    pub fn new(local_address: TAddressKind) -> Self {
+        Self {
+            decoder: Default::default(),
+            encoder: Default::default(),
+            local_address,
+        }
+    }
+
     /// Process the bytes received from one node and optionally return bytes to send back to the same or a different node.
     pub fn handle_received_bytes(
         &mut self,
