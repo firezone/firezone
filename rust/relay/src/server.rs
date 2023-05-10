@@ -83,18 +83,7 @@ where
 
         tracing::trace!("Received message {message:?} from {sender}");
 
-        let Some((recipient, response)) = self.handle_message(message, sender) else {
-            return Ok(());
-        };
-
-        tracing::trace!("Sending message {response:?} to {recipient}");
-
-        let bytes = self.encoder.encode_into_bytes(response)?;
-
-        self.pending_events.push_back(Event::SendMessage {
-            payload: bytes,
-            recipient,
-        });
+        self.handle_message(message, sender);
 
         Ok(())
     }
@@ -104,15 +93,12 @@ where
         self.pending_events.pop_front()
     }
 
-    fn handle_message(
-        &mut self,
-        message: Message<Attribute>,
-        sender: TAddressKind,
-    ) -> Option<(TAddressKind, Message<Attribute>)> {
+    fn handle_message(&mut self, message: Message<Attribute>, sender: TAddressKind) {
         if message.class() == MessageClass::Request && message.method() == BINDING {
             tracing::debug!("Received STUN binding request from: {sender}");
 
-            return Some(self.handle_binding_request(message, sender));
+            self.handle_binding_request(message, sender);
+            return;
         }
 
         if message.class() == MessageClass::Request && message.method() == ALLOCATE {
@@ -120,11 +106,11 @@ where
 
             let transaction_id = message.transaction_id();
 
-            let (recipient, message) = self
-                .handle_allocate_request(message, sender)
-                .unwrap_or_else(|e| (sender, allocate_error(transaction_id, e)));
+            if let Err(e) = self.handle_allocate_request(message, sender) {
+                self.send_message(allocate_error_response(transaction_id, e), sender);
+            }
 
-            return Some((recipient, message));
+            return;
         }
 
         tracing::debug!(
@@ -133,15 +119,9 @@ where
             message.method(),
             sender
         );
-
-        None
     }
 
-    fn handle_binding_request(
-        &self,
-        message: Message<Attribute>,
-        sender: TAddressKind,
-    ) -> (TAddressKind, Message<Attribute>) {
+    fn handle_binding_request(&mut self, message: Message<Attribute>, sender: TAddressKind) {
         let mut message = Message::new(
             MessageClass::SuccessResponse,
             BINDING,
@@ -149,7 +129,7 @@ where
         );
         message.add_attribute(XorMappedAddress::new(sender.into()).into());
 
-        (sender, message)
+        self.send_message(message, sender);
     }
 
     /// Handle a TURN allocate request.
@@ -159,7 +139,7 @@ where
         &mut self,
         message: Message<Attribute>,
         sender: TAddressKind,
-    ) -> Result<(TAddressKind, Message<Attribute>), ErrorCode> {
+    ) -> Result<(), ErrorCode> {
         if self.allocations.contains_key(&sender) {
             return Err(AllocationMismatch.into());
         }
@@ -203,7 +183,9 @@ where
         message.add_attribute(XorMappedAddress::new(sender.into()).into());
         message.add_attribute(effective_lifetime.into());
 
-        Ok((sender, message))
+        self.send_message(message, sender);
+
+        Ok(())
     }
 
     fn new_relay_address(&mut self) -> SocketAddr {
@@ -231,6 +213,18 @@ where
 
         prototype
     }
+
+    fn send_message(&mut self, message: Message<Attribute>, recipient: TAddressKind) {
+        let Ok(bytes) = self.encoder.encode_into_bytes(message) else {
+            debug_assert!(false, "Encoding should never fail");
+            return;
+        };
+
+        self.pending_events.push_back(Event::SendMessage {
+            payload: bytes,
+            recipient,
+        });
+    }
 }
 
 /// Represents an allocation of a client.
@@ -252,7 +246,10 @@ fn compute_effective_lifetime(requested_lifetime: Option<&Lifetime>) -> Lifetime
     Lifetime::new(effective_lifetime).unwrap()
 }
 
-fn allocate_error(transaction_id: TransactionId, error_code: ErrorCode) -> Message<Attribute> {
+fn allocate_error_response(
+    transaction_id: TransactionId,
+    error_code: ErrorCode,
+) -> Message<Attribute> {
     let mut message = Message::new(MessageClass::ErrorResponse, ALLOCATE, transaction_id);
     message.add_attribute(error_code.into());
 
