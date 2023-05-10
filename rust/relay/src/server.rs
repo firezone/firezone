@@ -170,7 +170,7 @@ where
         self.allocations.insert(
             sender,
             Allocation {
-                address: relay_address,
+                relay_address: relay_address,
             },
         );
 
@@ -218,8 +218,10 @@ where
 
 /// Represents an allocation of a client.
 struct Allocation {
-    #[allow(dead_code)]
-    address: SocketAddr,
+    /// The relay address of this allocation.
+    ///
+    /// Data arriving on this address will be forwarded to the client iff there is an active data channel.
+    relay_address: SocketAddr,
 }
 
 /// Computes the effective lifetime of an allocation.
