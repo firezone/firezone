@@ -6,7 +6,7 @@ use tokio::net::UdpSocket;
 
 const MAX_UDP_SIZE: usize = 65536;
 
-/// A thin abstraction of [`UdpSocket`] that always listens on IPv4 as well as IPv6.
+/// A thin abstraction over [`UdpSocket`] that always listens on IPv4 as well as IPv6.
 pub struct DualStackSocket {
     ip4_socket: UdpSocket,
     ip6_socket: UdpSocket,
@@ -21,13 +21,13 @@ pub struct DualStackSocket {
 impl DualStackSocket {
     pub async fn listen_on(port: u16) -> Result<Self> {
         let ip4_addr = local_ip().context("failed to retrieve local IPv4 address")?;
-        let ip6_addr = local_ipv6().context("failed to retrieve local IPv4 address")?;
+        let ip6_addr = local_ipv6().context("failed to retrieve local IPv6 address")?;
 
         let IpAddr::V4(ip4_addr) = ip4_addr else {
             unreachable!() // TODO: Ask upstream if we can change the `local_ip` API
         };
         let IpAddr::V6(ip6_addr) = ip6_addr else {
-            unreachable!() // TODO: Ask upstream if we can change the `local_ip` API
+            unreachable!() // TODO: Ask upstream if we can change the `local_ipv6` API
         };
 
         let ip4_socket = UdpSocket::bind((ip4_addr, port)).await?;
