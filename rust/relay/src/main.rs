@@ -1,5 +1,3 @@
-extern crate core;
-
 use anyhow::{Context, Result};
 use futures::channel::mpsc::Sender;
 use futures::{SinkExt, StreamExt};
