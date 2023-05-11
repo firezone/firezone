@@ -26,3 +26,6 @@ jobs:
       - run: cargo fmt -- --check
       - run: cargo clippy -- -D warnings
       - run: cargo test
+      - run: cargo doc --no-deps --document-private-items
+        env:
+          RUSTDOCFLAGS: "--deny warnings"
