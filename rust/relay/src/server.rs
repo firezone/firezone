@@ -153,10 +153,8 @@ where
         _bytes: &[u8],
         _sender: SocketAddr,
         _allocation_id: AllocationId,
-    ) -> Result<()> {
+    ) {
         // TODO: Implement
-
-        Ok(())
     }
 
     pub fn handle_deadline_reached(&mut self, now: Instant) {

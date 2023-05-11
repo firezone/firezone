@@ -70,9 +70,9 @@ fn run_regression_test(sequence: &[(Input, &[Output])]) {
         }
 
         for expected_output in *output {
-            let actual_output = server.next_command().expect(&format!(
-                "no commands produced but expected {expected_output:?}"
-            ));
+            let actual_output = server
+                .next_command()
+                .unwrap_or_else(|| panic!("no commands produced but expected {expected_output:?}"));
 
             match (expected_output, actual_output) {
                 (Output::SendMessage((to, bytes)), Command::SendMessage { payload, recipient }) => {
