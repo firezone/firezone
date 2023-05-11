@@ -1,8 +1,9 @@
 extern crate core;
 
-use anyhow::Result;
-use relay::{Command, Server};
+use anyhow::{Context, Result};
+use relay::{Command, Server, Sleep};
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
+use std::pin::pin;
 use std::time::Instant;
 use tokio::net::UdpSocket;
 use tracing::level_filters::LevelFilter;
@@ -33,17 +34,20 @@ async fn main() -> Result<()> {
 
     tracing::info!("Listening for incoming traffic on UDP port 3478");
 
+    let mut wake = pin!(Sleep::default());
+
     loop {
-        // TODO: Listen for websocket commands here and update the server state accordingly.
-        let (recv_len, sender) = socket.recv_from(&mut buf).await?;
+        tokio::select! {
+            () = &mut wake => {
+                server.handle_deadline_reached(Instant::now());
+            }
+            receive_result = pin!(socket.recv_from(&mut buf)) => {
+                let (recv_len, sender) = receive_result.context("Failed to receive from socket")?;
 
-        if tracing::enabled!(target: "wire", Level::TRACE) {
-            let hex_bytes = hex::encode(&buf[..recv_len]);
-            tracing::trace!(target: "wire", r#"Input("{sender}","{}")"#, hex_bytes);
-        }
-
-        if let Err(e) = server.handle_client_input(&buf[..recv_len], sender, Instant::now()) {
-            tracing::debug!("Failed to handle datagram from {sender}: {e}")
+                if let Err(e) = server.handle_client_input(&buf[..recv_len], sender, Instant::now()) {
+                    tracing::debug!("Failed to handle datagram from {sender}: {e}")
+                }
+            }
         }
 
         while let Some(event) = server.next_command() {
@@ -62,8 +66,8 @@ async fn main() -> Result<()> {
                 Command::FreeAddresses { .. } => {
                     tracing::warn!("Freeing addresses is not yet implemented")
                 }
-                Command::Wake { .. } => {
-                    tracing::warn!("Waking is not yet implemented")
+                Command::Wake { deadline } => {
+                    wake.as_mut().reset(deadline);
                 }
             }
         }
