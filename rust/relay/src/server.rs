@@ -8,8 +8,6 @@ use stun_codec::rfc5766::methods::ALLOCATE;
 use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder};
 
 /// A sans-IO STUN & TURN server.
-///
-/// This is a [`broken`] link.
 #[derive(Default)]
 pub struct Server {
     decoder: MessageDecoder<Attribute>,
