@@ -111,7 +111,7 @@ where
 {
     /// Process the bytes received from a client.
     ///
-    /// After calling this method, you should call [`next_event`] until it returns `None`.
+    /// After calling this method, you should call [`Server::next_command`] until it returns `None`.
     pub fn handle_client_input(&mut self, bytes: &[u8], sender: SocketAddr) -> Result<()> {
         let Ok(message) = self.decoder.decode_from_bytes(bytes)? else {
             tracing::trace!("received broken STUN message from {sender}");
