@@ -21,7 +21,7 @@ pub struct DualStackSocket {
 impl DualStackSocket {
     pub async fn listen_on(port: u16) -> Result<Self> {
         let ip4_addr = local_ip().context("failed to retrieve local IPv4 address")?;
-        let ip6_addr = local_ipv6().context("failed to retrieve local IPv4 address")?;
+        let ip6_addr = local_ipv6().context("failed to retrieve local IPv6 address")?;
 
         let IpAddr::V4(ip4_addr) = ip4_addr else {
             unreachable!() // TODO: Ask upstream if we can change the `local_ip` API
