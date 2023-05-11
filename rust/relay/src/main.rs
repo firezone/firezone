@@ -27,7 +27,6 @@ async fn main() -> Result<()> {
 
     let mut socket = DualStackSocket::listen_on(3478).await?;
 
-    // TODO: Either configure or resolve our public addresses.
     let mut server = Server::new(
         SocketAddrV4::new(parse_env_var("RELAY_PUBLIC_IP4_ADDR")?, 3478),
         SocketAddrV6::new(parse_env_var("RELAY_PUBLIC_IP6_ADDR")?, 3478, 0, 0),
