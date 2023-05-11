@@ -3,11 +3,14 @@ extern crate core;
 use anyhow::{Context, Result};
 use futures::channel::mpsc::Sender;
 use futures::{SinkExt, StreamExt};
+use local_ip_address::{local_ip, local_ipv6};
 use relay::{AllocationId, Command, Server, Sleep};
 use std::collections::HashMap;
 use std::convert::Infallible;
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+use std::error::Error;
+use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::pin::pin;
+use std::str::FromStr;
 use std::time::Instant;
 use tokio::net::UdpSocket;
 use tracing::level_filters::LevelFilter;
@@ -26,12 +29,17 @@ async fn main() -> Result<()> {
         )
         .init();
 
-    let socket = UdpSocket::bind("0.0.0.0:3478").await?;
+    let socket = UdpSocket::bind((
+        local_ip().context("Failed to retrieve local IPv4 address")?,
+        3478,
+    ))
+    .await?;
+    // let ip6_socket = UdpSocket::bind((local_ipv6().context("Failed to retrieve local IPv6 address")?, 3478)).await?;
 
     // TODO: Either configure or resolve our public addresses.
     let mut server = Server::new(
-        SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 3478),
-        SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 3478, 0, 0),
+        SocketAddrV4::new(parse_env_var("RELAY_PUBLIC_IP4_ADDR")?, 3478),
+        SocketAddrV6::new(parse_env_var("RELAY_PUBLIC_IP6_ADDR")?, 3478, 0, 0),
     );
 
     let mut buf = [0u8; MAX_UDP_SIZE];
@@ -81,12 +89,12 @@ async fn main() -> Result<()> {
 
                     socket.send_to(&payload, recipient).await?;
                 }
-                Command::AllocateAddresses { id, ip4, ip6 } => {
+                Command::AllocateAddresses { id, port } => {
                     allocation_tasks.insert(id, tokio::spawn({
                         let sender = relayed_data_sender.clone();
 
                         async move {
-                            let Err(e) = forward_incoming_relay_data(sender, id, ip4, ip6).await else {
+                            let Err(e) = forward_incoming_relay_data(sender, id, port).await else {
                                 unreachable!()
                             };
 
@@ -113,17 +121,29 @@ async fn main() -> Result<()> {
     }
 }
 
+fn parse_env_var<T>(key: &str) -> Result<T>
+where
+    T: FromStr,
+    T::Err: Error + Send + Sync + 'static,
+{
+    let addr = std::env::var(key)
+        .with_context(|| format!("`{key}` env variable is unset"))?
+        .parse()
+        .with_context(|| format!("failed to parse {key} env variable"))?;
+
+    Ok(addr)
+}
+
 async fn forward_incoming_relay_data(
     mut relayed_data_sender: Sender<(Vec<u8>, SocketAddr, AllocationId)>,
     id: AllocationId,
-    ip4: SocketAddrV4,
-    ip6: SocketAddrV6,
+    port: u16,
 ) -> Result<Infallible> {
     let mut ip4_buf = [0u8; MAX_UDP_SIZE];
     let mut ip6_buf = [0u8; MAX_UDP_SIZE];
 
-    let ip4_socket = UdpSocket::bind(ip4).await?;
-    let ip6_socket = UdpSocket::bind(ip6).await?;
+    let ip4_socket = UdpSocket::bind((local_ip()?, port)).await?;
+    let ip6_socket = UdpSocket::bind((local_ipv6()?, port)).await?;
 
     tracing::info!(
         "Listening for relayed data on {} and {} for allocation {id}",

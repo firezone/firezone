@@ -25,7 +25,7 @@ fn turn_allocation_request() {
         Input::Client("91.141.70.157:7112", "000300182112a44215d4bb014ad31072cd248ec70019000411000000000d000400000e1080280004d08a7674", now),
         &[
             Output::Wake(now + Duration::from_secs(3600)),
-            Output::CreateAllocation(("35.124.91.37:49152", "[2600:1f18:f96:e710:2a51:e8f:7303:6942]:49152")),
+            Output::CreateAllocation(49152),
             Output::SendMessage(("91.141.70.157:7112", "010300382112a44215d4bb014ad31072cd248ec7001600080001e112026eff67001600140002e1120712bb5a1a425c1160821efdbe27e7850020000800013ada7a9fe2df000d000400000e10")),
         ],
     )]);
@@ -39,13 +39,13 @@ fn deallocate_once_time_expired() {
         Input::Client("91.141.70.157:7112", "000300182112a44215d4bb014ad31072cd248ec70019000411000000000d000400000e1080280004d08a7674", now),
         &[
             Output::Wake(now + Duration::from_secs(3600)),
-            Output::CreateAllocation(("35.124.91.37:49152", "[2600:1f18:f96:e710:2a51:e8f:7303:6942]:49152")),
+            Output::CreateAllocation(49152),
             Output::SendMessage(("91.141.70.157:7112", "010300382112a44215d4bb014ad31072cd248ec7001600080001e112026eff67001600140002e1120712bb5a1a425c1160821efdbe27e7850020000800013ada7a9fe2df000d000400000e10")),
         ],
     ), (
         Input::Time(now + Duration::from_secs(3601)),
         &[
-            Output::ExpireAllocation(("35.124.91.37:49152", "[2600:1f18:f96:e710:2a51:e8f:7303:6942]:49152"))
+            Output::ExpireAllocation(49152)
         ],
     )]);
 }
@@ -54,7 +54,7 @@ fn deallocate_once_time_expired() {
 fn run_regression_test(sequence: &[(Input, &[Output])]) {
     let mut server = Server::test();
 
-    let mut allocatio_mapping = HashMap::<(Ip, Ip), AllocationId>::default();
+    let mut allocatio_mapping = HashMap::<u16, AllocationId>::default();
 
     for (input, output) in sequence {
         match input {
@@ -80,21 +80,18 @@ fn run_regression_test(sequence: &[(Input, &[Output])]) {
                     assert_eq!(recipient, to.parse().unwrap());
                 }
                 (
-                    Output::CreateAllocation((expected_ip4, expected_ip6)),
-                    Command::AllocateAddresses { ip4, ip6, id },
+                    Output::CreateAllocation(expected_port),
+                    Command::AllocateAddresses { port, id },
                 ) => {
-                    assert_eq!(ip4, expected_ip4.parse().unwrap());
-                    assert_eq!(ip6, expected_ip6.parse().unwrap());
+                    assert_eq!(port, *expected_port);
 
-                    allocatio_mapping.insert((expected_ip4, expected_ip6), id);
+                    allocatio_mapping.insert(*expected_port, id);
                 }
                 (Output::Wake(expected), Command::Wake { deadline }) => {
                     assert_eq!(*expected, deadline);
                 }
-                (Output::ExpireAllocation((ip4, ip6)), Command::FreeAddresses { id }) => {
-                    let expected_id = allocatio_mapping
-                        .remove(&(ip4, ip6))
-                        .expect("unknown allocation");
+                (Output::ExpireAllocation(port), Command::FreeAddresses { id }) => {
+                    let expected_id = allocatio_mapping.remove(port).expect("unknown allocation");
 
                     assert_eq!(expected_id, id);
                 }
@@ -115,8 +112,8 @@ enum Input {
 enum Output {
     SendMessage((Ip, Bytes)),
     Wake(Instant),
-    CreateAllocation((Ip, Ip)),
-    ExpireAllocation((Ip, Ip)),
+    CreateAllocation(u16),
+    ExpireAllocation(u16),
 }
 
 type Ip = &'static str;

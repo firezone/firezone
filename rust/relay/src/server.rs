@@ -57,11 +57,7 @@ pub enum Command {
     /// Listen for traffic on the provided IP addresses.
     ///
     /// Any incoming data should be handed to the [`Server`] via [`Server::handle_relay_input`].
-    AllocateAddresses {
-        id: AllocationId,
-        ip4: SocketAddrV4,
-        ip6: SocketAddrV6,
-    },
+    AllocateAddresses { id: AllocationId, port: u16 },
     /// Free the addresses associated with the given [`AllocationId`].
     FreeAddresses { id: AllocationId },
     /// At the latest, the [`Server`] needs to be woken at the specified deadline to execute time-based actions correctly.
@@ -259,8 +255,11 @@ where
             message.transaction_id(),
         );
 
-        message.add_attribute(XorRelayAddress::new(allocation.ip4_relay_address.into()).into());
-        message.add_attribute(XorRelayAddress::new(allocation.ip6_relay_address.into()).into());
+        let (ip4_relay_address, ip6_relay_address) =
+            self.public_relay_addresses_for_port(allocation.port);
+
+        message.add_attribute(XorRelayAddress::new(ip4_relay_address.into()).into());
+        message.add_attribute(XorRelayAddress::new(ip6_relay_address.into()).into());
         message.add_attribute(XorMappedAddress::new(sender).into());
         message.add_attribute(effective_lifetime.clone().into());
 
@@ -278,19 +277,13 @@ where
         });
         self.pending_commands.push_back(Command::AllocateAddresses {
             id: allocation.id,
-            ip4: allocation.ip4_relay_address,
-            ip6: allocation.ip6_relay_address,
+            port: allocation.port,
         });
         self.send_message(message, sender);
 
         tracing::info!(
-            "Created new allocation for {sender} with address {} and lifetime {}s",
-            allocation.ip4_relay_address,
-            effective_lifetime.lifetime().as_secs()
-        );
-        tracing::info!(
-            "Created new allocation for {sender} with address {} and lifetime {}s",
-            allocation.ip6_relay_address,
+            "Created new allocation for {sender} with on port {} and lifetime {}s",
+            allocation.port,
             effective_lifetime.lifetime().as_secs()
         );
 
@@ -317,22 +310,12 @@ where
             }
         };
 
-        // Second, take the local address of the server as a prototype.
-        let ip4_relay_address = SocketAddrV4::new(*self.local_ip4_address.ip(), port);
-        let ip6_relay_address = SocketAddrV6::new(
-            *self.local_ip6_address.ip(),
-            port,
-            self.local_ip6_address.flowinfo(),
-            self.local_ip6_address.scope_id(),
-        );
-
-        // Third, grab a new allocation ID.
+        // Second, grab a new allocation ID.
         let id = self.next_allocation_id.next();
 
         Allocation {
             id,
-            ip4_relay_address,
-            ip6_relay_address,
+            port,
             expires_at: now + lifetime.lifetime(),
         }
     }
@@ -347,6 +330,19 @@ where
             payload: bytes,
             recipient,
         });
+    }
+
+    fn public_relay_addresses_for_port(&self, port: u16) -> (SocketAddrV4, SocketAddrV6) {
+        // Second, take the local address of the server as a prototype.
+        let ip4_relay_address = SocketAddrV4::new(*self.local_ip4_address.ip(), port);
+        let ip6_relay_address = SocketAddrV6::new(
+            *self.local_ip6_address.ip(),
+            port,
+            self.local_ip6_address.flowinfo(),
+            self.local_ip6_address.scope_id(),
+        );
+
+        (ip4_relay_address, ip6_relay_address)
     }
 
     fn get_allocation(&self, id: &AllocationId) -> Option<&Allocation> {
@@ -391,15 +387,10 @@ impl Server<StepRng> {
 }
 
 /// Represents an allocation of a client.
-///
-/// Data arriving on any of the relay addresses will be forwarded to the client iff there is an active data channel.
 struct Allocation {
     id: AllocationId,
-    /// The IPv4 relay address of this allocation.
-    ip4_relay_address: SocketAddrV4,
-    /// The IPv6 relay address of this allocation.
-    ip6_relay_address: SocketAddrV6,
-
+    /// Data arriving on this port will be forwarded to the client iff there is an active data channel.
+    port: u16,
     expires_at: Instant,
 }
 
