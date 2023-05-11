@@ -8,7 +8,7 @@ deployments.
 
 | OS      | Architecture(s) | Runtime        | Status                  | Notes                                                                                   |
 | ---     | ---             | ---            | ---                     | ---                                                                                     |
-| Linux   | `amd64` `arm64` | Docker Server  | **Fully-supported**     | `wireguard` kernel module needed for kernels &lt; `5.6`.                                |
+| Linux   | `amd64` `arm64` | Docker Server  | **Fully-supported**     | Kernel `5.6` or higher recommended.                                |
 | Linux   | `amd64` `arm64` | Docker Desktop | Works, but unsupported. | Not recommended for production deployments. See [caveats](#docker-desktop-caveats).     |
 | macOS   | `amd64` `arm64` | Docker Desktop | Works. but unsupported. | Not recommended for production deployments. See [caveats](#non-linux-platform-caveats). |
 | Windows | `amd64` `arm64` | Docker Desktop | **Untested**            | Not recommended for production deployments. See [caveats](#non-linux-platform-caveats). |
