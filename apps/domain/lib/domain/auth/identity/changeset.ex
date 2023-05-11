@@ -1,7 +1,7 @@
 defmodule Domain.Auth.Identity.Changeset do
   use Domain, :changeset
   alias Domain.Actors
-  alias Domain.Auth.{Adapters, Identity, Provider}
+  alias Domain.Auth.{Identity, Provider}
 
   def create(
         %Actors.Actor{account_id: account_id} = actor,

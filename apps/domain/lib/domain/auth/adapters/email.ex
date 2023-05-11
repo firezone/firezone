@@ -1,7 +1,6 @@
 defmodule Domain.Auth.Adapters.Email do
   use Supervisor
   alias Domain.Repo
-  alias Domain.Config
   alias Domain.Auth.{Identity, Provider, Adapter}
 
   @behaviour Adapter
@@ -65,6 +64,7 @@ defmodule Domain.Auth.Adapters.Email do
     Identity.Mutator.update_provider_state(identity, state, virtual_state)
   end
 
+  @impl true
   def verify_secret(%Identity{} = identity, token) do
     consume_sign_in_token(identity, token)
   end

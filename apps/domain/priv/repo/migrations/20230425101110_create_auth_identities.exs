@@ -20,6 +20,11 @@ defmodule Domain.Repo.Migrations.CreateAuthIdentities do
       add(:deleted_at, :utc_datetime_usec)
     end
 
-    create(index(:auth_identities, [:provider_id, :provider_identifier], where: "deleted_at IS NULL", unique: true))
+    create(
+      index(:auth_identities, [:provider_id, :provider_identifier],
+        where: "deleted_at IS NULL",
+        unique: true
+      )
+    )
   end
 end

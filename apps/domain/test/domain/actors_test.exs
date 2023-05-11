@@ -1,6 +1,7 @@
 defmodule Domain.ActorsTest do
   use Domain.DataCase, async: true
   import Domain.Actors
+  alias Domain.Auth
   alias Domain.Actors
   alias Domain.{AccountsFixtures, AuthFixtures, ActorsFixtures}
 

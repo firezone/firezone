@@ -2,15 +2,6 @@ defmodule Domain.Auth.Adapter do
   alias Domain.Auth.{Provider, Identity}
 
   @doc """
-  Allows provider module to start stateful components.
-
-  See `c:Supervisor.init/1` for more information.
-  """
-  @callback init(init_arg :: term()) ::
-              {:ok, {Supervisor.sup_flags(), [Supervisor.child_spec()]}}
-              | :ignore
-
-  @doc """
   Applies provider-specific validations for the Identity changeset before it's created.
   """
   @callback identity_changeset(%Provider{}, %Ecto.Changeset{data: %Identity{}}) ::
@@ -38,8 +29,9 @@ defmodule Domain.Auth.Adapter do
   A callback invoked during sign-in, should verify the secret and return the identity
   if it's valid, or an error otherwise.
   """
-  @callback verify_secret(%Provider{}, %Identity{}, secret :: term()) ::
+  @callback verify_secret(%Identity{}, secret :: term()) ::
               {:ok, %Identity{}}
               | {:error, :invalid_secret}
               | {:error, :expired_secret}
+              | {:error, :internal_error}
 end

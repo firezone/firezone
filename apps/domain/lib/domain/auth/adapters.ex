@@ -3,7 +3,8 @@ defmodule Domain.Auth.Adapters do
   alias Domain.Auth.{Provider, Identity}
 
   @adapters %{
-    email: Domain.Auth.Adapters.Email
+    email: Domain.Auth.Adapters.Email,
+    openid_connect: Domain.Auth.Adapters.OpenIDConnect
   }
 
   @adapter_names Map.keys(@adapters)
@@ -14,14 +15,7 @@ defmodule Domain.Auth.Adapters do
   end
 
   def init(_opts) do
-    children = @adapter_modules
-    #  ++
-    #   [
-    #     {DynamicSupervisor, name: Domain.RefresherSupervisor, strategy: :one_for_one},
-    #     Domain.Auth.OIDC.RefreshManager
-    #   ]
-
-    Supervisor.init(children, strategy: :one_for_one)
+    Supervisor.init(@adapter_modules, strategy: :one_for_one)
   end
 
   def identity_changeset(%Ecto.Changeset{} = changeset, %Provider{} = provider) do
@@ -51,6 +45,7 @@ defmodule Domain.Auth.Adapters do
       {:ok, %Identity{} = identity} -> {:ok, identity}
       {:error, :invalid_secret} -> {:error, :invalid_secret}
       {:error, :expired_secret} -> {:error, :expired_secret}
+      {:error, :internal_error} -> {:error, :internal_error}
     end
   end
 

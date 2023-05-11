@@ -4,7 +4,7 @@ defmodule Domain.Relays.Relay do
   schema "relays" do
     field :ipv4, Domain.Types.IP
     field :ipv6, Domain.Types.IP
-    
+
     # TODO: port field
 
     field :last_seen_user_agent, :string

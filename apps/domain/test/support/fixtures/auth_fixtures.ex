@@ -11,9 +11,13 @@ defmodule Domain.AuthFixtures do
     "user-#{counter()}@#{String.downcase(name)}.com"
   end
 
+  def random_provider_identifier(%Domain.Auth.Provider{adapter: :openid_connect}) do
+    Ecto.UUID.generate()
+  end
+
   def provider_attrs(attrs \\ %{}) do
     Enum.into(attrs, %{
-      name: "provider-#{counter()}}",
+      name: "provider-#{counter()}",
       adapter: :email,
       adapter_config: %{}
     })
@@ -31,6 +35,23 @@ defmodule Domain.AuthFixtures do
 
     {:ok, provider} = Auth.create_provider(account, attrs)
     provider
+  end
+
+  def create_openid_connect_provider({bypass, [provider_attrs]}, attrs \\ %{}) do
+    attrs = Enum.into(attrs, %{})
+
+    {account, attrs} =
+      Map.pop_lazy(attrs, :account, fn ->
+        AccountsFixtures.create_account()
+      end)
+
+    attrs =
+      %{adapter_config: provider_attrs}
+      |> Map.merge(attrs)
+      |> provider_attrs()
+
+    {:ok, provider} = Auth.create_provider(account, attrs)
+    {provider, bypass}
   end
 
   def create_identity(attrs \\ %{}) do
