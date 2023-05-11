@@ -66,9 +66,9 @@ impl DualStackSocket {
                 anyhow::Ok((self.ip6_receive_buffer[..size].to_vec(), sender))
             }),
         )
-            .await
-            .map_err(|err| err.factor_first().0)?
-            .factor_first();
+        .await
+        .map_err(|err| err.factor_first().0)?
+        .factor_first();
 
         Ok((sender, data))
     }
