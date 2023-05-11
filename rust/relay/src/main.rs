@@ -1,9 +1,9 @@
-mod server;
+extern crate core;
 
-use crate::server::Command;
 use anyhow::Result;
-use server::Server;
+use relay::{Command, Server};
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
+use std::time::Instant;
 use tokio::net::UdpSocket;
 use tracing::level_filters::LevelFilter;
 use tracing::Level;
@@ -42,7 +42,7 @@ async fn main() -> Result<()> {
             tracing::trace!(target: "wire", r#"Input("{sender}","{}")"#, hex_bytes);
         }
 
-        if let Err(e) = server.handle_client_input(&buf[..recv_len], sender) {
+        if let Err(e) = server.handle_client_input(&buf[..recv_len], sender, Instant::now()) {
             tracing::debug!("Failed to handle datagram from {sender}: {e}")
         }
 
@@ -58,6 +58,12 @@ async fn main() -> Result<()> {
                 }
                 Command::AllocateAddresses { .. } => {
                     tracing::warn!("Allocating addresses is not yet implemented")
+                }
+                Command::FreeAddresses { .. } => {
+                    tracing::warn!("Freeing addresses is not yet implemented")
+                }
+                Command::Wake { .. } => {
+                    tracing::warn!("Waking is not yet implemented")
                 }
             }
         }

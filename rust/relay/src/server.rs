@@ -1,12 +1,14 @@
+use crate::TimeEvents;
 use anyhow::Result;
 use bytecodec::{DecodeExt, EncodeExt};
+use core::fmt;
 use rand::rngs::mock::StepRng;
 use rand::rngs::ThreadRng;
 use rand::Rng;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::Hash;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use stun_codec::rfc5389::attributes::{ErrorCode, MessageIntegrity, XorMappedAddress};
 use stun_codec::rfc5389::errors::BadRequest;
 use stun_codec::rfc5389::methods::BINDING;
@@ -32,11 +34,15 @@ pub struct Server<R = ThreadRng> {
     /// All client allocations, indexed by client's socket address.
     allocations: HashMap<SocketAddr, Allocation>,
 
+    clients_by_allocation: HashMap<AllocationId, SocketAddr>,
+
     used_ports: HashSet<u16>,
     pending_commands: VecDeque<Command>,
     next_allocation_id: AllocationId,
 
     rng: R,
+
+    time_events: TimeEvents<TimedAction>,
 }
 
 /// The commands returned from a [`Server`].
@@ -51,13 +57,15 @@ pub enum Command {
     /// Listen for traffic on the provided IP addresses.
     ///
     /// Any incoming data should be handed to the [`Server`] via [`Server::handle_relay_input`].
-    /// The caller MUST deallocate the port after the given duration unless it is refreshed.
     AllocateAddresses {
         id: AllocationId,
         ip4: SocketAddrV4,
         ip6: SocketAddrV6,
-        expiry_in: Duration,
     },
+    /// Free the addresses associated with the given [`AllocationId`].
+    FreeAddresses { id: AllocationId },
+    /// At the latest, the [`Server`] needs to be woken at the specified deadline to execute time-based actions correctly.
+    Wake { deadline: Instant },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -70,6 +78,12 @@ impl AllocationId {
         self.0 += 1;
 
         AllocationId(id)
+    }
+}
+
+impl fmt::Display for AllocationId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "AID-{}", self.0)
     }
 }
 
@@ -97,10 +111,12 @@ impl Server {
             local_ip4_address,
             local_ip6_address,
             allocations: Default::default(),
+            clients_by_allocation: Default::default(),
             used_ports: Default::default(),
             pending_commands: Default::default(),
             next_allocation_id: AllocationId(1),
             rng: rand::thread_rng(),
+            time_events: TimeEvents::default(),
         }
     }
 }
@@ -112,7 +128,12 @@ where
     /// Process the bytes received from a client.
     ///
     /// After calling this method, you should call [`Server::next_command`] until it returns `None`.
-    pub fn handle_client_input(&mut self, bytes: &[u8], sender: SocketAddr) -> Result<()> {
+    pub fn handle_client_input(
+        &mut self,
+        bytes: &[u8],
+        sender: SocketAddr,
+        now: Instant,
+    ) -> Result<()> {
         let Ok(message) = self.decoder.decode_from_bytes(bytes)? else {
             tracing::trace!("received broken STUN message from {sender}");
             return Ok(());
@@ -120,7 +141,7 @@ where
 
         tracing::trace!("Received message {message:?} from {sender}");
 
-        self.handle_message(message, sender);
+        self.handle_message(message, sender, now);
 
         Ok(())
     }
@@ -138,12 +159,30 @@ where
         Ok(())
     }
 
+    pub fn handle_deadline_reached(&mut self, now: Instant) {
+        for action in self.time_events.pending_actions(now) {
+            match action {
+                TimedAction::ExpireAllocation(id) => {
+                    let Some(allocation) = self.get_allocation(&id) else {
+                        tracing::debug!("Cannot expire non-existing allocation {id}");
+
+                        continue;
+                    };
+
+                    if allocation.is_expired(now) {
+                        self.delete_allocation(id)
+                    }
+                }
+            }
+        }
+    }
+
     /// Return the next command to be executed.
     pub fn next_command(&mut self) -> Option<Command> {
         self.pending_commands.pop_front()
     }
 
-    fn handle_message(&mut self, message: Message<Attribute>, sender: SocketAddr) {
+    fn handle_message(&mut self, message: Message<Attribute>, sender: SocketAddr, now: Instant) {
         if message.class() == MessageClass::Request && message.method() == BINDING {
             tracing::debug!("Received STUN binding request from: {sender}");
 
@@ -156,7 +195,7 @@ where
 
             let transaction_id = message.transaction_id();
 
-            if let Err(e) = self.handle_allocate_request(message, sender) {
+            if let Err(e) = self.handle_allocate_request(message, sender, now) {
                 self.send_message(allocate_error_response(transaction_id, e), sender);
             }
 
@@ -189,6 +228,7 @@ where
         &mut self,
         message: Message<Attribute>,
         sender: SocketAddr,
+        now: Instant,
     ) -> Result<(), ErrorCode> {
         if self.allocations.contains_key(&sender) {
             return Err(AllocationMismatch.into());
@@ -213,7 +253,7 @@ where
         // TODO: Do we need to handle DONT-FRAGMENT?
         // TODO: Do we need to handle EVEN/ODD-PORT?
 
-        let allocation = self.create_new_allocation();
+        let allocation = self.create_new_allocation(now, &effective_lifetime);
 
         let mut message = Message::new(
             MessageClass::SuccessResponse,
@@ -226,11 +266,22 @@ where
         message.add_attribute(XorMappedAddress::new(sender).into());
         message.add_attribute(effective_lifetime.clone().into());
 
+        self.time_events.add(
+            allocation.expires_at,
+            TimedAction::ExpireAllocation(allocation.id),
+        );
+        let wake_deadline = self
+            .time_events
+            .next_trigger()
+            .expect("we just pushed a time event");
+
+        self.pending_commands.push_back(Command::Wake {
+            deadline: wake_deadline,
+        });
         self.pending_commands.push_back(Command::AllocateAddresses {
             id: allocation.id,
             ip4: allocation.ip4_relay_address,
             ip6: allocation.ip6_relay_address,
-            expiry_in: effective_lifetime.lifetime(),
         });
         self.send_message(message, sender);
 
@@ -245,12 +296,13 @@ where
             effective_lifetime.lifetime().as_secs()
         );
 
+        self.clients_by_allocation.insert(allocation.id, sender);
         self.allocations.insert(sender, allocation);
 
         Ok(())
     }
 
-    fn create_new_allocation(&mut self) -> Allocation {
+    fn create_new_allocation(&mut self, now: Instant, lifetime: &Lifetime) -> Allocation {
         // First, find an unused port.
 
         assert!(
@@ -283,6 +335,7 @@ where
             id,
             ip4_relay_address,
             ip6_relay_address,
+            expires_at: now + lifetime.lifetime(),
         }
     }
 
@@ -296,6 +349,22 @@ where
             payload: bytes,
             recipient,
         });
+    }
+
+    fn get_allocation(&self, id: &AllocationId) -> Option<&Allocation> {
+        self.clients_by_allocation
+            .get(id)
+            .and_then(|client| self.allocations.get(client))
+    }
+
+    fn delete_allocation(&mut self, id: AllocationId) {
+        let Some(client) = self.clients_by_allocation.remove(&id) else {
+            return;
+        };
+
+        self.allocations.remove(&client);
+        self.pending_commands
+            .push_back(Command::FreeAddresses { id });
     }
 }
 
@@ -313,10 +382,12 @@ impl Server<StepRng> {
             local_ip4_address: SocketAddrV4::new(local_ip4_address, 3478),
             local_ip6_address: SocketAddrV6::new(local_ip6_address, 3478, 0, 0),
             allocations: HashMap::new(),
+            clients_by_allocation: Default::default(),
             used_ports: HashSet::new(),
             next_allocation_id: AllocationId::default(),
             pending_commands: VecDeque::new(),
             rng: StepRng::new(0, 0),
+            time_events: TimeEvents::default(),
         }
     }
 }
@@ -330,6 +401,18 @@ struct Allocation {
     ip4_relay_address: SocketAddrV4,
     /// The IPv6 relay address of this allocation.
     ip6_relay_address: SocketAddrV6,
+
+    expires_at: Instant,
+}
+
+impl Allocation {
+    fn is_expired(&self, now: Instant) -> bool {
+        self.expires_at <= now
+    }
+}
+
+enum TimedAction {
+    ExpireAllocation(AllocationId),
 }
 
 /// Computes the effective lifetime of an allocation.
