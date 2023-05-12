@@ -172,7 +172,7 @@ defmodule Domain.AuthTest do
         test_pid = self()
 
         spawn(fn ->
-          Ecto.Adapters.SQL.Sandbox.allow(Repo, test_pid, self())
+          allow_child_sandbox_access(test_pid)
 
           account = AccountsFixtures.create_account()
           actor = ActorsFixtures.create_actor(account: account)
@@ -185,7 +185,7 @@ defmodule Domain.AuthTest do
 
           for provider <- [provider_two, provider_one] do
             spawn(fn ->
-              Ecto.Adapters.SQL.Sandbox.allow(Repo, test_pid, self())
+              allow_child_sandbox_access(test_pid)
 
               assert disable_provider(provider, subject) ==
                        {:error, :cant_disable_the_last_provider}
@@ -346,7 +346,7 @@ defmodule Domain.AuthTest do
         test_pid = self()
 
         spawn(fn ->
-          Ecto.Adapters.SQL.Sandbox.allow(Repo, test_pid, self())
+          allow_child_sandbox_access(test_pid)
 
           account = AccountsFixtures.create_account()
           actor = ActorsFixtures.create_actor(account: account)
@@ -359,7 +359,7 @@ defmodule Domain.AuthTest do
 
           for provider <- [provider_two, provider_one] do
             spawn(fn ->
-              Ecto.Adapters.SQL.Sandbox.allow(Repo, test_pid, self())
+              allow_child_sandbox_access(test_pid)
 
               assert delete_provider(provider, subject) ==
                        {:error, :cant_delete_the_last_provider}
@@ -985,83 +985,10 @@ defmodule Domain.AuthTest do
     end
   end
 
-  ##############################################
-
-  # describe "fetch_oidc_provider_config/1" do
-  #   test "returns error when provider does not exist" do
-  #     assert fetch_oidc_provider_config(Ecto.UUID.generate()) == {:error, :not_found}
-  #     assert fetch_oidc_provider_config("foo") == {:error, :not_found}
-  #   end
-
-  #   test "returns openid connect provider" do
-  #     {_bypass, [attrs]} = ConfigFixtures.start_openid_providers(["google"])
-
-  #     assert fetch_oidc_provider_config(attrs["id"]) ==
-  #              {:ok,
-  #               %{
-  #                 client_id: attrs["client_id"],
-  #                 client_secret: attrs["client_secret"],
-  #                 discovery_document_uri: attrs["discovery_document_uri"],
-  #                 redirect_uri: attrs["redirect_uri"],
-  #                 response_type: attrs["response_type"],
-  #                 scope: attrs["scope"]
-  #               }}
-  #   end
-
-  #   test "puts default redirect_uri" do
-  #     Domain.Config.put_env_override(:web, :external_url, "http://foo.bar.com/")
-
-  #     {_bypass, [attrs]} =
-  #       ConfigFixtures.start_openid_providers(["google"], %{"redirect_uri" => nil})
-
-  #     assert fetch_oidc_provider_config(attrs["id"]) ==
-  #              {:ok,
-  #               %{
-  #                 client_id: attrs["client_id"],
-  #                 client_secret: attrs["client_secret"],
-  #                 discovery_document_uri: attrs["discovery_document_uri"],
-  #                 redirect_uri: "http://foo.bar.com/auth/oidc/google/callback/",
-  #                 response_type: attrs["response_type"],
-  #                 scope: attrs["scope"]
-  #               }}
-  #   end
-  # end
-
-  # describe "auto_create_users?/2" do
-  #   test "raises if provider_id not found" do
-  #     assert_raise(RuntimeError, "Unknown provider foobar", fn ->
-  #       auto_create_users?(:openid_connect_providers, "foobar")
-  #     end)
-  #   end
-
-  #   test "returns true if auto_create_users is true" do
-  #     ConfigFixtures.configuration(%{
-  #       saml_identity_providers: [
-  #         %{
-  #           "id" => "test",
-  #           "metadata" => ConfigFixtures.saml_metadata(),
-  #           "auto_create_users" => true,
-  #           "label" => "SAML"
-  #         }
-  #       ]
-  #     })
-
-  #     assert auto_create_users?(:saml_identity_providers, "test")
-  #   end
-
-  #   test "returns false if auto_create_users is false" do
-  #     ConfigFixtures.configuration(%{
-  #       saml_identity_providers: [
-  #         %{
-  #           "id" => "test",
-  #           "metadata" => ConfigFixtures.saml_metadata(),
-  #           "auto_create_users" => false,
-  #           "label" => "SAML"
-  #         }
-  #       ]
-  #     })
-
-  #     refute auto_create_users?(:saml_identity_providers, "test")
-  #   end
-  # end
+  defp allow_child_sandbox_access(parent_pid) do
+    Ecto.Adapters.SQL.Sandbox.allow(Repo, parent_pid, self())
+    # Allow is async call we need to break current process execution
+    # to allow sandbox to be enabled
+    :timer.sleep(10)
+  end
 end

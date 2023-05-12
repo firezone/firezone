@@ -457,7 +457,7 @@ defmodule Domain.ActorsTest do
         test_pid = self()
 
         spawn(fn ->
-          Ecto.Adapters.SQL.Sandbox.allow(Repo, test_pid, self())
+          allow_child_sandbox_access(test_pid)
 
           account = AccountsFixtures.create_account()
 
@@ -469,7 +469,7 @@ defmodule Domain.ActorsTest do
 
           for {actor, subject} <- [{actor_two, subject_one}, {actor_one, subject_two}] do
             spawn(fn ->
-              Ecto.Adapters.SQL.Sandbox.allow(Repo, test_pid, self())
+              allow_child_sandbox_access(test_pid)
               assert disable_actor(actor, subject) == {:error, :cant_disable_the_last_admin}
             end)
           end
@@ -628,7 +628,7 @@ defmodule Domain.ActorsTest do
         test_pid = self()
 
         spawn(fn ->
-          Ecto.Adapters.SQL.Sandbox.allow(Repo, test_pid, self())
+          allow_child_sandbox_access(test_pid)
 
           account = AccountsFixtures.create_account()
 
@@ -640,7 +640,7 @@ defmodule Domain.ActorsTest do
 
           for {actor, subject} <- [{actor_two, subject_one}, {actor_one, subject_two}] do
             spawn(fn ->
-              Ecto.Adapters.SQL.Sandbox.allow(Repo, test_pid, self())
+              allow_child_sandbox_access(test_pid)
               assert delete_actor(actor, subject) == {:error, :cant_delete_the_last_admin}
             end)
           end
@@ -683,5 +683,12 @@ defmodule Domain.ActorsTest do
                 {:unauthorized,
                  [missing_permissions: [Actors.Authorizer.manage_actors_permission()]]}}
     end
+  end
+
+  defp allow_child_sandbox_access(parent_pid) do
+    Ecto.Adapters.SQL.Sandbox.allow(Repo, parent_pid, self())
+    # Allow is async call we need to break current process execution
+    # to allow sandbox to be enabled
+    :timer.sleep(10)
   end
 end
