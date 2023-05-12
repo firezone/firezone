@@ -48,14 +48,14 @@ impl DualStackSocket {
     }
 
     pub async fn receive(&mut self) -> Result<(SocketAddr, Vec<u8>)> {
-        let ((data, sender), _) = futures::future::try_select(
+        let ((sender, data), _) = futures::future::try_select(
             pin!(async {
                 let (size, sender) = self
                     .ip4_socket
                     .recv_from(&mut self.ip4_receive_buffer)
                     .await?;
 
-                anyhow::Ok((self.ip4_receive_buffer[..size].to_vec(), sender))
+                anyhow::Ok((sender, self.ip4_receive_buffer[..size].to_vec()))
             }),
             pin!(async {
                 let (size, sender) = self
@@ -63,7 +63,7 @@ impl DualStackSocket {
                     .recv_from(&mut self.ip6_receive_buffer)
                     .await?;
 
-                anyhow::Ok((self.ip6_receive_buffer[..size].to_vec(), sender))
+                anyhow::Ok((sender, self.ip6_receive_buffer[..size].to_vec()))
             }),
         )
         .await
