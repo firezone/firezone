@@ -89,14 +89,13 @@ async fn main() -> Result<()> {
                     }));
                 }
                 Command::FreeAddresses { id } => {
-                    if let Some(task) = allocation_tasks.remove(&id) {
-                        tracing::info!("Freeing addresses of allocation {id}");
-                        task.abort();
-
+                    let Some(task) = allocation_tasks.remove(&id) else {
+                        tracing::debug!("Unknown allocation {id}");
                         continue;
-                    }
+                    };
 
-                    tracing::debug!("Unknown allocation {id}")
+                    tracing::info!("Freeing addresses of allocation {id}");
+                    task.abort();
                 }
                 Command::Wake { deadline } => {
                     wake.as_mut().reset(deadline);
