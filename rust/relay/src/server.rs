@@ -7,7 +7,7 @@ use rand::rngs::ThreadRng;
 use rand::Rng;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::Hash;
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::time::{Duration, Instant};
 use stun_codec::rfc5389::attributes::{ErrorCode, MessageIntegrity, XorMappedAddress};
 use stun_codec::rfc5389::errors::BadRequest;
@@ -28,8 +28,7 @@ pub struct Server<R = ThreadRng> {
     decoder: MessageDecoder<Attribute>,
     encoder: MessageEncoder<Attribute>,
 
-    local_ip4_address: SocketAddrV4,
-    local_ip6_address: SocketAddrV6,
+    public_ip4_address: SocketAddrV4,
 
     /// All client allocations, indexed by client's socket address.
     allocations: HashMap<SocketAddr, Allocation>,
@@ -98,14 +97,13 @@ const MAX_ALLOCATION_LIFETIME: Duration = Duration::from_secs(3600);
 const DEFAULT_ALLOCATION_LIFETIME: Duration = Duration::from_secs(600);
 
 impl Server {
-    pub fn new(local_ip4_address: SocketAddrV4, local_ip6_address: SocketAddrV6) -> Self {
-        // TODO: Validate that local IPs aren't multicast / loopback etc.
+    pub fn new(public_ip4_address: SocketAddrV4) -> Self {
+        // TODO: Validate that local IP isn't multicast / loopback etc.
 
         Self {
             decoder: Default::default(),
             encoder: Default::default(),
-            local_ip4_address,
-            local_ip6_address,
+            public_ip4_address,
             allocations: Default::default(),
             clients_by_allocation: Default::default(),
             used_ports: Default::default(),
@@ -255,11 +253,9 @@ where
             message.transaction_id(),
         );
 
-        let (ip4_relay_address, ip6_relay_address) =
-            self.public_relay_addresses_for_port(allocation.port);
+        let ip4_relay_address = self.public_relay_address_for_port(allocation.port);
 
         message.add_attribute(XorRelayAddress::new(ip4_relay_address.into()).into());
-        message.add_attribute(XorRelayAddress::new(ip6_relay_address.into()).into());
         message.add_attribute(XorMappedAddress::new(sender).into());
         message.add_attribute(effective_lifetime.clone().into());
 
@@ -332,16 +328,10 @@ where
         });
     }
 
-    fn public_relay_addresses_for_port(&self, port: u16) -> (SocketAddrV4, SocketAddrV6) {
-        let ip4_relay_address = SocketAddrV4::new(*self.local_ip4_address.ip(), port);
-        let ip6_relay_address = SocketAddrV6::new(
-            *self.local_ip6_address.ip(),
-            port,
-            self.local_ip6_address.flowinfo(),
-            self.local_ip6_address.scope_id(),
-        );
+    fn public_relay_address_for_port(&self, port: u16) -> SocketAddrV4 {
+        let ip4_relay_address = SocketAddrV4::new(*self.public_ip4_address.ip(), port);
 
-        (ip4_relay_address, ip6_relay_address)
+        ip4_relay_address
     }
 
     fn get_allocation(&self, id: &AllocationId) -> Option<&Allocation> {
@@ -365,15 +355,11 @@ impl Server<StepRng> {
     #[allow(dead_code)]
     pub fn test() -> Self {
         let local_ip4_address = Ipv4Addr::new(35, 124, 91, 37);
-        let local_ip6_address = Ipv6Addr::new(
-            0x2600, 0x1f18, 0x0f96, 0xe710, 0x2a51, 0x0e8f, 0x7303, 0x6942,
-        );
 
         Self {
             decoder: Default::default(),
             encoder: Default::default(),
-            local_ip4_address: SocketAddrV4::new(local_ip4_address, 3478),
-            local_ip6_address: SocketAddrV6::new(local_ip6_address, 3478, 0, 0),
+            public_ip4_address: SocketAddrV4::new(local_ip4_address, 3478),
             allocations: HashMap::new(),
             clients_by_allocation: Default::default(),
             used_ports: HashSet::new(),

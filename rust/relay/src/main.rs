@@ -1,17 +1,20 @@
 use anyhow::{Context, Result};
 use futures::channel::mpsc::Sender;
 use futures::{SinkExt, StreamExt};
-use relay::{AllocationId, Command, DualStackSocket, Server, Sleep};
+use relay::{AllocationId, Command, Server, Sleep};
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::error::Error;
-use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6};
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::pin::pin;
 use std::str::FromStr;
 use std::time::Instant;
+use tokio::net::UdpSocket;
 use tracing::level_filters::LevelFilter;
 use tracing::Level;
 use tracing_subscriber::EnvFilter;
+
+const MAX_UDP_SIZE: usize = 65536;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -23,12 +26,13 @@ async fn main() -> Result<()> {
         )
         .init();
 
-    let mut socket = DualStackSocket::listen_on(3478).await?;
+    let public_ip4_addr = parse_env_var::<Ipv4Addr>("RELAY_PUBLIC_IP4_ADDR")?;
+    let listen_ip4_addr = parse_env_var::<Ipv4Addr>("RELAY_LISTEN_IP4_ADDR")?;
 
-    let mut server = Server::new(
-        SocketAddrV4::new(parse_env_var("RELAY_PUBLIC_IP4_ADDR")?, 3478),
-        SocketAddrV6::new(parse_env_var("RELAY_PUBLIC_IP6_ADDR")?, 3478, 0, 0),
-    );
+    let socket = UdpSocket::bind((listen_ip4_addr, 3478)).await?;
+    let mut recv_buf = [0u8; MAX_UDP_SIZE];
+
+    let mut server = Server::new(SocketAddrV4::new(public_ip4_addr, 3478));
 
     tracing::info!("Listening for incoming traffic on UDP port 3478");
 
@@ -50,15 +54,16 @@ async fn main() -> Result<()> {
 
                 server.handle_relay_input(&payload, sender, allocation_id);
             }
-            receive_result = pin!(socket.receive()) => {
-                let (sender, payload) = receive_result.context("Failed to receive from socket")?;
+            receive_result = pin!(socket.recv_from(&mut recv_buf)) => {
+                let (length, sender) = receive_result.context("Failed to receive from socket")?;
+                let payload = &recv_buf[..length];
 
                 if tracing::enabled!(target: "wire", Level::TRACE) {
-                    let hex_bytes = hex::encode(&payload);
+                    let hex_bytes = hex::encode(payload);
                     tracing::trace!(target: "wire", r#"Input::Client("{sender}","{hex_bytes}")"#);
                 }
 
-                if let Err(e) = server.handle_client_input(&payload, sender, Instant::now()) {
+                if let Err(e) = server.handle_client_input(payload, sender, Instant::now()) {
                     tracing::debug!("Failed to handle datagram from {sender}: {e}")
                 }
             }
@@ -79,7 +84,7 @@ async fn main() -> Result<()> {
                         let sender = relayed_data_sender.clone();
 
                         async move {
-                            let Err(e) = forward_incoming_relay_data(sender, id, port).await else {
+                            let Err(e) = forward_incoming_relay_data(sender, id, listen_ip4_addr, port).await else {
                                 unreachable!()
                             };
 
@@ -121,15 +126,19 @@ where
 async fn forward_incoming_relay_data(
     mut relayed_data_sender: Sender<(Vec<u8>, SocketAddr, AllocationId)>,
     id: AllocationId,
+    listen_ip4_addr: Ipv4Addr,
     port: u16,
 ) -> Result<Infallible> {
-    let mut socket = DualStackSocket::listen_on(port).await?;
-    let (ip4, ip6) = socket.local_addr();
+    let socket = UdpSocket::bind((listen_ip4_addr, port)).await?;
+    let mut recv_buf = [0u8; MAX_UDP_SIZE];
 
-    tracing::info!("Listening for relayed data on {ip4} and {ip6} for allocation {id}");
+    let ip4 = socket.local_addr()?;
+
+    tracing::info!("Listening for relayed data on {ip4} for allocation {id}");
 
     loop {
-        let (sender, data) = socket.receive().await?;
+        let (length, sender) = socket.recv_from(&mut recv_buf).await?;
+        let data = recv_buf[..length].to_vec();
 
         relayed_data_sender.send((data, sender, id)).await?;
     }
