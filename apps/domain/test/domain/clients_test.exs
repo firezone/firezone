@@ -7,17 +7,25 @@ defmodule Domain.ClientsTest do
 
   setup do
     account = AccountsFixtures.create_account()
+
     unprivileged_actor = ActorsFixtures.create_actor(role: :unprivileged, account: account)
-    unprivileged_subject = AuthFixtures.create_subject(unprivileged_actor)
+
+    unprivileged_identity =
+      AuthFixtures.create_identity(account: account, actor: unprivileged_actor)
+
+    unprivileged_subject = AuthFixtures.create_subject(unprivileged_identity)
 
     admin_actor = ActorsFixtures.create_actor(role: :admin, account: account)
-    admin_subject = AuthFixtures.create_subject(admin_actor)
+    admin_identity = AuthFixtures.create_identity(account: account, actor: admin_actor)
+    admin_subject = AuthFixtures.create_subject(admin_identity)
 
     %{
       account: account,
       unprivileged_actor: unprivileged_actor,
+      unprivileged_identity: unprivileged_identity,
       unprivileged_subject: unprivileged_subject,
       admin_actor: admin_actor,
+      admin_identity: admin_identity,
       admin_subject: admin_subject
     }
   end
@@ -213,9 +221,10 @@ defmodule Domain.ClientsTest do
 
     test "does not list deleted clients", %{
       unprivileged_actor: actor,
+      unprivileged_identity: identity,
       unprivileged_subject: subject
     } do
-      ClientsFixtures.create_client(actor: actor)
+      ClientsFixtures.create_client(identity: identity)
       |> ClientsFixtures.delete_client()
 
       assert list_clients_by_actor_id(actor.id, subject) == {:ok, []}
@@ -295,7 +304,6 @@ defmodule Domain.ClientsTest do
       attrs = %{
         external_id: nil,
         public_key: "x",
-        preshared_key: "x",
         ipv4: "1.1.1.256",
         ipv6: "fd01::10000"
       }
@@ -303,7 +311,6 @@ defmodule Domain.ClientsTest do
       assert {:error, changeset} = upsert_client(attrs, subject)
 
       assert errors_on(changeset) == %{
-               preshared_key: ["should be 44 character(s)", "must be a base64-encoded string"],
                public_key: ["should be 44 character(s)", "must be a base64-encoded string"],
                external_id: ["can't be blank"]
              }
@@ -311,6 +318,7 @@ defmodule Domain.ClientsTest do
 
     test "allows creating client with just required attributes", %{
       admin_actor: actor,
+      admin_identity: identity,
       admin_subject: subject
     } do
       attrs =
@@ -322,9 +330,9 @@ defmodule Domain.ClientsTest do
       assert client.name
 
       assert client.public_key == attrs.public_key
-      assert client.preshared_key == attrs.preshared_key
 
       assert client.actor_id == actor.id
+      assert client.identity_id == identity.id
       assert client.account_id == actor.account_id
 
       refute is_nil(client.ipv4)
@@ -363,10 +371,9 @@ defmodule Domain.ClientsTest do
       assert updated_client.last_seen_version == "0.7.411"
       assert updated_client.public_key != client.public_key
       assert updated_client.public_key == attrs.public_key
-      assert updated_client.preshared_key != client.preshared_key
-      assert updated_client.preshared_key == attrs.preshared_key
 
       assert updated_client.actor_id == client.actor_id
+      assert updated_client.identity_id == client.identity_id
       assert updated_client.ipv4 == client.ipv4
       assert updated_client.ipv6 == client.ipv6
       assert updated_client.last_seen_at
@@ -609,10 +616,11 @@ defmodule Domain.ClientsTest do
     end
 
     test "unprivileged can delete own clients", %{
+      account: account,
       unprivileged_actor: actor,
       unprivileged_subject: subject
     } do
-      client = ClientsFixtures.create_client(actor: actor)
+      client = ClientsFixtures.create_client(account: account, actor: actor)
 
       assert {:ok, deleted} = delete_client(client, subject)
       assert deleted.deleted_at

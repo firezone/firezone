@@ -205,6 +205,7 @@ defmodule Domain.Auth do
 
   # Session
 
+  # TODO: we need to leverage provider token expiration here
   def create_session_token_from_subject(%Subject{} = subject) do
     config = fetch_config!()
     key_base = Keyword.fetch!(config, :key_base)

@@ -3,8 +3,8 @@ defmodule Domain.Clients.Client.Changeset do
   alias Domain.{Version, Auth}
   alias Domain.Clients
 
-  @upsert_fields ~w[external_id name public_key preshared_key]a
-  @conflict_replace_fields ~w[public_key preshared_key
+  @upsert_fields ~w[external_id name public_key]a
+  @conflict_replace_fields ~w[public_key
                               last_seen_user_agent last_seen_remote_ip
                               last_seen_version last_seen_at]a
   @update_fields ~w[name]a
@@ -30,9 +30,7 @@ defmodule Domain.Clients.Client.Changeset do
     |> changeset()
     |> validate_required(@required_fields)
     |> validate_base64(:public_key)
-    |> validate_base64(:preshared_key)
     |> validate_length(:public_key, is: @key_length)
-    |> validate_length(:preshared_key, is: @key_length)
     |> unique_constraint(:ipv4)
     |> unique_constraint(:ipv6)
     |> put_change(:last_seen_at, DateTime.utc_now())

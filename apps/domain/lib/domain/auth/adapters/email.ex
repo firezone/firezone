@@ -7,6 +7,10 @@ defmodule Domain.Auth.Adapters.Email do
 
   @sign_in_token_expiration_seconds 15 * 60
 
+  def start_link(_init_arg) do
+    Supervisor.start_link(__MODULE__, nil, name: __MODULE__)
+  end
+
   @impl true
   def init(_init_arg) do
     children = []

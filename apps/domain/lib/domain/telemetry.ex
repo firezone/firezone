@@ -97,21 +97,15 @@ defmodule Domain.Telemetry do
   # @active_device_window 86_400
   def ping_data do
     %{
-      openid_connect_providers: {_, openid_connect_providers},
-      saml_identity_providers: {_, saml_identity_providers},
       allow_unprivileged_device_management: {_, allow_unprivileged_device_management},
       allow_unprivileged_device_configuration: {_, allow_unprivileged_device_configuration},
       local_auth_enabled: {_, local_auth_enabled},
-      disable_vpn_on_oidc_error: {_, disable_vpn_on_oidc_error},
       logo: {_, logo}
     } =
       Domain.Config.fetch_source_and_configs!([
-        :openid_connect_providers,
-        :saml_identity_providers,
         :allow_unprivileged_device_management,
         :allow_unprivileged_device_configuration,
         :local_auth_enabled,
-        :disable_vpn_on_oidc_error,
         :logo
       ])
 
@@ -125,12 +119,9 @@ defmodule Domain.Telemetry do
         # max_devices_for_actors: Devices.count_maximum_for_a_actor(),
         # actors_with_mfa: MFA.count_actors_with_mfa_enabled(),
         # actors_with_mfa_totp: MFA.count_actors_with_totp_method(),
-        openid_providers: length(openid_connect_providers),
-        saml_providers: length(saml_identity_providers),
         unprivileged_device_management: allow_unprivileged_device_management,
         unprivileged_device_configuration: allow_unprivileged_device_configuration,
         local_authentication: local_auth_enabled,
-        disable_vpn_on_oidc_error: disable_vpn_on_oidc_error,
         # outbound_email: Web.Mailer.active?(),
         external_database:
           external_database?(Map.new(Domain.Config.fetch_env!(:domain, Domain.Repo))),

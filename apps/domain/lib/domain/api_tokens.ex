@@ -102,8 +102,7 @@ defmodule Domain.ApiTokens do
              subject,
              Authorizer.manage_own_api_tokens_permission()
            ) do
-      {:actor, actor} = subject.actor
-      create_api_token(actor, attrs)
+      create_api_token(subject.actor, attrs)
     end
   end
 

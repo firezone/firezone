@@ -2,7 +2,7 @@ defmodule Domain.Release do
   # alias Domain.{ApiTokens, Users}
   require Logger
 
-  @app :domain
+  # @app :domain
   @repos Application.compile_env!(:domain, :ecto_repos)
 
   def migrate do
@@ -87,13 +87,13 @@ defmodule Domain.Release do
   #   secret
   # end
 
-  defp start_domain_app do
-    # Load the app
-    :ok = Application.ensure_loaded(@app)
+  # defp start_domain_app do
+  #   # Load the app
+  #   :ok = Application.ensure_loaded(@app)
 
-    # Start the app dependencies
-    {:ok, _apps} = Application.ensure_all_started(@app)
-  end
+  #   # Start the app dependencies
+  #   {:ok, _apps} = Application.ensure_all_started(@app)
+  # end
 
   # defp default_password do
   #   Domain.Config.fetch_env!(:domain, :default_admin_password)

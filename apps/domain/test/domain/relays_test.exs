@@ -7,11 +7,13 @@ defmodule Domain.RelaysTest do
   setup do
     account = AccountsFixtures.create_account()
     actor = ActorsFixtures.create_actor(role: :admin, account: account)
-    subject = AuthFixtures.create_subject(actor)
+    identity = AuthFixtures.create_identity(account: account, actor: actor)
+    subject = AuthFixtures.create_subject(identity)
 
     %{
       account: account,
       actor: actor,
+      identity: identity,
       subject: subject
     }
   end

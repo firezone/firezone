@@ -13,7 +13,6 @@ defmodule Domain.Auth.Roles do
       Domain.Auth.Authorizer,
       Domain.Config.Authorizer,
       Domain.ApiTokens.Authorizer,
-      Domain.ConnectivityChecks.Authorizer,
       Domain.Clients.Authorizer,
       Domain.Gateways.Authorizer,
       Domain.Relays.Authorizer,

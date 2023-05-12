@@ -2,8 +2,6 @@ defmodule Domain.Changeset do
   import Ecto.Changeset
   alias Ecto.Changeset
 
-  @relations [:embed, :assoc]
-
   @doc """
   Changes `Ecto.Changeset` struct to convert one of `:map` fields to an embedded schema.
 

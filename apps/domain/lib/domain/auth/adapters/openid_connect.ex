@@ -7,6 +7,10 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
 
   @behaviour Adapter
 
+  def start_link(_init_arg) do
+    Supervisor.start_link(__MODULE__, nil, name: __MODULE__)
+  end
+
   @impl true
   def init(_init_arg) do
     children = []
@@ -72,8 +76,6 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
 
   @impl true
   def verify_secret(%Identity{} = identity, {redirect_uri, code_verifier, code}) do
-    {config, identity} = config_for_identity(identity)
-
     sync_identity(identity, %{
       grant_type: "authorization_code",
       redirect_uri: redirect_uri,
@@ -83,8 +85,6 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
   end
 
   def refresh_token(%Identity{} = identity) do
-    {config, identity} = config_for_identity(identity)
-
     sync_identity(identity, %{
       grant_type: "refresh_token",
       refresh_token: identity.provider_state["refresh_token"]
@@ -97,6 +97,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
     with {:ok, tokens} <- OpenIDConnect.fetch_tokens(config, token_params),
          {:ok, claims} <- OpenIDConnect.verify(config, tokens["id_token"]),
          {:ok, userinfo} <- OpenIDConnect.fetch_userinfo(config, tokens["id_token"]) do
+      # TODO: sync groups
       Identity.Query.by_id(identity.id)
       |> Repo.fetch_and_update(
         with: fn identity ->

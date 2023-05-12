@@ -75,7 +75,7 @@ defmodule API.Gateway.SocketTest do
 
   defp connect_attrs(attrs) do
     GatewaysFixtures.gateway_attrs()
-    |> Map.take(~w[external_id public_key preshared_key]a)
+    |> Map.take(~w[external_id public_key]a)
     |> Map.merge(Enum.into(attrs, %{}))
     |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)
   end

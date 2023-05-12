@@ -24,8 +24,8 @@ defmodule Domain.ApiTokens.Authorizer do
         queryable
 
       has_permission?(subject, manage_own_api_tokens_permission()) ->
-        {:user, %{id: user_id}} = subject.identity
-        ApiToken.Query.by_user_id(queryable, user_id)
+        %{actor_id: actor_id} = subject.identity
+        ApiToken.Query.by_actor_id(queryable, actor_id)
     end
   end
 

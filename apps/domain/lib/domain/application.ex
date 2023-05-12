@@ -17,13 +17,12 @@ defmodule Domain.Application do
       {Phoenix.PubSub, name: Domain.PubSub},
 
       # Application
-      # Domain.Auth,
+      Domain.Auth,
       Domain.Relays,
       Domain.Gateways,
       Domain.Clients,
 
       # Observability
-      Domain.ConnectivityChecks,
       Domain.Telemetry
     ]
   end

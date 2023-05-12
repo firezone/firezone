@@ -22,8 +22,9 @@ defmodule Domain.GatewaysFixtures do
 
     {subject, attrs} =
       Map.pop_lazy(attrs, :subject, fn ->
-        ActorsFixtures.create_actor(role: :admin, account: account)
-        |> AuthFixtures.create_subject()
+        actor = ActorsFixtures.create_actor(role: :admin, account: account)
+        identity = AuthFixtures.create_identity(account: account, actor: actor)
+        AuthFixtures.create_subject(identity)
       end)
 
     attrs = group_attrs(attrs)
@@ -34,8 +35,9 @@ defmodule Domain.GatewaysFixtures do
 
   def delete_group(group) do
     group = Repo.preload(group, :account)
-    admin = ActorsFixtures.create_actor(role: :admin, account: group.account)
-    subject = AuthFixtures.create_subject(admin)
+    actor = ActorsFixtures.create_actor(role: :admin, account: group.account)
+    identity = AuthFixtures.create_identity(account: group.account, actor: actor)
+    subject = AuthFixtures.create_subject(identity)
     {:ok, group} = Gateways.delete_group(group, subject)
     group
   end
@@ -68,7 +70,7 @@ defmodule Domain.GatewaysFixtures do
       external_id: Ecto.UUID.generate(),
       name_suffix: "gw-#{Domain.Crypto.rand_string(5)}",
       public_key: public_key(),
-      last_seen_actor_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
+      last_seen_user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
       last_seen_remote_ip: %Postgrex.INET{address: {189, 172, 73, 153}}
     })
   end
@@ -105,8 +107,9 @@ defmodule Domain.GatewaysFixtures do
 
   def delete_gateway(gateway) do
     gateway = Repo.preload(gateway, :account)
-    admin = ActorsFixtures.create_actor(role: :admin, account: gateway.account)
-    subject = AuthFixtures.create_subject(admin)
+    actor = ActorsFixtures.create_actor(role: :admin, account: gateway.account)
+    identity = AuthFixtures.create_identity(account: gateway.account, actor: actor)
+    subject = AuthFixtures.create_subject(identity)
     {:ok, gateway} = Gateways.delete_gateway(gateway, subject)
     gateway
   end

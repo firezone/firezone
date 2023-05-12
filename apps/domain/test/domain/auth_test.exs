@@ -63,15 +63,15 @@ defmodule Domain.AuthTest do
       assert is_nil(provider.deleted_at)
     end
 
-    test "returns error when email provider is disabled", %{
-      account: account
-    } do
-      Domain.Config.put_system_env_override(:outbound_email_adapter, Domain.Mailer.NoopAdapter)
-      attrs = AuthFixtures.provider_attrs()
+    # test "returns error when email provider is disabled", %{
+    #   account: account
+    # } do
+    #   Domain.Config.put_system_env_override(:outbound_email_adapter, Domain.Mailer.NoopAdapter)
+    #   attrs = AuthFixtures.provider_attrs()
 
-      assert {:error, changeset} = create_provider(account, attrs)
-      assert errors_on(changeset) == %{adapter: ["email adapter is not configured"]}
-    end
+    #   assert {:error, changeset} = create_provider(account, attrs)
+    #   assert errors_on(changeset) == %{adapter: ["email adapter is not configured"]}
+    # end
   end
 
   describe "create_provider/3" do

@@ -13,12 +13,13 @@ defmodule Domain.ApiTokensFixtures do
         AccountsFixtures.create_account()
       end)
 
-    {actor, attrs} =
-      Map.pop_lazy(attrs, :actor, fn ->
-        ActorsFixtures.create_actor(role: :admin, account: account)
+    {subject, attrs} =
+      Map.pop_lazy(attrs, :subject, fn ->
+        actor = ActorsFixtures.create_actor(role: :admin, account: account)
+        identity = AuthFixtures.create_identity(account: account, actor: actor)
+        AuthFixtures.create_subject(identity)
       end)
 
-    subject = AuthFixtures.create_subject(actor)
     {:ok, api_token} = Domain.ApiTokens.create_api_token(attrs, subject)
     api_token
   end

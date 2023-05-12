@@ -85,7 +85,12 @@ defmodule Domain.AuthFixtures do
     identity
   end
 
-  def create_subject(actor \\ create_identity())
+  def create_subject do
+    account = AccountsFixtures.create_account()
+    actor = ActorsFixtures.create_actor(role: :admin, account: account)
+    identity = create_identity(actor: actor, account: account)
+    create_subject(identity)
+  end
 
   def create_subject(%Auth.Identity{} = identity) do
     identity = Repo.preload(identity, [:account, :actor])

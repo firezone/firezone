@@ -12,8 +12,14 @@ defmodule Domain.Actors do
   end
 
   def fetch_actor_by_id(id, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      fetch_actor_by_id(id)
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()),
+         true <- Validator.valid_uuid?(id) do
+      Actor.Query.by_id(id)
+      |> Authorizer.for_subject(subject)
+      |> Repo.fetch()
+    else
+      false -> {:error, :not_found}
+      other -> other
     end
   end
 
@@ -36,6 +42,7 @@ defmodule Domain.Actors do
       {hydrate, _opts} = Keyword.pop(opts, :hydrate, [])
 
       Actor.Query.all()
+      |> Authorizer.for_subject(subject)
       # TODO: add filters
       |> hydrate_fields(hydrate)
       |> Repo.list()

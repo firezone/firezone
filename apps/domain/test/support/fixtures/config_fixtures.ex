@@ -27,8 +27,6 @@ defmodule Domain.ConfigFixtures do
         |> Map.merge(overrides)
       end)
 
-    Config.put_config!(:openid_connect_providers, openid_connect_providers_attrs)
-
     {bypass, openid_connect_providers_attrs}
   end
 
@@ -201,12 +199,12 @@ defmodule Domain.ConfigFixtures do
     endpoint = "http://localhost:#{bypass.port}"
     test_pid = self()
 
-    Bypass.expect(bypass, "GET", "/.well-known/jwks.json", fn conn ->
+    Bypass.stub(bypass, "GET", "/.well-known/jwks.json", fn conn ->
       attrs = %{"keys" => [jwks_attrs()]}
       Plug.Conn.resp(conn, 200, Jason.encode!(attrs))
     end)
 
-    Bypass.expect(bypass, "GET", "/.well-known/openid-configuration", fn conn ->
+    Bypass.stub(bypass, "GET", "/.well-known/openid-configuration", fn conn ->
       conn = fetch_conn_params(conn)
       send(test_pid, {:request, conn})
 

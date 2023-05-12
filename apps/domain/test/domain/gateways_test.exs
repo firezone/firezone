@@ -8,11 +8,13 @@ defmodule Domain.GatewaysTest do
   setup do
     account = AccountsFixtures.create_account()
     actor = ActorsFixtures.create_actor(role: :admin, account: account)
-    subject = AuthFixtures.create_subject(actor)
+    identity = AuthFixtures.create_identity(account: account, actor: actor)
+    subject = AuthFixtures.create_subject(identity)
 
     %{
       account: account,
       actor: actor,
+      identity: identity,
       subject: subject
     }
   end
@@ -465,7 +467,7 @@ defmodule Domain.GatewaysTest do
       attrs = %{
         external_id: nil,
         public_key: "x",
-        last_seen_actor_agent: "foo",
+        last_seen_user_agent: "foo",
         last_seen_remote_ip: {256, 0, 0, 0}
       }
 
@@ -474,7 +476,7 @@ defmodule Domain.GatewaysTest do
       assert errors_on(changeset) == %{
                public_key: ["should be 44 character(s)", "must be a base64-encoded string"],
                external_id: ["can't be blank"],
-               last_seen_actor_agent: ["is invalid"]
+               last_seen_user_agent: ["is invalid"]
              }
     end
 
@@ -497,7 +499,7 @@ defmodule Domain.GatewaysTest do
       refute is_nil(gateway.ipv6)
 
       assert gateway.last_seen_remote_ip == attrs.last_seen_remote_ip
-      assert gateway.last_seen_actor_agent == attrs.last_seen_actor_agent
+      assert gateway.last_seen_user_agent == attrs.last_seen_user_agent
       assert gateway.last_seen_version == "0.7.412"
       assert gateway.last_seen_at
     end
@@ -511,7 +513,7 @@ defmodule Domain.GatewaysTest do
         GatewaysFixtures.gateway_attrs(
           external_id: gateway.external_id,
           last_seen_remote_ip: {100, 64, 100, 101},
-          last_seen_actor_agent: "iOS/12.5 (iPhone) connlib/0.7.411"
+          last_seen_user_agent: "iOS/12.5 (iPhone) connlib/0.7.411"
         )
 
       assert {:ok, updated_gateway} = upsert_gateway(token, attrs)
@@ -521,8 +523,8 @@ defmodule Domain.GatewaysTest do
       assert updated_gateway.name_suffix
       assert updated_gateway.last_seen_remote_ip.address == attrs.last_seen_remote_ip
       assert updated_gateway.last_seen_remote_ip != gateway.last_seen_remote_ip
-      assert updated_gateway.last_seen_actor_agent == attrs.last_seen_actor_agent
-      assert updated_gateway.last_seen_actor_agent != gateway.last_seen_actor_agent
+      assert updated_gateway.last_seen_user_agent == attrs.last_seen_user_agent
+      assert updated_gateway.last_seen_user_agent != gateway.last_seen_user_agent
       assert updated_gateway.last_seen_version == "0.7.411"
       assert updated_gateway.last_seen_at
       assert updated_gateway.last_seen_at != gateway.last_seen_at
@@ -544,7 +546,7 @@ defmodule Domain.GatewaysTest do
       attrs =
         GatewaysFixtures.gateway_attrs(
           external_id: gateway.external_id,
-          last_seen_actor_agent: "iOS/12.5 (iPhone) connlib/0.7.411",
+          last_seen_user_agent: "iOS/12.5 (iPhone) connlib/0.7.411",
           last_seen_remote_ip: %Postgrex.INET{address: {100, 64, 100, 100}}
         )
 

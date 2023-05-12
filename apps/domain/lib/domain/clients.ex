@@ -97,7 +97,6 @@ defmodule Domain.Clients do
 
   def upsert_client(attrs \\ %{}, %Auth.Subject{identity: %Auth.Identity{} = identity} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_own_clients_permission()) do
-      identity
       changeset = Client.Changeset.upsert_changeset(identity, subject.context, attrs)
 
       Ecto.Multi.new()
@@ -150,17 +149,12 @@ defmodule Domain.Clients do
     authorize_actor_client_management(actor.id, subject)
   end
 
-  def authorize_actor_client_management(actor_id, %Auth.Subject{} = subject) do
-    required_permissions =
-      case subject.actor do
-        {:actor, %{id: ^actor_id}} ->
-          Authorizer.manage_own_clients_permission()
+  def authorize_actor_client_management(actor_id, %Auth.Subject{actor: %{id: actor_id}} = subject) do
+    Auth.ensure_has_permissions(subject, Authorizer.manage_own_clients_permission())
+  end
 
-        _other ->
-          Authorizer.manage_clients_permission()
-      end
-
-    Auth.ensure_has_permissions(subject, required_permissions)
+  def authorize_actor_client_management(_actor_id, %Auth.Subject{} = subject) do
+    Auth.ensure_has_permissions(subject, Authorizer.manage_clients_permission())
   end
 
   def connect_client(%Client{} = client, socket) do
