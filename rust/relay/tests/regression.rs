@@ -26,7 +26,7 @@ fn turn_allocation_request() {
         &[
             Output::Wake(now + Duration::from_secs(3600)),
             Output::CreateAllocation(49152),
-            Output::SendMessage(("91.141.70.157:7112", "010300382112a44215d4bb014ad31072cd248ec7001600080001e112026eff67001600140002e1120712bb5a1a425c1160821efdbe27e7850020000800013ada7a9fe2df000d000400000e10")),
+            Output::SendMessage(("91.141.70.157:7112", "010300202112a44215d4bb014ad31072cd248ec7001600080001e112026eff670020000800013ada7a9fe2df000d000400000e10")),
         ],
     )]);
 }
@@ -40,7 +40,7 @@ fn deallocate_once_time_expired() {
         &[
             Output::Wake(now + Duration::from_secs(3600)),
             Output::CreateAllocation(49152),
-            Output::SendMessage(("91.141.70.157:7112", "010300382112a44215d4bb014ad31072cd248ec7001600080001e112026eff67001600140002e1120712bb5a1a425c1160821efdbe27e7850020000800013ada7a9fe2df000d000400000e10")),
+            Output::SendMessage(("91.141.70.157:7112", "010300202112a44215d4bb014ad31072cd248ec7001600080001e112026eff670020000800013ada7a9fe2df000d000400000e10")),
         ],
     ), (
         Input::Time(now + Duration::from_secs(3601)),
