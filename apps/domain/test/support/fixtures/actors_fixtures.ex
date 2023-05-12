@@ -38,8 +38,4 @@ defmodule Domain.ActorsFixtures do
   def disable(actor) do
     update(actor, %{disabled_at: DateTime.utc_now()})
   end
-
-  defp counter do
-    System.unique_integer([:positive])
-  end
 end
