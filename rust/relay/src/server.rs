@@ -282,7 +282,7 @@ where
         self.send_message(message, sender);
 
         tracing::info!(
-            "Created new allocation for {sender} with on port {} and lifetime {}s",
+            "Created new allocation for {sender} on port {} and lifetime {}s",
             allocation.port,
             effective_lifetime.lifetime().as_secs()
         );
@@ -333,7 +333,6 @@ where
     }
 
     fn public_relay_addresses_for_port(&self, port: u16) -> (SocketAddrV4, SocketAddrV6) {
-        // Second, take the local address of the server as a prototype.
         let ip4_relay_address = SocketAddrV4::new(*self.local_ip4_address.ip(), port);
         let ip6_relay_address = SocketAddrV6::new(
             *self.local_ip6_address.ip(),
