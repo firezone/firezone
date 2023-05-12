@@ -29,5 +29,8 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt -- --check
+      - run: cargo doc --no-deps --document-private-items
+        env:
+          RUSTDOCFLAGS: "-D warnings"
       - run: cargo clippy -- -D warnings
       - run: cargo test
