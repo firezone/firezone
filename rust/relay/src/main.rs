@@ -44,7 +44,9 @@ async fn main() -> Result<()> {
 
     tracing::info!("Listening for incoming traffic on UDP port 3478");
 
-    futures::future::poll_fn(|cx| eventloop.poll(cx)).await?;
+    futures::future::poll_fn(|cx| eventloop.poll(cx))
+        .await
+        .context("event loop failed")?;
 
     Ok(())
 }
