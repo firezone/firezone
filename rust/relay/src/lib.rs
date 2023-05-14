@@ -4,4 +4,5 @@ mod time_events;
 
 pub use server::{AllocationId, Command, Server};
 pub use sleep::Sleep;
-pub use time_events::TimeEvents;
+
+pub(crate) use time_events::TimeEvents;
