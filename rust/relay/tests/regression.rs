@@ -5,15 +5,15 @@ use std::time::{Duration, Instant};
 #[test]
 fn stun_binding_request() {
     run_regression_test(&[(
-        Input::Client(
+        Input::client(
             "91.141.64.64:26098",
             "000100002112a4420908af7d45e8751f5092d167",
             Instant::now(),
         ),
-        &[Output::SendMessage((
+        &[Output::send_message(
             "91.141.64.64:26098",
             "0101000c2112a4420908af7d45e8751f5092d16700200008000144e07a9fe402",
-        ))],
+        )],
     )]);
 }
 
@@ -22,11 +22,11 @@ fn turn_allocation_request() {
     let now = Instant::now();
 
     run_regression_test(&[(
-        Input::Client("91.141.70.157:7112", "000300182112a44215d4bb014ad31072cd248ec70019000411000000000d000400000e1080280004d08a7674", now),
+        Input::client("91.141.70.157:7112", "000300182112a44215d4bb014ad31072cd248ec70019000411000000000d000400000e1080280004d08a7674", now),
         &[
             Output::Wake(now + Duration::from_secs(3600)),
             Output::CreateAllocation(49152),
-            Output::SendMessage(("91.141.70.157:7112", "010300202112a44215d4bb014ad31072cd248ec7001600080001e112026eff670020000800013ada7a9fe2df000d000400000e10")),
+            Output::send_message("91.141.70.157:7112", "010300202112a44215d4bb014ad31072cd248ec7001600080001e112026eff670020000800013ada7a9fe2df000d000400000e10"),
         ],
     )]);
 }
@@ -36,11 +36,11 @@ fn deallocate_once_time_expired() {
     let now = Instant::now();
 
     run_regression_test(&[(
-        Input::Client("91.141.70.157:7112", "000300182112a44215d4bb014ad31072cd248ec70019000411000000000d000400000e1080280004d08a7674", now),
+        Input::client("91.141.70.157:7112", "000300182112a44215d4bb014ad31072cd248ec70019000411000000000d000400000e1080280004d08a7674", now),
         &[
             Output::Wake(now + Duration::from_secs(3600)),
             Output::CreateAllocation(49152),
-            Output::SendMessage(("91.141.70.157:7112", "010300202112a44215d4bb014ad31072cd248ec7001600080001e112026eff670020000800013ada7a9fe2df000d000400000e10")),
+            Output::send_message("91.141.70.157:7112", "010300202112a44215d4bb014ad31072cd248ec7001600080001e112026eff670020000800013ada7a9fe2df000d000400000e10"),
         ],
     ), (
         Input::Time(now + Duration::from_secs(3601)),
@@ -57,17 +57,17 @@ fn when_refreshed_in_time_allocation_does_not_expire() {
     let first_expiry = now + Duration::from_secs(3600);
 
     run_regression_test(&[(
-        Input::Client("91.141.70.157:7112", "000300182112a44215d4bb014ad31072cd248ec70019000411000000000d000400000e1080280004d08a7674", now),
+        Input::client("91.141.70.157:7112", "000300182112a44215d4bb014ad31072cd248ec70019000411000000000d000400000e1080280004d08a7674", now),
         &[
             Output::Wake(first_expiry),
             Output::CreateAllocation(49152),
-            Output::SendMessage(("91.141.70.157:7112", "010300202112a44215d4bb014ad31072cd248ec7001600080001e112026eff670020000800013ada7a9fe2df000d000400000e10")),
+            Output::send_message("91.141.70.157:7112", "010300202112a44215d4bb014ad31072cd248ec7001600080001e112026eff670020000800013ada7a9fe2df000d000400000e10"),
         ],
     ),(
-        Input::Client("91.141.70.157:7112", "000400182112a44215d4bb014ad31072cd248ec70019000411000000000d000400000e1080280004d08a7674", refreshed_at),
+        Input::client("91.141.70.157:7112", "000400182112a44215d4bb014ad31072cd248ec70019000411000000000d000400000e1080280004d08a7674", refreshed_at),
         &[
             Output::Wake(first_expiry), // `first_expiry` would still happen after the refresh but it will be a no-op wake-up.
-            Output::SendMessage(("91.141.70.157:7112", "010400082112a44215d4bb014ad31072cd248ec7000d000400000e10")),
+            Output::send_message("91.141.70.157:7112", "010400082112a44215d4bb014ad31072cd248ec7000d000400000e10"),
         ],
     ),(
         Input::Time(first_expiry + Duration::from_secs(1)),
@@ -138,6 +138,12 @@ enum Input {
     Time(Instant),
 }
 
+impl Input {
+    fn client(from: Ip, data: impl AsRef<str>, now: Instant) -> Self {
+        Self::Client(from, data.as_ref().to_owned(), now)
+    }
+}
+
 #[derive(Debug)]
 enum Output {
     SendMessage((Ip, Bytes)),
@@ -146,5 +152,11 @@ enum Output {
     ExpireAllocation(u16),
 }
 
+impl Output {
+    fn send_message(from: Ip, data: impl AsRef<str>) -> Self {
+        Self::SendMessage((from, data.as_ref().to_owned()))
+    }
+}
+
 type Ip = &'static str;
-type Bytes = &'static str;
+type Bytes = String;
