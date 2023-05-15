@@ -82,7 +82,27 @@ fn when_refreshed_in_time_allocation_does_not_expire() {
 
 #[test]
 fn when_receiving_lifetime_0_for_existing_allocation_then_delete() {
-    todo!()
+    let now = Instant::now();
+    let refreshed_at = now + Duration::from_secs(1800);
+    let first_expiry = now + Duration::from_secs(3600);
+
+    run_regression_test(&[(
+        Input::client("91.141.70.157:7112", "000300182112a44215d4bb014ad31072cd248ec70019000411000000000d000400000e1080280004d08a7674", now),
+        &[
+            Output::Wake(first_expiry),
+            Output::CreateAllocation(49152),
+            Output::send_message("91.141.70.157:7112", "010300202112a44215d4bb014ad31072cd248ec7001600080001e112026eff670020000800013ada7a9fe2df000d000400000e10"),
+        ],
+    ),(
+        Input::client("91.141.70.157:7112", refresh_request(hex!("150ee0cb117ed3a0f66529f2"), 0), refreshed_at),
+        &[
+            Output::ExpireAllocation(49152),
+            Output::send_message("91.141.70.157:7112", "010400082112a442150ee0cb117ed3a0f66529f2000d000400000000"),
+        ],
+    ),(
+        Input::Time(first_expiry + Duration::from_secs(1)),
+        &[],
+    )]);
 }
 
 /// Run a regression test with a sequence events where we always have 1 input and N outputs.
