@@ -82,7 +82,7 @@ impl fmt::Display for AllocationId {
     }
 }
 
-/// See <https://www.rfc-editor.org/rfc/rfc8656#name-requested-transport>
+/// See <https://www.rfc-editor.org/rfc/rfc8656#name-requested-transport>.
 const UDP_TRANSPORT: u8 = 17;
 
 /// The maximum number of ports available for allocation.
@@ -93,7 +93,7 @@ const MAX_ALLOCATION_LIFETIME: Duration = Duration::from_secs(3600);
 
 /// The default lifetime of an allocation.
 ///
-/// TODO: This has been chosen at random by Thomas. Revisit if it makes sense.
+/// See <https://www.rfc-editor.org/rfc/rfc8656#name-allocations-2>.
 const DEFAULT_ALLOCATION_LIFETIME: Duration = Duration::from_secs(600);
 
 impl Server {
