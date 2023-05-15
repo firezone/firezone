@@ -14,8 +14,8 @@ use stun_codec::rfc5389::errors::BadRequest;
 use stun_codec::rfc5389::methods::BINDING;
 use stun_codec::rfc5766::attributes::{Lifetime, RequestedTransport, XorRelayAddress};
 use stun_codec::rfc5766::errors::{AllocationMismatch, InsufficientCapacity};
-use stun_codec::rfc5766::methods::ALLOCATE;
-use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder, TransactionId};
+use stun_codec::rfc5766::methods::{ALLOCATE, REFRESH};
+use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder, Method, TransactionId};
 
 /// A sans-IO STUN & TURN server.
 ///
@@ -188,7 +188,19 @@ where
             let transaction_id = message.transaction_id();
 
             if let Err(e) = self.handle_allocate_request(message, sender, now) {
-                self.send_message(allocate_error_response(transaction_id, e), sender);
+                self.send_message(error_response(transaction_id, ALLOCATE, e), sender);
+            }
+
+            return;
+        }
+
+        if message.class() == MessageClass::Request && message.method() == REFRESH {
+            tracing::debug!("Received TURN refresh request from: {sender}");
+
+            let transaction_id = message.transaction_id();
+
+            if let Err(e) = self.handle_refresh_request(message, sender, now) {
+                self.send_message(error_response(transaction_id, ALLOCATE, e), sender);
             }
 
             return;
@@ -280,6 +292,51 @@ where
 
         self.clients_by_allocation.insert(allocation.id, sender);
         self.allocations.insert(sender, allocation);
+
+        Ok(())
+    }
+
+    /// Handle a TURN refresh request.
+    ///
+    /// See <https://www.rfc-editor.org/rfc/rfc8656#name-receiving-a-refresh-request> for details.
+    fn handle_refresh_request(
+        &mut self,
+        message: Message<Attribute>,
+        sender: SocketAddr,
+        now: Instant,
+    ) -> Result<(), ErrorCode> {
+        // TODO: Verify that this is the correct error code.
+        let allocation = self
+            .allocations
+            .get_mut(&sender)
+            .ok_or(ErrorCode::from(AllocationMismatch))?;
+
+        let requested_lifetime = message.get_attribute::<Lifetime>();
+        let effective_lifetime = compute_effective_lifetime(requested_lifetime);
+
+        allocation.expires_at = now + effective_lifetime.lifetime();
+
+        tracing::info!(
+            "Refreshed allocation for {sender} on port {} and lifetime {}s",
+            allocation.port,
+            effective_lifetime.lifetime().as_secs()
+        );
+
+        let mut message = Message::new(
+            MessageClass::SuccessResponse,
+            REFRESH,
+            message.transaction_id(),
+        );
+        message.add_attribute(effective_lifetime.clone().into());
+
+        let wake_deadline = self.time_events.add(
+            allocation.expires_at,
+            TimedAction::ExpireAllocation(allocation.id),
+        );
+        self.pending_commands.push_back(Command::Wake {
+            deadline: wake_deadline,
+        });
+        self.send_message(message, sender);
 
         Ok(())
     }
@@ -395,11 +452,12 @@ fn compute_effective_lifetime(requested_lifetime: Option<&Lifetime>) -> Lifetime
     Lifetime::new(effective_lifetime).unwrap()
 }
 
-fn allocate_error_response(
+fn error_response(
     transaction_id: TransactionId,
+    method: Method,
     error_code: ErrorCode,
 ) -> Message<Attribute> {
-    let mut message = Message::new(MessageClass::ErrorResponse, ALLOCATE, transaction_id);
+    let mut message = Message::new(MessageClass::ErrorResponse, method, transaction_id);
     message.add_attribute(error_code.into());
 
     message
