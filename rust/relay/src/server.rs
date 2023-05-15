@@ -23,7 +23,7 @@ use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder, Transact
 /// Thus, 3 out of the 5 components of a "5-tuple" are unique to an instance of [`Server`] and
 /// we can index data simply by the sender's [`SocketAddr`].
 ///
-/// Additionally, we assume to have complete ownership over the port range [`LOWEST_PORT`] - [`HIGHEST_PORT`].
+/// Additionally, we assume to have complete ownership over the port range `LOWEST_PORT` - `HIGHEST_PORT`.
 pub struct Server<R = ThreadRng> {
     decoder: MessageDecoder<Attribute>,
     encoder: MessageEncoder<Attribute>,
