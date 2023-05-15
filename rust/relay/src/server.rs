@@ -416,7 +416,7 @@ fn refresh_success_response(
     transaction_id: TransactionId,
 ) -> Message<Attribute> {
     let mut message = Message::new(MessageClass::SuccessResponse, REFRESH, transaction_id);
-    message.add_attribute(effective_lifetime.clone().into());
+    message.add_attribute(effective_lifetime.into());
     message
 }
 
