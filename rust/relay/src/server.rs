@@ -315,13 +315,18 @@ where
         let effective_lifetime = compute_effective_lifetime(requested_lifetime);
 
         if effective_lifetime.lifetime().is_zero() {
+            let port = allocation.port;
+
             self.pending_commands
                 .push_back(Command::FreeAddresses { id: allocation.id });
             self.allocations.remove(&sender);
+            self.used_ports.remove(&port);
             self.send_message(
                 refresh_success_response(effective_lifetime, message.transaction_id()),
                 sender,
             );
+
+            tracing::info!("Deleted allocation for {sender} on port {port}");
 
             return Ok(());
         }
