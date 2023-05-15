@@ -19,7 +19,7 @@ use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder, Transact
 
 /// A sans-IO STUN & TURN server.
 ///
-/// A [`Server`] is bound to pair of IPv4 and IPv6 addresses and assumes to only operate on UDP.
+/// A [`Server`] is bound to an IPv4 address and assumes to only operate on UDP.
 /// Thus, 3 out of the 5 components of a "5-tuple" are unique to an instance of [`Server`] and
 /// we can index data simply by the sender's [`SocketAddr`].
 ///
