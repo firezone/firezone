@@ -259,15 +259,10 @@ where
         message.add_attribute(XorMappedAddress::new(sender).into());
         message.add_attribute(effective_lifetime.clone().into());
 
-        self.time_events.add(
+        let wake_deadline = self.time_events.add(
             allocation.expires_at,
             TimedAction::ExpireAllocation(allocation.id),
         );
-        let wake_deadline = self
-            .time_events
-            .next_trigger()
-            .expect("we just pushed a time event");
-
         self.pending_commands.push_back(Command::Wake {
             deadline: wake_deadline,
         });
