@@ -314,6 +314,18 @@ where
         let requested_lifetime = message.get_attribute::<Lifetime>();
         let effective_lifetime = compute_effective_lifetime(requested_lifetime);
 
+        if effective_lifetime.lifetime().is_zero() {
+            self.pending_commands
+                .push_back(Command::FreeAddresses { id: allocation.id });
+            self.allocations.remove(&sender);
+            self.send_message(
+                refresh_success_response(effective_lifetime, message.transaction_id()),
+                sender,
+            );
+
+            return Ok(());
+        }
+
         allocation.expires_at = now + effective_lifetime.lifetime();
 
         tracing::info!(
@@ -322,13 +334,6 @@ where
             effective_lifetime.lifetime().as_secs()
         );
 
-        let mut message = Message::new(
-            MessageClass::SuccessResponse,
-            REFRESH,
-            message.transaction_id(),
-        );
-        message.add_attribute(effective_lifetime.clone().into());
-
         let wake_deadline = self.time_events.add(
             allocation.expires_at,
             TimedAction::ExpireAllocation(allocation.id),
@@ -336,7 +341,10 @@ where
         self.pending_commands.push_back(Command::Wake {
             deadline: wake_deadline,
         });
-        self.send_message(message, sender);
+        self.send_message(
+            refresh_success_response(effective_lifetime, message.transaction_id()),
+            sender,
+        );
 
         Ok(())
     }
@@ -401,6 +409,15 @@ where
         self.pending_commands
             .push_back(Command::FreeAddresses { id });
     }
+}
+
+fn refresh_success_response(
+    effective_lifetime: Lifetime,
+    transaction_id: TransactionId,
+) -> Message<Attribute> {
+    let mut message = Message::new(MessageClass::SuccessResponse, REFRESH, transaction_id);
+    message.add_attribute(effective_lifetime.clone().into());
+    message
 }
 
 impl Server<StepRng> {
