@@ -13,12 +13,16 @@ pub struct TimeEvents<A> {
 
 impl<A> TimeEvents<A> {
     /// Add an action to be executed at the specified time.
-    pub fn add(&mut self, trigger: Instant, action: A) {
+    ///
+    /// Returns the new wake deadline for convenience.
+    pub fn add(&mut self, trigger: Instant, action: A) -> Instant {
         self.events.push(TimeEvent {
             time: trigger,
             action,
         });
         self.events.sort_unstable();
+
+        self.next_trigger().expect("just pushed an event")
     }
 
     /// Remove and return all actions that are pending, given that time has advanced to `now`.
