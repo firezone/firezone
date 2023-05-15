@@ -87,6 +87,8 @@ fn when_receiving_lifetime_0_for_existing_allocation_then_delete() {
 
 /// Run a regression test with a sequence events where we always have 1 input and N outputs.
 fn run_regression_test(sequence: &[(Input, &[Output])]) {
+    let _ = env_logger::try_init();
+
     let mut server = Server::test();
 
     let mut allocatio_mapping = HashMap::<u16, AllocationId>::default();
