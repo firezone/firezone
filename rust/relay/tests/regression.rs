@@ -1,6 +1,11 @@
+use bytecodec::EncodeExt;
+use hex_literal::hex;
 use relay::{AllocationId, Command, Server};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
+use stun_codec::rfc5766::attributes::Lifetime;
+use stun_codec::rfc5766::methods::REFRESH;
+use stun_codec::{Attribute, Message, MessageClass, MessageEncoder, TransactionId};
 
 #[test]
 fn stun_binding_request() {
@@ -64,10 +69,10 @@ fn when_refreshed_in_time_allocation_does_not_expire() {
             Output::send_message("91.141.70.157:7112", "010300202112a44215d4bb014ad31072cd248ec7001600080001e112026eff670020000800013ada7a9fe2df000d000400000e10"),
         ],
     ),(
-        Input::client("91.141.70.157:7112", "000400182112a44215d4bb014ad31072cd248ec70019000411000000000d000400000e1080280004d08a7674", refreshed_at),
+        Input::client("91.141.70.157:7112", refresh_request(hex!("150ee0cb117ed3a0f66529f2"), 3600), refreshed_at),
         &[
             Output::Wake(first_expiry), // `first_expiry` would still happen after the refresh but it will be a no-op wake-up.
-            Output::send_message("91.141.70.157:7112", "010400082112a44215d4bb014ad31072cd248ec7000d000400000e10"),
+            Output::send_message("91.141.70.157:7112", "010400082112a442150ee0cb117ed3a0f66529f2000d000400000e10"),
         ],
     ),(
         Input::Time(first_expiry + Duration::from_secs(1)),
@@ -131,6 +136,24 @@ fn run_regression_test(sequence: &[(Input, &[Output])]) {
 
         assert!(server.next_command().is_none())
     }
+}
+
+fn refresh_request(transaction_id: [u8; 12], lifetime: u32) -> String {
+    let mut message = Message::new(
+        MessageClass::Request,
+        REFRESH,
+        TransactionId::new(transaction_id),
+    );
+    message.add_attribute(Lifetime::from_u32(lifetime));
+
+    message_to_hex(message)
+}
+
+fn message_to_hex<A>(message: Message<A>) -> String
+where
+    A: Attribute,
+{
+    hex::encode(MessageEncoder::new().encode_into_bytes(message).unwrap())
 }
 
 enum Input {
