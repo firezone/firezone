@@ -31,8 +31,8 @@ defmodule Domain.Clients.Client.Changeset do
     |> validate_required(@required_fields)
     |> validate_base64(:public_key)
     |> validate_length(:public_key, is: @key_length)
-    |> unique_constraint(:ipv4)
-    |> unique_constraint(:ipv6)
+    |> unique_constraint(:ipv4, name: :clients_account_id_ipv4_index)
+    |> unique_constraint(:ipv6, name: :clients_account_id_ipv6_index)
     |> put_change(:last_seen_at, DateTime.utc_now())
     |> put_client_version()
   end
@@ -42,6 +42,8 @@ defmodule Domain.Clients.Client.Changeset do
     |> change()
     |> put_change(:ipv4, ipv4)
     |> put_change(:ipv6, ipv6)
+    |> unique_constraint(:ipv4, name: :clients_account_id_ipv4_index)
+    |> unique_constraint(:ipv6, name: :clients_account_id_ipv6_index)
   end
 
   def update_changeset(%Clients.Client{} = client, attrs) do

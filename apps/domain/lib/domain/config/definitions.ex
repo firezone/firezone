@@ -691,16 +691,7 @@ defmodule Domain.Config.Definitions do
     default: %{},
     sensitive: true,
     legacy_keys: [{:env, "OUTBOUND_EMAIL_CONFIGS", "0.9"}],
-    dump: fn
-      # DEPRECATED: Legacy options should be removed in 0.8
-      %{"smtp" => value} -> Dumper.keyword(value)
-      %{"mailgun" => value} -> Dumper.keyword(value)
-      %{"mandrill" => value} -> Dumper.keyword(value)
-      %{"sendgrid" => value} -> Dumper.keyword(value)
-      %{"post_mark" => value} -> Dumper.keyword(value)
-      %{"sendmail" => value} -> Dumper.keyword(value)
-      value -> Dumper.keyword(value)
-    end
+    dump: &Dumper.keyword/1
   )
 
   ##############################################

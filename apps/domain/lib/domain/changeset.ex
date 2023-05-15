@@ -11,7 +11,7 @@ defmodule Domain.Changeset do
 
   ## Why not `Ecto.Type`?
 
-  This design is chosen over custom `Ecto.Type` because it allows to to properly build `Ecto.Changeset`
+  This design is chosen over custom `Ecto.Type` because it allows us to properly build `Ecto.Changeset`
   struct and return errors in a form that will be supported by Phoenix form helpers, while the type
   doesn't allow to return multiple errors when `c:Ecto.Type.cast/2` returns an error tuple.
 

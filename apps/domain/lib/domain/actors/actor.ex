@@ -4,6 +4,10 @@ defmodule Domain.Actors.Actor do
   schema "actors" do
     field :type, Ecto.Enum, values: [:user, :service_account]
     field :role, Ecto.Enum, values: [:unprivileged, :admin]
+    
+    # TODO:
+    # field :first_name, :string
+    # field :last_name, :string
 
     has_many :identities, Domain.Auth.Identity
 

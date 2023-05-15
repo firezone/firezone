@@ -8,6 +8,10 @@ defmodule Domain.Repo.Migrations.CreateActors do
       add(:type, :string, null: false)
       add(:role, :string, null: false)
 
+      # TODO:
+      # add(:first_name, :string)
+      # add(:last_name, :string)
+
       add(:account_id, references(:accounts, type: :binary_id), null: false)
 
       add(:disabled_at, :utc_datetime_usec)

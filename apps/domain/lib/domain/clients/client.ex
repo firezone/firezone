@@ -18,7 +18,7 @@ defmodule Domain.Clients.Client do
 
     belongs_to :account, Domain.Accounts.Account
     belongs_to :actor, Domain.Actors.Actor
-    belongs_to :identity, Domain.Actors.Actor
+    belongs_to :identity, Domain.Auth.Identity
 
     field :deleted_at, :utc_datetime_usec
     timestamps()

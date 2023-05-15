@@ -4,6 +4,6 @@ defmodule Domain.Auth.Adapters.OpenIDConnect.State do
   end
 
   def equal?(state1, state2) do
-    state1 == state2
+    Plug.Crypto.secure_compare(state1, state2)
   end
 end
