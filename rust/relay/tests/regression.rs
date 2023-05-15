@@ -91,7 +91,7 @@ fn run_regression_test(sequence: &[(Input, &[Output])]) {
 
     let mut server = Server::test();
 
-    let mut allocatio_mapping = HashMap::<u16, AllocationId>::default();
+    let mut allocation_mapping = HashMap::<u16, AllocationId>::default();
 
     for (input, output) in sequence {
         match input {
@@ -122,13 +122,13 @@ fn run_regression_test(sequence: &[(Input, &[Output])]) {
                 ) => {
                     assert_eq!(port, *expected_port);
 
-                    allocatio_mapping.insert(*expected_port, id);
+                    allocation_mapping.insert(*expected_port, id);
                 }
                 (Output::Wake(expected), Command::Wake { deadline }) => {
                     assert_eq!(*expected, deadline);
                 }
                 (Output::ExpireAllocation(port), Command::FreeAddresses { id }) => {
-                    let expected_id = allocatio_mapping.remove(port).expect("unknown allocation");
+                    let expected_id = allocation_mapping.remove(port).expect("unknown allocation");
 
                     assert_eq!(expected_id, id);
                 }
