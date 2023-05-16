@@ -15,3 +15,4 @@ tokio = { version = "1.28.0", features = ["macros", "rt-multi-thread", "net", "t
 tracing = { version = "0.1.37", features = ["log"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 env_logger = "0.10.0"
+bytes = "1.4.0"
