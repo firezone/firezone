@@ -1,3 +1,4 @@
+use crate::rfc8656::PeerAddressFamilyMismatch;
 use crate::TimeEvents;
 use anyhow::Result;
 use bytecodec::{DecodeExt, EncodeExt};
@@ -12,9 +13,11 @@ use std::time::{Duration, Instant};
 use stun_codec::rfc5389::attributes::{ErrorCode, MessageIntegrity, XorMappedAddress};
 use stun_codec::rfc5389::errors::BadRequest;
 use stun_codec::rfc5389::methods::BINDING;
-use stun_codec::rfc5766::attributes::{Lifetime, RequestedTransport, XorRelayAddress};
+use stun_codec::rfc5766::attributes::{
+    ChannelNumber, Lifetime, RequestedTransport, XorPeerAddress, XorRelayAddress,
+};
 use stun_codec::rfc5766::errors::{AllocationMismatch, InsufficientCapacity};
-use stun_codec::rfc5766::methods::{ALLOCATE, REFRESH};
+use stun_codec::rfc5766::methods::{ALLOCATE, CHANNEL_BIND, REFRESH};
 use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder, Method, TransactionId};
 
 /// A sans-IO STUN & TURN server.
@@ -35,6 +38,9 @@ pub struct Server<R = ThreadRng> {
 
     clients_by_allocation: HashMap<AllocationId, SocketAddr>,
     allocations_by_port: HashMap<u16, AllocationId>,
+
+    channels_by_number: HashMap<u16, Channel>,
+    channel_numbers_by_peer: HashMap<SocketAddr, u16>,
 
     pending_commands: VecDeque<Command>,
     next_allocation_id: AllocationId,
@@ -99,6 +105,11 @@ const MAX_ALLOCATION_LIFETIME: Duration = Duration::from_secs(3600);
 /// See <https://www.rfc-editor.org/rfc/rfc8656#name-allocations-2>.
 const DEFAULT_ALLOCATION_LIFETIME: Duration = Duration::from_secs(600);
 
+/// The duration of a channel binding.
+///
+/// See <https://www.rfc-editor.org/rfc/rfc8656#name-channels-2>.
+const CHANNEL_BINDING_DURATION: Duration = Duration::from_secs(600);
+
 impl Server {
     pub fn new(public_ip4_address: SocketAddrV4) -> Self {
         // TODO: Validate that local IP isn't multicast / loopback etc.
@@ -110,6 +121,8 @@ impl Server {
             allocations: Default::default(),
             clients_by_allocation: Default::default(),
             allocations_by_port: Default::default(),
+            channels_by_number: Default::default(),
+            channel_numbers_by_peer: Default::default(),
             pending_commands: Default::default(),
             next_allocation_id: AllocationId(1),
             rng: rand::thread_rng(),
@@ -168,6 +181,17 @@ where
                         self.delete_allocation(id)
                     }
                 }
+                TimedAction::ExpireChannelBinding(chan) => {
+                    let Some(channel) = self.channels_by_number.get(&chan) else {
+                        tracing::debug!("Cannot expire non-existing channel binding {chan}");
+
+                        continue;
+                    };
+
+                    if channel.is_expired(now) {
+                        self.delete_channel_binding(chan)
+                    }
+                }
             }
         }
     }
@@ -204,6 +228,18 @@ where
 
             if let Err(e) = self.handle_refresh_request(message, sender, now) {
                 self.send_message(error_response(transaction_id, ALLOCATE, e), sender);
+            }
+
+            return;
+        }
+
+        if message.class() == MessageClass::Request && message.method() == CHANNEL_BIND {
+            tracing::debug!("Received TURN channel bind request from: {sender}");
+
+            let transaction_id = message.transaction_id();
+
+            if let Err(e) = self.handle_channel_bind_request(message, sender, now) {
+                self.send_message(error_response(transaction_id, CHANNEL_BIND, e), sender);
             }
 
             return;
@@ -323,7 +359,7 @@ where
             self.pending_commands
                 .push_back(Command::FreeAddresses { id: allocation.id });
             self.allocations.remove(&sender);
-            self.used_ports.remove(&port);
+            self.allocations_by_port.remove(&port);
             self.send_message(
                 refresh_success_response(effective_lifetime, message.transaction_id()),
                 sender,
@@ -357,6 +393,78 @@ where
         Ok(())
     }
 
+    /// Handle a TURN channel bind request.
+    ///
+    /// See <https://www.rfc-editor.org/rfc/rfc8656#name-receiving-a-channelbind-req> for details.
+    fn handle_channel_bind_request(
+        &mut self,
+        message: Message<Attribute>,
+        sender: SocketAddr,
+        now: Instant,
+    ) -> Result<(), ErrorCode> {
+        let allocation = self
+            .allocations
+            .get_mut(&sender)
+            .ok_or(ErrorCode::from(AllocationMismatch))?;
+
+        let requested_channel = message
+            .get_attribute::<ChannelNumber>()
+            .ok_or(ErrorCode::from(BadRequest))?
+            .value();
+
+        let peer_address = message
+            .get_attribute::<XorPeerAddress>()
+            .ok_or(ErrorCode::from(BadRequest))?;
+
+        // Note: `channel_number` is enforced to be in the correct range.
+
+        // Check that our allocation can handle the requested peer addr.
+        allocation.check_peer_address(peer_address.address())?;
+
+        // Ensure the same address isn't already bound to a different channel.
+        if let Some(number) = self.channel_numbers_by_peer.get(&peer_address.address()) {
+            if number != &requested_channel {
+                return Err(ErrorCode::from(BadRequest));
+            }
+        }
+
+        // Ensure the channel is not already bound to a different address.
+        if let Some(channel) = self.channels_by_number.get_mut(&requested_channel) {
+            if channel.peer_address != peer_address.address() {
+                return Err(ErrorCode::from(BadRequest));
+            }
+
+            // Binding requests for existing channels act as a refresh for the binding.
+
+            channel.refresh(now);
+
+            self.time_events.add(
+                channel.expiry,
+                TimedAction::ExpireChannelBinding(requested_channel),
+            );
+            self.send_message(
+                channel_bind_success_response(message.transaction_id()),
+                sender,
+            );
+
+            return Ok(());
+        }
+
+        // Channel binding does not exist yet, create it.
+
+        // TODO: Any additional validations would go here.
+        // TODO: Capacity checking would go here.
+
+        let allocation_id = allocation.id;
+        self.create_channel_binding(requested_channel, peer_address, allocation_id, now);
+        self.send_message(
+            channel_bind_success_response(message.transaction_id()),
+            sender,
+        );
+
+        Ok(())
+    }
+
     fn create_new_allocation(&mut self, now: Instant, lifetime: &Lifetime) -> Allocation {
         // First, find an unused port.
 
@@ -383,6 +491,26 @@ where
             port,
             expires_at: now + lifetime.lifetime(),
         }
+    }
+
+    fn create_channel_binding(
+        &mut self,
+        requested_channel: u16,
+        peer_address: &XorPeerAddress,
+        id: AllocationId,
+        now: Instant,
+    ) {
+        self.channels_by_number.insert(
+            requested_channel,
+            Channel {
+                expiry: now + CHANNEL_BINDING_DURATION,
+                peer_address: peer_address.address(),
+                allocation: id,
+                bound: true,
+            },
+        );
+        self.channel_numbers_by_peer
+            .insert(peer_address.address(), requested_channel);
     }
 
     fn send_message(&mut self, message: Message<Attribute>, recipient: SocketAddr) {
@@ -418,6 +546,17 @@ where
         self.pending_commands
             .push_back(Command::FreeAddresses { id });
     }
+
+    fn delete_channel_binding(&mut self, chan: u16) {
+        let Some(channel) = self.channels_by_number.get(&chan) else {
+            return;
+        };
+
+        let addr = channel.peer_address;
+
+        self.channel_numbers_by_peer.remove(&addr);
+        self.channels_by_number.remove(&chan);
+    }
 }
 
 fn refresh_success_response(
@@ -427,6 +566,10 @@ fn refresh_success_response(
     let mut message = Message::new(MessageClass::SuccessResponse, REFRESH, transaction_id);
     message.add_attribute(effective_lifetime.into());
     message
+}
+
+fn channel_bind_success_response(transaction_id: TransactionId) -> Message<Attribute> {
+    Message::new(MessageClass::SuccessResponse, CHANNEL_BIND, transaction_id)
 }
 
 impl Server<StepRng> {
@@ -441,10 +584,12 @@ impl Server<StepRng> {
             allocations: HashMap::new(),
             clients_by_allocation: Default::default(),
             allocations_by_port: Default::default(),
+            channels_by_number: Default::default(),
             next_allocation_id: AllocationId::default(),
             pending_commands: VecDeque::new(),
             rng: StepRng::new(0, 0),
             time_events: TimeEvents::default(),
+            channel_numbers_by_peer: Default::default(),
         }
     }
 }
@@ -457,6 +602,49 @@ struct Allocation {
     expires_at: Instant,
 }
 
+struct Channel {
+    /// When the channel expires.
+    expiry: Instant,
+
+    /// The address of the peer that the channel is bound to.
+    peer_address: SocketAddr,
+
+    /// The allocation this channel belongs to.
+    allocation: AllocationId,
+
+    /// Whether the channel is currently bound.
+    ///
+    /// Channels are active for 10 minutes. During this time, data can be relayed through the channel.
+    /// After 10 minutes, the channel is considered unbound.
+    ///
+    /// To prevent race conditions, we MUST NOT use the same channel number for a different peer and vice versa for another 5 minutes after the channel becomes unbound.
+    /// Once it becomes unbound, we simply flip this bool and only completely remove the channel after another 5 minutes.
+    ///
+    /// With the data structure still existing while the channel is unbound, our existing validations cover the above requirement.
+    bound: bool,
+}
+
+impl Channel {
+    fn refresh(&mut self, now: Instant) {
+        self.expiry = now + CHANNEL_BINDING_DURATION;
+    }
+
+    fn is_expired(&self, now: Instant) -> bool {
+        self.expiry <= now
+    }
+}
+
+impl Allocation {
+    fn check_peer_address(&self, addr: SocketAddr) -> Result<(), ErrorCode> {
+        // Currently, we only support IPv4, thus any IPv6 address is invalid.
+        if addr.is_ipv6() {
+            return Err(ErrorCode::from(PeerAddressFamilyMismatch));
+        }
+
+        Ok(())
+    }
+}
+
 impl Allocation {
     fn is_expired(&self, now: Instant) -> bool {
         self.expires_at <= now
@@ -465,6 +653,7 @@ impl Allocation {
 
 enum TimedAction {
     ExpireAllocation(AllocationId),
+    ExpireChannelBinding(u16),
 }
 
 /// Computes the effective lifetime of an allocation.
@@ -500,7 +689,9 @@ stun_codec::define_attribute_enums!(
         ErrorCode,
         RequestedTransport,
         XorRelayAddress,
-        Lifetime
+        Lifetime,
+        ChannelNumber,
+        XorPeerAddress
     ]
 );
 
