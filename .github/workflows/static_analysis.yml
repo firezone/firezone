@@ -1,9 +1,10 @@
 name: Static Analysis
 on:
-  pull_request:
+  # TODO: Enable this for PRs against `cloud` when chaos settles
+  # pull_request:
   push:
     branches:
-      - master
+      - cloud
 
 jobs:
   static-analysis:
@@ -18,7 +19,7 @@ jobs:
           node-version: '16'
           cache: 'yarn'
           cache-dependency-path: |
-            apps/web/assets/package-lock.json
+            apps/web/assets/yarn.lock
             www/yarn.lock
       - uses: actions/setup-python@v2
         with:
@@ -39,7 +40,7 @@ jobs:
           key: ${{ github.workflow }}-${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
           restore-keys: |
             ${{ github.workflow }}-${{ runner.os }}-${{ env.cache-name }}-
-      - uses: actions/cache@v3.0.11
+      - uses: actions/cache@v3
         name: Setup Python cache
         with:
           path: ~/.cache/pip
@@ -54,7 +55,7 @@ jobs:
       # Don't cache PLTs based on mix.lock hash, as Dialyzer can incrementally update even old ones
       # Cache key based on Elixir & Erlang version (also useful when running in matrix)
       - name: Restore PLT cache
-        uses: actions/cache@v3.0.11
+        uses: actions/cache@v3
         id: plt_cache
         with:
           key: |
