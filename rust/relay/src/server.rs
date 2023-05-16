@@ -159,7 +159,7 @@ where
                 self.handle_stun_message(message, sender, now);
             }
             Some(64..=79) => {
-                let (channel, data) = match channel_data::parse(&bytes) {
+                let (channel, data) = match channel_data::parse(bytes) {
                     Ok(v) => v,
                     Err(e) => {
                         tracing::debug!("failed to parse channel data message: {e:#}");
