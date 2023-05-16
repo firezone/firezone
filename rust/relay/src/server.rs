@@ -2,6 +2,7 @@ use crate::rfc8656::PeerAddressFamilyMismatch;
 use crate::TimeEvents;
 use anyhow::Result;
 use bytecodec::{DecodeExt, EncodeExt};
+use bytes::{BufMut, BytesMut};
 use core::fmt;
 use rand::rngs::mock::StepRng;
 use rand::rngs::ThreadRng;
@@ -157,14 +158,36 @@ where
     }
 
     /// Process the bytes received from an allocation.
-    #[allow(dead_code)]
     pub fn handle_relay_input(
         &mut self,
-        _bytes: &[u8],
-        _sender: SocketAddr,
-        _allocation_id: AllocationId,
+        bytes: &[u8],
+        sender: SocketAddr,
+        allocation_id: AllocationId,
     ) {
-        // TODO: Implement
+        let Some(client) = self.clients_by_allocation.get(&allocation_id) else {
+            tracing::debug!("unknown allocation {allocation_id}");
+            return;
+        };
+
+        let Some(channel_number) = self.channel_numbers_by_peer.get(&sender) else {
+            tracing::debug!("no active channel for {sender}");
+            return;
+        };
+
+        let Some(channel) = self.channels_by_number.get(channel_number) else {
+            debug_assert!(false, "unknown channel {}", channel_number);
+            return
+        };
+
+        if channel.allocation != allocation_id {
+            tracing::debug!("channel {channel} is not associated with allocation {allocation_id}",);
+            return;
+        }
+
+        self.pending_commands.push_back(Command::SendMessage {
+            payload: channel_data_message(*channel_number, bytes),
+            recipient: *client,
+        })
     }
 
     pub fn handle_deadline_reached(&mut self, now: Instant) {
@@ -676,6 +699,16 @@ fn error_response(
     message.add_attribute(error_code.into());
 
     message
+}
+
+fn channel_data_message(channel: u16, data: &[u8]) -> Vec<u8> {
+    let mut message = BytesMut::with_capacity(2 + 2 + data.len());
+
+    message.put_u16(channel);
+    message.put_u16(data.len() as u16);
+    message.put_slice(data);
+
+    message.freeze().to_vec()
 }
 
 // Define an enum of all attributes that we care about for our server.
