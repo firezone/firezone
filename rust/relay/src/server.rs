@@ -23,7 +23,7 @@ use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder, Method, 
 /// Thus, 3 out of the 5 components of a "5-tuple" are unique to an instance of [`Server`] and
 /// we can index data simply by the sender's [`SocketAddr`].
 ///
-/// Additionally, we assume to have complete ownership over the port range 49152 - 65535.
+/// Additionally, we assume to have complete ownership over the port range `LOWEST_PORT` - `HIGHEST_PORT`.
 pub struct Server<R = ThreadRng> {
     decoder: MessageDecoder<Attribute>,
     encoder: MessageEncoder<Attribute>,
@@ -85,8 +85,11 @@ impl fmt::Display for AllocationId {
 /// See <https://www.rfc-editor.org/rfc/rfc8656#name-requested-transport>.
 const UDP_TRANSPORT: u8 = 17;
 
+const LOWEST_PORT: u16 = 49152;
+const HIGHEST_PORT: u16 = 65535;
+
 /// The maximum number of ports available for allocation.
-const MAX_AVAILABLE_PORTS: u16 = 65535 - 49152;
+const MAX_AVAILABLE_PORTS: u16 = HIGHEST_PORT - LOWEST_PORT;
 
 /// The maximum lifetime of an allocation.
 const MAX_ALLOCATION_LIFETIME: Duration = Duration::from_secs(3600);
@@ -363,7 +366,7 @@ where
         );
 
         let port = loop {
-            let candidate = self.rng.gen_range(49152..65535);
+            let candidate = self.rng.gen_range(LOWEST_PORT..HIGHEST_PORT);
 
             if !self.used_ports.contains(&candidate) {
                 self.used_ports.insert(candidate);
