@@ -476,7 +476,9 @@ where
         // Note: `channel_number` is enforced to be in the correct range.
 
         // Check that our allocation can handle the requested peer addr.
-        allocation.check_peer_address(peer_address.address())?;
+        if !allocation.can_relay_to(peer_address.address()) {
+            return Err(ErrorCode::from(PeerAddressFamilyMismatch));
+        }
 
         // Ensure the same address isn't already bound to a different channel.
         if let Some(number) = self.channel_numbers_by_peer.get(&peer_address.address()) {
@@ -703,13 +705,9 @@ impl Channel {
 }
 
 impl Allocation {
-    fn check_peer_address(&self, addr: SocketAddr) -> Result<(), ErrorCode> {
+    fn can_relay_to(&self, addr: SocketAddr) -> bool {
         // Currently, we only support IPv4, thus any IPv6 address is invalid.
-        if addr.is_ipv6() {
-            return Err(ErrorCode::from(PeerAddressFamilyMismatch));
-        }
-
-        Ok(())
+        addr.is_ipv4()
     }
 }
 
