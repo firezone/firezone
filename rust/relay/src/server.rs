@@ -1,8 +1,9 @@
+mod channel_data;
+
 use crate::rfc8656::PeerAddressFamilyMismatch;
 use crate::TimeEvents;
 use anyhow::Result;
 use bytecodec::{DecodeExt, EncodeExt};
-use bytes::{BufMut, BytesMut};
 use core::fmt;
 use rand::rngs::mock::StepRng;
 use rand::rngs::ThreadRng;
@@ -145,14 +146,33 @@ where
         sender: SocketAddr,
         now: Instant,
     ) -> Result<()> {
-        let Ok(message) = self.decoder.decode_from_bytes(bytes)? else {
-            tracing::trace!("received broken STUN message from {sender}");
-            return Ok(());
-        };
+        // De-multiplex as per <https://www.rfc-editor.org/rfc/rfc8656#name-channels-2>.
+        match bytes.first() {
+            Some(0..=3) => {
+                let Ok(message) = self.decoder.decode_from_bytes(bytes)? else {
+                    tracing::trace!("received broken STUN message from {sender}");
+                    return Ok(());
+                };
 
-        tracing::trace!("Received message {message:?} from {sender}");
+                tracing::trace!("Received message {message:?} from {sender}");
 
-        self.handle_message(message, sender, now);
+                self.handle_stun_message(message, sender, now);
+            }
+            Some(64..=79) => {
+                let (channel, data) = match channel_data::parse(&bytes) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        tracing::debug!("failed to parse channel data message: {e:#}");
+                        return Ok(());
+                    }
+                };
+
+                self.handle_channel_data_message(channel, data, sender, now);
+            }
+            _ => {
+                tracing::trace!("Received unknown message from {sender}");
+            }
+        }
 
         Ok(())
     }
@@ -179,13 +199,22 @@ where
             return
         };
 
+        if !channel.bound {
+            tracing::debug!(
+                "channel {channel_number} from {sender} to {client} existed but is unbound"
+            );
+            return;
+        }
+
         if channel.allocation != allocation_id {
-            tracing::debug!("channel {channel} is not associated with allocation {allocation_id}",);
+            tracing::debug!(
+                "channel {channel_number} is not associated with allocation {allocation_id}",
+            );
             return;
         }
 
         self.pending_commands.push_back(Command::SendMessage {
-            payload: channel_data_message(*channel_number, bytes),
+            payload: channel_data::make(*channel_number, bytes),
             recipient: *client,
         })
     }
@@ -224,7 +253,12 @@ where
         self.pending_commands.pop_front()
     }
 
-    fn handle_message(&mut self, message: Message<Attribute>, sender: SocketAddr, now: Instant) {
+    fn handle_stun_message(
+        &mut self,
+        message: Message<Attribute>,
+        sender: SocketAddr,
+        now: Instant,
+    ) {
         if message.class() == MessageClass::Request && message.method() == BINDING {
             tracing::debug!("Received STUN binding request from: {sender}");
 
@@ -488,6 +522,17 @@ where
         Ok(())
     }
 
+    #[allow(unused_variables)]
+    fn handle_channel_data_message(
+        &mut self,
+        channel: u16,
+        data: &[u8],
+        sender: SocketAddr,
+        now: Instant,
+    ) {
+        // TODO: Form payload to send data through allocation if channel exists and is bound.
+    }
+
     fn create_new_allocation(&mut self, now: Instant, lifetime: &Lifetime) -> Allocation {
         // First, find an unused port.
 
@@ -699,16 +744,6 @@ fn error_response(
     message.add_attribute(error_code.into());
 
     message
-}
-
-fn channel_data_message(channel: u16, data: &[u8]) -> Vec<u8> {
-    let mut message = BytesMut::with_capacity(2 + 2 + data.len());
-
-    message.put_u16(channel);
-    message.put_u16(data.len() as u16);
-    message.put_slice(data);
-
-    message.freeze().to_vec()
 }
 
 // Define an enum of all attributes that we care about for our server.
