@@ -1,3 +1,4 @@
+mod rfc8656;
 mod server;
 mod sleep;
 mod time_events;
