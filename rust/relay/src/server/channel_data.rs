@@ -23,3 +23,5 @@ pub(crate) fn parse(data: &[u8]) -> Result<(u16, &[u8])> {
 
     Ok((channel_number, &data[4..]))
 }
+
+// TODO: tests
