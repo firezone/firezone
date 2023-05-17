@@ -3,6 +3,8 @@ defmodule Domain.Config.Configuration do
   alias Domain.Config.Logo
 
   schema "configurations" do
+    # field :upstream_dns, {:array, :string}, default: []
+    
     field :allow_unprivileged_device_management, :boolean
     field :allow_unprivileged_device_configuration, :boolean
 

@@ -331,6 +331,13 @@ defmodule Domain.Validator do
     changeset
   end
 
+  def put_default_value(changeset, field, from: source_field) do
+    case fetch_field(changeset, source_field) do
+      {_data_or_changes, value} -> put_default_value(changeset, field, value)
+      :error -> changeset
+    end
+  end
+
   def put_default_value(changeset, field, value) do
     case fetch_field(changeset, field) do
       {:data, nil} -> put_change(changeset, field, maybe_apply(changeset, value))

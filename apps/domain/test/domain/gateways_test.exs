@@ -1,7 +1,7 @@
 defmodule Domain.GatewaysTest do
   use Domain.DataCase, async: true
   import Domain.Gateways
-  alias Domain.AccountsFixtures
+  alias Domain.{AccountsFixtures, ResourcesFixtures}
   alias Domain.{NetworkFixtures, ActorsFixtures, AuthFixtures, GatewaysFixtures}
   alias Domain.Gateways
 
@@ -437,6 +437,45 @@ defmodule Domain.GatewaysTest do
                {:error,
                 {:unauthorized,
                  [missing_permissions: [Gateways.Authorizer.manage_gateways_permission()]]}}
+    end
+  end
+
+  describe "list_connected_gateways_for_resource/1" do
+    test "returns empty list when there are no online gateways", %{account: account} do
+      resource = ResourcesFixtures.create_resource(account: account)
+
+      GatewaysFixtures.create_gateway(account: account)
+
+      GatewaysFixtures.create_gateway(account: account)
+      |> GatewaysFixtures.delete_gateway()
+
+      assert list_connected_gateways_for_resource(resource) == {:ok, []}
+    end
+
+    test "returns list of connected gateways for a given resource", %{account: account} do
+      gateway = GatewaysFixtures.create_gateway(account: account)
+
+      resource =
+        ResourcesFixtures.create_resource(
+          account: account,
+          gateways: [%{gateway_id: gateway.id}]
+        )
+
+      assert connect_gateway(gateway) == :ok
+
+      assert {:ok, [connected_gateway]} = list_connected_gateways_for_resource(resource)
+      assert connected_gateway.id == gateway.id
+    end
+
+    test "does not return connected gateways that are not connected to given resource", %{
+      account: account
+    } do
+      resource = ResourcesFixtures.create_resource(account: account)
+      gateway = GatewaysFixtures.create_gateway(account: account)
+
+      assert connect_gateway(gateway) == :ok
+
+      assert list_connected_gateways_for_resource(resource) == {:ok, []}
     end
   end
 

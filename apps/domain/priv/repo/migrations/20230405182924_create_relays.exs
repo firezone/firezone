@@ -8,6 +8,8 @@ defmodule Domain.Repo.Migrations.CreateRelays do
       add(:ipv4, :inet)
       add(:ipv6, :inet)
 
+      add(:port, :integer, null: false)
+
       add(:last_seen_user_agent, :string, null: false)
       add(:last_seen_remote_ip, :inet, null: false)
       add(:last_seen_version, :string, null: false)

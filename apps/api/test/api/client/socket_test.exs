@@ -20,6 +20,16 @@ defmodule API.Client.SocketTest do
       assert connect(Socket, attrs, @connect_info) == {:error, :invalid}
     end
 
+    test "assigns token expiration" do
+      subject = AuthFixtures.create_subject()
+      {:ok, token} = Auth.create_session_token_from_subject(subject)
+      attrs = connect_attrs(token: token)
+      assert {:ok, socket} = connect(Socket, attrs, connect_info(subject))
+      expires_at = socket.assigns.expires_at
+      assert %DateTime{} = expires_at
+      assert DateTime.diff(expires_at, DateTime.utc_now(), :second) in 1795..1805
+    end
+
     test "creates a new client" do
       subject = AuthFixtures.create_subject()
       {:ok, token} = Auth.create_session_token_from_subject(subject)
@@ -51,7 +61,7 @@ defmodule API.Client.SocketTest do
 
   describe "id/1" do
     test "creates a channel for a client" do
-      client = %{id: Ecto.UUID.generate()}
+      client = ClientsFixtures.create_client()
       socket = socket(API.Client.Socket, "", %{client: client})
 
       assert id(socket) == "client:#{client.id}"

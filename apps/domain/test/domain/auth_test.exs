@@ -847,6 +847,17 @@ defmodule Domain.AuthTest do
     end
   end
 
+  describe "fetch_session_token_expires_at/2" do
+    test "returns datetime when the token expires" do
+      subject = AuthFixtures.create_subject()
+      {:ok, token} = create_session_token_from_subject(subject)
+
+      assert {:ok, expires_at} = fetch_session_token_expires_at(token)
+      assert %DateTime{} = expires_at
+      assert DateTime.diff(expires_at, DateTime.utc_now(), :second) in 1795..1805
+    end
+  end
+
   describe "has_permission?/2" do
     setup do
       account = AccountsFixtures.create_account()

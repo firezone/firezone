@@ -1,6 +1,7 @@
 defmodule Domain.Relays do
   use Supervisor
   alias Domain.{Repo, Auth, Validator}
+  alias Domain.Resources
   alias Domain.Relays.{Authorizer, Relay, Group, Token, Presence}
 
   def start_link(opts) do
@@ -128,6 +129,34 @@ defmodule Domain.Relays do
     end
   end
 
+  def list_connected_relays_for_resource(%Resources.Resource{} = resource) do
+    connected_relays = Presence.list("relays")
+
+    relays =
+      connected_relays
+      |> Map.keys()
+      |> Relay.Query.by_ids()
+      |> Relay.Query.by_account_id(resource.account_id)
+      |> Repo.all()
+      |> Enum.map(fn relay ->
+        %{metas: [%{secret: stamp_secret}]} = Map.get(connected_relays, relay.id)
+        %{relay | stamp_secret: stamp_secret}
+      end)
+
+    {:ok, relays}
+  end
+
+  def generate_username_and_password(%Relay{stamp_secret: stamp_secret}, %DateTime{} = expires_at) do
+    expires_at = DateTime.to_unix(expires_at, :second)
+    salt = Domain.Crypto.rand_string()
+
+    hash =
+      :crypto.hash(:sha256, "#{expires_at}:#{stamp_secret}:#{salt}")
+      |> Base.encode64(padding: false, case: :lower)
+
+    %{username: "#{expires_at}:#{salt}", password: hash, expires_at: expires_at}
+  end
+
   def upsert_relay(%Token{} = token, attrs) do
     changeset = Relay.Changeset.upsert_changeset(token, attrs)
 
@@ -152,9 +181,9 @@ defmodule Domain.Relays do
     end
   end
 
-  def connect_relay(%Relay{} = relay, secret, socket) do
+  def connect_relay(%Relay{} = relay, secret) do
     {:ok, _} =
-      Presence.track(socket, relay.id, %{
+      Presence.track(self(), "relays", relay.id, %{
         online_at: System.system_time(:second),
         secret: secret
       })

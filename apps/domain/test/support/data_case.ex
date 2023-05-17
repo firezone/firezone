@@ -21,6 +21,7 @@ defmodule Domain.DataCase do
       import Ecto
       import Ecto.Changeset
       import Domain.DataCase
+
       alias Domain.Repo
     end
   end

@@ -15,10 +15,12 @@ defmodule API.Relay.ChannelTest do
     %{relay: relay, socket: socket}
   end
 
-  test "tracks presence after join", %{relay: relay, socket: socket} do
-    presence = Domain.Relays.Presence.list(socket)
+  describe "join/3" do
+    test "tracks presence after join", %{relay: relay} do
+      presence = Domain.Relays.Presence.list("relays")
 
-    assert %{metas: [%{online_at: online_at, phx_ref: _ref}]} = Map.fetch!(presence, relay.id)
-    assert is_number(online_at)
+      assert %{metas: [%{online_at: online_at, phx_ref: _ref}]} = Map.fetch!(presence, relay.id)
+      assert is_number(online_at)
+    end
   end
 end

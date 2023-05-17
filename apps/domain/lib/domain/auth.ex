@@ -205,13 +205,35 @@ defmodule Domain.Auth do
 
   # Session
 
-  # TODO: we need to leverage provider token expiration here
   def create_session_token_from_subject(%Subject{} = subject) do
     config = fetch_config!()
     key_base = Keyword.fetch!(config, :key_base)
     salt = Keyword.fetch!(config, :salt)
     payload = session_token_payload(subject)
-    {:ok, Plug.Crypto.sign(key_base, salt, payload)}
+    max_age = Keyword.fetch!(config, :max_age)
+    # TODO: we need to leverage provider token expiration here
+    # max_age = subject.expires_at
+
+    {:ok, Plug.Crypto.sign(key_base, salt, payload, max_age: max_age)}
+  end
+
+  def fetch_session_token_expires_at(token, opts \\ []) do
+    config = fetch_config!()
+    key_base = Keyword.fetch!(config, :key_base)
+    salt = Keyword.fetch!(config, :salt)
+
+    iterations = Keyword.get(opts, :key_iterations, 1000)
+    length = Keyword.get(opts, :key_length, 32)
+    digest = Keyword.get(opts, :key_digest, :sha256)
+    cache = Keyword.get(opts, :cache, Plug.Crypto.Keys)
+    secret = Plug.Crypto.KeyGenerator.generate(key_base, salt, iterations, length, digest, cache)
+
+    with {:ok, message} <- Plug.Crypto.MessageVerifier.verify(token, secret) do
+      {_data, signed, max_age} = Plug.Crypto.non_executable_binary_to_term(message)
+      DateTime.from_unix(signed + trunc(max_age * 1000), :millisecond)
+    else
+      :error -> {:error, :invalid}
+    end
   end
 
   defp session_token_payload(%Subject{identity: %Identity{} = identity, context: context}),
@@ -226,11 +248,10 @@ defmodule Domain.Auth do
     config = fetch_config!()
     key_base = Keyword.fetch!(config, :key_base)
     salt = Keyword.fetch!(config, :salt)
-    max_age = Keyword.fetch!(config, :max_age)
 
     context_payload = session_context_payload(remote_ip, user_agent)
 
-    case Plug.Crypto.verify(key_base, salt, token, max_age: max_age) do
+    case Plug.Crypto.verify(key_base, salt, token) do
       {:ok, {:identity, identity_id, ^context_payload}} ->
         {:ok, identity_id}
 

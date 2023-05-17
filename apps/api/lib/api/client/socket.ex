@@ -15,11 +15,13 @@ defmodule API.Client.Socket do
     # TODO: we want to scope tokens for specific use cases, so token generated in auth flow
     # should be only good for websockets, but not to be put in a browser cookie
     with {:ok, subject} <- Auth.sign_in(token, user_agent, remote_ip),
+         {:ok, expires_at} <- Auth.fetch_session_token_expires_at(token),
          {:ok, client} <- Clients.upsert_client(attrs, subject) do
       socket =
         socket
         |> assign(:subject, subject)
         |> assign(:client, client)
+        |> assign(:expires_at, expires_at)
 
       {:ok, socket}
     else
