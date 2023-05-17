@@ -154,6 +154,7 @@ defmodule API.Gateway.ChannelTest do
       socket_ref = make_ref()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
       preshared_key = "PSK"
+      gateway_public_key = gateway.public_key
       rtc_session_description = "RTC_SD"
 
       stamp_secret = Ecto.UUID.generate()
@@ -181,7 +182,9 @@ defmodule API.Gateway.ChannelTest do
 
       assert_reply push_ref, :ok
 
-      assert_receive {:connect, ^socket_ref, resource_id, ^gateway, ^rtc_session_description}
+      assert_receive {:connect, ^socket_ref, resource_id, ^gateway_public_key,
+                      ^rtc_session_description}
+
       assert resource_id == resource.id
     end
   end

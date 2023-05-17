@@ -35,8 +35,7 @@ defmodule API.Client.Channel do
   end
 
   def handle_info(
-        {:connect, socket_ref, resource_id, %Gateways.Gateway{} = gateway,
-         rtc_session_description},
+        {:connect, socket_ref, resource_id, gateway_public_key, rtc_session_description},
         socket
       ) do
     reply(
@@ -45,7 +44,7 @@ defmodule API.Client.Channel do
        %{
          resource_id: resource_id,
          persistent_keepalive: 25,
-         gateway_public_key: gateway.public_key,
+         gateway_public_key: gateway_public_key,
          gateway_rtc_session_description: rtc_session_description
        }}
     )

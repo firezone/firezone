@@ -49,7 +49,7 @@ defmodule API.Client.ChannelTest do
     end
 
     test "expires the channel when token is expired", %{client: client, subject: subject} do
-      expires_at = DateTime.utc_now()
+      expires_at = DateTime.utc_now() |> DateTime.add(25, :millisecond)
 
       {:ok, _reply, _socket} =
         API.Client.Socket
@@ -215,7 +215,7 @@ defmodule API.Client.ChannelTest do
 
       assert authorization_expires_at == socket.assigns.expires_at
 
-      send(channel_pid, {:connect, socket_ref, resource.id, gateway, "FULL_RTC_SD"})
+      send(channel_pid, {:connect, socket_ref, resource.id, gateway.public_key, "FULL_RTC_SD"})
 
       assert_reply ref, :ok, %{
         resource_id: ^resource_id,

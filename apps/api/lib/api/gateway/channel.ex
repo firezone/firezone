@@ -68,7 +68,8 @@ defmodule API.Gateway.Channel do
 
     send(
       channel_pid,
-      {:connect, socket_ref, resource_id, socket.assigns.gateway, rtc_session_description}
+      {:connect, socket_ref, resource_id, socket.assigns.gateway.public_key,
+       rtc_session_description}
     )
 
     {:reply, :ok, socket}
