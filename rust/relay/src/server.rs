@@ -323,7 +323,7 @@ where
             self.pending_commands
                 .push_back(Command::FreeAddresses { id: allocation.id });
             self.allocations.remove(&sender);
-            self.used_ports.remove(&port);
+            self.allocations_by_port.remove(&port);
             self.send_message(
                 refresh_success_response(effective_lifetime, message.transaction_id()),
                 sender,
