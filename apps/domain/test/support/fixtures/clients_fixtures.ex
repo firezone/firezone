@@ -1,13 +1,12 @@
 defmodule Domain.ClientsFixtures do
   alias Domain.Repo
   alias Domain.Clients
-  alias Domain.{AccountsFixtures, UsersFixtures, SubjectFixtures}
+  alias Domain.{AccountsFixtures, ActorsFixtures, AuthFixtures}
 
   def client_attrs(attrs \\ %{}) do
     Enum.into(attrs, %{
       external_id: Ecto.UUID.generate(),
       name: "client-#{counter()}",
-      preshared_key: Domain.Crypto.psk(),
       public_key: public_key()
     })
   end
@@ -15,19 +14,28 @@ defmodule Domain.ClientsFixtures do
   def create_client(attrs \\ %{}) do
     attrs = Enum.into(attrs, %{})
 
-    {account, _attrs} =
+    {account, attrs} =
       Map.pop_lazy(attrs, :account, fn ->
-        AccountsFixtures.create_account()
+        if relation = attrs[:actor] || attrs[:identity] do
+          Repo.get!(Domain.Accounts.Account, relation.account_id)
+        else
+          AccountsFixtures.create_account()
+        end
       end)
 
-    {user, attrs} =
-      Map.pop_lazy(attrs, :user, fn ->
-        UsersFixtures.create_user_with_role(:unprivileged, account: account)
+    {actor, attrs} =
+      Map.pop_lazy(attrs, :actor, fn ->
+        ActorsFixtures.create_actor(role: :admin, account: account)
+      end)
+
+    {identity, attrs} =
+      Map.pop_lazy(attrs, :identity, fn ->
+        AuthFixtures.create_identity(account: account, actor: actor)
       end)
 
     {subject, attrs} =
       Map.pop_lazy(attrs, :subject, fn ->
-        SubjectFixtures.create_subject(user)
+        AuthFixtures.create_subject(identity)
       end)
 
     attrs = client_attrs(attrs)
@@ -38,8 +46,9 @@ defmodule Domain.ClientsFixtures do
 
   def delete_client(client) do
     client = Repo.preload(client, :account)
-    admin = UsersFixtures.create_user_with_role(:admin, account: client.account)
-    subject = SubjectFixtures.create_subject(admin)
+    actor = ActorsFixtures.create_actor(role: :admin, account: client.account)
+    identity = AuthFixtures.create_identity(account: client.account, actor: actor)
+    subject = AuthFixtures.create_subject(identity)
     {:ok, client} = Clients.delete_client(client, subject)
     client
   end

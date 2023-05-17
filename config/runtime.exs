@@ -77,11 +77,6 @@ if config_env() == :prod do
       signing_salt: compile_config!(:live_view_signing_salt)
     ]
 
-  config :web, Web.SAML,
-    entity_id: compile_config!(:saml_entity_id),
-    certfile_path: compile_config!(:saml_certfile_path),
-    keyfile_path: compile_config!(:saml_keyfile_path)
-
   config :web,
     external_trusted_proxies: compile_config!(:phoenix_external_trusted_proxies),
     private_clients: compile_config!(:phoenix_private_clients)

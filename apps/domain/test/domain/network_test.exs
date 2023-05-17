@@ -13,7 +13,7 @@ defmodule Domain.NetworkTest do
       message = "fetch_next_available_address/1 must be called inside a transaction"
 
       assert_raise RuntimeError, message, fn ->
-        fetch_next_available_address!(account, :ipv4)
+        fetch_next_available_address!(account.id, :ipv4)
       end
     end
 
@@ -24,7 +24,7 @@ defmodule Domain.NetworkTest do
 
       Repo.transaction(fn ->
         assert_raise Ecto.NoResultsError, fn ->
-          fetch_next_available_address!(account, :test, cidrs: cidrs)
+          fetch_next_available_address!(account.id, :test, cidrs: cidrs)
         end
       end)
     end
@@ -36,7 +36,7 @@ defmodule Domain.NetworkTest do
 
       Repo.transaction(fn ->
         assert %Postgrex.INET{address: {102, 64, 0, last}, netmask: nil} =
-                 fetch_next_available_address!(account, :test, cidrs: cidrs)
+                 fetch_next_available_address!(account.id, :test, cidrs: cidrs)
 
         assert last in 1..2
       end)

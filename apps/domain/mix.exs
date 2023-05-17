@@ -60,7 +60,6 @@ defmodule Domain.MixProject do
       {:plug_crypto, "~> 1.2"},
       {:openid_connect, github: "firezone/openid_connect", branch: "master"},
       {:argon2_elixir, "~> 2.0"},
-      {:nimble_totp, "~> 0.2"},
 
       # Other deps
       {:telemetry, "~> 1.0"},

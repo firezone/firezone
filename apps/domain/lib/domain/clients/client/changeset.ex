@@ -1,10 +1,10 @@
 defmodule Domain.Clients.Client.Changeset do
   use Domain, :changeset
-  alias Domain.{Version, Auth, Users}
+  alias Domain.{Version, Auth}
   alias Domain.Clients
 
-  @upsert_fields ~w[external_id name public_key preshared_key]a
-  @conflict_replace_fields ~w[public_key preshared_key
+  @upsert_fields ~w[external_id name public_key]a
+  @conflict_replace_fields ~w[public_key
                               last_seen_user_agent last_seen_remote_ip
                               last_seen_version last_seen_at]a
   @update_fields ~w[name]a
@@ -14,26 +14,25 @@ defmodule Domain.Clients.Client.Changeset do
   @key_length 44
 
   def upsert_conflict_target,
-    do: {:unsafe_fragment, ~s/(account_id, user_id, external_id) WHERE deleted_at IS NULL/}
+    do: {:unsafe_fragment, ~s/(account_id, actor_id, external_id) WHERE deleted_at IS NULL/}
 
   def upsert_on_conflict, do: {:replace, @conflict_replace_fields}
 
-  def upsert_changeset(%Users.User{} = user, %Auth.Context{} = context, attrs) do
+  def upsert_changeset(%Auth.Identity{} = identity, %Auth.Context{} = context, attrs) do
     %Clients.Client{}
     |> cast(attrs, @upsert_fields)
     |> put_default_value(:name, &generate_name/0)
-    |> put_change(:user_id, user.id)
-    |> put_change(:account_id, user.account_id)
+    |> put_change(:identity_id, identity.id)
+    |> put_change(:actor_id, identity.actor_id)
+    |> put_change(:account_id, identity.account_id)
     |> put_change(:last_seen_user_agent, context.user_agent)
     |> put_change(:last_seen_remote_ip, %Postgrex.INET{address: context.remote_ip})
     |> changeset()
     |> validate_required(@required_fields)
     |> validate_base64(:public_key)
-    |> validate_base64(:preshared_key)
     |> validate_length(:public_key, is: @key_length)
-    |> validate_length(:preshared_key, is: @key_length)
-    |> unique_constraint(:ipv4)
-    |> unique_constraint(:ipv6)
+    |> unique_constraint(:ipv4, name: :clients_account_id_ipv4_index)
+    |> unique_constraint(:ipv6, name: :clients_account_id_ipv6_index)
     |> put_change(:last_seen_at, DateTime.utc_now())
     |> put_client_version()
   end
@@ -43,6 +42,8 @@ defmodule Domain.Clients.Client.Changeset do
     |> change()
     |> put_change(:ipv4, ipv4)
     |> put_change(:ipv6, ipv6)
+    |> unique_constraint(:ipv4, name: :clients_account_id_ipv4_index)
+    |> unique_constraint(:ipv6, name: :clients_account_id_ipv6_index)
   end
 
   def update_changeset(%Clients.Client{} = client, attrs) do
@@ -62,9 +63,9 @@ defmodule Domain.Clients.Client.Changeset do
     changeset
     |> trim_change(:name)
     |> validate_length(:name, min: 1, max: 255)
-    |> assoc_constraint(:user)
-    |> unique_constraint([:user_id, :name])
-    |> unique_constraint([:user_id, :public_key])
+    |> assoc_constraint(:actor)
+    |> unique_constraint([:actor_id, :name])
+    |> unique_constraint([:actor_id, :public_key])
     |> unique_constraint(:external_id)
   end
 

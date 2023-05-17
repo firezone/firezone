@@ -2,17 +2,19 @@ defmodule Domain.GatewaysTest do
   use Domain.DataCase, async: true
   import Domain.Gateways
   alias Domain.AccountsFixtures
-  alias Domain.{NetworkFixtures, UsersFixtures, SubjectFixtures, GatewaysFixtures}
+  alias Domain.{NetworkFixtures, ActorsFixtures, AuthFixtures, GatewaysFixtures}
   alias Domain.Gateways
 
   setup do
     account = AccountsFixtures.create_account()
-    user = UsersFixtures.create_user_with_role(:admin, account: account)
-    subject = SubjectFixtures.create_subject(user)
+    actor = ActorsFixtures.create_actor(role: :admin, account: account)
+    identity = AuthFixtures.create_identity(account: account, actor: actor)
+    subject = AuthFixtures.create_subject(identity)
 
     %{
       account: account,
-      user: user,
+      actor: actor,
+      identity: identity,
       subject: subject
     }
   end
@@ -46,7 +48,7 @@ defmodule Domain.GatewaysTest do
       assert fetched_group.id == group.id
     end
 
-    test "returns group that belongs to another user", %{
+    test "returns group that belongs to another actor", %{
       account: account,
       subject: subject
     } do
@@ -63,7 +65,7 @@ defmodule Domain.GatewaysTest do
     test "returns error when subject has no permission to view groups", %{
       subject: subject
     } do
-      subject = SubjectFixtures.remove_permissions(subject)
+      subject = AuthFixtures.remove_permissions(subject)
 
       assert fetch_group_by_id(Ecto.UUID.generate(), subject) ==
                {:error,
@@ -109,7 +111,7 @@ defmodule Domain.GatewaysTest do
     test "returns error when subject has no permission to manage groups", %{
       subject: subject
     } do
-      subject = SubjectFixtures.remove_permissions(subject)
+      subject = AuthFixtures.remove_permissions(subject)
 
       assert list_groups(subject) ==
                {:error,
@@ -177,7 +179,7 @@ defmodule Domain.GatewaysTest do
     test "returns error when subject has no permission to manage groups", %{
       subject: subject
     } do
-      subject = SubjectFixtures.remove_permissions(subject)
+      subject = AuthFixtures.remove_permissions(subject)
 
       assert create_group(%{}, subject) ==
                {:error,
@@ -260,7 +262,7 @@ defmodule Domain.GatewaysTest do
     } do
       group = GatewaysFixtures.create_group(account: account)
 
-      subject = SubjectFixtures.remove_permissions(subject)
+      subject = AuthFixtures.remove_permissions(subject)
 
       assert update_group(group, %{}, subject) ==
                {:error,
@@ -306,7 +308,7 @@ defmodule Domain.GatewaysTest do
     } do
       group = GatewaysFixtures.create_group()
 
-      subject = SubjectFixtures.remove_permissions(subject)
+      subject = AuthFixtures.remove_permissions(subject)
 
       assert delete_group(group, subject) ==
                {:error,
@@ -375,7 +377,7 @@ defmodule Domain.GatewaysTest do
       assert fetch_gateway_by_id(gateway.id, subject) == {:ok, gateway}
     end
 
-    test "returns gateway that belongs to another user", %{
+    test "returns gateway that belongs to another actor", %{
       account: account,
       subject: subject
     } do
@@ -391,7 +393,7 @@ defmodule Domain.GatewaysTest do
     test "returns error when subject has no permission to view gateways", %{
       subject: subject
     } do
-      subject = SubjectFixtures.remove_permissions(subject)
+      subject = AuthFixtures.remove_permissions(subject)
 
       assert fetch_gateway_by_id(Ecto.UUID.generate(), subject) ==
                {:error,
@@ -429,7 +431,7 @@ defmodule Domain.GatewaysTest do
     test "returns error when subject has no permission to manage gateways", %{
       subject: subject
     } do
-      subject = SubjectFixtures.remove_permissions(subject)
+      subject = AuthFixtures.remove_permissions(subject)
 
       assert list_gateways(subject) ==
                {:error,
@@ -642,7 +644,7 @@ defmodule Domain.GatewaysTest do
     } do
       gateway = GatewaysFixtures.create_gateway()
 
-      subject = SubjectFixtures.remove_permissions(subject)
+      subject = AuthFixtures.remove_permissions(subject)
 
       assert update_gateway(gateway, %{}, subject) ==
                {:error,
@@ -672,7 +674,7 @@ defmodule Domain.GatewaysTest do
     } do
       gateway = GatewaysFixtures.create_gateway()
 
-      subject = SubjectFixtures.remove_permissions(subject)
+      subject = AuthFixtures.remove_permissions(subject)
 
       assert delete_gateway(gateway, subject) ==
                {:error,

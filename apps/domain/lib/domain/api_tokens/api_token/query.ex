@@ -9,8 +9,8 @@ defmodule Domain.ApiTokens.ApiToken.Query do
     where(queryable, [api_tokens: api_tokens], api_tokens.id == ^id)
   end
 
-  def by_user_id(queryable \\ all(), user_id) do
-    where(queryable, [api_tokens: api_tokens], api_tokens.user_id == ^user_id)
+  def by_actor_id(queryable \\ all(), actor_id) do
+    where(queryable, [api_tokens: api_tokens], api_tokens.actor_id == ^actor_id)
   end
 
   def not_expired(queryable \\ all()) do

@@ -1,5 +1,5 @@
 defmodule Web.AcceptanceCase.Auth do
-  import ExUnit.Assertions
+  # import ExUnit.Assertions
 
   def fetch_session_cookie(session) do
     options = Web.Session.options()

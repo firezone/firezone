@@ -7,7 +7,7 @@ defmodule Domain.ApiTokens.ApiToken do
     # Developer-friendly way to set expires_at
     field :expires_in, :integer, virtual: true, default: 30
 
-    belongs_to :user, Domain.Users.User
+    belongs_to :actor, Domain.Actors.Actor
 
     timestamps(updated_at: false)
   end

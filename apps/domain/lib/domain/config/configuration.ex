@@ -32,14 +32,6 @@ defmodule Domain.Config.Configuration do
 
     embeds_one :logo, Logo, on_replace: :delete
 
-    embeds_many :openid_connect_providers,
-                Domain.Config.Configuration.OpenIDConnectProvider,
-                on_replace: :delete
-
-    embeds_many :saml_identity_providers,
-                Domain.Config.Configuration.SAMLIdentityProvider,
-                on_replace: :delete
-
     timestamps()
   end
 end

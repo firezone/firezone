@@ -9,7 +9,6 @@ defmodule Domain.Repo.Migrations.CreateClients do
       add(:name, :string, null: false)
 
       add(:public_key, :string, null: false)
-      add(:preshared_key, :binary, null: false)
 
       add(
         :ipv4,

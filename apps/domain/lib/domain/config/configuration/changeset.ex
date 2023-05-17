@@ -9,7 +9,6 @@ defmodule Domain.Config.Configuration.Changeset do
       local_auth_enabled
       allow_unprivileged_device_management
       allow_unprivileged_device_configuration
-      disable_vpn_on_oidc_error
       default_client_persistent_keepalive
       default_client_mtu
       default_client_endpoint
@@ -31,12 +30,6 @@ defmodule Domain.Config.Configuration.Changeset do
       configuration
       |> cast(attrs, @fields)
       |> cast_embed(:logo)
-      |> cast_embed(:openid_connect_providers,
-        with: {Domain.Config.Configuration.OpenIDConnectProvider, :changeset, []}
-      )
-      |> cast_embed(:saml_identity_providers,
-        with: {Domain.Config.Configuration.SAMLIdentityProvider, :changeset, []}
-      )
       |> trim_change(:default_client_dns)
       |> trim_change(:default_client_endpoint)
 

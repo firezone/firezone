@@ -14,18 +14,15 @@ defmodule Domain.Application do
     [
       # Infrastructure services
       Domain.Repo,
-      Domain.Vault,
       {Phoenix.PubSub, name: Domain.PubSub},
 
       # Application
-      {Domain.Notifications, name: Domain.Notifications},
-      # Domain.Auth,
+      Domain.Auth,
       Domain.Relays,
       Domain.Gateways,
       Domain.Clients,
 
       # Observability
-      Domain.ConnectivityChecks,
       Domain.Telemetry
     ]
   end

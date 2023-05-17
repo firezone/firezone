@@ -2,22 +2,30 @@ defmodule Domain.ClientsTest do
   use Domain.DataCase, async: true
   import Domain.Clients
   alias Domain.AccountsFixtures
-  alias Domain.{NetworkFixtures, UsersFixtures, SubjectFixtures, ClientsFixtures}
+  alias Domain.{NetworkFixtures, ActorsFixtures, AuthFixtures, ClientsFixtures}
   alias Domain.Clients
 
   setup do
     account = AccountsFixtures.create_account()
-    unprivileged_user = UsersFixtures.create_user_with_role(:unprivileged, account: account)
-    unprivileged_subject = SubjectFixtures.create_subject(unprivileged_user)
 
-    admin_user = UsersFixtures.create_user_with_role(:admin, account: account)
-    admin_subject = SubjectFixtures.create_subject(admin_user)
+    unprivileged_actor = ActorsFixtures.create_actor(role: :unprivileged, account: account)
+
+    unprivileged_identity =
+      AuthFixtures.create_identity(account: account, actor: unprivileged_actor)
+
+    unprivileged_subject = AuthFixtures.create_subject(unprivileged_identity)
+
+    admin_actor = ActorsFixtures.create_actor(role: :admin, account: account)
+    admin_identity = AuthFixtures.create_identity(account: account, actor: admin_actor)
+    admin_subject = AuthFixtures.create_subject(admin_identity)
 
     %{
       account: account,
-      unprivileged_user: unprivileged_user,
+      unprivileged_actor: unprivileged_actor,
+      unprivileged_identity: unprivileged_identity,
       unprivileged_subject: unprivileged_subject,
-      admin_user: admin_user,
+      admin_actor: admin_actor,
+      admin_identity: admin_identity,
       admin_subject: admin_subject
     }
   end
@@ -33,14 +41,14 @@ defmodule Domain.ClientsTest do
     end
   end
 
-  describe "count_by_user_id/1" do
-    test "returns 0 if user does not exist" do
-      assert count_by_user_id(Ecto.UUID.generate()) == 0
+  describe "count_by_actor_id/1" do
+    test "returns 0 if actor does not exist" do
+      assert count_by_actor_id(Ecto.UUID.generate()) == 0
     end
 
-    test "returns count of clients for a user" do
+    test "returns count of clients for a actor" do
       client = ClientsFixtures.create_client()
-      assert count_by_user_id(client.user_id) == 1
+      assert count_by_actor_id(client.actor_id) == 1
     end
   end
 
@@ -50,22 +58,22 @@ defmodule Domain.ClientsTest do
     end
 
     test "does not return deleted clients", %{
-      unprivileged_user: user,
+      unprivileged_actor: actor,
       unprivileged_subject: subject
     } do
       client =
-        ClientsFixtures.create_client(user: user)
+        ClientsFixtures.create_client(actor: actor)
         |> ClientsFixtures.delete_client()
 
       assert fetch_client_by_id(client.id, subject) == {:error, :not_found}
     end
 
-    test "returns client by id", %{unprivileged_user: user, unprivileged_subject: subject} do
-      client = ClientsFixtures.create_client(user: user)
+    test "returns client by id", %{unprivileged_actor: actor, unprivileged_subject: subject} do
+      client = ClientsFixtures.create_client(actor: actor)
       assert fetch_client_by_id(client.id, subject) == {:ok, client}
     end
 
-    test "returns client that belongs to another user with manage permission", %{
+    test "returns client that belongs to another actor with manage permission", %{
       account: account,
       unprivileged_subject: subject
     } do
@@ -73,8 +81,8 @@ defmodule Domain.ClientsTest do
 
       subject =
         subject
-        |> SubjectFixtures.remove_permissions()
-        |> SubjectFixtures.add_permission(Clients.Authorizer.manage_clients_permission())
+        |> AuthFixtures.remove_permissions()
+        |> AuthFixtures.add_permission(Clients.Authorizer.manage_clients_permission())
 
       assert fetch_client_by_id(client.id, subject) == {:ok, client}
     end
@@ -86,21 +94,21 @@ defmodule Domain.ClientsTest do
 
       subject =
         subject
-        |> SubjectFixtures.remove_permissions()
-        |> SubjectFixtures.add_permission(Clients.Authorizer.manage_clients_permission())
+        |> AuthFixtures.remove_permissions()
+        |> AuthFixtures.add_permission(Clients.Authorizer.manage_clients_permission())
 
       assert fetch_client_by_id(client.id, subject) == {:error, :not_found}
     end
 
-    test "does not return client that belongs to another user with manage_own permission", %{
+    test "does not return client that belongs to another actor with manage_own permission", %{
       unprivileged_subject: subject
     } do
       client = ClientsFixtures.create_client()
 
       subject =
         subject
-        |> SubjectFixtures.remove_permissions()
-        |> SubjectFixtures.add_permission(Clients.Authorizer.manage_own_clients_permission())
+        |> AuthFixtures.remove_permissions()
+        |> AuthFixtures.add_permission(Clients.Authorizer.manage_own_clients_permission())
 
       assert fetch_client_by_id(client.id, subject) == {:error, :not_found}
     end
@@ -113,7 +121,7 @@ defmodule Domain.ClientsTest do
     test "returns error when subject has no permission to view clients", %{
       unprivileged_subject: subject
     } do
-      subject = SubjectFixtures.remove_permissions(subject)
+      subject = AuthFixtures.remove_permissions(subject)
 
       assert fetch_client_by_id(Ecto.UUID.generate(), subject) ==
                {:error,
@@ -136,10 +144,10 @@ defmodule Domain.ClientsTest do
     end
 
     test "does not list deleted clients", %{
-      unprivileged_user: user,
+      unprivileged_actor: actor,
       unprivileged_subject: subject
     } do
-      ClientsFixtures.create_client(user: user)
+      ClientsFixtures.create_client(actor: actor)
       |> ClientsFixtures.delete_client()
 
       assert list_clients(subject) == {:ok, []}
@@ -153,24 +161,24 @@ defmodule Domain.ClientsTest do
       assert list_clients(subject) == {:ok, []}
     end
 
-    test "shows all clients owned by a user for unprivileged subject", %{
-      unprivileged_user: user,
-      admin_user: other_user,
+    test "shows all clients owned by a actor for unprivileged subject", %{
+      unprivileged_actor: actor,
+      admin_actor: other_actor,
       unprivileged_subject: subject
     } do
-      client = ClientsFixtures.create_client(user: user)
-      ClientsFixtures.create_client(user: other_user)
+      client = ClientsFixtures.create_client(actor: actor)
+      ClientsFixtures.create_client(actor: other_actor)
 
       assert list_clients(subject) == {:ok, [client]}
     end
 
     test "shows all clients for admin subject", %{
-      unprivileged_user: other_user,
-      admin_user: admin_user,
+      unprivileged_actor: other_actor,
+      admin_actor: admin_actor,
       admin_subject: subject
     } do
-      ClientsFixtures.create_client(user: admin_user)
-      ClientsFixtures.create_client(user: other_user)
+      ClientsFixtures.create_client(actor: admin_actor)
+      ClientsFixtures.create_client(actor: other_actor)
 
       assert {:ok, clients} = list_clients(subject)
       assert length(clients) == 2
@@ -179,7 +187,7 @@ defmodule Domain.ClientsTest do
     test "returns error when subject has no permission to manage clients", %{
       unprivileged_subject: subject
     } do
-      subject = SubjectFixtures.remove_permissions(subject)
+      subject = AuthFixtures.remove_permissions(subject)
 
       assert list_clients(subject) ==
                {:error,
@@ -196,72 +204,73 @@ defmodule Domain.ClientsTest do
     end
   end
 
-  describe "list_clients_by_user_id/2" do
-    test "returns empty list when there are no clients for a given user", %{
-      admin_user: user,
+  describe "list_clients_by_actor_id/2" do
+    test "returns empty list when there are no clients for a given actor", %{
+      admin_actor: actor,
       admin_subject: subject
     } do
-      assert list_clients_by_user_id(Ecto.UUID.generate(), subject) == {:ok, []}
-      assert list_clients_by_user_id(user.id, subject) == {:ok, []}
+      assert list_clients_by_actor_id(Ecto.UUID.generate(), subject) == {:ok, []}
+      assert list_clients_by_actor_id(actor.id, subject) == {:ok, []}
       ClientsFixtures.create_client()
-      assert list_clients_by_user_id(user.id, subject) == {:ok, []}
+      assert list_clients_by_actor_id(actor.id, subject) == {:ok, []}
     end
 
-    test "returns error when user id is invalid", %{admin_subject: subject} do
-      assert list_clients_by_user_id("foo", subject) == {:error, :not_found}
+    test "returns error when actor id is invalid", %{admin_subject: subject} do
+      assert list_clients_by_actor_id("foo", subject) == {:error, :not_found}
     end
 
     test "does not list deleted clients", %{
-      unprivileged_user: user,
+      unprivileged_actor: actor,
+      unprivileged_identity: identity,
       unprivileged_subject: subject
     } do
-      ClientsFixtures.create_client(user: user)
+      ClientsFixtures.create_client(identity: identity)
       |> ClientsFixtures.delete_client()
 
-      assert list_clients_by_user_id(user.id, subject) == {:ok, []}
+      assert list_clients_by_actor_id(actor.id, subject) == {:ok, []}
     end
 
-    test "does not deleted clients for users in other accounts", %{
+    test "does not deleted clients for actors in other accounts", %{
       unprivileged_subject: unprivileged_subject,
       admin_subject: admin_subject
     } do
-      user = UsersFixtures.create_user_with_role(:unprivileged)
-      ClientsFixtures.create_client(user: user)
+      actor = ActorsFixtures.create_actor(role: :unprivileged)
+      ClientsFixtures.create_client(actor: actor)
 
-      assert list_clients_by_user_id(user.id, unprivileged_subject) == {:ok, []}
-      assert list_clients_by_user_id(user.id, admin_subject) == {:ok, []}
+      assert list_clients_by_actor_id(actor.id, unprivileged_subject) == {:ok, []}
+      assert list_clients_by_actor_id(actor.id, admin_subject) == {:ok, []}
     end
 
-    test "shows only clients owned by a user for unprivileged subject", %{
-      unprivileged_user: user,
-      admin_user: other_user,
+    test "shows only clients owned by a actor for unprivileged subject", %{
+      unprivileged_actor: actor,
+      admin_actor: other_actor,
       unprivileged_subject: subject
     } do
-      client = ClientsFixtures.create_client(user: user)
-      ClientsFixtures.create_client(user: other_user)
+      client = ClientsFixtures.create_client(actor: actor)
+      ClientsFixtures.create_client(actor: other_actor)
 
-      assert list_clients_by_user_id(user.id, subject) == {:ok, [client]}
-      assert list_clients_by_user_id(other_user.id, subject) == {:ok, []}
+      assert list_clients_by_actor_id(actor.id, subject) == {:ok, [client]}
+      assert list_clients_by_actor_id(other_actor.id, subject) == {:ok, []}
     end
 
-    test "shows all clients owned by another user for admin subject", %{
-      unprivileged_user: other_user,
-      admin_user: admin_user,
+    test "shows all clients owned by another actor for admin subject", %{
+      unprivileged_actor: other_actor,
+      admin_actor: admin_actor,
       admin_subject: subject
     } do
-      ClientsFixtures.create_client(user: admin_user)
-      ClientsFixtures.create_client(user: other_user)
+      ClientsFixtures.create_client(actor: admin_actor)
+      ClientsFixtures.create_client(actor: other_actor)
 
-      assert {:ok, [_client]} = list_clients_by_user_id(admin_user.id, subject)
-      assert {:ok, [_client]} = list_clients_by_user_id(other_user.id, subject)
+      assert {:ok, [_client]} = list_clients_by_actor_id(admin_actor.id, subject)
+      assert {:ok, [_client]} = list_clients_by_actor_id(other_actor.id, subject)
     end
 
     test "returns error when subject has no permission to manage clients", %{
       unprivileged_subject: subject
     } do
-      subject = SubjectFixtures.remove_permissions(subject)
+      subject = AuthFixtures.remove_permissions(subject)
 
-      assert list_clients_by_user_id(Ecto.UUID.generate(), subject) ==
+      assert list_clients_by_actor_id(Ecto.UUID.generate(), subject) ==
                {:error,
                 {:unauthorized,
                  [
@@ -277,8 +286,8 @@ defmodule Domain.ClientsTest do
   end
 
   describe "change_client/1" do
-    test "returns changeset with given changes", %{admin_user: user} do
-      client = ClientsFixtures.create_client(user: user)
+    test "returns changeset with given changes", %{admin_actor: actor} do
+      client = ClientsFixtures.create_client(actor: actor)
       client_attrs = ClientsFixtures.client_attrs()
 
       assert changeset = change_client(client, client_attrs)
@@ -295,7 +304,6 @@ defmodule Domain.ClientsTest do
       attrs = %{
         external_id: nil,
         public_key: "x",
-        preshared_key: "x",
         ipv4: "1.1.1.256",
         ipv6: "fd01::10000"
       }
@@ -303,14 +311,14 @@ defmodule Domain.ClientsTest do
       assert {:error, changeset} = upsert_client(attrs, subject)
 
       assert errors_on(changeset) == %{
-               preshared_key: ["should be 44 character(s)", "must be a base64-encoded string"],
                public_key: ["should be 44 character(s)", "must be a base64-encoded string"],
                external_id: ["can't be blank"]
              }
     end
 
     test "allows creating client with just required attributes", %{
-      admin_user: user,
+      admin_actor: actor,
+      admin_identity: identity,
       admin_subject: subject
     } do
       attrs =
@@ -322,10 +330,10 @@ defmodule Domain.ClientsTest do
       assert client.name
 
       assert client.public_key == attrs.public_key
-      assert client.preshared_key == attrs.preshared_key
 
-      assert client.user_id == user.id
-      assert client.account_id == user.account_id
+      assert client.actor_id == actor.id
+      assert client.identity_id == identity.id
+      assert client.account_id == actor.account_id
 
       refute is_nil(client.ipv4)
       refute is_nil(client.ipv6)
@@ -363,10 +371,9 @@ defmodule Domain.ClientsTest do
       assert updated_client.last_seen_version == "0.7.411"
       assert updated_client.public_key != client.public_key
       assert updated_client.public_key == attrs.public_key
-      assert updated_client.preshared_key != client.preshared_key
-      assert updated_client.preshared_key == attrs.preshared_key
 
-      assert updated_client.user_id == client.user_id
+      assert updated_client.actor_id == client.actor_id
+      assert updated_client.identity_id == client.identity_id
       assert updated_client.ipv4 == client.ipv4
       assert updated_client.ipv6 == client.ipv6
       assert updated_client.last_seen_at
@@ -399,7 +406,7 @@ defmodule Domain.ClientsTest do
       assert %{address: updated_client.ipv6, type: :ipv6} in addresses
     end
 
-    test "allows unprivileged user to create a client for himself", %{
+    test "allows unprivileged actor to create a client for himself", %{
       admin_subject: subject
     } do
       attrs =
@@ -446,7 +453,7 @@ defmodule Domain.ClientsTest do
     test "returns error when subject has no permission to create clients", %{
       admin_subject: subject
     } do
-      subject = SubjectFixtures.remove_permissions(subject)
+      subject = AuthFixtures.remove_permissions(subject)
 
       assert upsert_client(%{}, subject) ==
                {:error,
@@ -456,8 +463,8 @@ defmodule Domain.ClientsTest do
   end
 
   describe "update_client/3" do
-    test "allows admin user to update own clients", %{admin_user: user, admin_subject: subject} do
-      client = ClientsFixtures.create_client(user: user)
+    test "allows admin actor to update own clients", %{admin_actor: actor, admin_subject: subject} do
+      client = ClientsFixtures.create_client(actor: actor)
       attrs = %{name: "new name"}
 
       assert {:ok, client} = update_client(client, attrs, subject)
@@ -465,7 +472,7 @@ defmodule Domain.ClientsTest do
       assert client.name == attrs.name
     end
 
-    test "allows admin user to update other users clients", %{
+    test "allows admin actor to update other actors clients", %{
       account: account,
       admin_subject: subject
     } do
@@ -477,11 +484,11 @@ defmodule Domain.ClientsTest do
       assert client.name == attrs.name
     end
 
-    test "allows unprivileged user to update own clients", %{
-      unprivileged_user: user,
+    test "allows unprivileged actor to update own clients", %{
+      unprivileged_actor: actor,
       unprivileged_subject: subject
     } do
-      client = ClientsFixtures.create_client(user: user)
+      client = ClientsFixtures.create_client(actor: actor)
       attrs = %{name: "new name"}
 
       assert {:ok, client} = update_client(client, attrs, subject)
@@ -489,7 +496,7 @@ defmodule Domain.ClientsTest do
       assert client.name == attrs.name
     end
 
-    test "does not allow unprivileged user to update other users clients", %{
+    test "does not allow unprivileged actor to update other actors clients", %{
       account: account,
       unprivileged_subject: subject
     } do
@@ -502,7 +509,7 @@ defmodule Domain.ClientsTest do
                  [missing_permissions: [Clients.Authorizer.manage_clients_permission()]]}}
     end
 
-    test "does not allow admin user to update clients in other accounts", %{
+    test "does not allow admin actor to update clients in other accounts", %{
       admin_subject: subject
     } do
       client = ClientsFixtures.create_client()
@@ -512,10 +519,10 @@ defmodule Domain.ClientsTest do
     end
 
     test "does not allow to reset required fields to empty values", %{
-      admin_user: user,
+      admin_actor: actor,
       admin_subject: subject
     } do
-      client = ClientsFixtures.create_client(user: user)
+      client = ClientsFixtures.create_client(actor: actor)
       attrs = %{name: nil, public_key: nil}
 
       assert {:error, changeset} = update_client(client, attrs, subject)
@@ -523,8 +530,8 @@ defmodule Domain.ClientsTest do
       assert errors_on(changeset) == %{name: ["can't be blank"]}
     end
 
-    test "returns error on invalid attrs", %{admin_user: user, admin_subject: subject} do
-      client = ClientsFixtures.create_client(user: user)
+    test "returns error on invalid attrs", %{admin_actor: actor, admin_subject: subject} do
+      client = ClientsFixtures.create_client(actor: actor)
 
       attrs = %{
         name: String.duplicate("a", 256)
@@ -538,10 +545,10 @@ defmodule Domain.ClientsTest do
     end
 
     test "ignores updates for any field except name", %{
-      admin_user: user,
+      admin_actor: actor,
       admin_subject: subject
     } do
-      client = ClientsFixtures.create_client(user: user)
+      client = ClientsFixtures.create_client(actor: actor)
 
       fields = Clients.Client.__schema__(:fields) -- [:name]
       value = -1
@@ -553,12 +560,12 @@ defmodule Domain.ClientsTest do
     end
 
     test "returns error when subject has no permission to update clients", %{
-      admin_user: user,
+      admin_actor: actor,
       admin_subject: subject
     } do
-      client = ClientsFixtures.create_client(user: user)
+      client = ClientsFixtures.create_client(actor: actor)
 
-      subject = SubjectFixtures.remove_permissions(subject)
+      subject = AuthFixtures.remove_permissions(subject)
 
       assert update_client(client, %{}, subject) ==
                {:error,
@@ -575,26 +582,26 @@ defmodule Domain.ClientsTest do
   end
 
   describe "delete_client/2" do
-    test "returns error on state conflict", %{admin_user: user, admin_subject: subject} do
-      client = ClientsFixtures.create_client(user: user)
+    test "returns error on state conflict", %{admin_actor: actor, admin_subject: subject} do
+      client = ClientsFixtures.create_client(actor: actor)
 
       assert {:ok, deleted} = delete_client(client, subject)
       assert delete_client(deleted, subject) == {:error, :not_found}
       assert delete_client(client, subject) == {:error, :not_found}
     end
 
-    test "admin can delete own clients", %{admin_user: user, admin_subject: subject} do
-      client = ClientsFixtures.create_client(user: user)
+    test "admin can delete own clients", %{admin_actor: actor, admin_subject: subject} do
+      client = ClientsFixtures.create_client(actor: actor)
 
       assert {:ok, deleted} = delete_client(client, subject)
       assert deleted.deleted_at
     end
 
     test "admin can delete other people clients", %{
-      unprivileged_user: user,
+      unprivileged_actor: actor,
       admin_subject: subject
     } do
-      client = ClientsFixtures.create_client(user: user)
+      client = ClientsFixtures.create_client(actor: actor)
 
       assert {:ok, deleted} = delete_client(client, subject)
       assert deleted.deleted_at
@@ -609,10 +616,11 @@ defmodule Domain.ClientsTest do
     end
 
     test "unprivileged can delete own clients", %{
-      unprivileged_user: user,
+      account: account,
+      unprivileged_actor: actor,
       unprivileged_subject: subject
     } do
-      client = ClientsFixtures.create_client(user: user)
+      client = ClientsFixtures.create_client(account: account, actor: actor)
 
       assert {:ok, deleted} = delete_client(client, subject)
       assert deleted.deleted_at
@@ -640,12 +648,12 @@ defmodule Domain.ClientsTest do
     end
 
     test "returns error when subject has no permission to delete clients", %{
-      admin_user: user,
+      admin_actor: actor,
       admin_subject: subject
     } do
-      client = ClientsFixtures.create_client(user: user)
+      client = ClientsFixtures.create_client(actor: actor)
 
-      subject = SubjectFixtures.remove_permissions(subject)
+      subject = AuthFixtures.remove_permissions(subject)
 
       assert delete_client(client, subject) ==
                {:error,

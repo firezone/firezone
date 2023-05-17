@@ -134,7 +134,7 @@ defmodule Domain.Config do
     changeset = Configuration.Changeset.changeset(config, attrs)
 
     with {:ok, config} <- Repo.update(changeset) do
-      Domain.Auth.SAML.StartProxy.refresh(config.saml_identity_providers)
+      # Domain.Auth.SAML.StartProxy.refresh(config.saml_identity_providers)
       {:ok, config}
     end
   end

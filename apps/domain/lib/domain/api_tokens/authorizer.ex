@@ -18,14 +18,14 @@ defmodule Domain.ApiTokens.Authorizer do
   end
 
   @impl Domain.Auth.Authorizer
-  def for_subject(queryable, %Subject{} = subject) when is_user(subject) do
+  def for_subject(queryable, %Subject{} = subject) do
     cond do
       has_permission?(subject, manage_api_tokens_permission()) ->
         queryable
 
       has_permission?(subject, manage_own_api_tokens_permission()) ->
-        {:user, %{id: user_id}} = subject.actor
-        ApiToken.Query.by_user_id(queryable, user_id)
+        %{actor_id: actor_id} = subject.identity
+        ApiToken.Query.by_actor_id(queryable, actor_id)
     end
   end
 
@@ -35,9 +35,9 @@ defmodule Domain.ApiTokens.Authorizer do
         :ok
 
       has_permission?(subject, manage_own_api_tokens_permission()) ->
-        {:user, %{id: user_id}} = subject.actor
+        %{type: :user, id: actor_id} = subject.identity
 
-        if api_token.user_id == user_id do
+        if api_token.actor_id == actor_id do
           :ok
         else
           {:error, :unauthorized}

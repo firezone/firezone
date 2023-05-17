@@ -55,38 +55,38 @@ defmodule Domain.Config.ValidatorTest do
                {:error, [{"invalid", ["must be one of: integer, boolean"]}]}
     end
 
-    test "validates embeds" do
-      type = {:json_array, {:embed, Domain.Config.Configuration.SAMLIdentityProvider}}
+    # test "validates embeds" do
+    #   type = {:json_array, {:embed, Domain.Config.Configuration.SAMLIdentityProvider}}
 
-      opts = [
-        changeset: {Domain.Config.Configuration.SAMLIdentityProvider, :create_changeset, []}
-      ]
+    #   opts = [
+    #     changeset: {Domain.Config.Configuration.SAMLIdentityProvider, :create_changeset, []}
+    #   ]
 
-      attrs = Domain.ConfigFixtures.saml_identity_providers_attrs()
+    #   attrs = Domain.ConfigFixtures.saml_identity_providers_attrs()
 
-      assert validate(:key, [attrs], type, opts) ==
-               {:ok,
-                [
-                  %Domain.Config.Configuration.SAMLIdentityProvider{
-                    auto_create_users: attrs["auto_create_users"],
-                    base_url: "http://localhost:13000/auth/saml",
-                    id: attrs["id"],
-                    label: attrs["label"],
-                    metadata: attrs["metadata"]
-                  }
-                ]}
+    #   assert validate(:key, [attrs], type, opts) ==
+    #            {:ok,
+    #             [
+    #               %Domain.Config.Configuration.SAMLIdentityProvider{
+    #                 auto_create_users: attrs["auto_create_users"],
+    #                 base_url: "http://localhost:13000/auth/saml",
+    #                 id: attrs["id"],
+    #                 label: attrs["label"],
+    #                 metadata: attrs["metadata"]
+    #               }
+    #             ]}
 
-      assert validate(:key, [%{"id" => "saml"}], type, opts) ==
-               {:error,
-                [
-                  {%{"id" => "saml"},
-                   [
-                     "auto_create_users can't be blank",
-                     "id is reserved",
-                     "label can't be blank",
-                     "metadata can't be blank"
-                   ]}
-                ]}
-    end
+    #   assert validate(:key, [%{"id" => "saml"}], type, opts) ==
+    #            {:error,
+    #             [
+    #               {%{"id" => "saml"},
+    #                [
+    #                  "auto_create_users can't be blank",
+    #                  "id is reserved",
+    #                  "label can't be blank",
+    #                  "metadata can't be blank"
+    #                ]}
+    #             ]}
+    # end
   end
 end

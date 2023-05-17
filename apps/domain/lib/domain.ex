@@ -20,6 +20,7 @@ defmodule Domain do
   def changeset do
     quote do
       import Ecto.Changeset
+      import Domain.Changeset
       import Domain.Validator
     end
   end
