@@ -574,7 +574,6 @@ defmodule Domain.ConfigTest do
                  "must be one of: Elixir.Domain.Types.IP, string"
                ],
                default_client_persistent_keepalive: ["must be greater than or equal to 0"],
-               disable_vpn_on_oidc_error: ["is invalid"],
                local_auth_enabled: ["is invalid"],
                vpn_session_duration: ["must be greater than or equal to 0"]
              }

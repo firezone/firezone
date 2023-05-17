@@ -1,7 +1,7 @@
 defmodule Domain.Clients do
   use Supervisor
   alias Domain.{Repo, Auth, Validator}
-  alias Domain.{Users}
+  alias Domain.Actors
   alias Domain.Clients.{Client, Authorizer, Presence}
 
   def start_link(opts) do
@@ -21,8 +21,8 @@ defmodule Domain.Clients do
     |> Repo.aggregate(:count)
   end
 
-  def count_by_user_id(user_id) do
-    Client.Query.by_user_id(user_id)
+  def count_by_actor_id(actor_id) do
+    Client.Query.by_actor_id(actor_id)
     |> Repo.aggregate(:count)
   end
 
@@ -68,11 +68,11 @@ defmodule Domain.Clients do
     end
   end
 
-  def list_clients_for_user(%Users.User{} = user, %Auth.Subject{} = subject) do
-    list_clients_by_user_id(user.id, subject)
+  def list_clients_for_actor(%Actors.Actor{} = actor, %Auth.Subject{} = subject) do
+    list_clients_by_actor_id(actor.id, subject)
   end
 
-  def list_clients_by_user_id(user_id, %Auth.Subject{} = subject) do
+  def list_clients_by_actor_id(actor_id, %Auth.Subject{} = subject) do
     required_permissions =
       {:one_of,
        [
@@ -81,8 +81,8 @@ defmodule Domain.Clients do
        ]}
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions),
-         true <- Validator.valid_uuid?(user_id) do
-      Client.Query.by_user_id(user_id)
+         true <- Validator.valid_uuid?(actor_id) do
+      Client.Query.by_actor_id(actor_id)
       |> Authorizer.for_subject(subject)
       |> Repo.list()
     else
@@ -95,9 +95,9 @@ defmodule Domain.Clients do
     Client.Changeset.update_changeset(client, attrs)
   end
 
-  def upsert_client(attrs \\ %{}, %Auth.Subject{actor: {:user, %Users.User{} = user}} = subject) do
+  def upsert_client(attrs \\ %{}, %Auth.Subject{identity: %Auth.Identity{} = identity} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_own_clients_permission()) do
-      changeset = Client.Changeset.upsert_changeset(user, subject.context, attrs)
+      changeset = Client.Changeset.upsert_changeset(identity, subject.context, attrs)
 
       Ecto.Multi.new()
       |> Ecto.Multi.insert(:client, changeset,
@@ -130,7 +130,7 @@ defmodule Domain.Clients do
   end
 
   def update_client(%Client{} = client, attrs, %Auth.Subject{} = subject) do
-    with :ok <- authorize_user_client_management(client.user_id, subject) do
+    with :ok <- authorize_actor_client_management(client.actor_id, subject) do
       Client.Query.by_id(client.id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(with: &Client.Changeset.update_changeset(&1, attrs))
@@ -138,28 +138,23 @@ defmodule Domain.Clients do
   end
 
   def delete_client(%Client{} = client, %Auth.Subject{} = subject) do
-    with :ok <- authorize_user_client_management(client.user_id, subject) do
+    with :ok <- authorize_actor_client_management(client.actor_id, subject) do
       Client.Query.by_id(client.id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(with: &Client.Changeset.delete_changeset/1)
     end
   end
 
-  def authorize_user_client_management(%Users.User{} = user, %Auth.Subject{} = subject) do
-    authorize_user_client_management(user.id, subject)
+  def authorize_actor_client_management(%Actors.Actor{} = actor, %Auth.Subject{} = subject) do
+    authorize_actor_client_management(actor.id, subject)
   end
 
-  def authorize_user_client_management(user_id, %Auth.Subject{} = subject) do
-    required_permissions =
-      case subject.actor do
-        {:user, %{id: ^user_id}} ->
-          Authorizer.manage_own_clients_permission()
+  def authorize_actor_client_management(actor_id, %Auth.Subject{actor: %{id: actor_id}} = subject) do
+    Auth.ensure_has_permissions(subject, Authorizer.manage_own_clients_permission())
+  end
 
-        _other ->
-          Authorizer.manage_clients_permission()
-      end
-
-    Auth.ensure_has_permissions(subject, required_permissions)
+  def authorize_actor_client_management(_actor_id, %Auth.Subject{} = subject) do
+    Auth.ensure_has_permissions(subject, Authorizer.manage_clients_permission())
   end
 
   def connect_client(%Client{} = client, socket) do

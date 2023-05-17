@@ -193,13 +193,6 @@ config :web, Web.Mailer,
   adapter: Web.Mailer.NoopAdapter,
   from_email: "test@firez.one"
 
-config :samly, Samly.State, store: Samly.State.Session
-
-config :samly, Samly.Provider,
-  idp_id_from: :path_segment,
-  service_providers: [],
-  identity_providers: []
-
 config :esbuild,
   version: "0.14.41",
   default: [
