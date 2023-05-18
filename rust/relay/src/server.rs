@@ -540,15 +540,44 @@ where
         Ok(())
     }
 
-    #[allow(unused_variables)]
     fn handle_channel_data_message(
         &mut self,
-        channel: u16,
+        requested_channel: u16,
         data: &[u8],
         sender: SocketAddr,
-        now: Instant,
+        _: Instant,
     ) {
-        // TODO: Form payload to send data through allocation if channel exists and is bound.
+        let Some(channel) = self.channel_numbers_by_peer.get(&sender) else {
+            tracing::debug!("Client {sender} does not have an active channel");
+            return;
+        };
+
+        if channel != requested_channel {
+            tracing::debug!("Client {sender} is not bound to channel {requested_channel}");
+            return;
+        }
+
+        let Some(channel) = self.channels_by_number.get(&channel) else {
+            tracing::debug!("Channel {channel} does not exist, refusing to forward data");
+            return;
+        };
+
+        if !channel.bound {
+            tracing::debug!("Channel {channel} exists but is unbound");
+            return;
+        }
+
+        tracing::debug!(
+            "Relaying {} bytes from {sender} to {} via channel {channel}",
+            data.len(),
+            channel.peer_address
+        );
+
+        self.pending_commands.push_back(Command::ForwardData {
+            id: channel.allocation,
+            data: data.to_vec(),
+            receiver: channel.peer_address,
+        });
     }
 
     fn create_new_allocation(&mut self, now: Instant, lifetime: &Lifetime) -> Allocation {

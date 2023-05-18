@@ -270,9 +270,6 @@ async fn forward_incoming_relay_data(
             }
 
             Some((data, recipient)) = client_to_peer_receiver.next() => {
-
-                tracing::debug!("Relaying {} bytes to {}", data.len(), recipient);
-
                 socket.send_to(&data, recipient).await?;
             }
         }
