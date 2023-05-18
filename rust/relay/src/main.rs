@@ -2,14 +2,14 @@ use anyhow::{Context, Result};
 use futures::channel::mpsc;
 use futures::{FutureExt, SinkExt, StreamExt};
 use relay::{AllocationId, Command, Server, Sleep};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::convert::Infallible;
 use std::error::Error;
 use std::io;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::pin::Pin;
 use std::str::FromStr;
-use std::task::{ready, Poll};
+use std::task::Poll;
 use std::time::Instant;
 use tokio::io::ReadBuf;
 use tokio::net::UdpSocket;
@@ -60,6 +60,8 @@ struct Eventloop<'a> {
     relay_data_receiver: mpsc::Receiver<(Vec<u8>, SocketAddr, AllocationId)>,
     sleep: Sleep,
     recv_buf: ReadBuf<'a>,
+
+    client_send_buffer: VecDeque<(Vec<u8>, SocketAddr)>,
 }
 
 impl<'a> Eventloop<'a> {
@@ -79,30 +81,17 @@ impl<'a> Eventloop<'a> {
             relay_data_receiver: receiver,
             sleep: Sleep::default(),
             recv_buf,
+            client_send_buffer: Default::default(),
         })
     }
 
     fn poll(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<()>> {
         loop {
             // Priority 1: Execute the pending commands of the server.
-            // This may require us to be able to send data into the socket.
-            // If the socket is not ready, don't poll new commands from the server.
-            ready!(self.ip4_socket.poll_send_ready(cx)?);
-
             if let Some(next_command) = self.server.next_command() {
                 match next_command {
                     Command::SendMessage { payload, recipient } => {
-                        if tracing::enabled!(target: "wire", Level::TRACE) {
-                            let hex_bytes = hex::encode(&payload);
-                            tracing::trace!(target: "wire", r#"Output::SendMessage("{recipient}","{hex_bytes}")"#);
-                        }
-
-                        let bytes_sent = self
-                            .ip4_socket
-                            .try_send_to(&payload, recipient)
-                            .expect("TODO: error handling");
-
-                        debug_assert_eq!(bytes_sent, payload.len());
+                        self.client_send_buffer.push_back((payload, recipient));
                     }
                     Command::AllocateAddresses { id, port } => {
                         self.allocations.insert(id, tokio::spawn({
@@ -136,13 +125,40 @@ impl<'a> Eventloop<'a> {
                 continue; // Attempt to process more commands.
             }
 
-            // Priority 2: Handle time-sensitive tasks:
+            // Priority 2: Flush data to the socket.
+            if let Some((payload, recipient)) = self.client_send_buffer.pop_front() {
+                match self.ip4_socket.poll_send_ready(cx)? {
+                    Poll::Ready(()) => {
+                        if tracing::enabled!(target: "wire", Level::TRACE) {
+                            let hex_bytes = hex::encode(&payload);
+                            tracing::trace!(target: "wire", r#"Output::SendMessage("{recipient}","{hex_bytes}")"#);
+                        }
+
+                        let bytes_sent = self
+                            .ip4_socket
+                            .try_send_to(&payload, recipient)
+                            .expect("TODO: error handling");
+
+                        debug_assert_eq!(bytes_sent, payload.len());
+                        continue;
+                    }
+                    Poll::Pending => {
+                        // Yield early if we cannot send data.
+                        // Continuing the event loop here would cause `client_send_buffer` to potentially grow faster than we can send data.
+
+                        self.client_send_buffer.push_front((payload, recipient));
+                        return Poll::Pending;
+                    }
+                }
+            }
+
+            // Priority 3: Handle time-sensitive tasks:
             if self.sleep.poll_unpin(cx).is_ready() {
                 self.server.handle_deadline_reached(Instant::now());
                 continue; // Handle potentially new commands.
             }
 
-            // Priority 3: Handle relayed data (we prioritize latency for existing allocations over making new ones)
+            // Priority 4: Handle relayed data (we prioritize latency for existing allocations over making new ones)
             if let Poll::Ready(Some((data, sender, allocation))) =
                 self.relay_data_receiver.poll_next_unpin(cx)
             {
@@ -150,8 +166,7 @@ impl<'a> Eventloop<'a> {
                 continue; // Handle potentially new commands.
             }
 
-            // Priority 4: Accept new allocations / answer STUN requests etc
-
+            // Priority 5: Accept new allocations / answer STUN requests etc
             if let Poll::Ready(sender) = self.ip4_socket.poll_recv_from(cx, &mut self.recv_buf)? {
                 self.server
                     .handle_client_input(self.recv_buf.filled(), sender, Instant::now())?;
