@@ -239,16 +239,26 @@ where
                         self.delete_allocation(id)
                     }
                 }
-                TimedAction::ExpireChannelBinding(chan) => {
-                    let Some(channel) = self.channels_by_number.get(&chan) else {
+                TimedAction::UnbindChannel(chan) => {
+                    let Some(channel) = self.channels_by_number.get_mut(&chan) else {
                         tracing::debug!("Cannot expire non-existing channel binding {chan}");
 
                         continue;
                     };
 
                     if channel.is_expired(now) {
-                        self.delete_channel_binding(chan)
+                        tracing::info!("Channel {chan} is now expired");
+
+                        channel.bound = false;
+
+                        self.time_events.add(
+                            now + Duration::from_secs(5 * 60),
+                            TimedAction::DeleteChannel(chan),
+                        );
                     }
+                }
+                TimedAction::DeleteChannel(chan) => {
+                    self.delete_channel_binding(chan);
                 }
             }
         }
@@ -505,7 +515,7 @@ where
 
             self.time_events.add(
                 channel.expiry,
-                TimedAction::ExpireChannelBinding(requested_channel),
+                TimedAction::UnbindChannel(requested_channel),
             );
             self.send_message(
                 channel_bind_success_response(message.transaction_id()),
@@ -725,7 +735,8 @@ impl Allocation {
 
 enum TimedAction {
     ExpireAllocation(AllocationId),
-    ExpireChannelBinding(u16),
+    UnbindChannel(u16),
+    DeleteChannel(u16),
 }
 
 /// Computes the effective lifetime of an allocation.
