@@ -13,8 +13,10 @@ use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::time::{Duration, Instant};
-use stun_codec::rfc5389::attributes::{ErrorCode, MessageIntegrity, XorMappedAddress};
-use stun_codec::rfc5389::errors::BadRequest;
+use stun_codec::rfc5389::attributes::{
+    ErrorCode, MessageIntegrity, Nonce, Realm, XorMappedAddress,
+};
+use stun_codec::rfc5389::errors::{BadRequest, Unauthorized};
 use stun_codec::rfc5389::methods::BINDING;
 use stun_codec::rfc5766::attributes::{
     ChannelNumber, Lifetime, RequestedTransport, XorPeerAddress, XorRelayAddress,
@@ -303,6 +305,14 @@ where
         if message.class() == MessageClass::Request && message.method() == ALLOCATE {
             let transaction_id = message.transaction_id();
 
+            match message.get_attribute::<MessageIntegrity>() {
+                Some(_) => {}
+                None => {
+                    self.send_message(unauthorized(transaction_id, ALLOCATE), sender);
+                    return;
+                }
+            }
+
             if let Err(e) = self.handle_allocate_request(message, sender, now) {
                 self.send_message(error_response(transaction_id, ALLOCATE, e), sender);
             }
@@ -313,6 +323,14 @@ where
         if message.class() == MessageClass::Request && message.method() == REFRESH {
             let transaction_id = message.transaction_id();
 
+            match message.get_attribute::<MessageIntegrity>() {
+                Some(_) => {}
+                None => {
+                    self.send_message(unauthorized(transaction_id, REFRESH), sender);
+                    return;
+                }
+            }
+
             if let Err(e) = self.handle_refresh_request(message, sender, now) {
                 self.send_message(error_response(transaction_id, ALLOCATE, e), sender);
             }
@@ -322,6 +340,14 @@ where
 
         if message.class() == MessageClass::Request && message.method() == CHANNEL_BIND {
             let transaction_id = message.transaction_id();
+
+            match message.get_attribute::<MessageIntegrity>() {
+                Some(_) => {}
+                None => {
+                    self.send_message(unauthorized(transaction_id, CHANNEL_BIND), sender);
+                    return;
+                }
+            }
 
             if let Err(e) = self.handle_channel_bind_request(message, sender, now) {
                 self.send_message(error_response(transaction_id, CHANNEL_BIND, e), sender);
@@ -864,6 +890,15 @@ fn error_response(
     message
 }
 
+fn unauthorized(transaction_id: TransactionId, method: Method) -> Message<Attribute> {
+    let mut message = Message::new(MessageClass::ErrorResponse, method, transaction_id);
+    message.add_attribute(ErrorCode::from(Unauthorized).into());
+    message.add_attribute(Nonce::new("foobar".to_owned()).unwrap().into());
+    message.add_attribute(Realm::new("firezone".to_owned()).unwrap().into());
+
+    message
+}
+
 // Define an enum of all attributes that we care about for our server.
 stun_codec::define_attribute_enums!(
     Attribute,
@@ -877,7 +912,9 @@ stun_codec::define_attribute_enums!(
         XorRelayAddress,
         Lifetime,
         ChannelNumber,
-        XorPeerAddress
+        XorPeerAddress,
+        Nonce,
+        Realm
     ]
 );
 
