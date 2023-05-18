@@ -161,11 +161,9 @@ where
         match bytes.first() {
             Some(0..=3) => {
                 let Ok(message) = self.decoder.decode_from_bytes(bytes)? else {
-                    tracing::trace!("received broken STUN message from {sender}");
+                    tracing::trace!(target: "relay", "received broken STUN message from {sender}");
                     return Ok(());
                 };
-
-                tracing::trace!("Received message {message:?} from {sender}");
 
                 self.handle_stun_message(message, sender, now);
             }
@@ -173,7 +171,10 @@ where
                 let (channel, data) = match channel_data::parse(bytes) {
                     Ok(v) => v,
                     Err(e) => {
-                        tracing::debug!("failed to parse channel data message: {e:#}");
+                        tracing::debug!(
+                            target: "relay",
+                            "failed to parse channel data message: {e:#}"
+                        );
                         return Ok(());
                     }
                 };
@@ -181,7 +182,7 @@ where
                 self.handle_channel_data_message(channel, data, sender, now);
             }
             _ => {
-                tracing::trace!("Received unknown message from {sender}");
+                tracing::trace!(target: "relay", "Received unknown message from {sender}");
             }
         }
 
@@ -196,12 +197,12 @@ where
         allocation_id: AllocationId,
     ) {
         let Some(client) = self.clients_by_allocation.get(&allocation_id) else {
-            tracing::debug!("unknown allocation {allocation_id}");
+            tracing::debug!(target: "relay", "unknown allocation {allocation_id}");
             return;
         };
 
         let Some(channel_number) = self.channel_numbers_by_peer.get(&sender) else {
-            tracing::debug!("no active channel for {sender}");
+            tracing::debug!(target: "relay", "no active channel for {sender}");
             return;
         };
 
@@ -212,6 +213,7 @@ where
 
         if !channel.bound {
             tracing::debug!(
+                target: "relay",
                 "channel {channel_number} from {sender} to {client} existed but is unbound"
             );
             return;
@@ -219,13 +221,13 @@ where
 
         if channel.allocation != allocation_id {
             tracing::debug!(
+                target: "relay",
                 "channel {channel_number} is not associated with allocation {allocation_id}",
             );
             return;
         }
 
-        tracing::debug!(
-            "Relaying {} bytes from {sender} to {client} via channel {channel_number}",
+        tracing::debug!(target: "relay", "Relaying {} bytes from {sender} to {client} via channel {channel_number}",
             bytes.len()
         );
 
@@ -240,7 +242,7 @@ where
             match action {
                 TimedAction::ExpireAllocation(id) => {
                     let Some(allocation) = self.get_allocation(&id) else {
-                        tracing::debug!("Cannot expire non-existing allocation {id}");
+                        tracing::debug!(target: "relay", "Cannot expire non-existing allocation {id}");
 
                         continue;
                     };
@@ -251,13 +253,13 @@ where
                 }
                 TimedAction::UnbindChannel(chan) => {
                     let Some(channel) = self.channels_by_number.get_mut(&chan) else {
-                        tracing::debug!("Cannot expire non-existing channel binding {chan}");
+                        tracing::debug!(target: "relay", "Cannot expire non-existing channel binding {chan}");
 
                         continue;
                     };
 
                     if channel.is_expired(now) {
-                        tracing::info!("Channel {chan} is now expired");
+                        tracing::info!(target: "relay", "Channel {chan} is now expired");
 
                         channel.bound = false;
 
@@ -286,14 +288,20 @@ where
         now: Instant,
     ) {
         if message.class() == MessageClass::Request && message.method() == BINDING {
-            tracing::debug!("Received STUN binding request from: {sender}");
+            tracing::debug!(
+                target: "relay",
+                "Received STUN binding request from: {sender}"
+            );
 
             self.handle_binding_request(message, sender);
             return;
         }
 
         if message.class() == MessageClass::Request && message.method() == ALLOCATE {
-            tracing::debug!("Received TURN allocate request from: {sender}");
+            tracing::debug!(
+                target: "relay",
+                "Received TURN allocate request from: {sender}"
+            );
 
             let transaction_id = message.transaction_id();
 
@@ -305,7 +313,10 @@ where
         }
 
         if message.class() == MessageClass::Request && message.method() == REFRESH {
-            tracing::debug!("Received TURN refresh request from: {sender}");
+            tracing::debug!(
+                target: "relay",
+                "Received TURN refresh request from: {sender}"
+            );
 
             let transaction_id = message.transaction_id();
 
@@ -317,7 +328,10 @@ where
         }
 
         if message.class() == MessageClass::Request && message.method() == CHANNEL_BIND {
-            tracing::debug!("Received TURN channel bind request from: {sender}");
+            tracing::debug!(
+                target: "relay",
+                "Received TURN channel bind request from: {sender}"
+            );
 
             let transaction_id = message.transaction_id();
 
@@ -344,7 +358,8 @@ where
         }
 
         tracing::debug!(
-            "Unhandled message of type {:?} and method {:?} from {}",
+            target: "relay",
+            "Unhandled {:?} with {:?} from {}",
             message.class(),
             message.method(),
             sender
@@ -422,6 +437,7 @@ where
         self.send_message(message, sender);
 
         tracing::info!(
+            target: "relay",
             "Created new allocation for {sender} on port {} and lifetime {}s",
             allocation.port,
             effective_lifetime.lifetime().as_secs()
@@ -463,7 +479,10 @@ where
                 sender,
             );
 
-            tracing::info!("Deleted allocation for {sender} on port {port}");
+            tracing::info!(
+                target: "relay",
+                "Deleted allocation for {sender} on port {port}"
+            );
 
             return Ok(());
         }
@@ -471,6 +490,7 @@ where
         allocation.expires_at = now + effective_lifetime.lifetime();
 
         tracing::info!(
+            target: "relay",
             "Refreshed allocation for {sender} on port {} and lifetime {}s",
             allocation.port,
             effective_lifetime.lifetime().as_secs()
@@ -512,17 +532,18 @@ where
 
         let peer_address = message
             .get_attribute::<XorPeerAddress>()
-            .ok_or(ErrorCode::from(BadRequest))?;
+            .ok_or(ErrorCode::from(BadRequest))?
+            .address();
 
         // Note: `channel_number` is enforced to be in the correct range.
 
         // Check that our allocation can handle the requested peer addr.
-        if !allocation.can_relay_to(peer_address.address()) {
+        if !allocation.can_relay_to(peer_address) {
             return Err(ErrorCode::from(PeerAddressFamilyMismatch));
         }
 
         // Ensure the same address isn't already bound to a different channel.
-        if let Some(number) = self.channel_numbers_by_peer.get(&peer_address.address()) {
+        if let Some(number) = self.channel_numbers_by_peer.get(&peer_address) {
             if number != &requested_channel {
                 return Err(ErrorCode::from(BadRequest));
             }
@@ -530,13 +551,15 @@ where
 
         // Ensure the channel is not already bound to a different address.
         if let Some(channel) = self.channels_by_number.get_mut(&requested_channel) {
-            if channel.peer_address != peer_address.address() {
+            if channel.peer_address != peer_address {
                 return Err(ErrorCode::from(BadRequest));
             }
 
             // Binding requests for existing channels act as a refresh for the binding.
 
             channel.refresh(now);
+
+            tracing::info!(target: "relay", "Refreshed channel binding {requested_channel} between {sender} and {peer_address} on allocation {}", allocation.id);
 
             self.time_events.add(
                 channel.expiry,
@@ -595,27 +618,26 @@ where
         _: Instant,
     ) {
         let Some(channel_number) = self.channel_numbers_by_peer.get(&sender).copied() else {
-            tracing::debug!("Client {sender} does not have an active channel");
+            tracing::debug!(target: "relay", "Client {sender} does not have an active channel");
             return;
         };
 
         if channel_number != requested_channel {
-            tracing::debug!("Client {sender} is not bound to channel {requested_channel}");
+            tracing::debug!(target: "relay", "Client {sender} is not bound to channel {requested_channel}");
             return;
         }
 
         let Some(channel) = self.channels_by_number.get(&channel_number) else {
-            tracing::debug!("Channel {channel_number} does not exist, refusing to forward data");
+            tracing::debug!(target: "relay", "Channel {channel_number} does not exist, refusing to forward data");
             return;
         };
 
         if !channel.bound {
-            tracing::debug!("Channel {channel_number} exists but is unbound");
+            tracing::debug!(target: "relay", "Channel {channel_number} exists but is unbound");
             return;
         }
 
-        tracing::debug!(
-            "Relaying {} bytes from {sender} to {} via channel {channel_number}",
+        tracing::debug!(target: "relay", "Relaying {} bytes from {sender} to {} via channel {channel_number}",
             data.len(),
             channel.peer_address
         );
@@ -658,7 +680,7 @@ where
     fn create_channel_binding(
         &mut self,
         requested_channel: u16,
-        peer_address: &XorPeerAddress,
+        peer_address: SocketAddr,
         id: AllocationId,
         now: Instant,
     ) {
@@ -666,13 +688,13 @@ where
             requested_channel,
             Channel {
                 expiry: now + CHANNEL_BINDING_DURATION,
-                peer_address: peer_address.address(),
+                peer_address,
                 allocation: id,
                 bound: true,
             },
         );
         self.channel_numbers_by_peer
-            .insert(peer_address.address(), requested_channel);
+            .insert(peer_address, requested_channel);
     }
 
     fn send_message(&mut self, message: Message<Attribute>, recipient: SocketAddr) {
