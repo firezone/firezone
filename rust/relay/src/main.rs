@@ -252,8 +252,6 @@ async fn forward_incoming_relay_data(
 ) -> Result<Infallible> {
     let mut socket = UdpSocket::bind((listen_ip4_addr, port)).await?;
 
-    tracing::info!("Listening for relayed data on {listen_ip4_addr} for allocation {id}");
-
     loop {
         tokio::select! {
             result = socket.recv() => {

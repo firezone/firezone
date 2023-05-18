@@ -197,6 +197,11 @@ where
         sender: SocketAddr,
         allocation_id: AllocationId,
     ) {
+        if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
+            let hex_bytes = hex::encode(bytes);
+            tracing::trace!(target: "wire", r#"Input::peer("{sender}","{hex_bytes}")"#);
+        }
+
         let Some(client) = self.clients_by_allocation.get(&allocation_id) else {
             tracing::debug!(target: "relay", "unknown allocation {allocation_id}");
             return;
@@ -424,8 +429,7 @@ where
 
         tracing::info!(
             target: "relay",
-            "Created new allocation for {sender} on port {} and lifetime {}s",
-            allocation.port,
+            "Created new allocation for {sender} on {ip4_relay_address} and lifetime {}s",
             effective_lifetime.lifetime().as_secs()
         );
 
