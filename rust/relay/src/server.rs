@@ -1,6 +1,7 @@
 mod channel_data;
 
 use crate::rfc8656::PeerAddressFamilyMismatch;
+use crate::stun_codec_ext::{MessageClassExt, MethodExt};
 use crate::TimeEvents;
 use anyhow::Result;
 use bytecodec::{DecodeExt, EncodeExt};
@@ -287,22 +288,14 @@ where
         sender: SocketAddr,
         now: Instant,
     ) {
-        if message.class() == MessageClass::Request && message.method() == BINDING {
-            tracing::debug!(
-                target: "relay",
-                "Received STUN binding request from: {sender}"
-            );
+        tracing::debug!(target: "relay", "Received {} {} from {sender}", message.method().as_str(), message.class().as_str());
 
+        if message.class() == MessageClass::Request && message.method() == BINDING {
             self.handle_binding_request(message, sender);
             return;
         }
 
         if message.class() == MessageClass::Request && message.method() == ALLOCATE {
-            tracing::debug!(
-                target: "relay",
-                "Received TURN allocate request from: {sender}"
-            );
-
             let transaction_id = message.transaction_id();
 
             if let Err(e) = self.handle_allocate_request(message, sender, now) {
@@ -313,11 +306,6 @@ where
         }
 
         if message.class() == MessageClass::Request && message.method() == REFRESH {
-            tracing::debug!(
-                target: "relay",
-                "Received TURN refresh request from: {sender}"
-            );
-
             let transaction_id = message.transaction_id();
 
             if let Err(e) = self.handle_refresh_request(message, sender, now) {
@@ -328,11 +316,6 @@ where
         }
 
         if message.class() == MessageClass::Request && message.method() == CHANNEL_BIND {
-            tracing::debug!(
-                target: "relay",
-                "Received TURN channel bind request from: {sender}"
-            );
-
             let transaction_id = message.transaction_id();
 
             if let Err(e) = self.handle_channel_bind_request(message, sender, now) {
@@ -343,11 +326,6 @@ where
         }
 
         if message.class() == MessageClass::Request && message.method() == CREATE_PERMISSION {
-            tracing::debug!(
-                target: "relay",
-                "Received TURN create permission request from: {sender}"
-            );
-
             let transaction_id = message.transaction_id();
 
             if let Err(e) = self.handle_create_permission_request(message, sender, now) {
@@ -359,10 +337,9 @@ where
 
         tracing::debug!(
             target: "relay",
-            "Unhandled {:?} with {:?} from {}",
-            message.class(),
-            message.method(),
-            sender
+            "Handling {} {} is not implemented",
+            message.method().as_str(),
+            message.class().as_str(),
         );
     }
 
@@ -698,6 +675,8 @@ where
     }
 
     fn send_message(&mut self, message: Message<Attribute>, recipient: SocketAddr) {
+        tracing::debug!(target: "relay", "Sending {} {} to {recipient}", message.method().as_str(), message.class().as_str());
+
         let Ok(bytes) = self.encoder.encode_into_bytes(message) else {
             debug_assert!(false, "Encoding should never fail");
             return;
