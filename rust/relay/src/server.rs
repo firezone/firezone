@@ -168,7 +168,28 @@ where
                     return Ok(());
                 };
 
-                self.handle_stun_message(message, sender, now);
+                tracing::debug!(target: "relay", "Received {} {} from {sender}", message.method().as_str(), message.class().as_str());
+
+                self.dispatch_stun_message(message, sender, now, |server, message, sender, now| {
+                    use MessageClass::*;
+                    match (message.method(), message.class()) {
+                        (BINDING, Request) => Ok(server.handle_binding_request(message, sender)),
+                        (ALLOCATE, Request) => server.handle_allocate_request(message, sender, now),
+                        (REFRESH, Request) => server.handle_refresh_request(message, sender, now),
+                        (CHANNEL_BIND, Request) => {
+                            server.handle_channel_bind_request(message, sender, now)
+                        }
+                        (CREATE_PERMISSION, Request) => {
+                            server.handle_create_permission_request(message, sender, now)
+                        }
+                        (_, Indication) => {
+                            tracing::debug!("Indications are not yet implemented");
+
+                            ErrorCode::from(BadRequest)
+                        }
+                        _ => Err(ErrorCode::from(BadRequest)),
+                    }
+                });
             }
             Some(64..=79) => {
                 let (channel, data) = match channel_data::parse(bytes) {
@@ -289,98 +310,24 @@ where
         self.pending_commands.pop_front()
     }
 
-    fn handle_stun_message(
+    fn dispatch_stun_message(
         &mut self,
         message: Message<Attribute>,
         sender: SocketAddr,
         now: Instant,
+        handler: impl Fn(&mut Self, Message<Attribute>, SocketAddr, Instant) -> Result<(), ErrorCode>,
     ) {
-        tracing::debug!(target: "relay", "Received {} {} from {sender}", message.method().as_str(), message.class().as_str());
+        let transaction_id = message.transaction_id();
+        let method = message.method();
 
-        if message.class() == MessageClass::Request && message.method() == BINDING {
-            self.handle_binding_request(message, sender);
-            return;
+        if let Err(e) = handler(self, message, sender, now) {
+            if e.code() == Unauthorized::CODEPOINT {
+                self.send_message(unauthorized(transaction_id, method), sender);
+                return;
+            }
+
+            self.send_message(error_response(transaction_id, method, e), sender);
         }
-
-        if message.class() == MessageClass::Request && message.method() == ALLOCATE {
-            let transaction_id = message.transaction_id();
-
-            match message.get_attribute::<MessageIntegrity>() {
-                Some(_) => {}
-                None => {
-                    self.send_message(unauthorized(transaction_id, ALLOCATE), sender);
-                    return;
-                }
-            }
-
-            if let Err(e) = self.handle_allocate_request(message, sender, now) {
-                self.send_message(error_response(transaction_id, ALLOCATE, e), sender);
-            }
-
-            return;
-        }
-
-        if message.class() == MessageClass::Request && message.method() == REFRESH {
-            let transaction_id = message.transaction_id();
-
-            match message.get_attribute::<MessageIntegrity>() {
-                Some(_) => {}
-                None => {
-                    self.send_message(unauthorized(transaction_id, REFRESH), sender);
-                    return;
-                }
-            }
-
-            if let Err(e) = self.handle_refresh_request(message, sender, now) {
-                self.send_message(error_response(transaction_id, ALLOCATE, e), sender);
-            }
-
-            return;
-        }
-
-        if message.class() == MessageClass::Request && message.method() == CHANNEL_BIND {
-            let transaction_id = message.transaction_id();
-
-            match message.get_attribute::<MessageIntegrity>() {
-                Some(_) => {}
-                None => {
-                    self.send_message(unauthorized(transaction_id, CHANNEL_BIND), sender);
-                    return;
-                }
-            }
-
-            if let Err(e) = self.handle_channel_bind_request(message, sender, now) {
-                self.send_message(error_response(transaction_id, CHANNEL_BIND, e), sender);
-            }
-
-            return;
-        }
-
-        if message.class() == MessageClass::Request && message.method() == CREATE_PERMISSION {
-            let transaction_id = message.transaction_id();
-
-            if let Err(e) = self.handle_create_permission_request(message, sender, now) {
-                self.send_message(error_response(transaction_id, CREATE_PERMISSION, e), sender);
-            }
-
-            return;
-        }
-
-        tracing::debug!(
-            target: "relay",
-            "Handling {} {} is not implemented",
-            message.method().as_str(),
-            message.class().as_str(),
-        );
-
-        self.send_message(
-            error_response(
-                message.transaction_id(),
-                message.method(),
-                ErrorCode::from(BadRequest),
-            ),
-            sender,
-        );
     }
 
     fn handle_binding_request(&mut self, message: Message<Attribute>, sender: SocketAddr) {
@@ -403,6 +350,10 @@ where
         sender: SocketAddr,
         now: Instant,
     ) -> Result<(), ErrorCode> {
+        let _ = message
+            .get_attribute::<MessageIntegrity>()
+            .ok_or(Unauthorized)?;
+
         if self.allocations.contains_key(&sender) {
             return Err(AllocationMismatch.into());
         }
@@ -474,6 +425,10 @@ where
         sender: SocketAddr,
         now: Instant,
     ) -> Result<(), ErrorCode> {
+        let _ = message
+            .get_attribute::<MessageIntegrity>()
+            .ok_or(Unauthorized)?;
+
         // TODO: Verify that this is the correct error code.
         let allocation = self
             .allocations
@@ -536,6 +491,10 @@ where
         sender: SocketAddr,
         now: Instant,
     ) -> Result<(), ErrorCode> {
+        let _ = message
+            .get_attribute::<MessageIntegrity>()
+            .ok_or(Unauthorized)?;
+
         let allocation = self
             .allocations
             .get_mut(&sender)
@@ -618,6 +577,9 @@ where
         sender: SocketAddr,
         _: Instant,
     ) -> Result<(), ErrorCode> {
+        let _ = message
+            .get_attribute::<MessageIntegrity>()
+            .ok_or(Unauthorized)?;
         self.send_message(
             create_permission_success_response(message.transaction_id()),
             sender,
