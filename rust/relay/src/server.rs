@@ -173,7 +173,10 @@ where
                 self.dispatch_stun_message(message, sender, now, |server, message, sender, now| {
                     use MessageClass::*;
                     match (message.method(), message.class()) {
-                        (BINDING, Request) => Ok(server.handle_binding_request(message, sender)),
+                        (BINDING, Request) => {
+                            server.handle_binding_request(message, sender);
+                            Ok(())
+                        }
                         (ALLOCATE, Request) => server.handle_allocate_request(message, sender, now),
                         (REFRESH, Request) => server.handle_refresh_request(message, sender, now),
                         (CHANNEL_BIND, Request) => {
@@ -185,7 +188,7 @@ where
                         (_, Indication) => {
                             tracing::debug!("Indications are not yet implemented");
 
-                            ErrorCode::from(BadRequest)
+                            Err(ErrorCode::from(BadRequest))
                         }
                         _ => Err(ErrorCode::from(BadRequest)),
                     }
