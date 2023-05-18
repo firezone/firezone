@@ -1,25 +1,19 @@
 use anyhow::{Context, Result};
 use futures::channel::mpsc;
-use futures::channel::mpsc::{SendError, TrySendError};
 use futures::{FutureExt, SinkExt, StreamExt};
-use relay::{AllocationId, Command, Server, Sleep};
+use relay::{AllocationId, Command, Server, Sleep, UdpSocket};
 use std::collections::{HashMap, VecDeque};
 use std::convert::Infallible;
 use std::error::Error;
-use std::io;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::pin::Pin;
 use std::str::FromStr;
 use std::task::Poll;
 use std::time::Instant;
-use tokio::io::ReadBuf;
-use tokio::net::UdpSocket;
 use tokio::task;
 use tracing::level_filters::LevelFilter;
 use tracing::Level;
 use tracing_subscriber::EnvFilter;
-
-const MAX_UDP_SIZE: usize = 65536;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -34,14 +28,7 @@ async fn main() -> Result<()> {
     let public_ip4_addr = parse_env_var::<Ipv4Addr>("RELAY_PUBLIC_IP4_ADDR")?;
     let listen_ip4_addr = parse_env_var::<Ipv4Addr>("RELAY_LISTEN_IP4_ADDR")?;
 
-    let mut recv_buf = [0u8; MAX_UDP_SIZE];
-
-    let mut eventloop = Eventloop::new(
-        public_ip4_addr,
-        listen_ip4_addr,
-        ReadBuf::new(&mut recv_buf),
-    )
-    .await?;
+    let mut eventloop = Eventloop::new(public_ip4_addr, listen_ip4_addr).await?;
 
     tracing::info!("Listening for incoming traffic on UDP port 3478");
 
@@ -52,7 +39,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-struct Eventloop<'a> {
+struct Eventloop {
     ip4_socket: UdpSocket,
     listen_ip4_address: Ipv4Addr,
     server: Server,
@@ -60,7 +47,6 @@ struct Eventloop<'a> {
     relay_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr, AllocationId)>,
     relay_data_receiver: mpsc::Receiver<(Vec<u8>, SocketAddr, AllocationId)>,
     sleep: Sleep,
-    recv_buf: ReadBuf<'a>,
 
     client_send_buffer: VecDeque<(Vec<u8>, SocketAddr)>,
     allocation_send_buffer: VecDeque<(Vec<u8>, SocketAddr, AllocationId)>,
@@ -74,12 +60,8 @@ struct Allocation {
     sender: mpsc::Sender<(Vec<u8>, SocketAddr)>,
 }
 
-impl<'a> Eventloop<'a> {
-    async fn new(
-        public_ip4_address: Ipv4Addr,
-        listen_ip4_address: Ipv4Addr,
-        recv_buf: ReadBuf<'a>,
-    ) -> io::Result<Eventloop<'a>> {
+impl Eventloop {
+    async fn new(public_ip4_address: Ipv4Addr, listen_ip4_address: Ipv4Addr) -> Result<Self> {
         let (sender, receiver) = mpsc::channel(1);
 
         Ok(Self {
@@ -90,7 +72,6 @@ impl<'a> Eventloop<'a> {
             relay_data_sender: sender,
             relay_data_receiver: receiver,
             sleep: Sleep::default(),
-            recv_buf,
             client_send_buffer: Default::default(),
             allocation_send_buffer: Default::default(),
         })
@@ -136,19 +117,12 @@ impl<'a> Eventloop<'a> {
 
             // Priority 2: Flush data to the socket.
             if let Some((payload, recipient)) = self.client_send_buffer.pop_front() {
-                match self.ip4_socket.poll_send_ready(cx)? {
+                match self.ip4_socket.try_send_to(&payload, recipient, cx)? {
                     Poll::Ready(()) => {
                         if tracing::enabled!(target: "wire", Level::TRACE) {
                             let hex_bytes = hex::encode(&payload);
                             tracing::trace!(target: "wire", r#"Output::SendMessage("{recipient}","{hex_bytes}")"#);
                         }
-
-                        let bytes_sent = self
-                            .ip4_socket
-                            .try_send_to(&payload, recipient)
-                            .expect("TODO: error handling");
-
-                        debug_assert_eq!(bytes_sent, payload.len());
                         continue;
                     }
                     Poll::Pending => {
@@ -219,9 +193,9 @@ impl<'a> Eventloop<'a> {
             }
 
             // Priority 6: Accept new allocations / answer STUN requests etc
-            if let Poll::Ready(sender) = self.ip4_socket.poll_recv_from(cx, &mut self.recv_buf)? {
+            if let Poll::Ready((buffer, sender)) = self.ip4_socket.poll_recv(cx)? {
                 self.server
-                    .handle_client_input(self.recv_buf.filled(), sender, Instant::now())?;
+                    .handle_client_input(buffer.filled(), sender, Instant::now())?;
                 continue; // Handle potentially new commands.
             }
 
@@ -281,17 +255,15 @@ async fn forward_incoming_relay_data(
     listen_ip4_addr: Ipv4Addr,
     port: u16,
 ) -> Result<Infallible> {
-    let socket = UdpSocket::bind((listen_ip4_addr, port)).await?;
-    let mut recv_buf = [0u8; MAX_UDP_SIZE];
+    let mut socket = UdpSocket::bind((listen_ip4_addr, port)).await?;
 
-    let ip4 = socket.local_addr()?;
-
-    tracing::info!("Listening for relayed data on {ip4} for allocation {id}");
+    tracing::info!("Listening for relayed data on {listen_ip4_addr} for allocation {id}");
 
     loop {
-        let (length, sender) = socket.recv_from(&mut recv_buf).await?;
-        let data = recv_buf[..length].to_vec();
+        let (data, sender) = socket.recv().await?;
 
-        relayed_data_sender.send((data, sender, id)).await?;
+        relayed_data_sender
+            .send((data.to_vec(), sender, id))
+            .await?;
     }
 }
