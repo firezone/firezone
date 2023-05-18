@@ -152,6 +152,11 @@ where
         sender: SocketAddr,
         now: Instant,
     ) -> Result<()> {
+        if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
+            let hex_bytes = hex::encode(bytes);
+            tracing::trace!(target: "wire", r#"Input::client("{sender}","{hex_bytes}")"#);
+        }
+
         // De-multiplex as per <https://www.rfc-editor.org/rfc/rfc8656#name-channels-2>.
         match bytes.first() {
             Some(0..=3) => {
@@ -218,6 +223,11 @@ where
             );
             return;
         }
+
+        tracing::debug!(
+            "Relaying {} bytes from {sender} to {client} via channel {channel_number}",
+            bytes.len()
+        );
 
         self.pending_commands.push_back(Command::SendMessage {
             payload: channel_data::make(*channel_number, bytes),
@@ -547,28 +557,28 @@ where
         sender: SocketAddr,
         _: Instant,
     ) {
-        let Some(channel) = self.channel_numbers_by_peer.get(&sender) else {
+        let Some(channel_number) = self.channel_numbers_by_peer.get(&sender).copied() else {
             tracing::debug!("Client {sender} does not have an active channel");
             return;
         };
 
-        if channel != requested_channel {
+        if channel_number != requested_channel {
             tracing::debug!("Client {sender} is not bound to channel {requested_channel}");
             return;
         }
 
-        let Some(channel) = self.channels_by_number.get(&channel) else {
-            tracing::debug!("Channel {channel} does not exist, refusing to forward data");
+        let Some(channel) = self.channels_by_number.get(&channel_number) else {
+            tracing::debug!("Channel {channel_number} does not exist, refusing to forward data");
             return;
         };
 
         if !channel.bound {
-            tracing::debug!("Channel {channel} exists but is unbound");
+            tracing::debug!("Channel {channel_number} exists but is unbound");
             return;
         }
 
         tracing::debug!(
-            "Relaying {} bytes from {sender} to {} via channel {channel}",
+            "Relaying {} bytes from {sender} to {} via channel {channel_number}",
             data.len(),
             channel.peer_address
         );
@@ -633,6 +643,11 @@ where
             debug_assert!(false, "Encoding should never fail");
             return;
         };
+
+        if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
+            let hex_bytes = hex::encode(&bytes);
+            tracing::trace!(target: "wire", r#"Output::SendMessage("{recipient}","{hex_bytes}")"#);
+        }
 
         self.pending_commands.push_back(Command::SendMessage {
             payload: bytes,

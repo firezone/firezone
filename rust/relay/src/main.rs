@@ -12,7 +12,6 @@ use std::task::Poll;
 use std::time::Instant;
 use tokio::task;
 use tracing::level_filters::LevelFilter;
-use tracing::Level;
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -119,10 +118,6 @@ impl Eventloop {
             if let Some((payload, recipient)) = self.client_send_buffer.pop_front() {
                 match self.ip4_socket.try_send_to(&payload, recipient, cx)? {
                     Poll::Ready(()) => {
-                        if tracing::enabled!(target: "wire", Level::TRACE) {
-                            let hex_bytes = hex::encode(&payload);
-                            tracing::trace!(target: "wire", r#"Output::SendMessage("{recipient}","{hex_bytes}")"#);
-                        }
                         continue;
                     }
                     Poll::Pending => {
@@ -263,9 +258,6 @@ async fn forward_incoming_relay_data(
         tokio::select! {
             result = socket.recv() => {
                 let (data, sender) = result?;
-
-                tracing::debug!("Received {} bytes from {}", data.len(), sender);
-
                 relayed_data_sender.send((data.to_vec(), sender, id)).await?;
             }
 
