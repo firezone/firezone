@@ -260,10 +260,21 @@ async fn forward_incoming_relay_data(
     tracing::info!("Listening for relayed data on {listen_ip4_addr} for allocation {id}");
 
     loop {
-        let (data, sender) = socket.recv().await?;
+        tokio::select! {
+            result = socket.recv() => {
+                let (data, sender) = result?;
 
-        relayed_data_sender
-            .send((data.to_vec(), sender, id))
-            .await?;
+                tracing::debug!("Received {} bytes from {}", data.len(), sender);
+
+                relayed_data_sender.send((data.to_vec(), sender, id)).await?;
+            }
+
+            Some((data, recipient)) = client_to_peer_receiver.next() => {
+
+                tracing::debug!("Relaying {} bytes to {}", data.len(), recipient);
+
+                socket.send_to(&data, recipient).await?;
+            }
+        }
     }
 }
