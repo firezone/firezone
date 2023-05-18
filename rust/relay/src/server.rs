@@ -341,6 +341,15 @@ where
             message.method().as_str(),
             message.class().as_str(),
         );
+
+        self.send_message(
+            error_response(
+                message.transaction_id(),
+                message.method(),
+                ErrorCode::from(BadRequest),
+            ),
+            sender,
+        );
     }
 
     fn handle_binding_request(&mut self, message: Message<Attribute>, sender: SocketAddr) {
