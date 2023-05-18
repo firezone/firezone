@@ -15,6 +15,10 @@ defmodule Domain.AuthFixtures do
     Ecto.UUID.generate()
   end
 
+  def random_provider_identifier(%Domain.Auth.Provider{adapter: :userpass, name: name}) do
+    "user-#{counter()}@#{String.downcase(name)}.com"
+  end
+
   def provider_attrs(attrs \\ %{}) do
     Enum.into(attrs, %{
       name: "provider-#{counter()}",
@@ -54,6 +58,20 @@ defmodule Domain.AuthFixtures do
     {provider, bypass}
   end
 
+  def create_userpass_provider(attrs \\ %{}) do
+    attrs = Enum.into(attrs, %{})
+
+    {account, _attrs} =
+      Map.pop_lazy(attrs, :account, fn ->
+        AccountsFixtures.create_account()
+      end)
+
+    attrs = provider_attrs(adapter: :userpass)
+
+    {:ok, provider} = Auth.create_provider(account, attrs)
+    provider
+  end
+
   def create_identity(attrs \\ %{}) do
     attrs = Enum.into(attrs, %{})
 
@@ -81,8 +99,21 @@ defmodule Domain.AuthFixtures do
         )
       end)
 
-    {:ok, identity} = Auth.create_identity(actor, provider, provider_identifier)
-    identity
+    {provider_virtual_state, attrs} =
+      Map.pop_lazy(attrs, :provider_virtual_state, fn ->
+        %{}
+      end)
+
+    {:ok, identity} =
+      Auth.create_identity(actor, provider, provider_identifier, provider_virtual_state)
+
+    if state = Map.get(attrs, :provider_state) do
+      identity
+      |> Ecto.Changeset.change(provider_state: state)
+      |> Repo.update!()
+    else
+      identity
+    end
   end
 
   def create_subject do

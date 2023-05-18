@@ -54,7 +54,7 @@ defmodule Domain.Changeset do
     end
   end
 
-  defp inject_embedded_changeset(changeset, field, nested_changeset) do
+  def inject_embedded_changeset(changeset, field, nested_changeset) do
     original_type = Map.get(changeset.types, field)
 
     embedded_type =

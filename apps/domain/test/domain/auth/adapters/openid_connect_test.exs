@@ -8,10 +8,15 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
   describe "identity_changeset/2" do
     setup do
       account = AccountsFixtures.create_account()
-      provider = AuthFixtures.create_email_provider(account: account)
+
+      {provider, bypass} =
+        ConfigFixtures.start_openid_providers(["google"])
+        |> AuthFixtures.create_openid_connect_provider(account: account)
+
       changeset = %Auth.Identity{} |> Ecto.Changeset.change()
 
       %{
+        bypass: bypass,
         account: account,
         provider: provider,
         changeset: changeset
@@ -221,7 +226,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
 
-      assert verify_secret(identity, payload) == {:error, :expired_token}
+      assert verify_secret(identity, payload) == {:error, :expired_secret}
     end
 
     test "returns error when token is invalid", %{
@@ -236,7 +241,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
 
-      assert verify_secret(identity, payload) == {:error, :invalid_token}
+      assert verify_secret(identity, payload) == {:error, :invalid_secret}
     end
 
     test "returns error when provider is down", %{

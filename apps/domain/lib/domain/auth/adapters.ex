@@ -4,7 +4,8 @@ defmodule Domain.Auth.Adapters do
 
   @adapters %{
     email: Domain.Auth.Adapters.Email,
-    openid_connect: Domain.Auth.Adapters.OpenIDConnect
+    openid_connect: Domain.Auth.Adapters.OpenIDConnect,
+    userpass: Domain.Auth.Adapters.UserPass
   }
 
   @adapter_names Map.keys(@adapters)
@@ -18,8 +19,9 @@ defmodule Domain.Auth.Adapters do
     Supervisor.init(@adapter_modules, strategy: :one_for_one)
   end
 
-  def identity_changeset(%Ecto.Changeset{} = changeset, %Provider{} = provider) do
+  def identity_changeset(%Ecto.Changeset{} = changeset, %Provider{} = provider, provider_attrs) do
     adapter = fetch_adapter!(provider)
+    changeset = Ecto.Changeset.put_change(changeset, :provider_virtual_state, provider_attrs)
     %Ecto.Changeset{} = adapter.identity_changeset(provider, changeset)
   end
 

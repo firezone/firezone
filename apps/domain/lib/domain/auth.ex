@@ -95,13 +95,23 @@ defmodule Domain.Auth do
     |> Repo.fetch!()
   end
 
-  def create_identity(%Actors.Actor{} = actor, %Provider{} = provider, provider_identifier) do
+  def create_identity(
+        %Actors.Actor{} = actor,
+        %Provider{} = provider,
+        provider_identifier,
+        provider_attrs \\ %{}
+      ) do
     Identity.Changeset.create(actor, provider, provider_identifier)
-    |> Adapters.identity_changeset(provider)
+    |> Adapters.identity_changeset(provider, provider_attrs)
     |> Repo.insert()
   end
 
-  def replace_identity(%Identity{} = identity, provider_identifier, %Subject{} = subject) do
+  def replace_identity(
+        %Identity{} = identity,
+        provider_identifier,
+        provider_attrs \\ %{},
+        %Subject{} = subject
+      ) do
     required_permissions =
       {:one_of,
        [
@@ -120,7 +130,7 @@ defmodule Domain.Auth do
       end)
       |> Ecto.Multi.insert(:new_identity, fn %{identity: identity} ->
         Identity.Changeset.create(identity.actor, identity.provider, provider_identifier)
-        |> Adapters.identity_changeset(identity.provider)
+        |> Adapters.identity_changeset(identity.provider, provider_attrs)
       end)
       |> Ecto.Multi.update(:deleted_identity, fn %{identity: identity} ->
         Identity.Changeset.delete_identity(identity)
@@ -184,8 +194,9 @@ defmodule Domain.Auth do
     |> Repo.fetch()
   end
 
-  defp build_subject(%Identity{} = identity, user_agent, remote_ip)
-       when is_binary(user_agent) and is_tuple(remote_ip) do
+  @doc false
+  def build_subject(%Identity{} = identity, user_agent, remote_ip)
+      when is_binary(user_agent) and is_tuple(remote_ip) do
     identity =
       identity
       |> Identity.Changeset.sign_in(user_agent, remote_ip)

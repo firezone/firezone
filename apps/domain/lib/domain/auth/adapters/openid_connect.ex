@@ -19,13 +19,11 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
   end
 
   @impl true
-  def identity_changeset(%Provider{} = provider, %Ecto.Changeset{} = changeset) do
-    {state, virtual_state} = identity_create_state(provider)
-
+  def identity_changeset(%Provider{} = _provider, %Ecto.Changeset{} = changeset) do
     changeset
     |> Domain.Validator.trim_change(:provider_identifier)
-    |> Ecto.Changeset.put_change(:provider_state, state)
-    |> Ecto.Changeset.put_change(:provider_virtual_state, virtual_state)
+    |> Ecto.Changeset.put_change(:provider_state, %{})
+    |> Ecto.Changeset.put_change(:provider_virtual_state, %{})
   end
 
   @impl true
@@ -42,10 +40,6 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
   @impl true
   def ensure_deprovisioned(%Ecto.Changeset{} = changeset) do
     changeset
-  end
-
-  defp identity_create_state(%Provider{} = _provider) do
-    {%{}, %{}}
   end
 
   def authorization_uri(%Provider{} = provider, redirect_uri) when is_binary(redirect_uri) do
@@ -82,6 +76,12 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
       code: code,
       code_verifier: code_verifier
     })
+    |> case do
+      {:ok, identity} -> {:ok, identity}
+      {:error, :expired_token} -> {:error, :expired_secret}
+      {:error, :invalid_token} -> {:error, :invalid_secret}
+      {:error, :internal_error} -> {:error, :internal_error}
+    end
   end
 
   def refresh_token(%Identity{} = identity) do

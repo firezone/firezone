@@ -9,7 +9,7 @@ defmodule Domain.Resources.Resource do
       field :protocol, Ecto.Enum, values: [tcp: 6, udp: 17, icmp: 1, all: -1]
       field :ports, {:array, Domain.Types.Int4Range}, default: []
     end
-    
+
     field :ipv4, Domain.Types.IP
     field :ipv6, Domain.Types.IP
 

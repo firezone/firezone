@@ -1,6 +1,5 @@
 defmodule Domain.Resources.Connection.Changeset do
   use Domain, :changeset
-  alias Domain.Resources.Connection
 
   @fields ~w[gateway_id]a
   @required_fields @fields

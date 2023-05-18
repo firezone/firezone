@@ -48,7 +48,7 @@ defmodule Domain.Auth.Adapters.Email do
   end
 
   defp identity_create_state(%Provider{} = _provider) do
-    sign_in_token = Domain.Crypto.rand_string()
+    sign_in_token = Domain.Crypto.rand_string(32)
 
     {
       %{
