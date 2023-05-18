@@ -19,7 +19,7 @@ use stun_codec::rfc5766::attributes::{
     ChannelNumber, Lifetime, RequestedTransport, XorPeerAddress, XorRelayAddress,
 };
 use stun_codec::rfc5766::errors::{AllocationMismatch, InsufficientCapacity};
-use stun_codec::rfc5766::methods::{ALLOCATE, CHANNEL_BIND, REFRESH};
+use stun_codec::rfc5766::methods::{ALLOCATE, CHANNEL_BIND, CREATE_PERMISSION, REFRESH};
 use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder, Method, TransactionId};
 
 /// A sans-IO STUN & TURN server.
@@ -328,6 +328,21 @@ where
             return;
         }
 
+        if message.class() == MessageClass::Request && message.method() == CREATE_PERMISSION {
+            tracing::debug!(
+                target: "relay",
+                "Received TURN create permission request from: {sender}"
+            );
+
+            let transaction_id = message.transaction_id();
+
+            if let Err(e) = self.handle_create_permission_request(message, sender, now) {
+                self.send_message(error_response(transaction_id, CREATE_PERMISSION, e), sender);
+            }
+
+            return;
+        }
+
         tracing::debug!(
             "Unhandled message of type {:?} and method {:?} from {}",
             message.class(),
@@ -547,6 +562,28 @@ where
             sender,
         );
 
+        tracing::info!(target: "relay", "Bound channel {requested_channel} between {sender} and {peer_address} on allocation {}", allocation_id);
+
+        Ok(())
+    }
+
+    /// Handle a TURN create permission request.
+    ///
+    /// See <https://www.rfc-editor.org/rfc/rfc8656#name-receiving-a-createpermissio> for details.
+    ///
+    /// This TURN server implementation does not support relaying data other than through channels.
+    /// Thus, creating a permission is a no-op that always succeeds.
+    fn handle_create_permission_request(
+        &mut self,
+        message: Message<Attribute>,
+        sender: SocketAddr,
+        _: Instant,
+    ) -> Result<(), ErrorCode> {
+        self.send_message(
+            create_permission_success_response(message.transaction_id()),
+            sender,
+        );
+
         Ok(())
     }
 
@@ -700,6 +737,14 @@ fn refresh_success_response(
 
 fn channel_bind_success_response(transaction_id: TransactionId) -> Message<Attribute> {
     Message::new(MessageClass::SuccessResponse, CHANNEL_BIND, transaction_id)
+}
+
+fn create_permission_success_response(transaction_id: TransactionId) -> Message<Attribute> {
+    Message::new(
+        MessageClass::SuccessResponse,
+        CREATE_PERMISSION,
+        transaction_id,
+    )
 }
 
 impl Server<StepRng> {
