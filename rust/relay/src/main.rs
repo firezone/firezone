@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use futures::channel::mpsc;
+use futures::channel::mpsc::{SendError, TrySendError};
 use futures::{FutureExt, SinkExt, StreamExt};
 use relay::{AllocationId, Command, Server, Sleep};
 use std::collections::{HashMap, VecDeque};
@@ -55,13 +56,22 @@ struct Eventloop<'a> {
     ip4_socket: UdpSocket,
     listen_ip4_address: Ipv4Addr,
     server: Server,
-    allocations: HashMap<AllocationId, task::JoinHandle<()>>,
+    allocations: HashMap<AllocationId, Allocation>,
     relay_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr, AllocationId)>,
     relay_data_receiver: mpsc::Receiver<(Vec<u8>, SocketAddr, AllocationId)>,
     sleep: Sleep,
     recv_buf: ReadBuf<'a>,
 
     client_send_buffer: VecDeque<(Vec<u8>, SocketAddr)>,
+    allocation_send_buffer: VecDeque<(Vec<u8>, SocketAddr, AllocationId)>,
+}
+
+struct Allocation {
+    /// The handle to the task that is running the allocation.
+    ///
+    /// Stored here to make resource-cleanup easy.
+    handle: task::JoinHandle<()>,
+    sender: mpsc::Sender<(Vec<u8>, SocketAddr)>,
 }
 
 impl<'a> Eventloop<'a> {
@@ -82,6 +92,7 @@ impl<'a> Eventloop<'a> {
             sleep: Sleep::default(),
             recv_buf,
             client_send_buffer: Default::default(),
+            allocation_send_buffer: Default::default(),
         })
     }
 
@@ -94,31 +105,29 @@ impl<'a> Eventloop<'a> {
                         self.client_send_buffer.push_back((payload, recipient));
                     }
                     Command::AllocateAddresses { id, port } => {
-                        self.allocations.insert(id, tokio::spawn({
-                            let sender = self.relay_data_sender.clone();
-                            let listen_ip4_addr = self.listen_ip4_address;
-
-                            async move {
-                                let Err(e) = forward_incoming_relay_data(sender, id, listen_ip4_addr, port).await else {
-                                    unreachable!()
-                                };
-
-                                // TODO: Do we need to clean this up in the server? It will eventually timeout if not refreshed.
-                                tracing::warn!("Allocation task for {id} failed: {e}");
-                            }
-                        }));
+                        self.allocations.insert(
+                            id,
+                            Allocation::new(
+                                self.relay_data_sender.clone(),
+                                id,
+                                self.listen_ip4_address,
+                                port,
+                            ),
+                        );
                     }
                     Command::FreeAddresses { id } => {
-                        let Some(task) = self.allocations.remove(&id) else {
+                        if self.allocations.remove(&id).is_none() {
                             tracing::debug!("Unknown allocation {id}");
                             continue;
                         };
 
                         tracing::info!("Freeing addresses of allocation {id}");
-                        task.abort();
                     }
                     Command::Wake { deadline } => {
                         Pin::new(&mut self.sleep).reset(deadline);
+                    }
+                    Command::ForwardData { id, data, receiver } => {
+                        self.allocation_send_buffer.push_back((data, receiver, id));
                     }
                 }
 
@@ -152,13 +161,56 @@ impl<'a> Eventloop<'a> {
                 }
             }
 
-            // Priority 3: Handle time-sensitive tasks:
+            // Priority 3: Forward data to allocations.
+            if let Some((data, receiver, id)) = self.allocation_send_buffer.pop_front() {
+                let Some(allocation) = self.allocations.get_mut(&id) else {
+                    tracing::debug!("Unknown allocation {id}");
+                    continue;
+                };
+
+                match allocation.sender.poll_ready(cx) {
+                    Poll::Ready(Ok(())) => {}
+                    Poll::Ready(Err(_)) => {
+                        debug_assert!(
+                            false,
+                            "poll_ready to never fail because we own the other end of the channel"
+                        );
+                    }
+                    Poll::Pending => {
+                        // Same as above, we need to yield early if we cannot send data.
+                        // The task will be woken up once there is space in the channel.
+
+                        self.allocation_send_buffer.push_front((data, receiver, id));
+                        return Poll::Pending;
+                    }
+                }
+
+                match allocation.sender.try_send((data, receiver)) {
+                    Ok(()) => {}
+                    Err(e) if e.is_full() => {
+                        let (data, receiver) = e.into_inner();
+
+                        self.allocation_send_buffer.push_front((data, receiver, id));
+                        return Poll::Pending;
+                    }
+                    Err(_) => {
+                        debug_assert!(
+                            false,
+                            "try_send to never fail because we own the other end of the channel"
+                        );
+                    }
+                };
+
+                continue;
+            }
+
+            // Priority 4: Handle time-sensitive tasks:
             if self.sleep.poll_unpin(cx).is_ready() {
                 self.server.handle_deadline_reached(Instant::now());
                 continue; // Handle potentially new commands.
             }
 
-            // Priority 4: Handle relayed data (we prioritize latency for existing allocations over making new ones)
+            // Priority 5: Handle relayed data (we prioritize latency for existing allocations over making new ones)
             if let Poll::Ready(Some((data, sender, allocation))) =
                 self.relay_data_receiver.poll_next_unpin(cx)
             {
@@ -166,7 +218,7 @@ impl<'a> Eventloop<'a> {
                 continue; // Handle potentially new commands.
             }
 
-            // Priority 5: Accept new allocations / answer STUN requests etc
+            // Priority 6: Accept new allocations / answer STUN requests etc
             if let Poll::Ready(sender) = self.ip4_socket.poll_recv_from(cx, &mut self.recv_buf)? {
                 self.server
                     .handle_client_input(self.recv_buf.filled(), sender, Instant::now())?;
@@ -175,6 +227,37 @@ impl<'a> Eventloop<'a> {
 
             return Poll::Pending;
         }
+    }
+}
+
+impl Allocation {
+    fn new(
+        relay_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr, AllocationId)>,
+        id: AllocationId,
+        listen_ip4_addr: Ipv4Addr,
+        port: u16,
+    ) -> Self {
+        let (client_to_peer_sender, client_to_peer_receiver) = mpsc::channel(1);
+
+        let task = tokio::spawn(async move {
+            let Err(e) = forward_incoming_relay_data(relay_data_sender, client_to_peer_receiver, id, listen_ip4_addr, port).await else {
+                unreachable!()
+            };
+
+            // TODO: Do we need to clean this up in the server? It will eventually timeout if not refreshed.
+            tracing::warn!("Allocation task for {id} failed: {e}");
+        });
+
+        Self {
+            handle: task,
+            sender: client_to_peer_sender,
+        }
+    }
+}
+
+impl Drop for Allocation {
+    fn drop(&mut self) {
+        self.handle.abort();
     }
 }
 
@@ -193,6 +276,7 @@ where
 
 async fn forward_incoming_relay_data(
     mut relayed_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr, AllocationId)>,
+    mut client_to_peer_receiver: mpsc::Receiver<(Vec<u8>, SocketAddr)>,
     id: AllocationId,
     listen_ip4_addr: Ipv4Addr,
     port: u16,

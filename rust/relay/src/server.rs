@@ -67,6 +67,12 @@ pub enum Command {
     AllocateAddresses { id: AllocationId, port: u16 },
     /// Free the addresses associated with the given [`AllocationId`].
     FreeAddresses { id: AllocationId },
+
+    ForwardData {
+        id: AllocationId,
+        data: Vec<u8>,
+        receiver: SocketAddr,
+    },
     /// At the latest, the [`Server`] needs to be woken at the specified deadline to execute time-based actions correctly.
     Wake { deadline: Instant },
 }
