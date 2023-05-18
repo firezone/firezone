@@ -31,7 +31,7 @@ defmodule Domain.Config.Definitions do
   use Domain.Config.Definition
   alias Domain.Config.Dumper
   alias Domain.Types
-  alias Domain.Config.{Configuration, Logo}
+  alias Domain.Config.Logo
 
   def doc_sections do
     [
@@ -99,13 +99,7 @@ defmodule Domain.Config.Definitions do
       #  ]},
       {"Authorization",
        [
-         :local_auth_enabled,
-         :disable_vpn_on_oidc_error,
-         :saml_entity_id,
-         :saml_keyfile_path,
-         :saml_certfile_path,
-         :openid_connect_providers,
-         :saml_identity_providers
+         :local_auth_enabled
        ]},
       {"WireGuard",
        [
@@ -522,92 +516,6 @@ defmodule Domain.Config.Definitions do
   # of enabled methods.
   defconfig(:local_auth_enabled, :boolean, default: true)
 
-  @doc """
-  Enable or disable auto disabling VPN connection on OIDC refresh error.
-  """
-  defconfig(:disable_vpn_on_oidc_error, :boolean, default: false)
-
-  @doc """
-  Entity ID for SAML authentication.
-  """
-  defconfig(:saml_entity_id, :string, default: "urn:firezone.dev:firezone-app")
-
-  @doc """
-  Path to the SAML keyfile inside the container. Should be either a PEM or DER-encoded private key,
-  with file extension `.pem` or `.key`.
-  """
-  defconfig(:saml_keyfile_path, :string,
-    default: "/var/firezone/saml.key",
-    changeset: &Domain.Validator.validate_file(&1, &2, extensions: ~w[.pem .key])
-  )
-
-  @doc """
-  Path to the SAML certificate file inside the container. Should be either a PEM or DER-encoded certificate,
-  with file extension `.crt` or `.pem`.
-  """
-  defconfig(:saml_certfile_path, :string,
-    default: "/var/firezone/saml.crt",
-    changeset: &Domain.Validator.validate_file(&1, &2, extensions: ~w[.crt .pem])
-  )
-
-  @doc """
-  List of OpenID Connect identity providers configurations.
-
-  For example:
-
-  ```json
-  [
-    {
-      "auto_create_users": false,
-      "id": "google",
-      "label": "google",
-      "client_id": "test-id",
-      "client_secret": "test-secret",
-      "discovery_document_uri": "https://accounts.google.com/.well-known/openid-configuration",
-      "redirect_uri": "https://invalid",
-      "response_type": "response-type",
-      "scope": "oauth email profile"
-    }
-  ]
-  ```
-
-  For more details see https://docs.firezone.dev/authenticate/oidc/.
-  """
-  defconfig(
-    :openid_connect_providers,
-    {:json_array, {:embed, Configuration.OpenIDConnectProvider}},
-    default: [],
-    changeset: {Configuration.OpenIDConnectProvider, :create_changeset, []}
-  )
-
-  @doc """
-  List of SAML identity providers configurations.
-
-  For example:
-
-  ```json
-  [
-    {
-      "auto_create_users": false,
-      "base_url": "https://saml",
-      "id": "okta",
-      "label": "okta",
-      "metadata": "<?xml version="1.0"?>...",
-      "sign_metadata": false,
-      "sign_requests": false,
-      "signed_assertion_in_resp": false,
-      "signed_envelopes_in_resp": false
-    }
-  ]
-  ```
-
-  For more details see https://docs.firezone.dev/authenticate/saml/.
-  """
-  defconfig(:saml_identity_providers, {:json_array, {:embed, Configuration.SAMLIdentityProvider}},
-    default: [],
-    changeset: {Configuration.SAMLIdentityProvider, :create_changeset, []}
-  )
-
   ##############################################
   ## Telemetry
   ##############################################
@@ -769,46 +677,21 @@ defmodule Domain.Config.Definitions do
          Swoosh.Adapters.Sendmail,
          Swoosh.Adapters.SocketLabs,
          Swoosh.Adapters.SparkPost,
-         Web.Mailer.NoopAdapter,
-         # DEPRECATED: Legacy options should be removed in 0.8
-         :smtp,
-         :mailgun,
-         :mandrill,
-         :sendgrid,
-         :post_mark,
-         :sendmail
+         Domain.Mailer.NoopAdapter
        ]
      )},
-    default: Web.Mailer.NoopAdapter,
-    legacy_keys: [{:env, "OUTBOUND_EMAIL_PROVIDER", "0.9"}],
-    dump: fn
-      :smtp -> Swoosh.Adapters.SMTP
-      :mailgun -> Swoosh.Adapters.Mailgun
-      :mandrill -> Swoosh.Adapters.Mandrill
-      :sendgrid -> Swoosh.Adapters.Sendgrid
-      :post_mark -> Swoosh.Adapters.Postmark
-      :sendmail -> Swoosh.Adapters.Sendmail
-      other -> other
-    end
+    default: Domain.Mailer.NoopAdapter
   )
 
   @doc """
   Adapter configuration, for list of options see [Swoosh Adapters](https://github.com/swoosh/swoosh#adapters).
   """
   defconfig(:outbound_email_adapter_opts, :map,
+    # TODO: validate opts are present if adapter is not NOOP one
     default: %{},
     sensitive: true,
     legacy_keys: [{:env, "OUTBOUND_EMAIL_CONFIGS", "0.9"}],
-    dump: fn
-      # DEPRECATED: Legacy options should be removed in 0.8
-      %{"smtp" => value} -> Dumper.keyword(value)
-      %{"mailgun" => value} -> Dumper.keyword(value)
-      %{"mandrill" => value} -> Dumper.keyword(value)
-      %{"sendgrid" => value} -> Dumper.keyword(value)
-      %{"post_mark" => value} -> Dumper.keyword(value)
-      %{"sendmail" => value} -> Dumper.keyword(value)
-      value -> Dumper.keyword(value)
-    end
+    dump: &Dumper.keyword/1
   )
 
   ##############################################

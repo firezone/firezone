@@ -27,8 +27,6 @@ defmodule Domain.ConfigFixtures do
         |> Map.merge(overrides)
       end)
 
-    Config.put_config!(:openid_connect_providers, openid_connect_providers_attrs)
-
     {bypass, openid_connect_providers_attrs}
   end
 
@@ -170,17 +168,43 @@ defmodule Domain.ConfigFixtures do
     end)
   end
 
+  def expect_userinfo(bypass, attrs \\ %{}) do
+    test_pid = self()
+
+    Bypass.expect(bypass, "GET", "/userinfo", fn conn ->
+      attrs =
+        Map.merge(
+          %{
+            "sub" => "353690423699814251281",
+            "name" => "Ada Lovelace",
+            "given_name" => "Ada",
+            "family_name" => "Lovelace",
+            "picture" =>
+              "https://lh3.googleusercontent.com/-XdUIqdMkCWA/AAAAAAAAAAI/AAAAAAAAAAA/4252rscbv5M/photo.jpg",
+            "email" => "ada@example.com",
+            "email_verified" => true,
+            "locale" => "en"
+          },
+          attrs
+        )
+
+      conn = fetch_conn_params(conn)
+      send(test_pid, {:request, conn})
+      Plug.Conn.resp(conn, 200, Jason.encode!(attrs))
+    end)
+  end
+
   def discovery_document_server do
     bypass = Bypass.open()
     endpoint = "http://localhost:#{bypass.port}"
     test_pid = self()
 
-    Bypass.expect(bypass, "GET", "/.well-known/jwks.json", fn conn ->
+    Bypass.stub(bypass, "GET", "/.well-known/jwks.json", fn conn ->
       attrs = %{"keys" => [jwks_attrs()]}
       Plug.Conn.resp(conn, 200, Jason.encode!(attrs))
     end)
 
-    Bypass.expect(bypass, "GET", "/.well-known/openid-configuration", fn conn ->
+    Bypass.stub(bypass, "GET", "/.well-known/openid-configuration", fn conn ->
       conn = fetch_conn_params(conn)
       send(test_pid, {:request, conn})
 

@@ -2,7 +2,7 @@ defmodule Domain.GatewaysFixtures do
   alias Domain.AccountsFixtures
   alias Domain.Repo
   alias Domain.Gateways
-  alias Domain.{AccountsFixtures, UsersFixtures, SubjectFixtures}
+  alias Domain.{AccountsFixtures, ActorsFixtures, AuthFixtures}
 
   def group_attrs(attrs \\ %{}) do
     Enum.into(attrs, %{
@@ -22,8 +22,9 @@ defmodule Domain.GatewaysFixtures do
 
     {subject, attrs} =
       Map.pop_lazy(attrs, :subject, fn ->
-        UsersFixtures.create_user_with_role(:admin, account: account)
-        |> SubjectFixtures.create_subject()
+        actor = ActorsFixtures.create_actor(role: :admin, account: account)
+        identity = AuthFixtures.create_identity(account: account, actor: actor)
+        AuthFixtures.create_subject(identity)
       end)
 
     attrs = group_attrs(attrs)
@@ -34,8 +35,9 @@ defmodule Domain.GatewaysFixtures do
 
   def delete_group(group) do
     group = Repo.preload(group, :account)
-    admin = UsersFixtures.create_user_with_role(:admin, account: group.account)
-    subject = SubjectFixtures.create_subject(admin)
+    actor = ActorsFixtures.create_actor(role: :admin, account: group.account)
+    identity = AuthFixtures.create_identity(account: group.account, actor: actor)
+    subject = AuthFixtures.create_subject(identity)
     {:ok, group} = Gateways.delete_group(group, subject)
     group
   end
@@ -105,8 +107,9 @@ defmodule Domain.GatewaysFixtures do
 
   def delete_gateway(gateway) do
     gateway = Repo.preload(gateway, :account)
-    admin = UsersFixtures.create_user_with_role(:admin, account: gateway.account)
-    subject = SubjectFixtures.create_subject(admin)
+    actor = ActorsFixtures.create_actor(role: :admin, account: gateway.account)
+    identity = AuthFixtures.create_identity(account: gateway.account, actor: actor)
+    subject = AuthFixtures.create_subject(identity)
     {:ok, gateway} = Gateways.delete_gateway(gateway, subject)
     gateway
   end

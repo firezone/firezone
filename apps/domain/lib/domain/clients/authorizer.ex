@@ -25,17 +25,17 @@ defmodule Domain.Clients.Authorizer do
   end
 
   @impl Domain.Auth.Authorizer
-  def for_subject(queryable, %Subject{} = subject) when is_user(subject) do
+  def for_subject(queryable, %Subject{} = subject) do
     cond do
       has_permission?(subject, manage_clients_permission()) ->
         Client.Query.by_account_id(queryable, subject.account.id)
 
       has_permission?(subject, manage_own_clients_permission()) ->
-        {:user, %{id: user_id}} = subject.actor
+        %{type: :user, id: actor_id} = subject.actor
 
         queryable
         |> Client.Query.by_account_id(subject.account.id)
-        |> Client.Query.by_user_id(user_id)
+        |> Client.Query.by_actor_id(actor_id)
     end
   end
 end
