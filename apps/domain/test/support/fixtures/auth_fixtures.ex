@@ -131,6 +131,7 @@ defmodule Domain.AuthFixtures do
       actor: identity.actor,
       permissions: Auth.Roles.build(identity.actor.role).permissions,
       account: identity.account,
+      expires_at: DateTime.utc_now() |> DateTime.add(60, :second),
       context: %Auth.Context{remote_ip: remote_ip(), user_agent: user_agent()}
     }
   end

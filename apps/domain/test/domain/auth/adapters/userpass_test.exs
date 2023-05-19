@@ -132,7 +132,7 @@ defmodule Domain.Auth.Adapters.UserPassTest do
     end
 
     test "returns :ok on valid password", %{identity: identity} do
-      assert {:ok, verified_identity} = verify_secret(identity, "Firezone1234")
+      assert {:ok, verified_identity, nil} = verify_secret(identity, "Firezone1234")
 
       assert verified_identity.provider_state["password_hash"] ==
                identity.provider_state.password_hash

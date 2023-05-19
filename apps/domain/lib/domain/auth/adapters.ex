@@ -44,7 +44,7 @@ defmodule Domain.Auth.Adapters do
     adapter = fetch_adapter!(provider)
 
     case adapter.verify_secret(identity, secret) do
-      {:ok, %Identity{} = identity} -> {:ok, identity}
+      {:ok, %Identity{} = identity, expires_at} -> {:ok, identity, expires_at}
       {:error, :invalid_secret} -> {:error, :invalid_secret}
       {:error, :expired_secret} -> {:error, :expired_secret}
       {:error, :internal_error} -> {:error, :internal_error}

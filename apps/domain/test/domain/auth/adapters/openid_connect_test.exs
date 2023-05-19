@@ -160,12 +160,12 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
 
-      assert {:ok, identity} = verify_secret(identity, payload)
+      assert {:ok, identity, expires_at} = verify_secret(identity, payload)
 
       assert identity.provider_state == %{
                access_token: nil,
                claims: claims,
-               expires_at: nil,
+               expires_at: expires_at,
                id_token: token,
                refresh_token: nil,
                userinfo: %{
@@ -203,7 +203,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
 
-      assert {:ok, identity} = verify_secret(identity, payload)
+      assert {:ok, identity, _expires_at} = verify_secret(identity, payload)
 
       assert identity.provider_state.id_token == token
       assert identity.provider_state.access_token == "MY_ACCESS_TOKEN"
@@ -288,12 +288,12 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
 
       ConfigFixtures.expect_userinfo(bypass)
 
-      assert {:ok, identity} = refresh_token(identity)
+      assert {:ok, identity, expires_at} = refresh_token(identity)
 
       assert identity.provider_state == %{
                access_token: "MY_ACCESS_TOKEN",
                claims: claims,
-               expires_at: nil,
+               expires_at: expires_at,
                id_token: token,
                refresh_token: "MY_REFRESH_TOKEN",
                userinfo: %{
@@ -308,6 +308,8 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
                  "sub" => "353690423699814251281"
                }
              }
+
+      assert DateTime.diff(expires_at, DateTime.utc_now()) in 5..15
     end
   end
 

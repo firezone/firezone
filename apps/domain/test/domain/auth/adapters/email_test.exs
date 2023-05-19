@@ -86,7 +86,7 @@ defmodule Domain.Auth.Adapters.EmailTest do
       identity: identity,
       token: token
     } do
-      assert {:ok, identity} = verify_secret(identity, token)
+      assert {:ok, identity, nil} = verify_secret(identity, token)
 
       assert identity.provider_state == %{}
       assert identity.provider_virtual_state == %{}
@@ -103,8 +103,8 @@ defmodule Domain.Auth.Adapters.EmailTest do
           account: account,
           provider: provider,
           provider_state: %{
-            sign_in_token_hash: Domain.Crypto.hash("dummy_token"),
-            sign_in_token_created_at: forty_seconds_ago
+            "sign_in_token_hash" => Domain.Crypto.hash("dummy_token"),
+            "sign_in_token_created_at" => DateTime.to_iso8601(forty_seconds_ago)
           }
         )
 

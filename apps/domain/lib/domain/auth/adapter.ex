@@ -30,7 +30,7 @@ defmodule Domain.Auth.Adapter do
   if it's valid, or an error otherwise.
   """
   @callback verify_secret(%Identity{}, secret :: term()) ::
-              {:ok, %Identity{}}
+              {:ok, %Identity{}, expires_at :: %DateTime{} | nil}
               | {:error, :invalid_secret}
               | {:error, :expired_secret}
               | {:error, :internal_error}

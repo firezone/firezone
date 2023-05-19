@@ -48,7 +48,7 @@ defmodule Domain.Auth.Adapters.Email do
   end
 
   defp identity_create_state(%Provider{} = _provider) do
-    sign_in_token = Domain.Crypto.rand_string(32)
+    sign_in_token = Domain.Crypto.rand_string()
 
     {
       %{
@@ -77,8 +77,13 @@ defmodule Domain.Auth.Adapters.Email do
     Identity.Query.by_id(identity.id)
     |> Repo.fetch_and_update(
       with: fn identity ->
-        sign_in_token_hash = identity.provider_state["sign_in_token_hash"]
-        sign_in_token_created_at = identity.provider_state["sign_in_token_created_at"]
+        sign_in_token_hash =
+          identity.provider_state["sign_in_token_hash"] ||
+            identity.provider_state[:sign_in_token_hash]
+
+        sign_in_token_created_at =
+          identity.provider_state["sign_in_token_created_at"] ||
+            identity.provider_state[:sign_in_token_created_at]
 
         cond do
           is_nil(sign_in_token_hash) ->
@@ -98,6 +103,10 @@ defmodule Domain.Auth.Adapters.Email do
         end
       end
     )
+    |> case do
+      {:ok, identity} -> {:ok, identity, nil}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   defp sign_in_token_expired?(sign_in_token_created_at) do

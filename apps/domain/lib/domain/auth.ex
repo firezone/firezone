@@ -6,6 +6,11 @@ defmodule Domain.Auth do
   alias Domain.Auth.{Authorizer, Subject, Context, Permission, Roles, Role, Identity}
   alias Domain.Auth.{Adapters, Provider}
 
+  @default_session_duration_hours %{
+    admin: 3,
+    unprivileged: 24 * 7
+  }
+
   def start_link(opts) do
     Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
   end
@@ -166,9 +171,9 @@ defmodule Domain.Auth do
   def sign_in(%Provider{} = provider, provider_identifier, secret, user_agent, remote_ip) do
     with {:ok, identity} <-
            fetch_identity_by_provider_and_identifier(provider, provider_identifier),
-         {:ok, identity} <-
+         {:ok, identity, expires_at} <-
            Adapters.verify_secret(provider, identity, secret) do
-      {:ok, build_subject(identity, user_agent, remote_ip)}
+      {:ok, build_subject(identity, expires_at, user_agent, remote_ip)}
     else
       {:error, :not_found} -> {:error, :unauthorized}
       {:error, :invalid_secret} -> {:error, :unauthorized}
@@ -178,8 +183,9 @@ defmodule Domain.Auth do
 
   def sign_in(session_token, user_agent, remote_ip) do
     with {:ok, identity_id} <- verify_session_token(session_token, user_agent, remote_ip),
+         {:ok, expires_at} <- fetch_session_token_expires_at(session_token),
          {:ok, identity} <- fetch_identity_by_id(identity_id) do
-      {:ok, build_subject(identity, user_agent, remote_ip)}
+      {:ok, build_subject(identity, expires_at, user_agent, remote_ip)}
     else
       {:error, :not_found} -> {:error, :unauthorized}
       {:error, :invalid_token} -> {:error, :unauthorized}
@@ -195,7 +201,7 @@ defmodule Domain.Auth do
   end
 
   @doc false
-  def build_subject(%Identity{} = identity, user_agent, remote_ip)
+  def build_subject(%Identity{} = identity, expires_at, user_agent, remote_ip)
       when is_binary(user_agent) and is_tuple(remote_ip) do
     identity =
       identity
@@ -210,8 +216,14 @@ defmodule Domain.Auth do
       actor: identity_with_preloads.actor,
       permissions: permissions,
       account: identity_with_preloads.account,
+      expires_at: build_subject_expires_at(identity_with_preloads.actor, expires_at),
       context: %Context{remote_ip: remote_ip, user_agent: user_agent}
     }
+  end
+
+  defp build_subject_expires_at(%Actors.Actor{} = actor, expires_at) do
+    default_session_duration_hours = Map.fetch!(@default_session_duration_hours, actor.role)
+    expires_at || DateTime.utc_now() |> DateTime.add(default_session_duration_hours, :hour)
   end
 
   # Session
@@ -221,9 +233,7 @@ defmodule Domain.Auth do
     key_base = Keyword.fetch!(config, :key_base)
     salt = Keyword.fetch!(config, :salt)
     payload = session_token_payload(subject)
-    max_age = Keyword.fetch!(config, :max_age)
-    # TODO: we need to leverage provider token expiration here
-    # max_age = subject.expires_at
+    max_age = DateTime.diff(subject.expires_at, DateTime.utc_now(), :second)
 
     {:ok, Plug.Crypto.sign(key_base, salt, payload, max_age: max_age)}
   end
@@ -329,53 +339,6 @@ defmodule Domain.Auth do
     |> case do
       [] -> :ok
       missing_permissions -> {:error, {:unauthorized, missing_permissions: missing_permissions}}
-    end
-  end
-
-  ############
-
-  def fetch_oidc_provider_config(provider_id) do
-    with {:ok, provider} <- fetch_provider(:openid_connect_providers, provider_id) do
-      redirect_uri =
-        if provider.redirect_uri do
-          provider.redirect_uri
-        else
-          external_url = Domain.Config.fetch_env!(:web, :external_url)
-          "#{external_url}auth/oidc/#{provider.id}/callback/"
-        end
-
-      {:ok,
-       %{
-         discovery_document_uri: provider.discovery_document_uri,
-         client_id: provider.client_id,
-         client_secret: provider.client_secret,
-         redirect_uri: redirect_uri,
-         response_type: provider.response_type,
-         scope: provider.scope
-       }}
-    end
-  end
-
-  def auto_create_users?(field, provider_id) do
-    fetch_provider!(field, provider_id).auto_create_users
-  end
-
-  defp fetch_provider(field, provider_id) do
-    Config.fetch_config!(field)
-    |> Enum.find(&(&1.id == provider_id))
-    |> case do
-      nil -> {:error, :not_found}
-      provider -> {:ok, provider}
-    end
-  end
-
-  defp fetch_provider!(field, provider_id) do
-    case fetch_provider(field, provider_id) do
-      {:ok, provider} ->
-        provider
-
-      {:error, :not_found} ->
-        raise RuntimeError, "Unknown provider #{provider_id}"
     end
   end
 end

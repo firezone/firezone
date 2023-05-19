@@ -26,6 +26,10 @@ defmodule Domain.DataCase do
     end
   end
 
+  def assert_datetime_diff(%DateTime{} = datetime1, %DateTime{} = datetime2, is, leeway \\ 5) do
+    assert DateTime.diff(datetime1, datetime2, :second) in (is - leeway)..(is + leeway)
+  end
+
   @doc """
   A helper that transforms changeset errors into a map of messages.
 

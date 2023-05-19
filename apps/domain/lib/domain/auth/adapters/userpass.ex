@@ -83,5 +83,12 @@ defmodule Domain.Auth.Adapters.UserPass do
         end
       end
     )
+    |> case do
+      {:ok, identity} ->
+        {:ok, identity, nil}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 end
