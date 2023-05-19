@@ -413,7 +413,7 @@ jobs:
         with:
           platforms: linux/amd64
           build-args: |
-            VERSION=${{ github.sha }}
+            VERSION=0.0.0-dev.${{ github.sha }}
           file: Dockerfile.prod
           context: .
           push: false
