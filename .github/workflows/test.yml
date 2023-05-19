@@ -1,7 +1,8 @@
-name: Test
+name: Elixir
 on:
-  # TODO: Enable this for PRs against `cloud` when chaos settles
-  # pull_request:
+  pull_request:
+    branches:
+      - cloud
   push:
     branches:
       - cloud
@@ -58,7 +59,7 @@ jobs:
       - name: Compile Dependencies
         run: mix deps.compile --skip-umbrella-children
       - name: Compile Application
-        run: mix compile
+        run: mix compile --warnings-as-errors
       - name: Setup Database
         run: |
           mix ecto.create
@@ -68,7 +69,7 @@ jobs:
           E2E_MAX_WAIT_SECONDS: 20
         run: |
           # XXX: This can fail when coveralls is down
-          mix coveralls.github --umbrella --warnings-as-errors
+          mix test --warnings-as-errors
       - name: Test Report
         uses: dorny/test-reporter@v1
         if: ${{ github.event.pull_request.head.repo.full_name == github.repository && (success() || failure()) }}
