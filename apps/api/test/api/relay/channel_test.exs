@@ -22,5 +22,9 @@ defmodule API.Relay.ChannelTest do
       assert %{metas: [%{online_at: online_at, phx_ref: _ref}]} = Map.fetch!(presence, relay.id)
       assert is_number(online_at)
     end
+
+    test "sends init message after join" do
+      assert_push "init", %{}
+    end
   end
 end

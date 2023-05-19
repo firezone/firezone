@@ -10,6 +10,7 @@ defmodule API.Relay.Channel do
 
   @impl true
   def handle_info({:after_join, stamp_secret}, socket) do
+    push(socket, "init", %{})
     :ok = Relays.connect_relay(socket.assigns.relay, stamp_secret)
     {:noreply, socket}
   end
