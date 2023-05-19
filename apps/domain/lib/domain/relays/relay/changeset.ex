@@ -19,7 +19,7 @@ defmodule Domain.Relays.Relay.Changeset do
     |> cast(attrs, @upsert_fields)
     |> validate_required(~w[last_seen_user_agent last_seen_remote_ip]a)
     |> validate_required_one_of(~w[ipv4 ipv6]a)
-    |> validate_number(:port, greater_than_or_equal_to: 1, less_than_or_equal_to: 65535)
+    |> validate_number(:port, greater_than_or_equal_to: 1, less_than_or_equal_to: 65_535)
     |> unique_constraint(:ipv4, name: :relays_account_id_ipv4_index)
     |> unique_constraint(:ipv6, name: :relays_account_id_ipv6_index)
     |> put_change(:last_seen_at, DateTime.utc_now())
