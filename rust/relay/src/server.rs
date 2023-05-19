@@ -168,7 +168,7 @@ where
                     return Ok(());
                 };
 
-                tracing::debug!(target: "relay", "Received {} {} from {sender}", message.method().as_str(), message.class().as_str());
+                tracing::trace!(target: "relay", "Received {} {} from {sender}", message.method().as_str(), message.class().as_str());
 
                 self.dispatch_stun_message(message, sender, now, |server, message, sender, now| {
                     use MessageClass::*;
@@ -186,7 +186,7 @@ where
                             server.handle_create_permission_request(message, sender, now)
                         }
                         (_, Indication) => {
-                            tracing::debug!(target: "relay", "Indications are not yet implemented");
+                            tracing::trace!(target: "relay", "Indications are not yet implemented");
 
                             Err(ErrorCode::from(BadRequest))
                         }
@@ -679,7 +679,7 @@ where
     }
 
     fn send_message(&mut self, message: Message<Attribute>, recipient: SocketAddr) {
-        tracing::debug!(target: "relay", "Sending {} {} to {recipient}", message.method().as_str(), message.class().as_str());
+        tracing::trace!(target: "relay", "Sending {} {} to {recipient}", message.method().as_str(), message.class().as_str());
 
         let Ok(bytes) = self.encoder.encode_into_bytes(message) else {
             debug_assert!(false, "Encoding should never fail");
