@@ -234,7 +234,7 @@ where
         };
 
         let Some(channel_number) = self.channel_numbers_by_peer.get(&sender) else {
-            tracing::debug!(target: "relay", "no active channel for {sender}");
+            tracing::debug!(target: "relay", "no active channel for {sender}, refusing to relay {} bytes", bytes.len());
             return;
         };
 
@@ -593,25 +593,18 @@ where
 
     fn handle_channel_data_message(
         &mut self,
-        requested_channel: u16,
+        channel_number: u16,
         data: &[u8],
         sender: SocketAddr,
         _: Instant,
     ) {
-        let Some(channel_number) = self.channel_numbers_by_peer.get(&sender).copied() else {
-            tracing::debug!(target: "relay", "Client {sender} does not have an active channel");
-            return;
-        };
-
-        if channel_number != requested_channel {
-            tracing::debug!(target: "relay", "Client {sender} is not bound to channel {requested_channel}");
-            return;
-        }
-
         let Some(channel) = self.channels_by_number.get(&channel_number) else {
             tracing::debug!(target: "relay", "Channel {channel_number} does not exist, refusing to forward data");
             return;
         };
+
+        // TODO: Do we need to enforce that only the creator of the channel can relay data?
+        // The sender of a UDP packet can be spoofed, so why would we bother?
 
         if !channel.bound {
             tracing::debug!(target: "relay", "Channel {channel_number} exists but is unbound");

@@ -16,3 +16,7 @@ tracing = { version = "0.1.37", features = ["log"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 env_logger = "0.10.0"
 bytes = "1.4.0"
+
+[dev-dependencies]
+webrtc = "0.7.2"
+redis = { version = "0.23.0", default-features = false, features = ["tokio-comp"] }
