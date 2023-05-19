@@ -60,7 +60,7 @@ defmodule API.Client.ChannelTest do
         })
         |> subscribe_and_join(API.Client.Channel, "client")
 
-      assert_push "token_expired", %{}
+      assert_push "token_expired", %{}, 250
     end
 
     test "sends list of resources after join", %{
