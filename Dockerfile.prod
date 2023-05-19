@@ -46,7 +46,7 @@ ENV VERSION=$VERSION
 RUN mix tailwind.install --if-missing \
  && mix esbuild.install --if-missing \
  && mix tailwind default --minify \
- && mix esbuild default --minify
+ && mix esbuild default --minify \
  && mix phx.digest
 
 # Compile the release
