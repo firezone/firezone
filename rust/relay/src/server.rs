@@ -186,7 +186,7 @@ where
                             server.handle_create_permission_request(message, sender, now)
                         }
                         (_, Indication) => {
-                            tracing::debug!("Indications are not yet implemented");
+                            tracing::debug!(target: "relay", "Indications are not yet implemented");
 
                             Err(ErrorCode::from(BadRequest))
                         }
