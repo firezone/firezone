@@ -1,8 +1,4 @@
 [
-  locals_without_parents: [
-    assert_datetime_diff: 3,
-    assert_datetime_diff: 4
-  ],
   import_deps: [
     :ecto,
     :plug

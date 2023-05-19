@@ -881,7 +881,7 @@ defmodule Domain.AuthTest do
       {:ok, token} = create_session_token_from_subject(subject)
 
       assert {:ok, expires_at} = fetch_session_token_expires_at(token)
-      assert_datetime_diff expires_at, DateTime.utc_now(), 60
+      assert_datetime_diff(expires_at, DateTime.utc_now(), 60)
     end
   end
 
