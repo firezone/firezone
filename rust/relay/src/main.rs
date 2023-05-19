@@ -5,7 +5,7 @@ use relay::{AllocationId, Command, Server, Sleep, UdpSocket};
 use std::collections::{HashMap, VecDeque};
 use std::convert::Infallible;
 use std::error::Error;
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::net::{Ipv4Addr, SocketAddr};
 use std::pin::Pin;
 use std::str::FromStr;
 use std::task::Poll;
@@ -66,7 +66,7 @@ impl Eventloop {
         Ok(Self {
             ip4_socket: UdpSocket::bind((listen_ip4_address, 3478)).await?,
             listen_ip4_address,
-            server: Server::new(SocketAddrV4::new(public_ip4_address, 3478)),
+            server: Server::new(public_ip4_address),
             allocations: Default::default(),
             relay_data_sender: sender,
             relay_data_receiver: receiver,

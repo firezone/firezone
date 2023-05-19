@@ -36,7 +36,7 @@ pub struct Server<R = ThreadRng> {
     decoder: MessageDecoder<Attribute>,
     encoder: MessageEncoder<Attribute>,
 
-    public_ip4_address: SocketAddrV4,
+    public_ip4_address: Ipv4Addr,
 
     /// All client allocations, indexed by client's socket address.
     allocations: HashMap<SocketAddr, Allocation>,
@@ -122,7 +122,7 @@ const DEFAULT_ALLOCATION_LIFETIME: Duration = Duration::from_secs(600);
 const CHANNEL_BINDING_DURATION: Duration = Duration::from_secs(600);
 
 impl Server {
-    pub fn new(public_ip4_address: SocketAddrV4) -> Self {
+    pub fn new(public_ip4_address: Ipv4Addr) -> Self {
         // TODO: Validate that local IP isn't multicast / loopback etc.
 
         Self {
@@ -698,9 +698,7 @@ where
     }
 
     fn public_relay_address_for_port(&self, port: u16) -> SocketAddrV4 {
-        let ip4_relay_address = SocketAddrV4::new(*self.public_ip4_address.ip(), port);
-
-        ip4_relay_address
+        SocketAddrV4::new(self.public_ip4_address, port)
     }
 
     fn get_allocation(&self, id: &AllocationId) -> Option<&Allocation> {
@@ -755,12 +753,10 @@ fn create_permission_success_response(transaction_id: TransactionId) -> Message<
 impl Server<StepRng> {
     #[allow(dead_code)]
     pub fn test() -> Self {
-        let local_ip4_address = Ipv4Addr::new(35, 124, 91, 37);
-
         Self {
             decoder: Default::default(),
             encoder: Default::default(),
-            public_ip4_address: SocketAddrV4::new(local_ip4_address, 3478),
+            public_ip4_address: Ipv4Addr::new(35, 124, 91, 37),
             allocations: HashMap::new(),
             clients_by_allocation: Default::default(),
             allocations_by_port: Default::default(),
