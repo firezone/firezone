@@ -24,12 +24,9 @@ defmodule Web.UsersLive.Edit do
         <form action="#">
           <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
             <div>
-              <label
-                for="first-name"
-                class="block mb-2 text-sm font-medium text-gray-900 dark:text-white"
-              >
+              <.label for="first-name">
                 First Name
-              </label>
+              </.label>
               <input
                 type="text"
                 name="first-name"
@@ -40,12 +37,9 @@ defmodule Web.UsersLive.Edit do
               />
             </div>
             <div class="w-full">
-              <label
-                for="last-name"
-                class="block mb-2 text-sm font-medium text-gray-900 dark:text-white"
-              >
+              <.label for="last-name">
                 Last Name
-              </label>
+              </.label>
               <input
                 type="text"
                 name="last-name"
@@ -56,9 +50,9 @@ defmodule Web.UsersLive.Edit do
               />
             </div>
             <div>
-              <label for="email" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">
+              <.label for="email">
                 Email
-              </label>
+              </.label>
               <input
                 aria-describedby="email-explanation"
                 type="email"
@@ -72,12 +66,9 @@ defmodule Web.UsersLive.Edit do
               </p>
             </div>
             <div>
-              <label
-                for="confirm-email"
-                class="block mb-2 text-sm font-medium text-gray-900 dark:text-white"
-              >
+              <.label for="confirm-email">
                 Confirm email
-              </label>
+              </.label>
               <input
                 type="email"
                 name="confirm-email"
@@ -87,12 +78,9 @@ defmodule Web.UsersLive.Edit do
               />
             </div>
             <div>
-              <label
-                for="user-role"
-                class="block mb-2 text-sm font-medium text-gray-900 dark:text-white"
-              >
+              <.label for="user-role">
                 Role
-              </label>
+              </.label>
               <select
                 aria-described-by="role-explanation"
                 id="user-role"
@@ -106,12 +94,9 @@ defmodule Web.UsersLive.Edit do
               </p>
             </div>
             <div>
-              <label
-                for="user-groups"
-                class="block mb-2 text-sm font-medium text-gray-900 dark:text-white"
-              >
+              <.label for="user-groups">
                 Groups
-              </label>
+              </.label>
               <select
                 multiple
                 aria-described-by="groups-explanation"

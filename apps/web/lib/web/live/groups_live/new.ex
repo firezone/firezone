@@ -3,19 +3,18 @@ defmodule Web.GroupsLive.New do
 
   def render(assigns) do
     ~H"""
-    <div class="grid grid-cols-1 p-4 xl:grid-cols-3 xl:gap-4 dark:bg-gray-900">
-      <div class="col-span-full mb-4 xl:mb-2">
-        <!-- Breadcrumbs -->
+    <.section_header>
+      <:breadcrumbs>
         <.breadcrumbs entries={[
           %{label: "Home", path: ~p"/"},
           %{label: "Groups", path: ~p"/groups"},
-          %{label: "Add group", path: ~p"/groups/new"}
+          %{label: "Add Group", path: ~p"/groups/new"}
         ]} />
-        <h1 class="text-xl font-semibold text-gray-900 sm:text-2xl dark:text-white">
-          Add a new group
-        </h1>
-      </div>
-    </div>
+      </:breadcrumbs>
+      <:title>
+        Add a new group
+      </:title>
+    </.section_header>
 
     <section class="bg-white dark:bg-gray-900">
       <div class="py-8 px-4 mx-auto max-w-2xl lg:py-16">
@@ -23,12 +22,9 @@ defmodule Web.GroupsLive.New do
         <form action="#">
           <div class="grid gap-4 sm:grid-cols-1 sm:gap-6">
             <div>
-              <label
-                for="first-name"
-                class="block mb-2 text-sm font-medium text-gray-900 dark:text-white"
-              >
+              <.label for="first-name">
                 Name
-              </label>
+              </.label>
               <input
                 type="text"
                 name="first-name"
@@ -38,12 +34,9 @@ defmodule Web.GroupsLive.New do
               />
             </div>
             <div>
-              <label
-                for="group-users"
-                class="block mb-2 text-sm font-medium text-gray-900 dark:text-white"
-              >
-                Groups
-              </label>
+              <.label for="group-users">
+                Users
+              </.label>
               <select
                 multiple
                 aria-described-by="groups-explanation"

@@ -43,8 +43,8 @@ defmodule Web.Router do
 
       # Gateways
       live "/gateways", GatewaysLive.Index
-      live "/gateways/:id", GatewaysLive.Show
       live "/gateways/new", GatewaysLive.New
+      live "/gateways/:id", GatewaysLive.Show
 
       # Resources
       live "/resources", ResourcesLive.Index

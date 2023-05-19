@@ -16,6 +16,72 @@ defmodule Web.CoreComponents do
   import Web.Gettext
 
   @doc """
+  Render a section header. Section headers are used in the main content section
+  to provide a title for the content and option actions button(s) aligned on the right.
+
+  ## Examples
+
+    <.section_header>
+      <:breadcrumbs>
+        <.breadcrumbs entries={[
+          %{label: "Home", path: ~p"/"},
+          %{label: "Gateways", path: ~p"/gateways"}
+        ]} />
+      </:breadcrumbs>
+      <:title>
+        All gateways
+      </:title>
+      <:actions>
+        <.add_button navigate={~p"/gateways/new"}>
+          Deploy gateway
+        </.add_button>
+      </:actions>
+    </.section_header>
+  """
+  slot :breadcrumbs, required: false, doc: "Breadcrumb links"
+  slot :title, required: true, doc: "Title of the section"
+  slot :actions, required: false, doc: "Buttons or other action elements"
+
+  def section_header(assigns) do
+    ~H"""
+    <div class="grid grid-cols-1 p-4 xl:grid-cols-3 xl:gap-4 dark:bg-gray-900">
+      <div class="col-span-full mb-4 xl:mb-2">
+        <%= render_slot(@breadcrumbs) %>
+        <div class="flex justify-between items-center">
+          <h1 class="text-xl font-semibold text-gray-900 sm:text-2xl dark:text-white">
+            <%= render_slot(@title) %>
+          </h1>
+          <%= render_slot(@actions) %>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  @doc """
+  Render a submit button.
+
+  ## Examples
+
+    <.submit_button>
+      Save
+    </.submit_button>
+  """
+
+  slot :inner_block, required: true
+
+  def submit_button(assigns) do
+    ~H"""
+    <button
+      type="submit"
+      class="inline-flex items-center px-5 py-2.5 mt-4 sm:mt-6 text-sm font-medium text-center text-white bg-primary-700 rounded-lg focus:ring-4 focus:ring-primary-200 dark:focus:ring-primary-900 hover:bg-primary-800"
+    >
+      <%= render_slot(@inner_block) %>
+    </button>
+    """
+  end
+
+  @doc """
   Render a delete button.
 
   ## Examples
@@ -37,6 +103,30 @@ defmodule Web.CoreComponents do
       <!-- <.icon name="hero-trash-solid" class="text-red-600 w-5 h-5 mr-1 -ml-1" /> -->
       <%= render_slot(@inner_block) %>
     </button>
+    """
+  end
+
+  @doc """
+  Renders an add button.
+
+  ## Examples
+
+    <.add_button navigate={~p"/users/new"}>
+      Add user
+    </.add_button>
+  """
+  attr :navigate, :any, required: true, doc: "Path to navigate to"
+  slot :inner_block, required: true
+
+  def add_button(assigns) do
+    ~H"""
+    <.link
+      navigate={@navigate}
+      class="flex items-center justify-center text-white bg-primary-700 hover:bg-primary-800 focus:ring-4 focus:ring-primary-300 font-medium rounded-lg text-sm px-4 py-2 dark:bg-primary-600 dark:hover:bg-primary-700 focus:outline-none dark:focus:ring-primary-800"
+    >
+      <.icon name="hero-plus" class="h-3.5 w-3.5 mr-2" />
+      <%= render_slot(@inner_block) %>
+    </.link>
     """
   end
 
@@ -166,31 +256,33 @@ defmodule Web.CoreComponents do
 
   def breadcrumbs(assigns) do
     ~H"""
-    <nav class="flex mb-5" aria-label="Breadcrumb">
-      <ol class="inline-flex items-center space-x-1 md:space-x-2">
-        <li :for={entry <- @entries} class="inline-flex items-center">
-          <%= if entry.label == "Home" do %>
-            <.link
-              navigate={entry.path}
-              class="inline-flex items-center text-gray-700 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
-            >
-              <.icon name="hero-home-solid" class="w-4 h-4 mr-2" />
-              <%= entry.label %>
-            </.link>
-          <% else %>
-            <div class="flex items-center">
-              <.icon name="hero-chevron-right-solid" class="w-6 h-6" />
+    <div class="col-span-full mb-4 xl:mb-2">
+      <nav class="flex mb-5" aria-label="Breadcrumb">
+        <ol class="inline-flex items-center space-x-1 md:space-x-2">
+          <li :for={entry <- @entries} class="inline-flex items-center">
+            <%= if entry.label == "Home" do %>
               <.link
                 navigate={entry.path}
-                class="ml-1 text-sm font-medium text-gray-700 hover:text-gray-900 md:ml-2 dark:text-gray-300 dark:hover:text-white"
+                class="inline-flex items-center text-gray-700 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
               >
+                <.icon name="hero-home-solid" class="w-4 h-4 mr-2" />
                 <%= entry.label %>
               </.link>
-            </div>
-          <% end %>
-        </li>
-      </ol>
-    </nav>
+            <% else %>
+              <div class="flex items-center">
+                <.icon name="hero-chevron-right-solid" class="w-6 h-6" />
+                <.link
+                  navigate={entry.path}
+                  class="ml-1 text-sm font-medium text-gray-700 hover:text-gray-900 md:ml-2 dark:text-gray-300 dark:hover:text-white"
+                >
+                  <%= entry.label %>
+                </.link>
+              </div>
+            <% end %>
+          </li>
+        </ol>
+      </nav>
+    </div>
     """
   end
 
@@ -532,14 +624,14 @@ defmodule Web.CoreComponents do
   end
 
   @doc """
-  Renders a label.
+  Renders a standard form label.
   """
   attr :for, :string, default: nil
   slot :inner_block, required: true
 
   def label(assigns) do
     ~H"""
-    <label for={@for} class="block text-sm font-semibold leading-6 text-zinc-800">
+    <label for={@for} class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">
       <%= render_slot(@inner_block) %>
     </label>
     """

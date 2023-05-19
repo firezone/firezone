@@ -24,12 +24,9 @@ defmodule Web.GroupsLive.Edit do
         <form action="#">
           <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
             <div>
-              <label
-                for="first-name"
-                class="block mb-2 text-sm font-medium text-gray-900 dark:text-white"
-              >
+              <.label for="first-name">
                 Name
-              </label>
+              </.label>
               <input
                 type="text"
                 name="name"
@@ -40,12 +37,9 @@ defmodule Web.GroupsLive.Edit do
               />
             </div>
             <div>
-              <label
-                for="group-users"
-                class="block mb-2 text-sm font-medium text-gray-900 dark:text-white"
-              >
+              <.label for="group-users">
                 Users
-              </label>
+              </.label>
               <select
                 multiple
                 aria-described-by="groups-explanation"

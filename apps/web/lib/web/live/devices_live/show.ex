@@ -3,24 +3,23 @@ defmodule Web.DevicesLive.Show do
 
   def render(assigns) do
     ~H"""
-    <div class="grid grid-cols-1 p-4 xl:grid-cols-3 xl:gap-4 dark:bg-gray-900">
-      <div class="col-span-full mb-4 xl:mb-2">
-        <!-- Breadcrumbs -->
+    <.section_header>
+      <:breadcrumbs>
         <.breadcrumbs entries={[
           %{label: "Home", path: ~p"/"},
           %{label: "Devices", path: ~p"/devices"},
           %{label: "Jamil's Macbook Pro", path: ~p"/devices/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
         ]} />
-        <div class="flex justify-between items-center">
-          <h1 class="text-xl font-semibold text-gray-900 sm:text-2xl dark:text-white">
-            Device details
-          </h1>
-          <.delete_button>
-            Archive
-          </.delete_button>
-        </div>
-      </div>
-    </div>
+      </:breadcrumbs>
+      <:title>
+        Device details
+      </:title>
+      <:actions>
+        <.delete_button>
+          Archive
+        </.delete_button>
+      </:actions>
+    </.section_header>
     <!-- Device Details -->
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
       <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">

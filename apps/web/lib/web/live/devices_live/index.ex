@@ -3,16 +3,17 @@ defmodule Web.DevicesLive.Index do
 
   def render(assigns) do
     ~H"""
-    <div class="grid grid-cols-1 p-4 xl:grid-cols-3 xl:gap-4 dark:bg-gray-900">
-      <div class="col-span-full mb-4 xl:mb-2">
-        <!-- Breadcrumbs -->
+    <.section_header>
+      <:breadcrumbs>
         <.breadcrumbs entries={[
           %{label: "Home", path: ~p"/"},
           %{label: "Devices", path: ~p"/devices"}
         ]} />
-        <h1 class="text-xl font-semibold text-gray-900 sm:text-2xl dark:text-white">All devices</h1>
-      </div>
-    </div>
+      </:breadcrumbs>
+      <:title>
+        All devices
+      </:title>
+    </.section_header>
     <!-- Devices Table -->
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
       <div class="flex flex-col md:flex-row items-center justify-between space-y-3 md:space-y-0 md:space-x-4 p-4">

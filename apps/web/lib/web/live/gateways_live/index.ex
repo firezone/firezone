@@ -3,20 +3,22 @@ defmodule Web.GatewaysLive.Index do
 
   def render(assigns) do
     ~H"""
-    <div class="grid grid-cols-1 p-4 xl:grid-cols-3 xl:gap-4 dark:bg-gray-900">
-      <div class="col-span-full mb-4 xl:mb-2">
-        <!-- Breadcrumbs -->
+    <.section_header>
+      <:breadcrumbs>
         <.breadcrumbs entries={[
           %{label: "Home", path: ~p"/"},
           %{label: "Gateways", path: ~p"/gateways"}
         ]} />
-        <div class="flex justify-between items-center">
-          <h1 class="text-xl font-semibold text-gray-900 sm:text-2xl dark:text-white">
-            All gateways
-          </h1>
-        </div>
-      </div>
-    </div>
+      </:breadcrumbs>
+      <:title>
+        All gateways
+      </:title>
+      <:actions>
+        <.add_button navigate={~p"/gateways/new"}>
+          Add a new gateway
+        </.add_button>
+      </:actions>
+    </.section_header>
     <!-- Gateways Table -->
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
       <div class="flex flex-col md:flex-row items-center justify-between space-y-3 md:space-y-0 md:space-x-4 p-4">
