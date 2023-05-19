@@ -3,9 +3,6 @@ defmodule API.Client.Channel do
   alias API.Client.Views
   alias Domain.{Clients, Resources, Gateways, Relays}
 
-  # TODO: we need to self-terminate channel once the user token is set to expire, preventing
-  # users from holding infinite session for if they want to keep websocket open for a while
-
   @impl true
   def join("client", _payload, socket) do
     expires_in =

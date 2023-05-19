@@ -20,16 +20,6 @@ defmodule API.Client.SocketTest do
       assert connect(Socket, attrs, @connect_info) == {:error, :invalid}
     end
 
-    test "assigns token expiration" do
-      subject = AuthFixtures.create_subject()
-      {:ok, token} = Auth.create_session_token_from_subject(subject)
-      attrs = connect_attrs(token: token)
-      assert {:ok, socket} = connect(Socket, attrs, connect_info(subject))
-      expires_at = socket.assigns.expires_at
-      assert %DateTime{} = expires_at
-      assert DateTime.diff(expires_at, DateTime.utc_now(), :second) in 55..65
-    end
-
     test "creates a new client" do
       subject = AuthFixtures.create_subject()
       {:ok, token} = Auth.create_session_token_from_subject(subject)

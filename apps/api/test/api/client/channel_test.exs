@@ -50,13 +50,13 @@ defmodule API.Client.ChannelTest do
 
     test "expires the channel when token is expired", %{client: client, subject: subject} do
       expires_at = DateTime.utc_now() |> DateTime.add(25, :millisecond)
+      subject = %{subject | expires_at: expires_at}
 
       {:ok, _reply, _socket} =
         API.Client.Socket
         |> socket("client:#{client.id}", %{
           client: client,
-          subject: subject,
-          expires_at: expires_at
+          subject: subject
         })
         |> subscribe_and_join(API.Client.Channel, "client")
 
