@@ -8,7 +8,8 @@ defmodule API.Client.Channel do
 
   @impl true
   def join("client", _payload, socket) do
-    expires_in = DateTime.diff(socket.assigns.expires_at, DateTime.utc_now(), :millisecond)
+    expires_in =
+      DateTime.diff(socket.assigns.subject.expires_at, DateTime.utc_now(), :millisecond)
 
     if expires_in > 0 do
       Process.send_after(self(), :token_expired, expires_in)

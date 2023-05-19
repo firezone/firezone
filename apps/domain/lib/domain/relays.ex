@@ -146,15 +146,17 @@ defmodule Domain.Relays do
     {:ok, relays}
   end
 
-  def generate_username_and_password(%Relay{stamp_secret: stamp_secret}, %DateTime{} = expires_at) do
+  def generate_username_and_password(%Relay{stamp_secret: stamp_secret}, %DateTime{} = expires_at)
+      when is_binary(stamp_secret) do
     expires_at = DateTime.to_unix(expires_at, :second)
     salt = Domain.Crypto.rand_string()
+    password = generate_hash(expires_at, stamp_secret, salt)
+    %{username: "#{expires_at}:#{salt}", password: password, expires_at: expires_at}
+  end
 
-    hash =
-      :crypto.hash(:sha256, "#{expires_at}:#{stamp_secret}:#{salt}")
-      |> Base.encode64(padding: false, case: :lower)
-
-    %{username: "#{expires_at}:#{salt}", password: hash, expires_at: expires_at}
+  defp generate_hash(expires_at, stamp_secret, salt) do
+    :crypto.hash(:sha256, "#{expires_at}:#{stamp_secret}:#{salt}")
+    |> Base.encode64(padding: false)
   end
 
   def upsert_relay(%Token{} = token, attrs) do

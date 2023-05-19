@@ -251,9 +251,10 @@ defmodule Domain.Auth do
 
     with {:ok, message} <- Plug.Crypto.MessageVerifier.verify(token, secret) do
       {_data, signed, max_age} = Plug.Crypto.non_executable_binary_to_term(message)
-      DateTime.from_unix(signed + trunc(max_age * 1000), :millisecond)
+      {:ok, datetime} = DateTime.from_unix(signed + trunc(max_age * 1000), :millisecond)
+      {:ok, datetime}
     else
-      :error -> {:error, :invalid}
+      :error -> {:error, :invalid_token}
     end
   end
 
