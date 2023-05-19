@@ -108,21 +108,33 @@ defmodule API.Client.ChannelTest do
       ref = push(socket, "list_relays", %{"resource_id" => resource.id})
       assert_reply ref, :ok, %{relays: relays}
 
-      ipv4_uri = "stun:#{relay.ipv4}:#{relay.port}"
-      ipv6_uri = "stun:#{relay.ipv6}:#{relay.port}"
+      ipv4_stun_uri = "stun:#{relay.ipv4}:#{relay.port}"
+      ipv4_turn_uri = "turn:#{relay.ipv4}:#{relay.port}"
+      ipv6_stun_uri = "stun:#{relay.ipv6}:#{relay.port}"
+      ipv6_turn_uri = "turn:#{relay.ipv6}:#{relay.port}"
 
       assert [
                %{
-                 expires_at: expires_at,
-                 password: password1,
-                 username: username1,
-                 uri: ^ipv4_uri
+                 type: :stun,
+                 uri: ^ipv4_stun_uri
                },
                %{
-                 expires_at: expires_at,
+                 type: :turn,
+                 expires_at: expires_at_unix,
+                 password: password1,
+                 username: username1,
+                 uri: ^ipv4_turn_uri
+               },
+               %{
+                 type: :stun,
+                 uri: ^ipv6_stun_uri
+               },
+               %{
+                 type: :turn,
+                 expires_at: expires_at_unix,
                  password: password2,
                  username: username2,
-                 uri: ^ipv6_uri
+                 uri: ^ipv6_turn_uri
                }
              ] = relays
 

@@ -10,10 +10,10 @@ defmodule API.Client.Views.Relay do
       maybe_render(relay, expires_at, relay.ipv4),
       maybe_render(relay, expires_at, relay.ipv6)
     ]
-    |> Enum.reject(&is_nil/1)
+    |> List.flatten()
   end
 
-  defp maybe_render(%Relays.Relay{}, _expires_at, nil), do: nil
+  defp maybe_render(%Relays.Relay{}, _expires_at, nil), do: []
 
   defp maybe_render(%Relays.Relay{} = relay, expires_at, address) do
     %{
@@ -22,11 +22,18 @@ defmodule API.Client.Views.Relay do
       expires_at: expires_at
     } = Relays.generate_username_and_password(relay, expires_at)
 
-    %{
-      uri: "stun:#{address}:#{relay.port}",
-      username: username,
-      password: password,
-      expires_at: expires_at
-    }
+    [
+      %{
+        type: :stun,
+        uri: "stun:#{address}:#{relay.port}"
+      },
+      %{
+        type: :turn,
+        uri: "turn:#{address}:#{relay.port}",
+        username: username,
+        password: password,
+        expires_at: expires_at
+      }
+    ]
   end
 end

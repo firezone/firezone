@@ -27,7 +27,7 @@ defmodule API.Client.SocketTest do
       assert {:ok, socket} = connect(Socket, attrs, connect_info(subject))
       expires_at = socket.assigns.expires_at
       assert %DateTime{} = expires_at
-      assert DateTime.diff(expires_at, DateTime.utc_now(), :second) in 1795..1805
+      assert DateTime.diff(expires_at, DateTime.utc_now(), :second) in 55..65
     end
 
     test "creates a new client" do
