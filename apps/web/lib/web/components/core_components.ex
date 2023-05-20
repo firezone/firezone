@@ -59,6 +59,41 @@ defmodule Web.CoreComponents do
   end
 
   @doc """
+  Render a button group.
+  """
+
+  slot :first, required: true, doc: "First button"
+  slot :middle, required: false, doc: "Middle button(s)"
+  slot :last, required: true, doc: "Last button"
+
+  def button_group(assigns) do
+    ~H"""
+    <div class="inline-flex rounded-md shadow-sm" role="group">
+      <button
+        type="button"
+        class="px-4 py-2 text-sm font-medium text-gray-900 bg-white border border-gray-200 rounded-l-lg hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2 focus:ring-blue-700 focus:text-blue-700 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:hover:text-white dark:hover:bg-gray-600 dark:focus:ring-blue-500 dark:focus:text-white"
+      >
+        <%= render_slot(@first) %>
+      </button>
+      <%= for middle <- @middle do %>
+        <button
+          type="button"
+          class="px-4 py-2 text-sm font-medium text-gray-900 bg-white border-t border-b border-gray-200 hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2 focus:ring-blue-700 focus:text-blue-700 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:hover:text-white dark:hover:bg-gray-600 dark:focus:ring-blue-500 dark:focus:text-white"
+        >
+          <%= render_slot(middle) %>
+        </button>
+      <% end %>
+      <button
+        type="button"
+        class="px-4 py-2 text-sm font-medium text-gray-900 bg-white border border-gray-200 rounded-r-lg hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2 focus:ring-blue-700 focus:text-blue-700 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:hover:text-white dark:hover:bg-gray-600 dark:focus:ring-blue-500 dark:focus:text-white"
+      >
+        <%= render_slot(@last) %>
+      </button>
+    </div>
+    """
+  end
+
+  @doc """
   Render a submit button.
 
   ## Examples

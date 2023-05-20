@@ -34,21 +34,17 @@ defmodule Web.GatewaysLive.New do
               />
             </div>
             <div>
-              <.label for="group-users">
-                Gateways
+              <.label>
+                Select a deployment method
               </.label>
-              <select
-                multiple
-                aria-described-by="groups-explanation"
-                id="group-users"
-                class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
-              >
-                <option value="engineering">Engineering</option>
-                <option value="devops">DevOps</option>
-              </select>
-              <p id="groups-explanation" class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                Select one or more users to add to this group.
-              </p>
+              <.button_group>
+                <:first>
+                  Docker
+                </:first>
+                <:last>
+                  Systemd
+                </:last>
+              </.button_group>
             </div>
           </div>
           <.submit_button>
