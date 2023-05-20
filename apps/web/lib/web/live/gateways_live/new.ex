@@ -37,15 +37,36 @@ defmodule Web.GatewaysLive.New do
               <.label>
                 Select a deployment method
               </.label>
-              <.button_group>
-                <:first>
-                  Docker
-                </:first>
-                <:last>
-                  Systemd
-                </:last>
-              </.button_group>
             </div>
+            <.tabs id="deployment-instructions">
+              <:tab id="docker-instructions" label="Docker">
+                <.code_block>
+                  docker run -d \
+                  --name=zigbee2mqtt \
+                  --restart=always \
+                  -v /opt/zigbee2mqtt/data:/app/data \
+                  -v /run/udev:/run/udev:ro \
+                  --device=/dev/ttyACM0 \
+                  --net=host \
+                  koenkk/zigbee2mqtt
+                </.code_block>
+              </:tab>
+              <:tab id="systemd-instructions" label="Systemd">
+                <.code_block>
+                  [Unit]
+                  Description=zigbee2mqtt
+                  After=network.target
+
+                  [Service]
+                  ExecStart=/usr/bin/npm start
+                  WorkingDirectory=/opt/zigbee2mqtt
+                  StandardOutput=inherit
+                  StandardError=inherit
+                  Restart=always
+                  User=pi
+                </.code_block>
+              </:tab>
+            </.tabs>
           </div>
           <.submit_button>
             Create

@@ -16,6 +16,86 @@ defmodule Web.CoreComponents do
   import Web.Gettext
 
   @doc """
+  Render a monospace code block suitable for copying and pasting content.
+
+  ## Examples
+
+  <.code_block>
+    The lazy brown fox jumped over the quick dog.
+  </.code_block>
+  """
+  def code_block(assigns) do
+    ~H"""
+    <pre class="p-4 overflow-x-auto bg-gray-50 dark:bg-gray-800 rounded-lg">
+      <code class="whitespace-pre-line"><%= render_slot(@inner_block) %></code>
+    </pre>
+    """
+  end
+
+  @doc """
+  Render a tabs toggle container and its content.
+
+  ## Examples
+
+  <.tabs id={"hello-world"}>
+    <:tab id={"hello"} label={"Hello"}>
+      <p>Hello</p>
+    </:tab>
+    <:tab id={"world"} label={"World"}>
+      <p>World</p>
+    </:tab>
+  </.tabs>
+  """
+
+  attr :id, :string, required: true, doc: "ID of the tabs container"
+
+  slot :tab, required: true, doc: "Tab content" do
+    attr :id, :string, required: true, doc: "ID of the tab"
+    attr :label, :any, required: true, doc: "Display label for the tab"
+  end
+
+  def tabs(assigns) do
+    ~H"""
+    <div class="mb-4 border-b border-gray-200 dark:border-gray-700">
+      <ul
+        class="flex flex-wrap -mb-px text-sm font-medium text-center"
+        id={"#{@id}-ul"}
+        data-tabs-toggle={"##{@id}"}
+        role="tablist"
+      >
+        <%= for tab <- @tab do %>
+          <li class="mr-2" role="presentation">
+            <button
+              class="inline-block p-4 border-b-2 border-transparent rounded-t-lg hover:text-gray-600 hover:border-gray-300 dark:hover:text-gray-300"
+              id={"#{tab.id}-tab"}
+              data-tabs-target={"##{tab.id}"}
+              type="button"
+              role="tab"
+              aria-controls={tab.id}
+              aria-selected="false"
+            >
+              <%= tab.label %>
+            </button>
+          </li>
+        <% end %>
+      </ul>
+    </div>
+    <div id={@id}>
+      <%= for tab <- @tab do %>
+        <div
+          class="hidden p-4 rounded-lg bg-gray-50 dark:bg-gray-800"
+          id={tab.id}
+          role="tabpanel"
+          aria-labelledby={"#{tab.id}-tab"}
+        >
+          <%= render_slot(tab) %>
+        </div>
+      <% end %>
+    </div>
+    """
+  end
+
+  @doc """
   Render a section header. Section headers are used in the main content section
   to provide a title for the content and option actions button(s) aligned on the right.
 
