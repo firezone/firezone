@@ -110,6 +110,54 @@ fn server_waits_for_5_minutes_before_allowing_reuse_of_channel_number_after_expi
     // todo!()
 }
 
+#[test]
+fn ping_pong_relay() {
+    let now = Instant::now();
+    run_regression_test(&[(
+        Input::client("127.0.0.1:42677","000300102112a44216e1c61ab424700638d1cdc70019000411000000802800040eac7235", now),
+        &[
+            Output::send_message("127.0.0.1:42677","0113002c2112a44216e1c61ab424700638d1cdc70009001000000401556e617574686f72697a656400150006666f6f626172000000140008666972657a6f6e65"),
+        ]),
+        (
+        Input::client("127.0.0.1:54098","000100002112a442f0453a3bb8edcdeb333ccbe0", now),
+        &[
+            Output::send_message("127.0.0.1:54098","0101000c2112a442f0453a3bb8edcdeb333ccbe0002000080001f2405e12a443")],
+        ),
+        (
+        Input::client("127.0.0.1:42677","000300482112a442998bcae2a73b55941682cf470019000411000000000600047465737400140008666972657a6f6e6500150006666f6f626172000000080014b279018b143b1c6ac194a2848d0e37958731a2f38028000497076a00", now),
+        &[
+            Output::Wake(now + Duration::from_secs(600)),
+            Output::CreateAllocation(49152),
+            Output::send_message("127.0.0.1:42677","010300202112a442998bcae2a73b55941682cf47001600080001e112026eff6700200008000187a75e12a443000d000400000258")
+        ]),
+        (
+        Input::client("127.0.0.1:42677","0008004c2112a442dc5c115f6b727e25a54b55d3001200080001f2405e12a443000600047465737400140008666972657a6f6e6500150006666f6f626172000000080014384805e715f38de3b7b16df6dc3af51568cb073b80280004ecdfbc3d", now),
+        &[
+            Output::send_message("127.0.0.1:42677","010800002112a442dc5c115f6b727e25a54b55d3")
+        ]),
+        (
+        Input::client("127.0.0.1:42677","001600242112a4421b6fb3ce9cefcd57ef3a9edb00130009484f4c4550554e4348000000001200080001f2405e12a443802800041bfe0967", now),
+        &[
+            Output::send_message("127.0.0.1:42677","011600142112a4421b6fb3ce9cefcd57ef3a9edb0009000f00000400426164205265717565737400")
+        ]),
+        (
+        Input::client("127.0.0.1:42677","000900542112a4420afbde5aaacfc1e9316beae9001200080001f2405e12a443000c000440000000000600047465737400140008666972657a6f6e6500150006666f6f626172000000080014aca01c6cdc1fc5339a309e5bccac3df5c903e33e802800041fe4b79b", now),
+        &[
+            Output::send_message("127.0.0.1:42677","010900002112a4420afbde5aaacfc1e9316beae9")
+        ]),
+        (
+        Input::peer("127.0.0.1:54098","4a67cc90afc6a3d9dc2867fab4c5867de5adae6b8a45c710998c800067c0e1b3", 49152),
+         &[
+            Output::send_message("127.0.0.1:42677","400000204a67cc90afc6a3d9dc2867fab4c5867de5adae6b8a45c710998c800067c0e1b3")
+        ]),
+        (
+         Input::client("127.0.0.1:42677","400000204a67cc90afc6a3d9dc2867fab4c5867de5adae6b8a45c710998c800067c0e1b3", now),
+         &[
+             Output::forward("127.0.0.1:54098","4a67cc90afc6a3d9dc2867fab4c5867de5adae6b8a45c710998c800067c0e1b3", 49152)
+         ]
+    )]);
+}
+
 /// Run a regression test with a sequence events where we always have 1 input and N outputs.
 fn run_regression_test(sequence: &[(Input, &[Output])]) {
     let _ = env_logger::try_init();
@@ -128,6 +176,12 @@ fn run_regression_test(sequence: &[(Input, &[Output])]) {
             }
             Input::Time(now) => {
                 server.handle_deadline_reached(*now);
+            }
+            Input::Peer(from, data, port) => {
+                let input = hex::decode(data).unwrap();
+                let from = from.parse().unwrap();
+
+                server.handle_relay_input(&input, from, allocation_mapping[port]);
             }
         }
 
@@ -157,6 +211,14 @@ fn run_regression_test(sequence: &[(Input, &[Output])]) {
 
                     assert_eq!(expected_id, id);
                 }
+                (
+                    Output::Forward((to, bytes, port)),
+                    Command::ForwardData { id, data, receiver },
+                ) => {
+                    assert_eq!(*bytes, hex::encode(data));
+                    assert_eq!(receiver, to.parse().unwrap());
+                    assert_eq!(allocation_mapping[port], id);
+                }
                 (expected, actual) => panic!("Expected: {expected:?}\nActual:   {actual:?}\n"),
             }
         }
@@ -185,6 +247,7 @@ where
 
 enum Input {
     Client(Ip, Bytes, Instant),
+    Peer(Ip, Bytes, u16),
     Time(Instant),
 }
 
@@ -192,11 +255,15 @@ impl Input {
     fn client(from: Ip, data: impl AsRef<str>, now: Instant) -> Self {
         Self::Client(from, data.as_ref().to_owned(), now)
     }
+    fn peer(from: Ip, data: impl AsRef<str>, allocation: u16) -> Self {
+        Self::Peer(from, data.as_ref().to_owned(), allocation)
+    }
 }
 
 #[derive(Debug)]
 enum Output {
     SendMessage((Ip, Bytes)),
+    Forward((Ip, Bytes, u16)),
     Wake(Instant),
     CreateAllocation(u16),
     ExpireAllocation(u16),
@@ -205,6 +272,10 @@ enum Output {
 impl Output {
     fn send_message(from: Ip, data: impl AsRef<str>) -> Self {
         Self::SendMessage((from, data.as_ref().to_owned()))
+    }
+
+    fn forward(to: Ip, data: impl AsRef<str>, port: u16) -> Self {
+        Self::Forward((to, data.as_ref().to_owned(), port))
     }
 }
 

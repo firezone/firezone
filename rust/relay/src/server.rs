@@ -263,9 +263,17 @@ where
             bytes.len()
         );
 
+        let recipient = *client;
+        let data = channel_data::make(*channel_number, bytes);
+
+        if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
+            let hex_bytes = hex::encode(&data);
+            tracing::trace!(target: "wire", r#"Output::send_message("{recipient}","{hex_bytes}")"#);
+        }
+
         self.pending_commands.push_back(Command::SendMessage {
-            payload: channel_data::make(*channel_number, bytes),
-            recipient: *client,
+            payload: data,
+            recipient,
         })
     }
 
@@ -611,15 +619,19 @@ where
             return;
         }
 
-        tracing::debug!(target: "relay", "Relaying {} bytes from {sender} to {} via channel {channel_number}",
-            data.len(),
-            channel.peer_address
-        );
+        let recipient = channel.peer_address;
+
+        tracing::debug!(target: "relay", "Relaying {} bytes from {sender} to {recipient} via channel {channel_number}", data.len());
+
+        if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
+            let hex_bytes = hex::encode(&data);
+            tracing::trace!(target: "wire", r#"Output::Forward("{recipient}","{hex_bytes}")"#);
+        }
 
         self.pending_commands.push_back(Command::ForwardData {
             id: channel.allocation,
             data: data.to_vec(),
-            receiver: channel.peer_address,
+            receiver: recipient,
         });
     }
 
