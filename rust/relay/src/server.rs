@@ -164,7 +164,7 @@ where
         match bytes.first() {
             Some(0..=3) => {
                 let Ok(message) = self.decoder.decode_from_bytes(bytes)? else {
-                    tracing::trace!(target: "relay", "received broken STUN message from {sender}");
+                    tracing::warn!(target: "relay", "received broken STUN message from {sender}");
                     return Ok(());
                 };
 
