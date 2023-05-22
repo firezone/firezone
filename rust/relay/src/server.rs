@@ -14,7 +14,7 @@ use std::hash::Hash;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::time::{Duration, Instant};
 use stun_codec::rfc5389::attributes::{
-    ErrorCode, MessageIntegrity, Nonce, Realm, XorMappedAddress,
+    ErrorCode, MessageIntegrity, Nonce, Realm, Username, XorMappedAddress,
 };
 use stun_codec::rfc5389::errors::{BadRequest, Unauthorized};
 use stun_codec::rfc5389::methods::BINDING;
@@ -880,7 +880,8 @@ stun_codec::define_attribute_enums!(
         ChannelNumber,
         XorPeerAddress,
         Nonce,
-        Realm
+        Realm,
+        Username
     ]
 );
 

@@ -1,11 +1,12 @@
 use bytecodec::EncodeExt;
 use hex_literal::hex;
-use relay::{AllocationId, Command, Server};
+use relay::{AllocationId, Attribute, Command, Server};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
+use stun_codec::rfc5389::attributes::{MessageIntegrity, Realm, Username};
 use stun_codec::rfc5766::attributes::Lifetime;
 use stun_codec::rfc5766::methods::REFRESH;
-use stun_codec::{Attribute, Message, MessageClass, MessageEncoder, TransactionId};
+use stun_codec::{Message, MessageClass, MessageEncoder, TransactionId};
 
 #[test]
 fn stun_binding_request() {
@@ -23,32 +24,18 @@ fn stun_binding_request() {
 }
 
 #[test]
-fn turn_allocation_request() {
-    let now = Instant::now();
-
-    run_regression_test(&[(
-        Input::client("91.141.70.157:7112", "000300182112a44215d4bb014ad31072cd248ec70019000411000000000d000400000e1080280004d08a7674", now),
-        &[
-            Output::Wake(now + Duration::from_secs(3600)),
-            Output::CreateAllocation(49152),
-            Output::send_message("91.141.70.157:7112", "010300202112a44215d4bb014ad31072cd248ec7001600080001e112026eff670020000800013ada7a9fe2df000d000400000e10"),
-        ],
-    )]);
-}
-
-#[test]
 fn deallocate_once_time_expired() {
     let now = Instant::now();
 
     run_regression_test(&[(
-        Input::client("91.141.70.157:7112", "000300182112a44215d4bb014ad31072cd248ec70019000411000000000d000400000e1080280004d08a7674", now),
+        Input::client("91.141.70.157:7112", "000300482112a442998bcae2a73b55941682cf470019000411000000000600047465737400140008666972657a6f6e6500150006666f6f626172000000080014b279018b143b1c6ac194a2848d0e37958731a2f38028000497076a00", now),
         &[
-            Output::Wake(now + Duration::from_secs(3600)),
+            Output::Wake(now + Duration::from_secs(600)),
             Output::CreateAllocation(49152),
-            Output::send_message("91.141.70.157:7112", "010300202112a44215d4bb014ad31072cd248ec7001600080001e112026eff670020000800013ada7a9fe2df000d000400000e10"),
+            Output::send_message("91.141.70.157:7112", "010300202112a442998bcae2a73b55941682cf47001600080001e112026eff670020000800013ada7a9fe2df000d000400000258"),
         ],
     ), (
-        Input::Time(now + Duration::from_secs(3601)),
+        Input::Time(now + Duration::from_secs(601)),
         &[
             Output::ExpireAllocation(49152)
         ],
@@ -58,15 +45,15 @@ fn deallocate_once_time_expired() {
 #[test]
 fn when_refreshed_in_time_allocation_does_not_expire() {
     let now = Instant::now();
-    let refreshed_at = now + Duration::from_secs(1800);
-    let first_expiry = now + Duration::from_secs(3600);
+    let refreshed_at = now + Duration::from_secs(300);
+    let first_expiry = now + Duration::from_secs(600);
 
     run_regression_test(&[(
-        Input::client("91.141.70.157:7112", "000300182112a44215d4bb014ad31072cd248ec70019000411000000000d000400000e1080280004d08a7674", now),
+        Input::client("91.141.70.157:7112", "000300482112a442998bcae2a73b55941682cf470019000411000000000600047465737400140008666972657a6f6e6500150006666f6f626172000000080014b279018b143b1c6ac194a2848d0e37958731a2f38028000497076a00", now),
         &[
             Output::Wake(first_expiry),
             Output::CreateAllocation(49152),
-            Output::send_message("91.141.70.157:7112", "010300202112a44215d4bb014ad31072cd248ec7001600080001e112026eff670020000800013ada7a9fe2df000d000400000e10"),
+            Output::send_message("91.141.70.157:7112", "010300202112a442998bcae2a73b55941682cf47001600080001e112026eff670020000800013ada7a9fe2df000d000400000258"),
         ],
     ),(
         Input::client("91.141.70.157:7112", refresh_request(hex!("150ee0cb117ed3a0f66529f2"), 3600), refreshed_at),
@@ -83,15 +70,15 @@ fn when_refreshed_in_time_allocation_does_not_expire() {
 #[test]
 fn when_receiving_lifetime_0_for_existing_allocation_then_delete() {
     let now = Instant::now();
-    let refreshed_at = now + Duration::from_secs(1800);
-    let first_expiry = now + Duration::from_secs(3600);
+    let refreshed_at = now + Duration::from_secs(300);
+    let first_expiry = now + Duration::from_secs(600);
 
     run_regression_test(&[(
-        Input::client("91.141.70.157:7112", "000300182112a44215d4bb014ad31072cd248ec70019000411000000000d000400000e1080280004d08a7674", now),
+        Input::client("91.141.70.157:7112", "000300482112a442998bcae2a73b55941682cf470019000411000000000600047465737400140008666972657a6f6e6500150006666f6f626172000000080014b279018b143b1c6ac194a2848d0e37958731a2f38028000497076a00", now),
         &[
             Output::Wake(first_expiry),
             Output::CreateAllocation(49152),
-            Output::send_message("91.141.70.157:7112", "010300202112a44215d4bb014ad31072cd248ec7001600080001e112026eff670020000800013ada7a9fe2df000d000400000e10"),
+            Output::send_message("91.141.70.157:7112", "010300202112a442998bcae2a73b55941682cf47001600080001e112026eff670020000800013ada7a9fe2df000d000400000258"),
         ],
     ),(
         Input::client("91.141.70.157:7112", refresh_request(hex!("150ee0cb117ed3a0f66529f2"), 0), refreshed_at),
@@ -228,19 +215,27 @@ fn run_regression_test(sequence: &[(Input, &[Output])]) {
 }
 
 fn refresh_request(transaction_id: [u8; 12], lifetime: u32) -> String {
-    let mut message = Message::new(
+    let username = Username::new("test".to_owned()).unwrap();
+    let realm = Realm::new("firezone".to_owned()).unwrap();
+
+    let mut message = Message::<Attribute>::new(
         MessageClass::Request,
         REFRESH,
         TransactionId::new(transaction_id),
     );
-    message.add_attribute(Lifetime::from_u32(lifetime));
+    message.add_attribute(Lifetime::from_u32(lifetime).into());
+    message.add_attribute(username.clone().into());
+    message.add_attribute(realm.clone().into());
+    let message_integrity =
+        MessageIntegrity::new_long_term_credential(&message, &username, &realm, "foobar").unwrap();
+    message.add_attribute(message_integrity.into());
 
     message_to_hex(message)
 }
 
 fn message_to_hex<A>(message: Message<A>) -> String
 where
-    A: Attribute,
+    A: stun_codec::Attribute,
 {
     hex::encode(MessageEncoder::new().encode_into_bytes(message).unwrap())
 }
