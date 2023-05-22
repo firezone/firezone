@@ -624,7 +624,7 @@ where
         tracing::debug!(target: "relay", "Relaying {} bytes from {sender} to {recipient} via channel {channel_number}", data.len());
 
         if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
-            let hex_bytes = hex::encode(&data);
+            let hex_bytes = hex::encode(data);
             tracing::trace!(target: "wire", r#"Output::Forward("{recipient}","{hex_bytes}")"#);
         }
 
