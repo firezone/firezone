@@ -25,7 +25,7 @@ relay="$target_directory/$target/debug/relay"
 
 export RELAY_PUBLIC_IP4_ADDR=127.0.0.1;
 export RELAY_LISTEN_IP4_ADDR=127.0.0.1;
-export RUST_LOG=wire=trace;
+export RUST_LOG=relay=debug;
 
 # Client and relay run in the background.
 $client 2>&1 | sed "s/^/${RED}[ client]${NC} /" &

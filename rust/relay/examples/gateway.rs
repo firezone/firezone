@@ -50,6 +50,8 @@ async fn ping_pong(socket: Arc<UdpSocket>, relay_addr: SocketAddr) -> Result<(),
 
         println!("Received pong from client: {}", hex::encode(pong));
 
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
         assert_eq!(ping, pong);
     }
     Ok(())
