@@ -1,27 +1,49 @@
 use anyhow::{bail, Result};
 use bytes::{BufMut, BytesMut};
 
-pub(crate) fn make(channel: u16, data: &[u8]) -> Vec<u8> {
-    let mut message = BytesMut::with_capacity(2 + 2 + data.len());
-
-    message.put_u16(channel);
-    message.put_u16(data.len() as u16);
-    message.put_slice(data);
-
-    message.freeze().to_vec()
+pub(crate) struct ChannelData<'a> {
+    channel: u16,
+    data: &'a [u8],
 }
 
-pub(crate) fn parse(data: &[u8]) -> Result<(u16, &[u8])> {
-    if data.len() < 4 {
-        bail!("must have at least 4 bytes for channel data message")
+impl<'a> ChannelData<'a> {
+    pub(crate) fn parse(data: &'a [u8]) -> Result<Self> {
+        if data.len() < 4 {
+            bail!("must have at least 4 bytes for channel data message")
+        }
+
+        let channel_number = u16::from_be_bytes([data[0], data[1]]);
+        let length = u16::from_be_bytes([data[2], data[3]]);
+
+        anyhow::ensure!((data.len() - 4) == length as usize);
+
+        Ok(ChannelData {
+            channel: channel_number,
+            data: &data[4..],
+        })
     }
 
-    let channel_number = u16::from_be_bytes([data[0], data[1]]);
-    let length = u16::from_be_bytes([data[2], data[3]]);
+    pub(crate) fn new(channel: u16, data: &'a [u8]) -> Self {
+        ChannelData { channel, data }
+    }
 
-    anyhow::ensure!((data.len() - 4) == length as usize);
+    pub(crate) fn to_bytes(&self) -> Vec<u8> {
+        let mut message = BytesMut::with_capacity(2 + 2 + self.data.len());
 
-    Ok((channel_number, &data[4..]))
+        message.put_u16(self.channel);
+        message.put_u16(self.data.len() as u16);
+        message.put_slice(self.data);
+
+        message.freeze().into()
+    }
+
+    pub(crate) fn channel(&self) -> u16 {
+        self.channel
+    }
+
+    pub(crate) fn data(&self) -> &[u8] {
+        self.data
+    }
 }
 
 // TODO: tests

@@ -1,6 +1,7 @@
 mod channel_data;
 
 use crate::rfc8656::PeerAddressFamilyMismatch;
+use crate::server::channel_data::ChannelData;
 use crate::stun_codec_ext::{MessageClassExt, MethodExt};
 use crate::TimeEvents;
 use anyhow::Result;
@@ -195,7 +196,7 @@ where
                 });
             }
             Some(64..=79) => {
-                let (channel, data) = match channel_data::parse(bytes) {
+                let msg = match ChannelData::parse(bytes) {
                     Ok(v) => v,
                     Err(e) => {
                         tracing::debug!(
@@ -206,7 +207,7 @@ where
                     }
                 };
 
-                self.handle_channel_data_message(channel, data, sender, now);
+                self.handle_channel_data_message(msg, sender, now);
             }
             _ => {
                 tracing::trace!(target: "relay", "Received unknown message from {sender}");
@@ -264,7 +265,7 @@ where
         );
 
         let recipient = *client;
-        let data = channel_data::make(*channel_number, bytes);
+        let data = ChannelData::new(*channel_number, bytes).to_bytes();
 
         if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
             let hex_bytes = hex::encode(&data);
@@ -601,11 +602,13 @@ where
 
     fn handle_channel_data_message(
         &mut self,
-        channel_number: u16,
-        data: &[u8],
+        message: ChannelData,
         sender: SocketAddr,
         _: Instant,
     ) {
+        let channel_number = message.channel();
+        let data = message.data();
+
         let Some(channel) = self.channels_by_number.get(&channel_number) else {
             tracing::debug!(target: "relay", "Channel {channel_number} does not exist, refusing to forward data");
             return;
