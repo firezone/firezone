@@ -157,9 +157,11 @@ defmodule Domain.Clients do
     Auth.ensure_has_permissions(subject, Authorizer.manage_clients_permission())
   end
 
-  def connect_client(%Client{} = client, socket) do
+  def connect_client(%Client{} = client) do
+    Phoenix.PubSub.subscribe(Domain.PubSub, "actor:#{client.actor_id}")
+
     {:ok, _} =
-      Presence.track(socket, client.id, %{
+      Presence.track(self(), "clients", client.id, %{
         online_at: System.system_time(:second)
       })
 

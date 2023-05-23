@@ -10,6 +10,10 @@ defmodule Domain.Gateways.Gateway.Query do
     where(queryable, [gateways: gateways], gateways.id == ^id)
   end
 
+  def by_ids(queryable \\ all(), ids) do
+    where(queryable, [gateways: gateways], gateways.id in ^ids)
+  end
+
   def by_user_id(queryable \\ all(), user_id) do
     where(queryable, [gateways: gateways], gateways.user_id == ^user_id)
   end
@@ -18,8 +22,21 @@ defmodule Domain.Gateways.Gateway.Query do
     where(queryable, [gateways: gateways], gateways.account_id == ^account_id)
   end
 
+  def by_resource_id(queryable \\ all(), resource_id) do
+    queryable
+    |> with_joined_connections()
+    |> where([connections: connections], connections.resource_id == ^resource_id)
+  end
+
   def returning_all(queryable \\ all()) do
     select(queryable, [gateways: gateways], gateways)
+  end
+
+  def with_joined_connections(queryable \\ all()) do
+    with_named_binding(queryable, :connections, fn queryable, binding ->
+      queryable
+      |> join(:inner, [gateways: gateways], connections in assoc(gateways, ^binding), as: ^binding)
+    end)
   end
 
   def with_preloaded_user(queryable \\ all()) do

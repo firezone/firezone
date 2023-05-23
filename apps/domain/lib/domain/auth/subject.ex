@@ -6,21 +6,20 @@ defmodule Domain.Auth.Subject do
   @type actor :: %Actors.Actor{}
   @type permission :: Permission.t()
 
-  # TODO: we need to add subject expiration retrieved from IdP provider,
-  # so that when we exchange subject for a token we keep the expiration
-  # preventing session extension
   @type t :: %__MODULE__{
           identity: identity(),
           actor: actor(),
           permissions: MapSet.t(permission),
           account: %Domain.Accounts.Account{},
+          expires_at: DateTime.t(),
           context: Context.t()
         }
 
-  @enforce_keys [:identity, :actor, :permissions, :account, :context]
+  @enforce_keys [:identity, :actor, :permissions, :account, :context, :expires_at]
   defstruct identity: nil,
             actor: nil,
             permissions: MapSet.new(),
             account: nil,
+            expires_at: nil,
             context: %Context{}
 end

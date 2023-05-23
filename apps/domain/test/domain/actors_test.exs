@@ -155,6 +155,7 @@ defmodule Domain.ActorsTest do
           actor: %{id: Ecto.UUID.generate()},
           account: %{id: Ecto.UUID.generate()},
           context: nil,
+          expires_at: nil,
           permissions: MapSet.new()
         }
         |> AuthFixtures.set_permissions([

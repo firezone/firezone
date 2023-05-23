@@ -51,7 +51,7 @@ defmodule API.Client.SocketTest do
 
   describe "id/1" do
     test "creates a channel for a client" do
-      client = %{id: Ecto.UUID.generate()}
+      client = ClientsFixtures.create_client()
       socket = socket(API.Client.Socket, "", %{client: client})
 
       assert id(socket) == "client:#{client.id}"

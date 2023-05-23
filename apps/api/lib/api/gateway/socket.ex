@@ -52,5 +52,6 @@ defmodule API.Gateway.Socket do
   end
 
   @impl true
-  def id(socket), do: "gateway:#{socket.assigns.gateway.id}"
+  def id(%Gateways.Gateway{} = gateway), do: "gateway:#{gateway.id}"
+  def id(socket), do: id(socket.assigns.gateway)
 end

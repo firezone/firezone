@@ -1,7 +1,8 @@
 defmodule Domain.RelaysTest do
   use Domain.DataCase, async: true
   import Domain.Relays
-  alias Domain.{AccountsFixtures, ActorsFixtures, AuthFixtures, RelaysFixtures}
+  alias Domain.{AccountsFixtures, ActorsFixtures, AuthFixtures, ResourcesFixtures}
+  alias Domain.RelaysFixtures
   alias Domain.Relays
 
   setup do
@@ -415,6 +416,54 @@ defmodule Domain.RelaysTest do
     end
   end
 
+  describe "list_connected_relays_for_resource/1" do
+    test "returns empty list when there are no online relays", %{account: account} do
+      resource = ResourcesFixtures.create_resource(account: account)
+
+      RelaysFixtures.create_relay(account: account)
+
+      RelaysFixtures.create_relay(account: account)
+      |> RelaysFixtures.delete_relay()
+
+      assert list_connected_relays_for_resource(resource) == {:ok, []}
+    end
+
+    test "returns list of connected relays", %{account: account} do
+      resource = ResourcesFixtures.create_resource(account: account)
+      relay = RelaysFixtures.create_relay(account: account)
+      stamp_secret = Ecto.UUID.generate()
+
+      assert connect_relay(relay, stamp_secret) == :ok
+
+      assert {:ok, [connected_relay]} = list_connected_relays_for_resource(resource)
+
+      assert connected_relay.id == relay.id
+      assert connected_relay.stamp_secret == stamp_secret
+    end
+  end
+
+  describe "generate_username_and_password/1" do
+    test "returns username and password", %{account: account} do
+      relay = RelaysFixtures.create_relay(account: account)
+      stamp_secret = Ecto.UUID.generate()
+      relay = %{relay | stamp_secret: stamp_secret}
+      expires_at = DateTime.utc_now() |> DateTime.add(3, :second)
+
+      assert %{username: username, password: password, expires_at: expires_at_unix} =
+               generate_username_and_password(relay, expires_at)
+
+      assert [username_expires_at_unix, username_salt] = String.split(username, ":", parts: 2)
+      assert username_expires_at_unix == to_string(expires_at_unix)
+      assert DateTime.from_unix!(expires_at_unix) == DateTime.truncate(expires_at, :second)
+
+      expected_hash =
+        :crypto.hash(:sha256, "#{expires_at_unix}:#{stamp_secret}:#{username_salt}")
+        |> Base.encode64(padding: false, case: :lower)
+
+      assert password == expected_hash
+    end
+  end
+
   describe "upsert_relay/3" do
     setup context do
       token = RelaysFixtures.create_token(account: context.account)
@@ -431,7 +480,8 @@ defmodule Domain.RelaysTest do
         ipv4: "1.1.1.256",
         ipv6: "fd01::10000",
         last_seen_user_agent: "foo",
-        last_seen_remote_ip: {256, 0, 0, 0}
+        last_seen_remote_ip: {256, 0, 0, 0},
+        port: -1
       }
 
       assert {:error, changeset} = upsert_relay(token, attrs)
@@ -439,8 +489,13 @@ defmodule Domain.RelaysTest do
       assert errors_on(changeset) == %{
                ipv4: ["one of these fields must be present: ipv4, ipv6", "is invalid"],
                ipv6: ["one of these fields must be present: ipv4, ipv6", "is invalid"],
-               last_seen_user_agent: ["is invalid"]
+               last_seen_user_agent: ["is invalid"],
+               port: ["must be greater than or equal to 1"]
              }
+
+      attrs = %{port: 100_000}
+      assert {:error, changeset} = upsert_relay(token, attrs)
+      assert "must be less than or equal to 65535" in errors_on(changeset).port
     end
 
     test "allows creating relay with just required attributes", %{
@@ -462,6 +517,7 @@ defmodule Domain.RelaysTest do
       assert relay.last_seen_user_agent == attrs.last_seen_user_agent
       assert relay.last_seen_version == "0.7.412"
       assert relay.last_seen_at
+      assert relay.port == 3478
 
       assert Repo.aggregate(Domain.Network.Address, :count) == 0
     end
@@ -508,6 +564,7 @@ defmodule Domain.RelaysTest do
       assert updated_relay.ipv4 == relay.ipv4
       assert updated_relay.ipv6.address == attrs.ipv6
       assert updated_relay.ipv6 != relay.ipv6
+      assert updated_relay.port == 3478
 
       assert Repo.aggregate(Domain.Network.Address, :count) == 0
     end

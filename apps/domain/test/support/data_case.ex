@@ -21,8 +21,13 @@ defmodule Domain.DataCase do
       import Ecto
       import Ecto.Changeset
       import Domain.DataCase
+
       alias Domain.Repo
     end
+  end
+
+  def assert_datetime_diff(%DateTime{} = datetime1, %DateTime{} = datetime2, is, leeway \\ 5) do
+    assert DateTime.diff(datetime1, datetime2, :second) in (is - leeway)..(is + leeway)
   end
 
   @doc """
