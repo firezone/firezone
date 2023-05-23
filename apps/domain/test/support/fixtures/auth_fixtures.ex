@@ -15,6 +15,10 @@ defmodule Domain.AuthFixtures do
     Ecto.UUID.generate()
   end
 
+  def random_provider_identifier(%Domain.Auth.Provider{adapter: :token}) do
+    Ecto.UUID.generate()
+  end
+
   def random_provider_identifier(%Domain.Auth.Provider{adapter: :userpass, name: name}) do
     "user-#{counter()}@#{String.downcase(name)}.com"
   end
@@ -67,6 +71,20 @@ defmodule Domain.AuthFixtures do
       end)
 
     attrs = provider_attrs(adapter: :userpass)
+
+    {:ok, provider} = Auth.create_provider(account, attrs)
+    provider
+  end
+
+  def create_token_provider(attrs \\ %{}) do
+    attrs = Enum.into(attrs, %{})
+
+    {account, _attrs} =
+      Map.pop_lazy(attrs, :account, fn ->
+        AccountsFixtures.create_account()
+      end)
+
+    attrs = provider_attrs(adapter: :token)
 
     {:ok, provider} = Auth.create_provider(account, attrs)
     provider

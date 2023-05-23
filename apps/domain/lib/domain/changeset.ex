@@ -91,9 +91,17 @@ defmodule Domain.Changeset do
       |> get_change(field)
       |> apply_action!(:dump)
       |> Ecto.embedded_dump(:json)
+      |> atom_keys_to_string()
 
     changeset = %{changeset | types: Map.put(changeset.types, field, original_type)}
 
     put_change(changeset, field, map)
+  end
+
+  # We dump atoms to strings because if we persist to Postgres and read it,
+  # the map will be returned with string keys, and we want to make sure that
+  # the map handling is unified across the codebase.
+  defp atom_keys_to_string(map) do
+    for {k, v} <- map, into: %{}, do: {to_string(k), v}
   end
 end

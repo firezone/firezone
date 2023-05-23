@@ -422,7 +422,10 @@ defmodule Domain.AuthTest do
       assert identity.provider_id == provider.id
       assert identity.provider_identifier == provider_identifier
       assert identity.actor_id == actor.id
-      assert %{sign_in_token_created_at: _, sign_in_token_hash: _} = identity.provider_state
+
+      assert %{"sign_in_token_created_at" => _, "sign_in_token_hash" => _} =
+               identity.provider_state
+
       assert %{sign_in_token: _} = identity.provider_virtual_state
       assert identity.account_id == provider.account_id
       assert is_nil(identity.deleted_at)
@@ -493,7 +496,10 @@ defmodule Domain.AuthTest do
       assert new_identity.provider_identifier == provider_identifier
       assert new_identity.provider_id == identity.provider_id
       assert new_identity.actor_id == identity.actor_id
-      assert %{sign_in_token_created_at: _, sign_in_token_hash: _} = new_identity.provider_state
+
+      assert %{"sign_in_token_created_at" => _, "sign_in_token_hash" => _} =
+               new_identity.provider_state
+
       assert %{sign_in_token: _} = new_identity.provider_virtual_state
       assert new_identity.account_id == identity.account_id
       assert is_nil(new_identity.deleted_at)
@@ -805,7 +811,7 @@ defmodule Domain.AuthTest do
                {:error, :unauthorized}
     end
 
-    test "returns subject on success", %{
+    test "returns subject on success for session token", %{
       subject: subject,
       user_agent: user_agent,
       remote_ip: remote_ip
@@ -819,6 +825,37 @@ defmodule Domain.AuthTest do
       assert reconstructed_subject.permissions == subject.permissions
       assert reconstructed_subject.context == subject.context
       assert DateTime.diff(reconstructed_subject.expires_at, subject.expires_at) <= 1
+    end
+
+    test "returns subject on success for service account token", %{
+      account: account,
+      user_agent: user_agent,
+      remote_ip: remote_ip,
+      subject: subject
+    } do
+      one_day = DateTime.utc_now() |> DateTime.add(1, :day)
+      provider = AuthFixtures.create_token_provider(account: account)
+
+      identity =
+        AuthFixtures.create_identity(
+          account: account,
+          provider: provider,
+          user_agent: user_agent,
+          remote_ip: remote_ip,
+          provider_virtual_state: %{
+            "expires_at" => one_day
+          }
+        )
+
+      {:ok, token} = create_access_token_for_identity(identity)
+
+      assert {:ok, reconstructed_subject} = sign_in(token, user_agent, remote_ip)
+      assert reconstructed_subject.identity.id == identity.id
+      assert reconstructed_subject.actor.id == identity.actor_id
+      assert reconstructed_subject.account.id == identity.account_id
+      assert reconstructed_subject.permissions == subject.permissions
+      assert reconstructed_subject.context == subject.context
+      assert DateTime.diff(reconstructed_subject.expires_at, one_day) <= 1
     end
 
     test "updates last signed in fields for identity on success", %{

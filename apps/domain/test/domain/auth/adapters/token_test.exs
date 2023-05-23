@@ -1,13 +1,13 @@
-defmodule Domain.Auth.Adapters.UserPassTest do
+defmodule Domain.Auth.Adapters.TokenTest do
   use Domain.DataCase, async: true
-  import Domain.Auth.Adapters.UserPass
+  import Domain.Auth.Adapters.Token
   alias Domain.Auth
   alias Domain.{AccountsFixtures, AuthFixtures}
 
   describe "identity_changeset/2" do
     setup do
       account = AccountsFixtures.create_account()
-      provider = AuthFixtures.create_userpass_provider(account: account)
+      provider = AuthFixtures.create_token_provider(account: account)
 
       %{
         account: account,
@@ -15,23 +15,21 @@ defmodule Domain.Auth.Adapters.UserPassTest do
       }
     end
 
-    test "puts password hash in the provider state", %{provider: provider} do
+    test "puts secret hash in the provider state", %{provider: provider} do
       changeset =
         %Auth.Identity{}
         |> Ecto.Changeset.change(
           provider_virtual_state: %{
-            password: "Firezone1234",
-            password_confirmation: "Firezone1234"
+            expires_at: DateTime.utc_now() |> DateTime.add(1, :day)
           }
         )
 
       assert %Ecto.Changeset{} = changeset = identity_changeset(provider, changeset)
       assert %{provider_state: state, provider_virtual_state: virtual_state} = changeset.changes
 
-      assert %{"password_hash" => password_hash} = state
-      assert Domain.Crypto.equal?("Firezone1234", password_hash)
-
-      assert virtual_state == %{}
+      assert %{"secret_hash" => secret_hash} = state
+      assert %{secret: secret} = virtual_state
+      assert Domain.Crypto.equal?(secret, secret_hash)
     end
 
     test "returns error on invalid attrs", %{provider: provider} do
@@ -39,8 +37,7 @@ defmodule Domain.Auth.Adapters.UserPassTest do
         %Auth.Identity{}
         |> Ecto.Changeset.change(
           provider_virtual_state: %{
-            password: "short",
-            password_confirmation: nil
+            expires_at: DateTime.utc_now()
           }
         )
 
@@ -48,31 +45,11 @@ defmodule Domain.Auth.Adapters.UserPassTest do
 
       refute changeset.valid?
 
-      assert errors_on(changeset) == %{
+      assert %{
                provider_virtual_state: %{
-                 password: ["should be at least 12 character(s)"],
-                 password_confirmation: ["does not match confirmation"]
+                 expires_at: ["must be greater than " <> _]
                }
-             }
-
-      changeset =
-        %Auth.Identity{}
-        |> Ecto.Changeset.change(
-          provider_virtual_state: %{
-            password: "Firezone1234",
-            password_confirmation: "FirezoneDoesNotMatch"
-          }
-        )
-
-      assert changeset = identity_changeset(provider, changeset)
-
-      refute changeset.valid?
-
-      assert errors_on(changeset) == %{
-               provider_virtual_state: %{
-                 password_confirmation: ["does not match confirmation"]
-               }
-             }
+             } = errors_on(changeset)
     end
 
     test "trims provider identifier", %{provider: provider} do
@@ -81,8 +58,7 @@ defmodule Domain.Auth.Adapters.UserPassTest do
         |> Ecto.Changeset.change(
           provider_identifier: " X ",
           provider_virtual_state: %{
-            password: "Firezone1234",
-            password_confirmation: "Firezone1234"
+            expires_at: DateTime.utc_now() |> DateTime.add(1, :day)
           }
         )
 
@@ -108,15 +84,14 @@ defmodule Domain.Auth.Adapters.UserPassTest do
   describe "verify_secret/2" do
     setup do
       account = AccountsFixtures.create_account()
-      provider = AuthFixtures.create_userpass_provider(account: account)
+      provider = AuthFixtures.create_token_provider(account: account)
 
       identity =
         AuthFixtures.create_identity(
           account: account,
           provider: provider,
           provider_virtual_state: %{
-            "password" => "Firezone1234",
-            "password_confirmation" => "Firezone1234"
+            "expires_at" => DateTime.utc_now() |> DateTime.add(1, :day)
           }
         )
 
@@ -127,15 +102,36 @@ defmodule Domain.Auth.Adapters.UserPassTest do
       }
     end
 
-    test "returns :invalid_secret on invalid password", %{identity: identity} do
-      assert verify_secret(identity, "FirezoneInvalid") == {:error, :invalid_secret}
+    test "returns :invalid_secret on invalid secret", %{identity: identity} do
+      assert verify_secret(identity, "foo") == {:error, :invalid_secret}
     end
 
-    test "returns :ok on valid password", %{identity: identity} do
-      assert {:ok, verified_identity, nil} = verify_secret(identity, "Firezone1234")
+    test "returns :expired_secret on expires secret", %{identity: identity} do
+      identity =
+        identity
+        |> Ecto.Changeset.change(
+          provider_state: %{
+            "expires_at" => DateTime.utc_now() |> DateTime.add(-1, :second),
+            "secret_hash" => Domain.Crypto.hash("foo")
+          }
+        )
+        |> Repo.update!()
 
-      assert verified_identity.provider_state["password_hash"] ==
-               identity.provider_state["password_hash"]
+      assert verify_secret(identity, identity.provider_virtual_state.secret) ==
+               {:error, :expired_secret}
+    end
+
+    test "returns :ok on valid secret", %{identity: identity} do
+      assert {:ok, verified_identity, expires_at} =
+               verify_secret(identity, identity.provider_virtual_state.secret)
+
+      assert verified_identity.provider_state["secret_hash"] ==
+               identity.provider_state["secret_hash"]
+
+      assert verified_identity.provider_state["expires_at"] ==
+               identity.provider_state["expires_at"]
+
+      assert {:ok, ^expires_at, 0} = DateTime.from_iso8601(identity.provider_state["expires_at"])
     end
   end
 end

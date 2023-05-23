@@ -52,8 +52,8 @@ defmodule Domain.Auth.Adapters.Email do
 
     {
       %{
-        sign_in_token_hash: Domain.Crypto.hash(sign_in_token),
-        sign_in_token_created_at: DateTime.utc_now()
+        "sign_in_token_hash" => Domain.Crypto.hash(sign_in_token),
+        "sign_in_token_created_at" => DateTime.utc_now()
       },
       %{
         sign_in_token: sign_in_token
@@ -107,6 +107,11 @@ defmodule Domain.Auth.Adapters.Email do
       {:ok, identity} -> {:ok, identity, nil}
       {:error, reason} -> {:error, reason}
     end
+  end
+
+  defp sign_in_token_expired?(%DateTime{} = sign_in_token_created_at) do
+    now = DateTime.utc_now()
+    DateTime.diff(now, sign_in_token_created_at, :second) > @sign_in_token_expiration_seconds
   end
 
   defp sign_in_token_expired?(sign_in_token_created_at) do

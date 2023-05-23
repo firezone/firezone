@@ -77,11 +77,11 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       assert provider.adapter == attrs.adapter
 
       assert provider.adapter_config == %{
-               scope: "openid email profile",
-               response_type: "code",
-               client_id: "client_id",
-               client_secret: "client_secret",
-               discovery_document_uri: discovery_document_uri
+               "scope" => "openid email profile",
+               "response_type" => "code",
+               "client_id" => "client_id",
+               "client_secret" => "client_secret",
+               "discovery_document_uri" => discovery_document_uri
              }
     end
   end
