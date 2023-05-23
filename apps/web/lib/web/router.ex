@@ -44,6 +44,7 @@ defmodule Web.Router do
       # Gateways
       live "/gateways", GatewaysLive.Index
       live "/gateways/new", GatewaysLive.New
+      live "/gateways/:id/edit", GatewaysLive.Edit
       live "/gateways/:id", GatewaysLive.Show
 
       # Resources

@@ -3,20 +3,19 @@ defmodule Web.UsersLive.Edit do
 
   def render(assigns) do
     ~H"""
-    <div class="grid grid-cols-1 p-4 xl:grid-cols-3 xl:gap-4 dark:bg-gray-900">
-      <div class="col-span-full mb-4 xl:mb-2">
-        <!-- Breadcrumbs -->
+    <.section_header>
+      <:breadcrumbs>
         <.breadcrumbs entries={[
           %{label: "Home", path: ~p"/"},
           %{label: "Users", path: ~p"/users"},
           %{label: "Bou Kheir, Jamil", path: ~p"/users/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"},
           %{label: "Edit", path: ~p"/users/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89/edit"}
         ]} />
-        <h1 class="text-xl font-semibold text-gray-900 sm:text-2xl dark:text-white">
-          Updating user <code>Bou Kheir, Jamil</code>
-        </h1>
-      </div>
-    </div>
+      </:breadcrumbs>
+      <:title>
+        Editing user <code>Bou Kheir, Jamil</code>
+      </:title>
+    </.section_header>
     <!-- Update User -->
     <section class="bg-white dark:bg-gray-900">
       <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
@@ -119,9 +118,6 @@ defmodule Web.UsersLive.Edit do
             >
               Save
             </button>
-            <.delete_button>
-              Delete
-            </.delete_button>
           </div>
         </form>
       </div>

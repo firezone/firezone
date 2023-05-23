@@ -15,7 +15,7 @@ defmodule Web.GatewaysLive.Index do
       </:title>
       <:actions>
         <.add_button navigate={~p"/gateways/new"}>
-          Add a new gateway
+          Add Gateway
         </.add_button>
       </:actions>
     </.section_header>
