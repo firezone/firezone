@@ -2,6 +2,7 @@ defmodule API.Relay.SocketTest do
   use API.ChannelCase, async: true
   import API.Relay.Socket, except: [connect: 3]
   alias API.Relay.Socket
+  alias Domain.Relays
   alias Domain.RelaysFixtures
 
   @connlib_version "0.1.1"
@@ -11,28 +12,14 @@ defmodule API.Relay.SocketTest do
     peer_data: %{address: {189, 172, 73, 153}}
   }
 
-  describe "encode_token!/1" do
-    test "returns encoded token" do
-      token = RelaysFixtures.create_token()
-      assert encrypted_secret = encode_token!(token)
-
-      config = Application.fetch_env!(:api, Socket)
-      key_base = Keyword.fetch!(config, :key_base)
-      salt = Keyword.fetch!(config, :salt)
-
-      assert Plug.Crypto.verify(key_base, salt, encrypted_secret) ==
-               {:ok, {token.id, token.value}}
-    end
-  end
-
   describe "connect/3" do
     test "returns error when token is missing" do
-      assert connect(Socket, %{}, @connect_info) == {:error, :invalid}
+      assert connect(Socket, %{}, @connect_info) == {:error, :missing_token}
     end
 
     test "creates a new relay" do
       token = RelaysFixtures.create_token()
-      encrypted_secret = encode_token!(token)
+      encrypted_secret = Relays.encode_token!(token)
 
       attrs = connect_attrs(token: encrypted_secret)
 
@@ -49,7 +36,7 @@ defmodule API.Relay.SocketTest do
     test "updates existing relay" do
       token = RelaysFixtures.create_token()
       existing_relay = RelaysFixtures.create_relay(token: token)
-      encrypted_secret = encode_token!(token)
+      encrypted_secret = Relays.encode_token!(token)
 
       attrs = connect_attrs(token: encrypted_secret, ipv4: existing_relay.ipv4)
 
@@ -60,7 +47,7 @@ defmodule API.Relay.SocketTest do
 
     test "returns error when token is invalid" do
       attrs = connect_attrs(token: "foo")
-      assert connect(Socket, attrs, @connect_info) == {:error, :invalid}
+      assert connect(Socket, attrs, @connect_info) == {:error, :invalid_token}
     end
   end
 

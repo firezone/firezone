@@ -1,9 +1,9 @@
-defmodule API.Client.SocketTest do
+defmodule API.Device.SocketTest do
   use API.ChannelCase, async: true
-  import API.Client.Socket, only: [id: 1]
-  alias API.Client.Socket
+  import API.Device.Socket, only: [id: 1]
+  alias API.Device.Socket
   alias Domain.Auth
-  alias Domain.{AuthFixtures, ClientsFixtures}
+  alias Domain.{AuthFixtures, DevicesFixtures}
 
   @connect_info %{
     user_agent: "iOS/12.7 (iPhone) connlib/0.1.1",
@@ -20,41 +20,41 @@ defmodule API.Client.SocketTest do
       assert connect(Socket, attrs, @connect_info) == {:error, :invalid}
     end
 
-    test "creates a new client" do
+    test "creates a new device" do
       subject = AuthFixtures.create_subject()
       {:ok, token} = Auth.create_session_token_from_subject(subject)
 
       attrs = connect_attrs(token: token)
 
       assert {:ok, socket} = connect(Socket, attrs, connect_info(subject))
-      assert client = Map.fetch!(socket.assigns, :client)
+      assert device = Map.fetch!(socket.assigns, :device)
 
-      assert client.external_id == attrs["external_id"]
-      assert client.public_key == attrs["public_key"]
-      assert client.last_seen_user_agent == subject.context.user_agent
-      assert client.last_seen_remote_ip.address == subject.context.remote_ip
-      assert client.last_seen_version == "0.7.412"
+      assert device.external_id == attrs["external_id"]
+      assert device.public_key == attrs["public_key"]
+      assert device.last_seen_user_agent == subject.context.user_agent
+      assert device.last_seen_remote_ip.address == subject.context.remote_ip
+      assert device.last_seen_version == "0.7.412"
     end
 
-    test "updates existing client" do
+    test "updates existing device" do
       subject = AuthFixtures.create_subject()
-      existing_client = ClientsFixtures.create_client(subject: subject)
+      existing_device = DevicesFixtures.create_device(subject: subject)
       {:ok, token} = Auth.create_session_token_from_subject(subject)
 
-      attrs = connect_attrs(token: token, external_id: existing_client.external_id)
+      attrs = connect_attrs(token: token, external_id: existing_device.external_id)
 
       assert {:ok, socket} = connect(Socket, attrs, connect_info(subject))
-      assert client = Repo.one(Domain.Clients.Client)
-      assert client.id == socket.assigns.client.id
+      assert device = Repo.one(Domain.Devices.Device)
+      assert device.id == socket.assigns.device.id
     end
   end
 
   describe "id/1" do
-    test "creates a channel for a client" do
-      client = ClientsFixtures.create_client()
-      socket = socket(API.Client.Socket, "", %{client: client})
+    test "creates a channel for a device" do
+      device = DevicesFixtures.create_device()
+      socket = socket(API.Device.Socket, "", %{device: device})
 
-      assert id(socket) == "client:#{client.id}"
+      assert id(socket) == "device:#{device.id}"
     end
   end
 
@@ -66,7 +66,7 @@ defmodule API.Client.SocketTest do
   end
 
   defp connect_attrs(attrs) do
-    ClientsFixtures.client_attrs()
+    DevicesFixtures.device_attrs()
     |> Map.take(~w[external_id public_key]a)
     |> Map.merge(Enum.into(attrs, %{}))
     |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)

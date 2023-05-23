@@ -1,4 +1,3 @@
-# TODO: clean up unused definitions
 defmodule Domain.Config.Definitions do
   @moduledoc """
   Most day-to-day config of Firezone can be done via the Firezone Web UI,
@@ -40,7 +39,8 @@ defmodule Domain.Config.Definitions do
          :external_url,
          :phoenix_secure_cookies,
          :phoenix_listen_address,
-         :phoenix_http_port,
+         :phoenix_http_web_port,
+         :phoenix_http_api_port,
          :phoenix_http_protocol_options,
          :phoenix_external_trusted_proxies,
          :phoenix_private_clients
@@ -57,17 +57,6 @@ defmodule Domain.Config.Definitions do
          :database_ssl_opts,
          :database_parameters
        ]},
-      {"Admin Setup",
-       """
-       Options responsible for initial admin provisioning and resetting the admin password.
-
-       For more details see [troubleshooting guide](/docs/administer/troubleshoot/#admin-login-isnt-working).
-       """,
-       [
-         :reset_admin_on_boot,
-         :default_admin_email,
-         :default_admin_password
-       ]},
       {"Secrets and Encryption",
        """
        Your secrets should be generated during installation automatically and persisted to `.env` file.
@@ -75,8 +64,12 @@ defmodule Domain.Config.Definitions do
        All secrets should be a **base64-encoded string**.
        """,
        [
-         :guardian_secret_key,
-         :database_encryption_key,
+         :auth_token_key_base,
+         :auth_token_salt,
+         :relays_auth_token_key_base,
+         :relays_auth_token_salt,
+         :gateways_auth_token_key_base,
+         :gateways_auth_token_salt,
          :secret_key_base,
          :live_view_signing_salt,
          :cookie_signing_salt,
@@ -84,49 +77,31 @@ defmodule Domain.Config.Definitions do
        ]},
       {"Devices",
        [
-         :allow_unprivileged_device_management,
-         :allow_unprivileged_device_configuration,
-         :vpn_session_duration,
-         :default_client_persistent_keepalive,
-         :default_client_mtu,
-         :default_client_endpoint,
-         :default_client_dns,
-         :default_client_allowed_ips
+         :devices_upstream_dns
        ]},
-      # {"Limits",
-      #  [
-      #    :max_devices_per_user
-      #  ]},
       {"Authorization",
+       """
+       Providers:
+
+        * `openid_connect` is used to authenticate users via OpenID Connect, this is recommended for production use;
+        * `email` is used to authenticate users via magic links sent to the email;
+        * `token` is used to authenticate service accounts using an API token;
+        * `userpass` is used to authenticate users with username and password, should be used
+        with extreme care and is not recommended for production use.
+       """,
        [
-         :local_auth_enabled
+         :auth_provider_adapters
        ]},
-      {"WireGuard",
+      {"Gateways",
        [
-         :wireguard_port,
-         :wireguard_ipv4_enabled,
-         :wireguard_ipv4_masquerade,
-         :wireguard_ipv4_network,
-         :wireguard_ipv4_address,
-         :wireguard_ipv6_enabled,
-         :wireguard_ipv6_masquerade,
-         :wireguard_ipv6_network,
-         :wireguard_ipv6_address,
-         :wireguard_private_key_path,
-         :wireguard_interface_name,
-         :gateway_egress_interface,
-         :gateway_nft_path
+         :gateway_ipv4_masquerade,
+         :gateway_ipv6_masquerade
        ]},
       {"Outbound Emails",
        [
          :outbound_email_from,
          :outbound_email_adapter,
          :outbound_email_adapter_opts
-       ]},
-      {"Connectivity Checks",
-       [
-         :connectivity_checks_enabled,
-         :connectivity_checks_interval
        ]},
       {"Telemetry",
        [
@@ -169,7 +144,20 @@ defmodule Domain.Config.Definitions do
   @doc """
   Internal port to listen on for the Phoenix web server.
   """
-  defconfig(:phoenix_http_port, :integer,
+  defconfig(:phoenix_http_web_port, :integer,
+    default: 13_000,
+    changeset: fn changeset, key ->
+      Ecto.Changeset.validate_number(changeset, key,
+        greater_than: 0,
+        less_than_or_equal_to: 65_535
+      )
+    end
+  )
+
+  @doc """
+  Internal port to listen on for the Phoenix api server.
+  """
+  defconfig(:phoenix_http_api_port, :integer,
     default: 13_000,
     changeset: fn changeset, key ->
       Ecto.Changeset.validate_number(changeset, key,
@@ -289,58 +277,53 @@ defmodule Domain.Config.Definitions do
   )
 
   ##############################################
-  ## Admin Setup
-  ##############################################
-
-  @doc """
-  Set this variable to `true` to create or reset the admin password every time Firezone
-  starts. By default, the admin password is only set when Firezone is installed.
-
-  Note: This **will not** change the status of local authentication.
-  """
-  defconfig(:reset_admin_on_boot, :boolean, default: false)
-
-  @doc """
-  Primary administrator email.
-  """
-  defconfig(:default_admin_email, :string,
-    default: nil,
-    sensitive: true,
-    legacy_keys: [{:env, "ADMIN_EMAIL", "0.9"}],
-    changeset: fn changeset, key ->
-      changeset
-      |> Domain.Validator.trim_change(key)
-      |> Domain.Validator.validate_email(key)
-    end
-  )
-
-  @doc """
-  Default password that will be used for creating or resetting the primary administrator account.
-  """
-  defconfig(:default_admin_password, :string,
-    default: nil,
-    sensitive: true,
-    changeset: fn changeset, key ->
-      Ecto.Changeset.validate_length(changeset, key, min: 5)
-    end
-  )
-
-  ##############################################
   ## Secrets
   ##############################################
 
   @doc """
-  Secret key used for signing JWTs.
+  Secret which is used to encode and sign auth tokens.
   """
-  defconfig(:guardian_secret_key, :string,
+  defconfig(:auth_token_key_base, :string,
     sensitive: true,
     changeset: &Domain.Validator.validate_base64/2
   )
 
   @doc """
-  Secret key used for encrypting sensitive data in the database.
+  Salt which is used to encode and sign auth tokens.
   """
-  defconfig(:database_encryption_key, :string,
+  defconfig(:auth_token_salt, :string,
+    sensitive: true,
+    changeset: &Domain.Validator.validate_base64/2
+  )
+
+  @doc """
+  Secret which is used to encode and sign relays auth tokens.
+  """
+  defconfig(:relays_auth_token_key_base, :string,
+    sensitive: true,
+    changeset: &Domain.Validator.validate_base64/2
+  )
+
+  @doc """
+  Salt which is used to encode and sign relays auth tokens.
+  """
+  defconfig(:relays_auth_token_salt, :string,
+    sensitive: true,
+    changeset: &Domain.Validator.validate_base64/2
+  )
+
+  @doc """
+  Secret which is used to encode and sign gateways auth tokens.
+  """
+  defconfig(:gateways_auth_token_key_base, :string,
+    sensitive: true,
+    changeset: &Domain.Validator.validate_base64/2
+  )
+
+  @doc """
+  Salt which is used to encode and sign gateways auth tokens.
+  """
+  defconfig(:gateways_auth_token_salt, :string,
     sensitive: true,
     changeset: &Domain.Validator.validate_base64/2
   )
@@ -382,88 +365,15 @@ defmodule Domain.Config.Definitions do
   ##############################################
 
   @doc """
-  Enable or disable management of devices on unprivileged accounts.
-  """
-  defconfig(:allow_unprivileged_device_management, :boolean, default: true)
-
-  @doc """
-  Enable or disable configuration of device network settings for unprivileged users.
-  """
-  defconfig(:allow_unprivileged_device_configuration, :boolean, default: true)
-
-  @doc """
-  Optionally require users to periodically authenticate to the Firezone web UI in order to keep their VPN sessions active.
-  """
-  defconfig(:vpn_session_duration, :integer,
-    default: 0,
-    changeset: fn changeset, key ->
-      Ecto.Changeset.validate_number(changeset, key,
-        greater_than_or_equal_to: 0,
-        less_than_or_equal_to: 2_147_483_647
-      )
-    end
-  )
-
-  @doc """
-  Interval for WireGuard [persistent keepalive](https://www.wireguard.com/quickstart/#nat-and-firewall-traversal-persistence).
-
-  If you experience NAT or firewall traversal problems, you can enable this to send a keepalive packet every 25 seconds.
-  Otherwise, keep it disabled with a 0 default value.
-  """
-  defconfig(:default_client_persistent_keepalive, :integer,
-    default: 25,
-    changeset: fn changeset, key ->
-      Ecto.Changeset.validate_number(changeset, key,
-        greater_than_or_equal_to: 0,
-        less_than_or_equal_to: 120
-      )
-    end
-  )
-
-  @doc """
-  WireGuard interface MTU for devices. 1280 is a safe bet for most networks.
-  Leave this blank to omit this field from generated configs.
-  """
-  defconfig(:default_client_mtu, :integer,
-    default: 1280,
-    legacy_keys: [{:env, "WIREGUARD_MTU", "0.8"}],
-    changeset: fn changeset, key ->
-      Ecto.Changeset.validate_number(changeset, key,
-        greater_than_or_equal_to: 576,
-        less_than_or_equal_to: 1500
-      )
-    end
-  )
-
-  @doc """
-  IPv4, IPv6 address, or FQDN that devices will be configured to connect to. Defaults to this server's FQDN.
-  """
-  defconfig(:default_client_endpoint, {:one_of, [Types.IPPort, :string]},
-    default: fn ->
-      external_uri = URI.parse(compile_config!(:external_url))
-      wireguard_port = compile_config!(:wireguard_port)
-      "#{external_uri.host}:#{wireguard_port}"
-    end,
-    changeset: fn
-      Types.IPPort, changeset, _key ->
-        changeset
-
-      :string, changeset, key ->
-        changeset
-        |> Domain.Validator.trim_change(key)
-        |> Domain.Validator.validate_fqdn(key, allow_port: true)
-    end
-  )
-
-  @doc """
-  Comma-separated list of DNS servers to use for devices.
+  Comma-separated list of upstream DNS servers to use for devices.
 
   It can be either an IP address or a FQDN if you intend to use a DNS-over-TLS server.
 
-  Leave this blank to omit the `DNS` section from generated configs.
+  Leave this blank to omit the `DNS` section from generated configs,
+  which will make devices use default system-provided DNS even when VPN session is active.
   """
   defconfig(
-    :default_client_dns,
+    :devices_upstream_dns,
     {:array, ",", {:one_of, [Types.IP, :string]}, validate_unique: true},
     default: [],
     changeset: fn
@@ -477,44 +387,26 @@ defmodule Domain.Config.Definitions do
     end
   )
 
+  ##############################################
+  ## Userpass / SAML / OIDC / Magic Link authentication
+  ##############################################
+
   @doc """
-  Configures the default AllowedIPs setting for devices.
+  Enable or disable the authentication methods for all users.
 
-  AllowedIPs determines which destination IPs get routed through Firezone.
-
-  Specify a comma-separated list of IPs or CIDRs here to achieve split tunneling, or use
-  `0.0.0.0/0, ::/0` to route all device traffic through this Firezone server.
+  It will affect on which auth providers can be created per an account but will not disable
+  already active providers when setting is changed.
   """
   defconfig(
-    :default_client_allowed_ips,
-    {:array, ",", {:one_of, [Types.CIDR, Types.IP]}, validate_unique: true},
-    default: "0.0.0.0/0, ::/0"
+    :auth_provider_adapters,
+    {
+      :array,
+      ",",
+      {:parameterized, Ecto.Enum,
+       Ecto.Enum.init(values: ~w[email openid_connect userpass token]a)}
+    },
+    default: ~w[email openid_connect token]a
   )
-
-  ##############################################
-  ## Limits
-  ##############################################
-
-  defconfig(:max_devices_per_user, :integer,
-    default: 10,
-    changeset: fn changeset, key ->
-      Ecto.Changeset.validate_number(changeset, key,
-        greater_than_or_equal_to: 0,
-        less_than_or_equal_to: 100
-      )
-    end
-  )
-
-  ##############################################
-  ## Userpass / SAML / OIDC authentication
-  ##############################################
-
-  @doc """
-  Enable or disable the local authentication method for all users.
-  """
-  # XXX: This should be replaced with auth_methods config which accepts a list
-  # of enabled methods.
-  defconfig(:local_auth_enabled, :boolean, default: true)
 
   ##############################################
   ## Telemetry
@@ -536,91 +428,11 @@ defmodule Domain.Config.Definitions do
   )
 
   ##############################################
-  ## Connectivity Checks
+  ## Gateways
   ##############################################
 
-  @doc """
-  Enable / disable periodic checking for egress connectivity. Determines the instance's public IP to populate `Endpoint` fields.
-  """
-  defconfig(:connectivity_checks_enabled, :boolean, default: true)
-
-  @doc """
-  Periodicity in seconds to check for egress connectivity.
-  """
-  defconfig(:connectivity_checks_interval, :integer,
-    default: 43_200,
-    changeset: fn changeset, key ->
-      Ecto.Changeset.validate_number(changeset, key,
-        greater_than_or_equal_to: 60,
-        less_than_or_equal_to: 86_400
-      )
-    end
-  )
-
-  ##############################################
-  ## WireGuard
-  ##############################################
-
-  @doc """
-  A port on which WireGuard will listen for incoming connections.
-  """
-  defconfig(:wireguard_port, :integer,
-    default: 51_820,
-    changeset: fn changeset, key ->
-      Ecto.Changeset.validate_number(changeset, key,
-        greater_than: 0,
-        less_than_or_equal_to: 65_535
-      )
-    end
-  )
-
-  @doc """
-  Enable or disable IPv4 support for WireGuard.
-  """
-  defconfig(:wireguard_ipv4_enabled, :boolean, default: true)
-  defconfig(:wireguard_ipv4_masquerade, :boolean, default: true)
-
-  defconfig(:wireguard_ipv4_network, Types.CIDR,
-    default: "10.3.2.0/24",
-    changeset: &Domain.Validator.validate_ip_type_inclusion(&1, &2, [:ipv4])
-  )
-
-  defconfig(:wireguard_ipv4_address, Types.IP,
-    default: "10.3.2.1",
-    changeset: &Domain.Validator.validate_ip_type_inclusion(&1, &2, [:ipv4])
-  )
-
-  @doc """
-  Enable or disable IPv6 support for WireGuard.
-  """
-  defconfig(:wireguard_ipv6_enabled, :boolean, default: true)
-  defconfig(:wireguard_ipv6_masquerade, :boolean, default: true)
-
-  defconfig(:wireguard_ipv6_network, Types.CIDR,
-    default: "fd00::3:2:0/120",
-    changeset: &Domain.Validator.validate_ip_type_inclusion(&1, &2, [:ipv6])
-  )
-
-  defconfig(:wireguard_ipv6_address, Types.IP,
-    default: "fd00::3:2:1",
-    changeset: &Domain.Validator.validate_ip_type_inclusion(&1, &2, [:ipv6])
-  )
-
-  defconfig(:wireguard_private_key_path, :string,
-    default: "/var/firezone/private_key"
-    # We don't check if the file exists, because it is generated on
-    # the first boot.
-    # changeset: &Domain.Validator.validate_file(&1, &2)
-  )
-
-  defconfig(:wireguard_interface_name, :string, default: "wg-firezone")
-
-  defconfig(:gateway_egress_interface, :string,
-    legacy_keys: [{:env, "EGRESS_INTERFACE", "0.8"}],
-    default: "eth0"
-  )
-
-  defconfig(:gateway_nft_path, :string, default: "nft", legacy_keys: [{:env, "NFT_PATH", "0.8"}])
+  defconfig(:gateway_ipv4_masquerade, :boolean, default: true)
+  defconfig(:gateway_ipv6_masquerade, :boolean, default: true)
 
   ##############################################
   ## HTTP Client Settings

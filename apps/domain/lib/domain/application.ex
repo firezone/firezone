@@ -20,7 +20,7 @@ defmodule Domain.Application do
       Domain.Auth,
       Domain.Relays,
       Domain.Gateways,
-      Domain.Clients,
+      Domain.Devices,
 
       # Observability
       Domain.Telemetry

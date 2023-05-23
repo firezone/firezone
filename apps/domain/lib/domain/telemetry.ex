@@ -97,14 +97,10 @@ defmodule Domain.Telemetry do
   # @active_device_window 86_400
   def ping_data do
     %{
-      allow_unprivileged_device_management: {_, allow_unprivileged_device_management},
-      allow_unprivileged_device_configuration: {_, allow_unprivileged_device_configuration},
       local_auth_enabled: {_, local_auth_enabled},
       logo: {_, logo}
     } =
       Domain.Config.fetch_source_and_configs!([
-        :allow_unprivileged_device_management,
-        :allow_unprivileged_device_configuration,
         :local_auth_enabled,
         :logo
       ])
@@ -119,8 +115,6 @@ defmodule Domain.Telemetry do
         # max_devices_for_actors: Devices.count_maximum_for_a_actor(),
         # actors_with_mfa: MFA.count_actors_with_mfa_enabled(),
         # actors_with_mfa_totp: MFA.count_actors_with_totp_method(),
-        unprivileged_device_management: allow_unprivileged_device_management,
-        unprivileged_device_configuration: allow_unprivileged_device_configuration,
         local_authentication: local_auth_enabled,
         # outbound_email: Web.Mailer.active?(),
         external_database:

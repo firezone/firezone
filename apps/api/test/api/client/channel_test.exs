@@ -1,14 +1,14 @@
-defmodule API.Client.ChannelTest do
+defmodule API.Device.ChannelTest do
   use API.ChannelCase
   alias Domain.{AccountsFixtures, ActorsFixtures, AuthFixtures, ResourcesFixtures}
-  alias Domain.{ClientsFixtures, RelaysFixtures, GatewaysFixtures}
+  alias Domain.{DevicesFixtures, RelaysFixtures, GatewaysFixtures}
 
   setup do
     account = AccountsFixtures.create_account()
     actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
     identity = AuthFixtures.create_identity(actor: actor, account: account)
     subject = AuthFixtures.create_subject(identity)
-    client = ClientsFixtures.create_client(subject: subject)
+    device = DevicesFixtures.create_device(subject: subject)
     gateway = GatewaysFixtures.create_gateway(account: account)
 
     resource =
@@ -20,20 +20,20 @@ defmodule API.Client.ChannelTest do
     expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
 
     {:ok, _reply, socket} =
-      API.Client.Socket
-      |> socket("client:#{client.id}", %{
-        client: client,
+      API.Device.Socket
+      |> socket("device:#{device.id}", %{
+        device: device,
         subject: subject,
         expires_at: expires_at
       })
-      |> subscribe_and_join(API.Client.Channel, "client")
+      |> subscribe_and_join(API.Device.Channel, "device")
 
     %{
       account: account,
       actor: actor,
       identity: identity,
       subject: subject,
-      client: client,
+      device: device,
       gateway: gateway,
       resource: resource,
       socket: socket
@@ -41,30 +41,30 @@ defmodule API.Client.ChannelTest do
   end
 
   describe "join/3" do
-    test "tracks presence after join", %{client: client} do
-      presence = Domain.Clients.Presence.list("clients")
+    test "tracks presence after join", %{device: device} do
+      presence = Domain.Devices.Presence.list("devices")
 
-      assert %{metas: [%{online_at: online_at, phx_ref: _ref}]} = Map.fetch!(presence, client.id)
+      assert %{metas: [%{online_at: online_at, phx_ref: _ref}]} = Map.fetch!(presence, device.id)
       assert is_number(online_at)
     end
 
-    test "expires the channel when token is expired", %{client: client, subject: subject} do
+    test "expires the channel when token is expired", %{device: device, subject: subject} do
       expires_at = DateTime.utc_now() |> DateTime.add(25, :millisecond)
       subject = %{subject | expires_at: expires_at}
 
       {:ok, _reply, _socket} =
-        API.Client.Socket
-        |> socket("client:#{client.id}", %{
-          client: client,
+        API.Device.Socket
+        |> socket("device:#{device.id}", %{
+          device: device,
           subject: subject
         })
-        |> subscribe_and_join(API.Client.Channel, "client")
+        |> subscribe_and_join(API.Device.Channel, "device")
 
       assert_push "token_expired", %{}, 250
     end
 
     test "sends list of resources after join", %{
-      client: client,
+      device: device,
       resource: resource
     } do
       assert_push "init", %{resources: resources, interface: interface}
@@ -79,11 +79,10 @@ defmodule API.Client.ChannelTest do
              ]
 
       assert interface == %{
-               ipv4: client.ipv4,
-               ipv6: client.ipv6,
+               ipv4: device.ipv4,
+               ipv6: device.ipv6,
                upstream_dns: [
-                 %Postgrex.INET{address: {1, 1, 1, 1}, netmask: nil},
-                 %Postgrex.INET{address: {1, 0, 0, 1}, netmask: nil}
+                 "1.1.1.1"
                ]
              }
     end
@@ -154,8 +153,8 @@ defmodule API.Client.ChannelTest do
     test "returns error when resource is not found", %{socket: socket} do
       attrs = %{
         "resource_id" => Ecto.UUID.generate(),
-        "client_rtc_session_description" => "RTC_SD",
-        "client_preshared_key" => "PSK"
+        "device_rtc_session_description" => "RTC_SD",
+        "device_preshared_key" => "PSK"
       }
 
       ref = push(socket, "request_connection", attrs)
@@ -168,8 +167,8 @@ defmodule API.Client.ChannelTest do
     } do
       attrs = %{
         "resource_id" => resource.id,
-        "client_rtc_session_description" => "RTC_SD",
-        "client_preshared_key" => "PSK"
+        "device_rtc_session_description" => "RTC_SD",
+        "device_preshared_key" => "PSK"
       }
 
       ref = push(socket, "request_connection", attrs)
@@ -183,8 +182,8 @@ defmodule API.Client.ChannelTest do
     } do
       attrs = %{
         "resource_id" => resource.id,
-        "client_rtc_session_description" => "RTC_SD",
-        "client_preshared_key" => "PSK"
+        "device_rtc_session_description" => "RTC_SD",
+        "device_preshared_key" => "PSK"
       }
 
       gateway = GatewaysFixtures.create_gateway(account: account)
@@ -197,20 +196,20 @@ defmodule API.Client.ChannelTest do
     test "broadcasts request_connection to the gateways and then returns connect message", %{
       resource: resource,
       gateway: gateway,
-      client: client,
+      device: device,
       socket: socket
     } do
       public_key = gateway.public_key
       resource_id = resource.id
-      client_id = client.id
+      device_id = device.id
 
       :ok = Domain.Gateways.connect_gateway(gateway)
       Phoenix.PubSub.subscribe(Domain.PubSub, API.Gateway.Socket.id(gateway))
 
       attrs = %{
         "resource_id" => resource.id,
-        "client_rtc_session_description" => "RTC_SD",
-        "client_preshared_key" => "PSK"
+        "device_rtc_session_description" => "RTC_SD",
+        "device_preshared_key" => "PSK"
       }
 
       ref = push(socket, "request_connection", attrs)
@@ -219,9 +218,9 @@ defmodule API.Client.ChannelTest do
 
       assert %{
                resource_id: ^resource_id,
-               client_id: ^client_id,
-               client_preshared_key: "PSK",
-               client_rtc_session_description: "RTC_SD",
+               device_id: ^device_id,
+               device_preshared_key: "PSK",
+               device_rtc_session_description: "RTC_SD",
                authorization_expires_at: authorization_expires_at
              } = payload
 

@@ -1,10 +1,10 @@
-defmodule API.Client.Socket do
+defmodule API.Device.Socket do
   use Phoenix.Socket
-  alias Domain.{Auth, Clients}
+  alias Domain.{Auth, Devices}
 
   ## Channels
 
-  channel "client:*", API.Client.Channel
+  channel "device:*", API.Device.Channel
 
   ## Authentication
 
@@ -13,11 +13,11 @@ defmodule API.Client.Socket do
     %{user_agent: user_agent, peer_data: %{address: remote_ip}} = connect_info
 
     with {:ok, subject} <- Auth.sign_in(token, user_agent, remote_ip),
-         {:ok, client} <- Clients.upsert_client(attrs, subject) do
+         {:ok, device} <- Devices.upsert_device(attrs, subject) do
       socket =
         socket
         |> assign(:subject, subject)
-        |> assign(:client, client)
+        |> assign(:device, device)
 
       {:ok, socket}
     else
@@ -31,5 +31,5 @@ defmodule API.Client.Socket do
   end
 
   @impl true
-  def id(socket), do: "client:#{socket.assigns.client.id}"
+  def id(socket), do: "device:#{socket.assigns.device.id}"
 end

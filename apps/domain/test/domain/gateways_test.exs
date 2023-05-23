@@ -721,4 +721,32 @@ defmodule Domain.GatewaysTest do
                  [missing_permissions: [Gateways.Authorizer.manage_gateways_permission()]]}}
     end
   end
+
+  describe "encode_token!/1" do
+    test "returns encoded token" do
+      token = GatewaysFixtures.create_token()
+      assert encrypted_secret = encode_token!(token)
+
+      config = Application.fetch_env!(:domain, Domain.Gateways)
+      key_base = Keyword.fetch!(config, :key_base)
+      salt = Keyword.fetch!(config, :salt)
+
+      assert Plug.Crypto.verify(key_base, salt, encrypted_secret) ==
+               {:ok, {token.id, token.value}}
+    end
+  end
+
+  describe "authorize_gateway/1" do
+    test "returns token when encoded secret is valid" do
+      token = GatewaysFixtures.create_token()
+      encoded_token = encode_token!(token)
+      assert {:ok, fetched_token} = authorize_gateway(encoded_token)
+      assert fetched_token.id == token.id
+      assert is_nil(fetched_token.value)
+    end
+
+    test "returns error when secret is invalid" do
+      assert authorize_gateway(Ecto.UUID.generate()) == {:error, :invalid_token}
+    end
+  end
 end
