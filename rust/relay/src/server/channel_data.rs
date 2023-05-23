@@ -1,21 +1,33 @@
-use anyhow::{bail, Result};
 use bytes::{BufMut, BytesMut};
+use std::io;
 
-pub(crate) struct ChannelData<'a> {
+pub struct ChannelData<'a> {
     channel: u16,
     data: &'a [u8],
 }
 
 impl<'a> ChannelData<'a> {
-    pub(crate) fn parse(data: &'a [u8]) -> Result<Self> {
+    pub fn parse(data: &'a [u8]) -> Result<Self, io::Error> {
         if data.len() < 4 {
-            bail!("must have at least 4 bytes for channel data message")
+            return Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "channel data messages are at least 4 bytes long",
+            ));
         }
 
         let channel_number = u16::from_be_bytes([data[0], data[1]]);
         let length = u16::from_be_bytes([data[2], data[3]]);
 
-        anyhow::ensure!((data.len() - 4) == length as usize);
+        let actual_payload_length = data.len() - 4;
+
+        if actual_payload_length != length as usize {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "channel data message specified {length} bytes but got {actual_payload_length}"
+                ),
+            ));
+        }
 
         Ok(ChannelData {
             channel: channel_number,
@@ -23,11 +35,11 @@ impl<'a> ChannelData<'a> {
         })
     }
 
-    pub(crate) fn new(channel: u16, data: &'a [u8]) -> Self {
+    pub fn new(channel: u16, data: &'a [u8]) -> Self {
         ChannelData { channel, data }
     }
 
-    pub(crate) fn to_bytes(&self) -> Vec<u8> {
+    pub fn to_bytes(&self) -> Vec<u8> {
         let mut message = BytesMut::with_capacity(2 + 2 + self.data.len());
 
         message.put_u16(self.channel);
@@ -37,11 +49,11 @@ impl<'a> ChannelData<'a> {
         message.freeze().into()
     }
 
-    pub(crate) fn channel(&self) -> u16 {
+    pub fn channel(&self) -> u16 {
         self.channel
     }
 
-    pub(crate) fn data(&self) -> &[u8] {
+    pub fn data(&self) -> &[u8] {
         self.data
     }
 }
