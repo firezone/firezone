@@ -83,9 +83,9 @@ defmodule Domain.Actors do
     end)
     |> Repo.transaction()
     |> case do
-      {:ok, %{actor: actor}} ->
+      {:ok, %{actor: actor, identity: identity}} ->
         Telemetry.add_actor()
-        {:ok, actor}
+        {:ok, %{actor | identities: [identity]}}
 
       {:error, _step, changeset, _effects_so_far} ->
         {:error, changeset}

@@ -52,5 +52,6 @@ defmodule API.Relay.Socket do
   end
 
   @impl true
-  def id(socket), do: "relay:#{socket.assigns.relay.id}"
+  def id(%Relays.Relay{} = relay), do: "relay:#{relay.id}"
+  def id(socket), do: id(socket.assigns.relay)
 end

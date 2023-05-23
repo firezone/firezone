@@ -66,7 +66,7 @@ defmodule API.Gateway.SocketTest do
 
   describe "id/1" do
     test "creates a channel for a gateway" do
-      gateway = %{id: Ecto.UUID.generate()}
+      gateway = GatewaysFixtures.create_gateway()
       socket = socket(API.Gateway.Socket, "", %{gateway: gateway})
 
       assert id(socket) == "gateway:#{gateway.id}"

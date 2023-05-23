@@ -1,6 +1,7 @@
 defmodule Domain.Gateways do
   use Supervisor
   alias Domain.{Repo, Auth, Validator}
+  alias Domain.Resources
   alias Domain.Gateways.{Authorizer, Gateway, Group, Token, Presence}
 
   def start_link(opts) do
@@ -128,6 +129,24 @@ defmodule Domain.Gateways do
     end
   end
 
+  def list_connected_gateways_for_resource(%Resources.Resource{} = resource) do
+    connected_gateways = Presence.list("gateways")
+
+    gateways =
+      connected_gateways
+      |> Map.keys()
+      # XXX: This will create a pretty large query to send to Postgres,
+      # we probably want to load connected resources once when gateway connects,
+      # and persist them in the memory not to query DB every time with a
+      # `WHERE ... IN (...)`.
+      |> Gateway.Query.by_ids()
+      |> Gateway.Query.by_account_id(resource.account_id)
+      |> Gateway.Query.by_resource_id(resource.id)
+      |> Repo.all()
+
+    {:ok, gateways}
+  end
+
   def change_gateway(%Gateway{} = gateway, attrs \\ %{}) do
     Gateway.Changeset.update_changeset(gateway, attrs)
   end
@@ -180,9 +199,9 @@ defmodule Domain.Gateways do
     end
   end
 
-  def connect_gateway(%Gateway{} = gateway, socket) do
+  def connect_gateway(%Gateway{} = gateway) do
     {:ok, _} =
-      Presence.track(socket, gateway.id, %{
+      Presence.track(self(), "gateways", gateway.id, %{
         online_at: System.system_time(:second)
       })
 

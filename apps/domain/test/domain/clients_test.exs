@@ -437,6 +437,10 @@ defmodule Domain.ClientsTest do
       assert_raise Ecto.ConstraintError, fn ->
         NetworkFixtures.create_address(address: client.ipv4, account: account)
       end
+
+      assert_raise Ecto.ConstraintError, fn ->
+        NetworkFixtures.create_address(address: client.ipv6, account: account)
+      end
     end
 
     test "ip addresses are unique per account", %{

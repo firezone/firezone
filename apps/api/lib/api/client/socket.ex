@@ -12,8 +12,6 @@ defmodule API.Client.Socket do
   def connect(%{"token" => token} = attrs, socket, connect_info) do
     %{user_agent: user_agent, peer_data: %{address: remote_ip}} = connect_info
 
-    # TODO: we want to scope tokens for specific use cases, so token generated in auth flow
-    # should be only good for websockets, but not to be put in a browser cookie
     with {:ok, subject} <- Auth.sign_in(token, user_agent, remote_ip),
          {:ok, client} <- Clients.upsert_client(attrs, subject) do
       socket =

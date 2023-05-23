@@ -4,7 +4,8 @@ defmodule Domain.Auth.Adapters do
 
   @adapters %{
     email: Domain.Auth.Adapters.Email,
-    openid_connect: Domain.Auth.Adapters.OpenIDConnect
+    openid_connect: Domain.Auth.Adapters.OpenIDConnect,
+    userpass: Domain.Auth.Adapters.UserPass
   }
 
   @adapter_names Map.keys(@adapters)
@@ -18,8 +19,9 @@ defmodule Domain.Auth.Adapters do
     Supervisor.init(@adapter_modules, strategy: :one_for_one)
   end
 
-  def identity_changeset(%Ecto.Changeset{} = changeset, %Provider{} = provider) do
+  def identity_changeset(%Ecto.Changeset{} = changeset, %Provider{} = provider, provider_attrs) do
     adapter = fetch_adapter!(provider)
+    changeset = Ecto.Changeset.put_change(changeset, :provider_virtual_state, provider_attrs)
     %Ecto.Changeset{} = adapter.identity_changeset(provider, changeset)
   end
 
@@ -42,7 +44,7 @@ defmodule Domain.Auth.Adapters do
     adapter = fetch_adapter!(provider)
 
     case adapter.verify_secret(identity, secret) do
-      {:ok, %Identity{} = identity} -> {:ok, identity}
+      {:ok, %Identity{} = identity, expires_at} -> {:ok, identity, expires_at}
       {:error, :invalid_secret} -> {:error, :invalid_secret}
       {:error, :expired_secret} -> {:error, :expired_secret}
       {:error, :internal_error} -> {:error, :internal_error}

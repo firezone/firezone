@@ -19,13 +19,11 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
   end
 
   @impl true
-  def identity_changeset(%Provider{} = provider, %Ecto.Changeset{} = changeset) do
-    {state, virtual_state} = identity_create_state(provider)
-
+  def identity_changeset(%Provider{} = _provider, %Ecto.Changeset{} = changeset) do
     changeset
     |> Domain.Validator.trim_change(:provider_identifier)
-    |> Ecto.Changeset.put_change(:provider_state, state)
-    |> Ecto.Changeset.put_change(:provider_virtual_state, virtual_state)
+    |> Ecto.Changeset.put_change(:provider_state, %{})
+    |> Ecto.Changeset.put_change(:provider_virtual_state, %{})
   end
 
   @impl true
@@ -42,10 +40,6 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
   @impl true
   def ensure_deprovisioned(%Ecto.Changeset{} = changeset) do
     changeset
-  end
-
-  defp identity_create_state(%Provider{} = _provider) do
-    {%{}, %{}}
   end
 
   def authorization_uri(%Provider{} = provider, redirect_uri) when is_binary(redirect_uri) do
@@ -82,6 +76,12 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
       code: code,
       code_verifier: code_verifier
     })
+    |> case do
+      {:ok, identity, expires_at} -> {:ok, identity, expires_at}
+      {:error, :expired_token} -> {:error, :expired_secret}
+      {:error, :invalid_token} -> {:error, :invalid_secret}
+      {:error, :internal_error} -> {:error, :internal_error}
+    end
   end
 
   def refresh_token(%Identity{} = identity) do
@@ -98,6 +98,18 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
          {:ok, claims} <- OpenIDConnect.verify(config, tokens["id_token"]),
          {:ok, userinfo} <- OpenIDConnect.fetch_userinfo(config, tokens["id_token"]) do
       # TODO: sync groups
+      expires_at =
+        cond do
+          not is_nil(tokens["expires_in"]) ->
+            DateTime.add(DateTime.utc_now(), tokens["expires_in"], :second)
+
+          not is_nil(claims["exp"]) ->
+            DateTime.from_unix!(claims["exp"])
+
+          true ->
+            nil
+        end
+
       Identity.Query.by_id(identity.id)
       |> Repo.fetch_and_update(
         with: fn identity ->
@@ -105,15 +117,16 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
             id_token: tokens["id_token"],
             access_token: tokens["access_token"],
             refresh_token: tokens["refresh_token"],
-            expires_at:
-              if(tokens["expires_in"],
-                do: DateTime.add(DateTime.utc_now(), tokens["expires_in"], :second)
-              ),
+            expires_at: expires_at,
             userinfo: userinfo,
             claims: claims
           })
         end
       )
+      |> case do
+        {:ok, identity} -> {:ok, identity, expires_at}
+        {:error, reason} -> {:error, reason}
+      end
     else
       {:error, {:invalid_jwt, "invalid exp claim: token has expired"}} ->
         {:error, :expired_token}

@@ -43,11 +43,11 @@ ARG VERSION=0.0.0-docker
 ENV VERSION=$VERSION
 
 # compile assets
-RUN cd apps/web/assets \
-    && yarn install --frozen-lockfile \
-    && yarn deploy \
-    && cd .. \
-    && mix phx.digest
+RUN mix tailwind.install --if-missing \
+ && mix esbuild.install --if-missing \
+ && mix tailwind default --minify \
+ && mix esbuild default --minify \
+ && mix phx.digest
 
 # Compile the release
 RUN mix compile

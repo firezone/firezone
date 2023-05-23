@@ -6,7 +6,7 @@ defmodule Domain.Relays.Token.Changeset do
   def create_changeset(%Accounts.Account{} = account) do
     %Relays.Token{}
     |> change()
-    |> put_change(:value, Domain.Crypto.rand_string())
+    |> put_change(:value, Domain.Crypto.rand_string(64))
     |> put_hash(:value, to: :hash)
     |> assoc_constraint(:group)
     |> check_constraint(:hash, name: :hash_not_null, message: "can't be blank")

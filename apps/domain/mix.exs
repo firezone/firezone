@@ -34,7 +34,8 @@ defmodule Domain.MixProject do
       mod: {Domain.Application, []},
       extra_applications: [
         :logger,
-        :runtime_tools
+        :runtime_tools,
+        :crypto
       ]
     ]
   end

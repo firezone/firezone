@@ -691,6 +691,33 @@ defmodule Domain.AuthTest do
       assert subject.context.user_agent == user_agent
     end
 
+    test "returned subject expiration depends on user role", %{
+      account: account,
+      provider: provider,
+      user_agent: user_agent,
+      remote_ip: remote_ip
+    } do
+      actor = ActorsFixtures.create_actor(role: :admin, account: account)
+      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
+      secret = identity.provider_virtual_state.sign_in_token
+
+      assert {:ok, %Auth.Subject{} = subject} =
+               sign_in(provider, identity.provider_identifier, secret, user_agent, remote_ip)
+
+      three_hours = 3 * 60 * 60
+      assert_datetime_diff(subject.expires_at, DateTime.utc_now(), three_hours)
+
+      actor = ActorsFixtures.create_actor(role: :unprivileged, account: account)
+      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
+      secret = identity.provider_virtual_state.sign_in_token
+
+      assert {:ok, %Auth.Subject{} = subject} =
+               sign_in(provider, identity.provider_identifier, secret, user_agent, remote_ip)
+
+      one_week = 7 * 24 * 60 * 60
+      assert_datetime_diff(subject.expires_at, DateTime.utc_now(), one_week)
+    end
+
     test "returns error when provider is disabled", %{
       account: account,
       provider: provider,
@@ -791,6 +818,7 @@ defmodule Domain.AuthTest do
       assert reconstructed_subject.account.id == subject.account.id
       assert reconstructed_subject.permissions == subject.permissions
       assert reconstructed_subject.context == subject.context
+      assert DateTime.diff(reconstructed_subject.expires_at, subject.expires_at) <= 1
     end
 
     test "updates last signed in fields for identity on success", %{
@@ -844,6 +872,16 @@ defmodule Domain.AuthTest do
       identity = AuthFixtures.create_identity()
       subject = AuthFixtures.create_subject(identity)
       assert {:ok, _token} = create_session_token_from_subject(subject)
+    end
+  end
+
+  describe "fetch_session_token_expires_at/2" do
+    test "returns datetime when the token expires" do
+      subject = AuthFixtures.create_subject()
+      {:ok, token} = create_session_token_from_subject(subject)
+
+      assert {:ok, expires_at} = fetch_session_token_expires_at(token)
+      assert_datetime_diff(expires_at, DateTime.utc_now(), 60)
     end
   end
 

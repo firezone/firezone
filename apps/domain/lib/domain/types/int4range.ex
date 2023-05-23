@@ -27,10 +27,15 @@ defmodule Domain.Types.Int4Range do
     end
   end
 
+  def cast(num) when is_number(num) do
+    {:ok, Integer.to_string(num)}
+  end
+
   def cast([num, num]) when is_number(num) do
     {:ok, Integer.to_string(num)}
   end
 
+  def cast(lower..upper) when upper >= lower, do: {:ok, "#{lower} - #{upper}"}
   def cast([lower, upper]) when upper >= lower, do: {:ok, "#{lower} - #{upper}"}
   def cast([_, _]), do: {:error, message: @cast_error}
 
