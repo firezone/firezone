@@ -1,24 +1,18 @@
 use anyhow::{Context, Result};
 use futures::channel::mpsc;
 use futures::{FutureExt, SinkExt, StreamExt};
-use relay::{AllocationId, Command, Server, Sleep};
-use std::collections::HashMap;
+use relay::{AllocationId, Command, Server, Sleep, UdpSocket};
+use std::collections::{HashMap, VecDeque};
 use std::convert::Infallible;
 use std::error::Error;
-use std::io;
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::net::{Ipv4Addr, SocketAddr};
 use std::pin::Pin;
 use std::str::FromStr;
-use std::task::{ready, Poll};
+use std::task::Poll;
 use std::time::Instant;
-use tokio::io::ReadBuf;
-use tokio::net::UdpSocket;
 use tokio::task;
 use tracing::level_filters::LevelFilter;
-use tracing::Level;
 use tracing_subscriber::EnvFilter;
-
-const MAX_UDP_SIZE: usize = 65536;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -33,14 +27,7 @@ async fn main() -> Result<()> {
     let public_ip4_addr = parse_env_var::<Ipv4Addr>("RELAY_PUBLIC_IP4_ADDR")?;
     let listen_ip4_addr = parse_env_var::<Ipv4Addr>("RELAY_LISTEN_IP4_ADDR")?;
 
-    let mut recv_buf = [0u8; MAX_UDP_SIZE];
-
-    let mut eventloop = Eventloop::new(
-        public_ip4_addr,
-        listen_ip4_addr,
-        ReadBuf::new(&mut recv_buf),
-    )
-    .await?;
+    let mut eventloop = Eventloop::new(public_ip4_addr, listen_ip4_addr).await?;
 
     tracing::info!("Listening for incoming traffic on UDP port 3478");
 
@@ -51,98 +38,148 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-struct Eventloop<'a> {
+struct Eventloop {
     ip4_socket: UdpSocket,
     listen_ip4_address: Ipv4Addr,
     server: Server,
-    allocations: HashMap<AllocationId, task::JoinHandle<()>>,
+    allocations: HashMap<AllocationId, Allocation>,
     relay_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr, AllocationId)>,
     relay_data_receiver: mpsc::Receiver<(Vec<u8>, SocketAddr, AllocationId)>,
     sleep: Sleep,
-    recv_buf: ReadBuf<'a>,
+
+    client_send_buffer: VecDeque<(Vec<u8>, SocketAddr)>,
+    allocation_send_buffer: VecDeque<(Vec<u8>, SocketAddr, AllocationId)>,
 }
 
-impl<'a> Eventloop<'a> {
-    async fn new(
-        public_ip4_address: Ipv4Addr,
-        listen_ip4_address: Ipv4Addr,
-        recv_buf: ReadBuf<'a>,
-    ) -> io::Result<Eventloop<'a>> {
+struct Allocation {
+    /// The handle to the task that is running the allocation.
+    ///
+    /// Stored here to make resource-cleanup easy.
+    handle: task::JoinHandle<()>,
+    sender: mpsc::Sender<(Vec<u8>, SocketAddr)>,
+}
+
+impl Eventloop {
+    async fn new(public_ip4_address: Ipv4Addr, listen_ip4_address: Ipv4Addr) -> Result<Self> {
         let (sender, receiver) = mpsc::channel(1);
 
         Ok(Self {
             ip4_socket: UdpSocket::bind((listen_ip4_address, 3478)).await?,
             listen_ip4_address,
-            server: Server::new(SocketAddrV4::new(public_ip4_address, 3478)),
+            server: Server::new(public_ip4_address),
             allocations: Default::default(),
             relay_data_sender: sender,
             relay_data_receiver: receiver,
             sleep: Sleep::default(),
-            recv_buf,
+            client_send_buffer: Default::default(),
+            allocation_send_buffer: Default::default(),
         })
     }
 
     fn poll(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<()>> {
         loop {
             // Priority 1: Execute the pending commands of the server.
-            // This may require us to be able to send data into the socket.
-            // If the socket is not ready, don't poll new commands from the server.
-            ready!(self.ip4_socket.poll_send_ready(cx)?);
-
             if let Some(next_command) = self.server.next_command() {
                 match next_command {
                     Command::SendMessage { payload, recipient } => {
-                        if tracing::enabled!(target: "wire", Level::TRACE) {
-                            let hex_bytes = hex::encode(&payload);
-                            tracing::trace!(target: "wire", r#"Output::SendMessage("{recipient}","{hex_bytes}")"#);
-                        }
-
-                        let bytes_sent = self
-                            .ip4_socket
-                            .try_send_to(&payload, recipient)
-                            .expect("TODO: error handling");
-
-                        debug_assert_eq!(bytes_sent, payload.len());
+                        self.client_send_buffer.push_back((payload, recipient));
                     }
                     Command::AllocateAddresses { id, port } => {
-                        self.allocations.insert(id, tokio::spawn({
-                            let sender = self.relay_data_sender.clone();
-                            let listen_ip4_addr = self.listen_ip4_address;
-
-                            async move {
-                                let Err(e) = forward_incoming_relay_data(sender, id, listen_ip4_addr, port).await else {
-                                    unreachable!()
-                                };
-
-                                // TODO: Do we need to clean this up in the server? It will eventually timeout if not refreshed.
-                                tracing::warn!("Allocation task for {id} failed: {e}");
-                            }
-                        }));
+                        self.allocations.insert(
+                            id,
+                            Allocation::new(
+                                self.relay_data_sender.clone(),
+                                id,
+                                self.listen_ip4_address,
+                                port,
+                            ),
+                        );
                     }
                     Command::FreeAddresses { id } => {
-                        let Some(task) = self.allocations.remove(&id) else {
+                        if self.allocations.remove(&id).is_none() {
                             tracing::debug!("Unknown allocation {id}");
                             continue;
                         };
 
                         tracing::info!("Freeing addresses of allocation {id}");
-                        task.abort();
                     }
                     Command::Wake { deadline } => {
                         Pin::new(&mut self.sleep).reset(deadline);
+                    }
+                    Command::ForwardData { id, data, receiver } => {
+                        self.allocation_send_buffer.push_back((data, receiver, id));
                     }
                 }
 
                 continue; // Attempt to process more commands.
             }
 
-            // Priority 2: Handle time-sensitive tasks:
+            // Priority 2: Flush data to the socket.
+            if let Some((payload, recipient)) = self.client_send_buffer.pop_front() {
+                match self.ip4_socket.try_send_to(&payload, recipient, cx)? {
+                    Poll::Ready(()) => {
+                        continue;
+                    }
+                    Poll::Pending => {
+                        // Yield early if we cannot send data.
+                        // Continuing the event loop here would cause `client_send_buffer` to potentially grow faster than we can send data.
+
+                        self.client_send_buffer.push_front((payload, recipient));
+                        return Poll::Pending;
+                    }
+                }
+            }
+
+            // Priority 3: Forward data to allocations.
+            if let Some((data, receiver, id)) = self.allocation_send_buffer.pop_front() {
+                let Some(allocation) = self.allocations.get_mut(&id) else {
+                    tracing::debug!("Unknown allocation {id}");
+                    continue;
+                };
+
+                match allocation.sender.poll_ready(cx) {
+                    Poll::Ready(Ok(())) => {}
+                    Poll::Ready(Err(_)) => {
+                        debug_assert!(
+                            false,
+                            "poll_ready to never fail because we own the other end of the channel"
+                        );
+                    }
+                    Poll::Pending => {
+                        // Same as above, we need to yield early if we cannot send data.
+                        // The task will be woken up once there is space in the channel.
+
+                        self.allocation_send_buffer.push_front((data, receiver, id));
+                        return Poll::Pending;
+                    }
+                }
+
+                match allocation.sender.try_send((data, receiver)) {
+                    Ok(()) => {}
+                    Err(e) if e.is_full() => {
+                        let (data, receiver) = e.into_inner();
+
+                        self.allocation_send_buffer.push_front((data, receiver, id));
+                        return Poll::Pending;
+                    }
+                    Err(_) => {
+                        debug_assert!(
+                            false,
+                            "try_send to never fail because we own the other end of the channel"
+                        );
+                    }
+                };
+
+                continue;
+            }
+
+            // Priority 4: Handle time-sensitive tasks:
             if self.sleep.poll_unpin(cx).is_ready() {
                 self.server.handle_deadline_reached(Instant::now());
                 continue; // Handle potentially new commands.
             }
 
-            // Priority 3: Handle relayed data (we prioritize latency for existing allocations over making new ones)
+            // Priority 5: Handle relayed data (we prioritize latency for existing allocations over making new ones)
             if let Poll::Ready(Some((data, sender, allocation))) =
                 self.relay_data_receiver.poll_next_unpin(cx)
             {
@@ -150,16 +187,46 @@ impl<'a> Eventloop<'a> {
                 continue; // Handle potentially new commands.
             }
 
-            // Priority 4: Accept new allocations / answer STUN requests etc
-
-            if let Poll::Ready(sender) = self.ip4_socket.poll_recv_from(cx, &mut self.recv_buf)? {
+            // Priority 6: Accept new allocations / answer STUN requests etc
+            if let Poll::Ready((buffer, sender)) = self.ip4_socket.poll_recv(cx)? {
                 self.server
-                    .handle_client_input(self.recv_buf.filled(), sender, Instant::now())?;
+                    .handle_client_input(buffer.filled(), sender, Instant::now())?;
                 continue; // Handle potentially new commands.
             }
 
             return Poll::Pending;
         }
+    }
+}
+
+impl Allocation {
+    fn new(
+        relay_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr, AllocationId)>,
+        id: AllocationId,
+        listen_ip4_addr: Ipv4Addr,
+        port: u16,
+    ) -> Self {
+        let (client_to_peer_sender, client_to_peer_receiver) = mpsc::channel(1);
+
+        let task = tokio::spawn(async move {
+            let Err(e) = forward_incoming_relay_data(relay_data_sender, client_to_peer_receiver, id, listen_ip4_addr, port).await else {
+                unreachable!()
+            };
+
+            // TODO: Do we need to clean this up in the server? It will eventually timeout if not refreshed.
+            tracing::warn!("Allocation task for {id} failed: {e}");
+        });
+
+        Self {
+            handle: task,
+            sender: client_to_peer_sender,
+        }
+    }
+}
+
+impl Drop for Allocation {
+    fn drop(&mut self) {
+        self.handle.abort();
     }
 }
 
@@ -178,21 +245,23 @@ where
 
 async fn forward_incoming_relay_data(
     mut relayed_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr, AllocationId)>,
+    mut client_to_peer_receiver: mpsc::Receiver<(Vec<u8>, SocketAddr)>,
     id: AllocationId,
     listen_ip4_addr: Ipv4Addr,
     port: u16,
 ) -> Result<Infallible> {
-    let socket = UdpSocket::bind((listen_ip4_addr, port)).await?;
-    let mut recv_buf = [0u8; MAX_UDP_SIZE];
-
-    let ip4 = socket.local_addr()?;
-
-    tracing::info!("Listening for relayed data on {ip4} for allocation {id}");
+    let mut socket = UdpSocket::bind((listen_ip4_addr, port)).await?;
 
     loop {
-        let (length, sender) = socket.recv_from(&mut recv_buf).await?;
-        let data = recv_buf[..length].to_vec();
+        tokio::select! {
+            result = socket.recv() => {
+                let (data, sender) = result?;
+                relayed_data_sender.send((data.to_vec(), sender, id)).await?;
+            }
 
-        relayed_data_sender.send((data, sender, id)).await?;
+            Some((data, recipient)) = client_to_peer_receiver.next() => {
+                socket.send_to(&data, recipient).await?;
+            }
+        }
     }
 }

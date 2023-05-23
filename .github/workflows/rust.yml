@@ -34,3 +34,19 @@ jobs:
           RUSTDOCFLAGS: "-D warnings"
       - run: cargo clippy -- -D warnings
       - run: cargo test
+
+  cross:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./rust
+    steps:
+      - uses: actions/checkout@v2
+
+      # This implicitly triggers installation of the toolchain in the `rust-toolchain.toml` file.
+      # If we don't do this here, our cache action will compute a cache key based on the Rust version shipped on GitHub's runner which might differ from the one we use.
+      - run: rustup show
+
+      - uses: Swatinem/rust-cache@v2
+      - run: rustup target add x86_64-unknown-linux-musl
+      - run: cargo build --bin relay --target x86_64-unknown-linux-musl
