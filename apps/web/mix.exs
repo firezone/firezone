@@ -48,8 +48,7 @@ defmodule Web.MixProject do
 
       # Asset pipeline deps
       {:esbuild, "~> 0.5", runtime: Mix.env() == :dev},
-      {:tailwind, "~> 0.1.8", runtime: Mix.env() == :dev},
-      {:heroicons, "~> 0.5"},
+      {:tailwind, "~> 0.2.0", runtime: Mix.env() == :dev},
 
       # Observability and debugging deps
       {:telemetry_metrics, "~> 0.6"},
