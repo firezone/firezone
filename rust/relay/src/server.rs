@@ -1,11 +1,16 @@
 mod channel_data;
+mod client_message;
 
 use crate::rfc8656::PeerAddressFamilyMismatch;
 use crate::server::channel_data::ChannelData;
+use crate::server::client_message::{
+    AllocateRequest, BindingRequest, ChannelBindRequest, ClientMessage, CreatePermissionRequest,
+    Error, RefreshRequest,
+};
 use crate::stun_codec_ext::{MessageClassExt, MethodExt};
 use crate::TimeEvents;
 use anyhow::Result;
-use bytecodec::{DecodeExt, EncodeExt};
+use bytecodec::EncodeExt;
 use core::fmt;
 use rand::rngs::mock::StepRng;
 use rand::rngs::ThreadRng;
@@ -24,7 +29,7 @@ use stun_codec::rfc5766::attributes::{
 };
 use stun_codec::rfc5766::errors::{AllocationMismatch, InsufficientCapacity};
 use stun_codec::rfc5766::methods::{ALLOCATE, CHANNEL_BIND, CREATE_PERMISSION, REFRESH};
-use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder, Method, TransactionId};
+use stun_codec::{Message, MessageClass, MessageEncoder, Method, TransactionId};
 
 /// A sans-IO STUN & TURN server.
 ///
@@ -34,7 +39,7 @@ use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder, Method, 
 ///
 /// Additionally, we assume to have complete ownership over the port range `LOWEST_PORT` - `HIGHEST_PORT`.
 pub struct Server<R = ThreadRng> {
-    decoder: MessageDecoder<Attribute>,
+    decoder: client_message::Decoder,
     encoder: MessageEncoder<Attribute>,
 
     public_ip4_address: Ipv4Addr,
@@ -161,58 +166,48 @@ where
             tracing::trace!(target: "wire", r#"Input::client("{sender}","{hex_bytes}")"#);
         }
 
-        // De-multiplex as per <https://www.rfc-editor.org/rfc/rfc8656#name-channels-2>.
-        match bytes.first() {
-            Some(0..=3) => {
-                let Ok(message) = self.decoder.decode_from_bytes(bytes)? else {
-                    tracing::warn!(target: "relay", "received broken STUN message from {sender}");
-                    return Ok(());
-                };
+        let result = match self.decoder.decode(bytes) {
+            Ok(Some(ClientMessage::BindingRequest(request))) => {
+                self.handle_binding_request(request, sender);
 
-                tracing::trace!(target: "relay", "Received {} {} from {sender}", message.method().as_str(), message.class().as_str());
-
-                self.dispatch_stun_message(message, sender, now, |server, message, sender, now| {
-                    use MessageClass::*;
-                    match (message.method(), message.class()) {
-                        (BINDING, Request) => {
-                            server.handle_binding_request(message, sender);
-                            Ok(())
-                        }
-                        (ALLOCATE, Request) => server.handle_allocate_request(message, sender, now),
-                        (REFRESH, Request) => server.handle_refresh_request(message, sender, now),
-                        (CHANNEL_BIND, Request) => {
-                            server.handle_channel_bind_request(message, sender, now)
-                        }
-                        (CREATE_PERMISSION, Request) => {
-                            server.handle_create_permission_request(message, sender, now)
-                        }
-                        (_, Indication) => {
-                            tracing::trace!(target: "relay", "Indications are not yet implemented");
-
-                            Err(ErrorCode::from(BadRequest))
-                        }
-                        _ => Err(ErrorCode::from(BadRequest)),
-                    }
-                });
+                return Ok(());
             }
-            Some(64..=79) => {
-                let msg = match ChannelData::parse(bytes) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        tracing::debug!(
-                            target: "relay",
-                            "failed to parse channel data message: {e:#}"
-                        );
-                        return Ok(());
-                    }
-                };
-
+            Ok(Some(ClientMessage::AllocateRequest(request))) => {
+                self.handle_allocate_request(request, sender, now)
+            }
+            Ok(Some(ClientMessage::RefreshRequest(request))) => {
+                self.handle_refresh_request(request, sender, now)
+            }
+            Ok(Some(ClientMessage::ChannelBindRequest(request))) => {
+                self.handle_channel_bind_request(request, sender, now)
+            }
+            Ok(Some(ClientMessage::CreatePermissionRequest(request))) => {
+                self.handle_create_permission_request(request, sender, now)
+            }
+            Ok(Some(ClientMessage::ChannelData(msg))) => {
                 self.handle_channel_data_message(msg, sender, now);
+
+                return Ok(());
             }
-            _ => {
-                tracing::trace!(target: "relay", "Received unknown message from {sender}");
+            Ok(None) => return Ok(()),
+            Err(client_message::Error::MissingMessageIntegrity) => {
+                todo!("embed challenge, realm etc in response")
             }
-        }
+            Err(client_message::Error::MissingRequiredAttribute) => {
+                todo!("reply with bad request")
+            }
+            Err(client_message::Error::BadChannelData(_)) => {
+                todo!("log")
+            }
+            Err(client_message::Error::DecodeStun(_)) => {
+                todo!("log")
+            }
+            Err(Error::UnsupportedMethodClassCombination(_, _)) => {
+                todo!("log")
+            }
+        };
+
+        todo!("handle result, like checking for Unauthorized etc");
 
         Ok(())
     }
@@ -322,27 +317,7 @@ where
         self.pending_commands.pop_front()
     }
 
-    fn dispatch_stun_message(
-        &mut self,
-        message: Message<Attribute>,
-        sender: SocketAddr,
-        now: Instant,
-        handler: impl Fn(&mut Self, Message<Attribute>, SocketAddr, Instant) -> Result<(), ErrorCode>,
-    ) {
-        let transaction_id = message.transaction_id();
-        let method = message.method();
-
-        if let Err(e) = handler(self, message, sender, now) {
-            if e.code() == Unauthorized::CODEPOINT {
-                self.send_message(unauthorized(transaction_id, method), sender);
-                return;
-            }
-
-            self.send_message(error_response(transaction_id, method, e), sender);
-        }
-    }
-
-    fn handle_binding_request(&mut self, message: Message<Attribute>, sender: SocketAddr) {
+    pub fn handle_binding_request(&mut self, message: BindingRequest, sender: SocketAddr) {
         let mut message = Message::new(
             MessageClass::SuccessResponse,
             BINDING,
@@ -356,15 +331,13 @@ where
     /// Handle a TURN allocate request.
     ///
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-receiving-an-allocate-reque> for details.
-    fn handle_allocate_request(
+    pub fn handle_allocate_request(
         &mut self,
-        message: Message<Attribute>,
+        message: AllocateRequest,
         sender: SocketAddr,
         now: Instant,
     ) -> Result<(), ErrorCode> {
-        let _ = message
-            .get_attribute::<MessageIntegrity>()
-            .ok_or(Unauthorized)?;
+        // TODO: Check validity of message integrity here?
 
         if self.allocations.contains_key(&sender) {
             return Err(AllocationMismatch.into());
@@ -374,17 +347,11 @@ where
             return Err(InsufficientCapacity.into());
         }
 
-        let requested_transport = message
-            .get_attribute::<RequestedTransport>()
-            .ok_or(BadRequest)?;
-
-        if requested_transport.protocol() != UDP_TRANSPORT {
+        if message.requested_transport().protocol() != UDP_TRANSPORT {
             return Err(BadRequest.into());
         }
 
-        let requested_lifetime = message.get_attribute::<Lifetime>();
-
-        let effective_lifetime = compute_effective_lifetime(requested_lifetime);
+        let effective_lifetime = message.effective_lifetime();
 
         // TODO: Do we need to handle DONT-FRAGMENT?
         // TODO: Do we need to handle EVEN/ODD-PORT?
@@ -431,15 +398,13 @@ where
     /// Handle a TURN refresh request.
     ///
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-receiving-a-refresh-request> for details.
-    fn handle_refresh_request(
+    pub fn handle_refresh_request(
         &mut self,
-        message: Message<Attribute>,
+        message: RefreshRequest,
         sender: SocketAddr,
         now: Instant,
     ) -> Result<(), ErrorCode> {
-        let _ = message
-            .get_attribute::<MessageIntegrity>()
-            .ok_or(Unauthorized)?;
+        // TODO: Check validity of message integrity here?
 
         // TODO: Verify that this is the correct error code.
         let allocation = self
@@ -447,8 +412,7 @@ where
             .get_mut(&sender)
             .ok_or(ErrorCode::from(AllocationMismatch))?;
 
-        let requested_lifetime = message.get_attribute::<Lifetime>();
-        let effective_lifetime = compute_effective_lifetime(requested_lifetime);
+        let effective_lifetime = message.effective_lifetime();
 
         if effective_lifetime.lifetime().is_zero() {
             let port = allocation.port;
@@ -497,30 +461,21 @@ where
     /// Handle a TURN channel bind request.
     ///
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-receiving-a-channelbind-req> for details.
-    fn handle_channel_bind_request(
+    pub fn handle_channel_bind_request(
         &mut self,
-        message: Message<Attribute>,
+        message: ChannelBindRequest,
         sender: SocketAddr,
         now: Instant,
     ) -> Result<(), ErrorCode> {
-        let _ = message
-            .get_attribute::<MessageIntegrity>()
-            .ok_or(Unauthorized)?;
+        // TODO: Check validity of message integrity here?
 
         let allocation = self
             .allocations
             .get_mut(&sender)
             .ok_or(ErrorCode::from(AllocationMismatch))?;
 
-        let requested_channel = message
-            .get_attribute::<ChannelNumber>()
-            .ok_or(ErrorCode::from(BadRequest))?
-            .value();
-
-        let peer_address = message
-            .get_attribute::<XorPeerAddress>()
-            .ok_or(ErrorCode::from(BadRequest))?
-            .address();
+        let requested_channel = message.channel_number().value();
+        let peer_address = message.xor_peer_address().address();
 
         // Note: `channel_number` is enforced to be in the correct range.
 
@@ -583,15 +538,14 @@ where
     ///
     /// This TURN server implementation does not support relaying data other than through channels.
     /// Thus, creating a permission is a no-op that always succeeds.
-    fn handle_create_permission_request(
+    pub fn handle_create_permission_request(
         &mut self,
-        message: Message<Attribute>,
+        message: CreatePermissionRequest,
         sender: SocketAddr,
         _: Instant,
     ) -> Result<(), ErrorCode> {
-        let _ = message
-            .get_attribute::<MessageIntegrity>()
-            .ok_or(Unauthorized)?;
+        // TODO: Check validity of message integrity here?
+
         self.send_message(
             create_permission_success_response(message.transaction_id()),
             sender,
@@ -600,7 +554,7 @@ where
         Ok(())
     }
 
-    fn handle_channel_data_message(
+    pub fn handle_channel_data_message(
         &mut self,
         message: ChannelData,
         sender: SocketAddr,
