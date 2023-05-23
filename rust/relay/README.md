@@ -22,7 +22,7 @@ You can build the server using: `cargo build --release --bin relay`
 
 Two environment variables need to be set for the server to be operational:
 
-- `RELAY_LISTEN_IP4_ADDR`: The IPv4 address of a local interface we should bind to. Must not be a wildcard address. 
+- `RELAY_LISTEN_IP4_ADDR`: The IPv4 address of a local interface we should bind to. Must not be a wildcard address.
 - `RELAY_PUBLIC_IP4_ADDR`: The public IPv4 address of the above interface.
 
 ## Design
@@ -33,4 +33,4 @@ They take in data and emit commands: wake me at this point in time, send these b
 This allows us to very easily unit-test all kinds of scenarios because all inputs are simple values.
 
 The main server runs in a single task and spawns one additional task for each allocation.
-Incoming data that needs to be relayed is forwarded to the main task where it gets authenticated and relayed on success. 
+Incoming data that needs to be relayed is forwarded to the main task where it gets authenticated and relayed on success.
