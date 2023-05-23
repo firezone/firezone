@@ -8,14 +8,14 @@ defmodule Domain.ClientsTest do
   setup do
     account = AccountsFixtures.create_account()
 
-    unprivileged_actor = ActorsFixtures.create_actor(role: :unprivileged, account: account)
+    unprivileged_actor = ActorsFixtures.create_actor(type: :end_user, account: account)
 
     unprivileged_identity =
       AuthFixtures.create_identity(account: account, actor: unprivileged_actor)
 
     unprivileged_subject = AuthFixtures.create_subject(unprivileged_identity)
 
-    admin_actor = ActorsFixtures.create_actor(role: :admin, account: account)
+    admin_actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
     admin_identity = AuthFixtures.create_identity(account: account, actor: admin_actor)
     admin_subject = AuthFixtures.create_subject(admin_identity)
 
@@ -234,7 +234,7 @@ defmodule Domain.ClientsTest do
       unprivileged_subject: unprivileged_subject,
       admin_subject: admin_subject
     } do
-      actor = ActorsFixtures.create_actor(role: :unprivileged)
+      actor = ActorsFixtures.create_actor(type: :end_user)
       ClientsFixtures.create_client(actor: actor)
 
       assert list_clients_by_actor_id(actor.id, unprivileged_subject) == {:ok, []}

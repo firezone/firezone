@@ -4,7 +4,7 @@
 #   alias Domain.UsersFixtures
 
 #   setup do
-#     user = UsersFixtures.create_user_with_role(:admin)
+#     user = UsersFixtures.create_user_with_role(:account_admin_user)
 #     {bypass, [provider_attrs]} = Domain.ConfigFixtures.start_openid_providers(["google"])
 
 #     conn =

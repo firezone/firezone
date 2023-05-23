@@ -136,7 +136,7 @@ defmodule Domain.AuthFixtures do
 
   def create_subject do
     account = AccountsFixtures.create_account()
-    actor = ActorsFixtures.create_actor(role: :admin, account: account)
+    actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
     identity = create_identity(actor: actor, account: account)
     create_subject(identity)
   end
@@ -147,7 +147,7 @@ defmodule Domain.AuthFixtures do
     %Auth.Subject{
       identity: identity,
       actor: identity.actor,
-      permissions: Auth.Roles.build(identity.actor.role).permissions,
+      permissions: Auth.Roles.build(identity.actor.type).permissions,
       account: identity.account,
       expires_at: DateTime.utc_now() |> DateTime.add(60, :second),
       context: %Auth.Context{remote_ip: remote_ip(), user_agent: user_agent()}

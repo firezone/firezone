@@ -5,7 +5,7 @@ defmodule Domain.Config.Authorizer do
   def configure_permission, do: build(Configuration, :manage)
 
   @impl Domain.Auth.Authorizer
-  def list_permissions_for_role(:admin) do
+  def list_permissions_for_role(:account_admin_user) do
     [
       configure_permission()
     ]

@@ -7,8 +7,8 @@ defmodule Domain.Auth do
   alias Domain.Auth.{Adapters, Provider}
 
   @default_session_duration_hours %{
-    admin: 3,
-    unprivileged: 24 * 7
+    account_admin_user: 3,
+    end_user: 24 * 7
   }
 
   def start_link(opts) do
@@ -213,7 +213,7 @@ defmodule Domain.Auth do
       |> Repo.update!()
 
     identity_with_preloads = Repo.preload(identity, [:account, :actor])
-    permissions = fetch_role_permissions!(identity_with_preloads.actor.role)
+    permissions = fetch_type_permissions!(identity_with_preloads.actor.type)
 
     %Subject{
       identity: identity,
@@ -226,7 +226,7 @@ defmodule Domain.Auth do
   end
 
   defp build_subject_expires_at(%Actors.Actor{} = actor, expires_at) do
-    default_session_duration_hours = Map.fetch!(@default_session_duration_hours, actor.role)
+    default_session_duration_hours = Map.fetch!(@default_session_duration_hours, actor.type)
     expires_at || DateTime.utc_now() |> DateTime.add(default_session_duration_hours, :hour)
   end
 
@@ -350,11 +350,11 @@ defmodule Domain.Auth do
     ensure_has_permissions(subject, required_permissions) == :ok
   end
 
-  def fetch_role_permissions!(%Role{} = role),
-    do: role.permissions
+  def fetch_type_permissions!(%Role{} = type),
+    do: type.permissions
 
-  def fetch_role_permissions!(role_name) when is_atom(role_name),
-    do: role_name |> Roles.build() |> fetch_role_permissions!()
+  def fetch_type_permissions!(type_name) when is_atom(type_name),
+    do: type_name |> Roles.build() |> fetch_type_permissions!()
 
   # Authorization
 

@@ -112,7 +112,7 @@ defmodule Domain.Telemetry do
     common_fields() ++
       [
         # devices_active_within_24h: Devices.count_active_within(@active_device_window),
-        # admin_count: Users.count_by_role(:admin),
+        # admin_count: Users.count_by_role(:account_admin_user),
         # actor_count: Users.count(),
         in_docker: in_docker?(),
         # device_count: Devices.count(),

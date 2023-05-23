@@ -5,7 +5,7 @@ defmodule API.Gateway.ChannelTest do
 
   setup do
     account = AccountsFixtures.create_account()
-    actor = ActorsFixtures.create_actor(role: :admin, account: account)
+    actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
     identity = AuthFixtures.create_identity(actor: actor, account: account)
     subject = AuthFixtures.create_subject(identity)
     client = ClientsFixtures.create_client(subject: subject)

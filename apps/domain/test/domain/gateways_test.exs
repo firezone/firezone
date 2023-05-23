@@ -7,7 +7,7 @@ defmodule Domain.GatewaysTest do
 
   setup do
     account = AccountsFixtures.create_account()
-    actor = ActorsFixtures.create_actor(role: :admin, account: account)
+    actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
     identity = AuthFixtures.create_identity(account: account, actor: actor)
     subject = AuthFixtures.create_subject(identity)
 

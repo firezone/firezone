@@ -7,14 +7,14 @@ defmodule Domain.Clients.Authorizer do
 
   @impl Domain.Auth.Authorizer
 
-  def list_permissions_for_role(:admin) do
+  def list_permissions_for_role(:account_admin_user) do
     [
       manage_own_clients_permission(),
       manage_clients_permission()
     ]
   end
 
-  def list_permissions_for_role(:unprivileged) do
+  def list_permissions_for_role(:end_user) do
     [
       manage_own_clients_permission()
     ]
@@ -31,11 +31,9 @@ defmodule Domain.Clients.Authorizer do
         Client.Query.by_account_id(queryable, subject.account.id)
 
       has_permission?(subject, manage_own_clients_permission()) ->
-        %{type: :user, id: actor_id} = subject.actor
-
         queryable
         |> Client.Query.by_account_id(subject.account.id)
-        |> Client.Query.by_actor_id(actor_id)
+        |> Client.Query.by_actor_id(subject.actor.id)
     end
   end
 end

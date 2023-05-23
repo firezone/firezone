@@ -25,7 +25,7 @@ defmodule Domain.ClientsFixtures do
 
     {actor, attrs} =
       Map.pop_lazy(attrs, :actor, fn ->
-        ActorsFixtures.create_actor(role: :admin, account: account)
+        ActorsFixtures.create_actor(type: :account_admin_user, account: account)
       end)
 
     {identity, attrs} =
@@ -46,7 +46,7 @@ defmodule Domain.ClientsFixtures do
 
   def delete_client(client) do
     client = Repo.preload(client, :account)
-    actor = ActorsFixtures.create_actor(role: :admin, account: client.account)
+    actor = ActorsFixtures.create_actor(type: :account_admin_user, account: client.account)
     identity = AuthFixtures.create_identity(account: client.account, actor: actor)
     subject = AuthFixtures.create_subject(identity)
     {:ok, client} = Clients.delete_client(client, subject)
