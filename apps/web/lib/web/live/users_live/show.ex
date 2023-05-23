@@ -3,26 +3,25 @@ defmodule Web.UsersLive.Show do
 
   def render(assigns) do
     ~H"""
-    <div class="grid grid-cols-1 p-4 xl:grid-cols-3 xl:gap-4 dark:bg-gray-900">
-      <div class="col-span-full mb-4 xl:mb-2">
-        <!-- Breadcrumbs -->
+    <.section_header>
+      <:breadcrumbs>
         <.breadcrumbs entries={[
           %{label: "Home", path: ~p"/"},
           %{label: "Users", path: ~p"/users"},
           %{label: "Bou Kheir, Jamil", path: ~p"/users/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
         ]} />
-        <h1 class="text-xl font-semibold text-gray-900 sm:text-2xl dark:text-white">User details</h1>
-      </div>
-    </div>
+      </:breadcrumbs>
+      <:title>
+        Viewing User <code>Bou Kheir, Jamil</code>
+      </:title>
+      <:actions>
+        <.edit_button navigate={~p"/users/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89/edit"}>
+          Edit user
+        </.edit_button>
+      </:actions>
+    </.section_header>
     <!-- User Details -->
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
-      <div class="flex flex-col md:flex-row items-center justify-between space-y-3 md:space-y-0 md:space-x-4 p-4">
-        <div class="w-full md:w-auto flex flex-col md:flex-row space-y-2 md:space-y-0 items-stretch md:items-center justify-end md:space-x-3 flex-shrink-0">
-          <.edit_button navigate={~p"/users/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89/edit"}>
-            Edit user
-          </.edit_button>
-        </div>
-      </div>
       <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
         <tbody>
           <tr class="border-b border-gray-200 dark:border-gray-700">
@@ -112,6 +111,17 @@ defmodule Web.UsersLive.Show do
         </tbody>
       </table>
     </div>
+
+    <.section_header>
+      <:title>
+        Danger zone
+      </:title>
+      <:actions>
+        <.delete_button>
+          Delete user
+        </.delete_button>
+      </:actions>
+    </.section_header>
     """
   end
 end

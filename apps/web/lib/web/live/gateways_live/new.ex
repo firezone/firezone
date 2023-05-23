@@ -12,7 +12,7 @@ defmodule Web.GatewaysLive.New do
         ]} />
       </:breadcrumbs>
       <:title>
-        Add a new gateway
+        Add a new Gateway
       </:title>
     </.section_header>
 
@@ -22,13 +22,13 @@ defmodule Web.GatewaysLive.New do
         <form action="#">
           <div class="grid gap-4 sm:grid-cols-1 sm:gap-6">
             <div>
-              <.label for="first-name">
+              <.label for="gateway-name">
                 Name
               </.label>
               <input
                 type="text"
-                name="first-name"
-                id="first-name"
+                name="gateway-name"
+                id="gateway-name"
                 class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary-600 focus:border-primary-600 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500"
                 required=""
               />
@@ -68,9 +68,18 @@ defmodule Web.GatewaysLive.New do
               </:tab>
             </.tabs>
           </div>
-          <.submit_button>
-            Create
-          </.submit_button>
+
+          <div id="gateway-submit-button" class="hidden">
+            <!-- TODO: Display submit button when Gateway connection is detected -->
+            <.submit_button>
+              Create
+            </.submit_button>
+          </div>
+          <div class="mt-4">
+            <.p>
+              Waiting for gateway connection...
+            </.p>
+          </div>
         </form>
       </div>
     </section>

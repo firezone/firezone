@@ -3,7 +3,18 @@ defmodule Web.ResourcesLive.New do
 
   def render(assigns) do
     ~H"""
-    New Resource
+    <.section_header>
+      <:breadcrumbs>
+        <.breadcrumbs entries={[
+          %{label: "Home", path: ~p"/"},
+          %{label: "Resources", path: ~p"/resources"},
+          %{label: "Add resource", path: ~p"/resources/new"}
+        ]} />
+      </:breadcrumbs>
+      <:title>
+        Add a new Resource
+      </:title>
+    </.section_header>
     """
   end
 end

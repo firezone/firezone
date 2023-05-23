@@ -16,6 +16,21 @@ defmodule Web.CoreComponents do
   import Web.Gettext
 
   @doc """
+  Renders a generic <p> tag using our color scheme.
+
+  ## Examples
+
+    <.p>
+      Hello world
+    </.p>
+  """
+  def p(assigns) do
+    ~H"""
+    <p class="text-gray-700 dark:text-gray-300"><%= render_slot(@inner_block) %></p>
+    """
+  end
+
+  @doc """
   Render a monospace code block suitable for copying and pasting content.
 
   ## Examples
@@ -26,7 +41,7 @@ defmodule Web.CoreComponents do
   """
   def code_block(assigns) do
     ~H"""
-    <pre class="p-4 overflow-x-auto bg-gray-50 dark:bg-gray-800 rounded-lg">
+    <pre class="p-4 overflow-x-auto bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded-lg">
       <code class="whitespace-pre-line"><%= render_slot(@inner_block) %></code>
     </pre>
     """
@@ -384,7 +399,7 @@ defmodule Web.CoreComponents do
                 <%= entry.label %>
               </.link>
             <% else %>
-              <div class="flex items-center">
+              <div class="flex items-center text-gray-700 dark:text-gray-300">
                 <.icon name="hero-chevron-right-solid" class="w-6 h-6" />
                 <.link
                   navigate={entry.path}

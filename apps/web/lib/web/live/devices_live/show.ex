@@ -14,11 +14,6 @@ defmodule Web.DevicesLive.Show do
       <:title>
         Device details
       </:title>
-      <:actions>
-        <.delete_button>
-          Archive
-        </.delete_button>
-      </:actions>
     </.section_header>
     <!-- Device Details -->
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
@@ -142,6 +137,17 @@ defmodule Web.DevicesLive.Show do
         </tbody>
       </table>
     </div>
+
+    <.section_header>
+      <:title>
+        Danger zone
+      </:title>
+      <:actions>
+        <.delete_button>
+          Archive
+        </.delete_button>
+      </:actions>
+    </.section_header>
     """
   end
 end
