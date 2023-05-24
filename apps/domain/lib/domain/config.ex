@@ -37,6 +37,7 @@ defmodule Domain.Config do
         do: get_account_config_by_account_id(account_id),
         else: %{}
 
+    # credo:disable-for-next-line
     env_config =
       if :env not in ignored_sources,
         do: System.get_env(),
