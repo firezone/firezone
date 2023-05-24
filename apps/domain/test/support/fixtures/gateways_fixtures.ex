@@ -22,7 +22,7 @@ defmodule Domain.GatewaysFixtures do
 
     {subject, attrs} =
       Map.pop_lazy(attrs, :subject, fn ->
-        actor = ActorsFixtures.create_actor(role: :admin, account: account)
+        actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
         identity = AuthFixtures.create_identity(account: account, actor: actor)
         AuthFixtures.create_subject(identity)
       end)
@@ -35,7 +35,7 @@ defmodule Domain.GatewaysFixtures do
 
   def delete_group(group) do
     group = Repo.preload(group, :account)
-    actor = ActorsFixtures.create_actor(role: :admin, account: group.account)
+    actor = ActorsFixtures.create_actor(type: :account_admin_user, account: group.account)
     identity = AuthFixtures.create_identity(account: group.account, actor: actor)
     subject = AuthFixtures.create_subject(identity)
     {:ok, group} = Gateways.delete_group(group, subject)
@@ -107,7 +107,7 @@ defmodule Domain.GatewaysFixtures do
 
   def delete_gateway(gateway) do
     gateway = Repo.preload(gateway, :account)
-    actor = ActorsFixtures.create_actor(role: :admin, account: gateway.account)
+    actor = ActorsFixtures.create_actor(type: :account_admin_user, account: gateway.account)
     identity = AuthFixtures.create_identity(account: gateway.account, actor: actor)
     subject = AuthFixtures.create_subject(identity)
     {:ok, gateway} = Gateways.delete_gateway(gateway, subject)

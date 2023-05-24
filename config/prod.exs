@@ -8,8 +8,6 @@ config :domain, Domain.Repo,
   pool_size: 10,
   show_sensitive_data_on_connection_error: false
 
-config :domain, Domain.ConnectivityChecks, url: "https://ping.firez.one/"
-
 ###############################
 ##### Web #####################
 ###############################

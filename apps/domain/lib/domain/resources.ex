@@ -51,7 +51,7 @@ defmodule Domain.Resources do
           # {:ok, actors} = list_authorized_actors(resource)
           # Phoenix.PubSub.broadcast(
           #   Domain.PubSub,
-          #   "actor_client:#{subject.actor.id}",
+          #   "actor_device:#{subject.actor.id}",
           #   {:resource_added, resource.id}
           # )
 
@@ -82,7 +82,7 @@ defmodule Domain.Resources do
         {:ok, resource} ->
           # Phoenix.PubSub.broadcast(
           #   Domain.PubSub,
-          #   "actor_client:#{resource.actor_id}",
+          #   "actor_device:#{resource.actor_id}",
           #   {:resource_updated, resource.id}
           # )
 
@@ -103,7 +103,7 @@ defmodule Domain.Resources do
         {:ok, resource} ->
           # Phoenix.PubSub.broadcast(
           #   Domain.PubSub,
-          #   "actor_client:#{resource.actor_id}",
+          #   "actor_device:#{resource.actor_id}",
           #   {:resource_removed, resource.id}
           # )
 

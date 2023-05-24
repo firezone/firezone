@@ -199,6 +199,28 @@ defmodule Domain.Gateways do
     end
   end
 
+  def encode_token!(%Token{value: value} = token) when not is_nil(value) do
+    body = {token.id, token.value}
+    config = fetch_config!()
+    key_base = Keyword.fetch!(config, :key_base)
+    salt = Keyword.fetch!(config, :salt)
+    Plug.Crypto.sign(key_base, salt, body)
+  end
+
+  def authorize_gateway(encrypted_secret) do
+    config = fetch_config!()
+    key_base = Keyword.fetch!(config, :key_base)
+    salt = Keyword.fetch!(config, :salt)
+
+    with {:ok, {id, secret}} <- Plug.Crypto.verify(key_base, salt, encrypted_secret),
+         {:ok, token} <- use_token_by_id_and_secret(id, secret) do
+      {:ok, token}
+    else
+      {:error, :invalid} -> {:error, :invalid_token}
+      {:error, :not_found} -> {:error, :invalid_token}
+    end
+  end
+
   def connect_gateway(%Gateway{} = gateway) do
     {:ok, _} =
       Presence.track(self(), "gateways", gateway.id, %{
@@ -206,5 +228,13 @@ defmodule Domain.Gateways do
       })
 
     :ok
+  end
+
+  def fetch_gateway_config!(%Gateway{} = _gateway) do
+    Application.fetch_env!(:domain, __MODULE__)
+  end
+
+  defp fetch_config! do
+    Domain.Config.fetch_env!(:domain, __MODULE__)
   end
 end

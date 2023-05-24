@@ -1,14 +1,14 @@
 defmodule API.Gateway.ChannelTest do
   use API.ChannelCase
   alias Domain.{AccountsFixtures, ActorsFixtures, AuthFixtures, ResourcesFixtures}
-  alias Domain.{ClientsFixtures, RelaysFixtures, GatewaysFixtures}
+  alias Domain.{DevicesFixtures, RelaysFixtures, GatewaysFixtures}
 
   setup do
     account = AccountsFixtures.create_account()
-    actor = ActorsFixtures.create_actor(role: :admin, account: account)
+    actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
     identity = AuthFixtures.create_identity(actor: actor, account: account)
     subject = AuthFixtures.create_subject(identity)
-    client = ClientsFixtures.create_client(subject: subject)
+    device = DevicesFixtures.create_device(subject: subject)
     gateway = GatewaysFixtures.create_gateway(account: account)
 
     resource =
@@ -29,7 +29,7 @@ defmodule API.Gateway.ChannelTest do
       actor: actor,
       identity: identity,
       subject: subject,
-      client: client,
+      device: device,
       gateway: gateway,
       resource: resource,
       relay: relay,
@@ -63,7 +63,7 @@ defmodule API.Gateway.ChannelTest do
 
   describe "handle_info/2 :request_connection" do
     test "pushes request_connection message", %{
-      client: client,
+      device: device,
       resource: resource,
       relay: relay,
       socket: socket
@@ -81,18 +81,18 @@ defmodule API.Gateway.ChannelTest do
         socket.channel_pid,
         {:request_connection, {channel_pid, socket_ref},
          %{
-           client_id: client.id,
+           device_id: device.id,
            resource_id: resource.id,
            authorization_expires_at: expires_at,
-           client_rtc_session_description: rtc_session_description,
-           client_preshared_key: preshared_key
+           device_rtc_session_description: rtc_session_description,
+           device_preshared_key: preshared_key
          }}
       )
 
       assert_push "request_connection", payload
 
       assert is_binary(payload.ref)
-      assert payload.actor == %{id: client.actor_id}
+      assert payload.actor == %{id: device.actor_id}
 
       ipv4_stun_uri = "stun:#{relay.ipv4}:#{relay.port}"
       ipv4_turn_uri = "turn:#{relay.ipv4}:#{relay.port}"
@@ -138,14 +138,14 @@ defmodule API.Gateway.ChannelTest do
                ipv6: resource.ipv6
              }
 
-      assert payload.client == %{
-               id: client.id,
+      assert payload.device == %{
+               id: device.id,
                peer: %{
-                 ipv4: client.ipv4,
-                 ipv6: client.ipv6,
+                 ipv4: device.ipv4,
+                 ipv6: device.ipv6,
                  persistent_keepalive: 25,
                  preshared_key: preshared_key,
-                 public_key: client.public_key
+                 public_key: device.public_key
                },
                rtc_session_description: rtc_session_description
              }
@@ -155,8 +155,8 @@ defmodule API.Gateway.ChannelTest do
   end
 
   describe "handle_in/3 connection_ready" do
-    test "forwards RFC session description to the client channel", %{
-      client: client,
+    test "forwards RFC session description to the device channel", %{
+      device: device,
       resource: resource,
       relay: relay,
       gateway: gateway,
@@ -176,11 +176,11 @@ defmodule API.Gateway.ChannelTest do
         socket.channel_pid,
         {:request_connection, {channel_pid, socket_ref},
          %{
-           client_id: client.id,
+           device_id: device.id,
            resource_id: resource.id,
            authorization_expires_at: expires_at,
-           client_rtc_session_description: rtc_session_description,
-           client_preshared_key: preshared_key
+           device_rtc_session_description: rtc_session_description,
+           device_preshared_key: preshared_key
          }}
       )
 

@@ -16,7 +16,8 @@ if config_env() == :prod do
     pool_size: compile_config!(:database_pool_size),
     ssl: compile_config!(:database_ssl_enabled),
     ssl_opts: compile_config!(:database_ssl_opts),
-    parameters: compile_config!(:database_parameters)
+    parameters: compile_config!(:database_parameters),
+    show_sensitive_data_on_connection_error: false
 
   external_url = compile_config!(:external_url)
 
@@ -27,29 +28,25 @@ if config_env() == :prod do
     path: external_url_path
   } = URI.parse(external_url)
 
-  config :domain,
-    wireguard_ipv4_enabled: compile_config!(:wireguard_ipv4_enabled),
-    wireguard_ipv4_network: compile_config!(:wireguard_ipv4_network),
-    wireguard_ipv4_address: compile_config!(:wireguard_ipv4_address),
-    wireguard_ipv6_enabled: compile_config!(:wireguard_ipv6_enabled),
-    wireguard_ipv6_network: compile_config!(:wireguard_ipv6_network),
-    wireguard_ipv6_address: compile_config!(:wireguard_ipv6_address)
+  config :domain, Domain.Devices, upstream_dns: compile_config!(:devices_upstream_dns)
+
+  config :domain, Domain.Gateways,
+    gateway_ipv4_masquerade: compile_config!(:gateway_ipv4_masquerade),
+    gateway_ipv6_masquerade: compile_config!(:gateway_ipv6_masquerade),
+    key_base: compile_config!(:gateways_auth_token_key_base),
+    salt: compile_config!(:gateways_auth_token_salt)
+
+  config :domain, Domain.Relays,
+    key_base: compile_config!(:relays_auth_token_key_base),
+    salt: compile_config!(:relays_auth_token_salt)
 
   config :domain, Domain.Telemetry,
     enabled: compile_config!(:telemetry_enabled),
     id: compile_config!(:telemetry_id)
 
-  config :domain, Domain.ConnectivityChecks,
-    http_client_options: compile_config!(:http_client_ssl_opts),
-    enabled: compile_config!(:connectivity_checks_enabled),
-    interval: compile_config!(:connectivity_checks_interval)
-
-  config :domain,
-    admin_email: compile_config!(:default_admin_email),
-    default_admin_password: compile_config!(:default_admin_password)
-
-  config :domain,
-    max_devices_per_user: compile_config!(:max_devices_per_user)
+  config :domain, Domain.Auth,
+    key_base: compile_config!(:auth_token_key_base),
+    salt: compile_config!(:auth_token_salt)
 
   ###############################
   ##### Web #####################
@@ -63,7 +60,7 @@ if config_env() == :prod do
     server: true,
     http: [
       ip: compile_config!(:phoenix_listen_address).address,
-      port: compile_config!(:phoenix_http_port),
+      port: compile_config!(:phoenix_http_web_port),
       protocol_options: compile_config!(:phoenix_http_protocol_options)
     ],
     url: [
@@ -87,14 +84,14 @@ if config_env() == :prod do
     cookie_encryption_salt: compile_config!(:cookie_encryption_salt)
 
   ###############################
-  ##### Web #####################
+  ##### API #####################
   ###############################
 
-  config :web, Web.Endpoint,
+  config :api, API.Endpoint,
     server: true,
     http: [
       ip: compile_config!(:phoenix_listen_address).address,
-      port: compile_config!(:phoenix_http_port),
+      port: compile_config!(:phoenix_http_api_port),
       protocol_options: compile_config!(:phoenix_http_protocol_options)
     ],
     # TODO: force_ssl: [rewrite_on: [:x_forwarded_proto], hsts: true],
@@ -115,37 +112,8 @@ if config_env() == :prod do
   ##### Third-party configs #####
   ###############################
 
-  config :web, Web.Auth.HTML.Authentication, secret_key: compile_config!(:guardian_secret_key)
-
-  config :web, Web.Auth.JSON.Authentication, secret_key: compile_config!(:guardian_secret_key)
-
-  config :domain, Domain.Vault,
-    ciphers: [
-      default: {
-        Cloak.Ciphers.AES.GCM,
-        # In AES.GCM, it is important to specify 12-byte IV length for
-        # interoperability with other encryption software. See this GitHub
-        # issue for more details:
-        # https://github.com/danielberkompas/cloak/issues/93
-        #
-        # In Cloak 2.0, this will be the default iv length for AES.GCM.
-        tag: "AES.GCM.V1",
-        key: Base.decode64!(compile_config!(:database_encryption_key)),
-        iv_length: 12
-      }
-    ]
-
   config :openid_connect,
     finch_transport_opts: compile_config!(:http_client_ssl_opts)
-
-  config :ueberauth, Ueberauth,
-    providers: [
-      identity:
-        {Ueberauth.Strategy.Identity,
-         callback_methods: ["POST"],
-         callback_url: "#{external_url}/auth/identity/callback",
-         uid_field: :email}
-    ]
 
   config :web,
          Web.Mailer,

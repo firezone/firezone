@@ -1,36 +1,36 @@
-defmodule Domain.Telemetry.Timer do
-  use GenServer
-  alias Domain.Telemetry
+# defmodule Domain.Telemetry.Timer do
+#   use GenServer
+#   alias Domain.Telemetry
 
-  @initial_delay 60 * 1_000
-  @interval 43_200
+#   @initial_delay 60 * 1_000
+#   @interval 43_200
 
-  def start_link(opts) do
-    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
-  end
+#   def start_link(opts) do
+#     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+#   end
 
-  @impl GenServer
-  def init(_opts) do
-    # Send ping after 1 minute
-    :timer.send_after(@initial_delay, :start_interval)
+#   @impl GenServer
+#   def init(_opts) do
+#     # Send ping after 1 minute
+#     :timer.send_after(@initial_delay, :start_interval)
 
-    {:ok, %{}}
-  end
+#     {:ok, %{}}
+#   end
 
-  @impl GenServer
-  def handle_info(:start_interval, state) do
-    # Continue pinging twice a day
-    :timer.send_interval(@interval * 1_000, :tick)
+#   @impl GenServer
+#   def handle_info(:start_interval, state) do
+#     # Continue pinging twice a day
+#     :timer.send_interval(@interval * 1_000, :tick)
 
-    :ok = Telemetry.ping()
+#     :ok = Telemetry.ping()
 
-    {:noreply, state}
-  end
+#     {:noreply, state}
+#   end
 
-  @impl GenServer
-  def handle_info(:tick, state) do
-    :ok = Telemetry.ping()
+#   @impl GenServer
+#   def handle_info(:tick, state) do
+#     :ok = Telemetry.ping()
 
-    {:noreply, state}
-  end
-end
+#     {:noreply, state}
+#   end
+# end

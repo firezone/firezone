@@ -2,46 +2,28 @@ defmodule Domain.Config.Configuration.Changeset do
   use Domain, :changeset
   import Domain.Config, only: [config_changeset: 2]
 
-  # Postgres max int size is 4 bytes
-  @max_vpn_session_duration 2_147_483_647
+  @fields ~w[devices_upstream_dns]a
 
-  @fields ~w[
-      local_auth_enabled
-      allow_unprivileged_device_management
-      allow_unprivileged_device_configuration
-      default_client_persistent_keepalive
-      default_client_mtu
-      default_client_endpoint
-      default_client_dns
-      default_client_allowed_ips
-      vpn_session_duration
-    ]a
-
-  @spec changeset(
-          {map, map}
-          | %{
-              :__struct__ => atom | %{:__changeset__ => map, optional(any) => any},
-              optional(atom) => any
-            },
-          :invalid | %{optional(:__struct__) => none, optional(atom | binary) => any}
-        ) :: any
   def changeset(configuration, attrs) do
     changeset =
       configuration
       |> cast(attrs, @fields)
       |> cast_embed(:logo)
-      |> trim_change(:default_client_dns)
-      |> trim_change(:default_client_endpoint)
+      |> trim_change(:devices_upstream_dns)
 
     Enum.reduce(@fields, changeset, fn field, changeset ->
       config_changeset(changeset, field)
     end)
-    |> ensure_no_overridden_changes()
+    |> ensure_no_overridden_changes(configuration.account_id)
   end
 
-  defp ensure_no_overridden_changes(changeset) do
+  defp ensure_no_overridden_changes(changeset, account_id) do
     changed_keys = Map.keys(changeset.changes)
-    configs = Domain.Config.fetch_source_and_configs!(changed_keys)
+
+    configs =
+      Domain.Config.fetch_resolved_configs_with_sources!(account_id, changed_keys,
+        ignore_sources: :db
+      )
 
     Enum.reduce(changed_keys, changeset, fn key, changeset ->
       case Map.fetch!(configs, key) do
@@ -58,6 +40,4 @@ defmodule Domain.Config.Configuration.Changeset do
       end
     end)
   end
-
-  def max_vpn_session_duration, do: @max_vpn_session_duration
 end

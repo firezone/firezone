@@ -99,7 +99,7 @@ defmodule Domain.AuthTest do
       account: other_account
     } do
       account = AccountsFixtures.create_account()
-      actor = ActorsFixtures.create_actor(account: account, role: :admin)
+      actor = ActorsFixtures.create_actor(account: account, type: :account_admin_user)
       identity = AuthFixtures.create_identity(account: account, actor: actor)
       subject = AuthFixtures.create_subject(identity)
 
@@ -111,7 +111,14 @@ defmodule Domain.AuthTest do
     setup do
       account = AccountsFixtures.create_account()
       provider = AuthFixtures.create_email_provider(account: account)
-      actor = ActorsFixtures.create_actor(role: :admin, account: account, provider: provider)
+
+      actor =
+        ActorsFixtures.create_actor(
+          type: :account_admin_user,
+          account: account,
+          provider: provider
+        )
+
       identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
       subject = AuthFixtures.create_subject(identity)
 
@@ -227,7 +234,7 @@ defmodule Domain.AuthTest do
   describe "enable_provider/2" do
     setup do
       account = AccountsFixtures.create_account()
-      actor = ActorsFixtures.create_actor(role: :admin, account: account)
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
       identity = AuthFixtures.create_identity(account: account, actor: actor)
       subject = AuthFixtures.create_subject(identity)
 
@@ -285,7 +292,14 @@ defmodule Domain.AuthTest do
     setup do
       account = AccountsFixtures.create_account()
       provider = AuthFixtures.create_email_provider(account: account)
-      actor = ActorsFixtures.create_actor(role: :admin, account: account, provider: provider)
+
+      actor =
+        ActorsFixtures.create_actor(
+          type: :account_admin_user,
+          account: account,
+          provider: provider
+        )
+
       identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
       subject = AuthFixtures.create_subject(identity)
 
@@ -415,14 +429,23 @@ defmodule Domain.AuthTest do
       account = AccountsFixtures.create_account()
       provider = AuthFixtures.create_email_provider(account: account)
       provider_identifier = AuthFixtures.random_provider_identifier(provider)
-      actor = ActorsFixtures.create_actor(role: :admin, account: account, provider: provider)
+
+      actor =
+        ActorsFixtures.create_actor(
+          type: :account_admin_user,
+          account: account,
+          provider: provider
+        )
 
       assert {:ok, identity} = create_identity(actor, provider, provider_identifier)
 
       assert identity.provider_id == provider.id
       assert identity.provider_identifier == provider_identifier
       assert identity.actor_id == actor.id
-      assert %{sign_in_token_created_at: _, sign_in_token_hash: _} = identity.provider_state
+
+      assert %{"sign_in_token_created_at" => _, "sign_in_token_hash" => _} =
+               identity.provider_state
+
       assert %{sign_in_token: _} = identity.provider_virtual_state
       assert identity.account_id == provider.account_id
       assert is_nil(identity.deleted_at)
@@ -431,7 +454,13 @@ defmodule Domain.AuthTest do
     test "returns error when identifier is invalid" do
       account = AccountsFixtures.create_account()
       provider = AuthFixtures.create_email_provider(account: account)
-      actor = ActorsFixtures.create_actor(role: :admin, account: account, provider: provider)
+
+      actor =
+        ActorsFixtures.create_actor(
+          type: :account_admin_user,
+          account: account,
+          provider: provider
+        )
 
       provider_identifier = Ecto.UUID.generate()
       assert {:error, changeset} = create_identity(actor, provider, provider_identifier)
@@ -447,7 +476,14 @@ defmodule Domain.AuthTest do
     setup do
       account = AccountsFixtures.create_account()
       provider = AuthFixtures.create_email_provider(account: account)
-      actor = ActorsFixtures.create_actor(role: :admin, account: account, provider: provider)
+
+      actor =
+        ActorsFixtures.create_actor(
+          type: :account_admin_user,
+          account: account,
+          provider: provider
+        )
+
       identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
       subject = AuthFixtures.create_subject(identity)
 
@@ -493,7 +529,10 @@ defmodule Domain.AuthTest do
       assert new_identity.provider_identifier == provider_identifier
       assert new_identity.provider_id == identity.provider_id
       assert new_identity.actor_id == identity.actor_id
-      assert %{sign_in_token_created_at: _, sign_in_token_hash: _} = new_identity.provider_state
+
+      assert %{"sign_in_token_created_at" => _, "sign_in_token_hash" => _} =
+               new_identity.provider_state
+
       assert %{sign_in_token: _} = new_identity.provider_virtual_state
       assert new_identity.account_id == identity.account_id
       assert is_nil(new_identity.deleted_at)
@@ -526,7 +565,14 @@ defmodule Domain.AuthTest do
     setup do
       account = AccountsFixtures.create_account()
       provider = AuthFixtures.create_email_provider(account: account)
-      actor = ActorsFixtures.create_actor(role: :admin, account: account, provider: provider)
+
+      actor =
+        ActorsFixtures.create_actor(
+          type: :account_admin_user,
+          account: account,
+          provider: provider
+        )
+
       identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
       subject = AuthFixtures.create_subject(identity)
 
@@ -691,13 +737,13 @@ defmodule Domain.AuthTest do
       assert subject.context.user_agent == user_agent
     end
 
-    test "returned subject expiration depends on user role", %{
+    test "returned subject expiration depends on user type", %{
       account: account,
       provider: provider,
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
-      actor = ActorsFixtures.create_actor(role: :admin, account: account)
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
       identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
       secret = identity.provider_virtual_state.sign_in_token
 
@@ -707,7 +753,7 @@ defmodule Domain.AuthTest do
       three_hours = 3 * 60 * 60
       assert_datetime_diff(subject.expires_at, DateTime.utc_now(), three_hours)
 
-      actor = ActorsFixtures.create_actor(role: :unprivileged, account: account)
+      actor = ActorsFixtures.create_actor(type: :account_user, account: account)
       identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
       secret = identity.provider_virtual_state.sign_in_token
 
@@ -724,7 +770,7 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
-      actor = ActorsFixtures.create_actor(role: :admin, account: account)
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
       identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
       subject = AuthFixtures.create_subject(identity)
       {:ok, _provider} = disable_provider(provider, subject)
@@ -742,7 +788,7 @@ defmodule Domain.AuthTest do
       user_agent: user_agent,
       remote_ip: remote_ip
     } do
-      actor = ActorsFixtures.create_actor(role: :admin, account: account)
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
       identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
       subject = AuthFixtures.create_subject(identity)
       {:ok, _provider} = delete_provider(provider, subject)
@@ -805,7 +851,7 @@ defmodule Domain.AuthTest do
                {:error, :unauthorized}
     end
 
-    test "returns subject on success", %{
+    test "returns subject on success for session token", %{
       subject: subject,
       user_agent: user_agent,
       remote_ip: remote_ip
@@ -819,6 +865,37 @@ defmodule Domain.AuthTest do
       assert reconstructed_subject.permissions == subject.permissions
       assert reconstructed_subject.context == subject.context
       assert DateTime.diff(reconstructed_subject.expires_at, subject.expires_at) <= 1
+    end
+
+    test "returns subject on success for service account token", %{
+      account: account,
+      user_agent: user_agent,
+      remote_ip: remote_ip,
+      subject: subject
+    } do
+      one_day = DateTime.utc_now() |> DateTime.add(1, :day)
+      provider = AuthFixtures.create_token_provider(account: account)
+
+      identity =
+        AuthFixtures.create_identity(
+          account: account,
+          provider: provider,
+          user_agent: user_agent,
+          remote_ip: remote_ip,
+          provider_virtual_state: %{
+            "expires_at" => one_day
+          }
+        )
+
+      {:ok, token} = create_access_token_for_identity(identity)
+
+      assert {:ok, reconstructed_subject} = sign_in(token, user_agent, remote_ip)
+      assert reconstructed_subject.identity.id == identity.id
+      assert reconstructed_subject.actor.id == identity.actor_id
+      assert reconstructed_subject.account.id == identity.account_id
+      assert reconstructed_subject.permissions == subject.permissions
+      assert reconstructed_subject.context == subject.context
+      assert DateTime.diff(reconstructed_subject.expires_at, one_day) <= 1
     end
 
     test "updates last signed in fields for identity on success", %{
@@ -888,7 +965,7 @@ defmodule Domain.AuthTest do
   describe "has_permission?/2" do
     setup do
       account = AccountsFixtures.create_account()
-      actor = ActorsFixtures.create_actor(role: :admin, account: account)
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
       identity = AuthFixtures.create_identity(account: account, actor: actor)
       subject = AuthFixtures.create_subject(identity)
 
@@ -926,9 +1003,9 @@ defmodule Domain.AuthTest do
     end
   end
 
-  describe "fetch_role_permissions!/1" do
-    test "returns permissions for given role" do
-      permissions = fetch_role_permissions!(:admin)
+  describe "fetch_type_permissions!/1" do
+    test "returns permissions for given type" do
+      permissions = fetch_type_permissions!(:account_admin_user)
       assert Enum.count(permissions) > 0
     end
   end
@@ -948,7 +1025,7 @@ defmodule Domain.AuthTest do
   describe "ensure_has_access_to/2" do
     setup do
       account = AccountsFixtures.create_account()
-      actor = ActorsFixtures.create_actor(role: :admin, account: account)
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
       identity = AuthFixtures.create_identity(account: account, actor: actor)
       subject = AuthFixtures.create_subject(identity)
 
@@ -978,7 +1055,7 @@ defmodule Domain.AuthTest do
   describe "ensure_has_permissions/2" do
     setup do
       account = AccountsFixtures.create_account()
-      actor = ActorsFixtures.create_actor(role: :admin, account: account)
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
       identity = AuthFixtures.create_identity(account: account, actor: actor)
       subject = AuthFixtures.create_subject(identity)
 

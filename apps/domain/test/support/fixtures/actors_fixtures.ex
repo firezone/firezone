@@ -5,8 +5,7 @@ defmodule Domain.ActorsFixtures do
 
   def actor_attrs(attrs \\ %{}) do
     Enum.into(attrs, %{
-      type: :user,
-      role: :unprivileged
+      type: :account_user
     })
   end
 

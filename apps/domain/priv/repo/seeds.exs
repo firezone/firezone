@@ -35,14 +35,12 @@ admin_actor_email = "firezone@localhost"
 
 {:ok, unprivileged_actor} =
   Actors.create_actor(email_provider, unprivileged_actor_email, %{
-    type: :user,
-    role: :unprivileged
+    type: :account_user
   })
 
 {:ok, admin_actor} =
   Actors.create_actor(email_provider, admin_actor_email, %{
-    type: :user,
-    role: :admin
+    type: :account_admin_user
   })
 
 {:ok, _unprivileged_actor_userpass_identity} =
@@ -70,11 +68,12 @@ admin_subject =
 
 IO.puts("Created users: ")
 
-for {role, login, password, email_token} <- [
-      {:unprivileged, unprivileged_actor_email, "Firezone1234", unprivileged_actor_token},
-      {:admin, admin_actor_email, "Firezone1234", admin_actor_token}
+for {type, login, password, email_token} <- [
+      {unprivileged_actor.type, unprivileged_actor_email, "Firezone1234",
+       unprivileged_actor_token},
+      {admin_actor.type, admin_actor_email, "Firezone1234", admin_actor_token}
     ] do
-  IO.puts("  #{login}, #{role}, password: #{password}, email token: #{email_token}")
+  IO.puts("  #{login}, #{type}, password: #{password}, email token: #{email_token}")
 end
 
 IO.puts("")

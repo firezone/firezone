@@ -26,7 +26,11 @@ defmodule Web.AcceptanceCase.Vault do
     :ok
   end
 
-  def setup_oidc_provider(endpoint_url, attrs_overrides \\ %{"auto_create_users" => true}) do
+  def setup_oidc_provider(
+        account,
+        endpoint_url,
+        attrs_overrides \\ %{"auto_create_users" => true}
+      ) do
     :ok =
       request(:put, "identity/oidc/client/firezone", %{
         assignments: "allow_all",
@@ -50,7 +54,8 @@ defmodule Web.AcceptanceCase.Vault do
 
     {:ok, {200, params}} = request(:get, "identity/oidc/client/firezone")
 
-    Domain.Config.put_config!(
+    Domain.ConfigFixtures.set_config(
+      account,
       :openid_connect_providers,
       [
         %{

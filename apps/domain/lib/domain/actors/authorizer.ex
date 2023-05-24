@@ -6,14 +6,14 @@ defmodule Domain.Actors.Authorizer do
   def edit_own_profile_permission, do: build(Actor, :edit_own_profile)
 
   @impl Domain.Auth.Authorizer
-  def list_permissions_for_role(:admin) do
+  def list_permissions_for_role(:account_admin_user) do
     [
       manage_actors_permission(),
       edit_own_profile_permission()
     ]
   end
 
-  def list_permissions_for_role(:unprivileged) do
+  def list_permissions_for_role(:account_user) do
     [
       edit_own_profile_permission()
     ]

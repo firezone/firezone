@@ -1,8 +1,10 @@
-defmodule Domain.Repo.Migrations.CreateClients do
+defmodule Domain.Repo.Migrations.RecreateDevices do
   use Ecto.Migration
 
   def change do
-    create table(:clients, primary_key: false) do
+    drop(table(:devices))
+
+    create table(:devices, primary_key: false) do
       add(:id, :uuid, primary_key: true)
       add(:external_id, :string, null: false)
 
@@ -40,28 +42,28 @@ defmodule Domain.Repo.Migrations.CreateClients do
       timestamps(type: :utc_datetime_usec)
     end
 
-    # Used to list clients for a user
-    create(index(:clients, [:user_id], where: "deleted_at IS NULL"))
+    # Used to list devices for a user
+    create(index(:devices, [:user_id], where: "deleted_at IS NULL"))
 
     # Used for upserts
     create(
-      index(:clients, [:account_id, :user_id, :external_id],
+      index(:devices, [:account_id, :user_id, :external_id],
         unique: true,
         where: "deleted_at IS NULL"
       )
     )
 
     # Used to enforce unique IPv4 and IPv6 addresses.
-    create(index(:clients, [:account_id, :ipv4], unique: true, where: "deleted_at IS NULL"))
-    create(index(:clients, [:account_id, :ipv6], unique: true, where: "deleted_at IS NULL"))
+    create(index(:devices, [:account_id, :ipv4], unique: true, where: "deleted_at IS NULL"))
+    create(index(:devices, [:account_id, :ipv6], unique: true, where: "deleted_at IS NULL"))
 
     # Used to enforce unique names and public keys.
     create(
-      index(:clients, [:account_id, :user_id, :name], unique: true, where: "deleted_at IS NULL")
+      index(:devices, [:account_id, :user_id, :name], unique: true, where: "deleted_at IS NULL")
     )
 
     create(
-      index(:clients, [:account_id, :user_id, :public_key],
+      index(:devices, [:account_id, :user_id, :public_key],
         unique: true,
         where: "deleted_at IS NULL"
       )

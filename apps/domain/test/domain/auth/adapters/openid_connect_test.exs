@@ -3,14 +3,14 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
   import Domain.Auth.Adapters.OpenIDConnect
   alias Domain.Auth
   alias Domain.Auth.Adapters.OpenIDConnect.{PKCE, State}
-  alias Domain.{AccountsFixtures, AuthFixtures, ConfigFixtures}
+  alias Domain.{AccountsFixtures, AuthFixtures}
 
   describe "identity_changeset/2" do
     setup do
       account = AccountsFixtures.create_account()
 
       {provider, bypass} =
-        ConfigFixtures.start_openid_providers(["google"])
+        AuthFixtures.start_openid_providers(["google"])
         |> AuthFixtures.create_openid_connect_provider(account: account)
 
       changeset = %Auth.Identity{} |> Ecto.Changeset.change()
@@ -56,7 +56,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
 
     test "returns changeset on valid adapter config" do
       account = AccountsFixtures.create_account()
-      {_bypass, discovery_document_uri} = ConfigFixtures.discovery_document_server()
+      {_bypass, discovery_document_uri} = AuthFixtures.discovery_document_server()
 
       attrs =
         AuthFixtures.provider_attrs(
@@ -77,11 +77,11 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       assert provider.adapter == attrs.adapter
 
       assert provider.adapter_config == %{
-               scope: "openid email profile",
-               response_type: "code",
-               client_id: "client_id",
-               client_secret: "client_secret",
-               discovery_document_uri: discovery_document_uri
+               "scope" => "openid email profile",
+               "response_type" => "code",
+               "client_id" => "client_id",
+               "client_secret" => "client_secret",
+               "discovery_document_uri" => discovery_document_uri
              }
     end
   end
@@ -98,7 +98,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       account = AccountsFixtures.create_account()
 
       {provider, bypass} =
-        ConfigFixtures.start_openid_providers(["google"])
+        AuthFixtures.start_openid_providers(["google"])
         |> AuthFixtures.create_openid_connect_provider(account: account)
 
       assert {:ok, authorization_uri, {state, verifier}} =
@@ -138,7 +138,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       account = AccountsFixtures.create_account()
 
       {provider, bypass} =
-        ConfigFixtures.start_openid_providers(["google"])
+        AuthFixtures.start_openid_providers(["google"])
         |> AuthFixtures.create_openid_connect_provider(account: account)
 
       identity = AuthFixtures.create_identity(account: account, provider: provider)
@@ -153,8 +153,8 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
     } do
       {token, claims} = generate_token(provider, identity)
 
-      ConfigFixtures.expect_refresh_token(bypass, %{"id_token" => token})
-      ConfigFixtures.expect_userinfo(bypass)
+      AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
+      AuthFixtures.expect_userinfo(bypass)
 
       code_verifier = PKCE.code_verifier()
       redirect_uri = "https://example.com/"
@@ -189,7 +189,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
     } do
       {token, _claims} = generate_token(provider, identity)
 
-      ConfigFixtures.expect_refresh_token(bypass, %{
+      AuthFixtures.expect_refresh_token(bypass, %{
         "token_type" => "Bearer",
         "id_token" => token,
         "access_token" => "MY_ACCESS_TOKEN",
@@ -197,7 +197,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
         "expires_in" => 3600
       })
 
-      ConfigFixtures.expect_userinfo(bypass)
+      AuthFixtures.expect_userinfo(bypass)
 
       code_verifier = PKCE.code_verifier()
       redirect_uri = "https://example.com/"
@@ -220,7 +220,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
 
       {token, _claims} = generate_token(provider, identity, %{"exp" => forty_seconds_ago})
 
-      ConfigFixtures.expect_refresh_token(bypass, %{"id_token" => token})
+      AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
 
       code_verifier = PKCE.code_verifier()
       redirect_uri = "https://example.com/"
@@ -235,7 +235,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
     } do
       token = "foo"
 
-      ConfigFixtures.expect_refresh_token(bypass, %{"id_token" => token})
+      AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
 
       code_verifier = PKCE.code_verifier()
       redirect_uri = "https://example.com/"
@@ -263,7 +263,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       account = AccountsFixtures.create_account()
 
       {provider, bypass} =
-        ConfigFixtures.start_openid_providers(["google"])
+        AuthFixtures.start_openid_providers(["google"])
         |> AuthFixtures.create_openid_connect_provider(account: account)
 
       identity = AuthFixtures.create_identity(account: account, provider: provider)
@@ -278,7 +278,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
     } do
       {token, claims} = generate_token(provider, identity)
 
-      ConfigFixtures.expect_refresh_token(bypass, %{
+      AuthFixtures.expect_refresh_token(bypass, %{
         "token_type" => "Bearer",
         "id_token" => token,
         "access_token" => "MY_ACCESS_TOKEN",
@@ -286,7 +286,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
         "expires_in" => nil
       })
 
-      ConfigFixtures.expect_userinfo(bypass)
+      AuthFixtures.expect_userinfo(bypass)
 
       assert {:ok, identity, expires_at} = refresh_token(identity)
 
@@ -314,7 +314,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
   end
 
   defp generate_token(provider, identity, claims \\ %{}) do
-    jwk = ConfigFixtures.jwks_attrs()
+    jwk = AuthFixtures.jwks_attrs()
 
     claims =
       Map.merge(

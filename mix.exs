@@ -28,15 +28,13 @@ defmodule Firezone.MixProject do
         plt_file: {:no_warn, "priv/plts/dialyzer.plt"}
       ],
       aliases: aliases(),
-      default_release: :firezone,
+      default_release: :web,
       releases: [
-        firezone: [
+        web: [
           include_executables_for: [:unix],
-          validate_compile_env: false,
+          validate_compile_env: true,
           applications: [
-            domain: :permanent,
-            web: :permanent,
-            api: :permanent
+            web: :permanent
           ],
           cookie: System.get_env("ERL_COOKIE")
         ]

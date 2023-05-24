@@ -2,6 +2,7 @@ defmodule API.Gateway.SocketTest do
   use API.ChannelCase, async: true
   import API.Gateway.Socket, except: [connect: 3]
   alias API.Gateway.Socket
+  alias Domain.Gateways
   alias Domain.GatewaysFixtures
 
   @connlib_version "0.1.1"
@@ -11,28 +12,14 @@ defmodule API.Gateway.SocketTest do
     peer_data: %{address: {189, 172, 73, 153}}
   }
 
-  describe "encode_token!/1" do
-    test "returns encoded token" do
-      token = GatewaysFixtures.create_token()
-      assert encrypted_secret = encode_token!(token)
-
-      config = Application.fetch_env!(:api, Socket)
-      key_base = Keyword.fetch!(config, :key_base)
-      salt = Keyword.fetch!(config, :salt)
-
-      assert Plug.Crypto.verify(key_base, salt, encrypted_secret) ==
-               {:ok, {token.id, token.value}}
-    end
-  end
-
   describe "connect/3" do
     test "returns error when token is missing" do
-      assert connect(Socket, %{}, @connect_info) == {:error, :invalid}
+      assert connect(Socket, %{}, @connect_info) == {:error, :missing_token}
     end
 
     test "creates a new gateway" do
       token = GatewaysFixtures.create_token()
-      encrypted_secret = encode_token!(token)
+      encrypted_secret = Gateways.encode_token!(token)
 
       attrs = connect_attrs(token: encrypted_secret)
 
@@ -49,7 +36,7 @@ defmodule API.Gateway.SocketTest do
     test "updates existing gateway" do
       token = GatewaysFixtures.create_token()
       existing_gateway = GatewaysFixtures.create_gateway(token: token)
-      encrypted_secret = encode_token!(token)
+      encrypted_secret = Gateways.encode_token!(token)
 
       attrs = connect_attrs(token: encrypted_secret, external_id: existing_gateway.external_id)
 
@@ -60,7 +47,7 @@ defmodule API.Gateway.SocketTest do
 
     test "returns error when token is invalid" do
       attrs = connect_attrs(token: "foo")
-      assert connect(Socket, attrs, @connect_info) == {:error, :invalid}
+      assert connect(Socket, attrs, @connect_info) == {:error, :invalid_token}
     end
   end
 

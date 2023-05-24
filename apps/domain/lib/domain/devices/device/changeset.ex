@@ -1,7 +1,7 @@
-defmodule Domain.Clients.Client.Changeset do
+defmodule Domain.Devices.Device.Changeset do
   use Domain, :changeset
   alias Domain.{Version, Auth}
-  alias Domain.Clients
+  alias Domain.Devices
 
   @upsert_fields ~w[external_id name public_key]a
   @conflict_replace_fields ~w[public_key
@@ -19,7 +19,7 @@ defmodule Domain.Clients.Client.Changeset do
   def upsert_on_conflict, do: {:replace, @conflict_replace_fields}
 
   def upsert_changeset(%Auth.Identity{} = identity, %Auth.Context{} = context, attrs) do
-    %Clients.Client{}
+    %Devices.Device{}
     |> cast(attrs, @upsert_fields)
     |> put_default_value(:name, &generate_name/0)
     |> put_change(:identity_id, identity.id)
@@ -31,30 +31,30 @@ defmodule Domain.Clients.Client.Changeset do
     |> validate_required(@required_fields)
     |> validate_base64(:public_key)
     |> validate_length(:public_key, is: @key_length)
-    |> unique_constraint(:ipv4, name: :clients_account_id_ipv4_index)
-    |> unique_constraint(:ipv6, name: :clients_account_id_ipv6_index)
+    |> unique_constraint(:ipv4, name: :devices_account_id_ipv4_index)
+    |> unique_constraint(:ipv6, name: :devices_account_id_ipv6_index)
     |> put_change(:last_seen_at, DateTime.utc_now())
-    |> put_client_version()
+    |> put_device_version()
   end
 
-  def finalize_upsert_changeset(%Clients.Client{} = client, ipv4, ipv6) do
-    client
+  def finalize_upsert_changeset(%Devices.Device{} = device, ipv4, ipv6) do
+    device
     |> change()
     |> put_change(:ipv4, ipv4)
     |> put_change(:ipv6, ipv6)
-    |> unique_constraint(:ipv4, name: :clients_account_id_ipv4_index)
-    |> unique_constraint(:ipv6, name: :clients_account_id_ipv6_index)
+    |> unique_constraint(:ipv4, name: :devices_account_id_ipv4_index)
+    |> unique_constraint(:ipv6, name: :devices_account_id_ipv6_index)
   end
 
-  def update_changeset(%Clients.Client{} = client, attrs) do
-    client
+  def update_changeset(%Devices.Device{} = device, attrs) do
+    device
     |> cast(attrs, @update_fields)
     |> changeset()
     |> validate_required(@required_fields)
   end
 
-  def delete_changeset(%Clients.Client{} = client) do
-    client
+  def delete_changeset(%Devices.Device{} = device) do
+    device
     |> change()
     |> put_default_value(:deleted_at, DateTime.utc_now())
   end
@@ -69,7 +69,7 @@ defmodule Domain.Clients.Client.Changeset do
     |> unique_constraint(:external_id)
   end
 
-  defp put_client_version(changeset) do
+  defp put_device_version(changeset) do
     with {_data_or_changes, user_agent} when not is_nil(user_agent) <-
            fetch_field(changeset, :last_seen_user_agent),
          {:ok, version} <- Version.fetch_version(user_agent) do

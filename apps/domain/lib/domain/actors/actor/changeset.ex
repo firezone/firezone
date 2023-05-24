@@ -5,15 +5,15 @@ defmodule Domain.Actors.Actor.Changeset do
 
   def create_changeset(%Auth.Provider{} = provider, attrs) do
     %Actors.Actor{}
-    |> cast(attrs, ~w[type role]a)
-    |> validate_required(~w[type role]a)
+    |> cast(attrs, ~w[type]a)
+    |> validate_required(~w[type]a)
     |> put_change(:account_id, provider.account_id)
   end
 
-  def set_actor_role(actor, role) do
+  def set_actor_type(actor, type) when type in [:account_user, :account_admin_user] do
     actor
     |> change()
-    |> put_change(:role, role)
+    |> put_change(:type, type)
   end
 
   def disable_actor(actor) do

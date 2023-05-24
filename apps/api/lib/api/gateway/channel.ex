@@ -1,7 +1,7 @@
 defmodule API.Gateway.Channel do
   use API, :channel
   alias API.Gateway.Views
-  alias Domain.{Clients, Resources, Relays, Gateways}
+  alias Domain.{Devices, Resources, Relays, Gateways}
 
   @impl true
   def join("gateway", _payload, socket) do
@@ -26,14 +26,14 @@ defmodule API.Gateway.Channel do
 
   def handle_info({:request_connection, {channel_pid, socket_ref}, attrs}, socket) do
     %{
-      client_id: client_id,
+      device_id: device_id,
       resource_id: resource_id,
       authorization_expires_at: authorization_expires_at,
-      client_rtc_session_description: rtc_session_description,
-      client_preshared_key: preshared_key
+      device_rtc_session_description: rtc_session_description,
+      device_preshared_key: preshared_key
     } = attrs
 
-    client = Clients.fetch_client_by_id!(client_id, preload: [:actor])
+    device = Devices.fetch_device_by_id!(device_id, preload: [:actor])
     resource = Resources.fetch_resource_by_id!(resource_id)
     {:ok, relays} = Relays.list_connected_relays_for_resource(resource)
 
@@ -41,10 +41,10 @@ defmodule API.Gateway.Channel do
 
     push(socket, "request_connection", %{
       ref: ref,
-      actor: Views.Actor.render(client.actor),
+      actor: Views.Actor.render(device.actor),
       relays: Views.Relay.render_many(relays, authorization_expires_at),
       resource: Views.Resource.render(resource),
-      client: Views.Client.render(client, rtc_session_description, preshared_key),
+      device: Views.Device.render(device, rtc_session_description, preshared_key),
       expires_at: DateTime.to_unix(authorization_expires_at, :second)
     })
 
@@ -81,7 +81,7 @@ defmodule API.Gateway.Channel do
   #     "ended_at" => ended_at,
   #     "metrics" => [
   #       %{
-  #         "client_id" => client_id,
+  #         "device_id" => device_id,
   #         "resource_id" => resource_id,
   #         "rx_bytes" => 0,
   #         "tx_packets" => 0

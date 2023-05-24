@@ -20,7 +20,7 @@ defmodule Domain.RelaysFixtures do
 
     {subject, attrs} =
       Map.pop_lazy(attrs, :subject, fn ->
-        actor = ActorsFixtures.create_actor(role: :admin, account: account)
+        actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
         identity = AuthFixtures.create_identity(account: account, actor: actor)
         AuthFixtures.create_subject(identity)
       end)
@@ -33,7 +33,7 @@ defmodule Domain.RelaysFixtures do
 
   def delete_group(group) do
     group = Repo.preload(group, :account)
-    actor = ActorsFixtures.create_actor(role: :admin, account: group.account)
+    actor = ActorsFixtures.create_actor(type: :account_admin_user, account: group.account)
     identity = AuthFixtures.create_identity(account: group.account, actor: actor)
     subject = AuthFixtures.create_subject(identity)
     {:ok, group} = Relays.delete_group(group, subject)
@@ -106,7 +106,7 @@ defmodule Domain.RelaysFixtures do
 
   def delete_relay(relay) do
     relay = Repo.preload(relay, :account)
-    actor = ActorsFixtures.create_actor(role: :admin, account: relay.account)
+    actor = ActorsFixtures.create_actor(type: :account_admin_user, account: relay.account)
     identity = AuthFixtures.create_identity(account: relay.account, actor: actor)
     subject = AuthFixtures.create_subject(identity)
     {:ok, relay} = Relays.delete_relay(relay, subject)

@@ -5,7 +5,8 @@ defmodule Domain.Auth.Adapters do
   @adapters %{
     email: Domain.Auth.Adapters.Email,
     openid_connect: Domain.Auth.Adapters.OpenIDConnect,
-    userpass: Domain.Auth.Adapters.UserPass
+    userpass: Domain.Auth.Adapters.UserPass,
+    token: Domain.Auth.Adapters.Token
   }
 
   @adapter_names Map.keys(@adapters)

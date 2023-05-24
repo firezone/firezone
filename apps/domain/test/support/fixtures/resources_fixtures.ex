@@ -33,7 +33,7 @@ defmodule Domain.ResourcesFixtures do
 
     {subject, attrs} =
       Map.pop_lazy(attrs, :subject, fn ->
-        actor = ActorsFixtures.create_actor(role: :admin, account: account)
+        actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
         identity = AuthFixtures.create_identity(account: account, actor: actor)
         AuthFixtures.create_subject(identity)
       end)

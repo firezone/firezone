@@ -1,11 +1,11 @@
 defmodule Domain.Actors do
-  alias Domain.{Repo, Auth, Validator, Telemetry}
+  alias Domain.{Repo, Auth, Validator}
   alias Domain.Actors.{Authorizer, Actor}
   require Ecto.Query
 
-  def fetch_count_by_role(role, %Auth.Subject{} = subject) do
+  def fetch_count_by_type(type, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      Actor.Query.by_role(role)
+      Actor.Query.by_type(type)
       |> Authorizer.for_subject(subject)
       |> Repo.aggregate(:count)
     end
@@ -61,7 +61,7 @@ defmodule Domain.Actors do
          :ok <- Auth.ensure_has_access_to(subject, provider),
          changeset = Actor.Changeset.create_changeset(provider, attrs),
          {:ok, data} <- Ecto.Changeset.apply_action(changeset, :validate) do
-      granted_permissions = Auth.fetch_role_permissions!(data.role)
+      granted_permissions = Auth.fetch_type_permissions!(data.type)
 
       if MapSet.subset?(granted_permissions, subject.permissions) do
         create_actor(provider, provider_identifier, attrs)
@@ -84,7 +84,6 @@ defmodule Domain.Actors do
     |> Repo.transaction()
     |> case do
       {:ok, %{actor: actor, identity: identity}} ->
-        Telemetry.add_actor()
         {:ok, %{actor | identities: [identity]}}
 
       {:error, _step, changeset, _effects_so_far} ->
@@ -92,26 +91,26 @@ defmodule Domain.Actors do
     end
   end
 
-  def change_actor_role(%Actor{} = actor, role, %Auth.Subject{} = subject) do
+  def change_actor_type(%Actor{} = actor, type, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
       Actor.Query.by_id(actor.id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(
         with: fn actor ->
-          changeset = Actor.Changeset.set_actor_role(actor, role)
+          changeset = Actor.Changeset.set_actor_type(actor, type)
 
           cond do
-            changeset.data.role != :admin ->
+            changeset.data.type != :admin ->
               changeset
 
-            changeset.changes.role == :admin ->
+            changeset.changes.type == :admin ->
               changeset
 
             other_enabled_admins_exist?(actor) ->
               changeset
 
             true ->
-              :cant_remove_admin_role
+              :cant_remove_admin_type
           end
         end
       )
@@ -158,8 +157,12 @@ defmodule Domain.Actors do
     end
   end
 
-  defp other_enabled_admins_exist?(%Actor{role: :admin, account_id: account_id, id: id}) do
-    Actor.Query.by_role(:admin)
+  defp other_enabled_admins_exist?(%Actor{
+         type: :account_admin_user,
+         account_id: account_id,
+         id: id
+       }) do
+    Actor.Query.by_type(:account_admin_user)
     |> Actor.Query.not_disabled()
     |> Actor.Query.by_account_id(account_id)
     |> Actor.Query.by_id({:not, id})

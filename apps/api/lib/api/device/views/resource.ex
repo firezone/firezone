@@ -1,4 +1,4 @@
-defmodule API.Client.Views.Resource do
+defmodule API.Device.Views.Resource do
   alias Domain.Resources
 
   def render_many(resources) do

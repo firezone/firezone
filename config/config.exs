@@ -29,43 +29,25 @@ config :domain, Domain.Repo,
   migration_timestamps: [type: :timestamptz],
   start_apps_before_migration: [:ssl]
 
-config :domain,
-  wireguard_ipv4_enabled: true,
-  wireguard_ipv4_network: %{__struct__: Postgrex.INET, address: {100, 64, 0, 0}, netmask: 10},
-  wireguard_ipv4_address: %{__struct__: Postgrex.INET, address: {100, 64, 0, 1}, netmask: nil},
-  wireguard_ipv6_enabled: true,
-  wireguard_ipv6_network: %{
-    __struct__: Postgrex.INET,
-    address: {64768, 0, 0, 0, 0, 0, 0, 0},
-    netmask: 106
-  },
-  wireguard_ipv6_address: %{
-    __struct__: Postgrex.INET,
-    address: {64768, 0, 0, 0, 0, 0, 0, 1},
-    netmask: nil
-  },
-  wireguard_port: 51_820
+config :domain, Domain.Devices, upstream_dns: ["1.1.1.1"]
+
+config :domain, Domain.Gateways,
+  gateway_ipv4_masquerade: true,
+  gateway_ipv6_masquerade: true,
+  key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S3",
+  salt: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej3"
+
+config :domain, Domain.Relays,
+  key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2",
+  salt: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
 
 config :domain, Domain.Telemetry,
   enabled: true,
   id: "firezone-dev"
 
-config :domain, Domain.ConnectivityChecks,
-  http_client_options: [],
-  enabled: true,
-  interval: 43_200,
-  url: "https://ping-dev.firez.one/"
-
-config :domain,
-  admin_email: "firezone@localhost",
-  default_admin_password: "firezone1234"
-
-config :domain,
-  max_devices_per_user: 10
-
 config :domain, Domain.Auth,
-  key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5SD",
-  salt: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDejX"
+  key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S1",
+  salt: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej1"
 
 ###############################
 ##### Web #####################
@@ -99,15 +81,6 @@ config :web, Web.Endpoint,
   live_view: [
     signing_salt: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDejX"
   ]
-
-config :mime, :types, %{
-  "application/xml" => ["xml"]
-}
-
-config :web, Web.SAML,
-  entity_id: "urn:firezone.dev:firezone-app",
-  certfile_path: Path.expand("../apps/web/priv/cert/saml_selfsigned.pem", __DIR__),
-  keyfile_path: Path.expand("../apps/web/priv/cert/saml_selfsigned_key.pem", __DIR__)
 
 config :web,
   cookie_secure: false,
@@ -144,19 +117,13 @@ config :api,
   cookie_signing_salt: "WjllcThpb2Y=",
   cookie_encryption_salt: "M0EzM0R6NEMyaw=="
 
-config :api, API.Gateway.Socket,
-  key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5SD",
-  salt: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDejX",
-  max_age: 30 * 60
-
-config :api, API.Relay.Socket,
-  key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5SD",
-  salt: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDejX",
-  max_age: 30 * 60
-
 ###############################
 ##### Third-party configs #####
 ###############################
+
+config :mime, :types, %{
+  "application/xml" => ["xml"]
+}
 
 config :logger, :console,
   level: String.to_atom(System.get_env("LOG_LEVEL", "info")),
@@ -170,23 +137,6 @@ config :phoenix, :json_library, Jason
 config :posthog,
   api_url: "https://t.firez.one",
   api_key: "phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK"
-
-# Configures the vault
-config :domain, Domain.Vault,
-  ciphers: [
-    default: {
-      Cloak.Ciphers.AES.GCM,
-      # In AES.GCM, it is important to specify 12-byte IV length for
-      # interoperability with other encryption software. See this GitHub
-      # issue for more details:
-      # https://github.com/danielberkompas/cloak/issues/93
-      #
-      # In Cloak 2.0, this will be the default iv length for AES.GCM.
-      tag: "AES.GCM.V1",
-      key: Base.decode64!("XXJ/NGevpvkG9219RYsz21zZWR7CZ//CqA0ARPIBqys="),
-      iv_length: 12
-    }
-  ]
 
 config :web, Web.Mailer,
   adapter: Web.Mailer.NoopAdapter,

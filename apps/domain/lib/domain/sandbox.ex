@@ -12,7 +12,7 @@ defmodule Domain.Sandbox do
       sandbox.allow(metadata, Ecto.Adapters.SQL.Sandbox)
     end
   else
-    def allow(_metadata) do
+    def allow(_sandbox, _metadata) do
       :ok
     end
   end
