@@ -38,15 +38,13 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
-      - run: |
-          pwd
-          ls -la
+      - uses: actions/checkout@v3
       - name: Install package dependencies
         run: |
           sudo apt-get install -q -y \
             net-tools \
             wireguard
-      - uses: actions/checkout@v3
+
       - uses: erlef/setup-beam@v1
         with:
           otp-version: "25"
