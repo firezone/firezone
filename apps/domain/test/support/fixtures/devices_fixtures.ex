@@ -1,17 +1,17 @@
-defmodule Domain.ClientsFixtures do
+defmodule Domain.DevicesFixtures do
   alias Domain.Repo
-  alias Domain.Clients
+  alias Domain.Devices
   alias Domain.{AccountsFixtures, ActorsFixtures, AuthFixtures}
 
-  def client_attrs(attrs \\ %{}) do
+  def device_attrs(attrs \\ %{}) do
     Enum.into(attrs, %{
       external_id: Ecto.UUID.generate(),
-      name: "client-#{counter()}",
+      name: "device-#{counter()}",
       public_key: public_key()
     })
   end
 
-  def create_client(attrs \\ %{}) do
+  def create_device(attrs \\ %{}) do
     attrs = Enum.into(attrs, %{})
 
     {account, attrs} =
@@ -25,7 +25,7 @@ defmodule Domain.ClientsFixtures do
 
     {actor, attrs} =
       Map.pop_lazy(attrs, :actor, fn ->
-        ActorsFixtures.create_actor(role: :admin, account: account)
+        ActorsFixtures.create_actor(type: :account_admin_user, account: account)
       end)
 
     {identity, attrs} =
@@ -38,19 +38,19 @@ defmodule Domain.ClientsFixtures do
         AuthFixtures.create_subject(identity)
       end)
 
-    attrs = client_attrs(attrs)
+    attrs = device_attrs(attrs)
 
-    {:ok, client} = Clients.upsert_client(attrs, subject)
-    client
+    {:ok, device} = Devices.upsert_device(attrs, subject)
+    device
   end
 
-  def delete_client(client) do
-    client = Repo.preload(client, :account)
-    actor = ActorsFixtures.create_actor(role: :admin, account: client.account)
-    identity = AuthFixtures.create_identity(account: client.account, actor: actor)
+  def delete_device(device) do
+    device = Repo.preload(device, :account)
+    actor = ActorsFixtures.create_actor(type: :account_admin_user, account: device.account)
+    identity = AuthFixtures.create_identity(account: device.account, actor: actor)
     subject = AuthFixtures.create_subject(identity)
-    {:ok, client} = Clients.delete_client(client, subject)
-    client
+    {:ok, device} = Devices.delete_device(device, subject)
+    device
   end
 
   def public_key do

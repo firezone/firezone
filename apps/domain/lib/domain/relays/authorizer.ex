@@ -6,7 +6,7 @@ defmodule Domain.Relays.Authorizer do
 
   @impl Domain.Auth.Authorizer
 
-  def list_permissions_for_role(:admin) do
+  def list_permissions_for_role(:account_admin_user) do
     [
       manage_relays_permission()
     ]

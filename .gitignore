@@ -66,8 +66,5 @@ apps/*/screenshots
 # WG configs generated in acceptance tests
 *.conf
 
-# Auto generated private key
-apps/web/priv/wg_dev_private_key
-
 # Uploads
 apps/web/priv/static/uploads

@@ -37,14 +37,14 @@ defmodule Domain.Auth.Authorizer do
   def manage_identities_permission, do: build(Auth.Identity, :manage)
   def manage_own_identities_permission, do: build(Auth.Identity, :manage_own)
 
-  def list_permissions_for_role(:admin) do
+  def list_permissions_for_role(:account_admin_user) do
     [
       manage_providers_permission(),
       manage_identities_permission()
     ]
   end
 
-  def list_permissions_for_role(:unprivileged) do
+  def list_permissions_for_role(:account_user) do
     [
       manage_own_identities_permission()
     ]
@@ -60,11 +60,9 @@ defmodule Domain.Auth.Authorizer do
         Auth.Identity.Query.by_account_id(queryable, subject.account.id)
 
       Auth.has_permission?(subject, manage_own_identities_permission()) ->
-        %{type: :user, id: actor_id} = subject.actor
-
         queryable
         |> Auth.Identity.Query.by_account_id(subject.account.id)
-        |> Auth.Identity.Query.by_actor_id(actor_id)
+        |> Auth.Identity.Query.by_actor_id(subject.actor.id)
     end
   end
 

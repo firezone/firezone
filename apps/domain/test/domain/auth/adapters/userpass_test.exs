@@ -28,7 +28,7 @@ defmodule Domain.Auth.Adapters.UserPassTest do
       assert %Ecto.Changeset{} = changeset = identity_changeset(provider, changeset)
       assert %{provider_state: state, provider_virtual_state: virtual_state} = changeset.changes
 
-      assert %{password_hash: password_hash} = state
+      assert %{"password_hash" => password_hash} = state
       assert Domain.Crypto.equal?("Firezone1234", password_hash)
 
       assert virtual_state == %{}
@@ -135,7 +135,7 @@ defmodule Domain.Auth.Adapters.UserPassTest do
       assert {:ok, verified_identity, nil} = verify_secret(identity, "Firezone1234")
 
       assert verified_identity.provider_state["password_hash"] ==
-               identity.provider_state.password_hash
+               identity.provider_state["password_hash"]
     end
   end
 end

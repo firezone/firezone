@@ -3,7 +3,7 @@ defmodule API.ChannelCase do
   use Domain.CaseTemplate
 
   @presences [
-    Domain.Clients.Presence,
+    Domain.Devices.Presence,
     Domain.Gateways.Presence,
     Domain.Relays.Presence
   ]

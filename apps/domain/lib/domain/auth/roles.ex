@@ -3,8 +3,8 @@ defmodule Domain.Auth.Roles do
 
   def list_roles do
     [
-      build(:admin),
-      build(:unprivileged)
+      build(:account_admin_user),
+      build(:account_user)
     ]
   end
 
@@ -12,8 +12,7 @@ defmodule Domain.Auth.Roles do
     [
       Domain.Auth.Authorizer,
       Domain.Config.Authorizer,
-      Domain.ApiTokens.Authorizer,
-      Domain.Clients.Authorizer,
+      Domain.Devices.Authorizer,
       Domain.Gateways.Authorizer,
       Domain.Relays.Authorizer,
       Domain.Actors.Authorizer,

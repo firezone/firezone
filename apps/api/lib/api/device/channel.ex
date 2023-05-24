@@ -1,10 +1,10 @@
-defmodule API.Client.Channel do
+defmodule API.Device.Channel do
   use API, :channel
-  alias API.Client.Views
-  alias Domain.{Clients, Resources, Gateways, Relays}
+  alias API.Device.Views
+  alias Domain.{Devices, Resources, Gateways, Relays}
 
   @impl true
-  def join("client", _payload, socket) do
+  def join("device", _payload, socket) do
     expires_in =
       DateTime.diff(socket.assigns.subject.expires_at, DateTime.utc_now(), :millisecond)
 
@@ -24,10 +24,10 @@ defmodule API.Client.Channel do
     :ok =
       push(socket, "init", %{
         resources: Views.Resource.render_many(resources),
-        interface: Views.Interface.render(socket.assigns.client)
+        interface: Views.Interface.render(socket.assigns.device)
       })
 
-    :ok = Clients.connect_client(socket.assigns.client)
+    :ok = Devices.connect_device(socket.assigns.device)
 
     {:noreply, socket}
   end
@@ -93,8 +93,8 @@ defmodule API.Client.Channel do
         "request_connection",
         %{
           "resource_id" => resource_id,
-          "client_rtc_session_description" => client_rtc_session_description,
-          "client_preshared_key" => preshared_key
+          "device_rtc_session_description" => device_rtc_session_description,
+          "device_preshared_key" => preshared_key
         },
         socket
       ) do
@@ -109,11 +109,11 @@ defmodule API.Client.Channel do
         API.Gateway.Socket.id(gateway),
         {:request_connection, {self(), socket_ref(socket)},
          %{
-           client_id: socket.assigns.client.id,
+           device_id: socket.assigns.device.id,
            resource_id: resource_id,
            authorization_expires_at: socket.assigns.expires_at,
-           client_rtc_session_description: client_rtc_session_description,
-           client_preshared_key: preshared_key
+           device_rtc_session_description: device_rtc_session_description,
+           device_preshared_key: preshared_key
          }}
       )
 

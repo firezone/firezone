@@ -22,8 +22,8 @@ defmodule Domain.Auth.Adapters.EmailTest do
 
       assert %{
                provider_state: %{
-                 sign_in_token_created_at: %DateTime{},
-                 sign_in_token_hash: sign_in_token_hash
+                 "sign_in_token_created_at" => %DateTime{},
+                 "sign_in_token_hash" => sign_in_token_hash
                },
                provider_virtual_state: %{sign_in_token: sign_in_token}
              } = changeset.changes
@@ -59,8 +59,8 @@ defmodule Domain.Auth.Adapters.EmailTest do
       assert {:ok, identity} = request_sign_in_token(identity)
 
       assert %{
-               sign_in_token_created_at: sign_in_token_created_at,
-               sign_in_token_hash: sign_in_token_hash
+               "sign_in_token_created_at" => sign_in_token_created_at,
+               "sign_in_token_hash" => sign_in_token_hash
              } = identity.provider_state
 
       assert %{

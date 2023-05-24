@@ -5,7 +5,7 @@ defmodule Domain.Resources.Authorizer do
   def manage_resources_permission, do: build(Resource, :manage)
 
   @impl Domain.Auth.Authorizer
-  def list_permissions_for_role(:admin) do
+  def list_permissions_for_role(:account_admin_user) do
     [
       manage_resources_permission()
     ]

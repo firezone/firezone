@@ -1,4 +1,4 @@
-defmodule API.Client.Views.Relay do
+defmodule API.Device.Views.Relay do
   alias Domain.Relays
 
   def render_many(relays, expires_at) do

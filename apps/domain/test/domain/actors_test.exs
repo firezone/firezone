@@ -5,10 +5,10 @@ defmodule Domain.ActorsTest do
   alias Domain.Actors
   alias Domain.{AccountsFixtures, AuthFixtures, ActorsFixtures}
 
-  describe "fetch_count_by_role/0" do
+  describe "fetch_count_by_type/0" do
     setup do
       account = AccountsFixtures.create_account()
-      actor = ActorsFixtures.create_actor(role: :admin, account: account)
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
       identity = AuthFixtures.create_identity(account: account, actor: actor)
       subject = AuthFixtures.create_subject(identity)
 
@@ -19,37 +19,37 @@ defmodule Domain.ActorsTest do
       }
     end
 
-    test "returns correct count of not deleted actors by role", %{
+    test "returns correct count of not deleted actors by type", %{
       account: account,
       subject: subject
     } do
-      assert fetch_count_by_role(:admin, subject) == 1
-      assert fetch_count_by_role(:unprivileged, subject) == 0
+      assert fetch_count_by_type(:account_admin_user, subject) == 1
+      assert fetch_count_by_type(:account_user, subject) == 0
 
-      ActorsFixtures.create_actor(role: :admin)
-      actor = ActorsFixtures.create_actor(role: :admin, account: account)
+      ActorsFixtures.create_actor(type: :account_admin_user)
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
       assert {:ok, _actor} = delete_actor(actor, subject)
-      assert fetch_count_by_role(:admin, subject) == 1
-      assert fetch_count_by_role(:unprivileged, subject) == 0
+      assert fetch_count_by_type(:account_admin_user, subject) == 1
+      assert fetch_count_by_type(:account_user, subject) == 0
 
-      ActorsFixtures.create_actor(role: :admin, account: account)
-      assert fetch_count_by_role(:admin, subject) == 2
-      assert fetch_count_by_role(:unprivileged, subject) == 0
+      ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+      assert fetch_count_by_type(:account_admin_user, subject) == 2
+      assert fetch_count_by_type(:account_user, subject) == 0
 
-      ActorsFixtures.create_actor(role: :unprivileged)
-      ActorsFixtures.create_actor(role: :unprivileged, account: account)
-      assert fetch_count_by_role(:admin, subject) == 2
-      assert fetch_count_by_role(:unprivileged, subject) == 1
+      ActorsFixtures.create_actor(type: :account_user)
+      ActorsFixtures.create_actor(type: :account_user, account: account)
+      assert fetch_count_by_type(:account_admin_user, subject) == 2
+      assert fetch_count_by_type(:account_user, subject) == 1
 
-      for _ <- 1..5, do: ActorsFixtures.create_actor(role: :unprivileged, account: account)
-      assert fetch_count_by_role(:admin, subject) == 2
-      assert fetch_count_by_role(:unprivileged, subject) == 6
+      for _ <- 1..5, do: ActorsFixtures.create_actor(type: :account_user, account: account)
+      assert fetch_count_by_type(:account_admin_user, subject) == 2
+      assert fetch_count_by_type(:account_user, subject) == 6
     end
 
     test "returns error when subject can not view actors", %{subject: subject} do
       subject = AuthFixtures.remove_permissions(subject)
 
-      assert fetch_count_by_role(:foo, subject) ==
+      assert fetch_count_by_type(:foo, subject) ==
                {:error,
                 {:unauthorized,
                  [missing_permissions: [Actors.Authorizer.manage_actors_permission()]]}}
@@ -69,7 +69,7 @@ defmodule Domain.ActorsTest do
 
     test "returns own actor" do
       account = AccountsFixtures.create_account()
-      actor = ActorsFixtures.create_actor(role: :admin, account: account)
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
       identity = AuthFixtures.create_identity(account: account, actor: actor)
       subject = AuthFixtures.create_subject(identity)
 
@@ -79,7 +79,7 @@ defmodule Domain.ActorsTest do
 
     test "returns non own actor" do
       account = AccountsFixtures.create_account()
-      actor = ActorsFixtures.create_actor(role: :admin, account: account)
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
       identity = AuthFixtures.create_identity(account: account, actor: actor)
       subject = AuthFixtures.create_subject(identity)
 
@@ -91,7 +91,7 @@ defmodule Domain.ActorsTest do
 
     test "returns error when actor is in another account" do
       account = AccountsFixtures.create_account()
-      actor = ActorsFixtures.create_actor(role: :admin, account: account)
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
       identity = AuthFixtures.create_identity(account: account, actor: actor)
       subject = AuthFixtures.create_subject(identity)
 
@@ -121,7 +121,7 @@ defmodule Domain.ActorsTest do
     end
 
     test "returns actor" do
-      actor = ActorsFixtures.create_actor(role: :admin)
+      actor = ActorsFixtures.create_actor(type: :account_admin_user)
       assert {:ok, returned_actor} = fetch_actor_by_id(actor.id)
       assert returned_actor.id == actor.id
     end
@@ -141,7 +141,7 @@ defmodule Domain.ActorsTest do
     end
 
     test "returns actor" do
-      actor = ActorsFixtures.create_actor(role: :admin)
+      actor = ActorsFixtures.create_actor(type: :account_admin_user)
       assert returned_actor = fetch_actor_by_id!(actor.id)
       assert returned_actor.id == actor.id
     end
@@ -166,11 +166,11 @@ defmodule Domain.ActorsTest do
       assert list_actors(subject, hydrate: []) == {:ok, []}
     end
 
-    test "returns list of actors in all roles" do
+    test "returns list of actors in all types" do
       account = AccountsFixtures.create_account()
-      actor1 = ActorsFixtures.create_actor(account: account, role: :admin)
-      actor2 = ActorsFixtures.create_actor(account: account, role: :unprivileged)
-      ActorsFixtures.create_actor(role: :unprivileged)
+      actor1 = ActorsFixtures.create_actor(account: account, type: :account_admin_user)
+      actor2 = ActorsFixtures.create_actor(account: account, type: :account_user)
+      ActorsFixtures.create_actor(type: :account_user)
 
       identity1 = AuthFixtures.create_identity(account: account, actor: actor1)
       subject = AuthFixtures.create_subject(identity1)
@@ -212,7 +212,6 @@ defmodule Domain.ActorsTest do
       refute changeset.valid?
 
       assert errors_on(changeset) == %{
-               role: ["can't be blank"],
                type: ["can't be blank"]
              }
     end
@@ -221,13 +220,12 @@ defmodule Domain.ActorsTest do
       provider: provider,
       provider_identifier: provider_identifier
     } do
-      attrs = ActorsFixtures.actor_attrs(role: :foo, type: :bar)
+      attrs = ActorsFixtures.actor_attrs(type: :foo)
 
       assert {:error, changeset} = create_actor(provider, provider_identifier, attrs)
       refute changeset.valid?
 
       assert errors_on(changeset) == %{
-               role: ["is invalid"],
                type: ["is invalid"]
              }
     end
@@ -242,21 +240,10 @@ defmodule Domain.ActorsTest do
       assert errors_on(changeset) == %{provider_identifier: ["has already been taken"]}
     end
 
-    test "creates an actor in given role", %{
-      provider: provider
-    } do
-      for role <- [:admin, :unprivileged] do
-        attrs = ActorsFixtures.actor_attrs(role: role)
-        provider_identifier = AuthFixtures.random_provider_identifier(provider)
-        assert {:ok, actor} = create_actor(provider, provider_identifier, attrs)
-        assert actor.role == role
-      end
-    end
-
     test "creates an actor in given type", %{
       provider: provider
     } do
-      for type <- [:user, :service_account] do
+      for type <- [:account_user, :account_admin_user, :service_account] do
         attrs = ActorsFixtures.actor_attrs(type: type)
         provider_identifier = AuthFixtures.random_provider_identifier(provider)
         assert {:ok, actor} = create_actor(provider, provider_identifier, attrs)
@@ -273,7 +260,7 @@ defmodule Domain.ActorsTest do
       assert {:ok, actor} = create_actor(provider, provider_identifier, attrs)
 
       assert actor.type == attrs.type
-      assert actor.role == attrs.role
+      assert actor.type == attrs.type
       assert is_nil(actor.disabled_at)
       assert is_nil(actor.deleted_at)
 
@@ -310,7 +297,7 @@ defmodule Domain.ActorsTest do
       provider: provider,
       provider_identifier: provider_identifier
     } do
-      actor = ActorsFixtures.create_actor(role: :admin, account: account)
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
 
       subject =
         AuthFixtures.create_identity(account: account, actor: actor)
@@ -336,7 +323,7 @@ defmodule Domain.ActorsTest do
       provider: provider,
       provider_identifier: provider_identifier
     } do
-      actor = ActorsFixtures.create_actor(role: :admin, account: account)
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
 
       subject =
         AuthFixtures.create_identity(account: account, actor: actor)
@@ -354,22 +341,22 @@ defmodule Domain.ActorsTest do
         MapSet.difference(admin_permissions, MapSet.new(required_permissions))
         |> MapSet.to_list()
 
-      attrs = %{type: :user, role: :admin}
+      attrs = %{type: :account_admin_user}
 
       assert create_actor(provider, provider_identifier, attrs, subject) ==
                {:error, {:unauthorized, privilege_escalation: missing_permissions}}
 
-      attrs = %{"type" => "user", "role" => "admin"}
+      attrs = %{"type" => "account_admin_user"}
 
       assert create_actor(provider, provider_identifier, attrs, subject) ==
                {:error, {:unauthorized, privilege_escalation: missing_permissions}}
     end
   end
 
-  describe "change_actor_role/3" do
+  describe "change_actor_type/3" do
     setup do
       account = AccountsFixtures.create_account()
-      actor = ActorsFixtures.create_actor(role: :admin, account: account)
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
       identity = AuthFixtures.create_identity(account: account, actor: actor)
       subject = AuthFixtures.create_subject(identity)
 
@@ -380,25 +367,29 @@ defmodule Domain.ActorsTest do
       }
     end
 
-    test "allows admin to change other actors role", %{account: account, subject: subject} do
-      actor = ActorsFixtures.create_actor(role: :admin, account: account)
-      assert {:ok, %{role: :unprivileged}} = change_actor_role(actor, :unprivileged, subject)
-      assert {:ok, %{role: :admin}} = change_actor_role(actor, :admin, subject)
+    test "allows admin to change other actors type", %{account: account, subject: subject} do
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+      assert {:ok, %{type: :account_user}} = change_actor_type(actor, :account_user, subject)
 
-      actor = ActorsFixtures.create_actor(role: :unprivileged, account: account)
-      assert {:ok, %{role: :unprivileged}} = change_actor_role(actor, :unprivileged, subject)
-      assert {:ok, %{role: :admin}} = change_actor_role(actor, :admin, subject)
+      assert {:ok, %{type: :account_admin_user}} =
+               change_actor_type(actor, :account_admin_user, subject)
+
+      actor = ActorsFixtures.create_actor(type: :account_user, account: account)
+      assert {:ok, %{type: :account_user}} = change_actor_type(actor, :account_user, subject)
+
+      assert {:ok, %{type: :account_admin_user}} =
+               change_actor_type(actor, :account_admin_user, subject)
     end
 
-    test "returns error when subject can not manage roles", %{account: account} do
-      actor = ActorsFixtures.create_actor(role: :admin, account: account)
+    test "returns error when subject can not manage types", %{account: account} do
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
 
       subject =
         AuthFixtures.create_identity(account: account, actor: actor)
         |> AuthFixtures.create_subject()
         |> AuthFixtures.remove_permissions()
 
-      assert change_actor_role(actor, :foo, subject) ==
+      assert change_actor_type(actor, :foo, subject) ==
                {:error,
                 {:unauthorized,
                  [missing_permissions: [Actors.Authorizer.manage_actors_permission()]]}}
@@ -408,8 +399,8 @@ defmodule Domain.ActorsTest do
   describe "disable_actor/2" do
     test "disables a given actor" do
       account = AccountsFixtures.create_account()
-      actor = ActorsFixtures.create_actor(role: :admin, account: account)
-      other_actor = ActorsFixtures.create_actor(role: :admin, account: account)
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+      other_actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
       identity = AuthFixtures.create_identity(account: account, actor: actor)
       subject = AuthFixtures.create_subject(identity)
 
@@ -425,7 +416,7 @@ defmodule Domain.ActorsTest do
 
     test "returns error when trying to disable the last admin actor" do
       account = AccountsFixtures.create_account()
-      actor = ActorsFixtures.create_actor(account: account, role: :admin)
+      actor = ActorsFixtures.create_actor(account: account, type: :account_admin_user)
       identity = AuthFixtures.create_identity(account: account, actor: actor)
       subject = AuthFixtures.create_subject(identity)
 
@@ -434,8 +425,8 @@ defmodule Domain.ActorsTest do
 
     test "last admin check ignores admins in other accounts" do
       account = AccountsFixtures.create_account()
-      actor = ActorsFixtures.create_actor(role: :admin, account: account)
-      ActorsFixtures.create_actor(role: :admin)
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+      ActorsFixtures.create_actor(type: :account_admin_user)
       identity = AuthFixtures.create_identity(account: account, actor: actor)
       subject = AuthFixtures.create_subject(identity)
 
@@ -444,8 +435,8 @@ defmodule Domain.ActorsTest do
 
     test "last admin check ignores disabled admins" do
       account = AccountsFixtures.create_account()
-      actor = ActorsFixtures.create_actor(role: :admin, account: account)
-      other_actor = ActorsFixtures.create_actor(role: :admin, account: account)
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+      other_actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
       identity = AuthFixtures.create_identity(account: account, actor: actor)
       subject = AuthFixtures.create_subject(identity)
       {:ok, _other_actor} = disable_actor(other_actor, subject)
@@ -462,8 +453,8 @@ defmodule Domain.ActorsTest do
 
           account = AccountsFixtures.create_account()
 
-          actor_one = ActorsFixtures.create_actor(role: :admin, account: account)
-          actor_two = ActorsFixtures.create_actor(role: :admin, account: account)
+          actor_one = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+          actor_two = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
 
           subject_one = AuthFixtures.create_subject(actor_one)
           subject_two = AuthFixtures.create_subject(actor_two)
@@ -480,8 +471,8 @@ defmodule Domain.ActorsTest do
 
     test "does not do anything when an actor is disabled twice" do
       account = AccountsFixtures.create_account()
-      actor = ActorsFixtures.create_actor(role: :admin, account: account)
-      other_actor = ActorsFixtures.create_actor(role: :admin, account: account)
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+      other_actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
       identity = AuthFixtures.create_identity(account: account, actor: actor)
       subject = AuthFixtures.create_subject(identity)
 
@@ -492,8 +483,8 @@ defmodule Domain.ActorsTest do
 
     test "does not allow to disable actors in other accounts" do
       account = AccountsFixtures.create_account()
-      actor = ActorsFixtures.create_actor(role: :admin, account: account)
-      other_actor = ActorsFixtures.create_actor(role: :admin)
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+      other_actor = ActorsFixtures.create_actor(type: :account_admin_user)
       identity = AuthFixtures.create_identity(account: account, actor: actor)
       subject = AuthFixtures.create_subject(identity)
 
@@ -502,7 +493,7 @@ defmodule Domain.ActorsTest do
 
     test "returns error when subject can not disable actors" do
       account = AccountsFixtures.create_account()
-      actor = ActorsFixtures.create_actor(role: :admin, account: account)
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
 
       subject =
         AuthFixtures.create_identity(account: account, actor: actor)
@@ -519,8 +510,8 @@ defmodule Domain.ActorsTest do
   describe "enable_actor/2" do
     test "enables a given actor" do
       account = AccountsFixtures.create_account()
-      actor = ActorsFixtures.create_actor(role: :admin, account: account)
-      other_actor = ActorsFixtures.create_actor(role: :admin, account: account)
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+      other_actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
       identity = AuthFixtures.create_identity(account: account, actor: actor)
       subject = AuthFixtures.create_subject(identity)
 
@@ -538,8 +529,8 @@ defmodule Domain.ActorsTest do
 
     test "does not do anything when an actor is already enabled" do
       account = AccountsFixtures.create_account()
-      actor = ActorsFixtures.create_actor(role: :admin, account: account)
-      other_actor = ActorsFixtures.create_actor(role: :admin, account: account)
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+      other_actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
       identity = AuthFixtures.create_identity(account: account, actor: actor)
       subject = AuthFixtures.create_subject(identity)
 
@@ -552,8 +543,8 @@ defmodule Domain.ActorsTest do
 
     test "does not allow to enable actors in other accounts" do
       account = AccountsFixtures.create_account()
-      actor = ActorsFixtures.create_actor(role: :admin, account: account)
-      other_actor = ActorsFixtures.create_actor(role: :admin)
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+      other_actor = ActorsFixtures.create_actor(type: :account_admin_user)
       identity = AuthFixtures.create_identity(account: account, actor: actor)
       subject = AuthFixtures.create_subject(identity)
 
@@ -562,7 +553,7 @@ defmodule Domain.ActorsTest do
 
     test "returns error when subject can not enable actors" do
       account = AccountsFixtures.create_account()
-      actor = ActorsFixtures.create_actor(role: :admin, account: account)
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
 
       subject =
         AuthFixtures.create_identity(account: account, actor: actor)
@@ -579,8 +570,8 @@ defmodule Domain.ActorsTest do
   describe "delete_actor/2" do
     test "deletes a given actor" do
       account = AccountsFixtures.create_account()
-      actor = ActorsFixtures.create_actor(role: :admin, account: account)
-      other_actor = ActorsFixtures.create_actor(role: :admin, account: account)
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+      other_actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
       identity = AuthFixtures.create_identity(account: account, actor: actor)
       subject = AuthFixtures.create_subject(identity)
 
@@ -596,7 +587,7 @@ defmodule Domain.ActorsTest do
 
     test "returns error when trying to delete the last admin actor" do
       account = AccountsFixtures.create_account()
-      actor = ActorsFixtures.create_actor(role: :admin, account: account)
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
       identity = AuthFixtures.create_identity(account: account, actor: actor)
       subject = AuthFixtures.create_subject(identity)
 
@@ -605,8 +596,8 @@ defmodule Domain.ActorsTest do
 
     test "last admin check ignores admins in other accounts" do
       account = AccountsFixtures.create_account()
-      actor = ActorsFixtures.create_actor(role: :admin, account: account)
-      ActorsFixtures.create_actor(role: :admin)
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+      ActorsFixtures.create_actor(type: :account_admin_user)
       identity = AuthFixtures.create_identity(account: account, actor: actor)
       subject = AuthFixtures.create_subject(identity)
 
@@ -615,8 +606,8 @@ defmodule Domain.ActorsTest do
 
     test "last admin check ignores disabled admins" do
       account = AccountsFixtures.create_account()
-      actor = ActorsFixtures.create_actor(role: :admin, account: account)
-      other_actor = ActorsFixtures.create_actor(role: :admin, account: account)
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+      other_actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
       identity = AuthFixtures.create_identity(account: account, actor: actor)
       subject = AuthFixtures.create_subject(identity)
       {:ok, _other_actor} = disable_actor(other_actor, subject)
@@ -633,8 +624,8 @@ defmodule Domain.ActorsTest do
 
           account = AccountsFixtures.create_account()
 
-          actor_one = ActorsFixtures.create_actor(role: :admin, account: account)
-          actor_two = ActorsFixtures.create_actor(role: :admin, account: account)
+          actor_one = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+          actor_two = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
 
           subject_one = AuthFixtures.create_subject(actor_one)
           subject_two = AuthFixtures.create_subject(actor_two)
@@ -651,8 +642,8 @@ defmodule Domain.ActorsTest do
 
     test "does not allow to delete an actor twice" do
       account = AccountsFixtures.create_account()
-      actor = ActorsFixtures.create_actor(role: :admin, account: account)
-      other_actor = ActorsFixtures.create_actor(role: :admin, account: account)
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+      other_actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
       identity = AuthFixtures.create_identity(account: account, actor: actor)
       subject = AuthFixtures.create_subject(identity)
 
@@ -662,8 +653,8 @@ defmodule Domain.ActorsTest do
 
     test "does not allow to delete actors in other accounts" do
       account = AccountsFixtures.create_account()
-      actor = ActorsFixtures.create_actor(role: :admin, account: account)
-      other_actor = ActorsFixtures.create_actor(role: :admin)
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+      other_actor = ActorsFixtures.create_actor(type: :account_admin_user)
       identity = AuthFixtures.create_identity(account: account, actor: actor)
       subject = AuthFixtures.create_subject(identity)
 
@@ -672,7 +663,7 @@ defmodule Domain.ActorsTest do
 
     test "returns error when subject can not delete actors" do
       account = AccountsFixtures.create_account()
-      actor = ActorsFixtures.create_actor(role: :admin, account: account)
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
 
       subject =
         AuthFixtures.create_identity(account: account, actor: actor)

@@ -1,6 +1,9 @@
 defmodule Domain.ConfigTest do
   use Domain.DataCase, async: true
   import Domain.Config
+  alias Domain.Config
+  alias Domain.{AccountsFixtures, AuthFixtures, ActorsFixtures}
+  alias Domain.ConfigFixtures
 
   defmodule Test do
     use Domain.Config.Definition
@@ -80,13 +83,22 @@ defmodule Domain.ConfigTest do
     )
   end
 
-  describe "fetch_source_and_config!/1" do
-    test "returns source and config value" do
-      assert fetch_source_and_config!(:default_client_mtu) ==
-               {{:db, :default_client_mtu}, 1280}
+  describe "fetch_resolved_configs!/1" do
+    setup do
+      account = AccountsFixtures.create_account()
+      ConfigFixtures.upsert_configuration(account: account)
+
+      %{account: account}
     end
 
-    test "raises an error when value is missing" do
+    test "returns source and config values", %{account: account} do
+      assert fetch_resolved_configs!(account.id, [:devices_upstream_dns, :devices_upstream_dns]) ==
+               %{
+                 devices_upstream_dns: [%Postgrex.INET{address: {1, 1, 1, 1}, netmask: nil}]
+               }
+    end
+
+    test "raises an error when value is missing", %{account: account} do
       message = """
       Missing required configuration value for 'external_url'.
 
@@ -113,26 +125,29 @@ defmodule Domain.ConfigTest do
       """
 
       assert_raise RuntimeError, message, fn ->
-        fetch_source_and_config!(:external_url)
+        fetch_resolved_configs!(account.id, [:external_url])
       end
     end
   end
 
-  describe "fetch_source_and_configs!/1" do
-    test "returns source and config values" do
-      assert fetch_source_and_configs!([:default_client_mtu, :default_client_dns]) ==
+  describe "fetch_resolved_configs_with_sources!/1" do
+    setup do
+      account = AccountsFixtures.create_account()
+      ConfigFixtures.upsert_configuration(account: account)
+
+      %{account: account}
+    end
+
+    test "returns source and config values", %{account: account} do
+      assert fetch_resolved_configs_with_sources!(account.id, [:devices_upstream_dns]) ==
                %{
-                 default_client_dns:
-                   {{:db, :default_client_dns},
-                    [
-                      %Postgrex.INET{address: {1, 1, 1, 1}, netmask: nil},
-                      %Postgrex.INET{address: {1, 0, 0, 1}, netmask: nil}
-                    ]},
-                 default_client_mtu: {{:db, :default_client_mtu}, 1280}
+                 devices_upstream_dns:
+                   {{:db, :devices_upstream_dns},
+                    [%Postgrex.INET{address: {1, 1, 1, 1}, netmask: nil}]}
                }
     end
 
-    test "raises an error when value is missing" do
+    test "raises an error when value is missing", %{account: account} do
       message = """
       Missing required configuration value for 'external_url'.
 
@@ -159,11 +174,11 @@ defmodule Domain.ConfigTest do
       """
 
       assert_raise RuntimeError, message, fn ->
-        fetch_source_and_configs!([:external_url])
+        fetch_resolved_configs_with_sources!(account.id, [:external_url])
       end
     end
 
-    test "raises an error when value is invalid" do
+    test "raises an error when value is invalid", %{account: account} do
       put_system_env_override(:external_url, "https://example.com/vpn")
 
       message = """
@@ -187,78 +202,7 @@ defmodule Domain.ConfigTest do
       """
 
       assert_raise RuntimeError, message, fn ->
-        fetch_source_and_configs!([:external_url])
-      end
-    end
-  end
-
-  describe "fetch_config/1" do
-    test "returns config value" do
-      assert fetch_config(:default_client_mtu) ==
-               {:ok, 1280}
-    end
-
-    test "returns error when value is missing" do
-      assert fetch_config(:external_url) ==
-               {:error,
-                {{nil, ["is required"]},
-                 [module: Domain.Config.Definitions, key: :external_url, source: :not_found]}}
-    end
-  end
-
-  describe "fetch_config!/1" do
-    test "returns config value" do
-      assert fetch_config!(:default_client_mtu) ==
-               1280
-    end
-
-    test "raises when value is missing" do
-      assert_raise RuntimeError, fn ->
-        fetch_config!(:external_url)
-      end
-    end
-  end
-
-  describe "fetch_configs!/1" do
-    test "returns source and config values" do
-      assert fetch_configs!([:default_client_mtu, :default_client_dns]) ==
-               %{
-                 default_client_dns: [
-                   %Postgrex.INET{address: {1, 1, 1, 1}, netmask: nil},
-                   %Postgrex.INET{address: {1, 0, 0, 1}, netmask: nil}
-                 ],
-                 default_client_mtu: 1280
-               }
-    end
-
-    test "raises an error when value is missing" do
-      message = """
-      Missing required configuration value for 'external_url'.
-
-      ## How to fix?
-
-      ### Using environment variables
-
-      You can set this configuration via environment variable by adding it to `.env` file:
-
-          EXTERNAL_URL=YOUR_VALUE
-
-
-      ## Documentation
-
-      The external URL the web UI will be accessible at.
-
-      Must be a valid and public FQDN for ACME SSL issuance to function.
-
-      You can add a path suffix if you want to serve firezone from a non-root path,
-      eg: `https://firezone.mycorp.com/vpn/`.
-
-
-      You can find more information on configuration here: https://www.firezone.dev/docs/reference/env-vars/#environment-variable-listing
-      """
-
-      assert_raise RuntimeError, message, fn ->
-        fetch_configs!([:external_url])
+        fetch_resolved_configs_with_sources!(account.id, [:external_url])
       end
     end
   end
@@ -390,246 +334,173 @@ defmodule Domain.ConfigTest do
     end
   end
 
-  describe "validate_runtime_config!/0" do
-    test "raises error on invalid values" do
-      message = """
-      Found 9 configuration errors:
-
-
-      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-      Missing required configuration value for 'url'.
-
-      ## How to fix?
-
-      ### Using environment variables
-
-      You can set this configuration via environment variable by adding it to `.env` file:
-
-          URL=YOUR_VALUE
-
-
-
-      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-      Missing required configuration value for 'boolean'.
-
-      ## How to fix?
-
-      ### Using environment variables
-
-      You can set this configuration via environment variable by adding it to `.env` file:
-
-          BOOLEAN=YOUR_VALUE
-
-
-
-      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-      Missing required configuration value for 'json'.
-
-      ## How to fix?
-
-      ### Using environment variables
-
-      You can set this configuration via environment variable by adding it to `.env` file:
-
-          JSON=YOUR_VALUE
-
-
-
-      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-      Missing required configuration value for 'json_array'.
-
-      ## How to fix?
-
-      ### Using environment variables
-
-      You can set this configuration via environment variable by adding it to `.env` file:
-
-          JSON_ARRAY=YOUR_VALUE
-
-
-
-      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-      Invalid configuration for 'array' retrieved from default value.
-
-      Errors:
-
-       - `3`: must be less than or equal to 2
-
-
-      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-      Invalid configuration for 'invalid_with_validation' retrieved from default value.
-
-      Errors:
-
-       - `-1`: must be greater than or equal to 0
-
-
-      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-      Missing required configuration value for 'integer'.
-
-      ## How to fix?
-
-      ### Using environment variables
-
-      You can set this configuration via environment variable by adding it to `.env` file:
-
-          INTEGER=YOUR_VALUE
-
-
-
-      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-      Missing required configuration value for 'one_of'.
-
-      ## How to fix?
-
-      ### Using environment variables
-
-      You can set this configuration via environment variable by adding it to `.env` file:
-
-          ONE_OF=YOUR_VALUE
-
-
-
-      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-      Missing required configuration value for 'required'.
-
-      ## How to fix?
-
-      ### Using environment variables
-
-      You can set this configuration via environment variable by adding it to `.env` file:
-
-          REQUIRED=YOUR_VALUE
-      """
-
-      assert_raise RuntimeError, message, fn ->
-        validate_runtime_config!(Test, %{}, %{})
-      end
+  describe "get_account_config_by_account_id/1" do
+    setup do
+      account = AccountsFixtures.create_account()
+      %{account: account}
     end
 
-    test "returns :ok when config is valid" do
-      env_config = %{
-        "BOOLEAN" => "true",
-        "ARRAY" => "1",
-        "JSON" => "{\"foo\":\"bar\"}",
-        "JSON_ARRAY" => "[{\"foo\":\"bar\"}]",
-        "INTEGER" => "123",
-        "ONE_OF" => "a",
-        "REQUIRED" => "1.1.1.1",
-        "INVALID_WITH_VALIDATION" => "2",
-        "URL" => "http://example.com"
+    test "returns configuration for an account if it exists", %{
+      account: account
+    } do
+      configuration = ConfigFixtures.upsert_configuration(account: account)
+      assert get_account_config_by_account_id(account.id) == configuration
+    end
+
+    test "returns default configuration for an account if it does not exist", %{
+      account: account
+    } do
+      assert get_account_config_by_account_id(account.id) == %Domain.Config.Configuration{
+               account_id: account.id,
+               devices_upstream_dns: []
+             }
+    end
+  end
+
+  describe "fetch_account_config/1" do
+    setup do
+      account = AccountsFixtures.create_account()
+
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+      identity = AuthFixtures.create_identity(account: account, actor: actor)
+      subject = AuthFixtures.create_subject(identity)
+
+      %{
+        account: account,
+        actor: actor,
+        identity: identity,
+        subject: subject
       }
+    end
 
-      assert validate_runtime_config!(Test, %{}, env_config) == :ok
+    test "returns configuration for an account if it exists", %{
+      account: account,
+      subject: subject
+    } do
+      configuration = ConfigFixtures.upsert_configuration(account: account)
+      assert fetch_account_config(subject) == {:ok, configuration}
+    end
+
+    test "returns default configuration for an account if it does not exist", %{
+      account: account,
+      subject: subject
+    } do
+      assert {:ok, config} = fetch_account_config(subject)
+
+      assert config == %Domain.Config.Configuration{
+               account_id: account.id,
+               devices_upstream_dns: []
+             }
+    end
+
+    test "returns error when subject does not have permission to read configuration", %{
+      subject: subject
+    } do
+      subject = AuthFixtures.remove_permissions(subject)
+
+      assert fetch_account_config(subject) ==
+               {:error,
+                {:unauthorized, [missing_permissions: [Config.Authorizer.manage_permission()]]}}
     end
   end
 
-  describe "fetch_db_config!" do
-    test "returns config from db table" do
-      assert fetch_db_config!() == Repo.one(Domain.Config.Configuration)
+  describe "change_account_config/2" do
+    setup do
+      account = AccountsFixtures.create_account()
+      configuration = ConfigFixtures.upsert_configuration(account: account)
+
+      %{account: account, configuration: configuration}
+    end
+
+    test "returns config changeset", %{configuration: configuration} do
+      assert %Ecto.Changeset{} = change_account_config(configuration)
     end
   end
 
-  describe "change_config/2" do
-    test "returns config changeset" do
-      assert %Ecto.Changeset{} = change_config()
+  describe "update_config/3" do
+    test "returns error when subject can not manage account configuration" do
+      account = AccountsFixtures.create_account()
+      config = get_account_config_by_account_id(account.id)
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+      identity = AuthFixtures.create_identity(account: account, actor: actor)
+
+      subject =
+        AuthFixtures.create_subject(identity)
+        |> AuthFixtures.remove_permissions()
+
+      assert update_config(config, %{}, subject) ==
+               {:error,
+                {:unauthorized, [missing_permissions: [Config.Authorizer.manage_permission()]]}}
     end
   end
 
   describe "update_config/2" do
-    test "returns error when changeset is invalid" do
-      config = Repo.one(Domain.Config.Configuration)
+    setup do
+      account = AccountsFixtures.create_account()
+      %{account: account}
+    end
+
+    test "returns error when changeset is invalid", %{account: account} do
+      config = get_account_config_by_account_id(account.id)
 
       attrs = %{
-        local_auth_enabled: 1,
-        allow_unprivileged_device_management: 1,
-        allow_unprivileged_device_configuration: 1,
-        disable_vpn_on_oidc_error: 1,
-        default_client_persistent_keepalive: -1,
-        default_client_mtu: -1,
-        default_client_endpoint: "123",
-        default_client_dns: ["!!!"],
-        default_client_allowed_ips: ["!"],
-        vpn_session_duration: -1
+        devices_upstream_dns: ["!!!"]
       }
 
       assert {:error, changeset} = update_config(config, attrs)
 
       assert errors_on(changeset) == %{
-               default_client_mtu: ["must be greater than or equal to 576"],
-               allow_unprivileged_device_configuration: ["is invalid"],
-               allow_unprivileged_device_management: ["is invalid"],
-               default_client_allowed_ips: ["is invalid"],
-               default_client_dns: [
+               devices_upstream_dns: [
                  "!!! is not a valid FQDN",
                  "must be one of: Elixir.Domain.Types.IP, string"
-               ],
-               default_client_persistent_keepalive: ["must be greater than or equal to 0"],
-               local_auth_enabled: ["is invalid"],
-               vpn_session_duration: ["must be greater than or equal to 0"]
+               ]
              }
     end
 
-    test "returns error when trying to change overridden value" do
-      put_system_env_override(:local_auth_enabled, false)
+    test "returns error when trying to change overridden value", %{account: account} do
+      put_system_env_override(:devices_upstream_dns, ["1.2.3.4"])
 
-      config = Repo.one(Domain.Config.Configuration)
+      config = get_account_config_by_account_id(account.id)
 
       attrs = %{
-        local_auth_enabled: false
+        devices_upstream_dns: ["4.1.2.3"]
       }
 
       assert {:error, changeset} = update_config(config, attrs)
 
       assert errors_on(changeset) ==
                %{
-                 local_auth_enabled: [
-                   "cannot be changed; it is overridden by LOCAL_AUTH_ENABLED environment variable"
+                 devices_upstream_dns: [
+                   "cannot be changed; it is overridden by DEVICES_UPSTREAM_DNS environment variable"
                  ]
                }
     end
 
-    test "trims binary fields" do
-      config = Repo.one(Domain.Config.Configuration)
+    test "trims binary fields", %{account: account} do
+      config = get_account_config_by_account_id(account.id)
 
       attrs = %{
-        default_client_dns: ["   foobar.com", "google.com   "],
-        default_client_endpoint: "   127.0.0.1    "
+        devices_upstream_dns: ["   foobar.com", "google.com   "]
       }
 
       assert {:ok, config} = update_config(config, attrs)
-      assert config.default_client_dns == ["foobar.com", "google.com"]
-      assert config.default_client_endpoint == "127.0.0.1"
+      assert config.devices_upstream_dns == ["foobar.com", "google.com"]
     end
 
-    test "changes database config value" do
-      config = Repo.one(Domain.Config.Configuration)
-      attrs = %{default_client_dns: ["foobar.com", "google.com"]}
+    test "changes database config value when it did not exist", %{account: account} do
+      config = get_account_config_by_account_id(account.id)
+      attrs = %{devices_upstream_dns: ["foobar.com", "google.com"]}
       assert {:ok, config} = update_config(config, attrs)
-      assert config.default_client_dns == attrs.default_client_dns
-    end
-  end
-
-  describe "put_config!/2" do
-    test "updates config field in a database" do
-      assert config = put_config!(:default_client_endpoint, " 127.0.0.1")
-      assert config.default_client_endpoint == "127.0.0.1"
-      assert Repo.one(Domain.Config.Configuration).default_client_endpoint == "127.0.0.1"
+      assert config.devices_upstream_dns == attrs.devices_upstream_dns
     end
 
-    test "raises when config field is not valid" do
-      assert_raise RuntimeError, fn ->
-        put_config!(:default_client_endpoint, "!!!")
-      end
+    test "changes database config value when it existed", %{account: account} do
+      ConfigFixtures.upsert_configuration(account: account)
+
+      config = get_account_config_by_account_id(account.id)
+      attrs = %{devices_upstream_dns: ["foobar.com", "google.com"]}
+      assert {:ok, config} = update_config(config, attrs)
+      assert config.devices_upstream_dns == attrs.devices_upstream_dns
     end
   end
 end

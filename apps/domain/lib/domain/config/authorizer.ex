@@ -2,12 +2,12 @@ defmodule Domain.Config.Authorizer do
   use Domain.Auth.Authorizer
   alias Domain.Config.Configuration
 
-  def configure_permission, do: build(Configuration, :manage)
+  def manage_permission, do: build(Configuration, :manage)
 
   @impl Domain.Auth.Authorizer
-  def list_permissions_for_role(:admin) do
+  def list_permissions_for_role(:account_admin_user) do
     [
-      configure_permission()
+      manage_permission()
     ]
   end
 

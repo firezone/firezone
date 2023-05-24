@@ -4,8 +4,8 @@
 #   alias Domain.UsersFixtures
 
 #   setup do
-#     user = UsersFixtures.create_user_with_role(:admin)
-#     {bypass, [provider_attrs]} = Domain.ConfigFixtures.start_openid_providers(["google"])
+#     user = UsersFixtures.create_user_with_role(:account_admin_user)
+#     {bypass, [provider_attrs]} = Domain.AuthFixtures.start_openid_providers(["google"])
 
 #     conn =
 #       Repo.insert!(%Domain.Auth.OIDC.Connection{
@@ -19,7 +19,7 @@
 
 #   describe "refresh failed" do
 #     test "disable user", %{user: user, conn: conn, bypass: bypass} do
-#       Domain.ConfigFixtures.expect_refresh_token_failure(bypass)
+#       Domain.AuthFixtures.expect_refresh_token_failure(bypass)
 
 #       assert Refresher.refresh(user.id) == {:stop, :shutdown, user.id}
 #       user = Repo.reload(user)
@@ -32,7 +32,7 @@
 
 #   describe "refresh succeeded" do
 #     test "does not change user", %{user: user, conn: conn, bypass: bypass} do
-#       Domain.ConfigFixtures.expect_refresh_token(bypass)
+#       Domain.AuthFixtures.expect_refresh_token(bypass)
 
 #       assert Refresher.refresh(user.id) == {:stop, :shutdown, user.id}
 #       user = Repo.reload(user)

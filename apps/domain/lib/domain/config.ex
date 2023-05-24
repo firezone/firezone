@@ -4,22 +4,16 @@ defmodule Domain.Config do
   alias Domain.Config.{Definition, Definitions, Validator, Errors, Fetcher}
   alias Domain.Config.Configuration
 
-  def fetch_source_and_config!(key) do
-    db_config = maybe_fetch_db_config!(key)
-    env_config = System.get_env()
-
-    case Fetcher.fetch_source_and_config(Definitions, key, db_config, env_config) do
-      {:ok, source, config} ->
-        {source, config}
-
-      {:error, reason} ->
-        Errors.raise_error!(reason)
+  def fetch_resolved_configs!(account_id, keys, opts \\ []) do
+    for {key, {_source, value}} <-
+          fetch_resolved_configs_with_sources!(account_id, keys, opts),
+        into: %{} do
+      {key, value}
     end
   end
 
-  def fetch_source_and_configs!(keys) when is_list(keys) do
-    db_config = maybe_fetch_db_config!(keys)
-    env_config = System.get_env()
+  def fetch_resolved_configs_with_sources!(account_id, keys, opts \\ []) do
+    {db_config, env_config} = maybe_load_sources(account_id, opts, keys)
 
     for key <- keys, into: %{} do
       case Fetcher.fetch_source_and_config(Definitions, key, db_config, env_config) do
@@ -32,46 +26,24 @@ defmodule Domain.Config do
     end
   end
 
-  def fetch_config(key) do
-    db_config = maybe_fetch_db_config!(key)
-    env_config = System.get_env()
+  defp maybe_load_sources(account_id, opts, keys) when is_list(keys) do
+    ignored_sources = Keyword.get(opts, :ignore_sources, []) |> List.wrap()
 
-    with {:ok, _source, config} <-
-           Fetcher.fetch_source_and_config(Definitions, key, db_config, env_config) do
-      {:ok, config}
-    end
-  end
+    one_of_keys_is_stored_in_db? =
+      Enum.any?(keys, &(&1 in Domain.Config.Configuration.__schema__(:fields)))
 
-  def fetch_config!(key) do
-    case fetch_config(key) do
-      {:ok, config} ->
-        config
+    db_config =
+      if :db not in ignored_sources and one_of_keys_is_stored_in_db?,
+        do: get_account_config_by_account_id(account_id),
+        else: %{}
 
-      {:error, reason} ->
-        Errors.raise_error!(reason)
-    end
-  end
+    # credo:disable-for-lines:4
+    env_config =
+      if :env not in ignored_sources,
+        do: System.get_env(),
+        else: %{}
 
-  def fetch_configs!(keys) do
-    for {key, {_source, value}} <- fetch_source_and_configs!(keys), into: %{} do
-      {key, value}
-    end
-  end
-
-  defp maybe_fetch_db_config!(keys) when is_list(keys) do
-    if Enum.any?(keys, &(&1 in Domain.Config.Configuration.__schema__(:fields))) do
-      fetch_db_config!()
-    else
-      %{}
-    end
-  end
-
-  defp maybe_fetch_db_config!(key) do
-    if key in Domain.Config.Configuration.__schema__(:fields) do
-      fetch_db_config!()
-    else
-      %{}
-    end
+    {db_config, env_config}
   end
 
   @doc """
@@ -92,59 +64,32 @@ defmodule Domain.Config do
     end
   end
 
-  def validate_runtime_config!(
-        module \\ Definitions,
-        db_config \\ fetch_db_config!(),
-        env_config \\ System.get_env()
-      ) do
-    module.configs()
-    |> Enum.flat_map(fn {module, key} ->
-      case Fetcher.fetch_source_and_config(module, key, db_config, env_config) do
-        {:ok, _source, _value} -> []
-        {:error, reason} -> [reason]
-      end
-    end)
-    |> case do
-      [] -> :ok
-      errors -> Errors.raise_error!(errors)
+  ## Configuration stored in database
+
+  def get_account_config_by_account_id(account_id) do
+    queryable = Configuration.Query.by_account_id(account_id)
+    Repo.one(queryable) || %Configuration{account_id: account_id}
+  end
+
+  def fetch_account_config(%Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_permission()) do
+      {:ok, get_account_config_by_account_id(subject.account.id)}
     end
   end
 
-  def fetch_db_config! do
-    Repo.one!(Configuration)
+  def change_account_config(%Configuration{} = configuration, attrs \\ %{}) do
+    Configuration.Changeset.changeset(configuration, attrs)
   end
 
-  def fetch_db_config(%Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.configure_permission()) do
-      {:ok, fetch_db_config!()}
+  def update_config(%Configuration{} = configuration, attrs, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_permission()) do
+      update_config(configuration, attrs)
     end
   end
 
-  def change_config(%Configuration{} = config \\ fetch_db_config!(), attrs \\ %{}) do
-    Configuration.Changeset.changeset(config, attrs)
-  end
-
-  def update_config(%Configuration{} = config, attrs, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.configure_permission()) do
-      update_config(config, attrs)
-    end
-  end
-
-  def update_config(%Configuration{} = config, attrs) do
-    changeset = Configuration.Changeset.changeset(config, attrs)
-
-    with {:ok, config} <- Repo.update(changeset) do
-      # Domain.Auth.SAML.StartProxy.refresh(config.saml_identity_providers)
-      {:ok, config}
-    end
-  end
-
-  def put_config!(key, value) do
-    with {:ok, config} <- update_config(fetch_db_config!(), %{key => value}) do
-      config
-    else
-      {:error, reason} -> raise "cannot update config: #{inspect(reason)}"
-    end
+  def update_config(%Configuration{} = configuration, attrs) do
+    Configuration.Changeset.changeset(configuration, attrs)
+    |> Repo.insert_or_update()
   end
 
   def config_changeset(changeset, schema_key, config_key \\ nil) do
@@ -168,10 +113,7 @@ defmodule Domain.Config do
     end
   end
 
-  def vpn_sessions_expire? do
-    freq = fetch_config!(:vpn_session_duration)
-    0 < freq && freq < Configuration.Changeset.max_vpn_session_duration()
-  end
+  ## Test helpers
 
   if Mix.env() != :test do
     defdelegate fetch_env!(app, key), to: Application

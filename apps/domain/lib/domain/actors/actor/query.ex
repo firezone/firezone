@@ -20,8 +20,8 @@ defmodule Domain.Actors.Actor.Query do
     where(queryable, [actors: actors], actors.account_id == ^account_id)
   end
 
-  def by_role(queryable \\ all(), role) do
-    where(queryable, [actors: actors], actors.role == ^role)
+  def by_type(queryable \\ all(), type) do
+    where(queryable, [actors: actors], actors.type == ^type)
   end
 
   def not_disabled(queryable \\ all()) do

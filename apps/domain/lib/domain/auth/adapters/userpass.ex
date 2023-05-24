@@ -49,7 +49,7 @@ defmodule Domain.Auth.Adapters.UserPass do
         password_hash = Ecto.Changeset.fetch_change!(nested_changeset, :password_hash)
 
         changeset
-        |> Ecto.Changeset.put_change(:provider_state, %{password_hash: password_hash})
+        |> Ecto.Changeset.put_change(:provider_state, %{"password_hash" => password_hash})
         |> Ecto.Changeset.put_change(:provider_virtual_state, %{})
     end
   end
