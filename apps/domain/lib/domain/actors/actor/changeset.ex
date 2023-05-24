@@ -10,7 +10,7 @@ defmodule Domain.Actors.Actor.Changeset do
     |> put_change(:account_id, provider.account_id)
   end
 
-  def set_actor_type(actor, type) when type in [:end_user, :account_admin_user] do
+  def set_actor_type(actor, type) when type in [:account_user, :account_admin_user] do
     actor
     |> change()
     |> put_change(:type, type)

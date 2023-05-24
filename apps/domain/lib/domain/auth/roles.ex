@@ -4,7 +4,7 @@ defmodule Domain.Auth.Roles do
   def list_roles do
     [
       build(:account_admin_user),
-      build(:end_user)
+      build(:account_user)
     ]
   end
 

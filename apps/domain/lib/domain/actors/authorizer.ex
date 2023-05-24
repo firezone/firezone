@@ -13,7 +13,7 @@ defmodule Domain.Actors.Authorizer do
     ]
   end
 
-  def list_permissions_for_role(:end_user) do
+  def list_permissions_for_role(:account_user) do
     [
       edit_own_profile_permission()
     ]

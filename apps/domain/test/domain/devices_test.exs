@@ -8,7 +8,7 @@ defmodule Domain.DevicesTest do
   setup do
     account = AccountsFixtures.create_account()
 
-    unprivileged_actor = ActorsFixtures.create_actor(type: :end_user, account: account)
+    unprivileged_actor = ActorsFixtures.create_actor(type: :account_user, account: account)
 
     unprivileged_identity =
       AuthFixtures.create_identity(account: account, actor: unprivileged_actor)
@@ -234,7 +234,7 @@ defmodule Domain.DevicesTest do
       unprivileged_subject: unprivileged_subject,
       admin_subject: admin_subject
     } do
-      actor = ActorsFixtures.create_actor(type: :end_user)
+      actor = ActorsFixtures.create_actor(type: :account_user)
       DevicesFixtures.create_device(actor: actor)
 
       assert list_devices_by_actor_id(actor.id, unprivileged_subject) == {:ok, []}

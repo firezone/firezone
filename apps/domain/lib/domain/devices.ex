@@ -168,7 +168,11 @@ defmodule Domain.Devices do
     :ok
   end
 
-  def fetch_device_config!(%Device{} = _device) do
-    Application.fetch_env!(:domain, __MODULE__)
+  def fetch_device_config!(%Device{} = device) do
+    %{
+      devices_upstream_dns: upstream_dns
+    } = Domain.Config.fetch_resolved_configs!(device.account_id, [:devices_upstream_dns])
+
+    [upstream_dns: upstream_dns]
   end
 end

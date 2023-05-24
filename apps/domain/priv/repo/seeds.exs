@@ -35,7 +35,7 @@ admin_actor_email = "firezone@localhost"
 
 {:ok, unprivileged_actor} =
   Actors.create_actor(email_provider, unprivileged_actor_email, %{
-    type: :end_user
+    type: :account_user
   })
 
 {:ok, admin_actor} =

@@ -20,5 +20,7 @@ defmodule Domain.Repo.Migrations.CleanupConfigurations do
 
       add(:account_id, references(:accounts, type: :binary_id), null: false)
     end
+
+    create(index(:configurations, [:account_id], unique: true))
   end
 end

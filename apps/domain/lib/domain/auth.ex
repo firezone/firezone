@@ -8,7 +8,7 @@ defmodule Domain.Auth do
 
   @default_session_duration_hours %{
     account_admin_user: 3,
-    end_user: 24 * 7
+    account_user: 24 * 7
   }
 
   def start_link(opts) do

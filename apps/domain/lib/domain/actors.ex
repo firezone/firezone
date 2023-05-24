@@ -1,5 +1,5 @@
 defmodule Domain.Actors do
-  alias Domain.{Repo, Auth, Validator, Telemetry}
+  alias Domain.{Repo, Auth, Validator}
   alias Domain.Actors.{Authorizer, Actor}
   require Ecto.Query
 
@@ -84,7 +84,6 @@ defmodule Domain.Actors do
     |> Repo.transaction()
     |> case do
       {:ok, %{actor: actor, identity: identity}} ->
-        Telemetry.add_actor()
         {:ok, %{actor | identities: [identity]}}
 
       {:error, _step, changeset, _effects_so_far} ->

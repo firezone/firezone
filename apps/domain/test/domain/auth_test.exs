@@ -753,7 +753,7 @@ defmodule Domain.AuthTest do
       three_hours = 3 * 60 * 60
       assert_datetime_diff(subject.expires_at, DateTime.utc_now(), three_hours)
 
-      actor = ActorsFixtures.create_actor(type: :end_user, account: account)
+      actor = ActorsFixtures.create_actor(type: :account_user, account: account)
       identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
       secret = identity.provider_virtual_state.sign_in_token
 

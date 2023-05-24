@@ -24,26 +24,26 @@ defmodule Domain.ActorsTest do
       subject: subject
     } do
       assert fetch_count_by_type(:account_admin_user, subject) == 1
-      assert fetch_count_by_type(:end_user, subject) == 0
+      assert fetch_count_by_type(:account_user, subject) == 0
 
       ActorsFixtures.create_actor(type: :account_admin_user)
       actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
       assert {:ok, _actor} = delete_actor(actor, subject)
       assert fetch_count_by_type(:account_admin_user, subject) == 1
-      assert fetch_count_by_type(:end_user, subject) == 0
+      assert fetch_count_by_type(:account_user, subject) == 0
 
       ActorsFixtures.create_actor(type: :account_admin_user, account: account)
       assert fetch_count_by_type(:account_admin_user, subject) == 2
-      assert fetch_count_by_type(:end_user, subject) == 0
+      assert fetch_count_by_type(:account_user, subject) == 0
 
-      ActorsFixtures.create_actor(type: :end_user)
-      ActorsFixtures.create_actor(type: :end_user, account: account)
+      ActorsFixtures.create_actor(type: :account_user)
+      ActorsFixtures.create_actor(type: :account_user, account: account)
       assert fetch_count_by_type(:account_admin_user, subject) == 2
-      assert fetch_count_by_type(:end_user, subject) == 1
+      assert fetch_count_by_type(:account_user, subject) == 1
 
-      for _ <- 1..5, do: ActorsFixtures.create_actor(type: :end_user, account: account)
+      for _ <- 1..5, do: ActorsFixtures.create_actor(type: :account_user, account: account)
       assert fetch_count_by_type(:account_admin_user, subject) == 2
-      assert fetch_count_by_type(:end_user, subject) == 6
+      assert fetch_count_by_type(:account_user, subject) == 6
     end
 
     test "returns error when subject can not view actors", %{subject: subject} do
@@ -169,8 +169,8 @@ defmodule Domain.ActorsTest do
     test "returns list of actors in all types" do
       account = AccountsFixtures.create_account()
       actor1 = ActorsFixtures.create_actor(account: account, type: :account_admin_user)
-      actor2 = ActorsFixtures.create_actor(account: account, type: :end_user)
-      ActorsFixtures.create_actor(type: :end_user)
+      actor2 = ActorsFixtures.create_actor(account: account, type: :account_user)
+      ActorsFixtures.create_actor(type: :account_user)
 
       identity1 = AuthFixtures.create_identity(account: account, actor: actor1)
       subject = AuthFixtures.create_subject(identity1)
@@ -243,7 +243,7 @@ defmodule Domain.ActorsTest do
     test "creates an actor in given type", %{
       provider: provider
     } do
-      for type <- [:end_user, :account_admin_user, :service_account] do
+      for type <- [:account_user, :account_admin_user, :service_account] do
         attrs = ActorsFixtures.actor_attrs(type: type)
         provider_identifier = AuthFixtures.random_provider_identifier(provider)
         assert {:ok, actor} = create_actor(provider, provider_identifier, attrs)
@@ -369,13 +369,13 @@ defmodule Domain.ActorsTest do
 
     test "allows admin to change other actors type", %{account: account, subject: subject} do
       actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-      assert {:ok, %{type: :end_user}} = change_actor_type(actor, :end_user, subject)
+      assert {:ok, %{type: :account_user}} = change_actor_type(actor, :account_user, subject)
 
       assert {:ok, %{type: :account_admin_user}} =
                change_actor_type(actor, :account_admin_user, subject)
 
-      actor = ActorsFixtures.create_actor(type: :end_user, account: account)
-      assert {:ok, %{type: :end_user}} = change_actor_type(actor, :end_user, subject)
+      actor = ActorsFixtures.create_actor(type: :account_user, account: account)
+      assert {:ok, %{type: :account_user}} = change_actor_type(actor, :account_user, subject)
 
       assert {:ok, %{type: :account_admin_user}} =
                change_actor_type(actor, :account_admin_user, subject)

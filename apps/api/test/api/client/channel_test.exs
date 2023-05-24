@@ -1,10 +1,11 @@
 defmodule API.Device.ChannelTest do
   use API.ChannelCase
   alias Domain.{AccountsFixtures, ActorsFixtures, AuthFixtures, ResourcesFixtures}
-  alias Domain.{DevicesFixtures, RelaysFixtures, GatewaysFixtures}
+  alias Domain.{ConfigFixtures, DevicesFixtures, RelaysFixtures, GatewaysFixtures}
 
   setup do
     account = AccountsFixtures.create_account()
+    ConfigFixtures.upsert_configuration(account: account, devices_upstream_dns: ["1.1.1.1"])
     actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
     identity = AuthFixtures.create_identity(actor: actor, account: account)
     subject = AuthFixtures.create_subject(identity)
@@ -82,7 +83,7 @@ defmodule API.Device.ChannelTest do
                ipv4: device.ipv4,
                ipv6: device.ipv6,
                upstream_dns: [
-                 "1.1.1.1"
+                 %Postgrex.INET{address: {1, 1, 1, 1}}
                ]
              }
     end
