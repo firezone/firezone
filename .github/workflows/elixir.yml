@@ -92,6 +92,7 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: erlef/setup-beam@v1
+        id: setup-beam
         with:
           otp-version: "25"
           elixir-version: "1.14"
@@ -121,6 +122,7 @@ jobs:
       # Don't cache PLTs based on mix.lock hash, as Dialyzer can incrementally update even old ones
       # Cache key based on Elixir & Erlang version (also useful when running in matrix)
       - name: Restore PLT cache
+        id: plt_cache
         uses: actions/cache@v3
         env:
           cache-name: cache-erlang-plt-${{ env.MIX_ENV }}
