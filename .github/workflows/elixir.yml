@@ -243,15 +243,15 @@ jobs:
       - name: Create Database
         run: |
           mix ecto.create
-      - name: Restore DB dump
-        if: "!contains(github.ref, env.MASTER_BRANCH)"
-        env:
-          PGPASSWORD: postgres
-        run: |
-          mix ecto.load
-      - name: Run new migrations
-        run: |
-          mix ecto.migrate
+      # - name: Restore DB dump
+      #   if: "!contains(github.ref, env.MASTER_BRANCH)"
+      #   env:
+      #     PGPASSWORD: postgres
+      #   run: |
+      #     mix ecto.load
+      # - name: Run new migrations
+      #   run: |
+      #     mix ecto.migrate
       - name: Dump DB
         if: "contains(github.ref, env.MASTER_BRANCH)"
         env:
