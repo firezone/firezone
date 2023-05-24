@@ -414,7 +414,7 @@ jobs:
           platforms: linux/amd64
           build-args: |
             VERSION=0.0.0-dev.${{ github.sha }}
-          file: Dockerfile.prod
+          file: elixir/Dockerfile
           context: .
           push: false
           tags: ${{ github.ref_type }}-${{ github.ref_name }}
