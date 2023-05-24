@@ -9,9 +9,17 @@ on:
     paths:
       - "elixir/**"
 
+# Cancel old workflow runs if new code is pushed
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   unit-test:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./elixir
     env:
       MIX_ENV: test
       POSTGRES_HOST: localhost
@@ -81,6 +89,9 @@ jobs:
           reporter: java-junit
   type-check:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./elixir
     env:
       MIX_ENV: dev
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -130,6 +141,9 @@ jobs:
         run: mix dialyzer --format dialyxir
   static-analysis:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./elixir
     env:
       MIX_ENV: test
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -167,6 +181,9 @@ jobs:
         run: mix credo --strict
   migrations-and-seed-test:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./elixir
     env:
       MIX_ENV: dev
       POSTGRES_HOST: localhost
@@ -262,6 +279,9 @@ jobs:
         run: mix ecto.seed
   acceptance-test:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./elixir
     env:
       MIX_ENV: test
       POSTGRES_HOST: localhost
@@ -396,6 +416,9 @@ jobs:
           reporter: java-junit
   container-build:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./elixir
     permissions:
       contents: read
     needs:
