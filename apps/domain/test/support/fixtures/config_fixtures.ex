@@ -24,4 +24,8 @@ defmodule Domain.ConfigFixtures do
 
     configuration
   end
+
+  def set_config(account, key, value) do
+    upsert_configuration([{:account, account}, {key, value}])
+  end
 end
