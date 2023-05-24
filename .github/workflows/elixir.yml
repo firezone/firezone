@@ -1,15 +1,25 @@
 name: Elixir
 on:
   pull_request:
-    branches:
-      - cloud
+    paths:
+      - "elixir/**"
   push:
     branches:
-      - cloud
+      - master
+    paths:
+      - "elixir/**"
+
+# Cancel old workflow runs if new code is pushed
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   unit-test:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./elixir
     env:
       MIX_ENV: test
       POSTGRES_HOST: localhost
@@ -28,23 +38,18 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
-      - name: Install package dependencies
-        run: |
-          sudo apt-get install -q -y \
-            net-tools \
-            wireguard
-      - uses: actions/checkout@v3
       - uses: erlef/setup-beam@v1
         with:
           otp-version: "25"
           elixir-version: "1.14"
+      - uses: actions/checkout@v3
       - uses: actions/cache@v3
         name: Elixir Deps Cache
         env:
           cache-name: cache-elixir-deps-${{ env.MIX_ENV }}
         with:
-          path: deps
-          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
+          path: elixir/deps
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
           restore-keys: |
             ${{ runner.os }}-${{ env.cache-name }}-
       - uses: actions/cache@v3
@@ -52,8 +57,8 @@ jobs:
         env:
           cache-name: cache-elixir-build-${{ env.MIX_ENV }}
         with:
-          path: _build
-          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
+          path: elixir/_build
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
       - name: Install Dependencies
         run: mix deps.get --only $MIX_ENV
       - name: Compile Dependencies
@@ -75,26 +80,30 @@ jobs:
         if: ${{ github.event.pull_request.head.repo.full_name == github.repository && (success() || failure()) }}
         with:
           name: Elixir Unit Test Report
-          path: _build/test/lib/*/test-junit-report.xml
+          path: elixir/_build/test/lib/*/test-junit-report.xml
           reporter: java-junit
   type-check:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./elixir
     env:
       MIX_ENV: dev
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v3
       - uses: erlef/setup-beam@v1
+        id: setup-beam
         with:
           otp-version: "25"
           elixir-version: "1.14"
+      - uses: actions/checkout@v3
       - uses: actions/cache@v3
         name: Elixir Deps Cache
         env:
           cache-name: cache-elixir-deps-${{ env.MIX_ENV }}
         with:
-          path: deps
-          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
+          path: elixir/deps
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
           restore-keys: |
             ${{ runner.os }}-${{ env.cache-name }}-
       - uses: actions/cache@v3
@@ -102,8 +111,8 @@ jobs:
         env:
           cache-name: cache-elixir-build-${{ env.MIX_ENV }}
         with:
-          path: _build
-          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
+          path: elixir/_build
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
       - name: Install Dependencies
         run: mix deps.get --only $MIX_ENV
       - name: Compile Dependencies
@@ -113,6 +122,7 @@ jobs:
       # Don't cache PLTs based on mix.lock hash, as Dialyzer can incrementally update even old ones
       # Cache key based on Elixir & Erlang version (also useful when running in matrix)
       - name: Restore PLT cache
+        id: plt_cache
         uses: actions/cache@v3
         env:
           cache-name: cache-erlang-plt-${{ env.MIX_ENV }}
@@ -120,7 +130,7 @@ jobs:
           key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-plt
           restore-keys: |
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-plt
-          path: priv/plts
+          path: elixir/priv/plts
       - name: Create PLTs
         if: steps.plt_cache.outputs.cache-hit != 'true'
         run: mix dialyzer --plt
@@ -128,22 +138,25 @@ jobs:
         run: mix dialyzer --format dialyxir
   static-analysis:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./elixir
     env:
       MIX_ENV: test
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v3
       - uses: erlef/setup-beam@v1
         with:
           otp-version: "25"
           elixir-version: "1.14"
+      - uses: actions/checkout@v3
       - uses: actions/cache@v3
         name: Elixir Deps Cache
         env:
           cache-name: cache-elixir-deps-${{ env.MIX_ENV }}
         with:
-          path: deps
-          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
+          path: elixir/deps
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
           restore-keys: |
             ${{ runner.os }}-${{ env.cache-name }}-
       - uses: actions/cache@v3
@@ -151,8 +164,8 @@ jobs:
         env:
           cache-name: cache-elixir-build-${{ env.MIX_ENV }}
         with:
-          path: _build
-          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
+          path: elixir/_build
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
       - name: Install Dependencies
         run: mix deps.get --only $MIX_ENV
       - name: Compile Dependencies
@@ -165,10 +178,14 @@ jobs:
         run: mix credo --strict
   migrations-and-seed-test:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./elixir
     env:
       MIX_ENV: dev
       POSTGRES_HOST: localhost
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      MASTER_BRANCH: cloud
     services:
       postgres:
         image: postgres:15
@@ -183,16 +200,13 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
+      - uses: actions/checkout@v3
       - name: Install package dependencies
         run: |
           sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
           wget -qO- https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo tee /etc/apt/trusted.gpg.d/pgdg.asc &>/dev/null
           sudo apt update
-          sudo apt-get install -q -y \
-            net-tools \
-            wireguard \
-            postgresql-client
-      - uses: actions/checkout@v3
+          sudo apt-get install -q -y postgresql-client
       - uses: erlef/setup-beam@v1
         with:
           otp-version: "25"
@@ -202,8 +216,8 @@ jobs:
         env:
           cache-name: cache-elixir-deps-${{ env.MIX_ENV }}-${{ env.MIX_ENV }}
         with:
-          path: deps
-          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
+          path: elixir/deps
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
           restore-keys: |
             ${{ runner.os }}-${{ env.cache-name }}-
       - uses: actions/cache@v3
@@ -211,37 +225,37 @@ jobs:
         env:
           cache-name: cache-elixir-build-${{ env.MIX_ENV }}
         with:
-          path: _build
-          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
+          path: elixir/_build
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
       - name: Install Dependencies
         run: mix deps.get --only $MIX_ENV
       - name: Compile
         run: mix compile
-      - name: Download master branch DB dump
-        id: download-artifact
-        uses: dawidd6/action-download-artifact@v2
-        if: "!contains(github.ref, 'master')"
-        with:
-          branch: master
-          name: db-dump
-          path: apps/domain/priv/repo/
-          search_artifacts: true
-          workflow_conclusion: completed
-          if_no_artifact_found: fail
+      # - name: Download master branch DB dump
+      #   id: download-artifact
+      #   uses: dawidd6/action-download-artifact@v2
+      #   if: !contains(github.ref, env.MASTER_BRANCH)
+      #   with:
+      #     branch: ${{ env.MASTER_BRANCH }}
+      #     name: db-dump
+      #     path: elixir/apps/domain/priv/repo/
+      #     search_artifacts: true
+      #     workflow_conclusion: completed
+      #     if_no_artifact_found: fail
       - name: Create Database
         run: |
           mix ecto.create
-      - name: Restore DB dump
-        if: "!contains(github.ref, 'master')"
-        env:
-          PGPASSWORD: postgres
-        run: |
-          mix ecto.load
-      - name: Run new migrations
-        run: |
-          mix ecto.migrate
+      # - name: Restore DB dump
+      #   if: !contains(github.ref, env.MASTER_BRANCH)
+      #   env:
+      #     PGPASSWORD: postgres
+      #   run: |
+      #     mix ecto.load
+      # - name: Run new migrations
+      #   run: |
+      #     mix ecto.migrate
       - name: Dump DB
-        if: "contains(github.ref, 'master')"
+        if: contains(github.ref, env.MASTER_BRANCH)
         env:
           PGPASSWORD: postgres
         run: |
@@ -251,15 +265,18 @@ jobs:
             --no-acl \
             --no-owner
       - name: Upload master branch DB dump
-        if: "contains(github.ref, 'master')"
+        if: contains(github.ref, env.MASTER_BRANCH)
         uses: actions/upload-artifact@v3
         with:
           name: db-dump
-          path: apps/domain/priv/repo/structure.sql
+          path: elixir/apps/domain/priv/repo/structure.sql
       - name: Run Seed
         run: mix ecto.seed
   acceptance-test:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./elixir
     env:
       MIX_ENV: test
       POSTGRES_HOST: localhost
@@ -290,40 +307,20 @@ jobs:
         ports:
           - 8200:8200/tcp
         options: --cap-add=IPC_LOCK
-      saml-idp:
-        image: vihangk1/docker-test-saml-idp:latest
-        env:
-          SIMPLESAMLPHP_SP_ENTITY_ID: "urn:firezone.dev:firezone-app"
-          SIMPLESAMLPHP_SP_ASSERTION_CONSUMER_SERVICE: "http://localhost:13000/auth/saml/sp/consume/mysamlidp"
-          SIMPLESAMLPHP_SP_SINGLE_LOGOUT_SERVICE: "http://localhost:13000/auth/saml/sp/logout/mysamlidp"
-          SIMPLESAMLPHP_SP_NAME_ID_FORMAT: "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"
-          SIMPLESAMLPHP_SP_NAME_ID_ATTRIBUTE: "email"
-          SIMPLESAMLPHP_IDP_AUTH: "example-userpass"
-        ports:
-          - 8400:8080/tcp
-          - 8443:8443/tcp
     steps:
       - uses: nanasess/setup-chromedriver@v1
-      - run: |
-          export DISPLAY=:99
-          sudo Xvfb -ac :99 -screen 0 1280x1024x24 > /dev/null 2>&1 &
-      - name: Install package dependencies
-        run: |
-          sudo apt-get install -q -y \
-            net-tools \
-            wireguard
-      - uses: actions/checkout@v3
       - uses: erlef/setup-beam@v1
         with:
           otp-version: "25"
           elixir-version: "1.14"
+      - uses: actions/checkout@v3
       - uses: actions/cache@v3
         name: Elixir Deps Cache
         env:
           cache-name: cache-elixir-deps-${{ env.MIX_ENV }}-${{ env.MIX_ENV }}
         with:
-          path: deps
-          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
+          path: elixir/deps
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
           restore-keys: |
             ${{ runner.os }}-${{ env.cache-name }}-
       - uses: actions/cache@v3
@@ -331,22 +328,25 @@ jobs:
         env:
           cache-name: cache-elixir-build-${{ env.MIX_ENV }}
         with:
-          path: _build
-          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
+          path: elixir/_build
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
       - uses: actions/cache@v3
         name: Yarn Deps Cache
         env:
           cache-name: cache-yarn-build-${{ env.MIX_ENV }}
         with:
-          path: apps/web/assets/node_modules
+          path: elixir/apps/web/assets/node_modules
           key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/yarn.lock') }}
       - uses: actions/cache@v3
         name: Assets Cache
         env:
           cache-name: cache-assets-build-${{ env.MIX_ENV }}
         with:
-          path: apps/web/priv/static/dist
+          path: elixir/apps/web/priv/static/dist
           key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/yarn.lock') }}
+      - run: |
+          export DISPLAY=:99
+          sudo Xvfb -ac :99 -screen 0 1280x1024x24 > /dev/null 2>&1 &
       - name: Install Dependencies
         run: mix deps.get --only $MIX_ENV
       - name: Compile Dependencies
@@ -384,16 +384,19 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: screenshots
-          path: apps/web/screenshots
+          path: elixir/apps/web/screenshots
       - name: Test Report
         uses: dorny/test-reporter@v1
         if: ${{ github.event.pull_request.head.repo.full_name == github.repository && (success() || failure()) }}
         with:
           name: Elixir Acceptance Test Report
-          path: _build/test/lib/*/test-junit-report.xml
+          path: elixir/_build/test/lib/*/test-junit-report.xml
           reporter: java-junit
   container-build:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./elixir
     permissions:
       contents: read
     needs:
@@ -403,19 +406,19 @@ jobs:
       REGISTRY: ghcr.io
       IMAGE_NAME: ${{ github.repository }}
     steps:
-      - uses: actions/checkout@v3
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
+      - uses: actions/checkout@v3
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
         with:
           platforms: linux/amd64
           build-args: |
             VERSION=0.0.0-dev.${{ github.sha }}
-          file: Dockerfile.prod
-          context: .
+          context: elixir/
+          file: elixir/Dockerfile
           push: false
           tags: ${{ github.ref_type }}-${{ github.ref_name }}
       # TODO: add a sanity check to make sure the image is actually built
