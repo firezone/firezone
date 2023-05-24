@@ -183,6 +183,7 @@ jobs:
       MIX_ENV: dev
       POSTGRES_HOST: localhost
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      MASTER_BRANCH: cloud
     services:
       postgres:
         image: postgres:15
@@ -231,9 +232,9 @@ jobs:
       - name: Download master branch DB dump
         id: download-artifact
         uses: dawidd6/action-download-artifact@v2
-        if: "!contains(github.ref, 'master')"
+        if: "!contains(github.ref, env.MASTER_BRANCH)"
         with:
-          branch: master
+          branch: ${{ env.MASTER_BRANCH }}
           name: db-dump
           path: elixir/apps/domain/priv/repo/
           search_artifacts: true
@@ -243,7 +244,7 @@ jobs:
         run: |
           mix ecto.create
       - name: Restore DB dump
-        if: "!contains(github.ref, 'master')"
+        if: "!contains(github.ref, env.MASTER_BRANCH)"
         env:
           PGPASSWORD: postgres
         run: |
@@ -252,7 +253,7 @@ jobs:
         run: |
           mix ecto.migrate
       - name: Dump DB
-        if: "contains(github.ref, 'master')"
+        if: "contains(github.ref, env.MASTER_BRANCH)"
         env:
           PGPASSWORD: postgres
         run: |
@@ -262,7 +263,7 @@ jobs:
             --no-acl \
             --no-owner
       - name: Upload master branch DB dump
-        if: "contains(github.ref, 'master')"
+        if: "contains(github.ref, env.MASTER_BRANCH)"
         uses: actions/upload-artifact@v3
         with:
           name: db-dump
@@ -414,8 +415,8 @@ jobs:
           platforms: linux/amd64
           build-args: |
             VERSION=0.0.0-dev.${{ github.sha }}
+          context: elixir/
           file: elixir/Dockerfile
-          context: .
           push: false
           tags: ${{ github.ref_type }}-${{ github.ref_name }}
       # TODO: add a sanity check to make sure the image is actually built
