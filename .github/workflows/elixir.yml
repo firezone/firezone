@@ -1,11 +1,13 @@
 name: Elixir
 on:
   pull_request:
-    branches:
-      - cloud
+    paths:
+      - "elixir/**"
   push:
     branches:
-      - cloud
+      - master
+    paths:
+      - "elixir/**"
 
 jobs:
   unit-test:
