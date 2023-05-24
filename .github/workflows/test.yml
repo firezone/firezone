@@ -360,7 +360,7 @@ jobs:
       - name: Build Assets
         run: |
           cd apps/web
-          mix do assets.setup, assets.build
+          mix assets.build
       - name: Setup Database
         run: |
           mix ecto.create
