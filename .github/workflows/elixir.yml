@@ -235,7 +235,7 @@ jobs:
         with:
           branch: master
           name: db-dump
-          path: apps/domain/priv/repo/
+          path: elixir/apps/domain/priv/repo/
           search_artifacts: true
           workflow_conclusion: completed
           if_no_artifact_found: fail
@@ -266,7 +266,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: db-dump
-          path: apps/domain/priv/repo/structure.sql
+          path: elixir/apps/domain/priv/repo/structure.sql
       - name: Run Seed
         run: mix ecto.seed
   acceptance-test:
@@ -332,14 +332,14 @@ jobs:
         env:
           cache-name: cache-yarn-build-${{ env.MIX_ENV }}
         with:
-          path: apps/web/assets/node_modules
+          path: elixir/apps/web/assets/node_modules
           key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/yarn.lock') }}
       - uses: actions/cache@v3
         name: Assets Cache
         env:
           cache-name: cache-assets-build-${{ env.MIX_ENV }}
         with:
-          path: apps/web/priv/static/dist
+          path: elixir/apps/web/priv/static/dist
           key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/yarn.lock') }}
       - run: |
           export DISPLAY=:99
@@ -381,7 +381,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: screenshots
-          path: apps/web/screenshots
+          path: elixir/apps/web/screenshots
       - name: Test Report
         uses: dorny/test-reporter@v1
         if: ${{ github.event.pull_request.head.repo.full_name == github.repository && (success() || failure()) }}
