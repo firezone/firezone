@@ -1,4 +1,5 @@
 import RootLayout from '@/components/RootLayout'
+import DocsSidebar from '@/components/DocsSidebar'
 
 export default function Layout({
   children
@@ -7,6 +8,7 @@ export default function Layout({
 }) {
   return (
     <RootLayout>
+      <DocsSidebar />
       {children}
     </RootLayout>
   )
