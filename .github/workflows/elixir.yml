@@ -420,6 +420,12 @@ jobs:
         with:
           workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions/providers/github-actions"
           service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
+      - name: Login to Google Artifact Registry
+        uses: docker/login-action@v2
+        with:
+          registry: us-east1-docker.pkg.dev
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
       - name: Build Tag and Version ID
         id: vsn
         env:
@@ -436,6 +442,6 @@ jobs:
           context: elixir/
           file: elixir/Dockerfile
           push: true
-          tags: "ghcr.io/firezone:${{ env.TAG }}"
+          tags: "us-east1-docker.pkg.dev/firezone:${{ env.TAG }}"
       # TODO: add a sanity check to make sure the image is actually built
       # and can be started
