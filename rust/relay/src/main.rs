@@ -11,7 +11,7 @@ use std::net::{Ipv4Addr, SocketAddr};
 use std::pin::Pin;
 use std::str::FromStr;
 use std::task::Poll;
-use std::time::Instant;
+use std::time::SystemTime;
 use tokio::task;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
@@ -210,7 +210,7 @@ where
 
             // Priority 4: Handle time-sensitive tasks:
             if self.sleep.poll_unpin(cx).is_ready() {
-                self.server.handle_deadline_reached(Instant::now());
+                self.server.handle_deadline_reached(SystemTime::now());
                 continue; // Handle potentially new commands.
             }
 
@@ -225,7 +225,7 @@ where
             // Priority 6: Accept new allocations / answer STUN requests etc
             if let Poll::Ready((buffer, sender)) = self.ip4_socket.poll_recv(cx)? {
                 self.server
-                    .handle_client_input(buffer.filled(), sender, Instant::now());
+                    .handle_client_input(buffer.filled(), sender, SystemTime::now());
                 continue; // Handle potentially new commands.
             }
 

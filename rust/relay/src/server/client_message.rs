@@ -101,7 +101,7 @@ pub struct Allocate {
     message_integrity: MessageIntegrity,
     requested_transport: RequestedTransport,
     lifetime: Option<Lifetime>,
-    pub username: Username,
+    username: Username,
 }
 
 impl Allocate {
@@ -161,6 +161,10 @@ impl Allocate {
     pub fn effective_lifetime(&self) -> Lifetime {
         compute_effective_lifetime(self.lifetime.as_ref())
     }
+
+    pub fn username(&self) -> &Username {
+        &self.username
+    }
 }
 
 pub struct Refresh {
@@ -215,6 +219,10 @@ impl Refresh {
 
     pub fn effective_lifetime(&self) -> Lifetime {
         compute_effective_lifetime(self.lifetime.as_ref())
+    }
+
+    pub fn username(&self) -> &Username {
+        &self.username
     }
 }
 

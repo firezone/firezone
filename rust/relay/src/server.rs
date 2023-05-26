@@ -16,7 +16,7 @@ use rand::Rng;
 use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
-use std::time::{Duration, Instant};
+use std::time::{Duration, SystemTime};
 use stun_codec::rfc5389::attributes::{
     ErrorCode, MessageIntegrity, Nonce, Realm, Username, XorMappedAddress,
 };
@@ -83,7 +83,7 @@ pub enum Command {
         receiver: SocketAddr,
     },
     /// At the latest, the [`Server`] needs to be woken at the specified deadline to execute time-based actions correctly.
-    Wake { deadline: Instant },
+    Wake { deadline: SystemTime },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -150,7 +150,7 @@ where
     /// Process the bytes received from a client.
     ///
     /// After calling this method, you should call [`Server::next_command`] until it returns `None`.
-    pub fn handle_client_input(&mut self, bytes: &[u8], sender: SocketAddr, now: Instant) {
+    pub fn handle_client_input(&mut self, bytes: &[u8], sender: SocketAddr, now: SystemTime) {
         if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
             let hex_bytes = hex::encode(bytes);
             tracing::trace!(target: "wire", r#"Input::client("{sender}","{hex_bytes}")"#);
@@ -265,7 +265,7 @@ where
         })
     }
 
-    pub fn handle_deadline_reached(&mut self, now: Instant) {
+    pub fn handle_deadline_reached(&mut self, now: SystemTime) {
         for action in self.time_events.pending_actions(now) {
             match action {
                 TimedAction::ExpireAllocation(id) => {
@@ -327,7 +327,7 @@ where
         &mut self,
         request: Allocate,
         sender: SocketAddr,
-        now: Instant,
+        now: SystemTime,
     ) -> Result<(), Message<Attribute>> {
         // TODO: Check validity of message integrity here?
 
@@ -394,7 +394,7 @@ where
         &mut self,
         request: Refresh,
         sender: SocketAddr,
-        now: Instant,
+        now: SystemTime,
     ) -> Result<(), Message<Attribute>> {
         // TODO: Check validity of message integrity here?
 
@@ -457,7 +457,7 @@ where
         &mut self,
         request: ChannelBind,
         sender: SocketAddr,
-        now: Instant,
+        now: SystemTime,
     ) -> Result<(), Message<Attribute>> {
         // TODO: Check validity of message integrity here?
 
@@ -534,7 +534,7 @@ where
         &mut self,
         message: CreatePermission,
         sender: SocketAddr,
-        _: Instant,
+        _: SystemTime,
     ) -> Result<(), Message<Attribute>> {
         // TODO: Check validity of message integrity here?
 
@@ -550,7 +550,7 @@ where
         &mut self,
         message: ChannelData,
         sender: SocketAddr,
-        _: Instant,
+        _: SystemTime,
     ) {
         let channel_number = message.channel();
         let data = message.data();
@@ -584,7 +584,7 @@ where
         });
     }
 
-    fn create_new_allocation(&mut self, now: Instant, lifetime: &Lifetime) -> Allocation {
+    fn create_new_allocation(&mut self, now: SystemTime, lifetime: &Lifetime) -> Allocation {
         // First, find an unused port.
 
         assert!(
@@ -617,7 +617,7 @@ where
         requested_channel: u16,
         peer_address: SocketAddr,
         id: AllocationId,
-        now: Instant,
+        now: SystemTime,
     ) {
         self.channels_by_number.insert(
             requested_channel,
@@ -719,12 +719,12 @@ struct Allocation {
     id: AllocationId,
     /// Data arriving on this port will be forwarded to the client iff there is an active data channel.
     port: u16,
-    expires_at: Instant,
+    expires_at: SystemTime,
 }
 
 struct Channel {
     /// When the channel expires.
-    expiry: Instant,
+    expiry: SystemTime,
 
     /// The address of the peer that the channel is bound to.
     peer_address: SocketAddr,
@@ -745,11 +745,11 @@ struct Channel {
 }
 
 impl Channel {
-    fn refresh(&mut self, now: Instant) {
+    fn refresh(&mut self, now: SystemTime) {
         self.expiry = now + CHANNEL_BINDING_DURATION;
     }
 
-    fn is_expired(&self, now: Instant) -> bool {
+    fn is_expired(&self, now: SystemTime) -> bool {
         self.expiry <= now
     }
 }
@@ -762,7 +762,7 @@ impl Allocation {
 }
 
 impl Allocation {
-    fn is_expired(&self, now: Instant) -> bool {
+    fn is_expired(&self, now: SystemTime) -> bool {
         self.expires_at <= now
     }
 }

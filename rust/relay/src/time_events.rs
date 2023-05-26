@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 use std::fmt::Debug;
 use std::mem;
-use std::time::Instant;
+use std::time::SystemTime;
 
 /// A collection of events that are triggered at a specific time.
 ///
@@ -15,7 +15,7 @@ impl<A> TimeEvents<A> {
     /// Add an action to be executed at the specified time.
     ///
     /// Returns the new wake deadline for convenience.
-    pub fn add(&mut self, trigger: Instant, action: A) -> Instant {
+    pub fn add(&mut self, trigger: SystemTime, action: A) -> SystemTime {
         self.events.push(TimeEvent {
             time: trigger,
             action,
@@ -26,7 +26,7 @@ impl<A> TimeEvents<A> {
     }
 
     /// Remove and return all actions that are pending, given that time has advanced to `now`.
-    pub fn pending_actions(&mut self, now: Instant) -> impl Iterator<Item = A> {
+    pub fn pending_actions(&mut self, now: SystemTime) -> impl Iterator<Item = A> {
         let split_index = self
             .events
             .binary_search_by_key(&now, |event| event.time)
@@ -39,7 +39,7 @@ impl<A> TimeEvents<A> {
     }
 
     /// The time at which the next action will be ready.
-    pub fn next_trigger(&self) -> Option<Instant> {
+    pub fn next_trigger(&self) -> Option<SystemTime> {
         let first = self.events.first()?;
 
         Some(first.time)
@@ -54,7 +54,7 @@ impl<A> Default for TimeEvents<A> {
 
 #[derive(Debug)]
 struct TimeEvent<A> {
-    time: Instant,
+    time: SystemTime,
     action: A,
 }
 
@@ -86,7 +86,7 @@ mod tests {
     #[test]
     fn next_trigger_is_always_earliest_action() {
         let mut events = TimeEvents::default();
-        let now = Instant::now();
+        let now = SystemTime::now();
 
         events.add(now + Duration::from_secs(3), "three");
         events.add(now + Duration::from_secs(1), "one");
@@ -98,7 +98,7 @@ mod tests {
     #[test]
     fn pending_actions_returns_actions_that_are_ready() {
         let mut events = TimeEvents::default();
-        let now = Instant::now();
+        let now = SystemTime::now();
 
         events.add(now + Duration::from_secs(3), "three");
         events.add(now + Duration::from_secs(1), "one");
