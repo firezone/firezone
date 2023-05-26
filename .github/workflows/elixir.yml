@@ -432,7 +432,7 @@ jobs:
         with:
           platforms: linux/amd64
           build-args: |
-            VERSION=0.0.0-branch.${{ env.TAG }}
+            VERSION=0.0.0-sha.${{ github.sha }}
           context: elixir/
           file: elixir/Dockerfile
           push: true
