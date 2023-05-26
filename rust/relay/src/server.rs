@@ -1,6 +1,7 @@
 mod channel_data;
 mod client_message;
 
+use crate::auth::MessageIntegrityExt;
 use crate::rfc8656::PeerAddressFamilyMismatch;
 use crate::server::channel_data::ChannelData;
 use crate::server::client_message::{
@@ -329,7 +330,7 @@ where
         sender: SocketAddr,
         now: SystemTime,
     ) -> Result<(), Message<Attribute>> {
-        // TODO: Check validity of message integrity here?
+        self.verify_auth(&request, now)?;
 
         if self.allocations.contains_key(&sender) {
             return Err(error_response(AllocationMismatch, &request));
@@ -396,7 +397,7 @@ where
         sender: SocketAddr,
         now: SystemTime,
     ) -> Result<(), Message<Attribute>> {
-        // TODO: Check validity of message integrity here?
+        self.verify_auth(&request, now)?;
 
         // TODO: Verify that this is the correct error code.
         let allocation = self
@@ -459,7 +460,7 @@ where
         sender: SocketAddr,
         now: SystemTime,
     ) -> Result<(), Message<Attribute>> {
-        // TODO: Check validity of message integrity here?
+        self.verify_auth(&request, now)?;
 
         let allocation = self
             .allocations
@@ -534,9 +535,9 @@ where
         &mut self,
         message: CreatePermission,
         sender: SocketAddr,
-        _: SystemTime,
+        now: SystemTime,
     ) -> Result<(), Message<Attribute>> {
-        // TODO: Check validity of message integrity here?
+        self.verify_auth(&message, now)?;
 
         self.send_message(
             create_permission_success_response(message.transaction_id()),
@@ -582,6 +583,21 @@ where
             data: data.to_vec(),
             receiver: recipient,
         });
+    }
+
+    fn verify_auth(
+        &mut self,
+        request: &(impl StunRequest + ProtectedRequest),
+        now: SystemTime,
+    ) -> Result<(), Message<Attribute>> {
+        request
+            .message_integrity()
+            .verify(&self.auth_secret, request.username().name(), now)
+            .map_err(|_| error_response(Unauthorized, request))?;
+
+        // TODO: Check if nonce is valid.
+
+        Ok(())
     }
 
     fn create_new_allocation(&mut self, now: SystemTime, lifetime: &Lifetime) -> Allocation {
@@ -811,6 +827,31 @@ impl_stun_request_for!(Allocate, ALLOCATE);
 impl_stun_request_for!(ChannelBind, CHANNEL_BIND);
 impl_stun_request_for!(CreatePermission, CREATE_PERMISSION);
 impl_stun_request_for!(Refresh, REFRESH);
+
+/// Private helper trait to make [`Server::verify_auth`] more ergonomic to use.
+trait ProtectedRequest {
+    fn message_integrity(&self) -> &MessageIntegrity;
+    fn username(&self) -> &Username;
+}
+
+macro_rules! impl_protected_request_for {
+    ($t:ty) => {
+        impl ProtectedRequest for $t {
+            fn message_integrity(&self) -> &MessageIntegrity {
+                self.message_integrity()
+            }
+
+            fn username(&self) -> &Username {
+                self.username()
+            }
+        }
+    };
+}
+
+impl_protected_request_for!(Allocate);
+impl_protected_request_for!(ChannelBind);
+impl_protected_request_for!(CreatePermission);
+impl_protected_request_for!(Refresh);
 
 // Define an enum of all attributes that we care about for our server.
 stun_codec::define_attribute_enums!(
