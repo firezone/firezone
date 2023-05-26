@@ -1,16 +1,22 @@
-import Markdown from '@/components/Markdown'
-
 export default function SupportOptions() {
   return (
     <div>
-      <Markdown>
-        ## Need additional help?
-        Try asking on one of our community-powered support channels:
-        - [Discussion Forums](https://discourse.firez.one/?utm_source=docs.firezone.dev): Ask questions, report bugs,
-          and suggest features.
-        - [Public Slack Group](https://join.slack.com/t/firezone-users/shared_invite/zt-111043zus-j1lP_jP5ohv52FhAayzT6w):
-          join discussions, meet other users, and meet the contributors
-      </Markdown>
+      <h2 id="need-additional-help">Need additional help?</h2>
+      <p>Try asking on one of our community-powered support channels:</p>
+      <ul>
+        <li>
+          <a href="https://discourse.firez.one/?utm_source=docs.firezone.dev">
+            Discussion Forums
+          </a>
+          : Ask questions, report bugs, and suggest features.
+        </li>
+        <li>
+          <a href="https://join.slack.com/t/firezone-users/shared_invite/zt-111043zus-j1lP_jP5ohv52FhAayzT6w">
+            Public Slack Group
+          </a>
+          : join discussions, meet other users, and meet the contributors
+        </li>
+      </ul>
     </div>
-  )
+  );
 }

@@ -1,11 +1,10 @@
-'use client'
-import React from 'react';
+"use client";
+import React from "react";
 
 const meta = {
-  title: 'Firezone • Open Source Remote Access',
-  description: 'Firezone • Newsletter Signup',
-}
-
+  title: "Firezone • Open Source Remote Access",
+  description: "Firezone • Newsletter Signup",
+};
 
 class HubspotForm extends React.Component<{
   portalId: string;

@@ -1,13 +1,10 @@
-'use client'
-import Image from 'next/image'
-import { Navbar } from 'flowbite-react'
+"use client";
+import Image from "next/image";
+import { Navbar } from "flowbite-react";
 
 export default function RootNavbar() {
   return (
-    <Navbar
-      fluid={true}
-      rounded={true}
-    >
+    <Navbar fluid={true} rounded={true}>
       <Navbar.Brand href="/">
         <Image
           width={300}
@@ -22,5 +19,5 @@ export default function RootNavbar() {
         <Navbar.Link href="/contact/sales">Contact</Navbar.Link>
       </Navbar.Collapse>
     </Navbar>
-  )
+  );
 }

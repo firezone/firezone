@@ -1,15 +1,10 @@
-import RootLayout from '@/components/RootLayout'
-import DocsSidebar from '@/components/DocsSidebar'
+import DocsSidebar from "@/components/DocsSidebar";
 
-export default function Layout({
-  children
-}: {
-  children: React.ReactNode
-}) {
+export default function Layout({ children }: { children: React.ReactNode }) {
   return (
-    <RootLayout>
+    <div>
       <DocsSidebar />
-      {children}
-    </RootLayout>
-  )
+      <main className="p-4 md:ml-64 h-auto pt-20">{children}</main>
+    </div>
+  );
 }

@@ -1,17 +1,17 @@
-import { Metadata } from 'next';
-import '@/app/globals.css'
-import RootNavbar from '@/components/RootNavbar'
-import { Source_Sans_Pro } from 'next/font/google'
+import { Metadata } from "next";
+import "@/app/globals.css";
+import RootNavbar from "@/components/RootNavbar";
+import { Source_Sans_Pro } from "next/font/google";
 
 const source_sans_pro = Source_Sans_Pro({
-  subsets: ['latin'],
-  weight: ['200', '300', '400', '600', '700', '900'],
-})
+  subsets: ["latin"],
+  weight: ["200", "300", "400", "600", "700", "900"],
+});
 
 export default function RootLayout({
   children,
 }: {
-  children: React.ReactNode
+  children: React.ReactNode;
 }) {
   return (
     <html lang="en">
@@ -20,5 +20,5 @@ export default function RootLayout({
         {children}
       </body>
     </html>
-  )
+  );
 }
