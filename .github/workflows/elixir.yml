@@ -418,6 +418,7 @@ jobs:
       - id: auth
         uses: google-github-actions/auth@v0.4.0
         with:
+          token_format: "access_token"
           workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions/providers/github-actions"
           service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
       - name: Login to Google Artifact Registry
