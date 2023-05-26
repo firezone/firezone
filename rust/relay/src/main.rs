@@ -1,6 +1,8 @@
 use anyhow::{Context, Result};
 use futures::channel::mpsc;
 use futures::{FutureExt, SinkExt, StreamExt};
+use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
 use relay::{AllocationId, Command, Server, Sleep, UdpSocket};
 use std::collections::{HashMap, VecDeque};
 use std::convert::Infallible;
@@ -27,7 +29,11 @@ async fn main() -> Result<()> {
     let public_ip4_addr = parse_env_var::<Ipv4Addr>("RELAY_PUBLIC_IP4_ADDR")?;
     let listen_ip4_addr = parse_env_var::<Ipv4Addr>("RELAY_LISTEN_IP4_ADDR")?;
 
-    let mut eventloop = Eventloop::new(public_ip4_addr, listen_ip4_addr).await?;
+    let mut server = Server::new(public_ip4_addr, make_rng());
+
+    tracing::info!("Relay auth secret: {}", hex::encode(server.auth_secret()));
+
+    let mut eventloop = Eventloop::new(server, listen_ip4_addr).await?;
 
     tracing::info!("Listening for incoming traffic on UDP port 3478");
 
@@ -38,10 +44,36 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-struct Eventloop {
+#[cfg(debug_assertions)]
+fn make_rng() -> StdRng {
+    let Ok(seed) = std::env::var("RELAY_RNG_SEED") else {
+        return StdRng::from_entropy();
+    };
+
+    let Ok(seed) = seed.parse::<u64>() else {
+        tracing::warn!("`RELAY_RNG_SEED` provided by failed to parse as u64, falling back to system entropy");
+
+        return StdRng::from_entropy();
+    };
+
+    tracing::info!("Seeding RNG from '{seed}'");
+
+    StdRng::seed_from_u64(seed)
+}
+
+#[cfg(not(debug_assertions))]
+fn make_rng() -> StdRng {
+    if std::env::var("RELAY_RNG_SEED").is_ok() {
+        tracing::debug!("Ignoring `RELAY_RNG_SEED` because we are running in release mode");
+    }
+
+    StdRng::from_entropy()
+}
+
+struct Eventloop<R> {
     ip4_socket: UdpSocket,
     listen_ip4_address: Ipv4Addr,
-    server: Server,
+    server: Server<R>,
     allocations: HashMap<AllocationId, Allocation>,
     relay_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr, AllocationId)>,
     relay_data_receiver: mpsc::Receiver<(Vec<u8>, SocketAddr, AllocationId)>,
@@ -59,14 +91,17 @@ struct Allocation {
     sender: mpsc::Sender<(Vec<u8>, SocketAddr)>,
 }
 
-impl Eventloop {
-    async fn new(public_ip4_address: Ipv4Addr, listen_ip4_address: Ipv4Addr) -> Result<Self> {
+impl<R> Eventloop<R>
+where
+    R: Rng,
+{
+    async fn new(server: Server<R>, listen_ip4_address: Ipv4Addr) -> Result<Self> {
         let (sender, receiver) = mpsc::channel(1);
 
         Ok(Self {
             ip4_socket: UdpSocket::bind((listen_ip4_address, 3478)).await?,
             listen_ip4_address,
-            server: Server::new(public_ip4_address),
+            server,
             allocations: Default::default(),
             relay_data_sender: sender,
             relay_data_receiver: receiver,

@@ -12,7 +12,6 @@ use anyhow::Result;
 use bytecodec::EncodeExt;
 use core::fmt;
 use rand::rngs::mock::StepRng;
-use rand::rngs::ThreadRng;
 use rand::Rng;
 use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
@@ -37,7 +36,7 @@ use stun_codec::{Message, MessageClass, MessageEncoder, Method, TransactionId};
 /// we can index data simply by the sender's [`SocketAddr`].
 ///
 /// Additionally, we assume to have complete ownership over the port range `LOWEST_PORT` - `HIGHEST_PORT`.
-pub struct Server<R = ThreadRng> {
+pub struct Server<R> {
     decoder: client_message::Decoder,
     encoder: MessageEncoder<Attribute>,
 
@@ -56,6 +55,8 @@ pub struct Server<R = ThreadRng> {
     next_allocation_id: AllocationId,
 
     rng: R,
+
+    auth_secret: [u8; 32],
 
     time_events: TimeEvents<TimedAction>,
 }
@@ -118,8 +119,11 @@ const MAX_AVAILABLE_PORTS: u16 = HIGHEST_PORT - LOWEST_PORT;
 /// See <https://www.rfc-editor.org/rfc/rfc8656#name-channels-2>.
 const CHANNEL_BINDING_DURATION: Duration = Duration::from_secs(600);
 
-impl Server {
-    pub fn new(public_ip4_address: Ipv4Addr) -> Self {
+impl<R> Server<R>
+where
+    R: Rng,
+{
+    pub fn new(public_ip4_address: Ipv4Addr, mut rng: R) -> Self {
         // TODO: Validate that local IP isn't multicast / loopback etc.
 
         Self {
@@ -133,16 +137,16 @@ impl Server {
             channel_numbers_by_peer: Default::default(),
             pending_commands: Default::default(),
             next_allocation_id: AllocationId(1),
-            rng: rand::thread_rng(),
+            auth_secret: rng.gen(),
+            rng,
             time_events: TimeEvents::default(),
         }
     }
-}
 
-impl<R> Server<R>
-where
-    R: Rng,
-{
+    pub fn auth_secret(&mut self) -> [u8; 32] {
+        self.auth_secret
+    }
+
     /// Process the bytes received from a client.
     ///
     /// After calling this method, you should call [`Server::next_command`] until it returns `None`.
@@ -703,20 +707,10 @@ fn create_permission_success_response(transaction_id: TransactionId) -> Message<
 impl Server<StepRng> {
     #[allow(dead_code)]
     pub fn test() -> Self {
-        Self {
-            decoder: Default::default(),
-            encoder: Default::default(),
-            public_ip4_address: Ipv4Addr::new(35, 124, 91, 37),
-            allocations: HashMap::new(),
-            clients_by_allocation: Default::default(),
-            allocations_by_port: Default::default(),
-            channels_by_number: Default::default(),
-            next_allocation_id: AllocationId::default(),
-            pending_commands: VecDeque::new(),
-            rng: StepRng::new(0, 0),
-            time_events: TimeEvents::default(),
-            channel_numbers_by_peer: Default::default(),
-        }
+        let rng = StepRng::new(0, 0);
+        let public_ip4_address = Ipv4Addr::new(35, 124, 91, 37);
+
+        Self::new(public_ip4_address, rng)
     }
 }
 
