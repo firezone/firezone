@@ -3,13 +3,13 @@ on:
   pull_request:
     paths:
       - "elixir/**"
-      - ".github/elixir.yml"
+      - ".github/workflows/elixir.yml"
   push:
     branches:
       - master
     paths:
       - "elixir/**"
-      - ".github/elixir.yml"
+      - ".github/workflows/elixir.yml"
 
 # Cancel old workflow runs if new code is pushed
 concurrency:
