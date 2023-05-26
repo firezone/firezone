@@ -1,8 +1,6 @@
 name: Publish to Cloudsmith
 
-on:
-  release:
-    types: [published]
+on: # Omnibus builds are disabled
 
 jobs:
   publish:

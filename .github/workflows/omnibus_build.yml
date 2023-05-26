@@ -3,11 +3,7 @@
 concurrency: build
 
 name: Omnibus Build
-on:
-  push:
-    branches:
-      - master
-      - "build/**"
+on: # Omnibus builds are disabled
 
 jobs:
   draft-release:
