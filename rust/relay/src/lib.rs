@@ -1,3 +1,4 @@
+mod auth;
 mod rfc8656;
 mod server;
 mod sleep;
