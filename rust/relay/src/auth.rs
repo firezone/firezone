@@ -16,12 +16,32 @@ pub trait MessageIntegrityExt {
 
 impl MessageIntegrityExt for MessageIntegrity {
     fn verify(&self, relay_secret: &[u8], username: &str, now: SystemTime) -> Result<(), Error> {
-        // 1. Extract username and split into expiry and username.
-        // 2. Verify username not expired
-        // 3. Compute password based on relay secret
-        // 4. Verify message integrity
+        let [expiry_unix_timestamp, salt]: [&str; 2] = username
+            .split(":")
+            .collect::<Vec<&str>>()
+            .try_into()
+            .map_err(|_| Error::InvalidUsername)?;
 
-        todo!()
+        let expiry_unix_timestamp = expiry_unix_timestamp
+            .parse::<u64>()
+            .map_err(|_| Error::InvalidUsername)?;
+        let expired = systemtime_from_unix(expiry_unix_timestamp);
+
+        if expired < now {
+            return Err(Error::Expired);
+        }
+
+        let password = generate_password(relay_secret, expired, salt);
+
+        self.check_long_term_credential(
+            &Username::new(format!("{}:{}", expiry_unix_timestamp, salt))
+                .map_err(|_| Error::InvalidUsername)?,
+            &REALM,
+            &password,
+        )
+        .map_err(|_| Error::InvalidPassword)?;
+
+        Ok(())
     }
 }
 
