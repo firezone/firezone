@@ -7,6 +7,7 @@ on:
   push:
     branches:
       - master
+      - cloud
     paths:
       - "elixir/**"
       - ".github/workflows/elixir.yml"
