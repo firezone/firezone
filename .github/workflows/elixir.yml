@@ -416,7 +416,7 @@ jobs:
         uses: docker/setup-buildx-action@v2
       - uses: actions/checkout@v3
       - id: auth
-        uses: google-github-actions/auth@v0.4.0
+        uses: google-github-actions/auth@v1
         with:
           token_format: "access_token"
           workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions/providers/github-actions"
