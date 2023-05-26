@@ -420,15 +420,23 @@ jobs:
         with:
           workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions/providers/github-actions"
           service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
+      - name: Build Tag and Version ID
+        id: vsn
+        env:
+          BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+        run: |
+          TAG=$(echo ${BRANCH_NAME} | sed 's/\//_/g'  | sed 's/\:/_/g')
+          echo "::add-mask::${TAG}"
+          echo "tag=${TAG}" >> $GITHUB_ENV
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
         with:
           platforms: linux/amd64
           build-args: |
-            VERSION=0.0.0-dev.${{ github.sha }}
+            VERSION=0.0.0-branch.${{ steps.vsn.outputs.tag }}
           context: elixir/
           file: elixir/Dockerfile
           push: true
-          tags: "ghcr.io/firezone:${{ github.ref_type }}-${{ github.ref_name }}"
+          tags: "ghcr.io/firezone:${{ steps.vsn.outputs.tag }}"
       # TODO: add a sanity check to make sure the image is actually built
       # and can be started
