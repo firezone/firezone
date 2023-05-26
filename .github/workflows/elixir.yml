@@ -426,18 +426,16 @@ jobs:
           BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
         run: |
           TAG=$(echo ${BRANCH_NAME} | sed 's/\//_/g'  | sed 's/\:/_/g')
-          # echo "::add-mask::${TAG}"
-          echo "tag=${TAG}" >> $GITHUB_ENV
-          echo ${TAG}
+          echo "TAG=${TAG}" >> $GITHUB_ENV
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
         with:
           platforms: linux/amd64
           build-args: |
-            VERSION=0.0.0-branch.${{ steps.vsn.outputs.tag }}
+            VERSION=0.0.0-branch.${{ env.TAG }}
           context: elixir/
           file: elixir/Dockerfile
           push: true
-          tags: "ghcr.io/firezone:${{ steps.vsn.outputs.tag }}"
+          tags: "ghcr.io/firezone:${{ env.TAG }}"
       # TODO: add a sanity check to make sure the image is actually built
       # and can be started
