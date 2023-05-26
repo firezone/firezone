@@ -4,7 +4,7 @@ use once_cell::sync::Lazy;
 use sha2::digest::FixedOutput;
 use sha2::Sha256;
 use std::borrow::ToOwned;
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, SystemTime};
 use stun_codec::rfc5389::attributes::{MessageIntegrity, Realm, Username};
 
 // TODO: Upstream a const constructor to `stun-codec`.
@@ -82,9 +82,7 @@ mod tests {
     use super::*;
     use crate::Attribute;
     use hex_literal::hex;
-    use rand::distributions::DistString;
-    use std::time::Duration;
-    use stun_codec::rfc5389::attributes::{Realm, Username};
+    use stun_codec::rfc5389::attributes::Username;
     use stun_codec::rfc5389::methods::BINDING;
     use stun_codec::{Message, MessageClass, TransactionId};
 
@@ -167,9 +165,9 @@ mod tests {
             systemtime_from_unix(username_expiry),
             username_salt,
         );
-        let mut message = sample_message();
 
-        MessageIntegrity::new_long_term_credential(&message, &username, &REALM, &password).unwrap()
+        MessageIntegrity::new_long_term_credential(&sample_message(), &username, &REALM, &password)
+            .unwrap()
     }
 
     fn sample_message() -> Message<Attribute> {
