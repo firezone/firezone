@@ -1,0 +1,75 @@
+ARG ELIXIR_VERSION=1.14.3
+ARG OTP_VERSION=25.2.1
+ARG ALPINE_VERSION=3.16.3
+
+ARG APP_NAME="web"
+ARG BUILDER_IMAGE="firezone/elixir:${ELIXIR_VERSION}-otp-${OTP_VERSION}"
+ARG RUNNER_IMAGE="alpine:${ALPINE_VERSION}"
+
+FROM ${BUILDER_IMAGE} as builder
+
+# install build dependencies
+RUN apk add nodejs yarn build-base git python3
+
+# prepare build dir
+WORKDIR /app
+
+# install hex + rebar
+RUN mix local.hex --force && \
+    mix local.rebar --force
+
+# set build ENV
+ENV MIX_ENV="prod"
+
+# install mix dependencies
+COPY mix.exs mix.lock ./
+COPY apps/domain/mix.exs ./apps/domain/mix.exs
+COPY apps/web/mix.exs ./apps/web/mix.exs
+COPY apps/api/mix.exs ./apps/api/mix.exs
+
+RUN mix deps.get --only $MIX_ENV
+RUN mkdir config
+
+# copy compile-time config files before we compile dependencies
+# to ensure any relevant config change will trigger the dependencies
+# to be re-compiled.
+COPY config/config.exs config/${MIX_ENV}.exs config/
+RUN mix deps.compile
+
+COPY priv priv
+COPY apps apps
+
+# mix phx.digest triggers web compilation, need version to be set here
+ARG VERSION=0.0.0-docker
+ENV VERSION=$VERSION
+
+# Install and compile assets
+RUN cd apps/web \
+    && mix assets.setup \
+    && mix assets.deploy \
+    && cd ../../
+
+# Compile the release
+RUN mix compile
+
+# Changes to config/runtime.exs don't require recompiling the code
+COPY config/runtime.exs config/
+
+COPY rel rel
+RUN mix release
+
+# start a new build stage so that the final image will only contain
+# the compiled release and other runtime necessities
+FROM ${RUNNER_IMAGE}
+
+RUN apk add -u --no-cache nftables libstdc++ ncurses-libs openssl
+
+WORKDIR /app
+
+# set runner ENV
+ENV MIX_ENV="prod"
+
+# Only copy the final release from the build stage
+COPY --from=builder /app/_build/${MIX_ENV}/rel/${APP_NAME} ./
+
+CMD ["/app/bin/server"]
