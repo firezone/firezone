@@ -402,6 +402,7 @@ jobs:
         working-directory: ./elixir
     permissions:
       contents: read
+      id-token: "write"
     needs:
       - unit-test
       - acceptance-test
