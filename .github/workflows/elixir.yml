@@ -441,7 +441,7 @@ jobs:
           BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
         run: |
           TAG=$(echo ${BRANCH_NAME} | sed 's/\//_/g'  | sed 's/\:/_/g')
-          echo "TAG=${TAG}" >> $GITHUB_ENV
+          echo "TAG=branch/${TAG}" >> $GITHUB_ENV
       - name: Pull cache layers
         run: |
           docker pull ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:master || true
