@@ -447,9 +447,9 @@ jobs:
           docker build \
             --build-arg APPLICATION_NAME=web \
             --build-arg VERSION=0.0.0-sha.${{ github.sha }} \
-            --tag us-east1-docker.pkg.dev/${GCLOUD_PROJECT}/firezone:${TAG} \
+            --tag us-east1-docker.pkg.dev/${GCLOUD_PROJECT}/firezone/web:${TAG} \
             .
 
-          docker push us-east1-docker.pkg.dev/${GCLOUD_PROJECT}/firezone:${TAG}
+          docker push us-east1-docker.pkg.dev/${GCLOUD_PROJECT}/firezone/web:${TAG}
       # TODO: add a sanity check to make sure the image is actually built
       # and can be started
