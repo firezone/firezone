@@ -441,7 +441,7 @@ jobs:
           echo "TAG=${TAG}" >> $GITHUB_ENV
       - name: Pull cache layers
         run: |
-          docker pull ${REGISTRY}/firezone:${{ env.TAG }} || true
+          docker pull us-east1-docker.pkg.dev/firezone:${{ env.TAG }} || true
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
         with:
@@ -451,6 +451,6 @@ jobs:
           context: elixir/
           file: elixir/Dockerfile
           push: true
-          tags: "${REGISTRY}/firezone:${{ env.TAG }}"
+          tags: "us-east1-docker.pkg.dev/firezone:${{ env.TAG }}"
       # TODO: add a sanity check to make sure the image is actually built
       # and can be started
