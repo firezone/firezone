@@ -23,7 +23,7 @@ jobs:
           yarn install --frozen-lockfile
           yarn build
       - name: Publish Latest Website
-        uses: JamesIves/github-pages-deploy-action@v4.4.1
+        uses: JamesIves/github-pages-deploy-action@v4.4.2
         with:
           branch: gh-pages
           folder: www/build
