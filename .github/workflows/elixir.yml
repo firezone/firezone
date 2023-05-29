@@ -434,6 +434,9 @@ jobs:
         run: |
           TAG=$(echo ${BRANCH_NAME} | sed 's/\//_/g'  | sed 's/\:/_/g')
           echo "TAG=${TAG}" >> $GITHUB_ENV
+      - name: Pull cache layers
+        run: |
+          docker pull us-east1-docker.pkg.dev/firezone:${{ env.TAG }} || true
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
         with:
