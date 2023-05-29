@@ -444,12 +444,13 @@ jobs:
           docker pull us-east1-docker.pkg.dev/firezone:${{ env.TAG }} || true
       - name: Build and push Docker image
         run: |
+          cd elixir
+
           docker build \
             --build-arg APPLICATION_NAME=web \
             --build-arg VERSION=0.0.0-sha.${{ github.sha }} \
             --tag us-east1-docker.pkg.dev/${GCLOUD_PROJECT}/firezone:${TAG} \
-            --file ./elixir/Dockerfile \
-            ./elixir
+            .
 
           docker push us-east1-docker.pkg.dev/${GCLOUD_PROJECT}/firezone:${TAG}
       # TODO: add a sanity check to make sure the image is actually built
