@@ -416,8 +416,6 @@ jobs:
     steps:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
       - uses: actions/checkout@v3
       - id: auth
         uses: google-github-actions/auth@v1
@@ -445,14 +443,13 @@ jobs:
         run: |
           docker pull us-east1-docker.pkg.dev/firezone:${{ env.TAG }} || true
       - name: Build and push Docker image
-        uses: docker/build-push-action@v4
-        with:
-          platforms: linux/amd64
-          build-args: |
-            VERSION=0.0.0-sha.${{ github.sha }}
-          context: elixir/
-          file: elixir/Dockerfile
-          push: true
-          tags: "us-east1-docker.pkg.dev/firezone-staging/firezone:${{ env.TAG }}"
+        run: |
+          docker build \
+            --build-arg APPLICATION_NAME=web \
+            --build-arg VERSION=0.0.0-sha.${{ github.sha }} \
+            --tag us-east1-docker.pkg.dev/${GCLOUD_PROJECT}/firezone:${TAG} \
+            elixir/Dockerfile
+
+          docker push us-east1-docker.pkg.dev/${GCLOUD_PROJECT}/firezone:${TAG}
       # TODO: add a sanity check to make sure the image is actually built
       # and can be started
