@@ -407,8 +407,12 @@ jobs:
       - unit-test
       - acceptance-test
     env:
-      REGISTRY: ghcr.io
-      IMAGE_NAME: ${{ github.repository }}
+      REGISTRY: us-east1-docker.pkg.dev
+      GCLOUD_PROJECT: firezone-staging
+      GOOGLE_CLOUD_PROJECT: firezone-staging
+      CLOUDSDK_PROJECT: firezone-staging
+      CLOUDSDK_CORE_PROJECT: firezone-staging
+      GCP_PROJECT: firezone-staging
     steps:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
@@ -421,6 +425,7 @@ jobs:
           token_format: "access_token"
           workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions/providers/github-actions"
           service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
+          export_environment_variables: false
       - name: Login to Google Artifact Registry
         uses: docker/login-action@v2
         with:
@@ -436,7 +441,7 @@ jobs:
           echo "TAG=${TAG}" >> $GITHUB_ENV
       - name: Pull cache layers
         run: |
-          docker pull us-east1-docker.pkg.dev/firezone:${{ env.TAG }} || true
+          docker pull ${REGISTRY}/firezone:${{ env.TAG }} || true
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
         with:
@@ -446,6 +451,6 @@ jobs:
           context: elixir/
           file: elixir/Dockerfile
           push: true
-          tags: "us-east1-docker.pkg.dev/firezone:${{ env.TAG }}"
+          tags: "${REGISTRY}/firezone:${{ env.TAG }}"
       # TODO: add a sanity check to make sure the image is actually built
       # and can be started
