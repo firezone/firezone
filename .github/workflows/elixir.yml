@@ -453,6 +453,6 @@ jobs:
           context: elixir/
           file: elixir/Dockerfile
           push: true
-          tags: "us-east1-docker.pkg.dev/firezone:${{ env.TAG }}"
+          tags: "us-east1-docker.pkg.dev/firezone-staging/firezone:${{ env.TAG }}"
       # TODO: add a sanity check to make sure the image is actually built
       # and can be started
