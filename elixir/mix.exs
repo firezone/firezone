@@ -28,17 +28,7 @@ defmodule Firezone.MixProject do
         plt_file: {:no_warn, "priv/plts/dialyzer.plt"}
       ],
       aliases: aliases(),
-      default_release: :web,
-      releases: [
-        web: [
-          include_executables_for: [:unix],
-          validate_compile_env: true,
-          applications: [
-            web: :permanent
-          ],
-          cookie: System.get_env("ERL_COOKIE")
-        ]
-      ]
+      releases: releases()
     ]
   end
 
@@ -72,6 +62,25 @@ defmodule Firezone.MixProject do
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       test: ["ecto.create --quiet", "ecto.migrate", "test"],
       start: ["compile --no-validate-compile-env", "phx.server", "run --no-halt"]
+    ]
+  end
+
+  defp releases do
+    [
+      web: [
+        include_executables_for: [:unix],
+        validate_compile_env: true,
+        applications: [
+          web: :permanent
+        ]
+      ],
+      api: [
+        include_executables_for: [:unix],
+        validate_compile_env: true,
+        applications: [
+          api: :permanent
+        ]
+      ]
     ]
   end
 end

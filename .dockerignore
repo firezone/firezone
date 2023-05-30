@@ -1,0 +1,19 @@
+# Documentation
+docs
+
+# Website
+www
+
+# MacOS
+.DS_Store
+
+# Git
+.git
+.gitignore
+.gitmodules
+.github
+
+# Terraform
+.terraform
+*.tfstate.backup
+terraform.tfstate.d

@@ -2,7 +2,7 @@ ARG ELIXIR_VERSION=1.14.3
 ARG OTP_VERSION=25.2.1
 ARG ALPINE_VERSION=3.16.3
 
-ARG APP_NAME="web"
+ARG APPLICATION_NAME
 ARG BUILDER_IMAGE="firezone/elixir:${ELIXIR_VERSION}-otp-${OTP_VERSION}"
 ARG RUNNER_IMAGE="alpine:${ALPINE_VERSION}"
 
@@ -56,7 +56,7 @@ RUN mix compile
 COPY config/runtime.exs config/
 
 COPY rel rel
-RUN mix release
+RUN mix release ${APPLICATION_NAME}
 
 # start a new build stage so that the final image will only contain
 # the compiled release and other runtime necessities
@@ -70,6 +70,6 @@ WORKDIR /app
 ENV MIX_ENV="prod"
 
 # Only copy the final release from the build stage
-COPY --from=builder /app/_build/${MIX_ENV}/rel/${APP_NAME} ./
+COPY --from=builder /app/_build/${MIX_ENV}/rel/${APPLICATION_NAME} ./
 
 CMD ["/app/bin/server"]

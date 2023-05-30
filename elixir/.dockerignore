@@ -18,9 +18,6 @@ docs
 .gitignore
 .gitmodules
 .github
-.git-crypt
-Dockerfile
-.dockerignore
 
 # Terraform
 .terraform
