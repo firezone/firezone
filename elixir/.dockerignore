@@ -15,3 +15,14 @@ docs
 
 # Git
 .git
+.gitignore
+.gitmodules
+.github
+.git-crypt
+Dockerfile
+.dockerignore
+
+# Terraform
+.terraform
+*.tfstate.backup
+terraform.tfstate.d
