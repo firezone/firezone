@@ -26,7 +26,7 @@ defmodule Domain.MixProject do
 
   def version do
     # Use dummy version for dev and test
-    System.get_env("VERSION", "0.0.0+git.0.deadbeef")
+    System.get_env("APPLICATION_VERSION", "0.0.0+git.0.deadbeef")
   end
 
   def application do

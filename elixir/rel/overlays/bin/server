@@ -1,5 +1,5 @@
 #!/bin/sh
 set -e
 source "$(dirname -- "$0")/bootstrap"
-./firezone eval Domain.Release.migrate
-exec ./firezone start
+./migrate
+exec ./${APPLICATION_NAME} start

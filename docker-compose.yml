@@ -1,4 +1,4 @@
-version: '3.7'
+version: '3.8'
 
 services:
   # Dependencies
@@ -40,7 +40,7 @@ services:
   # Firezone Components
   web:
     build:
-      context: ./elxiir
+      context: elixir
       args:
         APPLICATION_NAME: web
     image: firezone_web_dev
@@ -58,7 +58,7 @@ services:
       - 8080:13000/tcp
     environment:
       # Web Server
-      EXTERNAL_URL: http://localhost
+      EXTERNAL_URL: http://localhost:8080/
       # Database
       DATABASE_HOST: postgres
       DATABASE_PORT: 5432
@@ -88,54 +88,50 @@ services:
     networks:
       - app
 
-  # api:
-  #   build:
-  #     context: ./elxiir
-  #     args:
-  #       APPLICATION_NAME: api
-  #   image: firezone_api_dev
-  #   volumes:
-  #     - ./apps:/var/app/apps
-  #     - ./config:/var/app/config
-  #     - ./mix.exs:/var/app/mix.exs
-  #     - ./mix.lock:/var/app/mix.lock
-  #   ports:
-  #     - 8081:13000/tcp
-  #   environment:
-  #     # Web Server
-  #     EXTERNAL_URL: http://localhost
-  #     # Database
-  #     DATABASE_HOST: postgres
-  #     DATABASE_PORT: 5432
-  #     DATABASE_NAME: firezone_dev
-  #     DATABASE_USER: postgres
-  #     DATABASE_PASSWORD: postgres
-  #     # Auth
-  #     AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token"
-  #     # Secrets
-  #     AUTH_TOKEN_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
-  #     AUTH_TOKEN_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
-  #     RELAYS_AUTH_TOKEN_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
-  #     RELAYS_AUTH_TOKEN_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
-  #     GATEWAYS_AUTH_TOKEN_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
-  #     GATEWAYS_AUTH_TOKEN_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
-  #     SECRET_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
-  #     LIVE_VIEW_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
-  #     COOKIE_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
-  #     COOKIE_ENCRYPTION_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
-  #     # Telemetry
-  #     TELEMETRY_ENABLED: "false"
-  #     # Erlang
-  #     RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
-  #   depends_on:
-  #     postgres:
-  #       condition: 'service_healthy'
-  #   networks:
-  #     - app
-
-volumes:
-  postgres-data:
-
+  api:
+    build:
+      context: elixir
+      args:
+        APPLICATION_NAME: api
+    image: firezone_api_dev
+    volumes:
+      - ./apps:/var/app/apps
+      - ./config:/var/app/config
+      - ./mix.exs:/var/app/mix.exs
+      - ./mix.lock:/var/app/mix.lock
+    ports:
+      - 8081:13000/tcp
+    environment:
+      # Web Server
+      EXTERNAL_URL: http://localhost:8081/
+      # Database
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: firezone_dev
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: postgres
+      # Auth
+      AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token"
+      # Secrets
+      AUTH_TOKEN_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
+      AUTH_TOKEN_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      RELAYS_AUTH_TOKEN_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
+      RELAYS_AUTH_TOKEN_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      GATEWAYS_AUTH_TOKEN_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
+      GATEWAYS_AUTH_TOKEN_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      SECRET_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
+      LIVE_VIEW_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      COOKIE_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      COOKIE_ENCRYPTION_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      # Telemetry
+      TELEMETRY_ENABLED: "false"
+      # Erlang
+      RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
+    depends_on:
+      postgres:
+        condition: 'service_healthy'
+    networks:
+      - app
 
 networks:
   app:
@@ -144,4 +140,6 @@ networks:
       config:
         - subnet: 172.28.0.0/16
         - subnet: 2001:3990:3990::/64
-  isolation:
+
+volumes:
+  postgres-data:

@@ -7,6 +7,13 @@ locals {
     application = local.application_name
     version     = local.application_version
   }, var.application_labels)
+
+  application_environment_variables = concat([
+    {
+      name  = "RELEASE_HOST_DISCOVERY_METHOD"
+      value = "gce_metadata"
+    }
+  ], var.application_environment_variables)
 }
 
 # Fetch most recent COS image
@@ -98,7 +105,7 @@ resource "google_compute_instance_template" "application" {
         containers = [{
           name  = local.application_name != null ? local.application_name : var.image
           image = "${var.container_registry}/${var.image_repo}/${var.image}:${var.image_tag}"
-          env   = var.application_environment_variables
+          env   = local.application_environment_variables
         }]
 
         volumes = []
