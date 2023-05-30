@@ -58,7 +58,7 @@ RUN mix release ${APPLICATION_NAME}
 # the compiled release and other runtime necessities
 FROM ${RUNNER_IMAGE}
 
-RUN apk add -u --no-cache ncurses-libs openssl curl
+RUN apk add -u --no-cache libstdc++ ncurses-libs openssl curl
 
 WORKDIR /app
 

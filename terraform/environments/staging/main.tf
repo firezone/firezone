@@ -121,7 +121,7 @@ module "google-cloud-sql" {
     "autovacuum_vacuum_cost_limit" = "800"
 
     # Give hash joins a bit more memory to work with
-    "hash_mem_multiplier" = "3"
+    # "hash_mem_multiplier" = "3"
 
     # This is standard value for work_mem
     "work_mem" = "4096"
@@ -129,57 +129,57 @@ module "google-cloud-sql" {
 }
 
 # Generate secrets
-resource "random_string" "erlang_cluster_cookie" {
+resource "random_password" "erlang_cluster_cookie" {
   length  = 64
   special = false
 }
 
-resource "random_string" "auth_token_key_base" {
+resource "random_password" "auth_token_key_base" {
   length  = 64
   special = false
 }
 
-resource "random_string" "auth_token_salt" {
+resource "random_password" "auth_token_salt" {
   length  = 32
   special = false
 }
 
-resource "random_string" "relays_auth_token_key_base" {
+resource "random_password" "relays_auth_token_key_base" {
   length  = 64
   special = false
 }
 
-resource "random_string" "relays_auth_token_salt" {
+resource "random_password" "relays_auth_token_salt" {
   length  = 32
   special = false
 }
 
-resource "random_string" "gateways_auth_token_key_base" {
+resource "random_password" "gateways_auth_token_key_base" {
   length  = 64
   special = false
 }
 
-resource "random_string" "gateways_auth_token_salt" {
+resource "random_password" "gateways_auth_token_salt" {
   length  = 32
   special = false
 }
 
-resource "random_string" "secret_key_base" {
+resource "random_password" "secret_key_base" {
   length  = 64
   special = false
 }
 
-resource "random_string" "live_view_signing_salt" {
+resource "random_password" "live_view_signing_salt" {
   length  = 32
   special = false
 }
 
-resource "random_string" "cookie_signing_salt" {
+resource "random_password" "cookie_signing_salt" {
   length  = 32
   special = false
 }
 
-resource "random_string" "cookie_encryption_salt" {
+resource "random_password" "cookie_encryption_salt" {
   length  = 32
   special = false
 }
@@ -205,9 +205,8 @@ resource "google_compute_subnetwork" "apps" {
 }
 
 # Deploy the web app to the GCE
-resource "random_string" "web_db_password" {
-  length  = 16
-  special = false
+resource "random_password" "web_db_password" {
+  length = 16
 }
 
 resource "google_sql_user" "web" {
@@ -216,7 +215,7 @@ resource "google_sql_user" "web" {
   instance = module.google-cloud-sql.master_instance_name
 
   name     = "web"
-  password = random_string.web_db_password.result
+  password = random_password.web_db_password.result
 }
 
 module "web" {
@@ -234,17 +233,17 @@ module "web" {
 
   image_repo = module.google-artifact-registry.repo
   image      = "web"
-  image_tag  = "andrew_deployment"
+  image_tag  = "branch-andrew_deployment"
 
   scaling_horizontal_replicas = 2
 
   observability_log_level = "debug"
 
   erlang_release_name   = "firezone"
-  erlang_cluster_cookie = random_string.erlang_cluster_cookie.result
+  erlang_cluster_cookie = random_password.erlang_cluster_cookie.result
 
   application_name    = "web"
-  application_version = "andrew_deployment"
+  application_version = "0-0-1"
 
   # application_ports = [
   #   {
@@ -283,52 +282,52 @@ module "web" {
     # Secrets
     {
       name  = "SECRET_KEY_BASE"
-      value = random_string.secret_key_base.result
+      value = random_password.secret_key_base.result
     },
     {
       name  = "AUTH_TOKEN_KEY_BASE"
-      value = base64encode(random_string.auth_token_key_base.result)
+      value = base64encode(random_password.auth_token_key_base.result)
     },
     {
       name  = "AUTH_TOKEN_SALT"
-      value = base64encode(random_string.auth_token_salt.result)
+      value = base64encode(random_password.auth_token_salt.result)
     },
     {
       name  = "RELAYS_AUTH_TOKEN_KEY_BASE"
-      value = base64encode(random_string.relays_auth_token_key_base.result)
+      value = base64encode(random_password.relays_auth_token_key_base.result)
     },
     {
       name  = "RELAYS_AUTH_TOKEN_SALT"
-      value = base64encode(random_string.relays_auth_token_salt.result)
+      value = base64encode(random_password.relays_auth_token_salt.result)
     },
     {
       name  = "GATEWAYS_AUTH_TOKEN_KEY_BASE"
-      value = base64encode(random_string.gateways_auth_token_key_base.result)
+      value = base64encode(random_password.gateways_auth_token_key_base.result)
     },
     {
       name  = "GATEWAYS_AUTH_TOKEN_SALT"
-      value = base64encode(random_string.gateways_auth_token_salt.result)
+      value = base64encode(random_password.gateways_auth_token_salt.result)
     },
     {
       name  = "SECRET_KEY_BASE"
-      value = base64encode(random_string.secret_key_base.result)
+      value = base64encode(random_password.secret_key_base.result)
     },
     {
       name  = "LIVE_VIEW_SIGNING_SALT"
-      value = base64encode(random_string.live_view_signing_salt.result)
+      value = base64encode(random_password.live_view_signing_salt.result)
     },
     {
       name  = "COOKIE_SIGNING_SALT"
-      value = base64encode(random_string.cookie_signing_salt.result)
+      value = base64encode(random_password.cookie_signing_salt.result)
     },
     {
       name  = "COOKIE_ENCRYPTION_SALT"
-      value = base64encode(random_string.cookie_encryption_salt.result)
+      value = base64encode(random_password.cookie_encryption_salt.result)
     },
     # Erlang
     {
       name  = "RELEASE_COOKIE"
-      value = base64encode(random_string.erlang_cluster_cookie.result)
+      value = base64encode(random_password.erlang_cluster_cookie.result)
     },
     # Auth
     {
