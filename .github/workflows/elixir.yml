@@ -451,6 +451,7 @@ jobs:
         with:
           platforms: linux/amd64
           build-args: |
+            APPLICATION_NAME=${{ env.APPLICATION_NAME }}
             APPLICATION_VERSION=0.0.0-sha.${{ github.sha }}
           context: elixir/
           file: elixir/Dockerfile
@@ -514,6 +515,7 @@ jobs:
         with:
           platforms: linux/amd64
           build-args: |
+            APPLICATION_NAME=${{ env.APPLICATION_NAME }}
             APPLICATION_VERSION=0.0.0-sha.${{ github.sha }}
           context: elixir/
           file: elixir/Dockerfile
