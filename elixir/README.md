@@ -2,7 +2,7 @@
 
 ## Running Control Plane for local development
 
-You can use [Top-Level Docker Compose](../docker_compose.yml) and start any released Elixir
+You can use [Top-Level Docker Compose](../docker-compose.yml) and start any released Elixir
 app:
 
 ```bash
