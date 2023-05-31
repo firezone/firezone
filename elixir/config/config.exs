@@ -117,6 +117,10 @@ config :api,
   cookie_signing_salt: "WjllcThpb2Y=",
   cookie_encryption_salt: "M0EzM0R6NEMyaw=="
 
+config :api,
+  external_trusted_proxies: [],
+  private_clients: [%{__struct__: Postgrex.INET, address: {172, 28, 0, 0}, netmask: 16}]
+
 ###############################
 ##### Third-party configs #####
 ###############################

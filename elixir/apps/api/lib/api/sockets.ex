@@ -6,20 +6,24 @@ defmodule API.Sockets do
 
   def options do
     [
-      transport_log: :debug,
-      check_origin: :conn,
-      connect_info: [:trace_context_headers, :user_agent, :peer_data, :x_headers],
       websocket: [
+        transport_log: :debug,
+        check_origin: :conn,
+        connect_info: [:trace_context_headers, :user_agent, :peer_data, :x_headers],
         error_handler: {__MODULE__, :handle_error, []}
       ],
       longpoll: false
     ]
   end
 
-  @spec handle_error(Plug.Conn.t(), :invalid | :rate_limit | :unauthenticated) :: Plug.Conn.t()
-  def handle_error(conn, :unauthenticated), do: Plug.Conn.send_resp(conn, 403, "Forbidden")
-  def handle_error(conn, :invalid), do: Plug.Conn.send_resp(conn, 422, "Unprocessable Entity")
-  def handle_error(conn, :rate_limit), do: Plug.Conn.send_resp(conn, 429, "Too many requests")
+  def handle_error(conn, :unauthenticated),
+    do: Plug.Conn.send_resp(conn, 403, "Forbidden")
+
+  def handle_error(conn, :invalid_token),
+    do: Plug.Conn.send_resp(conn, 422, "Unprocessable Entity")
+
+  def handle_error(conn, :rate_limit),
+    do: Plug.Conn.send_resp(conn, 429, "Too many requests")
 
   # if Mix.env() == :test do
   #     defp maybe_allow_sandbox_access(%{user_agent: user_agent}) do

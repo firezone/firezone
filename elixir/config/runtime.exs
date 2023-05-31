@@ -108,6 +108,10 @@ if config_env() == :prod do
     cookie_signing_salt: compile_config!(:cookie_signing_salt),
     cookie_encryption_salt: compile_config!(:cookie_encryption_salt)
 
+  config :api,
+    external_trusted_proxies: compile_config!(:phoenix_external_trusted_proxies),
+    private_clients: compile_config!(:phoenix_private_clients)
+
   ###############################
   ##### Third-party configs #####
   ###############################

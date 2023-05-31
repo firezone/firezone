@@ -20,6 +20,14 @@ defmodule API.Endpoint do
   socket "/device", API.Device.Socket, API.Sockets.options()
   socket "/relay", API.Relay.Socket, API.Sockets.options()
 
+  plug :not_found
+
+  def not_found(conn, _opts) do
+    conn
+    |> send_resp(:not_found, "Not found")
+    |> halt()
+  end
+
   def external_trusted_proxies do
     Domain.Config.fetch_env!(:api, :external_trusted_proxies)
     |> Enum.map(&to_string/1)
