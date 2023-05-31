@@ -6,7 +6,7 @@ pub use crate::server::client_message::{
     Allocate, Binding, ChannelBind, ClientMessage, CreatePermission, Refresh,
 };
 
-use crate::auth::{MessageIntegrityExt, REALM};
+use crate::auth::{MessageIntegrityExt, FIREZONE};
 use crate::rfc8656::PeerAddressFamilyMismatch;
 use crate::stun_codec_ext::{MessageClassExt, MethodExt};
 use crate::TimeEvents;
@@ -212,7 +212,7 @@ where
             .map_or(false, |error| error == &ErrorCode::from(Unauthorized))
         {
             error_response.add_attribute(Nonce::new("foobar".to_owned()).unwrap().into()); // TODO: Implement proper nonce handling.
-            error_response.add_attribute((*REALM).clone().into());
+            error_response.add_attribute((*FIREZONE).clone().into());
         }
 
         self.send_message(error_response, sender);

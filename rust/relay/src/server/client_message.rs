@@ -1,4 +1,6 @@
+use crate::auth::{generate_password, split_username, systemtime_from_unix, FIREZONE};
 use crate::server::channel_data::ChannelData;
+use crate::server::UDP_TRANSPORT;
 use crate::Attribute;
 use bytecodec::DecodeExt;
 use std::io;
@@ -107,13 +109,32 @@ pub struct Allocate {
 }
 
 impl Allocate {
-    pub fn new(
+    pub fn new_udp(
         transaction_id: TransactionId,
-        message_integrity: MessageIntegrity,
-        requested_transport: RequestedTransport,
         lifetime: Option<Lifetime>,
         username: Username,
+        relay_secret: &[u8],
     ) -> Self {
+        let requested_transport = RequestedTransport::new(UDP_TRANSPORT);
+
+        let mut message =
+            Message::<Attribute>::new(MessageClass::Request, ALLOCATE, transaction_id);
+        message.add_attribute(requested_transport.clone().into());
+        message.add_attribute(username.clone().into());
+
+        if let Some(lifetime) = &lifetime {
+            message.add_attribute(lifetime.clone().into());
+        }
+
+        let (expiry, salt) = split_username(username.name()).expect("a valid username");
+        let expiry_systemtime = systemtime_from_unix(expiry);
+
+        let password = generate_password(relay_secret, expiry_systemtime, salt);
+
+        let message_integrity =
+            MessageIntegrity::new_long_term_credential(&message, &&username, &FIREZONE, &password)
+                .unwrap();
+
         Self {
             transaction_id,
             message_integrity,

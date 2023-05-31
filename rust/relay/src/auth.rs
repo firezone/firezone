@@ -8,7 +8,7 @@ use std::time::{Duration, SystemTime};
 use stun_codec::rfc5389::attributes::{MessageIntegrity, Realm, Username};
 
 // TODO: Upstream a const constructor to `stun-codec`.
-pub static REALM: Lazy<Realm> = Lazy::new(|| Realm::new("firezone".to_owned()).unwrap());
+pub static FIREZONE: Lazy<Realm> = Lazy::new(|| Realm::new("firezone".to_owned()).unwrap());
 
 pub trait MessageIntegrityExt {
     fn verify(&self, relay_secret: &[u8], username: &str, now: SystemTime) -> Result<(), Error>;
@@ -16,15 +16,7 @@ pub trait MessageIntegrityExt {
 
 impl MessageIntegrityExt for MessageIntegrity {
     fn verify(&self, relay_secret: &[u8], username: &str, now: SystemTime) -> Result<(), Error> {
-        let [expiry_unix_timestamp, salt]: [&str; 2] = username
-            .split(":")
-            .collect::<Vec<&str>>()
-            .try_into()
-            .map_err(|_| Error::InvalidUsername)?;
-
-        let expiry_unix_timestamp = expiry_unix_timestamp
-            .parse::<u64>()
-            .map_err(|_| Error::InvalidUsername)?;
+        let (expiry_unix_timestamp, salt) = split_username(username)?;
         let expired = systemtime_from_unix(expiry_unix_timestamp);
 
         if expired < now {
@@ -36,7 +28,7 @@ impl MessageIntegrityExt for MessageIntegrity {
         self.check_long_term_credential(
             &Username::new(format!("{}:{}", expiry_unix_timestamp, salt))
                 .map_err(|_| Error::InvalidUsername)?,
-            &REALM,
+            &FIREZONE,
             &password,
         )
         .map_err(|_| Error::InvalidPassword)?;
@@ -52,7 +44,23 @@ pub enum Error {
     InvalidUsername,
 }
 
-fn generate_password(relay_secret: &[u8], expiry: SystemTime, username_salt: &str) -> String {
+pub(crate) fn split_username(username: &str) -> Result<(u64, &str), Error> {
+    let [expiry, username_salt]: [&str; 2] = username
+        .split(":")
+        .collect::<Vec<&str>>()
+        .try_into()
+        .map_err(|_| Error::InvalidUsername)?;
+
+    let expiry_unix_timestamp = expiry.parse::<u64>().map_err(|_| Error::InvalidUsername)?;
+
+    Ok((expiry_unix_timestamp, username_salt))
+}
+
+pub(crate) fn generate_password(
+    relay_secret: &[u8],
+    expiry: SystemTime,
+    username_salt: &str,
+) -> String {
     use sha2::Digest as _;
 
     let mut hasher = Sha256::default();
@@ -73,7 +81,7 @@ fn generate_password(relay_secret: &[u8], expiry: SystemTime, username_salt: &st
     BASE64_STANDARD_NO_PAD.encode(array.as_slice())
 }
 
-fn systemtime_from_unix(seconds: u64) -> SystemTime {
+pub(crate) fn systemtime_from_unix(seconds: u64) -> SystemTime {
     SystemTime::UNIX_EPOCH + Duration::from_secs(seconds)
 }
 
@@ -166,8 +174,13 @@ mod tests {
             username_salt,
         );
 
-        MessageIntegrity::new_long_term_credential(&sample_message(), &username, &REALM, &password)
-            .unwrap()
+        MessageIntegrity::new_long_term_credential(
+            &sample_message(),
+            &username,
+            &FIREZONE,
+            &password,
+        )
+        .unwrap()
     }
 
     fn sample_message() -> Message<Attribute> {

@@ -1,18 +1,20 @@
+use crate::TypedOutput::FreeAllocation;
 use bytecodec::{DecodeExt, EncodeExt};
 use hex_literal::hex;
 use rand::rngs::mock::StepRng;
-use relay::{AllocationId, Attribute, Binding, ClientMessage, Command, Server};
+use relay::{Allocate, AllocationId, Attribute, Binding, ClientMessage, Command, Server};
 use std::collections::HashMap;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::time::{Duration, SystemTime};
 use stun_codec::rfc5389::attributes::{MessageIntegrity, Realm, Username, XorMappedAddress};
 use stun_codec::rfc5389::methods::BINDING;
-use stun_codec::rfc5766::attributes::Lifetime;
-use stun_codec::rfc5766::methods::REFRESH;
+use stun_codec::rfc5766::attributes::{Lifetime, XorRelayAddress};
+use stun_codec::rfc5766::methods::{ALLOCATE, REFRESH};
 use stun_codec::{
     DecodedMessage, Message, MessageClass, MessageDecoder, MessageEncoder, TransactionId,
 };
 use test_strategy::proptest;
+use TypedOutput::{CreateAllocation, Wake};
 
 #[proptest]
 fn can_answer_stun_request_from_ip4_address(
@@ -20,37 +22,57 @@ fn can_answer_stun_request_from_ip4_address(
     source: SocketAddrV4,
     public_relay_addr: Ipv4Addr,
 ) {
+    let _ = env_logger::try_init();
+    let mut server = TestServer::new(public_relay_addr);
+
     let transaction_id = request.transaction_id();
 
-    run_typed_regression_test(
-        public_relay_addr,
-        [(
-            from_client(source, request, SystemTime::now()),
-            [send_message(
-                source,
-                binding_response(transaction_id, source),
-            )],
+    server.assert_commands(
+        from_client(source, request, SystemTime::now()),
+        [send_message(
+            source,
+            binding_response(transaction_id, source),
         )],
     );
 }
 
-#[test]
-fn deallocate_once_time_expired() {
-    let now = SystemTime::now();
+#[proptest]
+fn deallocate_once_time_expired(
+    #[strategy(relay::proptest::transaction_id())] transaction_id: TransactionId,
+    #[strategy(relay::proptest::allocation_lifetime())] lifetime: Lifetime,
+    #[strategy(relay::proptest::username_salt())] username_salt: String,
+    source: SocketAddrV4,
+    public_relay_addr: Ipv4Addr,
+    #[strategy(relay::proptest::now())] now: SystemTime,
+) {
+    let mut server = TestServer::new(public_relay_addr);
+    let secret = server.auth_secret();
 
-    run_regression_test(&[(
-        Input::client("91.141.70.157:7112", "000300482112a442998bcae2a73b55941682cf470019000411000000000600047465737400140008666972657a6f6e6500150006666f6f626172000000080014b279018b143b1c6ac194a2848d0e37958731a2f38028000497076a00", now),
-        &[
-            Output::Wake(now + Duration::from_secs(600)),
-            Output::CreateAllocation(49152),
-            Output::send_message("91.141.70.157:7112", "010300202112a442998bcae2a73b55941682cf47001600080001e112026eff670020000800013ada7a9fe2df000d000400000258"),
+    server.assert_commands(
+        from_client(
+            source,
+            Allocate::new_udp(
+                transaction_id,
+                Some(lifetime.clone()),
+                valid_username(now, username_salt),
+                &secret,
+            ),
+            now,
+        ),
+        [
+            Wake(now + lifetime.lifetime()),
+            CreateAllocation(49152),
+            send_message(
+                source,
+                allocate_response(transaction_id, public_relay_addr, 49152, source, &lifetime),
+            ),
         ],
-    ), (
-        Input::Time(now + Duration::from_secs(601)),
-        &[
-            Output::ExpireAllocation(49152)
-        ],
-    )]);
+    );
+
+    server.assert_commands(
+        forward_time_to(now + lifetime.lifetime() + Duration::from_secs(1)),
+        [FreeAllocation(49152)],
+    );
 }
 
 #[test]
@@ -237,25 +259,40 @@ fn run_regression_test(sequence: &[(Input, &[Output])]) {
     }
 }
 
-fn run_typed_regression_test<const S: usize, const O: usize>(
-    public_ip4_addr: Ipv4Addr,
-    sequence: [(TypedInput, [TypedOutput; O]); S],
-) {
-    let _ = env_logger::try_init();
+struct TestServer {
+    server: Server<StepRng>,
+    id_to_port: HashMap<AllocationId, u16>,
+}
 
-    let mut server = Server::new(public_ip4_addr, StepRng::new(0, 0));
+impl TestServer {
+    fn new(relay_public_addr: Ipv4Addr) -> Self {
+        Self {
+            server: Server::new(relay_public_addr, StepRng::new(0, 0)),
+            id_to_port: Default::default(),
+        }
+    }
 
-    for (input, output) in sequence {
+    fn auth_secret(&mut self) -> [u8; 32] {
+        self.server.auth_secret()
+    }
+
+    fn assert_commands<const N: usize>(&mut self, input: TypedInput, output: [TypedOutput; N]) {
         match input {
             TypedInput::Client(sender, message, now) => {
-                server.handle_client_message(message, sender, now);
+                self.server.handle_client_message(message, sender, now);
+            }
+            TypedInput::Time(now) => {
+                self.server.handle_deadline_reached(now);
             }
         }
 
         for expected_output in output {
-            let Some(actual_output) = server.next_command() else {
+            let Some(actual_output) = self.server.next_command() else {
                 let msg = match expected_output {
                     TypedOutput::SendMessage((recipient, msg)) => format!("to send message {:?} to {recipient}", msg),
+                    Wake(time) => format!("to be woken at {time:?}"),
+                    CreateAllocation(port) => format!("to create allocation on port {port}"),
+                    FreeAllocation(port) => format!("to free allocation on port {port}"),
                 };
 
                 panic!("No commands produced but expected {msg}");
@@ -279,12 +316,52 @@ fn run_typed_regression_test<const S: usize, const O: usize>(
 
                     assert_eq!(recipient, to);
                 }
-                (expected, actual) => panic!("Expected: {expected:?}\nActual:   {actual:?}\n"),
+                (Wake(when), Command::Wake { deadline }) => {
+                    assert_eq!(when, deadline);
+                }
+                (
+                    CreateAllocation(expected_port),
+                    Command::AllocateAddresses {
+                        id,
+                        port: actual_port,
+                    },
+                ) => {
+                    self.id_to_port.insert(id, actual_port);
+                    assert_eq!(expected_port, actual_port);
+                }
+                (FreeAllocation(port), Command::FreeAddresses { id }) => {
+                    let actual_port = self
+                        .id_to_port
+                        .remove(&id)
+                        .expect("to have allocation id in map");
+                    assert_eq!(port, actual_port);
+                }
+                (Wake(when), Command::SendMessage { payload, .. }) => {
+                    panic!(
+                        "Expected `Wake({})`, got `SendMessage({:?})`",
+                        when.duration_since(SystemTime::UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs(),
+                        parse_message(&payload).expect("self.server to produce valid message")
+                    )
+                }
+                (expected, actual) => panic!("Unhandled combination: {expected:?} {actual:?}"),
             }
         }
 
-        assert!(server.next_command().is_none())
+        assert!(self.server.next_command().is_none())
     }
+}
+
+fn valid_username(now: SystemTime, salt: String) -> Username {
+    let now_unix = now
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    let expiry = now_unix + 1000;
+
+    Username::new(format!("{expiry}:{salt}")).unwrap()
 }
 
 fn refresh_request(transaction_id: [u8; 12], lifetime: u32) -> String {
@@ -313,6 +390,24 @@ fn binding_response(
     let mut message =
         Message::<Attribute>::new(MessageClass::SuccessResponse, BINDING, transaction_id);
     message.add_attribute(XorMappedAddress::new(address.into()).into());
+
+    message
+}
+
+fn allocate_response(
+    transaction_id: TransactionId,
+    public_relay_addr: Ipv4Addr,
+    port: u16,
+    source: SocketAddrV4,
+    lifetime: &Lifetime,
+) -> Message<Attribute> {
+    let mut message =
+        Message::<Attribute>::new(MessageClass::SuccessResponse, ALLOCATE, transaction_id);
+    message.add_attribute(
+        XorRelayAddress::new(SocketAddrV4::new(public_relay_addr, port).into()).into(),
+    );
+    message.add_attribute(XorMappedAddress::new(source.into()).into());
+    message.add_attribute(lifetime.clone().into());
 
     message
 }
@@ -350,6 +445,7 @@ impl Input {
 
 enum TypedInput<'a> {
     Client(SocketAddr, ClientMessage<'a>, SystemTime),
+    Time(SystemTime),
 }
 
 fn from_client<'a>(
@@ -358,6 +454,10 @@ fn from_client<'a>(
     now: SystemTime,
 ) -> TypedInput<'a> {
     TypedInput::Client(from.into(), message.into(), now)
+}
+
+fn forward_time_to<'a>(when: SystemTime) -> TypedInput<'a> {
+    TypedInput::Time(when)
 }
 
 #[derive(Debug)]
@@ -372,6 +472,9 @@ enum Output {
 #[derive(Debug)]
 enum TypedOutput {
     SendMessage((SocketAddr, Message<Attribute>)),
+    Wake(SystemTime),
+    CreateAllocation(u16),
+    FreeAllocation(u16),
 }
 
 impl Output {
