@@ -126,7 +126,7 @@ services:
 
   # This is a service container which allows to run mix tasks for local development
   # without having to install Elixir and Erlang on the host machine.
-  mix:
+  elixir:
     build:
       context: elixir
       target: builder

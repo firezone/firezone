@@ -35,7 +35,6 @@ RUN mix deps.compile
 COPY priv priv
 COPY apps apps
 
-ARG APPLICATION_NAME
 ARG APPLICATION_VERSION=0.0.0-dev.docker
 
 # Install and compile assets for Web app
@@ -51,6 +50,8 @@ RUN mix compile
 COPY config/runtime.exs config/
 
 COPY rel rel
+
+ARG APPLICATION_NAME
 
 RUN mix release ${APPLICATION_NAME}
 
