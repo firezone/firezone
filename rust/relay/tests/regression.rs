@@ -1,8 +1,9 @@
 use bytecodec::{DecodeExt, EncodeExt};
 use hex_literal::hex;
+use rand::rngs::mock::StepRng;
 use relay::{AllocationId, Attribute, Binding, ClientMessage, Command, Server};
 use std::collections::HashMap;
-use std::net::{SocketAddr, SocketAddrV4};
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::time::{Duration, SystemTime};
 use stun_codec::rfc5389::attributes::{MessageIntegrity, Realm, Username, XorMappedAddress};
 use stun_codec::rfc5389::methods::BINDING;
@@ -150,7 +151,7 @@ fn ping_pong_relay() {
 fn run_regression_test(sequence: &[(Input, &[Output])]) {
     let _ = env_logger::try_init();
 
-    let mut server = Server::test();
+    let mut server = Server::new(Ipv4Addr::new(35, 124, 91, 37), StepRng::new(0, 0));
 
     let mut allocation_mapping = HashMap::<u16, AllocationId>::default();
 
@@ -237,7 +238,7 @@ fn run_typed_regression_test<const S: usize, const O: usize>(
 ) {
     let _ = env_logger::try_init();
 
-    let mut server = Server::test();
+    let mut server = Server::new(Ipv4Addr::new(35, 124, 91, 37), StepRng::new(0, 0));
 
     for (input, output) in sequence {
         match input {

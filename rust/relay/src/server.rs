@@ -721,16 +721,6 @@ fn create_permission_success_response(transaction_id: TransactionId) -> Message<
     )
 }
 
-impl Server<StepRng> {
-    #[allow(dead_code)]
-    pub fn test() -> Self {
-        let rng = StepRng::new(0, 0);
-        let public_ip4_address = Ipv4Addr::new(35, 124, 91, 37);
-
-        Self::new(public_ip4_address, rng)
-    }
-}
-
 /// Represents an allocation of a client.
 struct Allocation {
     id: AllocationId,
