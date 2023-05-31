@@ -27,7 +27,7 @@ in `web`/`api` so easily, because Elixir strips a lot of tooling during compilat
 #
 #   docker-compose down
 #
-# Or you can just run both reset and seed in one liner:
+# Or you can just run both reset and seed in one-liner:
 #
 #   docker-compose run elixir /bin/sh -c "cd apps/domain && mix do ecto.reset, ecto.seed"
 #
