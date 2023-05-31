@@ -111,4 +111,26 @@ mod tests {
             vec!["one"]
         );
     }
+
+    #[test]
+    fn automatically_postpones_actions() {
+        let mut events = TimeEvents::default();
+        let now = SystemTime::now();
+
+        events.add(now + Duration::from_secs(1), "one");
+        events.add(now + Duration::from_secs(3), "one");
+
+        assert_eq!(
+            events
+                .pending_actions(now + Duration::from_secs(2))
+                .collect::<Vec<_>>(),
+            Vec::<&'static str>::new()
+        );
+        assert_eq!(
+            events
+                .pending_actions(now + Duration::from_secs(4))
+                .collect::<Vec<_>>(),
+            vec!["one"]
+        );
+    }
 }
