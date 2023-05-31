@@ -25,6 +25,9 @@ defmodule API.Sockets do
   def handle_error(conn, :rate_limit),
     do: Plug.Conn.send_resp(conn, 429, "Too many requests")
 
+  def handle_error(conn, %Ecto.Changeset{} = changeset),
+    do: Plug.Conn.send_resp(conn, 422, "Invalid or missing connection parameters")
+
   # if Mix.env() == :test do
   #     defp maybe_allow_sandbox_access(%{user_agent: user_agent}) do
   #       %{owner: owner_pid, repo: repos} =

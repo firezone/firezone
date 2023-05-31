@@ -84,7 +84,7 @@ relay_group =
   |> Repo.insert!()
 
 IO.puts("Created relay groups:")
-IO.puts("  #{relay_group.name} token: #{hd(relay_group.tokens).value}")
+IO.puts("  #{relay_group.name} token: #{Relays.encode_token!(hd(relay_group.tokens))}")
 IO.puts("")
 
 gateway_group =
@@ -93,7 +93,11 @@ gateway_group =
   |> Repo.insert!()
 
 IO.puts("Created gateway groups:")
-IO.puts("  #{gateway_group.name_prefix} token: #{hd(gateway_group.tokens).value}")
+
+IO.puts(
+  "  #{gateway_group.name_prefix} token: #{Gateways.encode_token!(hd(gateway_group.tokens))}"
+)
+
 IO.puts("")
 
 {:ok, gateway} =
