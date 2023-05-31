@@ -1,10 +1,15 @@
 mod channel_data;
+mod client_message;
 
 use crate::rfc8656::PeerAddressFamilyMismatch;
+use crate::server::channel_data::ChannelData;
+use crate::server::client_message::{
+    Allocate, Binding, ChannelBind, ClientMessage, CreatePermission, Refresh,
+};
 use crate::stun_codec_ext::{MessageClassExt, MethodExt};
 use crate::TimeEvents;
 use anyhow::Result;
-use bytecodec::{DecodeExt, EncodeExt};
+use bytecodec::EncodeExt;
 use core::fmt;
 use rand::rngs::mock::StepRng;
 use rand::rngs::ThreadRng;
@@ -23,7 +28,7 @@ use stun_codec::rfc5766::attributes::{
 };
 use stun_codec::rfc5766::errors::{AllocationMismatch, InsufficientCapacity};
 use stun_codec::rfc5766::methods::{ALLOCATE, CHANNEL_BIND, CREATE_PERMISSION, REFRESH};
-use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder, Method, TransactionId};
+use stun_codec::{Message, MessageClass, MessageEncoder, Method, TransactionId};
 
 /// A sans-IO STUN & TURN server.
 ///
@@ -33,7 +38,7 @@ use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder, Method, 
 ///
 /// Additionally, we assume to have complete ownership over the port range `LOWEST_PORT` - `HIGHEST_PORT`.
 pub struct Server<R = ThreadRng> {
-    decoder: MessageDecoder<Attribute>,
+    decoder: client_message::Decoder,
     encoder: MessageEncoder<Attribute>,
 
     public_ip4_address: Ipv4Addr,
@@ -108,14 +113,6 @@ const HIGHEST_PORT: u16 = 65535;
 /// The maximum number of ports available for allocation.
 const MAX_AVAILABLE_PORTS: u16 = HIGHEST_PORT - LOWEST_PORT;
 
-/// The maximum lifetime of an allocation.
-const MAX_ALLOCATION_LIFETIME: Duration = Duration::from_secs(3600);
-
-/// The default lifetime of an allocation.
-///
-/// See <https://www.rfc-editor.org/rfc/rfc8656#name-allocations-2>.
-const DEFAULT_ALLOCATION_LIFETIME: Duration = Duration::from_secs(600);
-
 /// The duration of a channel binding.
 ///
 /// See <https://www.rfc-editor.org/rfc/rfc8656#name-channels-2>.
@@ -149,71 +146,58 @@ where
     /// Process the bytes received from a client.
     ///
     /// After calling this method, you should call [`Server::next_command`] until it returns `None`.
-    pub fn handle_client_input(
-        &mut self,
-        bytes: &[u8],
-        sender: SocketAddr,
-        now: Instant,
-    ) -> Result<()> {
+    pub fn handle_client_input(&mut self, bytes: &[u8], sender: SocketAddr, now: Instant) {
         if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
             let hex_bytes = hex::encode(bytes);
             tracing::trace!(target: "wire", r#"Input::client("{sender}","{hex_bytes}")"#);
         }
 
-        // De-multiplex as per <https://www.rfc-editor.org/rfc/rfc8656#name-channels-2>.
-        match bytes.first() {
-            Some(0..=3) => {
-                let Ok(message) = self.decoder.decode_from_bytes(bytes)? else {
-                    tracing::warn!(target: "relay", "received broken STUN message from {sender}");
-                    return Ok(());
-                };
-
-                tracing::trace!(target: "relay", "Received {} {} from {sender}", message.method().as_str(), message.class().as_str());
-
-                self.dispatch_stun_message(message, sender, now, |server, message, sender, now| {
-                    use MessageClass::*;
-                    match (message.method(), message.class()) {
-                        (BINDING, Request) => {
-                            server.handle_binding_request(message, sender);
-                            Ok(())
-                        }
-                        (ALLOCATE, Request) => server.handle_allocate_request(message, sender, now),
-                        (REFRESH, Request) => server.handle_refresh_request(message, sender, now),
-                        (CHANNEL_BIND, Request) => {
-                            server.handle_channel_bind_request(message, sender, now)
-                        }
-                        (CREATE_PERMISSION, Request) => {
-                            server.handle_create_permission_request(message, sender, now)
-                        }
-                        (_, Indication) => {
-                            tracing::trace!(target: "relay", "Indications are not yet implemented");
-
-                            Err(ErrorCode::from(BadRequest))
-                        }
-                        _ => Err(ErrorCode::from(BadRequest)),
-                    }
-                });
+        let result = match self.decoder.decode(bytes) {
+            Ok(Ok(ClientMessage::Allocate(request))) => {
+                self.handle_allocate_request(request, sender, now)
             }
-            Some(64..=79) => {
-                let (channel, data) = match channel_data::parse(bytes) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        tracing::debug!(
-                            target: "relay",
-                            "failed to parse channel data message: {e:#}"
-                        );
-                        return Ok(());
-                    }
-                };
+            Ok(Ok(ClientMessage::Refresh(request))) => {
+                self.handle_refresh_request(request, sender, now)
+            }
+            Ok(Ok(ClientMessage::ChannelBind(request))) => {
+                self.handle_channel_bind_request(request, sender, now)
+            }
+            Ok(Ok(ClientMessage::CreatePermission(request))) => {
+                self.handle_create_permission_request(request, sender, now)
+            }
+            Ok(Ok(ClientMessage::Binding(request))) => {
+                self.handle_binding_request(request, sender);
+                return;
+            }
+            Ok(Ok(ClientMessage::ChannelData(msg))) => {
+                self.handle_channel_data_message(msg, sender, now);
+                return;
+            }
 
-                self.handle_channel_data_message(channel, data, sender, now);
-            }
-            _ => {
-                tracing::trace!(target: "relay", "Received unknown message from {sender}");
-            }
+            // Could parse the bytes but message was semantically invalid (like missing attribute).
+            Ok(Err(error_code)) => Err(error_code),
+
+            // Parsing the bytes failed.
+            Err(client_message::Error::BadChannelData(_)) => return,
+            Err(client_message::Error::DecodeStun(_)) => return,
+            Err(client_message::Error::UnknownMessageType(_)) => return,
+            Err(client_message::Error::Eof) => return,
+        };
+
+        let Err(mut error_response) = result else {
+            return;
+        };
+
+        // In case of a 401 response, attach a realm and nonce.
+        if error_response
+            .get_attribute::<ErrorCode>()
+            .map_or(false, |error| error == &ErrorCode::from(Unauthorized))
+        {
+            error_response.add_attribute(Nonce::new("foobar".to_owned()).unwrap().into());
+            error_response.add_attribute(Realm::new("firezone".to_owned()).unwrap().into());
         }
 
-        Ok(())
+        self.send_message(error_response, sender);
     }
 
     /// Process the bytes received from an allocation.
@@ -264,7 +248,7 @@ where
         );
 
         let recipient = *client;
-        let data = channel_data::make(*channel_number, bytes);
+        let data = ChannelData::new(*channel_number, bytes).to_bytes();
 
         if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
             let hex_bytes = hex::encode(&data);
@@ -321,27 +305,7 @@ where
         self.pending_commands.pop_front()
     }
 
-    fn dispatch_stun_message(
-        &mut self,
-        message: Message<Attribute>,
-        sender: SocketAddr,
-        now: Instant,
-        handler: impl Fn(&mut Self, Message<Attribute>, SocketAddr, Instant) -> Result<(), ErrorCode>,
-    ) {
-        let transaction_id = message.transaction_id();
-        let method = message.method();
-
-        if let Err(e) = handler(self, message, sender, now) {
-            if e.code() == Unauthorized::CODEPOINT {
-                self.send_message(unauthorized(transaction_id, method), sender);
-                return;
-            }
-
-            self.send_message(error_response(transaction_id, method, e), sender);
-        }
-    }
-
-    fn handle_binding_request(&mut self, message: Message<Attribute>, sender: SocketAddr) {
+    pub fn handle_binding_request(&mut self, message: Binding, sender: SocketAddr) {
         let mut message = Message::new(
             MessageClass::SuccessResponse,
             BINDING,
@@ -355,35 +319,27 @@ where
     /// Handle a TURN allocate request.
     ///
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-receiving-an-allocate-reque> for details.
-    fn handle_allocate_request(
+    pub fn handle_allocate_request(
         &mut self,
-        message: Message<Attribute>,
+        request: Allocate,
         sender: SocketAddr,
         now: Instant,
-    ) -> Result<(), ErrorCode> {
-        let _ = message
-            .get_attribute::<MessageIntegrity>()
-            .ok_or(Unauthorized)?;
+    ) -> Result<(), Message<Attribute>> {
+        // TODO: Check validity of message integrity here?
 
         if self.allocations.contains_key(&sender) {
-            return Err(AllocationMismatch.into());
+            return Err(error_response(AllocationMismatch, &request));
         }
 
         if self.allocations_by_port.len() == MAX_AVAILABLE_PORTS as usize {
-            return Err(InsufficientCapacity.into());
+            return Err(error_response(InsufficientCapacity, &request));
         }
 
-        let requested_transport = message
-            .get_attribute::<RequestedTransport>()
-            .ok_or(BadRequest)?;
-
-        if requested_transport.protocol() != UDP_TRANSPORT {
-            return Err(BadRequest.into());
+        if request.requested_transport().protocol() != UDP_TRANSPORT {
+            return Err(error_response(BadRequest, &request));
         }
 
-        let requested_lifetime = message.get_attribute::<Lifetime>();
-
-        let effective_lifetime = compute_effective_lifetime(requested_lifetime);
+        let effective_lifetime = request.effective_lifetime();
 
         // TODO: Do we need to handle DONT-FRAGMENT?
         // TODO: Do we need to handle EVEN/ODD-PORT?
@@ -393,7 +349,7 @@ where
         let mut message = Message::new(
             MessageClass::SuccessResponse,
             ALLOCATE,
-            message.transaction_id(),
+            request.transaction_id(),
         );
 
         let ip4_relay_address = self.public_relay_address_for_port(allocation.port);
@@ -430,24 +386,21 @@ where
     /// Handle a TURN refresh request.
     ///
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-receiving-a-refresh-request> for details.
-    fn handle_refresh_request(
+    pub fn handle_refresh_request(
         &mut self,
-        message: Message<Attribute>,
+        request: Refresh,
         sender: SocketAddr,
         now: Instant,
-    ) -> Result<(), ErrorCode> {
-        let _ = message
-            .get_attribute::<MessageIntegrity>()
-            .ok_or(Unauthorized)?;
+    ) -> Result<(), Message<Attribute>> {
+        // TODO: Check validity of message integrity here?
 
         // TODO: Verify that this is the correct error code.
         let allocation = self
             .allocations
             .get_mut(&sender)
-            .ok_or(ErrorCode::from(AllocationMismatch))?;
+            .ok_or(error_response(AllocationMismatch, &request))?;
 
-        let requested_lifetime = message.get_attribute::<Lifetime>();
-        let effective_lifetime = compute_effective_lifetime(requested_lifetime);
+        let effective_lifetime = request.effective_lifetime();
 
         if effective_lifetime.lifetime().is_zero() {
             let port = allocation.port;
@@ -457,7 +410,7 @@ where
             self.allocations.remove(&sender);
             self.allocations_by_port.remove(&port);
             self.send_message(
-                refresh_success_response(effective_lifetime, message.transaction_id()),
+                refresh_success_response(effective_lifetime, request.transaction_id()),
                 sender,
             );
 
@@ -486,7 +439,7 @@ where
             deadline: wake_deadline,
         });
         self.send_message(
-            refresh_success_response(effective_lifetime, message.transaction_id()),
+            refresh_success_response(effective_lifetime, request.transaction_id()),
             sender,
         );
 
@@ -496,49 +449,40 @@ where
     /// Handle a TURN channel bind request.
     ///
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-receiving-a-channelbind-req> for details.
-    fn handle_channel_bind_request(
+    pub fn handle_channel_bind_request(
         &mut self,
-        message: Message<Attribute>,
+        request: ChannelBind,
         sender: SocketAddr,
         now: Instant,
-    ) -> Result<(), ErrorCode> {
-        let _ = message
-            .get_attribute::<MessageIntegrity>()
-            .ok_or(Unauthorized)?;
+    ) -> Result<(), Message<Attribute>> {
+        // TODO: Check validity of message integrity here?
 
         let allocation = self
             .allocations
             .get_mut(&sender)
-            .ok_or(ErrorCode::from(AllocationMismatch))?;
+            .ok_or(error_response(AllocationMismatch, &request))?;
 
-        let requested_channel = message
-            .get_attribute::<ChannelNumber>()
-            .ok_or(ErrorCode::from(BadRequest))?
-            .value();
-
-        let peer_address = message
-            .get_attribute::<XorPeerAddress>()
-            .ok_or(ErrorCode::from(BadRequest))?
-            .address();
+        let requested_channel = request.channel_number().value();
+        let peer_address = request.xor_peer_address().address();
 
         // Note: `channel_number` is enforced to be in the correct range.
 
         // Check that our allocation can handle the requested peer addr.
         if !allocation.can_relay_to(peer_address) {
-            return Err(ErrorCode::from(PeerAddressFamilyMismatch));
+            return Err(error_response(PeerAddressFamilyMismatch, &request));
         }
 
         // Ensure the same address isn't already bound to a different channel.
         if let Some(number) = self.channel_numbers_by_peer.get(&peer_address) {
             if number != &requested_channel {
-                return Err(ErrorCode::from(BadRequest));
+                return Err(error_response(BadRequest, &request));
             }
         }
 
         // Ensure the channel is not already bound to a different address.
         if let Some(channel) = self.channels_by_number.get_mut(&requested_channel) {
             if channel.peer_address != peer_address {
-                return Err(ErrorCode::from(BadRequest));
+                return Err(error_response(BadRequest, &request));
             }
 
             // Binding requests for existing channels act as a refresh for the binding.
@@ -552,7 +496,7 @@ where
                 TimedAction::UnbindChannel(requested_channel),
             );
             self.send_message(
-                channel_bind_success_response(message.transaction_id()),
+                channel_bind_success_response(request.transaction_id()),
                 sender,
             );
 
@@ -567,7 +511,7 @@ where
         let allocation_id = allocation.id;
         self.create_channel_binding(requested_channel, peer_address, allocation_id, now);
         self.send_message(
-            channel_bind_success_response(message.transaction_id()),
+            channel_bind_success_response(request.transaction_id()),
             sender,
         );
 
@@ -582,15 +526,14 @@ where
     ///
     /// This TURN server implementation does not support relaying data other than through channels.
     /// Thus, creating a permission is a no-op that always succeeds.
-    fn handle_create_permission_request(
+    pub fn handle_create_permission_request(
         &mut self,
-        message: Message<Attribute>,
+        message: CreatePermission,
         sender: SocketAddr,
         _: Instant,
-    ) -> Result<(), ErrorCode> {
-        let _ = message
-            .get_attribute::<MessageIntegrity>()
-            .ok_or(Unauthorized)?;
+    ) -> Result<(), Message<Attribute>> {
+        // TODO: Check validity of message integrity here?
+
         self.send_message(
             create_permission_success_response(message.transaction_id()),
             sender,
@@ -599,13 +542,15 @@ where
         Ok(())
     }
 
-    fn handle_channel_data_message(
+    pub fn handle_channel_data_message(
         &mut self,
-        channel_number: u16,
-        data: &[u8],
+        message: ChannelData,
         sender: SocketAddr,
         _: Instant,
     ) {
+        let channel_number = message.channel();
+        let data = message.data();
+
         let Some(channel) = self.channels_by_number.get(&channel_number) else {
             tracing::debug!(target: "relay", "Channel {channel_number} does not exist, refusing to forward data");
             return;
@@ -834,36 +779,44 @@ enum TimedAction {
     DeleteChannel(u16),
 }
 
-/// Computes the effective lifetime of an allocation.
-fn compute_effective_lifetime(requested_lifetime: Option<&Lifetime>) -> Lifetime {
-    let Some(requested) = requested_lifetime else {
-        return Lifetime::new(DEFAULT_ALLOCATION_LIFETIME).unwrap();
-    };
-
-    let effective_lifetime = requested.lifetime().min(MAX_ALLOCATION_LIFETIME);
-
-    Lifetime::new(effective_lifetime).unwrap()
-}
-
 fn error_response(
-    transaction_id: TransactionId,
-    method: Method,
-    error_code: ErrorCode,
+    error_code: impl Into<ErrorCode>,
+    request: &impl StunRequest,
 ) -> Message<Attribute> {
-    let mut message = Message::new(MessageClass::ErrorResponse, method, transaction_id);
-    message.add_attribute(error_code.into());
+    let mut message = Message::new(
+        MessageClass::ErrorResponse,
+        request.method(),
+        request.transaction_id(),
+    );
+    message.add_attribute(Attribute::from(error_code.into()));
 
     message
 }
 
-fn unauthorized(transaction_id: TransactionId, method: Method) -> Message<Attribute> {
-    let mut message = Message::new(MessageClass::ErrorResponse, method, transaction_id);
-    message.add_attribute(ErrorCode::from(Unauthorized).into());
-    message.add_attribute(Nonce::new("foobar".to_owned()).unwrap().into());
-    message.add_attribute(Realm::new("firezone".to_owned()).unwrap().into());
-
-    message
+/// Private helper trait to make [`error_response`] more ergonomic to use.
+trait StunRequest {
+    fn transaction_id(&self) -> TransactionId;
+    fn method(&self) -> Method;
 }
+
+macro_rules! impl_stun_request_for {
+    ($t:ty, $m:expr) => {
+        impl StunRequest for $t {
+            fn transaction_id(&self) -> TransactionId {
+                self.transaction_id()
+            }
+
+            fn method(&self) -> Method {
+                $m
+            }
+        }
+    };
+}
+
+impl_stun_request_for!(Allocate, ALLOCATE);
+impl_stun_request_for!(ChannelBind, CHANNEL_BIND);
+impl_stun_request_for!(CreatePermission, CREATE_PERMISSION);
+impl_stun_request_for!(Refresh, REFRESH);
 
 // Define an enum of all attributes that we care about for our server.
 stun_codec::define_attribute_enums!(
@@ -884,17 +837,3 @@ stun_codec::define_attribute_enums!(
         Username
     ]
 );
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn requested_lifetime_is_capped_at_max_lifetime() {
-        let requested_lifetime = Lifetime::new(Duration::from_secs(10_000_000)).unwrap();
-
-        let effective_lifetime = compute_effective_lifetime(Some(&requested_lifetime));
-
-        assert_eq!(effective_lifetime.lifetime(), MAX_ALLOCATION_LIFETIME)
-    }
-}

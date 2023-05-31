@@ -1,27 +1,61 @@
-use anyhow::{bail, Result};
 use bytes::{BufMut, BytesMut};
+use std::io;
 
-pub(crate) fn make(channel: u16, data: &[u8]) -> Vec<u8> {
-    let mut message = BytesMut::with_capacity(2 + 2 + data.len());
-
-    message.put_u16(channel);
-    message.put_u16(data.len() as u16);
-    message.put_slice(data);
-
-    message.freeze().to_vec()
+pub struct ChannelData<'a> {
+    channel: u16,
+    data: &'a [u8],
 }
 
-pub(crate) fn parse(data: &[u8]) -> Result<(u16, &[u8])> {
-    if data.len() < 4 {
-        bail!("must have at least 4 bytes for channel data message")
+impl<'a> ChannelData<'a> {
+    pub fn parse(data: &'a [u8]) -> Result<Self, io::Error> {
+        if data.len() < 4 {
+            return Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "channel data messages are at least 4 bytes long",
+            ));
+        }
+
+        let channel_number = u16::from_be_bytes([data[0], data[1]]);
+        let length = u16::from_be_bytes([data[2], data[3]]);
+
+        let actual_payload_length = data.len() - 4;
+
+        if actual_payload_length != length as usize {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "channel data message specified {length} bytes but got {actual_payload_length}"
+                ),
+            ));
+        }
+
+        Ok(ChannelData {
+            channel: channel_number,
+            data: &data[4..],
+        })
     }
 
-    let channel_number = u16::from_be_bytes([data[0], data[1]]);
-    let length = u16::from_be_bytes([data[2], data[3]]);
+    pub fn new(channel: u16, data: &'a [u8]) -> Self {
+        ChannelData { channel, data }
+    }
 
-    anyhow::ensure!((data.len() - 4) == length as usize);
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut message = BytesMut::with_capacity(2 + 2 + self.data.len());
 
-    Ok((channel_number, &data[4..]))
+        message.put_u16(self.channel);
+        message.put_u16(self.data.len() as u16);
+        message.put_slice(self.data);
+
+        message.freeze().into()
+    }
+
+    pub fn channel(&self) -> u16 {
+        self.channel
+    }
+
+    pub fn data(&self) -> &[u8] {
+        self.data
+    }
 }
 
 // TODO: tests
