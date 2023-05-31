@@ -3,7 +3,14 @@
 ## Running Control Plane for local development
 
 You can use [Top-Level Docker Compose](../docker-compose.yml) and start any released Elixir
-app:
+app. `web` and `api` services are running application release that will be pretty much the same
+as the one we run in production, while `mix` compose service runs raw Elixir code, without a release.
+
+It means that you can run any Elixir code including Mix tasks using `mix` service but you can't do that
+in `web`/`api` so easily, because Elixir strips a lot of tooling during compilation.
+
+`mix` additionally caches `_build` and `node_modules` to speed up compilation time and syncs
+`/apps`, `/config` and other folders with the host machine.
 
 ```bash
 ❯ docker-compose build
@@ -26,14 +33,17 @@ app:
 
 # Ensure database is migrated before running seeds
 ❯ docker-compose run api bin/migrate
+# or
+❯ docker-compose run mix /bin/sh -c "cd apps/domain && mix ecto.migrate"
 
 # Seed the database
 # Hint: some access tokens will be generated and written to stdout,
 # don't forget to save them for later
 ❯ docker-compose run api bin/seed
+# or
+❯ docker-compose run mix /bin/sh -c "cd apps/domain && mix ecto.seed"
 
-# Start the API service for control plane sockets
-# (You can start web too.)
+# Start the API service for control plane sockets while listening to STDIN (where you will see all the logs)
 ❯ docker-compose up api
 
 # Verify it's working
