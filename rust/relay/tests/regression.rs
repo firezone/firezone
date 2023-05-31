@@ -9,6 +9,10 @@ use stun_codec::rfc5766::methods::REFRESH;
 use stun_codec::{
     DecodedMessage, Message, MessageClass, MessageDecoder, MessageEncoder, TransactionId,
 };
+use test_strategy::proptest;
+
+#[proptest]
+fn stun_binding_request_prop() {}
 
 #[test]
 fn stun_binding_request() {

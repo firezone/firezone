@@ -19,8 +19,14 @@ bytes = "1.4.0"
 sha2 = "0.10.6"
 base64 = "0.21.0"
 once_cell = "1.17.1"
+proptest = { version = "1.2.0", optional = true }
+test-strategy = "0.3.0"
 
 [dev-dependencies]
 webrtc = "0.7.2"
 redis = { version = "0.23.0", default-features = false, features = ["tokio-comp"] }
 difference = "2.0.0"
+
+[[test]]
+name = "regression"
+required-features = ["proptest"]

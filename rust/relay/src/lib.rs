@@ -1,4 +1,6 @@
 mod auth;
+#[cfg(feature = "proptest")]
+mod proptest;
 mod rfc8656;
 mod server;
 mod sleep;
