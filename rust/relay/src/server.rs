@@ -65,7 +65,7 @@ pub struct Server<R> {
 /// The commands returned from a [`Server`].
 ///
 /// The [`Server`] itself is sans-IO, meaning it is the caller responsibility to cause the side-effects described by these commands.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Command {
     SendMessage {
         payload: Vec<u8>,

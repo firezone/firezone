@@ -2,8 +2,9 @@ use crate::TypedOutput::FreeAllocation;
 use bytecodec::{DecodeExt, EncodeExt};
 use hex_literal::hex;
 use rand::rngs::mock::StepRng;
-use relay::{Allocate, AllocationId, Attribute, Binding, ClientMessage, Command, Server};
+use relay::{Allocate, AllocationId, Attribute, Binding, ClientMessage, Command, Refresh, Server};
 use std::collections::HashMap;
+use std::iter;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::time::{Duration, SystemTime};
 use stun_codec::rfc5389::attributes::{MessageIntegrity, Realm, Username, XorMappedAddress};
@@ -54,7 +55,7 @@ fn deallocate_once_time_expired(
             Allocate::new_udp(
                 transaction_id,
                 Some(lifetime.clone()),
-                valid_username(now, username_salt),
+                valid_username(now, &username_salt),
                 &secret,
             ),
             now,
@@ -75,29 +76,73 @@ fn deallocate_once_time_expired(
     );
 }
 
-#[test]
-fn when_refreshed_in_time_allocation_does_not_expire() {
-    let now = SystemTime::now();
-    let refreshed_at = now + Duration::from_secs(300);
-    let first_expiry = now + Duration::from_secs(600);
+#[proptest]
+fn when_refreshed_in_time_allocation_does_not_expire(
+    #[strategy(relay::proptest::transaction_id())] allocate_transaction_id: TransactionId,
+    #[strategy(relay::proptest::transaction_id())] refresh_transaction_id: TransactionId,
+    #[strategy(relay::proptest::allocation_lifetime())] allocate_lifetime: Lifetime,
+    #[strategy(relay::proptest::allocation_lifetime())] refresh_lifetime: Lifetime,
+    #[strategy(relay::proptest::username_salt())] username_salt: String,
+    source: SocketAddrV4,
+    public_relay_addr: Ipv4Addr,
+    #[strategy(relay::proptest::now())] now: SystemTime,
+) {
+    let mut server = TestServer::new(public_relay_addr);
+    let secret = server.auth_secret();
+    let first_wake = now + allocate_lifetime.lifetime();
 
-    run_regression_test(&[(
-        Input::client("91.141.70.157:7112", "000300482112a442998bcae2a73b55941682cf470019000411000000000600047465737400140008666972657a6f6e6500150006666f6f626172000000080014b279018b143b1c6ac194a2848d0e37958731a2f38028000497076a00", now),
-        &[
-            Output::Wake(first_expiry),
-            Output::CreateAllocation(49152),
-            Output::send_message("91.141.70.157:7112", "010300202112a442998bcae2a73b55941682cf47001600080001e112026eff670020000800013ada7a9fe2df000d000400000258"),
+    server.assert_commands(
+        from_client(
+            source,
+            Allocate::new_udp(
+                allocate_transaction_id,
+                Some(allocate_lifetime.clone()),
+                valid_username(now, &username_salt),
+                &secret,
+            ),
+            now,
+        ),
+        [
+            Wake(first_wake),
+            CreateAllocation(49152),
+            send_message(
+                source,
+                allocate_response(
+                    allocate_transaction_id,
+                    public_relay_addr,
+                    49152,
+                    source,
+                    &allocate_lifetime,
+                ),
+            ),
         ],
-    ),(
-        Input::client("91.141.70.157:7112", refresh_request(hex!("150ee0cb117ed3a0f66529f2"), 3600), refreshed_at),
-        &[
-            Output::Wake(first_expiry), // `first_expiry` would still happen after the refresh but it will be a no-op wake-up.
-            Output::send_message("91.141.70.157:7112", "010400082112a442150ee0cb117ed3a0f66529f2000d000400000e10"),
+    );
+
+    // Forward time
+    let now = now + allocate_lifetime.lifetime() / 2;
+    let second_wake = now + refresh_lifetime.lifetime();
+
+    server.assert_commands(
+        from_client(
+            source,
+            Refresh::new(
+                refresh_transaction_id,
+                Some(refresh_lifetime.clone()),
+                valid_username(now, &username_salt),
+                &secret,
+            ),
+            now,
+        ),
+        [
+            Wake(second_wake),
+            send_message(
+                source,
+                refresh_response(refresh_transaction_id, refresh_lifetime),
+            ),
         ],
-    ),(
-        Input::Time(first_expiry + Duration::from_secs(1)),
-        &[],
-    )]);
+    );
+
+    server.assert_commands(forward_time_to(first_wake + Duration::from_secs(1)), []);
 }
 
 #[test]
@@ -349,11 +394,13 @@ impl TestServer {
             }
         }
 
-        assert!(self.server.next_command().is_none())
+        let remaining_commands = iter::from_fn(|| self.server.next_command()).collect::<Vec<_>>();
+
+        assert_eq!(remaining_commands, vec![])
     }
 }
 
-fn valid_username(now: SystemTime, salt: String) -> Username {
+fn valid_username(now: SystemTime, salt: &str) -> Username {
     let now_unix = now
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap()
@@ -408,6 +455,14 @@ fn allocate_response(
     );
     message.add_attribute(XorMappedAddress::new(source.into()).into());
     message.add_attribute(lifetime.clone().into());
+
+    message
+}
+
+fn refresh_response(transaction_id: TransactionId, lifetime: Lifetime) -> Message<Attribute> {
+    let mut message =
+        Message::<Attribute>::new(MessageClass::SuccessResponse, REFRESH, transaction_id);
+    message.add_attribute(lifetime.into());
 
     message
 }
