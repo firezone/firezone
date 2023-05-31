@@ -27,7 +27,7 @@ config :domain, Domain.Repo,
   queue_target: 500,
   queue_interval: 1000,
   migration_timestamps: [type: :timestamptz],
-  start_apps_before_migration: [:ssl]
+  start_apps_before_migration: [:ssl, :logger_json]
 
 config :domain, Domain.Devices, upstream_dns: ["1.1.1.1"]
 

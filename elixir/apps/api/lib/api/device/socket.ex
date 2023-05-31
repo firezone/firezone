@@ -1,6 +1,7 @@
 defmodule API.Device.Socket do
   use Phoenix.Socket
   alias Domain.{Auth, Devices}
+  require Logger
 
   ## Channels
 
@@ -22,12 +23,16 @@ defmodule API.Device.Socket do
       {:ok, socket}
     else
       {:error, :unauthorized} ->
-        {:error, :invalid}
+        {:error, :invalid_token}
+
+      {:error, reason} ->
+        Logger.debug("Error connecting device websocket: #{inspect(reason)}")
+        {:error, reason}
     end
   end
 
   def connect(_params, _socket, _connect_info) do
-    {:error, :invalid}
+    {:error, :missing_token}
   end
 
   @impl true

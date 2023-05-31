@@ -65,6 +65,7 @@ defmodule Domain.MixProject do
       # Other deps
       {:telemetry, "~> 1.0"},
       {:posthog, "~> 0.1"},
+      {:logger_json, "~> 5.1"},
 
       # Runtime debugging
       {:recon, "~> 2.5"},

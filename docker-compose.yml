@@ -82,6 +82,8 @@ services:
       TELEMETRY_ENABLED: "false"
       # Erlang
       RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
+      # Debugging
+      LOG_LEVEL: "debug"
     depends_on:
       postgres:
         condition: 'service_healthy'
@@ -127,6 +129,8 @@ services:
       TELEMETRY_ENABLED: "false"
       # Erlang
       RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
+      # Debugging
+      LOG_LEVEL: "debug"
     depends_on:
       postgres:
         condition: 'service_healthy'

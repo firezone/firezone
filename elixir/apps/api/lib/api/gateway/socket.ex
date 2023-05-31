@@ -1,6 +1,7 @@
 defmodule API.Gateway.Socket do
   use Phoenix.Socket
   alias Domain.Gateways
+  require Logger
 
   ## Channels
 
@@ -25,6 +26,10 @@ defmodule API.Gateway.Socket do
         |> assign(:gateway, gateway)
 
       {:ok, socket}
+    else
+      {:error, reason} ->
+        Logger.debug("Error connecting gateway websocket: #{inspect(reason)}")
+        {:error, reason}
     end
   end
 
