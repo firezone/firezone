@@ -1,12 +1,13 @@
 mod channel_data;
 mod client_message;
 
-use crate::auth::MessageIntegrityExt;
-use crate::rfc8656::PeerAddressFamilyMismatch;
-use crate::server::channel_data::ChannelData;
-use crate::server::client_message::{
+pub use crate::server::channel_data::ChannelData;
+pub use crate::server::client_message::{
     Allocate, Binding, ChannelBind, ClientMessage, CreatePermission, Refresh,
 };
+
+use crate::auth::MessageIntegrityExt;
+use crate::rfc8656::PeerAddressFamilyMismatch;
 use crate::stun_codec_ext::{MessageClassExt, MethodExt};
 use crate::TimeEvents;
 use anyhow::Result;

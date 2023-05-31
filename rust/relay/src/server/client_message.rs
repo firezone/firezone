@@ -67,6 +67,7 @@ impl Decoder {
     }
 }
 
+#[derive(derive_more::From)]
 pub enum ClientMessage<'a> {
     ChannelData(ChannelData<'a>),
     Binding(Binding),
@@ -76,6 +77,7 @@ pub enum ClientMessage<'a> {
     CreatePermission(CreatePermission),
 }
 
+#[derive(Debug)]
 pub struct Binding {
     transaction_id: TransactionId,
 }

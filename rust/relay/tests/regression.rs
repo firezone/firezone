@@ -1,9 +1,11 @@
 use bytecodec::{DecodeExt, EncodeExt};
 use hex_literal::hex;
-use relay::{AllocationId, Attribute, Command, Server};
+use relay::{AllocationId, Attribute, Binding, ClientMessage, Command, Server};
 use std::collections::HashMap;
+use std::net::{SocketAddr, SocketAddrV4};
 use std::time::{Duration, SystemTime};
-use stun_codec::rfc5389::attributes::{MessageIntegrity, Realm, Username};
+use stun_codec::rfc5389::attributes::{MessageIntegrity, Realm, Username, XorMappedAddress};
+use stun_codec::rfc5389::methods::BINDING;
 use stun_codec::rfc5766::attributes::Lifetime;
 use stun_codec::rfc5766::methods::REFRESH;
 use stun_codec::{
@@ -12,19 +14,17 @@ use stun_codec::{
 use test_strategy::proptest;
 
 #[proptest]
-fn stun_binding_request_prop() {}
+fn can_answer_stun_request_from_ip4_address(
+    #[strategy(relay::proptest::binding())] request: Binding,
+    source: SocketAddrV4,
+) {
+    let transaction_id = request.transaction_id();
 
-#[test]
-fn stun_binding_request() {
-    run_regression_test(&[(
-        Input::client(
-            "91.141.64.64:26098",
-            "000100002112a4420908af7d45e8751f5092d167",
-            SystemTime::now(),
-        ),
-        &[Output::send_message(
-            "91.141.64.64:26098",
-            "0101000c2112a4420908af7d45e8751f5092d16700200008000144e07a9fe402",
+    run_typed_regression_test([(
+        from_client(source, request, SystemTime::now()),
+        [send_message(
+            source,
+            binding_response(transaction_id, source),
         )],
     )]);
 }
@@ -232,6 +232,56 @@ fn run_regression_test(sequence: &[(Input, &[Output])]) {
     }
 }
 
+fn run_typed_regression_test<const S: usize, const O: usize>(
+    sequence: [(TypedInput, [TypedOutput; O]); S],
+) {
+    let _ = env_logger::try_init();
+
+    let mut server = Server::test();
+
+    for (input, output) in sequence {
+        match input {
+            TypedInput::Client(sender, ClientMessage::Binding(binding), _) => {
+                server.handle_binding_request(binding, sender);
+            }
+            _ => todo!(),
+        }
+
+        for expected_output in output {
+            let Some(actual_output) = server.next_command() else {
+                let msg = match expected_output {
+                    TypedOutput::SendMessage((recipient, msg)) => format!("to send message {:?} to {recipient}", msg),
+                };
+
+                panic!("No commands produced but expected {msg}");
+            };
+
+            match (expected_output, actual_output) {
+                (
+                    TypedOutput::SendMessage((to, message)),
+                    Command::SendMessage { payload, recipient },
+                ) => {
+                    let expected_bytes = MessageEncoder::new()
+                        .encode_into_bytes(message.clone())
+                        .unwrap();
+
+                    if expected_bytes != payload {
+                        let expected_message = format!("{:?}", message);
+                        let actual_message = format!("{:?}", parse_message(&payload));
+
+                        difference::assert_diff!(&expected_message, &actual_message, "\n", 0);
+                    }
+
+                    assert_eq!(recipient, to);
+                }
+                (expected, actual) => panic!("Expected: {expected:?}\nActual:   {actual:?}\n"),
+            }
+        }
+
+        assert!(server.next_command().is_none())
+    }
+}
+
 fn refresh_request(transaction_id: [u8; 12], lifetime: u32) -> String {
     let username = Username::new("test".to_owned()).unwrap();
     let realm = Realm::new("firezone".to_owned()).unwrap();
@@ -249,6 +299,17 @@ fn refresh_request(transaction_id: [u8; 12], lifetime: u32) -> String {
     message.add_attribute(message_integrity.into());
 
     message_to_hex(message)
+}
+
+fn binding_response(
+    transaction_id: TransactionId,
+    address: impl Into<SocketAddr>,
+) -> Message<Attribute> {
+    let mut message =
+        Message::<Attribute>::new(MessageClass::SuccessResponse, BINDING, transaction_id);
+    message.add_attribute(XorMappedAddress::new(address.into()).into());
+
+    message
 }
 
 fn message_to_hex<A>(message: Message<A>) -> String
@@ -282,6 +343,18 @@ impl Input {
     }
 }
 
+enum TypedInput<'a> {
+    Client(SocketAddr, ClientMessage<'a>, SystemTime),
+}
+
+fn from_client<'a>(
+    from: impl Into<SocketAddr>,
+    message: impl Into<ClientMessage<'a>>,
+    now: SystemTime,
+) -> TypedInput<'a> {
+    TypedInput::Client(from.into(), message.into(), now)
+}
+
 #[derive(Debug)]
 enum Output {
     SendMessage((Ip, Bytes)),
@@ -289,6 +362,11 @@ enum Output {
     Wake(SystemTime),
     CreateAllocation(u16),
     ExpireAllocation(u16),
+}
+
+#[derive(Debug)]
+enum TypedOutput {
+    SendMessage((SocketAddr, Message<Attribute>)),
 }
 
 impl Output {
@@ -299,6 +377,10 @@ impl Output {
     fn forward(to: Ip, data: impl AsRef<str>, port: u16) -> Self {
         Self::Forward((to, data.as_ref().to_owned(), port))
     }
+}
+
+fn send_message(source: impl Into<SocketAddr>, message: Message<Attribute>) -> TypedOutput {
+    TypedOutput::SendMessage((source.into(), message))
 }
 
 type Ip = &'static str;

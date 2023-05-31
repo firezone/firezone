@@ -1,7 +1,7 @@
+use crate::Binding;
 use proptest::arbitrary::any;
 use proptest::strategy::Strategy;
 use stun_codec::TransactionId;
-use crate::server::
 
 pub fn transaction_id() -> impl Strategy<Value = TransactionId> {
     any::<[u8; 12]>().prop_map(|bytes| TransactionId::new(bytes))
