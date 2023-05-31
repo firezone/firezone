@@ -63,7 +63,7 @@ Connecting to a running api/web instance shell:
 Connecting to a running api/web instance to run Elixir code from them:
 
 ```bash
-# Start all services
+# Start all services in daemon mode (in background)
 ❯ docker-compose up -d --build
 
 # Connect to a running API node
@@ -94,3 +94,9 @@ relay_secret = Domain.Crypto.rand_string()
 ```
 
 Now if you connect and list resources there will be one online because there is a relay and gateway online.
+
+Stopping everything is easy too:
+
+```bash
+docker-compose down
+```
