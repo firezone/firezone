@@ -13,6 +13,8 @@ in `web`/`api` so easily, because Elixir strips a lot of tooling during compilat
 `/apps`, `/config` and other folders with the host machine.
 
 ```bash
+# Make sure to run this every time code in elixir/ changes,
+# docket doesn't do that for you!
 ❯ docker-compose build
 
 # Create the database
@@ -62,7 +64,7 @@ Connecting to a running api/web instance to run Elixir code from them:
 
 ```bash
 # Start all services
-❯ docker-compose up -d
+❯ docker-compose up -d --build
 
 # Connect to a running API node
 ❯ docker exec -it firezone-api-1 bin/api remote
