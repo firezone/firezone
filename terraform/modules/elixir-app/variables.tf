@@ -1,4 +1,5 @@
 variable "project_id" {
+  type        = string
   description = "ID of a Google Cloud Project"
 }
 
@@ -7,16 +8,19 @@ variable "project_id" {
 ################################################################################
 
 variable "compute_instance_type" {
+  type        = string
   description = "Type of the instance."
   default     = "n1-standard-1"
 }
 
 variable "compute_instance_region" {
+  type        = string
   description = "Region which would be used to create compute resources."
 }
 
-variable "compute_instance_availability_zone" {
-  description = "Availability zone for the VMs. It must be in the same region as `var.compute_instance_region`."
+variable "compute_instance_availability_zones" {
+  type        = list(string)
+  description = "List of availability zone for the VMs. It must be in the same region as `var.compute_instance_region`."
 }
 
 ################################################################################
@@ -170,6 +174,17 @@ EOT
 }
 
 ################################################################################
+## DNS
+################################################################################
+
+variable "dns_managed_zone_name" {
+  type     = string
+  nullable = false
+
+  description = "Name of the DNS managed zone."
+}
+
+################################################################################
 ## Application
 ################################################################################
 
@@ -197,17 +212,24 @@ variable "application_labels" {
   description = "Labels to add to all created by this module resources."
 }
 
-# variable "application_ports" {
-#   type = list(object({
-#     protocol = string
-#     port     = number
-#   }))
+variable "application_dns_tld" {
+  type     = string
+  nullable = false
 
-#   nullable = false
-#   default  = []
+  description = "DNS host which will be used to create DNS records for the application and provision SSL-certificates."
+}
 
-#   description = "List of ports to expose for the application."
-# }
+variable "application_ports" {
+  type = list(object({
+    protocol = string
+    port     = number
+  }))
+
+  nullable = false
+  default  = []
+
+  description = "List of ports to expose for the application."
+}
 
 variable "application_environment_variables" {
   type = list(object({

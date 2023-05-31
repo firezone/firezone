@@ -81,7 +81,7 @@ module "google-cloud-dns" {
 
   project_id = module.google-cloud-project.project.project_id
 
-  tld            = "app.${local.tld}."
+  tld            = local.tld
   dnssec_enabled = false
 }
 
@@ -229,9 +229,11 @@ module "web" {
   source     = "../../modules/elixir-app"
   project_id = module.google-cloud-project.project.project_id
 
-  compute_instance_type              = "n1-standard-1"
-  compute_instance_region            = local.region
-  compute_instance_availability_zone = "${local.region}-d"
+  compute_instance_type               = "n1-standard-1"
+  compute_instance_region             = local.region
+  compute_instance_availability_zones = ["${local.region}-d"]
+
+  dns_managed_zone_name = module.google-cloud-dns.zone_name
 
   vpc_network    = module.google-cloud-vpc.self_link
   vpc_subnetwork = google_compute_subnetwork.apps.self_link
@@ -252,22 +254,30 @@ module "web" {
   application_name    = "web"
   application_version = "0-0-1"
 
-  # application_ports = [
-  #   {
-  #     protocol = "TCP"
-  #     port     = 80
-  #   },
-  #   {
-  #     protocol = "TCP"
-  #     port     = 443
-  #   }
-  # ]
+  application_dns_tld = "app.${local.tld}"
+
+  application_ports = [
+    {
+      protocol = "TCP"
+      port     = 80
+    }
+  ]
+
+  # liveness_probe = {
+  #   path   = "/healthz"
+  #   port   = 80
+  #   scheme = "HTTP"
+  # }
 
   application_environment_variables = [
     # Web Server
     {
       name  = "EXTERNAL_URL"
       value = "https://app.${local.tld}"
+    },
+    {
+      name  = "PHOENIX_HTTP_WEB_PORT"
+      value = "80"
     },
     # Database
     {
@@ -350,17 +360,6 @@ module "web" {
   ]
 }
 
-# resource "google_dns_record_set" "application" {
-#   project = module.google-cloud-project.project.project_id
-
-#   name = "${var.application_dns_tld}."
-#   type = "A"
-#   ttl  = 300
-
-#   managed_zone = var.talkinto_app_dns_managed_zone_name
-
-#   rrdatas = [google_compute_address.app-ip.address]
-# }
 
 # Enable SSH on staging
 resource "google_compute_firewall" "ssh" {

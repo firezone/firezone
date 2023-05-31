@@ -8,8 +8,8 @@ resource "google_project_service" "dns" {
 resource "google_dns_managed_zone" "main" {
   project = var.project_id
 
-  name     = "gke-${join("-", compact(split(".", var.tld)))}"
-  dns_name = var.tld
+  name     = join("-", compact(split(".", var.tld)))
+  dns_name = "${var.tld}."
 
   labels = {
     managed    = true
@@ -38,8 +38,8 @@ resource "google_dns_managed_zone" "main" {
   }
 
   lifecycle {
-    prevent_destroy = true
-    ignore_changes  = []
+    # prevent_destroy = true
+    ignore_changes = []
   }
 
   depends_on = [

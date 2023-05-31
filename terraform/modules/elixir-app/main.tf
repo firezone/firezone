@@ -14,6 +14,11 @@ locals {
       value = "gce_metadata"
     }
   ], var.application_environment_variables)
+
+  google_load_balancer_ip_ranges = [
+    "130.211.0.0/22",
+    "35.191.0.0/16",
+  ]
 }
 
 # Fetch most recent COS image
@@ -106,6 +111,7 @@ resource "google_compute_instance_template" "application" {
           name  = local.application_name != null ? local.application_name : var.image
           image = "${var.container_registry}/${var.image_repo}/${var.image}:${var.image_tag}"
           env   = local.application_environment_variables
+          stdin = true
         }]
 
         volumes = []
@@ -113,6 +119,8 @@ resource "google_compute_instance_template" "application" {
         restartPolicy = "Always"
       }
     })
+
+    # user-data = file("${path.module}/cloudinit.yaml")
 
     # Enable FluentBit agent for logging, which will be default one from COS 109
     google-logging-enabled       = "true"
@@ -141,14 +149,32 @@ resource "google_compute_instance_template" "application" {
   }
 }
 
-# TODO: we want google_compute_region_instance_group_manager to provide HA-mode within region on production
-resource "google_compute_instance_group_manager" "application" {
-  provider = google-beta
-  project  = var.project_id
-  name     = "${local.application_name}-group"
 
-  base_instance_name = local.application_name
-  zone               = var.compute_instance_availability_zone != null ? "${var.compute_instance_availability_zone}" : var.compute_instance_region
+resource "google_compute_health_check" "application" {
+  project = var.project_id
+
+  name = "${local.application_name}-mig-health"
+
+  timeout_sec        = 30
+  check_interval_sec = 60
+
+  dynamic "tcp_health_check" {
+    for_each = var.application_ports
+
+    content {
+      port = tcp_health_check.value.port
+    }
+  }
+}
+
+resource "google_compute_region_instance_group_manager" "application" {
+  project = var.project_id
+
+  name = "${local.application_name}-group"
+
+  base_instance_name        = local.application_name
+  region                    = var.compute_instance_region
+  distribution_policy_zones = var.compute_instance_availability_zones
 
   target_size = var.scaling_horizontal_replicas
 
@@ -159,10 +185,19 @@ resource "google_compute_instance_group_manager" "application" {
     instance_template = google_compute_instance_template.application.self_link
   }
 
-  # auto_healing_policies {
-  #   health_check      = google_compute_health_check.application.self_link
-  #   initial_delay_sec = 60
-  # }
+  dynamic "named_port" {
+    for_each = var.application_ports
+
+    content {
+      name = "${lower(named_port.value.protocol)}-${named_port.value.port}"
+      port = named_port.value.port
+    }
+  }
+
+  auto_healing_policies {
+    health_check      = google_compute_health_check.application.self_link
+    initial_delay_sec = 60
+  }
 
   update_policy {
     type                  = "PROACTIVE"
@@ -175,11 +210,93 @@ resource "google_compute_instance_group_manager" "application" {
   ]
 }
 
+module "google-http-lb" {
+  source  = "GoogleCloudPlatform/lb-http/google"
+  version = "~> 9.0"
+
+  project = var.project_id
+
+  name        = "${google_compute_region_instance_group_manager.application.name}-lb"
+  target_tags = ["app-${local.application_name}"]
+
+  firewall_networks = [
+    var.vpc_network
+  ]
+
+  ssl = true
+
+  managed_ssl_certificate_domains = [
+    var.application_dns_tld
+  ]
+
+  backends = {
+    default = {
+      description = null
+      port        = 80
+      protocol    = "HTTP"
+      # TODO: use port_name instead of port
+      port_name               = "tcp-80"
+      timeout_sec             = 10
+      enable_cdn              = false
+      custom_request_headers  = null
+      custom_response_headers = null
+      compression_mode        = null
+
+      security_policy      = null
+      edge_security_policy = null
+
+      connection_draining_timeout_sec = null
+      session_affinity                = null
+      affinity_cookie_ttl_sec         = null
+
+      health_check = {
+        check_interval_sec  = null
+        timeout_sec         = null
+        healthy_threshold   = null
+        unhealthy_threshold = null
+        request_path        = "/"
+        port                = 80
+        host                = null
+        logging             = null
+      }
+
+      log_config = {
+        enable      = false
+        sample_rate = null
+      }
+
+      groups = [
+        {
+          group                        = google_compute_region_instance_group_manager.application.instance_group
+          balancing_mode               = null
+          capacity_scaler              = null
+          description                  = null
+          max_connections              = null
+          max_connections_per_instance = null
+          max_connections_per_endpoint = null
+          max_rate                     = null
+          max_rate_per_instance        = null
+          max_rate_per_endpoint        = null
+          max_utilization              = null
+        }
+      ]
+
+      iap_config = {
+        enable               = false
+        oauth2_client_id     = ""
+        oauth2_client_secret = ""
+      }
+    }
+  }
+
+  labels = local.application_labels
+}
+
 # Open HTTP(S) ports for the application instances
 resource "google_compute_firewall" "http" {
   project = var.project_id
 
-  name    = "${local.application_name}-http"
+  name    = "${local.application_name}-firewall-lb-to-instances"
   network = var.vpc_network
 
   allow {
@@ -192,18 +309,36 @@ resource "google_compute_firewall" "http" {
     ports    = [80, 443]
   }
 
-  source_ranges = ["0.0.0.0/0"]
+  source_ranges = local.google_load_balancer_ip_ranges
   target_tags   = ["app-${local.application_name}"]
 }
 
-# resource "google_compute_health_check" "application" {
-#   name    = "application-health"
-#   project = var.project_id
+resource "google_dns_record_set" "application-ipv4" {
+  project = var.project_id
 
-#   timeout_sec        = 30
-#   check_interval_sec = 60
+  name = "${var.application_dns_tld}."
+  type = "A"
+  ttl  = 300
 
-#   tcp_health_check {
-#     port = var.application_port
-#   }
-# }
+  managed_zone = var.dns_managed_zone_name
+
+  rrdatas = [
+    module.google-http-lb.external_ip
+  ]
+}
+
+resource "google_dns_record_set" "application-ipv6" {
+  count = module.google-http-lb.ipv6_enabled == true ? 1 : 0
+
+  project = var.project_id
+
+  name = "${var.application_dns_tld}."
+  type = "AAAA"
+  ttl  = 300
+
+  managed_zone = var.dns_managed_zone_name
+
+  rrdatas = [
+    module.google-http-lb.external_ipv6_address
+  ]
+}
