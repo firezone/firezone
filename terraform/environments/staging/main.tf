@@ -218,6 +218,13 @@ resource "google_sql_user" "web" {
   password = random_password.web_db_password.result
 }
 
+resource "google_sql_database" "firezone" {
+  project = module.google-cloud-project.project.project_id
+
+  name     = "firezone"
+  instance = module.google-cloud-sql.master_instance_name
+}
+
 module "web" {
   source     = "../../modules/elixir-app"
   project_id = module.google-cloud-project.project.project_id
@@ -269,7 +276,7 @@ module "web" {
     },
     {
       name  = "DATABASE_NAME"
-      value = "firezone"
+      value = google_sql_database.firezone.name
     },
     {
       name  = "DATABASE_USER"
