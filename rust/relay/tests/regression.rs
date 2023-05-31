@@ -1,4 +1,4 @@
-use bytecodec::EncodeExt;
+use bytecodec::{DecodeExt, EncodeExt};
 use hex_literal::hex;
 use relay::{AllocationId, Attribute, Command, Server};
 use std::collections::HashMap;
@@ -6,7 +6,9 @@ use std::time::{Duration, Instant};
 use stun_codec::rfc5389::attributes::{MessageIntegrity, Realm, Username};
 use stun_codec::rfc5766::attributes::Lifetime;
 use stun_codec::rfc5766::methods::REFRESH;
-use stun_codec::{Message, MessageClass, MessageEncoder, TransactionId};
+use stun_codec::{
+    DecodedMessage, Message, MessageClass, MessageDecoder, MessageEncoder, TransactionId,
+};
 
 #[test]
 fn stun_binding_request() {
@@ -123,11 +125,6 @@ fn ping_pong_relay() {
             Output::send_message("127.0.0.1:42677","010800002112a442dc5c115f6b727e25a54b55d3")
         ]),
         (
-        Input::client("127.0.0.1:42677","001600242112a4421b6fb3ce9cefcd57ef3a9edb00130009484f4c4550554e4348000000001200080001f2405e12a443802800041bfe0967", now),
-        &[
-            Output::send_message("127.0.0.1:42677","011600142112a4421b6fb3ce9cefcd57ef3a9edb0009000f00000400426164205265717565737400")
-        ]),
-        (
         Input::client("127.0.0.1:42677","000900542112a4420afbde5aaacfc1e9316beae9001200080001f2405e12a443000c000440000000000600047465737400140008666972657a6f6e6500150006666f6f626172000000080014aca01c6cdc1fc5339a309e5bccac3df5c903e33e802800041fe4b79b", now),
         &[
             Output::send_message("127.0.0.1:42677","010900002112a4420afbde5aaacfc1e9316beae9")
@@ -159,7 +156,7 @@ fn run_regression_test(sequence: &[(Input, &[Output])]) {
                 let input = hex::decode(data).unwrap();
                 let from = from.parse().unwrap();
 
-                server.handle_client_input(&input, from, *now).unwrap();
+                server.handle_client_input(&input, from, *now);
             }
             Input::Time(now) => {
                 server.handle_deadline_reached(*now);
@@ -173,13 +170,30 @@ fn run_regression_test(sequence: &[(Input, &[Output])]) {
         }
 
         for expected_output in *output {
-            let actual_output = server
-                .next_command()
-                .unwrap_or_else(|| panic!("no commands produced but expected {expected_output:?}"));
+            let Some(actual_output) = server.next_command() else {
+                let msg = match expected_output {
+                    Output::SendMessage((recipient, bytes)) => format!("to send message {:?} to {recipient}", parse_hex_message(bytes)),
+                    Output::Forward((ip, data, port)) => format!("forward '{data}' to {ip} on port {port}"),
+                    Output::Wake(instant) => format!("to be woken at {instant:?}"),
+                    Output::CreateAllocation(port) => format!("to create allocation on port {port}"),
+                    Output::ExpireAllocation(port) => format!("to free allocation on port {port}"),
+                };
+
+                panic!("No commands produced but expected {msg}");
+            };
 
             match (expected_output, actual_output) {
                 (Output::SendMessage((to, bytes)), Command::SendMessage { payload, recipient }) => {
-                    assert_eq!(*bytes, hex::encode(payload));
+                    let expected_bytes = hex::decode(bytes).unwrap();
+
+                    if expected_bytes != payload {
+                        let expected_message =
+                            format!("{:?}", parse_message(expected_bytes.as_ref()));
+                        let actual_message = format!("{:?}", parse_message(payload.as_ref()));
+
+                        difference::assert_diff!(&expected_message, &actual_message, "\n", 0);
+                    }
+
                     assert_eq!(recipient, to.parse().unwrap());
                 }
                 (
@@ -238,6 +252,15 @@ where
     A: stun_codec::Attribute,
 {
     hex::encode(MessageEncoder::new().encode_into_bytes(message).unwrap())
+}
+
+fn parse_hex_message(message: &str) -> DecodedMessage<Attribute> {
+    let message = hex::decode(message).unwrap();
+    MessageDecoder::new().decode_from_bytes(&message).unwrap()
+}
+
+fn parse_message(message: &[u8]) -> DecodedMessage<Attribute> {
+    MessageDecoder::new().decode_from_bytes(message).unwrap()
 }
 
 enum Input {

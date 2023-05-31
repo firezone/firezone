@@ -190,7 +190,7 @@ impl Eventloop {
             // Priority 6: Accept new allocations / answer STUN requests etc
             if let Poll::Ready((buffer, sender)) = self.ip4_socket.poll_recv(cx)? {
                 self.server
-                    .handle_client_input(buffer.filled(), sender, Instant::now())?;
+                    .handle_client_input(buffer.filled(), sender, Instant::now());
                 continue; // Handle potentially new commands.
             }
 

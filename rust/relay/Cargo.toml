@@ -20,3 +20,4 @@ bytes = "1.4.0"
 [dev-dependencies]
 webrtc = "0.7.2"
 redis = { version = "0.23.0", default-features = false, features = ["tokio-comp"] }
+difference = "2.0.0"
