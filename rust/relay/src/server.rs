@@ -13,7 +13,6 @@ use crate::TimeEvents;
 use anyhow::Result;
 use bytecodec::EncodeExt;
 use core::fmt;
-use rand::rngs::mock::StepRng;
 use rand::Rng;
 use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;

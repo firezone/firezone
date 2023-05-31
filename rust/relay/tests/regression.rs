@@ -18,16 +18,20 @@ use test_strategy::proptest;
 fn can_answer_stun_request_from_ip4_address(
     #[strategy(relay::proptest::binding())] request: Binding,
     source: SocketAddrV4,
+    public_relay_addr: Ipv4Addr,
 ) {
     let transaction_id = request.transaction_id();
 
-    run_typed_regression_test([(
-        from_client(source, request, SystemTime::now()),
-        [send_message(
-            source,
-            binding_response(transaction_id, source),
+    run_typed_regression_test(
+        public_relay_addr,
+        [(
+            from_client(source, request, SystemTime::now()),
+            [send_message(
+                source,
+                binding_response(transaction_id, source),
+            )],
         )],
-    )]);
+    );
 }
 
 #[test]
@@ -234,11 +238,12 @@ fn run_regression_test(sequence: &[(Input, &[Output])]) {
 }
 
 fn run_typed_regression_test<const S: usize, const O: usize>(
+    public_ip4_addr: Ipv4Addr,
     sequence: [(TypedInput, [TypedOutput; O]); S],
 ) {
     let _ = env_logger::try_init();
 
-    let mut server = Server::new(Ipv4Addr::new(35, 124, 91, 37), StepRng::new(0, 0));
+    let mut server = Server::new(public_ip4_addr, StepRng::new(0, 0));
 
     for (input, output) in sequence {
         match input {
