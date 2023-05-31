@@ -2,7 +2,7 @@ use bytecodec::{DecodeExt, EncodeExt};
 use hex_literal::hex;
 use relay::{AllocationId, Attribute, Command, Server};
 use std::collections::HashMap;
-use std::time::{Duration, Instant};
+use std::time::{Duration, SystemTime};
 use stun_codec::rfc5389::attributes::{MessageIntegrity, Realm, Username};
 use stun_codec::rfc5766::attributes::Lifetime;
 use stun_codec::rfc5766::methods::REFRESH;
@@ -16,7 +16,7 @@ fn stun_binding_request() {
         Input::client(
             "91.141.64.64:26098",
             "000100002112a4420908af7d45e8751f5092d167",
-            Instant::now(),
+            SystemTime::now(),
         ),
         &[Output::send_message(
             "91.141.64.64:26098",
@@ -27,7 +27,7 @@ fn stun_binding_request() {
 
 #[test]
 fn deallocate_once_time_expired() {
-    let now = Instant::now();
+    let now = SystemTime::now();
 
     run_regression_test(&[(
         Input::client("91.141.70.157:7112", "000300482112a442998bcae2a73b55941682cf470019000411000000000600047465737400140008666972657a6f6e6500150006666f6f626172000000080014b279018b143b1c6ac194a2848d0e37958731a2f38028000497076a00", now),
@@ -46,7 +46,7 @@ fn deallocate_once_time_expired() {
 
 #[test]
 fn when_refreshed_in_time_allocation_does_not_expire() {
-    let now = Instant::now();
+    let now = SystemTime::now();
     let refreshed_at = now + Duration::from_secs(300);
     let first_expiry = now + Duration::from_secs(600);
 
@@ -71,7 +71,7 @@ fn when_refreshed_in_time_allocation_does_not_expire() {
 
 #[test]
 fn when_receiving_lifetime_0_for_existing_allocation_then_delete() {
-    let now = Instant::now();
+    let now = SystemTime::now();
     let refreshed_at = now + Duration::from_secs(300);
     let first_expiry = now + Duration::from_secs(600);
 
@@ -101,7 +101,7 @@ fn server_waits_for_5_minutes_before_allowing_reuse_of_channel_number_after_expi
 
 #[test]
 fn ping_pong_relay() {
-    let now = Instant::now();
+    let now = SystemTime::now();
     run_regression_test(&[(
         Input::client("127.0.0.1:42677","000300102112a44216e1c61ab424700638d1cdc70019000411000000802800040eac7235", now),
         &[
@@ -264,13 +264,13 @@ fn parse_message(message: &[u8]) -> DecodedMessage<Attribute> {
 }
 
 enum Input {
-    Client(Ip, Bytes, Instant),
+    Client(Ip, Bytes, SystemTime),
     Peer(Ip, Bytes, u16),
-    Time(Instant),
+    Time(SystemTime),
 }
 
 impl Input {
-    fn client(from: Ip, data: impl AsRef<str>, now: Instant) -> Self {
+    fn client(from: Ip, data: impl AsRef<str>, now: SystemTime) -> Self {
         Self::Client(from, data.as_ref().to_owned(), now)
     }
     fn peer(from: Ip, data: impl AsRef<str>, allocation: u16) -> Self {
@@ -282,7 +282,7 @@ impl Input {
 enum Output {
     SendMessage((Ip, Bytes)),
     Forward((Ip, Bytes, u16)),
-    Wake(Instant),
+    Wake(SystemTime),
     CreateAllocation(u16),
     ExpireAllocation(u16),
 }
