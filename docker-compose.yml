@@ -44,21 +44,12 @@ services:
       args:
         APPLICATION_NAME: web
     image: firezone_web_dev
-    volumes:
-      - ./apps:/var/app/apps
-      - ./config:/var/app/config
-      - ./mix.exs:/var/app/mix.exs
-      - ./mix.lock:/var/app/mix.lock
-      # Mask the following build directories to keep compiled binaries isolated
-      # from the local project. This is needed when the Docker Host platform
-      # doesn't match the platform under which Docker Engine is running. e.g.
-      # WSL, Docker for Mac, etc.
-      - /var/app/apps/web/assets/node_modules
     ports:
-      - 8080:13000/tcp
+      - 8080:8080/tcp
     environment:
       # Web Server
       EXTERNAL_URL: http://localhost:8080/
+      PHOENIX_HTTP_WEB_PORT: "8080"
       # Database
       DATABASE_HOST: postgres
       DATABASE_PORT: 5432
@@ -96,16 +87,12 @@ services:
       args:
         APPLICATION_NAME: api
     image: firezone_api_dev
-    volumes:
-      - ./apps:/var/app/apps
-      - ./config:/var/app/config
-      - ./mix.exs:/var/app/mix.exs
-      - ./mix.lock:/var/app/mix.lock
     ports:
-      - 8081:13000/tcp
+      - 8081:8081/tcp
     environment:
       # Web Server
       EXTERNAL_URL: http://localhost:8081/
+      PHOENIX_HTTP_API_PORT: "8081"
       # Database
       DATABASE_HOST: postgres
       DATABASE_PORT: 5432
@@ -147,12 +134,14 @@ services:
         APPLICATION_NAME: api
     image: firezone_local_dev
     volumes:
-      - ./apps:/var/app/apps
-      - ./config:/var/app/config
-      - ./mix.exs:/var/app/mix.exs
-      - ./mix.lock:/var/app/mix.lock
-    ports:
-      - 8081:13000/tcp
+      - elixir-build-cache:/app/_build
+      - ./elixir/apps:/app/apps
+      - ./elixir/config:/app/config
+      - ./elixir/priv:/app/priv
+      - ./elixir/rel:/app/rel
+      - ./elixir/mix.exs:/app/mix.exs
+      - ./elixir/mix.lock:/app/mix.lock
+      - assets-build-cache:/app/apps/web/assets/node_modules
     environment:
       # Web Server
       EXTERNAL_URL: http://localhost:8081/
@@ -179,8 +168,8 @@ services:
       TELEMETRY_ENABLED: "false"
       # Erlang
       RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
-      # Debugging
-      LOG_LEVEL: "debug"
+      # Higher log level not to make seeds output too verbose
+      LOG_LEVEL: "info"
     depends_on:
       postgres:
         condition: 'service_healthy'
@@ -197,3 +186,5 @@ networks:
 
 volumes:
   postgres-data:
+  elixir-build-cache:
+  assets-build-cache:
