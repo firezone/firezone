@@ -1,8 +1,0 @@
-apps/web/assets/node_modules
-apps/web/priv/static/dist
-apps/web/priv/cert
-_build
-**/cover
-docs
-.DS_Store
-.git
