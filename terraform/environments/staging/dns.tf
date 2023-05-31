@@ -5,7 +5,7 @@ resource "google_dns_record_set" "website-ipv4" {
   managed_zone = module.google-cloud-dns.zone_name
 
   type    = "AAAA"
-  name    = "${module.google-cloud-dns.dns_name}."
+  name    = module.google-cloud-dns.dns_name
   rrdatas = ["2001:19f0:ac02:bb:5400:4ff:fe47:6bdf"]
   ttl     = 3600
 }
@@ -15,7 +15,7 @@ resource "google_dns_record_set" "website-ipv6" {
   managed_zone = module.google-cloud-dns.zone_name
 
   type    = "A"
-  name    = "${module.google-cloud-dns.dns_name}."
+  name    = module.google-cloud-dns.dns_name
   rrdatas = ["45.63.84.183"]
   ttl     = 3600
 }
@@ -25,7 +25,7 @@ resource "google_dns_record_set" "website-www-redirect" {
   managed_zone = module.google-cloud-dns.zone_name
 
   type    = "CNAME"
-  name    = "www.${module.google-cloud-dns.dns_name}."
+  name    = "www.${module.google-cloud-dns.dns_name}"
   rrdatas = ["firez.one"]
   ttl     = 3600
 }
@@ -37,7 +37,7 @@ resource "google_dns_record_set" "dogfood" {
   managed_zone = module.google-cloud-dns.zone_name
 
   type    = "A"
-  name    = "dogfood.${module.google-cloud-dns.dns_name}."
+  name    = "dogfood.${module.google-cloud-dns.dns_name}"
   rrdatas = ["45.63.56.50"]
   ttl     = 3600
 }
@@ -47,7 +47,7 @@ resource "google_dns_record_set" "awsfz1" {
   managed_zone = module.google-cloud-dns.zone_name
 
   type    = "CNAME"
-  name    = "awsfz1.${module.google-cloud-dns.dns_name}."
+  name    = "awsfz1.${module.google-cloud-dns.dns_name}"
   rrdatas = ["ec2-52-200-241-107.compute-1.amazonaws.com"]
   ttl     = 3600
 }
@@ -59,7 +59,7 @@ resource "google_dns_record_set" "discourse" {
   managed_zone = module.google-cloud-dns.zone_name
 
   type    = "A"
-  name    = "discourse.${module.google-cloud-dns.dns_name}."
+  name    = "discourse.${module.google-cloud-dns.dns_name}"
   rrdatas = ["45.77.86.150"]
   ttl     = 300
 }
@@ -71,7 +71,7 @@ resource "google_dns_record_set" "metabase" {
   managed_zone = module.google-cloud-dns.zone_name
 
   type    = "A"
-  name    = "metabase.${module.google-cloud-dns.dns_name}."
+  name    = "metabase.${module.google-cloud-dns.dns_name}"
   rrdatas = ["10.5.96.5"]
   ttl     = 3600
 }
@@ -83,7 +83,7 @@ resource "google_dns_record_set" "wg0" {
   managed_zone = module.google-cloud-dns.zone_name
 
   type    = "A"
-  name    = "wg0.${module.google-cloud-dns.dns_name}."
+  name    = "wg0.${module.google-cloud-dns.dns_name}"
   rrdatas = ["54.151.104.17"]
   ttl     = 3600
 }
@@ -93,7 +93,7 @@ resource "google_dns_record_set" "wg1" {
   managed_zone = module.google-cloud-dns.zone_name
 
   type    = "A"
-  name    = "wg1.${module.google-cloud-dns.dns_name}."
+  name    = "wg1.${module.google-cloud-dns.dns_name}"
   rrdatas = ["54.183.57.227"]
   ttl     = 3600
 }
@@ -103,7 +103,7 @@ resource "google_dns_record_set" "wg2" {
   managed_zone = module.google-cloud-dns.zone_name
 
   type    = "A"
-  name    = "wg2.${module.google-cloud-dns.dns_name}."
+  name    = "wg2.${module.google-cloud-dns.dns_name}"
   rrdatas = ["54.177.212.45"]
   ttl     = 3600
 }
@@ -115,7 +115,7 @@ resource "google_dns_record_set" "ping-backend" {
   managed_zone = module.google-cloud-dns.zone_name
 
   type    = "A"
-  name    = "ping-backend.${module.google-cloud-dns.dns_name}."
+  name    = "ping-backend.${module.google-cloud-dns.dns_name}"
   rrdatas = ["149.28.197.67"]
   ttl     = 3600
 }
@@ -125,7 +125,7 @@ resource "google_dns_record_set" "ping-ipv4" {
   managed_zone = module.google-cloud-dns.zone_name
 
   type    = "A"
-  name    = "ping.${module.google-cloud-dns.dns_name}."
+  name    = "ping.${module.google-cloud-dns.dns_name}"
   rrdatas = ["45.63.84.183"]
   ttl     = 3600
 }
@@ -136,7 +136,7 @@ resource "google_dns_record_set" "ping-ipv6" {
   managed_zone = module.google-cloud-dns.zone_name
 
   type    = "AAAA"
-  name    = "ping.${module.google-cloud-dns.dns_name}."
+  name    = "ping.${module.google-cloud-dns.dns_name}"
   rrdatas = ["2001:19f0:ac02:bb:5400:4ff:fe47:6bdf"]
   ttl     = 3600
 }
@@ -148,7 +148,7 @@ resource "google_dns_record_set" "old-ipv4" {
   managed_zone = module.google-cloud-dns.zone_name
 
   type    = "A"
-  name    = "old-telemetry.${module.google-cloud-dns.dns_name}."
+  name    = "old-telemetry.${module.google-cloud-dns.dns_name}"
   rrdatas = ["143.244.211.244"]
   ttl     = 3600
 }
@@ -158,7 +158,7 @@ resource "google_dns_record_set" "t-ipv4" {
   managed_zone = module.google-cloud-dns.zone_name
 
   type    = "A"
-  name    = "t.${module.google-cloud-dns.dns_name}."
+  name    = "t.${module.google-cloud-dns.dns_name}"
   rrdatas = ["45.63.84.183"]
   ttl     = 3600
 }
@@ -168,7 +168,7 @@ resource "google_dns_record_set" "t-ipv6" {
   managed_zone = module.google-cloud-dns.zone_name
 
   type    = "AAAA"
-  name    = "t.${module.google-cloud-dns.dns_name}."
+  name    = "t.${module.google-cloud-dns.dns_name}"
   rrdatas = ["2001:19f0:ac02:bb:5400:4ff:fe47:6bdf"]
   ttl     = 3600
 }
@@ -178,7 +178,7 @@ resource "google_dns_record_set" "telemetry-ipv4" {
   managed_zone = module.google-cloud-dns.zone_name
 
   type    = "A"
-  name    = "telemetry.${module.google-cloud-dns.dns_name}."
+  name    = "telemetry.${module.google-cloud-dns.dns_name}"
   rrdatas = ["45.63.84.183"]
   ttl     = 3600
 }
@@ -188,7 +188,7 @@ resource "google_dns_record_set" "telemetry-ipv6" {
   managed_zone = module.google-cloud-dns.zone_name
 
   type    = "AAAA"
-  name    = "telemetry.${module.google-cloud-dns.dns_name}."
+  name    = "telemetry.${module.google-cloud-dns.dns_name}"
   rrdatas = ["2001:19f0:ac02:bb:5400:4ff:fe47:6bdf"]
   ttl     = 3600
 }
@@ -201,7 +201,7 @@ resource "google_dns_record_set" "sendgrid-project" {
   managed_zone = module.google-cloud-dns.zone_name
 
   type    = "CNAME"
-  name    = "23539796.${module.google-cloud-dns.dns_name}."
+  name    = "23539796.${module.google-cloud-dns.dns_name}"
   rrdatas = ["sendgrid.net"]
   ttl     = 3600
 }
@@ -211,7 +211,7 @@ resource "google_dns_record_set" "sendgrid-return-1" {
   managed_zone = module.google-cloud-dns.zone_name
 
   type    = "CNAME"
-  name    = "em3706.${module.google-cloud-dns.dns_name}."
+  name    = "em3706.${module.google-cloud-dns.dns_name}"
   rrdatas = ["u23539796.wl047.sendgrid.net"]
   ttl     = 3600
 }
@@ -221,7 +221,7 @@ resource "google_dns_record_set" "sendgrid-return-2" {
   managed_zone = module.google-cloud-dns.zone_name
 
   type    = "CNAME"
-  name    = "url6320.${module.google-cloud-dns.dns_name}."
+  name    = "url6320.${module.google-cloud-dns.dns_name}"
   rrdatas = ["sendgrid.net"]
   ttl     = 3600
 }
@@ -231,7 +231,7 @@ resource "google_dns_record_set" "sendgrid-domainkey1" {
   managed_zone = module.google-cloud-dns.zone_name
 
   type    = "CNAME"
-  name    = "s1._domainkey.${module.google-cloud-dns.dns_name}."
+  name    = "s1._domainkey.${module.google-cloud-dns.dns_name}"
   rrdatas = ["s1.domainkey.u23539796.wl047.sendgrid.net"]
   ttl     = 3600
 }
@@ -241,7 +241,7 @@ resource "google_dns_record_set" "sendgrid-domainkey2" {
   managed_zone = module.google-cloud-dns.zone_name
 
   type    = "CNAME"
-  name    = "s2._domainkey.${module.google-cloud-dns.dns_name}."
+  name    = "s2._domainkey.${module.google-cloud-dns.dns_name}"
   rrdatas = ["s2.domainkey.u23539796.wl047.sendgrid.net"]
   ttl     = 3600
 }
@@ -252,7 +252,7 @@ resource "google_dns_record_set" "google-mail" {
   project      = module.google-cloud-project.project.project_id
   managed_zone = module.google-cloud-dns.zone_name
 
-  name = "${module.google-cloud-dns.dns_name}."
+  name = module.google-cloud-dns.dns_name
   type = "MX"
   ttl  = 3600
 
@@ -270,7 +270,7 @@ resource "google_dns_record_set" "google-dmark" {
   managed_zone = module.google-cloud-dns.zone_name
 
 
-  name = "_dmarc.${module.google-cloud-dns.dns_name}."
+  name = "_dmarc.${module.google-cloud-dns.dns_name}"
   type = "TXT"
   ttl  = 3600
 
@@ -283,7 +283,7 @@ resource "google_dns_record_set" "google-spf" {
   project      = module.google-cloud-project.project.project_id
   managed_zone = module.google-cloud-dns.zone_name
 
-  name = "try.${module.google-cloud-dns.dns_name}."
+  name = "try.${module.google-cloud-dns.dns_name}"
   type = "TXT"
   ttl  = 3600
 
@@ -296,7 +296,7 @@ resource "google_dns_record_set" "google-dkim" {
   project      = module.google-cloud-project.project.project_id
   managed_zone = module.google-cloud-dns.zone_name
 
-  name = "20190728104345pm._domainkey.${module.google-cloud-dns.dns_name}."
+  name = "20190728104345pm._domainkey.${module.google-cloud-dns.dns_name}"
   type = "TXT"
   ttl  = 3600
 
