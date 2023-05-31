@@ -247,10 +247,9 @@ fn run_typed_regression_test<const S: usize, const O: usize>(
 
     for (input, output) in sequence {
         match input {
-            TypedInput::Client(sender, ClientMessage::Binding(binding), _) => {
-                server.handle_binding_request(binding, sender);
+            TypedInput::Client(sender, message, now) => {
+                server.handle_client_message(message, sender, now);
             }
-            _ => todo!(),
         }
 
         for expected_output in output {

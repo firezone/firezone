@@ -6,7 +6,7 @@ pub use crate::server::client_message::{
     Allocate, Binding, ChannelBind, ClientMessage, CreatePermission, Refresh,
 };
 
-use crate::auth::MessageIntegrityExt;
+use crate::auth::{MessageIntegrityExt, REALM};
 use crate::rfc8656::PeerAddressFamilyMismatch;
 use crate::stun_codec_ext::{MessageClassExt, MethodExt};
 use crate::TimeEvents;
@@ -157,49 +157,62 @@ where
             tracing::trace!(target: "wire", r#"Input::client("{sender}","{hex_bytes}")"#);
         }
 
-        let result = match self.decoder.decode(bytes) {
-            Ok(Ok(ClientMessage::Allocate(request))) => {
-                self.handle_allocate_request(request, sender, now)
+        match self.decoder.decode(bytes) {
+            Ok(Ok(message)) => {
+                self.handle_client_message(message, sender, now);
             }
-            Ok(Ok(ClientMessage::Refresh(request))) => {
-                self.handle_refresh_request(request, sender, now)
-            }
-            Ok(Ok(ClientMessage::ChannelBind(request))) => {
-                self.handle_channel_bind_request(request, sender, now)
-            }
-            Ok(Ok(ClientMessage::CreatePermission(request))) => {
-                self.handle_create_permission_request(request, sender, now)
-            }
-            Ok(Ok(ClientMessage::Binding(request))) => {
-                self.handle_binding_request(request, sender);
-                return;
-            }
-            Ok(Ok(ClientMessage::ChannelData(msg))) => {
-                self.handle_channel_data_message(msg, sender, now);
-                return;
-            }
-
             // Could parse the bytes but message was semantically invalid (like missing attribute).
-            Ok(Err(error_code)) => Err(error_code),
-
+            Ok(Err(error_code)) => {
+                self.queue_error_response(sender, error_code);
+            }
             // Parsing the bytes failed.
             Err(client_message::Error::BadChannelData(_)) => return,
             Err(client_message::Error::DecodeStun(_)) => return,
             Err(client_message::Error::UnknownMessageType(_)) => return,
             Err(client_message::Error::Eof) => return,
         };
+    }
 
-        let Err(mut error_response) = result else {
+    pub fn handle_client_message(
+        &mut self,
+        message: ClientMessage,
+        sender: SocketAddr,
+        now: SystemTime,
+    ) {
+        let result = match message {
+            ClientMessage::Allocate(request) => self.handle_allocate_request(request, sender, now),
+            ClientMessage::Refresh(request) => self.handle_refresh_request(request, sender, now),
+            ClientMessage::ChannelBind(request) => {
+                self.handle_channel_bind_request(request, sender, now)
+            }
+            ClientMessage::CreatePermission(request) => {
+                self.handle_create_permission_request(request, sender, now)
+            }
+            ClientMessage::Binding(request) => {
+                self.handle_binding_request(request, sender);
+                return;
+            }
+            ClientMessage::ChannelData(msg) => {
+                self.handle_channel_data_message(msg, sender, now);
+                return;
+            }
+        };
+
+        let Err(error_response) = result else {
             return;
         };
 
+        self.queue_error_response(sender, error_response)
+    }
+
+    fn queue_error_response(&mut self, sender: SocketAddr, mut error_response: Message<Attribute>) {
         // In case of a 401 response, attach a realm and nonce.
         if error_response
             .get_attribute::<ErrorCode>()
             .map_or(false, |error| error == &ErrorCode::from(Unauthorized))
         {
-            error_response.add_attribute(Nonce::new("foobar".to_owned()).unwrap().into());
-            error_response.add_attribute(Realm::new("firezone".to_owned()).unwrap().into());
+            error_response.add_attribute(Nonce::new("foobar".to_owned()).unwrap().into()); // TODO: Implement proper nonce handling.
+            error_response.add_attribute((*REALM).clone().into());
         }
 
         self.send_message(error_response, sender);
@@ -310,7 +323,7 @@ where
         self.pending_commands.pop_front()
     }
 
-    pub fn handle_binding_request(&mut self, message: Binding, sender: SocketAddr) {
+    fn handle_binding_request(&mut self, message: Binding, sender: SocketAddr) {
         let mut message = Message::new(
             MessageClass::SuccessResponse,
             BINDING,
@@ -324,7 +337,7 @@ where
     /// Handle a TURN allocate request.
     ///
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-receiving-an-allocate-reque> for details.
-    pub fn handle_allocate_request(
+    fn handle_allocate_request(
         &mut self,
         request: Allocate,
         sender: SocketAddr,
@@ -391,7 +404,7 @@ where
     /// Handle a TURN refresh request.
     ///
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-receiving-a-refresh-request> for details.
-    pub fn handle_refresh_request(
+    fn handle_refresh_request(
         &mut self,
         request: Refresh,
         sender: SocketAddr,
@@ -454,7 +467,7 @@ where
     /// Handle a TURN channel bind request.
     ///
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-receiving-a-channelbind-req> for details.
-    pub fn handle_channel_bind_request(
+    fn handle_channel_bind_request(
         &mut self,
         request: ChannelBind,
         sender: SocketAddr,
@@ -531,7 +544,7 @@ where
     ///
     /// This TURN server implementation does not support relaying data other than through channels.
     /// Thus, creating a permission is a no-op that always succeeds.
-    pub fn handle_create_permission_request(
+    fn handle_create_permission_request(
         &mut self,
         message: CreatePermission,
         sender: SocketAddr,
@@ -547,7 +560,7 @@ where
         Ok(())
     }
 
-    pub fn handle_channel_data_message(
+    fn handle_channel_data_message(
         &mut self,
         message: ChannelData,
         sender: SocketAddr,
