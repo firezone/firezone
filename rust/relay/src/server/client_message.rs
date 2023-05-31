@@ -101,14 +101,12 @@ pub struct Allocate {
     message_integrity: MessageIntegrity,
     requested_transport: RequestedTransport,
     lifetime: Option<Lifetime>,
-    username: Username,
 }
 
 impl Allocate {
     pub fn new(
         transaction_id: TransactionId,
         message_integrity: MessageIntegrity,
-        username: Username,
         requested_transport: RequestedTransport,
         lifetime: Option<Lifetime>,
     ) -> Self {
@@ -117,7 +115,6 @@ impl Allocate {
             message_integrity,
             requested_transport,
             lifetime,
-            username,
         }
     }
 
@@ -126,10 +123,6 @@ impl Allocate {
         let message_integrity = message
             .get_attribute::<MessageIntegrity>()
             .ok_or(unauthorized(message))?
-            .clone();
-        let username = message
-            .get_attribute::<Username>()
-            .ok_or(bad_request(message))?
             .clone();
         let requested_transport = message
             .get_attribute::<RequestedTransport>()
@@ -140,7 +133,6 @@ impl Allocate {
         Ok(Allocate {
             transaction_id,
             message_integrity,
-            username,
             requested_transport,
             lifetime,
         })
@@ -161,31 +153,24 @@ impl Allocate {
     pub fn effective_lifetime(&self) -> Lifetime {
         compute_effective_lifetime(self.lifetime.as_ref())
     }
-
-    pub fn username(&self) -> &Username {
-        &self.username
-    }
 }
 
 pub struct Refresh {
     transaction_id: TransactionId,
     message_integrity: MessageIntegrity,
     lifetime: Option<Lifetime>,
-    username: Username,
 }
 
 impl Refresh {
     pub fn new(
         transaction_id: TransactionId,
         message_integrity: MessageIntegrity,
-        username: Username,
         lifetime: Option<Lifetime>,
     ) -> Self {
         Self {
             transaction_id,
             message_integrity,
             lifetime,
-            username,
         }
     }
 
@@ -195,16 +180,11 @@ impl Refresh {
             .get_attribute::<MessageIntegrity>()
             .ok_or(unauthorized(message))?
             .clone();
-        let username = message
-            .get_attribute::<Username>()
-            .ok_or(bad_request(message))?
-            .clone();
         let lifetime = message.get_attribute::<Lifetime>().cloned();
 
         Ok(Refresh {
             transaction_id,
             message_integrity,
-            username,
             lifetime,
         })
     }
@@ -219,10 +199,6 @@ impl Refresh {
 
     pub fn effective_lifetime(&self) -> Lifetime {
         compute_effective_lifetime(self.lifetime.as_ref())
-    }
-
-    pub fn username(&self) -> &Username {
-        &self.username
     }
 }
 

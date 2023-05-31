@@ -842,7 +842,7 @@ macro_rules! impl_protected_request_for {
             }
 
             fn username(&self) -> &Username {
-                self.username()
+                <Self as Self>::username(self)
             }
         }
     };
