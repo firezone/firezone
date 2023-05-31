@@ -11,11 +11,15 @@ pub struct TimeEvents<A> {
     events: Vec<TimeEvent<A>>,
 }
 
-impl<A> TimeEvents<A> {
+impl<A> TimeEvents<A>
+where
+    A: PartialEq,
+{
     /// Add an action to be executed at the specified time.
     ///
     /// Returns the new wake deadline for convenience.
     pub fn add(&mut self, trigger: SystemTime, action: A) -> SystemTime {
+        self.events.retain(|event| event.action != action);
         self.events.push(TimeEvent {
             time: trigger,
             action,

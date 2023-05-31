@@ -786,6 +786,7 @@ impl Allocation {
     }
 }
 
+#[derive(PartialEq)]
 enum TimedAction {
     ExpireAllocation(AllocationId),
     UnbindChannel(u16),
