@@ -5,7 +5,7 @@ defmodule API.Gateway.Socket do
 
   ## Channels
 
-  channel "gateway:*", API.Gateway.Channel
+  channel "gateway", API.Gateway.Channel
 
   ## Authentication
 

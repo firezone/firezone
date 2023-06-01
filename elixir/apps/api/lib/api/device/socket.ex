@@ -5,7 +5,7 @@ defmodule API.Device.Socket do
 
   ## Channels
 
-  channel "device:*", API.Device.Channel
+  channel "device", API.Device.Channel
 
   ## Authentication
 

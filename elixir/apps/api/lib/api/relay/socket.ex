@@ -5,7 +5,7 @@ defmodule API.Relay.Socket do
 
   ## Channels
 
-  channel "relay:*", API.Relay.Channel
+  channel "relay", API.Relay.Channel
 
   ## Authentication
 
