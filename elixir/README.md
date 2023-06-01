@@ -95,6 +95,21 @@ relay_secret = Domain.Crypto.rand_string()
 
 Now if you connect and list resources there will be one online because there is a relay and gateway online.
 
+Some of the functions require authorization, here is how you can obtain a subject:
+
+```elixir
+user_agent = "User-Agent: iOS/12.7 (iPhone) connlib/0.7.412"
+remote_ip = {127, 0, 0, 1}
+
+# For a client
+{:ok, subject} = Domain.Auth.sign_in(client_token, user_agent, remote_ip)
+
+# For an admin user
+provider = Domain.Repo.get_by(Domain.Auth.Provider, adapter: :userpass)
+identity = Domain.Repo.get_by(Domain.Auth.Identity, provider_id: provider.id, provider_identifier: "firezone@localhost")
+subject = Domain.Auth.build_subject(identity, nil, user_agent, remote_ip)
+```
+
 Stopping everything is easy too:
 
 ```bash
