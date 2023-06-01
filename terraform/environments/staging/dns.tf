@@ -26,7 +26,7 @@ resource "google_dns_record_set" "website-www-redirect" {
 
   type    = "CNAME"
   name    = "www.${module.google-cloud-dns.dns_name}"
-  rrdatas = ["firez.one"]
+  rrdatas = ["firez.one."]
   ttl     = 3600
 }
 
@@ -48,7 +48,7 @@ resource "google_dns_record_set" "awsfz1" {
 
   type    = "CNAME"
   name    = "awsfz1.${module.google-cloud-dns.dns_name}"
-  rrdatas = ["ec2-52-200-241-107.compute-1.amazonaws.com"]
+  rrdatas = ["ec2-52-200-241-107.compute-1.amazonaws.com."]
   ttl     = 3600
 }
 
@@ -202,7 +202,7 @@ resource "google_dns_record_set" "sendgrid-project" {
 
   type    = "CNAME"
   name    = "23539796.${module.google-cloud-dns.dns_name}"
-  rrdatas = ["sendgrid.net"]
+  rrdatas = ["sendgrid.net."]
   ttl     = 3600
 }
 
@@ -212,7 +212,7 @@ resource "google_dns_record_set" "sendgrid-return-1" {
 
   type    = "CNAME"
   name    = "em3706.${module.google-cloud-dns.dns_name}"
-  rrdatas = ["u23539796.wl047.sendgrid.net"]
+  rrdatas = ["u23539796.wl047.sendgrid.net."]
   ttl     = 3600
 }
 
@@ -222,7 +222,7 @@ resource "google_dns_record_set" "sendgrid-return-2" {
 
   type    = "CNAME"
   name    = "url6320.${module.google-cloud-dns.dns_name}"
-  rrdatas = ["sendgrid.net"]
+  rrdatas = ["sendgrid.net."]
   ttl     = 3600
 }
 
@@ -232,7 +232,7 @@ resource "google_dns_record_set" "sendgrid-domainkey1" {
 
   type    = "CNAME"
   name    = "s1._domainkey.${module.google-cloud-dns.dns_name}"
-  rrdatas = ["s1.domainkey.u23539796.wl047.sendgrid.net"]
+  rrdatas = ["s1.domainkey.u23539796.wl047.sendgrid.net."]
   ttl     = 3600
 }
 
@@ -242,7 +242,7 @@ resource "google_dns_record_set" "sendgrid-domainkey2" {
 
   type    = "CNAME"
   name    = "s2._domainkey.${module.google-cloud-dns.dns_name}"
-  rrdatas = ["s2.domainkey.u23539796.wl047.sendgrid.net"]
+  rrdatas = ["s2.domainkey.u23539796.wl047.sendgrid.net."]
   ttl     = 3600
 }
 
