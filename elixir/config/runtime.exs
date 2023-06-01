@@ -52,10 +52,6 @@ if config_env() == :prod do
   ##### Web #####################
   ###############################
 
-  config :web,
-    external_url: external_url,
-    path_prefix: external_url_path
-
   config :web, Web.Endpoint,
     server: true,
     http: [
@@ -68,6 +64,10 @@ if config_env() == :prod do
       host: external_url_host,
       port: external_url_port,
       path: external_url_path
+    ],
+    force_ssl: [
+      rewrite_on: [:x_forwarded_proto],
+      hsts: if(external_url_scheme == "https", do: true, else: false)
     ],
     secret_key_base: compile_config!(:secret_key_base),
     live_view: [
@@ -94,12 +94,15 @@ if config_env() == :prod do
       port: compile_config!(:phoenix_http_api_port),
       protocol_options: compile_config!(:phoenix_http_protocol_options)
     ],
-    # TODO: force_ssl: [rewrite_on: [:x_forwarded_proto], hsts: true],
     url: [
       scheme: external_url_scheme,
       host: external_url_host,
       port: external_url_port,
       path: external_url_path
+    ],
+    force_ssl: [
+      rewrite_on: [:x_forwarded_proto],
+      hsts: if(external_url_scheme == "https", do: true, else: false)
     ],
     secret_key_base: compile_config!(:secret_key_base)
 

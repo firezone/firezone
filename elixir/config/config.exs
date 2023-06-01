@@ -56,11 +56,6 @@ config :domain, Domain.Auth,
 config :web, ecto_repos: [Domain.Repo]
 config :web, generators: [binary_id: true, context_app: :domain]
 
-config :web,
-  external_url: "http://localhost:13000/",
-  # TODO: use endpoint path instead?
-  path_prefix: "/"
-
 config :web, Web.Endpoint,
   url: [
     scheme: "http",
