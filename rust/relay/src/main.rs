@@ -51,7 +51,7 @@ fn make_rng() -> StdRng {
     };
 
     let Ok(seed) = seed.parse::<u64>() else {
-        tracing::warn!("`RELAY_RNG_SEED` provided by failed to parse as u64, falling back to system entropy");
+        tracing::warn!("`RELAY_RNG_SEED` provided failed to parse as u64, falling back to system entropy");
 
         return StdRng::from_entropy();
     };
