@@ -38,22 +38,21 @@ async fn main() -> Result<()> {
 }
 
 async fn ping_pong(socket: Arc<UdpSocket>, relay_addr: SocketAddr) -> Result<(), Error> {
-    for _ in 0..5 {
-        let ping = rand::random::<[u8; 32]>();
+    let ping = rand::random::<[u8; 32]>();
 
-        socket.send_to(&ping, relay_addr).await?;
+    socket.send_to(&ping, relay_addr).await?;
 
-        println!("Sent ping to client: {}", hex::encode(ping));
+    println!("Sent ping to client: {}", hex::encode(ping));
 
-        let mut pong = [0u8; 32];
-        socket.recv_from(&mut pong).await?;
+    let mut pong = [0u8; 32];
+    socket.recv_from(&mut pong).await?;
 
-        println!("Received pong from client: {}", hex::encode(pong));
+    println!("Received pong from client: {}", hex::encode(pong));
 
-        tokio::time::sleep(Duration::from_millis(50)).await;
+    tokio::time::sleep(Duration::from_millis(50)).await;
 
-        assert_eq!(ping, pong);
-    }
+    assert_eq!(ping, pong);
+
     Ok(())
 }
 
@@ -61,9 +60,9 @@ async fn new_turn_client(conn: Arc<UdpSocket>) -> Result<Client, Error> {
     let client = Client::new(ClientConfig {
         stun_serv_addr: "localhost:3478".to_owned(),
         turn_serv_addr: "localhost:3478".to_owned(),
-        username: "test".to_owned(),
-        password: "test".to_owned(),
-        realm: "test".to_owned(),
+        username: "2000000000:gateway".to_owned(), // 2000000000 expires in 2033, plenty of time
+        password: "HBIRJkYyMerpPMKnKxWoWEOG3VEK9egVLLy9GYKcTXM".to_owned(),
+        realm: "firezone".to_owned(),
         software: String::new(),
         rto_in_ms: 0,
         conn,
