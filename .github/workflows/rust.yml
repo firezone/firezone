@@ -36,7 +36,7 @@ jobs:
       - run: cargo clippy -- -D warnings
       - run: cargo test
 
-  cross:
+  cross: # cross is separate from test because cross-compiling yields different artifacts and we cannot reuse the cache.
     name: Cross compile all crates
     runs-on: ubuntu-latest
     defaults:
