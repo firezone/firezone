@@ -30,10 +30,10 @@ defmodule API.Endpoint do
       |> Keyword.get(:scheme)
 
     if scheme == "https" do
-      conn
-    else
       opts = [rewrite_on: [:x_forwarded_host, :x_forwarded_port, :x_forwarded_proto]]
       Plug.SSL.call(conn, Plug.SSL.init(opts))
+    else
+      conn
     end
   end
 
