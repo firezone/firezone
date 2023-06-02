@@ -366,6 +366,146 @@ module "web" {
   ]
 }
 
+module "api" {
+  source     = "../../modules/elixir-app"
+  project_id = module.google-cloud-project.project.project_id
+
+  compute_instance_type               = "n1-standard-1"
+  compute_instance_region             = local.region
+  compute_instance_availability_zones = ["${local.region}-d"]
+
+  dns_managed_zone_name = module.google-cloud-dns.zone_name
+
+  vpc_network    = module.google-cloud-vpc.self_link
+  vpc_subnetwork = google_compute_subnetwork.apps.self_link
+
+  container_registry = module.google-artifact-registry.url
+
+  image_repo = module.google-artifact-registry.repo
+  image      = "api"
+  image_tag  = var.api_image_tag
+
+  scaling_horizontal_replicas = 2
+
+  observability_log_level = "debug"
+
+  erlang_release_name   = "firezone"
+  erlang_cluster_cookie = random_password.erlang_cluster_cookie.result
+
+  application_name    = "api"
+  application_version = "0-0-1"
+
+  application_dns_tld = "api.${local.tld}"
+
+  application_ports = [
+    {
+      name     = "http"
+      protocol = "TCP"
+      port     = 80
+
+      health_check = {
+        initial_delay_sec = 30
+
+        check_interval_sec  = 5
+        timeout_sec         = 5
+        healthy_threshold   = 1
+        unhealthy_threshold = 2
+
+        tcp_health_check = {}
+      }
+    }
+  ]
+
+  application_environment_variables = [
+    # Web Server
+    {
+      name  = "EXTERNAL_URL"
+      value = "https://api.${local.tld}"
+    },
+    {
+      name  = "PHOENIX_HTTP_API_PORT"
+      value = "80"
+    },
+    # Database
+    {
+      name  = "DATABASE_HOST"
+      value = module.google-cloud-sql.master_instance_ip_address
+    },
+    {
+      name  = "DATABASE_NAME"
+      value = google_sql_database.firezone.name
+    },
+    {
+      name  = "DATABASE_USER"
+      value = google_sql_user.web.name
+    },
+    {
+      name  = "DATABASE_PASSWORD"
+      value = google_sql_user.web.password
+    },
+    # Secrets
+    {
+      name  = "SECRET_KEY_BASE"
+      value = random_password.secret_key_base.result
+    },
+    {
+      name  = "AUTH_TOKEN_KEY_BASE"
+      value = base64encode(random_password.auth_token_key_base.result)
+    },
+    {
+      name  = "AUTH_TOKEN_SALT"
+      value = base64encode(random_password.auth_token_salt.result)
+    },
+    {
+      name  = "RELAYS_AUTH_TOKEN_KEY_BASE"
+      value = base64encode(random_password.relays_auth_token_key_base.result)
+    },
+    {
+      name  = "RELAYS_AUTH_TOKEN_SALT"
+      value = base64encode(random_password.relays_auth_token_salt.result)
+    },
+    {
+      name  = "GATEWAYS_AUTH_TOKEN_KEY_BASE"
+      value = base64encode(random_password.gateways_auth_token_key_base.result)
+    },
+    {
+      name  = "GATEWAYS_AUTH_TOKEN_SALT"
+      value = base64encode(random_password.gateways_auth_token_salt.result)
+    },
+    {
+      name  = "SECRET_KEY_BASE"
+      value = base64encode(random_password.secret_key_base.result)
+    },
+    {
+      name  = "LIVE_VIEW_SIGNING_SALT"
+      value = base64encode(random_password.live_view_signing_salt.result)
+    },
+    {
+      name  = "COOKIE_SIGNING_SALT"
+      value = base64encode(random_password.cookie_signing_salt.result)
+    },
+    {
+      name  = "COOKIE_ENCRYPTION_SALT"
+      value = base64encode(random_password.cookie_encryption_salt.result)
+    },
+    # Erlang
+    {
+      name  = "RELEASE_COOKIE"
+      value = base64encode(random_password.erlang_cluster_cookie.result)
+    },
+    # Auth
+    {
+      name  = "AUTH_PROVIDER_ADAPTERS"
+      value = "email,openid_connect,token"
+    },
+    # Telemetry
+    {
+      name  = "TELEMETRY_ENABLED"
+      value = "false"
+    },
+    # TODO: Emails
+  ]
+}
 
 # Enable SSH on staging
 resource "google_compute_firewall" "ssh" {
