@@ -49,10 +49,16 @@ defmodule Web.Endpoint do
   plug Plug.MethodOverride
   plug Plug.Head
 
-  # TODO: ensure that phoenix configured to resolve opts at runtime
-  plug Plug.Session, Web.Session.options()
+  # We wrap Plug.Session because it's options are resolved at compile-time,
+  # which doesn't work with Elixir releases and runtime configuration
+  plug :session
 
   plug Web.Router
+
+  def session(conn, _opts) do
+    opts = Web.Session.options()
+    Plug.Session.call(conn, Plug.Session.init(opts))
+  end
 
   def external_trusted_proxies do
     Domain.Config.fetch_env!(:web, :external_trusted_proxies)
