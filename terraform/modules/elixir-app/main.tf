@@ -15,9 +15,16 @@ locals {
     }
   ], var.application_environment_variables)
 
+  application_ports_by_name = { for port in var.application_ports : port.name => port }
+
   google_load_balancer_ip_ranges = [
     "130.211.0.0/22",
     "35.191.0.0/16",
+  ]
+
+  google_health_check_ip_ranges = [
+    "130.211.0.0/22",
+    "35.191.0.0/16"
   ]
 }
 
@@ -26,16 +33,6 @@ data "google_compute_image" "coreos" {
   family  = "cos-105-lts"
   project = "cos-cloud"
 }
-
-# # Reserve static IP address for the application instances
-# resource "google_compute_address" "app-ip" {
-#   count = var.scaling_horizontal_replicas
-
-#   project = var.project_id
-
-#   name   = "app-ip"
-#   region = var.region
-# }
 
 # Create IAM role for the application instances
 resource "google_service_account" "application" {
@@ -47,12 +44,12 @@ resource "google_service_account" "application" {
 }
 
 # Allow application service account to pull images from the container registry
-resource "google_project_iam_binding" "application" {
+resource "google_project_iam_member" "application" {
   project = var.project_id
 
   role = "roles/artifactregistry.reader"
 
-  members = ["serviceAccount:${google_service_account.application.email}"]
+  member = "serviceAccount:${google_service_account.application.email}"
 }
 
 # Deploy the app
@@ -142,6 +139,7 @@ resource "google_compute_instance_template" "application" {
     google_project_service.cloudprofiler,
     google_project_service.cloudtrace,
     google_project_service.servicenetworking,
+    google_project_iam_member.application,
   ]
 
   lifecycle {
@@ -149,24 +147,59 @@ resource "google_compute_instance_template" "application" {
   }
 }
 
+# Create health checks for the application ports
+resource "google_compute_health_check" "port" {
+  for_each = { for port in var.application_ports : port.name => port if try(port.health_check, null) != null }
 
-resource "google_compute_health_check" "application" {
   project = var.project_id
 
-  name = "${local.application_name}-mig-health"
+  name = "${local.application_name}-${each.key}"
 
-  timeout_sec        = 30
-  check_interval_sec = 60
+  check_interval_sec  = each.value.health_check.check_interval_sec != null ? each.value.health_check.check_interval_sec : 5
+  timeout_sec         = each.value.health_check.timeout_sec != null ? each.value.health_check.timeout_sec : 5
+  healthy_threshold   = each.value.health_check.healthy_threshold != null ? each.value.health_check.healthy_threshold : 2
+  unhealthy_threshold = each.value.health_check.unhealthy_threshold != null ? each.value.health_check.unhealthy_threshold : 2
+
+  log_config {
+    enable = false
+  }
 
   dynamic "tcp_health_check" {
-    for_each = var.application_ports
+    for_each = try(each.value.health_check.tcp_health_check, null)[*]
 
     content {
-      port = tcp_health_check.value.port
+      port = each.value.port
+
+      response = lookup(tcp_health_check.value, "response", null)
+    }
+  }
+
+  dynamic "http_health_check" {
+    for_each = try(each.value.health_check.http_health_check, null)[*]
+
+    content {
+      port = each.value.port
+
+      host         = lookup(http_health_check.value, "host", null)
+      request_path = lookup(http_health_check.value, "request_path", null)
+      response     = lookup(http_health_check.value, "response", null)
+    }
+  }
+
+  dynamic "https_health_check" {
+    for_each = try(each.value.health_check.https_health_check, null)[*]
+
+    content {
+      port = each.value.port
+
+      host         = lookup(https_health_check.value, "host", null)
+      request_path = lookup(https_health_check.value, "request_path", null)
+      response     = lookup(http_health_check.value, "response", null)
     }
   }
 }
 
+# Use template to deploy zonal instance group
 resource "google_compute_region_instance_group_manager" "application" {
   project = var.project_id
 
@@ -189,14 +222,19 @@ resource "google_compute_region_instance_group_manager" "application" {
     for_each = var.application_ports
 
     content {
-      name = "${lower(named_port.value.protocol)}-${named_port.value.port}"
+      name = named_port.value.name
       port = named_port.value.port
     }
   }
 
-  auto_healing_policies {
-    health_check      = google_compute_health_check.application.self_link
-    initial_delay_sec = 60
+  dynamic "auto_healing_policies" {
+    for_each = try([google_compute_health_check.port["http"].self_link], [])
+
+    content {
+      initial_delay_sec = local.application_ports_by_name["http"].health_check.initial_delay_sec
+
+      health_check = auto_healing_policies.value
+    }
   }
 
   update_policy {
@@ -210,109 +248,264 @@ resource "google_compute_region_instance_group_manager" "application" {
   ]
 }
 
-module "google-http-lb" {
-  source  = "GoogleCloudPlatform/lb-http/google"
-  version = "~> 9.0"
+# Define a security policy which allows to filter traffic by IP address,
+# an edge security policy can also detect and block common types of web attacks
+resource "google_compute_security_policy" "default" {
+  project = var.project_id
+
+  name = local.application_name
+
+  rule {
+    action   = "allow"
+    priority = "2147483647"
+
+    match {
+      versioned_expr = "SRC_IPS_V1"
+
+      config {
+        src_ip_ranges = ["*"]
+      }
+    }
+
+    description = "default allow rule"
+  }
+}
+
+# Expose the application ports via HTTP(S) load balancer with a managed SSL certificate and a static IP address
+resource "google_compute_backend_service" "default" {
+  for_each = local.application_ports_by_name
 
   project = var.project_id
 
-  name        = "${google_compute_region_instance_group_manager.application.name}-lb"
-  target_tags = ["app-${local.application_name}"]
+  name = "${local.application_name}-backend-${each.value.name}"
 
-  firewall_networks = [
-    var.vpc_network
-  ]
+  load_balancing_scheme = "EXTERNAL"
 
-  ssl = true
+  port_name = each.value.name
+  protocol  = "HTTP"
 
-  managed_ssl_certificate_domains = [
-    var.application_dns_tld
-  ]
+  timeout_sec                     = 10
+  connection_draining_timeout_sec = 120
 
-  backends = {
-    default = {
-      description = null
-      port        = 80
-      protocol    = "HTTP"
-      # TODO: use port_name instead of port
-      port_name               = "tcp-80"
-      timeout_sec             = 10
-      enable_cdn              = false
-      custom_request_headers  = null
-      custom_response_headers = null
-      compression_mode        = null
+  enable_cdn       = false
+  compression_mode = "DISABLED"
 
-      security_policy      = null
-      edge_security_policy = null
+  custom_request_headers  = []
+  custom_response_headers = []
 
-      connection_draining_timeout_sec = null
-      session_affinity                = null
-      affinity_cookie_ttl_sec         = null
+  session_affinity = "CLIENT_IP"
 
-      health_check = {
-        check_interval_sec  = null
-        timeout_sec         = null
-        healthy_threshold   = null
-        unhealthy_threshold = null
-        request_path        = "/"
-        port                = 80
-        host                = null
-        logging             = null
-      }
+  health_checks = try([google_compute_health_check.port[each.key].self_link], null)
 
-      log_config = {
-        enable      = false
-        sample_rate = null
-      }
+  security_policy = google_compute_security_policy.default.self_link
 
-      groups = [
-        {
-          group                        = google_compute_region_instance_group_manager.application.instance_group
-          balancing_mode               = null
-          capacity_scaler              = null
-          description                  = null
-          max_connections              = null
-          max_connections_per_instance = null
-          max_connections_per_endpoint = null
-          max_rate                     = null
-          max_rate_per_instance        = null
-          max_rate_per_endpoint        = null
-          max_utilization              = null
-        }
-      ]
+  backend {
+    balancing_mode  = "UTILIZATION"
+    capacity_scaler = 1
+    group           = google_compute_region_instance_group_manager.application.instance_group
 
-      iap_config = {
-        enable               = false
-        oauth2_client_id     = ""
-        oauth2_client_secret = ""
-      }
-    }
+    # Do not send traffic to nodes that have CPU load higher than 80%
+    # max_utilization = 0.8
   }
 
-  labels = local.application_labels
+  log_config {
+    enable      = false
+    sample_rate = "1.0"
+  }
+
+  depends_on = [
+    google_compute_region_instance_group_manager.application,
+    google_compute_health_check.port,
+  ]
 }
 
-# Open HTTP(S) ports for the application instances
+## Create a SSL policy
+resource "google_compute_ssl_policy" "application" {
+  project = var.project_id
+
+  name = local.application_name
+
+  profile = "MODERN"
+}
+
+## Create a managed SSL certificate
+resource "google_compute_managed_ssl_certificate" "default" {
+  project = var.project_id
+
+  name = "${local.application_name}-mig-lb-cert"
+
+  type = "MANAGED"
+
+  managed {
+    domains = [
+      var.application_dns_tld,
+    ]
+  }
+}
+
+## Create URL map for the application
+resource "google_compute_url_map" "default" {
+  project = var.project_id
+
+  name            = local.application_name
+  default_service = google_compute_backend_service.default["http"].self_link
+}
+
+# Set up HTTP(s) proxies and redirect HTTP to HTTPS
+resource "google_compute_url_map" "https_redirect" {
+  project = var.project_id
+
+  name = "${local.application_name}-https-redirect"
+
+  default_url_redirect {
+    https_redirect         = true
+    redirect_response_code = "MOVED_PERMANENTLY_DEFAULT"
+    strip_query            = false
+  }
+}
+
+resource "google_compute_target_http_proxy" "default" {
+  project = var.project_id
+
+  name = "${local.application_name}-http"
+
+  url_map = google_compute_url_map.https_redirect.self_link
+}
+
+resource "google_compute_target_https_proxy" "default" {
+  project = var.project_id
+
+  name = "${local.application_name}-https"
+
+  url_map = google_compute_url_map.default.self_link
+
+  ssl_certificates = [google_compute_managed_ssl_certificate.default.self_link]
+  ssl_policy       = google_compute_ssl_policy.application.self_link
+  quic_override    = "NONE"
+}
+
+# Allocate global addresses for the load balancer and set up forwarding rules
+## IPv4
+resource "google_compute_global_address" "ipv4" {
+  project = var.project_id
+
+  name = "${local.application_name}-ipv4"
+
+  ip_version = "IPV4"
+}
+
+resource "google_compute_global_forwarding_rule" "http" {
+  project = var.project_id
+
+  name   = local.application_name
+  labels = local.application_labels
+
+  target     = google_compute_target_http_proxy.default.self_link
+  ip_address = google_compute_global_address.ipv4.address
+  port_range = "80"
+
+  load_balancing_scheme = "EXTERNAL"
+}
+
+resource "google_compute_global_forwarding_rule" "https" {
+  project = var.project_id
+
+  name   = "${local.application_name}-https"
+  labels = local.application_labels
+
+  target     = google_compute_target_https_proxy.default.self_link
+  ip_address = google_compute_global_address.ipv4.address
+  port_range = "443"
+
+  load_balancing_scheme = "EXTERNAL"
+}
+
+## IPv6
+resource "google_compute_global_address" "ipv6" {
+  project = var.project_id
+
+  name = "${local.application_name}-ipv6"
+
+  ip_version = "IPV6"
+}
+
+resource "google_compute_global_forwarding_rule" "http_ipv6" {
+  project = var.project_id
+
+  name   = "${local.application_name}-ipv6-http"
+  labels = local.application_labels
+
+  target     = google_compute_target_http_proxy.default.self_link
+  ip_address = google_compute_global_address.ipv6.address
+  port_range = "80"
+
+  load_balancing_scheme = "EXTERNAL"
+}
+
+resource "google_compute_global_forwarding_rule" "https_ipv6" {
+  project = var.project_id
+
+  name   = "${local.application_name}-ipv6-https"
+  labels = local.application_labels
+
+  target     = google_compute_target_https_proxy.default.self_link
+  ip_address = google_compute_global_address.ipv6.address
+  port_range = "443"
+
+  load_balancing_scheme = "EXTERNAL"
+}
+
+## Open HTTP(S) ports for the load balancer
 resource "google_compute_firewall" "http" {
   project = var.project_id
 
   name    = "${local.application_name}-firewall-lb-to-instances"
   network = var.vpc_network
 
-  allow {
-    protocol = "tcp"
-    ports    = [80, 443]
-  }
-
-  allow {
-    protocol = "udp"
-    ports    = [80, 443]
-  }
-
   source_ranges = local.google_load_balancer_ip_ranges
   target_tags   = ["app-${local.application_name}"]
+
+  dynamic "allow" {
+    for_each = var.application_ports
+
+    content {
+      protocol = allow.value.protocol
+      ports    = [allow.value.port]
+    }
+  }
+
+  # We also enable UDP to allow QUIC if it's enabled
+  dynamic "allow" {
+    for_each = var.application_ports
+
+    content {
+      protocol = "udp"
+      ports    = [allow.value.port]
+    }
+  }
 }
 
+## Open HTTP(S) ports for the health checks
+resource "google_compute_firewall" "http-health-checks" {
+  project = var.project_id
+
+  name    = "${local.application_name}-healthcheck"
+  network = var.vpc_network
+
+  source_ranges = local.google_health_check_ip_ranges
+  target_tags   = ["app-${local.application_name}"]
+
+  dynamic "allow" {
+    for_each = var.application_ports
+
+    content {
+      protocol = allow.value.protocol
+      ports    = [allow.value.port]
+    }
+  }
+}
+
+# Create DNS records for the application
 resource "google_dns_record_set" "application-ipv4" {
   project = var.project_id
 
@@ -323,13 +516,11 @@ resource "google_dns_record_set" "application-ipv4" {
   managed_zone = var.dns_managed_zone_name
 
   rrdatas = [
-    module.google-http-lb.external_ip
+    google_compute_global_address.ipv4.address
   ]
 }
 
 resource "google_dns_record_set" "application-ipv6" {
-  count = module.google-http-lb.ipv6_enabled == true ? 1 : 0
-
   project = var.project_id
 
   name = "${var.application_dns_tld}."
@@ -339,6 +530,6 @@ resource "google_dns_record_set" "application-ipv6" {
   managed_zone = var.dns_managed_zone_name
 
   rrdatas = [
-    module.google-http-lb.external_ipv6_address
+    google_compute_global_address.ipv6.address
   ]
 }

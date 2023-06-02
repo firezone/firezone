@@ -221,14 +221,39 @@ variable "application_dns_tld" {
 
 variable "application_ports" {
   type = list(object({
+    name     = string
     protocol = string
     port     = number
+
+    health_check = object({
+      initial_delay_sec   = number
+      check_interval_sec  = optional(number)
+      timeout_sec         = optional(number)
+      healthy_threshold   = optional(number)
+      unhealthy_threshold = optional(number)
+
+      tcp_health_check = optional(object({}))
+
+      http_health_check = optional(object({
+        host         = optional(string)
+        request_path = optional(string)
+        port         = optional(string)
+        response     = optional(string)
+      }))
+
+      https_health_check = optional(object({
+        host         = optional(string)
+        request_path = optional(string)
+        port         = optional(string)
+        response     = optional(string)
+      }))
+    })
   }))
 
   nullable = false
   default  = []
 
-  description = "List of ports to expose for the application."
+  description = "List of ports to expose for the application. One of ports MUST be named 'http' for auth healing policy to work."
 }
 
 variable "application_environment_variables" {

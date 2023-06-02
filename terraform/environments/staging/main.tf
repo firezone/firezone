@@ -242,7 +242,7 @@ module "web" {
 
   image_repo = module.google-artifact-registry.repo
   image      = "web"
-  image_tag  = "branch-andrew_deployment"
+  image_tag  = var.web_image_tag
 
   scaling_horizontal_replicas = 2
 
@@ -258,16 +258,22 @@ module "web" {
 
   application_ports = [
     {
+      name     = "http"
       protocol = "TCP"
       port     = 80
+
+      health_check = {
+        initial_delay_sec = 30
+
+        check_interval_sec  = 5
+        timeout_sec         = 5
+        healthy_threshold   = 1
+        unhealthy_threshold = 2
+
+        http_health_check = {}
+      }
     }
   ]
-
-  # liveness_probe = {
-  #   path   = "/healthz"
-  #   port   = 80
-  #   scheme = "HTTP"
-  # }
 
   application_environment_variables = [
     # Web Server
