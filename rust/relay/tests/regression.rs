@@ -1,13 +1,12 @@
 use crate::TypedOutput::FreeAllocation;
 use bytecodec::{DecodeExt, EncodeExt};
-use hex_literal::hex;
 use rand::rngs::mock::StepRng;
 use relay::{Allocate, AllocationId, Attribute, Binding, ClientMessage, Command, Refresh, Server};
 use std::collections::HashMap;
 use std::iter;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::time::{Duration, SystemTime};
-use stun_codec::rfc5389::attributes::{MessageIntegrity, Realm, Username, XorMappedAddress};
+use stun_codec::rfc5389::attributes::{Username, XorMappedAddress};
 use stun_codec::rfc5389::methods::BINDING;
 use stun_codec::rfc5766::attributes::{Lifetime, XorRelayAddress};
 use stun_codec::rfc5766::methods::{ALLOCATE, REFRESH};
@@ -150,30 +149,75 @@ fn when_refreshed_in_time_allocation_does_not_expire(
         [],
     );
 }
+#[proptest]
+fn when_receiving_lifetime_0_for_existing_allocation_then_delete(
+    #[strategy(relay::proptest::transaction_id())] allocate_transaction_id: TransactionId,
+    #[strategy(relay::proptest::transaction_id())] refresh_transaction_id: TransactionId,
+    #[strategy(relay::proptest::allocation_lifetime())] allocate_lifetime: Lifetime,
+    #[strategy(relay::proptest::username_salt())] username_salt: String,
+    source: SocketAddrV4,
+    public_relay_addr: Ipv4Addr,
+    #[strategy(relay::proptest::now())] now: SystemTime,
+) {
+    let mut server = TestServer::new(public_relay_addr);
+    let secret = server.auth_secret();
+    let first_wake = now + allocate_lifetime.lifetime();
 
-#[test]
-fn when_receiving_lifetime_0_for_existing_allocation_then_delete() {
-    let now = SystemTime::now();
-    let refreshed_at = now + Duration::from_secs(300);
-    let first_expiry = now + Duration::from_secs(600);
+    server.assert_commands(
+        from_client(
+            source,
+            Allocate::new_udp(
+                allocate_transaction_id,
+                Some(allocate_lifetime.clone()),
+                valid_username(now, &username_salt),
+                &secret,
+            ),
+            now,
+        ),
+        [
+            Wake(first_wake),
+            CreateAllocation(49152),
+            send_message(
+                source,
+                allocate_response(
+                    allocate_transaction_id,
+                    public_relay_addr,
+                    49152,
+                    source,
+                    &allocate_lifetime,
+                ),
+            ),
+        ],
+    );
 
-    run_regression_test(&[(
-        Input::client("91.141.70.157:7112", "000300482112a442998bcae2a73b55941682cf470019000411000000000600047465737400140008666972657a6f6e6500150006666f6f626172000000080014b279018b143b1c6ac194a2848d0e37958731a2f38028000497076a00", now),
-        &[
-            Output::Wake(first_expiry),
-            Output::CreateAllocation(49152),
-            Output::send_message("91.141.70.157:7112", "010300202112a442998bcae2a73b55941682cf47001600080001e112026eff670020000800013ada7a9fe2df000d000400000258"),
+    // Forward time
+    let now = now + allocate_lifetime.lifetime() / 2;
+
+    server.assert_commands(
+        from_client(
+            source,
+            Refresh::new(
+                refresh_transaction_id,
+                Some(Lifetime::new(Duration::ZERO).unwrap()),
+                valid_username(now, &username_salt),
+                &secret,
+            ),
+            now,
+        ),
+        [
+            FreeAllocation(49152),
+            send_message(
+                source,
+                refresh_response(
+                    refresh_transaction_id,
+                    Lifetime::new(Duration::ZERO).unwrap(),
+                ),
+            ),
         ],
-    ),(
-        Input::client("91.141.70.157:7112", refresh_request(hex!("150ee0cb117ed3a0f66529f2"), 0), refreshed_at),
-        &[
-            Output::ExpireAllocation(49152),
-            Output::send_message("91.141.70.157:7112", "010400082112a442150ee0cb117ed3a0f66529f2000d000400000000"),
-        ],
-    ),(
-        Input::Time(first_expiry + Duration::from_secs(1)),
-        &[],
-    )]);
+    );
+
+    // Assert that forwarding time does not produce an obsolete event.
+    server.assert_commands(forward_time_to(first_wake + Duration::from_secs(1)), []);
 }
 
 #[test]
@@ -240,9 +284,6 @@ fn run_regression_test(sequence: &[(Input, &[Output])]) {
 
                 server.handle_client_input(&input, from, *now);
             }
-            Input::Time(now) => {
-                server.handle_deadline_reached(*now);
-            }
             Input::Peer(from, data, port) => {
                 let input = hex::decode(data).unwrap();
                 let from = from.parse().unwrap();
@@ -258,7 +299,6 @@ fn run_regression_test(sequence: &[(Input, &[Output])]) {
                     Output::Forward((ip, data, port)) => format!("forward '{data}' to {ip} on port {port}"),
                     Output::Wake(instant) => format!("to be woken at {instant:?}"),
                     Output::CreateAllocation(port) => format!("to create allocation on port {port}"),
-                    Output::ExpireAllocation(port) => format!("to free allocation on port {port}"),
                 };
 
                 panic!("No commands produced but expected {msg}");
@@ -288,11 +328,6 @@ fn run_regression_test(sequence: &[(Input, &[Output])]) {
                 }
                 (Output::Wake(expected), Command::Wake { deadline }) => {
                     assert_eq!(*expected, deadline);
-                }
-                (Output::ExpireAllocation(port), Command::FreeAddresses { id }) => {
-                    let expected_id = allocation_mapping.remove(port).expect("unknown allocation");
-
-                    assert_eq!(expected_id, id);
                 }
                 (
                     Output::Forward((to, bytes, port)),
@@ -417,25 +452,6 @@ fn valid_username(now: SystemTime, salt: &str) -> Username {
     Username::new(format!("{expiry}:{salt}")).unwrap()
 }
 
-fn refresh_request(transaction_id: [u8; 12], lifetime: u32) -> String {
-    let username = Username::new("test".to_owned()).unwrap();
-    let realm = Realm::new("firezone".to_owned()).unwrap();
-
-    let mut message = Message::<Attribute>::new(
-        MessageClass::Request,
-        REFRESH,
-        TransactionId::new(transaction_id),
-    );
-    message.add_attribute(Lifetime::from_u32(lifetime).into());
-    message.add_attribute(username.clone().into());
-    message.add_attribute(realm.clone().into());
-    let message_integrity =
-        MessageIntegrity::new_long_term_credential(&message, &username, &realm, "foobar").unwrap();
-    message.add_attribute(message_integrity.into());
-
-    message_to_hex(message)
-}
-
 fn binding_response(
     transaction_id: TransactionId,
     address: impl Into<SocketAddr>,
@@ -473,13 +489,6 @@ fn refresh_response(transaction_id: TransactionId, lifetime: Lifetime) -> Messag
     message
 }
 
-fn message_to_hex<A>(message: Message<A>) -> String
-where
-    A: stun_codec::Attribute,
-{
-    hex::encode(MessageEncoder::new().encode_into_bytes(message).unwrap())
-}
-
 fn parse_hex_message(message: &str) -> DecodedMessage<Attribute> {
     let message = hex::decode(message).unwrap();
     MessageDecoder::new().decode_from_bytes(&message).unwrap()
@@ -492,7 +501,6 @@ fn parse_message(message: &[u8]) -> DecodedMessage<Attribute> {
 enum Input {
     Client(Ip, Bytes, SystemTime),
     Peer(Ip, Bytes, u16),
-    Time(SystemTime),
 }
 
 impl Input {
@@ -527,7 +535,6 @@ enum Output {
     Forward((Ip, Bytes, u16)),
     Wake(SystemTime),
     CreateAllocation(u16),
-    ExpireAllocation(u16),
 }
 
 #[derive(Debug)]
