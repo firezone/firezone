@@ -5,7 +5,7 @@ use proptest::strategy::Strategy;
 use proptest::string::string_regex;
 use std::ops::Add;
 use std::time::{Duration, SystemTime};
-use stun_codec::rfc5766::attributes::{Lifetime, RequestedTransport};
+use stun_codec::rfc5766::attributes::{ChannelNumber, Lifetime, RequestedTransport};
 use stun_codec::TransactionId;
 
 pub fn transaction_id() -> impl Strategy<Value = TransactionId> {
@@ -22,6 +22,10 @@ pub fn udp_requested_transport() -> impl Strategy<Value = RequestedTransport> {
 
 pub fn allocation_lifetime() -> impl Strategy<Value = Lifetime> {
     (1..3600u64).prop_map(|seconds| Lifetime::new(Duration::new(seconds, 0)).unwrap())
+}
+
+pub fn channel_number() -> impl Strategy<Value = ChannelNumber> {
+    (ChannelNumber::MIN..ChannelNumber::MAX).prop_map(|n| ChannelNumber::new(n).unwrap())
 }
 
 pub fn username_salt() -> impl Strategy<Value = String> {

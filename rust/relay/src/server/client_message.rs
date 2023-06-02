@@ -277,10 +277,25 @@ impl ChannelBind {
     pub fn new(
         transaction_id: TransactionId,
         channel_number: ChannelNumber,
-        message_integrity: MessageIntegrity,
-        username: Username,
         xor_peer_address: XorPeerAddress,
+        username: Username,
+        relay_secret: &[u8],
     ) -> Self {
+        let mut message =
+            Message::<Attribute>::new(MessageClass::Request, CHANNEL_BIND, transaction_id);
+        message.add_attribute(username.clone().into());
+        message.add_attribute(channel_number.clone().into());
+        message.add_attribute(xor_peer_address.clone().into());
+
+        let (expiry, salt) = split_username(username.name()).expect("a valid username");
+        let expiry_systemtime = systemtime_from_unix(expiry);
+
+        let password = generate_password(relay_secret, expiry_systemtime, salt);
+
+        let message_integrity =
+            MessageIntegrity::new_long_term_credential(&message, &&username, &FIREZONE, &password)
+                .unwrap();
+
         Self {
             transaction_id,
             channel_number,

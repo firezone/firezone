@@ -1,15 +1,18 @@
 use crate::TypedOutput::FreeAllocation;
 use bytecodec::{DecodeExt, EncodeExt};
 use rand::rngs::mock::StepRng;
-use relay::{Allocate, AllocationId, Attribute, Binding, ClientMessage, Command, Refresh, Server};
+use relay::{
+    Allocate, AllocationId, Attribute, Binding, ChannelBind, ChannelData, ClientMessage, Command,
+    Refresh, Server,
+};
 use std::collections::HashMap;
 use std::iter;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::time::{Duration, SystemTime};
 use stun_codec::rfc5389::attributes::{Username, XorMappedAddress};
 use stun_codec::rfc5389::methods::BINDING;
-use stun_codec::rfc5766::attributes::{Lifetime, XorRelayAddress};
-use stun_codec::rfc5766::methods::{ALLOCATE, REFRESH};
+use stun_codec::rfc5766::attributes::{ChannelNumber, Lifetime, XorPeerAddress, XorRelayAddress};
+use stun_codec::rfc5766::methods::{ALLOCATE, CHANNEL_BIND, REFRESH};
 use stun_codec::{
     DecodedMessage, Message, MessageClass, MessageDecoder, MessageEncoder, TransactionId,
 };
@@ -220,134 +223,100 @@ fn when_receiving_lifetime_0_for_existing_allocation_then_delete(
     server.assert_commands(forward_time_to(first_wake + Duration::from_secs(1)), []);
 }
 
-#[test]
-fn server_waits_for_5_minutes_before_allowing_reuse_of_channel_number_after_expiry() {
-    // todo!()
-}
+// #[test]
+// fn server_waits_for_5_minutes_before_allowing_reuse_of_channel_number_after_expiry() {
+//     // todo!()
+// }
 
-#[test]
-fn ping_pong_relay() {
-    let now = SystemTime::now();
-    run_regression_test(&[(
-        Input::client("127.0.0.1:42677","000300102112a44216e1c61ab424700638d1cdc70019000411000000802800040eac7235", now),
-        &[
-            Output::send_message("127.0.0.1:42677","0113002c2112a44216e1c61ab424700638d1cdc70009001000000401556e617574686f72697a656400150006666f6f626172000000140008666972657a6f6e65"),
-        ]),
-        (
-        Input::client("127.0.0.1:54098","000100002112a442f0453a3bb8edcdeb333ccbe0", now),
-        &[
-            Output::send_message("127.0.0.1:54098","0101000c2112a442f0453a3bb8edcdeb333ccbe0002000080001f2405e12a443")],
-        ),
-        (
-        Input::client("127.0.0.1:42677","000300482112a442998bcae2a73b55941682cf470019000411000000000600047465737400140008666972657a6f6e6500150006666f6f626172000000080014b279018b143b1c6ac194a2848d0e37958731a2f38028000497076a00", now),
-        &[
-            Output::Wake(now + Duration::from_secs(600)),
-            Output::CreateAllocation(49152),
-            Output::send_message("127.0.0.1:42677","010300202112a442998bcae2a73b55941682cf47001600080001e112026eff6700200008000187a75e12a443000d000400000258")
-        ]),
-        (
-        Input::client("127.0.0.1:42677","0008004c2112a442dc5c115f6b727e25a54b55d3001200080001f2405e12a443000600047465737400140008666972657a6f6e6500150006666f6f626172000000080014384805e715f38de3b7b16df6dc3af51568cb073b80280004ecdfbc3d", now),
-        &[
-            Output::send_message("127.0.0.1:42677","010800002112a442dc5c115f6b727e25a54b55d3")
-        ]),
-        (
-        Input::client("127.0.0.1:42677","000900542112a4420afbde5aaacfc1e9316beae9001200080001f2405e12a443000c000440000000000600047465737400140008666972657a6f6e6500150006666f6f626172000000080014aca01c6cdc1fc5339a309e5bccac3df5c903e33e802800041fe4b79b", now),
-        &[
-            Output::send_message("127.0.0.1:42677","010900002112a4420afbde5aaacfc1e9316beae9")
-        ]),
-        (
-        Input::peer("127.0.0.1:54098","4a67cc90afc6a3d9dc2867fab4c5867de5adae6b8a45c710998c800067c0e1b3", 49152),
-         &[
-            Output::send_message("127.0.0.1:42677","400000204a67cc90afc6a3d9dc2867fab4c5867de5adae6b8a45c710998c800067c0e1b3")
-        ]),
-        (
-         Input::client("127.0.0.1:42677","400000204a67cc90afc6a3d9dc2867fab4c5867de5adae6b8a45c710998c800067c0e1b3", now),
-         &[
-             Output::forward("127.0.0.1:54098","4a67cc90afc6a3d9dc2867fab4c5867de5adae6b8a45c710998c800067c0e1b3", 49152)
-         ]
-    )]);
-}
-
-/// Run a regression test with a sequence events where we always have 1 input and N outputs.
-fn run_regression_test(sequence: &[(Input, &[Output])]) {
+#[proptest]
+fn ping_pong_relay(
+    #[strategy(relay::proptest::transaction_id())] allocate_transaction_id: TransactionId,
+    #[strategy(relay::proptest::transaction_id())] channel_bind_transaction_id: TransactionId,
+    #[strategy(relay::proptest::allocation_lifetime())] lifetime: Lifetime,
+    #[strategy(relay::proptest::username_salt())] username_salt: String,
+    #[strategy(relay::proptest::channel_number())] channel: ChannelNumber,
+    source: SocketAddrV4,
+    peer: SocketAddrV4,
+    public_relay_addr: Ipv4Addr,
+    #[strategy(relay::proptest::now())] now: SystemTime,
+    peer_to_client_ping: [u8; 32],
+    client_to_peer_ping: [u8; 32],
+) {
     let _ = env_logger::try_init();
 
-    let mut server = Server::new(Ipv4Addr::new(35, 124, 91, 37), StepRng::new(0, 0));
+    let mut server = TestServer::new(public_relay_addr);
+    let secret = server.auth_secret();
 
-    let mut allocation_mapping = HashMap::<u16, AllocationId>::default();
+    server.assert_commands(
+        from_client(
+            source,
+            Allocate::new_udp(
+                allocate_transaction_id,
+                Some(lifetime.clone()),
+                valid_username(now, &username_salt),
+                &secret,
+            ),
+            now,
+        ),
+        [
+            Wake(now + lifetime.lifetime()),
+            CreateAllocation(49152),
+            send_message(
+                source,
+                allocate_response(
+                    allocate_transaction_id,
+                    public_relay_addr,
+                    49152,
+                    source,
+                    &lifetime,
+                ),
+            ),
+        ],
+    );
 
-    for (input, output) in sequence {
-        match input {
-            Input::Client(from, data, now) => {
-                let input = hex::decode(data).unwrap();
-                let from = from.parse().unwrap();
+    let now = now + Duration::from_secs(1);
 
-                server.handle_client_input(&input, from, *now);
-            }
-            Input::Peer(from, data, port) => {
-                let input = hex::decode(data).unwrap();
-                let from = from.parse().unwrap();
+    server.assert_commands(
+        from_client(
+            source,
+            ChannelBind::new(
+                channel_bind_transaction_id,
+                channel,
+                XorPeerAddress::new(peer.into()),
+                valid_username(now, &username_salt),
+                &secret,
+            ),
+            now,
+        ),
+        [send_message(
+            source,
+            channel_bind_response(channel_bind_transaction_id),
+        )],
+    );
 
-                server.handle_relay_input(&input, from, allocation_mapping[port]);
-            }
-        }
+    let now = now + Duration::from_secs(1);
 
-        for expected_output in *output {
-            let Some(actual_output) = server.next_command() else {
-                let msg = match expected_output {
-                    Output::SendMessage((recipient, bytes)) => format!("to send message {:?} to {recipient}", parse_hex_message(bytes)),
-                    Output::Forward((ip, data, port)) => format!("forward '{data}' to {ip} on port {port}"),
-                    Output::Wake(instant) => format!("to be woken at {instant:?}"),
-                    Output::CreateAllocation(port) => format!("to create allocation on port {port}"),
-                };
+    server.assert_commands(
+        from_client(
+            source,
+            ChannelData::new(channel.value(), client_to_peer_ping.as_ref()),
+            now,
+        ),
+        [forward(peer, &client_to_peer_ping, 49152)],
+    );
 
-                panic!("No commands produced but expected {msg}");
-            };
-
-            match (expected_output, actual_output) {
-                (Output::SendMessage((to, bytes)), Command::SendMessage { payload, recipient }) => {
-                    let expected_bytes = hex::decode(bytes).unwrap();
-
-                    if expected_bytes != payload {
-                        let expected_message =
-                            format!("{:?}", parse_message(expected_bytes.as_ref()));
-                        let actual_message = format!("{:?}", parse_message(payload.as_ref()));
-
-                        difference::assert_diff!(&expected_message, &actual_message, "\n", 0);
-                    }
-
-                    assert_eq!(recipient, to.parse().unwrap());
-                }
-                (
-                    Output::CreateAllocation(expected_port),
-                    Command::AllocateAddresses { port, id },
-                ) => {
-                    assert_eq!(port, *expected_port);
-
-                    allocation_mapping.insert(*expected_port, id);
-                }
-                (Output::Wake(expected), Command::Wake { deadline }) => {
-                    assert_eq!(*expected, deadline);
-                }
-                (
-                    Output::Forward((to, bytes, port)),
-                    Command::ForwardData { id, data, receiver },
-                ) => {
-                    assert_eq!(*bytes, hex::encode(data));
-                    assert_eq!(receiver, to.parse().unwrap());
-                    assert_eq!(allocation_mapping[port], id);
-                }
-                (expected, actual) => panic!("Expected: {expected:?}\nActual:   {actual:?}\n"),
-            }
-        }
-
-        assert!(server.next_command().is_none())
-    }
+    server.assert_commands(
+        from_peer(peer, peer_to_client_ping.as_ref(), 49152),
+        [send_channel_data(
+            source,
+            ChannelData::new(channel.value(), peer_to_client_ping.as_ref()),
+        )],
+    );
 }
 
 struct TestServer {
     server: Server<StepRng>,
-    id_to_port: HashMap<AllocationId, u16>,
+    id_to_port: HashMap<u16, AllocationId>,
 }
 
 impl TestServer {
@@ -370,6 +339,10 @@ impl TestServer {
             TypedInput::Time(now) => {
                 self.server.handle_deadline_reached(now);
             }
+            TypedInput::Peer(peer, data, port) => {
+                self.server
+                    .handle_relay_input(&data, peer, self.id_to_port[&port]);
+            }
         }
 
         for expected_output in output {
@@ -379,6 +352,8 @@ impl TestServer {
                     Wake(time) => format!("to be woken at {time:?}"),
                     CreateAllocation(port) => format!("to create allocation on port {port}"),
                     FreeAllocation(port) => format!("to free allocation on port {port}"),
+                    TypedOutput::SendChannelData((peer, _)) => format!("to send channel data from {peer} to client"),
+                    TypedOutput::Forward((peer, _, _)) => format!("to forward data to peer {peer}")
                 };
 
                 panic!("No commands produced but expected {msg}");
@@ -412,15 +387,12 @@ impl TestServer {
                         port: actual_port,
                     },
                 ) => {
-                    self.id_to_port.insert(id, actual_port);
+                    self.id_to_port.insert(actual_port, id);
                     assert_eq!(expected_port, actual_port);
                 }
                 (FreeAllocation(port), Command::FreeAddresses { id }) => {
-                    let actual_port = self
-                        .id_to_port
-                        .remove(&id)
-                        .expect("to have allocation id in map");
-                    assert_eq!(port, actual_port);
+                    let actual_id = self.id_to_port.remove(&port).expect("to have port in map");
+                    assert_eq!(id, actual_id);
                 }
                 (Wake(when), Command::SendMessage { payload, .. }) => {
                     panic!(
@@ -430,6 +402,28 @@ impl TestServer {
                             .as_secs(),
                         parse_message(&payload).expect("self.server to produce valid message")
                     )
+                }
+                (
+                    TypedOutput::SendChannelData((peer, channeldata)),
+                    Command::SendMessage { recipient, payload },
+                ) => {
+                    let expected_channel_data = hex::encode(channeldata.to_bytes());
+                    let actual_message = hex::encode(payload);
+
+                    assert_eq!(expected_channel_data, actual_message);
+                    assert_eq!(recipient, peer);
+                }
+                (
+                    TypedOutput::Forward((peer, expected_data, port)),
+                    Command::ForwardData {
+                        id,
+                        data: actual_data,
+                        receiver,
+                    },
+                ) => {
+                    assert_eq!(hex::encode(expected_data), hex::encode(actual_data));
+                    assert_eq!(receiver, peer);
+                    assert_eq!(self.id_to_port[&port], id);
                 }
                 (expected, actual) => panic!("Unhandled combination: {expected:?} {actual:?}"),
             }
@@ -489,31 +483,17 @@ fn refresh_response(transaction_id: TransactionId, lifetime: Lifetime) -> Messag
     message
 }
 
-fn parse_hex_message(message: &str) -> DecodedMessage<Attribute> {
-    let message = hex::decode(message).unwrap();
-    MessageDecoder::new().decode_from_bytes(&message).unwrap()
+fn channel_bind_response(transaction_id: TransactionId) -> Message<Attribute> {
+    Message::<Attribute>::new(MessageClass::SuccessResponse, CHANNEL_BIND, transaction_id)
 }
 
 fn parse_message(message: &[u8]) -> DecodedMessage<Attribute> {
     MessageDecoder::new().decode_from_bytes(message).unwrap()
 }
 
-enum Input {
-    Client(Ip, Bytes, SystemTime),
-    Peer(Ip, Bytes, u16),
-}
-
-impl Input {
-    fn client(from: Ip, data: impl AsRef<str>, now: SystemTime) -> Self {
-        Self::Client(from, data.as_ref().to_owned(), now)
-    }
-    fn peer(from: Ip, data: impl AsRef<str>, allocation: u16) -> Self {
-        Self::Peer(from, data.as_ref().to_owned(), allocation)
-    }
-}
-
 enum TypedInput<'a> {
     Client(SocketAddr, ClientMessage<'a>, SystemTime),
+    Peer(SocketAddr, Vec<u8>, u16),
     Time(SystemTime),
 }
 
@@ -525,39 +505,35 @@ fn from_client<'a>(
     TypedInput::Client(from.into(), message.into(), now)
 }
 
+fn from_peer<'a>(from: impl Into<SocketAddr>, data: &[u8], port: u16) -> TypedInput<'a> {
+    TypedInput::Peer(from.into(), data.to_vec(), port)
+}
+
 fn forward_time_to<'a>(when: SystemTime) -> TypedInput<'a> {
     TypedInput::Time(when)
 }
 
 #[derive(Debug)]
-enum Output {
-    SendMessage((Ip, Bytes)),
-    Forward((Ip, Bytes, u16)),
-    Wake(SystemTime),
-    CreateAllocation(u16),
-}
-
-#[derive(Debug)]
-enum TypedOutput {
+enum TypedOutput<'a> {
     SendMessage((SocketAddr, Message<Attribute>)),
+    SendChannelData((SocketAddr, ChannelData<'a>)),
+    Forward((SocketAddr, Vec<u8>, u16)),
     Wake(SystemTime),
     CreateAllocation(u16),
     FreeAllocation(u16),
 }
 
-impl Output {
-    fn send_message(from: Ip, data: impl AsRef<str>) -> Self {
-        Self::SendMessage((from, data.as_ref().to_owned()))
-    }
-
-    fn forward(to: Ip, data: impl AsRef<str>, port: u16) -> Self {
-        Self::Forward((to, data.as_ref().to_owned(), port))
-    }
-}
-
-fn send_message(source: impl Into<SocketAddr>, message: Message<Attribute>) -> TypedOutput {
+fn send_message<'a>(source: impl Into<SocketAddr>, message: Message<Attribute>) -> TypedOutput<'a> {
     TypedOutput::SendMessage((source.into(), message))
 }
 
-type Ip = &'static str;
-type Bytes = String;
+fn send_channel_data<'a>(
+    source: impl Into<SocketAddr>,
+    message: ChannelData<'a>,
+) -> TypedOutput<'a> {
+    TypedOutput::SendChannelData((source.into(), message))
+}
+
+fn forward(source: impl Into<SocketAddr>, data: &[u8], port: u16) -> TypedOutput {
+    TypedOutput::Forward((source.into(), data.to_vec(), port))
+}
