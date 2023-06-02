@@ -64,10 +64,6 @@ if config_env() == :prod do
       port: external_url_port,
       path: external_url_path
     ],
-    force_ssl: [
-      rewrite_on: [:x_forwarded_proto],
-      hsts: if(external_url_scheme == "https", do: true, else: false)
-    ],
     secret_key_base: compile_config!(:secret_key_base),
     live_view: [
       signing_salt: compile_config!(:live_view_signing_salt)
@@ -97,10 +93,6 @@ if config_env() == :prod do
       host: external_url_host,
       port: external_url_port,
       path: external_url_path
-    ],
-    force_ssl: [
-      rewrite_on: [:x_forwarded_proto],
-      hsts: if(external_url_scheme == "https", do: true, else: false)
     ],
     secret_key_base: compile_config!(:secret_key_base)
 

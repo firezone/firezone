@@ -141,6 +141,9 @@ config :web, Web.Mailer,
   adapter: Web.Mailer.NoopAdapter,
   from_email: "test@firez.one"
 
+# TODO: actually copy fonts here, otherwise:application
+# Failed to load resource: the server responded with a status of 404 ()
+# source-sans-pro-all-400-normal.woff:1     Failed to load resource: the server responded with a status of 404 ()
 config :esbuild,
   version: "0.17.19",
   web: [
