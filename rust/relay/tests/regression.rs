@@ -1,4 +1,4 @@
-use crate::TypedOutput::FreeAllocation;
+use crate::Output::FreeAllocation;
 use bytecodec::{DecodeExt, EncodeExt};
 use rand::rngs::mock::StepRng;
 use relay::{
@@ -17,7 +17,7 @@ use stun_codec::{
     DecodedMessage, Message, MessageClass, MessageDecoder, MessageEncoder, TransactionId,
 };
 use test_strategy::proptest;
-use TypedOutput::{CreateAllocation, Wake};
+use Output::{CreateAllocation, Wake};
 
 #[proptest]
 fn can_answer_stun_request_from_ip4_address(
@@ -331,15 +331,15 @@ impl TestServer {
         self.server.auth_secret()
     }
 
-    fn assert_commands<const N: usize>(&mut self, input: TypedInput, output: [TypedOutput; N]) {
+    fn assert_commands<const N: usize>(&mut self, input: Input, output: [Output; N]) {
         match input {
-            TypedInput::Client(sender, message, now) => {
+            Input::Client(sender, message, now) => {
                 self.server.handle_client_message(message, sender, now);
             }
-            TypedInput::Time(now) => {
+            Input::Time(now) => {
                 self.server.handle_deadline_reached(now);
             }
-            TypedInput::Peer(peer, data, port) => {
+            Input::Peer(peer, data, port) => {
                 self.server
                     .handle_relay_input(&data, peer, self.id_to_port[&port]);
             }
@@ -348,12 +348,12 @@ impl TestServer {
         for expected_output in output {
             let Some(actual_output) = self.server.next_command() else {
                 let msg = match expected_output {
-                    TypedOutput::SendMessage((recipient, msg)) => format!("to send message {:?} to {recipient}", msg),
+                    Output::SendMessage((recipient, msg)) => format!("to send message {:?} to {recipient}", msg),
                     Wake(time) => format!("to be woken at {time:?}"),
                     CreateAllocation(port) => format!("to create allocation on port {port}"),
                     FreeAllocation(port) => format!("to free allocation on port {port}"),
-                    TypedOutput::SendChannelData((peer, _)) => format!("to send channel data from {peer} to client"),
-                    TypedOutput::Forward((peer, _, _)) => format!("to forward data to peer {peer}")
+                    Output::SendChannelData((peer, _)) => format!("to send channel data from {peer} to client"),
+                    Output::Forward((peer, _, _)) => format!("to forward data to peer {peer}")
                 };
 
                 panic!("No commands produced but expected {msg}");
@@ -361,7 +361,7 @@ impl TestServer {
 
             match (expected_output, actual_output) {
                 (
-                    TypedOutput::SendMessage((to, message)),
+                    Output::SendMessage((to, message)),
                     Command::SendMessage { payload, recipient },
                 ) => {
                     let expected_bytes = MessageEncoder::new()
@@ -404,7 +404,7 @@ impl TestServer {
                     )
                 }
                 (
-                    TypedOutput::SendChannelData((peer, channeldata)),
+                    Output::SendChannelData((peer, channeldata)),
                     Command::SendMessage { recipient, payload },
                 ) => {
                     let expected_channel_data = hex::encode(channeldata.to_bytes());
@@ -414,7 +414,7 @@ impl TestServer {
                     assert_eq!(recipient, peer);
                 }
                 (
-                    TypedOutput::Forward((peer, expected_data, port)),
+                    Output::Forward((peer, expected_data, port)),
                     Command::ForwardData {
                         id,
                         data: actual_data,
@@ -491,7 +491,7 @@ fn parse_message(message: &[u8]) -> DecodedMessage<Attribute> {
     MessageDecoder::new().decode_from_bytes(message).unwrap()
 }
 
-enum TypedInput<'a> {
+enum Input<'a> {
     Client(SocketAddr, ClientMessage<'a>, SystemTime),
     Peer(SocketAddr, Vec<u8>, u16),
     Time(SystemTime),
@@ -501,20 +501,20 @@ fn from_client<'a>(
     from: impl Into<SocketAddr>,
     message: impl Into<ClientMessage<'a>>,
     now: SystemTime,
-) -> TypedInput<'a> {
-    TypedInput::Client(from.into(), message.into(), now)
+) -> Input<'a> {
+    Input::Client(from.into(), message.into(), now)
 }
 
-fn from_peer<'a>(from: impl Into<SocketAddr>, data: &[u8], port: u16) -> TypedInput<'a> {
-    TypedInput::Peer(from.into(), data.to_vec(), port)
+fn from_peer<'a>(from: impl Into<SocketAddr>, data: &[u8], port: u16) -> Input<'a> {
+    Input::Peer(from.into(), data.to_vec(), port)
 }
 
-fn forward_time_to<'a>(when: SystemTime) -> TypedInput<'a> {
-    TypedInput::Time(when)
+fn forward_time_to<'a>(when: SystemTime) -> Input<'a> {
+    Input::Time(when)
 }
 
 #[derive(Debug)]
-enum TypedOutput<'a> {
+enum Output<'a> {
     SendMessage((SocketAddr, Message<Attribute>)),
     SendChannelData((SocketAddr, ChannelData<'a>)),
     Forward((SocketAddr, Vec<u8>, u16)),
@@ -523,17 +523,14 @@ enum TypedOutput<'a> {
     FreeAllocation(u16),
 }
 
-fn send_message<'a>(source: impl Into<SocketAddr>, message: Message<Attribute>) -> TypedOutput<'a> {
-    TypedOutput::SendMessage((source.into(), message))
+fn send_message<'a>(source: impl Into<SocketAddr>, message: Message<Attribute>) -> Output<'a> {
+    Output::SendMessage((source.into(), message))
 }
 
-fn send_channel_data<'a>(
-    source: impl Into<SocketAddr>,
-    message: ChannelData<'a>,
-) -> TypedOutput<'a> {
-    TypedOutput::SendChannelData((source.into(), message))
+fn send_channel_data<'a>(source: impl Into<SocketAddr>, message: ChannelData<'a>) -> Output<'a> {
+    Output::SendChannelData((source.into(), message))
 }
 
-fn forward(source: impl Into<SocketAddr>, data: &[u8], port: u16) -> TypedOutput {
-    TypedOutput::Forward((source.into(), data.to_vec(), port))
+fn forward(source: impl Into<SocketAddr>, data: &[u8], port: u16) -> Output {
+    Output::Forward((source.into(), data.to_vec(), port))
 }
