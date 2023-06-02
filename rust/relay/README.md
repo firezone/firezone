@@ -27,6 +27,8 @@ Two environment variables need to be set for the server to be operational:
 
 In debug mode, you can set `RELAY_RNG_SEED` to a positive integer to make all random operations (secret generation, port allocations, etc) deterministic.
 
+If the `RELAY_PORTAL_WS_URL` environment variable is set, we will connect to it and wait for an `init` message before booting.
+
 ## Design
 
 The relay is designed in a sans-IO fashion, meaning the core components do not cause side effects but operate as pure, synchronous state machines.

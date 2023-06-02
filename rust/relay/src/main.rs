@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use futures::channel::mpsc;
 use futures::{FutureExt, SinkExt, StreamExt};
 use rand::rngs::StdRng;
@@ -32,6 +32,19 @@ async fn main() -> Result<()> {
     let mut server = Server::new(public_ip4_addr, make_rng());
 
     tracing::info!("Relay auth secret: {}", hex::encode(server.auth_secret()));
+
+    if let Ok(portal_url) = std::env::var("RELAY_PORTAL_WS_URL") {
+        if !portal_url.starts_with("wss://") {
+            bail!("Refusing to connect to portal over insecure connection, make sure to specify a `wss://` URL")
+        }
+
+        let (_connection, _) = tokio_tungstenite::connect_async(portal_url)
+            .await
+            .context("failed to connect to portal")?;
+
+        // TODO: Wait for `init` message from portal.
+        // TOOD: Send auth secret to portal?
+    }
 
     let mut eventloop = Eventloop::new(server, listen_ip4_addr).await?;
 
