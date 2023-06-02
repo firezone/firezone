@@ -172,6 +172,9 @@ services:
       RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
       # Higher log level not to make seeds output too verbose
       LOG_LEVEL: "info"
+      # Mix env should be set to prod to use secrets declared above,
+      # otherwise seeds will generate invalid tokens
+      MIX_ENV: "prod"
     depends_on:
       postgres:
         condition: 'service_healthy'
