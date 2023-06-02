@@ -137,12 +137,18 @@ fn when_refreshed_in_time_allocation_does_not_expire(
             Wake(second_wake),
             send_message(
                 source,
-                refresh_response(refresh_transaction_id, refresh_lifetime),
+                refresh_response(refresh_transaction_id, refresh_lifetime.clone()),
             ),
         ],
     );
 
-    server.assert_commands(forward_time_to(first_wake + Duration::from_secs(1)), []);
+    // The allocation MUST NOT be expired 1 sec before its refresh lifetime.
+    // Note that depending on how the lifetimes were generated, this may still be before the initial allocation lifetime.
+    // This is okay because lifetimes do not roll over, i.e. a refresh is not "added" to the initial lifetime but the allocation's lifetime is simply computed from now + requested lifetime of the refresh request.
+    server.assert_commands(
+        forward_time_to(now + refresh_lifetime.lifetime() - Duration::from_secs(1)),
+        [],
+    );
 }
 
 #[test]
