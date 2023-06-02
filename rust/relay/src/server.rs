@@ -166,10 +166,10 @@ where
                 self.queue_error_response(sender, error_code);
             }
             // Parsing the bytes failed.
-            Err(client_message::Error::BadChannelData(_)) => return,
-            Err(client_message::Error::DecodeStun(_)) => return,
-            Err(client_message::Error::UnknownMessageType(_)) => return,
-            Err(client_message::Error::Eof) => return,
+            Err(client_message::Error::BadChannelData(_)) => {}
+            Err(client_message::Error::DecodeStun(_)) => {}
+            Err(client_message::Error::UnknownMessageType(_)) => {}
+            Err(client_message::Error::Eof) => {}
         };
     }
 

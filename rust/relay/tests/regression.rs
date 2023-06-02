@@ -1,4 +1,3 @@
-use crate::Output::FreeAllocation;
 use bytecodec::{DecodeExt, EncodeExt};
 use rand::rngs::mock::StepRng;
 use relay::{
@@ -17,7 +16,7 @@ use stun_codec::{
     DecodedMessage, Message, MessageClass, MessageDecoder, MessageEncoder, TransactionId,
 };
 use test_strategy::proptest;
-use Output::{CreateAllocation, Wake};
+use Output::{CreateAllocation, FreeAllocation, Wake};
 
 #[proptest]
 fn can_answer_stun_request_from_ip4_address(

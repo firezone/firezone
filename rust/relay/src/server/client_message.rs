@@ -132,7 +132,7 @@ impl Allocate {
         let password = generate_password(relay_secret, expiry_systemtime, salt);
 
         let message_integrity =
-            MessageIntegrity::new_long_term_credential(&message, &&username, &FIREZONE, &password)
+            MessageIntegrity::new_long_term_credential(&message, &username, &FIREZONE, &password)
                 .unwrap();
 
         Self {
@@ -217,7 +217,7 @@ impl Refresh {
         let password = generate_password(relay_secret, expiry_systemtime, salt);
 
         let message_integrity =
-            MessageIntegrity::new_long_term_credential(&message, &&username, &FIREZONE, &password)
+            MessageIntegrity::new_long_term_credential(&message, &username, &FIREZONE, &password)
                 .unwrap();
 
         Self {
@@ -284,7 +284,7 @@ impl ChannelBind {
         let mut message =
             Message::<Attribute>::new(MessageClass::Request, CHANNEL_BIND, transaction_id);
         message.add_attribute(username.clone().into());
-        message.add_attribute(channel_number.clone().into());
+        message.add_attribute(channel_number.into());
         message.add_attribute(xor_peer_address.clone().into());
 
         let (expiry, salt) = split_username(username.name()).expect("a valid username");
@@ -293,7 +293,7 @@ impl ChannelBind {
         let password = generate_password(relay_secret, expiry_systemtime, salt);
 
         let message_integrity =
-            MessageIntegrity::new_long_term_credential(&message, &&username, &FIREZONE, &password)
+            MessageIntegrity::new_long_term_credential(&message, &username, &FIREZONE, &password)
                 .unwrap();
 
         Self {

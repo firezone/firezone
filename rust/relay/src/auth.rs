@@ -46,7 +46,7 @@ pub enum Error {
 
 pub(crate) fn split_username(username: &str) -> Result<(u64, &str), Error> {
     let [expiry, username_salt]: [&str; 2] = username
-        .split(":")
+        .split(':')
         .collect::<Vec<&str>>()
         .try_into()
         .map_err(|_| Error::InvalidUsername)?;
