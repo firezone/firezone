@@ -1,147 +1,147 @@
 "use client";
-
-import Link from "next/link";
+import { Code, Link, P, OL, UL, H1, H4 } from "@/components/Base";
 import SupportOptions from "@/components/SupportOptions";
 import { Alert, Tabs } from "flowbite-react";
 
 export default function Page() {
   return (
     <div>
-      <h1>Backup and Restore</h1>
+      <H1>Backup and Restore</H1>
 
-      <p>
+      <P>
         Firezone can be safely backed up and restored in a couple of minutes
         under most circumstances.
-      </p>
+      </P>
 
       <Alert color="info">
-        <p>
-          This guide is written for Firezone deployments using **Docker Engine**
-          on **Linux** only.
-        </p>
+        This guide is written for Firezone deployments using{" "}
+        <strong>Docker Engine</strong> on <strong>Linux</strong> only.
       </Alert>
 
-      <p>
+      <P>
         Unless your hosting provider supports taking live VM snapshots, you'll
         need to stop Firezone before backing it up. This ensures the Postgres
         data directory is in a consistent state when the backup is performed.
         Backing up a running Firezone instance will **most likely** result in
         data loss when restored; you have been warned.
-      </p>
+      </P>
 
-      <p>
+      <P>
         After stopping Firezone, backing up Firezone is mostly a matter of
-        copying the relevant
+        copying the relevant{" "}
         <Link href="/docs/reference/file-and-directory-locations">
           files and
-        </Link>
+        </Link>{" "}
         to a location of your choosing.
-      </p>
+      </P>
 
-      <p>See the steps below for specific examples for Docker and Omnibus.</p>
+      <P>See the steps below for specific examples for Docker and Omnibus.</P>
 
       <Tabs.Group>
         <Tabs.Item title="Docker" active>
-          <h3>Backup</h3>
-          <p>
+          <H4>Backup</H4>
+          <P>
             For Docker-based deployments, this will consist of backing up the
-            <code>$HOME/.firezone</code>
+            <Code>$HOME/.firezone</Code>
             directory along with the Postgres data directory, typically located
             at
-            <code>/var/lib/docker/volumes/firezone_postgres-data</code> on Linux
+            <Code>/var/lib/docker/volumes/firezone_postgres-data</Code> on Linux
             if you're using the default Docker compose template.
-          </p>
-          <li>
-            Stop Firezone (warning: this <strong>will</strong> disconnect any
-            users connected to the VPN):
-            <pre>
-              <code>
-                docker compose -f $HOME/.firezone/docker-compose.yml down
-              </code>
-            </pre>
-          </li>
-          <li>
-            Copy relevant files and folders. If your made any customizations to
-            <code>/etc/docker/daemon.json</code>
-            (for example, for IPv6 support), be sure to include that in the
-            backup as well.
-            <pre>
-              <code>
-                tar -zcvfp $HOME/firezone-back-$(date +'%F-%H-%M').tgz
-                $HOME/.firezone /var/lib/docker/volumes/firezone_postgres-data
-              </code>
-            </pre>
-            <p>
-              A backup file named <code>firezone-back-TIMESTAMP.tgz</code> will
-              then be stored in <code>$HOME/</code>.
-            </p>
-          </li>
-          <h3>Restore</h3>
-          <ol>
+          </P>
+          <OL>
+            <li>
+              Stop Firezone (warning: this <strong>will</strong> disconnect any
+              users connected to the VPN):
+              <pre>
+                <Code>
+                  docker compose -f $HOME/.firezone/docker-compose.yml down
+                </Code>
+              </pre>
+            </li>
+            <li>
+              Copy relevant files and folders. If your made any customizations
+              to
+              <Code>/etc/docker/daemon.json</Code>
+              (for example, for IPv6 support), be sure to include that in the
+              backup as well.
+              <pre>
+                <Code>
+                  tar -zcvfp $HOME/firezone-back-$(date +'%F-%H-%M').tgz
+                  $HOME/.firezone /var/lib/docker/volumes/firezone_postgres-data
+                </Code>
+              </pre>
+              <P>
+                A backup file named <Code>firezone-back-TIMESTAMP.tgz</Code>{" "}
+                will then be stored in <Code>$HOME/</Code>.
+              </P>
+            </li>
+          </OL>
+          <H4>Restore</H4>
+          <OL>
             <li>
               Copy the files back to their original location:
               <pre>
-                <code>
+                <Code>
                   tar -zxvfp /path/to/firezone-back.tgz -C / --numeric-owner
-                </code>
+                </Code>
               </pre>
             </li>
             <li>
               Optionally, enable Docker to boot on startup:
               <pre>
-                <code>systemctl enable docker</code>
+                <Code>systemctl enable docker</Code>
               </pre>
             </li>
-          </ol>
+          </OL>
         </Tabs.Item>
         <Tabs.Item title="Omnibus">
-          <h3>Backup</h3>
+          <H4>Backup</H4>
 
-          <ol>
+          <OL>
             <li>
               Stop Firezone (warning: this <strong>will</strong> disconnect any
               users connected to the VPN):
               <pre>
-                <code>firezone-ctl stop</code>
+                <Code>firezone-ctl stop</Code>
               </pre>
             </li>
             <li>
               Copy relevant files and folders:
               <pre>
-                <code>
+                <Code>
                   tar -zcvfp $HOME/firezone-back-$(date +'%F-%H-%M').tgz
                   /var/opt/firezone /opt/firezone /usr/bin/firezone-ctl
                   /etc/systemd/system/firezone-runsvdir-start.service
                   /etc/firezone
-                </code>
+                </Code>
               </pre>
-              <p>
-                A backup file named <code>firezone-back-TIMESTAMP.tgz</code>
-                will then be stored in <code>$HOME/</code>.
-              </p>
+              <P>
+                A backup file named <Code>firezone-back-TIMESTAMP.tgz</Code>
+                will then be stored in <Code>$HOME/</Code>.
+              </P>
             </li>
-          </ol>
+          </OL>
 
-          <h3>Restore</h3>
-          <ol>
+          <H4>Restore</H4>
+          <OL>
             <li>
               Copy the files back to their original location:
               <pre>
-                <code>
+                <Code>
                   tar -zxvfp /path/to/firezone-back.tgz -C / --numeric-owner
-                </code>
+                </Code>
               </pre>
             </li>
-          </ol>
-          <ol>
+          </OL>
+          <OL>
             <li>
               Reconfigure Firezone to ensure configuration is applied to the
               host system:
               <pre>
-                <code>firezone-ctl reconfigure</code>
+                <Code>firezone-ctl reconfigure</Code>
               </pre>
             </li>
-          </ol>
+          </OL>
         </Tabs.Item>
       </Tabs.Group>
 
