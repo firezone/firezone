@@ -1,9 +1,9 @@
 defmodule API.Endpoint do
   use Phoenix.Endpoint, otp_app: :api
 
-  plug Plug.RewriteOn, [:x_forwarded_proto]
+  plug Plug.RewriteOn, [:x_forwarded_host, :x_forwarded_port, :x_forwarded_proto]
   plug Plug.MethodOverride
-  plug :maybe_force_ssl
+  plug :put_hsts_header
   plug Plug.Head
 
   if code_reloading? do
@@ -24,14 +24,17 @@ defmodule API.Endpoint do
 
   plug :not_found
 
-  def maybe_force_ssl(conn, _opts) do
+  def put_hsts_header(conn, _opts) do
     scheme =
       config(:url, [])
       |> Keyword.get(:scheme)
 
     if scheme == "https" do
-      opts = [rewrite_on: [:x_forwarded_host, :x_forwarded_port, :x_forwarded_proto]]
-      Plug.SSL.call(conn, Plug.SSL.init(opts))
+      put_resp_header(
+        conn,
+        "strict-transport-security",
+        "max-age=63072000; includeSubDomains; preload"
+      )
     else
       conn
     end
