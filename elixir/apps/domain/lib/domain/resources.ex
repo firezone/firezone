@@ -24,7 +24,14 @@ defmodule Domain.Resources do
   end
 
   def list_resources(%Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_resources_permission()) do
+    required_permissions =
+      {:one_of,
+       [
+         Authorizer.manage_resources_permission(),
+         Authorizer.view_available_resources_permission()
+       ]}
+
+    with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
       # TODO: maybe we need to also enrich the data and show if it's online or not
       Resource.Query.all()
       |> Authorizer.for_subject(subject)
