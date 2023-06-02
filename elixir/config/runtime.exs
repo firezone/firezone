@@ -53,7 +53,6 @@ if config_env() == :prod do
   ###############################
 
   config :web, Web.Endpoint,
-    server: true,
     http: [
       ip: compile_config!(:phoenix_listen_address).address,
       port: compile_config!(:phoenix_http_web_port),
@@ -88,7 +87,6 @@ if config_env() == :prod do
   ###############################
 
   config :api, API.Endpoint,
-    server: true,
     http: [
       ip: compile_config!(:phoenix_listen_address).address,
       port: compile_config!(:phoenix_http_api_port),
