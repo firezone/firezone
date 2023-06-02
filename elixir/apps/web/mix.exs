@@ -47,7 +47,7 @@ defmodule Web.MixProject do
       {:remote_ip, "~> 1.0"},
 
       # Asset pipeline deps
-      {:esbuild, "~> 0.5", runtime: Mix.env() == :dev},
+      {:esbuild, "~> 0.7", runtime: Mix.env() == :dev},
       {:tailwind, "~> 0.2.0", runtime: Mix.env() == :dev},
 
       # Observability and debugging deps
@@ -76,12 +76,12 @@ defmodule Web.MixProject do
     [
       setup: ["deps.get", "assets.setup", "assets.build"],
       "assets.setup": [
-        "cmd cd assets && yarn install",
+        "cmd cd assets && yarn install --frozen-lockfile",
         "tailwind.install --if-missing",
         "esbuild.install --if-missing"
       ],
-      "assets.build": ["tailwind default", "esbuild default"],
-      "assets.deploy": ["tailwind default --minify", "esbuild default --minify", "phx.digest"],
+      "assets.build": ["tailwind web", "esbuild web"],
+      "assets.deploy": ["tailwind web --minify", "esbuild web --minify", "phx.digest"],
       "ecto.seed": ["ecto.create", "ecto.migrate", "run ../domain/priv/repo/seeds.exs"],
       "ecto.setup": ["ecto.create", "ecto.migrate"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],

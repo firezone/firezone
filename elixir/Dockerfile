@@ -22,22 +22,18 @@ COPY mix.exs mix.lock ./
 COPY apps/domain/mix.exs ./apps/domain/mix.exs
 COPY apps/web/mix.exs ./apps/web/mix.exs
 COPY apps/api/mix.exs ./apps/api/mix.exs
+COPY config/ config/
 
 ARG MIX_ENV="prod"
 RUN mix deps.get --only ${MIX_ENV}
-
-# copy compile-time config files before we compile dependencies
-# to ensure any relevant config change will trigger the dependencies
-# to be re-compiled.
-COPY config/ config/
-RUN mix deps.compile
+RUN mix deps.compile --skip-umbrella-children
 
 COPY priv priv
 COPY apps apps
 
 ARG APPLICATION_VERSION=0.0.0-dev.docker
 
-# Install and compile assets for Web app
+# Install pipeline and compile assets for Web app
 RUN cd apps/web \
     && mix assets.setup \
     && mix assets.deploy \
@@ -46,13 +42,9 @@ RUN cd apps/web \
 # Compile the release
 RUN mix compile
 
-# Changes to config/runtime.exs don't require recompiling the code
-COPY config/runtime.exs config/
-
 COPY rel rel
 
 ARG APPLICATION_NAME
-
 RUN mix release ${APPLICATION_NAME}
 
 # start a new build stage so that the final image will only contain

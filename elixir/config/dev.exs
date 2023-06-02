@@ -23,8 +23,8 @@ config :web, Web.Endpoint,
   debug_errors: true,
   check_origin: ["//127.0.0.1", "//localhost"],
   watchers: [
-    esbuild: {Esbuild, :install_and_run, [:default, ~w(--sourcemap=inline --watch)]},
-    tailwind: {Tailwind, :install_and_run, [:default, ~w(--watch)]}
+    esbuild: {Esbuild, :install_and_run, [:web, ~w(--sourcemap=inline --watch)]},
+    tailwind: {Tailwind, :install_and_run, [:web, ~w(--watch)]}
   ],
   live_reload: [
     patterns: [
