@@ -325,7 +325,8 @@ resource "google_compute_ssl_policy" "application" {
 
   name = local.application_name
 
-  profile = "MODERN"
+  min_tls_version = "TLS_1_2"
+  profile         = "MODERN"
 }
 
 ## Create a managed SSL certificate
