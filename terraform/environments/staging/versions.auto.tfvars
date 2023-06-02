@@ -1,2 +1,2 @@
-api_image_tag = "branch-andrew_deployment"
-web_image_tag = "branch-andrew_deployment"
+api_image_tag = "868df5fe28298698032bffa78856cb98b92e766a"
+web_image_tag = "868df5fe28298698032bffa78856cb98b92e766a"
