@@ -1,14 +1,9 @@
----
-title: Security Considerations
-sidebar_position: 6
----
-
 # Security considerations
 
 **Disclaimer**: Firezone is still beta software. The codebase has not yet
 received a formal security audit. For highly sensitive and mission-critical
-production deployments, we recommend disabling local authentication as
-detailed [below](#production-deployments).
+production deployments, we recommend disabling local authentication as detailed
+[below](#production-deployments).
 
 ## List of services and ports
 
@@ -41,17 +36,18 @@ Shown below is a table of default ports used by Firezone services.
 
 ## Production deployments
 
-For production deployments of Firezone, we recommend you disable local authentication
-altogether by setting `default['firezone']['authentication']['local']['enabled'] = false`
-(Omnibus-based deployments) or `LOCAL_AUTH_ENABLED=false` (Docker-based deployments).
-Local authentication can also be disabled on the `/settings/security` page.
+For production deployments of Firezone, we recommend you disable local
+authentication altogether by setting
+`default['firezone']['authentication']['local']['enabled'] = false`
+(Omnibus-based deployments) or `LOCAL_AUTH_ENABLED=false` (Docker-based
+deployments). Local authentication can also be disabled on the
+`/settings/security` page.
 
-:::caution
-Ensure you've set up a working [OIDC](/docs/authenticate/oidc/) or [SAML](/docs/authenticate/saml/)-based
-authentication provider before disabling the local authentication method.
-:::
+:::caution Ensure you've set up a working [OIDC](/docs/authenticate/oidc/) or
+[SAML](/docs/authenticate/saml/)-based authentication provider before disabling
+the local authentication method. :::
 
 ## Reporting security issues
 
-To report any security-related bugs, see [our security bug reporting policy
-](https://github.com/firezone/firezone/blob/master/SECURITY.md).
+To report any security-related bugs, see
+[our security bug reporting policy ](https://github.com/firezone/firezone/blob/master/SECURITY.md).

@@ -1,61 +1,52 @@
----
-title: Client Instructions
-sidebar_position: 4
-description:
-  Set up your client app to connect to your organization's private
-  networks and resources. Download the open-source WireGuard® app
-  for your operating system (Windows, MacOS, iOS, Android, Linux) to
-  get started.
----
+# End-user Client Instructions
 
-# End-user client instructions
-
-Follow these instructions if you're an end-user trying to set up your WireGuard client to work with Firezone.
+Follow these instructions if you're an end-user trying to set up your WireGuard
+client to work with Firezone.
 
 ## Install and setup
 
-Follow this guide to establish a VPN session
-through the WireGuard native client.
+Follow this guide to establish a VPN session through the WireGuard native
+client.
 
 ### Step 1: Install the native WireGuard client
 
 Firezone is compatible with the official WireGuard clients found here:
 
-* [macOS](https://itunes.apple.com/us/app/wireguard/id1451685025)
-* [Windows](https://download.wireguard.com/windows-client/wireguard-installer.exe)
-* [iOS](https://itunes.apple.com/us/app/wireguard/id1441195209)
-* [Android](https://play.google.com/store/apps/details?id=com.wireguard.android)
+- [macOS](https://itunes.apple.com/us/app/wireguard/id1451685025)
+- [Windows](https://download.wireguard.com/windows-client/wireguard-installer.exe)
+- [iOS](https://itunes.apple.com/us/app/wireguard/id1441195209)
+- [Android](https://play.google.com/store/apps/details?id=com.wireguard.android)
 
-For operating systems not listed above see the Official WireGuard site: [
-https://www.wireguard.com/install/](https://www.wireguard.com/install/).
+For operating systems not listed above see the Official WireGuard site:
+[ https://www.wireguard.com/install/](https://www.wireguard.com/install/).
 
 ### Step 2: Download the device config file
 
 The device config file can either be obtained from your Firezone administrator
 or self-generated via the Firezone portal.
 
-To self generate a device config file, visit the domain provided by your Firezone
-administrator. This URL will be specific to your company
-(in this example it is `https://firezone.example.com`)
+To self generate a device config file, visit the domain provided by your
+Firezone administrator. This URL will be specific to your company (in this
+example it is `https://firezone.example.com`)
 
 ![Firezone Okta SSO Login](https://user-images.githubusercontent.com/52545545/156855886-5a4a0da7-065c-4ec1-af33-583dff4dbb72.gif)
 
 ### Step 3 (optional): Enable on boot
 
-Open the WireGuard client and import the `.conf` file.
-Activate the VPN session by toggling the `Activate` switch.
+Open the WireGuard client and import the `.conf` file. Activate the VPN session
+by toggling the `Activate` switch.
 
 ![Activate Tunnel](https://user-images.githubusercontent.com/52545545/156859686-41755bf7-a9ad-42ec-af5e-9f0734d962db.gif)
 
 ## Re-authenticating your session
 
-If your network admin has required periodic authentication to maintain your VPN session,
-follow the steps below. You will need:
+If your network admin has required periodic authentication to maintain your VPN
+session, follow the steps below. You will need:
 
-* **URL of the Firezone portal**: Ask your Network Admin for the link.
-* **Credentials**: Your username and password should be provided by your Network
-Admin. If your company is using a Single Sign On provider (like Google or Okta),
-the Firezone portal will prompt you to authenticate via that provider.
+- **URL of the Firezone portal**: Ask your Network Admin for the link.
+- **Credentials**: Your username and password should be provided by your Network
+  Admin. If your company is using a Single Sign On provider (like Google or
+  Okta), the Firezone portal will prompt you to authenticate via that provider.
 
 ### Step 1: Deactivate VPN session
 
@@ -63,9 +54,9 @@ the Firezone portal will prompt you to authenticate via that provider.
 
 ### Step 2: Re-authenticate
 
-Visit the URL of your Firezone portal and sign in using credentials provided by your
-network admin. If you are already logged into the portal,
-click the `Reauthenticate` button, then sign in again.
+Visit the URL of your Firezone portal and sign in using credentials provided by
+your network admin. If you are already logged into the portal, click the
+`Reauthenticate` button, then sign in again.
 
 ![re-authenticate](https://user-images.githubusercontent.com/52545545/155812962-9b8688c1-00af-41e4-96c3-8fb52f840aed.gif)
 
@@ -78,8 +69,7 @@ click the `Reauthenticate` button, then sign in again.
 The following steps can be used on Linux devices to import the WireGuard
 configuration profile using Network Manager CLI (`nmcli`).
 
-:::note
-Importing the configuration file using the Network Manager GUI may fail
+:::note Importing the configuration file using the Network Manager GUI may fail
 with the following error if the profile has IPv6 support enabled:
 
 ```text
@@ -90,8 +80,8 @@ ipv6.method: method "auto" is not supported for WireGuard
 
 ### Step 1: Install the WireGuard tools
 
-The WireGuard userspace tools need to be installed. For most Linux
-distributions this will be a package named `wireguard` or `wireguard-tools`.
+The WireGuard userspace tools need to be installed. For most Linux distributions
+this will be a package named `wireguard` or `wireguard-tools`.
 
 For Debian/Ubuntu:
 
@@ -111,17 +101,17 @@ For Arch Linux:
 sudo pacman -S wireguard-tools
 ```
 
-For distributions not listed above see the Official WireGuard site: [
-https://www.wireguard.com/install/](https://www.wireguard.com/install/).
+For distributions not listed above see the Official WireGuard site:
+[ https://www.wireguard.com/install/](https://www.wireguard.com/install/).
 
 ### Step 2: Download configuration
 
 The device config file can either be obtained from your Firezone administrator
 or self-generated via the Firezone portal.
 
-To self generate a device config file, visit the domain provided by your Firezone
-administrator. This URL will be specific to your company
-(in this example it is `https://firezone.example.com`)
+To self generate a device config file, visit the domain provided by your
+Firezone administrator. This URL will be specific to your company (in this
+example it is `https://firezone.example.com`)
 
 ![Firezone Okta SSO Login](https://user-images.githubusercontent.com/52545545/156855886-5a4a0da7-065c-4ec1-af33-583dff4dbb72.gif)
 
@@ -133,9 +123,8 @@ Using `nmcli`, import the downloaded configuration file:
 sudo nmcli connection import type wireguard file /path/to/configuration.conf
 ```
 
-:::note
-The WireGuard connection/interface will match the name of the configuration
-file. If required, the connection can be renamed after import:
+:::note The WireGuard connection/interface will match the name of the
+configuration file. If required, the connection can be renamed after import:
 
 ```shell
 nmcli connection modify [old name] connection.id [new name]
@@ -162,8 +151,8 @@ the connection.
 
 ### Auto connection
 
-The VPN connection can be set to automatically connect by setting the `autoconnect`
-option to `yes`:
+The VPN connection can be set to automatically connect by setting the
+`autoconnect` option to `yes`:
 
 ```shell
 nmcli connection modify [vpn name] connection.autoconnect yes
@@ -178,8 +167,8 @@ nmcli connection modify [vpn name] connection.autoconnect no
 ## Enable multi-factor authentication
 
 To enable MFA navigate to `/user_account/register_mfa` in the Firezone portal.
-After generating the QR code, scan using your authenticator app and
-input the 6 digit code.
+After generating the QR code, scan using your authenticator app and input the 6
+digit code.
 
-If you lose your authenticator app, contact your Admin to reset
-access to your account.
+If you lose your authenticator app, contact your Admin to reset access to your
+account.

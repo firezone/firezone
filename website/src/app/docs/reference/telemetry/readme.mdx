@@ -1,7 +1,4 @@
----
-title: Telemetry
-sidebar_position: 4
----
+# Telemetry
 
 This document presents an overview of the telemetry Firezone collects from your
 self-hosted instance and how to disable it.
@@ -16,8 +13,8 @@ The telemetry we collect aims to answer the following questions:
 - How many people install, use, and stop using Firezone?
 - What features are most valuable, and which ones don’t see any use?
 - What functionality needs the most improvement?
-- When something breaks, why did it break, and how can we prevent it from happening
-  in the future?
+- When something breaks, why did it break, and how can we prevent it from
+  happening in the future?
 
 ## How we collect telemetry
 
@@ -33,9 +30,9 @@ to answer the questions in the section above.
 Admin emails are collected **only if** you explicitly opt-in to product updates.
 Otherwise, personally-identifiable information is **_never_** collected.
 
-We store telemetry in [PostHog](https://posthog.com) only accessible by the Firezone team.
-Here is an example of a telemetry event that is sent from your instance of
-Firezone to our telemetry server:
+We store telemetry in [PostHog](https://posthog.com) only accessible by the
+Firezone team. Here is an example of a telemetry event that is sent from your
+instance of Firezone to our telemetry server:
 
 ```json
 {
@@ -70,21 +67,19 @@ Firezone to our telemetry server:
 
 ## How to disable telemetry
 
-:::note
-We _rely_ on product analytics to make Firezone better for everyone.
+:::note We _rely_ on product analytics to make Firezone better for everyone.
 Leaving telemetry enabled is the **single most valuable contribution** you can
 make to Firezone’s development. That said, we understand some users have higher
-privacy or security requirements and would prefer to disable telemetry altogether.
-If that’s you, keep reading.
-:::
+privacy or security requirements and would prefer to disable telemetry
+altogether. If that’s you, keep reading. :::
 
 Telemetry is enabled by default. To completely disable product telemetry:
 
 <Tabs>
   <TabItem value="docker" label="Docker" default>
 
-Set the `TELEMETRY_ENABLED` environment variable to `false` and
-restart the `firezone` container.
+Set the `TELEMETRY_ENABLED` environment variable to `false` and restart the
+`firezone` container.
 
   </TabItem>
   <TabItem value="omnibus" label="Omnibus">

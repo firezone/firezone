@@ -1,7 +1,4 @@
----
-title: Custom External Database
-sidebar_position: 2
----
+# Custom External Database
 
 Firezone uses [Postgresql DB](https://postgresql.org) as its primary data store.
 
@@ -9,28 +6,26 @@ Firezone uses [Postgresql DB](https://postgresql.org) as its primary data store.
 
 Firezone should work fine on Postgres versions 12 and above, but we recommend
 using the latest stable version whenever possible. If you find an issue with
-your particular version of Postgres, [please open a GitHub issue
-](https://github.com/firezone/firezone/issues).
+your particular version of Postgres,
+[please open a GitHub issue ](https://github.com/firezone/firezone/issues).
 
 In general, Firezone should also work fine using external Postgres-based
-database services like Amazon RDS. See the [configuration
-](#configure-firezone-to-connect) section below for more information configuring
-Firezone with an external DB.
+database services like Amazon RDS. See the
+[configuration ](#configure-firezone-to-connect) section below for more
+information configuring Firezone with an external DB.
 
-:::warning
-Configuring Firezone to use an external database can be complicated and
-error-prone. We recommend using the bundled Postgres for Omnibus-based
+:::warning Configuring Firezone to use an external database can be complicated
+and error-prone. We recommend using the bundled Postgres for Omnibus-based
 deployments or the official Postgres Docker image for Docker-based deployments
-if possible.
-:::
+if possible. :::
 
 ## Configure Firezone to Connect
 
 <Tabs>
   <TabItem value="docker" label="Docker" default>
 
-The Firezone Docker image uses the following environment
-variables to connect to the DB (fields in bold required):
+The Firezone Docker image uses the following environment variables to connect to
+the DB (fields in bold required):
 
 | Name                          | Description                                                                                                                                                                                                           | Format                | Default                              |
 | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- | ------------------------------------ |
@@ -45,14 +40,12 @@ variables to connect to the DB (fields in bold required):
 | `DATABASE_SSL_OPTS`           | Map of options to send to the `:ssl_opts` option when connecting over SSL. See [Ecto.Adapters.Postgres documentation](https://hexdocs.pm/ecto_sql/Ecto.Adapters.Postgres.html#module-connection-options)              | JSON-encoded String   | `{}`                                 |
 | `DATABASE_PARAMETERS`         | Map of parameters to send to the `:parameters` option when connecting to the database. See [Ecto.Adapters.Postgres documentation](https://hexdocs.pm/ecto_sql/Ecto.Adapters.Postgres.html#module-connection-options). | JSON-encoded String   | `{}`                                 |
 
-For more information, see the [environment variable reference
-](/docs/reference/env-vars/).
+For more information, see the
+[environment variable reference ](/docs/reference/env-vars/).
 
-:::note
-The official `postgres` docker image can be configured by setting
+:::note The official `postgres` docker image can be configured by setting
 environment variables for the container. See the Postgres image
-[documentation](https://hub.docker.com/_/postgres) for more details.
-:::
+[documentation](https://hub.docker.com/_/postgres) for more details. :::
 
   </TabItem>
   <TabItem value="omnibus" label="Omnibus">
@@ -73,8 +66,8 @@ for Omnibus-based deployments:
 | `default['firezone']['database']['parameters']` | Hash of parameters to send to the `:parameters` option when connecting to the database. See [Ecto.Adapters.Postgres documentation](https://hexdocs.pm/ecto_sql/Ecto.Adapters.Postgres.html#module-connection-options). | `{}`                                               |
 | `default['firezone']['database']['extensions']` | Database extensions to enable.                                                                                                                                                                                         | `{ 'plpgsql' => true, 'pg_trgm' => true }`         |
 
-For more details, see the [configuration file reference
-](/docs/reference/configuration-file/).
+For more details, see the
+[configuration file reference ](/docs/reference/configuration-file/).
 
   </TabItem>
 </Tabs>
