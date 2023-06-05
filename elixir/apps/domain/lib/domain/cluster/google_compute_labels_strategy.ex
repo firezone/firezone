@@ -219,12 +219,8 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
             []
         end)
         |> Enum.filter(fn
-          %{"status" => "RUNNING"} -> true
-          %{"status" => _other} -> false
-        end)
-        |> Enum.filter(fn
-          %{"labels" => %{^cluster_name_label => ^cluster_name}} -> true
-          %{"labels" => _other} -> false
+          %{"status" => "RUNNING", "labels" => %{^cluster_name_label => ^cluster_name}} -> true
+          %{"status" => _status, "labels" => _labels} -> false
         end)
         |> Enum.map(fn %{"zone" => zone, "name" => name, "labels" => labels} ->
           release_name = Map.fetch!(labels, node_name_label)
