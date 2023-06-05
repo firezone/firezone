@@ -308,7 +308,7 @@ locals {
     },
     {
       name  = "ERLANG_CLUSTER_ADAPTER"
-      value = "Domain.Cluster.GoogleComputeLabelsStrategy"
+      value = "Elixir.Domain.Cluster.GoogleComputeLabelsStrategy"
     },
     {
       name = "ERLANG_CLUSTER_ADAPTER_CONFIG"

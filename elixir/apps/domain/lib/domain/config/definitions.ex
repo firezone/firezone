@@ -314,6 +314,8 @@ defmodule Domain.Config.Definitions do
 
       if compile_config!(:erlang_cluster_adapter) == Elixir.Cluster.Strategy.Epmd do
         Keyword.update!(keyword, :hosts, fn hosts -> Enum.map(hosts, &String.to_atom/1) end)
+      else
+        keyword
       end
     end
   )

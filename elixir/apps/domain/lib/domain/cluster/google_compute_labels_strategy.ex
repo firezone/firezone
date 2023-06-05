@@ -128,11 +128,11 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
          }}
 
       {:ok, response} ->
-        Cluster.Logger.warn(:google, "Can not fetch instance metadata: #{inspect(response)}")
+        Cluster.Logger.warn(state.topology, "Can't fetch instance metadata: #{inspect(response)}")
         {:error, {response.status, response.body}}
 
       {:error, reason} ->
-        Cluster.Logger.warn(:google, "Can not fetch instance metadata: #{inspect(reason)}")
+        Cluster.Logger.warn(state.topology, "Can not fetch instance metadata: #{inspect(reason)}")
         {:error, reason}
     end
   end
@@ -164,7 +164,7 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
     else
       {:error, %{"error" => %{"code" => 401}} = reason} ->
         Cluster.Logger.error(
-          :google,
+          state.topology,
           "Invalid access token was used: #{inspect(reason)}"
         )
 
@@ -177,7 +177,7 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
 
       {:error, reason} ->
         Cluster.Logger.error(
-          :google,
+          state.topology,
           "Can not fetch list of nodes or access token: #{inspect(reason)}"
         )
 
@@ -226,7 +226,7 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
           release_name = Map.fetch!(labels, node_name_label)
           zone = String.split(zone, "/") |> List.last()
           node_name = :"#{release_name}@#{name}.#{zone}.c.#{project_id}.internal"
-          Cluster.Logger.debug(:gce, "   - Found node: #{inspect(node_name)}")
+          Cluster.Logger.debug(state.topology, "Found node: #{inspect(node_name)}")
           node_name
         end)
 
