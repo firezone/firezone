@@ -46,11 +46,39 @@ in `web`/`api` so easily, because Elixir strips a lot of tooling during compilat
 ❯ docker-compose run elixir /bin/sh -c "cd apps/domain && mix ecto.seed"
 
 # Start the API service for control plane sockets while listening to STDIN (where you will see all the logs)
-❯ docker-compose up api
+❯ docker-compose up api --build
+```
 
-# Verify it's working
+Now you can verify that it's working by connecting to a websocket:
+
+<details>
+  <summary>Gateway</summary>
+
+```elixir
 ❯ websocat --header="User-Agent: iOS/12.7 (iPhone) connlib/0.7.412" "ws://127.0.0.1:8081/gateway/websocket?token=GATEWAY_TOKEN_FROM_SEEDS&external_id=thisisrandomandpersistent&name_suffix=kkX1&public_key=kceI60D6PrwOIiGoVz6hD7VYCgD1H57IVQlPJTTieUE="
 ```
+
+</details>
+<details>
+  <summary>Gelay</summary>
+
+```elixir
+❯ websocat --header="User-Agent: Linux/5.2.6 (Debian; x86_64) relay/0.7.412" "ws://127.0.0.1:8081/relay/websocket?token=RELAY_TOKEN_FROM_SEEDS&ipv4=24.12.79.100&ipv6=4d36:aa7f:473c:4c61:6b9e:2416:9917:55cc&stamp_secret=mAkEmErAnDoM"
+
+# Here is what you will see in docker logs firezone-api-1
+# {"time":"2023-06-05T23:16:01.537Z","severity":"info","message":"CONNECTED TO API.Relay.Socket in 251ms\n  Transport: :websocket\n  Serializer: Phoenix.Socket.V1.JSONSerializer\n  Parameters: %{\"ipv4\" => \"24.12.79.100\", \"ipv6\" => \"4d36:aa7f:473c:4c61:6b9e:2416:9917:55cc\", \"stamp_secret\" => \"[FILTERED]\", \"token\" => \"[FILTERED]\"}","metadata":{"domain":["elixir"],"erl_level":"info"}}
+```
+
+</details>
+<br />
+
+Stopping everything is easy too:
+
+```bash
+docker-compose down
+```
+
+## Useful commands for local testing and debugging
 
 Connecting to an IEx interactive console:
 
@@ -113,12 +141,6 @@ remote_ip = {127, 0, 0, 1}
 provider = Domain.Repo.get_by(Domain.Auth.Provider, adapter: :userpass)
 identity = Domain.Repo.get_by(Domain.Auth.Identity, provider_id: provider.id, provider_identifier: "firezone@localhost")
 subject = Domain.Auth.build_subject(identity, nil, user_agent, remote_ip)
-```
-
-Stopping everything is easy too:
-
-```bash
-docker-compose down
 ```
 
 ## Connecting to a staging or production instances
