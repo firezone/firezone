@@ -1,3 +1,7 @@
+{/* prettier-ignore */}
+"use client"
+import { Tabs } from "flowbite-react"
+
 # Regenerate Secret Keys
 
 When you install Firezone, secrets are generated for encrypting database fields,
@@ -18,8 +22,8 @@ will reset all browser sessions and REST API tokens. :::
 
 Use the procedure below to regenerate secrets:
 
-<Tabs>
-<TabItem value="docker" label="Docker" default>
+<Tabs.Group>
+<Tabs.Item title="Docker" active>
 
 Navigate to the Firezone installation directory, then:
 
@@ -31,16 +35,16 @@ docker run firezone/firezone bin/gen-env > .env
 Now, move desired env vars from `.env.bak` back to `.env`, keeping the new
 secrets intact.
 
-</TabItem>
-<TabItem value="omnibus" label="Omnibus">
+</Tabs.Item>
+<Tabs.Item title="Omnibus">
 
 ```bash
 mv /etc/firezone/secrets.json /etc/firezone/secrets.bak.json
 sudo firezone-ctl reconfigure
 ```
 
-</TabItem>
-</Tabs>
+</Tabs.Item>
+</Tabs.Group>
 
 ## Regenerate WireGuard private key
 
@@ -51,8 +55,8 @@ after regenerating the WireGuard private key. :::
 To regenerate WireGuard private key, simply move or rename the private key file.
 Firezone will generate a new one on next start.
 
-<Tabs>
-<TabItem value="docker" label="Docker" default>
+<Tabs.Group>
+<Tabs.Item title="Docker" active>
 
 ```bash
 cd $HOME/.firezone
@@ -61,8 +65,8 @@ sudo mv firezone/private_key firezone/private_key.bak
 docker-compose start firezone
 ```
 
-</TabItem>
-<TabItem value="omnibus" label="Omnibus">
+</Tabs.Item>
+<Tabs.Item title="Omnibus">
 
 ```bash
 sudo firezone-ctl stop phoenix
@@ -70,5 +74,5 @@ sudo mv /var/opt/firezone/cache/wg_private_key /var/opt/firezone/cache/wg_privat
 sudo firezone-ctl start phoenix
 ```
 
-</TabItem>
-</Tabs>
+</Tabs.Item>
+</Tabs.Group>

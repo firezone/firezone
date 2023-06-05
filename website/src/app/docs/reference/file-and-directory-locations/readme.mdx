@@ -1,11 +1,15 @@
+{/* prettier-ignore */}
+"use client"
+import { Tabs } from "flowbite-react"
+
 # File and Directory Locations
 
 Here you'll find a listing of files and directories related to a typical
 Firezone installation. These can change depending on how you've configured your
 installation.
 
-<Tabs>
-<TabItem label="Docker" value="docker" default>
+<Tabs.Group>
+<Tabs.Item title="Docker" active>
 
 | Default path                                                                                                | Description                                                                                                               |
 | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
@@ -15,8 +19,8 @@ installation.
 | `$HOME/.firezone/caddy`                                                                                     | Caddy persisted files.                                                                                                    |
 | Default Docker named volume location, typically `/var/lib/docker/volumes/firezone_postgres-data` for Linux. | Postgres DB files.                                                                                                        |
 
-</TabItem>
-<TabItem label="Omnibus" value="omnibus">
+</Tabs.Item>
+<Tabs.Item title="Omnibus">
 
 | Path                                                  | Description                                                                                    |
 | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
@@ -26,8 +30,8 @@ installation.
 | `/etc/systemd/system/firezone-runsvdir-start.service` | systemd unit file for starting the Firezone runsvdir supervisor process.                       |
 | `/etc/firezone`                                       | Firezone configuration files.                                                                  |
 
-</TabItem>
-</Tabs>
+</Tabs.Item>
+</Tabs.Group>
 
 ## Backup and restore
 

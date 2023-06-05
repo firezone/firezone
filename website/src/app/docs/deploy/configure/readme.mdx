@@ -1,3 +1,7 @@
+{/* prettier-ignore */}
+"use client"
+import { Tabs } from "flowbite-react"
+
 # Configure Firezone
 
 There are two types of configuration in Firezone:
@@ -22,8 +26,8 @@ the future.
 Deployment-related and infrastructure configuration require restarting Firezone
 services after change.
 
-<Tabs>
-<TabItem value="docker" label="Docker" default>
+<Tabs.Group>
+<Tabs.Item title="Docker" active>
 
 Docker-based deployments are configured through environment variables passed to
 the `firezone` container. These can be specified either in a `.env` file in the
@@ -35,8 +39,8 @@ See
 [Docker's documentation ](https://docs.docker.com/compose/envvars-precedence/)
 for more information.
 
-</TabItem>
-<TabItem value="omnibus" label="Omnibus">
+</Tabs.Item>
+<Tabs.Item title="Omnibus">
 
 For Omnibus-based deployments, Firezone leverages
 [Chef Omnibus ](https://github.com/chef/omnibus) to handle release packaging,
@@ -51,5 +55,5 @@ For an exhaustive list of Omnibus configuration variables and their
 descriptions, see the
 [configuration file reference ](../../reference/configuration-file).
 
-</TabItem>
-</Tabs>
+</Tabs.Item>
+</Tabs.Group>

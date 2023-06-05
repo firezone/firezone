@@ -1,3 +1,7 @@
+{/* prettier-ignore */}
+"use client"
+import { Tabs, Alert } from "flowbite-react"
+
 # Deploy Firezone
 
 Firezone can be deployed on most Docker-supported platforms in a couple of
@@ -25,8 +29,8 @@ You'll need a valid SSL certificate to use Firezone in a production capacity.
 Firezone supports ACME for automatic provisioning of SSL certificates for both
 Docker-based and Omnibus-based installations. This is recommended in most cases.
 
-<Tabs>
-<TabItem value="docker" label="Docker" default>
+<Tabs.Group>
+<Tabs.Item title="Docker" active>
 
 #### Setting up ACME for Docker-based deployments
 
@@ -37,8 +41,8 @@ automatically provision SSL certificates as long as it's available on port
 
 See the [Docker deployment guide](docker) for more info.
 
-</TabItem>
-<TabItem value="omnibus" label="Omnibus">
+</Tabs.Item>
+<Tabs.Item title="Omnibus">
 
 For Omnibus-based deployments, ACME is disabled by default to maintain
 compatibility with existing installations.
@@ -56,8 +60,8 @@ To enable ACME, ensure the following conditions are met:
   - `default['firezone']['ssl']['acme']['enabled']`: Set this to true to enable
     it.
 
-</TabItem>
-</Tabs>
+</Tabs.Item>
+</Tabs.Group>
 
 ### Open required firewall ports
 
@@ -90,8 +94,10 @@ You have two options for deploying Firezone:
 Docker is the easiest way to install, manage, and upgrade Firezone and is the
 preferred method of deployment.
 
-:::warning Chef Infra Client, the configuration system Chef Omnibus relies on,
-has been [scheduled for End-of-Life in 2024](https://docs.chef.io/versions/). As
-such, support for Omnibus-based deployments will be removed starting with
-Firezone 0.8. To transition to Docker from Omnibus today, follow our
-[migration guide ](../administer/migrate). :::
+<Alert color="warning">
+  Chef Infra Client, the configuration system Chef Omnibus relies on, has been
+  [scheduled for End-of-Life in 2024](https://docs.chef.io/versions/). As such,
+  support for Omnibus-based deployments will be removed starting with Firezone
+  0.8. To transition to Docker from Omnibus today, follow our [migration guide
+  ](../administer/migrate).
+</Alert>

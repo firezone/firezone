@@ -3,11 +3,11 @@
 This endpoint allows an administrator to manage Devices.
 
 ## API Documentation
+
 ### GET /v0/devices
 
-
-
 #### Example
+
 ```bash
 $ curl -i \
   -X GET "https://{firezone_host}/v0/devices" \
@@ -187,11 +187,11 @@ Content-Type: application/json; charset=utf-8
   ]
 }
 ```
+
 ### POST /v0/devices
 
-
-
 #### Example
+
 ```bash
 $ curl -i \
   -X POST "https://{firezone_host}/v0/devices" \
@@ -267,14 +267,15 @@ Location: /v0/devices/3aefe1b8-d98b-4725-bed3-cad021a13480
   }
 }
 ```
+
 ### GET /v0/devices/{id}
 
-
-
 #### Example
+
 **URI Parameters:**
 
-  - `id`: `f85310b7-87b5-4c89-b391-d985f7789007`
+- `id`: `f85310b7-87b5-4c89-b391-d985f7789007`
+
 ```bash
 $ curl -i \
   -X GET "https://{firezone_host}/v0/devices/{id}" \
@@ -320,14 +321,15 @@ Content-Type: application/json; charset=utf-8
   }
 }
 ```
+
 ### PATCH /v0/devices/{id}
 
-
-
 #### Example
+
 **URI Parameters:**
 
-  - `id`: `01272ce2-df59-4816-9d82-44830427d757`
+- `id`: `01272ce2-df59-4816-9d82-44830427d757`
+
 ```bash
 $ curl -i \
   -X PUT "https://{firezone_host}/v0/devices/{id}" \
@@ -401,14 +403,15 @@ Content-Type: application/json; charset=utf-8
   }
 }
 ```
+
 ### DELETE /v0/devices/{id}
 
-
-
 #### Example
+
 **URI Parameters:**
 
-  - `id`: `29f86ac9-82e8-4691-aa44-ea396d3af476`
+- `id`: `29f86ac9-82e8-4691-aa44-ea396d3af476`
+
 ```bash
 $ curl -i \
   -X DELETE "https://{firezone_host}/v0/devices/{id}" \

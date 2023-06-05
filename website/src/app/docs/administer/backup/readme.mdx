@@ -1,3 +1,8 @@
+{/* prettier-ignore */}
+"use client"
+import { Tabs } from "flowbite-react"
+import SupportOptions from "@site/src/partials/\_support_options.mdx"
+
 # Backup and Restore
 
 Firezone can be safely backed up and restored in a couple of minutes under most
@@ -18,8 +23,8 @@ to a location of your choosing.
 
 See the steps below for specific examples for Docker and Omnibus.
 
-<Tabs>
-<TabItem label="Docker" value="docker" default>
+<Tabs.Group>
+<Tabs.Item title="Docker" active>
 
 ### Backup
 
@@ -60,8 +65,8 @@ tar -zxvfp /path/to/firezone-back.tgz -C / --numeric-owner
 systemctl enable docker
 ```
 
-</TabItem>
-<TabItem label="Omnibus" value="omnibus">
+</Tabs.Item>
+<Tabs.Item title="Omnibus">
 
 ### Backup
 
@@ -95,8 +100,7 @@ tar -zxvfp /path/to/firezone-back.tgz -C / --numeric-owner
 firezone-ctl reconfigure
 ```
 
-</TabItem>
-</Tabs>
+</Tabs.Item>
+</Tabs.Group>
 
-import SupportOptions from "@site/src/partials/_support_options.mdx";
 <SupportOptions />;

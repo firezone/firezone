@@ -1,3 +1,7 @@
+{/* prettier-ignore */}
+"use client"
+import { Tabs } from "flowbite-react"
+
 # Integrate your identity provider using SAML 2.0
 
 Firezone supports Single Sign-On (SSO) via SAML 2.0.
@@ -33,8 +37,8 @@ openssl req -x509 -sha256 -nodes -days 365 -newkey rsa:2048 -keyout saml.key -ou
 
 Then use them with your Firezone installation:
 
-<Tabs>
-<TabItem value="docker" label="Docker" default>
+<Tabs.Group>
+<Tabs.Item title="Docker" active>
 
 Set the `SAML_KEYFILE_PATH` and `SAML_CERTFILE_PATH` environment variables to
 the path containing your `saml.key` and `saml.crt` above. If using our
@@ -45,8 +49,8 @@ which includes a volume for mapping configuration, save these files to
 `SAML_CERTFILE_PATH=/var/firezone/saml.crt` environment variables for the
 Firezone container.
 
-</TabItem>
-<TabItem value="omnibus" label="Omnibus">
+</Tabs.Item>
+<Tabs.Item title="Omnibus">
 
 Set the following attributes in your `/etc/firezone/firezone.rb` configuration
 file:
@@ -58,8 +62,8 @@ default['firezone']['authentication']['saml']['cert'] = '/path/to/your/saml.crt'
 
 and run `firezone-ctl reconfigure` to pick up the changes.
 
-</TabItem>
-</Tabs>
+</Tabs.Item>
+</Tabs.Group>
 
 ## General setup instructions
 

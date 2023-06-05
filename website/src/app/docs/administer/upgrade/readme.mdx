@@ -9,8 +9,8 @@ before upgrading in case anything goes wrong. :::
 
 Follow the steps below to upgrade Firezone:
 
-<Tabs>
-<TabItem label="Docker" value="docker" default>
+<Tabs.Group>
+<Tabs.Item title="Docker" active>
 
 1. Change to your Firezone installation directory, by default `$HOME/.firezone`:
 
@@ -34,8 +34,8 @@ docker compose pull
 docker compose up -d
 ```
 
-</TabItem>
-<TabItem label="Omnibus" value="omnibus">
+</Tabs.Item>
+<Tabs.Item title="Omnibus">
 
 1. If not setup already, install our package repository based on your distro's
    package format:
@@ -47,8 +47,8 @@ docker compose up -d
 1. Run `firezone-ctl reconfigure` to pick up the new changes.
 1. Run `firezone-ctl restart` to restart services.
 
-</TabItem>
-</Tabs>
+</Tabs.Item>
+</Tabs.Group>
 
 If you hit any issues, please let us know by
 [filing an issue](https://github.com/firezone/firezone/issues/new/choose).

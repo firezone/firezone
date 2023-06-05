@@ -3,11 +3,11 @@
 This endpoint allows an adminisrator to manage Rules.
 
 ## API Documentation
+
 ### GET /v0/rules
 
-
-
 #### Example
+
 ```bash
 $ curl -i \
   -X GET "https://{firezone_host}/v0/rules" \
@@ -72,11 +72,11 @@ Content-Type: application/json; charset=utf-8
   ]
 }
 ```
+
 ### POST /v0/rules
 
-
-
 #### Example
+
 ```bash
 $ curl -i \
   -X POST "https://{firezone_host}/v0/rules" \
@@ -111,14 +111,15 @@ Location: /v0/rules/c52efbe6-5ed0-4514-97df-93f6013dd52b
   }
 }
 ```
+
 ### GET /v0/rules/{id}
 
-
-
 #### Example
+
 **URI Parameters:**
 
-  - `id`: `dd39b339-2ac4-4c83-96e5-9b29516dd85e`
+- `id`: `dd39b339-2ac4-4c83-96e5-9b29516dd85e`
+
 ```bash
 $ curl -i \
   -X GET "https://{firezone_host}/v0/rules/{id}" \
@@ -141,14 +142,15 @@ Content-Type: application/json; charset=utf-8
   }
 }
 ```
+
 ### PATCH /v0/rules/{id}
 
-
-
 #### Example
+
 **URI Parameters:**
 
-  - `id`: `720fdab6-32af-4487-bce5-e72fa76be829`
+- `id`: `720fdab6-32af-4487-bce5-e72fa76be829`
+
 ```bash
 $ curl -i \
   -X PUT "https://{firezone_host}/v0/rules/{id}" \
@@ -181,14 +183,15 @@ Content-Type: application/json; charset=utf-8
   }
 }
 ```
+
 ### DELETE /v0/rules/{id}
 
-
-
 #### Example
+
 **URI Parameters:**
 
-  - `id`: `f5f10a6e-cfdd-47ea-ae23-264195b3503c`
+- `id`: `f5f10a6e-cfdd-47ea-ae23-264195b3503c`
+
 ```bash
 $ curl -i \
   -X DELETE "https://{firezone_host}/v0/rules/{id}" \

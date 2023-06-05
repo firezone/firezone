@@ -1,3 +1,7 @@
+{/* prettier-ignore */}
+"use client"
+import { Tabs } from "flowbite-react"
+
 # Security considerations
 
 **Disclaimer**: Firezone is still beta software. The codebase has not yet
@@ -9,8 +13,8 @@ production deployments, we recommend disabling local authentication as detailed
 
 Shown below is a table of default ports used by Firezone services.
 
-<Tabs>
-<TabItem label="Docker" value="docker" default>
+<Tabs.Group>
+<Tabs.Item title="Docker" active>
 
 | Service    | Port        | Listen address | Description                                                                   |
 | ---------- | ----------- | -------------- | ----------------------------------------------------------------------------- |
@@ -20,8 +24,8 @@ Shown below is a table of default ports used by Firezone services.
 | Postgresql | `5432/tcp`  | `-`            | Containerized port used for bundled Postgresql server.                        |
 | Phoenix    | `13000/tcp` | `-`            | Containerized port used by upstream elixir app server.                        |
 
-</TabItem>
-<TabItem label="Omnibus" value="omnibus">
+</Tabs.Item>
+<Tabs.Item title="Omnibus">
 
 | Service    | Port        | Listen address | Description                                                                   |
 | ---------- | ----------- | -------------- | ----------------------------------------------------------------------------- |
@@ -31,8 +35,8 @@ Shown below is a table of default ports used by Firezone services.
 | Postgresql | `15432/tcp` | `127.0.0.1`    | Local-only port used for bundled Postgresql server.                           |
 | Phoenix    | `13000/tcp` | `127.0.0.1`    | Local-only port used by upstream elixir app server.                           |
 
-</TabItem>
-</Tabs>
+</Tabs.Item>
+</Tabs.Group>
 
 ## Production deployments
 

@@ -1,3 +1,7 @@
+{/* prettier-ignore */}
+"use client"
+import { Tabs } from "flowbite-react"
+
 # Uninstall Firezone
 
 Firezone can be uninstalled using the steps below.
@@ -5,8 +9,8 @@ Firezone can be uninstalled using the steps below.
 :::warning This will irreversibly destroy ALL Firezone data and can't be undone.
 :::
 
-<Tabs>
-<TabItem label="Docker" value="docker" default>
+<Tabs.Group>
+<Tabs.Item title="Docker" active>
 
 For docker-based deployments, simply bring the firezone services down, then
 delete the working directory where you installed the Firezone docker files
@@ -19,8 +23,8 @@ docker compose -f $installDir/docker-compose.yml down -v
 rm -rf $installDir
 ```
 
-</TabItem>
-<TabItem label="Omnibus" value="omnibus">
+</Tabs.Item>
+<Tabs.Item title="Omnibus">
 
 To completely remove Omnibus-based deployments of Firezone run the
 [uninstall.sh script](https://github.com/firezone/firezone/blob/master/scripts/omnibus-uninstall.sh):
@@ -29,5 +33,5 @@ To completely remove Omnibus-based deployments of Firezone run the
 sudo /bin/bash -c "$(curl -fsSL https://github.com/firezone/firezone/raw/master/scripts/omnibus-uninstall.sh)"
 ```
 
-</TabItem>
-</Tabs>
+</Tabs.Item>
+</Tabs.Group>

@@ -1,3 +1,7 @@
+{/* prettier-ignore */}
+"use client"
+import { Tabs } from "flowbite-react"
+
 # Custom External Database
 
 Firezone uses [Postgresql DB](https://postgresql.org) as its primary data store.
@@ -21,8 +25,8 @@ if possible. :::
 
 ## Configure Firezone to Connect
 
-<Tabs>
-  <TabItem value="docker" label="Docker" default>
+<Tabs.Group>
+<Tabs.Item title="Docker" active>
 
 The Firezone Docker image uses the following environment variables to connect to
 the DB (fields in bold required):
@@ -47,8 +51,8 @@ For more information, see the
 environment variables for the container. See the Postgres image
 [documentation](https://hub.docker.com/_/postgres) for more details. :::
 
-  </TabItem>
-  <TabItem value="omnibus" label="Omnibus">
+</Tabs.Item>
+<Tabs.Item title="Omnibus">
 
 The following configuration options are used to configure the bundled Postgres
 for Omnibus-based deployments:
@@ -69,5 +73,5 @@ for Omnibus-based deployments:
 For more details, see the
 [configuration file reference ](/docs/reference/configuration-file/).
 
-  </TabItem>
-</Tabs>
+</Tabs.Item>
+</Tabs.Group>
