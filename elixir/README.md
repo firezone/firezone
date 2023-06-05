@@ -52,10 +52,15 @@ in `web`/`api` so easily, because Elixir strips a lot of tooling during compilat
 ❯ websocat --header="User-Agent: iOS/12.7 (iPhone) connlib/0.7.412" "ws://127.0.0.1:8081/gateway/websocket?token=GATEWAY_TOKEN_FROM_SEEDS&external_id=thisisrandomandpersistent&name_suffix=kkX1&public_key=kceI60D6PrwOIiGoVz6hD7VYCgD1H57IVQlPJTTieUE="
 ```
 
+Connecting to an IEx interactive console:
+
+```bash
+❯ docker-compose run elixir /bin/sh -c "cd apps/domain && iex -S mix"
+```
+
 Connecting to a running api/web instance shell:
 
 ```bash
-# Connect to a running API node
 ❯ docker exec -it firezone-api-1 sh
 /app
 ```

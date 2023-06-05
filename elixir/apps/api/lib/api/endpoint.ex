@@ -16,6 +16,8 @@ defmodule API.Endpoint do
     clients: {__MODULE__, :clients, []}
 
   plug Plug.RequestId
+  # TODO: Rework LoggerJSON to use Telemetry and integrate it
+  # https://hexdocs.pm/phoenix/Phoenix.Logger.html
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
 
   socket "/gateway", API.Gateway.Socket, API.Sockets.options()

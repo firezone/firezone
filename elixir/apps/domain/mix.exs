@@ -50,8 +50,6 @@ defmodule Domain.MixProject do
       {:postgrex, "~> 0.16"},
       {:decimal, "~> 2.0"},
       {:ecto_sql, "~> 3.7"},
-      {:cloak, "~> 1.1"},
-      {:cloak_ecto, "~> 1.2"},
 
       # PubSub and Presence
       {:phoenix, "~> 1.7", runtime: false},
@@ -62,12 +60,15 @@ defmodule Domain.MixProject do
       {:openid_connect, github: "firezone/openid_connect", branch: "master"},
       {:argon2_elixir, "~> 2.0"},
 
-      # Other deps
-      {:telemetry, "~> 1.0"},
-      {:posthog, "~> 0.1"},
-      {:logger_json, "~> 5.1"},
+      # Erlang Clustering
+      {:libcluster, "~> 3.3"},
 
-      # Runtime debugging
+      # Product Analytics
+      {:posthog, "~> 0.1"},
+
+      # Observability and Runtime debugging
+      {:telemetry, "~> 1.0"},
+      {:logger_json, "~> 5.1"},
       {:recon, "~> 2.5"},
       {:observer_cli, "~> 1.7"},
 

@@ -117,8 +117,28 @@ config :api,
   private_clients: [%{__struct__: Postgrex.INET, address: {172, 28, 0, 0}, netmask: 16}]
 
 ###############################
+##### Erlang Cluster ##########
+###############################
+
+config :domain, Domain.Cluster.GoogleComputeLabelsStrategy,
+  token_endpoint_url:
+    "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
+  aggregated_list_endpoint_url:
+    "https://compute.googleapis.com/compute/v1/projects/${project_id}/aggregated/instances"
+
+config :domain, Domain.Cluster,
+  adapter: Domain.Cluster.Local,
+  adapter_config: []
+
+###############################
 ##### Third-party configs #####
 ###############################
+
+config :domain,
+  http_client_ssl_opts: []
+
+config :openid_connect,
+  finch_transport_opts: []
 
 config :mime, :types, %{
   "application/xml" => ["xml"]

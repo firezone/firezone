@@ -106,8 +106,19 @@ if config_env() == :prod do
     private_clients: compile_config!(:phoenix_private_clients)
 
   ###############################
+  ##### Erlang Cluster ##########
+  ###############################
+
+  config :domain, Domain.Cluster,
+    adapter: compile_config!(:erlang_cluster_adapter),
+    adapter_config: compile_config!(:erlang_cluster_adapter_config)
+
+  ###############################
   ##### Third-party configs #####
   ###############################
+
+  config :domain,
+    http_client_ssl_opts: compile_config!(:http_client_ssl_opts)
 
   config :openid_connect,
     finch_transport_opts: compile_config!(:http_client_ssl_opts)

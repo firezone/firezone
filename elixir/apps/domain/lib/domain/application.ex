@@ -5,6 +5,14 @@ defmodule Domain.Application do
     # Configure Logger severity at runtime
     :ok = LoggerJSON.configure_log_level_from_env!("LOG_LEVEL")
 
+    _ =
+      :telemetry.attach(
+        "repo-log-handler",
+        [:domain, :repo, :query],
+        &LoggerJSON.Ecto.telemetry_logging_handler/4,
+        :debug
+      )
+
     Supervisor.start_link(children(), strategy: :one_for_one, name: __MODULE__.Supervisor)
   end
 
@@ -18,10 +26,13 @@ defmodule Domain.Application do
       Domain.Auth,
       Domain.Relays,
       Domain.Gateways,
-      Domain.Devices
+      Domain.Devices,
 
       # Observability
       # Domain.Telemetry
+
+      # Erlang Clustering
+      Domain.Cluster
     ]
   end
 end

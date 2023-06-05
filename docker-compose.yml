@@ -44,6 +44,7 @@ services:
       args:
         APPLICATION_NAME: web
     image: firezone_web_dev
+    hostname: web.cluster.local
     ports:
       - 8080:8080/tcp
     environment:
@@ -51,6 +52,13 @@ services:
       EXTERNAL_URL: http://localhost:8080/
       PHOENIX_HTTP_WEB_PORT: "8080"
       PHOENIX_SECURE_COOKIES: false
+      # Erlang
+      ERLANG_DISTRIBUTION_PORT: 9000
+      ERLANG_CLUSTER_ADAPTER: "Elixir.Cluster.Strategy.Epmd"
+      ERLANG_CLUSTER_ADAPTER_CONFIG: '{"hosts":["api@api.cluster.local","web@web.cluster.local"]}'
+      RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
+      RELEASE_HOSTNAME: "web.cluster.local"
+      RELEASE_NAME: "web"
       # Database
       DATABASE_HOST: postgres
       DATABASE_PORT: 5432
@@ -72,8 +80,6 @@ services:
       COOKIE_ENCRYPTION_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
       # Telemetry
       TELEMETRY_ENABLED: "false"
-      # Erlang
-      RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
       # Debugging
       LOG_LEVEL: "debug"
     depends_on:
@@ -88,6 +94,7 @@ services:
       args:
         APPLICATION_NAME: api
     image: firezone_api_dev
+    hostname: api.cluster.local
     ports:
       - 8081:8081/tcp
     environment:
@@ -95,6 +102,13 @@ services:
       EXTERNAL_URL: http://localhost:8081/
       PHOENIX_HTTP_API_PORT: "8081"
       PHOENIX_SECURE_COOKIES: false
+      # Erlang
+      ERLANG_DISTRIBUTION_PORT: 9000
+      ERLANG_CLUSTER_ADAPTER: "Elixir.Cluster.Strategy.Epmd"
+      ERLANG_CLUSTER_ADAPTER_CONFIG: '{"hosts":["api@api.cluster.local","web@web.cluster.local"]}'
+      RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
+      RELEASE_HOSTNAME: "api.cluster.local"
+      RELEASE_NAME: "api"
       # Database
       DATABASE_HOST: postgres
       DATABASE_PORT: 5432
@@ -116,8 +130,6 @@ services:
       COOKIE_ENCRYPTION_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
       # Telemetry
       TELEMETRY_ENABLED: "false"
-      # Erlang
-      RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
       # Debugging
       LOG_LEVEL: "debug"
     depends_on:
@@ -135,6 +147,7 @@ services:
       args:
         APPLICATION_NAME: api
     image: firezone_local_dev
+    hostname: elixir
     volumes:
       - elixir-build-cache:/app/_build
       - ./elixir/apps:/app/apps
@@ -147,6 +160,13 @@ services:
     environment:
       # Web Server
       EXTERNAL_URL: http://localhost:8081/
+      # Erlang
+      ERLANG_DISTRIBUTION_PORT: 9000
+      ERLANG_CLUSTER_ADAPTER: "Elixir.Domain.Cluster.Local"
+      ERLANG_CLUSTER_ADAPTER_CONFIG: '{}'
+      RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
+      RELEASE_HOSTNAME: "mix.cluster.local"
+      RELEASE_NAME: "mix"
       # Database
       DATABASE_HOST: postgres
       DATABASE_PORT: 5432
@@ -168,8 +188,6 @@ services:
       COOKIE_ENCRYPTION_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
       # Telemetry
       TELEMETRY_ENABLED: "false"
-      # Erlang
-      RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
       # Higher log level not to make seeds output too verbose
       LOG_LEVEL: "info"
       # Mix env should be set to prod to use secrets declared above,

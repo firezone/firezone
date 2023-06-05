@@ -226,6 +226,13 @@ resource "google_sql_database" "firezone" {
 }
 
 locals {
+  target_tags = ["app-web", "app-api"]
+
+  cluster = {
+    name   = "firezone"
+    cookie = base64encode(random_password.erlang_cluster_cookie.result)
+  }
+
   shared_application_environment_variables = [
     # Erlang
     {
@@ -296,8 +303,26 @@ locals {
     },
     # Erlang
     {
+      name  = "CLUSTER_NAME"
+      value = local.cluster.name
+    },
+    {
+      name  = "ERLANG_CLUSTER_ADAPTER"
+      value = "Domain.Cluster.GoogleComputeLabelsStrategy"
+    },
+    {
+      name = "ERLANG_CLUSTER_ADAPTER_CONFIG"
+      value = jsonencode({
+        project_id          = module.google-cloud-project.project.project_id
+        cluster_name        = local.cluster.name
+        cluster_name_label  = "cluster_name"
+        node_name_label     = "application"
+        polling_interval_ms = 7000
+      })
+    },
+    {
       name  = "RELEASE_COOKIE"
-      value = base64encode(random_password.erlang_cluster_cookie.result)
+      value = local.cluster.cookie
     },
     # Auth
     {
@@ -374,6 +399,10 @@ module "web" {
       value = "80"
     }
   ], local.shared_application_environment_variables)
+
+  application_labels = {
+    "cluster_name" = local.cluster.name
+  }
 }
 
 module "api" {
@@ -437,6 +466,10 @@ module "api" {
       value = "80"
     },
   ], local.shared_application_environment_variables)
+
+  application_labels = {
+    "cluster_name" = local.cluster.name
+  }
 }
 
 # Erlang Cluster
@@ -458,7 +491,7 @@ resource "google_compute_firewall" "erlang-distribution" {
   }
 
   source_ranges = [google_compute_subnetwork.apps.ip_cidr_range]
-  target_tags   = ["app-web", "app-api"]
+  target_tags   = local.target_tags
 }
 
 ## Allow service account to list running instances
@@ -468,8 +501,11 @@ resource "google_project_iam_custom_role" "erlang-discovery" {
   title       = "Read list of Compute instances"
   description = "This role is used for Erlang Cluster discovery and allows to list running instances."
 
-  role_id     = "roles/fz.compute.instances.list"
-  permissions = ["compute.instances.list"]
+  role_id = "compute.list_instances"
+  permissions = [
+    "compute.instances.list",
+    "compute.zones.list"
+  ]
 }
 
 resource "google_project_iam_member" "application" {
@@ -479,8 +515,9 @@ resource "google_project_iam_member" "application" {
   ])
 
   project = module.google-cloud-project.project.project_id
-  role    = google_project_iam_custom_role.erlang-discovery.role_id
-  member  = "serviceAccount:${each.value}"
+
+  role   = "projects/${module.google-cloud-project.project.project_id}/roles/${google_project_iam_custom_role.erlang-discovery.role_id}"
+  member = "serviceAccount:${each.value}"
 }
 
 # Enable SSH on staging
@@ -506,5 +543,5 @@ resource "google_compute_firewall" "ssh" {
   }
 
   source_ranges = ["0.0.0.0/0"]
-  target_tags   = ["app-web", "app-api"]
+  target_tags   = local.target_tags
 }

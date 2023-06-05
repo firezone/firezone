@@ -3,7 +3,10 @@ locals {
   application_version = var.application_version != null ? var.application_version : var.image_tag
 
   application_labels = merge({
-    managed_by  = "terraform"
+    managed_by = "terraform"
+
+    # Note: this labels are used to fetch a release name for Erlang Cluster,
+    # and filter then by version
     application = local.application_name
     version     = local.application_version
   }, var.application_labels)
@@ -43,11 +46,56 @@ resource "google_service_account" "application" {
   description  = "Service account for ${local.application_name} application instances."
 }
 
-# Allow application service account to pull images from the container registry
-resource "google_project_iam_member" "application" {
+## Allow application service account to pull images from the container registry
+resource "google_project_iam_member" "artifacts" {
   project = var.project_id
 
   role = "roles/artifactregistry.reader"
+
+  member = "serviceAccount:${google_service_account.application.email}"
+}
+
+## Allow fluentbit to injest logs
+resource "google_project_iam_member" "logs" {
+  project = var.project_id
+
+  role = "roles/logging.logWriter"
+
+  member = "serviceAccount:${google_service_account.application.email}"
+}
+
+## Allow reporting application errors
+resource "google_project_iam_member" "errors" {
+  project = var.project_id
+
+  role = "roles/errorreporting.writer"
+
+  member = "serviceAccount:${google_service_account.application.email}"
+}
+
+## Allow reporting metrics
+resource "google_project_iam_member" "metrics" {
+  project = var.project_id
+
+  role = "roles/monitoring.metricWriter"
+
+  member = "serviceAccount:${google_service_account.application.email}"
+}
+
+## Allow reporting metrics
+resource "google_project_iam_member" "service_management" {
+  project = var.project_id
+
+  role = "roles/servicemanagement.reporter"
+
+  member = "serviceAccount:${google_service_account.application.email}"
+}
+
+## Allow appending traces
+resource "google_project_iam_member" "cloudtrace" {
+  project = var.project_id
+
+  role = "roles/cloudtrace.agent"
 
   member = "serviceAccount:${google_service_account.application.email}"
 }
@@ -90,14 +138,16 @@ resource "google_compute_instance_template" "application" {
   service_account {
     email = google_service_account.application.email
 
-    # Those are copying gke-default scopes
     scopes = [
+      # Those are copying gke-default scopes
       "storage-ro",
       "logging-write",
       "monitoring",
       "service-management",
       "service-control",
       "trace",
+      # Required to discover the other instances in the Erlang Cluster
+      "compute-ro",
     ]
   }
 
@@ -139,7 +189,12 @@ resource "google_compute_instance_template" "application" {
     google_project_service.cloudprofiler,
     google_project_service.cloudtrace,
     google_project_service.servicenetworking,
-    google_project_iam_member.application,
+    google_project_iam_member.artifacts,
+    google_project_iam_member.logs,
+    google_project_iam_member.errors,
+    google_project_iam_member.metrics,
+    google_project_iam_member.service_management,
+    google_project_iam_member.cloudtrace,
   ]
 
   lifecycle {
@@ -238,9 +293,11 @@ resource "google_compute_region_instance_group_manager" "application" {
   }
 
   update_policy {
-    type                  = "PROACTIVE"
-    minimal_action        = "REPLACE"
+    type           = "PROACTIVE"
+    minimal_action = "REPLACE"
+
     max_unavailable_fixed = 1
+    max_surge_fixed       = max(1, var.scaling_horizontal_replicas - 1)
   }
 
   depends_on = [
