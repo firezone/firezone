@@ -60,7 +60,7 @@ Now you can verify that it's working by connecting to a websocket:
 
 </details>
 <details>
-  <summary>Gelay</summary>
+  <summary>Relay</summary>
 
 ```elixir
 ❯ websocat --header="User-Agent: Linux/5.2.6 (Debian; x86_64) relay/0.7.412" "ws://127.0.0.1:8081/relay/websocket?token=RELAY_TOKEN_FROM_SEEDS&ipv4=24.12.79.100&ipv6=4d36:aa7f:473c:4c61:6b9e:2416:9917:55cc"
