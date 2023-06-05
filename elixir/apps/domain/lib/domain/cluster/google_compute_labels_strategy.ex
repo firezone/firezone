@@ -59,7 +59,7 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
   end
 
   defp load(%State{topology: topology, meta: %Meta{} = meta} = state) do
-    {:ok, nodes} = fetch_nodes(state)
+    {:ok, nodes, state} = fetch_nodes(state)
     new_nodes = MapSet.new(nodes)
     added_nodes = MapSet.difference(new_nodes, meta.nodes)
     removed_nodes = MapSet.difference(state.meta.nodes, new_nodes)
