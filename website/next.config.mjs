@@ -5,6 +5,8 @@ import remarkParse from "remark-parse";
 import remarkRehype from "remark-rehype";
 import rehypeStringify from "rehype-stringify";
 import rehypeHighlight from "rehype-highlight";
+import rehypeAutolinkHeadings from "rehype-autolink-headings";
+import rehypeSlug from "rehype-slug";
 import langElixir from "highlight.js/lib/languages/elixir";
 import langYaml from "highlight.js/lib/languages/yaml";
 import langJson from "highlight.js/lib/languages/json";
@@ -36,6 +38,8 @@ const withMDX = nextMDX({
   options: {
     remarkPlugins: [remarkGfm, remarkParse, remarkRehype],
     rehypePlugins: [
+      rehypeAutolinkHeadings,
+      rehypeSlug,
       rehypeStringify,
       [
         rehypeHighlight,

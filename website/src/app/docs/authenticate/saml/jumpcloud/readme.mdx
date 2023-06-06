@@ -1,22 +1,24 @@
-import { Alert } from "@/components/Flowbite";
+import Alert from "@/components/DocsAlert";
 
 # Enable SSO with JumpCloud (SAML 2.0)
 
 <Alert color="info">
-This guide assumes you have completed the prerequisite steps
-(e.g. generate self-signed X.509 certificates) outlined [here](/docs/authenticate/saml#prerequisites).
+  This guide assumes you have completed the prerequisite steps (e.g. generate
+  self-signed X.509 certificates) outlined
+  [here](/docs/authenticate/saml#prerequisites).
 </Alert>
 
-Firezone supports Single Sign-On (SSO) using JumpCloud through the generic SAML 2.0 connector.
-This guide will walk you through how to configure the integration.
+Firezone supports Single Sign-On (SSO) using JumpCloud through the generic SAML
+2.0 connector. This guide will walk you through how to configure the
+integration.
 
 ## Step 1: Create a SAML connector
 
-In the JumpCloud admin portal, create a new App under
-the SSO tab. At the bottom of the popup window, click `Custom SAML App`.
+In the JumpCloud admin portal, create a new App under the SSO tab. At the bottom
+of the popup window, click `Custom SAML App`.
 
-After entering your desired value for `Display Label`, click the `SSO` tab,
-then use the following configuration values:
+After entering your desired value for `Display Label`, click the `SSO` tab, then
+use the following configuration values:
 
 | Setting                   | Value                                                                                                                                      |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -29,7 +31,8 @@ then use the following configuration values:
 | Sign Assertion            | **Checked**.                                                                                                                               |
 | Login URL                 | This is your Firezone `EXTERNAL_URL/auth/saml/auth/signin/:config_id`, e.g. `https://firezone.company.com/auth/saml/auth/signin/jumpcloud` |
 
-Leave the rest of the settings unchanged, then click the `activate` button at the bottom-right.
+Leave the rest of the settings unchanged, then click the `activate` button at
+the bottom-right.
 
 Your JumpCloud configuration should now resemble the following:
 
@@ -37,12 +40,13 @@ Your JumpCloud configuration should now resemble the following:
 
 Now, download the IdP Metadata document by selecting the App you just created
 and then clicking the `export metadata` button in the upper-right. You'll need
-to copy-paste the contents of this document into the Firezone portal in the next step.
+to copy-paste the contents of this document into the Firezone portal in the next
+step.
 
 ## Step 2: Add SAML identity provider to Firezone
 
-In the Firezone portal, add a SAML identity provider under the Security tab
-by filling out the following information:
+In the Firezone portal, add a SAML identity provider under the Security tab by
+filling out the following information:
 
 | Setting                   | Value            | Notes                                                                                                                                       |
 | ------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
