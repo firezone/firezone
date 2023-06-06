@@ -18,3 +18,7 @@ variable "slack_alerts_auth_token" {
   type        = string
   description = "Slack auth token for the infra alerts channel"
 }
+
+variable "postmark_server_api_token" {
+  type = string
+}

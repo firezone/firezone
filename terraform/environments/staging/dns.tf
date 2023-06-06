@@ -261,6 +261,31 @@ resource "google_dns_record_set" "sendgrid-domainkey2" {
   ttl     = 3600
 }
 
+# Postmark
+
+resource "google_dns_record_set" "postmark-dkim" {
+  project      = module.google-cloud-project.project.project_id
+  managed_zone = module.google-cloud-dns.zone_name
+
+  name = "20230606183724pm._domainkey.${module.google-cloud-dns.dns_name}"
+  type = "TXT"
+  ttl  = 3600
+
+  rrdatas = [
+    "k=rsa;p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCGB97X54FpoXNFuuPpI2u18ymEHBvNGfaRVXn9KEKAnSIfayJ6V3m5C5WGmfv579gyvfdDm04NAVBMcxe6mkjZHsZwds7mPjOYmRlsCClcy6ITqHwPdGSqP0f4zes1AT3Sr1GCQkl/2CdjWzc7HLoyViPxcH17yJN8HlfCYg5waQIDAQAB"
+  ]
+}
+
+resource "google_dns_record_set" "postmark-return" {
+  project      = module.google-cloud-project.project.project_id
+  managed_zone = module.google-cloud-dns.zone_name
+
+  type    = "CNAME"
+  name    = "pm-bounces.${module.google-cloud-dns.dns_name}"
+  rrdatas = ["pm.mtasv.net."]
+  ttl     = 3600
+}
+
 # Google Workspace
 
 resource "google_dns_record_set" "google-mail" {

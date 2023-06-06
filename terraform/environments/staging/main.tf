@@ -234,11 +234,6 @@ locals {
   }
 
   shared_application_environment_variables = [
-    # OpenTelemetry
-    {
-      name  = "OTLP_ENDPOINT"
-      value = "http://0.0.0.0:55680",
-    },
     # Database
     {
       name  = "DATABASE_HOST"
@@ -338,7 +333,20 @@ locals {
       name  = "TELEMETRY_ENABLED"
       value = "false"
     },
-    # TODO: Emails
+    # OpenTelemetry requires an exporter to be set on every node
+    # {
+    #   name  = "OTLP_ENDPOINT"
+    #   value = "http://0.0.0.0:55680",
+    # },
+    # Emails
+    {
+      name  = "OUTBOUND_EMAIL_ADAPTER"
+      value = "Elixir.Swoosh.Adapters.Postmark"
+    },
+    {
+      name  = "OUTBOUND_EMAIL_ADAPTER_OPTS"
+      value = "{\"api_key\":\"${var.postmark_server_api_token}\"}"
+    }
   ]
 }
 

@@ -166,8 +166,6 @@ resource "google_compute_instance_template" "application" {
       }
     })
 
-    # user-data = file("${path.module}/cloudinit.yaml")
-
     # Enable FluentBit agent for logging, which will be default one from COS 109
     google-logging-enabled       = "true"
     google-logging-use-fluentbit = "true"
