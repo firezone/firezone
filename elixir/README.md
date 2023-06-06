@@ -183,7 +183,7 @@ No zone specified. Using zone [us-east1-d] for instance: [api-b02t].
   #  To access your containers use 'docker attach' command  #
   ###########################################################
 
-andrew@api-b02t ~ $ docker ps --format json | jq 'first(.) | "\(.ID) "'
+andrew@api-b02t ~ $ docker ps --format json | jq '"\(.ID) \(.Image)"'
 "1ab7d7c6878c - us-east1-docker.pkg.dev/firezone-staging/firezone/api:branch-andrew_deployment"
 
 andrew@api-b02t ~ $ docker exec -it 1ab7d7c6878c bin/api remote
