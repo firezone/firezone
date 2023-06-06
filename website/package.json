@@ -37,6 +37,7 @@
   },
   "devDependencies": {
     "flowbite-typography": "^1.0.3",
+    "hastscript": "^7.2.0",
     "typescript": "5.0.4"
   }
 }
