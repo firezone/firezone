@@ -24,6 +24,7 @@ defmodule API.Endpoint do
   socket "/device", API.Device.Socket, API.Sockets.options()
   socket "/relay", API.Relay.Socket, API.Sockets.options()
 
+  plug :healthz
   plug :not_found
 
   def put_hsts_header(conn, _opts) do
@@ -40,6 +41,17 @@ defmodule API.Endpoint do
     else
       conn
     end
+  end
+
+  def healthz(%Plug.Conn{request_path: "/healthz"} = conn, _opts) do
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(200, Jason.encode!(%{status: "ok"}))
+    |> halt()
+  end
+
+  def healthz(conn, _opts) do
+    conn
   end
 
   def not_found(conn, _opts) do
