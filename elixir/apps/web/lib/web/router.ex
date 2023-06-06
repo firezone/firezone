@@ -15,7 +15,7 @@ defmodule Web.Router do
     # TODO: auth
   end
 
-  pipeline :browser_static do
+  pipeline :public do
     plug :accepts, ["html", "xml"]
   end
 
@@ -72,8 +72,10 @@ defmodule Web.Router do
   end
 
   scope "/browser", Web do
-    pipe_through :browser_static
+    pipe_through :public
 
     get "/config.xml", BrowserController, :config
   end
+
+  get "/healthz", Web.HealthController, :healthz
 end

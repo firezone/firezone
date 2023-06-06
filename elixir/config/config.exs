@@ -27,7 +27,7 @@ config :domain, Domain.Repo,
   queue_target: 500,
   queue_interval: 1000,
   migration_timestamps: [type: :timestamptz],
-  start_apps_before_migration: [:ssl]
+  start_apps_before_migration: [:ssl, :logger_json]
 
 config :domain, Domain.Devices, upstream_dns: ["1.1.1.1"]
 
@@ -55,11 +55,6 @@ config :domain, Domain.Auth,
 
 config :web, ecto_repos: [Domain.Repo]
 config :web, generators: [binary_id: true, context_app: :domain]
-
-config :web,
-  external_url: "http://localhost:13000/",
-  # TODO: use endpoint path instead?
-  path_prefix: "/"
 
 config :web, Web.Endpoint,
   url: [
@@ -117,13 +112,41 @@ config :api,
   cookie_signing_salt: "WjllcThpb2Y=",
   cookie_encryption_salt: "M0EzM0R6NEMyaw=="
 
+config :api,
+  external_trusted_proxies: [],
+  private_clients: [%{__struct__: Postgrex.INET, address: {172, 28, 0, 0}, netmask: 16}]
+
+###############################
+##### Erlang Cluster ##########
+###############################
+
+config :domain, Domain.Cluster.GoogleComputeLabelsStrategy,
+  token_endpoint_url:
+    "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
+  aggregated_list_endpoint_url:
+    "https://compute.googleapis.com/compute/v1/projects/${project_id}/aggregated/instances"
+
+config :domain, Domain.Cluster,
+  adapter: Domain.Cluster.Local,
+  adapter_config: []
+
 ###############################
 ##### Third-party configs #####
 ###############################
 
+config :domain,
+  http_client_ssl_opts: []
+
+config :openid_connect,
+  finch_transport_opts: []
+
 config :mime, :types, %{
   "application/xml" => ["xml"]
 }
+
+config :opentelemetry,
+  span_processor: :batch,
+  traces_exporter: :none
 
 config :logger, :console,
   level: String.to_atom(System.get_env("LOG_LEVEL", "info")),
@@ -142,24 +165,35 @@ config :web, Web.Mailer,
   adapter: Web.Mailer.NoopAdapter,
   from_email: "test@firez.one"
 
+# TODO: actually copy fonts here, otherwise:application
+# Failed to load resource: the server responded with a status of 404 ()
+# source-sans-pro-all-400-normal.woff:1     Failed to load resource: the server responded with a status of 404 ()
 config :esbuild,
-  version: "0.14.41",
-  default: [
-    args:
-      ~w(js/app.js --bundle --loader:.woff2=file --loader:.woff=file --target=es2017 --outdir=../priv/static/assets --external:/fonts/* --external:/images/*),
+  version: "0.17.19",
+  web: [
+    args: [
+      "js/app.js",
+      "--bundle",
+      "--loader:.woff2=file",
+      "--loader:.woff=file",
+      "--target=es2017",
+      "--outdir=../priv/static/assets",
+      "--external:/fonts/*",
+      "--external:/images/*"
+    ],
     cd: Path.expand("../apps/web/assets", __DIR__),
     env: %{"NODE_PATH" => Path.expand("../deps", __DIR__)}
   ]
 
 # Configure tailwind (the version is required)
 config :tailwind,
-  version: "3.2.4",
-  default: [
-    args: ~w(
-      --config=tailwind.config.js
-      --input=css/app.css
-      --output=../priv/static/assets/app.css
-    ),
+  version: "3.3.2",
+  web: [
+    args: [
+      "--config=tailwind.config.js",
+      "--input=css/app.css",
+      "--output=../priv/static/assets/app.css"
+    ],
     cd: Path.expand("../apps/web/assets", __DIR__)
   ]
 

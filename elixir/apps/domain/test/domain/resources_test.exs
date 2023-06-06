@@ -57,7 +57,15 @@ defmodule Domain.ResourcesTest do
       assert fetch_resource_by_id(Ecto.UUID.generate(), subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Resources.Authorizer.manage_resources_permission()]]}}
+                 [
+                   missing_permissions: [
+                     {:one_of,
+                      [
+                        Resources.Authorizer.manage_resources_permission(),
+                        Resources.Authorizer.view_available_resources_permission()
+                      ]}
+                   ]
+                 ]}}
     end
   end
 
@@ -83,7 +91,22 @@ defmodule Domain.ResourcesTest do
       assert list_resources(subject) == {:ok, []}
     end
 
-    test "returns all resources", %{
+    test "returns all resources for account admin subject", %{
+      account: account
+    } do
+      actor = ActorsFixtures.create_actor(type: :account_user, account: account)
+      identity = AuthFixtures.create_identity(account: account, actor: actor)
+      subject = AuthFixtures.create_subject(identity)
+
+      ResourcesFixtures.create_resource(account: account)
+      ResourcesFixtures.create_resource(account: account)
+      ResourcesFixtures.create_resource()
+
+      assert {:ok, resources} = list_resources(subject)
+      assert length(resources) == 2
+    end
+
+    test "returns all resources for account user subject", %{
       account: account,
       subject: subject
     } do
@@ -103,7 +126,15 @@ defmodule Domain.ResourcesTest do
       assert list_resources(subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Resources.Authorizer.manage_resources_permission()]]}}
+                 [
+                   missing_permissions: [
+                     {:one_of,
+                      [
+                        Resources.Authorizer.manage_resources_permission(),
+                        Resources.Authorizer.view_available_resources_permission()
+                      ]}
+                   ]
+                 ]}}
     end
   end
 

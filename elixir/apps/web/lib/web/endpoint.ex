@@ -1,6 +1,11 @@
 defmodule Web.Endpoint do
   use Phoenix.Endpoint, otp_app: :web
 
+  plug Plug.RewriteOn, [:x_forwarded_host, :x_forwarded_port, :x_forwarded_proto]
+  plug Plug.MethodOverride
+  plug :put_hsts_header
+  plug Plug.Head
+
   socket "/live", Phoenix.LiveView.Socket,
     websocket: [
       connect_info: [
@@ -46,13 +51,32 @@ defmodule Web.Endpoint do
     pass: ["*/*"],
     json_decoder: Phoenix.json_library()
 
-  plug Plug.MethodOverride
-  plug Plug.Head
-
-  # TODO: ensure that phoenix configured to resolve opts at runtime
-  plug Plug.Session, Web.Session.options()
+  # We wrap Plug.Session because it's options are resolved at compile-time,
+  # which doesn't work with Elixir releases and runtime configuration
+  plug :session
 
   plug Web.Router
+
+  def put_hsts_header(conn, _opts) do
+    scheme =
+      config(:url, [])
+      |> Keyword.get(:scheme)
+
+    if scheme == "https" do
+      put_resp_header(
+        conn,
+        "strict-transport-security",
+        "max-age=63072000; includeSubDomains; preload"
+      )
+    else
+      conn
+    end
+  end
+
+  def session(conn, _opts) do
+    opts = Web.Session.options()
+    Plug.Session.call(conn, Plug.Session.init(opts))
+  end
 
   def external_trusted_proxies do
     Domain.Config.fetch_env!(:web, :external_trusted_proxies)

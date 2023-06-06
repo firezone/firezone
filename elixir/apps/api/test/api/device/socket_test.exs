@@ -12,12 +12,12 @@ defmodule API.Device.SocketTest do
 
   describe "connect/3" do
     test "returns error when token is missing" do
-      assert connect(Socket, %{}, @connect_info) == {:error, :invalid}
+      assert connect(Socket, %{}, @connect_info) == {:error, :missing_token}
     end
 
     test "returns error when token is invalid" do
       attrs = connect_attrs(token: "foo")
-      assert connect(Socket, attrs, @connect_info) == {:error, :invalid}
+      assert connect(Socket, attrs, @connect_info) == {:error, :invalid_token}
     end
 
     test "creates a new device" do

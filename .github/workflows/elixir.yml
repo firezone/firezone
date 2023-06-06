@@ -3,11 +3,14 @@ on:
   pull_request:
     paths:
       - "elixir/**"
+      - ".github/workflows/elixir.yml"
   push:
     branches:
       - master
+      - cloud
     paths:
       - "elixir/**"
+      - ".github/workflows/elixir.yml"
 
 # Cancel old workflow runs if new code is pushed
 concurrency:
@@ -392,34 +395,131 @@ jobs:
           name: Elixir Acceptance Test Report
           path: elixir/_build/test/lib/*/test-junit-report.xml
           reporter: java-junit
-  container-build:
+  web-container-build:
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: ./elixir
     permissions:
       contents: read
+      id-token: "write"
     needs:
       - unit-test
       - acceptance-test
     env:
-      REGISTRY: ghcr.io
-      IMAGE_NAME: ${{ github.repository }}
+      APPLICATION_NAME: web
+      REGISTRY: us-east1-docker.pkg.dev
+      GCLOUD_PROJECT: firezone-staging
+      GOOGLE_CLOUD_PROJECT: firezone-staging
+      CLOUDSDK_PROJECT: firezone-staging
+      CLOUDSDK_CORE_PROJECT: firezone-staging
+      GCP_PROJECT: firezone-staging
     steps:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
       - uses: actions/checkout@v3
+      - id: auth
+        uses: google-github-actions/auth@v1
+        with:
+          token_format: "access_token"
+          workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions/providers/github-actions"
+          service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
+          export_environment_variables: false
+      - name: Change current gcloud account
+        run: gcloud --quiet config set project ${GCLOUD_PROJECT}
+      - name: Login to Google Artifact Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
+      - name: Build Tag and Version ID
+        id: vsn
+        env:
+          BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+        run: |
+          TAG=$(echo ${BRANCH_NAME} | sed 's/\//_/g'  | sed 's/\:/_/g')
+          echo "TAG=branch-${TAG}" >> $GITHUB_ENV
+      - name: Pull cache layers
+        run: |
+          docker pull ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:master || true
+          docker pull ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:${{ env.TAG }} || true
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
         with:
           platforms: linux/amd64
           build-args: |
-            VERSION=0.0.0-dev.${{ github.sha }}
+            APPLICATION_NAME=${{ env.APPLICATION_NAME }}
+            APPLICATION_VERSION=0.0.0-sha.${{ github.sha }}
           context: elixir/
           file: elixir/Dockerfile
-          push: false
-          tags: ${{ github.ref_type }}-${{ github.ref_name }}
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:${{ env.TAG }} , ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:${{ github.sha }}
+      # TODO: add a sanity check to make sure the image is actually built
+      # and can be started
+  api-container-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./elixir
+    permissions:
+      contents: read
+      id-token: "write"
+    needs:
+      - unit-test
+      - acceptance-test
+    env:
+      APPLICATION_NAME: api
+      REGISTRY: us-east1-docker.pkg.dev
+      GCLOUD_PROJECT: firezone-staging
+      GOOGLE_CLOUD_PROJECT: firezone-staging
+      CLOUDSDK_PROJECT: firezone-staging
+      CLOUDSDK_CORE_PROJECT: firezone-staging
+      GCP_PROJECT: firezone-staging
+    steps:
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - uses: actions/checkout@v3
+      - id: auth
+        uses: google-github-actions/auth@v1
+        with:
+          token_format: "access_token"
+          workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions/providers/github-actions"
+          service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
+          export_environment_variables: false
+      - name: Change current gcloud account
+        run: gcloud --quiet config set project ${GCLOUD_PROJECT}
+      - name: Login to Google Artifact Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
+      - name: Build Tag and Version ID
+        id: vsn
+        env:
+          BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+        run: |
+          TAG=$(echo ${BRANCH_NAME} | sed 's/\//_/g'  | sed 's/\:/_/g')
+          echo "TAG=branch-${TAG}" >> $GITHUB_ENV
+      - name: Pull cache layers
+        run: |
+          docker pull ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:master || true
+          docker pull ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:${{ env.TAG }} || true
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          platforms: linux/amd64
+          build-args: |
+            APPLICATION_NAME=${{ env.APPLICATION_NAME }}
+            APPLICATION_VERSION=0.0.0-sha.${{ github.sha }}
+          context: elixir/
+          file: elixir/Dockerfile
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:${{ env.TAG }} , ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:${{ github.sha }}
       # TODO: add a sanity check to make sure the image is actually built
       # and can be started
