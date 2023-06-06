@@ -36,9 +36,8 @@ resource "google_monitoring_uptime_check_config" "api-https" {
     type = "uptime_url"
 
     labels = {
-      project_id  = module.google-cloud-project.project.project_id
-      application = "api"
-      host        = module.api.host
+      project_id = module.google-cloud-project.project.project_id
+      host       = module.api.host
     }
   }
 
@@ -79,9 +78,8 @@ resource "google_monitoring_uptime_check_config" "web-https" {
     type = "uptime_url"
 
     labels = {
-      project_id  = module.google-cloud-project.project.project_id
-      application = "api"
-      host        = module.web.host
+      project_id = module.google-cloud-project.project.project_id
+      host       = module.web.host
     }
   }
 

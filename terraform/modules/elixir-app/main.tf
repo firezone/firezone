@@ -560,6 +560,37 @@ resource "google_compute_firewall" "http-health-checks" {
   }
 }
 
+# Allow outbound traffic
+resource "google_compute_firewall" "egress-ipv4" {
+  project = var.project_id
+
+  name      = "${local.application_name}-egress-ipv4"
+  network   = var.vpc_network
+  direction = "EGRESS"
+
+  target_tags        = ["app-${local.application_name}"]
+  destination_ranges = ["0.0.0.0/0"]
+
+  allow {
+    protocol = "all"
+  }
+}
+
+resource "google_compute_firewall" "egress-ipv6" {
+  project = var.project_id
+
+  name      = "${local.application_name}-egress-ipv6"
+  network   = var.vpc_network
+  direction = "EGRESS"
+
+  target_tags        = ["app-${local.application_name}"]
+  destination_ranges = ["::/0"]
+
+  allow {
+    protocol = "all"
+  }
+}
+
 # Create DNS records for the application
 resource "google_dns_record_set" "application-ipv4" {
   project = var.project_id
