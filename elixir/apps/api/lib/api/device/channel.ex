@@ -81,7 +81,13 @@ defmodule API.Device.Channel do
     with {:ok, resource} <- Resources.fetch_resource_by_id(resource_id, socket.assigns.subject),
          # :ok = Resource.authorize(resource, socket.assigns.subject),
          {:ok, [_ | _] = relays} <- Relays.list_connected_relays_for_resource(resource) do
-      reply = {:ok, %{relays: Views.Relay.render_many(relays, socket.assigns.expires_at)}}
+      reply =
+        {:ok,
+         %{
+           relays: Views.Relay.render_many(relays, socket.assigns.expires_at),
+           resource_id: resource_id
+         }}
+
       {:reply, reply, socket}
     else
       {:ok, []} -> {:reply, {:error, :offline}, socket}

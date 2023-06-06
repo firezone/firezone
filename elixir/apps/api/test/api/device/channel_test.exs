@@ -106,7 +106,8 @@ defmodule API.Device.ChannelTest do
       :ok = Domain.Relays.connect_relay(relay, stamp_secret)
 
       ref = push(socket, "list_relays", %{"resource_id" => resource.id})
-      assert_reply ref, :ok, %{relays: relays}
+      resource_id = resource.id
+      assert_reply ref, :ok, %{relays: relays, resource_id: ^resource_id}
 
       ipv4_stun_uri = "stun:#{relay.ipv4}:#{relay.port}"
       ipv4_turn_uri = "turn:#{relay.ipv4}:#{relay.port}"
