@@ -204,7 +204,11 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
 
     filter = "labels.#{cluster_name_label}=#{cluster_name} AND status=RUNNING"
     query = URI.encode_query(%{"filter" => filter})
-    request = Finch.build(:get, aggregated_list_endpoint_url <> "?" <> query)
+
+    request =
+      Finch.build(:get, aggregated_list_endpoint_url <> "?" <> query, [
+        {"Authorization", "Bearer #{state.meta.access_token}"}
+      ])
 
     with {:ok, %Finch.Response{status: 200, body: response}} <-
            Finch.request(request, Domain.Cluster.Finch),

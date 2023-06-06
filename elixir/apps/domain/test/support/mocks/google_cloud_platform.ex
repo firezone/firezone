@@ -24,6 +24,7 @@ defmodule Domain.Mocks.GoogleCloudPlatform do
     test_pid = self()
 
     Bypass.expect(bypass, "GET", token_endpoint_path, fn conn ->
+      conn = Plug.Conn.fetch_query_params(conn)
       send(test_pid, {:bypass_request, conn})
       Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
     end)
@@ -143,6 +144,7 @@ defmodule Domain.Mocks.GoogleCloudPlatform do
     test_pid = self()
 
     Bypass.expect(bypass, "GET", aggregated_instances_endpoint_path, fn conn ->
+      conn = Plug.Conn.fetch_query_params(conn)
       send(test_pid, {:bypass_request, conn})
       Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
     end)

@@ -17,6 +17,9 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategyTest do
       expected_access_token_expires_at = DateTime.add(DateTime.utc_now(), 3595, :second)
 
       assert DateTime.diff(state.meta.access_token_expires_at, expected_access_token_expires_at) in -2..2
+
+      assert_receive {:bypass_request, conn}
+      assert {"metadata-flavor", "Google"} in conn.req_headers
     end
 
     test "returns error when endpoint is not available" do
@@ -80,6 +83,9 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategyTest do
       assert nodes == [
                :"api@api-q3j6.us-east1-d.c.firezone-staging.internal"
              ]
+
+      assert_receive {:bypass_request, conn}
+      assert {"authorization", "Bearer ACCESS_TOKEN"} in conn.req_headers
     end
 
     test "returns error when compute endpoint is down" do
