@@ -83,6 +83,7 @@ services:
       # Debugging
       LOG_LEVEL: "debug"
       # Emails
+      OUTBOUND_EMAIL_FROM: "public-noreply@firez.one"
       OUTBOUND_EMAIL_ADAPTER: "Elixir.Swoosh.Adapters.Postmark"
       ## Warning: The token is for the blackhole Postmark server created in a separate isolated account,
       ## that WILL NOT send any actual emails, but you can see and debug them in the Postmark dashboard.
@@ -138,6 +139,7 @@ services:
       # Debugging
       LOG_LEVEL: "debug"
       # Emails
+      OUTBOUND_EMAIL_FROM: "public-noreply@firez.one"
       OUTBOUND_EMAIL_ADAPTER: "Elixir.Swoosh.Adapters.Postmark"
       ## Warning: The token is for the blackhole Postmark server created in a separate isolated account,
       ## that WILL NOT send any actual emails, but you can see and debug them in the Postmark dashboard.
@@ -201,6 +203,7 @@ services:
       # Higher log level not to make seeds output too verbose
       LOG_LEVEL: "info"
       # Emails
+      OUTBOUND_EMAIL_FROM: "public-noreply@firez.one"
       OUTBOUND_EMAIL_ADAPTER: "Elixir.Swoosh.Adapters.Postmark"
       ## Warning: The token is for the blackhole Postmark server created in a separate isolated account,
       ## that WILL NOT send any actual emails, but you can see and debug them in the Postmark dashboard.
