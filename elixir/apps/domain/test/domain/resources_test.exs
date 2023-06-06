@@ -57,7 +57,15 @@ defmodule Domain.ResourcesTest do
       assert fetch_resource_by_id(Ecto.UUID.generate(), subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Resources.Authorizer.manage_resources_permission()]]}}
+                 [
+                   missing_permissions: [
+                     {:one_of,
+                      [
+                        Resources.Authorizer.manage_resources_permission(),
+                        Resources.Authorizer.view_available_resources_permission()
+                      ]}
+                   ]
+                 ]}}
     end
   end
 

@@ -3,7 +3,14 @@ defmodule Domain.Resources do
   alias Domain.Resources.{Authorizer, Resource}
 
   def fetch_resource_by_id(id, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_resources_permission()),
+    required_permissions =
+      {:one_of,
+       [
+         Authorizer.manage_resources_permission(),
+         Authorizer.view_available_resources_permission()
+       ]}
+
+    with :ok <- Auth.ensure_has_permissions(subject, required_permissions),
          true <- Validator.valid_uuid?(id) do
       Resource.Query.by_id(id)
       |> Authorizer.for_subject(subject)
