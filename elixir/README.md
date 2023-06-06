@@ -4,12 +4,9 @@ This README provides an overview for running and managing Firezone's Elixir-base
 
 ## Running Control Plane for local development
 
-You can use [Top-Level Docker Compose](../docker-compose.yml) and start any released Elixir
-app. `web` and `api` services are running application release that will be pretty much the same
-as the one we run in production, while `elixir` compose service runs raw Elixir code, without a release.
+You can use the [Top-Level Docker Compose](../docker-compose.yml) to start any services locally. The `web` and `api` compose services are built application releases that are pretty much the same as the ones we run in production, while the `elixir` compose service runs raw Elixir code, without a built release.
 
-It means that you can run any Elixir code including Mix tasks using `elixir` service but you can't do that
-in `web`/`api` so easily, because Elixir strips a lot of tooling during compilation.
+This means you'll want to use the `elixir` compose service to run Mix tasks and any Elixir code on-the-fly, but you can't do that in `web`/`api` so easily because Elixir strips out Mix and other tooling [when building an application release](https://hexdocs.pm/mix/Mix.Tasks.Release.html).
 
 `elixir` additionally caches `_build` and `node_modules` to speed up compilation time and syncs
 `/apps`, `/config` and other folders with the host machine.
@@ -154,7 +151,9 @@ subject = Domain.Auth.build_subject(identity, nil, user_agent, remote_ip)
 
 ## Connecting to a staging or production instances
 
-This a danger zone so first of all, ALWAYS make sure on which environment your code is running:
+We use Google Cloud Platform for all our staging and production infrastructure. You'll need access to this env to perform the commands below; to get and access you need to add yourself to `project_owners` in `main.tf` for each of the [environments](../terraform/environments).
+
+This is a danger zone so first of all, ALWAYS make sure on which environment your code is running:
 
 ```bash
 ❯ gcloud config get project
