@@ -71,6 +71,9 @@ defmodule Domain.MixProject do
       {:logger_json, "~> 5.1"},
       {:recon, "~> 2.5"},
       {:observer_cli, "~> 1.7"},
+      {:opentelemetry, "~> 1.3"},
+      {:opentelemetry_ecto, "~> 1.1"},
+      {:opentelemetry_finch, "~> 0.2.0"},
 
       # Test and dev deps
       {:bypass, "~> 2.1", only: :test}

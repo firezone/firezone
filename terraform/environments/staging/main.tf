@@ -234,10 +234,10 @@ locals {
   }
 
   shared_application_environment_variables = [
-    # Erlang
+    # OpenTelemetry
     {
-      name  = "ERLANG_DISTRIBUTION_PORT"
-      value = "9000"
+      name  = "OTLP_ENDPOINT"
+      value = "http://0.0.0.0:55680",
     },
     # Database
     {
@@ -302,6 +302,10 @@ locals {
       value = base64encode(random_password.cookie_encryption_salt.result)
     },
     # Erlang
+    {
+      name  = "ERLANG_DISTRIBUTION_PORT"
+      value = "9000"
+    },
     {
       name  = "CLUSTER_NAME"
       value = local.cluster.name

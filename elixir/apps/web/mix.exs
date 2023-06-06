@@ -60,6 +60,11 @@ defmodule Web.MixProject do
       {:phoenix_swoosh, "~> 1.0"},
       {:gen_smtp, "~> 1.0"},
 
+      # Observability
+      {:opentelemetry_liveview, "~> 1.0.0-rc.4"},
+      {:opentelemetry_phoenix, "~> 1.1"},
+      {:nimble_options, "~> 1.0", override: true},
+
       # Other deps
       {:jason, "~> 1.2"},
       {:file_size, "~> 3.0.1"},

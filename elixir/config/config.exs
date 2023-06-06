@@ -144,6 +144,10 @@ config :mime, :types, %{
   "application/xml" => ["xml"]
 }
 
+config :opentelemetry,
+  span_processor: :batch,
+  traces_exporter: :none
+
 config :logger, :console,
   level: String.to_atom(System.get_env("LOG_LEVEL", "info")),
   format: "$time $metadata[$level] $message\n",

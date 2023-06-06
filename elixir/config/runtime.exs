@@ -117,6 +117,15 @@ if config_env() == :prod do
   ##### Third-party configs #####
   ###############################
 
+  if System.get_env("OTLP_ENDPOINT") do
+    config :opentelemetry,
+      traces_exporter: :otlp
+
+    config :opentelemetry_exporter,
+      otlp_protocol: :http_protobuf,
+      otlp_endpoint: System.get_env("OTLP_ENDPOINT")
+  end
+
   config :domain,
     http_client_ssl_opts: compile_config!(:http_client_ssl_opts)
 

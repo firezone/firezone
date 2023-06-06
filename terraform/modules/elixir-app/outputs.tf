@@ -9,3 +9,7 @@ output "target_tags" {
 output "instance_group" {
   value = google_compute_region_instance_group_manager.application
 }
+
+output "host" {
+  value = var.application_dns_tld
+}
