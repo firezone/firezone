@@ -3,34 +3,34 @@ repos:
     hooks:
       # Elixir config
       - id: mix-compile
-        name: 'elixir: mix compile'
-        entry: mix compile --force --warnings-as-errors
+        name: "elixir: mix compile"
+        entry: cd elixir && mix compile --force --warnings-as-errors
         language: system
         pass_filenames: false
         files: \.ex$
       - id: mix-format
-        name: 'elixir: mix format'
-        entry: mix format --check-formatted
+        name: "elixir: mix format"
+        entry: cd elixir && mix format --check-formatted
         language: system
       - id: mix-lint
-        name: 'elixir: mix credo'
-        entry: mix credo --strict
+        name: "elixir: mix credo"
+        entry: cd elixir && mix credo --strict
         language: system
         pass_filenames: false
         files: \.exs*$
       - id: mix-analysis
-        name: 'elixir: mix dialyzer'
-        entry: mix dialyzer --format dialyxir
+        name: "elixir: mix dialyzer"
+        entry: cd elixir && mix dialyzer --format dialyxir
         language: system
         pass_filenames: false
         files: \.exs*$
       - id: codespell
-        name: 'python: codespell'
+        name: "python: codespell"
         entry: codespell
         language: system
         pass_filenames: false
       - id: markdownlint
-        name: 'nodejs: markdownlint'
+        name: "nodejs: markdownlint"
         entry: ./docs/node_modules/markdownlint-cli/markdownlint.js
         language: system
         pass_filenames: true
@@ -41,7 +41,7 @@ repos:
     rev: v2.3.0
     hooks:
       - id: mixed-line-ending
-        args: ['--fix=lf']
+        args: ["--fix=lf"]
         description: Forces to replace line ending by the UNIX 'lf' character.
       - id: check-yaml
       - id: check-merge-conflict
