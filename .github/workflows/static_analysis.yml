@@ -48,6 +48,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
       - name: Install Elixir Dependencies
+        working-directory: ./elixir
         run: mix deps.get --only $MIX_ENV
       - name: Install Python Dependencies
         run: |
@@ -63,7 +64,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-plt
           path: |
-            priv/plts
+            elixir/priv/plts
       # Create PLTs if no cache was found
       - name: Create PLTs
         if: steps.plt_cache.outputs.cache-hit != 'true'
