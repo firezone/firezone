@@ -1,5 +1,7 @@
 # Welcome to Elixir-land!
 
+This README provides an overview for running and managing Firezone's Elixir-based control plane.
+
 ## Running Control Plane for local development
 
 You can use [Top-Level Docker Compose](../docker-compose.yml) and start any released Elixir
