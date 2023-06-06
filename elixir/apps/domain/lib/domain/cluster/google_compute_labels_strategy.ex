@@ -28,7 +28,7 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
 
     defstruct access_token: nil,
               access_token_expires_at: nil,
-              nodes: nil
+              nodes: MapSet.new()
   end
 
   @default_polling_interval 5_000
