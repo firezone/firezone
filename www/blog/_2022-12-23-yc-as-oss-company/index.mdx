@@ -1,0 +1,181 @@
+---
+slug: yc-oss-experience
+title: Going through YC as an open source company
+authors: [jason]
+tags: [open-source, ycombinator, company]
+---
+
+# Going through YC as an open source company
+
+During YC's three-month bootcamp, your goal is simple. Make meaningful progress.
+
+In our batch, we met a company that made powdered breast milk. Multiple hospital networks as customers and $150k+ of MRR. Their problems were scaling production and FDA approval.
+
+Firezone, our company, had launched a few weeks prior on HN. We had no revenue and only a small handful of users.
+
+YC's challenge is to give advice that helps these two companies and everything in between.
+
+Open-source security is a relatively new category for YC investments. About half of the 240 open-source YC investments made by YC since S05 (17 years ago) were made in the past 2 years. Only 7 are security companies.
+
+During the batch, we had come up with our own interpretation of advice meant for traditional enterprise Saas or B2B freemium software companies. This post is my attempt at sharing what we did and learned in our journey.
+
+## How it all started
+
+As a business guy, I have long felt the business pains of a slow, clunky VPN.
+
+Slow VPN speeds are an eroding pain. One that makes every task 10% slower. Like loading my Kibana dashboard, and having to wait an extra few seconds, so I go check my email or my phone. A 2 second wait that triggers a few minutes of lost productivity. A hiccup of 1 minute at the start of every zoom call that throws off all the prep I had coming into it. “How does my mic sound?”.
+
+Big pains come from blockers. Halting the onboarding of a new contractor because our internal resources have not been segmented for least privilege. The contractor needs to build a website, but would get access to customer data and network access to production servers. There was no way we'd adopt a new tool for just this problem. In a past company we spent weeks installing a firewall appliance
+
+When I met my co-founder Jamil last summer, he showed me a solution to these problems. A new faster VPN protocol called WireGuard (read more about that here) and a modern UX built for end users. One that's easy to self-serve for IT admins, SREs, and DevOps engineers.
+
+The latter may seem like a silly differentiator, but it isn't. In the past software was sold top-down to large companies. The buyer was often not the user, so products with a laundry list of features won. They checked all the boxes.
+
+In fact, for many of Firezone's users, a VPN was a checkbox. A feature that came with their legacy firewall that's cumbersome to deploy and configure. Not to mention that firewall is now sitting in an empty office as employees move to remote work.
+
+This wasn't apparent to us at the beginning, but after we posted our project to HN, we quickly realized technical IT staff needed a product like Firezone.
+
+## Why open-source?
+
+Firezone is core IT infrastructure. It deals with network security and cryptography, and runs in pretty sensitive environments. On your employee's laptops and behind firewalls on your servers. Private data about your company and customers flow through our gateways and apps. And with remote work, almost every employee relies on it to get work done.
+
+We don't expect many organization to run such critical software without knowing what's in it.
+
+We also don't expect all organizations to leave control of their network to a third party. One that can experience outages, be targeted by hackers, or even snoop on your data themselves.
+
+So we leave it all open for you to see and make it easy to host yourself.
+
+Of course, there are other benefits of building in the open. We hired world class engineers, but with such a complex product mistakes can happen. More eyes on our code means vulnerabilities are spotted and resolved faster. As we've grown, we are even getting contributions from the community.
+
+## Why Y Combinator?
+
+After our ShowHN, a long list of feature requests appeared in our GitHub repo. A list we couldn't close alone. At least not within a reasonable amount of time.
+
+For a new product with no revenue (yet), VC funding seemed to fit. It would allow us to create something for the community and in parallel investigate the right model to build a sustainable business. As first time founders, YC seemed like a good fit. After all, they helped GitLab and Mattermost get off the ground.
+
+A brief summary for those that don't know. For a stake in your company, YC offers 3 things: capital, advice, and community.
+
+When we accepted the invitation, YC's investment was $125k for 7% of our company. A few weeks into the batch we were offered an additional $375k as an uncapped MFN safe. Lucky us! You can read more about it here.
+
+Advice comes in the form of interactive workshops and long-form posts. They are invaluable resources and often come with snappy titles, like “how not to fail”.
+
+Community is YC's magic. Thousands of past founders who can make introductions to investors, give advice, and even become users of your product. They can help you understand what “how not to fail” should mean to an open-source security company. Same with general advice on setting metrics, talking to users, and pricing.
+
+Here's some of our learnings.
+
+## Should I collect telemetry?
+
+As a VC backed-startup, probably yes.
+
+Even with a crystal ball on what users want, metrics can still help identify reliability issues and add insight to reported bugs.
+
+From a business point of view, they tell you who and how many people like your product and which features are getting used.
+
+It's a great way to focus the team on what matters.
+
+Best of all when the data-points start lining up like a hockey stick, it can get you the funding you need to build a great product.
+
+YC's advice is to set a primary metric that accurately captures the value you're delivering to users. This primary metric should be paired with secondary metrics that drive the primary metric and you can actionably move and iterate on.
+
+In case you're curious, we've set users in production as our primary metric. Our secondary metrics help add context to the growth.
+
+For example, here are 3 different graphs of our progress near demo day. Our star count, number of live instances, and number of devices. Each graph tells a slightly different story. Star count shows growing awareness in the open-source community. Instances show steady growth in actual adoption. Number of users tell us more about the deployments of Firezone. Since it outpaced the growth of instances, we knew larger teams were adopting Firezone over time and existing deployments were growing inside organizations.
+
+![](https://user-images.githubusercontent.com/52545545/207409346-27c11ed2-9660-4c7a-af7b-f286ffac3dd0.png)
+
+So, how do you measure usage? Not as simple as you think.
+
+For most software products, telemetry is a small script in the header of your website and an annoying cookie banner. Sometimes it's also a few lines of code sprinkled through the backend. Most users expect to be tracked by the hosted services they use. They may not like it, but they generally won't fuss about it.
+
+Open-source is different.
+
+Though it's getting more common, not everyone expects a self-hosted open-source project to report their usage. We had to be careful what we tracked, how we anonymized it, and how we communicate it to users.
+
+We spoke to a few other open source companies we respected. Here's the advice we received.
+
+- Explain why you do it: Document what you track, how it's stored, and what you use it for. We took heavy inspiration from companies like Mattermost and made our own page in our documentation.
+- Make it clear and easy to opt-out: To make it simple for users, we created a deployment script that streamlines the install process. In the script we explicitly ask for permission and make it easy to switch off later directly in the UI.
+- Don't unnecessarily expose user data to third parties: Those annoying cookie banners on websites you visit generally mean one thing. You're being tracked, and your information is being sent to third party tools like CRMs and ad platforms. If you've signed up for an account and checked the box for terms and conditions, you're agreeing to that as well. With Firezone, we try to use open-source and self-hosted products whenever possible. This includes our telemetry platform as well.
+
+So, now we know about users in aggregate.
+
+But, our product is early and legacy VPNs are painful in many ways. We need more information to prioritize what to build first. The best way to do that is by talking to users.
+
+## We don't know who our users are
+
+“Write code and talk to users” is consistently echoed during YC.
+
+A great summary why is in “do things that don't scale”. I recommend reading the article, but it boils down to this:
+
+You often build the initial product for yourself. The MVP is usually not good enough - it's never quite right. You should get it in front of users as soon as it provides utility so you can get feedback to iterate and improve.
+
+The average user of Firezone is technical. Usually a system admin, IT manager, or DevOps engineer. They're fully capable of setting up Firezone and reading our docs to figure out what the product can do.
+
+We get frequent GitHub issues and Discourse posts pointing at issues or desired features. Sometimes they'll even fix it for us!
+
+However, Firezone does not require a valid email to sign up. It's hosted entirely on your infrastructure. It would be weird to lock anything behind a signup.
+
+I would be equally distasteful to hijack discussions with requests for a user interview.
+
+So, to generate more conversations, we increased the surface area of how users can reach us. It's important to note who you're getting feedback from as well. Often for developer facing products, the person that's deploying the product is not the person who decides what to use, what the budget is, or even the only one benefiting from it.
+
+Firezone ties into security playbooks, compliance requirements, hiring plans for contractors globally, and risk planning from risk departments.
+
+Here's how we're currently reaching them:
+Source	Types of conversations	Who we speak with
+Install script email (opt-in)	Deployment issues	ICs, IT Managers
+Slack Group and Discourse threads	Deployment and configuration issues	ICs, IT Managers
+GitHub issues	Feature requests	ICs, IT Managers, IT Leaders
+Inbound sales leads	Required functionality, pricing discussions 	CTO, CISO, IT Leaders
+Outbound leads	Problem discovery, product roadmap planning	CTO, CISO, IT Leaders
+
+One example of why it's important to dig deeper involves a request to “load a custom logo”. When we got on a Zoom call, we would uncover a group of re-sellers who want to white-label our product with their clients. Turns out they have other requirements they'd be happy to pay for if we had them.
+
+These conversations helped make the product better and form our view on our business model.
+
+This leads into the final piece of advice from YC, pricing.
+
+## Paying user feedback > free users
+
+Figuring out your pricing model and generating meaningful revenue is the great filter between early MVPs and successful companies.
+
+The main question however is when.
+
+With limited resources, generating revenue is almost always a tradeoff. Less growth, slower development of features, and the potential to ruin a perfectly good story for investors. Queue Silicon Valley:
+
+<iframe width="560" height="315" src="https://www.youtube.com/embed/BzAdXyPYKQo" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+
+So, when to figure out revenue?
+
+For B2B software, the answer should probably be “right now”.
+
+Steering early user conversations toward pricing tells you if the product is viable and solves a big enough pain. YC echoes this advice.
+
+A startup I previously worked at, Kite, failed partly because we punted the question of “will people pay?” too many times. It was an AI powered co-pilot, an early iteration of GitHub Copilot.
+
+When we finally tried, it was clear the product needed to evolve to generate meaningful revenue. By the time we realized that, it was too late. Adam, the founder of Kite and an investor in Firezone, recently open-sourced the codebase and wrote a great post-mortem:
+
+https://www.kite.com/blog/product/kite-is-saying-farewell/
+
+For self-hosted open-source software the answer is not as clear.
+
+[As a self-hosted security product, layering feature gating logic into the core product is problematic. Feature flags are complex to write, and even harder to maintain as our product evolves. Being critical infrastructure for remote work, we also don't want your company to come to a halt when your credit card expires. There's more to say here, but I'll leave this to a future deep-dive from my co-founder, Jamil.]
+
+So, similar to other successful open-source projects, our early goal was to grow the community. During YC we focused on building out the core parts of our platform, driving adoption, and optimizing for learning from our users. One of things we wanted to learn was how to build a business around Firezone.
+
+As usage grew, a pattern emerged when talking to users. Our largest deployments all started with an individual spinning Firezone up without ever speaking to us.
+
+As usage grew, they reached out to inquire about additional features and services.
+
+As we continue to develop our pricing model, we want to ensure the following:
+- Individuals and hobbyists can use Firezone for free
+- Small teams can use Firezone for free (if they support it themselves)
+- Large organizations can run a PoC without any calls with sales
+
+If this sounds familiar, it's similar to how GitLab thinks about their pricing. We're obviously big fans.
+
+## Paying it forward (still writing this part...)
+
+[not sure how to end this]
+
+- https://a16z.com/2019/10/04/open-source-from-community-to-commercialization/
