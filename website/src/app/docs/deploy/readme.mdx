@@ -51,7 +51,7 @@ To enable ACME, ensure the following conditions are met:
 - The bundled Firezone `nginx` service is enabled and functioning
 - You have a valid DNS record assigned to this instance's public IP
 - The following 3 settings are configured in the
-  [configuration file](../reference/configuration-file):
+  [configuration file](/docs/reference/configuration-file):
 
   - `default['firezone']['external_url']`: The FQDN for the server.
   - `default['firezone']['ssl']['email_address']`: The email that will be used
@@ -67,7 +67,7 @@ To enable ACME, ensure the following conditions are met:
 By default, Firezone requires ports `443/tcp` and `51820/udp` to be accessible
 for HTTPS and WireGuard traffic respectively. These ports can change based on
 what you've configured in the configuration file. See the
-[configuration file reference](../reference/configuration-file) for details.
+[configuration file reference](/docs/reference/configuration-file) for details.
 
 ### Resource requirements
 
@@ -96,9 +96,9 @@ preferred method of deployment.
 <Alert color="warning">
 
 Chef Infra Client, the configuration system Chef Omnibus relies on, has been
-[scheduled for End-of-Life in 2024](https://docs.chef.io/versions/). As such,
+[scheduled for End-of-Life in 2024](https://docs.chef.io/versions). As such,
 support for Omnibus-based deployments will be removed starting with Firezone
 0.8. To transition to Docker from Omnibus today, follow our
-[migration guide](../administer/migrate).
+[migration guide](/docs/administer/migrate).
 
 </Alert>

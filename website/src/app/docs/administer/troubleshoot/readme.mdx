@@ -13,7 +13,7 @@ Each container stores logs as a JSON file on the host machine. These can be
 shown with the `docker logs {CONTAINER}` command. Log files are found at
 `var/lib/docker/containers/{CONTAINER_ID}/{CONTAINER_ID}-json.log` by default.
 
-See [debug logs](../debug-logs) for additional details.
+See [debug logs](/docs/administer/debug-logs) for additional details.
 
 </TabsItem>
 <TabsItem title="Omnibus">
@@ -184,8 +184,8 @@ sudo firezone-ctl create-or-reset-admin
 
 ## Re-enable local authentication via CLI
 
-If you've configured an [OIDC](/docs/authenticate/oidc/) or
-[SAML](/docs/authenticate/saml/) provider, you can consider disabling local
+If you've configured an [OIDC](/docs/authenticate/oidc) or
+[SAML](/docs/authenticate/saml) provider, you can consider disabling local
 authentication for additional security.
 
 If, however, issues arise with your identity provider integration, it's possible

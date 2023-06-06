@@ -27,8 +27,8 @@ Some examples of values in this field are:
   `ap-northeast-2` AWS region was used.
 
 <Alert color="info">
-When deciding where to route a packet, Firezone chooses the egress
-interface corresponding to the most specific route first.
+  When deciding where to route a packet, Firezone chooses the egress interface
+  corresponding to the most specific route first.
 </Alert>
 
 ## Step 2 (optional): Set the DNS server(s)
@@ -41,8 +41,8 @@ For split tunneling, this may be desired if you run a DNS server that resolves
 internal hosts to private IPs reachable via Firezone.
 
 <Alert color="info">
-If you wish to resolve DNS queries over the encrypted VPN tunnel
-(recommended), ensure the DNS IPs are included in `AllowedIPs`.
+  If you wish to resolve DNS queries over the encrypted VPN tunnel
+  (recommended), ensure the DNS IPs are included in `AllowedIPs`.
 </Alert>
 
 ## Step 3: Regenerate the device configurations
@@ -54,4 +54,4 @@ Users need to regenerate device configurations to update existing devices for
 the updated configuration changes to `AllowedIPs`, `DNS`, `PersistentKeepalive`,
 `MTU`, and `Endpoint`.
 
-See [add device](/docs/user-guides/add-devices/) for instructions.
+See [add device](/docs/user-guides/add-devices) for instructions.

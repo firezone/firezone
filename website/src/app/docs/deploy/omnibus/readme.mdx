@@ -6,9 +6,10 @@ import SupportOptions from "@/components/SupportOptions";
 <Alert color="warning">
 Due to Omnibus being EOL'd by Chef in 2024, Docker is now the
 preferred method of deploying Firezone. See the
-[Docker deployment guide](../docker) to get started.
+[Docker deployment guide](/docs/deploy/docker) to get started.
 
 Read below to continue with an Omnibus-based deployment.
+
 </Alert>
 
 Firezone can be deployed on a server running a supported
@@ -26,16 +27,16 @@ Red Hat package. This guide will walk you through the steps to get started.
   - `51820/udp`: VPN traffic listen port.
 
 <Alert color="warning">
-Before deploying Firezone in **production**, you'll need a valid DNS
-record pointing to this instance. See [Prepare to Deploy](../#prepare-to-deploy)
-if you haven't done this already.
+  Before deploying Firezone in **production**, you'll need a valid DNS record
+  pointing to this instance. See [Prepare to
+  Deploy](/docs/deploy/#prepare-to-deploy) if you haven't done this already.
 </Alert>
 
 <Alert color="info">
-Firezone modifies the kernel netfilter and routing tables. Other
-programs that modify the Linux routing table or firewall may interfere with
-Firezone’s operation. For help troubleshooting connectivity issues, see the
-[troubleshooting guide](../../administer/troubleshoot).
+  Firezone modifies the kernel netfilter and routing tables. Other programs that
+  modify the Linux routing table or firewall may interfere with Firezone’s
+  operation. For help troubleshooting connectivity issues, see the
+  [troubleshooting guide](/docs/administer/troubleshoot).
 </Alert>
 
 ## Step 2: Install server
@@ -66,7 +67,7 @@ You can regenerate the admin credentials using the
 If the automatic install script fails, try these steps to install Firezone from
 our [Cloudsmith repository](https://cloudsmith.io/~firezone/repos/firezone).
 
-1. [Install WireGuard](https://www.wireguard.com/install/) for your distro. If
+1. [Install WireGuard](https://www.wireguard.com/install) for your distro. If
    using Linux kernel 5.6 or higher, skip this step.
 
 1. Install our package repository for your distro's package format:
@@ -117,7 +118,7 @@ our [Cloudsmith repository](https://cloudsmith.io/~firezone/repos/firezone).
 
 If all else fails, try these steps to install Firezone manually.
 
-1. [Install WireGuard](https://www.wireguard.com/install/) for your distro. If
+1. [Install WireGuard](https://www.wireguard.com/install) for your distro. If
    using Linux kernel 5.6 or higher, skip this step.
 1. Download the relevant package for your distribution from the
    [releases page](https://github.com/firezone/firezone/releases).
@@ -148,7 +149,7 @@ If all else fails, try these steps to install Firezone manually.
    ```
 
    See the complete
-   [configuration file reference for more details ](../../reference/configuration-file).
+   [configuration file reference for more details ](/docs/reference/configuration-file).
 
 1. Reconfigure the application to pick up the new changes:
    `sudo firezone-ctl reconfigure`.
@@ -158,16 +159,16 @@ If all else fails, try these steps to install Firezone manually.
    step 5 above, e.g. `https://firezone.example.com`
 
 Find solutions to common issues during deployment in
-[Troubleshoot ](../../administer/troubleshoot).
+[Troubleshoot ](/docs/administer/troubleshoot).
 
 ## Step 3: Install client apps
 
 Once successfully deployed, users and devices can be added to connect to the VPN
 server:
 
-- [Add Users](../../user-guides/add-users): Add users to grant them access to
+- [Add Users](/docs/user-guides/add-users): Add users to grant them access to
   your network.
-- [Client Instructions](../../user-guides/client-instructions): Instructions to
+- [Client Instructions](/docs/user-guides/client-instructions): Instructions to
   establish a VPN session.
 
 <SupportOptions />
@@ -177,14 +178,14 @@ server:
 Congrats! You have completed the setup, but there's a lot more you can do with
 Firezone:
 
-- [Integrate your identity provider](../../authenticate/) for authenticating
+- [Integrate your identity provider](/docs/authenticate) for authenticating
   clients
 - Using Firezone to
-  [establish a static IP](../../user-guides/use-cases/nat-gateway)
+  [establish a static IP](/docs/user-guides/use-cases/nat-gateway)
 - Create tunnels between multiple peers with
-  [reverse tunnels](../../user-guides/use-cases/reverse-tunnel)
+  [reverse tunnels](/docs/user-guides/use-cases/reverse-tunnel)
 - Only route certain traffic through Firezone with
-  [split tunneling](../../user-guides/use-cases/split-tunnel)
+  [split tunneling](/docs/user-guides/use-cases/split-tunnel)
 
 Support us by:
 

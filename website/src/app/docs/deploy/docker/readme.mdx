@@ -4,7 +4,8 @@ import SupportOptions from "@/components/SupportOptions";
 # Install Firezone with Docker
 
 As of 0.6.0, Docker is now the **preferred method** for deploying Firezone.
-Docker offers a number of benefits over the old [Omnibus method](../omnibus):
+Docker offers a number of benefits over the old
+[Omnibus method](/docs/deploy/omnibus):
 
 - **Simpler, more robust upgrades**: In most cases, simply pull the latest
   `firezone/firezone` image and restart the container.
@@ -21,7 +22,7 @@ Docker offers a number of benefits over the old [Omnibus method](../omnibus):
 ## Step 1: Prerequisites
 
 - Ensure you're on a [supported platform](supported-platforms) with
-  [ docker-compose](https://docs.docker.com/compose/install/) **version 2 or
+  [ docker-compose](https://docs.docker.com/compose/install) **version 2 or
   higher** installed.
 - Ensure port forwarding is enabled on your firewall. The default Firezone
   configuration requires the following ports to be open:
@@ -31,8 +32,8 @@ Docker offers a number of benefits over the old [Omnibus method](../omnibus):
 
 <Alert color="warning">
   Before deploying Firezone in **production**, you'll need a valid DNS record
-  pointing to this instance. See [Prepare to Deploy](../#prepare-to-deploy) if
-  you haven't done this already.
+  pointing to this instance. See [Prepare to
+  Deploy](/docs/deploy/#prepare-to-deploy) if you haven't done this already.
 </Alert>
 
 ## Step 2: Install server
@@ -153,15 +154,15 @@ on start.
 
 <Alert color="info">
   Firezone currently uses WireGuard's [open-source client
-  apps](https://www.wireguard.com/install/).
+  apps](https://www.wireguard.com/install).
 </Alert>
 
 Once successfully deployed, users and devices can be added to connect to the VPN
 server:
 
-- [Add Users](../../user-guides/add-users): Add users to grant them access to
+- [Add Users](/docs/user-guides/add-users): Add users to grant them access to
   your network.
-- [Client Instructions](../../user-guides/client-instructions): Instructions to
+- [Client Instructions](/docs/user-guides/client-instructions): Instructions to
   establish a VPN session.
 
 <SupportOptions />
@@ -171,11 +172,11 @@ server:
 Congrats! You have completed the setup, but there's a lot more you can do with
 Firezone:
 
-- [Integrate your identity provider](../../authenticate/) for authenticating
+- [Integrate your identity provider](/docs/authenticate) for authenticating
   clients
 - Using Firezone as a NAT gateway to
-  [establish a static IP for your team](../../user-guides/use-cases/nat-gateway)
+  [establish a static IP for your team](/docs/user-guides/use-cases/nat-gateway)
 - Create tunnels between multiple peers with
-  [reverse tunnels](../../user-guides/use-cases/reverse-tunnel)
+  [reverse tunnels](/docs/user-guides/use-cases/reverse-tunnel)
 - Only route certain traffic through Firezone with
-  [split tunneling](../../user-guides/use-cases/split-tunnel)
+  [split tunneling](/docs/user-guides/use-cases/split-tunnel)

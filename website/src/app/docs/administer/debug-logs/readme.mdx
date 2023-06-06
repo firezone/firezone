@@ -3,7 +3,7 @@ import { Alert } from "@/components/Flowbite";
 # Debug Logs
 
 <Alert color="info">
-This article is written for Docker based deployments of Firezone.
+  This article is written for Docker based deployments of Firezone.
 </Alert>
 
 Docker deployments of Firezone consist of 3 running containers:
@@ -23,27 +23,27 @@ containers. Note, `docker compose` commands need to be run in the Firezone root
 directory. This is `$HOME/.firezone` by default.
 
 See additional options of the `docker compose logs` command
-[here](https://docs.docker.com/engine/reference/commandline/compose_logs/).
+[here](https://docs.docker.com/engine/reference/commandline/compose_logs).
 
 ## Managing and configuring Docker logs
 
 By default, Firezone uses the `json-file` logging driver without
-[additional configuration](https://docs.docker.com/config/containers/logging/json-file/).
+[additional configuration](https://docs.docker.com/config/containers/logging/json-file).
 This means logs from each container are individually stored in a file format
 designed to be exclusively accessed by the Docker daemon. Log rotation is not
 enabled, so logs on the host can build up and consume excess storage space.
 
 For production deployments of Firezone you may want to configure how logs are
 collected and stored. Docker provides
-[multiple mechanisms](https://docs.docker.com/config/containers/logging/configure/)
+[multiple mechanisms](https://docs.docker.com/config/containers/logging/configure)
 to collect information from running containers and services.
 
 Examples of popular plugins, configurations, and use cases are:
 
 - Export container logs to your SIEM or observability platform (i.e.
-  [Splunk](https://docs.docker.com/config/containers/logging/splunk/) or
-  [Google Cloud Logging](https://docs.docker.com/config/containers/logging/gcplogs/)
+  [Splunk](https://docs.docker.com/config/containers/logging/splunk) or
+  [Google Cloud Logging](https://docs.docker.com/config/containers/logging/gcplogs)
   )
 - Enable log rotation and max file size.
-- [Customize log driver output](https://docs.docker.com/config/containers/logging/log_tags/)
+- [Customize log driver output](https://docs.docker.com/config/containers/logging/log_tags)
   with tags.

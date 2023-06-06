@@ -4,20 +4,20 @@ import { Alert } from "@/components/Flowbite";
 
 By default, Firezone will use local email / password for authenticating users to
 the Firezone portal. Administrators can add users and assign their passwords on
-the `/users` page. See [Add users](/docs/user-guides/add-users/) for more
+the `/users` page. See [Add users](/docs/user-guides/add-users) for more
 details.
 
 <Alert color="warning">
-Although local authentication is quick and easy to get started with,
-you can limit attack surface by
-[disabling local authentication](#disabling-local-authentication) altogether.
-See our [OIDC](/docs/authenticate/oidc/) or [SAML](/docs/authenticate/saml/)
-guides for details. For production deployments it's usually a good idea to
-**disable local authentication** and enforce MFA through your identity provider.
+  Although local authentication is quick and easy to get started with, you can
+  limit attack surface by [disabling local
+  authentication](#disabling-local-authentication) altogether. See our
+  [OIDC](/docs/authenticate/oidc) or [SAML](/docs/authenticate/saml) guides for
+  details. For production deployments it's usually a good idea to **disable
+  local authentication** and enforce MFA through your identity provider.
 </Alert>
 
 If you choose to keep Local authentication enabled, we recommend
-[enabling TOTP-based MFA ](/docs/authenticate/multi-factor/) for any accounts
+[enabling TOTP-based MFA ](/docs/authenticate/multi-factor) for any accounts
 that use the local authentication method.
 
 ## Disabling local authentication
