@@ -297,6 +297,7 @@ defmodule Domain.Config.Definitions do
        values: [
          Elixir.Cluster.Strategy.LocalEpmd,
          Elixir.Cluster.Strategy.Epmd,
+         Elixir.Cluster.Strategy.Gossip,
          Elixir.Domain.Cluster.GoogleComputeLabelsStrategy,
          Domain.Cluster.Local
        ]
