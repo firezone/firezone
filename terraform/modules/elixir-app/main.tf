@@ -158,7 +158,6 @@ resource "google_compute_instance_template" "application" {
           name  = local.application_name != null ? local.application_name : var.image
           image = "${var.container_registry}/${var.image_repo}/${var.image}:${var.image_tag}"
           env   = local.application_environment_variables
-          stdin = true
         }]
 
         volumes = []

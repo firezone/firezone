@@ -1,2 +1,2 @@
-api_image_tag = "d6dc9281afc340092fd8bcc3a75e466423cfb2e7"
-web_image_tag = "d6dc9281afc340092fd8bcc3a75e466423cfb2e7"
+api_image_tag = "c8fc3ecad0a8eb7a21d6a94e9b14bed789794310"
+web_image_tag = "c8fc3ecad0a8eb7a21d6a94e9b14bed789794310"
