@@ -32,11 +32,17 @@ export default function DocsSidebar() {
             <Sidebar.Item href="/docs" active={p == "/docs"}>
               Overview
             </Sidebar.Item>
-            <Sidebar.Collapse label="Deploy">
+            <Sidebar.Collapse
+              label="Deploy"
+              open={p.startsWith("/docs/deploy")}
+            >
               <Sidebar.Item href="/docs/deploy" active={p == "/docs/deploy"}>
                 Overview
               </Sidebar.Item>
-              <Sidebar.Collapse label="Docker">
+              <Sidebar.Collapse
+                label="Docker"
+                open={p.startsWith("/docs/deploy/docker")}
+              >
                 <Sidebar.Item
                   href="/docs/deploy/docker"
                   active={p == "/docs/deploy/docker"}
@@ -50,7 +56,10 @@ export default function DocsSidebar() {
                   Supported Platforms
                 </Sidebar.Item>
               </Sidebar.Collapse>
-              <Sidebar.Collapse label="Omnibus">
+              <Sidebar.Collapse
+                label="Omnibus"
+                open={p.startsWith("/docs/deploy/omnibus")}
+              >
                 <Sidebar.Item
                   href="/docs/deploy/omnibus"
                   active={p == "/docs/deploy/omnibus"}
@@ -76,7 +85,10 @@ export default function DocsSidebar() {
               >
                 Security Considerations
               </Sidebar.Item>
-              <Sidebar.Collapse label="Advanced">
+              <Sidebar.Collapse
+                label="Advanced"
+                open={p.startsWith("/docs/deploy/advanced")}
+              >
                 <Sidebar.Item
                   href="/docs/deploy/advanced/build-from-source"
                   active={p == "/docs/deploy/advanced/build-from-source"}
@@ -84,20 +96,23 @@ export default function DocsSidebar() {
                   Build from Source
                 </Sidebar.Item>
                 <Sidebar.Item
-                  href="/docs/deploy/advanced/custom-external-database"
-                  active={p == "/docs/deploy/advanced/custom-external-database"}
+                  href="/docs/deploy/advanced/external-database"
+                  active={p == "/docs/deploy/advanced/external-database"}
                 >
                   Custom External Database
                 </Sidebar.Item>
                 <Sidebar.Item
-                  href="/docs/deploy/advanced/custom-reverse-proxy"
-                  active={p == "/docs/deploy/advanced/custom-reverse-proxy"}
+                  href="/docs/deploy/advanced/reverse-proxy"
+                  active={p == "/docs/deploy/advanced/reverse-proxy"}
                 >
                   Custom Reverse Proxy
                 </Sidebar.Item>
               </Sidebar.Collapse>
             </Sidebar.Collapse>
-            <Sidebar.Collapse label="Authenticate">
+            <Sidebar.Collapse
+              label="Authenticate"
+              open={p.startsWith("/docs/authenticate")}
+            >
               <Sidebar.Item
                 href="/docs/authenticate"
                 active={p == "/docs/authenticate"}
@@ -116,7 +131,10 @@ export default function DocsSidebar() {
               >
                 Multi-Factor Authentication
               </Sidebar.Item>
-              <Sidebar.Collapse label="OpenID Connect">
+              <Sidebar.Collapse
+                label="OpenID Connect"
+                open={p.startsWith("/docs/authenticate/oidc")}
+              >
                 <Sidebar.Item
                   href="/docs/authenticate/oidc"
                   active={p == "/docs/authenticate/oidc"}
@@ -166,7 +184,10 @@ export default function DocsSidebar() {
                   Zitadel
                 </Sidebar.Item>
               </Sidebar.Collapse>
-              <Sidebar.Collapse label="SAML 2.0">
+              <Sidebar.Collapse
+                label="SAML 2.0"
+                open={p.startsWith("/docs/authenticate/saml")}
+              >
                 <Sidebar.Item
                   href="/docs/authenticate/saml"
                   active={p == "/docs/authenticate/saml"}
@@ -193,7 +214,10 @@ export default function DocsSidebar() {
                 </Sidebar.Item>
               </Sidebar.Collapse>
             </Sidebar.Collapse>
-            <Sidebar.Collapse label="Administer">
+            <Sidebar.Collapse
+              label="Administer"
+              open={p.startsWith("/docs/administer")}
+            >
               <Sidebar.Item
                 href="/docs/administer/migrate"
                 active={p == "/docs/administer/migrate"}
@@ -237,7 +261,10 @@ export default function DocsSidebar() {
                 Debug Logs
               </Sidebar.Item>
             </Sidebar.Collapse>
-            <Sidebar.Collapse label="User Guides">
+            <Sidebar.Collapse
+              label="User Guides"
+              open={p.startsWith("/docs/user-guides")}
+            >
               <Sidebar.Item
                 href="/docs/user-guides/add-users"
                 active={p == "/docs/user-guides/add-users"}
@@ -268,7 +295,10 @@ export default function DocsSidebar() {
               >
                 Client Instructions
               </Sidebar.Item>
-              <Sidebar.Collapse label="Common Use Cases">
+              <Sidebar.Collapse
+                label="Common Use Cases"
+                open={p.startsWith("/docs/user-guides/common-use-cases")}
+              >
                 <Sidebar.Item
                   href="/docs/user-guides/common-use-cases/split-tunnel"
                   active={
@@ -293,7 +323,10 @@ export default function DocsSidebar() {
                 </Sidebar.Item>
               </Sidebar.Collapse>
             </Sidebar.Collapse>
-            <Sidebar.Collapse label="Reference">
+            <Sidebar.Collapse
+              label="Reference"
+              open={p.startsWith("/docs/reference")}
+            >
               <Sidebar.Item
                 href="/docs/reference/env-vars"
                 active={p == "/docs/reference/env-vars"}
@@ -318,7 +351,10 @@ export default function DocsSidebar() {
               >
                 Telemetry
               </Sidebar.Item>
-              <Sidebar.Collapse label="Reverse Proxy Templates">
+              <Sidebar.Collapse
+                label="Reverse Proxy Templates"
+                open={p.startsWith("/docs/reference/reverse-proxy-templates")}
+              >
                 <Sidebar.Item
                   href="/docs/reference/reverse-proxy-templates/apache"
                   active={p == "/docs/reference/reverse-proxy-templates/apache"}
@@ -342,7 +378,10 @@ export default function DocsSidebar() {
                   HAProxy
                 </Sidebar.Item>
               </Sidebar.Collapse>
-              <Sidebar.Collapse label="Firewall Templates">
+              <Sidebar.Collapse
+                label="Firewall Templates"
+                open={p.startsWith("/docs/reference/firewall-templates")}
+              >
                 <Sidebar.Item
                   href="/docs/reference/firewall-templates/nftables"
                   active={p == "/docs/reference/firewall-templates/nftables"}
@@ -350,7 +389,10 @@ export default function DocsSidebar() {
                   nftables
                 </Sidebar.Item>
               </Sidebar.Collapse>
-              <Sidebar.Collapse label="REST API">
+              <Sidebar.Collapse
+                label="REST API"
+                open={p.startsWith("/docs/reference/rest-api")}
+              >
                 <Sidebar.Item
                   href="/docs/reference/rest-api"
                   active={p == "/docs/reference/rest-api"}

@@ -2,13 +2,13 @@ import Alert from "@/components/DocsAlert";
 
 # Custom Reverse Proxy
 
-<Alert color="danger">
-Using a custom reverse proxy is an advanced configuration. The
-default bundled Nginx proxy (Omnibus-based deployments) and Caddy (Docker-based
-deployments) is suitable for the vast majority of use cases and is recommended
-for most users. There are important security risks if the reverse proxy is not
-set up correctly.
-<Alert>
+<Alert color="warning">
+  Using a custom reverse proxy is an advanced configuration. The default bundled
+  Nginx proxy (Omnibus-based deployments) and Caddy (Docker-based deployments)
+  is suitable for the vast majority of use cases and is recommended for most
+  users. There are important security risks if the reverse proxy is not set up
+  correctly.
+</Alert>
 
 ## Introduction
 
@@ -34,8 +34,8 @@ reverse proxy.
   this is needed to parse the actual client's IP address to prevent IP spoofing.
 
 <Alert color="info">
-The `external_trusted_proxies` list automatically implicitly includes
-the following private CIDR ranges, even if they're not specified in the
+The `external_trusted_proxies` list automatically implicitly includes the
+following private CIDR ranges, even if they're not specified in the
 configuration file:
 
 - `127.0.0.0/8`
