@@ -20,12 +20,13 @@ defmodule API.Device.ChannelTest do
 
     expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
 
+    subject = %{subject | expires_at: expires_at}
+
     {:ok, _reply, socket} =
       API.Device.Socket
       |> socket("device:#{device.id}", %{
         device: device,
-        subject: subject,
-        expires_at: expires_at
+        subject: subject
       })
       |> subscribe_and_join(API.Device.Channel, "device")
 
@@ -144,7 +145,7 @@ defmodule API.Device.ChannelTest do
 
       assert [expires_at, salt] = String.split(username1, ":", parts: 2)
       expires_at = expires_at |> String.to_integer() |> DateTime.from_unix!()
-      socket_expires_at = DateTime.truncate(socket.assigns.expires_at, :second)
+      socket_expires_at = DateTime.truncate(socket.assigns.subject.expires_at, :second)
       assert expires_at == socket_expires_at
 
       assert is_binary(salt)
@@ -226,7 +227,7 @@ defmodule API.Device.ChannelTest do
                authorization_expires_at: authorization_expires_at
              } = payload
 
-      assert authorization_expires_at == socket.assigns.expires_at
+      assert authorization_expires_at == socket.assigns.subject.expires_at
 
       send(channel_pid, {:connect, socket_ref, resource.id, gateway.public_key, "FULL_RTC_SD"})
 

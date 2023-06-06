@@ -84,7 +84,7 @@ defmodule API.Device.Channel do
       reply =
         {:ok,
          %{
-           relays: Views.Relay.render_many(relays, socket.assigns.expires_at),
+           relays: Views.Relay.render_many(relays, socket.assigns.subject.expires_at),
            resource_id: resource_id
          }}
 
@@ -117,7 +117,7 @@ defmodule API.Device.Channel do
          %{
            device_id: socket.assigns.device.id,
            resource_id: resource_id,
-           authorization_expires_at: socket.assigns.expires_at,
+           authorization_expires_at: socket.assigns.subject.expires_at,
            device_rtc_session_description: device_rtc_session_description,
            device_preshared_key: preshared_key
          }}
