@@ -18,7 +18,7 @@ defmodule Web.MixProject do
   end
 
   def version do
-    System.get_env("VERSION", "0.0.0+git.0.deadbeef")
+    System.get_env("APPLICATION_VERSION", "0.0.0+git.0.deadbeef")
   end
 
   def application do
@@ -47,7 +47,7 @@ defmodule Web.MixProject do
       {:remote_ip, "~> 1.0"},
 
       # Asset pipeline deps
-      {:esbuild, "~> 0.5", runtime: Mix.env() == :dev},
+      {:esbuild, "~> 0.7", runtime: Mix.env() == :dev},
       {:tailwind, "~> 0.2.0", runtime: Mix.env() == :dev},
 
       # Observability and debugging deps
@@ -59,6 +59,12 @@ defmodule Web.MixProject do
       # Mailer deps
       {:phoenix_swoosh, "~> 1.0"},
       {:gen_smtp, "~> 1.0"},
+
+      # Observability
+      {:opentelemetry_cowboy, "~> 0.2.1"},
+      {:opentelemetry_liveview, "~> 1.0.0-rc.4"},
+      {:opentelemetry_phoenix, "~> 1.1"},
+      {:nimble_options, "~> 1.0", override: true},
 
       # Other deps
       {:jason, "~> 1.2"},
@@ -76,12 +82,12 @@ defmodule Web.MixProject do
     [
       setup: ["deps.get", "assets.setup", "assets.build"],
       "assets.setup": [
-        "cmd cd assets && yarn install",
+        "cmd cd assets && yarn install --frozen-lockfile",
         "tailwind.install --if-missing",
         "esbuild.install --if-missing"
       ],
-      "assets.build": ["tailwind default", "esbuild default"],
-      "assets.deploy": ["tailwind default --minify", "esbuild default --minify", "phx.digest"],
+      "assets.build": ["tailwind web", "esbuild web"],
+      "assets.deploy": ["tailwind web --minify", "esbuild web --minify", "phx.digest"],
       "ecto.seed": ["ecto.create", "ecto.migrate", "run ../domain/priv/repo/seeds.exs"],
       "ecto.setup": ["ecto.create", "ecto.migrate"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],

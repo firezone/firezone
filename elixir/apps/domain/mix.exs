@@ -26,7 +26,7 @@ defmodule Domain.MixProject do
 
   def version do
     # Use dummy version for dev and test
-    System.get_env("VERSION", "0.0.0+git.0.deadbeef")
+    System.get_env("APPLICATION_VERSION", "0.0.0+git.0.deadbeef")
   end
 
   def application do
@@ -50,8 +50,6 @@ defmodule Domain.MixProject do
       {:postgrex, "~> 0.16"},
       {:decimal, "~> 2.0"},
       {:ecto_sql, "~> 3.7"},
-      {:cloak, "~> 1.1"},
-      {:cloak_ecto, "~> 1.2"},
 
       # PubSub and Presence
       {:phoenix, "~> 1.7", runtime: false},
@@ -62,13 +60,21 @@ defmodule Domain.MixProject do
       {:openid_connect, github: "firezone/openid_connect", branch: "master"},
       {:argon2_elixir, "~> 2.0"},
 
-      # Other deps
-      {:telemetry, "~> 1.0"},
+      # Erlang Clustering
+      {:libcluster, "~> 3.3"},
+
+      # Product Analytics
       {:posthog, "~> 0.1"},
 
-      # Runtime debugging
+      # Observability and Runtime debugging
+      {:telemetry, "~> 1.0"},
+      {:logger_json, "~> 5.1"},
       {:recon, "~> 2.5"},
       {:observer_cli, "~> 1.7"},
+      {:opentelemetry, "~> 1.3"},
+      {:opentelemetry_exporter, "~> 1.5"},
+      {:opentelemetry_ecto, "~> 1.1"},
+      {:opentelemetry_finch, "~> 0.2.0"},
 
       # Test and dev deps
       {:bypass, "~> 2.1", only: :test}

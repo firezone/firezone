@@ -57,6 +57,11 @@ defmodule Domain.Config.Definitions do
          :database_ssl_opts,
          :database_parameters
        ]},
+      {"Erlang Cluster",
+       [
+         :erlang_cluster_adapter,
+         :erlang_cluster_adapter_config
+       ]},
       {"Secrets and Encryption",
        """
        Your secrets should be generated during installation automatically and persisted to `.env` file.
@@ -274,6 +279,46 @@ defmodule Domain.Config.Definitions do
   defconfig(:database_parameters, :map,
     default: %{application_name: "firezone-#{Application.spec(:domain, :vsn)}"},
     dump: &Dumper.keyword/1
+  )
+
+  ##############################################
+  ## Erlang Cluster
+  ##############################################
+
+  @doc """
+  An adapter that will be used to discover and connect nodes to the Erlang cluster.
+
+  Set to `Domain.Cluster.Local` to disable
+  """
+  defconfig(
+    :erlang_cluster_adapter,
+    {:parameterized, Ecto.Enum,
+     Ecto.Enum.init(
+       values: [
+         Elixir.Cluster.Strategy.LocalEpmd,
+         Elixir.Cluster.Strategy.Epmd,
+         Elixir.Cluster.Strategy.Gossip,
+         Elixir.Domain.Cluster.GoogleComputeLabelsStrategy,
+         Domain.Cluster.Local
+       ]
+     )},
+    default: Domain.Cluster.Local
+  )
+
+  @doc """
+  Config for the Erlang cluster adapter.
+  """
+  defconfig(:erlang_cluster_adapter_config, :map,
+    default: [],
+    dump: fn map ->
+      keyword = Dumper.keyword(map)
+
+      if compile_config!(:erlang_cluster_adapter) == Elixir.Cluster.Strategy.Epmd do
+        Keyword.update!(keyword, :hosts, fn hosts -> Enum.map(hosts, &String.to_atom/1) end)
+      else
+        keyword
+      end
+    end
   )
 
   ##############################################

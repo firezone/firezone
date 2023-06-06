@@ -25,7 +25,7 @@ defmodule API.MixProject do
   end
 
   def version do
-    System.get_env("VERSION", "0.0.0+git.0.deadbeef")
+    System.get_env("APPLICATION_VERSION", "0.0.0+git.0.deadbeef")
   end
 
   def application do

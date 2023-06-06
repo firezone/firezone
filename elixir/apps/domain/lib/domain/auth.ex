@@ -236,6 +236,8 @@ defmodule Domain.Auth do
     config = fetch_config!()
     key_base = Keyword.fetch!(config, :key_base)
     salt = Keyword.fetch!(config, :salt)
+    # TODO: we don't want client token to be invalid if you reconnect client from a different ip,
+    # for the clients that move between cellular towers
     payload = session_token_payload(subject)
     max_age = DateTime.diff(subject.expires_at, DateTime.utc_now(), :second)
 

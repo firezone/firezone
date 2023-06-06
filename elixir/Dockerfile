@@ -2,7 +2,6 @@ ARG ELIXIR_VERSION=1.14.3
 ARG OTP_VERSION=25.2.1
 ARG ALPINE_VERSION=3.16.3
 
-ARG APP_NAME="web"
 ARG BUILDER_IMAGE="firezone/elixir:${ELIXIR_VERSION}-otp-${OTP_VERSION}"
 ARG RUNNER_IMAGE="alpine:${ALPINE_VERSION}"
 
@@ -18,32 +17,23 @@ WORKDIR /app
 RUN mix local.hex --force && \
     mix local.rebar --force
 
-# set build ENV
-ENV MIX_ENV="prod"
-
 # install mix dependencies
 COPY mix.exs mix.lock ./
 COPY apps/domain/mix.exs ./apps/domain/mix.exs
 COPY apps/web/mix.exs ./apps/web/mix.exs
 COPY apps/api/mix.exs ./apps/api/mix.exs
+COPY config/ config/
 
-RUN mix deps.get --only $MIX_ENV
-RUN mkdir config
-
-# copy compile-time config files before we compile dependencies
-# to ensure any relevant config change will trigger the dependencies
-# to be re-compiled.
-COPY config/config.exs config/${MIX_ENV}.exs config/
-RUN mix deps.compile
+ARG MIX_ENV="prod"
+RUN mix deps.get --only ${MIX_ENV}
+RUN mix deps.compile --skip-umbrella-children
 
 COPY priv priv
 COPY apps apps
 
-# mix phx.digest triggers web compilation, need version to be set here
-ARG VERSION=0.0.0-docker
-ENV VERSION=$VERSION
+ARG APPLICATION_VERSION=0.0.0-dev.docker
 
-# Install and compile assets
+# Install pipeline and compile assets for Web app
 RUN cd apps/web \
     && mix assets.setup \
     && mix assets.deploy \
@@ -52,24 +42,31 @@ RUN cd apps/web \
 # Compile the release
 RUN mix compile
 
-# Changes to config/runtime.exs don't require recompiling the code
-COPY config/runtime.exs config/
-
 COPY rel rel
-RUN mix release
+
+ARG APPLICATION_NAME
+RUN mix release ${APPLICATION_NAME}
 
 # start a new build stage so that the final image will only contain
 # the compiled release and other runtime necessities
 FROM ${RUNNER_IMAGE}
 
-RUN apk add -u --no-cache nftables libstdc++ ncurses-libs openssl
+RUN apk add -u --no-cache libstdc++ ncurses-libs openssl curl
 
 WORKDIR /app
 
-# set runner ENV
-ENV MIX_ENV="prod"
+ARG MIX_ENV="prod"
+
+ARG APPLICATION_NAME
+ARG APPLICATION_VERSION=0.0.0-dev.docker
+
+ENV APPLICATION_NAME=$APPLICATION_NAME
+ENV APPLICATION_VERSION=$APPLICATION_VERSION
 
 # Only copy the final release from the build stage
-COPY --from=builder /app/_build/${MIX_ENV}/rel/${APP_NAME} ./
+COPY --from=builder /app/_build/${MIX_ENV}/rel/${APPLICATION_NAME} ./
 
-CMD ["/app/bin/server"]
+# Change user to "default" to limit runtime privileges
+# USER default
+
+CMD bin/server

@@ -3,6 +3,7 @@ defmodule Domain.Version do
     user_agent
     |> String.split(" ")
     |> Enum.find_value(fn
+      "relay/" <> version -> version
       "connlib/" <> version -> version
       _ -> nil
     end)

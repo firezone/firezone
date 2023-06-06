@@ -23,8 +23,8 @@ config :web, Web.Endpoint,
   debug_errors: true,
   check_origin: ["//127.0.0.1", "//localhost"],
   watchers: [
-    esbuild: {Esbuild, :install_and_run, [:default, ~w(--sourcemap=inline --watch)]},
-    tailwind: {Tailwind, :install_and_run, [:default, ~w(--watch)]}
+    esbuild: {Esbuild, :install_and_run, [:web, ~w(--sourcemap=inline --watch)]},
+    tailwind: {Tailwind, :install_and_run, [:web, ~w(--watch)]}
   ],
   live_reload: [
     patterns: [
@@ -32,7 +32,8 @@ config :web, Web.Endpoint,
       ~r"apps/web/priv/gettext/.*(po)$",
       ~r"apps/web/lib/web/.*(ex|eex|heex)$"
     ]
-  ]
+  ],
+  server: true
 
 ###############################
 ##### API #####################
@@ -40,12 +41,13 @@ config :web, Web.Endpoint,
 
 config :api, dev_routes: true
 
-config :api, Web.Endpoint,
+config :api, API.Endpoint,
   http: [port: 13001],
   debug_errors: true,
   code_reloader: true,
   check_origin: ["//127.0.0.1", "//localhost"],
-  watchers: []
+  watchers: [],
+  server: true
 
 ###############################
 ##### Third-party configs #####
