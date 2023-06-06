@@ -16,7 +16,7 @@ in `web`/`api` so easily, because Elixir strips a lot of tooling during compilat
 
 ```bash
 # Make sure to run this every time code in elixir/ changes,
-# docket doesn't do that for you!
+# docker doesn't do that for you!
 ❯ docker-compose build
 
 # Create the database
