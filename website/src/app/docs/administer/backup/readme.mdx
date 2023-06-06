@@ -1,15 +1,15 @@
-{/* prettier-ignore */}
-"use client"
-import { Tabs } from "flowbite-react"
-import SupportOptions from "@site/src/partials/\_support_options.mdx"
+import { TabsGroup, TabsItem, Alert } from "@/components/Flowbite"
+import SupportOptions from "@/components/SupportOptions"
 
 # Backup and Restore
 
 Firezone can be safely backed up and restored in a couple of minutes under most
 circumstances.
 
-:::info This guide is written for Firezone deployments using **Docker Engine**
-on **Linux** only. :::
+<Alert color="info">
+This guide is written for Firezone deployments using **Docker Engine**
+on **Linux** only.
+</Alert>
 
 Unless your hosting provider supports taking live VM snapshots, you'll need to
 stop Firezone before backing it up. This ensures the Postgres data directory is
@@ -23,8 +23,8 @@ to a location of your choosing.
 
 See the steps below for specific examples for Docker and Omnibus.
 
-<Tabs.Group>
-<Tabs.Item title="Docker" active>
+<TabsGroup>
+<TabsItem title="Docker" active>
 
 ### Backup
 
@@ -65,8 +65,8 @@ tar -zxvfp /path/to/firezone-back.tgz -C / --numeric-owner
 systemctl enable docker
 ```
 
-</Tabs.Item>
-<Tabs.Item title="Omnibus">
+</TabsItem>
+<TabsItem title="Omnibus">
 
 ### Backup
 
@@ -100,7 +100,7 @@ tar -zxvfp /path/to/firezone-back.tgz -C / --numeric-owner
 firezone-ctl reconfigure
 ```
 
-</Tabs.Item>
-</Tabs.Group>
+</TabsItem>
+</TabsGroup>
 
-<SupportOptions />;
+<SupportOptions />

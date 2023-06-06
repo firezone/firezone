@@ -1,16 +1,20 @@
+import { Alert } from "@/components/Flowbite";
+
 # Upgrade Firezone
 
 Upgrading Firezone will pause all VPN sessions and temporarily bring down the
 web UI.
 
-:::info Automatic rollbacks are still under development. We recommend backing up
+<Alert color="info">
+Automatic rollbacks are still under development. We recommend backing up
 relevant [files and folders](/docs/reference/file-and-directory-locations/)
-before upgrading in case anything goes wrong. :::
+before upgrading in case anything goes wrong.
+</Alert>
 
 Follow the steps below to upgrade Firezone:
 
-<Tabs.Group>
-<Tabs.Item title="Docker" active>
+<TabsGroup>
+<TabsItem title="Docker" active>
 
 1. Change to your Firezone installation directory, by default `$HOME/.firezone`:
 
@@ -34,8 +38,8 @@ docker compose pull
 docker compose up -d
 ```
 
-</Tabs.Item>
-<Tabs.Item title="Omnibus">
+</TabsItem>
+<TabsItem title="Omnibus">
 
 1. If not setup already, install our package repository based on your distro's
    package format:
@@ -47,8 +51,8 @@ docker compose up -d
 1. Run `firezone-ctl reconfigure` to pick up the new changes.
 1. Run `firezone-ctl restart` to restart services.
 
-</Tabs.Item>
-</Tabs.Group>
+</TabsItem>
+</TabsGroup>
 
 If you hit any issues, please let us know by
 [filing an issue](https://github.com/firezone/firezone/issues/new/choose).

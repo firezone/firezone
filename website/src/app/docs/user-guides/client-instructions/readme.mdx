@@ -1,3 +1,5 @@
+import { Alert } from "@/components/Flowbite";
+
 # End-user Client Instructions
 
 Follow these instructions if you're an end-user trying to set up your WireGuard
@@ -69,14 +71,14 @@ your network admin. If you are already logged into the portal, click the
 The following steps can be used on Linux devices to import the WireGuard
 configuration profile using Network Manager CLI (`nmcli`).
 
-:::note Importing the configuration file using the Network Manager GUI may fail
+<Alert color="info">
+Importing the configuration file using the Network Manager GUI may fail
 with the following error if the profile has IPv6 support enabled:
 
 ```text
 ipv6.method: method "auto" is not supported for WireGuard
 ```
-
-:::
+</Alert>
 
 ### Step 1: Install the WireGuard tools
 
@@ -123,14 +125,15 @@ Using `nmcli`, import the downloaded configuration file:
 sudo nmcli connection import type wireguard file /path/to/configuration.conf
 ```
 
-:::note The WireGuard connection/interface will match the name of the
+<Alert color="info">
+The WireGuard connection/interface will match the name of the
 configuration file. If required, the connection can be renamed after import:
 
 ```shell
 nmcli connection modify [old name] connection.id [new name]
 ```
 
-:::
+</Alert>
 
 ### Step 4: Connect/disconnect
 

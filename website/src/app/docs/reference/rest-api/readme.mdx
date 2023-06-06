@@ -1,3 +1,5 @@
+import { Alert } from "@/components/Flowbite";
+
 # REST API
 
 Welcome to Firezone's REST API v0 documentation.
@@ -18,8 +20,10 @@ its output to a file instead:
 docker compose -f $HOME/.firezone/docker-compose.yml exec firezone bin/create-api-token > fz_token
 ```
 
-:::caution API tokens generated from the CLI are owned by the primary
-administrator specified by the `DEFAULT_ADMIN_EMAIL` environment variable. :::
+<Alert color="warning">
+API tokens generated from the CLI are owned by the primary
+administrator specified by the `DEFAULT_ADMIN_EMAIL` environment variable.
+</Alert>
 
 ```mdx-code-block
 import DocCardList from '@theme/DocCardList';

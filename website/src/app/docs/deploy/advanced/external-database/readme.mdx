@@ -1,6 +1,4 @@
-{/* prettier-ignore */}
-"use client"
-import { Tabs } from "flowbite-react"
+import { TabsGroup, TabsItem, Alert } from "@/components/Flowbite"
 
 # Custom External Database
 
@@ -18,15 +16,17 @@ database services like Amazon RDS. See the
 [configuration ](#configure-firezone-to-connect) section below for more
 information configuring Firezone with an external DB.
 
-:::warning Configuring Firezone to use an external database can be complicated
+<Alert color="warning">
+Configuring Firezone to use an external database can be complicated
 and error-prone. We recommend using the bundled Postgres for Omnibus-based
 deployments or the official Postgres Docker image for Docker-based deployments
-if possible. :::
+if possible.
+</Alert>
 
 ## Configure Firezone to Connect
 
-<Tabs.Group>
-<Tabs.Item title="Docker" active>
+<TabsGroup>
+<TabsItem title="Docker" active>
 
 The Firezone Docker image uses the following environment variables to connect to
 the DB (fields in bold required):
@@ -47,12 +47,14 @@ the DB (fields in bold required):
 For more information, see the
 [environment variable reference ](/docs/reference/env-vars/).
 
-:::note The official `postgres` docker image can be configured by setting
+<Alert color="info">
+The official `postgres` docker image can be configured by setting
 environment variables for the container. See the Postgres image
-[documentation](https://hub.docker.com/_/postgres) for more details. :::
+[documentation](https://hub.docker.com/_/postgres) for more details.
+</Alert>
 
-</Tabs.Item>
-<Tabs.Item title="Omnibus">
+</TabsItem>
+<TabsItem title="Omnibus">
 
 The following configuration options are used to configure the bundled Postgres
 for Omnibus-based deployments:
@@ -73,5 +75,5 @@ for Omnibus-based deployments:
 For more details, see the
 [configuration file reference ](/docs/reference/configuration-file/).
 
-</Tabs.Item>
-</Tabs.Group>
+</TabsItem>
+</TabsGroup>

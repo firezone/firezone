@@ -1,10 +1,14 @@
+import { Alert } from "@/components/Flowbite";
+
 # Custom Reverse Proxy
 
-:::warning Using a custom reverse proxy is an advanced configuration. The
+<Alert color="danger">
+Using a custom reverse proxy is an advanced configuration. The
 default bundled Nginx proxy (Omnibus-based deployments) and Caddy (Docker-based
 deployments) is suitable for the vast majority of use cases and is recommended
 for most users. There are important security risks if the reverse proxy is not
-set up correctly. :::
+set up correctly.
+<Alert>
 
 ## Introduction
 
@@ -29,7 +33,8 @@ reverse proxy.
   [X-Forwarded-For header works](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-For),
   this is needed to parse the actual client's IP address to prevent IP spoofing.
 
-:::note The `external_trusted_proxies` list automatically implicitly includes
+<Alert color="info">
+The `external_trusted_proxies` list automatically implicitly includes
 the following private CIDR ranges, even if they're not specified in the
 configuration file:
 
@@ -43,7 +48,8 @@ configuration file:
 This means any web requests originating from these IPs are automatically ignored
 from the `X-Forwarded-For` headers. If you're accessing Firezone from any IPs in
 this range (as seen by the Firezone web app), be sure to add them to the
-`default['firezone']['phoenix']['clients']` configuration option instead. :::
+`default['firezone']['phoenix']['clients']` configuration option instead.
+</Alert>
 
 Read more about the configuration options
 [here](/docs/reference/configuration-file/).

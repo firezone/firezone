@@ -1,5 +1,6 @@
 import { Metadata } from "next";
 import "@/app/globals.css";
+import "highlight.js/styles/github.css";
 import RootNavbar from "@/components/RootNavbar";
 import { Source_Sans_Pro } from "next/font/google";
 

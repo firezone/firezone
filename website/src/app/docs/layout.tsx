@@ -4,7 +4,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="antialiased">
       <DocsSidebar />
-      <main className="p-4 md:ml-64 h-auto pt-20">{children}</main>
+      <main className="max-w-none format lg:format-lg p-4 md:ml-64 h-auto pt-20">
+        {children}
+      </main>
     </div>
   );
 }

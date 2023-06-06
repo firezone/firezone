@@ -7,5 +7,5 @@ module.exports = {
     "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {},
-  plugins: [require("flowbite/plugin")],
+  plugins: [require("flowbite/plugin"), require("flowbite-typography")],
 };

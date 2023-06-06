@@ -1,6 +1,5 @@
-```mdx-code-block
-import SupportOptions from "@site/src/partials/_support_options.mdx";
-```
+import { Alert } from "@/components/Flowbite";
+import SupportOptions from "@/components/SupportOptions";
 
 # Install Firezone with Docker
 
@@ -30,9 +29,11 @@ Docker offers a number of benefits over the old [Omnibus method](../omnibus):
   - `443/tcp`: To access the web UI.
   - `51820/udp`: VPN traffic listen port.
 
-:::caution Before deploying Firezone in **production**, you'll need a valid DNS
-record pointing to this instance. See [Prepare to Deploy](../#prepare-to-deploy)
-if you haven't done this already. :::
+<Alert color="warning">
+  Before deploying Firezone in **production**, you'll need a valid DNS record
+  pointing to this instance. See [Prepare to Deploy](../#prepare-to-deploy) if
+  you haven't done this already.
+</Alert>
 
 ## Step 2: Install server
 
@@ -42,7 +43,9 @@ After prerequisites are satisfied, you're ready to install the Firezone Server.
 
 The easiest way to deploy Firezone with Docker is the automatic install script:
 
-<InstallBlock />
+```bash
+bash <(curl -fsSL https://github.com/firezone/firezone/raw/master/scripts/install.sh)
+```
 
 This will ask you a few questions regarding initial configuration, then proceed
 to download a sample docker-compose.yml file, configure it with your responses,
@@ -98,7 +101,7 @@ variable you defined above.
 If you'd like Firezone to start automatically on boot, first ensure Docker is
 enabled at startup:
 
-```
+```bash
 sudo systemctl enable docker
 ```
 
@@ -129,16 +132,16 @@ This enables IPv6 NAT and configures IPv6 forwarding for Docker containers.
 
 1. Enable router advertisements on boot for your default egress interface:
 
-```
+```bash
 egress=`ip route show default 0.0.0.0/0 | grep -oP '(?<=dev ).*' | cut -f1 -d' ' | tr -d '\n'`
 sudo bash -c "echo net.ipv6.conf.${egress}.accept_ra=2 >> /etc/sysctl.conf"
 ```
 
-1. Reboot
+2. Reboot
 
 You should now be able to ping google from within a docker container:
 
-```
+```bash
 docker run --rm -t busybox ping6 -c 4 google.com
 ```
 
@@ -148,8 +151,10 @@ on start.
 
 ## Step 5: Install client apps
 
-:::note Firezone currently uses WireGuard's
-[open-source client apps](https://www.wireguard.com/install/). :::
+<Alert color="info">
+  Firezone currently uses WireGuard's [open-source client
+  apps](https://www.wireguard.com/install/).
+</Alert>
 
 Once successfully deployed, users and devices can be added to connect to the VPN
 server:
@@ -159,7 +164,7 @@ server:
 - [Client Instructions](../../user-guides/client-instructions): Instructions to
   establish a VPN session.
 
-<SupportOptions />;
+<SupportOptions />
 
 ## Post Setup
 

@@ -1,6 +1,4 @@
-{/* prettier-ignore */}
-"use client"
-import { Tabs } from "flowbite-react"
+import { TabsGroup, TabsItem } from "@/components/Flowbite"
 
 # Configure Firezone
 
@@ -26,8 +24,8 @@ the future.
 Deployment-related and infrastructure configuration require restarting Firezone
 services after change.
 
-<Tabs.Group>
-<Tabs.Item title="Docker" active>
+<TabsGroup>
+<TabsItem title="Docker" active>
 
 Docker-based deployments are configured through environment variables passed to
 the `firezone` container. These can be specified either in a `.env` file in the
@@ -39,8 +37,8 @@ See
 [Docker's documentation ](https://docs.docker.com/compose/envvars-precedence/)
 for more information.
 
-</Tabs.Item>
-<Tabs.Item title="Omnibus">
+</TabsItem>
+<TabsItem title="Omnibus">
 
 For Omnibus-based deployments, Firezone leverages
 [Chef Omnibus ](https://github.com/chef/omnibus) to handle release packaging,
@@ -55,5 +53,5 @@ For an exhaustive list of Omnibus configuration variables and their
 descriptions, see the
 [configuration file reference ](../../reference/configuration-file).
 
-</Tabs.Item>
-</Tabs.Group>
+</TabsItem>
+</TabsGroup>

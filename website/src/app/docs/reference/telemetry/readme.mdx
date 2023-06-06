@@ -1,6 +1,4 @@
-{/* prettier-ignore */}
-"use client"
-import { Tabs } from "flowbite-react"
+import { TabsItem, TabsGroup, Alert } from "@/components/Flowbite";
 
 # Telemetry
 
@@ -71,22 +69,24 @@ instance of Firezone to our telemetry server:
 
 ## How to disable telemetry
 
-:::note We _rely_ on product analytics to make Firezone better for everyone.
-Leaving telemetry enabled is the **single most valuable contribution** you can
-make to Firezone’s development. That said, we understand some users have higher
-privacy or security requirements and would prefer to disable telemetry
-altogether. If that’s you, keep reading. :::
+<Alert color="info">
+  We _rely_ on product analytics to make Firezone better for everyone. Leaving
+  telemetry enabled is the **single most valuable contribution** you can make to
+  Firezone’s development. That said, we understand some users have higher
+  privacy or security requirements and would prefer to disable telemetry
+  altogether. If that’s you, keep reading.
+</Alert>
 
 Telemetry is enabled by default. To completely disable product telemetry:
 
-<Tabs.Group>
-<Tabs.Item title="Docker" active>
+<TabsGroup>
+<TabsItem title="Docker" active>
 
 Set the `TELEMETRY_ENABLED` environment variable to `false` and restart the
 `firezone` container.
 
-</Tabs.Item>
-<Tabs.Item title="Omnibus">
+</TabsItem>
+<TabsItem title="Omnibus">
 
 Set the following configuration option to `false` in `/etc/firezone/firezone.rb`
 and run `sudo firezone-ctl reconfigure` to pick up the changes.
@@ -95,5 +95,5 @@ and run `sudo firezone-ctl reconfigure` to pick up the changes.
 default['firezone']['telemetry']['enabled'] = false
 ```
 
-</Tab.Item>
-</Tabs.Group>
+</TabsItem>
+</TabsGroup>

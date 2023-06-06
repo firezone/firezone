@@ -1,6 +1,4 @@
-{/* prettier-ignore */}
-"use client"
-import { Tabs, Alert } from "flowbite-react"
+import { TabsGroup, TabsItem, Alert } from "@/components/Flowbite";
 
 # Deploy Firezone
 
@@ -29,8 +27,8 @@ You'll need a valid SSL certificate to use Firezone in a production capacity.
 Firezone supports ACME for automatic provisioning of SSL certificates for both
 Docker-based and Omnibus-based installations. This is recommended in most cases.
 
-<Tabs.Group>
-<Tabs.Item title="Docker" active>
+<TabsGroup>
+<TabsItem title="Docker" active>
 
 #### Setting up ACME for Docker-based deployments
 
@@ -41,8 +39,8 @@ automatically provision SSL certificates as long as it's available on port
 
 See the [Docker deployment guide](docker) for more info.
 
-</Tabs.Item>
-<Tabs.Item title="Omnibus">
+</TabsItem>
+<TabsItem title="Omnibus">
 
 For Omnibus-based deployments, ACME is disabled by default to maintain
 compatibility with existing installations.
@@ -54,14 +52,15 @@ To enable ACME, ensure the following conditions are met:
 - You have a valid DNS record assigned to this instance's public IP
 - The following 3 settings are configured in the
   [configuration file](../reference/configuration-file):
+
   - `default['firezone']['external_url']`: The FQDN for the server.
   - `default['firezone']['ssl']['email_address']`: The email that will be used
     for the issued certificates.
   - `default['firezone']['ssl']['acme']['enabled']`: Set this to true to enable
     it.
 
-</Tabs.Item>
-</Tabs.Group>
+</TabsItem>
+</TabsGroup>
 
 ### Open required firewall ports
 
@@ -95,9 +94,11 @@ Docker is the easiest way to install, manage, and upgrade Firezone and is the
 preferred method of deployment.
 
 <Alert color="warning">
-  Chef Infra Client, the configuration system Chef Omnibus relies on, has been
-  [scheduled for End-of-Life in 2024](https://docs.chef.io/versions/). As such,
-  support for Omnibus-based deployments will be removed starting with Firezone
-  0.8. To transition to Docker from Omnibus today, follow our [migration guide
-  ](../administer/migrate).
+
+Chef Infra Client, the configuration system Chef Omnibus relies on, has been
+[scheduled for End-of-Life in 2024](https://docs.chef.io/versions/). As such,
+support for Omnibus-based deployments will be removed starting with Firezone
+0.8. To transition to Docker from Omnibus today, follow our
+[migration guide](../administer/migrate).
+
 </Alert>

@@ -1,14 +1,15 @@
-```mdx-code-block
-import SupportOptions from "@site/src/partials/_support_options.mdx";
-```
+import { Alert } from "@/components/Flowbite";
+import SupportOptions from "@/components/SupportOptions";
 
 # Install Firezone with Omnibus
 
-:::caution Due to Omnibus being EOL'd by Chef in 2024, Docker is now the
+<Alert color="warning">
+Due to Omnibus being EOL'd by Chef in 2024, Docker is now the
 preferred method of deploying Firezone. See the
 [Docker deployment guide](../docker) to get started.
 
-Read below to continue with an Omnibus-based deployment. :::
+Read below to continue with an Omnibus-based deployment.
+</Alert>
 
 Firezone can be deployed on a server running a supported
 [Linux distribution ](supported-platforms) in a few minutes with our Debian or
@@ -24,14 +25,18 @@ Red Hat package. This guide will walk you through the steps to get started.
   - `443/tcp`: To access the web UI.
   - `51820/udp`: VPN traffic listen port.
 
-:::caution Before deploying Firezone in **production**, you'll need a valid DNS
+<Alert color="warning">
+Before deploying Firezone in **production**, you'll need a valid DNS
 record pointing to this instance. See [Prepare to Deploy](../#prepare-to-deploy)
-if you haven't done this already. :::
+if you haven't done this already.
+</Alert>
 
-:::note Firezone modifies the kernel netfilter and routing tables. Other
+<Alert color="info">
+Firezone modifies the kernel netfilter and routing tables. Other
 programs that modify the Linux routing table or firewall may interfere with
 Firezone’s operation. For help troubleshooting connectivity issues, see the
-[troubleshooting guide](../../administer/troubleshoot). :::
+[troubleshooting guide](../../administer/troubleshoot).
+</Alert>
 
 ## Step 2: Install server
 
@@ -165,7 +170,7 @@ server:
 - [Client Instructions](../../user-guides/client-instructions): Instructions to
   establish a VPN session.
 
-<SupportOptions />;
+<SupportOptions />
 
 ## Post setup
 

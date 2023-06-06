@@ -1,6 +1,4 @@
-{/* prettier-ignore */}
-"use client"
-import { Tabs } from "flowbite-react"
+import { TabsGroup, TabsItem, Alert } from "@/components/Flowbite"
 
 # Security considerations
 
@@ -13,8 +11,8 @@ production deployments, we recommend disabling local authentication as detailed
 
 Shown below is a table of default ports used by Firezone services.
 
-<Tabs.Group>
-<Tabs.Item title="Docker" active>
+<TabsGroup>
+<TabsItem title="Docker" active>
 
 | Service    | Port        | Listen address | Description                                                                   |
 | ---------- | ----------- | -------------- | ----------------------------------------------------------------------------- |
@@ -24,8 +22,8 @@ Shown below is a table of default ports used by Firezone services.
 | Postgresql | `5432/tcp`  | `-`            | Containerized port used for bundled Postgresql server.                        |
 | Phoenix    | `13000/tcp` | `-`            | Containerized port used by upstream elixir app server.                        |
 
-</Tabs.Item>
-<Tabs.Item title="Omnibus">
+</TabsItem>
+<TabsItem title="Omnibus">
 
 | Service    | Port        | Listen address | Description                                                                   |
 | ---------- | ----------- | -------------- | ----------------------------------------------------------------------------- |
@@ -35,8 +33,8 @@ Shown below is a table of default ports used by Firezone services.
 | Postgresql | `15432/tcp` | `127.0.0.1`    | Local-only port used for bundled Postgresql server.                           |
 | Phoenix    | `13000/tcp` | `127.0.0.1`    | Local-only port used by upstream elixir app server.                           |
 
-</Tabs.Item>
-</Tabs.Group>
+</TabsItem>
+</TabsGroup>
 
 ## Production deployments
 
@@ -47,9 +45,11 @@ authentication altogether by setting
 deployments). Local authentication can also be disabled on the
 `/settings/security` page.
 
-:::caution Ensure you've set up a working [OIDC](/docs/authenticate/oidc/) or
+<Alert color="warning">
+Ensure you've set up a working [OIDC](/docs/authenticate/oidc/) or
 [SAML](/docs/authenticate/saml/)-based authentication provider before disabling
-the local authentication method. :::
+the local authentication method.
+</Alert>
 
 ## Reporting security issues
 

@@ -1,15 +1,13 @@
-{/* prettier-ignore */}
-"use client"
-import { Tabs } from "flowbite-react"
-import SupportOptions from "@site/src/partials/\_support_options.mdx"
+import { TabsItem, TabsGroup } from "@/components/Flowbite";
+import SupportOptions from "@/components/SupportOptions";
 
 # Troubleshooting Guide
 
 This guide documents common configuration and connectivity issues. For any
 problems that arise, a good first bet is to check the Firezone logs.
 
-<Tabs.Group>
-<Tabs.Item title="Docker" active>
+<TabsGroup>
+<TabsItem title="Docker" active>
 
 Each container stores logs as a JSON file on the host machine. These can be
 shown with the `docker logs {CONTAINER}` command. Log files are found at
@@ -17,14 +15,14 @@ shown with the `docker logs {CONTAINER}` command. Log files are found at
 
 See [debug logs](../debug-logs) for additional details.
 
-</Tabs.Item>
-<Tabs.Item title="Omnibus">
+</TabsItem>
+<TabsItem title="Omnibus">
 
 Firezone logs are stored in `/var/log/firezone` and can be viewed with
 `sudo firezone-ctl tail`.
 
-</Tabs.Item>
-</Tabs.Group>
+</TabsItem>
+</TabsGroup>
 
 ## Application crash loop preventing config changes
 
@@ -34,8 +32,8 @@ clearing the affected fields.
 
 For example, to clear OIDC configs:
 
-<Tabs.Group>
-<Tabs.Item title="Docker" active>
+<TabsGroup>
+<TabsItem title="Docker" active>
 
 ```text
 psql -d firezone -h 127.0.0.1 -U postgres -c "UPDATE configurations SET openid_connect_providers = '[]'"
@@ -47,8 +45,8 @@ Similarly, to clear SAML configs:
 psql -d firezone -h 127.0.0.1 -U postgres -c "UPDATE configurations SET saml_identity_providers = '[]'"
 ```
 
-</Tabs.Item>
-<Tabs.Item title="Omnibus">
+</TabsItem>
+<TabsItem title="Omnibus">
 
 ```text
 /opt/firezone/embedded/bin/psql -d $DATABASE_NAME -h $DATABASE_HOST -U $DATABASE_USER -c "UPDATE configurations SET openid_connect_providers = '[]'"
@@ -60,8 +58,8 @@ Similarly, to clear SAML configs:
 /opt/firezone/embedded/bin/psql -d $DATABASE_NAME -h $DATABASE_HOST -U $DATABASE_USER -c "UPDATE configurations SET saml_identity_providers = '[]'"
 ```
 
-</Tabs.Item>
-</Tabs.Group>
+</TabsItem>
+</TabsGroup>
 
 ## Debugging WebSocket connectivity issues
 
@@ -82,8 +80,8 @@ and configured automatically.
 
 In most cases, you'll find clues in one or more of the following locations:
 
-<Tabs.Group>
-<Tabs.Item title="Omnibus">
+<TabsGroup>
+<TabsItem title="Omnibus">
 
 - Your browser's developer tool logs, specifically the `Network` tab.
 - `sudo firezone-ctl tail nginx`
@@ -105,8 +103,8 @@ If the websocket connection is successful, you should see output in the
 2022-09-23_15:05:47.35065   Parameters: %{"token" => "SFMyNTY.g2gDYQFuBgB6HeJqgwFiAAFRgA.zSG7pefm-Vgf_zvduxa5E9VK4s8PKqzc0xBDGNx5FQE", "user_agent" => "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:106.0) Gecko/20100101 Firefox/106.0"}
 ```
 
-</Tabs.Item>
-</Tabs.Group>
+</TabsItem>
+</TabsGroup>
 
 ## Debugging WireGuard connectivity issues
 
@@ -155,8 +153,8 @@ To                         Action      From
 If the password for the account with email `DEFAULT_ADMIN_EMAIL` isn't working,
 you can reset it using the process below.
 
-<Tabs.Group>
-<Tabs.Item title="Docker" active>
+<TabsGroup>
+<TabsItem title="Docker" active>
 
 First change directory to your Firezone installation directory
 (`$HOME/.firezone` by default), then run the `bin/create-or-reset-admin` script
@@ -172,8 +170,8 @@ docker compose exec firezone bin/create-or-reset-admin
 **Note**: If local authentication is disabled, resetting the admin user's
 password will not re-enable it.
 
-</Tabs.Item>
-<Tabs.Item title="Omnibus">
+</TabsItem>
+<TabsItem title="Omnibus">
 
 Run the following command to reset the password on the default admin user.
 
@@ -181,8 +179,8 @@ Run the following command to reset the password on the default admin user.
 sudo firezone-ctl create-or-reset-admin
 ```
 
-</Tabs.Item>
-</Tabs.Group>
+</TabsItem>
+</TabsGroup>
 
 ## Re-enable local authentication via CLI
 
@@ -203,4 +201,4 @@ cd $HOME/.firezone
 docker compose exec postgres psql -U postgres -h 127.0.0.1 -d firezone -c "UPDATE configurations SET local_auth_enabled = 't'"
 ```
 
-<SupportOptions />;
+<SupportOptions />
