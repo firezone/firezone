@@ -72,6 +72,7 @@ defmodule Domain.MixProject do
       {:recon, "~> 2.5"},
       {:observer_cli, "~> 1.7"},
       {:opentelemetry, "~> 1.3"},
+      {:opentelemetry_exporter, "~> 1.5"},
       {:opentelemetry_ecto, "~> 1.1"},
       {:opentelemetry_finch, "~> 0.2.0"},
 
