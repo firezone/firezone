@@ -136,8 +136,8 @@ defmodule API.Device.ChannelTest do
 
       ipv4_stun_uri = "stun:#{relay.ipv4}:#{relay.port}"
       ipv4_turn_uri = "turn:#{relay.ipv4}:#{relay.port}"
-      ipv6_stun_uri = "stun:#{relay.ipv6}:#{relay.port}"
-      ipv6_turn_uri = "turn:#{relay.ipv6}:#{relay.port}"
+      ipv6_stun_uri = "stun:[#{relay.ipv6}]:#{relay.port}"
+      ipv6_turn_uri = "turn:[#{relay.ipv6}]:#{relay.port}"
 
       assert [
                %{
