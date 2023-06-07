@@ -16,7 +16,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={source_sans_pro.className}>
-        <div className="antialiased w-screen flex mx-auto flex-wrap justify-center min-h-screen">
+        <div className="antialiased mx-auto max-w-8xl min-h-screen">
           <RootNavbar />
           {children}
         </div>
