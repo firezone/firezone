@@ -25,6 +25,8 @@ Two environment variables need to be set for the server to be operational:
 - `RELAY_LISTEN_IP4_ADDR`: The IPv4 address of a local interface we should bind to. Must not be a wildcard address.
 - `RELAY_PUBLIC_IP4_ADDR`: The public IPv4 address of the above interface.
 
+In debug mode, you can set `RELAY_RNG_SEED` to a positive integer to make all random operations (secret generation, port allocations, etc) deterministic.
+
 ## Design
 
 The relay is designed in a sans-IO fashion, meaning the core components do not cause side effects but operate as pure, synchronous state machines.

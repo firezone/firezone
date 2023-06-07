@@ -1,23 +1,23 @@
 mod channel_data;
 mod client_message;
 
-use crate::rfc8656::PeerAddressFamilyMismatch;
-use crate::server::channel_data::ChannelData;
-use crate::server::client_message::{
+pub use crate::server::channel_data::ChannelData;
+pub use crate::server::client_message::{
     Allocate, Binding, ChannelBind, ClientMessage, CreatePermission, Refresh,
 };
+
+use crate::auth::{MessageIntegrityExt, FIREZONE};
+use crate::rfc8656::PeerAddressFamilyMismatch;
 use crate::stun_codec_ext::{MessageClassExt, MethodExt};
 use crate::TimeEvents;
 use anyhow::Result;
 use bytecodec::EncodeExt;
 use core::fmt;
-use rand::rngs::mock::StepRng;
-use rand::rngs::ThreadRng;
 use rand::Rng;
 use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
-use std::time::{Duration, Instant};
+use std::time::{Duration, SystemTime};
 use stun_codec::rfc5389::attributes::{
     ErrorCode, MessageIntegrity, Nonce, Realm, Username, XorMappedAddress,
 };
@@ -37,7 +37,7 @@ use stun_codec::{Message, MessageClass, MessageEncoder, Method, TransactionId};
 /// we can index data simply by the sender's [`SocketAddr`].
 ///
 /// Additionally, we assume to have complete ownership over the port range `LOWEST_PORT` - `HIGHEST_PORT`.
-pub struct Server<R = ThreadRng> {
+pub struct Server<R> {
     decoder: client_message::Decoder,
     encoder: MessageEncoder<Attribute>,
 
@@ -57,13 +57,15 @@ pub struct Server<R = ThreadRng> {
 
     rng: R,
 
+    auth_secret: [u8; 32],
+
     time_events: TimeEvents<TimedAction>,
 }
 
 /// The commands returned from a [`Server`].
 ///
 /// The [`Server`] itself is sans-IO, meaning it is the caller responsibility to cause the side-effects described by these commands.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Command {
     SendMessage {
         payload: Vec<u8>,
@@ -82,7 +84,7 @@ pub enum Command {
         receiver: SocketAddr,
     },
     /// At the latest, the [`Server`] needs to be woken at the specified deadline to execute time-based actions correctly.
-    Wake { deadline: Instant },
+    Wake { deadline: SystemTime },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -118,8 +120,11 @@ const MAX_AVAILABLE_PORTS: u16 = HIGHEST_PORT - LOWEST_PORT;
 /// See <https://www.rfc-editor.org/rfc/rfc8656#name-channels-2>.
 const CHANNEL_BINDING_DURATION: Duration = Duration::from_secs(600);
 
-impl Server {
-    pub fn new(public_ip4_address: Ipv4Addr) -> Self {
+impl<R> Server<R>
+where
+    R: Rng,
+{
+    pub fn new(public_ip4_address: Ipv4Addr, mut rng: R) -> Self {
         // TODO: Validate that local IP isn't multicast / loopback etc.
 
         Self {
@@ -133,68 +138,81 @@ impl Server {
             channel_numbers_by_peer: Default::default(),
             pending_commands: Default::default(),
             next_allocation_id: AllocationId(1),
-            rng: rand::thread_rng(),
+            auth_secret: rng.gen(),
+            rng,
             time_events: TimeEvents::default(),
         }
     }
-}
 
-impl<R> Server<R>
-where
-    R: Rng,
-{
+    pub fn auth_secret(&mut self) -> [u8; 32] {
+        self.auth_secret
+    }
+
     /// Process the bytes received from a client.
     ///
     /// After calling this method, you should call [`Server::next_command`] until it returns `None`.
-    pub fn handle_client_input(&mut self, bytes: &[u8], sender: SocketAddr, now: Instant) {
+    pub fn handle_client_input(&mut self, bytes: &[u8], sender: SocketAddr, now: SystemTime) {
         if tracing::enabled!(target: "wire", tracing::Level::TRACE) {
             let hex_bytes = hex::encode(bytes);
             tracing::trace!(target: "wire", r#"Input::client("{sender}","{hex_bytes}")"#);
         }
 
-        let result = match self.decoder.decode(bytes) {
-            Ok(Ok(ClientMessage::Allocate(request))) => {
-                self.handle_allocate_request(request, sender, now)
+        match self.decoder.decode(bytes) {
+            Ok(Ok(message)) => {
+                self.handle_client_message(message, sender, now);
             }
-            Ok(Ok(ClientMessage::Refresh(request))) => {
-                self.handle_refresh_request(request, sender, now)
+            // Could parse the bytes but message was semantically invalid (like missing attribute).
+            Ok(Err(error_code)) => {
+                self.queue_error_response(sender, error_code);
             }
-            Ok(Ok(ClientMessage::ChannelBind(request))) => {
+            // Parsing the bytes failed.
+            Err(client_message::Error::BadChannelData(_)) => {}
+            Err(client_message::Error::DecodeStun(_)) => {}
+            Err(client_message::Error::UnknownMessageType(_)) => {}
+            Err(client_message::Error::Eof) => {}
+        };
+    }
+
+    pub fn handle_client_message(
+        &mut self,
+        message: ClientMessage,
+        sender: SocketAddr,
+        now: SystemTime,
+    ) {
+        let result = match message {
+            ClientMessage::Allocate(request) => self.handle_allocate_request(request, sender, now),
+            ClientMessage::Refresh(request) => self.handle_refresh_request(request, sender, now),
+            ClientMessage::ChannelBind(request) => {
                 self.handle_channel_bind_request(request, sender, now)
             }
-            Ok(Ok(ClientMessage::CreatePermission(request))) => {
+            ClientMessage::CreatePermission(request) => {
                 self.handle_create_permission_request(request, sender, now)
             }
-            Ok(Ok(ClientMessage::Binding(request))) => {
+            ClientMessage::Binding(request) => {
                 self.handle_binding_request(request, sender);
                 return;
             }
-            Ok(Ok(ClientMessage::ChannelData(msg))) => {
+            ClientMessage::ChannelData(msg) => {
                 self.handle_channel_data_message(msg, sender, now);
                 return;
             }
-
-            // Could parse the bytes but message was semantically invalid (like missing attribute).
-            Ok(Err(error_code)) => Err(error_code),
-
-            // Parsing the bytes failed.
-            Err(client_message::Error::BadChannelData(_)) => return,
-            Err(client_message::Error::DecodeStun(_)) => return,
-            Err(client_message::Error::UnknownMessageType(_)) => return,
-            Err(client_message::Error::Eof) => return,
         };
 
-        let Err(mut error_response) = result else {
+        let Err(error_response) = result else {
             return;
         };
 
+        self.queue_error_response(sender, error_response)
+    }
+
+    fn queue_error_response(&mut self, sender: SocketAddr, mut error_response: Message<Attribute>) {
         // In case of a 401 response, attach a realm and nonce.
         if error_response
             .get_attribute::<ErrorCode>()
             .map_or(false, |error| error == &ErrorCode::from(Unauthorized))
         {
-            error_response.add_attribute(Nonce::new("foobar".to_owned()).unwrap().into());
-            error_response.add_attribute(Realm::new("firezone".to_owned()).unwrap().into());
+            error_response.add_attribute(Nonce::new("foobar".to_owned()).unwrap().into()); // TODO: Implement proper nonce handling.
+            error_response.add_attribute((*FIREZONE).clone().into());
         }
 
         self.send_message(error_response, sender);
@@ -261,7 +279,7 @@ where
         })
     }
 
-    pub fn handle_deadline_reached(&mut self, now: Instant) {
+    pub fn handle_deadline_reached(&mut self, now: SystemTime) {
         for action in self.time_events.pending_actions(now) {
             match action {
                 TimedAction::ExpireAllocation(id) => {
@@ -305,7 +323,7 @@ where
         self.pending_commands.pop_front()
     }
 
-    pub fn handle_binding_request(&mut self, message: Binding, sender: SocketAddr) {
+    fn handle_binding_request(&mut self, message: Binding, sender: SocketAddr) {
         let mut message = Message::new(
             MessageClass::SuccessResponse,
             BINDING,
@@ -319,13 +337,13 @@ where
     /// Handle a TURN allocate request.
     ///
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-receiving-an-allocate-reque> for details.
-    pub fn handle_allocate_request(
+    fn handle_allocate_request(
         &mut self,
         request: Allocate,
         sender: SocketAddr,
-        now: Instant,
+        now: SystemTime,
     ) -> Result<(), Message<Attribute>> {
-        // TODO: Check validity of message integrity here?
+        self.verify_auth(&request, now)?;
 
         if self.allocations.contains_key(&sender) {
             return Err(error_response(AllocationMismatch, &request));
@@ -386,13 +404,13 @@ where
     /// Handle a TURN refresh request.
     ///
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-receiving-a-refresh-request> for details.
-    pub fn handle_refresh_request(
+    fn handle_refresh_request(
         &mut self,
         request: Refresh,
         sender: SocketAddr,
-        now: Instant,
+        now: SystemTime,
     ) -> Result<(), Message<Attribute>> {
-        // TODO: Check validity of message integrity here?
+        self.verify_auth(&request, now)?;
 
         // TODO: Verify that this is the correct error code.
         let allocation = self
@@ -449,13 +467,13 @@ where
     /// Handle a TURN channel bind request.
     ///
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-receiving-a-channelbind-req> for details.
-    pub fn handle_channel_bind_request(
+    fn handle_channel_bind_request(
         &mut self,
         request: ChannelBind,
         sender: SocketAddr,
-        now: Instant,
+        now: SystemTime,
     ) -> Result<(), Message<Attribute>> {
-        // TODO: Check validity of message integrity here?
+        self.verify_auth(&request, now)?;
 
         let allocation = self
             .allocations
@@ -526,13 +544,13 @@ where
     ///
     /// This TURN server implementation does not support relaying data other than through channels.
     /// Thus, creating a permission is a no-op that always succeeds.
-    pub fn handle_create_permission_request(
+    fn handle_create_permission_request(
         &mut self,
         message: CreatePermission,
         sender: SocketAddr,
-        _: Instant,
+        now: SystemTime,
     ) -> Result<(), Message<Attribute>> {
-        // TODO: Check validity of message integrity here?
+        self.verify_auth(&message, now)?;
 
         self.send_message(
             create_permission_success_response(message.transaction_id()),
@@ -542,11 +560,11 @@ where
         Ok(())
     }
 
-    pub fn handle_channel_data_message(
+    fn handle_channel_data_message(
         &mut self,
         message: ChannelData,
         sender: SocketAddr,
-        _: Instant,
+        _: SystemTime,
     ) {
         let channel_number = message.channel();
         let data = message.data();
@@ -580,7 +598,22 @@ where
         });
     }
 
-    fn create_new_allocation(&mut self, now: Instant, lifetime: &Lifetime) -> Allocation {
+    fn verify_auth(
+        &mut self,
+        request: &(impl StunRequest + ProtectedRequest),
+        now: SystemTime,
+    ) -> Result<(), Message<Attribute>> {
+        request
+            .message_integrity()
+            .verify(&self.auth_secret, request.username().name(), now)
+            .map_err(|_| error_response(Unauthorized, request))?;
+
+        // TODO: Check if nonce is valid.
+
+        Ok(())
+    }
+
+    fn create_new_allocation(&mut self, now: SystemTime, lifetime: &Lifetime) -> Allocation {
         // First, find an unused port.
 
         assert!(
@@ -613,7 +646,7 @@ where
         requested_channel: u16,
         peer_address: SocketAddr,
         id: AllocationId,
-        now: Instant,
+        now: SystemTime,
     ) {
         self.channels_by_number.insert(
             requested_channel,
@@ -700,37 +733,17 @@ fn create_permission_success_response(transaction_id: TransactionId) -> Message<
     )
 }
 
-impl Server<StepRng> {
-    #[allow(dead_code)]
-    pub fn test() -> Self {
-        Self {
-            decoder: Default::default(),
-            encoder: Default::default(),
-            public_ip4_address: Ipv4Addr::new(35, 124, 91, 37),
-            allocations: HashMap::new(),
-            clients_by_allocation: Default::default(),
-            allocations_by_port: Default::default(),
-            channels_by_number: Default::default(),
-            next_allocation_id: AllocationId::default(),
-            pending_commands: VecDeque::new(),
-            rng: StepRng::new(0, 0),
-            time_events: TimeEvents::default(),
-            channel_numbers_by_peer: Default::default(),
-        }
-    }
-}
-
 /// Represents an allocation of a client.
 struct Allocation {
     id: AllocationId,
     /// Data arriving on this port will be forwarded to the client iff there is an active data channel.
     port: u16,
-    expires_at: Instant,
+    expires_at: SystemTime,
 }
 
 struct Channel {
     /// When the channel expires.
-    expiry: Instant,
+    expiry: SystemTime,
 
     /// The address of the peer that the channel is bound to.
     peer_address: SocketAddr,
@@ -751,11 +764,11 @@ struct Channel {
 }
 
 impl Channel {
-    fn refresh(&mut self, now: Instant) {
+    fn refresh(&mut self, now: SystemTime) {
         self.expiry = now + CHANNEL_BINDING_DURATION;
     }
 
-    fn is_expired(&self, now: Instant) -> bool {
+    fn is_expired(&self, now: SystemTime) -> bool {
         self.expiry <= now
     }
 }
@@ -768,11 +781,12 @@ impl Allocation {
 }
 
 impl Allocation {
-    fn is_expired(&self, now: Instant) -> bool {
+    fn is_expired(&self, now: SystemTime) -> bool {
         self.expires_at <= now
     }
 }
 
+#[derive(PartialEq)]
 enum TimedAction {
     ExpireAllocation(AllocationId),
     UnbindChannel(u16),
@@ -817,6 +831,31 @@ impl_stun_request_for!(Allocate, ALLOCATE);
 impl_stun_request_for!(ChannelBind, CHANNEL_BIND);
 impl_stun_request_for!(CreatePermission, CREATE_PERMISSION);
 impl_stun_request_for!(Refresh, REFRESH);
+
+/// Private helper trait to make [`Server::verify_auth`] more ergonomic to use.
+trait ProtectedRequest {
+    fn message_integrity(&self) -> &MessageIntegrity;
+    fn username(&self) -> &Username;
+}
+
+macro_rules! impl_protected_request_for {
+    ($t:ty) => {
+        impl ProtectedRequest for $t {
+            fn message_integrity(&self) -> &MessageIntegrity {
+                self.message_integrity()
+            }
+
+            fn username(&self) -> &Username {
+                self.username()
+            }
+        }
+    };
+}
+
+impl_protected_request_for!(Allocate);
+impl_protected_request_for!(ChannelBind);
+impl_protected_request_for!(CreatePermission);
+impl_protected_request_for!(Refresh);
 
 // Define an enum of all attributes that we care about for our server.
 stun_codec::define_attribute_enums!(

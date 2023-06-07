@@ -23,6 +23,7 @@ relay="$target_directory/debug/relay"
 
 export RELAY_PUBLIC_IP4_ADDR=127.0.0.1;
 export RELAY_LISTEN_IP4_ADDR=127.0.0.1;
+export RELAY_RNG_SEED=0;
 export RUST_LOG=relay=debug;
 
 # Client and relay run in the background.

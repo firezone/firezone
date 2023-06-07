@@ -4,6 +4,8 @@ use stun_codec::rfc5766::methods::{
 };
 use stun_codec::{MessageClass, Method};
 
+// TODO: Upstream as `fmt::Display` impls
+
 pub trait MethodExt {
     fn as_str(&self) -> &'static str;
 }

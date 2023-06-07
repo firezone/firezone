@@ -16,6 +16,7 @@ concurrency:
 
 jobs:
   test:
+    name: Test all crates
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -35,7 +36,8 @@ jobs:
       - run: cargo clippy -- -D warnings
       - run: cargo test
 
-  cross:
+  cross: # cross is separate from test because cross-compiling yields different artifacts and we cannot reuse the cache.
+    name: Cross compile all crates
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -50,3 +52,19 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: rustup target add x86_64-unknown-linux-musl
       - run: cargo build --bin relay --target x86_64-unknown-linux-musl
+
+  relay_smoke:
+    name: Smoke-test relay
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./rust/relay
+    steps:
+      - uses: actions/checkout@v2
+
+      # This implicitly triggers installation of the toolchain in the `rust-toolchain.toml` file.
+      # If we don't do this here, our cache action will compute a cache key based on the Rust version shipped on GitHub's runner which might differ from the one we use.
+      - run: rustup show
+
+      - uses: Swatinem/rust-cache@v2
+      - run: ./run_smoke_test.sh

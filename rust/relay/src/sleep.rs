@@ -3,7 +3,7 @@ use futures::FutureExt;
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{ready, Context, Poll, Waker};
-use std::time::Instant;
+use std::time::SystemTime;
 
 /// A future that sleeps until a given instant.
 ///
@@ -17,10 +17,17 @@ pub struct Sleep {
 }
 
 impl Sleep {
-    pub fn reset(self: Pin<&mut Self>, instant: Instant) {
+    pub fn reset(self: Pin<&mut Self>, deadline: SystemTime) {
         let this = self.get_mut();
 
-        this.inner = Some(tokio::time::sleep_until(instant.into()).boxed());
+        this.inner = Some(
+            tokio::time::sleep(
+                deadline
+                    .duration_since(SystemTime::now())
+                    .expect("deadline must be in the future"),
+            )
+            .boxed(),
+        );
 
         if let Some(waker) = this.waker.take() {
             waker.wake();
@@ -65,7 +72,7 @@ mod tests {
     #[tokio::test]
     async fn finished_sleep_returns_pending() {
         let mut sleep = Sleep::default();
-        Pin::new(&mut sleep).reset(Instant::now() + Duration::from_millis(100));
+        Pin::new(&mut sleep).reset(SystemTime::now() + Duration::from_millis(100));
 
         tokio::time::sleep(Duration::from_millis(200)).await;
 
