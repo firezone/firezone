@@ -108,7 +108,7 @@ module "google-cloud-sql" {
     # Increase the connections count a bit, but we need to set it to Ecto ((pool_count * pool_size) + 50)
     "max_connections" = "500"
 
-    # Sets minimum treshold on dead tuples to prevent autovaccum running too often on small tables
+    # Sets minimum threshold on dead tuples to prevent autovaccum running too often on small tables
     # where 5% is less than 50 records
     "autovacuum_vacuum_threshold" = "50"
 

@@ -62,7 +62,7 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategyTest do
       assert state.meta.access_token_expires_at
     end
 
-    test "retruns list of nodes when token is not expired" do
+    test "returns list of nodes when token is not expired" do
       bypass = Bypass.open()
       GoogleCloudPlatform.mock_instances_list_endpoint(bypass)
 
