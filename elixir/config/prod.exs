@@ -37,9 +37,9 @@ config :phoenix, :filter_parameters, [
 
 # Do not print debug messages in production and handle all
 # other reports by Elixir Logger with JSON back-end so that.
-# we can parse them in log analysys tools.
+# we can parse them in log analysis tools.
 # Notice: SASL reports turned off because of their verbosity.
-# Notice: Log level can be overriden on production with LOG_LEVEL environment variable.
+# Notice: Log level can be overridden on production with LOG_LEVEL environment variable.
 config :logger,
   backends: [LoggerJSON],
   utc_log: true,
