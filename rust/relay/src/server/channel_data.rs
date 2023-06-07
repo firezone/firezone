@@ -1,6 +1,7 @@
 use bytes::{BufMut, BytesMut};
 use std::io;
 
+#[derive(Debug)]
 pub struct ChannelData<'a> {
     channel: u16,
     data: &'a [u8],
