@@ -79,12 +79,17 @@ defmodule Domain.Resources do
   end
 
   defp resolve_address_multi(multi, type) do
-    Ecto.Multi.run(multi, type, fn _repo, %{resource: %Resource{} = resource} ->
-      if address = Map.get(resource, type) do
-        {:ok, address}
-      else
-        {:ok, Domain.Network.fetch_next_available_address!(resource.account_id, type)}
-      end
+    Ecto.Multi.run(multi, type, fn
+      _repo, %{resource: %Resource{type: :cidr}} ->
+        {:ok, nil}
+
+      _repo, %{resource: %Resource{type: :dns} = resource} ->
+        # TODO: make an index for the address column for cidrs to make sure ranges do not overlap ^
+        if address = Map.get(resource, type) do
+          {:ok, address}
+        else
+          {:ok, Domain.Network.fetch_next_available_address!(resource.account_id, type)}
+        end
     end)
   end
 

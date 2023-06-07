@@ -178,28 +178,46 @@ defmodule Domain.AuthTest do
       for _ <- 0..50 do
         test_pid = self()
 
-        spawn(fn ->
+        Task.async(fn ->
           allow_child_sandbox_access(test_pid)
 
           account = AccountsFixtures.create_account()
-          actor = ActorsFixtures.create_actor(account: account)
-
-          identity = AuthFixtures.create_identity(account: account, actor: actor)
-          subject = AuthFixtures.create_subject(identity)
 
           provider_one = AuthFixtures.create_email_provider(account: account)
           provider_two = AuthFixtures.create_email_provider(account: account)
 
-          for provider <- [provider_two, provider_one] do
-            spawn(fn ->
-              allow_child_sandbox_access(test_pid)
+          actor =
+            ActorsFixtures.create_actor(
+              type: :account_admin_user,
+              account: account,
+              provider: provider_one
+            )
 
-              assert disable_provider(provider, subject) ==
-                       {:error, :cant_disable_the_last_provider}
+          identity =
+            AuthFixtures.create_identity(
+              account: account,
+              actor: actor,
+              provider: provider_one
+            )
+
+          subject = AuthFixtures.create_subject(identity)
+
+          for provider <- [provider_two, provider_one] do
+            Task.async(fn ->
+              allow_child_sandbox_access(test_pid)
+              disable_provider(provider, subject)
             end)
           end
+          |> Task.await_many()
+
+          queryable =
+            Auth.Provider.Query.by_account_id(account.id)
+            |> Auth.Provider.Query.not_disabled()
+
+          assert Repo.aggregate(queryable, :count) == 1
         end)
       end
+      |> Task.await_many()
     end
 
     test "does not do anything when an provider is disabled twice", %{
@@ -359,28 +377,42 @@ defmodule Domain.AuthTest do
       for _ <- 0..50 do
         test_pid = self()
 
-        spawn(fn ->
+        Task.async(fn ->
           allow_child_sandbox_access(test_pid)
 
           account = AccountsFixtures.create_account()
-          actor = ActorsFixtures.create_actor(account: account)
-
-          identity = AuthFixtures.create_identity(account: account, actor: actor)
-          subject = AuthFixtures.create_subject(identity)
 
           provider_one = AuthFixtures.create_email_provider(account: account)
           provider_two = AuthFixtures.create_email_provider(account: account)
 
-          for provider <- [provider_two, provider_one] do
-            spawn(fn ->
-              allow_child_sandbox_access(test_pid)
+          actor =
+            ActorsFixtures.create_actor(
+              type: :account_admin_user,
+              account: account,
+              provider: provider_one
+            )
 
-              assert delete_provider(provider, subject) ==
-                       {:error, :cant_delete_the_last_provider}
+          identity =
+            AuthFixtures.create_identity(
+              account: account,
+              actor: actor,
+              provider: provider_one
+            )
+
+          subject = AuthFixtures.create_subject(identity)
+
+          for provider <- [provider_two, provider_one] do
+            Task.async(fn ->
+              allow_child_sandbox_access(test_pid)
+              delete_provider(provider, subject)
             end)
           end
+          |> Task.await_many()
+
+          assert Repo.aggregate(Auth.Provider.Query.by_account_id(account.id), :count) == 1
         end)
       end
+      |> Task.await_many()
     end
 
     test "returns error when provider is already deleted", %{

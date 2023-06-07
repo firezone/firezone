@@ -1,11 +1,11 @@
 defmodule Domain.Resources.Resource.Changeset do
   use Domain, :changeset
-  alias Domain.Accounts
+  alias Domain.{Accounts, Network}
   alias Domain.Resources.{Resource, Connection}
 
-  @fields ~w[address name]a
+  @fields ~w[address name type]a
   @update_fields ~w[name]a
-  @required_fields ~w[address]a
+  @required_fields ~w[address type]a
 
   def create_changeset(%Accounts.Account{} = account, attrs) do
     %Resource{}
@@ -17,6 +17,7 @@ defmodule Domain.Resources.Resource.Changeset do
       with: &Connection.Changeset.changeset(account.id, &1, &2),
       required: true
     )
+    |> validate_address()
   end
 
   def finalize_create_changeset(%Resource{} = resource, ipv4, ipv6) do
@@ -26,6 +27,40 @@ defmodule Domain.Resources.Resource.Changeset do
     |> put_change(:ipv6, ipv6)
     |> unique_constraint(:ipv4, name: :resources_account_id_ipv4_index)
     |> unique_constraint(:ipv6, name: :resources_account_id_ipv6_index)
+  end
+
+  defp validate_address(changeset) do
+    if has_errors?(changeset, :type) do
+      changeset
+    else
+      case fetch_field(changeset, :type) do
+        {_data_or_changes, :dns} ->
+          validate_dns_address(changeset)
+
+        {_data_or_changes, :cidr} ->
+          validate_cidr_address(changeset)
+
+        _other ->
+          changeset
+      end
+    end
+  end
+
+  defp validate_dns_address(changeset) do
+    validate_length(changeset, :address, min: 1, max: 253)
+  end
+
+  defp validate_cidr_address(changeset) do
+    changeset = validate_and_normalize_cidr(changeset, :address)
+
+    if has_errors?(changeset, :address) do
+      changeset
+    else
+      Network.cidrs()
+      |> Enum.reduce(changeset, fn {_type, cidr}, changeset ->
+        validate_not_in_cidr(changeset, :address, cidr)
+      end)
+    end
   end
 
   def update_changeset(%Resource{} = resource, attrs) do
@@ -48,6 +83,10 @@ defmodule Domain.Resources.Resource.Changeset do
     |> cast_embed(:filters, with: &cast_filter/2)
     |> unique_constraint(:ipv4, name: :resources_account_id_ipv4_index)
     |> unique_constraint(:ipv6, name: :resources_account_id_ipv6_index)
+    |> exclusion_constraint(:address,
+      name: :resources_account_id_cidr_address_index,
+      message: "can not overlap with other resource ranges"
+    )
   end
 
   def delete_changeset(%Resource{} = resource) do

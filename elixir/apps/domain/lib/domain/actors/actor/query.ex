@@ -16,7 +16,7 @@ defmodule Domain.Actors.Actor.Query do
     where(queryable, [actors: actors], actors.id == ^id)
   end
 
-  def by_account_id(queryable, account_id) do
+  def by_account_id(queryable \\ all(), account_id) do
     where(queryable, [actors: actors], actors.account_id == ^account_id)
   end
 

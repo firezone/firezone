@@ -12,8 +12,16 @@ defmodule API.Device.ChannelTest do
     device = DevicesFixtures.create_device(subject: subject)
     gateway = GatewaysFixtures.create_gateway(account: account)
 
-    resource =
+    dns_resource =
       ResourcesFixtures.create_resource(
+        account: account,
+        gateways: [%{gateway_id: gateway.id}]
+      )
+
+    cidr_resource =
+      ResourcesFixtures.create_resource(
+        type: :cidr,
+        address: "192.168.1.1/28",
         account: account,
         gateways: [%{gateway_id: gateway.id}]
       )
@@ -37,7 +45,8 @@ defmodule API.Device.ChannelTest do
       subject: subject,
       device: device,
       gateway: gateway,
-      resource: resource,
+      dns_resource: dns_resource,
+      cidr_resource: cidr_resource,
       socket: socket
     }
   end
@@ -67,18 +76,26 @@ defmodule API.Device.ChannelTest do
 
     test "sends list of resources after join", %{
       device: device,
-      resource: resource
+      dns_resource: dns_resource,
+      cidr_resource: cidr_resource
     } do
       assert_push "init", %{resources: resources, interface: interface}
 
-      assert resources == [
-               %{
-                 address: resource.address,
-                 id: resource.id,
-                 ipv4: resource.ipv4,
-                 ipv6: resource.ipv6
-               }
-             ]
+      assert %{
+               id: dns_resource.id,
+               type: :dns,
+               name: dns_resource.name,
+               address: dns_resource.address,
+               ipv4: dns_resource.ipv4,
+               ipv6: dns_resource.ipv6
+             } in resources
+
+      assert %{
+               id: cidr_resource.id,
+               type: :cidr,
+               name: cidr_resource.name,
+               address: cidr_resource.address
+             } in resources
 
       assert interface == %{
                ipv4: device.ipv4,
@@ -96,12 +113,19 @@ defmodule API.Device.ChannelTest do
       assert_reply ref, :error, :not_found
     end
 
-    test "returns error when there are no online relays", %{resource: resource, socket: socket} do
+    test "returns error when there are no online relays", %{
+      dns_resource: resource,
+      socket: socket
+    } do
       ref = push(socket, "list_relays", %{"resource_id" => resource.id})
       assert_reply ref, :error, :offline
     end
 
-    test "returns list of online relays", %{account: account, resource: resource, socket: socket} do
+    test "returns list of online relays", %{
+      account: account,
+      dns_resource: resource,
+      socket: socket
+    } do
       relay = RelaysFixtures.create_relay(account: account)
       stamp_secret = Ecto.UUID.generate()
       :ok = Domain.Relays.connect_relay(relay, stamp_secret)
@@ -112,8 +136,8 @@ defmodule API.Device.ChannelTest do
 
       ipv4_stun_uri = "stun:#{relay.ipv4}:#{relay.port}"
       ipv4_turn_uri = "turn:#{relay.ipv4}:#{relay.port}"
-      ipv6_stun_uri = "stun:#{relay.ipv6}:#{relay.port}"
-      ipv6_turn_uri = "turn:#{relay.ipv6}:#{relay.port}"
+      ipv6_stun_uri = "stun:[#{relay.ipv6}]:#{relay.port}"
+      ipv6_turn_uri = "turn:[#{relay.ipv6}]:#{relay.port}"
 
       assert [
                %{
@@ -165,7 +189,7 @@ defmodule API.Device.ChannelTest do
     end
 
     test "returns error when all gateways are offline", %{
-      resource: resource,
+      dns_resource: resource,
       socket: socket
     } do
       attrs = %{
@@ -180,7 +204,7 @@ defmodule API.Device.ChannelTest do
 
     test "returns error when all gateways connected to the resource are offline", %{
       account: account,
-      resource: resource,
+      dns_resource: resource,
       socket: socket
     } do
       attrs = %{
@@ -197,7 +221,7 @@ defmodule API.Device.ChannelTest do
     end
 
     test "broadcasts request_connection to the gateways and then returns connect message", %{
-      resource: resource,
+      dns_resource: resource,
       gateway: gateway,
       device: device,
       socket: socket

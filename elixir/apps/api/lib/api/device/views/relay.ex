@@ -8,7 +8,7 @@ defmodule API.Device.Views.Relay do
   def render(%Relays.Relay{} = relay, expires_at) do
     [
       maybe_render(relay, expires_at, relay.ipv4),
-      maybe_render(relay, expires_at, relay.ipv6)
+      maybe_render(relay, expires_at, "[#{relay.ipv6}]")
     ]
     |> List.flatten()
   end
