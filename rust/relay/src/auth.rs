@@ -93,7 +93,6 @@ mod tests {
     use stun_codec::rfc5389::attributes::Username;
     use stun_codec::rfc5389::methods::BINDING;
     use stun_codec::{Message, MessageClass, TransactionId};
-    use uuid::Uuid;
 
     const RELAY_SECRET_1: [u8; 32] =
         hex!("4c98bf59c99b3e467ecd7cf9d6b3e5279645fca59be67bc5bb4af3cf653761ab");
