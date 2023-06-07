@@ -133,6 +133,7 @@ IO.puts("")
 {:ok, dns_resource} =
   Resources.create_resource(
     %{
+      type: :dns,
       address: "gitlab.mycorp.com",
       connections: [%{gateway_id: gateway.id}]
     },
@@ -142,6 +143,7 @@ IO.puts("")
 {:ok, cidr_resource} =
   Resources.create_resource(
     %{
+      type: :cidr,
       address: "172.172.0.1/16",
       connections: [%{gateway_id: gateway.id}]
     },
@@ -151,5 +153,5 @@ IO.puts("")
 IO.puts("Created resources:")
 
 IO.puts("  #{dns_resource.address} - DNS - #{dns_resource.ipv4} - gateways: #{gateway_name}")
-IO.puts("  #{cidr_resource.address} - CIDR - #{cidr_resource.ipv4} - gateways: #{gateway_name}")
+IO.puts("  #{cidr_resource.address} - CIDR - gateways: #{gateway_name}")
 IO.puts("")
