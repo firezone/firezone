@@ -4,7 +4,7 @@ import { Flowbite } from "flowbite-react";
 import { Sidebar } from "flowbite-react";
 import { usePathname } from "next/navigation";
 
-// Overrides some of the default Sidebar spacing.
+// Overrides the default spacing to condense things a bit.
 // See https://github.com/themesberg/flowbite-react/blob/main/src/theme.ts
 const theme: CustomFlowbiteTheme = {
   sidebar: {
@@ -13,10 +13,17 @@ const theme: CustomFlowbiteTheme = {
     },
     item: {
       base: "flex items-center justify-center rounded-lg p-0 text-base font-normal text-gray-900 hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700",
+      collapsed: {
+        insideCollapse: "group w-full pl-3 transition duration-75",
+      },
     },
     collapse: {
       button:
         "group flex w-full items-center rounded-lg p-0 text-base font-normal text-gray-900 transition duration-75 hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700",
+      label: {
+        base: "ml-3 flex-1 whitespace-nowrap text-left",
+      },
+      list: "space-y-1 py-1",
     },
   },
 };
@@ -282,12 +289,6 @@ export default function DocsSidebar() {
                 active={p == "/docs/user-guides/egress-rules"}
               >
                 Egress Rules
-              </Sidebar.Item>
-              <Sidebar.Item
-                href="/docs/user-guides/client-instructions"
-                active={p == "/docs/user-guides/client-instructions"}
-              >
-                Client Instructions
               </Sidebar.Item>
               <Sidebar.Item
                 href="/docs/user-guides/client-instructions"

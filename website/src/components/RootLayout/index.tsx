@@ -1,9 +1,8 @@
 import { Metadata } from "next";
 import "@/app/globals.css";
-import "highlight.js/styles/github.css";
+import "highlight.js/styles/default.css";
 import RootNavbar from "@/components/RootNavbar";
 import { Source_Sans_Pro } from "next/font/google";
-
 const source_sans_pro = Source_Sans_Pro({
   subsets: ["latin"],
   weight: ["200", "300", "400", "600", "700", "900"],
@@ -17,8 +16,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={source_sans_pro.className}>
-        <RootNavbar />
-        {children}
+        <div className="antialiased w-screen flex mx-auto flex-wrap justify-center min-h-screen">
+          <RootNavbar />
+          {children}
+        </div>
       </body>
     </html>
   );
