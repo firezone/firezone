@@ -66,9 +66,10 @@ defmodule Domain.Types.CIDR do
   end
 
   def contains?(
-        %Postgrex.INET{} = cidr,
+        %Postgrex.INET{address: tuple} = cidr,
         %Postgrex.INET{address: {q, r, s, t, u, v, w, x}, netmask: nil}
-      ) do
+      )
+      when tuple_size(tuple) == 8 do
     {{a, b, c, d, e, f, g, h}, {i, j, k, l, m, n, o, p}} = range(cidr)
 
     q in a..i and
@@ -82,15 +83,32 @@ defmodule Domain.Types.CIDR do
   end
 
   def contains?(
-        %Postgrex.INET{} = cidr,
+        %Postgrex.INET{address: tuple} = cidr,
         %Postgrex.INET{address: {i, j, k, l}, netmask: nil}
-      ) do
+      )
+      when tuple_size(tuple) == 4 do
     {{a, b, c, d}, {e, f, g, h}} = range(cidr)
 
     i in a..e and
       j in b..f and
       k in c..g and
       l in d..h
+  end
+
+  def contains?(%Postgrex.INET{}, %Postgrex.INET{netmask: nil}) do
+    # IPv6 and IPv4 can not contain each other
+    false
+  end
+
+  def contains?(
+        %Postgrex.INET{} = cidr1,
+        %Postgrex.INET{} = cidr2
+      ) do
+    {range_start, range_end} = range(cidr2)
+
+    contains?(cidr1, %{cidr2 | netmask: nil}) or
+      contains?(cidr1, %Postgrex.INET{address: range_start}) or
+      contains?(cidr1, %Postgrex.INET{address: range_end})
   end
 
   def cast(%Postgrex.INET{} = struct), do: {:ok, struct}
