@@ -198,7 +198,10 @@ defmodule Domain.ResourcesTest do
       refute Map.has_key?(errors_on(changeset), :address)
     end
 
-    test "does not allow cidr addresses to overlap", %{account: account, subject: subject} do
+    test "does not allow cidr addresses to overlap for the same account", %{
+      account: account,
+      subject: subject
+    } do
       gateway = GatewaysFixtures.create_gateway(account: account)
 
       ResourcesFixtures.create_resource(
@@ -216,6 +219,9 @@ defmodule Domain.ResourcesTest do
 
       assert {:error, changeset} = create_resource(attrs, subject)
       assert "can not overlap with other resource ranges" in errors_on(changeset).address
+
+      subject = AuthFixtures.create_subject()
+      assert {:ok, _resource} = create_resource(attrs, subject)
     end
 
     test "returns error on duplicate name", %{account: account, subject: subject} do
