@@ -1,29 +1,6 @@
 repos:
   - repo: local
     hooks:
-      # Elixir config
-      - id: mix-compile
-        name: "elixir: mix compile"
-        entry: cd elixir && mix compile --force --warnings-as-errors
-        language: system
-        pass_filenames: false
-        files: \.ex$
-      - id: mix-format
-        name: "elixir: mix format"
-        entry: cd elixir && mix format --check-formatted
-        language: system
-      - id: mix-lint
-        name: "elixir: mix credo"
-        entry: cd elixir && mix credo --strict
-        language: system
-        pass_filenames: false
-        files: \.exs*$
-      - id: mix-analysis
-        name: "elixir: mix dialyzer"
-        entry: cd elixir && mix dialyzer --format dialyxir
-        language: system
-        pass_filenames: false
-        files: \.exs*$
       - id: codespell
         name: "python: codespell"
         entry: codespell
