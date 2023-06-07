@@ -1,5 +1,6 @@
 name: Codespell
 on:
+  pull_request:
   # TODO: Enable this for PRs against `cloud` when chaos settles
   # pull_request:
   push:
