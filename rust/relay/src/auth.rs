@@ -93,6 +93,7 @@ mod tests {
     use stun_codec::rfc5389::attributes::Username;
     use stun_codec::rfc5389::methods::BINDING;
     use stun_codec::{Message, MessageClass, TransactionId};
+    use uuid::Uuid;
 
     const RELAY_SECRET_1: [u8; 32] =
         hex!("4c98bf59c99b3e467ecd7cf9d6b3e5279645fca59be67bc5bb4af3cf653761ab");
@@ -107,6 +108,19 @@ mod tests {
         let password = generate_password(&RELAY_SECRET_1, expiry, SAMPLE_USERNAME);
 
         assert_eq!(password, "XnR4dOjSrxVx+3PR5/XIFKA80NckB04N7ndZMM6aoQg")
+    }
+
+    #[test]
+    fn generate_password_test_vector_elixir() {
+        let expiry = systemtime_from_unix(1685984278);
+
+        let password = generate_password(
+            "1cab293a-4032-46f4-862a-40e5d174b0d2".as_bytes(),
+            expiry,
+            "uvdgKvS9GXYZ_vmv",
+        );
+
+        assert_eq!(password, "6xUIoZ+QvxKhRasLifwfRkMXl+ETLJUsFkHlXjlHAkg")
     }
 
     #[test]
