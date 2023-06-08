@@ -2,7 +2,11 @@
 import { Tabs as FlowbiteTabs } from "flowbite-react";
 
 function TabsGroup({ children }: { children: React.ReactNode }) {
-  return <FlowbiteTabs.Group className="mb-4">{children}</FlowbiteTabs.Group>;
+  return (
+    <div className="mb-4">
+      <FlowbiteTabs.Group className="shadow">{children}</FlowbiteTabs.Group>
+    </div>
+  );
 }
 
 function TabsItem({
