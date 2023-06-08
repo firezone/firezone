@@ -84,7 +84,6 @@ defmodule Domain.Resources do
         {:ok, nil}
 
       _repo, %{resource: %Resource{type: :dns} = resource} ->
-        # TODO: make an index for the address column for cidrs to make sure ranges do not overlap ^
         if address = Map.get(resource, type) do
           {:ok, address}
         else
