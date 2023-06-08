@@ -9,7 +9,7 @@ export default function RootNavbar() {
   return (
     <header>
       <nav className="fixed top-0 left-0 right-0 bg-white border-b border-gray-200 z-50">
-        <div className="max-w-screen-xl flex flex-wrap mx-auto py-2 justify-between items-center">
+        <div className="w-full flex flex-wrap py-2 justify-between items-center">
           <div className="flex justify-start items-center">
             <SidebarToggle />
             <Link href="/">
@@ -17,7 +17,7 @@ export default function RootNavbar() {
                 width={150}
                 height={150}
                 src="/logo.svg"
-                className="mr-3 h-auto"
+                className="ml-2 mr-3 h-auto"
                 alt="Firezone Logo"
               />
             </Link>
