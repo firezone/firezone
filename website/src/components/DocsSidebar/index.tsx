@@ -1,43 +1,10 @@
 "use client";
-import Link from "next/link";
-import type { CustomFlowbiteTheme } from "flowbite-react";
-import { Flowbite } from "flowbite-react";
-import { Sidebar } from "flowbite-react";
-import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 import { initFlowbite } from "flowbite";
-
-// Overrides the default spacing to condense things a bit.
-// See https://github.com/themesberg/flowbite-react/blob/main/src/theme.ts
-const theme: CustomFlowbiteTheme = {
-  sidebar: {
-    root: {
-      base: "z-40 w-64 h-screen pt-14 transition-transform -translate-x-full bg-white border-r border-gray-200 sm:translate-x-0 dark:bg-gray-800 dark:border-gray-700",
-    },
-    item: {
-      base: "flex items-center justify-center rounded-lg p-0 text-base font-normal text-gray-900 hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700",
-      collapsed: {
-        insideCollapse: "group w-full pl-3 transition duration-75",
-      },
-    },
-    collapse: {
-      button:
-        "group flex w-full items-center rounded-lg p-0 text-base font-normal text-gray-900 transition duration-75 hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700",
-      label: {
-        base: "ml-3 flex-1 whitespace-nowrap text-left",
-      },
-      list: "space-y-1 py-1",
-    },
-  },
-};
+import Collapse from "./Collapse";
+import Item from "./Item";
 
 export default function DocsSidebar() {
-  const p = usePathname();
-
-  function active(path: string) {
-    return p == path ? "bg-gray-100 dark:bg-gray-700 " : "";
-  }
-
   useEffect(() => {
     // Manually init flowbite's data-toggle listeners since we're using custom components
     initFlowbite();
@@ -48,117 +15,329 @@ export default function DocsSidebar() {
       id="docs-sidebar"
       aria-label="Sidebar"
       aria-hidden="true"
-      className="z-40 fixed top-0 left-0 w-64 h-screen pt-14 transition-transform -translate-x-full bg-white border-r border-gray-200 md:translate-x-0 dark:bg-gray-800 dark:border-gray-700"
+      className="z-40 fixed top-0 left-0 w-48 h-screen pt-14 transition-transform -translate-x-full bg-white border-r border-gray-200 md:translate-x-0 dark:bg-gray-800 dark:border-gray-700"
     >
       <div className="h-full overflow-y-auto bg-white dark:bg-gray-800">
         <ul className="space-y-2 font-medium">
           <li>
-            <Link
-              href="/docs"
-              className={
-                active("/docs") +
-                "flex items-center justify-left rounded-lg p-0 text-base font-normal text-gray-900 hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700"
-              }
-            >
-              <span className="ml-3">Overview</span>
-            </Link>
+            <Item href="/docs" label="Overview" />
           </li>
           <li>
-            <button
-              type="button"
-              className="flex items-center w-full p-2 text-gray-900 transition duration-75 rounded-lg group hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700"
-              aria-controls="deploy-dropdown"
-              data-collapse-toggle="deploy-dropdown"
-            >
-              <span
-                className="flex-1 ml-3 text-left whitespace-nowrap"
-                sidebar-toggle-item
-              >
-                Deploy
-              </span>
-              <svg
-                sidebar-toggle-item
-                className="w-6 h-6"
-                fill="currentColor"
-                viewBox="0 0 20 20"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-                  clipRule="evenodd"
-                ></path>
-              </svg>
-            </button>
-            <ul id="deploy-dropdown" className="hidden py-2 space-y-2">
+            <Collapse label="Deploy">
               <li>
-                <Link
-                  href="/docs/deploy"
-                  className={
-                    active("/docs/deploy") +
-                    "flex items-center justify-left rounded-lg p-0 text-base font-normal text-gray-900 hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700"
-                  }
-                >
-                  <span className="ml-3">Overview</span>
-                </Link>
+                <Item href="/docs/deploy" label="Overview" />
               </li>
               <li>
-                <button
-                  type="button"
-                  className="flex items-center w-full p-2 text-gray-900 transition duration-75 rounded-lg group hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700"
-                  aria-controls="deploy-docker-dropdown"
-                  data-collapse-toggle="deploy-docker-dropdown"
-                >
-                  <span
-                    className="flex-1 ml-3 text-left whitespace-nowrap"
-                    sidebar-toggle-item
-                  >
-                    Docker
-                  </span>
-                  <svg
-                    sidebar-toggle-item
-                    className="w-6 h-6"
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-                      clipRule="evenodd"
-                    ></path>
-                  </svg>
-                </button>
+                <Collapse label="Docker">
+                  <li>
+                    <Item href="/docs/deploy/docker" label="Overview" />
+                  </li>
+                  <li>
+                    <Item
+                      href="/docs/deploy/docker/supported-platforms"
+                      label="Supported Platforms"
+                    />
+                  </li>
+                </Collapse>
               </li>
               <li>
-                <button
-                  type="button"
-                  className="flex items-center w-full p-2 text-gray-900 transition duration-75 rounded-lg group hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700"
-                  aria-controls="deploy-omnibus-dropdown"
-                  data-collapse-toggle="deploy-omnibus-dropdown"
-                >
-                  <span
-                    className="flex-1 ml-3 text-left whitespace-nowrap"
-                    sidebar-toggle-item
-                  >
-                    Omnibus
-                  </span>
-                  <svg
-                    sidebar-toggle-item
-                    className="w-6 h-6"
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-                      clipRule="evenodd"
-                    ></path>
-                  </svg>
-                </button>
+                <Collapse label="Omnibus">
+                  <li>
+                    <Item href="/docs/deploy/omnibus" label="Overview" />
+                  </li>
+                  <li>
+                    <Item
+                      href="/docs/deploy/omnibus/supported-platforms"
+                      label="Supported Platforms"
+                    />
+                  </li>
+                </Collapse>
               </li>
-            </ul>
+              <li>
+                <Item href="/docs/deploy/configure" label="Configure" />
+              </li>
+              <li>
+                <Item
+                  href="/docs/deploy/security-considerations"
+                  label="Security Considerations"
+                />
+              </li>
+              <li>
+                <Collapse label="Advanced">
+                  <li>
+                    <Item
+                      href="/docs/deploy/advanced/build-from-source"
+                      label="Build from Source"
+                    />
+                  </li>
+                  <li>
+                    <Item
+                      href="/docs/deploy/advanced/external-database"
+                      label="External Database"
+                    />
+                  </li>
+                  <li>
+                    <Item
+                      href="/docs/deploy/advanced/reverse-proxy"
+                      label="Custom Reverse Proxy"
+                    />
+                  </li>
+                </Collapse>
+              </li>
+            </Collapse>
+          </li>
+          <li>
+            <Collapse label="Authenticate">
+              <li>
+                <Item href="/docs/authenticate" label="Overview" />
+              </li>
+              <li>
+                <Item
+                  href="/docs/authenticate/local-auth"
+                  label="Local Authentication"
+                />
+              </li>
+              <li>
+                <Item
+                  href="/docs/authenticate/multi-factor"
+                  label="Multi-Factor Authentication"
+                />
+              </li>
+              <li>
+                <Collapse label="OpenID Connect">
+                  <li>
+                    <Item href="/docs/authenticate/oidc" label="Overview" />
+                  </li>
+                  <li>
+                    <Item href="/docs/authenticate/oidc/auth0" label="Auth0" />
+                  </li>
+                  <li>
+                    <Item
+                      href="/docs/authenticate/oidc/azuread"
+                      label="Azure AD"
+                    />
+                  </li>
+                  <li>
+                    <Item
+                      href="/docs/authenticate/oidc/google"
+                      label="Google Workspace"
+                    />
+                  </li>
+                  <li>
+                    <Item
+                      href="/docs/authenticate/oidc/keycloak"
+                      label="Keycloak"
+                    />
+                  </li>
+                  <li>
+                    <Item href="/docs/authenticate/oidc/okta" label="Okta" />
+                  </li>
+                  <li>
+                    <Item
+                      href="/docs/authenticate/oidc/onelogin"
+                      label="Onelogin"
+                    />
+                  </li>
+                  <li>
+                    <Item
+                      href="/docs/authenticate/oidc/zitadel"
+                      label="Zitadel"
+                    />
+                  </li>
+                </Collapse>
+              </li>
+              <li>
+                <Collapse label="SAML 2.0">
+                  <li>
+                    <Item href="/docs/authenticate/saml" label="Overview" />
+                  </li>
+                  <li>
+                    <Item href="/docs/authenticate/saml/okta" label="Okta" />
+                  </li>
+                  <li>
+                    <Item
+                      href="/docs/authenticate/saml/onelogin"
+                      label="Onelogin"
+                    />
+                  </li>
+                  <li>
+                    <Item
+                      href="/docs/authenticate/saml/jumpcloud"
+                      label="Jumpcloud"
+                    />
+                  </li>
+                </Collapse>
+              </li>
+            </Collapse>
+          </li>
+          <li>
+            <Collapse label="Administer">
+              <li>
+                <Item
+                  href="/docs/administer/migrate"
+                  label="Migrate to Docker"
+                />
+              </li>
+              <li>
+                <Item href="/docs/administer/upgrade" label="Upgrade" />
+              </li>
+              <li>
+                <Item href="/docs/administer/backup" label="Backup" />
+              </li>
+              <li>
+                <Item href="/docs/administer/uninstall" label="Uninstall" />
+              </li>
+              <li>
+                <Item
+                  href="/docs/administer/troubleshoot"
+                  label="Troubleshoot"
+                />
+              </li>
+              <li>
+                <Item
+                  href="/docs/administer/regen-keys"
+                  label="Regenerate Secret Keys"
+                />
+              </li>
+              <li>
+                <Item href="/docs/administer/debug-logs" label="Debug Logs" />
+              </li>
+            </Collapse>
+          </li>
+          <li>
+            <Collapse label="User Guides">
+              <li>
+                <Item href="/docs/user-guides/add-users" label="Add Users" />
+              </li>
+              <li>
+                <Item
+                  href="/docs/user-guides/add-devices"
+                  label="Add Devices"
+                />
+              </li>
+              <li>
+                <Item
+                  href="/docs/user-guides/egress-rules"
+                  label="Egress Rules"
+                />
+              </li>
+              <li>
+                <Item
+                  href="/docs/user-guides/client-instructions"
+                  label="Client Instructions"
+                />
+              </li>
+              <li>
+                <Collapse label="Common Use Cases">
+                  <li>
+                    <Item
+                      href="/docs/user-guides/common-use-cases/split-tunnel"
+                      label="Split Tunnel"
+                    />
+                  </li>
+                  <li>
+                    <Item
+                      href="/docs/user-guides/common-use-cases/reverse-tunnel"
+                      label="Reverse Tunnel"
+                    />
+                  </li>
+                  <li>
+                    <Item
+                      href="/docs/user-guides/common-use-cases/nat-gateway"
+                      label="NAT Gateway"
+                    />
+                  </li>
+                </Collapse>
+              </li>
+            </Collapse>
+          </li>
+          <li>
+            <Collapse label="Reference">
+              <li>
+                <Item
+                  href="/docs/reference/env-vars"
+                  label="Environment Variables"
+                />
+              </li>
+              <li>
+                <Item
+                  href="/docs/reference/configuration-file"
+                  label="Configuration File"
+                />
+              </li>
+              <li>
+                <Item
+                  href="/docs/reference/file-and-directory-locations"
+                  label="File and Directory Locations"
+                />
+              </li>
+              <li>
+                <Item href="/docs/reference/telemetry" label="Telemetry" />
+              </li>
+              <li>
+                <Collapse label="Reverse Proxy Templates">
+                  <li>
+                    <Item
+                      href="/docs/reference/proxy-templates/apache"
+                      label="Apache"
+                    />
+                  </li>
+                  <li>
+                    <Item
+                      href="/docs/reference/proxy-templates/traefik"
+                      label="Traefik"
+                    />
+                  </li>
+                  <li>
+                    <Item
+                      href="/docs/reference/proxy-templates/haproxy"
+                      label="HAProxy"
+                    />
+                  </li>
+                </Collapse>
+              </li>
+              <li>
+                <Collapse label="Firewall Templates">
+                  <li>
+                    <Item
+                      href="/docs/reference/firewall-templates/nftables"
+                      label="nftables"
+                    />
+                  </li>
+                </Collapse>
+              </li>
+              <li>
+                <Collapse label="REST API">
+                  <li>
+                    <Item href="/docs/reference/rest-api" label="Overview" />
+                  </li>
+                  <li>
+                    <Item href="/docs/reference/rest-api/users" label="Users" />
+                  </li>
+                  <li>
+                    <Item
+                      href="/docs/reference/rest-api/configurations"
+                      label="Configurations"
+                    />
+                  </li>
+                  <li>
+                    <Item
+                      href="/docs/reference/rest-api/devices"
+                      label="Devices"
+                    />
+                  </li>
+                  <li>
+                    <Item href="/docs/reference/rest-api/rules" label="Rules" />
+                  </li>
+                </Collapse>
+              </li>
+              <li>
+                <Item
+                  href="/docs/reference/security-controls"
+                  label="Security Controls"
+                />
+              </li>
+            </Collapse>
           </li>
         </ul>
       </div>

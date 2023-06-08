@@ -1,6 +1,6 @@
 import { usePathname } from "next/navigation";
 
-export default function DocsSidebarToggle() {
+export default function SidebarToggle() {
   const p = usePathname();
 
   if (p.startsWith("/docs")) {
