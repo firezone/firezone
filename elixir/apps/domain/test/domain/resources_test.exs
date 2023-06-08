@@ -284,7 +284,7 @@ defmodule Domain.ResourcesTest do
 
       assert {:ok, resource} = create_resource(attrs, subject)
 
-      assert resource.address == attrs.address
+      assert resource.address == "192.168.1.0/28"
       assert resource.name == attrs.address
       assert resource.account_id == account.id
 
