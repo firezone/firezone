@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { initFlowbite } from "flowbite";
 import Collapse from "./Collapse";
 import Item from "./Item";
+import SearchForm from "./SearchForm";
 import { usePathname } from "next/navigation";
 
 export default function DocsSidebar() {
@@ -20,7 +21,8 @@ export default function DocsSidebar() {
       aria-hidden="true"
       className="z-40 fixed top-0 left-0 w-64 h-screen pt-24 transition-transform -translate-x-full bg-white border-r border-gray-200 md:translate-x-0 dark:bg-gray-800 dark:border-gray-700"
     >
-      <div className="h-full overflow-y-auto bg-white dark:bg-gray-800">
+      <SearchForm />
+      <div className="pt-3 mt-5 h-full overflow-y-auto bg-white dark:bg-gray-800 pr-3">
         <ul className="space-y-2 font-medium">
           <li>
             <Item href="/docs" label="Overview" />
