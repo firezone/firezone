@@ -53,13 +53,21 @@ defmodule Domain.Resources.Resource.Changeset do
   defp validate_cidr_address(changeset) do
     changeset = validate_and_normalize_cidr(changeset, :address)
 
-    if has_errors?(changeset, :address) do
-      changeset
-    else
-      Network.cidrs()
-      |> Enum.reduce(changeset, fn {_type, cidr}, changeset ->
-        validate_not_in_cidr(changeset, :address, cidr)
-      end)
+    cond do
+      has_errors?(changeset, :address) ->
+        changeset
+
+      get_field(changeset, :address) == "0.0.0.0/0" ->
+        changeset
+
+      get_field(changeset, :address) == "::/0" ->
+        changeset
+
+      true ->
+        Network.cidrs()
+        |> Enum.reduce(changeset, fn {_type, cidr}, changeset ->
+          validate_not_in_cidr(changeset, :address, cidr)
+        end)
     end
   end
 

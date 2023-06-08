@@ -168,7 +168,8 @@ defmodule Domain.Validator do
     validate_change(changeset, ip_or_cidr_field, fn _ip_or_cidr_field, ip_or_cidr ->
       case Domain.Types.INET.cast(ip_or_cidr) do
         {:ok, ip_or_cidr} ->
-          if Domain.Types.CIDR.contains?(cidr, ip_or_cidr) do
+          if Domain.Types.CIDR.contains?(cidr, ip_or_cidr) or
+               Domain.Types.CIDR.contains?(ip_or_cidr, cidr) do
             [{ip_or_cidr_field, "can not be in the CIDR #{cidr}"}]
           else
             []
@@ -183,6 +184,8 @@ defmodule Domain.Validator do
   def validate_and_normalize_cidr(changeset, field, _opts \\ []) do
     with {_data_or_changes, value} <- fetch_change(changeset, field),
          {:ok, cidr} <- Domain.Types.CIDR.cast(value) do
+      {range_start, _range_end} = Domain.Types.CIDR.range(cidr)
+      cidr = %{cidr | address: range_start}
       put_change(changeset, field, to_string(cidr))
     else
       :error ->
