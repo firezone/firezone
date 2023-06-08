@@ -11,16 +11,16 @@ this category, [contact us ](/contact/sales) about a custom integration.
 
 The following OIDC providers are known to work well with Firezone:
 
-| Provider                             | Support Status                 | Notes                                                                                                                                                  |
-| ------------------------------------ | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [Azure Active Directory](azuread)    | **Fully tested and supported** | Ensure the [`email` claim](https://learn.microsoft.com/en-us/azure/active-directory/develop/active-directory-optional-claims) is present in the token. |
-| [Okta](okta)                         | **Fully tested and supported** |                                                                                                                                                        |
-| [Onelogin](onelogin)                 | **Fully tested and supported** |                                                                                                                                                        |
-| [Keycloak](https://www.keycloak.org) | **Fully tested and supported** |                                                                                                                                                        |
-| [Auth0](auth0)                       | **Fully tested and supported** | Auth0 does not provide an `end_session_uri` in its OIDC discovery document. Signing out of Auth0 from Firezone is not supported.                       |
-| [Google Workspace](google)           | **Fully tested and supported** | Google does not provide an `end_session_uri` in its OIDC discovery document. Signing out of Google Workspace from Firezone is not supported.           |
-| [Zitadel](zitadel)                   | Untested but known to work     |                                                                                                                                                        |
-| [Authentik](https://goauthentik.io)  | Untested but known to work     |                                                                                                                                                        |
+| Provider                                                  | Support Status                 | Notes                                                                                                                                                  |
+| --------------------------------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [Azure Active Directory](/docs/authenticate/oidc/azuread) | **Fully tested and supported** | Ensure the [`email` claim](https://learn.microsoft.com/en-us/azure/active-directory/develop/active-directory-optional-claims) is present in the token. |
+| [Okta](/docs/authenticate/oidc/okta)                      | **Fully tested and supported** |                                                                                                                                                        |
+| [Onelogin](/docs/authenticate/oidc/onelogin)              | **Fully tested and supported** |                                                                                                                                                        |
+| [Keycloak](/docs/authenticate/oidc/keycloak)              | **Fully tested and supported** |                                                                                                                                                        |
+| [Auth0](/docs/authenticate/oidc/auth0)                    | **Fully tested and supported** | Auth0 does not provide an `end_session_uri` in its OIDC discovery document. Signing out of Auth0 from Firezone is not supported.                       |
+| [Google Workspace](/docs/authenticate/oidc/google)        | **Fully tested and supported** | Google does not provide an `end_session_uri` in its OIDC discovery document. Signing out of Google Workspace from Firezone is not supported.           |
+| [Zitadel](/docs/authenticate/oidc/zitadel)                | Untested but known to work     |                                                                                                                                                        |
+| [Authentik](https://goauthentik.io)                       | Untested but known to work     |                                                                                                                                                        |
 
 ## General setup guide
 
