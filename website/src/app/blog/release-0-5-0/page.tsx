@@ -13,7 +13,7 @@ export default function Page() {
     <Post
       authorName="Jamil Bou Kheir"
       authorTitle="Founder & CEO"
-      authorAvatar="https://www.gravatar.com/avatar/3c8434814eec26026718e992322648c8"
+      authorEmail="jamil@firezone.dev"
       title="Firezone 0.5.0 Released!"
       date="July 25, 2022"
     >

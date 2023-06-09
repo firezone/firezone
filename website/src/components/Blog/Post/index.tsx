@@ -1,16 +1,17 @@
 import Image from "next/image";
+import gravatar from "@/lib/gravatar";
 
 export default function Post({
   authorName,
   authorTitle,
-  authorAvatar,
+  authorEmail,
   title,
   date,
   children,
 }: {
   authorName: string;
   authorTitle: string;
-  authorAvatar: string;
+  authorEmail: string;
   title: string;
   date: string;
   children: React.ReactNode;
@@ -36,7 +37,7 @@ export default function Post({
                     width={64}
                     height={64}
                     className="mr-4 w-16 h-16 rounded-full"
-                    src={authorAvatar}
+                    src={gravatar(authorEmail)}
                     alt={authorName}
                   />
                   <div>
