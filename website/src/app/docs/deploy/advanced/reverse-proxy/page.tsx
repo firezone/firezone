@@ -2,7 +2,7 @@ import Content from "./readme.mdx";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Firezone Docs • Custom reverse proxy",
+  title: "Custom Reverse Proxy • Firezone Docs",
   description: "Using a custom reverse proxy with Firezone.",
 };
 

@@ -2,8 +2,8 @@ import Content from "./readme.mdx";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Firezone Docs • REST API: Users",
-  description: "Firezone REST API: Users",
+  title: "REST API: Users • Firezone Docs",
+  description: "REST API documentation for users in Firezone.",
 };
 
 export default function Page() {

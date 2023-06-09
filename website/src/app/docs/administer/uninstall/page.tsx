@@ -2,7 +2,7 @@ import Content from "./readme.mdx";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Firezone Docs • Uninstall Firezone",
+  title: "Uninstall • Firezone Docs",
   description: "Firezone can be uninstalled in a few simple steps.",
 };
 

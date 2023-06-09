@@ -2,7 +2,7 @@ import Content from "./readme.mdx";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Firezone Docs • Regenerate Secret Keys",
+  title: "Regenerate Secret Keys • Firezone Docs",
   description: "Instructions for renegerating application secret keys.",
 };
 

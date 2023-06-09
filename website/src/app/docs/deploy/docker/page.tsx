@@ -2,7 +2,7 @@ import Content from "./readme.mdx";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Firezone Docs • Install Firezone with Docker",
+  title: "Install Firezone with Docker • Firezone Docs",
   description:
     "Install Firezone via Docker to manage secure remote access to private networks and resources.",
 };

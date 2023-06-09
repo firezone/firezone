@@ -2,7 +2,7 @@ import Content from "./readme.mdx";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Firezone Docs • Supported platforms for Omnibus",
+  title: "Support Platforms for Omnibus • Firezone Docs",
   description: "Supported platforms for Omnibus-based deployments of Firezone.",
 };
 

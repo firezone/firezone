@@ -2,7 +2,7 @@ import Content from "./readme.mdx";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Firezone Docs • Install Firezone with Omnibus",
+  title: "Install Firezone with Omnibus • Firezone Docs",
   description:
     "Install Firezone via our Omnibus deployment option to manage secure access to private networks and resources.",
 };

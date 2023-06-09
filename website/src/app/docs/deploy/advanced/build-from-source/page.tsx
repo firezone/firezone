@@ -2,7 +2,7 @@ import Content from "./readme.mdx";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Firezone Docs • Build from source",
+  title: "Build From Source • Firezone Docs",
   description: "How to build Firezone from source.",
 };
 

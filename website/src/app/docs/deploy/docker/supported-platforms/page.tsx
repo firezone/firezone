@@ -2,7 +2,7 @@ import Content from "./readme.mdx";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Firezone Docs • Docker supported platforms",
+  title: "Supported Platforms for Docker • Firezone Docs",
   description: "Docker supported platforms for Firezone.",
 };
 
