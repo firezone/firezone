@@ -17,6 +17,7 @@
     "@types/node": "20.2.3",
     "@types/react": "18.2.6",
     "@types/react-dom": "18.2.4",
+    "asciinema-player": "^3.4.0",
     "autoprefixer": "10.4.14",
     "flowbite": "^1.6.5",
     "flowbite-react": "^0.4.4",

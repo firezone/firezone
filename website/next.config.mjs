@@ -19,6 +19,7 @@ import langYaml from "highlight.js/lib/languages/yaml";
 import langJson from "highlight.js/lib/languages/json";
 import langBash from "highlight.js/lib/languages/bash";
 import langRust from "highlight.js/lib/languages/rust";
+import langRuby from "highlight.js/lib/languages/ruby";
 
 const highlightLanguages = {
   elixir: langElixir,
@@ -26,6 +27,7 @@ const highlightLanguages = {
   json: langJson,
   bash: langBash,
   rust: langRust,
+  ruby: langRuby,
 };
 
 /** @type {import('next').NextConfig} */
