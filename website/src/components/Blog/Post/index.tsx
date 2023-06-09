@@ -1,9 +1,32 @@
 import Image from "next/image";
 
-export default function BlogPost({ children }: { children: React.ReactNode }) {
+export default function Post({
+  authorName,
+  authorTitle,
+  authorAvatar,
+  title,
+  date,
+  children,
+}: {
+  authorName: string;
+  authorTitle: string;
+  authorAvatar: string;
+  title: string;
+  date: string;
+  children: React.ReactNode;
+}) {
   return (
     <>
-      <main className="pt-24 pb-16 lg:pb-24 bg-white dark:bg-gray-900">
+      <div className="bg-violet-50 mx-auto w-screen text-center lg:mb-16 mb-8">
+        <Image
+          alt="Firezone logo"
+          width={250}
+          height={250}
+          src="/images/logo-main.svg"
+          className="my-12 mx-auto"
+        />
+      </div>
+      <main className="pb-16 lg:pb-24 bg-white dark:bg-gray-900">
         <div className="flex justify-between px-4 mx-auto max-w-screen-xl ">
           <article className="mx-auto w-full max-w-2xl format format-sm sm:format-base lg:format-lg format-blue dark:format-invert">
             <header className="mb-4 lg:mb-6 not-format">
@@ -13,8 +36,8 @@ export default function BlogPost({ children }: { children: React.ReactNode }) {
                     width={64}
                     height={64}
                     className="mr-4 w-16 h-16 rounded-full"
-                    src="https://flowbite.com/docs/images/people/profile-picture-2.jpg"
-                    alt="Jese Leos"
+                    src={authorAvatar}
+                    alt={authorName}
                   />
                   <div>
                     <a
@@ -22,21 +45,21 @@ export default function BlogPost({ children }: { children: React.ReactNode }) {
                       rel="author"
                       className="text-xl font-bold text-gray-900 dark:text-white"
                     >
-                      Jese Leos
+                      {authorName}
                     </a>
                     <p className="text-base font-light text-gray-500 dark:text-gray-400">
-                      Graphic Designer, educator & CEO Flowbite
+                      {authorTitle}
                     </p>
                     <p className="text-base font-light text-gray-500 dark:text-gray-400">
                       <time dateTime="2022-02-08" title="February 8th, 2022">
-                        Feb. 8, 2022
+                        {date}
                       </time>
                     </p>
                   </div>
                 </div>
               </address>
-              <h1 className="mb-4 text-3xl font-extrabold leading-tight text-gray-900 lg:mb-6 lg:text-4xl dark:text-white">
-                Best practices for successful prototypes
+              <h1 className="mb-4 text-3xl font-extrabold leading-tight text-gray-900 lg:mb-6 lg:text-5xl dark:text-white">
+                {title}
               </h1>
             </header>
             {children}

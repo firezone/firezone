@@ -11,9 +11,9 @@ export default function Footer() {
               <Image
                 width={150}
                 height={150}
-                src="/logo.svg"
+                src="/images/logo-text.svg"
                 className="h-auto"
-                alt="FlowBite Logo"
+                alt="Firezone Logo"
               />
             </Link>
           </div>

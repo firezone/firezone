@@ -4,6 +4,7 @@ import Link from "next/link";
 import SidebarToggle from "./SidebarToggle";
 import { Navbar } from "flowbite-react";
 import { usePathname } from "next/navigation";
+import DeployButton from "@/components/DeployButton";
 
 export default function RootNavbar() {
   const p = usePathname();
@@ -18,11 +19,22 @@ export default function RootNavbar() {
               <Image
                 width={150}
                 height={150}
-                src="/logo.svg"
+                src="/images/logo-text.svg"
                 className="ml-2 mr-5 h-auto"
                 alt="Firezone Logo"
               />
             </Link>
+            <span className="p-2 mr-4 border-gray-200 border-r"></span>
+            <Link
+              className={
+                (p == "/" ? "text-gray-900 underline" : "text-gray-600") +
+                " p-2 mr-2 hover:text-gray-900 hover:underline rounded-lg"
+              }
+              href="/"
+            >
+              Home
+            </Link>
+            <span className="p-2 mr-4 border-gray-200 border-r"></span>
             <Link
               className={
                 (p.startsWith("/docs")
@@ -34,9 +46,10 @@ export default function RootNavbar() {
             >
               Docs
             </Link>
+            <span className="p-2 mr-4 border-gray-200 border-r"></span>
             <Link
               className={
-                (p.startsWith("/contact")
+                (p.startsWith("/contact/sales")
                   ? "text-gray-900 underline"
                   : "text-gray-600") +
                 " p-2 mr-2 hover:text-gray-900 hover:underline rounded-lg"
@@ -45,8 +58,37 @@ export default function RootNavbar() {
             >
               Contact
             </Link>
+            <span className="p-2 mr-4 border-gray-200 border-r"></span>
+            <Link
+              className={
+                (p.startsWith("/contact/newsletter")
+                  ? "text-gray-900 underline"
+                  : "text-gray-600") +
+                " p-2 mr-2 hover:text-gray-900 hover:underline rounded-lg"
+              }
+              href="/contact/newsletter"
+            >
+              Newsletter
+            </Link>
           </div>
-          <div className="flex items-center lg:order-2"></div>
+          <div className="flex items-center lg:order-2">
+            <Link
+              href="https://github.com/firezone/firezone"
+              className="mr-4"
+              aria-label="GitHub Repository"
+            >
+              <Image
+                alt="Github Repo stars"
+                height={50}
+                width={100}
+                className=""
+                src="https://img.shields.io/github/stars/firezone/firezone?label=Stars&amp;style=social"
+              />
+            </Link>
+            <span className="mr-2">
+              <DeployButton />
+            </span>
+          </div>
         </div>
       </nav>
     </header>

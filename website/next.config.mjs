@@ -34,7 +34,11 @@ const highlightLanguages = {
 const nextConfig = {
   pageExtensions: ["js", "jsx", "ts", "tsx", "md", "mdx"],
   images: {
+    dangerouslyAllowSVG: true,
     remotePatterns: [
+      {
+        hostname: "img.shields.io",
+      },
       {
         hostname: "user-images.githubusercontent.com",
       },
@@ -43,6 +47,9 @@ const nextConfig = {
       },
       {
         hostname: "flowbite.s3.amazonaws.com",
+      },
+      {
+        hostname: "www.gravatar.com",
       },
     ],
   },

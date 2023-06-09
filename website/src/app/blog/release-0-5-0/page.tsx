@@ -1,5 +1,5 @@
 import Image from "next/image";
-import BlogPost from "@/components/BlogPost";
+import Post from "@/components/Blog/Post";
 import Content from "./readme.mdx";
 import { Metadata } from "next";
 
@@ -10,8 +10,14 @@ export const metadata: Metadata = {
 
 export default function Page() {
   return (
-    <BlogPost>
+    <Post
+      authorName="Jamil Bou Kheir"
+      authorTitle="Founder & CEO"
+      authorAvatar="https://www.gravatar.com/avatar/3c8434814eec26026718e992322648c8"
+      title="Firezone 0.5.0 Released!"
+      date="July 25, 2022"
+    >
       <Content />
-    </BlogPost>
+    </Post>
   );
 }
