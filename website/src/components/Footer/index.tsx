@@ -28,6 +28,11 @@ export default function Footer() {
                     Home
                   </Link>
                 </li>
+                <li className="mb-4">
+                  <Link href="/team" className="hover:underline">
+                    Team
+                  </Link>
+                </li>
                 <li>
                   <Link
                     href="https://www.ycombinator.com/companies/firezone"

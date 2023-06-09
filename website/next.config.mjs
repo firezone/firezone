@@ -36,6 +36,12 @@ const nextConfig = {
       {
         hostname: "user-images.githubusercontent.com",
       },
+      {
+        hostname: "flowbite.com",
+      },
+      {
+        hostname: "flowbite.s3.amazonaws.com",
+      },
     ],
   },
 };
