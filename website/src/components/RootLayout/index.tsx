@@ -2,6 +2,7 @@ import { Metadata } from "next";
 import "@/app/globals.css";
 import "highlight.js/styles/default.css";
 import RootNavbar from "@/components/RootNavbar";
+import Providers from "@/app/Providers";
 import Footer from "@/components/Footer";
 import { Source_Sans_Pro } from "next/font/google";
 const source_sans_pro = Source_Sans_Pro({
@@ -16,13 +17,15 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={source_sans_pro.className}>
-        <div className="h-auto antialiased">
-          <RootNavbar />
-          {children}
-          <Footer />
-        </div>
-      </body>
+      <Providers>
+        <body className={source_sans_pro.className}>
+          <div className="h-auto antialiased">
+            <RootNavbar />
+            {children}
+            <Footer />
+          </div>
+        </body>
+      </Providers>
     </html>
   );
 }

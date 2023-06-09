@@ -58,9 +58,14 @@ export default function Footer() {
                     Blog
                   </Link>
                 </li>
-                <li>
+                <li className="mb-4">
                   <Link href="/contact/sales" className="hover:underline">
                     Contact
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/contact/newsletter" className="hover:underline">
+                    Newsletter
                   </Link>
                 </li>
               </ul>
