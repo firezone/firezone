@@ -20,7 +20,7 @@ export default function RootNavbar() {
                 width={150}
                 height={150}
                 src="/images/logo-text.svg"
-                className="ml-2 mr-5 h-auto"
+                className="ml-2 mr-5"
                 alt="Firezone Logo"
               />
             </Link>
