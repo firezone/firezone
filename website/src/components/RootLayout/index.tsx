@@ -2,7 +2,7 @@ import { Metadata } from "next";
 import "@/app/globals.css";
 import "highlight.js/styles/default.css";
 import RootNavbar from "@/components/RootNavbar";
-import Providers from "@/app/providers";
+import Providers from "@/components/Providers";
 import Footer from "@/components/Footer";
 import { Source_Sans_Pro } from "next/font/google";
 const source_sans_pro = Source_Sans_Pro({

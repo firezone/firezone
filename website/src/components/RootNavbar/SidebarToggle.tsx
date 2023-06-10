@@ -1,7 +1,7 @@
 import { usePathname } from "next/navigation";
 
 export default function SidebarToggle() {
-  const p = usePathname();
+  const p = usePathname() || "";
 
   if (p.startsWith("/docs")) {
     return (

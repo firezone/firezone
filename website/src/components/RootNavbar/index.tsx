@@ -7,7 +7,7 @@ import { usePathname } from "next/navigation";
 import DeployButton from "@/components/DeployButton";
 
 export default function RootNavbar() {
-  const p = usePathname();
+  const p = usePathname() || "";
 
   return (
     <header>

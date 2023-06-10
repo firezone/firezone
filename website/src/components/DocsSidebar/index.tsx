@@ -12,7 +12,7 @@ export default function DocsSidebar() {
     initFlowbite();
   }, []);
 
-  const p = usePathname();
+  const p = usePathname() || "";
 
   return (
     <aside

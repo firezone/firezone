@@ -11,7 +11,7 @@ if (typeof window !== "undefined") {
   });
 }
 
-export default function PHProvider({ children }) {
+export default function Provider({ children }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   // Track pageviews
