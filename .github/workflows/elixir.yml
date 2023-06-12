@@ -529,7 +529,7 @@ jobs:
           file: elixir/Dockerfile
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:${{ env.TAG }} , ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:${{ github.sha }}
-  deploy:
+  plan_deploy:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -588,6 +588,7 @@ jobs:
       - name: Update PR
         uses: actions/github-script@v6
         id: plan-comment
+        if: ${{ github.event_name != 'pull_request' }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
