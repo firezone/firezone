@@ -46,7 +46,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FILE_TO_COMMIT: terraform/environments/staging/versions.auto.tfvars
-          DESTINATION_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          DESTINATION_BRANCH: ${{ github.ref_name }}
         run: |
           sed -ri 's/^(\s*)(api_image_tag\s*=\s*"[^"]*"\s*$)/api_image_tag = "${{ github.sha }}"/' ./terraform/environments/staging/versions.auto.tfvars
           sed -ri 's/^(\s*)(web_image_tag\s*=\s*"[^"]*"\s*$)/web_image_tag = "${{ github.sha }}"/' ./terraform/environments/staging/versions.auto.tfvars
