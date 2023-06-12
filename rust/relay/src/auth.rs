@@ -98,7 +98,7 @@ mod tests {
         hex!("4c98bf59c99b3e467ecd7cf9d6b3e5279645fca59be67bc5bb4af3cf653761ab");
     const RELAY_SECRET_2: [u8; 32] =
         hex!("7e35e34801e766a6a29ecb9e22810ea4e3476c2b37bf75882edf94a68b1d9607");
-    const SAMPLE_USERNAME: &'static str = "n23JJ2wKKtt30oXi";
+    const SAMPLE_USERNAME: &str = "n23JJ2wKKtt30oXi";
 
     #[test]
     fn generate_password_test_vector() {
@@ -128,7 +128,7 @@ mod tests {
 
         let result = message_integrity.verify(
             &RELAY_SECRET_1,
-            &format!("1685200000:n23JJ2wKKtt30oXi"),
+            "1685200000:n23JJ2wKKtt30oXi",
             systemtime_from_unix(1685200000 - 1000),
         );
 
@@ -142,7 +142,7 @@ mod tests {
 
         let result = message_integrity.verify(
             &RELAY_SECRET_1,
-            &format!("1685199000:n23JJ2wKKtt30oXi"),
+            "1685199000:n23JJ2wKKtt30oXi",
             systemtime_from_unix(1685200000),
         );
 
@@ -155,7 +155,7 @@ mod tests {
 
         let result = message_integrity.verify(
             &RELAY_SECRET_1,
-            &format!("1685200000:n23JJ2wKKtt30oXi"),
+            "1685200000:n23JJ2wKKtt30oXi",
             systemtime_from_unix(168520000 + 1000),
         );
 
@@ -168,7 +168,7 @@ mod tests {
 
         let result = message_integrity.verify(
             &RELAY_SECRET_1,
-            &format!("foobar"),
+            "foobar",
             systemtime_from_unix(168520000 + 1000),
         );
 

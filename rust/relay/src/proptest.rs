@@ -9,11 +9,11 @@ use stun_codec::rfc5766::attributes::{ChannelNumber, Lifetime, RequestedTranspor
 use stun_codec::TransactionId;
 
 pub fn transaction_id() -> impl Strategy<Value = TransactionId> {
-    any::<[u8; 12]>().prop_map(|bytes| TransactionId::new(bytes))
+    any::<[u8; 12]>().prop_map(TransactionId::new)
 }
 
 pub fn binding() -> impl Strategy<Value = Binding> {
-    transaction_id().prop_map(|id| Binding::new(id))
+    transaction_id().prop_map(Binding::new)
 }
 
 pub fn udp_requested_transport() -> impl Strategy<Value = RequestedTransport> {

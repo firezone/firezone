@@ -526,7 +526,7 @@ fn send_message<'a>(source: impl Into<SocketAddr>, message: Message<Attribute>) 
     Output::SendMessage((source.into(), message))
 }
 
-fn send_channel_data<'a>(source: impl Into<SocketAddr>, message: ChannelData<'a>) -> Output<'a> {
+fn send_channel_data(source: impl Into<SocketAddr>, message: ChannelData) -> Output {
     Output::SendChannelData((source.into(), message))
 }
 
