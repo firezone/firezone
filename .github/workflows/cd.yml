@@ -42,16 +42,27 @@ jobs:
       - uses: actions/checkout@v3
         with:
           ref: ${{ github.event.workflow_run.head_branch }}
-      - name: "Update Application Tags"
+      - name: "Push Changed Application Tags"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FILE_TO_COMMIT: terraform/environments/staging/versions.auto.tfvars
+          DESTINATION_BRANCH: ${{ github.event.workflow_run.head_branch }}
         run: |
           sed -ri 's/^(\s*)(api_image_tag\s*=\s*"[^"]*"\s*$)/api_image_tag = "${{ github.sha }}"/' ./terraform/environments/staging/versions.auto.tfvars
           sed -ri 's/^(\s*)(web_image_tag\s*=\s*"[^"]*"\s*$)/web_image_tag = "${{ github.sha }}"/' ./terraform/environments/staging/versions.auto.tfvars
           cat ./terraform/environments/staging/versions.auto.tfvars
-          git config --global user.name 'GitHub Action'
-          git config --global user.email 'github_actions@firez.one'
-          git add terraform/environments/staging/versions.auto.tfvars
-          git commit -m "Push updated container versions"
-          git push
+
+          export TODAY=$( date -u '+%Y-%m-%d' )
+          export SHA=$( git rev-parse $DESTINATION_BRANCH:$FILE_TO_COMMIT )
+          export CONTENT=$( base64 -i $FILE_TO_COMMIT )
+
+          gh api \
+            --method PUT /repos/${{ github.repository }}/contents/$FILE_TO_COMMIT \
+            --field message="Push updated container versions [skip actions]" \
+            --field content="$CONTENT" \
+            --field encoding="base64" \
+            --field branch="$DESTINATION_BRANCH" \
+            --field sha="$SHA"
       - name: Upload Configuration
         uses: hashicorp/tfc-workflows-github/actions/upload-configuration@v1.0.0
         id: apply-upload
