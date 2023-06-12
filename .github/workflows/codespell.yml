@@ -2,10 +2,6 @@ name: Codespell
 on:
   pull_request:
 
-  push:
-    branches:
-      - cloud
-
 jobs:
   static-analysis:
     runs-on: ubuntu-latest
