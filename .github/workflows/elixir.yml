@@ -392,6 +392,15 @@ jobs:
           name: Elixir Acceptance Test Report
           path: elixir/_build/test/lib/*/test-junit-report.xml
           reporter: java-junit
+  # draft-release:
+  #   runs-on: ubuntu-latest
+  #   outputs:
+  #     tag_name: ${{ steps.release_drafter.outputs.tag_name }}
+  #   steps:
+  #     - uses: release-drafter/release-drafter@v5
+  #       id: release_drafter
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   web-container-build:
     runs-on: ubuntu-latest
     defaults:
@@ -439,6 +448,7 @@ jobs:
         run: |
           TAG=$(echo ${BRANCH_NAME} | sed 's/\//_/g'  | sed 's/\:/_/g')
           echo "TAG=branch-${TAG}" >> $GITHUB_ENV
+          echo "::set-output name=container_tag::${TAG}"
       - name: Pull cache layers
         run: |
           docker pull ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:master || true
@@ -503,6 +513,7 @@ jobs:
         run: |
           TAG=$(echo ${BRANCH_NAME} | sed 's/\//_/g'  | sed 's/\:/_/g')
           echo "TAG=branch-${TAG}" >> $GITHUB_ENV
+          echo "::set-output name=container_tag::${TAG}"
       - name: Pull cache layers
         run: |
           docker pull ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:master || true
@@ -518,5 +529,96 @@ jobs:
           file: elixir/Dockerfile
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:${{ env.TAG }} , ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:${{ github.sha }}
-      # TODO: add a sanity check to make sure the image is actually built
-      # and can be started
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./elixir
+    needs:
+      - api-container-build
+      - web-container-build
+    if: ${{ github.repository == 'firezone/firezone' && github.ref == 'refs/heads/cloud' }}
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      TF_CLOUD_ORGANIZATION: "firezone"
+      TF_API_TOKEN: "${{ secrets.TF_API_TOKEN }}"
+      TF_WORKSPACE: "staging"
+    steps:
+      - name: Get Terraform Version
+        run: |
+          TERRAFORM_VERSION=$(cat .tool-versions | grep terraform | awk '{ print $NF; }')
+          echo "TERRAFORM_VERSION=${TERRAFORM_VERSION}" >> $GITHUB_ENV
+      - uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+      - name: Resolve Tag and Version ID
+        id: vsn
+        env:
+          BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+        run: |
+          TAG=$(echo ${BRANCH_NAME} | sed 's/\//_/g'  | sed 's/\:/_/g')
+          echo "TAG=branch-${TAG}" >> $GITHUB_ENV
+      - uses: actions/checkout@v3
+      - name: "Update Application Tags"
+        run: |
+          echo -n "" > terraform/environments/staging/versions.auto.tfvars
+          echo -n "api_image_tag = \"${{ needs.api-container-build.outputs.container_tag }}\"" >> terraform/environments/staging/versions.auto.tfvars
+          echo -n "web_image_tag = \"${{ needs.web-container-build.outputs.container_tag }}\"" >> terraform/environments/staging/versions.auto.tfvars
+      - name: Upload Configuration
+        uses: hashicorp/tfc-workflows-github/actions/upload-configuration@v1.0.0
+        id: plan-upload
+        with:
+          workspace: ${{ env.TF_WORKSPACE }}
+          directory: "terraform/environments/staging"
+          speculative: true
+      - name: Create Plan Run
+        uses: hashicorp/tfc-workflows-github/actions/create-run@v1.0.0
+        id: plan-run
+        with:
+          workspace: ${{ env.TF_WORKSPACE }}
+          configuration_version: ${{ steps.plan-upload.outputs.configuration_version_id }}
+          plan_only: true
+      - name: Get Plan Output
+        uses: hashicorp/tfc-workflows-github/actions/plan-output@v1.0.0
+        id: plan-output
+        with:
+          plan: ${{ fromJSON(steps.plan-run.outputs.payload).data.relationships.plan.data.id }}
+      - name: Update PR
+        uses: actions/github-script@v6
+        id: plan-comment
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            // 1. Retrieve existing bot comments for the PR
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const botComment = comments.find(comment => {
+              return comment.user.type === 'Bot' && comment.body.includes('Terraform Cloud Plan Output')
+            });
+            const output = `#### Terraform Cloud Plan Output
+                \`\`\`
+                Plan: ${{ steps.plan-output.outputs.add }} to add, ${{ steps.plan-output.outputs.change }} to change, ${{ steps.plan-output.outputs.destroy }} to destroy.
+                \`\`\`
+                [Terraform Cloud Plan](${{ steps.plan-run.outputs.run_link }})
+                `;
+            // 3. Delete previous comment so PR timeline makes sense
+            if (botComment) {
+              github.rest.issues.deleteComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+              });
+            }
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            });
+    # TODO: add a sanity check to make sure the image is actually built
+    # and can be started
