@@ -8,7 +8,7 @@ on:
 
 # Cancel old workflow runs if new code is pushed
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: "terraform-${{ github.workflow }}-${{ github.ref }}"
   cancel-in-progress: true
 
 jobs:
