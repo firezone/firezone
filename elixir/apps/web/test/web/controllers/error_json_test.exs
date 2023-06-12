@@ -7,6 +7,6 @@ defmodule Web.ErrorJSONTest do
 
   test "renders 500" do
     assert Web.ErrorJSON.render("500.json", %{}) ==
-             %{errors: %{detail: "Internal Server Error"}}
+             %{errors: %{detail: "internal_error"}}
   end
 end
