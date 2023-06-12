@@ -4,10 +4,11 @@ on:
     paths:
       - "elixir/**"
       - ".github/workflows/elixir.yml"
-  push:
-    branches:
-      - master
-      - cloud
+  workflow_call:
+    inputs:
+      config-path:
+        required: true
+        type: string
 
 # Cancel old workflow runs if new code is pushed
 concurrency:
