@@ -44,9 +44,9 @@ jobs:
           ref: ${{ github.event.workflow_run.head_branch }}
       - name: "Update Application Tags"
         run: |
-          sed -ri 's/^(\s*)(api_image_tag\s*=\s*"[^"]*"\s*$)/api_image_tag = "${{ github.sha }}"/' ../terraform/environments/staging/versions.auto.tfvars
-          sed -ri 's/^(\s*)(web_image_tag\s*=\s*"[^"]*"\s*$)/web_image_tag = "${{ github.sha }}"/' ../terraform/environments/staging/versions.auto.tfvars
-          cat ../terraform/environments/staging/versions.auto.tfvars
+          sed -ri 's/^(\s*)(api_image_tag\s*=\s*"[^"]*"\s*$)/api_image_tag = "${{ github.sha }}"/' ./terraform/environments/staging/versions.auto.tfvars
+          sed -ri 's/^(\s*)(web_image_tag\s*=\s*"[^"]*"\s*$)/web_image_tag = "${{ github.sha }}"/' ./terraform/environments/staging/versions.auto.tfvars
+          cat ./terraform/environments/staging/versions.auto.tfvars
           git config --global user.name 'GitHub Action'
           git config --global user.email 'github_actions@firez.one'
           git add terraform/environments/staging/versions.auto.tfvars
