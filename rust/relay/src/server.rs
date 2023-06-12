@@ -6,7 +6,7 @@ pub use crate::server::client_message::{
     Allocate, Binding, ChannelBind, ClientMessage, CreatePermission, Refresh,
 };
 
-use crate::auth::{MessageIntegrityExt, FIREZONE};
+use crate::auth::{MessageIntegrityExt, Nonces, FIREZONE};
 use crate::rfc8656::PeerAddressFamilyMismatch;
 use crate::stun_codec_ext::{MessageClassExt, MethodExt};
 use crate::TimeEvents;
@@ -14,7 +14,7 @@ use anyhow::Result;
 use bytecodec::EncodeExt;
 use core::fmt;
 use rand::Rng;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::time::{Duration, SystemTime};
@@ -61,7 +61,7 @@ pub struct Server<R> {
 
     auth_secret: [u8; 32],
 
-    nonces: HashSet<Uuid>,
+    nonces: Nonces,
 
     time_events: TimeEvents<TimedAction>,
 }
@@ -157,7 +157,7 @@ where
     ///
     /// Each nonce is valid for 10 requests.
     pub fn add_nonce(&mut self, nonce: Uuid) {
-        self.nonces.insert(nonce);
+        self.nonces.add_new(nonce);
     }
 
     /// Process the bytes received from a client.
@@ -225,7 +225,7 @@ where
         {
             let new_nonce = Uuid::from_u128(self.rng.gen());
 
-            self.nonces.insert(new_nonce);
+            self.add_nonce(new_nonce);
 
             error_response.add_attribute(Nonce::new(new_nonce.to_string()).unwrap().into());
             error_response.add_attribute((*FIREZONE).clone().into());
@@ -636,20 +636,13 @@ where
                 error_response(Unauthorized, request)
             })?;
 
+        self.nonces
+            .handle_nonce_used(nonce)
+            .map_err(|_| error_response(Unauthorized, request))?;
+
         message_integrity
             .verify(&self.auth_secret, username.name(), now)
             .map_err(|_| error_response(Unauthorized, request))?;
-
-        if !self.nonces.contains(&nonce) {
-            log::debug!(
-                "rejecting request {} because {nonce} is unknown",
-                hex::encode(request.transaction_id())
-            );
-
-            return Err(error_response(Unauthorized, request));
-        }
-
-        // TODO: Check counter of nonce.
 
         Ok(())
     }
