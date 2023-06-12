@@ -19,7 +19,7 @@ jobs:
       run:
         working-directory: ./rust
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       # This implicitly triggers installation of the toolchain in the `rust-toolchain.toml` file.
       # If we don't do this here, our cache action will compute a cache key based on the Rust version shipped on GitHub's runner which might differ from the one we use.
@@ -40,7 +40,7 @@ jobs:
       run:
         working-directory: ./rust
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       # This implicitly triggers installation of the toolchain in the `rust-toolchain.toml` file.
       # If we don't do this here, our cache action will compute a cache key based on the Rust version shipped on GitHub's runner which might differ from the one we use.
@@ -57,7 +57,7 @@ jobs:
       run:
         working-directory: ./rust/relay
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       # This implicitly triggers installation of the toolchain in the `rust-toolchain.toml` file.
       # If we don't do this here, our cache action will compute a cache key based on the Rust version shipped on GitHub's runner which might differ from the one we use.
