@@ -23,6 +23,8 @@ proptest = { version = "1.2.0", optional = true }
 test-strategy = "0.3.0"
 derive_more = { version = "0.99.17", features = ["from"] }
 phoenix-channel = { path = "../phoenix-channel" }
+url = "2.4.0"
+serde = { version = "1.0.163", features = ["derive"] }
 
 [dev-dependencies]
 webrtc = "0.7.2"

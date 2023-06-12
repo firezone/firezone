@@ -50,17 +50,17 @@ pub struct InboundRequestId(u64);
 
 impl<TInboundMsg, TOutboundRes> PhoenixChannel<TInboundMsg, TOutboundRes>
 where
-    TInboundMsg: Serialize + DeserializeOwned,
-    TOutboundRes: Serialize + DeserializeOwned,
+    TInboundMsg: DeserializeOwned,
+    TOutboundRes: DeserializeOwned,
 {
     /// Creates a new [PhoenixChannel] to the given endpoint.
     ///
     /// The provided URL must contain a host.
     /// Additionally, you must already provide any query parameters required for authentication.
-    pub async fn connect(uri: Url) -> Result<Self, Error> {
+    pub async fn connect(uri: Url, user_agent: String) -> Result<Self, Error> {
         tracing::trace!("Trying to connect to the portal...");
 
-        let (stream, _) = connect_async(make_request(&uri)?).await?;
+        let (stream, _) = connect_async(make_request(&uri, user_agent)?).await?;
 
         tracing::trace!("Successfully connected to portal");
 
@@ -226,6 +226,7 @@ where
     }
 }
 
+#[derive(Debug)]
 pub enum Event<TInboundMsg, TOutboundRes> {
     SuccessResponse {
         topic: String,
@@ -283,7 +284,7 @@ impl<T, R> PhoenixMessage<T, R> {
 }
 
 // This is basically the same as tungstenite does but we add some new headers (namely user-agent)
-fn make_request(uri: &Url) -> Result<Request, Error> {
+fn make_request(uri: &Url, user_agent: String) -> Result<Request, Error> {
     let host = uri.host().ok_or(Error::MissingHost)?;
     let host = if let Some(port) = uri.port() {
         format!("{host}:{port}")
@@ -302,8 +303,7 @@ fn make_request(uri: &Url) -> Result<Request, Error> {
         .header("Upgrade", "websocket")
         .header("Sec-WebSocket-Version", "13")
         .header("Sec-WebSocket-Key", key)
-        // TODO: Get OS Info here (os_info crate)
-        .header("User-Agent", "MacOs/13.3 (Mac) connlib/0.1.0")
+        .header("User-Agent", user_agent)
         .uri(uri.as_str())
         .body(())
         .expect("building static request always works");

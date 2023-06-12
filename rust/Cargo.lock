@@ -1794,12 +1794,14 @@ dependencies = [
  "proptest",
  "rand",
  "redis",
+ "serde",
  "sha2",
  "stun_codec",
  "test-strategy",
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "url",
  "webrtc",
 ]
 

@@ -1,6 +1,7 @@
 use anyhow::{bail, Context, Result};
 use futures::channel::mpsc;
-use futures::{FutureExt, SinkExt, StreamExt};
+use futures::{future, FutureExt, SinkExt, StreamExt};
+use phoenix_channel::{Event, PhoenixChannel};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use relay::{AllocationId, Command, Server, Sleep, UdpSocket};
@@ -15,6 +16,7 @@ use std::time::SystemTime;
 use tokio::task;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
+use url::Url;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -38,25 +40,56 @@ async fn main() -> Result<()> {
             bail!("Refusing to connect to portal over insecure connection, make sure to specify a `wss://` URL")
         }
 
-        // let (_connection, _) = tokio_tungstenite::connect_async(&portal_url)
-        //     .await
-        //     .context("failed to connect to portal")?;
+        let mut portal_url = portal_url
+            .parse::<Url>()
+            .context("Failed to parse portal URL")?;
+        portal_url
+            .query_pairs_mut()
+            .append_pair("stamp_secret", &hex::encode(server.auth_secret()));
+
+        let mut channel = PhoenixChannel::<InboundPortalMessage, ()>::connect(
+            portal_url.clone(),
+            format!("relay/{}", env!("CARGO_PKG_VERSION")),
+        )
+        .await?;
 
         tracing::info!("Connected to portal at {portal_url}, waiting for init message");
 
-        // TODO: Wait for `init` message from portal.
-        // TOOD: Send auth secret to portal?
+        loop {
+            let event = future::poll_fn(|cx| channel.poll(cx))
+                .await
+                .context("portal connection failed")?;
+
+            match event {
+                Event::InboundMessage {
+                    topic,
+                    msg: InboundPortalMessage::Init,
+                } => {
+                    tracing::info!("Received init message from portal on topic {topic}, starting relay activities");
+                    break;
+                }
+                other => {
+                    tracing::debug!("Unhandled message from portal: {other:?}");
+                }
+            }
+        }
     }
 
     let mut eventloop = Eventloop::new(server, listen_ip4_addr).await?;
 
     tracing::info!("Listening for incoming traffic on UDP port 3478");
 
-    futures::future::poll_fn(|cx| eventloop.poll(cx))
+    future::poll_fn(|cx| eventloop.poll(cx))
         .await
         .context("event loop failed")?;
 
     Ok(())
+}
+
+#[derive(serde::Deserialize, PartialEq, Debug)]
+#[serde(rename_all = "snake_case", tag = "event", content = "payload")]
+enum InboundPortalMessage {
+    Init,
 }
 
 #[cfg(debug_assertions)]
