@@ -5,10 +5,6 @@ on:
       - "elixir/**"
       - ".github/workflows/elixir.yml"
   workflow_call:
-    inputs:
-      config-path:
-        required: true
-        type: string
 
 # Cancel old workflow runs if new code is pushed
 concurrency:

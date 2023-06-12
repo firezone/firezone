@@ -5,10 +5,6 @@ on:
       - "terraform/**"
       - ".github/workflows/terraform.yml"
   workflow_call:
-    inputs:
-      config-path:
-        required: true
-        type: string
 
 # Cancel old workflow runs if new code is pushed
 concurrency:
