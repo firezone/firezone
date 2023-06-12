@@ -603,9 +603,15 @@ where
         request: &(impl StunRequest + ProtectedRequest),
         now: SystemTime,
     ) -> Result<(), Message<Attribute>> {
-        request
+        let message_integrity = request
             .message_integrity()
-            .verify(&self.auth_secret, request.username().name(), now)
+            .ok_or(error_response(Unauthorized, request))?;
+        let username = request
+            .username()
+            .ok_or(error_response(Unauthorized, request))?;
+
+        message_integrity
+            .verify(&self.auth_secret, username.name(), now)
             .map_err(|_| error_response(Unauthorized, request))?;
 
         // TODO: Check if nonce is valid.
@@ -834,18 +840,18 @@ impl_stun_request_for!(Refresh, REFRESH);
 
 /// Private helper trait to make [`Server::verify_auth`] more ergonomic to use.
 trait ProtectedRequest {
-    fn message_integrity(&self) -> &MessageIntegrity;
-    fn username(&self) -> &Username;
+    fn message_integrity(&self) -> Option<&MessageIntegrity>;
+    fn username(&self) -> Option<&Username>;
 }
 
 macro_rules! impl_protected_request_for {
     ($t:ty) => {
         impl ProtectedRequest for $t {
-            fn message_integrity(&self) -> &MessageIntegrity {
+            fn message_integrity(&self) -> Option<&MessageIntegrity> {
                 self.message_integrity()
             }
 
-            fn username(&self) -> &Username {
+            fn username(&self) -> Option<&Username> {
                 self.username()
             }
         }
