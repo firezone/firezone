@@ -7,7 +7,7 @@ on:
 
 # Cancel old workflow runs if new code is pushed
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: "cd-${{ github.workflow }}-${{ github.ref }}"
   cancel-in-progress: false
 
 jobs:
@@ -42,27 +42,27 @@ jobs:
       - uses: actions/checkout@v3
         with:
           ref: ${{ github.event.workflow_run.head_branch }}
-      - name: "Push Changed Application Tags"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          FILE_TO_COMMIT: terraform/environments/staging/versions.auto.tfvars
-          DESTINATION_BRANCH: ${{ github.ref_name }}
-        run: |
-          sed -ri 's/^(\s*)(api_image_tag\s*=\s*"[^"]*"\s*$)/api_image_tag = "${{ github.sha }}"/' ./terraform/environments/staging/versions.auto.tfvars
-          sed -ri 's/^(\s*)(web_image_tag\s*=\s*"[^"]*"\s*$)/web_image_tag = "${{ github.sha }}"/' ./terraform/environments/staging/versions.auto.tfvars
-          cat ./terraform/environments/staging/versions.auto.tfvars
+      # - name: "Push Changed Application Tags"
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #     FILE_TO_COMMIT: terraform/environments/staging/versions.auto.tfvars
+      #     DESTINATION_BRANCH: ${{ github.ref_name }}
+      #   run: |
+      #     sed -ri 's/^(\s*)(api_image_tag\s*=\s*"[^"]*"\s*$)/api_image_tag = "${{ github.sha }}"/' ./terraform/environments/staging/versions.auto.tfvars
+      #     sed -ri 's/^(\s*)(web_image_tag\s*=\s*"[^"]*"\s*$)/web_image_tag = "${{ github.sha }}"/' ./terraform/environments/staging/versions.auto.tfvars
+      #     cat ./terraform/environments/staging/versions.auto.tfvars
 
-          export TODAY=$( date -u '+%Y-%m-%d' )
-          export SHA=$( git rev-parse $DESTINATION_BRANCH:$FILE_TO_COMMIT )
-          export CONTENT=$( base64 -i $FILE_TO_COMMIT )
+      #     export TODAY=$( date -u '+%Y-%m-%d' )
+      #     export SHA=$( git rev-parse $DESTINATION_BRANCH:$FILE_TO_COMMIT )
+      #     export CONTENT=$( base64 -i $FILE_TO_COMMIT )
 
-          gh api \
-            --method PUT /repos/${{ github.repository }}/contents/$FILE_TO_COMMIT \
-            --field message="Push updated container versions [skip actions]" \
-            --field content="$CONTENT" \
-            --field encoding="base64" \
-            --field branch="$DESTINATION_BRANCH" \
-            --field sha="$SHA"
+      #     gh api \
+      #       --method PUT /repos/${{ github.repository }}/contents/$FILE_TO_COMMIT \
+      #       --field message="Push updated container versions [skip actions]" \
+      #       --field content="$CONTENT" \
+      #       --field encoding="base64" \
+      #       --field branch="$DESTINATION_BRANCH" \
+      #       --field sha="$SHA"
       - name: Upload Configuration
         uses: hashicorp/tfc-workflows-github/actions/upload-configuration@v1.0.0
         id: apply-upload
@@ -74,6 +74,9 @@ jobs:
       - name: Create Plan Run
         uses: hashicorp/tfc-workflows-github/actions/create-run@v1.0.0
         id: apply-run
+        env:
+          TF_VAR_api_image_tag: ${{ github.sha }}
+          TF_VAR_web_image_tag: ${{ github.sha }}
         with:
           workspace: ${{ env.TF_WORKSPACE }}
           configuration_version: ${{ steps.apply-upload.outputs.configuration_version_id }}
