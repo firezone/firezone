@@ -38,9 +38,9 @@ async fn main() -> Result<()> {
             bail!("Refusing to connect to portal over insecure connection, make sure to specify a `wss://` URL")
         }
 
-        let (_connection, _) = tokio_tungstenite::connect_async(&portal_url)
-            .await
-            .context("failed to connect to portal")?;
+        // let (_connection, _) = tokio_tungstenite::connect_async(&portal_url)
+        //     .await
+        //     .context("failed to connect to portal")?;
 
         tracing::info!("Connected to portal at {portal_url}, waiting for init message");
 
