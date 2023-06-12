@@ -1,8 +1,9 @@
 name: Continuous Delivery
 on:
   workflow_run:
-    workflows:
-      - Elixir
+    # Note: if you use multiple workflows here only one will be required
+    # to trigger the deployment.
+    workflows: ["Elixir"]
     branches:
       - master
       - cloud
@@ -33,6 +34,8 @@ jobs:
         with:
           terraform_version: ${{ env.TERRAFORM_VERSION }}
       - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
       - name: "Update Application Tags"
         run: |
           sed -ri 's/^(\s*)(api_image_tag\s*=\s*"[^"]*"\s*$)/api_image_tag = "${{ github.sha }}"/' ../terraform/environments/staging/versions.auto.tfvars
