@@ -7,6 +7,8 @@ defmodule Domain.Network do
     ipv6: %Postgrex.INET{address: {64_768, 8_209, 4_369, 0, 0, 0, 0, 0}, netmask: 106}
   }
 
+  def cidrs, do: @cidrs
+
   def fetch_next_available_address!(account_id, type, opts \\ []) do
     unless Repo.in_transaction?() do
       raise "fetch_next_available_address/1 must be called inside a transaction"

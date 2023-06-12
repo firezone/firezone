@@ -1,0 +1,44 @@
+name: Codespell
+on:
+  pull_request:
+  # TODO: Enable this for PRs against `cloud` when chaos settles
+  # pull_request:
+  push:
+    branches:
+      - cloud
+
+jobs:
+  static-analysis:
+    runs-on: ubuntu-latest
+    env:
+      MIX_ENV: dev
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: "16"
+          cache: "yarn"
+          cache-dependency-path: |
+            www/yarn.lock
+      - uses: actions/setup-python@v2
+        with:
+          python-version: "3.9"
+      - uses: actions/cache@v3
+        name: Setup Python cache
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+      - name: Install Python Dependencies
+        run: |
+          pip install -r requirements.txt
+      - name: Install node modules
+        run: |
+          cd www/
+          yarn install --frozen-lockfile
+      - name: Run pre-commit
+        run: |
+          pre-commit install
+          SKIP=no-commit-to-branch pre-commit run --all-files

@@ -59,9 +59,9 @@ async fn new_turn_client() -> Result<Client, Error> {
     let client = Client::new(ClientConfig {
         stun_serv_addr: "localhost:3478".to_owned(),
         turn_serv_addr: "localhost:3478".to_owned(),
-        username: "test".to_owned(),
-        password: "test".to_owned(),
-        realm: "test".to_owned(),
+        username: "2000000000:client".to_owned(), // 2000000000 expires in 2033, plenty of time
+        password: "7U2fprz59mnpPZ/y2Eh8nmJ4d9Oqr98WhgFqlmuZVJ4".to_owned(),
+        realm: "firezone".to_owned(),
         software: String::new(),
         rto_in_ms: 0,
         conn: Arc::new(UdpSocket::bind("0.0.0.0:0").await?),

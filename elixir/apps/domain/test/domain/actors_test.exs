@@ -448,7 +448,7 @@ defmodule Domain.ActorsTest do
       for _ <- 0..50 do
         test_pid = self()
 
-        spawn(fn ->
+        Task.async(fn ->
           allow_child_sandbox_access(test_pid)
 
           account = AccountsFixtures.create_account()
@@ -456,17 +456,28 @@ defmodule Domain.ActorsTest do
           actor_one = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
           actor_two = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
 
-          subject_one = AuthFixtures.create_subject(actor_one)
-          subject_two = AuthFixtures.create_subject(actor_two)
+          identity_one = AuthFixtures.create_identity(account: account, actor: actor_one)
+          identity_two = AuthFixtures.create_identity(account: account, actor: actor_two)
+
+          subject_one = AuthFixtures.create_subject(identity_one)
+          subject_two = AuthFixtures.create_subject(identity_two)
 
           for {actor, subject} <- [{actor_two, subject_one}, {actor_one, subject_two}] do
-            spawn(fn ->
+            Task.async(fn ->
               allow_child_sandbox_access(test_pid)
-              assert disable_actor(actor, subject) == {:error, :cant_disable_the_last_admin}
+              disable_actor(actor, subject)
             end)
           end
+          |> Task.await_many()
+
+          queryable =
+            Actors.Actor.Query.by_account_id(account.id)
+            |> Actors.Actor.Query.not_disabled()
+
+          assert Repo.aggregate(queryable, :count) == 1
         end)
       end
+      |> Task.await_many()
     end
 
     test "does not do anything when an actor is disabled twice" do
@@ -619,7 +630,7 @@ defmodule Domain.ActorsTest do
       for _ <- 0..50 do
         test_pid = self()
 
-        spawn(fn ->
+        Task.async(fn ->
           allow_child_sandbox_access(test_pid)
 
           account = AccountsFixtures.create_account()
@@ -627,17 +638,24 @@ defmodule Domain.ActorsTest do
           actor_one = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
           actor_two = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
 
-          subject_one = AuthFixtures.create_subject(actor_one)
-          subject_two = AuthFixtures.create_subject(actor_two)
+          identity_one = AuthFixtures.create_identity(account: account, actor: actor_one)
+          identity_two = AuthFixtures.create_identity(account: account, actor: actor_two)
+
+          subject_one = AuthFixtures.create_subject(identity_one)
+          subject_two = AuthFixtures.create_subject(identity_two)
 
           for {actor, subject} <- [{actor_two, subject_one}, {actor_one, subject_two}] do
-            spawn(fn ->
+            Task.async(fn ->
               allow_child_sandbox_access(test_pid)
-              assert delete_actor(actor, subject) == {:error, :cant_delete_the_last_admin}
+              delete_actor(actor, subject)
             end)
           end
+          |> Task.await_many()
+
+          assert Repo.aggregate(Actors.Actor.Query.by_account_id(account.id), :count) == 1
         end)
       end
+      |> Task.await_many()
     end
 
     test "does not allow to delete an actor twice" do

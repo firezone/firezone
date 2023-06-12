@@ -3,6 +3,10 @@ defmodule Web.Application do
 
   @impl true
   def start(_type, _args) do
+    _ = OpentelemetryLiveView.setup()
+    _ = :opentelemetry_cowboy.setup()
+    _ = OpentelemetryPhoenix.setup(adapter: :cowboy2)
+
     children = [
       Web.Telemetry,
       {Phoenix.PubSub, name: Web.PubSub},

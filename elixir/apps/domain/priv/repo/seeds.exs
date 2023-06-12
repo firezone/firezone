@@ -84,7 +84,20 @@ relay_group =
   |> Repo.insert!()
 
 IO.puts("Created relay groups:")
-IO.puts("  #{relay_group.name} token: #{hd(relay_group.tokens).value}")
+IO.puts("  #{relay_group.name} token: #{Relays.encode_token!(hd(relay_group.tokens))}")
+IO.puts("")
+
+{:ok, relay} =
+  Relays.upsert_relay(hd(relay_group.tokens), %{
+    ipv4: {189, 172, 73, 111},
+    ipv6: {0, 0, 0, 0, 0, 0, 0, 1},
+    last_seen_user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
+    last_seen_remote_ip: %Postgrex.INET{address: {189, 172, 73, 111}}
+  })
+
+IO.puts("Created relays:")
+IO.puts("  Group #{relay_group.name}:")
+IO.puts("    IPv4: #{relay.ipv4} IPv6: #{relay.ipv6}")
 IO.puts("")
 
 gateway_group =
@@ -93,7 +106,11 @@ gateway_group =
   |> Repo.insert!()
 
 IO.puts("Created gateway groups:")
-IO.puts("  #{gateway_group.name_prefix} token: #{hd(gateway_group.tokens).value}")
+
+IO.puts(
+  "  #{gateway_group.name_prefix} token: #{Gateways.encode_token!(hd(gateway_group.tokens))}"
+)
+
 IO.puts("")
 
 {:ok, gateway} =
@@ -116,6 +133,7 @@ IO.puts("")
 {:ok, dns_resource} =
   Resources.create_resource(
     %{
+      type: :dns,
       address: "gitlab.mycorp.com",
       connections: [%{gateway_id: gateway.id}]
     },
@@ -125,6 +143,7 @@ IO.puts("")
 {:ok, cidr_resource} =
   Resources.create_resource(
     %{
+      type: :cidr,
       address: "172.172.0.1/16",
       connections: [%{gateway_id: gateway.id}]
     },
@@ -134,5 +153,5 @@ IO.puts("")
 IO.puts("Created resources:")
 
 IO.puts("  #{dns_resource.address} - DNS - #{dns_resource.ipv4} - gateways: #{gateway_name}")
-IO.puts("  #{cidr_resource.address} - CIDR - #{cidr_resource.ipv4} - gateways: #{gateway_name}")
+IO.puts("  #{cidr_resource.address} - CIDR - gateways: #{gateway_name}")
 IO.puts("")

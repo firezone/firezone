@@ -52,12 +52,7 @@ if config_env() == :prod do
   ##### Web #####################
   ###############################
 
-  config :web,
-    external_url: external_url,
-    path_prefix: external_url_path
-
   config :web, Web.Endpoint,
-    server: true,
     http: [
       ip: compile_config!(:phoenix_listen_address).address,
       port: compile_config!(:phoenix_http_web_port),
@@ -88,13 +83,11 @@ if config_env() == :prod do
   ###############################
 
   config :api, API.Endpoint,
-    server: true,
     http: [
       ip: compile_config!(:phoenix_listen_address).address,
       port: compile_config!(:phoenix_http_api_port),
       protocol_options: compile_config!(:phoenix_http_protocol_options)
     ],
-    # TODO: force_ssl: [rewrite_on: [:x_forwarded_proto], hsts: true],
     url: [
       scheme: external_url_scheme,
       host: external_url_host,
@@ -108,9 +101,33 @@ if config_env() == :prod do
     cookie_signing_salt: compile_config!(:cookie_signing_salt),
     cookie_encryption_salt: compile_config!(:cookie_encryption_salt)
 
+  config :api,
+    external_trusted_proxies: compile_config!(:phoenix_external_trusted_proxies),
+    private_clients: compile_config!(:phoenix_private_clients)
+
+  ###############################
+  ##### Erlang Cluster ##########
+  ###############################
+
+  config :domain, Domain.Cluster,
+    adapter: compile_config!(:erlang_cluster_adapter),
+    adapter_config: compile_config!(:erlang_cluster_adapter_config)
+
   ###############################
   ##### Third-party configs #####
   ###############################
+
+  if System.get_env("OTLP_ENDPOINT") do
+    config :opentelemetry,
+      traces_exporter: :otlp
+
+    config :opentelemetry_exporter,
+      otlp_protocol: :http_protobuf,
+      otlp_endpoint: System.get_env("OTLP_ENDPOINT")
+  end
+
+  config :domain,
+    http_client_ssl_opts: compile_config!(:http_client_ssl_opts)
 
   config :openid_connect,
     finch_transport_opts: compile_config!(:http_client_ssl_opts)

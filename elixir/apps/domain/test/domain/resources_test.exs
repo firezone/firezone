@@ -57,7 +57,15 @@ defmodule Domain.ResourcesTest do
       assert fetch_resource_by_id(Ecto.UUID.generate(), subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Resources.Authorizer.manage_resources_permission()]]}}
+                 [
+                   missing_permissions: [
+                     {:one_of,
+                      [
+                        Resources.Authorizer.manage_resources_permission(),
+                        Resources.Authorizer.view_available_resources_permission()
+                      ]}
+                   ]
+                 ]}}
     end
   end
 
@@ -83,7 +91,22 @@ defmodule Domain.ResourcesTest do
       assert list_resources(subject) == {:ok, []}
     end
 
-    test "returns all resources", %{
+    test "returns all resources for account admin subject", %{
+      account: account
+    } do
+      actor = ActorsFixtures.create_actor(type: :account_user, account: account)
+      identity = AuthFixtures.create_identity(account: account, actor: actor)
+      subject = AuthFixtures.create_subject(identity)
+
+      ResourcesFixtures.create_resource(account: account)
+      ResourcesFixtures.create_resource(account: account)
+      ResourcesFixtures.create_resource()
+
+      assert {:ok, resources} = list_resources(subject)
+      assert length(resources) == 2
+    end
+
+    test "returns all resources for account user subject", %{
       account: account,
       subject: subject
     } do
@@ -103,7 +126,15 @@ defmodule Domain.ResourcesTest do
       assert list_resources(subject) ==
                {:error,
                 {:unauthorized,
-                 [missing_permissions: [Resources.Authorizer.manage_resources_permission()]]}}
+                 [
+                   missing_permissions: [
+                     {:one_of,
+                      [
+                        Resources.Authorizer.manage_resources_permission(),
+                        Resources.Authorizer.view_available_resources_permission()
+                      ]}
+                   ]
+                 ]}}
     end
   end
 
@@ -113,7 +144,8 @@ defmodule Domain.ResourcesTest do
 
       assert errors_on(changeset) == %{
                address: ["can't be blank"],
-               connections: ["can't be blank"]
+               connections: ["can't be blank"],
+               type: ["can't be blank"]
              }
     end
 
@@ -125,8 +157,71 @@ defmodule Domain.ResourcesTest do
                address: ["can't be blank"],
                name: ["should be at most 255 character(s)"],
                filters: ["is invalid"],
-               connections: ["is invalid"]
+               connections: ["is invalid"],
+               type: ["can't be blank"]
              }
+    end
+
+    test "validates dns address", %{subject: subject} do
+      attrs = %{"address" => String.duplicate("a", 256), "type" => "dns"}
+      assert {:error, changeset} = create_resource(attrs, subject)
+      assert "should be at most 253 character(s)" in errors_on(changeset).address
+
+      attrs = %{"address" => "a", "type" => "dns"}
+      assert {:error, changeset} = create_resource(attrs, subject)
+      refute Map.has_key?(errors_on(changeset), :address)
+    end
+
+    test "validates cidr address", %{subject: subject} do
+      attrs = %{"address" => "192.168.1.256/28", "type" => "cidr"}
+      assert {:error, changeset} = create_resource(attrs, subject)
+      assert "is not a valid CIDR range" in errors_on(changeset).address
+
+      attrs = %{"address" => "192.168.1.1", "type" => "cidr"}
+      assert {:error, changeset} = create_resource(attrs, subject)
+      assert "is not a valid CIDR range" in errors_on(changeset).address
+
+      attrs = %{"address" => "100.64.0.0/8", "type" => "cidr"}
+      assert {:error, changeset} = create_resource(attrs, subject)
+      assert "can not be in the CIDR 100.64.0.0/10" in errors_on(changeset).address
+
+      attrs = %{"address" => "fd00:2011:1111::/102", "type" => "cidr"}
+      assert {:error, changeset} = create_resource(attrs, subject)
+      assert "can not be in the CIDR fd00:2011:1111::/106" in errors_on(changeset).address
+
+      attrs = %{"address" => "::/0", "type" => "cidr"}
+      assert {:error, changeset} = create_resource(attrs, subject)
+      refute Map.has_key?(errors_on(changeset), :address)
+
+      attrs = %{"address" => "0.0.0.0/0", "type" => "cidr"}
+      assert {:error, changeset} = create_resource(attrs, subject)
+      refute Map.has_key?(errors_on(changeset), :address)
+    end
+
+    test "does not allow cidr addresses to overlap for the same account", %{
+      account: account,
+      subject: subject
+    } do
+      gateway = GatewaysFixtures.create_gateway(account: account)
+
+      ResourcesFixtures.create_resource(
+        account: account,
+        subject: subject,
+        type: :cidr,
+        address: "192.168.1.1/28"
+      )
+
+      attrs = %{
+        "address" => "192.168.1.8/26",
+        "type" => "cidr",
+        "connections" => [%{"gateway_id" => gateway.id}]
+      }
+
+      assert {:error, changeset} = create_resource(attrs, subject)
+      assert "can not overlap with other resource ranges" in errors_on(changeset).address
+
+      subject = AuthFixtures.create_subject()
+      assert {:ok, _resource} = create_resource(attrs, subject)
     end
 
     test "returns error on duplicate name", %{account: account, subject: subject} do
@@ -137,6 +232,7 @@ defmodule Domain.ResourcesTest do
       attrs = %{
         "name" => resource.name,
         "address" => address,
+        "type" => "dns",
         "connections" => [%{"gateway_id" => gateway.id}]
       }
 
@@ -144,7 +240,7 @@ defmodule Domain.ResourcesTest do
       assert errors_on(changeset) == %{name: ["has already been taken"]}
     end
 
-    test "creates a resource", %{account: account, subject: subject} do
+    test "creates a dns resource", %{account: account, subject: subject} do
       gateway = GatewaysFixtures.create_gateway(account: account)
       attrs = ResourcesFixtures.resource_attrs(connections: [%{gateway_id: gateway.id}])
       assert {:ok, resource} = create_resource(attrs, subject)
@@ -172,6 +268,47 @@ defmodule Domain.ResourcesTest do
                %Domain.Resources.Resource.Filter{ports: ["80", "433"], protocol: :tcp},
                %Domain.Resources.Resource.Filter{ports: ["100 - 200"], protocol: :udp}
              ] = resource.filters
+    end
+
+    test "creates a cidr resource", %{account: account, subject: subject} do
+      gateway = GatewaysFixtures.create_gateway(account: account)
+      address_count = Repo.aggregate(Domain.Network.Address, :count)
+
+      attrs =
+        ResourcesFixtures.resource_attrs(
+          connections: [%{gateway_id: gateway.id}],
+          type: :cidr,
+          name: nil,
+          address: "192.168.1.1/28"
+        )
+
+      assert {:ok, resource} = create_resource(attrs, subject)
+
+      assert resource.address == "192.168.1.0/28"
+      assert resource.name == attrs.address
+      assert resource.account_id == account.id
+
+      assert is_nil(resource.ipv4)
+      assert is_nil(resource.ipv6)
+
+      assert [
+               %Domain.Resources.Connection{
+                 resource_id: resource_id,
+                 gateway_id: gateway_id,
+                 account_id: account_id
+               }
+             ] = resource.connections
+
+      assert resource_id == resource.id
+      assert gateway_id == gateway.id
+      assert account_id == account.id
+
+      assert [
+               %Domain.Resources.Resource.Filter{ports: ["80", "433"], protocol: :tcp},
+               %Domain.Resources.Resource.Filter{ports: ["100 - 200"], protocol: :udp}
+             ] = resource.filters
+
+      assert Repo.aggregate(Domain.Network.Address, :count) == address_count
     end
 
     test "does not allow to reuse IP addresses within an account", %{

@@ -45,8 +45,7 @@ the following general guidelines:
 
 Docker is the preferred method of development Firezone locally. It (mostly)
 works cross-platform, and can be used to develop Firezone on all three
-major desktop OS. This also provides a small but somewhat realistic network
-environment with working nftables and WireGuard subsystems for live development.
+major desktop OS.
 
 ### Docker Setup
 
