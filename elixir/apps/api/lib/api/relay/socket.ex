@@ -1,10 +1,11 @@
 defmodule API.Relay.Socket do
   use Phoenix.Socket
   alias Domain.Relays
+  require Logger
 
   ## Channels
 
-  channel "relay:*", API.Relay.Channel
+  channel "relay", API.Relay.Channel
 
   ## Authentication
 
@@ -25,6 +26,10 @@ defmodule API.Relay.Socket do
         |> assign(:relay, relay)
 
       {:ok, socket}
+    else
+      {:error, reason} ->
+        Logger.debug("Error connecting relay websocket: #{inspect(reason)}")
+        {:error, reason}
     end
   end
 

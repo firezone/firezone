@@ -8,6 +8,7 @@ defmodule Domain.ResourcesFixtures do
     Enum.into(attrs, %{
       address: address,
       name: address,
+      type: :dns,
       filters: [
         %{protocol: :tcp, ports: [80, 433]},
         %{protocol: :udp, ports: [100..200]}

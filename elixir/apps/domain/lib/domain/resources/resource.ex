@@ -5,6 +5,8 @@ defmodule Domain.Resources.Resource do
     field :address, :string
     field :name, :string
 
+    field :type, Ecto.Enum, values: [:cidr, :dns]
+
     embeds_many :filters, Filter, on_replace: :delete do
       field :protocol, Ecto.Enum, values: [tcp: 6, udp: 17, icmp: 1, all: -1]
       field :ports, {:array, Domain.Types.Int4Range}, default: []
