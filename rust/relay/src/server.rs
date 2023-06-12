@@ -14,7 +14,7 @@ use anyhow::Result;
 use bytecodec::EncodeExt;
 use core::fmt;
 use rand::Rng;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::Hash;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::time::{Duration, SystemTime};
@@ -29,6 +29,8 @@ use stun_codec::rfc5766::attributes::{
 use stun_codec::rfc5766::errors::{AllocationMismatch, InsufficientCapacity};
 use stun_codec::rfc5766::methods::{ALLOCATE, CHANNEL_BIND, CREATE_PERMISSION, REFRESH};
 use stun_codec::{Message, MessageClass, MessageEncoder, Method, TransactionId};
+use tracing::log;
+use uuid::Uuid;
 
 /// A sans-IO STUN & TURN server.
 ///
@@ -58,6 +60,8 @@ pub struct Server<R> {
     rng: R,
 
     auth_secret: [u8; 32],
+
+    nonces: HashSet<Uuid>,
 
     time_events: TimeEvents<TimedAction>,
 }
@@ -141,11 +145,19 @@ where
             auth_secret: rng.gen(),
             rng,
             time_events: TimeEvents::default(),
+            nonces: Default::default(),
         }
     }
 
     pub fn auth_secret(&mut self) -> [u8; 32] {
         self.auth_secret
+    }
+
+    /// Registers a new, valid nonce.
+    ///
+    /// Each nonce is valid for 10 requests.
+    pub fn add_nonce(&mut self, nonce: Uuid) {
+        self.nonces.insert(nonce);
     }
 
     /// Process the bytes received from a client.
@@ -211,7 +223,11 @@ where
             .get_attribute::<ErrorCode>()
             .map_or(false, |error| error == &ErrorCode::from(Unauthorized))
         {
-            error_response.add_attribute(Nonce::new("foobar".to_owned()).unwrap().into()); // TODO: Implement proper nonce handling.
+            let new_nonce = Uuid::from_u128(self.rng.gen());
+
+            self.nonces.insert(new_nonce);
+
+            error_response.add_attribute(Nonce::new(new_nonce.to_string()).unwrap().into());
             error_response.add_attribute((*FIREZONE).clone().into());
         }
 
@@ -609,12 +625,31 @@ where
         let username = request
             .username()
             .ok_or(error_response(Unauthorized, request))?;
+        let nonce = request
+            .nonce()
+            .ok_or(error_response(Unauthorized, request))?
+            .value()
+            .parse::<Uuid>()
+            .map_err(|e| {
+                log::debug!("failed to parse nonce: {e}");
+
+                error_response(Unauthorized, request)
+            })?;
 
         message_integrity
             .verify(&self.auth_secret, username.name(), now)
             .map_err(|_| error_response(Unauthorized, request))?;
 
-        // TODO: Check if nonce is valid.
+        if !self.nonces.contains(&nonce) {
+            log::debug!(
+                "rejecting request {} because {nonce} is unknown",
+                hex::encode(request.transaction_id())
+            );
+
+            return Err(error_response(Unauthorized, request));
+        }
+
+        // TODO: Check counter of nonce.
 
         Ok(())
     }
@@ -842,6 +877,7 @@ impl_stun_request_for!(Refresh, REFRESH);
 trait ProtectedRequest {
     fn message_integrity(&self) -> Option<&MessageIntegrity>;
     fn username(&self) -> Option<&Username>;
+    fn nonce(&self) -> Option<&Nonce>;
 }
 
 macro_rules! impl_protected_request_for {
@@ -853,6 +889,10 @@ macro_rules! impl_protected_request_for {
 
             fn username(&self) -> Option<&Username> {
                 self.username()
+            }
+
+            fn nonce(&self) -> Option<&Nonce> {
+                self.nonce()
             }
         }
     };
