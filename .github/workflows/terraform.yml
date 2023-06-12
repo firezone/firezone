@@ -17,10 +17,7 @@ concurrency:
 jobs:
   plan_deploy:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./
-    if: ${{ github.repository == 'firezone/firezone' }}
+    if: ${{ github.repository == 'firezone/firezone' && github.ref != 'refs/heads/cloud' }}
     permissions:
       contents: read
       pull-requests: write
@@ -44,12 +41,18 @@ jobs:
           TAG=$(echo ${BRANCH_NAME} | sed 's/\//_/g'  | sed 's/\:/_/g')
           echo "TAG=branch-${TAG}" >> $GITHUB_ENV
       - uses: actions/checkout@v3
+      - name: Check Formatting
+        working-directory: terraform
+        run: |
+          terraform fmt --check --recursive
       - name: Upload Configuration
         uses: hashicorp/tfc-workflows-github/actions/upload-configuration@v1.0.0
         id: plan-upload
         with:
           workspace: ${{ env.TF_WORKSPACE }}
-          directory: "terraform/environments/staging"
+          # Subdirectory is set in the project settings:
+          # https://app.terraform.io/app/firezone/workspaces/staging/settings/general
+          directory: "./"
           speculative: true
       - name: Create Plan Run
         uses: hashicorp/tfc-workflows-github/actions/create-run@v1.0.0
@@ -101,9 +104,6 @@ jobs:
             });
   deploy:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./
     if: ${{ github.repository == 'firezone/firezone' && github.ref == 'refs/heads/cloud' }}
     permissions:
       contents: read
@@ -133,7 +133,9 @@ jobs:
         id: apply-upload
         with:
           workspace: ${{ env.TF_WORKSPACE }}
-          directory: "terraform/environments/staging"
+          # Subdirectory is set in the project settings:
+          # https://app.terraform.io/app/firezone/workspaces/staging/settings/general
+          directory: "./"
       - name: Create Plan Run
         uses: hashicorp/tfc-workflows-github/actions/create-run@v1.0.0
         id: apply-run
