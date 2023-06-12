@@ -110,6 +110,17 @@ mod tests {
     }
 
     #[test]
+    fn generate_password_test_vector_elixir() {
+        let expiry = systemtime_from_unix(1685984278);
+        let password = generate_password(
+            "1cab293a-4032-46f4-862a-40e5d174b0d2".as_bytes(),
+            expiry,
+            "uvdgKvS9GXYZ_vmv",
+        );
+        assert_eq!(password, "6xUIoZ+QvxKhRasLifwfRkMXl+ETLJUsFkHlXjlHAkg")
+    }
+
+    #[test]
     fn smoke() {
         let message_integrity = message_integrity(&RELAY_SECRET_1, 1685200000, "n23JJ2wKKtt30oXi");
 
