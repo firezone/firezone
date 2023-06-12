@@ -3,11 +3,12 @@ on:
   pull_request:
     paths:
       - "rust/**"
+      - ".github/workflows/rust.yml"
   workflow_call:
 
 # Cancel old workflow runs if new code is pushed
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: "rust-${{ github.workflow }}-${{ github.ref }}"
   cancel-in-progress: true
 
 jobs:
