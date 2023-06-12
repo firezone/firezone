@@ -464,7 +464,7 @@ jobs:
       - name: "Update Application Tags"
         run: |
           sed -ri 's/^(\s*)('${APPLICATION_NAME}'_image_tag\s*=\s*"[^"]*"\s*$)/'${APPLICATION_NAME}'_image_tag = "${{ env.TAG }}"/' ../terraform/environments/staging/versions.auto.tfvars
-          echo ../terraform/environments/staging/versions.auto.tfvars
+          cat ../terraform/environments/staging/versions.auto.tfvars
   api-container-build:
     runs-on: ubuntu-latest
     defaults:
@@ -528,6 +528,6 @@ jobs:
       - name: "Update Application Tags"
         run: |
           sed -ri 's/^(\s*)('${APPLICATION_NAME}'_image_tag\s*=\s*"[^"]*"\s*$)/'${APPLICATION_NAME}'_image_tag = "${{ env.TAG }}"/' ../terraform/environments/staging/versions.auto.tfvars
-          echo ../terraform/environments/staging/versions.auto.tfvars
+          cat ../terraform/environments/staging/versions.auto.tfvars
         # TODO: add a sanity check to make sure the image is actually built
         # and can be started
