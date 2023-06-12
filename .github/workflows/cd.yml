@@ -17,6 +17,7 @@ jobs:
     uses: ./.github/workflows/rust.yml
   terraform:
     uses: ./.github/workflows/terraform.yml
+    secrets: inherit
   deploy:
     runs-on: ubuntu-latest
     # if: ${{ github.event.workflow_run.conclusion == 'success' }}
