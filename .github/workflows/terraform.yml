@@ -17,7 +17,7 @@ concurrency:
 jobs:
   plan_deploy:
     runs-on: ubuntu-latest
-    if: ${{ github.repository == 'firezone/firezone' && github.ref != 'refs/heads/cloud' }}
+    if: ${{ github.repository == 'firezone/firezone' && github.ref != 'refs/heads/cloud' && github.event_name == 'pull_request' }}
     permissions:
       contents: read
       pull-requests: write
@@ -69,7 +69,6 @@ jobs:
       - name: Update PR
         uses: actions/github-script@v6
         id: plan-comment
-        if: ${{ github.event_name == 'pull_request' }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |

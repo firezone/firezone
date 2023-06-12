@@ -448,11 +448,6 @@ jobs:
         run: |
           TAG=$(echo ${BRANCH_NAME} | sed 's/\//_/g'  | sed 's/\:/_/g')
           echo "TAG=branch-${TAG}" >> $GITHUB_ENV
-          echo "::set-output name=container_tag::${TAG}"
-      - name: Pull cache layers
-        run: |
-          docker pull ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:master || true
-          docker pull ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:${{ env.TAG }} || true
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
         with:
@@ -461,6 +456,8 @@ jobs:
             APPLICATION_NAME=${{ env.APPLICATION_NAME }}
             APPLICATION_VERSION=0.0.0-sha.${{ github.sha }}
           context: elixir/
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           file: elixir/Dockerfile
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:${{ env.TAG }} , ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:${{ github.sha }}
@@ -515,10 +512,6 @@ jobs:
         run: |
           TAG=$(echo ${BRANCH_NAME} | sed 's/\//_/g'  | sed 's/\:/_/g')
           echo "TAG=branch-${TAG}" >> $GITHUB_ENV
-      - name: Pull cache layers
-        run: |
-          docker pull ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:master || true
-          docker pull ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:${{ env.TAG }} || true
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
         with:
@@ -527,6 +520,8 @@ jobs:
             APPLICATION_NAME=${{ env.APPLICATION_NAME }}
             APPLICATION_VERSION=0.0.0-sha.${{ github.sha }}
           context: elixir/
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           file: elixir/Dockerfile
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:${{ env.TAG }} , ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:${{ github.sha }}
