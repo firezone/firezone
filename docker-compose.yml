@@ -90,11 +90,80 @@ services:
       OUTBOUND_EMAIL_ADAPTER_OPTS: "{\"api_key\":\"7da7d1cd-111c-44a7-b5ac-4027b9d230e5\"}"
       # Seeds
       STATIC_SEEDS: "true"
+      # Client info
+      USER_AGENT: ""
     depends_on:
       postgres:
         condition: 'service_healthy'
     networks:
       - app
+
+  client:
+    environment:
+      FZ_URL: "ws://api:8081/"
+    env_file:
+      - headless_variables.env
+    build:
+      context: rust
+      args:
+        PACKAGE: headless
+    image: firezone-headless
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=0
+    devices:
+      - "/dev/net/tun:/dev/net/tun"
+    depends_on:
+      - api
+    networks:
+      app:
+        ipv4_address: 172.28.0.100
+
+  gateway:
+    environment:
+      FZ_URL: "ws://api:8081/"
+    env_file:
+      - gateway_variables.env
+    build:
+      context: rust
+      args:
+        PACKAGE: gateway
+    image: firezone-gateway
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv4.ip_forward=1
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv6.conf.all.disable_ipv6=0
+    devices:
+      - "/dev/net/tun:/dev/net/tun"
+    depends_on:
+      - api
+    networks:
+      - app
+
+  relay:
+    env_file:
+      - relay_variables.env
+    environment:
+      PUBLIC_IP4_ADDR: 172.28.0.101
+      LISTEN_IP4_ADDR: 172.28.0.101
+      PORTAL_WS_URL: "ws://api:8081/"
+    ports:
+    - "3478/udp"
+    - "49152-65535/udp"
+    build:
+      context: rust
+      args:
+        PACKAGE: relay
+    image: firezone-relay
+    depends_on:
+      - api
+    networks:
+      app:
+        ipv4_address: 172.28.0.101
+    command: "--allow-insecure-ws"
 
   api:
     build:

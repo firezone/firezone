@@ -20,3 +20,6 @@ npm-debug.log
 # Built packages
 /*.deb
 /*.rpm
+
+# You need to generate these locally to use the docker-compose file
+/*.env

@@ -1,0 +1,5 @@
+#!/bin/sh
+set -e
+source "$(dirname -- "$0")/bootstrap"
+export REMOTE_IP="172.28.0.100"
+exec ./${APPLICATION_NAME} eval Domain.Release.headless_token

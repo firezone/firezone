@@ -1,0 +1,14 @@
+[package]
+name = "connlib-android"
+version = "0.1.6"
+edition = "2021"
+
+[dependencies]
+jni = { version = "0.21.1", features = ["invocation"] }
+firezone-client-connlib = { path = "../../libs/client" }
+log = "0.4"
+android_logger = "0.13"
+
+[lib]
+name = "connlib"
+crate-type = ["cdylib"]

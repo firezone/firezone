@@ -216,3 +216,16 @@ Erlang/OTP 25 [erts-13.1.4] [source] [64-bit] [smp:1:1] [ds:1:1:10] [async-threa
 Interactive Elixir (1.14.3) - press Ctrl+C to exit (type h() ENTER for help)
 iex(api@api-b02t.us-east1-d.c.firezone-staging.internal)1>
 ```
+
+# Test the whole thing
+
+The following commands will create the tokens we need and write them to env files where the `docker-compose.yml` is ready to read them.
+
+```bash
+export USER_AGENT=`docker compose run client /bin/sh -c "headless --print-agent"`
+docker compose run -e USER_AGENT api bin/headless_token --build | tail -1 | (echo "FZ_SECRET=" && cat) | tr -d '\n' | tee headless_variables.env
+docker compose run api bin/gateway_token --build | tail -1 | (echo "FZ_SECRET=" && cat) | tr -d '\n' | tee gateway_variables.env
+docker compose run api bin/relay_token --build | tail -1 | (echo "PORTAL_TOKEN=" && cat) | tr -d '\n' | tee relay_variables.env
+```
+
+TODO
