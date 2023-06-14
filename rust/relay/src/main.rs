@@ -30,6 +30,8 @@ struct Args {
     #[arg(long, env)]
     listen_ip4_addr: Ipv4Addr,
     /// The websocket URL of the portal server to connect to.
+    ///
+    /// If omitted, the relay server will start immediately, otherwise we first log on and wait for the `init` message.
     #[arg(long, env)]
     portal_ws_url: Option<Url>,
     /// A seed to use for all randomness operations.
