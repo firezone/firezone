@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use clap::Parser;
 use futures::channel::mpsc;
 use futures::{future, FutureExt, SinkExt, StreamExt};
@@ -8,7 +8,7 @@ use rand::{Rng, SeedableRng};
 use relay::{AllocationId, Command, Server, Sleep, UdpSocket};
 use std::collections::{HashMap, VecDeque};
 use std::convert::Infallible;
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{Ipv4Addr, SocketAddr};
 use std::pin::Pin;
 use std::task::Poll;
 use std::time::SystemTime;
@@ -58,8 +58,7 @@ async fn main() -> Result<()> {
     if let Some(mut portal_url) = args.portal_ws_url {
         portal_url
             .query_pairs_mut()
-            .append_pair("ipv4", &args.listen_ip4_addr.to_string())
-            .append_pair("ipv6", &Ipv6Addr::UNSPECIFIED.to_string());
+            .append_pair("ipv4", &args.listen_ip4_addr.to_string());
 
         let mut channel = PhoenixChannel::<InboundPortalMessage, ()>::connect(
             portal_url.clone(),
