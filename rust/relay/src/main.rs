@@ -51,7 +51,7 @@ async fn main() -> Result<()> {
         )
         .init();
 
-    let mut server = Server::new(args.public_ip4_addr, make_rng(args.rng_seed));
+    let server = Server::new(args.public_ip4_addr, make_rng(args.rng_seed));
 
     tracing::info!("Relay auth secret: {}", hex::encode(server.auth_secret()));
 

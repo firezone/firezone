@@ -113,7 +113,7 @@ impl Allocate {
         transaction_id: TransactionId,
         lifetime: Option<Lifetime>,
         username: Username,
-        relay_secret: &[u8],
+        relay_secret: &str,
     ) -> Self {
         let requested_transport = RequestedTransport::new(UDP_TRANSPORT);
 
@@ -202,7 +202,7 @@ impl Refresh {
         transaction_id: TransactionId,
         lifetime: Option<Lifetime>,
         username: Username,
-        relay_secret: &[u8],
+        relay_secret: &str,
     ) -> Self {
         let mut message = Message::<Attribute>::new(MessageClass::Request, REFRESH, transaction_id);
         message.add_attribute(username.clone().into());
@@ -279,7 +279,7 @@ impl ChannelBind {
         channel_number: ChannelNumber,
         xor_peer_address: XorPeerAddress,
         username: Username,
-        relay_secret: &[u8],
+        relay_secret: &str,
     ) -> Self {
         let mut message =
             Message::<Attribute>::new(MessageClass::Request, CHANNEL_BIND, transaction_id);
