@@ -77,8 +77,8 @@ where
     /// Join the provided room.
     ///
     /// If successful, a [`Event::JoinedRoom`] event will be emitted.
-    pub fn join(&mut self, topic: impl Into<String>) {
-        let request_id = self.send_message(topic, EgressControlMessage::PhxJoin(Empty {}));
+    pub fn join(&mut self, topic: impl Into<String>, payload: impl Serialize) {
+        let request_id = self.send_message(topic, EgressControlMessage::PhxJoin(payload));
 
         self.pending_join_requests.insert(request_id);
     }
@@ -191,7 +191,7 @@ where
             }
 
             if self.next_heartbeat.poll_unpin(cx).is_ready() {
-                self.send_message("phoenix", EgressControlMessage::Heartbeat(Empty {}));
+                self.send_message("phoenix", EgressControlMessage::<()>::Heartbeat(Empty {}));
                 self.next_heartbeat
                     .as_mut()
                     .reset(Instant::now() + HEARTBEAT_INTERVAL);
@@ -318,8 +318,8 @@ struct Empty {}
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
-enum EgressControlMessage {
-    PhxJoin(Empty),
+enum EgressControlMessage<T> {
+    PhxJoin(T),
     Heartbeat(Empty),
 }
 
@@ -359,6 +359,7 @@ mod tests {
     #[serde(rename_all = "snake_case", tag = "event", content = "payload")] // This line makes it all work.
     enum Msg {
         Shout { hello: String },
+        Init {},
     }
 
     #[test]
@@ -383,5 +384,15 @@ mod tests {
                 hello: "world".to_owned()
             })
         );
+    }
+    #[test]
+    fn can_deserialize_init_message() {
+        let msg = r#"{"event":"init","payload":{},"ref":null,"topic":"relay"}"#;
+
+        let msg = serde_json::from_str::<PhoenixMessage<Msg, ()>>(msg).unwrap();
+
+        assert_eq!(msg.topic, "relay");
+        assert_eq!(msg.reference, None);
+        assert_eq!(msg.payload, Payload::Message(Msg::Init {}));
     }
 }

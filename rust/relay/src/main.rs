@@ -8,7 +8,7 @@ use rand::{Rng, SeedableRng};
 use relay::{AllocationId, Command, Server, Sleep, UdpSocket};
 use std::collections::{HashMap, VecDeque};
 use std::convert::Infallible;
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::pin::Pin;
 use std::task::Poll;
 use std::time::SystemTime;
@@ -29,9 +29,12 @@ struct Args {
     /// Must not be a wildcard-address.
     #[arg(long, env)]
     listen_ip4_addr: Ipv4Addr,
+    /// The websocket URL of the portal server to connect to.
+    #[arg(long, env)]
+    portal_ws_url: Option<Url>,
     /// A seed to use for all randomness operations.
     ///
-    /// Useful for testing and only available in debug builds.
+    /// Only available in debug builds.
     #[arg(long, env)]
     rng_seed: Option<u64>,
 }
@@ -52,35 +55,40 @@ async fn main() -> Result<()> {
 
     tracing::info!("Relay auth secret: {}", hex::encode(server.auth_secret()));
 
-    if let Ok(portal_url) = std::env::var("RELAY_PORTAL_WS_URL") {
-        if !portal_url.starts_with("wss://") {
-            bail!("Refusing to connect to portal over insecure connection, make sure to specify a `wss://` URL")
-        }
-
-        let mut portal_url = portal_url
-            .parse::<Url>()
-            .context("Failed to parse portal URL")?;
+    if let Some(mut portal_url) = args.portal_ws_url {
         portal_url
             .query_pairs_mut()
-            .append_pair("stamp_secret", &hex::encode(server.auth_secret()));
+            .append_pair("ipv4", &args.listen_ip4_addr.to_string())
+            .append_pair("ipv6", &Ipv6Addr::UNSPECIFIED.to_string());
 
         let mut channel = PhoenixChannel::<InboundPortalMessage, ()>::connect(
             portal_url.clone(),
             format!("relay/{}", env!("CARGO_PKG_VERSION")),
         )
-        .await?;
+        .await
+        .context("Failed to connect to the portal")?;
 
-        tracing::info!("Connected to portal at {portal_url}, waiting for init message");
+        tracing::info!("Connected to portal, waiting for init message",);
 
         loop {
+            channel.join(
+                "relay",
+                JoinMessage {
+                    stamp_secret: hex::encode(server.auth_secret()),
+                },
+            );
+
             let event = future::poll_fn(|cx| channel.poll(cx))
                 .await
                 .context("portal connection failed")?;
 
             match event {
+                Event::JoinedRoom { topic } if topic == "relay" => {
+                    tracing::info!("Joined relay room on portal")
+                }
                 Event::InboundMessage {
                     topic,
-                    msg: InboundPortalMessage::Init,
+                    msg: InboundPortalMessage::Init {},
                 } => {
                     tracing::info!("Received init message from portal on topic {topic}, starting relay activities");
                     break;
@@ -103,10 +111,15 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+#[derive(serde::Serialize, PartialEq, Debug)]
+struct JoinMessage {
+    stamp_secret: String,
+}
+
 #[derive(serde::Deserialize, PartialEq, Debug)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 enum InboundPortalMessage {
-    Init,
+    Init {},
 }
 
 #[cfg(debug_assertions)]
