@@ -1,4 +1,5 @@
 use anyhow::{bail, Context, Result};
+use clap::Parser;
 use futures::channel::mpsc;
 use futures::{future, FutureExt, SinkExt, StreamExt};
 use phoenix_channel::{Event, PhoenixChannel};
@@ -7,10 +8,8 @@ use rand::{Rng, SeedableRng};
 use relay::{AllocationId, Command, Server, Sleep, UdpSocket};
 use std::collections::{HashMap, VecDeque};
 use std::convert::Infallible;
-use std::error::Error;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::pin::Pin;
-use std::str::FromStr;
 use std::task::Poll;
 use std::time::SystemTime;
 use tokio::task;
@@ -18,8 +17,29 @@ use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
 use url::Url;
 
+#[derive(Parser, Debug)]
+struct Args {
+    /// The public (i.e. internet-reachable) IPv4 address of the relay server.
+    ///
+    /// Must route to the local interface we listen on.
+    #[arg(long, env)]
+    public_ip4_addr: Ipv4Addr,
+    /// The address of the local interface we should listen on.
+    ///
+    /// Must not be a wildcard-address.
+    #[arg(long, env)]
+    listen_ip4_addr: Ipv4Addr,
+    /// A seed to use for all randomness operations.
+    ///
+    /// Useful for testing and only available in debug builds.
+    #[arg(long, env)]
+    rng_seed: Option<u64>,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
+    let args = Args::parse();
+
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::builder()
@@ -28,10 +48,7 @@ async fn main() -> Result<()> {
         )
         .init();
 
-    let public_ip4_addr = parse_env_var::<Ipv4Addr>("RELAY_PUBLIC_IP4_ADDR")?;
-    let listen_ip4_addr = parse_env_var::<Ipv4Addr>("RELAY_LISTEN_IP4_ADDR")?;
-
-    let mut server = Server::new(public_ip4_addr, make_rng());
+    let mut server = Server::new(args.public_ip4_addr, make_rng(args.rng_seed));
 
     tracing::info!("Relay auth secret: {}", hex::encode(server.auth_secret()));
 
@@ -75,7 +92,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    let mut eventloop = Eventloop::new(server, listen_ip4_addr).await?;
+    let mut eventloop = Eventloop::new(server, args.listen_ip4_addr).await?;
 
     tracing::info!("Listening for incoming traffic on UDP port 3478");
 
@@ -93,14 +110,8 @@ enum InboundPortalMessage {
 }
 
 #[cfg(debug_assertions)]
-fn make_rng() -> StdRng {
-    let Ok(seed) = std::env::var("RELAY_RNG_SEED") else {
-        return StdRng::from_entropy();
-    };
-
-    let Ok(seed) = seed.parse::<u64>() else {
-        tracing::warn!("`RELAY_RNG_SEED` provided failed to parse as u64, falling back to system entropy");
-
+fn make_rng(seed: Option<u64>) -> StdRng {
+    let Some(seed) = seed else {
         return StdRng::from_entropy();
     };
 
@@ -110,9 +121,9 @@ fn make_rng() -> StdRng {
 }
 
 #[cfg(not(debug_assertions))]
-fn make_rng() -> StdRng {
-    if std::env::var("RELAY_RNG_SEED").is_ok() {
-        tracing::debug!("Ignoring `RELAY_RNG_SEED` because we are running in release mode");
+fn make_rng(seed: Option<u64>) -> StdRng {
+    if seed.is_some() {
+        tracing::debug!("Ignoring rng-seed because we are running in release mode");
     }
 
     StdRng::from_entropy()
@@ -311,19 +322,6 @@ impl Drop for Allocation {
     fn drop(&mut self) {
         self.handle.abort();
     }
-}
-
-fn parse_env_var<T>(key: &str) -> Result<T>
-where
-    T: FromStr,
-    T::Err: Error + Send + Sync + 'static,
-{
-    let addr = std::env::var(key)
-        .with_context(|| format!("`{key}` env variable is unset"))?
-        .parse()
-        .with_context(|| format!("failed to parse {key} env variable"))?;
-
-    Ok(addr)
 }
 
 async fn forward_incoming_relay_data(
