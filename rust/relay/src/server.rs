@@ -621,13 +621,11 @@ where
     ) -> Result<(), Message<Attribute>> {
         let message_integrity = request
             .message_integrity()
-            .ok_or(error_response(Unauthorized, request))?;
-        let username = request
-            .username()
-            .ok_or(error_response(Unauthorized, request))?;
+            .map_err(|e| error_response(e, request))?;
+        let username = request.username().map_err(|e| error_response(e, request))?;
         let nonce = request
             .nonce()
-            .ok_or(error_response(Unauthorized, request))?
+            .map_err(|e| error_response(e, request))?
             .value()
             .parse::<Uuid>()
             .map_err(|e| {
@@ -868,24 +866,24 @@ impl_stun_request_for!(Refresh, REFRESH);
 
 /// Private helper trait to make [`Server::verify_auth`] more ergonomic to use.
 trait ProtectedRequest {
-    fn message_integrity(&self) -> Option<&MessageIntegrity>;
-    fn username(&self) -> Option<&Username>;
-    fn nonce(&self) -> Option<&Nonce>;
+    fn message_integrity(&self) -> Result<&MessageIntegrity, Unauthorized>;
+    fn username(&self) -> Result<&Username, Unauthorized>;
+    fn nonce(&self) -> Result<&Nonce, Unauthorized>;
 }
 
 macro_rules! impl_protected_request_for {
     ($t:ty) => {
         impl ProtectedRequest for $t {
-            fn message_integrity(&self) -> Option<&MessageIntegrity> {
-                self.message_integrity()
+            fn message_integrity(&self) -> Result<&MessageIntegrity, Unauthorized> {
+                self.message_integrity().ok_or(Unauthorized)
             }
 
-            fn username(&self) -> Option<&Username> {
-                self.username()
+            fn username(&self) -> Result<&Username, Unauthorized> {
+                self.username().ok_or(Unauthorized)
             }
 
-            fn nonce(&self) -> Option<&Nonce> {
-                self.nonce()
+            fn nonce(&self) -> Result<&Nonce, Unauthorized> {
+                self.nonce().ok_or(Unauthorized)
             }
         }
     };
