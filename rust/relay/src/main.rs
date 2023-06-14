@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use clap::Parser;
 use futures::channel::mpsc;
 use futures::{future, FutureExt, SinkExt, StreamExt};
@@ -34,6 +34,9 @@ struct Args {
     /// If omitted, the relay server will start immediately, otherwise we first log on and wait for the `init` message.
     #[arg(long, env)]
     portal_ws_url: Option<Url>,
+    /// Whether to allow connecting to the portal over an insecure connection.
+    #[arg(long)]
+    allow_insecure_ws: bool,
     /// A seed to use for all randomness operations.
     ///
     /// Only available in debug builds.
@@ -58,6 +61,10 @@ async fn main() -> Result<()> {
     tracing::info!("Relay auth secret: {}", hex::encode(server.auth_secret()));
 
     if let Some(mut portal_url) = args.portal_ws_url {
+        if portal_url.scheme() == "ws" && !args.allow_insecure_ws {
+            bail!("Refusing to connect to portal over insecure connection, pass --allow-insecure-ws to override")
+        }
+
         portal_url
             .query_pairs_mut()
             .append_pair("ipv4", &args.listen_ip4_addr.to_string());
