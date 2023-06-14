@@ -169,6 +169,13 @@ jobs:
         run: mix deps.compile --skip-umbrella-children
       - name: Compile Application
         run: mix compile --force --warnings-as-errors
+      - name: Check For Retired Packages
+        run: mix hex.audit
+      - name: Check For Vulnerable Packages
+        run: mix deps.audit
+      - name: Run Sobelow vulnerability scanner for web app
+        working-directory: ./elixir/apps/web
+        run: mix sobelow --skip
       - name: Check Formatting
         run: mix format --check-formatted
       - name: Run Credo
