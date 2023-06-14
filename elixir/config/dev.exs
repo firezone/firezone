@@ -28,12 +28,25 @@ config :web, Web.Endpoint,
   ],
   live_reload: [
     patterns: [
+      ~r"apps/domain/lib/domain/.*(ex|eex|heex)$",
       ~r"apps/web/priv/static/.*(js|css|png|jpeg|jpg|gif|svg)$",
       ~r"apps/web/priv/gettext/.*(po)$",
       ~r"apps/web/lib/web/.*(ex|eex|heex)$"
     ]
   ],
   server: true
+
+root_path =
+  __ENV__.file
+  |> Path.dirname()
+  |> Path.join("..")
+  |> Path.expand()
+
+config :phoenix_live_reload, :dirs, [
+  Path.join([root_path, "apps", "domain"]),
+  Path.join([root_path, "apps", "web"]),
+  Path.join([root_path, "apps", "api"])
+]
 
 ###############################
 ##### API #####################
