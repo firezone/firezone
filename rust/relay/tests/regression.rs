@@ -8,14 +8,14 @@ use std::collections::HashMap;
 use std::iter;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::time::{Duration, SystemTime};
-use stun_codec::rfc5389::attributes::{Username, XorMappedAddress};
+use stun_codec::rfc5389::attributes::{ErrorCode, Nonce, Realm, Username, XorMappedAddress};
+use stun_codec::rfc5389::errors::Unauthorized;
 use stun_codec::rfc5389::methods::BINDING;
 use stun_codec::rfc5766::attributes::{ChannelNumber, Lifetime, XorPeerAddress, XorRelayAddress};
 use stun_codec::rfc5766::methods::{ALLOCATE, CHANNEL_BIND, REFRESH};
-use stun_codec::{
-    DecodedMessage, Message, MessageClass, MessageDecoder, MessageEncoder, TransactionId,
-};
+use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder, TransactionId};
 use test_strategy::proptest;
+use uuid::Uuid;
 use Output::{CreateAllocation, FreeAllocation, Wake};
 
 #[proptest]
@@ -46,18 +46,20 @@ fn deallocate_once_time_expired(
     source: SocketAddrV4,
     public_relay_addr: Ipv4Addr,
     #[strategy(relay::proptest::now())] now: SystemTime,
+    #[strategy(relay::proptest::nonce())] nonce: Uuid,
 ) {
-    let mut server = TestServer::new(public_relay_addr);
+    let mut server = TestServer::new(public_relay_addr).with_nonce(nonce);
     let secret = server.auth_secret();
 
     server.assert_commands(
         from_client(
             source,
-            Allocate::new_udp(
+            Allocate::new_authenticated_udp(
                 transaction_id,
                 Some(lifetime.clone()),
                 valid_username(now, &username_salt),
                 &secret,
+                nonce,
             ),
             now,
         ),
@@ -78,6 +80,56 @@ fn deallocate_once_time_expired(
 }
 
 #[proptest]
+fn unauthenticated_allocate_triggers_authentication(
+    #[strategy(relay::proptest::transaction_id())] transaction_id: TransactionId,
+    #[strategy(relay::proptest::allocation_lifetime())] lifetime: Lifetime,
+    #[strategy(relay::proptest::username_salt())] username_salt: String,
+    source: SocketAddrV4,
+    public_relay_addr: Ipv4Addr,
+    #[strategy(relay::proptest::now())] now: SystemTime,
+) {
+    // Nonces are generated randomly and we control the randomness in the test, thus this is deterministic.
+    let first_nonce = Uuid::from_u128(0x0);
+
+    let mut server = TestServer::new(public_relay_addr);
+    let secret = server.auth_secret();
+
+    server.assert_commands(
+        from_client(
+            source,
+            Allocate::new_unauthenticated_udp(transaction_id, Some(lifetime.clone())),
+            now,
+        ),
+        [send_message(
+            source,
+            unauthorized_allocate_response(transaction_id, first_nonce),
+        )],
+    );
+
+    server.assert_commands(
+        from_client(
+            source,
+            Allocate::new_authenticated_udp(
+                transaction_id,
+                Some(lifetime.clone()),
+                valid_username(now, &username_salt),
+                &secret,
+                first_nonce,
+            ),
+            now,
+        ),
+        [
+            Wake(now + lifetime.lifetime()),
+            CreateAllocation(49152),
+            send_message(
+                source,
+                allocate_response(transaction_id, public_relay_addr, 49152, source, &lifetime),
+            ),
+        ],
+    );
+}
+
+#[proptest]
 fn when_refreshed_in_time_allocation_does_not_expire(
     #[strategy(relay::proptest::transaction_id())] allocate_transaction_id: TransactionId,
     #[strategy(relay::proptest::transaction_id())] refresh_transaction_id: TransactionId,
@@ -87,19 +139,21 @@ fn when_refreshed_in_time_allocation_does_not_expire(
     source: SocketAddrV4,
     public_relay_addr: Ipv4Addr,
     #[strategy(relay::proptest::now())] now: SystemTime,
+    #[strategy(relay::proptest::nonce())] nonce: Uuid,
 ) {
-    let mut server = TestServer::new(public_relay_addr);
+    let mut server = TestServer::new(public_relay_addr).with_nonce(nonce);
     let secret = server.auth_secret();
     let first_wake = now + allocate_lifetime.lifetime();
 
     server.assert_commands(
         from_client(
             source,
-            Allocate::new_udp(
+            Allocate::new_authenticated_udp(
                 allocate_transaction_id,
                 Some(allocate_lifetime.clone()),
                 valid_username(now, &username_salt),
                 &secret,
+                nonce,
             ),
             now,
         ),
@@ -131,6 +185,7 @@ fn when_refreshed_in_time_allocation_does_not_expire(
                 Some(refresh_lifetime.clone()),
                 valid_username(now, &username_salt),
                 &secret,
+                nonce,
             ),
             now,
         ),
@@ -160,19 +215,21 @@ fn when_receiving_lifetime_0_for_existing_allocation_then_delete(
     source: SocketAddrV4,
     public_relay_addr: Ipv4Addr,
     #[strategy(relay::proptest::now())] now: SystemTime,
+    #[strategy(relay::proptest::nonce())] nonce: Uuid,
 ) {
-    let mut server = TestServer::new(public_relay_addr);
+    let mut server = TestServer::new(public_relay_addr).with_nonce(nonce);
     let secret = server.auth_secret();
     let first_wake = now + allocate_lifetime.lifetime();
 
     server.assert_commands(
         from_client(
             source,
-            Allocate::new_udp(
+            Allocate::new_authenticated_udp(
                 allocate_transaction_id,
                 Some(allocate_lifetime.clone()),
                 valid_username(now, &username_salt),
                 &secret,
+                nonce,
             ),
             now,
         ),
@@ -203,6 +260,7 @@ fn when_receiving_lifetime_0_for_existing_allocation_then_delete(
                 Some(Lifetime::new(Duration::ZERO).unwrap()),
                 valid_username(now, &username_salt),
                 &secret,
+                nonce,
             ),
             now,
         ),
@@ -240,20 +298,22 @@ fn ping_pong_relay(
     #[strategy(relay::proptest::now())] now: SystemTime,
     peer_to_client_ping: [u8; 32],
     client_to_peer_ping: [u8; 32],
+    #[strategy(relay::proptest::nonce())] nonce: Uuid,
 ) {
     let _ = env_logger::try_init();
 
-    let mut server = TestServer::new(public_relay_addr);
+    let mut server = TestServer::new(public_relay_addr).with_nonce(nonce);
     let secret = server.auth_secret();
 
     server.assert_commands(
         from_client(
             source,
-            Allocate::new_udp(
+            Allocate::new_authenticated_udp(
                 allocate_transaction_id,
                 Some(lifetime.clone()),
                 valid_username(now, &username_salt),
                 &secret,
+                nonce,
             ),
             now,
         ),
@@ -284,6 +344,7 @@ fn ping_pong_relay(
                 XorPeerAddress::new(peer.into()),
                 valid_username(now, &username_salt),
                 &secret,
+                nonce,
             ),
             now,
         ),
@@ -324,6 +385,12 @@ impl TestServer {
             server: Server::new(relay_public_addr, StepRng::new(0, 0)),
             id_to_port: Default::default(),
         }
+    }
+
+    fn with_nonce(mut self, nonce: Uuid) -> Self {
+        self.server.add_nonce(nonce);
+
+        self
     }
 
     fn auth_secret(&mut self) -> [u8; 32] {
@@ -399,7 +466,7 @@ impl TestServer {
                         when.duration_since(SystemTime::UNIX_EPOCH)
                             .unwrap()
                             .as_secs(),
-                        parse_message(&payload).expect("self.server to produce valid message")
+                        parse_message(&payload)
                     )
                 }
                 (
@@ -474,6 +541,23 @@ fn allocate_response(
     message
 }
 
+fn unauthorized_allocate_response(
+    transaction_id: TransactionId,
+    nonce: Uuid,
+) -> Message<Attribute> {
+    let mut message =
+        Message::<Attribute>::new(MessageClass::ErrorResponse, ALLOCATE, transaction_id);
+    message.add_attribute(ErrorCode::from(Unauthorized).into());
+    message.add_attribute(
+        Nonce::new(nonce.as_hyphenated().to_string())
+            .unwrap()
+            .into(),
+    );
+    message.add_attribute(Realm::new("firezone".to_owned()).unwrap().into());
+
+    message
+}
+
 fn refresh_response(transaction_id: TransactionId, lifetime: Lifetime) -> Message<Attribute> {
     let mut message =
         Message::<Attribute>::new(MessageClass::SuccessResponse, REFRESH, transaction_id);
@@ -486,8 +570,11 @@ fn channel_bind_response(transaction_id: TransactionId) -> Message<Attribute> {
     Message::<Attribute>::new(MessageClass::SuccessResponse, CHANNEL_BIND, transaction_id)
 }
 
-fn parse_message(message: &[u8]) -> DecodedMessage<Attribute> {
-    MessageDecoder::new().decode_from_bytes(message).unwrap()
+fn parse_message(message: &[u8]) -> Message<Attribute> {
+    MessageDecoder::new()
+        .decode_from_bytes(message)
+        .unwrap()
+        .unwrap()
 }
 
 enum Input<'a> {
@@ -526,7 +613,7 @@ fn send_message<'a>(source: impl Into<SocketAddr>, message: Message<Attribute>) 
     Output::SendMessage((source.into(), message))
 }
 
-fn send_channel_data<'a>(source: impl Into<SocketAddr>, message: ChannelData<'a>) -> Output<'a> {
+fn send_channel_data(source: impl Into<SocketAddr>, message: ChannelData) -> Output {
     Output::SendChannelData((source.into(), message))
 }
 

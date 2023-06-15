@@ -30,7 +30,7 @@ jobs:
       - run: cargo doc --no-deps --document-private-items
         env:
           RUSTDOCFLAGS: "-D warnings"
-      - run: cargo clippy -- -D warnings
+      - run: cargo clippy --all-targets --all-features -- -D warnings
       - run: cargo test
 
   cross: # cross is separate from test because cross-compiling yields different artifacts and we cannot reuse the cache.

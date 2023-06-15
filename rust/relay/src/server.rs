@@ -6,7 +6,7 @@ pub use crate::server::client_message::{
     Allocate, Binding, ChannelBind, ClientMessage, CreatePermission, Refresh,
 };
 
-use crate::auth::{MessageIntegrityExt, FIREZONE};
+use crate::auth::{MessageIntegrityExt, Nonces, FIREZONE};
 use crate::rfc8656::PeerAddressFamilyMismatch;
 use crate::stun_codec_ext::{MessageClassExt, MethodExt};
 use crate::TimeEvents;
@@ -29,6 +29,8 @@ use stun_codec::rfc5766::attributes::{
 use stun_codec::rfc5766::errors::{AllocationMismatch, InsufficientCapacity};
 use stun_codec::rfc5766::methods::{ALLOCATE, CHANNEL_BIND, CREATE_PERMISSION, REFRESH};
 use stun_codec::{Message, MessageClass, MessageEncoder, Method, TransactionId};
+use tracing::log;
+use uuid::Uuid;
 
 /// A sans-IO STUN & TURN server.
 ///
@@ -58,6 +60,8 @@ pub struct Server<R> {
     rng: R,
 
     auth_secret: [u8; 32],
+
+    nonces: Nonces,
 
     time_events: TimeEvents<TimedAction>,
 }
@@ -141,11 +145,19 @@ where
             auth_secret: rng.gen(),
             rng,
             time_events: TimeEvents::default(),
+            nonces: Default::default(),
         }
     }
 
     pub fn auth_secret(&mut self) -> [u8; 32] {
         self.auth_secret
+    }
+
+    /// Registers a new, valid nonce.
+    ///
+    /// Each nonce is valid for 10 requests.
+    pub fn add_nonce(&mut self, nonce: Uuid) {
+        self.nonces.add_new(nonce);
     }
 
     /// Process the bytes received from a client.
@@ -211,7 +223,11 @@ where
             .get_attribute::<ErrorCode>()
             .map_or(false, |error| error == &ErrorCode::from(Unauthorized))
         {
-            error_response.add_attribute(Nonce::new("foobar".to_owned()).unwrap().into()); // TODO: Implement proper nonce handling.
+            let new_nonce = Uuid::from_u128(self.rng.gen());
+
+            self.add_nonce(new_nonce);
+
+            error_response.add_attribute(Nonce::new(new_nonce.to_string()).unwrap().into());
             error_response.add_attribute((*FIREZONE).clone().into());
         }
 
@@ -603,12 +619,28 @@ where
         request: &(impl StunRequest + ProtectedRequest),
         now: SystemTime,
     ) -> Result<(), Message<Attribute>> {
-        request
+        let message_integrity = request
             .message_integrity()
-            .verify(&self.auth_secret, request.username().name(), now)
+            .map_err(|e| error_response(e, request))?;
+        let username = request.username().map_err(|e| error_response(e, request))?;
+        let nonce = request
+            .nonce()
+            .map_err(|e| error_response(e, request))?
+            .value()
+            .parse::<Uuid>()
+            .map_err(|e| {
+                log::debug!("failed to parse nonce: {e}");
+
+                error_response(Unauthorized, request)
+            })?;
+
+        self.nonces
+            .handle_nonce_used(nonce)
             .map_err(|_| error_response(Unauthorized, request))?;
 
-        // TODO: Check if nonce is valid.
+        message_integrity
+            .verify(&self.auth_secret, username.name(), now)
+            .map_err(|_| error_response(Unauthorized, request))?;
 
         Ok(())
     }
@@ -834,19 +866,24 @@ impl_stun_request_for!(Refresh, REFRESH);
 
 /// Private helper trait to make [`Server::verify_auth`] more ergonomic to use.
 trait ProtectedRequest {
-    fn message_integrity(&self) -> &MessageIntegrity;
-    fn username(&self) -> &Username;
+    fn message_integrity(&self) -> Result<&MessageIntegrity, Unauthorized>;
+    fn username(&self) -> Result<&Username, Unauthorized>;
+    fn nonce(&self) -> Result<&Nonce, Unauthorized>;
 }
 
 macro_rules! impl_protected_request_for {
     ($t:ty) => {
         impl ProtectedRequest for $t {
-            fn message_integrity(&self) -> &MessageIntegrity {
-                self.message_integrity()
+            fn message_integrity(&self) -> Result<&MessageIntegrity, Unauthorized> {
+                self.message_integrity().ok_or(Unauthorized)
             }
 
-            fn username(&self) -> &Username {
-                self.username()
+            fn username(&self) -> Result<&Username, Unauthorized> {
+                self.username().ok_or(Unauthorized)
+            }
+
+            fn nonce(&self) -> Result<&Nonce, Unauthorized> {
+                self.nonce().ok_or(Unauthorized)
             }
         }
     };
