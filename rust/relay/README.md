@@ -22,8 +22,6 @@ You can build the server using: `cargo build --release --bin relay`
 
 For a detailed help text and available configuration options, run `cargo run --bin relay -- --help`.
 
-If the `RELAY_PORTAL_WS_URL` environment variable is set, we will connect to it and wait for an `init` message before booting.
-
 ## Design
 
 The relay is designed in a sans-IO fashion, meaning the core components do not cause side effects but operate as pure, synchronous state machines.

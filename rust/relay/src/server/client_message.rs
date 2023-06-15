@@ -5,14 +5,15 @@ use crate::Attribute;
 use bytecodec::DecodeExt;
 use std::io;
 use std::time::Duration;
-use stun_codec::rfc5389::attributes::{ErrorCode, MessageIntegrity, Username};
-use stun_codec::rfc5389::errors::{BadRequest, Unauthorized};
+use stun_codec::rfc5389::attributes::{ErrorCode, MessageIntegrity, Nonce, Username};
+use stun_codec::rfc5389::errors::BadRequest;
 use stun_codec::rfc5389::methods::BINDING;
 use stun_codec::rfc5766::attributes::{
     ChannelNumber, Lifetime, RequestedTransport, XorPeerAddress,
 };
 use stun_codec::rfc5766::methods::{ALLOCATE, CHANNEL_BIND, CREATE_PERMISSION, REFRESH};
 use stun_codec::{BrokenMessage, Message, MessageClass, TransactionId};
+use uuid::Uuid;
 
 /// The maximum lifetime of an allocation.
 const MAX_ALLOCATION_LIFETIME: Duration = Duration::from_secs(3600);
@@ -43,13 +44,13 @@ impl Decoder {
                     (ALLOCATE, Request) => {
                         Ok(Allocate::parse(&message).map(ClientMessage::Allocate))
                     }
-                    (REFRESH, Request) => Ok(Refresh::parse(&message).map(ClientMessage::Refresh)),
+                    (REFRESH, Request) => Ok(Ok(ClientMessage::Refresh(Refresh::parse(&message)))),
                     (CHANNEL_BIND, Request) => {
                         Ok(ChannelBind::parse(&message).map(ClientMessage::ChannelBind))
                     }
-                    (CREATE_PERMISSION, Request) => {
-                        Ok(CreatePermission::parse(&message).map(ClientMessage::CreatePermission))
-                    }
+                    (CREATE_PERMISSION, Request) => Ok(Ok(ClientMessage::CreatePermission(
+                        CreatePermission::parse(&message),
+                    ))),
                     (_, Request) => Ok(Err(bad_request(&message))),
                     (method, class) => {
                         Err(Error::DecodeStun(bytecodec::Error::from(io::Error::new(
@@ -102,25 +103,29 @@ impl Binding {
 
 pub struct Allocate {
     transaction_id: TransactionId,
-    message_integrity: MessageIntegrity,
+    message_integrity: Option<MessageIntegrity>,
     requested_transport: RequestedTransport,
     lifetime: Option<Lifetime>,
-    username: Username,
+    username: Option<Username>,
+    nonce: Option<Nonce>,
 }
 
 impl Allocate {
-    pub fn new_udp(
+    pub fn new_authenticated_udp(
         transaction_id: TransactionId,
         lifetime: Option<Lifetime>,
         username: Username,
         relay_secret: &str,
+        nonce: Uuid,
     ) -> Self {
         let requested_transport = RequestedTransport::new(UDP_TRANSPORT);
+        let nonce = Nonce::new(nonce.as_hyphenated().to_string()).expect("len(uuid) < 128");
 
         let mut message =
             Message::<Attribute>::new(MessageClass::Request, ALLOCATE, transaction_id);
         message.add_attribute(requested_transport.clone().into());
         message.add_attribute(username.clone().into());
+        message.add_attribute(nonce.clone().into());
 
         if let Some(lifetime) = &lifetime {
             message.add_attribute(lifetime.clone().into());
@@ -137,28 +142,48 @@ impl Allocate {
 
         Self {
             transaction_id,
-            message_integrity,
+            message_integrity: Some(message_integrity),
             requested_transport,
             lifetime,
-            username,
+            username: Some(username),
+            nonce: Some(nonce),
+        }
+    }
+
+    pub fn new_unauthenticated_udp(
+        transaction_id: TransactionId,
+        lifetime: Option<Lifetime>,
+    ) -> Self {
+        let requested_transport = RequestedTransport::new(UDP_TRANSPORT);
+
+        let mut message =
+            Message::<Attribute>::new(MessageClass::Request, ALLOCATE, transaction_id);
+        message.add_attribute(requested_transport.clone().into());
+
+        if let Some(lifetime) = &lifetime {
+            message.add_attribute(lifetime.clone().into());
+        }
+
+        Self {
+            transaction_id,
+            message_integrity: None,
+            requested_transport,
+            lifetime,
+            username: None,
+            nonce: None,
         }
     }
 
     pub fn parse(message: &Message<Attribute>) -> Result<Self, Message<Attribute>> {
         let transaction_id = message.transaction_id();
-        let message_integrity = message
-            .get_attribute::<MessageIntegrity>()
-            .ok_or(unauthorized(message))?
-            .clone();
+        let message_integrity = message.get_attribute::<MessageIntegrity>().cloned();
+        let nonce = message.get_attribute::<Nonce>().cloned();
         let requested_transport = message
             .get_attribute::<RequestedTransport>()
             .ok_or(bad_request(message))?
             .clone();
         let lifetime = message.get_attribute::<Lifetime>().cloned();
-        let username = message
-            .get_attribute::<Username>()
-            .ok_or(bad_request(message))?
-            .clone();
+        let username = message.get_attribute::<Username>().cloned();
 
         Ok(Allocate {
             transaction_id,
@@ -166,6 +191,7 @@ impl Allocate {
             requested_transport,
             lifetime,
             username,
+            nonce,
         })
     }
 
@@ -173,8 +199,8 @@ impl Allocate {
         self.transaction_id
     }
 
-    pub fn message_integrity(&self) -> &MessageIntegrity {
-        &self.message_integrity
+    pub fn message_integrity(&self) -> Option<&MessageIntegrity> {
+        self.message_integrity.as_ref()
     }
 
     pub fn requested_transport(&self) -> &RequestedTransport {
@@ -185,16 +211,21 @@ impl Allocate {
         compute_effective_lifetime(self.lifetime.as_ref())
     }
 
-    pub fn username(&self) -> &Username {
-        &self.username
+    pub fn username(&self) -> Option<&Username> {
+        self.username.as_ref()
+    }
+
+    pub fn nonce(&self) -> Option<&Nonce> {
+        self.nonce.as_ref()
     }
 }
 
 pub struct Refresh {
     transaction_id: TransactionId,
-    message_integrity: MessageIntegrity,
+    message_integrity: Option<MessageIntegrity>,
     lifetime: Option<Lifetime>,
-    username: Username,
+    username: Option<Username>,
+    nonce: Option<Nonce>,
 }
 
 impl Refresh {
@@ -203,9 +234,13 @@ impl Refresh {
         lifetime: Option<Lifetime>,
         username: Username,
         relay_secret: &str,
+        nonce: Uuid,
     ) -> Self {
+        let nonce = Nonce::new(nonce.as_hyphenated().to_string()).expect("len(uuid) < 128");
+
         let mut message = Message::<Attribute>::new(MessageClass::Request, REFRESH, transaction_id);
         message.add_attribute(username.clone().into());
+        message.add_attribute(nonce.clone().into());
 
         if let Some(lifetime) = &lifetime {
             message.add_attribute(lifetime.clone().into());
@@ -222,55 +257,57 @@ impl Refresh {
 
         Self {
             transaction_id,
-            message_integrity,
+            message_integrity: Some(message_integrity),
             lifetime,
-            username,
+            username: Some(username),
+            nonce: Some(nonce),
         }
     }
 
-    pub fn parse(message: &Message<Attribute>) -> Result<Self, Message<Attribute>> {
+    pub fn parse(message: &Message<Attribute>) -> Self {
         let transaction_id = message.transaction_id();
-        let message_integrity = message
-            .get_attribute::<MessageIntegrity>()
-            .ok_or(unauthorized(message))?
-            .clone();
+        let message_integrity = message.get_attribute::<MessageIntegrity>().cloned();
+        let nonce = message.get_attribute::<Nonce>().cloned();
         let lifetime = message.get_attribute::<Lifetime>().cloned();
-        let username = message
-            .get_attribute::<Username>()
-            .ok_or(bad_request(message))?
-            .clone();
+        let username = message.get_attribute::<Username>().cloned();
 
-        Ok(Refresh {
+        Refresh {
             transaction_id,
             message_integrity,
             lifetime,
             username,
-        })
+            nonce,
+        }
     }
 
     pub fn transaction_id(&self) -> TransactionId {
         self.transaction_id
     }
 
-    pub fn message_integrity(&self) -> &MessageIntegrity {
-        &self.message_integrity
+    pub fn message_integrity(&self) -> Option<&MessageIntegrity> {
+        self.message_integrity.as_ref()
     }
 
     pub fn effective_lifetime(&self) -> Lifetime {
         compute_effective_lifetime(self.lifetime.as_ref())
     }
 
-    pub fn username(&self) -> &Username {
-        &self.username
+    pub fn username(&self) -> Option<&Username> {
+        self.username.as_ref()
+    }
+
+    pub fn nonce(&self) -> Option<&Nonce> {
+        self.nonce.as_ref()
     }
 }
 
 pub struct ChannelBind {
     transaction_id: TransactionId,
     channel_number: ChannelNumber,
-    message_integrity: MessageIntegrity,
+    message_integrity: Option<MessageIntegrity>,
+    nonce: Option<Nonce>,
     xor_peer_address: XorPeerAddress,
-    username: Username,
+    username: Option<Username>,
 }
 
 impl ChannelBind {
@@ -280,12 +317,16 @@ impl ChannelBind {
         xor_peer_address: XorPeerAddress,
         username: Username,
         relay_secret: &str,
+        nonce: Uuid,
     ) -> Self {
+        let nonce = Nonce::new(nonce.as_hyphenated().to_string()).expect("len(uuid) < 128");
+
         let mut message =
             Message::<Attribute>::new(MessageClass::Request, CHANNEL_BIND, transaction_id);
         message.add_attribute(username.clone().into());
         message.add_attribute(channel_number.into());
         message.add_attribute(xor_peer_address.clone().into());
+        message.add_attribute(nonce.clone().into());
 
         let (expiry, salt) = split_username(username.name()).expect("a valid username");
         let expiry_systemtime = systemtime_from_unix(expiry);
@@ -299,9 +340,10 @@ impl ChannelBind {
         Self {
             transaction_id,
             channel_number,
-            message_integrity,
+            message_integrity: Some(message_integrity),
             xor_peer_address,
-            username,
+            username: Some(username),
+            nonce: Some(nonce),
         }
     }
 
@@ -311,14 +353,9 @@ impl ChannelBind {
             .get_attribute::<ChannelNumber>()
             .copied()
             .ok_or(bad_request(message))?;
-        let message_integrity = message
-            .get_attribute::<MessageIntegrity>()
-            .ok_or(unauthorized(message))?
-            .clone();
-        let username = message
-            .get_attribute::<Username>()
-            .ok_or(bad_request(message))?
-            .clone();
+        let message_integrity = message.get_attribute::<MessageIntegrity>().cloned();
+        let nonce = message.get_attribute::<Nonce>().cloned();
+        let username = message.get_attribute::<Username>().cloned();
         let xor_peer_address = message
             .get_attribute::<XorPeerAddress>()
             .ok_or(bad_request(message))?
@@ -328,6 +365,7 @@ impl ChannelBind {
             transaction_id,
             channel_number,
             message_integrity,
+            nonce,
             xor_peer_address,
             username,
         })
@@ -341,66 +379,59 @@ impl ChannelBind {
         self.channel_number
     }
 
-    pub fn message_integrity(&self) -> &MessageIntegrity {
-        &self.message_integrity
+    pub fn message_integrity(&self) -> Option<&MessageIntegrity> {
+        self.message_integrity.as_ref()
     }
 
     pub fn xor_peer_address(&self) -> &XorPeerAddress {
         &self.xor_peer_address
     }
 
-    pub fn username(&self) -> &Username {
-        &self.username
+    pub fn username(&self) -> Option<&Username> {
+        self.username.as_ref()
+    }
+
+    pub fn nonce(&self) -> Option<&Nonce> {
+        self.nonce.as_ref()
     }
 }
 
 pub struct CreatePermission {
     transaction_id: TransactionId,
-    message_integrity: MessageIntegrity,
-    username: Username,
+    message_integrity: Option<MessageIntegrity>,
+    username: Option<Username>,
+    nonce: Option<Nonce>,
 }
 
 impl CreatePermission {
-    pub fn new(
-        transaction_id: TransactionId,
-        message_integrity: MessageIntegrity,
-        username: Username,
-    ) -> Self {
-        Self {
-            transaction_id,
-            message_integrity,
-            username,
-        }
-    }
-
-    pub fn parse(message: &Message<Attribute>) -> Result<Self, Message<Attribute>> {
+    pub fn parse(message: &Message<Attribute>) -> Self {
         let transaction_id = message.transaction_id();
-        let message_integrity = message
-            .get_attribute::<MessageIntegrity>()
-            .ok_or(unauthorized(message))?
-            .clone();
-        let username = message
-            .get_attribute::<Username>()
-            .ok_or(bad_request(message))?
-            .clone();
+        let message_integrity = message.get_attribute::<MessageIntegrity>().cloned();
+        let username = message.get_attribute::<Username>().cloned();
+        let nonce = message.get_attribute::<Nonce>().cloned();
 
-        Ok(CreatePermission {
+        CreatePermission {
             transaction_id,
             message_integrity,
             username,
-        })
+            nonce,
+        }
     }
 
     pub fn transaction_id(&self) -> TransactionId {
         self.transaction_id
     }
 
-    pub fn message_integrity(&self) -> &MessageIntegrity {
-        &self.message_integrity
+    pub fn message_integrity(&self) -> Option<&MessageIntegrity> {
+        self.message_integrity.as_ref()
     }
 
-    pub fn username(&self) -> &Username {
-        &self.username
+    pub fn username(&self) -> Option<&Username> {
+        self.username.as_ref()
+    }
+
+    pub fn nonce(&self) -> Option<&Nonce> {
+        self.nonce.as_ref()
     }
 }
 
@@ -422,17 +453,6 @@ fn bad_request(message: &Message<Attribute>) -> Message<Attribute> {
         message.transaction_id(),
     );
     message.add_attribute(ErrorCode::from(BadRequest).into());
-
-    message
-}
-
-fn unauthorized(message: &Message<Attribute>) -> Message<Attribute> {
-    let mut message = Message::new(
-        MessageClass::ErrorResponse,
-        message.method(),
-        message.transaction_id(),
-    );
-    message.add_attribute(ErrorCode::from(Unauthorized).into());
 
     message
 }

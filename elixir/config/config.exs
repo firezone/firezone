@@ -192,7 +192,7 @@ config :tailwind,
     args: [
       "--config=tailwind.config.js",
       "--input=css/app.css",
-      "--output=../priv/static/assets/app.css"
+      "--output=tmp/tailwind/app.css"
     ],
     cd: Path.expand("../apps/web/assets", __DIR__)
   ]

@@ -4,14 +4,11 @@ on:
     paths:
       - "elixir/**"
       - ".github/workflows/elixir.yml"
-  push:
-    branches:
-      - master
-      - cloud
+  workflow_call:
 
 # Cancel old workflow runs if new code is pushed
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: "elixir-${{ github.workflow }}-${{ github.ref }}"
   cancel-in-progress: true
 
 jobs:
@@ -172,6 +169,13 @@ jobs:
         run: mix deps.compile --skip-umbrella-children
       - name: Compile Application
         run: mix compile --force --warnings-as-errors
+      - name: Check For Retired Packages
+        run: mix hex.audit
+      - name: Check For Vulnerable Packages
+        run: mix deps.audit
+      - name: Run Sobelow vulnerability scanner for web app
+        working-directory: ./elixir/apps/web
+        run: mix sobelow --skip
       - name: Check Formatting
         run: mix format --check-formatted
       - name: Run Credo
@@ -392,6 +396,15 @@ jobs:
           name: Elixir Acceptance Test Report
           path: elixir/_build/test/lib/*/test-junit-report.xml
           reporter: java-junit
+  # draft-release:
+  #   runs-on: ubuntu-latest
+  #   outputs:
+  #     tag_name: ${{ steps.release_drafter.outputs.tag_name }}
+  #   steps:
+  #     - uses: release-drafter/release-drafter@v5
+  #       id: release_drafter
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   web-container-build:
     runs-on: ubuntu-latest
     defaults:
@@ -439,10 +452,6 @@ jobs:
         run: |
           TAG=$(echo ${BRANCH_NAME} | sed 's/\//_/g'  | sed 's/\:/_/g')
           echo "TAG=branch-${TAG}" >> $GITHUB_ENV
-      - name: Pull cache layers
-        run: |
-          docker pull ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:master || true
-          docker pull ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:${{ env.TAG }} || true
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
         with:
@@ -451,11 +460,11 @@ jobs:
             APPLICATION_NAME=${{ env.APPLICATION_NAME }}
             APPLICATION_VERSION=0.0.0-sha.${{ github.sha }}
           context: elixir/
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           file: elixir/Dockerfile
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:${{ env.TAG }} , ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:${{ github.sha }}
-      # TODO: add a sanity check to make sure the image is actually built
-      # and can be started
   api-container-build:
     runs-on: ubuntu-latest
     defaults:
@@ -503,10 +512,6 @@ jobs:
         run: |
           TAG=$(echo ${BRANCH_NAME} | sed 's/\//_/g'  | sed 's/\:/_/g')
           echo "TAG=branch-${TAG}" >> $GITHUB_ENV
-      - name: Pull cache layers
-        run: |
-          docker pull ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:master || true
-          docker pull ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:${{ env.TAG }} || true
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
         with:
@@ -515,6 +520,8 @@ jobs:
             APPLICATION_NAME=${{ env.APPLICATION_NAME }}
             APPLICATION_VERSION=0.0.0-sha.${{ github.sha }}
           context: elixir/
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           file: elixir/Dockerfile
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:${{ env.TAG }} , ${{ env.REGISTRY }}/${{ env.GCLOUD_PROJECT }}/firezone/${{ env.APPLICATION_NAME }}:${{ github.sha }}

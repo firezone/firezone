@@ -48,6 +48,8 @@ defmodule Firezone.MixProject do
       {:mix_test_watch, "~> 1.0", only: :dev, runtime: false},
       {:dialyxir, "~> 1.1", only: [:dev], runtime: false},
       {:junit_formatter, "~> 3.3", only: [:test]},
+      {:mix_audit, "~> 2.1", only: [:dev, :test]},
+      {:sobelow, "~> 0.12", only: [:dev, :test]},
 
       # Formatter doesn't track dependencies of children applications
       {:phoenix, "~> 1.7.0"},
@@ -60,6 +62,7 @@ defmodule Firezone.MixProject do
       "ecto.seed": ["ecto.create", "ecto.migrate", "run apps/domain/priv/repo/seeds.exs"],
       "ecto.setup": ["ecto.create", "ecto.migrate"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
+      sobelow: ["cmd mix sobelow"],
       test: ["ecto.create --quiet", "ecto.migrate", "test"],
       start: ["compile --no-validate-compile-env", "phx.server", "run --no-halt"]
     ]
