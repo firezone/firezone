@@ -20,12 +20,7 @@ You can build the server using: `cargo build --release --bin relay`
 
 ## Running
 
-Two environment variables need to be set for the server to be operational:
-
-- `RELAY_LISTEN_IP4_ADDR`: The IPv4 address of a local interface we should bind to. Must not be a wildcard address.
-- `RELAY_PUBLIC_IP4_ADDR`: The public IPv4 address of the above interface.
-
-In debug mode, you can set `RELAY_RNG_SEED` to a positive integer to make all random operations (secret generation, port allocations, etc) deterministic.
+For a detailed help text and available configuration options, run `cargo run --bin relay -- --help`.
 
 ## Design
 
