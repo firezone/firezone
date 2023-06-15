@@ -25,7 +25,7 @@ For a detailed help text and available configuration options, run `cargo run --b
 ## Docker
 
 There is a docker image one directory up from this README: [Dockerfile](../relay.Dockerfile).
-The Rust binary itself does not handle any signal handling, thus you need to run the container with `--init` if you want to be able to CTRL+C the running container.
+The Rust binary itself does not include any signal handling, thus you need to run the container with `--init` if you want to be able to CTRL+C the running container.
 
 ## Design
 
