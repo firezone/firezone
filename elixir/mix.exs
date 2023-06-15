@@ -53,7 +53,7 @@ defmodule Firezone.MixProject do
 
       # Formatter doesn't track dependencies of children applications
       {:phoenix, "~> 1.7.0"},
-      {:phoenix_live_view, "~> 0.18.8"}
+      {:phoenix_live_view, "~> 0.19.2"}
     ]
   end
 
