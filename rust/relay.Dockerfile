@@ -19,4 +19,5 @@ ENV RUST_BACKTRACE=1
 EXPOSE 3478/udp
 EXPOSE 49152-65535/udp
 
+# This purposely does not include an `init` process. Use `docker run --init` instead.
 ENTRYPOINT ["relay"]
