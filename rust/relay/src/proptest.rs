@@ -7,13 +7,14 @@ use std::ops::Add;
 use std::time::{Duration, SystemTime};
 use stun_codec::rfc5766::attributes::{ChannelNumber, Lifetime, RequestedTransport};
 use stun_codec::TransactionId;
+use uuid::Uuid;
 
 pub fn transaction_id() -> impl Strategy<Value = TransactionId> {
-    any::<[u8; 12]>().prop_map(|bytes| TransactionId::new(bytes))
+    any::<[u8; 12]>().prop_map(TransactionId::new)
 }
 
 pub fn binding() -> impl Strategy<Value = Binding> {
-    transaction_id().prop_map(|id| Binding::new(id))
+    transaction_id().prop_map(Binding::new)
 }
 
 pub fn udp_requested_transport() -> impl Strategy<Value = RequestedTransport> {
@@ -30,6 +31,10 @@ pub fn channel_number() -> impl Strategy<Value = ChannelNumber> {
 
 pub fn username_salt() -> impl Strategy<Value = String> {
     string_regex("[a-zA-Z0-9]{10}").unwrap()
+}
+
+pub fn nonce() -> impl Strategy<Value = Uuid> {
+    any::<u128>().prop_map(Uuid::from_u128)
 }
 
 /// We let "now" begin somewhere around 2000 up until 2100.
