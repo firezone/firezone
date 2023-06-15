@@ -1,7 +1,6 @@
 defmodule Domain.Auth do
   use Supervisor
-  alias Domain.Repo
-  alias Domain.Config
+  alias Domain.{Repo, Config, Validator}
   alias Domain.{Accounts, Actors}
   alias Domain.Auth.{Authorizer, Subject, Context, Permission, Roles, Role, Identity}
   alias Domain.Auth.{Adapters, Provider}
@@ -26,8 +25,17 @@ defmodule Domain.Auth do
   # Providers
 
   def fetch_provider_by_id(id) do
-    Provider.Query.by_id(id)
-    |> Repo.fetch()
+    if Validator.valid_uuid?(id) do
+      Provider.Query.by_id(id)
+      |> Repo.fetch()
+    else
+      {:error, :not_found}
+    end
+  end
+
+  def list_providers_for_account(%Accounts.Account{} = account) do
+    Provider.Query.by_account_id(account.id)
+    |> Repo.list()
   end
 
   def create_provider(%Accounts.Account{} = account, attrs, %Subject{} = subject) do

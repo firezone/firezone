@@ -18,11 +18,42 @@ defmodule Web.Router do
     plug :accepts, ["html", "xml"]
   end
 
-  live_session :admin do
-    scope "/", Web do
-      pipe_through :browser
+  pipeline :unauthenticated do
+    plug Web.Auth, :unauthenticated
+  end
 
-      live "/", DashboardLive
+  pipeline :authenticated do
+    plug Web.Auth, :authenticated
+  end
+
+  scope "/browser", Web do
+    pipe_through :public
+
+    get "/config.xml", BrowserController, :config
+  end
+
+  scope "/", Web do
+    pipe_through :public
+
+    get "/healthz", HealthController, :healthz
+  end
+
+  live_session :unauthenticated do
+    scope "/:account_id/", Web do
+      pipe_through [:browser, :unauthenticated]
+
+      get "/:provider_id/sign_in", AuthController, :sign_in
+    end
+  end
+
+  live_session :admin do
+    scope "/:account_id/", Web do
+      pipe_through [:browser, :authenticated]
+
+      live "/dashboard", DashboardLive
+
+      # Session
+      get "/sign_out", AuthController, :sign_out
 
       # Users
       live "/users", UsersLive.Index
@@ -69,12 +100,4 @@ defmodule Web.Router do
       live "/settings/api_tokens/new", SettingsLive.ApiTokens.New
     end
   end
-
-  scope "/browser", Web do
-    pipe_through :public
-
-    get "/config.xml", BrowserController, :config
-  end
-
-  get "/healthz", Web.HealthController, :healthz
 end
