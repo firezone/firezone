@@ -36,6 +36,20 @@ services:
       - IPC_LOCK
     networks:
       - app
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--spider",
+          "--proxy",
+          "off",
+          "http://localhost:8200/v1/sys/health?standbyok=true"
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
 
   # Firezone Components
   web:
@@ -93,6 +107,8 @@ services:
       # Client info
       USER_AGENT: "iOS/12.5 (iPhone) connlib/0.7.412"
     depends_on:
+      vault:
+        condition: 'service_healthy'
       postgres:
         condition: 'service_healthy'
     networks:
@@ -215,6 +231,8 @@ services:
       # Seeds
       STATIC_SEEDS: "true"
     depends_on:
+      vault:
+        condition: 'service_healthy'
       postgres:
         condition: 'service_healthy'
     networks:
