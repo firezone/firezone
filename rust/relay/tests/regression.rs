@@ -58,7 +58,7 @@ fn deallocate_once_time_expired(
                 transaction_id,
                 Some(lifetime.clone()),
                 valid_username(now, &username_salt),
-                &secret,
+                secret,
                 nonce,
             ),
             now,
@@ -92,7 +92,7 @@ fn unauthenticated_allocate_triggers_authentication(
     let first_nonce = Uuid::from_u128(0x0);
 
     let mut server = TestServer::new(public_relay_addr);
-    let secret = server.auth_secret();
+    let secret = server.auth_secret().to_owned();
 
     server.assert_commands(
         from_client(
@@ -142,7 +142,7 @@ fn when_refreshed_in_time_allocation_does_not_expire(
     #[strategy(relay::proptest::nonce())] nonce: Uuid,
 ) {
     let mut server = TestServer::new(public_relay_addr).with_nonce(nonce);
-    let secret = server.auth_secret();
+    let secret = server.auth_secret().to_owned();
     let first_wake = now + allocate_lifetime.lifetime();
 
     server.assert_commands(
@@ -218,7 +218,7 @@ fn when_receiving_lifetime_0_for_existing_allocation_then_delete(
     #[strategy(relay::proptest::nonce())] nonce: Uuid,
 ) {
     let mut server = TestServer::new(public_relay_addr).with_nonce(nonce);
-    let secret = server.auth_secret();
+    let secret = server.auth_secret().to_owned();
     let first_wake = now + allocate_lifetime.lifetime();
 
     server.assert_commands(
@@ -303,7 +303,7 @@ fn ping_pong_relay(
     let _ = env_logger::try_init();
 
     let mut server = TestServer::new(public_relay_addr).with_nonce(nonce);
-    let secret = server.auth_secret();
+    let secret = server.auth_secret().to_owned();
 
     server.assert_commands(
         from_client(
@@ -393,7 +393,7 @@ impl TestServer {
         self
     }
 
-    fn auth_secret(&mut self) -> [u8; 32] {
+    fn auth_secret(&self) -> &str {
         self.server.auth_secret()
     }
 
