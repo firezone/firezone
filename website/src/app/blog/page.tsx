@@ -58,7 +58,9 @@ export default function Page() {
             </p>
             <div className="flex justify-between items-center">
               <div className="flex items-center space-x-4">
-                <img
+                <Image
+                  width={28}
+                  height={28}
                   className="w-7 h-7 rounded-full"
                   src="https://www.gravatar.com/avatar/3c8434814eec26026718e992322648c8"
                   alt="Jamil Bou Kheir avatar"
@@ -111,7 +113,9 @@ export default function Page() {
             </p>
             <div className="flex justify-between items-center">
               <div className="flex items-center space-x-4">
-                <img
+                <Image
+                  width={28}
+                  height={28}
                   className="w-7 h-7 rounded-full"
                   src="https://www.gravatar.com/avatar/3c8434814eec26026718e992322648c8"
                   alt="Jamil Bou Kheir avatar"

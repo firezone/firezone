@@ -1,19 +1,12 @@
 "use client";
-import { useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import SidebarToggle from "./SidebarToggle";
-import { initFlowbite } from "flowbite";
 import { Navbar } from "flowbite-react";
 import { usePathname } from "next/navigation";
 import DeployButton from "@/components/DeployButton";
 
 export default function RootNavbar() {
-  useEffect(() => {
-    // Manually init flowbite's data-toggle listeners since we're using custom components
-    initFlowbite();
-  }, []);
-
   const p = usePathname() || "";
 
   return (
