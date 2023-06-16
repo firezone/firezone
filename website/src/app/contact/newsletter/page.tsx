@@ -1,33 +1,21 @@
-import HubspotForm from "@/components/HubspotForm";
+import Image from "next/image";
+import NewsletterSignup from "@/components/NewsletterSignup";
 
 export default function Page() {
   return (
-    <div>
-      <div className="hero shadow--lw">
-        <div className="container">
-          <h1 className="hero__title">Firezone Product Newsletter</h1>
-          <p>
-            Sign up below to receive product and security updates from the
-            Firezone team.
-          </p>
-        </div>
+    <section className="bg-white dark:bg-gray-900">
+      <div className="bg-violet-50 mx-auto w-screen text-center">
+        <Image
+          alt="Firezone logo"
+          width={250}
+          height={250}
+          src="/images/logo-main.svg"
+          className="py-12 mx-auto"
+        />
       </div>
-
-      <center>
-        <h2 className="margin-vert--xl">Sign Up Form</h2>
-      </center>
-
-      <div className="container">
-        <div className="row">
-          <div className="col col--12">
-            <HubspotForm
-              region="na1"
-              portalId="23723443"
-              formId="a45bf30a-3aca-4523-9bc8-7dc2dc3f6176"
-            />
-          </div>
-        </div>
+      <div className="py-8 px-4 mx-auto max-w-screen-xl lg:py-16 lg:px-6">
+        <NewsletterSignup />
       </div>
-    </div>
+    </section>
   );
 }
