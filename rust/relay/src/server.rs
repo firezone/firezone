@@ -59,7 +59,7 @@ pub struct Server<R> {
 
     rng: R,
 
-    auth_secret: [u8; 32],
+    auth_secret: String,
 
     nonces: Nonces,
 
@@ -142,15 +142,15 @@ where
             channel_numbers_by_peer: Default::default(),
             pending_commands: Default::default(),
             next_allocation_id: AllocationId(1),
-            auth_secret: rng.gen(),
+            auth_secret: hex::encode(rng.gen::<[u8; 32]>()),
             rng,
             time_events: TimeEvents::default(),
             nonces: Default::default(),
         }
     }
 
-    pub fn auth_secret(&mut self) -> [u8; 32] {
-        self.auth_secret
+    pub fn auth_secret(&self) -> &str {
+        &self.auth_secret
     }
 
     /// Registers a new, valid nonce.
