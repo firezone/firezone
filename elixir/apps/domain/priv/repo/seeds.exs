@@ -1,7 +1,12 @@
 alias Domain.{Repo, Accounts, Auth, Actors, Relays, Gateways, Resources}
 
 {:ok, account} = Accounts.create_account(%{name: "Firezone Account"})
-{:ok, _account} = Accounts.create_account(%{name: "Other Corp Account"})
+{:ok, other_account} = Accounts.create_account(%{name: "Other Corp Account"})
+
+IO.puts("Created accounts: ")
+for account <- [account, other_account] do
+  IO.puts("  #{account.id}: #{account.name}")
+end
 
 {:ok, email_provider} =
   Auth.create_provider(account, %{
