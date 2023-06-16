@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 # Enable SSO with Azure Active Directory (OIDC)
 
 Firezone supports Single Sign-On (SSO) using Azure Active Directory through the
@@ -20,7 +22,12 @@ the following config settings required for the integration:
    which returns a JSON document used to construct subsequent requests to this
    OIDC provider.
 
-![Azure SSO](https://user-images.githubusercontent.com/52545545/168922621-1f0f4dea-adfc-4e15-a140-a2f213676103.gif)
+<Image
+  alt="azure sso login"
+  src="/images/azure-sso-login.gif"
+  width={960}
+  height={540}
+/>
 
 ## Step 1: Obtain configuration parameters
 
@@ -39,26 +46,46 @@ after entering the following:
    include the trailing slash both when saving the provider in Firezone and in
    Azure AD (`redirect_uri` field on the screenshot below).**
 
-![App Registration](https://user-images.githubusercontent.com/52545545/168722092-716c8448-4dc4-4d7a-a25c-1af701a57744.png)
+<Image
+  alt="azure app registration"
+  src="/images/azure-app-registration.png"
+  width={960}
+  height={540}
+/>
 
 After registering, open the details view of the application and copy the
 `Application (client) ID`. **This will be the `client_id` value**. Next, open
 the endpoints menu to retrieve the `OpenID Connect metadata document`. **This
 will be the `discovery_document_uri` value**.
 
-![Azure Client ID](https://user-images.githubusercontent.com/52545545/168724099-100e4a9a-0bf6-42f6-b0ee-13a4c9a8da23.png)
+<Image
+  alt="azure client id"
+  src="/images/azure-client-id.png"
+  width={960}
+  height={540}
+/>
 
 Next, select the Certificates & secrets link under the Manage menu and create a
 new client secret. Copy the client secret - **this will be the `client_secret`
 value**.
 
-![Add a client secret](https://user-images.githubusercontent.com/52545545/168720697-1a28d2c1-4108-459c-9915-4397a4108818.png)
+<Image
+  alt="azure client secret"
+  src="/images/azure-client-secret.png"
+  width={960}
+  height={540}
+/>
 
 Lastly, select the API permissions link under the Manage menu, click
 `Add a permission`, and select `Microsoft Graph`. Add `email`, `openid`,
 `offline_access` and `profile` to the required permissions.
 
-![Permissions](https://user-images.githubusercontent.com/52545545/171556138-26de489b-7de5-4b53-91dc-dc8058f0f901.png)
+<Image
+  alt="azure permissions"
+  src="/images/azure-permissions.png"
+  width={960}
+  height={540}
+/>
 
 ## Step 2: Integrate with Firezone
 

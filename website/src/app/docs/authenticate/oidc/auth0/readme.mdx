@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 # Enable SSO with Auth0 (OIDC)
 
 Firezone supports Single Sign-On (SSO) using Auth0 through the generic OIDC
@@ -25,7 +27,12 @@ settings required for the integration:
 In the Auth0 dashboard, create an application. Select **Regular Web
 Application** as the application type.
 
-![Auth0 Configuration](https://user-images.githubusercontent.com/52545545/193337715-f8cb49e7-17b3-4c9c-bc75-9fdc51b66835.png)
+<Image
+  alt="auth0 configuration"
+  src="/images/auth0-configuration.png"
+  width={960}
+  height={540}
+/>
 
 Next, visit the settings tab on the application details page. Take note and
 modify the following parameters:
@@ -34,16 +41,29 @@ modify the following parameters:
 1. **Domain**: The domain will be used to construct the url to retrieve the OIDC
    discovery document -
    `https://<AUTH0_DOMAIN>/.well-known/openid-configuration`
-1. **Icon**:
-   [Firezone icon](https://user-images.githubusercontent.com/52545545/156854754-da66a9e1-33d5-47f5-877f-eff8b330ab2b.png)
-   (save link as).
+1. **Icon**: [Firezone icon](/images/save-link-as-icon.png) (save link as).
 1. Set **Allowed Callback URLs** to
    `EXTERNAL_URL + /auth/oidc/<Config ID>/callback/` (e.g.
    `https://firezone.example.com/auth/oidc/auth0/callback/`).
 
-![Auth0 settings 1](https://user-images.githubusercontent.com/52545545/193341643-1aeb620a-85a6-4778-a425-2d092cf13bdc.png)
-![Auth0 settings 2](https://user-images.githubusercontent.com/52545545/193341638-710de54a-b988-4f5e-8c18-78639695efac.png)
-![Auth0 settings 3](https://user-images.githubusercontent.com/52545545/193341641-f94f0ecf-b16e-4831-af5b-5981d6634525.png)
+<Image
+  alt="auth0 settings 1"
+  src="/images/auth0-settings-1.png"
+  width={960}
+  height={540}
+/>
+<Image
+  alt="auth0 settings 2"
+  src="/images/auth0-settings-2.png"
+  width={960}
+  height={540}
+/>
+<Image
+  alt="auth0 settings 3"
+  src="/images/auth0-settings-3.png"
+  width={960}
+  height={540}
+/>
 
 ## Step 2: Integrate with Firezone
 

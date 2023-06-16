@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Alert from "@/components/DocsAlert";
 
 # End-user Client Instructions
@@ -31,14 +32,24 @@ To self generate a device config file, visit the domain provided by your
 Firezone administrator. This URL will be specific to your company (in this
 example it is `https://firezone.example.com`)
 
-![Firezone Okta SSO Login](https://user-images.githubusercontent.com/52545545/156855886-5a4a0da7-065c-4ec1-af33-583dff4dbb72.gif)
+<Image
+  alt="firezone okta sso login"
+  src="/images/firezone-okta-sso-login.gif"
+  width={960}
+  height={540}
+/>
 
 ### Step 3 (optional): Enable on boot
 
 Open the WireGuard client and import the `.conf` file. Activate the VPN session
 by toggling the `Activate` switch.
 
-![Activate Tunnel](https://user-images.githubusercontent.com/52545545/156859686-41755bf7-a9ad-42ec-af5e-9f0734d962db.gif)
+<Image
+  alt="activate tunnel"
+  src="/images/activate-tunnel.gif"
+  width={960}
+  height={540}
+/>
 
 ## Re-authenticating your session
 
@@ -52,7 +63,12 @@ session, follow the steps below. You will need:
 
 ### Step 1: Deactivate VPN session
 
-![WireGuard Deactivate](https://user-images.githubusercontent.com/52545545/156859259-a3d386ce-b304-4caa-96e6-a8e7ca96d098.png)
+<Image
+  alt="wireguard deactivate"
+  src="/images/wireguard-deactivate.png"
+  width={960}
+  height={540}
+/>
 
 ### Step 2: Re-authenticate
 
@@ -60,11 +76,21 @@ Visit the URL of your Firezone portal and sign in using credentials provided by
 your network admin. If you are already logged into the portal, click the
 `Reauthenticate` button, then sign in again.
 
-![re-authenticate](https://user-images.githubusercontent.com/52545545/155812962-9b8688c1-00af-41e4-96c3-8fb52f840aed.gif)
+<Image
+  alt="re-authenticate"
+  width={960}
+  height={540}
+  src="/images/re-authenticate.gif"
+/>
 
 ### Step 3: Activate VPN session
 
-![Activate Session](https://user-images.githubusercontent.com/52545545/156859636-fde95fc5-5b9c-4697-9108-2f277ed3fbef.png)
+<Image
+  alt="activate session"
+  src="/images/activate-session.png"
+  width={960}
+  height={540}
+/>
 
 ## Linux: Network Manager
 
@@ -116,7 +142,12 @@ To self generate a device config file, visit the domain provided by your
 Firezone administrator. This URL will be specific to your company (in this
 example it is `https://firezone.example.com`)
 
-![Firezone Okta SSO Login](https://user-images.githubusercontent.com/52545545/156855886-5a4a0da7-065c-4ec1-af33-583dff4dbb72.gif)
+<Image
+  alt="firezone okta sso login"
+  src="/images/firezone-sso-okta-login.gif"
+  width={960}
+  height={540}
+/>
 
 ### Step 3: Import configuration
 

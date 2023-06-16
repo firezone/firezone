@@ -40,15 +40,6 @@ const nextConfig = {
         hostname: "img.shields.io",
       },
       {
-        hostname: "user-images.githubusercontent.com",
-      },
-      {
-        hostname: "flowbite.com",
-      },
-      {
-        hostname: "flowbite.s3.amazonaws.com",
-      },
-      {
         hostname: "www.gravatar.com",
       },
     ],

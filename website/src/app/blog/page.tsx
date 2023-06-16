@@ -1,3 +1,4 @@
+import gravatar from "@/lib/gravatar";
 import Link from "next/link";
 import Image from "next/image";
 import { ArrowRightIcon } from "@heroicons/react/20/solid";
@@ -62,7 +63,7 @@ export default function Page() {
                   width={28}
                   height={28}
                   className="w-7 h-7 rounded-full"
-                  src="https://www.gravatar.com/avatar/3c8434814eec26026718e992322648c8"
+                  src={gravatar("jamil@firezone.dev")}
                   alt="Jamil Bou Kheir avatar"
                 />
                 <span className="font-medium dark:text-white">
@@ -117,7 +118,7 @@ export default function Page() {
                   width={28}
                   height={28}
                   className="w-7 h-7 rounded-full"
-                  src="https://www.gravatar.com/avatar/3c8434814eec26026718e992322648c8"
+                  src={gravatar("jamil@firezone.dev")}
                   alt="Jamil Bou Kheir avatar"
                 />
                 <span className="font-medium dark:text-white">

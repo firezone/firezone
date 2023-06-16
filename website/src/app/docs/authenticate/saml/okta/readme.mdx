@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Alert from "@/components/DocsAlert";
 
 # Enable SSO with Okta (SAML 2.0)
@@ -20,7 +21,7 @@ values during setup:
 | Setting                        | Value                                                                                                                                  |
 | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
 | App name                       | Firezone                                                                                                                               |
-| App logo                       | [save link as](https://user-images.githubusercontent.com/52545545/155907625-a4f6c8c2-3952-488d-b244-3c37400846cf.png)                  |
+| App logo                       | [save link as](/images/save-logo.png)                                                                                                  |
 | Single sign on URL             | This is your Firezone `EXTERNAL_URL/auth/saml/sp/consume/:config_id` (e.g., `https://firezone.company.com/auth/saml/sp/consume/okta`). |
 | Audience (EntityID)            | This should be the same as your Firezone `SAML_ENTITY_ID`, defaults to `urn:firezone.dev:firezone-app`.                                |
 | Name ID format                 | EmailAddress                                                                                                                           |
@@ -30,7 +31,12 @@ values during setup:
 [Okta's documentation](https://help.okta.com/oie/en-us/Content/Topics/Apps/Apps_App_Integration_Wizard_SAML.htm)
 contains additional details on the purpose of each configuration setting.
 
-![Okta SAML](https://user-images.githubusercontent.com/52545545/202565311-e98729cf-c7aa-4f8d-965a-55b076177add.png)
+<Image
+  src="/images/okta-saml.png"
+  width={960}
+  height={540}
+  alt="onelogin saml"
+/>
 
 After creating the SAML connector, visit the `View SAML setup instructions` link
 in the Sign On tab to download the metadata document. You'll need to copy-paste
@@ -52,7 +58,12 @@ filling out the following information:
 | Require signed envelopes  | Checked.        |                                                                                                                                             |
 | Auto create users         | Default `false` | Enable this setting to automatically create users when signing in with this connector for the first time. Disable to manually create users. |
 
-![Firezone SAML](https://user-images.githubusercontent.com/52545545/202557861-f7a85df0-d44f-48fd-a980-89e8b0c91503.png)
+<Image
+  alt="firezone saml"
+  width={960}
+  height={540}
+  src="/images/firezone-saml-2.png"
+/>
 
 After saving the SAML config, you should see a `Sign in with Okta` button on
 your Firezone portal sign-in page.

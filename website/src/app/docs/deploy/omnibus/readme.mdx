@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Alert from "@/components/DocsAlert";
 import SupportOptions from "@/components/SupportOptions";
 
@@ -58,7 +59,12 @@ This will ask you a few questions regarding your install, install the latest
 release for your platform, create an administrator user, then print to the
 console instructions for logging in to the web UI.
 
-![install complete](https://user-images.githubusercontent.com/52545545/171948328-4771552f-e5dd-4c30-8c0b-baac80b6e7b1.png)
+<Image
+  alt="install complete"
+  src="/images/install-complete.png"
+  width={960}
+  height={540}
+/>
 
 By default, the web UI can be reached at the IP or domain name of your server.
 You can regenerate the admin credentials using the

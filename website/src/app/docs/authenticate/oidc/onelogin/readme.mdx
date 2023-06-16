@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 # Enable SSO with OneLogin (OIDC)
 
 Firezone supports Single Sign-On (SSO) using OneLogin through the generic OIDC
@@ -25,17 +27,19 @@ settings required for the integration:
 Create a new OIDC connector by visiting **Appliances > Custom Connectors**.
 
 1. **App name**: `Firezone`
-1. **Icon**:
-   [Firezone logo](https://user-images.githubusercontent.com/52545545/156854754-da66a9e1-33d5-47f5-877f-eff8b330ab2b.png)
-   or
-   [Firezone icon](https://user-images.githubusercontent.com/52545545/156854754-da66a9e1-33d5-47f5-877f-eff8b330ab2b.png)
-   (save link as).
+1. **Icon**: [icon](/images/save-link-as-icon.png) and
+   [logo](/images/save-logo.png).
 1. **Sign on method**: select **OpenID Connect**
 1. **Redirect URI**: Add your Firezone
    `<EXTERNAL_URL> + /auth/oidc/<Config ID>/callback/` (e.g.
    `https://firezone.example.com/auth/oidc/onelogin/callback/`).
 
-![OneLogin Configuration](https://user-images.githubusercontent.com/52545545/173190108-569e5cb5-e66b-4505-a4c5-fedd22872a04.png)
+<Image
+  alt="onelogin configuration"
+  src="/images/onelogin-configuration.png"
+  width={960}
+  height={540}
+/>
 
 ## Step 2: Obtain configuration parameters
 
@@ -45,7 +49,12 @@ Next, click **Add App to Connector** to create an OIDC application. Visit the
 You will find the values for the config settings required by Firezone on this
 page as well.
 
-![OneLogin Config Parameters](https://user-images.githubusercontent.com/52545545/180120191-dfeab4ef-d7f5-4c04-a7b2-7d9338af34e6.png)
+<Image
+  alt="onelogin config parameters"
+  src="/images/onelogin-config-parameters.png"
+  width={960}
+  height={540}
+/>
 
 ## Step 3: Integrate with Firezone
 

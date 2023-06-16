@@ -1,4 +1,5 @@
 import Alert from "@/components/DocsAlert";
+import Image from "next/image";
 
 # Enable SSO with JumpCloud (SAML 2.0)
 
@@ -36,7 +37,12 @@ the bottom-right.
 
 Your JumpCloud configuration should now resemble the following:
 
-![JumpCloud SAML](https://user-images.githubusercontent.com/52545545/202558446-128e7484-eda6-429f-b6c1-dbabbf5dc7e3.png)
+<Image
+  alt="jumpcloud saml"
+  width={960}
+  height={540}
+  src="/images/jumpcloud-saml.png"
+/>
 
 Now, download the IdP Metadata document by selecting the App you just created
 and then clicking the `export metadata` button in the upper-right. You'll need
@@ -62,7 +68,12 @@ filling out the following information:
 
 Your Firezone configuration should now resemble the following:
 
-![Firezone SAML](https://user-images.githubusercontent.com/52545545/202557853-95246d0e-074c-4d31-ab89-26a3a3a7deda.png)
+<Image
+  alt="firezone saml"
+  width={960}
+  height={540}
+  src="/images/firezone-saml.png"
+/>
 
 After saving the SAML config, you should see a `Sign in with JumpCloud` button
 on your Firezone portal sign-in page.

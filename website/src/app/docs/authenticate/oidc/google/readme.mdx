@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 # Enable SSO with Google Workspace (OIDC)
 
 Firezone supports Single Sign-On (SSO) using Google Workspace and Cloud Identity
@@ -20,7 +22,12 @@ obtain the following config settings required for the integration:
    which returns a JSON document used to construct subsequent requests to this
    OIDC provider.
 
-![Firezone Google SSO Login](https://user-images.githubusercontent.com/52545545/156853456-1ab3f041-1002-4c79-a266-82acb5802890.gif)
+<Image
+  alt="firezone google sso login"
+  src="/images/firezone-google-sso-login.gif"
+  width={960}
+  height={540}
+/>
 
 ## Step 1: Configure OAuth consent screen
 
@@ -32,22 +39,35 @@ belonging to users in your Google Workspace Organization can create device
 configs. DO NOT select `External` unless you want to enable anyone with a valid
 Google Account to create device configs.
 
-![OAuth Consent Internal](https://user-images.githubusercontent.com/52545545/156853731-1e4ad1d4-c761-4a28-84db-cd880e3c46a3.png)
+<Image
+  alt="oauth consent internal"
+  src="/images/oauth-consent-internal.png"
+  width={960}
+  height={540}
+/>
 
 On the App information screen:
 
 1. **App name**: `Firezone`
-1. **App logo**:
-   [Firezone logo](https://user-images.githubusercontent.com/52545545/156854754-da66a9e1-33d5-47f5-877f-eff8b330ab2b.png)
-   (save link as).
+1. **App logo**: [save link as](/images/save-logo.png).
 1. **Application home page**: the URL of your Firezone instance.
 1. **Authorized domains**: the top level domain of your Firezone instance.
 
-![OAuth Consent App Info](https://user-images.githubusercontent.com/52545545/156853737-211ab7de-4c8f-4104-b3e8-5586c7a2ce6e.png)
+<Image
+  alt="oauth consent app info"
+  src="/images/oauth-consent-app-info.png"
+  width={960}
+  height={540}
+/>
 
 On the next step add the following scopes:
 
-![OAuth Consent Scopes](https://user-images.githubusercontent.com/52545545/168910904-57e86d71-b8ae-4b11-8b9c-bf8a19127065.png)
+<Image
+  alt="oauth consent scopes"
+  src="/images/oauth-consent-scopes.png"
+  width={960}
+  height={540}
+/>
 
 ## Step 2: Create OAuth client
 
@@ -58,7 +78,12 @@ Visit the Google Cloud Console
 [Credentials page](https://console.cloud.google.com/apis/credentials) page,
 click `+ Create Credentials` and select `OAuth client ID`.
 
-![Create OAuth Client ID](https://user-images.githubusercontent.com/52545545/155904211-c36095b9-4bbd-44c1-95f8-bb165e314af3.png)
+<Image
+  alt="create oauth client id"
+  src="/images/create-oauth-client-id.png"
+  width={960}
+  height={540}
+/>
 
 On the OAuth client ID creation screen:
 
@@ -67,12 +92,22 @@ On the OAuth client ID creation screen:
    `https://firezone.example.com/auth/oidc/google/callback/`) as an entry to
    Authorized redirect URIs.
 
-![Create OAuth client ID](https://user-images.githubusercontent.com/52545545/168910923-819300d3-b0c2-49a6-81ee-884dce471362.png)
+<Image
+  alt="create oauth client id"
+  src="/images/create-oauth-client-id-2.png"
+  width={960}
+  height={540}
+/>
 
 After creating the OAuth client ID, you will be given a Client ID and Client
 Secret. These will be used together with the redirect URI in the next step.
 
-![Copy Client ID and Secret](https://user-images.githubusercontent.com/52545545/168913326-10e694d2-cda0-4ed3-b401-2406b36af7c0.png)
+<Image
+  alt="copy client id and secret"
+  src="/images/copy-client-id-and-secret.png"
+  width={960}
+  height={540}
+/>
 
 ## Step 3: Integrate with Firezone
 

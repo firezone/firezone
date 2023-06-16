@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 # Enable SSO with Keycloak (OIDC)
 
 Firezone supports Single Sign-On (SSO) using Keycloak through the generic OIDC
@@ -25,7 +27,12 @@ settings required for the integration:
 In the Keycloak Admin Console, make sure the realm you want to use with Firezone
 is selected.
 
-![Keycloak Realm](https://user-images.githubusercontent.com/69542737/193370148-6557399d-a921-4bfe-82d2-a56e5a9f6322.png)
+<Image
+  alt="keycloak realm"
+  src="/images/keycloak-realm.png"
+  width={960}
+  height={540}
+/>
 
 ### Create Firezone OAuth client
 
@@ -37,12 +44,22 @@ and configure the following:
 1. **Name**: `Firezone`
 1. Click **Next**.
 
-![Create Firezone Client](https://user-images.githubusercontent.com/69542737/193369057-ec4b8bd4-6520-4482-979f-593b75798998.png)
+<Image
+  alt="create firezone client"
+  src="/images/create-firezone-client.png"
+  width={960}
+  height={540}
+/>
 
 1. Toggle **Client authentication** to `On` to generate the client secret.
 1. Click **Save**.
 
-![Save Firezone Client](https://user-images.githubusercontent.com/69542737/193372348-832dec80-5745-4806-bfc3-384088c591ec.png)
+<Image
+  alt="save firezone client"
+  src="/images/save-firezone-client.png"
+  width={960}
+  height={540}
+/>
 
 Click **Access settings** to jump to that section and configure the valid
 redirect URI:
@@ -52,16 +69,31 @@ redirect URI:
    `https://firezone.example.com/auth/oidc/keycloak/callback/`).
 1. Click **Add valid redirect URIs**
 
-![Firezone Access Settings](https://user-images.githubusercontent.com/69542737/195937386-efa9be88-8e4c-4180-840e-2c1a86f1ba88.png)
+<Image
+  alt="firezone access settings"
+  src="/images/firezone-access-settings.png"
+  width={960}
+  height={540}
+/>
 
 Click the **Credentials** tab and copy the client secret.
 
-![Firezone Client Secret](https://user-images.githubusercontent.com/69542737/193376065-68978de1-69ca-484a-9011-2dd4b0ae99fe.png)
+<Image
+  alt="firezone client secret"
+  src="/images/firezone-client-secret.png"
+  width={960}
+  height={540}
+/>
 
 Navigate to the **Realm Settings** page to get the **Discovery Document URI** by
 copying the **OpenID Endpoint Configuration** link at the bottom of the page.
 
-![Keycloak Realm Settings](https://user-images.githubusercontent.com/69542737/193376952-cdcbb4f2-40f4-499b-8053-928208e4ea6a.png)
+<Image
+  alt="keycloak realm settings"
+  src="/images/keycloak-realm-settings.png"
+  width={960}
+  height={540}
+/>
 
 ## Step 2: Integrate with Firezone
 

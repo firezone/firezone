@@ -35,8 +35,8 @@ export default function Page() {
         <Image
           width={960}
           height={540}
-          alt="Overview gif"
-          src="https://user-images.githubusercontent.com/167144/218759566-acaffd2e-ef37-4b42-a014-bfaa8d33e655.gif"
+          alt="overview screencap"
+          src="/images/overview-screencap.gif"
         />
       </div>
 
@@ -51,7 +51,7 @@ export default function Page() {
           <div className="col col--2">
             <Image
               alt="bunq logo"
-              src="https://user-images.githubusercontent.com/167144/218763171-3b768826-eddf-499c-9b84-5ad365e8da6e.png"
+              src="/images/bunq-logo.png"
               width={100}
               height={55}
             />
@@ -59,7 +59,7 @@ export default function Page() {
           <div className="col col--2">
             <Image
               alt="tribe logo"
-              src="https://user-images.githubusercontent.com/167144/218763181-61c8b4a7-4367-41a6-a790-0fa2b2a34461.png"
+              src="/images/tribe-logo.png"
               width={100}
               height={55}
             />
@@ -67,7 +67,7 @@ export default function Page() {
           <div className="col col--2">
             <Image
               alt="poughkeepsie logo"
-              src="https://user-images.githubusercontent.com/167144/218763199-69def673-f37d-4e6b-aee9-13eac24ad93b.png"
+              src="/images/poughkeepsie-logo.png"
               width={100}
               height={55}
             />
@@ -75,7 +75,7 @@ export default function Page() {
           <div className="col col--2">
             <Image
               alt="rebank logo"
-              src="https://user-images.githubusercontent.com/167144/218763213-265a562c-1ed0-4206-8a9f-6726aaaaeed4.png"
+              src="/images/rebank-logo.png"
               width={100}
               height={55}
             />
@@ -83,7 +83,7 @@ export default function Page() {
           <div className="col col--2">
             <Image
               alt="square1 logo"
-              src="https://user-images.githubusercontent.com/167144/218763233-ac4fd4f2-c58b-4136-a3b1-ceeb09a4f954.png"
+              src="/images/square1-logo.png"
               width={100}
               height={55}
             />
@@ -91,7 +91,7 @@ export default function Page() {
           <div className="col col--2">
             <Image
               alt="db11 logo"
-              src="https://user-images.githubusercontent.com/167144/218763247-e75a2410-baa0-45f8-bd5f-aa33d5fd0898.png"
+              src="/images/db11-logo.png"
               width={100}
               height={55}
             />
@@ -135,7 +135,7 @@ export default function Page() {
               width={500}
               height={500}
               alt="Feature 1"
-              src="https://user-images.githubusercontent.com/167144/218778243-37f22d1e-0bdf-4f3d-8859-4b81dd91878a.png"
+              src="/images/feature-1.png"
             />
           </div>
         </div>
@@ -159,7 +159,7 @@ export default function Page() {
               width={500}
               height={500}
               alt="Feature 2"
-              src="https://user-images.githubusercontent.com/167144/218778241-c2baa6d1-499a-4da3-a9d3-7e0d4590f75f.png"
+              src="/images/feature-2.png"
             />
             <p>
               <Link href="https://core.ac.uk/download/pdf/322886318.pdf">
@@ -221,7 +221,7 @@ export default function Page() {
               width={500}
               height={500}
               alt="Feature 3"
-              src="https://user-images.githubusercontent.com/167144/218778234-b8150dcb-5af1-410a-8c16-95c660171d81.png"
+              src="/images/feature-3.png"
             />
             <Link href="/docs/deploy">
               Explore the deployment documentation &gt;
@@ -254,7 +254,7 @@ export default function Page() {
                 width={109}
                 height={41}
                 alt="keycloak logo"
-                src="https://user-images.githubusercontent.com/167144/218770941-2d8cdf09-d1f4-48bb-9049-b8dc486d909a.png"
+                src="/images/keycloak-logo.png"
               />
             </Link>
           </div>
@@ -264,7 +264,7 @@ export default function Page() {
                 width={109}
                 height={41}
                 alt="google logo"
-                src="https://user-images.githubusercontent.com/167144/218770954-e41318d4-a8b1-40e5-ab4a-3343d63013a0.png"
+                src="/images/google-logo.png"
               />
             </Link>
           </div>
@@ -274,7 +274,7 @@ export default function Page() {
                 width={109}
                 height={41}
                 alt="okta logo"
-                src="https://user-images.githubusercontent.com/167144/218770967-9615c64a-c948-448b-9019-0226c1e3e086.png"
+                src="/images/okta-logo.png"
               />
             </Link>
           </div>
@@ -284,7 +284,7 @@ export default function Page() {
                 width={109}
                 height={41}
                 alt="onelogin logo"
-                src="https://user-images.githubusercontent.com/167144/218770990-6959fb55-ebf3-417e-a75b-1981cf86bab0.png"
+                src="/images/onelogin-logo.png"
               />
             </Link>
           </div>
@@ -294,7 +294,7 @@ export default function Page() {
                 width={109}
                 height={41}
                 alt="azure logo"
-                src="https://user-images.githubusercontent.com/167144/218771000-ff5616d7-f391-4c75-9806-09e5bf1a6a91.png"
+                src="/images/azure-logo.png"
               />
             </Link>
           </div>
@@ -304,7 +304,7 @@ export default function Page() {
                 width={109}
                 height={41}
                 alt="jumpcloud logo"
-                src="https://user-images.githubusercontent.com/167144/218771019-fb525e97-ec0c-465e-8160-a547a54feab2.png"
+                src="/images/jumpcloud-logo.png"
               />
             </Link>
           </div>
@@ -432,9 +432,9 @@ export default function Page() {
                 </center>
               </div>
               <div className="card__body">
-                <p>
+                <div>
                   <center>Contributors</center>
-                </p>
+                </div>
               </div>
               <div className="card__footer">
                 <center>
@@ -456,9 +456,9 @@ export default function Page() {
                 </center>
               </div>
               <div className="card__body">
-                <p>
+                <div>
                   <center>Github Stars</center>
-                </p>
+                </div>
               </div>
               <div className="card__footer">
                 <center>
@@ -480,9 +480,9 @@ export default function Page() {
                 </center>
               </div>
               <div className="card__body">
-                <p>
+                <div>
                   <center>Members</center>
-                </p>
+                </div>
               </div>
               <div className="card__footer">
                 <center>
