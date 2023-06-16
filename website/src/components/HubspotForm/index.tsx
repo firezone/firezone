@@ -30,7 +30,7 @@ class HubspotForm extends React.Component<{
 
   render() {
     return (
-      <div>
+      <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
         <div id="hubspot-form" />
       </div>
     );

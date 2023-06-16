@@ -2,6 +2,7 @@ import gravatar from "@/lib/gravatar";
 import Link from "next/link";
 import Image from "next/image";
 import { ArrowRightIcon } from "@heroicons/react/20/solid";
+import NewsletterSignup from "@/components/NewsletterSignup";
 
 export default function Page() {
   return (
@@ -135,6 +136,9 @@ export default function Page() {
             </div>
           </article>
         </div>
+      </div>
+      <div className="border-t border-gray-200 dark:border-gray-700 pt-8">
+        <NewsletterSignup />
       </div>
     </section>
   );
