@@ -36,6 +36,20 @@ services:
       - IPC_LOCK
     networks:
       - app
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--spider",
+          "--proxy",
+          "off",
+          "http://localhost:8200/v1/sys/health?standbyok=true"
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
 
   # Firezone Components
   web:
@@ -89,6 +103,8 @@ services:
       ## that WILL NOT send any actual emails, but you can see and debug them in the Postmark dashboard.
       OUTBOUND_EMAIL_ADAPTER_OPTS: "{\"api_key\":\"7da7d1cd-111c-44a7-b5ac-4027b9d230e5\"}"
     depends_on:
+      vault:
+        condition: 'service_healthy'
       postgres:
         condition: 'service_healthy'
     networks:
@@ -145,6 +161,8 @@ services:
       ## that WILL NOT send any actual emails, but you can see and debug them in the Postmark dashboard.
       OUTBOUND_EMAIL_ADAPTER_OPTS: "{\"api_key\":\"7da7d1cd-111c-44a7-b5ac-4027b9d230e5\"}"
     depends_on:
+      vault:
+        condition: 'service_healthy'
       postgres:
         condition: 'service_healthy'
     networks:
