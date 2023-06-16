@@ -73,8 +73,9 @@ const withMDX = nextMDX({
                 {
                   xmlns: "http://www.w3.org/2000/svg",
                   viewBox: "0 0 24 24",
-                  width: 12,
-                  height: 12,
+                  width: 10,
+                  height: 10,
+                  color: "black",
                 },
                 s("path", {
                   fill: "currentColor",

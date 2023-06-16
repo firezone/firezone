@@ -1,12 +1,19 @@
 "use client";
+import { useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import SidebarToggle from "./SidebarToggle";
+import { initFlowbite } from "flowbite";
 import { Navbar } from "flowbite-react";
 import { usePathname } from "next/navigation";
 import DeployButton from "@/components/DeployButton";
 
 export default function RootNavbar() {
+  useEffect(() => {
+    // Manually init flowbite's data-toggle listeners since we're using custom components
+    initFlowbite();
+  }, []);
+
   const p = usePathname() || "";
 
   return (
@@ -24,41 +31,41 @@ export default function RootNavbar() {
                 alt="Firezone Logo"
               />
             </Link>
-            <span className="p-2 mr-4 border-gray-200 border-r"></span>
+            <span className="p-2"></span>
             <Link
               className={
                 (p == "/" ? "text-gray-900 underline" : "text-gray-600") +
-                " p-2 mr-2 hover:text-gray-900 hover:underline rounded-lg"
+                " p-1 mr-1 hover:text-gray-900 hover:underline rounded-lg"
               }
               href="/"
             >
               Home
             </Link>
-            <span className="p-2 mr-4 border-gray-200 border-r"></span>
+            <span className="p-2"></span>
             <Link
               className={
                 (p.startsWith("/docs")
                   ? "text-gray-900 underline"
                   : "text-gray-600") +
-                " p-2 mr-2 hover:text-gray-900 hover:underline rounded-lg"
+                " p-1 mr-1 hover:text-gray-900 hover:underline rounded-lg"
               }
               href="/docs"
             >
               Docs
             </Link>
-            <span className="p-2 mr-4 border-gray-200 border-r"></span>
+            <span className="p-2"></span>
             <Link
               className={
                 (p.startsWith("/contact/sales")
                   ? "text-gray-900 underline"
                   : "text-gray-600") +
-                " p-2 mr-2 hover:text-gray-900 hover:underline rounded-lg"
+                " p-1 mr-1 hover:text-gray-900 hover:underline rounded-lg"
               }
               href="/contact/sales"
             >
               Contact
             </Link>
-            <span className="p-2 mr-4 border-gray-200 border-r"></span>
+            <span className="p-2"></span>
             <Link
               className={
                 (p.startsWith("/contact/newsletter")
@@ -71,10 +78,10 @@ export default function RootNavbar() {
               Newsletter
             </Link>
           </div>
-          <div className="flex items-center lg:order-2">
+          <div className="hidden md:flex items-center lg:order-2">
             <Link
               href="https://github.com/firezone/firezone"
-              className="mr-4"
+              className="p-2 mr-1"
               aria-label="GitHub Repository"
             >
               <Image

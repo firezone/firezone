@@ -1,17 +1,10 @@
 "use client";
-import { useEffect } from "react";
-import { initFlowbite } from "flowbite";
 import Collapse from "./Collapse";
 import Item from "./Item";
 import SearchForm from "./SearchForm";
 import { usePathname } from "next/navigation";
 
 export default function DocsSidebar() {
-  useEffect(() => {
-    // Manually init flowbite's data-toggle listeners since we're using custom components
-    initFlowbite();
-  }, []);
-
   const p = usePathname() || "";
 
   return (

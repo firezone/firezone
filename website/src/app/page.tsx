@@ -3,8 +3,7 @@ import InstallBlock from "@/components/InstallBlock";
 
 export const metadata: Metadata = {
   title: "Open-source Remote Access • Firezone",
-  description:
-    "Open-source remote access built on WireGuard®.",
+  description: "Open-source remote access built on WireGuard®.",
 };
 
 export default function Page() {
@@ -14,9 +13,9 @@ export default function Page() {
         <div className="container">
           <h1 className="hero__title">Fast, effortless secure access</h1>
           <p>
-            Firezone is an open-source remote access platform built on WireGuard®, a
-            modern VPN protocol that's 4-6x faster than OpenVPN. Deploy on your
-            infrastructure and start onboarding users in minutes.
+            Firezone is an open-source remote access platform built on
+            WireGuard®, a modern VPN protocol that's 4-6x faster than OpenVPN.
+            Deploy on your infrastructure and start onboarding users in minutes.
           </p>
           <div className="row">
             <div className="col col--12">
@@ -138,7 +137,7 @@ export default function Page() {
 
       <hr className="margin-vert--xl" />
 
-            {/* Feature 2 */}
+      {/* Feature 2 */}
 
       <div className="container">
         <center>
@@ -162,9 +161,9 @@ export default function Page() {
           </div>
           <div className="col col--6">
             <p>
-              Increase productivity and decrease connection issues for your remote
-              team. Firezone uses kernel WireGuard® to be efficient, reliable, and
-              performant in any environment.
+              Increase productivity and decrease connection issues for your
+              remote team. Firezone uses kernel WireGuard® to be efficient,
+              reliable, and performant in any environment.
             </p>
             <ul>
               <li>
@@ -178,7 +177,9 @@ export default function Page() {
                 </a>
               </li>
               <li>
-                <a href="https://www.wireguard.com/performance/">Multi-threaded</a>
+                <a href="https://www.wireguard.com/performance/">
+                  Multi-threaded
+                </a>
               </li>
             </ul>
           </div>
@@ -187,7 +188,7 @@ export default function Page() {
 
       <hr className="margin-vert--xl" />
 
-            {/* Feature 3 */}
+      {/* Feature 3 */}
 
       <div className="container">
         <center>
@@ -199,8 +200,8 @@ export default function Page() {
       <div className="container">
         <div className="row">
           <div className="col col--6">
-            Deploy Firezone on any platform that supports Docker. There's no need to
-            risk breaches by sending data to third parties.
+            Deploy Firezone on any platform that supports Docker. There's no
+            need to risk breaches by sending data to third parties.
             <ul>
               <li>VPC, data center, or on-prem</li>
               <li>Auto-renewing SSL certs from Let's Encrypt via ACME</li>
@@ -226,9 +227,10 @@ export default function Page() {
           </h2>
         </center>
         <p>
-          Only allow connections from authenticated users and automatically disable
-          access for employees who have left. Firezone integrates with any OIDC and
-          SAML 2.0 compatible identity provider for single sign-on (SSO).
+          Only allow connections from authenticated users and automatically
+          disable access for employees who have left. Firezone integrates with
+          any OIDC and SAML 2.0 compatible identity provider for single sign-on
+          (SSO).
         </p>
       </div>
 
@@ -303,7 +305,9 @@ export default function Page() {
         <center>
           <h2 className="margin-bottom--lg">Who can benefit from Firezone?</h2>
         </center>
-        <p>Easy to deploy and manage for individuals and organizations alike.</p>
+        <p>
+          Easy to deploy and manage for individuals and organizations alike.
+        </p>
       </div>
 
       <div className="container margin-top--lg">
@@ -315,8 +319,8 @@ export default function Page() {
               </div>
               <div className="card__body">
                 <p>
-                  Lightweight and fast. Access your home network securely when on the
-                  road.
+                  Lightweight and fast. Access your home network securely when
+                  on the road.
                 </p>
                 <ul>
                   <li>Effortless to deploy on any infrastructure</li>
@@ -336,8 +340,8 @@ export default function Page() {
               </div>
               <div className="card__body">
                 <p>
-                  Keep up with increasing network and compliance demands as you scale
-                  your team and infrastructure.
+                  Keep up with increasing network and compliance demands as you
+                  scale your team and infrastructure.
                 </p>
                 <ul>
                   <li>Integrate your identity provider</li>
@@ -360,8 +364,8 @@ export default function Page() {
               </div>
               <div className="card__body">
                 <p>
-                  Transitioning to remote? Perfect timing to replace the legacy VPN.
-                  Improve your security posture and reduce support tickets.
+                  Transitioning to remote? Perfect timing to replace the legacy
+                  VPN. Improve your security posture and reduce support tickets.
                 </p>
                 <ul>
                   <li>Require periodic re-authentication</li>
@@ -382,8 +386,8 @@ export default function Page() {
               </div>
               <div className="card__body">
                 <p>
-                  Firezone runs on your infrastructure. Customize it to suit your
-                  needs and architecture.
+                  Firezone runs on your infrastructure. Customize it to suit
+                  your needs and architecture.
                 </p>
                 <ul>
                   <li>Built on WireGuard®</li>
@@ -491,9 +495,9 @@ export default function Page() {
       </center>
 
       <p>
-        Set up secure access and start onboarding users in minutes. Run the install
-        script on a supported host to deploy Firezone with Docker. Copy the one-liner
-        below to install Firezone in minutes.
+        Set up secure access and start onboarding users in minutes. Run the
+        install script on a supported host to deploy Firezone with Docker. Copy
+        the one-liner below to install Firezone in minutes.
       </p>
 
       <InstallBlock />
@@ -517,7 +521,6 @@ export default function Page() {
             </center>
         </div>
         */}
-
     </div>
   );
 }
