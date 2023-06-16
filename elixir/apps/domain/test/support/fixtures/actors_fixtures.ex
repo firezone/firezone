@@ -19,7 +19,11 @@ defmodule Domain.ActorsFixtures do
 
     {provider, attrs} =
       Map.pop_lazy(attrs, :provider, fn ->
-        AuthFixtures.create_email_provider(account: account)
+        {provider, _bypass} =
+          AuthFixtures.start_openid_providers(["google"])
+          |> AuthFixtures.create_openid_connect_provider(account: account)
+
+        provider
       end)
 
     attrs = actor_attrs(attrs)

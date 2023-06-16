@@ -48,6 +48,56 @@ defmodule Domain.AuthTest do
              }
     end
 
+    test "returns error if email provider is already enabled", %{
+      account: account
+    } do
+      # email, userpass, token
+      AuthFixtures.create_email_provider(account: account)
+      attrs = AuthFixtures.provider_attrs(adapter: :email)
+      assert {:error, changeset} = create_provider(account, attrs)
+      refute changeset.valid?
+      assert errors_on(changeset) == %{adapter: ["this provider is already enabled"]}
+    end
+
+    test "returns error if userpass provider is already enabled", %{
+      account: account
+    } do
+      # userpass, userpass, token
+      AuthFixtures.create_userpass_provider(account: account)
+      attrs = AuthFixtures.provider_attrs(adapter: :userpass)
+      assert {:error, changeset} = create_provider(account, attrs)
+      refute changeset.valid?
+      assert errors_on(changeset) == %{adapter: ["this provider is already enabled"]}
+    end
+
+    test "returns error if token provider is already enabled", %{
+      account: account
+    } do
+      AuthFixtures.create_token_provider(account: account)
+      attrs = AuthFixtures.provider_attrs(adapter: :token)
+      assert {:error, changeset} = create_provider(account, attrs)
+      refute changeset.valid?
+      assert errors_on(changeset) == %{adapter: ["this provider is already enabled"]}
+    end
+
+    test "returns error if openid connect provider is already enabled", %{
+      account: account
+    } do
+      {provider, _bypass} =
+        AuthFixtures.start_openid_providers(["google"])
+        |> AuthFixtures.create_openid_connect_provider(account: account)
+
+      attrs =
+        AuthFixtures.provider_attrs(
+          adapter: :openid_connect,
+          adapter_config: provider.adapter_config
+        )
+
+      assert {:error, changeset} = create_provider(account, attrs)
+      refute changeset.valid?
+      assert errors_on(changeset) == %{adapter: ["this provider is already connected"]}
+    end
+
     test "creates a provider", %{
       account: account
     } do
@@ -135,7 +185,7 @@ defmodule Domain.AuthTest do
       subject: subject,
       provider: provider
     } do
-      other_provider = AuthFixtures.create_email_provider(account: account)
+      other_provider = AuthFixtures.create_userpass_provider(account: account)
 
       assert {:ok, provider} = disable_provider(provider, subject)
       assert provider.disabled_at
@@ -168,7 +218,7 @@ defmodule Domain.AuthTest do
       subject: subject,
       provider: provider
     } do
-      other_provider = AuthFixtures.create_email_provider(account: account)
+      other_provider = AuthFixtures.create_userpass_provider(account: account)
       {:ok, _other_provider} = disable_provider(other_provider, subject)
 
       assert disable_provider(provider, subject) == {:error, :cant_disable_the_last_provider}
@@ -184,7 +234,7 @@ defmodule Domain.AuthTest do
           account = AccountsFixtures.create_account()
 
           provider_one = AuthFixtures.create_email_provider(account: account)
-          provider_two = AuthFixtures.create_email_provider(account: account)
+          provider_two = AuthFixtures.create_userpass_provider(account: account)
 
           actor =
             ActorsFixtures.create_actor(
@@ -224,7 +274,7 @@ defmodule Domain.AuthTest do
       subject: subject,
       account: account
     } do
-      provider = AuthFixtures.create_email_provider(account: account)
+      provider = AuthFixtures.create_userpass_provider(account: account)
       assert {:ok, _provider} = disable_provider(provider, subject)
       assert {:ok, provider} = disable_provider(provider, subject)
       assert {:ok, _provider} = disable_provider(provider, subject)
@@ -233,7 +283,7 @@ defmodule Domain.AuthTest do
     test "does not allow to disable providers in other accounts", %{
       subject: subject
     } do
-      provider = AuthFixtures.create_email_provider()
+      provider = AuthFixtures.create_userpass_provider()
       assert disable_provider(provider, subject) == {:error, :not_found}
     end
 
@@ -334,7 +384,7 @@ defmodule Domain.AuthTest do
       subject: subject,
       provider: provider
     } do
-      other_provider = AuthFixtures.create_email_provider(account: account)
+      other_provider = AuthFixtures.create_userpass_provider(account: account)
 
       assert {:ok, provider} = delete_provider(provider, subject)
       assert provider.deleted_at
@@ -367,7 +417,7 @@ defmodule Domain.AuthTest do
       subject: subject,
       provider: provider
     } do
-      other_provider = AuthFixtures.create_email_provider(account: account)
+      other_provider = AuthFixtures.create_userpass_provider(account: account)
       {:ok, _other_provider} = delete_provider(other_provider, subject)
 
       assert delete_provider(provider, subject) == {:error, :cant_delete_the_last_provider}
@@ -383,7 +433,7 @@ defmodule Domain.AuthTest do
           account = AccountsFixtures.create_account()
 
           provider_one = AuthFixtures.create_email_provider(account: account)
-          provider_two = AuthFixtures.create_email_provider(account: account)
+          provider_two = AuthFixtures.create_userpass_provider(account: account)
 
           actor =
             ActorsFixtures.create_actor(
@@ -419,7 +469,7 @@ defmodule Domain.AuthTest do
       subject: subject,
       account: account
     } do
-      provider = AuthFixtures.create_email_provider(account: account)
+      provider = AuthFixtures.create_userpass_provider(account: account)
       assert {:ok, deleted_provider} = delete_provider(provider, subject)
       assert delete_provider(provider, subject) == {:error, :not_found}
       assert delete_provider(deleted_provider, subject) == {:error, :not_found}
@@ -428,7 +478,7 @@ defmodule Domain.AuthTest do
     test "does not allow to delete providers in other accounts", %{
       subject: subject
     } do
-      provider = AuthFixtures.create_email_provider()
+      provider = AuthFixtures.create_userpass_provider()
       assert delete_provider(provider, subject) == {:error, :not_found}
     end
 

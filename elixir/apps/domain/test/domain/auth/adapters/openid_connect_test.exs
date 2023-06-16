@@ -107,7 +107,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       assert authorization_uri ==
                "http://localhost:#{bypass.port}/authorize" <>
                  "?access_type=offline" <>
-                 "&client_id=google-client-id" <>
+                 "&client_id=#{provider.adapter_config["client_id"]}" <>
                  "&code_challenge=#{Domain.Auth.Adapters.OpenIDConnect.PKCE.code_challenge(verifier)}" <>
                  "&code_challenge_method=S256" <>
                  "&redirect_uri=https%3A%2F%2Fexample.com%2F" <>
