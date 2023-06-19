@@ -4,7 +4,11 @@ defmodule Domain.ActorsFixtures do
   alias Domain.{AccountsFixtures, AuthFixtures}
 
   def actor_attrs(attrs \\ %{}) do
+    first_name = Enum.random(~w[Wade Dave Seth Riley Gilbert Jorge Dan Brian Roberto Ramon])
+    last_name = Enum.random(~w[Robyn Traci Desiree Jon Bob Karl Joe Alberta Lynda Cara Brandi])
+
     Enum.into(attrs, %{
+      name: "#{first_name} #{last_name}",
       type: :account_user
     })
   end
