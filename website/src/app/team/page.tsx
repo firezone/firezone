@@ -44,13 +44,12 @@ export default function Page() {
                 CEO/Co-founder
               </span>
               <p className="mt-3 mb-4 max-w-sm font-light text-gray-500 dark:text-gray-400">
-                {/*
-                Prior to starting Firezone, Jamil was a security engineer at
-                Cisco for 8 years in various roles from pentesting to incident
-                response. When not building companies you can typically find him
-                on the grill. Jamil lives in Mountain View, CA with his partner
-                and their dog Charlie.
-                */}
+                Before igniting Firezone, Jamil battled cybersecurity threats at
+                Cisco for 8+ years in roles ranging from pentesting to incident
+                response, disarming virtual villains one firewall at a time.
+                When not herding digital cats, he's taming a different kind of
+                beast: the flames on his grill, affectionately known as "The
+                Other Firezone".
               </p>
               <ul className="flex justify-center space-x-4 sm:justify-start">
                 <li>
