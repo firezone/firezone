@@ -4,6 +4,7 @@ alias Domain.{Repo, Accounts, Auth, Actors, Relays, Gateways, Resources}
 {:ok, other_account} = Accounts.create_account(%{name: "Other Corp Account"})
 
 IO.puts("Created accounts: ")
+
 for account <- [account, other_account] do
   IO.puts("  #{account.id}: #{account.name}")
 end
@@ -40,12 +41,14 @@ admin_actor_email = "firezone@localhost"
 
 {:ok, unprivileged_actor} =
   Actors.create_actor(email_provider, unprivileged_actor_email, %{
-    type: :account_user
+    type: :account_user,
+    name: "Firezone Unprivileged"
   })
 
 {:ok, admin_actor} =
   Actors.create_actor(email_provider, admin_actor_email, %{
-    type: :account_admin_user
+    type: :account_admin_user,
+    name: "Firezone Admin"
   })
 
 {:ok, _unprivileged_actor_userpass_identity} =
