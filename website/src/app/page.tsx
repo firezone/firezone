@@ -2,7 +2,7 @@ import { Metadata } from "next";
 import InstallBlock from "@/components/InstallBlock";
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowLongRightIcon } from "@heroicons/react/24/solid";
+import { ArrowLongRightIcon, CheckIcon } from "@heroicons/react/24/solid";
 
 export const metadata: Metadata = {
   title: "Open-source Remote Access • Firezone",
@@ -26,7 +26,7 @@ export default function Page() {
             <Link href="/docs/deploy">
               <button
                 type="button"
-                className="inline-flex justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded-lg focus:outline-none bg-gradient-to-r from-purple-500 via-purple-600 to-purple-700 hover:bg-gradient-to-br focus:ring-4 focus:ring-violet-300"
+                className="inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded-lg focus:outline-none bg-gradient-to-r from-purple-500 via-purple-600 to-purple-700 hover:bg-gradient-to-br focus:ring-4 focus:ring-violet-300"
               >
                 Deploy now
                 <ArrowLongRightIcon className="ml-2 -mr-1 w-6 h-6" />
@@ -35,13 +35,13 @@ export default function Page() {
           </div>
           <div className="flex items-center justify-center">
             <Image
+              className="shadow-xl rounded-md"
               width={960}
               height={540}
               alt="overview screencap"
               src="/images/overview-screencap.gif"
             />
           </div>
-
           <div className="flex justify-center items-center p-8 mt-8">
             <h3 className="text-2xl font-bold text-gray-500 dark:text-white">
               Trusted by organizations like
@@ -88,7 +88,190 @@ export default function Page() {
         </div>
       </section>
 
-      <section className="bg-white pt-24 dark:bg-gray-800"></section>
+      {/* Features sections */}
+      <section className="bg-white pt-24 dark:bg-gray-800">
+        <div className="flex justify-center items-center">
+          <h2 className="mb-4 text-4xl tracking-tight font-extrabold text-gray-900 dark:text-white">
+            A modern alternative to legacy VPNs
+          </h2>
+        </div>
+
+        {/* Feature section 1 */}
+        <div className="gap-8 items-center py-8 px-4 mx-auto max-w-screen-xl lg:grid lg:grid-cols-2 xl:gap-16 sm:py-16 lg:px-6 ">
+          <div>
+            <h4 className="mb-8 text-lg font-semibold tracking-tight text-orange-500 dark:text-white">
+              SIMPLE TO MANAGE
+            </h4>
+            <h3 className="text-2xl font-bold tracking-tight text-gray-900">
+              Streamline workflows. Reduce total cost of ownership.
+            </h3>
+            <p className="text-lg text-gray-500 my-4">
+              Legacy VPNs are cumbersome to manage and take weeks to configure
+              correctly. Firezone takes minutes to deploy and the Web GUI makes
+              managing secure access effortless for admins.
+            </p>
+            <ul role="list" className="my-6 lg:mb-0 space-y-4">
+              <li className="flex space-x-2.5">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
+                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                  Integrate any identity provider to enforce 2FA / MFA
+                </span>
+              </li>
+              <li className="flex space-x-2.5">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
+                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                  Define user-scoped access rules
+                </span>
+              </li>
+              <li className="flex space-x-2.5">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
+                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                  Manage access with a snappy admin dashboard
+                </span>
+              </li>
+            </ul>
+          </div>
+          <Image
+            width={600}
+            height={500}
+            alt="Feature 1"
+            src="/images/feature-1.png"
+          />
+        </div>
+
+        {/* Feature section 2 */}
+        <div className="gap-8 items-center py-8 px-4 mx-auto max-w-screen-xl lg:grid lg:grid-cols-2 xl:gap-16 sm:py-16 lg:px-6 ">
+          <div className="flex flex-col justify-between">
+            <Image
+              className="rounded-md shadow-md"
+              width={600}
+              height={500}
+              alt="Feature 2"
+              src="/images/feature-2.png"
+            />
+            <Link
+              className="mt-4 mx-auto text-violet-600 hover:underline"
+              href="https://core.ac.uk/download/pdf/322886318.pdf"
+            >
+              Performance comparison of VPN solutions (Osswald et al.)
+            </Link>
+          </div>
+          <div>
+            <h4 className="mb-8 text-lg font-semibold tracking-tight text-orange-500 dark:text-white">
+              FAST AND LIGHTWEIGHT
+            </h4>
+            <h3 className="text-2xl font-bold tracking-tight text-gray-900">
+              High throughput and low latency. Up to 4-6x faster than OpenVPN.
+            </h3>
+            <p className="text-lg text-gray-500 my-4">
+              Increase productivity and decrease connection issues for your
+              remote team. Firezone uses kernel WireGuard® to be efficient,
+              reliable, and performant in any environment.
+            </p>
+            <ul role="list" className="my-6 lg:mb-0 space-y-4">
+              <li className="flex space-x-2.5">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
+                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                  <Link
+                    className="text-violet-600 hover:underline"
+                    href="https://www.wireguard.com/protocol/"
+                  >
+                    State-of-the-art cryptography
+                  </Link>
+                </span>
+              </li>
+              <li className="flex space-x-2.5">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
+                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                  Auditable and{" "}
+                  <Link
+                    className="text-violet-600 hover:underline"
+                    href="https://www.wireguard.com/formal-verification/"
+                  >
+                    formally verified
+                  </Link>
+                </span>
+              </li>
+              <li className="flex space-x-2.5">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
+                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                  <Link
+                    className="text-violet-600 hover:underline"
+                    href="https://www.wireguard.com/performance/"
+                  >
+                    Multi-threaded
+                  </Link>{" "}
+                  performance that scales
+                </span>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        {/* Feature section 3 */}
+        <div className="gap-8 items-center py-8 px-4 mx-auto max-w-screen-xl lg:grid lg:grid-cols-2 xl:gap-16 sm:py-16 lg:px-6 ">
+          <div>
+            <h4 className="mb-8 text-lg font-semibold tracking-tight text-orange-500 dark:text-white">
+              RUN ANYWHERE
+            </h4>
+            <h3 className="text-2xl font-bold tracking-tight text-gray-900">
+              Firezone runs entirely on your infrastructure. No vendor lock-in.
+            </h3>
+            <p className="text-lg text-gray-500 my-4">
+              Deploy Firezone on any platform that supports Docker. There's no
+              need to risk breaches by sending data to third parties.
+            </p>
+            <ul role="list" className="my-6 lg:mb-0 space-y-4">
+              <li className="flex space-x-2.5">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
+                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                  VPC, data center, or on-prem
+                </span>
+              </li>
+              <li className="flex space-x-2.5">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
+                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                  Auto-renewing SSL certs from Let's Encrypt via ACME
+                </span>
+              </li>
+              <li className="flex space-x-2.5">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
+                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                  Flexible and configurable
+                </span>
+              </li>
+            </ul>
+            <Link
+              className="inline-flex items-center text-violet-600 hover:underline text-lg mt-8"
+              href="/docs/deploy"
+            >
+              Explore the deployment docs
+              <ArrowLongRightIcon className="flex-shrink-0 w-5 h-5 ml-2" />
+            </Link>
+          </div>
+          <Image
+            className="rounded-md shadow-md"
+            width={600}
+            height={500}
+            alt="Feature 3"
+            src="/images/feature-3.png"
+          />
+        </div>
+      </section>
+
+      <section className="bg-gray-50 pt-24 dark:bg-gray-800">
+        <div className="flex flex-col justify-center items-center">
+          <h2 className="mb-4 text-4xl tracking-tight font-extrabold text-gray-900 dark:text-white">
+            Integrate your identity provider to enforce 2FA / MFA
+          </h2>
+          <p className="my-4 text-xl max-w-screen-lg text-center text-primary-600 dark:text-gray-400">
+            Only allow connections from authenticated users and automatically
+            disable access for employees who have left. Firezone integrates with
+            any OIDC and SAML 2.0 compatible identity provider for single
+            sign-on (SSO).
+          </p>
+        </div>
+      </section>
     </>
   );
 }
