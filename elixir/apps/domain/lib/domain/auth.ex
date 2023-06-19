@@ -206,7 +206,7 @@ defmodule Domain.Auth do
     end
   end
 
-  defp fetch_identity_by_provider_and_identifier(%Provider{} = provider, provider_identifier) do
+  def fetch_identity_by_provider_and_identifier(%Provider{} = provider, provider_identifier) do
     Identity.Query.by_provider_id(provider.id)
     |> Identity.Query.by_provider_identifier(provider_identifier)
     |> Repo.fetch()

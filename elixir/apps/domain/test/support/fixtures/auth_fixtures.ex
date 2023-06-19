@@ -452,7 +452,7 @@ defmodule Domain.AuthFixtures do
     {bypass, "#{endpoint}/.well-known/openid-configuration"}
   end
 
-  def fetch_conn_params(conn) do
+  defp fetch_conn_params(conn) do
     opts = Plug.Parsers.init(parsers: [:urlencoded, :json], pass: ["*/*"], json_decoder: Jason)
 
     conn
