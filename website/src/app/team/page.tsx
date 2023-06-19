@@ -9,17 +9,17 @@ export default function Page() {
       <div className="grid gap-16 py-8 px-4 mx-auto max-w-screen-xl lg:grid-cols-2 lg:py-16 lg:px-6">
         <div className="text-gray-500 sm:text-lg dark:text-gray-400">
           <h2 className="mb-4 text-4xl tracking-tight font-extrabold text-gray-900 dark:text-white">
-            Our people make us great
+            People are everything.
           </h2>
           <p className="mb-2 md:text-lg">
-            Here at Flowbite we focus on markets where technology, innovation,
-            and capital can unlock long-term value.
+            Here at Firezone we know that it's people who make all the
+            difference. We strive to hire the best and brightest and give them
+            the tools they need to succeed.
           </p>
           <p className="font-light md:text-lg">
-            Working here means you’ll interact with talented professionals, will
-            be challenged to solve difficult problems and think in new and
-            creative ways. Along the way, you may also make some new friends,
-            have a lot of fun and enjoy opportunities.
+            Working here means you’ll interact with some of the most talented
+            folks in their craft, be challenged to solve difficult problems and
+            think in new and creative ways.
           </p>
         </div>
         <div className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -44,8 +44,13 @@ export default function Page() {
                 CEO/Co-founder
               </span>
               <p className="mt-3 mb-4 max-w-sm font-light text-gray-500 dark:text-gray-400">
-                Jamil drives the technical strategy of the themesberg platform
-                and brand.
+                {/*
+                Prior to starting Firezone, Jamil was a security engineer at
+                Cisco for 8 years in various roles from pentesting to incident
+                response. When not building companies you can typically find him
+                on the grill. Jamil lives in Mountain View, CA with his partner
+                and their dog Charlie.
+                */}
               </p>
               <ul className="flex justify-center space-x-4 sm:justify-start">
                 <li>
