@@ -1,8 +1,18 @@
 import { Metadata } from "next";
-import InstallBlock from "@/components/InstallBlock";
+import CodeBlock from "@/components/CodeBlock";
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowLongRightIcon, CheckIcon } from "@heroicons/react/24/solid";
+import {
+  ArrowLongRightIcon,
+  CheckIcon,
+  HomeIcon,
+  RocketLaunchIcon,
+  WrenchScrewdriverIcon,
+  GlobeAltIcon,
+  UserGroupIcon,
+  StarIcon,
+  ChatBubbleLeftRightIcon,
+} from "@heroicons/react/24/solid";
 
 export const metadata: Metadata = {
   title: "Open-source Remote Access • Firezone",
@@ -26,7 +36,7 @@ export default function Page() {
             <Link href="/docs/deploy">
               <button
                 type="button"
-                className="inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded-lg focus:outline-none bg-gradient-to-r from-purple-500 via-purple-600 to-purple-700 hover:bg-gradient-to-br focus:ring-4 focus:ring-violet-300"
+                className="inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded-lg focus:outline-none bg-gradient-to-r from-purple-500 via-purple-600 to-purple-700 hover:bg-gradient-to-br hover:scale-105 duration-0 transform transition focus:ring-4 focus:ring-violet-300"
               >
                 Deploy now
                 <ArrowLongRightIcon className="ml-2 -mr-1 w-6 h-6" />
@@ -89,7 +99,7 @@ export default function Page() {
       </section>
 
       {/* Features sections */}
-      <section className="bg-white pt-24 dark:bg-gray-800">
+      <section className="bg-white py-24 dark:bg-gray-800">
         <div className="flex justify-center items-center">
           <h2 className="mb-4 text-4xl tracking-tight font-extrabold text-gray-900 dark:text-white">
             A modern alternative to legacy VPNs
@@ -209,7 +219,7 @@ export default function Page() {
         </div>
 
         {/* Feature section 3 */}
-        <div className="gap-8 items-center py-8 px-4 mx-auto max-w-screen-xl lg:grid lg:grid-cols-2 xl:gap-16 sm:py-16 lg:px-6 ">
+        <div className="gap-8 items-center pt-8 px-4 mx-auto max-w-screen-xl lg:grid lg:grid-cols-2 xl:gap-16 sm:pt-16 lg:px-6 ">
           <div>
             <h4 className="mb-8 text-lg font-semibold tracking-tight text-orange-500 dark:text-white">
               RUN ANYWHERE
@@ -259,7 +269,7 @@ export default function Page() {
         </div>
       </section>
 
-      <section className="bg-gray-50 pt-24 dark:bg-gray-800">
+      <section className="bg-gray-50 py-24 dark:bg-gray-800">
         <div className="flex flex-col justify-center items-center">
           <h2 className="mb-4 text-4xl tracking-tight font-extrabold text-gray-900 dark:text-white">
             Integrate your identity provider to enforce 2FA / MFA
@@ -271,532 +281,338 @@ export default function Page() {
             sign-on (SSO).
           </p>
         </div>
+        <div className="mx-auto max-w-screen-xl flex justify-between items-center px-16 pt-8">
+          <Link href="/docs/authenticate/oidc/keycloak/">
+            <Image
+              width={150}
+              height={75}
+              alt="keycloak logo"
+              src="/images/keycloak-logo.png"
+            />
+          </Link>
+          <Link href="/docs/authenticate/oidc/google/">
+            <Image
+              width={150}
+              height={75}
+              alt="google logo"
+              src="/images/google-logo.png"
+            />
+          </Link>
+          <Link href="/docs/authenticate/oidc/okta/">
+            <Image
+              width={150}
+              height={75}
+              alt="okta logo"
+              src="/images/okta-logo.png"
+            />
+          </Link>
+          <Link href="/docs/authenticate/oidc/onelogin/">
+            <Image
+              width={150}
+              height={75}
+              alt="onelogin logo"
+              src="/images/onelogin-logo.png"
+            />
+          </Link>
+          <Link href="/docs/authenticate/oidc/azuread/">
+            <Image
+              width={150}
+              height={75}
+              alt="azure logo"
+              src="/images/azure-logo.png"
+            />
+          </Link>
+          <Link href="/docs/authenticate/saml/jumpcloud/">
+            <Image
+              width={150}
+              height={75}
+              alt="jumpcloud logo"
+              src="/images/jumpcloud-logo.png"
+            />
+          </Link>
+        </div>
+      </section>
+
+      <section className="bg-white py-24 dark:bg-gray-800">
+        <div className="flex flex-col justify-center items-center">
+          <h2 className="mb-4 text-4xl tracking-tight font-extrabold text-gray-900 dark:text-white">
+            Who can benefit using Firezone?
+          </h2>
+          <p className="my-4 text-xl max-w-screen-lg text-center text-primary-600 dark:text-gray-400">
+            Easy to deploy and manage for individuals and organizations alike.
+            Only allow connections from authenticated users and automatically
+            disable access for employees who have left. Firezone integrates with
+            any OIDC and SAML 2.0 compatible identity provider for single
+            sign-on (SSO).
+          </p>
+        </div>
+        <div className="gap-4 items-center pt-8 px-4 mx-auto max-w-screen-xl lg:grid lg:grid-cols-2 xl:gap-8 sm:pt-16 lg:px-6 ">
+          <div className="bg-gray-50 p-8 rounded-md shadow-md">
+            <div className="flex items-center space-x-2.5">
+              <HomeIcon className="flex-shrink-0 w-5 h-5 text-orange-500" />
+              <h3 className="text-xl tracking-tight font-bold text-primary-600 dark:text-gray-400">
+                Individuals and homelab users
+              </h3>
+            </div>
+            <p className="mt-8 text-primary-600 text-xl">
+              Lightweight and fast. Access your home network securely when on
+              the road.
+            </p>
+            <ul role="list" className="my-6 lg:mb-0 space-y-4">
+              <li className="flex space-x-2.5">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
+                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                  Effortless to deploy on any infrastructure
+                </span>
+              </li>
+              <li className="flex space-x-2.5">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
+                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                  Community plan supports unlimited devices
+                </span>
+              </li>
+              <li className="flex space-x-2.5">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
+                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                  Open-source and self-hosted
+                </span>
+              </li>
+            </ul>
+            <Link
+              className="inline-flex items-center text-violet-600 hover:underline text-lg mt-8"
+              href="/docs"
+            >
+              Access your personal project
+              <ArrowLongRightIcon className="flex-shrink-0 w-5 h-5 ml-2" />
+            </Link>
+          </div>
+          <div className="bg-gray-50 p-8 rounded-md shadow-md">
+            <div className="flex items-center space-x-2.5">
+              <RocketLaunchIcon className="flex-shrink-0 w-5 h-5 text-orange-500" />
+              <h3 className="text-xl tracking-tight font-bold text-primary-600 dark:text-gray-400">
+                Growing businesses
+              </h3>
+            </div>
+            <p className="mt-8 text-primary-600 text-xl">
+              Keep up with increasing network and compliance demands as you
+              scale your team and infrastructure.
+            </p>
+            <ul role="list" className="my-6 lg:mb-0 space-y-4">
+              <li className="flex space-x-2.5">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
+                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                  Integrate your identity provider
+                </span>
+              </li>
+              <li className="flex space-x-2.5">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
+                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                  Quickly onboard/offboard employees{" "}
+                </span>
+              </li>
+              <li className="flex space-x-2.5">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
+                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                  Segment access for contractors
+                </span>
+              </li>
+              <li className="flex space-x-2.5">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
+                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                  High performance, reduce bottlenecks
+                </span>
+              </li>
+            </ul>
+            <Link
+              className="inline-flex items-center text-violet-600 hover:underline text-lg mt-8"
+              href="/docs"
+            >
+              Scale your secure access
+              <ArrowLongRightIcon className="flex-shrink-0 w-5 h-5 ml-2" />
+            </Link>
+          </div>
+          <div className="bg-gray-50 p-8 rounded-md shadow-md">
+            <div className="flex items-center space-x-2.5">
+              <HomeIcon className=" lex-shrink-0 w-5 h-5 text-orange-500" />
+              <h3 className="text-xl tracking-tight font-bold text-primary-600 dark:text-gray-400">
+                Remote organizations
+              </h3>
+            </div>
+            <p className="mt-8 text-primary-600 text-xl">
+              Transitioning to remote? Perfect timing to replace the legacy VPN.
+              Improve your security posture and reduce support tickets.
+            </p>
+            <ul role="list" className="my-6 lg:mb-0 space-y-4">
+              <li className="flex space-x-2.5">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
+                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                  Require periodic re-authentication
+                </span>
+              </li>
+              <li className="flex space-x-2.5">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
+                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                  Enforce MFA / 2FA
+                </span>
+              </li>
+              <li className="flex space-x-2.5">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
+                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                  Self-serve user portal
+                </span>
+              </li>
+              <li className="flex space-x-2.5">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
+                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                  Export logs to your observability platform
+                </span>
+              </li>
+            </ul>
+            <Link
+              className="inline-flex items-center text-violet-600 hover:underline text-lg mt-8"
+              href="/docs"
+            >
+              Secure your remote workforce
+              <ArrowLongRightIcon className="flex-shrink-0 w-5 h-5 ml-2" />
+            </Link>
+          </div>
+          <div className="bg-gray-50 p-8 rounded-md shadow-md">
+            <div className="flex items-center space-x-2.5">
+              <HomeIcon className=" lex-shrink-0 w-5 h-5 text-orange-500" />
+              <h3 className="text-xl tracking-tight font-bold text-primary-600 dark:text-gray-400">
+                Technical IT teams
+              </h3>
+            </div>
+            <p className="mt-8 text-primary-600 text-xl">
+              Firezone runs on your infrastructure. Customize it to suit your
+              needs and architecture.
+            </p>
+            <ul role="list" className="my-6 lg:mb-0 space-y-4">
+              <li className="flex space-x-2.5">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
+                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                  Built on WireGuard®
+                </span>
+              </li>
+              <li className="flex space-x-2.5">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
+                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                  No vendor lock-in
+                </span>
+              </li>
+              <li className="flex space-x-2.5">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
+                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                  Supports OIDC and SAML 2.0
+                </span>
+              </li>
+              <li className="flex space-x-2.5">
+                <CheckIcon className="flex-shrink-0 w-5 h-5 text-primary-600 font-bold dark:text-primary-500" />
+                <span className="leading-tight text-lg text-primary-600 dark:text-gray-400">
+                  Flexible and configurable
+                </span>
+              </li>
+            </ul>
+            <Link
+              className="inline-flex items-center text-violet-600 hover:underline text-lg mt-8"
+              href="/docs"
+            >
+              Explore the documentation
+              <ArrowLongRightIcon className="flex-shrink-0 w-5 h-5 ml-2" />
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      <section className="py-24 bg-gray-50 dark:bg-gray-900">
+        <div className="flex flex-col justify-center items-center">
+          <h2 className="mb-4 text-4xl tracking-tight font-extrabold text-gray-900 dark:text-white">
+            Join our community
+          </h2>
+          <p className="my-4 text-xl max-w-screen-lg text-center text-primary-600 dark:text-gray-400">
+            Participate in Firezone's development, suggest new features, and
+            collaborate with other Firezone users.
+          </p>
+        </div>
+        <div className="gap-4 items-center pt-4 px-4 mx-auto max-w-screen-lg lg:grid lg:grid-cols-3 xl:gap-8 sm:pt-8 lg:px-6 ">
+          <div className="py-8 rounded-md shadow-md text-center bg-white">
+            <UserGroupIcon className="flex-shrink-0 w-12 h-12 mx-auto text-orange-500 dark:text-gray-400" />
+            <h3 className="text-4xl my-8 font-bold justify-center tracking-tight text-primary-600 dark:text-gray-400">
+              30+
+            </h3>
+            <p className="mb-8 text-xl font-semibold">Contributors</p>
+            <button
+              type="button"
+              className="inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded-lg hover:scale-105 duration-0 transform transition focus:outline-none bg-gradient-to-r from-purple-500 via-purple-600 to-purple-700 hover:bg-gradient-to-br focus:ring-4 focus:ring-violet-300"
+            >
+              <Link href="https://github.com/firezone/firezone/fork">
+                Fork us on GitHub
+              </Link>
+            </button>
+          </div>
+          <div className="py-8 rounded-md shadow-md text-center bg-white">
+            <StarIcon className="flex-shrink-0 w-12 h-12 mx-auto text-orange-500 dark:text-gray-400" />
+            <h3 className="text-4xl my-8 font-bold justify-center tracking-tight text-primary-600 dark:text-gray-400">
+              4,300+
+            </h3>
+            <p className="mb-8 text-xl font-semibold">GitHub stars</p>
+            <button
+              type="button"
+              className="inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded-lg hover:scale-105 duration-0 transform transition focus:outline-none bg-gradient-to-r from-purple-500 via-purple-600 to-purple-700 hover:bg-gradient-to-br focus:ring-4 focus:ring-violet-300"
+            >
+              <Link href="https://github.com/firezone/firezone">
+                Drop us a star
+              </Link>
+            </button>
+          </div>
+          <div className="py-8 rounded-md shadow-md text-center bg-white">
+            <ChatBubbleLeftRightIcon className="flex-shrink-0 w-12 h-12 mx-auto text-orange-500 dark:text-gray-400" />
+            <h3 className="text-4xl my-8 font-bold justify-center tracking-tight text-primary-600 dark:text-gray-400">
+              250+
+            </h3>
+            <p className="mb-8 text-xl font-semibold">Members</p>
+            <button
+              type="button"
+              className="inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded-lg hover:scale-105 duration-0 transform transition focus:outline-none bg-gradient-to-r from-purple-500 via-purple-600 to-purple-700 hover:bg-gradient-to-br focus:ring-4 focus:ring-violet-300"
+            >
+              <Link href="https://firezone-users.slack.com/join/shared_invite/zt-19jd956j4-rWcCqiKMh~ikPGsUFbvZiA#/shared-invite/email">
+                Join our Slack
+              </Link>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section className="py-24 bg-violet-900 dark:bg-gray-900">
+        <div className="flex flex-col justify-center items-center">
+          <h2 className="mb-4 text-4xl tracking-tight font-extrabold text-gray-50 dark:text-white">
+            Ready to get started?
+          </h2>
+          <p className="my-4 font-semibold text-xl max-w-screen-md text-center text-gray-200 dark:text-gray-400">
+            Set up secure access and start onboarding users in minutes.
+            <br />
+            Copy and paste the command below on any Docker-supported host.
+          </p>
+          <div className="mt-8">
+            <CodeBlock
+              language="bash"
+              codeString="bash <(curl -fsSL https://github.com/firezone/firezone/raw/master/scripts/install.sh)"
+            />
+          </div>
+          <p className="mt-8 border-y font-semibold text-xl w-12 max-w-screen-md text-center text-gray-200 dark:text-gray-400">
+            OR
+          </p>
+          <div className="flex mt-8">
+            <button
+              type="button"
+              className="inline-flex hover:ring-2 shadow-lg justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded-lg focus:outline-none bg-orange-500 hover:scale-105 duration-0 transform transition"
+            >
+              <Link href="/contact/sales">Contact sales</Link>
+              <ArrowLongRightIcon className="ml-2 -mr-1 w-6 h-6" />
+            </button>
+          </div>
+        </div>
       </section>
     </>
-  );
-}
-
-export function OldPage() {
-  return (
-    <div className="pt-24 flex flex-col">
-      <div className="hero">
-        <div className="container">
-          <h1 className="hero__title">Fast, effortless secure access</h1>
-          <p></p>
-          <div className="row">
-            <div className="col col--12">
-              <center>
-                <a className="button button--primary" href="/docs/deploy">
-                  Deploy now
-                </a>
-              </center>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="container">
-        <Image
-          width={960}
-          height={540}
-          alt="overview screencap"
-          src="/images/overview-screencap.gif"
-        />
-      </div>
-
-      <hr className="margin-vert--xl" />
-
-      <center>
-        <h2 className="margin-bottom--lg">Trusted by organizations like</h2>
-      </center>
-
-      <div className="container">
-        <div className="row">
-          <div className="col col--2">
-            <Image
-              alt="bunq logo"
-              src="/images/bunq-logo.png"
-              width={100}
-              height={55}
-            />
-          </div>
-          <div className="col col--2">
-            <Image
-              alt="tribe logo"
-              src="/images/tribe-logo.png"
-              width={100}
-              height={55}
-            />
-          </div>
-          <div className="col col--2">
-            <Image
-              alt="poughkeepsie logo"
-              src="/images/poughkeepsie-logo.png"
-              width={100}
-              height={55}
-            />
-          </div>
-          <div className="col col--2">
-            <Image
-              alt="rebank logo"
-              src="/images/rebank-logo.png"
-              width={100}
-              height={55}
-            />
-          </div>
-          <div className="col col--2">
-            <Image
-              alt="square1 logo"
-              src="/images/square1-logo.png"
-              width={100}
-              height={55}
-            />
-          </div>
-          <div className="col col--2">
-            <Image
-              alt="db11 logo"
-              src="/images/db11-logo.png"
-              width={100}
-              height={55}
-            />
-          </div>
-        </div>
-      </div>
-
-      <hr className="margin-vert--xl" />
-
-      <div className="hero">
-        <div className="container">
-          <h1 className="hero__title">An alternative to old VPNs</h1>
-        </div>
-      </div>
-
-      {/* Feature 1 */}
-
-      <div className="container">
-        <center>
-          <h2 className="margin-bottom--lg">
-            Streamline workflows. Reduce total cost of ownership.
-          </h2>
-        </center>
-      </div>
-      <div className="container">
-        <div className="row">
-          <div className="col col--6">
-            <p>
-              Legacy VPNs are cumbersome to manage and take weeks to configure
-              correctly. Firezone takes minutes to deploy and the Web GUI makes
-              managing secure access effortless for admins.
-            </p>
-            <ul>
-              <li>Integrate any identity provider to enforce 2FA / MFA</li>
-              <li>Define user-scoped access rules</li>
-              <li>Manage users with a snappy admin dashboard</li>
-            </ul>
-          </div>
-          <div className="col col--6">
-            <Image
-              width={500}
-              height={500}
-              alt="Feature 1"
-              src="/images/feature-1.png"
-            />
-          </div>
-        </div>
-      </div>
-
-      <hr className="margin-vert--xl" />
-
-      {/* Feature 2 */}
-
-      <div className="container">
-        <center>
-          <h2 className="margin-bottom--lg">
-            High throughput and low latency. Up to 4-6x faster than OpenVPN.
-          </h2>
-        </center>
-      </div>
-      <div className="container">
-        <div className="row">
-          <div className="col col--6">
-            <Image
-              width={500}
-              height={500}
-              alt="Feature 2"
-              src="/images/feature-2.png"
-            />
-            <p>
-              <Link href="https://core.ac.uk/download/pdf/322886318.pdf">
-                Performance comparison of VPN solutions (Osswald et al.)
-              </Link>
-            </p>
-          </div>
-          <div className="col col--6">
-            <p>
-              Increase productivity and decrease connection issues for your
-              remote team. Firezone uses kernel WireGuard® to be efficient,
-              reliable, and performant in any environment.
-            </p>
-            <ul>
-              <li>
-                <Link href="https://www.wireguard.com/protocol/">
-                  State-of-the-art cryptography
-                </Link>
-              </li>
-              <li>
-                <Link href="https://www.wireguard.com/formal-verification/">
-                  Auditable and formally verified
-                </Link>
-              </li>
-              <li>
-                <Link href="https://www.wireguard.com/performance/">
-                  Multi-threaded
-                </Link>
-              </li>
-            </ul>
-          </div>
-        </div>
-      </div>
-
-      <hr className="margin-vert--xl" />
-
-      {/* Feature 3 */}
-
-      <div className="container">
-        <center>
-          <h2 className="margin-bottom--lg">
-            Firezone runs entirely on your infrastructure. No vendor lock-in.
-          </h2>
-        </center>
-      </div>
-      <div className="container">
-        <div className="row">
-          <div className="col col--6">
-            Deploy Firezone on any platform that supports Docker. There's no
-            need to risk breaches by sending data to third parties.
-            <ul>
-              <li>VPC, data center, or on-prem</li>
-              <li>Auto-renewing SSL certs from Let's Encrypt via ACME</li>
-              <li>Flexible and configurable</li>
-            </ul>
-          </div>
-          <div className="col col--6">
-            <Image
-              width={500}
-              height={500}
-              alt="Feature 3"
-              src="/images/feature-3.png"
-            />
-            <Link href="/docs/deploy">
-              Explore the deployment documentation &gt;
-            </Link>
-          </div>
-        </div>
-      </div>
-
-      <hr className="margin-vert--xl" />
-
-      <div className="container">
-        <center>
-          <h2 className="margin-bottom--lg">
-            Integrate your identity provider for SSO to enforce 2FA / MFA.
-          </h2>
-        </center>
-        <p>
-          Only allow connections from authenticated users and automatically
-          disable access for employees who have left. Firezone integrates with
-          any OIDC and SAML 2.0 compatible identity provider for single sign-on
-          (SSO).
-        </p>
-      </div>
-
-      <div className="container">
-        <div className="row">
-          <div className="col col--2">
-            <Link href="/docs/authenticate/oidc/keycloak/">
-              <Image
-                width={109}
-                height={41}
-                alt="keycloak logo"
-                src="/images/keycloak-logo.png"
-              />
-            </Link>
-          </div>
-          <div className="col col--2">
-            <Link href="/docs/authenticate/oidc/google/">
-              <Image
-                width={109}
-                height={41}
-                alt="google logo"
-                src="/images/google-logo.png"
-              />
-            </Link>
-          </div>
-          <div className="col col--2">
-            <Link href="/docs/authenticate/oidc/okta/">
-              <Image
-                width={109}
-                height={41}
-                alt="okta logo"
-                src="/images/okta-logo.png"
-              />
-            </Link>
-          </div>
-          <div className="col col--2">
-            <Link href="/docs/authenticate/oidc/onelogin/">
-              <Image
-                width={109}
-                height={41}
-                alt="onelogin logo"
-                src="/images/onelogin-logo.png"
-              />
-            </Link>
-          </div>
-          <div className="col col--2">
-            <Link href="/docs/authenticate/oidc/azuread/">
-              <Image
-                width={109}
-                height={41}
-                alt="azure logo"
-                src="/images/azure-logo.png"
-              />
-            </Link>
-          </div>
-          <div className="col col--2">
-            <Link href="/docs/authenticate/saml/jumpcloud/">
-              <Image
-                width={109}
-                height={41}
-                alt="jumpcloud logo"
-                src="/images/jumpcloud-logo.png"
-              />
-            </Link>
-          </div>
-        </div>
-      </div>
-
-      <hr className="margin-vert--xl" />
-
-      <div className="container">
-        <center>
-          <h2 className="margin-bottom--lg">Who can benefit from Firezone?</h2>
-        </center>
-        <p>
-          Easy to deploy and manage for individuals and organizations alike.
-        </p>
-      </div>
-
-      <div className="container margin-top--lg">
-        <div className="row">
-          <div className="col col--6">
-            <div className="card">
-              <div className="card__header">
-                <h4>Individuals and home lab users</h4>
-              </div>
-              <div className="card__body">
-                <p>
-                  Lightweight and fast. Access your home network securely when
-                  on the road.
-                </p>
-                <ul>
-                  <li>Effortless to deploy on any infrastructure</li>
-                  <li>Community plan supports unlimited devices</li>
-                  <li>Open-source and self-hosted</li>
-                </ul>
-              </div>
-              <div className="card__footer">
-                <Link href="/docs">Access your personal project &gt;</Link>
-              </div>
-            </div>
-          </div>
-          <div className="col col--6">
-            <div className="card">
-              <div className="card__header">
-                <h4>Growing businesses</h4>
-              </div>
-              <div className="card__body">
-                <p>
-                  Keep up with increasing network and compliance demands as you
-                  scale your team and infrastructure.
-                </p>
-                <ul>
-                  <li>Integrate your identity provider</li>
-                  <li>Quickly onboard/offboard employees</li>
-                  <li>Segment access for contractors</li>
-                  <li>High performance, reduce bottlenecks</li>
-                </ul>
-              </div>
-              <div className="card__footer">
-                <Link href="/docs">Scale your secure access &gt;</Link>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="row margin-top--md">
-          <div className="col col--6">
-            <div className="card">
-              <div className="card__header">
-                <h4>Remote organizations</h4>
-              </div>
-              <div className="card__body">
-                <p>
-                  Transitioning to remote? Perfect timing to replace the legacy
-                  VPN. Improve your security posture and reduce support tickets.
-                </p>
-                <ul>
-                  <li>Require periodic re-authentication</li>
-                  <li>Enforce MFA / 2FA</li>
-                  <li>Self-serve user portal</li>
-                  <li>Export logs to your observability platform</li>
-                </ul>
-              </div>
-              <div className="card__footer">
-                <Link href="/docs">Secure your remote workforce &gt;</Link>
-              </div>
-            </div>
-          </div>
-          <div className="col col--6">
-            <div className="card">
-              <div className="card__header">
-                <h4>Technical IT teams</h4>
-              </div>
-              <div className="card__body">
-                <p>
-                  Firezone runs on your infrastructure. Customize it to suit
-                  your needs and architecture.
-                </p>
-                <ul>
-                  <li>Built on WireGuard®</li>
-                  <li>No vendor lock-in</li>
-                  <li>Supports OIDC and SAML 2.0</li>
-                  <li>Flexible and configurable</li>
-                </ul>
-              </div>
-              <div className="card__footer">
-                <Link href="/docs">Explore the documentation &gt;</Link>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <hr className="margin-vert--xl" />
-
-      <center>
-        <h2 className="hero__title">Join our community</h2>
-      </center>
-      <p>Stay up to date with product launches and new features.</p>
-      <div className="container margin-top--lg">
-        <div className="row">
-          <div className="col col--4">
-            <div className="card">
-              <div className="card__header">
-                <center>
-                  <h3 className="hero__title">30+</h3>
-                </center>
-              </div>
-              <div className="card__body">
-                <div>
-                  <center>Contributors</center>
-                </div>
-              </div>
-              <div className="card__footer">
-                <center>
-                  <a
-                    className="button button--primary"
-                    href="https://github.com/firezone/firezone/graphs/contributors"
-                  >
-                    Build Firezone
-                  </a>
-                </center>
-              </div>
-            </div>
-          </div>
-          <div className="col col--4">
-            <div className="card">
-              <div className="card__header">
-                <center>
-                  <h3 className="hero__title">4,100+</h3>
-                </center>
-              </div>
-              <div className="card__body">
-                <div>
-                  <center>Github Stars</center>
-                </div>
-              </div>
-              <div className="card__footer">
-                <center>
-                  <a
-                    className="button button--primary"
-                    href="https://github.com/firezone/firezone"
-                  >
-                    Github
-                  </a>
-                </center>
-              </div>
-            </div>
-          </div>
-          <div className="col col--4">
-            <div className="card">
-              <div className="card__header">
-                <center>
-                  <h3 className="hero__title">250+</h3>
-                </center>
-              </div>
-              <div className="card__body">
-                <div>
-                  <center>Members</center>
-                </div>
-              </div>
-              <div className="card__footer">
-                <center>
-                  <a
-                    className="button button--primary"
-                    href="https://firezone-users.slack.com/join/shared_invite/zt-19jd956j4-rWcCqiKMh~ikPGsUFbvZiA#/shared-invite/email"
-                  >
-                    Join Slack
-                  </a>
-                </center>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="row margin-top--md"></div>
-      </div>
-
-      <hr className="margin-vert--xl" />
-
-      <center>
-        <h2>Deploy self-hosted Firezone</h2>
-      </center>
-
-      <p>
-        Set up secure access and start onboarding users in minutes. Run the
-        install script on a supported host to deploy Firezone with Docker. Copy
-        the one-liner below to install Firezone in minutes.
-      </p>
-
-      <InstallBlock />
-
-      <div className="row margin-top--xl">
-        <div className="col col--12">
-          <center>
-            <a className="button button--primary" href="/docs/deploy">
-              Deploy now
-            </a>
-          </center>
-        </div>
-      </div>
-
-      {/*
-        <div className="col col&#45;&#45;6">
-            <center>
-                <a className="button button&#45;&#45;primary" href="/1.0/signup">
-                Join the 1.0 beta wailist &#45;>
-                </a>
-            </center>
-        </div>
-        */}
-    </div>
   );
 }

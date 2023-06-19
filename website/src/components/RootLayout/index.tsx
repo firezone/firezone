@@ -1,6 +1,6 @@
 import { Metadata } from "next";
 import "@/app/globals.css";
-import "highlight.js/styles/default.css";
+import "highlight.js/styles/a11y-dark.css";
 import RootNavbar from "@/components/RootNavbar";
 import Providers from "@/components/Providers";
 import Footer from "@/components/Footer";
