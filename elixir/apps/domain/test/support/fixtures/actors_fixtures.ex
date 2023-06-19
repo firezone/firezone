@@ -45,4 +45,8 @@ defmodule Domain.ActorsFixtures do
   def disable(actor) do
     update(actor, %{disabled_at: DateTime.utc_now()})
   end
+
+  def delete(actor) do
+    update(actor, %{deleted_at: DateTime.utc_now()})
+  end
 end

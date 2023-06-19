@@ -525,8 +525,7 @@ defmodule Domain.AuthTest do
       assert identity.provider_identifier == provider_identifier
       assert identity.actor_id == actor.id
 
-      assert %{"sign_in_token_created_at" => _, "sign_in_token_hash" => _} =
-               identity.provider_state
+      assert %{"sign_in_token_created_at" => _, "sign_in_token_hash" => _} = identity.provider_state
 
       assert %{sign_in_token: _} = identity.provider_virtual_state
       assert identity.account_id == provider.account_id
@@ -858,6 +857,56 @@ defmodule Domain.AuthTest do
       {:ok, _provider} = disable_provider(provider, subject)
 
       identity = AuthFixtures.create_identity(account: account, provider: provider)
+      secret = identity.provider_virtual_state.sign_in_token
+
+      assert sign_in(provider, identity.provider_identifier, secret, user_agent, remote_ip) ==
+               {:error, :unauthorized}
+    end
+
+    test "returns error when identity is disabled", %{
+      account: account,
+      provider: provider,
+      user_agent: user_agent,
+      remote_ip: remote_ip
+    } do
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
+      secret = identity.provider_virtual_state.sign_in_token
+      subject = AuthFixtures.create_subject(identity)
+      {:ok, identity} = delete_identity(identity, subject)
+
+      assert sign_in(provider, identity.provider_identifier, secret, user_agent, remote_ip) ==
+               {:error, :unauthorized}
+    end
+
+    test "returns error when actor is disabled", %{
+      account: account,
+      provider: provider,
+      user_agent: user_agent,
+      remote_ip: remote_ip
+    } do
+      actor =
+        ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+        |> ActorsFixtures.disable()
+
+      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
+      secret = identity.provider_virtual_state.sign_in_token
+
+      assert sign_in(provider, identity.provider_identifier, secret, user_agent, remote_ip) ==
+               {:error, :unauthorized}
+    end
+
+    test "returns error when actor is deleted", %{
+      account: account,
+      provider: provider,
+      user_agent: user_agent,
+      remote_ip: remote_ip
+    } do
+      actor =
+        ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+        |> ActorsFixtures.delete()
+
+      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
       secret = identity.provider_virtual_state.sign_in_token
 
       assert sign_in(provider, identity.provider_identifier, secret, user_agent, remote_ip) ==
