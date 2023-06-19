@@ -44,7 +44,7 @@ export default function Page() {
             </Link>
           </div>
           <div className="flex items-center justify-center">
-            <video width="960" height="540" loop autoPlay>
+            <video width="960" height="540" loop autoPlay playsInline muted>
               <source src="/images/overview-screencap.webm" type="video/webm" />
               Your browser does not support the video tag with WebM-formatted
               videos.
