@@ -2,6 +2,7 @@ import { Metadata } from "next";
 import InstallBlock from "@/components/InstallBlock";
 import Link from "next/link";
 import Image from "next/image";
+import { ArrowLongRightIcon } from "@heroicons/react/24/solid";
 
 export const metadata: Metadata = {
   title: "Open-source Remote Access • Firezone",
@@ -10,15 +11,95 @@ export const metadata: Metadata = {
 
 export default function Page() {
   return (
-    <div className="pt-24 flex flex-col">
-      <div className="hero">
-        <div className="container">
-          <h1 className="hero__title">Fast, effortless secure access</h1>
-          <p>
+    <>
+      <section className="bg-gray-50 pt-24 dark:bg-gray-900">
+        <div className="px-4 py-8 mx-auto max-w-screen-xl text-center lg:py-16 lg:px-12">
+          <h1 className="mb-4 text-4xl justify-center font-extrabold tracking-tight leading-none text-gray-900 md:text-5xl lg:text-6xl dark:text-white tracking-tight">
+            Fast, effortless secure access.
+          </h1>
+          <p className="mb-8 font-normal text-gray-500 md:text-lg lg:text-xl sm:px-16 xl:px-48 dark:text-gray-400">
             Firezone is an open-source remote access platform built on
             WireGuard®, a modern VPN protocol that's 4-6x faster than OpenVPN.
             Deploy on your infrastructure and start onboarding users in minutes.
           </p>
+          <div className="flex flex-col mb-8 lg:mb-16 space-y-4 sm:flex-row sm:justify-center sm:space-y-0 sm:space-x-4">
+            <Link href="/docs/deploy">
+              <button
+                type="button"
+                className="inline-flex justify-center items-center py-3 px-5 text-base font-bold text-center text-white rounded-lg focus:outline-none bg-gradient-to-r from-purple-500 via-purple-600 to-purple-700 hover:bg-gradient-to-br focus:ring-4 focus:ring-violet-300"
+              >
+                Deploy now
+                <ArrowLongRightIcon className="ml-2 -mr-1 w-6 h-6" />
+              </button>
+            </Link>
+          </div>
+          <div className="flex items-center justify-center">
+            <Image
+              width={960}
+              height={540}
+              alt="overview screencap"
+              src="/images/overview-screencap.gif"
+            />
+          </div>
+
+          <div className="flex justify-center items-center p-8 mt-8">
+            <h3 className="text-2xl font-bold text-gray-500 dark:text-white">
+              Trusted by organizations like
+            </h3>
+          </div>
+          <div className="flex justify-between items-center px-16 py-8">
+            <Image
+              alt="bunq logo"
+              src="/images/bunq-logo.png"
+              width={100}
+              height={55}
+            />
+            <Image
+              alt="tribe logo"
+              src="/images/tribe-logo.png"
+              width={100}
+              height={55}
+            />
+            <Image
+              alt="poughkeepsie logo"
+              src="/images/poughkeepsie-logo.png"
+              width={100}
+              height={55}
+            />
+            <Image
+              alt="rebank logo"
+              src="/images/rebank-logo.png"
+              width={100}
+              height={55}
+            />
+            <Image
+              alt="square1 logo"
+              src="/images/square1-logo.png"
+              width={100}
+              height={55}
+            />
+            <Image
+              alt="db11 logo"
+              src="/images/db11-logo.png"
+              width={100}
+              height={55}
+            />
+          </div>
+        </div>
+      </section>
+
+      <section className="bg-white pt-24 dark:bg-gray-800"></section>
+    </>
+  );
+}
+
+export function OldPage() {
+  return (
+    <div className="pt-24 flex flex-col">
+      <div className="hero">
+        <div className="container">
+          <h1 className="hero__title">Fast, effortless secure access</h1>
+          <p></p>
           <div className="row">
             <div className="col col--12">
               <center>
