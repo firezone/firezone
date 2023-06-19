@@ -44,13 +44,11 @@ export default function Page() {
             </Link>
           </div>
           <div className="flex items-center justify-center">
-            <Image
-              className="shadow-xl rounded-md"
-              width={960}
-              height={540}
-              alt="overview screencap"
-              src="/images/overview-screencap.gif"
-            />
+            <video width="960" height="540" loop autoPlay>
+              <source src="/images/overview-screencap.webm" type="video/webm" />
+              Your browser does not support the video tag with WebM-formatted
+              videos.
+            </video>
           </div>
           <div className="flex justify-center items-center p-8 mt-8">
             <h3 className="text-2xl font-bold text-gray-500 dark:text-white">
