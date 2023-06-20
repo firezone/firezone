@@ -144,25 +144,26 @@ pub struct WrappedSession {
     session: Session<CallbackHandler>,
 }
 
+#[derive(Clone)]
 struct CallbackHandler;
 
 impl Callbacks for CallbackHandler {
-    fn on_update_resources(resource_list: ResourceList) {
+    fn on_update_resources(&self, resource_list: ResourceList) {
         ffi::on_update_resources(resource_list.into());
     }
 
-    fn on_set_tunnel_adresses(tunnel_addresses: TunnelAddresses) {
+    fn on_set_tunnel_adresses(&self, tunnel_addresses: TunnelAddresses) {
         ffi::on_set_tunnel_addresses(tunnel_addresses.into());
     }
 
-    fn on_error(error: &Error, error_type: ErrorType) {
+    fn on_error(&self, error: &Error, error_type: ErrorType) {
         ffi::on_error(error.into(), error_type.into());
     }
 }
 
 impl WrappedSession {
     fn connect(portal_url: String, token: String) -> Result<Self, ffi::SwiftConnlibError> {
-        let session = Session::connect::<CallbackHandler>(portal_url.as_str(), token)?;
+        let session = Session::connect(portal_url.as_str(), token, CallbackHandler)?;
         Ok(Self { session })
     }
 

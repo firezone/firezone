@@ -27,17 +27,19 @@ pub extern "system" fn Java_dev_firezone_connlib_Logger_init(_: JNIEnv, _: JClas
     )
 }
 
-pub enum CallbackHandler {}
+#[derive(Clone)]
+pub struct CallbackHandler;
+
 impl Callbacks for CallbackHandler {
-    fn on_update_resources(_resource_list: ResourceList) {
+    fn on_update_resources(&self, _resource_list: ResourceList) {
         todo!()
     }
 
-    fn on_set_tunnel_adresses(_tunnel_addresses: TunnelAddresses) {
+    fn on_set_tunnel_adresses(&self, _tunnel_addresses: TunnelAddresses) {
         todo!()
     }
 
-    fn on_error(_error: &Error, _error_type: ErrorType) {
+    fn on_error(&self, _error: &Error, _error_type: ErrorType) {
         todo!()
     }
 }
@@ -57,7 +59,7 @@ pub unsafe extern "system" fn Java_dev_firezone_connlib_Session_connect(
     let portal_token: String = env.get_string(&portal_token).unwrap().into();
 
     let session = Box::new(
-        Session::connect::<CallbackHandler>(portal_url.as_str(), portal_token).expect("TODO!"),
+        Session::connect(portal_url.as_str(), portal_token, CallbackHandler).expect("TODO!"),
     );
 
     // TODO: Get actual IPs returned from portal based on this device
