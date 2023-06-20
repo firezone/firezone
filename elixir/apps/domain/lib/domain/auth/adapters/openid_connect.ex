@@ -6,6 +6,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
   require Logger
 
   @behaviour Adapter
+  @behaviour Adapter.IdP
 
   def start_link(_init_arg) do
     Supervisor.start_link(__MODULE__, nil, name: __MODULE__)
@@ -69,8 +70,8 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
   end
 
   @impl true
-  def verify_secret(%Identity{} = identity, {redirect_uri, code_verifier, code}) do
-    sync_identity(identity, %{
+  def verify_identity(%Provider{} = provider, {redirect_uri, code_verifier, code}) do
+    sync_identity(provider, %{
       grant_type: "authorization_code",
       redirect_uri: redirect_uri,
       code: code,
@@ -78,21 +79,24 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
     })
     |> case do
       {:ok, identity, expires_at} -> {:ok, identity, expires_at}
-      {:error, :expired_token} -> {:error, :expired_secret}
-      {:error, :invalid_token} -> {:error, :invalid_secret}
+      {:error, :not_found} -> {:error, :not_found}
+      {:error, :expired_token} -> {:error, :expired}
+      {:error, :invalid_token} -> {:error, :invalid}
       {:error, :internal_error} -> {:error, :internal_error}
     end
   end
 
   def refresh_token(%Identity{} = identity) do
-    sync_identity(identity, %{
+    identity = Repo.preload(identity, :provider)
+
+    sync_identity(identity.provider, %{
       grant_type: "refresh_token",
       refresh_token: identity.provider_state["refresh_token"]
     })
   end
 
-  defp sync_identity(%Identity{} = identity, token_params) do
-    {config, identity} = config_for_identity(identity)
+  defp sync_identity(%Provider{} = provider, token_params) do
+    config = config_for_provider(provider)
 
     with {:ok, tokens} <- OpenIDConnect.fetch_tokens(config, token_params),
          {:ok, claims} <- OpenIDConnect.verify(config, tokens["id_token"]),
@@ -110,17 +114,23 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
             nil
         end
 
-      Identity.Query.by_id(identity.id)
+      # `sub` claim usually contains either an email or an opaque app-specific identifier
+      provider_identifier = claims["sub"]
+
+      Identity.Query.by_provider_id(provider.id)
+      |> Identity.Query.by_provider_identifier(provider_identifier)
       |> Repo.fetch_and_update(
         with: fn identity ->
-          Identity.Changeset.update_provider_state(identity, %{
-            id_token: tokens["id_token"],
-            access_token: tokens["access_token"],
-            refresh_token: tokens["refresh_token"],
-            expires_at: expires_at,
-            userinfo: userinfo,
-            claims: claims
-          })
+          Identity.Changeset.update_provider_state(
+            identity,
+            %{
+              access_token: tokens["access_token"],
+              refresh_token: tokens["refresh_token"],
+              expires_at: expires_at,
+              userinfo: userinfo,
+              claims: claims
+            }
+          )
         end
       )
       |> case do
@@ -136,18 +146,12 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
 
       {:error, other} ->
         Logger.error("Failed to connect OpenID Connect provider",
-          provider_id: identity.provider_id,
-          identity_id: identity.id,
+          provider_id: provider.id,
           reason: inspect(other)
         )
 
         {:error, :internal_error}
     end
-  end
-
-  defp config_for_identity(%Identity{} = identity) do
-    identity = Repo.preload(identity, :provider)
-    {config_for_provider(identity.provider), identity}
   end
 
   defp config_for_provider(%Provider{} = provider) do

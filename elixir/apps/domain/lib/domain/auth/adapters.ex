@@ -52,6 +52,18 @@ defmodule Domain.Auth.Adapters do
     end
   end
 
+  def verify_identity(%Provider{} = provider, payload) do
+    adapter = fetch_adapter!(provider)
+
+    case adapter.verify_identity(provider, payload) do
+      {:ok, %Identity{} = identity, expires_at} -> {:ok, identity, expires_at}
+      {:error, :not_found} -> {:error, :not_found}
+      {:error, :invalid} -> {:error, :invalid}
+      {:error, :expired} -> {:error, :expired}
+      {:error, :internal_error} -> {:error, :internal_error}
+    end
+  end
+
   defp fetch_adapter!(provider) do
     Map.fetch!(@adapters, provider.adapter)
   end

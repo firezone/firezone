@@ -525,7 +525,8 @@ defmodule Domain.AuthTest do
       assert identity.provider_identifier == provider_identifier
       assert identity.actor_id == actor.id
 
-      assert %{"sign_in_token_created_at" => _, "sign_in_token_hash" => _} = identity.provider_state
+      assert %{"sign_in_token_created_at" => _, "sign_in_token_hash" => _} =
+               identity.provider_state
 
       assert %{sign_in_token: _} = identity.provider_virtual_state
       assert identity.account_id == provider.account_id
@@ -950,6 +951,268 @@ defmodule Domain.AuthTest do
     end
   end
 
+  describe "sign_in/4" do
+    setup do
+      account = AccountsFixtures.create_account()
+
+      {provider, bypass} =
+        AuthFixtures.start_openid_providers(["google"])
+        |> AuthFixtures.create_openid_connect_provider(account: account)
+
+      user_agent = AuthFixtures.user_agent()
+      remote_ip = AuthFixtures.remote_ip()
+
+      %{
+        bypass: bypass,
+        account: account,
+        provider: provider,
+        user_agent: user_agent,
+        remote_ip: remote_ip
+      }
+    end
+
+    test "returns error when provider_identifier does not exist", %{
+      bypass: bypass,
+      account: account,
+      provider: provider,
+      user_agent: user_agent,
+      remote_ip: remote_ip
+    } do
+      identity = AuthFixtures.create_identity(account: account, provider: provider)
+
+      {token, _claims} = generate_token(provider, identity, %{"sub" => "foo@bar.com"})
+      AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
+      AuthFixtures.expect_userinfo(bypass)
+
+      code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
+      redirect_uri = "https://example.com/"
+      payload = {redirect_uri, code_verifier, "MyFakeCode"}
+
+      assert sign_in(provider, payload, user_agent, remote_ip) ==
+               {:error, :unauthorized}
+    end
+
+    test "returns error when token is invalid", %{
+      bypass: bypass,
+      provider: provider,
+      user_agent: user_agent,
+      remote_ip: remote_ip
+    } do
+      AuthFixtures.expect_refresh_token(bypass, %{"id_token" => "foo"})
+
+      code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
+      redirect_uri = "https://example.com/"
+      payload = {redirect_uri, code_verifier, "MyFakeCode"}
+
+      assert sign_in(provider, payload, user_agent, remote_ip) ==
+               {:error, :unauthorized}
+    end
+
+    test "returns subject on success", %{
+      bypass: bypass,
+      account: account,
+      provider: provider,
+      user_agent: user_agent,
+      remote_ip: remote_ip
+    } do
+      identity = AuthFixtures.create_identity(account: account, provider: provider)
+
+      {token, _claims} = generate_token(provider, identity)
+      AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
+      AuthFixtures.expect_userinfo(bypass)
+
+      code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
+      redirect_uri = "https://example.com/"
+      payload = {redirect_uri, code_verifier, "MyFakeCode"}
+
+      assert {:ok, %Auth.Subject{} = subject} =
+               sign_in(provider, payload, user_agent, remote_ip)
+
+      assert subject.account.id == account.id
+      assert subject.actor.id == identity.actor_id
+      assert subject.identity.id == identity.id
+      assert subject.context.remote_ip == remote_ip
+      assert subject.context.user_agent == user_agent
+    end
+
+    # test "returned subject expiration depends on user type", %{
+    #   account: account,
+    #   provider: provider,
+    #   user_agent: user_agent,
+    #   remote_ip: remote_ip
+    # } do
+    #   actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+    #   identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
+
+    #   code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
+    #   redirect_uri = "https://example.com/"
+    #   payload = {redirect_uri, code_verifier, "MyFakeCode"}
+
+    #   assert {:ok, %Auth.Subject{} = subject} =
+    #            sign_in(provider, payload, user_agent, remote_ip)
+
+    #   three_hours = 3 * 60 * 60
+    #   assert_datetime_diff(subject.expires_at, DateTime.utc_now(), three_hours)
+
+    #   actor = ActorsFixtures.create_actor(type: :account_user, account: account)
+    #   identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
+
+    #   assert {:ok, %Auth.Subject{} = subject} =
+    #            sign_in(provider, payload, user_agent, remote_ip)
+
+    #   one_week = 7 * 24 * 60 * 60
+    #   assert_datetime_diff(subject.expires_at, DateTime.utc_now(), one_week)
+    # end
+
+    test "returns error when provider is disabled", %{
+      bypass: bypass,
+      account: account,
+      provider: provider,
+      user_agent: user_agent,
+      remote_ip: remote_ip
+    } do
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
+      subject = AuthFixtures.create_subject(identity)
+      {:ok, _provider} = disable_provider(provider, subject)
+
+      {token, _claims} = generate_token(provider, identity)
+      AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
+      AuthFixtures.expect_userinfo(bypass)
+
+      code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
+      redirect_uri = "https://example.com/"
+      payload = {redirect_uri, code_verifier, "MyFakeCode"}
+
+      assert sign_in(provider, payload, user_agent, remote_ip) ==
+               {:error, :unauthorized}
+    end
+
+    test "returns error when identity is disabled", %{
+      bypass: bypass,
+      account: account,
+      provider: provider,
+      user_agent: user_agent,
+      remote_ip: remote_ip
+    } do
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
+      subject = AuthFixtures.create_subject(identity)
+      {:ok, identity} = delete_identity(identity, subject)
+
+      {token, _claims} = generate_token(provider, identity)
+      AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
+      AuthFixtures.expect_userinfo(bypass)
+
+      code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
+      redirect_uri = "https://example.com/"
+      payload = {redirect_uri, code_verifier, "MyFakeCode"}
+
+      assert sign_in(provider, payload, user_agent, remote_ip) ==
+               {:error, :unauthorized}
+    end
+
+    test "returns error when actor is disabled", %{
+      bypass: bypass,
+      account: account,
+      provider: provider,
+      user_agent: user_agent,
+      remote_ip: remote_ip
+    } do
+      actor =
+        ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+        |> ActorsFixtures.disable()
+
+      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
+
+      {token, _claims} = generate_token(provider, identity)
+      AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
+      AuthFixtures.expect_userinfo(bypass)
+
+      code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
+      redirect_uri = "https://example.com/"
+      payload = {redirect_uri, code_verifier, "MyFakeCode"}
+
+      assert sign_in(provider, payload, user_agent, remote_ip) ==
+               {:error, :unauthorized}
+    end
+
+    test "returns error when actor is deleted", %{
+      bypass: bypass,
+      account: account,
+      provider: provider,
+      user_agent: user_agent,
+      remote_ip: remote_ip
+    } do
+      actor =
+        ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+        |> ActorsFixtures.delete()
+
+      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
+
+      {token, _claims} = generate_token(provider, identity)
+      AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
+      AuthFixtures.expect_userinfo(bypass)
+
+      code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
+      redirect_uri = "https://example.com/"
+      payload = {redirect_uri, code_verifier, "MyFakeCode"}
+
+      assert sign_in(provider, payload, user_agent, remote_ip) ==
+               {:error, :unauthorized}
+    end
+
+    test "returns error when provider is deleted", %{
+      bypass: bypass,
+      account: account,
+      provider: provider,
+      user_agent: user_agent,
+      remote_ip: remote_ip
+    } do
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+      identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
+      subject = AuthFixtures.create_subject(identity)
+      {:ok, _provider} = delete_provider(provider, subject)
+
+      {token, _claims} = generate_token(provider, identity)
+      AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
+      AuthFixtures.expect_userinfo(bypass)
+
+      code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
+      redirect_uri = "https://example.com/"
+      payload = {redirect_uri, code_verifier, "MyFakeCode"}
+
+      assert sign_in(provider, payload, user_agent, remote_ip) ==
+               {:error, :unauthorized}
+    end
+
+    test "updates last signed in fields for identity on success", %{
+      bypass: bypass,
+      account: account,
+      provider: provider,
+      user_agent: user_agent,
+      remote_ip: remote_ip
+    } do
+      identity = AuthFixtures.create_identity(account: account, provider: provider)
+
+      {token, _claims} = generate_token(provider, identity)
+      AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
+      AuthFixtures.expect_userinfo(bypass)
+
+      code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
+      redirect_uri = "https://example.com/"
+      payload = {redirect_uri, code_verifier, "MyFakeCode"}
+
+      assert {:ok, _subject} =
+               sign_in(provider, payload, user_agent, remote_ip)
+
+      assert updated_identity = Repo.one(Auth.Identity)
+      assert updated_identity.last_seen_at != identity.last_seen_at
+      assert updated_identity.last_seen_remote_ip != identity.last_seen_remote_ip
+      assert updated_identity.last_seen_user_agent != identity.last_seen_user_agent
+    end
+  end
+
   describe "sign_in/3" do
     setup do
       account = AccountsFixtures.create_account()
@@ -1236,5 +1499,28 @@ defmodule Domain.AuthTest do
     # Allow is async call we need to break current process execution
     # to allow sandbox to be enabled
     :timer.sleep(10)
+  end
+
+  defp generate_token(provider, identity, claims \\ %{}) do
+    jwk = AuthFixtures.jwks_attrs()
+
+    claims =
+      Map.merge(
+        %{
+          "email" => "foo@example.com",
+          "sub" => identity.provider_identifier,
+          "aud" => provider.adapter_config["client_id"],
+          "exp" => DateTime.utc_now() |> DateTime.add(10, :second) |> DateTime.to_unix()
+        },
+        claims
+      )
+
+    {_alg, token} =
+      jwk
+      |> JOSE.JWK.from()
+      |> JOSE.JWS.sign(Jason.encode!(claims), %{"alg" => "RS256"})
+      |> JOSE.JWS.compact()
+
+    {token, claims}
   end
 end

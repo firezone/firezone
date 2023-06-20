@@ -9,6 +9,7 @@ defmodule Domain.Auth.Adapters.UserPass do
   alias Domain.Auth.Adapters.UserPass.Password
 
   @behaviour Adapter
+  @behaviour Adapter.Local
 
   def start_link(_init_arg) do
     Supervisor.start_link(__MODULE__, nil, name: __MODULE__)
