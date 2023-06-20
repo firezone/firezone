@@ -28,6 +28,11 @@ yarn-error.log*
 .env*.local
 .env
 
+# Sitemap generator artifacts
+public/robots.txt
+public/sitemap.xml
+public/sitemap-*.xml
+
 # vercel
 .vercel
 
