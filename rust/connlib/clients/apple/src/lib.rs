@@ -1,10 +1,9 @@
-// Swift bridge generated code triggers this below
-#![allow(improper_ctypes)]
 #![cfg(any(target_os = "macos", target_os = "ios"))]
+// Swift bridge generated code triggers this below
+#![allow(improper_ctypes, non_camel_case_types)]
 
 use firezone_client_connlib::{
-    Callbacks, Error, ErrorType, ResourceList, Session, SwiftConnlibError, SwiftErrorType,
-    TunnelAddresses,
+    Callbacks, Error, ErrorType, ResourceList, Session, TunnelAddresses,
 };
 
 #[swift_bridge::bridge]
@@ -21,11 +20,36 @@ mod ffi {
         address6: String,
     }
 
-    #[swift_bridge(already_declared)]
-    enum SwiftConnlibError {}
+    // TODO: Duplicating these enum variants from `libs/common/src/error.rs` is
+    // brittle/noisy/tedious
+    enum SwiftConnlibError {
+        Io,
+        Base64DecodeError,
+        Base64DecodeSliceError,
+        RequestError,
+        PortalConnectionError,
+        UriError,
+        SerializeError,
+        IceError,
+        IceDataError,
+        SendChannelError,
+        ConnectionEstablishError,
+        WireguardError,
+        NoRuntime,
+        UnknownResource,
+        ControlProtocolError,
+        IfaceRead,
+        Other,
+        InvalidTunnelName,
+        NetlinkErrorIo,
+        NoIface,
+        NoMtu,
+    }
 
-    #[swift_bridge(already_declared)]
-    enum SwiftErrorType {}
+    enum SwiftErrorType {
+        Recoverable,
+        Fatal,
+    }
 
     extern "Rust" {
         type WrappedSession;
@@ -52,6 +76,49 @@ mod ffi {
 
         #[swift_bridge(swift_name = "onError")]
         fn on_error(error: SwiftConnlibError, error_type: SwiftErrorType);
+    }
+}
+
+impl<'a> From<&'a Error> for ffi::SwiftConnlibError {
+    fn from(val: &'a Error) -> Self {
+        match val {
+            Error::Io(..) => Self::Io,
+            Error::Base64DecodeError(..) => Self::Base64DecodeError,
+            Error::Base64DecodeSliceError(..) => Self::Base64DecodeSliceError,
+            Error::RequestError(..) => Self::RequestError,
+            Error::PortalConnectionError(..) => Self::PortalConnectionError,
+            Error::UriError => Self::UriError,
+            Error::SerializeError(..) => Self::SerializeError,
+            Error::IceError(..) => Self::IceError,
+            Error::IceDataError(..) => Self::IceDataError,
+            Error::SendChannelError => Self::SendChannelError,
+            Error::ConnectionEstablishError => Self::ConnectionEstablishError,
+            Error::WireguardError(..) => Self::WireguardError,
+            Error::NoRuntime => Self::NoRuntime,
+            Error::UnknownResource => Self::UnknownResource,
+            Error::ControlProtocolError => Self::ControlProtocolError,
+            Error::IfaceRead(..) => Self::IfaceRead,
+            Error::Other(..) => Self::Other,
+            Error::InvalidTunnelName => Self::InvalidTunnelName,
+            Error::NetlinkErrorIo(_) => Self::NetlinkErrorIo,
+            Error::NoIface => Self::NoIface,
+            Error::NoMtu => Self::NoMtu,
+        }
+    }
+}
+
+impl From<Error> for ffi::SwiftConnlibError {
+    fn from(val: Error) -> Self {
+        (&val).into()
+    }
+}
+
+impl From<ErrorType> for ffi::SwiftErrorType {
+    fn from(val: ErrorType) -> Self {
+        match val {
+            ErrorType::Recoverable => Self::Recoverable,
+            ErrorType::Fatal => Self::Fatal,
+        }
     }
 }
 
@@ -94,7 +161,7 @@ impl Callbacks for CallbackHandler {
 }
 
 impl WrappedSession {
-    fn connect(portal_url: String, token: String) -> Result<Self, SwiftConnlibError> {
+    fn connect(portal_url: String, token: String) -> Result<Self, ffi::SwiftConnlibError> {
         let session = Session::connect::<CallbackHandler>(portal_url.as_str(), token)?;
         Ok(Self { session })
     }

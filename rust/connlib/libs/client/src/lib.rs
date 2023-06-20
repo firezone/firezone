@@ -13,9 +13,7 @@ pub type Session<C> =
     libs_common::Session<ControlPlane<C>, IngressMessages, EgressMessages, ReplyMessages, Messages>;
 
 pub use libs_common::{
-    error::SwiftConnlibError,
-    error_type::{ErrorType, SwiftErrorType},
-    get_user_agent, Callbacks, Error, ResourceList, TunnelAddresses,
+    error_type::ErrorType, get_user_agent, Callbacks, Error, ResourceList, TunnelAddresses,
 };
 use messages::Messages;
 use messages::ReplyMessages;

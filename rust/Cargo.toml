@@ -10,7 +10,6 @@ members = [
   "connlib/libs/gateway",
   "connlib/libs/common",
   "connlib/gateway",
-  "connlib/macros",
 ]
 
 [workspace.dependencies]
