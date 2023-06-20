@@ -194,6 +194,17 @@ defmodule Domain.Auth do
     end
   end
 
+  def sign_in(%Provider{} = provider, payload, user_agent, remote_ip) do
+    with {:ok, identity, expires_at} <-
+           Adapters.verify_identity(provider, payload) do
+      {:ok, build_subject(identity, expires_at, user_agent, remote_ip)}
+    else
+      {:error, :not_found} -> {:error, :unauthorized}
+      {:error, :invalid} -> {:error, :unauthorized}
+      {:error, :expired} -> {:error, :unauthorized}
+    end
+  end
+
   def sign_in(session_token, user_agent, remote_ip) do
     with {:ok, identity, expires_at} <-
            verify_session_token(session_token, user_agent, remote_ip) do
