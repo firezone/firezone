@@ -9,14 +9,14 @@ Welcome to Firezone's REST API v0 documentation.
 To get started with the REST API, you'll first need an API token. This can be
 generated in the UI at `/settings/account` or via the CLI with:
 
-```shell
+```bash
 docker compose -f $HOME/.firezone/docker-compose.yml exec firezone bin/create-api-token
 ```
 
 **Note**: The token is written to `STDOUT` by default. You may wish to redirect
 its output to a file instead:
 
-```shell
+```bash
 docker compose -f $HOME/.firezone/docker-compose.yml exec firezone bin/create-api-token > fz_token
 ```
 

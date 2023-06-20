@@ -101,7 +101,7 @@ configuration profile using Network Manager CLI (`nmcli`).
 Importing the configuration file using the Network Manager GUI may fail
 with the following error if the profile has IPv6 support enabled:
 
-```text
+```
 ipv6.method: method "auto" is not supported for WireGuard
 ```
 
@@ -114,19 +114,19 @@ this will be a package named `wireguard` or `wireguard-tools`.
 
 For Debian/Ubuntu:
 
-```shell
+```bash
 sudo apt install wireguard
 ```
 
 For Fedora:
 
-```shell
+```bash
 sudo dnf install wireguard-tools
 ```
 
 For Arch Linux:
 
-```shell
+```bash
 sudo pacman -S wireguard-tools
 ```
 
@@ -153,7 +153,7 @@ example it is `https://firezone.example.com`)
 
 Using `nmcli`, import the downloaded configuration file:
 
-```shell
+```bash
 sudo nmcli connection import type wireguard file /path/to/configuration.conf
 ```
 
@@ -161,7 +161,7 @@ sudo nmcli connection import type wireguard file /path/to/configuration.conf
 The WireGuard connection/interface will match the name of the
 configuration file. If required, the connection can be renamed after import:
 
-```shell
+```bash
 nmcli connection modify [old name] connection.id [new name]
 ```
 
@@ -171,13 +171,13 @@ nmcli connection modify [old name] connection.id [new name]
 
 To connect to the VPN via the command line:
 
-```shell
+```bash
 nmcli connection up [vpn name]
 ```
 
 To disconnect:
 
-```shell
+```bash
 nmcli connection down [vpn name]
 ```
 
@@ -189,13 +189,13 @@ the connection.
 The VPN connection can be set to automatically connect by setting the
 `autoconnect` option to `yes`:
 
-```shell
+```bash
 nmcli connection modify [vpn name] connection.autoconnect yes
 ```
 
 To disable the automatic connection set it back to `no`:
 
-```shell
+```bash
 nmcli connection modify [vpn name] connection.autoconnect no
 ```
 

@@ -191,7 +191,7 @@ these to our OIDC-based configuration using the guide below.**
 Remove these lines containing the old Google OAuth configs from your
 configuration file located at `/etc/firezone/firezone.rb`
 
-```rb
+```ruby
 default['firezone']['authentication']['google']['enabled']
 default['firezone']['authentication']['google']['client_id']
 default['firezone']['authentication']['google']['client_secret']
@@ -206,7 +206,7 @@ configure Google as an OIDC provider.
 Remove these lines containing the old Okta OAuth configs from your configuration
 file located at `/etc/firezone/firezone.rb`
 
-```rb
+```ruby
 default['firezone']['authentication']['okta']['enabled']
 default['firezone']['authentication']['okta']['client_id']
 default['firezone']['authentication']['okta']['client_secret']
@@ -237,7 +237,8 @@ If Firezone is able to successfully retrieve the refresh token, you will see the
 **OIDC Connections** heading in the user details page of the web UI for users
 authenticated through your OIDC provider.
 
-<Image className="mx-auto"
+<Image
+  className="mx-auto"
   alt="oidc connections"
   width={960}
   height={540}

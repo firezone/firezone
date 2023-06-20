@@ -38,7 +38,7 @@ Linux are currently being investigated
 
 Kernel upgrade required:
 
-```shell
+```bash
 sudo amazon-linux-extras install -y kernel-5.10
 ```
 
@@ -47,7 +47,7 @@ sudo amazon-linux-extras install -y kernel-5.10
 Kernel upgrade to 5.6+ required. To upgrade to the latest mainline kernel and
 select it as the default boot kernel:
 
-```shell
+```bash
 sudo rpm --import https://www.elrepo.org/RPM-GPG-KEY-elrepo.org
 sudo yum install -y https://www.elrepo.org/elrepo-release-7.el7.elrepo.noarch.rpm
 sudo yum install -y elrepo-release
@@ -61,7 +61,7 @@ sudo reboot
 
 The WireGuard kernel module needs to be installed:
 
-```shell
+```bash
 yum install elrepo-release epel-release
 yum install kmod-wireguard
 ```
@@ -90,7 +90,7 @@ On fresh Fedora installations you'll probably need to install a cron
 implementation to support the logrotate functionality, otherwise you may receive
 errors about a missing `/etc/cron.hourly` directory.
 
-```shell
+```bash
 yum install cronie-anacron
 ```
 
@@ -98,7 +98,7 @@ yum install cronie-anacron
 
 Kernel upgrade to 5.4+ required:
 
-```shell
+```bash
 sudo apt install linux-image-generic-hwe-18.04
 ```
 
@@ -113,6 +113,6 @@ for an example.
 Firezone requires the `setcap` utility, but some recent openSUSE releases may
 not have it installed by default. To fix, ensure `libcap-progs` is installed:
 
-```shell
+```bash
 sudo zypper install libcap-progs
 ```
