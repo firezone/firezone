@@ -202,6 +202,7 @@ where
                 }
             }
 
+            // Priority 3: Handle heartbeats.
             if self.next_heartbeat.poll_unpin(cx).is_ready() {
                 self.send_message("phoenix", EgressControlMessage::<()>::Heartbeat(Empty {}));
                 self.next_heartbeat
