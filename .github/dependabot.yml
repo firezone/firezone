@@ -11,15 +11,7 @@ updates:
       interval: "weekly"
     # Only allow security updates
     open-pull-requests-limit: 0
-  - package-ecosystem: "pip"
-    directory: "/"
-    schedule:
-      interval: "weekly"
   - package-ecosystem: "github-actions"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-  - package-ecosystem: "bundler"
     directory: "/"
     schedule:
       interval: "weekly"
