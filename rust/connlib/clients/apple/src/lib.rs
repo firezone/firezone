@@ -5,6 +5,7 @@
 use firezone_client_connlib::{
     Callbacks, Error, ErrorType, ResourceList, Session, TunnelAddresses,
 };
+use std::sync::Arc;
 
 #[swift_bridge::bridge]
 mod ffi {
@@ -13,7 +14,6 @@ mod ffi {
         resources: String,
     }
 
-    // TODO: Allegedly not FFI safe, but works
     #[swift_bridge(swift_repr = "struct")]
     struct TunnelAddresses {
         address4: String,
@@ -55,7 +55,11 @@ mod ffi {
         type WrappedSession;
 
         #[swift_bridge(associated_to = WrappedSession)]
-        fn connect(portal_url: String, token: String) -> Result<WrappedSession, SwiftConnlibError>;
+        fn connect(
+            portal_url: String,
+            token: String,
+            callback_handler: CallbackHandler,
+        ) -> Result<WrappedSession, SwiftConnlibError>;
 
         #[swift_bridge(swift_name = "bumpSockets")]
         fn bump_sockets(&self) -> bool;
@@ -67,15 +71,16 @@ mod ffi {
     }
 
     extern "Swift" {
-        type Opaque;
+        type CallbackHandler;
+
         #[swift_bridge(swift_name = "onUpdateResources")]
-        fn on_update_resources(resourceList: ResourceList);
+        fn on_update_resources(&self, resourceList: ResourceList);
 
         #[swift_bridge(swift_name = "onSetTunnelAddresses")]
-        fn on_set_tunnel_addresses(tunnelAddresses: TunnelAddresses);
+        fn on_set_tunnel_addresses(&self, tunnelAddresses: TunnelAddresses);
 
         #[swift_bridge(swift_name = "onError")]
-        fn on_error(error: SwiftConnlibError, error_type: SwiftErrorType);
+        fn on_error(&self, error: SwiftConnlibError, error_type: SwiftErrorType);
     }
 }
 
@@ -144,27 +149,45 @@ pub struct WrappedSession {
     session: Session<CallbackHandler>,
 }
 
+// SAFETY: `CallbackHandler.swift` promises to be thread-safe.
+// TODO: Uphold that promise!
+unsafe impl Send for ffi::CallbackHandler {}
+unsafe impl Sync for ffi::CallbackHandler {}
+
 #[derive(Clone)]
-struct CallbackHandler;
+#[repr(transparent)]
+// Generated Swift opaque type wrappers have a `Drop` impl that decrements the
+// refcount, but there's no way to generate a `Clone` impl that increments the
+// recount. Instead, we just wrap it in an `Arc`.
+pub struct CallbackHandler(Arc<ffi::CallbackHandler>);
 
 impl Callbacks for CallbackHandler {
     fn on_update_resources(&self, resource_list: ResourceList) {
-        ffi::on_update_resources(resource_list.into());
+        self.0.on_update_resources(resource_list.into())
     }
 
     fn on_set_tunnel_adresses(&self, tunnel_addresses: TunnelAddresses) {
-        ffi::on_set_tunnel_addresses(tunnel_addresses.into());
+        self.0.on_set_tunnel_addresses(tunnel_addresses.into())
     }
 
     fn on_error(&self, error: &Error, error_type: ErrorType) {
-        ffi::on_error(error.into(), error_type.into());
+        self.0.on_error(error.into(), error_type.into())
     }
 }
 
 impl WrappedSession {
-    fn connect(portal_url: String, token: String) -> Result<Self, ffi::SwiftConnlibError> {
-        let session = Session::connect(portal_url.as_str(), token, CallbackHandler)?;
-        Ok(Self { session })
+    fn connect(
+        portal_url: String,
+        token: String,
+        callback_handler: ffi::CallbackHandler,
+    ) -> Result<Self, ffi::SwiftConnlibError> {
+        Ok(Self {
+            session: Session::connect(
+                portal_url.as_str(),
+                token,
+                CallbackHandler(callback_handler.into()),
+            )?,
+        })
     }
 
     fn bump_sockets(&self) -> bool {

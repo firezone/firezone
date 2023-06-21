@@ -593,10 +593,13 @@ dependencies = [
 name = "connlib-apple"
 version = "0.1.6"
 dependencies = [
+ "anyhow",
+ "diva",
  "firezone-client-connlib",
  "libc",
  "swift-bridge",
  "swift-bridge-build 0.1.51 (git+https://github.com/conectado/swift-bridge.git?branch=fix-already-declared)",
+ "walkdir",
 ]
 
 [[package]]
@@ -878,6 +881,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.18",
+]
+
+[[package]]
+name = "diva"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4962b19d77f25a52081b27cd0404773376bda79b395801dcb771646206a20b06"
+dependencies = [
+ "libc",
+ "log",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]

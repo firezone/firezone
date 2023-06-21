@@ -8,6 +8,10 @@
 import NetworkExtension
 import os.log
 
+// TODO: https://github.com/chinedufn/swift-bridge/issues/150
+extension SwiftConnlibError: @unchecked Sendable {}
+extension SwiftConnlibError: Error {}
+
 public protocol CallbackHandlerDelegate: AnyObject {
     func didUpdateResources(_ resourceList: ResourceList)
 }
@@ -89,5 +93,9 @@ public class CallbackHandler {
 
             return false
         }
+    }
+
+    func onError(error: SwiftConnlibError, error_type: SwiftErrorType) {
+        // TODO: handle/report errors
     }
 }
