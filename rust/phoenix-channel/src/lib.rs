@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::{marker::PhantomData, time::Duration};
+use std::{fmt, marker::PhantomData, time::Duration};
 
 use base64::Engine;
 use futures::{FutureExt, SinkExt, StreamExt};
@@ -45,8 +45,20 @@ pub enum Error {
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub struct OutboundRequestId(u64);
 
+impl fmt::Display for OutboundRequestId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "OutReq-{}", self.0)
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub struct InboundRequestId(u64);
+
+impl fmt::Display for InboundRequestId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "InReq-{}", self.0)
+    }
+}
 
 impl<TInboundMsg, TOutboundRes> PhoenixChannel<TInboundMsg, TOutboundRes>
 where
