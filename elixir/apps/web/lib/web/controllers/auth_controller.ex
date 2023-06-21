@@ -36,7 +36,7 @@ defmodule Web.AuthController do
              conn.assigns.user_agent,
              conn.remote_ip
            ) do
-      redirect_to = get_session(conn, :user_return_to) || Auth.signed_in_path(conn)
+      redirect_to = get_session(conn, :user_return_to) || Auth.signed_in_path(subject.account.id)
 
       conn
       |> Web.Auth.renew_session()
@@ -98,7 +98,7 @@ defmodule Web.AuthController do
              conn.assigns.user_agent,
              conn.remote_ip
            ) do
-      redirect_to = get_session(conn, :user_return_to) || Auth.signed_in_path(conn)
+      redirect_to = get_session(conn, :user_return_to) || Auth.signed_in_path(subject.account.id)
 
       conn
       |> Web.Auth.renew_session()
@@ -169,7 +169,7 @@ defmodule Web.AuthController do
              conn.assigns.user_agent,
              conn.remote_ip
            ) do
-      redirect_to = get_session(conn, :user_return_to) || Auth.signed_in_path(conn)
+      redirect_to = get_session(conn, :user_return_to) || Auth.signed_in_path(subject.account.id)
 
       conn
       |> delete_resp_cookie(key, @state_cookie_options)
