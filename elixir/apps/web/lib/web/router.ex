@@ -1,5 +1,6 @@
 defmodule Web.Router do
   use Web, :router
+  import Web.Auth
 
   pipeline :browser do
     plug :accepts, ["html"]
@@ -7,6 +8,8 @@ defmodule Web.Router do
     plug :protect_from_forgery
     plug :fetch_live_flash
     plug :put_root_layout, {Web.Layouts, :root}
+    plug :fetch_user_agent
+    plug :fetch_subject
   end
 
   pipeline :api do
@@ -16,14 +19,6 @@ defmodule Web.Router do
 
   pipeline :public do
     plug :accepts, ["html", "xml"]
-  end
-
-  pipeline :unauthenticated do
-    plug Web.Auth, :unauthenticated
-  end
-
-  pipeline :authenticated do
-    plug Web.Auth, :authenticated
   end
 
   scope "/browser", Web do
@@ -38,23 +33,61 @@ defmodule Web.Router do
     get "/healthz", HealthController, :healthz
   end
 
-  live_session :unauthenticated do
-    scope "/:account_id/", Web do
-      pipe_through [:browser, :unauthenticated]
-
-      get "/:provider_id/sign_in", AuthController, :sign_in
+  if Mix.env() in [:dev, :test] do
+    scope "/dev" do
+      pipe_through [:public]
+      forward "/mailbox", Plug.Swoosh.MailboxPreview
     end
   end
 
-  live_session :admin do
-    scope "/:account_id/", Web do
-      pipe_through [:browser, :authenticated]
+  scope "/:account_id/sign_in", Web do
+    pipe_through [:browser, :redirect_if_user_is_authenticated]
 
+    live_session :redirect_if_user_is_authenticated,
+      on_mount: [{Web.Auth, :redirect_if_user_is_authenticated}],
+      layout: {Web.Layouts, :public} do
+      live "/", Auth.ProvidersLive, :new
+
+      # Adapter-specific routes
+      ## Email
+      live "/providers/email/:provider_id", Auth.EmailLive, :confirm
+    end
+
+    scope "/providers/:provider_id" do
+      # UserPass
+      post "/verify_credentials", AuthController, :verify_credentials
+
+      # Email
+      post "/request_magic_link", AuthController, :request_magic_link
+      get "/verify_sign_in_token", AuthController, :verify_sign_in_token
+
+      # IdP
+      get "/redirect", AuthController, :redirect_to_idp
+      get "/handle_callback", AuthController, :handle_idp_callback
+    end
+  end
+
+  scope "/:account_id", Web do
+    pipe_through [:browser]
+
+    get "/sign_out", AuthController, :sign_out
+  end
+
+  scope "/:account_id", Web do
+    pipe_through [:browser, :require_authenticated_user]
+
+    live_session :require_authenticated_user,
+      on_mount: [{Web.Auth, :require_authenticated_user}] do
       live "/dashboard", DashboardLive
+    end
+  end
 
-      # Session
-      get "/sign_out", AuthController, :sign_out
+  scope "/", Web do
+    pipe_through [:browser, :require_authenticated_user]
 
+    get "/", AuthController, :sign_out
+
+    live_session :require_authenticated_user2 do
       # Users
       live "/users", UsersLive.Index
       live "/users/new", UsersLive.New

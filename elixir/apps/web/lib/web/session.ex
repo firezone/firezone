@@ -12,8 +12,9 @@ defmodule Web.Session do
   @session_options [
     store: :cookie,
     key: "_firezone_key",
-    # XXX: Strict doesn't work for SSO auth
-    # same_site: "Strict",
+    # If `same_site` is set to `Strict` then the cookie will not be sent on
+    # IdP callback redirects, which will break the auth flow.
+    same_site: "Lax",
     max_age: @max_cookie_age,
     sign: true,
     encrypt: true
@@ -25,33 +26,7 @@ defmodule Web.Session do
   @impl true
   def call(conn, _opts) do
     opts = options() |> Plug.Session.init()
-
-    conn
-    |> Plug.Session.call(opts)
-    |> put_context_assigns()
-  end
-
-  defp put_context_assigns(conn) do
-    remote_ip = get_remote_ip(conn)
-    user_agent = get_user_agent(conn)
-
-    conn
-    |> Plug.Conn.assign(:remote_ip, remote_ip)
-    |> Plug.Conn.assign(:user_agent, user_agent)
-  end
-
-  defp get_remote_ip(conn) do
-    conn.remote_ip
-  end
-
-  defp get_user_agent(conn) do
-    case Plug.Conn.get_req_header(conn, "user-agent") do
-      [user_agent | _] ->
-        user_agent
-
-      _ ->
-        nil
-    end
+    Plug.Session.call(conn, opts)
   end
 
   @doc false
