@@ -44,16 +44,18 @@ export default function Page() {
                 CEO/Co-founder
               </span>
               <p className="mt-3 mb-4 max-w-sm font-light text-gray-500 dark:text-gray-400">
-                Before starting Firezone, Jamil battled cybersecurity threats at
-                Cisco for 8+ years in various roles from pentesting to incident
-                response. After a particularly frustrating experience fighting
-                his corporate VPN client over some routing table entries, he
-                decided to take the plunge into the world of startups to start
-                Firezone. Because who needs sleep, right?
+                {/* TODO: Bio
+                  Before starting Firezone, Jamil battled cybersecurity threats at
+                  Cisco for 8+ years in various roles from pentesting to incident
+                  response. After a particularly frustrating experience fighting
+                  his corporate VPN client over some routing table entries, he
+                  decided to take the plunge into the world of startups to start
+                  Firezone. Because who needs sleep, right?
               </p>
               <p className="mt-3 mb-4 max-w-sm font-light text-gray-500 dark:text-gray-400">
                 Jamil lives in sunny Mountain View, CA with his partner and
                 their terrier Charlie.
+                */}
               </p>
               <ul className="flex justify-center space-x-4 sm:justify-start">
                 <li>
@@ -236,7 +238,9 @@ export default function Page() {
                 Technical Consultant
               </span>
               <p className="mt-3 mb-4 max-w-sm font-light text-gray-500 dark:text-gray-400">
-                {/* TODO: bio */}
+                {/* TODO: bio
+                  Thomas spent most of his professional life in the distributed systems space. He has a passion for Rust, OSS and sailing yachts.
+                */}
               </p>
               <ul className="flex justify-center space-x-4 sm:justify-start">
                 <li>
