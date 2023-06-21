@@ -452,6 +452,29 @@ defmodule Domain.AuthFixtures do
     {bypass, "#{endpoint}/.well-known/openid-configuration"}
   end
 
+  def generate_openid_connect_token(provider, identity, claims \\ %{}) do
+    jwk = jwks_attrs()
+
+    claims =
+      Map.merge(
+        %{
+          "email" => "foo@example.com",
+          "sub" => identity.provider_identifier,
+          "aud" => provider.adapter_config["client_id"],
+          "exp" => DateTime.utc_now() |> DateTime.add(10, :second) |> DateTime.to_unix()
+        },
+        claims
+      )
+
+    {_alg, token} =
+      jwk
+      |> JOSE.JWK.from()
+      |> JOSE.JWS.sign(Jason.encode!(claims), %{"alg" => "RS256"})
+      |> JOSE.JWS.compact()
+
+    {token, claims}
+  end
+
   defp fetch_conn_params(conn) do
     opts = Plug.Parsers.init(parsers: [:urlencoded, :json], pass: ["*/*"], json_decoder: Jason)
 

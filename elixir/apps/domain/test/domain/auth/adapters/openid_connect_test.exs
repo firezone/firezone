@@ -151,7 +151,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       identity: identity,
       bypass: bypass
     } do
-      {token, claims} = generate_token(provider, identity)
+      {token, claims} = AuthFixtures.generate_openid_connect_token(provider, identity)
 
       AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
       AuthFixtures.expect_userinfo(bypass)
@@ -186,7 +186,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       identity: identity,
       bypass: bypass
     } do
-      {token, _claims} = generate_token(provider, identity)
+      {token, _claims} = AuthFixtures.generate_openid_connect_token(provider, identity)
 
       AuthFixtures.expect_refresh_token(bypass, %{
         "token_type" => "Bearer",
@@ -216,7 +216,10 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
     } do
       forty_seconds_ago = DateTime.utc_now() |> DateTime.add(-40, :second) |> DateTime.to_unix()
 
-      {token, _claims} = generate_token(provider, identity, %{"exp" => forty_seconds_ago})
+      {token, _claims} =
+        AuthFixtures.generate_openid_connect_token(provider, identity, %{
+          "exp" => forty_seconds_ago
+        })
 
       AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
 
@@ -247,7 +250,8 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       provider: provider,
       bypass: bypass
     } do
-      {token, _claims} = generate_token(provider, identity, %{"sub" => "foo@bar.com"})
+      {token, _claims} =
+        AuthFixtures.generate_openid_connect_token(provider, identity, %{"sub" => "foo@bar.com"})
 
       AuthFixtures.expect_refresh_token(bypass, %{
         "token_type" => "Bearer",
@@ -272,7 +276,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       bypass: bypass
     } do
       identity = AuthFixtures.create_identity(account: account)
-      {token, _claims} = generate_token(provider, identity)
+      {token, _claims} = AuthFixtures.generate_openid_connect_token(provider, identity)
 
       AuthFixtures.expect_refresh_token(bypass, %{
         "token_type" => "Bearer",
@@ -323,7 +327,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       identity: identity,
       bypass: bypass
     } do
-      {token, claims} = generate_token(provider, identity)
+      {token, claims} = AuthFixtures.generate_openid_connect_token(provider, identity)
 
       AuthFixtures.expect_refresh_token(bypass, %{
         "token_type" => "Bearer",
@@ -357,28 +361,5 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
 
       assert DateTime.diff(expires_at, DateTime.utc_now()) in 5..15
     end
-  end
-
-  defp generate_token(provider, identity, claims \\ %{}) do
-    jwk = AuthFixtures.jwks_attrs()
-
-    claims =
-      Map.merge(
-        %{
-          "email" => "foo@example.com",
-          "sub" => identity.provider_identifier,
-          "aud" => provider.adapter_config["client_id"],
-          "exp" => DateTime.utc_now() |> DateTime.add(10, :second) |> DateTime.to_unix()
-        },
-        claims
-      )
-
-    {_alg, token} =
-      jwk
-      |> JOSE.JWK.from()
-      |> JOSE.JWS.sign(Jason.encode!(claims), %{"alg" => "RS256"})
-      |> JOSE.JWS.compact()
-
-    {token, claims}
   end
 end
