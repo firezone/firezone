@@ -354,6 +354,10 @@ where
                 }))) => {
                     return Poll::Ready(Err(anyhow!("Init message is not a request")));
                 }
+                Some(Poll::Ready(Ok(Event::HeartbeatSent))) => {
+                    tracing::debug!("Heartbeat sent to relay");
+                    continue;
+                }
                 Some(Poll::Pending) | None => {}
             }
 

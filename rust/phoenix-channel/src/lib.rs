@@ -207,7 +207,8 @@ where
                 self.next_heartbeat
                     .as_mut()
                     .reset(Instant::now() + HEARTBEAT_INTERVAL);
-                continue;
+
+                return Poll::Ready(Ok(Event::HeartbeatSent));
             }
 
             return Poll::Pending;
@@ -249,6 +250,7 @@ pub enum Event<TInboundMsg, TOutboundRes> {
     JoinedRoom {
         topic: String,
     },
+    HeartbeatSent,
     ErrorResponse {
         topic: String,
         req_id: OutboundRequestId,
