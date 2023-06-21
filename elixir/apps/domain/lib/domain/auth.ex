@@ -181,11 +181,13 @@ defmodule Domain.Auth do
 
   # Sign Up / In / Off
 
-  def sign_in(%Provider{} = provider, provider_identifier, secret, user_agent, remote_ip) do
-    with {:ok, identity} <-
-           fetch_identity_by_provider_and_identifier(provider, provider_identifier),
-         {:ok, identity, expires_at} <-
-           Adapters.verify_secret(provider, identity, secret) do
+  def sign_in(%Provider{} = provider, id_or_provider_identifier, secret, user_agent, remote_ip) do
+    identity_queryable =
+      Identity.Query.by_provider_id(provider.id)
+      |> Identity.Query.by_id_or_provider_identifier(id_or_provider_identifier)
+
+    with {:ok, identity} <- Repo.fetch(identity_queryable),
+         {:ok, identity, expires_at} <- Adapters.verify_secret(provider, identity, secret) do
       {:ok, build_subject(identity, expires_at, user_agent, remote_ip)}
     else
       {:error, :not_found} -> {:error, :unauthorized}
@@ -205,7 +207,7 @@ defmodule Domain.Auth do
     end
   end
 
-  def sign_in(session_token, user_agent, remote_ip) do
+  def sign_in(session_token, user_agent, remote_ip) when is_binary(session_token) do
     with {:ok, identity, expires_at} <-
            verify_session_token(session_token, user_agent, remote_ip) do
       {:ok, build_subject(identity, expires_at, user_agent, remote_ip)}

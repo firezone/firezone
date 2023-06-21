@@ -800,7 +800,7 @@ defmodule Domain.AuthTest do
                {:error, :unauthorized}
     end
 
-    test "returns subject on success", %{
+    test "returns subject on success using provider identifier", %{
       account: account,
       provider: provider,
       user_agent: user_agent,
@@ -811,6 +811,25 @@ defmodule Domain.AuthTest do
 
       assert {:ok, %Auth.Subject{} = subject} =
                sign_in(provider, identity.provider_identifier, secret, user_agent, remote_ip)
+
+      assert subject.account.id == account.id
+      assert subject.actor.id == identity.actor_id
+      assert subject.identity.id == identity.id
+      assert subject.context.remote_ip == remote_ip
+      assert subject.context.user_agent == user_agent
+    end
+
+    test "returns subject on success using identity id", %{
+      account: account,
+      provider: provider,
+      user_agent: user_agent,
+      remote_ip: remote_ip
+    } do
+      identity = AuthFixtures.create_identity(account: account, provider: provider)
+      secret = identity.provider_virtual_state.sign_in_token
+
+      assert {:ok, %Auth.Subject{} = subject} =
+               sign_in(provider, identity.id, secret, user_agent, remote_ip)
 
       assert subject.account.id == account.id
       assert subject.actor.id == identity.actor_id
@@ -980,7 +999,9 @@ defmodule Domain.AuthTest do
     } do
       identity = AuthFixtures.create_identity(account: account, provider: provider)
 
-      {token, _claims} = generate_token(provider, identity, %{"sub" => "foo@bar.com"})
+      {token, _claims} =
+        AuthFixtures.generate_openid_connect_token(provider, identity, %{"sub" => "foo@bar.com"})
+
       AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
       AuthFixtures.expect_userinfo(bypass)
 
@@ -1017,7 +1038,7 @@ defmodule Domain.AuthTest do
     } do
       identity = AuthFixtures.create_identity(account: account, provider: provider)
 
-      {token, _claims} = generate_token(provider, identity)
+      {token, _claims} = AuthFixtures.generate_openid_connect_token(provider, identity)
       AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
       AuthFixtures.expect_userinfo(bypass)
 
@@ -1076,7 +1097,7 @@ defmodule Domain.AuthTest do
       subject = AuthFixtures.create_subject(identity)
       {:ok, _provider} = disable_provider(provider, subject)
 
-      {token, _claims} = generate_token(provider, identity)
+      {token, _claims} = AuthFixtures.generate_openid_connect_token(provider, identity)
       AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
       AuthFixtures.expect_userinfo(bypass)
 
@@ -1100,7 +1121,7 @@ defmodule Domain.AuthTest do
       subject = AuthFixtures.create_subject(identity)
       {:ok, identity} = delete_identity(identity, subject)
 
-      {token, _claims} = generate_token(provider, identity)
+      {token, _claims} = AuthFixtures.generate_openid_connect_token(provider, identity)
       AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
       AuthFixtures.expect_userinfo(bypass)
 
@@ -1125,7 +1146,7 @@ defmodule Domain.AuthTest do
 
       identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
 
-      {token, _claims} = generate_token(provider, identity)
+      {token, _claims} = AuthFixtures.generate_openid_connect_token(provider, identity)
       AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
       AuthFixtures.expect_userinfo(bypass)
 
@@ -1150,7 +1171,7 @@ defmodule Domain.AuthTest do
 
       identity = AuthFixtures.create_identity(account: account, provider: provider, actor: actor)
 
-      {token, _claims} = generate_token(provider, identity)
+      {token, _claims} = AuthFixtures.generate_openid_connect_token(provider, identity)
       AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
       AuthFixtures.expect_userinfo(bypass)
 
@@ -1174,7 +1195,7 @@ defmodule Domain.AuthTest do
       subject = AuthFixtures.create_subject(identity)
       {:ok, _provider} = delete_provider(provider, subject)
 
-      {token, _claims} = generate_token(provider, identity)
+      {token, _claims} = AuthFixtures.generate_openid_connect_token(provider, identity)
       AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
       AuthFixtures.expect_userinfo(bypass)
 
@@ -1195,7 +1216,7 @@ defmodule Domain.AuthTest do
     } do
       identity = AuthFixtures.create_identity(account: account, provider: provider)
 
-      {token, _claims} = generate_token(provider, identity)
+      {token, _claims} = AuthFixtures.generate_openid_connect_token(provider, identity)
       AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
       AuthFixtures.expect_userinfo(bypass)
 
@@ -1499,28 +1520,5 @@ defmodule Domain.AuthTest do
     # Allow is async call we need to break current process execution
     # to allow sandbox to be enabled
     :timer.sleep(10)
-  end
-
-  defp generate_token(provider, identity, claims \\ %{}) do
-    jwk = AuthFixtures.jwks_attrs()
-
-    claims =
-      Map.merge(
-        %{
-          "email" => "foo@example.com",
-          "sub" => identity.provider_identifier,
-          "aud" => provider.adapter_config["client_id"],
-          "exp" => DateTime.utc_now() |> DateTime.add(10, :second) |> DateTime.to_unix()
-        },
-        claims
-      )
-
-    {_alg, token} =
-      jwk
-      |> JOSE.JWK.from()
-      |> JOSE.JWS.sign(Jason.encode!(claims), %{"alg" => "RS256"})
-      |> JOSE.JWS.compact()
-
-    {token, claims}
   end
 end

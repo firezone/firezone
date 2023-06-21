@@ -46,6 +46,19 @@ defmodule Domain.Auth.Identity.Query do
     )
   end
 
+  def by_id_or_provider_identifier(queryable \\ all(), id_or_provider_identifier) do
+    if Domain.Validator.valid_uuid?(id_or_provider_identifier) do
+      where(
+        queryable,
+        [identities: identities],
+        identities.provider_identifier == ^id_or_provider_identifier or
+          identities.id == ^id_or_provider_identifier
+      )
+    else
+      by_provider_identifier(queryable, id_or_provider_identifier)
+    end
+  end
+
   def lock(queryable \\ all()) do
     lock(queryable, "FOR UPDATE")
   end
