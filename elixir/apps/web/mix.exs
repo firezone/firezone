@@ -45,6 +45,7 @@ defmodule Web.MixProject do
       {:plug_cowboy, "~> 2.5"},
       {:gettext, "~> 0.20"},
       {:remote_ip, "~> 1.0"},
+      {:ssl_verify_fun, "~> 1.1", manager: :rebar3, override: true},
 
       # Asset pipeline deps
       {:esbuild, "~> 0.7", runtime: Mix.env() == :dev},

@@ -43,7 +43,7 @@ config :api, API.Endpoint,
 ###############################
 config :web, Web.Mailer, adapter: Web.MailerTestAdapter
 
-config :logger, level: :warn
+config :logger, level: :warning
 
 config :argon2_elixir, t_cost: 1, m_cost: 8
 
