@@ -1,12 +1,11 @@
 defmodule Web.Auth do
   use Web, :verified_routes
 
-  def signed_in_path(conn), do: ~p"/#{conn.path_params["account_id"]}/dashboard"
+  def signed_in_path(account_id), do: ~p"/#{account_id}/dashboard"
 
   def put_subject_in_session(conn, subject) do
     {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
 
-    # TODO: scope sessions per account
     conn
     |> Plug.Conn.put_session(:session_token, session_token)
     |> Plug.Conn.put_session(:live_socket_id, "actors_sessions:#{subject.actor.id}")
@@ -62,7 +61,8 @@ defmodule Web.Auth do
   def fetch_subject(conn, _opts) do
     with token when not is_nil(token) <- Plug.Conn.get_session(conn, :session_token),
          {:ok, subject} <-
-           Domain.Auth.sign_in(token, conn.assigns.user_agent, conn.remote_ip) do
+           Domain.Auth.sign_in(token, conn.assigns.user_agent, conn.remote_ip),
+         true <- conn.path_params["account_id"] == subject.account.id do
       Plug.Conn.assign(conn, :subject, subject)
     else
       _ -> conn
@@ -74,8 +74,10 @@ defmodule Web.Auth do
   """
   def redirect_if_user_is_authenticated(%Plug.Conn{} = conn, _opts) do
     if conn.assigns[:subject] do
+      account_id = conn.assigns.subject.account.id
+
       conn
-      |> Phoenix.Controller.redirect(to: signed_in_path(conn))
+      |> Phoenix.Controller.redirect(to: signed_in_path(account_id))
       |> Plug.Conn.halt()
     else
       conn
@@ -95,7 +97,7 @@ defmodule Web.Auth do
       conn
       |> Phoenix.Controller.put_flash(:error, "You must log in to access this page.")
       |> maybe_store_return_to()
-      |> Phoenix.Controller.redirect(to: ~p"/#{conn.path_params["account_id"]}/sign_in")
+      |> Phoenix.Controller.redirect(to: ~p"/#{conn.assigns.subject.account}/sign_in")
       |> Plug.Conn.halt()
     end
   end
@@ -143,12 +145,12 @@ defmodule Web.Auth do
         live "/profile", ProfileLive, :index
       end
   """
-  def on_mount(:mount_subject, _params, session, socket) do
-    {:cont, mount_subject(socket, session)}
+  def on_mount(:mount_subject, params, session, socket) do
+    {:cont, mount_subject(socket, params, session)}
   end
 
-  def on_mount(:require_authenticated_user, _params, session, socket) do
-    socket = mount_subject(socket, session)
+  def on_mount(:require_authenticated_user, params, session, socket) do
+    socket = mount_subject(socket, params, session)
 
     if socket.assigns.subject do
       {:cont, socket}
@@ -156,29 +158,31 @@ defmodule Web.Auth do
       socket =
         socket
         |> Phoenix.LiveView.put_flash(:error, "You must log in to access this page.")
-        |> Phoenix.LiveView.redirect(to: ~p"/#{socket.assigns.account.id}/sign_in")
+        |> Phoenix.LiveView.redirect(to: ~p"/#{socket.assigns.account}/sign_in")
 
       {:halt, socket}
     end
   end
 
-  def on_mount(:redirect_if_user_is_authenticated, _params, session, socket) do
-    socket = mount_subject(socket, session)
+  def on_mount(:redirect_if_user_is_authenticated, params, session, socket) do
+    socket = mount_subject(socket, params, session)
 
     if socket.assigns.subject do
-      {:halt, Phoenix.LiveView.redirect(socket, to: signed_in_path(socket))}
+      account_id = socket.assigns.subject.account.id
+      {:halt, Phoenix.LiveView.redirect(socket, to: signed_in_path(account_id))}
     else
       {:cont, socket}
     end
   end
 
-  defp mount_subject(socket, session) do
+  defp mount_subject(socket, params, session) do
     Phoenix.Component.assign_new(socket, :subject, fn ->
       user_agent = Phoenix.LiveView.get_connect_info(socket, :user_agent)
       remote_ip = Phoenix.LiveView.get_connect_info(socket, :peer_data).address
 
       with token when not is_nil(token) <- session["session_token"],
-           {:ok, subject} <- Domain.Auth.sign_in(token, user_agent, remote_ip) do
+           {:ok, subject} <- Domain.Auth.sign_in(token, user_agent, remote_ip),
+           true <- params["account_id"] == subject.account.id do
         subject
       else
         _ -> nil
