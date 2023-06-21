@@ -1,28 +1,27 @@
-#[macro_use]
-extern crate log;
-extern crate android_logger;
-extern crate jni;
-use self::jni::JNIEnv;
-use android_logger::Config;
+// The "system" ABI is only needed for Java FFI on Win32, not Android:
+// https://github.com/jni-rs/jni-rs/pull/22
+// However, this consideration has made it idiomatic for Java FFI in the Rust
+// ecosystem, so it's used here for consistency.
+
 use firezone_client_connlib::{
     Callbacks, Error, ErrorType, ResourceList, Session, TunnelAddresses,
 };
-use jni::objects::{JClass, JObject, JString, JValue};
-use log::LevelFilter;
+use jni::{
+    objects::{JClass, JObject, JString, JValue},
+    JNIEnv,
+};
 
 /// This should be called once after the library is loaded by the system.
 #[allow(non_snake_case)]
 #[no_mangle]
 pub extern "system" fn Java_dev_firezone_connlib_Logger_init(_: JNIEnv, _: JClass) {
-    #[cfg(debug_assertions)]
-    let level = LevelFilter::Trace;
-    #[cfg(not(debug_assertions))]
-    let level = LevelFilter::Warn;
-
     android_logger::init_once(
-        Config::default()
-            // Allow all log levels
-            .with_max_level(level)
+        android_logger::Config::default()
+            .with_max_level(if cfg!(debug_assertions) {
+                log::LevelFilter::Trace
+            } else {
+                log::LevelFilter::Warn
+            })
             .with_tag("connlib"),
     )
 }
@@ -71,8 +70,8 @@ pub unsafe extern "system" fn Java_dev_firezone_connlib_Session_connect(
         "(Ljava/lang/String;)Z",
         &[JValue::from(&tunnel_addresses)],
     ) {
-        Ok(res) => trace!("onSetTunnelAddresses returned {:?}", res),
-        Err(e) => error!("Failed to call setTunnelAddresses: {:?}", e),
+        Ok(res) => log::trace!("`onSetTunnelAddresses` returned `{res:?}`"),
+        Err(err) => log::error!("Failed to call `setTunnelAddresses`: {err}"),
     }
 
     Box::into_raw(session)
