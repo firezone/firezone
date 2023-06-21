@@ -1,2 +1,2 @@
 [workspace]
-members = ["relay"]
+members = ["relay", "phoenix-channel"]
