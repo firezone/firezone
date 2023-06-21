@@ -1,7 +1,8 @@
-use anyhow::{Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use clap::Parser;
 use futures::channel::mpsc;
-use futures::{FutureExt, SinkExt, StreamExt};
+use futures::{future, FutureExt, SinkExt, StreamExt};
+use phoenix_channel::{Error, Event, PhoenixChannel};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use relay::{AllocationId, Command, Server, Sleep, UdpSocket};
@@ -14,6 +15,7 @@ use std::time::SystemTime;
 use tokio::task;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
+use url::Url;
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -27,9 +29,17 @@ struct Args {
     /// Must not be a wildcard-address.
     #[arg(long, env)]
     listen_ip4_addr: Ipv4Addr,
+    /// The websocket URL of the portal server to connect to.
+    ///
+    /// If omitted, the relay server will start immediately, otherwise we first log on and wait for the `init` message.
+    #[arg(long, env)]
+    portal_ws_url: Option<Url>,
+    /// Whether to allow connecting to the portal over an insecure connection.
+    #[arg(long)]
+    allow_insecure_ws: bool,
     /// A seed to use for all randomness operations.
     ///
-    /// Useful for testing and only available in debug builds.
+    /// Only available in debug builds.
     #[arg(long, env)]
     rng_seed: Option<u64>,
 }
@@ -50,15 +60,76 @@ async fn main() -> Result<()> {
 
     tracing::info!("Relay auth secret: {}", hex::encode(server.auth_secret()));
 
-    let mut eventloop = Eventloop::new(server, args.listen_ip4_addr).await?;
+    let channel = if let Some(mut portal_url) = args.portal_ws_url {
+        if portal_url.scheme() == "ws" && !args.allow_insecure_ws {
+            bail!("Refusing to connect to portal over insecure connection, pass --allow-insecure-ws to override")
+        }
+
+        portal_url
+            .query_pairs_mut()
+            .append_pair("ipv4", &args.listen_ip4_addr.to_string());
+
+        let mut channel = PhoenixChannel::<InboundPortalMessage, ()>::connect(
+            portal_url.clone(),
+            format!("relay/{}", env!("CARGO_PKG_VERSION")),
+        )
+        .await
+        .context("Failed to connect to the portal")?;
+
+        tracing::info!("Connected to portal, waiting for init message",);
+
+        loop {
+            channel.join(
+                "relay",
+                JoinMessage {
+                    stamp_secret: hex::encode(server.auth_secret()),
+                },
+            );
+
+            let event = future::poll_fn(|cx| channel.poll(cx))
+                .await
+                .context("portal connection failed")?;
+
+            match event {
+                Event::JoinedRoom { topic } if topic == "relay" => {
+                    tracing::info!("Joined relay room on portal")
+                }
+                Event::InboundMessage {
+                    topic,
+                    msg: InboundPortalMessage::Init {},
+                } => {
+                    tracing::info!("Received init message from portal on topic {topic}, starting relay activities");
+                    break Some(channel);
+                }
+                other => {
+                    tracing::debug!("Unhandled message from portal: {other:?}");
+                }
+            }
+        }
+    } else {
+        None
+    };
+
+    let mut eventloop = Eventloop::new(server, channel, args.listen_ip4_addr).await?;
 
     tracing::info!("Listening for incoming traffic on UDP port 3478");
 
-    futures::future::poll_fn(|cx| eventloop.poll(cx))
+    future::poll_fn(|cx| eventloop.poll(cx))
         .await
         .context("event loop failed")?;
 
     Ok(())
+}
+
+#[derive(serde::Serialize, PartialEq, Debug)]
+struct JoinMessage {
+    stamp_secret: String,
+}
+
+#[derive(serde::Deserialize, PartialEq, Debug)]
+#[serde(rename_all = "snake_case", tag = "event", content = "payload")]
+enum InboundPortalMessage {
+    Init {},
 }
 
 #[cfg(debug_assertions)]
@@ -85,6 +156,7 @@ struct Eventloop<R> {
     ip4_socket: UdpSocket,
     listen_ip4_address: Ipv4Addr,
     server: Server<R>,
+    channel: Option<PhoenixChannel<InboundPortalMessage, ()>>,
     allocations: HashMap<AllocationId, Allocation>,
     relay_data_sender: mpsc::Sender<(Vec<u8>, SocketAddr, AllocationId)>,
     relay_data_receiver: mpsc::Receiver<(Vec<u8>, SocketAddr, AllocationId)>,
@@ -106,13 +178,18 @@ impl<R> Eventloop<R>
 where
     R: Rng,
 {
-    async fn new(server: Server<R>, listen_ip4_address: Ipv4Addr) -> Result<Self> {
+    async fn new(
+        server: Server<R>,
+        channel: Option<PhoenixChannel<InboundPortalMessage, ()>>,
+        listen_ip4_address: Ipv4Addr,
+    ) -> Result<Self> {
         let (sender, receiver) = mpsc::channel(1);
 
         Ok(Self {
             ip4_socket: UdpSocket::bind((listen_ip4_address, 3478)).await?,
             listen_ip4_address,
             server,
+            channel,
             allocations: Default::default(),
             relay_data_sender: sender,
             relay_data_receiver: receiver,
@@ -238,6 +315,50 @@ where
                 self.server
                     .handle_client_input(buffer.filled(), sender, SystemTime::now());
                 continue; // Handle potentially new commands.
+            }
+
+            // Priority 7: Handle portal messages
+            match self.channel.as_mut().map(|c| c.poll(cx)) {
+                Some(Poll::Ready(Ok(Event::InboundMessage {
+                    msg: InboundPortalMessage::Init {},
+                    ..
+                }))) => {
+                    tracing::warn!("Received init message during operation");
+                    continue;
+                }
+                Some(Poll::Ready(Err(Error::Serde(e)))) => {
+                    tracing::warn!("Failed to deserialize portal message: {e}");
+                    continue; // This is not a hard-error, we can continue.
+                }
+                Some(Poll::Ready(Err(e))) => {
+                    return Poll::Ready(Err(anyhow!("Portal connection failed: {e}")));
+                }
+                Some(Poll::Ready(Ok(Event::SuccessResponse { res: (), .. }))) => {
+                    continue;
+                }
+                Some(Poll::Ready(Ok(Event::JoinedRoom { topic }))) => {
+                    tracing::info!("Successfully joined room '{topic}'");
+                    continue;
+                }
+                Some(Poll::Ready(Ok(Event::ErrorResponse {
+                    topic,
+                    req_id,
+                    reason,
+                }))) => {
+                    tracing::warn!("Request with ID {req_id} on topic {topic} failed: {reason}");
+                    continue;
+                }
+                Some(Poll::Ready(Ok(Event::InboundReq {
+                    req: InboundPortalMessage::Init {},
+                    ..
+                }))) => {
+                    return Poll::Ready(Err(anyhow!("Init message is not a request")));
+                }
+                Some(Poll::Ready(Ok(Event::HeartbeatSent))) => {
+                    tracing::debug!("Heartbeat sent to relay");
+                    continue;
+                }
+                Some(Poll::Pending) | None => {}
             }
 
             return Poll::Pending;

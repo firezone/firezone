@@ -1,0 +1,18 @@
+[package]
+name = "phoenix-channel"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tokio-tungstenite = { version = "0.19.0", features = ["rustls-tls-native-roots"] }
+futures = "0.3.28"
+base64 = "0.21.2"
+serde = { version = "1.0.163", features = ["derive"] }
+tracing = "0.1.37"
+rand_core = "0.6.4"
+url = "2.4.0"
+serde_json = "1.0.96"
+thiserror = "1.0.40"
+tokio = { version = "1.28.2", features = ["net", "time"] }
