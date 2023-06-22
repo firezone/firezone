@@ -97,5 +97,7 @@ public class CallbackHandler {
 
     func onError(error: SwiftConnlibError, error_type: SwiftErrorType) {
         // TODO: handle/report errors
+        let logger = Logger(subsystem: "dev.firezone.firezone", category: "packet-tunnel")
+        logger.log(level: .error, "Internal connlib error: \(String(describing: error), privacy: .public)")
     }
 }
