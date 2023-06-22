@@ -6,7 +6,7 @@ export default function SearchForm() {
     <div className="pb-3 -ml-1 flex justify-start border-b border-gray-200 dark:border-gray-700">
       <DocSearch
         appId="XXPZ9QVGFB"
-        apiKey="c0b0c0a0b0c0a0b0c0a0b0c0a0b0c0a0"
+        apiKey="66664e8765e1645ea0b500acebb0b0c2"
         indexName="firezone"
       />
     </div>
