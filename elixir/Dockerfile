@@ -8,7 +8,7 @@ ARG RUNNER_IMAGE="alpine:${ALPINE_VERSION}"
 FROM ${BUILDER_IMAGE} as builder
 
 # install build dependencies
-RUN apk add nodejs yarn build-base git python3
+RUN apk add nodejs pnpm build-base git python3
 
 # prepare build dir
 WORKDIR /app
