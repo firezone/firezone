@@ -24,7 +24,9 @@ base_dir=$(xcrun --sdk $PLATFORM_NAME --show-sdk-path)
 # See https://github.com/briansmith/ring/issues/1332
 export LIBRARY_PATH="${base_dir}/usr/lib"
 export INCLUDE_PATH="${base_dir}/usr/include"
-export CFLAGS="-L ${LIBRARY_PATH} -I ${INCLUDE_PATH}"
+# `-Qunused-arguments` stops clang from failing while building *ring*
+# (but the library search path is still necessary when building the framework!)
+export CFLAGS="-L ${LIBRARY_PATH} -I ${INCLUDE_PATH} -Qunused-arguments"
 export RUSTFLAGS="-C link-arg=-F$base_dir/System/Library/Frameworks"
 
 TARGETS=""
