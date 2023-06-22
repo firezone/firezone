@@ -125,7 +125,7 @@ where
             .enable_all()
             .build()?;
 
-        if matches!(std::env::var("CONNLIB_MOCK").as_deref(), Ok("1" | "true")) {
+        if cfg!(feature = "mock") {
             Self::connect_mock(callbacks);
         } else {
             Self::connect_inner(&runtime, portal_url, token, callbacks);
