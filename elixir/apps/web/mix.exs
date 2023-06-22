@@ -82,7 +82,7 @@ defmodule Web.MixProject do
     [
       setup: ["deps.get", "assets.setup", "assets.build"],
       "assets.setup": [
-        "cmd cd assets && yarn install --frozen-lockfile",
+        "cmd cd assets && CI=true pnpm i",
         "tailwind.install --if-missing",
         "esbuild.install --if-missing"
       ],
