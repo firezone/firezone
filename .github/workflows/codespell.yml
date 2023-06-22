@@ -10,12 +10,6 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-        with:
-          node-version: "16"
-          cache: "yarn"
-          cache-dependency-path: |
-            www/yarn.lock
       - uses: actions/setup-python@v2
         with:
           python-version: "3.9"
@@ -29,10 +23,6 @@ jobs:
       - name: Install Python Dependencies
         run: |
           pip install -r requirements.txt
-      - name: Install node modules
-        run: |
-          cd www/
-          yarn install --frozen-lockfile
       - name: Run pre-commit
         run: |
           pre-commit install
