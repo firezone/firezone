@@ -1,4 +1,4 @@
-lockfileVersion: '6.1'
+lockfileVersion: '6.0'
 
 settings:
   autoInstallPeers: true
@@ -11,9 +11,6 @@ dependencies:
   flowbite:
     specifier: ^1.6.5
     version: 1.6.5
-  yarn:
-    specifier: ^1.22.19
-    version: 1.22.19
 
 packages:
 
@@ -35,11 +32,4 @@ packages:
   /mini-svg-data-uri@1.4.4:
     resolution: {integrity: sha512-r9deDe9p5FJUPZAk3A59wGH7Ii9YrjjWw0jmw/liSbHl2CHiyXj6FcDXDu2K3TjVAXqiJdaw3xxwlZZr9E6nHg==}
     hasBin: true
-    dev: false
-
-  /yarn@1.22.19:
-    resolution: {integrity: sha512-/0V5q0WbslqnwP91tirOvldvYISzaqhClxzyUKXYxs07yUILIs5jx/k6CFe8bvKSkds5w+eiOqta39Wk3WxdcQ==}
-    engines: {node: '>=4.0.0'}
-    hasBin: true
-    requiresBuild: true
     dev: false
