@@ -335,19 +335,19 @@ jobs:
           path: elixir/_build
           key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
       - uses: actions/cache@v3
-        name: Yarn Deps Cache
+        name: pnpm Deps Cache
         env:
-          cache-name: cache-yarn-build-${{ env.MIX_ENV }}
+          cache-name: cache-pnpm-build-${{ env.MIX_ENV }}
         with:
           path: elixir/apps/web/assets/node_modules
-          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/yarn.lock') }}
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/pnpm-lock.yaml') }}
       - uses: actions/cache@v3
         name: Assets Cache
         env:
           cache-name: cache-assets-build-${{ env.MIX_ENV }}
         with:
           path: elixir/apps/web/priv/static/dist
-          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/yarn.lock') }}
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/pnpm-lock.yaml') }}
       - run: |
           export DISPLAY=:99
           sudo Xvfb -ac :99 -screen 0 1280x1024x24 > /dev/null 2>&1 &
