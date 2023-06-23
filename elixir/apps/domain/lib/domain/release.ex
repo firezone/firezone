@@ -10,13 +10,13 @@ defmodule Domain.Release do
     end
   end
 
-  def run_app(file_name, directory \\ seed_script_path(@otp_app)) do
+  def seed(directory \\ seed_script_path(@otp_app)) do
     IO.puts("Starting #{@otp_app} app..")
     {:ok, _} = Application.ensure_all_started(@otp_app)
 
     IO.puts("Running seed scripts in #{directory}..")
 
-    Path.join(directory, file_name)
+    Path.join(directory, "seeds.exs")
     |> Path.wildcard()
     |> Enum.sort()
     |> Enum.each(fn path ->
@@ -24,17 +24,6 @@ defmodule Domain.Release do
       Code.require_file(path)
     end)
   end
-
-  def gateway_token(directory \\ seed_script_path(@otp_app)),
-    do: run_app("gateway_token.exs", directory)
-
-  def relay_token(directory \\ seed_script_path(@otp_app)),
-    do: run_app("relay_token.exs", directory)
-
-  def headless_token(directory \\ seed_script_path(@otp_app)),
-    do: run_app("headless_token.exs", directory)
-
-  def seed(directory \\ seed_script_path(@otp_app)), do: run_app("seeds.exs", directory)
 
   defp seed_script_path(app), do: priv_dir(app, ["repo"])
 

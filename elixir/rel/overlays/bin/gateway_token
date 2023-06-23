@@ -1,4 +1,0 @@
-#!/bin/sh
-set -e
-source "$(dirname -- "$0")/bootstrap"
-exec ./${APPLICATION_NAME} eval Domain.Release.gateway_token
