@@ -86,4 +86,9 @@ defmodule FzHttpWeb.UserFromAuthTest do
       assert Users.fetch_user_by_email(email) == {:error, :not_found}
     end
   end
+
+  describe "find_or_create/2 with missing email" do
+    assert {:error, "unknown provider or email not found in params"} =
+             UserFromAuth.find_or_create("dummy", %{"sub" => "1234"})
+  end
 end
