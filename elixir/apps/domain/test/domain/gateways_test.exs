@@ -458,7 +458,7 @@ defmodule Domain.GatewaysTest do
       resource =
         ResourcesFixtures.create_resource(
           account: account,
-          gateways: [%{gateway_id: gateway.id}]
+          gateway_groups: [%{gateway_group_id: gateway.group_id}]
         )
 
       assert connect_gateway(gateway) == :ok

@@ -15,7 +15,7 @@ defmodule API.Device.ChannelTest do
     dns_resource =
       ResourcesFixtures.create_resource(
         account: account,
-        gateways: [%{gateway_id: gateway.id}]
+        gateway_groups: [%{gateway_group_id: gateway.group_id}]
       )
 
     cidr_resource =
@@ -23,7 +23,7 @@ defmodule API.Device.ChannelTest do
         type: :cidr,
         address: "192.168.1.1/28",
         account: account,
-        gateways: [%{gateway_id: gateway.id}]
+        gateway_groups: [%{gateway_group_id: gateway.group_id}]
       )
 
     expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
@@ -52,8 +52,8 @@ defmodule API.Device.ChannelTest do
   end
 
   describe "join/3" do
-    test "tracks presence after join", %{device: device} do
-      presence = Domain.Devices.Presence.list("devices")
+    test "tracks presence after join", %{account: account, device: device} do
+      presence = Domain.Devices.Presence.list("devices:#{account.id}")
 
       assert %{metas: [%{online_at: online_at, phx_ref: _ref}]} = Map.fetch!(presence, device.id)
       assert is_number(online_at)

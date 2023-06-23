@@ -17,7 +17,7 @@ defmodule Domain.Resources.Resource do
 
     belongs_to :account, Domain.Accounts.Account
     has_many :connections, Domain.Resources.Connection, on_replace: :delete
-    has_many :gateways, through: [:connections, :gateway]
+    has_many :gateway_groups, through: [:connections, :gateway_group]
 
     field :deleted_at, :utc_datetime_usec
     timestamps()

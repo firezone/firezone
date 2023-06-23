@@ -214,7 +214,7 @@ defmodule Domain.ResourcesTest do
       attrs = %{
         "address" => "192.168.1.8/26",
         "type" => "cidr",
-        "connections" => [%{"gateway_id" => gateway.id}]
+        "connections" => [%{"gateway_group_id" => gateway.group_id}]
       }
 
       assert {:error, changeset} = create_resource(attrs, subject)
@@ -233,7 +233,7 @@ defmodule Domain.ResourcesTest do
         "name" => resource.name,
         "address" => address,
         "type" => "dns",
-        "connections" => [%{"gateway_id" => gateway.id}]
+        "connections" => [%{"gateway_group_id" => gateway.group_id}]
       }
 
       assert {:error, changeset} = create_resource(attrs, subject)
@@ -242,7 +242,14 @@ defmodule Domain.ResourcesTest do
 
     test "creates a dns resource", %{account: account, subject: subject} do
       gateway = GatewaysFixtures.create_gateway(account: account)
-      attrs = ResourcesFixtures.resource_attrs(connections: [%{gateway_id: gateway.id}])
+
+      attrs =
+        ResourcesFixtures.resource_attrs(
+          connections: [
+            %{gateway_group_id: gateway.group_id}
+          ]
+        )
+
       assert {:ok, resource} = create_resource(attrs, subject)
 
       assert resource.address == attrs.address
@@ -255,13 +262,13 @@ defmodule Domain.ResourcesTest do
       assert [
                %Domain.Resources.Connection{
                  resource_id: resource_id,
-                 gateway_id: gateway_id,
+                 gateway_group_id: gateway_group_id,
                  account_id: account_id
                }
              ] = resource.connections
 
       assert resource_id == resource.id
-      assert gateway_id == gateway.id
+      assert gateway_group_id == gateway.group_id
       assert account_id == account.id
 
       assert [
@@ -276,7 +283,9 @@ defmodule Domain.ResourcesTest do
 
       attrs =
         ResourcesFixtures.resource_attrs(
-          connections: [%{gateway_id: gateway.id}],
+          connections: [
+            %{gateway_group_id: gateway.group_id}
+          ],
           type: :cidr,
           name: nil,
           address: "192.168.1.1/28"
@@ -294,13 +303,13 @@ defmodule Domain.ResourcesTest do
       assert [
                %Domain.Resources.Connection{
                  resource_id: resource_id,
-                 gateway_id: gateway_id,
+                 gateway_group_id: gateway_group_id,
                  account_id: account_id
                }
              ] = resource.connections
 
       assert resource_id == resource.id
-      assert gateway_id == gateway.id
+      assert gateway_group_id == gateway.group_id
       assert account_id == account.id
 
       assert [
@@ -316,7 +325,14 @@ defmodule Domain.ResourcesTest do
       subject: subject
     } do
       gateway = GatewaysFixtures.create_gateway(account: account)
-      attrs = ResourcesFixtures.resource_attrs(connections: [%{gateway_id: gateway.id}])
+
+      attrs =
+        ResourcesFixtures.resource_attrs(
+          connections: [
+            %{gateway_group_id: gateway.group_id}
+          ]
+        )
+
       assert {:ok, resource} = create_resource(attrs, subject)
 
       addresses =
@@ -343,7 +359,14 @@ defmodule Domain.ResourcesTest do
       subject: subject
     } do
       gateway = GatewaysFixtures.create_gateway(account: account)
-      attrs = ResourcesFixtures.resource_attrs(connections: [%{gateway_id: gateway.id}])
+
+      attrs =
+        ResourcesFixtures.resource_attrs(
+          connections: [
+            %{gateway_group_id: gateway.group_id}
+          ]
+        )
+
       assert {:ok, resource} = create_resource(attrs, subject)
 
       assert %Domain.Network.Address{} = NetworkFixtures.create_address(address: resource.ipv4)
@@ -403,21 +426,28 @@ defmodule Domain.ResourcesTest do
     test "allows to update connections", %{account: account, resource: resource, subject: subject} do
       gateway1 = GatewaysFixtures.create_gateway(account: account)
 
-      attrs = %{"connections" => [%{gateway_id: gateway1.id}]}
+      attrs = %{"connections" => [%{gateway_group_id: gateway1.group_id}]}
       assert {:ok, resource} = update_resource(resource, attrs, subject)
-      gateway_ids = Enum.map(resource.connections, & &1.gateway_id)
-      assert gateway_ids == [gateway1.id]
+      gateway_group_ids = Enum.map(resource.connections, & &1.gateway_group_id)
+      assert gateway_group_ids == [gateway1.group_id]
 
       gateway2 = GatewaysFixtures.create_gateway(account: account)
-      attrs = %{"connections" => [%{gateway_id: gateway1.id}, %{gateway_id: gateway2.id}]}
-      assert {:ok, resource} = update_resource(resource, attrs, subject)
-      gateway_ids = Enum.map(resource.connections, & &1.gateway_id)
-      assert Enum.sort(gateway_ids) == Enum.sort([gateway1.id, gateway2.id])
 
-      attrs = %{"connections" => [%{gateway_id: gateway2.id}]}
+      attrs = %{
+        "connections" => [
+          %{gateway_group_id: gateway1.group_id},
+          %{gateway_group_id: gateway2.group_id}
+        ]
+      }
+
       assert {:ok, resource} = update_resource(resource, attrs, subject)
-      gateway_ids = Enum.map(resource.connections, & &1.gateway_id)
-      assert gateway_ids == [gateway2.id]
+      gateway_group_ids = Enum.map(resource.connections, & &1.gateway_group_id)
+      assert Enum.sort(gateway_group_ids) == Enum.sort([gateway1.group_id, gateway2.group_id])
+
+      attrs = %{"connections" => [%{gateway_group_id: gateway2.group_id}]}
+      assert {:ok, resource} = update_resource(resource, attrs, subject)
+      gateway_group_ids = Enum.map(resource.connections, & &1.gateway_group_id)
+      assert gateway_group_ids == [gateway2.group_id]
     end
 
     test "does not allow to remove all connections", %{resource: resource, subject: subject} do
