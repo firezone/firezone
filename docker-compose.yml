@@ -91,7 +91,7 @@ services:
       # Seeds
       STATIC_SEEDS: "true"
       # Client info
-      USER_AGENT: ""
+      USER_AGENT: "iOS/12.5 (iPhone) connlib/0.7.412"
     depends_on:
       postgres:
         condition: 'service_healthy'
