@@ -222,7 +222,6 @@ defmodule Domain.Gateways do
   end
 
   def connect_gateway(%Gateway{} = gateway) do
-    # TODO: we want to scope presence by account id for gateways, clients and relays
     {:ok, _} =
       Presence.track(self(), "gateways:#{gateway.account_id}", gateway.id, %{
         online_at: System.system_time(:second)
