@@ -2,9 +2,9 @@ alias Domain.{Repo, Accounts, Auth, Actors, Relays, Gateways, Resources}
 
 # This function is used to update fields if STATIC_SEEDS is set,
 # which helps with static docker-compose environment for local development.
-maybe_set = fn resource, field, value ->
+maybe_repo_update = fn resource, values ->
   if System.get_env("STATIC_SEEDS") == "true" do
-    Ecto.Changeset.change(resource, [{field, value}])
+    Ecto.Changeset.change(resource, values)
     |> Repo.update!()
   else
     resource
@@ -12,16 +12,18 @@ maybe_set = fn resource, field, value ->
 end
 
 {:ok, account} = Accounts.create_account(%{name: "Firezone Account"})
-account = maybe_set.(account, :id, "c89bcc8c-9392-4dae-a40d-888aef6d28e0")
+account = maybe_repo_update.(account, id: "c89bcc8c-9392-4dae-a40d-888aef6d28e0")
 
 {:ok, other_account} = Accounts.create_account(%{name: "Other Corp Account"})
-other_account = maybe_set.(other_account, :id, "9b9290bf-e1bc-4dd3-b401-511908262690")
+other_account = maybe_repo_update.(other_account, id: "9b9290bf-e1bc-4dd3-b401-511908262690")
 
 IO.puts("Created accounts: ")
 
 for item <- [account, other_account] do
   IO.puts("  #{item.id}: #{item.name}")
 end
+
+IO.puts("")
 
 {:ok, email_provider} =
   Auth.create_provider(account, %{
@@ -65,30 +67,32 @@ admin_actor_email = "firezone@localhost"
     name: "Firezone Admin"
   })
 
-{:ok, _unprivileged_actor_userpass_identity} =
+{:ok, unprivileged_actor_userpass_identity} =
   Auth.create_identity(unprivileged_actor, userpass_provider, unprivileged_actor_email, %{
     "password" => "Firezone1234",
     "password_confirmation" => "Firezone1234"
   })
 
-{:ok, admin_actor_userpass_identity} =
+{:ok, _admin_actor_userpass_identity} =
   Auth.create_identity(admin_actor, userpass_provider, admin_actor_email, %{
     "password" => "Firezone1234",
     "password_confirmation" => "Firezone1234"
   })
 
-admin_actor_userpass_identity =
-  maybe_set.(admin_actor_userpass_identity, :id, "7da7d1cd-111c-44a7-b5ac-4027b9d230e5")
+unprivileged_actor_userpass_identity =
+  maybe_repo_update.(unprivileged_actor_userpass_identity,
+    id: "7da7d1cd-111c-44a7-b5ac-4027b9d230e5"
+  )
 
 unprivileged_actor_token = hd(unprivileged_actor.identities).provider_virtual_state.sign_in_token
 admin_actor_token = hd(admin_actor.identities).provider_virtual_state.sign_in_token
 
 unprivileged_subject =
   Auth.build_subject(
-    admin_actor_userpass_identity,
+    unprivileged_actor_userpass_identity,
     DateTime.utc_now() |> DateTime.add(365, :day),
     "iOS/12.5 (iPhone) connlib/0.7.412",
-    {100, 64, 100, 58}
+    {172, 28, 0, 1}
   )
 
 admin_subject =
@@ -119,10 +123,11 @@ relay_group =
 relay_group_token = hd(relay_group.tokens)
 
 relay_group_token =
-  maybe_set.(
-    relay_group_token,
-    :hash,
-    "$argon2id$v=19$m=131072,t=8,p=4$HrYQIOkgW3Qm7R3pUQDJeQ$x5PfPHm1Io4R5okPGGLCF8BlPXlvflv8gCOGaCY8sMc"
+  maybe_repo_update.(relay_group_token,
+    id: "7286b53d-073e-4c41-9ff1-cc8451dad299",
+    hash:
+      "$argon2id$v=19$m=131072,t=8,p=4$aSw/NA3z0vGJjvF3ukOcyg$5MPWPXLETM3iZ19LTihItdVGb7ou/i4/zhpozMrpCFg",
+    value: "EX77Ga0HKJUVLgcpMrN6HatdGnfvADYQrRjUWWyTqqt7BaUdEU3o9-FbBlRdINIK"
   )
 
 IO.puts("Created relay groups:")
@@ -130,7 +135,7 @@ IO.puts("  #{relay_group.name} token: #{Relays.encode_token!(relay_group_token)}
 IO.puts("")
 
 {:ok, relay} =
-  Relays.upsert_relay(hd(relay_group.tokens), %{
+  Relays.upsert_relay(relay_group_token, %{
     ipv4: {189, 172, 73, 111},
     ipv6: {0, 0, 0, 0, 0, 0, 0, 1},
     last_seen_user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
@@ -150,10 +155,12 @@ gateway_group =
 gateway_group_token = hd(gateway_group.tokens)
 
 gateway_group_token =
-  maybe_set.(
+  maybe_repo_update.(
     gateway_group_token,
-    :hash,
-    "$argon2id$v=19$m=131072,t=8,p=4$WdmnkqoWWC3EwdPG4QOkaw$vwFJ4ICtSOMMn4vgvFOmpVPc3/dK9zMPV79xT46G1f8"
+    id: "3cef0566-adfd-48fe-a0f1-580679608f6f",
+    hash:
+      "$argon2id$v=19$m=131072,t=8,p=4$w0aXBd0iv/OTizWGBRTKiw$m6J0YXRsFCO95Q8LeVvH+CxFTy0Li7Lrcs3NDJRykCA",
+    value: "jjtzxRFJPZGBc-oCZ9Dy2FwjwaHXMAUdpzuRr2sRropx75-znh_xp_5bT5Ono-rb"
   )
 
 IO.puts("Created gateway groups:")
@@ -161,7 +168,7 @@ IO.puts("  #{gateway_group.name_prefix} token: #{Gateways.encode_token!(gateway_
 IO.puts("")
 
 {:ok, gateway} =
-  Gateways.upsert_gateway(hd(gateway_group.tokens), %{
+  Gateways.upsert_gateway(gateway_group_token, %{
     external_id: Ecto.UUID.generate(),
     name_suffix: "gw-#{Domain.Crypto.rand_string(5)}",
     public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
