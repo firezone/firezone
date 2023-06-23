@@ -1,7 +1,6 @@
 import Image from "next/image";
 import Post from "@/components/Blog/Post";
 import Content from "./readme.mdx";
-import NewsletterSignup from "@/components/NewsletterSignup";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -19,9 +18,6 @@ export default function Page() {
       date="July 25, 2022"
     >
       <Content />
-      <div className="border-t border-gray-200 dark:border-gray-700 pt-8">
-        <NewsletterSignup />
-      </div>
     </Post>
   );
 }
