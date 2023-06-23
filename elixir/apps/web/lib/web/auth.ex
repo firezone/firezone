@@ -100,7 +100,7 @@ defmodule Web.Auth do
       conn
       |> Phoenix.Controller.put_flash(:error, "You must log in to access this page.")
       |> maybe_store_return_to()
-      |> Phoenix.Controller.redirect(to: ~p"/#{conn.assigns.subject.account}/sign_in")
+      |> Phoenix.Controller.redirect(to: ~p"/#{conn.path_params["account_id"]}/sign_in")
       |> Plug.Conn.halt()
     end
   end
