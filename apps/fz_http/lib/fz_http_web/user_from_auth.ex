@@ -36,6 +36,11 @@ defmodule FzHttpWeb.UserFromAuth do
     end
   end
 
+  # Fallback
+  def find_or_create(_provider_id, _params) do
+    {:error, "unknown provider or email not found in params"}
+  end
+
   defp maybe_create_user(idp_field, provider_id, email) do
     if Auth.auto_create_users?(idp_field, provider_id) do
       Users.create_user(:unprivileged, %{email: email})
