@@ -7,6 +7,7 @@ defmodule Domain.AuthFixtures do
   def user_password, do: "Hello w0rld!"
   def remote_ip, do: {100, 64, 100, 58}
   def user_agent, do: "iOS/12.5 (iPhone) connlib/0.7.412"
+  def email, do: "user-#{counter()}@example.com"
 
   def random_provider_identifier(%Domain.Auth.Provider{adapter: :email, name: name}) do
     "user-#{counter()}@#{String.downcase(name)}.com"
@@ -113,9 +114,13 @@ defmodule Domain.AuthFixtures do
         random_provider_identifier(provider)
       end)
 
+    {actor_default_type, attrs} =
+      Map.pop(attrs, :actor_default_type, :account_user)
+
     {actor, _attrs} =
       Map.pop_lazy(attrs, :actor, fn ->
         ActorsFixtures.create_actor(
+          type: actor_default_type,
           account: account,
           provider: provider,
           provider_identifier: provider_identifier
@@ -137,6 +142,12 @@ defmodule Domain.AuthFixtures do
     else
       identity
     end
+  end
+
+  def delete_identity(identity) do
+    identity
+    |> Ecto.Changeset.change(deleted_at: DateTime.utc_now())
+    |> Repo.update!()
   end
 
   def create_subject do

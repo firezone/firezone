@@ -36,7 +36,7 @@ defmodule Web.AuthController do
              conn.assigns.user_agent,
              conn.remote_ip
            ) do
-      redirect_to = get_session(conn, :user_return_to) || Auth.signed_in_path(subject.account.id)
+      redirect_to = get_session(conn, :user_return_to) || Auth.signed_in_path(subject)
 
       conn
       |> Web.Auth.renew_session()
@@ -98,7 +98,7 @@ defmodule Web.AuthController do
              conn.assigns.user_agent,
              conn.remote_ip
            ) do
-      redirect_to = get_session(conn, :user_return_to) || Auth.signed_in_path(subject.account.id)
+      redirect_to = get_session(conn, :user_return_to) || Auth.signed_in_path(subject)
 
       conn
       |> Web.Auth.renew_session()
@@ -158,7 +158,7 @@ defmodule Web.AuthController do
          {:ok, provider} <- Domain.Auth.fetch_provider_by_id(provider_id),
          payload =
            {
-             ~p"/#{account_id}/sign_in/providers/#{provider_id}/handle_callback",
+             url(~p"/#{account_id}/sign_in/providers/#{provider_id}/handle_callback"),
              code_verifier,
              code
            },
@@ -169,7 +169,7 @@ defmodule Web.AuthController do
              conn.assigns.user_agent,
              conn.remote_ip
            ) do
-      redirect_to = get_session(conn, :user_return_to) || Auth.signed_in_path(subject.account.id)
+      redirect_to = get_session(conn, :user_return_to) || Auth.signed_in_path(subject)
 
       conn
       |> delete_resp_cookie(key, @state_cookie_options)
@@ -189,13 +189,13 @@ defmodule Web.AuthController do
 
       {:error, _reason} ->
         conn
-        |> put_flash(:error, "You can not authorize to this account.")
+        |> put_flash(:error, "You can not authenticate to this account.")
         |> redirect(to: "/#{account_id}/sign_in")
     end
   end
 
   defp fetch_verified_state(conn, key, state) do
-    # conn = fetch_cookies(conn, signed: [key])
+    conn = fetch_cookies(conn, signed: [key])
 
     with {:ok, encoded_state} <- Map.fetch(conn.cookies, key),
          {^state, verifier} <- :erlang.binary_to_term(encoded_state, [:safe]) do

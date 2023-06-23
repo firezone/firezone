@@ -1,5 +1,6 @@
 defmodule Web.AcceptanceCase.Vault do
   use Wallaby.DSL
+  alias Domain.AuthFixtures
 
   @vault_root_token "firezone"
   @vault_endpoint "http://127.0.0.1:8200"
@@ -12,7 +13,12 @@ defmodule Web.AcceptanceCase.Vault do
   def upsert_user(username, email, password) do
     :ok = ensure_userpass_auth_enabled()
 
-    :ok = request(:put, "auth/userpass/users/#{username}", %{password: password})
+    :ok =
+      request(:put, "auth/userpass/users/#{username}", %{
+        password: password,
+        token_policies: "oidc-auth",
+        token_ttl: "1h"
+      })
 
     # User Entity and Entity Alias are created automatically when user logs-in for
     # the first time
@@ -26,15 +32,11 @@ defmodule Web.AcceptanceCase.Vault do
     :ok
   end
 
-  def setup_oidc_provider(
-        account,
-        endpoint_url,
-        attrs_overrides \\ %{"auto_create_users" => true}
-      ) do
+  # Note: this code is not safe from race conditions because provider name is not unique per test case
+  def setup_oidc_provider(account, endpoint_url) do
     :ok =
       request(:put, "identity/oidc/client/firezone", %{
         assignments: "allow_all",
-        redirect_uris: "#{endpoint_url}/auth/oidc/vault/callback/",
         scopes_supported: "openid,email"
       })
 
@@ -54,41 +56,46 @@ defmodule Web.AcceptanceCase.Vault do
 
     {:ok, {200, params}} = request(:get, "identity/oidc/client/firezone")
 
-    Domain.ConfigFixtures.set_config(
-      account,
-      :openid_connect_providers,
-      [
-        %{
-          "id" => "vault",
-          "discovery_document_uri" =>
-            "http://127.0.0.1:8200/v1/identity/oidc/provider/default/.well-known/openid-configuration",
-          "client_id" => params["data"]["client_id"],
-          "client_secret" => params["data"]["client_secret"],
-          "redirect_uri" => "#{endpoint_url}/auth/oidc/vault/callback/",
-          "response_type" => "code",
-          "scope" => "openid email offline_access",
-          "label" => "OIDC Vault"
-        }
-        |> Map.merge(attrs_overrides)
-      ]
-    )
+    attrs = %{
+      "discovery_document_uri" =>
+        "#{@vault_endpoint}/v1/identity/oidc/provider/default/.well-known/openid-configuration",
+      "client_id" => params["data"]["client_id"],
+      "client_secret" => params["data"]["client_secret"],
+      "response_type" => "code",
+      "scope" => "openid email offline_access"
+    }
 
-    :ok
+    {provider, nil} =
+      AuthFixtures.create_openid_connect_provider({nil, [attrs]}, name: "Vault", account: account)
+
+    :ok =
+      request(:put, "identity/oidc/client/firezone", %{
+        redirect_uris:
+          "#{endpoint_url}/#{account.id}/sign_in/providers/#{provider.id}/handle_callback"
+      })
+
+    provider
   end
 
   def userpass_flow(session, oidc_login, oidc_password) do
     session
     |> assert_text("Method")
-    |> fill_in(Query.css("#select-ember40"), with: "userpass")
+    |> fill_in(Query.css("[data-test-select=\"auth-method\"]"), with: "userpass")
     |> fill_in(Query.fillable_field("username"), with: oidc_login)
     |> fill_in(Query.fillable_field("password"), with: oidc_password)
     |> click(Query.button("Sign In"))
   end
 
   defp request(method, path, params_or_body \\ nil) do
+    content_type =
+      if method == :patch,
+        do: "application/merge-patch+json",
+        else: "application/octet-stream"
+
     headers = [
       {"X-Vault-Request", "true"},
-      {"X-Vault-Token", @vault_root_token}
+      {"X-Vault-Token", @vault_root_token},
+      {"Content-Type", content_type}
     ]
 
     body =

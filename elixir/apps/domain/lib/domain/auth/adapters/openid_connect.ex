@@ -100,7 +100,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
 
     with {:ok, tokens} <- OpenIDConnect.fetch_tokens(config, token_params),
          {:ok, claims} <- OpenIDConnect.verify(config, tokens["id_token"]),
-         {:ok, userinfo} <- OpenIDConnect.fetch_userinfo(config, tokens["id_token"]) do
+         {:ok, userinfo} <- OpenIDConnect.fetch_userinfo(config, tokens["access_token"]) do
       # TODO: sync groups
       expires_at =
         cond do
@@ -114,8 +114,9 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
             nil
         end
 
-      # `sub` claim usually contains either an email or an opaque app-specific identifier
-      provider_identifier = claims["sub"]
+      # we try to use `email` if it's exposed, but fall back to OpenID Connect `sub` claim
+      # that usually contains either an email or an opaque app-specific identifier
+      provider_identifier = claims["email"] || claims["sub"]
 
       Identity.Query.by_provider_id(provider.id)
       |> Identity.Query.by_provider_identifier(provider_identifier)

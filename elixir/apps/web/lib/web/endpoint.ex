@@ -1,6 +1,10 @@
 defmodule Web.Endpoint do
   use Phoenix.Endpoint, otp_app: :web
 
+  if Application.compile_env(:domain, :sql_sandbox) do
+    plug Phoenix.Ecto.SQL.Sandbox
+  end
+
   plug Plug.RewriteOn, [:x_forwarded_host, :x_forwarded_port, :x_forwarded_proto]
   plug Plug.MethodOverride
   plug Web.Plugs.SecureHeaders

@@ -1,11 +1,11 @@
 defmodule Web.Auth.ProvidersLive do
-  use Web, :live_view
+  use Web, {:live_view, layout: {Web.Layouts, :public}}
   alias Domain.{Auth, Accounts}
 
   def render(assigns) do
     ~H"""
     <section class="bg-gray-50 dark:bg-gray-900">
-      <div class="flex flex-col items-center justify-center px-6 py-8 mx-auto md:h-screen lg:py-0">
+      <div class="flex flex-col items-center justify-center px-6 py-8 mx-auto lg:py-0">
         <.logo />
 
         <div class="w-full col-span-6 mx-auto bg-white rounded-lg shadow dark:bg-gray-800 md:mt-0 sm:max-w-lg xl:p-0">
@@ -14,31 +14,45 @@ defmodule Web.Auth.ProvidersLive do
               Welcome back
             </h1>
 
+            <.flash flash={@flash} kind={:error} />
             <.flash flash={@flash} kind={:info} />
 
-            <.providers_group_form
-              :if={adapter_enabled?(@providers_by_adapter, :openid_connect)}
-              adapter="openid_connect"
-              providers={@providers_by_adapter[:openid_connect]}
-            />
+            <.intersperse_blocks>
+              <:separator>
+                <.separator />
+              </:separator>
 
-            <.separator />
+              <:item :if={adapter_enabled?(@providers_by_adapter, :openid_connect)}>
+                <.providers_group_form
+                  adapter="openid_connect"
+                  providers={@providers_by_adapter[:openid_connect]}
+                />
+              </:item>
 
-            <.providers_group_form
-              :if={adapter_enabled?(@providers_by_adapter, :userpass)}
-              adapter="userpass"
-              provider={List.first(@providers_by_adapter[:userpass])}
-              flash={@flash}
-            />
+              <:item :if={adapter_enabled?(@providers_by_adapter, :userpass)}>
+                <h3 class="text-m font-bold leading-tight tracking-tight text-gray-900 sm:text-xl dark:text-white">
+                  Sign in with username and password
+                </h3>
 
-            <.separator />
+                <.providers_group_form
+                  adapter="userpass"
+                  provider={List.first(@providers_by_adapter[:userpass])}
+                  flash={@flash}
+                />
+              </:item>
 
-            <.providers_group_form
-              :if={adapter_enabled?(@providers_by_adapter, :email)}
-              adapter="email"
-              provider={List.first(@providers_by_adapter[:email])}
-              flash={@flash}
-            />
+              <:item :if={adapter_enabled?(@providers_by_adapter, :email)}>
+                <h3 class="text-m font-bold leading-tight tracking-tight text-gray-900 sm:text-xl dark:text-white">
+                  Sign in with a magic link
+                </h3>
+
+                <.providers_group_form
+                  adapter="email"
+                  provider={List.first(@providers_by_adapter[:email])}
+                  flash={@flash}
+                />
+              </:item>
+            </.intersperse_blocks>
           </div>
         </div>
       </div>
@@ -70,9 +84,6 @@ defmodule Web.Auth.ProvidersLive do
     assigns = Map.put(assigns, :userpass_form, form)
 
     ~H"""
-    <.flash id="userpass_flash" flash={@flash} kind={:error} />
-    <.flash id="userpass_flash" flash={@flash} kind={:info} />
-
     <.simple_form
       for={@userpass_form}
       action={~p"/#{@provider.account_id}/sign_in/providers/#{@provider.id}/verify_credentials"}
@@ -81,9 +92,9 @@ defmodule Web.Auth.ProvidersLive do
     >
       <.input
         field={@userpass_form[:provider_identifier]}
-        type="email"
-        label="Email"
-        placeholder="Enter your email"
+        type="text"
+        label="Username"
+        placeholder="Enter your username"
         required
       />
 
@@ -97,7 +108,7 @@ defmodule Web.Auth.ProvidersLive do
 
       <:actions>
         <.button phx-disable-with="Signing in..." class="w-full">
-          Sign in to your account
+          Sign in
         </.button>
       </:actions>
     </.simple_form>

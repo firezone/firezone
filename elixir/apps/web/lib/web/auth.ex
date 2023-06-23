@@ -1,12 +1,17 @@
 defmodule Web.Auth do
   use Web, :verified_routes
 
-  def signed_in_path(account_id), do: ~p"/#{account_id}/dashboard"
+  def signed_in_path(%{actor: %{type: :account_admin_user}} = subject),
+    do: ~p"/#{subject.account}/dashboard"
+
+  def signed_in_path(%{actor: %{type: :account_user}} = subject),
+    do: ~p"/#{subject.account}"
 
   def put_subject_in_session(conn, subject) do
     {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
 
     conn
+    |> Plug.Conn.put_session(:logged_in_at, DateTime.utc_now())
     |> Plug.Conn.put_session(:session_token, session_token)
     |> Plug.Conn.put_session(:live_socket_id, "actors_sessions:#{subject.actor.id}")
   end
@@ -74,10 +79,8 @@ defmodule Web.Auth do
   """
   def redirect_if_user_is_authenticated(%Plug.Conn{} = conn, _opts) do
     if conn.assigns[:subject] do
-      account_id = conn.assigns.subject.account.id
-
       conn
-      |> Phoenix.Controller.redirect(to: signed_in_path(account_id))
+      |> Phoenix.Controller.redirect(to: signed_in_path(conn.assigns.subject))
       |> Plug.Conn.halt()
     else
       conn
@@ -168,8 +171,7 @@ defmodule Web.Auth do
     socket = mount_subject(socket, params, session)
 
     if socket.assigns.subject do
-      account_id = socket.assigns.subject.account.id
-      {:halt, Phoenix.LiveView.redirect(socket, to: signed_in_path(account_id))}
+      {:halt, Phoenix.LiveView.redirect(socket, to: signed_in_path(socket.assigns.subject))}
     else
       {:cont, socket}
     end

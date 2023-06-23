@@ -520,9 +520,8 @@ defmodule Web.CoreComponents do
     <div
       :if={msg = render_slot(@inner_block) || Phoenix.Flash.get(@flash, @kind)}
       id={@id}
-      phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id}")}
       class={[
-        "p-4 mb-4 text-sm rounded-lg ",
+        "p-4 mb-4 text-sm rounded-lg flash-#{@kind}",
         @kind == :info && "text-yellow-800 bg-yellow-50 dark:bg-gray-800 dark:text-yellow-300",
         @kind == :error && "text-red-800 bg-red-50 dark:bg-gray-800 dark:text-red-400"
       ]}
@@ -591,7 +590,7 @@ defmodule Web.CoreComponents do
   def simple_form(assigns) do
     ~H"""
     <.form :let={f} for={@for} as={@as} {@rest}>
-      <div class="mt-10 space-y-8 bg-white">
+      <div class="space-y-8 bg-white">
         <%= render_slot(@inner_block, f) %>
         <div :for={action <- @actions} class="mt-2 flex items-center justify-between gap-6">
           <%= render_slot(action, f) %>
@@ -987,6 +986,54 @@ defmodule Web.CoreComponents do
       src={"https://www.gravatar.com/avatar/#{Base.encode16(:crypto.hash(:md5, @email), case: :lower)}?s=#{@size}&d=retro"}
       {@rest}
     />
+    """
+  end
+
+  @doc """
+  Intersperses separator slot between a list of items.
+
+  Useful when you need to add a separator between items such as when
+  rendering breadcrumbs for navigation. Provides each item to the
+  inner block.
+
+  ## Examples
+
+  ```heex
+  <.intersperse :let={item}>
+    <:separator>
+      <span class="sep">|</span>
+    </:separator>
+
+    <:item>
+      home
+    </:item>
+
+    <:item>
+      profile
+    </:item>
+
+    <:item>
+      settings
+    </:item>
+  </.intersperse>
+  ```
+
+  Renders the following markup:
+
+      home <span class="sep">|</span> profile <span class="sep">|</span> settings
+  """
+  slot :separator, required: true, doc: "the slot for the separator"
+  slot :item, required: true, doc: "the slots to intersperse with separators"
+
+  def intersperse_blocks(assigns) do
+    ~H"""
+    <%= for item <- Enum.intersperse(@item, :separator) do %>
+      <%= if item == :separator do %>
+        <%= render_slot(@separator) %>
+      <% else %>
+        <%= render_slot(item) %>
+      <% end %>
+    <% end %>
     """
   end
 

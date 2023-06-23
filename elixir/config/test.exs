@@ -27,7 +27,7 @@ config :domain, Domain.ConnectivityChecks, enabled: false
 ###############################
 
 config :web, Web.Endpoint,
-  http: [port: 14_000],
+  http: [port: 13_000],
   server: true
 
 ###############################
@@ -35,13 +35,13 @@ config :web, Web.Endpoint,
 ###############################
 
 config :api, API.Endpoint,
-  http: [port: 14_001],
+  http: [port: 13_001],
   server: true
 
 ###############################
 ##### Third-party configs #####
 ###############################
-config :web, Web.Mailer, adapter: Web.MailerTestAdapter
+config :web, Web.Mailer, adapter: Web.Mailer.TestAdapter
 
 config :logger, level: :warning
 

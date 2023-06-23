@@ -1,5 +1,5 @@
 defmodule Web.Auth.EmailLive do
-  use Web, :live_view
+  use Web, {:live_view, layout: {Web.Layouts, :public}}
 
   def render(assigns) do
     ~H"""

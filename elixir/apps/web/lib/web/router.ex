@@ -44,8 +44,10 @@ defmodule Web.Router do
     pipe_through [:browser, :redirect_if_user_is_authenticated]
 
     live_session :redirect_if_user_is_authenticated,
-      on_mount: [{Web.Auth, :redirect_if_user_is_authenticated}],
-      layout: {Web.Layouts, :public} do
+      on_mount: [
+        Web.Sandbox,
+        {Web.Auth, :redirect_if_user_is_authenticated}
+      ] do
       live "/", Auth.ProvidersLive, :new
 
       # Adapter-specific routes
@@ -71,13 +73,23 @@ defmodule Web.Router do
     pipe_through [:browser]
 
     get "/sign_out", AuthController, :sign_out
+
+    live_session :landing,
+      on_mount: [Web.Sandbox] do
+      live "/", LandingLive
+    end
   end
 
   scope "/:account_id", Web do
+    # TODO: check actor type here too
     pipe_through [:browser, :require_authenticated_user]
 
     live_session :require_authenticated_user,
-      on_mount: [{Web.Auth, :require_authenticated_user}] do
+      on_mount: [
+        Web.Sandbox,
+        # TODO: check actor type here too
+        {Web.Auth, :require_authenticated_user}
+      ] do
       live "/dashboard", DashboardLive
     end
   end
