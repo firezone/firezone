@@ -357,6 +357,7 @@ jobs:
         run: mix deps.compile --skip-umbrella-children
       - name: Compile Application
         run: mix compile
+      - uses: pnpm/action-setup@v2
       - name: Install Front-End Dependencies
         run: |
           cd apps/web
