@@ -1,4 +1,4 @@
-defmodule Web.ResourcesLive.New do
+defmodule Web.ResourcesLive.Edit do
   use Web, :live_view
 
   def render(assigns) do
@@ -8,17 +8,18 @@ defmodule Web.ResourcesLive.New do
         <.breadcrumbs entries={[
           %{label: "Home", path: ~p"/"},
           %{label: "Resources", path: ~p"/resources"},
-          %{label: "Add resource", path: ~p"/resources/new"}
+          %{label: "GitLab", path: ~p"/resources/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"},
+          %{label: "Edit", path: ~p"/resources/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89/edit"}
         ]} />
       </:breadcrumbs>
       <:title>
-        Add a new Resource
+        Edit Resource
       </:title>
     </.section_header>
-    <!-- Add Resource -->
+    <!-- Update Resource -->
     <section class="bg-white dark:bg-gray-900">
       <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-        <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">Resource details</h2>
+        <h2 class="mb-4 text-xl font-bold text-gray-900 dark:text-white">Edit Resource details</h2>
         <form action="#">
           <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
             <div>
@@ -31,7 +32,7 @@ defmodule Web.ResourcesLive.New do
                 name="address"
                 id="resource-address"
                 class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary-600 focus:border-primary-600 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500"
-                placeholder="Enter IP address, CIDR, or DNS name"
+                value="www.gitlab.com"
                 required
               />
             </div>
@@ -44,7 +45,7 @@ defmodule Web.ResourcesLive.New do
                 name="name"
                 id="resource-name"
                 class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary-600 focus:border-primary-600 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500"
-                placeholder="Name this Resource"
+                value="GitLab"
                 required
               />
             </div>
@@ -58,7 +59,6 @@ defmodule Web.ResourcesLive.New do
                   type="radio"
                   name="traffic-filter"
                   value="none"
-                  checked
                   class="w-4 h-4 border-gray-300 focus:ring-2 focus:ring-blue-300 dark:focus:ring-blue-600 dark:focus:bg-blue-600 dark:bg-gray-700 dark:border-gray-600"
                 />
                 <label
@@ -98,10 +98,11 @@ defmodule Web.ResourcesLive.New do
                   TCP
                 </label>
                 <input
+                  disabled
                   placeholder="Enter port range(s)"
                   id="tcp-port"
                   name="tcp-port"
-                  class="ml-8 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary-600 focus:border-primary-600 block w-auto p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500"
+                  class="ml-8 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary-600 focus:border-primary-600 block w-48 p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500"
                 />
               </div>
               <div class="h-12 flex items-center">
@@ -111,6 +112,7 @@ defmodule Web.ResourcesLive.New do
                   name="traffic-filter"
                   value="udp"
                   class="w-4 h-4 border-gray-300 focus:ring-2 focus:ring-blue-300 dark:focus:ring-blue-600 dark:focus:bg-blue-600 dark:bg-gray-700 dark:border-gray-600"
+                  checked
                 />
                 <label
                   for="traffic-filter-option-4"
@@ -119,10 +121,11 @@ defmodule Web.ResourcesLive.New do
                   UDP
                 </label>
                 <input
+                  value="53"
                   placeholder="Enter port range(s)"
                   id="udp-port"
                   name="udp-port"
-                  class="ml-8 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary-600 focus:border-primary-600 block w-auto p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500"
+                  class="ml-8 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary-600 focus:border-primary-600 block w-48 p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500"
                 />
               </div>
             </div>
