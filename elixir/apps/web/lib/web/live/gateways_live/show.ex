@@ -161,7 +161,7 @@ defmodule Web.GatewaysLive.Show do
         <thead class="text-xs text-gray-900 uppercase dark:text-gray-400">
           <tr>
             <th scope="col" class="px-6 py-3">
-              Label
+              Name
             </th>
             <th scope="col" class="px-6 py-3">
               Address
@@ -211,7 +211,7 @@ defmodule Web.GatewaysLive.Show do
       </:title>
       <:actions>
         <.delete_button>
-          Delete gateway
+          Delete Gateway
         </.delete_button>
       </:actions>
     </.section_header>
