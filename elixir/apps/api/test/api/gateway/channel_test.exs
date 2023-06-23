@@ -14,7 +14,7 @@ defmodule API.Gateway.ChannelTest do
     resource =
       ResourcesFixtures.create_resource(
         account: account,
-        gateways: [%{gateway_id: gateway.id}]
+        gateway_groups: [%{gateway_group_id: gateway.group_id}]
       )
 
     {:ok, _, socket} =
@@ -38,8 +38,8 @@ defmodule API.Gateway.ChannelTest do
   end
 
   describe "join/3" do
-    test "tracks presence after join", %{gateway: gateway} do
-      presence = Domain.Gateways.Presence.list("gateways")
+    test "tracks presence after join", %{account: account, gateway: gateway} do
+      presence = Domain.Gateways.Presence.list("gateways:#{account.id}")
 
       assert %{metas: [%{online_at: online_at, phx_ref: _ref}]} = Map.fetch!(presence, gateway.id)
       assert is_number(online_at)

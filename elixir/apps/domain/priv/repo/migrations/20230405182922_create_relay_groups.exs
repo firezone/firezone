@@ -7,7 +7,7 @@ defmodule Domain.Repo.Migrations.CreateRelayGroups do
 
       add(:name, :string, null: false)
 
-      add(:account_id, references(:accounts, type: :binary_id), null: false)
+      add(:account_id, references(:accounts, type: :binary_id))
 
       add(:deleted_at, :utc_datetime_usec)
       timestamps(type: :utc_datetime_usec)
@@ -15,5 +15,12 @@ defmodule Domain.Repo.Migrations.CreateRelayGroups do
 
     # Used to enforce unique names
     create(index(:relay_groups, [:account_id, :name], unique: true, where: "deleted_at IS NULL"))
+
+    create(
+      index(:relay_groups, [:name],
+        unique: true,
+        where: "deleted_at IS NULL AND account_id IS NULL"
+      )
+    )
   end
 end

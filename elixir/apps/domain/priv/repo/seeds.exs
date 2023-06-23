@@ -1,7 +1,13 @@
 alias Domain.{Repo, Accounts, Auth, Actors, Relays, Gateways, Resources}
 
 {:ok, account} = Accounts.create_account(%{name: "Firezone Account"})
-{:ok, _account} = Accounts.create_account(%{name: "Other Corp Account"})
+{:ok, other_account} = Accounts.create_account(%{name: "Other Corp Account"})
+
+IO.puts("Created accounts: ")
+
+for account <- [account, other_account] do
+  IO.puts("  #{account.id}: #{account.name}")
+end
 
 {:ok, email_provider} =
   Auth.create_provider(account, %{
@@ -35,12 +41,14 @@ admin_actor_email = "firezone@localhost"
 
 {:ok, unprivileged_actor} =
   Actors.create_actor(email_provider, unprivileged_actor_email, %{
-    type: :account_user
+    type: :account_user,
+    name: "Firezone Unprivileged"
   })
 
 {:ok, admin_actor} =
   Actors.create_actor(email_provider, admin_actor_email, %{
-    type: :account_admin_user
+    type: :account_admin_user,
+    name: "Firezone Admin"
   })
 
 {:ok, _unprivileged_actor_userpass_identity} =
@@ -135,6 +143,7 @@ IO.puts("")
     %{
       type: :dns,
       address: "gitlab.mycorp.com",
+      # TODO: this is gateway group reference not gateway reference
       connections: [%{gateway_id: gateway.id}]
     },
     admin_subject

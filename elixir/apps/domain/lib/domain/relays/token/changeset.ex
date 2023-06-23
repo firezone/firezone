@@ -3,13 +3,17 @@ defmodule Domain.Relays.Token.Changeset do
   alias Domain.Accounts
   alias Domain.Relays
 
-  def create_changeset(%Accounts.Account{} = account) do
+  def create_changeset do
     %Relays.Token{}
     |> change()
     |> put_change(:value, Domain.Crypto.rand_string(64))
     |> put_hash(:value, to: :hash)
     |> assoc_constraint(:group)
     |> check_constraint(:hash, name: :hash_not_null, message: "can't be blank")
+  end
+
+  def create_changeset(%Accounts.Account{} = account) do
+    create_changeset()
     |> put_change(:account_id, account.id)
   end
 

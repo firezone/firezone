@@ -78,6 +78,12 @@ Now you can verify that it's working by connecting to a websocket:
 </details>
 <br />
 
+You can reset the database (eg. when there is a migration that breaks data model for unreleased versions) using following command:
+
+```bash
+❯ docker-compose run elixir /bin/sh -c "cd apps/domain && mix ecto.reset"
+```
+
 Stopping everything is easy too:
 
 ```bash
