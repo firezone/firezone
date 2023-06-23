@@ -1,12 +1,26 @@
 alias Domain.{Repo, Accounts, Auth, Actors, Relays, Gateways, Resources}
 
+# This function is used to update fields if STATIC_SEEDS is set,
+# which helps with static docker-compose environment for local development.
+maybe_set = fn resource, field, value ->
+  if System.get_env("STATIC_SEEDS") == "true" do
+    Ecto.Changeset.change(resource, [{field, value}])
+    |> Repo.update!()
+  else
+    resource
+  end
+end
+
 {:ok, account} = Accounts.create_account(%{name: "Firezone Account"})
+account = maybe_set.(account, :id, "c89bcc8c-9392-4dae-a40d-888aef6d28e0")
+
 {:ok, other_account} = Accounts.create_account(%{name: "Other Corp Account"})
+other_account = maybe_set.(other_account, :id, "9b9290bf-e1bc-4dd3-b401-511908262690")
 
 IO.puts("Created accounts: ")
 
-for account <- [account, other_account] do
-  IO.puts("  #{account.id}: #{account.name}")
+for item <- [account, other_account] do
+  IO.puts("  #{item.id}: #{item.name}")
 end
 
 {:ok, email_provider} =
@@ -81,7 +95,7 @@ for {type, login, password, email_token} <- [
        unprivileged_actor_token},
       {admin_actor.type, admin_actor_email, "Firezone1234", admin_actor_token}
     ] do
-  IO.puts("  #{login}, #{type}, password: #{password}, email token: #{email_token}")
+  IO.puts("  #{login}, #{type}, password: #{password}, email token: #{email_token} (exp in 15m)")
 end
 
 IO.puts("")
@@ -91,8 +105,17 @@ relay_group =
   |> Relays.Group.Changeset.create_changeset(%{name: "mycorp-aws-relays", tokens: [%{}]})
   |> Repo.insert!()
 
+relay_group_token = hd(relay_group.tokens)
+
+relay_group_token =
+  maybe_set.(
+    relay_group_token,
+    :hash,
+    "$argon2id$v=19$m=131072,t=8,p=4$HrYQIOkgW3Qm7R3pUQDJeQ$x5PfPHm1Io4R5okPGGLCF8BlPXlvflv8gCOGaCY8sMc"
+  )
+
 IO.puts("Created relay groups:")
-IO.puts("  #{relay_group.name} token: #{Relays.encode_token!(hd(relay_group.tokens))}")
+IO.puts("  #{relay_group.name} token: #{Relays.encode_token!(relay_group_token)}")
 IO.puts("")
 
 {:ok, relay} =
@@ -113,12 +136,17 @@ gateway_group =
   |> Gateways.Group.Changeset.create_changeset(%{name_prefix: "mycro-aws-gws", tokens: [%{}]})
   |> Repo.insert!()
 
+gateway_group_token = hd(gateway_group.tokens)
+
+gateway_group_token =
+  maybe_set.(
+    gateway_group_token,
+    :hash,
+    "$argon2id$v=19$m=131072,t=8,p=4$WdmnkqoWWC3EwdPG4QOkaw$vwFJ4ICtSOMMn4vgvFOmpVPc3/dK9zMPV79xT46G1f8"
+  )
+
 IO.puts("Created gateway groups:")
-
-IO.puts(
-  "  #{gateway_group.name_prefix} token: #{Gateways.encode_token!(hd(gateway_group.tokens))}"
-)
-
+IO.puts("  #{gateway_group.name_prefix} token: #{Gateways.encode_token!(gateway_group_token)}")
 IO.puts("")
 
 {:ok, gateway} =
@@ -143,8 +171,7 @@ IO.puts("")
     %{
       type: :dns,
       address: "gitlab.mycorp.com",
-      # TODO: this is gateway group reference not gateway reference
-      connections: [%{gateway_id: gateway.id}]
+      connections: [%{gateway_group_id: gateway_group.id}]
     },
     admin_subject
   )
@@ -154,7 +181,7 @@ IO.puts("")
     %{
       type: :cidr,
       address: "172.172.0.1/16",
-      connections: [%{gateway_id: gateway.id}]
+      connections: [%{gateway_group_id: gateway_group.id}]
     },
     admin_subject
   )
