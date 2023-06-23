@@ -29,7 +29,7 @@ url = "2.4.0"
 serde = { version = "1.0.163", features = ["derive"] }
 
 [dev-dependencies]
-webrtc = "0.7.2"
+webrtc = { version = "0.8" }
 redis = { version = "0.23.0", default-features = false, features = ["tokio-comp"] }
 difference = "2.0.0"
 
