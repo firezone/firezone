@@ -1,0 +1,13 @@
+[package]
+name = "gateway"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+firezone-gateway-connlib = { path = "../libs/gateway" }
+url = { version = "2.3.1", default-features = false }
+tracing-subscriber = { version = "0.3" }
+tracing = { version = "0.1" }
+anyhow = { version = "1.0" }
