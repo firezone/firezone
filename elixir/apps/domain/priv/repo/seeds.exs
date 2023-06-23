@@ -71,14 +71,25 @@ admin_actor_email = "firezone@localhost"
     "password_confirmation" => "Firezone1234"
   })
 
-{:ok, _admin_actor_userpass_identity} =
+{:ok, admin_actor_userpass_identity} =
   Auth.create_identity(admin_actor, userpass_provider, admin_actor_email, %{
     "password" => "Firezone1234",
     "password_confirmation" => "Firezone1234"
   })
 
+admin_actor_userpass_identity =
+  maybe_set.(admin_actor_userpass_identity, :id, "7da7d1cd-111c-44a7-b5ac-4027b9d230e5")
+
 unprivileged_actor_token = hd(unprivileged_actor.identities).provider_virtual_state.sign_in_token
 admin_actor_token = hd(admin_actor.identities).provider_virtual_state.sign_in_token
+
+unprivileged_subject =
+  Auth.build_subject(
+    admin_actor_userpass_identity,
+    DateTime.utc_now() |> DateTime.add(365, :day),
+    "iOS/12.5 (iPhone) connlib/0.7.412",
+    {100, 64, 100, 58}
+  )
 
 admin_subject =
   Auth.build_subject(
@@ -187,7 +198,13 @@ IO.puts("")
   )
 
 IO.puts("Created resources:")
-
 IO.puts("  #{dns_resource.address} - DNS - #{dns_resource.ipv4} - gateways: #{gateway_name}")
 IO.puts("  #{cidr_resource.address} - CIDR - gateways: #{gateway_name}")
+IO.puts("")
+
+{:ok, unprivileged_subject_session_token} =
+  Auth.create_session_token_from_subject(unprivileged_subject)
+
+IO.puts("Created device tokens:")
+IO.puts("  #{unprivileged_actor_email} token: #{unprivileged_subject_session_token}")
 IO.puts("")
