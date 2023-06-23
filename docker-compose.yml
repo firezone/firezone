@@ -26,10 +26,11 @@ services:
       - app
 
   vault:
-    image: vault
+    image: vault:1.13.3
     environment:
       VAULT_ADDR: 'http://127.0.0.1:8200'
       VAULT_DEV_ROOT_TOKEN_ID: 'firezone'
+      VAULT_LOG_LEVEL: 'debug'
     ports:
       - 8200:8200/tcp
     cap_add:
