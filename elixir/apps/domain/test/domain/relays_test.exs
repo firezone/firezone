@@ -48,6 +48,14 @@ defmodule Domain.RelaysTest do
       assert fetched_group.id == group.id
     end
 
+    test "returns global group by id", %{
+      subject: subject
+    } do
+      group = RelaysFixtures.create_global_group()
+      assert {:ok, fetched_group} = fetch_group_by_id(group.id, subject)
+      assert fetched_group.id == group.id
+    end
+
     test "returns group that belongs to another actor", %{
       account: account,
       subject: subject
@@ -106,6 +114,12 @@ defmodule Domain.RelaysTest do
 
       assert {:ok, groups} = list_groups(subject)
       assert length(groups) == 2
+    end
+
+    test "returns global groups", %{subject: subject} do
+      RelaysFixtures.create_global_group()
+
+      assert {:ok, [_group]} = list_groups(subject)
     end
 
     test "returns error when subject has no permission to manage groups", %{
@@ -176,6 +190,43 @@ defmodule Domain.RelaysTest do
     end
   end
 
+  describe "create_global_group/1" do
+    test "returns error on empty attrs" do
+      assert {:error, changeset} = create_global_group(%{})
+      assert errors_on(changeset) == %{tokens: ["can't be blank"]}
+    end
+
+    test "returns error on invalid attrs" do
+      attrs = %{
+        name: String.duplicate("A", 65)
+      }
+
+      assert {:error, changeset} = create_global_group(attrs)
+
+      assert errors_on(changeset) == %{
+               tokens: ["can't be blank"],
+               name: ["should be at most 64 character(s)"]
+             }
+
+      RelaysFixtures.create_global_group(name: "foo")
+      attrs = %{name: "foo", tokens: [%{}]}
+      assert {:error, changeset} = create_global_group(attrs)
+      assert "has already been taken" in errors_on(changeset).name
+    end
+
+    test "creates a group" do
+      attrs = %{
+        name: "foo",
+        tokens: [%{}]
+      }
+
+      assert {:ok, group} = create_global_group(attrs)
+      assert group.id
+      assert group.name == "foo"
+      assert [%Relays.Token{}] = group.tokens
+    end
+  end
+
   describe "change_group/1" do
     test "returns changeset with given changes" do
       group = RelaysFixtures.create_group()
@@ -232,6 +283,12 @@ defmodule Domain.RelaysTest do
       assert group.name == "foo"
     end
 
+    test "does not allow updating global group", %{subject: subject} do
+      group = RelaysFixtures.create_global_group()
+      attrs = %{name: "foo"}
+      assert update_group(group, attrs, subject) == {:error, :unauthorized}
+    end
+
     test "returns error when subject has no permission to manage groups", %{
       account: account,
       subject: subject
@@ -261,6 +318,11 @@ defmodule Domain.RelaysTest do
 
       assert {:ok, deleted} = delete_group(group, subject)
       assert deleted.deleted_at
+    end
+
+    test "does not allow deleting global group", %{subject: subject} do
+      group = RelaysFixtures.create_global_group()
+      assert delete_group(group, subject) == {:error, :unauthorized}
     end
 
     test "deletes all tokens when group is deleted", %{account: account, subject: subject} do
@@ -428,9 +490,23 @@ defmodule Domain.RelaysTest do
       assert list_connected_relays_for_resource(resource) == {:ok, []}
     end
 
-    test "returns list of connected relays", %{account: account} do
+    test "returns list of connected account relays", %{account: account} do
       resource = ResourcesFixtures.create_resource(account: account)
       relay = RelaysFixtures.create_relay(account: account)
+      stamp_secret = Ecto.UUID.generate()
+
+      assert connect_relay(relay, stamp_secret) == :ok
+
+      assert {:ok, [connected_relay]} = list_connected_relays_for_resource(resource)
+
+      assert connected_relay.id == relay.id
+      assert connected_relay.stamp_secret == stamp_secret
+    end
+
+    test "returns list of connected global relays", %{account: account} do
+      resource = ResourcesFixtures.create_resource(account: account)
+      group = RelaysFixtures.create_global_group()
+      relay = RelaysFixtures.create_relay(group: group)
       stamp_secret = Ecto.UUID.generate()
 
       assert connect_relay(relay, stamp_secret) == :ok

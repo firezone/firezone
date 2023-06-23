@@ -40,12 +40,17 @@ defmodule Domain.Relays do
     change_group(%Group{}, attrs)
   end
 
-  def create_group(attrs \\ %{}, %Auth.Subject{} = subject) do
+  def create_group(attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()) do
       subject.account
       |> Group.Changeset.create_changeset(attrs)
       |> Repo.insert()
     end
+  end
+
+  def create_global_group(attrs) do
+    Group.Changeset.create_changeset(attrs)
+    |> Repo.insert()
   end
 
   def change_group(%Group{} = group, attrs \\ %{}) do
@@ -54,7 +59,13 @@ defmodule Domain.Relays do
     |> Group.Changeset.update_changeset(attrs)
   end
 
-  def update_group(%Group{} = group, attrs \\ %{}, %Auth.Subject{} = subject) do
+  def update_group(group, attrs \\ %{}, subject)
+
+  def update_group(%Group{account_id: nil}, _attrs, %Auth.Subject{}) do
+    {:error, :unauthorized}
+  end
+
+  def update_group(%Group{} = group, attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()) do
       group
       |> Repo.preload(:account)
@@ -63,10 +74,15 @@ defmodule Domain.Relays do
     end
   end
 
+  def delete_group(%Group{account_id: nil}, %Auth.Subject{}) do
+    {:error, :unauthorized}
+  end
+
   def delete_group(%Group{} = group, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()) do
       Group.Query.by_id(group.id)
       |> Authorizer.for_subject(subject)
+      |> Group.Query.by_account_id(subject.account.id)
       |> Repo.fetch_and_update(
         with: fn group ->
           :ok =
@@ -130,7 +146,11 @@ defmodule Domain.Relays do
   end
 
   def list_connected_relays_for_resource(%Resources.Resource{} = resource) do
-    connected_relays = Presence.list("relays")
+    connected_relays =
+      Map.merge(
+        Presence.list("relays:"),
+        Presence.list("relays:#{resource.account_id}")
+      )
 
     relays =
       connected_relays
@@ -207,7 +227,7 @@ defmodule Domain.Relays do
 
   def connect_relay(%Relay{} = relay, secret) do
     {:ok, _} =
-      Presence.track(self(), "relays", relay.id, %{
+      Presence.track(self(), "relays:#{relay.account_id}", relay.id, %{
         online_at: System.system_time(:second),
         secret: secret
       })

@@ -57,7 +57,9 @@ defmodule Domain.Repo.Migrations.CreateResourcesAndConnections do
         null: false
       )
 
-      add(:gateway_id, references(:gateways, type: :binary_id, on_delete: :delete_all),
+      add(
+        :gateway_group_id,
+        references(:gateway_groups, type: :binary_id, on_delete: :delete_all),
         primary_key: true,
         null: false
       )

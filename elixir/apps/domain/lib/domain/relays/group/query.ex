@@ -13,4 +13,12 @@ defmodule Domain.Relays.Group.Query do
   def by_account_id(queryable \\ all(), account_id) do
     where(queryable, [groups: groups], groups.account_id == ^account_id)
   end
+
+  def global_or_by_account_id(queryable \\ all(), account_id) do
+    where(
+      queryable,
+      [groups: groups],
+      groups.account_id == ^account_id or is_nil(groups.account_id)
+    )
+  end
 end

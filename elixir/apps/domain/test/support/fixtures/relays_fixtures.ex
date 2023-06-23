@@ -31,6 +31,12 @@ defmodule Domain.RelaysFixtures do
     group
   end
 
+  def create_global_group(attrs \\ %{}) do
+    attrs = group_attrs(attrs)
+    {:ok, group} = Relays.create_global_group(attrs)
+    group
+  end
+
   def delete_group(group) do
     group = Repo.preload(group, :account)
     actor = ActorsFixtures.create_actor(type: :account_admin_user, account: group.account)

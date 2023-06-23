@@ -35,7 +35,13 @@ defmodule Domain.Gateways.Gateway.Query do
   def with_joined_connections(queryable \\ all()) do
     with_named_binding(queryable, :connections, fn queryable, binding ->
       queryable
-      |> join(:inner, [gateways: gateways], connections in assoc(gateways, ^binding), as: ^binding)
+      |> join(
+        :inner,
+        [gateways: gateways],
+        connections in ^Domain.Resources.Connection.Query.all(),
+        on: connections.gateway_group_id == gateways.group_id,
+        as: ^binding
+      )
     end)
   end
 

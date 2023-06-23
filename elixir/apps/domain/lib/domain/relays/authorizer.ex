@@ -27,10 +27,10 @@ defmodule Domain.Relays.Authorizer do
   defp by_account_id(queryable, subject) do
     cond do
       Ecto.Query.has_named_binding?(queryable, :groups) ->
-        Group.Query.by_account_id(queryable, subject.account.id)
+        Group.Query.global_or_by_account_id(queryable, subject.account.id)
 
       Ecto.Query.has_named_binding?(queryable, :relays) ->
-        Relay.Query.by_account_id(queryable, subject.account.id)
+        Relay.Query.global_or_by_account_id(queryable, subject.account.id)
     end
   end
 end

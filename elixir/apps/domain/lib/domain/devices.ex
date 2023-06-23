@@ -161,7 +161,7 @@ defmodule Domain.Devices do
     Phoenix.PubSub.subscribe(Domain.PubSub, "actor:#{device.actor_id}")
 
     {:ok, _} =
-      Presence.track(self(), "devices", device.id, %{
+      Presence.track(self(), "devices:#{device.account_id}", device.id, %{
         online_at: System.system_time(:second)
       })
 

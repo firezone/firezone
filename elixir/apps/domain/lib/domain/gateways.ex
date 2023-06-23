@@ -130,7 +130,7 @@ defmodule Domain.Gateways do
   end
 
   def list_connected_gateways_for_resource(%Resources.Resource{} = resource) do
-    connected_gateways = Presence.list("gateways")
+    connected_gateways = Presence.list("gateways:#{resource.account_id}")
 
     gateways =
       connected_gateways
@@ -223,7 +223,7 @@ defmodule Domain.Gateways do
 
   def connect_gateway(%Gateway{} = gateway) do
     {:ok, _} =
-      Presence.track(self(), "gateways", gateway.id, %{
+      Presence.track(self(), "gateways:#{gateway.account_id}", gateway.id, %{
         online_at: System.system_time(:second)
       })
 
