@@ -317,6 +317,11 @@ jobs:
         with:
           otp-version: "25"
           elixir-version: "1.14"
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 18
+      - uses: pnpm/action-setup@v2
+        version: 8
       - uses: actions/checkout@v3
       - uses: actions/cache@v3
         name: Elixir Deps Cache
@@ -357,7 +362,6 @@ jobs:
         run: mix deps.compile --skip-umbrella-children
       - name: Compile Application
         run: mix compile
-      - uses: pnpm/action-setup@v2
       - name: Install Front-End Dependencies
         run: |
           cd apps/web
