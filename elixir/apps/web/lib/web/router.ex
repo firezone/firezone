@@ -96,15 +96,7 @@ defmodule Web.Router do
         {Web.Auth, :ensure_account_admin_user_actor}
       ] do
       live "/dashboard", DashboardLive
-    end
-  end
 
-  scope "/", Web do
-    pipe_through [:browser, :ensure_authenticated]
-
-    get "/", AuthController, :sign_out
-
-    live_session :ensure_authenticated2 do
       # Users
       live "/users", UsersLive.Index
       live "/users/new", UsersLive.New
