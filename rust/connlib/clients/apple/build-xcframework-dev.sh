@@ -1,3 +1,6 @@
+# For more info:
+# https://github.com/firezone/firezone-apple/blob/main/USING_UNRELEASED_CONNLIB.md
+
 #!/bin/bash
 set -ex
 
