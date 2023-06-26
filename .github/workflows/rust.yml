@@ -68,10 +68,12 @@ jobs:
         run: rustup show
       - uses: Swatinem/rust-cache@v2
       - name: Run connlib checks and tests
+        env:
+          CARGO_ARGS: "--workspace --exclude connlib-apple --exclude relay"
         run: |
-          cargo check --workspace --exclude relay
-          cargo clippy --workspace --exclude relay -- -D clippy::all
-          cargo test --workspace --exclude relay
+          cargo check $CARGO_ARGS
+          cargo clippy $CARGO_ARGS -- -D clippy::all
+          cargo test $CARGO_ARGS
 
   build-android:
     needs:
@@ -131,6 +133,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Update toolchain
         run: rustup show
+      - name: Run connlib checks and tests
+        working-directory: ./rust/connlib/clients/apple
+        run: |
+          cargo check -p connlib-apple
+          cargo clippy -p connlib-apple -- -D clippy::all
+          cargo test -p connlib-apple
       - name: Setup lipo
         run: cargo install cargo-lipo
       - uses: actions/cache@v3
@@ -139,7 +147,6 @@ jobs:
           key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
           restore-keys: |
             ${{ runner.os }}-spm-
-
       - name: Build Connlib.xcframework.zip
         env:
           CONFIGURATION: Release
