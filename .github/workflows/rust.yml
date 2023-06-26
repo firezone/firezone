@@ -67,6 +67,15 @@ jobs:
       - name: Update toolchain
         run: rustup show
       - uses: Swatinem/rust-cache@v2
+      # TODO: Building *ring* from git requires us to install additional tools;
+      # once we're not using a forked *ring* this step can be removed.
+      - if: ${{ contains(matrix.runs-on, 'windows') }}
+        run: |
+          git clone `
+            --branch windows `
+            --depth 1 `
+            https://github.com/briansmith/ring-toolchain `
+            target/tools/windows
       - name: Run connlib checks and tests
         env:
           CARGO_ARGS: "--workspace --exclude connlib-apple --exclude relay"
