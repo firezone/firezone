@@ -212,7 +212,8 @@ defmodule Domain.Gateways do
     key_base = Keyword.fetch!(config, :key_base)
     salt = Keyword.fetch!(config, :salt)
 
-    with {:ok, {id, secret}} <- Plug.Crypto.verify(key_base, salt, encrypted_secret),
+    with {:ok, {id, secret}} <-
+           Plug.Crypto.verify(key_base, salt, encrypted_secret, max_age: :infinity),
          {:ok, token} <- use_token_by_id_and_secret(id, secret) do
       {:ok, token}
     else
