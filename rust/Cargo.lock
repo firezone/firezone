@@ -431,14 +431,14 @@ checksum = "89b2fd2a0dcf38d7971e2194b6b6eebab45ae01067456a7fd93d5547a61b70be"
 
 [[package]]
 name = "cc"
-version = "1.0.73"
-source = "git+https://github.com/youknowone/cc-rs?rev=99f4211ad8dcc4f74c9bcd9364b39850538c5cb6#99f4211ad8dcc4f74c9bcd9364b39850538c5cb6"
+version = "1.0.79"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "50d30906286121d95be3d479533b458f87493b30a4b5f79a607db8f5d11aa91f"
 
 [[package]]
 name = "cc"
 version = "1.0.79"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "50d30906286121d95be3d479533b458f87493b30a4b5f79a607db8f5d11aa91f"
+source = "git+https://github.com/youknowone/cc-rs?rev=4ca92100c25ac2df679f0cce11c4c3e830f2e455#4ca92100c25ac2df679f0cce11c4c3e830f2e455"
 
 [[package]]
 name = "ccm"
@@ -969,7 +969,7 @@ version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "aa68f1b12764fab894d2755d2518754e71b4fd80ecfb822714a1206c2aab39bf"
 dependencies = [
- "cc 1.0.79",
+ "cc 1.0.79 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc",
 ]
 
@@ -2225,9 +2225,9 @@ dependencies = [
 [[package]]
 name = "ring"
 version = "0.16.20"
-source = "git+https://github.com/firezone/ring?branch=v0.16.20-cc-fix#61c4591d68f22e80b44f634a2f66b311aa37fb27"
+source = "git+https://github.com/firezone/ring?branch=v0.16.20-cc-fix#517d757ec95b0a4d8241cf493eb93775abfe3c0f"
 dependencies = [
- "cc 1.0.73",
+ "cc 1.0.79 (git+https://github.com/youknowone/cc-rs?rev=4ca92100c25ac2df679f0cce11c4c3e830f2e455)",
  "libc",
  "once_cell",
  "spin",
@@ -3565,7 +3565,7 @@ dependencies = [
  "async-trait",
  "bitflags",
  "bytes",
- "cc 1.0.79",
+ "cc 1.0.79 (registry+https://github.com/rust-lang/crates.io-index)",
  "ipnet",
  "lazy_static",
  "libc",
