@@ -104,6 +104,7 @@ services:
       FZ_SECRET: "SFMyNTY.g2gDaANkAAhpZGVudGl0eW0AAAAkN2RhN2QxY2QtMTExYy00NGE3LWI1YWMtNDAyN2I5ZDIzMGU1bQAAACDZI3ehOZSu3JOSMREkvzrtKjs8jkrW6fpbVw9opDYmi24GANjCD-qIAWIB4TOA.XhoLEDjIzuv1SXEVUV6lfIHW12n5-J5aBDUKCl8ovMk"
     build:
       context: rust
+      dockerfile: Dockerfile.dev
       args:
         PACKAGE: headless
     image: firezone-headless
@@ -125,6 +126,7 @@ services:
       FZ_SECRET: "SFMyNTY.g2gDaAJtAAAAJDNjZWYwNTY2LWFkZmQtNDhmZS1hMGYxLTU4MDY3OTYwOGY2Zm0AAABAamp0enhSRkpQWkdCYy1vQ1o5RHkyRndqd2FIWE1BVWRwenVScjJzUnJvcHg3NS16bmhfeHBfNWJUNU9uby1yYm4GAJXr4emIAWIAAVGA.jz0s-NohxgdAXeRMjIQ9kLBOyd7CmKXWi2FHY-Op8GM"
     build:
       context: rust
+      dockerfile: Dockerfile.dev
       args:
         PACKAGE: gateway
     image: firezone-gateway
@@ -152,6 +154,7 @@ services:
     - "49152-65535/udp"
     build:
       context: rust
+      dockerfile: Dockerfile.dev
       args:
         PACKAGE: relay
     image: firezone-relay
