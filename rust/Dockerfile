@@ -3,8 +3,8 @@ ARG PACKAGE
 WORKDIR /build/
 COPY . ./
 RUN --mount=type=cache,target=./target \
-    --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/rustup \
+    --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/rustup,sharing=locked \
     apt update && apt install -y musl-tools && \
     cargo build -p $PACKAGE --release --target x86_64-unknown-linux-musl
 
