@@ -68,14 +68,22 @@ jobs:
         run: rustup show
       - uses: Swatinem/rust-cache@v2
       # TODO: Building *ring* from git requires us to install additional tools;
-      # once we're not using a forked *ring* this step can be removed.
+      # once we're not using a forked *ring* these 2 steps can be removed.
       - if: ${{ contains(matrix.runs-on, 'windows') }}
+        name: Install *ring* build tools
         run: |
           git clone `
             --branch windows `
             --depth 1 `
             https://github.com/briansmith/ring-toolchain `
             target/tools/windows
+      # The repo above is for a newer version of the *ring* build script which
+      # expects different paths; instead of going through the trouble of
+      # copying the older installation script let's just move the exe.
+      - if: ${{ contains(matrix.runs-on, 'windows') }}
+        name: Move *ring* build tools
+        run: |
+          mv target/tools/windows/nasm/nasm.exe target/tools/nasm.exe
       - name: Run connlib checks and tests
         env:
           CARGO_ARGS: "--workspace --exclude connlib-apple --exclude relay"
