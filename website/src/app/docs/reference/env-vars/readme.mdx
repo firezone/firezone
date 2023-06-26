@@ -44,6 +44,7 @@ default). Required fields in **bold**.
 | PHOENIX_HTTP_PROTOCOL_OPTIONS    | Allows to override Cowboy HTTP server options.<br /> <br />Keep in mind though changing those limits can pose a security risk. Other times, browsers and proxies along the way may have equally strict limits, which means the request will still fail or the URL will be pruned.<br /> <br />You can see all supported options at https://ninenines.eu/docs/en/cowboy/2.5/manual/cowboy\_http/. | JSON-encoded map  | `{}`    |
 | PHOENIX_EXTERNAL_TRUSTED_PROXIES | List of trusted reverse proxies.<br /> <br />This is used to determine the correct IP address of the client when the application is behind a reverse proxy by skipping a trusted proxy IP from a list of possible source IPs.                                                                                                                                                                    | JSON-encoded list | `"[]"`  |
 | PHOENIX_PRIVATE_CLIENTS          | List of trusted clients.<br /> <br />This is used to determine the correct IP address of the client when the application is behind a reverse proxy by picking a trusted client IP from a list of possible source IPs.                                                                                                                                                                            | JSON-encoded list | `"[]"`  |
+| HTTP_CLIENT_SSL_OPTS             | JSON-encoded ssl options to pass to Erlang's [`ssl` module](https://www.erlang.org/doc/man/ssl.html).<br />. Most users don't need to override many, if any, SSL opts. Most commonly this is to use custom cacert files and TLS versions for self-hosted OIDC providers.                                                                                                                         | JSON-encoded map  | `{}`    |
 
 ### Database
 
@@ -107,7 +108,7 @@ All secrets should be a **base64-encoded string**.
 | -------------------- | --------------------------------------------------- | ------- | ------- |
 | MAX_DEVICES_PER_USER | Changes how many devices a user can have at a time. | integer | 10      |
 
-### Authorization
+### Authentication
 
 | Env Key                   | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Format            | Default                       |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------- | ----------------------------- |
@@ -121,11 +122,13 @@ All secrets should be a **base64-encoded string**.
 
 ### WireGuard
 
-| Env Key                | Description                                                     | Format  | Default |
-| ---------------------- | --------------------------------------------------------------- | ------- | ------- |
-| WIREGUARD_PORT         | A port on which WireGuard will listen for incoming connections. | integer | 51820   |
-| WIREGUARD_IPV4_ENABLED | Enable or disable IPv4 support for WireGuard.                   | boolean | true    |
-| WIREGUARD_IPV6_ENABLED | Enable or disable IPv6 support for WireGuard.                   | boolean | true    |
+| Env Key                   | Description                                                     | Format  | Default |
+| ------------------------- | --------------------------------------------------------------- | ------- | ------- |
+| WIREGUARD_PORT            | A port on which WireGuard will listen for incoming connections. | integer | 51820   |
+| WIREGUARD_IPV4_ENABLED    | Enable or disable IPv4 support for WireGuard.                   | boolean | true    |
+| WIREGUARD_IPV4_MASQUERADE | Enable or disable IPv4 masqeurading.                            | boolean | true    |
+| WIREGUARD_IPV6_ENABLED    | Enable or disable IPv6 support for WireGuard.                   | boolean | true    |
+| WIREGUARD_IPV6_MASQUERADE | Enable or disable IPv6 masqeurading.                            | boolean | true    |
 
 ### Outbound Emails
 
