@@ -28,6 +28,7 @@ defmodule Domain.Gateways.Gateway.Changeset do
     |> validate_base64(:public_key)
     |> validate_length(:public_key, is: @key_length)
     |> unique_constraint(:public_key, name: :gateways_account_id_public_key_index)
+    |> unique_constraint(:name_suffix, name: :gateways_account_id_group_id_name_suffix_index)
     |> unique_constraint(:ipv4)
     |> unique_constraint(:ipv6)
     |> put_change(:last_seen_at, DateTime.utc_now())
