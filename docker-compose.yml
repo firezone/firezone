@@ -45,7 +45,7 @@ services:
           "--spider",
           "--proxy",
           "off",
-          "http://localhost:8200/v1/sys/health?standbyok=true"
+          "http://127.0.0.1:8200/v1/sys/health?standbyok=true"
         ]
       interval: 10s
       timeout: 3s
