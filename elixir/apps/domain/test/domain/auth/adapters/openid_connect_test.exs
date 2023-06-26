@@ -251,7 +251,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       bypass: bypass
     } do
       {token, _claims} =
-        AuthFixtures.generate_openid_connect_token(provider, identity, %{"sub" => "foo@bar.com"})
+        AuthFixtures.generate_openid_connect_token(provider, identity, %{"email" => "foo@bar.com"})
 
       AuthFixtures.expect_refresh_token(bypass, %{
         "token_type" => "Bearer",
