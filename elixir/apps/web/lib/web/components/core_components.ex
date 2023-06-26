@@ -1022,9 +1022,9 @@ defmodule Web.CoreComponents do
     # with our gettext backend as first argument. Translations are
     # available in the errors.po file (as we use the "errors" domain).
     if count = opts[:count] do
-      Gettext.dngettext(TailwindtestWeb.Gettext, "errors", msg, msg, count, opts)
+      Gettext.dngettext(Web.Gettext, "errors", msg, msg, count, opts)
     else
-      Gettext.dgettext(TailwindtestWeb.Gettext, "errors", msg, opts)
+      Gettext.dgettext(Web.Gettext, "errors", msg, opts)
     end
   end
 
