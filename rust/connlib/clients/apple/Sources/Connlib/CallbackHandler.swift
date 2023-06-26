@@ -49,7 +49,7 @@ public class CallbackHandler {
         )
     }
 
-    func onSetTunnelAddresses(tunnelAddresses: TunnelAddresses) -> Bool {
+    func onConnect(tunnelAddresses: TunnelAddresses) -> Bool {
         let addresses4 = [tunnelAddresses.address4.toString()]
         let addresses6 = [tunnelAddresses.address6.toString()]
         let ipv4Routes =

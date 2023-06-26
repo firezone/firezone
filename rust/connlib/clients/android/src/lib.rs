@@ -34,7 +34,7 @@ impl Callbacks for CallbackHandler {
         todo!()
     }
 
-    fn on_set_tunnel_adresses(&self, _tunnel_addresses: TunnelAddresses) {
+    fn on_connect(&self, _tunnel_addresses: TunnelAddresses) {
         todo!()
     }
 
@@ -66,11 +66,11 @@ pub unsafe extern "system" fn Java_dev_firezone_connlib_Session_connect(
     let tunnel_addresses = env.new_string(tunnelAddressesJSON).unwrap();
     match env.call_method(
         callback,
-        "onSetTunnelAddresses",
+        "onConnect",
         "(Ljava/lang/String;)Z",
         &[JValue::from(&tunnel_addresses)],
     ) {
-        Ok(res) => log::trace!("`onSetTunnelAddresses` returned `{res:?}`"),
+        Ok(res) => log::trace!("`onConnect` returned `{res:?}`"),
         Err(err) => log::error!("Failed to call `setTunnelAddresses`: {err}"),
     }
 

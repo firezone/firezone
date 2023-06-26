@@ -15,7 +15,7 @@ impl Callbacks for CallbackHandler {
         todo!()
     }
 
-    fn on_set_tunnel_adresses(&self, _tunnel_addresses: TunnelAddresses) {
+    fn on_connect(&self, _tunnel_addresses: TunnelAddresses) {
         todo!()
     }
 
