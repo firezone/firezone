@@ -130,6 +130,7 @@ defmodule Web.AuthControllerTest do
 
       identity =
         AuthFixtures.create_identity(
+          actor_default_type: :account_admin_user,
           account: account,
           provider: provider,
           provider_virtual_state: %{"password" => password, "password_confirmation" => password}
@@ -322,7 +323,13 @@ defmodule Web.AuthControllerTest do
     } do
       account = AccountsFixtures.create_account()
       provider = AuthFixtures.create_email_provider(account: account)
-      identity = AuthFixtures.create_identity(account: account, provider: provider)
+
+      identity =
+        AuthFixtures.create_identity(
+          actor_default_type: :account_admin_user,
+          account: account,
+          provider: provider
+        )
 
       conn =
         get(conn, ~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", %{
@@ -450,7 +457,12 @@ defmodule Web.AuthControllerTest do
         AuthFixtures.start_openid_providers(["google"])
         |> AuthFixtures.create_openid_connect_provider(account: account)
 
-      identity = AuthFixtures.create_identity(account: account, provider: provider)
+      identity =
+        AuthFixtures.create_identity(
+          actor_default_type: :account_admin_user,
+          account: account,
+          provider: provider
+        )
 
       {token, _claims} = AuthFixtures.generate_openid_connect_token(provider, identity)
       AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
