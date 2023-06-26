@@ -101,7 +101,7 @@ config :api, API.Endpoint,
     path: nil
   ],
   render_errors: [
-    formats: [json: API.ErrorJSON],
+    formats: [json: API.ErrorView],
     layout: false
   ],
   secret_key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5SD",
