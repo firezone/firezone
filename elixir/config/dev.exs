@@ -53,7 +53,8 @@ config :web, Web.Plugs.SecureHeaders,
     "default-src 'self' 'nonce-${nonce}'",
     "img-src 'self' data: https://www.gravatar.com",
     "style-src 'self' 'unsafe-inline'",
-    "script-src 'self' 'unsafe-inline'"
+    "script-src 'self' 'unsafe-inline'",
+    "connect-src 'self' data: https://firezone.statuspage.io"
   ]
 
 ###############################
