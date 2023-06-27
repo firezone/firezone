@@ -332,7 +332,7 @@ networks:
   resources:
     ipam:
       config:
-        - subnet: 172.172.0.0/16
+        - subnet: 172.20.0.0/16
   app:
     enable_ipv6: true
     ipam:
