@@ -6,7 +6,7 @@ set -ex
 
 echo $SRC_ROOT
 
-for sdk in macosx; do
+for sdk in macosx iphoneos; do
   echo "Building for $sdk"
 
   xcodebuild archive \
@@ -20,8 +20,10 @@ done
 
 rm -rf ./Connlib.xcframework
 xcodebuild -create-xcframework \
+  -framework ./connlib-iphoneos.xcarchive/Products/Library/Frameworks/connlib.framework \
   -framework ./connlib-macosx.xcarchive/Products/Library/Frameworks/connlib.framework \
   -output ./Connlib.xcframework
 
 echo "Build successful. Removing temporary archives"
+rm -rf ./connlib-iphoneos.xcarchive
 rm -rf ./connlib-macosx.xcarchive
