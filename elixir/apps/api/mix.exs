@@ -56,9 +56,14 @@ defmodule API.MixProject do
 
       # Other deps
       {:jason, "~> 1.2"},
-      {:remote_ip, "~> 1.1"}
+      {:remote_ip, "~> 1.1"},
 
       # Test deps
+      {:credo, "~> 1.5", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.1", only: [:dev], runtime: false},
+      {:junit_formatter, "~> 3.3", only: [:test]},
+      {:mix_audit, "~> 2.1", only: [:dev, :test]},
+      {:sobelow, "~> 0.12", only: [:dev, :test]}
     ]
   end
 
