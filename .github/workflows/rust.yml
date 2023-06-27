@@ -67,6 +67,8 @@ jobs:
       - name: Update toolchain
         run: rustup show
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ./rust
       # TODO: Building *ring* from git requires us to install additional tools;
       # once we're not using a forked *ring* these 2 steps can be removed.
       - if: ${{ contains(matrix.runs-on, 'windows') }}
@@ -103,6 +105,8 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ./rust
       - name: Update toolchain
         run: rustup show
       - uses: actions/cache@v3
@@ -146,6 +150,8 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ./rust
       - name: Update toolchain
         run: rustup show
       - name: Run connlib checks and tests
