@@ -6,6 +6,79 @@ defmodule Domain.AuthTest do
   alias Domain.Auth.Authorizer
   alias Domain.{AccountsFixtures, AuthFixtures}
 
+  describe "fetch_active_provider_by_id/1" do
+    test "returns error when provider does not exist" do
+      assert fetch_active_provider_by_id(Ecto.UUID.generate()) == {:error, :not_found}
+    end
+
+    test "returns error when provider is disabled" do
+      account = AccountsFixtures.create_account()
+      AuthFixtures.create_userpass_provider(account: account)
+      provider = AuthFixtures.create_email_provider(account: account)
+
+      identity =
+        AuthFixtures.create_identity(
+          actor_default_type: :account_admin_user,
+          account: account,
+          provider: provider
+        )
+
+      subject = AuthFixtures.create_subject(identity)
+      {:ok, _provider} = disable_provider(provider, subject)
+
+      assert fetch_active_provider_by_id(provider.id) == {:error, :not_found}
+    end
+
+    test "returns error when provider is deleted" do
+      account = AccountsFixtures.create_account()
+      AuthFixtures.create_userpass_provider(account: account)
+      provider = AuthFixtures.create_email_provider(account: account)
+
+      identity =
+        AuthFixtures.create_identity(
+          actor_default_type: :account_admin_user,
+          account: account,
+          provider: provider
+        )
+
+      subject = AuthFixtures.create_subject(identity)
+      {:ok, _provider} = delete_provider(provider, subject)
+
+      assert fetch_active_provider_by_id(provider.id) == {:error, :not_found}
+    end
+
+    test "returns provider" do
+      provider = AuthFixtures.create_email_provider()
+      assert {:ok, fetched_provider} = fetch_active_provider_by_id(provider.id)
+      assert fetched_provider.id == provider.id
+    end
+  end
+
+  describe "list_active_providers_for_account/1" do
+    test "returns active providers for a given account" do
+      account = AccountsFixtures.create_account()
+
+      userpass_provider = AuthFixtures.create_userpass_provider(account: account)
+      email_provider = AuthFixtures.create_email_provider(account: account)
+      token_provider = AuthFixtures.create_token_provider(account: account)
+
+      identity =
+        AuthFixtures.create_identity(
+          actor_default_type: :account_admin_user,
+          account: account,
+          provider: email_provider
+        )
+
+      subject = AuthFixtures.create_subject(identity)
+
+      {:ok, _provider} = disable_provider(token_provider, subject)
+      {:ok, _provider} = delete_provider(email_provider, subject)
+
+      assert {:ok, [provider]} = list_active_providers_for_account(account)
+      assert provider.id == userpass_provider.id
+    end
+  end
+
   describe "create_provider/2" do
     setup do
       account = AccountsFixtures.create_account()

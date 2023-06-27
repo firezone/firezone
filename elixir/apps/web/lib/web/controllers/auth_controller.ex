@@ -27,7 +27,7 @@ defmodule Web.AuthController do
           "secret" => secret
         }
       }) do
-    with {:ok, provider} <- Domain.Auth.fetch_provider_by_id(provider_id),
+    with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
          {:ok, subject} <-
            Domain.Auth.sign_in(
              provider,
@@ -68,7 +68,7 @@ defmodule Web.AuthController do
         }
       }) do
     _ =
-      with {:ok, provider} <- Domain.Auth.fetch_provider_by_id(provider_id),
+      with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
            {:ok, identity} <-
              Domain.Auth.fetch_identity_by_provider_and_identifier(provider, provider_identifier),
            {:ok, identity} <- Domain.Auth.Adapters.Email.request_sign_in_token(identity) do
@@ -89,7 +89,7 @@ defmodule Web.AuthController do
         "identity_id" => identity_id,
         "secret" => secret
       }) do
-    with {:ok, provider} <- Domain.Auth.fetch_provider_by_id(provider_id),
+    with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
          {:ok, subject} <-
            Domain.Auth.sign_in(
              provider,
@@ -122,7 +122,7 @@ defmodule Web.AuthController do
   verification state to prevent various attacks on OpenID Connect.
   """
   def redirect_to_idp(conn, %{"account_id" => account_id, "provider_id" => provider_id}) do
-    with {:ok, provider} <- Domain.Auth.fetch_provider_by_id(provider_id) do
+    with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id) do
       redirect_url =
         url(~p"/#{provider.account_id}/sign_in/providers/#{provider.id}/handle_callback")
 
@@ -155,7 +155,7 @@ defmodule Web.AuthController do
     key = state_cookie_key(provider_id)
 
     with {:ok, code_verifier} <- fetch_verified_state(conn, key, state),
-         {:ok, provider} <- Domain.Auth.fetch_provider_by_id(provider_id),
+         {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
          payload =
            {
              url(~p"/#{account_id}/sign_in/providers/#{provider_id}/handle_callback"),

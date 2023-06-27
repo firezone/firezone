@@ -416,6 +416,23 @@ defmodule Web.AuthControllerTest do
   end
 
   describe "handle_idp_callback/2" do
+    setup context do
+      account = AccountsFixtures.create_account()
+
+      {provider, bypass} =
+        AuthFixtures.start_openid_providers(["google"])
+        |> AuthFixtures.create_openid_connect_provider(account: account)
+
+      conn = get(context.conn, ~p"/#{account.id}/sign_in/providers/#{provider.id}/redirect", %{})
+
+      %{
+        account: account,
+        provider: provider,
+        bypass: bypass,
+        redirected_conn: conn
+      }
+    end
+
     test "redirects with an error when state is invalid", %{conn: conn} do
       account_id = Ecto.UUID.generate()
       provider_id = Ecto.UUID.generate()
@@ -431,32 +448,70 @@ defmodule Web.AuthControllerTest do
       assert flash(conn, :error) == "Your session has expired, please try again."
     end
 
-    test "redirects with an error when provider does not exist", %{conn: conn} do
-      account = AccountsFixtures.create_account()
-      provider_id = Ecto.UUID.generate()
-      state = :erlang.term_to_binary({"foo", "bar"})
+    test "redirects with an error when state cookie does not exist", %{
+      account: account,
+      provider: provider,
+      redirected_conn: redirected_conn,
+      conn: conn
+    } do
+      cookie_key = "fz_auth_state_#{provider.id}"
+      redirected_conn = fetch_cookies(redirected_conn)
+      {state, _verifier} = redirected_conn.cookies[cookie_key] |> :erlang.binary_to_term([:safe])
+      %{value: signed_state} = redirected_conn.resp_cookies[cookie_key]
 
       conn =
         conn
-        |> put_req_cookie("fz_auth_state_#{provider_id}", state)
-        |> get(~p"/#{account.id}/sign_in/providers/#{provider_id}/handle_callback", %{
-          "state" => "foo",
+        |> put_req_cookie(cookie_key, signed_state)
+        |> get(~p"/#{account}/sign_in/providers/#{Ecto.UUID.generate()}/handle_callback", %{
+          "state" => state,
           "code" => "bar"
         })
 
-      assert redirected_to(conn) == "/#{account.id}/sign_in"
+      assert redirected_to(conn) == ~p"/#{account}/sign_in"
+      assert flash(conn, :error) == "Your session has expired, please try again."
+    end
+
+    test "redirects with an error when provider io disabled", %{
+      account: account,
+      provider: provider,
+      redirected_conn: redirected_conn,
+      conn: conn
+    } do
+      identity =
+        AuthFixtures.create_identity(
+          actor_default_type: :account_admin_user,
+          account: account,
+          provider: provider
+        )
+
+      subject = AuthFixtures.create_subject(identity)
+      AuthFixtures.create_userpass_provider(account: account)
+      {:ok, _provider} = Domain.Auth.disable_provider(provider, subject)
+
+      cookie_key = "fz_auth_state_#{provider.id}"
+      redirected_conn = fetch_cookies(redirected_conn)
+      {state, _verifier} = redirected_conn.cookies[cookie_key] |> :erlang.binary_to_term([:safe])
+      %{value: signed_state} = redirected_conn.resp_cookies[cookie_key]
+
+      conn =
+        conn
+        |> put_req_cookie(cookie_key, signed_state)
+        |> get(~p"/#{account}/sign_in/providers/#{provider}/handle_callback", %{
+          "state" => state,
+          "code" => "bar"
+        })
+
+      assert redirected_to(conn) == ~p"/#{account}/sign_in"
       assert flash(conn, :error) == "You can not use this method to sign in."
     end
 
     test "redirects to the dashboard when credentials are valid and return path is empty", %{
-      conn: conn
+      account: account,
+      provider: provider,
+      bypass: bypass,
+      conn: conn,
+      redirected_conn: redirected_conn
     } do
-      account = AccountsFixtures.create_account()
-
-      {provider, bypass} =
-        AuthFixtures.start_openid_providers(["google"])
-        |> AuthFixtures.create_openid_connect_provider(account: account)
-
       identity =
         AuthFixtures.create_identity(
           actor_default_type: :account_admin_user,
@@ -468,15 +523,18 @@ defmodule Web.AuthControllerTest do
       AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
       AuthFixtures.expect_userinfo(bypass)
 
-      state = :erlang.term_to_binary({"foo", "bar"})
+      cookie_key = "fz_auth_state_#{provider.id}"
+      redirected_conn = fetch_cookies(redirected_conn)
+      {state, _verifier} = redirected_conn.cookies[cookie_key] |> :erlang.binary_to_term([:safe])
+      %{value: signed_state} = redirected_conn.resp_cookies[cookie_key]
 
       conn =
         conn
-        |> put_req_cookie("fz_auth_state_#{provider.id}", state)
+        |> put_req_cookie(cookie_key, signed_state)
         |> put_session(:foo, "bar")
         |> put_session(:preferred_locale, "en_US")
         |> get(~p"/#{account.id}/sign_in/providers/#{provider.id}/handle_callback", %{
-          "state" => "foo",
+          "state" => state,
           "code" => "MyFakeCode"
         })
 

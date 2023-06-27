@@ -24,17 +24,19 @@ defmodule Domain.Auth do
 
   # Providers
 
-  def fetch_provider_by_id(id) do
+  def fetch_active_provider_by_id(id) do
     if Validator.valid_uuid?(id) do
       Provider.Query.by_id(id)
+      |> Provider.Query.not_disabled()
       |> Repo.fetch()
     else
       {:error, :not_found}
     end
   end
 
-  def list_providers_for_account(%Accounts.Account{} = account) do
+  def list_active_providers_for_account(%Accounts.Account{} = account) do
     Provider.Query.by_account_id(account.id)
+    |> Provider.Query.not_disabled()
     |> Repo.list()
   end
 
@@ -319,7 +321,7 @@ defmodule Domain.Auth do
          _remote_ip
        ) do
     with {:ok, identity} <- fetch_identity_by_id(identity_id),
-         {:ok, provider} <- fetch_provider_by_id(identity.provider_id),
+         {:ok, provider} <- fetch_active_provider_by_id(identity.provider_id),
          {:ok, identity, expires_at} <-
            Adapters.verify_secret(provider, identity, secret) do
       {:ok, identity, expires_at}

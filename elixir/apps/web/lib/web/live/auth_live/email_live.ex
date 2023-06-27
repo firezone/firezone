@@ -17,7 +17,7 @@ defmodule Web.Auth.EmailLive do
               Please click this link to proceed with your login.
             </p>
             <p>
-              Did not receive it? <a href="#">Resend email</a>.
+              Did not receive it? <a href="?reset">Resend email</a>.
             </p>
             <div class="flex">
               <.dev_email_provider_link url="https://mail.google.com/mail/" name="Gmail" />

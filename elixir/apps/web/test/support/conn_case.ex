@@ -22,12 +22,14 @@ defmodule Web.ConnCase do
   end
 
   setup _tags do
+    user_agent = "testing"
+
     conn =
       Phoenix.ConnTest.build_conn()
-      |> Plug.Conn.put_req_header("user-agent", "testing")
+      |> Plug.Conn.put_req_header("user-agent", user_agent)
       |> Plug.Test.init_test_session(%{})
 
-    {:ok, conn: conn}
+    {:ok, conn: conn, user_agent: user_agent}
   end
 
   def flash(conn, key) do

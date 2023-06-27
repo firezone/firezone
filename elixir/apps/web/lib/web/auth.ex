@@ -1,13 +1,14 @@
 defmodule Web.Auth do
   use Web, :verified_routes
+  alias Domain.Auth
 
-  def signed_in_path(%{actor: %{type: :account_admin_user}} = subject),
+  def signed_in_path(%Auth.Subject{actor: %{type: :account_admin_user}} = subject),
     do: ~p"/#{subject.account}/dashboard"
 
-  def signed_in_path(%{actor: %{type: :account_user}} = subject),
+  def signed_in_path(%Auth.Subject{actor: %{type: :account_user}} = subject),
     do: ~p"/#{subject.account}"
 
-  def put_subject_in_session(conn, subject) do
+  def put_subject_in_session(conn, %Auth.Subject{} = subject) do
     {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
 
     conn
@@ -37,7 +38,7 @@ defmodule Web.Auth do
   This function renews the session ID and erases the whole
   session to avoid fixation attacks.
   """
-  def renew_session(conn) do
+  def renew_session(%Plug.Conn{} = conn) do
     preferred_locale = Plug.Conn.get_session(conn, :preferred_locale)
 
     conn
@@ -63,7 +64,7 @@ defmodule Web.Auth do
   @doc """
   Fetches the session token from the session and assigns the subject to the connection.
   """
-  def fetch_subject(conn, _opts) do
+  def fetch_subject(%Plug.Conn{} = conn, _opts) do
     with token when not is_nil(token) <- Plug.Conn.get_session(conn, :session_token),
          {:ok, subject} <-
            Domain.Auth.sign_in(token, conn.assigns.user_agent, conn.remote_ip),
@@ -90,8 +91,7 @@ defmodule Web.Auth do
   @doc """
   Used for routes that require the user to be authenticated.
 
-  If you want to enforce the user email is confirmed before
-  they use the application at all, here would be a good place.
+  This plug will only work if there is an `account_id` in the path params.
   """
   def require_authenticated_user(%Plug.Conn{} = conn, _opts) do
     if conn.assigns[:subject] do
@@ -117,6 +117,8 @@ defmodule Web.Auth do
 
   @doc """
   Handles mounting and authenticating the actor in LiveViews.
+
+  Notice: every protected route should have `account_id` in the path params.
 
   ## `on_mount` arguments
 
@@ -145,7 +147,7 @@ defmodule Web.Auth do
   Or use the `live_session` of your router to invoke the on_mount callback:
 
       live_session :authenticated, on_mount: [{Web.UserAuth, :require_authenticated_user}] do
-        live "/profile", ProfileLive, :index
+        live "/:account_id/profile", ProfileLive, :index
       end
   """
   def on_mount(:mount_subject, params, session, socket) do

@@ -88,6 +88,7 @@ defmodule Web.Auth.ProvidersLive do
       for={@userpass_form}
       action={~p"/#{@provider.account_id}/sign_in/providers/#{@provider.id}/verify_credentials"}
       class="space-y-4 lg:space-y-6"
+      id="userpass_form"
       phx-update="ignore"
     >
       <.input
@@ -125,6 +126,7 @@ defmodule Web.Auth.ProvidersLive do
       for={@email_form}
       action={~p"/#{@provider.account_id}/sign_in/providers/#{@provider.id}/request_magic_link"}
       class="space-y-4 lg:space-y-6"
+      id="email_form"
       phx-update="ignore"
     >
       <.input
@@ -161,7 +163,7 @@ defmodule Web.Auth.ProvidersLive do
 
   def mount(%{"account_id" => account_id}, _session, socket) do
     with {:ok, account} <- Accounts.fetch_account_by_id(account_id),
-         {:ok, [_ | _] = providers} <- Auth.list_providers_for_account(account) do
+         {:ok, [_ | _] = providers} <- Auth.list_active_providers_for_account(account) do
       {:ok, socket,
        temporary_assigns: [
          account: account,
