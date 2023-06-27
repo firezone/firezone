@@ -17,7 +17,7 @@ use crate::{control::PhoenixChannel, error_type::ErrorType, messages::Key, Error
 // TODO: Not the most tidy trait for a control-plane.
 /// Trait that represents a control-plane.
 #[async_trait]
-pub trait ControlSession<T, U, CB: Callbacks + 'static> {
+pub trait ControlSession<T, U, CB: Callbacks> {
     /// Start control-plane with the given private-key in the background.
     async fn start(private_key: StaticSecret, callbacks: CB) -> Result<(Sender<T>, Receiver<U>)>;
 
@@ -31,7 +31,7 @@ pub trait ControlSession<T, U, CB: Callbacks + 'static> {
 /// A session is the entry-point for connlib, maintains the runtime and the tunnel.
 ///
 /// A session is created using [Session::connect], then to stop a session we use [Session::disconnect].
-pub struct Session<T, U, V, R, M, CB: Callbacks + 'static> {
+pub struct Session<T, U, V, R, M, CB: Callbacks> {
     runtime: Option<Runtime>,
     _phantom: PhantomData<(T, U, V, R, M, CB)>,
 }
