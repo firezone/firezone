@@ -24,7 +24,7 @@ ENV PACKAGE_NAME ${PACKAGE}
 # to move it inside, these are passed as the variables `$0`, `$1`, `$2`, etc...
 # this means that this will ignore after the first arguments
 # if we ever combine this with `CMD` in exec form  so always use shell form
-# (Note we could use shell-form here, but this is the same made explict)
+# (Note we could use shell-form here, but this is the same made explicit)
 ENTRYPOINT ["/bin/sh", "-c", "$PACKAGE_NAME $0"]
 # *sigh* if we don't add this $0 becomes /bin/sh in the command above
 CMD [""]
