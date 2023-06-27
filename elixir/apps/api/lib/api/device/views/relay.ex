@@ -8,7 +8,7 @@ defmodule API.Device.Views.Relay do
   def render(%Relays.Relay{} = relay, expires_at) do
     [
       maybe_render(relay, expires_at, relay.ipv4),
-      maybe_render(relay, expires_at, "[#{relay.ipv6}]")
+      maybe_render(relay, expires_at, relay.ipv6)
     ]
     |> List.flatten()
   end
@@ -25,15 +25,18 @@ defmodule API.Device.Views.Relay do
     [
       %{
         type: :stun,
-        uri: "stun:#{address}:#{relay.port}"
+        uri: "stun:#{format_address(address)}:#{relay.port}"
       },
       %{
         type: :turn,
-        uri: "turn:#{address}:#{relay.port}",
+        uri: "turn:#{format_address(address)}:#{relay.port}",
         username: username,
         password: password,
         expires_at: expires_at
       }
     ]
   end
+
+  defp format_address(%Postgrex.INET{address: address} = inet) when tuple_size(address) == 4, do: inet
+  defp format_address(%Postgrex.INET{address: address} = inet) when tuple_size(address) == 8, do: "[#{inet}]"
 end
