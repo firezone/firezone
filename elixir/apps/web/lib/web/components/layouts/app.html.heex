@@ -162,7 +162,7 @@
         <ul id="dropdown-pages" class="py-2 space-y-2">
           <li>
             <.link
-              navigate={~p"/users"}
+              navigate={~p"/#{@subject.account}/users"}
               class="flex items-center p-2 pl-11 w-full text-base font-medium text-gray-900 rounded-lg transition duration-75 group hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700"
             >
               Users
@@ -170,7 +170,7 @@
           </li>
           <li>
             <.link
-              navigate={~p"/groups"}
+              navigate={~p"/#{@subject.account}/groups"}
               class="flex items-center p-2 pl-11 w-full text-base font-medium text-gray-900 rounded-lg transition duration-75 group hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700"
             >
               Groups
@@ -178,7 +178,7 @@
           </li>
           <li>
             <.link
-              navigate={~p"/devices"}
+              navigate={~p"/#{@subject.account}/devices"}
               class="flex items-center p-2 pl-11 w-full text-base font-medium text-gray-900 rounded-lg transition duration-75 group hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700"
             >
               Devices
@@ -188,7 +188,7 @@
       </li>
       <li>
         <.link
-          navigate={~p"/gateways"}
+          navigate={~p"/#{@subject.account}/gateways"}
           class="flex items-center p-2 text-base font-medium text-gray-900 rounded-lg dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700 group"
         >
           <.icon
@@ -200,7 +200,7 @@
       </li>
       <li>
         <.link
-          navigate={~p"/resources"}
+          navigate={~p"/#{@subject.account}/resources"}
           class="flex items-center p-2 text-base font-medium text-gray-900 rounded-lg dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700 group"
         >
           <.icon
@@ -212,7 +212,7 @@
       </li>
       <li>
         <.link
-          navigate={~p"/policies"}
+          navigate={~p"/#{@subject.account}/policies"}
           class="flex items-center p-2 text-base font-medium text-gray-900 rounded-lg dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700 group"
         >
           <.icon
@@ -242,7 +242,7 @@
         <ul id="dropdown-settings" class="py-2 space-y-2">
           <li>
             <.link
-              navigate={~p"/settings/account"}
+              navigate={~p"/#{@subject.account}/settings/account"}
               class="flex items-center p-2 pl-11 w-full text-base font-medium text-gray-900 rounded-lg transition duration-75 group hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700"
             >
               Account
@@ -250,7 +250,7 @@
           </li>
           <li>
             <.link
-              navigate={~p"/settings/identity_providers"}
+              navigate={~p"/#{@subject.account}/settings/identity_providers"}
               class="flex items-center p-2 pl-11 w-full text-base font-medium text-gray-900 rounded-lg transition duration-75 group hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700"
             >
               Identity Providers
@@ -258,7 +258,7 @@
           </li>
           <li>
             <.link
-              navigate={~p"/settings/dns"}
+              navigate={~p"/#{@subject.account}/settings/dns"}
               class="flex items-center p-2 pl-11 w-full text-base font-medium text-gray-900 rounded-lg transition duration-75 group hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700"
             >
               DNS
@@ -266,7 +266,7 @@
           </li>
           <li>
             <.link
-              navigate={~p"/settings/api_tokens"}
+              navigate={~p"/#{@subject.account}/settings/api_tokens"}
               class="flex items-center p-2 pl-11 w-full text-base font-medium text-gray-900 rounded-lg transition duration-75 group hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700"
             >
               API
