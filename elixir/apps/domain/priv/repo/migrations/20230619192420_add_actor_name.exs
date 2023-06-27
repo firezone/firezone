@@ -3,7 +3,7 @@ defmodule Domain.Repo.Migrations.AddActorName do
 
   def change do
     alter table(:actors) do
-      add :name, :string, null: false
+      add(:name, :string, null: false)
     end
   end
 end

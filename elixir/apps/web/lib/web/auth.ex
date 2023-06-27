@@ -93,7 +93,7 @@ defmodule Web.Auth do
 
   This plug will only work if there is an `account_id` in the path params.
   """
-  def require_authenticated_user(%Plug.Conn{} = conn, _opts) do
+  def ensure_authenticated(%Plug.Conn{} = conn, _opts) do
     if conn.assigns[:subject] do
       conn
     else
@@ -125,7 +125,7 @@ defmodule Web.Auth do
     * `:mount_subject` - assigns user_agent and subject to the socket assigns based on
       session_token, or nil if there's no session_token or no matching user.
 
-    * `:require_authenticated_user` - authenticates the user from the session,
+    * `:ensure_authenticated` - authenticates the user from the session,
       and assigns the subject to socket assigns based on session_token.
       Redirects to login page if there's no logged user.
 
@@ -146,7 +146,7 @@ defmodule Web.Auth do
 
   Or use the `live_session` of your router to invoke the on_mount callback:
 
-      live_session :authenticated, on_mount: [{Web.UserAuth, :require_authenticated_user}] do
+      live_session :authenticated, on_mount: [{Web.UserAuth, :ensure_authenticated}] do
         live "/:account_id/profile", ProfileLive, :index
       end
   """
@@ -154,7 +154,7 @@ defmodule Web.Auth do
     {:cont, mount_subject(socket, params, session)}
   end
 
-  def on_mount(:require_authenticated_user, params, session, socket) do
+  def on_mount(:ensure_authenticated, params, session, socket) do
     socket = mount_subject(socket, params, session)
 
     if socket.assigns.subject do

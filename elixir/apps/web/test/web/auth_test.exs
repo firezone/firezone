@@ -1,4 +1,3 @@
-# require_authenticated_user -> ensure_authenticated
 defmodule Web.AuthTest do
   use Web.ConnCase, async: true
   import Web.Auth
@@ -171,7 +170,7 @@ defmodule Web.AuthTest do
     end
   end
 
-  describe "require_authenticated_user/2" do
+  describe "ensure_authenticated/2" do
     setup context do
       %{conn: %{context.conn | path_params: %{"account_id" => context.account.id}}}
     end
@@ -180,7 +179,7 @@ defmodule Web.AuthTest do
       conn =
         conn
         |> fetch_flash()
-        |> require_authenticated_user([])
+        |> ensure_authenticated([])
 
       assert conn.halted
       assert redirected_to(conn) == ~p"/#{account}/sign_in"
@@ -193,7 +192,7 @@ defmodule Web.AuthTest do
       halted_conn =
         %{conn | path_info: ["foo"], query_string: ""}
         |> fetch_flash()
-        |> require_authenticated_user([])
+        |> ensure_authenticated([])
 
       assert halted_conn.halted
       assert get_session(halted_conn, :user_return_to) == "/foo"
@@ -201,7 +200,7 @@ defmodule Web.AuthTest do
       halted_conn =
         %{conn | path_info: ["foo"], query_string: "bar=baz"}
         |> fetch_flash()
-        |> require_authenticated_user([])
+        |> ensure_authenticated([])
 
       assert halted_conn.halted
       assert get_session(halted_conn, :user_return_to) == "/foo?bar=baz"
@@ -209,7 +208,7 @@ defmodule Web.AuthTest do
       halted_conn =
         %{conn | path_info: ["foo"], query_string: "bar", method: "POST"}
         |> fetch_flash()
-        |> require_authenticated_user([])
+        |> ensure_authenticated([])
 
       assert halted_conn.halted
       refute get_session(halted_conn, :user_return_to)
@@ -219,7 +218,7 @@ defmodule Web.AuthTest do
       conn =
         conn
         |> assign(:subject, subject)
-        |> require_authenticated_user([])
+        |> ensure_authenticated([])
 
       refute conn.halted
       refute conn.status
@@ -292,7 +291,7 @@ defmodule Web.AuthTest do
     end
   end
 
-  describe "on_mount: require_authenticated_user" do
+  describe "on_mount: ensure_authenticated" do
     setup context do
       socket = %LiveView.Socket{
         endpoint: Web.Endpoint,
@@ -319,7 +318,7 @@ defmodule Web.AuthTest do
       params = %{"account_id" => subject.account.id}
 
       assert {:cont, updated_socket} =
-               on_mount(:require_authenticated_user, params, session, socket)
+               on_mount(:ensure_authenticated, params, session, socket)
 
       assert updated_socket.assigns.subject.identity.id == subject.identity.id
       assert is_nil(updated_socket.redirected)
@@ -335,7 +334,7 @@ defmodule Web.AuthTest do
       params = %{}
 
       assert {:halt, updated_socket} =
-               on_mount(:require_authenticated_user, params, session, socket)
+               on_mount(:ensure_authenticated, params, session, socket)
 
       assert is_nil(updated_socket.assigns.subject)
 
@@ -351,7 +350,7 @@ defmodule Web.AuthTest do
       params = %{}
 
       assert {:halt, updated_socket} =
-               on_mount(:require_authenticated_user, params, session, socket)
+               on_mount(:ensure_authenticated, params, session, socket)
 
       assert is_nil(updated_socket.assigns.subject)
 

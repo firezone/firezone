@@ -82,24 +82,24 @@ defmodule Web.Router do
 
   scope "/:account_id", Web do
     # TODO: check actor type here too
-    pipe_through [:browser, :require_authenticated_user]
+    pipe_through [:browser, :ensure_authenticated]
 
-    live_session :require_authenticated_user,
+    live_session :ensure_authenticated,
       on_mount: [
         Web.Sandbox,
         # TODO: check actor type here too
-        {Web.Auth, :require_authenticated_user}
+        {Web.Auth, :ensure_authenticated}
       ] do
       live "/dashboard", DashboardLive
     end
   end
 
   scope "/", Web do
-    pipe_through [:browser, :require_authenticated_user]
+    pipe_through [:browser, :ensure_authenticated]
 
     get "/", AuthController, :sign_out
 
-    live_session :require_authenticated_user2 do
+    live_session :ensure_authenticated2 do
       # Users
       live "/users", UsersLive.Index
       live "/users/new", UsersLive.New
