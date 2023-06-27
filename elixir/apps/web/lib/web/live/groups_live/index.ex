@@ -6,15 +6,15 @@ defmodule Web.GroupsLive.Index do
     <.section_header>
       <:breadcrumbs>
         <.breadcrumbs entries={[
-          %{label: "Home", path: ~p"/"},
-          %{label: "Groups", path: ~p"/groups"}
+          %{label: "Home", path: ~p"/#{@subject.account}/dashboard"},
+          %{label: "Groups", path: ~p"/#{@subject.account}/groups"}
         ]} />
       </:breadcrumbs>
       <:title>
         All groups
       </:title>
       <:actions>
-        <.add_button navigate={~p"/groups/new"}>
+        <.add_button navigate={~p"/#{@subject.account}/groups/new"}>
           Add a new group
         </.add_button>
       </:actions>
@@ -80,7 +80,7 @@ defmodule Web.GroupsLive.Index do
                 class="px-4 py-3 font-medium text-gray-900 whitespace-nowrap dark:text-white"
               >
                 <.link
-                  navigate={~p"/groups/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
+                  navigate={~p"/#{@subject.account}/groups/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
                   class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
                 >
                   Engineering
@@ -119,7 +119,9 @@ defmodule Web.GroupsLive.Index do
                     </li>
                     <li>
                       <.link
-                        navigate={~p"/groups/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89/edit"}
+                        navigate={
+                          ~p"/#{@subject.account}/groups/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89/edit"
+                        }
                         class="block py-2 px-4 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
                       >
                         Edit
@@ -143,7 +145,7 @@ defmodule Web.GroupsLive.Index do
                 class="px-4 py-3 font-medium text-gray-900 whitespace-nowrap dark:text-white"
               >
                 <.link
-                  navigate={~p"/groups/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
+                  navigate={~p"/#{@subject.account}/groups/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
                   class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
                 >
                   DevOps
@@ -201,7 +203,7 @@ defmodule Web.GroupsLive.Index do
                 class="px-4 py-3 font-medium text-gray-900 whitespace-nowrap dark:text-white"
               >
                 <.link
-                  navigate={~p"/groups/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
+                  navigate={~p"/#{@subject.account}/groups/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
                   class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
                 >
                   Human Resources
@@ -255,7 +257,7 @@ defmodule Web.GroupsLive.Index do
           </tbody>
         </table>
       </div>
-      <.paginator page={3} total_pages={100} collection_base_path={~p"/groups"} />
+      <.paginator page={3} total_pages={100} collection_base_path={~p"/#{@subject.account}/groups"} />
     </div>
     """
   end

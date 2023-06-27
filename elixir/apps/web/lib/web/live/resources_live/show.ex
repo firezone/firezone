@@ -6,21 +6,26 @@ defmodule Web.ResourcesLive.Show do
     <.section_header>
       <:breadcrumbs>
         <.breadcrumbs entries={[
-          %{label: "Home", path: ~p"/"},
-          %{label: "Resources", path: ~p"/resources"},
-          %{label: "Engineering Jira", path: ~p"/resources/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
+          %{label: "Home", path: ~p"/#{@subject.account}/dashboard"},
+          %{label: "Resources", path: ~p"/#{@subject.account}/resources"},
+          %{
+            label: "Engineering Jira",
+            path: ~p"/#{@subject.account}/resources/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"
+          }
         ]} />
       </:breadcrumbs>
       <:title>
         Viewing Resource <code>Engineering Jira</code>
       </:title>
       <:actions>
-        <.edit_button navigate={~p"/resources/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89/edit"}>
+        <.edit_button navigate={
+          ~p"/#{@subject.account}/resources/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89/edit"
+        }>
           Edit Resource
         </.edit_button>
       </:actions>
     </.section_header>
-    <!-- Gateway details -->
+    <!-- Resource details -->
     <div class="bg-white dark:bg-gray-800 overflow-hidden">
       <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
         <tbody>
@@ -68,7 +73,7 @@ defmodule Web.ResourcesLive.Show do
               4/15/22 12:32 PM by
               <.link
                 class="text-blue-600 hover:underline"
-                navigate={~p"/users/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
+                navigate={~p"/#{@subject.account}/users/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
               >
                 Andrew Dryga
               </.link>
@@ -77,7 +82,7 @@ defmodule Web.ResourcesLive.Show do
         </tbody>
       </table>
     </div>
-    <!-- Linked Resources table -->
+    <!-- Linked Gateways table -->
     <div class="grid grid-cols-1 p-4 xl:grid-cols-3 xl:gap-4 dark:bg-gray-900">
       <div class="col-span-full mb-4 xl:mb-2">
         <h1 class="text-xl font-semibold text-gray-900 sm:text-2xl dark:text-white">
@@ -107,7 +112,7 @@ defmodule Web.ResourcesLive.Show do
               class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white"
             >
               <.link
-                navigate={~p"/gateways/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
+                navigate={~p"/#{@subject.account}/gateways/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
                 class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
               >
                 aws-primary
@@ -128,7 +133,7 @@ defmodule Web.ResourcesLive.Show do
               class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white"
             >
               <.link
-                navigate={~p"/gateways/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
+                navigate={~p"/#{@subject.account}/gateways/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
                 class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
               >
                 aws-secondary
@@ -149,7 +154,7 @@ defmodule Web.ResourcesLive.Show do
               class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white"
             >
               <.link
-                navigate={~p"/gateways/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
+                navigate={~p"/#{@subject.account}/gateways/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
                 class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
               >
                 gcp-primary
@@ -170,7 +175,7 @@ defmodule Web.ResourcesLive.Show do
               class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white"
             >
               <.link
-                navigate={~p"/gateways/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
+                navigate={~p"/#{@subject.account}/gateways/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
                 class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
               >
                 gcp-secondary
