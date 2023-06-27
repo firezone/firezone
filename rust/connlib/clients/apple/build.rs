@@ -30,7 +30,7 @@ struct Env {
 impl Env {
     fn gather() -> Self {
         let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
-        let swift_pkg_dir = manifest_dir.clone();
+        let swift_pkg_dir = manifest_dir;
         let swift_src_dir = swift_pkg_dir.join("Sources").join(SWIFT_PKG_NAME);
         let bridge_dst_dir = swift_src_dir.join("Generated");
         let release = std::env::var("PROFILE").unwrap() == "release";
