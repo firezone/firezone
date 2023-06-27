@@ -12,6 +12,7 @@ started.
   - [Bootstrapping](#bootstrapping)
   - [Ensure Everything Works](#ensure-everything-works)
 - [Developer Environment Setup](#developer-environment-setup)
+  - [Git Commit Signing](#git-commit-signing)
   - [asdf-vm](#asdf-vm-setup)
   - [Pre-commit](#pre-commit)
   - [Elixir Development](#elixir-development)
@@ -119,11 +120,17 @@ all developers, feel free to open a PR to get them merged!
 
 ## Developer Environment Setup
 
-Docker is the preferred method of development Firezone locally. It (mostly)
-works cross-platform, and can be used to develop Firezone on all three
-major desktop OS.
+### Git Commit Signing
+
+Firezone requires that all commits in the repository be signed.  If you need assistance
+setting up `git` to sign commits, please read over the Github pages for
+[Managing Commit signature verification](https://docs.github.com/en/authentication/managing-commit-signature-verification)
 
 ### Docker Setup
+
+Docker is the preferred method of developing Firezone locally. It (mostly)
+works cross-platform, and can be used to develop Firezone on all three
+major desktop OS.
 
 If you have followed the [Docker Setup](#docker-setup) instructions in the Quick Start
 section, you can move along to the next step in the development environment setup.
