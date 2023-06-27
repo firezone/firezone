@@ -26,3 +26,5 @@ ENV PACKAGE_NAME ${PACKAGE}
 # if we ever combine this with `CMD` in exec form  so always use shell form
 # (Note we could use shell-form here, but this is the same made explict)
 ENTRYPOINT ["/bin/sh", "-c", "$PACKAGE_NAME $0"]
+# *sigh* if we don't add this $0 becomes /bin/sh in the command above
+CMD [""]
