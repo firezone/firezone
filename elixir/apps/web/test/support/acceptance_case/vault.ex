@@ -27,9 +27,12 @@ defmodule Web.AcceptanceCase.Vault do
 
     entity_id = params["auth"]["entity_id"]
 
-    :ok = request(:put, "identity/entity/id/#{entity_id}", %{metadata: %{email: email}})
+    :ok =
+      request(:put, "identity/entity/id/#{entity_id}", %{
+        metadata: %{email: email, name: username}
+      })
 
-    :ok
+    {:ok, entity_id}
   end
 
   # Note: this code is not safe from race conditions because provider name is not unique per test case
@@ -37,7 +40,7 @@ defmodule Web.AcceptanceCase.Vault do
     :ok =
       request(:put, "identity/oidc/client/firezone", %{
         assignments: "allow_all",
-        scopes_supported: "openid,email"
+        scopes_supported: "openid,email,groups,name"
       })
 
     :ok =
@@ -50,8 +53,22 @@ defmodule Web.AcceptanceCase.Vault do
     :ok =
       request(
         :put,
+        "identity/oidc/scope/name",
+        %{template: Base.encode64("{\"name\": {{identity.entity.metadata.name}}}")}
+      )
+
+    :ok =
+      request(
+        :put,
+        "identity/oidc/scope/groups",
+        %{template: Base.encode64("{\"groups\": {{identity.entity.groups.names}}}")}
+      )
+
+    :ok =
+      request(
+        :put,
         "identity/oidc/provider/default",
-        %{scopes_supported: "email"}
+        %{scopes_supported: "email,name,groups"}
       )
 
     {:ok, {200, params}} = request(:get, "identity/oidc/client/firezone")
@@ -62,7 +79,7 @@ defmodule Web.AcceptanceCase.Vault do
       "client_id" => params["data"]["client_id"],
       "client_secret" => params["data"]["client_secret"],
       "response_type" => "code",
-      "scope" => "openid email offline_access"
+      "scope" => "openid email name offline_access"
     }
 
     {provider, nil} =

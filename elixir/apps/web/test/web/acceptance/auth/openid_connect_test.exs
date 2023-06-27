@@ -10,7 +10,7 @@ defmodule Web.Acceptance.Auth.OpenIDConnectTest do
     oidc_password = "firezone1234_oidc"
     email = AuthFixtures.email()
 
-    :ok = Vault.upsert_user(oidc_login, email, oidc_password)
+    {:ok, _entity_id} = Vault.upsert_user(oidc_login, email, oidc_password)
 
     session
     |> visit(~p"/#{account}/sign_in")
@@ -30,15 +30,15 @@ defmodule Web.Acceptance.Auth.OpenIDConnectTest do
     oidc_password = "firezone1234_oidc"
     email = AuthFixtures.email()
 
+    {:ok, entity_id} = Vault.upsert_user(oidc_login, email, oidc_password)
+
     identity =
       AuthFixtures.create_identity(
         account: account,
         provider: provider,
         actor_default_type: :account_admin_user,
-        provider_identifier: email
+        provider_identifier: entity_id
       )
-
-    :ok = Vault.upsert_user(oidc_login, email, oidc_password)
 
     session
     |> visit(~p"/#{account}/sign_in")

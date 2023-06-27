@@ -48,7 +48,7 @@ defmodule Web.Acceptance.Auth.EmailTest do
     |> assert_el(Query.text("HTML body preview:"))
 
     email_text = text(session, Query.css(".body-text"))
-    [link] = Regex.run(~r|http://localhost[^ ]*|, email_text)
+    [link] = Regex.run(~r|http://localhost[^ \n\s]*|, email_text)
 
     session
     |> visit(link)
