@@ -71,7 +71,7 @@ pub unsafe extern "system" fn Java_dev_firezone_connlib_Session_connect(
         &[JValue::from(&tunnel_addresses)],
     ) {
         Ok(res) => log::trace!("`onConnect` returned `{res:?}`"),
-        Err(err) => log::error!("Failed to call `setTunnelAddresses`: {err}"),
+        Err(err) => log::error!("Failed to call `onConnect`: {err}"),
     }
 
     Box::into_raw(session)
