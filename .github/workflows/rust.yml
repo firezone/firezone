@@ -85,12 +85,10 @@ jobs:
         run: |
           mv target/tools/windows/nasm/nasm.exe target/tools/nasm.exe
       - name: Run connlib checks and tests
-        env:
-          CARGO_ARGS: "--workspace --exclude connlib-apple --exclude relay"
         run: |
-          cargo check $CARGO_ARGS
-          cargo clippy $CARGO_ARGS -- -D clippy::all
-          cargo test $CARGO_ARGS
+          cargo check --workspace --exclude connlib-apple --exclude relay
+          cargo clippy --workspace --exclude connlib-apple --exclude relay -- -D clippy::all
+          cargo test --workspace --exclude connlib-apple --exclude relay
 
   build-android:
     needs:
