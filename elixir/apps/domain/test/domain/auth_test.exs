@@ -1074,7 +1074,6 @@ defmodule Domain.AuthTest do
 
       {token, _claims} =
         AuthFixtures.generate_openid_connect_token(provider, identity, %{
-          "email" => "foo@bar.com",
           "sub" => "foo@bar.com"
         })
 
@@ -1103,39 +1102,6 @@ defmodule Domain.AuthTest do
 
       assert sign_in(provider, payload, user_agent, remote_ip) ==
                {:error, :unauthorized}
-    end
-
-    test "returns subject on success using email claim", %{
-      bypass: bypass,
-      account: account,
-      provider: provider,
-      user_agent: user_agent,
-      remote_ip: remote_ip
-    } do
-      identity = AuthFixtures.create_identity(account: account, provider: provider)
-
-      token =
-        AuthFixtures.sign_openid_connect_token(%{
-          "email" => identity.provider_identifier,
-          "aud" => provider.adapter_config["client_id"],
-          "exp" => DateTime.utc_now() |> DateTime.add(10, :second) |> DateTime.to_unix()
-        })
-
-      AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
-      AuthFixtures.expect_userinfo(bypass)
-
-      code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
-      redirect_uri = "https://example.com/"
-      payload = {redirect_uri, code_verifier, "MyFakeCode"}
-
-      assert {:ok, %Auth.Subject{} = subject} =
-               sign_in(provider, payload, user_agent, remote_ip)
-
-      assert subject.account.id == account.id
-      assert subject.actor.id == identity.actor_id
-      assert subject.identity.id == identity.id
-      assert subject.context.remote_ip == remote_ip
-      assert subject.context.user_agent == user_agent
     end
 
     test "returns subject on success using sub claim", %{

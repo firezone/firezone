@@ -114,9 +114,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
             nil
         end
 
-      # we try to use `email` if it's exposed, but fall back to OpenID Connect `sub` claim
-      # that usually contains either an email or an opaque app-specific identifier
-      provider_identifier = claims["email"] || claims["sub"]
+      provider_identifier = claims["sub"]
 
       Identity.Query.by_provider_id(provider.id)
       |> Identity.Query.by_provider_identifier(provider_identifier)
