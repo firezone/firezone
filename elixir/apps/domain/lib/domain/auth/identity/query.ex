@@ -4,6 +4,9 @@ defmodule Domain.Auth.Identity.Query do
   def all do
     from(identities in Domain.Auth.Identity, as: :identities)
     |> where([identities: identities], is_nil(identities.deleted_at))
+    |> join(:inner, [identities: identities], actors in assoc(identities, :actor), as: :actors)
+    |> where([actors: actors], is_nil(actors.deleted_at))
+    |> where([actors: actors], is_nil(actors.disabled_at))
   end
 
   def by_id(queryable \\ all(), id)
@@ -41,6 +44,19 @@ defmodule Domain.Auth.Identity.Query do
       [identities: identities],
       identities.provider_identifier == ^provider_identifier
     )
+  end
+
+  def by_id_or_provider_identifier(queryable \\ all(), id_or_provider_identifier) do
+    if Domain.Validator.valid_uuid?(id_or_provider_identifier) do
+      where(
+        queryable,
+        [identities: identities],
+        identities.provider_identifier == ^id_or_provider_identifier or
+          identities.id == ^id_or_provider_identifier
+      )
+    else
+      by_provider_identifier(queryable, id_or_provider_identifier)
+    end
   end
 
   def lock(queryable \\ all()) do

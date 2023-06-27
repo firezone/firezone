@@ -86,6 +86,13 @@ config :web,
   external_trusted_proxies: [],
   private_clients: [%{__struct__: Postgrex.INET, address: {172, 28, 0, 0}, netmask: 16}]
 
+config :web, Web.Plugs.SecureHeaders,
+  csp_policy: [
+    "default-src 'self' 'nonce-${nonce}'",
+    "img-src 'self' data: https://www.gravatar.com",
+    "style-src 'self' 'unsafe-inline'"
+  ]
+
 ###############################
 ##### API #####################
 ###############################

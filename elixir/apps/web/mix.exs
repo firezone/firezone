@@ -24,7 +24,11 @@ defmodule Web.MixProject do
   def application do
     [
       mod: {Web.Application, []},
-      extra_applications: [:logger, :runtime_tools]
+      extra_applications: [
+        :logger,
+        :runtime_tools,
+        :dialyzer
+      ]
     ]
   end
 
@@ -41,7 +45,7 @@ defmodule Web.MixProject do
       {:phoenix_html, "~> 3.3"},
       {:phoenix_ecto, "~> 4.4"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
-      {:phoenix_live_view, "~> 0.18.16"},
+      {:phoenix_live_view, "~> 0.19.3"},
       {:plug_cowboy, "~> 2.5"},
       {:gettext, "~> 0.20"},
       {:remote_ip, "~> 1.0"},
@@ -74,7 +78,12 @@ defmodule Web.MixProject do
       {:floki, ">= 0.30.0", only: :test},
       {:bypass, "~> 2.1", only: :test},
       {:bureaucrat, "~> 0.2.9", only: :test},
-      {:wallaby, "~> 0.30.0", only: :test}
+      {:wallaby, "~> 0.30.0", only: :test},
+      {:credo, "~> 1.5", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.1", only: [:dev], runtime: false},
+      {:junit_formatter, "~> 3.3", only: [:test]},
+      {:mix_audit, "~> 2.1", only: [:dev, :test]},
+      {:sobelow, "~> 0.12", only: [:dev, :test]}
     ]
   end
 

@@ -11,9 +11,22 @@ defmodule Web.CoreComponents do
   """
   use Phoenix.Component
   use Web, :verified_routes
-
-  alias Phoenix.LiveView.JS
   import Web.Gettext
+  alias Phoenix.LiveView.JS
+
+  def logo(assigns) do
+    ~H"""
+    <a
+      href="https://www.firezone.dev/?utm_source=product"
+      class="flex items-center mb-6 text-2xl font-semibold"
+    >
+      <img src={~p"/images/logo.svg"} class="mr-3 h-8" alt="Firezone Logo" />
+      <span class="self-center text-2xl font-semibold whitespace-nowrap dark:text-white">
+        firezone
+      </span>
+    </a>
+    """
+  end
 
   @doc """
   Renders a generic <p> tag using our color scheme.
@@ -507,13 +520,12 @@ defmodule Web.CoreComponents do
     <div
       :if={msg = render_slot(@inner_block) || Phoenix.Flash.get(@flash, @kind)}
       id={@id}
-      phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id}")}
-      role="alert"
       class={[
-        "fixed top-2 right-2 w-80 sm:w-96 z-50 rounded-lg p-3 ring-1",
-        @kind == :info && "bg-emerald-50 text-emerald-800 ring-emerald-500 fill-cyan-900",
-        @kind == :error && "bg-rose-50 text-rose-900 shadow-md ring-rose-500 fill-rose-900"
+        "p-4 mb-4 text-sm rounded-lg flash-#{@kind}",
+        @kind == :info && "text-yellow-800 bg-yellow-50 dark:bg-gray-800 dark:text-yellow-300",
+        @kind == :error && "text-red-800 bg-red-50 dark:bg-gray-800 dark:text-red-400"
       ]}
+      role="alert"
       {@rest}
     >
       <p :if={@title} class="flex items-center gap-1.5 text-sm font-semibold leading-6">
@@ -521,10 +533,7 @@ defmodule Web.CoreComponents do
         <.icon :if={@kind == :error} name="hero-exclamation-circle-mini" class="h-4 w-4" />
         <%= @title %>
       </p>
-      <p class="mt-2 text-sm leading-5"><%= msg %></p>
-      <button type="button" class="group absolute top-1 right-1 p-2" aria-label={gettext("close")}>
-        <.icon name="hero-x-mark-solid" class="h-5 w-5 opacity-40 group-hover:opacity-70" />
-      </button>
+      <%= msg %>
     </div>
     """
   end
@@ -581,7 +590,7 @@ defmodule Web.CoreComponents do
   def simple_form(assigns) do
     ~H"""
     <.form :let={f} for={@for} as={@as} {@rest}>
-      <div class="mt-10 space-y-8 bg-white">
+      <div class="space-y-8 bg-white">
         <%= render_slot(@inner_block, f) %>
         <div :for={action <- @actions} class="mt-2 flex items-center justify-between gap-6">
           <%= render_slot(action, f) %>
@@ -610,8 +619,12 @@ defmodule Web.CoreComponents do
     <button
       type={@type}
       class={[
-        "phx-submit-loading:opacity-75 rounded-lg bg-zinc-900 hover:bg-zinc-700 py-2 px-3",
-        "text-sm font-semibold leading-6 text-white active:text-white/80",
+        "phx-submit-loading:opacity-75",
+        "text-white bg-primary-600 font-medium rounded-lg text-sm px-5 py-2.5 text-center",
+        "hover:bg-primary-700",
+        "focus:ring-4 focus:outline-none focus:ring-primary-300",
+        "dark:bg-primary-600 dark:hover:bg-primary-700 dark:focus:ring-primary-800",
+        "active:text-white/80",
         @class
       ]}
       {@rest}
@@ -957,6 +970,70 @@ defmodule Web.CoreComponents do
   def icon(%{name: "hero-" <> _} = assigns) do
     ~H"""
     <span class={[@name, @class]} />
+    """
+  end
+
+  @doc """
+  Renders Gravatar img tag.
+  """
+  attr :email, :string, required: true
+  attr :size, :integer, default: 40
+  attr :rest, :global, doc: "the arbitrary HTML attributes to add to the flash container"
+
+  def gravatar(assigns) do
+    ~H"""
+    <img
+      src={"https://www.gravatar.com/avatar/#{Base.encode16(:crypto.hash(:md5, @email), case: :lower)}?s=#{@size}&d=retro"}
+      {@rest}
+    />
+    """
+  end
+
+  @doc """
+  Intersperses separator slot between a list of items.
+
+  Useful when you need to add a separator between items such as when
+  rendering breadcrumbs for navigation. Provides each item to the
+  inner block.
+
+  ## Examples
+
+  ```heex
+  <.intersperse :let={item}>
+    <:separator>
+      <span class="sep">|</span>
+    </:separator>
+
+    <:item>
+      home
+    </:item>
+
+    <:item>
+      profile
+    </:item>
+
+    <:item>
+      settings
+    </:item>
+  </.intersperse>
+  ```
+
+  Renders the following markup:
+
+      home <span class="sep">|</span> profile <span class="sep">|</span> settings
+  """
+  slot :separator, required: true, doc: "the slot for the separator"
+  slot :item, required: true, doc: "the slots to intersperse with separators"
+
+  def intersperse_blocks(assigns) do
+    ~H"""
+    <%= for item <- Enum.intersperse(@item, :separator) do %>
+      <%= if item == :separator do %>
+        <%= render_slot(@separator) %>
+      <% else %>
+        <%= render_slot(item) %>
+      <% end %>
+    <% end %>
     """
   end
 

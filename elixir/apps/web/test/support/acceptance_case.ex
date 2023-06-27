@@ -19,19 +19,13 @@ defmodule Web.AcceptanceCase do
       @moduletag timeout: 120_000
 
       setup tags do
-        Application.put_env(:wallaby, :base_url, @endpoint.url)
+        Application.put_env(:wallaby, :base_url, @endpoint.url())
         tags
       end
     end
   end
 
   setup tags do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(Domain.Repo)
-
-    unless tags[:async] do
-      Ecto.Adapters.SQL.Sandbox.mode(Domain.Repo, {:shared, self()})
-    end
-
     headless? =
       if tags[:debug] do
         false
@@ -176,7 +170,7 @@ defmodule Web.AcceptanceCase do
     # Make sure test covers all form fields
     element_names =
       session
-      |> find(Query.css(".input,.textarea", visible: true, count: :any))
+      |> find(Query.css("input,textarea", visible: true, count: :any))
       |> Enum.map(&Wallaby.Element.attr(&1, "name"))
 
     unless Enum.count(fields) == length(element_names) do
@@ -242,13 +236,24 @@ defmodule Web.AcceptanceCase do
   #   end
   # end
 
+  def wait_until_window_closed(max_seconds) do
+    for _ <- 1..(max_seconds * 2) do
+      with [session | _] <- Wallaby.SessionStore.list_sessions_for(owner_pid: self()),
+           url when is_binary(url) <- current_url(session) do
+        Process.sleep(500)
+      else
+        _ -> :ok
+      end
+    end
+  end
+
   @doc """
   This is an extension of ExUnit's `test` macro but:
 
-  - it rescues the exceptions from Wallaby and prints them while sleeping the process
+  \- it rescues the exceptions from Wallaby and prints them while sleeping the process
   (to allow you interacting with the browser) if test has `debug: true` tag;
 
-  - it takes a screenshot on failure if `debug` tag is not set to `true` or unset.
+  \- it takes a screenshot on failure if `debug` tag is not set to `true` or unset.
 
   Additionally, it will try to await for all the sandboxed processes to finish their work
   after the test has passed to prevent spamming logs with a lot of crash reports.
@@ -260,7 +265,18 @@ defmodule Web.AcceptanceCase do
           quote do
             try do
               unquote(block)
-              if var!(debug?) == true, do: Process.sleep(360_000)
+
+              if var!(debug?) == true do
+                IO.puts(
+                  IO.ANSI.red() <>
+                    "Warning! This test runs in browser-debug mode, " <>
+                    "it will sleep the test process for 60 seconds " <>
+                    "or until browser window is closed." <> IO.ANSI.reset()
+                )
+
+                wait_until_window_closed(60)
+              end
+
               shutdown_live_socket(var!(session))
               :ok
             rescue
@@ -270,7 +286,8 @@ defmodule Web.AcceptanceCase do
                     IO.puts(
                       IO.ANSI.red() <>
                         "Warning! This test runs in browser-debug mode, " <>
-                        "it will sleep the test process for infinity." <> IO.ANSI.reset()
+                        "it will sleep the test process for 60 seconds " <>
+                        "or until browser window is closed." <> IO.ANSI.reset()
                     )
 
                     IO.puts("")
@@ -278,7 +295,9 @@ defmodule Web.AcceptanceCase do
                     IO.puts("Exception was rescued:")
                     IO.puts(Exception.format(:error, e, __STACKTRACE__))
                     IO.puts(IO.ANSI.reset())
-                    Process.sleep(:infinity)
+
+                    wait_until_window_closed(60)
+                    :ok
 
                   Wallaby.screenshot_on_failure?() ->
                     unquote(__MODULE__).take_screenshot(unquote(message))

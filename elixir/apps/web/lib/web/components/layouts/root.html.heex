@@ -5,23 +5,9 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <!-- iOS App Favicon -->
-    <link
-      rel="apple-touch-icon"
-      sizes="180x180"
-      href={static_path("/images/apple-touch-icon.png")}
-    />
-    <link
-      rel="icon"
-      type="image/png"
-      sizes="32x32"
-      href={static_path("/images/favicon-32x32.png")}
-    />
-    <link
-      rel="icon"
-      type="image/png"
-      sizes="16x16"
-      href={static_path("/images/favicon-16x16.png")}
-    />
+    <link rel="apple-touch-icon" sizes="180x180" href={~p"/images/apple-touch-icon.png"} />
+    <link rel="icon" type="image/png" sizes="32x32" href={~p"/images/favicon-32x32.png"} />
+    <link rel="icon" type="image/png" sizes="16x16" href={~p"/images/favicon-16x16.png"} />
     <!-- Windows App Favicon -->
     <meta name="msapplication-config" content={~p"/browser/config.xml"} />
     <meta name="msapplication-TileColor" content="331700" />
@@ -31,8 +17,19 @@
     <.live_title suffix=" · Firezone">
       <%= assigns[:page_title] || "Firezone" %>
     </.live_title>
-    <link phx-track-static rel="stylesheet" href={~p"/assets/app.css"} />
-    <script defer phx-track-static type="text/javascript" src={~p"/assets/app.js"}>
+    <link
+      phx-track-static
+      rel="stylesheet"
+      nonce={@conn.private.csp_nonce}
+      href={~p"/assets/app.css"}
+    />
+    <script
+      defer
+      phx-track-static
+      type="text/javascript"
+      nonce={@conn.private.csp_nonce}
+      src={~p"/assets/app.js"}
+    >
     </script>
   </head>
   <body class="bg-gray-50 dark:bg-gray-900">

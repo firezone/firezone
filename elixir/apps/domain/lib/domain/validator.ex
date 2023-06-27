@@ -21,7 +21,9 @@ defmodule Domain.Validator do
   end
 
   def validate_email(changeset, field) do
-    validate_format(changeset, field, ~r/@/, message: "is invalid email address")
+    changeset
+    |> validate_format(field, ~r/^[^\s]+@[^\s]+$/, message: "is an invalid email address")
+    |> validate_length(field, max: 160)
   end
 
   def validate_uri(changeset, field, opts \\ []) when is_atom(field) do

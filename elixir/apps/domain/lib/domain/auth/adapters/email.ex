@@ -4,6 +4,7 @@ defmodule Domain.Auth.Adapters.Email do
   alias Domain.Auth.{Identity, Provider, Adapter}
 
   @behaviour Adapter
+  @behaviour Adapter.Local
 
   @sign_in_token_expiration_seconds 15 * 60
 

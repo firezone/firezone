@@ -1,7 +1,6 @@
 defmodule Domain.Auth do
   use Supervisor
-  alias Domain.Repo
-  alias Domain.Config
+  alias Domain.{Repo, Config, Validator}
   alias Domain.{Accounts, Actors}
   alias Domain.Auth.{Authorizer, Subject, Context, Permission, Roles, Role, Identity}
   alias Domain.Auth.{Adapters, Provider}
@@ -25,9 +24,20 @@ defmodule Domain.Auth do
 
   # Providers
 
-  def fetch_provider_by_id(id) do
-    Provider.Query.by_id(id)
-    |> Repo.fetch()
+  def fetch_active_provider_by_id(id) do
+    if Validator.valid_uuid?(id) do
+      Provider.Query.by_id(id)
+      |> Provider.Query.not_disabled()
+      |> Repo.fetch()
+    else
+      {:error, :not_found}
+    end
+  end
+
+  def list_active_providers_for_account(%Accounts.Account{} = account) do
+    Provider.Query.by_account_id(account.id)
+    |> Provider.Query.not_disabled()
+    |> Repo.list()
   end
 
   def create_provider(%Accounts.Account{} = account, attrs, %Subject{} = subject) do
@@ -173,11 +183,13 @@ defmodule Domain.Auth do
 
   # Sign Up / In / Off
 
-  def sign_in(%Provider{} = provider, provider_identifier, secret, user_agent, remote_ip) do
-    with {:ok, identity} <-
-           fetch_identity_by_provider_and_identifier(provider, provider_identifier),
-         {:ok, identity, expires_at} <-
-           Adapters.verify_secret(provider, identity, secret) do
+  def sign_in(%Provider{} = provider, id_or_provider_identifier, secret, user_agent, remote_ip) do
+    identity_queryable =
+      Identity.Query.by_provider_id(provider.id)
+      |> Identity.Query.by_id_or_provider_identifier(id_or_provider_identifier)
+
+    with {:ok, identity} <- Repo.fetch(identity_queryable),
+         {:ok, identity, expires_at} <- Adapters.verify_secret(provider, identity, secret) do
       {:ok, build_subject(identity, expires_at, user_agent, remote_ip)}
     else
       {:error, :not_found} -> {:error, :unauthorized}
@@ -186,7 +198,18 @@ defmodule Domain.Auth do
     end
   end
 
-  def sign_in(session_token, user_agent, remote_ip) do
+  def sign_in(%Provider{} = provider, payload, user_agent, remote_ip) do
+    with {:ok, identity, expires_at} <-
+           Adapters.verify_identity(provider, payload) do
+      {:ok, build_subject(identity, expires_at, user_agent, remote_ip)}
+    else
+      {:error, :not_found} -> {:error, :unauthorized}
+      {:error, :invalid} -> {:error, :unauthorized}
+      {:error, :expired} -> {:error, :unauthorized}
+    end
+  end
+
+  def sign_in(session_token, user_agent, remote_ip) when is_binary(session_token) do
     with {:ok, identity, expires_at} <-
            verify_session_token(session_token, user_agent, remote_ip) do
       {:ok, build_subject(identity, expires_at, user_agent, remote_ip)}
@@ -198,7 +221,7 @@ defmodule Domain.Auth do
     end
   end
 
-  defp fetch_identity_by_provider_and_identifier(%Provider{} = provider, provider_identifier) do
+  def fetch_identity_by_provider_and_identifier(%Provider{} = provider, provider_identifier) do
     Identity.Query.by_provider_id(provider.id)
     |> Identity.Query.by_provider_identifier(provider_identifier)
     |> Repo.fetch()
@@ -298,7 +321,7 @@ defmodule Domain.Auth do
          _remote_ip
        ) do
     with {:ok, identity} <- fetch_identity_by_id(identity_id),
-         {:ok, provider} <- fetch_provider_by_id(identity.provider_id),
+         {:ok, provider} <- fetch_active_provider_by_id(identity.provider_id),
          {:ok, identity, expires_at} <-
            Adapters.verify_secret(provider, identity, secret) do
       {:ok, identity, expires_at}

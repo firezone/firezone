@@ -5,8 +5,8 @@ defmodule Domain.Actors.Actor.Changeset do
 
   def create_changeset(%Auth.Provider{} = provider, attrs) do
     %Actors.Actor{}
-    |> cast(attrs, ~w[type]a)
-    |> validate_required(~w[type]a)
+    |> cast(attrs, ~w[type name]a)
+    |> validate_required(~w[type name]a)
     |> put_change(:account_id, provider.account_id)
   end
 

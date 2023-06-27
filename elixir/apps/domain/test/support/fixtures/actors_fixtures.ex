@@ -4,7 +4,11 @@ defmodule Domain.ActorsFixtures do
   alias Domain.{AccountsFixtures, AuthFixtures}
 
   def actor_attrs(attrs \\ %{}) do
+    first_name = Enum.random(~w[Wade Dave Seth Riley Gilbert Jorge Dan Brian Roberto Ramon])
+    last_name = Enum.random(~w[Robyn Traci Desiree Jon Bob Karl Joe Alberta Lynda Cara Brandi])
+
     Enum.into(attrs, %{
+      name: "#{first_name} #{last_name}",
       type: :account_user
     })
   end
@@ -19,7 +23,11 @@ defmodule Domain.ActorsFixtures do
 
     {provider, attrs} =
       Map.pop_lazy(attrs, :provider, fn ->
-        AuthFixtures.create_email_provider(account: account)
+        {provider, _bypass} =
+          AuthFixtures.start_openid_providers(["google"])
+          |> AuthFixtures.create_openid_connect_provider(account: account)
+
+        provider
       end)
 
     attrs = actor_attrs(attrs)
@@ -36,5 +44,9 @@ defmodule Domain.ActorsFixtures do
 
   def disable(actor) do
     update(actor, %{disabled_at: DateTime.utc_now()})
+  end
+
+  def delete(actor) do
+    update(actor, %{deleted_at: DateTime.utc_now()})
   end
 end

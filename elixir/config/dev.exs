@@ -48,6 +48,14 @@ config :phoenix_live_reload, :dirs, [
   Path.join([root_path, "apps", "api"])
 ]
 
+config :web, Web.Plugs.SecureHeaders,
+  csp_policy: [
+    "default-src 'self' 'nonce-${nonce}'",
+    "img-src 'self' data: https://www.gravatar.com",
+    "style-src 'self' 'unsafe-inline'",
+    "script-src 'self' 'unsafe-inline'"
+  ]
+
 ###############################
 ##### API #####################
 ###############################

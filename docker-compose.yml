@@ -26,16 +26,31 @@ services:
       - app
 
   vault:
-    image: vault
+    image: vault:1.13.3
     environment:
       VAULT_ADDR: 'http://127.0.0.1:8200'
       VAULT_DEV_ROOT_TOKEN_ID: 'firezone'
+      VAULT_LOG_LEVEL: 'debug'
     ports:
       - 8200:8200/tcp
     cap_add:
       - IPC_LOCK
     networks:
       - app
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--spider",
+          "--proxy",
+          "off",
+          "http://localhost:8200/v1/sys/health?standbyok=true"
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
 
   # Firezone Components
   web:
@@ -93,6 +108,8 @@ services:
       # Client info
       USER_AGENT: "iOS/12.5 (iPhone) connlib/0.7.412"
     depends_on:
+      vault:
+        condition: 'service_healthy'
       postgres:
         condition: 'service_healthy'
     networks:
@@ -218,6 +235,8 @@ services:
       # Seeds
       STATIC_SEEDS: "true"
     depends_on:
+      vault:
+        condition: 'service_healthy'
       postgres:
         condition: 'service_healthy'
     networks:

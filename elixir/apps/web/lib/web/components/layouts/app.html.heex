@@ -56,11 +56,7 @@
         data-dropdown-toggle="dropdown"
       >
         <span class="sr-only">Open user menu</span>
-        <img
-          class="w-8 h-8 rounded-full"
-          src="https://flowbite.com/docs/images/people/profile-picture-5.jpg"
-          alt="user photo"
-        />
+        <.gravatar size={25} email={@subject.identity.provider_identifier} class="rounded-full" />
       </button>
       <!-- Dropdown menu -->
       <div
@@ -69,10 +65,10 @@
       >
         <div class="py-3 px-4">
           <span class="block text-sm font-semibold text-gray-900 dark:text-white">
-            Steve Johnson
+            <%= @subject.actor.name %>
           </span>
           <span class="block text-sm text-gray-900 truncate dark:text-white">
-            steve@tesla.com
+            <%= @subject.identity.provider_identifier %>
           </span>
         </div>
         <ul class="py-1 text-gray-700 dark:text-gray-300" aria-labelledby="dropdown">
@@ -88,7 +84,7 @@
         <ul class="py-1 text-gray-700 dark:text-gray-300" aria-labelledby="dropdown">
           <li>
             <a
-              href="#"
+              href={~p"/#{@subject.account.id}/sign_out"}
               class="block py-2 px-4 text-sm hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
             >
               Sign out
@@ -101,7 +97,7 @@
 </nav>
 <!-- Sidebar -->
 <aside
-  class="fixed top-0 left-0 z-40 w-64 h-screen pt-14 transition-transform -translate-x-full bg-white border-r border-gray-200 md:translate-x-0 dark:bg-gray-800 dark:border-gray-700"
+  class="fixed top-0 left-0 z-40 w-64 h-screen pt-14 pb-8 transition-transform -translate-x-full bg-white border-r border-gray-200 md:translate-x-0 dark:bg-gray-800 dark:border-gray-700"
   aria-label="Sidenav"
   id="drawer-navigation"
 >

@@ -212,7 +212,8 @@ defmodule Domain.ActorsTest do
       refute changeset.valid?
 
       assert errors_on(changeset) == %{
-               type: ["can't be blank"]
+               type: ["can't be blank"],
+               name: ["can't be blank"]
              }
     end
 
@@ -341,12 +342,12 @@ defmodule Domain.ActorsTest do
         MapSet.difference(admin_permissions, MapSet.new(required_permissions))
         |> MapSet.to_list()
 
-      attrs = %{type: :account_admin_user}
+      attrs = %{type: :account_admin_user, name: "John Smith"}
 
       assert create_actor(provider, provider_identifier, attrs, subject) ==
                {:error, {:unauthorized, privilege_escalation: missing_permissions}}
 
-      attrs = %{"type" => "account_admin_user"}
+      attrs = %{"type" => "account_admin_user", "name" => "John Smith"}
 
       assert create_actor(provider, provider_identifier, attrs, subject) ==
                {:error, {:unauthorized, privilege_escalation: missing_permissions}}
@@ -452,12 +453,35 @@ defmodule Domain.ActorsTest do
           allow_child_sandbox_access(test_pid)
 
           account = AccountsFixtures.create_account()
+          provider = AuthFixtures.create_email_provider(account: account)
 
-          actor_one = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-          actor_two = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+          actor_one =
+            ActorsFixtures.create_actor(
+              type: :account_admin_user,
+              account: account,
+              provider: provider
+            )
 
-          identity_one = AuthFixtures.create_identity(account: account, actor: actor_one)
-          identity_two = AuthFixtures.create_identity(account: account, actor: actor_two)
+          actor_two =
+            ActorsFixtures.create_actor(
+              type: :account_admin_user,
+              account: account,
+              provider: provider
+            )
+
+          identity_one =
+            AuthFixtures.create_identity(
+              account: account,
+              actor: actor_one,
+              provider: provider
+            )
+
+          identity_two =
+            AuthFixtures.create_identity(
+              account: account,
+              actor: actor_two,
+              provider: provider
+            )
 
           subject_one = AuthFixtures.create_subject(identity_one)
           subject_two = AuthFixtures.create_subject(identity_two)
@@ -634,12 +658,35 @@ defmodule Domain.ActorsTest do
           allow_child_sandbox_access(test_pid)
 
           account = AccountsFixtures.create_account()
+          provider = AuthFixtures.create_email_provider(account: account)
 
-          actor_one = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-          actor_two = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+          actor_one =
+            ActorsFixtures.create_actor(
+              type: :account_admin_user,
+              account: account,
+              provider: provider
+            )
 
-          identity_one = AuthFixtures.create_identity(account: account, actor: actor_one)
-          identity_two = AuthFixtures.create_identity(account: account, actor: actor_two)
+          actor_two =
+            ActorsFixtures.create_actor(
+              type: :account_admin_user,
+              account: account,
+              provider: provider
+            )
+
+          identity_one =
+            AuthFixtures.create_identity(
+              account: account,
+              actor: actor_one,
+              provider: provider
+            )
+
+          identity_two =
+            AuthFixtures.create_identity(
+              account: account,
+              actor: actor_two,
+              provider: provider
+            )
 
           subject_one = AuthFixtures.create_subject(identity_one)
           subject_two = AuthFixtures.create_subject(identity_two)

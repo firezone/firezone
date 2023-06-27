@@ -14,7 +14,7 @@ defmodule API.Relay.SocketTest do
 
   describe "connect/3" do
     test "returns error when token is missing" do
-      assert connect(Socket, %{}, @connect_info) == {:error, :missing_token}
+      assert connect(Socket, %{}, connect_info: @connect_info) == {:error, :missing_token}
     end
 
     test "creates a new relay" do
@@ -23,7 +23,7 @@ defmodule API.Relay.SocketTest do
 
       attrs = connect_attrs(token: encrypted_secret)
 
-      assert {:ok, socket} = connect(Socket, attrs, @connect_info)
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: @connect_info)
       assert relay = Map.fetch!(socket.assigns, :relay)
 
       assert relay.ipv4.address == attrs["ipv4"]
@@ -40,14 +40,14 @@ defmodule API.Relay.SocketTest do
 
       attrs = connect_attrs(token: encrypted_secret, ipv4: existing_relay.ipv4)
 
-      assert {:ok, socket} = connect(Socket, attrs, @connect_info)
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: @connect_info)
       assert relay = Repo.one(Domain.Relays.Relay)
       assert relay.id == socket.assigns.relay.id
     end
 
     test "returns error when token is invalid" do
       attrs = connect_attrs(token: "foo")
-      assert connect(Socket, attrs, @connect_info) == {:error, :invalid_token}
+      assert connect(Socket, attrs, connect_info: @connect_info) == {:error, :invalid_token}
     end
   end
 

@@ -9,6 +9,7 @@ defmodule Domain.Auth.Adapters.Token do
   alias Domain.Auth.Adapters.Token.State
 
   @behaviour Adapter
+  @behaviour Adapter.Local
 
   def start_link(_init_arg) do
     Supervisor.start_link(__MODULE__, nil, name: __MODULE__)

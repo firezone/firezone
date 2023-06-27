@@ -50,10 +50,10 @@ defmodule Web do
     end
   end
 
-  def live_view do
+  def live_view(opts \\ []) do
     quote do
       use Phoenix.LiveView,
-        layout: {Web.Layouts, :app}
+        layout: Keyword.get(unquote(opts), :layout, {Web.Layouts, :app})
 
       unquote(html_helpers())
     end
@@ -123,5 +123,9 @@ defmodule Web do
   """
   defmacro __using__(which) when is_atom(which) do
     apply(__MODULE__, which, [])
+  end
+
+  defmacro __using__({which, opts}) when is_atom(which) do
+    apply(__MODULE__, which, [opts])
   end
 end

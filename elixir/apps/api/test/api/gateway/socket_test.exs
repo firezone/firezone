@@ -14,7 +14,7 @@ defmodule API.Gateway.SocketTest do
 
   describe "connect/3" do
     test "returns error when token is missing" do
-      assert connect(Socket, %{}, @connect_info) == {:error, :missing_token}
+      assert connect(Socket, %{}, connect_info: @connect_info) == {:error, :missing_token}
     end
 
     test "creates a new gateway" do
@@ -23,7 +23,7 @@ defmodule API.Gateway.SocketTest do
 
       attrs = connect_attrs(token: encrypted_secret)
 
-      assert {:ok, socket} = connect(Socket, attrs, @connect_info)
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: @connect_info)
       assert gateway = Map.fetch!(socket.assigns, :gateway)
 
       assert gateway.external_id == attrs["external_id"]
@@ -40,14 +40,14 @@ defmodule API.Gateway.SocketTest do
 
       attrs = connect_attrs(token: encrypted_secret, external_id: existing_gateway.external_id)
 
-      assert {:ok, socket} = connect(Socket, attrs, @connect_info)
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: @connect_info)
       assert gateway = Repo.one(Domain.Gateways.Gateway)
       assert gateway.id == socket.assigns.gateway.id
     end
 
     test "returns error when token is invalid" do
       attrs = connect_attrs(token: "foo")
-      assert connect(Socket, attrs, @connect_info) == {:error, :invalid_token}
+      assert connect(Socket, attrs, connect_info: @connect_info) == {:error, :invalid_token}
     end
   end
 

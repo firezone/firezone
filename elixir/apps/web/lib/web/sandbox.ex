@@ -4,6 +4,11 @@ defmodule Web.Sandbox do
   """
   alias Domain.Sandbox
 
+  def on_mount(:default, _params, _session, socket) do
+    socket = allow_live_ecto_sandbox(socket)
+    {:cont, socket}
+  end
+
   def allow_channel_sql_sandbox(socket) do
     if Map.has_key?(socket.assigns, :user_agent) do
       Sandbox.allow(Phoenix.Ecto.SQL.Sandbox, socket.assigns.user_agent)
