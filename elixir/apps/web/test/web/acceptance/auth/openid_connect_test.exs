@@ -22,7 +22,6 @@ defmodule Web.Acceptance.Auth.OpenIDConnectTest do
     |> assert_el(Query.text("You can not authenticate to this account."))
   end
 
-  @tag :debug
   feature "authenticates existing user", %{session: session} do
     account = AccountsFixtures.create_account()
     provider = Vault.setup_oidc_provider(account, @endpoint.url)

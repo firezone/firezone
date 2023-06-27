@@ -84,10 +84,14 @@ defmodule Web.Acceptance.AuthTest do
         provider_virtual_state: %{"password" => password, "password_confirmation" => password}
       )
 
-    session
-    |> visit(~p"/#{account}")
-    |> Auth.authenticate(identity)
-    |> visit(~p"/#{account}/dashboard")
-    |> assert_path(~p"/#{account}/")
+    session =
+      session
+      |> visit(~p"/#{account}")
+      |> Auth.authenticate(identity)
+      |> visit(~p"/#{account}/dashboard")
+
+    assert text(session) == "Not Found"
+
+    assert_path(session, ~p"/#{account}/dashboard")
   end
 end

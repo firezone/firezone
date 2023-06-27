@@ -105,6 +105,21 @@ defmodule Web.Auth do
     end
   end
 
+  @doc """
+  Used for routes that require the user to be authenticated as a specific kind of actor.
+
+  This plug will only work if there is an `account_id` in the path params.
+  """
+  def ensure_authenticated_actor_type(%Plug.Conn{} = conn, type) do
+    if not is_nil(conn.assigns[:subject]) and conn.assigns[:subject].actor.type == type do
+      conn
+    else
+      conn
+      |> Web.FallbackController.call({:error, :not_found})
+      |> Plug.Conn.halt()
+    end
+  end
+
   defp maybe_store_return_to(%{method: "GET"} = conn) do
     Plug.Conn.put_session(conn, :user_return_to, Phoenix.Controller.current_path(conn))
   end
@@ -166,6 +181,16 @@ defmodule Web.Auth do
         |> Phoenix.LiveView.redirect(to: ~p"/#{socket.assigns.account}/sign_in")
 
       {:halt, socket}
+    end
+  end
+
+  def on_mount(:ensure_account_admin_user_actor, params, session, socket) do
+    socket = mount_subject(socket, params, session)
+
+    if socket.assigns.subject.actor.type == :account_admin_user do
+      {:cont, socket}
+    else
+      raise Ecto.NoResultsError
     end
   end
 

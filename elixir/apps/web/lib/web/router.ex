@@ -14,11 +14,17 @@ defmodule Web.Router do
 
   pipeline :api do
     plug :accepts, ["json"]
-    # TODO: auth
+    plug :ensure_authenticated
+    plug :ensure_authenticated_actor_type, :service_account
   end
 
   pipeline :public do
     plug :accepts, ["html", "xml"]
+  end
+
+  pipeline :ensure_authenticated_admin do
+    plug :ensure_authenticated
+    plug :ensure_authenticated_actor_type, :account_admin_user
   end
 
   scope "/browser", Web do
@@ -81,14 +87,13 @@ defmodule Web.Router do
   end
 
   scope "/:account_id", Web do
-    # TODO: check actor type here too
-    pipe_through [:browser, :ensure_authenticated]
+    pipe_through [:browser, :ensure_authenticated_admin]
 
     live_session :ensure_authenticated,
       on_mount: [
         Web.Sandbox,
-        # TODO: check actor type here too
-        {Web.Auth, :ensure_authenticated}
+        {Web.Auth, :ensure_authenticated},
+        {Web.Auth, :ensure_account_admin_user_actor}
       ] do
       live "/dashboard", DashboardLive
     end

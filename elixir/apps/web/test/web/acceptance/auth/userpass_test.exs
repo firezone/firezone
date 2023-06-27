@@ -134,7 +134,7 @@ defmodule Web.Acceptance.Auth.UserPassTest do
 
     session
     |> password_login_flow(account, identity.provider_identifier, password)
-    |> assert_path(~p"/#{account}/")
+    |> assert_path(~p"/#{account}")
   end
 
   defp password_login_flow(session, account, username, password) do
