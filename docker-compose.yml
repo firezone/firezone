@@ -163,11 +163,11 @@ services:
 
   resource:
     image: alpine:3.18
+    command: tail -f /dev/null
     networks:
       - resources
 
   relay:
-    init: true
     environment:
       PUBLIC_IP4_ADDR: 172.28.0.101
       LISTEN_IP4_ADDR: 172.28.0.101
@@ -175,9 +175,6 @@ services:
       PORTAL_TOKEN: "SFMyNTY.g2gDaAJtAAAAJDcyODZiNTNkLTA3M2UtNGM0MS05ZmYxLWNjODQ1MWRhZDI5OW0AAABARVg3N0dhMEhLSlVWTGdjcE1yTjZIYXRkR25mdkFEWVFyUmpVV1d5VHFxdDdCYVVkRVUzbzktRmJCbFJkSU5JS24GAJZ5vfiIAWIAAVGA.F1J6PxmFwmlSYtsUnkw2Z7IjpMkB1oS7wxtzQBqlFFM"
       RUST_LOG: "debug"
       RUST_BACKTRACE: 1
-    ports:
-    - "3478/udp"
-    - "49152-65535/udp"
     build:
       context: rust
       dockerfile: Dockerfile.dev
