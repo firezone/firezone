@@ -45,9 +45,9 @@ defmodule Web.AuthTest do
                Domain.Auth.sign_in(token, subject.context.user_agent, subject.context.remote_ip)
     end
 
-    test "persists log in time in session", %{conn: conn, admin_subject: subject} do
+    test "persists sign in time in session", %{conn: conn, admin_subject: subject} do
       conn = put_subject_in_session(conn, subject)
-      assert %DateTime{} = get_session(conn, "logged_in_at")
+      assert %DateTime{} = get_session(conn, "signed_in_at")
     end
 
     test "persists live socket id in session", %{conn: conn, admin_subject: subject} do

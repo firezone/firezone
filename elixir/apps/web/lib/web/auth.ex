@@ -12,7 +12,7 @@ defmodule Web.Auth do
     {:ok, session_token} = Domain.Auth.create_session_token_from_subject(subject)
 
     conn
-    |> Plug.Conn.put_session(:logged_in_at, DateTime.utc_now())
+    |> Plug.Conn.put_session(:signed_in_at, DateTime.utc_now())
     |> Plug.Conn.put_session(:session_token, session_token)
     |> Plug.Conn.put_session(:live_socket_id, "actors_sessions:#{subject.actor.id}")
   end

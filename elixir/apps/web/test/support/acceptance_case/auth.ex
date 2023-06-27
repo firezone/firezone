@@ -54,7 +54,7 @@ defmodule Web.AcceptanceCase.Auth do
       cookie =
         %{
           "session_token" => token,
-          "logged_in_at" => DateTime.utc_now(),
+          "signed_in_at" => DateTime.utc_now(),
           "live_socket_id" => "actors_sessions:#{subject.actor.id}"
         }
         |> :erlang.term_to_binary()

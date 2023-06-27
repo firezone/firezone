@@ -619,7 +619,7 @@ defmodule Domain.AuthTest do
 
       provider_identifier = Ecto.UUID.generate()
       assert {:error, changeset} = create_identity(actor, provider, provider_identifier)
-      assert errors_on(changeset) == %{provider_identifier: ["is invalid email address"]}
+      assert errors_on(changeset) == %{provider_identifier: ["is an invalid email address"]}
 
       provider_identifier = nil
       assert {:error, changeset} = create_identity(actor, provider, provider_identifier)
@@ -663,7 +663,7 @@ defmodule Domain.AuthTest do
     } do
       provider_identifier = Ecto.UUID.generate()
       assert {:error, changeset} = replace_identity(identity, provider_identifier, subject)
-      assert errors_on(changeset) == %{provider_identifier: ["is invalid email address"]}
+      assert errors_on(changeset) == %{provider_identifier: ["is an invalid email address"]}
 
       provider_identifier = nil
       assert {:error, changeset} = replace_identity(identity, provider_identifier, subject)

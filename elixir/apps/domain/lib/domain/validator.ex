@@ -22,7 +22,7 @@ defmodule Domain.Validator do
 
   def validate_email(changeset, field) do
     changeset
-    |> validate_format(field, ~r/^[^\s]+@[^\s]+$/, message: "is invalid email address")
+    |> validate_format(field, ~r/^[^\s]+@[^\s]+$/, message: "is an invalid email address")
     |> validate_length(field, max: 160)
   end
 
