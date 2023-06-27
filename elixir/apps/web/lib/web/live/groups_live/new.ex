@@ -6,9 +6,9 @@ defmodule Web.GroupsLive.New do
     <.section_header>
       <:breadcrumbs>
         <.breadcrumbs entries={[
-          %{label: "Home", path: ~p"/"},
-          %{label: "Groups", path: ~p"/groups"},
-          %{label: "Add Group", path: ~p"/groups/new"}
+          %{label: "Home", path: ~p"/#{@subject.account}/dashboard"},
+          %{label: "Groups", path: ~p"/#{@subject.account}/groups"},
+          %{label: "Add Group", path: ~p"/#{@subject.account}/groups/new"}
         ]} />
       </:breadcrumbs>
       <:title>

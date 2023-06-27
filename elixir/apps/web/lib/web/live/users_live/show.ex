@@ -6,16 +6,21 @@ defmodule Web.UsersLive.Show do
     <.section_header>
       <:breadcrumbs>
         <.breadcrumbs entries={[
-          %{label: "Home", path: ~p"/"},
-          %{label: "Users", path: ~p"/users"},
-          %{label: "Bou Kheir, Jamil", path: ~p"/users/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
+          %{label: "Home", path: ~p"/#{@subject.account}/dashboard"},
+          %{label: "Users", path: ~p"/#{@subject.account}/users"},
+          %{
+            label: "Bou Kheir, Jamil",
+            path: ~p"/#{@subject.account}/users/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"
+          }
         ]} />
       </:breadcrumbs>
       <:title>
         Viewing User <code>Bou Kheir, Jamil</code>
       </:title>
       <:actions>
-        <.edit_button navigate={~p"/users/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89/edit"}>
+        <.edit_button navigate={
+          ~p"/#{@subject.account}/users/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89/edit"
+        }>
           Edit user
         </.edit_button>
       </:actions>
@@ -90,7 +95,7 @@ defmodule Web.UsersLive.Show do
             </th>
             <td class="px-6 py-4">
               <.link
-                navigate={~p"/groups/55DDA8CB-69A7-48FC-9048-639021C205A2"}
+                navigate={~p"/#{@subject.account}/groups/55DDA8CB-69A7-48FC-9048-639021C205A2"}
                 class="text-blue-600 hover:underline"
               >
                 Engineering

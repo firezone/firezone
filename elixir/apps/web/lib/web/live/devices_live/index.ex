@@ -6,8 +6,8 @@ defmodule Web.DevicesLive.Index do
     <.section_header>
       <:breadcrumbs>
         <.breadcrumbs entries={[
-          %{label: "Home", path: ~p"/"},
-          %{label: "Devices", path: ~p"/devices"}
+          %{label: "Home", path: ~p"/#{@subject.account}/dashboard"},
+          %{label: "Devices", path: ~p"/#{@subject.account}/devices"}
         ]} />
       </:breadcrumbs>
       <:title>
@@ -86,7 +86,7 @@ defmodule Web.DevicesLive.Index do
                 class="px-4 py-3 font-medium text-gray-900 whitespace-nowrap dark:text-white"
               >
                 <.link
-                  navigate={~p"/devices/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
+                  navigate={~p"/#{@subject.account}/devices/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
                   class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
                 >
                   v1.01 Linux
@@ -94,7 +94,7 @@ defmodule Web.DevicesLive.Index do
               </th>
               <td class="px-4 py-3">
                 <.link
-                  navigate={~p"/users/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
+                  navigate={~p"/#{@subject.account}/users/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
                   class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
                 >
                   John Doe
@@ -149,7 +149,7 @@ defmodule Web.DevicesLive.Index do
                 class="px-4 py-3 font-medium text-gray-900 whitespace-nowrap dark:text-white"
               >
                 <.link
-                  navigate={~p"/devices/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
+                  navigate={~p"/#{@subject.account}/devices/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
                   class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
                 >
                   v1.01 iOS
@@ -157,7 +157,7 @@ defmodule Web.DevicesLive.Index do
               </th>
               <td class="px-4 py-3">
                 <.link
-                  navigate={~p"/users/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
+                  navigate={~p"/#{@subject.account}/users/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
                   class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
                 >
                   Steve Johnson
@@ -212,7 +212,7 @@ defmodule Web.DevicesLive.Index do
                 class="px-4 py-3 font-medium text-gray-900 whitespace-nowrap dark:text-white"
               >
                 <.link
-                  navigate={~p"/devices/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
+                  navigate={~p"/#{@subject.account}/devices/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
                   class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
                 >
                   v1.01 macOS
@@ -220,7 +220,7 @@ defmodule Web.DevicesLive.Index do
               </th>
               <td class="px-4 py-3">
                 <.link
-                  navigate={~p"/users/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
+                  navigate={~p"/#{@subject.account}/users/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
                   class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
                 >
                   Steinberg, Gabriel
@@ -272,7 +272,7 @@ defmodule Web.DevicesLive.Index do
           </tbody>
         </table>
       </div>
-      <.paginator page={3} total_pages={100} collection_base_path={~p"/devices"} />
+      <.paginator page={3} total_pages={100} collection_base_path={~p"/#{@subject.account}/devices"} />
     </div>
     """
   end

@@ -6,9 +6,9 @@ defmodule Web.GatewaysLive.New do
     <.section_header>
       <:breadcrumbs>
         <.breadcrumbs entries={[
-          %{label: "Home", path: ~p"/"},
-          %{label: "Gateways", path: ~p"/gateways"},
-          %{label: "Add Gateway", path: ~p"/gateways/new"}
+          %{label: "Home", path: ~p"/#{@subject.account}/dashboard"},
+          %{label: "Gateways", path: ~p"/#{@subject.account}/gateways"},
+          %{label: "Add Gateway", path: ~p"/#{@subject.account}/gateways/new"}
         ]} />
       </:breadcrumbs>
       <:title>

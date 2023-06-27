@@ -6,10 +6,16 @@ defmodule Web.GatewaysLive.Edit do
     <.section_header>
       <:breadcrumbs>
         <.breadcrumbs entries={[
-          %{label: "Home", path: ~p"/"},
-          %{label: "Gateways", path: ~p"/gateways"},
-          %{label: "gcp-primary", path: ~p"/gateways/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"},
-          %{label: "Edit", path: ~p"/gateways/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89/edit"}
+          %{label: "Home", path: ~p"/#{@subject.account}/dashboard"},
+          %{label: "Gateways", path: ~p"/#{@subject.account}/gateways"},
+          %{
+            label: "gcp-primary",
+            path: ~p"/#{@subject.account}/gateways/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"
+          },
+          %{
+            label: "Edit",
+            path: ~p"/#{@subject.account}/gateways/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89/edit"
+          }
         ]} />
       </:breadcrumbs>
       <:title>

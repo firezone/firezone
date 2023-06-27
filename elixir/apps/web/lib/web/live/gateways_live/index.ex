@@ -6,15 +6,15 @@ defmodule Web.GatewaysLive.Index do
     <.section_header>
       <:breadcrumbs>
         <.breadcrumbs entries={[
-          %{label: "Home", path: ~p"/"},
-          %{label: "Gateways", path: ~p"/gateways"}
+          %{label: "Home", path: ~p"/#{@subject.account}/dashboard"},
+          %{label: "Gateways", path: ~p"/#{@subject.account}/gateways"}
         ]} />
       </:breadcrumbs>
       <:title>
         All gateways
       </:title>
       <:actions>
-        <.add_button navigate={~p"/gateways/new"}>
+        <.add_button navigate={~p"/#{@subject.account}/gateways/new"}>
           Add Gateway
         </.add_button>
       </:actions>
@@ -99,7 +99,7 @@ defmodule Web.GatewaysLive.Index do
                 class="px-4 py-3 font-medium text-gray-900 whitespace-nowrap dark:text-white"
               >
                 <.link
-                  navigate={~p"/gateways/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
+                  navigate={~p"/#{@subject.account}/gateways/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
                   class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
                 >
                   hungry-hippo
@@ -111,7 +111,7 @@ defmodule Web.GatewaysLive.Index do
               </td>
               <td class="px-4 py-3">
                 <.link
-                  navigate={~p"/gateways/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
+                  navigate={~p"/#{@subject.account}/gateways/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
                   class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
                 >
                   GitLab, Jira, Confluence, and 2 more
@@ -165,7 +165,7 @@ defmodule Web.GatewaysLive.Index do
                 class="px-4 py-3 font-medium text-gray-900 whitespace-nowrap dark:text-white"
               >
                 <.link
-                  navigate={~p"/gateways/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
+                  navigate={~p"/#{@subject.account}/gateways/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
                   class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
                 >
                   gcp-primary
@@ -177,7 +177,7 @@ defmodule Web.GatewaysLive.Index do
               </td>
               <td class="px-4 py-3">
                 <.link
-                  navigate={~p"/gateways/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
+                  navigate={~p"/#{@subject.account}/gateways/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
                   class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
                 >
                   10.56.7.0/24
@@ -231,7 +231,7 @@ defmodule Web.GatewaysLive.Index do
                 class="px-4 py-3 font-medium text-gray-900 whitespace-nowrap dark:text-white"
               >
                 <.link
-                  navigate={~p"/gateways/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
+                  navigate={~p"/#{@subject.account}/gateways/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
                   class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
                 >
                   gcp-secondary
@@ -243,7 +243,7 @@ defmodule Web.GatewaysLive.Index do
               </td>
               <td class="px-4 py-3">
                 <.link
-                  navigate={~p"/gateways/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
+                  navigate={~p"/#{@subject.account}/gateways/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
                   class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
                 >
                   10.56.7.0/24
@@ -297,7 +297,7 @@ defmodule Web.GatewaysLive.Index do
                 class="px-4 py-3 font-medium text-gray-900 whitespace-nowrap dark:text-white"
               >
                 <.link
-                  navigate={~p"/gateways/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
+                  navigate={~p"/#{@subject.account}/gateways/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
                   class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
                 >
                   wavering-walrus
@@ -313,7 +313,7 @@ defmodule Web.GatewaysLive.Index do
               </td>
               <td class="px-4 py-4">
                 <.link
-                  navigate={~p"/gateways/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
+                  navigate={~p"/#{@subject.account}/gateways/DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"}
                   class="font-medium text-blue-600 dark:text-blue-500 hover:underline"
                 >
                   GitLab, Jira, Confluence, and 2 more
@@ -364,7 +364,7 @@ defmodule Web.GatewaysLive.Index do
           </tbody>
         </table>
       </div>
-      <.paginator page={3} total_pages={100} collection_base_path={~p"/gateways"} />
+      <.paginator page={3} total_pages={100} collection_base_path={~p"/#{@subject.account}/gateways"} />
     </div>
     """
   end
