@@ -38,6 +38,10 @@ impl Callbacks for CallbackHandler {
         todo!()
     }
 
+    fn on_disconnect(&self) {
+        todo!()
+    }
+
     fn on_error(&self, _error: &Error, _error_type: ErrorType) {
         todo!()
     }

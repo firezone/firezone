@@ -19,6 +19,10 @@ impl Callbacks for CallbackHandler {
         todo!()
     }
 
+    fn on_disconnect(&self) {
+        todo!()
+    }
+
     fn on_error(&self, error: &Error, error_type: ErrorType) {
         match error_type {
             ErrorType::Recoverable => tracing::warn!("Encountered error: {error}"),

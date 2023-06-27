@@ -56,6 +56,8 @@ pub trait Callbacks: Clone + Send + Sync {
     fn on_update_resources(&self, resource_list: ResourceList);
     /// Called when the tunnel address is set.
     fn on_connect(&self, tunnel_addresses: TunnelAddresses);
+    /// Called when the tunnel is disconnected.
+    fn on_disconnect(&self);
     /// Called when there's an error.
     ///
     /// # Parameters

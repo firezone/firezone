@@ -79,6 +79,9 @@ mod ffi {
         #[swift_bridge(swift_name = "onConnect")]
         fn on_connect(&self, tunnelAddresses: TunnelAddresses);
 
+        #[swift_bridge(swift_name = "onDisconnect")]
+        fn on_disconnect(&self);
+
         #[swift_bridge(swift_name = "onError")]
         fn on_error(&self, error: SwiftConnlibError, error_type: SwiftErrorType);
     }
@@ -168,6 +171,10 @@ impl Callbacks for CallbackHandler {
 
     fn on_connect(&self, tunnel_addresses: TunnelAddresses) {
         self.0.on_connect(tunnel_addresses.into())
+    }
+
+    fn on_disconnect(&self) {
+        self.0.on_disconnect()
     }
 
     fn on_error(&self, error: &Error, error_type: ErrorType) {

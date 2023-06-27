@@ -62,6 +62,10 @@ public class CallbackHandler {
         )
     }
 
+    func onDisconnect() {
+        // TODO: handle disconnect
+    }
+
     private func setTunnelSettingsKeepingSomeExisting(
         addresses4: [String], addresses6: [String], ipv4Routes: [NEIPv4Route], ipv6Routes: [NEIPv6Route]
     ) -> Bool {
