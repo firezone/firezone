@@ -126,6 +126,8 @@ defmodule API.Device.ChannelTest do
       dns_resource: resource,
       socket: socket
     } do
+      global_relay_group = RelaysFixtures.create_global_group()
+      global_relay = RelaysFixtures.create_relay(group: global_relay_group, ipv6: nil)
       relay = RelaysFixtures.create_relay(account: account)
       stamp_secret = Ecto.UUID.generate()
       :ok = Domain.Relays.connect_relay(relay, stamp_secret)
@@ -173,6 +175,11 @@ defmodule API.Device.ChannelTest do
       assert expires_at == socket_expires_at
 
       assert is_binary(salt)
+
+      :ok = Domain.Relays.connect_relay(global_relay, stamp_secret)
+      ref = push(socket, "list_relays", %{"resource_id" => resource.id})
+      assert_reply ref, :ok, %{relays: relays}
+      assert length(relays) == 6
     end
   end
 
