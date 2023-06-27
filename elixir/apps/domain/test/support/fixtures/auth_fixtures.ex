@@ -4,8 +4,10 @@ defmodule Domain.AuthFixtures do
   alias Domain.AccountsFixtures
   alias Domain.ActorsFixtures
 
+  def user_password, do: "Hello w0rld!"
   def remote_ip, do: {100, 64, 100, 58}
   def user_agent, do: "iOS/12.5 (iPhone) connlib/0.7.412"
+  def email, do: "user-#{counter()}@example.com"
 
   def random_provider_identifier(%Domain.Auth.Provider{adapter: :email, name: name}) do
     "user-#{counter()}@#{String.downcase(name)}.com"
@@ -54,7 +56,7 @@ defmodule Domain.AuthFixtures do
       end)
 
     attrs =
-      %{adapter_config: provider_attrs}
+      %{adapter: :openid_connect, adapter_config: provider_attrs}
       |> Map.merge(attrs)
       |> provider_attrs()
 
@@ -100,7 +102,11 @@ defmodule Domain.AuthFixtures do
 
     {provider, attrs} =
       Map.pop_lazy(attrs, :provider, fn ->
-        create_email_provider(account: account)
+        {provider, _bypass} =
+          start_openid_providers(["google"])
+          |> create_openid_connect_provider(account: account)
+
+        provider
       end)
 
     {provider_identifier, attrs} =
@@ -108,9 +114,13 @@ defmodule Domain.AuthFixtures do
         random_provider_identifier(provider)
       end)
 
+    {actor_default_type, attrs} =
+      Map.pop(attrs, :actor_default_type, :account_user)
+
     {actor, _attrs} =
       Map.pop_lazy(attrs, :actor, fn ->
         ActorsFixtures.create_actor(
+          type: actor_default_type,
           account: account,
           provider: provider,
           provider_identifier: provider_identifier
@@ -134,10 +144,27 @@ defmodule Domain.AuthFixtures do
     end
   end
 
+  def delete_identity(identity) do
+    identity
+    |> Ecto.Changeset.change(deleted_at: DateTime.utc_now())
+    |> Repo.update!()
+  end
+
   def create_subject do
     account = AccountsFixtures.create_account()
-    actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
-    identity = create_identity(actor: actor, account: account)
+
+    {provider, _bypass} =
+      start_openid_providers(["google"])
+      |> create_openid_connect_provider(account: account)
+
+    actor =
+      ActorsFixtures.create_actor(
+        type: :account_admin_user,
+        account: account,
+        provider: provider
+      )
+
+    identity = create_identity(actor: actor, account: account, provider: provider)
     create_subject(identity)
   end
 
@@ -186,13 +213,12 @@ defmodule Domain.AuthFixtures do
     Enum.into(overrides, %{
       "id" => "google",
       "discovery_document_uri" => "https://firezone.example.com/.well-known/openid-configuration",
-      "client_id" => "google-client-id",
+      "client_id" => "google-client-id-#{counter()}",
       "client_secret" => "google-client-secret",
       "redirect_uri" => "https://firezone.example.com/auth/oidc/google/callback/",
       "response_type" => "code",
       "scope" => "openid email profile",
-      "label" => "OIDC Google",
-      "auto_create_users" => false
+      "label" => "OIDC Google"
     })
   end
 
@@ -201,79 +227,72 @@ defmodule Domain.AuthFixtures do
       %{
         "id" => "google",
         "discovery_document_uri" => discovery_document_url,
-        "client_id" => "google-client-id",
+        "client_id" => "google-client-id-#{counter()}",
         "client_secret" => "google-client-secret",
         "redirect_uri" => "https://firezone.example.com/auth/oidc/google/callback/",
         "response_type" => "code",
         "scope" => "openid email profile",
-        "label" => "OIDC Google",
-        "auto_create_users" => false
+        "label" => "OIDC Google"
       },
       %{
         "id" => "okta",
         "discovery_document_uri" => discovery_document_url,
-        "client_id" => "okta-client-id",
+        "client_id" => "okta-client-id-#{counter()}",
         "client_secret" => "okta-client-secret",
         "redirect_uri" => "https://firezone.example.com/auth/oidc/okta/callback/",
         "response_type" => "code",
         "scope" => "openid email profile offline_access",
-        "label" => "OIDC Okta",
-        "auto_create_users" => false
+        "label" => "OIDC Okta"
       },
       %{
         "id" => "auth0",
         "discovery_document_uri" => discovery_document_url,
-        "client_id" => "auth0-client-id",
+        "client_id" => "auth0-client-id-#{counter()}",
         "client_secret" => "auth0-client-secret",
         "redirect_uri" => "https://firezone.example.com/auth/oidc/auth0/callback/",
         "response_type" => "code",
         "scope" => "openid email profile",
-        "label" => "OIDC Auth0",
-        "auto_create_users" => false
+        "label" => "OIDC Auth0"
       },
       %{
         "id" => "azure",
         "discovery_document_uri" => discovery_document_url,
-        "client_id" => "azure-client-id",
+        "client_id" => "azure-client-id-#{counter()}",
         "client_secret" => "azure-client-secret",
         "redirect_uri" => "https://firezone.example.com/auth/oidc/azure/callback/",
         "response_type" => "code",
         "scope" => "openid email profile offline_access",
-        "label" => "OIDC Azure",
-        "auto_create_users" => false
+        "label" => "OIDC Azure"
       },
       %{
         "id" => "onelogin",
         "discovery_document_uri" => discovery_document_url,
-        "client_id" => "onelogin-client-id",
+        "client_id" => "onelogin-client-id-#{counter()}",
         "client_secret" => "onelogin-client-secret",
         "redirect_uri" => "https://firezone.example.com/auth/oidc/onelogin/callback/",
         "response_type" => "code",
         "scope" => "openid email profile offline_access",
-        "label" => "OIDC Onelogin",
-        "auto_create_users" => false
+        "label" => "OIDC Onelogin"
       },
       %{
         "id" => "keycloak",
         "discovery_document_uri" => discovery_document_url,
-        "client_id" => "keycloak-client-id",
+        "client_id" => "keycloak-client-id-#{counter()}",
         "client_secret" => "keycloak-client-secret",
         "redirect_uri" => "https://firezone.example.com/auth/oidc/keycloak/callback/",
         "response_type" => "code",
         "scope" => "openid email profile offline_access",
-        "label" => "OIDC Keycloak",
-        "auto_create_users" => false
+        "label" => "OIDC Keycloak"
       },
       %{
         "id" => "vault",
         "discovery_document_uri" => discovery_document_url,
-        "client_id" => "vault-client-id",
+        "client_id" => "vault-client-id-#{counter()}",
         "client_secret" => "vault-client-secret",
         "redirect_uri" => "https://firezone.example.com/auth/oidc/vault/callback/",
         "response_type" => "code",
         "scope" => "openid email profile offline_access",
-        "label" => "OIDC Vault",
-        "auto_create_users" => false
+        "label" => "OIDC Vault"
       }
     ]
   end
@@ -444,7 +463,34 @@ defmodule Domain.AuthFixtures do
     {bypass, "#{endpoint}/.well-known/openid-configuration"}
   end
 
-  def fetch_conn_params(conn) do
+  def generate_openid_connect_token(provider, identity, claims \\ %{}) do
+    claims =
+      Map.merge(
+        %{
+          "email" => identity.provider_identifier,
+          "sub" => identity.provider_identifier,
+          "aud" => provider.adapter_config["client_id"],
+          "exp" => DateTime.utc_now() |> DateTime.add(10, :second) |> DateTime.to_unix()
+        },
+        claims
+      )
+
+    {sign_openid_connect_token(claims), claims}
+  end
+
+  def sign_openid_connect_token(claims) do
+    jwk = jwks_attrs()
+
+    {_alg, token} =
+      jwk
+      |> JOSE.JWK.from()
+      |> JOSE.JWS.sign(Jason.encode!(claims), %{"alg" => "RS256"})
+      |> JOSE.JWS.compact()
+
+    token
+  end
+
+  defp fetch_conn_params(conn) do
     opts = Plug.Parsers.init(parsers: [:urlencoded, :json], pass: ["*/*"], json_decoder: Jason)
 
     conn

@@ -107,7 +107,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       assert authorization_uri ==
                "http://localhost:#{bypass.port}/authorize" <>
                  "?access_type=offline" <>
-                 "&client_id=google-client-id" <>
+                 "&client_id=#{provider.adapter_config["client_id"]}" <>
                  "&code_challenge=#{Domain.Auth.Adapters.OpenIDConnect.PKCE.code_challenge(verifier)}" <>
                  "&code_challenge_method=S256" <>
                  "&redirect_uri=https%3A%2F%2Fexample.com%2F" <>
@@ -133,7 +133,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
     end
   end
 
-  describe "verify_secret/2" do
+  describe "verify_identity/2" do
     setup do
       account = AccountsFixtures.create_account()
 
@@ -151,7 +151,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       identity: identity,
       bypass: bypass
     } do
-      {token, claims} = generate_token(provider, identity)
+      {token, claims} = AuthFixtures.generate_openid_connect_token(provider, identity)
 
       AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
       AuthFixtures.expect_userinfo(bypass)
@@ -160,13 +160,12 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
 
-      assert {:ok, identity, expires_at} = verify_secret(identity, payload)
+      assert {:ok, identity, expires_at} = verify_identity(provider, payload)
 
       assert identity.provider_state == %{
                access_token: nil,
                claims: claims,
                expires_at: expires_at,
-               id_token: token,
                refresh_token: nil,
                userinfo: %{
                  "email" => "ada@example.com",
@@ -187,7 +186,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       identity: identity,
       bypass: bypass
     } do
-      {token, _claims} = generate_token(provider, identity)
+      {token, _claims} = AuthFixtures.generate_openid_connect_token(provider, identity)
 
       AuthFixtures.expect_refresh_token(bypass, %{
         "token_type" => "Bearer",
@@ -203,9 +202,8 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
 
-      assert {:ok, identity, _expires_at} = verify_secret(identity, payload)
+      assert {:ok, identity, _expires_at} = verify_identity(provider, payload)
 
-      assert identity.provider_state.id_token == token
       assert identity.provider_state.access_token == "MY_ACCESS_TOKEN"
       assert identity.provider_state.refresh_token == "MY_REFRESH_TOKEN"
       assert DateTime.diff(identity.provider_state.expires_at, DateTime.utc_now()) in 3595..3605
@@ -218,7 +216,10 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
     } do
       forty_seconds_ago = DateTime.utc_now() |> DateTime.add(-40, :second) |> DateTime.to_unix()
 
-      {token, _claims} = generate_token(provider, identity, %{"exp" => forty_seconds_ago})
+      {token, _claims} =
+        AuthFixtures.generate_openid_connect_token(provider, identity, %{
+          "exp" => forty_seconds_ago
+        })
 
       AuthFixtures.expect_refresh_token(bypass, %{"id_token" => token})
 
@@ -226,11 +227,11 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
 
-      assert verify_secret(identity, payload) == {:error, :expired_secret}
+      assert verify_identity(provider, payload) == {:error, :expired}
     end
 
     test "returns error when token is invalid", %{
-      identity: identity,
+      provider: provider,
       bypass: bypass
     } do
       token = "foo"
@@ -241,11 +242,61 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
 
-      assert verify_secret(identity, payload) == {:error, :invalid_secret}
+      assert verify_identity(provider, payload) == {:error, :invalid}
+    end
+
+    test "returns error when identity does not exist", %{
+      identity: identity,
+      provider: provider,
+      bypass: bypass
+    } do
+      {token, _claims} =
+        AuthFixtures.generate_openid_connect_token(provider, identity, %{"sub" => "foo@bar.com"})
+
+      AuthFixtures.expect_refresh_token(bypass, %{
+        "token_type" => "Bearer",
+        "id_token" => token,
+        "access_token" => "MY_ACCESS_TOKEN",
+        "refresh_token" => "MY_REFRESH_TOKEN",
+        "expires_in" => 3600
+      })
+
+      AuthFixtures.expect_userinfo(bypass)
+
+      code_verifier = PKCE.code_verifier()
+      redirect_uri = "https://example.com/"
+      payload = {redirect_uri, code_verifier, "MyFakeCode"}
+
+      assert verify_identity(provider, payload) == {:error, :not_found}
+    end
+
+    test "returns error when identity does not belong to provider", %{
+      account: account,
+      provider: provider,
+      bypass: bypass
+    } do
+      identity = AuthFixtures.create_identity(account: account)
+      {token, _claims} = AuthFixtures.generate_openid_connect_token(provider, identity)
+
+      AuthFixtures.expect_refresh_token(bypass, %{
+        "token_type" => "Bearer",
+        "id_token" => token,
+        "access_token" => "MY_ACCESS_TOKEN",
+        "refresh_token" => "MY_REFRESH_TOKEN",
+        "expires_in" => 3600
+      })
+
+      AuthFixtures.expect_userinfo(bypass)
+
+      code_verifier = PKCE.code_verifier()
+      redirect_uri = "https://example.com/"
+      payload = {redirect_uri, code_verifier, "MyFakeCode"}
+
+      assert verify_identity(provider, payload) == {:error, :not_found}
     end
 
     test "returns error when provider is down", %{
-      identity: identity,
+      provider: provider,
       bypass: bypass
     } do
       Bypass.down(bypass)
@@ -254,7 +305,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
 
-      assert verify_secret(identity, payload) == {:error, :internal_error}
+      assert verify_identity(provider, payload) == {:error, :internal_error}
     end
   end
 
@@ -276,7 +327,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       identity: identity,
       bypass: bypass
     } do
-      {token, claims} = generate_token(provider, identity)
+      {token, claims} = AuthFixtures.generate_openid_connect_token(provider, identity)
 
       AuthFixtures.expect_refresh_token(bypass, %{
         "token_type" => "Bearer",
@@ -294,7 +345,6 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
                access_token: "MY_ACCESS_TOKEN",
                claims: claims,
                expires_at: expires_at,
-               id_token: token,
                refresh_token: "MY_REFRESH_TOKEN",
                userinfo: %{
                  "email" => "ada@example.com",
@@ -311,28 +361,5 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
 
       assert DateTime.diff(expires_at, DateTime.utc_now()) in 5..15
     end
-  end
-
-  defp generate_token(provider, identity, claims \\ %{}) do
-    jwk = AuthFixtures.jwks_attrs()
-
-    claims =
-      Map.merge(
-        %{
-          "email" => "foo@example.com",
-          "sub" => identity.provider_identifier,
-          "aud" => provider.adapter_config["client_id"],
-          "exp" => DateTime.utc_now() |> DateTime.add(10, :second) |> DateTime.to_unix()
-        },
-        claims
-      )
-
-    {_alg, token} =
-      jwk
-      |> JOSE.JWK.from()
-      |> JOSE.JWS.sign(Jason.encode!(claims), %{"alg" => "RS256"})
-      |> JOSE.JWS.compact()
-
-    {token, claims}
   end
 end

@@ -1,4 +1,10 @@
 defmodule Web.Session do
+  @moduledoc """
+  We wrap Plug.Session because it's options are resolved at compile-time,
+  which doesn't work with Elixir releases and runtime configuration.
+  """
+  @behaviour Plug
+
   # 4 hours
   @max_cookie_age 14_400
 
@@ -6,13 +12,24 @@ defmodule Web.Session do
   @session_options [
     store: :cookie,
     key: "_firezone_key",
-    # XXX: Strict doesn't work for SSO auth
-    # same_site: "Strict",
+    # If `same_site` is set to `Strict` then the cookie will not be sent on
+    # IdP callback redirects, which will break the auth flow.
+    same_site: "Lax",
     max_age: @max_cookie_age,
     sign: true,
     encrypt: true
   ]
 
+  @impl true
+  def init(opts), do: opts
+
+  @impl true
+  def call(conn, _opts) do
+    opts = options() |> Plug.Session.init()
+    Plug.Session.call(conn, opts)
+  end
+
+  @doc false
   def options do
     @session_options ++
       [

@@ -38,7 +38,7 @@ jobs:
       - uses: erlef/setup-beam@v1
         with:
           otp-version: "25"
-          elixir-version: "1.14"
+          elixir-version: "1.15"
       - uses: actions/checkout@v3
       - uses: actions/cache@v3
         name: Elixir Deps Cache
@@ -46,7 +46,7 @@ jobs:
           cache-name: cache-elixir-deps-${{ env.MIX_ENV }}
         with:
           path: elixir/deps
-          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
+          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
           restore-keys: |
             ${{ runner.os }}-${{ env.cache-name }}-
       - uses: actions/cache@v3
@@ -55,7 +55,7 @@ jobs:
           cache-name: cache-elixir-build-${{ env.MIX_ENV }}
         with:
           path: elixir/_build
-          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
+          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
       - name: Install Dependencies
         run: mix deps.get --only $MIX_ENV
       - name: Compile Dependencies
@@ -66,11 +66,10 @@ jobs:
         run: |
           mix ecto.create
           mix ecto.migrate
-      - name: Run Tests and Upload Coverage Report
+      - name: Run Tests
         env:
           E2E_MAX_WAIT_SECONDS: 20
         run: |
-          # XXX: This can fail when coveralls is down
           mix test --warnings-as-errors
       - name: Test Report
         uses: dorny/test-reporter@v1
@@ -92,7 +91,7 @@ jobs:
         id: setup-beam
         with:
           otp-version: "25"
-          elixir-version: "1.14"
+          elixir-version: "1.15"
       - uses: actions/checkout@v3
       - uses: actions/cache@v3
         name: Elixir Deps Cache
@@ -100,7 +99,7 @@ jobs:
           cache-name: cache-elixir-deps-${{ env.MIX_ENV }}
         with:
           path: elixir/deps
-          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
+          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
           restore-keys: |
             ${{ runner.os }}-${{ env.cache-name }}-
       - uses: actions/cache@v3
@@ -109,7 +108,7 @@ jobs:
           cache-name: cache-elixir-build-${{ env.MIX_ENV }}
         with:
           path: elixir/_build
-          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
+          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
       - name: Install Dependencies
         run: mix deps.get --only $MIX_ENV
       - name: Compile Dependencies
@@ -145,7 +144,7 @@ jobs:
       - uses: erlef/setup-beam@v1
         with:
           otp-version: "25"
-          elixir-version: "1.14"
+          elixir-version: "1.15"
       - uses: actions/checkout@v3
       - uses: actions/cache@v3
         name: Elixir Deps Cache
@@ -153,7 +152,7 @@ jobs:
           cache-name: cache-elixir-deps-${{ env.MIX_ENV }}
         with:
           path: elixir/deps
-          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
+          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
           restore-keys: |
             ${{ runner.os }}-${{ env.cache-name }}-
       - uses: actions/cache@v3
@@ -162,7 +161,7 @@ jobs:
           cache-name: cache-elixir-build-${{ env.MIX_ENV }}
         with:
           path: elixir/_build
-          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
+          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
       - name: Install Dependencies
         run: mix deps.get --only $MIX_ENV
       - name: Compile Dependencies
@@ -214,14 +213,14 @@ jobs:
       - uses: erlef/setup-beam@v1
         with:
           otp-version: "25"
-          elixir-version: "1.14"
+          elixir-version: "1.15"
       - uses: actions/cache@v3
         name: Elixir Deps Cache
         env:
           cache-name: cache-elixir-deps-${{ env.MIX_ENV }}-${{ env.MIX_ENV }}
         with:
           path: elixir/deps
-          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
+          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
           restore-keys: |
             ${{ runner.os }}-${{ env.cache-name }}-
       - uses: actions/cache@v3
@@ -230,7 +229,7 @@ jobs:
           cache-name: cache-elixir-build-${{ env.MIX_ENV }}
         with:
           path: elixir/_build
-          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
+          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
       - name: Install Dependencies
         run: mix deps.get --only $MIX_ENV
       - name: Compile
@@ -316,7 +315,7 @@ jobs:
       - uses: erlef/setup-beam@v1
         with:
           otp-version: "25"
-          elixir-version: "1.14"
+          elixir-version: "1.15"
       - uses: actions/setup-node@v3
         with:
           node-version: 18
@@ -330,7 +329,7 @@ jobs:
           cache-name: cache-elixir-deps-${{ env.MIX_ENV }}-${{ env.MIX_ENV }}
         with:
           path: elixir/deps
-          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
+          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
           restore-keys: |
             ${{ runner.os }}-${{ env.cache-name }}-
       - uses: actions/cache@v3
@@ -339,7 +338,7 @@ jobs:
           cache-name: cache-elixir-build-${{ env.MIX_ENV }}
         with:
           path: elixir/_build
-          key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
+          key: ${{ runner.os }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-${{ env.cache-name }}-${{ hashFiles('**/elixir/mix.lock') }}
       - uses: actions/cache@v3
         name: pnpm Deps Cache
         env:
@@ -356,6 +355,7 @@ jobs:
           key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('**/pnpm-lock.yaml') }}
       - run: |
           export DISPLAY=:99
+          chromedriver --url-base=/wd/hub &
           sudo Xvfb -ac :99 -screen 0 1280x1024x24 > /dev/null 2>&1 &
       - name: Install Dependencies
         run: mix deps.get --only $MIX_ENV

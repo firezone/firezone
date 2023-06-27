@@ -12,12 +12,12 @@ defmodule API.Device.SocketTest do
 
   describe "connect/3" do
     test "returns error when token is missing" do
-      assert connect(Socket, %{}, @connect_info) == {:error, :missing_token}
+      assert connect(Socket, %{}, connect_info: @connect_info) == {:error, :missing_token}
     end
 
     test "returns error when token is invalid" do
       attrs = connect_attrs(token: "foo")
-      assert connect(Socket, attrs, @connect_info) == {:error, :invalid_token}
+      assert connect(Socket, attrs, connect_info: @connect_info) == {:error, :invalid_token}
     end
 
     test "creates a new device" do
@@ -26,7 +26,7 @@ defmodule API.Device.SocketTest do
 
       attrs = connect_attrs(token: token)
 
-      assert {:ok, socket} = connect(Socket, attrs, connect_info(subject))
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info(subject))
       assert device = Map.fetch!(socket.assigns, :device)
 
       assert device.external_id == attrs["external_id"]
@@ -43,7 +43,7 @@ defmodule API.Device.SocketTest do
 
       attrs = connect_attrs(token: token, external_id: existing_device.external_id)
 
-      assert {:ok, socket} = connect(Socket, attrs, connect_info(subject))
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info(subject))
       assert device = Repo.one(Domain.Devices.Device)
       assert device.id == socket.assigns.device.id
     end

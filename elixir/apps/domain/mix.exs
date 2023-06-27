@@ -35,7 +35,8 @@ defmodule Domain.MixProject do
       extra_applications: [
         :logger,
         :runtime_tools,
-        :crypto
+        :crypto,
+        :dialyzer
       ]
     ]
   end
@@ -77,7 +78,12 @@ defmodule Domain.MixProject do
       {:opentelemetry_finch, "~> 0.2.0"},
 
       # Test and dev deps
-      {:bypass, "~> 2.1", only: :test}
+      {:bypass, "~> 2.1", only: :test},
+      {:credo, "~> 1.5", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.1", only: [:dev], runtime: false},
+      {:junit_formatter, "~> 3.3", only: [:test]},
+      {:mix_audit, "~> 2.1", only: [:dev, :test]},
+      {:sobelow, "~> 0.12", only: [:dev, :test]}
     ]
   end
 

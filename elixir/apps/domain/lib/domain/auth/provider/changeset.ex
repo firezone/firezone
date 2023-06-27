@@ -12,6 +12,14 @@ defmodule Domain.Auth.Provider.Changeset do
     |> put_change(:account_id, account.id)
     |> validate_length(:name, min: 1, max: 255)
     |> validate_required(@required_fields)
+    |> unique_constraint(:adapter,
+      name: :auth_providers_account_id_adapter_index,
+      message: "this provider is already enabled"
+    )
+    |> unique_constraint(:adapter,
+      name: :auth_providers_account_id_oidc_adapter_index,
+      message: "this provider is already connected"
+    )
   end
 
   def disable_provider(%Provider{} = provider) do

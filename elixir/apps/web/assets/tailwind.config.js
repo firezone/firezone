@@ -7,7 +7,8 @@ const path = require("path")
 const defaultTheme = require("tailwindcss/defaultTheme")
 
 module.exports = {
-  darkMode: "media",
+  // Use "media" to synchronize dark mode with the OS, "class" to require manual toggle
+  darkMode: "class",
   content: [
     "./node_modules/flowbite/**/*.js",
     "./js/**/*.js",
