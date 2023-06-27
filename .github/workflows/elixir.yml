@@ -38,7 +38,7 @@ jobs:
       - uses: erlef/setup-beam@v1
         with:
           otp-version: "25"
-          elixir-version: "1.14"
+          elixir-version: "1.15"
       - uses: actions/checkout@v3
       - uses: actions/cache@v3
         name: Elixir Deps Cache
@@ -92,7 +92,7 @@ jobs:
         id: setup-beam
         with:
           otp-version: "25"
-          elixir-version: "1.14"
+          elixir-version: "1.15"
       - uses: actions/checkout@v3
       - uses: actions/cache@v3
         name: Elixir Deps Cache
@@ -145,7 +145,7 @@ jobs:
       - uses: erlef/setup-beam@v1
         with:
           otp-version: "25"
-          elixir-version: "1.14"
+          elixir-version: "1.15"
       - uses: actions/checkout@v3
       - uses: actions/cache@v3
         name: Elixir Deps Cache
@@ -214,7 +214,7 @@ jobs:
       - uses: erlef/setup-beam@v1
         with:
           otp-version: "25"
-          elixir-version: "1.14"
+          elixir-version: "1.15"
       - uses: actions/cache@v3
         name: Elixir Deps Cache
         env:
@@ -316,7 +316,7 @@ jobs:
       - uses: erlef/setup-beam@v1
         with:
           otp-version: "25"
-          elixir-version: "1.14"
+          elixir-version: "1.15"
       - uses: actions/setup-node@v3
         with:
           node-version: 18
