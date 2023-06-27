@@ -75,7 +75,6 @@ defmodule Domain.MixProject do
       {:opentelemetry_exporter, "~> 1.5"},
       {:opentelemetry_ecto, "~> 1.1"},
       {:opentelemetry_finch, "~> 0.2.0"},
-      {:ssl_verify_fun, "~> 1.1", manager: :rebar3, override: true},
 
       # Test and dev deps
       {:bypass, "~> 2.1", only: :test}
