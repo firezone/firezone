@@ -43,9 +43,7 @@ defmodule Firezone.MixProject do
       {:jason, "~> 1.2"},
 
       # Shared test deps
-      {:excoveralls, "~> 0.14", only: :test},
       {:credo, "~> 1.5", only: [:dev, :test], runtime: false},
-      {:mix_test_watch, "~> 1.0", only: :dev, runtime: false},
       {:dialyxir, "~> 1.1", only: [:dev], runtime: false},
       {:junit_formatter, "~> 3.3", only: [:test]},
       {:mix_audit, "~> 2.1", only: [:dev, :test]},
