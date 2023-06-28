@@ -56,7 +56,7 @@ jobs:
 
   build-android:
     needs:
-      - test-connlib
+      - test
       - draft-release
     runs-on: ubuntu-latest
     permissions:
@@ -99,7 +99,7 @@ jobs:
 
   build-apple:
     needs:
-      - test-connlib
+      - test
       - draft-release
     runs-on: macos-latest
     permissions:
