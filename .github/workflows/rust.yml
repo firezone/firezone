@@ -11,6 +11,10 @@ concurrency:
   group: "rust-${{ github.workflow }}-${{ github.ref }}"
   cancel-in-progress: true
 
+defaults:
+  run:
+    working-directory: ./rust
+
 jobs:
   draft-release:
     runs-on: ubuntu-latest
@@ -33,9 +37,6 @@ jobs:
           - macos-12
           - windows-2019
           - windows-2022
-    defaults:
-      run:
-        working-directory: ./rust
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v3
@@ -130,9 +131,6 @@ jobs:
   cross-relay: # cross is separate from test because cross-compiling yields different artifacts and we cannot reuse the cache.
     name: Cross compile relay
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./rust
     steps:
       - uses: actions/checkout@v3
 
@@ -149,9 +147,6 @@ jobs:
   relay_smoke:
     name: Smoke-test relay
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./rust/relay
     steps:
       - uses: actions/checkout@v3
 
@@ -162,3 +157,4 @@ jobs:
         with:
           workspaces: ./rust
       - run: ./run_smoke_test.sh
+        working-directory: ./rust/relay
