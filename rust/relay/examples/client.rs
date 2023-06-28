@@ -60,7 +60,7 @@ async fn new_turn_client() -> Result<Client, Error> {
         stun_serv_addr: "localhost:3478".to_owned(),
         turn_serv_addr: "localhost:3478".to_owned(),
         username: "2000000000:client".to_owned(), // 2000000000 expires in 2033, plenty of time
-        password: "7U2fprz59mnpPZ/y2Eh8nmJ4d9Oqr98WhgFqlmuZVJ4".to_owned(),
+        password: "+Qou8TSjw9q3JMnWET7MbFsQh/agwz/LURhpfX7a0hE".to_owned(),
         realm: "firezone".to_owned(),
         software: String::new(),
         rto_in_ms: 0,

@@ -83,7 +83,7 @@ async fn main() -> Result<()> {
 
     let server = Server::new(args.public_ip4_addr, make_rng(args.rng_seed));
 
-    tracing::info!("Relay auth secret: {}", hex::encode(server.auth_secret()));
+    tracing::info!("Relay auth secret: {}", server.auth_secret());
 
     let channel = if let Some(mut portal_url) = args.portal_ws_url {
         if portal_url.scheme() == "ws" && !args.allow_insecure_ws {
