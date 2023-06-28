@@ -48,8 +48,8 @@ jobs:
         with:
           workspaces: ./rust
           key: v2
-      - run: cargo fmt -p relay -- --check
-      - run: cargo doc -p relay --no-deps --document-private-items
+      - run: cargo fmt -- --check
+      - run: cargo doc --no-deps --document-private-items
         env:
           RUSTDOCFLAGS: "-D warnings"
       - run: cargo clippy --all-targets --all-features -- -D warnings
