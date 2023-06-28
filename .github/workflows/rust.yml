@@ -68,7 +68,7 @@ jobs:
       - if: ${{ contains(matrix.runs-on, 'windows') }}
         name: Move *ring* build tools
         run: |
-          mv target/tools/windows/nasm/nasm.exe target/tools/nasm.exe      
+          mv target/tools/windows/nasm/nasm.exe target/tools/nasm.exe
 
       - run: cargo fmt -- --check
       - run: cargo doc --all-features --no-deps --document-private-items
