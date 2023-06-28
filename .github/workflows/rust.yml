@@ -104,7 +104,7 @@ jobs:
           build-root-directory: rust/connlib/clients/android
       - name: Move artifact
         run: |
-          mv ./rust/connlib/clients/android/lib/build/outputs/aar/lib-release.aar ./connlib-${{ needs.draft-release.outputs.tag_name }}.aar
+          mv ./connlib/clients/android/lib/build/outputs/aar/lib-release.aar ./connlib-${{ needs.draft-release.outputs.tag_name }}.aar
       - uses: actions/upload-artifact@v3
         with:
           name: connlib-android
