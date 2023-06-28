@@ -69,18 +69,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Update toolchain
         run: rustup show
-      - uses: actions/cache@v3
-        with:
-          path: |
-            ~/rust/connlib/clients/android/.gradle/caches
-            ~/rust/connlib/clients/android/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
       - uses: actions/setup-java@v3
         with:
           java-version: '17'
           distribution: 'adopt'
+          cache: gradle
       - name: Validate Gradle wrapper
         uses: gradle/wrapper-validation-action@v1
       - name: Assemble Release
