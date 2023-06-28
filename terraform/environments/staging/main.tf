@@ -226,7 +226,7 @@ resource "google_sql_database" "firezone" {
 }
 
 locals {
-  target_tags = ["app-web", "app-api"]
+  target_tags = ["app-web", "app-api", "app-relay"]
 
   cluster = {
     name   = "firezone"
@@ -534,6 +534,123 @@ resource "google_project_iam_member" "application" {
 
   role   = "projects/${module.google-cloud-project.project.project_id}/roles/${google_project_iam_custom_role.erlang-discovery.role_id}"
   member = "serviceAccount:${each.value}"
+}
+
+# Deploy relays
+
+module "relays" {
+  source     = "../../modules/relay-app"
+  project_id = module.google-cloud-project.project.project_id
+
+  instances = {
+    "asia-east1" = {
+      "asia-east1-a" = {
+        type     = "n1-standard-1"
+        replicas = 1
+      }
+    }
+
+    "asia-south1" = {
+      "asia-south1-a" = {
+        type     = "n1-standard-1"
+        replicas = 1
+      }
+    }
+
+    "australia-southeast1" = {
+      "australia-southeast1-a" = {
+        type     = "n1-standard-1"
+        replicas = 1
+      }
+    }
+
+    "me-central1" = {
+      "me-central1-a" = {
+        type     = "n1-standard-1"
+        replicas = 1
+      }
+    }
+
+    "europe-west1" = {
+      "europe-west1-d" = {
+        type     = "n1-standard-1"
+        replicas = 1
+      }
+    }
+
+    "southamerica-east1" = {
+      "southamerica-east1-b" = {
+        type     = "n1-standard-1"
+        replicas = 1
+      }
+    }
+
+    "us-east1" = {
+      "us-east1-d" = {
+        type     = "n1-standard-1"
+        replicas = 1
+      }
+    }
+
+    "us-west2" = {
+      "us-west2-b" = {
+        type     = "n1-standard-1"
+        replicas = 1
+      }
+    }
+
+    "us-central1" = {
+      "us-central1-b" = {
+        type     = "n1-standard-1"
+        replicas = 1
+      }
+    }
+
+  }
+
+  vpc_network = "projects/${var.project_id}/global/networks/default"
+
+  container_registry = module.google-artifact-registry.url
+
+  image_repo = module.google-artifact-registry.repo
+  image      = "relay"
+  image_tag  = var.relay_image_tag
+
+  observability_log_level = "debug"
+
+  application_name    = "relay"
+  application_version = "0-0-1"
+
+  application_ports = [
+    {
+      name     = "http"
+      protocol = "TCP"
+      port     = 80
+
+      health_check = {
+        initial_delay_sec = 30
+
+        check_interval_sec  = 5
+        timeout_sec         = 5
+        healthy_threshold   = 1
+        unhealthy_threshold = 2
+
+        http_health_check = {}
+      }
+    }
+  ]
+
+  application_environment_variables = concat([
+    # Web Server
+    {
+      name  = "EXTERNAL_URL"
+      value = "https://app.${local.tld}"
+    },
+    {
+      name  = "PHOENIX_HTTP_WEB_PORT"
+      value = "80"
+    }
+  ], local.shared_application_environment_variables)
 }
 
 # Enable SSH on staging
