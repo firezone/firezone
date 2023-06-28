@@ -262,20 +262,20 @@ impl IfaceDevice {
 
 // So, these functions take a mutable &self, this is not necessary in theory but it's correct!
 impl IfaceConfig {
+    pub async fn add_route(&mut self, route: IpNetwork) -> Result<()> {
+        tracing::error!("`add_route` unimplemented on macOS: `{route:#?}`");
+        Ok(())
+    }
+
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn set_iface_config(&mut self, _config: &InterfaceConfig) -> Result<()> {
-        // TODO
-
+        tracing::error!("`set_iface_config` unimplemented on macOS: `{config:#?}`");
         Ok(())
     }
 
     pub async fn up(&mut self) -> Result<()> {
-        // TODO
+        tracing::error!("`up` unimplemented on macOS");
         Ok(())
-    }
-
-    pub async fn add_route(&mut self, _route: IpNetwork) -> Result<()> {
-        todo!()
     }
 }
 

@@ -10,9 +10,13 @@ members = [
   "connlib/libs/gateway",
   "connlib/libs/common",
   "connlib/gateway",
-  "connlib/macros",
 ]
 
 [workspace.dependencies]
 boringtun = { git = "https://github.com/cloudflare/boringtun", rev = "878385f", default-features = false }
 swift-bridge = { git = "https://github.com/chinedufn/swift-bridge.git", rev = "4fbd30f" }
+
+# Patched to use https://github.com/rust-lang/cc-rs/pull/708
+# (the `patch` section can't be used for build deps...)
+[patch.crates-io]
+ring = { git = "https://github.com/firezone/ring", branch = "v0.16.20-cc-fix" }

@@ -17,8 +17,8 @@ use async_trait::async_trait;
 
 const INTERNAL_CHANNEL_SIZE: usize = 256;
 
-pub struct ControlPlane<C: Callbacks> {
-    tunnel: Arc<Tunnel<ControlSignaler, C>>,
+pub struct ControlPlane<CB: Callbacks> {
+    tunnel: Arc<Tunnel<ControlSignaler, CB>>,
     control_signaler: ControlSignaler,
 }
 
@@ -35,10 +35,7 @@ impl ControlSignal for ControlSignaler {
     }
 }
 
-impl<C: Callbacks> ControlPlane<C>
-where
-    C: Send + Sync + 'static,
-{
+impl<CB: Callbacks + 'static> ControlPlane<CB> {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn start(mut self, mut receiver: Receiver<IngressMessages>) {
         let mut interval = tokio::time::interval(Duration::from_secs(10));
@@ -55,7 +52,7 @@ where
     async fn init(&mut self, init: InitGateway) {
         if let Err(e) = self.tunnel.set_interface(&init.interface).await {
             tracing::error!("Couldn't initialize interface: {e}");
-            C::on_error(&e, Fatal);
+            self.tunnel.callbacks().on_error(&e, Fatal);
             return;
         }
 
@@ -87,12 +84,12 @@ where
                         .await
                     {
                         tunnel.cleanup_peer_connection(connection_request.device.id);
-                        C::on_error(&err.into(), Recoverable);
+                        tunnel.callbacks().on_error(&err.into(), Recoverable);
                     }
                 }
                 Err(err) => {
                     tunnel.cleanup_peer_connection(connection_request.device.id);
-                    C::on_error(&err, Recoverable);
+                    tunnel.callbacks().on_error(&err, Recoverable);
                 }
             }
         });
@@ -123,13 +120,13 @@ where
 }
 
 #[async_trait]
-impl<C: Callbacks> ControlSession<IngressMessages, EgressMessages> for ControlPlane<C>
-where
-    C: Send + Sync + 'static,
+impl<CB: Callbacks + 'static> ControlSession<IngressMessages, EgressMessages, CB>
+    for ControlPlane<CB>
 {
-    #[tracing::instrument(level = "trace", skip(private_key))]
+    #[tracing::instrument(level = "trace", skip(private_key, callbacks))]
     async fn start(
         private_key: StaticSecret,
+        callbacks: CB,
     ) -> Result<(Sender<IngressMessages>, Receiver<EgressMessages>)> {
         // This is kinda hacky, the buffer size is 1 so that we make sure that we
         // process one message at a time, blocking if a previous message haven't been processed
@@ -140,7 +137,7 @@ where
         let (internal_sender, internal_receiver) = channel(INTERNAL_CHANNEL_SIZE);
         let internal_sender = Arc::new(internal_sender);
         let control_signaler = ControlSignaler { internal_sender };
-        let tunnel = Arc::new(Tunnel::<_, C>::new(private_key, control_signaler.clone()).await?);
+        let tunnel = Arc::new(Tunnel::new(private_key, control_signaler.clone(), callbacks).await?);
 
         let control_plane = ControlPlane {
             tunnel,
