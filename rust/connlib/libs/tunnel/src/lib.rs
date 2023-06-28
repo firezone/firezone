@@ -2,15 +2,15 @@
 //!
 //! This is both the wireguard and ICE implementation that should work in tandem.
 //! [Tunnel] is the main entry-point for this crate.
-use ip_network::IpNetwork;
-use ip_network_table::IpNetworkTable;
 use boringtun::{
     noise::{
-        errors::WireGuardError, handshake::parse_handshake_anon, rate_limiter::RateLimiter,
-        Packet, Tunn, TunnResult,
+        errors::WireGuardError, handshake::parse_handshake_anon, rate_limiter::RateLimiter, Packet,
+        Tunn, TunnResult,
     },
     x25519::{PublicKey, StaticSecret},
 };
+use ip_network::IpNetwork;
+use ip_network_table::IpNetworkTable;
 use libs_common::{
     error_type::ErrorType::{Fatal, Recoverable},
     Callbacks,

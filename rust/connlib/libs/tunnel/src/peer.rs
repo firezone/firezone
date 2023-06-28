@@ -1,13 +1,10 @@
 use std::{net::IpAddr, sync::Arc};
 
+use boringtun::noise::{Tunn, TunnResult};
 use bytes::Bytes;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
-use boringtun::noise::{Tunn, TunnResult};
-use libs_common::{
-    error_type::ErrorType,
-    Callbacks,
-};
+use libs_common::{error_type::ErrorType, Callbacks};
 use parking_lot::Mutex;
 use webrtc::data::data_channel::DataChannel;
 

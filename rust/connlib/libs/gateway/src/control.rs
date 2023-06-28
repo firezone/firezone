@@ -1,7 +1,7 @@
 use std::{sync::Arc, time::Duration};
 
-use firezone_tunnel::{ControlSignal, Tunnel};
 use boringtun::x25519::StaticSecret;
+use firezone_tunnel::{ControlSignal, Tunnel};
 use libs_common::{
     error_type::ErrorType::{Fatal, Recoverable},
     messages::ResourceDescription,
