@@ -263,7 +263,7 @@ impl IfaceDevice {
 // So, these functions take a mutable &self, this is not necessary in theory but it's correct!
 impl IfaceConfig {
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn set_iface_config(&mut self, config: &InterfaceConfig) -> Result<()> {
+    pub async fn set_iface_config(&mut self, _config: &InterfaceConfig) -> Result<()> {
         // TODO
 
         Ok(())
@@ -274,7 +274,7 @@ impl IfaceConfig {
         Ok(())
     }
 
-    pub async fn add_route(&mut self, route: IpNetwork) -> Result<()> {
+    pub async fn add_route(&mut self, _route: IpNetwork) -> Result<()> {
         todo!()
     }
 }
