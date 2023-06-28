@@ -3,19 +3,18 @@ use std::{sync::Arc, time::Duration};
 use boringtun::x25519::StaticSecret;
 use firezone_tunnel::{ControlSignal, Tunnel};
 use libs_common::{
+    control::PhoenixSenderWithTopic,
     error_type::ErrorType::{Fatal, Recoverable},
     messages::ResourceDescription,
     Callbacks, ControlSession, Result,
 };
-use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tokio::sync::mpsc::Receiver;
 
 use super::messages::{
     ConnectionReady, EgressMessages, IngressMessages, InitGateway, RequestConnection,
 };
 
 use async_trait::async_trait;
-
-const INTERNAL_CHANNEL_SIZE: usize = 256;
 
 pub struct ControlPlane<CB: Callbacks> {
     tunnel: Arc<Tunnel<ControlSignaler, CB>>,
@@ -24,7 +23,7 @@ pub struct ControlPlane<CB: Callbacks> {
 
 #[derive(Clone)]
 struct ControlSignaler {
-    internal_sender: Arc<Sender<EgressMessages>>,
+    control_signal: PhoenixSenderWithTopic,
 }
 
 #[async_trait]
@@ -63,7 +62,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
     #[tracing::instrument(level = "trace", skip(self))]
     fn connection_request(&self, connection_request: RequestConnection) {
         let tunnel = Arc::clone(&self.tunnel);
-        let control_signaler = self.control_signaler.clone();
+        let mut control_signaler = self.control_signaler.clone();
         tokio::spawn(async move {
             match tunnel
                 .set_peer_connection_request(
@@ -76,7 +75,7 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
             {
                 Ok(gateway_rtc_sdp) => {
                     if let Err(err) = control_signaler
-                        .internal_sender
+                        .control_signal
                         .send(EgressMessages::ConnectionReady(ConnectionReady {
                             client_id: connection_request.device.id,
                             gateway_rtc_sdp,
@@ -120,23 +119,15 @@ impl<CB: Callbacks + 'static> ControlPlane<CB> {
 }
 
 #[async_trait]
-impl<CB: Callbacks + 'static> ControlSession<IngressMessages, EgressMessages, CB>
-    for ControlPlane<CB>
-{
+impl<CB: Callbacks + 'static> ControlSession<IngressMessages, CB> for ControlPlane<CB> {
     #[tracing::instrument(level = "trace", skip(private_key, callbacks))]
     async fn start(
         private_key: StaticSecret,
+        receiver: Receiver<IngressMessages>,
+        control_signal: PhoenixSenderWithTopic,
         callbacks: CB,
-    ) -> Result<(Sender<IngressMessages>, Receiver<EgressMessages>)> {
-        // This is kinda hacky, the buffer size is 1 so that we make sure that we
-        // process one message at a time, blocking if a previous message haven't been processed
-        // to force queue ordering.
-        // (couldn't find any other guarantee of the ordering of message)
-        let (sender, receiver) = channel::<IngressMessages>(1);
-
-        let (internal_sender, internal_receiver) = channel(INTERNAL_CHANNEL_SIZE);
-        let internal_sender = Arc::new(internal_sender);
-        let control_signaler = ControlSignaler { internal_sender };
+    ) -> Result<()> {
+        let control_signaler = ControlSignaler { control_signal };
         let tunnel = Arc::new(Tunnel::new(private_key, control_signaler.clone(), callbacks).await?);
 
         let control_plane = ControlPlane {
@@ -144,10 +135,9 @@ impl<CB: Callbacks + 'static> ControlSession<IngressMessages, EgressMessages, CB
             control_signaler,
         };
 
-        // TODO: We should have some kind of callback from clients to surface errors here
         tokio::spawn(async move { control_plane.start(receiver).await });
 
-        Ok((sender, internal_receiver))
+        Ok(())
     }
 
     fn socket_path() -> &'static str {
