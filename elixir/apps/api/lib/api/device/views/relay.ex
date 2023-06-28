@@ -37,6 +37,9 @@ defmodule API.Device.Views.Relay do
     ]
   end
 
-  defp format_address(%Postgrex.INET{address: address} = inet) when tuple_size(address) == 4, do: inet
-  defp format_address(%Postgrex.INET{address: address} = inet) when tuple_size(address) == 8, do: "[#{inet}]"
+  defp format_address(%Postgrex.INET{address: address} = inet) when tuple_size(address) == 4,
+    do: inet
+
+  defp format_address(%Postgrex.INET{address: address} = inet) when tuple_size(address) == 8,
+    do: "[#{inet}]"
 end
