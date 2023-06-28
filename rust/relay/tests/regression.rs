@@ -6,7 +6,7 @@ use relay::{
 };
 use std::collections::HashMap;
 use std::iter;
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4};
 use std::time::{Duration, SystemTime};
 use stun_codec::rfc5389::attributes::{ErrorCode, Nonce, Realm, Username, XorMappedAddress};
 use stun_codec::rfc5389::errors::Unauthorized;
@@ -54,7 +54,7 @@ fn deallocate_once_time_expired(
     server.assert_commands(
         from_client(
             source,
-            Allocate::new_authenticated_udp(
+            Allocate::new_authenticated_udp_implicit_ip4(
                 transaction_id,
                 Some(lifetime.clone()),
                 valid_username(now, &username_salt),
@@ -109,7 +109,7 @@ fn unauthenticated_allocate_triggers_authentication(
     server.assert_commands(
         from_client(
             source,
-            Allocate::new_authenticated_udp(
+            Allocate::new_authenticated_udp_implicit_ip4(
                 transaction_id,
                 Some(lifetime.clone()),
                 valid_username(now, &username_salt),
@@ -148,7 +148,7 @@ fn when_refreshed_in_time_allocation_does_not_expire(
     server.assert_commands(
         from_client(
             source,
-            Allocate::new_authenticated_udp(
+            Allocate::new_authenticated_udp_implicit_ip4(
                 allocate_transaction_id,
                 Some(allocate_lifetime.clone()),
                 valid_username(now, &username_salt),
@@ -224,7 +224,7 @@ fn when_receiving_lifetime_0_for_existing_allocation_then_delete(
     server.assert_commands(
         from_client(
             source,
-            Allocate::new_authenticated_udp(
+            Allocate::new_authenticated_udp_implicit_ip4(
                 allocate_transaction_id,
                 Some(allocate_lifetime.clone()),
                 valid_username(now, &username_salt),
@@ -308,7 +308,7 @@ fn ping_pong_relay(
     server.assert_commands(
         from_client(
             source,
-            Allocate::new_authenticated_udp(
+            Allocate::new_authenticated_udp_implicit_ip4(
                 allocate_transaction_id,
                 Some(lifetime.clone()),
                 valid_username(now, &username_salt),
@@ -371,6 +371,50 @@ fn ping_pong_relay(
             source,
             ChannelData::new(channel.value(), peer_to_client_ping.as_ref()),
         )],
+    );
+}
+
+#[proptest]
+fn can_make_ipv6_allocation(
+    #[strategy(relay::proptest::transaction_id())] transaction_id: TransactionId,
+    #[strategy(relay::proptest::allocation_lifetime())] lifetime: Lifetime,
+    #[strategy(relay::proptest::username_salt())] username_salt: String,
+    source: SocketAddrV4,
+    public_relay_ip4_addr: Ipv4Addr,
+    public_relay_ip6_addr: Ipv6Addr,
+    #[strategy(relay::proptest::now())] now: SystemTime,
+    #[strategy(relay::proptest::nonce())] nonce: Uuid,
+) {
+    // TODO: Figure out how we want to pass (optional?) IPv6 address to server.
+    let mut server = TestServer::new(public_relay_ip4_addr).with_nonce(nonce);
+    let secret = server.auth_secret();
+
+    server.assert_commands(
+        from_client(
+            source,
+            Allocate::new_authenticated_udp_ip6(
+                transaction_id,
+                Some(lifetime.clone()),
+                valid_username(now, &username_salt),
+                secret,
+                nonce,
+            ),
+            now,
+        ),
+        [
+            Wake(now + lifetime.lifetime()),
+            CreateAllocation(49152),
+            send_message(
+                source,
+                allocate_response(
+                    transaction_id,
+                    public_relay_ip6_addr,
+                    49152,
+                    source,
+                    &lifetime,
+                ),
+            ),
+        ],
     );
 }
 
@@ -525,7 +569,7 @@ fn binding_response(
 
 fn allocate_response(
     transaction_id: TransactionId,
-    public_relay_addr: Ipv4Addr,
+    public_relay_addr: impl Into<IpAddr>,
     port: u16,
     source: SocketAddrV4,
     lifetime: &Lifetime,
@@ -533,7 +577,7 @@ fn allocate_response(
     let mut message =
         Message::<Attribute>::new(MessageClass::SuccessResponse, ALLOCATE, transaction_id);
     message.add_attribute(
-        XorRelayAddress::new(SocketAddrV4::new(public_relay_addr, port).into()).into(),
+        XorRelayAddress::new(SocketAddr::new(public_relay_addr.into(), port)).into(),
     );
     message.add_attribute(XorMappedAddress::new(source.into()).into());
     message.add_attribute(lifetime.clone().into());

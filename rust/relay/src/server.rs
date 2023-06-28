@@ -7,7 +7,7 @@ pub use crate::server::client_message::{
 };
 
 use crate::auth::{MessageIntegrityExt, Nonces, FIREZONE};
-use crate::rfc8656::PeerAddressFamilyMismatch;
+use crate::rfc8656::{PeerAddressFamilyMismatch, RequestedAddressFamily};
 use crate::stun_codec_ext::{MessageClassExt, MethodExt};
 use crate::TimeEvents;
 use anyhow::Result;
@@ -910,6 +910,7 @@ stun_codec::define_attribute_enums!(
         XorPeerAddress,
         Nonce,
         Realm,
-        Username
+        Username,
+        RequestedAddressFamily
     ]
 );
