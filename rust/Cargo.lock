@@ -436,6 +436,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "50d30906286121d95be3d479533b458f87493b30a4b5f79a607db8f5d11aa91f"
 
 [[package]]
+name = "cc"
+version = "1.0.79"
+source = "git+https://github.com/youknowone/cc-rs?rev=4ca92100c25ac2df679f0cce11c4c3e830f2e455#4ca92100c25ac2df679f0cce11c4c3e830f2e455"
+
+[[package]]
 name = "ccm"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -593,10 +598,13 @@ dependencies = [
 name = "connlib-apple"
 version = "0.1.6"
 dependencies = [
+ "anyhow",
+ "diva",
  "firezone-client-connlib",
  "libc",
  "swift-bridge",
  "swift-bridge-build 0.1.51 (git+https://github.com/conectado/swift-bridge.git?branch=fix-already-declared)",
+ "walkdir",
 ]
 
 [[package]]
@@ -881,6 +889,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "diva"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4962b19d77f25a52081b27cd0404773376bda79b395801dcb771646206a20b06"
+dependencies = [
+ "libc",
+ "log",
+ "windows-sys 0.48.0",
+]
+
+[[package]]
 name = "ecdsa"
 version = "0.14.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -950,7 +969,7 @@ version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "aa68f1b12764fab894d2755d2518754e71b4fd80ecfb822714a1206c2aab39bf"
 dependencies = [
- "cc",
+ "cc 1.0.79 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc",
 ]
 
@@ -1529,7 +1548,6 @@ dependencies = [
  "futures",
  "futures-util",
  "ip_network",
- "macros",
  "os_info",
  "rand_core 0.6.4",
  "rtnetlink",
@@ -1566,15 +1584,6 @@ name = "log"
 version = "0.4.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b06a4cde4c0f271a446782e3eff8de789548ce57dbc8eca9292c27f4a42004b4"
-
-[[package]]
-name = "macros"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.18",
-]
 
 [[package]]
 name = "matchers"
@@ -2216,10 +2225,9 @@ dependencies = [
 [[package]]
 name = "ring"
 version = "0.16.20"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3053cf52e236a3ed746dfc745aa9cacf1b791d846bdaf412f60a8d7d6e17c8fc"
+source = "git+https://github.com/firezone/ring?branch=v0.16.20-cc-fix#ed10dc23f020bd0d3e2af30a40464fad502aeeda"
 dependencies = [
- "cc",
+ "cc 1.0.79 (git+https://github.com/youknowone/cc-rs?rev=4ca92100c25ac2df679f0cce11c4c3e830f2e455)",
  "libc",
  "once_cell",
  "spin",
@@ -3557,7 +3565,7 @@ dependencies = [
  "async-trait",
  "bitflags",
  "bytes",
- "cc",
+ "cc 1.0.79 (registry+https://github.com/rust-lang/crates.io-index)",
  "ipnet",
  "lazy_static",
  "libc",

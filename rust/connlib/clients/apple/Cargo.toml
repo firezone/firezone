@@ -4,7 +4,10 @@ version = "0.1.6"
 edition = "2021"
 
 [build-dependencies]
+anyhow = "1.0.71"
+diva = "0.1.0"
 swift-bridge-build = { git = "https://github.com/conectado/swift-bridge.git", branch = "fix-already-declared" }
+walkdir = "2.3.3"
 
 [dependencies]
 libc = "0.2"

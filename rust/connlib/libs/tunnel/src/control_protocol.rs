@@ -21,10 +21,10 @@ use webrtc::{
 
 use crate::{peer::Peer, ControlSignal, PeerConfig, Tunnel};
 
-impl<C: ControlSignal, CB: Callbacks> Tunnel<C, CB>
+impl<C, CB> Tunnel<C, CB>
 where
-    C: Send + Sync + 'static,
-    CB: Send + Sync + 'static,
+    C: ControlSignal + Send + Sync + 'static,
+    CB: Callbacks + 'static,
 {
     async fn handle_channel_open(
         self: &Arc<Self>,
@@ -160,7 +160,7 @@ where
                 let Some(gateway_public_key) = tunnel.gateway_public_keys.lock().remove(&resource_id) else {
                     tunnel.cleanup_connection(resource_id);
                     tracing::warn!("Opened ICE channel with gateway without ever receiving public key");
-                    CB::on_error(&Error::ControlProtocolError, Recoverable);
+                    tunnel.callbacks.on_error(&Error::ControlProtocolError, Recoverable);
                     return;
                 };
                 let peer_config = PeerConfig {
@@ -172,7 +172,7 @@ where
 
                 if let Err(e) = tunnel.handle_channel_open(d, index, peer_config).await {
                     tracing::error!("Couldn't establish wireguard link after channel was opened: {e}");
-                    CB::on_error(&e, Recoverable);
+                    tunnel.callbacks.on_error(&e, Recoverable);
                     tunnel.cleanup_connection(resource_id);
                 }
                 tunnel.awaiting_connection.lock().remove(&resource_id);
@@ -279,7 +279,7 @@ where
                     Box::pin(async move {
                         if let Err(e) = tunnel.handle_channel_open(data_channel, index, peer).await
                         {
-                            CB::on_error(&e, Recoverable);
+                            tunnel.callbacks.on_error(&e, Recoverable);
                             tracing::error!(
                                 "Couldn't establish wireguard link after opening channel: {e}"
                             );

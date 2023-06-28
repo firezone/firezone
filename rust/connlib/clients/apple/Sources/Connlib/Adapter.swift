@@ -92,13 +92,8 @@ public class Adapter {
 
       do {
         try self.setNetworkSettings(self.generateNetworkSettings(ipv4Routes: [], ipv6Routes: []))
-
         self.state = .started(
-          WrappedSession.connect(
-            "http://localhost:4568",
-            "test-token",
-            Self.callbackHandler!
-          )
+          try WrappedSession.connect("http://localhost:4568", "test-token", Self.callbackHandler!)
         )
         self.networkMonitor = networkMonitor
         completionHandler(nil)

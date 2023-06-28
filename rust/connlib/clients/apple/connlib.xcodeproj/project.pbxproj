@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		1DAA1D872A3142BC00D84E07 /* BridgingHeader.h in Headers */ = {isa = PBXBuildFile; fileRef = 1DAA1D862A3142BC00D84E07 /* BridgingHeader.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		8D46EDDF29DBC29800FF01CA /* Adapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D46EDD729DBC29800FF01CA /* Adapter.swift */; };
 		8D46EDE029DBC29800FF01CA /* CallbackHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D46EDD829DBC29800FF01CA /* CallbackHandler.swift */; };
 		8D967B2B29DBA064000B9D58 /* libconnlib.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 8D967B2A29DBA03F000B9D58 /* libconnlib.a */; };
@@ -16,18 +17,17 @@
 		8DA207FC29DBD80C00703A4A /* SwiftBridgeCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DA207F729DBD80C00703A4A /* SwiftBridgeCore.swift */; };
 		8DA207FD29DBD86100703A4A /* SwiftBridgeCore.h in Headers */ = {isa = PBXBuildFile; fileRef = 8DA207F629DBD80C00703A4A /* SwiftBridgeCore.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		8DA207FE29DBD86100703A4A /* connlib.h in Headers */ = {isa = PBXBuildFile; fileRef = 8D4BADD129DBD6CC00940F0D /* connlib.h */; settings = {ATTRIBUTES = (Public, ); }; };
-		8DA207FF29DBD86100703A4A /* BridgingHeader.h in Headers */ = {isa = PBXBuildFile; fileRef = 8D46EDD629DBC29800FF01CA /* BridgingHeader.h */; settings = {ATTRIBUTES = (Public, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		1DAA1D862A3142BC00D84E07 /* BridgingHeader.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = BridgingHeader.h; sourceTree = "<group>"; };
 		8D209DCE29DBE96B00B68D27 /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS16.4.sdk/System/Library/Frameworks/Security.framework; sourceTree = DEVELOPER_DIR; };
-		8D46EDD629DBC29800FF01CA /* BridgingHeader.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = BridgingHeader.h; sourceTree = "<group>"; };
 		8D46EDD729DBC29800FF01CA /* Adapter.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Adapter.swift; sourceTree = "<group>"; };
 		8D46EDD829DBC29800FF01CA /* CallbackHandler.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = CallbackHandler.swift; sourceTree = "<group>"; };
 		8D4BADD129DBD6CC00940F0D /* connlib.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = connlib.h; sourceTree = "<group>"; };
 		8D7D983129DB8437007B8198 /* connlib.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = connlib.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		8D967B2629DB9A3B000B9D58 /* build-rust.sh */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.script.sh; path = "build-rust.sh"; sourceTree = "<group>"; };
-		8D967B2A29DBA03F000B9D58 /* libconnlib.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libconnlib.a; path = target/universal/debug/libconnlib.a; sourceTree = "<group>"; };
+		8D967B2A29DBA03F000B9D58 /* libconnlib.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libconnlib.a; path = ../../target/universal/debug/libconnlib.a; sourceTree = "<group>"; };
 		8DA207F329DBD80C00703A4A /* connlib-apple.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = "connlib-apple.swift"; sourceTree = "<group>"; };
 		8DA207F429DBD80C00703A4A /* connlib-apple.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "connlib-apple.h"; sourceTree = "<group>"; };
 		8DA207F529DBD80C00703A4A /* .gitignore */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = .gitignore; sourceTree = "<group>"; };
@@ -52,7 +52,7 @@
 			children = (
 				8DA207F129DBD80C00703A4A /* Generated */,
 				8D4BADD129DBD6CC00940F0D /* connlib.h */,
-				8D46EDD629DBC29800FF01CA /* BridgingHeader.h */,
+				1DAA1D862A3142BC00D84E07 /* BridgingHeader.h */,
 				8D46EDD729DBC29800FF01CA /* Adapter.swift */,
 				8D46EDD829DBC29800FF01CA /* CallbackHandler.swift */,
 			);
@@ -130,9 +130,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				8DA207F929DBD80C00703A4A /* connlib-apple.h in Headers */,
+				1DAA1D872A3142BC00D84E07 /* BridgingHeader.h in Headers */,
 				8DA207FD29DBD86100703A4A /* SwiftBridgeCore.h in Headers */,
 				8DA207FE29DBD86100703A4A /* connlib.h in Headers */,
-				8DA207FF29DBD86100703A4A /* BridgingHeader.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -377,7 +377,7 @@
 					"@executable_path/../Frameworks",
 					"@loader_path/Frameworks",
 				);
-				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/target/universal/debug";
+				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/../../../target/universal/debug";
 				MACOSX_DEPLOYMENT_TARGET = 12.4;
 				MARKETING_VERSION = 1.0;
 				MODULE_VERIFIER_SUPPORTED_LANGUAGES = "objective-c objective-c++";
@@ -420,8 +420,8 @@
 					"@loader_path/Frameworks",
 				);
 				LIBRARY_SEARCH_PATHS = (
-					"$(PROJECT_DIR)/target/universal/release",
-					"$(PROJECT_DIR)/target/universal/debug",
+					"$(PROJECT_DIR)/../../../target/universal/release",
+					"$(PROJECT_DIR)/../../../target/universal/debug",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 12.4;
 				MARKETING_VERSION = 1.0;
