@@ -22,12 +22,21 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  test-relay:
-    name: Test relay
-    runs-on: ubuntu-latest
+  test:
+    name: Test
+    strategy:
+      matrix:
+        runs-on:
+          - ubuntu-20.04
+          - ubuntu-22.04
+          - macos-11
+          - macos-12
+          - windows-2019
+          - windows-2022
     defaults:
       run:
         working-directory: ./rust
+    runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v3
 
@@ -42,36 +51,8 @@ jobs:
       - run: cargo doc -p relay --no-deps --document-private-items
         env:
           RUSTDOCFLAGS: "-D warnings"
-      - run: cargo clippy -p relay --all-targets --all-features -- -D warnings
+      - run: cargo clippy --all-targets --all-features -- -D warnings
       - run: cargo test
-
-  test-connlib:
-    needs: draft-release
-    name: Connlib checks
-    strategy:
-      matrix:
-        runs-on:
-          - ubuntu-20.04
-          - ubuntu-22.04
-          - macos-11
-          - macos-12
-          - windows-2019
-          - windows-2022
-    runs-on: ${{ matrix.runs-on }}
-    defaults:
-      run:
-        working-directory: ./rust
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-      - name: Update toolchain
-        run: rustup show
-      - uses: Swatinem/rust-cache@v2
-      - name: Run connlib checks and tests
-        run: |
-          cargo check --workspace --exclude relay
-          cargo clippy --workspace --exclude relay -- -D clippy::all
-          cargo test --workspace --exclude relay
 
   build-android:
     needs:
