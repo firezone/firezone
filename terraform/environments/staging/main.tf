@@ -640,17 +640,7 @@ module "relays" {
     }
   ]
 
-  application_environment_variables = concat([
-    # Web Server
-    {
-      name  = "EXTERNAL_URL"
-      value = "https://app.${local.tld}"
-    },
-    {
-      name  = "PHOENIX_HTTP_WEB_PORT"
-      value = "80"
-    }
-  ], local.shared_application_environment_variables)
+  application_environment_variables = []
 }
 
 # Enable SSH on staging
