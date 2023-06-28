@@ -175,6 +175,12 @@ export default function DocsSidebar() {
                     <Item href="/docs/authenticate/saml" label="Overview" />
                   </li>
                   <li>
+                    <Item
+                      href="/docs/authenticate/saml/google"
+                      label="Google"
+                    />
+                  </li>
+                  <li>
                     <Item href="/docs/authenticate/saml/okta" label="Okta" />
                   </li>
                   <li>
