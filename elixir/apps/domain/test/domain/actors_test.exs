@@ -5,6 +5,367 @@ defmodule Domain.ActorsTest do
   alias Domain.Actors
   alias Domain.{AccountsFixtures, AuthFixtures, ActorsFixtures}
 
+  describe "fetch_group_by_id/2" do
+    setup do
+      account = AccountsFixtures.create_account()
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+      identity = AuthFixtures.create_identity(account: account, actor: actor)
+      subject = AuthFixtures.create_subject(identity)
+
+      %{
+        account: account,
+        actor: actor,
+        identity: identity,
+        subject: subject
+      }
+    end
+
+    test "returns error when UUID is invalid", %{subject: subject} do
+      assert fetch_group_by_id("foo", subject) == {:error, :not_found}
+    end
+
+    test "does not return groups from other accounts", %{
+      subject: subject
+    } do
+      group = ActorsFixtures.create_group()
+      assert fetch_group_by_id(group.id, subject) == {:error, :not_found}
+    end
+
+    test "does not return deleted groups", %{
+      account: account,
+      subject: subject
+    } do
+      group =
+        ActorsFixtures.create_group(account: account)
+        |> ActorsFixtures.delete_group()
+
+      assert fetch_group_by_id(group.id, subject) == {:error, :not_found}
+    end
+
+    test "returns group by id", %{account: account, subject: subject} do
+      group = ActorsFixtures.create_group(account: account)
+      assert {:ok, fetched_group} = fetch_group_by_id(group.id, subject)
+      assert fetched_group.id == group.id
+    end
+
+    test "returns group that belongs to another actor", %{
+      account: account,
+      subject: subject
+    } do
+      group = ActorsFixtures.create_group(account: account)
+      assert {:ok, fetched_group} = fetch_group_by_id(group.id, subject)
+      assert fetched_group.id == group.id
+    end
+
+    test "returns error when group does not exist", %{subject: subject} do
+      assert fetch_group_by_id(Ecto.UUID.generate(), subject) ==
+               {:error, :not_found}
+    end
+
+    test "returns error when subject has no permission to view groups", %{
+      subject: subject
+    } do
+      subject = AuthFixtures.remove_permissions(subject)
+
+      assert fetch_group_by_id(Ecto.UUID.generate(), subject) ==
+               {:error,
+                {:unauthorized,
+                 [missing_permissions: [Actors.Authorizer.manage_actors_permission()]]}}
+    end
+  end
+
+  describe "list_groups/1" do
+    setup do
+      account = AccountsFixtures.create_account()
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+      identity = AuthFixtures.create_identity(account: account, actor: actor)
+      subject = AuthFixtures.create_subject(identity)
+
+      %{
+        account: account,
+        actor: actor,
+        identity: identity,
+        subject: subject
+      }
+    end
+
+    test "returns empty list when there are no groups", %{subject: subject} do
+      assert list_groups(subject) == {:ok, []}
+    end
+
+    test "does not list groups from other accounts", %{
+      subject: subject
+    } do
+      ActorsFixtures.create_group()
+      assert list_groups(subject) == {:ok, []}
+    end
+
+    test "does not list deleted groups", %{
+      account: account,
+      subject: subject
+    } do
+      ActorsFixtures.create_group(account: account)
+      |> ActorsFixtures.delete_group()
+
+      assert list_groups(subject) == {:ok, []}
+    end
+
+    test "returns all groups", %{
+      account: account,
+      subject: subject
+    } do
+      ActorsFixtures.create_group(account: account)
+      ActorsFixtures.create_group(account: account)
+      ActorsFixtures.create_group()
+
+      assert {:ok, groups} = list_groups(subject)
+      assert length(groups) == 2
+    end
+
+    test "returns error when subject has no permission to manage groups", %{
+      subject: subject
+    } do
+      subject = AuthFixtures.remove_permissions(subject)
+
+      assert list_groups(subject) ==
+               {:error,
+                {:unauthorized,
+                 [missing_permissions: [Actors.Authorizer.manage_actors_permission()]]}}
+    end
+  end
+
+  describe "new_group/0" do
+    test "returns group changeset" do
+      assert %Ecto.Changeset{data: %Actors.Group{}, changes: changes} = new_group()
+      assert Enum.count(changes) == 0
+    end
+  end
+
+  describe "create_group/2" do
+    setup do
+      account = AccountsFixtures.create_account()
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+      identity = AuthFixtures.create_identity(account: account, actor: actor)
+      subject = AuthFixtures.create_subject(identity)
+
+      %{
+        account: account,
+        actor: actor,
+        identity: identity,
+        subject: subject
+      }
+    end
+
+    test "returns error on empty attrs", %{subject: subject} do
+      assert {:error, changeset} = create_group(%{}, subject)
+      assert errors_on(changeset) == %{name: ["can't be blank"]}
+    end
+
+    test "returns error on invalid attrs", %{account: account, subject: subject} do
+      attrs = %{name: String.duplicate("A", 65)}
+      assert {:error, changeset} = create_group(attrs, subject)
+      assert errors_on(changeset) == %{name: ["should be at most 64 character(s)"]}
+
+      ActorsFixtures.create_group(account: account, name: "foo")
+      attrs = %{name: "foo", tokens: [%{}]}
+      assert {:error, changeset} = create_group(attrs, subject)
+      assert "has already been taken" in errors_on(changeset).name
+    end
+
+    test "creates a group", %{subject: subject} do
+      attrs = ActorsFixtures.group_attrs()
+
+      assert {:ok, group} = create_group(attrs, subject)
+      assert group.id
+      assert group.name == attrs.name
+
+      group = Repo.preload(group, :memberships)
+      assert group.memberships == []
+    end
+
+    test "creates a group with memberships", %{account: account, actor: actor, subject: subject} do
+      attrs =
+        ActorsFixtures.group_attrs(
+          memberships: [
+            %{actor_id: actor.id}
+          ]
+        )
+
+      assert {:ok, group} = create_group(attrs, subject)
+      assert group.id
+      assert group.name == attrs.name
+
+      group = Repo.preload(group, :memberships)
+      assert [%Actors.Membership{} = membership] = group.memberships
+      assert membership.actor_id == actor.id
+      assert membership.account_id == account.id
+      assert membership.group_id == group.id
+    end
+
+    test "returns error when subject has no permission to manage groups", %{
+      subject: subject
+    } do
+      subject = AuthFixtures.remove_permissions(subject)
+
+      assert create_group(%{}, subject) ==
+               {:error,
+                {:unauthorized,
+                 [missing_permissions: [Actors.Authorizer.manage_actors_permission()]]}}
+    end
+  end
+
+  describe "change_group/1" do
+    test "returns changeset with given changes" do
+      account = AccountsFixtures.create_account()
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+      group = ActorsFixtures.create_group(account: account)
+
+      group_attrs =
+        ActorsFixtures.group_attrs(
+          memberships: [
+            %{actor_id: actor.id}
+          ]
+        )
+
+      assert changeset = change_group(group, group_attrs)
+      assert changeset.valid?
+
+      assert %{name: name, memberships: [membership]} = changeset.changes
+      assert name == group_attrs.name
+      assert membership.changes.account_id == account.id
+      assert membership.changes.actor_id == actor.id
+    end
+  end
+
+  describe "update_group/3" do
+    setup do
+      account = AccountsFixtures.create_account()
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+      identity = AuthFixtures.create_identity(account: account, actor: actor)
+      subject = AuthFixtures.create_subject(identity)
+
+      %{
+        account: account,
+        actor: actor,
+        identity: identity,
+        subject: subject
+      }
+    end
+
+    test "does not allow to reset required fields to empty values", %{
+      subject: subject
+    } do
+      group = ActorsFixtures.create_group()
+      attrs = %{name: nil}
+
+      assert {:error, changeset} = update_group(group, attrs, subject)
+
+      assert errors_on(changeset) == %{name: ["can't be blank"]}
+    end
+
+    test "returns error on invalid attrs", %{account: account, subject: subject} do
+      group = ActorsFixtures.create_group(account: account)
+
+      attrs = %{name: String.duplicate("A", 65)}
+      assert {:error, changeset} = update_group(group, attrs, subject)
+      assert errors_on(changeset) == %{name: ["should be at most 64 character(s)"]}
+
+      ActorsFixtures.create_group(account: account, name: "foo")
+      attrs = %{name: "foo"}
+      assert {:error, changeset} = update_group(group, attrs, subject)
+      assert "has already been taken" in errors_on(changeset).name
+    end
+
+    test "updates a group", %{account: account, subject: subject} do
+      group = ActorsFixtures.create_group(account: account)
+
+      attrs = ActorsFixtures.group_attrs()
+      assert {:ok, group} = update_group(group, attrs, subject)
+      assert group.name == attrs.name
+    end
+
+    test "updates group memberships", %{account: account, actor: actor, subject: subject} do
+      group = ActorsFixtures.create_group(account: account, memberships: [%{actor_id: actor.id}])
+
+      other_actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+
+      attrs =
+        ActorsFixtures.group_attrs(
+          memberships: [
+            %{actor_id: other_actor.id}
+          ]
+        )
+
+      assert {:ok, group} = update_group(group, attrs, subject)
+      assert group.id
+      assert group.name == attrs.name
+
+      group = Repo.preload(group, :memberships)
+      assert [%Actors.Membership{} = membership] = group.memberships
+      assert membership.actor_id == other_actor.id
+      assert membership.account_id == account.id
+      assert membership.group_id == group.id
+    end
+
+    test "returns error when subject has no permission to manage groups", %{
+      account: account,
+      subject: subject
+    } do
+      group = ActorsFixtures.create_group(account: account)
+
+      subject = AuthFixtures.remove_permissions(subject)
+
+      assert update_group(group, %{}, subject) ==
+               {:error,
+                {:unauthorized,
+                 [missing_permissions: [Actors.Authorizer.manage_actors_permission()]]}}
+    end
+  end
+
+  describe "delete_group/2" do
+    setup do
+      account = AccountsFixtures.create_account()
+      actor = ActorsFixtures.create_actor(type: :account_admin_user, account: account)
+      identity = AuthFixtures.create_identity(account: account, actor: actor)
+      subject = AuthFixtures.create_subject(identity)
+
+      %{
+        account: account,
+        actor: actor,
+        identity: identity,
+        subject: subject
+      }
+    end
+
+    test "returns error on state conflict", %{account: account, subject: subject} do
+      group = ActorsFixtures.create_group(account: account)
+
+      assert {:ok, deleted} = delete_group(group, subject)
+      assert delete_group(deleted, subject) == {:error, :not_found}
+      assert delete_group(group, subject) == {:error, :not_found}
+    end
+
+    test "deletes groups", %{account: account, subject: subject} do
+      group = ActorsFixtures.create_group(account: account)
+
+      assert {:ok, deleted} = delete_group(group, subject)
+      assert deleted.deleted_at
+    end
+
+    test "returns error when subject has no permission to delete groups", %{
+      subject: subject
+    } do
+      group = ActorsFixtures.create_group()
+
+      subject = AuthFixtures.remove_permissions(subject)
+
+      assert delete_group(group, subject) ==
+               {:error,
+                {:unauthorized,
+                 [missing_permissions: [Actors.Authorizer.manage_actors_permission()]]}}
+    end
+  end
+
   describe "fetch_count_by_type/0" do
     setup do
       account = AccountsFixtures.create_account()

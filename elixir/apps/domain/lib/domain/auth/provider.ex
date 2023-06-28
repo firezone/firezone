@@ -9,6 +9,8 @@ defmodule Domain.Auth.Provider do
 
     belongs_to :account, Domain.Accounts.Account
 
+    has_many :groups, Domain.Actors.Group
+
     field :disabled_at, :utc_datetime_usec
     field :deleted_at, :utc_datetime_usec
     timestamps()

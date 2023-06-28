@@ -1,7 +1,65 @@
 defmodule Domain.Actors do
   alias Domain.{Repo, Auth, Validator}
-  alias Domain.Actors.{Authorizer, Actor}
+  alias Domain.Actors.{Authorizer, Actor, Group}
   require Ecto.Query
+
+  def fetch_group_by_id(id, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()),
+         true <- Validator.valid_uuid?(id) do
+      Group.Query.by_id(id)
+      |> Authorizer.for_subject(subject)
+      |> Repo.fetch()
+    else
+      false -> {:error, :not_found}
+      other -> other
+    end
+  end
+
+  def list_groups(%Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
+      Group.Query.all()
+      |> Authorizer.for_subject(subject)
+      |> Repo.list()
+    end
+  end
+
+  def new_group(attrs \\ %{}) do
+    change_group(%Group{}, attrs)
+  end
+
+  def create_group(attrs, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
+      subject.account
+      |> Group.Changeset.create_changeset(attrs)
+      |> Repo.insert()
+    end
+  end
+
+  def change_group(%Group{} = group, attrs \\ %{}) do
+    group
+    |> Repo.preload(:memberships)
+    |> Group.Changeset.update_changeset(attrs)
+  end
+
+  def update_group(%Group{} = group, attrs, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
+      group
+      |> Repo.preload(:memberships)
+      |> Group.Changeset.update_changeset(attrs)
+      |> Repo.update()
+    end
+  end
+
+  def delete_group(%Group{} = group, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
+      Group.Query.by_id(group.id)
+      |> Authorizer.for_subject(subject)
+      |> Group.Query.by_account_id(subject.account.id)
+      |> Repo.fetch_and_update(with: &Group.Changeset.delete_changeset/1)
+    end
+  end
+
+  ##########
 
   def fetch_count_by_type(type, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
