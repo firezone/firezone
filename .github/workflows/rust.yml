@@ -47,6 +47,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ./rust
+          key: v2
       - run: cargo fmt -p relay -- --check
       - run: cargo doc -p relay --no-deps --document-private-items
         env:
