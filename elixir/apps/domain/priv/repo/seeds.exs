@@ -91,8 +91,8 @@ unprivileged_subject =
   Auth.build_subject(
     unprivileged_actor_userpass_identity,
     DateTime.utc_now() |> DateTime.add(365, :day),
-    "iOS/12.5 (iPhone) connlib/0.7.412",
-    {172, 28, 0, 1}
+    "Debian/11.0.0 connlib/0.1.0",
+    {172, 28, 0, 100}
   )
 
 admin_subject =
@@ -198,7 +198,7 @@ IO.puts("")
   Resources.create_resource(
     %{
       type: :cidr,
-      address: "172.172.0.1/16",
+      address: "172.20.0.1/16",
       connections: [%{gateway_group_id: gateway_group.id}]
     },
     admin_subject
