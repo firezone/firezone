@@ -25,6 +25,7 @@ jobs:
   test:
     name: Test
     strategy:
+      fail-fast: false
       matrix:
         runs-on:
           - ubuntu-20.04
