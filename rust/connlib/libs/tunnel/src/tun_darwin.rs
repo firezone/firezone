@@ -268,7 +268,7 @@ impl IfaceConfig {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn set_iface_config(&mut self, _config: &InterfaceConfig) -> Result<()> {
+    pub async fn set_iface_config(&mut self, config: &InterfaceConfig) -> Result<()> {
         tracing::error!("`set_iface_config` unimplemented on macOS: `{config:#?}`");
         Ok(())
     }
