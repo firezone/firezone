@@ -50,11 +50,11 @@ jobs:
           workspaces: ./rust
           key: v2
       - run: cargo fmt -- --check
-      - run: cargo doc --no-deps --document-private-items
+      - run: cargo doc --all-features --no-deps --document-private-items
         env:
           RUSTDOCFLAGS: "-D warnings"
       - run: cargo clippy --all-targets --all-features -- -D warnings
-      - run: cargo test
+      - run: cargo test --all-features
 
   build-android:
     needs:
